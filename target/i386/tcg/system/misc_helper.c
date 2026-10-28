@@ -30,36 +30,54 @@
 
 void helper_outb(CPUX86State *env, uint32_t port, uint32_t data)
 {
+#ifdef LIBRETRO
+    env_cpu(env)->neg.lr_quiet = LR_QUIET_INSNS; /* a device access */
+#endif
     address_space_stb(&address_space_io, port, data,
                       cpu_get_mem_attrs(env), NULL);
 }
 
 target_ulong helper_inb(CPUX86State *env, uint32_t port)
 {
+#ifdef LIBRETRO
+    env_cpu(env)->neg.lr_quiet = LR_QUIET_INSNS; /* a device access */
+#endif
     return address_space_ldub(&address_space_io, port,
                               cpu_get_mem_attrs(env), NULL);
 }
 
 void helper_outw(CPUX86State *env, uint32_t port, uint32_t data)
 {
+#ifdef LIBRETRO
+    env_cpu(env)->neg.lr_quiet = LR_QUIET_INSNS; /* a device access */
+#endif
     address_space_stw(&address_space_io, port, data,
                       cpu_get_mem_attrs(env), NULL);
 }
 
 target_ulong helper_inw(CPUX86State *env, uint32_t port)
 {
+#ifdef LIBRETRO
+    env_cpu(env)->neg.lr_quiet = LR_QUIET_INSNS; /* a device access */
+#endif
     return address_space_lduw(&address_space_io, port,
                               cpu_get_mem_attrs(env), NULL);
 }
 
 void helper_outl(CPUX86State *env, uint32_t port, uint32_t data)
 {
+#ifdef LIBRETRO
+    env_cpu(env)->neg.lr_quiet = LR_QUIET_INSNS; /* a device access */
+#endif
     address_space_stl(&address_space_io, port, data,
                       cpu_get_mem_attrs(env), NULL);
 }
 
 target_ulong helper_inl(CPUX86State *env, uint32_t port)
 {
+#ifdef LIBRETRO
+    env_cpu(env)->neg.lr_quiet = LR_QUIET_INSNS; /* a device access */
+#endif
     return address_space_ldl(&address_space_io, port,
                              cpu_get_mem_attrs(env), NULL);
 }

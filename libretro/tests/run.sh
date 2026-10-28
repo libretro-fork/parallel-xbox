@@ -13,7 +13,8 @@ set -e
 core=$(readlink -f "$1")
 here=$(cd "$(dirname "$0")" && pwd)
 work=${2:-$(mktemp -d)}
-mkdir -p "$work/bin" "$work/sys/xemu" "$work/sysb/xemu" "$work/sysd/xemu"
+mkdir -p "$work/bin" "$work/sys/xemu" "$work/sysb/xemu" "$work/sysd/xemu" \
+    "$work/syss/xemu"
 
 # The harness's paths, as the core's OS spells them
 path() { echo "$1"; }
@@ -47,6 +48,8 @@ nasm -f bin -o "$work/sys/xemu/mcpx_1.0.bin" "$here/rom/bootrom.asm"
 nasm -f bin -I"$here/rom/" -o "$work/sys/xemu/Complex_4627v1.03.bin" "$here/rom/flash.asm"
 cp "$work/sys/xemu/mcpx_1.0.bin" "$work/sysb/xemu/"
 nasm -f bin -DBUSY -I"$here/rom/" -o "$work/sysb/xemu/Complex_4627v1.03.bin" "$here/rom/flash.asm"
+cp "$work/sys/xemu/mcpx_1.0.bin" "$work/syss/xemu/"
+nasm -f bin -DSPIN -I"$here/rom/" -o "$work/syss/xemu/Complex_4627v1.03.bin" "$here/rom/flash.asm"
 cp "$work/sys/xemu/mcpx_1.0.bin" "$work/sysd/xemu/"
 nasm -f bin -DDSP -DGP_PASSES=16 -I"$here/rom/" -o "$work/sysd/xemu/Complex_4627v1.03.bin" "$here/rom/flash.asm"
 
@@ -68,6 +71,13 @@ t "idle guest, unpaced" $h "$(path "$core")" "$(path "$work/sys")" $vp --frames 
 t "busy guest, unpaced" $h "$(path "$core")" "$(path "$work/sysb")" $vp --frames 600 --strict \
   --wav "$(path "$work/busy.wav")"
 "$work/bin/sinecheck" "$work/busy.wav" --frames 480480
+
+# The guest spins on RAM that nothing writes, as the Xbox kernel's idle
+# thread does: a wait, recognised and skipped, so it runs as fast as the
+# halted guest and its tone is as whole.
+t "spinning guest, unpaced" $h "$(path "$core")" "$(path "$work/syss")" $vp --frames 3000 --strict \
+  --min-speed 4 --wav "$(path "$work/spin.wav")"
+"$work/bin/sinecheck" "$work/spin.wav" --frames 2402400
 
 # The guest's time is its instructions, never the host's: a frame is the
 # same work however fast the host runs it. The busy guest's RAM (its

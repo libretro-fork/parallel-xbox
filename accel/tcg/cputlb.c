@@ -19,6 +19,13 @@
  */
 
 #include "qemu/osdep.h"
+#ifdef LIBRETRO
+/* the libretro core's idle detection (hw/core/cpu.h): a store made by a
+ * helper or on the slow path, or any device access, is not waiting */
+#define LR_QUIET_RESET(cpu) ((cpu)->neg.lr_quiet = LR_QUIET_INSNS)
+#else
+#define LR_QUIET_RESET(cpu) ((void)0)
+#endif
 #include "qemu/main-loop.h"
 #include "qemu/target-info.h"
 #include "accel/tcg/cpu-ops.h"
@@ -2029,6 +2036,7 @@ static uint64_t do_ld_mmio_beN(CPUState *cpu, CPUTLBEntryFull *full,
                                uint64_t ret_be, vaddr addr, int size,
                                int mmu_idx, MMUAccessType type, uintptr_t ra)
 {
+    LR_QUIET_RESET(cpu);
     MemoryRegionSection *section;
     MemoryRegion *mr;
     hwaddr mr_offset;
@@ -2570,6 +2578,7 @@ static uint64_t do_st_mmio_leN(CPUState *cpu, CPUTLBEntryFull *full,
                                uint64_t val_le, vaddr addr, int size,
                                int mmu_idx, uintptr_t ra)
 {
+    LR_QUIET_RESET(cpu);
     MemoryRegionSection *section;
     hwaddr mr_offset;
     MemoryRegion *mr;
@@ -2786,6 +2795,7 @@ static void do_st_8(CPUState *cpu, MMULookupPageData *p, uint64_t val,
 static void do_st1_mmu(CPUState *cpu, vaddr addr, uint8_t val,
                        MemOpIdx oi, uintptr_t ra)
 {
+    LR_QUIET_RESET(cpu);
     MMULookupLocals l;
     bool crosspage;
 
@@ -2801,6 +2811,7 @@ static void do_st1_mmu(CPUState *cpu, vaddr addr, uint8_t val,
 static void do_st2_mmu(CPUState *cpu, vaddr addr, uint16_t val,
                        MemOpIdx oi, uintptr_t ra)
 {
+    LR_QUIET_RESET(cpu);
     MMULookupLocals l;
     bool crosspage;
     uint8_t a, b;
@@ -2826,6 +2837,7 @@ static void do_st2_mmu(CPUState *cpu, vaddr addr, uint16_t val,
 static void do_st4_mmu(CPUState *cpu, vaddr addr, uint32_t val,
                        MemOpIdx oi, uintptr_t ra)
 {
+    LR_QUIET_RESET(cpu);
     MMULookupLocals l;
     bool crosspage;
 
@@ -2849,6 +2861,7 @@ static void do_st4_mmu(CPUState *cpu, vaddr addr, uint32_t val,
 static void do_st8_mmu(CPUState *cpu, vaddr addr, uint64_t val,
                        MemOpIdx oi, uintptr_t ra)
 {
+    LR_QUIET_RESET(cpu);
     MMULookupLocals l;
     bool crosspage;
 
@@ -2872,6 +2885,7 @@ static void do_st8_mmu(CPUState *cpu, vaddr addr, uint64_t val,
 static void do_st16_mmu(CPUState *cpu, vaddr addr, Int128 val,
                         MemOpIdx oi, uintptr_t ra)
 {
+    LR_QUIET_RESET(cpu);
     MMULookupLocals l;
     bool crosspage;
     uint64_t a, b;

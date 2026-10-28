@@ -1059,6 +1059,10 @@ static inline bool cpu_handle_interrupt(CPUState *cpu,
              * and via longjmp via cpu_loop_exit.
              */
             if (tcg_ops->cpu_exec_interrupt(cpu, interrupt_request)) {
+#ifdef LIBRETRO
+                /* something happened: a wait ends here */
+                cpu->neg.lr_quiet = LR_QUIET_INSNS;
+#endif
                 if (!tcg_ops->need_replay_interrupt ||
                     tcg_ops->need_replay_interrupt(interrupt_request)) {
                     replay_interrupt();
@@ -1184,6 +1188,21 @@ static inline void cpu_loop_exec_tb(CPUState *cpu, TranslationBlock *tb,
     }
 
     *last_tb = NULL;
+#ifdef LIBRETRO
+    if (cpu->neg.lr_quiet < 0) {
+        /* The libretro core's idle detection (translator.c): LR_QUIET_INSNS
+         * instructions that stored nothing and touched no device, a wait.
+         * The core moves the guest's time on to the next event and ends
+         * the slice, unless something the guest may be waiting for is
+         * under way on another thread. */
+        extern void lr_quiet_exit(CPUState *cpu);
+        cpu->neg.lr_quiet = LR_QUIET_INSNS;
+        lr_quiet_exit(cpu);
+        if (cpu_loop_exit_requested(cpu)) {
+            return;
+        }
+    }
+#endif
     if (cpu_loop_exit_requested(cpu)) {
         /* Something asked us to stop executing chained TBs; just
          * continue round the main loop. Whatever requested the exit

@@ -276,4 +276,9 @@ size_t translator_st_len(const DisasContextBase *db);
  */
 bool translator_is_same_page(const DisasContextBase *db, vaddr addr);
 
+#ifdef LIBRETRO
+/* the libretro core's idle detection: a guest store is being emitted */
+void lr_quiet_store_emitted(void);
+#endif
+
 #endif /* EXEC__TRANSLATOR_H */

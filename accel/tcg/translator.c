@@ -182,8 +182,46 @@ static TCGOp *gen_tb_start(DisasContextBase *db, uint32_t cflags)
                          sizeof(CPUState));
     }
 
+#ifdef LIBRETRO
+    /* The libretro core's idle detection: the block's instructions come
+     * off neg.lr_quiet, and a block that would take it below zero leaves
+     * for lr_quiet_exit instead (a run of guest code that stored nothing
+     * and touched no device: a wait, whose time moves on). A store
+     * (lr_quiet_store_emitted) resets the count; so do device accesses,
+     * the TSC and interrupts, in C. Not in a block that may not be
+     * interrupted. */
+    tcg_ctx->lr_quiet_label = NULL;
+    tcg_ctx->lr_quiet_insn = NULL;
+    tcg_ctx->lr_quiet_store = false;
+    if ((cflags & CF_USE_ICOUNT) && !(cflags & CF_NOIRQ)) {
+        TCGv_i32 quiet = tcg_temp_new_i32();
+
+        tcg_gen_ld_i32(quiet, tcg_env,
+                       offsetof(CPUState, neg.lr_quiet) - sizeof(CPUState));
+        tcg_gen_sub_i32(quiet, quiet, tcg_constant_i32(0));
+        tcg_ctx->lr_quiet_insn = tcg_last_op();
+        tcg_gen_st_i32(quiet, tcg_env,
+                       offsetof(CPUState, neg.lr_quiet) - sizeof(CPUState));
+        tcg_ctx->lr_quiet_label = gen_new_label();
+        tcg_gen_brcondi_i32(TCG_COND_LT, quiet, 0, tcg_ctx->lr_quiet_label);
+    }
+#endif
+
     return icount_start_insn;
 }
+
+#ifdef LIBRETRO
+/* A guest store is being emitted (tcg/tcg-op-ldst.c): the block's first
+ * one resets the quiet count, so the wait starts over */
+void lr_quiet_store_emitted(void)
+{
+    if (tcg_ctx->lr_quiet_label && !tcg_ctx->lr_quiet_store) {
+        tcg_ctx->lr_quiet_store = true;
+        tcg_gen_st_i32(tcg_constant_i32(LR_QUIET_INSNS), tcg_env,
+                       offsetof(CPUState, neg.lr_quiet) - sizeof(CPUState));
+    }
+}
+#endif
 
 static void gen_tb_end(const TranslationBlock *tb, uint32_t cflags,
                        TCGOp *icount_start_insn, int num_insns)
@@ -201,6 +239,15 @@ static void gen_tb_end(const TranslationBlock *tb, uint32_t cflags,
         gen_set_label(tcg_ctx->exitreq_label);
         tcg_gen_exit_tb(tb, TB_EXIT_REQUESTED);
     }
+#ifdef LIBRETRO
+    if (tcg_ctx->lr_quiet_label) {
+        tcg_set_insn_param(tcg_ctx->lr_quiet_insn, 2,
+                           tcgv_i32_arg(tcg_constant_i32(num_insns)));
+        gen_set_label(tcg_ctx->lr_quiet_label);
+        tcg_gen_exit_tb(tb, TB_EXIT_REQUESTED);
+        tcg_ctx->lr_quiet_label = NULL;
+    }
+#endif
 }
 
 bool translator_is_same_page(const DisasContextBase *db, vaddr addr)

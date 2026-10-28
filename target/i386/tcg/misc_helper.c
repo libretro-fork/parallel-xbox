@@ -71,6 +71,10 @@ void helper_rdtsc(CPUX86State *env)
     cpu_svm_check_intercept_param(env, SVM_EXIT_RDTSC, 0, GETPC());
 
     val = cpu_get_tsc(env) + env->tsc_offset;
+#ifdef LIBRETRO
+    /* a loop on the TSC is timed by the guest, not a wait to move on */
+    env_cpu(env)->neg.lr_quiet = LR_QUIET_INSNS;
+#endif
     env->regs[R_EAX] = (uint32_t)(val);
     env->regs[R_EDX] = (uint32_t)(val >> 32);
 }

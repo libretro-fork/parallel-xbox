@@ -50,6 +50,7 @@
 #include "xemu-settings.h"
 #include "xemu-version.h"
 #include "system/cpu-timers.h"
+#include "exec/icount.h"
 #include "system/libretro-vcpu.h"
 #include "qemu/timer.h"
 #include "block/aio.h"
@@ -1754,6 +1755,30 @@ static bool lr_devices_busy(void)
 /* set while the emulator thread looks and waits: the GPU's thread wakes it
  * when it parks (hw/xbox/nv2a/pfifo.c) */
 extern int nv2a_libretro_waiter;
+
+/* The guest has run LR_QUIET_INSNS instructions that stored nothing and
+ * touched no device (accel/tcg/translator.c): it is waiting, as the
+ * kernel's idle thread does, spinning, and so does a game between its
+ * frame's work and the next vblank. Its time moves on to the next event
+ * (a timer: the APU's frame, the frame's end) rather than being spent
+ * instruction by instruction, and the slice ends so the event runs.
+ * Unless something it may be waiting for is under way on another thread:
+ * then it spins on, as the GPU or disk works meanwhile. On the vCPU
+ * (emulator) thread, without the BQL. */
+void lr_quiet_exit(CPUState *cpu)
+{
+    int64_t deadline;
+
+    if (lr_devices_busy()) {
+        return;
+    }
+    deadline = qemu_clock_deadline_ns_all(QEMU_CLOCK_VIRTUAL,
+                                          QEMU_TIMER_ATTR_ALL);
+    if (deadline > 0) {
+        icount_skip_to(qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) + deadline);
+    }
+    lr_vcpu_exit(cpu);
+}
 
 /* One frame of guest time, from the end of the last one on a grid of
  * exactly 1001/60 ms. Under the BQL. */

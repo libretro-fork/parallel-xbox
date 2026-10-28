@@ -389,7 +389,17 @@ typedef struct CPUNegativeOffsetState {
 #endif
     IcountDecr icount_decr;
     bool can_do_io;
+    /* The libretro core's idle detection (ui/libretro.c, lr_quiet_exit):
+     * instructions left before a run of guest code that stored nothing
+     * and touched no device counts as waiting, whose time moves on to
+     * the next event. Counted down by the translated code, reset by a
+     * store, a device access, the TSC, or an interrupt. */
+    int32_t lr_quiet;
 } CPUNegativeOffsetState;
+
+/* the instructions a wait is recognised after: a few hundred turns of a
+ * spin loop, and more than any store-free stretch of a game's own work */
+#define LR_QUIET_INSNS 8192
 
 struct KVMState;
 struct kvm_run;

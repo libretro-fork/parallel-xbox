@@ -33,6 +33,13 @@
 #include "tcg-internal.h"
 #include "tcg-has.h"
 #include "tcg-target-mo.h"
+#ifdef LIBRETRO
+#include "exec/translator.h"
+/* the libretro core's idle detection: every guest store is announced */
+#define LR_QUIET_STORE() lr_quiet_store_emitted()
+#else
+#define LR_QUIET_STORE() ((void)0)
+#endif
 
 static void check_max_alignment(unsigned a_bits)
 {
@@ -343,6 +350,7 @@ static void tcg_gen_qemu_st_i32_int(TCGv_i32 val, TCGTemp *addr,
 void tcg_gen_qemu_st_i32_chk(TCGv_i32 val, TCGTemp *addr, TCGArg idx,
                              MemOp memop, TCGType addr_type)
 {
+    LR_QUIET_STORE();
     tcg_debug_assert(addr_type == tcg_ctx->addr_type);
     tcg_debug_assert((memop & MO_SIZE) <= MO_32);
     tcg_gen_qemu_st_i32_int(val, addr, idx, memop);
@@ -417,6 +425,7 @@ void tcg_gen_qemu_ld_i64_chk(TCGv_i64 val, TCGTemp *addr, TCGArg idx,
 static void tcg_gen_qemu_st_i64_int(TCGv_i64 val, TCGTemp *addr,
                                     TCGArg idx, MemOp memop)
 {
+    LR_QUIET_STORE();
     TCGv_i64 swap = NULL;
     MemOpIdx orig_oi, oi;
     TCGTemp *addr_new;
@@ -675,6 +684,7 @@ void tcg_gen_qemu_ld_i128_chk(TCGv_i128 val, TCGTemp *addr, TCGArg idx,
 static void tcg_gen_qemu_st_i128_int(TCGv_i128 val, TCGTemp *addr,
                                      TCGArg idx, MemOp memop)
 {
+    LR_QUIET_STORE();
     MemOpIdx orig_oi;
     TCGv_i64 ext_addr = NULL;
     TCGTemp *addr_new;
@@ -902,6 +912,7 @@ void tcg_gen_nonatomic_cmpxchg_i32_chk(TCGv_i32 retv, TCGTemp *addr,
                                        TCGArg idx, MemOp memop,
                                        TCGType addr_type)
 {
+    LR_QUIET_STORE();
     tcg_debug_assert(addr_type == tcg_ctx->addr_type);
     tcg_debug_assert((memop & MO_SIZE) <= MO_32);
     tcg_gen_nonatomic_cmpxchg_i32_int(retv, addr, cmpv, newv, idx, memop);
@@ -939,6 +950,7 @@ void tcg_gen_atomic_cmpxchg_i32_chk(TCGv_i32 retv, TCGTemp *addr,
                                     TCGArg idx, MemOp memop,
                                     TCGType addr_type)
 {
+    LR_QUIET_STORE();
     tcg_debug_assert(addr_type == tcg_ctx->addr_type);
     tcg_debug_assert((memop & MO_SIZE) <= MO_32);
     tcg_gen_atomic_cmpxchg_i32_int(retv, addr, cmpv, newv, idx, memop);
@@ -984,6 +996,7 @@ void tcg_gen_nonatomic_cmpxchg_i64_chk(TCGv_i64 retv, TCGTemp *addr,
                                        TCGArg idx, MemOp memop,
                                        TCGType addr_type)
 {
+    LR_QUIET_STORE();
     tcg_debug_assert(addr_type == tcg_ctx->addr_type);
     tcg_debug_assert((memop & MO_SIZE) <= MO_64);
     tcg_gen_nonatomic_cmpxchg_i64_int(retv, addr, cmpv, newv, idx, memop);
@@ -1055,6 +1068,7 @@ void tcg_gen_atomic_cmpxchg_i64_chk(TCGv_i64 retv, TCGTemp *addr,
                                     TCGv_i64 cmpv, TCGv_i64 newv,
                                     TCGArg idx, MemOp memop, TCGType addr_type)
 {
+    LR_QUIET_STORE();
     tcg_debug_assert(addr_type == tcg_ctx->addr_type);
     tcg_debug_assert((memop & MO_SIZE) <= MO_64);
     tcg_gen_atomic_cmpxchg_i64_int(retv, addr, cmpv, newv, idx, memop);
@@ -1108,6 +1122,7 @@ void tcg_gen_nonatomic_cmpxchg_i128_chk(TCGv_i128 retv, TCGTemp *addr,
                                         TCGArg idx, MemOp memop,
                                         TCGType addr_type)
 {
+    LR_QUIET_STORE();
     tcg_debug_assert(addr_type == tcg_ctx->addr_type);
     tcg_debug_assert((memop & (MO_SIZE | MO_SIGN)) == MO_128);
     tcg_gen_nonatomic_cmpxchg_i128_int(retv, addr, cmpv, newv, idx, memop);
@@ -1149,6 +1164,7 @@ void tcg_gen_atomic_cmpxchg_i128_chk(TCGv_i128 retv, TCGTemp *addr,
                                      TCGArg idx, MemOp memop,
                                      TCGType addr_type)
 {
+    LR_QUIET_STORE();
     tcg_debug_assert(addr_type == tcg_ctx->addr_type);
     tcg_debug_assert((memop & (MO_SIZE | MO_SIGN)) == MO_128);
     tcg_gen_atomic_cmpxchg_i128_int(retv, addr, cmpv, newv, idx, memop);
@@ -1158,6 +1174,7 @@ static void do_nonatomic_op_i32(TCGv_i32 ret, TCGTemp *addr, TCGv_i32 val,
                                 TCGArg idx, MemOp memop, bool new_val,
                                 void (*gen)(TCGv_i32, TCGv_i32, TCGv_i32))
 {
+    LR_QUIET_STORE();
     TCGv_i32 t1 = tcg_temp_ebb_new_i32();
     TCGv_i32 t2 = tcg_temp_ebb_new_i32();
 
@@ -1176,6 +1193,7 @@ static void do_nonatomic_op_i32(TCGv_i32 ret, TCGTemp *addr, TCGv_i32 val,
 static void do_atomic_op_i32(TCGv_i32 ret, TCGTemp *addr, TCGv_i32 val,
                              TCGArg idx, MemOp memop, void * const table[])
 {
+    LR_QUIET_STORE();
     gen_atomic_op_i32 gen;
     TCGv_i64 a64;
     MemOpIdx oi;
@@ -1199,6 +1217,7 @@ static void do_nonatomic_op_i64(TCGv_i64 ret, TCGTemp *addr, TCGv_i64 val,
                                 TCGArg idx, MemOp memop, bool new_val,
                                 void (*gen)(TCGv_i64, TCGv_i64, TCGv_i64))
 {
+    LR_QUIET_STORE();
     TCGv_i64 t1 = tcg_temp_ebb_new_i64();
     TCGv_i64 t2 = tcg_temp_ebb_new_i64();
 
@@ -1217,6 +1236,7 @@ static void do_nonatomic_op_i64(TCGv_i64 ret, TCGTemp *addr, TCGv_i64 val,
 static void do_atomic_op_i64(TCGv_i64 ret, TCGTemp *addr, TCGv_i64 val,
                              TCGArg idx, MemOp memop, void * const table[])
 {
+    LR_QUIET_STORE();
     memop = tcg_canonicalize_memop(memop, 1, 0);
 
     if ((memop & MO_SIZE) == MO_64) {

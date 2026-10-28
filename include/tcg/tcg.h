@@ -415,6 +415,12 @@ struct TCGContext {
     struct TCGLabelPoolData *pool_labels;
 
     TCGLabel *exitreq_label;
+#ifdef LIBRETRO
+    /* the libretro core's idle detection (accel/tcg/translator.c) */
+    TCGLabel *lr_quiet_label;
+    TCGOp *lr_quiet_insn;
+    bool lr_quiet_store;    /* the block's first store resets the count */
+#endif
 
 #ifdef CONFIG_PLUGIN
     /*

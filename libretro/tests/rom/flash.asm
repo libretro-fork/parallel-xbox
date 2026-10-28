@@ -106,6 +106,14 @@ entry:
 busy:   inc dword [0x00300000]
         jmp busy
 %endif
+%ifdef SPIN
+        ; the CPU spins on a word in RAM that nothing writes, as the kernel's
+        ; idle thread does: a wait, which the core's idle detection moves
+        ; the guest's time past
+spin:   cmp dword [0x00300004], 0
+        jne spin
+        jmp spin
+%endif
 halt:   hlt
         jmp halt
 
