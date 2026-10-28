@@ -94,9 +94,15 @@ static void wait_for_readers(void)
          * Otherwise, periodically poll the grace period, hoping it ends
          * promptly.
          */
+#ifdef LIBRETRO
+        /* The core never polls: the grace period is forced from the start,
+         * and the wait below is the readers' event, not a sleep */
+        if (!forced) {
+#else
         if (!forced &&
             (qatomic_read(&rcu_call_count) >= RCU_CALL_MIN_SIZE ||
              sleeps >= 5 || qatomic_read(&in_drain_call_rcu))) {
+#endif
             forced = true;
 
             QLIST_FOREACH(index, &registry, node) {

@@ -29,14 +29,7 @@ void libretro_gl_prepare(void)
 {
 }
 
-void libretro_gl_wake_pfifo(void)
-{
-}
-
 void libretro_gl_set_standalone_mode(void)
 {
 }
 
-void libretro_gl_init_wait_event(void)
-{
-}

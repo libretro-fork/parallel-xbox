@@ -25,6 +25,16 @@
 #include "system/libretro-vcpu.h"
 
 static bool lr_tcg_registered;
+static Notifier lr_force_rcu;
+
+/* A writer waits for a grace period: the guest leaves the translated code,
+ * where it holds the RCU read lock */
+static void lr_force_rcu_cb(Notifier *notify, void *data)
+{
+    if (first_cpu) {
+        tcg_kick_vcpu_thread(first_cpu);
+    }
+}
 
 void lr_start_vcpu(CPUState *cpu)
 {
@@ -37,6 +47,8 @@ void lr_start_vcpu(CPUState *cpu)
     cpu->neg.can_do_io = true;
     if (!lr_tcg_registered) {
         tcg_register_thread();
+        lr_force_rcu.notify = lr_force_rcu_cb;
+        rcu_add_force_rcu_notifier(&lr_force_rcu);
         lr_tcg_registered = true;
     }
     qemu_guest_random_seed_thread_part2(cpu->random_seed);

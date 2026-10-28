@@ -55,16 +55,6 @@ static bool g_wndclass_registered = false;
 static bool g_standalone_gl_mode = false;
 static GloContext *g_standalone_root_ctx = NULL;
 
-/* Event for PFIFO thread to wait on */
-static HANDLE g_gl_ready_event = NULL;
-
-void libretro_gl_init_wait_event(void)
-{
-    if (!g_gl_ready_event) {
-        g_gl_ready_event = CreateEvent(NULL, TRUE, FALSE, NULL);
-    }
-}
-
 void libretro_gl_prepare(void)
 {
     g_retroarch_hglrc = wglGetCurrentContext();
@@ -82,37 +72,11 @@ void libretro_gl_prepare(void)
     g_libretro_gl_ready = true;
 }
 
-void libretro_gl_wake_pfifo(void)
-{
-    if (g_gl_ready_event) {
-        SetEvent(g_gl_ready_event);
-    }
-}
-
-void libretro_gl_wait_for_contexts(void)
-{
-    libretro_gl_init_wait_event();
-    WaitForSingleObject(g_gl_ready_event, 30000);
-}
-
-void libretro_gl_signal_ready(void)
-{
-    libretro_gl_prepare();
-    libretro_gl_wake_pfifo();
-}
 
 void libretro_gl_set_standalone_mode(void)
 {
     g_standalone_gl_mode = true;
     g_libretro_gl_ready = true;
-}
-
-void libretro_gl_wait_ready(void)
-{
-    if (g_libretro_gl_ready) return;
-
-    libretro_gl_init_wait_event();
-    WaitForSingleObject(g_gl_ready_event, 30000);
 }
 
 bool libretro_gl_is_ready(void)
@@ -126,7 +90,12 @@ GloContext *glo_context_create(void)
     GloContext *context = (GloContext *)calloc(1, sizeof(GloContext));
     assert(context != NULL);
 
-    libretro_gl_wait_ready();
+    if (!g_libretro_gl_ready) {
+        /* the machine starts only after the frontend's context_reset
+         * (ui/libretro.c): nothing to wait for */
+        free(context);
+        return NULL;
+    }
 
     if (!g_wndclass_registered) {
         WNDCLASSA wc = {0};
@@ -292,28 +261,6 @@ static volatile bool g_libretro_gl_ready = false;
 static bool g_standalone_gl_mode = false;
 static GloContext *g_standalone_root_ctx = NULL;
 
-static pthread_mutex_t g_ready_mutex = PTHREAD_MUTEX_INITIALIZER;
-static pthread_cond_t g_ready_cond = PTHREAD_COND_INITIALIZER;
-static bool g_ready_signalled = false;
-
-static void wait_ready_signal(void)
-{
-    struct timespec deadline;
-    clock_gettime(CLOCK_REALTIME, &deadline);
-    deadline.tv_sec += 30;
-    pthread_mutex_lock(&g_ready_mutex);
-    while (!g_ready_signalled) {
-        if (pthread_cond_timedwait(&g_ready_cond, &g_ready_mutex, &deadline) != 0) {
-            break;
-        }
-    }
-    pthread_mutex_unlock(&g_ready_mutex);
-}
-
-void libretro_gl_init_wait_event(void)
-{
-}
-
 static bool cgl_choose_own_pixel_format(void)
 {
     const CGLPixelFormatAttribute attribs[] = {
@@ -344,37 +291,12 @@ void libretro_gl_prepare(void)
     g_libretro_gl_ready = true;
 }
 
-void libretro_gl_wake_pfifo(void)
-{
-    pthread_mutex_lock(&g_ready_mutex);
-    g_ready_signalled = true;
-    pthread_cond_broadcast(&g_ready_cond);
-    pthread_mutex_unlock(&g_ready_mutex);
-}
-
-void libretro_gl_wait_for_contexts(void)
-{
-    wait_ready_signal();
-}
-
-void libretro_gl_signal_ready(void)
-{
-    libretro_gl_prepare();
-    libretro_gl_wake_pfifo();
-}
-
 void libretro_gl_set_standalone_mode(void)
 {
     g_standalone_gl_mode = true;
     g_cgl_share = NULL;
     cgl_choose_own_pixel_format();
     g_libretro_gl_ready = true;
-}
-
-void libretro_gl_wait_ready(void)
-{
-    if (g_libretro_gl_ready) return;
-    wait_ready_signal();
 }
 
 bool libretro_gl_is_ready(void)
@@ -387,7 +309,12 @@ GloContext *glo_context_create(void)
     GloContext *context = (GloContext *)calloc(1, sizeof(GloContext));
     assert(context != NULL);
 
-    libretro_gl_wait_ready();
+    if (!g_libretro_gl_ready) {
+        /* the machine starts only after the frontend's context_reset
+         * (ui/libretro.c): nothing to wait for */
+        free(context);
+        return NULL;
+    }
 
     if (!g_cgl_pixel_format) {
         free(context);
@@ -470,28 +397,6 @@ static GLXFBConfig g_glx_config = NULL;
 static volatile bool g_libretro_gl_ready = false;
 static bool g_standalone_gl_mode = false;
 static GloContext *g_standalone_root_ctx = NULL;
-
-static pthread_mutex_t g_ready_mutex = PTHREAD_MUTEX_INITIALIZER;
-static pthread_cond_t g_ready_cond = PTHREAD_COND_INITIALIZER;
-static bool g_ready_signalled = false;
-
-static void wait_ready_signal(void)
-{
-    struct timespec deadline;
-    clock_gettime(CLOCK_REALTIME, &deadline);
-    deadline.tv_sec += 30;
-    pthread_mutex_lock(&g_ready_mutex);
-    while (!g_ready_signalled) {
-        if (pthread_cond_timedwait(&g_ready_cond, &g_ready_mutex, &deadline) != 0) {
-            break;
-        }
-    }
-    pthread_mutex_unlock(&g_ready_mutex);
-}
-
-void libretro_gl_init_wait_event(void)
-{
-}
 
 /* The config of RetroArch's context, so the shared ones are compatible. */
 static void egl_prepare_from_current(void)
@@ -582,36 +487,11 @@ void libretro_gl_prepare(void)
     g_libretro_gl_ready = true;
 }
 
-void libretro_gl_wake_pfifo(void)
-{
-    pthread_mutex_lock(&g_ready_mutex);
-    g_ready_signalled = true;
-    pthread_cond_broadcast(&g_ready_cond);
-    pthread_mutex_unlock(&g_ready_mutex);
-}
-
-void libretro_gl_wait_for_contexts(void)
-{
-    wait_ready_signal();
-}
-
-void libretro_gl_signal_ready(void)
-{
-    libretro_gl_prepare();
-    libretro_gl_wake_pfifo();
-}
-
 void libretro_gl_set_standalone_mode(void)
 {
     g_standalone_gl_mode = true;
     egl_prepare_standalone();
     g_libretro_gl_ready = true;
-}
-
-void libretro_gl_wait_ready(void)
-{
-    if (g_libretro_gl_ready) return;
-    wait_ready_signal();
 }
 
 bool libretro_gl_is_ready(void)
@@ -672,7 +552,12 @@ GloContext *glo_context_create(void)
     GloContext *context = (GloContext *)calloc(1, sizeof(GloContext));
     assert(context != NULL);
 
-    libretro_gl_wait_ready();
+    if (!g_libretro_gl_ready) {
+        /* the machine starts only after the frontend's context_reset
+         * (ui/libretro.c): nothing to wait for */
+        free(context);
+        return NULL;
+    }
 
     bool ok = false;
     if (g_api == GLO_API_EGL) {

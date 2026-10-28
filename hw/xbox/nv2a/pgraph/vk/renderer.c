@@ -47,12 +47,12 @@ static void pgraph_vk_init(NV2AState *d, Error **errp)
     pg->vk_renderer_state = (PGRAPHVkState *)g_malloc0(sizeof(PGRAPHVkState));
 
 #ifdef LIBRETRO
-    /* Until the frontend has its Vulkan context, and with it the device this
-     * renderer may be sharing (libretro_shared.h): the emulation thread
-     * starts at retro_load_game, before that. Thirty seconds at most, as the
-     * GL renderer waits for its contexts. */
-    for (int i = 0; i < 30000 && !qatomic_read(&xemu_libretro_vk_context_ready); i++) {
-        g_usleep(1000);
+    /* The frontend's Vulkan context, and with it the device this renderer
+     * may be sharing (libretro_shared.h), is there: the machine starts, and
+     * the renderer goes back onto a device, only after context_reset */
+    if (!qatomic_read(&xemu_libretro_vk_context_ready)) {
+        error_setg(errp, "no Vulkan context from the frontend");
+        return;
     }
 #endif
 

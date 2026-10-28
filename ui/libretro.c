@@ -1096,11 +1096,9 @@ static void context_reset(void)
         create_blit_resources();
 
         extern void libretro_gl_prepare(void);
-        extern void libretro_gl_wake_pfifo(void);
 
         libretro_gl_prepare();
         nv2a_context_init();
-        libretro_gl_wake_pfifo();
     } else {
         if (environ_cb) {
             struct retro_hw_render_interface *iface = NULL;
@@ -1117,7 +1115,6 @@ static void context_reset(void)
         }
 
         extern void libretro_gl_set_standalone_mode(void);
-        extern void libretro_gl_wake_pfifo(void);
 
         /* The renderers' contexts are made once: they are the machine's,
          * and it outlives the content and RetroArch's context */
@@ -1127,9 +1124,8 @@ static void context_reset(void)
             nv2a_context_init();
             renderer_contexts_made = true;
         }
-        /* the renderer may start now (pgraph_vk_init waits for this) */
+        /* the renderer may start now (pgraph_vk_init checks it) */
         qatomic_set(&xemu_libretro_vk_context_ready, true);
-        libretro_gl_wake_pfifo();
 
         /* After a context_destroy took the renderer off the old device:
          * back onto this one (no renderer yet at the first reset) */
@@ -2461,9 +2457,6 @@ RETRO_API void retro_init(void)
     }
 #endif
 
-    /* Initialize the GL readiness wait event early */
-    extern void libretro_gl_init_wait_event(void);
-    libretro_gl_init_wait_event();
 }
 
 RETRO_API void retro_deinit(void)

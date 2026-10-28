@@ -54,11 +54,8 @@ static void pgraph_gl_init(NV2AState *d, Error **errp)
     pg->gl_renderer_state = g_malloc0(sizeof(*pg->gl_renderer_state));
     PGRAPHGLState *r = pg->gl_renderer_state;
 
-    /* fire up opengl */
-#ifdef LIBRETRO
-    extern void libretro_gl_wait_for_contexts(void);
-    libretro_gl_wait_for_contexts();
-#endif
+    /* fire up opengl (in the core, the frontend's context is there: the
+     * machine starts after context_reset) */
     glo_set_current(g_nv2a_context_render);
     if (pgraph_gpu_boost_gl() &&
         glo_check_extension("GL_ARB_parallel_shader_compile")) {
