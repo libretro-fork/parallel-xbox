@@ -207,7 +207,12 @@ static bool opt_vk_gpl = false, opt_vk_dynamic = true;
 static int opt_chihiro_ffb = 100; /* percent, 0 = off */
 extern bool libretro_chihiro_aim_stick;   /* libretro-chihiro.c */
 extern bool libretro_chihiro_crosshair;
+/* APU DSP Emulation: on where the core has the DSP JIT (see the option) */
+#ifdef CONFIG_DSP_JIT
+static bool opt_use_dsp = true;
+#else
 static bool opt_use_dsp = false;
+#endif
 static int  opt_surface_scale = 1;
 static int  opt_avpack = CONFIG_SYS_AVPACK_HDTV;
 /* OpenGL's shader cache, always on, as Vulkan's is (NNshi): turning it off

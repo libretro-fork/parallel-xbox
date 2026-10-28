@@ -52,15 +52,20 @@ nasm -f bin -DDSP -DGP_PASSES=16 -I"$here/rom/" -o "$work/sysd/xemu/Complex_4627
 
 t() { echo "== $1"; shift; timeout 300 "$@"; }
 
+# The plain test ROMs play their tone on the voice processor alone and never
+# start the DSPs: their tests run without APU DSP Emulation, which is on by
+# default where the core has the JIT (a game's DSP programs make its sound).
+vp="--opt xemu_use_dsp=disabled"
+
 # The guest idles: unpaced, the frontend's fast-forward. One frame's worth
 # of audio and a video call per run, the tone unbroken, far faster than
 # real time.
-t "idle guest, unpaced" $h "$(path "$core")" "$(path "$work/sys")" --frames 3000 --strict \
+t "idle guest, unpaced" $h "$(path "$core")" "$(path "$work/sys")" $vp --frames 3000 --strict \
   --min-speed 4 --wav "$(path "$work/idle.wav")"
 "$work/bin/sinecheck" "$work/idle.wav" --frames 2402400
 
 # The guest's CPU never rests: still exactly a frame's worth a run.
-t "busy guest, unpaced" $h "$(path "$core")" "$(path "$work/sysb")" --frames 600 --strict \
+t "busy guest, unpaced" $h "$(path "$core")" "$(path "$work/sysb")" $vp --frames 600 --strict \
   --wav "$(path "$work/busy.wav")"
 "$work/bin/sinecheck" "$work/busy.wav" --frames 480480
 
@@ -84,13 +89,13 @@ t "GP DSP, JIT: save, load, reset" $h "$(path "$core")" "$(path "$work/sysd")" -
 # Savestates are the whole machine in the frontend's buffer: right after a
 # load the guest's RAM is byte for byte what it was at the save, in the same
 # process and in another one (the busy ROM's RAM changes every frame).
-t "save, load: busy guest" $h "$(path "$core")" "$(path "$work/sysb")" --frames 400 --strict \
+t "save, load: busy guest" $h "$(path "$core")" "$(path "$work/sysb")" $vp --frames 400 --strict \
   --save 200 --load 399 --verify-load --state-out "$(path "$work/busy.state")"
-t "load in another process" $h "$(path "$core")" "$(path "$work/sysb")" --frames 100 --strict \
+t "load in another process" $h "$(path "$core")" "$(path "$work/sysb")" $vp --frames 100 --strict \
   --load 50 --state-in "$(path "$work/busy.state")" --verify-load
 
 # Savestate, load and reset between frames.
-t "save, load, reset" $h "$(path "$core")" "$(path "$work/sys")" --frames 900 --strict \
+t "save, load, reset" $h "$(path "$core")" "$(path "$work/sys")" $vp --frames 900 --strict \
   --save 200 --load 500 --reset 700
 
 echo "all passed"

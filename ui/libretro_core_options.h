@@ -272,6 +272,12 @@ struct retro_core_option_v2_definition option_defs_us[] = {
         },
         "hdtv"
     },
+    /* On by default where the core has the DSP JIT, unlike standalone's
+     * audio.use_dsp: the game's own sound programs run on the APU's DSPs
+     * (the GP's effects such as reverb, the EP's output), as on an Xbox,
+     * and the JIT runs them fast enough (2.8x real time on a heavy GP
+     * program, libretro/tests/rom/gp.a56). Off by default without it, where
+     * the interpreter manages 0.48x on that program. */
     {
         "xemu_use_dsp",
         "APU DSP Emulation",
@@ -284,7 +290,11 @@ struct retro_core_option_v2_definition option_defs_us[] = {
             { "enabled",  "Enabled" },
             { NULL, NULL },
         },
+#ifdef CONFIG_DSP_JIT
+        "enabled"
+#else
         "disabled"
+#endif
     },
 #ifdef CONFIG_DSP_JIT
     /* On by default, unlike standalone's audio.use_dsp_jit: on a GP program
