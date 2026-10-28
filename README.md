@@ -62,17 +62,26 @@ The core renders with OpenGL or Vulkan, whichever RetroArch's video driver is (`
 
 ## Building
 
-Linux, with upstream's build dependencies installed:
+Linux (x86_64, aarch64), with GNU make and the libraries the core links:
 
 ```
+sudo apt install build-essential pkg-config libglib2.0-dev libslirp-dev \
+    libepoxy-dev zlib1g-dev libsamplerate0-dev libvulkan-dev glslang-dev \
+    spirv-tools curl
 git clone https://github.com/WizzardSK/xemu-libretro.git
 cd xemu-libretro
-./configure --extra-cflags="-DXBOX=1 -Wno-error" --target-list=i386-softmmu \
-    -Dlibretro=true -Db_staticpic=true
-ninja -C build xemu_libretro.so
+make -j$(nproc)
 ```
 
-The CI workflow `.github/workflows/libretro.yml` builds every platform, and shows each one's dependencies.
+The Makefile builds `xemu_libretro.so` in the source tree; no meson, ninja or
+python. On its first build it fetches the APU DSP's JIT, the prebuilt
+dsp56300 library, into `deps/dsp56300`; `make HAVE_DSP_JIT=0` builds without
+it. `make DEBUG=1` builds unoptimized, with debug information. What QEMU's
+build generates is pregenerated in `libretro/gen` (its README).
+
+Windows, macOS and Android are built with meson for now: the CI workflow
+`.github/workflows/libretro.yml` builds every platform and shows each one's
+dependencies.
 
 ## License
 

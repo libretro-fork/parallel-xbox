@@ -1,8 +1,9 @@
 name: Build libretro core
 
-# The core, built with -Dlibretro=true: xemu_libretro.dll for Windows,
-# cross-compiled in the MXE toolchain image upstream xemu uses for its Windows
-# releases, and xemu_libretro.so for Linux x86_64 and aarch64.
+# The core: xemu_libretro.so for Linux x86_64 and aarch64 with the static
+# Makefile; xemu_libretro.dll for Windows, cross-compiled in the MXE
+# toolchain image upstream xemu uses for its Windows releases, Android and
+# macOS with meson (-Dlibretro=true) until the Makefile builds them.
 
 on:
   workflow_dispatch:
@@ -142,39 +143,27 @@ jobs:
           filter: blob:none
           submodules: false
 
-      # upstream's build dependencies (debian/control), with libcurl on
-      # OpenSSL rather than GnuTLS - the soname frontends' runtimes carry -
-      # and glslang/SPIRV-Tools as the static libraries the libretro build
-      # links
+      # The libraries the core links (the Makefile finds them through
+      # pkg-config; glslang/SPIRV-Tools as the static libraries), Vulkan's
+      # headers, and what the tests need: nasm for the test ROMs, Mesa's
+      # software OpenGL on a surfaceless EGL display
       - name: Install dependencies
         run: |
           sudo apt-get -qy update
-          sudo apt-get -qy install ninja-build python3-pip python3-tomli python3-yaml python3-venv \
-            libepoxy-dev libpixman-1-dev libsamplerate0-dev zlib1g-dev libssl-dev \
-            libpcap-dev libslirp-dev libvulkan-dev libusb-1.0-0-dev libcurl4-openssl-dev \
-            libglib2.0-dev libx11-dev libegl-dev libgl-dev glslang-dev spirv-tools patchelf \
-            nasm libegl-mesa0 libgl1-mesa-dri
+          sudo apt-get -qy install pkg-config libglib2.0-dev libslirp-dev \
+            libepoxy-dev zlib1g-dev libsamplerate0-dev libvulkan-dev \
+            glslang-dev spirv-tools patchelf \
+            nasm libegl-dev libgl-dev libegl-mesa0 libgl1-mesa-dri
 
-      # The core is a shared library, so QEMU's static libraries that go into
-      # it have to be position independent (b_staticpic).
-      - name: Configure
-        run: |
-          ./configure \
-            --extra-cflags="-DXBOX=1 -Wno-error" \
-            --target-list=i386-softmmu \
-            -Dlibretro=true \
-            -Db_staticpic=true
-        env:
-          LIBRARY_PATH: /usr/lib/${{ matrix.arch }}-linux-gnu
-
+      # The static Makefile; -g for the symbols artifact (dist/ is stripped)
       - name: Build
-        run: ninja -C build xemu_libretro.so 2>&1 | tail -200
+        run: make -j$(nproc) CFLAGS=-g CXXFLAGS=-g
 
       # The core's run loop against the test ROMs, on Mesa's software
       # OpenGL: a frame's worth of audio and a frame each retro_run, the
       # tone unbroken, fast-forward, savestates (libretro/tests/run.sh)
       - name: Frame and audio tests
-        run: libretro/tests/run.sh build/xemu_libretro.so
+        run: libretro/tests/run.sh xemu_libretro.so
 
       # libslirp is not in every frontend's runtime (Flatpak
       # RetroArch's, for one), so it goes next to the core, found through
@@ -182,11 +171,11 @@ jobs:
       - name: Collect
         run: |
           mkdir -p dist
-          cp build/xemu_libretro.so dist/
+          cp xemu_libretro.so dist/
           cp ui/xemu_libretro.info dist/
           # the unstripped core too, for profiling and crash backtraces
           mkdir -p symbols
-          cp build/xemu_libretro.so symbols/
+          cp xemu_libretro.so symbols/
           patchelf --set-rpath '$ORIGIN' symbols/xemu_libretro.so
           strip --strip-unneeded dist/xemu_libretro.so
           patchelf --set-rpath '$ORIGIN' dist/xemu_libretro.so

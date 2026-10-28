@@ -26,3 +26,12 @@ build.log
 /macos-libs/
 /macos-pkgs/
 /xemu.iconset/
+
+# The Makefile's build: objects next to their sources, the core, the DSP
+# JIT's library it fetches
+*.o
+*.d
+/xemu_libretro.so
+/deps/dsp56300/
+/libqemuutil.a
+/libretro/gen/xemu-version-macro.h
