@@ -4,6 +4,7 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- The Xbox's RAM is the core's system memory for RetroArch (cheats, RetroAchievements' memory inspection).
 - SDL is gone from the source: the standalone's SDL display, input and GL context code, SDL3 as a subproject, and the Xbox Live Communicator, which played and recorded through SDL and was never in the core.
 - QEMU's host audio drivers (ALSA, CoreAudio, D-Bus, DirectSound, JACK, OSS, PulseAudio, PipeWire, SDL, sndio, Spice, WAV and the null driver) are gone: the core's one audio backend is the frontend. The Xbox's AC'97 was put on a host driver of its own: DirectSound on Windows and CoreAudio on macOS builds.
 - Internal Resolution Scale is Internal Resolution Scale (Restart), taken when the content starts: raised while running above the scale it started with, it made RetroArch rebuild its video context and the core crashed (NNshi).

@@ -14,6 +14,7 @@
 #include "qemu/thread.h"
 #include "system/system.h"
 #include "system/runstate.h"
+#include "system/memory.h"
 #include "qapi/error.h"
 #include "system/cpus.h"
 #include "migration/snapshot.h"
@@ -3109,8 +3110,24 @@ RETRO_API bool retro_unserialize(const void *data, size_t size)
 /* Memory stubs                                                              */
 /* ========================================================================= */
 
-RETRO_API void  *retro_get_memory_data(unsigned id) { (void)id; return NULL; }
-RETRO_API size_t retro_get_memory_size(unsigned id) { (void)id; return 0; }
+/* The guest's RAM, for RetroArch's cheats and RetroAchievements */
+extern MemoryRegion *xbox_ram_memory;
+
+RETRO_API void *retro_get_memory_data(unsigned id)
+{
+    if (id == RETRO_MEMORY_SYSTEM_RAM && emu_initialized && xbox_ram_memory) {
+        return memory_region_get_ram_ptr(xbox_ram_memory);
+    }
+    return NULL;
+}
+
+RETRO_API size_t retro_get_memory_size(unsigned id)
+{
+    if (id == RETRO_MEMORY_SYSTEM_RAM && emu_initialized && xbox_ram_memory) {
+        return memory_region_size(xbox_ram_memory);
+    }
+    return 0;
+}
 
 /* ========================================================================= */
 /* Misc                                                                      */

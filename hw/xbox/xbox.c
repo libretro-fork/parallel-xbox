@@ -175,6 +175,9 @@ static void xbox_flash_init(MachineState *ms, MemoryRegion *rom_memory)
     g_free(bios_data); /* duplicated by `rom_add_blob_fixed` */
 }
 
+/* The machine's RAM, for the frontend (retro_get_memory_data) */
+MemoryRegion *xbox_ram_memory;
+
 static void xbox_memory_init(PCMachineState *pcms,
                              MemoryRegion *system_memory,
                              MemoryRegion *rom_memory,
@@ -197,6 +200,7 @@ static void xbox_memory_init(PCMachineState *pcms,
                            machine->ram_size, &error_fatal);
 
     *ram_memory = ram;
+    xbox_ram_memory = ram;
     memory_region_add_subregion(system_memory, 0, ram);
 
     xbox_flash_init(machine, rom_memory);
