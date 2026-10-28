@@ -1,6 +1,7 @@
 /*
- * The DSP without its JIT: on Android there is no build of the dsp56300
- * library the JIT runs on, so the C interpreter stands in for it.
+ * The DSP without its JIT, in builds without the dsp56300 library the JIT
+ * runs on (there is none for Android): the C interpreter stands in for it,
+ * and the core has no DSP JIT option (CONFIG_DSP_JIT).
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by

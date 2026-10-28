@@ -213,10 +213,11 @@ static int  opt_avpack = CONFIG_SYS_AVPACK_HDTV;
 /* OpenGL's shader cache, always on, as Vulkan's is (NNshi): turning it off
  * only made the next start compile everything again */
 static const bool opt_cache_shaders = true;
-/* audio.use_dsp_jit, audio.hrtf and audio.vp.num_workers, as standalone's
- * defaults; the JIT and HRTF are read as the audio runs, the threads when the
- * voice processor starts */
-static bool opt_dsp_jit = false;
+/* audio.use_dsp_jit (on, unlike standalone: see the option), audio.hrtf and
+ * audio.vp.num_workers; the JIT and HRTF are read as the audio runs, the
+ * threads when the voice processor starts. In builds without the JIT the
+ * DSP takes the interpreter whatever this says (dsp_jit_stub.c). */
+static bool opt_dsp_jit = true;
 static bool opt_hrtf = true;
 static int  opt_vp_workers = 0;
 static int  opt_audio_volume = 100;

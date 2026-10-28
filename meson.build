@@ -2680,6 +2680,9 @@ endif
 config_host_data.set('CONFIG_TPM', have_tpm)
 config_host_data.set('CONFIG_TSAN', get_option('tsan'))
 config_host_data.set('CONFIG_USB_LIBUSB', libusb.found())
+# the APU DSP's JIT runs on the prebuilt dsp56300 library, which has no
+# Android build (hw/xbox/mcpx/apu/dsp/meson.build)
+config_host_data.set('CONFIG_DSP_JIT', host_os != 'android')
 config_host_data.set('CONFIG_VDE', vde.found())
 config_host_data.set('CONFIG_VHOST', have_vhost)
 config_host_data.set('CONFIG_VHOST_NET', have_vhost_net)

@@ -286,8 +286,12 @@ struct retro_core_option_v2_definition option_defs_us[] = {
         },
         "disabled"
     },
-    /* Defaults as standalone's (config_spec.yml: audio.use_dsp_jit,
-     * audio.hrtf, audio.vp.num_workers) */
+#ifdef CONFIG_DSP_JIT
+    /* On by default, unlike standalone's audio.use_dsp_jit: on a GP program
+     * of 16 x 4096 MACs a 32-sample frame (libretro/tests/rom/gp.a56) the
+     * JIT runs the guest at 2.8x real time where the interpreter manages
+     * 0.48x, with the same samples; without APU DSP Emulation it does
+     * nothing either way. Only in builds with the JIT's library. */
     {
         "xemu_dsp_jit",
         "DSP JIT",
@@ -300,8 +304,11 @@ struct retro_core_option_v2_definition option_defs_us[] = {
             { "enabled",  "Enabled" },
             { NULL, NULL },
         },
-        "disabled"
+        "enabled"
     },
+#endif
+    /* Defaults as standalone's (config_spec.yml: audio.hrtf,
+     * audio.vp.num_workers) */
     {
         "xemu_hrtf",
         "HRTF",
