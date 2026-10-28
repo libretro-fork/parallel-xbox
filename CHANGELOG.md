@@ -4,6 +4,7 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Sound with APU DSP Emulation on no longer crackles: the DSP thread's encoder rewrote the output every 8th sound-engine frame while the engine was reading its frame of it, so every 8th frame could come out garbled or silent, and a fast PC hit it most. The engine now reads its frame before the thread is started on the next.
 - The core is ParaLLEl Xbox: `parallel_xbox_libretro.so` / `.dll`, core name `parallel_xbox`, "Microsoft - Xbox / Sega Chihiro (ParaLLEl Xbox)" in RetroArch. Its files stay under `system/xemu/`, and its options keep their names, so nothing of yours moves. The Windows build no longer links libatomic, which nothing in the core used.
 - The analog sticks and triggers work: the core now tells RetroArch its ports take an analog RetroPad ("Xbox Controller"), without which RetroArch answered every stick read with zero. Rumble was already reaching RetroArch; the core's tests now drive the sticks and the motors through the Xbox's USB pad both ways.
 - The APU's DSPs (the GP and the EP) run on a thread of their own, one sound-engine frame (0.67 ms) behind the engine, so the game's sound programs no longer hold up the emulator thread: with APU DSP Emulation on, a Dead or Alive 3 fight took 18% less of it. A game's own reads and writes of the DSPs wait for the frame under way, which is short.

@@ -546,7 +546,7 @@ void mcpx_apu_dsp_quiesce(MCPXAPUState *d)
     }
 }
 
-void mcpx_apu_dsp_frame(MCPXAPUState *d, float mixbins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME])
+void mcpx_apu_dsp_sync(MCPXAPUState *d)
 {
     MCPXAPUDSPThread *t = &d->dsp_thread;
 
@@ -555,8 +555,23 @@ void mcpx_apu_dsp_frame(MCPXAPUState *d, float mixbins[NUM_MIXBINS][NUM_SAMPLES_
          * monitor's slots in step with the engine */
         mcpx_apu_dsp_quiesce(d);
         t->ep_frame_div = d->ep_frame_div;
-        dsp_thread_frame(d, mixbins);
         d->monitor_slot = d->ep_frame_div % 8;
+        return;
+    }
+    /* the frame before is done: its output is in the monitor's slot of
+     * that frame, the one before the engine's. The engine reads that slot
+     * before mcpx_apu_dsp_post() starts the thread on this frame, since
+     * every 8th frame the EP rewrites all eight slots. */
+    mcpx_apu_dsp_quiesce(d);
+    d->monitor_slot = (d->ep_frame_div + 7) % 8;
+}
+
+void mcpx_apu_dsp_post(MCPXAPUState *d, float mixbins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME])
+{
+    MCPXAPUDSPThread *t = &d->dsp_thread;
+
+    if (!g_config.audio.use_dsp) {
+        dsp_thread_frame(d, mixbins);
         return;
     }
     if (!t->thread) {
@@ -567,10 +582,6 @@ void mcpx_apu_dsp_frame(MCPXAPUState *d, float mixbins[NUM_MIXBINS][NUM_SAMPLES_
         retro_atomic_int_init(&t->should_exit, 0);
         t->thread = sthread_create(dsp_thread_main, d);
     }
-    /* the frame before is done: its output is in the monitor's slot of
-     * that frame, the one before the engine's */
-    mcpx_apu_dsp_quiesce(d);
-    d->monitor_slot = (d->ep_frame_div + 7) % 8;
     memcpy(t->mixbins, mixbins, sizeof(t->mixbins));
     retro_atomic_store_release_int(&t->posted,
                                    retro_atomic_load_acquire_int(&t->posted) + 1);

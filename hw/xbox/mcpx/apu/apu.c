@@ -130,9 +130,15 @@ static void se_frame(MCPXAPUState *d)
     /* Buffer for all mixbins for this frame */
     float mixbins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME] = { 0 };
 
+    if (d->monitor.point == MCPX_APU_DEBUG_MON_VP) {
+        /* the VP adds its samples to the monitor's slot: not while the
+         * thread's EP may be writing all eight */
+        mcpx_apu_dsp_sync(d);
+    }
     mcpx_apu_vp_frame(d, mixbins);
-    mcpx_apu_dsp_frame(d, mixbins);
+    mcpx_apu_dsp_sync(d);
     mcpx_apu_monitor_frame(d);
+    mcpx_apu_dsp_post(d, mixbins);
 
     d->ep_frame_div++;
     d->frame_work_acc_us += qemu_clock_get_us(QEMU_CLOCK_REALTIME) - start_us;

@@ -73,9 +73,11 @@ typedef struct MCPXAPUDSPThread {
 
 void mcpx_apu_dsp_init(MCPXAPUState *d);
 void mcpx_apu_update_dsp_preference(MCPXAPUState *d);
-/* The engine's frame: the DSPs' output for the frame before, then this
- * frame's mixbins posted to the thread */
-void mcpx_apu_dsp_frame(MCPXAPUState *d, float mixbins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME]);
+/* The engine's frame, in two halves around the monitor's read of the
+ * frame before: the thread done with that frame and its slot chosen
+ * (sync), then this frame's mixbins handed to the thread (post) */
+void mcpx_apu_dsp_sync(MCPXAPUState *d);
+void mcpx_apu_dsp_post(MCPXAPUState *d, float mixbins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME]);
 /* The posted frame done, before anything else touches the DSPs */
 void mcpx_apu_dsp_quiesce(MCPXAPUState *d);
 /* Whether a GP/EP register the DSPs' frame uses is at this APU offset */
