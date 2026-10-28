@@ -49,6 +49,17 @@
 #include "libretro_core_options.h"
 #include "xemu-settings.h"
 #include "xemu-version.h"
+#include "system/cpu-timers.h"
+#include "system/libretro-vcpu.h"
+#include "qemu/timer.h"
+#include "block/aio.h"
+#include <retro_atomic.h>
+#include <rthreads/rthreads.h>
+#include <rthreads/retro_eventcount.h>
+
+extern bool qemu_libretro_handle_requests(void);
+extern void libretro_audio_discard(void);
+extern void libretro_audio_set_volume(float volume);
 
 /* ========================================================================= */
 /* Libretro callback storage                                                 */
@@ -58,12 +69,9 @@ static retro_environment_t        environ_cb   = NULL;
 static retro_video_refresh_t      video_cb     = NULL;
 static retro_audio_sample_t       audio_cb     = NULL;
 static retro_audio_sample_batch_t audio_batch_cb = NULL;
-/* Audio > Audio Thread: taken at load; whether RetroArch then calls
- * audio_thread_callback on its audio thread (SET_AUDIO_CALLBACK) */
-static bool opt_audio_thread = true;
-static bool audio_async = false;
-static bool audio_async_enabled = false;
 static retro_input_poll_t         input_poll_cb  = NULL;
+/* the frontend reads a pad's buttons in one call (JOYPAD_MASK) */
+static bool input_bitmasks = false;
 retro_input_state_t               input_state_cb = NULL; /* non-static: used by libretro-stubs.c */
 static retro_log_printf_t         log_cb       = NULL;
 
@@ -171,34 +179,6 @@ static bool emu_started_vulkan = false;
  * Chihiro's game */
 static bool emu_started_chihiro = false;
 static char emu_started_image[4096];
-static QemuThread emu_thread;
-static volatile bool emu_thread_running = false;
-
-/* When retro_run last started, and whether the machine is stopped because
- * it did not come: the frontend's menu or pause. The guest's vblank comes
- * with retro_run, so while the menu was open the CPU ran on without frames,
- * and a game coming back from it could take its disc reads for failed
- * (Akrido: Ninja Gaiden's dirty disc error after the menu). Stopped the way
- * standalone pauses, and started again with the next retro_run. */
-static int64_t last_run_us;
-static bool frontend_paused;
-/* about 3 frames: the guest runs on that long after the frontend stopped,
- * as RetroArch says nothing of its menu or pause (NNshi) */
-#define FRONTEND_PAUSE_US 50000
-
-/* Snapshot dispatch: RetroArch thread requests, QEMU thread executes */
-enum {
-    SNAPSHOT_NONE = 0,
-    SNAPSHOT_SAVE,
-    SNAPSHOT_LOAD,
-};
-static volatile int snapshot_request = SNAPSHOT_NONE;
-static volatile bool snapshot_done = false;
-static volatile bool snapshot_result = false;
-/* The emu thread posts it when it has handled a snapshot request. QEMU's
- * semaphore rather than a Win32 event, so it builds everywhere. */
-static QemuSemaphore snapshot_done_sem;
-static bool snapshot_sem_initialized = false;
 
 /* ========================================================================= */
 /* Core option values                                                        */
@@ -246,6 +226,17 @@ static int  opt_network_backend = 0; /* 0=disabled, 1=nat */
 /* Forward declarations                                                      */
 /* ========================================================================= */
 
+/* The emulator thread's commands (lr_command) */
+enum lr_cmd {
+    LR_CMD_START = 1, /* build the machine, or put the new content in it */
+    LR_CMD_FRAME,     /* one frame of guest time */
+    LR_CMD_SAVE,      /* savestate */
+    LR_CMD_LOAD,
+    LR_CMD_STOP,      /* the content closes */
+    LR_CMD_RENDERER,  /* the Vulkan renderer onto or off the device */
+};
+static bool lr_command(int cmd);
+static int lr_cmd_arg;
 static void context_reset(void);
 static void context_destroy(void);
 static void update_variables(void);
@@ -1143,7 +1134,8 @@ static void context_reset(void)
         /* After a context_destroy took the renderer off the old device:
          * back onto this one (no renderer yet at the first reset) */
         if (xemu_libretro_vk.active && vk_renderer_parked) {
-            if (!nv2a_libretro_switch_renderer(CONFIG_DISPLAY_RENDERER_VULKAN)) {
+            lr_cmd_arg = CONFIG_DISPLAY_RENDERER_VULKAN;
+            if (!lr_command(LR_CMD_RENDERER)) {
                 LRLOG_ERROR("[xemu] Vulkan: the renderer did not start on the new device\n");
             }
             vk_renderer_parked = false;
@@ -1161,7 +1153,8 @@ static void vk_park_renderer(void)
     if (!xemu_libretro_vk.active || vk_renderer_parked) {
         return;
     }
-    if (nv2a_libretro_switch_renderer(CONFIG_DISPLAY_RENDERER_NULL)) {
+    lr_cmd_arg = CONFIG_DISPLAY_RENDERER_NULL;
+    if (lr_command(LR_CMD_RENDERER)) {
         vk_renderer_parked = true;
     } else if (emu_initialized) {
         LRLOG_ERROR("[xemu] Vulkan: the renderer did not leave the device\n");
@@ -1541,12 +1534,6 @@ static void update_variables(void)
         }
     }
 
-    var.key = "xemu_audio_thread";
-    var.value = NULL;
-    if (environ_cb && environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value) {
-        opt_audio_thread = !strcmp(var.value, "enabled");
-    }
-
     var.key = "xemu_audio_volume";
     var.value = NULL;
     if (environ_cb && environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value) {
@@ -1554,6 +1541,7 @@ static void update_variables(void)
         if (opt_audio_volume < 0) opt_audio_volume = 0;
         if (opt_audio_volume > 100) opt_audio_volume = 100;
     }
+    libretro_audio_set_volume(opt_audio_volume / 100.0f);
 
     LRLOG_INFO("[xemu] Options: memory=%dMB, scale=%d, avpack=%d, cache=%d, volume=%d%%, network=%s\n",
                opt_memory_mb, opt_surface_scale,
@@ -1697,10 +1685,171 @@ static void populate_config(const char *dvd_path)
                g_config.sys.files.dvd_path ? g_config.sys.files.dvd_path : "(null)");
 }
 
-/* Thread function for running QEMU main loop */
-extern GMainContext *qemu_main_context;
+/* ========================================================================= */
+/* The emulator thread                                                       */
+/* ========================================================================= */
 
-static void *emu_thread_func(void *opaque)
+/*
+ * One thread, made at the first content and kept for the process (QEMU's
+ * machine is built once, see retro_init), is QEMU's main loop and runs the
+ * guest CPU itself (accel/tcg/tcg-accel-ops-libretro.c). It waits at a gate
+ * for retro_run, which asks it for one frame of guest time - 1001/60 ms, the
+ * frame rate the core declares - and waits for it. Guest time passes only in
+ * such a frame: the guest stops between two retro_runs, so the frontend's
+ * pacing, menu, pause, fast-forward and slow motion are the guest's. The
+ * sound engine's frames are guest time (apu.c), so every video frame has
+ * exactly its samples.
+ *
+ * The gate is lock-free: a command and a sequence number published with a
+ * release, an eventcount each way. The thread does not hold the BQL while
+ * it waits at the gate.
+ */
+
+
+#define LR_FRAME_NS_NUM 50050000LL /* 1001/60 s = 50050000/3 ns */
+#define LR_FRAME_NS_DEN 3
+/* retro_run waits this long for a frame before it repeats the last one
+ * (only a wedged machine takes that long; the frame comes with a later
+ * retro_run) */
+#define LR_WEDGE_US 1000000
+
+static sthread_t *lr_thread;
+static retro_eventcount_t lr_cmd_ec, lr_done_ec;
+static retro_atomic_int_t lr_cmd_seq, lr_done_seq;
+static int lr_cmd;              /* written before lr_cmd_seq is released */
+static bool lr_cmd_ok;          /* written before lr_done_seq is released */
+/* QEMU_CLOCK_REALTIME time the frontend's thread stops the guest's slice
+ * at, INT64_MAX for none: the next guest timer, while a frame runs */
+static retro_atomic_64_t lr_kick_at;
+static bool lr_frame_pending;   /* retro_run asked for a frame not yet done */
+
+/* the frame clock, on the emulator thread */
+static QEMUTimer *lr_frame_timer;
+static int64_t lr_frame_end_vt; /* QEMU_CLOCK_VIRTUAL end of the last frame */
+static int lr_frame_rem;
+static int lr_title_poll;
+
+static void lr_frame_timer_cb(void *opaque)
+{
+    /* the frame's end: being due wakes the loop, which sees it */
+}
+
+/* aio_notify of the main loop's context, from any thread: the guest leaves
+ * its translated code so the loop sees the bottom half or timer */
+static void lr_main_notify(void)
+{
+    if (first_cpu) {
+        lr_vcpu_exit(first_cpu);
+    }
+}
+
+/* Whether something the guest may be waiting for is under way on another
+ * thread: then an idle guest's time passes as the host's, rather than moving
+ * on to the next deadline, so it is not behind it in guest time */
+static bool lr_devices_busy(void)
+{
+    extern bool nv2a_libretro_busy(void);
+    extern int thread_pool_aio_inflight;
+
+    return thread_pool_aio_inflight > 0 || nv2a_libretro_busy();
+}
+
+/* One frame of guest time, from the end of the last one on a grid of
+ * exactly 1001/60 ms. Under the BQL. */
+static void lr_run_frame(void)
+{
+    CPUState *cpu = first_cpu;
+    QemuConsole *con = nv2a_get_vga_console();
+    int64_t now, target;
+
+    if (!runstate_is_running()) {
+        qemu_libretro_handle_requests();
+        main_loop_wait(true);
+        return;
+    }
+
+    cpu_enable_ticks();
+    now = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
+    /* A first frame, or a clock that jumped (a state was loaded): the grid
+     * starts here */
+    if (!lr_frame_end_vt || now < lr_frame_end_vt - LR_FRAME_NS_NUM ||
+        now > lr_frame_end_vt + 2 * LR_FRAME_NS_NUM) {
+        lr_frame_end_vt = now;
+        lr_frame_rem = 0;
+    }
+    lr_frame_rem += LR_FRAME_NS_NUM % LR_FRAME_NS_DEN;
+    lr_frame_end_vt += LR_FRAME_NS_NUM / LR_FRAME_NS_DEN +
+                       lr_frame_rem / LR_FRAME_NS_DEN;
+    lr_frame_rem %= LR_FRAME_NS_DEN;
+    target = lr_frame_end_vt;
+    timer_mod_ns(lr_frame_timer, target);
+
+    /* The vblank opens the frame: the guest flips what it drew in the last
+     * one, which retro_run shows when this one is done */
+    if (con) {
+        graphic_hw_update(con);
+    }
+    if (++lr_title_poll >= 60) {
+        lr_title_poll = 0;
+        poll_guest_title();
+    }
+
+    for (;;) {
+        int64_t until, deadline;
+
+        /* cleared before anything that may want the guest to leave the
+         * translated code: what follows sets it again */
+        qatomic_set_mb(&cpu->exit_request, false);
+        main_loop_wait(true);
+        qemu_libretro_handle_requests();
+        if (!runstate_is_running()) {
+            break;
+        }
+        now = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
+        if (now >= target) {
+            break;
+        }
+        until = target - now;
+        deadline = qemu_clock_deadline_ns_all(QEMU_CLOCK_VIRTUAL,
+                                              QEMU_TIMER_ATTR_ALL);
+        if (deadline >= 0 && deadline < until) {
+            until = deadline;
+        }
+
+        if (lr_vcpu_runnable(cpu) || cpu->stop ||
+            !cpu_work_list_empty(cpu)) {
+            /* the guest runs until its next timer is due: the frontend's
+             * thread makes it leave then */
+            retro_atomic_store_release_64(&lr_kick_at,
+                qemu_clock_get_ns(QEMU_CLOCK_REALTIME) + until);
+            retro_eventcount_notify(&lr_done_ec);
+            lr_vcpu_run_slice(cpu);
+            retro_atomic_store_release_64(&lr_kick_at, INT64_MAX);
+            continue;
+        }
+
+        /* The guest idles */
+        if (lr_devices_busy()) {
+            /* its time passes as the host's until something happens:
+             * a bottom half, a file descriptor, the next timer */
+            main_loop_wait(false);
+        } else {
+            /* nothing to wait for: on to the next deadline */
+            cpu_clock_skip_to(now + until);
+        }
+    }
+
+    cpu_disable_ticks();
+}
+
+/* After a command: the guest's clock stands still until the next frame
+ * (vm_start, as at the machine's start, sets it running) */
+static void lr_park_clock(void)
+{
+    cpu_disable_ticks();
+}
+
+static bool lr_start_machine(void)
 {
     /* Build QEMU argv */
     const char *argv[] = {
@@ -1715,8 +1864,7 @@ static void *emu_thread_func(void *opaque)
      * retro_init). The first content builds it; each one after that gets
      * the machine the last one left stopped: its disc is put in the drive
      * and the console is reset and started again, as a power cycle with
-     * another disc. This thread takes over as QEMU's main thread by holding
-     * the BQL, which the last one released when it ended. */
+     * another disc. */
     static bool machine_built = false;
     static char machine_image[4096]; /* the content the machine holds */
     if (!machine_built) {
@@ -1726,6 +1874,9 @@ static void *emu_thread_func(void *opaque)
         extern void libretro_input_create_xid_devices(void);
         libretro_input_create_xid_devices();
         apply_video_aspect();
+        lr_frame_timer = timer_new_ns(QEMU_CLOCK_VIRTUAL, lr_frame_timer_cb,
+                                      NULL);
+        aio_main_notify_hook = lr_main_notify;
         machine_built = true;
     } else {
         extern void xemu_libretro_change_disc(const char *path, Error **errp);
@@ -1733,13 +1884,6 @@ static void *emu_thread_func(void *opaque)
         Error *err = NULL;
 
         bql_lock();
-        /* xemu's main loop runs on the thread's default GLib context
-         * (g_main_context_get_thread_default, util/main-loop.c), which
-         * qemu_init pushed on the first thread only: without it the loop
-         * handed GLib a null context and RetroArch crashed in ntdll on the
-         * second content (NNshi's dump). The thread before this one popped
-         * it when it ended, which also gave up its ownership. */
-        g_main_context_push_thread_default(qemu_main_context);
         /* A Chihiro has no disc drive: its game is in its media board's
          * memory, where another one is put (the same one stays as it is).
          * Asked before anything touches the DVD path, which the machine
@@ -1769,101 +1913,181 @@ static void *emu_thread_func(void *opaque)
     }
     snprintf(machine_image, sizeof(machine_image), "%s", opt_dvd_path);
 
-    emu_initialized = true;
+    lr_frame_end_vt = 0;
+    lr_title_poll = 0;
+    libretro_audio_discard();
+    lr_park_clock();
+    bql_unlock();
+    return true;
+}
 
-    extern bool runstate_is_running(void);
+static bool lr_snapshot(bool save)
+{
+    Error *err = NULL;
+    bool ok;
 
-    /* Run main loop */
-    while (emu_thread_running) {
-        /* Check for reset requests */
-        ShutdownCause reset_request = qemu_reset_requested_consume();
-        if (reset_request) {
-            pause_all_vcpus();
-            qemu_system_reset(reset_request);
-            resume_all_vcpus();
-            /*
-             * runstate can change in pause_all_vcpus()
-             * as iothread mutex is unlocked
-             */
-            if (!runstate_check(RUN_STATE_RUNNING) &&
-                    !runstate_check(RUN_STATE_INMIGRATE) &&
-                    !runstate_check(RUN_STATE_FINISH_MIGRATE)) {
-                runstate_set(RUN_STATE_PRELAUNCH);
-            }
+    if (save) {
+        ok = save_snapshot("libretro_save", true, NULL, false, NULL, &err);
+    } else {
+        bool was_running = runstate_is_running();
+        vm_stop(RUN_STATE_RESTORE_VM);
+        ok = load_snapshot("libretro_save", NULL, false, NULL, &err);
+        if (was_running) {
+            vm_start();
         }
-        
-        /* Check for shutdown requests */
-        if (qemu_shutdown_requested_get()) {
-            emu_thread_running = false;
-            break;
-        }
-
-        /* No retro_run for a while: the menu is open, or the frontend paused */
-        const int64_t last_run = qatomic_read(&last_run_us);
-        const bool frontend_idle =
-            last_run && g_get_monotonic_time() - last_run > FRONTEND_PAUSE_US;
-        if (!qatomic_read(&frontend_paused) && frontend_idle &&
-            runstate_is_running()) {
-            vm_stop(RUN_STATE_PAUSED);
-            qatomic_set(&frontend_paused, true);
-        } else if (qatomic_read(&frontend_paused) && !frontend_idle) {
-            if (runstate_check(RUN_STATE_PAUSED)) {
-                vm_start();
-            }
-            qatomic_set(&frontend_paused, false);
-        }
-
-        main_loop_wait(false);
-
-        /* Check for snapshot requests from RetroArch thread */
-        if (snapshot_request != SNAPSHOT_NONE) {
-            int req = snapshot_request;
-            snapshot_request = SNAPSHOT_NONE;
-            bool ok = false;
-            Error *snap_err = NULL;
-
-            if (req == SNAPSHOT_SAVE) {
-                ok = save_snapshot("libretro_save", true, NULL, false, NULL, &snap_err);
-                if (!ok && snap_err) {
-                    error_free(snap_err);
-                }
-            } else if (req == SNAPSHOT_LOAD) {
-                bool was_running = runstate_is_running();
-                vm_stop(RUN_STATE_RESTORE_VM);
-                ok = load_snapshot("libretro_save", NULL, false, NULL, &snap_err);
-                if (ok && was_running) {
-                    vm_start();
-                } else if (!ok) {
-                    if (snap_err) {
-                        error_free(snap_err);
-                    }
-                    if (was_running) vm_start();
-                }
-            }
-
-            snapshot_result = ok;
-            snapshot_done = true;
-            if (snapshot_sem_initialized) qemu_sem_post(&snapshot_done_sem);
+        if (ok) {
+            /* the samples queued were the state's past */
+            libretro_audio_discard();
         }
     }
+    if (!ok && err) {
+        LRLOG_ERROR("[xemu] snapshot: %s\n", error_get_pretty(err));
+        error_free(err);
+    }
+    return ok;
+}
 
-    /* The first step of upstream's qemu_cleanup(): the vCPUs are stopped and
-     * every block device drained and flushed. Without it the guest ran on
-     * after its content was closed and was cut off mid-write when RetroArch
-     * exited, which left the HDD image's cache partitions broken (NNshi:
-     * Panzer Dragoon Orta stuck loading, in standalone too with that image) */
+/* The content closes: the first step of upstream's qemu_cleanup(), the vCPU
+ * stopped and every block device drained and flushed. Without it the guest
+ * ran on after its content was closed and was cut off mid-write when
+ * RetroArch exited, which left the HDD image's cache partitions broken
+ * (NNshi: Panzer Dragoon Orta stuck loading, in standalone too with that
+ * image). The machine stays built for the next content. */
+static void lr_stop_machine(void)
+{
     vm_shutdown();
-
     if (opt_hdd_trim && !xemu_chihiro_mode()) {
         hdd_trim();
     }
+}
 
-    /* The main loop's GLib context goes to the next content's thread, which
-     * cannot take it while this one still owns it as its default */
-    g_main_context_pop_thread_default(qemu_main_context);
+static void lr_thread_main(void *opaque)
+{
+    int seen = 0;
 
-    bql_unlock();
-    return NULL;
+    for (;;) {
+        int seq = retro_atomic_load_acquire_int(&lr_cmd_seq);
+        bool ok = true;
+
+        if (seq == seen) {
+            int key = retro_eventcount_prepare_wait(&lr_cmd_ec);
+            if (retro_atomic_load_acquire_int(&lr_cmd_seq) == seen) {
+                retro_eventcount_commit_wait(&lr_cmd_ec, key);
+            } else {
+                retro_eventcount_cancel_wait(&lr_cmd_ec);
+            }
+            continue;
+        }
+        seen = seq;
+
+        switch (lr_cmd) {
+        case LR_CMD_START:
+            ok = lr_start_machine();
+            break;
+        case LR_CMD_FRAME:
+            bql_lock();
+            lr_run_frame();
+            bql_unlock();
+            break;
+        case LR_CMD_SAVE:
+        case LR_CMD_LOAD:
+            bql_lock();
+            ok = lr_snapshot(lr_cmd == LR_CMD_SAVE);
+            lr_park_clock();
+            bql_unlock();
+            break;
+        case LR_CMD_STOP:
+            bql_lock();
+            lr_stop_machine();
+            bql_unlock();
+            break;
+        case LR_CMD_RENDERER:
+            bql_lock();
+            ok = nv2a_libretro_switch_renderer(lr_cmd_arg);
+            bql_unlock();
+            break;
+        }
+
+        lr_cmd_ok = ok;
+        retro_atomic_store_release_int(&lr_done_seq, seq);
+        retro_eventcount_notify(&lr_done_ec);
+    }
+}
+
+/* The frontend's thread: wait for the command seq to be done, at most
+ * timeout_us; while a frame runs, stop the guest's slice at the deadline the
+ * emulator thread gave it. No polling: it sleeps until the work is done,
+ * the deadline, or the emulator thread gives it a new deadline. */
+static bool lr_wait_done(int seq, int64_t timeout_us)
+{
+    const int64_t end = qemu_clock_get_ns(QEMU_CLOCK_REALTIME) +
+                        timeout_us * 1000;
+
+    for (;;) {
+        int64_t now, kick, wait_ns;
+        int key;
+
+        if (retro_atomic_load_acquire_int(&lr_done_seq) == seq) {
+            return true;
+        }
+        now = qemu_clock_get_ns(QEMU_CLOCK_REALTIME);
+        kick = retro_atomic_load_acquire_64(&lr_kick_at);
+        if (now >= kick && first_cpu) {
+            if (retro_atomic_cas_64(&lr_kick_at, kick, INT64_MAX)) {
+                lr_vcpu_exit(first_cpu);
+            }
+            kick = INT64_MAX;
+        }
+        if (now >= end) {
+            return false;
+        }
+        wait_ns = end - now;
+        if (kick != INT64_MAX) {
+            wait_ns = MIN(wait_ns, kick - now);
+        }
+
+        key = retro_eventcount_prepare_wait(&lr_done_ec);
+        if (retro_atomic_load_acquire_int(&lr_done_seq) == seq ||
+            retro_atomic_load_acquire_64(&lr_kick_at) != kick) {
+            retro_eventcount_cancel_wait(&lr_done_ec);
+            continue;
+        }
+        retro_eventcount_commit_wait_timeout(&lr_done_ec, key,
+                                             MAX(wait_ns / 1000, 1));
+    }
+}
+
+/* The frontend's thread: hand the emulator thread a command; the sequence
+ * number to wait for */
+static int lr_post(int cmd)
+{
+    int seq;
+
+    if (!lr_thread) {
+        retro_eventcount_init(&lr_cmd_ec);
+        retro_eventcount_init(&lr_done_ec);
+        retro_atomic_int_init(&lr_cmd_seq, 0);
+        retro_atomic_int_init(&lr_done_seq, 0);
+        retro_atomic_store_release_64(&lr_kick_at, INT64_MAX);
+        lr_thread = sthread_create(lr_thread_main, NULL);
+    }
+    lr_cmd = cmd;
+    seq = retro_atomic_load_acquire_int(&lr_cmd_seq) + 1;
+    retro_atomic_store_release_int(&lr_cmd_seq, seq);
+    retro_eventcount_notify(&lr_cmd_ec);
+    return seq;
+}
+
+/* A command other than a frame: waited for until done (a frame retro_run
+ * left running is finished first) */
+static bool lr_command(int cmd)
+{
+    if (lr_frame_pending) {
+        lr_wait_done(retro_atomic_load_acquire_int(&lr_cmd_seq), INT64_MAX / 2000);
+        lr_frame_pending = false;
+    }
+    lr_wait_done(lr_post(cmd), INT64_MAX / 2000);
+    return lr_cmd_ok;
 }
 
 /* Trim HDD on Close (experimental, NNshi, Akrido): when the content closes,
@@ -2087,6 +2311,8 @@ RETRO_API void retro_set_environment(retro_environment_t cb)
         LRLOG_INFO("[xemu] VFS interface obtained (version %u)\n", vfs_info.required_interface_version);
     }
 
+    input_bitmasks = environ_cb(RETRO_ENVIRONMENT_GET_INPUT_BITMASKS, NULL);
+
     /* Set pixel format */
     enum retro_pixel_format fmt = RETRO_PIXEL_FORMAT_XRGB8888;
     environ_cb(RETRO_ENVIRONMENT_SET_PIXEL_FORMAT, &fmt);
@@ -2163,7 +2389,8 @@ RETRO_API void retro_get_system_av_info(struct retro_system_av_info *info)
     info->geometry.max_width    = declared_max_width;
     info->geometry.max_height   = declared_max_height;
     info->geometry.aspect_ratio = wants_widescreen() ? 16.0f / 9.0f : 4.0f / 3.0f;
-    info->timing.fps            = 59.94;
+    /* NTSC: 60000/1001, the rate the emulator thread runs frames at */
+    info->timing.fps            = 60000.0 / 1001.0;
     info->timing.sample_rate    = 48000.0;
 }
 
@@ -2271,41 +2498,6 @@ static void load_refused(const char *text)
     LRLOG_ERROR("[xemu] %s\n", text);
 }
 
-/* Audio > Audio Thread: RetroArch's audio thread asks for the sound, and gets
- * what the APU has mixed as it comes, at the sound card's pace as standalone
- * plays it, so the sound keeps going while retro_run stalls (shaders being
- * compiled). The APU still waits once about 64 ms is queued (apu.c). The
- * ring has one reader, this thread now; retro_run leaves it alone. RetroArch
- * stops calling while it pauses (audio_thread_set_state). */
-static void audio_thread_callback(void)
-{
-    extern int libretro_audio_pull(int16_t *out_buf, int max_frames);
-    extern void libretro_audio_flush(void);
-    static bool flushed = false;
-    int16_t buf[1024 * 2];
-
-    if (!emu_initialized || !audio_async_enabled || !audio_batch_cb) {
-        g_usleep(2000);
-        return;
-    }
-    if (!flushed) {
-        /* the stale boot audio, as the frame-paced path drops it */
-        libretro_audio_flush();
-        flushed = true;
-    }
-    const int frames = libretro_audio_pull(buf, 1024);
-    if (frames > 0) {
-        audio_batch_cb(buf, frames);
-    } else {
-        g_usleep(1000);
-    }
-}
-
-static void audio_thread_set_state(bool enabled)
-{
-    qatomic_set(&audio_async_enabled, enabled);
-}
-
 RETRO_API bool retro_load_game(const struct retro_game_info *game)
 {
     /* The pads' motors (retro_run); without one, no rumble */
@@ -2364,17 +2556,6 @@ RETRO_API bool retro_load_game(const struct retro_game_info *game)
 
     /* Read core options */
     update_variables();
-
-    /* Audio > Audio Thread, for this load */
-    audio_async = false;
-    if (opt_audio_thread) {
-        struct retro_audio_callback audio_callback = {
-            audio_thread_callback, audio_thread_set_state
-        };
-        audio_async = environ_cb(RETRO_ENVIRONMENT_SET_AUDIO_CALLBACK, &audio_callback);
-        LRLOG_INFO("[xemu] Audio: %s\n", audio_async ? "on RetroArch's audio thread"
-                                                   : "a frame's worth each frame (no audio thread to be had)");
-    }
 
     /* Store the DVD path (empty: no disc) */
     snprintf(opt_dvd_path, sizeof(opt_dvd_path), "%s", content);
@@ -2563,15 +2744,13 @@ RETRO_API bool retro_load_game(const struct retro_game_info *game)
     /* Populate xemu config from core options */
     populate_config(opt_dvd_path);
 
-    /* Start emulation thread */
-    emu_thread_running = true;
+    /* The machine starts on the emulator thread at the first retro_run,
+     * once the frontend's context is there (context_reset): the renderer
+     * shares it */
     emu_started_once = true;
     emu_started_vulkan = use_vulkan;
     emu_started_chihiro = chihiro;
     snprintf(emu_started_image, sizeof(emu_started_image), "%s", content);
-    qemu_thread_create(&emu_thread, "xemu-emu", emu_thread_func,
-                       NULL, QEMU_THREAD_JOINABLE);
-
     game_loaded = true;
 
     LRLOG_INFO("[xemu] retro_load_game completed successfully\n");
@@ -2590,220 +2769,57 @@ RETRO_API void retro_unload_game(void)
 {
     LRLOG_INFO("[xemu] retro_unload_game\n");
 
-    if (emu_thread_running) {
-        /* while the guest still runs: the switch needs its CPU, and the
-         * frontend destroys the device after this */
+    if (emu_initialized) {
+        /* before the machine stops: the frontend destroys the device after
+         * this */
         if (use_vulkan) {
             vk_park_renderer();
         }
-        emu_thread_running = false;
-        qemu_system_shutdown_request(SHUTDOWN_CAUSE_HOST_SIGNAL);
-        qemu_thread_join(&emu_thread);
-        LRLOG_INFO("[xemu] Emulation thread joined\n");
+        lr_command(LR_CMD_STOP);
+        LRLOG_INFO("[xemu] The machine is stopped\n");
     }
-    qatomic_set(&last_run_us, 0);
-    qatomic_set(&frontend_paused, false);
 
     game_loaded = false;
     emu_initialized = false;
 }
 
-/* The vblank's trip to the emulator thread: when retro_run asked for it, and
- * how late it was raised (in the 300-run log line) */
-static int64_t vblank_asked_us;
-static int64_t vblank_delay_sum_us, vblank_delay_max_us;
-
-/* The picture is taken once the guest has handled the vblank this run
- * raised: its handler is what points the display at the frame it just
- * flipped. Taken before, the race with it showed about a quarter of the
- * frames twice and skipped as many, the game itself flipping every vblank
- * (NNshi's log: 300 flips, 224 new pictures in 300 runs). A guest that does
- * not acknowledge its vblanks (early boot) is not waited for: after a
- * timeout the wait is off for a second. */
-extern uint64_t xemu_lr_vblanks_raised, xemu_lr_vblanks_acked;
-static uint64_t vblank_target;
-static int vblank_wait_off;
-static int64_t vblank_wait_sum_us;
-static int vblank_wait_timeouts;
-static void wait_for_vblank_handled(void)
+/* One frame's worth of audio: 48000 * 1001 / 60000 = 800.8 samples, so 800
+ * or 801 by an exact count (4004 every 5 frames) */
+static int lr_audio_frames_this_run(void)
 {
-    if (vblank_wait_off > 0) {
-        vblank_wait_off--;
-        return;
-    }
-    const int64_t t0 = g_get_monotonic_time();
-    int64_t t = t0;
-    while (qatomic_read(&xemu_lr_vblanks_acked) < vblank_target) {
-        if (t - t0 > 4000) {
-            vblank_wait_timeouts++;
-            vblank_wait_off = 60;
-            break;
-        }
-        g_usleep(100);
-        t = g_get_monotonic_time();
-    }
-    vblank_wait_sum_us += t - t0;
-}
-static void libretro_vblank_bh(void *opaque)
-{
-    const int64_t delay = g_get_monotonic_time() - qatomic_read(&vblank_asked_us);
-    qatomic_set(&vblank_delay_sum_us, qatomic_read(&vblank_delay_sum_us) + delay);
-    if (delay > qatomic_read(&vblank_delay_max_us)) {
-        qatomic_set(&vblank_delay_max_us, delay);
-    }
-    graphic_hw_update(opaque);
+    static int rem;
+    int n;
 
-    /* about once a second */
-    static int title_poll;
-    if (++title_poll >= 60) {
-        title_poll = 0;
-        poll_guest_title();
-    }
+    rem += 4004;
+    n = rem / 5;
+    rem %= 5;
+    return n;
 }
 
-RETRO_API void retro_run(void)
+static void lr_present_audio(bool have_frame)
 {
-    static int run_count = 0;
-    /* Where the time of a run goes, over the last 300 runs: the whole run
-     * from the previous one's start, the wait for the renderer to draw the
-     * display, and the frontend's video and audio callbacks. For telling a
-     * slow guest from a slow hand-over in a tester's log. */
-    static int64_t st_last_start, st_period_sum, st_period_max;
-    static int64_t st_sync_sum, st_sync_max, st_video_sum, st_video_max;
-    static int64_t st_audio_sum, st_audio_max;
-    static int st_new_frames;
-    static uint64_t st_guest_frames;
-    int64_t st_t;
-    const int64_t st_start = g_get_monotonic_time();
+    extern int libretro_audio_pull(int16_t *out_buf, int max_frames);
+    int16_t buf[802 * 2];
+    const int want = lr_audio_frames_this_run();
+    int got = 0;
 
-    if (st_last_start) {
-        const int64_t period = st_start - st_last_start;
-        st_period_sum += period;
-        st_period_max = MAX(st_period_max, period);
-    }
-    st_last_start = st_start;
-
-    /* a stopped machine is started again by the main loop, woken here */
-    qatomic_set(&last_run_us, st_start);
-    if (qatomic_read(&frontend_paused)) {
-        qemu_notify_event();
-    }
-
-    run_count++;
-    if (run_count <= 5 || (run_count % 300) == 0) {
-        LRLOG_INFO("[xemu] retro_run #%d (emu_init=%d ctx_ready=%d game=%d)\n",
-                   run_count, emu_initialized, context_ready, game_loaded);
-    }
-    if ((run_count % 300) == 0 && use_vulkan && xemu_libretro_vk.active) {
-        const uint64_t guest_frames = nv2a_vk_libretro_guest_frames();
-        LRLOG_INFO("[xemu] last 300 runs: %d guest frames; %d new frames; run every %.2f ms "
-                   "(max %.2f); renderer wait %.2f ms (max %.2f); video "
-                   "callback %.2f ms (max %.2f); audio callback %.2f ms "
-                   "(max %.2f)\n",
-                   (int)(guest_frames - st_guest_frames), st_new_frames,
-                   st_period_sum / 300000.0,
-                   st_period_max / 1000.0, st_sync_sum / 300000.0,
-                   st_sync_max / 1000.0, st_video_sum / 300000.0,
-                   st_video_max / 1000.0, st_audio_sum / 300000.0,
-                   st_audio_max / 1000.0);
-        /* The guest's own flips (FLIP_STALL), by when they were issued after
-         * the vblank they wait for, and how long the pusher waited for them
-         * (nv2a.c); a flip issued after 16.7 ms misses its vblank */
-        {
-            extern uint64_t xemu_lr_flips, xemu_lr_flip_phase[4];
-            extern int64_t xemu_lr_flip_wait_sum_ns, xemu_lr_flip_wait_max_ns;
-            const uint64_t flips = qatomic_xchg(&xemu_lr_flips, 0);
-            uint64_t ph[4];
-            for (int i = 0; i < 4; i++) {
-                ph[i] = qatomic_xchg(&xemu_lr_flip_phase[i], 0);
-            }
-            const int64_t wsum = qatomic_xchg(&xemu_lr_flip_wait_sum_ns, 0);
-            const int64_t wmax = qatomic_xchg(&xemu_lr_flip_wait_max_ns, 0);
-            const int64_t vsum = qatomic_xchg(&vblank_delay_sum_us, 0);
-            const int64_t vmax = qatomic_xchg(&vblank_delay_max_us, 0);
-            LRLOG_INFO("[xemu] last 300 runs: %d flips, issued after the vblank "
-                       "<8 ms %d, 8-14 %d, 14-16.7 %d, later %d; flip wait %.2f ms "
-                       "(max %.2f); vblank raised %.2f ms after retro_run (max %.2f), "
-                       "handled by the guest %.2f ms after it (%d not within 4 ms)\n",
-                       (int)flips, (int)ph[0], (int)ph[1], (int)ph[2], (int)ph[3],
-                       flips ? wsum / 1e6 / flips : 0.0, wmax / 1e6,
-                       vsum / 300000.0, vmax / 1000.0,
-                       vblank_wait_sum_us / 300000.0, vblank_wait_timeouts);
-            vblank_wait_sum_us = 0;
-            vblank_wait_timeouts = 0;
-        }
-        st_guest_frames = guest_frames;
-        st_new_frames = 0;
-        st_period_sum = st_period_max = 0;
-        st_sync_sum = st_sync_max = 0;
-        st_video_sum = st_video_max = 0;
-        st_audio_sum = st_audio_max = 0;
-    }
-
-    /* Schedule vblank (graphic_hw_update) on emu thread. Before the picture
-     * is taken, not after: raised after it, the wait for the renderer in the
-     * game's heavy scenes grew from 2-4 ms to 6-7 ms and RetroArch's presents
-     * came in pairs, a late one and an early one (NNshi's captures). */
-    {
-        QemuConsole *con = nv2a_get_vga_console();
-        if (con) {
-            qatomic_set(&vblank_asked_us, g_get_monotonic_time());
-            vblank_target = qatomic_read(&xemu_lr_vblanks_raised) + 1;
-            aio_bh_schedule_oneshot(qemu_get_aio_context(), libretro_vblank_bh,
-                                    con);
-        }
-    }
-
-    /* Check if variables have been updated */
-    bool updated = false;
-    if (environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE, &updated) && updated) {
-        update_variables();
-    }
-
-    /* Poll input */
-    if (input_poll_cb) {
-        input_poll_cb();
-    }
-
-    /* A Chihiro's cabinet controls (libretro-chihiro.c) */
-    {
-        extern void libretro_chihiro_update_input(void);
-        libretro_chihiro_update_input();
-    }
-
-    /* The motors the guest set since the last run (libretro-stubs.c) */
-    {
-        extern void libretro_input_apply_rumble(retro_set_rumble_state_t);
-        libretro_input_apply_rumble(rumble.set_rumble_state);
-    }
-
-    if (!emu_initialized || !context_ready) {
-        /* Emulator not ready yet, draw black frame */
-        if (!use_vulkan && hw_render.get_current_framebuffer) {
-            uintptr_t fbo = hw_render.get_current_framebuffer();
-            glBindFramebuffer(GL_FRAMEBUFFER, (GLuint)fbo);
-            glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-            glClear(GL_COLOR_BUFFER_BIT);
-            glBindFramebuffer(GL_FRAMEBUFFER, 0);
-            video_cb(RETRO_HW_FRAME_BUFFER_VALID, 640, 480, 0);
-        } else if (use_vulkan) {
-            /* VK mode: pass NULL frame (no HW framebuffer concept) */
-            video_cb(NULL, 640, 480, 0);
-        } else {
-            video_cb(RETRO_HW_FRAME_BUFFER_VALID, 640, 480, 0);
-        }
-
-        /* Push silence for audio (the audio thread, when it has it, does
-         * its own) */
-        if (audio_batch_cb && !audio_async) {
-            int16_t silence[1600] = {0}; /* ~800 samples stereo */
-            audio_batch_cb(silence, 800);
-        }
+    if (!audio_batch_cb) {
         return;
     }
+    if (have_frame) {
+        got = libretro_audio_pull(buf, want);
+    }
+    if (got < want) {
+        /* only with no machine running: a frame of guest time has made
+         * at least its samples */
+        memset(&buf[got * 2], 0, (size_t)(want - got) * 2 * sizeof(int16_t));
+    }
+    audio_batch_cb(buf, want);
+}
 
-    update_aspect();
-
+/* The picture of the frame just run, to the frontend */
+static void lr_present_video(void)
+{
     /* ---- OpenGL path ---- */
     if (!use_vulkan) {
         /* Get NV2A framebuffer texture */
@@ -2833,176 +2849,205 @@ RETRO_API void retro_run(void)
         } else {
             /* No framebuffer yet */
             glBindFramebuffer(GL_FRAMEBUFFER, (GLuint)fbo);
-            glClearColor(0.0f, 0.0f, 0.2f, 1.0f);
+            glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
             glClear(GL_COLOR_BUFFER_BIT);
             glBindFramebuffer(GL_FRAMEBUFFER, 0);
         }
 
         nv2a_release_framebuffer_surface();
         video_cb(RETRO_HW_FRAME_BUFFER_VALID, width, height, 0);
+        return;
     }
+
     /* ---- Vulkan path ---- */
-    else if (use_vulkan) {
-        unsigned width = 640;
-        unsigned height = 480;
+    unsigned width = 640;
+    unsigned height = 480;
 
-        if (!vulkan_if) {
-            video_cb(NULL, width, height, 0);
-            goto vk_audio;
-        }
+    if (!vulkan_if) {
+        video_cb(NULL, width, height, 0);
+        return;
+    }
 
-        if (xemu_libretro_vk.active) {
-            /* The frame rendered now, on the device shared with the
-             * frontend, and handed over in this run: the renderer draws the
-             * display, copies it into the image of the frontend's current
-             * sync index and waits for the GPU (pgraph/vk/display.c) */
-            static uint64_t last_count;
-            static unsigned last_w = 640, last_h = 480;
-            const int index =
-                (int)vulkan_if->get_sync_index(vulkan_if->handle);
-            VkImage image;
-            VkImageView view;
-            VkFormat format;
-            int frame_w, frame_h;
-            uint64_t count = last_count;
+    if (xemu_libretro_vk.active) {
+        /* The frame rendered now, on the device shared with the
+         * frontend, and handed over in this run: the renderer draws the
+         * display, copies it into the image of the frontend's current
+         * sync index and waits for the GPU (pgraph/vk/display.c) */
+        static uint64_t last_count;
+        static unsigned last_w = 640, last_h = 480;
+        const int index =
+            (int)vulkan_if->get_sync_index(vulkan_if->handle);
+        VkImage image;
+        VkImageView view;
+        VkFormat format;
+        int frame_w, frame_h;
+        uint64_t count = last_count;
 
-            xemu_libretro_vk.frame_index = index;
-            if (!vk_renderer_parked) {
-                wait_for_vblank_handled();
-                st_t = g_get_monotonic_time();
-                nv2a_get_framebuffer_surface();
-                nv2a_release_framebuffer_surface();
-                st_t = g_get_monotonic_time() - st_t;
-                st_sync_sum += st_t;
-                st_sync_max = MAX(st_sync_max, st_t);
-            }
-
-            if (!vk_renderer_parked &&
-                nv2a_vk_libretro_get_frame(index, &image, &view, &format,
-                                           &frame_w, &frame_h, &count) &&
-                count != last_count) {
-                last_count = count;
-                last_w = (unsigned)frame_w;
-                last_h = (unsigned)frame_h;
-
-                retro_vk_image.image_view = view;
-                retro_vk_image.image_layout =
-                    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-                retro_vk_image.create_info = (VkImageViewCreateInfo){
-                    .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-                    .image = image,
-                    .viewType = VK_IMAGE_VIEW_TYPE_2D,
-                    .format = format,
-                    .subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-                    .subresourceRange.levelCount = 1,
-                    .subresourceRange.layerCount = 1,
-                };
-                vulkan_if->set_image(vulkan_if->handle, &retro_vk_image, 0,
-                                     NULL, VK_QUEUE_FAMILY_IGNORED);
-                st_new_frames++;
-                st_t = g_get_monotonic_time();
-                video_cb(RETRO_HW_FRAME_BUFFER_VALID, last_w, last_h, 0);
-            } else {
-                /* nothing new drawn: the frontend repeats its last frame */
-                st_t = g_get_monotonic_time();
-                video_cb(NULL, last_w, last_h, 0);
-            }
-            st_t = g_get_monotonic_time() - st_t;
-            st_video_sum += st_t;
-            st_video_max = MAX(st_video_max, st_t);
-            goto vk_audio;
-        }
-
-        static bool vk_display_initialized = false;
-
-        if (!vk_display_initialized) {
-            /* First frame: blocking sync to initialize display image */
-            int tex = nv2a_get_framebuffer_surface();
+        xemu_libretro_vk.frame_index = index;
+        if (!vk_renderer_parked) {
+            nv2a_get_framebuffer_surface();
             nv2a_release_framebuffer_surface();
-            if (tex) {
-                vk_display_initialized = true;
-            }
-        } else {
-            /* Subsequent frames: trigger async render (non-blocking) */
-            nv2a_trigger_display_render();
         }
 
-        /* Get VK display info */
-        void *ext_handle = NULL;
-        int disp_w = 0, disp_h = 0;
-        nv2a_get_vk_display_info(&ext_handle, &disp_w, &disp_h);
+        if (!vk_renderer_parked &&
+            nv2a_vk_libretro_get_frame(index, &image, &view, &format,
+                                       &frame_w, &frame_h, &count) &&
+            count != last_count) {
+            last_count = count;
+            last_w = (unsigned)frame_w;
+            last_h = (unsigned)frame_h;
 
-        if (ext_handle && disp_w > 0 && disp_h > 0) {
-            /* Import xemu's display image into RA's VkDevice */
-            static bool vk_layout_set = false;
-            if (ra_vk_import_display(ext_handle, disp_w, disp_h)) {
-                if (!vk_layout_set) {
-                    ra_vk_transition_layout(ra_vk_image,
-                        VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
-                    vk_layout_set = true;
-                }
+            retro_vk_image.image_view = view;
+            retro_vk_image.image_layout =
+                VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            retro_vk_image.create_info = (VkImageViewCreateInfo){
+                .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+                .image = image,
+                .viewType = VK_IMAGE_VIEW_TYPE_2D,
+                .format = format,
+                .subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                .subresourceRange.levelCount = 1,
+                .subresourceRange.layerCount = 1,
+            };
+            vulkan_if->set_image(vulkan_if->handle, &retro_vk_image, 0,
+                                 NULL, VK_QUEUE_FAMILY_IGNORED);
+            video_cb(RETRO_HW_FRAME_BUFFER_VALID, last_w, last_h, 0);
+        } else {
+            /* nothing new drawn: the frontend repeats its last frame */
+            video_cb(NULL, last_w, last_h, 0);
+        }
+        return;
+    }
+
+    static bool vk_display_initialized = false;
+
+    if (!vk_display_initialized) {
+        /* First frame: blocking sync to initialize display image */
+        int tex = nv2a_get_framebuffer_surface();
+        nv2a_release_framebuffer_surface();
+        if (tex) {
+            vk_display_initialized = true;
+        }
+    } else {
+        /* Subsequent frames: trigger async render (non-blocking) */
+        nv2a_trigger_display_render();
+    }
+
+    /* Get VK display info */
+    void *ext_handle = NULL;
+    int disp_w = 0, disp_h = 0;
+    nv2a_get_vk_display_info(&ext_handle, &disp_w, &disp_h);
+
+    if (ext_handle && disp_w > 0 && disp_h > 0) {
+        /* Import xemu's display image into RA's VkDevice */
+        static bool vk_layout_set = false;
+        if (ra_vk_import_display(ext_handle, disp_w, disp_h)) {
+            if (!vk_layout_set) {
                 ra_vk_transition_layout(ra_vk_image,
-                    VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL);
-
-                /* Set the image for RetroArch to display */
-                retro_vk_image.image_view = ra_vk_image_view;
-                retro_vk_image.image_layout = VK_IMAGE_LAYOUT_GENERAL;
-                retro_vk_image.create_info = ra_vk_view_ci;
-
-                vulkan_if->set_image(vulkan_if->handle, &retro_vk_image,
-                                     0, NULL, VK_QUEUE_FAMILY_IGNORED);
-
-                width = disp_w;
-                height = disp_h;
-
-                video_cb(RETRO_HW_FRAME_BUFFER_VALID, width, height, 0);
-            } else {
-                video_cb(NULL, width, height, 0);
+                    VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
+                vk_layout_set = true;
             }
+            ra_vk_transition_layout(ra_vk_image,
+                VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL);
+
+            /* Set the image for RetroArch to display */
+            retro_vk_image.image_view = ra_vk_image_view;
+            retro_vk_image.image_layout = VK_IMAGE_LAYOUT_GENERAL;
+            retro_vk_image.create_info = ra_vk_view_ci;
+
+            vulkan_if->set_image(vulkan_if->handle, &retro_vk_image,
+                                 0, NULL, VK_QUEUE_FAMILY_IGNORED);
+
+            width = disp_w;
+            height = disp_h;
+
+            video_cb(RETRO_HW_FRAME_BUFFER_VALID, width, height, 0);
         } else {
             video_cb(NULL, width, height, 0);
         }
+    } else {
+        video_cb(NULL, width, height, 0);
+    }
+}
+
+/* A frame with no machine to show: black, and a frame's worth of silence */
+static void lr_present_idle(void)
+{
+    if (!use_vulkan && hw_render.get_current_framebuffer) {
+        uintptr_t fbo = hw_render.get_current_framebuffer();
+        glBindFramebuffer(GL_FRAMEBUFFER, (GLuint)fbo);
+        glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT);
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        video_cb(RETRO_HW_FRAME_BUFFER_VALID, 640, 480, 0);
+    } else {
+        video_cb(NULL, 640, 480, 0);
+    }
+    lr_present_audio(false);
+}
+
+/*
+ * One retro_run, one frame: the input polled now goes into a frame of guest
+ * time the emulator thread runs, and when it is done its picture and its
+ * 800 or 801 samples go to the frontend. A frame not done within a second
+ * (a wedged machine) leaves a repeated picture and no samples; it is shown
+ * by a later retro_run, which asks for no new frame meanwhile.
+ */
+RETRO_API void retro_run(void)
+{
+    bool updated = false;
+
+    if (environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE, &updated) && updated) {
+        update_variables();
     }
 
-vk_audio:
-    /* Pull audio from the APU ring buffer, unless RetroArch's audio thread
-     * does (audio_thread_callback) */
-    if (audio_batch_cb && !audio_async) {
-        extern int libretro_audio_pull(int16_t *out_buf, int max_frames);
-        extern void libretro_audio_flush(void);
-
-        /* One-time flush: discard stale boot audio on first active pull */
-        static bool audio_flushed = false;
-        if (!audio_flushed) {
-            libretro_audio_flush();
-            audio_flushed = true;
-        }
-
-        /* Exactly one frame's worth a call - 48000 / 59.94, 800 or 801 -
-         * so RetroArch's audio sync paces retro_run, and with it the guest's
-         * vblank, at the display's rate. Handing over whatever was queued
-         * let a short queue send retro_run on early, 160 times a second
-         * and more: the guest ran in bursts and stalls (a stuttering boot
-         * animation). The APU waits once about 64 ms is queued (apu.c), so
-         * nothing has to be dropped here; a short queue is filled up with
-         * silence. */
-        static double audio_frac = 0.0;
-        audio_frac += 48000.0 / 59.94;
-        int want = (int)audio_frac;
-        audio_frac -= want;
-
-        int16_t audio_buf[1602]; /* 801 stereo frames */
-        int frames = libretro_audio_pull(audio_buf, want);
-        if (frames < want) {
-            memset(&audio_buf[frames * 2], 0,
-                   (size_t)(want - frames) * 2 * sizeof(int16_t));
-        }
-        st_t = g_get_monotonic_time();
-        audio_batch_cb(audio_buf, want);
-        st_t = g_get_monotonic_time() - st_t;
-        st_audio_sum += st_t;
-        st_audio_max = MAX(st_audio_max, st_t);
+    if (input_poll_cb) {
+        input_poll_cb();
     }
+
+    /* A Chihiro's cabinet controls (libretro-chihiro.c) */
+    {
+        extern void libretro_chihiro_update_input(void);
+        libretro_chihiro_update_input();
+    }
+
+    /* The motors the guest set since the last run (libretro-stubs.c) */
+    {
+        extern void libretro_input_apply_rumble(retro_set_rumble_state_t);
+        libretro_input_apply_rumble(rumble.set_rumble_state);
+    }
+
+    if (!context_ready || !game_loaded) {
+        lr_present_idle();
+        return;
+    }
+    if (!emu_initialized) {
+        if (!lr_command(LR_CMD_START)) {
+            LRLOG_ERROR("[xemu] The machine did not start\n");
+            game_loaded = false;
+            lr_present_idle();
+            return;
+        }
+        emu_initialized = true;
+    }
+
+    update_aspect();
+
+    if (!lr_frame_pending) {
+        extern void libretro_input_latch(bool use_bitmask);
+        libretro_input_latch(input_bitmasks);
+        lr_post(LR_CMD_FRAME);
+        lr_frame_pending = true;
+    }
+    if (!lr_wait_done(retro_atomic_load_acquire_int(&lr_cmd_seq),
+                      LR_WEDGE_US)) {
+        video_cb(NULL, 640, 480, 0);
+        return;
+    }
+    lr_frame_pending = false;
+
+    lr_present_video();
+    lr_present_audio(true);
 }
 
 RETRO_API void retro_reset(void)
@@ -3030,30 +3075,6 @@ struct libretro_savestate_header {
     uint64_t timestamp;
 };
 
-static bool snapshot_dispatch(int request_type, int timeout_ms)
-{
-    if (!snapshot_sem_initialized) {
-        qemu_sem_init(&snapshot_done_sem, 0);
-        snapshot_sem_initialized = true;
-    }
-    /* A post from a request that timed out would end this wait at once */
-    while (qemu_sem_timedwait(&snapshot_done_sem, 0) == 0) {
-    }
-
-    snapshot_done = false;
-    snapshot_result = false;
-    snapshot_request = request_type;
-
-    /* Wait for the emu thread to process it */
-    if (qemu_sem_timedwait(&snapshot_done_sem, timeout_ms) != 0) {
-        LRLOG_INFO("[xemu] snapshot dispatch: timeout after %dms\n", timeout_ms);
-        snapshot_request = SNAPSHOT_NONE;
-        return false;
-    }
-
-    return snapshot_result;
-}
-
 RETRO_API size_t retro_serialize_size(void)
 {
     if (!emu_initialized) return 0;
@@ -3067,7 +3088,7 @@ RETRO_API bool retro_serialize(void *data, size_t size)
 
     memset(data, 0, LIBRETRO_SAVESTATE_SIZE);
 
-    bool ok = snapshot_dispatch(SNAPSHOT_SAVE, 30000);
+    bool ok = lr_command(LR_CMD_SAVE);
 
     if (!ok) {
         LRLOG_INFO("[xemu] retro_serialize: save failed\n");
@@ -3095,7 +3116,7 @@ RETRO_API bool retro_unserialize(const void *data, size_t size)
         return false;
     }
 
-    bool ok = snapshot_dispatch(SNAPSHOT_LOAD, 30000);
+    bool ok = lr_command(LR_CMD_LOAD);
 
     if (!ok) {
         LRLOG_INFO("[xemu] retro_unserialize: load failed\n");

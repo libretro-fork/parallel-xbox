@@ -74,15 +74,13 @@ typedef struct MCPXAPUState {
     PCIDevice parent_obj;
     /*< public >*/
 
-    bool exiting;
     bool set_irq;
 
-    QemuThread apu_thread;
-    QemuMutex lock;
-    QemuCond cond;
-    QemuCond idle_cond;
-    bool pause_requested;
-    bool is_idle;
+    /* The engine's frames (apu.c): the next one's QEMU_CLOCK_VIRTUAL time,
+     * on an exact grid of 2000000/3 ns */
+    QEMUTimer *tick_timer;
+    int64_t next_tick_ns;
+    int tick_rem;
 
     MemoryRegion *ram;
     uint8_t *ram_ptr;
@@ -98,26 +96,9 @@ typedef struct MCPXAPUState {
     int frame_work_acc_us;
     int frame_count;
     int64_t frame_count_time_us;
-    int64_t next_frame_time_us;
-
-    struct {
-        struct {
-            int backoff, ok, speedup;
-        } pacing;
-        struct {
-            int64_t last_us;
-            int64_t min_us, max_us, sum_us;
-            int count;
-        } deviation;
-        int queued_bytes_min, queued_bytes_max;
-        int64_t queued_bytes_sum;
-        int queued_bytes_count;
-    } throttle;
-
     struct {
         McpxApuDebugMonitorPoint point;
         int16_t frame_buf[256][2]; // 1 EP frame (0x400 bytes)
-        int queued_bytes_low, queued_bytes_high;
     } monitor;
 } MCPXAPUState;
 
@@ -132,5 +113,6 @@ void mcpx_debug_end_frame(void);
 void mcpx_apu_monitor_init(MCPXAPUState *d, Error **errp);
 void mcpx_apu_monitor_finalize(MCPXAPUState *d);
 void mcpx_apu_monitor_frame(MCPXAPUState *d);
+void mcpx_apu_monitor_silence(MCPXAPUState *d);
 
 #endif

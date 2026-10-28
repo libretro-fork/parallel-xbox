@@ -52,6 +52,10 @@ The cabinet's controls are on RetroArch's pads, by the game:
 
 The driving games' force feedback (OutRun 2, Maximum Tune) can rumble port 1's pad: Sega Chihiro > Force Feedback Rumble, at 100% by default (off in standalone), from 25 to 200% or off. A pad gives the knocks and vibrations; the wheel's centering and weight have nothing to act on. Controls > Rumble (Player 1) and (Player 2) turn a player's rumble off altogether, and Controls > Analog Dead Zone sets how far each player's sticks can move before the game sees it (10% by default).
 
+## Timing and sound
+
+Each frame RetroArch asks for is one frame of the Xbox's time, 1001/60 ms (NTSC, 59.94 frames a second), and comes with exactly that frame's sound, 800 or 801 samples at 48 kHz. Between frames the Xbox stands still, so RetroArch's pause, menu, fast-forward and slow motion are the game's; fast-forward goes as fast as the host runs the game. Audio > Audio Volume scales the sound before it goes to RetroArch.
+
 ## Video
 
 The core renders with OpenGL or Vulkan, whichever RetroArch's video driver is (`glcore` or `vulkan`). On Android it is Vulkan only. On macOS it is OpenGL: MoltenVK has no geometry shaders, which xemu's Vulkan renderer needs, so use RetroArch's `glcore` driver there.

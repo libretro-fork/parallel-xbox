@@ -449,6 +449,10 @@ QEMUBH *aio_bh_new_full(AioContext *ctx, QEMUBHFunc *cb, void *opaque,
  * a bottom half calls it already.
  */
 void aio_notify(AioContext *ctx);
+#ifdef LIBRETRO
+/* Called when the main loop's context is notified (util/async.c) */
+extern void (*aio_main_notify_hook)(void);
+#endif
 
 /**
  * aio_notify_accept: Acknowledge receiving an aio_notify.

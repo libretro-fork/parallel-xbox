@@ -212,6 +212,31 @@ int nv2a_get_screen_off(void)
     return g_nv2a->vga.sr[VGA_SEQ_CLOCK_MODE] & VGA_SR01_SCREEN_OFF;
 }
 
+#ifdef LIBRETRO
+/* Whether the GPU has work the guest may be waiting for, for the core's
+ * emulator thread (ui/libretro.c): an idle guest's time is not moved on
+ * past it, so the GPU takes no guest time to catch up. A pusher held for a
+ * flip waits for the next vblank, which is guest time, and is not busy.
+ * Read without the fifo's locks: a guess the next look corrects. */
+bool nv2a_libretro_busy(void)
+{
+    NV2AState *d = g_nv2a;
+
+    if (!d || qatomic_read(&d->pfifo.halt) ||
+        qatomic_read(&d->pgraph.waiting_for_flip)) {
+        return false;
+    }
+    if (qatomic_read(&d->pfifo.fifo_kick)) {
+        return true;
+    }
+    const uint32_t push = qatomic_read(
+        &d->pfifo.regs[NV_PFIFO_CACHE1_DMA_PUSH]);
+    return (push & NV_PFIFO_CACHE1_DMA_PUSH_ACCESS) &&
+           qatomic_read(&d->pfifo.regs[NV_PFIFO_CACHE1_DMA_GET]) !=
+           qatomic_read(&d->pfifo.regs[NV_PFIFO_CACHE1_DMA_PUT]);
+}
+#endif
+
 QemuConsole *nv2a_get_vga_console(void)
 {
     if (g_nv2a) {
@@ -258,36 +283,20 @@ static void nv2a_flip_deadline_cb(void *opaque)
     qemu_mutex_unlock(&d->pfifo.lock);
 }
 
-#ifdef LIBRETRO
-/* Where the guest's frames fall against the vblanks retro_run raises, for the
- * core's log (libretro.c, every 300 runs): when each FLIP_STALL is issued
- * after the last vblank (pgraph.c), and how long the pusher then waits for
- * the flip to complete (pfifo.c) */
-int64_t xemu_lr_last_vblank_ns;
-uint64_t xemu_lr_flips;
-uint64_t xemu_lr_flip_phase[4]; /* <8, 8-14, 14-16.7, >16.7 ms */
-int64_t xemu_lr_flip_wait_sum_ns, xemu_lr_flip_wait_max_ns;
-int64_t xemu_lr_flip_stall_start_ns;
-/* Vblanks raised (gfx_update) and acknowledged by the guest's handler
- * (pcrtc.c), which is where it points the display at the frame it flipped:
- * retro_run takes the picture once the one it raised is handled */
-uint64_t xemu_lr_vblanks_raised, xemu_lr_vblanks_acked;
-#endif
 
 static void nv2a_vga_gfx_update(void *opaque)
 {
     VGACommonState *vga = opaque;
     vga->hw_ops->gfx_update(vga);
 #ifdef LIBRETRO
-    /* In the core the frontend paces the frames: the guest's vblank comes
-     * with each retro_run, as upstream raises it here, and not from the
-     * wall-clock timer below, which would run on its own while RetroArch
-     * fast-forwards, slows down or pauses */
+    /* In the core the guest's vblank comes at the start of each frame of
+     * guest time the emulator thread runs (ui/libretro.c), not from the
+     * wall-clock timer below, so it follows the frontend's frames. The
+     * raster position (pcrtc.c) counts guest time from it; the renderer's
+     * own slack estimates (vblank_deadline) are wall-clock. */
     NV2AState *d = container_of(vga, NV2AState, vga);
     d->pcrtc.pending_interrupts |= NV_PCRTC_INTR_0_VBLANK;
-    qatomic_set(&xemu_lr_last_vblank_ns, qemu_clock_get_ns(QEMU_CLOCK_REALTIME));
-    qatomic_inc(&xemu_lr_vblanks_raised);
-    /* The raster position (pcrtc.c) counts from the next vblank's deadline */
+    d->vblank_vt = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
     qatomic_set(&d->vblank_deadline,
                 qemu_clock_get_ns(QEMU_CLOCK_REALTIME) +
                 NV2A_VBLANK_INTERVAL_NS);

@@ -38,12 +38,11 @@ uint64_t pcrtc_read(void *opaque, hwaddr addr, unsigned int size)
             break;
         case NV_PCRTC_RASTER: {
             /* HEURISTIC: engines that poll the beam read a scanline derived
-             * from the realtime clock and the vblank deadline, 525 lines a
+             * from the guest's time since its last vblank, 525 lines a
              * frame counted from the vblank interrupt; where the hardware
              * starts its count, and its vblank bit, are not modelled. */
-            int64_t now = qemu_clock_get_ns(QEMU_CLOCK_REALTIME);
-            int64_t into_frame = NV2A_VBLANK_INTERVAL_NS -
-                                 (qatomic_read(&d->vblank_deadline) - now);
+            int64_t into_frame = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) -
+                                 d->vblank_vt;
             if (into_frame < 0) {
                 into_frame = 0;
             } else if (into_frame >= NV2A_VBLANK_INTERVAL_NS) {
@@ -70,13 +69,6 @@ void pcrtc_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
     case NV_PCRTC_INTR_0:
         d->pcrtc.pending_interrupts &= ~val;
         nv2a_update_irq(d);
-#ifdef LIBRETRO
-        if (val & NV_PCRTC_INTR_0_VBLANK) {
-            extern uint64_t xemu_lr_vblanks_raised, xemu_lr_vblanks_acked;
-            qatomic_set(&xemu_lr_vblanks_acked,
-                        qatomic_read(&xemu_lr_vblanks_raised));
-        }
-#endif
         break;
     case NV_PCRTC_INTR_EN_0:
         d->pcrtc.enabled_interrupts = val;

@@ -35,6 +35,7 @@ system_ss.add(files(
   'monitor.c',
   'tcg-accel-ops.c',
   'tcg-accel-ops-icount.c',
+  'tcg-accel-ops-libretro.c',
   'tcg-accel-ops-mttcg.c',
   'tcg-accel-ops-rr.c',
   'watchpoint.c',

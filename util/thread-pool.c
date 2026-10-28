@@ -25,6 +25,11 @@
 
 static void do_spawn_thread(ThreadPoolAio *pool);
 
+/* Requests submitted and not yet completed, on the thread that runs the
+ * pools (the libretro core lets guest time pass while any are) */
+int thread_pool_aio_inflight;
+
+
 typedef struct ThreadPoolElementAio ThreadPoolElementAio;
 
 enum ThreadState {
@@ -187,6 +192,7 @@ restart:
         trace_thread_pool_complete_aio(pool, elem, elem->common.opaque,
                                        elem->ret);
         QLIST_REMOVE(elem, all);
+        thread_pool_aio_inflight--;
 
         if (elem->common.cb) {
             /* Read state before ret.  */
@@ -255,6 +261,7 @@ BlockAIOCB *thread_pool_submit_aio(ThreadPoolFunc *func, void *arg,
     req->pool = pool;
 
     QLIST_INSERT_HEAD(&pool->head, req, all);
+    thread_pool_aio_inflight++;
 
     trace_thread_pool_submit_aio(pool, req, arg);
 

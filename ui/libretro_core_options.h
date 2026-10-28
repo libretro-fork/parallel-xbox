@@ -272,25 +272,6 @@ struct retro_core_option_v2_definition option_defs_us[] = {
         },
         "hdtv"
     },
-    /* On by default: the sound keeps its pace while shaders compile, as
-     * standalone's own SDL thread keeps it (NNshi, OutRun 2 from a cold
-     * shader cache); fast-forward and slow motion do not change the game's
-     * speed in the core either way, and on this thread they leave the sound
-     * clean rather than garbled */
-    {
-        "xemu_audio_thread",
-        "Audio Thread (Restart)",
-        NULL,
-        "Hands the sound to RetroArch's audio thread as the APU mixes it, as standalone plays it, instead of a frame's worth each frame: the sound keeps going while frames stall, as while shaders compile.",
-        NULL,
-        "audio",
-        {
-            { "disabled", "Disabled" },
-            { "enabled",  "Enabled" },
-            { NULL, NULL },
-        },
-        "enabled"
-    },
     {
         "xemu_use_dsp",
         "APU DSP Emulation",
@@ -339,7 +320,7 @@ struct retro_core_option_v2_definition option_defs_us[] = {
         "xemu_vp_workers",
         "Voice Processor Threads (Restart)",
         NULL,
-        "Threads the audio voice processor mixes the voices on. Auto uses one per CPU core.",
+        "Threads the audio voice processor mixes the voices on, the emulator's own thread counted. Auto uses up to 4, half the logical CPUs.",
         NULL,
         "audio",
         {

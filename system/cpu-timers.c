@@ -135,6 +135,32 @@ void cpu_disable_ticks(void)
                          &timers_state.vm_clock_lock);
 }
 
+/*
+ * The libretro core's frame clock: QEMU_CLOCK_VIRTUAL runs only while the
+ * emulator thread runs a frame (cpu_enable_ticks/cpu_disable_ticks around
+ * it), and while the guest idles with nothing in flight it is moved on to
+ * the next deadline instead of waited out. Only forwards.
+ */
+void cpu_clock_skip_to(int64_t vt)
+{
+    seqlock_write_lock(&timers_state.vm_clock_seqlock,
+                       &timers_state.vm_clock_lock);
+    if (timers_state.cpu_ticks_enabled) {
+        int64_t now = cpu_get_clock_locked();
+        if (vt > now) {
+            /* the guest's TSC (cpu_get_tsc) follows this clock too */
+            timers_state.cpu_clock_offset += vt - now;
+        }
+    }
+    seqlock_write_unlock(&timers_state.vm_clock_seqlock,
+                         &timers_state.vm_clock_lock);
+}
+
+bool cpu_ticks_enabled(void)
+{
+    return qatomic_read(&timers_state.cpu_ticks_enabled);
+}
+
 static bool icount_state_needed(void *opaque)
 {
     return icount_enabled();

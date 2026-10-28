@@ -25,6 +25,7 @@
 #include "data/segaboot_jingle.raw.h"
 #include "ui/xemu-settings.h"
 #include "hw/xbox/mcpx/apu/apu_int.h"
+#include <rthreads/rthreads.h>
 #include "adpcm.h"
 
 static const struct {
@@ -168,7 +169,6 @@ static void voice_off(MCPXAPUState *d, uint16_t v)
 static void voice_lock(MCPXAPUState *d, uint16_t v, bool lock)
 {
     assert(v < MCPX_HW_MAX_VOICES);
-    qemu_mutex_lock(&d->lock);
 
     uint64_t mask = 1LL << (v % 64);
     if (lock) {
@@ -176,16 +176,13 @@ static void voice_lock(MCPXAPUState *d, uint16_t v, bool lock)
     } else {
         d->vp.voice_locked[v / 64] &= ~mask;
     }
-
-    qemu_cond_signal(&d->cond);
-    qemu_mutex_unlock(&d->lock);
 }
 
 static bool is_voice_locked(MCPXAPUState *d, uint16_t v)
 {
     assert(v < MCPX_HW_MAX_VOICES);
     uint64_t mask = 1LL << (v % 64);
-    return (qatomic_read(&d->vp.voice_locked[v / 64]) & mask) != 0;
+    return (d->vp.voice_locked[v / 64] & mask) != 0;
 }
 
 static void set_hrir_coeff_tar(MCPXAPUState *d, int channel, int coeff_idx,
@@ -1662,69 +1659,51 @@ static void get_voice_bin_src_dst(MCPXAPUState *d, int v,
     }
 }
 
-static void *voice_worker_thread(void *arg)
+/* A worker's share of the frame's voices, into its own mix buffers */
+static void voice_worker_process(MCPXAPUState *d, VoiceWorker *self)
 {
-    MCPXAPUState *d = arg;
+    int64_t start_time = qemu_clock_get_us(QEMU_CLOCK_REALTIME);
+
+    g_dbg.vp.workers[self->id].num_voices = self->queue_len;
+    memset(self->mixbins, 0, sizeof(self->mixbins));
+    if (d->monitor.point == MCPX_APU_DEBUG_MON_VP) {
+        memset(self->sample_buf, 0, sizeof(self->sample_buf));
+    }
+    for (int i = 0; i < self->queue_len; i++) {
+        voice_process(d, self->mixbins, self->sample_buf,
+                      self->queue[i].voice, self->queue[i].list);
+    }
+    g_dbg.vp.workers[self->id].time_us =
+        qemu_clock_get_us(QEMU_CLOCK_REALTIME) - start_time;
+}
+
+static void voice_worker_thread(void *arg)
+{
+    VoiceWorker *self = arg;
+    MCPXAPUState *d = self->apu;
     VoiceWorkDispatch *vwd = &d->vp.voice_work_dispatch;
 
     rcu_register_thread();
-    qemu_mutex_lock(&vwd->lock);
-
-    int worker_id = ctz64(vwd->workers_pending);
-    VoiceWorker *self = &d->vp.voice_work_dispatch.workers[worker_id];
-    self->queue_len = 0;
-
-    do {
-        int64_t start_time = qemu_clock_get_us(QEMU_CLOCK_REALTIME);
-        g_dbg.vp.workers[worker_id].num_voices = self->queue_len;
-
-        if (self->queue_len) {
-            qemu_mutex_unlock(&vwd->lock);
-
-            // Process queued voices
-            memset(self->mixbins, 0, sizeof(self->mixbins));
-            if (d->monitor.point == MCPX_APU_DEBUG_MON_VP) {
-                memset(self->sample_buf, 0, sizeof(self->sample_buf));
+    for (;;) {
+        int gen = retro_atomic_load_acquire_int(&self->generation);
+        if (gen == self->seen_generation) {
+            int key = retro_eventcount_prepare_wait(&self->wake);
+            gen = retro_atomic_load_acquire_int(&self->generation);
+            if (gen == self->seen_generation) {
+                retro_eventcount_commit_wait(&self->wake, key);
+                continue;
             }
-            for (int i = 0; i < self->queue_len; i++) {
-                voice_process(d, self->mixbins, self->sample_buf,
-                              self->queue[i].voice, self->queue[i].list);
-            }
-
-            qemu_mutex_lock(&vwd->lock);
-
-            // Add voice contributions
-            for (int b = 0; b < NUM_MIXBINS; b++) {
-                for (int s = 0; s < NUM_SAMPLES_PER_FRAME; s++) {
-                    vwd->mixbins[b][s] += self->mixbins[b][s];
-                }
-            }
-            if (d->monitor.point == MCPX_APU_DEBUG_MON_VP) {
-                for (int i = 0; i < NUM_SAMPLES_PER_FRAME; i++) {
-                    d->vp.sample_buf[i][0] += self->sample_buf[i][0];
-                    d->vp.sample_buf[i][1] += self->sample_buf[i][1];
-                }
-            }
-
-            self->queue_len = 0;
+            retro_eventcount_cancel_wait(&self->wake);
         }
-
-        if (!xemu_cpu_boost || (vwd->workers_pending & (1 << worker_id))) {
-            vwd->workers_pending &= ~(1 << worker_id);
-            if (!vwd->workers_pending) {
-                qemu_cond_signal(&vwd->work_finished);
-            }
+        self->seen_generation = gen;
+        if (retro_atomic_load_acquire_int(&vwd->should_exit)) {
+            break;
         }
-
-        int64_t end_time = qemu_clock_get_us(QEMU_CLOCK_REALTIME);
-        g_dbg.vp.workers[worker_id].time_us = end_time - start_time;
-
-        qemu_cond_wait(xemu_cpu_boost ? &self->work_pending :
-                                        &vwd->work_pending, &vwd->lock);
-    } while (!vwd->workers_should_exit);
-
+        voice_worker_process(d, self);
+        retro_atomic_fetch_add_int(&vwd->done, 1);
+        retro_eventcount_notify(&vwd->finished);
+    }
     rcu_unregister_thread();
-    return NULL;
 }
 
 static void voice_work_enqueue(MCPXAPUState *d, int v, int list)
@@ -1773,7 +1752,6 @@ static void voice_work_schedule(MCPXAPUState *d)
         // Assign voice to worker
         VoiceWorker *worker = &vwd->workers[next_worker_to_schedule];
         worker->queue[worker->queue_len++] = vwd->queue[i];
-        vwd->workers_pending |= 1 << next_worker_to_schedule;
 
         dirty = (dirty & ~clr) | dst;
         if (clr & MULTIPASS_BIN_MASK) {
@@ -1787,121 +1765,115 @@ static void voice_work_schedule(MCPXAPUState *d)
     }
 }
 
-static bool any_queued_voice_locked(MCPXAPUState *d)
-{
-    VoiceWorkDispatch *vwd = &d->vp.voice_work_dispatch;
-
-    for (int i = 0; i < vwd->queue_len; i++) {
-        if (is_voice_locked(d, vwd->queue[i].voice)) {
-            return true;
-        }
-    }
-
-    return false;
-}
-
 static void
 voice_work_dispatch(MCPXAPUState *d,
                     float mixbins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME])
 {
     VoiceWorkDispatch *vwd = &d->vp.voice_work_dispatch;
-
     int64_t start_time = qemu_clock_get_us(QEMU_CLOCK_REALTIME);
+    int started = 0;
 
-    while (true) {
-        if (qatomic_read(&d->pause_requested)) {
-            vwd->queue_len = 0;
-            return;
+    if (!vwd->queue_len) {
+        g_dbg.vp.total_worker_time_us = 0;
+        return;
+    }
+
+    for (int w = 0; w < vwd->num_workers; w++) {
+        vwd->workers[w].queue_len = 0;
+    }
+    voice_work_schedule(d);
+    vwd->queue_len = 0;
+
+    /* The shares of the threads, then the emulator thread's own */
+    retro_atomic_store_release_int(&vwd->done, 0);
+    for (int w = 1; w < vwd->num_workers; w++) {
+        VoiceWorker *worker = &vwd->workers[w];
+        if (worker->queue_len) {
+            retro_atomic_fetch_add_int(&worker->generation, 1);
+            retro_eventcount_notify(&worker->wake);
+            started++;
         }
+    }
+    voice_worker_process(d, &vwd->workers[0]);
 
-        if (!any_queued_voice_locked(d)) {
+    while (retro_atomic_load_acquire_int(&vwd->done) < started) {
+        int key = retro_eventcount_prepare_wait(&vwd->finished);
+        if (retro_atomic_load_acquire_int(&vwd->done) >= started) {
+            retro_eventcount_cancel_wait(&vwd->finished);
             break;
         }
-
-        qemu_cond_timedwait(&d->cond, &d->lock, 1);
+        retro_eventcount_commit_wait(&vwd->finished, key);
     }
 
-    qemu_mutex_lock(&vwd->lock);
-
-    if (vwd->queue_len) {
-        memset(vwd->mixbins, 0, sizeof(vwd->mixbins));
-
-        // Signal workers and wait for completion (CPU boost: only the
-        // workers given voices are woken).
-        voice_work_schedule(d);
-        if (xemu_cpu_boost) {
-            for (int i = 0; i < vwd->num_workers; i++) {
-                if (vwd->workers_pending & (1 << i)) {
-                    qemu_cond_signal(&vwd->workers[i].work_pending);
-                }
-            }
-        } else {
-            qemu_cond_broadcast(&vwd->work_pending);
+    /* Every share's voices, added up */
+    for (int w = 0; w < vwd->num_workers; w++) {
+        VoiceWorker *worker = &vwd->workers[w];
+        if (!worker->queue_len) {
+            continue;
         }
-        /* A wait can return before its signal (a spurious wakeup). */
-        while (vwd->workers_pending) {
-            qemu_cond_wait(&vwd->work_finished, &vwd->lock);
-        }
-        vwd->queue_len = 0;
-
-        // Add voice contributions
         for (int b = 0; b < NUM_MIXBINS; b++) {
-            for (int s = 0; s < NUM_SAMPLES_PER_FRAME; s++) {
-                mixbins[b][s] += vwd->mixbins[b][s];
+            for (int i = 0; i < NUM_SAMPLES_PER_FRAME; i++) {
+                mixbins[b][i] += worker->mixbins[b][i];
+            }
+        }
+        if (d->monitor.point == MCPX_APU_DEBUG_MON_VP) {
+            for (int i = 0; i < NUM_SAMPLES_PER_FRAME; i++) {
+                d->vp.sample_buf[i][0] += worker->sample_buf[i][0];
+                d->vp.sample_buf[i][1] += worker->sample_buf[i][1];
             }
         }
     }
 
-    int64_t end_time = qemu_clock_get_us(QEMU_CLOCK_REALTIME);
-    g_dbg.vp.total_worker_time_us = end_time - start_time;
-
-    qemu_mutex_unlock(&vwd->lock);
+    g_dbg.vp.total_worker_time_us =
+        qemu_clock_get_us(QEMU_CLOCK_REALTIME) - start_time;
 }
 
+/* Voice Processor Threads: Auto is up to 4, half the logical CPUs; the
+ * emulator thread is one of them, the rest get threads */
 static void voice_work_init(MCPXAPUState *d)
 {
     VoiceWorkDispatch *vwd = &d->vp.voice_work_dispatch;
+    int num_workers = g_config.audio.vp.num_workers;
 
-    int num_workers = g_config.audio.vp.num_workers ?: (int)g_get_num_processors();
+    if (!num_workers) {
+        num_workers = MIN(4, MAX(1, (int)g_get_num_processors() / 2));
+    }
     vwd->num_workers = MAX(1, MIN(num_workers, MAX_VOICE_WORKERS));
     vwd->workers = g_malloc0_n(vwd->num_workers, sizeof(VoiceWorker));
-    vwd->workers_should_exit = false;
-    vwd->workers_pending = 0;
     vwd->queue_len = 0;
+    retro_atomic_int_init(&vwd->should_exit, 0);
+    retro_atomic_int_init(&vwd->done, 0);
+    retro_eventcount_init(&vwd->finished);
 
     g_dbg.vp.num_workers = vwd->num_workers;
 
-    qemu_mutex_init(&vwd->lock);
-    qemu_mutex_lock(&vwd->lock);
-    qemu_cond_init(&vwd->work_pending);
-    qemu_cond_init(&vwd->work_finished);
     for (int i = 0; i < vwd->num_workers; i++) {
-        qemu_cond_init(&vwd->workers[i].work_pending);
-        vwd->workers_pending |= 1 << i;
-        qemu_thread_create(&vwd->workers[i].thread, "mcpx.voice",
-                           voice_worker_thread, d, QEMU_THREAD_JOINABLE);
+        VoiceWorker *worker = &vwd->workers[i];
+        worker->apu = d;
+        worker->id = i;
+        retro_atomic_int_init(&worker->generation, 0);
+        worker->seen_generation = 0;
+        if (i > 0) {
+            retro_eventcount_init(&worker->wake);
+            worker->thread = sthread_create(voice_worker_thread, worker);
+        }
     }
-    while (vwd->workers_pending) {
-        qemu_cond_wait(&vwd->work_finished, &vwd->lock);
-    }
-    qemu_mutex_unlock(&vwd->lock);
 }
 
 static void voice_work_finalize(MCPXAPUState *d)
 {
     VoiceWorkDispatch *vwd = &d->vp.voice_work_dispatch;
 
-    qemu_mutex_lock(&vwd->lock);
-    vwd->workers_should_exit = true;
-    /* Whichever condition the workers wait on. */
-    qemu_cond_broadcast(&vwd->work_pending);
-    for (int i = 0; i < vwd->num_workers; i++) {
-        qemu_cond_signal(&vwd->workers[i].work_pending);
+    retro_atomic_store_release_int(&vwd->should_exit, 1);
+    for (int i = 1; i < vwd->num_workers; i++) {
+        retro_atomic_fetch_add_int(&vwd->workers[i].generation, 1);
+        retro_eventcount_notify(&vwd->workers[i].wake);
     }
-    qemu_mutex_unlock(&vwd->lock);
-    for (int i = 0; i < vwd->num_workers; i++) {
-        qemu_thread_join(&vwd->workers[i].thread);
+    for (int i = 1; i < vwd->num_workers; i++) {
+        sthread_join(vwd->workers[i].thread);
+        retro_eventcount_free(&vwd->workers[i].wake);
     }
+    retro_eventcount_free(&vwd->finished);
     g_free(vwd->workers);
     vwd->workers = NULL;
 }

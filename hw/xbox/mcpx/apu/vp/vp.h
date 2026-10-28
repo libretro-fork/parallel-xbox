@@ -24,7 +24,8 @@
 #include <samplerate.h>
 
 #include "qemu/osdep.h"
-#include "qemu/thread.h"
+#include <retro_atomic.h>
+#include <rthreads/retro_eventcount.h>
 #include "hw/hw.h"
 #include "hw/pci/pci.h"
 #include "hw/xbox/mcpx/apu/apu_regs.h"
@@ -53,10 +54,18 @@ typedef struct VoiceWorkItem {
     int list;
 } VoiceWorkItem;
 
+/* A voice processor worker: the emulator thread hands it a share of the
+ * frame's voices and waits for all shares (voice_work_dispatch). Lock-free:
+ * a worker is woken by its generation counter moving on and reports by
+ * the shared done counter; it mixes into its own buffers, which the
+ * emulator thread adds up once every share is done. */
 typedef struct VoiceWorker {
-    QemuThread thread;
-    /* CPU boost: per worker, so a frame wakes only those given voices. */
-    QemuCond work_pending;
+    struct sthread *thread;
+    struct MCPXAPUState *apu;
+    int id;
+    retro_atomic_int_t generation; /* moved on by the dispatcher */
+    int seen_generation;           /* the worker's own */
+    retro_eventcount_t wake;
     float mixbins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME];
     float sample_buf[NUM_SAMPLES_PER_FRAME][2];
     VoiceWorkItem queue[MCPX_HW_MAX_VOICES];
@@ -64,14 +73,12 @@ typedef struct VoiceWorker {
 } VoiceWorker;
 
 typedef struct VoiceWorkDispatch {
-    QemuMutex lock;
+    /* workers[0] is the emulator thread itself; 1.. have threads */
     int num_workers;
     VoiceWorker *workers;
-    bool workers_should_exit;
-    uint64_t workers_pending;
-    QemuCond work_pending; /* stock: wakes every worker */
-    QemuCond work_finished;
-    float mixbins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME];
+    retro_atomic_int_t should_exit;
+    retro_atomic_int_t done;       /* shares finished this frame */
+    retro_eventcount_t finished;
     VoiceWorkItem queue[MCPX_HW_MAX_VOICES];
     int queue_len;
 } VoiceWorkDispatch;

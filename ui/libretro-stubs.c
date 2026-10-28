@@ -107,70 +107,100 @@ int xemu_input_get_test_mode(void)
     return 0;
 }
 
+/* The pads as retro_run read them for the frame it starts
+ * (libretro_input_latch), on the frontend's thread: the frontend's input is
+ * read only there, never from the emulator thread, where the USB devices
+ * (xid.c) take it. The frame's start publishes it (ui/libretro.c), and the
+ * emulator thread reads it only during that frame. */
+static GamepadState libretro_latched[4];
+
+void libretro_input_latch(bool use_bitmask)
+{
+    static const struct {
+        unsigned id;
+        uint16_t button;
+    } map[] = {
+        { RETRO_DEVICE_ID_JOYPAD_B,      CONTROLLER_BUTTON_A },
+        { RETRO_DEVICE_ID_JOYPAD_A,      CONTROLLER_BUTTON_B },
+        { RETRO_DEVICE_ID_JOYPAD_Y,      CONTROLLER_BUTTON_X },
+        { RETRO_DEVICE_ID_JOYPAD_X,      CONTROLLER_BUTTON_Y },
+        { RETRO_DEVICE_ID_JOYPAD_L,      CONTROLLER_BUTTON_WHITE },
+        { RETRO_DEVICE_ID_JOYPAD_R,      CONTROLLER_BUTTON_BLACK },
+        { RETRO_DEVICE_ID_JOYPAD_SELECT, CONTROLLER_BUTTON_BACK },
+        { RETRO_DEVICE_ID_JOYPAD_START,  CONTROLLER_BUTTON_START },
+        { RETRO_DEVICE_ID_JOYPAD_L3,     CONTROLLER_BUTTON_LSTICK },
+        { RETRO_DEVICE_ID_JOYPAD_R3,     CONTROLLER_BUTTON_RSTICK },
+        { RETRO_DEVICE_ID_JOYPAD_UP,     CONTROLLER_BUTTON_DPAD_UP },
+        { RETRO_DEVICE_ID_JOYPAD_DOWN,   CONTROLLER_BUTTON_DPAD_DOWN },
+        { RETRO_DEVICE_ID_JOYPAD_LEFT,   CONTROLLER_BUTTON_DPAD_LEFT },
+        { RETRO_DEVICE_ID_JOYPAD_RIGHT,  CONTROLLER_BUTTON_DPAD_RIGHT },
+    };
+
+    if (!input_state_cb) {
+        return;
+    }
+    for (unsigned port = 0; port < 4; port++) {
+        GamepadState *gp = &libretro_latched[port];
+        uint32_t bits = 0;
+        int16_t lt, rt, x, y;
+
+        if (use_bitmask) {
+            bits = (uint16_t)input_state_cb(port, RETRO_DEVICE_JOYPAD, 0,
+                                            RETRO_DEVICE_ID_JOYPAD_MASK);
+        } else {
+            for (unsigned b = 0; b <= RETRO_DEVICE_ID_JOYPAD_R3; b++) {
+                if (input_state_cb(port, RETRO_DEVICE_JOYPAD, 0, b)) {
+                    bits |= 1u << b;
+                }
+            }
+        }
+
+        gp->buttons = 0;
+        for (size_t i = 0; i < G_N_ELEMENTS(map); i++) {
+            if (bits & (1u << map[i].id)) {
+                gp->buttons |= map[i].button;
+            }
+        }
+        memset(gp->axis, 0, sizeof(gp->axis));
+
+        lt = input_state_cb(port, RETRO_DEVICE_ANALOG,
+                            RETRO_DEVICE_INDEX_ANALOG_BUTTON,
+                            RETRO_DEVICE_ID_JOYPAD_L2);
+        if (lt == 0 && (bits & (1u << RETRO_DEVICE_ID_JOYPAD_L2))) {
+            lt = 0x7FFF;
+        }
+        rt = input_state_cb(port, RETRO_DEVICE_ANALOG,
+                            RETRO_DEVICE_INDEX_ANALOG_BUTTON,
+                            RETRO_DEVICE_ID_JOYPAD_R2);
+        if (rt == 0 && (bits & (1u << RETRO_DEVICE_ID_JOYPAD_R2))) {
+            rt = 0x7FFF;
+        }
+        gp->axis[CONTROLLER_AXIS_LTRIG] = lt;
+        gp->axis[CONTROLLER_AXIS_RTRIG] = rt;
+
+        libretro_input_stick(port, RETRO_DEVICE_INDEX_ANALOG_LEFT, &x, &y);
+        gp->axis[CONTROLLER_AXIS_LSTICK_X] = x;
+        gp->axis[CONTROLLER_AXIS_LSTICK_Y] = -y;
+        libretro_input_stick(port, RETRO_DEVICE_INDEX_ANALOG_RIGHT, &x, &y);
+        gp->axis[CONTROLLER_AXIS_RSTICK_X] = x;
+        gp->axis[CONTROLLER_AXIS_RSTICK_Y] = -y;
+    }
+}
+
+/* The USB pad (xid.c), on the emulator thread: the state latched for the
+ * frame */
 void xemu_input_update_controller(ControllerState *state)
 {
-    if (!state || !input_state_cb) return;
-
+    if (!state) {
+        return;
+    }
     int port = state->bound;
-    if (port < 0 || port >= 4) return;
-
-    state->gp.buttons = 0;
-    memset(state->gp.axis, 0, sizeof(state->gp.axis));
-
-    if (input_state_cb(port, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_B))
-        state->gp.buttons |= CONTROLLER_BUTTON_A;
-    if (input_state_cb(port, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_A))
-        state->gp.buttons |= CONTROLLER_BUTTON_B;
-    if (input_state_cb(port, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_Y))
-        state->gp.buttons |= CONTROLLER_BUTTON_X;
-    if (input_state_cb(port, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_X))
-        state->gp.buttons |= CONTROLLER_BUTTON_Y;
-
-    if (input_state_cb(port, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_L))
-        state->gp.buttons |= CONTROLLER_BUTTON_WHITE;
-    if (input_state_cb(port, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_R))
-        state->gp.buttons |= CONTROLLER_BUTTON_BLACK;
-
-    if (input_state_cb(port, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_SELECT))
-        state->gp.buttons |= CONTROLLER_BUTTON_BACK;
-    if (input_state_cb(port, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_START))
-        state->gp.buttons |= CONTROLLER_BUTTON_START;
-
-    if (input_state_cb(port, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_L3))
-        state->gp.buttons |= CONTROLLER_BUTTON_LSTICK;
-    if (input_state_cb(port, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_R3))
-        state->gp.buttons |= CONTROLLER_BUTTON_RSTICK;
-
-    if (input_state_cb(port, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_UP))
-        state->gp.buttons |= CONTROLLER_BUTTON_DPAD_UP;
-    if (input_state_cb(port, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_DOWN))
-        state->gp.buttons |= CONTROLLER_BUTTON_DPAD_DOWN;
-    if (input_state_cb(port, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_LEFT))
-        state->gp.buttons |= CONTROLLER_BUTTON_DPAD_LEFT;
-    if (input_state_cb(port, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_RIGHT))
-        state->gp.buttons |= CONTROLLER_BUTTON_DPAD_RIGHT;
-
-    int16_t lt = input_state_cb(port, RETRO_DEVICE_ANALOG,
-                                RETRO_DEVICE_INDEX_ANALOG_BUTTON,
-                                RETRO_DEVICE_ID_JOYPAD_L2);
-    if (lt == 0 && input_state_cb(port, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_L2))
-        lt = 0x7FFF;
-    state->gp.axis[CONTROLLER_AXIS_LTRIG] = lt;
-
-    int16_t rt = input_state_cb(port, RETRO_DEVICE_ANALOG,
-                                RETRO_DEVICE_INDEX_ANALOG_BUTTON,
-                                RETRO_DEVICE_ID_JOYPAD_R2);
-    if (rt == 0 && input_state_cb(port, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_R2))
-        rt = 0x7FFF;
-    state->gp.axis[CONTROLLER_AXIS_RTRIG] = rt;
-
-    int16_t x, y;
-    libretro_input_stick(port, RETRO_DEVICE_INDEX_ANALOG_LEFT, &x, &y);
-    state->gp.axis[CONTROLLER_AXIS_LSTICK_X] = x;
-    state->gp.axis[CONTROLLER_AXIS_LSTICK_Y] = -y;
-    libretro_input_stick(port, RETRO_DEVICE_INDEX_ANALOG_RIGHT, &x, &y);
-    state->gp.axis[CONTROLLER_AXIS_RSTICK_X] = x;
-    state->gp.axis[CONTROLLER_AXIS_RSTICK_Y] = -y;
+    if (port < 0 || port >= 4) {
+        return;
+    }
+    state->gp.buttons = libretro_latched[port].buttons;
+    memcpy(state->gp.axis, libretro_latched[port].axis,
+           sizeof(state->gp.axis));
 }
 
 /* Controls > Analog Dead Zone and Rumble, per player (ui/libretro.c sets

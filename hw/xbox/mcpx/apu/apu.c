@@ -75,12 +75,10 @@ static void mcpx_apu_write(void *opaque, hwaddr addr, uint64_t val,
         /* the bits of the interrupts to clear are written */
         qatomic_and(&d->regs[NV_PAPU_ISTS], ~val);
         update_irq(d);
-        qemu_cond_broadcast(&d->cond);
         break;
     case NV_PAPU_FECTL:
     case NV_PAPU_SECTL:
         qatomic_set(&d->regs[addr], val);
-        qemu_cond_broadcast(&d->cond);
         break;
     case NV_PAPU_FEMEMDATA:
         /* 'magic write'
@@ -102,123 +100,6 @@ static const MemoryRegionOps mcpx_apu_mmio_ops = {
     .write = mcpx_apu_write,
 };
 
-static void throttle_update_debug(MCPXAPUState *d, int64_t now_us)
-{
-    if (d->throttle.deviation.last_us > 0) {
-        int64_t dev = (now_us - d->throttle.deviation.last_us) - EP_FRAME_US;
-        if (d->throttle.deviation.count == 0) {
-            d->throttle.deviation.min_us = d->throttle.deviation.max_us = dev;
-        } else {
-            d->throttle.deviation.min_us = MIN(dev, d->throttle.deviation.min_us);
-            d->throttle.deviation.max_us = MAX(dev, d->throttle.deviation.max_us);
-        }
-        d->throttle.deviation.sum_us += dev;
-        d->throttle.deviation.count++;
-    }
-    d->throttle.deviation.last_us = now_us;
-}
-
-static void throttle_publish_debug(MCPXAPUState *d)
-{
-    int pacing_sum = d->throttle.pacing.backoff + d->throttle.pacing.ok +
-                     d->throttle.pacing.speedup;
-    if (d->throttle.deviation.count == 0 || pacing_sum == 0) {
-        return;
-    }
-    g_dbg.throttle.pacing.backoff = (float)d->throttle.pacing.backoff / pacing_sum;
-    g_dbg.throttle.pacing.ok = (float)d->throttle.pacing.ok / pacing_sum;
-    g_dbg.throttle.pacing.speedup = (float)d->throttle.pacing.speedup / pacing_sum;
-    g_dbg.throttle.deviation.min_us = d->throttle.deviation.min_us;
-    g_dbg.throttle.deviation.avg_us = d->throttle.deviation.sum_us / d->throttle.deviation.count;
-    g_dbg.throttle.deviation.max_us = d->throttle.deviation.max_us;
-    if (d->throttle.queued_bytes_count > 0) {
-        g_dbg.throttle.latency.min_ms = d->throttle.queued_bytes_min / (float)MONITOR_BYTES_PER_MS;
-        g_dbg.throttle.latency.avg_ms = d->throttle.queued_bytes_sum /
-            (d->throttle.queued_bytes_count * (float)MONITOR_BYTES_PER_MS);
-        g_dbg.throttle.latency.max_ms = d->throttle.queued_bytes_max / (float)MONITOR_BYTES_PER_MS;
-        g_dbg.throttle.latency.low_ms = d->monitor.queued_bytes_low / (float)MONITOR_BYTES_PER_MS;
-        g_dbg.throttle.latency.high_ms = d->monitor.queued_bytes_high / (float)MONITOR_BYTES_PER_MS;
-    }
-    d->throttle.pacing.backoff = d->throttle.pacing.ok = d->throttle.pacing.speedup = 0;
-    d->throttle.deviation.min_us = d->throttle.deviation.max_us = d->throttle.deviation.sum_us = 0;
-    d->throttle.deviation.count = 0;
-    d->throttle.queued_bytes_min = d->throttle.queued_bytes_max = 0;
-    d->throttle.queued_bytes_sum = 0;
-    d->throttle.queued_bytes_count = 0;
-}
-
-static void throttle_record_queue(MCPXAPUState *d, int queued_bytes)
-{
-    if (d->throttle.queued_bytes_count == 0) {
-        d->throttle.queued_bytes_min = d->throttle.queued_bytes_max = queued_bytes;
-    } else {
-        d->throttle.queued_bytes_min = MIN(queued_bytes, d->throttle.queued_bytes_min);
-        d->throttle.queued_bytes_max = MAX(queued_bytes, d->throttle.queued_bytes_max);
-    }
-    d->throttle.queued_bytes_sum += queued_bytes;
-    d->throttle.queued_bytes_count++;
-    if (queued_bytes >= d->monitor.queued_bytes_high) {
-        d->throttle.pacing.backoff++;
-    } else if (queued_bytes <= d->monitor.queued_bytes_low) {
-        d->throttle.pacing.speedup++;
-    } else {
-        d->throttle.pacing.ok++;
-    }
-}
-
-static void throttle(MCPXAPUState *d)
-{
-    if (d->ep_frame_div % 8) {
-        return;
-    }
-
-    int64_t start_us = qemu_clock_get_us(QEMU_CLOCK_REALTIME);
-    throttle_update_debug(d, start_us);
-    int queued_bytes = -1;
-
-    /* The core's ring stands in for the audio device: RetroArch takes one
-     * frame of audio per retro_run, and the APU waits while about 64 ms is
-     * queued, so it follows the frontend's clock as standalone follows the
-     * device's */
-    {
-        extern int libretro_audio_ring_frames(void);
-        queued_bytes = libretro_audio_ring_frames() * 4;
-        throttle_record_queue(d, queued_bytes);
-        while (!d->pause_requested && queued_bytes >= d->monitor.queued_bytes_high) {
-            qemu_cond_timedwait(&d->cond, &d->lock, EP_FRAME_US / 1000);
-            if (d->pause_requested) {
-                break;
-            }
-            queued_bytes = libretro_audio_ring_frames() * 4;
-        }
-    }
-
-    if (queued_bytes < 0 || queued_bytes > d->monitor.queued_bytes_low) {
-        int64_t now_us = qemu_clock_get_us(QEMU_CLOCK_REALTIME);
-        if (d->next_frame_time_us == 0 ||
-            now_us - d->next_frame_time_us > EP_FRAME_US) {
-            d->next_frame_time_us = now_us;
-        }
-        while (!d->pause_requested) {
-            now_us = qemu_clock_get_us(QEMU_CLOCK_REALTIME);
-            int64_t remaining_ms = (d->next_frame_time_us - now_us) / 1000;
-            if (remaining_ms > 0) {
-                qemu_cond_timedwait(&d->cond, &d->lock, remaining_ms);
-            } else {
-                break;
-            }
-        }
-        d->next_frame_time_us += EP_FRAME_US;
-
-        /* Avoid drift toward watermark */
-        if (queued_bytes >= 0) {
-            int mid = (d->monitor.queued_bytes_low +
-                       d->monitor.queued_bytes_high) / 2;
-            d->next_frame_time_us += (queued_bytes > mid) - (queued_bytes < mid);
-        }
-    }
-}
-
 static void se_frame(MCPXAPUState *d)
 {
     mcpx_apu_update_dsp_preference(d);
@@ -229,14 +110,10 @@ static void se_frame(MCPXAPUState *d)
     int64_t start_us = qemu_clock_get_us(QEMU_CLOCK_REALTIME);
     int64_t elapsed_us = start_us - d->frame_count_time_us;
     if (elapsed_us >= 1000000) {
-        /* A rudimentary calculation to determine approximately how taxed the APU
-         * thread is, by measuring how much time we spend building frames.
-         * =1: thread is not sleeping and likely falling behind realtime
-         * <1: thread is able to complete work on time
-         */
+        /* A rudimentary calculation to determine approximately how taxed the
+         * emulator thread is by the APU, from the time spent building frames */
         g_dbg.utilization = (double)d->frame_work_acc_us / (double)elapsed_us;
         g_dbg.frames_processed = (int)(d->frame_count * 1000000.0 / elapsed_us + 0.5);
-        throttle_publish_debug(d);
 
         d->frame_count_time_us = start_us;
         d->frame_count = 0;
@@ -257,67 +134,90 @@ static void se_frame(MCPXAPUState *d)
     mcpx_debug_end_frame();
 }
 
-static void *mcpx_apu_frame_thread(void *arg)
+/*
+ * The sound engine's frames, one every 32 samples at 48 kHz, on
+ * QEMU_CLOCK_VIRTUAL: they run on the emulator thread as the guest's time
+ * passes, so each video frame of guest time gets exactly its samples
+ * whatever the host's speed (ui/libretro.c hands them to the frontend). A
+ * frame with the engine stopped is silence. A frame that falls while the
+ * guest holds a voice locked waits until it lets go: the guest is in the
+ * middle of changing that voice.
+ */
+#define APU_TICK_NS_NUM 2000000 /* 32 samples = 2000000/3 ns */
+#define APU_TICK_NS_DEN 3
+#define APU_LOCK_RETRY_NS 20000
+
+static bool voices_locked(MCPXAPUState *d)
 {
-    MCPXAPUState *d = MCPX_APU_DEVICE(arg);
-    qemu_mutex_lock(&d->lock);
-    while (!qatomic_read(&d->exiting)) {
-        if (d->pause_requested) {
-            d->is_idle = true;
-            qemu_cond_signal(&d->idle_cond);
-            qemu_cond_wait(&d->cond, &d->lock);
-            d->is_idle = false;
-            continue;
-        }
+    return d->vp.voice_locked[0] | d->vp.voice_locked[1] |
+           d->vp.voice_locked[2] | d->vp.voice_locked[3];
+}
 
-        int xcntmode = GET_MASK(qatomic_read(&d->regs[NV_PAPU_SECTL]),
-                                NV_PAPU_SECTL_XCNTMODE);
-        uint32_t fectl = qatomic_read(&d->regs[NV_PAPU_FECTL]);
-        if (xcntmode == NV_PAPU_SECTL_XCNTMODE_OFF ||
-            (fectl & NV_PAPU_FECTL_FEMETHMODE_TRAPPED) ||
-            (fectl & NV_PAPU_FECTL_FEMETHMODE_HALTED)) {
-            d->set_irq = true;
-        }
+static void apu_tick_advance(MCPXAPUState *d)
+{
+    d->tick_rem += APU_TICK_NS_NUM % APU_TICK_NS_DEN;
+    d->next_tick_ns += APU_TICK_NS_NUM / APU_TICK_NS_DEN +
+                       d->tick_rem / APU_TICK_NS_DEN;
+    d->tick_rem %= APU_TICK_NS_DEN;
+}
 
-        if (d->set_irq) {
-            qemu_mutex_unlock(&d->lock);
-            bql_lock();
-            update_irq(d);
-            bql_unlock();
-            qemu_mutex_lock(&d->lock);
-            d->set_irq = false;
-        }
-
-        xcntmode = GET_MASK(qatomic_read(&d->regs[NV_PAPU_SECTL]),
+static void apu_step(MCPXAPUState *d)
+{
+    int xcntmode = GET_MASK(qatomic_read(&d->regs[NV_PAPU_SECTL]),
                             NV_PAPU_SECTL_XCNTMODE);
-        fectl = qatomic_read(&d->regs[NV_PAPU_FECTL]);
-        if (xcntmode == NV_PAPU_SECTL_XCNTMODE_OFF ||
-            (fectl & NV_PAPU_FECTL_FEMETHMODE_TRAPPED) ||
-            (fectl & NV_PAPU_FECTL_FEMETHMODE_HALTED)) {
-            qemu_cond_timedwait(&d->cond, &d->lock, 5);
-            continue;
+    uint32_t fectl = qatomic_read(&d->regs[NV_PAPU_FECTL]);
+
+    if (xcntmode == NV_PAPU_SECTL_XCNTMODE_OFF ||
+        (fectl & NV_PAPU_FECTL_FEMETHMODE_TRAPPED) ||
+        (fectl & NV_PAPU_FECTL_FEMETHMODE_HALTED)) {
+        d->set_irq = true;
+    }
+    if (d->set_irq) {
+        update_irq(d);
+        d->set_irq = false;
+    }
+
+    xcntmode = GET_MASK(qatomic_read(&d->regs[NV_PAPU_SECTL]),
+                        NV_PAPU_SECTL_XCNTMODE);
+    fectl = qatomic_read(&d->regs[NV_PAPU_FECTL]);
+    if (xcntmode == NV_PAPU_SECTL_XCNTMODE_OFF ||
+        (fectl & NV_PAPU_FECTL_FEMETHMODE_TRAPPED) ||
+        (fectl & NV_PAPU_FECTL_FEMETHMODE_HALTED)) {
+        mcpx_apu_monitor_silence(d);
+        return;
+    }
+
+    se_frame(d);
+    if (d->set_irq) {
+        update_irq(d);
+        d->set_irq = false;
+    }
+}
+
+static void apu_tick_cb(void *opaque)
+{
+    MCPXAPUState *d = opaque;
+    int64_t now = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
+
+    while (d->next_tick_ns <= now) {
+        if (voices_locked(d)) {
+            timer_mod_ns(d->tick_timer, now + APU_LOCK_RETRY_NS);
+            return;
         }
-
-        throttle(d);
-        se_frame(d);
+        apu_step(d);
+        apu_tick_advance(d);
     }
-    qemu_mutex_unlock(&d->lock);
-    return NULL;
+    timer_mod_ns(d->tick_timer, d->next_tick_ns);
 }
 
-static void mcpx_apu_wait_for_idle(MCPXAPUState *d)
+/* The engine's frames start again from now: at start, and after a state
+ * was loaded (the clock is the state's) */
+static void apu_tick_rearm(MCPXAPUState *d)
 {
-    d->pause_requested = true;
-    qemu_cond_signal(&d->cond);
-    while (!d->is_idle) {
-        qemu_cond_wait(&d->idle_cond, &d->lock);
-    }
-}
-
-static void mcpx_apu_resume(MCPXAPUState *d)
-{
-    d->pause_requested = false;
-    qemu_cond_signal(&d->cond);
+    d->next_tick_ns = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
+    d->tick_rem = 0;
+    apu_tick_advance(d);
+    timer_mod_ns(d->tick_timer, d->next_tick_ns);
 }
 
 static void mcpx_apu_reset_locked(MCPXAPUState *d)
@@ -336,53 +236,43 @@ static void mcpx_apu_reset_hold(Object *obj, ResetType type)
 {
     MCPXAPUState *d = MCPX_APU_DEVICE(obj);
 
-    bql_unlock();
-    qemu_mutex_lock(&d->lock);
-    mcpx_apu_wait_for_idle(d);
     mcpx_apu_reset_locked(d);
-    mcpx_apu_resume(d);
-    qemu_mutex_unlock(&d->lock);
-    bql_lock();
 }
 
-// Note: This is handled as a VM state change and not as a `pre_save` callback
-// because we want to quiesce the APU before any VM state is saved/restored to
-// avoid corruption.
+/* The DSPs' state goes to and comes from the VM's when it stops and starts,
+ * as for a savestate; the engine's frames stop with QEMU_CLOCK_VIRTUAL */
 static void mcpx_apu_vm_state_change(void *opaque, bool running, RunState state)
 {
     MCPXAPUState *d = opaque;
 
     if (!running) {
-        bql_unlock();
-        qemu_mutex_lock(&d->lock);
-        mcpx_apu_wait_for_idle(d);
         if (d->gp.dsp) {
             dsp_sync_to_vm(d->gp.dsp);
         }
         if (d->ep.dsp) {
             dsp_sync_to_vm(d->ep.dsp);
         }
-        qemu_mutex_unlock(&d->lock);
-        bql_lock();
     } else {
-        qemu_mutex_lock(&d->lock);
         if (d->gp.dsp) {
             dsp_sync_from_vm(d->gp.dsp);
         }
         if (d->ep.dsp) {
             dsp_sync_from_vm(d->ep.dsp);
         }
-        mcpx_apu_resume(d);
-        qemu_mutex_unlock(&d->lock);
     }
 }
 
 static int mcpx_apu_pre_load(void *opaque)
 {
     MCPXAPUState *d = opaque;
-    qemu_mutex_lock(&d->lock);
     mcpx_apu_reset_locked(d);
-    qemu_mutex_unlock(&d->lock);
+    return 0;
+}
+
+static int mcpx_apu_post_load(void *opaque, int version_id)
+{
+    MCPXAPUState *d = opaque;
+    apu_tick_rearm(d);
     return 0;
 }
 
@@ -410,13 +300,6 @@ static void mcpx_apu_realize(PCIDevice *dev, Error **errp)
     pci_register_bar(dev, 0, PCI_BASE_ADDRESS_SPACE_MEMORY, &d->mmio);
 
     d->set_irq = false;
-    d->exiting = false;
-    d->is_idle = false;
-    d->pause_requested = true;
-    qemu_mutex_init(&d->lock);
-    qemu_mutex_lock(&d->lock);
-    qemu_cond_init(&d->cond);
-    qemu_cond_init(&d->idle_cond);
 
     mcpx_apu_vp_init(d);
     mcpx_apu_dsp_init(d);
@@ -428,25 +311,16 @@ static void mcpx_apu_realize(PCIDevice *dev, Error **errp)
     }
 
     qemu_add_vm_change_state_handler(mcpx_apu_vm_state_change, d);
-    qemu_thread_create(&d->apu_thread, "mcpx.apu_thread", mcpx_apu_frame_thread,
-                       d, QEMU_THREAD_JOINABLE);
-    mcpx_apu_wait_for_idle(d);
-    qemu_mutex_unlock(&d->lock);
+    d->tick_timer = timer_new_ns(QEMU_CLOCK_VIRTUAL, apu_tick_cb, d);
+    apu_tick_rearm(d);
 }
 
 static void mcpx_apu_exitfn(PCIDevice *dev)
 {
     MCPXAPUState *d = MCPX_APU_DEVICE(dev);
 
-    bql_unlock();
-    qemu_mutex_lock(&d->lock);
-    mcpx_apu_wait_for_idle(d);
-    qatomic_set(&d->exiting, true);
-    qemu_cond_signal(&d->cond);
-    qemu_mutex_unlock(&d->lock);
-    bql_lock();
-
-    qemu_thread_join(&d->apu_thread);
+    timer_free(d->tick_timer);
+    d->tick_timer = NULL;
     mcpx_apu_vp_finalize(d);
     mcpx_apu_monitor_finalize(d);
 }
@@ -555,6 +429,7 @@ static const VMStateDescription vmstate_mcpx_apu = {
     .version_id = 1,
     .minimum_version_id = 1,
     .pre_load = mcpx_apu_pre_load,
+    .post_load = mcpx_apu_post_load,
     .fields = (VMStateField[]) {
         VMSTATE_PCI_DEVICE(parent_obj, MCPXAPUState),
         VMSTATE_STRUCT_POINTER(gp.dsp, MCPXAPUState, vmstate_vp_dsp_state,

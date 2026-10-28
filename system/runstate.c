@@ -911,6 +911,60 @@ static bool main_loop_should_exit(int *status)
     return false;
 }
 
+#ifdef LIBRETRO
+/*
+ * The libretro core's emulator thread (ui/libretro.c), between two slices
+ * of guest time: what upstream's main loop does with the requests devices
+ * and the guest made, except that a shutdown request stops the machine
+ * rather than ending the process. Returns true when one was made.
+ */
+bool qemu_libretro_handle_requests(void)
+{
+    RunState r;
+    ShutdownCause request;
+    bool shutdown = false;
+
+    if (qemu_debug_requested()) {
+        vm_stop(RUN_STATE_DEBUG);
+    }
+    if (qemu_suspend_requested()) {
+        qemu_system_suspend();
+    }
+    request = qemu_shutdown_requested();
+    if (request) {
+        qemu_system_shutdown(request);
+        vm_stop(RUN_STATE_SHUTDOWN);
+        shutdown = true;
+    }
+    request = qemu_reset_requested();
+    if (request) {
+        pause_all_vcpus();
+        qemu_system_reset(request);
+        resume_all_vcpus();
+        if (!runstate_check(RUN_STATE_RUNNING) &&
+                !runstate_check(RUN_STATE_INMIGRATE) &&
+                !runstate_check(RUN_STATE_FINISH_MIGRATE)) {
+            runstate_set(RUN_STATE_PRELAUNCH);
+        }
+    }
+    if (qemu_wakeup_requested()) {
+        pause_all_vcpus();
+        qemu_system_wakeup();
+        notifier_list_notify(&wakeup_notifiers, &wakeup_reason);
+        wakeup_reason = QEMU_WAKEUP_REASON_NONE;
+        resume_all_vcpus();
+        qapi_event_send_wakeup();
+    }
+    if (qemu_powerdown_requested()) {
+        qemu_system_powerdown();
+    }
+    if (qemu_vmstop_requested(&r)) {
+        vm_stop(r);
+    }
+    return shutdown;
+}
+#endif
+
 int qemu_main_loop(void)
 {
     int status = EXIT_SUCCESS;

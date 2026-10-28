@@ -47,6 +47,7 @@
 #include "tcg-accel-ops-mttcg.h"
 #include "tcg-accel-ops-rr.h"
 #include "tcg-accel-ops-icount.h"
+#include "tcg-accel-ops-libretro.h"
 
 /* common functionality among all TCG variants */
 
@@ -202,6 +203,12 @@ static void tcg_accel_ops_init(AccelClass *ac)
 {
     AccelOpsClass *ops = ac->ops;
 
+#ifdef LIBRETRO
+    /* The core's emulator thread runs the vCPU itself (ui/libretro.c) */
+    ops->create_vcpu_thread = lr_start_vcpu;
+    ops->kick_vcpu_thread = lr_kick_vcpu;
+    ops->handle_interrupt = tcg_handle_interrupt;
+#else
     if (qemu_tcg_mttcg_enabled()) {
         ops->create_vcpu_thread = mttcg_start_vcpu_thread;
         ops->kick_vcpu_thread = tcg_kick_vcpu_thread;
@@ -218,6 +225,7 @@ static void tcg_accel_ops_init(AccelClass *ac)
             ops->handle_interrupt = tcg_handle_interrupt;
         }
     }
+#endif
 
     ops->cpu_reset_hold = tcg_cpu_reset_hold;
     ops->supports_guest_debug = tcg_supports_guest_debug;

@@ -110,6 +110,11 @@ static int tcg_init_machine(AccelState *as, MachineState *ms)
     CPUClass *cc = CPU_CLASS(object_class_by_name(target_cpu_type()));
     bool mttcg_supported = cc->tcg_ops->mttcg_supported;
 
+#ifdef LIBRETRO
+    /* One vCPU, run by the core's emulator thread: no parallel TCG, and
+     * guest atomics need no host atomics */
+    s->mttcg_enabled = ON_OFF_AUTO_OFF;
+#endif
     switch (s->mttcg_enabled) {
     case ON_OFF_AUTO_AUTO:
         /*

@@ -306,8 +306,6 @@ static void gp_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
 {
     MCPXAPUState *d = opaque;
 
-    qemu_mutex_lock(&d->lock);
-
     assert(size == 4);
     assert(addr % 4 == 0);
 
@@ -346,8 +344,6 @@ static void gp_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
         d->gp.regs[addr] = val;
         break;
     }
-
-    qemu_mutex_unlock(&d->lock);
 }
 
 const MemoryRegionOps gp_ops = {
@@ -396,8 +392,6 @@ static void ep_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
 {
     MCPXAPUState *d = opaque;
 
-    qemu_mutex_lock(&d->lock);
-
     assert(size == 4);
     assert(addr % 4 == 0);
 
@@ -431,8 +425,6 @@ static void ep_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
         d->ep.regs[addr] = val;
         break;
     }
-
-    qemu_mutex_unlock(&d->lock);
 }
 
 const MemoryRegionOps ep_ops = {

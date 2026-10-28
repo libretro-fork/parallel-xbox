@@ -142,18 +142,6 @@ static bool pfifo_stall_for_flip(NV2AState *d)
             /* The guest resumes submitting: the modelled GPU queue starts. */
             xemu_flip_completed_ns =
                 qemu_clock_get_ns(QEMU_CLOCK_REALTIME);
-#ifdef LIBRETRO
-            {
-                extern int64_t xemu_lr_flip_stall_start_ns;
-                extern int64_t xemu_lr_flip_wait_sum_ns, xemu_lr_flip_wait_max_ns;
-                const int64_t w = xemu_flip_completed_ns - xemu_lr_flip_stall_start_ns;
-                qatomic_set(&xemu_lr_flip_wait_sum_ns,
-                            qatomic_read(&xemu_lr_flip_wait_sum_ns) + w);
-                if (w > qatomic_read(&xemu_lr_flip_wait_max_ns)) {
-                    qatomic_set(&xemu_lr_flip_wait_max_ns, w);
-                }
-            }
-#endif
         }
         qemu_mutex_unlock(&d->pgraph.lock);
     }

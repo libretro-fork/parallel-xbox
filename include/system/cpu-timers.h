@@ -24,6 +24,11 @@ void cpu_enable_ticks(void);
 /* Caller must hold BQL */
 void cpu_disable_ticks(void);
 
+/* The libretro core's frame clock (system/cpu-timers.c): moves
+ * QEMU_CLOCK_VIRTUAL forward to vt while it runs; whether it runs */
+void cpu_clock_skip_to(int64_t vt);
+bool cpu_ticks_enabled(void);
+
 /*
  * return the time elapsed in VM between vm_start and vm_stop.
  * cpu_get_ticks() uses units of the host CPU cycle counter.

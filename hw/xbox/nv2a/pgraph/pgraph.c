@@ -24,6 +24,8 @@
 
 #include "qemu/fast-hash.h"
 #include "hw/xbox/nv2a/nv2a_int.h"
+#include "system/libretro-vcpu.h"
+#include "qemu/main-loop.h"
 #include "ui/xemu-notifications.h"
 #include "ui/xemu-settings.h"
 #include "util.h"
@@ -549,27 +551,53 @@ void nv2a_release_framebuffer_surface(void)
  * it, five seconds at most: it needs the guest's CPU to reach a safe point.
  * False when no renderer is running yet or the switch did not happen.
  */
+static void lr_switch_timeout_cb(void *opaque)
+{
+    /* the bound of the wait below: being due wakes the main loop */
+}
+
+/* On the libretro core's emulator thread, which is the vCPU, under the
+ * BQL: the switch has the vCPU wait for the renderer (do_wait_for_renderer_
+ * switch, queued by the pfifo thread), so this thread runs that work itself
+ * as it comes. Nothing polls: the main loop sleeps until the pfifo thread
+ * queues the work (which kicks the vCPU and wakes the loop) or the bound. */
 bool nv2a_libretro_switch_renderer(int type)
 {
     NV2AState *d = g_nv2a;
+    CPUState *cpu = qemu_get_cpu(0);
+    QEMUTimer *bound;
+    bool ok = false;
 
-    if (!d || !qatomic_read(&d->pgraph.renderer)) {
+    if (!d || !cpu || !qatomic_read(&d->pgraph.renderer)) {
         return false;
     }
     g_config.display.renderer = type;
-    for (int i = 0; i < 500; i++) {
+    qemu_mutex_lock(&d->pfifo.lock);
+    pfifo_kick(d);
+    qemu_mutex_unlock(&d->pfifo.lock);
+
+    const int64_t end = qemu_clock_get_ms(QEMU_CLOCK_REALTIME) + 5000;
+    bound = timer_new_ms(QEMU_CLOCK_REALTIME, lr_switch_timeout_cb, NULL);
+    timer_mod(bound, end);
+    for (;;) {
         const PGRAPHRenderer *renderer = qatomic_read(&d->pgraph.renderer);
         if (renderer && renderer->type == type &&
             qatomic_read(&d->pgraph.renderer_switch_phase) ==
                 PGRAPH_RENDERER_SWITCH_PHASE_IDLE) {
-            return true;
+            ok = true;
+            break;
         }
-        qemu_mutex_lock(&d->pfifo.lock);
-        pfifo_kick(d);
-        qemu_mutex_unlock(&d->pfifo.lock);
-        g_usleep(10 * 1000);
+        if (qemu_clock_get_ms(QEMU_CLOCK_REALTIME) >= end) {
+            break;
+        }
+        if (!cpu_work_list_empty(cpu)) {
+            lr_vcpu_process_work(cpu);
+            continue;
+        }
+        main_loop_wait(false);
     }
-    return false;
+    timer_free(bound);
+    return ok;
 }
 
 void nv2a_trigger_display_render(void)
@@ -1143,19 +1171,6 @@ DEF_METHOD(NV097, FLIP_STALL)
 
     nv2a_profile_flip_stall();
     pg->waiting_for_flip = true;
-#ifdef LIBRETRO
-    {
-        extern int64_t xemu_lr_last_vblank_ns, xemu_lr_flip_stall_start_ns;
-        extern uint64_t xemu_lr_flips, xemu_lr_flip_phase[4];
-        const int64_t now = qemu_clock_get_ns(QEMU_CLOCK_REALTIME);
-        const int64_t phase = now - qatomic_read(&xemu_lr_last_vblank_ns);
-        const int bucket = phase < 8000000 ? 0 : phase < 14000000 ? 1 :
-                           phase < 16700000 ? 2 : 3;
-        qatomic_inc(&xemu_lr_flip_phase[bucket]);
-        qatomic_inc(&xemu_lr_flips);
-        xemu_lr_flip_stall_start_ns = now;
-    }
-#endif
 }
 
 int64_t xemu_flip_ready_ns;

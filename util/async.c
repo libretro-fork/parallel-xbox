@@ -461,6 +461,13 @@ LinuxAioState *aio_get_linux_aio(AioContext *ctx)
 }
 #endif
 
+#ifdef LIBRETRO
+/* The libretro core runs the guest on the main loop's own thread
+ * (ui/libretro.c): what wakes the main loop has to make the guest leave the
+ * translated code too, or it waits for the guest's next timer */
+void (*aio_main_notify_hook)(void);
+#endif
+
 void aio_notify(AioContext *ctx)
 {
     /*
@@ -478,6 +485,11 @@ void aio_notify(AioContext *ctx)
     if (qatomic_read(&ctx->notify_me)) {
         event_notifier_set(&ctx->notifier);
     }
+#ifdef LIBRETRO
+    if (aio_main_notify_hook && ctx == qemu_get_aio_context()) {
+        aio_main_notify_hook();
+    }
+#endif
 }
 
 void aio_notify_accept(AioContext *ctx)
