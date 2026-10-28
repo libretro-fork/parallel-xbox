@@ -1,0 +1,27 @@
+; The GP DSP test program for flash.asm -DDSP (see libretro/tests/README.md).
+; Each engine frame: wait for the frame's start, then rebuild mixbins 0 and 1
+; (X:$1400, 2 x 32 samples) sample by sample as the sum of 64 products
+; sample * 2^-6, X:$0000 times over (the passes, which the CPU writes before
+; it starts the GP), and halt until the next frame. The sum is exact, so the
+; samples come out unchanged, after passes * 4096 MACs.
+;
+; gp.inc is this program assembled (a56 -o gp.lod gp.a56, then the P words
+; as dd lines); a56 is a DSP56001 assembler, and the 56300 runs that code.
+        org     p:0
+spin
+        jclr    #1,x:$ffc5,spin
+        movep   #2,x:$ffc5
+        move    #$020000,y0
+        do      x:$0,pass_end
+        move    #$1400,r0
+        do      #64,smp_end
+        move    x:(r0),x0
+        clr     a
+        rep     #64
+        mac     x0,y0,a
+        move    a,x:(r0)+
+smp_end
+        nop
+pass_end
+        movep   #1,x:$ffc4
+        jmp     spin

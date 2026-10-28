@@ -1,6 +1,7 @@
 ; Test flash program: one looping 16-bit PCM voice on the MCPX APU's voice
 ; processor, a 1 kHz sine at 48 kHz (40 periods, 1920 samples), mixbins 0
-; and 1 at 0 dB, then the CPU halts. See libretro/tests/README.md.
+; and 1 at 0 dB, then the CPU halts. With -DDSP the GP DSP also runs
+; gp.a56 on the mixbins every engine frame. See libretro/tests/README.md.
         bits 32
         org 0xFFF00000
 
@@ -9,6 +10,12 @@
 %define VOICES       0x00100000
 %define SGE          0x00110000
 %define PCM          0x00200000
+%define GP           (APU + 0x30000)
+%define GPPROG       0x00120000     ; the GP's program, 2 pages
+%define GPSGE        0x00118000
+%ifndef GP_PASSES
+%define GP_PASSES    1              ; gp.a56's passes a frame
+%endif
 %define VOICE        64
 %ifndef HEADROOM
 %define HEADROOM     0
@@ -73,6 +80,24 @@ entry:
         pio 0x120, (1 << 16)             ; antecedent: 2D list top
         pio 0x124, VOICE                 ; VOICE_ON, envelopes off
 
+%ifdef DSP
+        ; the GP DSP's program (gp.a56) into its scratch memory, where its
+        ; bootstrap loads P:0 from, then the GP out of reset
+        mov esi, gp_prog
+        mov edi, GPPROG
+        mov ecx, (gp_prog_end - gp_prog) / 4
+        rep movsd
+        mov dword [GPSGE], GPPROG
+        mov dword [GPSGE + 4], 0
+        mov dword [GPSGE + 8], GPPROG + 0x1000
+        mov dword [GPSGE + 12], 0
+        apu 0x2040, GPSGE                ; GPSADDR
+        apu 0x20D4, 1                    ; GPSMAXSGE
+        mov dword [GP + 0xFFFC], 0       ; GPRST: in reset
+        mov dword [GP + 0x0000], GP_PASSES ; X:$0000, the passes
+        mov dword [GP + 0xFFFC], 3       ; GPRST | GPDSPRST: bootstrap, run
+%endif
+
         ; start the sound engine
         apu 0x2000, (1 << 3)             ; SECTL XCNTMODE
 
@@ -85,6 +110,11 @@ halt:   hlt
         jmp halt
 
         align 16
+%ifdef DSP
+gp_prog:
+%include "gp.inc"
+gp_prog_end:
+%endif
 pcm_data:
 %include "sine.inc"
 pcm_end:

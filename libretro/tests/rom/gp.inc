@@ -1,0 +1,23 @@
+; gp.a56 assembled with a56: one dd per P-memory word, from P:0
+        dd 0x0A8581
+        dd 0x000000
+        dd 0x08F485
+        dd 0x000002
+        dd 0x46F400
+        dd 0x020000
+        dd 0x060000
+        dd 0x000011
+        dd 0x60F400
+        dd 0x001400
+        dd 0x064080
+        dd 0x000010
+        dd 0x44E000
+        dd 0x200013
+        dd 0x0640A0
+        dd 0x2000D2
+        dd 0x565800
+        dd 0x000000
+        dd 0x08F484
+        dd 0x000001
+        dd 0x0AF080
+        dd 0x000000

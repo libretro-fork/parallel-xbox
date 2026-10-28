@@ -1764,7 +1764,12 @@ static void lr_run_frame(void)
         return;
     }
 
-    cpu_enable_ticks();
+    /* The guest's clock runs only while the guest does (its slices below)
+     * or waits on a device: the time the emulator thread spends in the
+     * devices' timers and bottom halves (an APU frame through the DSP) is
+     * not the guest's, or a frame that costs more host time than it covers
+     * in guest time would make more of them due than it finishes */
+    cpu_disable_ticks();
     now = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
     /* A first frame, or a clock that jumped (a state was loaded): the grid
      * starts here */
@@ -1819,7 +1824,9 @@ static void lr_run_frame(void)
             retro_atomic_store_release_64(&lr_kick_at,
                 qemu_clock_get_ns(QEMU_CLOCK_REALTIME) + until);
             retro_eventcount_notify(&lr_done_ec);
+            cpu_enable_ticks();
             lr_vcpu_run_slice(cpu);
+            cpu_disable_ticks();
             retro_atomic_store_release_64(&lr_kick_at, INT64_MAX);
             continue;
         }
@@ -1828,14 +1835,14 @@ static void lr_run_frame(void)
         if (lr_devices_busy()) {
             /* its time passes as the host's until something happens:
              * a bottom half, a file descriptor, the next timer */
+            cpu_enable_ticks();
             main_loop_wait(false);
+            cpu_disable_ticks();
         } else {
             /* nothing to wait for: on to the next deadline */
             cpu_clock_skip_to(now + until);
         }
     }
-
-    cpu_disable_ticks();
 }
 
 /* After a command: the guest's clock stands still until the next frame
