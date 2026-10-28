@@ -4,6 +4,7 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- The core no longer does process setup in RetroArch's process: it installed signal handlers (on Windows a console Ctrl handler that slept 10 seconds), turned off the buffering of RetroArch's stdout and stderr, and raised the file descriptor limit.
 - The guest runs on RetroArch's frames: each frame RetroArch asks for runs exactly one frame of the Xbox's time (1001/60 ms) and hands over that frame's picture and its 800 or 801 samples, no more and no fewer. The sound's pitch and pace are the game's whatever the host's speed, without the crackles and gaps that came from the sound being made by the PC's clock and the frames by RetroArch's. Fast-forward, slow motion, pause and the menu now apply to the game itself: it stops between frames (a game no longer runs on while the menu is open, Akrido's Ninja Gaiden dirty disc error after the menu), and while the Xbox has nothing to do its time moves straight on, so fast-forward goes as fast as the host can run the game. The core declares the Xbox's exact NTSC rate, 59.9401 frames a second.
 - The pads are read once a frame, when RetroArch polls them, not from the emulator's thread in the middle of a frame, where RetroArch does not expect it.
 - Audio > Audio Volume works: it scaled nothing in the core.

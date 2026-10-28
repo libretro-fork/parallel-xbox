@@ -4009,15 +4009,8 @@ if have_block
     'job-qmp.c',
   ))
 
-  # os-posix.c contains POSIX-specific functions used by qemu-storage-daemon,
-  # os-win32.c does not
-  if host_os == 'windows'
-    system_ss.add(files('os-win32.c'))
-  elif host_os == 'emscripten'
-    blockdev_ss.add(files('os-wasm.c'))
-  else
-    blockdev_ss.add(files('os-posix.c'))
-  endif
+  # The core's process setup: none, it runs in the frontend's process
+  blockdev_ss.add(files('os-libretro.c'))
 endif
 
 specific_ss.add(files('xemu-xbe.c', 'xemu-version.c'))

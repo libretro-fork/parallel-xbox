@@ -87,3 +87,6 @@ ui/xemu-pointer-evdev.c
 ui/xemu-pointer-rawinput.c
 ui/xemu-pointer-stub.c
 ui/xemu-pointer.h
+os-posix.c
+os-wasm.c
+os-win32.c
