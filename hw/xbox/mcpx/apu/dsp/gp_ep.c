@@ -24,11 +24,14 @@
 
 static const int16_t ep_silence[256][2] = { 0 };
 
+/* The option values the DSPs were last set up for: none on a new device
+ * (mcpx_apu_dsp_init), so new content gets its monitor point and engine
+ * whatever the last content ran with */
+static int last_known_dsp_pref = -1;
+static int last_known_jit_pref = -1;
+
 void mcpx_apu_update_dsp_preference(MCPXAPUState *d)
 {
-    static int last_known_dsp_pref = -1;
-    static int last_known_jit_pref = -1;
-
     if (last_known_dsp_pref == (int)g_config.audio.use_dsp &&
         last_known_jit_pref == (int)g_config.audio.use_dsp_jit) {
         return;
@@ -632,6 +635,8 @@ bool mcpx_apu_dsp_uses_reg(hwaddr addr)
 
 void mcpx_apu_dsp_init(MCPXAPUState *d)
 {
+    last_known_dsp_pref = -1;
+    last_known_jit_pref = -1;
     d->gp.dsp = dsp_init(d, gp_scratch_rw, gp_fifo_rw, true);
     dsp_set_halt_requested(d->gp.dsp, false);
     dsp_set_cycle_count(d->gp.dsp, 0);
@@ -644,4 +649,29 @@ void mcpx_apu_dsp_init(MCPXAPUState *d)
      * use the full audio pipeline or not.
      */
     mcpx_apu_update_dsp_preference(d);
+}
+
+/* The device going away (content closed): the thread stopped and joined,
+ * the way the VP's workers are, then the DSPs freed */
+void mcpx_apu_dsp_finalize(MCPXAPUState *d)
+{
+    MCPXAPUDSPThread *t = &d->dsp_thread;
+
+    if (t->thread) {
+        mcpx_apu_dsp_quiesce(d);
+        retro_atomic_store_release_int(&t->should_exit, 1);
+        /* a post it does not run: should_exit is checked first */
+        retro_atomic_store_release_int(&t->posted,
+                                       retro_atomic_load_acquire_int(&t->posted) + 1);
+        retro_eventcount_notify(&t->wake);
+        sthread_join(t->thread);
+        retro_eventcount_free(&t->wake);
+        retro_eventcount_free(&t->finished);
+        t->thread = NULL;
+        t->seen = 0;
+    }
+    dsp_destroy(d->gp.dsp);
+    dsp_destroy(d->ep.dsp);
+    d->gp.dsp = NULL;
+    d->ep.dsp = NULL;
 }

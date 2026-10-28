@@ -209,12 +209,12 @@ static void dsp_dma_run(DSPDMAState *s)
         size_t transfer_size = count * item_size;
 
         // FIXME: Remove this intermediate buffer
-        static uint8_t *scratch_buf = NULL;
-        static ssize_t scratch_buf_size = -1;
-        if (count * item_size > scratch_buf_size) {
-            scratch_buf_size = count * item_size;
-            scratch_buf = malloc(scratch_buf_size);
-        }
+        /* the DSP's whole P, X or Y space at the widest item: a fixed
+         * buffer, no allocation on the DSPs' thread (and the one grown
+         * with malloc leaked each time it grew) */
+        static uint8_t scratch_buf[0x1800 * 4];
+        assert(count * item_size <= sizeof(scratch_buf));
+        assert(block_count * item_size * channel_count <= sizeof(scratch_buf));
 
         if (direction) {
             if (dsp_interleave) {

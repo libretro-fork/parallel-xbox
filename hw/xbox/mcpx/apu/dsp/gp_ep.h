@@ -80,6 +80,7 @@ typedef struct MCPXAPUDSPThread {
 } MCPXAPUDSPThread;
 
 void mcpx_apu_dsp_init(MCPXAPUState *d);
+void mcpx_apu_dsp_finalize(MCPXAPUState *d);
 void mcpx_apu_update_dsp_preference(MCPXAPUState *d);
 /* The engine's frame: the mixbins buffer the VP fills for it (free: the
  * thread is on the other one at most), then that handed to the thread.

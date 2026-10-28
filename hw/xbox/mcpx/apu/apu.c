@@ -306,6 +306,7 @@ static void mcpx_apu_exitfn(PCIDevice *dev)
 
     timer_free(d->tick_timer);
     d->tick_timer = NULL;
+    mcpx_apu_dsp_finalize(d);
     mcpx_apu_vp_finalize(d);
     mcpx_apu_monitor_finalize(d);
 }

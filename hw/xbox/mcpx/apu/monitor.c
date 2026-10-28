@@ -120,8 +120,14 @@ void mcpx_apu_monitor_init(MCPXAPUState *d, Error **errp)
     apu_queue_reset();
 }
 
+/* The device going away: the frontend's thread is not reading (the
+ * content is closed), so the queue goes too; the next device makes one */
 void mcpx_apu_monitor_finalize(MCPXAPUState *d)
 {
+    if (apu_queue_ready) {
+        apu_queue_ready = false;
+        retro_spsc_free(&apu_queue);
+    }
 }
 
 /* The samples' room in the queue, or none: a frame the frontend has no
