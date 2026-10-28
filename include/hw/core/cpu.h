@@ -400,6 +400,9 @@ typedef struct CPUNegativeOffsetState {
 /* the instructions a wait is recognised after: a few hundred turns of a
  * spin loop, and more than any store-free stretch of a game's own work */
 #define LR_QUIET_INSNS 8192
+/* and the block-end exits (sti, hlt-like, a few turns of the kernel's
+ * idle loop) with nothing stored between them (accel/tcg/cpu-exec.c) */
+#define LR_QUIET_EXITS 16
 
 struct KVMState;
 struct kvm_run;
@@ -612,6 +615,12 @@ struct CPUState {
 
     /* track IOMMUs whose translations we've cached in the TCG TLB */
     GArray *iommu_notifiers;
+
+    /* the libretro core's idle detection by block-end exits
+     * (accel/tcg/cpu-exec.c): neg.lr_quiet as of the last exit, and the
+     * exits in a row it was unchanged over */
+    int32_t lr_quiet_at_exit;
+    int32_t lr_quiet_exits;
 
     /*
      * MUST BE LAST in order to minimize the displacement to CPUArchState.

@@ -1184,7 +1184,42 @@ static inline void cpu_loop_exec_tb(CPUState *cpu, TranslationBlock *tb,
     tb = cpu_tb_exec(cpu, tb, tb_exit);
     if (*tb_exit != TB_EXIT_REQUESTED) {
         *last_tb = tb;
+#ifdef LIBRETRO
+        /* The libretro core's idle detection, the other way a wait shows:
+         * the Xbox kernel's idle thread is "sti; nop; nop; cli; cmp; je",
+         * and sti ends a block with a plain exit to this loop (no block to
+         * chain to: tb NULL), so the thread comes through here twice a
+         * turn, 7.6 M times a second, and runs only a few thousand
+         * instructions a millisecond of guest time, never enough to spend
+         * LR_QUIET_INSNS before the next timer. A run of LR_QUIET_EXITS
+         * such exits with nothing stored and no device touched between
+         * them (lr_quiet only counted down since the last) is the same
+         * wait: a
+         * game's own work chains its blocks, and exits here only on a
+         * store-free stretch of that many sti/cli pairs, which is none. */
+        if (tb) {
+            return;
+        }
+        if (cpu->neg.lr_quiet < cpu->lr_quiet_at_exit &&
+            cpu->neg.lr_quiet != LR_QUIET_INSNS) {
+            /* counted down, not reset, since the last exit (a block that
+             * stored leaves the count at exactly LR_QUIET_INSNS: the reset
+             * comes after the block's countdown, a rep stos's every
+             * step) */
+            cpu->lr_quiet_at_exit = cpu->neg.lr_quiet;
+            if (++cpu->lr_quiet_exits < LR_QUIET_EXITS) {
+                return;
+            }
+            cpu->lr_quiet_exits = 0;
+            cpu->neg.lr_quiet = -1;
+        } else {
+            cpu->lr_quiet_exits = 0;
+            cpu->lr_quiet_at_exit = cpu->neg.lr_quiet;
+            return;
+        }
+#else
         return;
+#endif
     }
 
     *last_tb = NULL;
@@ -1197,8 +1232,10 @@ static inline void cpu_loop_exec_tb(CPUState *cpu, TranslationBlock *tb,
          * under way on another thread. */
         extern void lr_quiet_exit(CPUState *cpu);
         cpu->neg.lr_quiet = LR_QUIET_INSNS;
+        cpu->lr_quiet_at_exit = LR_QUIET_INSNS;
         lr_quiet_exit(cpu);
-        if (cpu_loop_exit_requested(cpu)) {
+        if (!tb || cpu_loop_exit_requested(cpu)) {
+            /* a plain block-end exit (tb NULL) has no budget to refill */
             return;
         }
     }

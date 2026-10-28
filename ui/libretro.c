@@ -83,6 +83,7 @@ static retro_log_printf_t         log_cb       = NULL;
 #define LRLOG_INFO(...)  do { if (log_cb) log_cb(RETRO_LOG_INFO,  __VA_ARGS__); } while(0)
 #define LRLOG_WARN(...)  do { if (log_cb) log_cb(RETRO_LOG_WARN,  __VA_ARGS__); } while(0)
 #define LRLOG_ERROR(...) do { if (log_cb) log_cb(RETRO_LOG_ERROR, __VA_ARGS__); } while(0)
+
 #define LRLOG_DEBUG(...) do { if (log_cb) log_cb(RETRO_LOG_DEBUG, __VA_ARGS__); } while(0)
 
 /* ========================================================================= */
@@ -1765,17 +1766,33 @@ extern int nv2a_libretro_waiter;
  * Unless something it may be waiting for is under way on another thread:
  * then it spins on, as the GPU or disk works meanwhile. On the vCPU
  * (emulator) thread, without the BQL. */
+/* the guest left its slice waiting on a device (lr_quiet_exit): it is
+ * parked, as a halted guest is, until the frame loop is woken */
+static bool lr_quiet;
+
 void lr_quiet_exit(CPUState *cpu)
 {
     int64_t deadline;
 
     if (lr_devices_busy()) {
-        return;
-    }
-    deadline = qemu_clock_deadline_ns_all(QEMU_CLOCK_VIRTUAL,
-                                          QEMU_TIMER_ATTR_ALL);
-    if (deadline > 0) {
-        icount_skip_to(qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) + deadline);
+        /* The GPU (or the disk) has work the guest may be waiting for:
+         * its time stands still and the slice ends, and the frame loop
+         * waits as for a halted guest, until the GPU parks or anything
+         * else wakes it; then the guest looks again. Spinning on through
+         * the translated code instead cost the whole of the host's time
+         * (the kernel's idle thread, 7.6 M block exits a second, for the
+         * time the GPU drew the frame), and skipping its time on would
+         * run the frame out from under the GPU. A guest waiting on its
+         * own timer meanwhile waits at most until the GPU's next park. */
+        lr_quiet = true;
+    } else {
+        /* nothing under way: on to the next timer, the thing a waiting
+         * guest is most often waiting for (another thread's turn, a tick) */
+        deadline = qemu_clock_deadline_ns_all(QEMU_CLOCK_VIRTUAL,
+                                              QEMU_TIMER_ATTR_ALL);
+        if (deadline > 0) {
+            icount_skip_to(qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) + deadline);
+        }
     }
     lr_vcpu_exit(cpu);
 }
@@ -1851,7 +1868,7 @@ static void lr_run_frame(void)
             until = deadline;
         }
 
-        if (lr_vcpu_runnable(cpu) || cpu->stop ||
+        if ((lr_vcpu_runnable(cpu) && !lr_quiet) || cpu->stop ||
             !cpu_work_list_empty(cpu)) {
             /* the guest runs until its next timer is due: the slice stops
              * itself after the instructions that take it there */
@@ -1859,7 +1876,9 @@ static void lr_run_frame(void)
             continue;
         }
 
-        /* The guest idles */
+        /* The guest idles: halted, or parked waiting on a device
+         * (lr_quiet_exit), for this one wait */
+        lr_quiet = false;
         qatomic_set_mb(&nv2a_libretro_waiter, 1);
         if (lr_devices_busy()) {
             /* its time stands still until something happens: a bottom
