@@ -178,12 +178,15 @@ void libretro_input_latch(bool use_bitmask)
         gp->axis[CONTROLLER_AXIS_LTRIG] = lt;
         gp->axis[CONTROLLER_AXIS_RTRIG] = rt;
 
+        /* RetroArch's Y is down, the Xbox's up: negated with -32768 (a
+         * stick pushed fully up) saturating to 32767, since -(-32768)
+         * wraps to -32768, full down */
         libretro_input_stick(port, RETRO_DEVICE_INDEX_ANALOG_LEFT, &x, &y);
         gp->axis[CONTROLLER_AXIS_LSTICK_X] = x;
-        gp->axis[CONTROLLER_AXIS_LSTICK_Y] = -y;
+        gp->axis[CONTROLLER_AXIS_LSTICK_Y] = y == -32768 ? 32767 : -y;
         libretro_input_stick(port, RETRO_DEVICE_INDEX_ANALOG_RIGHT, &x, &y);
         gp->axis[CONTROLLER_AXIS_RSTICK_X] = x;
-        gp->axis[CONTROLLER_AXIS_RSTICK_Y] = -y;
+        gp->axis[CONTROLLER_AXIS_RSTICK_Y] = y == -32768 ? 32767 : -y;
     }
 }
 

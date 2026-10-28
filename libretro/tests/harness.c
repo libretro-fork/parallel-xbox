@@ -20,6 +20,7 @@
  *     --pad-port N      the port --pad holds on (0)
  *     --stick F:X:Y[:LEN]  hold the left stick at X,Y (the right at -X,-Y)
  *                       for LEN runs from run F, on --pad-port's port
+ *     --lstick F:X:Y[:LEN]  as --stick, the right stick left centred
  *     --shot N FILE     write run N's frame to FILE as a PPM
  *     --csv FILE        per-run log: run, audio frames, video flag, us
  *     --save N          retro_serialize before run N
@@ -103,7 +104,7 @@ static int run_no_cb;
 static int shot_at[MAX_SHOTS], nshots;
 static const char *shot_path[MAX_SHOTS];
 static unsigned pad_port; /* --pad-port: the RetroPad's port, 0 by default */
-static int stick_first, stick_len, stick_on;
+static int stick_first, stick_len, stick_on, stick_left_only;
 static int port_analog[4]; /* the core declared the port's device analog */
 static int16_t stick_x, stick_y;
 static unsigned last_w, last_h;
@@ -424,7 +425,7 @@ static int16_t input_state_cb(unsigned port, unsigned dev, unsigned idx,
       else if (id == RETRO_DEVICE_ID_ANALOG_Y)
          v = stick_y;
       if (idx == RETRO_DEVICE_INDEX_ANALOG_RIGHT)
-         v = (int16_t)-v;
+         v = stick_left_only ? 0 : (int16_t)-v;
       if (idx == RETRO_DEVICE_INDEX_ANALOG_BUTTON)
          return 0;
       return stick_on ? v : 0;
@@ -702,8 +703,10 @@ int main(int argc, char **argv)
       }
       else if (!strcmp(argv[i], "--pad-port") && i + 1 < argc)
          pad_port = atoi(argv[++i]);
-      else if (!strcmp(argv[i], "--stick") && i + 1 < argc)
+      else if ((!strcmp(argv[i], "--stick") || !strcmp(argv[i], "--lstick"))
+               && i + 1 < argc)
       {
+         stick_left_only = !strcmp(argv[i], "--lstick");
          int x = 0, y = 0;
          stick_len = 1;
          sscanf(argv[++i], "%d:%d:%d:%d", &stick_first, &x, &y, &stick_len);

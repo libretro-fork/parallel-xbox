@@ -107,6 +107,17 @@ grep -E "peek_0x300020=0xb564d33c$" "$work/pad.txt" >/dev/null || {
     echo "FAIL: the right stick did not reach the pad: $(grep peek_0x300020 "$work/pad.txt")"; exit 1; }
 grep -E "rumble_calls=[1-9]" "$work/pad.txt" >/dev/null || {
     echo "FAIL: the pad's motors did not reach the frontend"; exit 1; }
+# Both sticks pushed fully up, RetroArch's -32768: the Xbox's way up is
+# 32767 on both, not -32768 (a negation that wrapped, full down: Jet Set
+# Radio Future turned round instead of running forward)
+echo "== the pad over USB, sticks fully up"
+timeout 300 $h "$(path "$core")" "$(path "$work/sysp")" $vp --frames 300 --strict \
+  --stick 20:0:-32768:1000 --peek 0x30001c --peek 0x300020 >"$work/pad2.txt"
+grep -E "peek_" "$work/pad2.txt"
+grep -E "peek_0x30001c=0x7fff0000$" "$work/pad2.txt" >/dev/null || {
+    echo "FAIL: the left stick fully up is not 32767: $(grep peek_0x30001c "$work/pad2.txt")"; exit 1; }
+grep -E "peek_0x300020=0x7fff0000$" "$work/pad2.txt" >/dev/null || {
+    echo "FAIL: the right stick fully up is not 32767: $(grep peek_0x300020 "$work/pad2.txt")"; exit 1; }
 
 # The guest's time is its instructions, never the host's: a frame is the
 # same work however fast the host runs it. The busy guest's RAM (its
