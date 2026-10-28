@@ -14,7 +14,7 @@ core=$(readlink -f "$1")
 here=$(cd "$(dirname "$0")" && pwd)
 work=${2:-$(mktemp -d)}
 mkdir -p "$work/bin" "$work/sys/xemu" "$work/sysb/xemu" "$work/sysd/xemu" \
-    "$work/syss/xemu"
+    "$work/syss/xemu" "$work/sysp/xemu"
 
 # The harness's paths, as the core's OS spells them
 path() { echo "$1"; }
@@ -50,6 +50,8 @@ cp "$work/sys/xemu/mcpx_1.0.bin" "$work/sysb/xemu/"
 nasm -f bin -DBUSY -I"$here/rom/" -o "$work/sysb/xemu/Complex_4627v1.03.bin" "$here/rom/flash.asm"
 cp "$work/sys/xemu/mcpx_1.0.bin" "$work/syss/xemu/"
 nasm -f bin -DSPIN -I"$here/rom/" -o "$work/syss/xemu/Complex_4627v1.03.bin" "$here/rom/flash.asm"
+cp "$work/sys/xemu/mcpx_1.0.bin" "$work/sysp/xemu/"
+nasm -f bin -DPAD -I"$here/rom/" -o "$work/sysp/xemu/Complex_4627v1.03.bin" "$here/rom/flash.asm"
 cp "$work/sys/xemu/mcpx_1.0.bin" "$work/sysd/xemu/"
 nasm -f bin -DDSP -DGP_PASSES=16 -I"$here/rom/" -o "$work/sysd/xemu/Complex_4627v1.03.bin" "$here/rom/flash.asm"
 
@@ -78,6 +80,22 @@ t "busy guest, unpaced" $h "$(path "$core")" "$(path "$work/sysb")" $vp --frames
 t "spinning guest, unpaced" $h "$(path "$core")" "$(path "$work/syss")" $vp --frames 3000 --strict \
   --min-speed 4 --wav "$(path "$work/spin.wav")"
 "$work/bin/sinecheck" "$work/spin.wav" --frames 2402400
+
+# The pad, through the USB controller as the kernel reads it (rom/pad.c):
+# the hubs found by their status-change reports, their ports reset, the
+# pad polled on the periodic list. The harness holds Start from run 20:
+# the setup is done (status 0), reports came, and the last one has Start
+# (XID wButtons bit 4) and nothing else.
+echo "== the pad over USB"
+timeout 300 $h "$(path "$core")" "$(path "$work/sysp")" $vp --frames 300 --strict \
+  --pad 20:3:1000 --peek 0x300008 --peek 0x30000c --peek 0x300010 >"$work/pad.txt"
+grep -E "speed=|peek_" "$work/pad.txt"
+grep -E "peek_0x300008=0x00000000$" "$work/pad.txt" >/dev/null || {
+    echo "FAIL: the pad's USB setup did not complete: $(grep peek_0x300008 "$work/pad.txt")"; exit 1; }
+grep -E "peek_0x30000c=0x0000[0-9a-f]{4}$" "$work/pad.txt" | grep -v "=0x00000000$" >/dev/null || {
+    echo "FAIL: no reports from the pad"; exit 1; }
+grep -E "peek_0x300010=0x00101400$" "$work/pad.txt" >/dev/null || {
+    echo "FAIL: the pad's report is not Start: $(grep peek_0x300010 "$work/pad.txt")"; exit 1; }
 
 # The guest's time is its instructions, never the host's: a frame is the
 # same work however fast the host runs it. The busy guest's RAM (its

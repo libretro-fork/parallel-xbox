@@ -21,6 +21,9 @@
 %define HEADROOM     0
 %endif
 
+%ifdef PAD
+%include "pad.inc"          ; PAD_BASE, PAD_ENTRY and the bytes, laid out at the end
+%endif
 %macro pcicfg 3          ; dev, reg, value (bus 0, function 0)
         mov dx, 0xCF8
         mov eax, 0x80000000 | ((%1) << 11) | (%2)
@@ -106,6 +109,10 @@ entry:
 busy:   inc dword [0x00300000]
         jmp busy
 %endif
+%ifdef PAD
+        ; the pad through the USB controller (pad.c): never returns
+        call PAD_ENTRY
+%endif
 %ifdef SPIN
         ; the CPU spins on a word in RAM that nothing writes, as the kernel's
         ; idle thread does: a wait, which the core's idle detection moves
@@ -126,4 +133,8 @@ gp_prog_end:
 pcm_data:
 %include "sine.inc"
 pcm_end:
+%ifdef PAD
+        times PAD_BASE - 0xFFF00000 - ($ - $$) db 0xFF
+        pad_bytes
+%endif
         times 0x100000 - ($ - $$) db 0xFF

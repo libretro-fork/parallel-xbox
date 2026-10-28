@@ -32,6 +32,7 @@
  *                       audio in one batch and a video call
  *     --min-speed X     exit 1 if the unpaced runs ran slower than X times
  *                       real time
+ *     --peek ADDR       print the dword of system RAM at ADDR at the end
  *
  * At the end it prints a hash of the system RAM, and the busy test ROM's
  * counter at 0x300000.
@@ -60,6 +61,7 @@
 
 #define MAX_OPTS 64
 #define MAX_EVENTS 64
+#define MAX_PEEK 8
 
 static struct { char key[128]; char val[128]; } opts[MAX_OPTS];
 static int nopts;
@@ -529,6 +531,8 @@ int main(int argc, char **argv)
    int save_at = -1, load_at = -1, reset_at = -1, reload_at = -1;
    int strict = 0, fail = 0;
    double min_speed = 0.0;
+   unsigned long peek[MAX_PEEK];
+   int npeek = 0, k;
    void *state = NULL;
    size_t state_size = 0;
    const char *state_out = NULL, *state_in = NULL;
@@ -598,6 +602,8 @@ int main(int argc, char **argv)
          verify_load = 1;
       else if (!strcmp(argv[i], "--min-speed") && i + 1 < argc)
          min_speed = atof(argv[++i]);
+      else if (!strcmp(argv[i], "--peek") && i + 1 < argc && npeek < MAX_PEEK)
+         peek[npeek++] = strtoul(argv[++i], NULL, 0);
       else if (!strcmp(argv[i], "--reload") && i + 1 < argc)
          reload_at = atoi(argv[++i]);
       else if (!strcmp(argv[i], "--reset") && i + 1 < argc)
@@ -890,6 +896,13 @@ int main(int argc, char **argv)
             p_mem_size(RETRO_MEMORY_SYSTEM_RAM), ctr,
             (unsigned long long)fnv(0xcbf29ce484222325ULL, ram,
                p_mem_size(RETRO_MEMORY_SYSTEM_RAM)));
+      for (k = 0; k < npeek; k++)
+      {
+         uint32_t v = 0;
+         if (peek[k] + 4 <= p_mem_size(RETRO_MEMORY_SYSTEM_RAM))
+            memcpy(&v, ram + peek[k], 4);
+         printf("peek_0x%lx=0x%08x\n", peek[k], v);
+      }
    }
 #ifndef _WIN32
    if (getenv("HARNESS_THREADS"))

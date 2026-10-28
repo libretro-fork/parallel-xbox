@@ -11,7 +11,14 @@ Microsoft file is needed. CI runs it after every Linux build.
   processor, a 1 kHz sine at 48 kHz and 0 dB (`sine.inc`, 40 periods), and
   halts; built with `-DBUSY` it counts in RAM at 0x300000 instead, so the
   CPU never rests; built with `-DDSP` it also loads `gp.a56` into the APU's
-  GP DSP and starts it (`-DGP_PASSES=n` sets its load, 1 by default).
+  GP DSP and starts it (`-DGP_PASSES=n` sets its load, 1 by default);
+  built with `-DSPIN` it spins on a word in RAM that nothing writes; built
+  with `-DPAD` it runs `pad.c`.
+- `rom/pad.c`: the pad through the USB controller, as the kernel reads it:
+  the two hubs found by their status-change reports and configured, their
+  ports reset, the pad's reports taken over its interrupt endpoint on the
+  periodic list and copied to RAM. Freestanding 32-bit C; `pad.sh` builds
+  it into `pad.inc` (committed, so the tests need no 32-bit compiler).
 - `rom/gp.a56`: the GP DSP's program. Every 32-sample frame it rebuilds
   mixbins 0 and 1 from 64 exact products a sample, n times over, so the tone
   comes out of the DSP unchanged after n x 4096 MACs. `gp.inc` is it
@@ -23,7 +30,9 @@ Microsoft file is needed. CI runs it after every Linux build.
 What `run.sh` checks: every `retro_run` hands over one video frame and
 exactly one frame's worth of audio (800 or 801 samples at 60000/1001 fps),
 idle and busy; the tone has no gap; an idle guest runs far faster than real
-time when the frontend does not pace it (fast-forward); with APU DSP
+time when the frontend does not pace it (fast-forward), and so does one
+that spins waiting; the busy guest does the same work paced and unpaced;
+the pad's buttons reach the guest over USB; with APU DSP
 Emulation on, the tone comes through the GP DSP whole on the interpreter and
 on the JIT, the interpreter does not fall behind on a heavy program, and
 the JIT's state survives a savestate; savestates, loads and resets between
