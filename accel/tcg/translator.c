@@ -39,8 +39,15 @@ void tcg_gen_lookup_and_goto_ptr_fast(TCGv_i64 pc, uint64_t cs_base,
     TCGv_i32 t32;
     TCGv_ptr ent, tb, code, hoff;
 
+    /* The libretro core runs with icount (its guest's time is its
+     * instructions): the inline lookup is safe with it, as the cflags
+     * compare below sends a block with a cut-down instruction count
+     * (CF_COUNT_MASK) to the slow path, as tb_lookup() does, and the
+     * blocks' own countdown (gen_tb_start) ends a chain whose budget is
+     * spent. QEMU leaves icount out for its helper path's extra budget
+     * check before each block, which that countdown makes redundant. */
     if (cflags & (CF_NO_GOTO_PTR | CF_COUNT_MASK | CF_SINGLE_STEP |
-                  CF_MEMI_ONLY | CF_USE_ICOUNT | CF_BP_PAGE | CF_NOIRQ)) {
+                  CF_MEMI_ONLY | CF_BP_PAGE | CF_NOIRQ)) {
         tcg_gen_lookup_and_goto_ptr();
         return;
     }
