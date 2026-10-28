@@ -17,6 +17,8 @@
  *     --rt-runs N       pace only the first N runs, then flat out
  *     --key F:ID[:LEN]  hold RETROK id for LEN runs from run F
  *     --pad F:ID[:LEN]  hold joypad id on port 0 for LEN runs from run F
+ *     --pad-port N      the port --pad holds on (0)
+ *     --shot N FILE     write run N's frame to FILE as a PPM
  *     --csv FILE        per-run log: run, audio frames, video flag, us
  *     --save N          retro_serialize before run N
  *     --load N          retro_unserialize (the state saved) before run N
@@ -93,6 +95,11 @@ static long wav_frames;
 static uint64_t audio_hash = 1469598103934665603ull;
 static uint64_t video_hash = 1469598103934665603ull;
 static int hash_video;
+static int run_no_cb;
+#define MAX_SHOTS 8
+static int shot_at[MAX_SHOTS], nshots;
+static const char *shot_path[MAX_SHOTS];
+static unsigned pad_port; /* --pad-port: the RetroPad's port, 0 by default */
 static unsigned last_w, last_h;
 static int batches_this_run;
 
@@ -179,6 +186,9 @@ static bool env_cb(unsigned cmd, void *data)
          *(const char **)data = sysdir;
          return true;
       case RETRO_ENVIRONMENT_SET_PIXEL_FORMAT:
+      case RETRO_ENVIRONMENT_GET_INPUT_BITMASKS:
+         /* as RetroArch: the core reads the pad's buttons as one mask */
+         return true;
       case RETRO_ENVIRONMENT_SET_INPUT_DESCRIPTORS:
       case RETRO_ENVIRONMENT_SET_SUPPORT_NO_GAME:
       case RETRO_ENVIRONMENT_SET_CORE_OPTIONS_V2:
@@ -275,6 +285,23 @@ static void video_cb(const void *data, unsigned w, unsigned h, size_t pitch)
       glReadPixels(0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, px);
       p_glBindFramebuffer(GL_FRAMEBUFFER, 0);
       video_hash = fnv(video_hash, px, need);
+      for (int k = 0; k < nshots; k++)
+      {
+         /* --shot N FILE: the frame of run N as a PPM, top row first */
+         FILE *f;
+         if (run_no_cb != shot_at[k])
+            continue;
+         f = fopen(shot_path[k], "wb");
+         if (f)
+         {
+            unsigned y, x;
+            fprintf(f, "P6\n%u %u\n255\n", w, h);
+            for (y = 0; y < h; y++)
+               for (x = 0; x < w; x++)
+                  fwrite(px + ((size_t)(h - 1 - y) * w + x) * 4, 1, 3, f);
+            fclose(f);
+         }
+      }
    }
 }
 
@@ -337,7 +364,7 @@ static int16_t input_state_cb(unsigned port, unsigned dev, unsigned idx,
    (void)idx;
    if (dev == RETRO_DEVICE_KEYBOARD)
       return (int16_t)held(1, id);
-   if (port == 0 && dev == RETRO_DEVICE_JOYPAD)
+   if (port == pad_port && dev == RETRO_DEVICE_JOYPAD)
    {
       if (id == RETRO_DEVICE_ID_JOYPAD_MASK)
       {
@@ -602,6 +629,14 @@ int main(int argc, char **argv)
          verify_load = 1;
       else if (!strcmp(argv[i], "--min-speed") && i + 1 < argc)
          min_speed = atof(argv[++i]);
+      else if (!strcmp(argv[i], "--shot") && i + 2 < argc && nshots < MAX_SHOTS)
+      {
+         shot_at[nshots] = atoi(argv[++i]);
+         shot_path[nshots++] = argv[++i];
+         hash_video = 1;
+      }
+      else if (!strcmp(argv[i], "--pad-port") && i + 1 < argc)
+         pad_port = atoi(argv[++i]);
       else if (!strcmp(argv[i], "--peek") && i + 1 < argc && npeek < MAX_PEEK)
          peek[npeek++] = strtoul(argv[++i], NULL, 0);
       else if (!strcmp(argv[i], "--reload") && i + 1 < argc)
@@ -714,6 +749,7 @@ int main(int argc, char **argv)
    for (run_no = 0; run_no < frames; run_no++)
    {
       int64_t a, d;
+      run_no_cb = run_no;
       if (run_no == rt_runs)
       {
          t_free = now_us();
