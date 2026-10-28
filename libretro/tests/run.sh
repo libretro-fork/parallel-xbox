@@ -69,6 +69,23 @@ t "busy guest, unpaced" $h "$(path "$core")" "$(path "$work/sysb")" $vp --frames
   --wav "$(path "$work/busy.wav")"
 "$work/bin/sinecheck" "$work/busy.wav" --frames 480480
 
+# The guest's time is its instructions, never the host's: a frame is the
+# same work however fast the host runs it. The busy guest's RAM (its
+# counter) after 120 frames is the same flat out and at 59.94 Hz.
+echo "== busy guest: the same work flat out and paced"
+timeout 300 $h "$(path "$core")" "$(path "$work/sysb")" $vp --frames 120 --strict \
+  >"$work/flat.txt"
+timeout 300 $h "$(path "$core")" "$(path "$work/sysb")" $vp --frames 120 --strict \
+  --realtime >"$work/paced.txt"
+flat=$(grep -o 'counter_0x300000=.*' "$work/flat.txt")
+paced=$(grep -o 'counter_0x300000=.*' "$work/paced.txt")
+echo "flat out: $flat"
+echo "paced:    $paced"
+if [ -z "$flat" ] || [ "$flat" != "$paced" ]; then
+    echo "FAIL: the guest did different work in the same frames"
+    exit 1
+fi
+
 # APU DSP Emulation on, the GP DSP running a program of 16 x 4096 MACs a
 # 32-sample frame (rom/gp.a56) that hands the tone on unchanged: the tone
 # comes out of the GP whole, on the interpreter and on the JIT. The time the

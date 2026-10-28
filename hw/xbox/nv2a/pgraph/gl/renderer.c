@@ -288,6 +288,7 @@ static PGRAPHRenderer pgraph_gl_renderer = {
         .pre_shutdown_wait = pgraph_gl_pre_shutdown_wait,
         .process_pending = pgraph_gl_process_pending,
         .process_pending_reports = pgraph_gl_process_pending_reports,
+        .wait_pending_report = pgraph_gl_wait_pending_report,
         .surface_update = pgraph_gl_surface_update,
         .set_surface_scale_factor = pgraph_gl_set_surface_scale_factor,
         .get_surface_scale_factor = pgraph_gl_get_surface_scale_factor,

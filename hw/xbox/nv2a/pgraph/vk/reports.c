@@ -136,7 +136,8 @@ void pgraph_vk_process_pending_reports_internal(NV2AState *d)
      * counted per report window, up to the slot the method was issued at:
      * a later slot would count pixels drawn after the test, and a clear
      * served in the same pass would wipe the next test's. A report
-     * still running stays queued (the pfifo loop polls, reports_pending)
+     * still running stays queued (the pfifo thread waits for it when it has
+     * nothing else to do, pgraph_vk_wait_pending_report)
      * and the guest reads the previous value meanwhile, as on the hardware. */
 
     const int base = r->queries_read;
@@ -200,6 +201,29 @@ void pgraph_vk_process_pending_reports_internal(NV2AState *d)
     NV2A_VK_DGROUP_END();
 }
 
+/* The pfifo thread has nothing else to do while a report waits: block on
+ * the host GPU's completion of the report's last submitted slot (queries
+ * of one queue complete in order), then the poll above serves it. */
+bool pgraph_vk_wait_pending_report(NV2AState *d)
+{
+    PGRAPHVkState *r = d->pgraph.vk_renderer_state;
+    QueryReport *head = QSIMPLEQ_FIRST(&r->report_queue);
+    uint64_t result;
+    int end;
+
+    if (!head || head->query_count <= r->queries_read) {
+        return true; /* nothing to wait for: served on the next pass */
+    }
+    end = MIN((int)head->query_count, r->queries_submitted);
+    if (end <= r->queries_read) {
+        return false; /* not submitted yet */
+    }
+    vkGetQueryPoolResults(r->device, r->query_pool, end - 1, 1,
+                          sizeof(result), &result, sizeof(result),
+                          VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WAIT_BIT);
+    return true;
+}
+
 void pgraph_vk_process_pending_reports(NV2AState *d)
 {
     PGRAPHState *pg = &d->pgraph;
@@ -213,8 +237,9 @@ void pgraph_vk_process_pending_reports(NV2AState *d)
         pgraph_vk_finish(pg, VK_FINISH_REASON_STALLED);
         return; /* the finish served what was available */
     }
-    /* Poll while a report waits on submitted slots, and serve one whose
-     * window is already counted (a clear issued after the last draw). */
+    /* Serve what is available while a report waits on submitted slots,
+     * and one whose window is already counted (a clear issued after the
+     * last draw). */
     QueryReport *head = QSIMPLEQ_FIRST(&r->report_queue);
     if (head && (r->queries_read < r->queries_submitted ||
                  head->query_count <= r->queries_read)) {

@@ -37,6 +37,9 @@
 #include "system/cpu-timers.h"
 #include "system/cpu-timers-internal.h"
 #include "exec/icount.h"
+#ifdef LIBRETRO
+#include "system/libretro-vcpu.h"
+#endif
 
 /* clock and ticks */
 
@@ -136,14 +139,18 @@ void cpu_disable_ticks(void)
 }
 
 /*
- * The libretro core's frame clock: QEMU_CLOCK_VIRTUAL runs only while the
- * guest runs or waits on a device within a frame (cpu_enable_ticks and
- * cpu_disable_ticks around those), and while the guest idles with nothing
- * in flight it is moved on to the next deadline instead of waited out,
- * running or stopped. Only forwards.
+ * The libretro core's frame clock: QEMU_CLOCK_VIRTUAL is the guest's
+ * instructions (icount), and while the guest idles with nothing in flight
+ * it is moved on to the next deadline instead of waited out. Without
+ * icount, the host clock's time the guest ran, moved on the same way.
+ * Only forwards.
  */
 void cpu_clock_skip_to(int64_t vt)
 {
+    if (icount_enabled()) {
+        icount_skip_to(vt);
+        return;
+    }
     seqlock_write_lock(&timers_state.vm_clock_seqlock,
                        &timers_state.vm_clock_lock);
     {
@@ -266,6 +273,22 @@ static void do_nothing(CPUState *cpu, run_on_cpu_data unused)
 
 void qemu_timer_notify_cb(void *opaque, QEMUClockType type)
 {
+#ifdef LIBRETRO
+    /* The core's emulator thread is the vCPU and the main loop at once, and
+     * works out the guest's next slice from the timers before each one
+     * (ui/libretro.c): a guest timer set in a slice ends it, one set from
+     * another thread ends it and wakes the loop, one set between slices
+     * needs nothing. (No work is queued on the vCPU, which allocated an
+     * item for each timer set.) */
+    if (icount_enabled() && type == QEMU_CLOCK_VIRTUAL) {
+        if (current_cpu && qemu_cpu_is_self(current_cpu)) {
+            lr_vcpu_exit(current_cpu);
+        } else if (first_cpu && !qemu_cpu_is_self(first_cpu)) {
+            qemu_cpu_kick(first_cpu);
+        }
+        return;
+    }
+#endif
     if (!icount_enabled() || type != QEMU_CLOCK_VIRTUAL) {
         qemu_notify_event();
         return;

@@ -907,6 +907,7 @@ void pgraph_vk_clear_report_value(NV2AState *d);
 void pgraph_vk_get_report(NV2AState *d, uint32_t parameter);
 void pgraph_vk_process_pending_reports(NV2AState *d);
 void pgraph_vk_process_pending_reports_internal(NV2AState *d);
+bool pgraph_vk_wait_pending_report(NV2AState *d);
 
 typedef enum FinishReason {
     VK_FINISH_REASON_VERTEX_BUFFER_DIRTY,

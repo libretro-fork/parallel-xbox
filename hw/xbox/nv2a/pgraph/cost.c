@@ -673,6 +673,11 @@ void xemu_cost_frag_profile(PGRAPHState *pg, long *compute_milli,
  * host GPU (glFinish on GL), so the deadline is a floor over the host cost. */
 void xemu_cost_flip_deadline(NV2AState *d)
 {
+#ifdef LIBRETRO
+    /* a host clock's deadline: the libretro core's frames are the guest's
+     * work, done as fast as the host can (ui/libretro.c) */
+    return;
+#endif
     /* live UI toggle: perf.real_hw_speed */
     if (!g_config.perf.real_hw_speed) {
         return;

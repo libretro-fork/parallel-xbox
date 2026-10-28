@@ -527,6 +527,7 @@ void pgraph_gl_get_report(NV2AState *d, uint32_t parameter);
 void pgraph_gl_image_blit(NV2AState *d);
 void pgraph_gl_mark_textures_possibly_dirty(NV2AState *d, hwaddr addr, hwaddr size);
 void pgraph_gl_process_pending_reports(NV2AState *d);
+bool pgraph_gl_wait_pending_report(NV2AState *d);
 void pgraph_gl_drain_pending_reports(NV2AState *d);
 void pgraph_gl_surface_flush(NV2AState *d);
 void pgraph_gl_surface_update(NV2AState *d, bool upload, bool color_write, bool zeta_write);

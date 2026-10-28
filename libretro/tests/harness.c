@@ -33,6 +33,9 @@
  *     --min-speed X     exit 1 if the unpaced runs ran slower than X times
  *                       real time
  *
+ * At the end it prints a hash of the system RAM, and the busy test ROM's
+ * counter at 0x300000.
+ *
  * Plain C99. SPDX-License-Identifier: GPL-2.0-or-later
  */
 #define _GNU_SOURCE
@@ -883,8 +886,10 @@ int main(int argc, char **argv)
          (const unsigned char *)p_mem_data(RETRO_MEMORY_SYSTEM_RAM);
       uint32_t ctr;
       memcpy(&ctr, ram + 0x300000, 4);
-      printf("ram_size=%zu counter_0x300000=%u\n",
-            p_mem_size(RETRO_MEMORY_SYSTEM_RAM), ctr);
+      printf("ram_size=%zu counter_0x300000=%u ram_hash=%016llx\n",
+            p_mem_size(RETRO_MEMORY_SYSTEM_RAM), ctr,
+            (unsigned long long)fnv(0xcbf29ce484222325ULL, ram,
+               p_mem_size(RETRO_MEMORY_SYSTEM_RAM)));
    }
 #ifndef _WIN32
    if (getenv("HARNESS_THREADS"))

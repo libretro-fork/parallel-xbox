@@ -213,27 +213,22 @@ int nv2a_get_screen_off(void)
 }
 
 #ifdef LIBRETRO
-/* Whether the GPU has work the guest may be waiting for, for the core's
- * emulator thread (ui/libretro.c): an idle guest's time is not moved on
- * past it, so the GPU takes no guest time to catch up. A pusher held for a
- * flip waits for the next vblank, which is guest time, and is not busy.
- * Read without the fifo's locks: a guess the next look corrects. */
+/* Whether the GPU's thread is at work, for the core's emulator thread
+ * (ui/libretro.c): an idle guest's time stands still until it parks, so
+ * the GPU takes no guest time. A thread that waits for something only the
+ * guest's time brings (a flip held for the vblank, a NOP or context switch
+ * the guest has to answer) is parked, not busy; the emulator thread sets
+ * nv2a_libretro_waiter before it looks, and is woken when it parks. */
 bool nv2a_libretro_busy(void)
 {
     NV2AState *d = g_nv2a;
 
-    if (!d || qatomic_read(&d->pfifo.halt) ||
-        qatomic_read(&d->pgraph.waiting_for_flip)) {
+    if (!d || !qatomic_read(&d->pfifo.thread_running) ||
+        qatomic_read(&d->pfifo.halt)) {
         return false;
     }
-    if (qatomic_read(&d->pfifo.fifo_kick)) {
-        return true;
-    }
-    const uint32_t push = qatomic_read(
-        &d->pfifo.regs[NV_PFIFO_CACHE1_DMA_PUSH]);
-    return (push & NV_PFIFO_CACHE1_DMA_PUSH_ACCESS) &&
-           qatomic_read(&d->pfifo.regs[NV_PFIFO_CACHE1_DMA_GET]) !=
-           qatomic_read(&d->pfifo.regs[NV_PFIFO_CACHE1_DMA_PUT]);
+    return qatomic_read(&d->pfifo.fifo_kick) ||
+           !qatomic_read(&d->pfifo.parked);
 }
 #endif
 
@@ -248,8 +243,11 @@ QemuConsole *nv2a_get_vga_console(void)
 /* Modelled-GPU backlog deadline (see xemu_cost_flip_deadline). */
 int64_t xemu_gpu_free_ns;
 
+#ifndef LIBRETRO
 /* PCRTC VBlank driven by REALTIME wall clock at ~60Hz.
- * Decoupled from guest CPU speed — fires regardless of TCG load. */
+ * Decoupled from guest CPU speed — fires regardless of TCG load. (Not in
+ * the libretro core, which has no host clock: its vblank opens each frame
+ * of guest time, nv2a_vga_gfx_update.) */
 static void nv2a_realtime_vblank_cb(void *opaque)
 {
     NV2AState *d = opaque;
@@ -282,6 +280,7 @@ static void nv2a_flip_deadline_cb(void *opaque)
     pfifo_kick(d);
     qemu_mutex_unlock(&d->pfifo.lock);
 }
+#endif
 
 
 static void nv2a_vga_gfx_update(void *opaque)
@@ -352,16 +351,16 @@ static void nv2a_init_vga(NV2AState *d)
     d->hw_ops.gfx_update = nv2a_vga_gfx_update;
     vga->con = graphic_console_init(DEVICE(d), 0, &d->hw_ops, vga);
 
+#ifndef LIBRETRO
     /* PCRTC VBlank: REALTIME wall-clock timer at ~60Hz */
     d->vblank_timer = timer_new_ns(QEMU_CLOCK_REALTIME,
                                     nv2a_realtime_vblank_cb, d);
-#ifndef LIBRETRO
     d->vblank_deadline = qemu_clock_get_ns(QEMU_CLOCK_REALTIME) +
                          NV2A_VBLANK_INTERVAL_NS;
     timer_mod_ns(d->vblank_timer, d->vblank_deadline);
-#endif
     d->flip_timer = timer_new_ns(QEMU_CLOCK_REALTIME,
                                  nv2a_flip_deadline_cb, d);
+#endif
 
     /* hacky. swap out vga's vram */
     memory_region_destroy(&vga->vram);
@@ -514,15 +513,15 @@ static void nv2a_vm_state_change(void *opaque, bool running, RunState state)
      * snapshots taken mid-action then crash the guest on load. Stop the
      * timer while the VM is not running and restart it on a clean period
      * boundary. */
+#ifndef LIBRETRO
     if (!running) {
         timer_del(d->vblank_timer);
     } else {
-#ifndef LIBRETRO
         d->vblank_deadline = qemu_clock_get_ns(QEMU_CLOCK_REALTIME) +
                              NV2A_VBLANK_INTERVAL_NS;
         timer_mod_ns(d->vblank_timer, d->vblank_deadline);
-#endif
     }
+#endif
     if (state == RUN_STATE_SAVE_VM) {
         nv2a_lock_fifo(d);
         qatomic_set(&d->pfifo.halt, true);

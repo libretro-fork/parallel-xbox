@@ -112,6 +112,11 @@ typedef struct NV2AState {
         bool fifo_kick;
         bool halt;
         bool thread_running; /* set after PFIFO thread enters main loop */
+#ifdef LIBRETRO
+        /* the thread waits for a kick with nothing to do (nv2a_libretro_
+         * busy); written by the thread under the lock, read by any */
+        bool parked;
+#endif
     } pfifo;
 
     struct {

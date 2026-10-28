@@ -5,8 +5,9 @@
  * once: it runs the guest in slices, between which it runs the timers and
  * bottom halves that fell due, until the frame retro_run asked for is done.
  * Nothing else takes the BQL to run guest code, so the vCPU never waits for
- * it; a slice ends when something calls cpu_exit() (a device, the frontend
- * thread at a timer deadline it was given) or the guest halts.
+ * it. The guest's time is its instructions (icount): a slice runs at most
+ * the ones that take it to the next timer, and ends early when something
+ * calls cpu_exit() (a device, an interrupt) or the guest halts.
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
@@ -22,6 +23,8 @@
 #include "hw/core/cpu.h"
 #include "tcg-accel-ops.h"
 #include "tcg-accel-ops-libretro.h"
+#include "tcg-accel-ops-icount.h"
+#include "exec/icount.h"
 #include "system/libretro-vcpu.h"
 
 static bool lr_tcg_registered;
@@ -81,7 +84,7 @@ bool lr_vcpu_runnable(CPUState *cpu)
     return cpu_can_run(cpu) && !cpu_thread_is_idle(cpu);
 }
 
-int lr_vcpu_run_slice(CPUState *cpu)
+int lr_vcpu_run_slice(CPUState *cpu, int64_t ns)
 {
     int r;
 
@@ -102,7 +105,15 @@ int lr_vcpu_run_slice(CPUState *cpu)
 
     bql_unlock();
     SET_current_cpu(cpu);
+    if (icount_enabled()) {
+        /* at most the instructions that take it to ns from now: the
+         * translated code stops itself there */
+        icount_prepare_for_run(cpu, MAX(icount_round(ns), 1));
+    }
     r = tcg_cpu_exec(cpu);
+    if (icount_enabled()) {
+        icount_process_data(cpu);
+    }
     SET_current_cpu(NULL);
     bql_lock();
 

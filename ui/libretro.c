@@ -1714,20 +1714,12 @@ static void populate_config(const char *dvd_path)
 
 #define LR_FRAME_NS_NUM 50050000LL /* 1001/60 s = 50050000/3 ns */
 #define LR_FRAME_NS_DEN 3
-/* retro_run waits this long for a frame before it repeats the last one
- * (only a wedged machine takes that long; the frame comes with a later
- * retro_run) */
-#define LR_WEDGE_US 1000000
 
 static sthread_t *lr_thread;
 static retro_eventcount_t lr_cmd_ec, lr_done_ec;
 static retro_atomic_int_t lr_cmd_seq, lr_done_seq;
 static int lr_cmd;              /* written before lr_cmd_seq is released */
 static bool lr_cmd_ok;          /* written before lr_done_seq is released */
-/* QEMU_CLOCK_REALTIME time the frontend's thread stops the guest's slice
- * at, INT64_MAX for none: the next guest timer, while a frame runs */
-static retro_atomic_64_t lr_kick_at;
-static bool lr_frame_pending;   /* retro_run asked for a frame not yet done */
 
 /* the frame clock, on the emulator thread */
 static QEMUTimer *lr_frame_timer;
@@ -1750,8 +1742,8 @@ static void lr_main_notify(void)
 }
 
 /* Whether something the guest may be waiting for is under way on another
- * thread: then an idle guest's time passes as the host's, rather than moving
- * on to the next deadline, so it is not behind it in guest time */
+ * thread: then an idle guest's time stands still until it is done, rather
+ * than moving on to the next deadline past it */
 static bool lr_devices_busy(void)
 {
     extern bool nv2a_libretro_busy(void);
@@ -1759,6 +1751,9 @@ static bool lr_devices_busy(void)
 
     return thread_pool_aio_inflight > 0 || nv2a_libretro_busy();
 }
+/* set while the emulator thread looks and waits: the GPU's thread wakes it
+ * when it parks (hw/xbox/nv2a/pfifo.c) */
+extern int nv2a_libretro_waiter;
 
 /* One frame of guest time, from the end of the last one on a grid of
  * exactly 1001/60 ms. Under the BQL. */
@@ -1774,12 +1769,13 @@ static void lr_run_frame(void)
         return;
     }
 
-    /* The guest's clock runs only while the guest does (its slices below)
-     * or waits on a device: the time the emulator thread spends in the
-     * devices' timers and bottom halves (an APU frame through the DSP) is
-     * not the guest's, or a frame that costs more host time than it covers
-     * in guest time would make more of them due than it finishes */
-    cpu_disable_ticks();
+    /* The guest's time is its instructions (QEMU's icount, -icount in
+     * lr_start_machine), at a Pentium III's pace on game code (1.977 ns
+     * an instruction, accel/tcg/icount-common.c): no host clock enters
+     * it. A frame is a fixed amount of the guest's work, done as fast as
+     * the host can: the devices' timers and bottom halves (an APU frame
+     * through the DSP) take none of it, and while the guest idles its time
+     * moves on to the next deadline at once. */
     now = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
     /* A first frame, or a clock that jumped (a state was loaded): the grid
      * starts here */
@@ -1812,6 +1808,9 @@ static void lr_run_frame(void)
          * translated code: what follows sets it again */
         qatomic_set_mb(&cpu->exit_request, false);
         main_loop_wait(true);
+        /* the guest's timers that are due: with icount the main loop
+         * leaves them to the vCPU's loop, which this is */
+        qemu_clock_run_timers(QEMU_CLOCK_VIRTUAL);
         qemu_libretro_handle_requests();
         if (!runstate_is_running()) {
             break;
@@ -1829,38 +1828,28 @@ static void lr_run_frame(void)
 
         if (lr_vcpu_runnable(cpu) || cpu->stop ||
             !cpu_work_list_empty(cpu)) {
-            /* the guest runs until its next timer is due: the frontend's
-             * thread makes it leave then */
-            retro_atomic_store_release_64(&lr_kick_at,
-                qemu_clock_get_ns(QEMU_CLOCK_REALTIME) + until);
-            retro_eventcount_notify(&lr_done_ec);
-            cpu_enable_ticks();
-            lr_vcpu_run_slice(cpu);
-            cpu_disable_ticks();
-            retro_atomic_store_release_64(&lr_kick_at, INT64_MAX);
+            /* the guest runs until its next timer is due: the slice stops
+             * itself after the instructions that take it there */
+            lr_vcpu_run_slice(cpu, until);
             continue;
         }
 
         /* The guest idles */
+        qatomic_set_mb(&nv2a_libretro_waiter, 1);
         if (lr_devices_busy()) {
-            /* its time passes as the host's until something happens:
-             * a bottom half, a file descriptor, the next timer */
-            cpu_enable_ticks();
+            /* its time stands still until something happens: a bottom
+             * half (a disk read done), the GPU going idle or raising an
+             * interrupt. No timeout: QEMU leaves the guest's timers out of
+             * the main loop's with icount, and the core has no host timer */
             main_loop_wait(false);
-            cpu_disable_ticks();
         } else {
             /* nothing to wait for: on to the next deadline */
             cpu_clock_skip_to(now + until);
         }
+        qatomic_set(&nv2a_libretro_waiter, 0);
     }
 }
 
-/* After a command: the guest's clock stands still until the next frame
- * (vm_start, as at the machine's start, sets it running) */
-static void lr_park_clock(void)
-{
-    cpu_disable_ticks();
-}
 
 static bool lr_start_machine(void)
 {
@@ -1869,9 +1858,13 @@ static bool lr_start_machine(void)
         "xemu",
         "-device", "lpc47m157",
         "-serial", "null",
+        /* the guest's time is its instructions, never the host's: precise
+         * icount (at the Xbox CPU's pace, accel/tcg/icount-common.c),
+         * and sleep=off, so an idle guest's time moves on at once */
+        "-icount", "shift=0,sleep=off",
         NULL,
     };
-    int argc = 5;
+    int argc = 7;
 
     /* QEMU's machine is built once in a process and never taken down (see
      * retro_init). The first content builds it; each one after that gets
@@ -1930,7 +1923,6 @@ static bool lr_start_machine(void)
     lr_frame_end_vt = 0;
     lr_title_poll = 0;
     libretro_audio_discard();
-    lr_park_clock();
     bql_unlock();
     return true;
 }
@@ -2003,7 +1995,6 @@ static void lr_thread_main(void *opaque)
         case LR_CMD_LOAD:
             bql_lock();
             ok = lr_state(lr_cmd == LR_CMD_SAVE);
-            lr_park_clock();
             bql_unlock();
             break;
         case LR_CMD_STOP:
@@ -2024,46 +2015,17 @@ static void lr_thread_main(void *opaque)
     }
 }
 
-/* The frontend's thread: wait for the command seq to be done, at most
- * timeout_us; while a frame runs, stop the guest's slice at the deadline the
- * emulator thread gave it. No polling: it sleeps until the work is done,
- * the deadline, or the emulator thread gives it a new deadline. */
-static bool lr_wait_done(int seq, int64_t timeout_us)
+/* The frontend's thread: wait for the command seq to be done. No timeout and
+ * no polling: it sleeps until the emulator thread is done with it. */
+static void lr_wait_done(int seq)
 {
-    const int64_t end = qemu_clock_get_ns(QEMU_CLOCK_REALTIME) +
-                        timeout_us * 1000;
-
-    for (;;) {
-        int64_t now, kick, wait_ns;
-        int key;
-
+    while (retro_atomic_load_acquire_int(&lr_done_seq) != seq) {
+        int key = retro_eventcount_prepare_wait(&lr_done_ec);
         if (retro_atomic_load_acquire_int(&lr_done_seq) == seq) {
-            return true;
-        }
-        now = qemu_clock_get_ns(QEMU_CLOCK_REALTIME);
-        kick = retro_atomic_load_acquire_64(&lr_kick_at);
-        if (now >= kick && first_cpu) {
-            if (retro_atomic_cas_64(&lr_kick_at, kick, INT64_MAX)) {
-                lr_vcpu_exit(first_cpu);
-            }
-            kick = INT64_MAX;
-        }
-        if (now >= end) {
-            return false;
-        }
-        wait_ns = end - now;
-        if (kick != INT64_MAX) {
-            wait_ns = MIN(wait_ns, kick - now);
-        }
-
-        key = retro_eventcount_prepare_wait(&lr_done_ec);
-        if (retro_atomic_load_acquire_int(&lr_done_seq) == seq ||
-            retro_atomic_load_acquire_64(&lr_kick_at) != kick) {
             retro_eventcount_cancel_wait(&lr_done_ec);
-            continue;
+            break;
         }
-        retro_eventcount_commit_wait_timeout(&lr_done_ec, key,
-                                             MAX(wait_ns / 1000, 1));
+        retro_eventcount_commit_wait(&lr_done_ec, key);
     }
 }
 
@@ -2078,7 +2040,6 @@ static int lr_post(int cmd)
         retro_eventcount_init(&lr_done_ec);
         retro_atomic_int_init(&lr_cmd_seq, 0);
         retro_atomic_int_init(&lr_done_seq, 0);
-        retro_atomic_store_release_64(&lr_kick_at, INT64_MAX);
         lr_thread = sthread_create(lr_thread_main, NULL);
     }
     lr_cmd = cmd;
@@ -2088,15 +2049,10 @@ static int lr_post(int cmd)
     return seq;
 }
 
-/* A command other than a frame: waited for until done (a frame retro_run
- * left running is finished first) */
+/* A command other than a frame: waited for until done */
 static bool lr_command(int cmd)
 {
-    if (lr_frame_pending) {
-        lr_wait_done(retro_atomic_load_acquire_int(&lr_cmd_seq), INT64_MAX / 2000);
-        lr_frame_pending = false;
-    }
-    lr_wait_done(lr_post(cmd), INT64_MAX / 2000);
+    lr_wait_done(lr_post(cmd));
     return lr_cmd_ok;
 }
 
@@ -3045,18 +3001,11 @@ RETRO_API void retro_run(void)
 
     update_aspect();
 
-    if (!lr_frame_pending) {
+    {
         extern void libretro_input_latch(bool use_bitmask);
         libretro_input_latch(input_bitmasks);
-        lr_post(LR_CMD_FRAME);
-        lr_frame_pending = true;
+        lr_wait_done(lr_post(LR_CMD_FRAME));
     }
-    if (!lr_wait_done(retro_atomic_load_acquire_int(&lr_cmd_seq),
-                      LR_WEDGE_US)) {
-        video_cb(NULL, 640, 480, 0);
-        return;
-    }
-    lr_frame_pending = false;
 
     lr_present_video();
     lr_present_audio(true);

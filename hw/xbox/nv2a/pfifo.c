@@ -157,15 +157,49 @@ static bool pfifo_puller_should_stall(NV2AState *d)
            !can_fifo_access(d);
 }
 
-/* A pending report is re-checked within a millisecond: the hardware
- * writes it when the GPU reaches it, not when the guest next pushes. */
+#ifdef LIBRETRO
+/* The core's emulator thread waits with the guest's time stopped while the
+ * GPU works (ui/libretro.c), and is woken when this thread parks */
+int nv2a_libretro_waiter;
+#endif
+
+/* Nothing to do. A pending report is written when the host GPU reaches it,
+ * not when the guest next pushes: with one pending, wait for the GPU's own
+ * completion of it, then serve it. */
 static inline void pfifo_idle_cond_wait(NV2AState *d)
 {
+    const PGRAPHRenderer *renderer = d->pgraph.renderer;
+
+    if (d->pgraph.reports_pending && renderer &&
+        renderer->ops.wait_pending_report) {
+        bool waited;
+
+        qemu_mutex_unlock(&d->pfifo.lock);
+        waited = renderer->ops.wait_pending_report(d);
+        qemu_mutex_lock(&d->pfifo.lock);
+        if (waited) {
+            return;
+        }
+    }
+#ifdef LIBRETRO
+    if (!d->pfifo.fifo_kick) {
+        qatomic_set_mb(&d->pfifo.parked, true);
+        /* pairs with the waiter's mb before it looks at parked */
+        if (qatomic_read(&nv2a_libretro_waiter)) {
+            qemu_notify_event();
+        }
+        /* one wait, as upstream's: nv2a_lock_fifo wakes the thread
+         * without a kick to have it go round once */
+        qemu_cond_wait(&d->pfifo.fifo_cond, &d->pfifo.lock);
+        qatomic_set(&d->pfifo.parked, false);
+    }
+#else
     if (d->pgraph.reports_pending) {
         qemu_cond_timedwait(&d->pfifo.fifo_cond, &d->pfifo.lock, 1);
     } else {
         qemu_cond_wait(&d->pfifo.fifo_cond, &d->pfifo.lock);
     }
+#endif
 }
 
 static ssize_t pfifo_run_puller(NV2AState *d, uint32_t method_entry,

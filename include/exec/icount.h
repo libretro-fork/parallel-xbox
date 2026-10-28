@@ -67,6 +67,9 @@ bool icount_configure(QemuOpts *opts, Error **errp);
 
 /* used by tcg vcpu thread to calc icount budget */
 int64_t icount_round(int64_t count);
+#ifdef LIBRETRO
+void icount_skip_to(int64_t vt);
+#endif
 
 /* if the CPUs are idle, start accounting real time to virtual clock. */
 void icount_start_warp_timer(void);

@@ -207,7 +207,15 @@ static void tcg_accel_ops_init(AccelClass *ac)
     /* The core's emulator thread runs the vCPU itself (ui/libretro.c) */
     ops->create_vcpu_thread = lr_start_vcpu;
     ops->kick_vcpu_thread = lr_kick_vcpu;
-    ops->handle_interrupt = tcg_handle_interrupt;
+    /* its time is the guest's instructions (ui/libretro.c starts it with
+     * -icount): QEMU_CLOCK_VIRTUAL and the TSC follow them */
+    if (icount_enabled()) {
+        ops->handle_interrupt = icount_handle_interrupt;
+        ops->get_virtual_clock = icount_get;
+        ops->get_elapsed_ticks = icount_get;
+    } else {
+        ops->handle_interrupt = tcg_handle_interrupt;
+    }
 #else
     if (qemu_tcg_mttcg_enabled()) {
         ops->create_vcpu_thread = mttcg_start_vcpu_thread;

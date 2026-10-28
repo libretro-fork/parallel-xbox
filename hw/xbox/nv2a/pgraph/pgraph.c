@@ -548,24 +548,21 @@ void nv2a_release_framebuffer_surface(void)
  * pgraph_process_pending does for standalone's setting: used to take the
  * Vulkan renderer off the device shared with the frontend before the device
  * goes away (to the null renderer), and back onto the next one. Waits for
- * it, five seconds at most: it needs the guest's CPU to reach a safe point.
- * False when no renderer is running yet or the switch did not happen.
- */
-static void lr_switch_timeout_cb(void *opaque)
-{
-    /* the bound of the wait below: being due wakes the main loop */
-}
-
-/* On the libretro core's emulator thread, which is the vCPU, under the
+ * it: it needs the guest's CPU to reach a safe point. False when no
+ * renderer is running yet.
+ *
+ * On the libretro core's emulator thread, which is the vCPU, under the
  * BQL: the switch has the vCPU wait for the renderer (do_wait_for_renderer_
  * switch, queued by the pfifo thread), so this thread runs that work itself
- * as it comes. Nothing polls: the main loop sleeps until the pfifo thread
- * queues the work (which kicks the vCPU and wakes the loop) or the bound. */
+ * as it comes. Nothing polls and nothing times out: the main loop sleeps
+ * until the pfifo thread queues the work (which kicks the vCPU and wakes
+ * the loop) or parks with the switch done (nv2a_libretro_waiter).
+ */
 bool nv2a_libretro_switch_renderer(int type)
 {
+    extern int nv2a_libretro_waiter;
     NV2AState *d = g_nv2a;
     CPUState *cpu = qemu_get_cpu(0);
-    QEMUTimer *bound;
     bool ok = false;
 
     if (!d || !cpu || !qatomic_read(&d->pgraph.renderer)) {
@@ -576,18 +573,13 @@ bool nv2a_libretro_switch_renderer(int type)
     pfifo_kick(d);
     qemu_mutex_unlock(&d->pfifo.lock);
 
-    const int64_t end = qemu_clock_get_ms(QEMU_CLOCK_REALTIME) + 5000;
-    bound = timer_new_ms(QEMU_CLOCK_REALTIME, lr_switch_timeout_cb, NULL);
-    timer_mod(bound, end);
     for (;;) {
+        qatomic_set_mb(&nv2a_libretro_waiter, 1);
         const PGRAPHRenderer *renderer = qatomic_read(&d->pgraph.renderer);
         if (renderer && renderer->type == type &&
             qatomic_read(&d->pgraph.renderer_switch_phase) ==
                 PGRAPH_RENDERER_SWITCH_PHASE_IDLE) {
             ok = true;
-            break;
-        }
-        if (qemu_clock_get_ms(QEMU_CLOCK_REALTIME) >= end) {
             break;
         }
         if (!cpu_work_list_empty(cpu)) {
@@ -596,7 +588,7 @@ bool nv2a_libretro_switch_renderer(int type)
         }
         main_loop_wait(false);
     }
-    timer_free(bound);
+    qatomic_set(&nv2a_libretro_waiter, 0);
     return ok;
 }
 

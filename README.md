@@ -54,7 +54,7 @@ The driving games' force feedback (OutRun 2, Maximum Tune) can rumble port 1's p
 
 ## Timing and sound
 
-Each frame RetroArch asks for is one frame of the Xbox's time, 1001/60 ms (NTSC, 59.94 frames a second), and comes with exactly that frame's sound, 800 or 801 samples at 48 kHz. Between frames the Xbox stands still, so RetroArch's pause, menu, fast-forward and slow motion are the game's; fast-forward goes as fast as the host runs the game. Audio > Audio Volume scales the sound before it goes to RetroArch.
+Each frame RetroArch asks for is one frame of the Xbox's time, 1001/60 ms (NTSC, 59.94 frames a second), and comes with exactly that frame's sound, 800 or 801 samples at 48 kHz. Between frames the Xbox stands still, so RetroArch's pause, menu, fast-forward and slow motion are the game's; fast-forward goes as fast as the host runs the game. The Xbox's time is counted in the instructions its CPU runs (1.977 ns each, a Pentium III's pace on game code), never by the PC's clock: a frame is the same amount of the game's work however fast or loaded the PC is, and takes only as long as the PC needs for it. Audio > Audio Volume scales the sound before it goes to RetroArch.
 
 ## Video
 

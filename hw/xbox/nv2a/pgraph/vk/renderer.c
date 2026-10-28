@@ -367,6 +367,7 @@ static PGRAPHRenderer pgraph_vk_renderer = {
         .pre_shutdown_wait = pgraph_vk_pre_shutdown_wait,
         .process_pending = pgraph_vk_process_pending,
         .process_pending_reports = pgraph_vk_process_pending_reports,
+        .wait_pending_report = pgraph_vk_wait_pending_report,
         .prewarm_vertex_program = pgraph_vk_prewarm_shaders,
         .surface_update = pgraph_vk_surface_update,
         .set_surface_scale_factor = pgraph_vk_set_surface_scale_factor,
