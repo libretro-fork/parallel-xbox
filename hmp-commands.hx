@@ -764,46 +764,6 @@ SRST
 
 ERST
 
-/* BEGIN deprecated */
-    {
-        .name       = "wavcapture",
-        .args_type  = "path:F,audiodev:s,freq:i?,bits:i?,nchannels:i?",
-        .params     = "path audiodev [frequency [bits [channels]]]",
-        .help       = "capture audio to a wave file (deprecated, default frequency=44100 bits=16 channels=2)",
-        .cmd        = hmp_wavcapture,
-    },
-SRST
-``wavcapture`` *filename* *audiodev* [*frequency* [*bits* [*channels*]]]
-  Capture audio into *filename* from *audiodev*, using sample rate
-  *frequency* bits per sample *bits* and number of channels
-  *channels*.
-
-  Defaults:
-
-  - Sample rate = 44100 Hz - CD quality
-  - Bits = 16
-  - Number of channels = 2 - Stereo
-
-  Deprecated.
-ERST
-
-    {
-        .name       = "stopcapture",
-        .args_type  = "n:i",
-        .params     = "capture index",
-        .help       = "stop capture (deprecated)",
-        .cmd        = hmp_stopcapture,
-    },
-SRST
-``stopcapture`` *index*
-  Stop capture with a given *index*, index can be obtained with::
-
-    info capture
-
-  Deprecated.
-ERST
-/* END deprecated */
-
     {
         .name       = "memsave",
         .args_type  = "val:l,size:i,filename:s",

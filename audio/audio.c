@@ -52,14 +52,9 @@
 #define SW_NAME(sw) (sw)->name ? (sw)->name : "unknown"
 
 
-/* Order of CONFIG_AUDIO_DRIVERS is import.
-   The 1st one is the one used by default, that is the reason
-    that we generate the list.
-*/
+/* The core's one backend: the sound goes to the frontend */
 const char *audio_prio_list[] = {
-    "spice",
-    CONFIG_AUDIO_DRIVERS
-    "none",
+    "libretro",
     NULL
 };
 
@@ -1987,41 +1982,7 @@ void audio_create_pdos(Audiodev *dev)
         }                                                           \
         break
 
-        CASE(NONE, none, );
-#ifdef CONFIG_AUDIO_ALSA
-        CASE(ALSA, alsa, Alsa);
-#endif
-#ifdef CONFIG_AUDIO_COREAUDIO
-        CASE(COREAUDIO, coreaudio, Coreaudio);
-#endif
-#ifdef CONFIG_DBUS_DISPLAY
-        CASE(DBUS, dbus, );
-#endif
-#ifdef CONFIG_AUDIO_DSOUND
-        CASE(DSOUND, dsound, );
-#endif
-#ifdef CONFIG_AUDIO_JACK
-        CASE(JACK, jack, Jack);
-#endif
-#ifdef CONFIG_AUDIO_OSS
-        CASE(OSS, oss, Oss);
-#endif
-#ifdef CONFIG_AUDIO_PA
-        CASE(PA, pa, Pa);
-#endif
-#ifdef CONFIG_AUDIO_PIPEWIRE
-        CASE(PIPEWIRE, pipewire, Pipewire);
-#endif
-#ifdef CONFIG_AUDIO_SDL
-        CASE(SDL, sdl, Sdl);
-#endif
-#ifdef CONFIG_AUDIO_SNDIO
-        CASE(SNDIO, sndio, );
-#endif
-#ifdef CONFIG_SPICE
-        CASE(SPICE, spice, );
-#endif
-        CASE(WAV, wav, );
+        CASE(LIBRETRO, libretro, );
 
     case AUDIODEV_DRIVER__MAX:
         abort();
