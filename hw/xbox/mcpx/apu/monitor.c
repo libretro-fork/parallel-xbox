@@ -19,8 +19,6 @@
 
 #include "apu_int.h"
 
-#ifdef LIBRETRO
-
 #include "qemu/atomic.h"
 #include <stdint.h>
 
@@ -73,7 +71,6 @@ int libretro_audio_pull(int16_t *out_buf, int max_frames)
 
 void mcpx_apu_monitor_init(MCPXAPUState *d, Error **errp)
 {
-    d->monitor.stream = NULL;
     qatomic_set(&apu_ring_wp, 0);
     qatomic_set(&apu_ring_rp, 0);
     /* The throttle's watermarks (apu.c): below one retro_run's worth of
@@ -108,70 +105,3 @@ void mcpx_apu_monitor_frame(MCPXAPUState *d)
     memset(d->monitor.frame_buf, 0, sizeof(d->monitor.frame_buf));
 }
 
-#else /* !LIBRETRO */
-
-void mcpx_apu_monitor_init(MCPXAPUState *d, Error **errp)
-{
-    SDL_AudioSpec spec = {
-        .freq = 48000,
-        .format = SDL_AUDIO_S16LE,
-        .channels = 2,
-    };
-
-    d->monitor.stream = NULL;
-
-    if (!SDL_Init(SDL_INIT_AUDIO)) {
-        error_setg(errp, "SDL_Init failed: %s", SDL_GetError());
-        return;
-    }
-
-    d->monitor.stream = SDL_OpenAudioDeviceStream(
-        SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &spec, NULL, NULL);
-    if (d->monitor.stream == NULL) {
-        error_setg(errp, "SDL_OpenAudioDeviceStream failed: %s",
-                   SDL_GetError());
-        return;
-    }
-
-    SDL_AudioDeviceID dev = SDL_GetAudioStreamDevice(d->monitor.stream);
-
-    SDL_AudioSpec dev_spec;
-    int dev_buf_frames = 0;
-    int dev_drain_bytes = 0;
-    if (SDL_GetAudioDeviceFormat(dev, &dev_spec, &dev_buf_frames)) {
-        dev_drain_bytes = dev_buf_frames * spec.channels *
-                          SDL_AUDIO_BYTESIZE(spec.format) *
-                          spec.freq / dev_spec.freq;
-    }
-    int frame_bytes = sizeof(d->monitor.frame_buf);
-    int drain = MAX(dev_drain_bytes, frame_bytes);
-    d->monitor.queued_bytes_low = drain;
-    d->monitor.queued_bytes_high = 3 * drain;
-
-    SDL_ResumeAudioDevice(dev);
-}
-
-void mcpx_apu_monitor_finalize(MCPXAPUState *d)
-{
-    if (d->monitor.stream) {
-        SDL_DestroyAudioStream(d->monitor.stream);
-    }
-}
-
-void mcpx_apu_monitor_frame(MCPXAPUState *d)
-{
-    if ((d->ep_frame_div + 1) % 8) {
-        return;
-    }
-
-    if (d->monitor.stream) {
-        float vu = pow(fmax(0.0, fmin(g_config.audio.volume_limit, 1.0)), M_E);
-        SDL_SetAudioStreamGain(d->monitor.stream, vu);
-        SDL_PutAudioStreamData(d->monitor.stream, d->monitor.frame_buf,
-                            sizeof(d->monitor.frame_buf));
-    }
-
-    memset(d->monitor.frame_buf, 0, sizeof(d->monitor.frame_buf));
-}
-
-#endif /* LIBRETRO */

@@ -69,7 +69,7 @@ typedef struct DriveBoardState {
 } DriveBoardState;
 
 /* Snapshot of the current force-feedback effect state, for the host output
- * layer (gamepad rumble or steering-wheel SDL_Haptic). All fields are 0 when
+ * layer (the frontend's rumble). All fields are 0 when
  * the motor is disabled. Persistent forces (centering/friction) drive a real
  * wheel; a gamepad feels the package pulse and 0x85 (driveboard_get_rumble). */
 typedef struct DriveBoardFFB {

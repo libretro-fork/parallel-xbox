@@ -19,7 +19,7 @@ nv2a_vsh_cpu = declare_dependency(include_directories: nv2a_vsh_cpu_subproj.incl
 if host_os == 'android'
   # Vulkan only there: no GL renderer for gloffscreen to serve
   libgloffscreen = static_library('libgloffscreen', sources: files('gloffscreen/common.c'))
-elif get_option('libretro')
+else
   # CGL on macOS; EGL and GLX through epoxy on the other non-Windows hosts.
   # Xlib's headers only, for the GLX types: the core does not link libX11
   if host_os == 'windows'
@@ -33,10 +33,6 @@ elif get_option('libretro')
                             sources: files('gloffscreen/common.c', 'gloffscreen/gloffscreen_libretro.c'),
                             c_args: ['-DLIBRETRO=1'],
                             dependencies: gloffscreen_deps)
-else
-  libgloffscreen = static_library('libgloffscreen',
-                            sources: files('gloffscreen/common.c', 'gloffscreen/sdl.c'),
-                            dependencies: sdl)
 endif
 gloffscreen = declare_dependency(link_with: libgloffscreen,
                            include_directories: ['gloffscreen'])

@@ -23,13 +23,6 @@
 
 #include "qemu/osdep.h"
 #include <math.h>
-#ifdef LIBRETRO
-/* Audio goes to the frontend (monitor.c); SDL is not there on every host
- * (Android), and only this pointer type is named here */
-typedef struct SDL_AudioStream SDL_AudioStream;
-#else
-#include <SDL3/SDL.h>
-#endif
 #include "hw/hw.h"
 #include "hw/pci/pci.h"
 #include "hw/pci/pci_device.h"
@@ -124,7 +117,6 @@ typedef struct MCPXAPUState {
     struct {
         McpxApuDebugMonitorPoint point;
         int16_t frame_buf[256][2]; // 1 EP frame (0x400 bytes)
-        SDL_AudioStream *stream;
         int queued_bytes_low, queued_bytes_high;
     } monitor;
 } MCPXAPUState;

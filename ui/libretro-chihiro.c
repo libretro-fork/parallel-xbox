@@ -1,9 +1,7 @@
 /*
  * Chihiro cabinet controls from RetroArch's pads and light guns.
  *
- * The standalone reads the cabinet's inputs from the keyboard, mouse and
- * joysticks through its SDL UI (ui/xemu-input.c, not part of the core). Here
- * each retro_run reads ports 1 and 2 and sets the JVS I/O board's switches
+ * Each retro_run reads ports 1 and 2 and sets the JVS I/O board's switches
  * and analog channels the same way, per game profile. What has to happen
  * with the big lock held (a coin, a card pushed in) is queued here and done
  * on the emulation thread, when the game next talks to the JVS board.

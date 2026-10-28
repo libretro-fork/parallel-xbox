@@ -108,9 +108,8 @@ void driveboard_receive_byte(DriveBoardState *db, uint8_t byte)
         driveboard_push_response(db, 0x00);
         break;
     case 0x07:  /* wire 0x87: SPRING -- the wheel's main auto-centering force
-                 * (P1=direction, P2=magnitude). The host renders it with the
-                 * wheel's autocentre (and an SDL spring), so we only latch
-                 * that centering is engaged. */
+                 * (P1=direction, P2=magnitude). A pad cannot render it, so we
+                 * only latch that centering is engaged. */
         db->spring_active = true;
         driveboard_push_response(db, 0x00);
         break;
@@ -200,9 +199,8 @@ void driveboard_get_ffb(DriveBoardState *db, DriveBoardFFB *out)
     out->global_power = db->global_power;
 
     /* SPRING (0x87): the wheel's dominant auto-centering. The board computes the
-     * restoring force from wheel position; on the host the wheel's autocentre
-     * (and an SDL spring) does that, so we just expose "engaged" scaled by the
-     * game's global power. */
+     * restoring force from wheel position, which a pad has nothing to act on,
+     * so we just expose "engaged" scaled by the game's global power. */
     out->centering_power = db->spring_active
                              ? (db->global_power ? db->global_power : 0x60) : 0;
 

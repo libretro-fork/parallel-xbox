@@ -1665,56 +1665,9 @@ if not get_option('brlapi').auto() or have_system
   endif
 endif
 
+# The core has its audio, input and video from the frontend: no SDL
 sdl = not_found
-# The libretro core has its audio, input and video from the frontend: no SDL
-if not get_option('libretro') and (not get_option('sdl').auto() or have_system)
-  sdl = dependency('sdl3', required: false, allow_fallback: false)
-  if not sdl.found() and not get_option('sdl').disabled()
-    sdl3_cmake_opts = cmake.subproject_options()
-    sdl3_cmake_opts.add_cmake_defines({
-      'SDL_CAMERA': 'OFF',
-      'SDL_DISKAUDIO': 'OFF',
-      'SDL_DUMMYVIDEO': 'OFF',
-      'SDL_FRIBIDI': 'OFF',
-      'SDL_GPU': 'OFF',
-      'SDL_HAPTIC': 'OFF',
-      'SDL_LIBTHAI': 'OFF',
-      'SDL_POWER': 'OFF',
-      'SDL_RENDER': 'OFF',
-      'SDL_SENSOR': 'OFF',
-      'SDL_SHARED': 'OFF',
-      'SDL_STATIC': 'ON',
-      'SDL_TEST_LIBRARY': 'OFF',
-      'SDL_TRAY': 'OFF',
-      'SDL_VIRTUAL_JOYSTICK': 'OFF',
-      'SDL_X11_XTEST': 'OFF',
-    })
-    sdl3_sp = cmake.subproject('sdl3', options: sdl3_cmake_opts, required: get_option('sdl'))
-    if sdl3_sp.found()
-      sdl = sdl3_sp.dependency('SDL3-static')
-      meson.override_dependency('sdl3', sdl)
-    endif
-  endif
-  sdl_image = not_found
-endif
-if sdl.found()
-  # Some versions of SDL have problems with -Wundef
-  if not cc.compiles('''
-                     #include <SDL3/SDL.h>
-                     int main(int argc, char *argv[]) { return 0; }
-                     ''', dependencies: sdl.partial_dependency(compile_args: true, includes: true), args: '-Werror=undef')
-    sdl = declare_dependency(compile_args: '-Wno-undef',
-                             dependencies: sdl.partial_dependency(compile_args: true, link_args: true, links: true, includes: true))
-  endif
-  sdl_image = dependency('SDL3_image', required: get_option('sdl_image'),
-                         method: 'pkg-config')
-else
-  if get_option('sdl_image').enabled()
-    error('sdl-image required, but SDL was @0@'.format(
-          get_option('sdl').disabled() ? 'disabled' : 'not found'))
-  endif
-  sdl_image = not_found
-endif
+sdl_image = not_found
 
 rbd = not_found
 if not get_option('rbd').auto() or have_block

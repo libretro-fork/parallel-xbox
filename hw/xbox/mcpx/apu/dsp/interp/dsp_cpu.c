@@ -399,7 +399,7 @@ void dsp56k_reset_cpu(dsp_core_t* dsp)
 
     /* runtime shit */
 
-    // start_time = SDL_GetTicks();
+    // start_time = g_get_monotonic_time() / 1000;
     dsp->num_inst = 0;
 
     dsp->exception_debugging = true;
@@ -666,7 +666,7 @@ void dsp56k_execute_instruction(dsp_core_t* dsp)
     ++dsp->num_inst;
     if ((dsp->num_inst & 63) == 0) {
         /* Evaluate time after <N> instructions have been executed to avoid asking too frequently */
-        uint32_t cur_time = SDL_GetTicks();
+        uint32_t cur_time = g_get_monotonic_time() / 1000;
         if (cur_time-start_time>1000) {
             DPRINTF("Dsp: %d i/s\n", (dsp->num_inst*1000)/(cur_time-start_time));
             start_time=cur_time;

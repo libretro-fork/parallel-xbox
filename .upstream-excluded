@@ -74,3 +74,16 @@ audio/sndioaudio.c
 audio/spiceaudio.c
 audio/wavaudio.c
 audio/wavcapture.c
+hw/xbox/nv2a/pgraph/thirdparty/gloffscreen/sdl.c
+hw/xbox/xblc.c
+include/ui/sdl2.h
+subprojects/sdl3.wrap
+ui/sdl2-2d.c
+ui/sdl2-gl.c
+ui/sdl2-input.c
+ui/sdl2.c
+ui/xemu-controllers.h
+ui/xemu-pointer-evdev.c
+ui/xemu-pointer-rawinput.c
+ui/xemu-pointer-stub.c
+ui/xemu-pointer.h

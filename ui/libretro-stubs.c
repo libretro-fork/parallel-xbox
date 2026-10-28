@@ -86,7 +86,7 @@ static void libretro_controllers_ensure_init(void)
 
     for (int i = 0; i < 4; i++) {
         memset(&libretro_controllers[i], 0, sizeof(ControllerState));
-        libretro_controllers[i].type = INPUT_DEVICE_SDL_GAMEPAD;
+        libretro_controllers[i].type = INPUT_DEVICE_RETROPAD;
         libretro_controllers[i].name = "RetroPad";
         libretro_controllers[i].bound = i;
         libretro_controllers[i].peripheral_types[0] = PERIPHERAL_NONE;
@@ -209,7 +209,7 @@ void libretro_input_stick(unsigned port, unsigned index, int16_t *x, int16_t *y)
 /* The pad's motors as the guest last set them, on the emulation thread
  * (xid.c); retro_run hands them to RetroArch's rumble interface on its own
  * thread (libretro_input_apply_rumble). Left is the heavy motor, right the
- * light one, as standalone maps them to SDL. */
+ * light one. */
 static uint32_t libretro_rumble[4];
 
 void xemu_input_update_rumble(ControllerState *state)
@@ -304,7 +304,6 @@ void libretro_input_create_xid_devices(void)
 }
 
 void xemu_input_init(void) {}
-void xemu_input_process_sdl_events(const SDL_Event *event) { (void)event; }
 void xemu_input_update_controllers(void) {}
 void xemu_input_update_sdl_kbd_controller_state(ControllerState *state) { (void)state; }
 void xemu_input_update_sdl_controller_state(ControllerState *state) { (void)state; }

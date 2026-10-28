@@ -1,6 +1,6 @@
 /*
  * Minimal xemu settings stub for libretro core build.
- * Provides g_config and stub functions without toml++/SDL dependencies.
+ * Provides g_config and stub functions without toml++.
  *
  * Copyright (c) 2025
  * SPDX-License-Identifier: GPL-2.0-or-later

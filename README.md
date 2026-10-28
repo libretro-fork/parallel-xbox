@@ -64,7 +64,7 @@ Linux, with upstream's build dependencies installed:
 git clone https://github.com/WizzardSK/xemu-libretro.git
 cd xemu-libretro
 ./configure --extra-cflags="-DXBOX=1 -Wno-error" --target-list=i386-softmmu \
-    -Dlibretro=true -Dpipewire=disabled -Db_staticpic=true
+    -Dlibretro=true -Db_staticpic=true
 ninja -C build xemu_libretro.so
 ```
 

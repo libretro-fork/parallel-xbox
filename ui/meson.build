@@ -19,7 +19,7 @@ system_ss.add(files(
 
 subdir('thirdparty')
 
-# The libretro core: the standalone app's SDL and imgui UI is not part of it
+# The libretro core
 xemu_ss = ss.source_set()
 xemu_ss.add(files(
   'libretro.c',
@@ -143,17 +143,6 @@ if gtk.found()
   ui_modules += {'gtk' : gtk_ss}
 endif
 
-if sdl.found()
-  sdl_ss = ss.source_set()
-  sdl_ss.add(sdl, sdl_image, pixman, glib, files(
-    'sdl2-2d.c',
-    'sdl2-input.c',
-    'sdl2.c',
-  ))
-  sdl_ss.add(when: opengl, if_true: files('sdl2-gl.c'))
-  sdl_ss.add(when: x11, if_true: files('x_keymap.c'))
-  ui_modules += {'sdl' : sdl_ss}
-endif
 
 if spice.found()
   spice_core_ss = ss.source_set()

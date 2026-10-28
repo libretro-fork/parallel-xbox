@@ -4,6 +4,7 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- SDL is gone from the source: the standalone's SDL display, input and GL context code, SDL3 as a subproject, and the Xbox Live Communicator, which played and recorded through SDL and was never in the core.
 - QEMU's host audio drivers (ALSA, CoreAudio, D-Bus, DirectSound, JACK, OSS, PulseAudio, PipeWire, SDL, sndio, Spice, WAV and the null driver) are gone: the core's one audio backend is the frontend. The Xbox's AC'97 was put on a host driver of its own: DirectSound on Windows and CoreAudio on macOS builds.
 - Internal Resolution Scale is Internal Resolution Scale (Restart), taken when the content starts: raised while running above the scale it started with, it made RetroArch rebuild its video context and the core crashed (NNshi).
 - New category Controls, after Audio: Rumble (Player 1) and (Player 2), on by default, turn off everything that rumbles that player's pad, the Xbox games' and a Chihiro racing game's force feedback; Analog Dead Zone (Player 1) and (Player 2), 0 to 30%, 10% by default, for both sticks, Xbox and Chihiro alike, with the rest of the travel scaled up to full (OutRun 2 stopped at a drive board error when the stick moved during its test) (NNshi).

@@ -2,7 +2,7 @@
  * xemu Input Management
  *
  * This is the main input abstraction layer for xemu, which is basically just a
- * wrapper around SDL3 Gamepad/Keyboard API to map specifically to an
+ * the core's controller state, filled from the frontend's input, mapped to an
  * Xbox gamepad and support automatic binding, hotplugging, and removal at
  * runtime.
  *
@@ -26,19 +26,7 @@
 #ifndef XEMU_INPUT_H
 #define XEMU_INPUT_H
 
-#if defined(LIBRETRO) && !__has_include(<SDL3/SDL.h>)
-/* A libretro core built where SDL is not (Android): this header only names
- * SDL's types, and nothing in the core calls SDL */
 #include <stdint.h>
-typedef struct SDL_Gamepad SDL_Gamepad;
-typedef struct SDL_Haptic SDL_Haptic;
-typedef struct SDL_Joystick SDL_Joystick;
-typedef uint32_t SDL_JoystickID;
-typedef struct SDL_GUID { uint8_t data[16]; } SDL_GUID;
-typedef union SDL_Event SDL_Event;
-#else
-#include <SDL3/SDL.h>
-#endif
 #include <stdbool.h>
 
 #include "qemu/queue.h"
@@ -83,9 +71,7 @@ enum controller_state_axis_index {
 };
 
 enum controller_input_device_type {
-    INPUT_DEVICE_SDL_KEYBOARD,
-    INPUT_DEVICE_SDL_GAMEPAD,
-    INPUT_DEVICE_SDL_JOYSTICK, // raw joystick (steering wheel etc.), not a mapped gamepad
+    INPUT_DEVICE_RETROPAD,
 };
 
 enum peripheral_type { PERIPHERAL_NONE, PERIPHERAL_XMU, PERIPHERAL_TYPE_COUNT };
@@ -126,26 +112,6 @@ typedef struct ControllerState {
 
     enum controller_input_device_type type;
     const char         *name;
-    SDL_Gamepad        *sdl_gamepad; // if type == INPUT_DEVICE_SDL_GAMEPAD
-    SDL_Joystick       *sdl_joystick;
-    SDL_JoystickID      sdl_joystick_id;
-    SDL_GUID            sdl_joystick_guid;
-
-    // Chihiro drive-board force feedback on an FFB steering wheel (OutRun 2,
-    // Maximum Tune).
-    // haptic is NULL for pads with only rumble motors.
-    SDL_Haptic         *haptic;
-    uint32_t            haptic_features;
-    int                 haptic_spring;   // effect ids, -1 when unavailable
-    int                 haptic_constant;
-    int                 haptic_damper;
-    bool                haptic_running;  // effects currently engaged (running)
-    // Last value uploaded to each effect. Re-uploading an unchanged condition
-    // effect every frame glitches new-lg4ff (wheel feels stuck), so only update
-    // on change. -999999 = "force next update".
-    int                 haptic_spring_lv, haptic_damper_lv;
-    int                 haptic_constant_lv;
-    int                 haptic_autocenter_lv; // built-in autocentre %, -1 = unknown
 
     enum peripheral_type peripheral_types[2];
     void *peripherals[2];
@@ -166,7 +132,7 @@ extern "C" {
 #endif
 
 /* 1001..1013: buttons of the device the player aims with (the system mouse
- * or its own pointer device), SDL layout: left, middle, right, x1, x2, then
+ * or its own pointer device): left, middle, right, x1, x2, then
  * the 8 extra buttons some light guns carry. */
 #define CHIHIRO_MOUSE_BUTTON_BASE 1001
 #define CHIHIRO_POINTER_BUTTONS 13
@@ -180,13 +146,12 @@ extern "C" {
 #define CHIHIRO_BINDING_AXIS_POSITIVE(b) ((((b) - CHIHIRO_GAMEPAD_AXIS_BASE) & 1) != 0)
 
 /*
- * Raw SDL_Joystick bindings (steering wheels etc.) live in namespaces above the
- * gamepad ones: a wheel exposes more axes/buttons than the fixed Xbox layout,
- * and the read side must use the SDL_Joystick API, not SDL_Gamepad. Steering is
- * a half-axis (centred at 0, like a stick); a pedal is a full-axis whose
- * "pressed" direction is captured at bind time, then the raw value is fed
- * straight to the JVS analog so the GAME's test-menu calibrates range/direction
- * (exactly as an operator calibrates the pots on a real cabinet).
+ * Joystick bindings (steering wheels etc.) live in namespaces above the
+ * gamepad ones: a wheel exposes more axes/buttons than the fixed Xbox layout.
+ * Steering is a half-axis (centred at 0, like a stick); a pedal is a
+ * full-axis whose raw value is fed straight to the JVS analog so the GAME's
+ * test-menu calibrates range/direction (exactly as an operator calibrates the
+ * pots on a real cabinet).
  */
 #define CHIHIRO_JOYSTICK_BUTTON_BASE   4001 /* + button index */
 #define CHIHIRO_JOYSTICK_HALFAXIS_BASE 5001 /* + axis*2 + positive       (steering) */
@@ -264,7 +229,6 @@ extern int *g_chihiro_p2_gs_map[4];
 bool xemu_input_chihiro_key_bound(int scancode);
 
 void xemu_input_init(void);
-void xemu_input_process_sdl_events(const SDL_Event *event);
 void xemu_input_update_controllers(void);
 void xemu_input_update_controller(ControllerState *state);
 void xemu_input_update_sdl_kbd_controller_state(ControllerState *state);
