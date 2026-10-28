@@ -89,10 +89,14 @@ typedef struct MCPXAPUState {
     MCPXAPUVPState vp;
     MCPXAPUGPState gp;
     MCPXAPUEPState ep;
+    MCPXAPUDSPThread dsp_thread;
 
     uint32_t regs[0x20000];
 
     int ep_frame_div;
+    /* the frame_buf slot the monitor plays this frame: the engine's own
+     * frame, or the one before with the DSPs' thread a frame behind */
+    int monitor_slot;
     int frame_work_acc_us;
     int frame_count;
     int64_t frame_count_time_us;

@@ -48,6 +48,9 @@ static uint64_t mcpx_apu_read(void *opaque, hwaddr addr, unsigned int size)
     MCPXAPUState *d = opaque;
 
     uint64_t r = 0;
+    if (mcpx_apu_dsp_uses_reg(addr)) {
+        mcpx_apu_dsp_quiesce(d);
+    }
     switch (addr) {
     case NV_PAPU_XGSCNT:
         r = (uint64_t)d->ep_frame_div * NUM_SAMPLES_PER_FRAME;
@@ -70,6 +73,9 @@ static void mcpx_apu_write(void *opaque, hwaddr addr, uint64_t val,
 
     trace_mcpx_apu_reg_write(addr, size, val);
 
+    if (mcpx_apu_dsp_uses_reg(addr)) {
+        mcpx_apu_dsp_quiesce(d);
+    }
     switch (addr) {
     case NV_PAPU_ISTS:
         /* the bits of the interrupts to clear are written */
@@ -227,6 +233,7 @@ static void mcpx_apu_reset_locked(MCPXAPUState *d)
     mcpx_apu_vp_reset(d);
 
     // FIXME: Reset DSP state
+    mcpx_apu_dsp_quiesce(d);
     dsp_invalidate_opcache(d->gp.dsp);
     dsp_invalidate_opcache(d->ep.dsp);
     d->set_irq = false;
@@ -245,6 +252,7 @@ static void mcpx_apu_vm_state_change(void *opaque, bool running, RunState state)
 {
     MCPXAPUState *d = opaque;
 
+    mcpx_apu_dsp_quiesce(d);
     if (!running) {
         if (d->gp.dsp) {
             dsp_sync_to_vm(d->gp.dsp);

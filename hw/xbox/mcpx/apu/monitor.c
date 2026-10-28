@@ -123,7 +123,7 @@ static void push_frame(const int16_t (*samples)[2])
 void mcpx_apu_monitor_frame(MCPXAPUState *d)
 {
     int16_t (*slot)[2] =
-        &d->monitor.frame_buf[(d->ep_frame_div % 8) * NUM_SAMPLES_PER_FRAME];
+        &d->monitor.frame_buf[d->monitor_slot * NUM_SAMPLES_PER_FRAME];
 
     push_frame((const int16_t (*)[2])slot);
     memset(slot, 0, NUM_SAMPLES_PER_FRAME * sizeof(*slot));

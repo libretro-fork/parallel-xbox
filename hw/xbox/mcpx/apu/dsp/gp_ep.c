@@ -20,6 +20,7 @@
  */
 
 #include "hw/xbox/mcpx/apu/apu_int.h"
+#include <rthreads/rthreads.h>
 
 static const int16_t ep_silence[256][2] = { 0 };
 
@@ -27,6 +28,8 @@ void mcpx_apu_update_dsp_preference(MCPXAPUState *d)
 {
     static int last_known_dsp_pref = -1;
     static int last_known_jit_pref = -1;
+
+    mcpx_apu_dsp_quiesce(d);
 
     if (last_known_dsp_pref != (int)g_config.audio.use_dsp) {
         if (g_config.audio.use_dsp) {
@@ -264,6 +267,8 @@ static uint64_t gp_read(void *opaque, hwaddr addr, unsigned int size)
 {
     MCPXAPUState *d = opaque;
 
+    mcpx_apu_dsp_quiesce(d);
+
     assert(size == 4);
     assert(addr % 4 == 0);
 
@@ -305,6 +310,8 @@ static uint64_t gp_read(void *opaque, hwaddr addr, unsigned int size)
 static void gp_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
 {
     MCPXAPUState *d = opaque;
+
+    mcpx_apu_dsp_quiesce(d);
 
     assert(size == 4);
     assert(addr % 4 == 0);
@@ -356,6 +363,8 @@ static uint64_t ep_read(void *opaque, hwaddr addr, unsigned int size)
 {
     MCPXAPUState *d = opaque;
 
+    mcpx_apu_dsp_quiesce(d);
+
     assert(size == 4);
     assert(addr % 4 == 0);
 
@@ -391,6 +400,8 @@ static uint64_t ep_read(void *opaque, hwaddr addr, unsigned int size)
 static void ep_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
 {
     MCPXAPUState *d = opaque;
+
+    mcpx_apu_dsp_quiesce(d);
 
     assert(size == 4);
     assert(addr % 4 == 0);
@@ -432,7 +443,9 @@ const MemoryRegionOps ep_ops = {
     .write = ep_write,
 };
 
-void mcpx_apu_dsp_frame(MCPXAPUState *d, float mixbins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME])
+/* One engine frame of the DSPs, on their thread: the mixbins into the
+ * GP's MIXBUF, the GP, every 8th frame the EP, the monitor's samples out */
+static void dsp_thread_frame(MCPXAPUState *d, float mixbins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME])
 {
     /* Write VP results to the GP DSP MIXBUF */
     for (int mixbin = 0; mixbin < NUM_MIXBINS; mixbin++) {
@@ -459,7 +472,7 @@ void mcpx_apu_dsp_frame(MCPXAPUState *d, float mixbins[NUM_MIXBINS][NUM_SAMPLES_
 
         if ((d->monitor.point == MCPX_APU_DEBUG_MON_GP) ||
             (d->monitor.point == MCPX_APU_DEBUG_MON_GP_OR_EP && !ep_enabled)) {
-            int off = (d->ep_frame_div % 8) * NUM_SAMPLES_PER_FRAME;
+            int off = (d->dsp_thread.ep_frame_div % 8) * NUM_SAMPLES_PER_FRAME;
             for (int i = 0; i < NUM_SAMPLES_PER_FRAME; i++) {
                 uint32_t l = dsp_read_memory(d->gp.dsp, 'X', 0x1400 + i);
                 d->monitor.frame_buf[off + i][0] = l >> 8;
@@ -473,7 +486,7 @@ void mcpx_apu_dsp_frame(MCPXAPUState *d, float mixbins[NUM_MIXBINS][NUM_SAMPLES_
     /* Run EP */
     if ((d->ep.regs[NV_PAPU_EPRST] & NV_PAPU_GPRST_GPRST) &&
         (d->ep.regs[NV_PAPU_EPRST] & NV_PAPU_GPRST_GPDSPRST)) {
-        if (d->ep_frame_div % 8 == 0) {
+        if (d->dsp_thread.ep_frame_div % 8 == 0) {
             dsp_start_frame(d->ep.dsp);
             dsp_set_halt_requested(d->ep.dsp, false);
             dsp_set_cycle_count(d->ep.dsp, 0);
@@ -483,6 +496,95 @@ void mcpx_apu_dsp_frame(MCPXAPUState *d, float mixbins[NUM_MIXBINS][NUM_SAMPLES_
             g_dbg.ep.cycles = dsp_get_cycle_count(d->ep.dsp);
         }
     }
+    d->dsp_thread.ep_frame_div++;
+}
+
+static void dsp_thread_main(void *arg)
+{
+    MCPXAPUState *d = arg;
+    MCPXAPUDSPThread *t = &d->dsp_thread;
+
+    rcu_register_thread();
+    for (;;) {
+        int n = retro_atomic_load_acquire_int(&t->posted);
+        if (n == t->seen) {
+            int key = retro_eventcount_prepare_wait(&t->wake);
+            n = retro_atomic_load_acquire_int(&t->posted);
+            if (n == t->seen) {
+                retro_eventcount_commit_wait(&t->wake, key);
+                continue;
+            }
+            retro_eventcount_cancel_wait(&t->wake);
+        }
+        if (retro_atomic_load_acquire_int(&t->should_exit)) {
+            break;
+        }
+        t->seen = n;
+        dsp_thread_frame(d, t->mixbins);
+        retro_atomic_store_release_int(&t->done, n);
+        retro_eventcount_notify(&t->finished);
+    }
+    rcu_unregister_thread();
+}
+
+void mcpx_apu_dsp_quiesce(MCPXAPUState *d)
+{
+    MCPXAPUDSPThread *t = &d->dsp_thread;
+    int want;
+
+    if (!t->thread) {
+        return;
+    }
+    want = retro_atomic_load_acquire_int(&t->posted);
+    while (retro_atomic_load_acquire_int(&t->done) != want) {
+        int key = retro_eventcount_prepare_wait(&t->finished);
+        if (retro_atomic_load_acquire_int(&t->done) == want) {
+            retro_eventcount_cancel_wait(&t->finished);
+            break;
+        }
+        retro_eventcount_commit_wait(&t->finished, key);
+    }
+}
+
+void mcpx_apu_dsp_frame(MCPXAPUState *d, float mixbins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME])
+{
+    MCPXAPUDSPThread *t = &d->dsp_thread;
+
+    if (!g_config.audio.use_dsp) {
+        /* no DSP work: the frame on this thread, as it was, keeps the
+         * monitor's slots in step with the engine */
+        mcpx_apu_dsp_quiesce(d);
+        t->ep_frame_div = d->ep_frame_div;
+        dsp_thread_frame(d, mixbins);
+        d->monitor_slot = d->ep_frame_div % 8;
+        return;
+    }
+    if (!t->thread) {
+        retro_eventcount_init(&t->wake);
+        retro_eventcount_init(&t->finished);
+        retro_atomic_int_init(&t->posted, 0);
+        retro_atomic_int_init(&t->done, 0);
+        retro_atomic_int_init(&t->should_exit, 0);
+        t->thread = sthread_create(dsp_thread_main, d);
+    }
+    /* the frame before is done: its output is in the monitor's slot of
+     * that frame, the one before the engine's */
+    mcpx_apu_dsp_quiesce(d);
+    d->monitor_slot = (d->ep_frame_div + 7) % 8;
+    memcpy(t->mixbins, mixbins, sizeof(t->mixbins));
+    retro_atomic_store_release_int(&t->posted,
+                                   retro_atomic_load_acquire_int(&t->posted) + 1);
+    retro_eventcount_notify(&t->wake);
+}
+
+bool mcpx_apu_dsp_uses_reg(hwaddr addr)
+{
+    /* the scatter-gather tables and FIFOs (gp_scratch_rw, ep_scratch_rw,
+     * gp_fifo_rw, ep_fifo_rw), and the EP's output FIFO cursors it moves */
+    return (addr >= NV_PAPU_GPSADDR && addr <= NV_PAPU_EPFADDR + 3) ||
+           (addr >= NV_PAPU_GPSMAXSGE && addr <= NV_PAPU_EPFMAXSGE + 3) ||
+           (addr >= NV_PAPU_GPOFBASE0 && addr <= NV_PAPU_GPIFCUR1 + 3) ||
+           (addr >= NV_PAPU_EPOFBASE0 && addr <= NV_PAPU_EPIFCUR0 + 3);
 }
 
 void mcpx_apu_dsp_init(MCPXAPUState *d)

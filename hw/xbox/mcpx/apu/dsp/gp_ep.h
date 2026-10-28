@@ -27,6 +27,8 @@
 #include "hw/xbox/mcpx/apu/apu_regs.h"
 
 #include "dsp.h"
+#include <retro_atomic.h>
+#include <rthreads/retro_eventcount.h>
 
 typedef struct MCPXAPUState MCPXAPUState;
 
@@ -47,8 +49,36 @@ typedef struct MCPXAPUEPState {
 extern const MemoryRegionOps gp_ops;
 extern const MemoryRegionOps ep_ops;
 
+/*
+ * The DSPs' thread (gp_ep.c): the GP and EP run each engine frame on a
+ * thread of their own, a frame behind the engine, so the emulator thread
+ * is not held for the DSP programs (a quarter of a frame's time in Dead or
+ * Alive 3). The engine posts a frame's mixbins (post) and takes the frame
+ * before it (done); anything else that touches the DSPs or the registers
+ * their frame uses (MMIO, reset, a state) waits for the posted frame to be
+ * done first (quiesce). Lock-free: a generation each way, an eventcount
+ * each way.
+ */
+typedef struct MCPXAPUDSPThread {
+    struct sthread *thread;
+    retro_atomic_int_t posted;      /* frames posted, moved on by the engine */
+    retro_atomic_int_t done;        /* frames done, moved on by the thread */
+    retro_atomic_int_t should_exit;
+    retro_eventcount_t wake;        /* the thread, for a post */
+    retro_eventcount_t finished;    /* the engine, for a done */
+    int seen;                       /* the thread's own count */
+    float mixbins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME]; /* the posted frame's */
+    int ep_frame_div;               /* the thread's, for the EP's 1 in 8 */
+} MCPXAPUDSPThread;
+
 void mcpx_apu_dsp_init(MCPXAPUState *d);
 void mcpx_apu_update_dsp_preference(MCPXAPUState *d);
+/* The engine's frame: the DSPs' output for the frame before, then this
+ * frame's mixbins posted to the thread */
 void mcpx_apu_dsp_frame(MCPXAPUState *d, float mixbins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME]);
+/* The posted frame done, before anything else touches the DSPs */
+void mcpx_apu_dsp_quiesce(MCPXAPUState *d);
+/* Whether a GP/EP register the DSPs' frame uses is at this APU offset */
+bool mcpx_apu_dsp_uses_reg(hwaddr addr);
 
 #endif
