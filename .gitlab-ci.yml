@@ -30,7 +30,7 @@ variables:
 
 .core-defs:
   variables:
-    CORENAME: xemu
+    CORENAME: parallel_xbox
 
 include:
   # Linux

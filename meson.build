@@ -4600,7 +4600,7 @@ foreach target : target_dirs
           '-Wl,--version-script=' + meson.current_source_dir() / 'ui' / 'libretro.map']
         libretro_suffix = 'so'
       endif
-      xemu_libretro = shared_library('xemu_libretro',
+      parallel_xbox_libretro = shared_library('parallel_xbox_libretro',
         files('system/main.c'),
         install: true,
         c_args: c_args + libretro_static_defs,
@@ -4611,7 +4611,7 @@ foreach target : target_dirs
         name_prefix: '',
         name_suffix: libretro_suffix,
       )
-      emulators += {'xemu_libretro': xemu_libretro}
+      emulators += {'parallel_xbox_libretro': parallel_xbox_libretro}
     else
     execs = [{
       'name': 'qemu-system-' + target_name,

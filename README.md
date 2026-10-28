@@ -1,6 +1,6 @@
-# xemu libretro core
+# ParaLLEl Xbox
 
-A [libretro](https://www.libretro.com/) core of [xemu](https://xemu.app), the original Xbox emulator, for RetroArch and other libretro frontends.
+ParaLLEl Xbox is a [libretro](https://www.libretro.com/) core of [xemu](https://xemu.app), the original Xbox emulator, for RetroArch and other libretro frontends. The core is `parallel_xbox_libretro`.
 
 The emulator is upstream's: this repository follows [xemu-project/xemu](https://github.com/xemu-project/xemu) and adds the libretro frontend in `ui/libretro.c`. It holds the core only; upstream's standalone UI, packaging and CI are not part of it (the paths are listed in `.upstream-excluded`). The version the core reports is upstream's, with the upstream commit it is merged to (`upstream.version`). The core is currently on xemu 0.8.136-53, commit 478b4f4961 of 28 September 2026.
 
@@ -8,10 +8,10 @@ The emulator is upstream's: this repository follows [xemu-project/xemu](https://
 
 The core is built by libretro's buildbot for Windows and Linux (x86_64, aarch64), and is installed from RetroArch: Online Updater > Core Downloader. Every push to the `libretro` branch is also built in [Actions](https://github.com/WizzardSK/xemu-libretro/actions/workflows/libretro.yml), macOS (Apple Silicon, Intel) and Android (arm64-v8a, x86_64) included; the builds are the artifacts of a run, and downloading them needs a GitHub login.
 
-- **Linux:** `xemu_libretro.so` and `libslirp.so.0`; put both into RetroArch's `cores` folder. glibc builds, they do not load into a musl frontend.
-- **macOS:** `xemu_libretro.dylib` and the folder `xemu_libretro_libs`; put both into RetroArch's `cores` folder.
-- **Windows:** `xemu_libretro.dll`.
-- **Android:** `xemu_libretro_android.so`, Android 10 or newer.
+- **Linux:** `parallel_xbox_libretro.so` and `libslirp.so.0`; put both into RetroArch's `cores` folder. glibc builds, they do not load into a musl frontend.
+- **macOS:** `parallel_xbox_libretro.dylib` and the folder `parallel_xbox_libretro_libs`; put both into RetroArch's `cores` folder.
+- **Windows:** `parallel_xbox_libretro.dll`.
+- **Android:** `parallel_xbox_libretro_android.so`, Android 10 or newer.
 
 ## Setup
 
@@ -79,7 +79,7 @@ make -j$(nproc)
 
 Every library the core links (GLib, libslirp, libepoxy, libsamplerate, zlib,
 glslang) is built from source in `deps/` (`deps/README.md`), and
-`xemu_libretro.dll` needs only Windows' own DLLs. From Linux:
+`parallel_xbox_libretro.dll` needs only Windows' own DLLs. From Linux:
 `make platform=win CROSS_PREFIX=x86_64-w64-mingw32-` with MinGW-w64.
 
 **Linux** (x86_64, aarch64), with the libraries the core links from the

@@ -38,8 +38,8 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: xemu_libretro-buildbot-linux-${{ matrix.name }}
-          path: xemu_libretro.so
+          name: parallel_xbox_libretro-buildbot-linux-${{ matrix.name }}
+          path: parallel_xbox_libretro.so
 
   windows:
     name: libretro-build-windows-x64
@@ -61,5 +61,5 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: xemu_libretro-buildbot-windows-x64
-          path: xemu_libretro.dll
+          name: parallel_xbox_libretro-buildbot-windows-x64
+          path: parallel_xbox_libretro.dll

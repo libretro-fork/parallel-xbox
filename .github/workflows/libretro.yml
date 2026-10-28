@@ -1,7 +1,7 @@
 name: Build libretro core
 
-# The core with the static Makefile: xemu_libretro.so for Linux x86_64 and
-# aarch64, xemu_libretro.dll for Windows (cross-compiled with MinGW-w64,
+# The core with the static Makefile: parallel_xbox_libretro.so for Linux x86_64 and
+# aarch64, parallel_xbox_libretro.dll for Windows (cross-compiled with MinGW-w64,
 # tested under Wine). Android and macOS with meson (-Dlibretro=true) until
 # the Makefile builds them.
 
@@ -53,20 +53,20 @@ jobs:
       - name: Frame and audio tests
         run: |
           export WINEDEBUG=-all WINEPREFIX=$PWD/.wine
-          xvfb-run -a sh -c 'wineboot -u && libretro/tests/run.sh xemu_libretro.dll'
+          xvfb-run -a sh -c 'wineboot -u && libretro/tests/run.sh parallel_xbox_libretro.dll'
 
       - name: Collect
         run: |
           mkdir -p dist
-          cp xemu_libretro.dll dist/
-          cp ui/xemu_libretro.info dist/
-          x86_64-w64-mingw32-objdump -p dist/xemu_libretro.dll | grep 'DLL Name'
-          x86_64-w64-mingw32-strip --strip-unneeded dist/xemu_libretro.dll
+          cp parallel_xbox_libretro.dll dist/
+          cp ui/parallel_xbox_libretro.info dist/
+          x86_64-w64-mingw32-objdump -p dist/parallel_xbox_libretro.dll | grep 'DLL Name'
+          x86_64-w64-mingw32-strip --strip-unneeded dist/parallel_xbox_libretro.dll
           ls -la dist
 
       - uses: actions/upload-artifact@v4
         with:
-          name: xemu_libretro-windows-x86_64
+          name: parallel_xbox_libretro-windows-x86_64
           path: dist/
 
   linux:
@@ -104,7 +104,7 @@ jobs:
       # OpenGL: a frame's worth of audio and a frame each retro_run, the
       # tone unbroken, fast-forward, savestates (libretro/tests/run.sh)
       - name: Frame and audio tests
-        run: libretro/tests/run.sh xemu_libretro.so
+        run: libretro/tests/run.sh parallel_xbox_libretro.so
 
       # libslirp is not in every frontend's runtime (Flatpak
       # RetroArch's, for one), so it goes next to the core, found through
@@ -112,28 +112,28 @@ jobs:
       - name: Collect
         run: |
           mkdir -p dist
-          cp xemu_libretro.so dist/
-          cp ui/xemu_libretro.info dist/
+          cp parallel_xbox_libretro.so dist/
+          cp ui/parallel_xbox_libretro.info dist/
           # the unstripped core too, for profiling and crash backtraces
           mkdir -p symbols
-          cp xemu_libretro.so symbols/
-          patchelf --set-rpath '$ORIGIN' symbols/xemu_libretro.so
-          strip --strip-unneeded dist/xemu_libretro.so
-          patchelf --set-rpath '$ORIGIN' dist/xemu_libretro.so
+          cp parallel_xbox_libretro.so symbols/
+          patchelf --set-rpath '$ORIGIN' symbols/parallel_xbox_libretro.so
+          strip --strip-unneeded dist/parallel_xbox_libretro.so
+          patchelf --set-rpath '$ORIGIN' dist/parallel_xbox_libretro.so
           for lib in libslirp.so.0; do
             cp -L "/usr/lib/${{ matrix.arch }}-linux-gnu/$lib" dist/
           done
           ls -la dist
-          readelf -d dist/xemu_libretro.so | grep -E 'NEEDED|RUNPATH'
+          readelf -d dist/parallel_xbox_libretro.so | grep -E 'NEEDED|RUNPATH'
 
       - uses: actions/upload-artifact@v4
         with:
-          name: xemu_libretro-linux-${{ matrix.arch }}
+          name: parallel_xbox_libretro-linux-${{ matrix.arch }}
           path: dist/
 
       - uses: actions/upload-artifact@v4
         with:
-          name: xemu_libretro-linux-${{ matrix.arch }}-symbols
+          name: parallel_xbox_libretro-linux-${{ matrix.arch }}-symbols
           path: symbols/
 
   # After X-OG Mobile's recipe (Ashnar2602/X-OG_Mobile): glib, pixman and
@@ -207,22 +207,22 @@ jobs:
       # Every error of the run, which a tail of the output cuts off
       - name: Build
         run: |
-          ninja -k 0 -C build xemu_libretro.so > ninja.log 2>&1 && exit 0
+          ninja -k 0 -C build parallel_xbox_libretro.so > ninja.log 2>&1 && exit 0
           grep -E -B2 -A8 "error:|FAILED:" ninja.log | head -600
           exit 1
 
       - name: Collect
         run: |
           mkdir -p dist
-          cp build/xemu_libretro.so dist/xemu_libretro_android.so
-          cp ui/xemu_libretro.info dist/
-          $NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip --strip-unneeded dist/xemu_libretro_android.so
+          cp build/parallel_xbox_libretro.so dist/parallel_xbox_libretro_android.so
+          cp ui/parallel_xbox_libretro.info dist/
+          $NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip --strip-unneeded dist/parallel_xbox_libretro_android.so
           ls -la dist
-          $NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf -d dist/xemu_libretro_android.so | grep NEEDED
+          $NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf -d dist/parallel_xbox_libretro_android.so | grep NEEDED
 
       - uses: actions/upload-artifact@v4
         with:
-          name: xemu_libretro-android-${{ matrix.abi }}
+          name: parallel_xbox_libretro-android-${{ matrix.abi }}
           path: dist/
 
   # As upstream's macOS build (build.sh): the libraries from MacPorts through
@@ -272,25 +272,25 @@ jobs:
 
       - name: Build
         run: |
-          ninja -k 0 -C build xemu_libretro.dylib > ninja.log 2>&1 && exit 0
+          ninja -k 0 -C build parallel_xbox_libretro.dylib > ninja.log 2>&1 && exit 0
           grep -E -B2 -A8 "error:|FAILED:" ninja.log | head -600
           exit 1
 
       - name: Collect
         run: |
           mkdir -p dist
-          cp build/xemu_libretro.dylib dist/xemu_libretro.dylib
-          cp ui/xemu_libretro.info dist/
-          strip -x dist/xemu_libretro.dylib
+          cp build/parallel_xbox_libretro.dylib dist/parallel_xbox_libretro.dylib
+          cp ui/parallel_xbox_libretro.info dist/
+          strip -x dist/parallel_xbox_libretro.dylib
           # The MacPorts libraries (glib, pixman, epoxy, ...) go along in a
           # folder of their own next to the core, as upstream bundles them
           # into its app. Their install names are under /opt/local/lib, where
           # nothing is on the runner: they are taken from macos-libs and
           # pointed at that folder, and so are their own dependencies.
           src=$PWD/macos-libs/${{ matrix.arch }}/opt/local/lib
-          libs=dist/xemu_libretro_libs
+          libs=dist/parallel_xbox_libretro_libs
           mkdir -p $libs
-          todo=dist/xemu_libretro.dylib
+          todo=dist/parallel_xbox_libretro.dylib
           while [ -n "$todo" ]; do
             next=""
             for f in $todo; do
@@ -302,8 +302,8 @@ jobs:
                   install_name_tool -id "@loader_path/$name" "$libs/$name"
                   next="$next $libs/$name"
                 fi
-                if [ "$f" = dist/xemu_libretro.dylib ]; then
-                  install_name_tool -change "$dep" "@loader_path/xemu_libretro_libs/$name" "$f"
+                if [ "$f" = dist/parallel_xbox_libretro.dylib ]; then
+                  install_name_tool -change "$dep" "@loader_path/parallel_xbox_libretro_libs/$name" "$f"
                 else
                   install_name_tool -change "$dep" "@loader_path/$name" "$f"
                 fi
@@ -312,11 +312,11 @@ jobs:
             todo=$next
           done
           ls $libs
-          codesign -f -s - $libs/*.dylib dist/xemu_libretro.dylib
-          otool -L dist/xemu_libretro.dylib
-          lipo -info dist/xemu_libretro.dylib
+          codesign -f -s - $libs/*.dylib dist/parallel_xbox_libretro.dylib
+          otool -L dist/parallel_xbox_libretro.dylib
+          lipo -info dist/parallel_xbox_libretro.dylib
 
       - uses: actions/upload-artifact@v4
         with:
-          name: xemu_libretro-macos-${{ matrix.arch }}
+          name: parallel_xbox_libretro-macos-${{ matrix.arch }}
           path: dist/

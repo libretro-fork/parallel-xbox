@@ -12,7 +12,7 @@ CROSSPREFIX=x86_64-w64-mingw32.static-
 git config --global --add safe.directory '*'
 
 make -j "$NUMPROC" platform=win CROSS_PREFIX=$CROSSPREFIX
-${CROSSPREFIX}strip --strip-unneeded xemu_libretro.dll
-ls -la xemu_libretro.dll
+${CROSSPREFIX}strip --strip-unneeded parallel_xbox_libretro.dll
+ls -la parallel_xbox_libretro.dll
 # What it needs at load time: Windows' own DLLs and nothing else.
-${CROSSPREFIX}objdump -p xemu_libretro.dll | grep 'DLL Name' | sort -u
+${CROSSPREFIX}objdump -p parallel_xbox_libretro.dll | grep 'DLL Name' | sort -u

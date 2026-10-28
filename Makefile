@@ -1,8 +1,8 @@
 # The xemu libretro core, in plain GNU make: no meson, ninja or python.
 #
 #   make -j$(nproc)          the core for the system make runs on:
-#                            xemu_libretro.dll in an MSYS2 MINGW64 shell,
-#                            xemu_libretro.so on Linux
+#                            parallel_xbox_libretro.dll in an MSYS2 MINGW64 shell,
+#                            parallel_xbox_libretro.so on Linux
 #   make platform=win CROSS_PREFIX=x86_64-w64-mingw32-
 #                            the Windows core, cross-compiled
 #   make DEBUG=1             unoptimized, with debug information
@@ -21,7 +21,7 @@
 .DEFAULT_GOAL := all
 
 CORE_DIR     := .
-TARGET_NAME  := xemu
+TARGET_NAME  := parallel_xbox
 DEBUG        ?= 0
 HAVE_DSP_JIT ?= 1
 PKG_CONFIG   ?= pkg-config
@@ -105,9 +105,11 @@ else ifeq ($(platform),win)
                   -Wl,--exclude-all-symbols
    OS_INCFLAGS :=
    OS_CFLAGS   := -DWIN32 -DVK_USE_PLATFORM_WIN32_KHR
+   # -lsynchronization: WaitOnAddress/WakeByAddress, which QEMU's own
+   # QemuEvent and QemuLockCnt (util/event.c, util/lockcnt.c) are built on
    OS_LIBS     := -lws2_32 -liphlpapi -lwinmm -lole32 -loleaut32 -lshlwapi \
                   -lshell32 -luuid -ladvapi32 -luser32 -lgdi32 -lcomdlg32 \
-                  -lwinspool -lopengl32 -lpathcch -lsynchronization -latomic
+                  -lwinspool -lopengl32 -lpathcch -lsynchronization
    DSP_JIT_TRIPLE := $(DSP_JIT_ARCH)-pc-windows-gnu
    DSP_JIT_OS_LIBS := -lbcrypt -lntdll -luserenv -lws2_32
    VENDORED_DEPS := 1

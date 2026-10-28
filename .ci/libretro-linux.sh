@@ -40,12 +40,12 @@ LIBRARY_PATH=/usr/lib/$multiarch ./configure \
   -Dlibretro=true -Dpipewire=disabled \
   -Db_staticpic=true
 
-ninja -C build -j "$NUMPROC" xemu_libretro.so
-mv build/xemu_libretro.so xemu_libretro.so
-strip --strip-unneeded xemu_libretro.so
-ls -la xemu_libretro.so
+ninja -C build -j "$NUMPROC" parallel_xbox_libretro.so
+mv build/parallel_xbox_libretro.so parallel_xbox_libretro.so
+strip --strip-unneeded parallel_xbox_libretro.so
+ls -la parallel_xbox_libretro.so
 # libslirp must be inside: no NEEDED entry for it
-readelf -d xemu_libretro.so | grep NEEDED
-! readelf -d xemu_libretro.so | grep -q 'NEEDED.*libslirp'
+readelf -d parallel_xbox_libretro.so | grep NEEDED
+! readelf -d parallel_xbox_libretro.so | grep -q 'NEEDED.*libslirp'
 # and no window system's library: the frontend owns the window
-! readelf -d xemu_libretro.so | grep -q 'NEEDED.*libX11'
+! readelf -d parallel_xbox_libretro.so | grep -q 'NEEDED.*libX11'

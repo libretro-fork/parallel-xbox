@@ -2393,7 +2393,7 @@ RETRO_API unsigned retro_api_version(void)
 RETRO_API void retro_get_system_info(struct retro_system_info *info)
 {
     memset(info, 0, sizeof(*info));
-    info->library_name     = "xemu";
+    info->library_name     = "ParaLLEl Xbox";
     info->library_version  = xemu_libretro_version;
     info->valid_extensions = "iso|xiso|bin";
     info->need_fullpath    = true;
