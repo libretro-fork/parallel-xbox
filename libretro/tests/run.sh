@@ -51,7 +51,15 @@ t "GP DSP, JIT" "$h" "$core" "$work/sysd" --frames 600 --strict \
 "$work/bin/sinecheck" "$work/dspj.wav" --frames 480480 --peak 16385
 t "GP DSP, JIT: save, load, reset" "$h" "$core" "$work/sysd" --frames 600 \
   --strict $dsp --opt xemu_dsp_jit=enabled --save 200 --load 350 \
-  --reset 450
+  --verify-load --reset 450
+
+# Savestates are the whole machine in the frontend's buffer: right after a
+# load the guest's RAM is byte for byte what it was at the save, in the same
+# process and in another one (the busy ROM's RAM changes every frame).
+t "save, load: busy guest" "$h" "$core" "$work/sysb" --frames 400 --strict \
+  --save 200 --load 399 --verify-load --state-out "$work/busy.state"
+t "load in another process" "$h" "$core" "$work/sysb" --frames 100 --strict \
+  --load 50 --state-in "$work/busy.state" --verify-load
 
 # Savestate, load and reset between frames.
 t "save, load, reset" "$h" "$core" "$work/sys" --frames 900 --strict \

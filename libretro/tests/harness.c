@@ -18,6 +18,12 @@
  *     --csv FILE        per-run log: run, audio frames, video flag, us
  *     --save N          retro_serialize before run N
  *     --load N          retro_unserialize (the state saved) before run N
+ *     --state-out FILE  also write the state saved (--save) to FILE, and
+ *                       the system RAM at that point to FILE.ram
+ *     --state-in FILE   the state --load loads is FILE's (and with
+ *                       --verify-load, the RAM to compare is FILE.ram)
+ *     --verify-load     exit 1 unless the system RAM right after the load
+ *                       is the RAM as it was when the state was saved
  *     --reset N         retro_reset before run N
  *     --reload N        close the content and load it again before run N
  *     --strict          exit 1 unless every run gave one frame's worth of
@@ -391,6 +397,40 @@ static void wav_header(FILE *f, long frames)
    u = (uint32_t)(frames * 4); fwrite(&u, 4, 1, f);
 }
 
+static int write_file(const char *path, const void *data, size_t size)
+{
+   FILE *f = fopen(path, "wb");
+   int ok = f && fwrite(data, 1, size, f) == size;
+   if (f && fclose(f))
+      ok = 0;
+   if (!ok)
+      fprintf(stderr, "harness: cannot write %s\n", path);
+   return ok;
+}
+
+static void *read_file(const char *path, size_t *size)
+{
+   FILE *f = fopen(path, "rb");
+   void *data = NULL;
+   long n;
+   if (!f)
+   {
+      fprintf(stderr, "harness: cannot read %s\n", path);
+      return NULL;
+   }
+   if (fseek(f, 0, SEEK_END) == 0 && (n = ftell(f)) > 0 &&
+       fseek(f, 0, SEEK_SET) == 0 && (data = malloc((size_t)n)) &&
+       fread(data, 1, (size_t)n, f) == (size_t)n)
+      *size = (size_t)n;
+   else
+   {
+      free(data);
+      data = NULL;
+   }
+   fclose(f);
+   return data;
+}
+
 int main(int argc, char **argv)
 {
    void *core;
@@ -400,6 +440,10 @@ int main(int argc, char **argv)
    double min_speed = 0.0;
    void *state = NULL;
    size_t state_size = 0;
+   const char *state_out = NULL, *state_in = NULL;
+   int verify_load = 0;
+   unsigned char *saved_ram = NULL;
+   size_t saved_ram_size = 0;
    size_t (*p_ser_size)(void);
    bool (*p_ser)(void *, size_t);
    bool (*p_unser)(const void *, size_t);
@@ -455,6 +499,12 @@ int main(int argc, char **argv)
          load_at = atoi(argv[++i]);
       else if (!strcmp(argv[i], "--strict"))
          strict = 1;
+      else if (!strcmp(argv[i], "--state-out") && i + 1 < argc)
+         state_out = argv[++i];
+      else if (!strcmp(argv[i], "--state-in") && i + 1 < argc)
+         state_in = argv[++i];
+      else if (!strcmp(argv[i], "--verify-load"))
+         verify_load = 1;
       else if (!strcmp(argv[i], "--min-speed") && i + 1 < argc)
          min_speed = atof(argv[++i]);
       else if (!strcmp(argv[i], "--reload") && i + 1 < argc)
@@ -561,16 +611,63 @@ int main(int argc, char **argv)
       if (run_no == save_at)
       {
          int64_t t = now_us();
+         int ok;
          state_size = p_ser_size();
          state = malloc(state_size ? state_size : 1);
+         ok = state && p_ser(state, state_size);
          printf("save at %d: size=%zu ok=%d ms=%.1f\n", run_no, state_size,
-               (int)p_ser(state, state_size), (now_us() - t) / 1000.0);
+               ok, (now_us() - t) / 1000.0);
+         if (!ok)
+            fail = 1;
+         saved_ram_size = p_mem_size(RETRO_MEMORY_SYSTEM_RAM);
+         if (saved_ram_size && (saved_ram = malloc(saved_ram_size)))
+            memcpy(saved_ram, p_mem_data(RETRO_MEMORY_SYSTEM_RAM),
+                  saved_ram_size);
+         if (ok && state_out)
+         {
+            char path[4096];
+            snprintf(path, sizeof(path), "%s.ram", state_out);
+            if (!write_file(state_out, state, state_size) ||
+                (saved_ram && !write_file(path, saved_ram, saved_ram_size)))
+               fail = 1;
+         }
+      }
+      if (run_no == load_at && state_in)
+      {
+         char path[4096];
+         free(state);
+         free(saved_ram);
+         state = read_file(state_in, &state_size);
+         snprintf(path, sizeof(path), "%s.ram", state_in);
+         saved_ram = read_file(path, &saved_ram_size);
       }
       if (run_no == load_at && state)
       {
          int64_t t = now_us();
-         printf("load at %d: ok=%d ms=%.1f\n", run_no,
-               (int)p_unser(state, state_size), (now_us() - t) / 1000.0);
+         int ok = p_unser(state, state_size);
+         printf("load at %d: ok=%d ms=%.1f\n", run_no, ok,
+               (now_us() - t) / 1000.0);
+         if (!ok)
+            fail = 1;
+         if (verify_load)
+         {
+            size_t n = p_mem_size(RETRO_MEMORY_SYSTEM_RAM);
+            const unsigned char *ram = (const unsigned char *)
+               p_mem_data(RETRO_MEMORY_SYSTEM_RAM);
+            size_t diff = 0, k;
+            if (!saved_ram || !ram || n != saved_ram_size)
+               diff = (size_t)-1;
+            else
+               for (k = 0; k < n; k++)
+                  diff += ram[k] != saved_ram[k];
+            printf("load at %d: ram_bytes_differing=%zu\n", run_no, diff);
+            if (diff)
+            {
+               printf("FAIL: the RAM after the load is not the RAM the "
+                     "state was saved with\n");
+               fail = 1;
+            }
+         }
       }
       if (run_no == reload_at)
       {

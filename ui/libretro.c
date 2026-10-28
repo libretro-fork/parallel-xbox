@@ -17,7 +17,6 @@
 #include "system/memory.h"
 #include "qapi/error.h"
 #include "system/cpus.h"
-#include "migration/snapshot.h"
 #include "ui/console.h"
 #include "hw/xbox/nv2a/nv2a.h"
 #include "hw/xbox/chihiro/chihiro.h"
@@ -47,6 +46,7 @@
 #include "libretro_vulkan.h"
 #include "hw/xbox/nv2a/pgraph/vk/libretro_shared.h"
 #include "libretro_core_options.h"
+#include "libretro-state.h"
 #include "xemu-settings.h"
 #include "xemu-version.h"
 #include "system/cpu-timers.h"
@@ -238,6 +238,10 @@ enum lr_cmd {
 };
 static bool lr_command(int cmd);
 static int lr_cmd_arg;
+/* LR_CMD_SAVE's and LR_CMD_LOAD's buffer, and what LR_CMD_LOAD found */
+static void *lr_state_buf;
+static size_t lr_state_len;
+static bool lr_state_disk_newer;
 static void context_reset(void);
 static void context_destroy(void);
 static void update_variables(void);
@@ -1916,6 +1920,7 @@ static bool lr_start_machine(void)
         LRLOG_INFO("[xemu] The machine is reset and started with the new disc\n");
     }
     snprintf(machine_image, sizeof(machine_image), "%s", opt_dvd_path);
+    lr_state_drop_legacy();
 
     lr_frame_end_vt = 0;
     lr_title_poll = 0;
@@ -1925,27 +1930,23 @@ static bool lr_start_machine(void)
     return true;
 }
 
-static bool lr_snapshot(bool save)
+static bool lr_state(bool save)
 {
     Error *err = NULL;
     bool ok;
 
     if (save) {
-        ok = save_snapshot("libretro_save", true, NULL, false, NULL, &err);
+        ok = lr_state_save(lr_state_buf, lr_state_len, &err);
     } else {
-        bool was_running = runstate_is_running();
-        vm_stop(RUN_STATE_RESTORE_VM);
-        ok = load_snapshot("libretro_save", NULL, false, NULL, &err);
-        if (was_running) {
-            vm_start();
-        }
-        if (ok) {
-            /* the samples queued were the state's past */
-            libretro_audio_discard();
-        }
+        ok = lr_state_load(lr_state_buf, lr_state_len, &lr_state_disk_newer,
+                           &err);
+        /* the samples queued were the state's past; on a failed load the
+         * machine was reset */
+        libretro_audio_discard();
     }
-    if (!ok && err) {
-        LRLOG_ERROR("[xemu] snapshot: %s\n", error_get_pretty(err));
+    if (!ok) {
+        LRLOG_ERROR("[xemu] %s: %s\n", save ? "Saving the state" :
+                    "Loading the state", err ? error_get_pretty(err) : "?");
         error_free(err);
     }
     return ok;
@@ -1996,7 +1997,7 @@ static void lr_thread_main(void *opaque)
         case LR_CMD_SAVE:
         case LR_CMD_LOAD:
             bql_lock();
-            ok = lr_snapshot(lr_cmd == LR_CMD_SAVE);
+            ok = lr_state(lr_cmd == LR_CMD_SAVE);
             lr_park_clock();
             bql_unlock();
             break;
@@ -2098,8 +2099,8 @@ static bool lr_command(int cmd)
  * the cache partitions X, Y and Z are emptied - games format them again
  * when they need them - and the image is written anew without the clusters
  * nothing uses, so the file shrinks. Skipped while the image holds a
- * savestate (a snapshot keeps its clusters, and copying the disk alone
- * would drop it). The copy needs as much free space as the data for a
+ * snapshot (it keeps its clusters, and copying the disk alone would drop
+ * it); the core's savestates are not kept there. The copy needs as much free space as the data for a
  * moment. Runs on the emulator thread with the VM shut down. */
 
 #define HDD_CACHE_START 0x00080000LL           /* X, then Y and Z */
@@ -2202,7 +2203,7 @@ static void hdd_trim(void)
         return;
     }
     if (hdd_has_snapshot(bs)) {
-        LRLOG_INFO("[xemu] Trim HDD: skipped, the image holds a savestate\n");
+        LRLOG_INFO("[xemu] Trim HDD: skipped, the image holds a snapshot\n");
         return;
     }
     const int64_t size = blk_getlength(blk);
@@ -2506,7 +2507,12 @@ RETRO_API bool retro_load_game(const struct retro_game_info *game)
     if (!environ_cb(RETRO_ENVIRONMENT_GET_RUMBLE_INTERFACE, &rumble)) {
         memset(&rumble, 0, sizeof(rumble));
     }
-
+    /* The machine starts on the first retro_run (after context_reset):
+     * there is no state before it */
+    {
+        uint64_t quirks = RETRO_SERIALIZATION_QUIRK_MUST_INITIALIZE;
+        environ_cb(RETRO_ENVIRONMENT_SET_SERIALIZATION_QUIRKS, &quirks);
+    }
 
     LRLOG_INFO("[xemu] retro_load_game called\n");
 
@@ -3060,71 +3066,52 @@ RETRO_API void retro_reset(void)
 }
 
 /* ========================================================================= */
-/* Save states via QEMU snapshot system                                      */
+/* Savestates (libretro-state.c)                                             */
 /* ========================================================================= */
 
-/*
- * Save state header for RetroArch's .state file.
- * Actual VM state lives in the qcow2 HDD image via QEMU snapshots.
- */
-#define LIBRETRO_SAVESTATE_SIZE  4096
-#define LIBRETRO_SAVESTATE_MAGIC 0x58454D55 /* 'XEMU' */
-
-struct libretro_savestate_header {
-    uint32_t magic;
-    uint32_t version;
-    uint64_t timestamp;
-};
-
+/* As big as the state can get for the machine as built: RetroArch sizes its
+ * buffers, rewind's too, once by it */
 RETRO_API size_t retro_serialize_size(void)
 {
     if (!emu_initialized) return 0;
-    return LIBRETRO_SAVESTATE_SIZE;
+    return lr_state_size();
 }
 
 RETRO_API bool retro_serialize(void *data, size_t size)
 {
-    if (!emu_initialized || !data || size < LIBRETRO_SAVESTATE_SIZE)
+    if (!emu_initialized || !data)
         return false;
-
-    memset(data, 0, LIBRETRO_SAVESTATE_SIZE);
-
-    bool ok = lr_command(LR_CMD_SAVE);
-
-    if (!ok) {
-        LRLOG_INFO("[xemu] retro_serialize: save failed\n");
-        return false;
-    }
-
-    struct libretro_savestate_header *hdr = (struct libretro_savestate_header *)data;
-    hdr->magic = LIBRETRO_SAVESTATE_MAGIC;
-    hdr->version = 1;
-    hdr->timestamp = (uint64_t)time(NULL);
-
-    LRLOG_INFO("[xemu] retro_serialize: snapshot saved to HDD image\n");
-    return true;
+    lr_state_buf = data;
+    lr_state_len = size;
+    return lr_command(LR_CMD_SAVE);
 }
 
 RETRO_API bool retro_unserialize(const void *data, size_t size)
 {
-    if (!emu_initialized || !data || size < LIBRETRO_SAVESTATE_SIZE)
+    if (!emu_initialized || !data)
         return false;
-
-    const struct libretro_savestate_header *hdr =
-        (const struct libretro_savestate_header *)data;
-    if (hdr->magic != LIBRETRO_SAVESTATE_MAGIC) {
-        LRLOG_INFO("[xemu] retro_unserialize: invalid magic 0x%08x\n", hdr->magic);
+    lr_state_buf = (void *)data;
+    lr_state_len = size;
+    if (!lr_command(LR_CMD_LOAD))
         return false;
+    if (lr_state_disk_newer) {
+        struct retro_message_ext msg = {
+            .msg = "The game has written to the hard disk since this state "
+                   "was saved: if it misbehaves, load a newer state or "
+                   "restart the content",
+            .duration = 5000,
+            .priority = 2,
+            .level = RETRO_LOG_WARN,
+            .target = RETRO_MESSAGE_TARGET_ALL,
+            .type = RETRO_MESSAGE_TYPE_NOTIFICATION,
+            .progress = -1,
+        };
+        unsigned msg_version = 0;
+        if (environ_cb(RETRO_ENVIRONMENT_GET_MESSAGE_INTERFACE_VERSION,
+                       &msg_version) && msg_version >= 1) {
+            environ_cb(RETRO_ENVIRONMENT_SET_MESSAGE_EXT, &msg);
+        }
     }
-
-    bool ok = lr_command(LR_CMD_LOAD);
-
-    if (!ok) {
-        LRLOG_INFO("[xemu] retro_unserialize: load failed\n");
-        return false;
-    }
-
-    LRLOG_INFO("[xemu] retro_unserialize: snapshot loaded from HDD image\n");
     return true;
 }
 

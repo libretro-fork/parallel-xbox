@@ -27,6 +27,7 @@ time when the frontend does not pace it (fast-forward); with APU DSP
 Emulation on, the tone comes through the GP DSP whole on the interpreter and
 on the JIT, the interpreter does not fall behind on a heavy program, and
 the JIT's state survives a savestate; savestates, loads and resets between
-frames.
+frames, and right after a load the guest's RAM is byte for byte what it was
+when the state was saved, in the same process and in another one.
 
 The harness's options are listed at the top of `harness.c`.

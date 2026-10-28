@@ -67,6 +67,9 @@ void qemu_savevm_live_state(QEMUFile *f);
 int qemu_save_device_state(QEMUFile *f);
 
 int qemu_loadvm_state(QEMUFile *f, Error **errp);
+#ifdef LIBRETRO
+int qemu_savevm_state_libretro(QEMUFile *f, Error **errp);
+#endif
 void qemu_loadvm_state_cleanup(MigrationIncomingState *mis);
 int qemu_loadvm_state_main(QEMUFile *f, MigrationIncomingState *mis,
                            Error **errp);

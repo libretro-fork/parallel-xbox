@@ -574,6 +574,9 @@ static void xbox_machine_options(MachineClass *m)
     m->default_cpu_type  = X86_CPU_TYPE_NAME("pentium3");
     m->is_default        = true;
     m->default_nic       = "nvnet";
+    /* The RAM is xbox.ram (xbox_memory_init): no generic pc.ram backend,
+     * which was allocated, never mapped and saved in every state */
+    m->default_ram_id    = NULL;
 
     pcmc->pci_enabled         = true;
     pcmc->has_acpi_build      = false;
