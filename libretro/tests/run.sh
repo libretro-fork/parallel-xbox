@@ -83,19 +83,30 @@ t "spinning guest, unpaced" $h "$(path "$core")" "$(path "$work/syss")" $vp --fr
 
 # The pad, through the USB controller as the kernel reads it (rom/pad.c):
 # the hubs found by their status-change reports, their ports reset, the
-# pad polled on the periodic list. The harness holds Start from run 20:
-# the setup is done (status 0), reports came, and the last one has Start
-# (XID wButtons bit 4) and nothing else.
+# pad polled on the periodic list. The harness holds Start and the left
+# stick at (12000, -20000) from run 20: the setup is done (status 0),
+# reports came, the last one has Start (XID wButtons bit 4) and nothing
+# else, and the sticks: left (11460, 19100) with the 10% dead zone scaled
+# out and Y the Xbox's way up, right its negative. The ROM sends the
+# motors every 64th report (left ramping, right its complement), which
+# reach the harness's rumble interface.
 echo "== the pad over USB"
 timeout 300 $h "$(path "$core")" "$(path "$work/sysp")" $vp --frames 300 --strict \
-  --pad 20:3:1000 --peek 0x300008 --peek 0x30000c --peek 0x300010 >"$work/pad.txt"
-grep -E "speed=|peek_" "$work/pad.txt"
+  --pad 20:3:1000 --stick 20:12000:-20000:1000 --peek 0x300008 --peek 0x30000c \
+  --peek 0x300010 --peek 0x30001c --peek 0x300020 --peek 0x300028 >"$work/pad.txt"
+grep -E "speed=|peek_|rumble_" "$work/pad.txt"
 grep -E "peek_0x300008=0x00000000$" "$work/pad.txt" >/dev/null || {
     echo "FAIL: the pad's USB setup did not complete: $(grep peek_0x300008 "$work/pad.txt")"; exit 1; }
 grep -E "peek_0x30000c=0x0000[0-9a-f]{4}$" "$work/pad.txt" | grep -v "=0x00000000$" >/dev/null || {
     echo "FAIL: no reports from the pad"; exit 1; }
 grep -E "peek_0x300010=0x00101400$" "$work/pad.txt" >/dev/null || {
     echo "FAIL: the pad's report is not Start: $(grep peek_0x300010 "$work/pad.txt")"; exit 1; }
+grep -E "peek_0x30001c=0x4a9c2cc4$" "$work/pad.txt" >/dev/null || {
+    echo "FAIL: the left stick did not reach the pad: $(grep peek_0x30001c "$work/pad.txt")"; exit 1; }
+grep -E "peek_0x300020=0xb564d33c$" "$work/pad.txt" >/dev/null || {
+    echo "FAIL: the right stick did not reach the pad: $(grep peek_0x300020 "$work/pad.txt")"; exit 1; }
+grep -E "rumble_calls=[1-9]" "$work/pad.txt" >/dev/null || {
+    echo "FAIL: the pad's motors did not reach the frontend"; exit 1; }
 
 # The guest's time is its instructions, never the host's: a frame is the
 # same work however fast the host runs it. The busy guest's RAM (its

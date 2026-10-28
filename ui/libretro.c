@@ -2360,6 +2360,23 @@ RETRO_API void retro_set_environment(retro_environment_t cb)
         };
         environ_cb(RETRO_ENVIRONMENT_SET_INPUT_DESCRIPTORS, desc);
     }
+
+    /* The ports' device: an analog RetroPad, on all four. Without this
+     * RetroArch takes the ports for plain RetroPads (RETRO_DEVICE_JOYPAD)
+     * and answers the core's RETRO_DEVICE_ANALOG reads with zero: the
+     * sticks and the analog triggers never reached the Xbox pad. The
+     * Chihiro's light gun reads go through the same port as a RetroPad
+     * (libretro-chihiro.c), so no second device type is offered. */
+    {
+        static const struct retro_controller_description pads[] = {
+            { "Xbox Controller", RETRO_DEVICE_ANALOG },
+            { NULL, 0 },
+        };
+        static const struct retro_controller_info ports[] = {
+            { pads, 1 }, { pads, 1 }, { pads, 1 }, { pads, 1 }, { NULL, 0 },
+        };
+        environ_cb(RETRO_ENVIRONMENT_SET_CONTROLLER_INFO, (void *)ports);
+    }
 }
 
 RETRO_API void retro_set_video_refresh(retro_video_refresh_t cb)   { video_cb = cb; }

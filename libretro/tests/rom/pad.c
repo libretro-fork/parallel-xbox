@@ -21,6 +21,7 @@ typedef unsigned int u32;
 #define PAD_STATUS   0x00300008u   /* u32: 0 when the pad is being read */
 #define PAD_COUNT    0x0030000Cu   /* u32: reports read */
 #define PAD_REPORT   0x00300010u   /* the last XID report, 20 bytes */
+#define PAD_RUMBLE   0x00300028u   /* u32: output reports (rumble) sent */
 
 /* OHCI's structures in RAM, 256-byte aligned for the HCCA */
 #define HCCA         0x00400000u
@@ -258,6 +259,7 @@ void pad_main(void)
 
     wr(PAD_STATUS, 0xFFFFFFFFu);
     wr(PAD_COUNT, 0);
+    wr(PAD_RUMBLE, 0);
 
     /* The OHCI the hubs hang off: QEMU's first USB bus, which is the
      * first pci-ohci realized (hw/xbox/xbox.c), PCI device 3 on an Xbox;
@@ -369,5 +371,21 @@ void pad_main(void)
         }
         n = rd(PAD_COUNT);
         wr(PAD_COUNT, n + 1);
+
+        /* every 64th report, the motors: the XID output report (id 0,
+         * length 6, left and right strengths) to the OUT endpoint 2 on
+         * the bulk list, as a game sets its rumble; left ramps with the
+         * count, right is its complement */
+        if ((n & 63) == 63) {
+            u32 left = (n << 6) & 0xFFFF, right = 0xFFFF - left;
+
+            wr(BUF + 96, 0x0600u | (left << 16));
+            wr(BUF + 100, right);
+            td_set(0, td_flags(1, 0), BUF + 96, td_at(1), BUF + 96 + 5);
+            if (!run_ed(ED_CTRL, 3, 2, 32, 1, 1)) {
+                fail(12);
+            }
+            wr(PAD_RUMBLE, rd(PAD_RUMBLE) + 1);
+        }
     }
 }

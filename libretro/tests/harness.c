@@ -18,6 +18,8 @@
  *     --key F:ID[:LEN]  hold RETROK id for LEN runs from run F
  *     --pad F:ID[:LEN]  hold joypad id on port 0 for LEN runs from run F
  *     --pad-port N      the port --pad holds on (0)
+ *     --stick F:X:Y[:LEN]  hold the left stick at X,Y (the right at -X,-Y)
+ *                       for LEN runs from run F, on --pad-port's port
  *     --shot N FILE     write run N's frame to FILE as a PPM
  *     --csv FILE        per-run log: run, audio frames, video flag, us
  *     --save N          retro_serialize before run N
@@ -100,6 +102,9 @@ static int run_no_cb;
 static int shot_at[MAX_SHOTS], nshots;
 static const char *shot_path[MAX_SHOTS];
 static unsigned pad_port; /* --pad-port: the RetroPad's port, 0 by default */
+static int stick_first, stick_len, stick_on;
+static int port_analog[4]; /* the core declared the port's device analog */
+static int16_t stick_x, stick_y;
 static unsigned last_w, last_h;
 static int batches_this_run;
 
@@ -168,9 +173,20 @@ static retro_proc_address_t get_proc(const char *sym)
 #endif
 }
 
+/* the core's rumble, as it last set it: printed at the end */
+static uint16_t rumble_strong, rumble_weak;
+static int rumble_calls;
+
 static bool set_rumble(unsigned port, enum retro_rumble_effect e, uint16_t s)
 {
-   (void)port; (void)e; (void)s;
+   if (port == pad_port)
+   {
+      if (e == RETRO_RUMBLE_STRONG)
+         rumble_strong = s;
+      else
+         rumble_weak = s;
+      rumble_calls++;
+   }
    return 1;
 }
 
@@ -189,6 +205,17 @@ static bool env_cb(unsigned cmd, void *data)
       case RETRO_ENVIRONMENT_GET_INPUT_BITMASKS:
          /* as RetroArch: the core reads the pad's buttons as one mask */
          return true;
+      case RETRO_ENVIRONMENT_SET_CONTROLLER_INFO:
+      {
+         /* as RetroArch: a port's device is the first the core offers,
+          * and only an analog one gets analog reads answered */
+         const struct retro_controller_info *ci = data;
+         unsigned p;
+         for (p = 0; p < 4 && ci[p].types; p++)
+            port_analog[p] = ci[p].num_types &&
+               (ci[p].types[0].id & 0xff) == RETRO_DEVICE_ANALOG;
+         return true;
+      }
       case RETRO_ENVIRONMENT_SET_INPUT_DESCRIPTORS:
       case RETRO_ENVIRONMENT_SET_SUPPORT_NO_GAME:
       case RETRO_ENVIRONMENT_SET_CORE_OPTIONS_V2:
@@ -364,6 +391,22 @@ static int16_t input_state_cb(unsigned port, unsigned dev, unsigned idx,
    (void)idx;
    if (dev == RETRO_DEVICE_KEYBOARD)
       return (int16_t)held(1, id);
+   if (port == pad_port && dev == RETRO_DEVICE_ANALOG)
+   {
+      if (port >= 4 || !port_analog[port])
+         return 0; /* a plain RetroPad, as RetroArch answers */
+      /* --stick: the left stick held at X,Y (the right at -X,-Y) */
+      int16_t v = 0;
+      if (id == RETRO_DEVICE_ID_ANALOG_X)
+         v = stick_x;
+      else if (id == RETRO_DEVICE_ID_ANALOG_Y)
+         v = stick_y;
+      if (idx == RETRO_DEVICE_INDEX_ANALOG_RIGHT)
+         v = (int16_t)-v;
+      if (idx == RETRO_DEVICE_INDEX_ANALOG_BUTTON)
+         return 0;
+      return stick_on ? v : 0;
+   }
    if (port == pad_port && dev == RETRO_DEVICE_JOYPAD)
    {
       if (id == RETRO_DEVICE_ID_JOYPAD_MASK)
@@ -637,6 +680,14 @@ int main(int argc, char **argv)
       }
       else if (!strcmp(argv[i], "--pad-port") && i + 1 < argc)
          pad_port = atoi(argv[++i]);
+      else if (!strcmp(argv[i], "--stick") && i + 1 < argc)
+      {
+         int x = 0, y = 0;
+         stick_len = 1;
+         sscanf(argv[++i], "%d:%d:%d:%d", &stick_first, &x, &y, &stick_len);
+         stick_x = (int16_t)x;
+         stick_y = (int16_t)y;
+      }
       else if (!strcmp(argv[i], "--peek") && i + 1 < argc && npeek < MAX_PEEK)
          peek[npeek++] = strtoul(argv[++i], NULL, 0);
       else if (!strcmp(argv[i], "--reload") && i + 1 < argc)
@@ -750,6 +801,8 @@ int main(int argc, char **argv)
    {
       int64_t a, d;
       run_no_cb = run_no;
+      stick_on = stick_len && run_no >= stick_first &&
+                 run_no < stick_first + stick_len;
       if (run_no == rt_runs)
       {
          t_free = now_us();
@@ -932,6 +985,8 @@ int main(int argc, char **argv)
             p_mem_size(RETRO_MEMORY_SYSTEM_RAM), ctr,
             (unsigned long long)fnv(0xcbf29ce484222325ULL, ram,
                p_mem_size(RETRO_MEMORY_SYSTEM_RAM)));
+      printf("rumble_strong=%u rumble_weak=%u rumble_calls=%d\n",
+            rumble_strong, rumble_weak, rumble_calls);
       for (k = 0; k < npeek; k++)
       {
          uint32_t v = 0;
