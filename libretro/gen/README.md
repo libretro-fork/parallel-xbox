@@ -9,6 +9,11 @@ are here, made once by meson and committed: the files the core's objects
 compile or include, under the paths meson gives them in its build
 directory (the Makefile puts this directory first on the include path).
 
+`config-host.h` chooses between `config-host-linux.h` and
+`config-host-win32.h` (the only generated file that differs between the
+two; Windows' was made by a MinGW-w64 cross configure, with
+`--cross-prefix=x86_64-w64-mingw32- --static` added to the line below).
+
 They were made by a meson build directory configured as the core's:
 
 ```
@@ -24,13 +29,16 @@ default `log` backend each one tested at run time whether to log).
 
 Then, by hand:
 
-- `config-host.h`: `CONFIG_DSP_JIT` taken out (the Makefile defines it
+- `i386-softmmu-config-devices.h`, `config-poison.h`: the ivshmem-flat
+  device (Linux only, shared memory; no Xbox has one) taken out, so the two
+  OSes share them.
+- `config-host-*.h`: `CONFIG_DSP_JIT` taken out (the Makefile defines it
   when it links the DSP JIT, `HAVE_DSP_JIT`); `CONFIG_USB_LIBUSB` undefined
   (meson's libusb check ignores `--disable-libusb`; the core has no USB
   passthrough); the host CPU's defines (`HOST_X86_64` and the x86 features)
   moved to the end of the file, chosen by the compiler's own macros, so the
   file serves x86-64 and AArch64 hosts. The rest is what meson found on an
-  x86-64 Linux host.
+  x86-64 host.
 - `xemu-version-macro.h` is not here: the version and commit the core logs
   change with every commit, so the Makefile writes it at each build
   (`libretro/version.sh`, as `scripts/xemu-version.py` does for meson).

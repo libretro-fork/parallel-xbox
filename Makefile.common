@@ -12,7 +12,7 @@ QEMU_INCFLAGS := \
 	-I$(GEN_DIR) -I$(CORE_DIR) -I$(CORE_DIR)/libretro-common/include \
 	-I$(GEN_DIR)/qapi -I$(GEN_DIR)/trace -I$(GEN_DIR)/ui -I$(GEN_DIR)/data \
 	-I$(GEN_DIR)/block \
-	-isystem $(CORE_DIR)/linux-headers \
+	$(OS_INCFLAGS) \
 	-iquote $(GEN_DIR) -iquote $(CORE_DIR) -iquote $(CORE_DIR)/include \
 	-iquote $(CORE_DIR)/host/include/$(HOST_INCLUDE_ARCH) \
 	-iquote $(CORE_DIR)/host/include/generic \
@@ -34,8 +34,8 @@ QEMU_WARNINGS := -Wall -Wempty-body -Wendif-labels -Wexpansion-to-defined \
 # CONFIG_DSP_JIT is not in the pregenerated config-host.h: it comes with
 # DSP_JIT_CFLAGS when the core has the JIT
 QEMU_CFLAGS := -std=gnu11 -fno-strict-aliasing -fno-common -fwrapv \
-	$(QEMU_WARNINGS) $(QEMU_DEFINES) $(QEMU_INCFLAGS) $(DEPS_CFLAGS) \
-	$(DSP_JIT_CFLAGS)
+	$(QEMU_WARNINGS) $(QEMU_DEFINES) $(OS_CFLAGS) $(QEMU_INCFLAGS) \
+	$(DEPS_CFLAGS) $(DSP_JIT_CFLAGS)
 
 XXHASH_DEFINES := -DXXH_FORCE_ALIGN_CHECK=0 -DXXH_NO_INLINE_HINTS=1 \
 	-DXXH_CPU_LITTLE_ENDIAN=1
@@ -58,12 +58,13 @@ CFLAGS_DSP := $(QEMU_CFLAGS) -I$(CORE_DIR)/hw/xbox/mcpx/apu/dsp \
 CFLAGS_GLOFF := $(QEMU_CFLAGS) -I$(CORE_DIR)/hw/xbox/nv2a/pgraph/thirdparty
 CFLAGS_LRCOMMON := -I$(CORE_DIR)/libretro-common/include -w
 CFLAGS_XXHASH := -I$(CORE_DIR)/deps/xxhash $(XXHASH_DEFINES)
-CFLAGS_VOLK := -I$(CORE_DIR)/deps/volk -DVK_NO_PROTOTYPES $(DEPS_CFLAGS)
+CFLAGS_VOLK := -I$(CORE_DIR)/deps/volk -DVK_NO_PROTOTYPES $(OS_CFLAGS) \
+	$(DEPS_CFLAGS)
 CFLAGS_SPIRV_REFLECT := -I$(CORE_DIR)/deps/SPIRV-Reflect
 CFLAGS_VSH := -I$(CORE_DIR)/deps/nv2a_vsh_cpu/src
 CXXFLAGS_VMA := -std=c++17 -I$(CORE_DIR)/thirdparty $(VULKAN_INCFLAGS) \
 	-DVMA_STATIC_VULKAN_FUNCTIONS=0 -DVMA_DYNAMIC_VULKAN_FUNCTIONS=0 \
-	$(DEPS_CFLAGS)
+	$(OS_CFLAGS) $(DEPS_CFLAGS)
 
 # --- Sources ---------------------------------------------------------------
 
@@ -505,7 +506,6 @@ SOURCES_UTIL := \
 	$(CORE_DIR)/stubs/xen-hw-stub.c \
 	$(CORE_DIR)/trace/control.c \
 	$(CORE_DIR)/trace/qmp.c \
-	$(CORE_DIR)/util/aio-posix.c \
 	$(CORE_DIR)/util/aio-wait.c \
 	$(CORE_DIR)/util/aiocb.c \
 	$(CORE_DIR)/util/async.c \
@@ -516,25 +516,17 @@ SOURCES_UTIL := \
 	$(CORE_DIR)/util/buffer.c \
 	$(CORE_DIR)/util/bufferiszero.c \
 	$(CORE_DIR)/util/cacheflush.c \
-	$(CORE_DIR)/util/chardev_open.c \
-	$(CORE_DIR)/util/compatfd.c \
-	$(CORE_DIR)/util/coroutine-ucontext.c \
 	$(CORE_DIR)/util/cpu-boost.c \
 	$(CORE_DIR)/util/crc-ccitt.c \
 	$(CORE_DIR)/util/crc32c.c \
 	$(CORE_DIR)/util/cutils.c \
 	$(CORE_DIR)/util/defer-call.c \
-	$(CORE_DIR)/util/drm.c \
 	$(CORE_DIR)/util/envlist.c \
 	$(CORE_DIR)/util/error-report.c \
 	$(CORE_DIR)/util/error.c \
 	$(CORE_DIR)/util/event.c \
-	$(CORE_DIR)/util/event_notifier-posix.c \
 	$(CORE_DIR)/util/fast-hash.c \
-	$(CORE_DIR)/util/fdmon-epoll.c \
-	$(CORE_DIR)/util/fdmon-poll.c \
 	$(CORE_DIR)/util/fifo8.c \
-	$(CORE_DIR)/util/filemonitor-inotify.c \
 	$(CORE_DIR)/util/getauxval.c \
 	$(CORE_DIR)/util/guest-random.c \
 	$(CORE_DIR)/util/hbitmap.c \
@@ -550,13 +542,10 @@ SOURCES_UTIL := \
 	$(CORE_DIR)/util/log.c \
 	$(CORE_DIR)/util/main-loop.c \
 	$(CORE_DIR)/util/memalign.c \
-	$(CORE_DIR)/util/memfd.c \
-	$(CORE_DIR)/util/mmap-alloc.c \
 	$(CORE_DIR)/util/module.c \
 	$(CORE_DIR)/util/notify.c \
 	$(CORE_DIR)/util/nvdimm-utils.c \
 	$(CORE_DIR)/util/osdep.c \
-	$(CORE_DIR)/util/oslib-posix.c \
 	$(CORE_DIR)/util/path.c \
 	$(CORE_DIR)/util/qdist.c \
 	$(CORE_DIR)/util/qemu-co-shared-resource.c \
@@ -570,7 +559,6 @@ SOURCES_UTIL := \
 	$(CORE_DIR)/util/qemu-print.c \
 	$(CORE_DIR)/util/qemu-progress.c \
 	$(CORE_DIR)/util/qemu-sockets.c \
-	$(CORE_DIR)/util/qemu-thread-posix.c \
 	$(CORE_DIR)/util/qemu-timer-common.c \
 	$(CORE_DIR)/util/qemu-timer.c \
 	$(CORE_DIR)/util/qht.c \
@@ -589,11 +577,35 @@ SOURCES_UTIL := \
 	$(CORE_DIR)/util/timed-average.c \
 	$(CORE_DIR)/util/transactions.c \
 	$(CORE_DIR)/util/unicode.c \
-	$(CORE_DIR)/util/userfaultfd.c \
 	$(CORE_DIR)/util/uuid.c \
+	$(CORE_DIR)/util/yank.c \
+
+SOURCES_UTIL_POSIX := \
+	$(CORE_DIR)/util/aio-posix.c \
+	$(CORE_DIR)/util/chardev_open.c \
+	$(CORE_DIR)/util/compatfd.c \
+	$(CORE_DIR)/util/coroutine-ucontext.c \
+	$(CORE_DIR)/util/drm.c \
+	$(CORE_DIR)/util/event_notifier-posix.c \
+	$(CORE_DIR)/util/fdmon-epoll.c \
+	$(CORE_DIR)/util/fdmon-poll.c \
+	$(CORE_DIR)/util/filemonitor-inotify.c \
+	$(CORE_DIR)/util/memfd.c \
+	$(CORE_DIR)/util/mmap-alloc.c \
+	$(CORE_DIR)/util/oslib-posix.c \
+	$(CORE_DIR)/util/qemu-thread-posix.c \
+	$(CORE_DIR)/util/userfaultfd.c \
 	$(CORE_DIR)/util/vfio-helpers.c \
 	$(CORE_DIR)/util/vhost-user-server.c \
-	$(CORE_DIR)/util/yank.c \
+
+SOURCES_UTIL_WIN32 := \
+	$(CORE_DIR)/util/aio-win32.c \
+	$(CORE_DIR)/util/coroutine-windows.c \
+	$(CORE_DIR)/util/event_notifier-win32.c \
+	$(CORE_DIR)/util/filemonitor-stub.c \
+	$(CORE_DIR)/util/miniz/miniz.c \
+	$(CORE_DIR)/util/oslib-win32.c \
+	$(CORE_DIR)/util/qemu-thread-win32.c \
 
 # Block layer, crypto, chardev, I/O channels, QOM, migration core
 SOURCES_COMMON := \
@@ -619,7 +631,6 @@ SOURCES_COMMON := \
 	$(CORE_DIR)/block/crypto.c \
 	$(CORE_DIR)/block/dirty-bitmap.c \
 	$(CORE_DIR)/block/export/export.c \
-	$(CORE_DIR)/block/file-posix.c \
 	$(CORE_DIR)/block/filter-compress.c \
 	$(CORE_DIR)/block/graph-lock.c \
 	$(CORE_DIR)/block/io.c \
@@ -628,7 +639,6 @@ SOURCES_COMMON := \
 	$(CORE_DIR)/block/monitor/bitmap-qmp-cmds.c \
 	$(CORE_DIR)/block/nbd.c \
 	$(CORE_DIR)/block/null.c \
-	$(CORE_DIR)/block/nvme.c \
 	$(CORE_DIR)/block/preallocate.c \
 	$(CORE_DIR)/block/progress_meter.c \
 	$(CORE_DIR)/block/qapi.c \
@@ -651,16 +661,13 @@ SOURCES_COMMON := \
 	$(CORE_DIR)/blockdev-nbd.c \
 	$(CORE_DIR)/blockdev.c \
 	$(CORE_DIR)/blockjob.c \
-	$(CORE_DIR)/chardev/char-fd.c \
 	$(CORE_DIR)/chardev/char-fe.c \
 	$(CORE_DIR)/chardev/char-file.c \
 	$(CORE_DIR)/chardev/char-hub.c \
 	$(CORE_DIR)/chardev/char-io.c \
 	$(CORE_DIR)/chardev/char-mux.c \
 	$(CORE_DIR)/chardev/char-null.c \
-	$(CORE_DIR)/chardev/char-parallel.c \
 	$(CORE_DIR)/chardev/char-pipe.c \
-	$(CORE_DIR)/chardev/char-pty.c \
 	$(CORE_DIR)/chardev/char-ringbuf.c \
 	$(CORE_DIR)/chardev/char-serial.c \
 	$(CORE_DIR)/chardev/char-socket.c \
@@ -749,11 +756,26 @@ SOURCES_COMMON := \
 	$(CORE_DIR)/qom/object_interfaces.c \
 	$(CORE_DIR)/qom/qom-qmp-cmds.c \
 	$(CORE_DIR)/qom/qom-qobject.c \
-	$(CORE_DIR)/scsi/pr-manager-helper.c \
-	$(CORE_DIR)/scsi/pr-manager.c \
 	$(CORE_DIR)/scsi/utils.c \
 	$(CORE_DIR)/semihosting/stubs-all.c \
 	$(CORE_DIR)/target-info.c \
+
+SOURCES_COMMON_POSIX := \
+	$(CORE_DIR)/block/file-posix.c \
+	$(CORE_DIR)/block/nvme.c \
+	$(CORE_DIR)/chardev/char-fd.c \
+	$(CORE_DIR)/chardev/char-parallel.c \
+	$(CORE_DIR)/chardev/char-pty.c \
+	$(CORE_DIR)/scsi/pr-manager-helper.c \
+	$(CORE_DIR)/scsi/pr-manager.c \
+
+SOURCES_COMMON_WIN32 := \
+	$(CORE_DIR)/block/file-win32.c \
+	$(CORE_DIR)/block/win32-aio.c \
+	$(CORE_DIR)/chardev/char-console.c \
+	$(CORE_DIR)/chardev/char-win-stdio.c \
+	$(CORE_DIR)/chardev/char-win.c \
+	$(CORE_DIR)/scsi/pr-manager-stub.c \
 
 # The system emulator: devices, accelerator, monitor, the libretro frontend
 SOURCES_SYSTEM := \
@@ -787,15 +809,10 @@ SOURCES_SYSTEM := \
 	$(CORE_DIR)/backends/cryptodev-builtin.c \
 	$(CORE_DIR)/backends/cryptodev-hmp-cmds.c \
 	$(CORE_DIR)/backends/cryptodev.c \
-	$(CORE_DIR)/backends/host_iommu_device.c \
-	$(CORE_DIR)/backends/hostmem-file.c \
-	$(CORE_DIR)/backends/hostmem-memfd.c \
 	$(CORE_DIR)/backends/hostmem-ram.c \
-	$(CORE_DIR)/backends/hostmem-shm.c \
 	$(CORE_DIR)/backends/hostmem.c \
 	$(CORE_DIR)/backends/rng-builtin.c \
 	$(CORE_DIR)/backends/rng-egd.c \
-	$(CORE_DIR)/backends/rng-random.c \
 	$(CORE_DIR)/backends/rng.c \
 	$(CORE_DIR)/backends/spdm-socket.c \
 	$(CORE_DIR)/block/blkmemory.c \
@@ -812,9 +829,6 @@ SOURCES_SYSTEM := \
 	$(CORE_DIR)/dump/dump-hmp-cmds.c \
 	$(CORE_DIR)/dump/dump.c \
 	$(CORE_DIR)/ebpf/ebpf_rss-stub.c \
-	$(CORE_DIR)/fsdev/qemu-fsdev-dummy.c \
-	$(CORE_DIR)/fsdev/qemu-fsdev-opts.c \
-	$(CORE_DIR)/fsdev/qemu-fsdev-throttle.c \
 	$(CORE_DIR)/gdbstub/gdbstub.c \
 	$(CORE_DIR)/gdbstub/syscalls.c \
 	$(CORE_DIR)/gdbstub/system.c \
@@ -907,7 +921,6 @@ SOURCES_SYSTEM := \
 	$(CORE_DIR)/hw/mem/cxl_type3_stubs.c \
 	$(CORE_DIR)/hw/mem/memory-device.c \
 	$(CORE_DIR)/hw/mem/pc-dimm.c \
-	$(CORE_DIR)/hw/misc/ivshmem-flat.c \
 	$(CORE_DIR)/hw/misc/pci-testdev.c \
 	$(CORE_DIR)/hw/net/rocker/qmp-norocker.c \
 	$(CORE_DIR)/hw/net/rocker/rocker-hmp-cmds.c \
@@ -948,7 +961,6 @@ SOURCES_SYSTEM := \
 	$(CORE_DIR)/hw/usb/dev-audio.c \
 	$(CORE_DIR)/hw/usb/dev-hid.c \
 	$(CORE_DIR)/hw/usb/dev-hub.c \
-	$(CORE_DIR)/hw/usb/dev-mtp.c \
 	$(CORE_DIR)/hw/usb/dev-network.c \
 	$(CORE_DIR)/hw/usb/dev-serial.c \
 	$(CORE_DIR)/hw/usb/dev-smartcard-reader.c \
@@ -963,7 +975,6 @@ SOURCES_SYSTEM := \
 	$(CORE_DIR)/hw/usb/imx-usb-phy.c \
 	$(CORE_DIR)/hw/usb/libhw.c \
 	$(CORE_DIR)/hw/usb/pcap.c \
-	$(CORE_DIR)/hw/usb/u2f-passthru.c \
 	$(CORE_DIR)/hw/usb/u2f.c \
 	$(CORE_DIR)/hw/vfio/iommufd-stubs.c \
 	$(CORE_DIR)/hw/virtio/vhost-stub.c \
@@ -1027,8 +1038,6 @@ SOURCES_SYSTEM := \
 	$(CORE_DIR)/net/socket.c \
 	$(CORE_DIR)/net/stream.c \
 	$(CORE_DIR)/net/stream_data.c \
-	$(CORE_DIR)/net/tap-linux.c \
-	$(CORE_DIR)/net/tap.c \
 	$(CORE_DIR)/net/util.c \
 	$(CORE_DIR)/qom/qom-hmp-cmds.c \
 	$(CORE_DIR)/replay/replay-audio.c \
@@ -1046,7 +1055,6 @@ SOURCES_SYSTEM := \
 	$(CORE_DIR)/semihosting/stubs-system.c \
 	$(CORE_DIR)/stats/stats-hmp-cmds.c \
 	$(CORE_DIR)/stats/stats-qmp-cmds.c \
-	$(CORE_DIR)/system/async-teardown.c \
 	$(CORE_DIR)/system/balloon.c \
 	$(CORE_DIR)/system/bootdevice.c \
 	$(CORE_DIR)/system/cpu-timers.c \
@@ -1073,7 +1081,6 @@ SOURCES_SYSTEM := \
 	$(CORE_DIR)/system/watchpoint.c \
 	$(CORE_DIR)/target-info-qom.c \
 	$(CORE_DIR)/tcg/optimize.c \
-	$(CORE_DIR)/tcg/perf.c \
 	$(CORE_DIR)/tcg/region.c \
 	$(CORE_DIR)/tcg/tcg-common.c \
 	$(CORE_DIR)/tcg/tcg-op-fp.c \
@@ -1092,7 +1099,6 @@ SOURCES_SYSTEM := \
 	$(CORE_DIR)/ui/input-barrier.c \
 	$(CORE_DIR)/ui/input-keymap.c \
 	$(CORE_DIR)/ui/input-legacy.c \
-	$(CORE_DIR)/ui/input-linux.c \
 	$(CORE_DIR)/ui/input.c \
 	$(CORE_DIR)/ui/kbd-state.c \
 	$(CORE_DIR)/ui/keymaps.c \
@@ -1103,13 +1109,34 @@ SOURCES_SYSTEM := \
 	$(CORE_DIR)/ui/libretro.c \
 	$(CORE_DIR)/ui/qemu-pixman.c \
 	$(CORE_DIR)/ui/spice-module.c \
-	$(CORE_DIR)/ui/udmabuf.c \
 	$(CORE_DIR)/ui/ui-hmp-cmds.c \
 	$(CORE_DIR)/ui/ui-qmp-cmds.c \
 	$(CORE_DIR)/ui/util.c \
 	$(CORE_DIR)/ui/vnc-stubs.c \
 	$(CORE_DIR)/ui/xemu-net.c \
 	$(CORE_DIR)/ui/xemu-widescreen.c \
+
+SOURCES_SYSTEM_POSIX := \
+	$(CORE_DIR)/backends/host_iommu_device.c \
+	$(CORE_DIR)/backends/hostmem-file.c \
+	$(CORE_DIR)/backends/hostmem-memfd.c \
+	$(CORE_DIR)/backends/hostmem-shm.c \
+	$(CORE_DIR)/backends/rng-random.c \
+	$(CORE_DIR)/fsdev/qemu-fsdev-dummy.c \
+	$(CORE_DIR)/fsdev/qemu-fsdev-opts.c \
+	$(CORE_DIR)/fsdev/qemu-fsdev-throttle.c \
+	$(CORE_DIR)/hw/usb/dev-mtp.c \
+	$(CORE_DIR)/hw/usb/u2f-passthru.c \
+	$(CORE_DIR)/net/tap-linux.c \
+	$(CORE_DIR)/net/tap.c \
+	$(CORE_DIR)/system/async-teardown.c \
+	$(CORE_DIR)/tcg/perf.c \
+	$(CORE_DIR)/ui/input-linux.c \
+	$(CORE_DIR)/ui/udmabuf.c \
+
+SOURCES_SYSTEM_WIN32 := \
+	$(CORE_DIR)/net/capture_win_ifnames.c \
+	$(CORE_DIR)/net/tap-win32.c \
 
 # Built for the i386 target: the CPU, the Xbox and Chihiro hardware, nv2a
 SOURCES_TARGET := \
@@ -1345,7 +1372,7 @@ SOURCES_TARGET := \
 	$(CORE_DIR)/xemu-version.c \
 	$(CORE_DIR)/xemu-xbe.c \
 
-# The APU's DSP56300 (interpreter; dsp_jit.c below)
+# The APU's DSP56300 (interpreter; the JIT's glue is chosen in the Makefile)
 SOURCES_DSP := \
 	$(CORE_DIR)/hw/xbox/mcpx/apu/dsp/dsp.c \
 	$(CORE_DIR)/hw/xbox/mcpx/apu/dsp/dsp_c.c \
@@ -1381,3 +1408,14 @@ SOURCES_VSH := \
 
 SOURCES_VMA_CXX := \
 	$(CORE_DIR)/thirdparty/vma.cc \
+
+# By the host OS
+ifeq ($(HOST_OS),win32)
+SOURCES_UTIL   += $(SOURCES_UTIL_WIN32)
+SOURCES_COMMON += $(SOURCES_COMMON_WIN32)
+SOURCES_SYSTEM += $(SOURCES_SYSTEM_WIN32)
+else
+SOURCES_UTIL   += $(SOURCES_UTIL_POSIX)
+SOURCES_COMMON += $(SOURCES_COMMON_POSIX)
+SOURCES_SYSTEM += $(SOURCES_SYSTEM_POSIX)
+endif

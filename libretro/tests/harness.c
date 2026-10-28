@@ -1,5 +1,7 @@
 /* Headless libretro frontend for measuring the core: GL core context on a
- * surfaceless EGL display (Mesa), one FBO, unthrottled retro_run.
+ * surfaceless EGL display (Mesa) - on Windows a WGL context on a hidden
+ * window, which Wine runs on the host's GL - one FBO, unthrottled
+ * retro_run.
  *
  * Per run it records the audio frames handed over and whether a new video
  * frame came; at the end it prints the cadence, the speed and hashes of the
@@ -34,16 +36,20 @@
  * Plain C99. SPDX-License-Identifier: GPL-2.0-or-later
  */
 #define _GNU_SOURCE
-#include <dlfcn.h>
 #include <stdarg.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <dlfcn.h>
 #include <time.h>
 #include <unistd.h>
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
+#endif
 #include <GL/gl.h>
 #include <GL/glext.h>
 
@@ -61,8 +67,14 @@ static ev_t evs[MAX_EVENTS];
 static int nevs;
 
 static const char *sysdir;
+#ifdef _WIN32
+static HWND hwnd;
+static HDC hdc;
+static HGLRC hglrc;
+#else
 static EGLDisplay dpy;
 static EGLContext ctx;
+#endif
 static GLuint fbo, fbo_color, fbo_depth;
 static struct retro_hw_render_callback hw;
 static int have_hw;
@@ -101,9 +113,19 @@ static uint64_t fnv(uint64_t h, const void *p, size_t n)
 
 static int64_t now_us(void)
 {
+#ifdef _WIN32
+   static LARGE_INTEGER freq;
+   LARGE_INTEGER t;
+   if (!freq.QuadPart)
+      QueryPerformanceFrequency(&freq);
+   QueryPerformanceCounter(&t);
+   return (int64_t)(t.QuadPart / freq.QuadPart) * 1000000 +
+      (int64_t)(t.QuadPart % freq.QuadPart) * 1000000 / freq.QuadPart;
+#else
    struct timespec ts;
    clock_gettime(CLOCK_MONOTONIC, &ts);
    return (int64_t)ts.tv_sec * 1000000 + ts.tv_nsec / 1000;
+#endif
 }
 
 static void log_cb(enum retro_log_level level, const char *fmt, ...)
@@ -122,7 +144,16 @@ static uintptr_t get_fb(void) { return fbo; }
 
 static retro_proc_address_t get_proc(const char *sym)
 {
+#ifdef _WIN32
+   /* wglGetProcAddress has only what is past GL 1.1; opengl32 exports the
+    * rest, and some drivers answer 1, 2, 3 or -1 for those */
+   PROC p = wglGetProcAddress(sym);
+   if (!p || p == (PROC)1 || p == (PROC)2 || p == (PROC)3 || p == (PROC)-1)
+      p = GetProcAddress(GetModuleHandleA("opengl32.dll"), sym);
+   return (retro_proc_address_t)p;
+#else
    return (retro_proc_address_t)eglGetProcAddress(sym);
+#endif
 }
 
 static bool set_rumble(unsigned port, enum retro_rumble_effect e, uint16_t s)
@@ -317,7 +348,85 @@ static int16_t input_state_cb(unsigned port, unsigned dev, unsigned idx,
    return 0;
 }
 
-static int egl_setup(void)
+/* The frame buffer the core draws into, on the context gl_setup made */
+static void fbo_setup(void)
+{
+   p_glGenFramebuffers = (PFNGLGENFRAMEBUFFERSPROC)get_proc("glGenFramebuffers");
+   p_glBindFramebuffer = (PFNGLBINDFRAMEBUFFERPROC)get_proc("glBindFramebuffer");
+   p_glFramebufferTexture2D = (PFNGLFRAMEBUFFERTEXTURE2DPROC)get_proc("glFramebufferTexture2D");
+   p_glGenRenderbuffers = (PFNGLGENRENDERBUFFERSPROC)get_proc("glGenRenderbuffers");
+   p_glBindRenderbuffer = (PFNGLBINDRENDERBUFFERPROC)get_proc("glBindRenderbuffer");
+   p_glRenderbufferStorage = (PFNGLRENDERBUFFERSTORAGEPROC)get_proc("glRenderbufferStorage");
+   p_glFramebufferRenderbuffer = (PFNGLFRAMEBUFFERRENDERBUFFERPROC)get_proc("glFramebufferRenderbuffer");
+
+   glGenTextures(1, &fbo_color);
+   glBindTexture(GL_TEXTURE_2D, fbo_color);
+   glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, 1920, 1080, 0, GL_RGBA,
+         GL_UNSIGNED_BYTE, NULL);
+   p_glGenRenderbuffers(1, &fbo_depth);
+   p_glBindRenderbuffer(GL_RENDERBUFFER, fbo_depth);
+   p_glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, 1920, 1080);
+   p_glGenFramebuffers(1, &fbo);
+   p_glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+   p_glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+         GL_TEXTURE_2D, fbo_color, 0);
+   p_glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT,
+         GL_RENDERBUFFER, fbo_depth);
+   p_glBindFramebuffer(GL_FRAMEBUFFER, 0);
+}
+
+#ifdef _WIN32
+#define WGL_CONTEXT_MAJOR_VERSION_ARB    0x2091
+#define WGL_CONTEXT_MINOR_VERSION_ARB    0x2092
+#define WGL_CONTEXT_PROFILE_MASK_ARB     0x9126
+#define WGL_CONTEXT_CORE_PROFILE_BIT_ARB 0x00000001
+typedef HGLRC (WINAPI *create_attribs_t)(HDC, HGLRC, const int *);
+
+static int gl_setup(void)
+{
+   static const int attr[] = {
+      WGL_CONTEXT_MAJOR_VERSION_ARB, 4,
+      WGL_CONTEXT_MINOR_VERSION_ARB, 5,
+      WGL_CONTEXT_PROFILE_MASK_ARB, WGL_CONTEXT_CORE_PROFILE_BIT_ARB,
+      0
+   };
+   PIXELFORMATDESCRIPTOR pfd;
+   WNDCLASSA wc;
+   HGLRC tmp;
+   create_attribs_t create;
+
+   memset(&wc, 0, sizeof(wc));
+   wc.lpfnWndProc = DefWindowProcA;
+   wc.hInstance = GetModuleHandleA(NULL);
+   wc.lpszClassName = "harness";
+   RegisterClassA(&wc);
+   hwnd = CreateWindowA("harness", "harness", WS_OVERLAPPEDWINDOW, 0, 0, 64,
+         64, NULL, NULL, wc.hInstance, NULL);
+   if (!hwnd)
+      return 0;
+   hdc = GetDC(hwnd);
+   memset(&pfd, 0, sizeof(pfd));
+   pfd.nSize = sizeof(pfd);
+   pfd.nVersion = 1;
+   pfd.dwFlags = PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER;
+   pfd.iPixelType = PFD_TYPE_RGBA;
+   pfd.cColorBits = 32;
+   pfd.cDepthBits = 24;
+   pfd.cStencilBits = 8;
+   if (!SetPixelFormat(hdc, ChoosePixelFormat(hdc, &pfd), &pfd))
+      return 0;
+   tmp = wglCreateContext(hdc);
+   if (!tmp || !wglMakeCurrent(hdc, tmp))
+      return 0;
+   create = (create_attribs_t)(void *)wglGetProcAddress(
+         "wglCreateContextAttribsARB");
+   hglrc = create ? create(hdc, NULL, attr) : NULL;
+   wglMakeCurrent(NULL, NULL);
+   wglDeleteContext(tmp);
+   return hglrc && wglMakeCurrent(hdc, hglrc);
+}
+#else
+static int gl_setup(void)
 {
    static const EGLint cfg_attr[] = {
       EGL_SURFACE_TYPE, EGL_PBUFFER_BIT,
@@ -353,30 +462,9 @@ static int egl_setup(void)
    if (!ctx || !eglMakeCurrent(dpy, EGL_NO_SURFACE, EGL_NO_SURFACE, ctx))
       return 0;
 
-   p_glGenFramebuffers = (PFNGLGENFRAMEBUFFERSPROC)get_proc("glGenFramebuffers");
-   p_glBindFramebuffer = (PFNGLBINDFRAMEBUFFERPROC)get_proc("glBindFramebuffer");
-   p_glFramebufferTexture2D = (PFNGLFRAMEBUFFERTEXTURE2DPROC)get_proc("glFramebufferTexture2D");
-   p_glGenRenderbuffers = (PFNGLGENRENDERBUFFERSPROC)get_proc("glGenRenderbuffers");
-   p_glBindRenderbuffer = (PFNGLBINDRENDERBUFFERPROC)get_proc("glBindRenderbuffer");
-   p_glRenderbufferStorage = (PFNGLRENDERBUFFERSTORAGEPROC)get_proc("glRenderbufferStorage");
-   p_glFramebufferRenderbuffer = (PFNGLFRAMEBUFFERRENDERBUFFERPROC)get_proc("glFramebufferRenderbuffer");
-
-   glGenTextures(1, &fbo_color);
-   glBindTexture(GL_TEXTURE_2D, fbo_color);
-   glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, 1920, 1080, 0, GL_RGBA,
-         GL_UNSIGNED_BYTE, NULL);
-   p_glGenRenderbuffers(1, &fbo_depth);
-   p_glBindRenderbuffer(GL_RENDERBUFFER, fbo_depth);
-   p_glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, 1920, 1080);
-   p_glGenFramebuffers(1, &fbo);
-   p_glBindFramebuffer(GL_FRAMEBUFFER, fbo);
-   p_glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
-         GL_TEXTURE_2D, fbo_color, 0);
-   p_glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT,
-         GL_RENDERBUFFER, fbo_depth);
-   p_glBindFramebuffer(GL_FRAMEBUFFER, 0);
    return 1;
 }
+#endif
 
 static void wav_header(FILE *f, long frames)
 {
@@ -537,19 +625,33 @@ int main(int argc, char **argv)
          content = argv[i];
    }
 
-   if (!egl_setup())
+   if (!gl_setup())
    {
-      fprintf(stderr, "harness: no EGL/GL 4.5 core context\n");
+      fprintf(stderr, "harness: no GL 4.5 core context\n");
       return 1;
    }
+   fbo_setup();
 
+#ifdef _WIN32
+   core = (void *)LoadLibraryA(argv[1]);
+#else
    core = dlopen(argv[1], RTLD_NOW | RTLD_LOCAL);
+#endif
    if (!core)
    {
+#ifdef _WIN32
+      fprintf(stderr, "harness: cannot load %s (error %lu)\n", argv[1],
+            (unsigned long)GetLastError());
+#else
       fprintf(stderr, "harness: %s\n", dlerror());
+#endif
       return 1;
    }
+#ifdef _WIN32
+#define SYM(v, n) *(void **)&v = (void *)GetProcAddress((HMODULE)core, n)
+#else
 #define SYM(v, n) *(void **)&v = dlsym(core, n)
+#endif
    SYM(p_set_env, "retro_set_environment");
    SYM(p_set_video, "retro_set_video_refresh");
    SYM(p_set_audio, "retro_set_audio_sample");
@@ -730,10 +832,14 @@ int main(int argc, char **argv)
          int64_t left = target - now_us();
          if (left > 0)
          {
+#ifdef _WIN32
+            Sleep((DWORD)(left / 1000));
+#else
             struct timespec ts;
             ts.tv_sec = left / 1000000;
             ts.tv_nsec = (left % 1000000) * 1000;
             nanosleep(&ts, NULL);
+#endif
          }
       }
    }
@@ -780,6 +886,7 @@ int main(int argc, char **argv)
       printf("ram_size=%zu counter_0x300000=%u\n",
             p_mem_size(RETRO_MEMORY_SYSTEM_RAM), ctr);
    }
+#ifndef _WIN32
    if (getenv("HARNESS_THREADS"))
    {
       char cmd[64];
@@ -789,6 +896,7 @@ int main(int argc, char **argv)
       if (system(cmd) < 0)
          perror("system");
    }
+#endif
    if (wav)
    {
       wav_header(wav, wav_frames);

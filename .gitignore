@@ -32,6 +32,8 @@ build.log
 *.o
 *.d
 /xemu_libretro.so
+/xemu_libretro.dll
+/deps/*.a
 /deps/dsp56300/
 /libqemuutil.a
 /libretro/gen/xemu-version-macro.h

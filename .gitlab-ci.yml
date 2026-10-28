@@ -2,13 +2,14 @@
 #
 # Linux x64, Linux aarch64 and Windows x64.
 #
-# xemu is QEMU: it is built with QEMU's configure, meson and ninja, with
-# upstream's dependencies, which the buildbot's Linux images (Ubuntu 16.04)
-# do not have. So the Linux jobs run in Ubuntu 24.04 with the packages of
-# .ci/libretro-linux.sh, and the Windows job cross-compiles in the MXE
-# toolchain image upstream xemu builds its Windows releases in
-# (.ci/libretro-windows.sh). The templates give the jobs their stage, runner
-# tags and artifacts; the scripts replace the templates' CMake steps.
+# The Windows job builds with the static Makefile, every library from source,
+# cross-compiling in the MXE toolchain image upstream xemu builds its Windows
+# releases in (.ci/libretro-windows.sh). The Linux jobs still build with
+# QEMU's configure, meson and ninja, with upstream's dependencies, which the
+# buildbot's Linux images (Ubuntu 16.04) do not have, so they run in Ubuntu
+# 24.04 with the packages of .ci/libretro-linux.sh. The templates give the
+# jobs their stage, runner tags and artifacts; the scripts replace the
+# templates' CMake steps.
 #
 # Android and macOS are built by the GitHub workflow only: Android takes glib
 # and pixman from vcpkg and needs ninja and Python modules the buildbot's

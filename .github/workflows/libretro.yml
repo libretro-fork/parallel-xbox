@@ -1,9 +1,9 @@
 name: Build libretro core
 
-# The core: xemu_libretro.so for Linux x86_64 and aarch64 with the static
-# Makefile; xemu_libretro.dll for Windows, cross-compiled in the MXE
-# toolchain image upstream xemu uses for its Windows releases, Android and
-# macOS with meson (-Dlibretro=true) until the Makefile builds them.
+# The core with the static Makefile: xemu_libretro.so for Linux x86_64 and
+# aarch64, xemu_libretro.dll for Windows (cross-compiled with MinGW-w64,
+# tested under Wine). Android and macOS with meson (-Dlibretro=true) until
+# the Makefile builds them.
 
 on:
   workflow_dispatch:
@@ -19,114 +19,55 @@ on:
 # platforms input (workflow_dispatch) lists them. Pushes and "all" build
 # everything.
 jobs:
+  # The static Makefile with MinGW-w64, as in MSYS2's MINGW64 shell: every
+  # library the core links is built from source (Makefile.deps), and the
+  # DLL needs only Windows' own DLLs. The tests run it under Wine.
   windows-x86_64:
     if: github.event_name != 'workflow_dispatch' || inputs.platforms == 'all' || contains(inputs.platforms, 'windows')
     name: Windows x86_64
-    runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/xemu-project/xemu-win64-toolchain-gcc:sha-18018f1
-    defaults:
-      run:
-        shell: bash
-    env:
-      CROSSPREFIX: x86_64-w64-mingw32.static-
-      CROSSAR: x86_64-w64-mingw32.static-gcc-ar
+    runs-on: ubuntu-24.04
     steps:
-      # No submodules: they are QEMU's firmware sources (edk2, u-boot and the
-      # like), none of which xemu builds; its dependencies come as meson wraps.
-      # The history is for the version string (git describe), without blobs.
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
           filter: blob:none
           submodules: false
 
-      - name: Mark the checkout safe for git
-        run: git config --global --add safe.directory '*'
-
-      # The libretro build links glslang and SPIRV-Tools statically
-      # (cc.find_library(..., static: true) in meson.build), and the MXE image
-      # has neither, so they are built here into its prefix, where the cross
-      # compiler finds them.
-      - name: Cache glslang
-        id: glslang-cache
-        uses: actions/cache@v4
-        with:
-          path: /opt/glslang
-          key: glslang-15.4.0-mxe-gcc-sha-18018f1
-
-      - name: Build glslang and SPIRV-Tools
-        if: steps.glslang-cache.outputs.cache-hit != 'true'
+      # The POSIX thread model, as MSYS2's gcc has; Wine and Mesa for the
+      # tests, nasm for the test ROMs
+      - name: Install dependencies
         run: |
-          git clone --quiet --depth 1 -b 15.4.0 https://github.com/KhronosGroup/glslang.git /tmp/glslang
-          cd /tmp/glslang
-          python3 update_glslang_sources.py
-          ${CROSSPREFIX}cmake -S . -B build -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_INSTALL_PREFIX=/opt/glslang \
-            -DBUILD_SHARED_LIBS=OFF \
-            -DENABLE_OPT=ON \
-            -DENABLE_GLSLANG_BINARIES=OFF \
-            -DGLSLANG_TESTS=OFF \
-            -DBUILD_TESTING=OFF \
-            -DSPIRV_SKIP_TESTS=ON \
-            -DSPIRV_SKIP_EXECUTABLES=ON \
-            -DSPIRV_TOOLS_BUILD_STATIC=ON
-          cmake --build build -j"$(nproc)"
-          cmake --install build
-          # SPIRV-Tools installs its static library as SPIRV-Tools-static when
-          # it builds both kinds; the build looks for SPIRV-Tools.
-          cd /opt/glslang/lib
-          [ -f libSPIRV-Tools.a ] || cp libSPIRV-Tools-static.a libSPIRV-Tools.a
-          ls -la
-
-      # meson's find_library(static: true) only searches the compiler's own
-      # library directories, and a cross gcc takes neither -L nor LIBRARY_PATH
-      # for that, so the libraries go into the toolchain's own lib directory.
-      - name: Put glslang where the cross compiler looks
-        run: |
-          libdir=$(dirname "$(${CROSSPREFIX}gcc -print-file-name=libkernel32.a)")
-          echo "toolchain lib dir: $libdir"
-          cp -a /opt/glslang/lib/*.a "$libdir/"
-
-      # The DSP JIT's prebuilt library, which meson fetches with curl; the
-      # MXE image has no curl, so it is put where meson looks for it first
-      - name: Fetch the dsp56300 library
-        run: |
-          ver=$(sed -n "s/^project('dsp56300', version: '\(.*\)')/\1/p" subprojects/dsp56300/meson.build)
-          a=dsp56300-$ver-x86_64-pc-windows-gnu.tar.gz
-          python3 -c "import sys, urllib.request; urllib.request.urlretrieve(sys.argv[1], sys.argv[2])" \
-            https://github.com/mborgerson/dsp56300/releases/download/v$ver/$a subprojects/dsp56300/$a
-          ls -la subprojects/dsp56300/
-
-      - name: Configure
-        run: |
-          ./configure \
-            --extra-cflags="-DXBOX=1 -Wno-error -I/opt/glslang/include" \
-            --extra-ldflags="-L/opt/glslang/lib" \
-            --target-list=i386-softmmu \
-            --cross-prefix=$CROSSPREFIX --static \
-            -Dlibretro=true
-        env:
-          AR: ${{ env.CROSSAR }}
+          sudo dpkg --add-architecture i386
+          sudo apt-get -qy update
+          sudo apt-get -qy install make gcc-mingw-w64-x86-64-posix \
+            g++-mingw-w64-x86-64-posix nasm wine64 xvfb \
+            libgl1-mesa-dri
+          sudo update-alternatives --set x86_64-w64-mingw32-gcc /usr/bin/x86_64-w64-mingw32-gcc-posix
+          sudo update-alternatives --set x86_64-w64-mingw32-g++ /usr/bin/x86_64-w64-mingw32-g++-posix
 
       - name: Build
-        run: ninja -C build xemu_libretro.dll 2>&1 | tail -200
+        run: make -j$(nproc) platform=win CROSS_PREFIX=x86_64-w64-mingw32-
+
+      # The core's run loop against the test ROMs, in a Windows build of the
+      # harness under Wine, on Mesa's software OpenGL
+      - name: Frame and audio tests
+        run: |
+          export WINEDEBUG=-all WINEPREFIX=$PWD/.wine
+          xvfb-run -a sh -c 'wineboot -u && libretro/tests/run.sh xemu_libretro.dll'
 
       - name: Collect
         run: |
           mkdir -p dist
-          cp build/xemu_libretro.dll dist/
+          cp xemu_libretro.dll dist/
           cp ui/xemu_libretro.info dist/
-          ${CROSSPREFIX}strip --strip-unneeded dist/xemu_libretro.dll
+          x86_64-w64-mingw32-objdump -p dist/xemu_libretro.dll | grep 'DLL Name'
+          x86_64-w64-mingw32-strip --strip-unneeded dist/xemu_libretro.dll
           ls -la dist
-          # What it needs at load time: Windows' own DLLs and nothing else.
-          ${CROSSPREFIX}objdump -p dist/xemu_libretro.dll | grep 'DLL Name' | sort -u
 
       - uses: actions/upload-artifact@v4
         with:
           name: xemu_libretro-windows-x86_64
-          path: dist/xemu_libretro.dll
+          path: dist/
 
   linux:
     if: github.event_name != 'workflow_dispatch' || inputs.platforms == 'all' || contains(inputs.platforms, 'linux')

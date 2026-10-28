@@ -62,25 +62,39 @@ The core renders with OpenGL or Vulkan, whichever RetroArch's video driver is (`
 
 ## Building
 
-Linux (x86_64, aarch64), with GNU make and the libraries the core links:
+With GNU make alone: no meson, ninja or python. `make` builds the core for
+the system it runs on, in the source tree; `make DEBUG=1` builds it
+unoptimized with debug information, `make HAVE_DSP_JIT=0` without the APU
+DSP's JIT. On the first build the Makefile fetches the DSP JIT's prebuilt
+library (mborgerson's dsp56300) into `deps/dsp56300`.
+
+**Windows**, in MSYS2's MINGW64 shell, with only the compiler installed:
 
 ```
-sudo apt install build-essential pkg-config libglib2.0-dev libslirp-dev \
-    libepoxy-dev zlib1g-dev libsamplerate0-dev libvulkan-dev glslang-dev \
-    spirv-tools curl
+pacman -S --needed git make mingw-w64-x86_64-gcc
 git clone https://github.com/WizzardSK/xemu-libretro.git
 cd xemu-libretro
 make -j$(nproc)
 ```
 
-The Makefile builds `xemu_libretro.so` in the source tree; no meson, ninja or
-python. On its first build it fetches the APU DSP's JIT, the prebuilt
-dsp56300 library, into `deps/dsp56300`; `make HAVE_DSP_JIT=0` builds without
-it. `make DEBUG=1` builds unoptimized, with debug information. What QEMU's
-build generates is pregenerated in `libretro/gen` (its README).
+Every library the core links (GLib, libslirp, libepoxy, libsamplerate, zlib,
+glslang) is built from source in `deps/` (`deps/README.md`), and
+`xemu_libretro.dll` needs only Windows' own DLLs. From Linux:
+`make platform=win CROSS_PREFIX=x86_64-w64-mingw32-` with MinGW-w64.
 
-Windows, macOS and Android are built with meson for now: the CI workflow
-`.github/workflows/libretro.yml` builds every platform and shows each one's
+**Linux** (x86_64, aarch64), with the libraries the core links from the
+system:
+
+```
+sudo apt install build-essential pkg-config libglib2.0-dev libslirp-dev \
+    libepoxy-dev zlib1g-dev libsamplerate0-dev libvulkan-dev glslang-dev \
+    spirv-tools curl
+make -j$(nproc)
+```
+
+What QEMU's build generates is pregenerated in `libretro/gen` (its README).
+macOS and Android are built with meson for now: the CI workflow
+`.github/workflows/libretro.yml` shows how, and each platform's
 dependencies.
 
 ## License

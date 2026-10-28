@@ -1,0 +1,15 @@
+#ifndef LIBSLIRP_VERSION_H_
+#define LIBSLIRP_VERSION_H_
+
+#define SLIRP_MAJOR_VERSION 4
+#define SLIRP_MINOR_VERSION 9
+#define SLIRP_MICRO_VERSION 1
+#define SLIRP_VERSION_STRING "4.9.1"
+
+#define SLIRP_CHECK_VERSION(major,minor,micro) \
+    (SLIRP_MAJOR_VERSION > (major) || \
+     (SLIRP_MAJOR_VERSION == (major) && SLIRP_MINOR_VERSION > (minor)) || \
+     (SLIRP_MAJOR_VERSION == (major) && SLIRP_MINOR_VERSION == (minor) && \
+      SLIRP_MICRO_VERSION >= (micro)))
+
+#endif

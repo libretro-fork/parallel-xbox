@@ -38,9 +38,6 @@
 #include "net/slirp.h"
 #include "qemu/timer.h"
 #include <libslirp.h>
-#if defined(_WIN32)
-#include <pcap/pcap.h>
-#endif
 #include "xemu-notifications.h"
 
 static const char *id = "xemu-netdev";
@@ -67,18 +64,9 @@ void xemu_net_enable(void)
         qdict_put_str(qdict, "type",      "socket");
         qdict_put_str(qdict, "udp",       g_config.net.udp.remote_addr);
         qdict_put_str(qdict, "localaddr", g_config.net.udp.bind_addr);
-    } else if (g_config.net.backend == CONFIG_NET_BACKEND_PCAP) {
-#if defined(_WIN32)
-        if (pcap_load_library()) {
-            return;
-        }
-#endif
-        qdict = qdict_new();
-        qdict_put_str(qdict, "id",        id);
-        qdict_put_str(qdict, "type",      "pcap");
-        qdict_put_str(qdict, "ifname",    g_config.net.pcap.netif);
     } else {
-        // Unsupported backend type
+        /* Unsupported backend type; the core sets NAT or none
+         * (Network Backend), and has no pcap bridge */
         return;
     }
 

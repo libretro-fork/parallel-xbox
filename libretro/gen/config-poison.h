@@ -34,7 +34,6 @@
 #pragma GCC poison CONFIG_IMX_USBPHY
 #pragma GCC poison CONFIG_IOAPIC
 #pragma GCC poison CONFIG_ISA_BUS
-#pragma GCC poison CONFIG_IVSHMEM_FLAT_DEVICE
 #pragma GCC poison CONFIG_MC146818RTC
 #pragma GCC poison CONFIG_MEM_DEVICE
 #pragma GCC poison CONFIG_MSI_NONBROKEN

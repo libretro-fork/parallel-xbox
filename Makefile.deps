@@ -1,0 +1,223 @@
+# The libraries the core links, built from source in deps/: on Windows,
+# where the Makefile needs nothing installed but the compiler (MSYS2's
+# MINGW64 gcc, or a MinGW-w64 cross compiler). Each is an archive, so the
+# core takes only what it uses.
+#
+#   GLib 2.88.2 (its base library, with PCRE2 10.47 and proxy-libintl),
+#   libslirp 4.9.1, libepoxy (WGL), libsamplerate 0.2.2 (the fastest
+#   sinc converter, the one the APU uses), zlib 1.3.1, glslang 16.6.0 (GLSL
+#   to SPIR-V for the Vulkan renderer: no HLSL, no SPIRV-Tools), and the
+#   Vulkan headers.
+
+DEPS_DIR := $(CORE_DIR)/deps
+
+# --- zlib ---
+ZLIB_SOURCES := $(wildcard $(DEPS_DIR)/zlib/*.c)
+ZLIB_CFLAGS  := -I$(DEPS_DIR)/zlib -DZLIB_CONST
+
+# --- libsamplerate ---
+SR_SOURCES := $(wildcard $(DEPS_DIR)/libsamplerate/src/*.c)
+SR_CFLAGS  := -I$(DEPS_DIR)/libsamplerate/include \
+	-I$(DEPS_DIR)/libsamplerate/src -DPACKAGE=\"libsamplerate\" \
+	-DVERSION=\"0.2.2\" -DENABLE_SINC_FAST_CONVERTER -DHAVE_STDBOOL_H
+
+# --- proxy-libintl: the gettext API, translating nothing ---
+INTL_SOURCES := $(DEPS_DIR)/proxy-libintl/libintl.c
+INTL_CFLAGS  := -I$(DEPS_DIR)/proxy-libintl -DG_INTL_STATIC_COMPILATION
+
+# --- PCRE2, 8-bit, no JIT (GLib's GRegex) ---
+PCRE2_SOURCES := $(filter-out $(addprefix $(DEPS_DIR)/pcre2/src/, \
+	pcre2test.c pcre2grep.c pcre2posix.c pcre2posix_test.c), \
+	$(wildcard $(DEPS_DIR)/pcre2/src/*.c))
+PCRE2_CFLAGS  := -I$(DEPS_DIR)/pcre2/src -DHAVE_CONFIG_H \
+	-DPCRE2_CODE_UNIT_WIDTH=8 -DPCRE2_STATIC
+
+# --- GLib: the base library ---
+GLIB_INCFLAGS := -I$(DEPS_DIR)/glib/cfg -I$(DEPS_DIR)/glib -I$(DEPS_DIR)/glib/glib
+GLIB_SOURCES := \
+	$(DEPS_DIR)/glib/glib/deprecated/gallocator.c \
+	$(DEPS_DIR)/glib/glib/deprecated/gcache.c \
+	$(DEPS_DIR)/glib/glib/deprecated/gcompletion.c \
+	$(DEPS_DIR)/glib/glib/deprecated/grel.c \
+	$(DEPS_DIR)/glib/glib/deprecated/gthread-deprecated.c \
+	$(DEPS_DIR)/glib/glib/garcbox.c \
+	$(DEPS_DIR)/glib/glib/garray.c \
+	$(DEPS_DIR)/glib/glib/gasyncqueue.c \
+	$(DEPS_DIR)/glib/glib/gatomic.c \
+	$(DEPS_DIR)/glib/glib/gbacktrace.c \
+	$(DEPS_DIR)/glib/glib/gbase64.c \
+	$(DEPS_DIR)/glib/glib/gbitlock.c \
+	$(DEPS_DIR)/glib/glib/gbookmarkfile.c \
+	$(DEPS_DIR)/glib/glib/gbytes.c \
+	$(DEPS_DIR)/glib/glib/gcharset.c \
+	$(DEPS_DIR)/glib/glib/gchecksum.c \
+	$(DEPS_DIR)/glib/glib/gconvert.c \
+	$(DEPS_DIR)/glib/glib/gdataset.c \
+	$(DEPS_DIR)/glib/glib/gdate.c \
+	$(DEPS_DIR)/glib/glib/gdatetime-private.c \
+	$(DEPS_DIR)/glib/glib/gdatetime.c \
+	$(DEPS_DIR)/glib/glib/gdir.c \
+	$(DEPS_DIR)/glib/glib/genviron.c \
+	$(DEPS_DIR)/glib/glib/gerror.c \
+	$(DEPS_DIR)/glib/glib/gfileutils.c \
+	$(DEPS_DIR)/glib/glib/ggettext.c \
+	$(DEPS_DIR)/glib/glib/ghash.c \
+	$(DEPS_DIR)/glib/glib/ghmac.c \
+	$(DEPS_DIR)/glib/glib/ghook.c \
+	$(DEPS_DIR)/glib/glib/ghostutils.c \
+	$(DEPS_DIR)/glib/glib/giochannel.c \
+	$(DEPS_DIR)/glib/glib/giowin32.c \
+	$(DEPS_DIR)/glib/glib/gkeyfile.c \
+	$(DEPS_DIR)/glib/glib/glib-init.c \
+	$(DEPS_DIR)/glib/glib/glib-private.c \
+	$(DEPS_DIR)/glib/glib/glist.c \
+	$(DEPS_DIR)/glib/glib/gmain.c \
+	$(DEPS_DIR)/glib/glib/gmappedfile.c \
+	$(DEPS_DIR)/glib/glib/gmarkup.c \
+	$(DEPS_DIR)/glib/glib/gmem.c \
+	$(DEPS_DIR)/glib/glib/gmessages.c \
+	$(DEPS_DIR)/glib/glib/gnode.c \
+	$(DEPS_DIR)/glib/glib/libcharset/localcharset.c \
+	$(DEPS_DIR)/glib/glib/gnulib/isnanl.c \
+	$(DEPS_DIR)/glib/glib/gnulib/isnand.c \
+	$(DEPS_DIR)/glib/glib/gnulib/isnanf.c \
+	$(DEPS_DIR)/glib/glib/gnulib/asnprintf.c \
+	$(DEPS_DIR)/glib/glib/gnulib/printf-args.c \
+	$(DEPS_DIR)/glib/glib/gnulib/printf-frexp.c \
+	$(DEPS_DIR)/glib/glib/gnulib/printf-frexpl.c \
+	$(DEPS_DIR)/glib/glib/gnulib/printf-parse.c \
+	$(DEPS_DIR)/glib/glib/gnulib/printf.c \
+	$(DEPS_DIR)/glib/glib/gnulib/vasnprintf.c \
+	$(DEPS_DIR)/glib/glib/gnulib/xsize.c \
+	$(DEPS_DIR)/glib/glib/goption.c \
+	$(DEPS_DIR)/glib/glib/gpathbuf.c \
+	$(DEPS_DIR)/glib/glib/gpattern.c \
+	$(DEPS_DIR)/glib/glib/gpoll.c \
+	$(DEPS_DIR)/glib/glib/gprimes.c \
+	$(DEPS_DIR)/glib/glib/gprint.c \
+	$(DEPS_DIR)/glib/glib/gprintf.c \
+	$(DEPS_DIR)/glib/glib/gqsort.c \
+	$(DEPS_DIR)/glib/glib/gquark.c \
+	$(DEPS_DIR)/glib/glib/gqueue.c \
+	$(DEPS_DIR)/glib/glib/grand.c \
+	$(DEPS_DIR)/glib/glib/grcbox.c \
+	$(DEPS_DIR)/glib/glib/grefcount.c \
+	$(DEPS_DIR)/glib/glib/grefstring.c \
+	$(DEPS_DIR)/glib/glib/gregex.c \
+	$(DEPS_DIR)/glib/glib/gscanner.c \
+	$(DEPS_DIR)/glib/glib/gsequence.c \
+	$(DEPS_DIR)/glib/glib/gshell.c \
+	$(DEPS_DIR)/glib/glib/gslice.c \
+	$(DEPS_DIR)/glib/glib/gslist.c \
+	$(DEPS_DIR)/glib/glib/gspawn-win32.c \
+	$(DEPS_DIR)/glib/glib/gspawn.c \
+	$(DEPS_DIR)/glib/glib/gstdio.c \
+	$(DEPS_DIR)/glib/glib/gstrfuncs.c \
+	$(DEPS_DIR)/glib/glib/gstring.c \
+	$(DEPS_DIR)/glib/glib/gstringchunk.c \
+	$(DEPS_DIR)/glib/glib/gstrvbuilder.c \
+	$(DEPS_DIR)/glib/glib/gtestutils.c \
+	$(DEPS_DIR)/glib/glib/gthread.c \
+	$(DEPS_DIR)/glib/glib/gthreadpool.c \
+	$(DEPS_DIR)/glib/glib/gtimer.c \
+	$(DEPS_DIR)/glib/glib/gtimezone.c \
+	$(DEPS_DIR)/glib/glib/gtrace.c \
+	$(DEPS_DIR)/glib/glib/gtranslit.c \
+	$(DEPS_DIR)/glib/glib/gtrashstack.c \
+	$(DEPS_DIR)/glib/glib/gtree.c \
+	$(DEPS_DIR)/glib/glib/gunibreak.c \
+	$(DEPS_DIR)/glib/glib/gunicollate.c \
+	$(DEPS_DIR)/glib/glib/gunidecomp.c \
+	$(DEPS_DIR)/glib/glib/guniprop.c \
+	$(DEPS_DIR)/glib/glib/guri.c \
+	$(DEPS_DIR)/glib/glib/gutf8.c \
+	$(DEPS_DIR)/glib/glib/gutils.c \
+	$(DEPS_DIR)/glib/glib/guuid.c \
+	$(DEPS_DIR)/glib/glib/gvariant-core.c \
+	$(DEPS_DIR)/glib/glib/gvariant-parser.c \
+	$(DEPS_DIR)/glib/glib/gvariant-serialiser.c \
+	$(DEPS_DIR)/glib/glib/gvariant.c \
+	$(DEPS_DIR)/glib/glib/gvarianttype.c \
+	$(DEPS_DIR)/glib/glib/gvarianttypeinfo.c \
+	$(DEPS_DIR)/glib/glib/gversion.c \
+	$(DEPS_DIR)/glib/glib/gwakeup.c \
+	$(DEPS_DIR)/glib/glib/gwin32.c \
+
+GLIB_CFLAGS := $(GLIB_INCFLAGS) -I$(DEPS_DIR)/glib/glib/gnulib \
+	-I$(DEPS_DIR)/pcre2/src -I$(DEPS_DIR)/proxy-libintl \
+	-DGLIB_COMPILATION -DGLIB_STATIC_COMPILATION -DG_DISABLE_CAST_CHECKS \
+	-DG_LOG_DOMAIN=\"GLib\" \
+	-DPCRE2_STATIC -DPCRE2_CODE_UNIT_WIDTH=8 -DHAVE_CONFIG_H \
+	-DUNICODE -D_UNICODE -DGLIB_CHARSETALIAS_DIR=\".\" \
+	-DG_INTL_STATIC_COMPILATION -Wno-deprecated-declarations
+
+# --- libepoxy, WGL ---
+EPOXY_SOURCES := $(DEPS_DIR)/libepoxy/src/dispatch_common.c \
+	$(DEPS_DIR)/libepoxy/src/dispatch_wgl.c \
+	$(DEPS_DIR)/libepoxy/src/gl_generated_dispatch.c \
+	$(DEPS_DIR)/libepoxy/src/wgl_generated_dispatch.c
+EPOXY_CFLAGS := -I$(DEPS_DIR)/libepoxy/include -I$(DEPS_DIR)/libepoxy/src
+
+# --- libslirp ---
+SLIRP_SOURCES := $(wildcard $(DEPS_DIR)/libslirp/src/*.c)
+SLIRP_CFLAGS  := -I$(DEPS_DIR)/libslirp/src -I$(DEPS_DIR)/libslirp/include \
+	$(GLIB_INCFLAGS) \
+	-DBUILDING_LIBSLIRP -DLIBSLIRP_STATIC -DGLIB_STATIC_COMPILATION \
+	-DG_INTL_STATIC_COMPILATION -DG_LOG_DOMAIN=\"Slirp\" -DUNICODE -D_UNICODE
+
+# --- glslang ---
+GLSLANG_DIR := $(DEPS_DIR)/glslang
+GLSLANG_SOURCES := \
+	$(wildcard $(GLSLANG_DIR)/glslang/GenericCodeGen/*.cpp) \
+	$(wildcard $(GLSLANG_DIR)/glslang/MachineIndependent/*.cpp) \
+	$(wildcard $(GLSLANG_DIR)/glslang/MachineIndependent/preprocessor/*.cpp) \
+	$(GLSLANG_DIR)/glslang/CInterface/glslang_c_interface.cpp \
+	$(wildcard $(GLSLANG_DIR)/glslang/ResourceLimits/*.cpp) \
+	$(wildcard $(GLSLANG_DIR)/SPIRV/*.cpp) \
+	$(GLSLANG_DIR)/SPIRV/CInterface/spirv_c_interface.cpp
+ifeq ($(HOST_OS),win32)
+GLSLANG_SOURCES += $(GLSLANG_DIR)/glslang/OSDependent/Windows/ossource.cpp
+else
+GLSLANG_SOURCES += $(GLSLANG_DIR)/glslang/OSDependent/Unix/ossource.cpp
+endif
+GLSLANG_CXXFLAGS := -std=c++17 -I$(GLSLANG_DIR)
+
+# What the core's own sources need of them
+DEPS_VENDORED_CFLAGS := $(GLIB_INCFLAGS) -I$(DEPS_DIR)/libslirp/include \
+	-I$(DEPS_DIR)/libepoxy/include -I$(DEPS_DIR)/zlib \
+	-I$(DEPS_DIR)/libsamplerate/include -I$(DEPS_DIR)/vulkan-headers \
+	-I$(GLSLANG_DIR) -I$(DEPS_DIR)/proxy-libintl -DG_INTL_STATIC_COMPILATION
+
+# --- Archives ---
+dep_obj = $(patsubst %.cpp,%.o,$(patsubst %.c,%.o,$(1)))
+
+DEP_LIBS := $(DEPS_DIR)/libepoxy.a $(DEPS_DIR)/libslirp.a \
+	$(DEPS_DIR)/libglslang.a $(DEPS_DIR)/libsamplerate.a \
+	$(DEPS_DIR)/libglib.a $(DEPS_DIR)/libintl.a $(DEPS_DIR)/libpcre2.a \
+	$(DEPS_DIR)/libz.a
+
+$(call dep_obj,$(ZLIB_SOURCES)):    GROUP_CFLAGS := $(ZLIB_CFLAGS)
+$(call dep_obj,$(SR_SOURCES)):      GROUP_CFLAGS := $(SR_CFLAGS)
+$(call dep_obj,$(INTL_SOURCES)):    GROUP_CFLAGS := $(INTL_CFLAGS)
+$(call dep_obj,$(PCRE2_SOURCES)):   GROUP_CFLAGS := $(PCRE2_CFLAGS)
+$(call dep_obj,$(GLIB_SOURCES)):    GROUP_CFLAGS := $(GLIB_CFLAGS)
+$(call dep_obj,$(EPOXY_SOURCES)):   GROUP_CFLAGS := $(EPOXY_CFLAGS)
+$(call dep_obj,$(SLIRP_SOURCES)):   GROUP_CFLAGS := $(SLIRP_CFLAGS)
+$(call dep_obj,$(GLSLANG_SOURCES)): GROUP_CXXFLAGS := $(GLSLANG_CXXFLAGS)
+
+$(DEPS_DIR)/libz.a:          $(call dep_obj,$(ZLIB_SOURCES))
+$(DEPS_DIR)/libsamplerate.a: $(call dep_obj,$(SR_SOURCES))
+$(DEPS_DIR)/libintl.a:       $(call dep_obj,$(INTL_SOURCES))
+$(DEPS_DIR)/libpcre2.a:      $(call dep_obj,$(PCRE2_SOURCES))
+$(DEPS_DIR)/libglib.a:       $(call dep_obj,$(GLIB_SOURCES))
+$(DEPS_DIR)/libepoxy.a:      $(call dep_obj,$(EPOXY_SOURCES))
+$(DEPS_DIR)/libslirp.a:      $(call dep_obj,$(SLIRP_SOURCES))
+$(DEPS_DIR)/libglslang.a:    $(call dep_obj,$(GLSLANG_SOURCES))
+
+$(DEP_LIBS):
+	rm -f $@
+	$(AR) rcs $@ $^
+
+DEP_OBJECTS := $(call dep_obj,$(ZLIB_SOURCES) $(SR_SOURCES) $(INTL_SOURCES) \
+	$(PCRE2_SOURCES) $(GLIB_SOURCES) $(EPOXY_SOURCES) $(SLIRP_SOURCES) \
+	$(GLSLANG_SOURCES))
