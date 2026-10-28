@@ -57,14 +57,14 @@ static void set_notify_status(MCPXAPUState *d, uint32_t v, int notifier,
     d->set_irq = true;
 }
 
+static void voice_resample_reset(MCPXAPUVoiceFilter *filter);
+
 static void voice_reset_filters(MCPXAPUState *d, uint16_t v)
 {
     assert(v < MCPX_HW_MAX_VOICES);
     memset(&d->vp.filters[v].svf, 0, sizeof(d->vp.filters[v].svf));
     hrtf_filter_clear_history(&d->vp.filters[v].hrtf);
-    if (d->vp.filters[v].resampler) {
-        src_reset(d->vp.filters[v].resampler);
-    }
+    voice_resample_reset(&d->vp.filters[v]);
 }
 
 static bool voice_should_mute(uint16_t v)
@@ -1197,12 +1197,13 @@ static int voice_get_samples(MCPXAPUState *d, uint32_t v, float samples[][2],
     return sample_count;
 }
 
-static long voice_resample_callback(void *cb_data, float **data)
+/* The next frame of the voice's samples, into filter->resample_buf: as
+ * many as the voice has, silence for the rest, so the pitch's position
+ * always has samples to go on */
+static void voice_resample_fetch(MCPXAPUState *d, MCPXAPUVoiceFilter *filter)
 {
-    MCPXAPUVoiceFilter *filter = cb_data;
     uint16_t v = filter->voice;
     assert(v < MCPX_HW_MAX_VOICES);
-    MCPXAPUState *d = container_of(filter, MCPXAPUState, vp.filters[v]);
 
     int sample_count = 0;
     while (sample_count < NUM_SAMPLES_PER_FRAME) {
@@ -1212,7 +1213,7 @@ static long voice_resample_callback(void *cb_data, float **data)
             break;
         }
         int count = voice_get_samples(
-            d, v, (float(*)[2]) & filter->resample_buf[2 * sample_count],
+            d, v, &filter->resample_buf[sample_count],
             NUM_SAMPLES_PER_FRAME - sample_count);
         if (count < 0) {
             break;
@@ -1221,53 +1222,65 @@ static long voice_resample_callback(void *cb_data, float **data)
     }
 
     if (sample_count < NUM_SAMPLES_PER_FRAME) {
-        /* Starvation causes SRC hang on repeated calls. Provide silence. */
-        memset(&filter->resample_buf[2*sample_count], 0,
-            2*(NUM_SAMPLES_PER_FRAME-sample_count)*sizeof(float));
-        sample_count = NUM_SAMPLES_PER_FRAME;
+        memset(&filter->resample_buf[sample_count], 0,
+               (NUM_SAMPLES_PER_FRAME - sample_count) * sizeof(filter->resample_buf[0]));
     }
-
-    *data = filter->resample_buf;
-    return sample_count;
+    filter->resample_len = NUM_SAMPLES_PER_FRAME;
+    filter->resample_pos = 0;
 }
 
+/* The pitch starts over: no samples taken, the output at the first one
+ * once three are in (hist[1]) */
+static void voice_resample_reset(MCPXAPUVoiceFilter *filter)
+{
+    filter->resample_len = 0;
+    filter->resample_pos = 0;
+    memset(filter->resample_hist, 0, sizeof(filter->resample_hist));
+    filter->resample_phase = 3.0;
+}
+
+/* The voice's samples at its pitch: requested_num output samples, each
+ * 1/rate of the voice's samples on from the one before, by 4-point cubic
+ * (Hermite) interpolation between the voice's samples around it.
+ *
+ * The hardware's own interpolation is not known; upstream used a sinc
+ * resampler (libsamplerate), which allocated per voice and did far more
+ * work than a cubic for a difference below what the DSPs' 24-bit mixing
+ * keeps. */
 static int voice_resample(MCPXAPUState *d, uint16_t v, float samples[][2],
                           int requested_num, float rate)
 {
     assert(v < MCPX_HW_MAX_VOICES);
     MCPXAPUVoiceFilter *filter = &d->vp.filters[v];
+    const double step = 1.0 / rate;
+    float (*h)[2] = filter->resample_hist;
 
-    if (filter->resampler == NULL) {
-        filter->voice = v;
-        int err;
-
-        /* Note: Using a sinc based resampler for quality. Unsure about
-         * hardware's actual interpolation method; it could just be linear, in
-         * which case using this resampler is overkill, but quality is good
-         * so use it for now.
-         */
-        // FIXME: Don't do 2ch resampling if this is a mono voice
-        filter->resampler = src_callback_new(&voice_resample_callback,
-                                           SRC_SINC_FASTEST, 2, &err, filter);
-        if (filter->resampler == NULL) {
-            fprintf(stderr, "src error: %s\n", src_strerror(err));
-            assert(0);
+    filter->voice = v;
+    for (int n = 0; n < requested_num; n++) {
+        while (filter->resample_phase >= 1.0) {
+            if (filter->resample_pos == filter->resample_len) {
+                voice_resample_fetch(d, filter);
+            }
+            h[0][0] = h[1][0]; h[0][1] = h[1][1];
+            h[1][0] = h[2][0]; h[1][1] = h[2][1];
+            h[2][0] = h[3][0]; h[2][1] = h[3][1];
+            h[3][0] = filter->resample_buf[filter->resample_pos][0];
+            h[3][1] = filter->resample_buf[filter->resample_pos][1];
+            filter->resample_pos++;
+            filter->resample_phase -= 1.0;
         }
+        const float t = (float)filter->resample_phase;
+        for (int c = 0; c < 2; c++) {
+            const float y0 = h[0][c], y1 = h[1][c], y2 = h[2][c], y3 = h[3][c];
+            const float c1 = 0.5f * (y2 - y0);
+            const float c2 = y0 - 2.5f * y1 + 2.0f * y2 - 0.5f * y3;
+            const float c3 = 0.5f * (y3 - y0) + 1.5f * (y1 - y2);
+            samples[n][c] = ((c3 * t + c2) * t + c1) * t + y1;
+        }
+        filter->resample_phase += step;
     }
 
-    int count = src_callback_read(filter->resampler, rate, requested_num,
-                                  (float *)samples);
-    if (count == -1) {
-        DPRINTF("resample error\n");
-    }
-    if (count != requested_num) {
-        DPRINTF("resample returned fewer than expected: %d\n", count);
-
-        if (count == 0)
-            return -1;
-    }
-
-    return count;
+    return requested_num;
 }
 
 static int peek_ahead_multipass_bin(MCPXAPUState *d, uint16_t v,
@@ -1662,8 +1675,6 @@ static void get_voice_bin_src_dst(MCPXAPUState *d, int v,
 /* A worker's share of the frame's voices, into its own mix buffers */
 static void voice_worker_process(MCPXAPUState *d, VoiceWorker *self)
 {
-    int64_t start_time = qemu_clock_get_us(QEMU_CLOCK_REALTIME);
-
     g_dbg.vp.workers[self->id].num_voices = self->queue_len;
     memset(self->mixbins, 0, sizeof(self->mixbins));
     if (d->monitor.point == MCPX_APU_DEBUG_MON_VP) {
@@ -1673,8 +1684,6 @@ static void voice_worker_process(MCPXAPUState *d, VoiceWorker *self)
         voice_process(d, self->mixbins, self->sample_buf,
                       self->queue[i].voice, self->queue[i].list);
     }
-    g_dbg.vp.workers[self->id].time_us =
-        qemu_clock_get_us(QEMU_CLOCK_REALTIME) - start_time;
 }
 
 static void voice_worker_thread(void *arg)
@@ -1770,11 +1779,9 @@ voice_work_dispatch(MCPXAPUState *d,
                     float mixbins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME])
 {
     VoiceWorkDispatch *vwd = &d->vp.voice_work_dispatch;
-    int64_t start_time = qemu_clock_get_us(QEMU_CLOCK_REALTIME);
     int started = 0;
 
     if (!vwd->queue_len) {
-        g_dbg.vp.total_worker_time_us = 0;
         return;
     }
 
@@ -1823,9 +1830,6 @@ voice_work_dispatch(MCPXAPUState *d,
             }
         }
     }
-
-    g_dbg.vp.total_worker_time_us =
-        qemu_clock_get_us(QEMU_CLOCK_REALTIME) - start_time;
 }
 
 /* Voice Processor Threads: Auto is up to 4, half the logical CPUs; the
@@ -1905,7 +1909,9 @@ void mcpx_apu_vp_frame(MCPXAPUState *d, float mixbins[NUM_MIXBINS][NUM_SAMPLES_P
             if (!voice_get_mask(d, v, NV_PAVS_VOICE_PAR_STATE,
                                 NV_PAVS_VOICE_PAR_STATE_ACTIVE_VOICE)) {
                 fe_method(d, SE2FE_IDLE_VOICE, v);
-            } else {
+            } else if (!is_voice_locked(d, v)) {
+                /* a locked voice is being changed by the guest: it sits
+                 * this frame out rather than the frame waiting (apu.c) */
                 voice_work_enqueue(d, v, list);
             }
             d->regs[current] = d->regs[next];
@@ -1914,16 +1920,10 @@ void mcpx_apu_vp_frame(MCPXAPUState *d, float mixbins[NUM_MIXBINS][NUM_SAMPLES_P
     voice_work_dispatch(d, mixbins);
 
     if (d->monitor.point == MCPX_APU_DEBUG_MON_VP) {
-        /* Mix all voices together to hear any audible voice */
-        int16_t isamp[NUM_SAMPLES_PER_FRAME * 2];
-        src_float_to_short_array((float *)d->vp.sample_buf, isamp,
-                                 NUM_SAMPLES_PER_FRAME * 2);
-        int off = (d->ep_frame_div % 8) * NUM_SAMPLES_PER_FRAME;
-        for (int i = 0; i < NUM_SAMPLES_PER_FRAME; i++) {
-            d->monitor.frame_buf[off + i][0] += isamp[2*i];
-            d->monitor.frame_buf[off + i][1] += isamp[2*i+1];
-        }
-
+        /* All voices together, to the frontend: the DSPs are not run for
+         * their output (APU DSP Emulation off) */
+        mcpx_apu_monitor_push_f32((const float (*)[2])d->vp.sample_buf,
+                                  NUM_SAMPLES_PER_FRAME);
         memset(d->vp.sample_buf, 0, sizeof(d->vp.sample_buf));
         memset(mixbins, 0, sizeof(float[32][32]));
     }

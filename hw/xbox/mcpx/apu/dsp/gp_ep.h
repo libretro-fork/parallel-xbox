@@ -51,13 +51,16 @@ extern const MemoryRegionOps ep_ops;
 
 /*
  * The DSPs' thread (gp_ep.c): the GP and EP run each engine frame on a
- * thread of their own, a frame behind the engine, so the emulator thread
- * is not held for the DSP programs (a quarter of a frame's time in Dead or
- * Alive 3). The engine posts a frame's mixbins (post) and takes the frame
- * before it (done); anything else that touches the DSPs or the registers
- * their frame uses (MMIO, reset, a state) waits for the posted frame to be
- * done first (quiesce). Lock-free: a generation each way, an eventcount
- * each way.
+ * thread of their own, alongside the engine's next frame, so the emulator
+ * thread is not held for the DSP programs (a quarter of a frame's time in
+ * Dead or Alive 3). The engine mixes a frame's voices into one of two
+ * mixbins buffers (mcpx_apu_dsp_mixbins) and posts it (post), once the
+ * frame before is done, and the thread puts the frame's output straight
+ * into the frontend's queue (monitor.c); anything else that touches the
+ * DSPs or the registers their frame uses (MMIO, reset, a state, the
+ * frontend's read of the queue) waits for the posted frame to be done
+ * first (quiesce). Lock-free: a generation each way, an eventcount each
+ * way.
  */
 typedef struct MCPXAPUDSPThread {
     struct sthread *thread;
@@ -67,16 +70,22 @@ typedef struct MCPXAPUDSPThread {
     retro_eventcount_t wake;        /* the thread, for a post */
     retro_eventcount_t finished;    /* the engine, for a done */
     int seen;                       /* the thread's own count */
-    float mixbins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME]; /* the posted frame's */
-    int ep_frame_div;               /* the thread's, for the EP's 1 in 8 */
+    /* The frames' mixbins, the VP's output: the one the thread may be
+     * on and the one the engine builds (mcpx_apu_dsp_mixbins) */
+    float mixbins[2][NUM_MIXBINS][NUM_SAMPLES_PER_FRAME];
+    int frame_div[2];               /* the frames' engine count (EP 1 in 8) */
+    /* The EP's last 256 samples: 32 of them go to the frontend each frame,
+     * so the output keeps the engine's cadence whatever the DSPs do */
+    int16_t ep_out[256][2];
 } MCPXAPUDSPThread;
 
 void mcpx_apu_dsp_init(MCPXAPUState *d);
 void mcpx_apu_update_dsp_preference(MCPXAPUState *d);
-/* The engine's frame, in two halves around the monitor's read of the
- * frame before: the thread done with that frame and its slot chosen
- * (sync), then this frame's mixbins handed to the thread (post) */
-void mcpx_apu_dsp_sync(MCPXAPUState *d);
+/* The engine's frame: the mixbins buffer the VP fills for it (free: the
+ * thread is on the other one at most), then that handed to the thread.
+ * The thread puts the DSPs' output straight into the frontend's queue
+ * (monitor.c). */
+float (*mcpx_apu_dsp_mixbins(MCPXAPUState *d))[NUM_SAMPLES_PER_FRAME];
 void mcpx_apu_dsp_post(MCPXAPUState *d, float mixbins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME]);
 /* The posted frame done, before anything else touches the DSPs */
 void mcpx_apu_dsp_quiesce(MCPXAPUState *d);

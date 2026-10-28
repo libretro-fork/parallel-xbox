@@ -33,7 +33,8 @@
  *     --reset N         retro_reset before run N
  *     --reload N        close the content and load it again before run N
  *     --strict          exit 1 unless every run gave one frame's worth of
- *                       audio in one batch and a video call
+ *                       audio in one batch and a video call, none of them
+ *                       ending in silence after sound (samples run short)
  *     --min-speed X     exit 1 if the unpaced runs ran slower than X times
  *                       real time
  *     --peek ADDR       print the dword of system RAM at ADDR at the end
@@ -346,10 +347,31 @@ static void audio_cb(int16_t l, int16_t r)
    }
 }
 
+/* A run's audio that goes quiet for its last engine frame (32 samples)
+ * after sound earlier in it and in the run before (the engine starting
+ * mid-run at boot is not it): the core ran out of samples and padded, the
+ * stutter a listener hears */
+static int padded_runs;
+static int last_run_sound;
+
 static size_t audio_batch_cb(const int16_t *d, size_t frames)
 {
    run_audio += (long)frames;
    batches_this_run++;
+   if (frames > 64)
+   {
+      size_t i;
+      int tail_silent = 1, head_sound = 0;
+      for (i = frames - 32; i < frames; i++)
+         if (d[2 * i] || d[2 * i + 1])
+            tail_silent = 0;
+      for (i = 0; i < frames - 32 && !head_sound; i++)
+         if (d[2 * i] || d[2 * i + 1])
+            head_sound = 1;
+      if (tail_silent && head_sound && last_run_sound)
+         padded_runs++;
+      last_run_sound = head_sound;
+   }
    audio_hash = fnv(audio_hash, d, frames * 4);
    if (wav)
    {
@@ -960,9 +982,9 @@ int main(int argc, char **argv)
          fail = 1;
       }
       printf("audio_total=%ld expected=%ld per_run_min=%ld per_run_max=%ld "
-            "cadence_errors=%ld multi_batch_runs=%d\n",
+            "cadence_errors=%ld multi_batch_runs=%d padded_runs=%d\n",
             audio_total, expected_total, audio_min, audio_max,
-            cadence_errors, multi_batch_runs);
+            cadence_errors, multi_batch_runs, padded_runs);
       printf("video_new=%d video_dupe=%d runs_without_video=%d last=%ux%u\n",
             video_new, video_dupe, runs_without_video, last_w, last_h);
       if (strict && (cadence_errors || multi_batch_runs ||
@@ -970,6 +992,12 @@ int main(int argc, char **argv)
       {
          printf("FAIL: not one frame's worth of audio and a video call "
                "every run\n");
+         fail = 1;
+      }
+      if (strict && padded_runs)
+      {
+         printf("FAIL: %d runs ended in silence after sound: the core ran "
+               "short of samples\n", padded_runs);
          fail = 1;
       }
       printf("audio_hash=%016llx video_hash=%016llx\n",

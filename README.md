@@ -77,7 +77,7 @@ cd xemu-libretro
 make -j$(nproc)
 ```
 
-Every library the core links (GLib, libslirp, libepoxy, libsamplerate, zlib,
+Every library the core links (GLib, libslirp, libepoxy, zlib,
 glslang) is built from source in `deps/` (`deps/README.md`), and
 `parallel_xbox_libretro.dll` needs only Windows' own DLLs. From Linux:
 `make platform=win CROSS_PREFIX=x86_64-w64-mingw32-` with MinGW-w64.
@@ -87,7 +87,7 @@ system:
 
 ```
 sudo apt install build-essential pkg-config libglib2.0-dev libslirp-dev \
-    libepoxy-dev zlib1g-dev libsamplerate0-dev libvulkan-dev glslang-dev \
+    libepoxy-dev zlib1g-dev libvulkan-dev glslang-dev \
     spirv-tools curl
 make -j$(nproc)
 ```

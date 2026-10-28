@@ -2827,23 +2827,35 @@ static int lr_audio_frames_this_run(void)
 
 static void lr_present_audio(bool have_frame)
 {
-    extern int libretro_audio_pull(int16_t *out_buf, int max_frames);
-    int16_t buf[802 * 2];
+    extern size_t libretro_audio_read_begin(const int16_t **samples);
+    extern void libretro_audio_read_end(size_t frames);
     const int want = lr_audio_frames_this_run();
-    int got = 0;
+    const int16_t *samples = NULL;
+    size_t got = 0;
 
     if (!audio_batch_cb) {
         return;
     }
     if (have_frame) {
-        got = libretro_audio_pull(buf, want);
+        got = libretro_audio_read_begin(&samples);
     }
-    if (got < want) {
-        /* only with no machine running: a frame of guest time has made
-         * at least its samples */
+    if (got >= (size_t)want) {
+        /* the frame's samples, handed over where they are */
+        audio_batch_cb(samples, want);
+        libretro_audio_read_end(want);
+        return;
+    }
+    /* only with no machine running: a frame of guest time has made at
+     * least its samples. What there is, then silence. */
+    {
+        int16_t buf[802 * 2];
+        if (got) {
+            memcpy(buf, samples, got * 2 * sizeof(int16_t));
+            libretro_audio_read_end(got);
+        }
         memset(&buf[got * 2], 0, (size_t)(want - got) * 2 * sizeof(int16_t));
+        audio_batch_cb(buf, want);
     }
-    audio_batch_cb(buf, want);
 }
 
 /* The picture of the frame just run, to the frontend */

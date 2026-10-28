@@ -17,7 +17,6 @@ libretro/deps/src), which built them the same way; glslang is Khronos's
 | `proxy-libintl` | The gettext API, translating nothing, for GLib | as in the old core | LGPL-2.0+ | Windows |
 | `libslirp` | The NAT network backend | 4.9.1 | BSD-3-Clause | Windows |
 | `libepoxy` | OpenGL function loading (WGL) | as in the old core | MIT | Windows |
-| `libsamplerate` | The APU's voice resampling (the fastest sinc converter) | 0.2.2 | BSD-2-Clause | Windows |
 | `zlib` | Compression (qcow2, savestates) | 1.3.1 | Zlib | Windows |
 | `vulkan-headers` | Vulkan's headers | 1.4.350 | Apache-2.0 OR MIT | Windows |
 | `glslang` | GLSL to SPIR-V for the Vulkan renderer (no HLSL, no SPIRV-Tools) | 16.6.0 | BSD-3-Clause and others (`LICENSE.txt`) | Windows |

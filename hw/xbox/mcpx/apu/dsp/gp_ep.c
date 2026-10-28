@@ -29,6 +29,12 @@ void mcpx_apu_update_dsp_preference(MCPXAPUState *d)
     static int last_known_dsp_pref = -1;
     static int last_known_jit_pref = -1;
 
+    if (last_known_dsp_pref == (int)g_config.audio.use_dsp &&
+        last_known_jit_pref == (int)g_config.audio.use_dsp_jit) {
+        return;
+    }
+    /* a change: the thread done with its frame first, since the monitor
+     * point and the engine are its */
     mcpx_apu_dsp_quiesce(d);
 
     if (last_known_dsp_pref != (int)g_config.audio.use_dsp) {
@@ -191,8 +197,9 @@ static bool ep_sink_samples(MCPXAPUState *d, uint8_t *ptr, size_t len)
         return false;
     } else if ((d->monitor.point == MCPX_APU_DEBUG_MON_EP) ||
         (d->monitor.point == MCPX_APU_DEBUG_MON_GP_OR_EP)) {
-        assert(len == sizeof(d->monitor.frame_buf));
-        memcpy(d->monitor.frame_buf, ptr, len);
+        /* the EP's 256 samples, 8 engine frames' worth (dsp_thread_frame) */
+        assert(len == sizeof(d->dsp_thread.ep_out));
+        memcpy(d->dsp_thread.ep_out, ptr, len);
     }
 
     return true;
@@ -444,8 +451,12 @@ const MemoryRegionOps ep_ops = {
 };
 
 /* One engine frame of the DSPs, on their thread: the mixbins into the
- * GP's MIXBUF, the GP, every 8th frame the EP, the monitor's samples out */
-static void dsp_thread_frame(MCPXAPUState *d, float mixbins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME])
+ * GP's MIXBUF, the GP, every 8th frame the EP, and the frame's 32 samples
+ * of output to the frontend's queue (the EP's, or the GP's with the EP
+ * off): always 32, so a video frame's samples are all there whatever the
+ * DSPs' programs did */
+static void dsp_thread_frame(MCPXAPUState *d, float mixbins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME],
+                             int frame_div)
 {
     /* Write VP results to the GP DSP MIXBUF */
     for (int mixbin = 0; mixbin < NUM_MIXBINS; mixbin++) {
@@ -459,9 +470,13 @@ static void dsp_thread_frame(MCPXAPUState *d, float mixbins[NUM_MIXBINS][NUM_SAM
     bool ep_enabled = (d->ep.regs[NV_PAPU_EPRST] & NV_PAPU_GPRST_GPRST) &&
                       (d->ep.regs[NV_PAPU_EPRST] & NV_PAPU_GPRST_GPDSPRST);
 
+    bool gp_enabled = (d->gp.regs[NV_PAPU_GPRST] & NV_PAPU_GPRST_GPRST) &&
+                      (d->gp.regs[NV_PAPU_GPRST] & NV_PAPU_GPRST_GPDSPRST);
+    bool gp_out = (d->monitor.point == MCPX_APU_DEBUG_MON_GP) ||
+                  (d->monitor.point == MCPX_APU_DEBUG_MON_GP_OR_EP && !ep_enabled);
+
     /* Run GP */
-    if ((d->gp.regs[NV_PAPU_GPRST] & NV_PAPU_GPRST_GPRST) &&
-        (d->gp.regs[NV_PAPU_GPRST] & NV_PAPU_GPRST_GPDSPRST)) {
+    if (gp_enabled) {
         dsp_start_frame(d->gp.dsp);
         dsp_set_halt_requested(d->gp.dsp, false);
         dsp_set_cycle_count(d->gp.dsp, 0);
@@ -470,23 +485,24 @@ static void dsp_thread_frame(MCPXAPUState *d, float mixbins[NUM_MIXBINS][NUM_SAM
         } while (!dsp_get_halt_requested(d->gp.dsp) && d->gp.realtime);
         g_dbg.gp.cycles = dsp_get_cycle_count(d->gp.dsp);
 
-        if ((d->monitor.point == MCPX_APU_DEBUG_MON_GP) ||
-            (d->monitor.point == MCPX_APU_DEBUG_MON_GP_OR_EP && !ep_enabled)) {
-            int off = (d->dsp_thread.ep_frame_div % 8) * NUM_SAMPLES_PER_FRAME;
+        if (gp_out) {
+            int16_t out[NUM_SAMPLES_PER_FRAME][2];
             for (int i = 0; i < NUM_SAMPLES_PER_FRAME; i++) {
                 uint32_t l = dsp_read_memory(d->gp.dsp, 'X', 0x1400 + i);
-                d->monitor.frame_buf[off + i][0] = l >> 8;
+                out[i][0] = l >> 8;
                 uint32_t r =
                     dsp_read_memory(d->gp.dsp, 'X', 0x1400 + 1 * 0x20 + i);
-                d->monitor.frame_buf[off + i][1] = r >> 8;
+                out[i][1] = r >> 8;
             }
+            mcpx_apu_monitor_push_s16(out, NUM_SAMPLES_PER_FRAME);
         }
+    } else if (gp_out) {
+        mcpx_apu_monitor_push_silence();
     }
 
     /* Run EP */
-    if ((d->ep.regs[NV_PAPU_EPRST] & NV_PAPU_GPRST_GPRST) &&
-        (d->ep.regs[NV_PAPU_EPRST] & NV_PAPU_GPRST_GPDSPRST)) {
-        if (d->dsp_thread.ep_frame_div % 8 == 0) {
+    if (ep_enabled) {
+        if (frame_div % 8 == 0) {
             dsp_start_frame(d->ep.dsp);
             dsp_set_halt_requested(d->ep.dsp, false);
             dsp_set_cycle_count(d->ep.dsp, 0);
@@ -496,7 +512,18 @@ static void dsp_thread_frame(MCPXAPUState *d, float mixbins[NUM_MIXBINS][NUM_SAM
             g_dbg.ep.cycles = dsp_get_cycle_count(d->ep.dsp);
         }
     }
-    d->dsp_thread.ep_frame_div++;
+
+    if ((d->monitor.point == MCPX_APU_DEBUG_MON_EP) ||
+        (d->monitor.point == MCPX_APU_DEBUG_MON_GP_OR_EP && ep_enabled)) {
+        /* this frame's 32 of the EP's last 256, then cleared: silence
+         * where the EP's program made no new ones */
+        int16_t (*slot)[2] = &d->dsp_thread.ep_out[(frame_div % 8) * NUM_SAMPLES_PER_FRAME];
+        mcpx_apu_monitor_push_s16((const int16_t (*)[2])slot, NUM_SAMPLES_PER_FRAME);
+        memset(slot, 0, NUM_SAMPLES_PER_FRAME * sizeof(*slot));
+    } else if (d->monitor.point == MCPX_APU_DEBUG_MON_EP) {
+        /* the EP off: with GP_OR_EP the GP's output above is the frame's */
+        mcpx_apu_monitor_push_silence();
+    }
 }
 
 static void dsp_thread_main(void *arg)
@@ -520,7 +547,7 @@ static void dsp_thread_main(void *arg)
             break;
         }
         t->seen = n;
-        dsp_thread_frame(d, t->mixbins);
+        dsp_thread_frame(d, t->mixbins[n & 1], t->frame_div[n & 1]);
         retro_atomic_store_release_int(&t->done, n);
         retro_eventcount_notify(&t->finished);
     }
@@ -546,32 +573,26 @@ void mcpx_apu_dsp_quiesce(MCPXAPUState *d)
     }
 }
 
-void mcpx_apu_dsp_sync(MCPXAPUState *d)
+float (*mcpx_apu_dsp_mixbins(MCPXAPUState *d))[NUM_SAMPLES_PER_FRAME]
 {
     MCPXAPUDSPThread *t = &d->dsp_thread;
 
-    if (!g_config.audio.use_dsp) {
-        /* no DSP work: the frame on this thread, as it was, keeps the
-         * monitor's slots in step with the engine */
-        mcpx_apu_dsp_quiesce(d);
-        t->ep_frame_div = d->ep_frame_div;
-        d->monitor_slot = d->ep_frame_div % 8;
-        return;
-    }
-    /* the frame before is done: its output is in the monitor's slot of
-     * that frame, the one before the engine's. The engine reads that slot
-     * before mcpx_apu_dsp_post() starts the thread on this frame, since
-     * every 8th frame the EP rewrites all eight slots. */
-    mcpx_apu_dsp_quiesce(d);
-    d->monitor_slot = (d->ep_frame_div + 7) % 8;
+    /* frame n is posted as t->posted == n and runs on mixbins[n & 1]:
+     * the next one's buffer is the other, free once frame n - 1 is done,
+     * which the post of frame n waited for */
+    return t->mixbins[(retro_atomic_load_acquire_int(&t->posted) + 1) & 1];
 }
 
 void mcpx_apu_dsp_post(MCPXAPUState *d, float mixbins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME])
 {
     MCPXAPUDSPThread *t = &d->dsp_thread;
+    int n;
 
     if (!g_config.audio.use_dsp) {
-        dsp_thread_frame(d, mixbins);
+        /* no DSP work: the frame on this thread, as it was; the VP's
+         * output is the frontend's (vp.c) */
+        mcpx_apu_dsp_quiesce(d);
+        dsp_thread_frame(d, mixbins, d->ep_frame_div);
         return;
     }
     if (!t->thread) {
@@ -582,9 +603,20 @@ void mcpx_apu_dsp_post(MCPXAPUState *d, float mixbins[NUM_MIXBINS][NUM_SAMPLES_P
         retro_atomic_int_init(&t->should_exit, 0);
         t->thread = sthread_create(dsp_thread_main, d);
     }
-    memcpy(t->mixbins, mixbins, sizeof(t->mixbins));
-    retro_atomic_store_release_int(&t->posted,
-                                   retro_atomic_load_acquire_int(&t->posted) + 1);
+    n = retro_atomic_load_acquire_int(&t->posted) + 1;
+    assert(mixbins == t->mixbins[n & 1]);
+    /* the frame before this one's buffer is done before the buffer is
+     * handed out again (mcpx_apu_dsp_mixbins of the next frame) */
+    while (retro_atomic_load_acquire_int(&t->done) != n - 1) {
+        int key = retro_eventcount_prepare_wait(&t->finished);
+        if (retro_atomic_load_acquire_int(&t->done) == n - 1) {
+            retro_eventcount_cancel_wait(&t->finished);
+            break;
+        }
+        retro_eventcount_commit_wait(&t->finished, key);
+    }
+    t->frame_div[n & 1] = d->ep_frame_div;
+    retro_atomic_store_release_int(&t->posted, n);
     retro_eventcount_notify(&t->wake);
 }
 

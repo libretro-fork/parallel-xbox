@@ -60,9 +60,7 @@ struct McpxApuDebugVp
     int num_workers;
     struct {
         int num_voices;
-        int time_us;
     } workers[MAX_VOICE_WORKERS];
-    int total_worker_time_us;
 };
 
 struct McpxApuDebugDsp
@@ -74,8 +72,6 @@ struct McpxApuDebug
 {
     struct McpxApuDebugVp vp;
     struct McpxApuDebugDsp gp, ep;
-    int frames_processed;
-    float utilization;
     struct {
         struct {
             float backoff, ok, speedup;

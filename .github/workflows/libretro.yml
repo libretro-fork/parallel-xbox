@@ -92,7 +92,7 @@ jobs:
         run: |
           sudo apt-get -qy update
           sudo apt-get -qy install pkg-config libglib2.0-dev libslirp-dev \
-            libepoxy-dev zlib1g-dev libsamplerate0-dev libvulkan-dev \
+            libepoxy-dev zlib1g-dev libvulkan-dev \
             glslang-dev spirv-tools patchelf \
             nasm libegl-dev libgl-dev libegl-mesa0 libgl1-mesa-dri
 
@@ -136,8 +136,8 @@ jobs:
           name: parallel_xbox_libretro-linux-${{ matrix.arch }}-symbols
           path: symbols/
 
-  # After X-OG Mobile's recipe (Ashnar2602/X-OG_Mobile): glib, pixman and
-  # libsamplerate from vcpkg's Android triplets, the NDK's clang, and QEMU's
+  # After X-OG Mobile's recipe (Ashnar2602/X-OG_Mobile): glib and pixman
+  # from vcpkg's Android triplets, the NDK's clang, and QEMU's
   # configure with what Android has no use for left out. The renderer is
   # Vulkan, through the frontend's context.
   android:
@@ -180,7 +180,7 @@ jobs:
       - name: vcpkg
         run: |
           "$VCPKG_INSTALLATION_ROOT/vcpkg" install --triplet=${{ matrix.triplet }} \
-            glib pixman libsamplerate libepoxy
+            glib pixman libepoxy
           echo "PREFIX=$VCPKG_INSTALLATION_ROOT/installed/${{ matrix.triplet }}" >> $GITHUB_ENV
 
       - name: Configure

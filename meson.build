@@ -2427,8 +2427,6 @@ else
   libpcap = dependency('libpcap', method: 'pkg-config', required: true)
 endif
 
-libsamplerate = dependency('samplerate', method: 'pkg-config', required: true)
-
 # The libretro core has no imgui UI
 if get_option('libretro')
   imgui = not_found

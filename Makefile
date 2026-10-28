@@ -87,7 +87,7 @@ ifeq ($(platform),unix)
    DSP_JIT_TRIPLE := $(DSP_JIT_ARCH)-unknown-linux-gnu
    DSP_JIT_OS_LIBS :=
 
-   PKGS := glib-2.0 slirp epoxy zlib samplerate
+   PKGS := glib-2.0 slirp epoxy zlib
    DEPS_CFLAGS := $(shell $(PKG_CONFIG) --cflags $(PKGS)) -pthread
    DEPS_LIBS   := $(shell $(PKG_CONFIG) --libs $(PKGS)) \
                   -lglslang -lMachineIndependent -lGenericCodeGen -lSPIRV \

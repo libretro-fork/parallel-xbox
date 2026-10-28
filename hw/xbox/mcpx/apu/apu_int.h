@@ -94,15 +94,8 @@ typedef struct MCPXAPUState {
     uint32_t regs[0x20000];
 
     int ep_frame_div;
-    /* the frame_buf slot the monitor plays this frame: the engine's own
-     * frame, or the one before with the DSPs' thread a frame behind */
-    int monitor_slot;
-    int frame_work_acc_us;
-    int frame_count;
-    int64_t frame_count_time_us;
     struct {
         McpxApuDebugMonitorPoint point;
-        int16_t frame_buf[256][2]; // 1 EP frame (0x400 bytes)
     } monitor;
 } MCPXAPUState;
 
@@ -116,7 +109,9 @@ void mcpx_debug_end_frame(void);
 
 void mcpx_apu_monitor_init(MCPXAPUState *d, Error **errp);
 void mcpx_apu_monitor_finalize(MCPXAPUState *d);
-void mcpx_apu_monitor_frame(MCPXAPUState *d);
+void mcpx_apu_monitor_push_s16(const int16_t (*samples)[2], size_t frames);
+void mcpx_apu_monitor_push_f32(const float (*samples)[2], size_t frames);
+void mcpx_apu_monitor_push_silence(void);
 void mcpx_apu_monitor_silence(MCPXAPUState *d);
 
 #endif

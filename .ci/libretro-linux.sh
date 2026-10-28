@@ -17,7 +17,7 @@ apt-get -qy update
 apt-get -qy install --no-install-recommends \
   build-essential git ca-certificates pkg-config ninja-build meson cmake curl \
   python3 python3-pip python3-tomli python3-yaml python3-venv \
-  libepoxy-dev libpixman-1-dev libsdl2-dev libsamplerate0-dev zlib1g-dev libssl-dev \
+  libepoxy-dev libpixman-1-dev libsdl2-dev zlib1g-dev libssl-dev \
   libpcap-dev libvulkan-dev libusb-1.0-0-dev libcurl4-openssl-dev \
   libglib2.0-dev libx11-dev libegl-dev libgl-dev glslang-dev spirv-tools \
   libpipewire-0.3-dev

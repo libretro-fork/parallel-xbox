@@ -113,35 +113,15 @@ static void se_frame(MCPXAPUState *d)
     g_dbg.gp_realtime = d->gp.realtime;
     g_dbg.ep_realtime = d->ep.realtime;
 
-    int64_t start_us = qemu_clock_get_us(QEMU_CLOCK_REALTIME);
-    int64_t elapsed_us = start_us - d->frame_count_time_us;
-    if (elapsed_us >= 1000000) {
-        /* A rudimentary calculation to determine approximately how taxed the
-         * emulator thread is by the APU, from the time spent building frames */
-        g_dbg.utilization = (double)d->frame_work_acc_us / (double)elapsed_us;
-        g_dbg.frames_processed = (int)(d->frame_count * 1000000.0 / elapsed_us + 0.5);
+    /* This frame's mixbins, the VP's into the DSPs': the thread's buffer
+     * for this frame, the other one holding the frame it may still be on */
+    float (*mixbins)[NUM_SAMPLES_PER_FRAME] = mcpx_apu_dsp_mixbins(d);
 
-        d->frame_count_time_us = start_us;
-        d->frame_count = 0;
-        d->frame_work_acc_us = 0;
-    }
-    d->frame_count++;
-
-    /* Buffer for all mixbins for this frame */
-    float mixbins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME] = { 0 };
-
-    if (d->monitor.point == MCPX_APU_DEBUG_MON_VP) {
-        /* the VP adds its samples to the monitor's slot: not while the
-         * thread's EP may be writing all eight */
-        mcpx_apu_dsp_sync(d);
-    }
+    memset(mixbins, 0, sizeof(float[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME]));
     mcpx_apu_vp_frame(d, mixbins);
-    mcpx_apu_dsp_sync(d);
-    mcpx_apu_monitor_frame(d);
     mcpx_apu_dsp_post(d, mixbins);
 
     d->ep_frame_div++;
-    d->frame_work_acc_us += qemu_clock_get_us(QEMU_CLOCK_REALTIME) - start_us;
 
     mcpx_debug_end_frame();
 }
@@ -151,19 +131,14 @@ static void se_frame(MCPXAPUState *d)
  * QEMU_CLOCK_VIRTUAL: they run on the emulator thread as the guest's time
  * passes, so each video frame of guest time gets exactly its samples
  * whatever the host's speed (ui/libretro.c hands them to the frontend). A
- * frame with the engine stopped is silence. A frame that falls while the
- * guest holds a voice locked waits until it lets go: the guest is in the
- * middle of changing that voice.
+ * frame with the engine stopped is silence. A frame always falls on its
+ * tick: a voice the guest holds locked (it is in the middle of changing
+ * it) sits that frame out (vp.c), the engine does not wait for it, since a
+ * tick put off past the end of the video frame is a frame short of samples
+ * and the next one over, a stutter.
  */
 #define APU_TICK_NS_NUM 2000000 /* 32 samples = 2000000/3 ns */
 #define APU_TICK_NS_DEN 3
-#define APU_LOCK_RETRY_NS 20000
-
-static bool voices_locked(MCPXAPUState *d)
-{
-    return d->vp.voice_locked[0] | d->vp.voice_locked[1] |
-           d->vp.voice_locked[2] | d->vp.voice_locked[3];
-}
 
 static void apu_tick_advance(MCPXAPUState *d)
 {
@@ -212,10 +187,6 @@ static void apu_tick_cb(void *opaque)
     int64_t now = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
 
     while (d->next_tick_ns <= now) {
-        if (voices_locked(d)) {
-            timer_mod_ns(d->tick_timer, now + APU_LOCK_RETRY_NS);
-            return;
-        }
         apu_step(d);
         apu_tick_advance(d);
     }

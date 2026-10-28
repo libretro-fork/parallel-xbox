@@ -21,7 +21,6 @@
 #ifndef HW_XBOX_MCPX_VP_H
 #define HW_XBOX_MCPX_VP_H
 
-#include <samplerate.h>
 
 #include "qemu/osdep.h"
 #include <retro_atomic.h>
@@ -43,8 +42,17 @@ typedef struct MCPXAPUVPSSLData {
 
 typedef struct MCPXAPUVoiceFilter {
     uint16_t voice;
-    float resample_buf[NUM_SAMPLES_PER_FRAME * 2];
-    SRC_STATE *resampler;
+    /* The voice's pitch: its samples played at the voice's rate, by 4-point
+     * cubic interpolation (vp.c voice_resample). The voice's samples are
+     * fetched a frame at a time into resample_buf; resample_pos is the next
+     * one to take, resample_hist the last four taken (hist[1] to hist[2] is
+     * where the output is, resample_phase of the way), all cleared with the
+     * voice's filters. */
+    float resample_buf[NUM_SAMPLES_PER_FRAME][2];
+    int resample_len;
+    int resample_pos;
+    float resample_hist[4][2];
+    double resample_phase;
     sv_filter svf[2];
     HrtfFilter hrtf;
 } MCPXAPUVoiceFilter;
