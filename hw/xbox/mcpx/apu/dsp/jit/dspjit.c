@@ -2,7 +2,9 @@
  * DSP56300 JIT: the DSP's program, translated to host code a block at a
  * time, running on the interpreter's own state (dsp_core_t) with the
  * interpreter's own semantics (interp/dsp_cpu.c), instruction for
- * instruction and flag for flag.
+ * instruction and flag for flag. The translation is in the host
+ * operations of host.h, which host_x86.h (x86-64) and host_a64.h
+ * (AArch64) encode.
  *
  * A block is the straight-line code from a P address: the instructions
  * the translator knows (the parallel-move instructions with the data ALU
@@ -46,7 +48,7 @@
 #endif
 
 #if DSPJIT_HOST
-#include "emit_x86.h"
+#include "host.h"
 #endif
 
 #define DSPJIT_CACHE_BYTES (4u << 20)
@@ -101,6 +103,19 @@ static void dspjit_unmap_exec(void *p, size_t len)
 
 #if DSPJIT_HOST
 
+/* code written: the instruction cache told, where it is not coherent
+ * with the data cache (AArch64) */
+static void dspjit_code_written(void *buf, size_t len)
+{
+#if !defined(__x86_64__) && !defined(_M_X64)
+#ifdef _WIN32
+    FlushInstructionCache(GetCurrentProcess(), buf, len);
+#else
+    __builtin___clear_cache((char *)buf, (char *)buf + len);
+#endif
+#endif
+}
+
 /**********************************
  *  The translator
  **********************************/
@@ -108,21 +123,24 @@ static void dspjit_unmap_exec(void *p, size_t len)
 #define OFF(f) ((int32_t)offsetof(dsp_core_t, f))
 #define REGOFF(i) (OFF(registers) + 4 * (i))
 
-/* the registers the generated code works in */
-#define REG_CORE RBX
-#define REG_ACC_A R12
-#define REG_ACC_B R13
-#define V1 R8           /* a parallel move's first value */
-#define V2 R9           /* its second */
-#define EA1 R10         /* the first move's address */
-#define EA2 R11         /* the second's */
-#define REG_LC RBP      /* a REP's count, while its loop runs */
-/* rax, rcx, rdx, r14, r15: scratch within an instruction */
+/* the registers the generated code works in (host.h) */
+#define REG_CORE H_CORE
+#define REG_ACC_A H_ACC_A
+#define REG_ACC_B H_ACC_B
+#define V1 H_V1         /* a parallel move's first value */
+#define V2 H_V2         /* its second */
+#define EA1 H_EA1       /* the first move's address */
+#define EA2 H_EA2       /* the second's */
+#define REG_LC H_LC     /* a REP's count, while its loop runs */
+/* T0-T4: scratch within an instruction */
+#define T0 H_T0
+#define T1 H_T1
+#define T2 H_T2
+#define T3 H_T3
+#define T4 H_T4
 
-/* the code's stack frame: the Win64 shadow space for the calls, and a
- * slot (SLOT_REP_START: a REP's count when its loop started) */
-#define STACK_FRAME 40
-#define SLOT_REP_START 32
+/* the frame slot for a REP's count when its loop started */
+#define SLOT_REP_START 0
 
 #define SR_C (1 << DSP_SR_C)
 #define SR_V (1 << DSP_SR_V)
@@ -230,15 +248,15 @@ static void acc_load(Tr *t, int n)
     if (t->loaded[n]) {
         return;
     }
-    x86_mov_r32_mem(e, r, REG_CORE, REGOFF(DSP_REG_A2 + n));
-    x86_shl_ri(e, 1, r, 48);
-    x86_mov_r32_mem(e, RAX, REG_CORE, REGOFF(DSP_REG_A1 + n));
-    x86_shl_ri(e, 1, RAX, 24);
-    x86_or_rr(e, 1, r, RAX);
-    x86_mov_r32_mem(e, RAX, REG_CORE, REGOFF(DSP_REG_A0 + n));
-    x86_or_rr(e, 1, r, RAX);
-    x86_shl_ri(e, 1, r, 8);
-    x86_sar_ri(e, 1, r, 8);
+    h_ld32(e, r, REG_CORE, REGOFF(DSP_REG_A2 + n));
+    h_shl_ri(e, 1, r, 48);
+    h_ld32(e, T0, REG_CORE, REGOFF(DSP_REG_A1 + n));
+    h_shl_ri(e, 1, T0, 24);
+    h_or_rr(e, 1, r, T0);
+    h_ld32(e, T0, REG_CORE, REGOFF(DSP_REG_A0 + n));
+    h_or_rr(e, 1, r, T0);
+    h_shl_ri(e, 1, r, 8);
+    h_sar_ri(e, 1, r, 8);
     t->loaded[n] = true;
     t->dirty[n] = false;
 }
@@ -248,17 +266,17 @@ static void emit_acc_store(Emitter *e, int n)
 {
     int r = acc_reg(n);
 
-    x86_mov_r64_r64(e, RAX, r);
-    x86_and_ri(e, 0, RAX, 0xFFFFFF);
-    x86_mov_mem_r32(e, REG_CORE, REGOFF(DSP_REG_A0 + n), RAX);
-    x86_mov_r64_r64(e, RAX, r);
-    x86_shr_ri(e, 1, RAX, 24);
-    x86_and_ri(e, 0, RAX, 0xFFFFFF);
-    x86_mov_mem_r32(e, REG_CORE, REGOFF(DSP_REG_A1 + n), RAX);
-    x86_mov_r64_r64(e, RAX, r);
-    x86_shr_ri(e, 1, RAX, 48);
-    x86_and_ri(e, 0, RAX, 0xFF);
-    x86_mov_mem_r32(e, REG_CORE, REGOFF(DSP_REG_A2 + n), RAX);
+    h_mov_rr(e, 1, T0, r);
+    h_and_ri(e, 0, T0, 0xFFFFFF);
+    h_st32(e, REG_CORE, REGOFF(DSP_REG_A0 + n), T0);
+    h_mov_rr(e, 1, T0, r);
+    h_shr_ri(e, 1, T0, 24);
+    h_and_ri(e, 0, T0, 0xFFFFFF);
+    h_st32(e, REG_CORE, REGOFF(DSP_REG_A1 + n), T0);
+    h_mov_rr(e, 1, T0, r);
+    h_shr_ri(e, 1, T0, 48);
+    h_and_ri(e, 0, T0, 0xFF);
+    h_st32(e, REG_CORE, REGOFF(DSP_REG_A2 + n), T0);
 }
 
 /* the state up to date; keep: the host registers stay valid */
@@ -290,14 +308,14 @@ static void emit_charge(Emitter *e, uint32_t cyc)
     if (cyc == 0) {
         return;
     }
-    x86_sub_mi32(e, REG_CORE, OFF(jit_cycles), cyc);
-    x86_add_mi32(e, REG_CORE, OFF(cycle_count), cyc);
-    x86_add_mi32(e, REG_CORE, OFF(num_inst), cyc);
+    h_sub_mem32_imm(e, REG_CORE, OFF(jit_cycles), cyc);
+    h_add_mem32_imm(e, REG_CORE, OFF(cycle_count), cyc);
+    h_add_mem32_imm(e, REG_CORE, OFF(num_inst), cyc);
 }
 
 static void emit_jump_to_epilogue(Tr *t)
 {
-    x86_jmp_abs(&t->e, t->leave);
+    h_jmp_abs(&t->e, t->leave);
 }
 
 /* the cycles charged, then on to the next block while the budget lasts:
@@ -308,20 +326,20 @@ static void emit_chain(Tr *t, uint32_t cyc)
     Emitter *e = &t->e;
 
     if (cyc) {
-        x86_add_mi32(e, REG_CORE, OFF(cycle_count), cyc);
-        x86_add_mi32(e, REG_CORE, OFF(num_inst), cyc);
-        x86_sub_mi32(e, REG_CORE, OFF(jit_cycles), cyc);
+        h_add_mem32_imm(e, REG_CORE, OFF(cycle_count), cyc);
+        h_add_mem32_imm(e, REG_CORE, OFF(num_inst), cyc);
+        h_sub_mem32_imm(e, REG_CORE, OFF(jit_cycles), cyc);
     } else {
-        x86_cmp_mi32(e, REG_CORE, OFF(jit_cycles), 0);
+        h_cmp_mem32_imm(e, REG_CORE, OFF(jit_cycles), 0);
     }
-    x86_jcc_abs(e, CC_LE, t->leave);
-    x86_mov_r32_mem(e, RAX, REG_CORE, OFF(pc));
-    x86_and_ri(e, 0, RAX, DSP_PRAM_SIZE - 1);
-    x86_mov_r64_imm(e, RCX, (uint64_t)(uintptr_t)t->table);
-    x86_mov_r64_mem_idx8(e, RAX, RCX, RAX, 0);
-    x86_test_rr(e, 1, RAX, RAX);
-    x86_jcc_abs(e, CC_E, t->leave);
-    x86_jmp_r64(e, RAX);
+    h_jcc_abs(e, HC_LE, t->leave);
+    h_ld32(e, T0, REG_CORE, OFF(pc));
+    h_and_ri(e, 0, T0, DSP_PRAM_SIZE - 1);
+    h_mov_ri(e, T1, (uint64_t)(uintptr_t)t->table);
+    h_ld64_idx8(e, T0, T1, T0, 0);
+    h_test_rr(e, 1, T0, T0);
+    h_jcc_abs(e, HC_EQ, t->leave);
+    h_jmp_r(e, T0);
 }
 
 /* as emit_chain, to the block at a PC known now */
@@ -329,20 +347,20 @@ static void emit_chain_to(Tr *t, uint32_t target, uint32_t cyc)
 {
     Emitter *e = &t->e;
 
-    x86_mov_mem32_imm(e, REG_CORE, OFF(pc), target);
+    h_st32_imm(e, REG_CORE, OFF(pc), target);
     if (cyc) {
-        x86_add_mi32(e, REG_CORE, OFF(cycle_count), cyc);
-        x86_add_mi32(e, REG_CORE, OFF(num_inst), cyc);
-        x86_sub_mi32(e, REG_CORE, OFF(jit_cycles), cyc);
+        h_add_mem32_imm(e, REG_CORE, OFF(cycle_count), cyc);
+        h_add_mem32_imm(e, REG_CORE, OFF(num_inst), cyc);
+        h_sub_mem32_imm(e, REG_CORE, OFF(jit_cycles), cyc);
     } else {
-        x86_cmp_mi32(e, REG_CORE, OFF(jit_cycles), 0);
+        h_cmp_mem32_imm(e, REG_CORE, OFF(jit_cycles), 0);
     }
-    x86_jcc_abs(e, CC_LE, t->leave);
-    x86_mov_r64_imm(e, RAX, (uint64_t)(uintptr_t)&t->table[target & (DSP_PRAM_SIZE - 1)]);
-    x86_mov_r64_mem(e, RAX, RAX, 0);
-    x86_test_rr(e, 1, RAX, RAX);
-    x86_jcc_abs(e, CC_E, t->leave);
-    x86_jmp_r64(e, RAX);
+    h_jcc_abs(e, HC_LE, t->leave);
+    h_mov_ri(e, T0, (uint64_t)(uintptr_t)&t->table[target & (DSP_PRAM_SIZE - 1)]);
+    h_ld64(e, T0, T0, 0);
+    h_test_rr(e, 1, T0, T0);
+    h_jcc_abs(e, HC_EQ, t->leave);
+    h_jmp_r(e, T0);
 }
 
 /* --- helpers called from the generated code --- */
@@ -371,21 +389,13 @@ static void jit_write_y(dsp_core_t *core, uint32_t addr, uint32_t value)
  * registers survive it */
 static void emit_stub_call_begin(Emitter *e)
 {
-    x86_push_r64(e, R8);
-    x86_push_r64(e, R9);
-    x86_push_r64(e, R10);
-    x86_push_r64(e, R11);
-    x86_sub_rsp_imm8(e, 32);
-    x86_mov_r64_r64(e, ARG0, REG_CORE);
+    h_stub_call_begin(e);
+    h_mov_rr(e, 1, H_ARG0, REG_CORE);
 }
 
 static void emit_stub_call_end(Emitter *e)
 {
-    x86_add_rsp_imm8(e, 32);
-    x86_pop_r64(e, R11);
-    x86_pop_r64(e, R10);
-    x86_pop_r64(e, R9);
-    x86_pop_r64(e, R8);
+    h_stub_call_end(e);
 }
 
 /* --- memory --- */
@@ -403,9 +413,9 @@ static void emit_read_x(Tr *t, int addr, int out)
     Emitter *e = &t->e;
     size_t j;
 
-    x86_cmp_ri(e, 0, addr, DSP_XRAM_FAST);
-    j = x86_jcc_rel32(e, CC_AE);
-    x86_mov_r32_mem_idx4(e, out, REG_CORE, addr, OFF(xram));
+    h_cmp_ri(e, 0, addr, DSP_XRAM_FAST);
+    j = h_jcc(e, HC_AE);
+    h_ld32_idx4(e, out, REG_CORE, addr, OFF(xram));
     Stub *s = stub_new(t, STUB_READ_X, j);
     s->reg = addr;
     s->reg2 = out;
@@ -417,9 +427,9 @@ static void emit_write_x(Tr *t, int addr, int val)
     Emitter *e = &t->e;
     size_t j;
 
-    x86_cmp_ri(e, 0, addr, DSP_XRAM_FAST);
-    j = x86_jcc_rel32(e, CC_AE);
-    x86_mov_mem_idx4_r32(e, REG_CORE, addr, OFF(xram), val);
+    h_cmp_ri(e, 0, addr, DSP_XRAM_FAST);
+    j = h_jcc(e, HC_AE);
+    h_st32_idx4(e, REG_CORE, addr, OFF(xram), val);
     Stub *s = stub_new(t, STUB_WRITE_X, j);
     s->reg = addr;
     s->reg2 = val;
@@ -432,9 +442,9 @@ static void emit_read_y(Tr *t, int addr, int out)
     Emitter *e = &t->e;
     size_t j;
 
-    x86_cmp_ri(e, 0, addr, DSP_YRAM_SIZE);
-    j = x86_jcc_rel32(e, CC_AE);
-    x86_mov_r32_mem_idx4(e, out, REG_CORE, addr, OFF(yram));
+    h_cmp_ri(e, 0, addr, DSP_YRAM_SIZE);
+    j = h_jcc(e, HC_AE);
+    h_ld32_idx4(e, out, REG_CORE, addr, OFF(yram));
     Stub *s = stub_new(t, STUB_READ_Y, j);
     s->reg = addr;
     s->reg2 = out;
@@ -446,9 +456,9 @@ static void emit_write_y(Tr *t, int addr, int val)
     Emitter *e = &t->e;
     size_t j;
 
-    x86_cmp_ri(e, 0, addr, DSP_YRAM_SIZE);
-    j = x86_jcc_rel32(e, CC_AE);
-    x86_mov_mem_idx4_r32(e, REG_CORE, addr, OFF(yram), val);
+    h_cmp_ri(e, 0, addr, DSP_YRAM_SIZE);
+    j = h_jcc(e, HC_AE);
+    h_st32_idx4(e, REG_CORE, addr, OFF(yram), val);
     Stub *s = stub_new(t, STUB_WRITE_Y, j);
     s->reg = addr;
     s->reg2 = val;
@@ -481,22 +491,22 @@ static void emit_rn_update(Tr *t, int n, int modkind, int32_t imm)
     Emitter *e = &t->e;
     size_t j;
 
-    x86_cmp_mi16(e, REG_CORE, REGOFF(DSP_REG_M0 + n), 0xFFFF);
-    j = x86_jcc_rel32(e, CC_NE);
-    x86_mov_r32_mem(e, RAX, REG_CORE, REGOFF(DSP_REG_R0 + n));
+    h_cmp_mem16_imm(e, REG_CORE, REGOFF(DSP_REG_M0 + n), 0xFFFF);
+    j = h_jcc(e, HC_NE);
+    h_ld32(e, T0, REG_CORE, REGOFF(DSP_REG_R0 + n));
     switch (modkind) {
     case MOD_IMM:
-        x86_add_ri(e, 0, RAX, imm);
+        h_add_ri(e, 0, T0, imm);
         break;
     case MOD_PLUS_N:
-        x86_alu_rm32(e, 0x03, RAX, REG_CORE, REGOFF(DSP_REG_N0 + n));
+        h_add_r_mem32(e, T0, REG_CORE, REGOFF(DSP_REG_N0 + n));
         break;
     case MOD_MINUS_N:
-        x86_alu_rm32(e, 0x2B, RAX, REG_CORE, REGOFF(DSP_REG_N0 + n));
+        h_sub_r_mem32(e, T0, REG_CORE, REGOFF(DSP_REG_N0 + n));
         break;
     }
-    x86_and_ri(e, 0, RAX, 0xFFFF);
-    x86_mov_mem_r32(e, REG_CORE, REGOFF(DSP_REG_R0 + n), RAX);
+    h_and_ri(e, 0, T0, 0xFFFF);
+    h_st32(e, REG_CORE, REGOFF(DSP_REG_R0 + n), T0);
     Stub *s = stub_new(t, STUB_RN_UPDATE, j);
     s->n = n;
     s->modkind = modkind;
@@ -527,32 +537,32 @@ static void emit_calc_ea(Tr *t, uint32_t ea6, uint32_t ext, int reg, Ea *ea)
     ea->reg = reg;
     switch (mode) {
     case 0:
-        x86_mov_r32_mem(e, reg, REG_CORE, REGOFF(DSP_REG_R0 + n));
+        h_ld32(e, reg, REG_CORE, REGOFF(DSP_REG_R0 + n));
         emit_rn_update(t, n, MOD_MINUS_N, 0);
         break;
     case 1:
-        x86_mov_r32_mem(e, reg, REG_CORE, REGOFF(DSP_REG_R0 + n));
+        h_ld32(e, reg, REG_CORE, REGOFF(DSP_REG_R0 + n));
         emit_rn_update(t, n, MOD_PLUS_N, 0);
         break;
     case 2:
-        x86_mov_r32_mem(e, reg, REG_CORE, REGOFF(DSP_REG_R0 + n));
+        h_ld32(e, reg, REG_CORE, REGOFF(DSP_REG_R0 + n));
         emit_rn_update(t, n, MOD_IMM, -1);
         break;
     case 3:
-        x86_mov_r32_mem(e, reg, REG_CORE, REGOFF(DSP_REG_R0 + n));
+        h_ld32(e, reg, REG_CORE, REGOFF(DSP_REG_R0 + n));
         emit_rn_update(t, n, MOD_IMM, 1);
         break;
     case 4:
-        x86_mov_r32_mem(e, reg, REG_CORE, REGOFF(DSP_REG_R0 + n));
+        h_ld32(e, reg, REG_CORE, REGOFF(DSP_REG_R0 + n));
         break;
     case 5: {
         size_t j;
         t->cyc += 2;
-        x86_cmp_mi16(e, REG_CORE, REGOFF(DSP_REG_M0 + n), 0xFFFF);
-        j = x86_jcc_rel32(e, CC_NE);
-        x86_mov_r32_mem(e, reg, REG_CORE, REGOFF(DSP_REG_R0 + n));
-        x86_alu_rm32(e, 0x03, reg, REG_CORE, REGOFF(DSP_REG_N0 + n));
-        x86_and_ri(e, 0, reg, 0xFFFF);
+        h_cmp_mem16_imm(e, REG_CORE, REGOFF(DSP_REG_M0 + n), 0xFFFF);
+        j = h_jcc(e, HC_NE);
+        h_ld32(e, reg, REG_CORE, REGOFF(DSP_REG_R0 + n));
+        h_add_r_mem32(e, reg, REG_CORE, REGOFF(DSP_REG_N0 + n));
+        h_and_ri(e, 0, reg, 0xFFFF);
         Stub *s = stub_new(t, STUB_EA_RN_PLUS_N, j);
         s->n = n;
         s->reg = reg;
@@ -572,7 +582,7 @@ static void emit_calc_ea(Tr *t, uint32_t ea6, uint32_t ext, int reg, Ea *ea)
     case 7:
         t->cyc += 2;
         emit_rn_update(t, n, MOD_IMM, -1);
-        x86_mov_r32_mem(e, reg, REG_CORE, REGOFF(DSP_REG_R0 + n));
+        h_ld32(e, reg, REG_CORE, REGOFF(DSP_REG_R0 + n));
         break;
     }
 }
@@ -581,7 +591,7 @@ static void emit_calc_ea(Tr *t, uint32_t ea6, uint32_t ext, int reg, Ea *ea)
 static int ea_addr_reg(Tr *t, Ea *ea)
 {
     if (ea->kind == EA_ABS) {
-        x86_mov_r32_imm(&t->e, ea->reg, ea->abs);
+        h_mov_ri(&t->e, ea->reg, ea->abs);
     }
     return ea->reg;
 }
@@ -614,37 +624,37 @@ static void emit_acc_limit(Tr *t, int n, int out)
     case 1:
         /* scaled down: no limiting when A2 is 0 or 0xff */
         shift = 25;
-        x86_mov_r64_r64(e, RDX, r);
-        x86_sar_ri(e, 1, RDX, 48);
-        x86_add_ri(e, 1, RDX, 1);
-        x86_cmp_ri(e, 1, RDX, 1);
-        j = x86_jcc_rel32(e, CC_A);
+        h_mov_rr(e, 1, T2, r);
+        h_sar_ri(e, 1, T2, 48);
+        h_add_ri(e, 1, T2, 1);
+        h_cmp_ri(e, 1, T2, 1);
+        j = h_jcc(e, HC_A);
         break;
     case 2:
         /* scaled up: no limiting when A2 is 0 with bit 46 clear, or
          * 0xff with it set */
         shift = 23;
-        x86_mov_r64_r64(e, RDX, r);
-        x86_shr_ri(e, 1, RDX, 46);
-        x86_and_ri(e, 0, RDX, 0x3FD);
-        j2 = x86_jcc_rel32(e, CC_E);
-        x86_cmp_ri(e, 0, RDX, 0x3FD);
-        j = x86_jcc_rel32(e, CC_NE);
-        x86_patch_rel32(e, j2, e->len);
+        h_mov_rr(e, 1, T2, r);
+        h_shr_ri(e, 1, T2, 46);
+        h_and_ri(e, 0, T2, 0x3FD);
+        j2 = h_jcc(e, HC_EQ);
+        h_cmp_ri(e, 0, T2, 0x3FD);
+        j = h_jcc(e, HC_NE);
+        h_patch(e, j2, e->len);
         break;
     default:
         /* no limiting when the value fits 48 bits: bits 55..47 all equal */
         shift = 24;
-        x86_mov_r64_r64(e, RDX, r);
-        x86_sar_ri(e, 1, RDX, 47);
-        x86_add_ri(e, 1, RDX, 1);
-        x86_cmp_ri(e, 1, RDX, 1);
-        j = x86_jcc_rel32(e, CC_A);
+        h_mov_rr(e, 1, T2, r);
+        h_sar_ri(e, 1, T2, 47);
+        h_add_ri(e, 1, T2, 1);
+        h_cmp_ri(e, 1, T2, 1);
+        j = h_jcc(e, HC_A);
         break;
     }
-    x86_mov_r64_r64(e, out, r);
-    x86_shr_ri(e, 1, out, shift);
-    x86_and_ri(e, 0, out, 0xFFFFFF);
+    h_mov_rr(e, 1, out, r);
+    h_shr_ri(e, 1, out, shift);
+    h_and_ri(e, 0, out, 0xFFFFFF);
     Stub *s = stub_new(t, STUB_LIMIT, j);
     s->reg = r;
     s->reg2 = out;
@@ -664,25 +674,25 @@ static void emit_read_reg(Tr *t, int r, int out)
     case DSP_REG_A0:
     case DSP_REG_B0:
         acc_load(t, r & 1);
-        x86_mov_r64_r64(e, out, acc_reg(r & 1));
-        x86_and_ri(e, 0, out, 0xFFFFFF);
+        h_mov_rr(e, 1, out, acc_reg(r & 1));
+        h_and_ri(e, 0, out, 0xFFFFFF);
         break;
     case DSP_REG_A1:
     case DSP_REG_B1:
         acc_load(t, r & 1);
-        x86_mov_r64_r64(e, out, acc_reg(r & 1));
-        x86_shr_ri(e, 1, out, 24);
-        x86_and_ri(e, 0, out, 0xFFFFFF);
+        h_mov_rr(e, 1, out, acc_reg(r & 1));
+        h_shr_ri(e, 1, out, 24);
+        h_and_ri(e, 0, out, 0xFFFFFF);
         break;
     case DSP_REG_A2:
     case DSP_REG_B2:
         acc_load(t, r & 1);
-        x86_mov_r64_r64(e, out, acc_reg(r & 1));
-        x86_shr_ri(e, 1, out, 48);
-        x86_and_ri(e, 0, out, 0xFF);
+        h_mov_rr(e, 1, out, acc_reg(r & 1));
+        h_shr_ri(e, 1, out, 48);
+        h_and_ri(e, 0, out, 0xFF);
         break;
     default:
-        x86_mov_r32_mem(e, out, REG_CORE, REGOFF(r));
+        h_ld32(e, out, REG_CORE, REGOFF(r));
         break;
     }
 }
@@ -705,52 +715,52 @@ static void emit_write_reg(Tr *t, int r, int val)
     case DSP_REG_A:
     case DSP_REG_B:
         /* 24 bits sign-extended into the whole accumulator */
-        x86_mov_r64_r64(e, acc, val);
-        x86_shl_ri(e, 1, acc, 40);
-        x86_sar_ri(e, 1, acc, 16);
+        h_mov_rr(e, 1, acc, val);
+        h_shl_ri(e, 1, acc, 40);
+        h_sar_ri(e, 1, acc, 16);
         acc_written(t, n);
         break;
     case DSP_REG_A0:
     case DSP_REG_B0:
         acc_load(t, n);
-        x86_mov_r64_imm(e, RAX, ~(uint64_t)0xFFFFFF);
-        x86_and_rr(e, 1, acc, RAX);
-        x86_and_ri(e, 0, val, 0xFFFFFF);
-        x86_or_rr(e, 1, acc, val);
+        h_mov_ri(e, T0, ~(uint64_t)0xFFFFFF);
+        h_and_rr(e, 1, acc, T0);
+        h_and_ri(e, 0, val, 0xFFFFFF);
+        h_or_rr(e, 1, acc, val);
         acc_written(t, n);
         break;
     case DSP_REG_A1:
     case DSP_REG_B1:
         acc_load(t, n);
-        x86_mov_r64_imm(e, RAX, ~((uint64_t)0xFFFFFF << 24));
-        x86_and_rr(e, 1, acc, RAX);
-        x86_and_ri(e, 0, val, 0xFFFFFF);
-        x86_shl_ri(e, 1, val, 24);
-        x86_or_rr(e, 1, acc, val);
+        h_mov_ri(e, T0, ~((uint64_t)0xFFFFFF << 24));
+        h_and_rr(e, 1, acc, T0);
+        h_and_ri(e, 0, val, 0xFFFFFF);
+        h_shl_ri(e, 1, val, 24);
+        h_or_rr(e, 1, acc, val);
         acc_written(t, n);
         break;
     case DSP_REG_A2:
     case DSP_REG_B2:
         acc_load(t, n);
-        x86_shl_ri(e, 1, acc, 16);
-        x86_shr_ri(e, 1, acc, 16);
-        x86_and_ri(e, 0, val, 0xFF);
-        x86_shl_ri(e, 1, val, 56);
-        x86_sar_ri(e, 1, val, 8);
-        x86_or_rr(e, 1, acc, val);
+        h_shl_ri(e, 1, acc, 16);
+        h_shr_ri(e, 1, acc, 16);
+        h_and_ri(e, 0, val, 0xFF);
+        h_shl_ri(e, 1, val, 56);
+        h_sar_ri(e, 1, val, 8);
+        h_or_rr(e, 1, acc, val);
         acc_written(t, n);
         break;
     case DSP_REG_X0:
     case DSP_REG_X1:
     case DSP_REG_Y0:
     case DSP_REG_Y1:
-        x86_and_ri(e, 0, val, 0xFFFFFF);
-        x86_mov_mem_r32(e, REG_CORE, REGOFF(r), val);
+        h_and_ri(e, 0, val, 0xFFFFFF);
+        h_st32(e, REG_CORE, REGOFF(r), val);
         break;
     default:
         /* R, N, M: 16 bits */
-        x86_and_ri(e, 0, val, 0xFFFF);
-        x86_mov_mem_r32(e, REG_CORE, REGOFF(r), val);
+        h_and_ri(e, 0, val, 0xFFFF);
+        h_st32(e, REG_CORE, REGOFF(r), val);
         break;
     }
 }
@@ -848,29 +858,29 @@ static void emit_src56(Tr *t, const AluOp *a, int out)
     case SRC_X:
     case SRC_Y: {
         int lo = a->src == SRC_X ? DSP_REG_X0 : DSP_REG_Y0;
-        x86_mov_r32_mem(e, out, REG_CORE, REGOFF(lo + 1));
-        x86_shl_ri(e, 1, out, 40);
-        x86_sar_ri(e, 1, out, 16);
-        x86_mov_r32_mem(e, RAX, REG_CORE, REGOFF(lo));
-        x86_or_rr(e, 1, out, RAX);
+        h_ld32(e, out, REG_CORE, REGOFF(lo + 1));
+        h_shl_ri(e, 1, out, 40);
+        h_sar_ri(e, 1, out, 16);
+        h_ld32(e, T0, REG_CORE, REGOFF(lo));
+        h_or_rr(e, 1, out, T0);
         break;
     }
     case SRC_OTHER_ACC:
         acc_load(t, a->d ^ 1);
-        x86_mov_r64_r64(e, out, acc_reg(a->d ^ 1));
+        h_mov_rr(e, 1, out, acc_reg(a->d ^ 1));
         break;
     case SRC_IMM: {
         int64_t v = a->imm & 0xFFFFFF;
         if (!a->imm_unsigned && (v & 0x800000)) {
             v -= 1 << 24;
         }
-        x86_mov_r64_imm(e, out, (uint64_t)(v << 24));
+        h_mov_ri(e, out, (uint64_t)(v << 24));
         break;
     }
     default:
-        x86_mov_r32_mem(e, out, REG_CORE, REGOFF(a->src));
-        x86_shl_ri(e, 1, out, 40);
-        x86_sar_ri(e, 1, out, 16);
+        h_ld32(e, out, REG_CORE, REGOFF(a->src));
+        h_shl_ri(e, 1, out, 40);
+        h_sar_ri(e, 1, out, 16);
         break;
     }
 }
@@ -892,35 +902,33 @@ static void emit_eunz(Tr *t, int res, int sr)
     }
     b = ebit[t->mode];
     /* Z */
-    x86_test_rr(e, 1, res, res);
-    x86_setcc_r8(e, CC_E, RAX);
-    x86_movzx_r32_r8(e, RAX, RAX);
-    x86_shl_ri(e, 0, RAX, DSP_SR_Z);
-    x86_or_rr(e, 0, sr, RAX);
+    h_test_rr(e, 1, res, res);
+    h_setcc(e, HC_EQ, T0);
+    h_shl_ri(e, 0, T0, DSP_SR_Z);
+    h_or_rr(e, 0, sr, T0);
     /* N: bit 55 */
-    x86_mov_r64_r64(e, RAX, res);
-    x86_shr_ri(e, 1, RAX, 55 - DSP_SR_N);
-    x86_and_ri(e, 0, RAX, SR_N);
-    x86_or_rr(e, 0, sr, RAX);
+    h_mov_rr(e, 1, T0, res);
+    h_shr_ri(e, 1, T0, 55 - DSP_SR_N);
+    h_and_ri(e, 0, T0, SR_N);
+    h_or_rr(e, 0, sr, T0);
     /* E */
-    x86_mov_r64_r64(e, RAX, res);
-    x86_sar_ri(e, 1, RAX, b);
-    x86_add_ri(e, 1, RAX, 1);
-    x86_cmp_ri(e, 1, RAX, 1);
-    x86_setcc_r8(e, CC_A, RAX);
-    x86_movzx_r32_r8(e, RAX, RAX);
-    x86_shl_ri(e, 0, RAX, DSP_SR_E);
-    x86_or_rr(e, 0, sr, RAX);
+    h_mov_rr(e, 1, T0, res);
+    h_sar_ri(e, 1, T0, b);
+    h_add_ri(e, 1, T0, 1);
+    h_cmp_ri(e, 1, T0, 1);
+    h_setcc(e, HC_A, T0);
+    h_shl_ri(e, 0, T0, DSP_SR_E);
+    h_or_rr(e, 0, sr, T0);
     /* U */
-    x86_mov_r64_r64(e, RAX, res);
-    x86_shr_ri(e, 1, RAX, b - 1);
-    x86_mov_r32_r32(e, RDX, RAX);
-    x86_shr_ri(e, 0, RDX, 1);
-    x86_xor_rr(e, 0, RAX, RDX);
-    x86_not_r(e, 0, RAX);
-    x86_and_ri(e, 0, RAX, 1);
-    x86_shl_ri(e, 0, RAX, DSP_SR_U);
-    x86_or_rr(e, 0, sr, RAX);
+    h_mov_rr(e, 1, T0, res);
+    h_shr_ri(e, 1, T0, b - 1);
+    h_mov_rr(e, 0, T2, T0);
+    h_shr_ri(e, 0, T2, 1);
+    h_xor_rr(e, 0, T0, T2);
+    h_not(e, 0, T0);
+    h_and_ri(e, 0, T0, 1);
+    h_shl_ri(e, 0, T0, DSP_SR_U);
+    h_or_rr(e, 0, sr, T0);
 }
 
 /* E, U, N, Z computed from the accumulator they are owed to, into SR
@@ -932,9 +940,9 @@ static void emit_flags_flush(Tr *t)
     if (t->lazy_acc < 0) {
         return;
     }
-    x86_mov_r32_mem(e, RCX, REG_CORE, REGOFF(DSP_REG_SR));
-    emit_eunz(t, acc_reg(t->lazy_acc), RCX);
-    x86_mov_mem_r32(e, REG_CORE, REGOFF(DSP_REG_SR), RCX);
+    h_ld32(e, T1, REG_CORE, REGOFF(DSP_REG_SR));
+    emit_eunz(t, acc_reg(t->lazy_acc), T1);
+    h_st32(e, REG_CORE, REGOFF(DSP_REG_SR), T1);
     t->lazy_acc = -1;
 }
 
@@ -946,9 +954,9 @@ static void emit_flags_flush_stub(Tr *t, const Stub *s)
     if (s->lazy_acc < 0) {
         return;
     }
-    x86_mov_r32_mem(e, RCX, REG_CORE, REGOFF(DSP_REG_SR));
-    emit_eunz(t, acc_reg(s->lazy_acc), RCX);
-    x86_mov_mem_r32(e, REG_CORE, REGOFF(DSP_REG_SR), RCX);
+    h_ld32(e, T1, REG_CORE, REGOFF(DSP_REG_SR));
+    emit_eunz(t, acc_reg(s->lazy_acc), T1);
+    h_st32(e, REG_CORE, REGOFF(DSP_REG_SR), T1);
 }
 
 /* SR = (SR & ~clear) | newsr (a register, or none) | EUNZ(res). With
@@ -960,15 +968,15 @@ static void emit_sr_result(Tr *t, uint32_t clear, int newsr, int res, int lazy_n
 {
     Emitter *e = &t->e;
 
-    x86_mov_r32_mem(e, RCX, REG_CORE, REGOFF(DSP_REG_SR));
-    x86_and_ri(e, 0, RCX, ~(int32_t)clear);
+    h_ld32(e, T1, REG_CORE, REGOFF(DSP_REG_SR));
+    h_and_ri(e, 0, T1, ~(int32_t)clear);
     if (newsr >= 0) {
-        x86_or_rr(e, 0, RCX, newsr);
+        h_or_rr(e, 0, T1, newsr);
     }
     if (res >= 0 && lazy_n < 0) {
-        emit_eunz(t, res, RCX);
+        emit_eunz(t, res, T1);
     }
-    x86_mov_mem_r32(e, REG_CORE, REGOFF(DSP_REG_SR), RCX);
+    h_st32(e, REG_CORE, REGOFF(DSP_REG_SR), T1);
     /* the bits are this operation's now, whatever was pending */
     t->lazy_acc = (clear & SR_EUNZ) == SR_EUNZ ? lazy_n : -1;
 }
@@ -976,8 +984,8 @@ static void emit_sr_result(Tr *t, uint32_t clear, int newsr, int res, int lazy_n
 /* res = sext56(res) */
 static void emit_sext56(Emitter *e, int res)
 {
-    x86_shl_ri(e, 1, res, 8);
-    x86_sar_ri(e, 1, res, 8);
+    h_shl_ri(e, 1, res, 8);
+    h_sar_ri(e, 1, res, 8);
 }
 
 /* dst = dst +/- src as 56-bit values (dsp_add56/dsp_sub56): the result
@@ -986,24 +994,22 @@ static void emit_sext56(Emitter *e, int res)
  * 56-bit add's. Uses rax, rdx. */
 static void emit_addsub56(Emitter *e, int dst, int src, bool sub)
 {
-    x86_mov_r64_r64(e, R14, dst);
-    x86_shl_ri(e, 1, R14, 8);
-    x86_mov_r64_r64(e, R15, src);
-    x86_shl_ri(e, 1, R15, 8);
+    h_mov_rr(e, 1, T3, dst);
+    h_shl_ri(e, 1, T3, 8);
+    h_mov_rr(e, 1, T4, src);
+    h_shl_ri(e, 1, T4, 8);
     if (sub) {
-        x86_sub_rr(e, 1, R14, R15);
+        h_sub_rr(e, 1, T3, T4);
     } else {
-        x86_add_rr(e, 1, R14, R15);
+        h_add_rr(e, 1, T3, T4);
     }
-    x86_setcc_r8(e, CC_B, RAX);
-    x86_setcc_r8(e, CC_O, RDX);
-    x86_sar_ri(e, 1, R14, 8);
-    x86_movzx_r32_r8(e, R15, RAX);
-    x86_movzx_r32_r8(e, RDX, RDX);
-    x86_shl_ri(e, 0, RDX, DSP_SR_V);
-    x86_or_rr(e, 0, R15, RDX);
-    x86_shl_ri(e, 0, RDX, DSP_SR_L - DSP_SR_V);
-    x86_or_rr(e, 0, R15, RDX);
+    h_setcc(e, sub ? HC_BORROW : HC_CARRY, T4);
+    h_setcc(e, HC_O, T2);
+    h_sar_ri(e, 1, T3, 8);
+    h_shl_ri(e, 0, T2, DSP_SR_V);
+    h_or_rr(e, 0, T4, T2);
+    h_shl_ri(e, 0, T2, DSP_SR_L - DSP_SR_V);
+    h_or_rr(e, 0, T4, T2);
 }
 
 /* dsp_rnd56 in the block's scaling mode, on res; uses rax */
@@ -1014,36 +1020,36 @@ static void emit_rnd56(Tr *t, int res)
 
     if (t->mode & 1) {
         /* S0: rounding at bit 24 */
-        x86_add_ri(e, 1, res, 1 << 24);
+        h_add_ri(e, 1, res, 1 << 24);
         emit_sext56(e, res);
-        x86_mov_r64_r64(e, RAX, res);
-        x86_and_ri(e, 1, RAX, 0x1FFFFFF);
-        j = x86_jcc_rel32(e, CC_NE);
-        x86_and_ri(e, 1, res, ~(int32_t)(3 << 24));
-        x86_patch_rel32(e, j, e->len);
-        x86_shr_ri(e, 1, res, 25);
-        x86_shl_ri(e, 1, res, 25);
+        h_mov_rr(e, 1, T0, res);
+        h_and_ri(e, 1, T0, 0x1FFFFFF);
+        j = h_jcc(e, HC_NE);
+        h_and_ri(e, 1, res, ~(int32_t)(3 << 24));
+        h_patch(e, j, e->len);
+        h_shr_ri(e, 1, res, 25);
+        h_shl_ri(e, 1, res, 25);
     } else if (t->mode == 2) {
         /* S1: rounding at bit 22 */
-        x86_add_ri(e, 1, res, 1 << 22);
+        h_add_ri(e, 1, res, 1 << 22);
         emit_sext56(e, res);
-        x86_mov_r64_r64(e, RAX, res);
-        x86_and_ri(e, 0, RAX, 0x7FFFFF);
-        j = x86_jcc_rel32(e, CC_NE);
-        x86_and_ri(e, 1, res, ~(int32_t)0x800000);
-        x86_patch_rel32(e, j, e->len);
-        x86_shr_ri(e, 1, res, 23);
-        x86_shl_ri(e, 1, res, 23);
+        h_mov_rr(e, 1, T0, res);
+        h_and_ri(e, 0, T0, 0x7FFFFF);
+        j = h_jcc(e, HC_NE);
+        h_and_ri(e, 1, res, ~(int32_t)0x800000);
+        h_patch(e, j, e->len);
+        h_shr_ri(e, 1, res, 23);
+        h_shl_ri(e, 1, res, 23);
     } else {
-        x86_add_ri(e, 1, res, 1 << 23);
+        h_add_ri(e, 1, res, 1 << 23);
         emit_sext56(e, res);
-        x86_mov_r64_r64(e, RAX, res);
-        x86_and_ri(e, 0, RAX, 0xFFFFFF);
-        j = x86_jcc_rel32(e, CC_NE);
-        x86_and_ri(e, 1, res, ~(int32_t)(1 << 24));
-        x86_patch_rel32(e, j, e->len);
-        x86_shr_ri(e, 1, res, 24);
-        x86_shl_ri(e, 1, res, 24);
+        h_mov_rr(e, 1, T0, res);
+        h_and_ri(e, 0, T0, 0xFFFFFF);
+        j = h_jcc(e, HC_NE);
+        h_and_ri(e, 1, res, ~(int32_t)(1 << 24));
+        h_patch(e, j, e->len);
+        h_shr_ri(e, 1, res, 24);
+        h_shl_ri(e, 1, res, 24);
     }
 }
 
@@ -1051,16 +1057,16 @@ static void emit_rnd56(Tr *t, int res)
  * (dsp_mul56, exact in 64 bits) */
 static void emit_mul56(Emitter *e, const AluOp *a)
 {
-    x86_mov_r32_mem(e, RAX, REG_CORE, REGOFF(a->src));
-    x86_shl_ri(e, 1, RAX, 40);
-    x86_sar_ri(e, 1, RAX, 40);
-    x86_mov_r32_mem(e, RCX, REG_CORE, REGOFF(a->src2));
-    x86_shl_ri(e, 1, RCX, 40);
-    x86_sar_ri(e, 1, RCX, 40);
-    x86_imul_rr(e, 1, RAX, RCX);
-    x86_add_rr(e, 1, RAX, RAX);
+    h_ld32(e, T0, REG_CORE, REGOFF(a->src));
+    h_shl_ri(e, 1, T0, 40);
+    h_sar_ri(e, 1, T0, 40);
+    h_ld32(e, T1, REG_CORE, REGOFF(a->src2));
+    h_shl_ri(e, 1, T1, 40);
+    h_sar_ri(e, 1, T1, 40);
+    h_mul_rr(e, 1, T0, T1);
+    h_add_rr(e, 1, T0, T0);
     if (a->minus) {
-        x86_neg_r(e, 1, RAX);
+        h_neg(e, 1, T0);
     }
 }
 
@@ -1072,26 +1078,25 @@ static void emit_a1_result(Tr *t, int n, uint32_t clear, int carry_reg)
     int acc = acc_reg(n);
 
     /* N, Z of the 24-bit value */
-    x86_mov_r32_r32(e, RDX, RAX);
-    x86_shr_ri(e, 0, RDX, 23 - DSP_SR_N);
-    x86_and_ri(e, 0, RDX, SR_N);
-    x86_mov_r32_mem(e, RCX, REG_CORE, REGOFF(DSP_REG_SR));
-    x86_and_ri(e, 0, RCX, ~(int32_t)clear);
-    x86_or_rr(e, 0, RCX, RDX);
+    h_mov_rr(e, 0, T2, T0);
+    h_shr_ri(e, 0, T2, 23 - DSP_SR_N);
+    h_and_ri(e, 0, T2, SR_N);
+    h_ld32(e, T1, REG_CORE, REGOFF(DSP_REG_SR));
+    h_and_ri(e, 0, T1, ~(int32_t)clear);
+    h_or_rr(e, 0, T1, T2);
     if (carry_reg >= 0) {
-        x86_or_rr(e, 0, RCX, carry_reg);
+        h_or_rr(e, 0, T1, carry_reg);
     }
-    x86_test_rr(e, 0, RAX, RAX);
-    x86_setcc_r8(e, CC_E, RDX);
-    x86_movzx_r32_r8(e, RDX, RDX);
-    x86_shl_ri(e, 0, RDX, DSP_SR_Z);
-    x86_or_rr(e, 0, RCX, RDX);
-    x86_mov_mem_r32(e, REG_CORE, REGOFF(DSP_REG_SR), RCX);
+    h_test_rr(e, 0, T0, T0);
+    h_setcc(e, HC_EQ, T2);
+    h_shl_ri(e, 0, T2, DSP_SR_Z);
+    h_or_rr(e, 0, T1, T2);
+    h_st32(e, REG_CORE, REGOFF(DSP_REG_SR), T1);
     /* into bits 47..24 */
-    x86_mov_r64_imm(e, RDX, ~((uint64_t)0xFFFFFF << 24));
-    x86_and_rr(e, 1, acc, RDX);
-    x86_shl_ri(e, 1, RAX, 24);
-    x86_or_rr(e, 1, acc, RAX);
+    h_mov_ri(e, T2, ~((uint64_t)0xFFFFFF << 24));
+    h_and_rr(e, 1, acc, T2);
+    h_shl_ri(e, 1, T0, 24);
+    h_or_rr(e, 1, acc, T0);
     acc_written(t, n);
 }
 
@@ -1109,11 +1114,11 @@ static void emit_alu(Tr *t, const AluOp *a)
     case OP_SUB:
     case OP_CMP:
         acc_load(t, a->d);
-        emit_src56(t, a, RCX);
-        emit_addsub56(e, acc, RCX, a->op != OP_ADD);
-        emit_sr_result(t, SR_EUNZ | SR_V | SR_C, R15, R14, a->op == OP_CMP ? -1 : a->d);
+        emit_src56(t, a, T1);
+        emit_addsub56(e, acc, T1, a->op != OP_ADD);
+        emit_sr_result(t, SR_EUNZ | SR_V | SR_C, T4, T3, a->op == OP_CMP ? -1 : a->d);
         if (a->op != OP_CMP) {
-            x86_mov_r64_r64(e, acc, R14);
+            h_mov_rr(e, 1, acc, T3);
             acc_written(t, a->d);
         }
         break;
@@ -1128,49 +1133,49 @@ static void emit_alu(Tr *t, const AluOp *a)
         bool sub = a->op == OP_SUBL || a->op == OP_SUBR;
         acc_load(t, a->d);
         acc_load(t, a->d ^ 1);
-        x86_mov_r64_r64(e, R14, acc);
+        h_mov_rr(e, 1, T3, acc);
         if (left) {
             /* dsp_asl56: C = L = bit 55, V = bit 55 ^ bit 54 */
-            x86_mov_r64_r64(e, RAX, acc);
-            x86_shr_ri(e, 1, RAX, 55);
-            x86_and_ri(e, 0, RAX, 1);
-            x86_mov_r64_r64(e, RCX, acc);
-            x86_shr_ri(e, 1, RCX, 54);
-            x86_xor_rr(e, 0, RCX, RAX);
-            x86_and_ri(e, 0, RCX, 1);
-            x86_shl_ri(e, 0, RCX, DSP_SR_V);
-            x86_or_rr(e, 0, RCX, RAX);
-            x86_shl_ri(e, 0, RAX, DSP_SR_L);
-            x86_or_rr(e, 0, RCX, RAX);
-            x86_shl_ri(e, 1, R14, 9);
-            x86_sar_ri(e, 1, R14, 8);
+            h_mov_rr(e, 1, T0, acc);
+            h_shr_ri(e, 1, T0, 55);
+            h_and_ri(e, 0, T0, 1);
+            h_mov_rr(e, 1, T1, acc);
+            h_shr_ri(e, 1, T1, 54);
+            h_xor_rr(e, 0, T1, T0);
+            h_and_ri(e, 0, T1, 1);
+            h_shl_ri(e, 0, T1, DSP_SR_V);
+            h_or_rr(e, 0, T1, T0);
+            h_shl_ri(e, 0, T0, DSP_SR_L);
+            h_or_rr(e, 0, T1, T0);
+            h_shl_ri(e, 1, T3, 9);
+            h_sar_ri(e, 1, T3, 8);
         } else {
             /* dsp_asr56: C = bit 0, a logical shift of the 56 bits */
-            x86_mov_r64_r64(e, RCX, acc);
-            x86_and_ri(e, 0, RCX, 1);
-            x86_shl_ri(e, 1, R14, 8);
-            x86_shr_ri(e, 1, R14, 9);
+            h_mov_rr(e, 1, T1, acc);
+            h_and_ri(e, 0, T1, 1);
+            h_shl_ri(e, 1, T3, 8);
+            h_shr_ri(e, 1, T3, 9);
         }
-        emit_addsub56(e, R14, acc_reg(a->d ^ 1), sub);
-        x86_or_rr(e, 0, R15, RCX);
-        emit_sr_result(t, SR_EUNZ | SR_V | SR_C, R15, R14, a->d);
-        x86_mov_r64_r64(e, acc, R14);
+        emit_addsub56(e, T3, acc_reg(a->d ^ 1), sub);
+        h_or_rr(e, 0, T4, T1);
+        emit_sr_result(t, SR_EUNZ | SR_V | SR_C, T4, T3, a->d);
+        h_mov_rr(e, 1, acc, T3);
         acc_written(t, a->d);
         break;
     }
 
     case OP_TFR:
-        emit_src56(t, a, RCX);
-        x86_mov_r64_r64(e, acc, RCX);
+        emit_src56(t, a, T1);
+        h_mov_rr(e, 1, acc, T1);
         acc_written(t, a->d);
         break;
 
     case OP_CLR:
         emit_flags_flush(t);
-        x86_xor_rr(e, 0, acc, acc);
+        h_xor_rr(e, 0, acc, acc);
         acc_written(t, a->d);
-        x86_and_mi32(e, REG_CORE, REGOFF(DSP_REG_SR), ~(int32_t)(SR_E | SR_N | SR_V));
-        x86_or_mi32(e, REG_CORE, REGOFF(DSP_REG_SR), SR_U | SR_Z);
+        h_and_mem32_imm(e, REG_CORE, REGOFF(DSP_REG_SR), ~(int32_t)(SR_E | SR_N | SR_V));
+        h_or_mem32_imm(e, REG_CORE, REGOFF(DSP_REG_SR), SR_U | SR_Z);
         break;
 
     case OP_TST:
@@ -1188,7 +1193,7 @@ static void emit_alu(Tr *t, const AluOp *a)
     case OP_MPY:
     case OP_MPYR:
         emit_mul56(e, a);
-        x86_mov_r64_r64(e, acc, RAX);
+        h_mov_rr(e, 1, acc, T0);
         if (a->op == OP_MPYR) {
             emit_rnd56(t, acc);
         }
@@ -1200,36 +1205,36 @@ static void emit_alu(Tr *t, const AluOp *a)
     case OP_MACR:
         acc_load(t, a->d);
         emit_mul56(e, a);
-        emit_addsub56(e, acc, RAX, false);
+        emit_addsub56(e, acc, T0, false);
         if (a->op == OP_MACR) {
-            emit_rnd56(t, R14);
+            emit_rnd56(t, T3);
         }
         /* V and L from the add, C untouched */
-        x86_and_ri(e, 0, R15, ~(int32_t)SR_C);
-        emit_sr_result(t, SR_EUNZ | SR_V, R15, R14, a->d);
-        x86_mov_r64_r64(e, acc, R14);
+        h_and_ri(e, 0, T4, ~(int32_t)SR_C);
+        emit_sr_result(t, SR_EUNZ | SR_V, T4, T3, a->d);
+        h_mov_rr(e, 1, acc, T3);
         acc_written(t, a->d);
         break;
 
     case OP_ASL:
         acc_load(t, a->d);
         /* dsp_asl56: C = L = bit 55, V = bit 55 ^ bit 54 */
-        x86_mov_r64_r64(e, RAX, acc);
-        x86_shr_ri(e, 1, RAX, 55);
-        x86_and_ri(e, 0, RAX, 1);
-        x86_mov_r64_r64(e, RDX, acc);
-        x86_shr_ri(e, 1, RDX, 54);
-        x86_xor_rr(e, 0, RDX, RAX);
-        x86_and_ri(e, 0, RDX, 1);
-        x86_shl_ri(e, 0, RDX, DSP_SR_V);
-        x86_mov_r32_r32(e, R15, RAX);
-        x86_or_rr(e, 0, R15, RDX);
-        x86_shl_ri(e, 0, RAX, DSP_SR_L);
-        x86_or_rr(e, 0, R15, RAX);
-        x86_shl_ri(e, 1, acc, 9);
-        x86_sar_ri(e, 1, acc, 8);
+        h_mov_rr(e, 1, T0, acc);
+        h_shr_ri(e, 1, T0, 55);
+        h_and_ri(e, 0, T0, 1);
+        h_mov_rr(e, 1, T2, acc);
+        h_shr_ri(e, 1, T2, 54);
+        h_xor_rr(e, 0, T2, T0);
+        h_and_ri(e, 0, T2, 1);
+        h_shl_ri(e, 0, T2, DSP_SR_V);
+        h_mov_rr(e, 0, T4, T0);
+        h_or_rr(e, 0, T4, T2);
+        h_shl_ri(e, 0, T0, DSP_SR_L);
+        h_or_rr(e, 0, T4, T0);
+        h_shl_ri(e, 1, acc, 9);
+        h_sar_ri(e, 1, acc, 8);
         acc_written(t, a->d);
-        emit_sr_result(t, SR_EUNZ | SR_V | SR_C, R15, acc, a->d);
+        emit_sr_result(t, SR_EUNZ | SR_V | SR_C, T4, acc, a->d);
         break;
 
     case OP_ASL_N: {
@@ -1237,28 +1242,27 @@ static void emit_alu(Tr *t, const AluOp *a)
          * V = bit 55 changed */
         int n = a->shift;
         acc_load(t, a->s);
-        x86_mov_r64_r64(e, RAX, acc_reg(a->s));
-        x86_shl_ri(e, 1, RAX, 8);
-        x86_shr_ri(e, 1, RAX, 8);
-        x86_mov_r64_r64(e, RDX, RAX);
-        x86_shr_ri(e, 1, RDX, 56 - n);
-        x86_mov_r32_r32(e, R15, RDX);
-        x86_and_ri(e, 0, R15, 1);
-        x86_test_rr(e, 1, RDX, RDX);
-        x86_setcc_r8(e, CC_NE, RDX);
-        x86_movzx_r32_r8(e, RDX, RDX);
-        x86_shl_ri(e, 0, RDX, DSP_SR_L);
-        x86_or_rr(e, 0, R15, RDX);
-        x86_shl_ri(e, 1, RAX, n);
-        emit_sext56(e, RAX);
-        x86_mov_r64_r64(e, RDX, RAX);
-        x86_xor_rr(e, 1, RDX, acc_reg(a->s));
-        x86_shr_ri(e, 1, RDX, 55 - DSP_SR_V);
-        x86_and_ri(e, 0, RDX, SR_V);
-        x86_or_rr(e, 0, R15, RDX);
-        x86_mov_r64_r64(e, acc, RAX);
+        h_mov_rr(e, 1, T0, acc_reg(a->s));
+        h_shl_ri(e, 1, T0, 8);
+        h_shr_ri(e, 1, T0, 8);
+        h_mov_rr(e, 1, T2, T0);
+        h_shr_ri(e, 1, T2, 56 - n);
+        h_mov_rr(e, 0, T4, T2);
+        h_and_ri(e, 0, T4, 1);
+        h_test_rr(e, 1, T2, T2);
+        h_setcc(e, HC_NE, T2);
+        h_shl_ri(e, 0, T2, DSP_SR_L);
+        h_or_rr(e, 0, T4, T2);
+        h_shl_ri(e, 1, T0, n);
+        emit_sext56(e, T0);
+        h_mov_rr(e, 1, T2, T0);
+        h_xor_rr(e, 1, T2, acc_reg(a->s));
+        h_shr_ri(e, 1, T2, 55 - DSP_SR_V);
+        h_and_ri(e, 0, T2, SR_V);
+        h_or_rr(e, 0, T4, T2);
+        h_mov_rr(e, 1, acc, T0);
         acc_written(t, a->d);
-        emit_sr_result(t, SR_EUNZ | SR_V | SR_C, R15, acc, a->d);
+        emit_sr_result(t, SR_EUNZ | SR_V | SR_C, T4, acc, a->d);
         break;
     }
 
@@ -1266,28 +1270,28 @@ static void emit_alu(Tr *t, const AluOp *a)
         /* dsp_asr56 by n: C = bit n-1, a logical shift of the 56 bits */
         int n = a->shift;
         acc_load(t, a->s);
-        x86_mov_r64_r64(e, RAX, acc_reg(a->s));
-        x86_shl_ri(e, 1, RAX, 8);
-        x86_shr_ri(e, 1, RAX, 8);
-        x86_mov_r64_r64(e, R15, RAX);
-        x86_shr_ri(e, 1, R15, (n - 1) & 63);
-        x86_and_ri(e, 0, R15, 1);
-        x86_shr_ri(e, 1, RAX, n);
-        x86_mov_r64_r64(e, acc, RAX);
+        h_mov_rr(e, 1, T0, acc_reg(a->s));
+        h_shl_ri(e, 1, T0, 8);
+        h_shr_ri(e, 1, T0, 8);
+        h_mov_rr(e, 1, T4, T0);
+        h_shr_ri(e, 1, T4, (n - 1) & 63);
+        h_and_ri(e, 0, T4, 1);
+        h_shr_ri(e, 1, T0, n);
+        h_mov_rr(e, 1, acc, T0);
         acc_written(t, a->d);
-        emit_sr_result(t, SR_EUNZ | SR_V | SR_C, R15, acc, a->d);
+        emit_sr_result(t, SR_EUNZ | SR_V | SR_C, T4, acc, a->d);
         break;
     }
 
     case OP_ASR:
         acc_load(t, a->d);
         /* dsp_asr56: C = bit 0, a logical shift of the 56 bits */
-        x86_mov_r64_r64(e, R15, acc);
-        x86_and_ri(e, 0, R15, 1);
-        x86_shl_ri(e, 1, acc, 8);
-        x86_shr_ri(e, 1, acc, 9);
+        h_mov_rr(e, 1, T4, acc);
+        h_and_ri(e, 0, T4, 1);
+        h_shl_ri(e, 1, acc, 8);
+        h_shr_ri(e, 1, acc, 9);
         acc_written(t, a->d);
-        emit_sr_result(t, SR_EUNZ | SR_V | SR_C, R15, acc, a->d);
+        emit_sr_result(t, SR_EUNZ | SR_V | SR_C, T4, acc, a->d);
         break;
 
     case OP_NEG:
@@ -1295,25 +1299,24 @@ static void emit_alu(Tr *t, const AluOp *a)
         size_t j = 0;
         acc_load(t, a->d);
         /* overflow when the value is the most negative one */
-        x86_mov_r64_imm(e, RAX, (uint64_t)-((int64_t)1 << 55));
-        x86_cmp_rr(e, 1, acc, RAX);
-        x86_setcc_r8(e, CC_E, R15);
-        x86_movzx_r32_r8(e, R15, R15);
-        x86_mov_r32_r32(e, RDX, R15);
-        x86_shl_ri(e, 0, R15, DSP_SR_V);
-        x86_shl_ri(e, 0, RDX, DSP_SR_L);
-        x86_or_rr(e, 0, R15, RDX);
+        h_mov_ri(e, T0, (uint64_t)-((int64_t)1 << 55));
+        h_cmp_rr(e, 1, acc, T0);
+        h_setcc(e, HC_EQ, T4);
+        h_mov_rr(e, 0, T2, T4);
+        h_shl_ri(e, 0, T4, DSP_SR_V);
+        h_shl_ri(e, 0, T2, DSP_SR_L);
+        h_or_rr(e, 0, T4, T2);
         if (a->op == OP_ABS) {
-            x86_test_rr(e, 1, acc, acc);
-            j = x86_jcc_rel32(e, CC_NS);
+            h_test_rr(e, 1, acc, acc);
+            j = h_jcc(e, HC_NS);
         }
-        x86_neg_r(e, 1, acc);
+        h_neg(e, 1, acc);
         emit_sext56(e, acc);
         if (a->op == OP_ABS) {
-            x86_patch_rel32(e, j, e->len);
+            h_patch(e, j, e->len);
         }
         acc_written(t, a->d);
-        emit_sr_result(t, SR_EUNZ | SR_V, R15, acc, a->d);
+        emit_sr_result(t, SR_EUNZ | SR_V, T4, acc, a->d);
         break;
     }
 
@@ -1323,26 +1326,26 @@ static void emit_alu(Tr *t, const AluOp *a)
     case OP_EOR:
         emit_flags_flush(t);
         acc_load(t, a->d);
-        x86_mov_r64_r64(e, RAX, acc);
-        x86_shr_ri(e, 1, RAX, 24);
-        x86_and_ri(e, 0, RAX, 0xFFFFFF);
+        h_mov_rr(e, 1, T0, acc);
+        h_shr_ri(e, 1, T0, 24);
+        h_and_ri(e, 0, T0, 0xFFFFFF);
         switch (a->op) {
         case OP_NOT:
-            x86_not_r(e, 0, RAX);
-            x86_and_ri(e, 0, RAX, 0xFFFFFF);
+            h_not(e, 0, T0);
+            h_and_ri(e, 0, T0, 0xFFFFFF);
             break;
         case OP_AND:
             if (a->src == SRC_IMM) {
-                x86_and_ri(e, 0, RAX, a->imm & 0xFFFFFF);
+                h_and_ri(e, 0, T0, a->imm & 0xFFFFFF);
             } else {
-                x86_alu_rm32(e, 0x23, RAX, REG_CORE, REGOFF(a->src));
+                h_and_r_mem32(e, T0, REG_CORE, REGOFF(a->src));
             }
             break;
         case OP_OR:
-            x86_alu_rm32(e, 0x0B, RAX, REG_CORE, REGOFF(a->src));
+            h_or_r_mem32(e, T0, REG_CORE, REGOFF(a->src));
             break;
         case OP_EOR:
-            x86_alu_rm32(e, 0x33, RAX, REG_CORE, REGOFF(a->src));
+            h_xor_r_mem32(e, T0, REG_CORE, REGOFF(a->src));
             break;
         }
         emit_a1_result(t, a->d, SR_N | SR_Z | SR_V, -1);
@@ -1352,19 +1355,19 @@ static void emit_alu(Tr *t, const AluOp *a)
     case OP_LSR:
         emit_flags_flush(t);
         acc_load(t, a->d);
-        x86_mov_r64_r64(e, RAX, acc);
-        x86_shr_ri(e, 1, RAX, 24);
-        x86_and_ri(e, 0, RAX, 0xFFFFFF);
-        x86_mov_r32_r32(e, R15, RAX);
+        h_mov_rr(e, 1, T0, acc);
+        h_shr_ri(e, 1, T0, 24);
+        h_and_ri(e, 0, T0, 0xFFFFFF);
+        h_mov_rr(e, 0, T4, T0);
         if (a->op == OP_LSL) {
-            x86_shr_ri(e, 0, R15, 23);
-            x86_shl_ri(e, 0, RAX, 1);
-            x86_and_ri(e, 0, RAX, 0xFFFFFF);
+            h_shr_ri(e, 0, T4, 23);
+            h_shl_ri(e, 0, T0, 1);
+            h_and_ri(e, 0, T0, 0xFFFFFF);
         } else {
-            x86_and_ri(e, 0, R15, 1);
-            x86_shr_ri(e, 0, RAX, 1);
+            h_and_ri(e, 0, T4, 1);
+            h_shr_ri(e, 0, T0, 1);
         }
-        emit_a1_result(t, a->d, SR_C | SR_N | SR_Z | SR_V, R15);
+        emit_a1_result(t, a->d, SR_C | SR_N | SR_Z | SR_V, T4);
         break;
 
     default:
@@ -1453,7 +1456,7 @@ static void emit_pm_2(Tr *t, const Insn *in, const AluOp *a)
             v <<= 16;
         }
         emit_alu(t, a);
-        x86_mov_r32_imm(e, V1, v);
+        h_mov_ri(e, V1, v);
         emit_write_reg(t, dst, V1);
     }
 }
@@ -1504,19 +1507,19 @@ static void emit_pm_4x(Tr *t, const Insn *in, const AluOp *a)
             acc_load(t, n);
             emit_acc_limit(t, n, V1);
             /* limited iff the value does not fit 48 bits */
-            x86_mov_r64_r64(e, V2, acc_reg(n));
-            x86_and_ri(e, 0, V2, 0xFFFFFF);
-            x86_mov_r64_r64(e, RDX, acc_reg(n));
-            x86_sar_ri(e, 1, RDX, 47);
-            x86_add_ri(e, 1, RDX, 1);
-            x86_cmp_ri(e, 1, RDX, 1);
-            j = x86_jcc_rel32(e, CC_BE);
-            x86_mov_r32_r32(e, V2, V1);
-            x86_shr_ri(e, 0, V2, 23);
-            x86_and_ri(e, 0, V2, 1);
-            x86_sub_ri(e, 0, V2, 1);
-            x86_and_ri(e, 0, V2, 0xFFFFFF);
-            x86_patch_rel32(e, j, e->len);
+            h_mov_rr(e, 1, V2, acc_reg(n));
+            h_and_ri(e, 0, V2, 0xFFFFFF);
+            h_mov_rr(e, 1, T2, acc_reg(n));
+            h_sar_ri(e, 1, T2, 47);
+            h_add_ri(e, 1, T2, 1);
+            h_cmp_ri(e, 1, T2, 1);
+            j = h_jcc(e, HC_BE);
+            h_mov_rr(e, 0, V2, V1);
+            h_shr_ri(e, 0, V2, 23);
+            h_and_ri(e, 0, V2, 1);
+            h_sub_ri(e, 0, V2, 1);
+            h_and_ri(e, 0, V2, 0xFFFFFF);
+            h_patch(e, j, e->len);
             break;
         }
         case 6: /* AB */
@@ -1549,10 +1552,10 @@ static void emit_pm_4x(Tr *t, const Insn *in, const AluOp *a)
             int n = numreg - 4;
             int acc = acc_reg(n);
             /* A0 = V2, A1 = V1, A2 = sign of V1 */
-            x86_mov_r64_r64(e, acc, V1);
-            x86_shl_ri(e, 1, acc, 40);
-            x86_sar_ri(e, 1, acc, 16);
-            x86_or_rr(e, 1, acc, V2);
+            h_mov_rr(e, 1, acc, V1);
+            h_shl_ri(e, 1, acc, 40);
+            h_sar_ri(e, 1, acc, 16);
+            h_or_rr(e, 1, acc, V2);
             acc_written(t, n);
             break;
         }
@@ -1591,7 +1594,7 @@ static void emit_pm_5(Tr *t, const Insn *in, const AluOp *a)
 
     if (write) {
         if (ea.kind == EA_IMM) {
-            x86_mov_r32_imm(e, V1, ea.imm);
+            h_mov_ri(e, V1, ea.imm);
         } else {
             emit_read_mem(t, memspace, ea_addr_reg(t, &ea), V1);
         }
@@ -1801,9 +1804,9 @@ static void emit_nonparallel(Tr *t, const Insn *in, int kind)
         bool W = (inst >> 4) & 1;
         int n = (inst >> 8) & 7;
         int numreg = inst & 0xF;
-        x86_mov_r32_mem(e, EA1, REG_CORE, REGOFF(DSP_REG_R0 + n));
-        x86_add_ri(e, 0, EA1, off);
-        x86_and_ri(e, 0, EA1, 0xFFFFFF);
+        h_ld32(e, EA1, REG_CORE, REGOFF(DSP_REG_R0 + n));
+        h_add_ri(e, 0, EA1, off);
+        h_and_ri(e, 0, EA1, 0xFFFFFF);
         if (W) {
             emit_read_mem(t, space, EA1, V1);
             emit_write_reg(t, numreg, V1);
@@ -1819,9 +1822,9 @@ static void emit_nonparallel(Tr *t, const Insn *in, int kind)
         bool W = (inst >> 6) & 1;
         int n = (inst >> 8) & 7;
         int numreg = inst & 0x3F;
-        x86_mov_r32_mem(e, EA1, REG_CORE, REGOFF(DSP_REG_R0 + n));
-        x86_add_ri(e, 0, EA1, in->ext);
-        x86_and_ri(e, 0, EA1, 0xFFFFFF);
+        h_ld32(e, EA1, REG_CORE, REGOFF(DSP_REG_R0 + n));
+        h_add_ri(e, 0, EA1, in->ext);
+        h_and_ri(e, 0, EA1, 0xFFFFFF);
         if (W) {
             emit_read_x(t, EA1, V1);
             emit_write_reg(t, numreg, V1);
@@ -1838,11 +1841,11 @@ static void emit_nonparallel(Tr *t, const Insn *in, int kind)
         int srcreg = (inst >> 8) & 7;
         int dstreg = inst & 7;
         Ea ea;
-        x86_mov_r32_mem(e, V1, REG_CORE, REGOFF(DSP_REG_R0 + srcreg));
+        h_ld32(e, V1, REG_CORE, REGOFF(DSP_REG_R0 + srcreg));
         emit_calc_ea(t, (inst >> 8) & 0x1F, in->ext, EA1, &ea);
-        x86_mov_r32_mem(e, V2, REG_CORE, REGOFF(DSP_REG_R0 + srcreg));
-        x86_mov_mem_r32(e, REG_CORE, REGOFF(DSP_REG_R0 + srcreg), V1);
-        x86_mov_mem_r32(e, REG_CORE, REGOFF((inst & (1 << 3) ? DSP_REG_N0 : DSP_REG_R0) + dstreg), V2);
+        h_ld32(e, V2, REG_CORE, REGOFF(DSP_REG_R0 + srcreg));
+        h_st32(e, REG_CORE, REGOFF(DSP_REG_R0 + srcreg), V1);
+        h_st32(e, REG_CORE, REGOFF((inst & (1 << 3) ? DSP_REG_N0 : DSP_REG_R0) + dstreg), V2);
         t->cyc += 2;
         break;
     }
@@ -1862,11 +1865,11 @@ static void emit_nonparallel(Tr *t, const Insn *in, int kind)
         int easpace = (inst >> 6) & 1;
         Ea ea;
         emit_calc_ea(t, (inst >> 8) & 0x3F, in->ext, EA1, &ea);
-        x86_mov_r32_imm(e, EA2, peraddr);
+        h_mov_ri(e, EA2, peraddr);
         if (inst & (1 << 15)) {
             /* write pp */
             if (ea.kind == EA_IMM) {
-                x86_mov_r32_imm(e, V1, ea.imm);
+                h_mov_ri(e, V1, ea.imm);
             } else {
                 emit_read_mem(t, easpace, ea_addr_reg(t, &ea), V1);
             }
@@ -1888,10 +1891,10 @@ static void emit_nonparallel(Tr *t, const Insn *in, int kind)
         int32_t off = (int32_t)(aa << 25) >> 25;
         int addrreg = (inst >> 8) & 7;
         int dstreg = inst & 7;
-        x86_mov_r32_mem(e, V1, REG_CORE, REGOFF(DSP_REG_R0 + addrreg));
-        x86_add_ri(e, 0, V1, off);
-        x86_and_ri(e, 0, V1, 0xFFFFFF);
-        x86_mov_mem_r32(e, REG_CORE, REGOFF((inst & (1 << 3) ? DSP_REG_N0 : DSP_REG_R0) + dstreg), V1);
+        h_ld32(e, V1, REG_CORE, REGOFF(DSP_REG_R0 + addrreg));
+        h_add_ri(e, 0, V1, off);
+        h_and_ri(e, 0, V1, 0xFFFFFF);
+        h_st32(e, REG_CORE, REGOFF((inst & (1 << 3) ? DSP_REG_N0 : DSP_REG_R0) + dstreg), V1);
         t->cyc += 2;
         break;
     }
@@ -1917,14 +1920,14 @@ static void stub_set_insn(Tr *t, Stub *s, const Insn *in, uint32_t cycles, uint3
  * dsp56k_post, with cyc_before cycles charged; the block ends with it */
 static void emit_fallback_body(Emitter *e, const Insn *in, uint32_t cyc_before)
 {
-    x86_mov_mem32_imm(e, REG_CORE, OFF(pc), in->at);
-    x86_mov_mem32_imm(e, REG_CORE, OFF(cur_inst), in->inst);
-    x86_mov_mem32_imm(e, REG_CORE, OFF(cur_inst_len), 1);
-    x86_mov_mem16_imm(e, REG_CORE, OFF(instr_cycle), 2);
-    x86_mov_r64_r64(e, ARG0, REG_CORE);
-    x86_call_abs(e, (const void *)in->d.emu);
-    x86_mov_r64_r64(e, ARG0, REG_CORE);
-    x86_call_abs(e, (const void *)dsp56k_post);
+    h_st32_imm(e, REG_CORE, OFF(pc), in->at);
+    h_st32_imm(e, REG_CORE, OFF(cur_inst), in->inst);
+    h_st32_imm(e, REG_CORE, OFF(cur_inst_len), 1);
+    h_st16_imm(e, REG_CORE, OFF(instr_cycle), 2);
+    h_mov_rr(e, 1, H_ARG0, REG_CORE);
+    h_call(e, (const void *)in->d.emu);
+    h_mov_rr(e, 1, H_ARG0, REG_CORE);
+    h_call(e, (const void *)dsp56k_post);
     emit_charge(e, cyc_before);
 }
 
@@ -1942,58 +1945,52 @@ static void emit_fallback(Tr *t, const Insn *in)
  * rax, rdx */
 static void emit_cc(Emitter *e, int cc)
 {
-    x86_mov_r32_mem(e, RAX, REG_CORE, REGOFF(DSP_REG_SR));
+    h_ld32(e, T0, REG_CORE, REGOFF(DSP_REG_SR));
     switch (cc & 7) {
     case 0: /* CC / CS */
-        x86_and_ri(e, 0, RAX, SR_C);
+        h_and_ri(e, 0, T0, SR_C);
         break;
     case 1: /* GE / LT: N ^ V */
-        x86_mov_r32_r32(e, RDX, RAX);
-        x86_shr_ri(e, 0, RDX, DSP_SR_N - DSP_SR_V);
-        x86_xor_rr(e, 0, RAX, RDX);
-        x86_and_ri(e, 0, RAX, SR_V);
+        h_mov_rr(e, 0, T2, T0);
+        h_shr_ri(e, 0, T2, DSP_SR_N - DSP_SR_V);
+        h_xor_rr(e, 0, T0, T2);
+        h_and_ri(e, 0, T0, SR_V);
         break;
     case 2: /* NE / EQ */
-        x86_and_ri(e, 0, RAX, SR_Z);
+        h_and_ri(e, 0, T0, SR_Z);
         break;
     case 3: /* PL / MI */
-        x86_and_ri(e, 0, RAX, SR_N);
+        h_and_ri(e, 0, T0, SR_N);
         break;
     case 4: /* NN / NR: Z | (~U & ~E) */
-        x86_mov_r32_r32(e, RDX, RAX);
-        x86_not_r(e, 0, RDX);
-        x86_and_ri(e, 0, RDX, SR_U | SR_E);
-        x86_cmp_ri(e, 0, RDX, SR_U | SR_E);
-        x86_setcc_r8(e, CC_E, RDX);
-        x86_movzx_r32_r8(e, RDX, RDX);
-        x86_shr_ri(e, 0, RAX, DSP_SR_Z);
-        x86_or_rr(e, 0, RAX, RDX);
-        x86_and_ri(e, 0, RAX, 1);
+        h_mov_rr(e, 0, T2, T0);
+        h_not(e, 0, T2);
+        h_and_ri(e, 0, T2, SR_U | SR_E);
+        h_cmp_ri(e, 0, T2, SR_U | SR_E);
+        h_setcc(e, HC_EQ, T2);
+        h_shr_ri(e, 0, T0, DSP_SR_Z);
+        h_or_rr(e, 0, T0, T2);
+        h_and_ri(e, 0, T0, 1);
         break;
     case 5: /* EC / ES */
-        x86_and_ri(e, 0, RAX, SR_E);
+        h_and_ri(e, 0, T0, SR_E);
         break;
     case 6: /* LC / LS */
-        x86_and_ri(e, 0, RAX, SR_L);
+        h_and_ri(e, 0, T0, SR_L);
         break;
     case 7: /* GT / LE: Z | (N ^ V) */
-        x86_mov_r32_r32(e, RDX, RAX);
-        x86_shr_ri(e, 0, RDX, DSP_SR_N - DSP_SR_V);
-        x86_xor_rr(e, 0, RDX, RAX);
-        x86_and_ri(e, 0, RDX, SR_V);
-        x86_and_ri(e, 0, RAX, SR_Z);
-        x86_or_rr(e, 0, RAX, RDX);
+        h_mov_rr(e, 0, T2, T0);
+        h_shr_ri(e, 0, T2, DSP_SR_N - DSP_SR_V);
+        h_xor_rr(e, 0, T2, T0);
+        h_and_ri(e, 0, T2, SR_V);
+        h_and_ri(e, 0, T0, SR_Z);
+        h_or_rr(e, 0, T0, T2);
         break;
     }
     /* the codes below 8 are true when the bits are clear */
-    x86_cmp_ri(e, 0, RAX, 0);
-    if (cc < 8) {
-        x86_setcc_r8(e, CC_E, RAX);
-    } else {
-        x86_setcc_r8(e, CC_NE, RAX);
-    }
-    x86_movzx_r32_r8(e, RAX, RAX);
-    x86_test_rr(e, 0, RAX, RAX);
+    h_cmp_ri(e, 0, T0, 0);
+    h_setcc(e, cc < 8 ? HC_EQ : HC_NE, T0);
+    h_test_rr(e, 0, T0, T0);
 }
 
 /* the block's end at a control instruction, the PC to be target: the DO
@@ -2005,8 +2002,8 @@ static void emit_exit_to(Tr *t, const Insn *in, uint32_t target, uint32_t cycles
     size_t j;
     Stub *s;
 
-    x86_cmp_mi32(e, REG_CORE, REGOFF(DSP_REG_LA), (int32_t)target - 1);
-    j = x86_jcc_rel32(e, CC_E);
+    h_cmp_mem32_imm(e, REG_CORE, REGOFF(DSP_REG_LA), (int32_t)target - 1);
+    j = h_jcc(e, HC_EQ);
     if (after_effects) {
         /* the instruction's work is done: dsp56k_post for the rest */
         s = stub_new(t, STUB_CTRL_POST, j);
@@ -2027,8 +2024,8 @@ static void emit_stack_check(Tr *t, const Insn *in, uint32_t target, uint32_t cy
     size_t j;
     Stub *s;
 
-    x86_cmp_mi16(e, REG_CORE, OFF(interrupt_counter), 0);
-    j = x86_jcc_rel32(e, CC_NE);
+    h_cmp_mem16_imm(e, REG_CORE, OFF(interrupt_counter), 0);
+    j = h_jcc(e, HC_NE);
     s = stub_new(t, STUB_CTRL_POST, j);
     s->imm = target;
     stub_set_insn(t, s, in, cycles, t->cyc);
@@ -2064,9 +2061,9 @@ static bool emit_control(Tr *t, const Insn *in)
         if (cc >= 0) {
             size_t j;
             emit_cc(e, cc);
-            j = x86_jcc_rel32(e, CC_NE);
+            j = h_jcc(e, HC_NE);
             emit_exit_to(t, in, in->next, 2, false);
-            x86_patch_rel32(e, j, e->len);
+            h_patch(e, j, e->len);
         }
         emit_exit_to(t, in, target, 2, false);
         return true;
@@ -2082,10 +2079,10 @@ static bool emit_control(Tr *t, const Insn *in)
         }
         emit_read_reg(t, numreg, V1);
         acc_spill_all(t, false);
-        x86_test_ri32(e, V1, 1u << numbit);
-        j = x86_jcc_rel32(e, name[2] == 'c' ? CC_E : CC_NE);
+        h_test_ri(e, 0, V1, 1u << numbit);
+        j = h_jcc(e, name[2] == 'c' ? HC_EQ : HC_NE);
         emit_exit_to(t, in, in->next, 6, false);
-        x86_patch_rel32(e, j, e->len);
+        h_patch(e, j, e->len);
         emit_exit_to(t, in, target, 6, false);
         return true;
     }
@@ -2097,14 +2094,14 @@ static bool emit_control(Tr *t, const Insn *in)
         uint32_t target = (at + in->ext) & 0xFFFFFF;
         size_t j;
         acc_spill_all(t, false);
-        x86_mov_r32_imm(e, EA1, addr);
+        h_mov_ri(e, EA1, addr);
         emit_read_mem(t, memspace, EA1, V1);
-        x86_test_ri32(e, V1, 1u << numbit);
-        j = x86_jcc_rel32(e, name[2] == 'c' ? CC_E : CC_NE);
+        h_test_ri(e, 0, V1, 1u << numbit);
+        j = h_jcc(e, name[2] == 'c' ? HC_EQ : HC_NE);
         /* the read done: the interpreter's way would read again, but a
          * peripheral read has no side effects (dsp.c) */
         emit_exit_to(t, in, in->next, 6, false);
-        x86_patch_rel32(e, j, e->len);
+        h_patch(e, j, e->len);
         emit_exit_to(t, in, target, 6, false);
         return true;
     }
@@ -2121,12 +2118,12 @@ static bool emit_control(Tr *t, const Insn *in)
         }
         acc_spill_all(t, false);
         /* the loop's end at the target: the interpreter's */
-        x86_cmp_mi32(e, REG_CORE, REGOFF(DSP_REG_LA), (int32_t)target - 1);
-        stub_set_insn(t, stub_new(t, STUB_FALLBACK, x86_jcc_rel32(e, CC_E)), in, cycles, t->cyc);
-        x86_mov_r64_r64(e, ARG0, REG_CORE);
-        x86_mov_r32_imm(e, ARG1, in->next);
-        x86_mov_r32_mem(e, ARG2, REG_CORE, REGOFF(DSP_REG_SR));
-        x86_call_abs(e, (const void *)dsp56k_stack_push);
+        h_cmp_mem32_imm(e, REG_CORE, REGOFF(DSP_REG_LA), (int32_t)target - 1);
+        stub_set_insn(t, stub_new(t, STUB_FALLBACK, h_jcc(e, HC_EQ)), in, cycles, t->cyc);
+        h_mov_rr(e, 1, H_ARG0, REG_CORE);
+        h_mov_ri(e, H_ARG1, in->next);
+        h_ld32(e, H_ARG2, REG_CORE, REGOFF(DSP_REG_SR));
+        h_call(e, (const void *)dsp56k_stack_push);
         emit_stack_check(t, in, target, cycles);
         emit_chain_to(t, target, t->cyc + cycles);
         return true;
@@ -2134,19 +2131,19 @@ static bool emit_control(Tr *t, const Insn *in)
 
     if (!strcmp(name, "rts")) {
         acc_spill_all(t, false);
-        x86_mov_r64_r64(e, ARG0, REG_CORE);
-        x86_call_abs(e, (const void *)dsp56k_stack_pop);
-        x86_mov_mem_r32(e, REG_CORE, OFF(pc), RAX);
+        h_mov_rr(e, 1, H_ARG0, REG_CORE);
+        h_call(e, (const void *)dsp56k_stack_pop);
+        h_st32(e, REG_CORE, OFF(pc), T0);
         /* the stack error, or the loop's end at the new PC: the rest
          * through dsp56k_post; its PC is set */
         {
             size_t j, j2;
             Stub *s;
-            x86_cmp_mi16(e, REG_CORE, OFF(interrupt_counter), 0);
-            j = x86_jcc_rel32(e, CC_NE);
-            x86_sub_ri(e, 0, RAX, 1);
-            x86_alu_rm32(e, 0x3B, RAX, REG_CORE, REGOFF(DSP_REG_LA));
-            j2 = x86_jcc_rel32(e, CC_E);
+            h_cmp_mem16_imm(e, REG_CORE, OFF(interrupt_counter), 0);
+            j = h_jcc(e, HC_NE);
+            h_sub_ri(e, 0, T0, 1);
+            h_cmp_r_mem32(e, T0, REG_CORE, REGOFF(DSP_REG_LA));
+            j2 = h_jcc(e, HC_EQ);
             s = stub_new(t, STUB_CTRL_POST, j);
             s->imm = 0xFFFFFFFF;    /* the PC as set */
             stub_set_insn(t, s, in, 4, t->cyc);
@@ -2166,17 +2163,17 @@ static bool emit_control(Tr *t, const Insn *in)
             return false;
         }
         acc_spill_all(t, false);
-        x86_mov_r64_r64(e, ARG0, REG_CORE);
-        x86_mov_r32_mem(e, ARG1, REG_CORE, REGOFF(DSP_REG_LA));
-        x86_mov_r32_mem(e, ARG2, REG_CORE, REGOFF(DSP_REG_LC));
-        x86_call_abs(e, (const void *)dsp56k_stack_push);
-        x86_mov_mem32_imm(e, REG_CORE, REGOFF(DSP_REG_LA), la);
-        x86_mov_r64_r64(e, ARG0, REG_CORE);
-        x86_mov_r32_imm(e, ARG1, in->next);
-        x86_mov_r32_mem(e, ARG2, REG_CORE, REGOFF(DSP_REG_SR));
-        x86_call_abs(e, (const void *)dsp56k_stack_push);
-        x86_or_mi32(e, REG_CORE, REGOFF(DSP_REG_SR), 1 << DSP_SR_LF);
-        x86_mov_mem32_imm(e, REG_CORE, REGOFF(DSP_REG_LC), lc);
+        h_mov_rr(e, 1, H_ARG0, REG_CORE);
+        h_ld32(e, H_ARG1, REG_CORE, REGOFF(DSP_REG_LA));
+        h_ld32(e, H_ARG2, REG_CORE, REGOFF(DSP_REG_LC));
+        h_call(e, (const void *)dsp56k_stack_push);
+        h_st32_imm(e, REG_CORE, REGOFF(DSP_REG_LA), la);
+        h_mov_rr(e, 1, H_ARG0, REG_CORE);
+        h_mov_ri(e, H_ARG1, in->next);
+        h_ld32(e, H_ARG2, REG_CORE, REGOFF(DSP_REG_SR));
+        h_call(e, (const void *)dsp56k_stack_push);
+        h_or_mem32_imm(e, REG_CORE, REGOFF(DSP_REG_SR), 1 << DSP_SR_LF);
+        h_st32_imm(e, REG_CORE, REGOFF(DSP_REG_LC), lc);
         emit_stack_check(t, in, in->next, 6);
         emit_chain_to(t, in->next, t->cyc + 6);
         return true;
@@ -2186,16 +2183,16 @@ static bool emit_control(Tr *t, const Insn *in)
         uint32_t lc = ((inst >> 8) & 0xFF) + ((inst & 0xF) << 8);
         acc_spill_all(t, false);
         /* the loop's end right after the REP: the interpreter's */
-        x86_cmp_mi32(e, REG_CORE, REGOFF(DSP_REG_LA), (int32_t)in->next - 1);
-        stub_set_insn(t, stub_new(t, STUB_FALLBACK, x86_jcc_rel32(e, CC_E)), in, 4, t->cyc);
+        h_cmp_mem32_imm(e, REG_CORE, REGOFF(DSP_REG_LA), (int32_t)in->next - 1);
+        stub_set_insn(t, stub_new(t, STUB_FALLBACK, h_jcc(e, HC_EQ)), in, 4, t->cyc);
         /* emu_rep_imm, then dsp_postexecute_update_pc's first pass over
          * the REP (LC 0 counts 65536; the REP's instruction next) */
-        x86_mov_r32_mem(e, RAX, REG_CORE, REGOFF(DSP_REG_LC));
-        x86_mov_mem_r32(e, REG_CORE, REGOFF(DSP_REG_LCSAVE), RAX);
-        x86_mov_mem32_imm(e, REG_CORE, REGOFF(DSP_REG_LC), lc ? lc : 0x10000);
-        x86_mov_mem32_imm(e, REG_CORE, OFF(loop_rep), 1);
-        x86_mov_mem32_imm(e, REG_CORE, OFF(pc_on_rep), 0);
-        x86_mov_mem32_imm(e, REG_CORE, OFF(pc), in->next);
+        h_ld32(e, T0, REG_CORE, REGOFF(DSP_REG_LC));
+        h_st32(e, REG_CORE, REGOFF(DSP_REG_LCSAVE), T0);
+        h_st32_imm(e, REG_CORE, REGOFF(DSP_REG_LC), lc ? lc : 0x10000);
+        h_st32_imm(e, REG_CORE, OFF(loop_rep), 1);
+        h_st32_imm(e, REG_CORE, OFF(pc_on_rep), 0);
+        h_st32_imm(e, REG_CORE, OFF(pc), in->next);
         emit_charge(e, t->cyc + 4);
         emit_jump_to_epilogue(t);
         return true;
@@ -2214,13 +2211,13 @@ static void emit_insn_checks(Tr *t, const Insn *in, uint32_t cycles)
     size_t j;
 
     if (t->wrote_x) {
-        x86_cmp_mi8(e, REG_CORE, OFF(is_idle), 0);
-        j = x86_jcc_rel32(e, CC_NE);
+        h_cmp_mem8_imm(e, REG_CORE, OFF(is_idle), 0);
+        j = h_jcc(e, HC_NE);
         stub_set_insn(t, stub_new(t, STUB_HALT, j), in, cycles, t->cyc - cycles);
         t->wrote_x = false;
     }
-    x86_cmp_mi32(e, REG_CORE, REGOFF(DSP_REG_LA), in->next - 1);
-    j = x86_jcc_rel32(e, CC_E);
+    h_cmp_mem32_imm(e, REG_CORE, REGOFF(DSP_REG_LA), in->next - 1);
+    j = h_jcc(e, HC_EQ);
     stub_set_insn(t, stub_new(t, STUB_LOOPEND, j), in, cycles, t->cyc - cycles);
 }
 
@@ -2231,13 +2228,13 @@ static void emit_stubs(Tr *t)
     for (int i = 0; i < t->nstubs; i++) {
         Stub *s = &t->stubs[i];
 
-        x86_patch_rel32(e, s->jump, e->len);
+        h_patch(e, s->jump, e->len);
         switch (s->kind) {
         case STUB_LOOPEND: {
             /* in a DO loop? (LF) */
             size_t j, j2;
-            x86_test_mi8(e, REG_CORE, REGOFF(DSP_REG_SR) + 1, 0x80);
-            x86_jcc_to(e, CC_E, s->back);
+            h_test_mem8_imm(e, REG_CORE, REGOFF(DSP_REG_SR) + 1, 0x80);
+            h_jcc_to(e, HC_EQ, s->back);
             emit_flags_flush_stub(t, s);
             for (int n = 0; n < 2; n++) {
                 if (s->dirty[n]) {
@@ -2246,24 +2243,24 @@ static void emit_stubs(Tr *t)
             }
             /* dsp_postexecute_update_pc: one pass fewer; the loop again
              * from its start (SSH), or, after the last, ended */
-            x86_mov_r32_mem(e, RAX, REG_CORE, REGOFF(DSP_REG_LC));
-            x86_sub_ri(e, 0, RAX, 1);
-            x86_and_ri(e, 0, RAX, 0xFFFF);
-            x86_mov_mem_r32(e, REG_CORE, REGOFF(DSP_REG_LC), RAX);
-            j = x86_jcc_rel32(e, CC_E);
-            x86_mov_r32_mem(e, RAX, REG_CORE, REGOFF(DSP_REG_SSH));
-            x86_mov_mem_r32(e, REG_CORE, OFF(pc), RAX);
+            h_ld32(e, T0, REG_CORE, REGOFF(DSP_REG_LC));
+            h_sub_ri(e, 0, T0, 1);
+            h_and_ri(e, 0, T0, 0xFFFF);
+            h_st32(e, REG_CORE, REGOFF(DSP_REG_LC), T0);
+            j = h_jcc(e, HC_EQ);
+            h_ld32(e, T0, REG_CORE, REGOFF(DSP_REG_SSH));
+            h_st32(e, REG_CORE, OFF(pc), T0);
             emit_chain(t, s->cyc_before + s->cycles);
-            x86_patch_rel32(e, j, e->len);
-            x86_mov_r64_r64(e, ARG0, REG_CORE);
-            x86_call_abs(e, (const void *)dsp56k_do_end);
-            x86_mov_mem32_imm(e, REG_CORE, OFF(pc), s->next);
+            h_patch(e, j, e->len);
+            h_mov_rr(e, 1, H_ARG0, REG_CORE);
+            h_call(e, (const void *)dsp56k_do_end);
+            h_st32_imm(e, REG_CORE, OFF(pc), s->next);
             /* a stack error: its interrupt */
-            x86_cmp_mi16(e, REG_CORE, OFF(interrupt_counter), 0);
-            j2 = x86_jcc_rel32(e, CC_E);
-            x86_mov_r64_r64(e, ARG0, REG_CORE);
-            x86_call_abs(e, (const void *)dsp56k_post_interrupts);
-            x86_patch_rel32(e, j2, e->len);
+            h_cmp_mem16_imm(e, REG_CORE, OFF(interrupt_counter), 0);
+            j2 = h_jcc(e, HC_EQ);
+            h_mov_rr(e, 1, H_ARG0, REG_CORE);
+            h_call(e, (const void *)dsp56k_post_interrupts);
+            h_patch(e, j2, e->len);
             /* out: the SR restored may be another scaling mode's */
             emit_charge(e, s->cyc_before + s->cycles);
             emit_jump_to_epilogue(t);
@@ -2277,13 +2274,13 @@ static void emit_stubs(Tr *t)
                     emit_acc_store(e, n);
                 }
             }
-            x86_mov_mem_r32(e, REG_CORE, REGOFF(DSP_REG_LC), REG_LC);
+            h_st32(e, REG_CORE, REGOFF(DSP_REG_LC), REG_LC);
             emit_rep_charge(e, s->cycles, 0);
-            x86_mov_mem32_imm(e, REG_CORE, OFF(pc), s->at);
-            x86_mov_mem32_imm(e, REG_CORE, OFF(cur_inst_len), s->len);
-            x86_mov_mem16_imm(e, REG_CORE, OFF(instr_cycle), s->cycles);
-            x86_mov_r64_r64(e, ARG0, REG_CORE);
-            x86_call_abs(e, (const void *)dsp56k_post);
+            h_st32_imm(e, REG_CORE, OFF(pc), s->at);
+            h_st32_imm(e, REG_CORE, OFF(cur_inst_len), s->len);
+            h_st16_imm(e, REG_CORE, OFF(instr_cycle), s->cycles);
+            h_mov_rr(e, 1, H_ARG0, REG_CORE);
+            h_call(e, (const void *)dsp56k_post);
             emit_jump_to_epilogue(t);
             continue;
 
@@ -2295,12 +2292,12 @@ static void emit_stubs(Tr *t)
 
         case STUB_CTRL_POST:
             if (s->imm != 0xFFFFFFFF) {
-                x86_mov_mem32_imm(e, REG_CORE, OFF(pc), s->imm);
+                h_st32_imm(e, REG_CORE, OFF(pc), s->imm);
             }
-            x86_mov_mem32_imm(e, REG_CORE, OFF(cur_inst_len), 0);
-            x86_mov_mem16_imm(e, REG_CORE, OFF(instr_cycle), s->cycles);
-            x86_mov_r64_r64(e, ARG0, REG_CORE);
-            x86_call_abs(e, (const void *)dsp56k_post);
+            h_st32_imm(e, REG_CORE, OFF(cur_inst_len), 0);
+            h_st16_imm(e, REG_CORE, OFF(instr_cycle), s->cycles);
+            h_mov_rr(e, 1, H_ARG0, REG_CORE);
+            h_call(e, (const void *)dsp56k_post);
             emit_charge(e, s->cyc_before);
             emit_jump_to_epilogue(t);
             continue;
@@ -2312,7 +2309,7 @@ static void emit_stubs(Tr *t)
                     emit_acc_store(e, n);
                 }
             }
-            x86_mov_mem32_imm(e, REG_CORE, OFF(pc), s->next);
+            h_st32_imm(e, REG_CORE, OFF(pc), s->next);
             emit_charge(e, s->cyc_before + s->cycles);
             emit_jump_to_epilogue(t);
             continue;
@@ -2320,47 +2317,47 @@ static void emit_stubs(Tr *t)
         case STUB_READ_X: {
             size_t j;
             /* the mixbuffer in line, the rest through the interpreter */
-            x86_lea_r32_mem(e, RAX, s->reg, -DSP_MIXBUFFER_BASE);
-            x86_cmp_ri(e, 0, RAX, DSP_MIXBUFFER_SIZE);
-            j = x86_jcc_rel32(e, CC_AE);
-            x86_mov_r32_mem_idx4(e, s->reg2, REG_CORE, RAX, OFF(mixbuffer));
-            x86_jmp_to(e, s->back);
-            x86_patch_rel32(e, j, e->len);
+            h_lea(e, 0, T0, s->reg, -DSP_MIXBUFFER_BASE);
+            h_cmp_ri(e, 0, T0, DSP_MIXBUFFER_SIZE);
+            j = h_jcc(e, HC_AE);
+            h_ld32_idx4(e, s->reg2, REG_CORE, T0, OFF(mixbuffer));
+            h_jmp_to(e, s->back);
+            h_patch(e, j, e->len);
             emit_stub_call_begin(e);
-            x86_mov_r32_r32(e, ARG1, s->reg);
-            x86_call_abs(e, (const void *)jit_read_x);
+            h_mov_rr(e, 0, H_ARG1, s->reg);
+            h_call(e, (const void *)jit_read_x);
             emit_stub_call_end(e);
-            x86_mov_r32_r32(e, s->reg2, RAX);
+            h_mov_rr(e, 0, s->reg2, T0);
             break;
         }
         case STUB_WRITE_X: {
             size_t j;
-            x86_lea_r32_mem(e, RAX, s->reg, -DSP_MIXBUFFER_BASE);
-            x86_cmp_ri(e, 0, RAX, DSP_MIXBUFFER_SIZE);
-            j = x86_jcc_rel32(e, CC_AE);
-            x86_mov_mem_idx4_r32(e, REG_CORE, RAX, OFF(mixbuffer), s->reg2);
-            x86_jmp_to(e, s->back);
-            x86_patch_rel32(e, j, e->len);
+            h_lea(e, 0, T0, s->reg, -DSP_MIXBUFFER_BASE);
+            h_cmp_ri(e, 0, T0, DSP_MIXBUFFER_SIZE);
+            j = h_jcc(e, HC_AE);
+            h_st32_idx4(e, REG_CORE, T0, OFF(mixbuffer), s->reg2);
+            h_jmp_to(e, s->back);
+            h_patch(e, j, e->len);
             emit_stub_call_begin(e);
-            /* the value first: ARG1 may be the address register on Win64 */
-            x86_mov_r32_r32(e, ARG2, s->reg2);
-            x86_mov_r32_r32(e, ARG1, s->reg);
-            x86_call_abs(e, (const void *)jit_write_x);
+            /* the value first: H_ARG1 may be the address register on Win64 */
+            h_mov_rr(e, 0, H_ARG2, s->reg2);
+            h_mov_rr(e, 0, H_ARG1, s->reg);
+            h_call(e, (const void *)jit_write_x);
             emit_stub_call_end(e);
             break;
         }
         case STUB_READ_Y:
             emit_stub_call_begin(e);
-            x86_mov_r32_r32(e, ARG1, s->reg);
-            x86_call_abs(e, (const void *)jit_read_y);
+            h_mov_rr(e, 0, H_ARG1, s->reg);
+            h_call(e, (const void *)jit_read_y);
             emit_stub_call_end(e);
-            x86_mov_r32_r32(e, s->reg2, RAX);
+            h_mov_rr(e, 0, s->reg2, T0);
             break;
         case STUB_WRITE_Y:
             emit_stub_call_begin(e);
-            x86_mov_r32_r32(e, ARG2, s->reg2);
-            x86_mov_r32_r32(e, ARG1, s->reg);
-            x86_call_abs(e, (const void *)jit_write_y);
+            h_mov_rr(e, 0, H_ARG2, s->reg2);
+            h_mov_rr(e, 0, H_ARG1, s->reg);
+            h_call(e, (const void *)jit_write_y);
             emit_stub_call_end(e);
             break;
 
@@ -2368,42 +2365,42 @@ static void emit_stubs(Tr *t)
             emit_stub_call_begin(e);
             switch (s->modkind) {
             case MOD_IMM:
-                x86_mov_r32_imm(e, ARG2, (uint32_t)s->imm);
+                h_mov_ri(e, H_ARG2, (uint32_t)s->imm);
                 break;
             case MOD_PLUS_N:
-                x86_mov_r32_mem(e, ARG2, REG_CORE, REGOFF(DSP_REG_N0 + s->n));
+                h_ld32(e, H_ARG2, REG_CORE, REGOFF(DSP_REG_N0 + s->n));
                 break;
             case MOD_MINUS_N:
-                x86_mov_r32_mem(e, ARG2, REG_CORE, REGOFF(DSP_REG_N0 + s->n));
-                x86_neg_r(e, 0, ARG2);
+                h_ld32(e, H_ARG2, REG_CORE, REGOFF(DSP_REG_N0 + s->n));
+                h_neg(e, 0, H_ARG2);
                 break;
             }
-            x86_mov_r32_imm(e, ARG1, s->n);
-            x86_call_abs(e, (const void *)dsp56k_update_rn);
+            h_mov_ri(e, H_ARG1, s->n);
+            h_call(e, (const void *)dsp56k_update_rn);
             emit_stub_call_end(e);
             break;
 
         case STUB_EA_RN_PLUS_N:
             emit_stub_call_begin(e);
-            x86_mov_r32_imm(e, ARG1, s->n);
-            x86_call_abs(e, (const void *)dsp56k_ea_rn_plus_n);
+            h_mov_ri(e, H_ARG1, s->n);
+            h_call(e, (const void *)dsp56k_ea_rn_plus_n);
             emit_stub_call_end(e);
-            x86_mov_r32_r32(e, s->reg, RAX);
+            h_mov_rr(e, 0, s->reg, T0);
             break;
 
         case STUB_LIMIT: {
             /* the limit of the accumulator's sign; L set */
             size_t j;
-            x86_mov_r32_imm(e, s->reg2, 0x7FFFFF);
-            x86_test_rr(e, 1, s->reg, s->reg);
-            j = x86_jcc_rel32(e, CC_NS);
-            x86_mov_r32_imm(e, s->reg2, 0x800000);
-            x86_patch_rel32(e, j, e->len);
-            x86_or_mi32(e, REG_CORE, REGOFF(DSP_REG_SR), SR_L);
+            h_mov_ri(e, s->reg2, 0x7FFFFF);
+            h_test_rr(e, 1, s->reg, s->reg);
+            j = h_jcc(e, HC_NS);
+            h_mov_ri(e, s->reg2, 0x800000);
+            h_patch(e, j, e->len);
+            h_or_mem32_imm(e, REG_CORE, REGOFF(DSP_REG_SR), SR_L);
             break;
         }
         }
-        x86_jmp_to(e, s->back);
+        h_jmp_to(e, s->back);
     }
 }
 
@@ -2452,26 +2449,11 @@ static void emit_trampolines(DspJit *jit)
 
     emit_init(&e, jit->cache, jit->cache_len);
     jit->enter = (dspjit_enter_fn)e.buf;
-    x86_push_r64(&e, RBX);
-    x86_push_r64(&e, R12);
-    x86_push_r64(&e, R13);
-    x86_push_r64(&e, R14);
-    x86_push_r64(&e, R15);
-    x86_push_r64(&e, RBP);
-    x86_sub_rsp_imm8(&e, STACK_FRAME);
-    x86_mov_r64_r64(&e, REG_CORE, ARG0);
-    x86_jmp_r64(&e, ARG1);
-
+    h_enter(&e);
     jit->leave = e.buf + e.len;
-    x86_add_rsp_imm8(&e, STACK_FRAME);
-    x86_pop_r64(&e, RBP);
-    x86_pop_r64(&e, R15);
-    x86_pop_r64(&e, R14);
-    x86_pop_r64(&e, R13);
-    x86_pop_r64(&e, R12);
-    x86_pop_r64(&e, RBX);
-    x86_ret(&e);
+    h_leave(&e);
 
+    dspjit_code_written(e.buf, e.len);
     jit->cache_base = (e.len + 15) & ~(size_t)15;
     jit->cache_used = jit->cache_base;
 }
@@ -2503,6 +2485,7 @@ static dspjit_block_fn translate_end(DspJit *jit)
     if (e->overflow) {
         return NULL;
     }
+    dspjit_code_written(e->buf, e->len);
     /* 16-byte aligned starts */
     jit->cache_used += (e->len + 15) & ~(size_t)15;
     return (dspjit_block_fn)e->buf;
@@ -2565,14 +2548,14 @@ static dspjit_block_fn dspjit_translate(DspJit *jit, int mode, uint32_t pc)
  * (not the budget: the loop does that as it goes); uses rax */
 static void emit_rep_charge(Emitter *e, uint32_t cycles, int less)
 {
-    x86_mov_r32_mem(e, RAX, RSP, SLOT_REP_START);
-    x86_sub_rr(e, 0, RAX, REG_LC);
+    h_frame_ld32(e, T0, SLOT_REP_START);
+    h_sub_rr(e, 0, T0, REG_LC);
     if (less) {
-        x86_sub_ri(e, 0, RAX, less);
+        h_sub_ri(e, 0, T0, less);
     }
-    x86_imul_rri(e, RAX, RAX, cycles);
-    x86_alu_mr32(e, 0x01, REG_CORE, OFF(cycle_count), RAX);
-    x86_alu_mr32(e, 0x01, REG_CORE, OFF(num_inst), RAX);
+    h_mul_rri(e, 0, T0, T0, cycles);
+    h_add_mem32_r(e, REG_CORE, OFF(cycle_count), T0);
+    h_add_mem32_r(e, REG_CORE, OFF(num_inst), T0);
 }
 
 /* The instruction at pc as a REP repeats it: the DSP is in the REP
@@ -2604,8 +2587,8 @@ static dspjit_block_fn dspjit_translate_rep(DspJit *jit, int mode, uint32_t pc)
      * its count at the start, for the cycles of the repeats done */
     acc_load(t, 0);
     acc_load(t, 1);
-    x86_mov_r32_mem(e, REG_LC, REG_CORE, REGOFF(DSP_REG_LC));
-    x86_mov_mem_r32(e, RSP, SLOT_REP_START, REG_LC);
+    h_ld32(e, REG_LC, REG_CORE, REGOFF(DSP_REG_LC));
+    h_frame_st32(e, SLOT_REP_START, REG_LC);
 
     top = e->len;
     emit_native(t, &in);
@@ -2614,17 +2597,17 @@ static dspjit_block_fn dspjit_translate_rep(DspJit *jit, int mode, uint32_t pc)
     if (t->wrote_x) {
         /* halted: this repeat ends the interpreter's way, then out */
         size_t j;
-        x86_cmp_mi8(e, REG_CORE, OFF(is_idle), 0);
-        j = x86_jcc_rel32(e, CC_NE);
+        h_cmp_mem8_imm(e, REG_CORE, OFF(is_idle), 0);
+        j = h_jcc(e, HC_NE);
         stub_set_insn(t, stub_new(t, STUB_REP_POST, j), &in, cycles, 0);
         t->wrote_x = false;
     }
     /* one repeat fewer; another while the budget lasts */
-    x86_sub_ri(e, 0, REG_LC, 1);
-    x86_and_ri(e, 0, REG_LC, 0xFFFF);
-    j_end = x86_jcc_rel32(e, CC_E);
-    x86_sub_mi32(e, REG_CORE, OFF(jit_cycles), cycles);
-    x86_jcc_to(e, CC_G, top);
+    h_sub_ri(e, 0, REG_LC, 1);
+    h_and_ri(e, 0, REG_LC, 0xFFFF);
+    j_end = h_jcc(e, HC_EQ);
+    h_sub_mem32_imm(e, REG_CORE, OFF(jit_cycles), cycles);
+    h_jcc_to(e, HC_G, top);
     /* the budget spent: out, the REP still on (the other path below
      * starts from the same state) */
     {
@@ -2633,7 +2616,7 @@ static dspjit_block_fn dspjit_translate_rep(DspJit *jit, int mode, uint32_t pc)
         memcpy(loaded, t->loaded, sizeof(loaded));
         memcpy(dirty, t->dirty, sizeof(dirty));
         acc_spill_all(t, true);
-        x86_mov_mem_r32(e, REG_CORE, REGOFF(DSP_REG_LC), REG_LC);
+        h_st32(e, REG_CORE, REGOFF(DSP_REG_LC), REG_LC);
         emit_rep_charge(e, cycles, 0);
         emit_jump_to_epilogue(t);
         memcpy(t->loaded, loaded, sizeof(loaded));
@@ -2643,17 +2626,17 @@ static dspjit_block_fn dspjit_translate_rep(DspJit *jit, int mode, uint32_t pc)
 
     /* the last repeat: the REP ends; the PC, the loop, the interrupts and
      * this repeat's cycles through dsp56k_post, as for any instruction */
-    x86_patch_rel32(e, j_end, e->len);
+    h_patch(e, j_end, e->len);
     acc_spill_all(t, false);
     emit_rep_charge(e, cycles, 1);
-    x86_mov_mem32_imm(e, REG_CORE, OFF(loop_rep), 0);
-    x86_mov_r32_mem(e, RAX, REG_CORE, REGOFF(DSP_REG_LCSAVE));
-    x86_mov_mem_r32(e, REG_CORE, REGOFF(DSP_REG_LC), RAX);
-    x86_mov_mem32_imm(e, REG_CORE, OFF(pc), in.at);
-    x86_mov_mem32_imm(e, REG_CORE, OFF(cur_inst_len), in.len);
-    x86_mov_mem16_imm(e, REG_CORE, OFF(instr_cycle), cycles);
-    x86_mov_r64_r64(e, ARG0, REG_CORE);
-    x86_call_abs(e, (const void *)dsp56k_post);
+    h_st32_imm(e, REG_CORE, OFF(loop_rep), 0);
+    h_ld32(e, T0, REG_CORE, REGOFF(DSP_REG_LCSAVE));
+    h_st32(e, REG_CORE, REGOFF(DSP_REG_LC), T0);
+    h_st32_imm(e, REG_CORE, OFF(pc), in.at);
+    h_st32_imm(e, REG_CORE, OFF(cur_inst_len), in.len);
+    h_st16_imm(e, REG_CORE, OFF(instr_cycle), cycles);
+    h_mov_rr(e, 1, H_ARG0, REG_CORE);
+    h_call(e, (const void *)dsp56k_post);
     emit_jump_to_epilogue(t);
 
     return translate_end(jit);

@@ -11,9 +11,7 @@
 #ifndef DSP_JIT_EMIT_X86_H
 #define DSP_JIT_EMIT_X86_H
 
-#include <stdint.h>
-#include <stddef.h>
-#include <string.h>
+#include "host.h"
 
 enum {
     RAX = 0, RCX, RDX, RBX, RSP, RBP, RSI, RDI, R8, R9, R10, R11, R12, R13, R14, R15
@@ -32,50 +30,6 @@ enum {
 #endif
 
 enum { CC_O = 0, CC_NO, CC_B, CC_AE, CC_E, CC_NE, CC_BE, CC_A, CC_S, CC_NS, CC_P, CC_NP, CC_L, CC_GE, CC_LE, CC_G };
-
-typedef struct Emitter {
-    uint8_t *buf;
-    size_t cap;
-    size_t len;
-    int overflow;
-} Emitter;
-
-static inline void emit_init(Emitter *e, void *buf, size_t cap)
-{
-    e->buf = buf;
-    e->cap = cap;
-    e->len = 0;
-    e->overflow = 0;
-}
-
-static inline void emit_byte(Emitter *e, uint8_t b)
-{
-    if (e->len < e->cap) {
-        e->buf[e->len] = b;
-    } else {
-        e->overflow = 1;
-    }
-    e->len++;
-}
-
-static inline void emit_u16(Emitter *e, uint16_t v)
-{
-    emit_byte(e, v & 0xff);
-    emit_byte(e, v >> 8);
-}
-
-static inline void emit_u32(Emitter *e, uint32_t v)
-{
-    for (int i = 0; i < 4; i++) {
-        emit_byte(e, (v >> (8 * i)) & 0xff);
-    }
-}
-
-static inline void emit_u64(Emitter *e, uint64_t v)
-{
-    emit_u32(e, (uint32_t)v);
-    emit_u32(e, (uint32_t)(v >> 32));
-}
 
 /* REX with W as asked, R for the ModRM reg field's register, X for an
  * index register, B for the rm/base register; only when needed */

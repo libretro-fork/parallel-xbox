@@ -10,7 +10,7 @@
 
 /* The hosts the JIT has code for; on the others it makes no context and
  * the interpreter stands in */
-#if defined(__x86_64__) || defined(_M_X64)
+#if defined(__x86_64__) || defined(_M_X64) || defined(__aarch64__) || defined(_M_ARM64)
 #define DSPJIT_HOST 1
 #else
 #define DSPJIT_HOST 0
