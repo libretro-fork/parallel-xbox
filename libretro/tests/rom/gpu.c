@@ -31,6 +31,14 @@
  *   from frame 50: into B, a triangle drawn, B cleared, the same triangle
  *              drawn again: draws and clears on both renderers, the
  *              picture (A) unchanged by them
+ *   from frame 100: after that, until the vblank and at most TRIPS_MAX
+ *              times, the GPU given a run of no-ops (NOP_SUB, 8 times)
+ *              and waited for on a semaphore in RAM: the fewest of these
+ *              round trips in a frame (from frame 101, the first whole
+ *              one) at GPU_TRIPS, TRIPS_MAX when each wait took the
+ *              guest no more than the GPU's time. Its time moving on to
+ *              its next deadline while it waited instead made 1; Ninja
+ *              Gaiden Black, waiting so on its GPU, ran in slow motion
  *
  * The frame count is at GPU_FRAMES in RAM, GPU_STATUS says how far the
  * setup got (0 running).
@@ -45,6 +53,8 @@ typedef unsigned int u32;
 #define GPU_FRAMES   0x0030000Cu   /* u32: vblanks seen */
 #define GPU_READ0    0x00300014u   /* u32: A's first pixel, read at frame 20 */
 #define GPU_READ1    0x00300018u   /* u32: A's last pixel, read at frame 20 */
+#define GPU_TRIPS    0x0030001Cu   /* u32: fewest GPU round trips in a frame */
+#define GPU_SEM      0x00300020u   /* u32: the semaphore the GPU writes */
 /* 0x00300010: the pushbuffer's write offset (put) */
 
 #define NV2A         0xFD000000u   /* BAR0, the registers */
@@ -76,6 +86,11 @@ typedef unsigned int u32;
 /* RAM: the pushbuffer and the surfaces (the NV2A's memory is the RAM) */
 #define PUSHBUF      0x00800000u
 #define PUSHBUF_SIZE 0x00010000u
+/* a pushbuffer subroutine of 14329 no-ops: GPU work that takes the GPU's
+ * thread a while and any renderer the same */
+#define NOP_SUB      PUSHBUF_SIZE
+#define NV097_NO_OPERATION 0x0100
+#define TRIPS_MAX    4
 #define SURF_A       0x01000000u
 #define SURF_B       0x01200000u
 #define WIDTH        640
@@ -96,6 +111,8 @@ typedef unsigned int u32;
 #define NV097_SET_FLIP_MODULO           0x0128
 #define NV097_FLIP_INCREMENT_WRITE      0x012C
 #define NV097_SET_COLOR_MASK            0x0358
+#define NV097_SET_SEMAPHORE_OFFSET      0x1D6C
+#define NV097_BACK_END_WRITE_SEMAPHORE_RELEASE 0x1D70
 #define NV097_SET_CONTEXT_DMA_NOTIFIES  0x0180
 #define NV097_SET_CONTEXT_DMA_A         0x0184
 #define NV097_SET_CONTEXT_DMA_B         0x0188
@@ -213,6 +230,17 @@ static void clear(u32 surface, u32 argb)
 }
 
 /* A triangle from the inline array: position only, 4 floats a vertex */
+/* Hands the words written to the GPU without waiting for it, unless the
+ * ring is about to wrap */
+static void post(void)
+{
+    if (put > PUSHBUF_SIZE - 0x400) {
+        kick();
+        return;
+    }
+    *(volatile u32 *)(USER + 0x40) = put;
+}
+
 static void triangle(void)
 {
     static const u32 v[12] = {
@@ -242,6 +270,20 @@ void gpu_main(void)
     ram32(GPU_FRAMES, 0);
     ram32(GPU_READ0, 0);
     ram32(GPU_READ1, 0);
+    ram32(GPU_TRIPS, 0);
+    ram32(GPU_SEM, 0);
+    /* the no-op subroutine: seven no-op methods of 2047 words, a return */
+    {
+        u32 at = PUSHBUF + NOP_SUB;
+        for (int k = 0; k < 7; k++) {
+            ram32(at, 0x40000000u | (2047u << 18) | NV097_NO_OPERATION);
+            at += 4;
+            for (int i = 0; i < 2047; i++, at += 4) {
+                ram32(at, 0);
+            }
+        }
+        ram32(at, 0x00020000u);
+    }
     put = 0;
 
     /* the AGP bridge (bus 0, device 30): bus 1 behind it, the NV2A's
@@ -274,7 +316,8 @@ void gpu_main(void)
     for (u32 i = 0; i < 0x1000; i += 4) {
         ram32(RAMIN + RAMHT + i, 0);
     }
-    dma_object(OBJ_PUSHBUF, PUSHBUF, PUSHBUF_SIZE - 1);
+    /* the ring, and after it the subroutine of no-ops (NOP_SUB) */
+    dma_object(OBJ_PUSHBUF, PUSHBUF, 2 * PUSHBUF_SIZE - 1);
     dma_object(OBJ_RAM, 0, 0x03FFFFFFu);
     ram32(RAMIN + OBJ_KELVIN + 0, 0x97);
     ram32(RAMIN + OBJ_KELVIN + 4, 0);
@@ -362,5 +405,28 @@ void gpu_main(void)
         }
         method(NV097_FLIP_INCREMENT_WRITE, 0);
         kick();
+        if (frame >= 100) {
+            /* until the vblank: work for the GPU, then a wait on it, as a
+             * game waits on a fence. The wait spins on RAM (a wait the
+             * core sees as one), and takes the guest only the GPU's
+             * time */
+            static u32 sem;
+            u32 trips = 0;
+            while (trips < TRIPS_MAX && !(rd(PCRTC_INTR) & 1)) {
+                sem++;
+                method(NV097_SET_SEMAPHORE_OFFSET, GPU_SEM);
+                for (int i = 0; i < 8; i++) {
+                    push(NOP_SUB | 2); /* call */
+                }
+                method(NV097_BACK_END_WRITE_SEMAPHORE_RELEASE, sem);
+                post();
+                while (rd32(GPU_SEM) != sem) {
+                }
+                trips++;
+            }
+            if (frame == 101 || trips < rd32(GPU_TRIPS)) {
+                ram32(GPU_TRIPS, trips);
+            }
+        }
     }
 }

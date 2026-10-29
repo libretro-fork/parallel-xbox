@@ -158,7 +158,7 @@ struct retro_core_option_v2_definition option_defs_us[] = {
         "xemu_deterministic",
         "Deterministic Emulation",
         NULL,
-        "Off, the Xbox's CPU runs on while its GPU draws, as on the console, and each frame is handed over once the GPU has drawn it. On, the CPU waits whenever the GPU works: slower, but the emulation is the same however fast the host is, which Run-Ahead and netplay need.",
+        "Off, the Xbox's CPU runs on while its GPU draws, as on the console, and when the game waits for the GPU its time moves on by as long as the host's GPU work took. On, the game's time stands still while it waits for the GPU: the emulation is the same however fast the host is, which Run-Ahead and netplay need.",
         NULL,
         "system",
         {

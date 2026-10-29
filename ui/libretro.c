@@ -203,10 +203,12 @@ static bool opt_hard_fpu = true;
 /* The fork's CPU boost and smooth first play (Tovarichtch/xemu), on by
  * default there */
 static bool opt_cpu_boost = true;
-/* Deterministic Emulation: off, the guest's time runs on while the GPU's
- * thread works, as the Xbox's CPU and GPU run side by side; on, it stands
- * still until the GPU's thread is done (lr_devices_busy), so the guest
- * sees the same timing however fast the host is (Run-Ahead, netplay) */
+/* Deterministic Emulation: off, a guest waiting while the GPU's thread
+ * works has its time move on by the time the GPU really takes, as the
+ * Xbox's CPU waits on its GPU; on, its time stands still until the GPU's
+ * thread is done, so the guest sees the same timing however fast the host
+ * is (Run-Ahead, netplay). The guest's own work overlaps the GPU's either
+ * way (lr_run_frame). */
 static bool opt_deterministic = false;
 static bool opt_smooth_first_play = true;
 static bool opt_chihiro_freeplay = true;
@@ -1855,18 +1857,18 @@ static void lr_main_notify(void)
 }
 
 /* Whether something the guest may be waiting for is under way on another
- * thread: then an idle guest's time stands still until it is done, rather
- * than moving on to the next deadline past it */
+ * thread: then an idle guest waits for it (lr_run_frame), rather than its
+ * time moving on to the next deadline past it. Skipping on while the GPU
+ * drew ran a game's frame out from under it: Ninja Gaiden Black, waiting
+ * on its GPU in a heavy scene, saw its time race to the vblank while the
+ * GPU worked, missed its frames and ran in slow motion, with each run
+ * taking 1 ms (all its time skipped). */
 static bool lr_devices_busy(void)
 {
     extern bool nv2a_libretro_busy(void);
     extern int thread_pool_aio_inflight;
 
-    /* The GPU's work takes the guest's time, as on the Xbox: the frame's
-     * end waits for it instead (lr_run_frame), unless the emulation is to
-     * be deterministic */
-    return thread_pool_aio_inflight > 0 ||
-           (opt_deterministic && nv2a_libretro_busy());
+    return thread_pool_aio_inflight > 0 || nv2a_libretro_busy();
 }
 /* set while the emulator thread looks and waits: the GPU's thread wakes it
  * when it parks (hw/xbox/nv2a/pfifo.c) */
@@ -1891,9 +1893,10 @@ void lr_quiet_exit(CPUState *cpu)
 
     if (lr_devices_busy()) {
         /* The GPU (or the disk) has work the guest may be waiting for:
-         * its time stands still and the slice ends, and the frame loop
-         * waits as for a halted guest, until the GPU parks or anything
-         * else wakes it; then the guest looks again. Spinning on through
+         * the slice ends, and the frame loop waits as for a halted guest,
+         * until the GPU parks or anything else wakes it, its time moving
+         * on only by the GPU's time (lr_run_frame); then the guest looks
+         * again. Spinning on through
          * the translated code instead cost the whole of the host's time
          * (the kernel's idle thread, 7.6 M block exits a second, for the
          * time the GPU drew the frame), and skipping its time on would
@@ -2007,11 +2010,22 @@ static void lr_run_frame(void)
         lr_quiet = false;
         qatomic_set_mb(&nv2a_libretro_waiter, 1);
         if (lr_devices_busy()) {
-            /* its time stands still until something happens: a bottom
-             * half (a disk read done), the GPU going idle or raising an
-             * interrupt. No timeout: QEMU leaves the guest's timers out of
-             * the main loop's with icount, and the core has no host timer */
+            /* it waits until something happens: a bottom half (a disk read
+             * done), the GPU going idle or raising an interrupt. No
+             * timeout: QEMU leaves the guest's timers out of the main
+             * loop's with icount, and the core has no host timer. Its time
+             * stands still for a disk read; for the GPU it moves on by the
+             * time the GPU took, up to the next deadline, unless the
+             * emulation is deterministic: the Xbox's CPU waits on its GPU
+             * as long as the GPU draws, never longer */
+            extern bool nv2a_libretro_busy(void);
+            bool gpu = !opt_deterministic && nv2a_libretro_busy();
+            int64_t waited = gpu ? get_clock() : 0;
             main_loop_wait(false);
+            if (gpu) {
+                waited = get_clock() - waited;
+                cpu_clock_skip_to(now + MIN(waited, until));
+            }
         } else {
             /* nothing to wait for: on to the next deadline */
             cpu_clock_skip_to(now + until);
@@ -2023,7 +2037,8 @@ static void lr_run_frame(void)
      * over when the GPU's thread has done what the guest gave it in the
      * frame, so each run still hands over the picture drawn in it (no
      * repeated frame, no frame of delay). The guest's time does not move
-     * meanwhile. (Deterministic: the guest waited for it as it went.) */
+     * meanwhile. (Deterministic: the guest's waits for it are its only
+     * ones.) */
     if (!opt_deterministic) {
         extern bool nv2a_libretro_busy(void);
         extern void nv2a_libretro_display_check(void);

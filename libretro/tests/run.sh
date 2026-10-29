@@ -115,30 +115,34 @@ done
 # from frame 50 triangles drawn and cleared elsewhere. The picture is red
 # at frames 10 and 25 and green at 45 and 85, on both renderers. At frame
 # 20 the CPU reads the surface's first and last pixels: the renderer
-# downloads it to RAM for that, and both are red (0xffff0000).
+# downloads it to RAM for that, and both are red (0xffff0000). From frame
+# 100 the guest waits on the GPU, a semaphore after a run of no-ops, up to
+# 4 times a frame: it must manage all 4 in every frame. A guest waiting on
+# the GPU had its time skip on to its next deadline while the GPU worked,
+# and managed 1 (Ninja Gaiden Black in slow motion).
 # On Vulkan the front buffer was dropped as an old surface and a CPU write
 # to it was not a new picture: the display stopped after the first frame
 # (Jet Set Radio Future black after the Xbox logo).
 gpu_check() {
     for want in "pixel_10=0xff0000" "pixel_25=0xff0000" "pixel_45=0x00ff00" \
                 "pixel_85=0x00ff00" "peek_0x300014=0xffff0000" \
-                "peek_0x300018=0xffff0000"; do
+                "peek_0x300018=0xffff0000" "peek_0x30001c=0x00000004"; do
         grep -E "^$want$" "$1" >/dev/null || {
             echo "FAIL: $2: $want expected, $(grep "^${want%%=*}=" "$1")"; exit 1; }
     done
 }
 echo "== the display, OpenGL"
-timeout 300 $h "$(path "$core")" "$(path "$work/sysg")" $vp --frames 90 --strict \
+timeout 300 $h "$(path "$core")" "$(path "$work/sysg")" $vp --frames 110 --strict \
   --pixel 10 --pixel 25 --pixel 45 --pixel 85 --peek 0x300014 --peek 0x300018 \
-  >"$work/gpu_gl.txt"
+  --peek 0x30001c >"$work/gpu_gl.txt"
 grep -E "pixel_|peek_" "$work/gpu_gl.txt"
 gpu_check "$work/gpu_gl.txt" "OpenGL"
 echo "== the display, Vulkan"
 set +e
 timeout 300 $h "$(path "$core")" "$(path "$work/sysg")" $vp --vulkan \
-  --opt xemu_renderer=vulkan --frames 90 --strict \
+  --opt xemu_renderer=vulkan --frames 110 --strict \
   --pixel 10 --pixel 25 --pixel 45 --pixel 85 --peek 0x300014 --peek 0x300018 \
-  >"$work/gpu_vk.txt"
+  --peek 0x30001c >"$work/gpu_vk.txt"
 r=$?
 set -e
 case $r in
