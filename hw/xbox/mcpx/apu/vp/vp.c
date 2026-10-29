@@ -65,6 +65,7 @@ static void voice_reset_filters(MCPXAPUState *d, uint16_t v)
     memset(&d->vp.filters[v].svf, 0, sizeof(d->vp.filters[v].svf));
     memset(&d->vp.filters[v].peq, 0, sizeof(d->vp.filters[v].peq));
     memset(&d->vp.filters[v].i3dl2, 0, sizeof(d->vp.filters[v].i3dl2));
+    d->vp.filters[v].gains = false;
     d->vp.filters[v].hrtf.params_set = false;
     hrtf_filter_clear_history(&d->vp.filters[v].hrtf);
     voice_resample_reset(&d->vp.filters[v]);
@@ -124,11 +125,6 @@ static uint32_t attenuation_gain(int att)
     uint32_t n0 = attenuation_nodes[att >> 6];
     uint32_t n1 = attenuation_nodes[(att >> 6) + 1];
     return (256 * n0 - 4 * (n0 - n1) * (att & 63)) >> 6;
-}
-
-static float attenuate(uint16_t vol)
-{
-    return attenuation_gain(vol & 0xFFF) / 16384.0f;
 }
 
 /* CPU boost: voice descriptors, SGE tables and samples are read through
@@ -1616,24 +1612,46 @@ static void voice_process(MCPXAPUState *d,
         ear_samples = ears;
     }
 
+    /* Gains are integer 1/16384 units. Keep only 16 bytes of previous
+     * gain metadata for the VP monitor, not a second sample frame. */
+    MCPXAPUVoiceFilter *filter = &d->vp.filters[v];
+    uint32_t level = ea_value * 2048.0f;
+    uint16_t previous_gain[8];
+    bool monitor = d->monitor.point == MCPX_APU_DEBUG_MON_VP;
     for (int b = 0; b < 8; b++) {
+        uint32_t from = filter->gains ? filter->route_gain[b] : 0;
+        if (monitor) {
+            previous_gain[b] = from;
+        }
         if (three_d && b < 4 && !spatial) {
+            filter->route_gain[b] = 0;
             continue;
         }
         /* Routes 0-1 are left, 2-3 right. Bin headroom applies to all
          * routes; SET_HRTF_HEADROOM has no measured hardware effect. */
-        float hr = 1u << d->vp.submix_headroom[bin[b]];
-        float g = ea_value * attenuate(vol[b]) / hr;
+        uint32_t to = (attenuation_gain(vol[b]) * level) >> 11;
+        filter->route_gain[b] = to;
+        if (from == 0 && to == 0) {
+            continue;
+        }
+        float scale = 1.0f / (16384u << d->vp.submix_headroom[bin[b]]);
+        int32_t ramp = from * NUM_SAMPLES_PER_FRAME;
+        int32_t delta = (int32_t)to - (int32_t)from;
         const float (*source)[2] = three_d && b < 4 ? ear_samples : samples;
         unsigned int channel = three_d && b < 4 ?
             (filtered ? b / 2u : 0u) :
             i3dl2 && (b == 5 || b == 7) ? 1u : b % channels;
         for (int i = 0; i < NUM_SAMPLES_PER_FRAME; i++) {
+            /* The numerator remains nonnegative between nonnegative
+             * endpoints. Its shift gives exact floor rounding, both ways. */
+            float g = (ramp >> 5) * scale;
             mixbins[bin[b]][i] += g * source[i][channel];
+            ramp += delta;
         }
     }
+    filter->gains = true;
 
-    if (d->monitor.point == MCPX_APU_DEBUG_MON_VP) {
+    if (monitor) {
         /* For VP mon, simply mix all voices together here, selecting the
          * maximal volume used for any given mixbin as the overall volume for
          * this voice.
@@ -1658,17 +1676,21 @@ static void voice_process(MCPXAPUState *d,
 
         bool debug_isolation =
             g_dbg_voice_monitor >= 0 && g_dbg_voice_monitor == v;
-        float g = 0.0f;
-        for (int b = 0; b < 8; b++) {
-            if ((three_d && b < 4 && !spatial) ||
-                (bin[b] == mp_bin && !debug_isolation)) {
-                continue;
-            }
-            float hr = 1 << d->vp.submix_headroom[bin[b]];
-            g = fmax(g, attenuate(vol[b]) / hr);
-        }
-        g *= ea_value;
+        /* DSP-off audio uses this monitor: ramp it too. Compare gains at
+         * a common headroom of seven without per-sample float divisions. */
         for (int i = 0; i < NUM_SAMPLES_PER_FRAME; i++) {
+            uint32_t best = 0;
+            for (int b = 0; b < 8; b++) {
+                if ((three_d && b < 4 && !spatial) ||
+                    (bin[b] == mp_bin && !debug_isolation)) {
+                    continue;
+                }
+                uint32_t gain = ((32 - i) * previous_gain[b] +
+                                 i * filter->route_gain[b]) >> 5;
+                gain <<= 7 - d->vp.submix_headroom[bin[b]];
+                best = MAX(best, gain);
+            }
+            float g = best / 2097152.0f;
             sample_buf[i][0] += g * ear_samples[i][0];
             sample_buf[i][1] += g * ear_samples[i][filtered ? 1 : channels - 1];
         }

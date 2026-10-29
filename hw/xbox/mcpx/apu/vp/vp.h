@@ -56,6 +56,8 @@ typedef struct MCPXAPUVoiceFilter {
     sv_filter svf[2];
     sv_filter peq[2];
     float i3dl2[2];
+    uint16_t route_gain[8];
+    bool gains;
     HrtfFilter hrtf;
 } MCPXAPUVoiceFilter;
 

@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Audio: volume and envelope changes ramp across each 32-sample MCPX frame, including first-frame fade-in and the DSP-off output. Integer ramp steps replace per-sample rounding calls; no extra sample frame is copied.
+
 - Audio: envelopes use measured phase lengths and quantized levels; attack and decay start from zero, release has its measured tail, and an inactive filter envelope contributes no pitch modulation. Envelope processing reads only parameters needed by its active phase.
 
 - Audio: voice attenuation follows the measured MCPX curve, including the quiet tail and silence at 63 dB. A shared constant table replaces per-route exponential calculations.
