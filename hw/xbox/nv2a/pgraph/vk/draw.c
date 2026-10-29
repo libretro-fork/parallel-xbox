@@ -157,6 +157,12 @@ static void pipeline_cache_entry_post_evict(Lru *lru, LruNode *node)
     pgraph_vk_trash_push(r, &e);
     snode->pipeline = VK_NULL_HANDLE;
     snode->layout = VK_NULL_HANDLE;
+    /* The node goes to another key (a pipeline the worker made landing,
+     * pipeline_land): the next draw looks its pipeline up again rather
+     * than binding what the node holds then */
+    if (r->pipeline_binding == snode) {
+        r->pipeline_binding = NULL;
+    }
 }
 
 static bool pipeline_cache_entry_compare(Lru *lru, LruNode *node,
@@ -808,8 +814,11 @@ static bool check_pipeline_dirty(PGRAPHState *pg)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
 
-    if (!r->pipeline_binding || r->shader_bindings_changed ||
-        r->texture_bindings_changed || check_render_pass_dirty(pg)) {
+    /* The pipeline bound last is the clear's (create_clear_pipeline): not
+     * one a draw can use, whatever else is unchanged */
+    if (!r->pipeline_binding || r->pipeline_binding->key.clear ||
+        r->shader_bindings_changed || r->texture_bindings_changed ||
+        check_render_pass_dirty(pg)) {
         return true;
     }
 
