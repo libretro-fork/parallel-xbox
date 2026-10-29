@@ -26,7 +26,8 @@ Linux build.
   GPU's BARs, a 640x480 32-bit display, one PFIFO channel in DMA mode with
   its objects in RAMIN, and a scenario the harness reads the picture of
   (`--pixel`): a surface cleared red and shown, left alone while another is
-  drawn and flips are counted, then written green by the CPU. `gpu.sh`
+  drawn and flips are counted, read back by the CPU (the renderer
+  downloads it for that), then written green by the CPU. `gpu.sh`
   builds it into `gpu.inc` (committed, like `pad.inc`).
 - `rom/dvd.c`: DVD reads as the kernel sends them: READ(10) packets to the
   primary IDE channel's slave, by bus-master DMA through the PIIX3's PRD

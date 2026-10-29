@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Vulkan: when a game's CPU reads a picture the GPU drew (a screenshot for a save, effects done on the CPU), the read-back buffer is no longer mapped and unmapped each time, and only the rows read are made visible to the CPU instead of the whole 64 MB buffer.
+
 - Audio: both voice LFOs now modulate volume, pitch and filter cutoff with signed depths and optional delays. Previously ignored delay/depth writes are handled, explicit mute remains silent, and processing reads each packed LFO word once per frame.
 
 - Audio: DLS2 and ParaEQ cutoff changes move across each 32-sample voice frame. Existing coefficient storage holds the next starting value, avoiding duplicate endpoint arrays; restart and re-enabled filters begin at their current target.

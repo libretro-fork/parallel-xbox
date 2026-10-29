@@ -113,31 +113,36 @@ done
 # cleared red and shown, then left alone - another surface drawn and a
 # flip counted every frame - and at frame 30 written green by the CPU, and
 # from frame 50 triangles drawn and cleared elsewhere. The picture is red
-# at frames 10 and 25 and green at 45 and 85, on both renderers.
+# at frames 10 and 25 and green at 45 and 85, on both renderers. At frame
+# 20 the CPU reads the surface's first and last pixels: the renderer
+# downloads it to RAM for that, and both are red (0xffff0000).
 # On Vulkan the front buffer was dropped as an old surface and a CPU write
 # to it was not a new picture: the display stopped after the first frame
 # (Jet Set Radio Future black after the Xbox logo).
 gpu_check() {
     for want in "pixel_10=0xff0000" "pixel_25=0xff0000" "pixel_45=0x00ff00" \
-                "pixel_85=0x00ff00"; do
+                "pixel_85=0x00ff00" "peek_0x300014=0xffff0000" \
+                "peek_0x300018=0xffff0000"; do
         grep -E "^$want$" "$1" >/dev/null || {
             echo "FAIL: $2: $want expected, $(grep "^${want%%=*}=" "$1")"; exit 1; }
     done
 }
 echo "== the display, OpenGL"
 timeout 300 $h "$(path "$core")" "$(path "$work/sysg")" $vp --frames 90 --strict \
-  --pixel 10 --pixel 25 --pixel 45 --pixel 85 >"$work/gpu_gl.txt"
-grep -E "pixel_" "$work/gpu_gl.txt"
+  --pixel 10 --pixel 25 --pixel 45 --pixel 85 --peek 0x300014 --peek 0x300018 \
+  >"$work/gpu_gl.txt"
+grep -E "pixel_|peek_" "$work/gpu_gl.txt"
 gpu_check "$work/gpu_gl.txt" "OpenGL"
 echo "== the display, Vulkan"
 set +e
 timeout 300 $h "$(path "$core")" "$(path "$work/sysg")" $vp --vulkan \
   --opt xemu_renderer=vulkan --frames 90 --strict \
-  --pixel 10 --pixel 25 --pixel 45 --pixel 85 >"$work/gpu_vk.txt"
+  --pixel 10 --pixel 25 --pixel 45 --pixel 85 --peek 0x300014 --peek 0x300018 \
+  >"$work/gpu_vk.txt"
 r=$?
 set -e
 case $r in
-0) grep -E "pixel_" "$work/gpu_vk.txt"; gpu_check "$work/gpu_vk.txt" "Vulkan" ;;
+0) grep -E "pixel_|peek_" "$work/gpu_vk.txt"; gpu_check "$work/gpu_vk.txt" "Vulkan" ;;
 3) echo "no Vulkan device: skipped" ;;
 *) echo "FAIL: the Vulkan run exited $r"; exit 1 ;;
 esac

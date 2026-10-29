@@ -18,6 +18,9 @@
  *   every frame from 1: surface B cleared (A never drawn to again) and a
  *              flip counted (FLIP_INCREMENT_WRITE), so the renderer's
  *              frame count runs on and A is a surface shown, not drawn
+ *   frame 20   the CPU reads A's first and last pixels back (GPU_READ0,
+ *              GPU_READ1): the renderer downloads the surface for it, and
+ *              both must be red
  *   frame 30   the CPU writes A green, all of it, as a movie decoder or a
  *              CPU-drawn loading screen writes a front buffer
  *
@@ -40,6 +43,8 @@ typedef unsigned int u32;
 
 #define GPU_STATUS   0x00300008u   /* u32: 0 once running */
 #define GPU_FRAMES   0x0030000Cu   /* u32: vblanks seen */
+#define GPU_READ0    0x00300014u   /* u32: A's first pixel, read at frame 20 */
+#define GPU_READ1    0x00300018u   /* u32: A's last pixel, read at frame 20 */
 /* 0x00300010: the pushbuffer's write offset (put) */
 
 #define NV2A         0xFD000000u   /* BAR0, the registers */
@@ -90,6 +95,7 @@ typedef unsigned int u32;
 #define NV097_SET_FLIP_WRITE            0x0124
 #define NV097_SET_FLIP_MODULO           0x0128
 #define NV097_FLIP_INCREMENT_WRITE      0x012C
+#define NV097_SET_COLOR_MASK            0x0358
 #define NV097_SET_CONTEXT_DMA_NOTIFIES  0x0180
 #define NV097_SET_CONTEXT_DMA_A         0x0184
 #define NV097_SET_CONTEXT_DMA_B         0x0188
@@ -117,6 +123,7 @@ static inline void wr(u32 reg, u32 v) { *(volatile u32 *)(NV2A + reg) = v; }
 static inline u32 rd(u32 reg) { return *(volatile u32 *)(NV2A + reg); }
 static inline void wr8(u32 reg, u8 v) { *(volatile u8 *)(NV2A + reg) = v; }
 static inline void ram32(u32 addr, u32 v) { *(volatile u32 *)addr = v; }
+static inline u32 rd32(u32 addr) { return *(volatile u32 *)addr; }
 
 static inline void outl(unsigned short port, u32 v)
 {
@@ -233,6 +240,8 @@ void gpu_main(void)
 {
     ram32(GPU_STATUS, 1);
     ram32(GPU_FRAMES, 0);
+    ram32(GPU_READ0, 0);
+    ram32(GPU_READ1, 0);
     put = 0;
 
     /* the AGP bridge (bus 0, device 30): bus 1 behind it, the NV2A's
@@ -311,6 +320,8 @@ void gpu_main(void)
     method(NV097_SET_FLIP_READ, 0);
     method(NV097_SET_FLIP_WRITE, 0);
     method(NV097_SET_FLIP_MODULO, 2);
+    /* every channel written, as the kernel sets it up */
+    method(NV097_SET_COLOR_MASK, 0x01010101u);
     /* the vertex arrays: attribute 0 (position) 4 floats, the rest off */
     for (u32 i = 0; i < 16; i++) {
         method(NV097_SET_VERTEX_DATA_ARRAY_FORMAT + i * 4,
@@ -328,6 +339,11 @@ void gpu_main(void)
 
     for (u32 frame = 1;; frame++) {
         wait_vblank();
+        if (frame == 20) {
+            /* the CPU reads the front buffer the GPU drew */
+            ram32(GPU_READ0, rd32(SURF_A));
+            ram32(GPU_READ1, rd32(SURF_A + PITCH * (HEIGHT - 1) + (WIDTH - 1) * 4));
+        }
         if (frame == 30) {
             /* the CPU writes the front buffer green */
             for (u32 i = 0; i < PITCH * HEIGHT; i += 4) {

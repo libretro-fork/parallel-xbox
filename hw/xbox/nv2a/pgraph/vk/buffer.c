@@ -355,11 +355,14 @@ void pgraph_vk_init_buffers(NV2AState *d)
 
     // FIXME: Add fallback path for device using host mapped memory
 
+    /* the surface downloads' buffer too: mapped once, not at each
+     * download (vk/surface.c) */
     int buffers_to_map[] = { BUFFER_VERTEX_RAM,
                              BUFFER_INDEX_STAGING,
                              BUFFER_VERTEX_INLINE_STAGING,
                              BUFFER_UNIFORM_STAGING,
-                             BUFFER_STAGING_SRC };
+                             BUFFER_STAGING_SRC,
+                             BUFFER_STAGING_DST };
 
     for (int i = 0; i < ARRAY_SIZE(buffers_to_map); i++) {
         VK_CHECK(vmaMapMemory(

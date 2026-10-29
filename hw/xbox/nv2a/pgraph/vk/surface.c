@@ -462,21 +462,17 @@ static void download_surface_to_buffer(NV2AState *d, SurfaceBinding *surface,
 
     pgraph_vk_end_single_time_commands(pg, cmd);
 
-    void *mapped_memory_ptr = NULL;
-    VK_CHECK(vmaMapMemory(r->allocator,
-                          r->storage_buffers[BUFFER_STAGING_DST].allocation,
-                          &mapped_memory_ptr));
+    /* Mapped for good (buffer.c); only the rows read are made visible to
+     * the host, not the whole buffer (64 MB, cached memory) */
+    StorageBuffer *dst = &r->storage_buffers[BUFFER_STAGING_DST];
+    const VkDeviceSize read_size = (VkDeviceSize)surface->width *
+                                   surface->fmt.bytes_per_pixel *
+                                   surface->height;
+    vmaInvalidateAllocation(r->allocator, dst->allocation, 0, read_size);
 
-    vmaInvalidateAllocation(r->allocator,
-                            r->storage_buffers[BUFFER_STAGING_DST].allocation,
-                            0, VK_WHOLE_SIZE);
-
-    memcpy_image(gl_read_buf, mapped_memory_ptr, surface->pitch,
+    memcpy_image(gl_read_buf, dst->mapped, surface->pitch,
                  surface->width * surface->fmt.bytes_per_pixel,
                  surface->height);
-
-    vmaUnmapMemory(r->allocator,
-                   r->storage_buffers[BUFFER_STAGING_DST].allocation);
 
     if (surface->swizzle) {
         // FIXME: Swizzle in shader
