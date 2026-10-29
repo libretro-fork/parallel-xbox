@@ -63,7 +63,9 @@ typedef struct VoiceWorkItem {
 } VoiceWorkItem;
 
 /* A voice processor worker: the emulator thread hands it a share of the
- * frame's voices and waits for all shares (voice_work_dispatch). Lock-free:
+ * frame's voices and waits for all shares (voice_work_dispatch). Worker
+ * zero mixes directly into the DSP output; background workers use private
+ * buffers, reduced after all shares finish. Lock-free:
  * a worker is woken by its generation counter moving on and reports by
  * the shared done counter; it mixes into its own buffers, which the
  * emulator thread adds up once every share is done. */

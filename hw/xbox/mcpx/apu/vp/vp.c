@@ -1684,16 +1684,14 @@ static void get_voice_bin_src_dst(MCPXAPUState *d, int v,
     }
 }
 
-/* A worker's share of the frame's voices, into its own mix buffers */
-static void voice_worker_process(MCPXAPUState *d, VoiceWorker *self)
+/* Process a worker's queue into the buffers owned by its executing thread. */
+static void voice_worker_process(MCPXAPUState *d, VoiceWorker *self,
+                                 float mixbins[][NUM_SAMPLES_PER_FRAME],
+                                 float sample_buf[][2])
 {
     g_dbg.vp.workers[self->id].num_voices = self->queue_len;
-    memset(self->mixbins, 0, sizeof(self->mixbins));
-    if (d->monitor.point == MCPX_APU_DEBUG_MON_VP) {
-        memset(self->sample_buf, 0, sizeof(self->sample_buf));
-    }
     for (int i = 0; i < self->queue_len; i++) {
-        voice_process(d, self->mixbins, self->sample_buf,
+        voice_process(d, mixbins, sample_buf,
                       self->queue[i].voice, self->queue[i].list);
     }
 }
@@ -1720,7 +1718,11 @@ static void voice_worker_thread(void *arg)
         if (retro_atomic_load_acquire_int(&vwd->should_exit)) {
             break;
         }
-        voice_worker_process(d, self);
+        memset(self->mixbins, 0, sizeof(self->mixbins));
+        if (d->monitor.point == MCPX_APU_DEBUG_MON_VP) {
+            memset(self->sample_buf, 0, sizeof(self->sample_buf));
+        }
+        voice_worker_process(d, self, self->mixbins, self->sample_buf);
         retro_atomic_fetch_add_int(&vwd->done, 1);
         retro_eventcount_notify(&vwd->finished);
     }
@@ -1826,7 +1828,9 @@ voice_work_dispatch(MCPXAPUState *d,
             started++;
         }
     }
-    voice_worker_process(d, &vwd->workers[0]);
+    /* Worker zero owns the caller's output; other workers retain private
+     * accumulators until joined, so no concurrent writes share a mix bin. */
+    voice_worker_process(d, &vwd->workers[0], mixbins, d->vp.sample_buf);
 
     while (retro_atomic_load_acquire_int(&vwd->done) < started) {
         int key = retro_eventcount_prepare_wait(&vwd->finished);
@@ -1837,8 +1841,8 @@ voice_work_dispatch(MCPXAPUState *d,
         retro_eventcount_commit_wait(&vwd->finished, key);
     }
 
-    /* Every share's voices, added up */
-    for (int w = 0; w < vwd->num_workers; w++) {
+    /* Worker zero is already in the output. Reduce only background shares. */
+    for (int w = 1; w < vwd->num_workers; w++) {
         VoiceWorker *worker = &vwd->workers[w];
         if (!worker->queue_len) {
             continue;

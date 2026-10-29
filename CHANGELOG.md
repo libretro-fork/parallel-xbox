@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Audio: the emulator worker mixes directly into the DSP output during parallel frames too, avoiding a redundant 4 KiB scratch clear and full-buffer accumulation each frame.
+
 - Audio: nonstandard multipass bins, uncleared submixes and interleaved source lists run in voice order instead of asserting. Serial frames mix directly into the DSP buffer, and parallel scheduling reads each voice dependency once.
 
 - HRTF: filter taps retain their hardware gain and use the measured sign-magnitude minifloat format; updating a zero left-ear filter also updates the right ear.
