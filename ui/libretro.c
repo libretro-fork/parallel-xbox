@@ -888,6 +888,8 @@ static bool xemu_vk_create_device(struct retro_vulkan_context *context,
     XEMU_VK_FEATURE(shaderClipDistance, true);
     XEMU_VK_FEATURE(shaderTessellationAndGeometryPointSize, true);
     XEMU_VK_FEATURE(wideLines, false);
+    /* S3TC textures uploaded as they are (pgraph/vk/texture.c) */
+    XEMU_VK_FEATURE(textureCompressionBC, false);
 #undef XEMU_VK_FEATURE
     if (!renderer_features) {
         g_free(exts);

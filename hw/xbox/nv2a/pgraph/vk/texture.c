@@ -56,13 +56,13 @@ static VkSamplerAddressMode lookup_texture_address_mode(int idx)
 }
 
 // FIXME: Move to common
-// FIXME: We can shrink the size of this structure
-// FIXME: Use simple allocator
+/* A texture staged for upload: each level's bytes in the staging ring
+ * (command.c pgraph_vk_staging_alloc), as vkCmdCopyBufferToImage reads them */
 typedef struct TextureLevel {
     unsigned int width, height, depth;
-    hwaddr vram_addr;
-    void *decoded_data;
-    size_t decoded_size;
+    unsigned int row_length; /* texels a buffer row holds, 0 = width */
+    VkDeviceSize offset;
+    size_t size;
 } TextureLevel;
 
 typedef struct TextureLayer {
@@ -72,6 +72,25 @@ typedef struct TextureLayer {
 typedef struct TextureLayout {
     TextureLayer layers[6];
 } TextureLayout;
+
+/* The host format of a guest texture format: the map's, except the S3TC
+ * formats, which stay compressed where the device samples BC */
+static VkColorFormatInfo texture_vkf(PGRAPHVkState *r, int color_format)
+{
+    if (r->bc_native) {
+        switch (color_format) {
+        case NV097_SET_TEXTURE_FORMAT_COLOR_L_DXT1_A1R5G5B5:
+            return (VkColorFormatInfo){ VK_FORMAT_BC1_RGBA_UNORM_BLOCK };
+        case NV097_SET_TEXTURE_FORMAT_COLOR_L_DXT23_A8R8G8B8:
+            return (VkColorFormatInfo){ VK_FORMAT_BC2_UNORM_BLOCK };
+        case NV097_SET_TEXTURE_FORMAT_COLOR_L_DXT45_A8R8G8B8:
+            return (VkColorFormatInfo){ VK_FORMAT_BC3_UNORM_BLOCK };
+        default:
+            break;
+        }
+    }
+    return kelvin_color_format_vk_map[color_format];
+}
 
 // FIXME: Move to common
 static enum S3TC_DECOMPRESS_FORMAT kelvin_format_to_s3tc_format(int color_format)
@@ -85,19 +104,6 @@ static enum S3TC_DECOMPRESS_FORMAT kelvin_format_to_s3tc_format(int color_format
         return S3TC_DECOMPRESS_FORMAT_DXT5;
     default:
         assert(!"Invalid texture color format");
-    }
-}
-
-// FIXME: Move to common
-static void memcpy_image(void *dst, void *src, int min_stride, int dst_stride, int src_stride, int height)
-{
-    uint8_t *dst_ptr = (uint8_t *)dst;
-    uint8_t *src_ptr = (uint8_t *)src;
-
-    for (int i = 0; i < height; i++) {
-        memcpy(dst_ptr, src_ptr, min_stride);
-        src_ptr += src_stride;
-        dst_ptr += dst_stride;
     }
 }
 
@@ -138,13 +144,123 @@ static size_t get_cubemap_layer_size(PGRAPHState *pg, TextureShape s)
     return ROUND_UP(length, NV2A_CUBEMAP_FACE_ALIGNMENT);
 }
 
-// FIXME: Move to common
-// FIXME: More refactoring
-// FIXME: Possible parallelization of decoding
-// FIXME: Bounds checking
-static TextureLayout *get_texture_layout(PGRAPHState *pg, int texture_idx)
+/* A level's bytes: a range of the staging ring, 16-byte aligned (a texel
+ * or a block, as vkCmdCopyBufferToImage wants its offset) */
+static uint8_t *stage_level(PGRAPHState *pg, TextureLevel *level,
+                            unsigned int width, unsigned int height,
+                            unsigned int depth, size_t size)
+{
+    uint8_t *ptr;
+    level->width = width;
+    level->height = height;
+    level->depth = depth;
+    level->row_length = 0;
+    level->size = size;
+    level->offset = pgraph_vk_staging_alloc(pg, size, 16, &ptr);
+    return ptr;
+}
+
+/* S3TC blocks of a level, as they are, into the ring: the Xbox's 2D block
+ * rows are a BC image's; its 3D blocks come in 4-deep groups, slice by
+ * slice within each block, and are put into slice order. */
+static void stage_blocks_2d(PGRAPHState *pg, TextureLevel *level,
+                            const uint8_t *data, unsigned int width,
+                            unsigned int height, size_t block_size)
+{
+    unsigned int bw = ((width + 3) & ~3) / 4, bh = ((height + 3) & ~3) / 4;
+    size_t size = (size_t)bw * bh * block_size;
+    uint8_t *dst = stage_level(pg, level, width, height, 1, size);
+    memcpy(dst, data, size);
+}
+
+static void stage_blocks_3d(PGRAPHState *pg, TextureLevel *level,
+                            const uint8_t *data, unsigned int width,
+                            unsigned int height, unsigned int depth,
+                            size_t block_size)
+{
+    unsigned int bw = ((width + 3) & ~3) / 4, bh = ((height + 3) & ~3) / 4;
+    size_t slice = (size_t)bw * bh * block_size;
+    uint8_t *dst = stage_level(pg, level, width, height, depth, slice * depth);
+    const uint8_t *src = data;
+    for (unsigned int z0 = 0; z0 < depth; z0 += 4) {
+        unsigned int nz = MIN(depth - z0, 4);
+        for (unsigned int b = 0; b < bw * bh; b++) {
+            for (unsigned int z = 0; z < nz; z++) {
+                memcpy(dst + (z0 + z) * slice + b * block_size, src,
+                       block_size);
+                src += block_size;
+            }
+        }
+    }
+}
+
+/* A level decoded from S3TC into RGBA8 in the ring, where the device has
+ * no BC */
+static void decode_level_2d(PGRAPHState *pg, TextureLevel *level,
+                            enum S3TC_DECOMPRESS_FORMAT fmt,
+                            const uint8_t *data, unsigned int width,
+                            unsigned int height)
+{
+    uint8_t *dst = stage_level(pg, level, width, height, 1,
+                               (size_t)width * height * 4);
+    s3tc_decompress_2d_into(fmt, data, width, height, dst);
+}
+
+static void decode_level_3d(PGRAPHState *pg, TextureLevel *level,
+                            enum S3TC_DECOMPRESS_FORMAT fmt,
+                            const uint8_t *data, unsigned int width,
+                            unsigned int height, unsigned int depth)
+{
+    uint8_t *dst = stage_level(pg, level, width, height, depth,
+                               (size_t)width * height * depth * 4);
+    s3tc_decompress_3d_into(fmt, data, width, height, depth, dst);
+}
+
+/* A swizzled level: unswizzled into the ring, and converted there where
+ * the host cannot sample the format (palette, YUV, R6G5B5): through a
+ * scratch range of the ring, the conversion's source, which the copy does
+ * not read */
+static void stage_swizzled(PGRAPHState *pg, TextureLevel *level,
+                           const TextureShape *s, const uint8_t *data,
+                           const uint8_t *palette, unsigned int width,
+                           unsigned int height, unsigned int depth,
+                           unsigned int bpp)
+{
+    size_t row_pitch = (size_t)width * bpp, slice_pitch = row_pitch * height;
+    size_t raw = slice_pitch * depth;
+    size_t converted = pgraph_converted_texture_size(*s, width, height, depth);
+
+    if (!converted) {
+        uint8_t *dst = stage_level(pg, level, width, height, depth, raw);
+        if (depth == 1) {
+            unswizzle_rect(data, width, height, dst, row_pitch, bpp);
+        } else {
+            unswizzle_box(data, width, height, depth, dst, row_pitch,
+                          slice_pitch, bpp);
+        }
+        return;
+    }
+    uint8_t *scratch;
+    pgraph_vk_staging_alloc(pg, raw, 16, &scratch);
+    if (depth == 1) {
+        unswizzle_rect(data, width, height, scratch, row_pitch, bpp);
+    } else {
+        unswizzle_box(data, width, height, depth, scratch, row_pitch,
+                      slice_pitch, bpp);
+    }
+    uint8_t *dst = stage_level(pg, level, width, height, depth, converted);
+    pgraph_convert_texture_data_into(*s, scratch, palette, width, height,
+                                     depth, row_pitch, slice_pitch, dst);
+}
+
+/* The texture's levels, from the guest's memory into the staging ring, in
+ * the open single-time command buffer's range. No buffer of its own: a
+ * level is decoded, unswizzled or copied straight into the ring. */
+static void stage_texture(PGRAPHState *pg, int texture_idx,
+                          TextureLayout *layout)
 {
     NV2AState *d = container_of(pg, NV2AState, pgraph);
+    PGRAPHVkState *r = pg->vk_renderer_state;
     TextureShape s = pgraph_get_texture_shape(pg, texture_idx);
     BasicColorFormatInfo f = kelvin_color_format_info_map[s.color_format];
 
@@ -174,13 +290,14 @@ static TextureLayout *get_texture_layout(PGRAPHState *pg, int texture_idx)
     assert(s.dimensionality > 1);
 
     const hwaddr texture_vram_offset = pgraph_get_texture_phys_addr(pg, texture_idx);
-    void *texture_data_ptr = (char *)d->vram_ptr + texture_vram_offset;
+    const uint8_t *texture_data_ptr = (uint8_t *)d->vram_ptr + texture_vram_offset;
 
     size_t texture_palette_data_size;
     const hwaddr texture_palette_vram_offset =
         pgraph_get_texture_palette_phys_addr_length(pg, texture_idx,
                                                     &texture_palette_data_size);
-    void *palette_data_ptr = (char *)d->vram_ptr + texture_palette_vram_offset;
+    const uint8_t *palette_data_ptr =
+        (uint8_t *)d->vram_ptr + texture_palette_vram_offset;
 
     unsigned int adjusted_width = s.width, adjusted_height = s.height,
                  adjusted_pitch = s.pitch, adjusted_depth = s.depth;
@@ -192,44 +309,40 @@ static TextureLayout *get_texture_layout(PGRAPHState *pg, int texture_idx)
         adjusted_depth = MAX(16, s.depth * 2);
     }
 
-    TextureLayout *layout = g_malloc0(sizeof(TextureLayout));
-
     if (f.linear) {
         assert(s.pitch % f.bytes_per_pixel == 0 && "Can't handle strides unaligned to pixels");
-
-        size_t converted_size;
-        uint8_t *converted = pgraph_convert_texture_data(
-            s, texture_data_ptr, palette_data_ptr, adjusted_width,
-            adjusted_height, 1, adjusted_pitch, 0, &converted_size);
-
-        if (!converted) {
-            int dst_stride = adjusted_width * f.bytes_per_pixel;
-            assert(adjusted_width <= s.width);
-            converted_size = dst_stride * adjusted_height;
-            converted = g_malloc(converted_size);
-            memcpy_image(converted, texture_data_ptr, adjusted_width * f.bytes_per_pixel, dst_stride,
-                         adjusted_pitch, adjusted_height);
-        }
-
         assert(s.levels == 1);
-        layout->layers[0].levels[0] = (TextureLevel){
-            .width = adjusted_width,
-            .height = adjusted_height,
-            .depth = 1,
-            .decoded_size = converted_size,
-            .decoded_data = converted,
-        };
-
+        TextureLevel *level = &layout->layers[0].levels[0];
+        size_t converted = pgraph_converted_texture_size(
+            s, adjusted_width, adjusted_height, 1);
+        if (converted) {
+            uint8_t *dst = stage_level(pg, level, adjusted_width,
+                                       adjusted_height, 1, converted);
+            pgraph_convert_texture_data_into(s, texture_data_ptr,
+                                             palette_data_ptr, adjusted_width,
+                                             adjusted_height, 1,
+                                             adjusted_pitch, 0, dst);
+        } else {
+            /* the rows as they are, the pitch's texels to a row */
+            assert(adjusted_width <= s.width);
+            size_t size = (size_t)adjusted_pitch * adjusted_height;
+            uint8_t *dst = stage_level(pg, level, adjusted_width,
+                                       adjusted_height, 1, size);
+            memcpy(dst, texture_data_ptr, size);
+            level->row_length = adjusted_pitch / f.bytes_per_pixel;
+        }
         NV2A_VK_DGROUP_END();
-        return layout;
+        return;
     }
 
     bool is_compressed = pgraph_is_texture_format_compressed(pg, s.color_format);
     size_t block_size = 0;
+    enum S3TC_DECOMPRESS_FORMAT s3tc_fmt = S3TC_DECOMPRESS_FORMAT_DXT1;
     if (is_compressed) {
         bool is_dxt1 =
             s.color_format == NV097_SET_TEXTURE_FORMAT_COLOR_L_DXT1_A1R5G5B5;
         block_size = is_dxt1 ? 8 : 16;
+        s3tc_fmt = kelvin_format_to_s3tc_format(s.color_format);
     }
 
     if (s.dimensionality == 2) {
@@ -237,91 +350,51 @@ static TextureLayout *get_texture_layout(PGRAPHState *pg, int texture_idx)
         const int num_layers = s.cubemap ? 6 : 1;
         for (int layer = 0; layer < num_layers; layer++) {
             unsigned int width = adjusted_width, height = adjusted_height;
-            texture_data_ptr = (char *)d->vram_ptr + texture_vram_offset +
+            texture_data_ptr = (uint8_t *)d->vram_ptr + texture_vram_offset +
                                layer * layer_size;
 
-            for (int level = 0; level < s.levels; level++) {
-                NV2A_VK_DPRINTF("Layer %d Level %d @ %x", layer, level, (int)((char*)texture_data_ptr - (char*)d->vram_ptr));
+            for (int level_idx = 0; level_idx < s.levels; level_idx++) {
+                TextureLevel *level = &layout->layers[layer].levels[level_idx];
+                NV2A_VK_DPRINTF("Layer %d Level %d @ %x", layer, level_idx, (int)((char*)texture_data_ptr - (char*)d->vram_ptr));
 
                 width = MAX(width, 1);
                 height = MAX(height, 1);
                 if (is_compressed) {
                     // https://docs.microsoft.com/en-us/windows/win32/direct3d10/d3d10-graphics-programming-guide-resources-block-compression#virtual-size-versus-physical-size
-                    unsigned int tex_width = width, tex_height = height;
                     unsigned int physical_width = (width + 3) & ~3,
                                  physical_height = (height + 3) & ~3;
 
-                    size_t converted_size = width * height * 4;
-                    uint8_t *converted = s3tc_decompress_2d(
-                        kelvin_format_to_s3tc_format(s.color_format),
-                        texture_data_ptr, width, height);
-                    assert(converted);
-
+                    if (r->bc_native) {
+                        stage_blocks_2d(pg, level, texture_data_ptr, width,
+                                        height, block_size);
+                    } else {
+                        decode_level_2d(pg, level, s3tc_fmt, texture_data_ptr,
+                                        width, height);
+                    }
                     if (s.cubemap && adjusted_width != s.width) {
                         // FIXME: Consider preserving the border.
                         // There does not seem to be a way to reference the border
                         // texels in a cubemap, so they are discarded.
-
-                        // glPixelStorei(GL_UNPACK_SKIP_PIXELS, 4);
-                        // glPixelStorei(GL_UNPACK_SKIP_ROWS, 4);
-                        tex_width = s.width;
-                        tex_height = s.height;
-                        // if (physical_width == width) {
-                        //     glPixelStorei(GL_UNPACK_ROW_LENGTH, adjusted_width);
-                        // }
-
                         // FIXME: Crop by 4 pixels on each side
+                        level->row_length = width;
+                        level->width = s.width;
+                        level->height = s.height;
                     }
-
-                    layout->layers[layer].levels[level] = (TextureLevel){
-                        .width = tex_width,
-                        .height = tex_height,
-                        .depth = 1,
-                        .decoded_size = converted_size,
-                        .decoded_data = converted,
-                    };
-
                     texture_data_ptr +=
                         physical_width / 4 * physical_height / 4 * block_size;
                 } else {
-                    unsigned int pitch = width * f.bytes_per_pixel;
-                    unsigned int tex_width = width, tex_height = height;
-
-                    size_t converted_size = height * pitch;
-                    uint8_t *unswizzled = (uint8_t*)g_malloc(height * pitch);
-                    unswizzle_rect(texture_data_ptr, width, height,
-                                   unswizzled, pitch, f.bytes_per_pixel);
-
-                    uint8_t *converted = pgraph_convert_texture_data(
-                        s, unswizzled, palette_data_ptr, width, height, 1,
-                        pitch, 0, &converted_size);
-
-                    if (converted) {
-                        g_free(unswizzled);
-                    } else {
-                        converted = unswizzled;
-                    }
-
+                    stage_swizzled(pg, level, &s, texture_data_ptr,
+                                   palette_data_ptr, width, height, 1,
+                                   f.bytes_per_pixel);
                     if (s.cubemap && adjusted_width != s.width) {
                         // FIXME: Consider preserving the border.
                         // There does not seem to be a way to reference the border
                         // texels in a cubemap, so they are discarded.
-                        // glPixelStorei(GL_UNPACK_ROW_LENGTH, adjusted_width);
-                        tex_width = s.width;
-                        tex_height = s.height;
-                        // pixel_data += 4 * f.bytes_per_pixel + 4 * pitch;
-
                         // FIXME: Crop by 4 pixels on each side
+                        level->row_length = width;
+                        level->width = s.width;
+                        level->height = s.height;
                     }
-
-                    layout->layers[layer].levels[level] = (TextureLevel){
-                        .width = tex_width,
-                        .height = tex_height,
-                        .depth = 1,
-                        .decoded_size = converted_size,
-                        .decoded_data = converted,
-                    };
-
                     texture_data_ptr += width * height * f.bytes_per_pixel;
                 }
 
@@ -334,63 +407,26 @@ static TextureLayout *get_texture_layout(PGRAPHState *pg, int texture_idx)
         unsigned int width = adjusted_width, height = adjusted_height,
                      depth = adjusted_depth;
 
-        for (int level = 0; level < s.levels; level++) {
+        for (int level_idx = 0; level_idx < s.levels; level_idx++) {
+            TextureLevel *level = &layout->layers[0].levels[level_idx];
+            width = MAX(width, 1);
+            height = MAX(height, 1);
+            depth = MAX(depth, 1);
             if (is_compressed) {
-                width = MAX(width, 1);
-                height = MAX(height, 1);
                 unsigned int physical_width = (width + 3) & ~3,
                              physical_height = (height + 3) & ~3;
-                depth = MAX(depth, 1);
-
-                size_t converted_size = width * height * depth * 4;
-                uint8_t *converted = s3tc_decompress_3d(
-                    kelvin_format_to_s3tc_format(s.color_format),
-                    texture_data_ptr, width, height, depth);
-                assert(converted);
-
-                layout->layers[0].levels[level] = (TextureLevel){
-                    .width = width,
-                    .height = height,
-                    .depth = depth,
-                    .decoded_size = converted_size,
-                    .decoded_data = converted,
-                };
-
+                if (r->bc_native) {
+                    stage_blocks_3d(pg, level, texture_data_ptr, width,
+                                    height, depth, block_size);
+                } else {
+                    decode_level_3d(pg, level, s3tc_fmt, texture_data_ptr,
+                                    width, height, depth);
+                }
                 texture_data_ptr += physical_width / 4 * physical_height / 4 * depth * block_size;
             } else {
-                width = MAX(width, 1);
-                height = MAX(height, 1);
-                depth = MAX(depth, 1);
-
-                unsigned int row_pitch = width * f.bytes_per_pixel;
-                unsigned int slice_pitch = row_pitch * height;
-
-                size_t unswizzled_size = slice_pitch * depth;
-                uint8_t *unswizzled = g_malloc(unswizzled_size);
-                unswizzle_box(texture_data_ptr, width, height, depth,
-                              unswizzled, row_pitch, slice_pitch,
-                              f.bytes_per_pixel);
-
-                size_t converted_size;
-                uint8_t *converted = pgraph_convert_texture_data(
-                    s, unswizzled, palette_data_ptr, width, height, depth,
-                    row_pitch, slice_pitch, &converted_size);
-
-                if (converted) {
-                    g_free(unswizzled);
-                } else {
-                    converted = unswizzled;
-                    converted_size = unswizzled_size;
-                }
-
-                layout->layers[0].levels[level] = (TextureLevel){
-                    .width = width,
-                    .height = height,
-                    .depth = depth,
-                    .decoded_size = converted_size,
-                    .decoded_data = converted,
-                };
-
+                stage_swizzled(pg, level, &s, texture_data_ptr,
+                               palette_data_ptr, width, height, depth,
+                               f.bytes_per_pixel);
                 texture_data_ptr += width * height * depth * f.bytes_per_pixel;
             }
 
@@ -401,7 +437,6 @@ static TextureLayout *get_texture_layout(PGRAPHState *pg, int texture_idx)
     }
 
     NV2A_VK_DGROUP_END();
-    return layout;
 }
 
 struct pgraph_texture_possibly_dirty_struct {
@@ -494,68 +529,42 @@ static void upload_texture_image(PGRAPHState *pg, int texture_idx,
     }
     PGRAPHVkState *r = pg->vk_renderer_state;
     TextureShape *state = &binding->key.state;
-    VkColorFormatInfo vkf = kelvin_color_format_vk_map[state->color_format];
+    VkColorFormatInfo vkf = texture_vkf(r, state->color_format);
 
     nv2a_profile_inc_counter(NV2A_PROF_TEX_UPLOAD);
 
-    g_autofree TextureLayout *layout = NULL;
+    /* The recording first: the levels are staged in its range of the ring,
+     * which it reads after the host barrier below */
+    VkCommandBuffer cmd = pgraph_vk_begin_single_time_commands(pg);
+    pgraph_vk_begin_debug_marker(r, cmd, RGBA_GREEN, __func__);
+
+    TextureLayout layout;
     if (binding->logo) {
-        vkf = kelvin_color_format_vk_map
-                  [NV097_SET_TEXTURE_FORMAT_COLOR_SZ_A8B8G8R8];
-        layout = g_malloc0(sizeof(TextureLayout));
-        uint8_t *px = g_malloc(segaboot_logo_size);
-        memcpy(px, segaboot_logo_data, segaboot_logo_size);
-        layout->layers[0].levels[0] = (TextureLevel){
-            .width = 2048, .height = 512, .depth = 1,
-            .decoded_size = segaboot_logo_size, .decoded_data = px,
-        };
+        vkf = texture_vkf(r, NV097_SET_TEXTURE_FORMAT_COLOR_SZ_A8B8G8R8);
+        uint8_t *dst = stage_level(pg, &layout.layers[0].levels[0], 2048,
+                                   512, 1, segaboot_logo_size);
+        memcpy(dst, segaboot_logo_data, segaboot_logo_size);
     } else {
-        layout = get_texture_layout(pg, texture_idx);
+        stage_texture(pg, texture_idx, &layout);
     }
     const int num_layers = state->cubemap ? 6 : 1;
+    const int num_levels = binding->logo ? 1 : state->levels;
 
-    // Calculate decoded texture data size
-    size_t texture_data_size = 0;
-    for (int layer_idx = 0; layer_idx < num_layers; layer_idx++) {
-        TextureLayer *layer = &layout->layers[layer_idx];
-        for (int level_idx = 0; level_idx < state->levels; level_idx++) {
-            size_t size = layer->levels[level_idx].decoded_size;
-            assert(size);
-            texture_data_size += size;
-        }
-    }
-
-    assert(texture_data_size <=
-           r->storage_buffers[BUFFER_STAGING_SRC].buffer_size);
-
-    // Copy texture data to mapped device buffer
-    uint8_t *mapped_memory_ptr;
-
-    pgraph_vk_wait_for_aux(pg);
-    VK_CHECK(vmaMapMemory(r->allocator,
-                          r->storage_buffers[BUFFER_STAGING_SRC].allocation,
-                          (void *)&mapped_memory_ptr));
-
-    int num_regions = num_layers * state->levels;
-    g_autofree VkBufferImageCopy *regions =
-        g_malloc0_n(num_regions, sizeof(VkBufferImageCopy));
-
-    VkBufferImageCopy *region = regions;
-    VkDeviceSize buffer_offset = 0;
+    VkBufferImageCopy regions[6 * 16];
+    int num_regions = 0;
+    VkDeviceSize flush_lo = (VkDeviceSize)-1, flush_hi = 0;
 
     for (int layer_idx = 0; layer_idx < num_layers; layer_idx++) {
-        TextureLayer *layer = &layout->layers[layer_idx];
+        TextureLayer *layer = &layout.layers[layer_idx];
         NV2A_VK_DPRINTF("Layer %d", layer_idx);
-        for (int level_idx = 0; level_idx < state->levels; level_idx++) {
+        for (int level_idx = 0; level_idx < num_levels; level_idx++) {
             TextureLevel *level = &layer->levels[level_idx];
             NV2A_VK_DPRINTF(" - Level %d, w=%d h=%d d=%d @ %08" HWADDR_PRIx,
                             level_idx, level->width, level->height,
-                            level->depth, buffer_offset);
-            memcpy(mapped_memory_ptr + buffer_offset, level->decoded_data,
-                   level->decoded_size);
-            *region = (VkBufferImageCopy){
-                .bufferOffset = buffer_offset,
-                .bufferRowLength = 0, // Tightly packed
+                            level->depth, level->offset);
+            regions[num_regions++] = (VkBufferImageCopy){
+                .bufferOffset = level->offset,
+                .bufferRowLength = level->row_length,
                 .bufferImageHeight = 0,
                 .imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
                 .imageSubresource.mipLevel = level_idx,
@@ -565,22 +574,14 @@ static void upload_texture_image(PGRAPHState *pg, int texture_idx,
                 .imageExtent =
                     (VkExtent3D){ level->width, level->height, level->depth },
             };
-            buffer_offset += level->decoded_size;
-            region++;
+            flush_lo = MIN(flush_lo, level->offset);
+            flush_hi = MAX(flush_hi, level->offset + level->size);
         }
     }
-    assert(buffer_offset <= r->storage_buffers[BUFFER_STAGING_SRC].buffer_size);
-
-    vmaFlushAllocation(r->allocator,
-                       r->storage_buffers[BUFFER_STAGING_SRC].allocation, 0,
-                       VK_WHOLE_SIZE);
-
-    vmaUnmapMemory(r->allocator,
-                   r->storage_buffers[BUFFER_STAGING_SRC].allocation);
-
-    // FIXME: Use nondraw. Need to fill and copy tex buffer at once
-    VkCommandBuffer cmd = pgraph_vk_begin_single_time_commands(pg);
-    pgraph_vk_begin_debug_marker(r, cmd, RGBA_GREEN, __func__);
+    /* the levels are one run of the ring, or one that rounded its end */
+    if (flush_hi > flush_lo) {
+        pgraph_vk_staging_flush(pg, flush_lo, flush_hi - flush_lo);
+    }
 
     VkBufferMemoryBarrier host_barrier = {
         .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
@@ -612,13 +613,6 @@ static void upload_texture_image(PGRAPHState *pg, int texture_idx,
     nv2a_profile_inc_counter(NV2A_PROF_QUEUE_SUBMIT_4);
     pgraph_vk_end_debug_marker(r, cmd);
     pgraph_vk_end_single_time_commands_async(pg, cmd);
-    // Release decoded texture data
-    for (int layer_idx = 0; layer_idx < num_layers; layer_idx++) {
-        TextureLayer *layer = &layout->layers[layer_idx];
-        for (int level_idx = 0; level_idx < state->levels; level_idx++) {
-            g_free(layer->levels[level_idx].decoded_data);
-        }
-    }
 }
 
 /* The spec does not promise depth blits: RADV has no BLIT_DST for
@@ -711,7 +705,7 @@ static void copy_zeta_surface_to_texture(PGRAPHState *pg, SurfaceBinding *surfac
 
     PGRAPHVkState *r = pg->vk_renderer_state;
     TextureShape *state = &texture->key.state;
-    VkColorFormatInfo vkf = kelvin_color_format_vk_map[state->color_format];
+    VkColorFormatInfo vkf = texture_vkf(r, state->color_format);
     bool use_compute_to_convert_depth_stencil =
         surface->host_fmt.vk_format == VK_FORMAT_D24_UNORM_S8_UINT ||
         surface->host_fmt.vk_format == VK_FORMAT_D32_SFLOAT_S8_UINT;
@@ -1089,7 +1083,7 @@ static void copy_surface_to_texture(PGRAPHState *pg, SurfaceBinding *surface,
 
     PGRAPHVkState *r = pg->vk_renderer_state;
     TextureShape *state = &texture->key.state;
-    VkColorFormatInfo vkf = kelvin_color_format_vk_map[state->color_format];
+    VkColorFormatInfo vkf = texture_vkf(r, state->color_format);
 
     nv2a_profile_inc_counter(NV2A_PROF_SURF_TO_TEX);
 
@@ -1126,7 +1120,7 @@ static void copy_cube_faces_to_texture(PGRAPHState *pg,
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
     TextureShape *state = &texture->key.state;
-    VkColorFormatInfo vkf = kelvin_color_format_vk_map[state->color_format];
+    VkColorFormatInfo vkf = texture_vkf(r, state->color_format);
 
     nv2a_profile_inc_counter(NV2A_PROF_SURF_TO_TEX);
 
@@ -1362,9 +1356,9 @@ static void texture_cow_if_referenced(PGRAPHState *pg, TextureBinding *snode,
     /* The new image is the retired one's twin: its own creation info, not
      * one rebuilt from the guest shape (a doge logo node is larger). */
     TextureShape *state = &snode->key.state;
-    VkColorFormatInfo vkf = kelvin_color_format_vk_map
-        [snode->logo ? NV097_SET_TEXTURE_FORMAT_COLOR_SZ_A8B8G8R8 :
-                       state->color_format];
+    VkColorFormatInfo vkf = texture_vkf(
+        r, snode->logo ? NV097_SET_TEXTURE_FORMAT_COLOR_SZ_A8B8G8R8 :
+                         state->color_format);
     VkImageCreateInfo ici = snode->image_ci;
     ici.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
     VmaAllocationCreateInfo aci = {
@@ -1452,33 +1446,38 @@ static void create_dummy_texture(PGRAPHState *pg)
     VK_CHECK(vkCreateSampler(r->device, &sampler_create_info, NULL,
                              &texture_sampler));
 
-    // Copy texture data to mapped device buffer
-    uint8_t *mapped_memory_ptr;
+    // Copy texture data to the staging ring
     size_t texture_data_size =
         image_create_info.extent.width * image_create_info.extent.height;
 
-    pgraph_vk_wait_for_aux(pg);
-    VK_CHECK(vmaMapMemory(r->allocator,
-                          r->storage_buffers[BUFFER_STAGING_SRC].allocation,
-                          (void *)&mapped_memory_ptr));
-    memset(mapped_memory_ptr, 0xff, texture_data_size);
-
-    vmaFlushAllocation(r->allocator,
-                       r->storage_buffers[BUFFER_STAGING_SRC].allocation, 0,
-                       VK_WHOLE_SIZE);
-
-    vmaUnmapMemory(r->allocator,
-                   r->storage_buffers[BUFFER_STAGING_SRC].allocation);
-
     VkCommandBuffer cmd = pgraph_vk_begin_single_time_commands(pg);
     pgraph_vk_begin_debug_marker(r, cmd, RGBA_GREEN, __func__);
+
+    uint8_t *staged;
+    VkDeviceSize staged_offset =
+        pgraph_vk_staging_alloc(pg, texture_data_size, 16, &staged);
+    memset(staged, 0xff, texture_data_size);
+    pgraph_vk_staging_flush(pg, staged_offset, texture_data_size);
+
+    VkBufferMemoryBarrier host_barrier = {
+        .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
+        .srcAccessMask = VK_ACCESS_HOST_WRITE_BIT,
+        .dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT,
+        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .buffer = r->storage_buffers[BUFFER_STAGING_SRC].buffer,
+        .size = VK_WHOLE_SIZE
+    };
+    vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_HOST_BIT,
+                         VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 1,
+                         &host_barrier, 0, NULL);
 
     pgraph_vk_transition_image_layout(
         pg, cmd, texture_image, VK_FORMAT_R8_UNORM, VK_IMAGE_LAYOUT_UNDEFINED,
         VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
 
     VkBufferImageCopy region = {
-        .bufferOffset = 0,
+        .bufferOffset = staged_offset,
         .bufferRowLength = 0,
         .bufferImageHeight = 0,
         .imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
@@ -1644,7 +1643,7 @@ static VkSampler create_sampler_for_state(PGRAPHState *pg,
     const TextureShape state = *state_in;
     BasicColorFormatInfo f_basic =
         kelvin_color_format_info_map[state.color_format];
-    VkColorFormatInfo vkf = kelvin_color_format_vk_map[state.color_format];
+    VkColorFormatInfo vkf = texture_vkf(r, state.color_format);
     uint32_t mip_levels = f_basic.linear ? 1 : state.levels;
 
     void *sampler_next_struct = NULL;
@@ -1989,7 +1988,7 @@ static void create_texture(PGRAPHState *pg, int texture_idx)
     snode->possibly_dirty = false;
     snode->hash = content_hash;
 
-    VkColorFormatInfo vkf = kelvin_color_format_vk_map[state.color_format];
+    VkColorFormatInfo vkf = texture_vkf(r, state.color_format);
     assert(vkf.vk_format != 0);
     assert(0 < state.dimensionality);
     assert(state.dimensionality < ARRAY_SIZE(dimensionality_to_vk_image_type));
@@ -2010,7 +2009,7 @@ static void create_texture(PGRAPHState *pg, int texture_idx)
         state.width = 2048;
         state.height = 512;
         state.levels = 1;
-        vkf = kelvin_color_format_vk_map[state.color_format];
+        vkf = texture_vkf(r, state.color_format);
         fprintf(stderr, "nv2a: SEGABOOT logo replaced (vk)\n");
     }
 
@@ -2020,7 +2019,7 @@ static void create_texture(PGRAPHState *pg, int texture_idx)
         surface_to_texture &&
         surface != r->color_binding &&
         state.dimensionality == 2 && !state.cubemap &&
-        kelvin_color_format_vk_map[state.color_format].vk_format ==
+        texture_vkf(r, state.color_format).vk_format ==
             surface->host_fmt.vk_format;
 
     VkImageCreateInfo image_create_info = {
@@ -2300,13 +2299,32 @@ void pgraph_vk_init_textures(PGRAPHState *pg)
     PGRAPHVkState *r = pg->vk_renderer_state;
 
     texture_cache_init(r);
+
+    /* BC where the device has it for all three formats */
+    r->bc_native = r->enabled_physical_device_features.textureCompressionBC;
+    static const VkFormat bc_formats[] = { VK_FORMAT_BC1_RGBA_UNORM_BLOCK,
+                                           VK_FORMAT_BC2_UNORM_BLOCK,
+                                           VK_FORMAT_BC3_UNORM_BLOCK };
+    for (int i = 0; i < ARRAY_SIZE(bc_formats) && r->bc_native; i++) {
+        VkFormatProperties props;
+        vkGetPhysicalDeviceFormatProperties(r->physical_device, bc_formats[i],
+                                            &props);
+        const VkFormatFeatureFlags need =
+            VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT |
+            VK_FORMAT_FEATURE_TRANSFER_DST_BIT;
+        if ((props.optimalTilingFeatures & need) != need) {
+            r->bc_native = false;
+        }
+    }
+
     create_dummy_texture(pg);
 
+    /* the host formats' properties, by guest format */
     r->texture_format_properties = g_malloc0_n(
         ARRAY_SIZE(kelvin_color_format_vk_map), sizeof(VkFormatProperties));
     for (int i = 0; i < ARRAY_SIZE(kelvin_color_format_vk_map); i++) {
         vkGetPhysicalDeviceFormatProperties(
-            r->physical_device, kelvin_color_format_vk_map[i].vk_format,
+            r->physical_device, texture_vkf(r, i).vk_format,
             &r->texture_format_properties[i]);
     }
 }

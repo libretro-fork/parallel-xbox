@@ -112,6 +112,8 @@ void pgraph_vk_init_buffers(NV2AState *d)
         .buffer_size = 4096 * 4096 * 4,
     };
 
+    /* The staging ring for uploads (command.c pgraph_vk_staging_alloc),
+     * mapped for good */
     r->storage_buffers[BUFFER_STAGING_SRC] = (StorageBuffer){
         .alloc_info = host_alloc_create_info,
         .usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
@@ -234,7 +236,8 @@ void pgraph_vk_init_buffers(NV2AState *d)
     int buffers_to_map[] = { BUFFER_VERTEX_RAM,
                              BUFFER_INDEX_STAGING,
                              BUFFER_VERTEX_INLINE_STAGING,
-                             BUFFER_UNIFORM_STAGING };
+                             BUFFER_UNIFORM_STAGING,
+                             BUFFER_STAGING_SRC };
 
     for (int i = 0; i < ARRAY_SIZE(buffers_to_map); i++) {
         VK_CHECK(vmaMapMemory(

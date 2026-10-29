@@ -1194,33 +1194,19 @@ void pgraph_vk_upload_surface_data(NV2AState *d, SurfaceBinding *surface,
     uint8_t *data = d->vram_ptr;
     uint8_t *buf = data + surface->vram_addr;
 
-    g_autofree uint8_t *swizzle_buf = NULL;
-    uint8_t *gl_read_buf = NULL;
-
-    if (surface->swizzle) {
-        swizzle_buf = (uint8_t*)g_malloc(surface->size);
-        gl_read_buf = swizzle_buf;
-        unswizzle_rect(data + surface->vram_addr,
-                       surface->width, surface->height,
-                       swizzle_buf,
-                       surface->pitch,
-                       surface->fmt.bytes_per_pixel);
-        nv2a_profile_inc_counter(NV2A_PROF_SURF_SWIZZLE);
-    } else {
-        gl_read_buf = buf;
-    }
-
     //
-    // Upload image data from host to staging buffer
+    // Upload image data from host to the staging ring
     //
 
     StorageBuffer *copy_buffer = &r->storage_buffers[BUFFER_STAGING_SRC];
     size_t uploaded_image_size = surface->height * surface->width *
                                  surface->fmt.bytes_per_pixel;
-    assert(uploaded_image_size <= copy_buffer->buffer_size);
 
-    if (surface->host_fmt.vk_format == VK_FORMAT_D24_UNORM_S8_UINT ||
-        surface->host_fmt.vk_format == VK_FORMAT_D32_SFLOAT_S8_UINT) {
+    bool use_compute_to_convert_depth_stencil_format =
+        surface->host_fmt.vk_format == VK_FORMAT_D24_UNORM_S8_UINT ||
+        surface->host_fmt.vk_format == VK_FORMAT_D32_SFLOAT_S8_UINT;
+
+    if (use_compute_to_convert_depth_stencil_format) {
         /* The unpacked planes, before the aux recording that writes them. */
         unsigned int cw = surface->width, ch = surface->height;
         pgraph_apply_scaling_factor(pg, &cw, &ch);
@@ -1231,34 +1217,38 @@ void pgraph_vk_upload_surface_data(NV2AState *d, SurfaceBinding *surface,
         if (pgraph_vk_compute_needs_finish(r)) {
             pgraph_vk_finish(pg, VK_FINISH_REASON_NEED_BUFFER_SPACE);
         }
+        /* The compute buffers are one set: an earlier aux submission may
+         * still be using them */
+        pgraph_vk_wait_for_aux(pg);
     }
 
-    /* Begin before touching the staging buffer: it waits out an earlier
-     * async aux submission still reading it. Recording ahead of the memcpy
-     * is fine: only the submission needs the data, ordered by the host
-     * barrier below. */
+    /* The recording first: the surface's bytes go into its range of the
+     * ring, which it reads after the host barrier below */
     VkCommandBuffer cmd = pgraph_vk_begin_single_time_commands(pg);
     pgraph_vk_begin_debug_marker(r, cmd, RGBA_RED, __func__);
 
-    void *mapped_memory_ptr = NULL;
-    VK_CHECK(vmaMapMemory(r->allocator, copy_buffer->allocation,
-                          &mapped_memory_ptr));
-
-    bool use_compute_to_convert_depth_stencil_format =
-        surface->host_fmt.vk_format == VK_FORMAT_D24_UNORM_S8_UINT ||
-        surface->host_fmt.vk_format == VK_FORMAT_D32_SFLOAT_S8_UINT;
+    uint8_t *staged;
+    VkDeviceSize staged_offset =
+        pgraph_vk_staging_alloc(pg, uploaded_image_size, 16, &staged);
 
     bool no_conversion_necessary =
         surface->color || surface->host_fmt.vk_format == VK_FORMAT_D16_UNORM ||
         use_compute_to_convert_depth_stencil_format;
     assert(no_conversion_necessary);
 
-    memcpy_image(mapped_memory_ptr, gl_read_buf,
-                 surface->width * surface->fmt.bytes_per_pixel, surface->pitch,
-                 surface->height);
+    if (surface->swizzle) {
+        /* unswizzled straight into the ring, its rows packed */
+        unswizzle_rect(buf, surface->width, surface->height, staged,
+                       surface->width * surface->fmt.bytes_per_pixel,
+                       surface->fmt.bytes_per_pixel);
+        nv2a_profile_inc_counter(NV2A_PROF_SURF_SWIZZLE);
+    } else {
+        memcpy_image(staged, buf,
+                     surface->width * surface->fmt.bytes_per_pixel,
+                     surface->pitch, surface->height);
+    }
 
-    vmaFlushAllocation(r->allocator, copy_buffer->allocation, 0, VK_WHOLE_SIZE);
-    vmaUnmapMemory(r->allocator, copy_buffer->allocation);
+    pgraph_vk_staging_flush(pg, staged_offset, uploaded_image_size);
 
     VkBufferMemoryBarrier host_barrier = {
         .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
@@ -1279,6 +1269,7 @@ void pgraph_vk_upload_surface_data(NV2AState *d, SurfaceBinding *surface,
     int num_regions = 0;
 
     regions[num_regions++] = (VkBufferImageCopy){
+        .bufferOffset = staged_offset,
         .imageSubresource.aspectMask = surface->color ?
                                            VK_IMAGE_ASPECT_COLOR_BIT :
                                            VK_IMAGE_ASPECT_DEPTH_BIT,
@@ -1306,6 +1297,7 @@ void pgraph_vk_upload_surface_data(NV2AState *d, SurfaceBinding *surface,
 
         size_t packed_size = uploaded_image_size;
         VkBufferCopy buffer_copy_region = {
+            .srcOffset = staged_offset,
             .size = packed_size,
         };
         vkCmdCopyBuffer(cmd, copy_buffer->buffer,
@@ -1394,6 +1386,7 @@ void pgraph_vk_upload_surface_data(NV2AState *d, SurfaceBinding *surface,
                              &post_unpack_dst_barrier, 0, NULL);
 
         // Already scaled during compute. Adjust copy regions.
+        regions[0].bufferOffset = 0;
         regions[0].imageExtent = (VkExtent3D){ scaled_width, scaled_height, 1 };
         regions[1].imageExtent = regions[0].imageExtent;
         regions[1].bufferOffset =

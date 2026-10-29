@@ -325,6 +325,22 @@ TextureShape pgraph_get_texture_shape(PGRAPHState *pg, int texture_idx)
     return shape;
 }
 
+size_t pgraph_converted_texture_size(const TextureShape s, unsigned int width,
+                                     unsigned int height, unsigned int depth)
+{
+    switch (s.color_format) {
+    case NV097_SET_TEXTURE_FORMAT_COLOR_SZ_I8_A8R8G8B8:
+        return (size_t)width * height * depth * 4;
+    case NV097_SET_TEXTURE_FORMAT_COLOR_LC_IMAGE_CR8YB8CB8YA8:
+    case NV097_SET_TEXTURE_FORMAT_COLOR_LC_IMAGE_YB8CR8YA8CB8:
+        return (size_t)width * height * 4;
+    case NV097_SET_TEXTURE_FORMAT_COLOR_SZ_R6G5B5:
+        return (size_t)width * height * 3;
+    default:
+        return 0;
+    }
+}
+
 uint8_t *pgraph_convert_texture_data(const TextureShape s, const uint8_t *data,
                                      const uint8_t *palette_data,
                                      unsigned int width, unsigned int height,
@@ -332,12 +348,30 @@ uint8_t *pgraph_convert_texture_data(const TextureShape s, const uint8_t *data,
                                      unsigned int slice_pitch,
                                      size_t *converted_size)
 {
-    size_t size = 0;
-    uint8_t *converted_data;
+    size_t size = pgraph_converted_texture_size(s, width, height, depth);
+    if (!size) {
+        return NULL;
+    }
+    uint8_t *converted_data = g_malloc(size);
+    pgraph_convert_texture_data_into(s, data, palette_data, width, height,
+                                     depth, row_pitch, slice_pitch,
+                                     converted_data);
+    if (converted_size) {
+        *converted_size = size;
+    }
+    return converted_data;
+}
 
+void pgraph_convert_texture_data_into(const TextureShape s,
+                                      const uint8_t *data,
+                                      const uint8_t *palette_data,
+                                      unsigned int width, unsigned int height,
+                                      unsigned int depth,
+                                      unsigned int row_pitch,
+                                      unsigned int slice_pitch,
+                                      uint8_t *converted_data)
+{
     if (s.color_format == NV097_SET_TEXTURE_FORMAT_COLOR_SZ_I8_A8R8G8B8) {
-        size = width * height * depth * 4;
-        converted_data = g_malloc(size);
         const uint8_t *src = data;
         uint32_t *dst = (uint32_t *)converted_data;
         for (int z = 0; z < depth; z++) {
@@ -360,8 +394,6 @@ uint8_t *pgraph_convert_texture_data(const TextureShape s, const uint8_t *data,
         assert(depth == 1); /* FIXME */
         // FIXME: only valid if control0 register allows for colorspace
         // conversion
-        size = width * height * 4;
-        converted_data = g_malloc(size);
         uint8_t *pixel = converted_data;
         for (int y = 0; y < height; y++) {
             const uint8_t *line = &data[y * row_pitch * depth];
@@ -379,8 +411,6 @@ uint8_t *pgraph_convert_texture_data(const TextureShape s, const uint8_t *data,
         }
     } else if (s.color_format == NV097_SET_TEXTURE_FORMAT_COLOR_SZ_R6G5B5) {
         assert(depth == 1); /* FIXME */
-        size = width * height * 3;
-        converted_data = g_malloc(size);
         for (int y = 0; y < height; y++) {
             for (int x = 0; x < width; x++) {
                 uint16_t rgb655 = *(uint16_t *)(data + y * row_pitch + x * 2);
@@ -395,11 +425,6 @@ uint8_t *pgraph_convert_texture_data(const TextureShape s, const uint8_t *data,
             }
         }
     } else {
-        return NULL;
+        assert(!"no conversion for this format");
     }
-
-    if (converted_size) {
-        *converted_size = size;
-    }
-    return converted_data;
 }

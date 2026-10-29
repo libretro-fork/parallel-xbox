@@ -33,6 +33,16 @@ enum S3TC_DECOMPRESS_FORMAT {
     S3TC_DECOMPRESS_FORMAT_DXT5,
 };
 
+/* Decoded into the caller's buffer: width * height (* depth) RGBA8 */
+void s3tc_decompress_3d_into(enum S3TC_DECOMPRESS_FORMAT color_format,
+                             const uint8_t *data, unsigned int width,
+                             unsigned int height, unsigned int depth,
+                             uint8_t *converted_data);
+void s3tc_decompress_2d_into(enum S3TC_DECOMPRESS_FORMAT color_format,
+                             const uint8_t *data, unsigned int width,
+                             unsigned int height, uint8_t *converted_data);
+
+/* the same, in a buffer of their own (g_malloc) */
 uint8_t *s3tc_decompress_3d(enum S3TC_DECOMPRESS_FORMAT color_format,
                             const uint8_t *data, unsigned int width,
                             unsigned int height, unsigned int depth);

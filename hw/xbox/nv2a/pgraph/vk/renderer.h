@@ -306,7 +306,11 @@ typedef struct PGRAPHVkDisplayState {
 
     VkDescriptorPool descriptor_pool;
     VkDescriptorSetLayout descriptor_set_layout;
-    VkDescriptorSet descriptor_set;
+    /* one set a frame in flight: a frame's command buffer is not waited
+     * for before the next frame's set is written (display.c) */
+#define PGRAPH_VK_DISPLAY_SETS 8
+    VkDescriptorSet descriptor_sets[PGRAPH_VK_DISPLAY_SETS];
+    int descriptor_index;
 
     VkPipelineLayout pipeline_layout;
     VkPipeline pipeline;
@@ -407,6 +411,8 @@ typedef struct PGRAPHVkComputeState {
 /* Main command buffers in the ring: a slot is recorded again two submissions
  * after its own, once its fence has settled. */
 #define PGRAPH_VK_SLOTS 2
+/* single-time command buffers in flight at most (renderer.h aux) */
+#define PGRAPH_VK_AUX_SLOTS 8
 
 /* One sampler state of the sampler cache (texture.c). */
 typedef struct VkSamplerCacheKey {
@@ -485,8 +491,8 @@ typedef struct PGRAPHVkState {
 
     VkQueue queue;
     VkCommandPool command_pool;
-    /* The mains and the syncs (one of each per slot), then the aux. */
-    VkCommandBuffer command_buffers[2 * PGRAPH_VK_SLOTS + 1];
+    /* The mains and the syncs (one of each per slot), then the aux ring. */
+    VkCommandBuffer command_buffers[2 * PGRAPH_VK_SLOTS + PGRAPH_VK_AUX_SLOTS];
 
     VkCommandBuffer command_buffer;
     bool budget_check_pending;
@@ -497,10 +503,27 @@ typedef struct PGRAPHVkState {
      * below it has retired. */
     uint32_t settled_submit;
 
-    VkCommandBuffer aux_command_buffer;
+    /* The aux ring (command.c): single-time command buffers - texture and
+     * surface uploads, the display - submitted without a wait, each with a
+     * fence of its own and the range of the staging ring it reads. A slot
+     * is reused once its fence has signalled, PGRAPH_VK_AUX_SLOTS
+     * submissions later. */
+    struct PGRAPHVkAuxSlot {
+        VkCommandBuffer cmd;
+        VkFence fence;
+        bool pending;
+        /* the staging ring's bytes this submission reads: [start, end),
+         * wrapping through the ring's end when end < start */
+        size_t stage_start, stage_end;
+    } aux[PGRAPH_VK_AUX_SLOTS];
+    int aux_slot;           /* the slot recording, or the next to record */
+    int aux_oldest;         /* the oldest pending slot */
+    int aux_npending;
     bool in_aux_command_buffer;
-    VkFence aux_fence;
-    bool aux_in_flight;
+    /* The staging ring in BUFFER_STAGING_SRC (persistently mapped): the
+     * next byte to hand out; the open slot's range starts at its
+     * stage_start */
+    size_t stage_head;
 
     /* Rotation: an async finish submits this slot and records on into the
      * next without waiting. */
@@ -671,6 +694,10 @@ typedef struct PGRAPHVkState {
     bool texture_bindings_changed;
     uint64_t texture_binding_seq;
     VkFormatProperties *texture_format_properties;
+    /* S3TC textures uploaded as BC1/2/3, their blocks as they are: the
+     * device has textureCompressionBC and samples and copies into the
+     * three formats (else they are decoded to RGBA8 on the CPU) */
+    bool bc_native;
     /* Formats already asked whether this device blits them (texture.c). */
     struct {
         VkFormat format;
@@ -819,6 +846,13 @@ void pgraph_vk_queue_submit_and_wait(PGRAPHVkState *r, uint32_t count,
 void pgraph_vk_end_single_time_commands_async(PGRAPHState *pg,
                                               VkCommandBuffer cmd);
 void pgraph_vk_wait_for_aux(PGRAPHState *pg);
+/* A range of the staging ring (BUFFER_STAGING_SRC) for the open single-time
+ * command buffer to read: its offset in the buffer, and the mapped pointer
+ * to write it through; flushed before the submission */
+VkDeviceSize pgraph_vk_staging_alloc(PGRAPHState *pg, size_t size,
+                                     size_t alignment, uint8_t **ptr);
+void pgraph_vk_staging_flush(PGRAPHState *pg, VkDeviceSize offset,
+                             size_t size);
 
 // image.c
 void pgraph_vk_transition_image_layout(PGRAPHState *pg, VkCommandBuffer cmd,

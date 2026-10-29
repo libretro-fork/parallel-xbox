@@ -519,6 +519,8 @@ static bool create_logical_device(PGRAPHState *pg, Error **errp)
         F(shaderClipDistance, true),
         F(shaderTessellationAndGeometryPointSize, true),
         F(wideLines, false),
+        /* S3TC textures uploaded as they are (texture.c), optional */
+        F(textureCompressionBC, false),
         #undef F
         // clang-format on
     };

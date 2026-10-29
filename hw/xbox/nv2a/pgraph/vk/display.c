@@ -154,28 +154,19 @@ static void upload_pvideo_image(PGRAPHState *pg, PvideoState state)
 
     // FIXME: Dirty tracking. We don't necessarily need to upload so much.
 
-    // Copy texture data to mapped device buffer
-    uint8_t *mapped_memory_ptr;
-
-    pgraph_vk_wait_for_aux(pg);
-    VK_CHECK(vmaMapMemory(r->allocator,
-                          r->storage_buffers[BUFFER_STAGING_SRC].allocation,
-                          (void *)&mapped_memory_ptr));
-
-    convert_texture_data__CR8YB8CB8YA8(
-        mapped_memory_ptr, d->vram_ptr + state.base + state.offset,
-        state.in_width, state.in_height, state.pitch);
-
-    vmaFlushAllocation(r->allocator,
-                       r->storage_buffers[BUFFER_STAGING_SRC].allocation, 0,
-                       VK_WHOLE_SIZE);
-
-    vmaUnmapMemory(r->allocator,
-                   r->storage_buffers[BUFFER_STAGING_SRC].allocation);
-
     // FIXME: Merge with display renderer command buffer
 
     VkCommandBuffer cmd = pgraph_vk_begin_single_time_commands(pg);
+
+    /* the picture, converted straight into the staging ring */
+    uint8_t *staged;
+    size_t staged_size = (size_t)state.in_width * state.in_height * 4;
+    VkDeviceSize staged_offset =
+        pgraph_vk_staging_alloc(pg, staged_size, 16, &staged);
+    convert_texture_data__CR8YB8CB8YA8(
+        staged, d->vram_ptr + state.base + state.offset,
+        state.in_width, state.in_height, state.pitch);
+    pgraph_vk_staging_flush(pg, staged_offset, staged_size);
 
     VkBufferMemoryBarrier host_barrier = {
         .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
@@ -195,7 +186,7 @@ static void upload_pvideo_image(PGRAPHState *pg, PvideoState state)
         VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
 
     VkBufferImageCopy region = {
-        .bufferOffset = 0,
+        .bufferOffset = staged_offset,
         .bufferRowLength = 0,
         .bufferImageHeight = 0,
         .imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
@@ -266,7 +257,7 @@ static void create_descriptor_pool(PGRAPHState *pg)
         .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
         .poolSizeCount = 1,
         .pPoolSizes = &pool_sizes,
-        .maxSets = 1,
+        .maxSets = PGRAPH_VK_DISPLAY_SETS,
         .flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT,
     };
     VK_CHECK(vkCreateDescriptorPool(r->device, &pool_info, NULL,
@@ -317,16 +308,20 @@ static void create_descriptor_sets(PGRAPHState *pg)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
 
-    VkDescriptorSetLayout layout = r->display.descriptor_set_layout;
+    VkDescriptorSetLayout layouts[PGRAPH_VK_DISPLAY_SETS];
+    for (int i = 0; i < PGRAPH_VK_DISPLAY_SETS; i++) {
+        layouts[i] = r->display.descriptor_set_layout;
+    }
 
     VkDescriptorSetAllocateInfo alloc_info = {
         .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
         .descriptorPool = r->display.descriptor_pool,
-        .descriptorSetCount = 1,
-        .pSetLayouts = &layout,
+        .descriptorSetCount = PGRAPH_VK_DISPLAY_SETS,
+        .pSetLayouts = layouts,
     };
     VK_CHECK(vkAllocateDescriptorSets(r->device, &alloc_info,
-                                      &r->display.descriptor_set));
+                                      r->display.descriptor_sets));
+    r->display.descriptor_index = 0;
 }
 
 static void create_render_pass(PGRAPHState *pg)
@@ -783,7 +778,7 @@ static void update_descriptor_set(PGRAPHState *pg, SurfaceBinding *surface)
     };
     descriptor_writes[0] = (VkWriteDescriptorSet){
         .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-        .dstSet = r->display.descriptor_set,
+        .dstSet = r->display.descriptor_sets[r->display.descriptor_index],
         .dstBinding = 0,
         .dstArrayElement = 0,
         .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
@@ -809,7 +804,7 @@ static void update_descriptor_set(PGRAPHState *pg, SurfaceBinding *surface)
     }
     descriptor_writes[1] = (VkWriteDescriptorSet){
         .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-        .dstSet = r->display.descriptor_set,
+        .dstSet = r->display.descriptor_sets[r->display.descriptor_index],
         .dstBinding = 1,
         .dstArrayElement = 0,
         .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
@@ -1398,6 +1393,10 @@ static void render_display(PGRAPHState *pg, SurfaceBinding *surface)
     }
 
     update_uniforms(pg, surface);
+    /* the next set: the last frame's command buffer may still be running
+     * with its own */
+    disp->descriptor_index =
+        (disp->descriptor_index + 1) % PGRAPH_VK_DISPLAY_SETS;
     update_descriptor_set(pg, surface);
 
     /* The render target: the display image, or on the frontend's device
@@ -1461,8 +1460,9 @@ static void render_display(PGRAPHState *pg, SurfaceBinding *surface)
                       disp->pipeline);
 
     vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                            disp->pipeline_layout, 0, 1, &disp->descriptor_set,
-                            0, NULL);
+                            disp->pipeline_layout, 0, 1,
+                            &disp->descriptor_sets[disp->descriptor_index], 0,
+                            NULL);
 
     VkViewport viewport = {
         .width = disp->width,

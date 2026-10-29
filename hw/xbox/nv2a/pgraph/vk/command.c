@@ -58,15 +58,21 @@ static void create_command_buffers(PGRAPHState *pg)
     VK_CHECK(
         vkAllocateCommandBuffers(r->device, &alloc_info, r->command_buffers));
 
-    /* [0..N) = main slots; [N..2N) = per-slot staging-sync; [2N] = the
-     * standalone aux for single-time commands (own fence). */
+    /* [0..N) = main slots; [N..2N) = per-slot staging-sync; [2N..) = the
+     * aux ring for single-time commands (a fence each). */
     for (int s = 0; s < PGRAPH_VK_SLOTS; s++) {
         r->slot_main[s] = r->command_buffers[s];
         r->slot_sync[s] = r->command_buffers[PGRAPH_VK_SLOTS + s];
     }
     r->slot = 0;
     r->command_buffer = r->slot_main[0];
-    r->aux_command_buffer = r->command_buffers[2 * PGRAPH_VK_SLOTS];
+    for (int s = 0; s < PGRAPH_VK_AUX_SLOTS; s++) {
+        r->aux[s].cmd = r->command_buffers[2 * PGRAPH_VK_SLOTS + s];
+    }
+    r->aux_slot = 0;
+    r->aux_oldest = 0;
+    r->aux_npending = 0;
+    r->stage_head = 0;
 }
 
 static void destroy_command_buffers(PGRAPHState *pg)
@@ -77,7 +83,9 @@ static void destroy_command_buffers(PGRAPHState *pg)
                          ARRAY_SIZE(r->command_buffers), r->command_buffers);
 
     r->command_buffer = VK_NULL_HANDLE;
-    r->aux_command_buffer = VK_NULL_HANDLE;
+    for (int s = 0; s < PGRAPH_VK_AUX_SLOTS; s++) {
+        r->aux[s].cmd = VK_NULL_HANDLE;
+    }
 }
 
 /*
@@ -137,18 +145,40 @@ void pgraph_vk_queue_submit_and_wait(PGRAPHVkState *r, uint32_t count,
     vkDestroyFence(r->device, fence, NULL);
 }
 
-/* Wait for the last aux submission, so the aux command buffer and the
- * staging buffers it read can be reused; nothing else uses its fence. */
+/* The oldest pending aux submission, retired: its fence waited for, or
+ * only looked at when `poll` */
+static bool aux_retire_oldest(PGRAPHVkState *r, bool poll)
+{
+    struct PGRAPHVkAuxSlot *a = &r->aux[r->aux_oldest];
+
+    assert(r->aux_npending > 0 && a->pending);
+    if (poll) {
+        if (vkGetFenceStatus(r->device, a->fence) != VK_SUCCESS) {
+            return false;
+        }
+    } else {
+        VK_CHECK(vkWaitForFences(r->device, 1, &a->fence, VK_TRUE,
+                                 UINT64_MAX));
+    }
+    VK_CHECK(vkResetFences(r->device, 1, &a->fence));
+    a->pending = false;
+    r->aux_oldest = (r->aux_oldest + 1) % PGRAPH_VK_AUX_SLOTS;
+    r->aux_npending--;
+    return true;
+}
+
+/* Wait for every aux submission: the command buffers and the staging ring
+ * are free. For a buffer's recreation and for shutdown; nothing per frame
+ * needs it. */
 void pgraph_vk_wait_for_aux(PGRAPHState *pg)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
 
-    if (r->aux_in_flight) {
-        VK_CHECK(vkWaitForFences(r->device, 1, &r->aux_fence, VK_TRUE,
-                                 UINT64_MAX));
-
-        VK_CHECK(vkResetFences(r->device, 1, &r->aux_fence));
-        r->aux_in_flight = false;
+    while (r->aux_npending) {
+        aux_retire_oldest(r, false);
+    }
+    if (!r->in_aux_command_buffer) {
+        r->stage_head = 0;
     }
 }
 
@@ -156,17 +186,119 @@ VkCommandBuffer pgraph_vk_begin_single_time_commands(PGRAPHState *pg)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
 
-    pgraph_vk_wait_for_aux(pg);
     assert(!r->in_aux_command_buffer);
+    struct PGRAPHVkAuxSlot *a = &r->aux[r->aux_slot];
+    /* The slot's last submission, PGRAPH_VK_AUX_SLOTS ago: normally long
+     * retired; a wait here means the GPU is that far behind the uploads. */
+    while (a->pending) {
+        aux_retire_oldest(r, false);
+    }
     r->in_aux_command_buffer = true;
+    a->stage_start = r->stage_head;
+    a->stage_end = r->stage_head;
 
     VkCommandBufferBeginInfo begin_info = {
         .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
         .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
     };
-    VK_CHECK(vkBeginCommandBuffer(r->aux_command_buffer, &begin_info));
+    VK_CHECK(vkBeginCommandBuffer(a->cmd, &begin_info));
 
-    return r->aux_command_buffer;
+    return a->cmd;
+}
+
+/* The first byte of the staging ring still to be read: by the oldest
+ * submission in flight that reads any, else by the open recording. False
+ * when nothing of the ring is in use. */
+static bool stage_tail(PGRAPHVkState *r, size_t *tail)
+{
+    for (int i = 0; i < r->aux_npending; i++) {
+        struct PGRAPHVkAuxSlot *a =
+            &r->aux[(r->aux_oldest + i) % PGRAPH_VK_AUX_SLOTS];
+        if (a->stage_end != a->stage_start) {
+            *tail = a->stage_start;
+            return true;
+        }
+    }
+    struct PGRAPHVkAuxSlot *a = &r->aux[r->aux_slot];
+    if (a->stage_end != a->stage_start) {
+        *tail = a->stage_start;
+        return true;
+    }
+    return false;
+}
+
+VkDeviceSize pgraph_vk_staging_alloc(PGRAPHState *pg, size_t size,
+                                     size_t alignment, uint8_t **ptr)
+{
+    PGRAPHVkState *r = pg->vk_renderer_state;
+    StorageBuffer *b = &r->storage_buffers[BUFFER_STAGING_SRC];
+    struct PGRAPHVkAuxSlot *a = &r->aux[r->aux_slot];
+
+    assert(r->in_aux_command_buffer);
+    assert(b->mapped);
+    assert(size > 0);
+    if (size >= b->buffer_size) {
+        /* Grown for it, once everything has settled: the recording so far
+         * reads nothing of the ring, or the caller would not need more
+         * than all of it */
+        assert(a->stage_start == a->stage_end);
+        pgraph_vk_buffer_ensure_capacity(pg, BUFFER_STAGING_SRC, 2 * size);
+        b = &r->storage_buffers[BUFFER_STAGING_SRC];
+        a->stage_start = a->stage_end = r->stage_head = 0;
+    }
+
+    for (;;) {
+        /* pending submissions retired as their fences signal, no waiting */
+        while (r->aux_npending && aux_retire_oldest(r, true)) {
+        }
+        size_t head = ROUND_UP(r->stage_head, alignment);
+        size_t tail;
+        bool in_use = stage_tail(r, &tail);
+
+        if (!in_use) {
+            /* empty: at the head if it fits there, else from the start */
+            if (head + size > b->buffer_size) {
+                head = 0;
+            }
+            a->stage_start = head;
+        } else if (tail > r->stage_head) {
+            /* the free bytes are [head, tail) */
+            if (head + size > tail) {
+                head = (size_t)-1;
+            }
+        } else {
+            /* in use behind the head: [head, size) and [0, tail) are free
+             * (tail == head is the ring full) */
+            if (tail == r->stage_head || head + size > b->buffer_size) {
+                head = size <= tail && tail != r->stage_head ? 0 : (size_t)-1;
+            }
+        }
+        if (head != (size_t)-1) {
+            r->stage_head = head + size;
+            a->stage_end = r->stage_head;
+            *ptr = b->mapped + head;
+            return head;
+        }
+        if (r->aux_npending) {
+            /* full: the oldest submission's bytes come back once it has
+             * run - the one wait on this path */
+            aux_retire_oldest(r, false);
+            continue;
+        }
+        /* the open recording alone holds more than the ring: grown, as
+         * above, were it empty - it is not */
+        assert(!"staging ring: the open recording does not fit");
+    }
+}
+
+void pgraph_vk_staging_flush(PGRAPHState *pg, VkDeviceSize offset,
+                             size_t size)
+{
+    PGRAPHVkState *r = pg->vk_renderer_state;
+
+    vmaFlushAllocation(r->allocator,
+                       r->storage_buffers[BUFFER_STAGING_SRC].allocation,
+                       offset, size);
 }
 
 /* Submit without blocking: the work runs ahead of the open recording, and
@@ -176,8 +308,9 @@ void pgraph_vk_end_single_time_commands_async(PGRAPHState *pg,
                                               VkCommandBuffer cmd)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
+    struct PGRAPHVkAuxSlot *a = &r->aux[r->aux_slot];
 
-    assert(r->in_aux_command_buffer);
+    assert(r->in_aux_command_buffer && cmd == a->cmd);
 
     VK_CHECK(vkEndCommandBuffer(cmd));
 
@@ -187,17 +320,27 @@ void pgraph_vk_end_single_time_commands_async(PGRAPHState *pg,
         .pCommandBuffers = &cmd,
     };
     /* through the core's wrapper: the queue is RetroArch's, shared */
-    pgraph_vk_queue_submit(r, 1, &submit_info, r->aux_fence);
+    pgraph_vk_queue_submit(r, 1, &submit_info, a->fence);
     nv2a_profile_inc_counter(NV2A_PROF_QUEUE_SUBMIT_AUX);
-    r->aux_in_flight = true;
-
+    a->pending = true;
+    if (!r->aux_npending) {
+        r->aux_oldest = r->aux_slot;
+    }
+    r->aux_npending++;
+    r->aux_slot = (r->aux_slot + 1) % PGRAPH_VK_AUX_SLOTS;
     r->in_aux_command_buffer = false;
 }
 
+/* Submit and wait for this submission: for a readback */
 void pgraph_vk_end_single_time_commands(PGRAPHState *pg, VkCommandBuffer cmd)
 {
+    PGRAPHVkState *r = pg->vk_renderer_state;
+    int slot = r->aux_slot;
+
     pgraph_vk_end_single_time_commands_async(pg, cmd);
-    pgraph_vk_wait_for_aux(pg);
+    while (r->aux[slot].pending) {
+        aux_retire_oldest(r, false);
+    }
 }
 
 /* Timestamps are defined only on a queue family with valid bits. */
@@ -242,8 +385,11 @@ void pgraph_vk_init_command_buffers(PGRAPHState *pg)
     VkFenceCreateInfo fence_info = {
         .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
     };
-    VK_CHECK(vkCreateFence(r->device, &fence_info, NULL, &r->aux_fence));
-    r->aux_in_flight = false;
+    for (int s = 0; s < PGRAPH_VK_AUX_SLOTS; s++) {
+        VK_CHECK(vkCreateFence(r->device, &fence_info, NULL,
+                               &r->aux[s].fence));
+        r->aux[s].pending = false;
+    }
 
     VkSemaphoreCreateInfo sem_info = {
         .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
@@ -267,7 +413,9 @@ void pgraph_vk_finalize_command_buffers(PGRAPHState *pg)
     g_free(r->trash);
     r->trash = NULL;
     r->trash_cap = 0;
-    vkDestroyFence(r->device, r->aux_fence, NULL);
+    for (int s = 0; s < PGRAPH_VK_AUX_SLOTS; s++) {
+        vkDestroyFence(r->device, r->aux[s].fence, NULL);
+    }
     for (int s = 0; s < PGRAPH_VK_SLOTS; s++) {
         vkDestroyFence(r->device, r->slot_fence[s], NULL);
         vkDestroySemaphore(r->device, r->slot_sem[s], NULL);

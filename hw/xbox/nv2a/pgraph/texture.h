@@ -52,6 +52,20 @@ typedef struct BasicColorFormatInfo {
 
 extern const BasicColorFormatInfo kelvin_color_format_info_map[66];
 
+/* The formats the host cannot sample as they are (palette, YUV, R6G5B5):
+ * the size of the converted texture, 0 for the rest; the conversion into
+ * the caller's buffer; or into a buffer of its own (g_malloc), NULL for
+ * the rest */
+size_t pgraph_converted_texture_size(const TextureShape s, unsigned int width,
+                                     unsigned int height, unsigned int depth);
+void pgraph_convert_texture_data_into(const TextureShape s,
+                                      const uint8_t *data,
+                                      const uint8_t *palette_data,
+                                      unsigned int width, unsigned int height,
+                                      unsigned int depth,
+                                      unsigned int row_pitch,
+                                      unsigned int slice_pitch,
+                                      uint8_t *converted_data);
 uint8_t *pgraph_convert_texture_data(const TextureShape s, const uint8_t *data,
                                      const uint8_t *palette_data,
                                      unsigned int width, unsigned int height,
