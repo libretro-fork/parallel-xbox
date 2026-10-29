@@ -28,6 +28,17 @@
  * screen is not dropped as an old one) and green after (a CPU write to
  * the front buffer is a new picture).
  *
+ *   frame 60   a swizzled surface C, 32 x 16, its pitch set to half a row,
+ *              cleared red on its left half and blue on its right; at frame
+ *              61 the CPU reads all its texels where the NV2A lays them out:
+ *              by width and height alone, the pitch ignored (as hardware
+ *              does, nxdk_pgraph_tests surface_pitch). The count of wrong
+ *              ones is at GPU_SWZ_BAD, the first wrong word at GPU_SWZ_WORD.
+ *              Taking the pitch as the row folded the rows onto each other
+ *   frame 62   B's depth and stencil cleared (Z24S8); at frame 63 the CPU
+ *              reads its first and last words back (GPU_ZETA0, GPU_ZETA1):
+ *              both the clear value
+ *
  *   from frame 50: into B, a triangle drawn, B cleared, the same triangle
  *              drawn again: draws and clears on both renderers, the
  *              picture (A) unchanged by them
@@ -55,6 +66,10 @@ typedef unsigned int u32;
 #define GPU_READ1    0x00300018u   /* u32: A's last pixel, read at frame 20 */
 #define GPU_TRIPS    0x0030001Cu   /* u32: fewest GPU round trips in a frame */
 #define GPU_SEM      0x00300020u   /* u32: the semaphore the GPU writes */
+#define GPU_SWZ_BAD  0x00300024u   /* u32: C's wrong texels, read at frame 61 */
+#define GPU_SWZ_WORD 0x00300028u   /* u32: the first wrong one */
+#define GPU_ZETA0    0x0030002Cu   /* u32: B's first depth word, frame 63 */
+#define GPU_ZETA1    0x00300030u   /* u32: B's last depth word, frame 63 */
 /* 0x00300010: the pushbuffer's write offset (put) */
 
 #define NV2A         0xFD000000u   /* BAR0, the registers */
@@ -96,6 +111,13 @@ typedef unsigned int u32;
 #define WIDTH        640
 #define HEIGHT       480
 #define PITCH        (WIDTH * 4)
+#define SURF_C       0x01800000u   /* swizzled, C_W x C_H */
+#define C_LOG_W      5
+#define C_LOG_H      4
+#define C_W          (1u << C_LOG_W)
+#define C_H          (1u << C_LOG_H)
+#define ZETA_B       (SURF_B + 0x200000u)
+#define ZS_CLEAR     0x12345678u   /* depth 0x123456, stencil 0x78 */
 
 /* RAMIN: the hash table, then the objects (16 bytes each) */
 #define RAMHT        0x10000u
@@ -111,6 +133,7 @@ typedef unsigned int u32;
 #define NV097_SET_FLIP_MODULO           0x0128
 #define NV097_FLIP_INCREMENT_WRITE      0x012C
 #define NV097_SET_COLOR_MASK            0x0358
+#define NV097_SET_DEPTH_MASK            0x035C
 #define NV097_SET_SEMAPHORE_OFFSET      0x1D6C
 #define NV097_BACK_END_WRITE_SEMAPHORE_RELEASE 0x1D70
 #define NV097_SET_CONTEXT_DMA_NOTIFIES  0x0180
@@ -131,6 +154,7 @@ typedef unsigned int u32;
 #define NV097_SET_VERTEX_DATA_ARRAY_FORMAT 0x1760
 #define NV097_SET_BEGIN_END             0x17FC
 #define NV097_INLINE_ARRAY              0x1818
+#define NV097_SET_ZSTENCIL_CLEAR_VALUE  0x1D8C
 #define NV097_SET_COLOR_CLEAR_VALUE     0x1D90
 #define NV097_CLEAR_SURFACE             0x1D94
 #define NV097_SET_CLEAR_RECT_H          0x1D98
@@ -256,6 +280,62 @@ static void triangle(void)
     method(NV097_SET_BEGIN_END, 0);
 }
 
+/* x's bits and y's interleaved from bit 0, x first, until the shorter
+ * runs out (swizzle.c generate_swizzle_masks) */
+static __attribute__((noinline)) u32 swizzled(u32 x, u32 y)
+{
+    u32 s = 0, bit = 0;
+    for (u32 i = 0; i < 16; i++) {
+        if ((1u << i) < C_W) {
+            s |= ((x >> i) & 1u) << bit++;
+        }
+        if ((1u << i) < C_H) {
+            s |= ((y >> i) & 1u) << bit++;
+        }
+    }
+    return s;
+}
+
+/* C: swizzled, its pitch half a row; red left, blue right. Then B's
+ * shape back. */
+static __attribute__((noinline)) void draw_swizzled(void)
+{
+    method(NV097_SET_SURFACE_CLIP_H, C_W << 16);
+    method(NV097_SET_SURFACE_CLIP_V, C_H << 16);
+    method(NV097_SET_SURFACE_FORMAT, 0x08u | (2u << 4) | (2u << 8) |
+                                         ((u32)C_LOG_W << 16) |
+                                         ((u32)C_LOG_H << 24));
+    method(NV097_SET_SURFACE_PITCH, (C_W * 2) | ((C_W * 2) << 16));
+    method(NV097_SET_SURFACE_COLOR_OFFSET, SURF_C);
+    method(NV097_SET_COLOR_CLEAR_VALUE, 0xFFFF0000u);
+    method(NV097_SET_CLEAR_RECT_H, (C_W / 2 - 1) << 16);
+    method(NV097_SET_CLEAR_RECT_V, (C_H - 1) << 16);
+    method(NV097_CLEAR_SURFACE, 0xF0);
+    method(NV097_SET_COLOR_CLEAR_VALUE, 0xFF0000FFu);
+    method(NV097_SET_CLEAR_RECT_H, ((C_W - 1) << 16) | (C_W / 2));
+    method(NV097_CLEAR_SURFACE, 0xF0);
+    method(NV097_SET_SURFACE_CLIP_H, (u32)WIDTH << 16);
+    method(NV097_SET_SURFACE_CLIP_V, (u32)HEIGHT << 16);
+    method(NV097_SET_SURFACE_FORMAT, 0x08u | (2u << 4) | (1u << 8));
+    method(NV097_SET_SURFACE_PITCH, PITCH | ((u32)PITCH << 16));
+}
+
+static __attribute__((noinline)) void check_swizzled(void)
+{
+    u32 bad = 0, word = 0;
+    for (u32 y = 0; y < C_H; y++) {
+        for (u32 x = 0; x < C_W; x++) {
+            u32 v = rd32(SURF_C + swizzled(x, y) * 4);
+            u32 want = x < C_W / 2 ? 0xFFFF0000u : 0xFF0000FFu;
+            if (v != want && !bad++) {
+                word = v;
+            }
+        }
+    }
+    ram32(GPU_SWZ_WORD, word);
+    ram32(GPU_SWZ_BAD, bad);
+}
+
 static void wait_vblank(void)
 {
     while (!(rd(PCRTC_INTR) & 1)) {
@@ -272,6 +352,10 @@ void gpu_main(void)
     ram32(GPU_READ1, 0);
     ram32(GPU_TRIPS, 0);
     ram32(GPU_SEM, 0);
+    ram32(GPU_SWZ_BAD, 0xFFFFFFFFu);
+    ram32(GPU_SWZ_WORD, 0);
+    ram32(GPU_ZETA0, 0);
+    ram32(GPU_ZETA1, 0);
     /* the no-op subroutine: seven no-op methods of 2047 words, a return */
     {
         u32 at = PUSHBUF + NOP_SUB;
@@ -359,7 +443,7 @@ void gpu_main(void)
     method(NV097_SET_SURFACE_CLIP_V, (u32)HEIGHT << 16);
     method(NV097_SET_SURFACE_FORMAT, 0x08u | (2u << 4) | (1u << 8));
     method(NV097_SET_SURFACE_PITCH, PITCH | ((u32)PITCH << 16));
-    method(NV097_SET_SURFACE_ZETA_OFFSET, SURF_B + 0x200000u);
+    method(NV097_SET_SURFACE_ZETA_OFFSET, ZETA_B);
     method(NV097_SET_FLIP_READ, 0);
     method(NV097_SET_FLIP_WRITE, 0);
     method(NV097_SET_FLIP_MODULO, 2);
@@ -392,6 +476,26 @@ void gpu_main(void)
             for (u32 i = 0; i < PITCH * HEIGHT; i += 4) {
                 ram32(SURF_A + i, 0xFF00FF00u);
             }
+        }
+        if (frame == 61) {
+            check_swizzled();
+        }
+        if (frame == 63) {
+            ram32(GPU_ZETA0, rd32(ZETA_B));
+            ram32(GPU_ZETA1, rd32(ZETA_B + PITCH * (HEIGHT - 1) + (WIDTH - 1) * 4));
+        }
+        if (frame == 60) {
+            draw_swizzled();
+        }
+        if (frame == 62) {
+            method(NV097_SET_SURFACE_COLOR_OFFSET, SURF_B);
+            method(NV097_SET_ZSTENCIL_CLEAR_VALUE, ZS_CLEAR);
+            method(NV097_SET_CLEAR_RECT_H, (u32)(WIDTH - 1) << 16);
+            method(NV097_SET_CLEAR_RECT_V, (u32)(HEIGHT - 1) << 16);
+            /* depth written while the clear runs, as games clear it */
+            method(NV097_SET_DEPTH_MASK, 1);
+            method(NV097_CLEAR_SURFACE, 0x03); /* Z, stencil */
+            method(NV097_SET_DEPTH_MASK, 0);
         }
         /* another surface drawn, a flip counted; A left alone */
         if (frame >= 50) {

@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Graphics: a game that renders into a swizzled texture with a surface pitch that does not match its width now gets the picture the Xbox gets. The Xbox ignores the pitch of a swizzled render target and lays its texels out by width and height alone (measured on hardware by nxdk_pgraph_tests); the core used the pitch, so a pitch smaller than a row folded the rows onto each other when the picture was read back, and a larger one made the core treat memory past the surface as part of it, throwing away unrelated surfaces there. Both renderers. Based on xemu pull request 942 by Matt Borgerson.
+
 - CPU Boost uses a 65,536-entry dispatch cache instead of 16,384 entries, reducing collisions and expensive block lookups. The per-CPU allocation grows by 768 KiB; CPU Boost off still uses the original 4,096-entry lookup range. Page invalidation and block-validity checks are unchanged.
 
 - CPU emulation no longer revives a translated block deliberately discarded to learn an I/O instruction boundary. Its guest bytes were unchanged, so the reuse cache kept restoring the old block and forcing the same device access to rewind it again. Ordinary code invalidation still retains block reuse.

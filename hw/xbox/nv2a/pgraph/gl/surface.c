@@ -2323,9 +2323,15 @@ static void populate_surface_binding_entry_sized(NV2AState *d, bool color,
      * Check that it's sane. */
     assert(dma.dma_class == NV_DMA_IN_MEMORY_CLASS);
     // assert(dma.address + surface->offset != 0);
+    /* The NV2A ignores the pitch of a swizzled surface: its texels are laid
+     * out by width and height alone (nxdk_pgraph_tests surface_pitch on
+     * hardware), so its rows are width texels apart. */
+    bool swizzle = (pg->surface_type == NV097_SET_SURFACE_FORMAT_TYPE_SWIZZLE);
+    unsigned int pitch =
+        swizzle ? width * fmt.bytes_per_pixel : surface->pitch;
     assert(surface->offset <= dma.limit);
-    assert(surface->offset + surface->pitch * height <= dma.limit + 1);
-    assert(surface->pitch % fmt.bytes_per_pixel == 0);
+    assert(surface->offset + pitch * height <= dma.limit + 1);
+    assert(swizzle || surface->pitch % fmt.bytes_per_pixel == 0);
     assert((dma.address & ~0x07FFFFFF) == 0);
 
     entry->shape = (color || !r->color_binding) ? pg->surface_shape :
@@ -2333,13 +2339,12 @@ static void populate_surface_binding_entry_sized(NV2AState *d, bool color,
     entry->gl_buffer = 0;
     entry->fmt = fmt;
     entry->color = color;
-    entry->swizzle =
-        (pg->surface_type == NV097_SET_SURFACE_FORMAT_TYPE_SWIZZLE);
+    entry->swizzle = swizzle;
     entry->vram_addr = dma.address + surface->offset;
     entry->width = width;
     entry->height = height;
-    entry->pitch = surface->pitch;
-    entry->size = height * MAX(surface->pitch, width * fmt.bytes_per_pixel);
+    entry->pitch = pitch;
+    entry->size = height * MAX(pitch, width * fmt.bytes_per_pixel);
     entry->upload_pending = true;
     entry->download_pending = false;
     entry->draw_dirty = false;
