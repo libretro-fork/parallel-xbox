@@ -42,22 +42,22 @@ typedef struct MCPXAPUVPSSLData {
 
 typedef struct MCPXAPUVoiceFilter {
     uint16_t voice;
-    /* The voice's pitch: its samples played at the voice's rate, by 4-point
-     * cubic interpolation (vp.c voice_resample). The voice's samples are
-     * fetched a frame at a time into resample_buf; resample_pos is the next
-     * one to take, resample_hist the last four taken (hist[1] to hist[2] is
-     * where the output is, resample_phase of the way), all cleared with the
-     * voice's filters. */
+    /* Decoded source frames are retained across calls. The eight-point
+     * interpolation history is a ring; head is its oldest/next-write slot.
+     * Phase and source advance use 16.16 fixed point. */
     float resample_buf[NUM_SAMPLES_PER_FRAME][2];
     int resample_len;
     int resample_pos;
-    float resample_hist[4][2];
-    double resample_phase;
+    float resample_hist[8][2];
+    unsigned int resample_head;
+    uint32_t resample_phase;
     sv_filter svf[2];
     sv_filter peq[2];
     float i3dl2[2];
     uint16_t route_gain[8];
     bool gains;
+    double pitch;
+    bool pitched;
     bool dls2_set;
     bool peq_set;
     uint16_t lfo_phase[2];

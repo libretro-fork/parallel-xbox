@@ -66,6 +66,7 @@ static void voice_reset_filters(MCPXAPUState *d, uint16_t v)
     memset(&d->vp.filters[v].peq, 0, sizeof(d->vp.filters[v].peq));
     memset(&d->vp.filters[v].i3dl2, 0, sizeof(d->vp.filters[v].i3dl2));
     d->vp.filters[v].gains = false;
+    d->vp.filters[v].pitched = false;
     d->vp.filters[v].dls2_set = false;
     d->vp.filters[v].peq_set = false;
     memset(d->vp.filters[v].lfo_phase, 0, sizeof(d->vp.filters[v].lfo_phase));
@@ -1266,57 +1267,110 @@ static void voice_resample_fetch(MCPXAPUState *d, MCPXAPUVoiceFilter *filter)
     filter->resample_pos = 0;
 }
 
-/* The pitch starts over: no samples taken, the output at the first one
- * once three are in (hist[1]) */
+/* Prime five source samples: three zeros before the first sample and
+ * four lookahead samples place the first output at logical history[3]. */
 static void voice_resample_reset(MCPXAPUVoiceFilter *filter)
 {
     filter->resample_len = 0;
     filter->resample_pos = 0;
     memset(filter->resample_hist, 0, sizeof(filter->resample_hist));
-    filter->resample_phase = 3.0;
+    filter->resample_head = 0;
+    filter->resample_phase = 5u << 16;
 }
 
-/* The voice's samples at its pitch: requested_num output samples, each
- * 1/rate of the voice's samples on from the one before, by 4-point cubic
- * (Hermite) interpolation between the voice's samples around it.
- *
- * The hardware's own interpolation is not known; upstream used a sinc
- * resampler (libsamplerate), which allocated per voice and did far more
- * work than a cubic for a difference below what the DSPs' 24-bit mixing
- * keeps. */
+/* Measured eight-point Lagrange kernel, weights rounded to 1/65536.
+ * Half-sample pairs are 1225,-245,49,-5 / 2048. Interpolating between
+ * 1/256-sample rows is an assumption inherited from the source PR. */
+static float lagrange_rows[257][8];
+
+static void lagrange_init(void)
+{
+    for (int row = 0; row <= 256; row++) {
+        for (int k = -3; k <= 4; k++) {
+            double weight = 1.0;
+            for (int j = -3; j <= 4; j++) {
+                if (j != k) {
+                    weight *= (row / 256.0 - j) / (k - j);
+                }
+            }
+            lagrange_rows[row][k + 3] = round(weight * 65536.0) / 65536.0;
+        }
+    }
+}
+
+typedef struct VoicePitchRamp {
+    double from;
+    double slope;
+    uint32_t fixed_step;
+} VoicePitchRamp;
+
+/* Keep exact log-pitch endpoints; steady frames need only one exp2 call.
+ * Ramping computes its step on demand, not into a 32-element scratch array. */
+static VoicePitchRamp voice_pitch_ramp(MCPXAPUVoiceFilter *filter, double target)
+{
+    double from = filter->pitched ? filter->pitch : target;
+    VoicePitchRamp ramp = {
+        .from = from,
+        .slope = (target - from) / NUM_SAMPLES_PER_FRAME,
+        .fixed_step = from == target ? exp2(target / 4096.0) * 65536.0 : 0,
+    };
+    filter->pitch = target;
+    filter->pitched = true;
+    return ramp;
+}
+
+static uint32_t voice_pitch_step(const VoicePitchRamp *ramp, unsigned int sample)
+{
+    if (ramp->slope == 0.0) {
+        return ramp->fixed_step;
+    }
+    return exp2((ramp->from + ramp->slope * sample) / 4096.0) * 65536.0;
+}
+
 static int voice_resample(MCPXAPUState *d, uint16_t v, float samples[][2],
-                          int requested_num, float rate)
+                          int requested_num, const VoicePitchRamp *pitch,
+                          unsigned int sample_offset)
 {
     assert(v < MCPX_HW_MAX_VOICES);
     MCPXAPUVoiceFilter *filter = &d->vp.filters[v];
-    const double step = 1.0 / rate;
-    float (*h)[2] = filter->resample_hist;
-
+    float (*history)[2] = filter->resample_hist;
+    unsigned int head = filter->resample_head;
     filter->voice = v;
+
     for (int n = 0; n < requested_num; n++) {
-        while (filter->resample_phase >= 1.0) {
+        while (filter->resample_phase >= 0x10000) {
             if (filter->resample_pos == filter->resample_len) {
                 voice_resample_fetch(d, filter);
             }
-            h[0][0] = h[1][0]; h[0][1] = h[1][1];
-            h[1][0] = h[2][0]; h[1][1] = h[2][1];
-            h[2][0] = h[3][0]; h[2][1] = h[3][1];
-            h[3][0] = filter->resample_buf[filter->resample_pos][0];
-            h[3][1] = filter->resample_buf[filter->resample_pos][1];
+            /* Retain only the new pair; never shift the other seven. */
+            history[head][0] = filter->resample_buf[filter->resample_pos][0];
+            history[head][1] = filter->resample_buf[filter->resample_pos][1];
             filter->resample_pos++;
-            filter->resample_phase -= 1.0;
+            head = (head + 1) & 7;
+            filter->resample_phase -= 0x10000;
         }
-        const float t = (float)filter->resample_phase;
-        for (int c = 0; c < 2; c++) {
-            const float y0 = h[0][c], y1 = h[1][c], y2 = h[2][c], y3 = h[3][c];
-            const float c1 = 0.5f * (y2 - y0);
-            const float c2 = y0 - 2.5f * y1 + 2.0f * y2 - 0.5f * y3;
-            const float c3 = 0.5f * (y3 - y0) + 1.5f * (y1 - y2);
-            samples[n][c] = ((c3 * t + c2) * t + c1) * t + y1;
+        uint32_t fraction = filter->resample_phase;
+        if (fraction == 0) {
+            /* Integer positions need no kernel evaluation. */
+            samples[n][0] = history[(head + 3) & 7][0];
+            samples[n][1] = history[(head + 3) & 7][1];
+        } else {
+            const float *lo = lagrange_rows[fraction >> 8];
+            const float *hi = lagrange_rows[(fraction >> 8) + 1];
+            float alpha = (fraction & 0xFF) / 256.0f;
+            float left = 0.0f, right = 0.0f;
+            for (int k = 0; k < 8; k++) {
+                float weight = lo[k] + (hi[k] - lo[k]) * alpha;
+                unsigned int slot = (head + k) & 7;
+                left += weight * history[slot][0];
+                right += weight * history[slot][1];
+            }
+            samples[n][0] = left;
+            samples[n][1] = right;
         }
-        filter->resample_phase += step;
+        filter->resample_phase += voice_pitch_step(pitch, sample_offset + n);
     }
-
+    filter->resample_head = head;
     return requested_num;
 }
 
@@ -1477,8 +1531,15 @@ static void voice_process(MCPXAPUState *d,
     dbg->multipass = multipass;
 
     if (multipass) {
+        /* Keep the previous-frame target current across format switches,
+         * without calculating source steps for a multipass voice. */
+        d->vp.filters[v].pitch = pitch;
+        d->vp.filters[v].pitched = true;
         get_multipass_samples(d, mixbins, v, samples);
     } else {
+        /* Ramp the combined register/envelope/LFO pitch in log space.
+         * Multipass voices do not consume or resample source data. */
+        VoicePitchRamp pitch_ramp = voice_pitch_ramp(&d->vp.filters[v], pitch);
         for (int sample_count = 0; sample_count < NUM_SAMPLES_PER_FRAME;) {
             int active = voice_get_mask(d, v, NV_PAVS_VOICE_PAR_STATE,
                                         NV_PAVS_VOICE_PAR_STATE_ACTIVE_VOICE);
@@ -1487,7 +1548,8 @@ static void voice_process(MCPXAPUState *d,
             }
             int count =
                 voice_resample(d, v, &samples[sample_count],
-                               NUM_SAMPLES_PER_FRAME - sample_count, rate);
+                               NUM_SAMPLES_PER_FRAME - sample_count,
+                               &pitch_ramp, sample_count);
             if (count < 0) {
                 break;
             }
@@ -2113,6 +2175,7 @@ void mcpx_apu_vp_frame(MCPXAPUState *d, float mixbins[NUM_MIXBINS][NUM_SAMPLES_P
 
 void mcpx_apu_vp_init(MCPXAPUState *d)
 {
+    lagrange_init();
     voice_work_init(d);
 }
 

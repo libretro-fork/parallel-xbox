@@ -4,6 +4,10 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Audio: register, envelope and LFO pitch changes ramp across each MCPX frame in logarithmic pitch space. Steady frames calculate one source step; changing frames avoid a scratch step array. Voice restart begins at its current pitch.
+
+- Audio: guest MCPX voices use eight-point Lagrange interpolation with a fixed-point source cursor instead of the Hermite approximation. Circular history avoids shifting samples, and integer source positions bypass interpolation.
+
 - Vulkan: when a game's CPU reads a picture the GPU drew (a screenshot for a save, effects done on the CPU), the read-back buffer is no longer mapped and unmapped each time, and only the rows read are made visible to the CPU instead of the whole 64 MB buffer.
 
 - Audio: both voice LFOs now modulate volume, pitch and filter cutoff with signed depths and optional delays. Previously ignored delay/depth writes are handled, explicit mute remains silent, and processing reads each packed LFO word once per frame.
