@@ -207,6 +207,7 @@ void pgraph_vk_image_blit(NV2AState *d)
             /* Only a target bind refreshes frame_time: a surface fed only
              * by blits would otherwise expire every few frames. */
             gdst->frame_time = pg->frame_time;
+            pgraph_cpu_ahead_mark(pg, gdst->vram_addr, gdst->size);
             gdst->draw_dirty = true;
             gdst->upload_pending = false;
             return;

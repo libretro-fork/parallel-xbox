@@ -494,7 +494,7 @@ void pgraph_gl_finalize_display(PGRAPHState *pg)
     scratch_finalize(&r->pvideo_scratch);
 }
 
-/* Render thread, pgraph.lock held. Post the scanout to the UI thread
+/* Render thread. Post the scanout to the UI thread
  * when it changed. Returns false without a scanout surface (VGA path);
  * *fresh tells whether a ticket was posted. */
 static bool post_scanout(NV2AState *d, bool *fresh)

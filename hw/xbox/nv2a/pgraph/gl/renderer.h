@@ -390,7 +390,6 @@ typedef struct PGRAPHGLState {
     bool last_color_write, last_zeta_write;
     unsigned int last_surface_type;
     PGRAPHRtMemo rt_memo;
-    bool downloads_pending;
     retro_eventcount_t downloads_complete;
     bool download_dirty_surfaces_pending;
     retro_eventcount_t dirty_surfaces_download_complete; // common
@@ -575,6 +574,7 @@ void pgraph_gl_finalize_textures(PGRAPHState *pg);
 void pgraph_gl_init_buffers(NV2AState *d);
 void pgraph_gl_finalize_buffers(PGRAPHState *pg);
 void pgraph_gl_process_pending_downloads(NV2AState *d);
+void pgraph_gl_cpu_access_service(NV2AState *d);
 void pgraph_gl_reload_surface_scale_factor(PGRAPHState *pg);
 void pgraph_gl_render_surface_to_texture(NV2AState *d, SurfaceBinding *surface, TextureBinding *texture, TextureShape *texture_shape, int texture_unit);
 void pgraph_gl_render_cube_faces_to_texture(NV2AState *d,

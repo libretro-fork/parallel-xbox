@@ -142,17 +142,12 @@ static void pgraph_vk_process_pending(NV2AState *d)
 
     bool scanout = qatomic_read(&d->pgraph.scanout_changed) ||
                    qatomic_read(&r->display.check_pending);
-    if (qatomic_read(&r->downloads_pending) ||
-        qatomic_read(&r->download_dirty_surfaces_pending) ||
+    if (qatomic_read(&r->download_dirty_surfaces_pending) ||
         qatomic_read(&d->pgraph.sync_pending) || scanout ||
         qatomic_read(&d->pgraph.flush_pending) ||
         qatomic_read(&r->seed_writeback_pending)
     ) {
         qemu_mutex_unlock(&d->pfifo.lock);
-        qemu_mutex_lock(&d->pgraph.lock);
-        if (qatomic_read(&r->downloads_pending)) {
-            pgraph_vk_process_pending_downloads(d);
-        }
         if (qatomic_read(&r->download_dirty_surfaces_pending)) {
             pgraph_vk_settle_reports(&d->pgraph);
             pgraph_vk_download_dirty_surfaces(d);
@@ -172,7 +167,6 @@ static void pgraph_vk_process_pending(NV2AState *d)
         if (qatomic_read(&r->seed_writeback_pending)) {
             pgraph_vk_shader_seed_writeback(&d->pgraph);
         }
-        qemu_mutex_unlock(&d->pgraph.lock);
         qemu_mutex_lock(&d->pfifo.lock);
     }
 }
@@ -189,6 +183,7 @@ static void pgraph_vk_flip_stall(NV2AState *d)
     pgraph_vk_settle_poll(&d->pgraph);
     pgraph_vk_frame_gpu_resolve(&d->pgraph);
     pgraph_vk_eager_frame_update(&d->pgraph);
+    pgraph_vk_cpu_ahead_refresh(d);
     /* Resolve this frame's fragment-query segments: with the cost model
      * on the finish above was synchronous, so the results are there. */
     xemu_cost_resolve_frame(d, &pgraph_vk_cost_ops,
@@ -392,6 +387,7 @@ static PGRAPHRenderer pgraph_vk_renderer = {
         .set_surface_scale_factor = pgraph_vk_set_surface_scale_factor,
         .get_surface_scale_factor = pgraph_vk_get_surface_scale_factor,
         .get_framebuffer_surface = pgraph_vk_get_framebuffer_surface,
+        .cpu_access_service = pgraph_vk_cpu_access_service,
         .get_gpu_properties = pgraph_vk_get_gpu_properties,
     }
 };

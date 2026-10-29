@@ -223,6 +223,149 @@ void pgraph_renderer_register(const PGRAPHRenderer *renderer)
     renderers[renderer->type] = renderer;
 }
 
+/* PGRAPHCpuAccess: the pages [addr, addr + size) of RAM, clipped to it */
+static bool pgraph_cpu_pages(hwaddr addr, hwaddr size, unsigned long *first,
+                             unsigned long *count)
+{
+    hwaddr end;
+
+    if (!size || addr >= ((hwaddr)PGRAPH_CPU_PAGES << PGRAPH_CPU_PAGE_BITS)) {
+        return false;
+    }
+    end = MIN(addr + size,
+              (hwaddr)PGRAPH_CPU_PAGES << PGRAPH_CPU_PAGE_BITS);
+    *first = addr >> PGRAPH_CPU_PAGE_BITS;
+    *count = ((end - 1) >> PGRAPH_CPU_PAGE_BITS) - *first + 1;
+    return true;
+}
+
+/* bits set atomically, a word at a time, for the other thread's reads */
+static void pgraph_cpu_set_atomic(unsigned long *map, unsigned long first,
+                                  unsigned long count)
+{
+    unsigned long n;
+
+    for (n = first; n < first + count;) {
+        unsigned long w = BIT_WORD(n);
+        unsigned long lo = n % BITS_PER_LONG;
+        unsigned long span = MIN(count - (n - first), BITS_PER_LONG - lo);
+        unsigned long mask = (span == BITS_PER_LONG ? ~0UL :
+                              ((1UL << span) - 1)) << lo;
+        if ((qatomic_read(&map[w]) & mask) != mask) {
+            qatomic_or(&map[w], mask);
+        }
+        n += span;
+    }
+}
+
+static bool pgraph_cpu_any(const unsigned long *map, unsigned long first,
+                           unsigned long count)
+{
+    return find_next_bit(map, first + count, first) < first + count;
+}
+
+/* The GPU thread: a surface over [addr, addr + size) is ahead of RAM now.
+ * A full barrier after (qatomic_or's), before the method completes and the
+ * guest can see it complete. */
+void pgraph_cpu_ahead_mark(PGRAPHState *pg, hwaddr addr, hwaddr size)
+{
+    unsigned long first, count;
+
+    if (pgraph_cpu_pages(addr, size, &first, &count)) {
+        pgraph_cpu_set_atomic(pg->cpu.ahead, first, count);
+        smp_mb();
+    }
+}
+
+/* The GPU thread: the ahead bitmap rebuilt from what is ahead now, in the
+ * build bitmap, then stored word by word: no word is ever clear while one
+ * of its pages is ahead, as nothing marks pages meanwhile (this thread
+ * does both). */
+void pgraph_cpu_ahead_begin(PGRAPHState *pg)
+{
+    bitmap_zero(pg->cpu.build, PGRAPH_CPU_PAGES);
+}
+
+void pgraph_cpu_ahead_add(PGRAPHState *pg, hwaddr addr, hwaddr size)
+{
+    unsigned long first, count;
+
+    if (pgraph_cpu_pages(addr, size, &first, &count)) {
+        bitmap_set(pg->cpu.build, first, count);
+    }
+}
+
+void pgraph_cpu_ahead_commit(PGRAPHState *pg)
+{
+    for (unsigned long w = 0; w < BITS_TO_LONGS(PGRAPH_CPU_PAGES); w++) {
+        if (qatomic_read(&pg->cpu.ahead[w]) != pg->cpu.build[w]) {
+            qatomic_set(&pg->cpu.ahead[w], pg->cpu.build[w]);
+        }
+    }
+    smp_mb();
+}
+
+/* The GPU thread, at a method: whether the CPU wrote or read any surface
+ * page since the last look; if so its bits are taken (taken_written,
+ * taken_read) for pgraph_cpu_taken_* until the next take */
+bool pgraph_cpu_take_touched(PGRAPHState *pg)
+{
+    if (!qatomic_read(&pg->cpu.touched)) {
+        return false;
+    }
+    qatomic_set(&pg->cpu.touched, 0);
+    smp_mb(); /* bits set after this are seen at the next take */
+    for (unsigned long w = 0; w < BITS_TO_LONGS(PGRAPH_CPU_PAGES); w++) {
+        pg->cpu.taken_written[w] = qatomic_read(&pg->cpu.written[w]) ?
+                                   qatomic_xchg(&pg->cpu.written[w], 0) : 0;
+        pg->cpu.taken_read[w] = qatomic_read(&pg->cpu.clean_read[w]) ?
+                                qatomic_xchg(&pg->cpu.clean_read[w], 0) : 0;
+    }
+    return true;
+}
+
+bool pgraph_cpu_taken_written(PGRAPHState *pg, hwaddr addr, hwaddr size)
+{
+    unsigned long first, count;
+    return pgraph_cpu_pages(addr, size, &first, &count) &&
+           pgraph_cpu_any(pg->cpu.taken_written, first, count);
+}
+
+bool pgraph_cpu_taken_read(PGRAPHState *pg, hwaddr addr, hwaddr size)
+{
+    unsigned long first, count;
+    return pgraph_cpu_pages(addr, size, &first, &count) &&
+           pgraph_cpu_any(pg->cpu.taken_read, first, count);
+}
+
+/* The emulator thread, the guest about to touch [addr, addr + len) of a
+ * surface's memory. True when a surface there is ahead of RAM: the caller
+ * asks the GPU thread for the download (dl_addr, dl_len are set) and waits.
+ * Otherwise the access is noted for the GPU thread's next method: a write
+ * for an upload, a read for its watch to stop. No lock, no wait. */
+bool pgraph_cpu_access(PGRAPHState *pg, hwaddr addr, hwaddr len, bool write)
+{
+    unsigned long first, count;
+
+    if (!pgraph_cpu_pages(addr, len, &first, &count)) {
+        return false;
+    }
+    smp_mb(); /* the GPU's marks before what the guest saw complete */
+    for (unsigned long n = first; n < first + count; n++) {
+        if (qatomic_read(&pg->cpu.ahead[BIT_WORD(n)]) & BIT_MASK(n)) {
+            pg->cpu.dl_addr = addr;
+            pg->cpu.dl_len = len;
+            return true;
+        }
+    }
+    pgraph_cpu_set_atomic(write ? pg->cpu.written : pg->cpu.clean_read,
+                          first, count);
+    if (!qatomic_read(&pg->cpu.touched)) {
+        qatomic_set(&pg->cpu.touched, 1);
+    }
+    return false;
+}
+
 static char pgraph_game_tag[64];
 static unsigned long long xemu_flip_inc_count; /* guest flips */
 
@@ -325,7 +468,9 @@ void pgraph_init(NV2AState *d)
     g_nv2a = d;
 
     PGRAPHState *pg = &d->pgraph;
-    qemu_mutex_init(&pg->lock);
+    /* every page ahead until the first rebuild: an access before the
+     * renderer has surfaces at most asks for a download of nothing */
+    bitmap_fill(pg->cpu.ahead, PGRAPH_CPU_PAGES);
     retro_eventcount_init(&pg->sync_complete);
     retro_eventcount_init(&pg->flush_complete);
     retro_eventcount_init(&pg->framebuffer_released);
@@ -462,8 +607,6 @@ void pgraph_destroy(PGRAPHState *pg)
     if (pg->renderer->ops.finalize) {
        pg->renderer->ops.finalize(d);
     }
-
-    qemu_mutex_destroy(&pg->lock);
 }
 
 /* Called at every turn of the UI loop, up to a thousand times a second. It
@@ -3542,6 +3685,10 @@ static void do_wait_for_renderer_switch(CPUState *cpu, run_on_cpu_data data)
 void pgraph_process_pending(NV2AState *d)
 {
     PGRAPHState *pg = &d->pgraph;
+    if ((qatomic_read(&pg->cpu.touched) || qatomic_read(&pg->cpu.dl_pending)) &&
+        pg->renderer->ops.cpu_access_service) {
+        pg->renderer->ops.cpu_access_service(d);
+    }
     pg->renderer->ops.process_pending(d);
 
     if (g_config.display.renderer != pg->renderer->type &&
@@ -3555,19 +3702,13 @@ void pgraph_process_pending(NV2AState *d)
 
     if (qatomic_load_acquire(&pg->renderer_switch_phase) ==
         PGRAPH_RENDERER_SWITCH_PHASE_CPU_WAITING) {
-        qemu_mutex_unlock(&d->pfifo.lock);
-        qemu_mutex_lock(&d->pgraph.lock);
-
         if (pg->renderer) {
             pg->flush_pending = true;
-
-            qemu_mutex_lock(&d->pfifo.lock);
-            qemu_mutex_unlock(&d->pgraph.lock);
-
             pg->renderer->ops.process_pending(d);
+        }
+        qemu_mutex_unlock(&d->pfifo.lock);
 
-            qemu_mutex_unlock(&d->pfifo.lock);
-            qemu_mutex_lock(&d->pgraph.lock);
+        if (pg->renderer) {
             /* the frontend's thread done with the old renderer's
              * framebuffer */
             for (;;) {
@@ -3586,8 +3727,12 @@ void pgraph_process_pending(NV2AState *d)
         }
 
         init_renderer(pg);
+        /* the new renderer's surfaces start from RAM: until it rebuilds
+         * the ahead bitmap, an access asks it (the CPU waits meanwhile) */
+        for (unsigned long w = 0; w < BITS_TO_LONGS(PGRAPH_CPU_PAGES); w++) {
+            qatomic_set(&pg->cpu.ahead[w], ~0UL);
+        }
 
-        qemu_mutex_unlock(&d->pgraph.lock);
         qemu_mutex_lock(&d->pfifo.lock);
 
         qatomic_store_release(&pg->renderer_switch_phase,

@@ -156,6 +156,9 @@ static bool framebuffer_dirty(PGRAPHState *pg)
  * path again, past the any-dirty shortcut and a disarmed read watch. */
 void pgraph_gl_surface_mark_ahead(SurfaceBinding *s)
 {
+    /* and for the CPU's accesses, before the method completes
+     * (PGRAPHCpuAccess) */
+    pgraph_cpu_ahead_mark(&g_nv2a->pgraph, s->vram_addr, s->size);
     qatomic_set(&surfaces_any_dirty, 1);
     if (s->watch_read_off) {
         s->watch_read_off = false;
@@ -753,89 +756,34 @@ static bool check_surface_overlaps_range(const SurfaceBinding *surface,
     return !(surface->vram_addr >= range_end || range_start >= surface_end);
 }
 
+/* The emulator thread, the guest about to touch a surface's memory: no
+ * lock and, unless a surface there is ahead of RAM, no wait
+ * (PGRAPHCpuAccess). Its watches are the GPU thread's to change
+ * (pgraph_gl_cpu_access_service). */
 static void surface_access_callback(void *opaque, MemoryRegion *mr, hwaddr addr,
                                     hwaddr len, bool write)
 {
     NV2AState *d = (NV2AState *)opaque;
+    PGRAPHGLState *r = d->pgraph.gl_renderer_state;
+
     if (!write && !qatomic_read(&surfaces_any_dirty)) {
         return;
     }
-    qemu_mutex_lock(&d->pgraph.lock);
-
-    PGRAPHGLState *r = d->pgraph.gl_renderer_state;
-    bool wait_for_downloads = false;
-
-    SurfaceBinding *surface;
-    QTAILQ_FOREACH(surface, &r->surfaces, entry) {
-        if (!check_surface_overlaps_range(surface, addr, len)) {
-            continue;
-        }
-
-        hwaddr offset = addr - surface->vram_addr;
-
-        if (write) {
-            trace_nv2a_pgraph_surface_cpu_write(surface->vram_addr, offset);
-        } else {
-            trace_nv2a_pgraph_surface_cpu_read(surface->vram_addr, offset);
-        }
-
-        if (surface->draw_dirty) {
-            surface->download_pending = true;
-            surface->cpu_reads++;
-            wait_for_downloads = true;
-        } else if (!write) {
-            /* Clean: stop watching reads, each of which is a fault; writes
-             * stay watched. */
-            if (!surface->watch_read_off) {
-                surface->watch_read_off = true;
-                mem_access_callback_set_flags(qemu_get_cpu(0),
-                                              surface->access_cb,
-                                              BP_MEM_WRITE);
-            }
-        }
-
-        if (write) {
-            surface->upload_pending = true;
-            /* One write is enough to know a re-upload is needed: stop
-             * watching until the upload consumes it (RAM is the truth). */
-            if (!surface->watch_read_off) {
-                surface->watch_read_off = true;
-                mem_access_callback_set_flags(qemu_get_cpu(0),
-                                              surface->access_cb, 0);
-            }
-        }
+    if (!pgraph_cpu_access(&d->pgraph, addr, len, write)) {
+        return;
     }
-
-    /* RAM a parked binding still owes: queue its writeback on the render
-     * thread (no GL here) and learn the range live. A write waits too, so it
-     * lands on top of the written-back image. */
-    SurfaceBinding *parked;
-    QTAILQ_FOREACH(parked, &r->parked, entry) {
-        if (parked->writeback_owed &&
-            check_surface_overlaps_range(parked, addr, len)) {
-            parked->download_pending = true;
-            wait_for_downloads = true;
-            pgraph_writeback_learn_live(&d->pgraph, parked->vram_addr,
-                                        parked->size);
-        }
+    qatomic_set(&d->pgraph.cpu.dl_pending, true);
+    pfifo_kick(d);
+    /* A DMA write from the main loop arrives here holding the BQL: let
+     * go of it while waiting, as a reset does, so the main loop (the
+     * pgraph interrupt bottom half) runs meanwhile. */
+    bool bql = bql_locked();
+    if (bql) {
+        bql_unlock();
     }
-
-    qemu_mutex_unlock(&d->pgraph.lock);
-
-    if (wait_for_downloads) {
-        qatomic_set(&r->downloads_pending, true);
-        pfifo_kick(d);
-        /* A DMA write from the main loop arrives here holding the BQL: let
-         * go of it while waiting, as a reset does, so the main loop (the
-         * pgraph interrupt bottom half) runs meanwhile. */
-        bool bql = bql_locked();
-        if (bql) {
-            bql_unlock();
-        }
-        pgraph_wait_until_clear(&r->downloads_complete, &r->downloads_pending);
-        if (bql) {
-            bql_lock();
-        }
+    pgraph_wait_until_clear(&r->downloads_complete, &d->pgraph.cpu.dl_pending);
+    if (bql) {
+        bql_lock();
     }
 }
 
@@ -1935,6 +1883,26 @@ static void surface_download(NV2AState *d, SurfaceBinding *surface, bool force)
     surface->draw_dirty = false;
 }
 
+/* PGRAPHCpuAccess's ahead bitmap from the surfaces as they are */
+static void cpu_ahead_rebuild(NV2AState *d)
+{
+    PGRAPHGLState *r = d->pgraph.gl_renderer_state;
+    SurfaceBinding *s;
+
+    pgraph_cpu_ahead_begin(&d->pgraph);
+    QTAILQ_FOREACH (s, &r->surfaces, entry) {
+        if (s->draw_dirty) {
+            pgraph_cpu_ahead_add(&d->pgraph, s->vram_addr, s->size);
+        }
+    }
+    QTAILQ_FOREACH (s, &r->parked, entry) {
+        if (s->writeback_owed) {
+            pgraph_cpu_ahead_add(&d->pgraph, s->vram_addr, s->size);
+        }
+    }
+    pgraph_cpu_ahead_commit(&d->pgraph);
+}
+
 void pgraph_gl_surfaces_refresh_any_dirty(NV2AState *d)
 {
     PGRAPHGLState *r = d->pgraph.gl_renderer_state;
@@ -1954,20 +1922,39 @@ void pgraph_gl_surfaces_refresh_any_dirty(NV2AState *d)
         }
     }
     qatomic_set(&surfaces_any_dirty, any);
+    cpu_ahead_rebuild(d);
 }
 
+/* The download the CPU's access asked for (pgraph_cpu_access): the surfaces
+ * over its range that are ahead of RAM, and the parked writebacks owed there
+ * (a write waits for them too, so it lands on top of the written-back
+ * image) */
 void pgraph_gl_process_pending_downloads(NV2AState *d)
 {
     PGRAPHState *pg = &d->pgraph;
     PGRAPHGLState *r = pg->gl_renderer_state;
+    PGRAPHCpuAccess *cpu = &pg->cpu;
 
     SurfaceBinding *surface;
     QTAILQ_FOREACH(surface, &r->surfaces, entry) {
+        if (surface->draw_dirty &&
+            check_surface_overlaps_range(surface, cpu->dl_addr,
+                                         cpu->dl_len)) {
+            surface->download_pending = true;
+            surface->cpu_reads++;
+        }
         surface_download(d, surface, false);
     }
-    /* Settle the parked writebacks marked pending; free those owing nothing. */
+    /* Settle the parked writebacks there, learning the range live so its
+     * evictions stay eager; free those owing nothing. */
     SurfaceBinding *parked, *next;
     QTAILQ_FOREACH_SAFE(parked, &r->parked, entry, next) {
+        if (parked->writeback_owed &&
+            check_surface_overlaps_range(parked, cpu->dl_addr,
+                                         cpu->dl_len)) {
+            pgraph_writeback_learn_live(pg, parked->vram_addr, parked->size);
+            parked->download_pending = true;
+        }
         if (parked->writeback_owed && parked->download_pending) {
             surface_download(d, parked, false);
             parked->writeback_owed = false;
@@ -1977,7 +1964,48 @@ void pgraph_gl_process_pending_downloads(NV2AState *d)
         }
     }
 
-    pgraph_clear_and_notify(&r->downloads_complete, &r->downloads_pending);
+    pgraph_gl_surfaces_refresh_any_dirty(d);
+    pgraph_clear_and_notify(&r->downloads_complete, &cpu->dl_pending);
+}
+
+/* The GPU thread, before a method: the CPU's writes to surfaces mark them
+ * for an upload and stop their watch until it (one write is enough to know
+ * a re-upload is needed; RAM is the truth), its reads of clean ones stop
+ * their read watch (each read is a fault), and a download it asked for is
+ * done (PGRAPHCpuAccess) */
+void pgraph_gl_cpu_access_service(NV2AState *d)
+{
+    PGRAPHState *pg = &d->pgraph;
+    PGRAPHGLState *r = pg->gl_renderer_state;
+    SurfaceBinding *surface;
+
+    if (pgraph_cpu_take_touched(pg)) {
+        QTAILQ_FOREACH(surface, &r->surfaces, entry) {
+            if (pgraph_cpu_taken_written(pg, surface->vram_addr,
+                                         surface->size)) {
+                trace_nv2a_pgraph_surface_cpu_write(surface->vram_addr, 0);
+                surface->upload_pending = true;
+                if (!surface->watch_read_off) {
+                    surface->watch_read_off = true;
+                    mem_access_callback_set_flags(qemu_get_cpu(0),
+                                                  surface->access_cb, 0);
+                }
+            } else if (!surface->draw_dirty &&
+                       pgraph_cpu_taken_read(pg, surface->vram_addr,
+                                             surface->size)) {
+                trace_nv2a_pgraph_surface_cpu_read(surface->vram_addr, 0);
+                if (!surface->watch_read_off) {
+                    surface->watch_read_off = true;
+                    mem_access_callback_set_flags(qemu_get_cpu(0),
+                                                  surface->access_cb,
+                                                  BP_MEM_WRITE);
+                }
+            }
+        }
+    }
+    if (qatomic_read(&pg->cpu.dl_pending)) {
+        pgraph_gl_process_pending_downloads(d);
+    }
 }
 
 void pgraph_gl_download_dirty_surfaces(NV2AState *d)
@@ -2797,7 +2825,6 @@ void pgraph_gl_init_surfaces(PGRAPHState *pg)
     scratch_init(&r->surf_scratch, 1024 * 1024 * 4);
     scratch_init(&r->pitch_scratch, 1024 * 1024 * 4);
     scratch_init(&r->s2t_scratch, 1024 * 1024 * 4);
-    r->downloads_pending = false;
     retro_eventcount_init(&r->downloads_complete);
     retro_eventcount_init(&r->dirty_surfaces_download_complete);
 

@@ -178,11 +178,53 @@ typedef struct PGRAPHRenderer {
         unsigned int (*get_surface_scale_factor)(NV2AState *d);
         int (*get_framebuffer_surface)(NV2AState *d);
         GPUProperties *(*get_gpu_properties)(void);
+        /* the GPU thread, at a method: the CPU's accesses noted in
+         * PGRAPHCpuAccess (touched) and a download asked for (dl_pending) */
+        void (*cpu_access_service)(NV2AState *d);
     } ops;
 } PGRAPHRenderer;
 
+/*
+ * The CPU's accesses to memory the GPU's surfaces cover, without a lock
+ * between the emulator thread and the GPU's. The renderers' access callback
+ * runs on the emulator thread when the guest touches a surface's pages and
+ * reads and sets only these bitmaps, a bit for each 4 KB page of RAM; the
+ * surfaces themselves are the GPU thread's alone.
+ *
+ * ahead: pages a surface the GPU drew into is ahead of RAM on (draw_dirty,
+ *   or a parked binding's owed writeback). Set by the GPU thread before the
+ *   method that dirties the surface completes (pgraph_cpu_ahead_mark), so
+ *   before the guest can see that method done; rebuilt from the surfaces
+ *   (pgraph_cpu_ahead_begin/add/commit) after downloads, which may only
+ *   clear bits that are no longer ahead. A CPU access to an ahead page asks
+ *   the GPU thread for the download (dl_addr, dl_len, dl_pending) and waits
+ *   for it, as it always had to.
+ * written, clean_read: pages the CPU wrote, or read while not ahead, since
+ *   the GPU thread last looked (touched): it marks the surfaces there for an
+ *   upload, or stops watching their reads, at its next method.
+ */
+#define PGRAPH_CPU_PAGE_BITS 12
+#define PGRAPH_CPU_PAGES ((128 * MiB) >> PGRAPH_CPU_PAGE_BITS)
+
+typedef struct PGRAPHCpuAccess {
+    unsigned long ahead[BITS_TO_LONGS(PGRAPH_CPU_PAGES)];
+    unsigned long written[BITS_TO_LONGS(PGRAPH_CPU_PAGES)];
+    unsigned long clean_read[BITS_TO_LONGS(PGRAPH_CPU_PAGES)];
+    int touched;
+    /* the download asked for (the range set first); the renderer's
+     * downloads_complete when it is done */
+    bool dl_pending;
+    hwaddr dl_addr;
+    hwaddr dl_len;
+    /* the GPU thread's: the next ahead bitmap while it is built, and the
+     * written and clean_read bits taken */
+    unsigned long build[BITS_TO_LONGS(PGRAPH_CPU_PAGES)];
+    unsigned long taken_written[BITS_TO_LONGS(PGRAPH_CPU_PAGES)];
+    unsigned long taken_read[BITS_TO_LONGS(PGRAPH_CPU_PAGES)];
+} PGRAPHCpuAccess;
+
 typedef struct PGRAPHState {
-    QemuMutex lock;
+    PGRAPHCpuAccess cpu;
 
     uint32_t pending_interrupts;
     uint32_t enabled_interrupts;
@@ -383,6 +425,18 @@ void pfifo_kick(NV2AState *d);
 void pfifo_guest_lock(NV2AState *d);
 
 void pgraph_renderer_register(const PGRAPHRenderer *renderer);
+
+/* CPU access to the surfaces' memory (PGRAPHCpuAccess). The GPU thread: */
+void pgraph_cpu_ahead_mark(PGRAPHState *pg, hwaddr addr, hwaddr size);
+void pgraph_cpu_ahead_begin(PGRAPHState *pg);
+void pgraph_cpu_ahead_add(PGRAPHState *pg, hwaddr addr, hwaddr size);
+void pgraph_cpu_ahead_commit(PGRAPHState *pg);
+bool pgraph_cpu_take_touched(PGRAPHState *pg);
+bool pgraph_cpu_taken_written(PGRAPHState *pg, hwaddr addr, hwaddr size);
+bool pgraph_cpu_taken_read(PGRAPHState *pg, hwaddr addr, hwaddr size);
+/* the emulator thread, in the access callback: whether the access needs a
+ * download (it then asks for it), noting it otherwise */
+bool pgraph_cpu_access(PGRAPHState *pg, hwaddr addr, hwaddr len, bool write);
 
 // FIXME: Move from here
 

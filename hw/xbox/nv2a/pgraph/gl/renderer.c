@@ -186,16 +186,11 @@ static void pgraph_gl_process_pending(NV2AState *d)
 
     bool scanout = qatomic_read(&d->pgraph.scanout_changed) ||
                    qatomic_read(&r->disp_check_pending);
-    if (qatomic_read(&r->downloads_pending) ||
-        qatomic_read(&r->download_dirty_surfaces_pending) ||
+    if (qatomic_read(&r->download_dirty_surfaces_pending) ||
         qatomic_read(&d->pgraph.sync_pending) || scanout ||
         qatomic_read(&d->pgraph.flush_pending) ||
         qatomic_read(&r->shader_cache_writeback_pending)) {
         qemu_mutex_unlock(&d->pfifo.lock);
-        qemu_mutex_lock(&d->pgraph.lock);
-        if (qatomic_read(&r->downloads_pending)) {
-            pgraph_gl_process_pending_downloads(d);
-        }
         if (qatomic_read(&r->download_dirty_surfaces_pending)) {
             /* pre-savevm: close the open visibility-test interval and serve
              * every queued report, so each GET_REPORT result is in guest
@@ -222,7 +217,6 @@ static void pgraph_gl_process_pending(NV2AState *d)
         if (qatomic_read(&r->shader_cache_writeback_pending)) {
             pgraph_gl_shader_write_cache_reload_list(&d->pgraph);
         }
-        qemu_mutex_unlock(&d->pgraph.lock);
         qemu_mutex_lock(&d->pfifo.lock);
     }
 }
@@ -287,6 +281,7 @@ static PGRAPHRenderer pgraph_gl_renderer = {
         .set_surface_scale_factor = pgraph_gl_set_surface_scale_factor,
         .get_surface_scale_factor = pgraph_gl_get_surface_scale_factor,
         .get_framebuffer_surface = pgraph_gl_get_framebuffer_surface,
+        .cpu_access_service = pgraph_gl_cpu_access_service,
         .get_gpu_properties = pgraph_gl_get_gpu_properties,
     }
 };

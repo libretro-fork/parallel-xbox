@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- The emulator thread no longer takes a lock shared with the GPU thread when a game touches memory the GPU draws into. It used to wait for the GPU thread to finish up to 64 commands first; now it only marks the pages it touched and the GPU thread picks that up before its next command. It still waits when the game reads something the GPU has drawn but not yet written back to memory, and then only for that read-back.
+
 - Vulkan: when several pictures the GPU drew are read back in a row (all of them for a savestate, so every frame with run-ahead; those a texture or a CPU read needs), they are now read back in one go, with one wait for the GPU instead of one wait per picture.
 
 - Savestates are smaller and quicker: loading one takes a quarter less time (Ninja Gaiden Black: 79 ms instead of 104, mid-game) and saving one a fifth less (88 ms instead of 112). The GPU's two inline vertex and index buffers went into every state whole, 4 MB written and read a number at a time, although at the end of a frame they nearly never hold anything; a state now holds only the part in use. States saved before load as they did.

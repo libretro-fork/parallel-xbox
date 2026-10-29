@@ -734,7 +734,6 @@ typedef struct PGRAPHVkState {
      * no allocation when a surface is met or written back (pool.h) */
     ObjPool surface_pool;
     SurfaceBinding *color_binding, *zeta_binding;
-    bool downloads_pending;
     retro_eventcount_t downloads_complete;
     bool download_dirty_surfaces_pending;
     retro_eventcount_t dirty_surfaces_download_complete; // common
@@ -988,6 +987,8 @@ void pgraph_vk_init_surfaces(PGRAPHState *pg);
 void pgraph_vk_finalize_surfaces(PGRAPHState *pg);
 void pgraph_vk_surface_flush(NV2AState *d);
 void pgraph_vk_process_pending_downloads(NV2AState *d);
+void pgraph_vk_cpu_access_service(NV2AState *d);
+void pgraph_vk_cpu_ahead_refresh(NV2AState *d);
 void pgraph_vk_surface_download_if_dirty(NV2AState *d, SurfaceBinding *surface);
 SurfaceBinding *pgraph_vk_surface_get_within(NV2AState *d, hwaddr addr);
 void pgraph_vk_wait_for_surface_download(SurfaceBinding *e);

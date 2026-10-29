@@ -4094,13 +4094,23 @@ void pgraph_vk_set_surface_dirty(PGRAPHState *pg, bool color, bool zeta)
     pg->surface_color.draw_dirty |= color;
     pg->surface_zeta.draw_dirty |= zeta;
 
+    /* RAM is behind the bindings now, before the method completes
+     * (PGRAPHCpuAccess) */
     if (r->color_binding) {
+        if (color) {
+            pgraph_cpu_ahead_mark(pg, r->color_binding->vram_addr,
+                                  r->color_binding->size);
+        }
         r->color_binding->draw_dirty |= color;
         r->color_binding->frame_time = pg->frame_time;
         r->color_binding->cleared = false;
     }
 
     if (r->zeta_binding) {
+        if (zeta) {
+            pgraph_cpu_ahead_mark(pg, r->zeta_binding->vram_addr,
+                                  r->zeta_binding->size);
+        }
         r->zeta_binding->draw_dirty |= zeta;
         r->zeta_binding->frame_time = pg->frame_time;
         r->zeta_binding->cleared = false;

@@ -125,7 +125,7 @@ static bool is_flip_stall_complete(NV2AState *d)
     return false;
 }
 
-/* pgraph.lock held (the puller's batch) */
+/* in the pusher's batch */
 static bool pfifo_stall_for_flip(NV2AState *d)
 {
     bool should_stall = false;
@@ -341,22 +341,24 @@ static void pfifo_run_pusher(NV2AState *d)
 
     hwaddr dma_len;
     uint8_t *dma = nv_dma_map(d, dma_instance, &dma_len);
-    /* The methods run under pgraph's lock in batches: both locks are let
-     * go between batches, and at once when a guest thread wants one
-     * (pfifo_guest_lock), where every method let them go before. At
-     * 14,000 methods a frame (Dead or Alive 3) that was four lock
-     * operations each. */
+    /* The methods run in batches under the FIFO's lock, let go between
+     * batches and at once when a guest thread wants it (pfifo_guest_lock).
+     * PGRAPH has no lock: the CPU's accesses to the surfaces' memory come
+     * through PGRAPHCpuAccess, served here before each method. */
     unsigned batch = 0;
-    qemu_mutex_lock(&d->pgraph.lock);
+    PGRAPHState *pg = &d->pgraph;
     while (!pfifo_pusher_should_stall(d)) {
         if (++batch == PFIFO_METHOD_BATCH ||
             retro_atomic_load_acquire_int(&d->pfifo.guest_waiting)) {
             batch = 0;
-            qemu_mutex_unlock(&d->pgraph.lock);
             qemu_mutex_unlock(&d->pfifo.lock);
             qemu_mutex_lock(&d->pfifo.lock);
-            qemu_mutex_lock(&d->pgraph.lock);
             /* nv_dma_map's mapping holds; the registers may have moved */
+        }
+        if ((qatomic_read(&pg->cpu.touched) ||
+             qatomic_read(&pg->cpu.dl_pending)) &&
+            pg->renderer->ops.cpu_access_service) {
+            pg->renderer->ops.cpu_access_service(d);
         }
         uint32_t dma_get_v = *dma_get;
         /* the guest's, written without the lock (user_write) */
@@ -510,7 +512,6 @@ static void pfifo_run_pusher(NV2AState *d)
             break;
         }
     }
-    qemu_mutex_unlock(&d->pgraph.lock);
 
     // NV2A_DPRINTF("DMA pusher done: max 0x%" HWADDR_PRIx ", 0x%" HWADDR_PRIx " - 0x%" HWADDR_PRIx "\n",
     //      dma_len, control->dma_get, control->dma_put);
