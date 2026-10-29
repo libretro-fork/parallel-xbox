@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Audio: DLS2 filters use measured coefficient and state rounding, retain their intended gain and resonance, and no longer apply an artificial waveshaper or output clamp. Mono 2D filter parameters are computed once for both histories.
+
 - HRTF: both ears share one mono history and borrow the active entry during processing, removing duplicate history writes and a target-parameter copy while retaining independent ear delays and gains.
 
 - HRTF: edits to active entries and changes of handle take effect on the next processed frame; tap gains move across that 32-sample frame. A restarted voice begins at its current entry rather than stale coefficients.
