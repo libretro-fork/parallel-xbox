@@ -1353,9 +1353,18 @@ static void get_multipass_samples(MCPXAPUState *d,
                                 NV_PAVS_VOICE_CFG_FMT_MULTIPASS_BIN);
     dbg->multipass_bin = mp_bin;
 
+    /* The bin is read as 24-bit samples and scaled up by 2^(format headroom),
+     * undoing the bin headroom its voices were mixed with (measured). */
+    int headroom = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_FMT,
+                                  NV_PAVS_VOICE_CFG_FMT_HEADROOM);
+    const float scale = ldexpf(1.0f, headroom - 23);
     for (int i = 0; i < NUM_SAMPLES_PER_FRAME; i++) {
-        samples[i][0] = mixbins[mp_bin][i];
-        samples[i][1] = mixbins[mp_bin][i];
+        /* Add the half in double precision: in float, odd integer samples
+         * above 2^22 would round to an adjacent even integer before floor. */
+        float x = floor((double)mixbins[mp_bin][i] * 8388608.0 + 0.5);
+        x = fminf(fmaxf(x, -8388608.0f), 8388607.0f);
+        samples[i][0] = x * scale;
+        samples[i][1] = samples[i][0];
     }
 
     // DirectSound sets clear mix to true

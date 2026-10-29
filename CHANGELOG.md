@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Audio: multipass submixes restore their voice format headroom (up to 42 dB previously lost); mix-bin conversion rounds halfway values toward positive infinity to match hardware.
+
 - Audio: setting DSP output buffers no longer overwrites voice sample addresses, and an inactive linked voice with its trap disabled no longer aborts the core.
 
 - A game that black-screened after the Xbox logo on every boot after RetroArch crashed or was killed with it running (Jet Set Radio Future, Ninja Gaiden Black) starts again without Trim HDD on Close: the core marks the hard disk image open while content runs, and finds the mark at the next load when the last session never closed. It then empties the cache partitions X, Y and Z before the game starts - they only ever hold caches the games rebuild - since a session cut off mid-write could leave them naming data that never reached the image, and the game read its broken cache back. C and E, the system and the saves, are not touched.
