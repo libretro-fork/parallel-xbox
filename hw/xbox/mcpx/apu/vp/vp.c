@@ -110,10 +110,36 @@ static float filter_coefficient(double x)
     return fmin(round(c), 65535.0) / 65536.0;
 }
 
+/* Measured gain nodes: round(4095 * 10^(-k/20)) through 48 dB,
+ * then integer linear falloff to zero at 63 dB. Immutable shared data
+ * avoids runtime initialization and transcendental work in the mixer. */
+static const uint16_t attenuation_nodes[64] = {
+    4095, 3650, 3253, 2899, 2584, 2303, 2052, 1829,
+    1630, 1453, 1295, 1154, 1029, 917, 817, 728,
+    649, 578, 516, 459, 410, 365, 325, 290,
+    258, 230, 205, 183, 163, 145, 129, 115,
+    103, 92, 82, 73, 65, 58, 52, 46,
+    41, 36, 33, 29, 26, 23, 21, 18,
+    16, 14, 13, 12, 11, 10, 9, 8,
+    7, 6, 5, 4, 3, 2, 1, 0
+};
+
+static uint32_t attenuation_gain(int att)
+{
+    if (att <= 0) {
+        return 16384;
+    }
+    if (att >= 63 * 64) {
+        return 0;
+    }
+    uint32_t n0 = attenuation_nodes[att >> 6];
+    uint32_t n1 = attenuation_nodes[(att >> 6) + 1];
+    return (256 * n0 - 4 * (n0 - n1) * (att & 63)) >> 6;
+}
+
 static float attenuate(uint16_t vol)
 {
-    vol &= 0xFFF;
-    return (vol == 0xFFF) ? 0.0 : powf(10.0f, vol/(64.0 * -20.0f));
+    return attenuation_gain(vol & 0xFFF) / 16384.0f;
 }
 
 /* CPU boost: voice descriptors, SGE tables and samples are read through
