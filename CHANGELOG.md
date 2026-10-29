@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Audio: spatial voices now apply independent I3DL2 direct and room filters in modes 1-3; room sends 5 and 7 use the room filter. Processing reuses the discarded source-channel slot instead of allocating or copying a room frame.
+
 - Audio: ParaEQ modes now apply their frequency, signed gain and Q fields, including the DLS2/ParaEQ cascade for mono voices. The filter operates in place and voice restart clears its history.
 
 - Audio: DLS2 filters use measured coefficient and state rounding, retain their intended gain and resonance, and no longer apply an artificial waveshaper or output clamp. Mono 2D filter parameters are computed once for both histories.

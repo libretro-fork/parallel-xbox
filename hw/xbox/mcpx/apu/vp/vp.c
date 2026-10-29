@@ -64,6 +64,7 @@ static void voice_reset_filters(MCPXAPUState *d, uint16_t v)
     assert(v < MCPX_HW_MAX_VOICES);
     memset(&d->vp.filters[v].svf, 0, sizeof(d->vp.filters[v].svf));
     memset(&d->vp.filters[v].peq, 0, sizeof(d->vp.filters[v].peq));
+    memset(&d->vp.filters[v].i3dl2, 0, sizeof(d->vp.filters[v].i3dl2));
     d->vp.filters[v].hrtf.params_set = false;
     hrtf_filter_clear_history(&d->vp.filters[v].hrtf);
     voice_resample_reset(&d->vp.filters[v]);
@@ -1603,6 +1604,24 @@ static void voice_process(MCPXAPUState *d,
         }
     }
 
+    /* Spatial playback has discarded source channel one. Reuse that slot
+     * for room output; channel zero is the direct path consumed by HRTF.
+     * No room frame allocation, copy or mono duplication is needed. */
+    bool i3dl2 = spatial && fmode != 0;
+    if (i3dl2) {
+        uint32_t fcb = voice_get_mask(d, v, NV_PAVS_VOICE_TAR_FCB, 0xFFFFFFFF);
+        float a_direct = (fcb & 0xFFFF) / 65536.0f;
+        float a_room = (fcb >> 16) / 65536.0f;
+        float *state = d->vp.filters[v].i3dl2;
+        for (int i = 0; i < NUM_SAMPLES_PER_FRAME; i++) {
+            float x = samples[i][0];
+            state[0] = svf_round(x + (state[0] - x) * a_direct);
+            state[1] = svf_round(x + (state[1] - x) * a_room);
+            samples[i][0] = state[0];
+            samples[i][1] = state[1];
+        }
+    }
+
     /* Keep the dry frame intact for routes 4-7. The bypass borrows that
      * frame directly; only convolution needs separate left/right output. */
     float ears[NUM_SAMPLES_PER_FRAME][2];
@@ -1630,7 +1649,8 @@ static void voice_process(MCPXAPUState *d,
         float g = ea_value * attenuate(vol[b]) / hr;
         const float (*source)[2] = three_d && b < 4 ? ear_samples : samples;
         unsigned int channel = three_d && b < 4 ?
-            (filtered ? b / 2u : 0u) : b % channels;
+            (filtered ? b / 2u : 0u) :
+            i3dl2 && (b == 5 || b == 7) ? 1u : b % channels;
         for (int i = 0; i < NUM_SAMPLES_PER_FRAME; i++) {
             mixbins[bin[b]][i] += g * source[i][channel];
         }
