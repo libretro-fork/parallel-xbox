@@ -101,11 +101,17 @@ static inline unsigned long long rdtsc(void)
     return ((unsigned long long)hi << 32) | lo;
 }
 
-/* the TSC runs at 733.33 MHz of the guest's time */
+/* the TSC runs at 733.33 MHz of the guest's time. Between two reads of
+ * it, a register-only count of 8192: the TSC read is a call into the
+ * emulator, which a loop of nothing else made almost all of the test's
+ * time; the count is translated code, and a stretch of it that stores
+ * nothing is a wait the core moves the guest's time past. */
 static void delay_us(u32 us)
 {
     unsigned long long end = rdtsc() + (unsigned long long)us * 733;
     while (rdtsc() < end) {
+        u32 n = 8192;
+        __asm__ volatile("1: dec %0\n\tjnz 1b" : "+r"(n));
     }
 }
 
