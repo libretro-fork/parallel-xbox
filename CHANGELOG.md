@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Audio: the eight-point resampler exposes its fixed tap loop to the compiler without changing sample accumulation or adding copies. Native x86-64 GCC tests keep identical output while reducing the measured fractional-pitch kernel cost; this is not a whole-game performance claim.
+
 - Audio: natural source endings wait for decoded samples and the eight-point interpolation window to reach the mix before completing the voice, instead of cutting off short voices or their tails during lookahead. Inclusive buffer and stream-segment ends retain their last sample. Persistent stream underruns stay active for refill; explicit stops remain immediate. VP reset clears transient playback history, and a zero-progress fetch cannot stall the frame.
 
 - Audio: register, envelope and LFO pitch changes ramp across each MCPX frame in logarithmic pitch space. Steady frames calculate one source step; changing frames avoid a scratch step array. Voice restart begins at its current pitch.

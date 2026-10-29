@@ -1382,6 +1382,11 @@ static int voice_resample(MCPXAPUState *d, uint16_t v, float samples[][2],
             const float *hi = lagrange_rows[(fraction >> 8) + 1];
             float alpha = (fraction & 0xFF) / 256.0f;
             float left = 0.0f, right = 0.0f;
+            /* Fixed tap offsets expose the circular loads without changing
+             * accumulation order or duplicating the history window. */
+#if defined(__GNUC__) && !defined(__clang__) && __GNUC__ >= 8
+#pragma GCC unroll 8
+#endif
             for (int k = 0; k < 8; k++) {
                 float weight = lo[k] + (hi[k] - lo[k]) * alpha;
                 unsigned int slot = (head + k) & 7;
