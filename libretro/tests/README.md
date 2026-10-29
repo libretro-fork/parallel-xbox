@@ -1,7 +1,9 @@
 # The core's tests
 
-`rom/rep.asm` checks REP MOVS in a bare-metal guest with CPU Boost on and
-off. It covers byte/word/dword copies, direction and overlap, zero counts,
+`rom/rep.asm` and `rom/rep-stos.asm` check REP MOVS copies and STOS fills
+in bare-metal guests with CPU Boost on and off. They share setup and handlers
+in `rom/rep-common.inc`. They cover byte/word/dword operations, fill-value and
+register preservation, copy overlap, direction, zero counts,
 16-bit address/count handling and wrap, TF single-stepping, RF and execution
 breakpoints, data watchpoints, a pending interrupt after STI, page-fault
 restart, self-modifying code and a REP opcode spanning two code pages.

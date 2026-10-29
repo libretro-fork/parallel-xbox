@@ -1492,12 +1492,12 @@ static void do_gen_rep(DisasContext *s, MemOp ot, TCGv dshift,
     s->flags &= ~HF_RF_MASK;
 
     /* REP keeps RF set between iterations, rather than clearing it after
-     * one instruction. For counted MOVS, that alone need not disable the
+     * one instruction. For counted MOVS/STOS, that alone need not disable the
      * backedge's normal block chaining: each entry still checks the
      * instruction budget and exit request, and each element uses the
      * ordinary faulting load/store path. Keep debugger, interrupt-shadow
      * and shortened-budget blocks on their existing path. */
-    if (xemu_cpu_boost && had_rf && fn == gen_movs &&
+    if (xemu_cpu_boost && had_rf && (fn == gen_movs || fn == gen_stos) &&
         (tb_cflags(s->base.tb) & CF_USE_ICOUNT) &&
         !(tb_cflags(s->base.tb) & (CF_NO_GOTO_TB | CF_SINGLE_STEP |
                                    CF_BP_PAGE | CF_MEMI_ONLY | CF_NOIRQ |
