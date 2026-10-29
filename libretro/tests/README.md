@@ -1,5 +1,18 @@
 # The core's tests
 
+`python libretro/tests/test-voice-tail.py . gcc` runs the decoder-to-mix
+regression without booting a complete core. It compiles the checkout's
+actual PCM/ADPCM decoder, resampler, envelope/filter/routing functions and
+voice-list active gate against bounded guest RAM and notification writes.
+Worker execution and platform/debug glue are fixtures. The 944 finite-source
+cases cover source lengths around frame/block boundaries, slow/fast pitch,
+mono/stereo and DSP-off output; additional cases cover loops, SSL bank
+completion, persistent underrun/refill, explicit stop, pause, restart and
+VP reset/pre-load. Set `TAIL_TEST_CFLAGS` to
+`-fsanitize=undefined -fsanitize-undefined-trap-on-error` for trapping under
+the core's `-fwrapv` semantics. Python and GCC are required; no Xbox files
+are needed. These are source-level tests, not a hardware timing comparison.
+
 `run.sh <core.so>` runs the core in a headless frontend of its own
 (`harness.c`: OpenGL core on a surfaceless EGL display, Mesa's llvmpipe
 will do; with `--vulkan` a Vulkan context as RetroArch's vulkan driver

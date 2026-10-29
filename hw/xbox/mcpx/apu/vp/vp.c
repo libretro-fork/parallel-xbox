@@ -1015,7 +1015,9 @@ static int voice_get_samples(MCPXAPUState *d, uint32_t v, float samples[][2],
             d->vp.ssl[v].ssl_seg = 0;
             if (!persist) {
                 d->vp.ssl[v].ssl_index = 0;
-                voice_off(d, v);
+                /* Decoding reads ahead of playback. Keep the voice active
+                 * until the resampler has emitted its buffered source. */
+                d->vp.filters[v].source_ended = true;
             } else {
                 set_notify_status(
                     d, v, MCPX_HW_NOTIFIER_SSLA_DONE + d->vp.ssl[v].ssl_index,
@@ -1205,7 +1207,7 @@ static int voice_get_samples(MCPXAPUState *d, uint32_t v, float samples[][2],
         }
     }
 
-    if (cbo >= ebo) {
+    if (cbo > ebo) {
         if (stream) {
             d->vp.ssl[v].ssl_seg += 1;
             cbo = 0;
@@ -1224,7 +1226,7 @@ static int voice_get_samples(MCPXAPUState *d, uint32_t v, float samples[][2],
                 cbo = lbo;
             } else {
                 cbo = ebo;
-                voice_off(d, v);
+                d->vp.filters[v].source_ended = true;
                 DPRINTF("end of buffer!\n");
             }
         }
@@ -1247,13 +1249,13 @@ static void voice_resample_fetch(MCPXAPUState *d, MCPXAPUVoiceFilter *filter)
     while (sample_count < NUM_SAMPLES_PER_FRAME) {
         int active = voice_get_mask(d, v, NV_PAVS_VOICE_PAR_STATE,
                                     NV_PAVS_VOICE_PAR_STATE_ACTIVE_VOICE);
-        if (!active) {
+        if (!active || filter->source_ended) {
             break;
         }
         int count = voice_get_samples(
             d, v, &filter->resample_buf[sample_count],
             NUM_SAMPLES_PER_FRAME - sample_count);
-        if (count < 0) {
+        if (count <= 0) {
             break;
         }
         sample_count += count;
@@ -1265,6 +1267,7 @@ static void voice_resample_fetch(MCPXAPUState *d, MCPXAPUVoiceFilter *filter)
     }
     filter->resample_len = NUM_SAMPLES_PER_FRAME;
     filter->resample_pos = 0;
+    filter->resample_valid = sample_count;
 }
 
 /* Prime five source samples: three zeros before the first sample and
@@ -1273,6 +1276,11 @@ static void voice_resample_reset(MCPXAPUVoiceFilter *filter)
 {
     filter->resample_len = 0;
     filter->resample_pos = 0;
+    filter->resample_valid = 0;
+    /* The reset history contains padding only. An empty finite stream
+     * must not wait several low-pitch frames for an already empty window. */
+    filter->resample_zeros = 8;
+    filter->source_ended = false;
     memset(filter->resample_hist, 0, sizeof(filter->resample_hist));
     filter->resample_head = 0;
     filter->resample_phase = 5u << 16;
@@ -1345,9 +1353,24 @@ static int voice_resample(MCPXAPUState *d, uint16_t v, float samples[][2],
             /* Retain only the new pair; never shift the other seven. */
             history[head][0] = filter->resample_buf[filter->resample_pos][0];
             history[head][1] = filter->resample_buf[filter->resample_pos][1];
+            if (filter->resample_pos < filter->resample_valid) {
+                filter->resample_zeros = 0;
+            } else if (filter->resample_zeros < 8) {
+                filter->resample_zeros++;
+            }
             filter->resample_pos++;
             head = (head + 1) & 7;
             filter->resample_phase -= 0x10000;
+            if (filter->source_ended && filter->resample_zeros == 8) {
+                break;
+            }
+        }
+        if (filter->source_ended && filter->resample_zeros == 8) {
+            /* No source can contribute to any of the eight taps now.
+             * Finish this mix frame before publishing natural completion. */
+            memset(&samples[n], 0, (requested_num - n) * sizeof(samples[0]));
+            filter->resample_head = head;
+            return requested_num;
         }
         uint32_t fraction = filter->resample_phase;
         if (fraction == 0) {
@@ -1563,6 +1586,9 @@ static void voice_process(MCPXAPUState *d,
         return;
     }
 
+    bool source_finished = !multipass && d->vp.filters[v].source_ended &&
+                           d->vp.filters[v].resample_zeros == 8;
+
     int bin[8];
     bin[0] = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_VBIN,
                             NV_PAVS_VOICE_CFG_VBIN_V0BIN);
@@ -1624,6 +1650,9 @@ static void voice_process(MCPXAPUState *d,
     }
 
     if (voice_should_mute(v)) {
+        if (source_finished) {
+            voice_off(d, v);
+        }
         return;
     }
 
@@ -1836,6 +1865,9 @@ static void voice_process(MCPXAPUState *d,
             sample_buf[i][0] += g * ear_samples[i][0];
             sample_buf[i][1] += g * ear_samples[i][filtered ? 1 : channels - 1];
         }
+    }
+    if (source_finished) {
+        voice_off(d, v);
     }
 }
 
@@ -2193,6 +2225,9 @@ void mcpx_apu_vp_reset(MCPXAPUState *d)
     memset(d->vp.submix_headroom, 0, sizeof(d->vp.submix_headroom));
     memset(d->vp.voice_locked, 0, sizeof(d->vp.voice_locked));
     for (int v = 0; v < ARRAY_SIZE(d->vp.filters); v++) {
+        /* Decoder EOF and buffered samples are transient, not VMState.
+         * Reset/pre-load must not restore an active voice onto old EOF. */
+        voice_reset_filters(d, v);
         hrtf_filter_init(&d->vp.filters[v].hrtf);
     }
 }

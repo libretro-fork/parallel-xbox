@@ -48,6 +48,11 @@ typedef struct MCPXAPUVoiceFilter {
     float resample_buf[NUM_SAMPLES_PER_FRAME][2];
     int resample_len;
     int resample_pos;
+    /* Decoded payload length excludes zero padding. Natural EOF leaves the
+     * voice active until eight padded samples have replaced its history. */
+    int resample_valid;
+    unsigned int resample_zeros;
+    bool source_ended;
     float resample_hist[8][2];
     unsigned int resample_head;
     uint32_t resample_phase;
