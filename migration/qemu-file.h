@@ -29,6 +29,8 @@
 #include "io/channel.h"
 
 QEMUFile *qemu_file_new_input(QIOChannel *ioc);
+QEMUFile *qemu_file_new_input_mapped(QIOChannel *ioc, const void *data,
+                                     size_t len);
 QEMUFile *qemu_file_new_output(QIOChannel *ioc);
 int qemu_fclose(QEMUFile *f);
 

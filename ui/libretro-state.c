@@ -37,15 +37,16 @@
 
 /*
  * A channel over a buffer of fixed size the caller owns: writes past its end
- * fail instead of growing it (QIOChannelBuffer reallocates its own).
+ * fail instead of growing it (QIOChannelBuffer reallocates its own). Loading
+ * reads the state in place (qemu_file_new_input_mapped), so nothing is read
+ * through the channel: it is only what the input file is closed through.
  */
 #define TYPE_LR_STATE_CHANNEL "lr-state-channel"
 OBJECT_DECLARE_SIMPLE_TYPE(LRStateChannel, LR_STATE_CHANNEL)
 
 struct LRStateChannel {
     QIOChannel parent;
-    uint8_t *wbuf;       /* saving: the frontend's buffer */
-    const uint8_t *rbuf; /* loading: the state */
+    uint8_t *wbuf; /* saving: the frontend's buffer */
     size_t cap;
     size_t off;
 };
@@ -54,16 +55,7 @@ static ssize_t lr_state_channel_readv(QIOChannel *ioc, const struct iovec *iov,
                                       size_t niov, int **fds, size_t *nfds,
                                       int flags, Error **errp)
 {
-    LRStateChannel *c = LR_STATE_CHANNEL(ioc);
-    ssize_t ret = 0;
-
-    for (size_t i = 0; i < niov && c->off < c->cap; i++) {
-        size_t n = MIN(iov[i].iov_len, c->cap - c->off);
-        memcpy(iov[i].iov_base, c->rbuf + c->off, n);
-        c->off += n;
-        ret += n;
-    }
-    return ret;
+    return 0; /* never read: the state is mapped */
 }
 
 static ssize_t lr_state_channel_writev(QIOChannel *ioc,
@@ -264,14 +256,15 @@ bool lr_state_load(const void *data, size_t size, bool *disk_newer,
                   le64_to_cpu(hdr.hdd_writes) != lr_state_hdd_writes();
 
     c = LR_STATE_CHANNEL(object_new(TYPE_LR_STATE_CHANNEL));
-    c->rbuf = (const uint8_t *)data + sizeof(hdr);
-    c->cap = len;
 
     vm_stop(RUN_STATE_RESTORE_VM);
     bdrv_drain_all_begin();
     qemu_system_reset(SHUTDOWN_CAUSE_SNAPSHOT_LOAD);
 
-    f = qemu_file_new_input(QIO_CHANNEL(c));
+    /* read where it lies: the page copied into the guest's RAM is the one
+     * copy of a page, and what the loaders take in place is not copied */
+    f = qemu_file_new_input_mapped(QIO_CHANNEL(c),
+                                   (const uint8_t *)data + sizeof(hdr), len);
     mis->from_src_file = f;
     if (!yank_register_instance(MIGRATION_YANK_INSTANCE, errp)) {
         qemu_fclose(f);

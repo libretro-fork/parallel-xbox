@@ -48,7 +48,15 @@ struct QEMUFile {
 
     int buf_index;
     int buf_size; /* 0 when writing */
-    uint8_t buf[IO_BUF_SIZE];
+    uint8_t *buf; /* buf_storage, or a window of the mapped input */
+    uint8_t buf_storage[IO_BUF_SIZE];
+
+    /* libretro: an input file over a buffer in memory (a savestate the
+     * frontend hands over) reads it in place, buf a window of it, rather
+     * than copying it IO_BUF_SIZE at a time into buf_storage first */
+    const uint8_t *map;
+    size_t map_len;
+    size_t map_pos; /* where buf's window starts in map */
 
     DECLARE_BITMAP(may_free, MAX_IOV_SIZE);
     struct iovec iov[MAX_IOV_SIZE];
@@ -117,6 +125,7 @@ static QEMUFile *qemu_file_new_impl(QIOChannel *ioc, bool is_writable)
     object_ref(ioc);
     f->ioc = ioc;
     f->is_writable = is_writable;
+    f->buf = f->buf_storage;
     f->can_pass_fd = qio_channel_has_feature(ioc, QIO_CHANNEL_FEATURE_FD_PASS);
     QTAILQ_INIT(&f->fds);
 
@@ -139,6 +148,21 @@ QEMUFile *qemu_file_new_output(QIOChannel *ioc)
 QEMUFile *qemu_file_new_input(QIOChannel *ioc)
 {
     return qemu_file_new_impl(ioc, false);
+}
+
+/*
+ * An input file that reads data, len bytes the caller keeps alive until
+ * the file is closed, in place: nothing is read from ioc, which is only
+ * the channel the file is closed and shut down through.
+ */
+QEMUFile *qemu_file_new_input_mapped(QIOChannel *ioc, const void *data,
+                                     size_t len)
+{
+    QEMUFile *f = qemu_file_new_impl(ioc, false);
+
+    f->map = data;
+    f->map_len = len;
+    return f;
 }
 
 /*
@@ -325,6 +349,21 @@ static ssize_t coroutine_mixed_fn qemu_fill_buffer(QEMUFile *f)
     size_t *pnfd = f->can_pass_fd ? &nfd : NULL;
 
     assert(!qemu_file_is_writable(f));
+
+    if (f->map) {
+        /* The window moves on to the first unread byte, and reaches as
+         * far as a buffer would: no byte is copied */
+        pending = f->buf_size - f->buf_index;
+        f->map_pos += f->buf_index;
+        f->buf = (uint8_t *)f->map + f->map_pos;
+        f->buf_index = 0;
+        f->buf_size = MIN(f->map_len - f->map_pos, IO_BUF_SIZE);
+        len = f->buf_size - pending;
+        if (len <= 0) {
+            qemu_file_set_error(f, -EIO); /* the end, as a channel's */
+        }
+        return len;
+    }
 
     pending = f->buf_size - f->buf_index;
     if (pending > 0) {
