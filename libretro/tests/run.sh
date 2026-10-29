@@ -15,7 +15,8 @@ core=$(readlink -f "$1")
 here=$(cd "$(dirname "$0")" && pwd)
 work=${2:-$(mktemp -d)}
 mkdir -p "$work/bin" "$work/sys/xemu" "$work/sysb/xemu" "$work/sysd/xemu" \
-    "$work/syss/xemu" "$work/sysp/xemu" "$work/sysg/xemu" "$work/sysv/xemu"
+    "$work/syss/xemu" "$work/sysp/xemu" "$work/sysg/xemu" "$work/sysv/xemu" \
+    "$work/sysr/xemu"
 
 # The harness's paths, as the core's OS spells them
 path() { echo "$1"; }
@@ -49,6 +50,8 @@ ${cc} -O2 -std=c99 -Wall -o "$work/bin/sinecheck" "$here/sinecheck.c"
 ${cc} -O2 -std=c99 -Wall -o "$work/bin/mkdisc" "$here/mkdisc.c"
 "$work/bin/mkdisc" "$work/disc.iso"
 nasm -f bin -o "$work/sys/xemu/mcpx_1.0.bin" "$here/rom/bootrom.asm"
+cp "$work/sys/xemu/mcpx_1.0.bin" "$work/sysr/xemu/"
+nasm -f bin -o "$work/sysr/xemu/Complex_4627v1.03.bin" "$here/rom/rep.asm"
 nasm -f bin -I"$here/rom/" -o "$work/sys/xemu/Complex_4627v1.03.bin" "$here/rom/flash.asm"
 cp "$work/sys/xemu/mcpx_1.0.bin" "$work/sysb/xemu/"
 nasm -f bin -DBUSY -I"$here/rom/" -o "$work/sysb/xemu/Complex_4627v1.03.bin" "$here/rom/flash.asm"
@@ -69,6 +72,28 @@ t() { echo "== $1"; shift; timeout 300 "$@"; }
 # start the DSPs: their tests run without APU DSP Emulation, which is on by
 # default where the core has the JIT (a game's DSP programs make its sound).
 vp="--opt xemu_use_dsp=disabled"
+
+# REP MOVS: per-element memory semantics, debug/RF behavior, pending IRQ
+# after STI, a fault/restart and self-modifying/two-page code. The same
+# architectural results must hold with and without CPU Boost chaining.
+for boost in enabled disabled; do
+    t "REP MOVS, CPU Boost $boost" $h "$(path "$core")" "$(path "$work/sysr")" \
+      $vp --opt "xemu_cpu_boost=$boost" --frames 20 --strict \
+      --peek 0x300000 --peek 0x300004 --peek 0x300008 --peek 0x30000c \
+      --peek 0x300014 --peek 0x300018 --peek 0x30001c \
+      --peek 0x300024 >"$work/rep-$boost.txt"
+    for want in "peek_0x300000=0x5245504f" "peek_0x300004=0x00000000" \
+                "peek_0x300008=0x00000005" "peek_0x30000c=0x00000001" \
+                "peek_0x300014=0x000fffff" "peek_0x300018=0x00000001" \
+                "peek_0x30001c=0x00000008" \
+                "peek_0x300024=0x00000005"; do
+        if ! grep -q "$want" "$work/rep-$boost.txt"; then
+            cat "$work/rep-$boost.txt"
+            echo "FAIL: REP MOVS ($boost): expected $want"
+            exit 1
+        fi
+    done
+done
 
 # The guest idles: unpaced, the frontend's fast-forward. One frame's worth
 # of audio and a video call per run, the tone unbroken, far faster than

@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- CPU Boost: repeated MOVS copies chain between translated iterations instead of returning to the dispatcher for every element. Each element still performs the normal guest load/store and instruction-budget checks; debugger, interrupt-shadow and shortened-budget blocks retain their existing paths. No host bulk copy replaces the emulated memory accesses.
+
 - The emulator thread no longer takes a lock shared with the GPU thread when a game touches memory the GPU draws into. It used to wait for the GPU thread to finish up to 64 commands first; now it only marks the pages it touched and the GPU thread picks that up before its next command. It still waits when the game reads something the GPU has drawn but not yet written back to memory, and then only for that read-back.
 
 - Vulkan: when several pictures the GPU drew are read back in a row (all of them for a savestate, so every frame with run-ahead; those a texture or a CPU read needs), they are now read back in one go, with one wait for the GPU instead of one wait per picture.

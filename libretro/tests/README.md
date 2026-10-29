@@ -1,5 +1,12 @@
 # The core's tests
 
+`rom/rep.asm` checks REP MOVS in a bare-metal guest with CPU Boost on and
+off. It covers byte/word/dword copies, direction and overlap, zero counts,
+16-bit address/count handling and wrap, TF single-stepping, RF and execution
+breakpoints, data watchpoints, a pending interrupt after STI, page-fault
+restart, self-modifying code and a REP opcode spanning two code pages.
+`run.sh` checks its completion marker, trap counts and remaining counts.
+
 `python libretro/tests/test-io-recompile.py . gcc` executes production
 I/O learning and block invalidation against controlled cache/page/jump
 ownership. It prevents an unchanged old I/O block from being resurrected,
