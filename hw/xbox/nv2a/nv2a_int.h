@@ -115,7 +115,14 @@ typedef struct NV2AState {
          * wakeup lost; the thread rechecks the flag between preparing and
          * committing its wait (pfifo.c). */
         retro_eventcount_t fifo_ec;
-        QemuCond fifo_idle_cond; /* broadcast under lock when it parks */
+        /* The emulator thread's hold on the GPU (nv2a_lock_fifo: a reset,
+         * a savestate, a renderer switch): it counts a request, the
+         * thread parks between two batches, says so (parked_for_guest,
+         * parked_ec) and sleeps until the count is back to zero; no lock
+         * and no condition variable. */
+        retro_atomic_int_t park_requests;
+        retro_atomic_int_t parked_for_guest;
+        retro_eventcount_t parked_ec;
         retro_atomic_int_t fifo_kick;
         retro_atomic_int_t guest_waiting; /* threads about to take lock */
         bool halt;

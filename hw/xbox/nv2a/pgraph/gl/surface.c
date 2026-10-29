@@ -111,9 +111,9 @@ void pgraph_gl_set_surface_scale_factor(NV2AState *d, unsigned int scale)
 
     g_config.display.quality.surface_scale = scale < 1 ? 1 : scale;
 
-    pfifo_guest_lock(d);
+    /* the pusher stops at its next batch; the downloads and the flush
+     * run on the thread meanwhile */
     qatomic_set(&d->pfifo.halt, true);
-    qemu_mutex_unlock(&d->pfifo.lock);
 
     qatomic_set(&r->download_dirty_surfaces_pending, true);
     pfifo_kick(d);
@@ -125,10 +125,8 @@ void pgraph_gl_set_surface_scale_factor(NV2AState *d, unsigned int scale)
     pgraph_wait_until_clear(&d->pgraph.flush_complete,
                             &d->pgraph.flush_pending);
 
-    pfifo_guest_lock(d);
     qatomic_set(&d->pfifo.halt, false);
     pfifo_kick(d);
-    qemu_mutex_unlock(&d->pfifo.lock);
 }
 
 unsigned int pgraph_gl_get_surface_scale_factor(NV2AState *d)

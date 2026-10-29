@@ -183,7 +183,6 @@ typedef struct PGRAPHRenderer {
 
 typedef struct PGRAPHState {
     QemuMutex lock;
-    QemuMutex renderer_lock;
 
     uint32_t pending_interrupts;
     uint32_t enabled_interrupts;
@@ -337,7 +336,10 @@ typedef struct PGRAPHState {
     bool scanout_changed;
 
     bool framebuffer_in_use;
-    QemuCond framebuffer_released;
+    /* The frontend's thread holds the renderer's framebuffer
+     * (nv2a_get_framebuffer_surface): a renderer switch waits for it to
+     * be released, on the eventcount */
+    retro_eventcount_t framebuffer_released;
 
     enum {
         PGRAPH_RENDERER_SWITCH_PHASE_IDLE,

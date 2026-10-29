@@ -38,9 +38,9 @@ void pgraph_vk_set_surface_scale_factor(NV2AState *d, unsigned int scale)
 {
     g_config.display.quality.surface_scale = scale < 1 ? 1 : scale;
 
-    pfifo_guest_lock(d);
+    /* the pusher stops at its next batch; the downloads and the flush
+     * run on the thread meanwhile */
     qatomic_set(&d->pfifo.halt, true);
-    qemu_mutex_unlock(&d->pfifo.lock);
 
     // FIXME: It's just flush
     PGRAPHVkState *r = d->pgraph.vk_renderer_state;
@@ -54,10 +54,8 @@ void pgraph_vk_set_surface_scale_factor(NV2AState *d, unsigned int scale)
     pgraph_wait_until_clear(&d->pgraph.flush_complete,
                             &d->pgraph.flush_pending);
 
-    pfifo_guest_lock(d);
     qatomic_set(&d->pfifo.halt, false);
     pfifo_kick(d);
-    qemu_mutex_unlock(&d->pfifo.lock);
 }
 
 unsigned int pgraph_vk_get_surface_scale_factor(NV2AState *d)

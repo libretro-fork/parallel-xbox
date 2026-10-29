@@ -326,10 +326,9 @@ void pgraph_init(NV2AState *d)
 
     PGRAPHState *pg = &d->pgraph;
     qemu_mutex_init(&pg->lock);
-    qemu_mutex_init(&pg->renderer_lock);
     retro_eventcount_init(&pg->sync_complete);
     retro_eventcount_init(&pg->flush_complete);
-    qemu_cond_init(&pg->framebuffer_released);
+    retro_eventcount_init(&pg->framebuffer_released);
     retro_eventcount_init(&pg->renderer_switch_complete);
     pg->renderer_switch_phase = PGRAPH_RENDERER_SWITCH_PHASE_IDLE;
 
@@ -407,7 +406,7 @@ static bool attempt_renderer_init(PGRAPHState *pg)
 {
     NV2AState *d = container_of(pg, NV2AState, pgraph);
 
-    pg->renderer = renderers[g_config.display.renderer];
+    qatomic_set(&pg->renderer, renderers[g_config.display.renderer]);
     if (!pg->renderer) {
         xemu_queue_error_message("Configured renderer not available");
         return false;
@@ -495,12 +494,9 @@ int nv2a_get_framebuffer_surface(void)
     PGRAPHState *pg = &d->pgraph;
     int s = 0;
 
-    qemu_mutex_lock(&pg->renderer_lock);
     assert(!pg->framebuffer_in_use);
-    pg->framebuffer_in_use = true;
-    /* Release lock before get_framebuffer_surface to avoid deadlock with PFIFO */
-    const PGRAPHRenderer *renderer = pg->renderer;
-    qemu_mutex_unlock(&pg->renderer_lock);
+    qatomic_store_release(&pg->framebuffer_in_use, true);
+    const PGRAPHRenderer *renderer = qatomic_read(&pg->renderer);
     if (renderer && renderer->ops.get_framebuffer_surface) {
         s = renderer->ops.get_framebuffer_surface(d);
     }
@@ -516,10 +512,8 @@ void nv2a_release_framebuffer_surface(void)
     }
     NV2AState *d = g_nv2a;
     PGRAPHState *pg = &d->pgraph;
-    qemu_mutex_lock(&pg->renderer_lock);
-    pg->framebuffer_in_use = false;
-    qemu_cond_broadcast(&pg->framebuffer_released);
-    qemu_mutex_unlock(&pg->renderer_lock);
+    qatomic_store_release(&pg->framebuffer_in_use, false);
+    retro_eventcount_notify(&pg->framebuffer_released);
 }
 
 /*
@@ -548,9 +542,7 @@ bool nv2a_libretro_switch_renderer(int type)
         return false;
     }
     g_config.display.renderer = type;
-    qemu_mutex_lock(&d->pfifo.lock);
     pfifo_kick(d);
-    qemu_mutex_unlock(&d->pfifo.lock);
 
     for (;;) {
         qatomic_set_mb(&nv2a_libretro_waiter, 1);
@@ -577,15 +569,11 @@ void nv2a_trigger_display_render(void)
     if (!d) return;
     PGRAPHState *pg = &d->pgraph;
 
-    qemu_mutex_lock(&d->pfifo.lock);
-
     /* Only trigger if not already pending */
     if (!qatomic_read(&pg->sync_pending)) {
         qatomic_set(&pg->sync_pending, true);
         pfifo_kick(d);
     }
-
-    qemu_mutex_unlock(&d->pfifo.lock);
 }
 
 void nv2a_set_surface_scale_factor(unsigned int scale)
@@ -596,12 +584,11 @@ void nv2a_set_surface_scale_factor(unsigned int scale)
     }
     NV2AState *d = g_nv2a;
 
+    const PGRAPHRenderer *renderer = qatomic_read(&d->pgraph.renderer);
     bql_unlock();
-    qemu_mutex_lock(&d->pgraph.renderer_lock);
-    if (d->pgraph.renderer->ops.set_surface_scale_factor) {
-        d->pgraph.renderer->ops.set_surface_scale_factor(d, scale);
+    if (renderer->ops.set_surface_scale_factor) {
+        renderer->ops.set_surface_scale_factor(d, scale);
     }
-    qemu_mutex_unlock(&d->pgraph.renderer_lock);
     bql_lock();
 }
 
@@ -613,12 +600,11 @@ unsigned int nv2a_get_surface_scale_factor(void)
     NV2AState *d = g_nv2a;
     int s = 1;
 
+    const PGRAPHRenderer *renderer = qatomic_read(&d->pgraph.renderer);
     bql_unlock();
-    qemu_mutex_lock(&d->pgraph.renderer_lock);
-    if (d->pgraph.renderer->ops.get_surface_scale_factor) {
-        s = d->pgraph.renderer->ops.get_surface_scale_factor(d);
+    if (renderer->ops.get_surface_scale_factor) {
+        s = renderer->ops.get_surface_scale_factor(d);
     }
-    qemu_mutex_unlock(&d->pgraph.renderer_lock);
     bql_lock();
 
     return s;
@@ -1131,11 +1117,6 @@ DEF_METHOD(NV097, FLIP_INCREMENT_WRITE)
 
 DEF_METHOD(NV097, FLIP_STALL)
 {
-    static int flip_logged = 0;
-    if (!flip_logged) {
-        fprintf(stderr, "PGRAPH: FLIP_STALL triggered\n");
-        flip_logged = 1;
-    }
     trace_nv2a_pgraph_flip_stall();
     d->pgraph.renderer->ops.surface_update(d, false, true, true);
     d->pgraph.renderer->ops.flip_stall(d);
@@ -3574,7 +3555,6 @@ void pgraph_process_pending(NV2AState *d)
 
     if (qatomic_load_acquire(&pg->renderer_switch_phase) ==
         PGRAPH_RENDERER_SWITCH_PHASE_CPU_WAITING) {
-        qemu_mutex_lock(&d->pgraph.renderer_lock);
         qemu_mutex_unlock(&d->pfifo.lock);
         qemu_mutex_lock(&d->pgraph.lock);
 
@@ -3588,9 +3568,16 @@ void pgraph_process_pending(NV2AState *d)
 
             qemu_mutex_unlock(&d->pfifo.lock);
             qemu_mutex_lock(&d->pgraph.lock);
-            while (pg->framebuffer_in_use) {
-                qemu_cond_wait(&d->pgraph.framebuffer_released,
-                               &d->pgraph.renderer_lock);
+            /* the frontend's thread done with the old renderer's
+             * framebuffer */
+            for (;;) {
+                int key =
+                    retro_eventcount_prepare_wait(&pg->framebuffer_released);
+                if (!qatomic_load_acquire(&pg->framebuffer_in_use)) {
+                    retro_eventcount_cancel_wait(&pg->framebuffer_released);
+                    break;
+                }
+                retro_eventcount_commit_wait(&pg->framebuffer_released, key);
             }
 
             if (pg->renderer->ops.finalize) {
@@ -3600,7 +3587,6 @@ void pgraph_process_pending(NV2AState *d)
 
         init_renderer(pg);
 
-        qemu_mutex_unlock(&d->pgraph.renderer_lock);
         qemu_mutex_unlock(&d->pgraph.lock);
         qemu_mutex_lock(&d->pfifo.lock);
 

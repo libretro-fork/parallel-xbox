@@ -320,22 +320,31 @@ static void nv2a_init_vga(NV2AState *d)
     vga_dirty_log_start(vga);
 }
 
+/* The GPU's thread parked for this thread (the emulator thread, under
+ * the BQL): it stops between two batches and sleeps until
+ * nv2a_unlock_fifo, so the FIFO's and PGRAPH's state is this thread's to
+ * read and write meanwhile. No lock: a request count and an eventcount
+ * each way (pfifo_park_for_guest). */
 static void nv2a_lock_fifo(NV2AState *d)
 {
-    qemu_mutex_lock(&d->pfifo.lock);
-    /* round once, without a kick: it parks and signals idle */
+    retro_atomic_fetch_add_int(&d->pfifo.park_requests, 1);
     retro_eventcount_notify(&d->pfifo.fifo_ec);
     bql_unlock();
-    qemu_cond_wait(&d->pfifo.fifo_idle_cond, &d->pfifo.lock);
+    for (;;) {
+        int key = retro_eventcount_prepare_wait(&d->pfifo.parked_ec);
+        if (retro_atomic_load_acquire_int(&d->pfifo.parked_for_guest)) {
+            retro_eventcount_cancel_wait(&d->pfifo.parked_ec);
+            break;
+        }
+        retro_eventcount_commit_wait(&d->pfifo.parked_ec, key);
+    }
     bql_lock();
-    qemu_mutex_lock(&d->pgraph.lock);
 }
 
 static void nv2a_unlock_fifo(NV2AState *d)
 {
+    retro_atomic_fetch_sub_int(&d->pfifo.park_requests, 1);
     pfifo_kick(d);
-    qemu_mutex_unlock(&d->pgraph.lock);
-    qemu_mutex_unlock(&d->pfifo.lock);
 }
 
 static void nv2a_reset(NV2AState *d)
@@ -424,7 +433,7 @@ static void nv2a_realize(PCIDevice *dev, Error **errp)
 
     qemu_mutex_init(&d->pfifo.lock);
     retro_eventcount_init(&d->pfifo.fifo_ec);
-    qemu_cond_init(&d->pfifo.fifo_idle_cond);
+    retro_eventcount_init(&d->pfifo.parked_ec);
 }
 
 static void nv2a_exitfn(PCIDevice *dev)

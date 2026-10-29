@@ -159,7 +159,7 @@ int nv2a_libretro_waiter;
 /* Nothing to do. A pending report is written when the host GPU reaches it,
  * not when the guest next pushes: with one pending, wait for the GPU's own
  * completion of it, then serve it. */
-static inline void pfifo_idle_cond_wait(NV2AState *d)
+static inline void pfifo_idle_wait(NV2AState *d)
 {
     const PGRAPHRenderer *renderer = d->pgraph.renderer;
 
@@ -177,11 +177,12 @@ static inline void pfifo_idle_cond_wait(NV2AState *d)
     /* The wait is prepared under the lock and committed without it: a
      * kick between the two (the flag set after the prepare) cancels it,
      * one before was seen by the check. One wait, as upstream's:
-     * nv2a_lock_fifo wakes the thread without a kick to have it go round
-     * once. */
+     * nv2a_lock_fifo wakes the thread without a kick to have it park for
+     * the guest (park_requests). */
     if (!retro_atomic_load_acquire_int(&d->pfifo.fifo_kick)) {
         int key = retro_eventcount_prepare_wait(&d->pfifo.fifo_ec);
         if (retro_atomic_load_acquire_int(&d->pfifo.fifo_kick) ||
+            retro_atomic_load_acquire_int(&d->pfifo.park_requests) ||
             qatomic_read(&d->exiting)) {
             retro_eventcount_cancel_wait(&d->pfifo.fifo_ec);
             return;
@@ -526,6 +527,28 @@ static void pfifo_run_pusher(NV2AState *d)
     }
 }
 
+/* The emulator thread asked for the GPU (nv2a_lock_fifo): parked here,
+ * between two batches, with nothing of the FIFO's or PGRAPH's under way,
+ * until its requests are withdrawn; kicks meanwhile stay flagged for the
+ * loop after. The lock is let go for the sleep, as for the idle wait. */
+static void pfifo_park_for_guest(NV2AState *d)
+{
+    retro_atomic_store_release_int(&d->pfifo.parked_for_guest, 1);
+    retro_eventcount_notify(&d->pfifo.parked_ec);
+    qemu_mutex_unlock(&d->pfifo.lock);
+    for (;;) {
+        int key = retro_eventcount_prepare_wait(&d->pfifo.fifo_ec);
+        if (!retro_atomic_load_acquire_int(&d->pfifo.park_requests) ||
+            qatomic_read(&d->exiting)) {
+            retro_eventcount_cancel_wait(&d->pfifo.fifo_ec);
+            break;
+        }
+        retro_eventcount_commit_wait(&d->pfifo.fifo_ec, key);
+    }
+    qemu_mutex_lock(&d->pfifo.lock);
+    retro_atomic_store_release_int(&d->pfifo.parked_for_guest, 0);
+}
+
 void *pfifo_thread(void *arg)
 {
     NV2AState *d = (NV2AState *)arg;
@@ -537,6 +560,13 @@ void *pfifo_thread(void *arg)
     qemu_mutex_lock(&d->pfifo.lock);
     d->pfifo.thread_running = true;
     while (true) {
+        if (retro_atomic_load_acquire_int(&d->pfifo.park_requests)) {
+            pfifo_park_for_guest(d);
+            if (d->exiting) {
+                break;
+            }
+            continue;
+        }
         retro_atomic_store_release_int(&d->pfifo.fifo_kick, 0);
 
         pgraph_process_pending(d);
@@ -548,10 +578,8 @@ void *pfifo_thread(void *arg)
         pgraph_process_pending_reports(d);
 
         if (!retro_atomic_load_acquire_int(&d->pfifo.fifo_kick)) {
-            qemu_cond_broadcast(&d->pfifo.fifo_idle_cond);
-
             // Both the pusher and puller are waiting for some action
-            pfifo_idle_cond_wait(d);
+            pfifo_idle_wait(d);
         }
 
         if (d->exiting) {
