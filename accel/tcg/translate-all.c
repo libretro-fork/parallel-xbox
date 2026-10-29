@@ -617,6 +617,29 @@ void tb_check_watchpoint(CPUState *cpu, uintptr_t retaddr)
  *
  * Called by softmmu_template.h, with iothread mutex not held.
  */
+/*
+ * The guest instructions that reached a device in the middle of a block
+ * (cpu_io_recompile), by their linear address: their blocks are
+ * translated to end with them (translator_loop), where a device access
+ * may be made, so they no longer leave the block, rewind it and run
+ * again alone each time. A loop polling a device register paid that on
+ * every turn (each a longjmp and a state restore). Direct-mapped, a slot
+ * per address hash; a collision only loses the hint. On the vCPU thread,
+ * as is all translation.
+ */
+#define IO_INSN_SLOTS 4096
+static vaddr io_insn_pc[IO_INSN_SLOTS];
+
+static inline unsigned io_insn_slot(vaddr pc)
+{
+    return (unsigned)((pc ^ (pc >> 12)) & (IO_INSN_SLOTS - 1));
+}
+
+bool tb_io_insn_known(vaddr pc)
+{
+    return pc && io_insn_pc[io_insn_slot(pc)] == pc;
+}
+
 void cpu_io_recompile(CPUState *cpu, uintptr_t retaddr)
 {
     TranslationBlock *tb;
@@ -629,6 +652,14 @@ void cpu_io_recompile(CPUState *cpu, uintptr_t retaddr)
                   (void *)retaddr);
     }
     cpu_restore_state_from_tb(cpu, tb, retaddr);
+
+    /* Remembered, and the block dropped: translated again, it ends with
+     * this instruction (with icount only, where can_do_io is kept) */
+    if (tb_cflags(tb) & CF_USE_ICOUNT) {
+        vaddr io_pc = cpu->cc->get_pc(cpu);
+        io_insn_pc[io_insn_slot(io_pc)] = io_pc;
+        tb_phys_invalidate(tb, -1);
+    }
 
     /*
      * Some guests must re-execute the branch when re-executing a delay

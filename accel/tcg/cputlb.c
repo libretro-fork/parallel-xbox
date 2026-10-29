@@ -2036,11 +2036,11 @@ static uint64_t do_ld_mmio_beN(CPUState *cpu, CPUTLBEntryFull *full,
                                uint64_t ret_be, vaddr addr, int size,
                                int mmu_idx, MMUAccessType type, uintptr_t ra)
 {
-    LR_QUIET_RESET(cpu);
     MemoryRegionSection *section;
     MemoryRegion *mr;
     hwaddr mr_offset;
     MemTxAttrs attrs;
+    uint64_t ret;
 
     tcg_debug_assert(size > 0 && size <= 8);
 
@@ -2049,8 +2049,20 @@ static uint64_t do_ld_mmio_beN(CPUState *cpu, CPUTLBEntryFull *full,
     mr = section->mr;
 
     BQL_LOCK_GUARD();
-    return int_ld_mmio_beN(cpu, full, ret_be, addr, size, mmu_idx,
-                           type, ra, mr, mr_offset);
+    ret = int_ld_mmio_beN(cpu, full, ret_be, addr, size, mmu_idx,
+                          type, ra, mr, mr_offset);
+    /* A device read is activity, unless it is the last one again with
+     * the same value: a loop polling a register that has not changed
+     * (the vblank's interrupt bit, the GPU's read pointer) waits, as one
+     * spinning on RAM does, and its time can move on to the next event
+     * (lr_quiet_exit) instead of being spent read by read. A store in
+     * the loop still resets the count. */
+    if (addr != cpu->lr_poll_addr || ret != cpu->lr_poll_val) {
+        cpu->lr_poll_addr = addr;
+        cpu->lr_poll_val = ret;
+        LR_QUIET_RESET(cpu);
+    }
+    return ret;
 }
 
 static Int128 do_ld16_mmio_beN(CPUState *cpu, CPUTLBEntryFull *full,

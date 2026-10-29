@@ -119,7 +119,10 @@ done
 # 100 the guest waits on the GPU, a semaphore after a run of no-ops, up to
 # 4 times a frame: it must manage all 4 in every frame. A guest waiting on
 # the GPU had its time skip on to its next deadline while the GPU worked,
-# and managed 1 (Ninja Gaiden Black in slow motion).
+# and managed 1 (Ninja Gaiden Black in slow motion). The ROM waits for each
+# vblank polling the GPU's interrupt register: a wait, so the OpenGL run
+# goes at least 0.2x real time (it went 0.03x when each poll was a device
+# access, rewinding its block).
 # On Vulkan the front buffer was dropped as an old surface and a CPU write
 # to it was not a new picture: the display stopped after the first frame
 # (Jet Set Radio Future black after the Xbox logo).
@@ -133,7 +136,7 @@ gpu_check() {
 }
 echo "== the display, OpenGL"
 timeout 300 $h "$(path "$core")" "$(path "$work/sysg")" $vp --frames 110 --strict \
-  --pixel 10 --pixel 25 --pixel 45 --pixel 85 --peek 0x300014 --peek 0x300018 \
+  --min-speed 0.2 --pixel 10 --pixel 25 --pixel 45 --pixel 85 --peek 0x300014 --peek 0x300018 \
   --peek 0x30001c >"$work/gpu_gl.txt"
 grep -E "pixel_|peek_" "$work/gpu_gl.txt"
 gpu_check "$work/gpu_gl.txt" "OpenGL"

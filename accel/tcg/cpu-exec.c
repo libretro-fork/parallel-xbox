@@ -1219,7 +1219,8 @@ static inline void cpu_loop_exec_tb(CPUState *cpu, TranslationBlock *tb,
     *last_tb = NULL;
     if (cpu->neg.lr_quiet < 0) {
         /* The libretro core's idle detection (translator.c): LR_QUIET_INSNS
-         * instructions that stored nothing and touched no device, a wait.
+         * instructions that stored nothing and touched no device (but to
+         * poll an unchanged register), a wait.
          * The core moves the guest's time on to the next event and ends
          * the slice, unless something the guest may be waiting for is
          * under way on another thread. */

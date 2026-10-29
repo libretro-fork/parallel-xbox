@@ -155,6 +155,8 @@ G_NORETURN void cpu_io_recompile(CPUState *cpu, uintptr_t retaddr);
 #endif /* CONFIG_USER_ONLY */
 
 void tb_phys_invalidate(TranslationBlock *tb, tb_page_addr_t page_addr);
+/* an instruction known to reach a device (translate-all.c) */
+bool tb_io_insn_known(vaddr pc);
 void tb_set_jmp_target(TranslationBlock *tb, int n, uintptr_t addr);
 
 void tcg_get_stats(AccelState *accel, GString *buf);

@@ -1839,6 +1839,9 @@ static bool lr_cmd_ok;          /* written before lr_done_seq is released */
 /* the frame clock, on the emulator thread */
 static QEMUTimer *lr_frame_timer;
 static int64_t lr_frame_end_vt; /* QEMU_CLOCK_VIRTUAL end of the last frame */
+/* where the frame loop next has something to do (the vblank, then the
+ * frame's end): a waiting guest's time moves on no further */
+static int64_t lr_next_stop_vt;
 static int lr_frame_rem;
 static int lr_title_poll;
 
@@ -1875,7 +1878,8 @@ static bool lr_devices_busy(void)
 extern int nv2a_libretro_waiter;
 
 /* The guest has run LR_QUIET_INSNS instructions that stored nothing and
- * touched no device (accel/tcg/translator.c): it is waiting, as the
+ * touched no device but to read a register that had not changed
+ * (accel/tcg/translator.c, cputlb.c): it is waiting, as the
  * kernel's idle thread does, spinning, and so does a game between its
  * frame's work and the next vblank. Its time moves on to the next event
  * (a timer: the APU's frame, the frame's end) rather than being spent
@@ -1905,11 +1909,18 @@ void lr_quiet_exit(CPUState *cpu)
         lr_quiet = true;
     } else {
         /* nothing under way: on to the next timer, the thing a waiting
-         * guest is most often waiting for (another thread's turn, a tick) */
+         * guest is most often waiting for (another thread's turn, a tick),
+         * or the vblank if that comes first */
+        int64_t now = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
         deadline = qemu_clock_deadline_ns_all(QEMU_CLOCK_VIRTUAL,
                                               QEMU_TIMER_ATTR_ALL);
+        /* not past the vblank, which is no timer: the frame loop raises
+         * it when the guest's time reaches it */
+        if (deadline < 0 || now + deadline > lr_next_stop_vt) {
+            deadline = lr_next_stop_vt - now;
+        }
         if (deadline > 0) {
-            icount_skip_to(qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) + deadline);
+            icount_skip_to(now + deadline);
         }
     }
     lr_vcpu_exit(cpu);
@@ -2001,6 +2012,7 @@ static void lr_run_frame(void)
             !cpu_work_list_empty(cpu)) {
             /* the guest runs until its next timer is due: the slice stops
              * itself after the instructions that take it there */
+            lr_next_stop_vt = now + until;
             lr_vcpu_run_slice(cpu, until);
             continue;
         }

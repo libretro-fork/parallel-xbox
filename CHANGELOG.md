@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Games that poll a hardware register in a loop (waiting for the vblank, or for the GPU to catch up) no longer burn the PC's CPU doing it: a loop that only reads the same register and gets the same value is a wait, like the kernel's idle loop, and the Xbox's time moves on to the next event at once. Each such read had also been costing a full exit from the translated code and a rewind of its block; the instructions that read devices now end their blocks, so no read pays that again. Measured on Jet Set Radio Future's boot (lavapipe): 23% less time per frame, the worst frame 318 ms instead of 2.9 s. The core's test suite runs in half the time.
+
 - Performance: GPU memory dirty checks skip empty CPU address-translation modes and avoid touching large TLB metadata for mappings outside the affected range. Write tracking, watchpoints and memory-access behavior are unchanged.
 
 - Ninja Gaiden Black (and any game that waits for its GPU to finish) no longer runs in slow motion with Deterministic Emulation off. While a game waited for its GPU, the core moved the Xbox's time on to its next timer instead of waiting, again and again, so the whole frame passed while the GPU was still drawing (16.5 of 16.7 ms skipped in a heavy scene): the game missed its frames, and each run took about 1 ms. Now the game waits for the GPU, and its time moves on only by as long as the GPU work really took.

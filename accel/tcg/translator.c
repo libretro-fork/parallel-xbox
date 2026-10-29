@@ -193,8 +193,9 @@ static TCGOp *gen_tb_start(DisasContextBase *db, uint32_t cflags)
      * off neg.lr_quiet, and a block that would take it below zero leaves
      * for lr_quiet_exit instead (a run of guest code that stored nothing
      * and touched no device: a wait, whose time moves on). A store
-     * (lr_quiet_store_emitted) resets the count; so do device accesses,
-     * the TSC and interrupts, in C. Not in a block that may not be
+     * (lr_quiet_store_emitted) resets the count; so do device accesses
+     * (but polls of a register that has not changed, cputlb.c), the TSC
+     * and interrupts, in C. Not in a block that may not be
      * interrupted. */
     tcg_ctx->lr_quiet_label = NULL;
     tcg_ctx->lr_quiet_insn = NULL;
@@ -321,7 +322,14 @@ void translator_loop(CPUState *cpu, TranslationBlock *tb, int *max_insns,
          * done next -- either exiting this loop or locate the start of
          * the next instruction.
          */
+        vaddr insn_pc = db->pc_next;
         ops->translate_insn(db, cpu);
+        /* An instruction known to reach a device ends the block, where it
+         * may (cpu_io_recompile) */
+        if ((cflags & CF_USE_ICOUNT) && db->is_jmp == DISAS_NEXT &&
+            tb_io_insn_known(insn_pc)) {
+            db->is_jmp = DISAS_TOO_MANY;
+        }
 
         /*
          * We can't instrument after instructions that change control
