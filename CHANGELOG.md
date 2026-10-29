@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- A game waiting for room in its GPU command buffer no longer keeps a PC core busy spinning while the GPU works through it: reading the GPU's read pointer while the GPU still has commands left counts as a wait, so the core waits for the GPU instead (Jet Set Radio Future's boot: about 2% less time per frame).
+
 - Vulkan: converting depth buffers between the Xbox's format and the PC GPU's (when a game reads its depth buffer back, writes it with the CPU, or uses it as a texture) no longer makes the core stop and wait for the GPU to finish all its work every 1,024 conversions. Depth read-backs now also go to the GPU together with the other read-backs, in one submission with one wait.
 
 - CPU Boost: repeated MOVS copies chain between translated iterations instead of returning to the dispatcher for every element. Each element still performs the normal guest load/store and instruction-budget checks; debugger, interrupt-shadow and shortened-budget blocks retain their existing paths. No host bulk copy replaces the emulated memory accesses.

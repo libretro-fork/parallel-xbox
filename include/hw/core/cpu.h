@@ -627,6 +627,10 @@ struct CPUState {
      * read giving the same value again is a poll, a wait, not activity */
     vaddr lr_poll_addr;
     uint64_t lr_poll_val;
+    /* set by a device's read handler: this read is a wait even though its
+     * value changed (the GPU's read pointer while the GPU works through
+     * the pushbuffer, hw/xbox/nv2a/user.c) */
+    bool lr_poll_any;
 
     /*
      * MUST BE LAST in order to minimize the displacement to CPUArchState.

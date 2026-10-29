@@ -2059,7 +2059,12 @@ static uint64_t do_ld_mmio_beN(CPUState *cpu, CPUTLBEntryFull *full,
      * spinning on RAM does, and its time can move on to the next event
      * (lr_quiet_exit) instead of being spent read by read. A store in
      * the loop still resets the count. */
-    if (addr != cpu->lr_poll_addr || ret != cpu->lr_poll_val) {
+    if (cpu->lr_poll_any) {
+        /* the device says this read waits on another thread's progress */
+        cpu->lr_poll_any = false;
+        cpu->lr_poll_addr = addr;
+        cpu->lr_poll_val = ret;
+    } else if (addr != cpu->lr_poll_addr || ret != cpu->lr_poll_val) {
         cpu->lr_poll_addr = addr;
         cpu->lr_poll_val = ret;
         LR_QUIET_RESET(cpu);

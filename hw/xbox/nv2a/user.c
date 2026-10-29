@@ -51,6 +51,16 @@ uint64_t user_read(void *opaque, hwaddr addr, unsigned int size)
                 break;
             case NV_USER_DMA_GET:
                 r = qatomic_read(&d->pfifo.regs[NV_PFIFO_CACHE1_DMA_GET]);
+                /* A game waiting for room in its pushbuffer reads this
+                 * again and again while the GPU works through it: it
+                 * changes at every read, but the loop is a wait on the
+                 * GPU's thread (the idle detection's, accel/tcg/cputlb.c
+                 * do_ld_mmio_beN), so its turns stop taking a host core
+                 * from the GPU's thread */
+                if (current_cpu &&
+                    r != qatomic_read(&d->pfifo.regs[NV_PFIFO_CACHE1_DMA_PUT])) {
+                    current_cpu->lr_poll_any = true;
+                }
                 break;
             case NV_USER_REF:
                 r = qatomic_read(&d->pfifo.regs[NV_PFIFO_CACHE1_REF]);
