@@ -658,7 +658,7 @@ void cpu_io_recompile(CPUState *cpu, uintptr_t retaddr)
     if (tb_cflags(tb) & CF_USE_ICOUNT) {
         vaddr io_pc = cpu->cc->get_pc(cpu);
         io_insn_pc[io_insn_slot(io_pc)] = io_pc;
-        tb_phys_invalidate(tb, -1);
+        tb_phys_invalidate_recompile(tb);
     }
 
     /*

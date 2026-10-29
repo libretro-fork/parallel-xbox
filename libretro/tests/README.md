@@ -1,5 +1,11 @@
 # The core's tests
 
+`python libretro/tests/test-io-recompile.py . gcc` executes production
+I/O learning and block invalidation against controlled cache/page/jump
+ownership. It prevents an unchanged old I/O block from being resurrected,
+while checking ordinary block reuse, PC-relative hashes, page/jump cleanup,
+duplicate invalidation and one-shot blocks in 513 cases with UB traps.
+
 `python libretro/tests/test-uniform-stage-uploads.py . gcc` exercises the
 production Vulkan uniform tracker, upload planning and descriptor-reuse
 decision against bounded upload storage. It checks independent stages,

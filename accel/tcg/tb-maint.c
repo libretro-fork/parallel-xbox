@@ -933,7 +933,8 @@ static void tb_jmp_cache_inval_tb(TranslationBlock *tb)
  * In !user-mode, if @rm_from_page_list is set, call with the TB's pages'
  * locks held.
  */
-static void do_tb_phys_invalidate(TranslationBlock *tb, bool rm_from_page_list)
+static void do_tb_phys_invalidate(TranslationBlock *tb, bool rm_from_page_list,
+                                  bool reusable)
 {
     uint32_t h;
     tb_page_addr_t phys_pc;
@@ -955,8 +956,10 @@ static void do_tb_phys_invalidate(TranslationBlock *tb, bool rm_from_page_list)
         return;
     }
 
-    qht_insert(&tb_ctx.inv_htable, tb, h, &existing);
-    g_assert(existing == NULL);
+    if (reusable) {
+        qht_insert(&tb_ctx.inv_htable, tb, h, &existing);
+        g_assert(existing == NULL);
+    }
 
     /* remove the TB from the page list */
     if (rm_from_page_list) {
@@ -980,7 +983,7 @@ static void do_tb_phys_invalidate(TranslationBlock *tb, bool rm_from_page_list)
 static void tb_phys_invalidate__locked(TranslationBlock *tb)
 {
     qemu_thread_jit_write();
-    do_tb_phys_invalidate(tb, true);
+    do_tb_phys_invalidate(tb, true, true);
     qemu_thread_jit_execute();
 }
 
@@ -988,15 +991,29 @@ static void tb_phys_invalidate__locked(TranslationBlock *tb)
  * Invalidate one TB.
  * Called with mmap_lock held in user-mode.
  */
-void tb_phys_invalidate(TranslationBlock *tb, tb_page_addr_t page_addr)
+static void tb_phys_invalidate_impl(TranslationBlock *tb,
+                                     tb_page_addr_t page_addr, bool reusable)
 {
     if (page_addr == -1 && tb_page_addr0(tb) != -1) {
         tb_lock_pages(tb);
-        do_tb_phys_invalidate(tb, true);
+        do_tb_phys_invalidate(tb, true, reusable);
         tb_unlock_pages(tb);
     } else {
-        do_tb_phys_invalidate(tb, false);
+        do_tb_phys_invalidate(tb, false, reusable);
     }
+}
+
+void tb_phys_invalidate(TranslationBlock *tb, tb_page_addr_t page_addr)
+{
+    tb_phys_invalidate_impl(tb, page_addr, true);
+}
+
+/* I/O learning changes the required block boundary, not its guest bytes.
+ * Reusing the old block by its byte hash would undo that learning and
+ * rewind the same I/O instruction again on every execution. */
+void tb_phys_invalidate_recompile(TranslationBlock *tb)
+{
+    tb_phys_invalidate_impl(tb, -1, false);
 }
 
 /*
