@@ -93,7 +93,7 @@ void pgraph_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
 
     nv2a_reg_log_write(NV_PGRAPH, addr, size, val);
 
-    xemu_tbrate_lock(&d->pfifo.lock); // FIXME: Factor out fifo lock here
+    pfifo_guest_lock(d); // FIXME: Factor out fifo lock here
     xemu_tbrate_lock(&pg->lock);
 
     switch (addr) {
@@ -490,9 +490,8 @@ void pgraph_destroy(PGRAPHState *pg)
 void nv2a_fifo_kick_safety(void)
 {
     NV2AState *d = g_nv2a;
-    if (d && qemu_mutex_trylock(&d->pfifo.lock) == 0) {
+    if (d) {
         pfifo_kick(d);
-        qemu_mutex_unlock(&d->pfifo.lock);
     }
 }
 

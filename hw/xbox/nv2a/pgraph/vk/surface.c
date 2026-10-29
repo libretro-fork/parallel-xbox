@@ -38,7 +38,7 @@ void pgraph_vk_set_surface_scale_factor(NV2AState *d, unsigned int scale)
 {
     g_config.display.quality.surface_scale = scale < 1 ? 1 : scale;
 
-    qemu_mutex_lock(&d->pfifo.lock);
+    pfifo_guest_lock(d);
     qatomic_set(&d->pfifo.halt, true);
     qemu_mutex_unlock(&d->pfifo.lock);
 
@@ -47,21 +47,17 @@ void pgraph_vk_set_surface_scale_factor(NV2AState *d, unsigned int scale)
     qemu_event_reset(&d->pgraph.vk_renderer_state->dirty_surfaces_download_complete);
     qatomic_set(&d->pgraph.vk_renderer_state->download_dirty_surfaces_pending, true);
     qemu_mutex_unlock(&d->pgraph.lock);
-    qemu_mutex_lock(&d->pfifo.lock);
     pfifo_kick(d);
-    qemu_mutex_unlock(&d->pfifo.lock);
     qemu_event_wait(&d->pgraph.vk_renderer_state->dirty_surfaces_download_complete);
 
     qemu_mutex_lock(&d->pgraph.lock);
     qemu_event_reset(&d->pgraph.flush_complete);
     qatomic_set(&d->pgraph.flush_pending, true);
     qemu_mutex_unlock(&d->pgraph.lock);
-    qemu_mutex_lock(&d->pfifo.lock);
     pfifo_kick(d);
-    qemu_mutex_unlock(&d->pfifo.lock);
     qemu_event_wait(&d->pgraph.flush_complete);
 
-    qemu_mutex_lock(&d->pfifo.lock);
+    pfifo_guest_lock(d);
     qatomic_set(&d->pfifo.halt, false);
     pfifo_kick(d);
     qemu_mutex_unlock(&d->pfifo.lock);
@@ -524,7 +520,7 @@ void pgraph_vk_wait_for_surface_download(SurfaceBinding *surface)
     NV2AState *d = g_nv2a;
 
     if (qatomic_read(&surface->draw_dirty)) {
-        qemu_mutex_lock(&d->pfifo.lock);
+        pfifo_guest_lock(d);
         qemu_event_reset(&d->pgraph.vk_renderer_state->downloads_complete);
         qatomic_set(&surface->download_pending, true);
         qatomic_set(&d->pgraph.vk_renderer_state->downloads_pending, true);
@@ -623,7 +619,7 @@ static void surface_access_callback(void *opaque, MemoryRegion *mr, hwaddr addr,
     qemu_mutex_unlock(&d->pgraph.lock);
 
     if (wait_for_downloads) {
-        qemu_mutex_lock(&d->pfifo.lock);
+        pfifo_guest_lock(d);
         qemu_event_reset(&r->downloads_complete);
         qatomic_set(&r->downloads_pending, true);
         pfifo_kick(d);

@@ -22,6 +22,11 @@
 #include "nv2a_int.h"
 
 /* USER - PFIFO MMIO and DMA submission area */
+/* The channel's DMA registers, the guest's end of the pushbuffer: no lock.
+ * PUT and REF are the guest's to write, GET the pusher's; each is one
+ * word read and written atomically, and a PUT write kicks the thread. The
+ * channel's mode and id are set up once, at boot (pfifo_write, under the
+ * lock), before the first of these. */
 uint64_t user_read(void *opaque, hwaddr addr, unsigned int size)
 {
     NV2AState *d = (NV2AState *)opaque;
@@ -29,28 +34,26 @@ uint64_t user_read(void *opaque, hwaddr addr, unsigned int size)
     unsigned int channel_id = addr >> 16;
     assert(channel_id < NV2A_NUM_CHANNELS);
 
-    xemu_tbrate_lock(&d->pfifo.lock);
-
-    uint32_t channel_modes = d->pfifo.regs[NV_PFIFO_MODE];
+    uint32_t channel_modes = qatomic_read(&d->pfifo.regs[NV_PFIFO_MODE]);
 
     uint64_t r = 0;
     if (channel_modes & (1 << channel_id)) {
         /* DMA Mode */
 
         unsigned int cur_channel_id =
-            GET_MASK(d->pfifo.regs[NV_PFIFO_CACHE1_PUSH1],
+            GET_MASK(qatomic_read(&d->pfifo.regs[NV_PFIFO_CACHE1_PUSH1]),
                      NV_PFIFO_CACHE1_PUSH1_CHID);
 
         if (channel_id == cur_channel_id) {
             switch (addr & 0xFFFF) {
             case NV_USER_DMA_PUT:
-                r = d->pfifo.regs[NV_PFIFO_CACHE1_DMA_PUT];
+                r = qatomic_read(&d->pfifo.regs[NV_PFIFO_CACHE1_DMA_PUT]);
                 break;
             case NV_USER_DMA_GET:
-                r = d->pfifo.regs[NV_PFIFO_CACHE1_DMA_GET];
+                r = qatomic_read(&d->pfifo.regs[NV_PFIFO_CACHE1_DMA_GET]);
                 break;
             case NV_USER_REF:
-                r = d->pfifo.regs[NV_PFIFO_CACHE1_REF];
+                r = qatomic_read(&d->pfifo.regs[NV_PFIFO_CACHE1_REF]);
                 break;
             default:
                 break;
@@ -63,8 +66,6 @@ uint64_t user_read(void *opaque, hwaddr addr, unsigned int size)
         /* PIO Mode */
         assert(!"Failed to enter DMA mode - entered PIO mode");
     }
-
-    qemu_mutex_unlock(&d->pfifo.lock);
 
     nv2a_reg_log_read(NV_USER, addr, size, r);
     return r;
@@ -79,25 +80,28 @@ void user_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
     unsigned int channel_id = addr >> 16;
     assert(channel_id < NV2A_NUM_CHANNELS);
 
-    xemu_tbrate_lock(&d->pfifo.lock);
-
-    uint32_t channel_modes = d->pfifo.regs[NV_PFIFO_MODE];
+    uint32_t channel_modes = qatomic_read(&d->pfifo.regs[NV_PFIFO_MODE]);
     if (channel_modes & (1 << channel_id)) {
         /* DMA Mode */
         unsigned int cur_channel_id =
-            GET_MASK(d->pfifo.regs[NV_PFIFO_CACHE1_PUSH1],
+            GET_MASK(qatomic_read(&d->pfifo.regs[NV_PFIFO_CACHE1_PUSH1]),
                      NV_PFIFO_CACHE1_PUSH1_CHID);
 
         if (channel_id == cur_channel_id) {
             switch (addr & 0xFFFF) {
             case NV_USER_DMA_PUT:
-                d->pfifo.regs[NV_PFIFO_CACHE1_DMA_PUT] = val;
+                /* the words up to PUT were written before: the pusher
+                 * takes PUT with an acquire load */
+                qatomic_store_release(&d->pfifo.regs[NV_PFIFO_CACHE1_DMA_PUT],
+                                      (uint32_t)val);
                 break;
             case NV_USER_DMA_GET:
-                d->pfifo.regs[NV_PFIFO_CACHE1_DMA_GET] = val;
+                qatomic_set(&d->pfifo.regs[NV_PFIFO_CACHE1_DMA_GET],
+                            (uint32_t)val);
                 break;
             case NV_USER_REF:
-                d->pfifo.regs[NV_PFIFO_CACHE1_REF] = val;
+                qatomic_set(&d->pfifo.regs[NV_PFIFO_CACHE1_REF],
+                            (uint32_t)val);
                 break;
             default:
                 NV2A_DPRINTF(true, "Unsupported NV_USER write: channel=%u offset=0x%04x\n", channel_id, (unsigned)(addr & 0xFFFF));
@@ -115,7 +119,4 @@ void user_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
         /* PIO Mode */
         assert(!"Failed to enter DMA mode - entered PIO mode");
     }
-
-    qemu_mutex_unlock(&d->pfifo.lock);
-
 }

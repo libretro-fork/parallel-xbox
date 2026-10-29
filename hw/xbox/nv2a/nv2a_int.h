@@ -27,6 +27,8 @@
 #include "qemu/osdep.h"
 #include "qemu/units.h"
 #include "qemu/thread.h"
+#include <retro_atomic.h>
+#include <rthreads/retro_eventcount.h>
 #include "qemu/queue.h"
 #include "qemu/main-loop.h"
 #include "qapi/error.h"
@@ -107,9 +109,15 @@ typedef struct NV2AState {
         uint32_t regs[0x2000];
         QemuMutex lock;
         QemuThread thread;
-        QemuCond fifo_cond;
-        QemuCond fifo_idle_cond;
-        bool fifo_kick;
+        /* The thread's sleep, with nothing to do: an eventcount, so a kick
+         * from any thread (the guest's PUT write, the vblank, the display,
+         * a surface sync) is a flag and a notify, no lock taken and no
+         * wakeup lost; the thread rechecks the flag between preparing and
+         * committing its wait (pfifo.c). */
+        retro_eventcount_t fifo_ec;
+        QemuCond fifo_idle_cond; /* broadcast under lock when it parks */
+        retro_atomic_int_t fifo_kick;
+        retro_atomic_int_t guest_waiting; /* threads about to take lock */
         bool halt;
         bool thread_running; /* set after PFIFO thread enters main loop */
         /* the thread waits for a kick with nothing to do (nv2a_libretro_

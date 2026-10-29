@@ -640,7 +640,7 @@ int pgraph_gl_get_framebuffer_surface(NV2AState *d)
     if (!got && ui.cur < 0) {
         /* Nothing on screen yet (first frames, VGA text): ask the render
          * thread for a ticket and wait for it. */
-        qemu_mutex_lock(&d->pfifo.lock);
+        pfifo_guest_lock(d);
         qemu_event_reset(&d->pgraph.sync_complete);
         qatomic_set(&pg->sync_pending, true);
         pfifo_kick(d);
@@ -654,9 +654,7 @@ int pgraph_gl_get_framebuffer_surface(NV2AState *d)
         /* The front buffer may change without a scanout move (guest CPU
          * writes, video overlay): have the render thread look, later. */
         qatomic_set(&r->disp_check_pending, true);
-        qemu_mutex_lock(&d->pfifo.lock);
         pfifo_kick(d);
-        qemu_mutex_unlock(&d->pfifo.lock);
     }
     if (got && p.ref == NULL) {
         /* No front buffer among the surfaces: back to the VGA path. */
@@ -686,9 +684,7 @@ int pgraph_gl_get_framebuffer_surface(NV2AState *d)
             /* The overlay is read from guest RAM at each resolve: ask
              * for the next one now, not at the next scanout move. */
             qatomic_set(&r->disp_check_pending, true);
-            qemu_mutex_lock(&d->pfifo.lock);
             pfifo_kick(d);
-            qemu_mutex_unlock(&d->pfifo.lock);
         }
     }
     if (ui.cur < 0) {

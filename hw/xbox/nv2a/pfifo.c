@@ -38,7 +38,7 @@ uint64_t pfifo_read(void *opaque, hwaddr addr, unsigned int size)
 {
     NV2AState *d = (NV2AState *)opaque;
 
-    xemu_tbrate_lock(&d->pfifo.lock);
+    pfifo_guest_lock(d);
 
     uint64_t r = 0;
     switch (addr) {
@@ -68,7 +68,7 @@ void pfifo_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
 
     nv2a_reg_log_write(NV_PFIFO, addr, size, val);
 
-    xemu_tbrate_lock(&d->pfifo.lock);
+    pfifo_guest_lock(d);
 
     switch (addr) {
     case NV_PFIFO_INTR_0:
@@ -89,10 +89,11 @@ void pfifo_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
     qemu_mutex_unlock(&d->pfifo.lock);
 }
 
+/* From any thread, no lock: the flag, then the thread's eventcount. */
 void pfifo_kick(NV2AState *d)
 {
-    d->pfifo.fifo_kick = true;
-    qemu_cond_broadcast(&d->pfifo.fifo_cond);
+    retro_atomic_store_release_int(&d->pfifo.fifo_kick, 1);
+    retro_eventcount_notify(&d->pfifo.fifo_ec);
 }
 
 static bool can_fifo_access(NV2AState *d) {
@@ -129,12 +130,12 @@ static bool is_flip_stall_complete(NV2AState *d)
     return false;
 }
 
+/* pgraph.lock held (the puller's batch) */
 static bool pfifo_stall_for_flip(NV2AState *d)
 {
     bool should_stall = false;
 
     if (qatomic_read(&d->pgraph.waiting_for_flip)) {
-        qemu_mutex_lock(&d->pgraph.lock);
         if (!is_flip_stall_complete(d)) {
             should_stall = true;
         } else {
@@ -143,7 +144,6 @@ static bool pfifo_stall_for_flip(NV2AState *d)
             xemu_flip_completed_ns =
                 qemu_clock_get_ns(QEMU_CLOCK_REALTIME);
         }
-        qemu_mutex_unlock(&d->pgraph.lock);
     }
 
     return should_stall;
@@ -179,19 +179,33 @@ static inline void pfifo_idle_cond_wait(NV2AState *d)
             return;
         }
     }
-    if (!d->pfifo.fifo_kick) {
+    /* The wait is prepared under the lock and committed without it: a
+     * kick between the two (the flag set after the prepare) cancels it,
+     * one before was seen by the check. One wait, as upstream's:
+     * nv2a_lock_fifo wakes the thread without a kick to have it go round
+     * once. */
+    if (!retro_atomic_load_acquire_int(&d->pfifo.fifo_kick)) {
+        int key = retro_eventcount_prepare_wait(&d->pfifo.fifo_ec);
+        if (retro_atomic_load_acquire_int(&d->pfifo.fifo_kick) ||
+            qatomic_read(&d->exiting)) {
+            retro_eventcount_cancel_wait(&d->pfifo.fifo_ec);
+            return;
+        }
         qatomic_set_mb(&d->pfifo.parked, true);
         /* pairs with the waiter's mb before it looks at parked */
         if (qatomic_read(&nv2a_libretro_waiter)) {
             qemu_notify_event();
         }
-        /* one wait, as upstream's: nv2a_lock_fifo wakes the thread
-         * without a kick to have it go round once */
-        qemu_cond_wait(&d->pfifo.fifo_cond, &d->pfifo.lock);
+        qemu_mutex_unlock(&d->pfifo.lock);
+        retro_eventcount_commit_wait(&d->pfifo.fifo_ec, key);
+        qemu_mutex_lock(&d->pfifo.lock);
         qatomic_set(&d->pfifo.parked, false);
     }
 }
 
+/* Both locks held, pfifo's then pgraph's: the pusher takes them for a
+ * batch of methods (pfifo_run_pusher), where each method used to trade
+ * one for the other and back. */
 static ssize_t pfifo_run_puller(NV2AState *d, uint32_t method_entry,
                                 uint32_t parameter, uint32_t *parameters,
                                 size_t num_words_available,
@@ -230,10 +244,6 @@ static ssize_t pfifo_run_puller(NV2AState *d, uint32_t method_entry,
         SET_MASK(*engine_reg, 3 << (4*subchannel), entry.engine);
         SET_MASK(*pull1, NV_PFIFO_CACHE1_PULL1_ENGINE, entry.engine);
 
-        // TODO: this is fucked
-        qemu_mutex_unlock(&d->pfifo.lock);
-        qemu_mutex_lock(&d->pgraph.lock);
-
         // Switch contexts if necessary
         if (can_fifo_access(d)) {
             pgraph_context_switch(d, entry.channel_id);
@@ -243,9 +253,6 @@ static ssize_t pfifo_run_puller(NV2AState *d, uint32_t method_entry,
                                   num_words_available, max_lookahead_words, inc);
             }
         }
-
-        qemu_mutex_unlock(&d->pgraph.lock);
-        qemu_mutex_lock(&d->pfifo.lock);
 
     } else if (method >= 0x100) {
         // method passed to engine
@@ -265,18 +272,11 @@ static ssize_t pfifo_run_puller(NV2AState *d, uint32_t method_entry,
         assert(engine == ENGINE_GRAPHICS);
         SET_MASK(*pull1, NV_PFIFO_CACHE1_PULL1_ENGINE, engine);
 
-        // TODO: this is fucked
-        qemu_mutex_unlock(&d->pfifo.lock);
-        qemu_mutex_lock(&d->pgraph.lock);
-
         if (can_fifo_access(d)) {
             num_proc =
                 pgraph_method(d, subchannel, method, parameter, parameters,
                               num_words_available, max_lookahead_words, inc);
         }
-
-        qemu_mutex_unlock(&d->pgraph.lock);
-        qemu_mutex_lock(&d->pfifo.lock);
     } else {
         assert(!"Unrecognized pfifo puller method");
     }
@@ -286,6 +286,17 @@ static ssize_t pfifo_run_puller(NV2AState *d, uint32_t method_entry,
     }
 
     return num_proc;
+}
+
+#define PFIFO_METHOD_BATCH 64
+
+/* A guest thread (the vCPU, the display) about to take the fifo lock says
+ * so, and the pusher ends its batch at the next method. */
+void pfifo_guest_lock(NV2AState *d)
+{
+    retro_atomic_fetch_add_int(&d->pfifo.guest_waiting, 1);
+    xemu_tbrate_lock(&d->pfifo.lock);
+    retro_atomic_fetch_sub_int(&d->pfifo.guest_waiting, 1);
 }
 
 static bool pfifo_pusher_should_stall(NV2AState *d)
@@ -333,9 +344,26 @@ static void pfifo_run_pusher(NV2AState *d)
 
     hwaddr dma_len;
     uint8_t *dma = nv_dma_map(d, dma_instance, &dma_len);
+    /* The methods run under pgraph's lock in batches: both locks are let
+     * go between batches, and at once when a guest thread wants one
+     * (pfifo_guest_lock), where every method let them go before. At
+     * 14,000 methods a frame (Dead or Alive 3) that was four lock
+     * operations each. */
+    unsigned batch = 0;
+    qemu_mutex_lock(&d->pgraph.lock);
     while (!pfifo_pusher_should_stall(d)) {
+        if (++batch == PFIFO_METHOD_BATCH ||
+            retro_atomic_load_acquire_int(&d->pfifo.guest_waiting)) {
+            batch = 0;
+            qemu_mutex_unlock(&d->pgraph.lock);
+            qemu_mutex_unlock(&d->pfifo.lock);
+            qemu_mutex_lock(&d->pfifo.lock);
+            qemu_mutex_lock(&d->pgraph.lock);
+            /* nv_dma_map's mapping holds; the registers may have moved */
+        }
         uint32_t dma_get_v = *dma_get;
-        uint32_t dma_put_v = *dma_put;
+        /* the guest's, written without the lock (user_write) */
+        uint32_t dma_put_v = qatomic_load_acquire(dma_put);
 
         if (dma_get_v == dma_put_v) break;
         if (dma_get_v >= dma_len) {
@@ -479,12 +507,13 @@ static void pfifo_run_pusher(NV2AState *d)
             }
         }
 
-        *dma_get = dma_get_v;
+        qatomic_set(dma_get, dma_get_v); /* read by the guest, no lock */
 
         if (GET_MASK(*dma_state, NV_PFIFO_CACHE1_DMA_STATE_ERROR)) {
             break;
         }
     }
+    qemu_mutex_unlock(&d->pgraph.lock);
 
     // NV2A_DPRINTF("DMA pusher done: max 0x%" HWADDR_PRIx ", 0x%" HWADDR_PRIx " - 0x%" HWADDR_PRIx "\n",
     //      dma_len, control->dma_get, control->dma_put);
@@ -512,7 +541,7 @@ void *pfifo_thread(void *arg)
     qemu_mutex_lock(&d->pfifo.lock);
     d->pfifo.thread_running = true;
     while (true) {
-        d->pfifo.fifo_kick = false;
+        retro_atomic_store_release_int(&d->pfifo.fifo_kick, 0);
 
         pgraph_process_pending(d);
 
@@ -522,7 +551,7 @@ void *pfifo_thread(void *arg)
 
         pgraph_process_pending_reports(d);
 
-        if (!d->pfifo.fifo_kick) {
+        if (!retro_atomic_load_acquire_int(&d->pfifo.fifo_kick)) {
             qemu_cond_broadcast(&d->pfifo.fifo_idle_cond);
 
             // Both the pusher and puller are waiting for some action

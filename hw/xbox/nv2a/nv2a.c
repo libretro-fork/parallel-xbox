@@ -226,7 +226,7 @@ bool nv2a_libretro_busy(void)
         qatomic_read(&d->pfifo.halt)) {
         return false;
     }
-    return qatomic_read(&d->pfifo.fifo_kick) ||
+    return retro_atomic_load_acquire_int(&d->pfifo.fifo_kick) ||
            !qatomic_read(&d->pfifo.parked);
 }
 
@@ -323,7 +323,8 @@ static void nv2a_init_vga(NV2AState *d)
 static void nv2a_lock_fifo(NV2AState *d)
 {
     qemu_mutex_lock(&d->pfifo.lock);
-    qemu_cond_broadcast(&d->pfifo.fifo_cond);
+    /* round once, without a kick: it parks and signals idle */
+    retro_eventcount_notify(&d->pfifo.fifo_ec);
     bql_unlock();
     qemu_cond_wait(&d->pfifo.fifo_idle_cond, &d->pfifo.lock);
     bql_lock();
@@ -351,7 +352,6 @@ static void nv2a_reset(NV2AState *d)
 
         qemu_event_reset(&d->pgraph.flush_complete);
         qatomic_set(&d->pgraph.flush_pending, true);
-        qemu_cond_broadcast(&d->pfifo.fifo_cond);
         nv2a_unlock_fifo(d);
         bql_unlock();
         qemu_event_wait(&d->pgraph.flush_complete);
@@ -424,7 +424,7 @@ static void nv2a_realize(PCIDevice *dev, Error **errp)
     }
 
     qemu_mutex_init(&d->pfifo.lock);
-    qemu_cond_init(&d->pfifo.fifo_cond);
+    retro_eventcount_init(&d->pfifo.fifo_ec);
     qemu_cond_init(&d->pfifo.fifo_idle_cond);
 }
 
@@ -435,7 +435,7 @@ static void nv2a_exitfn(PCIDevice *dev)
 
     d->exiting = true;
 
-    qemu_cond_broadcast(&d->pfifo.fifo_cond);
+    pfifo_kick(d);
     qemu_thread_join(&d->pfifo.thread);
 
     pgraph_destroy(&d->pgraph);
