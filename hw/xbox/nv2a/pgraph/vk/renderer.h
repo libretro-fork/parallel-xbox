@@ -653,6 +653,13 @@ typedef struct PGRAPHVkState {
     PipelineBinding *pipeline_cache_entries;
     PipelineBinding *pipeline_binding;
     bool pipeline_binding_changed;
+    /* A state met for the first time, drawn as its dynamic sibling this
+     * draw: the draw path hands its pipeline to the worker (draw.c,
+     * pipeline_ahead), under this draw's key. Set by pgraph_vk_bind_shaders,
+     * taken by create_pipeline. */
+    ShaderState ahead_state;
+    uint64_t ahead_hash;
+    bool ahead_valid;
 
     VkDescriptorPool descriptor_pool;
     VkDescriptorSetLayout descriptor_set_layout;
@@ -1035,6 +1042,8 @@ void pgraph_vk_libpump_step(PGRAPHState *pg);
 void pgraph_vk_seed_service(void);
 const ShaderState *pgraph_vk_seed_pump_states(unsigned *count);
 bool pgraph_vk_seed_spv_ready_hash(uint64_t hash);
+void pgraph_vk_spec_pipeline_queued(uint64_t state_hash);
+void pgraph_vk_spec_pipeline_landed(uint64_t state_hash);
 void pgraph_vk_finalize_pipelines(PGRAPHState *pg);
 void pgraph_vk_clear_surface(NV2AState *d, uint32_t parameter);
 void pgraph_vk_draw_begin(NV2AState *d);

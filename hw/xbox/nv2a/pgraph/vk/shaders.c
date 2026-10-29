@@ -471,8 +471,10 @@ static void vk_seen_add(uint64_t h)
  * to the worker through one SPSC ring, the modules come back through
  * another, the worker sleeps on an eventcount, and the track of what is
  * queued and what has landed is the render thread's alone. */
-#define VK_SPEC_QUEUED 1
-#define VK_SPEC_ADOPTED 2
+#define VK_SPEC_QUEUED 1      /* its SPIR-V is being compiled */
+#define VK_SPEC_ADOPTED 2     /* its SPIR-V landed: its modules can be made */
+#define VK_SPEC_PIPE_QUEUED 3 /* its pipeline is being made (draw.c) */
+#define VK_SPEC_PIPE_LANDED 4 /* its pipeline is in the cache: draw with it */
 static struct { uint64_t hash; int phase; } vk_spec_track[1024];
 
 typedef struct VkSpecDone {
@@ -483,13 +485,17 @@ typedef struct VkSpecDone {
     uint64_t state_hash; /* set on the record that ends a state */
 } VkSpecDone;
 
-#define VK_SPEC_RING 256   /* states in flight, at most */
-#define VK_SPEC_READY 512  /* modules landed, waiting to be made */
+#define VK_SPEC_RING 256   /* states queued and not yet drained, at most */
+#define VK_SPEC_READY (3 * VK_SPEC_RING) /* modules landed, to be made */
 static retro_spsc_t vk_spec_in;   /* ShaderState: render thread -> worker */
 static retro_spsc_t vk_spec_out;  /* VkSpecDone: worker -> render thread */
 static retro_eventcount_t vk_spec_ec;      /* the worker's sleep */
 static retro_eventcount_t vk_spec_idle_ec; /* quiesce waits here */
 static retro_atomic_int_t vk_spec_inflight; /* states queued, not handed back */
+static retro_atomic_int_t vk_spec_cancel;   /* finalize: skip what is queued */
+static unsigned vk_spec_undrained; /* states queued, not yet drained: what
+                                      the out ring must have room for (render
+                                      thread only) */
 static QemuThread vk_spec_thread;
 static bool vk_spec_started;
 static bool vk_spec_push_constants;
@@ -578,11 +584,13 @@ static void vk_spec_compile_state(const ShaderState *st)
         d.nwords = spv->len / sizeof(uint32_t);
         d.words = (uint32_t *)g_byte_array_free(spv, FALSE);
         d.state_hash = i == n - 1 ? state_hash : 0;
-        /* the out ring holds three records per state the in ring holds,
-         * and a state's records are the only ones in it: never full */
-        size_t put = retro_spsc_write(&vk_spec_out, &d, sizeof(d));
-        assert(put == sizeof(d));
-        (void)put;
+        /* The out ring holds three records for each state the render
+         * thread may have queued and not drained (vk_spec_queue bounds
+         * that), so it has room; were it ever short, the record is dropped
+         * and the state stays drawn as its sibling. */
+        if (retro_spsc_write(&vk_spec_out, &d, sizeof(d)) != sizeof(d)) {
+            free(d.words);
+        }
     }
 }
 
@@ -591,7 +599,9 @@ static void *vk_spec_worker_fn(void *opaque)
     for (;;) {
         ShaderState st;
         if (retro_spsc_read(&vk_spec_in, &st, sizeof(st)) == sizeof(st)) {
-            vk_spec_compile_state(&st);
+            if (!retro_atomic_load_acquire_int(&vk_spec_cancel)) {
+                vk_spec_compile_state(&st);
+            }
             retro_atomic_fetch_sub_int(&vk_spec_inflight, 1);
             retro_eventcount_notify(&vk_spec_idle_ec);
             continue;
@@ -624,6 +634,7 @@ static void vk_spec_drain(void)
         }
         vk_spec_ready[vk_spec_ready_n++] = d;
         if (d.state_hash) {
+            vk_spec_undrained--;
             int t = vk_spec_find(d.state_hash);
             if (t >= 0) {
                 vk_spec_track[t].phase = VK_SPEC_ADOPTED;
@@ -661,22 +672,45 @@ static int vk_spec_phase(uint64_t h)
     return t >= 0 ? vk_spec_track[t].phase : 0;
 }
 
-/* Frees the track slot of a state the worker has landed. */
+/* Frees the track slot of a state whose words or pipeline have landed. */
 static void vk_spec_release_adopted(uint64_t h)
 {
     int t = vk_spec_find(h);
-    if (t >= 0 && vk_spec_track[t].phase == VK_SPEC_ADOPTED) {
+    if (t >= 0 && (vk_spec_track[t].phase == VK_SPEC_ADOPTED ||
+                   vk_spec_track[t].phase == VK_SPEC_PIPE_LANDED)) {
         vk_spec_track[t].phase = 0;
     }
 }
 
-/* At finalize: wait for the states in flight, then drop what landed and
- * every track. The worker stays, idle, for the next Vulkan renderer. */
+/* The pipeline worker's word on a state (draw.c): its whole pipeline is
+ * being made, then is in the pipeline cache. */
+void pgraph_vk_spec_pipeline_queued(uint64_t state_hash)
+{
+    int t = vk_spec_find(state_hash);
+    if (t >= 0 && vk_spec_track[t].phase == VK_SPEC_ADOPTED) {
+        vk_spec_track[t].phase = VK_SPEC_PIPE_QUEUED;
+    }
+}
+
+void pgraph_vk_spec_pipeline_landed(uint64_t state_hash)
+{
+    int t = vk_spec_find(state_hash);
+    if (t >= 0 && (vk_spec_track[t].phase == VK_SPEC_PIPE_QUEUED ||
+                   vk_spec_track[t].phase == VK_SPEC_ADOPTED)) {
+        vk_spec_track[t].phase = VK_SPEC_PIPE_LANDED;
+    }
+}
+
+/* At finalize: the states queued are skipped, the one being compiled is
+ * waited for (a fraction of a millisecond), then what landed and every
+ * track are dropped. The worker stays, idle, for the next renderer. */
+static GArray *vk_seed_pending;
 static void vk_spec_quiesce(void)
 {
     if (!vk_spec_started) {
         return;
     }
+    retro_atomic_store_release_int(&vk_spec_cancel, 1);
     for (;;) {
         int key = retro_eventcount_prepare_wait(&vk_spec_idle_ec);
         if (retro_atomic_load_acquire_int(&vk_spec_inflight) == 0) {
@@ -685,13 +719,19 @@ static void vk_spec_quiesce(void)
         }
         retro_eventcount_commit_wait(&vk_spec_idle_ec, key);
     }
+    retro_atomic_store_release_int(&vk_spec_cancel, 0);
     vk_spec_drain();
     for (unsigned i = 0; i < vk_spec_ready_n; i++) {
         free(vk_spec_ready[i].words);
     }
     vk_spec_ready_n = 0;
+    vk_spec_undrained = 0;
     for (unsigned i = 0; i < ARRAY_SIZE(vk_spec_track); i++) {
         vk_spec_track[i].phase = 0;
+    }
+    if (vk_seed_pending) {
+        g_array_free(vk_seed_pending, TRUE);
+        vk_seed_pending = NULL;
     }
 }
 
@@ -711,6 +751,14 @@ static void vk_spec_queue(uint64_t h, const ShaderState *st)
     if (vk_spec_find(h) >= 0) {
         return;
     }
+    /* What landed is taken in first; then there is room for the state's
+     * modules in the out ring only while fewer than the ring's states are
+     * queued and undrained (a cancelled state leaves no record: its slot
+     * frees with the tracks at quiesce). */
+    vk_spec_drain();
+    if (vk_spec_undrained >= VK_SPEC_RING) {
+        return; /* full: the next meeting queues it */
+    }
     for (unsigned i = 0; i < ARRAY_SIZE(vk_spec_track); i++) {
         if (!vk_spec_track[i].phase) {
             if (retro_spsc_write(&vk_spec_in, st, sizeof(*st)) != sizeof(*st)) {
@@ -718,6 +766,7 @@ static void vk_spec_queue(uint64_t h, const ShaderState *st)
             }
             vk_spec_track[i].hash = h;
             vk_spec_track[i].phase = VK_SPEC_QUEUED;
+            vk_spec_undrained++;
             retro_atomic_fetch_add_int(&vk_spec_inflight, 1);
             retro_eventcount_notify(&vk_spec_ec);
             break;
@@ -745,9 +794,13 @@ const ShaderState *pgraph_vk_seed_pump_states(unsigned *count)
     return (const ShaderState *)vk_pump_states->data;
 }
 
-/* Queue the first-meet covers during boot: few dynamic covers serve many
- * specialised states, and SEGABOOT leaves the worker time to compile them,
- * so the first scene already finds their words, as with the GL seed. */
+/* The states the seed names, in the order they are queued: the covers
+ * (few dynamic siblings serve many specialised states) first, then the
+ * states themselves, so a known state's words are there at its first
+ * meeting rather than compiled then. Fed to the worker a ring's worth at a
+ * time, per flip (vk_seed_step), as the ring frees. */
+static unsigned vk_seed_next;
+
 static void vk_seed_siblings(void)
 {
     if (!g_config.perf.shader_seeding) {
@@ -770,9 +823,10 @@ static void vk_seed_siblings(void)
     if (!states && !local) {
         return;
     }
+    vk_seed_pending = g_array_new(FALSE, FALSE, sizeof(ShaderState));
+    vk_seed_next = 0;
     /* One queue slot per distinct cover. */
     GHashTable *seen = pgraph_seed_hash_set_new();
-    unsigned queued = 0;
     for (int src = 0; src < 2; src++) {
         ShaderState *arr = src ? local : states;
         unsigned cnt = src ? n_local : n;
@@ -785,14 +839,10 @@ static void vk_seed_siblings(void)
             if (!pgraph_seed_hash_set_add(seen, h)) {
                 continue;
             }
-            vk_spec_queue(h, &fb);
+            g_array_append_val(vk_seed_pending, fb);
             vk_pump_remember(&fb);
-            queued++;
         }
     }
-    /* Then the specialised states themselves, so a known state is a disk
-     * hit at its first meeting rather than a synchronous compile. */
-    unsigned queued_states = 0;
     for (int src = 0; src < 2; src++) {
         ShaderState *arr = src ? local : states;
         unsigned cnt = src ? n_local : n;
@@ -801,19 +851,32 @@ static void vk_seed_siblings(void)
             if (!pgraph_seed_hash_set_add(seen, h)) {
                 continue;
             }
-            vk_spec_queue(h, &arr[i]);
+            g_array_append_val(vk_seed_pending, arr[i]);
             vk_pump_remember(&arr[i]);
-            queued_states++;
         }
     }
     g_hash_table_destroy(seen);
     g_free(states);
     g_free(local);
-    if (queued || queued_states) {
-        fprintf(stderr,
-                "nv2a: vk first-meet covers seeding (%u siblings + %u "
-                "states: dict %u states, learned %u states)\n",
-                queued, queued_states, n, n_local);
+}
+
+/* Per flip: the next seed states, as many as the worker's ring takes. */
+static void vk_seed_step(void)
+{
+    if (!vk_seed_pending) {
+        return;
+    }
+    vk_spec_drain();
+    while (vk_seed_next < vk_seed_pending->len &&
+           vk_spec_undrained < VK_SPEC_RING) {
+        const ShaderState *st =
+            &g_array_index(vk_seed_pending, ShaderState, vk_seed_next);
+        vk_spec_queue(fast_hash((const uint8_t *)st, sizeof(*st)), st);
+        vk_seed_next++;
+    }
+    if (vk_seed_next == vk_seed_pending->len) {
+        g_array_free(vk_seed_pending, TRUE);
+        vk_seed_pending = NULL;
     }
 }
 
@@ -824,7 +887,7 @@ bool pgraph_vk_seed_spv_ready_hash(uint64_t h)
     if (vk_seen_contains(h)) {
         return true;
     }
-    return vk_spec_phase(h) == VK_SPEC_ADOPTED;
+    return vk_spec_phase(h) >= VK_SPEC_ADOPTED;
 }
 
 struct VkSeedCollect {
@@ -985,9 +1048,10 @@ void pgraph_vk_bind_shaders(PGRAPHState *pg)
                 fast_hash((const uint8_t *)&new_state, sizeof(new_state));
             if (!vk_seen_contains(h)) {
                 int phase = vk_spec_phase(h);
-                if (phase == VK_SPEC_ADOPTED) {
-                    /* The worker's words landed: the normal path below
-                     * makes the modules from them, no compile. */
+                if (phase == VK_SPEC_PIPE_LANDED) {
+                    /* Its pipeline is in the cache, its modules made
+                     * from the worker's words: the normal path below
+                     * compiles nothing. */
                     vk_spec_release_adopted(h);
                 } else {
                     ShaderState fb = new_state;
@@ -998,13 +1062,22 @@ void pgraph_vk_bind_shaders(PGRAPHState *pg)
                         bool sib_ready =
                             fh != h &&
                             (vk_seen_contains(fh) ||
-                             sphase == VK_SPEC_ADOPTED);
+                             sphase == VK_SPEC_ADOPTED ||
+                             sphase == VK_SPEC_PIPE_LANDED);
                         if (sib_ready) {
-                            if (sphase == VK_SPEC_ADOPTED) {
+                            if (sphase == VK_SPEC_ADOPTED ||
+                                sphase == VK_SPEC_PIPE_LANDED) {
                                 vk_spec_release_adopted(fh);
                             }
                             if (!phase) {
                                 vk_spec_queue(h, &new_state);
+                            } else if (phase == VK_SPEC_ADOPTED) {
+                                /* Its words landed: the draw path
+                                 * hands its pipeline to the worker
+                                 * under this draw's key. */
+                                r->ahead_state = new_state;
+                                r->ahead_hash = h;
+                                r->ahead_valid = true;
                             }
                             nv2a_profile_inc_counter(
                                 NV2A_PROF_SHADER_FALLBACK);
@@ -1014,7 +1087,13 @@ void pgraph_vk_bind_shaders(PGRAPHState *pg)
                              * slower than the state: queue it; the
                              * normal path serves until it lands. */
                             vk_spec_queue(fh, &fb);
+                        } else if (phase == VK_SPEC_ADOPTED) {
+                            /* no sibling to draw with: the modules are
+                             * made from the words, the pipeline here */
+                            vk_spec_release_adopted(h);
                         }
+                    } else if (phase == VK_SPEC_ADOPTED) {
+                        vk_spec_release_adopted(h);
                     }
                 }
             }
@@ -1049,16 +1128,17 @@ void pgraph_vk_init_shaders(PGRAPHState *pg)
     r->seed_writeback_pending = false;
 }
 
-/* Per flip until the boot has named the game (the seeds are keyed by
- * the game's name, known at the latest a few seconds into SEGABOOT). */
+/* Per flip: once the boot has named the game (the seeds are keyed by the
+ * game's name, known at the latest a few seconds into SEGABOOT) the seed
+ * is read, then fed to the worker a ring's worth per flip. */
 void pgraph_vk_seed_service(void)
 {
     static bool done;
-    if (done || !pgraph_seed_game_tag()) {
-        return;
+    if (!done && pgraph_seed_game_tag()) {
+        done = true;
+        vk_seed_siblings();
     }
-    done = true;
-    vk_seed_siblings();
+    vk_seed_step();
 }
 
 /* Shutdown writeback, on the pfifo thread (see pgraph_vk_process_pending):

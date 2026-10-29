@@ -24,8 +24,10 @@
 #include "ui/xemu-settings.h"
 #include "renderer.h"
 #include <math.h>
+#include <retro_atomic.h>
+#include <rthreads/retro_eventcount.h>
 
-static void pump_quiesce(PGRAPHVkState *r);
+static void pump_quiesce(PGRAPHState *pg);
 static void gpl_init(PGRAPHVkState *r);
 static void gpl_finalize(PGRAPHVkState *r);
 static void destroy_framebuffer_cache(PGRAPHVkState *r);
@@ -345,7 +347,7 @@ void pgraph_vk_finalize_pipelines(PGRAPHState *pg)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
 
-    pump_quiesce(r);
+    pump_quiesce(pg);
     for (unsigned i = 0; i < r->pump.n; i++) {
         g_array_free(r->pump.retry[i], true);
     }
@@ -964,20 +966,25 @@ static int fill_dynamic_states(PGRAPHVkState *r, VkDynamicState *out,
  * costs far less than compiling a pipeline.
  */
 
-/* One library compile handed to a worker, with every structure its create
- * info points to held in the job itself. */
+/* One pipeline compile handed to the worker - a library half, or a whole
+ * pipeline for a state met for the first time - with every structure its
+ * create info points to held in the job itself. */
 typedef struct {
     bool frag;
-    uint64_t hash;
+    bool full;     /* a whole pipeline, for the pipeline cache */
+    uint64_t hash; /* a library's; a whole pipeline's key hash */
+    uint64_t state_hash; /* full: the shader state it was met as */
     VkDevice device;
     VkPipelineCache cache;
     VkPipelineLayout layout;
-    ShaderModuleInfo *mods[2];
+    ShaderModuleInfo *mods[3];
     int nmods;
     VkGraphicsPipelineCreateInfo ci;
     VkGraphicsPipelineLibraryCreateInfoEXT lib_info;
-    VkPipelineShaderStageCreateInfo stages[2];
+    VkPipelineShaderStageCreateInfo stages[3];
     VkPipelineVertexInputStateCreateInfo vi;
+    VkVertexInputBindingDescription vib[NV2A_VERTEXSHADER_ATTRIBUTES];
+    VkVertexInputAttributeDescription via[NV2A_VERTEXSHADER_ATTRIBUTES];
     VkPipelineInputAssemblyStateCreateInfo ia;
     VkPipelineViewportStateCreateInfo vp;
     VkPipelineRasterizationStateCreateInfo raster;
@@ -987,6 +994,8 @@ typedef struct {
     VkPipelineColorBlendAttachmentState cba;
     VkPipelineDynamicStateCreateInfo dyn;
     VkDynamicState dyn_states[24];
+    PipelineKey key; /* full */
+    bool has_dynamic_line_width;
     VkPipeline result;
 } LibJob;
 
@@ -994,81 +1003,87 @@ typedef struct {
  * until the worker is done with it). */
 static void lib_job_link(LibJob *job)
 {
-    job->ci.pNext = &job->lib_info;
+    bool pre = job->full || !job->frag;
+    bool post = job->full || job->frag;
+    job->ci.pNext = job->full ? NULL : &job->lib_info;
     job->ci.pStages = job->stages;
-    job->ci.pVertexInputState = job->frag ? NULL : &job->vi;
-    job->ci.pInputAssemblyState = job->frag ? NULL : &job->ia;
-    job->ci.pViewportState = job->frag ? NULL : &job->vp;
-    job->ci.pRasterizationState = job->frag ? NULL : &job->raster;
-    job->ci.pMultisampleState = job->frag ? &job->ms : NULL;
-    job->ci.pDepthStencilState = (job->frag && job->ds.sType) ? &job->ds : NULL;
+    job->vi.pVertexBindingDescriptions =
+        job->vi.vertexBindingDescriptionCount ? job->vib : NULL;
+    job->vi.pVertexAttributeDescriptions =
+        job->vi.vertexAttributeDescriptionCount ? job->via : NULL;
+    job->ci.pVertexInputState = pre ? &job->vi : NULL;
+    job->ci.pInputAssemblyState = pre ? &job->ia : NULL;
+    job->ci.pViewportState = pre ? &job->vp : NULL;
+    job->ci.pRasterizationState = pre ? &job->raster : NULL;
+    job->ci.pMultisampleState = post ? &job->ms : NULL;
+    job->ci.pDepthStencilState = (post && job->ds.sType) ? &job->ds : NULL;
     job->cb.pAttachments = job->cb.attachmentCount ? &job->cba : NULL;
-    job->ci.pColorBlendState = job->frag ? &job->cb : NULL;
+    job->ci.pColorBlendState = post ? &job->cb : NULL;
     job->dyn.pDynamicStates = job->dyn_states;
     job->ci.pDynamicState = &job->dyn;
 }
 
-/* The fragment half compiles on this worker while the draw path compiles
- * the pre-rasterization half. */
+/*
+ * The pipeline worker ("vk-pipe"): one thread, one ring the render thread
+ * alone writes and it alone reads, no lock, and the render thread never
+ * waits for a job. What it builds is for later: the seed library pump's
+ * halves, and the whole pipelines of states met for the first time, which
+ * draw with their dynamic sibling until theirs lands. The ring is a counter
+ * pair: the writer publishes its count with a release store after writing
+ * the slot, the reader takes it with an acquire load; the worker sleeps on
+ * an eventcount when the ring is empty, and notifies another after each
+ * job for the one wait there is, the renderer's shutdown, which cancels
+ * what is queued and waits for the job under way alone.
+ */
+#define PUMP_RING 64
+static LibJob pump_jobs[PUMP_RING];
+static retro_atomic_int_t pump_w;  /* queued: render thread writes */
+static retro_atomic_int_t pump_r;  /* compiled: worker writes */
+static retro_atomic_int_t pump_cancel; /* skip what is not started */
+static unsigned pump_w_local;      /* the render thread's copy of pump_w */
+static unsigned pump_d;            /* drained, render thread only */
+static retro_eventcount_t pipe_ec_work, pipe_ec_done;
+static QemuThread pipe_thread;
+static bool pipe_started;
 
-static QemuThread gpl_worker_thread;
-static QemuMutex gpl_worker_lock;
-static QemuCond gpl_worker_cond;
-static LibJob *gpl_worker_job, *gpl_worker_last;
-static bool gpl_worker_done, gpl_worker_started;
-
-static void *gpl_worker_fn(void *opaque)
+static void *pipe_worker_fn(void *opaque)
 {
-    qemu_mutex_lock(&gpl_worker_lock);
+    unsigned pr = 0;
     for (;;) {
-        while (!gpl_worker_job) {
-            qemu_cond_wait(&gpl_worker_cond, &gpl_worker_lock);
+        if ((unsigned)retro_atomic_load_acquire_int(&pump_w) != pr) {
+            LibJob *job = &pump_jobs[pr % PUMP_RING];
+            if (retro_atomic_load_acquire_int(&pump_cancel)) {
+                job->result = VK_NULL_HANDLE;
+            } else {
+                VK_CHECK(vkCreateGraphicsPipelines(job->device, job->cache, 1,
+                                                   &job->ci, NULL,
+                                                   &job->result));
+            }
+            pr++;
+            retro_atomic_store_release_int(&pump_r, (int)pr);
+            retro_eventcount_notify(&pipe_ec_done);
+            continue;
         }
-        LibJob *job = gpl_worker_job;
-        qemu_mutex_unlock(&gpl_worker_lock);
-
-        VK_CHECK(vkCreateGraphicsPipelines(job->device, job->cache, 1, &job->ci,
-                                           NULL, &job->result));
-
-        qemu_mutex_lock(&gpl_worker_lock);
-        gpl_worker_job = NULL;
-        gpl_worker_done = true;
-        qemu_cond_broadcast(&gpl_worker_cond);
+        int key = retro_eventcount_prepare_wait(&pipe_ec_work);
+        if ((unsigned)retro_atomic_load_acquire_int(&pump_w) != pr) {
+            retro_eventcount_cancel_wait(&pipe_ec_work);
+            continue;
+        }
+        retro_eventcount_commit_wait(&pipe_ec_work, key);
     }
     return NULL;
 }
 
-static void gpl_worker_submit(LibJob *job)
+static void pipe_start(void)
 {
-    if (!gpl_worker_started) {
-        gpl_worker_started = true;
-        qemu_mutex_init(&gpl_worker_lock);
-        qemu_cond_init(&gpl_worker_cond);
-        qemu_thread_create(&gpl_worker_thread, "vk-pipe", gpl_worker_fn, NULL,
-                           QEMU_THREAD_DETACHED);
+    if (pipe_started) {
+        return;
     }
-    lib_job_link(job);
-
-    qemu_mutex_lock(&gpl_worker_lock);
-    gpl_worker_done = false;
-    gpl_worker_job = job;
-    gpl_worker_last = job;
-    qemu_cond_broadcast(&gpl_worker_cond);
-    qemu_mutex_unlock(&gpl_worker_lock);
-}
-
-static void gpl_worker_wait(void)
-{
-    qemu_mutex_lock(&gpl_worker_lock);
-    while (!gpl_worker_done) {
-        qemu_cond_wait(&gpl_worker_cond, &gpl_worker_lock);
-    }
-    qemu_mutex_unlock(&gpl_worker_lock);
-}
-
-static VkPipeline gpl_worker_result(void)
-{
-    return gpl_worker_last ? gpl_worker_last->result : VK_NULL_HANDLE;
+    pipe_started = true;
+    retro_eventcount_init(&pipe_ec_work);
+    retro_eventcount_init(&pipe_ec_done);
+    qemu_thread_create(&pipe_thread, "vk-pipe", pipe_worker_fn, NULL,
+                       QEMU_THREAD_DETACHED);
 }
 
 /*
@@ -1278,11 +1293,13 @@ static VkPipeline gpl_get_pre(PGRAPHState *pg,
     return lib;
 }
 
-static VkPipeline gpl_frag_begin(PGRAPHState *pg,
-                                 const VkGraphicsPipelineCreateInfo *full,
-                                 const PipelineKey *key,
-                                 VkPipelineLayout layout, int num_stages,
-                                 uint64_t *hash_out, bool *pending)
+/* The fragment half, compiled here when no draw has needed it yet: like
+ * the pre-rasterization half, on the render thread, never waiting on
+ * another thread. */
+static VkPipeline gpl_get_frag(PGRAPHState *pg,
+                               const VkGraphicsPipelineCreateInfo *full,
+                               const PipelineKey *key, VkPipelineLayout layout,
+                               int num_stages)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
     uint64_t hash = gpl_frag_hash(r, r->shader_binding->psh.module_info->module,
@@ -1290,114 +1307,105 @@ static VkPipeline gpl_frag_begin(PGRAPHState *pg,
                                   full->pColorBlendState,
                                   &key->render_pass_state,
                                   push_constant_size(r, &key->shader_state));
-    *hash_out = hash;
     bool found;
     VkPipeline lib = gpl_lookup(r, true, hash, &found);
     if (found) {
-        *pending = false;
         return lib;
     }
-    *pending = true;
 
-    static LibJob job;
-    memset(&job, 0, sizeof(job));
-    job.frag = true;
-    job.device = r->device;
-    job.cache = r->vk_pipeline_cache;
-    job.lib_info = (VkGraphicsPipelineLibraryCreateInfoEXT){
+    VkGraphicsPipelineLibraryCreateInfoEXT lib_info = {
         .sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_LIBRARY_CREATE_INFO_EXT,
         .flags = VK_GRAPHICS_PIPELINE_LIBRARY_FRAGMENT_SHADER_BIT_EXT |
                  VK_GRAPHICS_PIPELINE_LIBRARY_FRAGMENT_OUTPUT_INTERFACE_BIT_EXT,
     };
-    job.stages[0] = full->pStages[num_stages - 1];
-    job.ms = *full->pMultisampleState;
-    if (full->pDepthStencilState) {
-        job.ds = *full->pDepthStencilState;
-    }
-    job.cb = *full->pColorBlendState;
-    if (job.cb.attachmentCount) {
-        job.cba = full->pColorBlendState->pAttachments[0];
-    }
-    job.dyn = *full->pDynamicState;
-    assert(job.dyn.dynamicStateCount <= ARRAY_SIZE(job.dyn_states));
-    memcpy(job.dyn_states, full->pDynamicState->pDynamicStates,
-           job.dyn.dynamicStateCount * sizeof(job.dyn_states[0]));
-    job.ci = (VkGraphicsPipelineCreateInfo){
+    VkGraphicsPipelineCreateInfo ci = {
         .sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
+        .pNext = &lib_info,
         .flags = VK_PIPELINE_CREATE_LIBRARY_BIT_KHR,
         .stageCount = 1,
+        .pStages = &full->pStages[num_stages - 1],
+        .pMultisampleState = full->pMultisampleState,
+        .pDepthStencilState = full->pDepthStencilState,
+        .pColorBlendState = full->pColorBlendState,
+        .pDynamicState = full->pDynamicState,
         .layout = layout,
         .renderPass = full->renderPass,
     };
-
-    gpl_worker_submit(&job);
-    return VK_NULL_HANDLE;
-}
-
-/* Collect the fragment half, started before the pre-rasterization compile. */
-static VkPipeline gpl_frag_end(PGRAPHState *pg, uint64_t hash)
-{
-    PGRAPHVkState *r = pg->vk_renderer_state;
-
-    gpl_worker_wait();
-    VkPipeline lib = gpl_worker_result();
+    VK_CHECK(vkCreateGraphicsPipelines(r->device, r->vk_pipeline_cache, 1, &ci,
+                                       NULL, &lib));
     gpl_store(r, true, hash, lib);
     return lib;
 }
 
-/* Seed library pump: at boot, a worker builds the pipeline libraries of the
- * states the shader seed knows a game meets, per render-pass state met, so
- * their first draw only links (cache warming). */
-#define PUMP_RING 64
-static LibJob pump_jobs[PUMP_RING];
-static unsigned pump_w, pump_r, pump_d; /* queued, compiled, drained */
-static QemuThread pump_thread;
-static QemuMutex pump_lock;
-static QemuCond pump_cond;
-static bool pump_started;
-
-static void *pump_worker_fn(void *opaque)
-{
-    qemu_mutex_lock(&pump_lock);
-    for (;;) {
-        while (pump_r == pump_w) {
-            qemu_cond_wait(&pump_cond, &pump_lock);
-        }
-        LibJob *job = &pump_jobs[pump_r % PUMP_RING];
-        qemu_mutex_unlock(&pump_lock);
-        VK_CHECK(vkCreateGraphicsPipelines(job->device, job->cache, 1,
-                                           &job->ci, NULL, &job->result));
-        qemu_mutex_lock(&pump_lock);
-        pump_r++;
-        qemu_cond_broadcast(&pump_cond);
-    }
-    return NULL;
-}
-
+/* The ahead ring's queue and landing (render thread only). The seed
+ * library pump feeds it at boot with the halves of the states the seed
+ * knows a game meets, per render-pass state met, so their first draw only
+ * links; the draw path feeds it the whole pipelines of states met for the
+ * first time. */
 static bool pump_in_flight(bool frag, uint64_t hash)
 {
-    for (unsigned i = pump_d; i < pump_w; i++) {
+    for (unsigned i = pump_d; i < pump_w_local; i++) {
         LibJob *j = &pump_jobs[i % PUMP_RING];
-        if (j->frag == frag && j->hash == hash) {
+        if (!j->full && j->frag == frag && j->hash == hash) {
             return true;
         }
     }
     return false;
 }
 
-/* Land finished libraries in the lookup tables (pfifo thread only). */
-static void pump_drain(PGRAPHVkState *r)
+static bool pump_full_in_flight(uint64_t key_hash)
 {
-    if (!pump_started) {
+    for (unsigned i = pump_d; i < pump_w_local; i++) {
+        LibJob *j = &pump_jobs[i % PUMP_RING];
+        if (j->full && j->hash == key_hash) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* A whole pipeline the worker made goes into the pipeline cache; one the
+ * draw path made meanwhile wins (the worker's was never bound: destroyed
+ * at once). The state it was met as is then ready to be drawn with. */
+static void pipeline_land(PGRAPHState *pg, LibJob *job)
+{
+    PGRAPHVkState *r = pg->vk_renderer_state;
+    LruNode *node = lru_lookup(&r->pipeline_cache, job->hash, &job->key);
+    PipelineBinding *snode = container_of(node, PipelineBinding, node);
+    if (snode->pipeline == VK_NULL_HANDLE) {
+        memcpy(&snode->key, &job->key, sizeof(job->key));
+        snode->pipeline = job->result;
+        snode->layout = job->layout;
+        snode->render_pass = job->ci.renderPass;
+        snode->has_dynamic_line_width = job->has_dynamic_line_width;
+        snode->draw_time = pg->draw_time;
+    } else {
+        vkDestroyPipeline(r->device, job->result, NULL);
+        vkDestroyPipelineLayout(r->device, job->layout, NULL);
+    }
+    pgraph_vk_spec_pipeline_landed(job->state_hash);
+}
+
+/* Land what the worker finished: libraries in the lookup tables, whole
+ * pipelines in the pipeline cache. */
+static void pump_drain(PGRAPHState *pg)
+{
+    PGRAPHVkState *r = pg->vk_renderer_state;
+    if (!pipe_started) {
         return;
     }
-    qemu_mutex_lock(&pump_lock);
-    unsigned done = pump_r;
-    qemu_mutex_unlock(&pump_lock);
-    while (pump_d < done) {
+    unsigned done = (unsigned)retro_atomic_load_acquire_int(&pump_r);
+    while (pump_d != done) {
         LibJob *job = &pump_jobs[pump_d % PUMP_RING];
-        gpl_store(r, job->frag, job->hash, job->result);
-        vkDestroyPipelineLayout(r->device, job->layout, NULL);
+        if (job->result == VK_NULL_HANDLE) {
+            /* cancelled at shutdown */
+            vkDestroyPipelineLayout(r->device, job->layout, NULL);
+        } else if (job->full) {
+            pipeline_land(pg, job);
+        } else {
+            gpl_store(r, job->frag, job->hash, job->result);
+            vkDestroyPipelineLayout(r->device, job->layout, NULL);
+        }
         for (int i = 0; i < job->nmods; i++) {
             pgraph_vk_unref_shader_module(r, job->mods[i]);
         }
@@ -1405,33 +1413,47 @@ static void pump_drain(PGRAPHVkState *r)
     }
 }
 
-static void pump_quiesce(PGRAPHVkState *r)
+/* At the renderer's end: the jobs not started are skipped, the one under
+ * way is waited for (its pipeline is of this device), then all are
+ * drained. */
+static void pump_quiesce(PGRAPHState *pg)
 {
-    if (!pump_started) {
+    if (!pipe_started) {
         return;
     }
-    qemu_mutex_lock(&pump_lock);
-    while (pump_r != pump_w) {
-        qemu_cond_wait(&pump_cond, &pump_lock);
+    retro_atomic_store_release_int(&pump_cancel, 1);
+    for (;;) {
+        int key = retro_eventcount_prepare_wait(&pipe_ec_done);
+        if ((unsigned)retro_atomic_load_acquire_int(&pump_r) ==
+            pump_w_local) {
+            retro_eventcount_cancel_wait(&pipe_ec_done);
+            break;
+        }
+        retro_eventcount_commit_wait(&pipe_ec_done, key);
     }
-    qemu_mutex_unlock(&pump_lock);
-    pump_drain(r);
+    retro_atomic_store_release_int(&pump_cancel, 0);
+    pump_drain(pg);
+}
+
+/* The next free slot of the ahead ring, NULL when it is full. */
+static LibJob *pump_slot(void)
+{
+    if (pump_w_local - pump_d >= PUMP_RING) {
+        return NULL;
+    }
+    LibJob *job = &pump_jobs[pump_w_local % PUMP_RING];
+    memset(job, 0, sizeof(*job));
+    return job;
 }
 
 static void pump_submit(LibJob *job)
 {
+    assert(job == &pump_jobs[pump_w_local % PUMP_RING]);
     lib_job_link(job); /* ring slots never move */
-    if (!pump_started) {
-        pump_started = true;
-        qemu_mutex_init(&pump_lock);
-        qemu_cond_init(&pump_cond);
-        qemu_thread_create(&pump_thread, "vk-libpump", pump_worker_fn, NULL,
-                           QEMU_THREAD_DETACHED);
-    }
-    qemu_mutex_lock(&pump_lock);
-    pump_w++;
-    qemu_cond_broadcast(&pump_cond);
-    qemu_mutex_unlock(&pump_lock);
+    pipe_start();
+    pump_w_local++;
+    retro_atomic_store_release_int(&pump_w, (int)pump_w_local);
+    retro_eventcount_notify(&pipe_ec_work);
 }
 
 /* A state's pipeline layout: the descriptor set, and the vertex shader's
@@ -1524,7 +1546,7 @@ static int pump_state(PGRAPHState *pg, const ShaderState *st,
                       const RenderPassState *rp)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
-    if (pump_w - pump_d + 2 > PUMP_RING) {
+    if (pump_w_local - pump_d + 2 > PUMP_RING) {
         return -1;
     }
     ShaderModuleInfo *geom, *vsh, *psh;
@@ -1548,8 +1570,7 @@ static int pump_state(PGRAPHState *pg, const ShaderState *st,
                                      rp, &raster, &ia, &vi);
     gpl_lookup(r, false, pre_hash, &found);
     if (!found && !pump_in_flight(false, pre_hash)) {
-        LibJob *job = &pump_jobs[pump_w % PUMP_RING];
-        memset(job, 0, sizeof(*job));
+        LibJob *job = pump_slot();
         job->frag = false;
         job->hash = pre_hash;
         job->device = r->device;
@@ -1610,8 +1631,7 @@ static int pump_state(PGRAPHState *pg, const ShaderState *st,
                       push_constant_size(r, st));
     gpl_lookup(r, true, frag_hash, &found);
     if (!found && !pump_in_flight(true, frag_hash)) {
-        LibJob *job = &pump_jobs[pump_w % PUMP_RING];
-        memset(job, 0, sizeof(*job));
+        LibJob *job = pump_slot();
         job->frag = true;
         job->hash = frag_hash;
         job->device = r->device;
@@ -1674,7 +1694,7 @@ void pgraph_vk_libpump_step(PGRAPHState *pg)
         !r->color_binding) {
         return;
     }
-    pump_drain(r);
+    pump_drain(pg);
     unsigned n;
     const ShaderState *states = pgraph_vk_seed_pump_states(&n);
     if (!n) {
@@ -1848,48 +1868,21 @@ void pgraph_vk_prewarm_shaders(NV2AState *d)
     }
 }
 
-static void create_pipeline(PGRAPHState *pg)
+/* A whole pipeline's create info, for the shader state st (its modules
+ * vsh, geom, psh) under the registers of the draw at hand, into job: the
+ * draw path makes its own from it, the worker one for later. */
+static void pipeline_job_fill(PGRAPHState *pg, const ShaderState *st,
+                              const ShaderModuleInfo *vsh,
+                              const ShaderModuleInfo *geom,
+                              const ShaderModuleInfo *psh,
+                              const PipelineKey *key, LibJob *job)
 {
-    NV2A_VK_DGROUP_BEGIN("Creating pipeline");
-
-    NV2AState *d = container_of(pg, NV2AState, pgraph);
     PGRAPHVkState *r = pg->vk_renderer_state;
 
-    pgraph_vk_bind_textures(d);
-    pgraph_vk_bind_shaders(pg);
-
-    // FIXME: If nothing was dirty, don't even try creating the key or hashing.
-    //        Just use the same pipeline.
-    bool pipeline_dirty = check_pipeline_dirty(pg);
-
-    pgraph_clear_dirty_reg_map(pg);
-    // FIXME: We could clear less
-
-    if (r->pipeline_binding && !pipeline_dirty) {
-        NV2A_VK_DPRINTF("Cache hit");
-        NV2A_VK_DGROUP_END();
-        return;
-    }
-
-    PipelineKey key;
-    init_pipeline_key(pg, &key);
-    uint64_t hash = fast_hash((void *)&key, sizeof(key));
-
-    LruNode *node = lru_lookup(&r->pipeline_cache, hash, &key);
-    PipelineBinding *snode = container_of(node, PipelineBinding, node);
-    if (snode->pipeline != VK_NULL_HANDLE) {
-        NV2A_VK_DPRINTF("Cache hit");
-        r->pipeline_binding_changed = r->pipeline_binding != snode;
-        r->pipeline_binding = snode;
-        NV2A_VK_DGROUP_END();
-        return;
-    }
-
-    NV2A_VK_DPRINTF("Cache miss");
-    nv2a_profile_inc_counter(NV2A_PROF_PIPELINE_GEN);
-
-    memcpy(&snode->key, &key, sizeof(key));
-
+    memset(job, 0, sizeof(*job));
+    job->full = true;
+    job->device = r->device;
+    job->cache = r->vk_pipeline_cache;
     uint32_t control_0 = pgraph_reg_r(pg, NV_PGRAPH_CONTROL_0);
     bool depth_test = control_0 & NV_PGRAPH_CONTROL_0_ZENABLE;
     bool depth_write = !!(control_0 & NV_PGRAPH_CONTROL_0_ZWRITEENABLE);
@@ -1897,21 +1890,21 @@ static void create_pipeline(PGRAPHState *pg)
         pgraph_reg_r(pg, NV_PGRAPH_CONTROL_1) & NV_PGRAPH_CONTROL_1_STENCIL_TEST_ENABLE;
 
     int num_active_shader_stages = 0;
-    VkPipelineShaderStageCreateInfo shader_stages[3];
+    VkPipelineShaderStageCreateInfo *shader_stages = job->stages;
 
     shader_stages[num_active_shader_stages++] =
         (VkPipelineShaderStageCreateInfo){
             .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
             .stage = VK_SHADER_STAGE_VERTEX_BIT,
-            .module = r->shader_binding->vsh.module_info->module,
+            .module = vsh->module,
             .pName = "main",
         };
-    if (r->shader_binding->geom.module_info) {
+    if (geom) {
         shader_stages[num_active_shader_stages++] =
             (VkPipelineShaderStageCreateInfo){
                 .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
                 .stage = VK_SHADER_STAGE_GEOMETRY_BIT,
-                .module = r->shader_binding->geom.module_info->module,
+                .module = geom->module,
                 .pName = "main",
             };
     }
@@ -1919,27 +1912,34 @@ static void create_pipeline(PGRAPHState *pg)
         (VkPipelineShaderStageCreateInfo){
             .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
             .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
-            .module = r->shader_binding->psh.module_info->module,
+            .module = psh->module,
             .pName = "main",
         };
 
-    VkPipelineVertexInputStateCreateInfo vertex_input = {
+    /* The vertex input as the key holds it: nothing of it where the
+     * device takes it dynamically. */
+    job->vi = (VkPipelineVertexInputStateCreateInfo){
         .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
-        .vertexBindingDescriptionCount =
-            r->num_active_vertex_binding_descriptions,
-        .pVertexBindingDescriptions = r->vertex_binding_descriptions,
-        .vertexAttributeDescriptionCount =
-            r->num_active_vertex_attribute_descriptions,
-        .pVertexAttributeDescriptions = r->vertex_attribute_descriptions,
     };
+    if (!r->dyn_vertex_input) {
+        job->vi.vertexBindingDescriptionCount =
+            r->num_active_vertex_binding_descriptions;
+        job->vi.vertexAttributeDescriptionCount =
+            r->num_active_vertex_attribute_descriptions;
+        memcpy(job->vib, key->binding_descriptions,
+               sizeof(job->vib[0]) * r->num_active_vertex_binding_descriptions);
+        memcpy(job->via, key->attribute_descriptions,
+               sizeof(job->via[0]) *
+                   r->num_active_vertex_attribute_descriptions);
+    }
 
-    VkPipelineInputAssemblyStateCreateInfo input_assembly = {
+    job->ia = (VkPipelineInputAssemblyStateCreateInfo){
         .sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
         .topology = get_primitive_topology(pg),
         .primitiveRestartEnable = VK_FALSE,
     };
 
-    VkPipelineViewportStateCreateInfo viewport_state = {
+    job->vp = (VkPipelineViewportStateCreateInfo){
         .sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
         .viewportCount = 1,
         .scissorCount = 1,
@@ -1951,8 +1951,8 @@ static void create_pipeline(PGRAPHState *pg)
         .sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
         .depthClampEnable = VK_TRUE,
         .rasterizerDiscardEnable = VK_FALSE,
-        .polygonMode = pgraph_polygon_mode_vk_map[r->shader_binding->state
-                                                      .geom.polygon_front_mode],
+        .polygonMode =
+            pgraph_polygon_mode_vk_map[st->geom.polygon_front_mode],
         .lineWidth = 1.0f,
         .frontFace = (pgraph_reg_r(pg, NV_PGRAPH_SETUPRASTER) &
                       NV_PGRAPH_SETUPRASTER_FRONTFACE) ?
@@ -1970,8 +1970,9 @@ static void create_pipeline(PGRAPHState *pg)
     } else {
         rasterizer.cullMode = VK_CULL_MODE_NONE;
     }
+    job->raster = rasterizer;
 
-    VkPipelineMultisampleStateCreateInfo multisampling = {
+    job->ms = (VkPipelineMultisampleStateCreateInfo){
         .sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
         .sampleShadingEnable = VK_FALSE,
         .rasterizationSamples = VK_SAMPLE_COUNT_1_BIT,
@@ -2022,6 +2023,9 @@ static void create_pipeline(PGRAPHState *pg)
         depth_stencil.front.reference = stencil_ref;
         depth_stencil.back = depth_stencil.front;
     }
+    if (r->zeta_binding) {
+        job->ds = depth_stencil;
+    }
 
     VkPipelineColorBlendAttachmentState color_blend_attachment = {
         .colorWriteMask = color_write_mask(control_0),
@@ -2060,31 +2064,28 @@ static void create_pipeline(PGRAPHState *pg)
         pgraph_argb_pack32_to_rgba_float(blend_color, blend_constant);
     }
 
-    VkPipelineColorBlendStateCreateInfo color_blending = {
+    job->cba = color_blend_attachment;
+    job->cb = (VkPipelineColorBlendStateCreateInfo){
         .sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
         .logicOpEnable = VK_FALSE,
         .logicOp = VK_LOGIC_OP_COPY,
         .attachmentCount = r->color_binding ? 1 : 0,
-        .pAttachments = r->color_binding ? &color_blend_attachment : NULL,
         .blendConstants[0] = blend_constant[0],
         .blendConstants[1] = blend_constant[1],
         .blendConstants[2] = blend_constant[2],
         .blendConstants[3] = blend_constant[3],
     };
 
-    VkDynamicState dynamic_states[24];
-    int num_dynamic_states = fill_dynamic_states(r, dynamic_states, true);
+    int num_dynamic_states = fill_dynamic_states(r, job->dyn_states, true);
 
-    snode->has_dynamic_line_width =
-        dynamic_line_width(r, &r->shader_binding->state);
-    if (snode->has_dynamic_line_width) {
-        dynamic_states[num_dynamic_states++] = VK_DYNAMIC_STATE_LINE_WIDTH;
+    job->has_dynamic_line_width = dynamic_line_width(r, st);
+    if (job->has_dynamic_line_width) {
+        job->dyn_states[num_dynamic_states++] = VK_DYNAMIC_STATE_LINE_WIDTH;
     }
 
-    VkPipelineDynamicStateCreateInfo dynamic_state = {
+    job->dyn = (VkPipelineDynamicStateCreateInfo){
         .sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
         .dynamicStateCount = num_dynamic_states,
-        .pDynamicStates = dynamic_states,
     };
 
     // FIXME: Dither
@@ -2105,40 +2106,118 @@ static void create_pipeline(PGRAPHState *pg)
     // }
 
 
-    VkPipelineLayout layout =
-        create_pipeline_layout(r, &r->shader_binding->state);
-
-    VkGraphicsPipelineCreateInfo pipeline_create_info = {
+    job->layout = create_pipeline_layout(r, st);
+    job->ci = (VkGraphicsPipelineCreateInfo){
         .sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
         .stageCount = num_active_shader_stages,
-        .pStages = shader_stages,
-        .pVertexInputState = &vertex_input,
-        .pInputAssemblyState = &input_assembly,
-        .pViewportState = &viewport_state,
-        .pRasterizationState = &rasterizer,
-        .pMultisampleState = &multisampling,
-        .pDepthStencilState = r->zeta_binding ? &depth_stencil : NULL,
-        .pColorBlendState = &color_blending,
-        .pDynamicState = &dynamic_state,
-        .layout = layout,
-        .renderPass = get_render_pass(r, &key.render_pass_state),
+        .layout = job->layout,
+        .renderPass = get_render_pass(r, (RenderPassState *)&key->render_pass_state),
         .subpass = 0,
         .basePipelineHandle = VK_NULL_HANDLE,
     };
+    lib_job_link(job);
+}
+
+/* A state met for the first time draws with its dynamic sibling while the
+ * worker makes its pipeline for the draw's state - the key the sibling
+ * draws with, its shaders in place of the sibling's - into the pipeline
+ * cache, where its next meeting finds it. */
+static void pipeline_ahead(PGRAPHState *pg, const PipelineKey *draw_key)
+{
+    PGRAPHVkState *r = pg->vk_renderer_state;
+    if (!r->ahead_valid) {
+        return;
+    }
+    r->ahead_valid = false;
+    pump_drain(pg);
+    LibJob *job = pump_slot();
+    if (!job) {
+        return; /* the ring is full: the next meeting queues it */
+    }
+    PipelineKey key;
+    memcpy(&key, draw_key, sizeof(key));
+    memcpy(&key.shader_state, &r->ahead_state, sizeof(ShaderState));
+    uint64_t hash = fast_hash((const uint8_t *)&key, sizeof(key));
+    if (lru_contains_hash(&r->pipeline_cache, hash) ||
+        pump_full_in_flight(hash)) {
+        pgraph_vk_spec_pipeline_landed(r->ahead_hash);
+        return;
+    }
+    ShaderModuleInfo *geom, *vsh, *psh;
+    pgraph_vk_ref_state_modules(r, &r->ahead_state, &geom, &vsh, &psh);
+    pipeline_job_fill(pg, &r->ahead_state, vsh, geom, psh, &key, job);
+    memcpy(&job->key, &key, sizeof(key));
+    job->hash = hash;
+    job->state_hash = r->ahead_hash;
+    job->mods[job->nmods++] = vsh;
+    if (geom) {
+        job->mods[job->nmods++] = geom;
+    }
+    job->mods[job->nmods++] = psh;
+    pump_submit(job);
+    pgraph_vk_spec_pipeline_queued(r->ahead_hash);
+}
+
+static void create_pipeline(PGRAPHState *pg)
+{
+    NV2A_VK_DGROUP_BEGIN("Creating pipeline");
+
+    NV2AState *d = container_of(pg, NV2AState, pgraph);
+    PGRAPHVkState *r = pg->vk_renderer_state;
+
+    pgraph_vk_bind_textures(d);
+    pgraph_vk_bind_shaders(pg);
+
+    // FIXME: If nothing was dirty, don't even try creating the key or hashing.
+    //        Just use the same pipeline.
+    bool pipeline_dirty = check_pipeline_dirty(pg);
+
+    pgraph_clear_dirty_reg_map(pg);
+    // FIXME: We could clear less
+
+    if (r->pipeline_binding && !pipeline_dirty && !r->ahead_valid) {
+        NV2A_VK_DPRINTF("Cache hit");
+        NV2A_VK_DGROUP_END();
+        return;
+    }
+
+    PipelineKey key;
+    init_pipeline_key(pg, &key);
+    pipeline_ahead(pg, &key);
+    uint64_t hash = fast_hash((void *)&key, sizeof(key));
+
+    LruNode *node = lru_lookup(&r->pipeline_cache, hash, &key);
+    PipelineBinding *snode = container_of(node, PipelineBinding, node);
+    if (snode->pipeline != VK_NULL_HANDLE) {
+        NV2A_VK_DPRINTF("Cache hit");
+        r->pipeline_binding_changed = r->pipeline_binding != snode;
+        r->pipeline_binding = snode;
+        NV2A_VK_DGROUP_END();
+        return;
+    }
+
+    NV2A_VK_DPRINTF("Cache miss");
+    nv2a_profile_inc_counter(NV2A_PROF_PIPELINE_GEN);
+
+    memcpy(&snode->key, &key, sizeof(key));
+
+    /* The job holds the create info; it never leaves this thread. */
+    static LibJob job;
+    pipeline_job_fill(pg, &r->shader_binding->state,
+                      r->shader_binding->vsh.module_info,
+                      r->shader_binding->geom.module_info,
+                      r->shader_binding->psh.module_info, &key, &job);
+    snode->has_dynamic_line_width = job.has_dynamic_line_width;
+    VkPipelineLayout layout = job.layout;
+
     VkPipeline pipeline;
     if (r->pipeline_library) {
-        uint64_t frag_hash;
-        bool frag_pending;
-        VkPipeline frag =
-            gpl_frag_begin(pg, &pipeline_create_info, &key, layout,
-                           num_active_shader_stages, &frag_hash,
-                           &frag_pending);
+        int num_active_shader_stages = job.ci.stageCount;
         /* The fragment stage is the last one. */
-        VkPipeline pre = gpl_get_pre(pg, &pipeline_create_info, &key, layout,
+        VkPipeline pre = gpl_get_pre(pg, &job.ci, &key, layout,
                                      num_active_shader_stages - 1);
-        if (frag_pending) {
-            frag = gpl_frag_end(pg, frag_hash);
-        }
+        VkPipeline frag = gpl_get_frag(pg, &job.ci, &key, layout,
+                                       num_active_shader_stages);
         VkPipeline libs[2] = { pre, frag };
         VkPipelineLibraryCreateInfoKHR link_info = {
             .sType = VK_STRUCTURE_TYPE_PIPELINE_LIBRARY_CREATE_INFO_KHR,
@@ -2149,20 +2228,19 @@ static void create_pipeline(PGRAPHState *pg)
             .sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
             .pNext = &link_info,
             .layout = layout,
-            .renderPass = pipeline_create_info.renderPass,
+            .renderPass = job.ci.renderPass,
             .basePipelineHandle = VK_NULL_HANDLE,
         };
         VK_CHECK(vkCreateGraphicsPipelines(r->device, r->vk_pipeline_cache,
                                            1, &link, NULL, &pipeline));
     } else {
         VK_CHECK(vkCreateGraphicsPipelines(r->device, r->vk_pipeline_cache, 1,
-                                           &pipeline_create_info, NULL,
-                                           &pipeline));
+                                           &job.ci, NULL, &pipeline));
     }
 
     snode->pipeline = pipeline;
     snode->layout = layout;
-    snode->render_pass = pipeline_create_info.renderPass;
+    snode->render_pass = job.ci.renderPass;
     snode->draw_time = pg->draw_time;
 
     r->pipeline_binding = snode;
