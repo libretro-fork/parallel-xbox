@@ -21,7 +21,7 @@
 #include "block/block_int.h"
 
 #ifdef LIBRETRO
-#include "ui/libretro.h"
+#include <libretro.h>
 
 /* ui/libretro.c: the frontend's VFS, if it has one */
 extern struct retro_vfs_interface *xemu_libretro_vfs;

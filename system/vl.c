@@ -2629,7 +2629,7 @@ static char *strdup_double_commas(const char *input) {
 }
 
 #ifdef LIBRETRO
-#include "ui/libretro.h"
+#include <libretro.h>
 
 /*
  * Where the game partition starts in a disc image. An XISO is the game

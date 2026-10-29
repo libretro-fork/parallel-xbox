@@ -43,7 +43,7 @@
 #if defined(_WIN32) && !defined(VK_USE_PLATFORM_WIN32_KHR)
 #define VK_USE_PLATFORM_WIN32_KHR
 #endif
-#include "libretro_vulkan.h"
+#include <libretro_vulkan.h>
 #include "hw/xbox/nv2a/pgraph/vk/libretro_shared.h"
 #include "libretro_core_options.h"
 #include "libretro-state.h"

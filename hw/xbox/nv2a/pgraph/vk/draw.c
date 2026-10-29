@@ -20,6 +20,7 @@
 
 #include "qemu/osdep.h"
 #include "qemu/fast-hash.h"
+#include "qemu/file-map.h"
 #include "ui/xemu-settings.h"
 #include "renderer.h"
 #include <math.h>
@@ -167,20 +168,20 @@ static void init_pipeline_cache(PGRAPHState *pg)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
 
-    /* Seed the pipeline cache from disk; the driver validates the blob
-     * header itself and falls back to an empty cache on mismatch. */
-    gchar *pc_blob = NULL;
-    gsize pc_len = 0;
+    /* Seed the pipeline cache from disk, the file mapped and read by the
+     * driver as it lies; it validates the blob header itself and falls
+     * back to an empty cache on mismatch. */
+    XemuFileMap pc;
     char *pc_path = g_strdup_printf("%s/vk_pipeline_cache.bin",
                                     xemu_settings_get_base_path());
-    g_file_get_contents(pc_path, &pc_blob, &pc_len, NULL);
+    xemu_file_map(&pc, pc_path);
     g_free(pc_path);
 
     VkPipelineCacheCreateInfo cache_info = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO,
         .flags = 0,
-        .initialDataSize = pc_len,
-        .pInitialData = pc_blob,
+        .initialDataSize = pc.len,
+        .pInitialData = pc.data,
         .pNext = NULL,
     };
     if (vkCreatePipelineCache(r->device, &cache_info, NULL,
@@ -190,7 +191,7 @@ static void init_pipeline_cache(PGRAPHState *pg)
         VK_CHECK(vkCreatePipelineCache(r->device, &cache_info, NULL,
                                        &r->vk_pipeline_cache));
     }
-    g_free(pc_blob);
+    xemu_file_unmap(&pc);
 
     /* Only growth beyond the loaded blob triggers a save. */
     r->pcache_saved_len = 0;

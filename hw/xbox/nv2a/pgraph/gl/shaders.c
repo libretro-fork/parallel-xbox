@@ -22,6 +22,7 @@
 
 #include "qemu/osdep.h"
 #include "qemu/fast-hash.h"
+#include "qemu/file-map.h"
 #include "qemu/mstring.h"
 
 #include "xemu-version.h"
@@ -192,53 +193,66 @@ static char *module_get_path(const char *dir, uint64_t hash)
                            hash & ~((uint64_t)0xffff << 48));
 }
 
+/* A cached file, mapped, read front to back: what is taken is pointed at
+ * where it lies, nothing copied. */
+typedef struct FileCursor {
+    const uint8_t *p;
+    size_t left;
+} FileCursor;
+
+static const void *cursor_take(FileCursor *c, size_t n)
+{
+    const uint8_t *p = c->p;
+    if (n > c->left) {
+        return NULL;
+    }
+    c->p += n;
+    c->left -= n;
+    return p;
+}
+
+static bool cursor_take_u64(FileCursor *c, uint64_t *v)
+{
+    const void *p = cursor_take(c, sizeof(*v));
+    if (p) {
+        memcpy(v, p, sizeof(*v));
+    }
+    return p != NULL;
+}
+
+/* A length-prefixed NUL-terminated string as the file keeps it, equal to
+ * expect (its NUL where the file says the string ends) */
+static bool cursor_take_string_eq(FileCursor *c, const char *expect)
+{
+    uint64_t len;
+    const char *str;
+    if (!cursor_take_u64(c, &len) || len == 0 || len > 256) {
+        return false;
+    }
+    str = cursor_take(c, len);
+    return str && strlen(expect) == len - 1 &&
+           memcmp(str, expect, len - 1) == 0;
+}
+
 /* The header of a cached module file: the xemu build and GL vendor that
  * wrote it, then its key. False when another build or driver wrote it, or
  * the file is cut short. */
-static bool module_read_header(FILE *f, ShaderModuleCacheKey *key)
+static bool module_read_header(FileCursor *c, ShaderModuleCacheKey *key)
 {
-    bool ok = false;
-    char *ver = NULL, *vendor = NULL;
     uint64_t len;
+    const void *k;
 
-#define RD(p, n)                       \
-    do {                               \
-        if (fread(p, n, 1, f) != 1) {  \
-            goto out;                  \
-        }                              \
-    } while (0)
-
-    RD(&len, sizeof(len));
-    if (len == 0 || len > 256) {
-        goto out;
+    if (!cursor_take_string_eq(c, xemu_version) ||
+        !cursor_take_string_eq(c, shader_gl_vendor) ||
+        !cursor_take_u64(c, &len) || len != sizeof(*key)) {
+        return false;
     }
-    ver = g_malloc(len);
-    RD(ver, len);
-    ver[len - 1] = '\0';
-    if (strcmp(ver, xemu_version) != 0) {
-        goto out;
+    k = cursor_take(c, sizeof(*key));
+    if (!k) {
+        return false;
     }
-    RD(&len, sizeof(len));
-    if (len == 0 || len > 256) {
-        goto out;
-    }
-    vendor = g_malloc(len);
-    RD(vendor, len);
-    vendor[len - 1] = '\0';
-    if (strcmp(vendor, shader_gl_vendor) != 0) {
-        goto out;
-    }
-    RD(&len, sizeof(len));
-    if (len != sizeof(*key)) {
-        goto out;
-    }
-    RD(key, sizeof(*key));
-    ok = true;
-out:
-#undef RD
-    g_free(ver);
-    g_free(vendor);
-    return ok;
+    memcpy(key, k, sizeof(*key));
+    return true;
 }
 
 /* Separable stage programs are cached individually: one stage feeds many
@@ -251,63 +265,49 @@ static bool module_load_from_disk(PGRAPHGLState *r,
     char *path = module_get_path(dir, hash);
     g_free(dir);
 
-    FILE *f = qemu_fopen(path, "rb");
-    if (!f) {
+    XemuFileMap m;
+    if (!xemu_file_map(&m, path)) {
         g_free(path);
         return false;
     }
 
     bool ok = false;
-    void *bin = NULL;
+    FileCursor c = { m.data, m.len };
+    const void *fmt;
+    const void *bin;
     uint64_t len;
     GLenum format;
     ShaderModuleCacheKey cached_key;
     GLuint program = 0;
 
-    if (!module_read_header(f, &cached_key) ||
+    if (!module_read_header(&c, &cached_key) ||
         memcmp(&cached_key, &module->key, sizeof(cached_key)) != 0) {
         goto out;
     }
-
-#define RD(p, n)                       \
-    do {                               \
-        if (fread(p, n, 1, f) != 1) {  \
-            goto out;                  \
-        }                              \
-    } while (0)
-
-    RD(&format, sizeof(format));
-    RD(&len, sizeof(len));
-    if (len == 0 || len > (64 << 20)) {
+    fmt = cursor_take(&c, sizeof(format));
+    if (!fmt || !cursor_take_u64(&c, &len) || len == 0 ||
+        len > (64 << 20)) {
         goto out;
     }
-    bin = g_malloc(len);
-    RD(bin, len);
+    memcpy(&format, fmt, sizeof(format));
+    bin = cursor_take(&c, len);
+    if (!bin) {
+        goto out;
+    }
 
-#undef RD
-
+    /* The driver takes the binary from the mapped file */
     (void)glGetError();
     program = glCreateProgram();
     glProgramBinary(program, format, bin, len);
-
-    GLint linked = 0, separable = 0;
-    glGetProgramiv(program, GL_LINK_STATUS, &linked);
-    glGetProgramiv(program, GL_PROGRAM_SEPARABLE, &separable);
-    if (glGetError() != GL_NO_ERROR || !linked || !separable) {
-        delete_program(r, program);
-        goto out;
-    }
-
     module->gl_stage_program = program;
     ok = true;
 
 out:
-    fclose(f);
+    xemu_file_unmap(&m);
     if (!ok) {
         qemu_unlink(path);
     }
     g_free(path);
-    g_free(bin);
     return ok;
 }
 
@@ -971,14 +971,11 @@ static void shader_load_from_disk(PGRAPHState *pg, uint64_t hash)
 
     char *shader_bin_dir = shader_get_bin_directory(hash);
     char *shader_path = shader_get_binary_path(shader_bin_dir, hash);
-    char *cached_xemu_version = NULL;
-    char *cached_gl_vendor = NULL;
-    char *cached_gl_version = NULL;
     void *program_buffer = NULL;
-
-    uint64_t cached_xemu_version_len;
-    uint64_t gl_vendor_len;
-    uint64_t gl_version_len;
+    XemuFileMap m = { 0 };
+    FileCursor c;
+    const void *p;
+    uint64_t cached_state_size;
     GLenum program_binary_format;
     ShaderState state;
     size_t shader_size;
@@ -992,72 +989,48 @@ static void shader_load_from_disk(PGRAPHState *pg, uint64_t hash)
     }
     qemu_mutex_unlock(&r->shader_cache_lock);
 
-    FILE *shader_file = qemu_fopen(shader_path, "rb");
-    if (!shader_file) {
+    /* The file as it lies; only the program binary, which the binding
+     * keeps until the render thread links it, is copied out */
+    if (!xemu_file_map(&m, shader_path)) {
         goto error;
     }
+    c.p = m.data;
+    c.left = m.len;
 
-    size_t nread;
-    #define READ_OR_ERR(data, data_len) \
-        do { \
-            nread = fread(data, data_len, 1, shader_file); \
-            if (nread != 1) { \
-                fclose(shader_file); \
-                goto error; \
-            } \
-        } while (0)
-
-    READ_OR_ERR(&cached_xemu_version_len, sizeof(cached_xemu_version_len));
-
-    cached_xemu_version = g_malloc(cached_xemu_version_len +1);
-    READ_OR_ERR(cached_xemu_version, cached_xemu_version_len);
-    if (strcmp(cached_xemu_version, xemu_version) != 0) {
-        fclose(shader_file);
+    if (!cursor_take_string_eq(&c, xemu_version) ||
+        !cursor_take_string_eq(&c, shader_gl_vendor) ||
+        !cursor_take_string_eq(&c, shader_gl_version)) {
         goto error;
     }
-
-    READ_OR_ERR(&gl_vendor_len, sizeof(gl_vendor_len));
-
-    cached_gl_vendor = g_malloc(gl_vendor_len);
-    READ_OR_ERR(cached_gl_vendor, gl_vendor_len);
-    if (strcmp(cached_gl_vendor, shader_gl_vendor) != 0) {
-        fclose(shader_file);
+    /* The cached blob embeds a raw ShaderState: reject files written by
+     * a build whose layout differs, or its size fields are garbage. */
+    if (!cursor_take_u64(&c, &cached_state_size) ||
+        cached_state_size != sizeof(state)) {
         goto error;
     }
-
-    READ_OR_ERR(&gl_version_len, sizeof(gl_version_len));
-
-    cached_gl_version = g_malloc(gl_version_len);
-    READ_OR_ERR(cached_gl_version, gl_version_len);
-    if (strcmp(cached_gl_version, shader_gl_version) != 0) {
-        fclose(shader_file);
+    p = cursor_take(&c, sizeof(program_binary_format));
+    if (!p) {
         goto error;
     }
-
-    {
-        /* The cached blob embeds a raw ShaderState: reject files written by
-         * a build whose layout differs, or its size fields are garbage. */
-        uint64_t cached_state_size;
-        READ_OR_ERR(&cached_state_size, sizeof(cached_state_size));
-        if (cached_state_size != sizeof(state)) {
-            fclose(shader_file);
-            goto error;
-        }
+    memcpy(&program_binary_format, p, sizeof(program_binary_format));
+    p = cursor_take(&c, sizeof(state));
+    if (!p) {
+        goto error;
     }
-    READ_OR_ERR(&program_binary_format, sizeof(program_binary_format));
-    READ_OR_ERR(&state, sizeof(state));
-    READ_OR_ERR(&shader_size, sizeof(shader_size));
+    memcpy(&state, p, sizeof(state));
+    p = cursor_take(&c, sizeof(shader_size));
+    if (!p) {
+        goto error;
+    }
+    memcpy(&shader_size, p, sizeof(shader_size));
+    p = cursor_take(&c, shader_size);
+    if (!p) {
+        goto error;
+    }
+    program_buffer = g_memdup2(p, shader_size);
 
-    program_buffer = g_malloc(shader_size);
-    READ_OR_ERR(program_buffer, shader_size);
-
-    #undef READ_OR_ERR
-
-    fclose(shader_file);
+    xemu_file_unmap(&m);
     g_free(shader_path);
-    g_free(cached_xemu_version);
-    g_free(cached_gl_vendor);
-    g_free(cached_gl_version);
 
     qemu_mutex_lock(&r->shader_cache_lock);
     LruNode *node = lru_lookup(&r->shader_cache, hash, &state);
@@ -1066,6 +1039,7 @@ static void shader_load_from_disk(PGRAPHState *pg, uint64_t hash)
     /* If we happened to regenerate this shader already, then we may as well use the new one */
     if (binding->initialized) {
         qemu_mutex_unlock(&r->shader_cache_lock);
+        g_free(program_buffer);
         return;
     }
 
@@ -1078,12 +1052,10 @@ static void shader_load_from_disk(PGRAPHState *pg, uint64_t hash)
 
 error:
     /* Delete the shader so it won't be loaded again */
+    xemu_file_unmap(&m);
     qemu_unlink(shader_path);
     g_free(shader_path);
     g_free(program_buffer);
-    g_free(cached_xemu_version);
-    g_free(cached_gl_vendor);
-    g_free(cached_gl_version);
 }
 
 static void *shader_reload_lru_from_disk(void *arg)
@@ -2167,12 +2139,13 @@ static void module_prewarm_scan(PGRAPHGLState *r)
  * Same layout/checks as module_load_from_disk. */
 static bool module_file_read_key(const char *path, ShaderModuleCacheKey *key)
 {
-    FILE *f = qemu_fopen(path, "rb");
-    if (!f) {
+    XemuFileMap m;
+    if (!xemu_file_map(&m, path)) {
         return false;
     }
-    bool ok = module_read_header(f, key);
-    fclose(f);
+    FileCursor c = { m.data, m.len };
+    bool ok = module_read_header(&c, key);
+    xemu_file_unmap(&m);
     return ok;
 }
 

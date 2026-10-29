@@ -24,14 +24,14 @@ case $core in
     case $(uname -s) in
     MINGW*|MSYS*)
         cc=${CC:-gcc}
-        ${cc} -O2 -std=gnu99 -Wall -I"$here/../../deps/vulkan-headers" \
+        ${cc} -O2 -std=gnu99 -Wall -I"$here/../../deps/vulkan-headers" -I"$here/../../libretro-common/include" \
             -o "$work/bin/harness.exe" "$here/harness.c" -lopengl32 -lgdi32 -static
         h="$work/bin/harness.exe"
         ;;
     *)
         cc=${CC:-cc}
         ${HARNESS_CC:-x86_64-w64-mingw32-gcc} -O2 -std=gnu99 -Wall \
-            -I"$here/../../deps/vulkan-headers" \
+            -I"$here/../../deps/vulkan-headers" -I"$here/../../libretro-common/include" \
             -o "$work/bin/harness.exe" "$here/harness.c" -lopengl32 -lgdi32 -static
         h="wine $work/bin/harness.exe"
         path() { winepath -w "$1"; }
@@ -40,7 +40,7 @@ case $core in
     ;;
 *)
     cc=${CC:-cc}
-    ${cc} -O2 -std=gnu99 -Wall -I"$here/../../deps/vulkan-headers" \
+    ${cc} -O2 -std=gnu99 -Wall -I"$here/../../deps/vulkan-headers" -I"$here/../../libretro-common/include" \
         -o "$work/bin/harness" "$here/harness.c" -ldl -lEGL -lGL -lpthread
     h="$work/bin/harness"
     ;;

@@ -20,6 +20,7 @@
 #include "qemu/osdep.h"
 #include <glib/gstdio.h>
 #include "qemu/fast-hash.h"
+#include "qemu/file-map.h"
 #include "ui/xemu-settings.h"
 #include "hw/xbox/nv2a/pgraph/pgraph.h"
 #include "hw/xbox/nv2a/pgraph/seed.h"
@@ -149,12 +150,11 @@ void *pgraph_seed_read(int section, size_t itemsize, unsigned *count)
     if (!path) {
         return NULL;
     }
-    gchar *buf = NULL;
-    gsize len = 0;
+    XemuFileMap m;
     void *items = NULL;
-    if (g_file_get_contents(path, &buf, &len, NULL)) {
-        items = seed_find((const uint8_t *)buf, len, section, itemsize, count);
-        g_free(buf);
+    if (xemu_file_map(&m, path)) {
+        items = seed_find(m.data, m.len, section, itemsize, count);
+        xemu_file_unmap(&m);
     }
     g_free(path);
     return items;
@@ -265,11 +265,10 @@ bool pgraph_seed_write(int section, size_t itemsize, const void *items,
     SeedHeader hdr = { .magic = SEED_MAGIC, .version = SEED_VERSION };
     g_byte_array_append(w.out, (const uint8_t *)&hdr, sizeof(hdr));
 
-    gchar *old = NULL;
-    gsize old_len = 0;
-    if (g_file_get_contents(path, &old, &old_len, NULL)) {
-        seed_walk((const uint8_t *)old, old_len, seed_rewrite_visit, &w);
-        g_free(old);
+    XemuFileMap old;
+    if (xemu_file_map(&old, path)) {
+        seed_walk(old.data, old.len, seed_rewrite_visit, &w);
+        xemu_file_unmap(&old);
     }
     SeedSection sec = { .id = section, .itemsize = itemsize, .count = count };
     g_byte_array_append(w.out, (const uint8_t *)&sec, sizeof(sec));

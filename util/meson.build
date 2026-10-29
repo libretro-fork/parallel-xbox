@@ -69,6 +69,7 @@ util_ss.add(files('memalign.c'))
 util_ss.add(files('interval-tree.c'))
 util_ss.add(files('lockcnt.c'))
 util_ss.add(files('fast-hash.c'))
+util_ss.add(files('file-map.c'))
 
 if have_user
   util_ss.add(files('selfmap.c'))

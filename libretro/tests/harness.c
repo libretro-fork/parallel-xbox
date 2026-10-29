@@ -81,8 +81,8 @@
 #include <pthread.h>
 #endif
 
-#include "../../ui/libretro.h"
-#include "../../ui/libretro_vulkan.h"
+#include "../../libretro-common/include/libretro.h"
+#include "../../libretro-common/include/libretro_vulkan.h"
 
 #define MAX_OPTS 64
 #define MAX_EVENTS 64

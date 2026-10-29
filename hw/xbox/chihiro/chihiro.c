@@ -41,6 +41,7 @@
 #include "block/block_int-global-state.h"
 #include "migration/vmstate.h"
 #include <encodings/crc32.h>
+#include "qemu/file-map.h"
 #include "qemu/main-loop.h"
 #include "hw/usb.h"
 #include "ui/xemu-settings.h"
@@ -217,6 +218,7 @@ static bool chihiro_resolve_save_path(void);
 /* The DIMM's system area follows the save file (see the IDE map below). */
 static void chihiro_dimm_sys_load(void);
 static bool chihiro_dimm_sys_flush(void);
+static void chihiro_image_unmap(void);
 static bool chihiro_dimm_sys_dirty;
 static bool chihiro_read_image_bootid(uint8_t *bid);
 static bool chihiro_game_name(char *out, size_t out_len);
@@ -373,20 +375,21 @@ static uint16_t mediaboard_net_firmware_version(void)
     if (!path || !path[0])
         return MB_FIRM_VERSION_DEFAULT;
 
-    gchar *img = NULL;
-    gsize len = 0;
-    if (!g_file_get_contents(path, &img, &len, NULL)) {
+    XemuFileMap m;
+    if (!xemu_file_map(&m, path)) {
         fprintf(stderr, "Chihiro: cannot read the network firmware %s\n", path);
         return MB_FIRM_VERSION_DEFAULT;
     }
+    const uint8_t *img = m.data;
+    size_t len = m.len;
 
     uint16_t ver = MB_FIRM_VERSION_DEFAULT;
-    const gsize marklen = strlen(MB_FIRM_VERSION_MARK);
-    for (gsize i = 0; i + marklen + 24 < len; i++) {
+    const size_t marklen = strlen(MB_FIRM_VERSION_MARK);
+    for (size_t i = 0; i + marklen + 24 < len; i++) {
         if (memcmp(img + i, MB_FIRM_VERSION_MARK, marklen) != 0)
             continue;
-        gsize at = (i + marklen + 1 + 3) & ~(gsize)3;   /* past the NUL, aligned */
-        for (gsize j = at; j < at + 16 && j + 4 <= len; j += 4) {
+        size_t at = (i + marklen + 1 + 3) & ~(size_t)3;   /* past the NUL, aligned */
+        for (size_t j = at; j < at + 16 && j + 4 <= len; j += 4) {
             uint32_t w = ldl_le_p(img + j);
             if (!w)
                 continue;
@@ -403,7 +406,7 @@ static uint16_t mediaboard_net_firmware_version(void)
         fprintf(stderr, "Chihiro: %s carries no version field, the board keeps "
                 "%X.%02X\n", path, MB_FIRM_VERSION_DEFAULT >> 8,
                 MB_FIRM_VERSION_DEFAULT & 0xFF);
-    g_free(img);
+    xemu_file_unmap(&m);
     return ver;
 }
 
@@ -3310,6 +3313,7 @@ static void chihiro_exit_notify(Notifier *notifier, void *data)
     (void)notifier;
     (void)data;
     chihiro_netboard_exit();
+    chihiro_image_unmap();
     if (!chihiro_active) return;
     if (!chihiro_save_path[0] && !chihiro_resolve_save_path()) return;
     if (chihiro_usb_save_flush(chihiro_save_path))
@@ -3631,31 +3635,81 @@ static const char *chihiro_image_basename(void)
     return sep ? sep + 1 : (path ? path : "(none)");
 }
 
-static uint8_t *chihiro_dimm_read_image(uint64_t buf_size,
-                                        uint64_t *file_size, uint32_t *crc)
+/* The netboot image as it is on disk, mapped for as long as it is the
+ * game's (chihiro_load_netboot_image): what every snapshot is a delta
+ * against, read where it lies, and its CRC taken once. Where files cannot
+ * be mapped it is read into a buffer when wanted and freed after. */
+static XemuFileMap chihiro_image_map;
+static uint32_t chihiro_image_crc;
+static bool chihiro_image_crc_known;
+
+static void chihiro_image_unmap(void)
 {
-    const char *path = xemu_chihiro_image();
-    FILE *f = (path && path[0]) ? qemu_fopen(path, "rb") : NULL;
-    if (!f) {
+    xemu_file_unmap(&chihiro_image_map);
+    chihiro_image_crc_known = false;
+}
+
+/* The image's bytes, file_size of them, and its CRC: the session's
+ * mapping, or a buffer the caller frees (*owned) */
+static const uint8_t *chihiro_dimm_image_ref(uint64_t *file_size,
+                                             uint32_t *crc, uint8_t **owned)
+{
+    *owned = NULL;
+    if (chihiro_image_map.data && xemu_file_map_is_mapping(&chihiro_image_map)) {
+        if (!chihiro_image_crc_known) {
+            chihiro_image_crc = encoding_crc32(0, chihiro_image_map.data,
+                                               chihiro_image_map.len);
+            chihiro_image_crc_known = true;
+        }
+        *file_size = chihiro_image_map.len;
+        *crc = chihiro_image_crc;
+        return chihiro_image_map.data;
+    }
+    XemuFileMap m;
+    if (!xemu_file_map(&m, xemu_chihiro_image())) {
         return NULL;
     }
-    uint8_t *buf = g_malloc0(buf_size);
-    size_t n = fread(buf, 1, buf_size, f);
-    fclose(f);
-    *file_size = n;
-    *crc = encoding_crc32(0, buf, n);
-    return buf;
+    *file_size = m.len;
+    *crc = encoding_crc32(0, m.data, m.len);
+    if (xemu_file_map_is_mapping(&m)) {
+        /* mapped after all: keep it */
+        chihiro_image_map = m;
+        chihiro_image_crc = *crc;
+        chihiro_image_crc_known = true;
+        return m.data;
+    }
+    *owned = m.owned;
+    m.owned = NULL;
+    xemu_file_unmap(&m);
+    return *owned;
+}
+
+/* Whether the DIMM page at off is as the image has it: its bytes where the
+ * image reaches, zero past its end */
+static bool chihiro_dimm_page_as_image(const uint8_t *cur, const uint8_t *ref,
+                                       uint64_t file_size, uint64_t off)
+{
+    uint64_t have = off < file_size ? MIN(file_size - off, DIMM_PAGE_SIZE) : 0;
+    if (have && memcmp(cur, ref + off, have) != 0) {
+        return false;
+    }
+    for (uint64_t i = have; i < DIMM_PAGE_SIZE; i++) {
+        if (cur[i]) {
+            return false;
+        }
+    }
+    return true;
 }
 
 bool chihiro_dimm_image_identity(uint64_t *size, uint32_t *crc)
 {
     uint32_t fs_size;
-    uint8_t *fs = chihiro_fatx_get_buffer(&fs_size);
-    if (!fs) {
+    uint8_t *owned;
+    if (!chihiro_fatx_get_buffer(&fs_size)) {
         return false;
     }
-    uint8_t *ref = chihiro_dimm_read_image(fs_size, size, crc);
-    g_free(ref);
+    const uint8_t *ref = chihiro_dimm_image_ref(size, crc, &owned);
+    g_free(owned);
     return ref != NULL;
 }
 
@@ -3666,8 +3720,9 @@ static int chihiro_dimm_pre_save(void *opaque)
     uint8_t *fs = chihiro_fatx_get_buffer(&fs_size);
     uint64_t file_size;
     uint32_t crc;
-    uint8_t *ref = fs ? chihiro_dimm_read_image(fs_size, &file_size, &crc)
-                      : NULL;
+    uint8_t *owned = NULL;
+    const uint8_t *ref =
+        fs ? chihiro_dimm_image_ref(&file_size, &crc, &owned) : NULL;
     if (!ref) {
         error_report("chihiro: cannot read the game image to delta against");
         snprintf(chihiro_dimm_error, sizeof(chihiro_dimm_error),
@@ -3684,7 +3739,8 @@ static int chihiro_dimm_pre_save(void *opaque)
     uint32_t npages = 0;
     for (uint32_t pg = 0; pg < fs_size / DIMM_PAGE_SIZE; pg++) {
         const uint8_t *cur = fs + (size_t)pg * DIMM_PAGE_SIZE;
-        if (!memcmp(cur, ref + (size_t)pg * DIMM_PAGE_SIZE, DIMM_PAGE_SIZE)) {
+        if (chihiro_dimm_page_as_image(cur, ref, file_size,
+                                       (uint64_t)pg * DIMM_PAGE_SIZE)) {
             continue;
         }
         g_byte_array_append(blob, (uint8_t *)&pg, 4);
@@ -3692,7 +3748,7 @@ static int chihiro_dimm_pre_save(void *opaque)
         npages++;
     }
     memcpy(blob->data + 24, &npages, 4);
-    g_free(ref);
+    g_free(owned);
     chihiro_dimm_error[0] = 0;
 
     m->blob_size = blob->len;
@@ -3723,7 +3779,8 @@ static int chihiro_dimm_post_load(void *opaque, int version_id)
     uint32_t hdr[7];
     uint64_t cur_size;
     uint32_t cur_crc;
-    uint8_t *ref = NULL;
+    const uint8_t *ref = NULL;
+    uint8_t *owned = NULL;
 
     snprintf(chihiro_dimm_error, sizeof(chihiro_dimm_error),
              "the snapshot's game data is damaged");
@@ -3737,7 +3794,7 @@ static int chihiro_dimm_post_load(void *opaque, int version_id)
         goto out;
     }
 
-    ref = chihiro_dimm_read_image(fs_size, &cur_size, &cur_crc);
+    ref = chihiro_dimm_image_ref(&cur_size, &cur_crc, &owned);
     if (!ref) {
         snprintf(chihiro_dimm_error, sizeof(chihiro_dimm_error),
                  "the game image '%s' cannot be read", chihiro_image_basename());
@@ -3751,7 +3808,10 @@ static int chihiro_dimm_post_load(void *opaque, int version_id)
                  "with that game to load it", chihiro_image_basename());
         goto out;
     }
-    memcpy(fs, ref, fs_size);
+    memcpy(fs, ref, MIN(cur_size, fs_size));
+    if (cur_size < fs_size) {
+        memset(fs + cur_size, 0, fs_size - cur_size);
+    }
 
     for (uint32_t i = 0; i < hdr[6]; i++) {
         uint32_t pg;
@@ -3770,7 +3830,7 @@ static int chihiro_dimm_post_load(void *opaque, int version_id)
     chihiro_dimm_error[0] = 0;
 
 out:
-    g_free(ref);
+    g_free(owned);
     g_free(m->blob);
     m->blob = NULL;
     m->blob_size = 0;
@@ -3895,42 +3955,40 @@ void chihiro_load_netboot_image(void)
     }
     uint32_t fs_size = 0;
     uint8_t *fs_buf = chihiro_fatx_get_buffer(&fs_size);
-    if (fs_buf) {
-        FILE *f = qemu_fopen(dvd, "rb");
-        if (f) {
-            uint8_t magic[4];
-            if (fread(magic, 1, 4, f) == 4 &&
-                memcmp(magic, "FATX", 4) == 0) {
-                rewind(f);
-                gint64 t0 = g_get_monotonic_time();
-                struct stat st;
-                fstat(fileno(f), &st);
-                uint32_t file_size = (uint32_t)st.st_size;
-                if (file_size > fs_size) file_size = fs_size;
-                size_t nread = fread(fs_buf, 1, file_size, f);
-                printf("Chihiro: FATX image loaded '%s'"
-                       " (%zu bytes, %lld ms)\n",
-                       dvd, nread,
-                       (long long)(g_get_monotonic_time() - t0)
-                       / 1000);
+    chihiro_image_unmap();
+    if (fs_buf && xemu_file_map(&chihiro_image_map, dvd)) {
+        const uint8_t *img = chihiro_image_map.data;
+        if (chihiro_image_map.len >= 4 && memcmp(img, "FATX", 4) == 0) {
+            gint64 t0 = g_get_monotonic_time();
+            uint32_t file_size = (uint32_t)MIN(chihiro_image_map.len,
+                                               (size_t)fs_size);
+            memcpy(fs_buf, img, file_size);
+            printf("Chihiro: FATX image loaded '%s'"
+                   " (%u bytes, %lld ms)\n",
+                   dvd, file_size,
+                   (long long)(g_get_monotonic_time() - t0)
+                   / 1000);
 
-                /* The game executable, from the image's boot.id */
-                for (uint32_t off = 0;
-                     off + CHIHIRO_BOOTID_LEN <= file_size; off++) {
-                    char name[64];
-                    if (memcmp(fs_buf + off, "BTID", 4) == 0 &&
-                        chihiro_bootid_executable(fs_buf + off, name,
-                                                  sizeof(name))) {
-                        chihiro_set_game_executable(name);
-                        break;
-                    }
+            /* The game executable, from the image's boot.id */
+            for (uint32_t off = 0;
+                 off + CHIHIRO_BOOTID_LEN <= file_size; off++) {
+                char name[64];
+                if (memcmp(fs_buf + off, "BTID", 4) == 0 &&
+                    chihiro_bootid_executable(fs_buf + off, name,
+                                              sizeof(name))) {
+                    chihiro_set_game_executable(name);
+                    break;
                 }
-            } else {
-                fprintf(stderr,
-                        "Chihiro: '%s' is not a FATX image\n",
-                        dvd);
             }
-            fclose(f);
+        } else {
+            fprintf(stderr,
+                    "Chihiro: '%s' is not a FATX image\n",
+                    dvd);
+        }
+        /* The mapping stays for the snapshots' deltas; a buffer read
+         * where there is no mapping does not */
+        if (!xemu_file_map_is_mapping(&chihiro_image_map)) {
+            chihiro_image_unmap();
         }
     }
     /* The image's folder, where a boot.id file may sit
