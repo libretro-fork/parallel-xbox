@@ -228,7 +228,8 @@ SEEDSHADERS_OBJS := $(call obj,$(addprefix $(CORE_DIR)/hw/xbox/nv2a/pgraph/, \
 	$(call obj,$(CORE_DIR)/libretro-common/encodings/encoding_deflate.c \
 		$(CORE_DIR)/libretro-common/encodings/encoding_crc32.c \
 		$(CORE_DIR)/libretro-common/encodings/encoding_xxh3.c \
-		$(CORE_DIR)/libretro-common/features/features_cpu.c)
+		$(CORE_DIR)/libretro-common/features/features_cpu.c \
+		$(CORE_DIR)/libretro-common/time/rtime.c)
 $(SEEDSHADERS): $(CORE_DIR)/libretro/tests/seedshaders.c $(SEEDSHADERS_OBJS) \
 		$(LIBQEMUUTIL)
 	$(CC) -O2 $(CFLAGS_TARGET) -o $@ $< $(filter-out $<,$^) \
