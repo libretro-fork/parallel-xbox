@@ -41,6 +41,8 @@
  *                       the 99th show; the mean hides it.
  *     --save N          retro_serialize before run N
  *     --load N          retro_unserialize (the state saved) before run N
+ *     --load-again N    the same state loaded again before run N
+ *     --load-every K    and again every K runs after --load's
  *     --state-out FILE  also write the state saved (--save) to FILE, and
  *                       the system RAM at that point to FILE.ram
  *     --state-in FILE   the state --load loads is FILE's (and with
@@ -1409,7 +1411,7 @@ int main(int argc, char **argv)
 {
    void *core;
    int frames = 600, realtime = 0, rt_runs = -1, i;
-   int save_at = -1, load_at = -1, reset_at = -1, reload_at = -1;
+   int save_at = -1, load_at = -1, load2_at = -1, load_every = 0, reset_at = -1, reload_at = -1;
    int strict = 0, fail = 0;
    double min_speed = 0.0;
    unsigned long peek[MAX_PEEK];
@@ -1483,6 +1485,10 @@ int main(int argc, char **argv)
          save_at = atoi(argv[++i]);
       else if (!strcmp(argv[i], "--load") && i + 1 < argc)
          load_at = atoi(argv[++i]);
+      else if (!strcmp(argv[i], "--load-again") && i + 1 < argc)
+         load2_at = atoi(argv[++i]);
+      else if (!strcmp(argv[i], "--load-every") && i + 1 < argc)
+         load_every = atoi(argv[++i]);
       else if (!strcmp(argv[i], "--strict"))
          strict = 1;
       else if (!strcmp(argv[i], "--state-out") && i + 1 < argc)
@@ -1690,7 +1696,9 @@ int main(int argc, char **argv)
          snprintf(path, sizeof(path), "%s.ram", state_in);
          saved_ram = read_file(path, &saved_ram_size);
       }
-      if (run_no == load_at && state)
+      if ((run_no == load_at || run_no == load2_at ||
+           (load_every > 0 && load_at >= 0 && run_no > load_at &&
+            (run_no - load_at) % load_every == 0)) && state)
       {
          int64_t t = now_us();
          int ok = p_unser(state, state_size);

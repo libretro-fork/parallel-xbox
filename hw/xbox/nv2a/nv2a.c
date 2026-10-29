@@ -572,9 +572,62 @@ static const VMStateDescription vmstate_nv2a_two_side = {
     },
 };
 
+/*
+ * The inline vertex and index arrays: up to NV2A_MAX_BATCH_LENGTH words each
+ * (2 MB apiece), of which only the first inline_array_length and
+ * inline_elements_length are in use, and those only in the middle of a
+ * draw - at a frame's end, nearly always none. Up to version 4 the state held
+ * both whole, element by element: 4 MB of the GPU's 4.3 MB, and most of the
+ * time it took to save and to load it. From version 5 it holds the words in
+ * use, after their count, which is checked before they are read.
+ */
+static bool nv2a_vmstate_whole_inline_arrays(void *opaque, int version_id)
+{
+    return version_id < 5;
+}
+
+static bool nv2a_vmstate_inline_array_length_ok(void *opaque, int version_id)
+{
+    NV2AState *d = opaque;
+    return d->pgraph.inline_array_length <= NV2A_MAX_BATCH_LENGTH;
+}
+
+static bool nv2a_vmstate_inline_elements_length_ok(void *opaque,
+                                                   int version_id)
+{
+    NV2AState *d = opaque;
+    return d->pgraph.inline_elements_length <= NV2A_MAX_BATCH_LENGTH;
+}
+
+/* an array's words from _start to _start + _num, in states before version 5 */
+#define NV2A_VMSTATE_WHOLE_INLINE(_field, _start, _num, _version) {    \
+    .name         = (stringify(_field)),                             \
+    .version_id   = (_version),                                      \
+    .field_exists = nv2a_vmstate_whole_inline_arrays,                \
+    .num          = (_num),                                          \
+    .info         = &vmstate_info_uint32,                            \
+    .size         = sizeof(uint32_t),                                \
+    .flags        = VMS_ARRAY,                                       \
+    .offset       = vmstate_offset_sub_array(NV2AState, _field,      \
+                                             uint32_t, _start),      \
+}
+
+/* an array's words in use, their count in _field_num */
+#define NV2A_VMSTATE_INLINE_IN_USE(_field, _field_num) {               \
+    .name         = (stringify(_field)),                             \
+    .version_id   = 5,                                               \
+    .num_offset   = vmstate_offset_value(NV2AState, _field_num,      \
+                                         uint32_t),                  \
+    .info         = &vmstate_info_uint32,                            \
+    .size         = sizeof(uint32_t),                                \
+    .flags        = VMS_VARRAY_UINT32,                               \
+    .offset       = vmstate_offset_array(NV2AState, _field, uint32_t,\
+                                         NV2A_MAX_BATCH_LENGTH),     \
+}
+
 static const VMStateDescription vmstate_nv2a = {
     .name = "nv2a",
-    .version_id = 4,
+    .version_id = 5,
     .minimum_version_id = 1,
     .post_save = nv2a_post_save,
     .post_load = nv2a_post_load,
@@ -658,11 +711,15 @@ static const VMStateDescription vmstate_nv2a = {
         VMSTATE_BOOL_ARRAY(pgraph.ltc1_dirty, NV2AState, NV2A_LTC1_COUNT),
         VMSTATE_STRUCT_ARRAY(pgraph.vertex_attributes, NV2AState, NV2A_VERTEXSHADER_ATTRIBUTES, 1, vmstate_nv2a_pgraph_vertex_attributes, VertexAttribute),
         VMSTATE_UINT32(pgraph.inline_array_length, NV2AState),
-        VMSTATE_UINT32_SUB_ARRAY(pgraph.inline_array, NV2AState, 0, NV2A_MAX_BATCH_LENGTH_V2),
-        VMSTATE_UINT32_SUB_ARRAY_V(pgraph.inline_array, NV2AState, NV2A_MAX_BATCH_LENGTH_V2, NV2A_MAX_BATCH_LENGTH - NV2A_MAX_BATCH_LENGTH_V2, 3),
+        VMSTATE_VALIDATE("inline_array_length", nv2a_vmstate_inline_array_length_ok),
+        NV2A_VMSTATE_WHOLE_INLINE(pgraph.inline_array, 0, NV2A_MAX_BATCH_LENGTH_V2, 0),
+        NV2A_VMSTATE_WHOLE_INLINE(pgraph.inline_array, NV2A_MAX_BATCH_LENGTH_V2, NV2A_MAX_BATCH_LENGTH - NV2A_MAX_BATCH_LENGTH_V2, 3),
+        NV2A_VMSTATE_INLINE_IN_USE(pgraph.inline_array, pgraph.inline_array_length),
         VMSTATE_UINT32(pgraph.inline_elements_length, NV2AState), // fixme
-        VMSTATE_UINT32_SUB_ARRAY(pgraph.inline_elements, NV2AState, 0, NV2A_MAX_BATCH_LENGTH_V2),
-        VMSTATE_UINT32_SUB_ARRAY_V(pgraph.inline_elements, NV2AState, NV2A_MAX_BATCH_LENGTH_V2, NV2A_MAX_BATCH_LENGTH - NV2A_MAX_BATCH_LENGTH_V2, 3),
+        VMSTATE_VALIDATE("inline_elements_length", nv2a_vmstate_inline_elements_length_ok),
+        NV2A_VMSTATE_WHOLE_INLINE(pgraph.inline_elements, 0, NV2A_MAX_BATCH_LENGTH_V2, 0),
+        NV2A_VMSTATE_WHOLE_INLINE(pgraph.inline_elements, NV2A_MAX_BATCH_LENGTH_V2, NV2A_MAX_BATCH_LENGTH - NV2A_MAX_BATCH_LENGTH_V2, 3),
+        NV2A_VMSTATE_INLINE_IN_USE(pgraph.inline_elements, pgraph.inline_elements_length),
         VMSTATE_UINT32(pgraph.inline_buffer_length, NV2AState), // fixme
         VMSTATE_UINT32(pgraph.draw_arrays_length, NV2AState),
         VMSTATE_UINT32(pgraph.draw_arrays_max_count, NV2AState),
