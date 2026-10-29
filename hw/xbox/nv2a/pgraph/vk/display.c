@@ -18,20 +18,14 @@
  */
 
 #include "renderer.h"
-#ifdef LIBRETRO
 #include "ui/libretro-crosshair.h"
-#endif
 #include <math.h>
 
 /* On the device the libretro core shares with its frontend, the display image
  * is a plain image: it is not exported to GL or to a second device */
 static inline bool on_frontend_device(void)
 {
-#ifdef LIBRETRO
     return xemu_libretro_vk.active;
-#else
-    return false;
-#endif
 }
 
 static uint8_t *convert_texture_data__CR8YB8CB8YA8(uint8_t *data_out,
@@ -227,9 +221,6 @@ static const char *display_frag_glsl =
     "    vec2 tex_coord = gl_FragCoord.xy/display_size;\n"
     "    float rel = display_size.y/textureSize(tex, 0).y/line_offset;\n"
     "    tex_coord.y = 1 + rel*(tex_coord.y - 1);\n"
-#ifndef LIBRETRO
-    "    tex_coord.y = 1 - tex_coord.y;\n" // GL compat
-#endif
     "    out_Color.rgba = texture(tex, tex_coord);\n"
     "    if (pvideo_enable) {\n"
     "        vec2 screen_coord = vec2(gl_FragCoord.x, display_size.y - gl_FragCoord.y) * pvideo_scale.z;\n"
@@ -564,7 +555,7 @@ static void destroy_current_display_image(PGRAPHState *pg)
 #ifdef WIN32
     CloseHandle(d->handle);
     d->handle = 0;
-#elif defined(LIBRETRO)
+#else
     // Not taken by the frontend: nobody else will close it.
     if (d->frontend_fd_plus1) {
         close(d->frontend_fd_plus1 - 1);
@@ -625,11 +616,7 @@ static void create_display_image(PGRAPHState *pg, int width, int height)
     // Create image
     VkImageCreateInfo image_create_info = {
         .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
-#ifdef LIBRETRO
         .flags = VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT,
-#else
-        .flags = 0,
-#endif
         .imageType = VK_IMAGE_TYPE_2D,
         .extent.width = width,
         .extent.height = height,
@@ -731,14 +718,12 @@ static void create_display_image(PGRAPHState *pg, int width, int height)
     assert(glIsMemoryObjectEXT(d->gl_memory_obj));
     assert(glGetError() == GL_NO_ERROR);
 
-#ifdef LIBRETRO
     int frontend_fd = -1;
     VK_CHECK(vkGetMemoryFdKHR(r->device, &fd_info, &frontend_fd));
     if (d->frontend_fd_plus1) {
         close(d->frontend_fd_plus1 - 1);
     }
     d->frontend_fd_plus1 = frontend_fd + 1;
-#endif
 
 #endif // WIN32
 
@@ -937,7 +922,6 @@ static void update_uniforms(PGRAPHState *pg, SurfaceBinding *surface)
     }
 }
 
-#ifdef LIBRETRO
 static void destroy_frame_image(PGRAPHVkState *r, struct PGRAPHVkFrameImage *f)
 {
     if (f->image == VK_NULL_HANDLE) {
@@ -1371,7 +1355,6 @@ static void destroy_frame_images(PGRAPHState *pg)
         destroy_frame_image(r, &r->display.retired[i]);
     }
 }
-#endif /* LIBRETRO */
 
 static void render_display(PGRAPHState *pg, SurfaceBinding *surface)
 {
@@ -1405,7 +1388,6 @@ static void render_display(PGRAPHState *pg, SurfaceBinding *surface)
     VkImage target = disp->image;
     VkFramebuffer framebuffer = disp->framebuffer;
     VkCommandBuffer cmd;
-#ifdef LIBRETRO
     struct PGRAPHVkFrameImage *f = NULL;
     struct PGRAPHVkFrameSync *sync = NULL;
     if (on_frontend_device()) {
@@ -1427,7 +1409,6 @@ static void render_display(PGRAPHState *pg, SurfaceBinding *surface)
         };
         VK_CHECK(vkBeginCommandBuffer(cmd, &begin_info));
     } else
-#endif
     {
         cmd = pgraph_vk_begin_single_time_commands(pg);
     }
@@ -1493,7 +1474,6 @@ static void render_display(PGRAPHState *pg, SurfaceBinding *surface)
             pgraph_vk_surface_base_layout(surface));
     }
 
-#ifdef LIBRETRO
     if (f) {
         frame_image_finish(r, cmd, f);
         pgraph_vk_end_debug_marker(r, cmd);
@@ -1501,7 +1481,6 @@ static void render_display(PGRAPHState *pg, SurfaceBinding *surface)
         submit_frame(r, sync);
         f->ready = true;
     } else
-#endif
     {
         pgraph_vk_transition_image_layout(pg, cmd, disp->image,
                                           VK_FORMAT_R8G8B8_UNORM,
@@ -1565,11 +1544,9 @@ void pgraph_vk_finalize_display(PGRAPHState *pg)
     if (r->display.image != VK_NULL_HANDLE) {
         destroy_current_display_image(pg);
     }
-#ifdef LIBRETRO
     destroy_frame_sync(pg);
     destroy_frame_images(pg);
     destroy_crosshair_buffer(pg->vk_renderer_state);
-#endif
 
     destroy_surface_sampler(pg);
     destroy_display_pipeline(pg);
@@ -1611,7 +1588,6 @@ void pgraph_vk_render_display(PGRAPHState *pg)
     pgraph_apply_scaling_factor(pg, &width, &height);
 
     PGRAPHVkDisplayState *disp = &r->display;
-#ifdef LIBRETRO
     if (on_frontend_device()) {
         /* no display image: the frame images are the render targets */
         disp->width = width;
@@ -1620,7 +1596,6 @@ void pgraph_vk_render_display(PGRAPHState *pg)
             create_frame_sync(pg);
         }
     } else
-#endif
     if (!disp->image || disp->width != width || disp->height != height) {
         create_display_image(pg, width, height);
     }

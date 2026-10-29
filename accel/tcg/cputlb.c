@@ -19,13 +19,9 @@
  */
 
 #include "qemu/osdep.h"
-#ifdef LIBRETRO
 /* the libretro core's idle detection (hw/core/cpu.h): a store made by a
  * helper or on the slow path, or any device access, is not waiting */
 #define LR_QUIET_RESET(cpu) ((cpu)->neg.lr_quiet = LR_QUIET_INSNS)
-#else
-#define LR_QUIET_RESET(cpu) ((void)0)
-#endif
 #include "qemu/main-loop.h"
 #include "qemu/target-info.h"
 #include "accel/tcg/cpu-ops.h"

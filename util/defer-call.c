@@ -46,7 +46,7 @@ static void defer_call_atexit(Notifier *n, void *value)
     g_array_free(thread_state->deferred_call_array, TRUE);
 }
 
-#if defined(LIBRETRO) && defined(_WIN32)
+#if defined(_WIN32)
 static DWORD tls_key_defer_call_atexit_notifier = TLS_OUT_OF_INDEXES;
 static inline Notifier *get_defer_call_atexit_notifier(void) {
     if (tls_key_defer_call_atexit_notifier == TLS_OUT_OF_INDEXES)

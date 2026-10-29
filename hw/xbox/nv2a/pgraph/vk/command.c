@@ -100,7 +100,6 @@ static void destroy_command_buffers(PGRAPHState *pg)
 void pgraph_vk_queue_submit(PGRAPHVkState *r, uint32_t count,
                             const VkSubmitInfo *submits, VkFence fence)
 {
-#ifdef LIBRETRO
     VkSubmitInfo with_wait[4];
     VkSemaphore waits[2];
     VkPipelineStageFlags wait_stages[2];
@@ -122,11 +121,8 @@ void pgraph_vk_queue_submit(PGRAPHVkState *r, uint32_t count,
         r->display.shown_pending = VK_NULL_HANDLE;
     }
     xemu_libretro_vk_lock_queue();
-#endif
     VK_CHECK(vkQueueSubmit(r->queue, count, submits, fence));
-#ifdef LIBRETRO
     xemu_libretro_vk_unlock_queue();
-#endif
 }
 
 /*

@@ -39,11 +39,6 @@ static void early_context_init(void)
     // context is created so the temporary context will not become the thread
     // context. After destroying the context, some a durable context should be
     // selected.
-#ifndef LIBRETRO
-    GloContext *context = glo_context_create_4_1();
-    pgraph_gl_determine_gpu_properties();
-    glo_context_destroy(context);
-#endif
     glo_set_current(g_nv2a_context_display);
 }
 

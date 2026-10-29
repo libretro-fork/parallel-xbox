@@ -37,9 +37,7 @@
 #include "system/cpu-timers.h"
 #include "system/cpu-timers-internal.h"
 #include "exec/icount.h"
-#ifdef LIBRETRO
 #include "system/libretro-vcpu.h"
-#endif
 
 /* clock and ticks */
 
@@ -273,7 +271,6 @@ static void do_nothing(CPUState *cpu, run_on_cpu_data unused)
 
 void qemu_timer_notify_cb(void *opaque, QEMUClockType type)
 {
-#ifdef LIBRETRO
     /* The core's emulator thread is the vCPU and the main loop at once, and
      * works out the guest's next slice from the timers before each one
      * (ui/libretro.c): a guest timer set in a slice ends it, one set from
@@ -288,7 +285,6 @@ void qemu_timer_notify_cb(void *opaque, QEMUClockType type)
         }
         return;
     }
-#endif
     if (!icount_enabled() || type != QEMU_CLOCK_VIRTUAL) {
         qemu_notify_event();
         return;

@@ -763,7 +763,6 @@ static bool init_allocator(PGRAPHState *pg, Error **errp)
     return true;
 }
 
-#ifdef LIBRETRO
 /*
  * The instance and device the core made with the frontend (libretro_shared.h)
  * in place of ones of our own: volk loads from the frontend's loader, and
@@ -809,11 +808,9 @@ static bool adopt_frontend_device(PGRAPHState *pg, Error **errp)
             s->queue_shared ? "the frontend's queue" : "a queue of its own");
     return true;
 }
-#endif
 
 void pgraph_vk_init_instance(PGRAPHState *pg, Error **errp)
 {
-#ifdef LIBRETRO
     if (xemu_libretro_vk.active) {
         if (adopt_frontend_device(pg, errp) && init_allocator(pg, errp)) {
             return;
@@ -822,7 +819,6 @@ void pgraph_vk_init_instance(PGRAPHState *pg, Error **errp)
         error_prepend(errp, "Failed to initialize Vulkan renderer: ");
         return;
     }
-#endif
     if (create_instance(pg, errp) &&
         select_physical_device(pg, errp) &&
         create_logical_device(pg, errp) &&
@@ -849,14 +845,12 @@ void pgraph_vk_finalize_instance(PGRAPHState *pg)
         r->allocator = VK_NULL_HANDLE;
     }
 
-#ifdef LIBRETRO
     if (xemu_libretro_vk.active) {
         /* the frontend's to destroy */
         r->device = VK_NULL_HANDLE;
         r->instance = VK_NULL_HANDLE;
         return;
     }
-#endif
 
     if (r->device != VK_NULL_HANDLE) {
         vkDestroyDevice(r->device, NULL);

@@ -193,7 +193,6 @@ typedef struct {
 
 static NetBoard nb;
 
-#ifdef LIBRETRO
 /* The board's thread catches up with the guest's time as it passes: in the
  * libretro core that time is the guest's instructions (ui/libretro.c), so
  * the thread is woken every millisecond of it, not of the host's clock. A
@@ -208,7 +207,6 @@ static void nb_tick_cb(void *opaque)
     }
     timer_mod_ns(nb_tick, qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) + NB_TICK_NS);
 }
-#endif
 static bool nb_present;
 
 /* ── Interrupt controllers ───────────────────────────────────────────── */
@@ -1207,11 +1205,7 @@ static void *nb_thread(void *arg)
             nb.last_us = qemu_clock_get_us(QEMU_CLOCK_VIRTUAL);
             nb.paid = nb.cpu.cycles;
         }
-#ifdef LIBRETRO
         qemu_cond_wait(&nb.kick, &nb.lock);
-#else
-        qemu_cond_timedwait(&nb.kick, &nb.lock, 1);
-#endif
     }
     qemu_mutex_unlock(&nb.lock);
     rcu_unregister_thread();
@@ -1325,13 +1319,11 @@ bool chihiro_netboard_init(const char *firmware_path, const char serial[16],
     nb.last_us = qemu_clock_get_us(QEMU_CLOCK_VIRTUAL);
     nb.paid = 0;
     nb_present = true;
-#ifdef LIBRETRO
     if (!nb_tick) {
         nb_tick = timer_new_ns(QEMU_CLOCK_VIRTUAL, nb_tick_cb, NULL);
         timer_mod_ns(nb_tick, qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) +
                      NB_TICK_NS);
     }
-#endif
     CHIHIRO_LOGF(NET, "netboard: Au1500 ready, %u KB of firmware in a %u KB flash\n",
             nb.flash_have >> 10, NB_FLASH_SIZE >> 10);
     return true;
@@ -1341,12 +1333,10 @@ void chihiro_netboard_exit(void)
 {
     if (!nb_present) return;
     bool was_running;
-#ifdef LIBRETRO
     if (nb_tick) {
         timer_free(nb_tick);
         nb_tick = NULL;
     }
-#endif
     qemu_mutex_lock(&nb.lock);
     was_running = nb.running;
     nb.exiting = true;

@@ -664,7 +664,7 @@ extern CPUTailQ cpus_queue;
 #define CPU_FOREACH_SAFE(cpu, next_cpu) \
     QTAILQ_FOREACH_SAFE_RCU(cpu, &cpus_queue, node, next_cpu)
 
-#if defined(LIBRETRO) && defined(_WIN32)
+#if defined(_WIN32)
 extern unsigned long tls_key_current_cpu;
 void *__stdcall TlsGetValue(unsigned long);
 int __stdcall TlsSetValue(unsigned long, void *);

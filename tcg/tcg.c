@@ -248,7 +248,7 @@ bool tcg_use_softmmu;
 #endif
 
 TCGContext tcg_init_ctx;
-#if defined(LIBRETRO) && defined(_WIN32)
+#if defined(_WIN32)
 unsigned long tls_key_tcg_ctx = 0xFFFFFFFF; /* TLS_OUT_OF_INDEXES */
 #else
 __thread TCGContext *tcg_ctx;

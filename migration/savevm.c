@@ -1855,14 +1855,12 @@ cleanup:
     return ret;
 }
 
-#ifdef LIBRETRO
 /* The libretro core's savestates (ui/libretro-state.c): the snapshot's
  * stream, into a buffer of the frontend's instead of the HDD image */
 int qemu_savevm_state_libretro(QEMUFile *f, Error **errp)
 {
     return qemu_savevm_state(f, errp);
 }
-#endif
 
 void qemu_savevm_live_state(QEMUFile *f)
 {

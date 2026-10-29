@@ -17,7 +17,7 @@
 #include "exec/replay-core.h"
 
 
-#if defined(LIBRETRO) && defined(_WIN32)
+#if defined(_WIN32)
 static DWORD tls_key_thread_rand = TLS_OUT_OF_INDEXES;
 static inline void thread_rand_tls_init(void) {
     if (tls_key_thread_rand == TLS_OUT_OF_INDEXES)

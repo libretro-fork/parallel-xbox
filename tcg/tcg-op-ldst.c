@@ -33,13 +33,9 @@
 #include "tcg-internal.h"
 #include "tcg-has.h"
 #include "tcg-target-mo.h"
-#ifdef LIBRETRO
 #include "exec/translator.h"
 /* the libretro core's idle detection: every guest store is announced */
 #define LR_QUIET_STORE() lr_quiet_store_emitted()
-#else
-#define LR_QUIET_STORE() ((void)0)
-#endif
 
 static void check_max_alignment(unsigned a_bits)
 {

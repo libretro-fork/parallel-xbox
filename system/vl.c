@@ -145,10 +145,8 @@
 
 #include <glib/gstdio.h>
 #include "ui/xemu-settings.h"
-#ifdef LIBRETRO
 #include "qapi/qapi-commands-block.h"
 #include "hw/xbox/smbus.h"
-#endif
 #include "ui/xemu-notifications.h"
 #include "ui/xemu-net.h"
 #include "ui/xemu-input.h"
@@ -2628,7 +2626,6 @@ static char *strdup_double_commas(const char *input) {
     return output;
 }
 
-#ifdef LIBRETRO
 #include <libretro.h>
 
 /*
@@ -2700,9 +2697,7 @@ static uint64_t xbox_game_partition_offset(const char *path)
     }
     return found;
 }
-#endif
 
-#ifdef LIBRETRO
 /* Another disc into the built machine's drive, for the content loaded after
  * the first (ui/libretro.c): upstream's xemu_load_disc, with the game
  * partition's offset of a Redump image as at start. An empty path leaves the
@@ -2746,7 +2741,6 @@ void xemu_libretro_change_disc(const char *path, Error **errp)
     }
     xbox_smc_update_tray_state();
 }
-#endif
 
 static void qemu_validate_options(const QDict *machine_opts)
 {
@@ -3396,7 +3390,6 @@ void qemu_init(int argc, char **argv)
         // connected but no media present.
         fake_argv[fake_argc++] = strdup("-drive");
         char *escaped_dvd_path = strdup_double_commas(dvd_path);
-#ifdef LIBRETRO
         uint64_t dvd_offset = xbox_game_partition_offset(dvd_path);
         if (dvd_offset) {
             /* Not info_report: the monitor it goes through is not set up yet
@@ -3407,19 +3400,13 @@ void qemu_init(int argc, char **argv)
                 "index=1,media=cdrom,format=raw,offset=%" PRIu64 ",file=%s",
                 dvd_offset, escaped_dvd_path);
         } else
-#endif
         fake_argv[fake_argc++] = g_strdup_printf("index=1,media=cdrom,file=%s",
             escaped_dvd_path);
         free(escaped_dvd_path);
     }
 
-#ifdef LIBRETRO
     fake_argv[fake_argc++] = strdup("-display");
     fake_argv[fake_argc++] = strdup("none");
-#else
-    fake_argv[fake_argc++] = strdup("-display");
-    fake_argv[fake_argc++] = strdup("xemu");
-#endif
 
     // Create USB Daughterboard for 1.0 Xbox. This is connected to Port 1 of the Root hub.
     // On a Chihiro, skip: the baseboard USB devices use these ports instead.

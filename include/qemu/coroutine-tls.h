@@ -115,7 +115,7 @@
  *
  *   __thread int my_count;
  */
-#if defined(LIBRETRO) && defined(_WIN32)
+#if defined(_WIN32)
 #define QEMU_DEFINE_CO_TLS(type, var)                                        \
     static DWORD co_tls_key_##var = TLS_OUT_OF_INDEXES;                      \
     static inline void co_tls_init_##var(void) {                             \
@@ -168,7 +168,7 @@
  *   my_count = c + 1;
  *   *(&my_count) = 0;
  */
-#if defined(LIBRETRO) && defined(_WIN32)
+#if defined(_WIN32)
 #define QEMU_DEFINE_STATIC_CO_TLS(type, var)                                 \
     static DWORD co_tls_key_s_##var = TLS_OUT_OF_INDEXES;                    \
     static inline void co_tls_init_s_##var(void) {                           \

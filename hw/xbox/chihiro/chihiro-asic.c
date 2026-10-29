@@ -172,7 +172,6 @@ typedef struct ChihiroAsic {
 
 static ChihiroAsic asic;
 
-#ifdef LIBRETRO
 /* The board's thread catches up with the guest's time as it passes: in the
  * libretro core that time is the guest's instructions (ui/libretro.c), so
  * the thread is woken every millisecond of it, not of the host's clock. A
@@ -186,7 +185,6 @@ static void asic_tick_cb(void *opaque)
     timer_mod_ns(asic_tick, qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) +
                  ASIC_TICK_NS);
 }
-#endif
 
 /* ------------------------------------------------------------------ memory */
 
@@ -743,11 +741,7 @@ static void *asic_thread(void *arg)
             qemu_cond_wait(&asic.kick, &asic.lock);
         } else if (asic.running && asic.have_rom) {
             asic_catch_up();
-#ifdef LIBRETRO
             qemu_cond_wait(&asic.kick, &asic.lock);
-#else
-            qemu_cond_timedwait(&asic.kick, &asic.lock, 1);
-#endif
         } else {
             /* Held in reset, or no board at all: nothing is owed, and the
              * clock it is paid against starts again when it is released.
@@ -972,13 +966,11 @@ void chihiro_asic_init(void)
 {
     qemu_mutex_init(&asic.lock);
     qemu_cond_init(&asic.kick);
-#ifdef LIBRETRO
     if (!asic_tick) {
         asic_tick = timer_new_ns(QEMU_CLOCK_VIRTUAL, asic_tick_cb, NULL);
         timer_mod_ns(asic_tick, qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) +
                      ASIC_TICK_NS);
     }
-#endif
 
     /* Straps bits 0-2 pick the board type (switch at 0x118E). MEASURED:
      *   0 -> type 4: ready, no DIMM size computed

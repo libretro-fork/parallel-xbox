@@ -104,7 +104,7 @@ typedef struct QSPSnapshot QSPSnapshot;
 /* this file's full path. Used to present all call sites with relative paths */
 static size_t qsp_qemu_path_len;
 
-#if defined(LIBRETRO) && defined(_WIN32)
+#if defined(_WIN32)
 static DWORD tls_key_qsp_thread = TLS_OUT_OF_INDEXES;
 static inline int *get_qsp_thread_ptr(void) {
     if (tls_key_qsp_thread == TLS_OUT_OF_INDEXES)

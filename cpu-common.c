@@ -121,7 +121,7 @@ CPUState *qemu_get_cpu(int index)
 }
 
 /* current CPU in the current thread. It is only valid inside cpu_exec() */
-#if defined(LIBRETRO) && defined(_WIN32)
+#if defined(_WIN32)
 unsigned long tls_key_current_cpu = 0xFFFFFFFF; /* TLS_OUT_OF_INDEXES */
 #else
 __thread CPUState *current_cpu;

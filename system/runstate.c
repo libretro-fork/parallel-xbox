@@ -446,7 +446,6 @@ static int qemu_shutdown_requested(void)
     return qatomic_xchg(&shutdown_requested, SHUTDOWN_CAUSE_NONE);
 }
 
-#ifdef LIBRETRO
 /* The libretro core's own main loop only looks at the request
  * (qemu_shutdown_requested_get) and leaves the machine built when content is
  * closed; before it runs the machine again for the next content, the request
@@ -455,7 +454,6 @@ void qemu_libretro_clear_shutdown_request(void)
 {
     qemu_shutdown_requested();
 }
-#endif
 
 static void qemu_kill_report(void)
 {
@@ -911,7 +909,6 @@ static bool main_loop_should_exit(int *status)
     return false;
 }
 
-#ifdef LIBRETRO
 /*
  * The libretro core's emulator thread (ui/libretro.c), between two slices
  * of guest time: what upstream's main loop does with the requests devices
@@ -963,7 +960,6 @@ bool qemu_libretro_handle_requests(void)
     }
     return shutdown;
 }
-#endif
 
 int qemu_main_loop(void)
 {

@@ -20,7 +20,6 @@
 #include "block/block-io.h"
 #include "block/block_int.h"
 
-#ifdef LIBRETRO
 #include <libretro.h>
 
 /* ui/libretro.c: the frontend's VFS, if it has one */
@@ -173,4 +172,3 @@ static void bdrv_libretro_vfs_init(void)
 }
 
 block_init(bdrv_libretro_vfs_init);
-#endif

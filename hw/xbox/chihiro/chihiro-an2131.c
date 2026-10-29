@@ -586,12 +586,10 @@ static void an2131_sfr_write(Cpu8051State *cpu, uint8_t addr, uint8_t val)
 
             if (chihiro_jvs_global) {
                 uint8_t raw_resp[256];
-#ifdef LIBRETRO
                 /* The coins and cards RetroArch's pads put in since the
                  * last frame (ui/libretro-chihiro.c) */
                 extern void libretro_chihiro_apply_pending(void);
                 libretro_chihiro_apply_pending();
-#endif
                 int rlen = chihiro_jvs_process(chihiro_jvs_global,
                                                s->jvs_tx_buf, s->jvs_tx_expected,
                                                raw_resp, sizeof(raw_resp));

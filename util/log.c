@@ -41,7 +41,7 @@ typedef struct RCUCloseFILE {
 static QemuMutex global_mutex;
 static char *global_filename;
 static FILE *global_file;
-#if defined(LIBRETRO) && defined(_WIN32)
+#if defined(_WIN32)
 static DWORD tls_key_thread_file = TLS_OUT_OF_INDEXES;
 static DWORD tls_key_qemu_log_thread_cleanup_notifier = TLS_OUT_OF_INDEXES;
 static inline void log_tls_init(void) {

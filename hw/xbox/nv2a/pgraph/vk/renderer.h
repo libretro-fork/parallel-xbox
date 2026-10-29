@@ -341,18 +341,15 @@ typedef struct PGRAPHVkDisplayState {
     HANDLE handle;
 #else
     int fd;
-#ifdef LIBRETRO
     // A second fd of the memory, for the libretro frontend's device (the
     // first one belongs to GL once imported). Stored plus one, so the
     // zero-initialised state means "none". Taken by
     // nv2a_take_vk_display_fd(), which hands over its ownership.
     int frontend_fd_plus1;
 #endif
-#endif
     GLuint gl_memory_obj;
     GLuint gl_texture_id;
 
-#ifdef LIBRETRO
     // On the device shared with the frontend (libretro_shared.h): the frame
     // handed over, one image for each of the frontend's sync indices - the
     // display is drawn into the current one - and the ones replaced at a
@@ -384,7 +381,6 @@ typedef struct PGRAPHVkDisplayState {
      * one before: another surface, or one drawn to since */
     uint64_t guest_frame_count;
     hwaddr last_surface_addr;
-#endif
 } PGRAPHVkDisplayState;
 
 typedef struct ComputePipelineKey {

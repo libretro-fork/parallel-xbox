@@ -21,7 +21,7 @@
  * any lock, the arrays cannot be stored in AioContext.  Thread-local data
  * has none of the disadvantages of these three options.
  */
-#if defined(LIBRETRO) && defined(_WIN32)
+#if defined(_WIN32)
 static DWORD tls_key_pollfds = TLS_OUT_OF_INDEXES;
 static DWORD tls_key_nodes = TLS_OUT_OF_INDEXES;
 static DWORD tls_key_npfd = TLS_OUT_OF_INDEXES;

@@ -511,19 +511,12 @@ int nv2a_get_framebuffer_surface(void)
     qemu_mutex_lock(&pg->renderer_lock);
     assert(!pg->framebuffer_in_use);
     pg->framebuffer_in_use = true;
-#ifdef LIBRETRO
     /* Release lock before get_framebuffer_surface to avoid deadlock with PFIFO */
     const PGRAPHRenderer *renderer = pg->renderer;
     qemu_mutex_unlock(&pg->renderer_lock);
     if (renderer && renderer->ops.get_framebuffer_surface) {
         s = renderer->ops.get_framebuffer_surface(d);
     }
-#else
-    if (pg->renderer && pg->renderer->ops.get_framebuffer_surface) {
-        s = pg->renderer->ops.get_framebuffer_surface(d);
-    }
-    qemu_mutex_unlock(&pg->renderer_lock);
-#endif
 
     return s;
 }
@@ -542,7 +535,6 @@ void nv2a_release_framebuffer_surface(void)
     qemu_mutex_unlock(&pg->renderer_lock);
 }
 
-#ifdef LIBRETRO
 /*
  * The renderer switched from the frontend's thread, through the switch
  * pgraph_process_pending does for standalone's setting: used to take the
@@ -609,7 +601,6 @@ void nv2a_trigger_display_render(void)
 
     qemu_mutex_unlock(&d->pfifo.lock);
 }
-#endif
 
 void nv2a_set_surface_scale_factor(unsigned int scale)
 {

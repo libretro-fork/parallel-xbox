@@ -804,7 +804,7 @@ if 'cpp' in all_languages
 endif
 
 if get_option('libretro')
-  libretro_static_defs = ['-DLIBRETRO=1', '-DCURL_STATICLIB', '-DLIBSLIRP_STATIC',
+  libretro_static_defs = ['-DCURL_STATICLIB', '-DLIBSLIRP_STATIC',
                           '-DEPOXY_PUBLIC=extern', '-DGLIB_STATIC_COMPILATION',
                           '-DGIO_STATIC_COMPILATION', '-DGMODULE_STATIC_COMPILATION',
                           '-DGOBJECT_STATIC_COMPILATION']
@@ -4380,9 +4380,6 @@ foreach target : target_dirs
   c_args = ['-DCOMPILING_PER_TARGET',
             '-DCONFIG_TARGET="@0@-config-target.h"'.format(target),
   ]
-  if get_option('libretro')
-    c_args += ['-DLIBRETRO=1']
-  endif
   link_args = emulator_link_args
 
   target_inc = [include_directories('target' / config_target['TARGET_BASE_ARCH'])]

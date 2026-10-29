@@ -247,7 +247,6 @@ struct QemuThreadData {
 static bool atexit_registered;
 static NotifierList main_thread_exit;
 
-#if defined(LIBRETRO)
 static DWORD tls_key_qemu_thread_data = TLS_OUT_OF_INDEXES;
 static inline QemuThreadData *get_qemu_thread_data(void) {
     if (tls_key_qemu_thread_data == TLS_OUT_OF_INDEXES)
@@ -261,10 +260,6 @@ static inline void set_qemu_thread_data(QemuThreadData *v) {
 }
 #define qemu_thread_data (get_qemu_thread_data())
 #define SET_qemu_thread_data(v) set_qemu_thread_data(v)
-#else
-static __thread QemuThreadData *qemu_thread_data;
-#define SET_qemu_thread_data(v) do { qemu_thread_data = (v); } while(0)
-#endif
 
 static void run_main_thread_exit(void)
 {

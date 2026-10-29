@@ -149,18 +149,7 @@ void icount_process_data(CPUState *cpu)
 
 void icount_handle_interrupt(CPUState *cpu, int mask)
 {
-#ifdef LIBRETRO
     /* the core never ends the frontend's process: the interrupt is taken
      * at the next block, as one raised from another thread is */
     tcg_handle_interrupt(cpu, mask);
-#else
-    int old_mask = cpu->interrupt_request;
-
-    tcg_handle_interrupt(cpu, mask);
-    if (qemu_cpu_is_self(cpu) &&
-        !cpu->neg.can_do_io
-        && (mask & ~old_mask) != 0) {
-        cpu_abort(cpu, "Raised interrupt while not in I/O function");
-    }
-#endif
 }

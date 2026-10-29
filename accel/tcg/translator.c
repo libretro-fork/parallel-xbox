@@ -189,7 +189,6 @@ static TCGOp *gen_tb_start(DisasContextBase *db, uint32_t cflags)
                          sizeof(CPUState));
     }
 
-#ifdef LIBRETRO
     /* The libretro core's idle detection: the block's instructions come
      * off neg.lr_quiet, and a block that would take it below zero leaves
      * for lr_quiet_exit instead (a run of guest code that stored nothing
@@ -212,12 +211,10 @@ static TCGOp *gen_tb_start(DisasContextBase *db, uint32_t cflags)
         tcg_ctx->lr_quiet_label = gen_new_label();
         tcg_gen_brcondi_i32(TCG_COND_LT, quiet, 0, tcg_ctx->lr_quiet_label);
     }
-#endif
 
     return icount_start_insn;
 }
 
-#ifdef LIBRETRO
 /* A guest store is being emitted (tcg/tcg-op-ldst.c): the block's first
  * one resets the quiet count, so the wait starts over */
 void lr_quiet_store_emitted(void)
@@ -228,7 +225,6 @@ void lr_quiet_store_emitted(void)
                        offsetof(CPUState, neg.lr_quiet) - sizeof(CPUState));
     }
 }
-#endif
 
 static void gen_tb_end(const TranslationBlock *tb, uint32_t cflags,
                        TCGOp *icount_start_insn, int num_insns)
@@ -246,7 +242,6 @@ static void gen_tb_end(const TranslationBlock *tb, uint32_t cflags,
         gen_set_label(tcg_ctx->exitreq_label);
         tcg_gen_exit_tb(tb, TB_EXIT_REQUESTED);
     }
-#ifdef LIBRETRO
     if (tcg_ctx->lr_quiet_label) {
         tcg_set_insn_param(tcg_ctx->lr_quiet_insn, 2,
                            tcgv_i32_arg(tcg_constant_i32(num_insns)));
@@ -254,7 +249,6 @@ static void gen_tb_end(const TranslationBlock *tb, uint32_t cflags,
         tcg_gen_exit_tb(tb, TB_EXIT_REQUESTED);
         tcg_ctx->lr_quiet_label = NULL;
     }
-#endif
 }
 
 bool translator_is_same_page(const DisasContextBase *db, vaddr addr)

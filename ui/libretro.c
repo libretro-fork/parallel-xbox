@@ -2567,7 +2567,7 @@ RETRO_API void retro_init(void)
     }
 
     /* Initialize Windows TLS keys for __thread replacements */
-#if defined(LIBRETRO) && defined(_WIN32)
+#if defined(_WIN32)
     {
         extern unsigned long tls_key_tcg_ctx;
         extern unsigned long tls_key_current_cpu;

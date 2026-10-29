@@ -16,7 +16,6 @@
 #ifndef HW_XBOX_NV2A_PGRAPH_VK_LIBRETRO_SHARED_H
 #define HW_XBOX_NV2A_PGRAPH_VK_LIBRETRO_SHARED_H
 
-#ifdef LIBRETRO
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -89,6 +88,5 @@ bool nv2a_vk_libretro_get_frame(int index, VkImage *image, VkImageView *view,
                                 VkFormat *format, int *width, int *height,
                                 uint64_t *count);
 
-#endif /* LIBRETRO */
 
 #endif

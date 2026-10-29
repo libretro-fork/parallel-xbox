@@ -37,9 +37,7 @@
 #include "hw/core/cpu.h"
 #include "exec/icount.h"
 #include "system/cpu-timers-internal.h"
-#ifdef LIBRETRO
 #include "system/libretro-vcpu.h"
-#endif
 
 /*
  * ICOUNT: Instruction Counter
@@ -113,14 +111,9 @@ static int64_t icount_get_raw_locked(void)
 
     if (cpu && cpu->running) {
         if (!cpu->neg.can_do_io) {
-#ifdef LIBRETRO
             /* never end the frontend's process: the count as of the
              * block's start, a few instructions behind */
             return qatomic_read_i64(&timers_state.qemu_icount);
-#else
-            error_report("Bad icount read");
-            exit(1);
-#endif
         }
         /* Take into account what has run */
         icount_update_locked(cpu);
@@ -163,7 +156,6 @@ int64_t icount_get(void)
     return icount;
 }
 
-#ifdef LIBRETRO
 /* The libretro core counts the guest's time in its instructions alone: no
  * clock of the host's enters it, so a frame of guest time is a fixed amount
  * of the guest's work, whatever the host's speed or load. 1.977 ns an
@@ -174,18 +166,12 @@ int64_t icount_get(void)
  * TSC counts 733.33 MHz of this time (hw/i386/x86-cpu.c). */
 #define LR_ICOUNT_NS_NUM 1977
 #define LR_ICOUNT_NS_DEN 1000
-#endif
 
 int64_t icount_to_ns(int64_t icount)
 {
-#ifdef LIBRETRO
     return icount * LR_ICOUNT_NS_NUM / LR_ICOUNT_NS_DEN;
-#else
-    return icount << qatomic_read(&timers_state.icount_time_shift);
-#endif
 }
 
-#ifdef LIBRETRO
 /* The guest idles with nothing under way: its time moves on to vt at once,
  * as with sleep=off at a timer deadline (icount_start_warp_timer) */
 void icount_skip_to(int64_t vt)
@@ -202,7 +188,6 @@ void icount_skip_to(int64_t vt)
     seqlock_write_unlock(&timers_state.vm_clock_seqlock,
                          &timers_state.vm_clock_lock);
 }
-#endif
 
 /*
  * Correlation between real and virtual time is always going to be
@@ -270,11 +255,9 @@ static void icount_adjust_vm(void *opaque)
 
 int64_t icount_round(int64_t count)
 {
-#ifdef LIBRETRO
     /* the instructions that take at least count ns */
     return (count * LR_ICOUNT_NS_DEN + LR_ICOUNT_NS_NUM - 1) /
            LR_ICOUNT_NS_NUM;
-#endif
     int shift = qatomic_read(&timers_state.icount_time_shift);
     return (count + (1 << shift) - 1) >> shift;
 }
@@ -546,7 +529,6 @@ void icount_notify_exit(void)
 {
     assert(icount_enabled());
 
-#ifdef LIBRETRO
     /* A bottom half was scheduled: the guest's slice ends so the core's
      * loop runs it (from another thread, the main loop's notify hook makes
      * it leave, ui/libretro.c). Kicking the vCPU (cpu_exit too) would wake
@@ -554,10 +536,4 @@ void icount_notify_exit(void)
     if (current_cpu) {
         lr_vcpu_exit(current_cpu);
     }
-#else
-    if (current_cpu) {
-        qemu_cpu_kick(current_cpu);
-        qemu_clock_notify(QEMU_CLOCK_VIRTUAL);
-    }
-#endif
 }

@@ -9,7 +9,6 @@
  *  SPDX-License-Identifier: MIT
  */
 
-#ifdef LIBRETRO
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -630,4 +629,3 @@ GloContext *glo_context_create_4_1(void)
 {
     return glo_context_create();
 }
-#endif /* LIBRETRO */

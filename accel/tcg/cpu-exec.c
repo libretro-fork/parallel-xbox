@@ -1059,10 +1059,8 @@ static inline bool cpu_handle_interrupt(CPUState *cpu,
              * and via longjmp via cpu_loop_exit.
              */
             if (tcg_ops->cpu_exec_interrupt(cpu, interrupt_request)) {
-#ifdef LIBRETRO
                 /* something happened: a wait ends here */
                 cpu->neg.lr_quiet = LR_QUIET_INSNS;
-#endif
                 if (!tcg_ops->need_replay_interrupt ||
                     tcg_ops->need_replay_interrupt(interrupt_request)) {
                     replay_interrupt();
@@ -1184,7 +1182,6 @@ static inline void cpu_loop_exec_tb(CPUState *cpu, TranslationBlock *tb,
     tb = cpu_tb_exec(cpu, tb, tb_exit);
     if (*tb_exit != TB_EXIT_REQUESTED) {
         *last_tb = tb;
-#ifdef LIBRETRO
         /* The libretro core's idle detection, the other way a wait shows:
          * the Xbox kernel's idle thread is "sti; nop; nop; cli; cmp; je",
          * and sti ends a block with a plain exit to this loop (no block to
@@ -1217,13 +1214,9 @@ static inline void cpu_loop_exec_tb(CPUState *cpu, TranslationBlock *tb,
             cpu->lr_quiet_at_exit = cpu->neg.lr_quiet;
             return;
         }
-#else
-        return;
-#endif
     }
 
     *last_tb = NULL;
-#ifdef LIBRETRO
     if (cpu->neg.lr_quiet < 0) {
         /* The libretro core's idle detection (translator.c): LR_QUIET_INSNS
          * instructions that stored nothing and touched no device, a wait.
@@ -1239,7 +1232,6 @@ static inline void cpu_loop_exec_tb(CPUState *cpu, TranslationBlock *tb,
             return;
         }
     }
-#endif
     if (cpu_loop_exit_requested(cpu)) {
         /* Something asked us to stop executing chained TBs; just
          * continue round the main loop. Whatever requested the exit
