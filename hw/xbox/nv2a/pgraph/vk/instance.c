@@ -334,6 +334,11 @@ static void add_optional_device_extension_names(
         available_extensions, enabled_extension_names,
         VK_EXT_MEMORY_BUDGET_EXTENSION_NAME);
 
+    /* the Xbox's RAM as a buffer (buffer.c), optional */
+    r->external_memory_host_extension_enabled = add_extension_if_available(
+        available_extensions, enabled_extension_names,
+        VK_EXT_EXTERNAL_MEMORY_HOST_EXTENSION_NAME);
+
     r->eds_extension_enabled = add_extension_if_available(
         available_extensions, enabled_extension_names,
         VK_EXT_EXTENDED_DYNAMIC_STATE_EXTENSION_NAME);
@@ -787,6 +792,7 @@ static bool adopt_frontend_device(PGRAPHState *pg, Error **errp)
     r->debug_utils_extension_enabled = false;
     r->custom_border_color_extension_enabled = s->custom_border_color;
     r->memory_budget_extension_enabled = s->memory_budget;
+    r->external_memory_host_extension_enabled = s->external_memory_host;
     r->eds_extension_enabled = r->dyn_cull_front = s->dyn_cull_front;
     r->eds3_extension_enabled = r->dyn_blend = s->dyn_blend;
     r->vertex_input_dynamic_extension_enabled = r->dyn_vertex_input =

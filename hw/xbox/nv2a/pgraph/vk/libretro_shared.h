@@ -47,6 +47,7 @@ typedef struct XemuLibretroVk {
     VkPhysicalDeviceFeatures features;
     bool custom_border_color;
     bool memory_budget;
+    bool external_memory_host;
     /* and the fast paths' extensions and features (create_logical_device
      * decides the same for a device of the renderer's own) */
     bool dyn_cull_front, dyn_blend, dyn_vertex_input;

@@ -63,6 +63,7 @@ typedef struct TextureLevel {
     unsigned int row_length; /* texels a buffer row holds, 0 = width */
     VkDeviceSize offset;
     size_t size;
+    bool from_vram; /* the offset is in the Xbox's RAM (r->vram_buffer) */
 } TextureLevel;
 
 typedef struct TextureLayer {
@@ -156,8 +157,35 @@ static uint8_t *stage_level(PGRAPHState *pg, TextureLevel *level,
     level->depth = depth;
     level->row_length = 0;
     level->size = size;
+    level->from_vram = false;
     level->offset = pgraph_vk_staging_alloc(pg, size, 16, &ptr);
     return ptr;
+}
+
+/* A level taken as it lies in the Xbox's RAM, where the RAM is a buffer
+ * and the level is aligned as a copy's source must be (its texel or
+ * block, and 4 bytes) */
+static bool level_from_vram(PGRAPHState *pg, TextureLevel *level,
+                            const uint8_t *data, unsigned int width,
+                            unsigned int height, unsigned int depth,
+                            size_t size, size_t texel)
+{
+    NV2AState *d = container_of(pg, NV2AState, pgraph);
+    PGRAPHVkState *r = pg->vk_renderer_state;
+    VkDeviceSize offset = data - (const uint8_t *)d->vram_ptr;
+
+    if (r->vram_buffer == VK_NULL_HANDLE || offset % texel || offset % 4 ||
+        offset + size > memory_region_size(d->vram)) {
+        return false;
+    }
+    level->width = width;
+    level->height = height;
+    level->depth = depth;
+    level->row_length = 0;
+    level->size = size;
+    level->from_vram = true;
+    level->offset = offset;
+    return true;
 }
 
 /* S3TC blocks of a level, as they are, into the ring: the Xbox's 2D block
@@ -169,6 +197,10 @@ static void stage_blocks_2d(PGRAPHState *pg, TextureLevel *level,
 {
     unsigned int bw = ((width + 3) & ~3) / 4, bh = ((height + 3) & ~3) / 4;
     size_t size = (size_t)bw * bh * block_size;
+    if (level_from_vram(pg, level, data, width, height, 1, size,
+                        block_size)) {
+        return;
+    }
     uint8_t *dst = stage_level(pg, level, width, height, 1, size);
     memcpy(dst, data, size);
 }
@@ -323,12 +355,17 @@ static void stage_texture(PGRAPHState *pg, int texture_idx,
                                              adjusted_height, 1,
                                              adjusted_pitch, 0, dst);
         } else {
-            /* the rows as they are, the pitch's texels to a row */
+            /* the rows as they are, the pitch's texels to a row: from the
+             * RAM itself where it can be */
             assert(adjusted_width <= s.width);
             size_t size = (size_t)adjusted_pitch * adjusted_height;
-            uint8_t *dst = stage_level(pg, level, adjusted_width,
-                                       adjusted_height, 1, size);
-            memcpy(dst, texture_data_ptr, size);
+            if (!level_from_vram(pg, level, texture_data_ptr, adjusted_width,
+                                 adjusted_height, 1, size,
+                                 f.bytes_per_pixel)) {
+                uint8_t *dst = stage_level(pg, level, adjusted_width,
+                                           adjusted_height, 1, size);
+                memcpy(dst, texture_data_ptr, size);
+            }
             level->row_length = adjusted_pitch / f.bytes_per_pixel;
         }
         NV2A_VK_DGROUP_END();
@@ -550,8 +587,9 @@ static void upload_texture_image(PGRAPHState *pg, int texture_idx,
     const int num_layers = state->cubemap ? 6 : 1;
     const int num_levels = binding->logo ? 1 : state->levels;
 
-    VkBufferImageCopy regions[6 * 16];
-    int num_regions = 0;
+    /* the levels staged in the ring, and those taken from the RAM */
+    VkBufferImageCopy regions[6 * 16], vram_regions[6 * 16];
+    int num_regions = 0, num_vram_regions = 0;
     VkDeviceSize flush_lo = (VkDeviceSize)-1, flush_hi = 0;
 
     for (int layer_idx = 0; layer_idx < num_layers; layer_idx++) {
@@ -562,7 +600,10 @@ static void upload_texture_image(PGRAPHState *pg, int texture_idx,
             NV2A_VK_DPRINTF(" - Level %d, w=%d h=%d d=%d @ %08" HWADDR_PRIx,
                             level_idx, level->width, level->height,
                             level->depth, level->offset);
-            regions[num_regions++] = (VkBufferImageCopy){
+            VkBufferImageCopy *region = level->from_vram ?
+                                            &vram_regions[num_vram_regions++] :
+                                            &regions[num_regions++];
+            *region = (VkBufferImageCopy){
                 .bufferOffset = level->offset,
                 .bufferRowLength = level->row_length,
                 .bufferImageHeight = 0,
@@ -574,8 +615,10 @@ static void upload_texture_image(PGRAPHState *pg, int texture_idx,
                 .imageExtent =
                     (VkExtent3D){ level->width, level->height, level->depth },
             };
-            flush_lo = MIN(flush_lo, level->offset);
-            flush_hi = MAX(flush_hi, level->offset + level->size);
+            if (!level->from_vram) {
+                flush_lo = MIN(flush_lo, level->offset);
+                flush_hi = MAX(flush_hi, level->offset + level->size);
+            }
         }
     }
     /* the levels are one run of the ring, or one that rounded its end */
@@ -583,27 +626,48 @@ static void upload_texture_image(PGRAPHState *pg, int texture_idx,
         pgraph_vk_staging_flush(pg, flush_lo, flush_hi - flush_lo);
     }
 
-    VkBufferMemoryBarrier host_barrier = {
-        .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
-        .srcAccessMask = VK_ACCESS_HOST_WRITE_BIT,
-        .dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT,
-        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        .buffer = r->storage_buffers[BUFFER_STAGING_SRC].buffer,
-        .size = VK_WHOLE_SIZE
+    /* the host's writes - the ring's, and the guest's to its RAM - before
+     * the copies */
+    VkBufferMemoryBarrier host_barriers[2] = {
+        {
+            .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
+            .srcAccessMask = VK_ACCESS_HOST_WRITE_BIT,
+            .dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT,
+            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .buffer = r->storage_buffers[BUFFER_STAGING_SRC].buffer,
+            .size = VK_WHOLE_SIZE
+        },
+        {
+            .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
+            .srcAccessMask = VK_ACCESS_HOST_WRITE_BIT,
+            .dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT,
+            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .buffer = r->vram_buffer,
+            .size = VK_WHOLE_SIZE
+        },
     };
     vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_HOST_BIT,
-                         VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 1,
-                         &host_barrier, 0, NULL);
+                         VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL,
+                         num_vram_regions ? 2 : 1, host_barriers, 0, NULL);
 
     pgraph_vk_transition_image_layout(pg, cmd, binding->image, vkf.vk_format,
                                       binding->current_layout,
                                       VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
     binding->current_layout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
 
-    vkCmdCopyBufferToImage(cmd, r->storage_buffers[BUFFER_STAGING_SRC].buffer,
-                           binding->image, binding->current_layout,
-                           num_regions, regions);
+    if (num_regions) {
+        vkCmdCopyBufferToImage(cmd,
+                               r->storage_buffers[BUFFER_STAGING_SRC].buffer,
+                               binding->image, binding->current_layout,
+                               num_regions, regions);
+    }
+    if (num_vram_regions) {
+        vkCmdCopyBufferToImage(cmd, r->vram_buffer, binding->image,
+                               binding->current_layout, num_vram_regions,
+                               vram_regions);
+    }
 
     pgraph_vk_transition_image_layout(pg, cmd, binding->image, vkf.vk_format,
                                       binding->current_layout,

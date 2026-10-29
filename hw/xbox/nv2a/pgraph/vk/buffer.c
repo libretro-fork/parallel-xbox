@@ -89,10 +89,120 @@ void pgraph_vk_reserve_compute_buffers(PGRAPHState *pg, unsigned int scale)
     }
 }
 
+/* The Xbox's RAM imported as a buffer the GPU copies from
+ * (VK_EXT_external_memory_host): the whole of it, page aligned as QEMU
+ * maps it, in a host-coherent memory type the driver can import it to.
+ * Where any of that is not given, no buffer, and every upload goes through
+ * the staging ring. */
+static void create_vram_buffer(NV2AState *d)
+{
+    PGRAPHState *pg = &d->pgraph;
+    PGRAPHVkState *r = pg->vk_renderer_state;
+
+    r->vram_buffer = VK_NULL_HANDLE;
+    r->vram_memory = VK_NULL_HANDLE;
+    if (!r->external_memory_host_extension_enabled ||
+        !vkGetMemoryHostPointerPropertiesEXT) {
+        return;
+    }
+
+    VkPhysicalDeviceExternalMemoryHostPropertiesEXT host_props = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTERNAL_MEMORY_HOST_PROPERTIES_EXT,
+    };
+    VkPhysicalDeviceProperties2 props2 = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2,
+        .pNext = &host_props,
+    };
+    vkGetPhysicalDeviceProperties2(r->physical_device, &props2);
+    VkDeviceSize align = host_props.minImportedHostPointerAlignment;
+    VkDeviceSize size = memory_region_size(d->vram);
+    if (!align || ((uintptr_t)d->vram_ptr % align) || (size % align)) {
+        return;
+    }
+
+    VkMemoryHostPointerPropertiesEXT ptr_props = {
+        .sType = VK_STRUCTURE_TYPE_MEMORY_HOST_POINTER_PROPERTIES_EXT,
+    };
+    if (vkGetMemoryHostPointerPropertiesEXT(
+            r->device, VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION_BIT_EXT,
+            d->vram_ptr, &ptr_props) != VK_SUCCESS) {
+        return;
+    }
+
+    VkExternalMemoryBufferCreateInfo external_info = {
+        .sType = VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_BUFFER_CREATE_INFO,
+        .handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION_BIT_EXT,
+    };
+    VkBufferCreateInfo buffer_info = {
+        .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+        .pNext = &external_info,
+        .size = size,
+        .usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+        .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+    };
+    VkBuffer buffer;
+    if (vkCreateBuffer(r->device, &buffer_info, NULL, &buffer) != VK_SUCCESS) {
+        return;
+    }
+    VkMemoryRequirements req;
+    vkGetBufferMemoryRequirements(r->device, buffer, &req);
+    VkPhysicalDeviceMemoryProperties mem_props;
+    vkGetPhysicalDeviceMemoryProperties(r->physical_device, &mem_props);
+    uint32_t bits = req.memoryTypeBits & ptr_props.memoryTypeBits;
+    int type = -1;
+    for (uint32_t i = 0; i < mem_props.memoryTypeCount && type < 0; i++) {
+        const VkMemoryPropertyFlags want = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                                           VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+        if ((bits & (1u << i)) &&
+            (mem_props.memoryTypes[i].propertyFlags & want) == want) {
+            type = i;
+        }
+    }
+    if (type < 0 || req.size > size) {
+        vkDestroyBuffer(r->device, buffer, NULL);
+        return;
+    }
+    VkImportMemoryHostPointerInfoEXT import_info = {
+        .sType = VK_STRUCTURE_TYPE_IMPORT_MEMORY_HOST_POINTER_INFO_EXT,
+        .handleType = VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION_BIT_EXT,
+        .pHostPointer = d->vram_ptr,
+    };
+    VkMemoryAllocateInfo alloc_info = {
+        .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+        .pNext = &import_info,
+        .allocationSize = size,
+        .memoryTypeIndex = type,
+    };
+    VkDeviceMemory memory;
+    if (vkAllocateMemory(r->device, &alloc_info, NULL, &memory) != VK_SUCCESS) {
+        vkDestroyBuffer(r->device, buffer, NULL);
+        return;
+    }
+    if (vkBindBufferMemory(r->device, buffer, memory, 0) != VK_SUCCESS) {
+        vkFreeMemory(r->device, memory, NULL);
+        vkDestroyBuffer(r->device, buffer, NULL);
+        return;
+    }
+    r->vram_buffer = buffer;
+    r->vram_memory = memory;
+}
+
+static void destroy_vram_buffer(PGRAPHVkState *r)
+{
+    if (r->vram_buffer != VK_NULL_HANDLE) {
+        vkDestroyBuffer(r->device, r->vram_buffer, NULL);
+        vkFreeMemory(r->device, r->vram_memory, NULL);
+        r->vram_buffer = VK_NULL_HANDLE;
+        r->vram_memory = VK_NULL_HANDLE;
+    }
+}
+
 void pgraph_vk_init_buffers(NV2AState *d)
 {
     PGRAPHState *pg = &d->pgraph;
     PGRAPHVkState *r = pg->vk_renderer_state;
+
+    create_vram_buffer(d);
 
     // FIXME: Profile buffer sizes
 
@@ -277,6 +387,8 @@ void pgraph_vk_finalize_buffers(NV2AState *d)
     r->vertex_consumed_bitmap = NULL;
     g_free(r->vertex_stale_bitmap);
     r->vertex_stale_bitmap = NULL;
+
+    destroy_vram_buffer(r);
 }
 
 bool pgraph_vk_buffer_has_space_for(PGRAPHState *pg, int index,

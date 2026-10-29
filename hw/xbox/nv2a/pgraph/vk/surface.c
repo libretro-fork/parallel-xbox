@@ -1227,36 +1227,50 @@ void pgraph_vk_upload_surface_data(NV2AState *d, SurfaceBinding *surface,
     VkCommandBuffer cmd = pgraph_vk_begin_single_time_commands(pg);
     pgraph_vk_begin_debug_marker(r, cmd, RGBA_RED, __func__);
 
-    uint8_t *staged;
-    VkDeviceSize staged_offset =
-        pgraph_vk_staging_alloc(pg, uploaded_image_size, 16, &staged);
-
     bool no_conversion_necessary =
         surface->color || surface->host_fmt.vk_format == VK_FORMAT_D16_UNORM ||
         use_compute_to_convert_depth_stencil_format;
     assert(no_conversion_necessary);
 
-    if (surface->swizzle) {
-        /* unswizzled straight into the ring, its rows packed */
-        unswizzle_rect(buf, surface->width, surface->height, staged,
-                       surface->width * surface->fmt.bytes_per_pixel,
-                       surface->fmt.bytes_per_pixel);
-        nv2a_profile_inc_counter(NV2A_PROF_SURF_SWIZZLE);
+    /* A linear surface is copied from the RAM itself where the RAM is a
+     * buffer (its rows the pitch apart); a swizzled one is unswizzled
+     * straight into the ring, its rows packed. The compute unpack reads
+     * the ring. */
+    VkDeviceSize staged_offset = 0;
+    unsigned int staged_row_length = 0;
+    bool from_vram = !surface->swizzle && r->vram_buffer != VK_NULL_HANDLE &&
+                     !use_compute_to_convert_depth_stencil_format &&
+                     surface->vram_addr % surface->fmt.bytes_per_pixel == 0 &&
+                     surface->vram_addr % 4 == 0 &&
+                     surface->pitch % surface->fmt.bytes_per_pixel == 0;
+    if (from_vram) {
+        staged_offset = surface->vram_addr;
+        staged_row_length = surface->pitch / surface->fmt.bytes_per_pixel;
     } else {
-        memcpy_image(staged, buf,
-                     surface->width * surface->fmt.bytes_per_pixel,
-                     surface->pitch, surface->height);
+        uint8_t *staged;
+        staged_offset =
+            pgraph_vk_staging_alloc(pg, uploaded_image_size, 16, &staged);
+        if (surface->swizzle) {
+            unswizzle_rect(buf, surface->width, surface->height, staged,
+                           surface->width * surface->fmt.bytes_per_pixel,
+                           surface->fmt.bytes_per_pixel);
+            nv2a_profile_inc_counter(NV2A_PROF_SURF_SWIZZLE);
+        } else {
+            memcpy_image(staged, buf,
+                         surface->width * surface->fmt.bytes_per_pixel,
+                         surface->pitch, surface->height);
+        }
+        pgraph_vk_staging_flush(pg, staged_offset, uploaded_image_size);
     }
 
-    pgraph_vk_staging_flush(pg, staged_offset, uploaded_image_size);
-
+    VkBuffer source_buffer = from_vram ? r->vram_buffer : copy_buffer->buffer;
     VkBufferMemoryBarrier host_barrier = {
         .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
         .srcAccessMask = VK_ACCESS_HOST_WRITE_BIT,
         .dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT,
         .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
         .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        .buffer = copy_buffer->buffer,
+        .buffer = source_buffer,
         .size = VK_WHOLE_SIZE
     };
     vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_HOST_BIT,
@@ -1270,6 +1284,7 @@ void pgraph_vk_upload_surface_data(NV2AState *d, SurfaceBinding *surface,
 
     regions[num_regions++] = (VkBufferImageCopy){
         .bufferOffset = staged_offset,
+        .bufferRowLength = staged_row_length,
         .imageSubresource.aspectMask = surface->color ?
                                            VK_IMAGE_ASPECT_COLOR_BIT :
                                            VK_IMAGE_ASPECT_DEPTH_BIT,
@@ -1393,7 +1408,7 @@ void pgraph_vk_upload_surface_data(NV2AState *d, SurfaceBinding *surface,
             ROUND_UP(unpacked_depth_image_size,
                      r->device_props.limits.minStorageBufferOffsetAlignment);
 
-        copy_buffer = unpack_buffer;
+        source_buffer = unpack_buffer->buffer;
     }
 
     //
@@ -1410,7 +1425,7 @@ void pgraph_vk_upload_surface_data(NV2AState *d, SurfaceBinding *surface,
             VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
     }
 
-    vkCmdCopyBufferToImage(cmd, copy_buffer->buffer, surface->image_scratch,
+    vkCmdCopyBufferToImage(cmd, source_buffer, surface->image_scratch,
                            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, num_regions,
                            regions);
 
@@ -1420,7 +1435,7 @@ void pgraph_vk_upload_surface_data(NV2AState *d, SurfaceBinding *surface,
         .dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
         .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
         .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        .buffer = copy_buffer->buffer,
+        .buffer = source_buffer,
         .size = VK_WHOLE_SIZE
     };
     vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,

@@ -437,6 +437,7 @@ typedef struct PGRAPHVkState {
     bool debug_utils_extension_enabled;
     bool custom_border_color_extension_enabled;
     bool memory_budget_extension_enabled;
+    bool external_memory_host_extension_enabled;
     bool pipeline_library_extension_enabled;
     bool pipeline_library;
     bool host_query_reset;
@@ -693,6 +694,12 @@ typedef struct PGRAPHVkState {
     TextureBinding dummy_texture;
     bool texture_bindings_changed;
     uint64_t texture_binding_seq;
+    /* The Xbox's RAM as a Vulkan buffer (VK_EXT_external_memory_host,
+     * buffer.c): a texture level or a surface the GPU can take as it is
+     * is copied straight from it, with no pass through the CPU.
+     * VK_NULL_HANDLE where the device cannot import it. */
+    VkBuffer vram_buffer;
+    VkDeviceMemory vram_memory;
     VkFormatProperties *texture_format_properties;
     /* S3TC textures uploaded as BC1/2/3, their blocks as they are: the
      * device has textureCompressionBC and samples and copies into the

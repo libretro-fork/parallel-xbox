@@ -818,11 +818,12 @@ static bool xemu_vk_create_device(struct retro_vulkan_context *context,
      * pgraph/vk/instance.c) */
     enum {
         EXT_CUSTOM_BORDER, EXT_MEMORY_BUDGET, EXT_EDS, EXT_EDS3,
-        EXT_VERTEX_INPUT, EXT_PIPELINE_LIBRARY, EXT_GPL,
+        EXT_VERTEX_INPUT, EXT_PIPELINE_LIBRARY, EXT_GPL, EXT_HOST_MEMORY,
     };
     static const char *const own_exts[] = {
         [EXT_CUSTOM_BORDER] = VK_EXT_CUSTOM_BORDER_COLOR_EXTENSION_NAME,
         [EXT_MEMORY_BUDGET] = VK_EXT_MEMORY_BUDGET_EXTENSION_NAME,
+        [EXT_HOST_MEMORY] = VK_EXT_EXTERNAL_MEMORY_HOST_EXTENSION_NAME,
         [EXT_EDS] = VK_EXT_EXTENDED_DYNAMIC_STATE_EXTENSION_NAME,
         [EXT_EDS3] = VK_EXT_EXTENDED_DYNAMIC_STATE_3_EXTENSION_NAME,
         [EXT_VERTEX_INPUT] = VK_EXT_VERTEX_INPUT_DYNAMIC_STATE_EXTENSION_NAME,
@@ -1055,6 +1056,7 @@ static bool xemu_vk_create_device(struct retro_vulkan_context *context,
     xemu_libretro_vk.features = features;
     xemu_libretro_vk.custom_border_color = own_ext_enabled[EXT_CUSTOM_BORDER];
     xemu_libretro_vk.memory_budget = own_ext_enabled[EXT_MEMORY_BUDGET];
+    xemu_libretro_vk.external_memory_host = own_ext_enabled[EXT_HOST_MEMORY];
     xemu_libretro_vk.dyn_cull_front = dyn_cull_front;
     xemu_libretro_vk.dyn_blend = dyn_blend;
     xemu_libretro_vk.dyn_vertex_input = dyn_vertex_input;
