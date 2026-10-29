@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Vulkan: converting depth buffers between the Xbox's format and the PC GPU's (when a game reads its depth buffer back, writes it with the CPU, or uses it as a texture) no longer makes the core stop and wait for the GPU to finish all its work every 1,024 conversions. Depth read-backs now also go to the GPU together with the other read-backs, in one submission with one wait.
+
 - CPU Boost: repeated MOVS copies chain between translated iterations instead of returning to the dispatcher for every element. Each element still performs the normal guest load/store and instruction-budget checks; debugger, interrupt-shadow and shortened-budget blocks retain their existing paths. No host bulk copy replaces the emulated memory accesses.
 
 - The emulator thread no longer takes a lock shared with the GPU thread when a game touches memory the GPU draws into. It used to wait for the GPU thread to finish up to 64 commands first; now it only marks the pages it touched and the GPU thread picks that up before its next command. It still waits when the game reads something the GPU has drawn but not yet written back to memory, and then only for that read-back.

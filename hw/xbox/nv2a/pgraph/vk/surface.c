@@ -346,23 +346,23 @@ static bool download_surface_to_buffer(NV2AState *d, SurfaceBinding *surface,
                          surface->width * bpp <=
                      memory_region_size(d->vram));
 
-    /* A direct read-back joins the open batch (pgraph_vk_readback_batch_
-     * begin): recorded into its command buffer, waited for with the rest.
+    /* A direct read-back joins the open batch (readback_batch_begin):
+     * recorded into its command buffer, waited for with the rest. A depth
+     * and stencil one joins too when the compute buffers already hold it;
+     * growing them waits for everything in flight, the batch included.
      * Anything else settles the batch first. */
-    bool batched = direct && r->readback_batch.open &&
-                   !use_compute_to_convert_depth_stencil_format;
+    unsigned int compute_w = surface->width, compute_h = surface->height;
+    pgraph_apply_scaling_factor(pg, &compute_w, &compute_h);
+    bool batched =
+        direct && r->readback_batch.open &&
+        (!use_compute_to_convert_depth_stencil_format ||
+         (VkDeviceSize)compute_w * compute_h * 8 <=
+             r->storage_buffers[BUFFER_COMPUTE_DST].buffer_size);
     if (!batched) {
         readback_batch_flush(d);
     }
 
-    bool compute_needs_finish = (use_compute_to_convert_depth_stencil_format &&
-                                 pgraph_vk_compute_needs_finish(r));
-
-    if (compute_needs_finish) {
-        /* Only a synchronous finish resets the compute descriptor sets: an
-         * asynchronous SURFACE_DOWN would leave them full. */
-        pgraph_vk_finish(pg, VK_FINISH_REASON_NEED_BUFFER_SPACE);
-    } else if (r->in_command_buffer &&
+    if (r->in_command_buffer &&
         (surface->draw_time >= r->command_buffer_start_time ||
          pgraph_vk_surface_borrow_pending(r, surface))) {
         pgraph_vk_finish(pg, VK_FINISH_REASON_SURFACE_DOWN);
@@ -1472,11 +1472,6 @@ void pgraph_vk_upload_surface_data(NV2AState *d, SurfaceBinding *surface,
         pgraph_apply_scaling_factor(pg, &cw, &ch);
         pgraph_vk_buffer_ensure_capacity(pg, BUFFER_COMPUTE_DST,
                                          (VkDeviceSize)cw * ch * 8);
-        /* The unpack takes a compute descriptor set: with none left, a
-         * synchronous finish frees them, as on the download path. */
-        if (pgraph_vk_compute_needs_finish(r)) {
-            pgraph_vk_finish(pg, VK_FINISH_REASON_NEED_BUFFER_SPACE);
-        }
         /* The compute buffers are one set, which an earlier submission may
          * still be using; no wait for it here: every user ends its use
          * with barriers into the transfer stage (the unpack below, the

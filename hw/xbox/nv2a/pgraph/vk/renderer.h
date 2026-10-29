@@ -412,8 +412,9 @@ typedef struct ComputePipeline {
 typedef struct PGRAPHVkComputeState {
     VkDescriptorPool descriptor_pool;
     VkDescriptorSetLayout descriptor_set_layout;
-    VkDescriptorSet descriptor_sets[1024];
-    int descriptor_set_index;
+    /* one set each, written at init and when the compute buffers are
+     * recreated (surface-compute.c write_descriptor_sets) */
+    VkDescriptorSet set_pack, set_unpack;
     VkPipelineLayout pipeline_layout;
     Lru pipeline_cache;
     ComputePipeline *pipeline_cache_entries;
@@ -1006,8 +1007,9 @@ void pgraph_vk_reload_surface_scale_factor(PGRAPHState *pg);
 
 // surface-compute.c
 void pgraph_vk_init_compute(PGRAPHState *pg);
-bool pgraph_vk_compute_needs_finish(PGRAPHVkState *r);
-void pgraph_vk_compute_finish_complete(PGRAPHVkState *r);
+/* After BUFFER_COMPUTE_DST/SRC are recreated, nothing in flight: the
+ * pack and unpack sets point at the new buffers */
+void pgraph_vk_compute_buffers_changed(PGRAPHState *pg);
 void pgraph_vk_finalize_compute(PGRAPHState *pg);
 void pgraph_vk_pack_depth_stencil(PGRAPHState *pg, SurfaceBinding *surface,
                                   VkCommandBuffer cmd, VkBuffer src,

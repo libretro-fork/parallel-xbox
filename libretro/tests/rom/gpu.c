@@ -39,6 +39,13 @@
  *              reads its first and last words back (GPU_ZETA0, GPU_ZETA1):
  *              both the clear value
  *
+ *   frame 70   the CPU writes B's whole depth buffer: depth 0xAABBCC,
+ *              stencil 0x11, as a game writes its depth buffer
+ *   frame 71   only B's stencil cleared, to 0x55: the renderer takes the
+ *              depth the CPU wrote first (on Vulkan through the unpack
+ *              shader); at frame 72 the CPU reads it back (on Vulkan through
+ *              the pack shader): 0xAABBCC55 at GPU_ZETA2
+ *
  *   from frame 50: into B, a triangle drawn, B cleared, the same triangle
  *              drawn again: draws and clears on both renderers, the
  *              picture (A) unchanged by them
@@ -70,6 +77,7 @@ typedef unsigned int u32;
 #define GPU_SWZ_WORD 0x00300028u   /* u32: the first wrong one */
 #define GPU_ZETA0    0x0030002Cu   /* u32: B's first depth word, frame 63 */
 #define GPU_ZETA1    0x00300030u   /* u32: B's last depth word, frame 63 */
+#define GPU_ZETA2    0x00300034u   /* u32: B's depth word at frame 72 */
 /* 0x00300010: the pushbuffer's write offset (put) */
 
 #define NV2A         0xFD000000u   /* BAR0, the registers */
@@ -320,6 +328,25 @@ static __attribute__((noinline)) void draw_swizzled(void)
     method(NV097_SET_SURFACE_PITCH, PITCH | ((u32)PITCH << 16));
 }
 
+/* B's depth buffer written by the CPU */
+static __attribute__((noinline)) void write_zeta(void)
+{
+    for (u32 i = 0; i < PITCH * HEIGHT; i += 4) {
+        ram32(ZETA_B + i, 0xAABBCC11u);
+    }
+}
+
+static __attribute__((noinline)) void clear_stencil(void)
+{
+    method(NV097_SET_SURFACE_COLOR_OFFSET, SURF_B);
+    method(NV097_SET_ZSTENCIL_CLEAR_VALUE, 0x00000055u);
+    method(NV097_SET_CLEAR_RECT_H, (u32)(WIDTH - 1) << 16);
+    method(NV097_SET_CLEAR_RECT_V, (u32)(HEIGHT - 1) << 16);
+    method(NV097_SET_DEPTH_MASK, 1);
+    method(NV097_CLEAR_SURFACE, 0x02); /* stencil */
+    method(NV097_SET_DEPTH_MASK, 0);
+}
+
 static __attribute__((noinline)) void check_swizzled(void)
 {
     u32 bad = 0, word = 0;
@@ -356,6 +383,7 @@ void gpu_main(void)
     ram32(GPU_SWZ_WORD, 0);
     ram32(GPU_ZETA0, 0);
     ram32(GPU_ZETA1, 0);
+    ram32(GPU_ZETA2, 0);
     /* the no-op subroutine: seven no-op methods of 2047 words, a return */
     {
         u32 at = PUSHBUF + NOP_SUB;
@@ -486,6 +514,15 @@ void gpu_main(void)
         }
         if (frame == 60) {
             draw_swizzled();
+        }
+        if (frame == 70) {
+            write_zeta();
+        }
+        if (frame == 71) {
+            clear_stencil();
+        }
+        if (frame == 72) {
+            ram32(GPU_ZETA2, rd32(ZETA_B + PITCH * 100 + 200 * 4));
         }
         if (frame == 62) {
             method(NV097_SET_SURFACE_COLOR_OFFSET, SURF_B);

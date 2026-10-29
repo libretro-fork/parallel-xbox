@@ -473,6 +473,7 @@ void pgraph_vk_buffer_ensure_capacity(PGRAPHState *pg, int index,
     if (index == BUFFER_COMPUTE_DST || index == BUFFER_COMPUTE_SRC) {
         recreate_buffer(pg, &r->storage_buffers[BUFFER_COMPUTE_DST], size);
         recreate_buffer(pg, &r->storage_buffers[BUFFER_COMPUTE_SRC], size);
+        pgraph_vk_compute_buffers_changed(pg);
         return;
     }
     if (index == BUFFER_STAGING_DST || index == BUFFER_STAGING_SRC) {

@@ -814,12 +814,6 @@ static void copy_zeta_surface_to_texture(PGRAPHState *pg, SurfaceBinding *surfac
         surface->host_fmt.vk_format == VK_FORMAT_D24_UNORM_S8_UINT ||
         surface->host_fmt.vk_format == VK_FORMAT_D32_SFLOAT_S8_UINT;
 
-    bool compute_needs_finish = use_compute_to_convert_depth_stencil &&
-                                pgraph_vk_compute_needs_finish(r);
-    if (compute_needs_finish) {
-        pgraph_vk_finish(pg, VK_FINISH_REASON_NEED_BUFFER_SPACE);
-    }
-
     nv2a_profile_inc_counter(NV2A_PROF_SURF_TO_TEX);
 
     trace_nv2a_pgraph_surface_render_to_texture(

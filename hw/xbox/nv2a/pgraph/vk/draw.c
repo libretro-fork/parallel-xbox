@@ -2998,7 +2998,7 @@ void pgraph_vk_wait_all_slots(PGRAPHVkState *r)
     frame_gpu_resolve_until(r, r->frame_gpu.w);
 }
 
-/* Global teardown (descriptor sets, trash, compute, budget); only legal with
+/* Global teardown (descriptor sets, trash, budget); only legal with
  * every slot settled and no recording open. */
 static void teardown_after_settle(PGRAPHState *pg)
 {
@@ -3008,7 +3008,6 @@ static void teardown_after_settle(PGRAPHState *pg)
         assert(!r->slot_fence_pending[s]);
     }
     pgraph_vk_trash_drain(r);
-    pgraph_vk_compute_finish_complete(r);
 
     /* Every submission so far has retired. */
     r->settled_submit = r->submit_count;

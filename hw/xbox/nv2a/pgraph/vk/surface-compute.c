@@ -30,7 +30,7 @@
 //        swizzle shader we will need more flexibility.
 
 const char *pack_d24_unorm_s8_uint_to_z24s8_glsl =
-    "layout(push_constant) uniform PushConstants { uint width_in, width_out; };\n"
+    "layout(push_constant) uniform PushConstants { uint width_in, width_out, stencil_base; };\n"
     "layout(set = 0, binding = 0) buffer DepthIn { uint depth_in[]; };\n"
     "layout(set = 0, binding = 1) buffer StencilIn { uint stencil_in[]; };\n"
     "layout(set = 0, binding = 2) buffer DepthStencilOut { uint depth_stencil_out[]; };\n"
@@ -44,12 +44,12 @@ const char *pack_d24_unorm_s8_uint_to_z24s8_glsl =
     "    uint idx_out = gl_GlobalInvocationID.x;\n"
     "    uint idx_in = get_input_idx(idx_out);\n"
     "    uint depth_value = depth_in[idx_in];\n"
-    "    uint stencil_value = (stencil_in[idx_in / 4] >> ((idx_in % 4) * 8)) & 0xff;\n"
+    "    uint stencil_value = (stencil_in[stencil_base + idx_in / 4] >> ((idx_in % 4) * 8)) & 0xff;\n"
     "    depth_stencil_out[idx_out] = depth_value << 8 | stencil_value;\n"
     "}\n";
 
 const char *unpack_z24s8_to_d24_unorm_s8_uint_glsl =
-    "layout(push_constant) uniform PushConstants { uint width_in, width_out; };\n"
+    "layout(push_constant) uniform PushConstants { uint width_in, width_out, stencil_base; };\n"
     "layout(set = 0, binding = 0) buffer DepthOut { uint depth_out[]; };\n"
     "layout(set = 0, binding = 1) buffer StencilOut { uint stencil_out[]; };\n"
     "layout(set = 0, binding = 2) buffer DepthStencilIn { uint depth_stencil_in[]; };\n"
@@ -69,12 +69,12 @@ const char *unpack_z24s8_to_d24_unorm_s8_uint_glsl =
     "           uint v = depth_stencil_in[get_input_idx(idx_out + i)] & 0xff;\n"
     "           stencil_value |= v << (i * 8);\n"
     "       }\n"
-    "       stencil_out[idx_out / 4] = stencil_value;\n"
+    "       stencil_out[stencil_base + idx_out / 4] = stencil_value;\n"
     "    }\n"
     "}\n";
 
 const char *pack_d32_sfloat_s8_uint_to_z24s8_glsl =
-    "layout(push_constant) uniform PushConstants { uint width_in, width_out; };\n"
+    "layout(push_constant) uniform PushConstants { uint width_in, width_out, stencil_base; };\n"
     "layout(set = 0, binding = 0) buffer DepthIn { float depth_in[]; };\n"
     "layout(set = 0, binding = 1) buffer StencilIn { uint stencil_in[]; };\n"
     "layout(set = 0, binding = 2) buffer DepthStencilOut { uint depth_stencil_out[]; };\n"
@@ -88,12 +88,12 @@ const char *pack_d32_sfloat_s8_uint_to_z24s8_glsl =
     "    uint idx_out = gl_GlobalInvocationID.x;\n"
     "    uint idx_in = get_input_idx(idx_out);\n"
     "    uint depth_value = int(depth_in[idx_in] * float(0xffffff));\n"
-    "    uint stencil_value = (stencil_in[idx_in / 4] >> ((idx_in % 4) * 8)) & 0xff;\n"
+    "    uint stencil_value = (stencil_in[stencil_base + idx_in / 4] >> ((idx_in % 4) * 8)) & 0xff;\n"
     "    depth_stencil_out[idx_out] = depth_value << 8 | stencil_value;\n"
     "}\n";
 
 const char *unpack_z24s8_to_d32_sfloat_s8_uint_glsl =
-    "layout(push_constant) uniform PushConstants { uint width_in, width_out; };\n"
+    "layout(push_constant) uniform PushConstants { uint width_in, width_out, stencil_base; };\n"
     "layout(set = 0, binding = 0) buffer DepthOut { float depth_out[]; };\n"
     "layout(set = 0, binding = 1) buffer StencilOut { uint stencil_out[]; };\n"
     "layout(set = 0, binding = 2) buffer DepthStencilIn { uint depth_stencil_in[]; };\n"
@@ -114,7 +114,7 @@ const char *unpack_z24s8_to_d32_sfloat_s8_uint_glsl =
     "           uint v = depth_stencil_in[get_input_idx(idx_out + i)] & 0xff;\n"
     "           stencil_value |= v << (i * 8);\n"
     "       }\n"
-    "       stencil_out[idx_out / 4] = stencil_value;\n"
+    "       stencil_out[stencil_base + idx_out / 4] = stencil_value;\n"
     "    }\n"
     "}\n";
 
@@ -154,7 +154,7 @@ static void create_descriptor_pool(PGRAPHState *pg)
     VkDescriptorPoolSize pool_sizes[] = {
         {
             .type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-            .descriptorCount = 3 * ARRAY_SIZE(r->compute.descriptor_sets),
+            .descriptorCount = 3 * 2,
         },
     };
 
@@ -162,7 +162,7 @@ static void create_descriptor_pool(PGRAPHState *pg)
         .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
         .poolSizeCount = ARRAY_SIZE(pool_sizes),
         .pPoolSizes = pool_sizes,
-        .maxSets = ARRAY_SIZE(r->compute.descriptor_sets),
+        .maxSets = 2,
         .flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT,
     };
     VK_CHECK(vkCreateDescriptorPool(r->device, &pool_info, NULL,
@@ -210,34 +210,79 @@ static void destroy_descriptor_set_layout(PGRAPHState *pg)
     r->compute.descriptor_set_layout = VK_NULL_HANDLE;
 }
 
+/* The pack and the unpack always use the same two buffers, whole: the
+ * pack reads the depth and stencil planes from BUFFER_COMPUTE_DST and
+ * writes the packed surface into BUFFER_COMPUTE_SRC, the unpack the other
+ * way. So one descriptor set each, written at init and again when the two
+ * buffers are recreated (pgraph_vk_compute_buffers_changed, with nothing
+ * in flight); the stencil plane's place is a push constant. No set is
+ * used up per dispatch, so none ever runs out and nothing has to wait for
+ * the GPU to free them. */
+static void write_descriptor_sets(PGRAPHState *pg)
+{
+    PGRAPHVkState *r = pg->vk_renderer_state;
+    VkBuffer planes_pack = r->storage_buffers[BUFFER_COMPUTE_DST].buffer;
+    VkBuffer packed_pack = r->storage_buffers[BUFFER_COMPUTE_SRC].buffer;
+    VkDescriptorBufferInfo pack[3] = {
+        { .buffer = planes_pack, .range = VK_WHOLE_SIZE },
+        { .buffer = planes_pack, .range = VK_WHOLE_SIZE },
+        { .buffer = packed_pack, .range = VK_WHOLE_SIZE },
+    };
+    VkDescriptorBufferInfo unpack[3] = {
+        { .buffer = packed_pack, .range = VK_WHOLE_SIZE },
+        { .buffer = packed_pack, .range = VK_WHOLE_SIZE },
+        { .buffer = planes_pack, .range = VK_WHOLE_SIZE },
+    };
+    VkWriteDescriptorSet writes[6];
+    for (int i = 0; i < 6; i++) {
+        writes[i] = (VkWriteDescriptorSet){
+            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+            .dstSet = i < 3 ? r->compute.set_pack : r->compute.set_unpack,
+            .dstBinding = i % 3,
+            .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+            .descriptorCount = 1,
+            .pBufferInfo = i < 3 ? &pack[i] : &unpack[i - 3],
+        };
+    }
+    vkUpdateDescriptorSets(r->device, 6, writes, 0, NULL);
+}
+
+void pgraph_vk_compute_buffers_changed(PGRAPHState *pg)
+{
+    if (pg->vk_renderer_state->compute.set_pack != VK_NULL_HANDLE) {
+        write_descriptor_sets(pg);
+    }
+}
+
 static void create_descriptor_sets(PGRAPHState *pg)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
 
-    VkDescriptorSetLayout layouts[ARRAY_SIZE(r->compute.descriptor_sets)];
-    for (int i = 0; i < ARRAY_SIZE(layouts); i++) {
-        layouts[i] = r->compute.descriptor_set_layout;
-    }
+    VkDescriptorSetLayout layouts[2] = {
+        r->compute.descriptor_set_layout,
+        r->compute.descriptor_set_layout,
+    };
+    VkDescriptorSet sets[2];
     VkDescriptorSetAllocateInfo alloc_info = {
         .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
         .descriptorPool = r->compute.descriptor_pool,
-        .descriptorSetCount = ARRAY_SIZE(r->compute.descriptor_sets),
+        .descriptorSetCount = 2,
         .pSetLayouts = layouts,
     };
-    VK_CHECK(vkAllocateDescriptorSets(r->device, &alloc_info,
-                                      r->compute.descriptor_sets));
+    VK_CHECK(vkAllocateDescriptorSets(r->device, &alloc_info, sets));
+    r->compute.set_pack = sets[0];
+    r->compute.set_unpack = sets[1];
+    write_descriptor_sets(pg);
 }
 
 static void destroy_descriptor_sets(PGRAPHState *pg)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
+    VkDescriptorSet sets[2] = { r->compute.set_pack, r->compute.set_unpack };
 
-    vkFreeDescriptorSets(r->device, r->compute.descriptor_pool,
-                         ARRAY_SIZE(r->compute.descriptor_sets),
-                         r->compute.descriptor_sets);
-    for (int i = 0; i < ARRAY_SIZE(r->compute.descriptor_sets); i++) {
-        r->compute.descriptor_sets[i] = VK_NULL_HANDLE;
-    }
+    vkFreeDescriptorSets(r->device, r->compute.descriptor_pool, 2, sets);
+    r->compute.set_pack = VK_NULL_HANDLE;
+    r->compute.set_unpack = VK_NULL_HANDLE;
 }
 
 static void create_compute_pipeline_layout(PGRAPHState *pg)
@@ -246,7 +291,7 @@ static void create_compute_pipeline_layout(PGRAPHState *pg)
 
     VkPushConstantRange push_constant_range = {
         .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
-        .size = 2 * sizeof(uint32_t),
+        .size = 3 * sizeof(uint32_t),
     };
     VkPipelineLayoutCreateInfo pipeline_layout_info = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
@@ -289,47 +334,6 @@ static VkPipeline create_compute_pipeline(PGRAPHVkState *r, const char *glsl)
     pgraph_vk_destroy_shader_module(r, module);
 
     return pipeline;
-}
-
-static void update_descriptor_sets(PGRAPHState *pg,
-                                   VkDescriptorBufferInfo *buffers, int count)
-{
-    PGRAPHVkState *r = pg->vk_renderer_state;
-
-    assert(count == 3);
-    VkWriteDescriptorSet descriptor_writes[3];
-
-    assert(r->compute.descriptor_set_index <
-           ARRAY_SIZE(r->compute.descriptor_sets));
-
-    for (int i = 0; i < count; i++) {
-        descriptor_writes[i] = (VkWriteDescriptorSet){
-            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-            .dstSet =
-                r->compute.descriptor_sets[r->compute.descriptor_set_index],
-            .dstBinding = i,
-            .dstArrayElement = 0,
-            .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-            .descriptorCount = 1,
-            .pBufferInfo = &buffers[i],
-        };
-    }
-    vkUpdateDescriptorSets(r->device, count, descriptor_writes, 0, NULL);
-
-    r->compute.descriptor_set_index += 1;
-}
-
-bool pgraph_vk_compute_needs_finish(PGRAPHVkState *r)
-{
-    bool need_descriptor_write_reset = (r->compute.descriptor_set_index >=
-                                        ARRAY_SIZE(r->compute.descriptor_sets));
-
-    return need_descriptor_write_reset;
-}
-
-void pgraph_vk_compute_finish_complete(PGRAPHVkState *r)
-{
-    r->compute.descriptor_set_index = 0;
 }
 
 static int get_workgroup_size_for_output_units(PGRAPHVkState *r, int output_units)
@@ -415,27 +419,18 @@ void pgraph_vk_pack_depth_stencil_dims(PGRAPHState *pg,
     size_t output_bytes_per_pixel = 4;
     size_t output_size = output_width * output_height * output_bytes_per_pixel;
 
-    VkDescriptorBufferInfo buffers[] = {
-        {
-            .buffer = src,
-            .offset = 0,
-            .range = depth_size,
-        },
-        {
-            .buffer = src,
-            .offset = ROUND_UP(
-                depth_size,
-                r->device_props.limits.minStorageBufferOffsetAlignment),
-            .range = stencil_size,
-        },
-        {
-            .buffer = dst,
-            .offset = 0,
-            .range = output_size,
-        },
-    };
-
-    update_descriptor_sets(pg, buffers, ARRAY_SIZE(buffers));
+    /* the fixed set's buffers (write_descriptor_sets) */
+    assert(src == r->storage_buffers[BUFFER_COMPUTE_DST].buffer &&
+           dst == r->storage_buffers[BUFFER_COMPUTE_SRC].buffer);
+    assert(ROUND_UP(depth_size,
+                    r->device_props.limits.minStorageBufferOffsetAlignment) +
+               stencil_size <=
+           r->storage_buffers[BUFFER_COMPUTE_DST].buffer_size);
+    assert(output_size <= r->storage_buffers[BUFFER_COMPUTE_SRC].buffer_size);
+    /* the stencil plane follows the depth one, aligned as the copy put it */
+    uint32_t stencil_base =
+        ROUND_UP(depth_size,
+                 r->device_props.limits.minStorageBufferOffsetAlignment) / 4;
 
     size_t output_size_in_units = output_width * output_height;
     ComputePipeline *pipeline = get_compute_pipeline(
@@ -454,11 +449,9 @@ void pgraph_vk_pack_depth_stencil_dims(PGRAPHState *pg,
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline->pipeline);
     vkCmdBindDescriptorSets(
         cmd, VK_PIPELINE_BIND_POINT_COMPUTE, r->compute.pipeline_layout, 0, 1,
-        &r->compute.descriptor_sets[r->compute.descriptor_set_index - 1], 0,
-        NULL);
+        &r->compute.set_pack, 0, NULL);
 
-    uint32_t push_constants[2] = { input_width, output_width };
-    assert(sizeof(push_constants) == 8);
+    uint32_t push_constants[3] = { input_width, output_width, stencil_base };
     vkCmdPushConstants(cmd, r->compute.pipeline_layout,
                        VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(push_constants),
                        push_constants);
@@ -489,26 +482,18 @@ void pgraph_vk_unpack_depth_stencil(PGRAPHState *pg, SurfaceBinding *surface,
     size_t input_bytes_per_pixel = 4;
     size_t input_size = input_width * input_height * input_bytes_per_pixel;
 
-    VkDescriptorBufferInfo buffers[] = {
-        {
-            .buffer = dst,
-            .offset = 0,
-            .range = depth_size,
-        },
-        {
-            .buffer = dst,
-            .offset = ROUND_UP(
-                depth_size,
-                r->device_props.limits.minStorageBufferOffsetAlignment),
-            .range = stencil_size,
-        },
-        {
-            .buffer = src,
-            .offset = 0,
-            .range = input_size,
-        },
-    };
-    update_descriptor_sets(pg, buffers, ARRAY_SIZE(buffers));
+    /* the fixed set's buffers (write_descriptor_sets) */
+    assert(src == r->storage_buffers[BUFFER_COMPUTE_DST].buffer &&
+           dst == r->storage_buffers[BUFFER_COMPUTE_SRC].buffer);
+    assert(ROUND_UP(depth_size,
+                    r->device_props.limits.minStorageBufferOffsetAlignment) +
+               stencil_size <=
+           r->storage_buffers[BUFFER_COMPUTE_SRC].buffer_size);
+    assert(input_size <= r->storage_buffers[BUFFER_COMPUTE_DST].buffer_size);
+    /* the stencil plane follows the depth one, aligned as the copy reads it */
+    uint32_t stencil_base =
+        ROUND_UP(depth_size,
+                 r->device_props.limits.minStorageBufferOffsetAlignment) / 4;
 
     size_t output_size_in_units = output_width * output_height;
     ComputePipeline *pipeline = get_compute_pipeline(
@@ -527,12 +512,10 @@ void pgraph_vk_unpack_depth_stencil(PGRAPHState *pg, SurfaceBinding *surface,
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline->pipeline);
     vkCmdBindDescriptorSets(
         cmd, VK_PIPELINE_BIND_POINT_COMPUTE, r->compute.pipeline_layout, 0, 1,
-        &r->compute.descriptor_sets[r->compute.descriptor_set_index - 1], 0,
-        NULL);
+        &r->compute.set_unpack, 0, NULL);
 
     assert(output_width >= input_width);
-    uint32_t push_constants[2] = { input_width, output_width };
-    assert(sizeof(push_constants) == 8);
+    uint32_t push_constants[3] = { input_width, output_width, stencil_base };
     vkCmdPushConstants(cmd, r->compute.pipeline_layout,
                        VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(push_constants),
                        push_constants);
