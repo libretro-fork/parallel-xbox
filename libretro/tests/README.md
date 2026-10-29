@@ -15,7 +15,8 @@ Linux build.
   CPU never rests; built with `-DDSP` it also loads `gp.a56` into the APU's
   GP DSP and starts it (`-DGP_PASSES=n` sets its load, 1 by default);
   built with `-DSPIN` it spins on a word in RAM that nothing writes; built
-  with `-DPAD` it runs `pad.c`; built with `-DGPU` it runs `gpu.c`.
+  with `-DPAD` it runs `pad.c`; built with `-DGPU` it runs `gpu.c`; built
+  with `-DDVD` it runs `dvd.c`.
 - `rom/pad.c`: the pad through the USB controller, as the kernel reads it:
   the two hubs found by their status-change reports and configured, their
   ports reset, the pad's reports taken over its interrupt endpoint on the
@@ -27,6 +28,12 @@ Linux build.
   (`--pixel`): a surface cleared red and shown, left alone while another is
   drawn and flips are counted, then written green by the CPU. `gpu.sh`
   builds it into `gpu.inc` (committed, like `pad.inc`).
+- `rom/dvd.c`: DVD reads as the kernel sends them: READ(10) packets to the
+  primary IDE channel's slave, by bus-master DMA through the PIIX3's PRD
+  tables (one entry, three scattered, ten for 600 KB), every word read
+  checked. `dvd.sh` builds it into `dvd.inc` (committed, like `pad.inc`);
+  `mkdisc.c` makes its disc, whose every 32-bit word says which sector and
+  word it is.
 - `rom/gp.a56`: the GP DSP's program. Every 32-sample frame it rebuilds
   mixbins 0 and 1 from 64 exact products a sample, n times over, so the tone
   comes out of the DSP unchanged after n x 4096 MACs. `gp.inc` is it
@@ -46,7 +53,8 @@ exactly one frame's worth of audio (800 or 801 samples at 60000/1001 fps),
 idle and busy; the tone has no gap; an idle guest runs far faster than real
 time when the frontend does not pace it (fast-forward), and so does one
 that spins waiting; the busy guest does the same work paced and unpaced;
-the pad's buttons reach the guest over USB; the idle guest runs the same
+the pad's buttons reach the guest over USB; DVD reads by DMA land in the
+guest's memory byte for byte; the idle guest runs the same
 on a Vulkan context, where there is a Vulkan device, through version 2 of
 the context negotiation interface and as a frontend that knows only
 version 1; with APU DSP

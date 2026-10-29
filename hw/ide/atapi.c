@@ -345,6 +345,69 @@ static void ide_atapi_cmd_check_status(IDEState *s)
 }
 /* ATAPI DMA support */
 
+/*
+ * A DVD read of 2048-byte sectors, the whole transfer at once from the
+ * image straight into the guest's memory through the PRD table's
+ * scatter-gather list (dma_blk_read), as the hard disk's reads go
+ * (core.c ide_dma_cb). The reads in 128 KB pieces went through a bounce
+ * buffer allocated for each (ide_buffered_readv), a copy into io_buffer
+ * and a copy into the guest's memory (rw_buf). Raw 2352-byte sectors,
+ * whose headers are made up in io_buffer, and the replies to the other
+ * commands still go through io_buffer.
+ */
+static void ide_atapi_cmd_read_dma_direct_cb(void *opaque, int ret)
+{
+    IDEState *s = opaque;
+
+    if (ret < 0) {
+        ide_dma_buf_commit(s, 0);
+        s->atapi_dma_direct = false;
+        if (ide_handle_rw_error(s, -ret, ide_dma_cmd_to_retry(s->dma_cmd))) {
+            if (s->bus->error_status) {
+                s->bus->dma->aiocb = NULL;
+                return;
+            }
+        }
+        goto eot;
+    }
+
+    if (s->atapi_dma_direct) {
+        /* the transfer is in the guest's memory */
+        uint32_t done = s->sg.size;
+        ide_dma_buf_commit(s, done);
+        s->atapi_dma_direct = false;
+        s->lba += done >> 11;
+        s->packet_transfer_size -= done;
+        s->status = READY_STAT | SEEK_STAT;
+        s->nsector = (s->nsector & ~7) | ATAPI_INT_REASON_IO | ATAPI_INT_REASON_CD;
+        ide_bus_set_irq(s->bus);
+        goto eot;
+    }
+
+    int32_t want = s->packet_transfer_size;
+    int32_t prep = s->bus->dma->ops->prepare_buf(s->bus->dma, want);
+    if (prep < want) {
+        /* the PRD table ended before the transfer: as rw_buf did, the
+         * command ends without its interrupt */
+        ide_dma_buf_commit(s, 0);
+        goto eot;
+    }
+    trace_ide_atapi_cmd_read_dma_cb_aio(s, s->lba, want >> 11);
+    s->atapi_dma_direct = true;
+    s->bus->dma->aiocb = dma_blk_read(s->blk, &s->sg, (int64_t)s->lba << 11,
+                                      BDRV_SECTOR_SIZE,
+                                      ide_atapi_cmd_read_dma_direct_cb, s);
+    return;
+
+eot:
+    if (ret < 0) {
+        block_acct_failed(blk_get_stats(s->blk), &s->acct);
+    } else {
+        block_acct_done(blk_get_stats(s->blk), &s->acct);
+    }
+    ide_set_inactive(s, false);
+}
+
 static void ide_atapi_cmd_read_dma_cb(void *opaque, int ret)
 {
     IDEState *s = opaque;
@@ -436,7 +499,13 @@ static void ide_atapi_cmd_read_dma(IDEState *s, int lba, int nb_sectors,
 
     /* XXX: check if BUSY_STAT should be set */
     s->status = READY_STAT | SEEK_STAT | DRQ_STAT | BUSY_STAT;
-    ide_start_dma(s, ide_atapi_cmd_read_dma_cb);
+    if (sector_size == 2048 && s->packet_transfer_size > 0 &&
+        s->bus->dma->ops->prepare_buf) {
+        s->atapi_dma_direct = false;
+        ide_start_dma(s, ide_atapi_cmd_read_dma_direct_cb);
+    } else {
+        ide_start_dma(s, ide_atapi_cmd_read_dma_cb);
+    }
 }
 
 static void ide_atapi_cmd_read(IDEState *s, int lba, int nb_sectors,

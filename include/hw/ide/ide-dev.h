@@ -103,6 +103,9 @@ struct IDEState {
     int32_t io_buffer_index;
     int lba;
     int cd_sector_size;
+    /* An ATAPI DMA read of 2048-byte sectors in flight straight into the
+     * guest's memory (atapi.c ide_atapi_cmd_read_dma_direct_cb) */
+    bool atapi_dma_direct;
     int atapi_dma; /* true if dma is requested for the packet cmd */
     BlockAcctCookie acct;
     BlockAIOCB *pio_aiocb;

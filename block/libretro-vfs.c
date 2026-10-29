@@ -124,27 +124,35 @@ static int coroutine_fn lrvfs_co_preadv(BlockDriverState *bs, int64_t offset,
                                         BdrvRequestFlags flags)
 {
     BDRVLibretroVFSState *s = bs->opaque;
-    uint8_t *buf = g_malloc(bytes);
-    int64_t got = -1;
+    int64_t got = 0;
     int ret = 0;
 
+    /* Straight into the request's buffers, each in turn: no buffer of
+     * the request's size allocated and copied out of */
     qemu_mutex_lock(&s->lock);
     if (xemu_libretro_vfs->seek(s->handle, offset,
-                                RETRO_VFS_SEEK_POSITION_START) >= 0) {
-        got = xemu_libretro_vfs->read(s->handle, buf, bytes);
+                                RETRO_VFS_SEEK_POSITION_START) < 0) {
+        ret = -EIO;
+    }
+    for (int i = 0; !ret && i < qiov->niov && got < bytes; i++) {
+        size_t want = MIN(qiov->iov[i].iov_len, (size_t)(bytes - got));
+        int64_t r = xemu_libretro_vfs->read(s->handle, qiov->iov[i].iov_base,
+                                            want);
+        if (r < 0) {
+            ret = -EIO;
+            break;
+        }
+        got += r;
+        if ((size_t)r < want) {
+            break; /* the image's end */
+        }
     }
     qemu_mutex_unlock(&s->lock);
 
-    if (got < 0) {
-        ret = -EIO;
-    } else {
-        /* past the end of the image reads as zeroes, as a file does */
-        if (got < bytes) {
-            memset(buf + got, 0, bytes - got);
-        }
-        qemu_iovec_from_buf(qiov, 0, buf, bytes);
+    /* past the end of the image reads as zeroes, as a file does */
+    if (!ret && got < bytes) {
+        qemu_iovec_memset(qiov, got, 0, bytes - got);
     }
-    g_free(buf);
     return ret;
 }
 

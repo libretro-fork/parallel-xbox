@@ -1415,6 +1415,7 @@ static void ide_reset(IDEState *s)
     s->cdrom_changed = 0;
     s->packet_transfer_size = 0;
     s->elementary_transfer_size = 0;
+    s->atapi_dma_direct = false;
     s->io_buffer_index = 0;
     s->cd_sector_size = 0;
     s->atapi_dma = 0;

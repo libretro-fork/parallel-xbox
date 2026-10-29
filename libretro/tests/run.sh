@@ -15,7 +15,7 @@ core=$(readlink -f "$1")
 here=$(cd "$(dirname "$0")" && pwd)
 work=${2:-$(mktemp -d)}
 mkdir -p "$work/bin" "$work/sys/xemu" "$work/sysb/xemu" "$work/sysd/xemu" \
-    "$work/syss/xemu" "$work/sysp/xemu" "$work/sysg/xemu"
+    "$work/syss/xemu" "$work/sysp/xemu" "$work/sysg/xemu" "$work/sysv/xemu"
 
 # The harness's paths, as the core's OS spells them
 path() { echo "$1"; }
@@ -46,6 +46,8 @@ case $core in
     ;;
 esac
 ${cc} -O2 -std=c99 -Wall -o "$work/bin/sinecheck" "$here/sinecheck.c"
+${cc} -O2 -std=c99 -Wall -o "$work/bin/mkdisc" "$here/mkdisc.c"
+"$work/bin/mkdisc" "$work/disc.iso"
 nasm -f bin -o "$work/sys/xemu/mcpx_1.0.bin" "$here/rom/bootrom.asm"
 nasm -f bin -I"$here/rom/" -o "$work/sys/xemu/Complex_4627v1.03.bin" "$here/rom/flash.asm"
 cp "$work/sys/xemu/mcpx_1.0.bin" "$work/sysb/xemu/"
@@ -56,6 +58,8 @@ cp "$work/sys/xemu/mcpx_1.0.bin" "$work/sysp/xemu/"
 nasm -f bin -DPAD -I"$here/rom/" -o "$work/sysp/xemu/Complex_4627v1.03.bin" "$here/rom/flash.asm"
 cp "$work/sys/xemu/mcpx_1.0.bin" "$work/sysg/xemu/"
 nasm -f bin -DGPU -I"$here/rom/" -o "$work/sysg/xemu/Complex_4627v1.03.bin" "$here/rom/flash.asm"
+cp "$work/sys/xemu/mcpx_1.0.bin" "$work/sysv/xemu/"
+nasm -f bin -DDVD -I"$here/rom/" -o "$work/sysv/xemu/Complex_4627v1.03.bin" "$here/rom/flash.asm"
 cp "$work/sys/xemu/mcpx_1.0.bin" "$work/sysd/xemu/"
 nasm -f bin -DDSP -DGP_PASSES=16 -I"$here/rom/" -o "$work/sysd/xemu/Complex_4627v1.03.bin" "$here/rom/flash.asm"
 
@@ -137,6 +141,20 @@ case $r in
 3) echo "no Vulkan device: skipped" ;;
 *) echo "FAIL: the Vulkan run exited $r"; exit 1 ;;
 esac
+
+# DVD reads (rom/dvd.c): READ(10) packets by bus-master DMA from the
+# primary slave, as the kernel sends them, into one PRD entry, three
+# scattered ones, and ten for 600 KB, from the disc mkdisc.c makes, whose
+# every word says which sector and word it is. All 0x2c800 words read are
+# checked: status 0, none wrong. The reads go from the image straight into
+# the guest's memory; this is what says no byte got lost on the way.
+echo "== DVD reads by DMA"
+timeout 300 $h "$(path "$core")" "$(path "$work/sysv")" "$(path "$work/disc.iso")" $vp \
+  --frames 120 --strict --peek 0x300008 --peek 0x30000c --peek 0x300010 >"$work/dvd.txt"
+grep -E "peek_" "$work/dvd.txt"
+grep -E "peek_0x300008=0x00000000$" "$work/dvd.txt" >/dev/null &&
+grep -E "peek_0x30000c=0x0002c800$" "$work/dvd.txt" >/dev/null || {
+    echo "FAIL: the DVD reads: step $(grep peek_0x300008 "$work/dvd.txt"), first wrong word at $(grep peek_0x300010 "$work/dvd.txt")"; exit 1; }
 
 # The pad, through the USB controller as the kernel reads it (rom/pad.c):
 # the hubs found by their status-change reports, their ports reset, the
