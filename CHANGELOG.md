@@ -4,6 +4,12 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- HRTF: both ears share one mono history and borrow the active entry during processing, removing duplicate history writes and a target-parameter copy while retaining independent ear delays and gains.
+
+- HRTF: edits to active entries and changes of handle take effect on the next processed frame; tap gains move across that 32-sample frame. A restarted voice begins at its current entry rather than stale coefficients.
+
+- HRTF: 3D voices use channel zero, routes 0-1 carry the left ear and 2-3 the right, while routes 4-7 retain the dry voice. Null HRTF entries silence only the ear routes and select the existing 2D DLS2 behavior. All routes use their mix bin headroom; HRTF bypass avoids a frame copy.
+
 - The Xbox's CPU runs on while its GPU draws, as on the console. The core used to stop the Xbox's time whenever the GPU's thread had work, so a frame cost the CPU's work plus the GPU's (about half of each frame was spent stopped, measured on Jet Set Radio Future); now they overlap, and at the end of each run the core waits for the GPU's thread to finish what the frame gave it and to draw the display from it, so each run still hands over the picture drawn in it: no repeated frame and no frame of delay. System > Deterministic Emulation (off by default) brings back the old behaviour, where every run of a game is the same however fast the PC is, for Run-Ahead and netplay.
 
 - Audio: the emulator worker mixes directly into the DSP output during parallel frames too, avoiding a redundant 4 KiB scratch clear and full-buffer accumulation each frame.

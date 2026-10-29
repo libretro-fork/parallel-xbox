@@ -63,6 +63,7 @@ static void voice_reset_filters(MCPXAPUState *d, uint16_t v)
 {
     assert(v < MCPX_HW_MAX_VOICES);
     memset(&d->vp.filters[v].svf, 0, sizeof(d->vp.filters[v].svf));
+    d->vp.filters[v].hrtf.params_set = false;
     hrtf_filter_clear_history(&d->vp.filters[v].hrtf);
     voice_resample_reset(&d->vp.filters[v]);
 }
@@ -394,16 +395,6 @@ static void fe_method(MCPXAPUState *d, uint32_t method, uint32_t argument)
         int current_voice = d->regs[NV_PAPU_FECV];
         voice_set_mask(d, current_voice, NV_PAVS_VOICE_CFG_HRTF_TARGET,
                        NV_PAVS_VOICE_CFG_HRTF_TARGET_HANDLE, handle);
-        if (current_voice < MCPX_HW_MAX_3D_VOICES &&
-            handle != HRTF_NULL_HANDLE) {
-            // FIXME: Xbox software seems to reliably set voice HRTF handles
-            // after updating filter parameters, however it may be possible to
-            // update parameter targets for an active voice.
-            assert(handle < HRTF_ENTRY_COUNT);
-            hrtf_filter_set_target_params(&d->vp.filters[current_voice].hrtf,
-                                          d->vp.hrtf.entries[handle].hrir,
-                                          d->vp.hrtf.entries[handle].itd);
-        }
         break;
     }
     case NV1BA0_PIO_SET_VOICE_TAR_VOLA:
@@ -1395,7 +1386,10 @@ static void voice_process(MCPXAPUState *d,
     assert(v < MCPX_HW_MAX_VOICES);
     bool stereo = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_FMT,
                                  NV_PAVS_VOICE_CFG_FMT_STEREO);
-    unsigned int channels = stereo ? 2 : 1;
+    /* Decode the source in its stored format, but 3D voices play channel
+     * zero alone. Select it at each consumer instead of duplicating it. */
+    bool three_d = v < MCPX_HW_MAX_3D_VOICES;
+    unsigned int channels = !three_d && stereo ? 2 : 1;
     bool paused = voice_get_mask(d, v, NV_PAVS_VOICE_PAR_STATE,
                                  NV_PAVS_VOICE_PAR_STATE_PAUSED);
 
@@ -1528,17 +1522,29 @@ static void voice_process(MCPXAPUState *d,
     int fmode = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_MISC,
                                NV_PAVS_VOICE_CFG_MISC_FMODE);
 
+    uint16_t hrtf_handle = HRTF_NULL_HANDLE;
+    if (three_d) {
+        hrtf_handle = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_HRTF_TARGET,
+                                     NV_PAVS_VOICE_CFG_HRTF_TARGET_HANDLE);
+    }
+    bool spatial = three_d && hrtf_handle != HRTF_NULL_HANDLE;
+
     // FIXME: Move to function
     bool lpf = false;
-    if (v < MCPX_HW_MAX_3D_VOICES) {
+    if (spatial) {
         /* 1:DLS2+I3DL2 2:ParaEQ+I3DL2 3:I3DL2 */
         lpf = (fmode == 1);
     } else {
         /* 0:Bypass 1:DLS2 2:ParaEQ 3(Mono):DLS2+ParaEQ 3(Stereo):Bypass */
-        lpf = stereo ? (fmode == 1) : (fmode & 1);
+        /* A null HRTF handle uses 2D filter selection on the mono source.
+         * ParaEQ and I3DL2 remain unimplemented in this branch. */
+        lpf = channels == 2 ? (fmode == 1) : (fmode & 1);
     }
     if (lpf) {
-        for (int ch = 0; ch < 2; ch++) {
+        /* Keep both 2D filter histories warm for stereo format changes;
+         * a 3D voice can only consume channel zero. */
+        unsigned int filter_channels = three_d ? 1 : 2;
+        for (unsigned int ch = 0; ch < filter_channels; ch++) {
             // FIXME: Cutoff modulation via NV_PAVS_VOICE_CFG_ENV1_EF_FCSCALE
             int16_t fc = voice_get_mask(
                 d, v, NV_PAVS_VOICE_TAR_FCA + (ch % channels) * 4,
@@ -1557,29 +1563,38 @@ static void voice_process(MCPXAPUState *d,
         }
     }
 
-    if (v < MCPX_HW_MAX_3D_VOICES && g_config.audio.hrtf) {
-        uint16_t hrtf_handle =
-            voice_get_mask(d, v, NV_PAVS_VOICE_CFG_HRTF_TARGET,
-                           NV_PAVS_VOICE_CFG_HRTF_TARGET_HANDLE);
-        if (hrtf_handle != HRTF_NULL_HANDLE) {
-            hrtf_filter_process(&d->vp.filters[v].hrtf, samples, samples);
-        }
+    /* Keep the dry frame intact for routes 4-7. The bypass borrows that
+     * frame directly; only convolution needs separate left/right output. */
+    float ears[NUM_SAMPLES_PER_FRAME][2];
+    const float (*ear_samples)[2] = samples;
+    bool filtered = spatial && g_config.audio.hrtf;
+    if (filtered) {
+        /* Read every frame so entry edits and handle changes take effect
+         * without another SET_VOICE_TAR_HRTF command. */
+        assert(hrtf_handle < HRTF_ENTRY_COUNT);
+        /* Guest execution resumes only after the VP workers join. Borrow
+         * this entry for the call; the filter owns only its previous frame. */
+        hrtf_filter_process(&d->vp.filters[v].hrtf, samples, ears,
+                            d->vp.hrtf.entries[hrtf_handle].hrir,
+                            d->vp.hrtf.entries[hrtf_handle].itd);
+        ear_samples = ears;
     }
 
     // FIXME: ParaEQ
 
     for (int b = 0; b < 8; b++) {
-        float g = ea_value;
-        float hr;
-        if ((v < MCPX_HW_MAX_3D_VOICES) && (b < 4)) {
-            // FIXME: Not sure if submix/voice headroom factor in for HRTF
-            hr = 1 << d->vp.hrtf_headroom;
-        } else {
-            hr = 1 << d->vp.submix_headroom[bin[b]];
+        if (three_d && b < 4 && !spatial) {
+            continue;
         }
-        g *= attenuate(vol[b])/hr;
+        /* Routes 0-1 are left, 2-3 right. Bin headroom applies to all
+         * routes; SET_HRTF_HEADROOM has no measured hardware effect. */
+        float hr = 1u << d->vp.submix_headroom[bin[b]];
+        float g = ea_value * attenuate(vol[b]) / hr;
+        const float (*source)[2] = three_d && b < 4 ? ear_samples : samples;
+        unsigned int channel = three_d && b < 4 ?
+            (filtered ? b / 2u : 0u) : b % channels;
         for (int i = 0; i < NUM_SAMPLES_PER_FRAME; i++) {
-            mixbins[bin[b]][i] += g*samples[i][b % channels];
+            mixbins[bin[b]][i] += g * source[i][channel];
         }
     }
 
@@ -1610,7 +1625,8 @@ static void voice_process(MCPXAPUState *d,
             g_dbg_voice_monitor >= 0 && g_dbg_voice_monitor == v;
         float g = 0.0f;
         for (int b = 0; b < 8; b++) {
-            if (bin[b] == mp_bin && !debug_isolation) {
+            if ((three_d && b < 4 && !spatial) ||
+                (bin[b] == mp_bin && !debug_isolation)) {
                 continue;
             }
             float hr = 1 << d->vp.submix_headroom[bin[b]];
@@ -1618,8 +1634,8 @@ static void voice_process(MCPXAPUState *d,
         }
         g *= ea_value;
         for (int i = 0; i < NUM_SAMPLES_PER_FRAME; i++) {
-            sample_buf[i][0] += g*samples[i][0];
-            sample_buf[i][1] += g*samples[i][1];
+            sample_buf[i][0] += g * ear_samples[i][0];
+            sample_buf[i][1] += g * ear_samples[i][filtered ? 1 : channels - 1];
         }
     }
 }
