@@ -4,7 +4,7 @@
  * Copyright (c) 2012 espes
  * Copyright (c) 2018-2019 Jannik Vogel
  * Copyright (c) 2019-2025 Matt Borgerson
- * Copyright (c) 2026 Réda Chérif-Touil
+ * Copyright (c) 2026 RÃ©da ChÃ©rif-Touil
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -66,6 +66,10 @@ static void voice_reset_filters(MCPXAPUState *d, uint16_t v)
     memset(&d->vp.filters[v].peq, 0, sizeof(d->vp.filters[v].peq));
     memset(&d->vp.filters[v].i3dl2, 0, sizeof(d->vp.filters[v].i3dl2));
     d->vp.filters[v].gains = false;
+    d->vp.filters[v].dls2_set = false;
+    d->vp.filters[v].peq_set = false;
+    memset(d->vp.filters[v].lfo_phase, 0, sizeof(d->vp.filters[v].lfo_phase));
+    d->vp.filters[v].lfo_armed = false;
     d->vp.filters[v].hrtf.params_set = false;
     hrtf_filter_clear_history(&d->vp.filters[v].hrtf);
     voice_resample_reset(&d->vp.filters[v]);
@@ -434,6 +438,14 @@ static void fe_method(MCPXAPUState *d, uint32_t method, uint32_t argument)
         voice_set_mask(d, d->regs[NV_PAPU_FECV], NV_PAVS_VOICE_TAR_VOLC,
                        0xFFFFFFFF, argument);
         break;
+    case NV1BA0_PIO_SET_VOICE_LFO_DELAY:
+        voice_set_mask(d, d->regs[NV_PAPU_FECV], NV_PAVS_VOICE_PAR_LFO_DELAY,
+                       0xFFFFFFFF, argument);
+        break;
+    case NV1BA0_PIO_SET_VOICE_LFO_MOD:
+        voice_set_mask(d, d->regs[NV_PAPU_FECV], NV_PAVS_VOICE_TAR_LFO_MOD,
+                       0xFFFFFFFF, argument);
+        break;
     case NV1BA0_PIO_SET_VOICE_LFO_ENV:
         voice_set_mask(d, d->regs[NV_PAPU_FECV], NV_PAVS_VOICE_TAR_LFO_ENV,
                        0xFFFFFFFF, argument);
@@ -669,6 +681,8 @@ static void vp_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
     case NV1BA0_PIO_SET_VOICE_TAR_VOLA:
     case NV1BA0_PIO_SET_VOICE_TAR_VOLB:
     case NV1BA0_PIO_SET_VOICE_TAR_VOLC:
+    case NV1BA0_PIO_SET_VOICE_LFO_DELAY:
+    case NV1BA0_PIO_SET_VOICE_LFO_MOD:
     case NV1BA0_PIO_SET_VOICE_LFO_ENV:
     case NV1BA0_PIO_SET_VOICE_TAR_FCA:
     case NV1BA0_PIO_SET_VOICE_TAR_FCB:
@@ -843,6 +857,50 @@ static float voice_step_envelope(MCPXAPUState *d, uint16_t v, uint32_t reg_0,
         assert(!"Unknown envelope state");
         return 0.0f;
     }
+}
+
+/* Two frame-rate bipolar triangles, rising first. Delays are latched on
+ * first processing after voice restart; each phase wraps at 16 bits. */
+static void voice_step_lfos(MCPXAPUState *d, uint16_t v, float *attenuation,
+                            float *pitch, float *cutoff)
+{
+    MCPXAPUVoiceFilter *filter = &d->vp.filters[v];
+    if (!filter->lfo_armed) {
+        uint32_t misc = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_MISC, 0xFFFFFFFF);
+        uint32_t delays = 0;
+        if (misc & (NV_PAVS_VOICE_CFG_MISC_LFOA_DELAY_ENABLE |
+                    NV_PAVS_VOICE_CFG_MISC_LFOF_DELAY_ENABLE)) {
+            delays = voice_get_mask(d, v, NV_PAVS_VOICE_PAR_LFO_DELAY, 0xFFFFFFFF);
+        }
+        filter->lfo_wait[0] = misc & NV_PAVS_VOICE_CFG_MISC_LFOA_DELAY_ENABLE ?
+            delays & 0x7FFF : 0;
+        filter->lfo_wait[1] = misc & NV_PAVS_VOICE_CFG_MISC_LFOF_DELAY_ENABLE ?
+            (delays >> 16) & 0x7FFF : 0;
+        filter->lfo_armed = true;
+    }
+
+    /* Fetch the two packed words once, rather than six field reads. */
+    uint32_t rates = voice_get_mask(d, v, NV_PAVS_VOICE_TAR_LFO_ENV, 0xFFFFFFFF);
+    uint32_t depths = voice_get_mask(d, v, NV_PAVS_VOICE_TAR_LFO_MOD, 0xFFFFFFFF);
+    float value[2] = {0.0f, 0.0f};
+    for (int k = 0; k < 2; k++) {
+        if (filter->lfo_wait[k]) {
+            filter->lfo_wait[k]--;
+            continue;
+        }
+        filter->lfo_phase[k] += (rates >> (12 + 10 * k)) & 0x3FF;
+        int phase = filter->lfo_phase[k];
+        int triangle = phase < 0x4000 ? phase :
+                       phase < 0xC000 ? 0x8000 - phase : phase - 0x10000;
+        value[k] = triangle / 16384.0f;
+    }
+    int8_t a_amplitude = depths;
+    int8_t a_pitch = depths >> 8;
+    int8_t a_cutoff = depths >> 16;
+    int8_t f_pitch = depths >> 24;
+    *attenuation = a_amplitude * 8.0f * value[0];
+    *pitch = (a_pitch * value[0] + f_pitch * value[1]) * 32.0f;
+    *cutoff = a_cutoff * 256.0f * value[0];
 }
 
 static int voice_get_samples(MCPXAPUState *d, uint32_t v, float samples[][2],
@@ -1398,7 +1456,10 @@ static void voice_process(MCPXAPUState *d,
                                NV_PAVS_VOICE_TAR_PITCH_LINK_PITCH);
     int8_t ps = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_ENV0,
                                NV_PAVS_VOICE_CFG_ENV0_EF_PITCHSCALE);
-    float rate = 1.0 / powf(2.0f, (p + ps * 32 * ef_value) / 4096.0f);
+    float lfo_attenuation, lfo_pitch, lfo_cutoff;
+    voice_step_lfos(d, v, &lfo_attenuation, &lfo_pitch, &lfo_cutoff);
+    double pitch = p + ps * 32.0 * ef_value + lfo_pitch;
+    float rate = 1.0 / powf(2.0f, pitch / 4096.0f);
     dbg->rate = rate;
 
     float ea_value = voice_step_envelope(
@@ -1527,6 +1588,12 @@ static void voice_process(MCPXAPUState *d,
         lpf = channels == 2 ? (fmode == 1) : (fmode & 1);
         peq = channels == 2 ? (fmode == 2) : (fmode >= 2);
     }
+    double fc_bend = 0.0;
+    if (lpf || peq) {
+        int8_t fc_scale = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_ENV1,
+                                         NV_PAVS_VOICE_CFG_ENV1_EF_FCSCALE);
+        fc_bend = fc_scale * 256.0 * ef_value + lfo_cutoff;
+    }
     if (lpf) {
         /* Keep both 2D filter histories warm for stereo format changes;
          * a 3D voice can only consume channel zero. */
@@ -1536,19 +1603,24 @@ static void voice_process(MCPXAPUState *d,
             /* Mono 2D histories share parameters, not state. Avoid fetching
              * and exponentiating their identical coefficients twice. */
             if (ch < channels) {
-                // FIXME: Cutoff modulation via NV_PAVS_VOICE_CFG_ENV1_EF_FCSCALE
                 uint32_t c = voice_get_mask(d, v,
                     NV_PAVS_VOICE_TAR_FCA + ch * 4, 0xFFFFFFFF);
-                fc_f = filter_coefficient((int16_t)c);
+                fc_f = filter_coefficient((int16_t)c + fc_bend);
                 q_f = (c >> 16) / 32768.0f;
             }
             sv_filter *filter = &d->vp.filters[v].svf[ch];
+            float from = d->vp.filters[v].dls2_set ? filter->f : fc_f;
+            float step = (fc_f - from) / NUM_SAMPLES_PER_FRAME;
             setup_svf(filter, fc_f, q_f, F_LP);
             for (int i = 0; i < NUM_SAMPLES_PER_FRAME; i++) {
+                filter->f = from + step * i;
                 samples[i][ch] = run_svf(filter, samples[i][ch]);
             }
+            /* Retain the frame target, not sample 31, as the next start. */
+            filter->f = fc_f;
         }
     }
+    d->vp.filters[v].dls2_set = lpf;
 
     /* ParaEQ: x + gain * damping * band, with gain signed in 1/8192.
      * Spatial voices use FCA, mono 2D/null-handle voices FCB, stereo
@@ -1565,17 +1637,22 @@ static void voice_process(MCPXAPUState *d,
                     channels == 2 ? NV_PAVS_VOICE_TAR_FCA + ch * 4 :
                                     NV_PAVS_VOICE_TAR_FCB;
                 uint32_t c = voice_get_mask(d, v, reg, 0xFFFFFFFF);
-                fc_f = filter_coefficient((int16_t)c);
+                fc_f = filter_coefficient((int16_t)c + fc_bend);
                 gain = (int16_t)(c >> 16) / 8192.0f * q_f;
             }
             sv_filter *filter = &d->vp.filters[v].peq[ch];
+            float from = d->vp.filters[v].peq_set ? filter->f : fc_f;
+            float step = (fc_f - from) / NUM_SAMPLES_PER_FRAME;
             setup_svf(filter, fc_f, q_f, F_BP);
             for (int i = 0; i < NUM_SAMPLES_PER_FRAME; i++) {
                 float x = samples[i][ch];
+                filter->f = from + step * i;
                 samples[i][ch] = svf_round(x + gain * run_svf(filter, x));
             }
+            filter->f = fc_f;
         }
     }
+    d->vp.filters[v].peq_set = peq;
 
     /* Spatial playback has discarded source channel one. Reuse that slot
      * for room output; channel zero is the direct path consumed by HRTF.
@@ -1616,6 +1693,7 @@ static void voice_process(MCPXAPUState *d,
      * gain metadata for the VP monitor, not a second sample frame. */
     MCPXAPUVoiceFilter *filter = &d->vp.filters[v];
     uint32_t level = ea_value * 2048.0f;
+    int lfo_att = floorf(lfo_attenuation);
     uint16_t previous_gain[8];
     bool monitor = d->monitor.point == MCPX_APU_DEBUG_MON_VP;
     for (int b = 0; b < 8; b++) {
@@ -1629,7 +1707,9 @@ static void voice_process(MCPXAPUState *d,
         }
         /* Routes 0-1 are left, 2-3 right. Bin headroom applies to all
          * routes; SET_HRTF_HEADROOM has no measured hardware effect. */
-        uint32_t to = (attenuation_gain(vol[b]) * level) >> 11;
+        /* Explicitly muted sends stay muted even on a negative LFO swing. */
+        uint32_t to = vol[b] == 0xFFF ? 0 :
+            (attenuation_gain(vol[b] + lfo_att) * level) >> 11;
         filter->route_gain[b] = to;
         if (from == 0 && to == 0) {
             continue;

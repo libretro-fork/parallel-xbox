@@ -4,6 +4,12 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Audio: both voice LFOs now modulate volume, pitch and filter cutoff with signed depths and optional delays. Previously ignored delay/depth writes are handled, explicit mute remains silent, and processing reads each packed LFO word once per frame.
+
+- Audio: DLS2 and ParaEQ cutoff changes move across each 32-sample voice frame. Existing coefficient storage holds the next starting value, avoiding duplicate endpoint arrays; restart and re-enabled filters begin at their current target.
+
+- Audio: the filter envelope now bends DLS2 and ParaEQ cutoff using the signed cutoff scale, including the mono cascade and null-HRTF filter paths, without another sample frame.
+
 - DVD reads go from the disc image straight into the Xbox's memory, the whole read at once, as the hard disk's already did. They went in 128 KB pieces, each read into a buffer allocated for it, copied into the drive's own buffer and copied again into the Xbox's memory: two copies of everything a game loads from its disc. On Android, where RetroArch hands the core its content through the storage framework, the image's reads also no longer go through a buffer allocated for each.
 
 - Audio: volume and envelope changes ramp across each 32-sample MCPX frame, including first-frame fade-in and the DSP-off output. Integer ramp steps replace per-sample rounding calls; no extra sample frame is copied.
