@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- HRTF: filter taps retain their hardware gain and use the measured sign-magnitude minifloat format; updating a zero left-ear filter also updates the right ear.
+
 - Audio: multipass submixes restore their voice format headroom (up to 42 dB previously lost); mix-bin conversion rounds halfway values toward positive infinity to match hardware.
 
 - Audio: setting DSP output buffers no longer overwrites voice sample addresses, and an inactive linked voice with its trap disabled no longer aborts the core.
