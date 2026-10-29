@@ -594,8 +594,7 @@ void pgraph_gl_sync(NV2AState *d)
 {
     bool fresh;
     post_scanout(d, &fresh);
-    qatomic_set(&d->pgraph.sync_pending, false);
-    qemu_event_set(&d->pgraph.sync_complete);
+    pgraph_clear_and_notify(&d->pgraph.sync_complete, &d->pgraph.sync_pending);
 }
 
 /* Post on a scanout change (PCRTC_START write) or on the UI thread's
@@ -640,12 +639,9 @@ int pgraph_gl_get_framebuffer_surface(NV2AState *d)
     if (!got && ui.cur < 0) {
         /* Nothing on screen yet (first frames, VGA text): ask the render
          * thread for a ticket and wait for it. */
-        pfifo_guest_lock(d);
-        qemu_event_reset(&d->pgraph.sync_complete);
         qatomic_set(&pg->sync_pending, true);
         pfifo_kick(d);
-        qemu_mutex_unlock(&d->pfifo.lock);
-        qemu_event_wait(&d->pgraph.sync_complete);
+        pgraph_wait_until_clear(&d->pgraph.sync_complete, &pg->sync_pending);
         if (!qatomic_read(&r->scanout_found)) {
             return 0;
         }

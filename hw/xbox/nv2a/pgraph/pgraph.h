@@ -28,6 +28,7 @@
 #include "qemu/bitmap.h"
 #include "qemu/units.h"
 #include "qemu/thread.h"
+#include <rthreads/retro_eventcount.h>
 #include "cpu.h"
 
 #include "surface.h"
@@ -323,11 +324,14 @@ typedef struct PGRAPHState {
      * register as changed. Set by the vCPU, taken by the pfifo thread. */
     bool guest_wrote_regs;
 
+    /* Requests to the pfifo thread from another thread: the flag set, the
+     * thread kicked, the requester waiting on the eventcount for the flag
+     * to clear (pgraph_wait_until_clear / pgraph_clear_and_notify) */
     bool flush_pending;
-    QemuEvent flush_complete;
+    retro_eventcount_t flush_complete;
 
     bool sync_pending;
-    QemuEvent sync_complete;
+    retro_eventcount_t sync_complete;
     /* PCRTC_START was written: the CRTC scans another buffer. The
      * renderer resolves it for the display thread (GL). */
     bool scanout_changed;
@@ -340,7 +344,7 @@ typedef struct PGRAPHState {
         PGRAPH_RENDERER_SWITCH_PHASE_STARTED,
         PGRAPH_RENDERER_SWITCH_PHASE_CPU_WAITING,
     } renderer_switch_phase;
-    QemuEvent renderer_switch_complete;
+    retro_eventcount_t renderer_switch_complete;
 
     unsigned int surface_scale_factor;
     uint8_t *scale_buf;
@@ -402,6 +406,29 @@ static inline uint32_t pgraph_reg_r(PGRAPHState *pg, unsigned int r)
 {
     assert(r % 4 == 0);
     return qatomic_read(&pg->regs_[r]);
+}
+
+/* A request another thread made of the pfifo thread (a flush, a sync, a
+ * download): the requester waits on the eventcount until the thread
+ * clears the flag; no lock, no timeout. The wait is prepared before the
+ * flag is looked at, so a clear between the look and the wait wakes it. */
+static inline void pgraph_wait_until_clear(retro_eventcount_t *ec, bool *flag)
+{
+    for (;;) {
+        int key = retro_eventcount_prepare_wait(ec);
+        if (!qatomic_load_acquire(flag)) {
+            retro_eventcount_cancel_wait(ec);
+            return;
+        }
+        retro_eventcount_commit_wait(ec, key);
+    }
+}
+
+/* The pfifo thread's side: the request is done. */
+static inline void pgraph_clear_and_notify(retro_eventcount_t *ec, bool *flag)
+{
+    qatomic_store_release(flag, false);
+    retro_eventcount_notify(ec);
 }
 
 /* An interrupt the pfifo thread raised and waits on the guest to ack:

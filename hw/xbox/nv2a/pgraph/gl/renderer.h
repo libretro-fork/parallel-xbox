@@ -383,9 +383,9 @@ typedef struct PGRAPHGLState {
     unsigned int last_surface_type;
     PGRAPHRtMemo rt_memo;
     bool downloads_pending;
-    QemuEvent downloads_complete;
+    retro_eventcount_t downloads_complete;
     bool download_dirty_surfaces_pending;
-    QemuEvent dirty_surfaces_download_complete; // common
+    retro_eventcount_t dirty_surfaces_download_complete; // common
 
     /* Texture bound per unit, to skip repeated binds between draws: reset
      * every flip, invalidated by any bind outside bind_textures. */
@@ -460,7 +460,7 @@ typedef struct PGRAPHGLState {
     QSIMPLEQ_HEAD(, QueryReport) report_queue;
 
     bool shader_cache_writeback_pending;
-    QemuEvent shader_cache_writeback_complete;
+    retro_eventcount_t shader_cache_writeback_complete;
 
     struct s2t_rndr {
         GLuint fbo, vao, vbo, prog;

@@ -327,10 +327,10 @@ void pgraph_init(NV2AState *d)
     PGRAPHState *pg = &d->pgraph;
     qemu_mutex_init(&pg->lock);
     qemu_mutex_init(&pg->renderer_lock);
-    qemu_event_init(&pg->sync_complete, false);
-    qemu_event_init(&pg->flush_complete, false);
+    retro_eventcount_init(&pg->sync_complete);
+    retro_eventcount_init(&pg->flush_complete);
     qemu_cond_init(&pg->framebuffer_released);
-    qemu_event_init(&pg->renderer_switch_complete, false);
+    retro_eventcount_init(&pg->renderer_switch_complete);
     pg->renderer_switch_phase = PGRAPH_RENDERER_SWITCH_PHASE_IDLE;
 
     pg->frame_time = 0;
@@ -581,7 +581,6 @@ void nv2a_trigger_display_render(void)
 
     /* Only trigger if not already pending */
     if (!qatomic_read(&pg->sync_pending)) {
-        qemu_event_reset(&pg->sync_complete);
         qatomic_set(&pg->sync_pending, true);
         pfifo_kick(d);
     }
@@ -3543,11 +3542,20 @@ static void do_wait_for_renderer_switch(CPUState *cpu, run_on_cpu_data data)
 {
     NV2AState *d = (NV2AState *)data.host_ptr;
 
-    qemu_mutex_lock(&d->pfifo.lock);
-    d->pgraph.renderer_switch_phase = PGRAPH_RENDERER_SWITCH_PHASE_CPU_WAITING;
+    qatomic_store_release(&d->pgraph.renderer_switch_phase,
+                          PGRAPH_RENDERER_SWITCH_PHASE_CPU_WAITING);
     pfifo_kick(d);
-    qemu_mutex_unlock(&d->pfifo.lock);
-    qemu_event_wait(&d->pgraph.renderer_switch_complete);
+    /* until the pfifo thread has the new renderer up (phase IDLE) */
+    for (;;) {
+        int key =
+            retro_eventcount_prepare_wait(&d->pgraph.renderer_switch_complete);
+        if (qatomic_load_acquire(&d->pgraph.renderer_switch_phase) ==
+            PGRAPH_RENDERER_SWITCH_PHASE_IDLE) {
+            retro_eventcount_cancel_wait(&d->pgraph.renderer_switch_complete);
+            break;
+        }
+        retro_eventcount_commit_wait(&d->pgraph.renderer_switch_complete, key);
+    }
 }
 
 void pgraph_process_pending(NV2AState *d)
@@ -3556,20 +3564,21 @@ void pgraph_process_pending(NV2AState *d)
     pg->renderer->ops.process_pending(d);
 
     if (g_config.display.renderer != pg->renderer->type &&
-        pg->renderer_switch_phase == PGRAPH_RENDERER_SWITCH_PHASE_IDLE) {
-        pg->renderer_switch_phase = PGRAPH_RENDERER_SWITCH_PHASE_STARTED;
-        qemu_event_reset(&pg->renderer_switch_complete);
+        qatomic_read(&pg->renderer_switch_phase) ==
+            PGRAPH_RENDERER_SWITCH_PHASE_IDLE) {
+        qatomic_set(&pg->renderer_switch_phase,
+                    PGRAPH_RENDERER_SWITCH_PHASE_STARTED);
         async_safe_run_on_cpu(qemu_get_cpu(0), do_wait_for_renderer_switch,
                               RUN_ON_CPU_HOST_PTR(d));
     }
 
-    if (pg->renderer_switch_phase == PGRAPH_RENDERER_SWITCH_PHASE_CPU_WAITING) {
+    if (qatomic_load_acquire(&pg->renderer_switch_phase) ==
+        PGRAPH_RENDERER_SWITCH_PHASE_CPU_WAITING) {
         qemu_mutex_lock(&d->pgraph.renderer_lock);
         qemu_mutex_unlock(&d->pfifo.lock);
         qemu_mutex_lock(&d->pgraph.lock);
 
         if (pg->renderer) {
-            qemu_event_reset(&pg->flush_complete);
             pg->flush_pending = true;
 
             qemu_mutex_lock(&d->pfifo.lock);
@@ -3595,8 +3604,9 @@ void pgraph_process_pending(NV2AState *d)
         qemu_mutex_unlock(&d->pgraph.lock);
         qemu_mutex_lock(&d->pfifo.lock);
 
-        pg->renderer_switch_phase = PGRAPH_RENDERER_SWITCH_PHASE_IDLE;
-        qemu_event_set(&pg->renderer_switch_complete);
+        qatomic_store_release(&pg->renderer_switch_phase,
+                              PGRAPH_RENDERER_SWITCH_PHASE_IDLE);
+        retro_eventcount_notify(&pg->renderer_switch_complete);
     }
 }
 

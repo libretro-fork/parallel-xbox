@@ -866,8 +866,8 @@ void pgraph_gl_shader_write_cache_reload_list(PGRAPHState *pg)
     PGRAPHGLState *r = pg->gl_renderer_state;
 
     if (!g_config.perf.cache_shaders) {
-        qatomic_set(&r->shader_cache_writeback_pending, false);
-        qemu_event_set(&r->shader_cache_writeback_complete);
+        pgraph_clear_and_notify(&r->shader_cache_writeback_complete,
+                                &r->shader_cache_writeback_pending);
         return;
     }
 
@@ -878,6 +878,9 @@ void pgraph_gl_shader_write_cache_reload_list(PGRAPHState *pg)
     g_free(shader_lru_path);
     if (!lru_list) {
         fprintf(stderr, "nv2a: Failed to open shader LRU cache for writing\n");
+        /* the waiter is released either way: nothing more is written */
+        pgraph_clear_and_notify(&r->shader_cache_writeback_complete,
+                                &r->shader_cache_writeback_pending);
         return;
     }
 
@@ -888,8 +891,8 @@ void pgraph_gl_shader_write_cache_reload_list(PGRAPHState *pg)
 
     lru_flush(&r->shader_cache);
 
-    qatomic_set(&r->shader_cache_writeback_pending, false);
-    qemu_event_set(&r->shader_cache_writeback_complete);
+    pgraph_clear_and_notify(&r->shader_cache_writeback_complete,
+                            &r->shader_cache_writeback_pending);
 }
 
 bool pgraph_gl_shader_load_from_memory(ShaderBinding *binding)
@@ -1145,7 +1148,7 @@ void pgraph_gl_init_shaders(PGRAPHState *pg)
     PGRAPHGLState *r = pg->gl_renderer_state;
 
     qemu_mutex_init(&r->shader_cache_lock);
-    qemu_event_init(&r->shader_cache_writeback_complete, false);
+    retro_eventcount_init(&r->shader_cache_writeback_complete);
 
     if (!shader_gl_vendor) {
         shader_gl_vendor = (const char *) glGetString(GL_VENDOR);

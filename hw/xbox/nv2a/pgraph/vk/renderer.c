@@ -119,8 +119,7 @@ static void pgraph_vk_flush(NV2AState *d)
 
     /* FIXME: Flush more? */
 
-    qatomic_set(&d->pgraph.flush_pending, false);
-    qemu_event_set(&d->pgraph.flush_complete);
+    pgraph_clear_and_notify(&d->pgraph.flush_complete, &d->pgraph.flush_pending);
 }
 
 static void pgraph_vk_sync(NV2AState *d)
@@ -134,8 +133,7 @@ static void pgraph_vk_sync(NV2AState *d)
 #endif
     pgraph_vk_render_display(pg);
 
-    qatomic_set(&d->pgraph.sync_pending, false);
-    qemu_event_set(&d->pgraph.sync_complete);
+    pgraph_clear_and_notify(&d->pgraph.sync_complete, &d->pgraph.sync_pending);
 }
 
 static void pgraph_vk_process_pending(NV2AState *d)
@@ -202,24 +200,26 @@ static void pgraph_vk_flip_stall(NV2AState *d)
 static void pgraph_vk_pre_savevm_trigger(NV2AState *d)
 {
     qatomic_set(&d->pgraph.vk_renderer_state->download_dirty_surfaces_pending, true);
-    qemu_event_reset(&d->pgraph.vk_renderer_state->dirty_surfaces_download_complete);
 }
 
 static void pgraph_vk_pre_savevm_wait(NV2AState *d)
 {
-    qemu_event_wait(&d->pgraph.vk_renderer_state->dirty_surfaces_download_complete);
+    PGRAPHVkState *r = d->pgraph.vk_renderer_state;
+    pgraph_wait_until_clear(&r->dirty_surfaces_download_complete,
+                            &r->download_dirty_surfaces_pending);
 }
 
 static void pgraph_vk_pre_shutdown_trigger(NV2AState *d)
 {
     PGRAPHVkState *r = d->pgraph.vk_renderer_state;
-    qemu_event_reset(&r->seed_writeback_complete);
     qatomic_set(&r->seed_writeback_pending, true);
 }
 
 static void pgraph_vk_pre_shutdown_wait(NV2AState *d)
 {
-    qemu_event_wait(&d->pgraph.vk_renderer_state->seed_writeback_complete);
+    PGRAPHVkState *r = d->pgraph.vk_renderer_state;
+    pgraph_wait_until_clear(&r->seed_writeback_complete,
+                            &r->seed_writeback_pending);
 }
 
 static int pgraph_vk_get_framebuffer_surface(NV2AState *d)
@@ -248,11 +248,10 @@ static int pgraph_vk_get_framebuffer_surface(NV2AState *d)
     surface->frame_time = pg->frame_time;
 
 #if HAVE_EXTERNAL_MEMORY
-    qemu_event_reset(&d->pgraph.sync_complete);
     qatomic_set(&pg->sync_pending, true);
     pfifo_kick(d);
     qemu_mutex_unlock(&d->pfifo.lock);
-    qemu_event_wait(&d->pgraph.sync_complete);
+    pgraph_wait_until_clear(&d->pgraph.sync_complete, &pg->sync_pending);
     g_nv2a_stats.presented_frame_id = r->display.draw_time;
     return r->display.gl_texture_id;
 #else

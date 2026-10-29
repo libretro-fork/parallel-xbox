@@ -709,9 +709,9 @@ typedef struct PGRAPHVkState {
     Scratch swizzle_scratch;
     SurfaceBinding *color_binding, *zeta_binding;
     bool downloads_pending;
-    QemuEvent downloads_complete;
+    retro_eventcount_t downloads_complete;
     bool download_dirty_surfaces_pending;
-    QemuEvent dirty_surfaces_download_complete; // common
+    retro_eventcount_t dirty_surfaces_download_complete; // common
 
     Lru texture_cache;
     TextureBinding *texture_cache_entries;
@@ -813,7 +813,7 @@ typedef struct PGRAPHVkState {
     /* Seed learning: the learnt shader seed is written back at
      * shutdown, on the pfifo thread. */
     bool seed_writeback_pending;
-    QemuEvent seed_writeback_complete;
+    retro_eventcount_t seed_writeback_complete;
 
     PGRAPHVkDisplayState display;
     PGRAPHVkComputeState compute;

@@ -1124,7 +1124,7 @@ void pgraph_vk_init_shaders(PGRAPHState *pg)
         (r->device_props.limits.maxPushConstantsSize >=
          MAX_UNIFORM_ATTR_VALUES_SIZE);
     vk_spec_push_constants = r->use_push_constants_for_uniform_attrs;
-    qemu_event_init(&r->seed_writeback_complete, false);
+    retro_eventcount_init(&r->seed_writeback_complete);
     r->seed_writeback_pending = false;
 }
 
@@ -1148,14 +1148,14 @@ void pgraph_vk_shader_seed_writeback(PGRAPHState *pg)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
     vk_seed_write(pg);
-    qatomic_set(&r->seed_writeback_pending, false);
-    qemu_event_set(&r->seed_writeback_complete);
+    pgraph_clear_and_notify(&r->seed_writeback_complete,
+                            &r->seed_writeback_pending);
 }
 
 void pgraph_vk_finalize_shaders(PGRAPHState *pg)
 {
     vk_seed_write(pg);
-    qemu_event_destroy(&pg->vk_renderer_state->seed_writeback_complete);
+    retro_eventcount_free(&pg->vk_renderer_state->seed_writeback_complete);
     shader_cache_finalize(pg);
     destroy_descriptor_sets(pg);
     destroy_descriptor_set_layout(pg);

@@ -176,8 +176,7 @@ static void pgraph_gl_flush(NV2AState *d)
     pgraph_gl_uniform_sources_invalidate(r);
     /* FIXME: Flush more? */
 
-    qatomic_set(&d->pgraph.flush_pending, false);
-    qemu_event_set(&d->pgraph.flush_complete);
+    pgraph_clear_and_notify(&d->pgraph.flush_complete, &d->pgraph.flush_pending);
 }
 
 static void pgraph_gl_process_pending(NV2AState *d)
@@ -234,7 +233,6 @@ static void pgraph_gl_pre_savevm_trigger(NV2AState *d)
     PGRAPHGLState *r = pg->gl_renderer_state;
 
     qatomic_set(&r->download_dirty_surfaces_pending, true);
-    qemu_event_reset(&r->dirty_surfaces_download_complete);
 }
 
 static void pgraph_gl_pre_savevm_wait(NV2AState *d)
@@ -242,7 +240,8 @@ static void pgraph_gl_pre_savevm_wait(NV2AState *d)
     PGRAPHState *pg = &d->pgraph;
     PGRAPHGLState *r = pg->gl_renderer_state;
 
-    qemu_event_wait(&r->dirty_surfaces_download_complete);
+    pgraph_wait_until_clear(&r->dirty_surfaces_download_complete,
+                            &r->download_dirty_surfaces_pending);
 }
 
 static void pgraph_gl_pre_shutdown_trigger(NV2AState *d)
@@ -251,7 +250,6 @@ static void pgraph_gl_pre_shutdown_trigger(NV2AState *d)
     PGRAPHGLState *r = pg->gl_renderer_state;
 
     qatomic_set(&r->shader_cache_writeback_pending, true);
-    qemu_event_reset(&r->shader_cache_writeback_complete);
 }
 
 static void pgraph_gl_pre_shutdown_wait(NV2AState *d)
@@ -259,7 +257,8 @@ static void pgraph_gl_pre_shutdown_wait(NV2AState *d)
     PGRAPHState *pg = &d->pgraph;
     PGRAPHGLState *r = pg->gl_renderer_state;
 
-    qemu_event_wait(&r->shader_cache_writeback_complete);
+    pgraph_wait_until_clear(&r->shader_cache_writeback_complete,
+                            &r->shader_cache_writeback_pending);
 }
 
 static PGRAPHRenderer pgraph_gl_renderer = {

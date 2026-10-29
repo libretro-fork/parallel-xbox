@@ -350,11 +350,11 @@ static void nv2a_reset(NV2AState *d)
             qatomic_set(&d->pfifo.halt, true);
         }
 
-        qemu_event_reset(&d->pgraph.flush_complete);
         qatomic_set(&d->pgraph.flush_pending, true);
         nv2a_unlock_fifo(d);
         bql_unlock();
-        qemu_event_wait(&d->pgraph.flush_complete);
+        pgraph_wait_until_clear(&d->pgraph.flush_complete,
+                                &d->pgraph.flush_pending);
         bql_lock();
         nv2a_lock_fifo(d);
 

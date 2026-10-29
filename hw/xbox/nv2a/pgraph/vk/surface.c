@@ -43,19 +43,16 @@ void pgraph_vk_set_surface_scale_factor(NV2AState *d, unsigned int scale)
     qemu_mutex_unlock(&d->pfifo.lock);
 
     // FIXME: It's just flush
-    qemu_mutex_lock(&d->pgraph.lock);
-    qemu_event_reset(&d->pgraph.vk_renderer_state->dirty_surfaces_download_complete);
-    qatomic_set(&d->pgraph.vk_renderer_state->download_dirty_surfaces_pending, true);
-    qemu_mutex_unlock(&d->pgraph.lock);
+    PGRAPHVkState *r = d->pgraph.vk_renderer_state;
+    qatomic_set(&r->download_dirty_surfaces_pending, true);
     pfifo_kick(d);
-    qemu_event_wait(&d->pgraph.vk_renderer_state->dirty_surfaces_download_complete);
+    pgraph_wait_until_clear(&r->dirty_surfaces_download_complete,
+                            &r->download_dirty_surfaces_pending);
 
-    qemu_mutex_lock(&d->pgraph.lock);
-    qemu_event_reset(&d->pgraph.flush_complete);
     qatomic_set(&d->pgraph.flush_pending, true);
-    qemu_mutex_unlock(&d->pgraph.lock);
     pfifo_kick(d);
-    qemu_event_wait(&d->pgraph.flush_complete);
+    pgraph_wait_until_clear(&d->pgraph.flush_complete,
+                            &d->pgraph.flush_pending);
 
     pfifo_guest_lock(d);
     qatomic_set(&d->pfifo.halt, false);
@@ -520,13 +517,11 @@ void pgraph_vk_wait_for_surface_download(SurfaceBinding *surface)
     NV2AState *d = g_nv2a;
 
     if (qatomic_read(&surface->draw_dirty)) {
-        pfifo_guest_lock(d);
-        qemu_event_reset(&d->pgraph.vk_renderer_state->downloads_complete);
+        PGRAPHVkState *r = d->pgraph.vk_renderer_state;
         qatomic_set(&surface->download_pending, true);
-        qatomic_set(&d->pgraph.vk_renderer_state->downloads_pending, true);
+        qatomic_set(&r->downloads_pending, true);
         pfifo_kick(d);
-        qemu_mutex_unlock(&d->pfifo.lock);
-        qemu_event_wait(&d->pgraph.vk_renderer_state->downloads_complete);
+        pgraph_wait_until_clear(&r->downloads_complete, &r->downloads_pending);
     }
 }
 
@@ -546,8 +541,7 @@ void pgraph_vk_process_pending_downloads(NV2AState *d)
         }
     }
 
-    qatomic_set(&r->downloads_pending, false);
-    qemu_event_set(&r->downloads_complete);
+    pgraph_clear_and_notify(&r->downloads_complete, &r->downloads_pending);
 }
 
 void pgraph_vk_download_dirty_surfaces(NV2AState *d)
@@ -566,8 +560,8 @@ void pgraph_vk_download_dirty_surfaces(NV2AState *d)
         }
     }
 
-    qatomic_set(&r->download_dirty_surfaces_pending, false);
-    qemu_event_set(&r->dirty_surfaces_download_complete);
+    pgraph_clear_and_notify(&r->dirty_surfaces_download_complete,
+                            &r->download_dirty_surfaces_pending);
 }
 
 static void surface_access_callback(void *opaque, MemoryRegion *mr, hwaddr addr,
@@ -619,11 +613,8 @@ static void surface_access_callback(void *opaque, MemoryRegion *mr, hwaddr addr,
     qemu_mutex_unlock(&d->pgraph.lock);
 
     if (wait_for_downloads) {
-        pfifo_guest_lock(d);
-        qemu_event_reset(&r->downloads_complete);
         qatomic_set(&r->downloads_pending, true);
         pfifo_kick(d);
-        qemu_mutex_unlock(&d->pfifo.lock);
         /* A DMA write from the main loop arrives here holding the BQL, which
          * the pfifo thread may need before it can download (NO_OPERATION
          * raises an interrupt): let go of it while waiting, as a reset does. */
@@ -631,7 +622,7 @@ static void surface_access_callback(void *opaque, MemoryRegion *mr, hwaddr addr,
         if (bql) {
             bql_unlock();
         }
-        qemu_event_wait(&r->downloads_complete);
+        pgraph_wait_until_clear(&r->downloads_complete, &r->downloads_pending);
         if (bql) {
             bql_lock();
         }
@@ -2117,8 +2108,8 @@ void pgraph_vk_init_surfaces(PGRAPHState *pg)
     scratch_init(&r->swizzle_scratch, 1024 * 1024 * 4);
 
     r->downloads_pending = false;
-    qemu_event_init(&r->downloads_complete, false);
-    qemu_event_init(&r->dirty_surfaces_download_complete, false);
+    retro_eventcount_init(&r->downloads_complete);
+    retro_eventcount_init(&r->dirty_surfaces_download_complete);
 
     r->color_binding = NULL;
     r->zeta_binding = NULL;

@@ -115,19 +115,15 @@ void pgraph_gl_set_surface_scale_factor(NV2AState *d, unsigned int scale)
     qatomic_set(&d->pfifo.halt, true);
     qemu_mutex_unlock(&d->pfifo.lock);
 
-    qemu_mutex_lock(&d->pgraph.lock);
-    qemu_event_reset(&r->dirty_surfaces_download_complete);
     qatomic_set(&r->download_dirty_surfaces_pending, true);
-    qemu_mutex_unlock(&d->pgraph.lock);
     pfifo_kick(d);
-    qemu_event_wait(&r->dirty_surfaces_download_complete);
+    pgraph_wait_until_clear(&r->dirty_surfaces_download_complete,
+                            &r->download_dirty_surfaces_pending);
 
-    qemu_mutex_lock(&d->pgraph.lock);
-    qemu_event_reset(&d->pgraph.flush_complete);
     qatomic_set(&d->pgraph.flush_pending, true);
-    qemu_mutex_unlock(&d->pgraph.lock);
     pfifo_kick(d);
-    qemu_event_wait(&d->pgraph.flush_complete);
+    pgraph_wait_until_clear(&d->pgraph.flush_complete,
+                            &d->pgraph.flush_pending);
 
     pfifo_guest_lock(d);
     qatomic_set(&d->pfifo.halt, false);
@@ -829,11 +825,8 @@ static void surface_access_callback(void *opaque, MemoryRegion *mr, hwaddr addr,
     qemu_mutex_unlock(&d->pgraph.lock);
 
     if (wait_for_downloads) {
-        pfifo_guest_lock(d);
-        qemu_event_reset(&r->downloads_complete);
         qatomic_set(&r->downloads_pending, true);
         pfifo_kick(d);
-        qemu_mutex_unlock(&d->pfifo.lock);
         /* A DMA write from the main loop arrives here holding the BQL: let
          * go of it while waiting, as a reset does, so the main loop (the
          * pgraph interrupt bottom half) runs meanwhile. */
@@ -841,7 +834,7 @@ static void surface_access_callback(void *opaque, MemoryRegion *mr, hwaddr addr,
         if (bql) {
             bql_unlock();
         }
-        qemu_event_wait(&r->downloads_complete);
+        pgraph_wait_until_clear(&r->downloads_complete, &r->downloads_pending);
         if (bql) {
             bql_lock();
         }
@@ -1976,8 +1969,7 @@ void pgraph_gl_process_pending_downloads(NV2AState *d)
         }
     }
 
-    qatomic_set(&r->downloads_pending, false);
-    qemu_event_set(&r->downloads_complete);
+    pgraph_clear_and_notify(&r->downloads_complete, &r->downloads_pending);
 }
 
 void pgraph_gl_download_dirty_surfaces(NV2AState *d)
@@ -1999,8 +1991,8 @@ void pgraph_gl_download_dirty_surfaces(NV2AState *d)
         parked_destroy(d, parked);
     }
 
-    qatomic_set(&r->download_dirty_surfaces_pending, false);
-    qemu_event_set(&r->dirty_surfaces_download_complete);
+    pgraph_clear_and_notify(&r->dirty_surfaces_download_complete,
+                            &r->download_dirty_surfaces_pending);
 }
 
 static void surface_copy_expand_row(uint8_t *out, uint8_t *in,
@@ -2793,8 +2785,8 @@ void pgraph_gl_init_surfaces(PGRAPHState *pg)
     scratch_init(&r->pitch_scratch, 1024 * 1024 * 4);
     scratch_init(&r->s2t_scratch, 1024 * 1024 * 4);
     r->downloads_pending = false;
-    qemu_event_init(&r->downloads_complete, false);
-    qemu_event_init(&r->dirty_surfaces_download_complete, false);
+    retro_eventcount_init(&r->downloads_complete);
+    retro_eventcount_init(&r->dirty_surfaces_download_complete);
 
     init_render_to_texture(pg);
 }

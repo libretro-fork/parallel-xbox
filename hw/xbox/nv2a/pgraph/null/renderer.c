@@ -24,14 +24,12 @@
 
 static void pgraph_null_sync(NV2AState *d)
 {
-    qatomic_set(&d->pgraph.sync_pending, false);
-    qemu_event_set(&d->pgraph.sync_complete);
+    pgraph_clear_and_notify(&d->pgraph.sync_complete, &d->pgraph.sync_pending);
 }
 
 static void pgraph_null_flush(NV2AState *d)
 {
-    qatomic_set(&d->pgraph.flush_pending, false);
-    qemu_event_set(&d->pgraph.flush_complete);
+    pgraph_clear_and_notify(&d->pgraph.flush_complete, &d->pgraph.flush_pending);
 }
 
 static void pgraph_null_process_pending(NV2AState *d)
