@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Games that wait in a loop for a hardware register to change (the vblank, the GPU) no longer run many times slower when the compiled loop also stores to memory each turn, which game code does when it keeps the value it read on the stack. Such a loop was taken for real work, so the Xbox's time was spent instruction by instruction instead of moving on to the next event: the test ROM's display test ran at 0.08x real time instead of 3.7x. A tight loop reading the same unchanged register over and over is now recognised as a wait however it is compiled, and sooner than before (a plain polling loop runs about three times faster too).
+
 - A game waiting for room in its GPU command buffer no longer keeps a PC core busy spinning while the GPU works through it: reading the GPU's read pointer while the GPU still has commands left counts as a wait, so the core waits for the GPU instead (Jet Set Radio Future's boot: about 2% less time per frame).
 
 - Vulkan: converting depth buffers between the Xbox's format and the PC GPU's (when a game reads its depth buffer back, writes it with the CPU, or uses it as a texture) no longer makes the core stop and wait for the GPU to finish all its work every 1,024 conversions. Depth read-backs now also go to the GPU together with the other read-backs, in one submission with one wait.

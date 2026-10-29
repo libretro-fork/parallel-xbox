@@ -404,6 +404,13 @@ typedef struct CPUNegativeOffsetState {
 /* and the block-end exits (sti, hlt-like, a few turns of the kernel's
  * idle loop) with nothing stored between them (accel/tcg/cpu-exec.c) */
 #define LR_QUIET_EXITS 16
+/* and the same device read giving the same value again and again, at most
+ * LR_POLL_GAP instructions apart, LR_POLL_RUNS times in a row: a poll loop
+ * even when it stores (a compiler spilling the value it read to the stack
+ * every turn), which the count above takes for activity. A loop doing work
+ * between its polls is many more instructions a turn. */
+#define LR_POLL_GAP 32
+#define LR_POLL_RUNS 64
 
 struct KVMState;
 struct kvm_run;
@@ -631,6 +638,12 @@ struct CPUState {
      * value changed (the GPU's read pointer while the GPU works through
      * the pushbuffer, hw/xbox/nv2a/user.c) */
     bool lr_poll_any;
+    /* the poll loop rule (LR_POLL_GAP): instructions executed at the last
+     * device read, the same reads in a row that close together, and the
+     * wait it found, taken at the next block's start (cpu-exec.c) */
+    int64_t lr_poll_at;
+    int32_t lr_poll_runs;
+    bool lr_poll_wait;
 
     /*
      * MUST BE LAST in order to minimize the displacement to CPUArchState.

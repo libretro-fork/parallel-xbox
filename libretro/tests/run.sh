@@ -147,7 +147,9 @@ done
 # and managed 1 (Ninja Gaiden Black in slow motion). The ROM waits for each
 # vblank polling the GPU's interrupt register: a wait, so the OpenGL run
 # goes at least 0.2x real time (it went 0.03x when each poll was a device
-# access, rewinding its block).
+# access, rewinding its block). Each turn of that poll also stores the value
+# to the stack, as compiled game code does; taken for activity, that ran
+# the ROM at 0.08x.
 # At frame 60 a swizzled 32x16 surface is cleared red on its left half and
 # blue on its right, its pitch set to half a row, and at 61 the CPU checks
 # every texel where the NV2A puts it: hardware ignores a swizzled surface's

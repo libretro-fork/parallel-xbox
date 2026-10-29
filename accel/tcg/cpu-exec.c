@@ -1061,6 +1061,7 @@ static inline bool cpu_handle_interrupt(CPUState *cpu,
             if (tcg_ops->cpu_exec_interrupt(cpu, interrupt_request)) {
                 /* something happened: a wait ends here */
                 cpu->neg.lr_quiet = LR_QUIET_INSNS;
+                cpu->lr_poll_runs = 0;
                 if (!tcg_ops->need_replay_interrupt ||
                     tcg_ops->need_replay_interrupt(interrupt_request)) {
                     replay_interrupt();
@@ -1217,6 +1218,12 @@ static inline void cpu_loop_exec_tb(CPUState *cpu, TranslationBlock *tb,
     }
 
     *last_tb = NULL;
+    if (cpu->lr_poll_wait) {
+        /* a tight poll loop (cputlb.c lr_poll_read) asked for this exit:
+         * the same wait as a quiet run */
+        cpu->lr_poll_wait = false;
+        cpu->neg.lr_quiet = -1;
+    }
     if (cpu->neg.lr_quiet < 0) {
         /* The libretro core's idle detection (translator.c): LR_QUIET_INSNS
          * instructions that stored nothing and touched no device (but to

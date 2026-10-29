@@ -283,4 +283,10 @@ static inline void tlb_flush_range_by_mmuidx_all_cpus_synced(CPUState *cpu,
 {
 }
 #endif /* CONFIG_TCG && !CONFIG_USER_ONLY */
+/* A device read (a memory-mapped register, a port; tag tells them apart)
+ * and the value it gave, for the libretro core's idle detection: the same
+ * read again with the same value is a poll, not activity, and a tight run
+ * of them is a wait (hw/core/cpu.h LR_POLL_GAP) */
+void lr_poll_read(CPUState *cpu, vaddr tag, uint64_t val);
+
 #endif /* CPUTLB_H */

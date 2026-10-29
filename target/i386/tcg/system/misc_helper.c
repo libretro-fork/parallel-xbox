@@ -30,25 +30,28 @@
 
 /* A port read is a device access, unless it is the last one again with the
  * same value: a loop polling a status port that has not changed waits
- * (accel/tcg/cputlb.c do_ld_mmio_beN does the same for memory-mapped
- * registers; ports are told apart from those by a bit above any address) */
+ * (accel/tcg/cputlb.c lr_poll_read, as for memory-mapped registers; ports
+ * are told apart from those by a bit above any address) */
 static uint32_t lr_port_read(CPUX86State *env, uint32_t port, int size,
                              uint32_t val)
 {
-    CPUState *cs = env_cpu(env);
-    vaddr tag = (1ULL << 40) | ((vaddr)size << 32) | port;
-
-    if (cs->lr_poll_addr != tag || cs->lr_poll_val != val) {
-        cs->lr_poll_addr = tag;
-        cs->lr_poll_val = val;
-        cs->neg.lr_quiet = LR_QUIET_INSNS;
-    }
+    lr_poll_read(env_cpu(env), (1ULL << 40) | ((vaddr)size << 32) | port,
+                 val);
     return val;
+}
+
+/* a port write: a device access, and the end of a poll run */
+static void lr_port_write(CPUX86State *env)
+{
+    CPUState *cs = env_cpu(env);
+
+    cs->neg.lr_quiet = LR_QUIET_INSNS;
+    cs->lr_poll_runs = 0;
 }
 
 void helper_outb(CPUX86State *env, uint32_t port, uint32_t data)
 {
-    env_cpu(env)->neg.lr_quiet = LR_QUIET_INSNS; /* a device access */
+    lr_port_write(env); /* a device access */
     address_space_stb(&address_space_io, port, data,
                       cpu_get_mem_attrs(env), NULL);
 }
@@ -62,7 +65,7 @@ target_ulong helper_inb(CPUX86State *env, uint32_t port)
 
 void helper_outw(CPUX86State *env, uint32_t port, uint32_t data)
 {
-    env_cpu(env)->neg.lr_quiet = LR_QUIET_INSNS; /* a device access */
+    lr_port_write(env); /* a device access */
     address_space_stw(&address_space_io, port, data,
                       cpu_get_mem_attrs(env), NULL);
 }
@@ -76,7 +79,7 @@ target_ulong helper_inw(CPUX86State *env, uint32_t port)
 
 void helper_outl(CPUX86State *env, uint32_t port, uint32_t data)
 {
-    env_cpu(env)->neg.lr_quiet = LR_QUIET_INSNS; /* a device access */
+    lr_port_write(env); /* a device access */
     address_space_stl(&address_space_io, port, data,
                       cpu_get_mem_attrs(env), NULL);
 }

@@ -21,8 +21,10 @@
 #include "qemu/osdep.h"
 /* the libretro core's idle detection (hw/core/cpu.h): a store made by a
  * helper or on the slow path, or any device access, is not waiting */
-#define LR_QUIET_RESET(cpu) ((cpu)->neg.lr_quiet = LR_QUIET_INSNS)
+#define LR_QUIET_RESET(cpu) \
+    ((cpu)->neg.lr_quiet = LR_QUIET_INSNS, (cpu)->lr_poll_runs = 0)
 #include "qemu/main-loop.h"
+#include "exec/icount.h"
 #include "qemu/target-info.h"
 #include "accel/tcg/cpu-ops.h"
 #include "accel/tcg/iommu.h"
@@ -2053,23 +2055,53 @@ static uint64_t do_ld_mmio_beN(CPUState *cpu, CPUTLBEntryFull *full,
     BQL_LOCK_GUARD();
     ret = int_ld_mmio_beN(cpu, full, ret_be, addr, size, mmu_idx,
                           type, ra, mr, mr_offset);
-    /* A device read is activity, unless it is the last one again with
-     * the same value: a loop polling a register that has not changed
-     * (the vblank's interrupt bit, the GPU's read pointer) waits, as one
-     * spinning on RAM does, and its time can move on to the next event
-     * (lr_quiet_exit) instead of being spent read by read. A store in
-     * the loop still resets the count. */
-    if (cpu->lr_poll_any) {
-        /* the device says this read waits on another thread's progress */
-        cpu->lr_poll_any = false;
-        cpu->lr_poll_addr = addr;
-        cpu->lr_poll_val = ret;
-    } else if (addr != cpu->lr_poll_addr || ret != cpu->lr_poll_val) {
-        cpu->lr_poll_addr = addr;
-        cpu->lr_poll_val = ret;
-        LR_QUIET_RESET(cpu);
-    }
+    lr_poll_read(cpu, addr, ret);
     return ret;
+}
+
+/* A device read is activity, unless it is the last one again with the same
+ * value, or the device flagged it (lr_poll_any): a loop polling a register
+ * that has not changed (the vblank's interrupt bit), or the GPU's read
+ * pointer while the GPU works, waits, as one spinning on RAM does, and its
+ * time can move on to the next event (lr_quiet_exit) instead of being spent
+ * read by read. A store in the loop resets that count, so a loop that stores
+ * every turn (the value it read spilled to the stack) was never a wait: a
+ * run of LR_POLL_RUNS such reads, each at most LR_POLL_GAP instructions
+ * after the last, is one too, whatever it stores. Instructions are counted
+ * as icount does (icount_get_executed); a new slice restarts the count, and
+ * the run with it. Any device write or interrupt ends the run
+ * (LR_QUIET_RESET, the port writes, cpu-exec.c). */
+void lr_poll_read(CPUState *cpu, vaddr tag, uint64_t val)
+{
+    int64_t now = cpu->icount_budget -
+                  (cpu->neg.icount_decr.u16.low + cpu->icount_extra);
+    int64_t gap = now - cpu->lr_poll_at;
+    bool any = cpu->lr_poll_any;
+
+    cpu->lr_poll_at = now;
+    /* the device's read handler said this read waits on another thread's
+     * progress (lr_poll_any, hw/xbox/nv2a/user.c): a poll even though its
+     * value changed */
+    cpu->lr_poll_any = false;
+    if (!any && (tag != cpu->lr_poll_addr || val != cpu->lr_poll_val)) {
+        cpu->lr_poll_addr = tag;
+        cpu->lr_poll_val = val;
+        LR_QUIET_RESET(cpu);
+        return;
+    }
+    cpu->lr_poll_addr = tag;
+    cpu->lr_poll_val = val;
+    if (!icount_enabled() || gap < 0 || gap > LR_POLL_GAP) {
+        cpu->lr_poll_runs = 0;
+        return;
+    }
+    if (++cpu->lr_poll_runs >= LR_POLL_RUNS) {
+        /* taken at the next block's start, past any store left in this
+         * block (which resets lr_quiet) */
+        cpu->lr_poll_runs = 0;
+        cpu->lr_poll_wait = true;
+        qatomic_set(&cpu->neg.icount_decr.u16.high, -1);
+    }
 }
 
 static Int128 do_ld16_mmio_beN(CPUState *cpu, CPUTLBEntryFull *full,

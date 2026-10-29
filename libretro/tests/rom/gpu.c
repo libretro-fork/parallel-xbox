@@ -363,10 +363,17 @@ static __attribute__((noinline)) void check_swizzled(void)
     ram32(GPU_SWZ_BAD, bad);
 }
 
+/* The register is read into a volatile local, so every turn stores it to
+ * the stack, as game code built without optimisation (or spilling) does:
+ * the core must still see the loop as a wait (accel/tcg/cputlb.c
+ * lr_poll_read). Taken for activity, it ran this ROM at 0.08x. */
 static void wait_vblank(void)
 {
-    while (!(rd(PCRTC_INTR) & 1)) {
-    }
+    volatile u32 intr;
+
+    do {
+        intr = rd(PCRTC_INTR);
+    } while (!(intr & 1));
     wr(PCRTC_INTR, 1);
     (*(volatile u32 *)GPU_FRAMES)++;
 }
