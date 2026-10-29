@@ -63,7 +63,9 @@ typedef struct TextureLevel {
     unsigned int row_length; /* texels a buffer row holds, 0 = width */
     VkDeviceSize offset;
     size_t size;
-    bool from_vram; /* the offset is in the Xbox's RAM (r->vram_buffer) */
+    /* where the offset is: the staging ring, the Xbox's RAM
+     * (r->vram_buffer), or the GPU unswizzle's output ring */
+    enum { LEVEL_STAGING, LEVEL_VRAM, LEVEL_UNSWIZZLED } source;
 } TextureLevel;
 
 typedef struct TextureLayer {
@@ -157,7 +159,7 @@ static uint8_t *stage_level(PGRAPHState *pg, TextureLevel *level,
     level->depth = depth;
     level->row_length = 0;
     level->size = size;
-    level->from_vram = false;
+    level->source = LEVEL_STAGING;
     level->offset = pgraph_vk_staging_alloc(pg, size, 16, &ptr);
     return ptr;
 }
@@ -183,7 +185,7 @@ static bool level_from_vram(PGRAPHState *pg, TextureLevel *level,
     level->depth = depth;
     level->row_length = 0;
     level->size = size;
-    level->from_vram = true;
+    level->source = LEVEL_VRAM;
     level->offset = offset;
     return true;
 }
@@ -252,15 +254,39 @@ static void decode_level_3d(PGRAPHState *pg, TextureLevel *level,
  * the host cannot sample the format (palette, YUV, R6G5B5): through a
  * scratch range of the ring, the conversion's source, which the copy does
  * not read */
-static void stage_swizzled(PGRAPHState *pg, TextureLevel *level,
-                           const TextureShape *s, const uint8_t *data,
-                           const uint8_t *palette, unsigned int width,
-                           unsigned int height, unsigned int depth,
-                           unsigned int bpp)
+static void stage_swizzled(PGRAPHState *pg, VkCommandBuffer cmd,
+                           TextureLevel *level, const TextureShape *s,
+                           const uint8_t *data, const uint8_t *palette,
+                           unsigned int width, unsigned int height,
+                           unsigned int depth, unsigned int bpp)
 {
+    NV2AState *d = container_of(pg, NV2AState, pgraph);
     size_t row_pitch = (size_t)width * bpp, slice_pitch = row_pitch * height;
     size_t raw = slice_pitch * depth;
     size_t converted = pgraph_converted_texture_size(*s, width, height, depth);
+    bool palette_format =
+        s->color_format == NV097_SET_TEXTURE_FORMAT_COLOR_SZ_I8_A8R8G8B8;
+
+    /* by the GPU, from the RAM, where it can: as it is, or through the
+     * palette */
+    if (!converted || palette_format) {
+        VkDeviceSize out;
+        if (pgraph_vk_unswizzle(pg, cmd, data - (const uint8_t *)d->vram_ptr,
+                                width, height, depth, bpp,
+                                palette_format ?
+                                    palette - (const uint8_t *)d->vram_ptr :
+                                    0,
+                                &out)) {
+            level->width = width;
+            level->height = height;
+            level->depth = depth;
+            level->row_length = 0;
+            level->size = converted ? converted : raw;
+            level->source = LEVEL_UNSWIZZLED;
+            level->offset = out;
+            return;
+        }
+    }
 
     if (!converted) {
         uint8_t *dst = stage_level(pg, level, width, height, depth, raw);
@@ -288,8 +314,8 @@ static void stage_swizzled(PGRAPHState *pg, TextureLevel *level,
 /* The texture's levels, from the guest's memory into the staging ring, in
  * the open single-time command buffer's range. No buffer of its own: a
  * level is decoded, unswizzled or copied straight into the ring. */
-static void stage_texture(PGRAPHState *pg, int texture_idx,
-                          TextureLayout *layout)
+static void stage_texture(PGRAPHState *pg, VkCommandBuffer cmd,
+                          int texture_idx, TextureLayout *layout)
 {
     NV2AState *d = container_of(pg, NV2AState, pgraph);
     PGRAPHVkState *r = pg->vk_renderer_state;
@@ -420,7 +446,7 @@ static void stage_texture(PGRAPHState *pg, int texture_idx,
                     texture_data_ptr +=
                         physical_width / 4 * physical_height / 4 * block_size;
                 } else {
-                    stage_swizzled(pg, level, &s, texture_data_ptr,
+                    stage_swizzled(pg, cmd, level, &s, texture_data_ptr,
                                    palette_data_ptr, width, height, 1,
                                    f.bytes_per_pixel);
                     if (s.cubemap && adjusted_width != s.width) {
@@ -461,7 +487,7 @@ static void stage_texture(PGRAPHState *pg, int texture_idx,
                 }
                 texture_data_ptr += physical_width / 4 * physical_height / 4 * depth * block_size;
             } else {
-                stage_swizzled(pg, level, &s, texture_data_ptr,
+                stage_swizzled(pg, cmd, level, &s, texture_data_ptr,
                                palette_data_ptr, width, height, depth,
                                f.bytes_per_pixel);
                 texture_data_ptr += width * height * depth * f.bytes_per_pixel;
@@ -582,14 +608,16 @@ static void upload_texture_image(PGRAPHState *pg, int texture_idx,
                                    512, 1, segaboot_logo_size);
         memcpy(dst, segaboot_logo_data, segaboot_logo_size);
     } else {
-        stage_texture(pg, texture_idx, &layout);
+        stage_texture(pg, cmd, texture_idx, &layout);
     }
     const int num_layers = state->cubemap ? 6 : 1;
     const int num_levels = binding->logo ? 1 : state->levels;
 
-    /* the levels staged in the ring, and those taken from the RAM */
-    VkBufferImageCopy regions[6 * 16], vram_regions[6 * 16];
-    int num_regions = 0, num_vram_regions = 0;
+    /* the levels staged in the ring, those taken from the RAM, and those
+     * the GPU unswizzled */
+    VkBufferImageCopy regions[6 * 16], vram_regions[6 * 16],
+        unswizzled_regions[6 * 16];
+    int num_regions = 0, num_vram_regions = 0, num_unswizzled_regions = 0;
     VkDeviceSize flush_lo = (VkDeviceSize)-1, flush_hi = 0;
 
     for (int layer_idx = 0; layer_idx < num_layers; layer_idx++) {
@@ -600,9 +628,12 @@ static void upload_texture_image(PGRAPHState *pg, int texture_idx,
             NV2A_VK_DPRINTF(" - Level %d, w=%d h=%d d=%d @ %08" HWADDR_PRIx,
                             level_idx, level->width, level->height,
                             level->depth, level->offset);
-            VkBufferImageCopy *region = level->from_vram ?
-                                            &vram_regions[num_vram_regions++] :
-                                            &regions[num_regions++];
+            VkBufferImageCopy *region =
+                level->source == LEVEL_VRAM ?
+                    &vram_regions[num_vram_regions++] :
+                level->source == LEVEL_UNSWIZZLED ?
+                    &unswizzled_regions[num_unswizzled_regions++] :
+                    &regions[num_regions++];
             *region = (VkBufferImageCopy){
                 .bufferOffset = level->offset,
                 .bufferRowLength = level->row_length,
@@ -615,7 +646,7 @@ static void upload_texture_image(PGRAPHState *pg, int texture_idx,
                 .imageExtent =
                     (VkExtent3D){ level->width, level->height, level->depth },
             };
-            if (!level->from_vram) {
+            if (level->source == LEVEL_STAGING) {
                 flush_lo = MIN(flush_lo, level->offset);
                 flush_hi = MAX(flush_hi, level->offset + level->size);
             }
@@ -651,6 +682,9 @@ static void upload_texture_image(PGRAPHState *pg, int texture_idx,
     vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_HOST_BIT,
                          VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL,
                          num_vram_regions ? 2 : 1, host_barriers, 0, NULL);
+    if (num_unswizzled_regions) {
+        pgraph_vk_unswizzle_done(pg, cmd);
+    }
 
     pgraph_vk_transition_image_layout(pg, cmd, binding->image, vkf.vk_format,
                                       binding->current_layout,
@@ -667,6 +701,12 @@ static void upload_texture_image(PGRAPHState *pg, int texture_idx,
         vkCmdCopyBufferToImage(cmd, r->vram_buffer, binding->image,
                                binding->current_layout, num_vram_regions,
                                vram_regions);
+    }
+    if (num_unswizzled_regions) {
+        vkCmdCopyBufferToImage(
+            cmd, r->storage_buffers[BUFFER_UNSWIZZLE_OUT].buffer,
+            binding->image, binding->current_layout, num_unswizzled_regions,
+            unswizzled_regions);
     }
 
     pgraph_vk_transition_image_layout(pg, cmd, binding->image, vkf.vk_format,

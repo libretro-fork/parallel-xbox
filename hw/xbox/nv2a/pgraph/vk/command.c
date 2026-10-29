@@ -72,7 +72,9 @@ static void create_command_buffers(PGRAPHState *pg)
     r->aux_slot = 0;
     r->aux_oldest = 0;
     r->aux_npending = 0;
-    r->stage_head = 0;
+    for (int i = 0; i < PGRAPH_VK_RINGS; i++) {
+        r->ring_head[i] = 0;
+    }
 }
 
 static void destroy_command_buffers(PGRAPHState *pg)
@@ -178,7 +180,9 @@ void pgraph_vk_wait_for_aux(PGRAPHState *pg)
         aux_retire_oldest(r, false);
     }
     if (!r->in_aux_command_buffer) {
-        r->stage_head = 0;
+        for (int i = 0; i < PGRAPH_VK_RINGS; i++) {
+            r->ring_head[i] = 0;
+        }
     }
 }
 
@@ -194,8 +198,10 @@ VkCommandBuffer pgraph_vk_begin_single_time_commands(PGRAPHState *pg)
         aux_retire_oldest(r, false);
     }
     r->in_aux_command_buffer = true;
-    a->stage_start = r->stage_head;
-    a->stage_end = r->stage_head;
+    for (int i = 0; i < PGRAPH_VK_RINGS; i++) {
+        a->ring_start[i] = r->ring_head[i];
+        a->ring_end[i] = r->ring_head[i];
+    }
 
     VkCommandBufferBeginInfo begin_info = {
         .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
@@ -206,62 +212,69 @@ VkCommandBuffer pgraph_vk_begin_single_time_commands(PGRAPHState *pg)
     return a->cmd;
 }
 
-/* The first byte of the staging ring still to be read: by the oldest
- * submission in flight that reads any, else by the open recording. False
- * when nothing of the ring is in use. */
-static bool stage_tail(PGRAPHVkState *r, size_t *tail)
+static const int ring_buffer[PGRAPH_VK_RINGS] = {
+    [PGRAPH_VK_RING_STAGING] = BUFFER_STAGING_SRC,
+    [PGRAPH_VK_RING_UNSWIZZLE] = BUFFER_UNSWIZZLE_OUT,
+};
+
+/* The first byte of a ring still in use: by the oldest submission in
+ * flight that uses any, else by the open recording. False when nothing of
+ * the ring is in use. */
+static bool ring_tail(PGRAPHVkState *r, int ring, size_t *tail)
 {
     for (int i = 0; i < r->aux_npending; i++) {
         struct PGRAPHVkAuxSlot *a =
             &r->aux[(r->aux_oldest + i) % PGRAPH_VK_AUX_SLOTS];
-        if (a->stage_end != a->stage_start) {
-            *tail = a->stage_start;
+        if (a->ring_end[ring] != a->ring_start[ring]) {
+            *tail = a->ring_start[ring];
             return true;
         }
     }
     struct PGRAPHVkAuxSlot *a = &r->aux[r->aux_slot];
-    if (a->stage_end != a->stage_start) {
-        *tail = a->stage_start;
+    if (a->ring_end[ring] != a->ring_start[ring]) {
+        *tail = a->ring_start[ring];
         return true;
     }
     return false;
 }
 
-VkDeviceSize pgraph_vk_staging_alloc(PGRAPHState *pg, size_t size,
-                                     size_t alignment, uint8_t **ptr)
+bool pgraph_vk_ring_alloc(PGRAPHState *pg, int ring, size_t size,
+                          size_t alignment, VkDeviceSize *offset)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
-    StorageBuffer *b = &r->storage_buffers[BUFFER_STAGING_SRC];
+    StorageBuffer *b = &r->storage_buffers[ring_buffer[ring]];
     struct PGRAPHVkAuxSlot *a = &r->aux[r->aux_slot];
 
     assert(r->in_aux_command_buffer);
-    assert(b->mapped);
     assert(size > 0);
     if (size >= b->buffer_size) {
+        if (ring != PGRAPH_VK_RING_STAGING) {
+            return false;
+        }
         /* Grown for it, once everything has settled: the recording so far
          * reads nothing of the ring, or the caller would not need more
          * than all of it */
-        assert(a->stage_start == a->stage_end);
+        assert(a->ring_start[ring] == a->ring_end[ring]);
         pgraph_vk_buffer_ensure_capacity(pg, BUFFER_STAGING_SRC, 2 * size);
         b = &r->storage_buffers[BUFFER_STAGING_SRC];
-        a->stage_start = a->stage_end = r->stage_head = 0;
+        a->ring_start[ring] = a->ring_end[ring] = r->ring_head[ring] = 0;
     }
 
     for (;;) {
         /* pending submissions retired as their fences signal, no waiting */
         while (r->aux_npending && aux_retire_oldest(r, true)) {
         }
-        size_t head = ROUND_UP(r->stage_head, alignment);
+        size_t head = ROUND_UP(r->ring_head[ring], alignment);
         size_t tail;
-        bool in_use = stage_tail(r, &tail);
+        bool in_use = ring_tail(r, ring, &tail);
 
         if (!in_use) {
             /* empty: at the head if it fits there, else from the start */
             if (head + size > b->buffer_size) {
                 head = 0;
             }
-            a->stage_start = head;
-        } else if (tail > r->stage_head) {
+            a->ring_start[ring] = head;
+        } else if (tail > r->ring_head[ring]) {
             /* the free bytes are [head, tail) */
             if (head + size > tail) {
                 head = (size_t)-1;
@@ -269,15 +282,16 @@ VkDeviceSize pgraph_vk_staging_alloc(PGRAPHState *pg, size_t size,
         } else {
             /* in use behind the head: [head, size) and [0, tail) are free
              * (tail == head is the ring full) */
-            if (tail == r->stage_head || head + size > b->buffer_size) {
-                head = size <= tail && tail != r->stage_head ? 0 : (size_t)-1;
+            if (tail == r->ring_head[ring] || head + size > b->buffer_size) {
+                head = size <= tail && tail != r->ring_head[ring] ?
+                           0 : (size_t)-1;
             }
         }
         if (head != (size_t)-1) {
-            r->stage_head = head + size;
-            a->stage_end = r->stage_head;
-            *ptr = b->mapped + head;
-            return head;
+            r->ring_head[ring] = head + size;
+            a->ring_end[ring] = r->ring_head[ring];
+            *offset = head;
+            return true;
         }
         if (r->aux_npending) {
             /* full: the oldest submission's bytes come back once it has
@@ -285,10 +299,27 @@ VkDeviceSize pgraph_vk_staging_alloc(PGRAPHState *pg, size_t size,
             aux_retire_oldest(r, false);
             continue;
         }
-        /* the open recording alone holds more than the ring: grown, as
-         * above, were it empty - it is not */
+        /* the open recording alone holds more than the ring */
+        if (ring != PGRAPH_VK_RING_STAGING) {
+            return false;
+        }
         assert(!"staging ring: the open recording does not fit");
     }
+}
+
+VkDeviceSize pgraph_vk_staging_alloc(PGRAPHState *pg, size_t size,
+                                     size_t alignment, uint8_t **ptr)
+{
+    PGRAPHVkState *r = pg->vk_renderer_state;
+    VkDeviceSize offset = 0;
+
+    bool ok = pgraph_vk_ring_alloc(pg, PGRAPH_VK_RING_STAGING, size,
+                                   alignment, &offset);
+    assert(ok);
+    StorageBuffer *b = &r->storage_buffers[BUFFER_STAGING_SRC];
+    assert(b->mapped);
+    *ptr = b->mapped + offset;
+    return offset;
 }
 
 void pgraph_vk_staging_flush(PGRAPHState *pg, VkDeviceSize offset,

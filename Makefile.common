@@ -1295,6 +1295,7 @@ SOURCES_TARGET := \
 	$(CORE_DIR)/hw/xbox/nv2a/pgraph/vk/surface-compute.c \
 	$(CORE_DIR)/hw/xbox/nv2a/pgraph/vk/surface.c \
 	$(CORE_DIR)/hw/xbox/nv2a/pgraph/vk/texture.c \
+	$(CORE_DIR)/hw/xbox/nv2a/pgraph/vk/unswizzle.c \
 	$(CORE_DIR)/hw/xbox/nv2a/pgraph/vk/vertex.c \
 	$(CORE_DIR)/hw/xbox/nv2a/pgraph/writeback.c \
 	$(CORE_DIR)/hw/xbox/nv2a/pmc.c \

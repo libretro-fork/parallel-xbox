@@ -45,12 +45,12 @@
  * mask_z:  00000000
  * for "Z": yyyxyxyx
  */
-static void generate_swizzle_masks(unsigned int width,
-                                   unsigned int height,
-                                   unsigned int depth,
-                                   uint32_t* mask_x,
-                                   uint32_t* mask_y,
-                                   uint32_t* mask_z)
+void generate_swizzle_masks(unsigned int width,
+                            unsigned int height,
+                            unsigned int depth,
+                            uint32_t* mask_x,
+                            uint32_t* mask_y,
+                            uint32_t* mask_z)
 {
     uint32_t x = 0, y = 0, z = 0;
     uint32_t bit = 1;

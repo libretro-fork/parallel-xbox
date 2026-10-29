@@ -107,6 +107,8 @@ enum Buffer {
     BUFFER_VERTEX_INLINE_STAGING,
     BUFFER_UNIFORM,
     BUFFER_UNIFORM_STAGING,
+    /* the GPU unswizzle's output ring (unswizzle.c) */
+    BUFFER_UNSWIZZLE_OUT,
     BUFFER_COUNT
 };
 
@@ -413,6 +415,10 @@ typedef struct PGRAPHVkComputeState {
 #define PGRAPH_VK_SLOTS 2
 /* single-time command buffers in flight at most (renderer.h aux) */
 #define PGRAPH_VK_AUX_SLOTS 8
+/* the rings they allocate from: staging, the unswizzle's output */
+#define PGRAPH_VK_RING_STAGING 0
+#define PGRAPH_VK_RING_UNSWIZZLE 1
+#define PGRAPH_VK_RINGS 2
 
 /* One sampler state of the sampler cache (texture.c). */
 typedef struct VkSamplerCacheKey {
@@ -513,18 +519,30 @@ typedef struct PGRAPHVkState {
         VkCommandBuffer cmd;
         VkFence fence;
         bool pending;
-        /* the staging ring's bytes this submission reads: [start, end),
-         * wrapping through the ring's end when end < start */
-        size_t stage_start, stage_end;
+        /* each ring's bytes this submission uses: [start, end), wrapping
+         * through the ring's end when end < start */
+        size_t ring_start[PGRAPH_VK_RINGS], ring_end[PGRAPH_VK_RINGS];
     } aux[PGRAPH_VK_AUX_SLOTS];
     int aux_slot;           /* the slot recording, or the next to record */
     int aux_oldest;         /* the oldest pending slot */
     int aux_npending;
     bool in_aux_command_buffer;
-    /* The staging ring in BUFFER_STAGING_SRC (persistently mapped): the
-     * next byte to hand out; the open slot's range starts at its
-     * stage_start */
-    size_t stage_head;
+    /* The rings the single-time command buffers use (command.c
+     * pgraph_vk_ring_alloc): the staging ring in BUFFER_STAGING_SRC
+     * (persistently mapped) and the GPU unswizzle's output ring in
+     * BUFFER_UNSWIZZLE_OUT; the next byte to hand out of each */
+    size_t ring_head[PGRAPH_VK_RINGS];
+
+    /* The GPU unswizzle (unswizzle.c): one compute pipeline, one
+     * descriptor set (the RAM and the output ring, whole), made at init */
+    struct {
+        VkDescriptorPool pool;
+        VkDescriptorSetLayout set_layout;
+        VkDescriptorSet set;
+        VkPipelineLayout layout;
+        VkPipeline pipeline;
+        bool ready;
+    } unswizzle;
 
     /* Rotation: an async finish submits this slot and records on into the
      * next without waiting. */
@@ -860,6 +878,28 @@ VkDeviceSize pgraph_vk_staging_alloc(PGRAPHState *pg, size_t size,
                                      size_t alignment, uint8_t **ptr);
 void pgraph_vk_staging_flush(PGRAPHState *pg, VkDeviceSize offset,
                              size_t size);
+/* A range of one of the rings for the open single-time command buffer;
+ * false when the range does not fit the ring at all (only the staging ring
+ * grows) */
+bool pgraph_vk_ring_alloc(PGRAPHState *pg, int ring, size_t size,
+                          size_t alignment, VkDeviceSize *offset);
+
+// unswizzle.c
+void pgraph_vk_init_unswizzle(PGRAPHState *pg);
+void pgraph_vk_finalize_unswizzle(PGRAPHState *pg);
+/* A swizzled level of the Xbox's RAM unswizzled by the GPU into the output
+ * ring, in the open single-time command buffer: its offset there, laid out
+ * as the copy to the image reads it (x fastest, bpp bytes a texel, or 4
+ * through the palette at palette_offset for an 8-bit palette texture).
+ * False where the GPU cannot do it (no RAM buffer, or the level is too
+ * large for the ring): the CPU does. */
+bool pgraph_vk_unswizzle(PGRAPHState *pg, VkCommandBuffer cmd,
+                         hwaddr src_offset, unsigned int width,
+                         unsigned int height, unsigned int depth,
+                         unsigned int bpp, hwaddr palette_offset,
+                         VkDeviceSize *out_offset);
+/* Before the copies that read the output ring: the dispatches' writes */
+void pgraph_vk_unswizzle_done(PGRAPHState *pg, VkCommandBuffer cmd);
 
 // image.c
 void pgraph_vk_transition_image_layout(PGRAPHState *pg, VkCommandBuffer cmd,

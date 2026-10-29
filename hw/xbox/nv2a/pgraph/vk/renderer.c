@@ -77,6 +77,7 @@ static void pgraph_vk_init(NV2AState *d, Error **errp)
     pgraph_vk_init_textures(pg);
     pgraph_vk_init_reports(pg);
     pgraph_vk_init_compute(pg);
+    pgraph_vk_init_unswizzle(pg);
     pgraph_vk_init_display(pg);
 
     pgraph_vk_update_vertex_ram_buffer(&d->pgraph, 0, d->vram_ptr,
@@ -90,6 +91,7 @@ static void pgraph_vk_finalize(NV2AState *d)
     PGRAPHState *pg = &d->pgraph;
 
     pgraph_vk_finalize_display(pg);
+    pgraph_vk_finalize_unswizzle(pg);
     pgraph_vk_finalize_compute(pg);
     pgraph_vk_finalize_reports(pg);
     pgraph_vk_finalize_textures(pg);

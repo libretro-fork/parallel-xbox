@@ -23,6 +23,13 @@
 
 #include <stdint.h>
 
+/* The bit masks of x, y and z in a swizzled (Morton) offset of a box of
+ * the given size, for a translation done elsewhere (the GPU's unswizzle,
+ * vk/unswizzle.c) */
+void generate_swizzle_masks(unsigned int width, unsigned int height,
+                            unsigned int depth, uint32_t *mask_x,
+                            uint32_t *mask_y, uint32_t *mask_z);
+
 void swizzle_box(
     const uint8_t *src_buf,
     unsigned int width,

@@ -1243,9 +1243,20 @@ void pgraph_vk_upload_surface_data(NV2AState *d, SurfaceBinding *surface,
                      surface->vram_addr % surface->fmt.bytes_per_pixel == 0 &&
                      surface->vram_addr % 4 == 0 &&
                      surface->pitch % surface->fmt.bytes_per_pixel == 0;
+    VkBuffer source_buffer = from_vram ? r->vram_buffer : copy_buffer->buffer;
+    bool gpu_unswizzled = false;
     if (from_vram) {
         staged_offset = surface->vram_addr;
         staged_row_length = surface->pitch / surface->fmt.bytes_per_pixel;
+    } else if (surface->swizzle &&
+               !use_compute_to_convert_depth_stencil_format &&
+               pgraph_vk_unswizzle(pg, cmd, surface->vram_addr, surface->width,
+                                   surface->height, 1,
+                                   surface->fmt.bytes_per_pixel, 0,
+                                   &staged_offset)) {
+        /* by the GPU, from the RAM */
+        gpu_unswizzled = true;
+        source_buffer = r->storage_buffers[BUFFER_UNSWIZZLE_OUT].buffer;
     } else {
         uint8_t *staged;
         staged_offset =
@@ -1263,19 +1274,22 @@ void pgraph_vk_upload_surface_data(NV2AState *d, SurfaceBinding *surface,
         pgraph_vk_staging_flush(pg, staged_offset, uploaded_image_size);
     }
 
-    VkBuffer source_buffer = from_vram ? r->vram_buffer : copy_buffer->buffer;
-    VkBufferMemoryBarrier host_barrier = {
-        .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
-        .srcAccessMask = VK_ACCESS_HOST_WRITE_BIT,
-        .dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT,
-        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        .buffer = source_buffer,
-        .size = VK_WHOLE_SIZE
-    };
-    vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_HOST_BIT,
-                         VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 1,
-                         &host_barrier, 0, NULL);
+    if (gpu_unswizzled) {
+        pgraph_vk_unswizzle_done(pg, cmd);
+    } else {
+        VkBufferMemoryBarrier host_barrier = {
+            .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
+            .srcAccessMask = VK_ACCESS_HOST_WRITE_BIT,
+            .dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT,
+            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .buffer = source_buffer,
+            .size = VK_WHOLE_SIZE
+        };
+        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_HOST_BIT,
+                             VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 1,
+                             &host_barrier, 0, NULL);
+    }
 
     // Set up image copy regions (which may be modified by compute unpack)
 
