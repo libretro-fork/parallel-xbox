@@ -155,6 +155,20 @@ struct retro_core_option_v2_definition option_defs_us[] = {
         "enabled"
     },
     {
+        "xemu_deterministic",
+        "Deterministic Emulation",
+        NULL,
+        "Off, the Xbox's CPU runs on while its GPU draws, as on the console, and each frame is handed over once the GPU has drawn it. On, the CPU waits whenever the GPU works: slower, but the emulation is the same however fast the host is, which Run-Ahead and netplay need.",
+        NULL,
+        "system",
+        {
+            { "disabled", "Disabled" },
+            { "enabled",  "Enabled" },
+            { NULL, NULL },
+        },
+        "disabled"
+    },
+    {
         "xemu_cpu_boost",
         "CPU Boost",
         NULL,

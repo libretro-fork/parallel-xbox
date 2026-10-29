@@ -230,6 +230,22 @@ bool nv2a_libretro_busy(void)
            !qatomic_read(&d->pfifo.parked);
 }
 
+/* The emulator thread, at a frame's end with the GPU's thread caught up
+ * (ui/libretro.c): the display looked at again, so the picture handed over
+ * is the front buffer as the frame's last draws left it - the guest may
+ * have moved the scanout while they were still queued, and the display
+ * was drawn before them */
+void nv2a_libretro_display_check(void)
+{
+    NV2AState *d = g_nv2a;
+
+    if (!d || !qatomic_read(&d->pfifo.thread_running)) {
+        return;
+    }
+    qatomic_set(&d->pgraph.scanout_changed, true);
+    pfifo_kick(d);
+}
+
 QemuConsole *nv2a_get_vga_console(void)
 {
     if (g_nv2a) {

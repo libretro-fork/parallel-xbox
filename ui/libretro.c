@@ -203,6 +203,11 @@ static bool opt_hard_fpu = true;
 /* The fork's CPU boost and smooth first play (Tovarichtch/xemu), on by
  * default there */
 static bool opt_cpu_boost = true;
+/* Deterministic Emulation: off, the guest's time runs on while the GPU's
+ * thread works, as the Xbox's CPU and GPU run side by side; on, it stands
+ * still until the GPU's thread is done (lr_devices_busy), so the guest
+ * sees the same timing however fast the host is (Run-Ahead, netplay) */
+static bool opt_deterministic = false;
 static bool opt_smooth_first_play = true;
 static bool opt_chihiro_freeplay = true;
 /* Video > Vulkan Fast Paths: which of the renderer's fast-path features the
@@ -1558,6 +1563,12 @@ static void update_variables(void)
         opt_cpu_boost = !strcmp(var.value, "enabled");
     }
 
+    var.key = "xemu_deterministic";
+    var.value = NULL;
+    if (environ_cb && environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value) {
+        opt_deterministic = !strcmp(var.value, "enabled");
+    }
+
     var.key = "xemu_chihiro_freeplay";
     var.value = NULL;
     if (environ_cb && environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value) {
@@ -1851,7 +1862,11 @@ static bool lr_devices_busy(void)
     extern bool nv2a_libretro_busy(void);
     extern int thread_pool_aio_inflight;
 
-    return thread_pool_aio_inflight > 0 || nv2a_libretro_busy();
+    /* The GPU's work takes the guest's time, as on the Xbox: the frame's
+     * end waits for it instead (lr_run_frame), unless the emulation is to
+     * be deterministic */
+    return thread_pool_aio_inflight > 0 ||
+           (opt_deterministic && nv2a_libretro_busy());
 }
 /* set while the emulator thread looks and waits: the GPU's thread wakes it
  * when it parks (hw/xbox/nv2a/pfifo.c) */
@@ -2002,6 +2017,31 @@ static void lr_run_frame(void)
             cpu_clock_skip_to(now + until);
         }
         qatomic_set(&nv2a_libretro_waiter, 0);
+    }
+
+    /* The guest ran on while the GPU's thread worked; the frame is handed
+     * over when the GPU's thread has done what the guest gave it in the
+     * frame, so each run still hands over the picture drawn in it (no
+     * repeated frame, no frame of delay). The guest's time does not move
+     * meanwhile. (Deterministic: the guest waited for it as it went.) */
+    if (!opt_deterministic) {
+        extern bool nv2a_libretro_busy(void);
+        extern void nv2a_libretro_display_check(void);
+        /* twice: the frame's work done, then the display drawn from what
+         * it left */
+        for (int pass = 0; pass < 2; pass++) {
+            for (;;) {
+                qatomic_set_mb(&nv2a_libretro_waiter, 1);
+                if (!runstate_is_running() || !nv2a_libretro_busy()) {
+                    break;
+                }
+                main_loop_wait(false);
+            }
+            qatomic_set(&nv2a_libretro_waiter, 0);
+            if (pass == 0 && runstate_is_running()) {
+                nv2a_libretro_display_check();
+            }
+        }
     }
 }
 
