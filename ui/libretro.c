@@ -3033,30 +3033,23 @@ static void lr_present_video(void)
     }
 
     if (xemu_libretro_vk.active) {
-        /* The frame rendered now, on the device shared with the
-         * frontend, and handed over in this run: the renderer draws the
-         * display straight into the image of the frontend's current sync
-         * index, without waiting for the GPU - the frontend's submission
-         * that samples it is ordered after the draw (pgraph/vk/display.c) */
+        /* The frame the renderer's thread drew when the guest flipped,
+         * into one of its own images on the device shared with the
+         * frontend, taken here without waiting for it or for the GPU -
+         * the frontend's submission that samples it is ordered after the
+         * draw (pgraph/vk/display.c). Nothing new since the last run: the
+         * frontend repeats its last frame. */
         static uint64_t last_count;
         static unsigned last_w = 640, last_h = 480;
-        const int index =
-            (int)vulkan_if->get_sync_index(vulkan_if->handle);
         VkImage image;
         VkImageView view;
         VkFormat format;
         int frame_w, frame_h;
         uint64_t count = last_count;
 
-        xemu_libretro_vk.frame_index = index;
-        if (!vk_renderer_parked) {
-            nv2a_get_framebuffer_surface();
-            nv2a_release_framebuffer_surface();
-        }
-
         if (!vk_renderer_parked &&
-            nv2a_vk_libretro_get_frame(index, &image, &view, &format,
-                                       &frame_w, &frame_h, &count) &&
+            nv2a_vk_libretro_get_frame(&image, &view, &format, &frame_w,
+                                       &frame_h, &count) &&
             count != last_count) {
             last_count = count;
             last_w = (unsigned)frame_w;

@@ -47,12 +47,15 @@
  * render-thread state; a DispRef keeps a surface's texture alive while
  * tickets naming it are in flight. */
 typedef struct DispRef {
-    int refs;    /* tickets in flight (disp_lock) */
-    bool orphan; /* the surface is gone: the last ticket deletes the texture */
+    int refs;    /* tickets in flight: an atomic count, either thread */
+    bool orphan; /* the surface is gone: freed by the render thread once
+                    no ticket is in flight (orphans list) */
     GLuint tex;
     /* UI-context fence after its last blit of tex: the render thread
-     * waits for it on the GPU before writing the surface again. */
+     * waits for it on the GPU before writing the surface again. Swapped
+     * atomically by both threads. */
     GLsync presented;
+    QTAILQ_ENTRY(DispRef) entry; /* the orphans list, render thread */
 } DispRef;
 
 typedef struct DispPvideo {
@@ -258,23 +261,28 @@ typedef struct PGRAPHGLState {
      * copies (swizzle, pitch, the surface-to-texture read, the video
      * overlay's conversion) go through kept buffers: nothing allocates
      * mid-game (pool.h). The report pool is shared with the pfifo thread
-     * under the reports' own ordering, the display one under disp_lock. */
+     * under the reports' own ordering, the display one is the render
+     * thread's alone (the UI thread only counts references down). */
     ObjPool surface_pool, texture_pool, report_pool, disp_ref_pool;
     Scratch surf_scratch, pitch_scratch, s2t_scratch, pvideo_scratch;
     /* Display-thread coordination for the scanout. The surface list is
      * owned by the render thread; walking it from the display thread
      * raced against insertions and evictions. have_surfaces is
-     * maintained at every list mutation, scanout_found is published by
-     * pgraph_gl_sync after resolving the scanout on its own thread. */
+     * maintained at every list mutation. */
     bool have_surfaces;
-    bool scanout_found;
-    /* Display handoff, one DispPost per new front buffer: disp_lock covers
-     * the surface references, disp_post_lock the ticket; neither is held
-     * across a wait. */
-    QemuMutex disp_lock;
-    QemuMutex disp_post_lock;
-    bool disp_post_pending;
-    DispPost disp_post;
+    /* Display handoff, one DispPost per new front buffer, through a
+     * three-slot mailbox with no lock (gl/display.c disp_post_ticket /
+     * disp_take_post): the render thread writes its slot and swaps it in
+     * as the middle one, the UI thread swaps the middle one out for its
+     * own; a ticket the UI thread never took comes back to the render
+     * thread with the swap and is released there. */
+    DispPost disp_posts[3];
+    int disp_post_write; /* the render thread's slot */
+    int disp_post_read;  /* the UI thread's slot */
+    int disp_post_middle; /* atomic: slot | DISP_POST_NEW when untaken */
+    /* References whose surface is gone while tickets were in flight:
+     * freed by the render thread once the last ticket is put back */
+    QTAILQ_HEAD(, DispRef) disp_orphans;
     /* The UI thread holds a front buffer: when the CRTC leaves the
      * surfaces, a ticket without one sends it back to the VGA path. */
     bool disp_shown;

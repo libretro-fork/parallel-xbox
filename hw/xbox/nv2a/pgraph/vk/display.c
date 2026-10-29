@@ -1217,24 +1217,29 @@ static void draw_crosshairs(PGRAPHVkState *r, VkCommandBuffer cmd,
 }
 
 /*
- * The display is drawn straight into the frame image of the frontend's
- * current sync index, and the GPU is not waited for: the command buffer
- * ends with the barrier to SHADER_READ_ONLY, which orders the frontend's
- * later submission on its queue after the draw. Where the renderer has a
- * queue of its own (ui/libretro.c), the frame's command buffer runs on
- * the frontend's queue instead, after a semaphore the renderer's queue
- * signals once the frame's draws are in, and the renderer's next
- * submission waits for the frame to have been drawn before it draws to
- * the surface again (pgraph_vk_queue_submit). Nothing writes to the frame
- * image until that index comes round again, by when the frontend is done
- * with it.
+ * The display is drawn, on this thread, when the guest moves the scanout
+ * (PCRTC_START) or the frontend asks for another look, into the next of
+ * the renderer's own frame images, and published (display.published);
+ * retro_run takes the last published one with no wait and no lock
+ * (nv2a_vk_libretro_get_frame). The GPU is not waited for: the command
+ * buffer starts with a barrier after any fragment reads of the image
+ * (the frontend's earlier submissions on the shared queue) and ends with
+ * the barrier to SHADER_READ_ONLY, which orders the frontend's later
+ * submission after the draw. Where the renderer has a queue of its own
+ * (ui/libretro.c), the frame's command buffer runs on the frontend's
+ * queue instead, after a semaphore the renderer's queue signals once the
+ * frame's draws are in, and the renderer's next submission waits for the
+ * frame to have been drawn before it draws to the surface again
+ * (pgraph_vk_queue_submit). A slot is drawn again only after every other
+ * has been, XEMU_LIBRETRO_VK_FRAMES renders later, by when the frontend
+ * has long moved on from it.
  */
-static struct PGRAPHVkFrameImage *frame_image_for_index(PGRAPHState *pg)
+static struct PGRAPHVkFrameImage *frame_image_for_slot(PGRAPHState *pg,
+                                                       unsigned slot)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
     PGRAPHVkDisplayState *disp = &r->display;
-    struct PGRAPHVkFrameImage *f =
-        &disp->frames[xemu_libretro_vk.frame_index % XEMU_LIBRETRO_VK_FRAMES];
+    struct PGRAPHVkFrameImage *f = &disp->frames[slot];
 
     disp->frame_count++;
     for (int i = 0; i < ARRAY_SIZE(disp->retired); i++) {
@@ -1390,16 +1395,18 @@ static void render_display(PGRAPHState *pg, SurfaceBinding *surface)
     VkCommandBuffer cmd;
     struct PGRAPHVkFrameImage *f = NULL;
     struct PGRAPHVkFrameSync *sync = NULL;
+    unsigned slot = 0;
     if (on_frontend_device()) {
         if (surface->vram_addr != disp->last_surface_addr ||
             surface->draw_time != disp->draw_time) {
             disp->guest_frame_count++;
         }
         disp->last_surface_addr = surface->vram_addr;
-        sync = &disp->sync[xemu_libretro_vk.frame_index %
-                           XEMU_LIBRETRO_VK_FRAMES];
+        slot = disp->next_slot;
+        disp->next_slot = (slot + 1) % XEMU_LIBRETRO_VK_FRAMES;
+        sync = &disp->sync[slot];
         wait_frame_sync(r, sync);
-        f = frame_image_for_index(pg);
+        f = frame_image_for_slot(pg, slot);
         target = f->image;
         framebuffer = f->framebuffer;
         cmd = sync->cmd;
@@ -1424,9 +1431,21 @@ static void render_display(PGRAPHState *pg, SurfaceBinding *surface)
             pgraph_vk_surface_base_layout(surface),
             VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
     }
-    pgraph_vk_transition_image_layout(
-        pg, cmd, target, VK_FORMAT_R8G8B8A8_UNORM,
-        VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+    if (f) {
+        /* after the frontend's fragment reads of the slot's last frame,
+         * earlier on the queue */
+        frame_image_barrier(cmd, target, VK_IMAGE_LAYOUT_UNDEFINED,
+                            VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                            VK_ACCESS_SHADER_READ_BIT,
+                            VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+                            VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                            VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
+    } else {
+        pgraph_vk_transition_image_layout(
+            pg, cmd, target, VK_FORMAT_R8G8B8A8_UNORM,
+            VK_IMAGE_LAYOUT_UNDEFINED,
+            VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+    }
 
     VkRenderPassBeginInfo render_pass_begin_info = {
         .sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
@@ -1480,6 +1499,9 @@ static void render_display(PGRAPHState *pg, SurfaceBinding *surface)
         VK_CHECK(vkEndCommandBuffer(cmd));
         submit_frame(r, sync);
         f->ready = true;
+        /* the frontend's thread takes it from here */
+        qatomic_store_release(&disp->published,
+                              ((uint64_t)disp->frame_count << 8) | slot);
     } else
     {
         pgraph_vk_transition_image_layout(pg, cmd, disp->image,
@@ -1553,6 +1575,36 @@ void pgraph_vk_finalize_display(PGRAPHState *pg)
     destroy_render_pass(pg);
     destroy_descriptor_set_layout(pg);
     destroy_descriptor_pool(pg);
+}
+
+/* The scanout moved (PCRTC_START), or the frontend found nothing new and
+ * asks for another look: the display is drawn again when the front buffer
+ * is another surface, or one drawn to since, or carries the video
+ * overlay (read from guest RAM at each draw). On this thread, from
+ * process_pending. */
+void pgraph_vk_present_scanout(NV2AState *d)
+{
+    PGRAPHState *pg = &d->pgraph;
+    PGRAPHVkState *r = pg->vk_renderer_state;
+    PGRAPHVkDisplayState *disp = &r->display;
+
+    if (!on_frontend_device()) {
+        return;
+    }
+    VGADisplayParams vga_display_params;
+    d->vga.get_params(&d->vga, &vga_display_params);
+    SurfaceBinding *surface = pgraph_vk_surface_get_within(
+        d, d->pcrtc.start + vga_display_params.line_offset);
+    if (surface == NULL || !surface->color || !surface->width ||
+        !surface->height) {
+        return;
+    }
+    if (surface->vram_addr == disp->last_surface_addr &&
+        surface->draw_time == disp->draw_time &&
+        !get_pvideo_state(pg).enabled) {
+        return;
+    }
+    pgraph_vk_render_display(pg);
 }
 
 void pgraph_vk_render_display(PGRAPHState *pg)

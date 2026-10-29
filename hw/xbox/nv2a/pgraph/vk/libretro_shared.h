@@ -53,10 +53,6 @@ typedef struct XemuLibretroVk {
     bool pipeline_library;
     bool host_query_reset;
     bool shader_demote;
-
-    /* Which of the frame images the next display render fills: the
-     * frontend's sync index, set by retro_run before it asks for a frame */
-    int frame_index;
 } XemuLibretroVk;
 
 /* The frontend's context is set up (context_reset has run): the renderer
@@ -74,17 +70,17 @@ void xemu_libretro_vk_unlock_queue(void);
 void xemu_libretro_vk_lock_frontend_queue(void);
 void xemu_libretro_vk_unlock_frontend_queue(void);
 
-/* The frame image of a sync index: an image on the shared device, in
- * SHADER_READ_ONLY_OPTIMAL (ui/libretro.c hands it to the frontend). Its
- * GPU work is submitted, not finished: the frontend's own submission on
- * its queue comes after it. False until a frame was rendered for that
- * index. *count is the number of frames rendered so far: unchanged since
- * the last call, the display was not rendered again and the image holds an
- * older frame. */
+/* The last frame the renderer's thread drew and published: an image on the
+ * shared device, in SHADER_READ_ONLY_OPTIMAL (ui/libretro.c hands it to
+ * the frontend). Its GPU work is submitted, not finished: the frontend's
+ * own submission on its queue comes after it. *count is the number of the
+ * frame the caller has: false, and the renderer asked to look at the
+ * scanout again, when no newer one was published; else *count is the new
+ * frame's number. No wait and no lock. */
 /* The count of pictures handed over that showed another guest frame than the
  * one before them */
 uint64_t nv2a_vk_libretro_guest_frames(void);
-bool nv2a_vk_libretro_get_frame(int index, VkImage *image, VkImageView *view,
+bool nv2a_vk_libretro_get_frame(VkImage *image, VkImageView *view,
                                 VkFormat *format, int *width, int *height,
                                 uint64_t *count);
 

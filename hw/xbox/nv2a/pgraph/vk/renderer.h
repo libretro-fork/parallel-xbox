@@ -381,6 +381,16 @@ typedef struct PGRAPHVkDisplayState {
      * one before: another surface, or one drawn to since */
     uint64_t guest_frame_count;
     hwaddr last_surface_addr;
+    /* The frame image the last display render went into and its number,
+     * one word for the frontend's thread (display.c): the slot in the low
+     * byte, the count above it. The slots are this thread's ring, filled
+     * in turn, so a slot the frontend holds is not drawn again until every
+     * other has been. */
+    uint64_t published;
+    unsigned next_slot;
+    /* The frontend found nothing new: look at the scanout again (a front
+     * buffer drawn to in place, the video overlay) */
+    bool check_pending;
 } PGRAPHVkDisplayState;
 
 typedef struct ComputePipelineKey {
@@ -986,6 +996,7 @@ void pgraph_vk_unpack_depth_stencil(PGRAPHState *pg, SurfaceBinding *surface,
 void pgraph_vk_init_display(PGRAPHState *pg);
 void pgraph_vk_finalize_display(PGRAPHState *pg);
 void pgraph_vk_render_display(PGRAPHState *pg);
+void pgraph_vk_present_scanout(NV2AState *d);
 
 // texture.c
 void pgraph_vk_init_textures(PGRAPHState *pg);

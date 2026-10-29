@@ -60,28 +60,43 @@ static float pvideo_calculate_scale(unsigned int din_dout,
 /* Display hand-off. The render thread owns the render context and the
  * surfaces; a front buffer reaches the UI thread as a ticket (DispPost:
  * texture, geometry, display parameters, the video overlay registers and a
- * fence after the frame's draws). The UI thread waits for that fence on the
- * GPU and blits the texture into one of its two display textures: neither
- * thread switches GL context, and past the first frame neither waits for
- * the other. A ticket keeps its surface texture alive (DispRef). */
+ * fence after the frame's draws) through a three-slot mailbox. The UI
+ * thread waits for that fence on the GPU and blits the texture into one
+ * of its two display textures: neither thread switches GL context, takes
+ * a lock, or waits for the other. A ticket keeps its surface texture
+ * alive (DispRef): the UI thread counts its reference down when it is
+ * done with the ticket, and the render thread frees the reference, with
+ * the texture, once the surface is gone and no ticket is in flight. */
 
-/* disp_lock held. The texture and the fence are shared objects: any
+#define DISP_POST_NEW 4
+
+/* Render thread. The texture and the fence are shared objects: any
  * context of the share group may delete them. */
-static void disp_ref_free_locked(PGRAPHGLState *r, DispRef *ref)
+static void disp_ref_free(PGRAPHGLState *r, DispRef *ref)
 {
     glDeleteTextures(1, &ref->tex);
-    if (ref->presented) {
-        glDeleteSync(ref->presented);
+    GLsync f = qatomic_xchg(&ref->presented, NULL);
+    if (f) {
+        glDeleteSync(f);
     }
     obj_pool_give(&r->disp_ref_pool, ref);
 }
 
-/* disp_lock held. */
-static void disp_ref_put_locked(PGRAPHGLState *r, DispRef *ref)
+/* Either thread: a ticket naming the reference is done with. */
+static void disp_ref_put(DispRef *ref)
 {
-    ref->refs--;
-    if (ref->refs == 0 && ref->orphan) {
-        disp_ref_free_locked(r, ref); /* the surface is gone */
+    qatomic_dec(&ref->refs);
+}
+
+/* Render thread: the orphans whose last ticket has been put back. */
+static void disp_reap_orphans(PGRAPHGLState *r)
+{
+    DispRef *ref, *next;
+    QTAILQ_FOREACH_SAFE(ref, &r->disp_orphans, entry, next) {
+        if (qatomic_load_acquire(&ref->refs) == 0) {
+            QTAILQ_REMOVE(&r->disp_orphans, ref, entry);
+            disp_ref_free(r, ref);
+        }
     }
 }
 
@@ -99,13 +114,12 @@ void pgraph_gl_display_surface_gone(NV2AState *d, SurfaceBinding *surface)
         return;
     }
     surface->disp_ref = NULL;
-    qemu_mutex_lock(&r->disp_lock);
-    if (ref->refs == 0) {
-        disp_ref_free_locked(r, ref);
+    ref->orphan = true;
+    if (qatomic_load_acquire(&ref->refs) == 0) {
+        disp_ref_free(r, ref);
     } else {
-        ref->orphan = true; /* the last ticket deletes it */
+        QTAILQ_INSERT_TAIL(&r->disp_orphans, ref, entry);
     }
-    qemu_mutex_unlock(&r->disp_lock);
 }
 
 /* Render thread, before the surface is written again: its last display blit
@@ -117,11 +131,7 @@ void pgraph_gl_display_surface_reuse(NV2AState *d, SurfaceBinding *surface)
     if (ref == NULL || qatomic_read(&ref->presented) == NULL) {
         return;
     }
-    PGRAPHGLState *r = d->pgraph.gl_renderer_state;
-    qemu_mutex_lock(&r->disp_lock);
-    GLsync f = ref->presented;
-    ref->presented = NULL;
-    qemu_mutex_unlock(&r->disp_lock);
+    GLsync f = qatomic_xchg(&ref->presented, NULL);
     if (f) {
         glWaitSync(f, 0, GL_TIMEOUT_IGNORED);
         glDeleteSync(f);
@@ -426,13 +436,15 @@ void pgraph_gl_init_display(NV2AState *d)
 
     r->disp_check_pending = false;
     r->disp_last_surface = NULL;
-    r->disp_post_pending = false;
+    r->disp_post_write = 0;
+    r->disp_post_read = 1;
+    r->disp_post_middle = 2;
+    memset(r->disp_posts, 0, sizeof(r->disp_posts));
+    QTAILQ_INIT(&r->disp_orphans);
     r->disp_shown = false;
     /* A ticket per surface the display ever saw, few at a time */
     obj_pool_init(&r->disp_ref_pool, sizeof(DispRef), 64);
     scratch_init(&r->pvideo_scratch, 720 * 576 * 4);
-    qemu_mutex_init(&r->disp_lock);
-    qemu_mutex_init(&r->disp_post_lock);
 }
 
 /* Render thread: a ticket the UI thread will never resolve. */
@@ -442,23 +454,24 @@ static void disp_post_release(PGRAPHGLState *r, const DispPost *p)
         glDeleteSync(p->rendered);
     }
     if (p->ref) {
-        qemu_mutex_lock(&r->disp_lock);
-        disp_ref_put_locked(r, p->ref);
-        qemu_mutex_unlock(&r->disp_lock);
+        disp_ref_put(p->ref);
     }
 }
 
-/* Render thread: mailbox with one slot. A ticket the UI thread has not
- * taken is superseded (that frame is never presented). */
+/* Render thread: the mailbox. The ticket goes into this thread's slot,
+ * which is swapped in as the middle one, marked new; the slot that comes
+ * out is this thread's next (a ticket the UI thread never took is
+ * superseded: that frame is never presented, and it is released here). */
 static void disp_post_ticket(PGRAPHGLState *r, const DispPost *p)
 {
-    qemu_mutex_lock(&r->disp_post_lock);
-    if (r->disp_post_pending) {
-        disp_post_release(r, &r->disp_post);
+    disp_reap_orphans(r);
+    r->disp_posts[r->disp_post_write] = *p;
+    int old = qatomic_xchg(&r->disp_post_middle,
+                           r->disp_post_write | DISP_POST_NEW);
+    if (old & DISP_POST_NEW) {
+        disp_post_release(r, &r->disp_posts[old & 3]);
     }
-    r->disp_post = *p;
-    r->disp_post_pending = true;
-    qemu_mutex_unlock(&r->disp_post_lock);
+    r->disp_post_write = old & 3;
 }
 
 /* Render thread, after the surfaces are gone. */
@@ -466,12 +479,17 @@ void pgraph_gl_finalize_display(PGRAPHState *pg)
 {
     PGRAPHGLState *r = pg->gl_renderer_state;
 
-    if (r->disp_post_pending) {
-        r->disp_post_pending = false;
-        disp_post_release(r, &r->disp_post);
+    int m = qatomic_xchg(&r->disp_post_middle, r->disp_post_middle & 3);
+    if (m & DISP_POST_NEW) {
+        disp_post_release(r, &r->disp_posts[m & 3]);
     }
-    qemu_mutex_destroy(&r->disp_post_lock);
-    qemu_mutex_destroy(&r->disp_lock);
+    disp_reap_orphans(r);
+    /* the UI thread is done with its slot: what it holds is let go */
+    DispRef *ref, *next;
+    QTAILQ_FOREACH_SAFE(ref, &r->disp_orphans, entry, next) {
+        QTAILQ_REMOVE(&r->disp_orphans, ref, entry);
+        disp_ref_free(r, ref);
+    }
     obj_pool_finalize(&r->disp_ref_pool);
     scratch_finalize(&r->pvideo_scratch);
 }
@@ -490,7 +508,6 @@ static bool post_scanout(NV2AState *d, bool *fresh)
         d, d->pcrtc.start + vga_display_params.line_offset);
     if (surface == NULL || !surface->color || !surface->width ||
         !surface->height) {
-        qatomic_set(&r->scanout_found, false);
         r->disp_last_surface = NULL;
         if (r->disp_shown) {
             /* The CRTC left the surfaces (a CPU-drawn frame): an empty ticket
@@ -501,7 +518,6 @@ static bool post_scanout(NV2AState *d, bool *fresh)
         }
         return false;
     }
-    qatomic_set(&r->scanout_found, true);
     surface->frame_time = d->pgraph.frame_time;
 
     /* FIXME: Sanity check surface dimensions */
@@ -571,9 +587,7 @@ static bool post_scanout(NV2AState *d, bool *fresh)
     p.rendered = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
     glFlush();
 
-    qemu_mutex_lock(&r->disp_lock);
-    p.ref->refs++;
-    qemu_mutex_unlock(&r->disp_lock);
+    qatomic_inc(&p.ref->refs);
 
     disp_post_ticket(r, &p);
     r->disp_shown = true;
@@ -605,18 +619,22 @@ void pgraph_gl_present_scanout(NV2AState *d)
     post_scanout(d, &fresh);
 }
 
-/* UI thread: take the pending ticket, if any. */
+/* UI thread: take the new ticket, if any: this thread's slot is swapped
+ * in as the middle one, the new one comes out as this thread's. */
 static bool disp_take_post(PGRAPHGLState *r, DispPost *p)
 {
-    bool got = false;
-    qemu_mutex_lock(&r->disp_post_lock);
-    if (r->disp_post_pending) {
-        *p = r->disp_post;
-        r->disp_post_pending = false;
-        got = true;
+    if (!(qatomic_read(&r->disp_post_middle) & DISP_POST_NEW)) {
+        return false;
     }
-    qemu_mutex_unlock(&r->disp_post_lock);
-    return got;
+    int old = qatomic_xchg(&r->disp_post_middle, r->disp_post_read);
+    if (!(old & DISP_POST_NEW)) {
+        /* nothing new after all: the slots were only traded */
+        r->disp_post_read = old & 3;
+        return false;
+    }
+    r->disp_post_read = old & 3;
+    *p = r->disp_posts[r->disp_post_read];
+    return true;
 }
 
 int pgraph_gl_get_framebuffer_surface(NV2AState *d)
@@ -638,14 +656,13 @@ int pgraph_gl_get_framebuffer_surface(NV2AState *d)
     bool got = disp_take_post(r, &p);
     if (!got && ui.cur < 0) {
         /* Nothing on screen yet (first frames, VGA text): ask the render
-         * thread for a ticket and wait for it. */
-        qatomic_set(&pg->sync_pending, true);
-        pfifo_kick(d);
-        pgraph_wait_until_clear(&d->pgraph.sync_complete, &pg->sync_pending);
-        if (!qatomic_read(&r->scanout_found)) {
-            return 0;
+         * thread for a ticket; it is taken when it has been posted, at a
+         * later run (this thread waits for nothing). */
+        if (!qatomic_read(&pg->sync_pending)) {
+            qatomic_set(&pg->sync_pending, true);
+            pfifo_kick(d);
         }
-        got = disp_take_post(r, &p);
+        return 0;
     } else if (!got) {
         /* The front buffer may change without a scanout move (guest CPU
          * writes, video overlay): have the render thread look, later. */
@@ -667,13 +684,11 @@ int pgraph_gl_get_framebuffer_surface(NV2AState *d)
          * again (pgraph_gl_display_surface_reuse). */
         GLsync presented = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
         glFlush();
-        qemu_mutex_lock(&r->disp_lock);
-        if (p.ref->presented) {
-            glDeleteSync(p.ref->presented);
+        GLsync old = qatomic_xchg(&p.ref->presented, presented);
+        if (old) {
+            glDeleteSync(old);
         }
-        p.ref->presented = presented;
-        disp_ref_put_locked(r, p.ref);
-        qemu_mutex_unlock(&r->disp_lock);
+        disp_ref_put(p.ref);
         ui.cur = slot;
         ui.cur_draw_time = p.draw_time;
         if (p.pvideo) {

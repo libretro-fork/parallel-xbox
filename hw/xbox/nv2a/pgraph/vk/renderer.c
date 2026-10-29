@@ -140,9 +140,11 @@ static void pgraph_vk_process_pending(NV2AState *d)
 {
     PGRAPHVkState *r = d->pgraph.vk_renderer_state;
 
+    bool scanout = qatomic_read(&d->pgraph.scanout_changed) ||
+                   qatomic_read(&r->display.check_pending);
     if (qatomic_read(&r->downloads_pending) ||
         qatomic_read(&r->download_dirty_surfaces_pending) ||
-        qatomic_read(&d->pgraph.sync_pending) ||
+        qatomic_read(&d->pgraph.sync_pending) || scanout ||
         qatomic_read(&d->pgraph.flush_pending) ||
         qatomic_read(&r->seed_writeback_pending)
     ) {
@@ -156,7 +158,13 @@ static void pgraph_vk_process_pending(NV2AState *d)
             pgraph_vk_download_dirty_surfaces(d);
         }
         if (qatomic_read(&d->pgraph.sync_pending)) {
+            qatomic_set(&d->pgraph.scanout_changed, false);
+            qatomic_set(&r->display.check_pending, false);
             pgraph_vk_sync(d);
+        } else if (scanout) {
+            qatomic_set(&d->pgraph.scanout_changed, false);
+            qatomic_set(&r->display.check_pending, false);
+            pgraph_vk_present_scanout(d);
         }
         if (qatomic_read(&d->pgraph.flush_pending)) {
             pgraph_vk_flush(d);
@@ -278,7 +286,7 @@ uint64_t nv2a_vk_libretro_guest_frames(void)
            r->display.guest_frame_count : 0;
 }
 
-bool nv2a_vk_libretro_get_frame(int index, VkImage *image, VkImageView *view,
+bool nv2a_vk_libretro_get_frame(VkImage *image, VkImageView *view,
                                 VkFormat *format, int *width, int *height,
                                 uint64_t *count)
 {
@@ -289,9 +297,20 @@ bool nv2a_vk_libretro_get_frame(int index, VkImage *image, VkImageView *view,
     if (!r || r->device != xemu_libretro_vk.device) {
         return false;
     }
+    /* The last frame the renderer's thread drew and published: its slot
+     * and number in one word (display.c render_display); the slot's image
+     * stays as it is until every other slot has been drawn */
+    uint64_t published = qatomic_load_acquire(&r->display.published);
     const struct PGRAPHVkFrameImage *f =
-        &r->display.frames[index % XEMU_LIBRETRO_VK_FRAMES];
-    *count = r->display.frame_count;
+        &r->display.frames[published & 0xff];
+    if (published >> 8 == *count) {
+        /* nothing new: have the renderer look at the scanout again (a
+         * front buffer drawn to in place, the video overlay) */
+        qatomic_set(&r->display.check_pending, true);
+        pfifo_kick(d);
+        return false;
+    }
+    *count = published >> 8;
     if (!f->ready) {
         return false;
     }
