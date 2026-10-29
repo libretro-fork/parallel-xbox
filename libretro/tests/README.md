@@ -1,8 +1,8 @@
 # The core's tests
 
 `python libretro/tests/test-uniform-stage-uploads.py . gcc` exercises the
-production Vulkan uniform tracker and upload planning (before descriptor
-writes) against bounded upload storage. It checks independent stages,
+production Vulkan uniform tracker, upload planning and descriptor-reuse
+decision against bounded upload storage. It checks independent stages,
 module switches, alignment, resets and descriptor exhaustion in 100,000
 mixed draws, with GCC's undefined-behavior traps enabled.
 

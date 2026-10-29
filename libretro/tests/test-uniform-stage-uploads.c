@@ -47,7 +47,18 @@ int main(void)
   unsigned old=r.copies[1-stage];size_t offset=r.uniform_buffer_offsets[1-stage];
   update_shader_uniforms_tracked(&pg);assert(r.uniforms_changed==(1u<<stage));pgraph_vk_update_descriptor_sets(&pg);
   assert(r.copies[1-stage]==old&&r.uniform_buffer_offsets[1-stage]==offset);
+  assert(r.descriptor_set_index==1); /* offsets change without new sets */
  }
+ /* Exhausted descriptors must not force a finish for uniform-only draws. */
+ r.descriptor_set_index=16;pending[0]=true;pending[1]=false;
+ unsigned finishes=r.finishes;
+ update_shader_uniforms_tracked(&pg);pgraph_vk_update_descriptor_sets(&pg);
+ assert(r.descriptor_set_index==16&&r.finishes==finishes);
+ /* A texture change does need another set and must retire the full slot. */
+ r.texture_bindings_changed=true;
+ pgraph_vk_update_descriptor_sets(&pg);
+ assert(r.finishes==finishes+1&&r.descriptor_set_index==1);
+ r.texture_bindings_changed=false;
  /* Repeatedly switch modules, dirty either/both stages, exhaust descriptor
   * slots and upload space, and force external buffer resets. */
  for(unsigned trial=0;trial<100000;trial++){

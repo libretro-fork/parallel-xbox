@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """Exercise production Vulkan uniform change tracking and UBO upload planning.
-Descriptor writes are unchanged; their selected offsets are read from bounded RAM.
+Upload planning and descriptor reuse are extracted from production; selected
+dynamic offsets are read from bounded RAM.
 Usage: python test-uniform-stage-uploads.py CHECKOUT [GCC]
 """
 from pathlib import Path

@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Vulkan: uniform-only draw changes reuse their descriptor set, passing the two uniform offsets at draw binding instead of rewriting the uniform and texture descriptors. Texture/shader changes still use immutable sets, and upload-buffer rotation still retires the recording before reuse.
+
 - Reading the Xbox CPU's timestamp counter (rdtsc: games time with it, and the kernel's performance counter is it) is cheaper: the conversion from the Xbox's time used a 128-bit division, a quarter of the time of a loop timing a delay with it; it is now the same value from 64-bit arithmetic. A loop polling an I/O port that keeps the same value (a status port) is a wait too now, as one polling a memory-mapped register already was. About 6% less time per frame on Jet Set Radio Future's boot (lavapipe).
 
 - Vulkan: changing one shader stage's uniforms no longer copies the unchanged stage's block into the upload buffer. Module switches invalidate their own stage; buffer rotation/reset still uploads both. Capacity checks include each stage's alignment padding.
