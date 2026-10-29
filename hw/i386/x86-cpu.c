@@ -35,8 +35,14 @@
 uint64_t cpu_get_tsc(CPUX86State *env)
 {
 #ifdef XBOX
-    return muldiv64(qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL), 733333333,
-                    NANOSECONDS_PER_SECOND);
+    /* ns * 733333333 / 10^9 (the Xbox CPU's 733.33 MHz), exactly as
+     * muldiv64 gave it, split at the second so it fits 64 bits: muldiv64's
+     * 128-bit division was a quarter of the time of a guest timing a delay
+     * with rdtsc. The divisions are by a constant. */
+    uint64_t ns = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
+    uint64_t s = ns / NANOSECONDS_PER_SECOND;
+    uint64_t r = ns % NANOSECONDS_PER_SECOND;
+    return s * 733333333ULL + r * 733333333ULL / NANOSECONDS_PER_SECOND;
 #else
     return cpus_get_elapsed_ticks();
 #endif

@@ -622,9 +622,9 @@ struct CPUState {
      * exits in a row it was unchanged over */
     int32_t lr_quiet_at_exit;
     int32_t lr_quiet_exits;
-    /* and by device reads (accel/tcg/cputlb.c do_ld_mmio_beN): the last
-     * one's address and value; the same read giving the same value again
-     * is a poll, a wait, not activity */
+    /* and by device reads (accel/tcg/cputlb.c do_ld_mmio_beN, and the
+     * target's port reads): the last one's address and value; the same
+     * read giving the same value again is a poll, a wait, not activity */
     vaddr lr_poll_addr;
     uint64_t lr_poll_val;
 

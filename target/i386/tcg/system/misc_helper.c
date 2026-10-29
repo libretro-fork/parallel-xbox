@@ -28,6 +28,24 @@
 #include "tcg/helper-tcg.h"
 #include "hw/i386/apic.h"
 
+/* A port read is a device access, unless it is the last one again with the
+ * same value: a loop polling a status port that has not changed waits
+ * (accel/tcg/cputlb.c do_ld_mmio_beN does the same for memory-mapped
+ * registers; ports are told apart from those by a bit above any address) */
+static uint32_t lr_port_read(CPUX86State *env, uint32_t port, int size,
+                             uint32_t val)
+{
+    CPUState *cs = env_cpu(env);
+    vaddr tag = (1ULL << 40) | ((vaddr)size << 32) | port;
+
+    if (cs->lr_poll_addr != tag || cs->lr_poll_val != val) {
+        cs->lr_poll_addr = tag;
+        cs->lr_poll_val = val;
+        cs->neg.lr_quiet = LR_QUIET_INSNS;
+    }
+    return val;
+}
+
 void helper_outb(CPUX86State *env, uint32_t port, uint32_t data)
 {
     env_cpu(env)->neg.lr_quiet = LR_QUIET_INSNS; /* a device access */
@@ -37,9 +55,9 @@ void helper_outb(CPUX86State *env, uint32_t port, uint32_t data)
 
 target_ulong helper_inb(CPUX86State *env, uint32_t port)
 {
-    env_cpu(env)->neg.lr_quiet = LR_QUIET_INSNS; /* a device access */
-    return address_space_ldub(&address_space_io, port,
-                              cpu_get_mem_attrs(env), NULL);
+    return lr_port_read(env, port, 1,
+                        address_space_ldub(&address_space_io, port,
+                                          cpu_get_mem_attrs(env), NULL));
 }
 
 void helper_outw(CPUX86State *env, uint32_t port, uint32_t data)
@@ -51,9 +69,9 @@ void helper_outw(CPUX86State *env, uint32_t port, uint32_t data)
 
 target_ulong helper_inw(CPUX86State *env, uint32_t port)
 {
-    env_cpu(env)->neg.lr_quiet = LR_QUIET_INSNS; /* a device access */
-    return address_space_lduw(&address_space_io, port,
-                              cpu_get_mem_attrs(env), NULL);
+    return lr_port_read(env, port, 2,
+                        address_space_lduw(&address_space_io, port,
+                                          cpu_get_mem_attrs(env), NULL));
 }
 
 void helper_outl(CPUX86State *env, uint32_t port, uint32_t data)
@@ -65,9 +83,9 @@ void helper_outl(CPUX86State *env, uint32_t port, uint32_t data)
 
 target_ulong helper_inl(CPUX86State *env, uint32_t port)
 {
-    env_cpu(env)->neg.lr_quiet = LR_QUIET_INSNS; /* a device access */
-    return address_space_ldl(&address_space_io, port,
-                             cpu_get_mem_attrs(env), NULL);
+    return lr_port_read(env, port, 4,
+                        address_space_ldl(&address_space_io, port,
+                             cpu_get_mem_attrs(env), NULL));
 }
 
 target_ulong helper_read_cr8(CPUX86State *env)

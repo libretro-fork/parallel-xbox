@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Reading the Xbox CPU's timestamp counter (rdtsc: games time with it, and the kernel's performance counter is it) is cheaper: the conversion from the Xbox's time used a 128-bit division, a quarter of the time of a loop timing a delay with it; it is now the same value from 64-bit arithmetic. A loop polling an I/O port that keeps the same value (a status port) is a wait too now, as one polling a memory-mapped register already was. About 6% less time per frame on Jet Set Radio Future's boot (lavapipe).
+
 - Vulkan: changing one shader stage's uniforms no longer copies the unchanged stage's block into the upload buffer. Module switches invalidate their own stage; buffer rotation/reset still uploads both. Capacity checks include each stage's alignment padding.
 
 - Games that poll a hardware register in a loop (waiting for the vblank, or for the GPU to catch up) no longer burn the PC's CPU doing it: a loop that only reads the same register and gets the same value is a wait, like the kernel's idle loop, and the Xbox's time moves on to the next event at once. Each such read had also been costing a full exit from the translated code and a rewind of its block; the instructions that read devices now end their blocks, so no read pays that again. Measured on Jet Set Radio Future's boot (lavapipe): 23% less time per frame, the worst frame 318 ms instead of 2.9 s. The core's test suite runs in half the time.
