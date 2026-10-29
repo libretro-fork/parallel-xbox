@@ -920,6 +920,34 @@ uint32_t dsp56k_read_memory(dsp_core_t* dsp, int space, uint32_t address)
     }
 }
 
+uint32_t *dsp56k_memory_ptr(dsp_core_t* dsp, int space, uint32_t address, uint32_t count, bool write)
+{
+    uint32_t end = address + count;
+
+    if (end < address) {
+        return NULL;
+    }
+    switch (space) {
+    case DSP_SPACE_X:
+        if (end <= 0xc00) {
+            return &dsp->xram[address];
+        }
+        if (address >= 0xc00 && end <= 0xc00 + DSP_MIXBUFFER_SIZE) {
+            return &dsp->mixbuffer[address - 0xc00];
+        }
+        if (address >= DSP_MIXBUFFER_BASE && end <= DSP_MIXBUFFER_BASE + DSP_MIXBUFFER_SIZE) {
+            return &dsp->mixbuffer[address - DSP_MIXBUFFER_BASE];
+        }
+        return NULL;
+    case DSP_SPACE_Y:
+        return end <= DSP_YRAM_SIZE ? &dsp->yram[address] : NULL;
+    case DSP_SPACE_P:
+        return !write && end <= DSP_PRAM_SIZE ? &dsp->pram[address] : NULL;
+    default:
+        return NULL;
+    }
+}
+
 void dsp56k_write_memory(dsp_core_t* dsp, int space, uint32_t address, uint32_t value)
 {
     if (TRACE_DSP_DISASM_MEM)

@@ -43,6 +43,7 @@ typedef struct DSPOps {
     uint32_t (*read_memory)(DSPState *dsp, char space, uint32_t addr);
     void (*write_memory)(DSPState *dsp, char space, uint32_t addr,
                          uint32_t value);
+    uint32_t *(*memory_ptr)(DSPState *dsp, char space, uint32_t addr, uint32_t count);
     bool (*get_halt_requested)(DSPState *dsp);
     void (*set_halt_requested)(DSPState *dsp, bool idle);
     uint32_t (*get_cycle_count)(DSPState *dsp);
@@ -107,8 +108,8 @@ struct DSPState {
     void *backend;
 };
 
-DSPState *dsp_init(void *rw_opaque, dsp_scratch_rw_func scratch_rw,
-                   dsp_fifo_rw_func fifo_rw, bool is_gp);
+DSPState *dsp_init(void *rw_opaque, dsp_scratch_walk_func scratch_walk,
+                   dsp_fifo_walk_func fifo_walk, bool is_gp);
 void dsp_destroy(DSPState *dsp);
 void dsp_reset(DSPState *dsp);
 
@@ -121,6 +122,10 @@ void dsp_start_frame(DSPState *dsp);
 uint32_t dsp_read_memory(DSPState *dsp, char space, uint32_t addr);
 void dsp_write_memory(DSPState *dsp, char space, uint32_t address,
                       uint32_t value);
+/* The count words from addr in place, for the engine to read and write
+ * them directly (the mixbins, the GP's output); NULL when they are not
+ * plain memory all through (dsp56k_memory_ptr) */
+uint32_t *dsp_memory_ptr(DSPState *dsp, char space, uint32_t addr, uint32_t count);
 
 /* Accessor functions for backend-independent state access */
 bool dsp_get_halt_requested(DSPState *dsp);

@@ -22,8 +22,6 @@
 #include "hw/xbox/mcpx/apu/apu_int.h"
 #include <rthreads/rthreads.h>
 
-static const int16_t ep_silence[256][2] = { 0 };
-
 /* The option values the DSPs were last set up for: none on a new device
  * (mcpx_apu_dsp_init), so new content gets its monitor point and engine
  * whatever the last content ran with */
@@ -60,9 +58,10 @@ void mcpx_apu_update_dsp_preference(MCPXAPUState *d)
     }
 }
 
-static void scatter_gather_rw(MCPXAPUState *d, hwaddr sge_base,
-                              unsigned int max_sge, uint8_t *ptr, uint32_t addr,
-                              size_t len, bool dir)
+static void scatter_gather_walk(MCPXAPUState *d, hwaddr sge_base,
+                                unsigned int max_sge, uint32_t addr,
+                                size_t len, bool dir,
+                                dsp_dma_run_func fn, void *user)
 {
     unsigned int page_entry = addr / TARGET_PAGE_SIZE;
     unsigned int offset_in_page = addr % TARGET_PAGE_SIZE;
@@ -84,14 +83,12 @@ static void scatter_gather_rw(MCPXAPUState *d, hwaddr sge_base,
 
         assert(paddr + bytes_to_copy < memory_region_size(d->ram));
 
+        /* the page's run of the guest's RAM, in place */
+        fn(user, &d->ram_ptr[paddr], bytes_to_copy);
         if (dir) {
-            memcpy(&d->ram_ptr[paddr], ptr, bytes_to_copy);
             memory_region_set_dirty(d->ram, paddr, bytes_to_copy);
-        } else {
-            memcpy(ptr, &d->ram_ptr[paddr], bytes_to_copy);
         }
 
-        ptr += bytes_to_copy;
         len -= bytes_to_copy;
 
         /* After the first iteration, we are page aligned */
@@ -101,28 +98,29 @@ static void scatter_gather_rw(MCPXAPUState *d, hwaddr sge_base,
     }
 }
 
-static void gp_scratch_rw(void *opaque, uint8_t *ptr, uint32_t addr, size_t len,
-                          bool dir)
+static void gp_scratch_walk(void *opaque, uint32_t addr, size_t len, bool dir,
+                            dsp_dma_run_func fn, void *user)
 {
     MCPXAPUState *d = opaque;
     // fprintf(stderr, "GP %s scratch 0x%x bytes (0x%x words) at %x (0x%x words)\n", dir ? "writing to" : "reading from", len, len/4, addr, addr/4);
-    scatter_gather_rw(d, d->regs[NV_PAPU_GPSADDR], d->regs[NV_PAPU_GPSMAXSGE],
-                      ptr, addr, len, dir);
+    scatter_gather_walk(d, d->regs[NV_PAPU_GPSADDR], d->regs[NV_PAPU_GPSMAXSGE],
+                        addr, len, dir, fn, user);
 }
 
-static void ep_scratch_rw(void *opaque, uint8_t *ptr, uint32_t addr, size_t len,
-                          bool dir)
+static void ep_scratch_walk(void *opaque, uint32_t addr, size_t len, bool dir,
+                            dsp_dma_run_func fn, void *user)
 {
     MCPXAPUState *d = opaque;
     // fprintf(stderr, "EP %s scratch 0x%x bytes (0x%x words) at %x (0x%x words)\n", dir ? "writing to" : "reading from", len, len/4, addr, addr/4);
-    scatter_gather_rw(d, d->regs[NV_PAPU_EPSADDR], d->regs[NV_PAPU_EPSMAXSGE],
-                      ptr, addr, len, dir);
+    scatter_gather_walk(d, d->regs[NV_PAPU_EPSADDR], d->regs[NV_PAPU_EPSMAXSGE],
+                        addr, len, dir, fn, user);
 }
 
-static uint32_t circular_scatter_gather_rw(MCPXAPUState *d, hwaddr sge_base,
-                                           unsigned int max_sge, uint8_t *ptr,
-                                           uint32_t base, uint32_t end,
-                                           uint32_t cur, size_t len, bool dir)
+static uint32_t circular_scatter_gather_walk(MCPXAPUState *d, hwaddr sge_base,
+                                             unsigned int max_sge,
+                                             uint32_t base, uint32_t end,
+                                             uint32_t cur, size_t len, bool dir,
+                                             dsp_dma_run_func fn, void *user)
 {
     while (len > 0) {
         unsigned int bytes_to_copy = end - cur;
@@ -136,9 +134,8 @@ static uint32_t circular_scatter_gather_rw(MCPXAPUState *d, hwaddr sge_base,
                 dir ? "write" : "read", base, end, cur, bytes_to_copy, len);
 
         assert((cur >= base) && ((cur + bytes_to_copy) <= end));
-        scatter_gather_rw(d, sge_base, max_sge, ptr, cur, bytes_to_copy, dir);
+        scatter_gather_walk(d, sge_base, max_sge, cur, bytes_to_copy, dir, fn, user);
 
-        ptr += bytes_to_copy;
         len -= bytes_to_copy;
 
         /* After the first iteration we might have to wrap */
@@ -152,8 +149,8 @@ static uint32_t circular_scatter_gather_rw(MCPXAPUState *d, hwaddr sge_base,
     return cur;
 }
 
-static void gp_fifo_rw(void *opaque, uint8_t *ptr, unsigned int index,
-                       size_t len, bool dir)
+static void gp_fifo_walk(void *opaque, unsigned int index, size_t len, bool dir,
+                         dsp_dma_run_func fn, void *user)
 {
     MCPXAPUState *d = opaque;
     uint32_t base;
@@ -187,29 +184,22 @@ static void gp_fifo_rw(void *opaque, uint8_t *ptr, unsigned int index,
         cur = base;
     }
 
-    cur = circular_scatter_gather_rw(d,
+    cur = circular_scatter_gather_walk(d,
         d->regs[NV_PAPU_GPFADDR], d->regs[NV_PAPU_GPFMAXSGE],
-        ptr, base, end, cur, len, dir);
+        base, end, cur, len, dir, fn, user);
 
     SET_MASK(d->regs[cur_reg], NV_PAPU_GPOFCUR0_VALUE, cur);
 }
 
-static bool ep_sink_samples(MCPXAPUState *d, uint8_t *ptr, size_t len)
+/* the EP's output FIFO 0 sinks to the frontend: a run of the guest's
+ * FIFO gets silence instead (ep_fifo_walk) */
+static void ep_silence_run(void *user, uint8_t *host, size_t bytes)
 {
-    if (d->monitor.point == MCPX_APU_DEBUG_MON_AC97) {
-        return false;
-    } else if ((d->monitor.point == MCPX_APU_DEBUG_MON_EP) ||
-        (d->monitor.point == MCPX_APU_DEBUG_MON_GP_OR_EP)) {
-        /* the EP's 256 samples, 8 engine frames' worth (dsp_thread_frame) */
-        assert(len == sizeof(d->dsp_thread.ep_out));
-        memcpy(d->dsp_thread.ep_out, ptr, len);
-    }
-
-    return true;
+    memset(host, 0, bytes);
 }
 
-static void ep_fifo_rw(void *opaque, uint8_t *ptr, unsigned int index,
-                       size_t len, bool dir)
+static void ep_fifo_walk(void *opaque, unsigned int index, size_t len, bool dir,
+                         dsp_dma_run_func fn, void *user)
 {
     MCPXAPUState *d = opaque;
     uint32_t base;
@@ -237,13 +227,16 @@ static void ep_fifo_rw(void *opaque, uint8_t *ptr, unsigned int index,
     //     dir ? "writing to" : "reading from", index,
     //     base, end, cur, len);
 
-    if (dir && index == 0) {
-        bool did_sink = ep_sink_samples(d, ptr, len);
-        if (did_sink) {
-            /* Since we are sinking, push silence out */
-            assert(len <= sizeof(ep_silence));
-            ptr = (uint8_t*)ep_silence;
+    if (dir && index == 0 && d->monitor.point != MCPX_APU_DEBUG_MON_AC97) {
+        /* sunk: the EP's 256 samples, 8 engine frames' worth, written
+         * straight into the thread's buffer (dsp_thread_frame), and the
+         * guest's FIFO gets silence */
+        if ((d->monitor.point == MCPX_APU_DEBUG_MON_EP) ||
+            (d->monitor.point == MCPX_APU_DEBUG_MON_GP_OR_EP)) {
+            assert(len == sizeof(d->dsp_thread.ep_out));
+            fn(user, (uint8_t *)d->dsp_thread.ep_out, len);
         }
+        fn = ep_silence_run;
     }
 
     /* DSP hangs if current >= end; but forces current >= base */
@@ -254,9 +247,9 @@ static void ep_fifo_rw(void *opaque, uint8_t *ptr, unsigned int index,
         cur = base;
     }
 
-    cur = circular_scatter_gather_rw(d,
+    cur = circular_scatter_gather_walk(d,
         d->regs[NV_PAPU_EPFADDR], d->regs[NV_PAPU_EPFMAXSGE],
-        ptr, base, end, cur, len, dir);
+        base, end, cur, len, dir, fn, user);
 
     SET_MASK(d->regs[cur_reg], NV_PAPU_GPOFCUR0_VALUE, cur);
 }
@@ -461,13 +454,12 @@ const MemoryRegionOps ep_ops = {
 static void dsp_thread_frame(MCPXAPUState *d, float mixbins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME],
                              int frame_div)
 {
-    /* Write VP results to the GP DSP MIXBUF */
-    for (int mixbin = 0; mixbin < NUM_MIXBINS; mixbin++) {
-        uint32_t base = GP_DSP_MIXBUF_BASE + mixbin * NUM_SAMPLES_PER_FRAME;
-        for (int sample = 0; sample < NUM_SAMPLES_PER_FRAME; sample++) {
-            dsp_write_memory(d->gp.dsp, 'X', base + sample,
-                             float_to_24b(mixbins[mixbin][sample]));
-        }
+    /* Write VP results to the GP DSP MIXBUF, in place */
+    uint32_t *mixbuf = dsp_memory_ptr(d->gp.dsp, 'X', GP_DSP_MIXBUF_BASE,
+                                      NUM_MIXBINS * NUM_SAMPLES_PER_FRAME);
+    const float *in = &mixbins[0][0];
+    for (int i = 0; i < NUM_MIXBINS * NUM_SAMPLES_PER_FRAME; i++) {
+        mixbuf[i] = float_to_24b(in[i]);
     }
 
     bool ep_enabled = (d->ep.regs[NV_PAPU_EPRST] & NV_PAPU_GPRST_GPRST) &&
@@ -489,15 +481,18 @@ static void dsp_thread_frame(MCPXAPUState *d, float mixbins[NUM_MIXBINS][NUM_SAM
         g_dbg.gp.cycles = dsp_get_cycle_count(d->gp.dsp);
 
         if (gp_out) {
-            int16_t out[NUM_SAMPLES_PER_FRAME][2];
-            for (int i = 0; i < NUM_SAMPLES_PER_FRAME; i++) {
-                uint32_t l = dsp_read_memory(d->gp.dsp, 'X', 0x1400 + i);
-                out[i][0] = l >> 8;
-                uint32_t r =
-                    dsp_read_memory(d->gp.dsp, 'X', 0x1400 + 1 * 0x20 + i);
-                out[i][1] = r >> 8;
+            /* mixbins 0 and 1, straight into the frontend's queue */
+            int16_t *out = mcpx_apu_monitor_begin(NUM_SAMPLES_PER_FRAME);
+            if (out) {
+                const int32_t gain = mcpx_apu_monitor_gain_q16();
+                const uint32_t *l = &mixbuf[0];
+                const uint32_t *r = &mixbuf[NUM_SAMPLES_PER_FRAME];
+                for (int i = 0; i < NUM_SAMPLES_PER_FRAME; i++) {
+                    out[2 * i]     = (int16_t)(((int64_t)(int16_t)(l[i] >> 8) * gain) >> 16);
+                    out[2 * i + 1] = (int16_t)(((int64_t)(int16_t)(r[i] >> 8) * gain) >> 16);
+                }
+                mcpx_apu_monitor_end(NUM_SAMPLES_PER_FRAME);
             }
-            mcpx_apu_monitor_push_s16(out, NUM_SAMPLES_PER_FRAME);
         }
     } else if (gp_out) {
         mcpx_apu_monitor_push_silence();
@@ -625,8 +620,8 @@ void mcpx_apu_dsp_post(MCPXAPUState *d, float mixbins[NUM_MIXBINS][NUM_SAMPLES_P
 
 bool mcpx_apu_dsp_uses_reg(hwaddr addr)
 {
-    /* the scatter-gather tables and FIFOs (gp_scratch_rw, ep_scratch_rw,
-     * gp_fifo_rw, ep_fifo_rw), and the EP's output FIFO cursors it moves */
+    /* the scatter-gather tables and FIFOs (gp_scratch_walk, ep_scratch_walk,
+     * gp_fifo_walk, ep_fifo_walk), and the EP's output FIFO cursors it moves */
     return (addr >= NV_PAPU_GPSADDR && addr <= NV_PAPU_EPFADDR + 3) ||
            (addr >= NV_PAPU_GPSMAXSGE && addr <= NV_PAPU_EPFMAXSGE + 3) ||
            (addr >= NV_PAPU_GPOFBASE0 && addr <= NV_PAPU_GPIFCUR1 + 3) ||
@@ -637,11 +632,11 @@ void mcpx_apu_dsp_init(MCPXAPUState *d)
 {
     last_known_dsp_pref = -1;
     last_known_jit_pref = -1;
-    d->gp.dsp = dsp_init(d, gp_scratch_rw, gp_fifo_rw, true);
+    d->gp.dsp = dsp_init(d, gp_scratch_walk, gp_fifo_walk, true);
     dsp_set_halt_requested(d->gp.dsp, false);
     dsp_set_cycle_count(d->gp.dsp, 0);
 
-    d->ep.dsp = dsp_init(d, ep_scratch_rw, ep_fifo_rw, false);
+    d->ep.dsp = dsp_init(d, ep_scratch_walk, ep_fifo_walk, false);
     dsp_set_halt_requested(d->ep.dsp, false);
     dsp_set_cycle_count(d->ep.dsp, 0);
 

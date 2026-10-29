@@ -149,6 +149,21 @@ static int16_t *monitor_room(size_t frames)
     return p;
 }
 
+int16_t *mcpx_apu_monitor_begin(size_t frames)
+{
+    return monitor_room(frames);
+}
+
+int32_t mcpx_apu_monitor_gain_q16(void)
+{
+    return qatomic_read(&apu_gain_q16);
+}
+
+void mcpx_apu_monitor_end(size_t frames)
+{
+    retro_spsc_write_end(&apu_queue, frames * FRAME_BYTES);
+}
+
 /* Producer: stereo S16 frames, as the DSPs make them */
 void mcpx_apu_monitor_push_s16(const int16_t (*samples)[2], size_t frames)
 {

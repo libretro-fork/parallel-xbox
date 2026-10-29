@@ -65,29 +65,101 @@ const char *space_names[] = {
 
 #endif
 
-static void scratch_circular_copy(
+/* A transfer under way: the DSP's words it is at, and how each becomes
+ * host bytes (or the other way), run by run of the host's memory */
+typedef struct DmaTransfer {
+    DSPDMAState *s;
+    int space;
+    uint32_t addr;          /* the DSP address of item 0 */
+    uint32_t *mem;          /* the words in place, or NULL: by callbacks */
+    unsigned int item_size;
+    uint32_t item_mask;
+    bool to_host;
+    bool interleave;        /* item n is channel n % channels, block n / channels */
+    uint32_t channels;
+    uint32_t blocks;
+    uint32_t n;             /* items done */
+} DmaTransfer;
+
+static inline uint32_t dma_item_index(const DmaTransfer *t, uint32_t n)
+{
+    return t->interleave ? (n % t->channels) * t->blocks + n / t->channels : n;
+}
+
+static inline uint32_t dma_word_read(const DmaTransfer *t, uint32_t n)
+{
+    uint32_t idx = dma_item_index(t, n);
+    return t->mem ? t->mem[idx] : t->s->mem_read(t->s->mem_opaque, t->space, t->addr + idx);
+}
+
+static inline void dma_word_write(const DmaTransfer *t, uint32_t n, uint32_t v)
+{
+    uint32_t idx = dma_item_index(t, n);
+    if (t->mem) {
+        t->mem[idx] = v;
+    } else {
+        t->s->mem_write(t->s->mem_opaque, t->space, t->addr + idx, v);
+    }
+}
+
+/* one run of the host's memory: the items in it converted */
+static void dma_run(void *user, uint8_t *host, size_t bytes)
+{
+    DmaTransfer *t = user;
+    size_t items = bytes / t->item_size;
+
+    assert(bytes % t->item_size == 0);
+    if (t->to_host) {
+        if (t->item_size == 2) {
+            for (size_t i = 0; i < items; i++) {
+                uint16_t v = dma_word_read(t, t->n + i) >> 8;
+                memcpy(host + i * 2, &v, 2);
+            }
+        } else {
+            for (size_t i = 0; i < items; i++) {
+                uint32_t v = dma_word_read(t, t->n + i);
+                memcpy(host + i * 4, &v, 4);
+            }
+        }
+    } else {
+        if (t->item_size == 2) {
+            for (size_t i = 0; i < items; i++) {
+                uint16_t v;
+                memcpy(&v, host + i * 2, 2);
+                dma_word_write(t, t->n + i, (uint32_t)v << 8);
+            }
+        } else {
+            for (size_t i = 0; i < items; i++) {
+                uint32_t v;
+                memcpy(&v, host + i * 4, 4);
+                dma_word_write(t, t->n + i, v & t->item_mask);
+            }
+        }
+    }
+    t->n += items;
+}
+
+/* the scratch space as a ring: the transfer walked over it, wrapping */
+static void scratch_circular_walk(
     DSPDMAState *s,
     uint32_t     scratch_base,
     uint32_t    *scratch_offset,
     uint32_t     scratch_size,
     uint32_t     transfer_size,
-    uint8_t     *scratch_buf,
-    int          direction)
+    bool         direction,
+    DmaTransfer *t)
 {
     if (*scratch_offset >= scratch_size) {
         // fprintf(stderr, "Initial scratch offset exceeds scratch size! Wrapping\n");
         *scratch_offset = 0;
     }
 
-    uint32_t buf_offset = 0;
-
     while (transfer_size > 0) {
         size_t bytes_until_wrap = scratch_size - *scratch_offset;
         size_t chunk_size = MIN(transfer_size, bytes_until_wrap);
         uint32_t scratch_addr = scratch_base + *scratch_offset;
 
-        // R/W to scratch memory from chunk in buffer
-        s->scratch_rw(s->rw_opaque, &scratch_buf[buf_offset], scratch_addr, chunk_size, direction);
+        s->scratch_walk(s->rw_opaque, scratch_addr, chunk_size, direction, dma_run, t);
 
         // Advance scratch pointer, wrap if we've reached the end
         *scratch_offset += chunk_size;
@@ -96,7 +168,6 @@ static void scratch_circular_copy(
         }
 
         transfer_size -= chunk_size;
-        buf_offset += chunk_size;
     }
 }
 
@@ -207,70 +278,43 @@ static void dsp_dma_run(DSPDMAState *s)
         }
 
         size_t transfer_size = count * item_size;
+        DmaTransfer t = {
+            .s = s,
+            .space = mem_space,
+            .addr = mem_address,
+            .item_size = item_size,
+            .item_mask = item_mask,
+            .to_host = direction,
+            .interleave = direction && dsp_interleave,
+            .channels = channel_count,
+            .blocks = block_count,
+        };
+        uint32_t words = count;
 
-        // FIXME: Remove this intermediate buffer
-        /* the DSP's whole P, X or Y space at the widest item: a fixed
-         * buffer, no allocation on the DSPs' thread (and the one grown
-         * with malloc leaked each time it grew) */
-        static uint8_t scratch_buf[0x1800 * 4];
-        assert(count * item_size <= sizeof(scratch_buf));
-        assert(block_count * item_size * channel_count <= sizeof(scratch_buf));
+        assert(item_size == 2 || item_size == 4);
+        if (t.interleave) {
+            // FIXME: Above xfer size calculation instead of
+            // overwriting here
+            transfer_size = block_count * item_size * channel_count;
+            words = block_count * channel_count;
+        }
+        /* the DSP's words in place where they are plain memory; a
+         * write to P goes through the callback (its code is dropped) */
+        t.mem = s->mem_ptr(s->mem_opaque, mem_space, mem_address, words);
 
         if (direction) {
-            if (dsp_interleave) {
-                // FIXME: Above xfer size calculation instead of
-                // overwriting here
-                transfer_size = block_count * item_size * channel_count;
-
-                // Interleave samples
-                for (int i = 0; i < block_count; i++) {
-                    for (int ch = 0; ch < channel_count; ch++) {
-                        uint32_t v = s->mem_read(s->mem_opaque,
-                            mem_space, mem_address+ch*block_count+i);
-                        switch(item_size) {
-                        case 2:
-                            *(uint16_t*)(scratch_buf + i*2*channel_count + ch*2) = v >> 8;
-                            break;
-                        case 4:
-                            *(uint32_t*)(scratch_buf + i*4*channel_count + ch*4) = v;
-                            break;
-                        default:
-                            assert(!"Invalid dsp dma item size for interleaved samples");
-                            break;
-                        }
-                    }
-                }
-            } else {
-                for (int i = 0; i < count; i++) {
-                    uint32_t v = s->mem_read(s->mem_opaque, mem_space, mem_address+i);
-                    switch(item_size) {
-                    case 2:
-                        *(uint16_t*)(scratch_buf + i*2) = v >> 8;
-                        break;
-                    case 4:
-                        *(uint32_t*)(scratch_buf + i*4) = v;
-                        break;
-                    default:
-                        assert(!"Invalid dsp dma item size");
-                        break;
-                    }
-                }
-
-            }
-
-            /* FIXME: Move to function; then reuse for both directions */
             switch (buf_id) {
             case 0x0:
             case 0x1:
             case 0x2:
             case 0x3:
-                s->fifo_rw(s->rw_opaque, scratch_buf, buf_id, transfer_size, 1);
+                s->fifo_walk(s->rw_opaque, buf_id, transfer_size, true, dma_run, &t);
                 break;
             case 0xE:
-                scratch_circular_copy(s, scratch_base, &scratch_offset, scratch_size, transfer_size, scratch_buf, 1);
+                scratch_circular_walk(s, scratch_base, &scratch_offset, scratch_size, transfer_size, true, &t);
                 break;
             case 0xF:
-                s->scratch_rw(s->rw_opaque, scratch_buf, scratch_addr, transfer_size, 1);
+                s->scratch_walk(s->rw_opaque, scratch_addr, transfer_size, true, dma_run, &t);
                 break;
             default:
                 fprintf(stderr, "Unknown DSP DMA buffer: 0x%x\n", buf_id);
@@ -281,30 +325,12 @@ static void dsp_dma_run(DSPDMAState *s)
             assert(!dsp_interleave);
 
             if (buf_id == 0xe) {
-                scratch_circular_copy(s, scratch_base, &scratch_offset, scratch_size, transfer_size, scratch_buf, 0);
+                scratch_circular_walk(s, scratch_base, &scratch_offset, scratch_size, transfer_size, false, &t);
             } else if (buf_id == 0xf) {
-                s->scratch_rw(s->rw_opaque, scratch_buf, scratch_addr, transfer_size, 0);
+                s->scratch_walk(s->rw_opaque, scratch_addr, transfer_size, false, dma_run, &t);
             } else {
                 fprintf(stderr, "Unhandled DSP DMA buffer: 0x%x\n", buf_id);
                 assert(!"Unhandled dsp dma buffer");
-            }
-
-            for (int i = 0; i < count; i++) {
-                uint32_t v;
-                switch(item_size) {
-                case 2:
-                    v = *(uint16_t*)(scratch_buf + i*2) << 8;
-                    break;
-                case 4:
-                    v = (*(uint32_t*)(scratch_buf + i*4)) & item_mask;
-                    break;
-                default:
-                    v = 0;
-                    assert(!"Invalid dsp dma item size");
-                    break;
-                }
-
-                s->mem_write(s->mem_opaque, mem_space, mem_address+i, v);
             }
         }
 

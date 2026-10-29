@@ -24,10 +24,19 @@
 #include <stdbool.h>
 #include <stddef.h>
 
-typedef void (*dsp_scratch_rw_func)(
-    void *opaque, uint8_t *ptr, uint32_t addr, size_t len, bool dir);
-typedef void (*dsp_fifo_rw_func)(
-    void *opaque, uint8_t *ptr, unsigned int index, size_t len, bool dir);
+/* The host's memory a transfer goes to or from, a contiguous run at a
+ * time: the scratch space (scatter-gather pages) or a FIFO (a ring of
+ * them) walked over len bytes from addr (the FIFO's cursor), fn called
+ * with each run in order, to be read (dir false) or written (true). The
+ * DMA converts the DSP's words straight into or out of the run, with no
+ * buffer in between. */
+typedef void (*dsp_dma_run_func)(void *user, uint8_t *host, size_t bytes);
+typedef void (*dsp_scratch_walk_func)(
+    void *opaque, uint32_t addr, size_t len, bool dir,
+    dsp_dma_run_func fn, void *user);
+typedef void (*dsp_fifo_walk_func)(
+    void *opaque, unsigned int index, size_t len, bool dir,
+    dsp_dma_run_func fn, void *user);
 
 #define DMA_CONTROL_RUNNING (1 << 4)
 #define DMA_CONTROL_STOPPED (1 << 5)
@@ -42,17 +51,21 @@ typedef enum DSPDMARegister {
 /* Memory access callbacks for backend-agnostic DMA */
 typedef uint32_t (*dsp_dma_mem_read_func)(void *opaque, int space, uint32_t addr);
 typedef void (*dsp_dma_mem_write_func)(void *opaque, int space, uint32_t addr, uint32_t value);
+/* the count words from addr in place, when they are plain memory the
+ * DMA may read and write directly; NULL otherwise */
+typedef uint32_t *(*dsp_dma_mem_ptr_func)(void *opaque, int space, uint32_t addr, uint32_t count);
 
 typedef struct DSPDMAState {
     /* DSP memory access (backend-agnostic) */
     void *mem_opaque;
     dsp_dma_mem_read_func mem_read;
     dsp_dma_mem_write_func mem_write;
+    dsp_dma_mem_ptr_func mem_ptr;
 
     /* System memory access */
     void *rw_opaque;
-    dsp_scratch_rw_func scratch_rw;
-    dsp_fifo_rw_func fifo_rw;
+    dsp_scratch_walk_func scratch_walk;
+    dsp_fifo_walk_func fifo_walk;
 
     uint32_t configuration;
     uint32_t control;

@@ -108,16 +108,16 @@ void dsp_start_frame_impl(DSPState *dsp)
     dsp->interrupts |= INTERRUPT_START_FRAME;
 }
 
-DSPState *dsp_init(void *rw_opaque, dsp_scratch_rw_func scratch_rw,
-                   dsp_fifo_rw_func fifo_rw, bool is_gp)
+DSPState *dsp_init(void *rw_opaque, dsp_scratch_walk_func scratch_walk,
+                   dsp_fifo_walk_func fifo_walk, bool is_gp)
 {
     DSPState *dsp = g_new0(DSPState, 1);
     dsp->is_gp = is_gp;
     dsp->core.is_gp = is_gp;
 
     dsp->dma.rw_opaque = rw_opaque;
-    dsp->dma.scratch_rw = scratch_rw;
-    dsp->dma.fifo_rw = fifo_rw;
+    dsp->dma.scratch_walk = scratch_walk;
+    dsp->dma.fifo_walk = fifo_walk;
 
     if (g_config.audio.use_dsp_jit) {
         dsp_jit_init(dsp);
@@ -173,6 +173,11 @@ void dsp_write_memory(DSPState *dsp, char space, uint32_t address,
                       uint32_t value)
 {
     dsp->ops->write_memory(dsp, space, address, value);
+}
+
+uint32_t *dsp_memory_ptr(DSPState *dsp, char space, uint32_t addr, uint32_t count)
+{
+    return dsp->ops->memory_ptr(dsp, space, addr, count);
 }
 
 bool dsp_get_halt_requested(DSPState *dsp)

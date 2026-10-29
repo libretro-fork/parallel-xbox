@@ -148,6 +148,11 @@ void dsp56k_execute_instruction(dsp_core_t* dsp);	/* Execute 1 instruction */
 
 uint32_t dsp56k_read_memory(dsp_core_t* dsp, int space, uint32_t address);
 void dsp56k_write_memory(dsp_core_t* dsp, int space, uint32_t address, uint32_t value);
+/* The count words from address in place, when they are all in one of
+ * the plain memories (X RAM, the mixbuffer, Y RAM; P reads): NULL for
+ * the peripherals, a write to P (its code must be dropped), or a range
+ * that is not all one memory */
+uint32_t *dsp56k_memory_ptr(dsp_core_t* dsp, int space, uint32_t address, uint32_t count, bool write);
 
 /* Interrupt relative functions */
 void dsp56k_add_interrupt(dsp_core_t* dsp, uint16_t inter);

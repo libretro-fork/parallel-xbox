@@ -110,6 +110,12 @@ void mcpx_debug_end_frame(void);
 void mcpx_apu_monitor_init(MCPXAPUState *d, Error **errp);
 void mcpx_apu_monitor_finalize(MCPXAPUState *d);
 void mcpx_apu_monitor_push_s16(const int16_t (*samples)[2], size_t frames);
+/* Producer: a frame's room in the queue to write straight into (NULL:
+ * no room, the frame is dropped), the gain to apply (16.16), and the
+ * frames written */
+int16_t *mcpx_apu_monitor_begin(size_t frames);
+int32_t mcpx_apu_monitor_gain_q16(void);
+void mcpx_apu_monitor_end(size_t frames);
 void mcpx_apu_monitor_push_f32(const float (*samples)[2], size_t frames);
 void mcpx_apu_monitor_push_silence(void);
 void mcpx_apu_monitor_silence(MCPXAPUState *d);
