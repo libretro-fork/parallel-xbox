@@ -30,7 +30,15 @@
  *                       for LEN runs from run F, on --pad-port's port
  *     --lstick F:X:Y[:LEN]  as --stick, the right stick left centred
  *     --shot N FILE     write run N's frame to FILE as a PPM
- *     --csv FILE        per-run log: run, audio frames, video flag, us
+ *     --csv FILE        per-run log: run, audio frames, video flag, us,
+ *                       and with --stutter the GPU time of the frame
+ *     --stutter         frame-time statistics at the end: of retro_run on
+ *                       the CPU, and of each frame on the GPU (a timestamp
+ *                       the GPU writes after the frame's work: a Vulkan
+ *                       query, a GL timer query) - mean, median, 99th
+ *                       percentile, max, the spikes over twice the median
+ *                       and the worst runs. Stutter is what the max and
+ *                       the 99th show; the mean hides it.
  *     --save N          retro_serialize before run N
  *     --load N          retro_unserialize (the state saved) before run N
  *     --state-out FILE  also write the state saved (--save) to FILE, and
@@ -138,6 +146,16 @@ static PFNGLGENRENDERBUFFERSPROC p_glGenRenderbuffers;
 static PFNGLBINDRENDERBUFFERPROC p_glBindRenderbuffer;
 static PFNGLRENDERBUFFERSTORAGEPROC p_glRenderbufferStorage;
 static PFNGLFRAMEBUFFERRENDERBUFFERPROC p_glFramebufferRenderbuffer;
+/* --stutter on GL: a timer query after each frame, read when its slot
+ * comes round again (eight frames later: never a wait on the GPU) */
+#define GL_TS_SLOTS 8
+static PFNGLGENQUERIESPROC p_glGenQueries;
+static PFNGLQUERYCOUNTERPROC p_glQueryCounter;
+static PFNGLGETQUERYOBJECTUI64VPROC p_glGetQueryObjectui64v;
+static GLuint gl_ts[GL_TS_SLOTS];
+static int gl_ts_run[GL_TS_SLOTS];
+static int gl_ts_pending[GL_TS_SLOTS];
+static unsigned gl_ts_slot;
 
 static uint64_t fnv(uint64_t h, const void *p, size_t n)
 {
@@ -240,6 +258,10 @@ static const struct retro_vulkan_image *vk_image;
 static VkSemaphore vk_wait_sems[8];
 static unsigned vk_num_wait_sems;
 static VkSemaphore vk_signal_sem;
+static VkQueryPool vk_ts_pool;        /* --stutter: one timestamp per index */
+static int vk_ts_pending[VK_SYNC_INDICES];
+static int vk_ts_run[VK_SYNC_INDICES]; /* the run the pending one is of */
+static double vk_ts_period_ns;         /* 0: the queue has no timestamps */
 #ifdef _WIN32
 static CRITICAL_SECTION vk_queue_lock;
 #else
@@ -276,6 +298,60 @@ VKFN(vkFreeMemory);
 VKFN(vkBindBufferMemory);
 VKFN(vkMapMemory);
 VKFN(vkDeviceWaitIdle);
+VKFN(vkGetPhysicalDeviceProperties);
+VKFN(vkCreateQueryPool);
+VKFN(vkDestroyQueryPool);
+VKFN(vkCmdResetQueryPool);
+VKFN(vkCmdWriteTimestamp);
+VKFN(vkGetQueryPoolResults);
+
+/* --stutter: per run, retro_run's time on the CPU and the time the GPU
+ * finished the run's frame (its timestamp, in us of the GPU's clock; -1
+ * for a run with no frame or no timestamp) */
+static int stutter;
+static int64_t *st_cpu_us;
+static int64_t *st_gpu_us;
+static long *st_audio;  /* the --csv columns, written at the end */
+static int *st_vflag;
+static int st_runs;
+
+static void st_gpu_done(int run, int64_t gpu_us)
+{
+   if (st_gpu_us && run >= 0 && run < st_runs)
+      st_gpu_us[run] = gpu_us;
+}
+
+static void gl_ts_collect(unsigned i)
+{
+   GLuint64 ns = 0;
+   if (!gl_ts_pending[i])
+      return;
+   gl_ts_pending[i] = 0;
+   p_glGetQueryObjectui64v(gl_ts[i], GL_QUERY_RESULT, &ns);
+   st_gpu_done(gl_ts_run[i], (int64_t)(ns / 1000));
+}
+
+/* After a GL frame: the timestamp the GPU writes once it is through */
+static void gl_ts_mark(int run)
+{
+   unsigned i = gl_ts_slot;
+   if (!p_glQueryCounter)
+      return;
+   gl_ts_collect(i);
+   p_glQueryCounter(gl_ts[i], GL_TIMESTAMP);
+   gl_ts_pending[i] = 1;
+   gl_ts_run[i] = run;
+   gl_ts_slot = (i + 1) % GL_TS_SLOTS;
+}
+
+static void gl_ts_finish(void)
+{
+   unsigned i;
+   if (!p_glQueryCounter)
+      return;
+   for (i = 0; i < GL_TS_SLOTS; i++)
+      gl_ts_collect(i);
+}
 #undef VKFN
 
 static void vk_lock(void *handle)
@@ -340,6 +416,18 @@ static void vk_wait_fence(unsigned i)
       p_vkResetFences(vk_device, 1, &vk_fence[i]);
       vk_fence_pending[i] = 0;
    }
+}
+
+/* The timestamp of index i's last frame, once its fence has signalled */
+static void vk_ts_collect(unsigned i)
+{
+   uint64_t ts;
+   if (!vk_ts_pending[i])
+      return;
+   vk_ts_pending[i] = 0;
+   if (p_vkGetQueryPoolResults(vk_device, vk_ts_pool, i, 1, sizeof(ts), &ts,
+            sizeof(ts), VK_QUERY_RESULT_64_BIT) == VK_SUCCESS)
+      st_gpu_done(vk_ts_run[i], (int64_t)(ts * vk_ts_period_ns / 1000.0));
 }
 
 static void vk_wait_sync_index(void *handle)
@@ -520,7 +608,36 @@ static int vk_setup(void)
    DFN(vkBindBufferMemory);
    DFN(vkMapMemory);
    DFN(vkDeviceWaitIdle);
+   DFN(vkCreateQueryPool);
+   DFN(vkDestroyQueryPool);
+   DFN(vkCmdResetQueryPool);
+   DFN(vkCmdWriteTimestamp);
+   DFN(vkGetQueryPoolResults);
 #undef DFN
+   if (stutter)
+   {
+      VkPhysicalDeviceProperties props;
+      VkQueueFamilyProperties qf[16];
+      uint32_t nqf = 16;
+      p_vkGetPhysicalDeviceProperties = (PFN_vkGetPhysicalDeviceProperties)
+         p_vkGetInstanceProcAddr(vk_instance, "vkGetPhysicalDeviceProperties");
+      p_vkGetPhysicalDeviceProperties(vk_gpu, &props);
+      p_vkGetPhysicalDeviceQueueFamilyProperties(vk_gpu, &nqf, qf);
+      if (vk_queue_family < nqf && qf[vk_queue_family].timestampValidBits)
+      {
+         VkQueryPoolCreateInfo qci;
+         memset(&qci, 0, sizeof(qci));
+         qci.sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO;
+         qci.queryType = VK_QUERY_TYPE_TIMESTAMP;
+         qci.queryCount = VK_SYNC_INDICES;
+         if (p_vkCreateQueryPool(vk_device, &qci, NULL, &vk_ts_pool) ==
+               VK_SUCCESS)
+            vk_ts_period_ns = props.limits.timestampPeriod;
+      }
+      if (!vk_ts_period_ns)
+         fprintf(stderr, "harness: the queue has no timestamps: no GPU "
+               "frame times\n");
+   }
 
    {
       VkCommandPoolCreateInfo pci;
@@ -606,10 +723,14 @@ static void vk_frame(unsigned w, unsigned h, unsigned char **px_out)
    if (!vk_image || (size_t)w * h * 4 > VK_READBACK_BYTES)
       return;
    vk_wait_fence(i);
+   if (vk_ts_period_ns)
+      vk_ts_collect(i);
    memset(&bi, 0, sizeof(bi));
    bi.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
    bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
    p_vkBeginCommandBuffer(vk_cmd[i], &bi);
+   if (vk_ts_period_ns)
+      p_vkCmdResetQueryPool(vk_cmd[i], vk_ts_pool, i, 1);
    memset(&b, 0, sizeof(b));
    b.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
    b.srcAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_TRANSFER_WRITE_BIT |
@@ -639,6 +760,14 @@ static void vk_frame(unsigned w, unsigned h, unsigned char **px_out)
    b.newLayout = vk_image->image_layout;
    p_vkCmdPipelineBarrier(vk_cmd[i], VK_PIPELINE_STAGE_TRANSFER_BIT,
          VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, NULL, 0, NULL, 1, &b);
+   if (vk_ts_period_ns)
+   {
+      /* when the GPU is through with the frame and its readback */
+      p_vkCmdWriteTimestamp(vk_cmd[i], VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+            vk_ts_pool, i);
+      vk_ts_pending[i] = 1;
+      vk_ts_run[i] = run_no_cb;
+   }
    p_vkEndCommandBuffer(vk_cmd[i]);
 
    memset(&si, 0, sizeof(si));
@@ -671,6 +800,69 @@ static void vk_frame(unsigned w, unsigned h, unsigned char **px_out)
    vk_wait_fence(vk_sync_index);
 }
 
+/* --stutter: the statistics of a series of times (us), run-indexed, with
+ * -1 for runs without one */
+static int cmp_i64(const void *a, const void *b)
+{
+   int64_t x = *(const int64_t *)a, y = *(const int64_t *)b;
+   return x < y ? -1 : x > y;
+}
+
+static void st_report(const char *what, const int64_t *t, int n)
+{
+   int64_t *sorted = (int64_t *)malloc((size_t)n * sizeof(*sorted));
+   int m = 0, i, k, spikes = 0;
+   double mean = 0.0;
+   int64_t p50, p99, mx;
+   int worst[5];
+   if (!sorted)
+      return;
+   for (i = 0; i < n; i++)
+      if (t[i] >= 0)
+      {
+         sorted[m++] = t[i];
+         mean += (double)t[i];
+      }
+   if (m == 0)
+   {
+      printf("stutter %s: no samples\n", what);
+      free(sorted);
+      return;
+   }
+   qsort(sorted, (size_t)m, sizeof(*sorted), cmp_i64);
+   mean /= m;
+   p50 = sorted[m / 2];
+   p99 = sorted[(m * 99 + 99) / 100 - 1];
+   mx = sorted[m - 1];
+   for (i = 0; i < n; i++)
+      if (t[i] > 2 * p50)
+         spikes++;
+   /* the five worst runs, by run number of their time */
+   for (k = 0; k < 5; k++)
+   {
+      int w = -1;
+      for (i = 0; i < n; i++)
+      {
+         int j, seen = 0;
+         if (t[i] < 0)
+            continue;
+         for (j = 0; j < k; j++)
+            if (worst[j] == i)
+               seen = 1;
+         if (!seen && (w < 0 || t[i] > t[w]))
+            w = i;
+      }
+      worst[k] = w;
+   }
+   printf("stutter %s: n=%d mean=%.2f p50=%.2f p99=%.2f max=%.2f "
+         "spikes(>2xp50)=%d worst=[", what, m, mean / 1000.0, p50 / 1000.0,
+         p99 / 1000.0, mx / 1000.0, spikes);
+   for (k = 0; k < 5 && worst[k] >= 0; k++)
+      printf("%s%d:%.2f", k ? " " : "", worst[k], t[worst[k]] / 1000.0);
+   printf("]\n");
+   free(sorted);
+}
+
 static void vk_teardown(void)
 {
    unsigned i;
@@ -679,11 +871,15 @@ static void vk_teardown(void)
    p_vkDeviceWaitIdle(vk_device);
    for (i = 0; i < VK_SYNC_INDICES; i++)
    {
+      if (vk_ts_period_ns)
+         vk_ts_collect(i);
       p_vkDestroyFence(vk_device, vk_fence[i], NULL);
       p_vkDestroyBuffer(vk_device, vk_readback[i], NULL);
       p_vkFreeMemory(vk_device, vk_readback_mem[i], NULL);
    }
    p_vkDestroyCommandPool(vk_device, vk_pool, NULL);
+   if (vk_ts_pool)
+      p_vkDestroyQueryPool(vk_device, vk_ts_pool, NULL);
    if (vk_nego && vk_nego->destroy_device)
       vk_nego->destroy_device();
    p_vkDestroyDevice(vk_device, NULL);
@@ -860,6 +1056,8 @@ static void video_cb(const void *data, unsigned w, unsigned h, size_t pitch)
       }
       return;
    }
+   if (data == RETRO_HW_FRAME_BUFFER_VALID)
+      gl_ts_mark(run_no_cb);
    if (hash_video && data == RETRO_HW_FRAME_BUFFER_VALID)
    {
       static unsigned char *px;
@@ -1016,6 +1214,19 @@ static void fbo_setup(void)
    p_glBindRenderbuffer = (PFNGLBINDRENDERBUFFERPROC)get_proc("glBindRenderbuffer");
    p_glRenderbufferStorage = (PFNGLRENDERBUFFERSTORAGEPROC)get_proc("glRenderbufferStorage");
    p_glFramebufferRenderbuffer = (PFNGLFRAMEBUFFERRENDERBUFFERPROC)get_proc("glFramebufferRenderbuffer");
+   if (stutter)
+   {
+      p_glGenQueries = (PFNGLGENQUERIESPROC)get_proc("glGenQueries");
+      p_glQueryCounter = (PFNGLQUERYCOUNTERPROC)get_proc("glQueryCounter");
+      p_glGetQueryObjectui64v = (PFNGLGETQUERYOBJECTUI64VPROC)get_proc("glGetQueryObjectui64v");
+      if (p_glGenQueries && p_glQueryCounter && p_glGetQueryObjectui64v)
+         p_glGenQueries(GL_TS_SLOTS, gl_ts);
+      else
+      {
+         p_glQueryCounter = NULL;
+         fprintf(stderr, "harness: no GL timer queries: no GPU frame times\n");
+      }
+   }
 
    glGenTextures(1, &fbo_color);
    glBindTexture(GL_TEXTURE_2D, fbo_color);
@@ -1243,6 +1454,8 @@ int main(int argc, char **argv)
          csvpath = argv[++i];
       else if (!strcmp(argv[i], "--hash-video"))
          hash_video = 1;
+      else if (!strcmp(argv[i], "--stutter"))
+         stutter = 1;
       else if (!strcmp(argv[i], "--vulkan"))
          use_vulkan = 1;
       else if (!strcmp(argv[i], "--vulkan-v1"))
@@ -1311,6 +1524,17 @@ int main(int argc, char **argv)
       }
       else if (argv[i][0] != '-')
          content = argv[i];
+   }
+
+   if (stutter)
+   {
+      st_runs = frames;
+      st_cpu_us = (int64_t *)malloc((size_t)frames * sizeof(*st_cpu_us));
+      st_gpu_us = (int64_t *)malloc((size_t)frames * sizeof(*st_gpu_us));
+      st_audio = (long *)calloc((size_t)frames, sizeof(*st_audio));
+      st_vflag = (int *)calloc((size_t)frames, sizeof(*st_vflag));
+      for (i = 0; i < frames; i++)
+         st_cpu_us[i] = st_gpu_us[i] = -1;
    }
 
    if (!use_vulkan)
@@ -1501,6 +1725,8 @@ int main(int argc, char **argv)
       batches_this_run = 0;
       p_run();
       d = now_us() - a;
+      if (st_cpu_us)
+         st_cpu_us[run_no] = d;
       if (d > run_max)
          run_max = d;
       audio_total += run_audio;
@@ -1522,9 +1748,15 @@ int main(int argc, char **argv)
       video_dupe += run_video_dupe;
       if (!run_video && !run_video_dupe)
          runs_without_video++;
-      if (csv)
+      if (csv && !stutter)
          fprintf(csv, "%d,%ld,%d,%lld\n", run_no, run_audio,
                run_video ? 1 : (run_video_dupe ? 2 : 0), (long long)d);
+      else if (csv)
+      {
+         /* written after the loop, once the GPU times are in */
+         st_audio[run_no] = run_audio;
+         st_vflag[run_no] = run_video ? 1 : (run_video_dupe ? 2 : 0);
+      }
       if (realtime || run_no < rt_runs)
       {
          int64_t target = t0 + (int64_t)((run_no + 1) * 1001e6 / 60000.0);
@@ -1541,6 +1773,40 @@ int main(int argc, char **argv)
 #endif
          }
       }
+   }
+   if (stutter)
+   {
+      /* the last frames' GPU timestamps, then the per-frame GPU times:
+       * from one frame's timestamp to the next's */
+      int64_t *gpu_dt = (int64_t *)malloc((size_t)frames * sizeof(*gpu_dt));
+      int64_t prev = -1;
+      if (use_vulkan)
+      {
+         for (i = 0; i < VK_SYNC_INDICES; i++)
+         {
+            vk_wait_fence((unsigned)i);
+            if (vk_ts_period_ns)
+               vk_ts_collect((unsigned)i);
+         }
+      }
+      else
+         gl_ts_finish();
+      for (i = 0; i < frames; i++)
+      {
+         gpu_dt[i] = -1;
+         if (st_gpu_us[i] < 0)
+            continue;
+         if (prev >= 0)
+            gpu_dt[i] = st_gpu_us[i] - prev;
+         prev = st_gpu_us[i];
+      }
+      st_report("cpu_run_ms", st_cpu_us, frames);
+      st_report("gpu_frame_ms", gpu_dt, frames);
+      if (csv)
+         for (i = 0; i < frames; i++)
+            fprintf(csv, "%d,%ld,%d,%lld,%lld\n", i, st_audio[i], st_vflag[i],
+                  (long long)st_cpu_us[i], (long long)gpu_dt[i]);
+      free(gpu_dt);
    }
    {
       int64_t el = now_us() - t0;
