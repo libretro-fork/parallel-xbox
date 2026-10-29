@@ -246,8 +246,8 @@ int64_t xemu_gpu_free_ns;
 #ifndef LIBRETRO
 /* PCRTC VBlank driven by REALTIME wall clock at ~60Hz.
  * Decoupled from guest CPU speed — fires regardless of TCG load. (Not in
- * the libretro core, which has no host clock: its vblank opens each frame
- * of guest time, nv2a_vga_gfx_update.) */
+ * the libretro core, which has no host clock: its vblank comes once a
+ * frame of guest time, nv2a_vga_gfx_update.) */
 static void nv2a_realtime_vblank_cb(void *opaque)
 {
     NV2AState *d = opaque;
@@ -288,11 +288,12 @@ static void nv2a_vga_gfx_update(void *opaque)
     VGACommonState *vga = opaque;
     vga->hw_ops->gfx_update(vga);
 #ifdef LIBRETRO
-    /* In the core the guest's vblank comes at the start of each frame of
-     * guest time the emulator thread runs (ui/libretro.c), not from the
-     * wall-clock timer below, so it follows the frontend's frames. The
-     * raster position (pcrtc.c) counts guest time from it; the renderer's
-     * own slack estimates (vblank_deadline) are wall-clock. */
+    /* In the core the guest's vblank comes once in each frame of guest
+     * time the emulator thread runs, just before its end (ui/libretro.c
+     * lr_run_frame), not from the wall-clock timer below, so it follows
+     * the frontend's frames. The raster position (pcrtc.c) counts guest
+     * time from it; the renderer's own slack estimates (vblank_deadline)
+     * are wall-clock. */
     NV2AState *d = container_of(vga, NV2AState, vga);
     d->pcrtc.pending_interrupts |= NV_PCRTC_INTR_0_VBLANK;
     d->vblank_vt = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);

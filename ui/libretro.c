@@ -1731,6 +1731,10 @@ static void populate_config(const char *dvd_path)
 
 #define LR_FRAME_NS_NUM 50050000LL /* 1001/60 s = 50050000/3 ns */
 #define LR_FRAME_NS_DEN 3
+/* How long before the frame's end its vblank comes: the time the guest's
+ * vblank interrupt takes to flip the frame it has drawn, so that retro_run
+ * hands over that frame and not the one before (lr_run_frame) */
+#define LR_VBLANK_LEAD_NS 1000000LL
 
 static sthread_t *lr_thread;
 static retro_eventcount_t lr_cmd_ec, lr_done_ec;
@@ -1848,11 +1852,15 @@ static void lr_run_frame(void)
     target = lr_frame_end_vt;
     timer_mod_ns(lr_frame_timer, target);
 
-    /* The vblank opens the frame: the guest flips what it drew in the last
-     * one, which retro_run shows when this one is done */
-    if (con) {
-        graphic_hw_update(con);
-    }
+    /* The vblank comes a little before the frame's end, LR_VBLANK_LEAD_NS
+     * of the guest's time: the guest's vblank interrupt flips the frame it
+     * drew in this run, and retro_run hands that frame over when the run is
+     * done - the frame the game drew between two vblanks, shown at the
+     * next one, as on the Xbox. (With the vblank at the start of the run,
+     * retro_run showed the frame drawn in the run before: a frame of lag.)
+     * The game's next frame starts at the vblank either way. */
+    bool vblank_done = false;
+    const int64_t vblank_at = target - LR_VBLANK_LEAD_NS;
     if (++lr_title_poll >= 60) {
         lr_title_poll = 0;
         poll_guest_title();
@@ -1873,10 +1881,17 @@ static void lr_run_frame(void)
             break;
         }
         now = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
+        if (!vblank_done && now >= vblank_at) {
+            vblank_done = true;
+            if (con) {
+                graphic_hw_update(con);
+            }
+        }
         if (now >= target) {
             break;
         }
-        until = target - now;
+        /* the guest runs to the vblank, then to the frame's end */
+        until = (vblank_done ? target : vblank_at) - now;
         deadline = qemu_clock_deadline_ns_all(QEMU_CLOCK_VIRTUAL,
                                               QEMU_TIMER_ATTR_ALL);
         if (deadline >= 0 && deadline < until) {
