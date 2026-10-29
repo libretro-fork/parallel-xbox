@@ -1599,11 +1599,34 @@ void pgraph_vk_present_scanout(NV2AState *d)
         !surface->height) {
         return;
     }
+    /* On screen: not an old surface to expire (expire_old_surfaces), even
+     * when the game shows it without drawing to it - a loading screen, a
+     * movie the CPU writes. The display path of retro_run did this at each
+     * frame before the display was drawn here. */
+    surface->frame_time = pg->frame_time;
+
+    /* The same picture as the last one drawn: the same surface, nothing
+     * drawn to it nor written by the CPU since, the same display mode, no
+     * video overlay (read from guest RAM at each draw) */
+    unsigned int width = 0, height = 0;
+    d->vga.get_resolution(&d->vga, (int *)&width, (int *)&height);
+    const bool interlaced = d->vga.cr[NV_PRMCIO_INTERLACE_MODE] !=
+                            NV_PRMCIO_INTERLACE_MODE_DISABLED;
     if (surface->vram_addr == disp->last_surface_addr &&
         surface->draw_time == disp->draw_time &&
+        !surface->upload_pending &&
+        vga_display_params.line_offset == disp->last_line_offset &&
+        width == disp->last_mode_width && height == disp->last_mode_height &&
+        interlaced == disp->last_interlaced &&
+        pg->surface_scale_factor == disp->last_scale &&
         !get_pvideo_state(pg).enabled) {
         return;
     }
+    disp->last_line_offset = vga_display_params.line_offset;
+    disp->last_mode_width = width;
+    disp->last_mode_height = height;
+    disp->last_interlaced = interlaced;
+    disp->last_scale = pg->surface_scale_factor;
     pgraph_vk_render_display(pg);
 }
 

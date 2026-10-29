@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Vulkan: a game's picture went black, or froze, when the game showed a frame without drawing to it again for a while - a loading or title screen, a movie the CPU writes into the front buffer (Jet Set Radio Future after the Xbox logo). Since the display is drawn at the guest's flip, nothing marked the front buffer as on screen any more, so after five frames it was dropped as an old surface; and a front buffer the CPU wrote, or a change of display mode, did not count as a new picture. The display now marks it at every look, and redraws when the CPU wrote the front buffer or the mode changed, as OpenGL's display does.
+
 - Vulkan: a game that cleared the screen and then drew with nothing else changed drew with the clear's pipeline, which has another layout and none of the dynamic states a draw sets; NVIDIA's driver crashed on it (Jet Set Radio Future at boot, since the pipeline-dirty fix above stopped every vertex-array draw from looking its pipeline up again, which had hidden it). The clear's pipeline now always counts as changed for the next draw, and a pipeline evicted from the cache - a pipeline the worker made landing in its place - is never bound again from a stale pointer.
 
 - Vulkan: with dynamic vertex input (every desktop driver), a draw with a vertex array counted its pipeline as changed every time - the key carries no vertex descriptions in that mode, and the check compared the live ones against the key's zeros - so each draw rebuilt, hashed and looked up a 3 KB pipeline key for nothing; the check skips the descriptions in that mode. The shader state is hashed once per change, not twice.

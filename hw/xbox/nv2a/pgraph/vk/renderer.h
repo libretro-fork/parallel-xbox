@@ -388,6 +388,10 @@ typedef struct PGRAPHVkDisplayState {
      * other has been. */
     uint64_t published;
     unsigned next_slot;
+    /* The display mode the last frame was drawn in (present_scanout) */
+    uint32_t last_line_offset;
+    unsigned int last_mode_width, last_mode_height, last_scale;
+    bool last_interlaced;
     /* The frontend found nothing new: look at the scanout again (a front
      * buffer drawn to in place, the video overlay) */
     bool check_pending;
