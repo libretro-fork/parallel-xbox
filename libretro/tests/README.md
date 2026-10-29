@@ -15,12 +15,18 @@ Linux build.
   CPU never rests; built with `-DDSP` it also loads `gp.a56` into the APU's
   GP DSP and starts it (`-DGP_PASSES=n` sets its load, 1 by default);
   built with `-DSPIN` it spins on a word in RAM that nothing writes; built
-  with `-DPAD` it runs `pad.c`.
+  with `-DPAD` it runs `pad.c`; built with `-DGPU` it runs `gpu.c`.
 - `rom/pad.c`: the pad through the USB controller, as the kernel reads it:
   the two hubs found by their status-change reports and configured, their
   ports reset, the pad's reports taken over its interrupt endpoint on the
   periodic list and copied to RAM. Freestanding 32-bit C; `pad.sh` builds
   it into `pad.inc` (committed, so the tests need no 32-bit compiler).
+- `rom/gpu.c`: the NV2A from bare metal: the AGP bridge's windows and the
+  GPU's BARs, a 640x480 32-bit display, one PFIFO channel in DMA mode with
+  its objects in RAMIN, and a scenario the harness reads the picture of
+  (`--pixel`): a surface cleared red and shown, left alone while another is
+  drawn and flips are counted, then written green by the CPU. `gpu.sh`
+  builds it into `gpu.inc` (committed, like `pad.inc`).
 - `rom/gp.a56`: the GP DSP's program. Every 32-sample frame it rebuilds
   mixbins 0 and 1 from 64 exact products a sample, n times over, so the tone
   comes out of the DSP unchanged after n x 4096 MACs. `gp.inc` is it

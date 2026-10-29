@@ -55,6 +55,10 @@
  *     --min-speed X     exit 1 if the unpaced runs ran slower than X times
  *                       real time
  *     --peek ADDR       print the dword of system RAM at ADDR at the end
+ *     --pixel N         print the colour (0xRRGGBB) at the centre of the
+ *                       picture shown after run N - the last frame handed
+ *                       over by then, a repeated one included - or "none"
+ *                       before any; implies --hash-video
  *
  * At the end it prints a hash of the system RAM, and the busy test ROM's
  * counter at 0x300000.
@@ -132,6 +136,11 @@ static int run_no_cb;
 #define MAX_SHOTS 8
 static int shot_at[MAX_SHOTS], nshots;
 static const char *shot_path[MAX_SHOTS];
+/* --pixel: the centre of the picture shown, and its value after given runs */
+#define MAX_PIXELS 8
+static int pixel_at[MAX_PIXELS], npixels;
+static long pixel_val[MAX_PIXELS];
+static long shown_px = -1;
 static unsigned pad_port; /* --pad-port: the RetroPad's port, 0 by default */
 static int stick_first, stick_len, stick_on, stick_left_only;
 static int port_analog[4]; /* the core declared the port's device analog */
@@ -1037,6 +1046,10 @@ static void video_cb(const void *data, unsigned w, unsigned h, size_t pitch)
       if (!hash_video || !vpx)
          return;
       video_hash = fnv(video_hash, vpx, (size_t)w * h * 4);
+      {
+         const unsigned char *c = vpx + ((size_t)(h / 2) * w + w / 2) * 4;
+         shown_px = ((long)c[0] << 16) | (c[1] << 8) | c[2];
+      }
       for (int k = 0; k < nshots; k++)
       {
          /* the frame is top row first already */
@@ -1072,6 +1085,10 @@ static void video_cb(const void *data, unsigned w, unsigned h, size_t pitch)
       glReadPixels(0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, px);
       p_glBindFramebuffer(GL_FRAMEBUFFER, 0);
       video_hash = fnv(video_hash, px, need);
+      {
+         const unsigned char *c = px + ((size_t)(h - 1 - h / 2) * w + w / 2) * 4;
+         shown_px = ((long)c[0] << 16) | (c[1] << 8) | c[2];
+      }
       for (int k = 0; k < nshots; k++)
       {
          /* --shot N FILE: the frame of run N as a PPM, top row first */
@@ -1494,6 +1511,13 @@ int main(int argc, char **argv)
          stick_x = (int16_t)x;
          stick_y = (int16_t)y;
       }
+      else if (!strcmp(argv[i], "--pixel") && i + 1 < argc &&
+               npixels < MAX_PIXELS)
+      {
+         pixel_val[npixels] = -1;
+         pixel_at[npixels++] = atoi(argv[++i]);
+         hash_video = 1;
+      }
       else if (!strcmp(argv[i], "--peek") && i + 1 < argc && npeek < MAX_PEEK)
          peek[npeek++] = strtoul(argv[++i], NULL, 0);
       else if (!strcmp(argv[i], "--reload") && i + 1 < argc)
@@ -1725,6 +1749,9 @@ int main(int argc, char **argv)
       batches_this_run = 0;
       p_run();
       d = now_us() - a;
+      for (k = 0; k < npixels; k++)
+         if (pixel_at[k] == run_no)
+            pixel_val[k] = shown_px;
       if (st_cpu_us)
          st_cpu_us[run_no] = d;
       if (d > run_max)
@@ -1866,6 +1893,13 @@ int main(int argc, char **argv)
          if (peek[k] + 4 <= p_mem_size(RETRO_MEMORY_SYSTEM_RAM))
             memcpy(&v, ram + peek[k], 4);
          printf("peek_0x%lx=0x%08x\n", peek[k], v);
+      }
+      for (k = 0; k < npixels; k++)
+      {
+         if (pixel_val[k] < 0)
+            printf("pixel_%d=none\n", pixel_at[k]);
+         else
+            printf("pixel_%d=0x%06lx\n", pixel_at[k], pixel_val[k]);
       }
    }
 #ifndef _WIN32

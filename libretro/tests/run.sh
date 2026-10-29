@@ -15,7 +15,7 @@ core=$(readlink -f "$1")
 here=$(cd "$(dirname "$0")" && pwd)
 work=${2:-$(mktemp -d)}
 mkdir -p "$work/bin" "$work/sys/xemu" "$work/sysb/xemu" "$work/sysd/xemu" \
-    "$work/syss/xemu" "$work/sysp/xemu"
+    "$work/syss/xemu" "$work/sysp/xemu" "$work/sysg/xemu"
 
 # The harness's paths, as the core's OS spells them
 path() { echo "$1"; }
@@ -54,6 +54,8 @@ cp "$work/sys/xemu/mcpx_1.0.bin" "$work/syss/xemu/"
 nasm -f bin -DSPIN -I"$here/rom/" -o "$work/syss/xemu/Complex_4627v1.03.bin" "$here/rom/flash.asm"
 cp "$work/sys/xemu/mcpx_1.0.bin" "$work/sysp/xemu/"
 nasm -f bin -DPAD -I"$here/rom/" -o "$work/sysp/xemu/Complex_4627v1.03.bin" "$here/rom/flash.asm"
+cp "$work/sys/xemu/mcpx_1.0.bin" "$work/sysg/xemu/"
+nasm -f bin -DGPU -I"$here/rom/" -o "$work/sysg/xemu/Complex_4627v1.03.bin" "$here/rom/flash.asm"
 cp "$work/sys/xemu/mcpx_1.0.bin" "$work/sysd/xemu/"
 nasm -f bin -DDSP -DGP_PASSES=16 -I"$here/rom/" -o "$work/sysd/xemu/Complex_4627v1.03.bin" "$here/rom/flash.asm"
 
@@ -102,6 +104,39 @@ case $r in
 *) echo "FAIL: the Vulkan run exited $r"; exit 1 ;;
 esac
 done
+
+# The display (rom/gpu.c): the NV2A programmed from bare metal, a surface
+# cleared red and shown, then left alone - another surface drawn and a
+# flip counted every frame - and at frame 30 written green by the CPU, and
+# from frame 50 triangles drawn and cleared elsewhere. The picture is red
+# at frames 10 and 25 and green at 45 and 85, on both renderers.
+# On Vulkan the front buffer was dropped as an old surface and a CPU write
+# to it was not a new picture: the display stopped after the first frame
+# (Jet Set Radio Future black after the Xbox logo).
+gpu_check() {
+    for want in "pixel_10=0xff0000" "pixel_25=0xff0000" "pixel_45=0x00ff00" \
+                "pixel_85=0x00ff00"; do
+        grep -E "^$want$" "$1" >/dev/null || {
+            echo "FAIL: $2: $want expected, $(grep "^${want%%=*}=" "$1")"; exit 1; }
+    done
+}
+echo "== the display, OpenGL"
+timeout 300 $h "$(path "$core")" "$(path "$work/sysg")" $vp --frames 90 --strict \
+  --pixel 10 --pixel 25 --pixel 45 --pixel 85 >"$work/gpu_gl.txt"
+grep -E "pixel_" "$work/gpu_gl.txt"
+gpu_check "$work/gpu_gl.txt" "OpenGL"
+echo "== the display, Vulkan"
+set +e
+timeout 300 $h "$(path "$core")" "$(path "$work/sysg")" $vp --vulkan \
+  --opt xemu_renderer=vulkan --frames 90 --strict \
+  --pixel 10 --pixel 25 --pixel 45 --pixel 85 >"$work/gpu_vk.txt"
+r=$?
+set -e
+case $r in
+0) grep -E "pixel_" "$work/gpu_vk.txt"; gpu_check "$work/gpu_vk.txt" "Vulkan" ;;
+3) echo "no Vulkan device: skipped" ;;
+*) echo "FAIL: the Vulkan run exited $r"; exit 1 ;;
+esac
 
 # The pad, through the USB controller as the kernel reads it (rom/pad.c):
 # the hubs found by their status-change reports, their ports reset, the
