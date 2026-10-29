@@ -894,14 +894,15 @@ static void tlb_reset_dirty_range_locked(CPUTLBEntryFull *full, CPUTLBEntry *ent
                                          uintptr_t start, uintptr_t length)
 {
     const uintptr_t addr = ent->addr_write;
-    int flags = addr | full->slow_flags[MMU_DATA_STORE];
-
-    flags &= TLB_INVALID_MASK | TLB_MMIO | TLB_DISCARD_WRITE | TLB_NOTDIRTY;
-    if (flags == 0) {
-        uintptr_t host = (addr & TARGET_PAGE_MASK) + ent->addend;
-        if ((host - start) < length) {
-            qatomic_set(&ent->addr_write, addr | TLB_NOTDIRTY);
-        }
+    const int mask = TLB_INVALID_MASK | TLB_MMIO |
+                     TLB_DISCARD_WRITE | TLB_NOTDIRTY;
+    if (addr & mask) {
+        return;
+    }
+    uintptr_t host = (addr & TARGET_PAGE_MASK) + ent->addend;
+    if ((host - start) < length &&
+        !(full->slow_flags[MMU_DATA_STORE] & mask)) {
+        qatomic_set(&ent->addr_write, addr | TLB_NOTDIRTY);
     }
 }
 
@@ -921,10 +922,13 @@ static inline void copy_tlb_helper_locked(CPUTLBEntry *d, const CPUTLBEntry *s)
  */
 void tlb_reset_dirty(CPUState *cpu, uintptr_t start, uintptr_t length)
 {
-    int mmu_idx;
+    MMUIdxMap work;
 
     qemu_spin_lock(&cpu->neg.tlb.c.lock);
-    for (mmu_idx = 0; mmu_idx < NB_MMU_MODES; mmu_idx++) {
+    /* The dirty map tracks MMU modes populated since their last full
+     * flush. Modes outside it contain no entries that need reprotection. */
+    for (work = cpu->neg.tlb.c.dirty; work; work &= work - 1) {
+        int mmu_idx = ctz32(work);
         CPUTLBDesc *desc = &cpu->neg.tlb.d[mmu_idx];
         CPUTLBDescFast *fast = cpu_tlb_fast(cpu, mmu_idx);
         unsigned int n = tlb_n_entries(fast);

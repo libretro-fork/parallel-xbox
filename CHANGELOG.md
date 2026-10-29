@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Performance: GPU memory dirty checks skip empty CPU address-translation modes and avoid touching large TLB metadata for mappings outside the affected range. Write tracking, watchpoints and memory-access behavior are unchanged.
+
 - Ninja Gaiden Black (and any game that waits for its GPU to finish) no longer runs in slow motion with Deterministic Emulation off. While a game waited for its GPU, the core moved the Xbox's time on to its next timer instead of waiting, again and again, so the whole frame passed while the GPU was still drawing (16.5 of 16.7 ms skipped in a heavy scene): the game missed its frames, and each run took about 1 ms. Now the game waits for the GPU, and its time moves on only by as long as the GPU work really took.
 
 - Memory: direct DMA mappings honor GPU surface access callbacks before lending RAM. Pending GPU writes are settled before DMA reads or overwrites the range, preventing a later readback from replacing newer DMA data while keeping the direct transfer path.
