@@ -3652,14 +3652,6 @@ endif
 
 tomlplusplus = dependency('tomlplusplus', fallback: ['tomlplusplus', 'tomlplusplus_dep'], default_options: ['default_library=static'])
 
-# The wrap's 'cpu-little-endian' feature is 'auto', which this project's
-# auto_features turns into disabled: xxhash then byte-swaps every read and
-# its digests differ from every other build of the same input. State the
-# host's endianness explicitly so digests agree across platforms.
-xxhash = dependency('libxxhash', fallback: ['xxhash', 'xxhash_dep'],
-                    default_options: ['default_library=static',
-                                      'cpu-little-endian=' + (host_machine.endian() == 'little' ? 'enabled' : 'disabled')])
-
 #####################
 # Generated sources #
 #####################
@@ -3925,6 +3917,7 @@ subdir('trace')
 subdir('libretro-common')
 system_ss.add(libretro_common)
 specific_ss.add(libretro_common)
+block_ss.add(libretro_common)
 subdir('util')
 subdir('qom')
 subdir('authz')
@@ -3966,7 +3959,7 @@ util_ss = util_ss.apply({})
 libqemuutil = static_library('qemuutil',
                              build_by_default: false,
                              sources: util_ss.sources() + stub_ss.sources() + genh,
-                             dependencies: [util_ss.dependencies(), libm, threads, glib, socket, malloc, rt, xxhash])
+                             dependencies: [util_ss.dependencies(), libm, threads, glib, socket, malloc, rt, libretro_common])
 qemuutil = declare_dependency(link_with: libqemuutil,
                               sources: genh + version_res,
                               dependencies: [event_loop_base])

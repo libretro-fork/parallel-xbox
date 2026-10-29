@@ -32,7 +32,7 @@
 #include "win_dump.h"
 #include "qemu/range.h"
 
-#include <zlib.h>
+#include <encodings/deflate.h>
 #ifdef CONFIG_LZO
 #include <lzo/lzo1x.h>
 #endif
@@ -1448,11 +1448,34 @@ static void free_data_cache(DataCache *data_cache)
     g_free(data_cache->buf);
 }
 
+/* One page as a zlib stream at the fastest level, as compress2() with
+ * Z_BEST_SPEED wrote it. *size_out is the room, then the length. */
+static bool dump_zlib_compress(uint8_t *out, size_t *size_out,
+                               const uint8_t *in, size_t in_len)
+{
+    void *d = rdeflate_new(1, 15);
+    size_t wrote = 0;
+    int r;
+
+    if (!d) {
+        return false;
+    }
+    rdeflate_set_in(d, in, in_len);
+    rdeflate_set_out(d, out, *size_out);
+    rdeflate_finish(d);
+    r = rdeflate_process(d, NULL, &wrote);
+    rdeflate_free(d);
+    *size_out = wrote;
+    return r == RDEFLATE_PROCESS_END;
+}
+
 static size_t get_len_buf_out(size_t page_size, uint32_t flag_compress)
 {
     switch (flag_compress) {
     case DUMP_DH_COMPRESSED_ZLIB:
-        return compressBound(page_size);
+        /* a page that compresses to no less than itself is written
+         * plain; room for the deflater's worst expansion of one */
+        return page_size * 2 + 64;
 
     case DUMP_DH_COMPRESSED_LZO:
         /*
@@ -1549,8 +1572,8 @@ static void write_dump_pages(DumpState *s, Error **errp)
              */
              size_out = len_buf_out;
              if ((s->flag_compress & DUMP_DH_COMPRESSED_ZLIB) &&
-                    (compress2(buf_out, (uLongf *)&size_out, buf,
-                               s->dump_info.page_size, Z_BEST_SPEED) == Z_OK) &&
+                    dump_zlib_compress(buf_out, &size_out, buf,
+                                       s->dump_info.page_size) &&
                     (size_out < s->dump_info.page_size)) {
                 pd.flags = cpu_to_dump32(s, DUMP_DH_COMPRESSED_ZLIB);
                 pd.size  = cpu_to_dump32(s, size_out);

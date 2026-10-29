@@ -81,7 +81,7 @@ ifeq ($(platform),unix)
    OS_CFLAGS   :=
    OS_LIBS     := -lpthread -ldl -lm -lutil
 
-   PKGS := glib-2.0 slirp epoxy zlib
+   PKGS := glib-2.0 slirp epoxy
    DEPS_CFLAGS := $(shell $(PKG_CONFIG) --cflags $(PKGS)) -pthread
    DEPS_LIBS   := $(shell $(PKG_CONFIG) --libs $(PKGS)) \
                   -lglslang -lMachineIndependent -lGenericCodeGen -lSPIRV \
@@ -138,7 +138,6 @@ OBJS_TARGET   := $(call obj,$(SOURCES_TARGET))
 OBJS_DSP      := $(call obj,$(SOURCES_DSP))
 OBJS_GLOFF    := $(call obj,$(SOURCES_GLOFF))
 OBJS_LRCOMMON := $(call obj,$(SOURCES_LRCOMMON))
-OBJS_XXHASH   := $(call obj,$(SOURCES_XXHASH))
 OBJS_VOLK     := $(call obj,$(SOURCES_VOLK))
 OBJS_SPIRV_REFLECT := $(call obj,$(SOURCES_SPIRV_REFLECT))
 OBJS_VSH      := $(call obj,$(SOURCES_VSH))
@@ -150,7 +149,7 @@ OBJS_DATA     := $(patsubst %.S,%.o,$(SOURCES_DATA_ASM))
 LIBQEMUUTIL := $(CORE_DIR)/libqemuutil.a
 
 OBJECTS := $(OBJS_COMMON) $(OBJS_SYSTEM) $(OBJS_TARGET) \
-           $(OBJS_DSP) $(OBJS_GLOFF) $(OBJS_LRCOMMON) $(OBJS_XXHASH) \
+           $(OBJS_DSP) $(OBJS_GLOFF) $(OBJS_LRCOMMON) \
            $(OBJS_VOLK) $(OBJS_SPIRV_REFLECT) $(OBJS_VSH) $(OBJS_VMA) \
            $(OBJS_DATA)
 
@@ -161,7 +160,6 @@ $(OBJS_TARGET):   GROUP_CFLAGS := $(CFLAGS_TARGET)
 $(OBJS_DSP):      GROUP_CFLAGS := $(CFLAGS_DSP)
 $(OBJS_GLOFF):    GROUP_CFLAGS := $(CFLAGS_GLOFF)
 $(OBJS_LRCOMMON): GROUP_CFLAGS := $(CFLAGS_LRCOMMON)
-$(OBJS_XXHASH):   GROUP_CFLAGS := $(CFLAGS_XXHASH)
 $(OBJS_VOLK):     GROUP_CFLAGS := $(CFLAGS_VOLK)
 $(OBJS_SPIRV_REFLECT): GROUP_CFLAGS := $(CFLAGS_SPIRV_REFLECT)
 $(OBJS_VSH):      GROUP_CFLAGS := $(CFLAGS_VSH)

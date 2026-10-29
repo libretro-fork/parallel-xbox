@@ -93,7 +93,7 @@ jobs:
         run: |
           sudo apt-get -qy update
           sudo apt-get -qy install pkg-config libglib2.0-dev libslirp-dev \
-            libepoxy-dev zlib1g-dev libvulkan-dev \
+            libepoxy-dev libvulkan-dev \
             glslang-dev spirv-tools patchelf \
             nasm libegl-dev libgl-dev libegl-mesa0 libgl1-mesa-dri \
             mesa-vulkan-drivers

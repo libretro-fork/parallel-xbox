@@ -35,15 +35,12 @@ QEMU_CFLAGS := -std=gnu11 -fno-strict-aliasing -fno-common -fwrapv \
 	$(QEMU_WARNINGS) $(QEMU_DEFINES) $(OS_CFLAGS) $(QEMU_INCFLAGS) \
 	$(DEPS_CFLAGS)
 
-XXHASH_DEFINES := -DXXH_FORCE_ALIGN_CHECK=0 -DXXH_NO_INLINE_HINTS=1 \
-	-DXXH_CPU_LITTLE_ENDIAN=1
 VULKAN_INCFLAGS := -DVK_NO_PROTOTYPES -I$(CORE_DIR)/deps/volk \
 	-I$(CORE_DIR)/deps/VulkanMemoryAllocator/include \
 	-I$(CORE_DIR)/deps/SPIRV-Reflect -I$(CORE_DIR)/deps/nv2a_vsh_cpu/src
 
 # By the sources' groups below
-CFLAGS_UTIL := $(QEMU_CFLAGS) -I$(CORE_DIR)/deps/xxhash $(XXHASH_DEFINES) \
-	-DXXH_STATIC_LINKING_ONLY
+CFLAGS_UTIL := $(QEMU_CFLAGS)
 CFLAGS_COMMON := $(QEMU_CFLAGS)
 CFLAGS_SYSTEM := $(QEMU_CFLAGS) -DCONFIG_SOFTMMU -DCOMPILING_SYSTEM_VS_USER
 CFLAGS_TARGET := $(QEMU_CFLAGS) -I$(CORE_DIR)/target/i386 \
@@ -54,8 +51,7 @@ CFLAGS_TARGET := $(QEMU_CFLAGS) -I$(CORE_DIR)/target/i386 \
 CFLAGS_DSP := $(QEMU_CFLAGS) -I$(CORE_DIR)/hw/xbox/mcpx/apu/dsp \
 	-I$(CORE_DIR)/hw/xbox/mcpx/apu/dsp/interp
 CFLAGS_GLOFF := $(QEMU_CFLAGS) -I$(CORE_DIR)/hw/xbox/nv2a/pgraph/thirdparty
-CFLAGS_LRCOMMON := -I$(CORE_DIR)/libretro-common/include -w
-CFLAGS_XXHASH := -I$(CORE_DIR)/deps/xxhash $(XXHASH_DEFINES)
+CFLAGS_LRCOMMON := -I$(CORE_DIR)/libretro-common/include -I$(CORE_DIR)/ui -w
 CFLAGS_VOLK := -I$(CORE_DIR)/deps/volk -DVK_NO_PROTOTYPES $(OS_CFLAGS) \
 	$(DEPS_CFLAGS)
 CFLAGS_SPIRV_REFLECT := -I$(CORE_DIR)/deps/SPIRV-Reflect
@@ -593,7 +589,6 @@ SOURCES_UTIL_WIN32 := \
 	$(CORE_DIR)/util/coroutine-windows.c \
 	$(CORE_DIR)/util/event_notifier-win32.c \
 	$(CORE_DIR)/util/filemonitor-stub.c \
-	$(CORE_DIR)/util/miniz/miniz.c \
 	$(CORE_DIR)/util/oslib-win32.c \
 	$(CORE_DIR)/util/qemu-thread-win32.c \
 
@@ -994,7 +989,6 @@ SOURCES_SYSTEM := \
 	$(CORE_DIR)/migration/multifd-device-state.c \
 	$(CORE_DIR)/migration/multifd-nocomp.c \
 	$(CORE_DIR)/migration/multifd-zero-page.c \
-	$(CORE_DIR)/migration/multifd-zlib.c \
 	$(CORE_DIR)/migration/multifd.c \
 	$(CORE_DIR)/migration/options.c \
 	$(CORE_DIR)/migration/postcopy-ram.c \
@@ -1379,12 +1373,18 @@ SOURCES_GLOFF := \
 
 # libretro-common
 SOURCES_LRCOMMON := \
+	$(CORE_DIR)/libretro-common/compat/compat_strl.c \
+	$(CORE_DIR)/libretro-common/encodings/encoding_crc32.c \
+	$(CORE_DIR)/libretro-common/encodings/encoding_deflate.c \
+	$(CORE_DIR)/libretro-common/encodings/encoding_xxh3.c \
+	$(CORE_DIR)/libretro-common/features/features_cpu.c \
 	$(CORE_DIR)/libretro-common/queues/retro_spsc.c \
 	$(CORE_DIR)/libretro-common/rthreads/retro_eventcount.c \
 	$(CORE_DIR)/libretro-common/rthreads/rthreads.c \
 
-SOURCES_XXHASH := \
-	$(CORE_DIR)/deps/xxhash/xxhash.c \
+# retro_sleep_us, which features_cpu.c's retro_sleep_until_us re-arms there
+SOURCES_LRCOMMON_WIN32 := \
+	$(CORE_DIR)/libretro-common/time/rtime.c \
 
 SOURCES_VOLK := \
 	$(CORE_DIR)/deps/volk/volk.c \
@@ -1403,6 +1403,7 @@ SOURCES_VMA_CXX := \
 
 # By the host OS
 ifeq ($(HOST_OS),win32)
+SOURCES_LRCOMMON += $(SOURCES_LRCOMMON_WIN32)
 SOURCES_UTIL   += $(SOURCES_UTIL_WIN32)
 SOURCES_COMMON += $(SOURCES_COMMON_WIN32)
 SOURCES_SYSTEM += $(SOURCES_SYSTEM_WIN32)

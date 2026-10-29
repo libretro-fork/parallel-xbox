@@ -26,7 +26,7 @@
 #include "qemu/osdep.h"
 
 #define ZLIB_CONST
-#include <zlib.h>
+#include <encodings/deflate.h>
 
 #ifdef CONFIG_ZSTD
 #include <zstd.h>
@@ -94,36 +94,28 @@ static ssize_t qcow2_zlib_compress(void *dest, size_t dest_size,
                                    const void *src, size_t src_size)
 {
     ssize_t ret;
-    z_stream strm;
+    size_t wrote = 0;
+    int r;
 
-    /* best compression, small window, no zlib header */
-    memset(&strm, 0, sizeof(strm));
-    ret = deflateInit2(&strm, Z_DEFAULT_COMPRESSION, Z_DEFLATED,
-                       -12, 9, Z_DEFAULT_STRATEGY);
-    if (ret != Z_OK) {
+    /* default compression, small window, no zlib header */
+    void *d = rdeflate_new(6, -12);
+    if (!d) {
         return -EIO;
     }
-
-    /*
-     * strm.next_in is not const in old zlib versions, such as those used on
-     * OpenBSD/NetBSD, so cast the const away
-     */
-    strm.avail_in = src_size;
-    strm.next_in = (void *) src;
-    strm.avail_out = dest_size;
-    strm.next_out = dest;
-
-    ret = deflate(&strm, Z_FINISH);
-    if (ret == Z_STREAM_END) {
-        ret = dest_size - strm.avail_out;
+    rdeflate_set_in(d, src, src_size);
+    rdeflate_set_out(d, dest, dest_size);
+    rdeflate_finish(d);
+    r = rdeflate_process(d, NULL, &wrote);
+    if (r == RDEFLATE_PROCESS_END) {
+        ret = wrote;
     } else {
-        ret = (ret == Z_OK ? -ENOMEM : -EIO);
+        ret = (r == RDEFLATE_PROCESS_NEXT ? -ENOMEM : -EIO);
     }
-
-    deflateEnd(&strm);
+    rdeflate_free(d);
 
     return ret;
 }
+
 
 /*
  * qcow2_zlib_decompress()
@@ -141,35 +133,29 @@ static ssize_t qcow2_zlib_decompress(void *dest, size_t dest_size,
                                      const void *src, size_t src_size)
 {
     int ret;
-    z_stream strm;
+    size_t wrote = 0;
+    void *d = rinflate_new(-12);
 
-    memset(&strm, 0, sizeof(strm));
-    strm.avail_in = src_size;
-    strm.next_in = (void *) src;
-    strm.avail_out = dest_size;
-    strm.next_out = dest;
-
-    ret = inflateInit2(&strm, -12);
-    if (ret != Z_OK) {
+    if (!d) {
         return -EIO;
     }
-
-    ret = inflate(&strm, Z_FINISH);
-    if ((ret == Z_STREAM_END || ret == Z_BUF_ERROR) && strm.avail_out == 0) {
-        /*
-         * We approve Z_BUF_ERROR because we need @dest buffer to be filled, but
-         * @src buffer may be processed partly (because in qcow2 we know size of
-         * compressed data with precision of one sector)
-         */
+    rinflate_set_in(d, src, src_size);
+    rinflate_set_out(d, dest, dest_size);
+    ret = rinflate_process(d, NULL, &wrote);
+    /*
+     * A full @dest is what we need; @src may be left partly unread
+     * (in qcow2 the compressed size is known to one sector)
+     */
+    if (ret != RDEFLATE_PROCESS_ERROR && wrote == dest_size) {
         ret = 0;
     } else {
         ret = -EIO;
     }
-
-    inflateEnd(&strm);
+    rinflate_free(d);
 
     return ret;
 }
+
 
 #ifdef CONFIG_ZSTD
 

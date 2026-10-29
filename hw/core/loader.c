@@ -66,7 +66,7 @@
 #include "system/runstate.h"
 #include "tcg/debuginfo.h"
 
-#include <zlib.h>
+#include <encodings/deflate.h>
 
 static int roms_loaded;
 
@@ -521,26 +521,6 @@ static void bswap_uboot_header(uboot_image_header_t *hdr)
 }
 
 
-#define ZALLOC_ALIGNMENT    16
-
-static void *zalloc(void *x, unsigned items, unsigned size)
-{
-    void *p;
-
-    size *= items;
-    size = (size + ZALLOC_ALIGNMENT - 1) & ~(ZALLOC_ALIGNMENT - 1);
-
-    p = g_malloc(size);
-
-    return (p);
-}
-
-static void zfree(void *x, void *addr)
-{
-    g_free(addr);
-}
-
-
 #define HEAD_CRC    2
 #define EXTRA_FIELD 4
 #define ORIG_NAME   8
@@ -551,8 +531,8 @@ static void zfree(void *x, void *addr)
 
 ssize_t gunzip(void *dst, size_t dstlen, uint8_t *src, size_t srclen)
 {
-    z_stream s = {};
-    ssize_t dstbytes;
+    void *s;
+    size_t dstbytes = 0;
     int r, i, flags;
 
     /* skip header */
@@ -588,26 +568,19 @@ ssize_t gunzip(void *dst, size_t dstlen, uint8_t *src, size_t srclen)
         goto toosmall;
     }
 
-    s.zalloc = zalloc;
-    s.zfree = zfree;
-
-    r = inflateInit2(&s, -MAX_WBITS);
-    if (r != Z_OK) {
-        printf ("Error: inflateInit2() returned %d\n", r);
+    s = rinflate_new(-15);
+    if (!s) {
+        printf ("Error: out of memory for inflate\n");
         return (-1);
     }
-    s.next_in = src + i;
-    s.avail_in = srclen - i;
-    s.next_out = dst;
-    s.avail_out = dstlen;
-    r = inflate(&s, Z_FINISH);
-    if (r != Z_OK && r != Z_STREAM_END) {
+    rinflate_set_in(s, src + i, srclen - i);
+    rinflate_set_out(s, dst, dstlen);
+    r = rinflate_process(s, NULL, &dstbytes);
+    rinflate_free(s);
+    if (r == RDEFLATE_PROCESS_ERROR) {
         printf ("Error: inflate() returned %d\n", r);
-        inflateEnd(&s);
         return -1;
     }
-    dstbytes = s.next_out - (unsigned char *) dst;
-    inflateEnd(&s);
 
     return dstbytes;
 

@@ -40,7 +40,7 @@
 #include "block/block-global-state.h"
 #include "block/block_int-global-state.h"
 #include "migration/vmstate.h"
-#include <zlib.h>
+#include <encodings/crc32.h>
 #include "qemu/main-loop.h"
 #include "hw/usb.h"
 #include "ui/xemu-settings.h"
@@ -3643,7 +3643,7 @@ static uint8_t *chihiro_dimm_read_image(uint64_t buf_size,
     size_t n = fread(buf, 1, buf_size, f);
     fclose(f);
     *file_size = n;
-    *crc = crc32(0, buf, n);
+    *crc = encoding_crc32(0, buf, n);
     return buf;
 }
 

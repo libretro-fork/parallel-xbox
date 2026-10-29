@@ -23,7 +23,7 @@
 #include "ui/xemu-settings.h"
 #include "hw/xbox/nv2a/pgraph/pgraph.h"
 #include "hw/xbox/nv2a/pgraph/seed.h"
-#include <zlib.h>
+#include <encodings/deflate.h>
 #include "data/shader_seeds.bin.h"
 
 #define SEED_MAGIC 0x44455358u /* "XSED" */
@@ -215,11 +215,17 @@ void *pgraph_seed_dict_read(int section, size_t itemsize, unsigned *count)
             return NULL;
         }
         uint8_t *raw = g_malloc(e.raw_len);
-        uLongf dlen = e.raw_len;
+        size_t dlen = 0;
         void *items = NULL;
-        if (uncompress(raw, &dlen, z, e.z_len) == Z_OK &&
-            dlen == e.raw_len) {
-            items = seed_find(raw, dlen, section, itemsize, count);
+        void *inf = rinflate_new(15);
+        if (inf) {
+            rinflate_set_in(inf, z, e.z_len);
+            rinflate_set_out(inf, raw, e.raw_len);
+            if (rinflate_process(inf, NULL, &dlen) == RDEFLATE_PROCESS_END &&
+                dlen == e.raw_len) {
+                items = seed_find(raw, dlen, section, itemsize, count);
+            }
+            rinflate_free(inf);
         }
         g_free(raw);
         return items;

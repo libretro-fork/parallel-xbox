@@ -4,15 +4,11 @@
 # core takes only what it uses.
 #
 #   GLib 2.88.2 (its base library, with PCRE2 10.47 and proxy-libintl),
-#   libslirp 4.9.1, libepoxy (WGL), zlib 1.3.1, glslang 16.6.0 (GLSL
+#   libslirp 4.9.1, libepoxy (WGL), glslang 16.6.0 (GLSL
 #   to SPIR-V for the Vulkan renderer: no HLSL, no SPIRV-Tools), and the
 #   Vulkan headers.
 
 DEPS_DIR := $(CORE_DIR)/deps
-
-# --- zlib ---
-ZLIB_SOURCES := $(wildcard $(DEPS_DIR)/zlib/*.c)
-ZLIB_CFLAGS  := -I$(DEPS_DIR)/zlib -DZLIB_CONST
 
 # --- proxy-libintl: the gettext API, translating nothing ---
 INTL_SOURCES := $(DEPS_DIR)/proxy-libintl/libintl.c
@@ -177,7 +173,7 @@ GLSLANG_CXXFLAGS := -std=c++17 -I$(GLSLANG_DIR)
 
 # What the core's own sources need of them
 DEPS_VENDORED_CFLAGS := $(GLIB_INCFLAGS) -I$(DEPS_DIR)/libslirp/include \
-	-I$(DEPS_DIR)/libepoxy/include -I$(DEPS_DIR)/zlib \
+	-I$(DEPS_DIR)/libepoxy/include \
 	-I$(DEPS_DIR)/vulkan-headers \
 	-I$(GLSLANG_DIR) -I$(DEPS_DIR)/proxy-libintl -DG_INTL_STATIC_COMPILATION
 
@@ -186,10 +182,8 @@ dep_obj = $(patsubst %.cpp,%.o,$(patsubst %.c,%.o,$(1)))
 
 DEP_LIBS := $(DEPS_DIR)/libepoxy.a $(DEPS_DIR)/libslirp.a \
 	$(DEPS_DIR)/libglslang.a \
-	$(DEPS_DIR)/libglib.a $(DEPS_DIR)/libintl.a $(DEPS_DIR)/libpcre2.a \
-	$(DEPS_DIR)/libz.a
+	$(DEPS_DIR)/libglib.a $(DEPS_DIR)/libintl.a $(DEPS_DIR)/libpcre2.a
 
-$(call dep_obj,$(ZLIB_SOURCES)):    GROUP_CFLAGS := $(ZLIB_CFLAGS)
 $(call dep_obj,$(INTL_SOURCES)):    GROUP_CFLAGS := $(INTL_CFLAGS)
 $(call dep_obj,$(PCRE2_SOURCES)):   GROUP_CFLAGS := $(PCRE2_CFLAGS)
 $(call dep_obj,$(GLIB_SOURCES)):    GROUP_CFLAGS := $(GLIB_CFLAGS)
@@ -197,7 +191,6 @@ $(call dep_obj,$(EPOXY_SOURCES)):   GROUP_CFLAGS := $(EPOXY_CFLAGS)
 $(call dep_obj,$(SLIRP_SOURCES)):   GROUP_CFLAGS := $(SLIRP_CFLAGS)
 $(call dep_obj,$(GLSLANG_SOURCES)): GROUP_CXXFLAGS := $(GLSLANG_CXXFLAGS)
 
-$(DEPS_DIR)/libz.a:          $(call dep_obj,$(ZLIB_SOURCES))
 $(DEPS_DIR)/libintl.a:       $(call dep_obj,$(INTL_SOURCES))
 $(DEPS_DIR)/libpcre2.a:      $(call dep_obj,$(PCRE2_SOURCES))
 $(DEPS_DIR)/libglib.a:       $(call dep_obj,$(GLIB_SOURCES))
@@ -209,6 +202,6 @@ $(DEP_LIBS):
 	rm -f $@
 	$(AR) rcs $@ $^
 
-DEP_OBJECTS := $(call dep_obj,$(ZLIB_SOURCES) $(SR_SOURCES) $(INTL_SOURCES) \
+DEP_OBJECTS := $(call dep_obj,$(SR_SOURCES) $(INTL_SOURCES) \
 	$(PCRE2_SOURCES) $(GLIB_SOURCES) $(EPOXY_SOURCES) $(SLIRP_SOURCES) \
 	$(GLSLANG_SOURCES))
