@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Vulkan: a depth buffer uploaded from the Xbox's memory (a game writing its depth buffer with the CPU, a loaded savestate) no longer stalls the GPU thread until all earlier uploads have finished on the GPU; the GPU orders them itself.
+
 - Vulkan: uniform-only draw changes reuse their descriptor set, passing the two uniform offsets at draw binding instead of rewriting the uniform and texture descriptors. Texture/shader changes still use immutable sets, and upload-buffer rotation still retires the recording before reuse.
 
 - Reading the Xbox CPU's timestamp counter (rdtsc: games time with it, and the kernel's performance counter is it) is cheaper: the conversion from the Xbox's time used a 128-bit division, a quarter of the time of a loop timing a delay with it; it is now the same value from 64-bit arithmetic. A loop polling an I/O port that keeps the same value (a status port) is a wait too now, as one polling a memory-mapped register already was. About 6% less time per frame on Jet Set Radio Future's boot (lavapipe).

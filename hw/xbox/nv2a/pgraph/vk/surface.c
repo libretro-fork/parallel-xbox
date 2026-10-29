@@ -1200,9 +1200,12 @@ void pgraph_vk_upload_surface_data(NV2AState *d, SurfaceBinding *surface,
         if (pgraph_vk_compute_needs_finish(r)) {
             pgraph_vk_finish(pg, VK_FINISH_REASON_NEED_BUFFER_SPACE);
         }
-        /* The compute buffers are one set: an earlier aux submission may
-         * still be using them */
-        pgraph_vk_wait_for_aux(pg);
+        /* The compute buffers are one set, which an earlier submission may
+         * still be using; no wait for it here: every user ends its use
+         * with barriers into the transfer stage (the unpack below, the
+         * pack in download_surface_to_buffer and texture.c), and the
+         * barriers before this one's copy and unpack chain on from them,
+         * in submission order on the one queue */
     }
 
     /* The recording first: the surface's bytes go into its range of the
