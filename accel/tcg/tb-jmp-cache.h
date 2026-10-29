@@ -13,11 +13,11 @@
 #include "exec/cpu-common.h"
 #include "qemu/cpu-boost.h"
 
-/* CPU boost widens the jump cache to 16384 entries (stock: 4096); the array
+/* CPU boost widens the jump cache to 65536 entries (stock: 4096); the array
  * is sized for the wider one. */
-#define TB_JMP_CACHE_BITS (xemu_cpu_boost ? 14 : 12)
+#define TB_JMP_CACHE_BITS (xemu_cpu_boost ? 16 : 12)
 #define TB_JMP_CACHE_SIZE (1 << TB_JMP_CACHE_BITS)
-#define TB_JMP_CACHE_SIZE_MAX (1 << 14)
+#define TB_JMP_CACHE_SIZE_MAX (1 << 16)
 
 /*
  * Invalidated in parallel; all accesses to 'tb' must be atomic.

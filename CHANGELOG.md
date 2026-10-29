@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- CPU Boost uses a 65,536-entry dispatch cache instead of 16,384 entries, reducing collisions and expensive block lookups. The per-CPU allocation grows by 768 KiB; CPU Boost off still uses the original 4,096-entry lookup range. Page invalidation and block-validity checks are unchanged.
+
 - CPU emulation no longer revives a translated block deliberately discarded to learn an I/O instruction boundary. Its guest bytes were unchanged, so the reuse cache kept restoring the old block and forcing the same device access to rewind it again. Ordinary code invalidation still retains block reuse.
 
 - Saving a state is about a fifth faster (Ninja Gaiden Black: 112 ms instead of 142). The state fills only part of the buffer RetroArch gives it (66 MB of 146 MB there), and the core zeroed all of the rest, so the system had to clear every page of it first; it now writes zeroes only where the buffer is not already zero.
