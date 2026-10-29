@@ -26,6 +26,8 @@ typedef struct MCPXAPUState MCPXAPUState;
 #define TARGET_PAGE_SIZE 4096
 #define MCPX_APU_DEBUG_MON_VP 1
 #define RAM_SIZE (1u<<20)
+static size_t direct_ram_size=RAM_SIZE;
+#define memory_region_size(region) direct_ram_size
 struct McpxApuDebugVoice {
     float rate;int bin[8],vol[8];
     int active,stereo,paused,multipass,multipass_dst_voice;
@@ -53,9 +55,13 @@ struct MCPXAPUState {
     bool muted;
 };
 static struct {MCPXAPUState *d;}address_space_memory;
+static void cpu_physical_memory_read(hwaddr a,void *out,hwaddr bytes)
+{assert(a+bytes<=RAM_SIZE);memcpy(out,address_space_memory.d->ram_ptr+a,bytes);}
+static unsigned sge_reads;
 static uint32_t apu_ram_ldl(MCPXAPUState *d,hwaddr a)
 {
     assert(a+4<=RAM_SIZE);
+    if(a>=0x4000 && a<0x4080)sge_reads++;
     return (uint32_t)d->ram_ptr[a]|((uint32_t)d->ram_ptr[a+1]<<8)|
         ((uint32_t)d->ram_ptr[a+2]<<16)|((uint32_t)d->ram_ptr[a+3]<<24);
 }
@@ -305,9 +311,55 @@ static void control_paths(void)
     frame(d,mix);assert(active(d));dispose(d);
     puts("PASS: pause, immediate explicit stop, restart, VP reset/pre-load, muted completion, finite SSL drain and zero-progress guard");
 }
+static void adpcm_pages(void)
+{
+    unsigned cases=0;
+    for(unsigned stereo=0;stereo<2;stereo++)for(unsigned stream=0;stream<2;stream++)
+    for(unsigned fallback=0;fallback<(stream?1:2);fallback++)
+    for(unsigned offset=0;offset<4096;offset++){
+        direct_ram_size=fallback?0:RAM_SIZE;
+        MCPXAPUState*d=setup(128,4,stereo,0);
+        unsigned channels=stereo?2:1, bytes=36*channels;
+        uint8_t encoded[144];int16_t expected[130];
+        for(unsigned block=0;block<2;block++){
+            for(unsigned i=0;i<bytes;i++)encoded[block*bytes+i]=(i*73+offset*17+block*31)&255;
+            for(unsigned ch=0;ch<channels;ch++){
+                encoded[block*bytes+ch*4+2]=(offset+ch*29+block*13)%89;
+                encoded[block*bytes+ch*4+3]=0;
+            }
+        }
+        /* Deliberately discontiguous SGE pages, including every possible
+         * split within the predictor header and nibble payload. */
+        store(d,0x4008,0x60000);
+        put(d,NV_PAVS_VOICE_CUR_PSL_START,NV_PAVS_VOICE_CUR_PSL_START_BA,offset);
+        for(unsigned i=0;i<2*bytes;i++){
+            unsigned at=offset+i;
+            d->ram_ptr[stream?0x70000+at:at<4096?0x20000+at:0x60000+at-4096]=encoded[i];
+        }
+        if(stream){
+            put(d,NV_PAVS_VOICE_CFG_FMT,NV_PAVS_VOICE_CFG_FMT_DATA_TYPE,1);
+            put(d,NV_PAVS_VOICE_CFG_FMT,NV_PAVS_VOICE_CFG_FMT_PERSIST,1);
+            d->vp.ssl[64].count[0]=1;
+            store(d,0x8000,0x70000+offset);
+            store(d,0x8004,128|(2u<<16)|(stereo<<18)|(stereo<<23));
+        }
+        for(unsigned block=0;block<2;block++){
+            assert(adpcm_decode_block(expected,encoded+block*bytes,bytes,channels)==65);
+            float out[64][2];sge_reads=0;
+            assert(voice_get_samples(d,64,out,64)==64);
+            unsigned at=offset+block*bytes;
+            assert(sge_reads==(stream?0:1+(at%4096+bytes>4096)));
+            for(unsigned i=0;i<64;i++)for(unsigned ch=0;ch<2;ch++)
+                assert(out[i][ch]==int16_to_float(expected[i*channels+(stereo?ch:0)]));
+        }
+        dispose(d);cases++;
+    }
+    direct_ram_size=RAM_SIZE;
+    printf("PASS: %u mono/stereo ADPCM buffer/SSL alignments, discontiguous SGE splits, address-space fallback and exact translation counts\n",cases);
+}
 int main(int argc,char**argv)
 {
     lagrange_init();
     if(argc>1&&strcmp(argv[1],"tail")==0){tails();return 0;}
-    inclusive_boundary();tails();loops();streams();control_paths();return 0;
+    inclusive_boundary();tails();loops();streams();control_paths();adpcm_pages();return 0;
 }

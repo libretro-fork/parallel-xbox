@@ -44,10 +44,13 @@
  *  inbufsize       size of source ADPCM block
  *  channels        number of channels in block (must be determined from other context)
  *
+ * Input and output storage must not overlap, including when input is borrowed
+ * directly from guest RAM.
+ *
  * Returns number of converted composite samples (total samples divided by number of channels)
  */
 
-static int adpcm_decode_block (int16_t *outbuf, const uint8_t *inbuf, size_t inbufsize, int channels)
+static int adpcm_decode_block (int16_t *restrict outbuf, const uint8_t *restrict inbuf, size_t inbufsize, int channels)
 {
     #define CLIP(data, min, max) \
     if ((data) > (max)) data = max; \

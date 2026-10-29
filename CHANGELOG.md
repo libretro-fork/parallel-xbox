@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Audio: ADPCM voices decode directly from guest RAM for stream blocks and buffered blocks inside one SGE page. Only blocks split across SGE pages use a gather buffer, reducing copies and address translations without retaining guest pointers.
+
 - Tests: the shader seed validation tool links the libretro timing implementation required by CPU feature helpers, allowing the Windows test suite to continue past its shader-tool build.
 
 - Audio: the eight-point resampler exposes its fixed tap loop to the compiler without changing sample accumulation or adding copies. Native x86-64 GCC tests keep identical output while reducing the measured fractional-pitch kernel cost; this is not a whole-game performance claim.

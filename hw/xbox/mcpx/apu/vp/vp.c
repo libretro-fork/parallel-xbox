@@ -956,7 +956,7 @@ static int voice_get_samples(MCPXAPUState *d, uint32_t v, float samples[][2],
     size_t block_size;
 
     int adpcm_block_index = -1;
-    uint32_t adpcm_block[36*2/4];
+    uint8_t adpcm_block[36 * 2];
     int16_t adpcm_decoded[65*2]; // FIXME: Move out of here
 
     // FIXME: Only update if necessary
@@ -1122,25 +1122,44 @@ static int voice_get_samples(MCPXAPUState *d, uint32_t v, float samples[][2],
             unsigned int block_position = cbo % ADPCM_SAMPLES_PER_BLOCK;
             if (adpcm_block_index != block_index) {
                 uint32_t linear_addr = block_index * block_size;
+                const uint8_t *encoded;
                 if (stream) {
                     hwaddr addr = segment_offset + linear_addr;
                     int max_seg_byte = (seg_len >> 6) * block_size;
                     assert(linear_addr + block_size <= max_seg_byte);
-                    memcpy(adpcm_block, &d->ram_ptr[addr],
-                           block_size); // FIXME: Use idiomatic DMA function
+                    encoded = &d->ram_ptr[addr];
                 } else {
                     linear_addr += ba;
-                    for (unsigned int word_index = 0;
-                         word_index < (9 * samples_per_block); word_index++) {
-                        hwaddr addr =
-                            get_data_ptr(d, d->regs[NV_PAPU_VPSGEADDR],
-                                         0xFFFFFFFF, linear_addr);
-                        adpcm_block[word_index] =
-                            apu_ram_ldl(d, addr);
-                        linear_addr += 4;
+                    hwaddr addr = get_data_ptr(d, d->regs[NV_PAPU_VPSGEADDR],
+                                               0xFFFFFFFF, linear_addr);
+                    size_t available = TARGET_PAGE_SIZE -
+                                       linear_addr % TARGET_PAGE_SIZE;
+                    if (block_size <= available && d->ram_ptr &&
+                        addr + block_size <= memory_region_size(d->ram)) {
+                        encoded = &d->ram_ptr[addr];
+                    } else {
+                        /* SGE pages need not be adjacent in guest RAM.
+                         * Gather split blocks, keeping the address-space
+                         * fallback for spans outside the direct RAM map. */
+                        size_t copied = 0;
+                        while (copied < block_size) {
+                            size_t bytes = MIN(block_size - copied, available);
+                            cpu_physical_memory_read(addr, adpcm_block + copied,
+                                                     bytes);
+                            copied += bytes;
+                            if (copied < block_size) {
+                                addr = get_data_ptr(d, d->regs[NV_PAPU_VPSGEADDR],
+                                                    0xFFFFFFFF,
+                                                    linear_addr + copied);
+                                available = TARGET_PAGE_SIZE;
+                            }
+                        }
+                        encoded = adpcm_block;
                     }
                 }
-                adpcm_decode_block(adpcm_decoded, (uint8_t *)adpcm_block,
+                /* The decoder reads bytes synchronously; no guest pointer
+                 * survives this call or the worker join. */
+                adpcm_decode_block(adpcm_decoded, encoded,
                                    block_size, channels);
                 adpcm_block_index = block_index;
             }

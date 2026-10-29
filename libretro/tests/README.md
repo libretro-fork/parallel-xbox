@@ -8,7 +8,9 @@ Worker execution and platform/debug glue are fixtures. The 944 finite-source
 cases cover source lengths around frame/block boundaries, slow/fast pitch,
 mono/stereo and DSP-off output; additional cases cover loops, SSL bank
 completion, persistent underrun/refill, explicit stop, pause, restart and
-VP reset/pre-load. Set `TAIL_TEST_CFLAGS` to
+VP reset/pre-load. Another 24,576 ADPCM cases cover every page offset for
+mono/stereo buffers and streams, discontiguous SGE pages, address-space fallback, exact decoded
+samples and the number of SGE translations per block. Set `TAIL_TEST_CFLAGS` to
 `-fsanitize=undefined -fsanitize-undefined-trap-on-error` for trapping under
 the core's `-fwrapv` semantics. Python and GCC are required; no Xbox files
 are needed. These are source-level tests, not a hardware timing comparison.
