@@ -555,6 +555,17 @@ typedef struct PGRAPHVkState {
         bool ready;
     } unswizzle;
 
+    /* Read-backs recorded into one single-time command buffer and waited
+     * for once (surface.c readback_batch_*): open while a loop reads back
+     * surfaces; the surfaces recorded, settled after the wait */
+    struct {
+        bool open;
+        bool recording;
+        VkCommandBuffer cmd;
+        int n;
+        SurfaceBinding *surfaces[64];
+    } readback_batch;
+
     /* Rotation: an async finish submits this slot and records on into the
      * next without waiting. */
     int slot;

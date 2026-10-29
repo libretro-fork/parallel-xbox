@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Vulkan: when several pictures the GPU drew are read back in a row (all of them for a savestate, so every frame with run-ahead; those a texture or a CPU read needs), they are now read back in one go, with one wait for the GPU instead of one wait per picture.
+
 - Savestates are smaller and quicker: loading one takes a quarter less time (Ninja Gaiden Black: 79 ms instead of 104, mid-game) and saving one a fifth less (88 ms instead of 112). The GPU's two inline vertex and index buffers went into every state whole, 4 MB written and read a number at a time, although at the end of a frame they nearly never hold anything; a state now holds only the part in use. States saved before load as they did.
 
 - Vulkan: when a game reads back what the GPU drew (a render-to-texture effect, a screenshot, a savestate), the GPU now writes the picture straight into the Xbox's memory itself. Before, it went through a staging buffer the CPU then copied into the Xbox's memory row by row, and a swizzled picture was copied once more into a scratch buffer and swizzled by the CPU; a depth buffer also took an extra GPU copy into the staging buffer. Now there is no CPU copy at all, and swizzling is done on the GPU. Where the GPU driver cannot use the Xbox's memory directly (no host-memory import, such as on MoltenVK), the old path stays, minus the scratch copy. OpenGL: a swizzled picture read back asynchronously is swizzled straight out of the driver's buffer instead of being copied out first.

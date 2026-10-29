@@ -125,6 +125,8 @@ static bool check_surface_overlaps_range(const SurfaceBinding *surface,
 
 static void parked_materialize_range(NV2AState *d, hwaddr start,
                                      hwaddr size);
+static void readback_batch_begin(PGRAPHVkState *r);
+static void readback_batch_end(NV2AState *d);
 static void parked_owed_settled(NV2AState *d, SurfaceBinding *s);
 
 void pgraph_vk_download_surfaces_in_range_if_dirty(PGRAPHState *pg,
@@ -133,12 +135,14 @@ void pgraph_vk_download_surfaces_in_range_if_dirty(PGRAPHState *pg,
     PGRAPHVkState *r = pg->vk_renderer_state;
     SurfaceBinding *surface;
 
+    readback_batch_begin(r);
     QTAILQ_FOREACH(surface, &r->surfaces, entry) {
         if (check_surface_overlaps_range(surface, start, size)) {
             pgraph_vk_surface_download_if_dirty(
                 container_of(pg, NV2AState, pgraph), surface);
         }
     }
+    readback_batch_end(container_of(pg, NV2AState, pgraph));
     /* A texture is built from this RAM: settle its owed lazy writebacks. */
     parked_materialize_range(container_of(pg, NV2AState, pgraph), start,
                              size);
@@ -194,14 +198,113 @@ static void store_packed_to_ram(PGRAPHState *pg, VkCommandBuffer cmd,
     }
 }
 
-static void download_surface_to_buffer(NV2AState *d, SurfaceBinding *surface,
+/* After the read-back is in the RAM: the RAM marked changed for the
+ * display and the texture cache, the surface clean */
+static void download_settled(NV2AState *d, SurfaceBinding *surface)
+{
+    memory_region_set_client_dirty(d->vram, surface->vram_addr,
+                                   surface->pitch * surface->height,
+                                   DIRTY_MEMORY_VGA);
+    memory_region_set_client_dirty(d->vram, surface->vram_addr,
+                                   surface->pitch * surface->height,
+                                   DIRTY_MEMORY_NV2A_TEX);
+    pgraph_writeback_clear_discard(&d->pgraph, surface->vram_addr,
+                                   surface->pitch * surface->height);
+
+    surface->download_pending = false;
+    surface->draw_dirty = false;
+}
+
+/* The GPU's writes into the RAM for the host, which reads it once the fence
+ * is waited for, and for later submissions reading it */
+static void readback_to_host_barrier(VkCommandBuffer cmd)
+{
+    VkMemoryBarrier after = {
+        .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER,
+        .srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT |
+                         VK_ACCESS_SHADER_WRITE_BIT,
+        .dstAccessMask = VK_ACCESS_HOST_READ_BIT |
+                         VK_ACCESS_TRANSFER_READ_BIT |
+                         VK_ACCESS_SHADER_READ_BIT,
+    };
+    vkCmdPipelineBarrier(cmd,
+                         VK_PIPELINE_STAGE_TRANSFER_BIT |
+                             VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                         VK_PIPELINE_STAGE_HOST_BIT |
+                             VK_PIPELINE_STAGE_TRANSFER_BIT |
+                             VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                         0, 1, &after, 0, NULL, 0, NULL);
+}
+
+/* Read-backs in a row (all the dirty surfaces for a savestate, those a
+ * texture or a CPU read needs) recorded into one single-time command
+ * buffer, submitted and waited for once, instead of a submission and a
+ * wait each. Only direct read-backs (written into the RAM by the GPU)
+ * join: nothing is left for the CPU to do after the wait but the
+ * surfaces' bookkeeping, which waits for it, as other threads read it. */
+static VkCommandBuffer readback_batch_cmd(PGRAPHState *pg)
+{
+    PGRAPHVkState *r = pg->vk_renderer_state;
+
+    if (!r->readback_batch.recording) {
+        r->readback_batch.cmd = pgraph_vk_begin_single_time_commands(pg);
+        r->readback_batch.recording = true;
+    }
+    return r->readback_batch.cmd;
+}
+
+static void readback_batch_flush(NV2AState *d)
+{
+    PGRAPHState *pg = &d->pgraph;
+    PGRAPHVkState *r = pg->vk_renderer_state;
+
+    if (!r->readback_batch.recording) {
+        return;
+    }
+    readback_to_host_barrier(r->readback_batch.cmd);
+    nv2a_profile_inc_counter(NV2A_PROF_QUEUE_SUBMIT_1);
+    /* the RAM's memory is host-coherent: nothing to invalidate */
+    pgraph_vk_end_single_time_commands(pg, r->readback_batch.cmd);
+    r->readback_batch.recording = false;
+    for (int i = 0; i < r->readback_batch.n; i++) {
+        download_settled(d, r->readback_batch.surfaces[i]);
+    }
+    r->readback_batch.n = 0;
+}
+
+static void readback_batch_add(NV2AState *d, SurfaceBinding *surface)
+{
+    PGRAPHVkState *r = d->pgraph.vk_renderer_state;
+
+    r->readback_batch.surfaces[r->readback_batch.n++] = surface;
+    if (r->readback_batch.n == ARRAY_SIZE(r->readback_batch.surfaces)) {
+        readback_batch_flush(d);
+    }
+}
+
+static void readback_batch_begin(PGRAPHVkState *r)
+{
+    assert(!r->readback_batch.open);
+    r->readback_batch.open = true;
+}
+
+static void readback_batch_end(NV2AState *d)
+{
+    readback_batch_flush(d);
+    d->pgraph.vk_renderer_state->readback_batch.open = false;
+}
+
+/* The surface read back into pixels (its place in the RAM). True when it
+ * is there on return; false when it joined the open batch, which settles
+ * it. */
+static bool download_surface_to_buffer(NV2AState *d, SurfaceBinding *surface,
                                        uint8_t *pixels)
 {
     PGRAPHState *pg = &d->pgraph;
     PGRAPHVkState *r = pg->vk_renderer_state;
 
     if (!surface->width || !surface->height) {
-        return;
+        return true;
     }
 
     nv2a_profile_inc_counter(NV2A_PROF_SURF_DOWNLOAD);
@@ -215,27 +318,6 @@ static void download_surface_to_buffer(NV2AState *d, SurfaceBinding *surface,
         surface->host_fmt.vk_format == VK_FORMAT_D16_UNORM;
 
     assert(no_conversion_necessary);
-
-    bool compute_needs_finish = (use_compute_to_convert_depth_stencil_format &&
-                                 pgraph_vk_compute_needs_finish(r));
-
-    if (compute_needs_finish) {
-        /* Only a synchronous finish resets the compute descriptor sets: an
-         * asynchronous SURFACE_DOWN would leave them full. */
-        pgraph_vk_finish(pg, VK_FINISH_REASON_NEED_BUFFER_SPACE);
-    } else if (r->in_command_buffer &&
-        (surface->draw_time >= r->command_buffer_start_time ||
-         pgraph_vk_surface_borrow_pending(r, surface))) {
-        pgraph_vk_finish(pg, VK_FINISH_REASON_SURFACE_DOWN);
-    }
-
-    bool downscale = (pg->surface_scale_factor != 1);
-
-    trace_nv2a_pgraph_surface_download(
-        surface->color ? "COLOR" : "ZETA",
-        surface->swizzle ? "sz" : "lin", surface->vram_addr,
-        surface->width, surface->height, surface->pitch,
-        surface->fmt.bytes_per_pixel);
 
     /* Where the Xbox's RAM is a buffer (buffer.c create_vram_buffer) the
      * GPU writes the read-back into it itself (direct): a linear surface
@@ -264,6 +346,37 @@ static void download_surface_to_buffer(NV2AState *d, SurfaceBinding *surface,
                          surface->width * bpp <=
                      memory_region_size(d->vram));
 
+    /* A direct read-back joins the open batch (pgraph_vk_readback_batch_
+     * begin): recorded into its command buffer, waited for with the rest.
+     * Anything else settles the batch first. */
+    bool batched = direct && r->readback_batch.open &&
+                   !use_compute_to_convert_depth_stencil_format;
+    if (!batched) {
+        readback_batch_flush(d);
+    }
+
+    bool compute_needs_finish = (use_compute_to_convert_depth_stencil_format &&
+                                 pgraph_vk_compute_needs_finish(r));
+
+    if (compute_needs_finish) {
+        /* Only a synchronous finish resets the compute descriptor sets: an
+         * asynchronous SURFACE_DOWN would leave them full. */
+        pgraph_vk_finish(pg, VK_FINISH_REASON_NEED_BUFFER_SPACE);
+    } else if (r->in_command_buffer &&
+        (surface->draw_time >= r->command_buffer_start_time ||
+         pgraph_vk_surface_borrow_pending(r, surface))) {
+        pgraph_vk_finish(pg, VK_FINISH_REASON_SURFACE_DOWN);
+    }
+
+    bool downscale = (pg->surface_scale_factor != 1);
+
+    trace_nv2a_pgraph_surface_download(
+        surface->color ? "COLOR" : "ZETA",
+        surface->swizzle ? "sz" : "lin", surface->vram_addr,
+        surface->width, surface->height, surface->pitch,
+        surface->fmt.bytes_per_pixel);
+
+
     unsigned int scaled_width = surface->width,
                  scaled_height = surface->height;
     pgraph_apply_scaling_factor(pg, &scaled_width, &scaled_height);
@@ -275,15 +388,25 @@ static void download_surface_to_buffer(NV2AState *d, SurfaceBinding *surface,
                                              scaled_height * 8);
     }
 
-    VkCommandBuffer cmd = pgraph_vk_begin_single_time_commands(pg);
-    pgraph_vk_begin_debug_marker(r, cmd, RGBA_RED, __func__);
+    VkCommandBuffer cmd = batched ? readback_batch_cmd(pg) :
+                                    pgraph_vk_begin_single_time_commands(pg);
 
     VkDeviceSize ring_offset = 0;
     if (direct && surface->swizzle &&
         !pgraph_vk_ring_alloc(pg, PGRAPH_VK_RING_UNSWIZZLE, ram_size, 16,
                               &ring_offset)) {
-        direct = false;
+        if (batched) {
+            /* the batch holds the ring: settle it, this one on its own */
+            readback_batch_flush(d);
+            batched = false;
+            cmd = pgraph_vk_begin_single_time_commands(pg);
+            direct = pgraph_vk_ring_alloc(pg, PGRAPH_VK_RING_UNSWIZZLE,
+                                          ram_size, 16, &ring_offset);
+        } else {
+            direct = false;
+        }
     }
+    pgraph_vk_begin_debug_marker(r, cmd, RGBA_RED, __func__);
     if (direct) {
         /* Earlier submissions' reads of the RAM (uploads, the unswizzle)
          * and their use of the ring before the writes here */
@@ -550,28 +673,16 @@ static void download_surface_to_buffer(NV2AState *d, SurfaceBinding *surface,
     }
 
     if (direct) {
-        /* The writes into the RAM for the host, which reads it once the
-         * fence is waited for, and for later submissions reading it */
-        VkMemoryBarrier after = {
-            .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER,
-            .srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT |
-                             VK_ACCESS_SHADER_WRITE_BIT,
-            .dstAccessMask = VK_ACCESS_HOST_READ_BIT |
-                             VK_ACCESS_TRANSFER_READ_BIT |
-                             VK_ACCESS_SHADER_READ_BIT,
-        };
-        vkCmdPipelineBarrier(cmd,
-                             VK_PIPELINE_STAGE_TRANSFER_BIT |
-                                 VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                             VK_PIPELINE_STAGE_HOST_BIT |
-                                 VK_PIPELINE_STAGE_TRANSFER_BIT |
-                                 VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                             0, 1, &after, 0, NULL, 0, NULL);
-        nv2a_profile_inc_counter(NV2A_PROF_QUEUE_SUBMIT_1);
         pgraph_vk_end_debug_marker(r, cmd);
+        if (batched) {
+            readback_batch_add(d, surface);
+            return false;
+        }
+        readback_to_host_barrier(cmd);
+        nv2a_profile_inc_counter(NV2A_PROF_QUEUE_SUBMIT_1);
         /* the RAM's memory is host-coherent: nothing to invalidate */
         pgraph_vk_end_single_time_commands(pg, cmd);
-        return;
+        return true;
     }
 
     //
@@ -614,6 +725,7 @@ static void download_surface_to_buffer(NV2AState *d, SurfaceBinding *surface,
         memcpy_image(pixels, dst->mapped, surface->pitch,
                      surface->width * bpp, surface->height);
     }
+    return true;
 }
 
 static void download_surface(NV2AState *d, SurfaceBinding *surface, bool force)
@@ -625,19 +737,10 @@ static void download_surface(NV2AState *d, SurfaceBinding *surface, bool force)
 
     // FIXME: Respect write enable at last TOU?
 
-    download_surface_to_buffer(d, surface, d->vram_ptr + surface->vram_addr);
-
-    memory_region_set_client_dirty(d->vram, surface->vram_addr,
-                                   surface->pitch * surface->height,
-                                   DIRTY_MEMORY_VGA);
-    memory_region_set_client_dirty(d->vram, surface->vram_addr,
-                                   surface->pitch * surface->height,
-                                   DIRTY_MEMORY_NV2A_TEX);
-    pgraph_writeback_clear_discard(&d->pgraph, surface->vram_addr,
-                                   surface->pitch * surface->height);
-
-    surface->download_pending = false;
-    surface->draw_dirty = false;
+    if (download_surface_to_buffer(d, surface,
+                                   d->vram_ptr + surface->vram_addr)) {
+        download_settled(d, surface);
+    }
 }
 
 void pgraph_vk_wait_for_surface_download(SurfaceBinding *surface)
@@ -658,9 +761,11 @@ void pgraph_vk_process_pending_downloads(NV2AState *d)
     PGRAPHVkState *r = d->pgraph.vk_renderer_state;
     SurfaceBinding *surface;
 
+    readback_batch_begin(r);
     QTAILQ_FOREACH(surface, &r->surfaces, entry) {
         download_surface(d, surface, false);
     }
+    readback_batch_end(d);
     /* Owed lazy writebacks the CPU access callback queued. */
     QTAILQ_FOREACH(surface, &r->invalid_surfaces, entry) {
         if (surface->writeback_owed && surface->download_pending) {
@@ -677,9 +782,11 @@ void pgraph_vk_download_dirty_surfaces(NV2AState *d)
     PGRAPHVkState *r = d->pgraph.vk_renderer_state;
 
     SurfaceBinding *surface;
+    readback_batch_begin(r);
     QTAILQ_FOREACH(surface, &r->surfaces, entry) {
         pgraph_vk_surface_download_if_dirty(d, surface);
     }
+    readback_batch_end(d);
     /* Settle every owed lazy writeback: a snapshot must find RAM exact. */
     QTAILQ_FOREACH(surface, &r->invalid_surfaces, entry) {
         if (surface->writeback_owed) {

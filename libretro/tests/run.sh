@@ -165,6 +165,33 @@ case $r in
 *) echo "FAIL: the Vulkan run exited $r"; exit 1 ;;
 esac
 
+# A savestate taken while surfaces live only on the GPU (rom/gpu.c: before
+# run 64, B drawn and its depth cleared at frame 62, nothing read back), then
+# loaded in a new process, which has no GPU surfaces: the depth the guest
+# reads at frame 63 is the clear value only if the save wrote every dirty
+# surface into RAM. On Vulkan those read-backs go to the GPU together, one
+# submission and one wait.
+for r in OpenGL Vulkan; do
+    o=; [ $r = Vulkan ] && o="--vulkan --opt xemu_renderer=vulkan"
+    echo "== surfaces saved from the GPU, $r"
+    set +e
+    timeout 300 $h "$(path "$core")" "$(path "$work/sysg")" $vp $o --frames 66 \
+      --save 64 --state-out "$(path "$work/gpu.state")" >/dev/null
+    a=$?
+    timeout 300 $h "$(path "$core")" "$(path "$work/sysg")" $vp $o --frames 20 \
+      --load 1 --state-in "$(path "$work/gpu.state")" --peek 0x30002c \
+      --peek 0x300030 >"$work/gpu_state.txt"
+    b=$?
+    set -e
+    if [ $a = 3 ] || [ $b = 3 ]; then echo "no Vulkan device: skipped"; continue; fi
+    [ $a = 0 ] && [ $b = 0 ] || { echo "FAIL: $r: the runs exited $a, $b"; exit 1; }
+    grep -E "peek_" "$work/gpu_state.txt"
+    for want in "peek_0x30002c=0x12345678" "peek_0x300030=0x12345678"; do
+        grep -E "^$want$" "$work/gpu_state.txt" >/dev/null || {
+            echo "FAIL: $r: $want expected after the load, $(grep "^${want%%=*}=" "$work/gpu_state.txt")"; exit 1; }
+    done
+done
+
 # DVD reads (rom/dvd.c): READ(10) packets by bus-master DMA from the
 # primary slave, as the kernel sends them, into one PRD entry, three
 # scattered ones, and ten for 600 KB, from the disc mkdisc.c makes, whose
