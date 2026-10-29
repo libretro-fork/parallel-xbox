@@ -542,14 +542,16 @@ typedef struct PGRAPHVkState {
      * BUFFER_UNSWIZZLE_OUT; the next byte to hand out of each */
     size_t ring_head[PGRAPH_VK_RINGS];
 
-    /* The GPU unswizzle (unswizzle.c): one compute pipeline, one
-     * descriptor set (the RAM and the output ring, whole), made at init */
+    /* The GPU unswizzle and swizzle (unswizzle.c): a compute pipeline
+     * each, one descriptor set (the RAM and the ring, whole), made at
+     * init */
     struct {
         VkDescriptorPool pool;
         VkDescriptorSetLayout set_layout;
         VkDescriptorSet set;
         VkPipelineLayout layout;
         VkPipeline pipeline;
+        VkPipeline swizzle_pipeline;
         bool ready;
     } unswizzle;
 
@@ -720,7 +722,6 @@ typedef struct PGRAPHVkState {
     /* The bindings themselves and the swizzled download's staging, kept:
      * no allocation when a surface is met or written back (pool.h) */
     ObjPool surface_pool;
-    Scratch swizzle_scratch;
     SurfaceBinding *color_binding, *zeta_binding;
     bool downloads_pending;
     retro_eventcount_t downloads_complete;
@@ -932,6 +933,19 @@ bool pgraph_vk_unswizzle(PGRAPHState *pg, VkCommandBuffer cmd,
                          VkDeviceSize *out_offset);
 /* Before the copies that read the output ring: the dispatches' writes */
 void pgraph_vk_unswizzle_done(PGRAPHState *pg, VkCommandBuffer cmd);
+/* Whether a width x height surface of bpp bytes a texel at dst_offset in
+ * the RAM can be swizzled into it by the GPU */
+bool pgraph_vk_swizzle_possible(PGRAPHState *pg, hwaddr dst_offset,
+                                unsigned int width, unsigned int height,
+                                unsigned int bpp);
+/* A surface copied linear into the ring at src_offset (x fastest, rows
+ * packed) swizzled by the GPU into the RAM at dst_offset, in the open
+ * single-time command buffer; pgraph_vk_swizzle_possible said yes. The
+ * caller orders the RAM's earlier readers before it and the host after. */
+void pgraph_vk_swizzle_to_ram(PGRAPHState *pg, VkCommandBuffer cmd,
+                              VkDeviceSize src_offset, hwaddr dst_offset,
+                              unsigned int width, unsigned int height,
+                              unsigned int bpp);
 
 // image.c
 void pgraph_vk_transition_image_layout(PGRAPHState *pg, VkCommandBuffer cmd,

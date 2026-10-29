@@ -133,12 +133,14 @@ static void create_vram_buffer(NV2AState *d)
         .sType = VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_BUFFER_CREATE_INFO,
         .handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION_BIT_EXT,
     };
-    /* copied from, and read by the unswizzle shader */
+    /* copied from and to, read by the unswizzle shader and written by the
+     * swizzle one (surface read-backs) */
     VkBufferCreateInfo buffer_info = {
         .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
         .pNext = &external_info,
         .size = size,
         .usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
+                 VK_BUFFER_USAGE_TRANSFER_DST_BIT |
                  VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
         .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
     };
@@ -244,10 +246,12 @@ void pgraph_vk_init_buffers(NV2AState *d)
 
     /* The GPU unswizzle's output ring (unswizzle.c): a level or a surface
      * at a time, 24 MB holds the largest level there is (a 2048 x 2048
-     * 32-bit one is 16 MB) with room for the next */
+     * 32-bit one is 16 MB) with room for the next. Also where a swizzled
+     * surface read back is copied linear, for the swizzle shader */
     r->storage_buffers[BUFFER_UNSWIZZLE_OUT] = (StorageBuffer){
         .alloc_info = device_alloc_create_info,
         .usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
+                 VK_BUFFER_USAGE_TRANSFER_DST_BIT |
                  VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
         .buffer_size = 24 * 1024 * 1024,
     };

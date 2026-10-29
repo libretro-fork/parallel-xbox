@@ -1850,6 +1850,16 @@ static bool surface_download_harvest(NV2AState *d, SurfaceBinding *surface)
     }
     unsigned int sf = pg->surface_scale_factor;
     uint8_t *pixels = d->vram_ptr + surface->vram_addr;
+    bool shrink = sf != 1 && !surface->dl_native;
+    if (surface->swizzle && !shrink) {
+        /* Its rows packed (a swizzled surface's pitch is its row):
+         * swizzled straight out of the mapping */
+        swizzle_rect(raw, surface->width, surface->height, pixels,
+                     surface->pitch, surface->fmt.bytes_per_pixel);
+        glUnmapBuffer(GL_PIXEL_PACK_BUFFER);
+        glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+        return true;
+    }
     uint8_t *dst = pixels;
     uint8_t *swizzle_buf = NULL;
     if (surface->swizzle) {
@@ -1857,7 +1867,7 @@ static bool surface_download_harvest(NV2AState *d, SurfaceBinding *surface)
                                       surface->size);
         dst = swizzle_buf;
     }
-    if (sf != 1 && !surface->dl_native) {
+    if (shrink) {
         assert(surface->pitch >= (surface->width * surface->fmt.bytes_per_pixel));
         uint8_t *out = dst, *in = raw;
         for (unsigned int y = 0; y < surface->height; y++) {

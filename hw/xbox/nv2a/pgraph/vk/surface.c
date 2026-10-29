@@ -144,6 +144,56 @@ void pgraph_vk_download_surfaces_in_range_if_dirty(PGRAPHState *pg,
                              size);
 }
 
+/* The packed read-back at the start of src (rows of width texels) written
+ * into the Xbox's RAM by the GPU: copied at the surface's pitch or, for a
+ * swizzled surface, copied into the ring at ring_offset and swizzled into
+ * place from there. */
+static void store_packed_to_ram(PGRAPHState *pg, VkCommandBuffer cmd,
+                                SurfaceBinding *surface, VkBuffer src,
+                                VkDeviceSize ring_offset)
+{
+    PGRAPHVkState *r = pg->vk_renderer_state;
+    VkDeviceSize row =
+        (VkDeviceSize)surface->width * surface->fmt.bytes_per_pixel;
+
+    if (surface->swizzle) {
+        VkBufferCopy region = {
+            .dstOffset = ring_offset,
+            .size = row * surface->height,
+        };
+        vkCmdCopyBuffer(cmd, src,
+                        r->storage_buffers[BUFFER_UNSWIZZLE_OUT].buffer, 1,
+                        &region);
+        pgraph_vk_swizzle_to_ram(pg, cmd, ring_offset, surface->vram_addr,
+                                 surface->width, surface->height,
+                                 surface->fmt.bytes_per_pixel);
+        return;
+    }
+    if (surface->pitch == row) {
+        VkBufferCopy region = {
+            .dstOffset = surface->vram_addr,
+            .size = row * surface->height,
+        };
+        vkCmdCopyBuffer(cmd, src, r->vram_buffer, 1, &region);
+        return;
+    }
+    /* rows apart: a copy region a row, recorded a batch at a time */
+    VkBufferCopy rows[64];
+    unsigned int y = 0;
+    while (y < surface->height) {
+        uint32_t n = 0;
+        for (; n < ARRAY_SIZE(rows) && y < surface->height; n++, y++) {
+            rows[n] = (VkBufferCopy){
+                .srcOffset = y * row,
+                .dstOffset =
+                    surface->vram_addr + (VkDeviceSize)y * surface->pitch,
+                .size = row,
+            };
+        }
+        vkCmdCopyBuffer(cmd, src, r->vram_buffer, n, rows);
+    }
+}
+
 static void download_surface_to_buffer(NV2AState *d, SurfaceBinding *surface,
                                        uint8_t *pixels)
 {
@@ -187,16 +237,32 @@ static void download_surface_to_buffer(NV2AState *d, SurfaceBinding *surface,
         surface->width, surface->height, surface->pitch,
         surface->fmt.bytes_per_pixel);
 
-    // Read surface into memory
-    uint8_t *gl_read_buf = pixels;
-
-    uint8_t *swizzle_buf = pixels;
-    if (surface->swizzle) {
-        // FIXME: Swizzle in shader
-        assert(pg->surface_scale_factor == 1 || downscale);
-        swizzle_buf = scratch_reserve(&r->swizzle_scratch, surface->size);
-        gl_read_buf = swizzle_buf;
-    }
+    /* Where the Xbox's RAM is a buffer (buffer.c create_vram_buffer) the
+     * GPU writes the read-back into it itself (direct): a linear surface
+     * copied there at its pitch, a swizzled one copied linear into the
+     * ring and swizzled into place by the swizzle shader (unswizzle.c).
+     * No staging buffer and no copy by the CPU. Otherwise the read-back
+     * goes through the staging buffer and the CPU copies or swizzles it
+     * into the RAM. */
+    const unsigned int bpp = surface->fmt.bytes_per_pixel;
+    const VkDeviceSize ram_size =
+        (VkDeviceSize)surface->width * surface->height * bpp;
+    bool direct =
+        r->vram_buffer != VK_NULL_HANDLE &&
+        pixels == d->vram_ptr + surface->vram_addr &&
+        surface->vram_addr % 4 == 0 &&
+        (use_compute_to_convert_depth_stencil_format ||
+         surface->host_fmt.host_bytes_per_pixel == bpp) &&
+        (surface->swizzle ?
+             pgraph_vk_swizzle_possible(pg, surface->vram_addr,
+                                        surface->width, surface->height,
+                                        bpp) :
+             surface->pitch % bpp == 0 &&
+                 surface->pitch >= surface->width * bpp &&
+                 surface->vram_addr +
+                         (VkDeviceSize)surface->pitch * (surface->height - 1) +
+                         surface->width * bpp <=
+                     memory_region_size(d->vram));
 
     unsigned int scaled_width = surface->width,
                  scaled_height = surface->height;
@@ -211,6 +277,32 @@ static void download_surface_to_buffer(NV2AState *d, SurfaceBinding *surface,
 
     VkCommandBuffer cmd = pgraph_vk_begin_single_time_commands(pg);
     pgraph_vk_begin_debug_marker(r, cmd, RGBA_RED, __func__);
+
+    VkDeviceSize ring_offset = 0;
+    if (direct && surface->swizzle &&
+        !pgraph_vk_ring_alloc(pg, PGRAPH_VK_RING_UNSWIZZLE, ram_size, 16,
+                              &ring_offset)) {
+        direct = false;
+    }
+    if (direct) {
+        /* Earlier submissions' reads of the RAM (uploads, the unswizzle)
+         * and their use of the ring before the writes here */
+        VkMemoryBarrier before = {
+            .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER,
+            .srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT |
+                             VK_ACCESS_TRANSFER_WRITE_BIT |
+                             VK_ACCESS_SHADER_READ_BIT |
+                             VK_ACCESS_SHADER_WRITE_BIT,
+            .dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT |
+                             VK_ACCESS_SHADER_WRITE_BIT,
+        };
+        vkCmdPipelineBarrier(cmd,
+                             VK_PIPELINE_STAGE_TRANSFER_BIT |
+                                 VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                             VK_PIPELINE_STAGE_TRANSFER_BIT |
+                                 VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                             0, 1, &before, 0, NULL, 0, NULL);
+    }
 
     /* In-place sampling: recorded draws may sample this surface in place;
      * the copy only reads, so the image goes back to where it rests (a
@@ -308,6 +400,16 @@ static void download_surface_to_buffer(NV2AState *d, SurfaceBinding *surface,
                              BUFFER_COMPUTE_DST :
                              BUFFER_STAGING_DST;
     VkBuffer copy_buffer = r->storage_buffers[copy_buffer_idx].buffer;
+    if (direct && !use_compute_to_convert_depth_stencil_format) {
+        if (surface->swizzle) {
+            copy_buffer = r->storage_buffers[BUFFER_UNSWIZZLE_OUT].buffer;
+            copy_regions[0].bufferOffset = ring_offset;
+        } else {
+            copy_buffer = r->vram_buffer;
+            copy_regions[0].bufferOffset = surface->vram_addr;
+            copy_regions[0].bufferRowLength = surface->pitch / bpp;
+        }
+    }
 
     {
         VkBufferMemoryBarrier pre_copy_dst_barrier = {
@@ -402,6 +504,9 @@ static void download_surface_to_buffer(NV2AState *d, SurfaceBinding *surface,
                              VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 1,
                              &post_compute_dst_barrier, 0, NULL);
 
+        if (direct) {
+            store_packed_to_ram(pg, cmd, surface, pack_buffer, ring_offset);
+        } else {
         //
         // Copy packed image over to staging buffer for host download
         //
@@ -438,6 +543,35 @@ static void download_surface_to_buffer(NV2AState *d, SurfaceBinding *surface,
         vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
                              VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 1,
                              &post_copy_src_barrier, 0, NULL);
+        }
+    } else if (direct && surface->swizzle) {
+        pgraph_vk_swizzle_to_ram(pg, cmd, ring_offset, surface->vram_addr,
+                                 surface->width, surface->height, bpp);
+    }
+
+    if (direct) {
+        /* The writes into the RAM for the host, which reads it once the
+         * fence is waited for, and for later submissions reading it */
+        VkMemoryBarrier after = {
+            .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER,
+            .srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT |
+                             VK_ACCESS_SHADER_WRITE_BIT,
+            .dstAccessMask = VK_ACCESS_HOST_READ_BIT |
+                             VK_ACCESS_TRANSFER_READ_BIT |
+                             VK_ACCESS_SHADER_READ_BIT,
+        };
+        vkCmdPipelineBarrier(cmd,
+                             VK_PIPELINE_STAGE_TRANSFER_BIT |
+                                 VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                             VK_PIPELINE_STAGE_HOST_BIT |
+                                 VK_PIPELINE_STAGE_TRANSFER_BIT |
+                                 VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                             0, 1, &after, 0, NULL, 0, NULL);
+        nv2a_profile_inc_counter(NV2A_PROF_QUEUE_SUBMIT_1);
+        pgraph_vk_end_debug_marker(r, cmd);
+        /* the RAM's memory is host-coherent: nothing to invalidate */
+        pgraph_vk_end_single_time_commands(pg, cmd);
+        return;
     }
 
     //
@@ -470,15 +604,15 @@ static void download_surface_to_buffer(NV2AState *d, SurfaceBinding *surface,
                                    surface->height;
     vmaInvalidateAllocation(r->allocator, dst->allocation, 0, read_size);
 
-    memcpy_image(gl_read_buf, dst->mapped, surface->pitch,
-                 surface->width * surface->fmt.bytes_per_pixel,
-                 surface->height);
-
+    /* Its rows are packed: swizzled straight out of it, or copied at
+     * the pitch */
     if (surface->swizzle) {
-        // FIXME: Swizzle in shader
-        swizzle_rect(swizzle_buf, surface->width, surface->height, pixels,
-                     surface->pitch, surface->fmt.bytes_per_pixel);
+        swizzle_rect(dst->mapped, surface->width, surface->height, pixels,
+                     surface->width * bpp, bpp);
         nv2a_profile_inc_counter(NV2A_PROF_SURF_SWIZZLE);
+    } else {
+        memcpy_image(pixels, dst->mapped, surface->pitch,
+                     surface->width * bpp, surface->height);
     }
 }
 
@@ -2107,7 +2241,6 @@ void pgraph_vk_init_surfaces(PGRAPHState *pg)
     /* More bindings than the surface list ever holds (it is pruned to a
      * few hundred), and the staging of a 1024x1024 32-bit surface */
     obj_pool_init(&r->surface_pool, sizeof(SurfaceBinding), 1024);
-    scratch_init(&r->swizzle_scratch, 1024 * 1024 * 4);
 
     r->downloads_pending = false;
     retro_eventcount_init(&r->downloads_complete);
@@ -2129,7 +2262,6 @@ void pgraph_vk_finalize_surfaces(PGRAPHState *pg)
 
     pgraph_vk_surface_flush(container_of(pg, NV2AState, pgraph));
     obj_pool_finalize(&r->surface_pool);
-    scratch_finalize(&r->swizzle_scratch);
 }
 
 void pgraph_vk_surface_flush(NV2AState *d)
