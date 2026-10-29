@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Audio: steady-pitch voices reuse their quantized source step instead of recalculating an exponential every MCPX frame. Pitch ramps, resets and multipass transitions invalidate the cached step.
+
 - Audio: ADPCM voices decode directly from guest RAM for stream blocks and buffered blocks inside one SGE page. Only blocks split across SGE pages use a gather buffer, reducing copies and address translations without retaining guest pointers.
 
 - Tests: the shader seed validation tool links the libretro timing implementation required by CPU feature helpers, allowing the Windows test suite to continue past its shader-tool build.

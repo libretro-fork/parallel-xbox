@@ -67,6 +67,7 @@ static void voice_reset_filters(MCPXAPUState *d, uint16_t v)
     memset(&d->vp.filters[v].i3dl2, 0, sizeof(d->vp.filters[v].i3dl2));
     d->vp.filters[v].gains = false;
     d->vp.filters[v].pitched = false;
+    d->vp.filters[v].pitch_step = 0;
     d->vp.filters[v].dls2_set = false;
     d->vp.filters[v].peq_set = false;
     memset(d->vp.filters[v].lfo_phase, 0, sizeof(d->vp.filters[v].lfo_phase));
@@ -1331,7 +1332,7 @@ typedef struct VoicePitchRamp {
     uint32_t fixed_step;
 } VoicePitchRamp;
 
-/* Keep exact log-pitch endpoints; steady frames need only one exp2 call.
+/* Keep exact log-pitch endpoints; steady frames reuse their source step.
  * Ramping computes its step on demand, not into a 32-element scratch array. */
 static VoicePitchRamp voice_pitch_ramp(MCPXAPUVoiceFilter *filter, double target)
 {
@@ -1339,8 +1340,15 @@ static VoicePitchRamp voice_pitch_ramp(MCPXAPUVoiceFilter *filter, double target
     VoicePitchRamp ramp = {
         .from = from,
         .slope = (target - from) / NUM_SAMPLES_PER_FRAME,
-        .fixed_step = from == target ? exp2(target / 4096.0) * 65536.0 : 0,
+        .fixed_step = 0,
     };
+    if (from == target) {
+        ramp.fixed_step = filter->pitched && filter->pitch_step ?
+                          filter->pitch_step : exp2(target / 4096.0) * 65536.0;
+    }
+    /* Zero also represents an uncached step. A legitimately zero step
+     * can be recomputed without changing its quantized result. */
+    filter->pitch_step = ramp.fixed_step;
     filter->pitch = target;
     filter->pitched = true;
     return ramp;
@@ -1582,6 +1590,7 @@ static void voice_process(MCPXAPUState *d,
          * without calculating source steps for a multipass voice. */
         d->vp.filters[v].pitch = pitch;
         d->vp.filters[v].pitched = true;
+        d->vp.filters[v].pitch_step = 0;
         get_multipass_samples(d, mixbins, v, samples);
     } else {
         /* Ramp the combined register/envelope/LFO pitch in log space.

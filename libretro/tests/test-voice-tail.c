@@ -87,7 +87,9 @@ static const uint8_t segaboot_jingle_data[2]={0};
 static const size_t segaboot_jingle_size=0;
 static bool voice_should_mute(uint16_t v){return address_space_memory.d->muted;}
 static int peek_ahead_multipass_bin(MCPXAPUState*d,uint16_t v,uint16_t*dest){*dest=0xffff;return -1;}
-static void get_multipass_samples(MCPXAPUState*d,float mix[][32],uint16_t v,float out[][2]){assert(0);}
+static bool allow_multipass;
+static void get_multipass_samples(MCPXAPUState*d,float mix[][32],uint16_t v,float out[][2])
+{assert(allow_multipass);memset(out,0,sizeof(float[32][2]));}
 /* INSERT PRODUCTION FUNCTIONS */
 
 static const struct {hwaddr top,current,next;}voice_list_regs[]={
@@ -357,9 +359,40 @@ static void adpcm_pages(void)
     direct_ram_size=RAM_SIZE;
     printf("PASS: %u mono/stereo ADPCM buffer/SSL alignments, discontiguous SGE splits, address-space fallback and exact translation counts\n",cases);
 }
+static void pitch_cache(void)
+{
+    MCPXAPUState*d=setup(128,1,false,0);
+    MCPXAPUVoiceFilter*f=&d->vp.filters[64];
+    static const double targets[]={0,-4096,1700.125,-32768,32767,0};
+    double previous=0;
+    for(unsigned t=0;t<ARRAY_SIZE(targets);t++){
+        double target=targets[t];
+        for(unsigned repeat=0;repeat<8;repeat++){
+            double from=t==0||repeat?target:previous;
+            VoicePitchRamp ramp=voice_pitch_ramp(f,target);
+            for(unsigned n=0;n<32;n++)
+                assert(voice_pitch_step(&ramp,n)==(uint32_t)(exp2((from+(target-from)*n/32)/4096)*65536));
+        }
+        previous=target;
+    }
+    /* A multipass frame updates the log-pitch target without consuming
+     * source samples. Returning to source playback must use that target. */
+    allow_multipass=true;
+    put(d,NV_PAVS_VOICE_CFG_FMT,NV_PAVS_VOICE_CFG_FMT_MULTIPASS,1);
+    put(d,NV_PAVS_VOICE_TAR_PITCH_LINK,NV_PAVS_VOICE_TAR_PITCH_LINK_PITCH,4096);
+    float mix[32][32]={0};voice_process(d,mix,d->vp.sample_buf,64,0);
+    VoicePitchRamp ramp=voice_pitch_ramp(f,4096);
+    assert(ramp.from==4096&&ramp.fixed_step==131072);
+    allow_multipass=false;
+    voice_reset_filters(d,64);
+    ramp=voice_pitch_ramp(f,-4096);
+    assert(ramp.from==-4096&&ramp.fixed_step==32768);
+    dispose(d);
+    puts("PASS: steady/changing fractional and extreme pitch steps, multipass-to-source transition and reset cache invalidation");
+}
 int main(int argc,char**argv)
 {
     lagrange_init();
     if(argc>1&&strcmp(argv[1],"tail")==0){tails();return 0;}
-    inclusive_boundary();tails();loops();streams();control_paths();adpcm_pages();return 0;
+    inclusive_boundary();tails();loops();streams();control_paths();adpcm_pages();pitch_cache();return 0;
 }
