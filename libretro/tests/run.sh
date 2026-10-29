@@ -136,6 +136,19 @@ if [ -z "$flat" ] || [ "$flat" != "$paced" ]; then
     exit 1
 fi
 
+# The DSP JIT against the interpreter on the test ROM's GP program
+# (dspdiff.c): the whole DSP state the same after every frame, from
+# random memory around it. Built from the core's sources here; nothing
+# to compare where the host has no JIT.
+echo "== DSP JIT against the interpreter"
+make -s -C "$here/../.." dspdiff
+set +e
+"$here/dspdiff" --frames 60 --x 0=16 --seed 1 "$here/rom/gp.inc" && \
+"$here/dspdiff" --frames 60 --x 0=16 --seed 2 "$here/rom/gp.inc"
+rc=$?
+set -e
+if [ $rc = 2 ]; then echo "no JIT on this host"; elif [ $rc != 0 ]; then exit 1; fi
+
 # APU DSP Emulation on, the GP DSP running a program of 16 x 4096 MACs a
 # 32-sample frame (rom/gp.a56) that hands the tone on unchanged: the tone
 # comes out of the GP whole, on the interpreter and on the JIT. The time the

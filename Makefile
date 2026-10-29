@@ -204,8 +204,23 @@ ALL_OBJECTS := $(OBJECTS) $(OBJS_UTIL) $(DEP_OBJECTS)
 
 clean:
 	rm -f $(TARGET) $(LIBQEMUUTIL) $(VERSION_H) $(filter %.a,$(DEPS_LIBS))
-	rm -f $(ALL_OBJECTS) $(ALL_OBJECTS:.o=.d)
+	rm -f $(ALL_OBJECTS) $(ALL_OBJECTS:.o=.d) $(DSPDIFF)
 
-.PHONY: all clean FORCE
+# The DSP JIT against the interpreter (libretro/tests/dspdiff.c), built
+# from the DSP's own sources, nothing else of the core: a plain program,
+# for the host or for another (make dspdiff CC=aarch64-linux-gnu-gcc,
+# run under qemu-aarch64)
+DSPDIFF := $(CORE_DIR)/libretro/tests/dspdiff
+DSPDIFF_SRC := $(CORE_DIR)/libretro/tests/dspdiff.c \
+	$(CORE_DIR)/hw/xbox/mcpx/apu/dsp/dsp_c.c \
+	$(CORE_DIR)/hw/xbox/mcpx/apu/dsp/dsp_dma.c \
+	$(CORE_DIR)/hw/xbox/mcpx/apu/dsp/interp/dsp_cpu.c \
+	$(CORE_DIR)/hw/xbox/mcpx/apu/dsp/jit/dspjit.c
+$(DSPDIFF): $(DSPDIFF_SRC)
+	$(CC) -O2 $(QEMU_CFLAGS) $(ARCH_CFLAGS) -I$(CORE_DIR)/hw/xbox/mcpx/apu/dsp \
+		-I$(CORE_DIR)/hw/xbox/mcpx/apu/dsp/interp -o $@ $(DSPDIFF_SRC)
+dspdiff: $(DSPDIFF)
+
+.PHONY: all clean dspdiff FORCE
 
 -include $(ALL_OBJECTS:.o=.d)

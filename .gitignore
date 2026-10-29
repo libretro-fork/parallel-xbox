@@ -36,3 +36,4 @@ build.log
 /deps/*.a
 /libqemuutil.a
 /libretro/gen/xemu-version-macro.h
+/libretro/tests/dspdiff

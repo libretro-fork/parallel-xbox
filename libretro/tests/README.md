@@ -26,6 +26,12 @@ Microsoft file is needed. CI runs it after every Linux build.
   the tests do not need a56.
 - `sinecheck.c`: checks the audio the harness wrote: the tone unbroken, its
   level, the number of samples.
+- `dspdiff.c`: the DSP JIT against the interpreter, built from the core's
+  DSP sources alone (`make dspdiff`, for another host `make dspdiff
+  CC=aarch64-linux-gnu-gcc`): a DSP program (`gp.inc`, or a dump of a
+  game's DSP: `DSPD`, then P, X and Y as 32-bit words) run frame by frame
+  on both, from the same state, with the same random memory around them,
+  the whole DSP state compared after every frame.
 
 What `run.sh` checks: every `retro_run` hands over one video frame and
 exactly one frame's worth of audio (800 or 801 samples at 60000/1001 fps),
@@ -33,8 +39,9 @@ idle and busy; the tone has no gap; an idle guest runs far faster than real
 time when the frontend does not pace it (fast-forward), and so does one
 that spins waiting; the busy guest does the same work paced and unpaced;
 the pad's buttons reach the guest over USB; with APU DSP
-Emulation on, the tone comes through the GP DSP whole on the interpreter and
-on the JIT, the interpreter does not fall behind on a heavy program, and
+Emulation on, the JIT leaves the DSP in the same state as the interpreter
+after every frame of the GP program, the tone comes through the GP DSP
+whole on the interpreter and on the JIT, the interpreter does not fall behind on a heavy program, and
 the JIT's state survives a savestate; savestates, loads and resets between
 frames, and right after a load the guest's RAM is byte for byte what it was
 when the state was saved, in the same process and in another one.
