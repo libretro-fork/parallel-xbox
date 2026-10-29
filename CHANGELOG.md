@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Audio: ParaEQ modes now apply their frequency, signed gain and Q fields, including the DLS2/ParaEQ cascade for mono voices. The filter operates in place and voice restart clears its history.
+
 - Audio: DLS2 filters use measured coefficient and state rounding, retain their intended gain and resonance, and no longer apply an artificial waveshaper or output clamp. Mono 2D filter parameters are computed once for both histories.
 
 - HRTF: both ears share one mono history and borrow the active entry during processing, removing duplicate history writes and a target-parameter copy while retaining independent ear delays and gains.

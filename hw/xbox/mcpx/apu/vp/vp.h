@@ -54,6 +54,7 @@ typedef struct MCPXAPUVoiceFilter {
     float resample_hist[4][2];
     double resample_phase;
     sv_filter svf[2];
+    sv_filter peq[2];
     HrtfFilter hrtf;
 } MCPXAPUVoiceFilter;
 

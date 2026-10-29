@@ -63,6 +63,7 @@ static void voice_reset_filters(MCPXAPUState *d, uint16_t v)
 {
     assert(v < MCPX_HW_MAX_VOICES);
     memset(&d->vp.filters[v].svf, 0, sizeof(d->vp.filters[v].svf));
+    memset(&d->vp.filters[v].peq, 0, sizeof(d->vp.filters[v].peq));
     d->vp.filters[v].hrtf.params_set = false;
     hrtf_filter_clear_history(&d->vp.filters[v].hrtf);
     voice_resample_reset(&d->vp.filters[v]);
@@ -1541,14 +1542,16 @@ static void voice_process(MCPXAPUState *d,
 
     // FIXME: Move to function
     bool lpf = false;
+    bool peq = false;
     if (spatial) {
         /* 1:DLS2+I3DL2 2:ParaEQ+I3DL2 3:I3DL2 */
         lpf = (fmode == 1);
+        peq = (fmode == 2);
     } else {
         /* 0:Bypass 1:DLS2 2:ParaEQ 3(Mono):DLS2+ParaEQ 3(Stereo):Bypass */
-        /* A null HRTF handle uses 2D filter selection on the mono source.
-         * ParaEQ and I3DL2 remain unimplemented in this branch. */
+        /* A null HRTF handle uses 2D filter selection on the mono source. */
         lpf = channels == 2 ? (fmode == 1) : (fmode & 1);
+        peq = channels == 2 ? (fmode == 2) : (fmode >= 2);
     }
     if (lpf) {
         /* Keep both 2D filter histories warm for stereo format changes;
@@ -1573,6 +1576,33 @@ static void voice_process(MCPXAPUState *d,
         }
     }
 
+    /* ParaEQ: x + gain * damping * band, with gain signed in 1/8192.
+     * Spatial voices use FCA, mono 2D/null-handle voices FCB, stereo
+     * voices FCA/FCB. Process in place and retain separate filter history. */
+    if (peq) {
+        unsigned int q = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_MISC,
+                                        NV_PAVS_VOICE_CFG_MISC_PARAEQ_Q);
+        float q_f = ldexpf(1.0f, -(int)q);
+        float fc_f = 0.0f, gain = 0.0f;
+        unsigned int filter_channels = three_d ? 1 : 2;
+        for (unsigned int ch = 0; ch < filter_channels; ch++) {
+            if (ch < channels) {
+                hwaddr reg = spatial ? NV_PAVS_VOICE_TAR_FCA :
+                    channels == 2 ? NV_PAVS_VOICE_TAR_FCA + ch * 4 :
+                                    NV_PAVS_VOICE_TAR_FCB;
+                uint32_t c = voice_get_mask(d, v, reg, 0xFFFFFFFF);
+                fc_f = filter_coefficient((int16_t)c);
+                gain = (int16_t)(c >> 16) / 8192.0f * q_f;
+            }
+            sv_filter *filter = &d->vp.filters[v].peq[ch];
+            setup_svf(filter, fc_f, q_f, F_BP);
+            for (int i = 0; i < NUM_SAMPLES_PER_FRAME; i++) {
+                float x = samples[i][ch];
+                samples[i][ch] = svf_round(x + gain * run_svf(filter, x));
+            }
+        }
+    }
+
     /* Keep the dry frame intact for routes 4-7. The bypass borrows that
      * frame directly; only convolution needs separate left/right output. */
     float ears[NUM_SAMPLES_PER_FRAME][2];
@@ -1589,8 +1619,6 @@ static void voice_process(MCPXAPUState *d,
                             d->vp.hrtf.entries[hrtf_handle].itd);
         ear_samples = ears;
     }
-
-    // FIXME: ParaEQ
 
     for (int b = 0; b < 8; b++) {
         if (three_d && b < 4 && !spatial) {
