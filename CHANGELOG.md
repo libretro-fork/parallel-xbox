@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Audio: nonstandard multipass bins, uncleared submixes and interleaved source lists run in voice order instead of asserting. Serial frames mix directly into the DSP buffer, and parallel scheduling reads each voice dependency once.
+
 - HRTF: filter taps retain their hardware gain and use the measured sign-magnitude minifloat format; updating a zero left-ear filter also updates the right ear.
 
 - Audio: multipass submixes restore their voice format headroom (up to 42 dB previously lost); mix-bin conversion rounds halfway values toward positive infinity to match hardware.

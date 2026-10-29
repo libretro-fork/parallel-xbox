@@ -1638,9 +1638,9 @@ static void get_voice_bin_src_dst(MCPXAPUState *d, int v,
                                     NV_PAVS_VOICE_CFG_FMT_MULTIPASS_BIN);
         bool clear_mix = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_FMT,
                                         NV_PAVS_VOICE_CFG_FMT_CLEAR_MIX);
-        src_v |= (1 << mp_bin);
+        src_v |= (1u << mp_bin);
         if (clear_mix) {
-            clr_v |= (1 << mp_bin);
+            clr_v |= (1u << mp_bin);
         }
     }
 
@@ -1670,7 +1670,7 @@ static void get_voice_bin_src_dst(MCPXAPUState *d, int v,
                             NV_PAVS_VOICE_CFG_FMT_V7BIN);
 
     for (int i = 0; i < 8; i++) {
-        dst_v |= 1 << bin[i];
+        dst_v |= 1u << bin[i];
     }
 
     if (src) {
@@ -1738,34 +1738,34 @@ static void voice_work_enqueue(MCPXAPUState *d, int v, int list)
     };
 }
 
-static void voice_work_schedule(MCPXAPUState *d)
+static bool voice_work_schedule(MCPXAPUState *d)
 {
     VoiceWorkDispatch *vwd = &d->vp.voice_work_dispatch;
     int next_worker_to_schedule = 0;
     bool group = false;
     uint32_t dirty = 0;
 
-    for (int i = 0; i < vwd->queue_len; i++) {
+    struct {
         uint32_t src, dst, clr;
-        get_voice_bin_src_dst(d, vwd->queue[i].voice, &src, &dst, &clr);
+    } masks[MCPX_HW_MAX_VOICES];
 
-        // TODO: To simplify submix scheduling, we make a few assumptions based
-        // on Xbox software observations. However, the configurability of
-        // multipass sources suggests the hardware may not be so strict. We'll
-        // defer making this more robust for now.
-        //
-        // We currently assume that:
-        //
-        // - MP bin is constant
-        assert(!src || (src == MULTIPASS_BIN_MASK));
-        //
-        // - MP voice always clears MP bin
-        assert(!src || (clr == MULTIPASS_BIN_MASK));
-        //
-        // - MP source voices are ordered consecutively in voice lists
-        assert(src || (dst & MULTIPASS_BIN_MASK) ||
-               !(dirty & MULTIPASS_BIN_MASK));
+    /* Preserve the parallel DirectSound layout. Other layouts need list
+     * order and shared mix bins, including multipass reads without clears. */
+    for (int i = 0; i < vwd->queue_len; i++) {
+        get_voice_bin_src_dst(d, vwd->queue[i].voice,
+                             &masks[i].src, &masks[i].dst, &masks[i].clr);
+        uint32_t src = masks[i].src, dst = masks[i].dst, clr = masks[i].clr;
+        if ((src && (src != MULTIPASS_BIN_MASK || clr != MULTIPASS_BIN_MASK)) ||
+            (!src && !(dst & MULTIPASS_BIN_MASK) &&
+             (dirty & MULTIPASS_BIN_MASK))) {
+            return false;
+        }
+        dirty = (dirty & ~clr) | dst;
+    }
+    dirty = 0;
 
+    for (int i = 0; i < vwd->queue_len; i++) {
+        uint32_t dst = masks[i].dst, clr = masks[i].clr;
         if ((dst & MULTIPASS_BIN_MASK) & ~dirty) {
             group = true;
         }
@@ -1784,6 +1784,7 @@ static void voice_work_schedule(MCPXAPUState *d)
                 (next_worker_to_schedule + 1) % vwd->num_workers;
         }
     }
+    return true;
 }
 
 static void
@@ -1800,7 +1801,19 @@ voice_work_dispatch(MCPXAPUState *d,
     for (int w = 0; w < vwd->num_workers; w++) {
         vwd->workers[w].queue_len = 0;
     }
-    voice_work_schedule(d);
+    if (vwd->num_workers == 1 || !voice_work_schedule(d)) {
+        /* No queue copy, scratch mix, wakeup or reduction on a serial frame.
+         * The caller has already cleared the DSP output buffer. */
+        for (int w = 0; w < vwd->num_workers; w++) {
+            g_dbg.vp.workers[w].num_voices = w ? 0 : vwd->queue_len;
+        }
+        for (int i = 0; i < vwd->queue_len; i++) {
+            voice_process(d, mixbins, d->vp.sample_buf,
+                          vwd->queue[i].voice, vwd->queue[i].list);
+        }
+        vwd->queue_len = 0;
+        return;
+    }
     vwd->queue_len = 0;
 
     /* The shares of the threads, then the emulator thread's own */
