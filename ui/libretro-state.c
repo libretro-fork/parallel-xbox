@@ -16,6 +16,7 @@
 
 #include "qemu/osdep.h"
 #include "qemu/iov.h"
+#include "qemu/cutils.h"
 #include "qemu/timer.h"
 #include "qapi/error.h"
 #include "qom/object.h"
@@ -212,9 +213,21 @@ bool lr_state_save(void *data, size_t size, Error **errp)
         hdr.hdd_writes = cpu_to_le64(lr_state_hdd_writes());
         memcpy(data, &hdr, sizeof(hdr));
         /* the frontend's buffer is as big as the state can get: the rest
-         * is zero, not whatever was in it */
-        memset((uint8_t *)data + sizeof(hdr) + c->off, 0,
-               size - sizeof(hdr) - c->off);
+         * is zero, not whatever was in it. Only where it is not already:
+         * a buffer the frontend just allocated is fresh pages, and writing
+         * zeroes over them had the kernel clear each one first (half of
+         * the buffer and most of the save's time: a state of 66 MB in a
+         * buffer of 146 MB). Reading them maps the shared zero page. */
+        uint8_t *tail = (uint8_t *)data + sizeof(hdr) + c->off;
+        size_t left = size - sizeof(hdr) - c->off;
+        while (left) {
+            size_t n = MIN(left, (size_t)64 * 1024);
+            if (!buffer_is_zero(tail, n)) {
+                memset(tail, 0, n);
+            }
+            tail += n;
+            left -= n;
+        }
     }
     object_unref(OBJECT(c));
     return ret == 0;

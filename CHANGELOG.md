@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Saving a state is about a fifth faster (Ninja Gaiden Black: 112 ms instead of 142). The state fills only part of the buffer RetroArch gives it (66 MB of 146 MB there), and the core zeroed all of the rest, so the system had to clear every page of it first; it now writes zeroes only where the buffer is not already zero.
+
 - CPU memory writes: updating a clean page's translation flags skips empty MMU modes, matching the earlier GPU dirty-range optimization. Populated primary and victim mappings still receive the same flag updates under the existing lock.
 
 - Vulkan: a depth buffer uploaded from the Xbox's memory (a game writing its depth buffer with the CPU, a loaded savestate) no longer stalls the GPU thread until all earlier uploads have finished on the GPU; the GPU orders them itself.
