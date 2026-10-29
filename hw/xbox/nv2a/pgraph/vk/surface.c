@@ -203,7 +203,7 @@ static void download_surface_to_buffer(NV2AState *d, SurfaceBinding *surface,
     if (surface->swizzle) {
         // FIXME: Swizzle in shader
         assert(pg->surface_scale_factor == 1 || downscale);
-        swizzle_buf = (uint8_t *)g_malloc(surface->size);
+        swizzle_buf = scratch_reserve(&r->swizzle_scratch, surface->size);
         gl_read_buf = swizzle_buf;
     }
 
@@ -492,7 +492,6 @@ static void download_surface_to_buffer(NV2AState *d, SurfaceBinding *surface,
         swizzle_rect(swizzle_buf, surface->width, surface->height, pixels,
                      surface->pitch, surface->fmt.bytes_per_pixel);
         nv2a_profile_inc_counter(NV2A_PROF_SURF_SWIZZLE);
-        g_free(swizzle_buf);
     }
 }
 
@@ -910,12 +909,14 @@ static void set_surface_label(PGRAPHState *pg, SurfaceBinding const *surface)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
 
-    g_autofree gchar *label = g_strdup_printf(
-        "Surface %" HWADDR_PRIx "h fmt:%s,%02xh %dx%d aa:%d",
-        surface->vram_addr, surface->color ? "Color" : "Zeta",
-        surface->color ? surface->shape.color_format :
-                         surface->shape.zeta_format,
-        surface->width, surface->height, pg->surface_shape.anti_aliasing);
+    char label[96];
+    g_snprintf(label, sizeof(label),
+               "Surface %" HWADDR_PRIx "h fmt:%s,%02xh %dx%d aa:%d",
+               surface->vram_addr, surface->color ? "Color" : "Zeta",
+               surface->color ? surface->shape.color_format :
+                                surface->shape.zeta_format,
+               surface->width, surface->height,
+               pg->surface_shape.anti_aliasing);
 
     VkDebugUtilsObjectNameInfoEXT name_info = {
         .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT,
@@ -930,8 +931,9 @@ static void set_surface_label(PGRAPHState *pg, SurfaceBinding const *surface)
     vmaSetAllocationName(r->allocator, surface->allocation, label);
 
     if (surface->image_scratch) {
-        g_autofree gchar *label_scratch =
-            g_strdup_printf("%s (scratch)", label);
+        char label_scratch[112];
+        g_snprintf(label_scratch, sizeof(label_scratch), "%s (scratch)",
+                   label);
         name_info.objectHandle = (uint64_t)surface->image_scratch;
         name_info.pObjectName = label_scratch;
         if (r->debug_utils_extension_enabled) {
@@ -1110,7 +1112,7 @@ static void prune_invalid_surfaces(PGRAPHVkState *r, int keep)
             }
             QTAILQ_REMOVE(&r->invalid_surfaces, surface, entry);
             destroy_surface_image(r, surface);
-            g_free(surface);
+            obj_pool_give(&r->surface_pool, surface);
         }
     }
 }
@@ -1886,7 +1888,7 @@ static void update_surface_part(NV2AState *d, bool upload, bool color)
             if (surface) {
                 migrate_surface_image(&target, surface);
             } else {
-                surface = g_malloc(sizeof(SurfaceBinding));
+                surface = obj_pool_take(&r->surface_pool);
                 create_surface_image(pg, &target);
             }
 
@@ -2113,6 +2115,10 @@ void pgraph_vk_init_surfaces(PGRAPHState *pg)
 
     QTAILQ_INIT(&r->surfaces);
     QTAILQ_INIT(&r->invalid_surfaces);
+    /* More bindings than the surface list ever holds (it is pruned to a
+     * few hundred), and the staging of a 1024x1024 32-bit surface */
+    obj_pool_init(&r->surface_pool, sizeof(SurfaceBinding), 1024);
+    scratch_init(&r->swizzle_scratch, 1024 * 1024 * 4);
 
     r->downloads_pending = false;
     qemu_event_init(&r->downloads_complete, false);
@@ -2130,7 +2136,11 @@ void pgraph_vk_init_surfaces(PGRAPHState *pg)
 
 void pgraph_vk_finalize_surfaces(PGRAPHState *pg)
 {
+    PGRAPHVkState *r = pg->vk_renderer_state;
+
     pgraph_vk_surface_flush(container_of(pg, NV2AState, pgraph));
+    obj_pool_finalize(&r->surface_pool);
+    scratch_finalize(&r->swizzle_scratch);
 }
 
 void pgraph_vk_surface_flush(NV2AState *d)

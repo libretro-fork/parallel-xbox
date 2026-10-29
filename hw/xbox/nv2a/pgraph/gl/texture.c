@@ -934,7 +934,8 @@ static TextureBinding* generate_texture(const TextureShape s,
                          (const GLint *)f.gl_swizzle_mask);
     }
 
-    TextureBinding* ret = (TextureBinding *)g_malloc0(sizeof(TextureBinding));
+    TextureBinding *ret =
+        obj_pool_take(&g_nv2a->pgraph.gl_renderer_state->texture_pool);
     ret->gl_target = gl_target;
     ret->gl_texture = gl_texture;
     ret->refcnt = 1;
@@ -957,7 +958,8 @@ static void texture_binding_destroy(gpointer data)
     binding->refcnt--;
     if (binding->refcnt == 0) {
         glDeleteTextures(1, &binding->gl_texture);
-        g_free(binding);
+        obj_pool_give(&g_nv2a->pgraph.gl_renderer_state->texture_pool,
+                      binding);
     }
 }
 
@@ -994,6 +996,9 @@ void pgraph_gl_init_textures(NV2AState *d)
     PGRAPHGLState *r = pg->gl_renderer_state;
 
     const size_t texture_cache_size = 512;
+    /* The cache's entries, plus what draws still hold after an eviction */
+    obj_pool_init(&r->texture_pool, sizeof(TextureBinding),
+                  texture_cache_size + 64);
     lru_init(&r->texture_cache);
     r->texture_cache_entries = malloc(texture_cache_size * sizeof(TextureLruNode));
     assert(r->texture_cache_entries != NULL);
@@ -1022,6 +1027,7 @@ void pgraph_gl_finalize_textures(PGRAPHState *pg)
 
     lru_flush(&r->texture_cache);
     free(r->texture_cache_entries);
+    obj_pool_finalize(&r->texture_pool);
 
     r->texture_cache_entries = NULL;
     for (int i = 0; i < 2; i++) {

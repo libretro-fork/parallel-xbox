@@ -501,7 +501,8 @@ static void render_surface_to_texture_slow(NV2AState *d,
 
     size_t bufsize = width * height * surface->fmt.bytes_per_pixel;
 
-    uint8_t *buf = g_malloc(bufsize);
+    uint8_t *buf = scratch_reserve(&pg->gl_renderer_state->s2t_scratch,
+                                   bufsize);
     surface_download_to_buffer(d, surface, false, false, false, buf);
 
     width = texture_shape->width;
@@ -513,7 +514,6 @@ static void render_surface_to_texture_slow(NV2AState *d,
     texture->s2t_width = width;
     texture->s2t_height = height;
     texture->s2t_format = f->gl_internal_format;
-    g_free(buf);
     glBindTexture(texture->gl_target, texture->gl_texture);
 }
 
@@ -914,8 +914,7 @@ static SurfaceBinding *surface_put(NV2AState *d, hwaddr addr,
     assert(pgraph_gl_surface_get(d, addr) == NULL);
 
     invalidate_overlapping_surfaces(d, surface_in);
-    SurfaceBinding *surface_out = g_malloc(sizeof(SurfaceBinding));
-    assert(surface_out != NULL);
+    SurfaceBinding *surface_out = obj_pool_take(&r->surface_pool);
     *surface_out = *surface_in;
     surface_out->disp_ref = NULL; /* the display never saw it */
     surface_out->cpu_reads = 0;
@@ -1098,7 +1097,7 @@ void pgraph_gl_surface_invalidate(NV2AState *d, SurfaceBinding *surface)
     unregister_cpu_access_callback(d, surface);
     surface_drop_readback(surface);
     pgraph_gl_display_surface_gone(d, surface);
-    g_free(surface);
+    obj_pool_give(&d->pgraph.gl_renderer_state->surface_pool, surface);
 }
 
 static void surface_evict_old(NV2AState *d)
@@ -1403,7 +1402,7 @@ static void parked_destroy(NV2AState *d, SurfaceBinding *surface)
     pgraph_gl_display_surface_gone(d, surface);
     QTAILQ_REMOVE(&r->parked, surface, entry);
     r->parked_n--;
-    g_free(surface);
+    obj_pool_give(&r->surface_pool, surface);
 }
 
 /* Settle the owed RAM copy, leaving the learning to the callers that consume
@@ -1745,11 +1744,9 @@ static void surface_download_to_buffer(NV2AState *d, SurfaceBinding *surface,
 
     uint8_t *swizzle_buf = pixels;
     if (swizzle) {
-        /* FIXME: Allocate big buffer up front and re-alloc if necessary.
-         * FIXME: Consider swizzle in shader
-         */
+        /* FIXME: Consider swizzle in shader */
         assert(pg->surface_scale_factor == 1 || downscale);
-        swizzle_buf = (uint8_t *)g_malloc(surface->size);
+        swizzle_buf = scratch_reserve(&r->surf_scratch, surface->size);
         gl_read_buf = swizzle_buf;
     }
 
@@ -1784,7 +1781,6 @@ static void surface_download_to_buffer(NV2AState *d, SurfaceBinding *surface,
     if (swizzle) {
         swizzle_rect(swizzle_buf, surface->width, surface->height, pixels,
                      surface->pitch, surface->fmt.bytes_per_pixel);
-        g_free(swizzle_buf);
     }
 
     /* Release the texture from the scratch FBO, restore the render pair */
@@ -1870,7 +1866,8 @@ static bool surface_download_harvest(NV2AState *d, SurfaceBinding *surface)
     uint8_t *dst = pixels;
     uint8_t *swizzle_buf = NULL;
     if (surface->swizzle) {
-        swizzle_buf = (uint8_t *)g_malloc(surface->size);
+        swizzle_buf = scratch_reserve(&pg->gl_renderer_state->surf_scratch,
+                                      surface->size);
         dst = swizzle_buf;
     }
     if (sf != 1 && !surface->dl_native) {
@@ -1888,7 +1885,6 @@ static bool surface_download_harvest(NV2AState *d, SurfaceBinding *surface)
     if (surface->swizzle) {
         swizzle_rect(swizzle_buf, surface->width, surface->height, pixels,
                      surface->pitch, surface->fmt.bytes_per_pixel);
-        g_free(swizzle_buf);
     }
     glUnmapBuffer(GL_PIXEL_PACK_BUFFER);
     glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
@@ -2200,7 +2196,8 @@ static void upload_surface_data_impl(NV2AState *d, SurfaceBinding *surface,
     uint8_t *buf = data + surface->vram_addr;
 
     if (surface->swizzle) {
-        buf = (uint8_t*)g_malloc(surface->size);
+        buf = scratch_reserve(&pg->gl_renderer_state->surf_scratch,
+                              surface->size);
         unswizzle_rect(data + surface->vram_addr,
                        surface->width, surface->height,
                        buf,
@@ -2215,7 +2212,8 @@ static void upload_surface_data_impl(NV2AState *d, SurfaceBinding *surface,
     unsigned int optimal_pitch = surface->width * surface->fmt.bytes_per_pixel;
 
     if (surface->pitch != optimal_pitch) {
-        optimal_buf = (uint8_t *)g_malloc(surface->height * optimal_pitch);
+        optimal_buf = scratch_reserve(&pg->gl_renderer_state->pitch_scratch,
+                                      (size_t)surface->height * optimal_pitch);
 
         uint8_t *src = buf;
         uint8_t *dst = optimal_buf;
@@ -2231,12 +2229,6 @@ static void upload_surface_data_impl(NV2AState *d, SurfaceBinding *surface,
     unsigned int width = surface->width, height = surface->height;
 
     if (surface_grow_on_gpu(pg, surface, optimal_buf)) {
-        if (optimal_buf != buf) {
-            g_free(optimal_buf);
-        }
-        if (surface->swizzle) {
-            g_free(buf);
-        }
         glBindTexture(GL_TEXTURE_2D, last_texture_binding);
         bind_current_surface(d);
         return;
@@ -2266,12 +2258,6 @@ static void upload_surface_data_impl(NV2AState *d, SurfaceBinding *surface,
                  height, 0, surface->fmt.gl_format, surface->fmt.gl_type,
                  gl_read_buf);
     glPixelStorei(GL_UNPACK_ALIGNMENT, prev_unpack_alignment);
-    if (optimal_buf != buf) {
-        g_free(optimal_buf);
-    }
-    if (surface->swizzle) {
-        g_free(buf);
-    }
 
     // Rebind previous framebuffer binding
     glBindTexture(GL_TEXTURE_2D, last_texture_binding);
@@ -2804,6 +2790,12 @@ void pgraph_gl_init_surfaces(PGRAPHState *pg)
     glGenFramebuffers(1, &r->gl_fb_util);
     QTAILQ_INIT(&r->surfaces);
     QTAILQ_INIT(&r->parked);
+    /* More bindings than the surface and parked lists ever hold, and the
+     * copies of a 1024x1024 32-bit surface */
+    obj_pool_init(&r->surface_pool, sizeof(SurfaceBinding), 1024);
+    scratch_init(&r->surf_scratch, 1024 * 1024 * 4);
+    scratch_init(&r->pitch_scratch, 1024 * 1024 * 4);
+    scratch_init(&r->s2t_scratch, 1024 * 1024 * 4);
     r->downloads_pending = false;
     qemu_event_init(&r->downloads_complete, false);
     qemu_event_init(&r->dirty_surfaces_download_complete, false);
@@ -2877,6 +2869,10 @@ void pgraph_gl_finalize_surfaces(PGRAPHState *pg)
     r->ul_zgrow_fbo = r->ul_zgrow_tex = 0;
 
     finalize_render_to_texture(pg);
+    obj_pool_finalize(&r->surface_pool);
+    scratch_finalize(&r->surf_scratch);
+    scratch_finalize(&r->pitch_scratch);
+    scratch_finalize(&r->s2t_scratch);
 }
 
 void pgraph_gl_surface_flush(NV2AState *d)

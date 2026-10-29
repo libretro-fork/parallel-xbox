@@ -28,12 +28,14 @@
 
 #include <math.h>
 
-static uint8_t *convert_texture_data__CR8YB8CB8YA8(const uint8_t *data,
+static uint8_t *convert_texture_data__CR8YB8CB8YA8(PGRAPHGLState *r,
+                                                   const uint8_t *data,
                                                    unsigned int width,
                                                    unsigned int height,
                                                    unsigned int pitch)
 {
-    uint8_t *converted_data = (uint8_t *)g_malloc(width * height * 4);
+    uint8_t *converted_data =
+        scratch_reserve(&r->pvideo_scratch, (size_t)width * height * 4);
     int x, y;
     for (y = 0; y < height; y++) {
         const uint8_t *line = &data[y * pitch];
@@ -65,21 +67,21 @@ static float pvideo_calculate_scale(unsigned int din_dout,
 
 /* disp_lock held. The texture and the fence are shared objects: any
  * context of the share group may delete them. */
-static void disp_ref_free_locked(DispRef *ref)
+static void disp_ref_free_locked(PGRAPHGLState *r, DispRef *ref)
 {
     glDeleteTextures(1, &ref->tex);
     if (ref->presented) {
         glDeleteSync(ref->presented);
     }
-    g_free(ref);
+    obj_pool_give(&r->disp_ref_pool, ref);
 }
 
 /* disp_lock held. */
-static void disp_ref_put_locked(DispRef *ref)
+static void disp_ref_put_locked(PGRAPHGLState *r, DispRef *ref)
 {
     ref->refs--;
     if (ref->refs == 0 && ref->orphan) {
-        disp_ref_free_locked(ref); /* the surface is gone */
+        disp_ref_free_locked(r, ref); /* the surface is gone */
     }
 }
 
@@ -99,7 +101,7 @@ void pgraph_gl_display_surface_gone(NV2AState *d, SurfaceBinding *surface)
     surface->disp_ref = NULL;
     qemu_mutex_lock(&r->disp_lock);
     if (ref->refs == 0) {
-        disp_ref_free_locked(ref);
+        disp_ref_free_locked(r, ref);
     } else {
         ref->orphan = true; /* the last ticket deletes it */
     }
@@ -310,10 +312,10 @@ static void ui_pvideo_overlay(NV2AState *d, const DispPost *p,
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     uint8_t *tex_rgba = convert_texture_data__CR8YB8CB8YA8(
-        d->vram_ptr + base + offset, in_width, in_height, in_pitch);
+        d->pgraph.gl_renderer_state, d->vram_ptr + base + offset, in_width,
+        in_height, in_pitch);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, in_width, in_height, 0, GL_RGBA,
                  GL_UNSIGNED_BYTE, tex_rgba);
-    g_free(tex_rgba);
     glUniform1i(ui.pvideo_tex_loc, 1);
     glUniform2f(ui.pvideo_in_pos_loc, in_s / 16.f, in_t / 8.f);
     glUniform4f(ui.pvideo_pos_loc, out_x, out_y, out_width, out_height);
@@ -426,6 +428,9 @@ void pgraph_gl_init_display(NV2AState *d)
     r->disp_last_surface = NULL;
     r->disp_post_pending = false;
     r->disp_shown = false;
+    /* A ticket per surface the display ever saw, few at a time */
+    obj_pool_init(&r->disp_ref_pool, sizeof(DispRef), 64);
+    scratch_init(&r->pvideo_scratch, 720 * 576 * 4);
     qemu_mutex_init(&r->disp_lock);
     qemu_mutex_init(&r->disp_post_lock);
 }
@@ -438,7 +443,7 @@ static void disp_post_release(PGRAPHGLState *r, const DispPost *p)
     }
     if (p->ref) {
         qemu_mutex_lock(&r->disp_lock);
-        disp_ref_put_locked(p->ref);
+        disp_ref_put_locked(r, p->ref);
         qemu_mutex_unlock(&r->disp_lock);
     }
 }
@@ -467,6 +472,8 @@ void pgraph_gl_finalize_display(PGRAPHState *pg)
     }
     qemu_mutex_destroy(&r->disp_post_lock);
     qemu_mutex_destroy(&r->disp_lock);
+    obj_pool_finalize(&r->disp_ref_pool);
+    scratch_finalize(&r->pvideo_scratch);
 }
 
 /* Render thread, pgraph.lock held. Post the scanout to the UI thread
@@ -521,7 +528,7 @@ static bool post_scanout(NV2AState *d, bool *fresh)
     pgraph_gl_upload_surface_data(d, surface, !tcg_enabled());
 
     if (surface->disp_ref == NULL) {
-        surface->disp_ref = g_new0(DispRef, 1);
+        surface->disp_ref = obj_pool_take(&r->disp_ref_pool);
         surface->disp_ref->tex = surface->gl_buffer;
     }
 
@@ -671,7 +678,7 @@ int pgraph_gl_get_framebuffer_surface(NV2AState *d)
             glDeleteSync(p.ref->presented);
         }
         p.ref->presented = presented;
-        disp_ref_put_locked(p.ref);
+        disp_ref_put_locked(r, p.ref);
         qemu_mutex_unlock(&r->disp_lock);
         ui.cur = slot;
         ui.cur_draw_time = p.draw_time;

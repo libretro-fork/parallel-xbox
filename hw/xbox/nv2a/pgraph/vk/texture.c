@@ -1623,11 +1623,13 @@ static void set_texture_label(PGRAPHState *pg, TextureBinding *texture)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
 
-    g_autofree gchar *label = g_strdup_printf(
-        "Texture %" HWADDR_PRIx "h fmt:%02xh %dx%dx%d lvls:%d",
-        texture->key.texture_vram_offset, texture->key.state.color_format,
-        texture->key.state.width, texture->key.state.height,
-        texture->key.state.depth, texture->key.state.levels);
+    char label[96];
+    g_snprintf(label, sizeof(label),
+               "Texture %" HWADDR_PRIx "h fmt:%02xh %dx%dx%d lvls:%d",
+               texture->key.texture_vram_offset,
+               texture->key.state.color_format, texture->key.state.width,
+               texture->key.state.height, texture->key.state.depth,
+               texture->key.state.levels);
 
     VkDebugUtilsObjectNameInfoEXT name_info = {
         .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT,

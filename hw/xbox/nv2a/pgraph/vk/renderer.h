@@ -32,6 +32,7 @@
 #include "hw/xbox/nv2a/pgraph/surface.h"
 #include "hw/xbox/nv2a/pgraph/texture.h"
 #include "hw/xbox/nv2a/pgraph/glsl/shaders.h"
+#include "hw/xbox/nv2a/pgraph/pool.h"
 #include "hw/xbox/nv2a/pgraph/glsl/uniform-cache.h"
 
 #include <vulkan/vulkan.h>
@@ -706,6 +707,10 @@ typedef struct PGRAPHVkState {
 
     QTAILQ_HEAD(, SurfaceBinding) surfaces;
     QTAILQ_HEAD(, SurfaceBinding) invalid_surfaces;
+    /* The bindings themselves and the swizzled download's staging, kept:
+     * no allocation when a surface is met or written back (pool.h) */
+    ObjPool surface_pool;
+    Scratch swizzle_scratch;
     SurfaceBinding *color_binding, *zeta_binding;
     bool downloads_pending;
     QemuEvent downloads_complete;

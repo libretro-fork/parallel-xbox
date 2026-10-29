@@ -36,6 +36,7 @@
 #include "hw/xbox/nv2a/pgraph/surface.h"
 #include "hw/xbox/nv2a/pgraph/texture.h"
 #include "hw/xbox/nv2a/pgraph/glsl/shaders.h"
+#include "hw/xbox/nv2a/pgraph/pool.h"
 #include "hw/xbox/nv2a/pgraph/glsl/uniform-cache.h"
 
 #include "gloffscreen.h"
@@ -252,6 +253,14 @@ typedef struct QueryReport {
 
 typedef struct PGRAPHGLState {
     GLuint gl_framebuffer;
+    /* The surface bindings, the textures, the query reports and the
+     * display tickets' references come from pools, and the surface
+     * copies (swizzle, pitch, the surface-to-texture read, the video
+     * overlay's conversion) go through kept buffers: nothing allocates
+     * mid-game (pool.h). The report pool is shared with the pfifo thread
+     * under the reports' own ordering, the display one under disp_lock. */
+    ObjPool surface_pool, texture_pool, report_pool, disp_ref_pool;
+    Scratch surf_scratch, pitch_scratch, s2t_scratch, pvideo_scratch;
     /* Display-thread coordination for the scanout. The surface list is
      * owned by the render thread; walking it from the display thread
      * raced against insertions and evictions. have_surfaces is

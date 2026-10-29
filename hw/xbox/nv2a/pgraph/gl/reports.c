@@ -91,7 +91,7 @@ void pgraph_gl_process_pending_reports(NV2AState *d)
         }
         process_pending_report(d, report);
         QSIMPLEQ_REMOVE_HEAD(&r->report_queue, entry);
-        g_free(report);
+        obj_pool_give(&r->report_pool, report);
     }
     pg->reports_pending = false;
 }
@@ -125,7 +125,7 @@ void pgraph_gl_drain_pending_reports(NV2AState *d)
     QSIMPLEQ_FOREACH_SAFE(report, &r->report_queue, entry, next) {
         process_pending_report(d, report);
         QSIMPLEQ_REMOVE_HEAD(&r->report_queue, entry);
-        g_free(report);
+        obj_pool_give(&r->report_pool, report);
     }
     d->pgraph.reports_pending = false;
 }
@@ -148,7 +148,7 @@ void pgraph_gl_clear_report_value(NV2AState *d)
         r->gl_zpass_pixel_count_query_count = 0;
     }
 
-    QueryReport *report = g_malloc(sizeof(QueryReport));
+    QueryReport *report = obj_pool_take(&r->report_pool);
     report->clear = true;
     QSIMPLEQ_INSERT_TAIL(&r->report_queue, report, entry);
 }
@@ -159,6 +159,8 @@ void pgraph_gl_init_reports(NV2AState *d)
     PGRAPHGLState *r = pg->gl_renderer_state;
 
     QSIMPLEQ_INIT(&r->report_queue);
+    /* The reports of a frame's draws, well beyond what a game queues */
+    obj_pool_init(&r->report_pool, sizeof(QueryReport), 1024);
 }
 
 void pgraph_gl_get_report(NV2AState *d, uint32_t parameter)
@@ -171,7 +173,7 @@ void pgraph_gl_get_report(NV2AState *d, uint32_t parameter)
         r->gl_zpass_query_open = false;
     }
 
-    QueryReport *report = g_malloc(sizeof(QueryReport));
+    QueryReport *report = obj_pool_take(&r->report_pool);
     report->clear = false;
     report->parameter = parameter;
     report->query_count = r->gl_zpass_pixel_count_query_count;
@@ -197,7 +199,7 @@ void pgraph_gl_finalize_reports(PGRAPHState *pg)
             glDeleteQueries(report->query_count, report->queries);
         }
         QSIMPLEQ_REMOVE_HEAD(&r->report_queue, entry);
-        g_free(report);
+        obj_pool_give(&r->report_pool, report);
     }
 
     if (r->gl_zpass_query_open) {
@@ -209,4 +211,5 @@ void pgraph_gl_finalize_reports(PGRAPHState *pg)
                         r->gl_zpass_pixel_count_queries);
         r->gl_zpass_pixel_count_query_count = 0;
     }
+    obj_pool_finalize(&r->report_pool);
 }
