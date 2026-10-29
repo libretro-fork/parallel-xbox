@@ -379,9 +379,8 @@ static void nv2a_reset(NV2AState *d)
     /* seems to start in color mode */
     d->vga.msr = VGA_MIS_COLOR;
 
-    d->pgraph.waiting_for_nop = false;
     d->pgraph.waiting_for_flip = false;
-    d->pgraph.waiting_for_context_switch = false;
+    d->pgraph.guest_wrote_regs = false;
 
     d->pmc.pending_interrupts = 0;
     d->pfifo.pending_interrupts = 0;
@@ -667,9 +666,9 @@ static const VMStateDescription vmstate_nv2a = {
         VMSTATE_UINT16(puserdac.write_mode_address, NV2AState),
         VMSTATE_UINT8_ARRAY(puserdac.palette, NV2AState, 256*3),
         VMSTATE_BOOL(pgraph.waiting_for_flip, NV2AState),
-        VMSTATE_BOOL(pgraph.waiting_for_nop, NV2AState),
+        VMSTATE_UNUSED(1), /* was waiting_for_nop: now INTR's ERROR bit */
         VMSTATE_UNUSED(1),
-        VMSTATE_BOOL(pgraph.waiting_for_context_switch, NV2AState),
+        VMSTATE_UNUSED(1), /* was waiting_for_context_switch: INTR's bit */
         VMSTATE_UINT64_V(ptimer.alarm_time, NV2AState, 4),
         VMSTATE_UINT64_V(ptimer.time_offset, NV2AState, 4),
         VMSTATE_TIMER_V(ptimer.timer, NV2AState, 4),

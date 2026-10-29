@@ -45,20 +45,23 @@
 
 NV2AState *g_nv2a;
 
+/* The guest's PGRAPH registers, from the vCPU, with no lock: every
+ * register is one atomic word. The interrupt words are changed by both
+ * threads, each with an atomic bit operation; NV_PGRAPH_SURFACE's fields
+ * by both, each with a compare-and-swap (pgraph_reg_set_mask_atomic);
+ * the rest the pfifo thread reads at its next method, after the kick. */
 uint64_t pgraph_read(void *opaque, hwaddr addr, unsigned int size)
 {
     NV2AState *d = (NV2AState *)opaque;
     PGRAPHState *pg = &d->pgraph;
 
-    xemu_tbrate_lock(&pg->lock);
-
     uint64_t r = 0;
     switch (addr) {
     case NV_PGRAPH_INTR:
-        r = pg->pending_interrupts;
+        r = qatomic_read(&pg->pending_interrupts);
         break;
     case NV_PGRAPH_INTR_EN:
-        r = pg->enabled_interrupts;
+        r = qatomic_read(&pg->enabled_interrupts);
         break;
     case NV_PGRAPH_RDI_DATA: {
         unsigned int select = PG_GET_MASK(NV_PGRAPH_RDI_INDEX,
@@ -71,16 +74,14 @@ uint64_t pgraph_read(void *opaque, hwaddr addr, unsigned int size)
         /* FIXME: Overflow into select? */
         assert(address < GET_MASK(NV_PGRAPH_RDI_INDEX_ADDRESS,
                                   NV_PGRAPH_RDI_INDEX_ADDRESS));
-        PG_SET_MASK(NV_PGRAPH_RDI_INDEX,
-                 NV_PGRAPH_RDI_INDEX_ADDRESS, address + 1);
+        pgraph_reg_set_mask_atomic(pg, NV_PGRAPH_RDI_INDEX,
+                                   NV_PGRAPH_RDI_INDEX_ADDRESS, address + 1);
         break;
     }
     default:
         r = pgraph_reg_r(pg, addr);
         break;
     }
-
-    qemu_mutex_unlock(&pg->lock);
 
     nv2a_reg_log_read(NV_PGRAPH, addr, size, r);
     return r;
@@ -93,32 +94,24 @@ void pgraph_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
 
     nv2a_reg_log_write(NV_PGRAPH, addr, size, val);
 
-    pfifo_guest_lock(d); // FIXME: Factor out fifo lock here
-    xemu_tbrate_lock(&pg->lock);
-
     switch (addr) {
     case NV_PGRAPH_INTR:
-        pg->pending_interrupts &= ~val;
-
-        if (!(pg->pending_interrupts & NV_PGRAPH_INTR_ERROR)) {
-            pg->waiting_for_nop = false;
-        }
-        if (!(pg->pending_interrupts & NV_PGRAPH_INTR_CONTEXT_SWITCH)) {
-            pg->waiting_for_context_switch = false;
-        }
+        /* The ack of ERROR or CONTEXT_SWITCH is what the pfifo thread
+         * waits for (pgraph_pending_bit): the kick has it look */
+        qatomic_and(&pg->pending_interrupts, ~(uint32_t)val);
         pfifo_kick(d);
         break;
     case NV_PGRAPH_INTR_EN:
-        pg->enabled_interrupts = val;
+        qatomic_set(&pg->enabled_interrupts, (uint32_t)val);
         break;
     case NV_PGRAPH_INCREMENT:
         if (val & NV_PGRAPH_INCREMENT_READ_3D) {
-            PG_SET_MASK(NV_PGRAPH_SURFACE,
-                     NV_PGRAPH_SURFACE_READ_3D,
-                     (PG_GET_MASK(NV_PGRAPH_SURFACE,
-                              NV_PGRAPH_SURFACE_READ_3D)+1)
-                        % PG_GET_MASK(NV_PGRAPH_SURFACE,
-                                   NV_PGRAPH_SURFACE_MODULO_3D) );
+            uint32_t modulo =
+                PG_GET_MASK(NV_PGRAPH_SURFACE, NV_PGRAPH_SURFACE_MODULO_3D);
+            pgraph_reg_set_mask_atomic(
+                pg, NV_PGRAPH_SURFACE, NV_PGRAPH_SURFACE_READ_3D,
+                (PG_GET_MASK(NV_PGRAPH_SURFACE, NV_PGRAPH_SURFACE_READ_3D) +
+                 1) % modulo);
             nv2a_profile_increment();
             pfifo_kick(d);
         }
@@ -134,8 +127,8 @@ void pgraph_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
         /* FIXME: Overflow into select? */
         assert(address < GET_MASK(NV_PGRAPH_RDI_INDEX_ADDRESS,
                                   NV_PGRAPH_RDI_INDEX_ADDRESS));
-        PG_SET_MASK(NV_PGRAPH_RDI_INDEX,
-                 NV_PGRAPH_RDI_INDEX_ADDRESS, address + 1);
+        pgraph_reg_set_mask_atomic(pg, NV_PGRAPH_RDI_INDEX,
+                                   NV_PGRAPH_RDI_INDEX_ADDRESS, address + 1);
         break;
     }
     case NV_PGRAPH_CHANNEL_CTX_TRIGGER: {
@@ -158,8 +151,7 @@ void pgraph_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
 
             NV2A_DPRINTF("    - CTX_USER = 0x%x\n", context_user);
 
-            pgraph_reg_w(pg, NV_PGRAPH_CTX_USER, context_user);
-            // pgraph_set_context_user(d, context_user);
+            pgraph_reg_w_guest(pg, NV_PGRAPH_CTX_USER, context_user);
         }
         if (val & NV_PGRAPH_CHANNEL_CTX_TRIGGER_WRITE_OUT) {
             /* do stuff ... */
@@ -168,10 +160,10 @@ void pgraph_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
         break;
     }
     default:
-        pgraph_reg_w(pg, addr, val);
         /* The driver restores a channel's context through these writes:
-         * the switch registers are loaded again at the next method. */
-        pg->ctx_switch_subchannel = -1;
+         * the pfifo thread loads the switch registers again at its next
+         * method (guest_wrote_regs). */
+        pgraph_reg_w_guest(pg, addr, val);
         break;
     }
 
@@ -181,9 +173,6 @@ void pgraph_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
         pfifo_kick(d);
         break;
     }
-
-    qemu_mutex_unlock(&pg->lock);
-    qemu_mutex_unlock(&d->pfifo.lock);
 }
 
 static void pgraph_update_irq_bh(void *opaque)
@@ -220,8 +209,7 @@ void pgraph_context_switch(NV2AState *d, unsigned int channel_id)
         assert(!PG_GET_MASK(NV_PGRAPH_DEBUG_3,
                             NV_PGRAPH_DEBUG_3_HW_CONTEXT_SWITCH));
 
-        pg->waiting_for_context_switch = true;
-        pg->pending_interrupts |= NV_PGRAPH_INTR_CONTEXT_SWITCH;
+        qatomic_or(&pg->pending_interrupts, NV_PGRAPH_INTR_CONTEXT_SWITCH);
         pg->ctx_switch_subchannel = -1;
         pgraph_schedule_irq_update(d);
     }
@@ -885,6 +873,15 @@ int pgraph_method(NV2AState *d, unsigned int subchannel,
         pgraph_reg_w(pg, NV_PGRAPH_CTX_CACHE5 + subchannel * 4, ctx_5);
     }
 
+    /* The guest wrote registers (a context restore, pgraph_write): the
+     * switch registers are loaded again and every register counts as
+     * changed, the dirty map being this thread's alone */
+    if (qatomic_load_acquire(&pg->guest_wrote_regs)) {
+        qatomic_set(&pg->guest_wrote_regs, false);
+        pg->ctx_switch_subchannel = -1;
+        bitmap_fill(pg->regs_dirty, 0x2000 / sizeof(uint32_t));
+    }
+
     // is this right?
     /* Refresh the switch registers only for a new subchannel or object (or
      * after a reset to -1): this runs for every method word. */
@@ -1072,7 +1069,7 @@ DEF_METHOD(NV097, NO_OPERATION)
     unsigned channel_id =
         PG_GET_MASK(NV_PGRAPH_CTX_USER, NV_PGRAPH_CTX_USER_CHID);
 
-    assert(!(pg->pending_interrupts & NV_PGRAPH_INTR_ERROR));
+    assert(!pgraph_pending_bit(pg, NV_PGRAPH_INTR_ERROR));
 
     PG_SET_MASK(NV_PGRAPH_TRAPPED_ADDR, NV_PGRAPH_TRAPPED_ADDR_CHID,
              channel_id);
@@ -1083,8 +1080,7 @@ DEF_METHOD(NV097, NO_OPERATION)
     pgraph_reg_w(pg, NV_PGRAPH_TRAPPED_DATA_LOW, parameter);
     pgraph_reg_w(pg, NV_PGRAPH_NSOURCE,
                  NV_PGRAPH_NSOURCE_NOTIFICATION); /* TODO: check this */
-    pg->pending_interrupts |= NV_PGRAPH_INTR_ERROR;
-    pg->waiting_for_nop = true;
+    qatomic_or(&pg->pending_interrupts, NV_PGRAPH_INTR_ERROR);
 
     pgraph_schedule_irq_update(d);
 }
@@ -1095,41 +1091,37 @@ DEF_METHOD(NV097, WAIT_FOR_IDLE)
      * visibility rests on the memory access callbacks alone. */
 }
 
+/* NV_PGRAPH_SURFACE's fields: the guest increments READ_3D through
+ * NV_PGRAPH_INCREMENT on the vCPU meanwhile, so these are
+ * compare-and-swaps (pgraph_reg_set_mask_atomic) */
 DEF_METHOD(NV097, SET_FLIP_READ)
 {
-    PG_SET_MASK(NV_PGRAPH_SURFACE, NV_PGRAPH_SURFACE_READ_3D,
-             parameter);
+    pgraph_reg_set_mask_atomic(pg, NV_PGRAPH_SURFACE,
+                               NV_PGRAPH_SURFACE_READ_3D, parameter);
 }
 
 DEF_METHOD(NV097, SET_FLIP_WRITE)
 {
-    PG_SET_MASK(NV_PGRAPH_SURFACE, NV_PGRAPH_SURFACE_WRITE_3D,
-             parameter);
+    pgraph_reg_set_mask_atomic(pg, NV_PGRAPH_SURFACE,
+                               NV_PGRAPH_SURFACE_WRITE_3D, parameter);
 }
 
 DEF_METHOD(NV097, SET_FLIP_MODULO)
 {
-    PG_SET_MASK(NV_PGRAPH_SURFACE, NV_PGRAPH_SURFACE_MODULO_3D,
-             parameter);
+    pgraph_reg_set_mask_atomic(pg, NV_PGRAPH_SURFACE,
+                               NV_PGRAPH_SURFACE_MODULO_3D, parameter);
 }
 
 DEF_METHOD(NV097, FLIP_INCREMENT_WRITE)
 {
-    static int flip_inc_logged = 0;
-    if (!flip_inc_logged) {
-        fprintf(stderr, "PGRAPH: FLIP_INCREMENT_WRITE triggered\n");
-        flip_inc_logged = 1;
-    }
     xemu_flip_inc_count++;
     uint32_t old =
         PG_GET_MASK(NV_PGRAPH_SURFACE, NV_PGRAPH_SURFACE_WRITE_3D);
 
-    PG_SET_MASK(NV_PGRAPH_SURFACE,
-             NV_PGRAPH_SURFACE_WRITE_3D,
-             (PG_GET_MASK(NV_PGRAPH_SURFACE,
-                      NV_PGRAPH_SURFACE_WRITE_3D)+1)
-                % PG_GET_MASK(NV_PGRAPH_SURFACE,
-                           NV_PGRAPH_SURFACE_MODULO_3D) );
+    pgraph_reg_set_mask_atomic(
+        pg, NV_PGRAPH_SURFACE, NV_PGRAPH_SURFACE_WRITE_3D,
+        (old + 1) % PG_GET_MASK(NV_PGRAPH_SURFACE,
+                                NV_PGRAPH_SURFACE_MODULO_3D));
 
     uint32_t new =
         PG_GET_MASK(NV_PGRAPH_SURFACE, NV_PGRAPH_SURFACE_WRITE_3D);

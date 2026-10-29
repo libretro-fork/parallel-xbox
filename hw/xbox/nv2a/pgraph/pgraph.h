@@ -314,12 +314,14 @@ typedef struct PGRAPHState {
     uint32_t shader_reg_snap[9];
 
     bool clearing; // FIXME: Internal
-    bool waiting_for_nop;
     bool waiting_for_flip;
     /* A queued GET_REPORT awaits its GPU result: the pfifo idle wait is
      * bounded, so the report lands without waiting for a guest push. */
     bool reports_pending;
-    bool waiting_for_context_switch;
+    /* The guest wrote registers through pgraph_write (a context restore):
+     * the next method reloads the switch registers and takes every
+     * register as changed. Set by the vCPU, taken by the pfifo thread. */
+    bool guest_wrote_regs;
 
     bool flush_pending;
     QemuEvent flush_complete;
@@ -399,7 +401,44 @@ static inline void pgraph_set_surface_binding_dim(PGRAPHState *pg,
 static inline uint32_t pgraph_reg_r(PGRAPHState *pg, unsigned int r)
 {
     assert(r % 4 == 0);
-    return pg->regs_[r];
+    return qatomic_read(&pg->regs_[r]);
+}
+
+/* An interrupt the pfifo thread raised and waits on the guest to ack:
+ * ERROR (a method the guest must NOP past), CONTEXT_SWITCH */
+static inline bool pgraph_pending_bit(PGRAPHState *pg, uint32_t bit)
+{
+    return qatomic_read(&pg->pending_interrupts) & bit;
+}
+
+/* A field of a register both the vCPU and the pfifo thread change
+ * (NV_PGRAPH_SURFACE: the guest's READ_3D against the flip's WRITE_3D):
+ * a compare-and-swap, so neither side's update is lost */
+static inline void pgraph_reg_set_mask_atomic(PGRAPHState *pg, unsigned int r,
+                                              uint32_t mask, uint32_t v)
+{
+    assert(r % 4 == 0);
+    uint32_t old = qatomic_read(&pg->regs_[r]);
+    for (;;) {
+        uint32_t new = old;
+        SET_MASK(new, mask, v);
+        uint32_t seen = qatomic_cmpxchg(&pg->regs_[r], old, new);
+        if (seen == old) {
+            break;
+        }
+        old = seen;
+    }
+}
+
+/* The register as written by the guest through pgraph_write, from the
+ * vCPU: the word is stored on its own (the dirty map is the pfifo
+ * thread's; guest_wrote_regs has it take every register as changed) */
+static inline void pgraph_reg_w_guest(PGRAPHState *pg, unsigned int r,
+                                      uint32_t v)
+{
+    assert(r % 4 == 0);
+    qatomic_set(&pg->regs_[r], v);
+    qatomic_store_release(&pg->guest_wrote_regs, true);
 }
 
 static inline void pgraph_reg_w(PGRAPHState *pg, unsigned int r, uint32_t v)
@@ -408,7 +447,7 @@ static inline void pgraph_reg_w(PGRAPHState *pg, unsigned int r, uint32_t v)
     if (pg->regs_[r] != v) {
         bitmap_set(pg->regs_dirty, r / sizeof(uint32_t), 1);
     }
-    pg->regs_[r] = v;
+    qatomic_set(&pg->regs_[r], v);
 }
 
 void pgraph_glsl_snapshot_shader_regs(PGRAPHState *pg);

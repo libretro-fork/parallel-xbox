@@ -34,11 +34,12 @@ static uint32_t ramht_hash(NV2AState *d, uint32_t handle);
 static RAMHTEntry ramht_lookup(NV2AState *d, uint32_t handle);
 
 /* PFIFO - MMIO and DMA FIFO submission to PGRAPH and VPE */
+/* The guest's PFIFO registers, from the vCPU, with no lock: the interrupt
+ * words are the vCPU's alone, the rest single words the pfifo thread
+ * reads at its next method (after the kick a write gives) */
 uint64_t pfifo_read(void *opaque, hwaddr addr, unsigned int size)
 {
     NV2AState *d = (NV2AState *)opaque;
-
-    pfifo_guest_lock(d);
 
     uint64_t r = 0;
     switch (addr) {
@@ -52,11 +53,9 @@ uint64_t pfifo_read(void *opaque, hwaddr addr, unsigned int size)
         r = NV_PFIFO_RUNOUT_STATUS_LOW_MARK; /* low mark empty */
         break;
     default:
-        r = d->pfifo.regs[addr];
+        r = qatomic_read(&d->pfifo.regs[addr]);
         break;
     }
-
-    qemu_mutex_unlock(&d->pfifo.lock);
 
     nv2a_reg_log_read(NV_PFIFO, addr, size, r);
     return r;
@@ -68,8 +67,6 @@ void pfifo_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
 
     nv2a_reg_log_write(NV_PFIFO, addr, size, val);
 
-    pfifo_guest_lock(d);
-
     switch (addr) {
     case NV_PFIFO_INTR_0:
         d->pfifo.pending_interrupts &= ~val;
@@ -80,13 +77,11 @@ void pfifo_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
         nv2a_update_irq(d);
         break;
     default:
-        d->pfifo.regs[addr] = val;
+        qatomic_set(&d->pfifo.regs[addr], (uint32_t)val);
         break;
     }
 
     pfifo_kick(d);
-
-    qemu_mutex_unlock(&d->pfifo.lock);
 }
 
 /* From any thread, no lock: the flag, then the thread's eventcount. */
@@ -152,8 +147,8 @@ static bool pfifo_stall_for_flip(NV2AState *d)
 static bool pfifo_puller_should_stall(NV2AState *d)
 {
     return pfifo_stall_for_flip(d) ||
-           qatomic_read(&d->pgraph.waiting_for_nop) ||
-           qatomic_read(&d->pgraph.waiting_for_context_switch) ||
+           pgraph_pending_bit(&d->pgraph, NV_PGRAPH_INTR_ERROR) ||
+           pgraph_pending_bit(&d->pgraph, NV_PGRAPH_INTR_CONTEXT_SWITCH) ||
            !can_fifo_access(d);
 }
 
@@ -247,7 +242,8 @@ static ssize_t pfifo_run_puller(NV2AState *d, uint32_t method_entry,
         // Switch contexts if necessary
         if (can_fifo_access(d)) {
             pgraph_context_switch(d, entry.channel_id);
-            if (!d->pgraph.waiting_for_context_switch) {
+            if (!pgraph_pending_bit(&d->pgraph,
+                                    NV_PGRAPH_INTR_CONTEXT_SWITCH)) {
                 num_proc =
                     pgraph_method(d, subchannel, 0, entry.instance, parameters,
                                   num_words_available, max_lookahead_words, inc);
@@ -302,7 +298,7 @@ void pfifo_guest_lock(NV2AState *d)
 static bool pfifo_pusher_should_stall(NV2AState *d)
 {
     return !can_fifo_access(d) ||
-           qatomic_read(&d->pgraph.waiting_for_nop);
+           pgraph_pending_bit(&d->pgraph, NV_PGRAPH_INTR_ERROR);
 }
 
 static void pfifo_run_pusher(NV2AState *d)
