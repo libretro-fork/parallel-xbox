@@ -1,5 +1,11 @@
 # The core's tests
 
+`python libretro/tests/test-dma-map.py . gcc` compiles the production direct
+DMA mapping function against bounded RAM and a pending GPU writeback. It
+checks callback ordering for reads/writes, preservation of newly written
+DMA data, translated and shortened mapping ranges, failed/empty maps and
+the separate bounce path. GCC's undefined-behavior traps are enabled.
+
 `python libretro/tests/test-voice-tail.py . gcc` runs the decoder-to-mix
 regression without booting a complete core. It compiles the checkout's
 actual PCM/ADPCM decoder, resampler, envelope/filter/routing functions and

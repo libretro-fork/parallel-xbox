@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Memory: direct DMA mappings honor GPU surface access callbacks before lending RAM. Pending GPU writes are settled before DMA reads or overwrites the range, preventing a later readback from replacing newer DMA data while keeping the direct transfer path.
+
 - Audio: steady-pitch voices reuse their quantized source step instead of recalculating an exponential every MCPX frame. Pitch ramps, resets and multipass transitions invalidate the cached step.
 
 - Audio: ADPCM voices decode directly from guest RAM for stream blocks and buffered blocks inside one SGE page. Only blocks split across SGE pages use a gather buffer, reducing copies and address translations without retaining guest pointers.

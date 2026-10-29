@@ -3922,7 +3922,18 @@ void *address_space_map(AddressSpace *as,
     *plen = flatview_extend_translation(fv, addr, len, mr, xlat,
                                         l, is_write, attrs);
     fuzz_dma_read_cb(addr, *plen, mr);
-    return qemu_ram_ptr_length(mr->ram_block, xlat, plen, true, is_write);
+    void *ptr = qemu_ram_ptr_length(mr->ram_block, xlat, plen, true, is_write);
+#ifdef XBOX
+    /* Direct DMA must observe the same GPU/CPU ownership transitions as
+     * flatview_read/write before the caller accesses the borrowed RAM.
+     * Unmap's dirty tracking is too late to settle an old GPU writeback. */
+    if (ptr) {
+        mem_check_access_callback_ramaddr(
+            qemu_get_cpu(0), memory_region_get_ram_addr(mr) + xlat, *plen,
+            is_write ? BP_MEM_WRITE : BP_MEM_READ);
+    }
+#endif
+    return ptr;
 }
 
 /* Unmaps a memory region previously mapped by address_space_map().
