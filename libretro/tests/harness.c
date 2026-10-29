@@ -1,7 +1,11 @@
 /* Headless libretro frontend for measuring the core: GL core context on a
  * surfaceless EGL display (Mesa) - on Windows a WGL context on a hidden
  * window, which Wine runs on the host's GL - one FBO, unthrottled
- * retro_run.
+ * retro_run. Or, with --vulkan, a Vulkan context as RetroArch gives one: the
+ * device made by the core's negotiation interface, the frame an image the
+ * core hands over with set_image, read back through a command buffer per
+ * sync index (three of them, as a swapchain's) on the shared queue, under
+ * the queue lock.
  *
  * Per run it records the audio frames handed over and whether a new video
  * frame came; at the end it prints the cadence, the speed and hashes of the
@@ -10,6 +14,8 @@
  *
  *   harness <core.so> <system dir> [content] [options]
  *     --frames N        runs to do (default 600)
+ *     --vulkan          a Vulkan context instead of GL (libvulkan loaded at
+ *                       run time; exit 3 when there is no Vulkan device)
  *     --wav FILE        write the audio
  *     --hash-video      read back every frame and hash it
  *     --opt key=value   a core option
@@ -53,6 +59,8 @@
 #include <string.h>
 #ifdef _WIN32
 #include <windows.h>
+#include <fcntl.h>
+#include <io.h>
 #else
 #include <dlfcn.h>
 #include <time.h>
@@ -62,8 +70,17 @@
 #endif
 #include <GL/gl.h>
 #include <GL/glext.h>
+#ifdef _WIN32
+#define VK_USE_PLATFORM_WIN32_KHR
+#endif
+#define VK_NO_PROTOTYPES
+#include <vulkan/vulkan.h>
+#ifndef _WIN32
+#include <pthread.h>
+#endif
 
 #include "../../ui/libretro.h"
+#include "../../ui/libretro_vulkan.h"
 
 #define MAX_OPTS 64
 #define MAX_EVENTS 64
@@ -89,6 +106,7 @@ static EGLContext ctx;
 static GLuint fbo, fbo_color, fbo_depth;
 static struct retro_hw_render_callback hw;
 static int have_hw;
+static int use_vulkan;
 static retro_keyboard_event_t kb_cb;
 
 static int run_no;
@@ -192,6 +210,444 @@ static bool set_rumble(unsigned port, enum retro_rumble_effect e, uint16_t s)
    return 1;
 }
 
+
+/* ---- Vulkan, as RetroArch's vulkan driver gives it to a core ---- */
+
+#define VK_SYNC_INDICES 3
+#define VK_READBACK_BYTES (1920 * 1080 * 4)
+
+static void *vk_lib;
+static PFN_vkGetInstanceProcAddr p_vkGetInstanceProcAddr;
+static VkInstance vk_instance;
+static VkPhysicalDevice vk_gpu;
+static VkDevice vk_device;
+static VkQueue vk_queue;
+static uint32_t vk_queue_family;
+static const struct retro_hw_render_context_negotiation_interface_vulkan *vk_nego;
+static struct retro_hw_render_interface_vulkan vk_iface;
+static VkCommandPool vk_pool;
+static VkCommandBuffer vk_cmd[VK_SYNC_INDICES];
+static VkFence vk_fence[VK_SYNC_INDICES];
+static int vk_fence_pending[VK_SYNC_INDICES];
+static VkBuffer vk_readback[VK_SYNC_INDICES];
+static VkDeviceMemory vk_readback_mem[VK_SYNC_INDICES];
+static unsigned char *vk_readback_ptr[VK_SYNC_INDICES];
+static unsigned vk_sync_index;
+static const struct retro_vulkan_image *vk_image;
+static VkSemaphore vk_wait_sems[8];
+static unsigned vk_num_wait_sems;
+static VkSemaphore vk_signal_sem;
+#ifdef _WIN32
+static CRITICAL_SECTION vk_queue_lock;
+#else
+static pthread_mutex_t vk_queue_lock = PTHREAD_MUTEX_INITIALIZER;
+#endif
+
+#define VKFN(n) static PFN_##n p_##n
+VKFN(vkCreateInstance);
+VKFN(vkEnumeratePhysicalDevices);
+VKFN(vkGetDeviceProcAddr);
+VKFN(vkGetPhysicalDeviceMemoryProperties);
+VKFN(vkGetPhysicalDeviceQueueFamilyProperties);
+VKFN(vkDestroyInstance);
+VKFN(vkCreateDevice);
+VKFN(vkDestroyDevice);
+VKFN(vkGetDeviceQueue);
+VKFN(vkCreateCommandPool);
+VKFN(vkDestroyCommandPool);
+VKFN(vkAllocateCommandBuffers);
+VKFN(vkBeginCommandBuffer);
+VKFN(vkEndCommandBuffer);
+VKFN(vkCmdPipelineBarrier);
+VKFN(vkCmdCopyImageToBuffer);
+VKFN(vkQueueSubmit);
+VKFN(vkCreateFence);
+VKFN(vkDestroyFence);
+VKFN(vkWaitForFences);
+VKFN(vkResetFences);
+VKFN(vkCreateBuffer);
+VKFN(vkDestroyBuffer);
+VKFN(vkGetBufferMemoryRequirements);
+VKFN(vkAllocateMemory);
+VKFN(vkFreeMemory);
+VKFN(vkBindBufferMemory);
+VKFN(vkMapMemory);
+VKFN(vkDeviceWaitIdle);
+#undef VKFN
+
+static void vk_lock(void *handle)
+{
+   (void)handle;
+#ifdef _WIN32
+   EnterCriticalSection(&vk_queue_lock);
+#else
+   pthread_mutex_lock(&vk_queue_lock);
+#endif
+}
+
+static void vk_unlock(void *handle)
+{
+   (void)handle;
+#ifdef _WIN32
+   LeaveCriticalSection(&vk_queue_lock);
+#else
+   pthread_mutex_unlock(&vk_queue_lock);
+#endif
+}
+
+static void vk_set_image(void *handle, const struct retro_vulkan_image *image,
+      uint32_t num_semaphores, const VkSemaphore *semaphores,
+      uint32_t src_queue_family)
+{
+   unsigned i;
+   (void)handle;
+   (void)src_queue_family;
+   vk_image = image;
+   vk_num_wait_sems = num_semaphores > 8 ? 8 : num_semaphores;
+   for (i = 0; i < vk_num_wait_sems; i++)
+      vk_wait_sems[i] = semaphores[i];
+}
+
+static uint32_t vk_get_sync_index(void *handle)
+{
+   (void)handle;
+   return vk_sync_index;
+}
+
+static uint32_t vk_get_sync_index_mask(void *handle)
+{
+   (void)handle;
+   return (1u << VK_SYNC_INDICES) - 1;
+}
+
+static void vk_set_command_buffers(void *handle, uint32_t num_cmd,
+      const VkCommandBuffer *cmd)
+{
+   (void)handle;
+   (void)cmd;
+   if (num_cmd)
+      fprintf(stderr, "harness: set_command_buffers is not supported\n");
+}
+
+static void vk_wait_fence(unsigned i)
+{
+   if (vk_fence_pending[i])
+   {
+      p_vkWaitForFences(vk_device, 1, &vk_fence[i], VK_TRUE, UINT64_MAX);
+      p_vkResetFences(vk_device, 1, &vk_fence[i]);
+      vk_fence_pending[i] = 0;
+   }
+}
+
+static void vk_wait_sync_index(void *handle)
+{
+   (void)handle;
+   vk_wait_fence(vk_sync_index);
+}
+
+static void vk_set_signal_semaphore(void *handle, VkSemaphore semaphore)
+{
+   (void)handle;
+   vk_signal_sem = semaphore;
+}
+
+static uint32_t vk_memory_type(uint32_t bits, VkMemoryPropertyFlags want)
+{
+   VkPhysicalDeviceMemoryProperties mp;
+   uint32_t i;
+   p_vkGetPhysicalDeviceMemoryProperties(vk_gpu, &mp);
+   for (i = 0; i < mp.memoryTypeCount; i++)
+      if ((bits & (1u << i)) &&
+          (mp.memoryTypes[i].propertyFlags & want) == want)
+         return i;
+   return 0;
+}
+
+/* The instance, the GPU and - through the core's negotiation interface, as
+ * RetroArch does it - the device. 0 when there is no Vulkan at all. */
+static int vk_setup(void)
+{
+   VkApplicationInfo app_default;
+   const VkApplicationInfo *app;
+   VkInstanceCreateInfo ici;
+   uint32_t ngpu = 1;
+   struct retro_vulkan_context context;
+   unsigned i;
+
+#ifdef _WIN32
+   vk_lib = (void *)LoadLibraryA("vulkan-1.dll");
+   if (vk_lib)
+      p_vkGetInstanceProcAddr = (PFN_vkGetInstanceProcAddr)
+         GetProcAddress((HMODULE)vk_lib, "vkGetInstanceProcAddr");
+   InitializeCriticalSection(&vk_queue_lock);
+#else
+   vk_lib = dlopen("libvulkan.so.1", RTLD_NOW | RTLD_LOCAL);
+   if (vk_lib)
+      p_vkGetInstanceProcAddr = (PFN_vkGetInstanceProcAddr)
+         dlsym(vk_lib, "vkGetInstanceProcAddr");
+#endif
+   if (!p_vkGetInstanceProcAddr)
+      return 0;
+#define IFN(n) p_##n = (PFN_##n)p_vkGetInstanceProcAddr(vk_instance, #n)
+   IFN(vkCreateInstance);
+   memset(&app_default, 0, sizeof(app_default));
+   app_default.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
+   app_default.pApplicationName = "harness";
+   app_default.apiVersion = VK_API_VERSION_1_1;
+   app = vk_nego && vk_nego->get_application_info ?
+         vk_nego->get_application_info() : NULL;
+   if (!app)
+      app = &app_default;
+   memset(&ici, 0, sizeof(ici));
+   ici.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
+   ici.pApplicationInfo = app;
+   if (p_vkCreateInstance(&ici, NULL, &vk_instance) != VK_SUCCESS)
+      return 0;
+   IFN(vkEnumeratePhysicalDevices);
+   IFN(vkGetDeviceProcAddr);
+   IFN(vkGetPhysicalDeviceMemoryProperties);
+   IFN(vkGetPhysicalDeviceQueueFamilyProperties);
+   IFN(vkDestroyInstance);
+   IFN(vkCreateDevice);
+#undef IFN
+   if (p_vkEnumeratePhysicalDevices(vk_instance, &ngpu, &vk_gpu) < 0 || !ngpu)
+      return 0;
+
+   memset(&context, 0, sizeof(context));
+   if (vk_nego && vk_nego->create_device)
+   {
+      if (!vk_nego->create_device(&context, vk_instance, vk_gpu,
+               VK_NULL_HANDLE, p_vkGetInstanceProcAddr, NULL, 0, NULL, 0,
+               NULL))
+      {
+         fprintf(stderr, "harness: the core's create_device failed\n");
+         return 0;
+      }
+   }
+   else
+   {
+      /* a device of the harness's own: the first graphics family */
+      VkDeviceQueueCreateInfo qci;
+      VkDeviceCreateInfo dci;
+      VkQueueFamilyProperties qf[16];
+      uint32_t nqf = 16, f;
+      static const float prio = 1.0f;
+      p_vkGetPhysicalDeviceQueueFamilyProperties(vk_gpu, &nqf, qf);
+      for (f = 0; f < nqf && !(qf[f].queueFlags & VK_QUEUE_GRAPHICS_BIT); f++)
+         ;
+      memset(&qci, 0, sizeof(qci));
+      qci.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+      qci.queueFamilyIndex = f;
+      qci.queueCount = 1;
+      qci.pQueuePriorities = &prio;
+      memset(&dci, 0, sizeof(dci));
+      dci.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
+      dci.queueCreateInfoCount = 1;
+      dci.pQueueCreateInfos = &qci;
+      if (p_vkCreateDevice(vk_gpu, &dci, NULL, &context.device) != VK_SUCCESS)
+         return 0;
+      context.gpu = vk_gpu;
+      context.queue_family_index = f;
+      p_vkGetDeviceQueue = (PFN_vkGetDeviceQueue)
+         p_vkGetDeviceProcAddr(context.device, "vkGetDeviceQueue");
+      p_vkGetDeviceQueue(context.device, f, 0, &context.queue);
+   }
+   vk_device = context.device;
+   vk_queue = context.queue;
+   vk_queue_family = context.queue_family_index;
+#define DFN(n) p_##n = (PFN_##n)p_vkGetDeviceProcAddr(vk_device, #n)
+   DFN(vkDestroyDevice);
+   DFN(vkCreateCommandPool);
+   DFN(vkDestroyCommandPool);
+   DFN(vkAllocateCommandBuffers);
+   DFN(vkBeginCommandBuffer);
+   DFN(vkEndCommandBuffer);
+   DFN(vkCmdPipelineBarrier);
+   DFN(vkCmdCopyImageToBuffer);
+   DFN(vkQueueSubmit);
+   DFN(vkCreateFence);
+   DFN(vkDestroyFence);
+   DFN(vkWaitForFences);
+   DFN(vkResetFences);
+   DFN(vkCreateBuffer);
+   DFN(vkDestroyBuffer);
+   DFN(vkGetBufferMemoryRequirements);
+   DFN(vkAllocateMemory);
+   DFN(vkFreeMemory);
+   DFN(vkBindBufferMemory);
+   DFN(vkMapMemory);
+   DFN(vkDeviceWaitIdle);
+#undef DFN
+
+   {
+      VkCommandPoolCreateInfo pci;
+      VkCommandBufferAllocateInfo cai;
+      VkFenceCreateInfo fci;
+      memset(&pci, 0, sizeof(pci));
+      pci.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+      pci.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+      pci.queueFamilyIndex = vk_queue_family;
+      p_vkCreateCommandPool(vk_device, &pci, NULL, &vk_pool);
+      memset(&cai, 0, sizeof(cai));
+      cai.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+      cai.commandPool = vk_pool;
+      cai.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+      cai.commandBufferCount = VK_SYNC_INDICES;
+      p_vkAllocateCommandBuffers(vk_device, &cai, vk_cmd);
+      memset(&fci, 0, sizeof(fci));
+      fci.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+      for (i = 0; i < VK_SYNC_INDICES; i++)
+      {
+         VkBufferCreateInfo bci;
+         VkMemoryRequirements req;
+         VkMemoryAllocateInfo mai;
+         p_vkCreateFence(vk_device, &fci, NULL, &vk_fence[i]);
+         memset(&bci, 0, sizeof(bci));
+         bci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+         bci.size = VK_READBACK_BYTES;
+         bci.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+         p_vkCreateBuffer(vk_device, &bci, NULL, &vk_readback[i]);
+         p_vkGetBufferMemoryRequirements(vk_device, vk_readback[i], &req);
+         memset(&mai, 0, sizeof(mai));
+         mai.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+         mai.allocationSize = req.size;
+         mai.memoryTypeIndex = vk_memory_type(req.memoryTypeBits,
+               VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+               VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+         p_vkAllocateMemory(vk_device, &mai, NULL, &vk_readback_mem[i]);
+         p_vkBindBufferMemory(vk_device, vk_readback[i], vk_readback_mem[i], 0);
+         p_vkMapMemory(vk_device, vk_readback_mem[i], 0, VK_WHOLE_SIZE, 0,
+               (void **)&vk_readback_ptr[i]);
+      }
+   }
+
+   memset(&vk_iface, 0, sizeof(vk_iface));
+   vk_iface.interface_type = RETRO_HW_RENDER_INTERFACE_VULKAN;
+   vk_iface.interface_version = RETRO_HW_RENDER_INTERFACE_VULKAN_VERSION;
+   vk_iface.handle = &vk_iface;
+   vk_iface.instance = vk_instance;
+   vk_iface.gpu = vk_gpu;
+   vk_iface.device = vk_device;
+   vk_iface.get_device_proc_addr = p_vkGetDeviceProcAddr;
+   vk_iface.get_instance_proc_addr = p_vkGetInstanceProcAddr;
+   vk_iface.queue = vk_queue;
+   vk_iface.queue_index = vk_queue_family;
+   vk_iface.set_image = vk_set_image;
+   vk_iface.get_sync_index = vk_get_sync_index;
+   vk_iface.get_sync_index_mask = vk_get_sync_index_mask;
+   vk_iface.set_command_buffers = vk_set_command_buffers;
+   vk_iface.wait_sync_index = vk_wait_sync_index;
+   vk_iface.lock_queue = vk_lock;
+   vk_iface.unlock_queue = vk_unlock;
+   vk_iface.set_signal_semaphore = vk_set_signal_semaphore;
+   return 1;
+}
+
+/* A frame handed over: as RetroArch's vulkan driver, a command buffer of
+ * this sync index that reads the core's image, submitted after the
+ * semaphores set_image gave, then on to the next index, whose last frame
+ * is waited for (the swapchain's fence). The pixels, when wanted, are read
+ * once this frame's fence has signalled. */
+static void vk_frame(unsigned w, unsigned h, unsigned char **px_out)
+{
+   unsigned i = vk_sync_index;
+   VkCommandBufferBeginInfo bi;
+   VkImageMemoryBarrier b;
+   VkBufferImageCopy region;
+   VkSubmitInfo si;
+   VkPipelineStageFlags stages[8];
+   unsigned k;
+
+   if (px_out)
+      *px_out = NULL;
+   if (!vk_image || (size_t)w * h * 4 > VK_READBACK_BYTES)
+      return;
+   vk_wait_fence(i);
+   memset(&bi, 0, sizeof(bi));
+   bi.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+   bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+   p_vkBeginCommandBuffer(vk_cmd[i], &bi);
+   memset(&b, 0, sizeof(b));
+   b.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+   b.srcAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_TRANSFER_WRITE_BIT |
+      VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+   b.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+   b.oldLayout = vk_image->image_layout;
+   b.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+   b.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+   b.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+   b.image = vk_image->create_info.image;
+   b.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+   b.subresourceRange.levelCount = 1;
+   b.subresourceRange.layerCount = 1;
+   p_vkCmdPipelineBarrier(vk_cmd[i], VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+         VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 0, NULL, 1, &b);
+   memset(&region, 0, sizeof(region));
+   region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+   region.imageSubresource.layerCount = 1;
+   region.imageExtent.width = w;
+   region.imageExtent.height = h;
+   region.imageExtent.depth = 1;
+   p_vkCmdCopyImageToBuffer(vk_cmd[i], b.image,
+         VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, vk_readback[i], 1, &region);
+   b.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+   b.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+   b.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+   b.newLayout = vk_image->image_layout;
+   p_vkCmdPipelineBarrier(vk_cmd[i], VK_PIPELINE_STAGE_TRANSFER_BIT,
+         VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, NULL, 0, NULL, 1, &b);
+   p_vkEndCommandBuffer(vk_cmd[i]);
+
+   memset(&si, 0, sizeof(si));
+   si.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+   si.commandBufferCount = 1;
+   si.pCommandBuffers = &vk_cmd[i];
+   for (k = 0; k < vk_num_wait_sems; k++)
+      stages[k] = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+   si.waitSemaphoreCount = vk_num_wait_sems;
+   si.pWaitSemaphores = vk_wait_sems;
+   si.pWaitDstStageMask = stages;
+   vk_num_wait_sems = 0; /* consumed, as RetroArch consumes them */
+   if (vk_signal_sem != VK_NULL_HANDLE)
+   {
+      si.signalSemaphoreCount = 1;
+      si.pSignalSemaphores = &vk_signal_sem;
+   }
+   vk_lock(NULL);
+   p_vkQueueSubmit(vk_queue, 1, &si, vk_fence[i]);
+   vk_unlock(NULL);
+   vk_signal_sem = VK_NULL_HANDLE;
+   vk_fence_pending[i] = 1;
+
+   if (px_out)
+   {
+      vk_wait_fence(i);
+      *px_out = vk_readback_ptr[i];
+   }
+   vk_sync_index = (i + 1) % VK_SYNC_INDICES;
+   vk_wait_fence(vk_sync_index);
+}
+
+static void vk_teardown(void)
+{
+   unsigned i;
+   if (!vk_device)
+      return;
+   p_vkDeviceWaitIdle(vk_device);
+   for (i = 0; i < VK_SYNC_INDICES; i++)
+   {
+      p_vkDestroyFence(vk_device, vk_fence[i], NULL);
+      p_vkDestroyBuffer(vk_device, vk_readback[i], NULL);
+      p_vkFreeMemory(vk_device, vk_readback_mem[i], NULL);
+   }
+   p_vkDestroyCommandPool(vk_device, vk_pool, NULL);
+   if (vk_nego && vk_nego->destroy_device)
+      vk_nego->destroy_device();
+   p_vkDestroyDevice(vk_device, NULL);
+   p_vkDestroyInstance(vk_instance, NULL);
+   vk_device = VK_NULL_HANDLE;
+}
+
 static bool env_cb(unsigned cmd, void *data)
 {
    switch (cmd & ~RETRO_ENVIRONMENT_EXPERIMENTAL)
@@ -231,22 +687,44 @@ static bool env_cb(unsigned cmd, void *data)
          *(unsigned *)data = 2;
          return true;
       case RETRO_ENVIRONMENT_GET_PREFERRED_HW_RENDER:
-         *(unsigned *)data = RETRO_HW_CONTEXT_OPENGL_CORE;
+         *(unsigned *)data = use_vulkan ? RETRO_HW_CONTEXT_VULKAN
+                                        : RETRO_HW_CONTEXT_OPENGL_CORE;
          return true;
       case RETRO_ENVIRONMENT_SET_HW_RENDER:
       {
          struct retro_hw_render_callback *cb =
             (struct retro_hw_render_callback *)data;
-         if (cb->context_type != RETRO_HW_CONTEXT_OPENGL_CORE)
+         if (cb->context_type != (use_vulkan ? RETRO_HW_CONTEXT_VULKAN
+                                             : RETRO_HW_CONTEXT_OPENGL_CORE))
             return false;
          hw = *cb;
-         cb->get_current_framebuffer = get_fb;
-         cb->get_proc_address = get_proc;
-         hw.get_current_framebuffer = get_fb;
-         hw.get_proc_address = get_proc;
+         if (!use_vulkan)
+         {
+            cb->get_current_framebuffer = get_fb;
+            cb->get_proc_address = get_proc;
+            hw.get_current_framebuffer = get_fb;
+            hw.get_proc_address = get_proc;
+         }
          have_hw = 1;
          return true;
       }
+      case RETRO_ENVIRONMENT_SET_HW_RENDER_CONTEXT_NEGOTIATION_INTERFACE &
+           ~RETRO_ENVIRONMENT_EXPERIMENTAL:
+      {
+         const struct retro_hw_render_context_negotiation_interface *n = data;
+         if (!use_vulkan || n->interface_type !=
+               RETRO_HW_RENDER_CONTEXT_NEGOTIATION_INTERFACE_VULKAN)
+            return false;
+         vk_nego = data;
+         return true;
+      }
+      case RETRO_ENVIRONMENT_GET_HW_RENDER_INTERFACE &
+           ~RETRO_ENVIRONMENT_EXPERIMENTAL:
+         if (!use_vulkan || !vk_device)
+            return false;
+         *(const struct retro_hw_render_interface **)data =
+            (const struct retro_hw_render_interface *)&vk_iface;
+         return true;
       case RETRO_ENVIRONMENT_GET_VARIABLE:
       {
          struct retro_variable *v = (struct retro_variable *)data;
@@ -300,6 +778,32 @@ static void video_cb(const void *data, unsigned w, unsigned h, size_t pitch)
    run_video++;
    last_w = w;
    last_h = h;
+   if (use_vulkan && data == RETRO_HW_FRAME_BUFFER_VALID)
+   {
+      unsigned char *vpx;
+      vk_frame(w, h, hash_video ? &vpx : NULL);
+      if (!hash_video || !vpx)
+         return;
+      video_hash = fnv(video_hash, vpx, (size_t)w * h * 4);
+      for (int k = 0; k < nshots; k++)
+      {
+         /* the frame is top row first already */
+         FILE *f;
+         if (run_no_cb != shot_at[k])
+            continue;
+         f = fopen(shot_path[k], "wb");
+         if (f)
+         {
+            unsigned y, x;
+            fprintf(f, "P6\n%u %u\n255\n", w, h);
+            for (y = 0; y < h; y++)
+               for (x = 0; x < w; x++)
+                  fwrite(vpx + ((size_t)y * w + x) * 4, 1, 3, f);
+            fclose(f);
+         }
+      }
+      return;
+   }
    if (hash_video && data == RETRO_HW_FRAME_BUFFER_VALID)
    {
       static unsigned char *px;
@@ -663,6 +1167,10 @@ int main(int argc, char **argv)
    void *(*p_mem_data)(unsigned);
    size_t (*p_mem_size)(unsigned);
 
+#ifdef _WIN32
+   /* run.sh matches the lines printed: no CR before each LF */
+   _setmode(_fileno(stdout), _O_BINARY);
+#endif
    if (argc < 3)
    {
       fprintf(stderr, "usage: %s core system [content] [options]\n", argv[0]);
@@ -679,6 +1187,8 @@ int main(int argc, char **argv)
          csvpath = argv[++i];
       else if (!strcmp(argv[i], "--hash-video"))
          hash_video = 1;
+      else if (!strcmp(argv[i], "--vulkan"))
+         use_vulkan = 1;
       else if (!strcmp(argv[i], "--realtime"))
          realtime = 1;
       else if (!strcmp(argv[i], "--save") && i + 1 < argc)
@@ -745,12 +1255,15 @@ int main(int argc, char **argv)
          content = argv[i];
    }
 
-   if (!gl_setup())
+   if (!use_vulkan)
    {
-      fprintf(stderr, "harness: no GL 4.5 core context\n");
-      return 1;
+      if (!gl_setup())
+      {
+         fprintf(stderr, "harness: no GL 4.5 core context\n");
+         return 1;
+      }
+      fbo_setup();
    }
-   fbo_setup();
 
 #ifdef _WIN32
    core = (void *)LoadLibraryA(argv[1]);
@@ -808,6 +1321,11 @@ int main(int argc, char **argv)
       return 1;
    }
    p_av(&av);
+   if (use_vulkan && !vk_setup())
+   {
+      fprintf(stderr, "harness: no Vulkan device\n");
+      return 3;
+   }
    if (have_hw && hw.context_reset)
       hw.context_reset();
    t_load = now_us() - t0;
@@ -1047,8 +1565,12 @@ int main(int argc, char **argv)
    fflush(stdout);
    if (!getenv("HARNESS_NO_UNLOAD"))
    {
+      if (hw.context_destroy)
+         hw.context_destroy();
       p_unload();
       p_deinit();
+      if (use_vulkan)
+         vk_teardown();
    }
    _exit(fail);
 }

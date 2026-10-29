@@ -87,22 +87,25 @@ jobs:
       # The libraries the core links (the Makefile finds them through
       # pkg-config; glslang/SPIRV-Tools as the static libraries), Vulkan's
       # headers, and what the tests need: nasm for the test ROMs, Mesa's
-      # software OpenGL on a surfaceless EGL display
+      # software OpenGL on a surfaceless EGL display and its software
+      # Vulkan (lavapipe)
       - name: Install dependencies
         run: |
           sudo apt-get -qy update
           sudo apt-get -qy install pkg-config libglib2.0-dev libslirp-dev \
             libepoxy-dev zlib1g-dev libvulkan-dev \
             glslang-dev spirv-tools patchelf \
-            nasm libegl-dev libgl-dev libegl-mesa0 libgl1-mesa-dri
+            nasm libegl-dev libgl-dev libegl-mesa0 libgl1-mesa-dri \
+            mesa-vulkan-drivers
 
       # The static Makefile; -g for the symbols artifact (dist/ is stripped)
       - name: Build
         run: make -j$(nproc) CFLAGS=-g CXXFLAGS=-g
 
       # The core's run loop against the test ROMs, on Mesa's software
-      # OpenGL: a frame's worth of audio and a frame each retro_run, the
-      # tone unbroken, fast-forward, savestates (libretro/tests/run.sh)
+      # OpenGL and Vulkan: a frame's worth of audio and a frame each
+      # retro_run, the tone unbroken, fast-forward, savestates
+      # (libretro/tests/run.sh)
       - name: Frame and audio tests
         run: libretro/tests/run.sh parallel_xbox_libretro.so
 

@@ -2,8 +2,10 @@
 
 `run.sh <core.so>` runs the core in a headless frontend of its own
 (`harness.c`: OpenGL core on a surfaceless EGL display, Mesa's llvmpipe
-will do) with test ROMs in place of the Xbox's boot ROM and BIOS, so no
-Microsoft file is needed. CI runs it after every Linux build.
+will do; with `--vulkan` a Vulkan context as RetroArch's vulkan driver
+gives one, Mesa's lavapipe will do) with test ROMs in place of the Xbox's
+boot ROM and BIOS, so no Microsoft file is needed. CI runs it after every
+Linux build.
 
 - `rom/bootrom.asm`: 512 bytes where the MCPX boot ROM goes; enters
   protected mode and jumps to the flash.
@@ -38,7 +40,8 @@ exactly one frame's worth of audio (800 or 801 samples at 60000/1001 fps),
 idle and busy; the tone has no gap; an idle guest runs far faster than real
 time when the frontend does not pace it (fast-forward), and so does one
 that spins waiting; the busy guest does the same work paced and unpaced;
-the pad's buttons reach the guest over USB; with APU DSP
+the pad's buttons reach the guest over USB; the idle guest runs the same
+on a Vulkan context, where there is a Vulkan device; with APU DSP
 Emulation on, the JIT leaves the DSP in the same state as the interpreter
 after every frame of the GP program, the tone comes through the GP DSP
 whole on the interpreter and on the JIT, the interpreter does not fall behind on a heavy program, and

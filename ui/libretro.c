@@ -1045,6 +1045,7 @@ static bool xemu_vk_create_device(struct retro_vulkan_context *context,
     xemu_libretro_vk.api_version = xemu_vk_app_info.apiVersion;
     xemu_libretro_vk.queue_family = family;
     xemu_libretro_vk.queue = queue;
+    xemu_libretro_vk.frontend_queue = queue;
     xemu_libretro_vk.queue_shared = !own_queue;
     if (own_queue) {
         p_vkGetDeviceQueue(device, family, 1, &xemu_libretro_vk.queue);
@@ -1085,6 +1086,20 @@ void xemu_libretro_vk_lock_queue(void)
 void xemu_libretro_vk_unlock_queue(void)
 {
     if (xemu_libretro_vk.queue_shared && vulkan_if && vulkan_if->unlock_queue) {
+        vulkan_if->unlock_queue(vulkan_if->handle);
+    }
+}
+
+void xemu_libretro_vk_lock_frontend_queue(void)
+{
+    if (vulkan_if && vulkan_if->lock_queue) {
+        vulkan_if->lock_queue(vulkan_if->handle);
+    }
+}
+
+void xemu_libretro_vk_unlock_frontend_queue(void)
+{
+    if (vulkan_if && vulkan_if->unlock_queue) {
         vulkan_if->unlock_queue(vulkan_if->handle);
     }
 }
@@ -2912,8 +2927,9 @@ static void lr_present_video(void)
     if (xemu_libretro_vk.active) {
         /* The frame rendered now, on the device shared with the
          * frontend, and handed over in this run: the renderer draws the
-         * display, copies it into the image of the frontend's current
-         * sync index and waits for the GPU (pgraph/vk/display.c) */
+         * display straight into the image of the frontend's current sync
+         * index, without waiting for the GPU - the frontend's submission
+         * that samples it is ordered after the draw (pgraph/vk/display.c) */
         static uint64_t last_count;
         static unsigned last_w = 640, last_h = 480;
         const int index =

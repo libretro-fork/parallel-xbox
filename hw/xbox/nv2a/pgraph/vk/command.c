@@ -83,12 +83,34 @@ static void destroy_command_buffers(PGRAPHState *pg)
 /*
  * Every submission to the renderer's queue. In the libretro core the queue
  * can be the frontend's (libretro_shared.h), which is then only used under
- * the frontend's lock.
+ * the frontend's lock; where it is the renderer's own, the first batch
+ * waits for the last frame drawn on the frontend's queue (display.c
+ * submit_frame) before anything here draws to the surface it sampled.
  */
 void pgraph_vk_queue_submit(PGRAPHVkState *r, uint32_t count,
                             const VkSubmitInfo *submits, VkFence fence)
 {
 #ifdef LIBRETRO
+    VkSubmitInfo with_wait[4];
+    VkSemaphore waits[2];
+    VkPipelineStageFlags wait_stages[2];
+
+    if (r->display.shown_pending != VK_NULL_HANDLE && count >= 1 &&
+        count <= ARRAY_SIZE(with_wait)) {
+        memcpy(with_wait, submits, count * sizeof(*submits));
+        assert(submits[0].waitSemaphoreCount <= 1);
+        waits[0] = r->display.shown_pending;
+        wait_stages[0] = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+        if (submits[0].waitSemaphoreCount) {
+            waits[1] = submits[0].pWaitSemaphores[0];
+            wait_stages[1] = submits[0].pWaitDstStageMask[0];
+        }
+        with_wait[0].waitSemaphoreCount = submits[0].waitSemaphoreCount + 1;
+        with_wait[0].pWaitSemaphores = waits;
+        with_wait[0].pWaitDstStageMask = wait_stages;
+        submits = with_wait;
+        r->display.shown_pending = VK_NULL_HANDLE;
+    }
     xemu_libretro_vk_lock_queue();
 #endif
     VK_CHECK(vkQueueSubmit(r->queue, count, submits, fence));

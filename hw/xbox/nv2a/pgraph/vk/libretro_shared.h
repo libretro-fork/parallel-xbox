@@ -36,10 +36,12 @@ typedef struct XemuLibretroVk {
     uint32_t api_version;
 
     /* The renderer's queue: one of its own where the family has two, else
-     * the frontend's, taken under its lock */
+     * the frontend's, taken under its lock. The frontend's queue itself,
+     * for the frame's draw where the renderer's is its own (display.c) */
     uint32_t queue_family;
     VkQueue queue;
     bool queue_shared;
+    VkQueue frontend_queue;
 
     /* What the device was made with */
     VkPhysicalDeviceFeatures features;
@@ -68,12 +70,17 @@ extern XemuLibretroVk xemu_libretro_vk;
  * while the renderer has a queue of its own */
 void xemu_libretro_vk_lock_queue(void);
 void xemu_libretro_vk_unlock_queue(void);
+/* and around every use of the frontend's queue itself */
+void xemu_libretro_vk_lock_frontend_queue(void);
+void xemu_libretro_vk_unlock_frontend_queue(void);
 
 /* The frame image of a sync index: an image on the shared device, in
- * SHADER_READ_ONLY_OPTIMAL, its GPU work finished (ui/libretro.c hands it to
- * the frontend). False until a frame was rendered for that index. *count is
- * the number of frames rendered so far: unchanged since the last call, the
- * display was not rendered again and the image holds an older frame. */
+ * SHADER_READ_ONLY_OPTIMAL (ui/libretro.c hands it to the frontend). Its
+ * GPU work is submitted, not finished: the frontend's own submission on
+ * its queue comes after it. False until a frame was rendered for that
+ * index. *count is the number of frames rendered so far: unchanged since
+ * the last call, the display was not rendered again and the image holds an
+ * older frame. */
 /* The count of pictures handed over that showed another guest frame than the
  * one before them */
 uint64_t nv2a_vk_libretro_guest_frames(void);

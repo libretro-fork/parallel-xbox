@@ -350,16 +350,30 @@ typedef struct PGRAPHVkDisplayState {
 #ifdef LIBRETRO
     // On the device shared with the frontend (libretro_shared.h): the frame
     // handed over, one image for each of the frontend's sync indices - the
-    // display image is copied into the current one - and the ones replaced
-    // at a resize, destroyed once no frame can still be using them.
+    // display is drawn into the current one - and the ones replaced at a
+    // resize, destroyed once no frame can still be using them.
     struct PGRAPHVkFrameImage {
         VkImage image;
         VkDeviceMemory memory;
         VkImageView view;
+        VkFramebuffer framebuffer;
         int width, height;
         bool ready;
         uint64_t retire_at;
     } frames[XEMU_LIBRETRO_VK_FRAMES], retired[XEMU_LIBRETRO_VK_FRAMES * 2];
+    // Each sync index's command buffer, fence and, where the renderer has a
+    // queue of its own, the semaphores between its queue and the
+    // frontend's (display.c submit_frame)
+    struct PGRAPHVkFrameSync {
+        VkCommandBuffer cmd;
+        VkFence fence;
+        bool pending;
+        VkSemaphore drawn, shown;
+    } sync[XEMU_LIBRETRO_VK_FRAMES];
+    VkCommandPool frame_pool;
+    // The last frame's `shown`, for the renderer's next submission to wait
+    // for (pgraph_vk_queue_submit); none while the queue is shared
+    VkSemaphore shown_pending;
     uint64_t frame_count;
     /* How many of the pictures rendered were another guest frame than the
      * one before: another surface, or one drawn to since */

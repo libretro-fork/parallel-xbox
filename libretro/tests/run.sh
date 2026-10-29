@@ -5,10 +5,11 @@
 #   libretro/tests/run.sh <core.so | core.dll> [work dir]
 #
 # Needs nasm, a C compiler, and an OpenGL 4.5 core context: on Linux an EGL
-# with a surfaceless display (Mesa's llvmpipe will do). The Windows core
-# runs in a Windows build of the harness: in MSYS2's MINGW64 shell as it is,
-# on Linux under Wine (with the MinGW-w64 compiler, HARNESS_CC, and an X
-# display for Wine's OpenGL).
+# with a surfaceless display (Mesa's llvmpipe will do). The Vulkan test runs
+# where there is a Vulkan device (Mesa's lavapipe will do) and is skipped
+# where there is none. The Windows core runs in a Windows build of the
+# harness: in MSYS2's MINGW64 shell as it is, on Linux under Wine (with the
+# MinGW-w64 compiler, HARNESS_CC, and an X display for Wine's OpenGL).
 set -e
 core=$(readlink -f "$1")
 here=$(cd "$(dirname "$0")" && pwd)
@@ -23,13 +24,14 @@ case $core in
     case $(uname -s) in
     MINGW*|MSYS*)
         cc=${CC:-gcc}
-        ${cc} -O2 -std=gnu99 -Wall -o "$work/bin/harness.exe" "$here/harness.c" \
-            -lopengl32 -lgdi32 -static
+        ${cc} -O2 -std=gnu99 -Wall -I"$here/../../deps/vulkan-headers" \
+            -o "$work/bin/harness.exe" "$here/harness.c" -lopengl32 -lgdi32 -static
         h="$work/bin/harness.exe"
         ;;
     *)
         cc=${CC:-cc}
         ${HARNESS_CC:-x86_64-w64-mingw32-gcc} -O2 -std=gnu99 -Wall \
+            -I"$here/../../deps/vulkan-headers" \
             -o "$work/bin/harness.exe" "$here/harness.c" -lopengl32 -lgdi32 -static
         h="wine $work/bin/harness.exe"
         path() { winepath -w "$1"; }
@@ -38,8 +40,8 @@ case $core in
     ;;
 *)
     cc=${CC:-cc}
-    ${cc} -O2 -std=gnu99 -Wall -o "$work/bin/harness" "$here/harness.c" \
-        -ldl -lEGL -lGL
+    ${cc} -O2 -std=gnu99 -Wall -I"$here/../../deps/vulkan-headers" \
+        -o "$work/bin/harness" "$here/harness.c" -ldl -lEGL -lGL -lpthread
     h="$work/bin/harness"
     ;;
 esac
@@ -80,6 +82,22 @@ t "busy guest, unpaced" $h "$(path "$core")" "$(path "$work/sysb")" $vp --frames
 t "spinning guest, unpaced" $h "$(path "$core")" "$(path "$work/syss")" $vp --frames 3000 --strict \
   --min-speed 4 --wav "$(path "$work/spin.wav")"
 "$work/bin/sinecheck" "$work/spin.wav" --frames 2402400
+
+# The same idle guest on a Vulkan context, as RetroArch's vulkan driver
+# gives one (the device made by the core's negotiation interface, the frame
+# an image handed over, read back under the queue lock): a frame's worth
+# of audio and a video call a run, the machine stopped cleanly after.
+echo "== idle guest, Vulkan context"
+set +e
+timeout 300 $h "$(path "$core")" "$(path "$work/sys")" $vp --vulkan \
+  --opt xemu_renderer=vulkan --frames 300 --strict --hash-video
+r=$?
+set -e
+case $r in
+0) ;;
+3) echo "no Vulkan device: skipped" ;;
+*) echo "FAIL: the Vulkan run exited $r"; exit 1 ;;
+esac
 
 # The pad, through the USB controller as the kernel reads it (rom/pad.c):
 # the hubs found by their status-change reports, their ports reset, the

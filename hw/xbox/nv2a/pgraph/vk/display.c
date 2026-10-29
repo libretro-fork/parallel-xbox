@@ -948,6 +948,7 @@ static void destroy_frame_image(PGRAPHVkState *r, struct PGRAPHVkFrameImage *f)
     if (f->image == VK_NULL_HANDLE) {
         return;
     }
+    vkDestroyFramebuffer(r->device, f->framebuffer, NULL);
     vkDestroyImageView(r->device, f->view, NULL);
     vkDestroyImage(r->device, f->image, NULL);
     vkFreeMemory(r->device, f->memory, NULL);
@@ -970,7 +971,10 @@ static void create_frame_image(PGRAPHState *pg, struct PGRAPHVkFrameImage *f,
         .format = VK_FORMAT_R8G8B8A8_UNORM,
         .tiling = VK_IMAGE_TILING_OPTIMAL,
         .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-        .usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT |
+        /* the display's render target, the crosshairs' copy destination,
+         * the frontend's texture */
+        .usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
+                 VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT |
                  VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
         .samples = VK_SAMPLE_COUNT_1_BIT,
         .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
@@ -1000,8 +1004,101 @@ static void create_frame_image(PGRAPHState *pg, struct PGRAPHVkFrameImage *f,
     };
     VK_CHECK(vkCreateImageView(r->device, &image_view_create_info, NULL,
                                &f->view));
+    VkFramebufferCreateInfo framebuffer_info = {
+        .sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
+        .renderPass = r->display.render_pass,
+        .attachmentCount = 1,
+        .pAttachments = &f->view,
+        .width = width,
+        .height = height,
+        .layers = 1,
+    };
+    VK_CHECK(vkCreateFramebuffer(r->device, &framebuffer_info, NULL,
+                                 &f->framebuffer));
     f->width = width;
     f->height = height;
+}
+
+/*
+ * The frame's command buffer, fence and semaphores, one set for each of
+ * the frontend's sync indices (renderer.h PGRAPHVkFrameSync).
+ */
+static void create_frame_sync(PGRAPHState *pg)
+{
+    PGRAPHVkState *r = pg->vk_renderer_state;
+    PGRAPHVkDisplayState *disp = &r->display;
+
+    VkCommandPoolCreateInfo pool_info = {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+        .flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
+        .queueFamilyIndex = xemu_libretro_vk.queue_family,
+    };
+    VK_CHECK(vkCreateCommandPool(r->device, &pool_info, NULL,
+                                 &disp->frame_pool));
+    VkCommandBuffer cmds[XEMU_LIBRETRO_VK_FRAMES];
+    VkCommandBufferAllocateInfo alloc_info = {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+        .commandPool = disp->frame_pool,
+        .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+        .commandBufferCount = XEMU_LIBRETRO_VK_FRAMES,
+    };
+    VK_CHECK(vkAllocateCommandBuffers(r->device, &alloc_info, cmds));
+    VkFenceCreateInfo fence_info = {
+        .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
+    };
+    VkSemaphoreCreateInfo sem_info = {
+        .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
+    };
+    for (int i = 0; i < XEMU_LIBRETRO_VK_FRAMES; i++) {
+        struct PGRAPHVkFrameSync *s = &disp->sync[i];
+        s->cmd = cmds[i];
+        VK_CHECK(vkCreateFence(r->device, &fence_info, NULL, &s->fence));
+        s->pending = false;
+        if (!xemu_libretro_vk.queue_shared) {
+            VK_CHECK(vkCreateSemaphore(r->device, &sem_info, NULL,
+                                       &s->drawn));
+            VK_CHECK(vkCreateSemaphore(r->device, &sem_info, NULL,
+                                       &s->shown));
+        }
+    }
+}
+
+/* The frame's last submission, waited for: its command buffer and the
+ * image can be recorded and drawn again. Our own fence, on our own
+ * submission; by the time a sync index comes round again the frontend has
+ * waited for its frame at that index, which came after, so this is
+ * normally already signalled. */
+static void wait_frame_sync(PGRAPHVkState *r, struct PGRAPHVkFrameSync *s)
+{
+    if (s->pending) {
+        VK_CHECK(vkWaitForFences(r->device, 1, &s->fence, VK_TRUE,
+                                 UINT64_MAX));
+        VK_CHECK(vkResetFences(r->device, 1, &s->fence));
+        s->pending = false;
+    }
+}
+
+static void destroy_frame_sync(PGRAPHState *pg)
+{
+    PGRAPHVkState *r = pg->vk_renderer_state;
+    PGRAPHVkDisplayState *disp = &r->display;
+
+    if (disp->frame_pool == VK_NULL_HANDLE) {
+        return;
+    }
+    for (int i = 0; i < XEMU_LIBRETRO_VK_FRAMES; i++) {
+        struct PGRAPHVkFrameSync *s = &disp->sync[i];
+        wait_frame_sync(r, s);
+        vkDestroyFence(r->device, s->fence, NULL);
+        if (s->drawn != VK_NULL_HANDLE) {
+            vkDestroySemaphore(r->device, s->drawn, NULL);
+            vkDestroySemaphore(r->device, s->shown, NULL);
+        }
+    }
+    vkDestroyCommandPool(r->device, disp->frame_pool, NULL);
+    memset(disp->sync, 0, sizeof(disp->sync));
+    disp->frame_pool = VK_NULL_HANDLE;
+    disp->shown_pending = VK_NULL_HANDLE;
 }
 
 static void frame_image_barrier(VkCommandBuffer cmd, VkImage image,
@@ -1028,13 +1125,6 @@ static void frame_image_barrier(VkCommandBuffer cmd, VkImage image,
                          &barrier);
 }
 
-/*
- * The display image, just rendered, copied into the frame image of the
- * frontend's current sync index, in the same command buffer: when it has
- * run - end_single_time_commands waits for it - the frontend has this
- * frame's picture in an image nothing writes to until that index comes
- * round again, by when the frontend is done with it.
- */
 /* The crosshairs' pixels, copied into the frame: a black outline, then
  * player 1's red and player 2's blue (R8G8B8A8 as little-endian words) */
 #define CROSSHAIR_PIXELS 1024
@@ -1147,7 +1237,20 @@ static void draw_crosshairs(PGRAPHVkState *r, VkCommandBuffer cmd,
     }
 }
 
-static void copy_display_to_frame(PGRAPHState *pg, VkCommandBuffer cmd)
+/*
+ * The display is drawn straight into the frame image of the frontend's
+ * current sync index, and the GPU is not waited for: the command buffer
+ * ends with the barrier to SHADER_READ_ONLY, which orders the frontend's
+ * later submission on its queue after the draw. Where the renderer has a
+ * queue of its own (ui/libretro.c), the frame's command buffer runs on
+ * the frontend's queue instead, after a semaphore the renderer's queue
+ * signals once the frame's draws are in, and the renderer's next
+ * submission waits for the frame to have been drawn before it draws to
+ * the surface again (pgraph_vk_queue_submit). Nothing writes to the frame
+ * image until that index comes round again, by when the frontend is done
+ * with it.
+ */
+static struct PGRAPHVkFrameImage *frame_image_for_index(PGRAPHState *pg)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
     PGRAPHVkDisplayState *disp = &r->display;
@@ -1183,45 +1286,83 @@ static void copy_display_to_frame(PGRAPHState *pg, VkCommandBuffer cmd)
     if (f->image == VK_NULL_HANDLE) {
         create_frame_image(pg, f, disp->width, disp->height);
     }
+    return f;
+}
 
-    frame_image_barrier(cmd, disp->image,
-                        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-                        VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                        VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-                        VK_ACCESS_TRANSFER_READ_BIT,
-                        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-                        VK_PIPELINE_STAGE_TRANSFER_BIT);
-    frame_image_barrier(cmd, f->image, VK_IMAGE_LAYOUT_UNDEFINED,
-                        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 0,
-                        VK_ACCESS_TRANSFER_WRITE_BIT,
-                        VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-                        VK_PIPELINE_STAGE_TRANSFER_BIT);
+/* After the display's render pass: the crosshairs, then the layout the
+ * frontend samples in, ordered before any fragment shader that follows in
+ * submission order */
+static void frame_image_finish(PGRAPHVkState *r, VkCommandBuffer cmd,
+                               struct PGRAPHVkFrameImage *f)
+{
+    PGRAPHVkDisplayState *disp = &r->display;
 
-    VkImageCopy region = {
-        .srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-        .srcSubresource.layerCount = 1,
-        .dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-        .dstSubresource.layerCount = 1,
-        .extent.width = disp->width,
-        .extent.height = disp->height,
-        .extent.depth = 1,
+    if (xemu_libretro_crosshairs[0].shown ||
+        xemu_libretro_crosshairs[1].shown) {
+        frame_image_barrier(cmd, f->image,
+                            VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                            VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+                            VK_ACCESS_TRANSFER_WRITE_BIT,
+                            VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                            VK_PIPELINE_STAGE_TRANSFER_BIT);
+        draw_crosshairs(r, cmd, f->image, disp->width, disp->height);
+        frame_image_barrier(cmd, f->image,
+                            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                            VK_ACCESS_TRANSFER_WRITE_BIT,
+                            VK_ACCESS_SHADER_READ_BIT,
+                            VK_PIPELINE_STAGE_TRANSFER_BIT,
+                            VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+    } else {
+        frame_image_barrier(cmd, f->image,
+                            VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                            VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+                            VK_ACCESS_SHADER_READ_BIT,
+                            VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                            VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+    }
+}
+
+/* The frame's command buffer, submitted: on the shared queue as any other
+ * submission; on the frontend's queue, between the two semaphores, where
+ * the renderer draws on a queue of its own */
+static void submit_frame(PGRAPHVkState *r, struct PGRAPHVkFrameSync *s)
+{
+    VkSubmitInfo submit = {
+        .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+        .commandBufferCount = 1,
+        .pCommandBuffers = &s->cmd,
     };
-    vkCmdCopyImage(cmd, disp->image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                   f->image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
-    draw_crosshairs(r, cmd, f->image, disp->width, disp->height);
 
-    frame_image_barrier(cmd, f->image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-                        VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
-                        VK_PIPELINE_STAGE_TRANSFER_BIT,
-                        VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
-    frame_image_barrier(cmd, disp->image,
-                        VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-                        VK_ACCESS_TRANSFER_READ_BIT, VK_ACCESS_SHADER_READ_BIT,
-                        VK_PIPELINE_STAGE_TRANSFER_BIT,
-                        VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
-    f->ready = true;
+    if (xemu_libretro_vk.queue_shared) {
+        pgraph_vk_queue_submit(r, 1, &submit, s->fence);
+    } else {
+        /* the renderer's queue: everything submitted so far, then the
+         * signal */
+        VkSubmitInfo drawn = {
+            .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+            .signalSemaphoreCount = 1,
+            .pSignalSemaphores = &s->drawn,
+        };
+        pgraph_vk_queue_submit(r, 1, &drawn, VK_NULL_HANDLE);
+
+        VkPipelineStageFlags wait_stage = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+        submit.waitSemaphoreCount = 1;
+        submit.pWaitSemaphores = &s->drawn;
+        submit.pWaitDstStageMask = &wait_stage;
+        submit.signalSemaphoreCount = 1;
+        submit.pSignalSemaphores = &s->shown;
+        xemu_libretro_vk_lock_frontend_queue();
+        VK_CHECK(vkQueueSubmit(xemu_libretro_vk.frontend_queue, 1, &submit,
+                               s->fence));
+        xemu_libretro_vk_unlock_frontend_queue();
+        /* the renderer's next submission waits for this one */
+        r->display.shown_pending = s->shown;
+    }
+    nv2a_profile_inc_counter(NV2A_PROF_QUEUE_SUBMIT_5);
+    s->pending = true;
 }
 
 static void destroy_frame_images(PGRAPHState *pg)
@@ -1259,7 +1400,38 @@ static void render_display(PGRAPHState *pg, SurfaceBinding *surface)
     update_uniforms(pg, surface);
     update_descriptor_set(pg, surface);
 
-    VkCommandBuffer cmd = pgraph_vk_begin_single_time_commands(pg);
+    /* The render target: the display image, or on the frontend's device
+     * the frame image of its current sync index, in that index's own
+     * command buffer */
+    VkImage target = disp->image;
+    VkFramebuffer framebuffer = disp->framebuffer;
+    VkCommandBuffer cmd;
+#ifdef LIBRETRO
+    struct PGRAPHVkFrameImage *f = NULL;
+    struct PGRAPHVkFrameSync *sync = NULL;
+    if (on_frontend_device()) {
+        if (surface->vram_addr != disp->last_surface_addr ||
+            surface->draw_time != disp->draw_time) {
+            disp->guest_frame_count++;
+        }
+        disp->last_surface_addr = surface->vram_addr;
+        sync = &disp->sync[xemu_libretro_vk.frame_index %
+                           XEMU_LIBRETRO_VK_FRAMES];
+        wait_frame_sync(r, sync);
+        f = frame_image_for_index(pg);
+        target = f->image;
+        framebuffer = f->framebuffer;
+        cmd = sync->cmd;
+        VkCommandBufferBeginInfo begin_info = {
+            .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+            .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+        };
+        VK_CHECK(vkBeginCommandBuffer(cmd, &begin_info));
+    } else
+#endif
+    {
+        cmd = pgraph_vk_begin_single_time_commands(pg);
+    }
     pgraph_vk_begin_debug_marker(r, cmd, RGBA_YELLOW,
         "Display Surface %08"HWADDR_PRIx, surface->vram_addr);
 
@@ -1273,13 +1445,13 @@ static void render_display(PGRAPHState *pg, SurfaceBinding *surface)
             VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
     }
     pgraph_vk_transition_image_layout(
-        pg, cmd, disp->image, VK_FORMAT_R8G8B8A8_UNORM,
+        pg, cmd, target, VK_FORMAT_R8G8B8A8_UNORM,
         VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 
     VkRenderPassBeginInfo render_pass_begin_info = {
         .sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
         .renderPass = disp->render_pass,
-        .framebuffer = disp->framebuffer,
+        .framebuffer = framebuffer,
         .renderArea.extent.width = disp->width,
         .renderArea.extent.height = disp->height,
     };
@@ -1314,24 +1486,6 @@ static void render_display(PGRAPHState *pg, SurfaceBinding *surface)
 
     vkCmdEndRenderPass(cmd);
 
-#if 0
-    VkImageCopy region = {
-        .srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-        .srcSubresource.layerCount = 1,
-        .dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-        .dstSubresource.layerCount = 1,
-        .extent.width = surface->width,
-        .extent.height = surface->height,
-        .extent.depth = 1,
-    };
-    pgraph_apply_scaling_factor(pg, &region.extent.width,
-                                &region.extent.height);
-
-    vkCmdCopyImage(cmd, surface->image,
-                   VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, disp->image,
-                   VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
-#endif
-
     if (!sampled_in_place) {
         pgraph_vk_transition_image_layout(
             pg, cmd, surface->image, surface->host_fmt.vk_format,
@@ -1339,25 +1493,24 @@ static void render_display(PGRAPHState *pg, SurfaceBinding *surface)
             pgraph_vk_surface_base_layout(surface));
     }
 
-    pgraph_vk_transition_image_layout(pg, cmd, disp->image,
-                                      VK_FORMAT_R8G8B8_UNORM,
-                                      VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-                                      VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-
 #ifdef LIBRETRO
-    if (on_frontend_device()) {
-        if (surface->vram_addr != disp->last_surface_addr ||
-            surface->draw_time != disp->draw_time) {
-            disp->guest_frame_count++;
-        }
-        disp->last_surface_addr = surface->vram_addr;
-        copy_display_to_frame(pg, cmd);
-    }
+    if (f) {
+        frame_image_finish(r, cmd, f);
+        pgraph_vk_end_debug_marker(r, cmd);
+        VK_CHECK(vkEndCommandBuffer(cmd));
+        submit_frame(r, sync);
+        f->ready = true;
+    } else
 #endif
-
-    pgraph_vk_end_debug_marker(r, cmd);
-    pgraph_vk_end_single_time_commands(pg, cmd);
-    nv2a_profile_inc_counter(NV2A_PROF_QUEUE_SUBMIT_5);
+    {
+        pgraph_vk_transition_image_layout(pg, cmd, disp->image,
+                                          VK_FORMAT_R8G8B8_UNORM,
+                                          VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                                          VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        pgraph_vk_end_debug_marker(r, cmd);
+        pgraph_vk_end_single_time_commands(pg, cmd);
+        nv2a_profile_inc_counter(NV2A_PROF_QUEUE_SUBMIT_5);
+    }
 
     disp->draw_time = surface->draw_time;
 }
@@ -1413,6 +1566,7 @@ void pgraph_vk_finalize_display(PGRAPHState *pg)
         destroy_current_display_image(pg);
     }
 #ifdef LIBRETRO
+    destroy_frame_sync(pg);
     destroy_frame_images(pg);
     destroy_crosshair_buffer(pg->vk_renderer_state);
 #endif
@@ -1457,6 +1611,16 @@ void pgraph_vk_render_display(PGRAPHState *pg)
     pgraph_apply_scaling_factor(pg, &width, &height);
 
     PGRAPHVkDisplayState *disp = &r->display;
+#ifdef LIBRETRO
+    if (on_frontend_device()) {
+        /* no display image: the frame images are the render targets */
+        disp->width = width;
+        disp->height = height;
+        if (disp->frame_pool == VK_NULL_HANDLE) {
+            create_frame_sync(pg);
+        }
+    } else
+#endif
     if (!disp->image || disp->width != width || disp->height != height) {
         create_display_image(pg, width, height);
     }
