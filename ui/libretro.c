@@ -210,7 +210,7 @@ static int opt_chihiro_ffb = 100; /* percent, 0 = off */
 extern bool libretro_chihiro_aim_stick;   /* libretro-chihiro.c */
 extern bool libretro_chihiro_crosshair;
 /* APU DSP Emulation: on where the core has the DSP JIT (see the option) */
-#ifdef CONFIG_DSP_JIT
+#if DSPJIT_HOST
 static bool opt_use_dsp = true;
 #else
 static bool opt_use_dsp = false;

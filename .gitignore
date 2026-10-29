@@ -31,9 +31,8 @@ build.log
 # JIT's library it fetches
 *.o
 *.d
-/xemu_libretro.so
-/xemu_libretro.dll
+/parallel_xbox_libretro.so
+/parallel_xbox_libretro.dll
 /deps/*.a
-/deps/dsp56300/
 /libqemuutil.a
 /libretro/gen/xemu-version-macro.h

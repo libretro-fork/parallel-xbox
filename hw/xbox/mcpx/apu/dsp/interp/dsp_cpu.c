@@ -26,6 +26,7 @@
 #include "qemu/osdep.h"
 #include "qemu/bswap.h"
 #include "dsp_cpu.h"
+#include "../jit/dspjit.h"
 #include "debug.h"
 #include "trace.h"
 
@@ -717,13 +718,7 @@ static void dsp_postexecute_update_pc(dsp_core_t* dsp)
             dsp->registers[DSP_REG_LC] &= BITMASK(16);
 
             if (dsp->registers[DSP_REG_LC] == 0) {
-                /* end of loop */
-                uint32_t saved_pc, saved_sr;
-
-                dsp_stack_pop(dsp, &saved_pc, &saved_sr);
-                dsp->registers[DSP_REG_SR] &= 0x7f;
-                dsp->registers[DSP_REG_SR] |= saved_sr & (1<<DSP_SR_LF);
-                dsp_stack_pop(dsp, &dsp->registers[DSP_REG_LA], &dsp->registers[DSP_REG_LC]);
+                dsp56k_do_end(dsp);
             } else {
                 /* Loop one more time */
                 dsp->pc = dsp->registers[DSP_REG_SSH];
@@ -956,8 +951,14 @@ static void write_memory_raw(dsp_core_t* dsp, int space, uint32_t address, uint3
         dsp->yram[address] = value;
     } else if (space == DSP_SPACE_P) {
         assert(address < DSP_PRAM_SIZE);
+        if (ldl_le_p(&dsp->pram[address]) == value) {
+            return;
+        }
         stl_le_p(&dsp->pram[address], value);
         dsp->pram_opcache[address] = NULL;
+        if (dsp->jit) {
+            dspjit_invalidate(dsp->jit, address);
+        }
     } else {
         assert(!"Invalid dsp space in write raw memory");
     }
@@ -1356,4 +1357,105 @@ static uint32_t dsp_signextend(int bits, uint32_t v) {
     const int shift = sizeof(int)*8 - bits;
     assert(shift > 0);
     return (uint32_t)(((int32_t)v << shift) >> shift);
+}
+
+/**********************************
+ *  JIT support
+ **********************************/
+
+/* The instructions that may leave the PC somewhere other than the next
+ * word: a block of straight-line code ends at them. Anything missed here
+ * is caught by dsp56k_post comparing the PC. */
+static bool dsp56k_name_is_control(const char *name)
+{
+    static const char *const heads[] = {
+        "bcc", "bra", "brclr", "brset", "bscc", "bsclr", "bsr", "bsset",
+        "do", "dor", "enddo", "jcc", "jclr", "jmp", "jscc", "jsclr", "jset",
+        "jsr", "jsset", "rep", "rts", "rti", "illegal", "trap", "wait",
+        "stop", "debug", "reset",
+    };
+    for (size_t i = 0; i < ARRAY_SIZE(heads); i++) {
+        size_t n = strlen(heads[i]);
+        if (!strncmp(name, heads[i], n) && (name[n] == ' ' || name[n] == 0 || name[n] == ',')) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void dsp56k_decode(dsp_core_t *dsp, uint32_t pc, DspDecoded *d)
+{
+    uint32_t saved_pc = dsp->pc;
+
+    d->inst = read_memory_p(dsp, pc);
+    d->control = false;
+    d->name = NULL;
+    if (d->inst < 0x100000) {
+        const OpcodeEntry *op = lookup_opcode(d->inst);
+        d->emu = op->emu_func ? op->emu_func : emu_undefined;
+        d->control = dsp56k_name_is_control(op->name);
+        d->name = op->name;
+    } else {
+        d->emu = opcodes_parmove[(d->inst >> 20) & BITMASK(4)];
+    }
+    /* the length: the disassembler's count of the words */
+    dsp->pc = pc;
+    d->len = disasm_instruction(dsp, DSP_DISASM_MODE);
+    dsp->pc = saved_pc;
+    if (d->len < 1 || d->len > 2) {
+        d->len = 1;
+    }
+}
+
+void dsp56k_update_rn(dsp_core_t *dsp, uint32_t numreg, int modifier)
+{
+    emu_update_rn(dsp, numreg, (int16_t)modifier);
+}
+
+uint32_t dsp56k_ea_rn_plus_n(dsp_core_t *dsp, uint32_t numreg)
+{
+    uint32_t curreg = dsp->registers[DSP_REG_R0 + numreg];
+    uint32_t addr;
+
+    emu_update_rn(dsp, numreg, dsp->registers[DSP_REG_N0 + numreg]);
+    addr = dsp->registers[DSP_REG_R0 + numreg];
+    dsp->registers[DSP_REG_R0 + numreg] = curreg;
+    return addr;
+}
+
+void dsp56k_stack_push(dsp_core_t *dsp, uint32_t pc, uint32_t sr)
+{
+    dsp_stack_push(dsp, pc, sr, 0);
+}
+
+uint32_t dsp56k_stack_pop(dsp_core_t *dsp)
+{
+    uint32_t newpc = 0, newsr;
+
+    dsp_stack_pop(dsp, &newpc, &newsr);
+    return newpc;
+}
+
+void dsp56k_do_end(dsp_core_t *dsp)
+{
+    uint32_t saved_pc, saved_sr;
+
+    dsp_stack_pop(dsp, &saved_pc, &saved_sr);
+    dsp->registers[DSP_REG_SR] &= 0x7f;
+    dsp->registers[DSP_REG_SR] |= saved_sr & (1<<DSP_SR_LF);
+    dsp_stack_pop(dsp, &dsp->registers[DSP_REG_LA], &dsp->registers[DSP_REG_LC]);
+}
+
+void dsp56k_post_interrupts(dsp_core_t *dsp)
+{
+    dsp_postexecute_interrupts(dsp);
+}
+
+void dsp56k_post(dsp_core_t *dsp)
+{
+    dsp_postexecute_update_pc(dsp);
+    dsp_postexecute_interrupts(dsp);
+    dsp->num_inst += dsp->instr_cycle;
+    dsp->cycle_count += dsp->instr_cycle;
+    dsp->jit_cycles -= dsp->instr_cycle;
 }

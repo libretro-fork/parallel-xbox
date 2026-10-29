@@ -64,6 +64,10 @@ struct dsp_core_s {
     uint32_t yram[DSP_YRAM_SIZE];
     uint32_t pram[DSP_PRAM_SIZE];
     const void *pram_opcache[DSP_PRAM_SIZE];
+    /* the JIT (jit/dspjit.c), when the engine is it: its context (told of
+     * every write to P) and, while it runs, the cycles left of dsp_run()'s */
+    struct DspJit *jit;
+    int32_t jit_cycles;
 
     uint32_t mixbuffer[DSP_MIXBUFFER_SIZE];
 
@@ -147,5 +151,31 @@ void dsp56k_write_memory(dsp_core_t* dsp, int space, uint32_t address, uint32_t 
 
 /* Interrupt relative functions */
 void dsp56k_add_interrupt(dsp_core_t* dsp, uint16_t inter);
+
+/* For the JIT (../jit/dspjit.c): an instruction decoded the interpreter's
+ * way, to be run by the interpreter's own function for it */
+typedef struct DspDecoded {
+    void (*emu)(dsp_core_t *dsp);   /* the function, dsp->cur_inst set */
+    uint32_t inst;                  /* the instruction word */
+    uint32_t len;                   /* words, 1 or 2 */
+    bool control;                   /* may change the PC other than by len */
+    const char *name;               /* the opcode table's name (not parallel) */
+} DspDecoded;
+void dsp56k_decode(dsp_core_t *dsp, uint32_t pc, DspDecoded *d);
+/* The interpreter's address register update and (Rn+Nn) address, for the
+ * JIT's code when Mn is not linear */
+void dsp56k_update_rn(dsp_core_t *dsp, uint32_t numreg, int modifier);
+uint32_t dsp56k_ea_rn_plus_n(dsp_core_t *dsp, uint32_t numreg);
+/* The system stack, for the JIT's code: a push of pc and sr; a pop,
+ * returning the pc (the sr is left on the stack registers) */
+void dsp56k_stack_push(dsp_core_t *dsp, uint32_t pc, uint32_t sr);
+uint32_t dsp56k_stack_pop(dsp_core_t *dsp);
+/* The end of a DO loop (its last pass done), as dsp_postexecute_update_pc
+ * ends it; and the interrupts' processing after an instruction */
+void dsp56k_do_end(dsp_core_t *dsp);
+void dsp56k_post_interrupts(dsp_core_t *dsp);
+/* After an instruction's function: the PC, the interrupts, the cycles,
+ * as dsp56k_execute_instruction does them. */
+void dsp56k_post(dsp_core_t *dsp);
 
 #endif	/* DSP_CPU_H */

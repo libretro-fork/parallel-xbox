@@ -6,7 +6,6 @@
 #   make platform=win CROSS_PREFIX=x86_64-w64-mingw32-
 #                            the Windows core, cross-compiled
 #   make DEBUG=1             unoptimized, with debug information
-#   make HAVE_DSP_JIT=0      without the APU DSP's JIT
 #   make clean
 #
 # Makefile.common lists the core's sources and their flags; what QEMU's own
@@ -23,7 +22,6 @@
 CORE_DIR     := .
 TARGET_NAME  := parallel_xbox
 DEBUG        ?= 0
-HAVE_DSP_JIT ?= 1
 PKG_CONFIG   ?= pkg-config
 
 ifeq ($(platform),)
@@ -64,12 +62,10 @@ ifneq ($(findstring x86_64,$(HOST_TRIPLE)),)
    TCG_ARCH          := i386
    HOST_INCLUDE_ARCH := x86_64
    ARCH_CFLAGS       := -mcx16 -msse2
-   DSP_JIT_ARCH      := x86_64
 else ifneq ($(findstring aarch64,$(HOST_TRIPLE)),)
    TCG_ARCH          := aarch64
    HOST_INCLUDE_ARCH := aarch64
    ARCH_CFLAGS       :=
-   DSP_JIT_ARCH      := aarch64
 else
    $(error the core runs on x86-64 and AArch64 hosts, not $(HOST_TRIPLE))
 endif
@@ -84,8 +80,6 @@ ifeq ($(platform),unix)
    OS_INCFLAGS := -isystem $(CORE_DIR)/linux-headers
    OS_CFLAGS   :=
    OS_LIBS     := -lpthread -ldl -lm -lutil
-   DSP_JIT_TRIPLE := $(DSP_JIT_ARCH)-unknown-linux-gnu
-   DSP_JIT_OS_LIBS :=
 
    PKGS := glib-2.0 slirp epoxy zlib
    DEPS_CFLAGS := $(shell $(PKG_CONFIG) --cflags $(PKGS)) -pthread
@@ -110,30 +104,9 @@ else ifeq ($(platform),win)
    OS_LIBS     := -lws2_32 -liphlpapi -lwinmm -lole32 -loleaut32 -lshlwapi \
                   -lshell32 -luuid -ladvapi32 -luser32 -lgdi32 -lcomdlg32 \
                   -lwinspool -lopengl32 -lpathcch -lsynchronization
-   DSP_JIT_TRIPLE := $(DSP_JIT_ARCH)-pc-windows-gnu
-   DSP_JIT_OS_LIBS := -lbcrypt -lntdll -luserenv -lws2_32
    VENDORED_DEPS := 1
 else
    $(error platform=$(platform) is not built by this Makefile yet: Linux and Windows)
-endif
-
-# --- The APU DSP's JIT ---------------------------------------------------
-# It runs on mborgerson's dsp56300, a Rust library that comes prebuilt; it
-# is fetched into deps/dsp56300 on the first build, as meson does
-# (subprojects/dsp56300/meson.build). HAVE_DSP_JIT=0 builds without it.
-DSP_JIT_VERSION := 0.1.3
-DSP_JIT_NAME    := dsp56300-$(DSP_JIT_VERSION)-$(DSP_JIT_TRIPLE)
-DSP_JIT_DIR     := $(CORE_DIR)/deps/dsp56300/$(DSP_JIT_NAME)
-DSP_JIT_LIB     := $(DSP_JIT_DIR)/lib/libdsp56300_emu_ffi.a
-DSP_JIT_URL     := https://github.com/mborgerson/dsp56300/releases/download/v$(DSP_JIT_VERSION)/$(DSP_JIT_NAME).tar.gz
-ifeq ($(HAVE_DSP_JIT),1)
-   DSP_JIT_CFLAGS := -DCONFIG_DSP_JIT -I$(DSP_JIT_DIR)/include
-   DSP_JIT_LIBS   := $(DSP_JIT_LIB) $(DSP_JIT_OS_LIBS)
-   DSP_JIT_DEP    := $(DSP_JIT_LIB)
-else
-   DSP_JIT_CFLAGS :=
-   DSP_JIT_LIBS   :=
-   DSP_JIT_DEP    :=
 endif
 
 # --- Flags ---------------------------------------------------------------
@@ -162,7 +135,7 @@ OBJS_UTIL     := $(call obj,$(SOURCES_UTIL) $(SOURCES_HOST))
 OBJS_COMMON   := $(call obj,$(SOURCES_COMMON))
 OBJS_SYSTEM   := $(call obj,$(SOURCES_SYSTEM))
 OBJS_TARGET   := $(call obj,$(SOURCES_TARGET))
-OBJS_DSP      := $(call obj,$(SOURCES_DSP) $(SOURCES_DSP_JIT))
+OBJS_DSP      := $(call obj,$(SOURCES_DSP))
 OBJS_GLOFF    := $(call obj,$(SOURCES_GLOFF))
 OBJS_LRCOMMON := $(call obj,$(SOURCES_LRCOMMON))
 OBJS_XXHASH   := $(call obj,$(SOURCES_XXHASH))
@@ -206,9 +179,9 @@ $(VERSION_H): FORCE
 $(CORE_DIR)/xemu-version.o: $(VERSION_H)
 FORCE:
 
-$(TARGET): $(OBJECTS) $(LIBQEMUUTIL) $(DSP_JIT_DEP) $(filter %.a,$(DEPS_LIBS))
+$(TARGET): $(OBJECTS) $(LIBQEMUUTIL) $(filter %.a,$(DEPS_LIBS))
 	$(CXX) -o $@ $(SHARED) $(fpic) $(LDFLAGS) $(OBJECTS) $(LIBQEMUUTIL) \
-		$(DSP_JIT_LIBS) $(DEPS_LIBS) $(OS_LIBS)
+		$(DEPS_LIBS) $(OS_LIBS)
 
 $(LIBQEMUUTIL): $(OBJS_UTIL)
 	rm -f $@
@@ -226,19 +199,6 @@ $(LIBQEMUUTIL): $(OBJS_UTIL)
 # .incbin finds data/ from the core's directory
 %.o: %.S
 	$(CC) $(fpic) -Wa,-I$(CORE_DIR) -c -o $@ $<
-
-$(DSP_JIT_LIB):
-	mkdir -p $(CORE_DIR)/deps/dsp56300
-	curl -fsSL -o $(CORE_DIR)/deps/dsp56300/$(DSP_JIT_NAME).tar.gz $(DSP_JIT_URL) || \
-	wget -q -O $(CORE_DIR)/deps/dsp56300/$(DSP_JIT_NAME).tar.gz $(DSP_JIT_URL) || \
-	python3 -c "import sys, urllib.request; urllib.request.urlretrieve(sys.argv[1], sys.argv[2])" \
-		$(DSP_JIT_URL) $(CORE_DIR)/deps/dsp56300/$(DSP_JIT_NAME).tar.gz
-	tar -xzf $(CORE_DIR)/deps/dsp56300/$(DSP_JIT_NAME).tar.gz -C $(CORE_DIR)/deps/dsp56300
-	rm -f $(CORE_DIR)/deps/dsp56300/$(DSP_JIT_NAME).tar.gz
-	touch $@
-
-# The DSP's sources need the JIT's header before they compile
-$(OBJS_DSP): | $(DSP_JIT_DEP)
 
 ALL_OBJECTS := $(OBJECTS) $(OBJS_UTIL) $(DEP_OBJECTS)
 

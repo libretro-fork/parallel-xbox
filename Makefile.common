@@ -31,11 +31,9 @@ QEMU_WARNINGS := -Wall -Wempty-body -Wendif-labels -Wexpansion-to-defined \
 	-Wstrict-prototypes -Wtype-limits -Wwrite-strings \
 	-Wno-missing-include-dirs -Wno-psabi -Wno-shift-negative-value
 
-# CONFIG_DSP_JIT is not in the pregenerated config-host.h: it comes with
-# DSP_JIT_CFLAGS when the core has the JIT
 QEMU_CFLAGS := -std=gnu11 -fno-strict-aliasing -fno-common -fwrapv \
 	$(QEMU_WARNINGS) $(QEMU_DEFINES) $(OS_CFLAGS) $(QEMU_INCFLAGS) \
-	$(DEPS_CFLAGS) $(DSP_JIT_CFLAGS)
+	$(DEPS_CFLAGS)
 
 XXHASH_DEFINES := -DXXH_FORCE_ALIGN_CHECK=0 -DXXH_NO_INLINE_HINTS=1 \
 	-DXXH_CPU_LITTLE_ENDIAN=1
@@ -73,14 +71,6 @@ ifeq ($(TCG_ARCH),aarch64)
 SOURCES_HOST := $(CORE_DIR)/util/cpuinfo-aarch64.c
 else
 SOURCES_HOST := $(CORE_DIR)/util/cpuinfo-i386.c
-endif
-
-# The APU DSP's JIT, on the prebuilt dsp56300 library; without it the
-# interpreter stands in (dsp_jit_stub.c)
-ifeq ($(HAVE_DSP_JIT),1)
-SOURCES_DSP_JIT := $(CORE_DIR)/hw/xbox/mcpx/apu/dsp/dsp_jit.c
-else
-SOURCES_DSP_JIT := $(CORE_DIR)/hw/xbox/mcpx/apu/dsp/dsp_jit_stub.c
 endif
 
 # The data files the core carries
@@ -1379,6 +1369,7 @@ SOURCES_DSP := \
 	$(CORE_DIR)/hw/xbox/mcpx/apu/dsp/dsp_dma.c \
 	$(CORE_DIR)/hw/xbox/mcpx/apu/dsp/interp/debug.c \
 	$(CORE_DIR)/hw/xbox/mcpx/apu/dsp/interp/dsp_cpu.c \
+	$(CORE_DIR)/hw/xbox/mcpx/apu/dsp/jit/dspjit.c \
 
 # The GL renderer's offscreen contexts
 SOURCES_GLOFF := \

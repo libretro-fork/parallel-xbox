@@ -21,7 +21,8 @@ void dsp_start_frame_impl(DSPState *dsp);
 
 extern const DSPOps c_dsp_ops;
 void dsp_c_init(DSPState *dsp);
-
+/* The interpreter's state run by the JIT (jit/dspjit.c); on a host the
+ * JIT has no code for, the interpreter */
 extern const DSPOps jit_dsp_ops;
 void dsp_jit_init(DSPState *dsp);
 

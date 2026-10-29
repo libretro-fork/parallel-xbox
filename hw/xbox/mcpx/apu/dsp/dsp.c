@@ -212,7 +212,7 @@ void dsp_sync_from_vm(DSPState *dsp)
 
 void dsp_set_engine(DSPState *dsp, bool use_jit)
 {
-    bool currently_jit = (dsp->ops == &jit_dsp_ops);
+    bool currently_jit = dsp->ops == &jit_dsp_ops;
     if (use_jit == currently_jit) {
         return;
     }

@@ -27,6 +27,7 @@
 #include "dsp_internal.h"
 #include "interp/dsp_cpu.h"
 #include "debug.h"
+#include "jit/dspjit.h"
 
 static dsp_core_t *c_core(DSPState *dsp)
 {
@@ -75,6 +76,10 @@ static void dsp_c_run(DSPState *dsp, int cycles)
     if (dsp->save_cycles <= 0)
         return;
 
+    if (core->jit) {
+        dspjit_run(core->jit, dsp->save_cycles);
+        dsp->save_cycles = core->jit_cycles;
+    } else
     while (dsp->save_cycles > 0) {
         dsp56k_execute_instruction(core);
         dsp->save_cycles -= core->instr_cycle;
@@ -100,6 +105,9 @@ static void dsp_c_bootstrap(DSPState *dsp)
         }
     }
     memset(core->pram_opcache, 0, sizeof(core->pram_opcache));
+    if (core->jit) {
+        dspjit_flush(core->jit);
+    }
 }
 
 static uint32_t dsp_c_read_memory(DSPState *dsp, char space, uint32_t address)
@@ -170,6 +178,9 @@ static void dsp_c_set_cycle_count(DSPState *dsp, uint32_t count)
 static void dsp_c_invalidate_opcache(DSPState *dsp)
 {
     memset(c_core(dsp)->pram_opcache, 0, sizeof(c_core(dsp)->pram_opcache));
+    if (c_core(dsp)->jit) {
+        dspjit_flush(c_core(dsp)->jit);
+    }
 }
 
 /*
@@ -276,9 +287,39 @@ void dsp_c_init(DSPState *dsp)
 
 static void dsp_c_finalize(DSPState *dsp)
 {
+    dspjit_destroy(c_core(dsp)->jit);
     g_free(dsp->backend);
     dsp->backend = NULL;
 }
+
+/* The interpreter's state run by the JIT (jit/dspjit.c); the interpreter
+ * where the host has no JIT */
+void dsp_jit_init(DSPState *dsp)
+{
+    dsp_c_init(dsp);
+    c_core(dsp)->jit = dspjit_create(c_core(dsp));
+    if (c_core(dsp)->jit) {
+        dsp->ops = &jit_dsp_ops;
+    }
+}
+
+const DSPOps jit_dsp_ops = {
+    .bootstrap = dsp_c_bootstrap,
+    .finalize = dsp_c_finalize,
+    .get_cycle_count = dsp_c_get_cycle_count,
+    .get_halt_requested = dsp_c_get_halt_requested,
+    .invalidate_opcache = dsp_c_invalidate_opcache,
+    .read_memory = dsp_c_read_memory,
+    .reset = dsp_c_reset,
+    .run = dsp_c_run,
+    .set_cycle_count = dsp_c_set_cycle_count,
+    .set_halt_requested = dsp_c_set_halt_requested,
+    .start_frame = dsp_start_frame_impl,
+    .step = dsp_c_step,
+    .sync_from_vm = dsp_c_sync_from_vm,
+    .sync_to_vm = dsp_c_sync_to_vm,
+    .write_memory = dsp_c_write_memory,
+};
 
 const DSPOps c_dsp_ops = {
     .bootstrap = dsp_c_bootstrap,

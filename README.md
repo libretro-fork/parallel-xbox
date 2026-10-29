@@ -64,9 +64,8 @@ The core renders with OpenGL or Vulkan, whichever RetroArch's video driver is (`
 
 With GNU make alone: no meson, ninja or python. `make` builds the core for
 the system it runs on, in the source tree; `make DEBUG=1` builds it
-unoptimized with debug information, `make HAVE_DSP_JIT=0` without the APU
-DSP's JIT. On the first build the Makefile fetches the DSP JIT's prebuilt
-library (mborgerson's dsp56300) into `deps/dsp56300`.
+unoptimized with debug information. Nothing is downloaded: the APU DSP's
+JIT is the core's own (`hw/xbox/mcpx/apu/dsp/jit`).
 
 **Windows**, in MSYS2's MINGW64 shell, with only the compiler installed:
 

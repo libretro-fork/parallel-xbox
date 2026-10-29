@@ -19,6 +19,7 @@
 #include <string.h>
 
 #include "libretro.h"
+#include "hw/xbox/mcpx/apu/dsp/jit/dspjit.h"
 
 #ifndef HAVE_NO_LANGEXTRA
 #include "libretro_core_options_intl.h"
@@ -290,18 +291,18 @@ struct retro_core_option_v2_definition option_defs_us[] = {
             { "enabled",  "Enabled" },
             { NULL, NULL },
         },
-#ifdef CONFIG_DSP_JIT
+#if DSPJIT_HOST
         "enabled"
 #else
         "disabled"
 #endif
     },
-#ifdef CONFIG_DSP_JIT
+#if DSPJIT_HOST
     /* On by default, unlike standalone's audio.use_dsp_jit: on a GP program
      * of 16 x 4096 MACs a 32-sample frame (libretro/tests/rom/gp.a56) the
      * JIT runs the guest at 2.8x real time where the interpreter manages
      * 0.48x, with the same samples; without APU DSP Emulation it does
-     * nothing either way. Only in builds with the JIT's library. */
+     * nothing either way. Only on the hosts the JIT has code for. */
     {
         "xemu_dsp_jit",
         "DSP JIT",
