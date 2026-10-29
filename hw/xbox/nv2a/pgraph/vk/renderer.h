@@ -172,8 +172,13 @@ typedef struct SurfaceBinding {
     VkImage image;
     VkImageView image_view;
     VmaAllocation allocation;
+    /* how image (and image_scratch) were created: the image pool's key
+     * when they retire (surface.c destroy_surface_image) */
+    VkImageCreateInfo image_ci;
 
-    // Used for scaling
+    /* For an upload (the CPU's data goes through it) and a downscaled
+     * read-back; made the first time one needs it (surface.c
+     * ensure_surface_scratch), so a surface only drawn has none */
     VkImage image_scratch;
     VkImageLayout image_scratch_current_layout;
     VmaAllocation allocation_scratch;
@@ -608,7 +613,8 @@ typedef struct PGRAPHVkState {
         uint32_t retire_after;
     } *trash;                       /* grown as needed: it never overflows */
     int trash_n, trash_cap;
-    /* Retired texture images kept for reuse (pgraph_vk_image_pool_put). */
+    /* Retired texture and surface images kept for reuse
+     * (pgraph_vk_image_pool_put). */
     struct XemuVkPooledImage {
         VkImage image;
         VmaAllocation allocation;

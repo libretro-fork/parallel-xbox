@@ -1286,8 +1286,9 @@ static bool check_surface_to_texture_compatiblity(const SurfaceBinding *surface,
            surface->host_fmt.host_bytes_per_pixel == vk_format_texel_size(tex_vkf.vk_format);
 }
 
-/* Texture images retired by the CoW rule below or by cache eviction are
- * kept for reuse instead of freed. A feedback pass retires the same few
+/* Texture images retired by the CoW rule below or by cache eviction, and
+ * surface images (surface.c destroy_surface_image), are kept for reuse
+ * instead of freed. A feedback pass retires the same few
  * images many times per frame, and at high scales each one is a large
  * dedicated device allocation. Semantics of a fresh image: contents
  * undefined, layout UNDEFINED. The pool only keeps what the device can

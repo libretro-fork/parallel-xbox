@@ -126,6 +126,7 @@ static bool check_surface_overlaps_range(const SurfaceBinding *surface,
 static void parked_materialize_range(NV2AState *d, hwaddr start,
                                      hwaddr size);
 static void readback_batch_begin(PGRAPHVkState *r);
+static void ensure_surface_scratch(PGRAPHVkState *r, SurfaceBinding *surface);
 static void readback_batch_end(NV2AState *d);
 static void parked_owed_settled(NV2AState *d, SurfaceBinding *s);
 
@@ -452,6 +453,7 @@ static bool download_surface_to_buffer(NV2AState *d, SurfaceBinding *surface,
     if (downscale && !use_compute_to_convert_depth_stencil_format) {
         copy_regions[0].imageExtent =
             (VkExtent3D){ surface->width, surface->height, 1 };
+        ensure_surface_scratch(r, surface);
 
         if (surface->image_scratch_current_layout !=
             VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) {
@@ -1202,6 +1204,27 @@ static void set_surface_label(PGRAPHState *pg, SurfaceBinding const *surface)
     }
 }
 
+/* The surface's scratch image, the first time an upload or a downscaled
+ * read-back needs one: from the image pool when a retired one fits, as
+ * the surface image itself is */
+static void ensure_surface_scratch(PGRAPHVkState *r, SurfaceBinding *surface)
+{
+    if (surface->image_scratch) {
+        return;
+    }
+    if (!pgraph_vk_image_pool_get(r, &surface->image_ci,
+                                  &surface->image_scratch,
+                                  &surface->allocation_scratch)) {
+        VmaAllocationCreateInfo alloc_create_info = {
+            .usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE,
+        };
+        VK_CHECK(vmaCreateImage(r->allocator, &surface->image_ci,
+                                &alloc_create_info, &surface->image_scratch,
+                                &surface->allocation_scratch, NULL));
+    }
+    surface->image_scratch_current_layout = VK_IMAGE_LAYOUT_UNDEFINED;
+}
+
 static void create_surface_image(PGRAPHState *pg, SurfaceBinding *surface)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
@@ -1235,17 +1258,22 @@ static void create_surface_image(PGRAPHState *pg, SurfaceBinding *surface)
         .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
     };
 
-    VmaAllocationCreateInfo alloc_create_info = {
-        .usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE,
-    };
-
-    VK_CHECK(vmaCreateImage(r->allocator, &image_create_info,
-                            &alloc_create_info, &surface->image,
-                            &surface->allocation, NULL));
-
-    VK_CHECK(vmaCreateImage(r->allocator, &image_create_info,
-                            &alloc_create_info, &surface->image_scratch,
-                            &surface->allocation_scratch, NULL));
+    /* A surface image another surface retired is reused before a new one
+     * is allocated: games make and drop the same render targets over and
+     * over (texture.c's image pool, budget-limited; the trash puts them
+     * there once the GPU is done with them). Its layout is undefined, as a
+     * new image's. The scratch image waits until an upload or a downscaled
+     * read-back needs it (ensure_surface_scratch). */
+    surface->image_ci = image_create_info;
+    if (!pgraph_vk_image_pool_get(r, &image_create_info, &surface->image,
+                                  &surface->allocation)) {
+        VmaAllocationCreateInfo alloc_create_info = {
+            .usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE,
+        };
+        VK_CHECK(vmaCreateImage(r->allocator, &image_create_info,
+                                &alloc_create_info, &surface->image,
+                                &surface->allocation, NULL));
+    }
     surface->image_scratch_current_layout = VK_IMAGE_LAYOUT_UNDEFINED;
 
     VkImageViewCreateInfo image_view_create_info = {
@@ -1280,6 +1308,7 @@ static void create_surface_image(PGRAPHState *pg, SurfaceBinding *surface)
 
 static void migrate_surface_image(SurfaceBinding *dst, SurfaceBinding *src)
 {
+    dst->image_ci = src->image_ci;
     dst->image = src->image;
     dst->image_view = src->image_view;
     dst->allocation = src->allocation;
@@ -1303,7 +1332,9 @@ static void destroy_surface_image(PGRAPHVkState *r, SurfaceBinding *surface)
      * image (copies, framebuffers): the trash keeps it until all settle. */
     struct XemuVkTrashEntry e = { .image_view = surface->image_view,
                                   .image = surface->image,
-                                  .allocation = surface->allocation };
+                                  .allocation = surface->allocation,
+                                  .image_ci = surface->image_ci,
+                                  .pool_ok = true };
     pgraph_vk_trash_push(r, &e);
     surface->image_view = VK_NULL_HANDLE;
     surface->image = VK_NULL_HANDLE;
@@ -1312,6 +1343,8 @@ static void destroy_surface_image(PGRAPHVkState *r, SurfaceBinding *surface)
         struct XemuVkTrashEntry e2 = {
             .image = surface->image_scratch,
             .allocation = surface->allocation_scratch,
+            .image_ci = surface->image_ci,
+            .pool_ok = true,
         };
         pgraph_vk_trash_push(r, &e2);
         surface->image_scratch = VK_NULL_HANDLE;
@@ -1683,98 +1716,133 @@ void pgraph_vk_upload_surface_data(NV2AState *d, SurfaceBinding *surface,
         source_buffer = unpack_buffer->buffer;
     }
 
-    //
-    // Copy image data from buffer to staging image
-    //
-
-    if (surface->image_scratch_current_layout !=
-        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) {
-        pgraph_vk_transition_image_layout(pg, cmd, surface->image_scratch,
-                                          surface->host_fmt.vk_format,
-                                          surface->image_scratch_current_layout,
-                                          VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
-        surface->image_scratch_current_layout =
-            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-    }
-
-    vkCmdCopyBufferToImage(cmd, source_buffer, surface->image_scratch,
-                           VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, num_regions,
-                           regions);
-
-    VkBufferMemoryBarrier post_copy_src_buffer_barrier = {
-        .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
-        .srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT,
-        .dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
-        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        .buffer = source_buffer,
-        .size = VK_WHOLE_SIZE
-    };
-    vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
-                         VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 1,
-                         &post_copy_src_buffer_barrier, 0, NULL);
-
-    //
-    // Copy staging image to final image
-    //
-
-    pgraph_vk_transition_image_layout(pg, cmd, surface->image_scratch,
-                                      surface->host_fmt.vk_format,
-                                      surface->image_scratch_current_layout,
-                                      VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
-    surface->image_scratch_current_layout =
-        VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-
-    pgraph_vk_transition_image_layout(
-        pg, cmd, surface->image, surface->host_fmt.vk_format,
-        pgraph_vk_surface_base_layout(surface),
-        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
-    pgraph_vk_surface_left_shader_read(&d->pgraph, surface);
-
     bool upscale = pg->surface_scale_factor > 1 &&
                    !use_compute_to_convert_depth_stencil_format;
 
-    if (upscale) {
-        VkImageBlit blitRegion = {
-            .srcSubresource.aspectMask = surface->host_fmt.aspect,
-            .srcSubresource.mipLevel = 0,
-            .srcSubresource.baseArrayLayer = 0,
-            .srcSubresource.layerCount = 1,
-            .srcOffsets[0] = (VkOffset3D){0, 0, 0},
-            .srcOffsets[1] = (VkOffset3D){surface->width, surface->height, 1},
+    /* Straight into the surface image, unless the upscale's blit needs the
+     * data in an image first, or on AMD: the staging image works around an
+     * apparent synchronisation bug in AMD's Windows driver with a direct
+     * copy (see below). Elsewhere the scratch image and its extra copy of
+     * the whole surface are not needed, so the surface never gets one. */
+    bool via_scratch = upscale || r->device_props.vendorID == 0x1002;
 
-            .dstSubresource.aspectMask = surface->host_fmt.aspect,
-            .dstSubresource.mipLevel = 0,
-            .dstSubresource.baseArrayLayer = 0,
-            .dstSubresource.layerCount = 1,
-            .dstOffsets[0] = (VkOffset3D){0, 0, 0},
-            .dstOffsets[1] = (VkOffset3D){scaled_width, scaled_height, 1},
+    if (!via_scratch) {
+        pgraph_vk_transition_image_layout(
+            pg, cmd, surface->image, surface->host_fmt.vk_format,
+            pgraph_vk_surface_base_layout(surface),
+            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+        pgraph_vk_surface_left_shader_read(&d->pgraph, surface);
+
+        vkCmdCopyBufferToImage(cmd, source_buffer, surface->image,
+                               VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                               num_regions, regions);
+
+        VkBufferMemoryBarrier post_copy_src_buffer_barrier = {
+            .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
+            .srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT,
+            .dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
+            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .buffer = source_buffer,
+            .size = VK_WHOLE_SIZE
         };
-
-        vkCmdBlitImage(cmd, surface->image_scratch,
-                       surface->image_scratch_current_layout, surface->image,
-                       VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &blitRegion,
-                       VK_FILTER_NEAREST);
+        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                             VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 1,
+                             &post_copy_src_buffer_barrier, 0, NULL);
     } else {
-        // Note: We should be able to vkCmdCopyBufferToImage directly into
-        // surface->image, but there is an apparent AMD Windows driver
-        // synchronization bug we'll hit when doing this. For this reason,
-        // always use a staging image.
+        ensure_surface_scratch(r, surface);
 
-        for (int i = 0; i < num_regions; i++) {
-            VkImageAspectFlags aspect = regions[i].imageSubresource.aspectMask;
-            VkImageCopy copy_region = {
-                .srcSubresource.aspectMask = aspect,
-                .srcSubresource.layerCount = 1,
-                .dstSubresource.aspectMask = aspect,
-                .dstSubresource.layerCount = 1,
-                .extent = regions[i].imageExtent,
-            };
-            vkCmdCopyImage(cmd, surface->image_scratch,
-                           VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, surface->image,
-                           VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1,
-                           &copy_region);
+        //
+        // Copy image data from buffer to staging image
+        //
+
+        if (surface->image_scratch_current_layout !=
+            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) {
+            pgraph_vk_transition_image_layout(pg, cmd, surface->image_scratch,
+                                              surface->host_fmt.vk_format,
+                                              surface->image_scratch_current_layout,
+                                              VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+            surface->image_scratch_current_layout =
+                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
         }
+
+        vkCmdCopyBufferToImage(cmd, source_buffer, surface->image_scratch,
+                               VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, num_regions,
+                               regions);
+
+        VkBufferMemoryBarrier post_copy_src_buffer_barrier = {
+            .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
+            .srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT,
+            .dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
+            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .buffer = source_buffer,
+            .size = VK_WHOLE_SIZE
+        };
+        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                             VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 1,
+                             &post_copy_src_buffer_barrier, 0, NULL);
+
+        //
+        // Copy staging image to final image
+        //
+
+        pgraph_vk_transition_image_layout(pg, cmd, surface->image_scratch,
+                                          surface->host_fmt.vk_format,
+                                          surface->image_scratch_current_layout,
+                                          VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+        surface->image_scratch_current_layout =
+            VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+
+        pgraph_vk_transition_image_layout(
+            pg, cmd, surface->image, surface->host_fmt.vk_format,
+            pgraph_vk_surface_base_layout(surface),
+            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+        pgraph_vk_surface_left_shader_read(&d->pgraph, surface);
+
+        if (upscale) {
+            VkImageBlit blitRegion = {
+                .srcSubresource.aspectMask = surface->host_fmt.aspect,
+                .srcSubresource.mipLevel = 0,
+                .srcSubresource.baseArrayLayer = 0,
+                .srcSubresource.layerCount = 1,
+                .srcOffsets[0] = (VkOffset3D){0, 0, 0},
+                .srcOffsets[1] = (VkOffset3D){surface->width, surface->height, 1},
+
+                .dstSubresource.aspectMask = surface->host_fmt.aspect,
+                .dstSubresource.mipLevel = 0,
+                .dstSubresource.baseArrayLayer = 0,
+                .dstSubresource.layerCount = 1,
+                .dstOffsets[0] = (VkOffset3D){0, 0, 0},
+                .dstOffsets[1] = (VkOffset3D){scaled_width, scaled_height, 1},
+            };
+
+            vkCmdBlitImage(cmd, surface->image_scratch,
+                           surface->image_scratch_current_layout, surface->image,
+                           VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &blitRegion,
+                           VK_FILTER_NEAREST);
+        } else {
+            // Note: We should be able to vkCmdCopyBufferToImage directly into
+            // surface->image, but there is an apparent AMD Windows driver
+            // synchronization bug we'll hit when doing this. For this reason,
+            // always use a staging image.
+
+            for (int i = 0; i < num_regions; i++) {
+                VkImageAspectFlags aspect = regions[i].imageSubresource.aspectMask;
+                VkImageCopy copy_region = {
+                    .srcSubresource.aspectMask = aspect,
+                    .srcSubresource.layerCount = 1,
+                    .dstSubresource.aspectMask = aspect,
+                    .dstSubresource.layerCount = 1,
+                    .extent = regions[i].imageExtent,
+                };
+                vkCmdCopyImage(cmd, surface->image_scratch,
+                               VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, surface->image,
+                               VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1,
+                               &copy_region);
+            }
+        }
+
     }
 
     pgraph_vk_transition_image_layout(

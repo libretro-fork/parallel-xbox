@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Vulkan: every picture the game draws into (its render targets) now takes half the graphics memory and half the allocations on non-AMD GPUs. Each one used to come with a second, same-size image that the Xbox's memory was copied through on its way in, an extra copy of the whole picture each time; that detour is only needed for a driver bug on AMD, where it stays. Render targets the game drops are also kept for reuse, within the GPU's memory budget, instead of being freed and allocated again.
+
 - Games that wait in a loop for a hardware register to change (the vblank, the GPU) no longer run many times slower when the compiled loop also stores to memory each turn, which game code does when it keeps the value it read on the stack. Such a loop was taken for real work, so the Xbox's time was spent instruction by instruction instead of moving on to the next event: the test ROM's display test ran at 0.08x real time instead of 3.7x. A tight loop reading the same unchanged register over and over is now recognised as a wait however it is compiled, and sooner than before (a plain polling loop runs about three times faster too).
 
 - CPU Boost: repeated STOS memory fills now chain between translated iterations, as MOVS copies do. Each element still uses the normal guest store and instruction-budget checks, with the same debugger, interrupt-shadow and shortened-budget exclusions.
