@@ -177,13 +177,18 @@ static void pgraph_vk_process_pending(NV2AState *d)
 
 static void pgraph_vk_flip_stall(NV2AState *d)
 {
+    /* The frame's recording is submitted and runs on: the GPU is not
+     * waited for (the finish is asynchronous without the cost model).
+     * The slots that have retired meanwhile are reaped, and when none is
+     * in flight the global teardown runs; the frame's GPU time comes back
+     * with its submissions and the eager submission count for the next
+     * frame follows from the average. */
     pgraph_vk_finish(&d->pgraph, VK_FINISH_REASON_FLIP_STALL);
-    /* Everything has settled: this frame's GPU time is readable, and the
-     * eager submission count for the next frame follows from it. */
+    pgraph_vk_settle_poll(&d->pgraph);
     pgraph_vk_frame_gpu_resolve(&d->pgraph);
     pgraph_vk_eager_frame_update(&d->pgraph);
-    /* Resolve this frame's fragment-query segments; the finish above has
-     * waited the fence, so the results are available immediately. */
+    /* Resolve this frame's fragment-query segments: with the cost model
+     * on the finish above was synchronous, so the results are there. */
     xemu_cost_resolve_frame(d, &pgraph_vk_cost_ops,
                             d->pgraph.surface_scale_factor);
     pgraph_vk_debug_frame_terminator();

@@ -398,6 +398,8 @@ void pgraph_vk_init_command_buffers(PGRAPHState *pg)
     /* Frame GPU timestamps (draw.c pgraph_vk_frame_gpu_*), host-reset. */
     r->frame_gpu.pool = VK_NULL_HANDLE;
     r->frame_gpu.w = 0;
+    r->frame_gpu.resolved = 0;
+    memset(r->frame_gpu.w_end, 0, sizeof(r->frame_gpu.w_end));
     r->frame_gpu.busy_us = 0;
     if (r->host_query_reset && queue_has_timestamps(r)) {
         r->frame_gpu.capacity = 256;
@@ -429,6 +431,7 @@ void pgraph_vk_init_command_buffers(PGRAPHState *pg)
         VK_CHECK(vkCreateFence(r->device, &fence_info, NULL,
                                &r->slot_fence[s]));
         r->slot_fence_pending[s] = false;
+        r->slot_submit[s] = 0;
         VK_CHECK(vkCreateSemaphore(r->device, &sem_info, NULL,
                                    &r->slot_sem[s]));
     }

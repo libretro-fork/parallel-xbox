@@ -146,7 +146,8 @@ void pgraph_vk_update_descriptor_sets(PGRAPHState *pg)
         !r->storage_buffers[BUFFER_UNIFORM_STAGING].buffer_offset;
 
     if (!(r->shader_bindings_changed || r->texture_bindings_changed ||
-          (r->descriptor_set_index == 0) || need_uniform_write)) {
+          (r->descriptor_set_index == r->descriptor_set_base) ||
+          need_uniform_write)) {
         return; // Nothing changed
     }
 
@@ -163,8 +164,12 @@ void pgraph_vk_update_descriptor_sets(PGRAPHState *pg)
                                         ubo_buffer_total_size,
                                         r->device_props.limits.minUniformBufferOffsetAlignment);
 
+    /* the slot's half of the sets used up: a synchronous finish, after
+     * which the next begin starts the slot's half over */
     bool need_descriptor_write_reset =
-        (r->descriptor_set_index >= ARRAY_SIZE(r->descriptor_sets));
+        (r->descriptor_set_index >=
+         r->descriptor_set_base +
+             (int)(ARRAY_SIZE(r->descriptor_sets) / PGRAPH_VK_SLOTS));
 
     if (need_descriptor_write_reset || need_ubo_staging_buffer_reset) {
         pgraph_vk_finish(pg, VK_FINISH_REASON_NEED_BUFFER_SPACE);

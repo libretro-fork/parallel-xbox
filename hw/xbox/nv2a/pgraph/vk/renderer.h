@@ -547,6 +547,9 @@ typedef struct PGRAPHVkState {
     /* Rotation: an async finish submits this slot and records on into the
      * next without waiting. */
     int slot;
+    /* submit_count at each slot's last submission: retired in order, a
+     * slot's fence retires every submission up to it */
+    uint32_t slot_submit[PGRAPH_VK_SLOTS];
     VkCommandBuffer slot_main[PGRAPH_VK_SLOTS];
     VkCommandBuffer slot_sync[PGRAPH_VK_SLOTS];
     VkFence slot_fence[PGRAPH_VK_SLOTS];
@@ -577,6 +580,9 @@ typedef struct PGRAPHVkState {
         VmaAllocation allocation;
         VkImageCreateInfo image_ci; /* texture images: pool key */
         bool pool_ok;
+        /* the submission that may last use it: destroyed once it has
+         * retired (pgraph_vk_slot_retired) */
+        uint32_t retire_after;
     } *trash;                       /* grown as needed: it never overflows */
     int trash_n, trash_cap;
     /* Retired texture images kept for reuse (pgraph_vk_image_pool_put). */
@@ -626,8 +632,10 @@ typedef struct PGRAPHVkState {
     /* GPU busy time of the frame (draw.c pgraph_vk_frame_gpu_*). */
     struct {
         VkQueryPool pool;
-        unsigned capacity; /* pairs */
-        unsigned w;        /* pairs written this frame */
+        unsigned capacity; /* pairs: the pool is a ring of them */
+        unsigned w;        /* pairs written, counting on; index = w % capacity */
+        unsigned resolved; /* pairs read back and reset, counting on */
+        unsigned w_end[PGRAPH_VK_SLOTS]; /* w at each slot's submission */
         uint64_t *scratch;
         double busy_us;    /* EMA over frames */
     } frame_gpu;
@@ -652,7 +660,11 @@ typedef struct PGRAPHVkState {
     VkDescriptorSetLayout descriptor_set_layout;
     /* One set per draw, sized so a full frame of a draw-heavy game (Silent
      * Scope Complete, MEASURED) fits without a mid-frame finish. */
+    /* Each slot writes its own half of these, from descriptor_set_base,
+     * once its last submission has retired (pgraph_vk_begin_command_buffer):
+     * the other half may be read by the submission in flight. */
     VkDescriptorSet descriptor_sets[8192];
+    int descriptor_set_base;
     int descriptor_set_index;
 
     StorageBuffer storage_buffers[BUFFER_COUNT];
@@ -1044,6 +1056,12 @@ void pgraph_vk_settle_all_slots(PGRAPHState *pg);
 void pgraph_vk_trash_push(PGRAPHVkState *r,
                           const struct XemuVkTrashEntry *e);
 void pgraph_vk_trash_drain(PGRAPHVkState *r);
+/* A slot's submission has retired (its fence signalled): what it alone
+ * held is released; everything up to it has run */
+void pgraph_vk_slot_retired(PGRAPHState *pg, int slot);
+/* Slots whose fences have signalled, retired without waiting, and the
+ * global teardown when none is left in flight */
+void pgraph_vk_settle_poll(PGRAPHState *pg);
 void pgraph_vk_flush_draw(NV2AState *d);
 void pgraph_vk_begin_command_buffer(PGRAPHState *pg);
 void pgraph_vk_ensure_command_buffer(PGRAPHState *pg);
