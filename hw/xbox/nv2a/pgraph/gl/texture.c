@@ -553,11 +553,53 @@ gl_internal_format_to_s3tc_enum(GLint gl_internal_format)
     }
 }
 
+/* The upload's scratch buffers, grown to what the largest level needs
+ * (the first big texture of a game; nothing afterwards) */
+static uint8_t *tex_scratch(PGRAPHGLState *r, int which, size_t size)
+{
+    if (r->tex_scratch_size[which] < size) {
+        size_t grown = MAX(size, 2 * r->tex_scratch_size[which]);
+        r->tex_scratch[which] = g_realloc(r->tex_scratch[which], grown);
+        r->tex_scratch_size[which] = grown;
+    }
+    return r->tex_scratch[which];
+}
+
+/* A swizzled level, unswizzled into the scratch, and converted there where
+ * the host cannot sample its format (palette, YUV, R6G5B5): the pixels to
+ * upload, their rows width * bpp apart */
+static const uint8_t *unswizzle_level(PGRAPHGLState *r, const TextureShape *s,
+                                      const uint8_t *data,
+                                      const uint8_t *palette,
+                                      unsigned int width, unsigned int height,
+                                      unsigned int depth, unsigned int bpp)
+{
+    size_t row_pitch = (size_t)width * bpp, slice_pitch = row_pitch * height;
+    uint8_t *unswizzled = tex_scratch(r, 0, slice_pitch * depth);
+    if (depth == 1) {
+        unswizzle_rect(data, width, height, unswizzled, row_pitch, bpp);
+    } else {
+        unswizzle_box(data, width, height, depth, unswizzled, row_pitch,
+                      slice_pitch, bpp);
+    }
+    size_t converted_size =
+        pgraph_converted_texture_size(*s, width, height, depth);
+    if (!converted_size) {
+        return unswizzled;
+    }
+    uint8_t *converted = tex_scratch(r, 1, converted_size);
+    pgraph_convert_texture_data_into(*s, unswizzled, palette, width, height,
+                                     depth, row_pitch, slice_pitch,
+                                     converted);
+    return converted;
+}
+
 static void upload_gl_texture(GLenum gl_target,
                               const TextureShape s,
                               const uint8_t *texture_data,
                               const uint8_t *palette_data)
 {
+    PGRAPHGLState *r = g_nv2a->pgraph.gl_renderer_state;
     ColorFormatInfo f = kelvin_color_format_gl_map[s.color_format];
     nv2a_profile_inc_counter(NV2A_PROF_TEX_UPLOAD);
 
@@ -581,20 +623,23 @@ static void upload_gl_texture(GLenum gl_target,
             /* Can't handle strides unaligned to pixels */
             assert(s.pitch % f.bytes_per_pixel == 0);
 
-            uint8_t *converted = pgraph_convert_texture_data(
-                s, texture_data, palette_data, adjusted_width, adjusted_height, 1,
-                adjusted_pitch, 0, NULL);
+            /* straight from the Xbox's RAM, its pitch's texels to a row,
+             * unless the format has to be converted (into the scratch) */
+            size_t converted_size = pgraph_converted_texture_size(
+                s, adjusted_width, adjusted_height, 1);
+            const uint8_t *pixels = texture_data;
+            if (converted_size) {
+                uint8_t *converted = tex_scratch(r, 1, converted_size);
+                pgraph_convert_texture_data_into(
+                    s, texture_data, palette_data, adjusted_width,
+                    adjusted_height, 1, adjusted_pitch, 0, converted);
+                pixels = converted;
+            }
             glPixelStorei(GL_UNPACK_ROW_LENGTH,
-                          converted ? 0 : adjusted_pitch / f.bytes_per_pixel);
+                          converted_size ? 0 : adjusted_pitch / f.bytes_per_pixel);
             glTexImage2D(GL_TEXTURE_2D, 0, f.gl_internal_format,
                          adjusted_width, adjusted_height, 0,
-                         f.gl_format, f.gl_type,
-                         converted ? converted : texture_data);
-
-            if (converted) {
-              g_free(converted);
-            }
-
+                         f.gl_format, f.gl_type, pixels);
             glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
             break;
         }
@@ -620,46 +665,55 @@ static void upload_gl_texture(GLenum gl_target,
                         8 : 16;
                 unsigned int physical_width = (width + 3) & ~3,
                              physical_height = (height + 3) & ~3;
-                uint8_t *converted = s3tc_decompress_2d(
-                    gl_internal_format_to_s3tc_enum(f.gl_internal_format),
-                    texture_data, width, height);
-                unsigned int tex_width = width;
-                unsigned int tex_height = height;
-
-                if (s.cubemap && adjusted_width != s.width) {
-                    // FIXME: Consider preserving the border.
-                    // There does not seem to be a way to reference the border
-                    // texels in a cubemap, so they are discarded.
-                    glPixelStorei(GL_UNPACK_SKIP_PIXELS, 4);
-                    glPixelStorei(GL_UNPACK_SKIP_ROWS, 4);
-                    tex_width = s.width;
-                    tex_height = s.height;
-                    if (physical_width == width) {
-                        glPixelStorei(GL_UNPACK_ROW_LENGTH, adjusted_width);
-                    }
-                }
-
-                glTexImage2D(gl_target, level, GL_RGBA, tex_width, tex_height, 0,
-                             GL_RGBA, GL_UNSIGNED_INT_8_8_8_8_REV, converted);
-                g_free(converted);
-                if (s.cubemap && adjusted_width != s.width) {
-                    glPixelStorei(GL_UNPACK_SKIP_PIXELS, 0);
-                    glPixelStorei(GL_UNPACK_SKIP_ROWS, 0);
-                    if (physical_width == width) {
-                        glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
-                    }
-                }
-                texture_data +=
+                size_t level_size =
                     physical_width / 4 * physical_height / 4 * block_size;
+                bool cropped = s.cubemap && adjusted_width != s.width;
+
+                if (r->s3tc_native && !cropped) {
+                    /* the blocks as they lie in the Xbox's RAM */
+                    glCompressedTexImage2D(gl_target, level,
+                                           f.gl_internal_format, width,
+                                           height, 0, level_size,
+                                           texture_data);
+                } else {
+                    uint8_t *converted =
+                        tex_scratch(r, 1, (size_t)width * height * 4);
+                    s3tc_decompress_2d_into(
+                        gl_internal_format_to_s3tc_enum(f.gl_internal_format),
+                        texture_data, width, height, converted);
+                    unsigned int tex_width = width;
+                    unsigned int tex_height = height;
+
+                    if (cropped) {
+                        // FIXME: Consider preserving the border.
+                        // There does not seem to be a way to reference the border
+                        // texels in a cubemap, so they are discarded.
+                        glPixelStorei(GL_UNPACK_SKIP_PIXELS, 4);
+                        glPixelStorei(GL_UNPACK_SKIP_ROWS, 4);
+                        tex_width = s.width;
+                        tex_height = s.height;
+                        if (physical_width == width) {
+                            glPixelStorei(GL_UNPACK_ROW_LENGTH, adjusted_width);
+                        }
+                    }
+
+                    glTexImage2D(gl_target, level, GL_RGBA, tex_width,
+                                 tex_height, 0, GL_RGBA,
+                                 GL_UNSIGNED_INT_8_8_8_8_REV, converted);
+                    if (cropped) {
+                        glPixelStorei(GL_UNPACK_SKIP_PIXELS, 0);
+                        glPixelStorei(GL_UNPACK_SKIP_ROWS, 0);
+                        if (physical_width == width) {
+                            glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+                        }
+                    }
+                }
+                texture_data += level_size;
             } else {
                 unsigned int pitch = width * f.bytes_per_pixel;
-                uint8_t *unswizzled = (uint8_t*)g_malloc(height * pitch);
-                unswizzle_rect(texture_data, width, height,
-                               unswizzled, pitch, f.bytes_per_pixel);
-                uint8_t *converted = pgraph_convert_texture_data(
-                    s, unswizzled, palette_data, width, height, 1, pitch, 0,
-                    NULL);
-                uint8_t *pixel_data = converted ? converted : unswizzled;
+                const uint8_t *pixel_data =
+                    unswizzle_level(r, &s, texture_data, palette_data, width,
+                                    height, 1, f.bytes_per_pixel);
                 unsigned int tex_width = width;
                 unsigned int tex_height = height;
 
@@ -679,10 +733,6 @@ static void upload_gl_texture(GLenum gl_target,
                 if (s.cubemap && s.border) {
                     glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
                 }
-                if (converted) {
-                    g_free(converted);
-                }
-                g_free(unswizzled);
 
                 texture_data += width * height * f.bytes_per_pixel;
             }
@@ -719,16 +769,40 @@ static void upload_gl_texture(GLenum gl_target,
 
                 size_t texture_size = physical_width/4 * physical_height/4 * depth * block_size;
 
-                uint8_t *converted = s3tc_decompress_3d(
-                    gl_internal_format_to_s3tc_enum(f.gl_internal_format),
-                    texture_data, width, height, depth);
-
-                glTexImage3D(gl_target, level,  GL_RGBA8,
-                             width, height, depth, 0,
-                             GL_RGBA, GL_UNSIGNED_INT_8_8_8_8_REV,
-                             converted);
-
-                g_free(converted);
+                if (r->s3tc_native) {
+                    /* The Xbox's 3D blocks come in 4-deep groups, slice by
+                     * slice within each block: put into slice order */
+                    unsigned int bw = physical_width / 4,
+                                 bh = physical_height / 4;
+                    size_t slice = (size_t)bw * bh * block_size;
+                    uint8_t *ordered = tex_scratch(r, 1, texture_size);
+                    const uint8_t *src = texture_data;
+                    for (unsigned int z0 = 0; z0 < depth; z0 += 4) {
+                        unsigned int nz = MIN(depth - z0, 4);
+                        for (unsigned int b = 0; b < bw * bh; b++) {
+                            for (unsigned int z = 0; z < nz; z++) {
+                                memcpy(ordered + (z0 + z) * slice +
+                                           b * block_size,
+                                       src, block_size);
+                                src += block_size;
+                            }
+                        }
+                    }
+                    glCompressedTexImage3D(gl_target, level,
+                                           f.gl_internal_format, width,
+                                           height, depth, 0, texture_size,
+                                           ordered);
+                } else {
+                    uint8_t *converted = tex_scratch(
+                        r, 1, (size_t)width * height * depth * 4);
+                    s3tc_decompress_3d_into(
+                        gl_internal_format_to_s3tc_enum(f.gl_internal_format),
+                        texture_data, width, height, depth, converted);
+                    glTexImage3D(gl_target, level,  GL_RGBA8,
+                                 width, height, depth, 0,
+                                 GL_RGBA, GL_UNSIGNED_INT_8_8_8_8_REV,
+                                 converted);
+                }
 
                 texture_data += texture_size;
             } else {
@@ -736,25 +810,12 @@ static void upload_gl_texture(GLenum gl_target,
                 height = MAX(height, 1);
                 depth = MAX(depth, 1);
 
-                unsigned int row_pitch = width * f.bytes_per_pixel;
-                unsigned int slice_pitch = row_pitch * height;
-                uint8_t *unswizzled = (uint8_t*)g_malloc(slice_pitch * depth);
-                unswizzle_box(texture_data, width, height, depth, unswizzled,
-                               row_pitch, slice_pitch, f.bytes_per_pixel);
-
-                uint8_t *converted = pgraph_convert_texture_data(
-                    s, unswizzled, palette_data, width, height, depth,
-                    row_pitch, slice_pitch, NULL);
-
+                const uint8_t *pixels =
+                    unswizzle_level(r, &s, texture_data, palette_data, width,
+                                    height, depth, f.bytes_per_pixel);
                 glTexImage3D(gl_target, level, f.gl_internal_format,
                              width, height, depth, 0,
-                             f.gl_format, f.gl_type,
-                             converted ? converted : unswizzled);
-
-                if (converted) {
-                    g_free(converted);
-                }
-                g_free(unswizzled);
+                             f.gl_format, f.gl_type, pixels);
 
                 texture_data += width * height * depth * f.bytes_per_pixel;
             }
@@ -943,6 +1004,12 @@ void pgraph_gl_init_textures(NV2AState *d)
     r->texture_cache.init_node = texture_cache_entry_init;
     r->texture_cache.compare_nodes = texture_cache_entry_compare;
     r->texture_cache.post_node_evict = texture_cache_entry_post_evict;
+
+    for (int i = 0; i < 2; i++) {
+        r->tex_scratch[i] = NULL;
+        r->tex_scratch_size[i] = 0;
+    }
+    r->s3tc_native = epoxy_has_gl_extension("GL_EXT_texture_compression_s3tc");
 }
 
 void pgraph_gl_finalize_textures(PGRAPHState *pg)
@@ -957,4 +1024,9 @@ void pgraph_gl_finalize_textures(PGRAPHState *pg)
     free(r->texture_cache_entries);
 
     r->texture_cache_entries = NULL;
+    for (int i = 0; i < 2; i++) {
+        g_free(r->tex_scratch[i]);
+        r->tex_scratch[i] = NULL;
+        r->tex_scratch_size[i] = 0;
+    }
 }

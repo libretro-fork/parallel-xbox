@@ -386,6 +386,13 @@ typedef struct PGRAPHGLState {
     TextureBinding *texture_binding[NV2A_MAX_TEXTURES];
     Lru texture_cache;
     TextureLruNode *texture_cache_entries;
+    /* The upload's scratch: a level unswizzled, then converted, or S3TC
+     * decoded; kept and grown to the largest level, never freed under a
+     * game (texture.c tex_scratch) */
+    uint8_t *tex_scratch[2];
+    size_t tex_scratch_size[2];
+    /* S3TC textures uploaded as they are: GL_EXT_texture_compression_s3tc */
+    bool s3tc_native;
 
     Lru shader_cache;
     ShaderBinding *shader_cache_entries;
