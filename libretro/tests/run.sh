@@ -86,10 +86,13 @@ t "spinning guest, unpaced" $h "$(path "$core")" "$(path "$work/syss")" $vp --fr
 # The same idle guest on a Vulkan context, as RetroArch's vulkan driver
 # gives one (the device made by the core's negotiation interface, the frame
 # an image handed over, read back under the queue lock): a frame's worth
-# of audio and a video call a run, the machine stopped cleanly after.
-echo "== idle guest, Vulkan context"
+# of audio and a video call a run, the machine stopped cleanly after. Once
+# through version 2 of the negotiation interface, once as a frontend that
+# knows only version 1.
+for v in "" -v1; do
+echo "== idle guest, Vulkan context$v"
 set +e
-timeout 300 $h "$(path "$core")" "$(path "$work/sys")" $vp --vulkan \
+timeout 300 $h "$(path "$core")" "$(path "$work/sys")" $vp --vulkan$v \
   --opt xemu_renderer=vulkan --frames 300 --strict --hash-video
 r=$?
 set -e
@@ -98,6 +101,7 @@ case $r in
 3) echo "no Vulkan device: skipped" ;;
 *) echo "FAIL: the Vulkan run exited $r"; exit 1 ;;
 esac
+done
 
 # The pad, through the USB controller as the kernel reads it (rom/pad.c):
 # the hubs found by their status-change reports, their ports reset, the

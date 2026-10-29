@@ -16,6 +16,8 @@
  *     --frames N        runs to do (default 600)
  *     --vulkan          a Vulkan context instead of GL (libvulkan loaded at
  *                       run time; exit 3 when there is no Vulkan device)
+ *     --vulkan-v1       the same, as a frontend that knows only version 1
+ *                       of the context negotiation interface
  *     --wav FILE        write the audio
  *     --hash-video      read back every frame and hash it
  *     --opt key=value   a core option
@@ -107,6 +109,7 @@ static GLuint fbo, fbo_color, fbo_depth;
 static struct retro_hw_render_callback hw;
 static int have_hw;
 static int use_vulkan;
+static int vulkan_v1; /* --vulkan-v1: negotiation interface version 1 */
 static retro_keyboard_event_t kb_cb;
 
 static int run_no;
@@ -363,10 +366,35 @@ static uint32_t vk_memory_type(uint32_t bits, VkMemoryPropertyFlags want)
    return 0;
 }
 
+/* v2 of the negotiation interface: the core makes the instance and the
+ * device through these, where the frontend adds its own needs (this one
+ * has none) */
+static VkInstance vk_instance_wrapper(void *opaque,
+      const VkInstanceCreateInfo *create_info)
+{
+   VkInstance instance = VK_NULL_HANDLE;
+   (void)opaque;
+   if (p_vkCreateInstance(create_info, NULL, &instance) != VK_SUCCESS)
+      return VK_NULL_HANDLE;
+   return instance;
+}
+
+static VkDevice vk_device_wrapper(VkPhysicalDevice gpu, void *opaque,
+      const VkDeviceCreateInfo *create_info)
+{
+   VkDevice device = VK_NULL_HANDLE;
+   (void)opaque;
+   if (p_vkCreateDevice(gpu, create_info, NULL, &device) != VK_SUCCESS)
+      return VK_NULL_HANDLE;
+   return device;
+}
+
 /* The instance, the GPU and - through the core's negotiation interface, as
- * RetroArch does it - the device. 0 when there is no Vulkan at all. */
+ * RetroArch does it, version 2 where the core offers it - the device. 0
+ * when there is no Vulkan at all. */
 static int vk_setup(void)
 {
+   int v2 = vk_nego && !vulkan_v1 && vk_nego->interface_version >= 2;
    VkApplicationInfo app_default;
    const VkApplicationInfo *app;
    VkInstanceCreateInfo ici;
@@ -401,7 +429,12 @@ static int vk_setup(void)
    memset(&ici, 0, sizeof(ici));
    ici.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
    ici.pApplicationInfo = app;
-   if (p_vkCreateInstance(&ici, NULL, &vk_instance) != VK_SUCCESS)
+   if (v2 && vk_nego->create_instance)
+      vk_instance = vk_nego->create_instance(p_vkGetInstanceProcAddr,
+            &app_default, vk_instance_wrapper, NULL);
+   else if (p_vkCreateInstance(&ici, NULL, &vk_instance) != VK_SUCCESS)
+      vk_instance = VK_NULL_HANDLE;
+   if (vk_instance == VK_NULL_HANDLE)
       return 0;
    IFN(vkEnumeratePhysicalDevices);
    IFN(vkGetDeviceProcAddr);
@@ -414,7 +447,17 @@ static int vk_setup(void)
       return 0;
 
    memset(&context, 0, sizeof(context));
-   if (vk_nego && vk_nego->create_device)
+   if (v2 && vk_nego->create_device2)
+   {
+      if (!vk_nego->create_device2(&context, vk_instance, vk_gpu,
+               VK_NULL_HANDLE, p_vkGetInstanceProcAddr, vk_device_wrapper,
+               NULL))
+      {
+         fprintf(stderr, "harness: the core's create_device2 failed\n");
+         return 0;
+      }
+   }
+   else if (vk_nego && vk_nego->create_device)
    {
       if (!vk_nego->create_device(&context, vk_instance, vk_gpu,
                VK_NULL_HANDLE, p_vkGetInstanceProcAddr, NULL, 0, NULL, 0,
@@ -716,6 +759,19 @@ static bool env_cb(unsigned cmd, void *data)
                RETRO_HW_RENDER_CONTEXT_NEGOTIATION_INTERFACE_VULKAN)
             return false;
          vk_nego = data;
+         return true;
+      }
+      case RETRO_ENVIRONMENT_GET_HW_RENDER_CONTEXT_NEGOTIATION_INTERFACE_SUPPORT &
+           ~RETRO_ENVIRONMENT_EXPERIMENTAL:
+      {
+         /* as RetroArch: the version it knows; a v1 frontend did not have
+          * this call at all */
+         struct retro_hw_render_context_negotiation_interface *n = data;
+         if (!use_vulkan || vulkan_v1 || n->interface_type !=
+               RETRO_HW_RENDER_CONTEXT_NEGOTIATION_INTERFACE_VULKAN)
+            return false;
+         n->interface_version =
+            RETRO_HW_RENDER_CONTEXT_NEGOTIATION_INTERFACE_VULKAN_VERSION;
          return true;
       }
       case RETRO_ENVIRONMENT_GET_HW_RENDER_INTERFACE &
@@ -1189,6 +1245,8 @@ int main(int argc, char **argv)
          hash_video = 1;
       else if (!strcmp(argv[i], "--vulkan"))
          use_vulkan = 1;
+      else if (!strcmp(argv[i], "--vulkan-v1"))
+         use_vulkan = vulkan_v1 = 1;
       else if (!strcmp(argv[i], "--realtime"))
          realtime = 1;
       else if (!strcmp(argv[i], "--save") && i + 1 < argc)

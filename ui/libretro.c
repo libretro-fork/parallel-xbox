@@ -725,6 +725,10 @@ static bool ra_vk_import_display(void *ext_handle, int width, int height)
 XemuLibretroVk xemu_libretro_vk;
 bool xemu_libretro_vk_context_ready;
 
+/* the instance's Vulkan version: the application info's, or what
+ * create_instance (v2) made it */
+static uint32_t xemu_vk_instance_api_version = VK_API_VERSION_1_3;
+
 static const VkApplicationInfo xemu_vk_app_info = {
     .sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
     .pApplicationName = "xemu",
@@ -750,12 +754,17 @@ static bool xemu_vk_has_ext(const VkExtensionProperties *props, uint32_t count, 
     return false;
 }
 
-static bool xemu_vk_create_device(struct retro_vulkan_context *context,
+/* The device, for either version of the negotiation interface: made by
+ * the frontend's wrapper where there is one (v2: it adds the frontend's
+ * own extensions and features, its low-latency ones among them), else by
+ * vkCreateDevice with what the frontend required (v1) */
+static bool xemu_vk_make_device(struct retro_vulkan_context *context,
     VkInstance instance, VkPhysicalDevice gpu, VkSurfaceKHR surface,
     PFN_vkGetInstanceProcAddr gipa,
     const char **required_exts, unsigned num_required_exts,
     const char **required_layers, unsigned num_required_layers,
-    const VkPhysicalDeviceFeatures *required_features)
+    const VkPhysicalDeviceFeatures *required_features,
+    retro_vulkan_create_device_wrapper_t wrapper, void *opaque)
 {
 #define XEMU_VK_LOAD(name) PFN_##name p_##name = (PFN_##name)gipa(instance, #name)
     XEMU_VK_LOAD(vkEnumeratePhysicalDevices);
@@ -904,7 +913,7 @@ static bool xemu_vk_create_device(struct retro_vulkan_context *context,
      * the draw path, the shader stutter NNshi measured against standalone. */
     VkPhysicalDeviceProperties props;
     p_vkGetPhysicalDeviceProperties(gpu, &props);
-    const uint32_t api = MIN(xemu_vk_app_info.apiVersion, props.apiVersion);
+    const uint32_t api = MIN(xemu_vk_instance_api_version, props.apiVersion);
     VkPhysicalDeviceExtendedDynamicStateFeaturesEXT eds_q = {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTENDED_DYNAMIC_STATE_FEATURES_EXT,
     };
@@ -1021,11 +1030,20 @@ static bool xemu_vk_create_device(struct retro_vulkan_context *context,
         .pEnabledFeatures = &features,
     };
     VkDevice device = VK_NULL_HANDLE;
-    VkResult res = p_vkCreateDevice(gpu, &device_ci, NULL, &device);
-    g_free(exts);
-    if (res != VK_SUCCESS) {
-        LRLOG_ERROR("[xemu] Vulkan: vkCreateDevice failed (%d)\n", res);
-        return false;
+    if (wrapper) {
+        device = wrapper(gpu, opaque, &device_ci);
+        g_free(exts);
+        if (device == VK_NULL_HANDLE) {
+            LRLOG_ERROR("[xemu] Vulkan: the frontend's create_device failed\n");
+            return false;
+        }
+    } else {
+        VkResult res = p_vkCreateDevice(gpu, &device_ci, NULL, &device);
+        g_free(exts);
+        if (res != VK_SUCCESS) {
+            LRLOG_ERROR("[xemu] Vulkan: vkCreateDevice failed (%d)\n", res);
+            return false;
+        }
     }
 
     PFN_vkGetDeviceQueue p_vkGetDeviceQueue =
@@ -1045,7 +1063,7 @@ static bool xemu_vk_create_device(struct retro_vulkan_context *context,
     xemu_libretro_vk.instance = instance;
     xemu_libretro_vk.gpu = gpu;
     xemu_libretro_vk.device = device;
-    xemu_libretro_vk.api_version = xemu_vk_app_info.apiVersion;
+    xemu_libretro_vk.api_version = xemu_vk_instance_api_version;
     xemu_libretro_vk.queue_family = family;
     xemu_libretro_vk.queue = queue;
     xemu_libretro_vk.frontend_queue = queue;
@@ -1065,18 +1083,69 @@ static bool xemu_vk_create_device(struct retro_vulkan_context *context,
     xemu_libretro_vk.shader_demote = shader_demote;
     xemu_libretro_vk.active = true;
 
-    LRLOG_INFO("[xemu] Vulkan: device shared with the frontend, queue family %u (%s), %u extensions\n",
-               family, own_queue ? "a queue of its own" : "the frontend's queue", nexts);
+    LRLOG_INFO("[xemu] Vulkan: device shared with the frontend (negotiation %s), queue family %u (%s), %u extensions\n",
+               wrapper ? "v2" : "v1", family,
+               own_queue ? "a queue of its own" : "the frontend's queue", nexts);
     LRLOG_INFO("[xemu] Vulkan: dynamic state cull/front %d, blend %d, vertex input %d | pipeline library %d | host query reset %d | shader demote %d\n",
                dyn_cull_front, dyn_blend, dyn_vertex_input, pipeline_library,
                host_query_reset, shader_demote);
     return true;
 }
 
+/* v1: the device with what the frontend requires */
+static bool xemu_vk_create_device(struct retro_vulkan_context *context,
+    VkInstance instance, VkPhysicalDevice gpu, VkSurfaceKHR surface,
+    PFN_vkGetInstanceProcAddr gipa,
+    const char **required_exts, unsigned num_required_exts,
+    const char **required_layers, unsigned num_required_layers,
+    const VkPhysicalDeviceFeatures *required_features)
+{
+    return xemu_vk_make_device(context, instance, gpu, surface, gipa,
+                               required_exts, num_required_exts,
+                               required_layers, num_required_layers,
+                               required_features, NULL, NULL);
+}
+
+/* v2: the device through the frontend's wrapper, which adds what the
+ * frontend requires itself. A GPU of the frontend's choice, or when it
+ * leaves the choice to the core (VK_NULL_HANDLE), the first. */
+static bool xemu_vk_create_device2(struct retro_vulkan_context *context,
+    VkInstance instance, VkPhysicalDevice gpu, VkSurfaceKHR surface,
+    PFN_vkGetInstanceProcAddr gipa,
+    retro_vulkan_create_device_wrapper_t wrapper, void *opaque)
+{
+    return xemu_vk_make_device(context, instance, gpu, surface, gipa,
+                               NULL, 0, NULL, 0, NULL, wrapper, opaque);
+}
+
+/* v2: the instance, through the frontend's wrapper (it adds its own
+ * extensions and layers): the core's application info, at the newer of
+ * its Vulkan version and the one the frontend asks for at least */
+static VkInstance xemu_vk_create_instance(PFN_vkGetInstanceProcAddr gipa,
+                                          const VkApplicationInfo *app,
+                                          retro_vulkan_create_instance_wrapper_t wrapper,
+                                          void *opaque)
+{
+    VkApplicationInfo info = xemu_vk_app_info;
+    if (app && app->apiVersion > info.apiVersion) {
+        info.apiVersion = app->apiVersion;
+    }
+    VkInstanceCreateInfo create_info = {
+        .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
+        .pApplicationInfo = &info,
+    };
+    VkInstance instance = wrapper(opaque, &create_info);
+    if (instance != VK_NULL_HANDLE) {
+        xemu_vk_instance_api_version = info.apiVersion;
+    }
+    return instance;
+}
+
 /* Vulkan 1.3 where there is one: the renderer wants 1.1 at least, and the
  * device's own version caps it */
 static const VkApplicationInfo *xemu_vk_get_application_info(void)
 {
+    xemu_vk_instance_api_version = xemu_vk_app_info.apiVersion;
     return &xemu_vk_app_info;
 }
 
@@ -1108,12 +1177,18 @@ void xemu_libretro_vk_unlock_frontend_queue(void)
     }
 }
 
-static const struct retro_hw_render_context_negotiation_interface_vulkan xemu_vk_negotiation = {
-    RETRO_HW_RENDER_CONTEXT_NEGOTIATION_INTERFACE_VULKAN,
-    RETRO_HW_RENDER_CONTEXT_NEGOTIATION_INTERFACE_VULKAN_VERSION,
-    xemu_vk_get_application_info,
-    xemu_vk_create_device,
-    NULL, /* destroy_device: nothing of our own on the device */
+/* Version 2 of the negotiation interface, with the v1 entry points for a
+ * frontend that knows only those (it ignores the fields past them):
+ * a v2 frontend makes the instance and the device through the core, with
+ * the core adding to the frontend's lists rather than the other way round */
+static struct retro_hw_render_context_negotiation_interface_vulkan xemu_vk_negotiation = {
+    .interface_type = RETRO_HW_RENDER_CONTEXT_NEGOTIATION_INTERFACE_VULKAN,
+    .interface_version = RETRO_HW_RENDER_CONTEXT_NEGOTIATION_INTERFACE_VULKAN_VERSION,
+    .get_application_info = xemu_vk_get_application_info,
+    .create_device = xemu_vk_create_device,
+    .destroy_device = NULL, /* nothing of our own on the device */
+    .create_instance = xemu_vk_create_instance,
+    .create_device2 = xemu_vk_create_device2,
 };
 
 /* ========================================================================= */
@@ -2796,7 +2871,21 @@ RETRO_API bool retro_load_game(const struct retro_game_info *game)
 
     use_vulkan = want_vulkan;
     if (use_vulkan) {
-        LRLOG_INFO("[xemu] Using Vulkan HW rendering\n");
+        /* The negotiation interface's version the frontend knows: one that
+         * cannot say (older than the query) knows v1 alone, and some of
+         * those refused an interface of a version other than theirs */
+        struct retro_hw_render_context_negotiation_interface support = {
+            .interface_type = RETRO_HW_RENDER_CONTEXT_NEGOTIATION_INTERFACE_VULKAN,
+        };
+        unsigned version = 1;
+        if (environ_cb(RETRO_ENVIRONMENT_GET_HW_RENDER_CONTEXT_NEGOTIATION_INTERFACE_SUPPORT,
+                       &support) && support.interface_version >= 1) {
+            version = MIN(support.interface_version,
+                          RETRO_HW_RENDER_CONTEXT_NEGOTIATION_INTERFACE_VULKAN_VERSION);
+        }
+        xemu_vk_negotiation.interface_version = version;
+        LRLOG_INFO("[xemu] Using Vulkan HW rendering, context negotiation v%u\n",
+                   version);
         environ_cb(RETRO_ENVIRONMENT_SET_HW_RENDER_CONTEXT_NEGOTIATION_INTERFACE,
                    (void *)&xemu_vk_negotiation);
     } else {

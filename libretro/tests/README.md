@@ -41,7 +41,9 @@ idle and busy; the tone has no gap; an idle guest runs far faster than real
 time when the frontend does not pace it (fast-forward), and so does one
 that spins waiting; the busy guest does the same work paced and unpaced;
 the pad's buttons reach the guest over USB; the idle guest runs the same
-on a Vulkan context, where there is a Vulkan device; with APU DSP
+on a Vulkan context, where there is a Vulkan device, through version 2 of
+the context negotiation interface and as a frontend that knows only
+version 1; with APU DSP
 Emulation on, the JIT leaves the DSP in the same state as the interpreter
 after every frame of the GP program, the tone comes through the GP DSP
 whole on the interpreter and on the JIT, the interpreter does not fall behind on a heavy program, and
