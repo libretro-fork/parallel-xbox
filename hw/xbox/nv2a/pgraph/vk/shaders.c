@@ -149,9 +149,11 @@ void pgraph_vk_update_descriptor_sets(PGRAPHState *pg)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
 
-    bool need_uniform_write =
-        r->uniforms_changed ||
-        !r->storage_buffers[BUFFER_UNIFORM_STAGING].buffer_offset;
+    unsigned uniform_uploads = r->uniforms_changed;
+    if (!r->storage_buffers[BUFFER_UNIFORM_STAGING].buffer_offset) {
+        uniform_uploads = 3;
+    }
+    bool need_uniform_write = uniform_uploads != 0;
 
     if (!(r->shader_bindings_changed || r->texture_bindings_changed ||
           (r->descriptor_set_index == r->descriptor_set_base) ||
@@ -163,11 +165,17 @@ void pgraph_vk_update_descriptor_sets(PGRAPHState *pg)
     ShaderUniformLayout *layouts[] = { &binding->vsh.module_info->uniforms,
                                        &binding->psh.module_info->uniforms };
     VkDeviceSize ubo_buffer_total_size = 0;
+    /* Each uploaded stage starts at its own alignment boundary. */
     for (int i = 0; i < ARRAY_SIZE(layouts); i++) {
-        ubo_buffer_total_size += layouts[i]->total_size;
+        if (uniform_uploads & (1u << i)) {
+            ubo_buffer_total_size = ROUND_UP(
+                ubo_buffer_total_size,
+                r->device_props.limits.minUniformBufferOffsetAlignment);
+            ubo_buffer_total_size += layouts[i]->total_size;
+        }
     }
     bool need_ubo_staging_buffer_reset =
-        r->uniforms_changed &&
+        need_uniform_write &&
         !pgraph_vk_buffer_has_space_for(pg, BUFFER_UNIFORM_STAGING,
                                         ubo_buffer_total_size,
                                         r->device_props.limits.minUniformBufferOffsetAlignment);
@@ -182,12 +190,16 @@ void pgraph_vk_update_descriptor_sets(PGRAPHState *pg)
     if (need_descriptor_write_reset || need_ubo_staging_buffer_reset) {
         pgraph_vk_finish(pg, VK_FINISH_REASON_NEED_BUFFER_SPACE);
         need_uniform_write = true;
+        uniform_uploads = 3;
     }
 
     VkWriteDescriptorSet descriptor_writes[2 + NV2A_MAX_TEXTURES];
 
     if (need_uniform_write) {
         for (int i = 0; i < ARRAY_SIZE(layouts); i++) {
+            if (!(uniform_uploads & (1u << i))) {
+                continue;
+            }
             void *data = layouts[i]->allocation;
             VkDeviceSize size = layouts[i]->total_size;
             r->uniform_buffer_offsets[i] = pgraph_vk_append_to_buffer(
@@ -195,7 +207,7 @@ void pgraph_vk_update_descriptor_sets(PGRAPHState *pg)
                 r->device_props.limits.minUniformBufferOffsetAlignment);
         }
 
-        r->uniforms_changed = false;
+        r->uniforms_changed = 0;
     }
 
     assert(r->descriptor_set_index < ARRAY_SIZE(r->descriptor_sets));
@@ -985,30 +997,36 @@ static void update_shader_uniforms_tracked(PGRAPHState *pg)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
     ShaderBinding *binding = r->shader_binding;
-    bool changed = false;
+    unsigned changed = 0;
 
     pgraph_vsh_uniform_source_refresh(pg, &r->vsh_uni_src, &binding->state.vsh,
                                       binding->vsh.uniform_locs);
-    changed |= vk_apply_uniform_updates(
+    if (vk_apply_uniform_updates(
         r, &binding->vsh.module_info->uniforms, VshUniformInfo,
         binding->vsh.uniform_locs, &r->vsh_uni_src.values, VshUniform__COUNT,
-        binding->vsh.module_info, pgraph_vsh_uniform_section);
+        binding->vsh.module_info, pgraph_vsh_uniform_section)) {
+        changed |= 1;
+    }
 
     PshUniformValues psh_values;
     pgraph_glsl_set_psh_uniform_values(pg, binding->psh.uniform_locs,
                                        &psh_values);
     set_psh_texscale_values(pg, &psh_values);
-    changed |= vk_apply_uniform_updates(
+    if (vk_apply_uniform_updates(
         r, &binding->psh.module_info->uniforms, PshUniformInfo,
         binding->psh.uniform_locs, &psh_values, PshUniform__COUNT,
-        binding->psh.module_info, NULL);
+        binding->psh.module_info, NULL)) {
+        changed |= 2;
+    }
 
     /* The UBO offsets hold the last pushed modules' blocks: a module
-     * switch re-pushes even with equal fields. */
-    if (binding->vsh.module_info != r->uni_last_pushed[0] ||
-        binding->psh.module_info != r->uni_last_pushed[1]) {
-        changed = true;
+     * switch re-pushes that stage even with equal fields. */
+    if (binding->vsh.module_info != r->uni_last_pushed[0]) {
+        changed |= 1;
         r->uni_last_pushed[0] = binding->vsh.module_info;
+    }
+    if (binding->psh.module_info != r->uni_last_pushed[1]) {
+        changed |= 2;
         r->uni_last_pushed[1] = binding->psh.module_info;
     }
 

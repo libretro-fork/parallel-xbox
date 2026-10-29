@@ -1,5 +1,11 @@
 # The core's tests
 
+`python libretro/tests/test-uniform-stage-uploads.py . gcc` exercises the
+production Vulkan uniform tracker and upload planning (before descriptor
+writes) against bounded upload storage. It checks independent stages,
+module switches, alignment, resets and descriptor exhaustion in 100,000
+mixed draws, with GCC's undefined-behavior traps enabled.
+
 `python libretro/tests/test-tlb-dirty.py . gcc` checks the production TLB
 dirty-range functions against a full-scan reference in 1,655,360 cases:
 fast/slow flags, aliases, wrapped/empty ranges, active MMU modes and victim

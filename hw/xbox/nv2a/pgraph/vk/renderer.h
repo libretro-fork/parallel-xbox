@@ -774,7 +774,7 @@ typedef struct PGRAPHVkState {
 
     // FIXME: Merge these into a structure
     size_t uniform_buffer_offsets[2];
-    bool uniforms_changed;
+    uint8_t uniforms_changed; /* bit 0: vertex UBO, bit 1: fragment UBO */
     /* Tracked uniforms (shaders.c): the vertex uniform values; the last
      * values written into each module's UBO allocation, keyed by module
      * address (a module that finds no slot is pushed on every draw); and
