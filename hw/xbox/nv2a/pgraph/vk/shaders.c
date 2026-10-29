@@ -1046,6 +1046,7 @@ void pgraph_vk_bind_shaders(PGRAPHState *pg)
                                          sizeof(ShaderState))) {
             uint64_t h =
                 fast_hash((const uint8_t *)&new_state, sizeof(new_state));
+            uint64_t bound_h = h; /* of the state drawn with, below */
             if (!vk_seen_contains(h)) {
                 int phase = vk_spec_phase(h);
                 if (phase == VK_SPEC_PIPE_LANDED) {
@@ -1082,6 +1083,7 @@ void pgraph_vk_bind_shaders(PGRAPHState *pg)
                             nv2a_profile_inc_counter(
                                 NV2A_PROF_SHADER_FALLBACK);
                             new_state = fb;
+                            bound_h = fh;
                         } else if (fh != h && !sphase) {
                             /* The sibling, interpreter code, compiles
                              * slower than the state: queue it; the
@@ -1098,8 +1100,7 @@ void pgraph_vk_bind_shaders(PGRAPHState *pg)
                 }
             }
             r->shader_binding = get_shader_binding_for_state(r, &new_state);
-            vk_seen_add(
-                fast_hash((const uint8_t *)&new_state, sizeof(new_state)));
+            vk_seen_add(bound_h);
             r->shader_bindings_changed = true;
         }
     } else {

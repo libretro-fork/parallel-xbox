@@ -825,15 +825,20 @@ static bool check_pipeline_dirty(PGRAPHState *pg)
         }
     }
 
+    /* With dynamic vertex input the key carries no descriptions (they are
+     * set on the command buffer, emit_dynamic_vertex_input compares them
+     * itself): compared against the key's zeros, every draw with a vertex
+     * array counted as dirty and rebuilt, hashed and looked up its key. */
     // FIXME: Use dirty bits instead
-    if (memcmp(r->vertex_attribute_descriptions,
+    if (!r->dyn_vertex_input &&
+        (memcmp(r->vertex_attribute_descriptions,
                r->pipeline_binding->key.attribute_descriptions,
                r->num_active_vertex_attribute_descriptions *
                    sizeof(r->vertex_attribute_descriptions[0])) ||
         memcmp(r->vertex_binding_descriptions,
                r->pipeline_binding->key.binding_descriptions,
                r->num_active_vertex_binding_descriptions *
-                   sizeof(r->vertex_binding_descriptions[0]))) {
+                   sizeof(r->vertex_binding_descriptions[0])))) {
         return true;
     }
 
