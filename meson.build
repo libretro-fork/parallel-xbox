@@ -2305,7 +2305,6 @@ if not get_option('libdw').auto() or \
 endif
 
 vulkan = not_found
-libglslang = not_found
 
 if host_os == 'windows'
   vulkan = declare_dependency(compile_args: ['-DVK_USE_PLATFORM_WIN32_KHR'])
@@ -2329,45 +2328,6 @@ elif host_os == 'darwin' and get_option('libretro')
 endif
 
 if vulkan.found()
-  # On Android and macOS, from the glslang subproject below: neither the NDK
-  # nor the MacPorts libraries have it
-  if get_option('libretro') and host_os != 'android' and host_os != 'darwin'
-    # For libretro: use static glslang + SPIRV-Tools libraries to avoid shared DLL deps
-    libglslang = declare_dependency(
-      dependencies: [
-        cc.find_library('glslang', static: true),
-        cc.find_library('MachineIndependent', static: true),
-        cc.find_library('GenericCodeGen', static: true),
-        cc.find_library('SPIRV', static: true),
-        cc.find_library('glslang-default-resource-limits', static: true),
-        cc.find_library('SPIRV-Tools', static: true),
-        cc.find_library('SPIRV-Tools-opt', static: true),
-      ]
-    )
-  else
-    libglslang = dependency('glslang', version: '>=15.0.0', required: false)
-  endif
-  if not libglslang.found()
-    # FIXME: Get spirv-tools to enable opt.
-    glslang_opts = cmake.subproject_options()
-  if host_os == 'darwin'
-    glslang_opts.add_cmake_defines({'CMAKE_OSX_ARCHITECTURES': cmake_macos_arch})
-  endif
-    glslang_opts.add_cmake_defines({
-      'ENABLE_OPT': false,
-      'ENABLE_HLSL': false,
-      'CMAKE_POSITION_INDEPENDENT_CODE': 'ON',
-    })
-    glslang_subpro = cmake.subproject('glslang', options: glslang_opts)
-    libglslang = declare_dependency(link_with: [
-          glslang_subpro.target('glslang'),
-          glslang_subpro.target('MachineIndependent'),
-          glslang_subpro.target('GenericCodeGen'),
-          glslang_subpro.target('SPIRV'),
-        ], include_directories: glslang_subpro.include_directories('glslang')
-      )
-  endif
-
   # A libretro core is a shared library, so on hosts with PIC the static
   # libraries of these CMake subprojects that go into it need it too.
   libretro_cmake_pic = get_option('libretro') and host_os != 'windows'

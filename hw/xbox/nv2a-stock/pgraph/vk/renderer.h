@@ -33,7 +33,6 @@
 #include "hw/xbox/nv2a-stock/pgraph/glsl/shaders.h"
 
 #include <vulkan/vulkan.h>
-#include <glslang/Include/glslang_c_interface.h>
 #include <volk.h>
 #include <spirv_reflect.h>
 #include <vk_mem_alloc.h>
@@ -459,9 +458,7 @@ uint32_t pgraph_vk_get_memory_type(PGRAPHState *pg, uint32_t type_bits,
 
 // glsl.c
 extern bool pgraph_vk_spirv_1_6;
-void pgraph_vk_init_glsl_compiler(void);
-void pgraph_vk_finalize_glsl_compiler(void);
-GByteArray *pgraph_vk_compile_glsl_to_spv(glslang_stage_t stage,
+GByteArray *pgraph_vk_compile_glsl_to_spv(VkShaderStageFlagBits stage,
                                           const char *glsl_source);
 VkShaderModule pgraph_vk_create_shader_module_from_spv(PGRAPHVkState *r,
                                                        GByteArray *spv);

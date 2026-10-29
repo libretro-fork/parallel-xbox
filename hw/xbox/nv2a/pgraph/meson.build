@@ -18,10 +18,12 @@ subdir('null')
 if host_os == 'android'
 	# Vulkan only, through the frontend's context
 	subdir('glsl')
+	subdir('spv')
 	subdir('vk')
 else
 	subdir('gl')
 	subdir('glsl')
+	subdir('spv')
 	subdir('vk')
 endif
 specific_ss.add(nv2a_vsh_cpu)

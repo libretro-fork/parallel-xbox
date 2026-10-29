@@ -66,6 +66,7 @@ subprojects/imgui.wrap
 subprojects/implot.wrap
 subprojects/sdl3.wrap
 subprojects/xxhash.wrap
+subprojects/glslang.wrap
 ubuntu-win64-cross
 ui/sdl2-2d.c
 ui/sdl2-gl.c

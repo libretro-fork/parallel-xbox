@@ -4,9 +4,7 @@
 # core takes only what it uses.
 #
 #   GLib 2.88.2 (its base library, with PCRE2 10.47 and proxy-libintl),
-#   libslirp 4.9.1, libepoxy (WGL), glslang 16.6.0 (GLSL
-#   to SPIR-V for the Vulkan renderer: no HLSL, no SPIRV-Tools), and the
-#   Vulkan headers.
+#   libslirp 4.9.1, libepoxy (WGL), and the Vulkan headers.
 
 DEPS_DIR := $(CORE_DIR)/deps
 
@@ -154,34 +152,16 @@ SLIRP_CFLAGS  := -I$(DEPS_DIR)/libslirp/src -I$(DEPS_DIR)/libslirp/include \
 	-DBUILDING_LIBSLIRP -DLIBSLIRP_STATIC -DGLIB_STATIC_COMPILATION \
 	-DG_INTL_STATIC_COMPILATION -DG_LOG_DOMAIN=\"Slirp\" -DUNICODE -D_UNICODE
 
-# --- glslang ---
-GLSLANG_DIR := $(DEPS_DIR)/glslang
-GLSLANG_SOURCES := \
-	$(wildcard $(GLSLANG_DIR)/glslang/GenericCodeGen/*.cpp) \
-	$(wildcard $(GLSLANG_DIR)/glslang/MachineIndependent/*.cpp) \
-	$(wildcard $(GLSLANG_DIR)/glslang/MachineIndependent/preprocessor/*.cpp) \
-	$(GLSLANG_DIR)/glslang/CInterface/glslang_c_interface.cpp \
-	$(wildcard $(GLSLANG_DIR)/glslang/ResourceLimits/*.cpp) \
-	$(wildcard $(GLSLANG_DIR)/SPIRV/*.cpp) \
-	$(GLSLANG_DIR)/SPIRV/CInterface/spirv_c_interface.cpp
-ifeq ($(HOST_OS),win32)
-GLSLANG_SOURCES += $(GLSLANG_DIR)/glslang/OSDependent/Windows/ossource.cpp
-else
-GLSLANG_SOURCES += $(GLSLANG_DIR)/glslang/OSDependent/Unix/ossource.cpp
-endif
-GLSLANG_CXXFLAGS := -std=c++17 -I$(GLSLANG_DIR)
-
 # What the core's own sources need of them
 DEPS_VENDORED_CFLAGS := $(GLIB_INCFLAGS) -I$(DEPS_DIR)/libslirp/include \
 	-I$(DEPS_DIR)/libepoxy/include \
 	-I$(DEPS_DIR)/vulkan-headers \
-	-I$(GLSLANG_DIR) -I$(DEPS_DIR)/proxy-libintl -DG_INTL_STATIC_COMPILATION
+	-I$(DEPS_DIR)/proxy-libintl -DG_INTL_STATIC_COMPILATION
 
 # --- Archives ---
-dep_obj = $(patsubst %.cpp,%.o,$(patsubst %.c,%.o,$(1)))
+dep_obj = $(patsubst %.c,%.o,$(1))
 
 DEP_LIBS := $(DEPS_DIR)/libepoxy.a $(DEPS_DIR)/libslirp.a \
-	$(DEPS_DIR)/libglslang.a \
 	$(DEPS_DIR)/libglib.a $(DEPS_DIR)/libintl.a $(DEPS_DIR)/libpcre2.a
 
 $(call dep_obj,$(INTL_SOURCES)):    GROUP_CFLAGS := $(INTL_CFLAGS)
@@ -189,19 +169,16 @@ $(call dep_obj,$(PCRE2_SOURCES)):   GROUP_CFLAGS := $(PCRE2_CFLAGS)
 $(call dep_obj,$(GLIB_SOURCES)):    GROUP_CFLAGS := $(GLIB_CFLAGS)
 $(call dep_obj,$(EPOXY_SOURCES)):   GROUP_CFLAGS := $(EPOXY_CFLAGS)
 $(call dep_obj,$(SLIRP_SOURCES)):   GROUP_CFLAGS := $(SLIRP_CFLAGS)
-$(call dep_obj,$(GLSLANG_SOURCES)): GROUP_CXXFLAGS := $(GLSLANG_CXXFLAGS)
 
 $(DEPS_DIR)/libintl.a:       $(call dep_obj,$(INTL_SOURCES))
 $(DEPS_DIR)/libpcre2.a:      $(call dep_obj,$(PCRE2_SOURCES))
 $(DEPS_DIR)/libglib.a:       $(call dep_obj,$(GLIB_SOURCES))
 $(DEPS_DIR)/libepoxy.a:      $(call dep_obj,$(EPOXY_SOURCES))
 $(DEPS_DIR)/libslirp.a:      $(call dep_obj,$(SLIRP_SOURCES))
-$(DEPS_DIR)/libglslang.a:    $(call dep_obj,$(GLSLANG_SOURCES))
 
 $(DEP_LIBS):
 	rm -f $@
 	$(AR) rcs $@ $^
 
 DEP_OBJECTS := $(call dep_obj,$(SR_SOURCES) $(INTL_SOURCES) \
-	$(PCRE2_SOURCES) $(GLIB_SOURCES) $(EPOXY_SOURCES) $(SLIRP_SOURCES) \
-	$(GLSLANG_SOURCES))
+	$(PCRE2_SOURCES) $(GLIB_SOURCES) $(EPOXY_SOURCES) $(SLIRP_SOURCES))

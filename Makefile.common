@@ -63,6 +63,10 @@ endif
 CFLAGS_VOLK := -I$(CORE_DIR)/deps/volk -DVK_NO_PROTOTYPES $(OS_CFLAGS) \
 	$(DEPS_CFLAGS)
 CFLAGS_SPIRV_REFLECT := -I$(CORE_DIR)/deps/SPIRV-Reflect
+# The GLSL to SPIR-V compiler: plain C, nothing of QEMU; the SPIR-V header
+# comes with SPIRV-Reflect
+CFLAGS_GLSLC := -std=gnu11 -O2 -I$(CORE_DIR)/deps/SPIRV-Reflect/include \
+	$(OS_CFLAGS)
 CFLAGS_VSH := -I$(CORE_DIR)/deps/nv2a_vsh_cpu/src
 CXXFLAGS_VMA := -std=c++17 -I$(CORE_DIR)/thirdparty $(VULKAN_INCFLAGS) \
 	-DVMA_STATIC_VULKAN_FUNCTIONS=0 -DVMA_DYNAMIC_VULKAN_FUNCTIONS=0 \
@@ -1407,6 +1411,10 @@ SOURCES_VOLK := \
 
 SOURCES_SPIRV_REFLECT := \
 	$(CORE_DIR)/deps/SPIRV-Reflect/spirv_reflect.c \
+
+SOURCES_GLSLC := \
+	$(CORE_DIR)/hw/xbox/nv2a/pgraph/spv/glslc.c \
+	$(CORE_DIR)/hw/xbox/nv2a/pgraph/spv/glslc_lex.c \
 
 SOURCES_VSH := \
 	$(CORE_DIR)/deps/nv2a_vsh_cpu/src/nv2a_vsh_cpu.c \

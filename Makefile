@@ -84,9 +84,7 @@ ifeq ($(platform),unix)
    PKGS := glib-2.0 slirp epoxy
    DEPS_CFLAGS := $(shell $(PKG_CONFIG) --cflags $(PKGS)) -pthread
    DEPS_LIBS   := $(shell $(PKG_CONFIG) --libs $(PKGS)) \
-                  -lglslang -lMachineIndependent -lGenericCodeGen -lSPIRV \
-                  -lglslang-default-resource-limits -lSPIRV-Tools-opt \
-                  -lSPIRV-Tools -lstdc++
+                  -lstdc++
    ifeq ($(DEPS_CFLAGS),-pthread)
       $(error pkg-config found none of: $(PKGS))
    endif
@@ -140,6 +138,7 @@ OBJS_GLOFF    := $(call obj,$(SOURCES_GLOFF))
 OBJS_LRCOMMON := $(call obj,$(SOURCES_LRCOMMON))
 OBJS_VOLK     := $(call obj,$(SOURCES_VOLK))
 OBJS_SPIRV_REFLECT := $(call obj,$(SOURCES_SPIRV_REFLECT))
+OBJS_GLSLC    := $(call obj,$(SOURCES_GLSLC))
 OBJS_VSH      := $(call obj,$(SOURCES_VSH))
 OBJS_VMA      := $(patsubst %.cc,%.o,$(SOURCES_VMA_CXX))
 OBJS_DATA     := $(patsubst %.S,%.o,$(SOURCES_DATA_ASM))
@@ -150,7 +149,8 @@ LIBQEMUUTIL := $(CORE_DIR)/libqemuutil.a
 
 OBJECTS := $(OBJS_COMMON) $(OBJS_SYSTEM) $(OBJS_TARGET) \
            $(OBJS_DSP) $(OBJS_GLOFF) $(OBJS_LRCOMMON) \
-           $(OBJS_VOLK) $(OBJS_SPIRV_REFLECT) $(OBJS_VSH) $(OBJS_VMA) \
+           $(OBJS_VOLK) $(OBJS_SPIRV_REFLECT) $(OBJS_GLSLC) $(OBJS_VSH) \
+           $(OBJS_VMA) \
            $(OBJS_DATA)
 
 $(OBJS_UTIL):     GROUP_CFLAGS := $(CFLAGS_UTIL)
@@ -162,6 +162,7 @@ $(OBJS_GLOFF):    GROUP_CFLAGS := $(CFLAGS_GLOFF)
 $(OBJS_LRCOMMON): GROUP_CFLAGS := $(CFLAGS_LRCOMMON)
 $(OBJS_VOLK):     GROUP_CFLAGS := $(CFLAGS_VOLK)
 $(OBJS_SPIRV_REFLECT): GROUP_CFLAGS := $(CFLAGS_SPIRV_REFLECT)
+$(OBJS_GLSLC):    GROUP_CFLAGS := $(CFLAGS_GLSLC)
 $(OBJS_VSH):      GROUP_CFLAGS := $(CFLAGS_VSH)
 $(OBJS_VMA):      GROUP_CXXFLAGS := $(CXXFLAGS_VMA)
 
@@ -189,9 +190,6 @@ $(LIBQEMUUTIL): $(OBJS_UTIL)
 	$(CC) $(BASE_FLAGS) $(GROUP_CFLAGS) $(CFLAGS) -MMD -MP -c -o $@ $<
 
 %.o: %.cc
-	$(CXX) $(BASE_FLAGS) $(GROUP_CXXFLAGS) $(CXXFLAGS) -MMD -MP -c -o $@ $<
-
-%.o: %.cpp
 	$(CXX) $(BASE_FLAGS) $(GROUP_CXXFLAGS) $(CXXFLAGS) -MMD -MP -c -o $@ $<
 
 # .incbin finds data/ from the core's directory

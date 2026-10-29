@@ -35,7 +35,6 @@
 #include "hw/xbox/nv2a/pgraph/glsl/uniform-cache.h"
 
 #include <vulkan/vulkan.h>
-#include <glslang/Include/glslang_c_interface.h>
 #include <volk.h>
 #include <spirv_reflect.h>
 #include <vk_mem_alloc.h>
@@ -183,7 +182,6 @@ typedef struct SurfaceBinding {
 
 typedef struct ShaderModuleInfo {
     int refcnt;
-    char *glsl;
     GByteArray *spirv;
     VkShaderModule module;
     SpvReflectShaderModule reflect_module;
@@ -847,12 +845,12 @@ uint32_t pgraph_vk_get_memory_type(PGRAPHState *pg, uint32_t type_bits,
 
 // glsl.c
 extern bool pgraph_vk_spirv_1_6;
-void pgraph_vk_init_glsl_compiler(void);
-void pgraph_vk_finalize_glsl_compiler(void);
-GByteArray *pgraph_vk_compile_glsl_to_spv(glslang_stage_t stage,
+GByteArray *pgraph_vk_compile_glsl_to_spv(VkShaderStageFlagBits stage,
                                           const char *glsl_source);
 VkShaderModule pgraph_vk_create_shader_module_from_spv(PGRAPHVkState *r,
                                                        GByteArray *spv);
+ShaderModuleInfo *pgraph_vk_create_shader_module_from_spirv(PGRAPHVkState *r,
+                                                             GByteArray *spirv);
 ShaderModuleInfo *pgraph_vk_create_shader_module_from_glsl(
     PGRAPHVkState *r, VkShaderStageFlagBits stage, const char *glsl);
 void pgraph_vk_ref_shader_module(ShaderModuleInfo *info);

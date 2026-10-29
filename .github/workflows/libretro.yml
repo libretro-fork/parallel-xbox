@@ -85,16 +85,14 @@ jobs:
           submodules: false
 
       # The libraries the core links (the Makefile finds them through
-      # pkg-config; glslang/SPIRV-Tools as the static libraries), Vulkan's
-      # headers, and what the tests need: nasm for the test ROMs, Mesa's
+      # pkg-config), Vulkan's headers, and what the tests need: nasm for the test ROMs, Mesa's
       # software OpenGL on a surfaceless EGL display and its software
       # Vulkan (lavapipe)
       - name: Install dependencies
         run: |
           sudo apt-get -qy update
           sudo apt-get -qy install pkg-config libglib2.0-dev libslirp-dev \
-            libepoxy-dev libvulkan-dev \
-            glslang-dev spirv-tools patchelf \
+            libepoxy-dev libvulkan-dev patchelf \
             nasm libegl-dev libgl-dev libegl-mesa0 libgl1-mesa-dri \
             mesa-vulkan-drivers
 
@@ -170,7 +168,7 @@ jobs:
         run: |
           sudo apt-get -qy update
           sudo apt-get -qy install ninja-build python3-pip python3-tomli python3-yaml python3-venv \
-            glslang-dev glslang-tools spirv-tools pkg-config
+            pkg-config
           echo "NDK=$ANDROID_NDK_LATEST_HOME" >> $GITHUB_ENV
           echo "ANDROID_NDK_HOME=$ANDROID_NDK_LATEST_HOME" >> $GITHUB_ENV
 

@@ -1700,7 +1700,7 @@ void pgraph_vk_libpump_step(PGRAPHState *pg)
     }
     unsigned *pos = &r->pump.pos[idx];
     GArray *retry = r->pump.retry[idx];
-    /* Bounded work per flip: a few states (module creation is a disk hit,
+    /* Bounded work per flip: a few states (module creation takes the words,
      * compiles run on the worker), readiness checked on hashes made once. */
     if (r->pump.state_hash_base != states || r->pump.state_hash_n != n) {
         g_free(r->pump.state_hash);

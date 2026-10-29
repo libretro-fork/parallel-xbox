@@ -25,6 +25,14 @@
 #include "ui/xemu-settings.h"
 #include "hw/xbox/nv2a/pgraph/seed.h"
 #include "hw/xbox/nv2a/pgraph/glsl/uniform-cache.h"
+#include <retro_spsc.h>
+#include <retro_atomic.h>
+#include <rthreads/retro_eventcount.h>
+
+static int vk_state_module_keys(const ShaderState *st, bool push_constants,
+                                ShaderModuleCacheKey *keys);
+static MString *vk_module_glsl(const ShaderModuleCacheKey *key);
+static GByteArray *vk_spec_take_ready(const ShaderModuleCacheKey *key);
 
 const size_t MAX_UNIFORM_ATTR_VALUES_SIZE = NV2A_VERTEXSHADER_ATTRIBUTES * 4 * sizeof(float);
 
@@ -270,39 +278,19 @@ void pgraph_vk_ref_state_modules(PGRAPHVkState *r, const ShaderState *st,
                                  ShaderModuleInfo **vsh,
                                  ShaderModuleInfo **psh)
 {
-    ShaderModuleCacheKey key;
+    ShaderModuleCacheKey keys[3];
+    int n = vk_state_module_keys(st, r->use_push_constants_for_uniform_attrs,
+                                 keys);
+    int i = 0;
 
-    bool need_geometry_shader = pgraph_glsl_need_geom(&st->geom);
-    if (need_geometry_shader) {
-        memset(&key, 0, sizeof(key));
-        key.kind = VK_SHADER_STAGE_GEOMETRY_BIT;
-        key.geom.state = st->geom;
-        key.geom.glsl_opts.vulkan = true;
-        *geom = get_and_ref_shader_module_for_key(r, &key);
-    } else {
-        *geom = NULL;
+    *geom = NULL;
+    if (n == 3) {
+        *geom = get_and_ref_shader_module_for_key(r, &keys[i++]);
     }
-
-    memset(&key, 0, sizeof(key));
-    key.kind = VK_SHADER_STAGE_VERTEX_BIT;
-    key.vsh.state = st->vsh;
-    key.vsh.glsl_opts.vulkan = true;
-    key.vsh.glsl_opts.prefix_outputs = need_geometry_shader;
-    key.vsh.glsl_opts.use_push_constants_for_uniform_attrs =
-        r->use_push_constants_for_uniform_attrs;
-    key.vsh.glsl_opts.ubo_binding = VSH_UBO_BINDING;
-    *vsh = get_and_ref_shader_module_for_key(r, &key);
-
-    if (!psh) {
-        return;
+    *vsh = get_and_ref_shader_module_for_key(r, &keys[i++]);
+    if (psh) {
+        *psh = get_and_ref_shader_module_for_key(r, &keys[i]);
     }
-    memset(&key, 0, sizeof(key));
-    key.kind = VK_SHADER_STAGE_FRAGMENT_BIT;
-    key.psh.state = st->psh;
-    key.psh.glsl_opts.vulkan = true;
-    key.psh.glsl_opts.ubo_binding = PSH_UBO_BINDING;
-    key.psh.glsl_opts.tex_binding = PSH_TEX_BINDING;
-    *psh = get_and_ref_shader_module_for_key(r, &key);
 }
 
 static void shader_cache_entry_init(Lru *lru, LruNode *node, const void *state)
@@ -352,32 +340,18 @@ static void shader_module_cache_entry_init(Lru *lru, LruNode *node,
         container_of(node, ShaderModuleCacheEntry, node);
     memcpy(&module->key, key, sizeof(ShaderModuleCacheKey));
 
-    MString *code;
-
-    switch (module->key.kind) {
-    case VK_SHADER_STAGE_VERTEX_BIT:
-        code = pgraph_glsl_gen_vsh(&module->key.vsh.state,
-                                   module->key.vsh.glsl_opts);
-        break;
-    case VK_SHADER_STAGE_GEOMETRY_BIT:
-        code = pgraph_glsl_gen_geom(&module->key.geom.state,
-                                    module->key.geom.glsl_opts);
-        break;
-    case VK_SHADER_STAGE_FRAGMENT_BIT:
-        code = pgraph_glsl_gen_psh(&module->key.psh.state,
-                                   module->key.psh.glsl_opts);
-        break;
-    default:
-        assert(!"Invalid shader module kind");
-        code = NULL;
+    /* the worker's SPIR-V when it made this module, else compiled here */
+    GByteArray *spv = vk_spec_take_ready(&module->key);
+    if (!spv) {
+        MString *code = vk_module_glsl(&module->key);
+        spv = pgraph_vk_compile_glsl_to_spv(module->key.kind,
+                                            mstring_get_str(code));
+        mstring_unref(code);
     }
-
-    module->module_info = pgraph_vk_create_shader_module_from_glsl(
-        r, module->key.kind, mstring_get_str(code));
+    module->module_info = pgraph_vk_create_shader_module_from_spirv(r, spv);
     /* A recycled address must not find the previous module's values. */
     uniform_cache_forget(&r->uni_cache, (uintptr_t)module->module_info);
     pgraph_vk_ref_shader_module(module->module_info);
-    mstring_unref(code);
 }
 
 static void shader_module_cache_entry_post_evict(Lru *lru, LruNode *node)
@@ -456,7 +430,7 @@ static ShaderBinding *get_shader_binding_for_state(PGRAPHVkState *r,
 
 /* An unseen state draws with its canonical dynamic sibling (same image,
  * state carried in uniforms, as on GL) while a worker compiles its SPIR-V
- * off the draw path into the disk cache, where the next meeting finds it.
+ * off the draw path and hands the words over, which the next meeting takes.
  * vk_seen holds the states whose modules are known resident (their binding
  * went through get_shader_binding_for_state at least once). Open
  * addressing; a slot lost to collision only means one extra sibling
@@ -492,17 +466,39 @@ static void vk_seen_add(uint64_t h)
     }
 }
 
+/* The first-meet worker: compiles a state's modules to SPIR-V, off the
+ * render thread, and hands the words over. No lock anywhere: states go
+ * to the worker through one SPSC ring, the modules come back through
+ * another, the worker sleeps on an eventcount, and the track of what is
+ * queued and what has landed is the render thread's alone. */
 #define VK_SPEC_QUEUED 1
 #define VK_SPEC_ADOPTED 2
 static struct { uint64_t hash; int phase; } vk_spec_track[1024];
-static ShaderState vk_spec_pending[512];
-static unsigned vk_spec_r, vk_spec_w;
+
+typedef struct VkSpecDone {
+    uint64_t key_hash;
+    ShaderModuleCacheKey key;
+    uint32_t *words;  /* the module's SPIR-V, malloc'ed by the worker */
+    uint32_t nwords;
+    uint64_t state_hash; /* set on the record that ends a state */
+} VkSpecDone;
+
+#define VK_SPEC_RING 256   /* states in flight, at most */
+#define VK_SPEC_READY 512  /* modules landed, waiting to be made */
+static retro_spsc_t vk_spec_in;   /* ShaderState: render thread -> worker */
+static retro_spsc_t vk_spec_out;  /* VkSpecDone: worker -> render thread */
+static retro_eventcount_t vk_spec_ec;      /* the worker's sleep */
+static retro_eventcount_t vk_spec_idle_ec; /* quiesce waits here */
+static retro_atomic_int_t vk_spec_inflight; /* states queued, not handed back */
 static QemuThread vk_spec_thread;
-static QemuMutex vk_spec_lock;
-static QemuCond vk_spec_cond;
 static bool vk_spec_started;
-static bool vk_spec_busy; /* the worker is compiling vk_spec_pending[r] */
 static bool vk_spec_push_constants;
+
+/* Modules the worker made, keyed by their cache key's hash: looked up
+ * when the module cache makes a module, so that takes the words rather
+ * than compiling */
+static VkSpecDone vk_spec_ready[VK_SPEC_READY];
+static unsigned vk_spec_ready_n;
 
 static int vk_spec_find(uint64_t h)
 {
@@ -514,146 +510,219 @@ static int vk_spec_find(uint64_t h)
     return -1;
 }
 
-/* Compile every module of one state to SPIR-V. Safe off the render thread:
- * the generators only read the state, glslang is serialised, and the disk
- * cache is the only output; no Vulkan object or shared cache is touched. */
-static void vk_spec_compile_state(const ShaderState *st)
+/* The keys of a state's modules, as pgraph_vk_ref_state_modules makes
+ * them: geometry when needed, vertex, fragment. */
+static int vk_state_module_keys(const ShaderState *st, bool push_constants,
+                                ShaderModuleCacheKey *keys)
 {
-    struct { glslang_stage_t stage; MString *code; } jobs[3];
     int n = 0;
     bool need_gs = pgraph_glsl_need_geom(&st->geom);
     if (need_gs) {
-        GenGeomGlslOptions o = { .vulkan = true };
-        jobs[n].stage = GLSLANG_STAGE_GEOMETRY;
-        jobs[n].code = pgraph_glsl_gen_geom(&st->geom, o);
+        memset(&keys[n], 0, sizeof(keys[n]));
+        keys[n].kind = VK_SHADER_STAGE_GEOMETRY_BIT;
+        keys[n].geom.state = st->geom;
+        keys[n].geom.glsl_opts.vulkan = true;
         n++;
     }
-    {
-        GenVshGlslOptions o = { .vulkan = true,
-                                .prefix_outputs = need_gs,
-                                .use_push_constants_for_uniform_attrs =
-                                    vk_spec_push_constants,
-                                .ubo_binding = VSH_UBO_BINDING };
-        jobs[n].stage = GLSLANG_STAGE_VERTEX;
-        jobs[n].code = pgraph_glsl_gen_vsh(&st->vsh, o);
-        n++;
+    memset(&keys[n], 0, sizeof(keys[n]));
+    keys[n].kind = VK_SHADER_STAGE_VERTEX_BIT;
+    keys[n].vsh.state = st->vsh;
+    keys[n].vsh.glsl_opts.vulkan = true;
+    keys[n].vsh.glsl_opts.prefix_outputs = need_gs;
+    keys[n].vsh.glsl_opts.use_push_constants_for_uniform_attrs = push_constants;
+    keys[n].vsh.glsl_opts.ubo_binding = VSH_UBO_BINDING;
+    n++;
+    memset(&keys[n], 0, sizeof(keys[n]));
+    keys[n].kind = VK_SHADER_STAGE_FRAGMENT_BIT;
+    keys[n].psh.state = st->psh;
+    keys[n].psh.glsl_opts.vulkan = true;
+    keys[n].psh.glsl_opts.ubo_binding = PSH_UBO_BINDING;
+    keys[n].psh.glsl_opts.tex_binding = PSH_TEX_BINDING;
+    n++;
+    return n;
+}
+
+/* The GLSL of a module key */
+static MString *vk_module_glsl(const ShaderModuleCacheKey *key)
+{
+    switch (key->kind) {
+    case VK_SHADER_STAGE_VERTEX_BIT:
+        return pgraph_glsl_gen_vsh(&key->vsh.state, key->vsh.glsl_opts);
+    case VK_SHADER_STAGE_GEOMETRY_BIT:
+        return pgraph_glsl_gen_geom(&key->geom.state, key->geom.glsl_opts);
+    case VK_SHADER_STAGE_FRAGMENT_BIT:
+        return pgraph_glsl_gen_psh(&key->psh.state, key->psh.glsl_opts);
+    default:
+        assert(!"Invalid shader module kind");
+        return NULL;
     }
-    {
-        GenPshGlslOptions o = { .vulkan = true,
-                                .ubo_binding = PSH_UBO_BINDING,
-                                .tex_binding = PSH_TEX_BINDING };
-        jobs[n].stage = GLSLANG_STAGE_FRAGMENT;
-        jobs[n].code = pgraph_glsl_gen_psh(&st->psh, o);
-        n++;
-    }
+}
+
+/* Compile every module of one state to SPIR-V and hand the words over.
+ * Safe off the render thread: the generators only read the state, the
+ * compiler has no shared state, and no Vulkan object is touched. */
+static void vk_spec_compile_state(const ShaderState *st)
+{
+    ShaderModuleCacheKey keys[3];
+    int n = vk_state_module_keys(st, vk_spec_push_constants, keys);
+    uint64_t state_hash = fast_hash((const uint8_t *)st, sizeof(*st));
     for (int i = 0; i < n; i++) {
-        GByteArray *spv = pgraph_vk_compile_glsl_to_spv(
-            jobs[i].stage, mstring_get_str(jobs[i].code));
-        if (spv) {
-            g_byte_array_unref(spv);
-        }
-        mstring_unref(jobs[i].code);
+        MString *code = vk_module_glsl(&keys[i]);
+        GByteArray *spv =
+            pgraph_vk_compile_glsl_to_spv(keys[i].kind, mstring_get_str(code));
+        mstring_unref(code);
+        VkSpecDone d;
+        memset(&d, 0, sizeof(d));
+        d.key = keys[i];
+        d.key_hash = fast_hash((const uint8_t *)&keys[i], sizeof(keys[i]));
+        d.nwords = spv->len / sizeof(uint32_t);
+        d.words = (uint32_t *)g_byte_array_free(spv, FALSE);
+        d.state_hash = i == n - 1 ? state_hash : 0;
+        /* the out ring holds three records per state the in ring holds,
+         * and a state's records are the only ones in it: never full */
+        size_t put = retro_spsc_write(&vk_spec_out, &d, sizeof(d));
+        assert(put == sizeof(d));
+        (void)put;
     }
 }
 
 static void *vk_spec_worker_fn(void *opaque)
 {
-    qemu_mutex_lock(&vk_spec_lock);
     for (;;) {
-        while (vk_spec_r == vk_spec_w) {
-            qemu_cond_wait(&vk_spec_cond, &vk_spec_lock);
+        ShaderState st;
+        if (retro_spsc_read(&vk_spec_in, &st, sizeof(st)) == sizeof(st)) {
+            vk_spec_compile_state(&st);
+            retro_atomic_fetch_sub_int(&vk_spec_inflight, 1);
+            retro_eventcount_notify(&vk_spec_idle_ec);
+            continue;
         }
-        ShaderState st =
-            vk_spec_pending[vk_spec_r % ARRAY_SIZE(vk_spec_pending)];
-        vk_spec_busy = true;
-        qemu_mutex_unlock(&vk_spec_lock);
-
-        vk_spec_compile_state(&st);
-
-        qemu_mutex_lock(&vk_spec_lock);
-        vk_spec_busy = false;
-        vk_spec_r++;
-        uint64_t h = fast_hash((const uint8_t *)&st, sizeof(st));
-        int t = vk_spec_find(h);
-        if (t >= 0) {
-            vk_spec_track[t].phase = VK_SPEC_ADOPTED;
+        int key = retro_eventcount_prepare_wait(&vk_spec_ec);
+        if (retro_spsc_read_avail(&vk_spec_in)) {
+            retro_eventcount_cancel_wait(&vk_spec_ec);
+            continue;
         }
-        qemu_cond_broadcast(&vk_spec_cond);
+        retro_eventcount_commit_wait(&vk_spec_ec, key);
     }
     return NULL;
 }
 
-/* The worker's track of state h, read under its lock: 0 when untracked. */
+/* Lands what the worker handed back: the modules into the ready table,
+ * the states' tracks to ADOPTED. Render thread only. */
+static void vk_spec_drain(void)
+{
+    if (!vk_spec_started) {
+        return;
+    }
+    VkSpecDone d;
+    while (retro_spsc_read(&vk_spec_out, &d, sizeof(d)) == sizeof(d)) {
+        if (vk_spec_ready_n == VK_SPEC_READY) {
+            /* the oldest unused goes: it is compiled again if met */
+            free(vk_spec_ready[0].words);
+            memmove(&vk_spec_ready[0], &vk_spec_ready[1],
+                    (VK_SPEC_READY - 1) * sizeof(vk_spec_ready[0]));
+            vk_spec_ready_n--;
+        }
+        vk_spec_ready[vk_spec_ready_n++] = d;
+        if (d.state_hash) {
+            int t = vk_spec_find(d.state_hash);
+            if (t >= 0) {
+                vk_spec_track[t].phase = VK_SPEC_ADOPTED;
+            }
+        }
+    }
+}
+
+/* The worker's SPIR-V for a module key, taken out of the ready table,
+ * or NULL: the caller then compiles it itself */
+static GByteArray *vk_spec_take_ready(const ShaderModuleCacheKey *key)
+{
+    uint64_t h = fast_hash((const uint8_t *)key, sizeof(*key));
+    for (unsigned i = 0; i < vk_spec_ready_n; i++) {
+        VkSpecDone *d = &vk_spec_ready[i];
+        if (d->key_hash == h && memcmp(&d->key, key, sizeof(*key)) == 0) {
+            GByteArray *spv = g_byte_array_new_take(
+                (guint8 *)d->words, d->nwords * sizeof(uint32_t));
+            vk_spec_ready_n--;
+            memmove(d, d + 1, (vk_spec_ready_n - i) * sizeof(*d));
+            return spv;
+        }
+    }
+    return NULL;
+}
+
+/* The worker's track of state h: 0 when untracked. */
 static int vk_spec_phase(uint64_t h)
 {
     if (!vk_spec_started) {
         return 0;
     }
-    qemu_mutex_lock(&vk_spec_lock);
+    vk_spec_drain();
     int t = vk_spec_find(h);
-    int phase = t >= 0 ? vk_spec_track[t].phase : 0;
-    qemu_mutex_unlock(&vk_spec_lock);
-    return phase;
+    return t >= 0 ? vk_spec_track[t].phase : 0;
 }
 
 /* Frees the track slot of a state the worker has landed. */
 static void vk_spec_release_adopted(uint64_t h)
 {
-    qemu_mutex_lock(&vk_spec_lock);
     int t = vk_spec_find(h);
     if (t >= 0 && vk_spec_track[t].phase == VK_SPEC_ADOPTED) {
         vk_spec_track[t].phase = 0;
     }
-    qemu_mutex_unlock(&vk_spec_lock);
 }
 
-/* Before glslang goes away (finalize): drop what is queued, freeing its
- * track slots, and wait for the compile in progress. The worker stays,
- * idle, for the next Vulkan renderer. */
+/* At finalize: wait for the states in flight, then drop what landed and
+ * every track. The worker stays, idle, for the next Vulkan renderer. */
 static void vk_spec_quiesce(void)
 {
     if (!vk_spec_started) {
         return;
     }
-    qemu_mutex_lock(&vk_spec_lock);
-    vk_spec_w = vk_spec_r + (vk_spec_busy ? 1 : 0);
-    while (vk_spec_busy) {
-        qemu_cond_wait(&vk_spec_cond, &vk_spec_lock);
-    }
-    for (unsigned i = 0; i < ARRAY_SIZE(vk_spec_track); i++) {
-        if (vk_spec_track[i].phase == VK_SPEC_QUEUED) {
-            vk_spec_track[i].phase = 0;
+    for (;;) {
+        int key = retro_eventcount_prepare_wait(&vk_spec_idle_ec);
+        if (retro_atomic_load_acquire_int(&vk_spec_inflight) == 0) {
+            retro_eventcount_cancel_wait(&vk_spec_idle_ec);
+            break;
         }
+        retro_eventcount_commit_wait(&vk_spec_idle_ec, key);
     }
-    qemu_mutex_unlock(&vk_spec_lock);
+    vk_spec_drain();
+    for (unsigned i = 0; i < vk_spec_ready_n; i++) {
+        free(vk_spec_ready[i].words);
+    }
+    vk_spec_ready_n = 0;
+    for (unsigned i = 0; i < ARRAY_SIZE(vk_spec_track); i++) {
+        vk_spec_track[i].phase = 0;
+    }
 }
 
 static void vk_spec_queue(uint64_t h, const ShaderState *st)
 {
     if (!vk_spec_started) {
+        if (!retro_spsc_init(&vk_spec_in, VK_SPEC_RING * sizeof(ShaderState)) ||
+            !retro_spsc_init(&vk_spec_out, 3 * VK_SPEC_RING * sizeof(VkSpecDone)) ||
+            !retro_eventcount_init(&vk_spec_ec) ||
+            !retro_eventcount_init(&vk_spec_idle_ec)) {
+            return; /* no memory: every state compiles where it is met */
+        }
         vk_spec_started = true;
-        qemu_mutex_init(&vk_spec_lock);
-        qemu_cond_init(&vk_spec_cond);
         qemu_thread_create(&vk_spec_thread, "vk-firstmeet", vk_spec_worker_fn,
                            NULL, QEMU_THREAD_DETACHED);
     }
-    qemu_mutex_lock(&vk_spec_lock);
-    if (vk_spec_find(h) >= 0 ||
-        vk_spec_w - vk_spec_r >= ARRAY_SIZE(vk_spec_pending)) {
-        qemu_mutex_unlock(&vk_spec_lock);
+    if (vk_spec_find(h) >= 0) {
         return;
     }
     for (unsigned i = 0; i < ARRAY_SIZE(vk_spec_track); i++) {
         if (!vk_spec_track[i].phase) {
+            if (retro_spsc_write(&vk_spec_in, st, sizeof(*st)) != sizeof(*st)) {
+                return; /* full: the next meeting queues it */
+            }
             vk_spec_track[i].hash = h;
             vk_spec_track[i].phase = VK_SPEC_QUEUED;
-            vk_spec_pending[vk_spec_w % ARRAY_SIZE(vk_spec_pending)] = *st;
-            vk_spec_w++;
-            qemu_cond_broadcast(&vk_spec_cond);
+            retro_atomic_fetch_add_int(&vk_spec_inflight, 1);
+            retro_eventcount_notify(&vk_spec_ec);
             break;
         }
     }
-    qemu_mutex_unlock(&vk_spec_lock);
 }
 
 static GArray *vk_pump_states; /* covers then states, for the library pump */
@@ -677,8 +746,8 @@ const ShaderState *pgraph_vk_seed_pump_states(unsigned *count)
 }
 
 /* Queue the first-meet covers during boot: few dynamic covers serve many
- * specialised states, and SEGABOOT leaves the worker time to land their
- * .spv, so the first scene already finds them, as with the GL seed. */
+ * specialised states, and SEGABOOT leaves the worker time to compile them,
+ * so the first scene already finds their words, as with the GL seed. */
 static void vk_seed_siblings(void)
 {
     if (!g_config.perf.shader_seeding) {
@@ -749,20 +818,13 @@ static void vk_seed_siblings(void)
 }
 
 /* True once the worker has landed this state's SPIR-V (or a binding
- * already exists): module creation is then a disk hit, never glslang. */
+ * already exists): module creation then takes the words, never compiles. */
 bool pgraph_vk_seed_spv_ready_hash(uint64_t h)
 {
     if (vk_seen_contains(h)) {
         return true;
     }
-    if (!vk_spec_started) {
-        return false;
-    }
-    qemu_mutex_lock(&vk_spec_lock);
-    int t = vk_spec_find(h);
-    bool ready = t >= 0 && vk_spec_track[t].phase == VK_SPEC_ADOPTED;
-    qemu_mutex_unlock(&vk_spec_lock);
-    return ready;
+    return vk_spec_phase(h) == VK_SPEC_ADOPTED;
 }
 
 struct VkSeedCollect {
@@ -924,8 +986,8 @@ void pgraph_vk_bind_shaders(PGRAPHState *pg)
             if (!vk_seen_contains(h)) {
                 int phase = vk_spec_phase(h);
                 if (phase == VK_SPEC_ADOPTED) {
-                    /* Worker landed the .spv on disk: the normal path
-                     * below is a fast cache hit now. */
+                    /* The worker's words landed: the normal path below
+                     * makes the modules from them, no compile. */
                     vk_spec_release_adopted(h);
                 } else {
                     ShaderState fb = new_state;
@@ -974,7 +1036,6 @@ void pgraph_vk_init_shaders(PGRAPHState *pg)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
 
-    pgraph_vk_init_glsl_compiler();
     create_descriptor_pool(pg);
     create_descriptor_set_layout(pg);
     create_descriptor_sets(pg);
@@ -1020,5 +1081,4 @@ void pgraph_vk_finalize_shaders(PGRAPHState *pg)
     destroy_descriptor_set_layout(pg);
     destroy_descriptor_pool(pg);
     vk_spec_quiesce();
-    pgraph_vk_finalize_glsl_compiler();
 }
