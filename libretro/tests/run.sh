@@ -141,6 +141,33 @@ grep -E "peek_0x30001c=0x7fff0000$" "$work/pad2.txt" >/dev/null || {
 grep -E "peek_0x300020=0x7fff0000$" "$work/pad2.txt" >/dev/null || {
     echo "FAIL: the right stick fully up is not 32767: $(grep peek_0x300020 "$work/pad2.txt")"; exit 1; }
 
+# A session killed with the game running (a crash, the frontend killed):
+# the HDD image's cache partitions may name data that never reached it,
+# and a game read its broken cache back at every boot after (Jet Set Radio
+# Future and Ninja Gaiden Black black past the Xbox logo). The mark beside
+# the image (<image>.open) outlives the killed session, the next load
+# empties X, Y and Z and says so, and a clean close takes the mark away.
+# Linux only: a killed Wine launcher may leave the process behind it.
+case $core in
+*.so)
+    echo "== a killed session, then the next load"
+    hdd="$work/sys/xemu/xbox_hdd.qcow2"
+    set +e
+    timeout -s KILL 15 $h "$(path "$core")" "$(path "$work/sys")" $vp --frames 1000000 \
+      >/dev/null 2>&1
+    set -e
+    [ -f "$hdd.open" ] || { echo "FAIL: no session mark beside the HDD image"; exit 1; }
+    timeout 300 $h "$(path "$core")" "$(path "$work/sys")" $vp --frames 60 >"$work/hdd.txt" 2>&1
+    grep "cache partitions X, Y and Z were emptied" "$work/hdd.txt" || {
+        echo "FAIL: the load after a killed session did not empty the cache partitions"; exit 1; }
+    [ ! -f "$hdd.open" ] || { echo "FAIL: the session mark is left after a clean close"; exit 1; }
+    timeout 300 $h "$(path "$core")" "$(path "$work/sys")" $vp --frames 60 >"$work/hdd2.txt" 2>&1
+    if grep "cache partitions X, Y and Z were emptied" "$work/hdd2.txt"; then
+        echo "FAIL: the caches were emptied after a clean close"; exit 1
+    fi
+    ;;
+esac
+
 # The guest's time is its instructions, never the host's: a frame is the
 # same work however fast the host runs it. The busy guest's RAM (its
 # counter) after 120 frames is the same flat out and at 59.94 Hz.

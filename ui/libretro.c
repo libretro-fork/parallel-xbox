@@ -192,6 +192,8 @@ static char opt_hdd_path[4096] = "";
 /* Trim HDD on Close (hdd_trim) */
 static bool opt_hdd_trim = false;
 static void hdd_trim(void);
+static void hdd_session_begin(void);
+static void hdd_session_end(void);
 static char opt_eeprom_path[4096] = "";
 static char opt_dvd_path[4096] = "";
 static char system_dir[4096] = "";
@@ -2037,6 +2039,8 @@ static bool lr_start_machine(void)
                                       NULL);
         aio_main_notify_hook = lr_main_notify;
         machine_built = true;
+        /* before the guest's first instruction (lr_run_frame runs it) */
+        hdd_session_begin();
     } else {
         extern void xemu_libretro_change_disc(const char *path, Error **errp);
         extern void qemu_libretro_clear_shutdown_request(void);
@@ -2067,6 +2071,7 @@ static bool lr_start_machine(void)
         if (!runstate_check(RUN_STATE_PRELAUNCH)) {
             runstate_set(RUN_STATE_PRELAUNCH);
         }
+        hdd_session_begin();
         vm_start();
         LRLOG_INFO("[xemu] The machine is reset and started with the new disc\n");
     }
@@ -2114,6 +2119,7 @@ static void lr_stop_machine(void)
     if (opt_hdd_trim && !xemu_chihiro_mode()) {
         hdd_trim();
     }
+    hdd_session_end();
 }
 
 static void lr_thread_main(void *opaque)
@@ -2305,6 +2311,66 @@ static BlockDriverState *hdd_open(const char *path, int flags)
         error_free(err);
     }
     return bs;
+}
+
+/*
+ * A session the HDD image was open in, marked by a file beside it
+ * (<image>.open) from the content's load to its close: the guest's writes
+ * reach the image through qcow2, whose tables of where the data lies are
+ * kept in memory and written out at a flush, the close's. When RetroArch
+ * died or was killed with a game running (a crash in the core, the
+ * frontend's), the cache partitions X, Y and Z could be left naming data
+ * that never reached the image, and the game read its own cache back
+ * broken at every boot after - a black screen past the Xbox logo (Jet Set
+ * Radio Future, Ninja Gaiden Black), until Trim HDD on Close emptied them.
+ * Found at the next load, the mark empties X, Y and Z before the guest's
+ * first instruction: they only ever hold caches, which the games rebuild
+ * (the dashboard empties them too). C and E, the system and the saves,
+ * are not touched.
+ */
+static char *hdd_session_mark(void)
+{
+    const char *path = g_config.sys.files.hdd_path;
+    return path && path[0] ? g_strdup_printf("%s.open", path) : NULL;
+}
+
+static void hdd_session_begin(void)
+{
+    if (xemu_chihiro_mode()) {
+        return;
+    }
+    char *mark = hdd_session_mark();
+    if (!mark) {
+        return;
+    }
+    if (g_file_test(mark, G_FILE_TEST_EXISTS)) {
+        DriveInfo *dinfo = drive_get(IF_IDE, 0, 0);
+        BlockBackend *blk = dinfo ? blk_by_legacy_dinfo(dinfo) : NULL;
+        BlockDriverState *bs = blk ? blk_bs(blk) : NULL;
+        if (bs && !hdd_has_snapshot(bs) &&
+            blk_getlength(blk) >= HDD_CACHE_START + HDD_CACHE_LEN &&
+            blk_pwrite_zeroes(blk, HDD_CACHE_START, HDD_CACHE_LEN,
+                              BDRV_REQ_MAY_UNMAP) >= 0 &&
+            blk_flush(blk) >= 0) {
+            LRLOG_INFO("[xemu] The last session did not close: the HDD's "
+                       "cache partitions X, Y and Z were emptied\n");
+        }
+    }
+    if (!g_file_set_contents(mark, "", 0, NULL)) {
+        LRLOG_ERROR("[xemu] Cannot write %s: a crash will not be noticed "
+                    "at the next load\n", mark);
+    }
+    g_free(mark);
+}
+
+/* The content closed: the image is flushed (vm_shutdown) */
+static void hdd_session_end(void)
+{
+    char *mark = hdd_session_mark();
+    if (mark) {
+        g_remove(mark);
+        g_free(mark);
+    }
 }
 
 static void hdd_trim(void)
