@@ -158,6 +158,16 @@ if [ -z "$flat" ] || [ "$flat" != "$paced" ]; then
     exit 1
 fi
 
+# Every shader of the seed dictionary through the GLSL to SPIR-V compiler
+# (seedshaders.c): what a generator writes for any state a game is known
+# to meet, the compiler takes. Built from the core's own objects, so only
+# where the core was built here (a Linux build directory).
+if [ -f "$here/../../hw/xbox/nv2a/pgraph/spv/glslc.o" ]; then
+    echo "== seed dictionary shaders"
+    make -s -C "$here/../.." seedshaders
+    "$here/seedshaders" "$here/../../data/shader_seeds.bin" | tail -1
+fi
+
 # The DSP JIT against the interpreter on the test ROM's GP program
 # (dspdiff.c): the whole DSP state the same after every frame, from
 # random memory around it. Built from the core's sources here; nothing

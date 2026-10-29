@@ -37,3 +37,4 @@ build.log
 /libqemuutil.a
 /libretro/gen/xemu-version-macro.h
 /libretro/tests/dspdiff
+/libretro/tests/seedshaders

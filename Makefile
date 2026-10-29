@@ -200,7 +200,7 @@ ALL_OBJECTS := $(OBJECTS) $(OBJS_UTIL) $(DEP_OBJECTS)
 
 clean:
 	rm -f $(TARGET) $(LIBQEMUUTIL) $(VERSION_H) $(filter %.a,$(DEPS_LIBS))
-	rm -f $(ALL_OBJECTS) $(ALL_OBJECTS:.o=.d) $(DSPDIFF)
+	rm -f $(ALL_OBJECTS) $(ALL_OBJECTS:.o=.d) $(DSPDIFF) $(SEEDSHADERS)
 
 # The DSP JIT against the interpreter (libretro/tests/dspdiff.c), built
 # from the DSP's own sources, nothing else of the core: a plain program,
@@ -217,6 +217,24 @@ $(DSPDIFF): $(DSPDIFF_SRC)
 		-I$(CORE_DIR)/hw/xbox/mcpx/apu/dsp/interp -o $@ $(DSPDIFF_SRC)
 dspdiff: $(DSPDIFF)
 
-.PHONY: all clean dspdiff FORCE
+# Every seed-dictionary shader through the GLSL to SPIR-V compiler
+# (libretro/tests/seedshaders.c), linked with the core's own generators and
+# compiler objects: built after the core, for the host
+SEEDSHADERS := $(CORE_DIR)/libretro/tests/seedshaders
+SEEDSHADERS_OBJS := $(call obj,$(addprefix $(CORE_DIR)/hw/xbox/nv2a/pgraph/, \
+		glsl/common.c glsl/geom.c glsl/psh.c glsl/shaders.c glsl/vsh.c \
+		glsl/vsh-ff.c glsl/vsh-prog.c glsl/uniform-cache.c texture.c)) \
+	$(OBJS_GLSLC) $(OBJS_VSH) \
+	$(call obj,$(CORE_DIR)/libretro-common/encodings/encoding_deflate.c \
+		$(CORE_DIR)/libretro-common/encodings/encoding_crc32.c \
+		$(CORE_DIR)/libretro-common/encodings/encoding_xxh3.c \
+		$(CORE_DIR)/libretro-common/features/features_cpu.c)
+$(SEEDSHADERS): $(CORE_DIR)/libretro/tests/seedshaders.c $(SEEDSHADERS_OBJS) \
+		$(LIBQEMUUTIL)
+	$(CC) -O2 $(CFLAGS_TARGET) -o $@ $< $(filter-out $<,$^) \
+		$(DEPS_LIBS) $(OS_LIBS)
+seedshaders: $(SEEDSHADERS)
+
+.PHONY: all clean dspdiff seedshaders FORCE
 
 -include $(ALL_OBJECTS:.o=.d)

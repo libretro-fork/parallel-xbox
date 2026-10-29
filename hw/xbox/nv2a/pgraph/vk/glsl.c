@@ -19,6 +19,7 @@
  */
 
 #include "renderer.h"
+#include "ui/xemu-settings.h"
 #include "hw/xbox/nv2a/pgraph/spv/glslc.h"
 
 #include <assert.h>
@@ -48,8 +49,20 @@ GByteArray *pgraph_vk_compile_glsl_to_spv(VkShaderStageFlagBits stage,
     GlslcOptions opts = { .spirv_1_6 = pgraph_vk_spirv_1_6 };
     GlslcResult result;
     if (!glslc_compile(st, glsl_source, &opts, &result)) {
-        fprintf(stderr, "nv2a: shader compilation failed, line %d: %s\n%s\n",
-                result.error_line, result.error, glsl_source);
+        /* A bug in the compiler or a generator: the shader goes next to
+         * the session log, to be sent with it. */
+        char *path = g_strdup_printf("%sshader_compile_failed.glsl",
+                                     xemu_settings_get_base_path());
+        FILE *f = fopen(path, "w");
+        if (f) {
+            fputs(glsl_source, f);
+            fclose(f);
+        }
+        fprintf(stderr,
+                "nv2a: shader compilation failed, line %d: %s (the shader "
+                "is in %s)\n",
+                result.error_line, result.error, path);
+        g_free(path);
         assert(!"shader compilation failed");
         return NULL;
     }

@@ -165,9 +165,14 @@ typedef struct Func {
     Type *ret;
     int nparams;
     Type **params;
+    uint8_t *pmode;  /* per parameter: PM_IN, PM_OUT, PM_INOUT */
     uint32_t id;
     uint32_t type_id;
 } Func;
+
+#define PM_IN 0
+#define PM_OUT 1
+#define PM_INOUT 2
 
 /* A declared qualifier set */
 typedef struct Quals {
@@ -3188,20 +3193,47 @@ static Ex parse_call(C *c, const char *name)
     Ex args[MAX_ARGS];
     int n = parse_args(c, args);
     if (func_named(c, name)) {
-        Val vals[MAX_ARGS];
         Type *types[MAX_ARGS];
         for (int i = 0; i < n; i++) {
-            vals[i] = rval(c, &args[i]);
-            types[i] = vals[i].t;
+            types[i] = args[i].is_lv ? args[i].lv.t : args[i].v.t;
         }
         Func *f = func_resolve(c, name, types, n);
         if (!f) {
             fail(c, "no %s() takes these arguments", name);
         }
+        /* An out or inout argument is passed as a pointer: the variable's
+         * own when it is a whole local, else a copy's, copied in before
+         * (inout) and out after, as the GLSL semantics say. */
         uint32_t ids[MAX_ARGS];
+        uint32_t copy_out[MAX_ARGS];
         for (int i = 0; i < n; i++) {
-            Val v = coerce(c, vals[i], f->params[i]);
-            ids[i] = v.id;
+            copy_out[i] = 0;
+            if (f->pmode[i] == PM_IN) {
+                Val v = coerce(c, rval(c, &args[i]), f->params[i]);
+                ids[i] = v.id;
+                continue;
+            }
+            if (!args[i].is_lv || args[i].lv.readonly) {
+                fail(c, "argument %d of %s() must be assignable", i + 1,
+                     name);
+            }
+            if (args[i].lv.t != f->params[i]) {
+                fail(c, "argument %d of %s() must be a %s", i + 1, name,
+                     type_name(f->params[i]));
+            }
+            const LVal *lv = &args[i].lv;
+            if (lv->sc == SpvStorageClassFunction && !lv->nswz &&
+                !lv->as_bool) {
+                ids[i] = lv->ptr;
+                continue;
+            }
+            ids[i] = make_variable(c, f->params[i], SpvStorageClassFunction,
+                                   0);
+            if (f->pmode[i] == PM_INOUT) {
+                Val v = load(c, lv);
+                ins0(c, SpvOpStore, 2, ids[i], v.id);
+            }
+            copy_out[i] = ids[i];
         }
         op(&c->fbody, SpvOpFunctionCall, 3 + n);
         buf_put(&c->fbody, f->ret->id);
@@ -3210,6 +3242,16 @@ static Ex parse_call(C *c, const char *name)
         buf_put(&c->fbody, f->id);
         for (int i = 0; i < n; i++) {
             buf_put(&c->fbody, ids[i]);
+        }
+        for (int i = 0; i < n; i++) {
+            if (copy_out[i]) {
+                LVal tmp;
+                memset(&tmp, 0, sizeof(tmp));
+                tmp.t = f->params[i];
+                tmp.sc = SpvStorageClassFunction;
+                tmp.ptr = copy_out[i];
+                store(c, &args[i].lv, load(c, &tmp));
+            }
         }
         Val r = { f->ret, id };
         return ex_val(r);
@@ -4467,8 +4509,20 @@ static void parse_block_statement(C *c)
 
 /* ---- functions ---- */
 
-static uint32_t function_type(C *c, Type *ret, Type **params, int n)
+/* An out or inout parameter is a pointer into the caller's storage: the
+ * function writes through it. */
+static uint32_t param_type_id(C *c, Type *t, uint8_t mode)
 {
+    return mode == PM_IN ? t->id : ptr_type(c, t, SpvStorageClassFunction);
+}
+
+static uint32_t function_type(C *c, Type *ret, Type **params,
+                              const uint8_t *pmode, int n)
+{
+    uint32_t pids[MAX_ARGS];
+    for (int k = 0; k < n; k++) {
+        pids[k] = param_type_id(c, params[k], pmode[k]);
+    }
     /* dedupe by words */
     size_t i = 0;
     while (i < c->types.n) {
@@ -4478,7 +4532,7 @@ static uint32_t function_type(C *c, Type *ret, Type **params, int n)
             c->types.w[i + 2] == ret->id) {
             bool same = true;
             for (int k = 0; k < n; k++) {
-                if (c->types.w[i + 3 + k] != params[k]->id) {
+                if (c->types.w[i + 3 + k] != pids[k]) {
                     same = false;
                 }
             }
@@ -4493,7 +4547,7 @@ static uint32_t function_type(C *c, Type *ret, Type **params, int n)
     buf_put(&c->types, id);
     buf_put(&c->types, ret->id);
     for (int k = 0; k < n; k++) {
-        buf_put(&c->types, params[k]->id);
+        buf_put(&c->types, pids[k]);
     }
     return id;
 }
@@ -4503,18 +4557,17 @@ static void parse_function(C *c, Type *ret, const char *name)
     Type *params[MAX_ARGS];
     const char *pnames[MAX_ARGS];
     bool pprecise[MAX_ARGS];
+    uint8_t pmode[MAX_ARGS];
     int n = 0;
     expect(c, P_LPAREN);
     if (!accept(c, P_RPAREN)) {
         for (;;) {
             Quals q;
             parse_qualifiers(c, &q);
-            if (q.is_out) {
-                fail(c, "out and inout parameters are not supported");
-            }
             if (n == MAX_ARGS) {
                 fail(c, "too many parameters");
             }
+            pmode[n] = !q.is_out ? PM_IN : q.is_in ? PM_INOUT : PM_OUT;
             params[n] = parse_type(c, &q);
             pnames[n] = peek(c)->kind == T_IDENT ? expect_ident(c) : NULL;
             params[n] = parse_array_suffix(c, params[n]);
@@ -4532,6 +4585,10 @@ static void parse_function(C *c, Type *ret, const char *name)
         if (f->ret != ret) {
             fail(c, "%s() declared with another return type before", name);
         }
+        if (memcmp(f->pmode, pmode, n) != 0) {
+            fail(c, "%s() declared with other parameter qualifiers before",
+                 name);
+        }
     } else {
         if (c->nfns == c->fns_cap) {
             c->fns_cap = c->fns_cap ? c->fns_cap * 2 : 64;
@@ -4546,8 +4603,10 @@ static void parse_function(C *c, Type *ret, const char *name)
         f->nparams = n;
         f->params = arena_alloc(&c->arena, (n ? n : 1) * sizeof(Type *));
         memcpy(f->params, params, n * sizeof(Type *));
+        f->pmode = arena_alloc(&c->arena, n ? n : 1);
+        memcpy(f->pmode, pmode, n);
         f->id = new_id(c);
-        f->type_id = function_type(c, ret, params, n);
+        f->type_id = function_type(c, ret, params, pmode, n);
         emit_name(c, f->id, name);
     }
     if (accept(c, P_SEMI)) {
@@ -4584,22 +4643,27 @@ static void parse_function(C *c, Type *ret, const char *name)
     for (int i = 0; i < n; i++) {
         param_ids[i] = new_id(c);
         op(&head, SpvOpFunctionParameter, 2);
-        buf_put(&head, params[i]->id);
+        buf_put(&head, param_type_id(c, params[i], pmode[i]));
         buf_put(&head, param_ids[i]);
     }
     uint32_t entry = new_id(c);
     c->cur_block = entry;
     c->terminated = false;
     scope_push(c);
-    /* parameters live in local variables, so the body can assign them */
+    /* in parameters live in local variables, so the body can assign them;
+     * out and inout ones are the caller's storage, written through */
     for (int i = 0; i < n; i++) {
         LVal lv;
         memset(&lv, 0, sizeof(lv));
         lv.t = params[i];
         lv.sc = SpvStorageClassFunction;
         lv.precise = pprecise[i];
-        lv.ptr = make_variable(c, params[i], SpvStorageClassFunction, 0);
-        ins0(c, SpvOpStore, 2, lv.ptr, param_ids[i]);
+        if (pmode[i] == PM_IN) {
+            lv.ptr = make_variable(c, params[i], SpvStorageClassFunction, 0);
+            ins0(c, SpvOpStore, 2, lv.ptr, param_ids[i]);
+        } else {
+            lv.ptr = param_ids[i];
+        }
         if (pnames[i]) {
             sym_add(c, pnames[i], &lv);
         }
