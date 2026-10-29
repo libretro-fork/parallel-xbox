@@ -9,7 +9,9 @@ mixed draws, with GCC's undefined-behavior traps enabled.
 `python libretro/tests/test-tlb-dirty.py . gcc` checks the production TLB
 dirty-range functions against a full-scan reference in 1,655,360 cases:
 fast/slow flags, aliases, wrapped/empty ranges, active MMU modes and victim
-entries. GCC's undefined-behavior traps are enabled.
+entries. Another 10,000 states compare first-write dirty promotion against
+an exhaustive scan, including primary/victim aliases and preservation of
+other page flags. GCC's undefined-behavior traps are enabled.
 
 `python libretro/tests/test-dma-map.py . gcc` compiles the production direct
 DMA mapping function against bounded RAM and a pending GPU writeback. It

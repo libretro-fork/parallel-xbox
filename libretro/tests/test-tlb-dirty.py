@@ -12,7 +12,7 @@ def function(name):
  while depth:depth+=(s[end]=='{')-(s[end]=='}');end+=1
  return s[m.start():end]
 fixture=Path(__file__).with_suffix('.c').read_text()
-code=fixture.replace('/* PRODUCTION */',function('tlb_reset_dirty_range_locked')+'\n'+function('tlb_reset_dirty'))
+code=fixture.replace('/* PRODUCTION */','\n'.join(function(name) for name in ['tlb_reset_dirty_range_locked','tlb_reset_dirty','tlb_set_dirty1_locked','tlb_set_dirty']))
 env=os.environ.copy();env['PATH']=str(Path(cc).resolve().parent)+os.pathsep+env.get('PATH','')
 with tempfile.TemporaryDirectory(prefix='tlb-dirty-',dir=repo.parent) as directory:
  p=Path(directory);(p/'test.c').write_text(code);exe=p/('test.exe' if os.name=='nt' else 'test')

@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- CPU memory writes: updating a clean page's translation flags skips empty MMU modes, matching the earlier GPU dirty-range optimization. Populated primary and victim mappings still receive the same flag updates under the existing lock.
+
 - Vulkan: a depth buffer uploaded from the Xbox's memory (a game writing its depth buffer with the CPU, a loaded savestate) no longer stalls the GPU thread until all earlier uploads have finished on the GPU; the GPU orders them itself.
 
 - Vulkan: uniform-only draw changes reuse their descriptor set, passing the two uniform offsets at draw binding instead of rewriting the uniform and texture descriptors. Texture/shader changes still use immutable sets, and upload-buffer rotation still retires the recording before reuse.

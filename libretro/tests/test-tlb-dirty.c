@@ -12,6 +12,7 @@
 #define ctz32(x) __builtin_ctz(x)
 #define qatomic_set(p,v) (*(p)=(v))
 typedef uint32_t MMUIdxMap;
+typedef uintptr_t vaddr;
 typedef struct {uintptr_t addr_write,addend;} CPUTLBEntry;
 typedef struct {unsigned slow_flags[3];uint8_t padding[80];} CPUTLBEntryFull;
 typedef struct {CPUTLBEntry table[16];unsigned n;} CPUTLBDescFast;
@@ -21,6 +22,8 @@ static void qemu_spin_lock(unsigned*p){assert(*p==0);*p=1;}
 static void qemu_spin_unlock(unsigned*p){assert(*p==1);*p=0;}
 static CPUTLBDescFast*cpu_tlb_fast(CPUState*c,int i){assert(c->neg.tlb.c.lock);return &c->fast[i];}
 static unsigned tlb_n_entries(CPUTLBDescFast*f){return f->n;}
+static void assert_cpu_is_self(CPUState*c){assert(c);}
+static CPUTLBEntry*tlb_entry(CPUState*c,int m,vaddr addr){assert(c->neg.tlb.c.lock);return &c->fast[m].table[(addr>>12)%c->fast[m].n];}
 /* PRODUCTION */
 static uint64_t seed=42;
 static uintptr_t rnd(void){seed^=seed<<13;seed^=seed>>7;seed^=seed<<17;return (uintptr_t)seed;}
@@ -58,5 +61,30 @@ int main(void)
    assert(e->addr_write==expected&&e->addend==old.addend);count++;
   }
  }
- printf("PASS: %u reprotection cases against full-scan oracle: fast/slow flags, aliases, wrapped ranges, active MMU modes, table/victim entries and empty ranges\n",count);
+ /* Promotion must update primary and victim aliases in every populated
+  * mode, and preserve other flags and other virtual pages exactly. */
+ for(unsigned trial=0;trial<10000;trial++){
+  CPUState cpu={0},expected;cpu.neg.tlb.c.dirty=trial&255;
+  uintptr_t addr=rnd()&TARGET_PAGE_MASK;
+  for(unsigned m=0;m<8;m++){
+   cpu.fast[m].n=1u<<(trial%5);
+   for(unsigned k=0;k<20;k++){
+    CPUTLBEntry*e=k<16?&cpu.fast[m].table[k]:&cpu.neg.tlb.d[m].vtable[k-16];
+    e->addr_write=(k%3?addr:rnd()&TARGET_PAGE_MASK)|TLB_NOTDIRTY;
+    if(k%5==0)e->addr_write|=TLB_WATCHPOINT;
+    if(!(cpu.neg.tlb.c.dirty&(1u<<m)))e->addr_write=UINTPTR_MAX;
+    e->addend=rnd();
+   }
+  }
+  expected=cpu;
+  /* Exhaustive reference, including all inactive modes. */
+  for(unsigned m=0;m<8;m++){
+   unsigned index=(addr>>12)%expected.fast[m].n;
+   if(expected.fast[m].table[index].addr_write==(addr|TLB_NOTDIRTY))expected.fast[m].table[index].addr_write=addr;
+   for(unsigned k=0;k<4;k++)if(expected.neg.tlb.d[m].vtable[k].addr_write==(addr|TLB_NOTDIRTY))expected.neg.tlb.d[m].vtable[k].addr_write=addr;
+  }
+  tlb_set_dirty(&cpu,addr|(trial&4095));
+  assert(memcmp(&cpu,&expected,sizeof(cpu))==0);
+ }
+ printf("PASS: %u reprotection cases and 10000 dirty-promotion states against full-scan oracles: fast/slow flags, aliases, wrapped ranges, active MMU modes, table/victim entries and empty ranges\n",count);
 }
