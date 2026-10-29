@@ -125,6 +125,7 @@ typedef unsigned int u32;
 #define C_W          (1u << C_LOG_W)
 #define C_H          (1u << C_LOG_H)
 #define ZETA_B       (SURF_B + 0x200000u)
+#define SURF_D       0x01A00000u   /* shown from frame 105 */
 #define ZS_CLEAR     0x12345678u   /* depth 0x123456, stencil 0x78 */
 
 /* RAMIN: the hash table, then the objects (16 bytes each) */
@@ -550,6 +551,24 @@ void gpu_main(void)
             triangle();
         } else {
             clear(SURF_B, 0xFF0000FFu | (frame << 8));
+        }
+        if (frame >= 105) {
+            /* into D, shown: a draw, a clear of a corner's colour channels
+             * but alpha (the surface left as it is), the same draw. Such a
+             * clear is drawn with the clear's own pipeline; the draw after
+             * it changes no other state and must still get a draw's, not
+             * the clear's (which paints the clear colour where the triangle
+             * is; Jet Set Radio Future crashed on it) */
+            clear(SURF_D, 0xFF000000u);
+            triangle();
+            method(NV097_SET_COLOR_CLEAR_VALUE, 0xFF00FF00u);
+            method(NV097_SET_CLEAR_RECT_H, 63u << 16);
+            method(NV097_SET_CLEAR_RECT_V, 63u << 16);
+            method(NV097_CLEAR_SURFACE, 0x70); /* R, G, B: drawn */
+            triangle();
+            if (frame == 105) {
+                wr(PCRTC_START, SURF_D);
+            }
         }
         method(NV097_FLIP_INCREMENT_WRITE, 0);
         kick();

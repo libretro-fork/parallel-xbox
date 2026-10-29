@@ -163,19 +163,26 @@ done
 # On Vulkan the front buffer was dropped as an old surface and a CPU write
 # to it was not a new picture: the display stopped after the first frame
 # (Jet Set Radio Future black after the Xbox logo).
+# From frame 105 surface D is shown, each frame a black clear, a triangle
+# (black), a clear of a corner's red, green and blue (drawn by the clear's
+# own pipeline) and the same triangle: its centre stays black at 115. On
+# Vulkan the second triangle reused the clear's pipeline and painted the
+# triangle in the clear colour (white on lavapipe; Jet Set Radio Future
+# crashed on it).
 gpu_check() {
     for want in "pixel_10=0xff0000" "pixel_25=0xff0000" "pixel_45=0x00ff00" \
                 "pixel_85=0x00ff00" "peek_0x300014=0xffff0000" \
                 "peek_0x300018=0xffff0000" "peek_0x30001c=0x00000004" \
                 "peek_0x300024=0x00000000" "peek_0x30002c=0x12345678" \
-                "peek_0x300030=0x12345678" "peek_0x300034=0xaabbcc55"; do
+                "peek_0x300030=0x12345678" "peek_0x300034=0xaabbcc55" \
+                "pixel_115=0x000000"; do
         grep -E "^$want$" "$1" >/dev/null || {
             echo "FAIL: $2: $want expected, $(grep "^${want%%=*}=" "$1")"; exit 1; }
     done
 }
 echo "== the display, OpenGL"
-timeout 300 $h "$(path "$core")" "$(path "$work/sysg")" $vp --frames 110 --strict \
-  --min-speed 0.2 --pixel 10 --pixel 25 --pixel 45 --pixel 85 --peek 0x300014 --peek 0x300018 \
+timeout 300 $h "$(path "$core")" "$(path "$work/sysg")" $vp --frames 125 --strict \
+  --min-speed 0.2 --pixel 10 --pixel 25 --pixel 45 --pixel 85 --pixel 115 --peek 0x300014 --peek 0x300018 \
   --peek 0x30001c --peek 0x300024 --peek 0x300028 --peek 0x30002c \
   --peek 0x300030 --peek 0x300034 >"$work/gpu_gl.txt"
 grep -E "pixel_|peek_" "$work/gpu_gl.txt"
@@ -183,8 +190,8 @@ gpu_check "$work/gpu_gl.txt" "OpenGL"
 echo "== the display, Vulkan"
 set +e
 timeout 300 $h "$(path "$core")" "$(path "$work/sysg")" $vp --vulkan \
-  --opt xemu_renderer=vulkan --frames 110 --strict \
-  --pixel 10 --pixel 25 --pixel 45 --pixel 85 --peek 0x300014 --peek 0x300018 \
+  --opt xemu_renderer=vulkan --frames 125 --strict \
+  --pixel 10 --pixel 25 --pixel 45 --pixel 85 --pixel 115 --peek 0x300014 --peek 0x300018 \
   --peek 0x30001c --peek 0x300024 --peek 0x300028 --peek 0x30002c \
   --peek 0x300030 --peek 0x300034 >"$work/gpu_vk.txt"
 r=$?

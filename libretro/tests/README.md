@@ -76,7 +76,9 @@ Linux build.
   its objects in RAMIN, and a scenario the harness reads the picture of
   (`--pixel`): a surface cleared red and shown, left alone while another is
   drawn and flips are counted, read back by the CPU (the renderer
-  downloads it for that), then written green by the CPU. `gpu.sh`
+  downloads it for that), then written green by the CPU; later a surface
+  drawn into with a partial clear between two draws, whose second draw must
+  not take the clear's pipeline. `gpu.sh`
   builds it into `gpu.inc` (committed, like `pad.inc`).
 - `rom/dvd.c`: DVD reads as the kernel sends them: READ(10) packets to the
   primary IDE channel's slave, by bus-master DMA through the PIIX3's PRD
