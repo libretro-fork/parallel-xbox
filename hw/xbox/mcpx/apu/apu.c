@@ -205,12 +205,21 @@ static void apu_tick_rearm(MCPXAPUState *d)
 
 static void mcpx_apu_reset_locked(MCPXAPUState *d)
 {
+    /* The DSPs' thread is done with its frame first: the processors'
+     * registers go too (their GPRST/EPRST hold them in reset until the
+     * guest brings them up again) and the cores are reset. With the
+     * processors left running their old program against zeroed global
+     * registers, the next frame's FIFO walk divided by a FIFO of no size
+     * and walked past a table of no entries. */
+    mcpx_apu_dsp_quiesce(d);
     memset(d->regs, 0, sizeof(d->regs));
+    memset(d->gp.regs, 0, sizeof(d->gp.regs));
+    memset(d->ep.regs, 0, sizeof(d->ep.regs));
 
     mcpx_apu_vp_reset(d);
 
-    // FIXME: Reset DSP state
-    mcpx_apu_dsp_quiesce(d);
+    dsp_reset(d->gp.dsp);
+    dsp_reset(d->ep.dsp);
     dsp_invalidate_opcache(d->gp.dsp);
     dsp_invalidate_opcache(d->ep.dsp);
     d->set_irq = false;

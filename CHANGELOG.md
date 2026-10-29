@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- A reset (RetroArch's Restart, and the reset a savestate load starts from) with a game's audio running crashed the core: the APU's global registers were cleared but its two DSPs kept running their program against them, and the next audio frame divided by a FIFO of no size (or walked past an empty page table). The reset now stops the DSPs' thread for its frame, clears the processors' registers too and resets both DSP cores, as the hardware's reset does.
+
 - The emulator thread's hold on the GPU for a reset, a savestate or a renderer switch is a request count and two eventcounts: the GPU thread parks between two batches, says so, and sleeps until the hold is released, where it signalled a condition variable under the FIFO's lock and the holder took both locks. The renderer's own lock and condition variable around the frontend's framebuffer are an atomic flag and an eventcount. The surface scale change halts the pusher with the flag alone. A one-time message to stderr at the first flip stall is gone.
 
 - Vulkan: a game's picture went black, or froze, when the game showed a frame without drawing to it again for a while - a loading or title screen, a movie the CPU writes into the front buffer (Jet Set Radio Future after the Xbox logo). Since the display is drawn at the guest's flip, nothing marked the front buffer as on screen any more, so after five frames it was dropped as an old surface; and a front buffer the CPU wrote, or a change of display mode, did not count as a new picture. The display now marks it at every look, and redraws when the CPU wrote the front buffer or the mode changed, as OpenGL's display does.
