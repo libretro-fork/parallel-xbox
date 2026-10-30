@@ -5,6 +5,7 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 ## Unreleased
 
 - Adjacent native disk-write spans now share bulk writes on Windows and other platforms without vectored writes, avoiding one host call per span without staging copies.
+- CPU Boost processes eligible packed SSE add/subtract/multiply operations four floats or two doubles at a time, reducing per-lane loads and stores while retaining the existing rounding, flushing and software-fallback rules.
 
 - x87 status/control-word reads use generated loads instead of C helper calls, avoiding their general register bookkeeping while preserving floating-point stack flushes and instruction-pointer publication.
 

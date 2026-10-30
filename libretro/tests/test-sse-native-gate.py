@@ -20,6 +20,6 @@ with tempfile.TemporaryDirectory(prefix='sse-native-gate-') as directory:
  for inc in includes:args+=['-I'+str(repo/inc)]
  # Compile real SoftFloat too: no arithmetic mocks, and no dependency on build .o files.
  subprocess.run([x for x in args if x not in ['-Wextra','-fsanitize=undefined','-fsanitize-undefined-trap-on-error']]+['-c',str(repo/'fpu/softfloat.c'),'-o',str(p/'softfloat.o')],check=True)
- for shift in [1,2]:
+ for shift in [1,2,3]:
   subprocess.run(args+['-DSHIFT='+str(shift),str(p/'test.c'),str(p/'softfloat.o'),'-lm','-o',str(exe)],check=True)
   subprocess.run([str(exe)],check=True)
