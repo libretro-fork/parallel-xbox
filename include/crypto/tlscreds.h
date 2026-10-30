@@ -51,16 +51,5 @@ struct QCryptoTLSCredsClass {
 };
 
 
-/**
- * qcrypto_tls_creds_get_priority:
- * @creds: pointer to a TLS credentials object
- *
- * Get the TLS credentials priority string. The caller
- * must free the returned string when no longer required.
- *
- * Returns: a non-NULL priority string
- */
-char *qcrypto_tls_creds_get_priority(QCryptoTLSCreds *creds);
-
 
 #endif /* QCRYPTO_TLSCREDS_H */

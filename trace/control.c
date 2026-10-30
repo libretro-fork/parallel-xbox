@@ -37,7 +37,6 @@ typedef struct TraceEventGroup {
 static TraceEventGroup *event_groups;
 static size_t nevent_groups;
 static uint32_t next_id;
-static uint32_t next_vcpu_id;
 static bool init_trace_on_startup;
 static char *trace_opts_file;
 
@@ -78,21 +77,6 @@ void trace_event_register_group(TraceEvent **events)
 }
 
 
-TraceEvent *trace_event_name(const char *name)
-{
-    assert(name != NULL);
-
-    TraceEventIter iter;
-    TraceEvent *ev;
-    trace_event_iter_init_all(&iter);
-    while ((ev = trace_event_iter_next(&iter)) != NULL) {
-        if (strcmp(trace_event_get_name(ev), name) == 0) {
-            return ev;
-        }
-    }
-    return NULL;
-}
-
 void trace_event_iter_init_all(TraceEventIter *iter)
 {
     iter->event = 0;
@@ -105,12 +89,6 @@ void trace_event_iter_init_pattern(TraceEventIter *iter, const char *pattern)
 {
     trace_event_iter_init_all(iter);
     iter->pattern = pattern;
-}
-
-void trace_event_iter_init_group(TraceEventIter *iter, size_t group_id)
-{
-    trace_event_iter_init_all(iter);
-    iter->group_id = group_id;
 }
 
 TraceEvent *trace_event_iter_next(TraceEventIter *iter)
@@ -301,7 +279,3 @@ void trace_opt_parse(const char *optstr)
     qemu_opts_del(opts);
 }
 
-uint32_t trace_get_vcpu_event_count(void)
-{
-    return next_vcpu_id;
-}

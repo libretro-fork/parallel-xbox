@@ -110,24 +110,6 @@ void yank_unregister_instance(const YankInstance *instance)
     g_free(entry);
 }
 
-void yank_register_function(const YankInstance *instance,
-                            YankFn *func,
-                            void *opaque)
-{
-    YankInstanceEntry *entry;
-    YankFuncAndParam *func_entry;
-
-    QEMU_LOCK_GUARD(&yank_lock);
-    entry = yank_find_entry(instance);
-    assert(entry);
-
-    func_entry = g_new0(YankFuncAndParam, 1);
-    func_entry->func = func;
-    func_entry->opaque = opaque;
-
-    QLIST_INSERT_HEAD(&entry->yankfns, func_entry, next);
-}
-
 void yank_unregister_function(const YankInstance *instance,
                               YankFn *func,
                               void *opaque)
@@ -148,49 +130,6 @@ void yank_unregister_function(const YankInstance *instance,
     }
 
     abort();
-}
-
-void qmp_yank(YankInstanceList *instances,
-              Error **errp)
-{
-    YankInstanceList *tail;
-    YankInstanceEntry *entry;
-    YankFuncAndParam *func_entry;
-
-    QEMU_LOCK_GUARD(&yank_lock);
-    for (tail = instances; tail; tail = tail->next) {
-        entry = yank_find_entry(tail->value);
-        if (!entry) {
-            error_set(errp, ERROR_CLASS_DEVICE_NOT_FOUND, "Instance not found");
-            return;
-        }
-    }
-    for (tail = instances; tail; tail = tail->next) {
-        entry = yank_find_entry(tail->value);
-        assert(entry);
-        QLIST_FOREACH(func_entry, &entry->yankfns, next) {
-            func_entry->func(func_entry->opaque);
-        }
-    }
-}
-
-YankInstanceList *qmp_query_yank(Error **errp)
-{
-    YankInstanceEntry *entry;
-    YankInstanceList *ret;
-
-    ret = NULL;
-
-    QEMU_LOCK_GUARD(&yank_lock);
-    QLIST_FOREACH(entry, &yank_instance_list, next) {
-        YankInstanceList *new_entry;
-        new_entry = g_new0(YankInstanceList, 1);
-        new_entry->value = QAPI_CLONE(YankInstance, entry->instance);
-        new_entry->next = ret;
-        ret = new_entry;
-    }
-
-    return ret;
 }
 
 static void __attribute__((__constructor__)) yank_init(void)

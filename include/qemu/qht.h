@@ -60,14 +60,6 @@ void qht_init(struct qht *ht, qht_cmp_func_t cmp, size_t n_elems,
               unsigned int mode);
 
 /**
- * qht_destroy - destroy a previously initialized QHT
- * @ht: QHT to be destroyed
- *
- * Call only when there are no readers/writers left.
- */
-void qht_destroy(struct qht *ht);
-
-/**
  * qht_insert - Insert a pointer into the hash table
  * @ht: QHT to insert to
  * @p: pointer to be inserted
@@ -108,16 +100,6 @@ void *qht_lookup_custom(const struct qht *ht, const void *userp, uint32_t hash,
                         qht_lookup_func_t func);
 
 /**
- * qht_lookup - Look up a pointer in a QHT
- * @ht: QHT to be looked up
- * @userp: pointer to pass to the comparison function
- * @hash: hash of the pointer to be looked up
- *
- * Calls qht_lookup_custom() using @ht's default comparison function.
- */
-void *qht_lookup(const struct qht *ht, const void *userp, uint32_t hash);
-
-/**
  * qht_remove - remove a pointer from the hash table
  * @ht: QHT to remove from
  * @p: pointer to be removed
@@ -136,18 +118,6 @@ void *qht_lookup(const struct qht *ht, const void *userp, uint32_t hash);
 bool qht_remove(struct qht *ht, const void *p, uint32_t hash);
 
 /**
- * qht_reset - reset a QHT
- * @ht: QHT to be reset
- *
- * All entries in the hash table are reset. No resizing is performed.
- *
- * If concurrent readers may exist, the objects pointed to by the hash table
- * must remain valid for the existing RCU grace period -- see qht_remove().
- * See also: qht_reset_size()
- */
-void qht_reset(struct qht *ht);
-
-/**
  * qht_reset_size - reset and resize a QHT
  * @ht: QHT to be reset and resized
  * @n_elems: number of entries the resized hash table should be optimized for.
@@ -160,17 +130,6 @@ void qht_reset(struct qht *ht);
  * See also: qht_reset(), qht_resize().
  */
 bool qht_reset_size(struct qht *ht, size_t n_elems);
-
-/**
- * qht_resize - resize a QHT
- * @ht: QHT to be resized
- * @n_elems: number of entries the resized hash table should be optimized for
- *
- * Returns true on success.
- * Returns false if the resize was not necessary and therefore not performed.
- * See also: qht_reset_size().
- */
-bool qht_resize(struct qht *ht, size_t n_elems);
 
 /**
  * qht_iter - Iterate over a QHT
@@ -186,39 +145,5 @@ bool qht_resize(struct qht *ht, size_t n_elems);
  */
 void qht_iter(struct qht *ht, qht_iter_func_t func, void *userp);
 
-/**
- * qht_iter_remove - Iterate over a QHT, optionally removing entries
- * @ht: QHT to be iterated over
- * @func: function to be called for each entry in QHT
- * @userp: additional pointer to be passed to @func
- *
- * Each time it is called, user-provided @func is passed a pointer-hash pair,
- * plus @userp. If @func returns true, the pointer-hash pair is removed.
- *
- * Note: @ht cannot be accessed from @func
- * See also: qht_iter()
- */
-void qht_iter_remove(struct qht *ht, qht_iter_bool_func_t func, void *userp);
-
-/**
- * qht_statistics_init - Gather statistics from a QHT
- * @ht: QHT to gather statistics from
- * @stats: pointer to a &struct qht_stats to be filled in
- *
- * Does NOT need to be called under an RCU read-critical section,
- * since it does not dereference any pointers stored in the hash table.
- *
- * When done with @stats, pass the struct to qht_statistics_destroy().
- * Failing to do this will leak memory.
- */
-void qht_statistics_init(const struct qht *ht, struct qht_stats *stats);
-
-/**
- * qht_statistics_destroy - Destroy a &struct qht_stats
- * @stats: &struct qht_stats to be destroyed
- *
- * See also: qht_statistics_init().
- */
-void qht_statistics_destroy(struct qht_stats *stats);
 
 #endif /* QEMU_QHT_H */

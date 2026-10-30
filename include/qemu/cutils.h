@@ -2,15 +2,6 @@
 #define QEMU_CUTILS_H
 
 /*
- * si_prefix:
- * @exp10: exponent of 10, a multiple of 3 between -18 and 18 inclusive.
- *
- * Return a SI prefix (n, u, m, K, M, etc.) corresponding
- * to the given exponent of 10.
- */
-const char *si_prefix(unsigned int exp10);
-
-/*
  * iec_binary_prefix:
  * @exp2: exponent of 2, a multiple of 10 between 0 and 60 inclusive.
  *
@@ -86,22 +77,6 @@ char *pstrcat(char *buf, int buf_size, const char *s);
  */
 int strstart(const char *str, const char *val, const char **ptr);
 /**
- * stristart:
- * @str: string to test
- * @val: prefix string to look for
- * @ptr: NULL, or pointer to be written to indicate start of
- *       the remainder of the string
- *
- * Test whether @str starts with the case-insensitive prefix @val.
- * This function behaves identically to strstart(), except that the
- * comparison is made after calling qemu_toupper() on each pair of
- * characters.
- *
- * Returns: true if @str starts with case-insensitive prefix @val,
- *          false otherwise.
- */
-int stristart(const char *str, const char *val, const char **ptr);
-/**
  * qemu_strnlen:
  * @s: string
  * @max_len: maximum number of bytes in @s to scan
@@ -117,27 +92,6 @@ int stristart(const char *str, const char *val, const char **ptr);
  * Returns: length of @s in bytes, or @max_len, whichever is smaller.
  */
 int qemu_strnlen(const char *s, int max_len);
-/**
- * qemu_strsep:
- * @input: pointer to string to parse
- * @delim: string containing delimiter characters to search for
- *
- * Locate the first occurrence of any character in @delim within
- * the string referenced by @input, and replace it with a NUL.
- * The location of the next character after the delimiter character
- * is stored into @input.
- * If the end of the string was reached without finding a delimiter
- * character, then NULL is stored into @input.
- * If @input points to a NULL pointer on entry, return NULL.
- * The return value is always the original value of *@input (and
- * so now points to a NUL-terminated string corresponding to the
- * part of the input up to the first delimiter).
- *
- * This function has the same behaviour as the BSD strsep() function.
- *
- * Returns: the pointer originally in @input.
- */
-char *qemu_strsep(char **input, const char *delim);
 #ifdef HAVE_STRCHRNUL
 static inline const char *qemu_strchrnul(const char *s, int c)
 {
@@ -171,18 +125,6 @@ int qemu_strtosz_MiB(const char *nptr, const char **end, uint64_t *result);
 int qemu_strtosz_metric(const char *nptr, const char **end, uint64_t *result);
 
 char *size_to_str(uint64_t val);
-
-/**
- * freq_to_str:
- * @freq_hz: frequency to stringify
- *
- * Return human readable string for frequency @freq_hz.
- * Use SI units like KHz, MHz, and so forth.
- *
- * The caller is responsible for releasing the value returned
- * with g_free() after use.
- */
-char *freq_to_str(uint64_t freq_hz);
 
 /* used to print char* safely */
 #define STR_OR_NULL(str) ((str) ? (str) : "null")
@@ -288,20 +230,5 @@ static inline const char *yes_no(bool b)
  */
 GString *qemu_hexdump_line(GString *str, const void *buf, size_t len,
                            size_t unit_len, size_t block_len);
-
-/**
- * qemu_hexdump_to_buffer:
- * @buffer: output string buffer
- * @buffer_size: amount of available space in buffer. Must be at least
- *               data_size*2+1.
- * @data: input bytes
- * @data_size: number of bytes in data
- *
- * Converts the @data_size bytes in @data into hex digit pairs, writing them to
- * @buffer. Finally, a nul terminating character is written; @buffer therefore
- * needs space for (data_size*2+1) chars.
- */
-void qemu_hexdump_to_buffer(char *restrict buffer, size_t buffer_size,
-                            const uint8_t *restrict data, size_t data_size);
 
 #endif

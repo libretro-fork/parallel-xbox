@@ -185,12 +185,6 @@ bool timerlist_has_timers(QEMUTimerList *timer_list)
     return !!timer_list_head(timer_list);
 }
 
-bool qemu_clock_has_timers(QEMUClockType type)
-{
-    return timerlist_has_timers(
-        main_loop_tlg.tl[type]);
-}
-
 bool timerlist_expired(QEMUTimerList *timer_list)
 {
     int64_t expire_time = 0;
@@ -443,12 +437,6 @@ void timer_init_full(QEMUTimer *ts,
     ts->expire_time = -1;
 }
 
-void timer_deinit(QEMUTimer *ts)
-{
-    assert(ts->expire_time == -1);
-    ts->timer_list = NULL;
-}
-
 static void timer_del_locked(QEMUTimerList *timer_list, QEMUTimer *ts)
 {
     QEMUTimer **pt, *t;
@@ -558,11 +546,6 @@ void timer_mod_anticipate(QEMUTimer *ts, int64_t expire_time)
 bool timer_pending(const QEMUTimer *ts)
 {
     return ts->expire_time >= 0;
-}
-
-bool timer_expired(const QEMUTimer *timer_head, int64_t current_time)
-{
-    return timer_expired_ns(timer_head, current_time * timer_head->scale);
 }
 
 bool timerlist_run_timers(QEMUTimerList *timer_list)

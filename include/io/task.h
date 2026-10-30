@@ -218,26 +218,6 @@ QIOTask *qio_task_new(Object *source,
                       gpointer opaque,
                       GDestroyNotify destroy);
 
-/**
- * qio_task_run_in_thread:
- * @task: the task struct
- * @worker: the function to invoke in a thread
- * @opaque: opaque data to pass to @worker
- * @destroy: function to free @opaque
- * @context: the context to run the complete hook. If %NULL, the
- *           default context will be used.
- *
- * Run a task in a background thread. When @worker
- * returns it will call qio_task_complete() in
- * the thread that is running the main loop associated
- * with @context.
- */
-void qio_task_run_in_thread(QIOTask *task,
-                            QIOTaskWorker worker,
-                            gpointer opaque,
-                            GDestroyNotify destroy,
-                            GMainContext *context);
-
 
 
 /**
@@ -270,19 +250,5 @@ void qio_task_set_error(QIOTask *task,
 
 
 
-
-/**
- * qio_task_get_source:
- * @task: the task struct
- *
- * Get the source object associated with the background
- * task. The caller does not own a reference on the
- * returned Object, and so should call object_ref()
- * if it wants to keep the object pointer outside the
- * lifetime of the QIOTask object.
- *
- * Returns: the source object
- */
-Object *qio_task_get_source(QIOTask *task);
 
 #endif /* QIO_TASK_H */

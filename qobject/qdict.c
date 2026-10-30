@@ -136,19 +136,9 @@ void qdict_put_int(QDict *qdict, const char *key, int64_t value)
     qdict_put(qdict, key, qnum_from_int(value));
 }
 
-void qdict_put_bool(QDict *qdict, const char *key, bool value)
-{
-    qdict_put(qdict, key, qbool_from_bool(value));
-}
-
 void qdict_put_str(QDict *qdict, const char *key, const char *value)
 {
     qdict_put(qdict, key, qstring_from_str(value));
-}
-
-void qdict_put_null(QDict *qdict, const char *key)
-{
-    qdict_put(qdict, key, qnull());
 }
 
 /**
@@ -182,34 +172,6 @@ int qdict_haskey(const QDict *qdict, const char *key)
 size_t qdict_size(const QDict *qdict)
 {
     return qdict->size;
-}
-
-/**
- * qdict_get_str(): Get a pointer to the stored string mapped
- * by 'key'
- *
- * This function assumes that 'key' exists and it stores a
- * QString object.
- *
- * Return pointer to the string mapped by 'key'.
- */
-const char *qdict_get_str(const QDict *qdict, const char *key)
-{
-    return qstring_get_str(qobject_to(QString, qdict_get(qdict, key)));
-}
-
-/**
- * qdict_get_try_bool(): Try to get a bool mapped by 'key'
- *
- * Return bool mapped by 'key', if it is not present in the
- * dictionary or if the stored object is not of QBool type
- * 'def_value' will be returned.
- */
-bool qdict_get_try_bool(const QDict *qdict, const char *key, bool def_value)
-{
-    QBool *qbool = qobject_to(QBool, qdict_get(qdict, key));
-
-    return qbool ? qbool_get_bool(qbool) : def_value;
 }
 
 /**
@@ -314,35 +276,6 @@ void qdict_del(QDict *qdict, const char *key)
         qentry_destroy(entry);
         qdict->size--;
     }
-}
-
-/**
- * qdict_is_equal(): Test whether the two QDicts are equal
- *
- * Here, equality means whether they contain the same keys and whether
- * the respective values are in turn equal (i.e. invoking
- * qobject_is_equal() on them yields true).
- */
-bool qdict_is_equal(const QObject *x, const QObject *y)
-{
-    const QDict *dict_x = qobject_to(QDict, x);
-    const QDict *dict_y = qobject_to(QDict, y);
-    const QDictEntry *e;
-
-    if (qdict_size(dict_x) != qdict_size(dict_y)) {
-        return false;
-    }
-
-    for (e = qdict_first(dict_x); e; e = qdict_next(dict_x, e)) {
-        const QObject *obj_x = qdict_entry_value(e);
-        const QObject *obj_y = qdict_get(dict_y, qdict_entry_key(e));
-
-        if (!qobject_is_equal(obj_x, obj_y)) {
-            return false;
-        }
-    }
-
-    return true;
 }
 
 /**

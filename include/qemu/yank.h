@@ -42,23 +42,6 @@ bool yank_register_instance(const YankInstance *instance, Error **errp);
 void yank_unregister_instance(const YankInstance *instance);
 
 /**
- * yank_register_function: Register a yank function
- *
- * This registers a yank function. All limitations of qmp oob commands apply
- * to the yank function as well. See docs/devel/qapi-code-gen.rst under
- * "An OOB-capable command handler must satisfy the following conditions".
- *
- * This function is thread-safe.
- *
- * @instance: The instance.
- * @func: The yank function.
- * @opaque: Will be passed to the yank function.
- */
-void yank_register_function(const YankInstance *instance,
-                            YankFn *func,
-                            void *opaque);
-
-/**
  * yank_unregister_function: Unregister a yank function
  *
  * This unregisters a yank function.

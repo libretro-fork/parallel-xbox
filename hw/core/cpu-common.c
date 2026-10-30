@@ -38,18 +38,6 @@
 #include "qemu/plugin.h"
 #endif
 
-CPUState *cpu_by_arch_id(int64_t id)
-{
-    CPUState *cpu;
-
-    CPU_FOREACH(cpu) {
-        if (cpu->cc->get_arch_id(cpu) == id) {
-            return cpu;
-        }
-    }
-    return NULL;
-}
-
 void cpu_reset_interrupt(CPUState *cpu, int mask)
 {
     retro_atomic_fetch_and_int(&cpu->interrupt_request, ~mask);

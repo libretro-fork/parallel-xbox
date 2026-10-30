@@ -111,7 +111,3 @@ static void __attribute__((constructor)) init_accel(void)
     buffer_is_zero_accel = accel_table[accel_index];
 }
 
-bool buffer_is_zero_ge256(const void *buf, size_t len)
-{
-    return buffer_is_zero_accel(buf, len);
-}

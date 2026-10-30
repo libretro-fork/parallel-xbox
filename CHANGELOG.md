@@ -8,6 +8,9 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 - Otogi can start from an unmodified XISO or full disc image with Complex 4627. Runtime Disc-check Compatibility adjusts only the loaded executable's physical-disc check flag before entry; disable it to retain the original checks. No security dump or image preparation is needed for this workaround.
 - Read-only local images use libretro-common mapped views, removing repeated read syscalls and allowing zero-copy metadata access. Scatter reads go straight into guest buffers and combine adjacent spans. Native positional I/O remains the fallback, writable HDDs stay sparse, and frontend VFS reads avoid redundant seeks and handle partial reads correctly.
+- Vulkan cubemap redraws copy only changed GPU faces when updating the existing texture image. Replacement images and RAM uploads still restore every required GPU face.
+
+- Another round of the code no build of the core calls is removed now that QEMU's user-mode, coroutine and atomics code is gone (about 6,900 lines): among it QEMU's ELF, a.out and multiboot loaders (the Xbox boots its own BIOS), most of its socket address handling, the block layer's dictionary helpers and the task objects channels ran in a thread. Nothing changes for someone using the core.
 
 - CPU Boost reuses checked jump-cache entries for same-page branches into instructions spanning two code pages, avoiding repeated dispatcher trips without installing unsafe permanent links. Cache misses, remapping, code writes, debugger restrictions and instruction budgets retain their existing handling. Only targets in the final 14 bytes of a page gain the extra fallback code.
 
@@ -511,6 +514,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 - The emulator thread, which runs QEMU's main loop and the guest's CPU, is registered with QEMU's RCU, as upstream's main and CPU threads are. It never was: QEMU's background thread that frees what a change replaced (the translated code's hash table when it grows, the old memory map after a device moves) did not wait for it, and could free memory the guest's CPU was still reading, a crash at random. Now it waits until the CPU is out of the translated code, and kicks it out of a long run for it.
 
 - The machine runs on RetroArch's own thread, in retro_run, instead of on a thread of its own that retro_run handed each frame to and slept on until it was done. That was two thread wake-ups a frame (about 0.1 ms on the test machine) on the way into the frame and out of it, and a thread less now. Building the machine puts the frontend's OpenGL context back as it found it.
+
+- At the end of each frame RetroArch's thread asks the emulated GPU once to finish the frame's work and draw the display, and waits once. It used to wait for the work, then ask for the redraw and wait again: two handoffs between the threads a frame. On the test ROM's GPU scenario the wait at the frame's end is 10 to 30% shorter with Vulkan; with OpenGL the difference is within noise.
 
 ## Test build 4 - 2026-10-25
 

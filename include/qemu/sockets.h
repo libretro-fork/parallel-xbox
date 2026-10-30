@@ -53,15 +53,9 @@ int socket_set_fast_reuse(int fd);
 #define SHUT_RDWR 2
 #endif
 
-int inet_ai_family_from_address(InetSocketAddress *addr,
-                                Error **errp);
-int inet_parse(InetSocketAddress *addr, const char *str, Error **errp);
-int inet_connect_saddr(InetSocketAddress *saddr, Error **errp);
 
-int socket_connect(SocketAddress *addr, Error **errp);
 int socket_listen(SocketAddress *addr, int num, Error **errp);
 void socket_listen_cleanup(int fd, Error **errp);
-int socket_dgram(SocketAddress *remote, SocketAddress *local, Error **errp);
 
 /* Old, ipv4 only bits.  Don't use for new code. */
 int convert_host_port(struct sockaddr_in *saddr, const char *host,
@@ -104,25 +98,4 @@ socket_sockaddr_to_address(struct sockaddr_storage *sa,
  */
 SocketAddress *socket_local_address(int fd, Error **errp);
 
-/**
- * socket_address_flatten:
- * @addr: the socket address to flatten
- *
- * Convert SocketAddressLegacy to SocketAddress.  Caller is responsible
- * for freeing with qapi_free_SocketAddress().
- *
- * Returns: the argument converted to SocketAddress.
- */
-SocketAddress *socket_address_flatten(SocketAddressLegacy *addr);
-
-/**
- * socket_address_parse_named_fd:
- *
- * Modify @addr, replacing a named fd by its corresponding number.
- * Needed for callers that plan to pass @addr to a context where the
- * current monitor is not available.
- *
- * Return 0 on success.
- */
-int socket_address_parse_named_fd(SocketAddress *addr, Error **errp);
 #endif /* QEMU_SOCKETS_H */

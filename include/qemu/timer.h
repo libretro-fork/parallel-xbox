@@ -133,22 +133,6 @@ static inline int64_t qemu_clock_get_us(QEMUClockType type)
 }
 
 /**
- * qemu_clock_has_timers:
- * @type: the clock type
- *
- * Determines whether a clock's default timer list
- * has timers attached
- *
- * Note that this function should not be used when other threads also access
- * the timer list.  The return value may be outdated by the time it is acted
- * upon.
- *
- * Returns: true if the clock's default timer list
- * has timers attached
- */
-bool qemu_clock_has_timers(QEMUClockType type);
-
-/**
  * qemu_clock_expired:
  * @type: the clock type
  *
@@ -603,17 +587,6 @@ static inline QEMUTimer *timer_new_ms(QEMUClockType type, QEMUTimerCB *cb,
 }
 
 /**
- * timer_deinit:
- * @ts: the timer to be de-initialised
- *
- * Deassociate the timer from any timerlist.  You should
- * call timer_del before.  After this call, any further
- * timer_del call cannot cause dangling pointer accesses
- * even if the previously used timerlist is freed.
- */
-void timer_deinit(QEMUTimer *ts);
-
-/**
  * timer_del:
  * @ts: the timer
  *
@@ -700,17 +673,6 @@ void timer_mod_anticipate(QEMUTimer *ts, int64_t expire_time);
  * Returns: true if the timer is pending
  */
 bool timer_pending(const QEMUTimer *ts);
-
-/**
- * timer_expired:
- * @ts: the timer
- * @current_time: the current time
- *
- * Determines whether a timer has expired.
- *
- * Returns: true if the timer has expired
- */
-bool timer_expired(const QEMUTimer *timer_head, int64_t current_time);
 
 /**
  * timer_expire_time_ns:

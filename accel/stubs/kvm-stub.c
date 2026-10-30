@@ -44,11 +44,6 @@ int kvm_on_sigbus(int code, void *addr)
     return 1;
 }
 
-int kvm_irqchip_add_msi_route(KVMRouteChange *c, int vector, PCIDevice *dev)
-{
-    return -ENOSYS;
-}
-
 unsigned int kvm_get_max_memslots(void)
 {
     return 0;
@@ -62,11 +57,6 @@ unsigned int kvm_get_free_memslots(void)
 bool kvm_dirty_ring_enabled(void)
 {
     return false;
-}
-
-uint32_t kvm_dirty_ring_size(void)
-{
-    return 0;
 }
 
 int kvm_create_guest_memfd(uint64_t size, uint64_t flags, Error **errp)

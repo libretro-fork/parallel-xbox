@@ -202,24 +202,6 @@ int nv2a_get_screen_off(void)
     return g_nv2a->vga.sr[VGA_SEQ_CLOCK_MODE] & VGA_SR01_SCREEN_OFF;
 }
 
-/* Whether the GPU's thread is at work, for the core's emulator thread
- * (ui/libretro.c): an idle guest's time stands still until it parks, so
- * the GPU takes no guest time. A thread that waits for something only the
- * guest's time brings (a flip held for the vblank, a NOP or context switch
- * the guest has to answer) is parked, not busy; the emulator thread sets
- * nv2a_libretro_waiter before it looks, and is woken when it parks. */
-bool nv2a_libretro_busy(void)
-{
-    NV2AState *d = g_nv2a;
-
-    if (!d || !retro_atomic_load_acquire_int(&d->pfifo.thread_running) ||
-        retro_atomic_load_relaxed_int(&d->pfifo.halt)) {
-        return false;
-    }
-    return retro_atomic_load_acquire_int(&d->pfifo.fifo_kick) ||
-           !retro_atomic_load_relaxed_int(&d->pfifo.parked);
-}
-
 /* Work the guest gave the GPU outstanding (pfifo_kick_guest): what a
  * waiting guest may be waiting for. The core's own kicks (a reset's
  * unlock, a frame's redraw) are not the guest's to wait for: counting
@@ -237,20 +219,42 @@ bool nv2a_libretro_guest_busy(void)
            retro_atomic_load_acquire_int(&d->pfifo.guest_done);
 }
 
-/* The emulator thread, at a frame's end with the GPU's thread caught up
- * (ui/libretro.c): the display looked at again, so the picture handed over
- * is the front buffer as the frame's last draws left it - the guest may
- * have moved the scanout while they were still queued, and the display
- * was drawn before them */
-void nv2a_libretro_display_check(void)
+/* The frontend's thread, at a frame's end (ui/libretro.c lr_finish_frame):
+ * a request that the GPU's thread, once the frame's work is done, look at
+ * the display again and draw it (pfifo_idle_wait), so the picture handed
+ * over is the front buffer as the frame's last draws left it - the guest
+ * may have moved the scanout while they were still queued, and the display
+ * was drawn before them. The request's number, to wait for; 0 with no GPU
+ * thread running. */
+int nv2a_libretro_frame_end(void)
+{
+    NV2AState *d = g_nv2a;
+    int end;
+
+    if (!d || !retro_atomic_load_acquire_int(&d->pfifo.thread_running) ||
+        retro_atomic_load_relaxed_int(&d->pfifo.halt)) {
+        return 0;
+    }
+    end = retro_atomic_load_relaxed_int(&d->pfifo.frame_end_req) + 1;
+    if (!end) {
+        end = 1;
+    }
+    retro_atomic_store_release_int(&d->pfifo.frame_end_req, end);
+    pfifo_kick(d);
+    return end;
+}
+
+/* Whether the GPU's thread has drawn the display for request end, or
+ * stopped */
+bool nv2a_libretro_frame_end_done(int end)
 {
     NV2AState *d = g_nv2a;
 
-    if (!d || !retro_atomic_load_acquire_int(&d->pfifo.thread_running)) {
-        return;
+    if (!d || !retro_atomic_load_acquire_int(&d->pfifo.thread_running) ||
+        retro_atomic_load_relaxed_int(&d->pfifo.halt)) {
+        return true;
     }
-    retro_atomic_store_relaxed_int(&d->pgraph.scanout_changed, 1);
-    pfifo_kick(d);
+    return retro_atomic_load_acquire_int(&d->pfifo.frame_end_done) == end;
 }
 
 QemuConsole *nv2a_get_vga_console(void)

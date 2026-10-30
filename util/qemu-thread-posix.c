@@ -143,21 +143,6 @@ void qemu_rec_mutex_destroy(QemuRecMutex *mutex)
     qemu_mutex_destroy(&mutex->m);
 }
 
-void qemu_rec_mutex_lock_impl(QemuRecMutex *mutex, const char *file, int line)
-{
-    qemu_mutex_lock_impl(&mutex->m, file, line);
-}
-
-int qemu_rec_mutex_trylock_impl(QemuRecMutex *mutex, const char *file, int line)
-{
-    return qemu_mutex_trylock_impl(&mutex->m, file, line);
-}
-
-void qemu_rec_mutex_unlock_impl(QemuRecMutex *mutex, const char *file, int line)
-{
-    qemu_mutex_unlock_impl(&mutex->m, file, line);
-}
-
 void qemu_cond_init(QemuCond *cond)
 {
     pthread_condattr_t attr;
@@ -328,11 +313,6 @@ static __thread NotifierList thread_exit;
 void qemu_thread_atexit_add(Notifier *notifier)
 {
     notifier_list_add(&thread_exit, notifier);
-}
-
-void qemu_thread_atexit_remove(Notifier *notifier)
-{
-    notifier_remove(notifier);
 }
 
 static void qemu_thread_atexit_notify(void *arg)
@@ -517,11 +497,6 @@ void qemu_thread_get_self(QemuThread *thread)
 bool qemu_thread_is_self(QemuThread *thread)
 {
    return pthread_equal(pthread_self(), thread->thread);
-}
-
-void qemu_thread_exit(void *retval)
-{
-    pthread_exit(retval);
 }
 
 void *qemu_thread_join(QemuThread *thread)

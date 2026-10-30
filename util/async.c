@@ -431,14 +431,6 @@ GSource *aio_get_g_source(AioContext *ctx)
     return &ctx->source;
 }
 
-ThreadPoolAio *aio_get_thread_pool(AioContext *ctx)
-{
-    if (!ctx->thread_pool) {
-        ctx->thread_pool = thread_pool_new_aio(ctx);
-    }
-    return ctx->thread_pool;
-}
-
 #ifdef CONFIG_LINUX_AIO
 LinuxAioState *aio_setup_linux_aio(AioContext *ctx, Error **errp)
 {
@@ -598,16 +590,6 @@ AioContext *aio_context_new(Error **errp)
 fail:
     g_source_unref(&ctx->source);
     return NULL;
-}
-
-void aio_context_ref(AioContext *ctx)
-{
-    g_source_ref(&ctx->source);
-}
-
-void aio_context_unref(AioContext *ctx)
-{
-    g_source_unref(&ctx->source);
 }
 
 QEMU_DEFINE_STATIC_CO_TLS(AioContext *, my_aiocontext)

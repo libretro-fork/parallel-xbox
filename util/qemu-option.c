@@ -338,11 +338,6 @@ bool qemu_opt_get_bool(QemuOpts *opts, const char *name, bool defval)
     return qemu_opt_get_bool_helper(opts, name, defval, false);
 }
 
-bool qemu_opt_get_bool_del(QemuOpts *opts, const char *name, bool defval)
-{
-    return qemu_opt_get_bool_helper(opts, name, defval, true);
-}
-
 static uint64_t qemu_opt_get_number_helper(QemuOpts *opts, const char *name,
                                            uint64_t defval, bool del)
 {
@@ -375,12 +370,6 @@ uint64_t qemu_opt_get_number(QemuOpts *opts, const char *name, uint64_t defval)
     return qemu_opt_get_number_helper(opts, name, defval, false);
 }
 
-uint64_t qemu_opt_get_number_del(QemuOpts *opts, const char *name,
-                                 uint64_t defval)
-{
-    return qemu_opt_get_number_helper(opts, name, defval, true);
-}
-
 static uint64_t qemu_opt_get_size_helper(QemuOpts *opts, const char *name,
                                          uint64_t defval, bool del)
 {
@@ -411,12 +400,6 @@ static uint64_t qemu_opt_get_size_helper(QemuOpts *opts, const char *name,
 uint64_t qemu_opt_get_size(QemuOpts *opts, const char *name, uint64_t defval)
 {
     return qemu_opt_get_size_helper(opts, name, defval, false);
-}
-
-uint64_t qemu_opt_get_size_del(QemuOpts *opts, const char *name,
-                               uint64_t defval)
-{
-    return qemu_opt_get_size_helper(opts, name, defval, true);
 }
 
 static bool qemu_opt_parse(QemuOpt *opt, Error **errp)
@@ -666,59 +649,6 @@ void qemu_opts_del(QemuOpts *opts)
     QTAILQ_REMOVE(&opts->list->head, opts, next);
     g_free(opts->id);
     g_free(opts);
-}
-
-/* print value, escaping any commas in value */
-static void escaped_print(const char *value)
-{
-    const char *ptr;
-
-    for (ptr = value; *ptr; ++ptr) {
-        if (*ptr == ',') {
-            putchar(',');
-        }
-        putchar(*ptr);
-    }
-}
-
-void qemu_opts_print(QemuOpts *opts, const char *separator)
-{
-    QemuOpt *opt;
-    QemuOptDesc *desc = opts->list->desc;
-    const char *sep = "";
-
-    if (opts->id) {
-        printf("id=%s", opts->id); /* passed id_wellformed -> no commas */
-        sep = separator;
-    }
-
-    if (desc[0].name == NULL) {
-        QTAILQ_FOREACH(opt, &opts->head, next) {
-            printf("%s%s=", sep, opt->name);
-            escaped_print(opt->str);
-            sep = separator;
-        }
-        return;
-    }
-    for (; desc && desc->name; desc++) {
-        const char *value;
-        opt = qemu_opt_find(opts, desc->name);
-
-        value = opt ? opt->str : desc->def_value_str;
-        if (!value) {
-            continue;
-        }
-        if (desc->type == QEMU_OPT_STRING) {
-            printf("%s%s=", sep, desc->name);
-            escaped_print(value);
-        } else if ((desc->type == QEMU_OPT_SIZE ||
-                    desc->type == QEMU_OPT_NUMBER) && opt) {
-            printf("%s%s=%" PRId64, sep, desc->name, opt->value.uint);
-        } else {
-            printf("%s%s=%s", sep, desc->name, value);
-        }
-        sep = separator;
-    }
 }
 
 static const char *get_opt_name_value(const char *params,
@@ -973,34 +903,6 @@ QemuOpts *qemu_opts_from_qdict(QemuOptsList *list, const QDict *qdict,
 }
 
 /*
- * Adds all QDict entries to the QemuOpts that can be added and removes them
- * from the QDict. When this function returns, the QDict contains only those
- * entries that couldn't be added to the QemuOpts.
- */
-bool qemu_opts_absorb_qdict(QemuOpts *opts, QDict *qdict, Error **errp)
-{
-    const QDictEntry *entry, *next;
-
-    entry = qdict_first(qdict);
-
-    while (entry != NULL) {
-        next = qdict_next(qdict, entry);
-
-        if (opts_accepts_any(opts->list) ||
-            find_desc_by_name(opts->list->desc, entry->key)) {
-            if (!qemu_opts_from_qdict_entry(opts, entry, errp)) {
-                return false;
-            }
-            qdict_del(qdict, entry->key);
-        }
-
-        entry = next;
-    }
-
-    return true;
-}
-
-/*
  * Convert from QemuOpts to QDict. The QDict values are of type QString.
  *
  * If @list is given, only add those options to the QDict that are contained in
@@ -1081,85 +983,3 @@ int qemu_opts_foreach(QemuOptsList *list, qemu_opts_loopfunc func,
     return rc;
 }
 
-static size_t count_opts_list(QemuOptsList *list)
-{
-    QemuOptDesc *desc = NULL;
-    size_t num_opts = 0;
-
-    if (!list) {
-        return 0;
-    }
-
-    desc = list->desc;
-    while (desc && desc->name) {
-        num_opts++;
-        desc++;
-    }
-
-    return num_opts;
-}
-
-void qemu_opts_free(QemuOptsList *list)
-{
-    g_free(list);
-}
-
-/* Realloc dst option list and append options from an option list (list)
- * to it. dst could be NULL or a malloced list.
- * The lifetime of dst must be shorter than the input list because the
- * QemuOptDesc->name, ->help, and ->def_value_str strings are shared.
- */
-QemuOptsList *qemu_opts_append(QemuOptsList *dst,
-                               QemuOptsList *list)
-{
-    size_t num_opts, num_dst_opts;
-    QemuOptDesc *desc;
-    bool need_init = false;
-    bool need_head_update;
-
-    if (!list) {
-        return dst;
-    }
-
-    /* If dst is NULL, after realloc, some area of dst should be initialized
-     * before adding options to it.
-     */
-    if (!dst) {
-        need_init = true;
-        need_head_update = true;
-    } else {
-        /* Moreover, even if dst is not NULL, the realloc may move it to a
-         * different address in which case we may get a stale tail pointer
-         * in dst->head. */
-        need_head_update = QTAILQ_EMPTY(&dst->head);
-    }
-
-    num_opts = count_opts_list(dst);
-    num_dst_opts = num_opts;
-    num_opts += count_opts_list(list);
-    dst = g_realloc(dst, sizeof(QemuOptsList) +
-                    (num_opts + 1) * sizeof(QemuOptDesc));
-    if (need_init) {
-        dst->name = NULL;
-        dst->implied_opt_name = NULL;
-        dst->merge_lists = false;
-    }
-    if (need_head_update) {
-        QTAILQ_INIT(&dst->head);
-    }
-    dst->desc[num_dst_opts].name = NULL;
-
-    /* append list->desc to dst->desc */
-    if (list) {
-        desc = list->desc;
-        while (desc && desc->name) {
-            if (find_desc_by_name(dst->desc, desc->name) == NULL) {
-                dst->desc[num_dst_opts++] = *desc;
-                dst->desc[num_dst_opts].name = NULL;
-            }
-            desc++;
-        }
-    }
-
-    return dst;
-}

@@ -500,12 +500,6 @@ bool bql_locked(void)
     return get_bql_locked();
 }
 
-void rust_bql_mock_lock(void)
-{
-    error_report("This function should be used only from tests");
-    abort();
-}
-
 void bql_lock_impl(const char *file, int line)
 {
     g_assert(!bql_locked());

@@ -473,13 +473,6 @@ void qht_init(struct qht *ht, qht_cmp_func_t cmp, size_t n_elems,
     retro_atomic_store_release_ptr(&ht->map, map);
 }
 
-/* call only when there are no readers/writers left */
-void qht_destroy(struct qht *ht)
-{
-    qht_map_destroy(QHT_MAP(ht));
-    memset(ht, 0, sizeof(*ht));
-}
-
 static void qht_bucket_reset__locked(struct qht_bucket *head)
 {
     struct qht_bucket *b = head;
@@ -508,15 +501,6 @@ static void qht_map_reset__all_locked(struct qht_map *map)
         qht_bucket_reset__locked(&map->buckets[i]);
     }
     qht_map_debug__all_locked(map);
-}
-
-void qht_reset(struct qht *ht)
-{
-    struct qht_map *map;
-
-    qht_map_lock_buckets__no_stale(ht, &map);
-    qht_map_reset__all_locked(map);
-    qht_map_unlock_buckets(map);
 }
 
 static inline void qht_do_resize(struct qht *ht, struct qht_map *new)
@@ -610,11 +594,6 @@ void *qht_lookup_custom(const struct qht *ht, const void *userp, uint32_t hash,
      * running a 100%-lookup microbenchmark.
      */
     return qht_lookup__slowpath(b, func, userp, hash);
-}
-
-void *qht_lookup(const struct qht *ht, const void *userp, uint32_t hash)
-{
-    return qht_lookup_custom(ht, userp, hash, ht->cmp);
 }
 
 /*
@@ -859,37 +838,6 @@ static inline void qht_map_iter__all_locked(struct qht_map *map,
     }
 }
 
-static inline void
-do_qht_iter(struct qht *ht, const struct qht_iter *iter, void *userp)
-{
-    struct qht_map *map;
-
-    map = QHT_MAP(ht);
-    qht_map_lock_buckets(map);
-    qht_map_iter__all_locked(map, iter, userp);
-    qht_map_unlock_buckets(map);
-}
-
-void qht_iter(struct qht *ht, qht_iter_func_t func, void *userp)
-{
-    const struct qht_iter iter = {
-        .f.retvoid = func,
-        .type = QHT_ITER_VOID,
-    };
-
-    do_qht_iter(ht, &iter, userp);
-}
-
-void qht_iter_remove(struct qht *ht, qht_iter_bool_func_t func, void *userp)
-{
-    const struct qht_iter iter = {
-        .f.retbool = func,
-        .type = QHT_ITER_RM,
-    };
-
-    do_qht_iter(ht, &iter, userp);
-}
-
 struct qht_map_copy_data {
     struct qht *ht;
     struct qht_map *new;
@@ -942,82 +890,3 @@ static void qht_do_resize_reset(struct qht *ht, struct qht_map *new, bool reset)
     call_rcu(old, qht_map_destroy, rcu);
 }
 
-bool qht_resize(struct qht *ht, size_t n_elems)
-{
-    size_t n_buckets = qht_elems_to_buckets(n_elems);
-    size_t ret = false;
-
-    qht_lock(ht);
-    if (n_buckets != QHT_MAP(ht)->n_buckets) {
-        struct qht_map *new;
-
-        new = qht_map_create(n_buckets);
-        qht_do_resize(ht, new);
-        ret = true;
-    }
-    qht_unlock(ht);
-
-    return ret;
-}
-
-/* pass @stats to qht_statistics_destroy() when done */
-void qht_statistics_init(const struct qht *ht, struct qht_stats *stats)
-{
-    const struct qht_map *map;
-    int i;
-
-    map = QHT_MAP(ht);
-
-    stats->used_head_buckets = 0;
-    stats->entries = 0;
-    qdist_init(&stats->chain);
-    qdist_init(&stats->occupancy);
-    /* bail out if the qht has not yet been initialized */
-    if (unlikely(map == NULL)) {
-        stats->head_buckets = 0;
-        return;
-    }
-    stats->head_buckets = map->n_buckets;
-
-    for (i = 0; i < map->n_buckets; i++) {
-        const struct qht_bucket *head = &map->buckets[i];
-        const struct qht_bucket *b;
-        unsigned int version;
-        size_t buckets;
-        size_t entries;
-        int j;
-
-        do {
-            version = seqlock_read_begin(&head->sequence);
-            buckets = 0;
-            entries = 0;
-            b = head;
-            do {
-                for (j = 0; j < QHT_BUCKET_ENTRIES; j++) {
-                    if (QHT_PTR(b, j) == NULL) {
-                        break;
-                    }
-                    entries++;
-                }
-                buckets++;
-                b = QHT_NEXT(b);
-            } while (b);
-        } while (seqlock_read_retry(&head->sequence, version));
-
-        if (entries) {
-            qdist_inc(&stats->chain, buckets);
-            qdist_inc(&stats->occupancy,
-                      (double)entries / QHT_BUCKET_ENTRIES / buckets);
-            stats->used_head_buckets++;
-            stats->entries += entries;
-        } else {
-            qdist_inc(&stats->occupancy, 0);
-        }
-    }
-}
-
-void qht_statistics_destroy(struct qht_stats *stats)
-{
-    qdist_destroy(&stats->occupancy);
-    qdist_destroy(&stats->chain);
-}

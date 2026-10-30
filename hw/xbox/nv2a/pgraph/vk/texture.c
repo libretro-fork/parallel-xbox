@@ -1381,6 +1381,8 @@ static void copy_cube_faces_to_texture(PGRAPHState *pg,
     TextureShape *state = &texture->key.state;
     VkColorFormatInfo vkf = texture_vkf(r, state->color_format);
 
+    bool fresh_image = texture->current_layout == VK_IMAGE_LAYOUT_UNDEFINED;
+
     nv2a_profile_inc_counter(NV2A_PROF_SURF_TO_TEX);
 
     VkCommandBuffer cmd = pgraph_vk_begin_nondraw_commands(pg);
@@ -1396,7 +1398,12 @@ static void copy_cube_faces_to_texture(PGRAPHState *pg,
     for (int f = 0; f < 6; f++) {
         if (!faces[f]) continue;
         source_mask |= 1u << f;
-        record_surface_copy(pg, cmd, faces[f], texture, f);
+        /* An in-place refresh keeps untouched layers. A replacement image
+         * or RAM upload has no reusable GPU-face provenance. */
+        if (fresh_image || !(texture->cube_source_mask & (1u << f)) ||
+            texture->cube_source_draw_time[f] != faces[f]->draw_time) {
+            record_surface_copy(pg, cmd, faces[f], texture, f);
+        }
         texture->cube_source_draw_time[f] = faces[f]->draw_time;
         if (faces[f]->draw_time > max_draw_time) {
             max_draw_time = faces[f]->draw_time;

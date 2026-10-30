@@ -366,14 +366,6 @@ struct AioContext {
 AioContext *aio_context_new(Error **errp);
 
 /**
- * aio_context_ref:
- * @ctx: The AioContext to operate on.
- *
- * Add a reference to an AioContext.
- */
-void aio_context_ref(AioContext *ctx);
-
-/**
  * aio_context_unref:
  * @ctx: The AioContext to operate on.
  *
@@ -608,7 +600,6 @@ void aio_set_event_notifier_poll(AioContext *ctx,
 GSource *aio_get_g_source(AioContext *ctx);
 
 /* Return the ThreadPoolAio bound to this AioContext */
-struct ThreadPoolAio *aio_get_thread_pool(AioContext *ctx);
 
 /* Setup the LinuxAioState bound to this AioContext */
 struct LinuxAioState *aio_setup_linux_aio(AioContext *ctx, Error **errp);

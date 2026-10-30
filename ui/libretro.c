@@ -1980,24 +1980,30 @@ static void lr_finish_frame(void)
     /* Finish submitted GPU work and the resulting display composition
      * before handing the picture to the frontend. This completion barrier
      * leaves guest time unchanged in both timing modes. */
-    extern bool nv2a_libretro_busy(void);
-    extern void nv2a_libretro_display_check(void);
-    /* twice: the frame's work done, then the display drawn from what
-     * it left */
-    for (int pass = 0; pass < 2; pass++) {
-        for (;;) {
-            retro_atomic_store_relaxed_int(&nv2a_libretro_waiter, 1);
-            retro_atomic_thread_fence_seq_cst();
-            if (!runstate_is_running() || !nv2a_libretro_busy()) {
-                break;
-            }
-            main_loop_wait(false);
-        }
-        retro_atomic_store_relaxed_int(&nv2a_libretro_waiter, 0);
-        if (pass == 0 && runstate_is_running()) {
-            nv2a_libretro_display_check();
-        }
+    extern int nv2a_libretro_frame_end(void);
+    extern bool nv2a_libretro_frame_end_done(int end);
+    int end;
+
+    if (!runstate_is_running()) {
+        return;
     }
+    /* one request and one wait: the GPU's thread draws the display from
+     * what the frame's work left once that work is done, where it would
+     * park, and says so (pfifo_idle_wait). It took two before: a wait for
+     * the work, then a redraw asked for and waited for. */
+    end = nv2a_libretro_frame_end();
+    if (!end) {
+        return;
+    }
+    for (;;) {
+        retro_atomic_store_relaxed_int(&nv2a_libretro_waiter, 1);
+        retro_atomic_thread_fence_seq_cst();
+        if (!runstate_is_running() || nv2a_libretro_frame_end_done(end)) {
+            break;
+        }
+        main_loop_wait(false);
+    }
+    retro_atomic_store_relaxed_int(&nv2a_libretro_waiter, 0);
 }
 
 /* One frame of guest time, from the end of the last one on a grid of

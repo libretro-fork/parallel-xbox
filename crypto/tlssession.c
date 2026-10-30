@@ -157,97 +157,6 @@ qcrypto_tls_session_pull(void *opaque, void *buf, size_t len)
     }
 }
 
-QCryptoTLSSession *
-qcrypto_tls_session_new(QCryptoTLSCreds *creds,
-                        const char *hostname,
-                        const char *authzid,
-                        QCryptoTLSCredsEndpoint endpoint,
-                        Error **errp)
-{
-    QCryptoTLSSession *session;
-    int ret;
-    g_autofree char *prio = NULL;
-
-    session = g_new0(QCryptoTLSSession, 1);
-    trace_qcrypto_tls_session_new(
-        session, creds, hostname ? hostname : "<none>",
-        authzid ? authzid : "<none>", endpoint);
-
-    if (hostname) {
-        session->hostname = g_strdup(hostname);
-    }
-    if (authzid) {
-        session->authzid = g_strdup(authzid);
-    }
-    session->creds = creds;
-    object_ref(OBJECT(creds));
-
-    qemu_mutex_init(&session->lock);
-
-    if (creds->endpoint != endpoint) {
-        error_setg(errp, "Credentials endpoint doesn't match session");
-        goto error;
-    }
-
-    if (endpoint == QCRYPTO_TLS_CREDS_ENDPOINT_SERVER) {
-        ret = gnutls_init(&session->handle, GNUTLS_SERVER);
-    } else {
-        ret = gnutls_init(&session->handle, GNUTLS_CLIENT);
-    }
-    if (ret < 0) {
-        error_setg(errp, "Cannot initialize TLS session: %s",
-                   gnutls_strerror(ret));
-        goto error;
-    }
-
-    prio = qcrypto_tls_creds_get_priority(creds);
-    ret = gnutls_priority_set_direct(session->handle, prio, NULL);
-    if (ret < 0) {
-        error_setg(errp, "Unable to set TLS session priority %s: %s",
-                   prio, gnutls_strerror(ret));
-        goto error;
-    }
-
-    ret = gnutls_credentials_set(session->handle,
-                                 creds->box->type,
-                                 creds->box->data.any);
-    if (ret < 0) {
-        error_setg(errp, "Cannot set session credentials: %s",
-                   gnutls_strerror(ret));
-        goto error;
-    }
-
-    /*
-     * creds->box->data.any must be kept alive for as long
-     * as the gnutls_session_t is alive, so acquire a ref
-     */
-    qcrypto_tls_creds_box_ref(creds->box);
-    session->credsbox = creds->box;
-
-    if (object_dynamic_cast(OBJECT(creds),
-                            TYPE_QCRYPTO_TLS_CREDS_X509) &&
-        creds->endpoint == QCRYPTO_TLS_CREDS_ENDPOINT_SERVER) {
-        /*
-         * This requests, but does not enforce a client cert.
-         * The cert checking code later does enforcement
-         */
-        gnutls_certificate_server_set_request(session->handle,
-                                              GNUTLS_CERT_REQUEST);
-    }
-
-    gnutls_transport_set_ptr(session->handle, session);
-    gnutls_transport_set_push_function(session->handle,
-                                       qcrypto_tls_session_push);
-    gnutls_transport_set_pull_function(session->handle,
-                                       qcrypto_tls_session_pull);
-
-    return session;
-
- error:
-    qcrypto_tls_session_free(session);
-    return NULL;
-}
-
 static int
 qcrypto_tls_session_check_certificate(QCryptoTLSSession *session,
                                       Error **errp)
@@ -384,17 +293,6 @@ qcrypto_tls_session_check_certificate(QCryptoTLSSession *session,
 
 
 
-void
-qcrypto_tls_session_set_callbacks(QCryptoTLSSession *session,
-                                  QCryptoTLSSessionWriteFunc writeFunc,
-                                  QCryptoTLSSessionReadFunc readFunc,
-                                  void *opaque)
-{
-    session->writeFunc = writeFunc;
-    session->readFunc = readFunc;
-    session->opaque = opaque;
-}
-
 
 ssize_t
 qcrypto_tls_session_write(QCryptoTLSSession *session,
@@ -489,44 +387,12 @@ qcrypto_tls_session_check_pending(QCryptoTLSSession *session)
 #else /* ! CONFIG_GNUTLS */
 
 
-QCryptoTLSSession *
-qcrypto_tls_session_new(QCryptoTLSCreds *creds G_GNUC_UNUSED,
-                        const char *hostname G_GNUC_UNUSED,
-                        const char *authzid G_GNUC_UNUSED,
-                        QCryptoTLSCredsEndpoint endpoint G_GNUC_UNUSED,
-                        Error **errp)
-{
-    error_setg(errp, "TLS requires GNUTLS support");
-    return NULL;
-}
-
-void qcrypto_tls_session_require_thread_safety(QCryptoTLSSession *sess)
-{
-}
-
 void
 qcrypto_tls_session_free(QCryptoTLSSession *sess G_GNUC_UNUSED)
 {
 }
 
 
-int
-qcrypto_tls_session_check_credentials(QCryptoTLSSession *sess G_GNUC_UNUSED,
-                                      Error **errp)
-{
-    error_setg(errp, "TLS requires GNUTLS support");
-    return -1;
-}
-
-
-void
-qcrypto_tls_session_set_callbacks(
-    QCryptoTLSSession *sess G_GNUC_UNUSED,
-    QCryptoTLSSessionWriteFunc writeFunc G_GNUC_UNUSED,
-    QCryptoTLSSessionReadFunc readFunc G_GNUC_UNUSED,
-    void *opaque G_GNUC_UNUSED)
-{
-}
 
 
 ssize_t
@@ -558,35 +424,7 @@ qcrypto_tls_session_check_pending(QCryptoTLSSession *session)
 }
 
 
-int
-qcrypto_tls_session_handshake(QCryptoTLSSession *sess,
-                              Error **errp)
-{
-    error_setg(errp, "TLS requires GNUTLS support");
-    return -1;
-}
 
 
-int
-qcrypto_tls_session_bye(QCryptoTLSSession *session, Error **errp)
-{
-    return QCRYPTO_TLS_BYE_COMPLETE;
-}
-
-
-int
-qcrypto_tls_session_get_key_size(QCryptoTLSSession *sess,
-                                 Error **errp)
-{
-    error_setg(errp, "TLS requires GNUTLS support");
-    return -1;
-}
-
-
-char *
-qcrypto_tls_session_get_peer_name(QCryptoTLSSession *sess)
-{
-    return NULL;
-}
 
 #endif

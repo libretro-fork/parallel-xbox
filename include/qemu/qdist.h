@@ -38,10 +38,6 @@ struct qdist {
 #define QDIST_PR_100X       BIT(4)
 #define QDIST_PR_NOBINRANGE BIT(5)
 
-void qdist_init(struct qdist *dist);
-void qdist_destroy(struct qdist *dist);
 
-void qdist_add(struct qdist *dist, double x, long count);
-void qdist_inc(struct qdist *dist, double x);
 
 #endif /* QEMU_QDIST_H */

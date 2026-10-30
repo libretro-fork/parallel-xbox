@@ -69,15 +69,6 @@ const char *qstring_get_str(const QString *qstring)
 }
 
 /**
- * qstring_is_equal(): Test whether the two QStrings are equal
- */
-bool qstring_is_equal(const QObject *x, const QObject *y)
-{
-    return !strcmp(qobject_to(QString, x)->string,
-                   qobject_to(QString, y)->string);
-}
-
-/**
  * qstring_destroy_obj(): Free all memory allocated by a QString
  * object
  */

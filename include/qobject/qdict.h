@@ -50,13 +50,9 @@ const QDictEntry *qdict_next(const QDict *qdict, const QDictEntry *entry);
 #define qdict_put(qdict, key, obj) \
         qdict_put_obj(qdict, key, QOBJECT(obj))
 
-void qdict_put_bool(QDict *qdict, const char *key, bool value);
 void qdict_put_int(QDict *qdict, const char *key, int64_t value);
-void qdict_put_null(QDict *qdict, const char *key);
 void qdict_put_str(QDict *qdict, const char *key, const char *value);
 
-const char *qdict_get_str(const QDict *qdict, const char *key);
-bool qdict_get_try_bool(const QDict *qdict, const char *key, bool def_value);
 const char *qdict_get_try_str(const QDict *qdict, const char *key);
 
 QDict *qdict_clone_shallow(const QDict *src);

@@ -27,53 +27,6 @@
 #include "qemu/sockets.h"
 #include "trace.h"
 
-QIOChannelFile *
-qio_channel_file_new_fd(int fd)
-{
-    QIOChannelFile *ioc;
-
-    ioc = QIO_CHANNEL_FILE(object_new(TYPE_QIO_CHANNEL_FILE));
-
-    ioc->fd = fd;
-
-    if (lseek(fd, 0, SEEK_CUR) != (off_t)-1) {
-        qio_channel_set_feature(QIO_CHANNEL(ioc), QIO_CHANNEL_FEATURE_SEEKABLE);
-    }
-
-    trace_qio_channel_file_new_fd(ioc, fd);
-
-    return ioc;
-}
-
-QIOChannelFile *
-qio_channel_file_new_path(const char *path,
-                          int flags,
-                          mode_t mode,
-                          Error **errp)
-{
-    QIOChannelFile *ioc;
-
-    ioc = QIO_CHANNEL_FILE(object_new(TYPE_QIO_CHANNEL_FILE));
-
-    if (flags & O_CREAT) {
-        ioc->fd = qemu_create(path, flags & ~O_CREAT, mode, errp);
-    } else {
-        ioc->fd = qemu_open(path, flags, errp);
-    }
-    if (ioc->fd < 0) {
-        object_unref(OBJECT(ioc));
-        return NULL;
-    }
-
-    if (lseek(ioc->fd, 0, SEEK_CUR) != (off_t)-1) {
-        qio_channel_set_feature(QIO_CHANNEL(ioc), QIO_CHANNEL_FEATURE_SEEKABLE);
-    }
-
-    trace_qio_channel_file_new_path(ioc, path, flags, mode, ioc->fd);
-
-    return ioc;
-}
-
 
 static void qio_channel_file_init(Object *obj)
 {

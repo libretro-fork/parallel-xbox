@@ -11,8 +11,6 @@
 
 #include "qapi/qapi-types-common.h"
 
-HumanReadableText *human_readable_text_from_str(GString *str);
-
 /*
  * Produce and return a NULL-terminated array of strings from @list.
  * The result is g_malloc()'d and all strings are g_strdup()'d.  It
