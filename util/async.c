@@ -64,7 +64,7 @@ struct QEMUBH {
     const char *name;
     QEMUBHFunc *cb;
     void *opaque;
-    QSLIST_ENTRY(QEMUBH) next;
+    QSLIST_RCU_ENTRY(QEMUBH) next;
     unsigned flags;
     MemReentrancyGuard *reentrancy_guard;
 };
@@ -84,14 +84,14 @@ static void aio_bh_enqueue(QEMUBH *bh, unsigned new_flags)
     if (!(old_flags & BH_PENDING)) {
         /*
          * At this point the bottom half becomes visible to aio_bh_poll().
-         * This insertion thus synchronizes with QSLIST_MOVE_ATOMIC in
+         * This insertion thus synchronizes with QSLIST_MOVE_ATOMIC_RCU in
          * aio_bh_poll(), ensuring that:
          * 1. any writes needed by the callback are visible from the callback
          *    after aio_bh_dequeue() returns bh.
          * 2. ctx is loaded before the callback has a chance to execute and bh
          *    could be freed.
          */
-        QSLIST_INSERT_HEAD_ATOMIC(&ctx->bh_list, bh, next);
+        QSLIST_INSERT_HEAD_ATOMIC_RCU(&ctx->bh_list, bh, next);
     }
 
     aio_notify(ctx);
@@ -115,7 +115,7 @@ static QEMUBH *aio_bh_dequeue(BHList *head, unsigned *flags)
         return NULL;
     }
 
-    QSLIST_REMOVE_HEAD(head, next);
+    QSLIST_REMOVE_HEAD_RCU(head, next);
 
     /*
      * Synchronizes with qatomic_fetch_or() in aio_bh_enqueue(), ensuring that
@@ -183,8 +183,8 @@ int aio_bh_poll(AioContext *ctx)
     BHListSlice *s;
     int ret = 0;
 
-    /* Synchronizes with QSLIST_INSERT_HEAD_ATOMIC in aio_bh_enqueue().  */
-    QSLIST_MOVE_ATOMIC(&slice.bh_list, &ctx->bh_list);
+    /* Synchronizes with QSLIST_INSERT_HEAD_ATOMIC_RCU in aio_bh_enqueue().  */
+    QSLIST_MOVE_ATOMIC_RCU(&slice.bh_list, &ctx->bh_list);
 
     /*
      * GCC13 [-Werror=dangling-pointer=] complains that the local variable
@@ -576,7 +576,7 @@ AioContext *aio_context_new(Error **errp)
      * Be careful to free resources in both cases!
      */
     ctx = (AioContext *) g_source_new(&aio_source_funcs, sizeof(AioContext));
-    QSLIST_INIT(&ctx->bh_list);
+    QSLIST_INIT_RCU(&ctx->bh_list);
     QSIMPLEQ_INIT(&ctx->bh_slice_list);
 
     ret = event_notifier_init(&ctx->notifier, false);

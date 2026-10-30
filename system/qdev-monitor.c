@@ -346,7 +346,7 @@ static void qbus_error_append_dev_list_hint(BusState *bus,
     const char *sep = " ";
 
     error_append_hint(errp, "devices at \"%s\":", bus->name);
-    QTAILQ_FOREACH(kid, &bus->children, sibling) {
+    QTAILQ_FOREACH_RCU(kid, &bus->children, sibling) {
         DeviceState *dev = kid->child;
         error_append_hint(errp, "%s\"%s\"", sep,
                           object_get_typename(OBJECT(dev)));
@@ -380,19 +380,19 @@ static DeviceState *qbus_find_dev(BusState *bus, char *elem)
      *   (2) driver name
      *   (3) driver alias, if present
      */
-    QTAILQ_FOREACH(kid, &bus->children, sibling) {
+    QTAILQ_FOREACH_RCU(kid, &bus->children, sibling) {
         DeviceState *dev = kid->child;
         if (dev->id  &&  strcmp(dev->id, elem) == 0) {
             return dev;
         }
     }
-    QTAILQ_FOREACH(kid, &bus->children, sibling) {
+    QTAILQ_FOREACH_RCU(kid, &bus->children, sibling) {
         DeviceState *dev = kid->child;
         if (strcmp(object_get_typename(OBJECT(dev)), elem) == 0) {
             return dev;
         }
     }
-    QTAILQ_FOREACH(kid, &bus->children, sibling) {
+    QTAILQ_FOREACH_RCU(kid, &bus->children, sibling) {
         DeviceState *dev = kid->child;
         DeviceClass *dc = DEVICE_GET_CLASS(dev);
 
@@ -443,7 +443,7 @@ static BusState *qbus_find_recursive(BusState *bus, const char *name,
 
     pick = match ? bus : NULL;
 
-    QTAILQ_FOREACH(kid, &bus->children, sibling) {
+    QTAILQ_FOREACH_RCU(kid, &bus->children, sibling) {
         DeviceState *dev = kid->child;
         QLIST_FOREACH(child, &dev->child_bus, sibling) {
             ret = qbus_find_recursive(child, name, bus_typename);

@@ -59,7 +59,7 @@ static void bus_remove_child(BusState *bus, DeviceState *child)
 {
     BusChild *kid;
 
-    QTAILQ_FOREACH(kid, &bus->children, sibling) {
+    QTAILQ_FOREACH_RCU(kid, &bus->children, sibling) {
         if (kid->child == child) {
             char name[32];
 

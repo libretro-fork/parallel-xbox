@@ -356,12 +356,12 @@ typedef struct BusChild {
     struct rcu_head rcu;
     DeviceState *child;
     int index;
-    QTAILQ_ENTRY(BusChild) sibling;
+    QTAILQ_RCU_ENTRY(BusChild) sibling;
 } BusChild;
 
 #define QDEV_HOTPLUG_HANDLER_PROPERTY "hotplug-handler"
 
-typedef QTAILQ_HEAD(, BusChild) BusChildHead;
+typedef QTAILQ_RCU_HEAD(, BusChild) BusChildHead;
 typedef QLIST_ENTRY(BusState) BusStateEntry;
 
 /**

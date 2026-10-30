@@ -102,7 +102,7 @@ static void bus_unparent(Object *obj)
     /* Only the main system bus has no parent, and that bus is never freed */
     assert(bus->parent);
 
-    while ((kid = QTAILQ_FIRST(&bus->children)) != NULL) {
+    while ((kid = QTAILQ_FIRST_RCU(&bus->children)) != NULL) {
         DeviceState *dev = kid->child;
         object_unparent(OBJECT(dev));
     }
@@ -176,7 +176,7 @@ static void qbus_initfn(Object *obj)
 {
     BusState *bus = BUS(obj);
 
-    QTAILQ_INIT(&bus->children);
+    QTAILQ_INIT_RCU(&bus->children);
     object_property_add_link(obj, QDEV_HOTPLUG_HANDLER_PROPERTY,
                              TYPE_HOTPLUG_HANDLER,
                              (Object **)&bus->hotplug_handler,

@@ -29,10 +29,10 @@ struct AioHandler {
     IOHandler *io_poll_begin;
     IOHandler *io_poll_end;
     void *opaque;
-    QLIST_ENTRY(AioHandler) node;
-    QLIST_ENTRY(AioHandler) node_ready; /* only used during aio_poll() */
-    QLIST_ENTRY(AioHandler) node_deleted;
-    QLIST_ENTRY(AioHandler) node_poll;
+    QLIST_RCU_ENTRY(AioHandler) node;
+    QLIST_RCU_ENTRY(AioHandler) node_ready; /* only used during aio_poll() */
+    QLIST_RCU_ENTRY(AioHandler) node_deleted;
+    QLIST_RCU_ENTRY(AioHandler) node_poll;
 #ifdef CONFIG_LINUX_IO_URING
     QSLIST_ENTRY(AioHandler) node_submitted;
     unsigned flags; /* see fdmon-io_uring.c */

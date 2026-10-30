@@ -111,7 +111,7 @@ static int fdmon_poll_wait(AioContext *ctx, AioHandlerList *ready_list,
     assert(npfd == 0);
 
     QLIST_FOREACH_RCU(node, &ctx->aio_handlers, node) {
-        if (!QLIST_IS_INSERTED(node, node_deleted) && node->pfd.events) {
+        if (!QLIST_IS_INSERTED_RCU(node, node_deleted) && node->pfd.events) {
             add_pollfd(node);
         }
     }
@@ -119,7 +119,7 @@ static int fdmon_poll_wait(AioContext *ctx, AioHandlerList *ready_list,
     /* epoll(7) is faster above a certain number of fds */
     if (fdmon_epoll_try_upgrade(ctx, npfd)) {
         QLIST_FOREACH_RCU(node, &ctx->aio_handlers, node) {
-            if (!QLIST_IS_INSERTED(node, node_deleted) && node->pfd.events) {
+            if (!QLIST_IS_INSERTED_RCU(node, node_deleted) && node->pfd.events) {
                 g_source_remove_poll(&ctx->source, &node->pfd);
             }
         }
@@ -229,7 +229,7 @@ void fdmon_poll_downgrade(AioContext *ctx)
     ctx->fdmon_ops = &fdmon_poll_ops;
 
     QLIST_FOREACH_RCU(node, &ctx->aio_handlers, node) {
-        if (!QLIST_IS_INSERTED(node, node_deleted) && node->pfd.events) {
+        if (!QLIST_IS_INSERTED_RCU(node, node_deleted) && node->pfd.events) {
             g_source_add_poll(&ctx->source, &node->pfd);
         }
     }

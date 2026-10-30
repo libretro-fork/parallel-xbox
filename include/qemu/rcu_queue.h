@@ -26,284 +26,230 @@
  */
 
 #include "qemu/queue.h"
-#include "qemu/atomic.h"
+#include <retro_atomic.h>
 
 /*
- * List access methods.
+ * Lists that RCU readers walk while a writer changes them. The links a
+ * reader follows (the head's first pointer and each element's next one)
+ * are retro_atomic_ptr_t; a reader loads them relaxed, as QEMU's
+ * qatomic_rcu_read did (the address dependency orders what it reads
+ * through them), and a writer publishes a new element with a release
+ * store once its own links are set. The back links only writers use
+ * stay plain. Every access to such a list, the writer's too, goes
+ * through these macros; an empty zero-length member of the head gives
+ * the element type back to FIRST.
  */
-#define QLIST_EMPTY_RCU(head) (qatomic_read(&(head)->lh_first) == NULL)
-#define QLIST_FIRST_RCU(head) (qatomic_rcu_read(&(head)->lh_first))
-#define QLIST_NEXT_RCU(elm, field) (qatomic_rcu_read(&(elm)->field.le_next))
+
+#define QRCU_LOAD(type, p)   ((type)retro_atomic_load_relaxed_ptr(p))
 
 /*
- * List functions.
+ * List
  */
+#define QLIST_RCU_HEAD(name, type)                                      \
+struct name {                                                           \
+        retro_atomic_ptr_t lh_first;    /* struct type * */             \
+        struct type *lh_type[0];                                        \
+}
 
+#define QLIST_RCU_HEAD_INITIALIZER(head) { NULL }
 
-/*
- *  The difference between qatomic_read/set and qatomic_rcu_read/set
- *  is in the including of a read/write memory barrier to the volatile
- *  access. atomic_rcu_* macros include the memory barrier, the
- *  plain atomic macros do not. Therefore, it should be correct to
- *  issue a series of reads or writes to the same element using only
- *  the atomic_* macro, until the last read or write, which should be
- *  atomic_rcu_* to introduce a read or write memory barrier as
- *  appropriate.
- */
+#define QLIST_RCU_ENTRY(type)                                           \
+struct {                                                                \
+        retro_atomic_ptr_t le_next;     /* struct type * */             \
+        retro_atomic_ptr_t *le_prev;    /* the link to this element */  \
+}
 
-/* Upon publication of the listelm->next value, list readers
- * will see the new node when following next pointers from
- * antecedent nodes, but may not see the new node when following
- * prev pointers from subsequent nodes until after the RCU grace
- * period expires.
- * see linux/include/rculist.h __list_add_rcu(new, prev, next)
- */
-#define QLIST_INSERT_AFTER_RCU(listelm, elm, field) do {    \
-    (elm)->field.le_next = (listelm)->field.le_next;        \
-    (elm)->field.le_prev = &(listelm)->field.le_next;       \
-    qatomic_rcu_set(&(listelm)->field.le_next, (elm));      \
-    if ((elm)->field.le_next != NULL) {                     \
-       (elm)->field.le_next->field.le_prev =                \
-        &(elm)->field.le_next;                              \
-    }                                                       \
-} while (/*CONSTCOND*/0)
+#define QLIST_INIT_RCU(head)                                            \
+        retro_atomic_store_relaxed_ptr(&(head)->lh_first, NULL)
+#define QLIST_EMPTY_RCU(head)                                           \
+        (retro_atomic_load_relaxed_ptr(&(head)->lh_first) == NULL)
+#define QLIST_FIRST_RCU(head)                                           \
+        QRCU_LOAD(__typeof__((head)->lh_type[0]), &(head)->lh_first)
+#define QLIST_NEXT_RCU(elm, field)                                      \
+        QRCU_LOAD(__typeof__(elm), &(elm)->field.le_next)
+#define QLIST_IS_INSERTED_RCU(elm, field) ((elm)->field.le_prev != NULL)
 
-/* Upon publication of the listelm->prev->next value, list
- * readers will see the new element when following prev pointers
- * from subsequent elements, but may not see the new element
- * when following next pointers from antecedent elements
- * until after the RCU grace period expires.
- */
-#define QLIST_INSERT_BEFORE_RCU(listelm, elm, field) do {   \
-    (elm)->field.le_prev = (listelm)->field.le_prev;        \
-    (elm)->field.le_next = (listelm);                       \
-    qatomic_rcu_set((listelm)->field.le_prev, (elm));       \
-    (listelm)->field.le_prev = &(elm)->field.le_next;       \
-} while (/*CONSTCOND*/0)
-
-/* Upon publication of the head->first value, list readers
- * will see the new element when following the head, but may
- * not see the new element when following prev pointers from
- * subsequent elements until after the RCU grace period has
- * expired.
- */
-#define QLIST_INSERT_HEAD_RCU(head, elm, field) do {    \
-    (elm)->field.le_prev = &(head)->lh_first;           \
-    (elm)->field.le_next = (head)->lh_first;            \
-    qatomic_rcu_set((&(head)->lh_first), (elm));        \
-    if ((elm)->field.le_next != NULL) {                 \
-       (elm)->field.le_next->field.le_prev =            \
-        &(elm)->field.le_next;                          \
-    }                                                   \
-} while (/*CONSTCOND*/0)
-
-
-/* prior to publication of the elm->prev->next value, some list
- * readers may still see the removed element when following
- * the antecedent's next pointer.
- */
-#define QLIST_REMOVE_RCU(elm, field) do {           \
-    if ((elm)->field.le_next != NULL) {             \
-       (elm)->field.le_next->field.le_prev =        \
-        (elm)->field.le_prev;                       \
-    }                                               \
-    qatomic_set((elm)->field.le_prev, (elm)->field.le_next); \
-} while (/*CONSTCOND*/0)
-
-/* List traversal must occur within an RCU critical section.  */
-#define QLIST_FOREACH_RCU(var, head, field)                 \
-        for ((var) = qatomic_rcu_read(&(head)->lh_first);   \
-                (var);                                      \
-                (var) = qatomic_rcu_read(&(var)->field.le_next))
-
-/* List traversal must occur within an RCU critical section.  */
-#define QLIST_FOREACH_SAFE_RCU(var, head, field, next_var)           \
-    for ((var) = (qatomic_rcu_read(&(head)->lh_first));              \
-      (var) &&                                                       \
-          ((next_var) = qatomic_rcu_read(&(var)->field.le_next), 1); \
-           (var) = (next_var))
-
-/*
- * RCU simple queue
- */
-
-/* Simple queue access methods */
-#define QSIMPLEQ_EMPTY_RCU(head) \
-    (qatomic_read(&(head)->sqh_first) == NULL)
-#define QSIMPLEQ_FIRST_RCU(head)       qatomic_rcu_read(&(head)->sqh_first)
-#define QSIMPLEQ_NEXT_RCU(elm, field)  qatomic_rcu_read(&(elm)->field.sqe_next)
-
-/* Simple queue functions */
-#define QSIMPLEQ_INSERT_HEAD_RCU(head, elm, field) do {         \
-    (elm)->field.sqe_next = (head)->sqh_first;                  \
-    if ((elm)->field.sqe_next == NULL) {                        \
-        (head)->sqh_last = &(elm)->field.sqe_next;              \
-    }                                                           \
-    qatomic_rcu_set(&(head)->sqh_first, (elm));                 \
-} while (/*CONSTCOND*/0)
-
-#define QSIMPLEQ_INSERT_TAIL_RCU(head, elm, field) do {    \
-    (elm)->field.sqe_next = NULL;                          \
-    qatomic_rcu_set((head)->sqh_last, (elm));              \
-    (head)->sqh_last = &(elm)->field.sqe_next;             \
-} while (/*CONSTCOND*/0)
-
-#define QSIMPLEQ_INSERT_AFTER_RCU(head, listelm, elm, field) do {       \
-    (elm)->field.sqe_next = (listelm)->field.sqe_next;                  \
-    if ((elm)->field.sqe_next == NULL) {                                \
-        (head)->sqh_last = &(elm)->field.sqe_next;                      \
+#define QLIST_INSERT_AFTER_RCU(listelm, elm, field) do {                \
+    __typeof__(elm) next_ = QLIST_NEXT_RCU((listelm), field);           \
+    retro_atomic_store_relaxed_ptr(&(elm)->field.le_next, next_);       \
+    (elm)->field.le_prev = &(listelm)->field.le_next;                   \
+    retro_atomic_store_release_ptr(&(listelm)->field.le_next, (elm));   \
+    if (next_ != NULL) {                                                \
+        next_->field.le_prev = &(elm)->field.le_next;                   \
     }                                                                   \
-    qatomic_rcu_set(&(listelm)->field.sqe_next, (elm));                 \
 } while (/*CONSTCOND*/0)
 
-#define QSIMPLEQ_REMOVE_HEAD_RCU(head, field) do {                     \
-    qatomic_set(&(head)->sqh_first, (head)->sqh_first->field.sqe_next);\
-    if ((head)->sqh_first == NULL) {                                   \
-        (head)->sqh_last = &(head)->sqh_first;                         \
-    }                                                                  \
+#define QLIST_INSERT_BEFORE_RCU(listelm, elm, field) do {               \
+    (elm)->field.le_prev = (listelm)->field.le_prev;                    \
+    retro_atomic_store_relaxed_ptr(&(elm)->field.le_next, (listelm));   \
+    retro_atomic_store_release_ptr((listelm)->field.le_prev, (elm));    \
+    (listelm)->field.le_prev = &(elm)->field.le_next;                   \
 } while (/*CONSTCOND*/0)
 
-#define QSIMPLEQ_REMOVE_RCU(head, elm, type, field) do {            \
-    if ((head)->sqh_first == (elm)) {                               \
-        QSIMPLEQ_REMOVE_HEAD_RCU((head), field);                    \
-    } else {                                                        \
-        struct type *curr = (head)->sqh_first;                      \
-        while (curr->field.sqe_next != (elm)) {                     \
-            curr = curr->field.sqe_next;                            \
-        }                                                           \
-        qatomic_set(&curr->field.sqe_next,                          \
-                   curr->field.sqe_next->field.sqe_next);           \
-        if (curr->field.sqe_next == NULL) {                         \
-            (head)->sqh_last = &(curr)->field.sqe_next;             \
-        }                                                           \
-    }                                                               \
+#define QLIST_INSERT_HEAD_RCU(head, elm, field) do {                    \
+    __typeof__(elm) next_ = QLIST_FIRST_RCU(head);                      \
+    (elm)->field.le_prev = &(head)->lh_first;                           \
+    retro_atomic_store_relaxed_ptr(&(elm)->field.le_next, next_);       \
+    retro_atomic_store_release_ptr(&(head)->lh_first, (elm));           \
+    if (next_ != NULL) {                                                \
+        next_->field.le_prev = &(elm)->field.le_next;                   \
+    }                                                                   \
 } while (/*CONSTCOND*/0)
 
-#define QSIMPLEQ_FOREACH_RCU(var, head, field)                          \
-    for ((var) = qatomic_rcu_read(&(head)->sqh_first);                  \
-         (var);                                                         \
-         (var) = qatomic_rcu_read(&(var)->field.sqe_next))
+/* Unlink; a reader still on the element keeps its next link. */
+#define QLIST_REMOVE_RCU(elm, field) do {                               \
+    __typeof__(elm) next_ = QLIST_NEXT_RCU((elm), field);               \
+    if (next_ != NULL) {                                                \
+        next_->field.le_prev = (elm)->field.le_prev;                    \
+    }                                                                   \
+    retro_atomic_store_relaxed_ptr((elm)->field.le_prev, next_);        \
+} while (/*CONSTCOND*/0)
 
-#define QSIMPLEQ_FOREACH_SAFE_RCU(var, head, field, next)                \
-    for ((var) = qatomic_rcu_read(&(head)->sqh_first);                   \
-         (var) && ((next) = qatomic_rcu_read(&(var)->field.sqe_next), 1);\
-         (var) = (next))
+/* Unlink an element no reader walks, if it is on the list. */
+#define QLIST_SAFE_REMOVE_RCU(elm, field) do {                          \
+    if (QLIST_IS_INSERTED_RCU((elm), field)) {                          \
+        QLIST_REMOVE_RCU((elm), field);                                 \
+        retro_atomic_store_relaxed_ptr(&(elm)->field.le_next, NULL);    \
+        (elm)->field.le_prev = NULL;                                    \
+    }                                                                   \
+} while (/*CONSTCOND*/0)
+
+#define QLIST_FOREACH_RCU(var, head, field)                             \
+        for ((var) = QLIST_FIRST_RCU(head);                             \
+             (var);                                                     \
+             (var) = QLIST_NEXT_RCU((var), field))
+
+#define QLIST_FOREACH_SAFE_RCU(var, head, field, next_var)              \
+        for ((var) = QLIST_FIRST_RCU(head);                             \
+             (var) && ((next_var) = QLIST_NEXT_RCU((var), field), 1);   \
+             (var) = (next_var))
 
 /*
- * RCU tail queue
+ * Tail queue: the forward links as above; the circular back links, which
+ * only writers follow, stay plain.
  */
+typedef struct QTailQRcuLink {
+    retro_atomic_ptr_t tql_next;
+    struct QTailQRcuLink *tql_prev;
+} QTailQRcuLink;
 
-/* Tail queue access methods */
-#define QTAILQ_EMPTY_RCU(head)      (qatomic_read(&(head)->tqh_first) == NULL)
-#define QTAILQ_FIRST_RCU(head)       qatomic_rcu_read(&(head)->tqh_first)
-#define QTAILQ_NEXT_RCU(elm, field)  qatomic_rcu_read(&(elm)->field.tqe_next)
+#define QTAILQ_RCU_HEAD(name, type)                                     \
+union name {                                                            \
+        retro_atomic_ptr_t tqh_first;   /* struct type * */             \
+        QTailQRcuLink tqh_circ;                                         \
+        struct type *tqh_type[0];                                       \
+}
 
-/* Tail queue functions */
+#define QTAILQ_RCU_HEAD_INITIALIZER(head)                               \
+        { .tqh_circ = { NULL, &(head).tqh_circ } }
+
+#define QTAILQ_RCU_ENTRY(type)                                          \
+union {                                                                 \
+        retro_atomic_ptr_t tqe_next;    /* struct type * */             \
+        QTailQRcuLink tqe_circ;                                         \
+}
+
+#define QTAILQ_INIT_RCU(head) do {                                      \
+    retro_atomic_store_relaxed_ptr(&(head)->tqh_first, NULL);           \
+    (head)->tqh_circ.tql_prev = &(head)->tqh_circ;                      \
+} while (/*CONSTCOND*/0)
+
+#define QTAILQ_EMPTY_RCU(head)                                          \
+        (retro_atomic_load_relaxed_ptr(&(head)->tqh_first) == NULL)
+#define QTAILQ_FIRST_RCU(head)                                          \
+        QRCU_LOAD(__typeof__((head)->tqh_type[0]), &(head)->tqh_first)
+#define QTAILQ_NEXT_RCU(elm, field)                                     \
+        QRCU_LOAD(__typeof__(elm), &(elm)->field.tqe_next)
+
 #define QTAILQ_INSERT_HEAD_RCU(head, elm, field) do {                   \
-    (elm)->field.tqe_next = (head)->tqh_first;                          \
-    if ((elm)->field.tqe_next != NULL) {                                \
-        (head)->tqh_first->field.tqe_circ.tql_prev =                    \
-            &(elm)->field.tqe_circ;                                     \
+    __typeof__(elm) next_ = QTAILQ_FIRST_RCU(head);                     \
+    retro_atomic_store_relaxed_ptr(&(elm)->field.tqe_next, next_);      \
+    if (next_ != NULL) {                                                \
+        next_->field.tqe_circ.tql_prev = &(elm)->field.tqe_circ;        \
     } else {                                                            \
         (head)->tqh_circ.tql_prev = &(elm)->field.tqe_circ;             \
     }                                                                   \
-    qatomic_rcu_set(&(head)->tqh_first, (elm));                         \
+    retro_atomic_store_release_ptr(&(head)->tqh_first, (elm));          \
     (elm)->field.tqe_circ.tql_prev = &(head)->tqh_circ;                 \
 } while (/*CONSTCOND*/0)
 
 #define QTAILQ_INSERT_TAIL_RCU(head, elm, field) do {                   \
-    (elm)->field.tqe_next = NULL;                                       \
+    retro_atomic_store_relaxed_ptr(&(elm)->field.tqe_next, NULL);       \
     (elm)->field.tqe_circ.tql_prev = (head)->tqh_circ.tql_prev;         \
-    qatomic_rcu_set(&(head)->tqh_circ.tql_prev->tql_next, (elm));       \
+    retro_atomic_store_release_ptr(&(head)->tqh_circ.tql_prev->tql_next,\
+                                   (elm));                              \
     (head)->tqh_circ.tql_prev = &(elm)->field.tqe_circ;                 \
 } while (/*CONSTCOND*/0)
 
-#define QTAILQ_INSERT_AFTER_RCU(head, listelm, elm, field) do {         \
-    (elm)->field.tqe_next = (listelm)->field.tqe_next;                  \
-    if ((elm)->field.tqe_next != NULL) {                                \
-        (elm)->field.tqe_next->field.tqe_circ.tql_prev =                \
-            &(elm)->field.tqe_circ;                                     \
-    } else {                                                            \
-        (head)->tqh_circ.tql_prev = &(elm)->field.tqe_circ;             \
-    }                                                                   \
-    qatomic_rcu_set(&(listelm)->field.tqe_next, (elm));                 \
-    (elm)->field.tqe_circ.tql_prev = &(listelm)->field.tqe_circ;        \
-} while (/*CONSTCOND*/0)
-
-#define QTAILQ_INSERT_BEFORE_RCU(listelm, elm, field) do {                \
-    (elm)->field.tqe_circ.tql_prev = (listelm)->field.tqe_circ.tql_prev;  \
-    (elm)->field.tqe_next = (listelm);                                    \
-    qatomic_rcu_set(&(listelm)->field.tqe_circ.tql_prev->tql_next, (elm));\
-    (listelm)->field.tqe_circ.tql_prev = &(elm)->field.tqe_circ;          \
-} while (/*CONSTCOND*/0)
-
+/* Unlink; a reader still on the element keeps its next link. */
 #define QTAILQ_REMOVE_RCU(head, elm, field) do {                        \
-    if (((elm)->field.tqe_next) != NULL) {                              \
-        (elm)->field.tqe_next->field.tqe_circ.tql_prev =                \
-            (elm)->field.tqe_circ.tql_prev;                             \
+    __typeof__(elm) next_ = QTAILQ_NEXT_RCU((elm), field);              \
+    if (next_ != NULL) {                                                \
+        next_->field.tqe_circ.tql_prev = (elm)->field.tqe_circ.tql_prev;\
     } else {                                                            \
         (head)->tqh_circ.tql_prev = (elm)->field.tqe_circ.tql_prev;     \
     }                                                                   \
-    qatomic_set(&(elm)->field.tqe_circ.tql_prev->tql_next,              \
-                (elm)->field.tqe_next);                                 \
+    retro_atomic_store_relaxed_ptr(                                     \
+        &(elm)->field.tqe_circ.tql_prev->tql_next, next_);              \
     (elm)->field.tqe_circ.tql_prev = NULL;                              \
 } while (/*CONSTCOND*/0)
 
 #define QTAILQ_FOREACH_RCU(var, head, field)                            \
-    for ((var) = qatomic_rcu_read(&(head)->tqh_first);                  \
-         (var);                                                         \
-         (var) = qatomic_rcu_read(&(var)->field.tqe_next))
+        for ((var) = QTAILQ_FIRST_RCU(head);                            \
+             (var);                                                     \
+             (var) = QTAILQ_NEXT_RCU((var), field))
 
-#define QTAILQ_FOREACH_SAFE_RCU(var, head, field, next)                  \
-    for ((var) = qatomic_rcu_read(&(head)->tqh_first);                   \
-         (var) && ((next) = qatomic_rcu_read(&(var)->field.tqe_next), 1);\
-         (var) = (next))
+#define QTAILQ_FOREACH_SAFE_RCU(var, head, field, next_var)             \
+        for ((var) = QTAILQ_FIRST_RCU(head);                            \
+             (var) && ((next_var) = QTAILQ_NEXT_RCU((var), field), 1);  \
+             (var) = (next_var))
 
 /*
- * RCU singly-linked list
+ * Singly-linked list with lock-free insertion at the head and a lock-free
+ * take of the whole list (the bottom halves).
  */
+#define QSLIST_RCU_HEAD(name, type)                                     \
+struct name {                                                           \
+        retro_atomic_ptr_t slh_first;   /* struct type * */             \
+        struct type *slh_type[0];                                       \
+}
 
-/* Singly-linked list access methods */
-#define QSLIST_EMPTY_RCU(head)      (qatomic_read(&(head)->slh_first) == NULL)
-#define QSLIST_FIRST_RCU(head)       qatomic_rcu_read(&(head)->slh_first)
-#define QSLIST_NEXT_RCU(elm, field)  qatomic_rcu_read(&(elm)->field.sle_next)
+#define QSLIST_RCU_ENTRY(type)                                          \
+struct {                                                                \
+        retro_atomic_ptr_t sle_next;    /* struct type * */             \
+}
 
-/* Singly-linked list functions */
-#define QSLIST_INSERT_HEAD_RCU(head, elm, field) do {           \
-    (elm)->field.sle_next = (head)->slh_first;                  \
-    qatomic_rcu_set(&(head)->slh_first, (elm));                 \
+#define QSLIST_INIT_RCU(head)                                           \
+        retro_atomic_store_relaxed_ptr(&(head)->slh_first, NULL)
+#define QSLIST_EMPTY_RCU(head)                                          \
+        (retro_atomic_load_relaxed_ptr(&(head)->slh_first) == NULL)
+#define QSLIST_FIRST_RCU(head)                                          \
+        QRCU_LOAD(__typeof__((head)->slh_type[0]), &(head)->slh_first)
+#define QSLIST_NEXT_RCU(elm, field)                                     \
+        QRCU_LOAD(__typeof__(elm), &(elm)->field.sle_next)
+
+/* Any thread; the release publishes the element's own fields. */
+#define QSLIST_INSERT_HEAD_ATOMIC_RCU(head, elm, field) do {            \
+    void *next_;                                                        \
+    do {                                                                \
+        next_ = retro_atomic_load_relaxed_ptr(&(head)->slh_first);      \
+        retro_atomic_store_relaxed_ptr(&(elm)->field.sle_next, next_);  \
+    } while (!retro_atomic_cas_ptr(&(head)->slh_first, next_, (elm)));  \
 } while (/*CONSTCOND*/0)
 
-#define QSLIST_INSERT_AFTER_RCU(head, listelm, elm, field) do {         \
-    (elm)->field.sle_next = (listelm)->field.sle_next;                  \
-    qatomic_rcu_set(&(listelm)->field.sle_next, (elm));                 \
-} while (/*CONSTCOND*/0)
+/* Take the whole list from @src into @dest, a list of this thread's. */
+#define QSLIST_MOVE_ATOMIC_RCU(dest, src)                               \
+        retro_atomic_store_relaxed_ptr(&(dest)->slh_first,              \
+            retro_atomic_exchange_ptr(&(src)->slh_first, NULL))
 
-#define QSLIST_REMOVE_HEAD_RCU(head, field) do {                       \
-    qatomic_set(&(head)->slh_first, (head)->slh_first->field.sle_next);\
-} while (/*CONSTCOND*/0)
+/* The owner of @head only. */
+#define QSLIST_REMOVE_HEAD_RCU(head, field)                             \
+        retro_atomic_store_relaxed_ptr(&(head)->slh_first,              \
+            QSLIST_NEXT_RCU(QSLIST_FIRST_RCU(head), field))
 
-#define QSLIST_REMOVE_RCU(head, elm, type, field) do {              \
-    if ((head)->slh_first == (elm)) {                               \
-        QSLIST_REMOVE_HEAD_RCU((head), field);                      \
-    } else {                                                        \
-        struct type *curr = (head)->slh_first;                      \
-        while (curr->field.sle_next != (elm)) {                     \
-            curr = curr->field.sle_next;                            \
-        }                                                           \
-        qatomic_set(&curr->field.sle_next,                          \
-                   curr->field.sle_next->field.sle_next);           \
-    }                                                               \
-} while (/*CONSTCOND*/0)
-
-#define QSLIST_FOREACH_RCU(var, head, field)                          \
-    for ((var) = qatomic_rcu_read(&(head)->slh_first);                \
-         (var);                                                       \
-         (var) = qatomic_rcu_read(&(var)->field.sle_next))
-
-#define QSLIST_FOREACH_SAFE_RCU(var, head, field, next)                   \
-    for ((var) = qatomic_rcu_read(&(head)->slh_first);                    \
-         (var) && ((next) = qatomic_rcu_read(&(var)->field.sle_next), 1); \
-         (var) = (next))
+#define QSLIST_FOREACH_RCU(var, head, field)                            \
+        for ((var) = QSLIST_FIRST_RCU(head);                            \
+             (var);                                                     \
+             (var) = QSLIST_NEXT_RCU((var), field))
 
 #endif /* QEMU_RCU_QUEUE_H */

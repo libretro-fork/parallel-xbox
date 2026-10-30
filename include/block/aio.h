@@ -19,6 +19,7 @@
 #endif
 #include "qemu/coroutine-core.h"
 #include "qemu/queue.h"
+#include "qemu/rcu_queue.h"
 #include "qemu/event_notifier.h"
 #include "qemu/lockcnt.h"
 #include "qemu/thread.h"
@@ -49,7 +50,7 @@ void qemu_aio_unref(void *p);
 void qemu_aio_ref(void *p);
 
 typedef struct AioHandler AioHandler;
-typedef QLIST_HEAD(, AioHandler) AioHandlerList;
+typedef QLIST_RCU_HEAD(, AioHandler) AioHandlerList;
 typedef void QEMUBHFunc(void *opaque);
 typedef bool AioPollFn(void *opaque);
 typedef void IOHandler(void *opaque);
@@ -207,7 +208,7 @@ typedef struct {
  * active aio_bh_poll() calls chain their slices together in a list, so that
  * nested aio_bh_poll() calls process all scheduled bottom halves.
  */
-typedef QSLIST_HEAD(, QEMUBH) BHList;
+typedef QSLIST_RCU_HEAD(, QEMUBH) BHList;
 typedef struct BHListSlice BHListSlice;
 struct BHListSlice {
     BHList bh_list;

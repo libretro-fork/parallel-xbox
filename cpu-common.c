@@ -60,7 +60,7 @@ int cpu_get_free_index(void)
     return max_cpu_index;
 }
 
-CPUTailQ cpus_queue = QTAILQ_HEAD_INITIALIZER(cpus_queue);
+CPUTailQ cpus_queue = QTAILQ_RCU_HEAD_INITIALIZER(cpus_queue);
 static unsigned int cpu_list_generation_id;
 
 void cpu_list_add(CPUState *cpu)

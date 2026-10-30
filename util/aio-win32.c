@@ -33,7 +33,7 @@ struct AioHandler {
     GPollFD pfd;
     int deleted;
     void *opaque;
-    QLIST_ENTRY(AioHandler) node;
+    QLIST_RCU_ENTRY(AioHandler) node;
 };
 
 static void aio_remove_fd_handler(AioContext *ctx, AioHandler *node)
@@ -57,7 +57,7 @@ static void aio_remove_fd_handler(AioContext *ctx, AioHandler *node)
          * deleted because deleted nodes are only cleaned up after
          * releasing the list_lock.
          */
-        QLIST_REMOVE(node, node);
+        QLIST_SAFE_REMOVE_RCU(node, node);
         g_free(node);
     }
 }
@@ -82,7 +82,7 @@ void aio_set_fd_handler(AioContext *ctx,
     s = _get_osfhandle(fd);
 
     qemu_lockcnt_lock(&ctx->list_lock);
-    QLIST_FOREACH(old_node, &ctx->aio_handlers, node) {
+    QLIST_FOREACH_RCU(old_node, &ctx->aio_handlers, node) {
         if (old_node->pfd.fd == s && !old_node->deleted) {
             break;
         }
@@ -140,7 +140,7 @@ void aio_set_event_notifier(AioContext *ctx,
     AioHandler *node;
 
     qemu_lockcnt_lock(&ctx->list_lock);
-    QLIST_FOREACH(node, &ctx->aio_handlers, node) {
+    QLIST_FOREACH_RCU(node, &ctx->aio_handlers, node) {
         if (node->e == e && !node->deleted) {
             break;
         }
@@ -301,7 +301,7 @@ static bool aio_dispatch_handlers(AioContext *ctx, HANDLE event)
 
         if (node->deleted) {
             if (qemu_lockcnt_dec_if_lock(&ctx->list_lock)) {
-                QLIST_REMOVE(node, node);
+                QLIST_SAFE_REMOVE_RCU(node, node);
                 g_free(node);
                 qemu_lockcnt_inc_and_unlock(&ctx->list_lock);
             }

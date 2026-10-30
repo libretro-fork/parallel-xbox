@@ -129,7 +129,7 @@ static bool fdmon_epoll_try_enable(AioContext *ctx)
 
     QLIST_FOREACH_RCU(node, &ctx->aio_handlers, node) {
         int r;
-        if (QLIST_IS_INSERTED(node, node_deleted) || !node->pfd.events) {
+        if (QLIST_IS_INSERTED_RCU(node, node_deleted) || !node->pfd.events) {
             continue;
         }
         event.events = epoll_events_from_pfd(node->pfd.events);

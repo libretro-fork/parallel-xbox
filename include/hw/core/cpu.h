@@ -563,7 +563,7 @@ struct CPUState {
     GArray *gdb_regs;
     int gdb_num_regs;
     int gdb_num_g_regs;
-    QTAILQ_ENTRY(CPUState) node;
+    QTAILQ_RCU_ENTRY(CPUState) node;
 
     /* ice debug support */
     QTAILQ_HEAD(, CPUBreakpoint) breakpoints;
@@ -679,7 +679,7 @@ static inline CPUTLBDescFast *cpu_tlb_fast(CPUState *cpu, int mmu_idx)
 }
 #endif
 
-typedef QTAILQ_HEAD(CPUTailQ, CPUState) CPUTailQ;
+typedef QTAILQ_RCU_HEAD(CPUTailQ, CPUState) CPUTailQ;
 extern CPUTailQ cpus_queue;
 
 #define first_cpu        QTAILQ_FIRST_RCU(&cpus_queue)
