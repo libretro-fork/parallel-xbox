@@ -388,7 +388,8 @@ static __attribute__((noinline)) void texture_alias_target(u32 format, u32 width
                                                           u32 target)
 {
     u32 retain = format >> 31; /* Fixture-only: leave sampling state bound. */
-    format &= 0x7fffffffu;
+    u32 defer_draw = (format >> 30) & 1; /* Caller completes cube state first. */
+    format &= 0x3fffffffu;
     if (redraw) {
         method(NV097_SET_SURFACE_CLIP_H, 32u << 16);
         method(NV097_SET_SURFACE_CLIP_V, 16u << 16);
@@ -435,7 +436,7 @@ static __attribute__((noinline)) void texture_alias_target(u32 format, u32 width
     method(NV097_SET_COMBINER_SPECULAR_FOG_CW1, 0x00001800u); /* final alpha = T0.a */
     method(NV097_SET_VERTEX_DATA2F_M + 9 * 8, u);   /* constant texture coordinates */
     method(NV097_SET_VERTEX_DATA2F_M + 9 * 8 + 4, 0x3f000000u);
-    triangle();
+    if (!defer_draw) triangle();
     if (!retain) disable_texture();
     kick();
     cr(0x28, 3);
@@ -1221,6 +1222,36 @@ void gpu_main(void)
             kick();
         }
         if (frame == 1760) ram32(0x00300044u, rd32(TEX_COPIED));
+        if (frame == 1800) {
+            for (u32 face = 0; face < 6; face++) {
+                method(NV097_SET_SURFACE_CLIP_H, 16u << 16);
+                method(NV097_SET_SURFACE_CLIP_V, 16u << 16);
+                method(NV097_SET_SURFACE_FORMAT, 0x04040228u);
+                method(NV097_SET_SURFACE_PITCH, 64u | (64u << 16));
+                method(NV097_SET_SURFACE_COLOR_OFFSET, 0x03600000u + face * 1024);
+                method(NV097_SET_COLOR_CLEAR_VALUE, face ? 0xff0000ffu : 0xffff0000u);
+                method(NV097_SET_CLEAR_RECT_H, 15u << 16);
+                method(NV097_SET_CLEAR_RECT_V, 15u << 16);
+                method(NV097_CLEAR_SURFACE, 0xf0);
+            }
+            texture_alias_at(0xc0000006u, 32, 0x3f000000u, 0, 0x03600000u);
+            method(NV097_SET_TEXTURE_FORMAT, 1u | (1u << 2) | (2u << 4) |
+                   (1u << 3) | (6u << 8) | (1u << 16) | (4u << 20) | (4u << 24));
+            method(NV097_SET_SHADER_STAGE_PROGRAM, 3);
+            method(0x1a00u + 9 * 16, 0x3f800000u);
+            method(0x1a00u + 9 * 16 + 4, 0);
+            method(0x1a00u + 9 * 16 + 8, 0);
+            method(0x1a00u + 9 * 16 + 12, 0x3f800000u);
+            triangle(); kick();
+        }
+        if (frame == 1840) method(NV097_SET_TEXTURE_FILTER, 0x02020000u);
+        if (frame >= 1801 && frame <= 1880) {
+            triangle(); if (frame == 1880) disable_texture(); kick();
+        }
+        if (frame == 1900) {
+            for (u32 face = 0; face < 6; face++)
+                ram32(0x00300048u + face * 4, rd32(0x03600000u + face * 1024));
+        }
         method(NV097_FLIP_INCREMENT_WRITE, 0);
         kick();
         if (frame >= 100 && frame < 125) {

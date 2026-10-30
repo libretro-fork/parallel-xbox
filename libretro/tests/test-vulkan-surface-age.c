@@ -3,10 +3,14 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stddef.h>
+typedef uint64_t hwaddr;
 #define NV2A_MAX_TEXTURES 4
 #define ARRAY_SIZE(a) (sizeof(a)/sizeof((a)[0]))
 typedef struct TextureBinding { bool s2t_borrowed; uintptr_t image;
-    struct { bool byte_reinterpret; uint64_t texture_vram_offset; } key;
+    struct { bool byte_reinterpret; uint64_t texture_vram_offset;
+        size_t texture_length; struct { bool cubemap; } state; } key;
+    unsigned cube_source_count, cube_source_draw_time[6];
     unsigned draw_time;
     unsigned sampled_frame,submit_time; } TextureBinding;
 typedef struct SurfaceBinding { unsigned frame_time; uintptr_t image;
@@ -49,7 +53,7 @@ int main(void) {
     for(unsigned recent=0;recent<2;recent++) {
         SurfaceBinding s={.frame_time=0,.image=1,.vram_addr=100,.draw_time=12};
         TextureBinding t={.sampled_frame=recent?9:0,.image=2,.draw_time=draw_match?12:11,
-            .key={copied,address_match?100:101}};
+            .key={.byte_reinterpret=copied,.texture_vram_offset=address_match?100:101}};
         PGRAPHVkState r={.surfaces={&s},.texture_bindings={&t}};
         NV2AState d={.pgraph={10,&r}};
         expire_old_surfaces(&d);
@@ -59,6 +63,37 @@ int main(void) {
             expire_old_surfaces(&d); assert(s.evicted);
         }
         cases++;
+    }
+    /* Each cube face needs exact address/alignment, draw provenance and use. */
+    for(unsigned face=0;face<6;face++)
+    for(unsigned copied=0;copied<2;copied++)
+    for(unsigned cube=0;cube<2;cube++)
+    for(unsigned matches=0;matches<2;matches++)
+    for(unsigned recent=0;recent<2;recent++) {
+        SurfaceBinding s={.frame_time=0,.image=1,.vram_addr=100+face*1024,.draw_time=12+face};
+        TextureBinding t={.sampled_frame=recent?9:0,.image=2,
+            .key={.texture_vram_offset=100,.texture_length=6144,.state={cube}},
+            .cube_source_count=copied?6:0};
+        for(unsigned f=0;f<6;f++) t.cube_source_draw_time[f]=12+f;
+        if (!matches) t.cube_source_draw_time[face]--;
+        PGRAPHVkState r={.surfaces={&s},.texture_bindings={&t}};
+        NV2AState d={.pgraph={10,&r}};
+        expire_old_surfaces(&d);
+        assert(s.evicted==!(copied && cube && matches && recent));
+        if(!s.evicted) {
+            d.pgraph.frame_time=15; expire_old_surfaces(&d); assert(s.evicted);
+        }
+        cases++;
+    }
+    const uint64_t invalid_addresses[]={99,101,1123,6244};
+    for(unsigned a=0;a<4;a++) {
+        SurfaceBinding s={.frame_time=0,.image=1,.vram_addr=invalid_addresses[a],.draw_time=12};
+        TextureBinding t={.sampled_frame=9,.image=2,
+            .key={.texture_vram_offset=100,.texture_length=6144,.state={true}},
+            .cube_source_count=6,.cube_source_draw_time={12,12,12,12,12,12}};
+        PGRAPHVkState r={.surfaces={&s},.texture_bindings={&t}};
+        NV2AState d={.pgraph={10,&r}};
+        expire_old_surfaces(&d); assert(s.evicted); cases++;
     }
     /* Both normal and fast binds stamp usage through this production helper. */
     TextureBinding t={.s2t_borrowed=true,.image=1};

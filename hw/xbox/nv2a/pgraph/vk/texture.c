@@ -663,6 +663,7 @@ static bool check_texture_possibly_dirty(NV2AState *d,
 static void upload_texture_image(PGRAPHState *pg, int texture_idx,
                                  TextureBinding *binding)
 {
+    binding->cube_source_count = 0;
     /* An aux upload runs before the open recording: when draws recorded
      * there sample this binding, the recording is submitted first, or they
      * would see the new content. */
@@ -1389,6 +1390,7 @@ static void copy_cube_faces_to_texture(PGRAPHState *pg,
     int max_draw_time = 0;
     for (int f = 0; f < 6; f++) {
         record_surface_copy(pg, cmd, faces[f], texture, f);
+        texture->cube_source_draw_time[f] = faces[f]->draw_time;
         if (faces[f]->draw_time > max_draw_time) {
             max_draw_time = faces[f]->draw_time;
         }
@@ -1403,6 +1405,7 @@ static void copy_cube_faces_to_texture(PGRAPHState *pg,
     pgraph_vk_end_nondraw_commands(pg, cmd);
 
     texture->draw_time = max_draw_time;
+    texture->cube_source_count = 6;
 }
 
 static unsigned int vk_format_texel_size(VkFormat format)
@@ -2530,12 +2533,14 @@ static void texture_cache_entry_init(Lru *lru, LruNode *node, const void *state)
     snode->seq = ++r->texture_binding_seq;
     snode->validation_frame = (unsigned int)-1;
     snode->sampled_frame = 0;
+    snode->cube_source_count = 0;
 }
 
 static void texture_cache_release_node_resources(PGRAPHVkState *r, TextureBinding *snode)
 {
     /* In-place sampling: a borrowed image belongs to its surface; only the
      * view and sampler are released (a borrowed node has no allocation). */
+    snode->cube_source_count = 0;
     bool borrowed = snode->s2t_borrowed &&
                     snode->allocation == VK_NULL_HANDLE;
     snode->s2t_borrowed = false;

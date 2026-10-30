@@ -520,7 +520,7 @@ At guest frame 1340 a retained indexed texture samples a red GPU palette. After 
 
 At guest frame 1360 a fresh ARGB GPU source is sampled directly, changed red to blue, and sampled again without texture-state changes. It then ages out before the CPU reads it at frame 1460. Captures 1370/1410 must stay blue and GPU_READ0 must contain ff0000ff. A Vulkan snapshot at frontend 1447, load at 1470, and later CPU read verify that deferred retired content survives state handling. Temporary readback counters measured expiry-time readback moving from guest frame counter 1364 to the real CPU reader at 1389; context destruction still materializes owed content.
 
-The compatible source created at guest frame 1360 is now sampled on every frame through 1440 without texture-state changes, before the later CPU read. A separate per-binding sample clock keeps its borrowed surface from aging out during use. `test-vulkan-surface-age.py CHECKOUT [CC]` compiles production expiry/timestamp functions and checks 176 combinations, including copied-source address/draw mismatches, plus idle expiry and unsigned frame wrap without a graphics driver. Temporary GPU counters showed an expiry-triggered readback/upload before the change; afterward no texture upload occurs and the source readback waits for the real CPU reader.
+The compatible source created at guest frame 1360 is now sampled on every frame through 1440 without texture-state changes, before the later CPU read. A separate per-binding sample clock keeps its borrowed surface from aging out during use. `test-vulkan-surface-age.py CHECKOUT [CC]` compiles production expiry/timestamp functions and checks 276 combinations, including copied-source and cubemap address/draw mismatches, plus idle expiry and unsigned frame wrap without a graphics driver. Temporary GPU counters showed an expiry-triggered readback/upload before the change; afterward no texture upload occurs and the source readback waits for the real CPU reader.
 
 The shared compatible-source fixture now samples through frame 1440 to exceed OpenGL's 60-frame age limit, with additional blue captures at 1430/1470. OpenGL marks already-resolved flat or cubemap GPU source surfaces used on successful texture-copy reuse. Temporary counters measured readback and RAM upload at counter 1419 before the fix; afterward the sole readback waits for the CPU reader at 1459, with no RAM texture upload. Conversion arithmetic, copied pixel data and the 60-frame idle limit are unchanged.
 
@@ -534,3 +534,18 @@ byte-reinterpreted copy only when its source address and draw timestamp match.
 It uses the existing sample clock, so an unused binding cannot pin the source.
 Focused transfer counters showed a readback/upload at the sampler change before
 the fix; afterward the readback waits for the explicit CPU read, with no upload.
+
+The GPU cubemap fixture clears six 16x16 swizzled ARGB faces at guest frame 1800,
+samples +X through 1880, changes filtering at 1840 and reads all six faces on
+the CPU at 1900. Captures 1810/1850/1910 stay red; guest words 0x00300048 through
+0x0030005c contain one red and five blue pixels. A fixture-only deferred-draw
+flag lets the caller finish cube state before sampling any source.
+Vulkan records the six source draw timestamps when copying the cube; its expiry
+scan requires a matching face address, timestamp and recent sample clock. RAM
+uploads, resource release and cache-node initialization clear that provenance.
+The unit fixture checks each face, wrong timestamps, absent provenance, stale
+sampling, non-cube bindings, misaligned/out-of-range addresses and idle expiry.
+Focused counters showed six face readbacks plus one upload at the filter change
+before the fix. Afterward readback waits for a real CPU reader or teardown;
+there is no texture upload at the filter change. Native-depth copies remain a
+separate audit target.

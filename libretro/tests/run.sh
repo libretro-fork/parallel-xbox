@@ -580,6 +580,29 @@ elif [ "$r" != 3 ]; then
   echo "FAIL: copied source exited $r"; exit 1
 fi
 
+# All six GPU-produced cube faces survive a sampler change and later CPU reads.
+set +e
+timeout 300 $h "$core" "$work/sysg" $vp --vulkan --opt xemu_renderer=vulkan \
+  --opt xemu_memory=64 --opt xemu_surface_scale=1 --frames 1920 --strict \
+  --pixel 1810 --pixel 1850 --pixel 1910 --peek 0x300048 --peek 0x30004c \
+  --peek 0x300050 --peek 0x300054 --peek 0x300058 --peek 0x30005c \
+  >"$work/gpu_cube_source.txt"
+r=$?
+set -e
+if [ "$r" = 0 ]; then
+  for want in "pixel_1810=0xff0000" "pixel_1850=0xff0000" \
+              "pixel_1910=0xff0000" "peek_0x300048=0xffff0000" \
+              "peek_0x30004c=0xff0000ff" "peek_0x300050=0xff0000ff" \
+              "peek_0x300054=0xff0000ff" "peek_0x300058=0xff0000ff" \
+              "peek_0x30005c=0xff0000ff"; do
+    grep -q "^$want$" "$work/gpu_cube_source.txt" || {
+      echo "FAIL: cube source: $want"; exit 1;
+    }
+  done
+elif [ "$r" != 3 ]; then
+  echo "FAIL: cube source exited $r"; exit 1
+fi
+
 # A savestate taken while surfaces live only on the GPU (rom/gpu.c: before
 # run 64, B drawn and its depth cleared at frame 62, nothing read back), then
 # loaded in a new process, which has no GPU surfaces: the depth the guest

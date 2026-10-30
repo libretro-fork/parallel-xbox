@@ -1439,15 +1439,29 @@ static void expire_old_surfaces(NV2AState *d)
         int last_used = d->pgraph.frame_time - s->frame_time;
         if (last_used >= max_surface_frame_time_delta) {
             /* Sampling borrows an image or consumes a byte-reinterpreted
-             * snapshot. Keep the matching source available for later sampler
+             * or cubemap snapshot. Keep the matching source available for later sampler
              * changes, using the independent clock of actual bind use. */
             for (unsigned i = 0; i < NV2A_MAX_TEXTURES; i++) {
                 TextureBinding *binding = r->texture_bindings[i];
-                if (binding &&
-                    ((binding->s2t_borrowed && binding->image == s->image) ||
-                     (binding->key.byte_reinterpret &&
-                      binding->key.texture_vram_offset == s->vram_addr &&
-                      binding->draw_time == s->draw_time))) {
+                if (!binding) continue;
+                bool source_matches =
+                    (binding->s2t_borrowed && binding->image == s->image) ||
+                    (binding->key.byte_reinterpret &&
+                     binding->key.texture_vram_offset == s->vram_addr &&
+                     binding->draw_time == s->draw_time);
+                if (binding->cube_source_count == 6 &&
+                    binding->key.state.cubemap &&
+                    s->vram_addr >= binding->key.texture_vram_offset) {
+                    size_t face_length = binding->key.texture_length / 6;
+                    hwaddr offset = s->vram_addr - binding->key.texture_vram_offset;
+                    if (face_length && offset % face_length == 0 &&
+                        offset / face_length < 6) {
+                        unsigned face = offset / face_length;
+                        source_matches |= binding->cube_source_draw_time[face] ==
+                                          s->draw_time;
+                    }
+                }
+                if (source_matches) {
                     int age = d->pgraph.frame_time - binding->sampled_frame;
                     if (age < last_used) {
                         s->frame_time = binding->sampled_frame;

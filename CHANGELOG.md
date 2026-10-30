@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Vulkan keeps the six GPU-produced cubemap sources available while their copied texture is sampled, avoiding six face readbacks and a cubemap upload on a later filter change. Sources still expire after sampling stops.
+
 - Vulkan keeps actively sampled ARGB-to-RGB565 source surfaces available across sampler changes, avoiding a source readback and texture re-upload after age-based eviction. Idle surfaces still expire normally.
 
 - QEMU's own atomics (qemu/atomic.h) are moving onto libretro-common's retro_atomic.h, as the emulated GPU and sound chip already did: so far the object and QObject reference counts, the QOM cast caches, RCU's grace-period counter, reader state and call_rcu queue, and the lists RCU readers walk (the RAM blocks, the CPUs, each bus's devices, the event loop's handlers and bottom halves). Nothing changes for someone using the core.
