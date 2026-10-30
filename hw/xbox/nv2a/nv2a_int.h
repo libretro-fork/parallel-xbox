@@ -132,9 +132,6 @@ typedef struct NV2AState {
         retro_atomic_int_t halt;
         /* set after PFIFO thread enters main loop */
         retro_atomic_int_t thread_running;
-        /* the thread waits for a kick with nothing to do (nv2a_libretro_
-         * busy); written by the thread under the lock, read by any */
-        retro_atomic_int_t parked;
         /* Kicks for work the guest gave the GPU (its pushbuffer and PFIFO
          * registers: pfifo_kick_guest), and the count the thread had taken
          * when it last parked with that work done: the guest can only be
@@ -144,6 +141,10 @@ typedef struct NV2AState {
         retro_atomic_int_t guest_kicks;
         retro_atomic_int_t guest_done;
         int guest_seen;
+        /* The frontend's requests for the display drawn at a frame's end
+         * (nv2a_libretro_frame_end), and the last one the thread did */
+        retro_atomic_int_t frame_end_req;
+        retro_atomic_int_t frame_end_done;
     } pfifo;
 
     struct {

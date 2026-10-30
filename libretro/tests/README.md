@@ -556,9 +556,10 @@ The kernel-idle oracle also compares borrowed ordinary RAM with the original
 read path over 20,000 mutations, work-list changes and failed reads. It covers
 page/region boundaries, RAM-device rejection, address-space attributes and RCU
 lifetime, and asserts zero copied bytes for supported RAM.
-`test-frame-completion.py` compiles the production GPU handoff against a waking
-worker: 972 combinations cover pending draws, display work, racing/spurious
-wakeups and stopping while waiting. Guest time is not advanced by this helper.
+`test-frame-completion.py` compiles the production frame-end handoff against a
+model of the GPU's thread: one request, then waits until the thread has drawn
+the display. 216 combinations cover pending work, racing/spurious wakeups,
+stopping while waiting and no GPU thread. Guest time is not advanced by it.
 
 there is no texture upload at the filter change.
 

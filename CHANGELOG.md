@@ -509,6 +509,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 - The machine runs on RetroArch's own thread, in retro_run, instead of on a thread of its own that retro_run handed each frame to and slept on until it was done. That was two thread wake-ups a frame (about 0.1 ms on the test machine) on the way into the frame and out of it, and a thread less now. Building the machine puts the frontend's OpenGL context back as it found it.
 
+- At the end of each frame RetroArch's thread asks the emulated GPU once to finish the frame's work and draw the display, and waits once. It used to wait for the work, then ask for the redraw and wait again: two handoffs between the threads a frame. On the test ROM's GPU scenario the wait at the frame's end is 10 to 30% shorter with Vulkan; with OpenGL the difference is within noise.
+
 ## Test build 4 - 2026-10-25
 
 - The core info file names the core "Microsoft - Xbox / Sega Chihiro (xemu)" (NNshi).

@@ -195,15 +195,29 @@ static inline void pfifo_idle_wait(NV2AState *d)
             retro_eventcount_cancel_wait(&d->pfifo.fifo_ec);
             return;
         }
+        /* The frame's work done, where the thread would park: the display
+         * drawn from what it left, if the frontend asked at its frame's end
+         * (nv2a_libretro_frame_end), and the frontend told, a Dekker
+         * handshake as below; then round again, to park */
+        int end = retro_atomic_load_acquire_int(&d->pfifo.frame_end_req);
+        if (end != retro_atomic_load_relaxed_int(&d->pfifo.frame_end_done)) {
+            retro_eventcount_cancel_wait(&d->pfifo.fifo_ec);
+            retro_atomic_store_relaxed_int(&d->pgraph.scanout_changed, 1);
+            pgraph_process_pending(d);
+            retro_atomic_store_release_int(&d->pfifo.frame_end_done, end);
+            retro_atomic_thread_fence_seq_cst();
+            if (retro_atomic_load_relaxed_int(&nv2a_libretro_waiter)) {
+                qemu_notify_event();
+            }
+            return;
+        }
         /* a Dekker handshake with the emulator thread's wait (ui/libretro.c
-         * lr_run_frame, nv2a_libretro_switch_renderer): parked stored, a
-         * full fence, then the look at the waiter flag, which that thread
-         * stores and fences before it looks at parked */
-        /* the guest's work this pass took is done (before parked and the
-         * fence: the waiter sees both) */
+         * lr_run_frame, nv2a_libretro_switch_renderer): the guest's work
+         * this pass took marked done, a full fence, then the look at the
+         * waiter flag, which that thread stores and fences before it looks
+         * (nv2a_libretro_guest_busy) */
         retro_atomic_store_release_int(&d->pfifo.guest_done,
                                        d->pfifo.guest_seen);
-        retro_atomic_store_relaxed_int(&d->pfifo.parked, 1);
         retro_atomic_thread_fence_seq_cst();
         if (retro_atomic_load_relaxed_int(&nv2a_libretro_waiter)) {
             qemu_notify_event();
@@ -211,7 +225,6 @@ static inline void pfifo_idle_wait(NV2AState *d)
         qemu_mutex_unlock(&d->pfifo.lock);
         retro_eventcount_commit_wait(&d->pfifo.fifo_ec, key);
         qemu_mutex_lock(&d->pfifo.lock);
-        retro_atomic_store_relaxed_int(&d->pfifo.parked, 0);
     }
 }
 
