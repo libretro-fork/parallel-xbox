@@ -1,0 +1,25 @@
+; ep.a56 assembled with a56: one dd per P-memory word, from P:0
+        dd 0x0A8581
+        dd 0x000000
+        dd 0x08F485
+        dd 0x000002
+        dd 0x56F000
+        dd 0x000001
+        dd 0x44F400
+        dd 0x000100
+        dd 0x60F400
+        dd 0x000100
+        dd 0x060082
+        dd 0x00000D
+        dd 0x545800
+        dd 0x200040
+        dd 0x547000
+        dd 0x000001
+        dd 0x08F494
+        dd 0x000010
+        dd 0x08F496
+        dd 0x000001
+        dd 0x08F484
+        dd 0x000001
+        dd 0x0AF080
+        dd 0x000000

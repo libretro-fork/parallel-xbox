@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Games whose sound goes through the Xbox's encoder DSP (the EP) now have it written straight into the queue RetroArch takes its sound from, eight engine frames (256 samples) at a time, with the volume applied there. Before, it went into a buffer first and was copied out and cleared 32 samples at a time. The sound is the same, sample for sample, except after a reset that came in the middle of the encoder's eight frames: the queue used to repeat up to a few hundred samples there, and now it does not.
+
 - Savestates now include the Xbox's AC97 sound controller. Before, loading a state left the controller wherever the running session had it, so its playback position no longer matched the game's (in the test, half a second ahead and stopped at the end of its buffers). States made by earlier versions still load, with the controller left as it is, as before.
 
 - Vulkan color upload/readback scratch images now use the native Xbox dimensions instead of reserving the scaled render-target size. A 640x480 RGBA scratch image at 8x needs about 1.17 MiB rather than 75 MiB. Packed depth/stencil conversion keeps its required scaled storage.

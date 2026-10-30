@@ -16,7 +16,7 @@ here=$(cd "$(dirname "$0")" && pwd)
 work=${2:-$(mktemp -d)}
 mkdir -p "$work/bin" "$work/sys/xemu" "$work/sysb/xemu" "$work/sysd/xemu" \
     "$work/syss/xemu" "$work/sysp/xemu" "$work/sysg/xemu" "$work/sysv/xemu" \
-    "$work/sysr/xemu" "$work/sysf/xemu" "$work/sysa/xemu"
+    "$work/sysr/xemu" "$work/sysf/xemu" "$work/sysa/xemu" "$work/syse/xemu"
 
 # The harness's paths, as the core's OS spells them
 path() { echo "$1"; }
@@ -52,6 +52,7 @@ ${cc} -O2 -std=c11 -Wall -o "$work/bin/scanoutcheck" "$here/test-scanout.c"
 ${cc} -O2 -std=c99 -Wall -o "$work/bin/audiomargin" "$here/test-audio-margin.c"
 "$work/bin/audiomargin"
 ${cc} -O2 -std=c99 -Wall -o "$work/bin/sinecheck" "$here/sinecheck.c"
+${cc} -O2 -std=c99 -Wall -o "$work/bin/rampcheck" "$here/rampcheck.c"
 ${cc} -O2 -std=c99 -Wall -o "$work/bin/mkdisc" "$here/mkdisc.c"
 "$work/bin/mkdisc" "$work/disc.iso"
 nasm -f bin -o "$work/sys/xemu/mcpx_1.0.bin" "$here/rom/bootrom.asm"
@@ -72,6 +73,8 @@ cp "$work/sys/xemu/mcpx_1.0.bin" "$work/sysv/xemu/"
 nasm -f bin -DDVD -I"$here/rom/" -o "$work/sysv/xemu/Complex_4627v1.03.bin" "$here/rom/flash.asm"
 cp "$work/sys/xemu/mcpx_1.0.bin" "$work/sysa/xemu/"
 nasm -f bin -DACI -I"$here/rom/" -o "$work/sysa/xemu/Complex_4627v1.03.bin" "$here/rom/flash.asm"
+cp "$work/sys/xemu/mcpx_1.0.bin" "$work/syse/xemu/"
+nasm -f bin -DEP -I"$here/rom/" -o "$work/syse/xemu/Complex_4627v1.03.bin" "$here/rom/flash.asm"
 cp "$work/sys/xemu/mcpx_1.0.bin" "$work/sysd/xemu/"
 nasm -f bin -DDSP -DGP_PASSES=16 -I"$here/rom/" -o "$work/sysd/xemu/Complex_4627v1.03.bin" "$here/rom/flash.asm"
 
@@ -481,6 +484,19 @@ t "GP DSP, JIT" $h "$(path "$core")" "$(path "$work/sysd")" --frames 600 --stric
 t "GP DSP, JIT: save, load, reset" $h "$(path "$core")" "$(path "$work/sysd")" --frames 600 \
   --strict $dsp --opt xemu_dsp_jit=enabled --save 200 --load 350 \
   --verify-load --reset 450
+
+# The EP DSP's output (rom/ep.a56), which the core sinks to the frontend:
+# its 256 samples a run go into the frontend's queue as the EP's DMA
+# writes them. The audio is one unbroken ramp, every 16-bit sample the one
+# before plus one, on the interpreter and the JIT, and through a reset
+# (the EP's eight frames start again mid-run: the queue used to repeat 385
+# samples there).
+t "EP DSP, interpreter" $h "$(path "$core")" "$(path "$work/syse")" --frames 300 --strict \
+  $dsp --opt xemu_dsp_jit=disabled --wav "$(path "$work/epi.wav")"
+"$work/bin/rampcheck" "$work/epi.wav" --min 400000
+t "EP DSP, JIT, through a reset" $h "$(path "$core")" "$(path "$work/syse")" --frames 300 --strict \
+  $dsp --opt xemu_dsp_jit=enabled --reset 150 --wav "$(path "$work/epj.wav")"
+"$work/bin/rampcheck" "$work/epj.wav" --min 400000
 
 # Savestates are the whole machine in the frontend's buffer: right after a
 # load the guest's RAM is byte for byte what it was at the save, in the same

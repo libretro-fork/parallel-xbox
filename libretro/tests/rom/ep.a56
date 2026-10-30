@@ -1,0 +1,26 @@
+; The EP DSP test program for flash.asm -DEP (see libretro/tests/README.md).
+; Each time the EP runs (every 8th engine frame): wait for the frame's
+; start, fill X:$0100 with the next 512 values of a counter (one per
+; 16-bit sample, kept as value << 8 in A, the DMA's 16-bit format), send
+; them to output FIFO 0 by the DMA block the CPU put at X:$0010, and halt
+; until the next run. The core sinks FIFO 0 to the frontend: its audio is
+; a ramp, every 16-bit sample the one before plus one.
+;
+; ep.inc is this program assembled (a56 -o ep.lod ep.a56, then the P words
+; as dd lines), as gp.inc is gp.a56.
+        org     p:0
+spin
+        jclr    #1,x:$ffc5,spin
+        movep   #2,x:$ffc5
+        move    x:$0001,a
+        move    #$000100,x0
+        move    #$0100,r0
+        do      #512,fill_end
+        move    a1,x:(r0)+
+        add     x0,a
+fill_end
+        move    a1,x:$0001
+        movep   #$000010,x:$ffd4
+        movep   #1,x:$ffd6
+        movep   #1,x:$ffc4
+        jmp     spin

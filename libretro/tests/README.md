@@ -105,7 +105,8 @@ Linux build.
   GP DSP and starts it (`-DGP_PASSES=n` sets its load, 1 by default);
   built with `-DSPIN` it spins on a word in RAM that nothing writes; built
   with `-DPAD` it runs `pad.c`; built with `-DGPU` it runs `gpu.c`; built
-  with `-DDVD` it runs `dvd.c`; built with `-DACI` it runs `aci.c`.
+  with `-DDVD` it runs `dvd.c`; built with `-DACI` it runs `aci.c`; built
+  with `-DEP` it loads `ep.a56` into the EP DSP and starts it.
 - `rom/pad.c`: the pad through the USB controller, as the kernel reads it:
   the two hubs found by their status-change reports and configured, their
   ports reset, the pad's reports taken over its interrupt endpoint on the
@@ -130,6 +131,12 @@ Linux build.
   its position read 100 ms after the start and a second later by the TSC,
   for how many samples a second of guest time takes. `aci.sh` builds it
   into `aci.inc` (committed, like `pad.inc`).
+- `rom/ep.a56`: the EP DSP's program. Each run (every 8th engine frame) it
+  sends the next 512 values of a counter to its output FIFO 0 by DMA, 16-bit:
+  the core sinks that FIFO to the frontend, so the audio is a ramp.
+  `ep.inc` is it assembled with a56, as `gp.inc` is `gp.a56`.
+- `rampcheck.c`: checks that the harness's audio is that ramp, every 16-bit
+  sample the one before plus one, from its first one to the end.
 - `rom/gp.a56`: the GP DSP's program. Every 32-sample frame it rebuilds
   mixbins 0 and 1 from 64 exact products a sample, n times over, so the tone
   comes out of the DSP unchanged after n x 4096 MACs. `gp.inc` is it

@@ -13,6 +13,11 @@
 %define GP           (APU + 0x30000)
 %define GPPROG       0x00120000     ; the GP's program, 2 pages
 %define GPSGE        0x00118000
+%define EPMMIO       (APU + 0x50000)
+%define EPPROG       0x00124000     ; the EP's program, 2 pages
+%define EPSGE        0x00119000
+%define EPFSGE       0x0011A000     ; the EP's FIFO pages
+%define EPFIFO       0x00130000     ; its output FIFO 0, one page
 %ifndef GP_PASSES
 %define GP_PASSES    1              ; gp.a56's passes a frame
 %endif
@@ -109,6 +114,34 @@ entry:
         mov dword [GP + 0x0000], GP_PASSES ; X:$0000, the passes
         mov dword [GP + 0xFFFC], 3       ; GPRST | GPDSPRST: bootstrap, run
 %endif
+%ifdef EP
+        ; the EP DSP's program (ep.a56) into its scratch memory, its output
+        ; FIFO 0 one page, the DMA block it sends with at X:$0010 (512
+        ; 16-bit samples from X:$0100 to FIFO 0), then the EP out of reset
+        mov esi, ep_prog
+        mov edi, EPPROG
+        mov ecx, (ep_prog_end - ep_prog) / 4
+        rep movsd
+        mov dword [EPSGE], EPPROG
+        mov dword [EPSGE + 4], 0
+        mov dword [EPSGE + 8], EPPROG + 0x1000
+        mov dword [EPSGE + 12], 0
+        apu 0x2048, EPSGE                ; EPSADDR
+        apu 0x20DC, 1                    ; EPSMAXSGE
+        mov dword [EPFSGE], EPFIFO
+        mov dword [EPFSGE + 4], 0
+        apu 0x204C, EPFSGE               ; EPFADDR
+        apu 0x20E0, 0                    ; EPFMAXSGE
+        apu 0x4024, 0                    ; EPOFBASE0
+        apu 0x4028, 0x1000               ; EPOFEND0
+        apu 0x402C, 0                    ; EPOFCUR0
+        mov dword [EPMMIO + 0xFFFC], 0       ; EPRST: in reset
+        mov dword [EPMMIO + 0x10 * 4], 0x4000 ; next: end of list
+        mov dword [EPMMIO + 0x11 * 4], 0x402 ; to FIFO 0, 16-bit
+        mov dword [EPMMIO + 0x12 * 4], 512   ; samples
+        mov dword [EPMMIO + 0x13 * 4], 0x100 ; from X:$0100
+        mov dword [EPMMIO + 0xFFFC], 3       ; EPRST | EPDSPRST: bootstrap, run
+%endif
 
         ; start the sound engine
         apu 0x2000, (1 << 3)             ; SECTL XCNTMODE
@@ -146,6 +179,11 @@ halt:   hlt
         jmp halt
 
         align 16
+%ifdef EP
+ep_prog:
+%include "ep.inc"
+ep_prog_end:
+%endif
 %ifdef DSP
 gp_prog:
 %include "gp.inc"

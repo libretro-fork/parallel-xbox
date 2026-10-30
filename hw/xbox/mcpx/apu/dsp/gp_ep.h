@@ -58,8 +58,8 @@ extern const MemoryRegionOps ep_ops;
  * frame before is done, and the thread puts the frame's output straight
  * into the frontend's queue (monitor.c); anything else that touches the
  * DSPs or the registers their frame uses (MMIO, reset, a state, the
- * frontend's read of the queue) waits for the posted frame to be done
- * first (quiesce). Lock-free: a generation each way, an eventcount each
+ * queue's discard) waits for the posted frame to be done first
+ * (quiesce); the frontend's read of the queue does not (monitor.h). Lock-free: a generation each way, an eventcount each
  * way.
  */
 typedef struct MCPXAPUDSPThread {
@@ -74,9 +74,12 @@ typedef struct MCPXAPUDSPThread {
      * on and the one the engine builds (mcpx_apu_dsp_mixbins) */
     float mixbins[2][NUM_MIXBINS][NUM_SAMPLES_PER_FRAME];
     int frame_div[2];               /* the frames' engine count (EP 1 in 8) */
-    /* The EP's last 256 samples: 32 of them go to the frontend each frame,
-     * so the output keeps the engine's cadence whatever the DSPs do */
-    int16_t ep_out[256][2];
+    /* Where the EP's 256 samples (8 engine frames) go when it runs: the
+     * frontend's queue, straight (dsp_thread_frame), or ep_spare when
+     * the queue has no room; and whether its program wrote them */
+    int16_t (*ep_dst)[2];
+    bool ep_written;
+    int16_t ep_spare[256][2];
 } MCPXAPUDSPThread;
 
 void mcpx_apu_dsp_init(MCPXAPUState *d);

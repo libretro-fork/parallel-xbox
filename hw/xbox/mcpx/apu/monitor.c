@@ -51,6 +51,12 @@ static bool apu_queue_ready;
 /* Audio > Audio Volume, as standalone's curve: the gain the samples are
  * scaled by, in 1/65536 */
 static int32_t apu_gain_q16 = 65536;
+/* Engine frames already in the queue ahead of the engine: the EP's eight
+ * go in at once (mcpx_apu_monitor_end_ahead), and the next seven frames'
+ * output is skipped, whichever producer it comes from. The producer
+ * side's alone (the DSPs' thread, or the emulator thread with it done);
+ * the queue's reset, with both stopped, clears it. */
+static unsigned apu_ahead;
 
 static void apu_queue_reset(void)
 {
@@ -59,6 +65,7 @@ static void apu_queue_reset(void)
                                  NUM_SAMPLES_PER_FRAME * 2];
 
     retro_spsc_clear(&apu_queue);
+    apu_ahead = 0;
     retro_spsc_write(&apu_queue, preroll, sizeof(preroll));
 }
 
@@ -144,9 +151,46 @@ static int16_t *monitor_room(size_t frames)
     return p;
 }
 
+/* One engine frame already queued ahead: this frame's output is not */
+static bool monitor_frame_ahead(void)
+{
+    if (apu_ahead) {
+        apu_ahead--;
+        return true;
+    }
+    return false;
+}
+
+/* An engine frame's room, written in place and committed with
+ * mcpx_apu_monitor_end; none when it is queued ahead or has no room */
 int16_t *mcpx_apu_monitor_begin(size_t frames)
 {
+    if (monitor_frame_ahead()) {
+        return NULL;
+    }
     return monitor_room(frames);
+}
+
+/* Room for several engine frames at once, for a producer that writes
+ * them in place (the EP's DMA: dsp/gp_ep.c); none when the queue is full */
+int16_t *mcpx_apu_monitor_begin_ahead(size_t frames)
+{
+    return monitor_room(frames);
+}
+
+/* Those frames committed, the volume applied where they are: the first is
+ * this engine frame's output, the rest the next frames' */
+void mcpx_apu_monitor_end_ahead(int16_t *out, size_t frames)
+{
+    const int32_t gain = qatomic_read(&apu_gain_q16);
+
+    if (gain != 65536) {
+        for (size_t i = 0; i < 2 * frames; i++) {
+            out[i] = (int16_t)(((int64_t)out[i] * gain) >> 16);
+        }
+    }
+    retro_spsc_write_end(&apu_queue, frames * FRAME_BYTES);
+    apu_ahead += frames / NUM_SAMPLES_PER_FRAME - 1;
 }
 
 int32_t mcpx_apu_monitor_gain_q16(void)
@@ -159,31 +203,11 @@ void mcpx_apu_monitor_end(size_t frames)
     retro_spsc_write_end(&apu_queue, frames * FRAME_BYTES);
 }
 
-/* Producer: stereo S16 frames, as the DSPs make them */
-void mcpx_apu_monitor_push_s16(const int16_t (*samples)[2], size_t frames)
-{
-    const int32_t gain = qatomic_read(&apu_gain_q16);
-    int16_t *out = monitor_room(frames);
-
-    if (!out) {
-        return;
-    }
-    if (gain == 65536) {
-        memcpy(out, samples, frames * FRAME_BYTES);
-    } else {
-        for (size_t i = 0; i < frames; i++) {
-            out[2 * i]     = (int16_t)(((int64_t)samples[i][0] * gain) >> 16);
-            out[2 * i + 1] = (int16_t)(((int64_t)samples[i][1] * gain) >> 16);
-        }
-    }
-    retro_spsc_write_end(&apu_queue, frames * FRAME_BYTES);
-}
-
 /* Producer: stereo float frames, as the VP makes them */
 void mcpx_apu_monitor_push_f32(const float (*samples)[2], size_t frames)
 {
     const float gain = (float)qatomic_read(&apu_gain_q16) * (32767.0f / 65536.0f);
-    int16_t *out = monitor_room(frames);
+    int16_t *out = mcpx_apu_monitor_begin(frames);
 
     if (!out) {
         return;
@@ -198,7 +222,7 @@ void mcpx_apu_monitor_push_f32(const float (*samples)[2], size_t frames)
 /* Producer: a frame of silence */
 void mcpx_apu_monitor_push_silence(void)
 {
-    int16_t *out = monitor_room(NUM_SAMPLES_PER_FRAME);
+    int16_t *out = mcpx_apu_monitor_begin(NUM_SAMPLES_PER_FRAME);
 
     if (!out) {
         return;

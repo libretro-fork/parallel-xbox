@@ -229,12 +229,13 @@ static void ep_fifo_walk(void *opaque, unsigned int index, size_t len, bool dir,
 
     if (dir && index == 0 && d->monitor.point != MCPX_APU_DEBUG_MON_AC97) {
         /* sunk: the EP's 256 samples, 8 engine frames' worth, written
-         * straight into the thread's buffer (dsp_thread_frame), and the
+         * straight into the frontend's queue (dsp_thread_frame), and the
          * guest's FIFO gets silence */
         if ((d->monitor.point == MCPX_APU_DEBUG_MON_EP) ||
             (d->monitor.point == MCPX_APU_DEBUG_MON_GP_OR_EP)) {
-            assert(len == sizeof(d->dsp_thread.ep_out));
-            fn(user, (uint8_t *)d->dsp_thread.ep_out, len);
+            assert(len == sizeof(d->dsp_thread.ep_spare));
+            fn(user, (uint8_t *)d->dsp_thread.ep_dst, len);
+            d->dsp_thread.ep_written = true;
         }
         fn = ep_silence_run;
     }
@@ -448,9 +449,10 @@ const MemoryRegionOps ep_ops = {
 
 /* One engine frame of the DSPs, on their thread: the mixbins into the
  * GP's MIXBUF, the GP, every 8th frame the EP, and the frame's 32 samples
- * of output to the frontend's queue (the EP's, or the GP's with the EP
- * off): always 32, so a video frame's samples are all there whatever the
- * DSPs' programs did */
+ * of output to the frontend's queue (the GP's with the EP off; the EP's
+ * 256 go in at its run, for its eight frames): one frame's worth each
+ * frame, so a video frame's samples are all there whatever the DSPs'
+ * programs did */
 static void dsp_thread_frame(MCPXAPUState *d, float mixbins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME],
                              int frame_div)
 {
@@ -498,28 +500,39 @@ static void dsp_thread_frame(MCPXAPUState *d, float mixbins[NUM_MIXBINS][NUM_SAM
         mcpx_apu_monitor_push_silence();
     }
 
-    /* Run EP */
-    if (ep_enabled) {
-        if (frame_div % 8 == 0) {
-            dsp_start_frame(d->ep.dsp);
-            dsp_set_halt_requested(d->ep.dsp, false);
-            dsp_set_cycle_count(d->ep.dsp, 0);
-            do {
-                dsp_run(d->ep.dsp, 1000);
-            } while (!dsp_get_halt_requested(d->ep.dsp) && d->ep.realtime);
-            g_dbg.ep.cycles = dsp_get_cycle_count(d->ep.dsp);
+    bool ep_out = (d->monitor.point == MCPX_APU_DEBUG_MON_EP) ||
+                  (d->monitor.point == MCPX_APU_DEBUG_MON_GP_OR_EP && ep_enabled);
+
+    /* Run EP: its 256 samples are this frame's and the next seven's. Its
+     * output DMA writes them straight into the frontend's queue, where
+     * they are committed at once; the next seven frames then skip theirs
+     * (monitor.c). Silence where its program made none. */
+    if (ep_enabled && frame_div % 8 == 0) {
+        MCPXAPUDSPThread *t = &d->dsp_thread;
+        int16_t *q = ep_out ? mcpx_apu_monitor_begin_ahead(256) : NULL;
+
+        t->ep_dst = q ? (int16_t (*)[2])q : t->ep_spare;
+        t->ep_written = false;
+        dsp_start_frame(d->ep.dsp);
+        dsp_set_halt_requested(d->ep.dsp, false);
+        dsp_set_cycle_count(d->ep.dsp, 0);
+        do {
+            dsp_run(d->ep.dsp, 1000);
+        } while (!dsp_get_halt_requested(d->ep.dsp) && d->ep.realtime);
+        g_dbg.ep.cycles = dsp_get_cycle_count(d->ep.dsp);
+        if (q) {
+            if (!t->ep_written) {
+                memset(q, 0, 256 * 2 * sizeof(int16_t));
+            }
+            mcpx_apu_monitor_end_ahead(q, 256);
+            return;
         }
     }
 
-    if ((d->monitor.point == MCPX_APU_DEBUG_MON_EP) ||
-        (d->monitor.point == MCPX_APU_DEBUG_MON_GP_OR_EP && ep_enabled)) {
-        /* this frame's 32 of the EP's last 256, then cleared: silence
-         * where the EP's program made no new ones */
-        int16_t (*slot)[2] = &d->dsp_thread.ep_out[(frame_div % 8) * NUM_SAMPLES_PER_FRAME];
-        mcpx_apu_monitor_push_s16((const int16_t (*)[2])slot, NUM_SAMPLES_PER_FRAME);
-        memset(slot, 0, NUM_SAMPLES_PER_FRAME * sizeof(*slot));
-    } else if (d->monitor.point == MCPX_APU_DEBUG_MON_EP) {
-        /* the EP off: with GP_OR_EP the GP's output above is the frame's */
+    if (ep_out) {
+        /* none of the EP's output queued for this frame (the EP off or
+         * started mid-cycle, a state loaded, the queue full): silence,
+         * unless an earlier frame queued it ahead */
         mcpx_apu_monitor_push_silence();
     }
 }
