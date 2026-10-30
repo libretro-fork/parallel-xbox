@@ -1438,6 +1438,20 @@ static void expire_old_surfaces(NV2AState *d)
     QTAILQ_FOREACH_SAFE(s, &r->surfaces, entry, next) {
         int last_used = d->pgraph.frame_time - s->frame_time;
         if (last_used >= max_surface_frame_time_delta) {
+            /* A borrowed texture is a GPU consumer too. Its use does not
+             * write the source, so consult its independent sampling clock. */
+            for (unsigned i = 0; i < NV2A_MAX_TEXTURES; i++) {
+                TextureBinding *binding = r->texture_bindings[i];
+                if (binding && binding->s2t_borrowed && binding->image == s->image) {
+                    int age = d->pgraph.frame_time - binding->sampled_frame;
+                    if (age < last_used) {
+                        s->frame_time = binding->sampled_frame;
+                        last_used = age;
+                    }
+                }
+            }
+        }
+        if (last_used >= max_surface_frame_time_delta) {
             trace_nv2a_pgraph_surface_evict_reason("old", s->vram_addr);
             /* Age alone is not a RAM consumer. Preserve any owed content
              * through the same lazy/eager policy as other evictions. */

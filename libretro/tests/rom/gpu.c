@@ -1196,10 +1196,14 @@ void gpu_main(void)
                     method(NV097_SET_SURFACE_PITCH, PITCH | (PITCH << 16));
                     method(NV097_SET_SURFACE_COLOR_OFFSET, SURF_D);
                     triangle();
-                    disable_texture();
-                    kick();
+                    kick(); /* Continue sampling this GPU source next frame. */
                 }
             }
+        }
+        if (frame >= 1361 && frame <= 1380) {
+            triangle();
+            if (frame == 1380) disable_texture();
+            kick();
         }
         if (frame == 1390) {
             /* A later CPU reader must still get the retired GPU content. */

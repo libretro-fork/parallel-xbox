@@ -2447,11 +2447,13 @@ static bool check_textures_dirty(NV2AState *d)
     return false;
 }
 
-static void update_timestamps(PGRAPHVkState *r)
+static void update_timestamps(PGRAPHState *pg)
 {
+    PGRAPHVkState *r = pg->vk_renderer_state;
     for (int i = 0; i < ARRAY_SIZE(r->texture_bindings); i++) {
         if (r->texture_bindings[i]) {
             r->texture_bindings[i]->submit_time = r->submit_count;
+            r->texture_bindings[i]->sampled_frame = pg->frame_time;
         }
     }
 }
@@ -2468,7 +2470,7 @@ void pgraph_vk_bind_textures(NV2AState *d)
     if (!check_textures_dirty(d)) {
         NV2A_VK_DPRINTF("Not dirty");
         NV2A_VK_DGROUP_END();
-        update_timestamps(r);
+        update_timestamps(pg);
         return;
     }
 
@@ -2509,7 +2511,7 @@ void pgraph_vk_bind_textures(NV2AState *d)
             break;
         }
     }
-    update_timestamps(r);
+    update_timestamps(pg);
     NV2A_VK_DGROUP_END();
 }
 
@@ -2527,6 +2529,7 @@ static void texture_cache_entry_init(Lru *lru, LruNode *node, const void *state)
     snode->s2t_borrowed = false;
     snode->seq = ++r->texture_binding_seq;
     snode->validation_frame = (unsigned int)-1;
+    snode->sampled_frame = 0;
 }
 
 static void texture_cache_release_node_resources(PGRAPHVkState *r, TextureBinding *snode)

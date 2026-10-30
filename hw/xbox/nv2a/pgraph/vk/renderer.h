@@ -270,11 +270,12 @@ typedef struct TextureBinding {
     uint64_t hash;
     unsigned int draw_time;
     uint32_t submit_time;
+    unsigned int sampled_frame; /* last bind use, including the fast path */
     /* Monotonic creation id: tells a recreated texture apart from the one
      * previously in this node even if the driver recycled the Vk handles. */
     uint64_t seq;
-    /* Last frame this binding's content was validated: content is re-hashed
-     * at most once a frame, as nearby RAM writes keep re-flagging it dirty. */
+    /* Last content validation frame. Dirty-page and GPU-write invalidation
+     * reset this stamp so later draws can revalidate immediately. */
     unsigned int validation_frame;
     /* In-place sampling: the image is the surface's own (never destroy it);
      * image_view is a private view on it, owned by this binding. */

@@ -1,0 +1,59 @@
+/* SPDX-License-Identifier: GPL-2.0-or-later */
+#include <assert.h>
+#include <stdbool.h>
+#include <stdint.h>
+#include <stdio.h>
+#define NV2A_MAX_TEXTURES 4
+#define ARRAY_SIZE(a) (sizeof(a)/sizeof((a)[0]))
+typedef struct TextureBinding { bool s2t_borrowed; uintptr_t image;
+    unsigned sampled_frame,submit_time; } TextureBinding;
+typedef struct SurfaceBinding { unsigned frame_time; uintptr_t image;
+    uint64_t vram_addr; struct SurfaceBinding *next; bool evicted; } SurfaceBinding;
+typedef struct { SurfaceBinding *first; } Surfaces;
+typedef struct { TextureBinding *texture_bindings[4]; unsigned submit_count;
+    Surfaces surfaces; } PGRAPHVkState;
+typedef struct { unsigned frame_time; PGRAPHVkState *vk_renderer_state; } PGRAPHState;
+typedef struct { PGRAPHState pgraph; } NV2AState;
+#define QTAILQ_FOREACH_SAFE(v,h,e,n) for(v=(h)->first;v && ((n=v->next),true);v=n)
+#define trace_nv2a_pgraph_surface_evict_reason(a,b) ((void)0)
+static void evict_surface(NV2AState *d,SurfaceBinding *s) {
+    SurfaceBinding **p=&d->pgraph.vk_renderer_state->surfaces.first;
+    while(*p!=s) p=&(*p)->next;
+    *p=s->next; s->evicted=true;
+}
+/* PRODUCTION */
+int main(void) {
+    const unsigned source_frames[]={0,5,6,9}, sample_frames[]={0,5,6,9,10};
+    unsigned cases=0;
+    for(unsigned sf=0;sf<4;sf++)
+    for(unsigned tf=0;tf<5;tf++)
+    for(unsigned borrowed=0;borrowed<2;borrowed++)
+    for(unsigned matches=0;matches<2;matches++)
+    for(unsigned bound=0;bound<2;bound++) {
+        SurfaceBinding s={.frame_time=source_frames[sf],.image=1};
+        TextureBinding t={.sampled_frame=sample_frames[tf],
+            .s2t_borrowed=borrowed,.image=matches?1:2};
+        PGRAPHVkState r={.surfaces={&s},.texture_bindings={bound?&t:NULL}};
+        NV2AState d={.pgraph={10,&r}};
+        bool source_recent=10-source_frames[sf]<5;
+        bool sample_recent=bound && borrowed && matches && 10-sample_frames[tf]<5;
+        expire_old_surfaces(&d);
+        assert(s.evicted==!(source_recent || sample_recent));
+        cases++;
+    }
+    /* Both normal and fast binds stamp usage through this production helper. */
+    TextureBinding t={.s2t_borrowed=true,.image=1};
+    SurfaceBinding s={.frame_time=0,.image=1};
+    PGRAPHVkState r={.surfaces={&s},.texture_bindings={&t},.submit_count=33};
+    NV2AState d={.pgraph={10,&r}};
+    update_timestamps(&d.pgraph);
+    assert(t.sampled_frame==10 && t.submit_time==33);
+    expire_old_surfaces(&d);
+    assert(!s.evicted && s.frame_time==10);
+    d.pgraph.frame_time=16; /* Still bound but unused: must not pin forever. */
+    expire_old_surfaces(&d); assert(s.evicted);
+    s=(SurfaceBinding){.frame_time=UINT32_MAX-8,.image=1}; r.surfaces.first=&s;
+    t.sampled_frame=UINT32_MAX; d.pgraph.frame_time=2;
+    expire_old_surfaces(&d); assert(!s.evicted && s.frame_time==UINT32_MAX);
+    printf("surface sampling age: %u selection cases, timestamp, idle expiry and wrap passed\n",cases);
+}

@@ -81,6 +81,7 @@ ${cc} -O2 -std=c99 -Wall -I"$here/../.." -o "$work/bin/surfaceclear" "$here/test
 ${cc} -O2 -std=c99 -Wall -I"$here/../.." -o "$work/bin/vramranges" "$here/test-vram-ranges.c"
 "$work/bin/vramranges"
 python3 "$here/test-texture-dirty.py" "$here/../.." "$cc"
+python3 "$here/test-vulkan-surface-age.py" "$here/../.." "$cc"
 # The voice processor's own functions, lifted from vp.c: decoding, the
 # resampler, filters, gains, voice ends and the frame's voice list
 python3 "$here/test-voice-tail.py" "$here/../.." "$cc"
@@ -507,12 +508,12 @@ done
 set +e
 timeout 300 $h "$(path "$core")" "$(path "$work/sysg")" $vp \
   --vulkan --opt xemu_renderer=vulkan --opt xemu_memory=64 \
-  --opt xemu_surface_scale=1 --frames 1460 --strict --save 1370 --load 1400 \
-  --verify-load --pixel 1450 --peek 0x300014 >"$work/gpu_expired_state.txt"
+  --opt xemu_surface_scale=1 --frames 1480 --strict --save 1387 --load 1410 \
+  --verify-load --pixel 1470 --peek 0x300014 >"$work/gpu_expired_state.txt"
 r=$?
 set -e
 if [ "$r" = 0 ]; then
-  grep -q '^pixel_1450=0x0000ff$' "$work/gpu_expired_state.txt"
+  grep -q '^pixel_1470=0x0000ff$' "$work/gpu_expired_state.txt"
   grep -q '^peek_0x300014=0xff0000ff$' "$work/gpu_expired_state.txt"
 elif [ "$r" != 3 ]; then
   echo "FAIL: retired Vulkan surface snapshot exited $r"; exit 1
