@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- The synthetic GPU fixture now publishes the wrapped pushbuffer write pointer before waiting for the read pointer, preventing old-command replay and stalls at ring wrap. New tests retain both draws across same-frame texture and palette updates and verify their distinct colors.
+
 - The synthetic GPU suite now checks two same-frame updates to GPU-produced texture bytes and indexed texture indices, extending the palette-only coverage of immediate cache invalidation across both renderers and all tested scales.
 
 - Vulkan now revalidates cached texture and palette views immediately when GPU surface writeback changes their RAM, even if they were already sampled in the same frame. This fixes stale indexed colors after multiple GPU palette updates before a flip while retaining the RAM-only validation throttle.

@@ -432,11 +432,12 @@ for api in OpenGL Vulkan; do
   for scale in 1 2 4; do
     set +e
     timeout 300 $h "$(path "$core")" "$(path "$work/sysg")" $vp $o \
-      --opt xemu_memory=64 --opt xemu_surface_scale=$scale --frames 1080 --strict \
+      --opt xemu_memory=64 --opt xemu_surface_scale=$scale --frames 1160 --strict \
       --pixel 690 --pixel 710 --pixel 730 --pixel 750 \
       --pixel 770 --pixel 790 --pixel 810 \
       --pixel 830 --pixel 850 --pixel 870 --pixel 890 --pixel 910 \
       --pixel 930 --pixel 950 --pixel 970 --pixel 990 --pixel 1005 --pixel 1030 --pixel 1050 --pixel 1070 \
+      --pixel 1090 --pixel 1110 --pixel 1130 --pixel 1150 \
       --peek 0x300008 >"$work/gpu_texture_alias.txt"
     r=$?
     set -e
@@ -452,6 +453,8 @@ for api in OpenGL Vulkan; do
                 "pixel_970=0x0000ff" "pixel_990=0x0000ff" \
                 "pixel_1005=0x0000ff" "pixel_1030=0x00ff00" \
                 "pixel_1050=0xffffff" "pixel_1070=0xffffff" \
+                "pixel_1090=0x000000" "pixel_1110=0xffffff" \
+                "pixel_1130=0xff0000" "pixel_1150=0x00ff00" \
                 "peek_0x300008=0x00000000"; do
       grep -q "^$want$" "$work/gpu_texture_alias.txt" || {
         echo "FAIL: $api texture alias ${scale}x: $want"; exit 1; }

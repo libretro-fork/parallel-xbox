@@ -164,6 +164,7 @@ typedef unsigned int u32;
 #define SURF_H       0x02800000u   /* direct-layer limit and fallback */
 #define VIDEO_DATA   0x02C00000u
 #define VRAM_END     0x04000000u   /* boundary tests require xemu_memory=64 */
+#define SURF_ORDER   0x03000000u   /* retained second draw for ordering checks */
 #define TEX_SOURCE   0x02E00000u   /* GPU-produced pixels, sampled through aliases */
 #define SURF_G       0x02400000u   /* 15-bit mode change, offset tile */
 #define ZS_CLEAR     0x12345678u   /* depth 0x123456, stencil 0x78 */
@@ -308,13 +309,13 @@ static void kick(void)
     while (*(volatile u32 *)(USER + 0x44) != put) {
     }
     if (put > PUSHBUF_SIZE - 0x400) {
-        /* back to the start: a jump, then the pointers */
+        /* Publish wrapped PUT before waiting: GET must stop at zero,
+         * rather than replaying the previous lap past a transient zero. */
         push(0x20000000u | 0);
-        *(volatile u32 *)(USER + 0x40) = put;
-        while (*(volatile u32 *)(USER + 0x44) != 0) {
-        }
         put = 0;
         *(volatile u32 *)(USER + 0x40) = 0;
+        while (*(volatile u32 *)(USER + 0x44) != 0) {
+        }
     }
 }
 
@@ -358,9 +359,10 @@ static void triangle(void)
  * RGB565 texture with the same byte pitch. Red's bytes are 00 00 FF FF:
  * the narrow view must alternate black and white, not stale CPU blue.
  * A one-byte Y8 view additionally checks the surface writeback boundary. */
-static __attribute__((noinline)) void texture_alias_at(u32 format, u32 width,
-                                                      u32 u, u32 redraw,
-                                                      u32 texture_address)
+static __attribute__((noinline)) void texture_alias_target(u32 format, u32 width,
+                                                          u32 u, u32 redraw,
+                                                          u32 texture_address,
+                                                          u32 target)
 {
     if (redraw) {
         method(NV097_SET_SURFACE_CLIP_H, 32u << 16);
@@ -377,7 +379,7 @@ static __attribute__((noinline)) void texture_alias_at(u32 format, u32 width,
     method(NV097_SET_SURFACE_CLIP_V, HEIGHT << 16);
     method(NV097_SET_SURFACE_FORMAT, 0x128u);
     method(NV097_SET_SURFACE_PITCH, PITCH | (PITCH << 16));
-    clear(SURF_D, 0xff0000ffu);
+    clear(target, 0xff0000ffu);
     /* Window-space positions through an identity composite matrix. Earlier
      * clear/readback cases do not need initialized transform constants. */
     for (u32 i = 0; i < 16; i++) method(NV097_SET_COMPOSITE_MATRIX + i * 4, i % 5 == 0 ? 0x3f800000u : 0);
@@ -417,7 +419,14 @@ static __attribute__((noinline)) void texture_alias_at(u32 format, u32 width,
     cr(0x28, 3);
     cr(0x13, (PITCH / 8) & 0xff);
     cr(0x19, (((PITCH / 8) >> 8) & 7) << 5);
-    wr(PCRTC_START, SURF_D);
+    wr(PCRTC_START, target);
+}
+
+static __attribute__((noinline)) void texture_alias_at(u32 format, u32 width,
+                                                      u32 u, u32 redraw,
+                                                      u32 texture_address)
+{
+    texture_alias_target(format, width, u, redraw, texture_address, SURF_D);
 }
 
 static __attribute__((noinline)) void texture_alias(u32 format, u32 width,
@@ -1024,6 +1033,33 @@ void gpu_main(void)
             texture_alias(0x0b, 1, 0x3f000000u, 0xffff0000u);
             texture_alias(0x0b, 1, 0x3f000000u, 0xff0000ffu);
         }
+        if (frame == 1080) {
+            /* Keep both draws in separate targets: updating the texture
+             * for the second must not change pixels from the first. */
+            texture_alias_target(0x00, 1, 0x3f000000u, 0xffff0000u, TEX_SOURCE, SURF_D);
+            texture_alias_target(0x00, 1, 0x3f000000u, 0xff0000ffu, TEX_SOURCE, SURF_ORDER);
+            wr(PCRTC_START, SURF_D);
+        }
+        if (frame == 1100) wr(PCRTC_START, SURF_ORDER);
+        if (frame == 1120) {
+            ram32(TEX_SOURCE, 0);
+            for (u32 update = 0; update < 2; update++) {
+                method(NV097_SET_SURFACE_CLIP_H, 32u << 16);
+                method(NV097_SET_SURFACE_CLIP_V, 8u << 16);
+                method(NV097_SET_SURFACE_FORMAT, 0x128u);
+                method(NV097_SET_SURFACE_PITCH, 128u | (128u << 16));
+                method(NV097_SET_SURFACE_COLOR_OFFSET, VRAM_END - 1024);
+                method(NV097_SET_COLOR_CLEAR_VALUE,
+                       update ? 0xff00ff00u : 0xffff0000u);
+                method(NV097_SET_CLEAR_RECT_H, 31u << 16);
+                method(NV097_SET_CLEAR_RECT_V, 7u << 16);
+                method(NV097_CLEAR_SURFACE, 0xf0);
+                texture_alias_target(0x0b, 1, 0x3f000000u, 0, TEX_SOURCE,
+                                     update ? SURF_ORDER : SURF_D);
+            }
+            wr(PCRTC_START, SURF_D);
+        }
+        if (frame == 1140) wr(PCRTC_START, SURF_ORDER);
         method(NV097_FLIP_INCREMENT_WRITE, 0);
         kick();
         if (frame >= 100 && frame < 125) {
