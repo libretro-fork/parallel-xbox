@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Vulkan offset scanout shades only the background rectangles left visible by its GPU regions, instead of shading the whole background and painting over it again. The exact rectangle plan is cached until coverage changes; adjacent pieces coalesce. It uses at most eight background draws sharing one descriptor set, with the previous full-background draw retained for complex layouts or too little covered area to justify extra draw calls. Video overlay coordinates and color keying are unchanged. Timing-only Vulkan harness runs now submit a completion marker without an unintended frame readback.
+
 - macOS: the audio DSPs' JIT works on Apple Silicon. macOS there only hands out memory that can hold code being written and run when asked for it as JIT memory; the core did not ask, its request failed, and the DSPs ran on the slower interpreter instead. It now asks for JIT memory and switches the thread between writing code and running it, as QEMU's CPU JIT does. Not yet seen running on a Mac.
 
 - The macOS core can be built with the plain Makefile (`make` on a Mac, `ARCH=x86_64` for Intel), as the Linux and Windows cores are, with the same MacPorts libraries upstream xemu uses. The CI builds it alongside the meson build for now.

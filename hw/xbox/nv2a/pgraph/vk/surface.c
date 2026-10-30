@@ -2851,6 +2851,9 @@ SurfaceBinding *pgraph_vk_compose_scanout(NV2AState *d)
              * or were refreshed by an ordered GPU writeback. */
             pgraph_scanout_background_init(&m->background, &scan);
             pgraph_scanout_background_cover(&m->background, keys, count);
+            pgraph_scanout_background_regions(&m->uncovered, &scan, keys, count);
+            m->trim_background = pgraph_scanout_regions_worthwhile(&m->uncovered,
+                scan.width, scan.height, pg->surface_scale_factor);
         }
         upload_scanout_background(d, out, &m->background, &scan);
     } else if (old_background != m->cache.background || old_geometry != m->cache.geometry) {

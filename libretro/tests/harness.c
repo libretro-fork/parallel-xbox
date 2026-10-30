@@ -738,7 +738,7 @@ static void vk_frame(unsigned w, unsigned h, unsigned char **px_out)
 
    if (px_out)
       *px_out = NULL;
-   if (!vk_image || (size_t)w * h * 4 > VK_READBACK_BYTES)
+   if (!vk_image || (px_out && (size_t)w * h * 4 > VK_READBACK_BYTES))
       return;
    vk_wait_fence(i);
    if (vk_ts_period_ns)
@@ -749,38 +749,42 @@ static void vk_frame(unsigned w, unsigned h, unsigned char **px_out)
    p_vkBeginCommandBuffer(vk_cmd[i], &bi);
    if (vk_ts_period_ns)
       p_vkCmdResetQueryPool(vk_cmd[i], vk_ts_pool, i, 1);
-   memset(&b, 0, sizeof(b));
-   b.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-   b.srcAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_TRANSFER_WRITE_BIT |
-      VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-   b.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-   b.oldLayout = vk_image->image_layout;
-   b.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-   b.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-   b.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-   b.image = vk_image->create_info.image;
-   b.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-   b.subresourceRange.levelCount = 1;
-   b.subresourceRange.layerCount = 1;
-   p_vkCmdPipelineBarrier(vk_cmd[i], VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
-         VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 0, NULL, 1, &b);
-   memset(&region, 0, sizeof(region));
-   region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-   region.imageSubresource.layerCount = 1;
-   region.imageExtent.width = w;
-   region.imageExtent.height = h;
-   region.imageExtent.depth = 1;
-   p_vkCmdCopyImageToBuffer(vk_cmd[i], b.image,
-         VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, vk_readback[i], 1, &region);
-   b.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-   b.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-   b.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-   b.newLayout = vk_image->image_layout;
-   p_vkCmdPipelineBarrier(vk_cmd[i], VK_PIPELINE_STAGE_TRANSFER_BIT,
-         VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, NULL, 0, NULL, 1, &b);
+   if (px_out)
+   {
+      memset(&b, 0, sizeof(b));
+      b.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+      b.srcAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_TRANSFER_WRITE_BIT |
+         VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+      b.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+      b.oldLayout = vk_image->image_layout;
+      b.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+      b.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+      b.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+      b.image = vk_image->create_info.image;
+      b.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+      b.subresourceRange.levelCount = 1;
+      b.subresourceRange.layerCount = 1;
+      p_vkCmdPipelineBarrier(vk_cmd[i], VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+            VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 0, NULL, 1, &b);
+      memset(&region, 0, sizeof(region));
+      region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+      region.imageSubresource.layerCount = 1;
+      region.imageExtent.width = w;
+      region.imageExtent.height = h;
+      region.imageExtent.depth = 1;
+      p_vkCmdCopyImageToBuffer(vk_cmd[i], b.image,
+            VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, vk_readback[i], 1, &region);
+      b.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+      b.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+      b.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+      b.newLayout = vk_image->image_layout;
+      p_vkCmdPipelineBarrier(vk_cmd[i], VK_PIPELINE_STAGE_TRANSFER_BIT,
+            VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, NULL, 0, NULL, 1, &b);
+   }
    if (vk_ts_period_ns)
    {
-      /* when the GPU is through with the frame and its readback */
+      /* Completion marker after the core's frame, and the optional
+       * explicit readback. Timing-only runs never transfer image pixels. */
       p_vkCmdWriteTimestamp(vk_cmd[i], VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
             vk_ts_pool, i);
       vk_ts_pending[i] = 1;
@@ -793,7 +797,7 @@ static void vk_frame(unsigned w, unsigned h, unsigned char **px_out)
    si.commandBufferCount = 1;
    si.pCommandBuffers = &vk_cmd[i];
    for (k = 0; k < vk_num_wait_sems; k++)
-      stages[k] = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+      stages[k] = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
    si.waitSemaphoreCount = vk_num_wait_sems;
    si.pWaitSemaphores = vk_wait_sems;
    si.pWaitDstStageMask = stages;

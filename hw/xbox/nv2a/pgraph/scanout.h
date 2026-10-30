@@ -297,4 +297,109 @@ static inline void pgraph_scanout_background_clean(PGRAPHScanoutBackground *b,
     }
 }
 
+/* Exact complement of opaque scanout regions, bounded to avoid replacing
+ * one background draw with an unbounded number of small draws. */
+#define PGRAPH_SCANOUT_BACKGROUND_RECTS 8
+typedef struct PGRAPHScanoutRegions {
+    PGRAPHScanoutRect rects[PGRAPH_SCANOUT_BACKGROUND_RECTS];
+    unsigned count;
+    bool fallback;
+} PGRAPHScanoutRegions;
+
+static inline void pgraph_scanout_regions_merge(PGRAPHScanoutRegions *p)
+{
+    bool changed;
+    do {
+        changed = false;
+        for (unsigned i = 0; i < p->count && !changed; i++) {
+            for (unsigned j = i + 1; j < p->count; j++) {
+                PGRAPHScanoutRect *a = &p->rects[i], *b = &p->rects[j];
+                if (a->dx == b->dx && a->width == b->width &&
+                    (a->dy + a->height == b->dy || b->dy + b->height == a->dy)) {
+                    if (b->dy < a->dy) a->dy = b->dy;
+                    a->height += b->height;
+                } else if (a->dy == b->dy && a->height == b->height &&
+                    (a->dx + a->width == b->dx || b->dx + b->width == a->dx)) {
+                    if (b->dx < a->dx) a->dx = b->dx;
+                    a->width += b->width;
+                } else {
+                    continue;
+                }
+                a->sx = a->dx;
+                a->sy = a->dy;
+                p->rects[j] = p->rects[--p->count];
+                changed = true;
+                break;
+            }
+        }
+    } while (changed);
+}
+
+static inline bool pgraph_scanout_regions_add(PGRAPHScanoutRegions *p,
+        unsigned x, unsigned y, unsigned width, unsigned height)
+{
+    if (!width || !height) return true;
+    if (p->count == PGRAPH_SCANOUT_BACKGROUND_RECTS) return false;
+    p->rects[p->count++] = (PGRAPHScanoutRect){ x, y, x, y, width, height };
+    return true;
+}
+
+static inline void pgraph_scanout_background_regions(PGRAPHScanoutRegions *out,
+        const PGRAPHScanout *scan, const PGRAPHScanoutKey *keys, unsigned count)
+{
+    *out = (PGRAPHScanoutRegions){ 0 };
+    pgraph_scanout_regions_add(out, 0, 0, scan->width, scan->height);
+    for (unsigned n = 0; n < count; n++) {
+        const PGRAPHScanoutRect *cover = &keys[n].rect;
+        if (!cover->width || !cover->height ||
+            cover->dx >= scan->width || cover->dy >= scan->height) continue;
+        unsigned cw = cover->width < scan->width - cover->dx ?
+                      cover->width : scan->width - cover->dx;
+        unsigned ch = cover->height < scan->height - cover->dy ?
+                      cover->height : scan->height - cover->dy;
+        PGRAPHScanoutRegions next = { 0 };
+        for (unsigned i = 0; i < out->count; i++) {
+            const PGRAPHScanoutRect *a = &out->rects[i];
+            unsigned x0 = a->dx > cover->dx ? a->dx : cover->dx;
+            unsigned y0 = a->dy > cover->dy ? a->dy : cover->dy;
+            unsigned x1 = a->dx + a->width < cover->dx + cw ?
+                          a->dx + a->width : cover->dx + cw;
+            unsigned y1 = a->dy + a->height < cover->dy + ch ?
+                          a->dy + a->height : cover->dy + ch;
+            bool ok;
+            if (x0 >= x1 || y0 >= y1) {
+                ok = pgraph_scanout_regions_add(&next, a->dx, a->dy, a->width, a->height);
+            } else {
+                /* Four disjoint pieces; corners belong to top/bottom. */
+                ok = pgraph_scanout_regions_add(&next, a->dx, a->dy, a->width, y0 - a->dy) &&
+                     pgraph_scanout_regions_add(&next, a->dx, y1, a->width, a->dy + a->height - y1) &&
+                     pgraph_scanout_regions_add(&next, a->dx, y0, x0 - a->dx, y1 - y0) &&
+                     pgraph_scanout_regions_add(&next, x1, y0, a->dx + a->width - x1, y1 - y0);
+            }
+            if (!ok) {
+                *out = (PGRAPHScanoutRegions){ .fallback = true };
+                pgraph_scanout_regions_add(out, 0, 0, scan->width, scan->height);
+                return;
+            }
+        }
+        pgraph_scanout_regions_merge(&next);
+        *out = next;
+    }
+}
+
+/* Small occluders do not justify multiplying CPU draw commands. Require
+ * 64K covered output pixels per extra background draw; zero/one-rect plans
+ * introduce no extra draw and are always useful (or the ordinary fallback). */
+static inline bool pgraph_scanout_regions_worthwhile(const PGRAPHScanoutRegions *p,
+        unsigned width, unsigned height, unsigned scale)
+{
+    if (p->count <= 1) return true;
+    uint64_t visible = 0;
+    for (unsigned i = 0; i < p->count; i++) {
+        visible += (uint64_t)p->rects[i].width * p->rects[i].height;
+    }
+    uint64_t saved = (uint64_t)width * height - visible;
+    return saved * scale * scale >= (uint64_t)(p->count - 1) * 65536;
+}
+
 #endif

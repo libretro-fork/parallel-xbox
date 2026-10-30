@@ -1,5 +1,14 @@
 # The core's tests
 
+`run.sh` runs `test-scanout-regions.c`: 12,000 per-pixel raster-reference
+cases for the exact background complement, clipping, overlap, empty/full cover,
+adjacent-strip coalescing, the eight-rectangle fallback and a scale-aware
+draw-cost guard (64K removed output pixels per additional background draw).
+
+Vulkan timing-only harness runs submit a completion marker without copying
+image pixels. Readbacks occur only for requested hashing/pixel captures; GPU
+completion intervals measure whole frames, not isolated shader execution.
+
 `run.sh` also runs `test-scanout-background.c`: 2,500 independent dirty-byte,
 pitch-padding, partial-edge, coverage and deferred-exposure cases. Sparse CPU
 writes at opposite ends of the GPU fixture's framebuffer check partial uploads.

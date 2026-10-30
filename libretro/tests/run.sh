@@ -50,6 +50,8 @@ ${cc} -O2 -std=c11 -Wall -o "$work/bin/scanoutcheck" "$here/test-scanout.c"
 "$work/bin/scanoutcheck"
 ${cc} -O2 -std=c11 -Wall -o "$work/bin/scanoutbgcheck" "$here/test-scanout-background.c"
 "$work/bin/scanoutbgcheck"
+${cc} -O2 -std=c11 -Wall -o "$work/bin/scanoutregions" "$here/test-scanout-regions.c"
+"$work/bin/scanoutregions"
 # The audio pull's margin without waiting for the DSPs' thread (monitor.h)
 ${cc} -O2 -std=c99 -Wall -o "$work/bin/audiomargin" "$here/test-audio-margin.c"
 "$work/bin/audiomargin"

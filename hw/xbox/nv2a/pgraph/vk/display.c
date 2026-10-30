@@ -1535,12 +1535,11 @@ static void render_display(PGRAPHState *pg, SurfaceBinding *surface)
         .extent.width = disp->width,
         .extent.height = disp->height,
     };
-    vkCmdSetScissor(cmd, 0, 1, &scissor);
 
     ShaderUniformLayout *uniforms = &disp->display_frag->push_constants;
     int source_loc = uniform_index(uniforms, "source_transform");
-    /* Each draw has its own descriptor set, reserved at init for eight
-     * worst-case frames. No live set is rewritten by the following draw. */
+    /* Each source has its own descriptor set, reserved at init for eight
+     * worst-case frames. Its background rectangles share immutable bindings. */
     const unsigned sets_per_frame = PGRAPH_VK_SCANOUT_DIRECT_LAYERS + 1;
     unsigned set_base = ((disp->descriptor_index / sets_per_frame + 1) % 8) *
                         sets_per_frame;
@@ -1560,7 +1559,9 @@ static void render_display(PGRAPHState *pg, SurfaceBinding *surface)
             float inv_scale = 1.0f / pg->surface_scale_factor;
             uniform4f(uniforms, source_loc, 0, 0, inv_scale, inv_scale);
         }
-        vkCmdSetScissor(cmd, 0, 1, &scissor);
+        if (i || !direct || !mode->trim_background) {
+            vkCmdSetScissor(cmd, 0, 1, &scissor);
+        }
         disp->descriptor_index = set_base + i;
         update_descriptor_set(pg, source);
         vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
@@ -1568,7 +1569,21 @@ static void render_display(PGRAPHState *pg, SurfaceBinding *surface)
             &disp->descriptor_sets[disp->descriptor_index], 0, NULL);
         vkCmdPushConstants(cmd, disp->pipeline_layout, VK_SHADER_STAGE_FRAGMENT_BIT,
             0, uniforms->total_size, uniforms->allocation);
-        vkCmdDraw(cmd, 3, 1, 0, 0);
+        if (!i && direct && mode->trim_background) {
+            /* Later opaque tile draws cover the excluded pixels. Absolute
+             * shader coordinates keep PVIDEO keying identical at every edge.
+             * All rectangles share this source's descriptor/push constants. */
+            for (unsigned j = 0; j < mode->uncovered.count; j++) {
+                PGRAPHScanoutRect *p = &mode->uncovered.rects[j];
+                unsigned scale = pg->surface_scale_factor;
+                scissor.offset = (VkOffset2D){ p->dx * scale, p->dy * scale };
+                scissor.extent = (VkExtent2D){ p->width * scale, p->height * scale };
+                vkCmdSetScissor(cmd, 0, 1, &scissor);
+                vkCmdDraw(cmd, 3, 1, 0, 0);
+            }
+        } else {
+            vkCmdDraw(cmd, 3, 1, 0, 0);
+        }
     }
 
     vkCmdEndRenderPass(cmd);

@@ -315,8 +315,8 @@ typedef struct PGRAPHVkDisplayState {
 
     VkDescriptorPool descriptor_pool;
     VkDescriptorSetLayout descriptor_set_layout;
-    /* One set per display draw, eight worst-case presentations in flight.
-     * Reserved at init: never rewrite an in-flight draw's descriptors. */
+    /* One set per source, eight worst-case presentations in flight.
+     * Background rectangles share one set without rewriting its bindings. */
 #define PGRAPH_VK_SCANOUT_DIRECT_LAYERS 32
 #define PGRAPH_VK_DISPLAY_SETS (8 * (PGRAPH_VK_SCANOUT_DIRECT_LAYERS + 1))
     VkDescriptorSet descriptor_sets[PGRAPH_VK_DISPLAY_SETS];
@@ -755,9 +755,10 @@ typedef struct PGRAPHVkState {
     struct PGRAPHVkScanoutMode {
         SurfaceBinding out;
         unsigned scale;
-        bool direct;
+        bool direct, trim_background;
         PGRAPHScanoutCache cache;
         PGRAPHScanoutBackground background;
+        PGRAPHScanoutRegions uncovered;
     } scanout_modes[2];
     struct PGRAPHVkScanoutLayer {
         SurfaceBinding *surface;
