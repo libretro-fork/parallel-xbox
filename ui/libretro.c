@@ -57,8 +57,6 @@
 #include "qemu/timer.h"
 #include "block/aio.h"
 #include <retro_atomic.h>
-#include <rthreads/rthreads.h>
-#include <rthreads/retro_eventcount.h>
 
 extern bool qemu_libretro_handle_requests(void);
 
@@ -163,10 +161,9 @@ static VkFence ra_vk_fences[2] = { VK_NULL_HANDLE, VK_NULL_HANDLE };
 static uint32_t ra_vk_frame_idx = 0;
 static bool ra_vk_funcs_resolved = false;
 
-/* Standalone GL for VK renderer's internal GL interop (PFIFO thread) */
-typedef struct _GloContext GloContext;
-extern GloContext *glo_context_create(void);
-extern void glo_set_current(GloContext *context);
+/* Standalone GL for VK renderer's internal GL interop (PFIFO thread), and
+ * the frontend's current context kept around the machine's commands */
+#include "hw/xbox/nv2a/pgraph/thirdparty/gloffscreen/gloffscreen.h"
 
 /* ========================================================================= */
 /* Emulation state                                                           */
@@ -243,7 +240,7 @@ static int  opt_network_backend = 0; /* 0=disabled, 1=nat */
 /* Forward declarations                                                      */
 /* ========================================================================= */
 
-/* The emulator thread's commands (lr_command) */
+/* The machine's commands (lr_command), on the frontend's thread */
 enum lr_cmd {
     LR_CMD_START = 1, /* build the machine, or put the new content in it */
     LR_CMD_FRAME,     /* one frame of guest time */
@@ -1809,19 +1806,19 @@ static void populate_config(const char *dvd_path)
 /* ========================================================================= */
 
 /*
- * One thread, made at the first content and kept for the process (QEMU's
- * machine is built once, see retro_init), is QEMU's main loop and runs the
- * guest CPU itself (accel/tcg/tcg-accel-ops-libretro.c). It waits at a gate
- * for retro_run, which asks it for one frame of guest time - 1001/60 ms, the
- * frame rate the core declares - and waits for it. Guest time passes only in
- * such a frame: the guest stops between two retro_runs, so the frontend's
- * pacing, menu, pause, fast-forward and slow motion are the guest's. The
- * sound engine's frames are guest time (apu.c), so every video frame has
- * exactly its samples.
+ * The frontend's thread runs the machine itself: it is QEMU's main loop and
+ * the guest CPU (accel/tcg/tcg-accel-ops-libretro.c). retro_run runs one
+ * frame of guest time on it - 1001/60 ms, the frame rate the core declares -
+ * with nothing handed to another thread and nothing waited for. Guest time
+ * passes only in such a frame: the guest stops between two retro_runs, so
+ * the frontend's pacing, menu, pause, fast-forward and slow motion are the
+ * guest's. The sound engine's frames are guest time (apu.c), so every video
+ * frame has exactly its samples.
  *
- * The gate is lock-free: a command and a sequence number published with a
- * release, an eventcount each way. The thread does not hold the BQL while
- * it waits at the gate.
+ * The machine is built once in a process (see retro_init), on the thread
+ * that first runs content, and QEMU keeps that thread's state (the vCPU's
+ * TCG context, the main loop's AioContext, RCU): the frontend calls the core
+ * from the one thread. Between commands the thread does not hold the BQL.
  */
 
 
@@ -1832,11 +1829,6 @@ static void populate_config(const char *dvd_path)
  * hands over that frame and not the one before (lr_run_frame) */
 #define LR_VBLANK_LEAD_NS 1000000LL
 
-static sthread_t *lr_thread;
-static retro_eventcount_t lr_cmd_ec, lr_done_ec;
-static retro_atomic_int_t lr_cmd_seq, lr_done_seq;
-static int lr_cmd;              /* written before lr_cmd_seq is released */
-static bool lr_cmd_ok;          /* written before lr_done_seq is released */
 
 /* the frame clock, on the emulator thread */
 static QEMUTimer *lr_frame_timer;
@@ -2247,105 +2239,55 @@ static void lr_stop_machine(void)
     hdd_session_end();
 }
 
-static void lr_thread_main(void *opaque)
+/* A command, on the frontend's thread. Building the machine and switching
+ * the renderer make GL contexts of the renderer's current on it
+ * (early_context_init): the frontend's goes back after. */
+static bool lr_command(int cmd)
 {
-    int seen = 0;
+    GloCurrent gl;
+    bool ok = true;
 
     /* QEMU's main loop and the vCPU read under RCU (the translation
      * blocks' hash table, the memory map): registered, as upstream's main
      * thread (rcu_init) and vCPU threads (rr_cpu_thread_fn) are, so a grace
-     * period waits for them and the vCPU is kicked out of the translated
-     * code for it (lr_start_vcpu's force-RCU notifier). Unregistered, the
-     * call_rcu thread freed what this thread was still reading. */
-    rcu_register_thread();
-
-    for (;;) {
-        int seq = retro_atomic_load_acquire_int(&lr_cmd_seq);
-        bool ok = true;
-
-        if (seq == seen) {
-            int key = retro_eventcount_prepare_wait(&lr_cmd_ec);
-            if (retro_atomic_load_acquire_int(&lr_cmd_seq) == seen) {
-                retro_eventcount_commit_wait(&lr_cmd_ec, key);
-            } else {
-                retro_eventcount_cancel_wait(&lr_cmd_ec);
-            }
-            continue;
-        }
-        seen = seq;
-
-        switch (lr_cmd) {
-        case LR_CMD_START:
-            ok = lr_start_machine();
-            break;
-        case LR_CMD_FRAME:
-            bql_lock();
-            lr_run_frame();
-            bql_unlock();
-            break;
-        case LR_CMD_SAVE:
-        case LR_CMD_LOAD:
-            bql_lock();
-            ok = lr_state(lr_cmd == LR_CMD_SAVE);
-            bql_unlock();
-            break;
-        case LR_CMD_STOP:
-            bql_lock();
-            lr_stop_machine();
-            bql_unlock();
-            break;
-        case LR_CMD_RENDERER:
-            bql_lock();
-            ok = nv2a_libretro_switch_renderer(lr_cmd_arg);
-            bql_unlock();
-            break;
-        }
-
-        lr_cmd_ok = ok;
-        retro_atomic_store_release_int(&lr_done_seq, seq);
-        retro_eventcount_notify(&lr_done_ec);
+     * period waits for this thread and the vCPU is kicked out of the
+     * translated code for it (lr_start_vcpu's force-RCU notifier). The
+     * thread that loaded the core is registered already. */
+    if (cmd == LR_CMD_START && !rcu_thread_registered()) {
+        rcu_register_thread();
     }
-}
 
-/* The frontend's thread: wait for the command seq to be done. No timeout and
- * no polling: it sleeps until the emulator thread is done with it. */
-static void lr_wait_done(int seq)
-{
-    while (retro_atomic_load_acquire_int(&lr_done_seq) != seq) {
-        int key = retro_eventcount_prepare_wait(&lr_done_ec);
-        if (retro_atomic_load_acquire_int(&lr_done_seq) == seq) {
-            retro_eventcount_cancel_wait(&lr_done_ec);
-            break;
-        }
-        retro_eventcount_commit_wait(&lr_done_ec, key);
+    if (cmd == LR_CMD_FRAME) {
+        bql_lock();
+        lr_run_frame();
+        bql_unlock();
+        return true;
     }
-}
 
-/* The frontend's thread: hand the emulator thread a command; the sequence
- * number to wait for */
-static int lr_post(int cmd)
-{
-    int seq;
-
-    if (!lr_thread) {
-        retro_eventcount_init(&lr_cmd_ec);
-        retro_eventcount_init(&lr_done_ec);
-        retro_atomic_int_init(&lr_cmd_seq, 0);
-        retro_atomic_int_init(&lr_done_seq, 0);
-        lr_thread = sthread_create(lr_thread_main, NULL);
+    glo_current_save(&gl);
+    switch (cmd) {
+    case LR_CMD_START:
+        ok = lr_start_machine();
+        break;
+    case LR_CMD_SAVE:
+    case LR_CMD_LOAD:
+        bql_lock();
+        ok = lr_state(cmd == LR_CMD_SAVE);
+        bql_unlock();
+        break;
+    case LR_CMD_STOP:
+        bql_lock();
+        lr_stop_machine();
+        bql_unlock();
+        break;
+    case LR_CMD_RENDERER:
+        bql_lock();
+        ok = nv2a_libretro_switch_renderer(lr_cmd_arg);
+        bql_unlock();
+        break;
     }
-    lr_cmd = cmd;
-    seq = retro_atomic_load_acquire_int(&lr_cmd_seq) + 1;
-    retro_atomic_store_release_int(&lr_cmd_seq, seq);
-    retro_eventcount_notify(&lr_cmd_ec);
-    return seq;
-}
-
-/* A command other than a frame: waited for until done */
-static bool lr_command(int cmd)
-{
-    lr_wait_done(lr_post(cmd));
-    return lr_cmd_ok;
+    glo_current_restore(&gl);
+    return ok;
 }
 
 /* The hard disk image, in either format (block/libretro-disk.c tells them
@@ -3064,9 +3006,8 @@ RETRO_API bool retro_load_game(const struct retro_game_info *game)
     /* Populate xemu config from core options */
     populate_config(opt_dvd_path);
 
-    /* The machine starts on the emulator thread at the first retro_run,
-     * once the frontend's context is there (context_reset): the renderer
-     * shares it */
+    /* The machine starts at the first retro_run, once the frontend's
+     * context is there (context_reset): the renderer shares it */
     emu_started_once = true;
     emu_started_vulkan = use_vulkan;
     emu_started_chihiro = chihiro;
@@ -3311,10 +3252,8 @@ static void lr_present_idle(void)
 
 /*
  * One retro_run, one frame: the input polled now goes into a frame of guest
- * time the emulator thread runs, and when it is done its picture and its
- * 800 or 801 samples go to the frontend. A frame not done within a second
- * (a wedged machine) leaves a repeated picture and no samples; it is shown
- * by a later retro_run, which asks for no new frame meanwhile.
+ * time run here, on this thread, and when it is done its picture and its
+ * 800 or 801 samples go to the frontend.
  */
 RETRO_API void retro_run(void)
 {
@@ -3359,7 +3298,7 @@ RETRO_API void retro_run(void)
     {
         extern void libretro_input_latch(bool use_bitmask);
         libretro_input_latch(input_bitmasks);
-        lr_wait_done(lr_post(LR_CMD_FRAME));
+        lr_command(LR_CMD_FRAME);
     }
 
     lr_present_video();

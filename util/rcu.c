@@ -402,6 +402,19 @@ void rcu_register_thread(void)
     qemu_mutex_unlock(&rcu_registry_lock);
 }
 
+/* Whether this thread is in the registry: the libretro core's machine runs
+ * on the frontend's thread, which may be the one that loaded the core and
+ * was registered by rcu_init */
+bool rcu_thread_registered(void)
+{
+    bool registered;
+
+    qemu_mutex_lock(&rcu_registry_lock);
+    registered = get_ptr_rcu_reader()->node.le_prev != NULL;
+    qemu_mutex_unlock(&rcu_registry_lock);
+    return registered;
+}
+
 void rcu_unregister_thread(void)
 {
     qemu_mutex_lock(&rcu_registry_lock);

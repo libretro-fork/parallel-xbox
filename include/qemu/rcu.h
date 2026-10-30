@@ -126,6 +126,7 @@ void synchronize_rcu(void);
  */
 void rcu_register_thread(void);
 void rcu_unregister_thread(void);
+bool rcu_thread_registered(void);
 
 void rcu_disable_atfork(void);
 

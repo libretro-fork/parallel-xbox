@@ -39,6 +39,15 @@ typedef struct _GloContext GloContext;
 /* Change current context */
 void glo_set_current(GloContext *context);
 
+/* The context current on this thread, and its surfaces, as the window
+ * system has them (libretro: the frontend's, around work of the core's own
+ * on the frontend's thread that may make one of its contexts current) */
+typedef struct GloCurrent {
+    void *ctx, *dpy, *draw, *read;
+} GloCurrent;
+void glo_current_save(GloCurrent *saved);
+void glo_current_restore(const GloCurrent *saved);
+
 /* Check GL Extensions */
 bool glo_check_extension(const char* ext_name);
 

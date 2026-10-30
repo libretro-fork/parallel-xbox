@@ -108,10 +108,9 @@ int xemu_input_get_test_mode(void)
 }
 
 /* The pads as retro_run read them for the frame it starts
- * (libretro_input_latch), on the frontend's thread: the frontend's input is
- * read only there, never from the emulator thread, where the USB devices
- * (xid.c) take it. The frame's start publishes it (ui/libretro.c), and the
- * emulator thread reads it only during that frame. */
+ * (libretro_input_latch), on the frontend's thread, which then runs the
+ * frame: the USB devices (xid.c) take it from here during that frame,
+ * never from the frontend's input callbacks. */
 static GamepadState libretro_latched[4];
 
 void libretro_input_latch(bool use_bitmask)

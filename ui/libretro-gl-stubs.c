@@ -25,6 +25,18 @@ void glo_set_current(GloContext *context)
     (void)context;
 }
 
+typedef struct GloCurrent GloCurrent;
+
+void glo_current_save(GloCurrent *saved)
+{
+    (void)saved;
+}
+
+void glo_current_restore(const GloCurrent *saved)
+{
+    (void)saved;
+}
+
 void libretro_gl_prepare(void)
 {
 }

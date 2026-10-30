@@ -15,6 +15,7 @@
 #include <string.h>
 #include <assert.h>
 #include <stdbool.h>
+#include <stdint.h>
 
 #include "gloffscreen.h"
 
@@ -220,6 +221,20 @@ void glo_set_current(GloContext *context)
     }
 }
 
+void glo_current_save(GloCurrent *saved)
+{
+    saved->ctx = wglGetCurrentContext();
+    saved->dpy = wglGetCurrentDC();
+    saved->draw = saved->read = NULL;
+}
+
+void glo_current_restore(const GloCurrent *saved)
+{
+    if (wglGetCurrentContext() != (HGLRC)saved->ctx) {
+        wglMakeCurrent((HDC)saved->dpy, (HGLRC)saved->ctx);
+    }
+}
+
 void glo_context_destroy(GloContext *context)
 {
     if (!context) return;
@@ -339,6 +354,19 @@ GloContext *glo_context_create(void)
 void glo_set_current(GloContext *context)
 {
     CGLSetCurrentContext(context ? context->ctx : NULL);
+}
+
+void glo_current_save(GloCurrent *saved)
+{
+    saved->ctx = CGLGetCurrentContext();
+    saved->dpy = saved->draw = saved->read = NULL;
+}
+
+void glo_current_restore(const GloCurrent *saved)
+{
+    if (CGLGetCurrentContext() != (CGLContextObj)saved->ctx) {
+        CGLSetCurrentContext((CGLContextObj)saved->ctx);
+    }
 }
 
 void glo_context_destroy(GloContext *context)
@@ -592,6 +620,50 @@ void glo_set_current(GloContext *context)
         eglMakeCurrent(g_egl_dpy, context->egl_surface, context->egl_surface, context->egl_ctx);
     } else if (context->api == GLO_API_GLX) {
         glXMakeContextCurrent(g_glx_dpy, context->glx_pbuffer, context->glx_pbuffer, context->glx_ctx);
+    }
+}
+
+/* The API the worker contexts are made with is the one the frontend's
+ * context is (libretro_gl_prepare), so that is the one to ask */
+void glo_current_save(GloCurrent *saved)
+{
+    saved->ctx = saved->dpy = saved->draw = saved->read = NULL;
+    if (g_api == GLO_API_EGL) {
+        saved->ctx = eglGetCurrentContext();
+        saved->dpy = eglGetCurrentDisplay();
+        saved->draw = eglGetCurrentSurface(EGL_DRAW);
+        saved->read = eglGetCurrentSurface(EGL_READ);
+    } else if (g_api == GLO_API_GLX) {
+        saved->ctx = glXGetCurrentContext();
+        saved->dpy = glXGetCurrentDisplay();
+        saved->draw = (void *)(uintptr_t)glXGetCurrentDrawable();
+        saved->read = (void *)(uintptr_t)glXGetCurrentReadDrawable();
+    }
+}
+
+void glo_current_restore(const GloCurrent *saved)
+{
+    if (g_api == GLO_API_EGL) {
+        if (eglGetCurrentContext() != (EGLContext)saved->ctx) {
+            if (saved->ctx) {
+                eglMakeCurrent((EGLDisplay)saved->dpy, (EGLSurface)saved->draw,
+                               (EGLSurface)saved->read, (EGLContext)saved->ctx);
+            } else {
+                eglMakeCurrent(g_egl_dpy, EGL_NO_SURFACE, EGL_NO_SURFACE,
+                               EGL_NO_CONTEXT);
+            }
+        }
+    } else if (g_api == GLO_API_GLX) {
+        if (glXGetCurrentContext() != (GLXContext)saved->ctx) {
+            if (saved->ctx) {
+                glXMakeContextCurrent((Display *)saved->dpy,
+                                      (GLXDrawable)(uintptr_t)saved->draw,
+                                      (GLXDrawable)(uintptr_t)saved->read,
+                                      (GLXContext)saved->ctx);
+            } else {
+                glXMakeContextCurrent(g_glx_dpy, None, None, NULL);
+            }
+        }
     }
 }
 

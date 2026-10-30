@@ -499,6 +499,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 - The emulator thread, which runs QEMU's main loop and the guest's CPU, is registered with QEMU's RCU, as upstream's main and CPU threads are. It never was: QEMU's background thread that frees what a change replaced (the translated code's hash table when it grows, the old memory map after a device moves) did not wait for it, and could free memory the guest's CPU was still reading, a crash at random. Now it waits until the CPU is out of the translated code, and kicks it out of a long run for it.
 
+- The machine runs on RetroArch's own thread, in retro_run, instead of on a thread of its own that retro_run handed each frame to and slept on until it was done. That was two thread wake-ups a frame (about 0.1 ms on the test machine) on the way into the frame and out of it, and a thread less now. Building the machine puts the frontend's OpenGL context back as it found it.
+
 ## Test build 4 - 2026-10-25
 
 - The core info file names the core "Microsoft - Xbox / Sega Chihiro (xemu)" (NNshi).
