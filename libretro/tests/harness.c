@@ -2084,5 +2084,8 @@ int main(int argc, char **argv)
       if (use_vulkan)
          vk_teardown();
    }
+   /* what the unload printed (vk_teardown's readback count): _exit does
+    * not flush stdout */
+   fflush(stdout);
    _exit(fail);
 }
