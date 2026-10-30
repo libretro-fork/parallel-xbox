@@ -6,12 +6,22 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#ifdef _WIN32
+#include <windows.h>
+#endif
 
 static double seconds(void)
 {
+#ifdef _WIN32
+    LARGE_INTEGER counter, frequency;
+    QueryPerformanceCounter(&counter);
+    QueryPerformanceFrequency(&frequency);
+    return (double)counter.QuadPart / frequency.QuadPart;
+#else
     struct timespec t;
     timespec_get(&t, TIME_UTC);
     return t.tv_sec + t.tv_nsec * 1e-9;
+#endif
 }
 
 int main(int argc, char **argv)
