@@ -3,18 +3,24 @@
 #
 #   libslirp 4.9.1, on every platform: built on the core's own GLib
 #   (libretro/glib), as the core's code is.
-#   libepoxy (WGL) and the Vulkan headers, on Windows, where the Makefile
-#   needs nothing installed but the compiler (MSYS2's MINGW64 gcc, or a
-#   MinGW-w64 cross compiler).
+#   libepoxy (WGL; EGL on Android) and the Vulkan headers, on Windows and
+#   Android, where the Makefile needs nothing installed but the compiler
+#   (MSYS2's MINGW64 gcc or a MinGW-w64 cross compiler; the NDK's clang).
 
 DEPS_DIR := $(CORE_DIR)/deps
 
-# --- libepoxy, WGL ---
+# --- libepoxy: WGL on Windows, EGL on Android ---
 EPOXY_SOURCES := $(DEPS_DIR)/libepoxy/src/dispatch_common.c \
-	$(DEPS_DIR)/libepoxy/src/dispatch_wgl.c \
-	$(DEPS_DIR)/libepoxy/src/gl_generated_dispatch.c \
-	$(DEPS_DIR)/libepoxy/src/wgl_generated_dispatch.c
+	$(DEPS_DIR)/libepoxy/src/gl_generated_dispatch.c
 EPOXY_CFLAGS := -I$(DEPS_DIR)/libepoxy/include -I$(DEPS_DIR)/libepoxy/src
+ifeq ($(platform),android)
+EPOXY_SOURCES += $(DEPS_DIR)/libepoxy/src/dispatch_egl.c \
+	$(DEPS_DIR)/libepoxy/src/egl_generated_dispatch.c
+EPOXY_CFLAGS += -DANDROID
+else
+EPOXY_SOURCES += $(DEPS_DIR)/libepoxy/src/dispatch_wgl.c \
+	$(DEPS_DIR)/libepoxy/src/wgl_generated_dispatch.c
+endif
 
 # --- libslirp ---
 SLIRP_SOURCES := $(wildcard $(DEPS_DIR)/libslirp/src/*.c)

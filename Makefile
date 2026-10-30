@@ -7,6 +7,8 @@
 #                            the Windows core, cross-compiled
 #   make ARCH=x86_64         on macOS: the core for that CPU (arm64 or
 #                            x86_64; the Mac's own by default)
+#   make platform=android NDK=<ndk> ANDROID_ABI=arm64-v8a
+#                            the Android core (arm64-v8a or x86_64)
 #   make DEBUG=1             unoptimized, with debug information
 #   make clean
 #
@@ -46,9 +48,26 @@ ifneq ($(filter win64 windows mingw,$(platform)),)
    override platform := win
 endif
 
-# The compilers: CROSS_PREFIX's, or the system's (make's default CC, cc,
-# is not there in MSYS2's MINGW64 shell, gcc is)
-ifneq ($(CROSS_PREFIX),)
+# The compilers: the NDK's for Android (NDK, the NDK's directory; the ABI's
+# target at API level 29, Android 10), CROSS_PREFIX's, or the system's
+# (make's default CC, cc, is not there in MSYS2's MINGW64 shell, gcc is)
+ifeq ($(platform),android)
+   ANDROID_ABI ?= arm64-v8a
+   ifeq ($(ANDROID_ABI),arm64-v8a)
+      ANDROID_TARGET := aarch64-linux-android29
+   else ifeq ($(ANDROID_ABI),x86_64)
+      ANDROID_TARGET := x86_64-linux-android29
+   else
+      $(error ANDROID_ABI=$(ANDROID_ABI): arm64-v8a or x86_64)
+   endif
+   ifeq ($(NDK),)
+      $(error platform=android needs NDK, the Android NDK's directory)
+   endif
+   NDK_BIN := $(NDK)/toolchains/llvm/prebuilt/$(shell uname -s | tr A-Z a-z)-x86_64/bin
+   CC      := $(NDK_BIN)/$(ANDROID_TARGET)-clang
+   CXX     := $(NDK_BIN)/$(ANDROID_TARGET)-clang++
+   AR      := $(NDK_BIN)/llvm-ar
+else ifneq ($(CROSS_PREFIX),)
    CC  := $(CROSS_PREFIX)gcc
    CXX := $(CROSS_PREFIX)g++
    AR  := $(CROSS_PREFIX)ar
@@ -150,8 +169,22 @@ else ifeq ($(platform),osx)
    ifeq ($(DEPS_CFLAGS),-pthread)
       $(error pkg-config found none of: $(PKGS))
    endif
+else ifeq ($(platform),android)
+   # Vulkan only, through the frontend's context: no GL renderer, and
+   # libepoxy (built from deps/, EGL) only for the core's own GL path
+   HOST_OS     := posix
+   TARGET      := $(TARGET_NAME)_libretro_android.so
+   fpic        := -fPIC
+   SHARED      := -shared -Wl,--version-script=$(CORE_DIR)/ui/libretro.map \
+                  -Wl,--no-undefined -Wl,-Bsymbolic -Wl,--exclude-libs,ALL \
+                  -Wl,-z,relro -Wl,-z,now -Wl,--gc-sections \
+                  -static-libstdc++
+   OS_INCFLAGS := -isystem $(CORE_DIR)/linux-headers
+   OS_CFLAGS   := -DVK_USE_PLATFORM_ANDROID_KHR
+   OS_LIBS     := -ldl -lm -llog -landroid
+   VENDORED_DEPS := 1
 else
-   $(error platform=$(platform) is not built by this Makefile: unix (Linux), win or osx)
+   $(error platform=$(platform) is not built by this Makefile: unix (Linux), win, osx or android)
 endif
 
 # --- Flags ---------------------------------------------------------------

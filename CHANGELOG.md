@@ -6,6 +6,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 - An absent MCPX boot ROM uses an experimental, independently implemented MCPX 1.0 HLE boot path. The flash BIOS is still required. Supplied ROMs retain the existing boot path; Chihiro retains its BIOS's built-in boot code. MCPX 1.1/FBL boot is not implemented by the fallback.
 
+- Android is built with the plain Makefile (`make platform=android NDK=... ANDROID_ABI=arm64-v8a` or `x86_64`), with nothing but the NDK: libepoxy (EGL) and libslirp come from `deps/`, the core's own GLib from `libretro/glib`. The Android core now has NAT networking too, which the meson build left out.
+
 - Vulkan shader switches reuse the current immutable descriptor set when its textures, uniform buffer and both uniform ranges still match. Dynamic offsets continue to select each draw's snapshots. This avoids redundant descriptor writes and pool consumption without another cache or GPU allocation.
 
 - OpenGL allocates native-size readback buffers for depth and swizzled color surfaces already converted to native pixels on the GPU, avoiding scale-squared excess allocation. Scaled color buffers remain available for GPU-only surface restoration.
