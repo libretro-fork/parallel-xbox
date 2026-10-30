@@ -88,7 +88,13 @@ static void check_download_storage(NV2AState *d)
             glBindTexture(GL_TEXTURE_2D, s.gl_buffer);
             glTexImage2D(GL_TEXTURE_2D, 0, s.fmt.gl_internal_format, w, h,
                          0, s.fmt.gl_format, s.fmt.gl_type, pixels);
+            /* A host rewrite stands in for a new emulated draw. Otherwise
+             * the pending snapshot is correctly reused as still current. */
+            ++s.draw_time;
             surface_download_issue(d, &s);
+            GLsync pending = s.dl_fence;
+            surface_download_issue(d, &s);
+            assert(s.dl_fence == pending);
             GLenum result = glClientWaitSync(s.dl_fence,
                 GL_SYNC_FLUSH_COMMANDS_BIT, 5000000000ULL);
             assert(result == GL_ALREADY_SIGNALED || result == GL_CONDITION_SATISFIED);

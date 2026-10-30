@@ -4,6 +4,10 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Video gains a separate Force Quality Filtering option (restart required, disabled by default), requesting up to 16x anisotropic filtering on wrapping/mirrored linear 2D color textures. Point/depth, cube and clamped/bordered sampling keep game filtering, and OpenGL isolates forced filtering from shared point-sampled bindings. Force Texture LOD0 remains independent.
+
+- Force Texture LOD0 keeps eligible Vulkan mixed RAM/GPU cubemaps at internal resolution without GPU-face readback; RAM faces expand on the GPU and temporary images retire through the existing pool. Compatible Vulkan 2D surfaces continue to use direct sampling.
+
 - RCU startup is initialized once and its callback queue admits only one worker. This prevents the duplicate-consumer queue abort observed during startup fast-forward; fork children can still replace their inherited worker.
 
 - The PC machine code the Xbox is built on loses what the Xbox never has: memory hotplug (DIMMs, NVDIMMs, virtio memory), the fw_cfg firmware interface (and the -fw_cfg option) and the ACPI table builder the PC BIOS reads. The Xbox's own ACPI power management (acpi_xbox.c) stays. Nothing changes for someone using the core.

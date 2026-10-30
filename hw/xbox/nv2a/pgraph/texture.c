@@ -25,10 +25,44 @@
 
 /* Core option, fixed for the lifetime of the running machine. */
 static bool force_texture_lod0;
+static bool force_quality_filtering;
 
 void nv2a_set_force_texture_lod0(bool enabled)
 {
     force_texture_lod0 = enabled;
+}
+
+void nv2a_set_force_quality_filtering(bool enabled)
+{
+    force_quality_filtering = enabled;
+}
+
+bool nv2a_get_force_texture_lod0(void)
+{
+    return force_texture_lod0;
+}
+
+/* AF footprints can cross cube faces, borders and clamped atlas tiles.
+ * Restrict the override to wrapping 2D color textures; preserve other game
+ * filtering and address modes rather than widening their sample footprint. */
+bool pgraph_texture_force_anisotropy(const TextureShape *state, uint32_t filter,
+                                     uint32_t address)
+{
+    unsigned min = GET_MASK(filter, NV_PGRAPH_TEXFILTER0_MIN);
+    unsigned mag = GET_MASK(filter, NV_PGRAPH_TEXFILTER0_MAG);
+    unsigned u = GET_MASK(address, NV_PGRAPH_TEXADDRESS0_ADDRU);
+    unsigned v = GET_MASK(address, NV_PGRAPH_TEXADDRESS0_ADDRV);
+    return force_quality_filtering && state->dimensionality == 2 &&
+        !state->cubemap && !state->border &&
+        u >= NV_PGRAPH_TEXADDRESS0_ADDRU_WRAP &&
+        u <= NV_PGRAPH_TEXADDRESS0_ADDRU_MIRROR &&
+        v >= NV_PGRAPH_TEXADDRESS0_ADDRU_WRAP &&
+        v <= NV_PGRAPH_TEXADDRESS0_ADDRU_MIRROR &&
+        !kelvin_color_format_info_map[state->color_format].depth &&
+        mag == 2 /* tent */ &&
+        (min == NV_PGRAPH_TEXFILTER0_MIN_TENT_LOD0 ||
+         min == NV_PGRAPH_TEXFILTER0_MIN_TENT_NEARESTLOD ||
+         min == NV_PGRAPH_TEXFILTER0_MIN_TENT_TENT_LOD);
 }
 
 const BasicColorFormatInfo kelvin_color_format_info_map[66] = {

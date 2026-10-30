@@ -76,6 +76,8 @@ uint8_t *pgraph_convert_texture_data(const TextureShape s, const uint8_t *data,
 hwaddr pgraph_get_texture_phys_addr(PGRAPHState *pg, int texture_idx);
 hwaddr pgraph_get_texture_palette_phys_addr_length(PGRAPHState *pg, int texture_idx, size_t *length);
 TextureShape pgraph_get_texture_shape(PGRAPHState *pg, int texture_idx);
+bool pgraph_texture_force_anisotropy(const TextureShape *state, uint32_t filter,
+                                     uint32_t address);
 /* Aligned guest mip-chain span of one cubemap face, including border data. */
 size_t pgraph_get_cubemap_face_length(PGRAPHState *pg, TextureShape shape);
 size_t pgraph_get_texture_length(PGRAPHState *pg, TextureShape *shape);

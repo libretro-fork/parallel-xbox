@@ -1591,6 +1591,112 @@ void gpu_main(void)
             method(NV097_SET_SURFACE_COLOR_OFFSET, SURF_D);
             triangle(); if (frame == 3740) disable_texture(); kick();
         }
+        /* A sub-native edge in one GPU cube face. Both sample coordinates
+         * hit native texel 8, but straddle the edge at higher resolution. */
+        if (frame == 3800) {
+            for (u32 offset = 0; offset < 6 * 1024; offset += 4)
+                ram32(0x03d00000u + offset, 0xff0000ffu);
+            ram32(0x03c80000u, 0xffff0000u);
+            texture_alias_at(0xc0000012u, 1, 0, 0, 0x03c80000u);
+            method(NV097_SET_SURFACE_CLIP_H, 16u << 16);
+            method(NV097_SET_SURFACE_CLIP_V, 16u << 16);
+            method(NV097_SET_SURFACE_FORMAT, 0x04040228u);
+            method(NV097_SET_SURFACE_PITCH, 64u | (64u << 16));
+            method(NV097_SET_SURFACE_COLOR_OFFSET, 0x03d00400u);
+            method(NV097_SET_COLOR_CLEAR_VALUE, 0xff00ff00u);
+            method(NV097_SET_CLEAR_RECT_H, 15u << 16);
+            method(NV097_SET_CLEAR_RECT_V, 15u << 16);
+            method(NV097_CLEAR_SURFACE, 0xf0);
+            static const u32 rect[24] = {
+                0x41060000u, 0, 0, 0x3f800000u,
+                0x41800000u, 0, 0, 0x3f800000u,
+                0x41800000u, 0x41800000u, 0, 0x3f800000u,
+                0x41060000u, 0, 0, 0x3f800000u,
+                0x41800000u, 0x41800000u, 0, 0x3f800000u,
+                0x41060000u, 0x41800000u, 0, 0x3f800000u,
+            };
+            method(NV097_SET_BEGIN_END, 5);
+            push(0x40000000u | (24u << 18) | NV097_INLINE_ARRAY);
+            for (u32 i = 0; i < 24; i++) push(rect[i]);
+            method(NV097_SET_BEGIN_END, 0);
+            texture_alias_at(0xc0000006u, 32, 0x3f000000u, 0, 0x03d00000u);
+            method(NV097_SET_TEXTURE_FORMAT, 1u | (1u << 2) | (2u << 4) |
+                   (1u << 3) | (6u << 8) | (1u << 16) | (4u << 20) | (4u << 24));
+            method(NV097_SET_SHADER_STAGE_PROGRAM, 3);
+            method(0x1a00u + 9 * 16, 0xbf800000u); /* -X */
+            method(0x1a00u + 9 * 16 + 4, 0);
+            method(0x1a00u + 9 * 16 + 8, 0x3c800000u); /* texel x = 8.125 */
+            method(0x1a00u + 9 * 16 + 12, 0x3f800000u);
+        }
+        if (frame == 3840)
+            method(0x1a00u + 9 * 16 + 8, 0x3da00000u); /* texel x = 8.625 */
+        if (frame == 3880)
+            method(0x1a00u + 9 * 16 + 8, 0x3c800000u);
+        if (frame == 3920) method(NV097_SET_TEXTURE_FILTER, 0x02020000u);
+        if (frame >= 3801 && frame <= 3980) {
+            method(NV097_SET_SURFACE_COLOR_OFFSET, SURF_D);
+            triangle(); if (frame == 3980) disable_texture(); kick();
+        }
+        if (frame == 3990) {
+            ram32(0x00300088u, rd32(0x03d00700u));
+            ram32(0x0030008cu, rd32(0x03d00740u));
+        }
+        /* Same image on a point-sampled and a linear-filtered unit. GL
+         * texture-object parameters must not let forced AF bleed into T0. */
+        if (frame == 4020) {
+            for (u32 y = 0; y < 16; y++)
+                for (u32 x = 0; x < 32; x++)
+                    ram32(0x03a00000u + (y * 32 + x) * 4,
+                          (x & 1) ? 0xff00ff00u : 0xffff0000u);
+            texture_alias_at(0xc0000012u, 32, 0x3f400000u, 0, 0x03a00000u);
+            method(NV097_SET_TEXTURE_ADDRESS, 0x00010101u);
+            method(NV097_SET_TEXTURE_OFFSET + 64, 0x03a00000u);
+            method(NV097_SET_TEXTURE_FORMAT + 64, 1u | (2u << 4) | (1u << 3) |
+                   (0x12u << 8) | (1u << 16) | (5u << 20) | (4u << 24));
+            method(NV097_SET_TEXTURE_ADDRESS + 64, 0x00010101u);
+            method(NV097_SET_TEXTURE_CONTROL0 + 64, 1u << 30);
+            method(NV097_SET_TEXTURE_CONTROL1 + 64, 128u << 16);
+            method(NV097_SET_TEXTURE_FILTER + 64, 0x02020000u);
+            method(NV097_SET_TEXTURE_IMAGE_RECT + 64, (32u << 16) | 16u);
+            method(0x1a00u + 10 * 16, 0x3f400000u);
+            method(0x1a00u + 10 * 16 + 4, 0x3f000000u);
+            method(0x1a00u + 10 * 16 + 8, 0);
+            method(0x1a00u + 10 * 16 + 12, 0x3f800000u);
+            method(NV097_SET_SHADER_STAGE_PROGRAM, 1u | (1u << 5));
+        }
+        if (frame == 4060) {
+            method(NV097_SET_TEXTURE_CONTROL0 + 64, 0);
+            method(NV097_SET_SHADER_STAGE_PROGRAM, 1);
+        }
+        if (frame == 4100) {
+            method(NV097_SET_TEXTURE_CONTROL0 + 64, 1u << 30);
+            method(NV097_SET_SHADER_STAGE_PROGRAM, 1u | (1u << 5));
+        }
+        if (frame >= 4021 && frame <= 4140) {
+            method(NV097_SET_SURFACE_COLOR_OFFSET, SURF_D);
+            triangle();
+            if (frame == 4140) {
+                disable_texture();
+                method(NV097_SET_TEXTURE_CONTROL0 + 64, 0);
+            }
+            kick();
+        }
+        /* Quality filtering must preserve edge/border rules. With a fixed
+         * coordinate the ordinary linear-filter oracle is exact, even at AF16. */
+        if (frame == 4180) {
+            texture_alias_at(0xc0000012u, 32, 0xbe800000u, 0, 0x03a00000u);
+            method(NV097_SET_TEXTURE_FILTER, 0x02020000u);
+            method(0x1b24u, 0); /* transparent black texture border */
+        }
+        if (frame == 4220) method(NV097_SET_TEXTURE_ADDRESS, 0x00040404u);
+        if (frame == 4260) method(NV097_SET_TEXTURE_ADDRESS, 0x00050505u);
+        if (frame == 4300) method(NV097_SET_TEXTURE_ADDRESS, 0x00010101u);
+        if (frame == 4340) method(NV097_SET_TEXTURE_ADDRESS, 0x00020202u);
+        if (frame == 4380) method(NV097_SET_TEXTURE_ADDRESS, 0x00030303u);
+        if (frame >= 4181 && frame <= 4420) {
+            method(NV097_SET_SURFACE_COLOR_OFFSET, SURF_D);
+            triangle(); if (frame == 4420) disable_texture(); kick();
+        }
         method(NV097_FLIP_INCREMENT_WRITE, 0);
         kick();
         if (frame >= 100 && frame < 125) {

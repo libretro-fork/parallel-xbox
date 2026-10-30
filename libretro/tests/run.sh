@@ -817,6 +817,123 @@ elif [ "$r" != 3 ]; then
   echo "FAIL: mixed cube exited $r"; exit 1
 fi
 
+# Force LOD0 preserves a sub-native edge in a mixed GPU/RAM cube. The two
+# coordinates address the same native texel; only the scaled path separates them.
+for quality_api in vk gl; do
+  quality_args="--vulkan --opt xemu_renderer=vulkan"
+  quality_scales="1 2 4"
+  if [ "$quality_api" = gl ]; then
+    quality_args="--opt xemu_renderer=opengl"
+    quality_scales="2"
+  fi
+  for quality_option in disabled enabled; do
+    for quality_scale in $quality_scales; do
+      quality_log="$work/gpu-quality-$quality_api-$quality_option-$quality_scale.txt"
+      set +e
+      timeout 300 $h "$core" "$work/sysg" $vp $quality_args \
+        --opt xemu_memory=64 --opt xemu_surface_scale=$quality_scale \
+        --opt xemu_force_texture_lod0=$quality_option \
+        --opt xemu_force_quality_filtering=$quality_option --frames 4440 --strict \
+        --pixel 2730 --pixel 2750 --pixel 2770 \
+        --pixel 3820 --pixel 3860 --pixel 3900 --pixel 3940 \
+        --pixel 4040 --pixel 4080 --pixel 4120 \
+        --pixel 4200 --pixel 4240 --pixel 4280 --pixel 4320 --pixel 4360 --pixel 4400 \
+        --peek 0x300088 --peek 0x30008c >"$quality_log"
+      r=$?
+      set -e
+      if [ "$r" = 3 ]; then continue; fi
+      [ "$r" = 0 ] || { echo "FAIL: texture quality exited $r"; exit 1; }
+      quality_color=0xff0000
+      if [ "$quality_api" = vk ] && [ "$quality_option" = enabled ] && \
+         [ "$quality_scale" != 1 ]; then quality_color=0x00ff00; fi
+      for want in "pixel_2730=0xff00ff" "pixel_2750=0xffff00" \
+                  "pixel_3820=$quality_color" "pixel_3860=0xff0000" \
+                  "pixel_3900=$quality_color" "peek_0x300088=0xffff0000" \
+                  "peek_0x30008c=0xffff0000" \
+                  "pixel_4200=0xff0000" "pixel_4280=0xff0000" \
+                  "pixel_4360=0xff0000" "pixel_4400=0xff0000"; do
+        grep -q "^$want$" "$quality_log" || {
+          echo "FAIL: $quality_api/$quality_option/${quality_scale}x: $want"; exit 1; }
+      done
+      # Allow one channel step for driver-specific UNORM interpolation.
+      grep -Eq '^pixel_4240=0x(3f|40)0000$' "$quality_log" &&
+      grep -Eq '^pixel_4320=0x(3f|40)(bf|c0)00$' "$quality_log" || {
+        echo "FAIL: quality filtering changed edge/border sampling"; exit 1; }
+      if [ "$quality_api" = vk ]; then
+        grep -q '^pixel_2770=0x00ffff$' "$quality_log" || {
+          echo "FAIL: scaled mixed cube GPU redraw"; exit 1; }
+      fi
+      if [ "$quality_api" = vk ] || [ "$quality_option" = enabled ]; then
+        for quality_frame in 4040 4080 4120; do
+          grep -q "^pixel_$quality_frame=0xff0000$" "$quality_log" || {
+            echo "FAIL: point/AF sampler isolation at $quality_frame"; exit 1; }
+        done
+      fi
+    done
+  done
+done
+
+# The options are independent: quality filtering leaves guest mip clamps,
+# and LOD0 still preserves scaled detail when quality filtering is disabled.
+for independent_api in vk gl; do
+  independent_args="--vulkan --opt xemu_renderer=vulkan"
+  [ "$independent_api" = vk ] || independent_args="--opt xemu_renderer=opengl"
+  for independent_lod in disabled enabled; do
+    independent_af=enabled
+    [ "$independent_lod" = disabled ] || independent_af=disabled
+    independent_log="$work/gpu-quality-independent-$independent_api-$independent_lod.txt"
+    set +e
+    timeout 300 $h "$core" "$work/sysg" $vp $independent_args \
+      --opt xemu_memory=64 --opt xemu_surface_scale=2 --frames 4160 --strict \
+      --opt xemu_force_texture_lod0=$independent_lod \
+      --opt xemu_force_quality_filtering=$independent_af \
+      --pixel 3450 --pixel 3510 --pixel 3570 --pixel 3820 --pixel 4040 --pixel 4080 \
+      >"$independent_log"
+    r=$?
+    set -e
+    if [ "$r" = 3 ]; then continue; fi
+    [ "$r" = 0 ] || { echo "FAIL: independent texture options exited $r"; exit 1; }
+    if [ "$independent_lod" = enabled ]; then
+      independent_mips="pixel_3450=0xff0000 pixel_3510=0xffff00 pixel_3570=0xffff00"
+    else
+      independent_mips="pixel_3450=0x00ff00 pixel_3510=0x00ff00 pixel_3570=0x0000ff"
+    fi
+    independent_edge=0xff0000
+    if [ "$independent_api" = vk ] && [ "$independent_lod" = enabled ]; then
+      independent_edge=0x00ff00
+    fi
+    for want in $independent_mips "pixel_3820=$independent_edge" "pixel_4080=0xff0000"; do
+      grep -q "^$want$" "$independent_log" || {
+        echo "FAIL: independent texture options: $want"; exit 1; }
+    done
+    if [ "$independent_af" = enabled ]; then
+      grep -q '^pixel_4040=0xff0000$' "$independent_log" || {
+        echo "FAIL: quality filtering alone changed point sampling"; exit 1; }
+    fi
+  done
+done
+
+# States serialize native guest RAM. Loading drops extra sub-native detail
+# until the game redraws; no stale high-resolution binding may survive it.
+set +e
+timeout 300 $h "$core" "$work/sysg" $vp --vulkan --opt xemu_renderer=vulkan \
+  --opt xemu_memory=64 --opt xemu_surface_scale=2 \
+  --opt xemu_force_texture_lod0=enabled --frames 3960 --strict \
+  --save 3825 --load 3870 --verify-load \
+  --pixel 3830 --pixel 3860 --pixel 3875 --pixel 3910 \
+  >"$work/gpu-quality-state.txt"
+r=$?
+set -e
+if [ "$r" = 0 ]; then
+  for want in "pixel_3830=0x00ff00" "pixel_3860=0xff0000" \
+              "pixel_3875=0xff0000" "pixel_3910=0xff0000"; do
+    grep -q "^$want$" "$work/gpu-quality-state.txt" || {
+      echo "FAIL: scaled cube state: $want"; exit 1; }
+  done
+elif [ "$r" != 3 ]; then
+  echo "FAIL: scaled cube state exited $r"; exit 1
+fi
+
 # Rebinding an exact live swizzled color view permits a full all-channel clear.
 set +e
 timeout 300 $h "$core" "$work/sysg" $vp --vulkan --opt xemu_renderer=vulkan \
