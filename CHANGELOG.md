@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Frontend VFS disc reads combine adjacent destination spans into bulk provider requests without staging buffers. Gapped spans stay separate, partial reads are retried, and EOF zero-fill is preserved.
+
 - CPU Boost checks native SSE arithmetic eligibility once per add, subtract or multiply instruction rather than once per lane. Rounding, flushing and software fallback behavior retain the existing policy.
 
 - The host-audio precision regression avoids undefined signed shifts and now runs with undefined-behavior sanitizer traps. Audio output is unchanged.

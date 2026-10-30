@@ -94,7 +94,8 @@ syscall on a successful mapping, and combine adjacent spans. This is
 zero-copy metadata access, not zero-copy delivery into writable guest RAM.
 Writable HDDs and mapping failures retain native positional/vectored I/O,
 sparse allocation, and hole punching. Frontend VFS handles avoid repeated
-seeks for sequential requests and retry partial reads.
+seeks for sequential requests, combine adjacent destination spans without a
+staging buffer, and retry partial reads.
 
 The file-I/O test covers sparse offsets beyond 4 GiB, scatter buffers with
 gaps, zero-filled EOF reads, view bounds, and rejection of mapped writes

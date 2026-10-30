@@ -24,9 +24,19 @@ static inline int lr_vfs_readv(const struct retro_vfs_interface *vfs,
         }
         *cursor = position;
     }
-    for (int i = 0; i < count; i++) {
+    for (int i = 0; i < count;) {
         uint8_t *data = iov[i].base;
-        size_t left = iov[i].len;
+        size_t left = iov[i++].len;
+        /* Adjacent guest spans need one provider call, with no staging copy.
+         * Keep gaps separate and retry any short successful bulk read. */
+        while (i < count && left <= UINTPTR_MAX - (uintptr_t)data &&
+               (uintptr_t)iov[i].base == (uintptr_t)data + left &&
+               iov[i].len <= SIZE_MAX - left) {
+            left += iov[i++].len;
+        }
+        if (left > (uint64_t)(INT64_MAX - *cursor)) {
+            return -EINVAL;
+        }
         while (left) {
             int64_t n = vfs->read(file, data, left);
             if (n < 0 || (uint64_t)n > left || n > INT64_MAX - *cursor) {
@@ -35,7 +45,7 @@ static inline int lr_vfs_readv(const struct retro_vfs_interface *vfs,
             }
             if (!n) {
                 memset(data, 0, left);
-                for (int j = i + 1; j < count; j++) {
+                for (int j = i; j < count; j++) {
                     memset(iov[j].base, 0, iov[j].len);
                 }
                 return 0;

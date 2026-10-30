@@ -6,6 +6,7 @@ struct retro_vfs_file_handle {
     uint8_t bytes[64];
     size_t position;
     unsigned seeks, reads;
+    size_t max_read;
     int error;
 };
 
@@ -26,7 +27,7 @@ static int64_t read_file(struct retro_vfs_file_handle *f, void *data, uint64_t l
     if (f->position >= sizeof(f->bytes)) {
         return 0;
     }
-    if (len > 7) { len = 7; } /* legitimate short successful reads */
+    if (f->max_read && len > f->max_read) { len = f->max_read; }
     if (len > sizeof(f->bytes) - f->position) {
         len = sizeof(f->bytes) - f->position;
     }
@@ -38,7 +39,7 @@ static int64_t read_file(struct retro_vfs_file_handle *f, void *data, uint64_t l
 int main(void)
 {
     struct retro_vfs_interface vfs = { .seek = seek_file, .read = read_file };
-    struct retro_vfs_file_handle f = {0};
+    struct retro_vfs_file_handle f = { .max_read = 7 };
     for (unsigned i = 0; i < sizeof(f.bytes); i++) {
         f.bytes[i] = i;
     }
@@ -65,5 +66,36 @@ int main(void)
     assert(f.seeks == seeks + 1 && cursor == 32);
     f.error = 1000;
     assert(lr_vfs_readv(&vfs, &f, &cursor, 32, iov, 2) == -EIO);
-    puts("VFS short reads, sequential seeks, scatter gaps, EOF and recovery: PASS");
+    f.error = 0;
+    f.max_read = 0;
+    LRFileIOV adjacent[] = { {out, 8}, {out + 8, 16}, {out + 24, 8} };
+    unsigned reads = f.reads;
+    assert(lr_vfs_readv(&vfs, &f, &cursor, 0, adjacent, 3) == 0);
+    assert(f.reads == reads + 1 && cursor == 32);
+    assert(!memcmp(out, f.bytes, 32));
+    /* A real gap still requires two direct reads and must stay untouched. */
+    reads = f.reads;
+    memset(out, 0xcc, sizeof(out));
+    assert(lr_vfs_readv(&vfs, &f, &cursor, 32, iov, 2) == 0);
+    assert(f.reads == reads + 2 && cursor == 64);
+    assert(!memcmp(out, f.bytes + 32, 16));
+    assert(!memcmp(out + 24, f.bytes + 48, 16));
+    assert(out[16] == 0xcc && out[47] == 0xcc);
+    /* EOF inside a merged span zeroes its remainder and later gapped spans. */
+    LRFileIOV eof[] = { {out, 8}, {out + 8, 8}, {out + 24, 8} };
+    memset(out, 0xcc, sizeof(out));
+    assert(lr_vfs_readv(&vfs, &f, &cursor, 60, eof, 3) == 0);
+    assert(!memcmp(out, f.bytes + 60, 4));
+    assert(!memcmp(out + 4, (uint8_t[12]) {0}, 12));
+    assert(!memcmp(out + 24, (uint8_t[8]) {0}, 8));
+    assert(out[16] == 0xcc && out[32] == 0xcc);
+    /* Provider short reads can cross the original span boundaries. */
+    f.max_read = 7;
+    reads = f.reads;
+    assert(lr_vfs_readv(&vfs, &f, &cursor, 0, adjacent, 3) == 0);
+    assert(f.reads == reads + 5 && !memcmp(out, f.bytes, 32));
+    reads = f.reads;
+    assert(lr_vfs_readv(&vfs, &f, &cursor, INT64_MAX - 3, adjacent, 3) == -EINVAL);
+    assert(f.reads == reads && cursor == INT64_MAX - 3);
+    puts("VFS bulk spans, short reads, sequential seeks, gaps, EOF and recovery: PASS");
 }
