@@ -165,6 +165,7 @@ typedef unsigned int u32;
 #define VIDEO_DATA   0x02C00000u
 #define VRAM_END     0x04000000u   /* boundary tests require xemu_memory=64 */
 #define SURF_ORDER   0x03000000u   /* retained second draw for ordering checks */
+#define TEX_RETIRED  0x03400000u   /* GPU-only source, later CPU read */
 #define TEX_YUV      0x03200000u   /* odd-width packed YUV pair tests */
 #define TEX_SOURCE   0x02E00000u   /* GPU-produced pixels, sampled through aliases */
 #define SURF_G       0x02400000u   /* 15-bit mode change, offset tile */
@@ -1173,6 +1174,36 @@ void gpu_main(void)
                     kick();
                 }
             }
+        }
+        if (frame == 1360) {
+            for (u32 update = 0; update < 2; update++) {
+                method(NV097_SET_SURFACE_CLIP_H, 32u << 16);
+                method(NV097_SET_SURFACE_CLIP_V, 16u << 16);
+                method(NV097_SET_SURFACE_FORMAT, 0x128u);
+                method(NV097_SET_SURFACE_PITCH, 128u | (128u << 16));
+                method(NV097_SET_SURFACE_COLOR_OFFSET, TEX_RETIRED);
+                method(NV097_SET_COLOR_CLEAR_VALUE,
+                       update ? 0xff0000ffu : 0xffff0000u);
+                method(NV097_SET_CLEAR_RECT_H, 31u << 16);
+                method(NV097_SET_CLEAR_RECT_V, 15u << 16);
+                method(NV097_CLEAR_SURFACE, 0xf0);
+                if (!update) {
+                    texture_alias_at(0x80000012u, 32, 0x3f000000u, 0, TEX_RETIRED);
+                    texture_cpu_barrier();
+                } else {
+                    method(NV097_SET_SURFACE_CLIP_H, WIDTH << 16);
+                    method(NV097_SET_SURFACE_CLIP_V, HEIGHT << 16);
+                    method(NV097_SET_SURFACE_PITCH, PITCH | (PITCH << 16));
+                    method(NV097_SET_SURFACE_COLOR_OFFSET, SURF_D);
+                    triangle();
+                    disable_texture();
+                    kick();
+                }
+            }
+        }
+        if (frame == 1390) {
+            /* A later CPU reader must still get the retired GPU content. */
+            ram32(GPU_READ0, rd32(TEX_RETIRED));
         }
         method(NV097_FLIP_INCREMENT_WRITE, 0);
         kick();

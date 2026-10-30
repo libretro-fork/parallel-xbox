@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Vulkan surface expiry now uses the existing lazy/eager eviction policy instead of forcing every dirty surface back to RAM after five frames. GPU-only content remains owed to a later reader, avoiding a premature CPU readback while preserving CPU reads and savestates.
+
 - The synthetic GPU suite now checks a GPU-written palette change while the indexed texture and sampler stay bound. This extends the unchanged-state surface-write regression from texture bytes to independently addressed palettes.
 
 - Vulkan surface writes now invalidate overlapping bound texture and palette views, including when the game draws again without resending texture state. This fixes stale samples from GPU-owned data that has not been written back to RAM. Only the four bound units are checked at write time.
