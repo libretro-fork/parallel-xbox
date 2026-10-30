@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Audio Volume now rounds attenuated DSP output symmetrically instead of rounding negative samples downward, removing a small DC bias added by the host volume control. At 100% volume the samples are unchanged; the Xbox DSP's own precision stays the same.
+
 - Video > Force Texture LOD0 (Restart) bypasses mipmapping in OpenGL and Vulkan, sampling the largest texture level even when a game requests a smaller one. Disabled by default; enabling it can sharpen distant textures at the cost of shimmering.
 
 - OpenGL offset scanout uploads only visible dirty background regions, directly from guest RAM, and merges adjacent runs into one strided upload. Pixels hidden by GPU tiles remain pending until exposed. Background scaling skips regions immediately covered by those tiles when the bounded rectangle plan saves enough work. Video overlays reuse their texture storage until their dimensions change. Vulkan display fences already observed complete during retirement polling no longer incur a redundant CPU wait call when their command buffers are reused. This does not remove waits for unfinished GPU work or the OpenGL composition images.

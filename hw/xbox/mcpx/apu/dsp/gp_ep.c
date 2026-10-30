@@ -20,6 +20,7 @@
  */
 
 #include "hw/xbox/mcpx/apu/apu_int.h"
+#include "hw/xbox/mcpx/apu/monitor.h"
 #include <rthreads/rthreads.h>
 
 /* The option values the DSPs were last set up for: none on a new device
@@ -490,8 +491,8 @@ static void dsp_thread_frame(MCPXAPUState *d, float mixbins[NUM_MIXBINS][NUM_SAM
                 const uint32_t *l = &mixbuf[0];
                 const uint32_t *r = &mixbuf[NUM_SAMPLES_PER_FRAME];
                 for (int i = 0; i < NUM_SAMPLES_PER_FRAME; i++) {
-                    out[2 * i]     = (int16_t)(((int64_t)(int16_t)(l[i] >> 8) * gain) >> 16);
-                    out[2 * i + 1] = (int16_t)(((int64_t)(int16_t)(r[i] >> 8) * gain) >> 16);
+                    out[2 * i] = mcpx_apu_monitor_scale_s16((int16_t)(l[i] >> 8), gain);
+                    out[2 * i + 1] = mcpx_apu_monitor_scale_s16((int16_t)(r[i] >> 8), gain);
                 }
                 mcpx_apu_monitor_end(NUM_SAMPLES_PER_FRAME);
             }

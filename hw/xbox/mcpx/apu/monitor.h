@@ -23,6 +23,15 @@
  */
 #define MCPX_APU_MONITOR_PREROLL_FRAMES 3
 
+/* Host volume only, after the guest's S16 output conversion. Gain is Q16
+ * in [0, 65536]. Round symmetrically: shifting a signed product downward
+ * biases attenuated negative samples, even for a zero-mean input. */
+static inline int16_t mcpx_apu_monitor_scale_s16(int16_t sample, int32_t gain)
+{
+    int64_t product = (int64_t)sample * gain;
+    return (int16_t)((product + (product < 0 ? -32768 : 32768)) / 65536);
+}
+
 void libretro_audio_set_volume(float volume);
 size_t libretro_audio_read_begin(const int16_t **samples);
 void libretro_audio_read_end(size_t frames);

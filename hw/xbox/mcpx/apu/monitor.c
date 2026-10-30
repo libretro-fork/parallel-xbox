@@ -212,7 +212,7 @@ void mcpx_apu_monitor_end_ahead(int16_t *out, size_t frames)
 
     if (gain != 65536) {
         for (size_t i = 0; i < 2 * frames; i++) {
-            out[i] = (int16_t)(((int64_t)out[i] * gain) >> 16);
+            out[i] = mcpx_apu_monitor_scale_s16(out[i], gain);
         }
     }
     retro_spsc_write_end(&apu_queue, frames * FRAME_BYTES);

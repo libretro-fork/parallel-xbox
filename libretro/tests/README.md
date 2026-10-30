@@ -1,5 +1,12 @@
 # The core's tests
 
+`test-audio-volume.c` checks host volume rounding against a floating-point
+reference over every S16 sample at 257 gains, plus boundary samples at every
+Q16 gain. It checks zero DC bias for symmetric inputs, half-LSB error bounds,
+mute and exact preservation at unity. Build and run it from the repository
+root with `cc -O2 -I. libretro/tests/test-audio-volume.c -lm -o test-audio-volume`
+and `./test-audio-volume`.
+
 `run.sh` runs `test-scanout-regions.c`: 12,000 per-pixel raster-reference
 cases for the exact background complement, clipping, overlap, empty/full cover,
 adjacent-strip coalescing, the eight-rectangle fallback and a scale-aware
