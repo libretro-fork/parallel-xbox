@@ -95,6 +95,7 @@ SOURCES_DATA_ASM := $(CORE_DIR)/libretro/data.S
 
 # QEMU's utility library and the generated QAPI and trace code
 SOURCES_UTIL := \
+	$(CORE_DIR)/util/libretro-jit.c \
 	$(CORE_DIR)/crypto/aes.c \
 	$(CORE_DIR)/crypto/clmul.c \
 	$(CORE_DIR)/crypto/init.c \
@@ -1012,6 +1013,10 @@ SOURCES_LRCOMMON := \
 	$(CORE_DIR)/libretro-common/string/stdstring.c \
 	$(CORE_DIR)/libretro-common/time/rtime.c \
 	$(CORE_DIR)/libretro-common/vfs/vfs_implementation.c \
+
+ifeq ($(HOST_OS),darwin)
+SOURCES_LRCOMMON += $(CORE_DIR)/libretro-common/memmap/memmap.c
+endif
 
 SOURCES_VOLK := \
 	$(CORE_DIR)/deps/volk/volk.c \

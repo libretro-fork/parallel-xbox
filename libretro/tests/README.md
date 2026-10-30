@@ -1,5 +1,12 @@
 # The core's tests
 
+On Linux, `python3 libretro/tests/test-libretro-jit.py CHECKOUT [CC]`
+compiles the production Apple Silicon JIT adapter against a strict mock of
+libretro-common's nested write scopes, with UBSan. It checks initial execute,
+repeated write/execute requests, calls from separate translation units, and
+four independent threads while the main thread remains writable. `run.sh`
+runs it for Linux cores. Real Apple API compilation is checked by macOS CI.
+
 `python libretro/tests/test-texture-reinterpret.py CHECKOUT [CC]` compiles
 the production GPU-alias eligibility gate and checks format/layout exclusions,
 overflow boundaries, transfer-buffer capacity, native scratch availability

@@ -165,7 +165,6 @@ QEMU_EXTERN_C int daemon(int, int);
 
 #ifdef __APPLE__
 #include <AvailabilityMacros.h>
-#include <pthread.h>
 #endif
 
 /*
@@ -858,16 +857,9 @@ size_t qemu_get_host_physmem(void);
  * Toggle write/execute on the pages marked MAP_JIT
  * for the current thread.
  */
-#ifdef __APPLE__
-static inline void qemu_thread_jit_execute(void)
-{
-    pthread_jit_write_protect_np(true);
-}
-
-static inline void qemu_thread_jit_write(void)
-{
-    pthread_jit_write_protect_np(false);
-}
+#if defined(__APPLE__) && defined(__aarch64__)
+void qemu_thread_jit_execute(void);
+void qemu_thread_jit_write(void);
 #else
 static inline void qemu_thread_jit_write(void) {}
 static inline void qemu_thread_jit_execute(void) {}
