@@ -6,6 +6,7 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 - CPU Boost lowers all legacy register SHUFPS selectors directly, extending the existing broadcast optimization. Identity shuffles avoid the helper and self-copy; other selectors read every input before writing any result. Memory operands and other encodings keep their existing paths.
 
+- Frontend VFS disc reads combine adjacent destination spans into bulk provider requests without staging buffers. Seeks honor the API's zero-on-success result, URI-backed Xbox discs are classified correctly, and short reads during partition probing are retried. Local disc probes borrow libretro-common mapped views; gapped spans and EOF zero-fill are preserved.
 - Read-only frontend VFS reads safely skip empty scatter spans when filling a request past EOF, avoiding a null-pointer library call for zero-length vectors.
 
 - Savestates no longer go through QEMU's live-migration code: the guest's RAM is written once, every page, while the machine is stopped (migration/ram-libretro.c), in the same stream format, so savestates made before load after and the other way round. Gone with it (about 9,000 lines): postcopy, multifd, XBZRLE compression and its page cache, COLO, background snapshots, auto-converge throttling and the migration commands only two running QEMUs exchange. Saving no longer turns on dirty-memory logging for the whole RAM.

@@ -898,13 +898,15 @@ done
 # every word says which sector and word it is. All 0x2c800 words read are
 # checked: status 0, none wrong. The reads go from the image straight into
 # the guest's memory; this is what says no byte got lost on the way.
-echo "== DVD reads by DMA"
-timeout 300 $h "$(path "$core")" "$(path "$work/sysv")" "$(path "$work/disc.iso")" $vp \
+for dvd_prefix in '' 'content://' 'saf://'; do
+echo "== DVD reads by DMA: ${dvd_prefix:-native}"
+HARNESS_VFS_READ_LIMIT=7 timeout 300 $h "$(path "$core")" "$(path "$work/sysv")" "${dvd_prefix}$(path "$work/disc.iso")" $vp \
   --frames 120 --strict --peek 0x300008 --peek 0x30000c --peek 0x300010 >"$work/dvd.txt"
 grep -E "peek_" "$work/dvd.txt"
 grep -E "peek_0x300008=0x00000000$" "$work/dvd.txt" >/dev/null &&
 grep -E "peek_0x30000c=0x0002c800$" "$work/dvd.txt" >/dev/null || {
     echo "FAIL: the DVD reads: step $(grep peek_0x300008 "$work/dvd.txt"), first wrong word at $(grep peek_0x300010 "$work/dvd.txt")"; exit 1; }
+done
 
 # The pad, through the USB controller as the kernel reads it (rom/pad.c):
 # the hubs found by their status-change reports, their ports reset, the
