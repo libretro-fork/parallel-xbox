@@ -6,6 +6,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 - macOS builds include the pthread declarations used by JIT write protection directly, fixing compilation after replacing GLib's headers.
 
+- The meson build is gone (meson.build files, configure, the meson subprojects, Kconfig and the device configs): every platform is built by the Makefile, and the buildbot's Linux jobs now are too, so the buildbot's Linux core is built the same way as the GitHub one. The macOS meson job is dropped; the Makefile's macOS job takes its place.
+
 - With APU DSP Emulation disabled, audio now preserves normalized PCM values at unity volume and rounds once to the nearest output sample after host volume. This removes avoidable low-level truncation and the 32767-scale amplitude loss in the host float output path. DSP arithmetic and its integer output path are unchanged.
 
 - An absent MCPX boot ROM uses an experimental, independently implemented MCPX 1.0 HLE boot path. The flash BIOS is still required. Supplied ROMs retain the existing boot path; Chihiro retains its BIOS's built-in boot code. MCPX 1.1/FBL boot is not implemented by the fallback.

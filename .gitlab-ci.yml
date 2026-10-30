@@ -2,20 +2,18 @@
 #
 # Linux x64, Linux aarch64 and Windows x64.
 #
-# The Windows job builds with the static Makefile, every library from source,
-# cross-compiling in the MXE toolchain image upstream xemu builds its Windows
-# releases in (.ci/libretro-windows.sh). The Linux jobs still build with
-# QEMU's configure, meson and ninja, with upstream's dependencies, which the
-# buildbot's Linux images (Ubuntu 16.04) do not have, so they run in Ubuntu
-# 24.04 with the packages of .ci/libretro-linux.sh. The templates give the
-# jobs their stage, runner tags and artifacts; the scripts replace the
-# templates' CMake steps.
+# Every job builds with the static Makefile. The Windows job cross-compiles
+# in the MXE toolchain image upstream xemu builds its Windows releases in,
+# every library from source (.ci/libretro-windows.sh). The Linux jobs run in
+# Ubuntu 24.04, as the buildbot's Linux images (Ubuntu 16.04) are older than
+# the compiler and the libepoxy and Vulkan headers the core needs
+# (.ci/libretro-linux.sh). The templates give the jobs their stage, runner
+# tags and artifacts; the scripts replace the templates' CMake steps.
 #
-# Android and macOS are built by the GitHub workflow only: Android takes glib
-# and pixman from vcpkg and needs ninja and Python modules the buildbot's
-# Android image is not known to have, and macOS takes its libraries from
-# MacPorts and ships them in a folder next to the core, which the buildbot's
-# one-file artifact cannot hold.
+# Android and macOS are built by the GitHub workflow only: macOS takes
+# libepoxy from MacPorts and ships it in a folder next to the core, which
+# the buildbot's one-file artifact cannot hold, and the buildbot's Android
+# image is not known to have a recent NDK.
 
 ##############################################################################
 ################################# BOILERPLATE ################################
@@ -23,7 +21,7 @@
 
 variables:
   # The submodules are QEMU's firmware sources (edk2, u-boot and the like),
-  # none of which xemu builds; its dependencies come as meson wraps.
+  # none of which the core builds; its dependencies are in deps/.
   GIT_SUBMODULE_STRATEGY: none
   # The whole history, for the version string (git describe)
   GIT_DEPTH: 0

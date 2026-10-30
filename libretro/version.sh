@@ -1,7 +1,7 @@
 #!/bin/sh
 # xemu-version-macro.h for the Makefile: the version and commit the core
-# logs at start and shows RetroArch, as scripts/xemu-version.py writes it
-# for meson. The file is rewritten only when it would change.
+# logs at start and shows RetroArch, as upstream's scripts/xemu-version.py
+# writes it for meson. The file is rewritten only when it would change.
 #
 #   version.sh <core dir> <output>
 #
