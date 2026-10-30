@@ -50,6 +50,10 @@
  *                       --verify-load, the RAM to compare is FILE.ram)
  *     --verify-load     exit 1 unless the system RAM right after the load
  *                       is the RAM as it was when the state was saved
+ *     --runahead N      as RetroArch's Run-Ahead: after each run,
+ *                       retro_serialize, N more runs whose audio and video
+ *                       are not taken (not counted, hashed or written),
+ *                       and retro_unserialize
  *     --reset N         retro_reset before run N
  *     --reload N        close the content and load it again before run N
  *     --strict          exit 1 unless every run gave one frame's worth of
@@ -1051,9 +1055,14 @@ static void sample_pixels(const unsigned char *px, unsigned w, unsigned h,
    }
 }
 
+/* Run-Ahead's hidden runs: their audio and video go nowhere */
+static int hidden_run;
+
 static void video_cb(const void *data, unsigned w, unsigned h, size_t pitch)
 {
    (void)pitch;
+   if (hidden_run)
+      return;
    if (!data)
    {
       run_video_dupe++;
@@ -1157,6 +1166,8 @@ static int last_run_sound;
 
 static size_t audio_batch_cb(const int16_t *d, size_t frames)
 {
+   if (hidden_run)
+      return frames;
    run_audio += (long)frames;
    batches_this_run++;
    if (frames > 64)
@@ -1435,6 +1446,9 @@ int main(int argc, char **argv)
    void *core;
    int frames = 600, realtime = 0, rt_runs = -1, i;
    int save_at = -1, load_at = -1, load2_at = -1, load_every = 0, reset_at = -1, reload_at = -1;
+   int runahead = 0;
+   void *ra_state = NULL;
+   size_t ra_size = 0;
    int strict = 0, fail = 0;
    double min_speed = 0.0;
    unsigned long peek[MAX_PEEK];
@@ -1459,6 +1473,9 @@ int main(int argc, char **argv)
    int64_t t0, t_load, run_max = 0, t_free = 0;
    long expected_total = 0;
    double audio_frac = 0.0;
+   /* the 800/801 cadence goes with a state (the core's "libretro-frame"):
+    * where it was at --save, put back at its loads */
+   double saved_audio_frac = 0.0;
    long cadence_errors = 0;
 
    void (*p_set_env)(retro_environment_t);
@@ -1512,6 +1529,8 @@ int main(int argc, char **argv)
          load2_at = atoi(argv[++i]);
       else if (!strcmp(argv[i], "--load-every") && i + 1 < argc)
          load_every = atoi(argv[++i]);
+      else if (!strcmp(argv[i], "--runahead") && i + 1 < argc)
+         runahead = atoi(argv[++i]);
       else if (!strcmp(argv[i], "--strict"))
          strict = 1;
       else if (!strcmp(argv[i], "--state-out") && i + 1 < argc)
@@ -1703,6 +1722,7 @@ int main(int argc, char **argv)
          state_size = p_ser_size();
          state = malloc(state_size ? state_size : 1);
          ok = state && p_ser(state, state_size);
+         saved_audio_frac = audio_frac;
          printf("save at %d: size=%zu ok=%d ms=%.1f\n", run_no, state_size,
                ok, (now_us() - t) / 1000.0);
          if (!ok)
@@ -1735,6 +1755,8 @@ int main(int argc, char **argv)
       {
          int64_t t = now_us();
          int ok = p_unser(state, state_size);
+         if (!state_in)
+            audio_frac = saved_audio_frac;
          printf("load at %d: ok=%d ms=%.1f\n", run_no, ok,
                (now_us() - t) / 1000.0);
          if (!ok)
@@ -1811,6 +1833,29 @@ int main(int argc, char **argv)
          expected_total += want;
          if (run_audio != want)
             cadence_errors++;
+      }
+      if (runahead > 0)
+      {
+         int r;
+         if (!ra_state)
+         {
+            ra_size = p_ser_size();
+            ra_state = malloc(ra_size ? ra_size : 1);
+         }
+         if (!ra_state || !p_ser(ra_state, ra_size))
+         {
+            printf("FAIL: Run-Ahead's save after run %d\n", run_no);
+            fail = 1;
+         }
+         hidden_run = 1;
+         for (r = 0; r < runahead; r++)
+            p_run();
+         hidden_run = 0;
+         if (ra_state && !p_unser(ra_state, ra_size))
+         {
+            printf("FAIL: Run-Ahead's load after run %d\n", run_no);
+            fail = 1;
+         }
       }
       video_new += run_video;
       video_dupe += run_video_dupe;

@@ -21,6 +21,7 @@
 #include "hw/xbox/nv2a/nv2a.h"
 #include "hw/xbox/chihiro/chihiro.h"
 #include "hw/xbox/mcpx/apu/monitor.h"
+#include "migration/vmstate.h"
 #include "libretro-crosshair.h"
 #include "ui/xemu-widescreen.h"
 #include "system/blockdev.h"
@@ -1842,6 +1843,52 @@ static int64_t lr_frame_end_vt; /* QEMU_CLOCK_VIRTUAL end of the last frame */
 static int64_t lr_next_stop_vt;
 static int lr_frame_rem;
 static int lr_title_poll;
+/* Where the 800/801 cadence of a frame's samples is (lr_audio_frames_this_run) */
+static int32_t lr_audio_rem;
+
+/* The frame grid and the samples' cadence go with a state: a load puts the
+ * frame loop where it was at the save, a frame's end. Without it, Run-Ahead
+ * (a load each frame, after hidden runs) found the grid a frame further on
+ * than the clock it had loaded, and the next run played two frames' worth
+ * of the guest's time; and its hidden runs moved the cadence on. States
+ * from before it load with the grid and cadence as the session has them,
+ * as before. */
+typedef struct LRFrameState {
+    int64_t end_vt;
+    int32_t frame_rem;
+    int32_t audio_rem;
+} LRFrameState;
+static LRFrameState lr_frame_state;
+
+static int lr_frame_pre_save(void *opaque)
+{
+    lr_frame_state.end_vt = lr_frame_end_vt;
+    lr_frame_state.frame_rem = lr_frame_rem;
+    lr_frame_state.audio_rem = lr_audio_rem;
+    return 0;
+}
+
+static int lr_frame_post_load(void *opaque, int version_id)
+{
+    lr_frame_end_vt = lr_frame_state.end_vt;
+    lr_frame_rem = lr_frame_state.frame_rem;
+    lr_audio_rem = lr_frame_state.audio_rem;
+    return 0;
+}
+
+static const VMStateDescription vmstate_lr_frame = {
+    .name = "libretro-frame",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .pre_save = lr_frame_pre_save,
+    .post_load = lr_frame_post_load,
+    .fields = (const VMStateField[]) {
+        VMSTATE_INT64(end_vt, LRFrameState),
+        VMSTATE_INT32(frame_rem, LRFrameState),
+        VMSTATE_INT32(audio_rem, LRFrameState),
+        VMSTATE_END_OF_LIST()
+    },
+};
 
 static void lr_frame_timer_cb(void *opaque)
 {
@@ -2095,6 +2142,7 @@ static bool lr_start_machine(void)
     static char machine_image[4096]; /* the content the machine holds */
     if (!machine_built) {
         qemu_init(argc, (char **)argv);
+        vmstate_register(NULL, 0, &vmstate_lr_frame, &lr_frame_state);
 
         /* Create XID USB gamepad devices for all 4 ports (BQL is held) */
         extern void libretro_input_create_xid_devices(void);
@@ -2160,9 +2208,12 @@ static bool lr_state(bool save)
     } else {
         ok = lr_state_load(lr_state_buf, lr_state_len, &lr_state_disk_newer,
                            &err);
-        /* the samples queued were the state's past; on a failed load the
-         * machine was reset */
-        libretro_audio_discard();
+        /* a state puts the samples it had queued back (the APU's
+         * "mcpx-apu/output"); on a failed load the machine was reset, and
+         * what was queued is another session's */
+        if (!ok) {
+            libretro_audio_discard();
+        }
     }
     if (!ok) {
         LRLOG_ERROR("[xemu] %s: %s\n", save ? "Saving the state" :
@@ -3070,12 +3121,11 @@ RETRO_API void retro_unload_game(void)
  * or 801 by an exact count (4004 every 5 frames) */
 static int lr_audio_frames_this_run(void)
 {
-    static int rem;
     int n;
 
-    rem += 4004;
-    n = rem / 5;
-    rem %= 5;
+    lr_audio_rem += 4004;
+    n = lr_audio_rem / 5;
+    lr_audio_rem %= 5;
     return n;
 }
 

@@ -20,6 +20,7 @@
  */
 
 #include "apu_int.h"
+#include "monitor.h"
 
 MCPXAPUState *g_state; // Used via debug handlers
 
@@ -260,15 +261,148 @@ static int mcpx_apu_pre_load(void *opaque)
 {
     MCPXAPUState *d = opaque;
     mcpx_apu_reset_locked(d);
+    d->saved_output.loaded = false;
     return 0;
 }
 
 static int mcpx_apu_post_load(void *opaque, int version_id)
 {
     MCPXAPUState *d = opaque;
-    apu_tick_rearm(d);
+
+    if (d->saved_output.loaded) {
+        /* the engine's next frame where it was, the queue as it was */
+        timer_mod_ns(d->tick_timer, d->next_tick_ns);
+        mcpx_apu_monitor_restore(d->saved_output.samples,
+                                 d->saved_output.frames,
+                                 d->saved_output.ahead);
+    } else {
+        /* a state from before the subsection: the engine's frames start
+         * again from now, the queue from its preroll */
+        apu_tick_rearm(d);
+        libretro_audio_discard();
+    }
     return 0;
 }
+
+static int mcpx_apu_output_pre_save(void *opaque)
+{
+    MCPXAPUState *d = opaque;
+
+    mcpx_apu_dsp_quiesce(d);
+    d->saved_output.frames = mcpx_apu_monitor_save(
+        d->saved_output.samples, MCPX_APU_MONITOR_STATE_FRAMES,
+        &d->saved_output.ahead);
+    return 0;
+}
+
+static int mcpx_apu_output_post_load(void *opaque, int version_id)
+{
+    MCPXAPUState *d = opaque;
+
+    if (d->saved_output.frames > MCPX_APU_MONITOR_STATE_FRAMES) {
+        return -EINVAL;
+    }
+    d->saved_output.loaded = true;
+    return 0;
+}
+
+/* The voices' filter and resampler state (vp.h), host floats as they are:
+ * every host the core runs on is little-endian IEEE. An SVF's output
+ * pointer is set by setup_svf before each run and is not saved. */
+QEMU_BUILD_BUG_ON(offsetof(sv_filter, n) - offsetof(sv_filter, f) !=
+                  6 * sizeof(float));
+
+static const VMStateDescription vmstate_vp_svf = {
+    .name = "mcpx-apu-svf",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .fields = (const VMStateField[]) {
+        VMSTATE_BUFFER_UNSAFE(f, sv_filter, 1, 7 * sizeof(float)),
+        VMSTATE_END_OF_LIST()
+    },
+};
+
+static const VMStateDescription vmstate_vp_hrtf_filter = {
+    .name = "mcpx-apu-hrtf-filter",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .fields = (const VMStateField[]) {
+        VMSTATE_INT32(buf_pos, HrtfFilter),
+        VMSTATE_BUFFER_UNSAFE(buf, HrtfFilter, 1, sizeof(float) * HRTF_BUFLEN),
+        VMSTATE_BUFFER_UNSAFE(hrir_coeff_cur, HrtfFilter, 1,
+                              sizeof(float) * 2 * HRTF_NUM_TAPS),
+        VMSTATE_BUFFER_UNSAFE(itd_cur, HrtfFilter, 1, sizeof(float)),
+        VMSTATE_BOOL(params_set, HrtfFilter),
+        VMSTATE_END_OF_LIST()
+    },
+};
+
+static const VMStateDescription vmstate_vp_voice_filter = {
+    .name = "mcpx-apu-voice-filter",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .fields = (const VMStateField[]) {
+        VMSTATE_UINT16(voice, MCPXAPUVoiceFilter),
+        VMSTATE_BUFFER_UNSAFE(resample_buf, MCPXAPUVoiceFilter, 1,
+                              sizeof(float) * NUM_SAMPLES_PER_FRAME * 2),
+        VMSTATE_INT32(resample_len, MCPXAPUVoiceFilter),
+        VMSTATE_INT32(resample_pos, MCPXAPUVoiceFilter),
+        VMSTATE_INT32(resample_valid, MCPXAPUVoiceFilter),
+        VMSTATE_UINT32(resample_zeros, MCPXAPUVoiceFilter),
+        VMSTATE_BOOL(source_ended, MCPXAPUVoiceFilter),
+        VMSTATE_BUFFER_UNSAFE(resample_hist, MCPXAPUVoiceFilter, 1,
+                              sizeof(float) * 8 * 2),
+        VMSTATE_UINT32(resample_head, MCPXAPUVoiceFilter),
+        VMSTATE_UINT32(resample_phase, MCPXAPUVoiceFilter),
+        VMSTATE_STRUCT_ARRAY(svf, MCPXAPUVoiceFilter, 2, 1, vmstate_vp_svf,
+                             sv_filter),
+        VMSTATE_STRUCT_ARRAY(peq, MCPXAPUVoiceFilter, 2, 1, vmstate_vp_svf,
+                             sv_filter),
+        VMSTATE_BUFFER_UNSAFE(i3dl2, MCPXAPUVoiceFilter, 1, sizeof(float) * 2),
+        VMSTATE_UINT16_ARRAY(route_gain, MCPXAPUVoiceFilter, 8),
+        VMSTATE_BOOL(gains, MCPXAPUVoiceFilter),
+        VMSTATE_UINT32(pitch_step, MCPXAPUVoiceFilter),
+        VMSTATE_BUFFER_UNSAFE(pitch, MCPXAPUVoiceFilter, 1, sizeof(double)),
+        VMSTATE_BOOL(pitched, MCPXAPUVoiceFilter),
+        VMSTATE_BOOL(dls2_set, MCPXAPUVoiceFilter),
+        VMSTATE_BOOL(peq_set, MCPXAPUVoiceFilter),
+        VMSTATE_UINT16_ARRAY(lfo_phase, MCPXAPUVoiceFilter, 2),
+        VMSTATE_UINT16_ARRAY(lfo_wait, MCPXAPUVoiceFilter, 2),
+        VMSTATE_BOOL(lfo_armed, MCPXAPUVoiceFilter),
+        VMSTATE_STRUCT(hrtf, MCPXAPUVoiceFilter, 1, vmstate_vp_hrtf_filter,
+                       HrtfFilter),
+        VMSTATE_END_OF_LIST()
+    },
+};
+
+static bool mcpx_apu_output_needed(void *opaque)
+{
+    return true;
+}
+
+static const VMStateDescription vmstate_mcpx_apu_output = {
+    .name = "mcpx-apu/output",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .needed = mcpx_apu_output_needed,
+    .pre_save = mcpx_apu_output_pre_save,
+    .post_load = mcpx_apu_output_post_load,
+    .fields = (const VMStateField[]) {
+        VMSTATE_INT64(next_tick_ns, MCPXAPUState),
+        VMSTATE_INT32(tick_rem, MCPXAPUState),
+        VMSTATE_INT32(ep_frame_div, MCPXAPUState),
+        VMSTATE_UINT32(saved_output.ahead, MCPXAPUState),
+        VMSTATE_UINT32(saved_output.frames, MCPXAPUState),
+        VMSTATE_INT16_ARRAY(saved_output.samples, MCPXAPUState,
+                            MCPX_APU_MONITOR_STATE_FRAMES * 2),
+        VMSTATE_STRUCT_ARRAY(vp.filters, MCPXAPUState, MCPX_HW_MAX_VOICES, 1,
+                             vmstate_vp_voice_filter, MCPXAPUVoiceFilter),
+        VMSTATE_INT32(vp.hrtf.current_entry, MCPXAPUState),
+        VMSTATE_BUFFER_UNSAFE(vp.hrtf.entries, MCPXAPUState, 1,
+                              sizeof(((MCPXAPUVPState *)0)->hrtf.entries)),
+        VMSTATE_END_OF_LIST()
+    },
+};
 
 static void mcpx_apu_realize(PCIDevice *dev, Error **errp)
 {
@@ -444,6 +578,10 @@ static const VMStateDescription vmstate_mcpx_apu = {
         VMSTATE_UINT8_ARRAY(vp.submix_headroom, MCPXAPUState, NUM_MIXBINS),
         VMSTATE_UINT64_ARRAY(vp.voice_locked, MCPXAPUState, 4),
         VMSTATE_END_OF_LIST()
+    },
+    .subsections = (const VMStateDescription * const []) {
+        &vmstate_mcpx_apu_output,
+        NULL
     },
 };
 

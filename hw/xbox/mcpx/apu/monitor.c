@@ -75,6 +75,32 @@ void libretro_audio_set_volume(float volume)
     qatomic_set(&apu_gain_q16, (int32_t)(vu * 65536.0f + 0.5f));
 }
 
+/* The queue for a state: the frontend's thread parked in the command, the
+ * DSPs' thread done (quiesce), so neither side moves */
+size_t mcpx_apu_monitor_save(int16_t *samples, size_t max, uint32_t *ahead)
+{
+    size_t frames = 0;
+
+    *ahead = 0;
+    if (apu_queue_ready) {
+        frames = MIN(retro_spsc_read_avail(&apu_queue) / FRAME_BYTES, max);
+        retro_spsc_peek(&apu_queue, samples, frames * FRAME_BYTES);
+        *ahead = apu_ahead;
+    }
+    return frames;
+}
+
+void mcpx_apu_monitor_restore(const int16_t *samples, size_t frames,
+                              uint32_t ahead)
+{
+    if (!apu_queue_ready) {
+        return;
+    }
+    retro_spsc_clear(&apu_queue);
+    retro_spsc_write(&apu_queue, samples, frames * FRAME_BYTES);
+    apu_ahead = ahead;
+}
+
 /* Consumer, the frontend's thread, the emulator thread parked: a pointer
  * to the samples there, contiguous, and how many frames. It does not wait
  * for the DSPs' thread: the queue's preroll covers the engine frame that

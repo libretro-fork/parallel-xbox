@@ -69,6 +69,10 @@
 #define MCPX_APU_DEVICE(obj) \
     OBJECT_CHECK(MCPXAPUState, (obj), "mcpx-apu")
 
+/* The most queued frames a state carries: the queue holds about its preroll,
+ * part of a video frame and the EP's eight engine frames between frames */
+#define MCPX_APU_MONITOR_STATE_FRAMES 2048
+
 typedef struct MCPXAPUState {
     /*< private >*/
     PCIDevice parent_obj;
@@ -97,6 +101,19 @@ typedef struct MCPXAPUState {
     struct {
         McpxApuDebugMonitorPoint point;
     } monitor;
+
+    /* What a state carries of the output to the frontend (apu.c, the
+     * "mcpx-apu/output" subsection): the samples queued and not yet taken,
+     * the engine frames of them queued ahead, the engine's next frame and
+     * EP cycle, and the voices' resampler and filter state and HRTF table.
+     * With them a load carries on exactly as the save would have, so
+     * Run-Ahead's load every frame leaves the sound whole. */
+    struct {
+        bool loaded;                /* the subsection was in the state */
+        uint32_t frames;
+        uint32_t ahead;
+        int16_t samples[MCPX_APU_MONITOR_STATE_FRAMES * 2];
+    } saved_output;
 } MCPXAPUState;
 
 extern MCPXAPUState *g_state; // Used via debug handlers
@@ -108,6 +125,11 @@ void mcpx_debug_begin_frame(void);
 void mcpx_debug_end_frame(void);
 
 void mcpx_apu_monitor_init(MCPXAPUState *d, Error **errp);
+/* The queue for a state, both sides stopped: the oldest frames up to max
+ * into samples, how many, and the frames queued ahead; and back */
+size_t mcpx_apu_monitor_save(int16_t *samples, size_t max, uint32_t *ahead);
+void mcpx_apu_monitor_restore(const int16_t *samples, size_t frames,
+                              uint32_t ahead);
 void mcpx_apu_monitor_finalize(MCPXAPUState *d);
 /* Producer: a frame's room in the queue to write straight into (NULL:
  * no room, the frame is dropped; or the frame was queued ahead), the gain

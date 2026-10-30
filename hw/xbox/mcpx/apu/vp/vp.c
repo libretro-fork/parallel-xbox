@@ -2258,8 +2258,10 @@ void mcpx_apu_vp_reset(MCPXAPUState *d)
     memset(d->vp.submix_headroom, 0, sizeof(d->vp.submix_headroom));
     memset(d->vp.voice_locked, 0, sizeof(d->vp.voice_locked));
     for (int v = 0; v < ARRAY_SIZE(d->vp.filters); v++) {
-        /* Decoder EOF and buffered samples are transient, not VMState.
-         * Reset/pre-load must not restore an active voice onto old EOF. */
+        /* Reset, and pre-load: a state's "mcpx-apu/output" subsection
+         * then puts the filters back as they were saved (apu.c); a state
+         * without it starts the voices' resamplers again, rather than
+         * carry the running session's EOF and samples onto its voices. */
         voice_reset_filters(d, v);
         hrtf_filter_init(&d->vp.filters[v].hrtf);
     }

@@ -510,6 +510,29 @@ t "EP DSP, JIT, through a reset" $h "$(path "$core")" "$(path "$work/syse")" --f
   $dsp --opt xemu_dsp_jit=enabled --reset 150 --wav "$(path "$work/epj.wav")"
 "$work/bin/rampcheck" "$work/epj.wav" --min 400000
 
+# Run-Ahead: after every run a save, hidden runs and a load, as RetroArch
+# does. The sound has to be exactly the sound without it: the state carries
+# the samples queued, the APU's engine phase, the voices' resamplers and
+# the frame loop's grid. Before, every load cleared the queue to its
+# preroll and restarted the voices, and the run after it played two
+# frames' worth of the guest's time: the tone broke 24278 times.
+echo "== Run-Ahead: the sound the same as without it"
+timeout 300 $h "$(path "$core")" "$(path "$work/sys")" $vp --frames 200 --strict \
+  --wav "$(path "$work/ra0.wav")" >/dev/null
+for n in 1 2; do
+  t "Run-Ahead $n" $h "$(path "$core")" "$(path "$work/sys")" $vp --frames 200 --strict \
+    --runahead $n --wav "$(path "$work/ra$n.wav")"
+  "$work/bin/sinecheck" "$work/ra$n.wav" --frames 160160
+  cmp "$work/ra0.wav" "$work/ra$n.wav" || {
+    echo "FAIL: the sound with Run-Ahead $n is not the sound without it"; exit 1; }
+done
+timeout 300 $h "$(path "$core")" "$(path "$work/sysd")" $dsp --opt xemu_dsp_jit=enabled \
+  --frames 150 --strict --wav "$(path "$work/rad0.wav")" >/dev/null
+t "Run-Ahead 1, GP DSP" $h "$(path "$core")" "$(path "$work/sysd")" $dsp --opt xemu_dsp_jit=enabled \
+  --frames 150 --strict --runahead 1 --wav "$(path "$work/rad1.wav")"
+cmp "$work/rad0.wav" "$work/rad1.wav" || {
+  echo "FAIL: the GP DSP's sound with Run-Ahead is not the sound without it"; exit 1; }
+
 # Savestates are the whole machine in the frontend's buffer: right after a
 # load the guest's RAM is byte for byte what it was at the save, in the same
 # process and in another one (the busy ROM's RAM changes every frame).
