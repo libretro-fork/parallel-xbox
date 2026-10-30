@@ -655,6 +655,104 @@ static void test_pending_source_lifetime(void)
     }
 }
 
+static int self_destroy_phase, self_destroy_finalized;
+static gboolean self_destroy_prepare(GSource *source, gint *timeout)
+{
+    *timeout = -1;
+    if (!self_destroy_phase) {
+        g_source_destroy(source);
+    }
+    return FALSE;
+}
+static gboolean self_destroy_check(GSource *source)
+{
+    g_source_destroy(source);
+    return FALSE;
+}
+static void self_destroy_finalize(GSource *source)
+{
+    self_destroy_finalized++;
+}
+static GSourceFuncs self_destroy_funcs = {
+    .prepare = self_destroy_prepare,
+    .check = self_destroy_check,
+    .finalize = self_destroy_finalize,
+};
+static void test_source_self_removal(void)
+{
+    for (self_destroy_phase = 0; self_destroy_phase < 2; self_destroy_phase++) {
+        GMainContext *c = g_main_context_new();
+        GSource *source = g_source_new(&self_destroy_funcs, sizeof(GSource));
+        gint priority, timeout, n;
+        GPollFD fds[16];
+        g_source_attach(source, c);
+        g_source_unref(source);
+        g_main_context_prepare(c, &priority);
+        n = g_main_context_query(c, priority, &timeout, fds, 16);
+        CHECK(n <= 16);
+        CHECK(!g_main_context_check(c, priority, fds, n));
+        g_main_context_unref(c);
+        CHECK(self_destroy_finalized == self_destroy_phase + 1);
+    }
+}
+
+typedef struct {
+    GSource source;
+    int kind;
+} RemovalSource;
+static GSource *removal_victim;
+static int removal_victim_called, removal_follower_called, removal_finalized;
+static gboolean removal_prepare(GSource *source, gint *timeout)
+{
+    RemovalSource *s = (RemovalSource *)source;
+    *timeout = -1;
+    if (!s->kind && removal_victim) {
+        g_source_destroy(removal_victim);
+        removal_victim = NULL;
+    } else if (s->kind == 1) {
+        removal_victim_called++;
+    } else if (s->kind == 2) {
+        removal_follower_called++;
+    }
+    return FALSE;
+}
+static void removal_finalize(GSource *source)
+{
+    if (((RemovalSource *)source)->kind == 1) {
+        removal_finalized++;
+    }
+}
+static GSourceFuncs removal_funcs = {
+    .prepare = removal_prepare,
+    .finalize = removal_finalize,
+};
+static void test_source_removes_next(void)
+{
+    GMainContext *c = g_main_context_new();
+    GSource *retained[2];
+    gint priority;
+    for (int i = 0; i < 3; i++) {
+        RemovalSource *s = (RemovalSource *)g_source_new(&removal_funcs,
+                                                        sizeof(RemovalSource));
+        s->kind = i;
+        g_source_attach(&s->source, c);
+        if (i == 1) {
+            removal_victim = &s->source;
+            g_source_unref(&s->source);
+        } else {
+            retained[i == 2] = &s->source;
+        }
+    }
+    CHECK(!g_main_context_prepare(c, &priority));
+    CHECK(removal_victim_called == 0 && removal_follower_called == 1);
+    CHECK(removal_finalized == 1);
+    for (int i = 0; i < 2; i++) {
+        g_source_destroy(retained[i]);
+        g_source_unref(retained[i]);
+    }
+    g_main_context_unref(c);
+}
+
 static void test_main(void)
 {
     GMainContext *c = g_main_context_new();
@@ -766,6 +864,8 @@ int main(int argc, char **argv)
     test_paths(dir);
     test_main();
     test_pending_source_lifetime();
+    test_source_self_removal();
+    test_source_removes_next();
     test_misc();
     if (failures) {
         fprintf(stderr, "glib: %d checks failed\n", failures);

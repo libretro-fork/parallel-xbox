@@ -796,3 +796,9 @@ The file-I/O fixture checks 128-span native vectors and 1,300-span fallback requ
 bits, including dirty high bits, SETP/SETNP, CMOVP, JP/JNP and full flag
 readback after each consumer or branch. Both CPU Boost settings must pass
 3,072 cases against a fixed parity table and independent full-flag oracle.
+
+Main-context readiness regressions let sources destroy themselves from prepare
+and check, or remove the next source during prepare. Removed sources must not
+run again, later sources must still be visited, and every removed source must
+finalize once. The same cases run against system GLib. The shim retains each
+walk's source references in a reusable snapshot; nested walks use separate storage.

@@ -3,8 +3,8 @@
  * g_poll.
  *
  * QEMU's own loop (util/main-loop.c) drives a context with prepare, query,
- * its own poll, check and dispatch, as with GLib; a context here is a list
- * of sources and nothing else (no wakeup pipe, no locks). QEMU attaches,
+ * its own poll, check and dispatch, as with GLib. Contexts track their
+ * sources and callback snapshots (no wakeup pipe, no locks). QEMU attaches,
  * destroys and dispatches sources with the BQL held, or on a context only
  * one thread uses, which is what keeps this single-threaded code safe.
  *
@@ -33,6 +33,8 @@ struct _GMainContext {
     gint timeout;               /* found by the last prepare, in ms */
     GPtrArray *pending;         /* sources to dispatch */
     GPtrArray *dispatching;     /* the ones being dispatched */
+    GPtrArray *walking;         /* reusable source snapshot for prepare/check */
+    guint walking_depth;
     gint depth;                 /* dispatches in progress */
     volatile gint wakeup;
 };
@@ -54,6 +56,7 @@ GMainContext *g_main_context_new(void)
     c->ref_count = 1;
     c->pending = g_ptr_array_new();
     c->dispatching = g_ptr_array_new();
+    c->walking = g_ptr_array_new();
     return c;
 }
 
@@ -72,6 +75,29 @@ static void g_main_context_clear_sources(GPtrArray *sources)
     }
 }
 
+/* Source callbacks may detach themselves or other sources. Keep the complete
+ * walk alive, and keep its storage across calls. A nested walk gets its own
+ * array so it cannot overwrite the outer callback's snapshot.
+ */
+static GPtrArray *g_main_context_ref_sources(GMainContext *context)
+{
+    GPtrArray *sources = context->walking_depth++ ? g_ptr_array_new()
+                                                : context->walking;
+    for (GSource *s = context->sources; s; s = s->next) {
+        g_ptr_array_add(sources, g_source_ref(s));
+    }
+    return sources;
+}
+
+static void g_main_context_unref_sources(GMainContext *context, GPtrArray *sources)
+{
+    g_main_context_clear_sources(sources);
+    context->walking_depth--;
+    if (sources != context->walking) {
+        g_ptr_array_free(sources, TRUE);
+    }
+}
+
 void g_main_context_unref(GMainContext *context)
 {
     if (__atomic_sub_fetch(&context->ref_count, 1, __ATOMIC_ACQ_REL)) {
@@ -84,6 +110,8 @@ void g_main_context_unref(GMainContext *context)
     g_main_context_clear_sources(context->dispatching);
     g_ptr_array_free(context->pending, TRUE);
     g_ptr_array_free(context->dispatching, TRUE);
+    g_main_context_clear_sources(context->walking);
+    g_ptr_array_free(context->walking, TRUE);
     g_free(context);
 }
 
@@ -185,19 +213,24 @@ gboolean g_main_context_prepare(GMainContext *context, gint *priority)
 {
     GMainContext *c = g_ctx(context);
     gint best = G_MAXINT;
+    GPtrArray *sources = g_main_context_ref_sources(c);
 
     c->time = g_get_monotonic_time();
     c->timeout = -1;
-    for (GSource *s = c->sources; s; s = s->next) {
+    for (guint i = 0; i < sources->len; i++) {
+        GSource *s = sources->pdata[i];
         gint t = -1;
 
-        if (g_source_blocked(s)) {
+        if ((s->flags & G_SRC_DESTROYED) || g_source_blocked(s)) {
             continue;
         }
         if (!(s->flags & G_SRC_READY)) {
             gboolean ready = FALSE;
             if (s->source_funcs->prepare) {
                 ready = s->source_funcs->prepare(s, &t);
+                if (s->flags & G_SRC_DESTROYED) {
+                    continue;
+                }
             }
             if (!ready && s->ready_time >= 0) {
                 if (s->ready_time <= c->time) {
@@ -220,6 +253,7 @@ gboolean g_main_context_prepare(GMainContext *context, gint *priority)
             c->timeout = c->timeout < 0 ? t : MIN(c->timeout, t);
         }
     }
+    g_main_context_unref_sources(c, sources);
     if (priority) {
         *priority = best;
     }
@@ -283,14 +317,19 @@ gboolean g_main_context_check(GMainContext *context, gint max_priority,
     }
 
     g_main_context_clear_sources(c->pending);
-    for (GSource *s = c->sources; s; s = s->next) {
-        if (g_source_blocked(s)) {
+    GPtrArray *sources = g_main_context_ref_sources(c);
+    for (guint j = 0; j < sources->len; j++) {
+        GSource *s = sources->pdata[j];
+        if ((s->flags & G_SRC_DESTROYED) || g_source_blocked(s)) {
             continue;
         }
         if (!(s->flags & G_SRC_READY)) {
             gboolean ready = FALSE;
             if (s->source_funcs->check) {
                 ready = s->source_funcs->check(s);
+                if (s->flags & G_SRC_DESTROYED) {
+                    continue;
+                }
             }
             for (GSList *l = s->unix_fds; !ready && l; l = l->next) {
                 ready = ((GPollFD *)l->data)->revents != 0;
@@ -303,6 +342,7 @@ gboolean g_main_context_check(GMainContext *context, gint max_priority,
             }
         }
     }
+    g_main_context_unref_sources(c, sources);
     for (GSource *s = c->sources; s; s = s->next) {
         if ((s->flags & G_SRC_READY) && s->priority <= max_priority &&
             !g_source_blocked(s)) {
