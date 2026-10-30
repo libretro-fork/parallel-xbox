@@ -26,6 +26,7 @@
 #include "hw/xbox/nv2a/pgraph/swizzle.h"
 #include "debug.h"
 #include "renderer.h"
+#include "hw/xbox/nv2a/pgraph/vram-ranges.h"
 #include "../surface-clear.h"
 #include "hw/xbox/nv2a/pgraph/scanout.h"
 
@@ -796,9 +797,8 @@ bool pgraph_gl_check_surface_to_texture_compatibility(
 static bool check_surface_overlaps_range(const SurfaceBinding *surface,
                                          hwaddr range_start, hwaddr range_len)
 {
-    hwaddr surface_end = surface->vram_addr + surface->size;
-    hwaddr range_end = range_start + range_len;
-    return !(surface->vram_addr >= range_end || range_start >= surface_end);
+    return pgraph_vram_ranges_overlap(surface->vram_addr, surface->size,
+                                      range_start, range_len);
 }
 
 /* The emulator thread, the guest about to touch a surface's memory: no

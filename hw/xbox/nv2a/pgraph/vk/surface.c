@@ -30,6 +30,7 @@
 #include "qemu/compiler.h"
 #include "ui/xemu-settings.h"
 #include "renderer.h"
+#include "hw/xbox/nv2a/pgraph/vram-ranges.h"
 #include "hw/xbox/nv2a/pgraph/scanout.h"
 #include <math.h>
 
@@ -120,9 +121,8 @@ static void memcpy_image(void *dst, void const *src, int dst_stride,
 static bool check_surface_overlaps_range(const SurfaceBinding *surface,
                                          hwaddr range_start, hwaddr range_len)
 {
-    hwaddr surface_end = surface->vram_addr + surface->size;
-    hwaddr range_end = range_start + range_len;
-    return !(surface->vram_addr >= range_end || range_start >= surface_end);
+    return pgraph_vram_ranges_overlap(surface->vram_addr, surface->size,
+                                      range_start, range_len);
 }
 
 static void parked_materialize(NV2AState *d, SurfaceBinding *s);

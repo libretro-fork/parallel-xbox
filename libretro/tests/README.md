@@ -19,7 +19,7 @@ The GPU texture-alias phase also redraws the source blue and checks both
 RGB565 halfwords (`001cff` and `ffe300`) at frames 770/790, covering channel
 order and packed bit fields beyond all-zero/all-one texels.
 
-The GPU ROM's texture-alias phase (frames 680 through 790) samples a red
+The GPU ROM's texture-alias phase (frames 680 through 810) samples a red
 GPU-produced 32x16 ARGB surface directly and through an incompatible 64x16
 RGB565 view with the same pitch. Red's little-endian words become black and
 white texels in the narrow view. A later GPU redraw must refresh the cached
@@ -381,3 +381,11 @@ mips, cube layers 0/3/5 and all source-kind metadata values. It checks exact
 bytes, mip extents, compressed row alignment and preservation of the original
 allocation spans. Base crops follow OpenGL's existing four-texel convention;
 higher mip source origins remain unchanged and are not a hardware oracle.
+
+`test-vram-ranges.c` checks shared half-open VRAM overlap semantics with
+82944 byte-by-byte cases and 500000 independent carry-preserving endpoint
+cases, including empty, adjacent, one-byte and full-width address spans.
+`run.sh` runs it. The GPU ROM at frame 800 samples a one-byte swizzled Y8
+view from the first byte of a GPU-cleared blue ARGB surface while RAM stays
+zero; frame 810 must be white on both renderers at 1x/2x/4x. This reproduces
+the old OpenGL stale-black result with a real texture upload.

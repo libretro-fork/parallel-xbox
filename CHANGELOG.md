@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- OpenGL now writes back GPU surfaces before uploading a one-byte texture view that overlaps them, fixing stale texture pixels from an inclusive-end off-by-one. Both renderers share an overflow-safe half-open VRAM overlap test; empty ranges no longer trigger surface writeback or reject GPU texture reuse.
+
 - Vulkan bordered cubemap base uploads now skip the same four-texel source border as OpenGL. Higher mip copies fit their destination levels and compressed rows retain block alignment. Copy skips remain separate from allocation/flush spans. Higher mip source origins retain the existing Vulkan policy pending an Xbox layout reference.
 
 - Retail Xbox games queue their learned shader seeds from the first flip instead of waiting 15 seconds to name the disc. This gives the existing workers boot time to prepare known shaders and avoids delaying seed loading into play. Chihiro retains its detected-title priority and fallback delay.

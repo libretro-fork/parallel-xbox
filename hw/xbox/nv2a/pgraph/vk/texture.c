@@ -32,6 +32,7 @@
 #include "data/segaboot_logo.rgba.h"
 #include "qemu/lru.h"
 #include "renderer.h"
+#include "hw/xbox/nv2a/pgraph/vram-ranges.h"
 #include "ui/xemu-settings.h"
 
 static void texture_cache_release_node_resources(PGRAPHVkState *r, TextureBinding *snode);
@@ -1398,17 +1399,17 @@ static bool can_reinterpret_argb_as_rgb565(PGRAPHState *pg,
     /* A single image must own the whole range. Do not bypass the ordered
      * RAM materialization when another live/parked dirty view overlaps it. */
     SurfaceBinding *other;
-    uint64_t start = surface->vram_addr, end = start + surface->size;
     QTAILQ_FOREACH(other, &r->surfaces, entry) {
         if (other != surface && other->draw_dirty &&
-            other->vram_addr < end && start < other->vram_addr + other->size) {
+            pgraph_vram_ranges_overlap(surface->vram_addr, surface->size,
+                other->vram_addr, other->size)) {
             return false;
         }
     }
     QTAILQ_FOREACH(other, &r->invalid_surfaces, entry) {
         if (other != surface && (other->writeback_owed || other->draw_dirty) &&
-            other->vram_addr < end &&
-            start < other->vram_addr + other->size) {
+            pgraph_vram_ranges_overlap(surface->vram_addr, surface->size,
+                other->vram_addr, other->size)) {
             return false;
         }
     }

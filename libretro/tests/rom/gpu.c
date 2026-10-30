@@ -354,7 +354,8 @@ static void triangle(void)
 
 /* A 32x16 ARGB surface viewed as either matching ARGB pixels or a 64x16
  * RGB565 texture with the same byte pitch. Red's bytes are 00 00 FF FF:
- * the narrow view must alternate black and white, not stale CPU blue. */
+ * the narrow view must alternate black and white, not stale CPU blue.
+ * A one-byte Y8 view additionally checks the surface writeback boundary. */
 static __attribute__((noinline)) void texture_alias(u32 format, u32 width,
                                                    u32 u, u32 redraw)
 {
@@ -387,15 +388,17 @@ static __attribute__((noinline)) void texture_alias(u32 format, u32 width,
     method(NV097_SET_WINDOW_CLIP_TYPE, 0); /* inclusive window clip */
     method(NV097_SET_WINDOW_CLIP_HORIZONTAL, (WIDTH - 1) << 16);
     method(NV097_SET_WINDOW_CLIP_VERTICAL, (HEIGHT - 1) << 16);
-    /* Texture stage zero: rectangle coordinates, nearest sampling, DMA A. */
+    /* Texture stage zero: nearest sampling, DMA A. Width 1 selects a
+     * one-byte swizzled Y8 view; other cases use rectangle coordinates. */
     method(NV097_SET_TEXTURE_OFFSET, TEX_SOURCE);
     method(NV097_SET_TEXTURE_FORMAT, 1u | (2u << 4) | (1u << 3) | (format << 8) |
-                   (1u << 16) | ((width == 32 ? 5u : 6u) << 20) | (4u << 24));
+                   (1u << 16) | ((width == 1 ? 0u : width == 32 ? 5u : 6u) << 20) |
+                   ((width == 1 ? 0u : 4u) << 24));
     method(NV097_SET_TEXTURE_ADDRESS, 0x00030303u);
     method(NV097_SET_TEXTURE_CONTROL0, 1u << 30);
     method(NV097_SET_TEXTURE_CONTROL1, 128u << 16);
     method(NV097_SET_TEXTURE_FILTER, 0x01010000u);
-    method(NV097_SET_TEXTURE_IMAGE_RECT, (width << 16) | 16u);
+    method(NV097_SET_TEXTURE_IMAGE_RECT, (width << 16) | (width == 1 ? 1u : 16u));
     method(NV097_SET_SHADER_STAGE_PROGRAM, 1);           /* PROJECT2D on stage zero */
     method(NV097_SET_COMBINER_CONTROL, 0);           /* final combiner only */
     method(NV097_SET_COMBINER_SPECULAR_FOG_CW0, 8);           /* final RGB = T0 */
@@ -930,6 +933,13 @@ void gpu_main(void)
         if (frame == 740) texture_alias(0x11, 64, 0x3f000000u, 0xffffffffu);
         if (frame == 760) texture_alias(0x11, 64, 0x3f000000u, 0xff0000ffu);
         if (frame == 780) texture_alias(0x11, 64, 0x3fc00000u, 0);
+        if (frame == 800) {
+            /* One-byte Y8 aliases the first blue byte of a GPU-cleared
+             * ARGB surface. RAM stays zero until the surface is written
+             * back, so an empty/one-byte overlap error displays black. */
+            for (u32 i = 0; i < 32u * 16u; i++) ram32(TEX_SOURCE + i * 4, 0);
+            texture_alias(0x00, 1, 0x3f000000u, 0xff0000ffu);
+        }
         method(NV097_FLIP_INCREMENT_WRITE, 0);
         kick();
         if (frame >= 100 && frame < 125) {

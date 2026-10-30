@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include "deps/vulkan-headers/vulkan/vulkan_core.h"
 #include "hw/xbox/nv2a/nv2a_regs.h"
+#include "hw/xbox/nv2a/pgraph/vram-ranges.h"
 typedef struct SurfaceBinding {
     bool color, swizzle, native_resolution, draw_dirty, writeback_owed;
     struct { unsigned color_format, anti_aliasing; } shape;
@@ -80,6 +81,9 @@ int main(void)
     assert(can_reinterpret_argb_as_rgb565(&pg,&source,&shape));
     overlap.draw_dirty=true;
     assert(!can_reinterpret_argb_as_rgb565(&pg,&source,&shape));
+    overlap.vram_addr = source.vram_addr + 1;
+    overlap.size = 0;
+    assert(can_reinterpret_argb_as_rgb565(&pg,&source,&shape));
     puts("texture reinterpretation gate: formats, layouts, bounds, capacity, scratch and dirty-overlap cases passed");
     return 0;
 }

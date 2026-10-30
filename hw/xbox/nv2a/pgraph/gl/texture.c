@@ -27,6 +27,7 @@
 #include "hw/xbox/nv2a/pgraph/texture.h"
 #include "debug.h"
 #include "renderer.h"
+#include "hw/xbox/nv2a/pgraph/vram-ranges.h"
 #include "ui/xemu-settings.h"
 #include "data/segaboot_logo.rgba.h"
 
@@ -254,17 +255,17 @@ static bool can_reinterpret_argb_as_rgb565(PGRAPHState *pg,
     /* A single image must own the whole range. Do not bypass the ordered
      * RAM materialization when another live/parked dirty view overlaps it. */
     SurfaceBinding *other;
-    uint64_t start = surface->vram_addr, end = start + surface->size;
     QTAILQ_FOREACH(other, &r->surfaces, entry) {
         if (other != surface && other->draw_dirty &&
-            other->vram_addr < end && start < other->vram_addr + other->size) {
+            pgraph_vram_ranges_overlap(surface->vram_addr, surface->size,
+                other->vram_addr, other->size)) {
             return false;
         }
     }
     QTAILQ_FOREACH(other, &r->parked, entry) {
         if (other != surface && (other->writeback_owed || other->draw_dirty) &&
-            other->vram_addr < end &&
-            start < other->vram_addr + other->size) {
+            pgraph_vram_ranges_overlap(surface->vram_addr, surface->size,
+                other->vram_addr, other->size)) {
             return false;
         }
     }
@@ -423,12 +424,9 @@ void pgraph_gl_bind_textures(NV2AState *d)
             // FIXME: Restructure to support rendering surfaces to cubemap faces
 
             // Writeback any surfaces which this texture may index
-            hwaddr tex_vram_end = texture_vram_offset + length - 1;
             QTAILQ_FOREACH(surface, &r->surfaces, entry) {
-                hwaddr surf_vram_end = surface->vram_addr + surface->size - 1;
-                bool overlapping = !(surface->vram_addr >= tex_vram_end
-                                     || texture_vram_offset >= surf_vram_end);
-                if (overlapping) {
+                if (pgraph_vram_ranges_overlap(texture_vram_offset, length,
+                        surface->vram_addr, surface->size)) {
                     pgraph_gl_surface_download_if_dirty(d, surface);
                 }
             }
