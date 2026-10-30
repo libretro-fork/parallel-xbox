@@ -181,21 +181,7 @@ static int lr_file_rw(LRFile *f, int64_t off, void *buf, size_t len,
     uint8_t *p = buf;
 
     *done = 0;
-    if (f->mapped) {
-        if (write || off < 0) {
-            return write ? -EPERM : -EINVAL;
-        }
-        size_t n = off >= f->mapped_size ? 0 :
-                   (size_t)(f->mapped_size - off);
-        if (n > len) {
-            n = len;
-        }
-        if (n) {
-            memcpy(buf, f->mapped + off, n);
-        }
-        *done = n;
-        return 0;
-    }
+
     while (len) {
         OVERLAPPED ov;
         DWORD n = len > 0x40000000u ? 0x40000000u : (DWORD)len, got = 0;
@@ -362,21 +348,7 @@ static int lr_file_rw(LRFile *f, int64_t off, void *buf, size_t len,
     uint8_t *p = buf;
 
     *done = 0;
-    if (f->mapped) {
-        if (write || off < 0) {
-            return write ? -EPERM : -EINVAL;
-        }
-        size_t n = off >= f->mapped_size ? 0 :
-                   (size_t)(f->mapped_size - off);
-        if (n > len) {
-            n = len;
-        }
-        if (n) {
-            memcpy(buf, f->mapped + off, n);
-        }
-        *done = n;
-        return 0;
-    }
+
     while (len) {
         ssize_t n = write ? pwrite(f->fd, p, len, (off_t)off)
                           : pread(f->fd, p, len, (off_t)off);
@@ -500,6 +472,11 @@ LRFile *lr_file_open(const char *path, bool writable, bool create)
                     return NULL;
                 }
                 f->stream = stream;
+#ifdef _WIN32
+                f->h = INVALID_HANDLE_VALUE;
+#else
+                f->fd = -1;
+#endif
                 f->mapped = mapped;
                 f->mapped_size = size;
                 return f;
@@ -525,7 +502,22 @@ const uint8_t *lr_file_view(LRFile *f, int64_t off, size_t len)
 int lr_file_pread(LRFile *f, int64_t off, void *buf, size_t len)
 {
     size_t done;
-    int ret = lr_file_rw(f, off, buf, len, false, &done);
+    int ret;
+    if (f->mapped) {
+        if (off < 0) {
+            return -EINVAL;
+        }
+        done = off >= f->mapped_size ? 0 : (size_t)(f->mapped_size - off);
+        if (done > len) {
+            done = len;
+        }
+        if (done) {
+            memcpy(buf, f->mapped + off, done);
+        }
+        ret = 0;
+    } else {
+        ret = lr_file_rw(f, off, buf, len, false, &done);
+    }
 
     if (ret == 0 && done < len) {
         memset((uint8_t *)buf + done, 0, len - done);
@@ -536,6 +528,9 @@ int lr_file_pread(LRFile *f, int64_t off, void *buf, size_t len)
 int lr_file_pwrite(LRFile *f, int64_t off, const void *buf, size_t len)
 {
     size_t done;
+    if (f->mapped) {
+        return -EPERM;
+    }
 
     return lr_file_rw(f, off, (void *)buf, len, true, &done);
 }

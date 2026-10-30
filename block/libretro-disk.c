@@ -53,6 +53,7 @@
 #include "block/snapshot.h"
 #include "block/libretro-disk.h"
 #include "block/libretro-file.h"
+#include "block/libretro-vfs-read.h"
 #include "block/libretro-qcow2.h"
 #include "system/block-backend.h"
 #include "system/blockdev.h"
@@ -262,36 +263,9 @@ static int lr_disk_rw(BlockBackend *blk, int64_t offset, QEMUIOVector *qiov,
                                       qiov->niov);
         break;
     case LR_MEDIUM_VFS:
-        if (m->vfs_position != (int64_t)m->base + offset) {
-            int64_t position = xemu_libretro_vfs->seek(m->vfs, m->base + offset,
-                                                       RETRO_VFS_SEEK_POSITION_START);
-            if (position != (int64_t)m->base + offset) {
-                m->vfs_position = -1;
-                return -EIO;
-            }
-            m->vfs_position = position;
-        }
-        for (int i = 0; i < qiov->niov; i++) {
-            uint8_t *data = qiov->iov[i].iov_base;
-            size_t left = qiov->iov[i].iov_len;
-            while (left) {
-                int64_t r = xemu_libretro_vfs->read(m->vfs, data, left);
-                if (r < 0 || (uint64_t)r > left) {
-                    m->vfs_position = -1;
-                    return -EIO;
-                }
-                if (!r) {
-                    memset(data, 0, left);
-                    for (int j = i + 1; j < qiov->niov; j++) {
-                        memset(qiov->iov[j].iov_base, 0, qiov->iov[j].iov_len);
-                    }
-                    return 0;
-                }
-                data += r;
-                left -= r;
-                m->vfs_position += r;
-            }
-        }
+        ret = lr_vfs_readv(xemu_libretro_vfs, m->vfs, &m->vfs_position,
+                           m->base + offset,
+                           (const LRFileIOV *)qiov->iov, qiov->niov);
         break;
     case LR_MEDIUM_MEMORY:
         for (int i = 0; i < qiov->niov; i++) {

@@ -33,6 +33,8 @@ int main(void)
     put(cert + 8, 0x54430006);
     assert(!xbe_runtime_plan(h, sizeof(h), cert, sizeof(cert), false, &p));
     put(cert + 8, 0x46530002);
+    put(h + 0x118, 0x10201);
+    assert(!xbe_runtime_plan(h, sizeof(h), cert, sizeof(cert), false, &p));
     put(h + 0x118, 0xfffffff0);
     assert(!xbe_runtime_plan(h, sizeof(h), cert, sizeof(cert), false, &p));
     put(h + 0x118, 0x10200); put(cert, 0xffffffff);

@@ -34,7 +34,7 @@ static inline bool xbe_runtime_plan(const uint8_t *h, size_t hsize,
     uint32_t certificate = xbe_runtime_u32(h + 0x118);
     uint32_t cert_size = xbe_runtime_u32(cert);
     if (headers < 0x178 || headers > 32768 || image < headers ||
-        image > 64 * 1024 * 1024 || certificate < 0x10178 ||
+        image > 64 * 1024 * 1024 || certificate < 0x10178 || (certificate & 3) ||
         certificate > 0x10000 + headers || cert_size < 0x1dc ||
         cert_size > 0x10000 + headers - certificate ||
         xbe_runtime_u32(cert + 8) != 0x46530002) {

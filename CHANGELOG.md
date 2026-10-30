@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Fixed the non-futex lock-counter build: its retro_atomic compare/exchange helper is shared with macOS and other non-futex platforms, rather than being hidden in the futex-only section.
+
 - Otogi can start from an unmodified XISO or full disc image with Complex 4627. Runtime Disc-check Compatibility adjusts only the loaded executable's physical-disc check flag before entry; disable it to retain the original checks. No security dump or image preparation is needed for this workaround.
 - Read-only local images use libretro-common mapped views, removing repeated read syscalls and allowing zero-copy metadata access. Scatter reads go straight into guest buffers and combine adjacent spans. Native positional I/O remains the fallback, writable HDDs stay sparse, and frontend VFS reads avoid redundant seeks and handle partial reads correctly.
 
