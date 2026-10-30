@@ -35,6 +35,12 @@
  *              does, nxdk_pgraph_tests surface_pitch). The count of wrong
  *              ones is at GPU_SWZ_BAD, the first wrong word at GPU_SWZ_WORD.
  *              Taking the pitch as the row folded the rows onto each other
+ *   frame 5    a second swizzled surface E, as C but green and blue, then
+ *              left alone: at 60 frames unused the renderer evicts it
+ *              while dirty, reading it back without waiting (OpenGL: a PBO
+ *              the binding parks with); at frame 75 the CPU reads all its
+ *              texels, which takes that read-back: wrong ones at
+ *              GPU_SWZ2_BAD
  *   frame 62   B's depth and stencil cleared (Z24S8); at frame 63 the CPU
  *              reads its first and last words back (GPU_ZETA0, GPU_ZETA1):
  *              both the clear value
@@ -78,6 +84,7 @@ typedef unsigned int u32;
 #define GPU_ZETA0    0x0030002Cu   /* u32: B's first depth word, frame 63 */
 #define GPU_ZETA1    0x00300030u   /* u32: B's last depth word, frame 63 */
 #define GPU_ZETA2    0x00300034u   /* u32: B's depth word at frame 72 */
+#define GPU_SWZ2_BAD 0x00300038u   /* u32: E's wrong texels, read at frame 75 */
 /* 0x00300010: the pushbuffer's write offset (put) */
 
 #define NV2A         0xFD000000u   /* BAR0, the registers */
@@ -120,6 +127,7 @@ typedef unsigned int u32;
 #define HEIGHT       480
 #define PITCH        (WIDTH * 4)
 #define SURF_C       0x01800000u   /* swizzled, C_W x C_H */
+#define SURF_E       0x01C00000u   /* swizzled, C_W x C_H, aged out */
 #define C_LOG_W      5
 #define C_LOG_H      4
 #define C_W          (1u << C_LOG_W)
@@ -305,9 +313,10 @@ static __attribute__((noinline)) u32 swizzled(u32 x, u32 y)
     return s;
 }
 
-/* C: swizzled, its pitch half a row; red left, blue right. Then B's
- * shape back. */
-static __attribute__((noinline)) void draw_swizzled(void)
+/* A swizzled surface at addr, its pitch half a row; left on its left
+ * half, right on its right. Then B's shape back. */
+static __attribute__((noinline)) void draw_swizzled(u32 addr, u32 left,
+                                                    u32 right)
 {
     method(NV097_SET_SURFACE_CLIP_H, C_W << 16);
     method(NV097_SET_SURFACE_CLIP_V, C_H << 16);
@@ -315,12 +324,12 @@ static __attribute__((noinline)) void draw_swizzled(void)
                                          ((u32)C_LOG_W << 16) |
                                          ((u32)C_LOG_H << 24));
     method(NV097_SET_SURFACE_PITCH, (C_W * 2) | ((C_W * 2) << 16));
-    method(NV097_SET_SURFACE_COLOR_OFFSET, SURF_C);
-    method(NV097_SET_COLOR_CLEAR_VALUE, 0xFFFF0000u);
+    method(NV097_SET_SURFACE_COLOR_OFFSET, addr);
+    method(NV097_SET_COLOR_CLEAR_VALUE, left);
     method(NV097_SET_CLEAR_RECT_H, (C_W / 2 - 1) << 16);
     method(NV097_SET_CLEAR_RECT_V, (C_H - 1) << 16);
     method(NV097_CLEAR_SURFACE, 0xF0);
-    method(NV097_SET_COLOR_CLEAR_VALUE, 0xFF0000FFu);
+    method(NV097_SET_COLOR_CLEAR_VALUE, right);
     method(NV097_SET_CLEAR_RECT_H, ((C_W - 1) << 16) | (C_W / 2));
     method(NV097_CLEAR_SURFACE, 0xF0);
     method(NV097_SET_SURFACE_CLIP_H, (u32)WIDTH << 16);
@@ -348,20 +357,23 @@ static __attribute__((noinline)) void clear_stencil(void)
     method(NV097_SET_DEPTH_MASK, 0);
 }
 
-static __attribute__((noinline)) void check_swizzled(void)
+/* The texels of the surface at addr where the NV2A lays them out: the
+ * count of wrong ones, the first wrong one */
+static __attribute__((noinline)) u32 check_swizzled(u32 addr, u32 left,
+                                                    u32 right, u32 *word)
 {
-    u32 bad = 0, word = 0;
+    u32 bad = 0;
+    *word = 0;
     for (u32 y = 0; y < C_H; y++) {
         for (u32 x = 0; x < C_W; x++) {
-            u32 v = rd32(SURF_C + swizzled(x, y) * 4);
-            u32 want = x < C_W / 2 ? 0xFFFF0000u : 0xFF0000FFu;
+            u32 v = rd32(addr + swizzled(x, y) * 4);
+            u32 want = x < C_W / 2 ? left : right;
             if (v != want && !bad++) {
-                word = v;
+                *word = v;
             }
         }
     }
-    ram32(GPU_SWZ_WORD, word);
-    ram32(GPU_SWZ_BAD, bad);
+    return bad;
 }
 
 /* The register is read into a volatile local, so every turn stores it to
@@ -392,6 +404,7 @@ void gpu_main(void)
     ram32(GPU_ZETA0, 0);
     ram32(GPU_ZETA1, 0);
     ram32(GPU_ZETA2, 0);
+    ram32(GPU_SWZ2_BAD, 0xFFFFFFFFu);
     /* the no-op subroutine: seven no-op methods of 2047 words, a return */
     {
         u32 at = PUSHBUF + NOP_SUB;
@@ -514,14 +527,25 @@ void gpu_main(void)
             }
         }
         if (frame == 61) {
-            check_swizzled();
+            u32 word;
+            ram32(GPU_SWZ_BAD, check_swizzled(SURF_C, 0xFFFF0000u,
+                                              0xFF0000FFu, &word));
+            ram32(GPU_SWZ_WORD, word);
+        }
+        if (frame == 75) {
+            u32 word;
+            ram32(GPU_SWZ2_BAD, check_swizzled(SURF_E, 0xFF00FF00u,
+                                               0xFF0000FFu, &word));
+        }
+        if (frame == 5) {
+            draw_swizzled(SURF_E, 0xFF00FF00u, 0xFF0000FFu);
         }
         if (frame == 63) {
             ram32(GPU_ZETA0, rd32(ZETA_B));
             ram32(GPU_ZETA1, rd32(ZETA_B + PITCH * (HEIGHT - 1) + (WIDTH - 1) * 4));
         }
         if (frame == 60) {
-            draw_swizzled();
+            draw_swizzled(SURF_C, 0xFFFF0000u, 0xFF0000FFu);
         }
         if (frame == 70) {
             write_zeta();

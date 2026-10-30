@@ -164,7 +164,10 @@ done
 # and last words back: the clear value, 0x12345678. At 70 the CPU writes
 # the depth buffer and at 71 only the stencil is cleared: at 72 the CPU
 # reads the CPU's depth with the new stencil, 0xaabbcc55 (0x300034; on
-# Vulkan through the unpack and pack shaders).
+# Vulkan through the unpack and pack shaders). A second swizzled surface,
+# drawn at frame 5 and left alone, is evicted at 60 frames while dirty and
+# read back without waiting (OpenGL: a PBO the binding parks with); at 75
+# the CPU checks all its texels, which takes that read-back (0x300038: 0).
 # On Vulkan the front buffer was dropped as an old surface and a CPU write
 # to it was not a new picture: the display stopped after the first frame
 # (Jet Set Radio Future black after the Xbox logo).
@@ -180,7 +183,7 @@ gpu_check() {
                 "peek_0x300018=0xffff0000" "peek_0x30001c=0x00000004" \
                 "peek_0x300024=0x00000000" "peek_0x30002c=0x12345678" \
                 "peek_0x300030=0x12345678" "peek_0x300034=0xaabbcc55" \
-                "pixel_115=0x000000"; do
+                "peek_0x300038=0x00000000" "pixel_115=0x000000"; do
         grep -E "^$want$" "$1" >/dev/null || {
             echo "FAIL: $2: $want expected, $(grep "^${want%%=*}=" "$1")"; exit 1; }
     done
@@ -189,7 +192,7 @@ echo "== the display, OpenGL"
 timeout 300 $h "$(path "$core")" "$(path "$work/sysg")" $vp --frames 125 --strict \
   --min-speed 0.2 --pixel 10 --pixel 25 --pixel 45 --pixel 85 --pixel 115 --peek 0x300014 --peek 0x300018 \
   --peek 0x30001c --peek 0x300024 --peek 0x300028 --peek 0x30002c \
-  --peek 0x300030 --peek 0x300034 >"$work/gpu_gl.txt"
+  --peek 0x300030 --peek 0x300034 --peek 0x300038 >"$work/gpu_gl.txt"
 grep -E "pixel_|peek_" "$work/gpu_gl.txt"
 gpu_check "$work/gpu_gl.txt" "OpenGL"
 echo "== the display, Vulkan"
@@ -198,7 +201,7 @@ timeout 300 $h "$(path "$core")" "$(path "$work/sysg")" $vp --vulkan \
   --opt xemu_renderer=vulkan --frames 125 --strict \
   --pixel 10 --pixel 25 --pixel 45 --pixel 85 --pixel 115 --peek 0x300014 --peek 0x300018 \
   --peek 0x30001c --peek 0x300024 --peek 0x300028 --peek 0x30002c \
-  --peek 0x300030 --peek 0x300034 >"$work/gpu_vk.txt"
+  --peek 0x300030 --peek 0x300034 --peek 0x300038 >"$work/gpu_vk.txt"
 r=$?
 set -e
 case $r in
@@ -206,6 +209,30 @@ case $r in
 3) echo "no Vulkan device: skipped" ;;
 *) echo "FAIL: the Vulkan run exited $r"; exit 1 ;;
 esac
+
+# The display test's read-backs at twice the internal resolution, where
+# each is shrunk to the Xbox's size on the way back (OpenGL: a swizzled
+# surface is shrunk and put in its swizzled order in one GPU pass).
+for r in OpenGL Vulkan; do
+    o=; [ $r = Vulkan ] && o="--vulkan --opt xemu_renderer=vulkan"
+    echo "== the display at 2x, $r"
+    set +e
+    timeout 300 $h "$(path "$core")" "$(path "$work/sysg")" $vp $o \
+      --opt xemu_surface_scale=2 --frames 110 --strict --peek 0x300014 \
+      --peek 0x300018 --peek 0x300024 --peek 0x30002c --peek 0x300034 \
+      --peek 0x300038 >"$work/gpu_2x.txt"
+    a=$?
+    set -e
+    if [ $a = 3 ]; then echo "no Vulkan device: skipped"; continue; fi
+    [ $a = 0 ] || { echo "FAIL: $r at 2x: the run exited $a"; exit 1; }
+    grep -E "peek_" "$work/gpu_2x.txt"
+    for want in "peek_0x300014=0xffff0000" "peek_0x300018=0xffff0000" \
+                "peek_0x300024=0x00000000" "peek_0x30002c=0x12345678" \
+                "peek_0x300034=0xaabbcc55" "peek_0x300038=0x00000000"; do
+        grep -E "^$want$" "$work/gpu_2x.txt" >/dev/null || {
+            echo "FAIL: $r at 2x: $want expected, $(grep "^${want%%=*}=" "$work/gpu_2x.txt")"; exit 1; }
+    done
+done
 
 # A savestate taken while surfaces live only on the GPU (rom/gpu.c: before
 # run 64, B drawn and its depth cleared at frame 62, nothing read back), then

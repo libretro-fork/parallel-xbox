@@ -122,6 +122,7 @@ typedef struct SurfaceBinding {
     GLsync dl_fence;
     int dl_draw_time;
     bool dl_native; /* the PBO holds the guest's own pixel count */
+    bool dl_swz;    /* and in the guest's swizzled order (swizzle pass) */
     DispRef *disp_ref; /* display thread reference, or NULL */
 } SurfaceBinding;
 
@@ -366,6 +367,11 @@ typedef struct PGRAPHGLState {
     GLuint dl_shrink_fbo, dl_shrink_tex;
     unsigned dl_shrink_w, dl_shrink_h;
     GLint dl_shrink_fmt;
+    /* A swizzled colour surface is put in the Xbox's swizzled order here,
+     * at native size, before its read-back (surface_swizzle_on_gpu). */
+    GLuint dl_swz_fbo, dl_swz_tex;
+    unsigned dl_swz_w, dl_swz_h;
+    GLint dl_swz_fmt;
     /* The same for a scaled depth surface. */
     GLuint dl_zshrink_fbo, dl_zshrink_tex;
     unsigned dl_zshrink_w, dl_zshrink_h;
@@ -477,6 +483,10 @@ typedef struct PGRAPHGLState {
         /* A8R8G8B8 bits -> depth, the inverse of pack_prog: a buffer written
          * as colour, then bound as zeta (alias_convert). */
         GLuint unpack_prog, unpack_tex_loc;
+        /* a swizzled colour surface into its swizzled order, shrunk to 1x
+         * (surface_swizzle_on_gpu) */
+        GLuint swz_prog;
+        GLint swz_tex_loc, swz_w_loc, swz_mx_loc, swz_my_loc, swz_scale_loc;
     } s2t_rndr;
 
     struct disp_rndr {

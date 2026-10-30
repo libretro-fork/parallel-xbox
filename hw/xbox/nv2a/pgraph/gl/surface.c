@@ -252,6 +252,41 @@ static void init_render_to_texture(PGRAPHState *pg)
     r->s2t_rndr.pack_prog = pgraph_gl_compile_shader(vs, fs_pack);
     r->s2t_rndr.pack_tex_loc = glGetUniformLocation(r->s2t_rndr.pack_prog, "tex");
 
+    /* A swizzled colour surface in the Xbox's swizzled order: output texel
+     * s, counted row by row in a target w wide, takes the surface texel at
+     * the x and y the swizzle masks take out of s (swizzle.c), at the
+     * centre of its scale x scale block as surface_shrink_on_gpu does.
+     * The colour formats are all normalized, so the bits pass unchanged. */
+    const char *fs_swz =
+        "#version 330\n"
+        "uniform sampler2D tex;\n"
+        "uniform uint w, mx, my, scale;\n"
+        "layout(location = 0) out vec4 out_Color;\n"
+        "uint compact(uint s, uint mask)\n"
+        "{\n"
+        "    uint r = 0u, bit = 1u;\n"
+        "    while (mask != 0u) {\n"
+        "        uint low = mask & (0u - mask);\n"
+        "        if ((s & low) != 0u) r |= bit;\n"
+        "        mask &= ~low;\n"
+        "        bit <<= 1u;\n"
+        "    }\n"
+        "    return r;\n"
+        "}\n"
+        "void main()\n"
+        "{\n"
+        "    uint s = uint(gl_FragCoord.y) * w + uint(gl_FragCoord.x);\n"
+        "    uvec2 xy = uvec2(compact(s, mx), compact(s, my));\n"
+        "    out_Color = texelFetch(tex, ivec2(xy * scale + scale / 2u), 0);\n"
+        "}\n";
+    r->s2t_rndr.swz_prog = pgraph_gl_compile_shader(vs, fs_swz);
+    r->s2t_rndr.swz_tex_loc = glGetUniformLocation(r->s2t_rndr.swz_prog, "tex");
+    r->s2t_rndr.swz_w_loc = glGetUniformLocation(r->s2t_rndr.swz_prog, "w");
+    r->s2t_rndr.swz_mx_loc = glGetUniformLocation(r->s2t_rndr.swz_prog, "mx");
+    r->s2t_rndr.swz_my_loc = glGetUniformLocation(r->s2t_rndr.swz_prog, "my");
+    r->s2t_rndr.swz_scale_loc =
+        glGetUniformLocation(r->s2t_rndr.swz_prog, "scale");
+
     /* Scaled depth surface -> native-1x depth texture, as the guest samples it
      * (a scaled one shifts precise depth compares: OutRun 2's car shadow).
      * texelFetch at gl_FragCoord * scale takes each block's top-left texel,
@@ -317,8 +352,9 @@ static void finalize_render_to_texture(PGRAPHState *pg)
     glDeleteProgram(r->s2t_rndr.pack_prog);
     glDeleteProgram(r->s2t_rndr.unpack_prog);
     glDeleteProgram(r->s2t_rndr.depth_prog);
+    glDeleteProgram(r->s2t_rndr.swz_prog);
     r->s2t_rndr.pack_prog = r->s2t_rndr.unpack_prog = 0;
-    r->s2t_rndr.depth_prog = 0;
+    r->s2t_rndr.depth_prog = r->s2t_rndr.swz_prog = 0;
 }
 
 static bool surface_to_texture_can_fastpath(SurfaceBinding *surface,
@@ -1390,8 +1426,9 @@ static bool parked_feed_from_readback(NV2AState *d, SurfaceBinding *parked,
 {
     PGRAPHState *pg = &d->pgraph;
 
-    /* A depth read back at 1x (dl_native) holds no scaled image to feed. */
-    if (parked->dl_native ||
+    /* A depth read back at 1x (dl_native), or a surface read back in its
+     * swizzled order (dl_swz), holds no scaled image to feed. */
+    if (parked->dl_native || parked->dl_swz ||
         !parked->dl_fence || parked->dl_draw_time != parked->draw_time ||
         parked->width != neu->width || parked->height != neu->height ||
         parked->fmt.bytes_per_pixel != neu->fmt.bytes_per_pixel ||
@@ -1647,6 +1684,87 @@ static bool surface_shrink_on_gpu(PGRAPHState *pg, SurfaceBinding *surface)
     return true;
 }
 
+/* A swizzled colour surface put in the Xbox's swizzled order on the GPU,
+ * shrunk to native size on the way (fs_swz): read back row by row, the
+ * target is the surface as the Xbox's memory holds it, so the read-back
+ * goes straight there, with no scratch copy and no swizzle or shrink by
+ * the CPU. The target grows only, so a download allocates nothing once it
+ * has the largest surface's size. Left bound for reading; the GL state the
+ * pass changes is the draw state cache's to restore, as for s2t's passes. */
+static bool surface_swizzle_on_gpu(NV2AState *d, SurfaceBinding *surface)
+{
+    PGRAPHState *pg = &d->pgraph;
+    PGRAPHGLState *r = pg->gl_renderer_state;
+    unsigned int w = surface->width, h = surface->height;
+    uint32_t mx, my, mz;
+
+    if (!surface->color || !surface->swizzle || !r->s2t_rndr.swz_prog ||
+        surface->fmt.gl_attachment != GL_COLOR_ATTACHMENT0 || !w || !h ||
+        (w & (w - 1)) || (h & (h - 1))) {
+        return false;
+    }
+
+    if (!r->dl_swz_fbo) {
+        glGenFramebuffers(1, &r->dl_swz_fbo);
+        glGenTextures(1, &r->dl_swz_tex);
+    }
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, r->dl_swz_fbo);
+    if (r->dl_swz_w < w || r->dl_swz_h < h ||
+        r->dl_swz_fmt != (GLint)surface->fmt.gl_internal_format) {
+        unsigned int tw = MAX(w, r->dl_swz_w), th = MAX(h, r->dl_swz_h);
+        GLint prev_tex;
+        glGetIntegerv(GL_TEXTURE_BINDING_2D, &prev_tex);
+        glBindTexture(GL_TEXTURE_2D, r->dl_swz_tex);
+        glTexImage2D(GL_TEXTURE_2D, 0, surface->fmt.gl_internal_format, tw,
+                     th, 0, surface->fmt.gl_format, surface->fmt.gl_type,
+                     NULL);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
+        glBindTexture(GL_TEXTURE_2D, prev_tex);
+        glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+                               GL_TEXTURE_2D, r->dl_swz_tex, 0);
+        r->dl_swz_w = tw;
+        r->dl_swz_h = th;
+        r->dl_swz_fmt = surface->fmt.gl_internal_format;
+    }
+
+    generate_swizzle_masks(w, h, 1, &mx, &my, &mz);
+    bool cost_suspended = pgraph_gl_own_draw_suspend(d);
+    GLint prev_unit, prev_tex;
+    glGetIntegerv(GL_ACTIVE_TEXTURE, &prev_unit);
+    glActiveTexture(GL_TEXTURE0);
+    glGetIntegerv(GL_TEXTURE_BINDING_2D, &prev_tex);
+    glBindTexture(GL_TEXTURE_2D, surface->gl_buffer);
+
+    GLuint prog = r->s2t_rndr.swz_prog;
+    glUseProgram(prog);
+    glProgramUniform1i(prog, r->s2t_rndr.swz_tex_loc, 0);
+    glProgramUniform1ui(prog, r->s2t_rndr.swz_w_loc, w);
+    glProgramUniform1ui(prog, r->s2t_rndr.swz_mx_loc, mx);
+    glProgramUniform1ui(prog, r->s2t_rndr.swz_my_loc, my);
+    glProgramUniform1ui(prog, r->s2t_rndr.swz_scale_loc,
+                        pg->surface_scale_factor);
+    glBindVertexArray(r->s2t_rndr.vao);
+    glViewport(0, 0, w, h);
+    s2t_pass_state(r);
+    glDisable(GL_DEPTH_TEST);
+    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+    glDrawArrays(GL_TRIANGLES, 0, 3);
+
+    glBindTexture(GL_TEXTURE_2D, prev_tex);
+    glActiveTexture(prev_unit);
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, r->dl_swz_fbo);
+    glReadBuffer(GL_COLOR_ATTACHMENT0);
+    r->fb_bound = 0; /* GL_FRAMEBUFFER shadow is stale after this */
+    glBindVertexArray(r->gl_vertex_array);
+    glUseProgram(r->shader_binding ? r->shader_binding->gl_program : 0);
+    if (cost_suspended) {
+        pgraph_gl_own_draw_resume(d);
+    }
+    return true;
+}
+
 static void surface_download_to_buffer(NV2AState *d, SurfaceBinding *surface,
                                        bool swizzle, bool flip, bool downscale,
                                        uint8_t *pixels)
@@ -1674,12 +1792,26 @@ static void surface_download_to_buffer(NV2AState *d, SurfaceBinding *surface,
 
     assert(glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE);
 
+    if (swizzle && !flip && surface_swizzle_on_gpu(d, surface)) {
+        /* in the Xbox's order already, at native size: straight into its
+         * memory (a swizzled surface's pitch is its row) */
+        glo_readpixels(surface->fmt.gl_format, surface->fmt.gl_type,
+                       surface->fmt.bytes_per_pixel, surface->pitch,
+                       surface->width, surface->height, false, pixels);
+        glBindFramebuffer(GL_FRAMEBUFFER, r->gl_fb_util);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, surface->fmt.gl_attachment,
+                               GL_TEXTURE_2D, 0, 0);
+        r->fb_bound = r->gl_fb_util;
+        bind_current_surface(d);
+        return;
+    }
+
     /* Read surface into memory */
     uint8_t *gl_read_buf = pixels;
 
     uint8_t *swizzle_buf = pixels;
     if (swizzle) {
-        /* FIXME: Consider swizzle in shader */
+        /* a depth surface: the CPU swizzles it */
         assert(pg->surface_scale_factor == 1 || downscale);
         swizzle_buf = scratch_reserve(&r->surf_scratch, surface->size);
         gl_read_buf = swizzle_buf;
@@ -1755,12 +1887,16 @@ static void surface_download_issue(NV2AState *d, SurfaceBinding *surface)
                            GL_TEXTURE_2D, surface->gl_buffer, 0);
     /* A depth surface is shrunk on the GPU first (surface_shrink_on_gpu);
      * colour keeps the full read here. */
-    surface->dl_native = !surface->color && surface_shrink_on_gpu(pg, surface);
-    unsigned int rs = surface->dl_native ? 1 : sf;
+    /* A swizzled colour surface is put in its swizzled order on the GPU
+     * (surface_swizzle_on_gpu); a depth surface is shrunk there. */
+    surface->dl_swz = surface_swizzle_on_gpu(d, surface);
+    surface->dl_native = !surface->dl_swz && !surface->color &&
+                         surface_shrink_on_gpu(pg, surface);
+    unsigned int rs = surface->dl_native || surface->dl_swz ? 1 : sf;
     glo_readpixels(surface->fmt.gl_format, surface->fmt.gl_type,
                    surface->fmt.bytes_per_pixel, rs * surface->pitch,
                    rs * surface->width, rs * surface->height, false, NULL);
-    if (surface->dl_native) {
+    if (surface->dl_native || surface->dl_swz) {
         glBindFramebuffer(GL_FRAMEBUFFER, r->gl_fb_util);
         r->fb_bound = r->gl_fb_util;
     }
@@ -1798,6 +1934,14 @@ static bool surface_download_harvest(NV2AState *d, SurfaceBinding *surface)
     }
     unsigned int sf = pg->surface_scale_factor;
     uint8_t *pixels = d->vram_ptr + surface->vram_addr;
+    if (surface->dl_swz) {
+        /* put in its swizzled order at native size on the GPU: as the
+         * Xbox's memory holds it */
+        memcpy(pixels, raw, (size_t)surface->pitch * surface->height);
+        glUnmapBuffer(GL_PIXEL_PACK_BUFFER);
+        glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+        return true;
+    }
     bool shrink = sf != 1 && !surface->dl_native;
     if (surface->swizzle && !shrink) {
         /* Its rows packed (a swizzled surface's pitch is its row):
@@ -2885,6 +3029,10 @@ void pgraph_gl_finalize_surfaces(PGRAPHState *pg)
     r->fb_multi_n = 0;
     glDeleteFramebuffers(1, &r->dl_shrink_fbo);
     glDeleteTextures(1, &r->dl_shrink_tex);
+    glDeleteFramebuffers(1, &r->dl_swz_fbo);
+    glDeleteTextures(1, &r->dl_swz_tex);
+    r->dl_swz_fbo = r->dl_swz_tex = 0;
+    r->dl_swz_w = r->dl_swz_h = 0;
     glDeleteFramebuffers(1, &r->dl_zshrink_fbo);
     glDeleteTextures(1, &r->dl_zshrink_tex);
     r->dl_shrink_fbo = r->dl_shrink_tex = 0;
