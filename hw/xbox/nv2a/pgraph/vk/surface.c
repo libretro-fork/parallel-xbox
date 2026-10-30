@@ -2254,16 +2254,8 @@ static void update_surface_part(NV2AState *d, bool upload, bool color)
                     surface->shape.anti_aliasing == target.shape.anti_aliasing &&
                     surface->shape.clip_x == target.shape.clip_x &&
                     surface->shape.clip_y == target.shape.clip_y &&
-                    pgraph_full_color_clear(r->clear_parameter,
-                        GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_CLEARRECTX),
-                                 NV_PGRAPH_CLEARRECTX_XMIN),
-                        GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_CLEARRECTX),
-                                 NV_PGRAPH_CLEARRECTX_XMAX),
-                        GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_CLEARRECTY),
-                                 NV_PGRAPH_CLEARRECTY_YMIN),
-                        GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_CLEARRECTY),
-                                 NV_PGRAPH_CLEARRECTY_YMAX),
-                        target.width, target.height)));
+                    surface->shape.clip_width == target.shape.clip_width &&
+                    surface->shape.clip_height == target.shape.clip_height));
 
 #if 0
             if (surface->swizzle != target.swizzle) {

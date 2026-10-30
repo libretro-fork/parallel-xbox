@@ -614,10 +614,10 @@ only five RAM faces are uploaded, with the GPU face copied directly. Later
 idle expiry or CPU reads still settle owed GPU content normally.
 
 Vulkan swizzled clear reuse is restricted to an exactly matching color view
-(format, dimensions, pitch, native-resolution mode, anti-aliasing and clip
-origin), all color channels and a full-surface rectangle. It reuses the same
-attachment-clear path already used for a fresh swizzled image. Partial clears,
-depth views and layout migration remain guarded. The mixed cube fixture now
+(format, dimensions, pitch, native-resolution mode, anti-aliasing and complete
+clip bounds). Full clears use the existing attachment-clear path; partial
+clears use the existing mask/scissor pipeline after the state-isolation fix.
+Depth views and layout migration remain guarded. The mixed cube fixture now
 re-clears its retained GPU face cyan at 2760; a separate case clears a 16x16
 face blue then rebinds and clears it magenta at 2860. CPU verification at 2880
 checks all 256 swizzled pixels, both endpoint words and an untouched adjacent
@@ -628,9 +628,19 @@ Partial-clear state isolation: Vulkan clear pipelines encode their own static
 blend, write-mask and depth state. The normal-draw dynamic-state emitter now
 skips clears and invalidates its shadow so subsequent normal draws re-emit state.
 A fresh 16x16 swizzled target at 2960 and linear target at 3040 are cleared blue,
-then red-only on the left half without rebinding. CPU checks at 2980/3060 verify
+then red-only on the left half. The swizzled case first clears an alternate
+linear target and restores its shape to force a real rebind; the linear case
+keeps its original binding. CPU checks at 2980/3060 verify
 all 256 pixels each: left magenta, right blue, alpha unchanged. The normal draw
 after each clear must display the existing blue texture at 2990/3070. The
 focused pre-fix swizzled run lost blue in 128 pixels; afterward all pixels match.
-This fixes host pipeline-state interference; it does not enable separately
-guarded partial clears of rebound swizzled views or change color arithmetic.
+This fixes host pipeline-state interference without changing color arithmetic.
+The exact-view swizzled rebind now also permits the verified partial clear;
+depth targets, larger cached views and layout migration remain guarded.
+
+The forced swizzled rebind regression at 2960 changes the shape generation by
+clearing a disjoint linear target, then returns to the original swizzled view
+before clearing red on its left half. This avoids the render-target memo fast
+path. Before expanding the exact-view exception it triggers the clear assertion;
+afterward all 256 swizzled pixels retain the expected blue/alpha channels. The
+comparison linear case and following blue textured draws remain unchanged.

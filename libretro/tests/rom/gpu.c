@@ -1454,6 +1454,15 @@ void gpu_main(void)
             method(NV097_SET_CLEAR_RECT_H, 15u << 16);
             method(NV097_SET_CLEAR_RECT_V, 15u << 16);
             method(NV097_CLEAR_SURFACE, 0xf0);
+            if (!linear) {
+                /* Force an actual rebind and a shape-generation change. */
+                method(NV097_SET_SURFACE_FORMAT, 0x128u);
+                method(NV097_SET_SURFACE_COLOR_OFFSET, 0x03d00000u);
+                method(NV097_SET_COLOR_CLEAR_VALUE, 0xff000000u);
+                method(NV097_CLEAR_SURFACE, 0xf0);
+                method(NV097_SET_SURFACE_FORMAT, 0x04040228u);
+                method(NV097_SET_SURFACE_COLOR_OFFSET, 0x03b00000u);
+            }
             method(NV097_SET_COLOR_CLEAR_VALUE, 0xffff0000u);
             method(NV097_SET_CLEAR_RECT_H, 7u << 16);
             method(NV097_CLEAR_SURFACE, 0x10); /* R only: blue must survive. */
