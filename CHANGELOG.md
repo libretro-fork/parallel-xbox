@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- OpenGL now keeps live, tightly packed ARGB-to-RGB565 texture reinterpretation on the GPU, including at higher internal resolutions. Pixel buffers preserve the original bytes without CPU readback or texture upload; unsupported layouts and competing dirty surfaces retain the existing fallback.
+
 - The core is about 2 MB smaller (15.7 to 13.7 MB on Linux): it is built with each function in a section of its own, and the link drops the 4,400 or so QEMU functions nothing in the core calls. Every build does it: the Makefile on Linux, Windows and macOS, and meson.
 
 - Vulkan can reinterpret a live, tightly packed ARGB surface as a twice-wide RGB565 texture entirely on the GPU. A device-buffer transfer preserves the original bytes; at higher scales a nearest native-size GPU copy comes first. Other layouts, competing dirty views and unavailable transfer storage retain the RAM fallback. Texture snapshots and redraw invalidation are preserved.

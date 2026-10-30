@@ -30,7 +30,9 @@
 #include "ui/xemu-settings.h"
 #include "data/segaboot_logo.rgba.h"
 
-static TextureBinding* generate_texture(const TextureShape s, const uint8_t *texture_data, const uint8_t *palette_data);
+static TextureBinding *generate_texture(const TextureShape s,
+                                        const uint8_t *texture_data,
+                                        const uint8_t *palette_data, bool empty);
 static void texture_binding_destroy(gpointer data);
 
 struct pgraph_texture_possibly_dirty_struct {
@@ -231,6 +233,44 @@ void pgraph_gl_tex_shadow_reset(PGRAPHGLState *r)
     }
 }
 
+static bool can_reinterpret_argb_as_rgb565(PGRAPHState *pg,
+                                          const SurfaceBinding *surface,
+                                          const TextureShape *shape)
+{
+    PGRAPHGLState *r = pg->gl_renderer_state;
+    if (!surface->color || surface->swizzle ||
+        surface->shape.color_format != NV097_SET_SURFACE_FORMAT_COLOR_LE_A8R8G8B8 ||
+        surface->shape.anti_aliasing != NV097_SET_SURFACE_FORMAT_ANTI_ALIASING_CENTER_1 ||
+        surface->fmt.gl_internal_format != GL_RGBA8 ||
+        shape->color_format != NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_R5G6B5 ||
+        shape->dimensionality != 2 || shape->cubemap || shape->border ||
+        shape->levels != 1 || !surface->width || !surface->height ||
+        (uint64_t)shape->width != (uint64_t)surface->width * 2 ||
+        shape->height != surface->height ||
+        (uint64_t)surface->pitch != (uint64_t)surface->width * 4 ||
+        shape->pitch != surface->pitch) {
+        return false;
+    }
+    /* A single image must own the whole range. Do not bypass the ordered
+     * RAM materialization when another live/parked dirty view overlaps it. */
+    SurfaceBinding *other;
+    uint64_t start = surface->vram_addr, end = start + surface->size;
+    QTAILQ_FOREACH(other, &r->surfaces, entry) {
+        if (other != surface && other->draw_dirty &&
+            other->vram_addr < end && start < other->vram_addr + other->size) {
+            return false;
+        }
+    }
+    QTAILQ_FOREACH(other, &r->parked, entry) {
+        if (other != surface && (other->writeback_owed || other->draw_dirty) &&
+            other->vram_addr < end &&
+            start < other->vram_addr + other->size) {
+            return false;
+        }
+    }
+    return true;
+}
+
 void pgraph_gl_bind_textures(NV2AState *d)
 {
     int i;
@@ -316,8 +356,12 @@ void pgraph_gl_bind_textures(NV2AState *d)
             }
             surf_to_tex_cube = all;
         }
+        bool surf_to_tex_bytes = surface &&
+            can_reinterpret_argb_as_rgb565(pg, surface, &state);
         TextureBinding *tbind = r->texture_binding[i];
-        if (!pg->texture_dirty[i] && tbind) {
+        if (!pg->texture_dirty[i] && tbind &&
+            tbind->byte_reinterpret == surf_to_tex_bytes &&
+            !(surf_to_tex_bytes && surface->upload_pending)) {
             bool reusable = false;
             if (surf_to_tex_cube) {
                 reusable = tbind->draw_time == cube_draw_time;
@@ -367,8 +411,8 @@ void pgraph_gl_bind_textures(NV2AState *d)
                 }
             }
         } else if (surface != NULL) {
-            surf_to_tex = pgraph_gl_check_surface_to_texture_compatibility(
-                    surface, &state);
+            surf_to_tex = surf_to_tex_bytes ||
+                pgraph_gl_check_surface_to_texture_compatibility(surface, &state);
 
             if (surf_to_tex && surface->upload_pending) {
                 pgraph_gl_upload_surface_data(d, surface, false);
@@ -396,6 +440,7 @@ void pgraph_gl_bind_textures(NV2AState *d)
         TextureKey key;
         memset(&key, 0, sizeof(TextureKey));
         key.state = state;
+        key.byte_reinterpret = surf_to_tex_bytes;
         key.texture_vram_offset = texture_vram_offset;
         key.texture_length = length;
         if (is_indexed) {
@@ -442,7 +487,8 @@ void pgraph_gl_bind_textures(NV2AState *d)
 
         if (key_out->binding == NULL) {
             // Must create the texture
-            key_out->binding = generate_texture(state, texture_data, palette_data);
+            key_out->binding = generate_texture(state, texture_data, palette_data,
+                                               surf_to_tex_bytes);
             if (key_out->binding->gl_target == GL_TEXTURE_2D) {
                 r->fresh_tex[r->fresh_tex_w++ % ARRAY_SIZE(r->fresh_tex)] =
                     key_out->binding->gl_texture;
@@ -505,13 +551,17 @@ void pgraph_gl_bind_textures(NV2AState *d)
 
             trace_nv2a_pgraph_surface_render_to_texture(
                 surface->vram_addr, surface->width, surface->height);
-            pgraph_gl_render_surface_to_texture(d, surface, binding,
-                                                &state, i);
+            if (surf_to_tex_bytes) {
+                pgraph_gl_reinterpret_surface_to_texture(d, surface, binding);
+            } else {
+                pgraph_gl_render_surface_to_texture(d, surface, binding,
+                                                    &state, i);
+            }
             binding->draw_time = surface->draw_time;
-            /* Depth reads are downsampled to native 1x (GL_DEPTH_COMPONENT24
-             * marks that path); everything else stays at the scaled size. */
-            binding->scale = (binding->s2t_format == GL_DEPTH_COMPONENT24)
-                                 ? 1 : pg->surface_scale_factor;
+            /* Depth reads and byte reinterpretation use native-size snapshots. */
+            binding->scale =
+                (surf_to_tex_bytes || binding->s2t_format == GL_DEPTH_COMPONENT24)
+                    ? 1 : pg->surface_scale_factor;
         }
 
         apply_texture_parameters(r,
@@ -836,7 +886,7 @@ static void upload_gl_texture(GLenum gl_target,
 
 static TextureBinding* generate_texture(const TextureShape s,
                                         const uint8_t *texture_data,
-                                        const uint8_t *palette_data)
+                                        const uint8_t *palette_data, bool empty)
 {
     ColorFormatInfo f = kelvin_color_format_gl_map[s.color_format];
 
@@ -876,7 +926,14 @@ static TextureBinding* generate_texture(const TextureShape s,
                    s.dimensionality, s.cubemap ? " (Cubemap)" : "",
                    s.width, s.height, s.depth);
 
-    if (gl_target == GL_TEXTURE_CUBE_MAP) {
+    if (empty) {
+        GLint unpack;
+        glGetIntegerv(GL_PIXEL_UNPACK_BUFFER_BINDING, &unpack);
+        glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB565, s.width, s.height, 0,
+                     GL_RGB, GL_UNSIGNED_SHORT_5_6_5, NULL);
+        glBindBuffer(GL_PIXEL_UNPACK_BUFFER, unpack);
+    } else if (gl_target == GL_TEXTURE_CUBE_MAP) {
         unsigned int block_size;
         if (f.gl_internal_format == GL_COMPRESSED_RGBA_S3TC_DXT1_EXT) {
             block_size = 8;
@@ -941,8 +998,9 @@ static TextureBinding* generate_texture(const TextureShape s,
     ret->gl_target = gl_target;
     ret->gl_texture = gl_texture;
     ret->refcnt = 1;
-    ret->draw_time = 0;
+    ret->draw_time = empty ? -1 : 0;
     ret->data_hash = 0;
+    ret->byte_reinterpret = empty;
     ret->min_filter = 0xFFFFFFFF;
     ret->mag_filter = 0xFFFFFFFF;
     ret->lod_bias = 0xFFFFFFFF;

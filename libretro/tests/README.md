@@ -274,3 +274,15 @@ frames, and right after a load the guest's RAM is byte for byte what it was
 when the state was saved, in the same process and in another one.
 
 The harness's options are listed at the top of `harness.c`.
+
+The OpenGL byte reinterpretation oracle runs the production transfer and
+native-size shrink functions in a surfaceless EGL context. It checks every
+RGB565 word at 1x, 2x and 4x, repeated source updates, and pixel-store/PBO state
+restoration. On Linux with EGL/OpenGL development libraries installed, run:
+
+```sh
+python3 libretro/tests/test-gl-texture-reinterpret.py .
+```
+
+`test-texture-reinterpret.py` also checks both renderers' production eligibility
+predicates, including format/layout rejection and overlapping dirty surfaces.

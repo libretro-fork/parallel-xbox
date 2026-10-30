@@ -1693,6 +1693,60 @@ static bool surface_shrink_on_gpu(PGRAPHState *pg, SurfaceBinding *surface)
     return true;
 }
 
+/* Preserve guest bytes through a GPU pixel buffer: no mapping or host copy.
+ * GL orders the pack before the unpack; orphaning avoids recycling storage
+ * still referenced by a previous draw or transfer. */
+void pgraph_gl_reinterpret_surface_to_texture(NV2AState *d,
+                                              SurfaceBinding *surface,
+                                              TextureBinding *binding)
+{
+    PGRAPHState *pg = &d->pgraph;
+    PGRAPHGLState *r = pg->gl_renderer_state;
+    const GLenum stores[] = {
+        GL_PACK_ALIGNMENT, GL_PACK_ROW_LENGTH, GL_PACK_SKIP_PIXELS,
+        GL_PACK_SKIP_ROWS, GL_PACK_SWAP_BYTES,
+        GL_UNPACK_ALIGNMENT, GL_UNPACK_ROW_LENGTH, GL_UNPACK_SKIP_PIXELS,
+        GL_UNPACK_SKIP_ROWS, GL_UNPACK_SWAP_BYTES,
+    };
+    GLint saved[ARRAY_SIZE(stores)], pack, unpack;
+    glGetIntegerv(GL_PIXEL_PACK_BUFFER_BINDING, &pack);
+    glGetIntegerv(GL_PIXEL_UNPACK_BUFFER_BINDING, &unpack);
+    for (unsigned i = 0; i < ARRAY_SIZE(stores); i++) {
+        glGetIntegerv(stores[i], &saved[i]);
+        glPixelStorei(stores[i], (i == 0 || i == 5) ? 1 : 0);
+    }
+    glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+    fb_bind(r, r->gl_fb_util);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+                           GL_TEXTURE_2D, surface->gl_buffer, 0);
+    glReadBuffer(GL_COLOR_ATTACHMENT0);
+    surface_shrink_on_gpu(pg, surface);
+    if (!r->s2t_byte_pbo) {
+        glGenBuffers(1, &r->s2t_byte_pbo);
+    }
+    glBindBuffer(GL_PIXEL_PACK_BUFFER, r->s2t_byte_pbo);
+    glBufferData(GL_PIXEL_PACK_BUFFER,
+                 (size_t)surface->pitch * surface->height, NULL, GL_STREAM_COPY);
+    glReadPixels(0, 0, surface->width, surface->height,
+                 GL_BGRA, GL_UNSIGNED_INT_8_8_8_8_REV, NULL);
+    glBindBuffer(GL_PIXEL_UNPACK_BUFFER, r->s2t_byte_pbo);
+    glBindTexture(GL_TEXTURE_2D, binding->gl_texture);
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, surface->width * 2,
+                    surface->height, GL_RGB, GL_UNSIGNED_SHORT_5_6_5, NULL);
+    glBindBuffer(GL_PIXEL_PACK_BUFFER, pack);
+    glBindBuffer(GL_PIXEL_UNPACK_BUFFER, unpack);
+    for (unsigned i = 0; i < ARRAY_SIZE(stores); i++) {
+        glPixelStorei(stores[i], saved[i]);
+    }
+    glBindFramebuffer(GL_FRAMEBUFFER, r->gl_fb_util);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+                           GL_TEXTURE_2D, 0, 0);
+    r->fb_bound = r->gl_fb_util;
+    bind_current_surface(d);
+    pgraph_gl_tex_shadow_invalidate(r);
+    nv2a_profile_inc_counter(NV2A_PROF_SURF_TO_TEX_REINTERPRET);
+}
+
 /* A swizzled colour surface put in the Xbox's swizzled order on the GPU,
  * shrunk to native size on the way (fs_swz): read back row by row, the
  * target is the surface as the Xbox's memory holds it, so the read-back
@@ -3486,6 +3540,8 @@ void pgraph_gl_finalize_surfaces(PGRAPHState *pg)
     obj_pool_finalize(&r->surface_pool);
     scratch_finalize(&r->surf_scratch);
     scratch_finalize(&r->pitch_scratch);
+    glDeleteBuffers(1, &r->s2t_byte_pbo);
+    r->s2t_byte_pbo = 0;
     scratch_finalize(&r->s2t_scratch);
 }
 

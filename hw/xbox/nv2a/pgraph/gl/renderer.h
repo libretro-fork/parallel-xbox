@@ -131,6 +131,7 @@ typedef struct TextureBinding {
     unsigned int refcnt;
     int draw_time;
     uint64_t data_hash;
+    bool byte_reinterpret;
     unsigned int scale;
     unsigned int min_filter;
     unsigned int mag_filter;
@@ -235,6 +236,7 @@ typedef struct VertexLruNode {
 
 typedef struct TextureKey {
     TextureShape state;
+    bool byte_reinterpret;
     hwaddr texture_vram_offset;
     hwaddr texture_length;
     hwaddr palette_vram_offset;
@@ -266,6 +268,7 @@ typedef struct PGRAPHGLState {
      * under the reports' own ordering, the display one is the render
      * thread's alone (the UI thread only counts references down). */
     ObjPool surface_pool, texture_pool, report_pool, disp_ref_pool;
+    GLuint s2t_byte_pbo;
     Scratch surf_scratch, pitch_scratch, s2t_scratch, pvideo_scratch;
     /* Display-thread coordination for the scanout. The surface list is
      * owned by the render thread; walking it from the display thread
@@ -636,5 +639,10 @@ int pgraph_gl_get_framebuffer_surface(NV2AState *d);
 /**  Note: The caller must set up a clean GL context before invoking. */
 void pgraph_gl_determine_gpu_properties(void);
 GPUProperties *pgraph_gl_get_gpu_properties(void);
+
+
+void pgraph_gl_reinterpret_surface_to_texture(NV2AState *d,
+                                              SurfaceBinding *surface,
+                                              TextureBinding *binding);
 
 #endif
