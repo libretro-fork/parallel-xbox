@@ -25,7 +25,7 @@ typedef uint64_t hwaddr;
 #define container_of(p,t,m) ((t *)((char *)(p)-offsetof(t,m)))
 typedef struct LruNode { int unused; } LruNode;
 typedef struct Key { hwaddr texture_vram_offset,texture_length,palette_vram_offset,palette_length; } Key;
-typedef struct TextureLruNode { LruNode node; Key key; bool possibly_dirty; void *binding; } TextureLruNode;
+typedef struct TextureLruNode { LruNode node; Key key; bool possibly_dirty; void *binding; unsigned int validation_frame; } TextureLruNode;
 typedef TextureLruNode TextureBinding;
 typedef struct Lru { TextureBinding nodes[4]; unsigned visits; } Lru;
 typedef struct Renderer { Lru texture_cache; } PGRAPHGLState;
@@ -76,6 +76,17 @@ int main(void) {
     puts("API texture/palette final-page, shared-page, cross-page and empty-span cases passed");
 }
 '''.replace('/* PRODUCTION */', production).replace('MARK', f'pgraph_{api}_mark_textures_possibly_dirty').replace('API', api)
+    if api == 'vk':
+        code = code.replace('    puts("vk texture/palette', r'''    for (unsigned i=0;i<4;i++) {
+        r.texture_cache.nodes[i].validation_frame=7;
+        r.texture_cache.nodes[i].possibly_dirty=true;
+    }
+    pgraph_vk_invalidate_textures_from_gpu(&d,16383,1);
+    assert(r.texture_cache.nodes[0].validation_frame == (unsigned)-1);
+    assert(r.texture_cache.nodes[1].validation_frame == (unsigned)-1);
+    assert(r.texture_cache.nodes[2].validation_frame == 7);
+    assert(r.texture_cache.nodes[3].validation_frame == 7);
+    puts("vk texture/palette''')
     with tempfile.TemporaryDirectory(prefix='texture-dirty-', dir=repo.parent) as directory:
         folder = Path(directory)
         (folder/'test.c').write_text(code)

@@ -212,6 +212,8 @@ static void download_settled(NV2AState *d, SurfaceBinding *surface)
     memory_region_set_client_dirty(d->vram, surface->vram_addr,
                                    surface->pitch * surface->height,
                                    DIRTY_MEMORY_VGA);
+    pgraph_vk_invalidate_textures_from_gpu(d, surface->vram_addr,
+                                           surface->pitch * surface->height);
     pgraph_writeback_clear_discard(&d->pgraph, surface->vram_addr,
                                    surface->pitch * surface->height);
 

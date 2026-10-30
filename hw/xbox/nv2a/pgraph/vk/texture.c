@@ -516,6 +516,7 @@ static void stage_texture(PGRAPHState *pg, VkCommandBuffer cmd,
 
 struct pgraph_texture_possibly_dirty_struct {
     hwaddr addr, size;
+    bool force_revalidate;
 };
 
 static void mark_textures_possibly_dirty_visitor(Lru *lru, LruNode *node, void *opaque)
@@ -523,7 +524,7 @@ static void mark_textures_possibly_dirty_visitor(Lru *lru, LruNode *node, void *
     struct pgraph_texture_possibly_dirty_struct *test = opaque;
 
     TextureBinding *tnode = container_of(node, TextureBinding, node);
-    if (tnode->possibly_dirty) {
+    if (tnode->possibly_dirty && !test->force_revalidate) {
         return;
     }
 
@@ -535,10 +536,13 @@ static void mark_textures_possibly_dirty_visitor(Lru *lru, LruNode *node, void *
         tnode->key.palette_length);
 
     tnode->possibly_dirty |= overlapping;
+    if (overlapping && test->force_revalidate) {
+        tnode->validation_frame = -1;
+    }
 }
 
-void pgraph_vk_mark_textures_possibly_dirty(NV2AState *d,
-    hwaddr addr, hwaddr size)
+static void mark_textures_possibly_dirty(NV2AState *d, hwaddr addr,
+                                         hwaddr size, bool force_revalidate)
 {
     if (!size) {
         return;
@@ -553,11 +557,26 @@ void pgraph_vk_mark_textures_possibly_dirty(NV2AState *d,
     struct pgraph_texture_possibly_dirty_struct test = {
         .addr = addr,
         .size = end - addr,
+        .force_revalidate = force_revalidate,
     };
 
     lru_visit_active(&d->pgraph.vk_renderer_state->texture_cache,
                      mark_textures_possibly_dirty_visitor,
                      &test);
+}
+
+void pgraph_vk_mark_textures_possibly_dirty(NV2AState *d,
+                                            hwaddr addr, hwaddr size)
+{
+    mark_textures_possibly_dirty(d, addr, size, false);
+}
+
+/* A GPU writeback can supply new bytes between draws in the same frame.
+ * Every overlapping cached view must bypass the RAM validation throttle. */
+void pgraph_vk_invalidate_textures_from_gpu(NV2AState *d,
+                                           hwaddr addr, hwaddr size)
+{
+    mark_textures_possibly_dirty(d, addr, size, true);
 }
 
 static bool check_texture_dirty(NV2AState *d, hwaddr addr, hwaddr size)
