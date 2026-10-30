@@ -74,15 +74,42 @@ static inline void hrtf_filter_process(HrtfFilter *f,
         f->params_set ? (const int32_t (*)[HRTF_NUM_TAPS])f->hrir_coeff_cur :
                         target;
     int32_t itd_from = f->params_set ? f->itd_cur : itd_target;
+    /* One mono history serves both ears: the last HRTF_BUFLEN samples and
+     * this frame's, oldest first, so a tap is an index, not a ring's
+     * modulo. The deepest tap is 72 samples back (42 of delay, 30 of
+     * taps), and at a 42-sample delay there is no fraction, so the
+     * interpolation's second sample is never before lin[0]. */
+    int32_t lin[HRTF_BUFLEN + HRTF_SAMPLES_PER_FRAME];
+    for (int i = 0; i < HRTF_BUFLEN; i++) {
+        lin[i] = f->buf[(f->buf_pos + i) % HRTF_BUFLEN];
+    }
     for (int n = 0; n < HRTF_SAMPLES_PER_FRAME; n++) {
-        /* One mono history serves both ears. No stereo duplication. */
-        int32_t *buf = f->buf;
-        buf[f->buf_pos] = in[n][0];
+        lin[HRTF_BUFLEN + n] = in[n][0];
+    }
+    /* Below 2^26 (8 times full scale), the usual case, a tap's products
+     * and their 31-term sums fit int64 as they are: the frame's two dot
+     * products (with the sample and the one before) and their weights
+     * give the same integer as the split sum, which louder samples take. */
+    int32_t peak = 0;
+    for (int i = 0; i < HRTF_BUFLEN + HRTF_SAMPLES_PER_FRAME; i++) {
+        int32_t a = lin[i] < 0 ? -lin[i] : lin[i];
+        peak = a > peak ? a : peak;
+    }
+    bool narrow = peak < (1 << 26);
+    /* the taps n/32 of the way, a step a sample (exact: in 1/65536) */
+    int32_t c[2][HRTF_NUM_TAPS], dc[2][HRTF_NUM_TAPS];
+    for (int ch = 0; ch < 2; ch++) {
+        for (int k = 0; k < HRTF_NUM_TAPS; k++) {
+            c[ch][k] = previous[ch][k] * HRTF_SAMPLES_PER_FRAME;
+            dc[ch][k] = target[ch][k] - previous[ch][k];
+        }
+    }
+    for (int n = 0; n < HRTF_SAMPLES_PER_FRAME; n++) {
+        const int32_t *now = &lin[HRTF_BUFLEN + n]; /* the sample now */
         int32_t itd = itd_from * (HRTF_SAMPLES_PER_FRAME - n) + itd_target * n;
 
         for (int ch = 0; ch < 2; ch++) {
-            const int32_t *coeff_cur = previous[ch];
-            const int32_t *coeff_tar = target[ch];
+            const int32_t *ck = c[ch];
 
             // Interaural time difference (channel delay)
             int32_t d = ch == 0 ? itd : -itd;
@@ -91,36 +118,50 @@ static inline void hrtf_filter_process(HrtfFilter *f,
             }
             int di = d >> 14;
             int32_t dfrac = d & 0x3fff;
+            const int32_t *x = now - di;
+            /* HRIR Convolution, exact: taps in 1/65536, the fractional
+             * delay a linear interpolation with the sample before, in
+             * 1/16384; the sum in 1/2^30 of a sample step, rounded half
+             * up to a sample step */
+            int64_t total;
 
-            /* HRIR Convolution, exact: taps in 1/65536, samples in
-             * 1/16384, each product (at most 2^61) split at bit 14 so the
-             * sum of 31 cannot overflow */
+            if (narrow) {
+                int64_t a = 0, b = 0;
+                for (int k = 0; k < HRTF_NUM_TAPS; k++) {
+                    a += (int64_t)ck[k] * x[-k];
+                }
+                if (dfrac > 0) {
+                    for (int k = 0; k < HRTF_NUM_TAPS; k++) {
+                        b += (int64_t)ck[k] * x[-k - 1];
+                    }
+                }
+                total = a * (16384 - dfrac) + b * dfrac;
+                out[n][ch] = (int32_t)((total + (1 << 29)) >> 30);
+                continue;
+            }
+            /* each product (at most 2^61) split at bit 14 so the sum of 31
+             * cannot overflow */
             int64_t acc = 0, acc_lo = 0;
             for (int k = 0; k < HRTF_NUM_TAPS; k++) {
-                int idx1 = (f->buf_pos - di - k + HRTF_BUFLEN) % HRTF_BUFLEN;
-                int64_t s = (int64_t)buf[idx1] * 16384;
-
-                // Linear interpolation for fractional part
-                if (dfrac > 0) {
-                    int idx2 = (idx1 - 1 + HRTF_BUFLEN) % HRTF_BUFLEN;
-                    s = (int64_t)buf[idx1] * (16384 - dfrac) +
-                        (int64_t)buf[idx2] * dfrac;
-                }
-                int32_t c = coeff_cur[k] * (HRTF_SAMPLES_PER_FRAME - n) +
-                            coeff_tar[k] * n;
-                int64_t p = c * s;
+                int64_t smp = (int64_t)x[-k] * (16384 - dfrac) +
+                              (dfrac > 0 ? (int64_t)x[-k - 1] * dfrac : 0);
+                int64_t p = ck[k] * smp;
                 acc += p >> 14;
                 acc_lo += p & 0x3fff;
             }
-
-            /* acc: the sum in 1/2^16 of a sample step, exactly floored;
-             * rounded half up to a sample step */
+            /* acc: the sum in 1/2^16 of a sample step, exactly floored */
             acc += acc_lo >> 14;
             out[n][ch] = (int32_t)((acc + (1 << 15)) >> 16);
         }
-
-        f->buf_pos = (f->buf_pos + 1) % HRTF_BUFLEN;
+        for (int ch = 0; ch < 2; ch++) {
+            for (int k = 0; k < HRTF_NUM_TAPS; k++) {
+                c[ch][k] += dc[ch][k];
+            }
+        }
     }
+    /* the history, oldest first, as a ring from slot 0 */
+    memcpy(f->buf, &lin[HRTF_SAMPLES_PER_FRAME], sizeof(f->buf));
+    f->buf_pos = 0;
     memcpy(f->hrir_coeff_cur, target, sizeof(f->hrir_coeff_cur));
     f->itd_cur = itd_target;
     f->params_set = true;

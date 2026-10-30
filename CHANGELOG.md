@@ -460,6 +460,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 - The guest's time no longer depends on how busy the host is. When the guest waited and the GPU's thread was busy with work of the core's own (setting itself up at boot, after a reset), the guest's time moved on by the host time that took, so the same frames could hold different amounts of the guest's work from run to run; the test suite's "same work flat out and paced" check failed now and then for it. The guest now waits only for work it gave the GPU.
 
+- Audio: 3D voices with HRTF take less than half the time they did: the convolution reads its history straight instead of through a ring's division per tap, and ramps its taps by an addition a sample. The sound is the same, bit for bit.
+
 ## Test build 4 - 2026-10-25
 
 - The core info file names the core "Microsoft - Xbox / Sega Chihiro (xemu)" (NNshi).
