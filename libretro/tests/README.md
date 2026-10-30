@@ -122,6 +122,15 @@ engine frames against the video frames, with the engine frame in flight
 not counted: the queue's preroll (`hw/xbox/mcpx/apu/monitor.h`) has to
 leave a whole engine frame to spare.
 
+`rom/cf.asm` checks the carry flag across translation block boundaries:
+every flag-setting instruction, on operands around the carry, then a jump,
+then a block that reads CF before it sets the flags (INC, which keeps CF,
+ADC, JC, and one block reached from blocks of every kind and left by an
+indirect jump), each against what SETC saw right after the instruction.
+`run.sh` runs it with CPU Boost on, where the next block knows from its TB
+flags how to compute CF and does it inline, and off, where QEMU's helper
+does.
+
 `rom/rep.asm` and `rom/rep-stos.asm` check REP MOVS copies and STOS fills
 in bare-metal guests with CPU Boost on and off. They share setup and handlers
 in `rom/rep-common.inc`. They cover byte/word/dword operations, fill-value and

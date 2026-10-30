@@ -17,7 +17,7 @@ work=${2:-$(mktemp -d)}
 mkdir -p "$work/bin" "$work/sys/xemu" "$work/sysb/xemu" "$work/sysd/xemu" \
     "$work/syss/xemu" "$work/sysp/xemu" "$work/sysg/xemu" "$work/sysv/xemu" \
     "$work/sysr/xemu" "$work/sysf/xemu" "$work/sysa/xemu" "$work/syse/xemu" \
-    "$work/sysh/xemu"
+    "$work/sysh/xemu" "$work/sysc/xemu"
 
 # The harness's paths, as the core's OS spells them
 path() { echo "$1"; }
@@ -170,6 +170,8 @@ fi
 nasm -f bin -o "$work/sys/xemu/mcpx_1.0.bin" "$here/rom/bootrom.asm"
 cp "$work/sys/xemu/mcpx_1.0.bin" "$work/sysr/xemu/"
 nasm -f bin -I"$here/rom/" -o "$work/sysr/xemu/Complex_4627v1.03.bin" "$here/rom/rep.asm"
+cp "$work/sys/xemu/mcpx_1.0.bin" "$work/sysc/xemu/"
+nasm -f bin -I"$here/rom/" -o "$work/sysc/xemu/Complex_4627v1.03.bin" "$here/rom/cf.asm"
 cp "$work/sys/xemu/mcpx_1.0.bin" "$work/sysf/xemu/"
 nasm -f bin -I"$here/rom/" -o "$work/sysf/xemu/Complex_4627v1.03.bin" "$here/rom/rep-stos.asm"
 nasm -f bin -I"$here/rom/" -o "$work/sys/xemu/Complex_4627v1.03.bin" "$here/rom/flash.asm"
@@ -222,6 +224,22 @@ for op in movs stos; do
         fi
     done
   done
+done
+
+# CF across block boundaries: every flag-setting instruction, then a jump,
+# then a block that reads CF before setting the flags (rom/cf.asm). With CPU
+# Boost the next block knows the class of CC_OP it starts with (its TB
+# flags) and computes CF inline; without, helper_cc_compute_c does. Both
+# must see the CF the instruction left.
+for boost in enabled disabled; do
+  t "CF across blocks, CPU Boost $boost" $h "$(path "$core")" "$(path "$work/sysc")" \
+    $vp --opt "xemu_cpu_boost=$boost" --frames 30 --strict \
+    --peek 0x300000 --peek 0x300004 >"$work/cf-$boost.txt"
+  if ! grep -q "peek_0x300000=0x4b4f4643" "$work/cf-$boost.txt"; then
+    cat "$work/cf-$boost.txt"
+    echo "FAIL: CF across blocks ($boost): case $(grep -o 'peek_0x300004=.*' "$work/cf-$boost.txt")"
+    exit 1
+  fi
 done
 
 # The guest idles: unpaced, the frontend's fast-forward. One frame's worth

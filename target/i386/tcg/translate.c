@@ -210,6 +210,12 @@ typedef struct DisasContext {
     bool cc_op_dirty;
 
     CCOp cc_op;  /* current CC operation */
+    /*
+     * CPU boost: the TB_CF_* class of the CC_OP the block starts with (its
+     * TB flags), valid while cc_op_entry: no instruction has set CC_OP yet
+     */
+    int cf_entry_class;
+    bool cc_op_entry;
     int mem_index; /* select memory access functions */
     uint32_t flags; /* all execution flags */
     int cpuid_features;
@@ -464,6 +470,7 @@ static void set_cc_op_1(DisasContext *s, CCOp op, bool dirty)
     }
     s->cc_op_dirty = dirty;
     s->cc_op = op;
+    s->cc_op_entry = false;
 }
 
 static void set_cc_op(DisasContext *s, CCOp op)
@@ -1030,6 +1037,67 @@ static CCPrepare gen_prepare_val_nz(TCGv src, MemOp size, bool eqz)
 }
 
 /* compute eflags.C, trying to store it in reg if not NULL */
+/*
+ * CPU boost: CF before the block has set the flags, from the class of the
+ * CC_OP it starts with, which its TB flags carry, as helper_cc_compute_c
+ * would compute it; no call.
+ */
+static CCPrepare gen_prepare_eflags_c_entry(DisasContext *s)
+{
+    TCGv c, t;
+
+    switch (s->cf_entry_class) {
+    case TB_CF_SRC_NZ:
+        return (CCPrepare) { .cond = TCG_COND_NE, .reg = cpu_cc_src };
+    case TB_CF_ZERO:
+        return (CCPrepare) { .cond = TCG_COND_NEVER };
+    case TB_CF_SRC_LSB:
+        return (CCPrepare) { .cond = TCG_COND_TSTNE,
+                             .reg = cpu_cc_src, .imm = CC_C };
+    case TB_CF_ADDL:
+        c = tcg_temp_new();
+        t = tcg_temp_new();
+        tcg_gen_ext32u_tl(c, cpu_cc_dst);
+        tcg_gen_ext32u_tl(t, cpu_cc_src);
+        return (CCPrepare) { .cond = TCG_COND_LTU, .reg = c, .reg2 = t,
+                             .use_reg2 = true };
+    case TB_CF_SUBL:
+        c = tcg_temp_new();
+        t = tcg_temp_new();
+        tcg_gen_add_tl(c, cpu_cc_dst, cpu_cc_src);
+        tcg_gen_ext32u_tl(c, c);
+        tcg_gen_ext32u_tl(t, cpu_cc_src);
+        return (CCPrepare) { .cond = TCG_COND_LTU, .reg = c, .reg2 = t,
+                             .use_reg2 = true };
+    default:
+        g_assert_not_reached();
+    }
+}
+
+/*
+ * CPU boost: the TB flags a jump out of the block finds its next block with
+ * (the CF class of the CC_OP it leaves); false when that CC_OP is only known
+ * at run time, and the jump has to look the block up then.
+ */
+static bool gen_exit_tb_flags(DisasContext *s, uint32_t *flags)
+{
+    int cf_class;
+
+    if (!xemu_cpu_boost) {
+        *flags = s->flags;
+        return true;
+    }
+    if (s->cc_op != CC_OP_DYNAMIC) {
+        cf_class = x86_cc_op_cf_class(s->cc_op);
+    } else if (s->cc_op_entry) {
+        cf_class = s->cf_entry_class;
+    } else {
+        return false;
+    }
+    *flags = s->flags | tb_cf_flags(cf_class);
+    return true;
+}
+
 static CCPrepare gen_prepare_eflags_c(DisasContext *s, TCGv reg)
 {
     MemOp size;
@@ -1092,6 +1160,10 @@ static CCPrepare gen_prepare_eflags_c(DisasContext *s, TCGv reg)
        /* The need to compute only C from CC_OP_DYNAMIC is important
           in efficiently implementing e.g. INC at the start of a TB.  */
        gen_update_cc_op(s);
+       if (s->cc_op == CC_OP_DYNAMIC && s->cc_op_entry &&
+           s->cf_entry_class != TB_CF_UNKNOWN) {
+           return gen_prepare_eflags_c_entry(s);
+       }
        if (!reg) {
            reg = tcg_temp_new();
        }
@@ -2861,8 +2933,10 @@ gen_eob(DisasContext *s, int mode)
                !inhibit_reset) {
         /* CPU boost: a near jump probes the jump cache inline, without the
          * helper call; a far one needs the cs_base and flags of run time. */
+        uint32_t next_flags;
+
         if (!xemu_cpu_boost || mode == DISAS_JUMP_FAR ||
-            (s->flags & HF_RF_MASK)) {
+            (s->flags & HF_RF_MASK) || !gen_exit_tb_flags(s, &next_flags)) {
             tcg_gen_lookup_and_goto_ptr();
         } else {
             TCGv_i64 pc = tcg_temp_new_i64();
@@ -2874,7 +2948,7 @@ gen_eob(DisasContext *s, int mode)
                 }
                 tcg_gen_ext32u_i64(pc, pc);
             }
-            tcg_gen_lookup_and_goto_ptr_fast(pc, s->cs_base, s->flags);
+            tcg_gen_lookup_and_goto_ptr_fast(pc, s->cs_base, next_flags);
         }
     } else {
         tcg_gen_exit_tb(NULL, 0);
@@ -2921,6 +2995,14 @@ static void gen_jmp_rel(DisasContext *s, MemOp ot, int diff, int tb_num)
         new_pc = (uint32_t)(new_eip + s->cs_base);
     }
 
+    {
+        uint32_t next_flags;
+
+        /* the next block is chosen by the CF class too (CPU boost) */
+        if (!gen_exit_tb_flags(s, &next_flags)) {
+            use_goto_tb = false;
+        }
+    }
     if (use_goto_tb && translator_use_goto_tb(&s->base, new_pc)) {
         /* jump to same page: we can use a direct jump */
         tcg_gen_goto_tb(tb_num);
@@ -4346,7 +4428,9 @@ static void i386_tr_init_disas_context(DisasContextBase *dcbase, CPUState *cpu)
 
     dc->cs_base = dc->base.tb->cs_base;
     dc->pc_save = dc->base.pc_next;
-    dc->flags = flags;
+    dc->flags = flags & ~TB_CF_FLAGS_MASK;
+    dc->cf_entry_class = tb_cf_class_of_flags(flags);
+    dc->cc_op_entry = true;
 #ifndef CONFIG_USER_ONLY
     dc->cpl = cpl;
     dc->iopl = iopl;

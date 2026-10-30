@@ -200,6 +200,31 @@ typedef enum X86Seg {
 #define HF_AVX_EN_MASK       (1 << HF_AVX_EN_SHIFT)
 #define HF_FPU_PC_MASK       (1 << HF_FPU_PC_SHIFT)
 
+/*
+ * CPU boost: the class of CF the CC_OP a block starts with has, kept in
+ * TB flag bits no hflag uses (2, 30 and 31; never set in env->hflags), so
+ * a block whose code needs CF before it sets the flags (INC/DEC first in a
+ * loop, ADC, SBB, JC) computes it inline instead of calling
+ * helper_cc_compute_c (x86_get_tb_cpu_state, translate.c).
+ */
+#define TB_CF_UNKNOWN 0 /* any other CC_OP: the helper */
+#define TB_CF_SRC_NZ  1 /* INC, DEC, MUL: CC_SRC != 0 */
+#define TB_CF_ZERO    2 /* LOGIC, POPCNT: 0 */
+#define TB_CF_SRC_LSB 3 /* EFLAGS, SAR: CC_SRC & 1 */
+#define TB_CF_ADDL    4 /* (uint32_t)CC_DST < (uint32_t)CC_SRC */
+#define TB_CF_SUBL    5 /* (uint32_t)(CC_DST + CC_SRC) < (uint32_t)CC_SRC */
+#define TB_CF_FLAGS_MASK ((3u << 30) | (1u << 2))
+
+static inline uint32_t tb_cf_flags(int cf_class)
+{
+    return ((uint32_t)(cf_class & 3) << 30) | ((uint32_t)(cf_class >> 2) << 2);
+}
+
+static inline int tb_cf_class_of_flags(uint32_t flags)
+{
+    return (flags >> 30) | (((flags >> 2) & 1) << 2);
+}
+
 /* hflags2 */
 
 #define HF2_GIF_SHIFT            0 /* if set CPU takes interrupts */
@@ -1525,6 +1550,28 @@ typedef enum {
 
 /* See X86DecodedInsn.cc_op, using int8_t. */
 QEMU_BUILD_BUG_ON(CC_OP_DYNAMIC > INT8_MAX);
+
+/* The TB_CF_* class of a CC_OP (TB flag bits, CPU boost) */
+static inline int x86_cc_op_cf_class(int op)
+{
+    switch (op) {
+    case CC_OP_INCB ... CC_OP_DECQ:
+    case CC_OP_MULB ... CC_OP_MULQ:
+        return TB_CF_SRC_NZ;
+    case CC_OP_LOGICB ... CC_OP_LOGICQ:
+    case CC_OP_POPCNT:
+        return TB_CF_ZERO;
+    case CC_OP_EFLAGS:
+    case CC_OP_SARB ... CC_OP_SARQ:
+        return TB_CF_SRC_LSB;
+    case CC_OP_ADDL:
+        return TB_CF_ADDL;
+    case CC_OP_SUBL:
+        return TB_CF_SUBL;
+    default:
+        return TB_CF_UNKNOWN;
+    }
+}
 
 static inline MemOp cc_op_size(CCOp op)
 {

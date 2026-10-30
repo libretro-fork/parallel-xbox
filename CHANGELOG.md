@@ -376,6 +376,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 - OpenGL: the render thread no longer waits on the shader generation worker. Both took one lock around generating GLSL, so a draw that needed a shader generated on the spot, or adopted one the worker made, could wait for the whole of another shader's generation. The generators read only the state they are given, as the Vulkan renderer already relied on, so the lock is gone.
 
+- CPU Boost: the CPU emulation no longer calls a helper to find the carry flag at the start of a block of guest code. When a loop's block begins with INC or DEC (or ADC, SBB, JC) before anything in it has set the flags, it needed the carry flag the previous block left, and found it through a function call each time; now the block is translated knowing which kind of instruction set the flags last and computes the carry inline. A test loop of that kind runs 10% faster, a loop counting in RAM 8% faster; the guest's results are the same.
+
 ## Test build 4 - 2026-10-25
 
 - The core info file names the core "Microsoft - Xbox / Sega Chihiro (xemu)" (NNshi).
