@@ -1206,6 +1206,7 @@ void gpu_main(void)
             }
         }
         if (frame >= 1361 && frame <= 1440) {
+            method(NV097_SET_SURFACE_COLOR_OFFSET, SURF_D);
             triangle();
             if (frame == 1440) disable_texture();
             kick();
@@ -1217,6 +1218,7 @@ void gpu_main(void)
         /* A sampler-only change must retain the GPU-produced RGB565 copy. */
         if (frame == 1700) method(NV097_SET_TEXTURE_FILTER, 0x02020000u);
         if (frame >= 1661 && frame <= 1740) {
+            method(NV097_SET_SURFACE_COLOR_OFFSET, SURF_D);
             triangle();
             if (frame == 1740) disable_texture();
             kick();
@@ -1246,6 +1248,7 @@ void gpu_main(void)
         }
         if (frame == 1840) method(NV097_SET_TEXTURE_FILTER, 0x02020000u);
         if (frame >= 1801 && frame <= 1880) {
+            method(NV097_SET_SURFACE_COLOR_OFFSET, SURF_D);
             triangle(); if (frame == 1880) disable_texture(); kick();
         }
         if (frame == 1900) {
@@ -1278,10 +1281,50 @@ void gpu_main(void)
         if (frame == 2000 || frame == 2160) method(NV097_SET_TEXTURE_FILTER, 0x02020000u);
         if ((frame >= 1961 && frame <= 2040) ||
             (frame >= 2121 && frame <= 2200)) {
+            method(NV097_SET_SURFACE_COLOR_OFFSET, SURF_D);
             triangle(); if (frame == 2040 || frame == 2200) disable_texture(); kick();
         }
         if (frame == 2060) ram32(0x00300060u, rd32(0x03700000u));
         if (frame == 2220) ram32(0x00300064u, rd32(0x03900000u));
+        /* Reuse a GPU depth copy as RAM data, then CPU and GPU rewrite it. */
+        if (frame == 2280) {
+            texture_alias_at(0xc0000030u, 32, 0x3f000000u, 0, 0x03700000u);
+            method(0x1e6cu, 4);
+            method(NV097_SET_TEXTURE_CONTROL1, 64u << 16);
+            triangle(); kick();
+        }
+        if (frame == 2320) {
+            texture_cpu_barrier();
+            for (u32 offset = 0; offset < 32 * 16 * 2; offset += 4)
+                ram32(0x03700000u + offset, 0);
+        }
+        if (frame == 2321) ram32(0x0030006cu, rd32(0x03700000u));
+        if (frame == 2340) method(NV097_SET_TEXTURE_FILTER, 0x02020000u);
+        if (frame == 2360) {
+            method(NV097_SET_SURFACE_CLIP_H, 32u << 16);
+            method(NV097_SET_SURFACE_CLIP_V, 16u << 16);
+            method(NV097_SET_SURFACE_FORMAT, 0x118u);
+            method(NV097_SET_SURFACE_PITCH, 128u | (64u << 16));
+            method(NV097_SET_SURFACE_COLOR_OFFSET, 0x03800000u);
+            method(NV097_SET_SURFACE_ZETA_OFFSET, 0x03700000u);
+            method(NV097_SET_ZSTENCIL_CLEAR_VALUE, 0x00008000u);
+            method(NV097_SET_CLEAR_RECT_H, 31u << 16);
+            method(NV097_SET_CLEAR_RECT_V, 15u << 16);
+            method(NV097_SET_DEPTH_MASK, 1);
+            method(NV097_CLEAR_SURFACE, 3);
+            method(NV097_SET_DEPTH_MASK, 0);
+            method(NV097_SET_SURFACE_CLIP_H, WIDTH << 16);
+            method(NV097_SET_SURFACE_CLIP_V, HEIGHT << 16);
+            method(NV097_SET_SURFACE_FORMAT, 0x128u);
+            method(NV097_SET_SURFACE_PITCH, PITCH | (PITCH << 16));
+            method(NV097_SET_SURFACE_COLOR_OFFSET, SURF_D);
+            method(NV097_SET_SURFACE_ZETA_OFFSET, ZETA_B);
+        }
+        if (frame >= 2281 && frame <= 2380) {
+            method(NV097_SET_SURFACE_COLOR_OFFSET, SURF_D);
+            triangle(); if (frame == 2380) disable_texture(); kick();
+        }
+        if (frame == 2400) ram32(0x00300068u, rd32(0x03700000u));
         method(NV097_FLIP_INCREMENT_WRITE, 0);
         kick();
         if (frame >= 100 && frame < 125) {

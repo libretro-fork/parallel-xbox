@@ -571,3 +571,14 @@ requires a matching VRAM address, draw timestamp and recent sample clock, just
 like the byte reinterpretation path. Focused D16 counters at scale 2 showed a
 readback/upload at 1999 before the fix; afterward only the requested CPU readback
 at 2059 remains. No depth quantization or packing arithmetic changes here.
+
+The lifetime fixtures explicitly select displayed surface D for their ongoing
+draws: the loop's earlier background work selects B each frame. Their existing
+transfer counters measured real sampling, but unchanged captures alone did not
+prove that later draws reached the displayed surface. The new depth transition
+case makes that distinction observable. It reuses a retired D16 GPU snapshot as
+RAM data at 2280, writes zeros on the CPU at 2320, changes filtering at 2340,
+then clears the depth source on the GPU at 2360. Display captures must go white
+(2290), black (2330/2350), then white (2370/2410). CPU markers verify zero after
+the CPU rewrite and `0x80008000` after the GPU rewrite. The standard test uses
+scale 2. This adds regression coverage without changing renderer behavior.

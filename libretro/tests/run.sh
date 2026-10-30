@@ -625,6 +625,27 @@ elif [ "$r" != 3 ]; then
   echo "FAIL: depth source exited $r"; exit 1
 fi
 
+# A retired GPU depth snapshot becomes RAM data, then CPU/GPU rewrite it.
+set +e
+timeout 300 $h "$core" "$work/sysg" $vp --vulkan --opt xemu_renderer=vulkan \
+  --opt xemu_memory=64 --opt xemu_surface_scale=2 --frames 2420 --strict \
+  --pixel 2290 --pixel 2330 --pixel 2350 --pixel 2370 --pixel 2410 \
+  --peek 0x300068 --peek 0x30006c >"$work/gpu_depth_transition.txt"
+r=$?
+set -e
+if [ "$r" = 0 ]; then
+  for want in "pixel_2290=0xffffff" "pixel_2330=0x000000" \
+              "pixel_2350=0x000000" "pixel_2370=0xffffff" \
+              "pixel_2410=0xffffff" "peek_0x300068=0x80008000" \
+              "peek_0x30006c=0x00000000"; do
+    grep -q "^$want$" "$work/gpu_depth_transition.txt" || {
+      echo "FAIL: depth transition: $want"; exit 1;
+    }
+  done
+elif [ "$r" != 3 ]; then
+  echo "FAIL: depth transition exited $r"; exit 1
+fi
+
 # A savestate taken while surfaces live only on the GPU (rom/gpu.c: before
 # run 64, B drawn and its depth cleared at frame 62, nothing read back), then
 # loaded in a new process, which has no GPU surfaces: the depth the guest
