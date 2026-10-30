@@ -11,6 +11,7 @@
  */
 
 #include "glib.h"
+#include <retro_atomic.h>
 
 /* ---- arrays --------------------------------------------------------------- */
 
@@ -20,7 +21,7 @@ typedef struct {
     guint elt_size;
     gboolean zero_terminated;
     gboolean clear;
-    gint ref_count;
+    retro_atomic_int_t ref_count;
     GDestroyNotify clear_func;
 } GRealArray;
 
@@ -53,7 +54,7 @@ GArray *g_array_sized_new(gboolean zero_terminated, gboolean clear,
     r->elt_size = element_size;
     r->zero_terminated = zero_terminated;
     r->clear = clear;
-    r->ref_count = 1;
+    retro_atomic_int_init(&r->ref_count, 1);
     g_array_grow(r, MAX(reserved_size, 1));
     g_array_terminate(r);
     return &r->a;
@@ -98,15 +99,16 @@ gchar *g_array_free(GArray *array, gboolean free_segment)
     return seg;
 }
 
+/* Immutable arrays can cross worker queues; mutations still need an owner. */
 GArray *g_array_ref(GArray *array)
 {
-    ((GRealArray *)array)->ref_count++;
+    retro_atomic_fetch_add_int(&((GRealArray *)array)->ref_count, 1);
     return array;
 }
 
 void g_array_unref(GArray *array)
 {
-    if (--((GRealArray *)array)->ref_count == 0) {
+    if (retro_atomic_fetch_sub_int(&((GRealArray *)array)->ref_count, 1) == 1) {
         g_array_free(array, TRUE);
     }
 }
@@ -217,9 +219,10 @@ GByteArray *g_byte_array_sized_new(guint reserved_size)
 
 GByteArray *g_byte_array_new_take(guint8 *data, gsize len)
 {
-    GRealArray *r = (GRealArray *)g_array_new(FALSE, FALSE, 1);
+    GRealArray *r = g_new0(GRealArray, 1);
 
-    g_free(r->a.data);
+    r->elt_size = 1;
+    retro_atomic_int_init(&r->ref_count, 1);
     r->a.data = (gchar *)data;
     r->a.len = (guint)len;
     r->alloc = (guint)len;

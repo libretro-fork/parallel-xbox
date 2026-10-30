@@ -542,8 +542,7 @@ static struct { uint64_t hash; int phase; } vk_spec_track[1024];
 typedef struct VkSpecDone {
     uint64_t key_hash;
     ShaderModuleCacheKey key;
-    uint32_t *words;  /* the module's SPIR-V, malloc'ed by the worker */
-    uint32_t nwords;
+    GByteArray *spirv; /* immutable; this record owns one reference */
     uint64_t state_hash; /* set on the record that ends a state */
 } VkSpecDone;
 
@@ -567,6 +566,9 @@ static bool vk_spec_push_constants;
  * than compiling */
 static VkSpecDone vk_spec_ready[VK_SPEC_READY];
 static unsigned vk_spec_ready_n;
+/* Active prefix is oldest first; the suffix contains free slot indices.
+ * Only indices move when a record is taken or evicted. */
+static unsigned vk_spec_ready_order[VK_SPEC_READY];
 
 static int vk_spec_find(uint64_t h)
 {
@@ -626,32 +628,94 @@ static MString *vk_module_glsl(const ShaderModuleCacheKey *key)
     }
 }
 
-/* Compile every module of one state to SPIR-V and hand the words over.
- * Safe off the render thread: the generators only read the state, the
- * compiler has no shared state, and no Vulkan object is touched. */
+/* Worker-owned memo of immutable module words, not Vulkan objects. Keys
+ * include all generator options; device changes clear it at quiescence.
+ * Repeated states share a module without recompiling or copying its words.
+ * Direct mapping bounds lookup work; the byte cap bounds retained payload. */
+#define VK_SPEC_MODULE_SLOTS 64
+#define VK_SPEC_MODULE_BYTES (4u << 20)
+static struct {
+    uint64_t hash;
+    ShaderModuleCacheKey key;
+    bool spirv_1_6;
+    GByteArray *spirv;
+} vk_spec_modules[VK_SPEC_MODULE_SLOTS];
+static size_t vk_spec_module_bytes;
+static unsigned vk_spec_module_victim;
+
+static void vk_spec_module_evict(unsigned slot)
+{
+    if (vk_spec_modules[slot].spirv) {
+        vk_spec_module_bytes -= vk_spec_modules[slot].spirv->len;
+        g_byte_array_unref(vk_spec_modules[slot].spirv);
+        vk_spec_modules[slot].spirv = NULL;
+    }
+}
+
+/* Called by the worker, or after cancellation and acquire-observing zero
+ * in-flight states: the producer alone can queue work, so it stays idle. */
+static void vk_spec_modules_clear(void)
+{
+    for (unsigned i = 0; i < ARRAY_SIZE(vk_spec_modules); i++) {
+        vk_spec_module_evict(i);
+    }
+    vk_spec_module_victim = 0;
+    assert(vk_spec_module_bytes == 0);
+}
+
+static GByteArray *vk_spec_compile_module(const ShaderModuleCacheKey *key)
+{
+    uint64_t hash = fast_hash((const uint8_t *)key, sizeof(*key));
+    unsigned slot = hash % ARRAY_SIZE(vk_spec_modules);
+    if (vk_spec_modules[slot].spirv &&
+        vk_spec_modules[slot].hash == hash &&
+        vk_spec_modules[slot].spirv_1_6 == pgraph_vk_spirv_1_6 &&
+        !memcmp(&vk_spec_modules[slot].key, key, sizeof(*key))) {
+        return g_byte_array_ref(vk_spec_modules[slot].spirv);
+    }
+    MString *code = vk_module_glsl(key);
+    GByteArray *spirv =
+        pgraph_vk_compile_glsl_to_spv(key->kind, mstring_get_str(code));
+    mstring_unref(code);
+    if (spirv->len > VK_SPEC_MODULE_BYTES) {
+        return spirv; /* do not retain unusually large programs */
+    }
+    vk_spec_module_evict(slot);
+    while (vk_spec_module_bytes + spirv->len > VK_SPEC_MODULE_BYTES) {
+        vk_spec_module_evict(vk_spec_module_victim);
+        vk_spec_module_victim =
+            (vk_spec_module_victim + 1) % ARRAY_SIZE(vk_spec_modules);
+    }
+    vk_spec_modules[slot].hash = hash;
+    vk_spec_modules[slot].key = *key;
+    vk_spec_modules[slot].spirv_1_6 = pgraph_vk_spirv_1_6;
+    vk_spec_modules[slot].spirv = g_byte_array_ref(spirv);
+    vk_spec_module_bytes += spirv->len;
+    return spirv;
+}
+
+/* Obtain each state's immutable module words and hand a reference over.
+ * Only the worker accesses the memo while active; compilation touches no
+ * Vulkan object and the render thread receives words through the SPSC. */
 static void vk_spec_compile_state(const ShaderState *st)
 {
     ShaderModuleCacheKey keys[3];
     int n = vk_state_module_keys(st, vk_spec_push_constants, keys);
     uint64_t state_hash = fast_hash((const uint8_t *)st, sizeof(*st));
     for (int i = 0; i < n; i++) {
-        MString *code = vk_module_glsl(&keys[i]);
-        GByteArray *spv =
-            pgraph_vk_compile_glsl_to_spv(keys[i].kind, mstring_get_str(code));
-        mstring_unref(code);
+        GByteArray *spv = vk_spec_compile_module(&keys[i]);
         VkSpecDone d;
         memset(&d, 0, sizeof(d));
         d.key = keys[i];
         d.key_hash = fast_hash((const uint8_t *)&keys[i], sizeof(keys[i]));
-        d.nwords = spv->len / sizeof(uint32_t);
-        d.words = (uint32_t *)g_byte_array_free(spv, FALSE);
+        d.spirv = spv;
         d.state_hash = i == n - 1 ? state_hash : 0;
         /* The out ring holds three records for each state the render
          * thread may have queued and not drained (vk_spec_queue bounds
          * that), so it has room; were it ever short, the record is dropped
          * and the state stays drawn as its sibling. */
         if (retro_spsc_write(&vk_spec_out, &d, sizeof(d)) != sizeof(d)) {
-            free(d.words);
+            g_byte_array_unref(d.spirv);
         }
     }
 }
@@ -678,6 +742,21 @@ static void *vk_spec_worker_fn(void *opaque)
     return NULL;
 }
 
+static void vk_spec_ready_push(const VkSpecDone *done)
+{
+    unsigned slot;
+    if (vk_spec_ready_n < VK_SPEC_READY) {
+        slot = vk_spec_ready_order[vk_spec_ready_n++];
+    } else {
+        slot = vk_spec_ready_order[0];
+        g_byte_array_unref(vk_spec_ready[slot].spirv);
+        memmove(vk_spec_ready_order, vk_spec_ready_order + 1,
+                (VK_SPEC_READY - 1) * sizeof(vk_spec_ready_order[0]));
+        vk_spec_ready_order[VK_SPEC_READY - 1] = slot;
+    }
+    vk_spec_ready[slot] = *done;
+}
+
 /* Lands what the worker handed back: the modules into the ready table,
  * the states' tracks to ADOPTED. Render thread only. */
 static void vk_spec_drain(void)
@@ -687,14 +766,7 @@ static void vk_spec_drain(void)
     }
     VkSpecDone d;
     while (retro_spsc_read(&vk_spec_out, &d, sizeof(d)) == sizeof(d)) {
-        if (vk_spec_ready_n == VK_SPEC_READY) {
-            /* the oldest unused goes: it is compiled again if met */
-            free(vk_spec_ready[0].words);
-            memmove(&vk_spec_ready[0], &vk_spec_ready[1],
-                    (VK_SPEC_READY - 1) * sizeof(vk_spec_ready[0]));
-            vk_spec_ready_n--;
-        }
-        vk_spec_ready[vk_spec_ready_n++] = d;
+        vk_spec_ready_push(&d);
         if (d.state_hash) {
             vk_spec_undrained--;
             int t = vk_spec_find(d.state_hash);
@@ -711,12 +783,15 @@ static GByteArray *vk_spec_take_ready(const ShaderModuleCacheKey *key)
 {
     uint64_t h = fast_hash((const uint8_t *)key, sizeof(*key));
     for (unsigned i = 0; i < vk_spec_ready_n; i++) {
-        VkSpecDone *d = &vk_spec_ready[i];
+        unsigned slot = vk_spec_ready_order[i];
+        VkSpecDone *d = &vk_spec_ready[slot];
         if (d->key_hash == h && memcmp(&d->key, key, sizeof(*key)) == 0) {
-            GByteArray *spv = g_byte_array_new_take(
-                (guint8 *)d->words, d->nwords * sizeof(uint32_t));
+            GByteArray *spv = d->spirv;
             vk_spec_ready_n--;
-            memmove(d, d + 1, (vk_spec_ready_n - i) * sizeof(*d));
+            memmove(vk_spec_ready_order + i, vk_spec_ready_order + i + 1,
+                    (vk_spec_ready_n - i) * sizeof(vk_spec_ready_order[0]));
+            vk_spec_ready_order[vk_spec_ready_n] = slot;
+            d->spirv = NULL;
             return spv;
         }
     }
@@ -784,9 +859,12 @@ static void vk_spec_quiesce(void)
     retro_atomic_store_release_int(&vk_spec_cancel, 0);
     vk_spec_drain();
     for (unsigned i = 0; i < vk_spec_ready_n; i++) {
-        free(vk_spec_ready[i].words);
+        VkSpecDone *d = &vk_spec_ready[vk_spec_ready_order[i]];
+        g_byte_array_unref(d->spirv);
+        d->spirv = NULL;
     }
     vk_spec_ready_n = 0;
+    vk_spec_modules_clear();
     vk_spec_undrained = 0;
     for (unsigned i = 0; i < ARRAY_SIZE(vk_spec_track); i++) {
         vk_spec_track[i].phase = 0;
@@ -805,6 +883,9 @@ static void vk_spec_queue(uint64_t h, const ShaderState *st)
             !retro_eventcount_init(&vk_spec_ec) ||
             !retro_eventcount_init(&vk_spec_idle_ec)) {
             return; /* no memory: every state compiles where it is met */
+        }
+        for (unsigned i = 0; i < VK_SPEC_READY; i++) {
+            vk_spec_ready_order[i] = i;
         }
         vk_spec_started = true;
         qemu_thread_create(&vk_spec_thread, "vk-firstmeet", vk_spec_worker_fn,

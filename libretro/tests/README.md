@@ -389,3 +389,19 @@ cases, including empty, adjacent, one-byte and full-width address spans.
 view from the first byte of a GPU-cleared blue ARGB surface while RAM stays
 zero; frame 810 must be white on both renderers at 1x/2x/4x. This reproduces
 the old OpenGL stale-black result with a real texture upload.
+
+`python libretro/tests/test-vk-worker-modules.py . gcc` runs the production
+worker memo and immutable-array reference functions. It checks exact keys,
+collisions, SPIR-V versions, the byte cap, oversize bypass, live references
+after eviction/clear, queue drops, adoption and per-state completion markers,
+plus 10,000 FIFO/slot-reuse cases and 800,000 concurrent ref/unref pairs
+with no leaked arrays (UB traps).
+
+`python libretro/tests/test-spv-reflection-borrow.py . gcc` uses the real
+GLSL compiler and SPIRV-Reflect to compare copy/borrowed metadata for vertex,
+geometry, fragment and compute shaders under SPIR-V 1.5/1.6. Uniform layouts,
+arrays, descriptors and push constants match; borrowed instances share the
+original immutable words and can be destroyed independently. Production
+layout construction/destruction is compared with a copy-mode control; layouts
+must survive freeing all parser/source data, and all packed uniform storage
+must be released.

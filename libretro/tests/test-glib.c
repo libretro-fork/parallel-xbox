@@ -262,6 +262,19 @@ static void test_arrays(void)
     g_byte_array_remove_range(b, 0, 1);
     CHECK(b->len == 4 && !memcmp(b->data, "ello", 4));
     g_byte_array_unref(b);
+    guint8 *taken = g_memdup2("hello", 5);
+    b = g_byte_array_new_take(taken, 5);
+    CHECK(b->data == taken && b->len == 5);
+    g_byte_array_append(b, (const guint8 *)" world", 6);
+    CHECK(b->len == 11 && !memcmp(b->data, "hello world", 11));
+    GByteArray *held = g_byte_array_ref(b);
+    g_byte_array_unref(b);
+    CHECK(held->len == 11 && !memcmp(held->data, "hello world", 11));
+    g_byte_array_unref(held);
+    b = g_byte_array_new_take(NULL, 0);
+    g_byte_array_append(b, (const guint8 *)"abc", 3);
+    CHECK(b->len == 3 && !memcmp(b->data, "abc", 3));
+    g_byte_array_unref(b);
 }
 
 static void test_strings(void)

@@ -191,10 +191,7 @@ typedef struct SurfaceBinding {
 
 typedef struct ShaderModuleInfo {
     int refcnt;
-    GByteArray *spirv;
     VkShaderModule module;
-    SpvReflectShaderModule reflect_module;
-    SpvReflectDescriptorSet **descriptor_sets;
     ShaderUniformLayout uniforms;
     ShaderUniformLayout push_constants;
     /* Packed uniforms are the comparison cache; only generations remain. */

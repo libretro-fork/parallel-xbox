@@ -129,52 +129,27 @@ static void block_to_uniforms(const SpvReflectBlockVariable *block, ShaderUnifor
     // fprintf(stderr, "--\n");
 }
 
-static void init_layout_from_spv(ShaderModuleInfo *info)
+static void init_layout_from_spv(ShaderModuleInfo *info, GByteArray *spirv)
 {
-    SpvReflectResult result = spvReflectCreateShaderModule(
-        info->spirv->len, info->spirv->data, &info->reflect_module);
+    /* Borrow immutable words while extracting the layouts. Neither parser
+     * metadata nor source words are needed by the resulting Vulkan module. */
+    SpvReflectShaderModule reflect;
+    SpvReflectResult result = spvReflectCreateShaderModule2(
+        SPV_REFLECT_MODULE_FLAG_NO_COPY, spirv->len, spirv->data, &reflect);
     assert(result == SPV_REFLECT_RESULT_SUCCESS &&
            "Failed to create SPIR-V shader module");
 
-    uint32_t descriptor_set_count = 0;
-    result = spvReflectEnumerateDescriptorSets(&info->reflect_module,
-                                               &descriptor_set_count, NULL);
-    assert(result == SPV_REFLECT_RESULT_SUCCESS &&
-           "Failed to enumerate descriptor sets");
-
-    info->descriptor_sets =
-        g_malloc_n(descriptor_set_count, sizeof(SpvReflectDescriptorSet *));
-    result = spvReflectEnumerateDescriptorSets(
-        &info->reflect_module, &descriptor_set_count, info->descriptor_sets);
-    assert(result == SPV_REFLECT_RESULT_SUCCESS &&
-           "Failed to enumerate descriptor sets");
-
-    info->uniforms.num_uniforms = 0;
-    info->uniforms.uniforms = NULL;
-
-    for (uint32_t i = 0; i < descriptor_set_count; ++i) {
-        const SpvReflectDescriptorSet *descriptor_set =
-            info->descriptor_sets[i];
-        for (uint32_t j = 0; j < descriptor_set->binding_count; ++j) {
-            const SpvReflectDescriptorBinding *binding =
-                descriptor_set->bindings[j];
-            if (binding->descriptor_type !=
-                SPV_REFLECT_DESCRIPTOR_TYPE_UNIFORM_BUFFER) {
-                continue;
-            }
-
-            const SpvReflectBlockVariable *block = &binding->block;
-            block_to_uniforms(block, &info->uniforms);
+    for (uint32_t i = 0; i < reflect.descriptor_binding_count; i++) {
+        const SpvReflectDescriptorBinding *binding = &reflect.descriptor_bindings[i];
+        if (binding->descriptor_type == SPV_REFLECT_DESCRIPTOR_TYPE_UNIFORM_BUFFER) {
+            block_to_uniforms(&binding->block, &info->uniforms);
         }
     }
-
-    info->push_constants.num_uniforms = 0;
-    info->push_constants.uniforms = NULL;
-    assert(info->reflect_module.push_constant_block_count < 2);
-    if (info->reflect_module.push_constant_block_count) {
-        block_to_uniforms(&info->reflect_module.push_constant_blocks[0],
-                          &info->push_constants);
+    assert(reflect.push_constant_block_count < 2);
+    if (reflect.push_constant_block_count) {
+        block_to_uniforms(&reflect.push_constant_blocks[0], &info->push_constants);
     }
+    spvReflectDestroyShaderModule(&reflect);
 }
 
 /* A module from SPIR-V the caller hands over (a worker compiled it) */
@@ -183,9 +158,9 @@ ShaderModuleInfo *pgraph_vk_create_shader_module_from_spirv(PGRAPHVkState *r,
 {
     ShaderModuleInfo *info = g_malloc0(sizeof(*info));
     info->refcnt = 0;
-    info->spirv = spirv;
-    info->module = pgraph_vk_create_shader_module_from_spv(r, info->spirv);
-    init_layout_from_spv(info);
+    info->module = pgraph_vk_create_shader_module_from_spv(r, spirv);
+    init_layout_from_spv(info, spirv);
+    g_byte_array_unref(spirv);
     return info;
 }
 
@@ -204,6 +179,7 @@ static void finalize_uniform_layout(ShaderUniformLayout *layout)
     if (layout->uniforms) {
         g_free(layout->uniforms);
     }
+    g_free(layout->allocation);
 }
 
 void pgraph_vk_ref_shader_module(ShaderModuleInfo *info)
@@ -226,9 +202,6 @@ void pgraph_vk_destroy_shader_module(PGRAPHVkState *r, ShaderModuleInfo *info)
     assert(info->refcnt == 0);
     finalize_uniform_layout(&info->uniforms);
     finalize_uniform_layout(&info->push_constants);
-    free(info->descriptor_sets);
-    spvReflectDestroyShaderModule(&info->reflect_module);
     vkDestroyShaderModule(r->device, info->module, NULL);
-    g_byte_array_unref(info->spirv);
     g_free(info);
 }
