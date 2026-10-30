@@ -183,10 +183,13 @@ static void pgraph_update_irq_bh(void *opaque)
 
 /* Raising the IRQ needs the BQL, and taking it on the pfifo thread can
  * deadlock (an IDE DMA holding the BQL waits for the memory-access flush
- * only this thread performs): raise it from a main-loop bottom half. */
+ * only this thread performs): raise it from a main-loop bottom half. The
+ * bottom half is made once (pgraph_init): scheduling it is a few atomic
+ * operations with no allocation, and scheduling it again before it has
+ * run is one raise, which reads every interrupt pending by then. */
 static void pgraph_schedule_irq_update(NV2AState *d)
 {
-    aio_bh_schedule_oneshot(qemu_get_aio_context(), pgraph_update_irq_bh, d);
+    qemu_bh_schedule(d->pgraph.irq_bh);
 }
 
 void pgraph_context_switch(NV2AState *d, unsigned int channel_id)
@@ -476,6 +479,7 @@ void pgraph_init(NV2AState *d)
     retro_eventcount_init(&pg->framebuffer_released);
     retro_eventcount_init(&pg->renderer_switch_complete);
     pg->renderer_switch_phase = PGRAPH_RENDERER_SWITCH_PHASE_IDLE;
+    pg->irq_bh = qemu_bh_new(pgraph_update_irq_bh, d);
 
     pg->frame_time = 0;
     pg->draw_time = 0;
@@ -607,6 +611,9 @@ void pgraph_destroy(PGRAPHState *pg)
     if (pg->renderer->ops.finalize) {
        pg->renderer->ops.finalize(d);
     }
+    /* the pfifo thread, which schedules it, has been joined */
+    qemu_bh_delete(pg->irq_bh);
+    pg->irq_bh = NULL;
 }
 
 /* Called at every turn of the UI loop, up to a thousand times a second. It

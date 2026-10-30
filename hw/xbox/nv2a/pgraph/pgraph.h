@@ -390,6 +390,10 @@ typedef struct PGRAPHState {
     } renderer_switch_phase;
     retro_eventcount_t renderer_switch_complete;
 
+    /* Raises the IRQ from the main loop (pgraph_schedule_irq_update);
+     * made once, scheduled again for each interrupt */
+    QEMUBH *irq_bh;
+
     unsigned int surface_scale_factor;
     uint8_t *scale_buf;
 

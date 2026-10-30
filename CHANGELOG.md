@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- The GPU no longer allocates memory each time it raises an interrupt (a few hundred times in ten seconds of Ninja Gaiden): the callback that raises it is made once and reused.
+
 - The emulated graphics chip no longer draws every frame a second time, the old VGA way, into a picture nothing shows: the core shows what the GPU renders. That drawing allocated memory on most frames and made the game's next writes to the screen's memory take the slow path again.
 
 - OpenGL: when a game reads back a picture it drew into a swizzled texture (render-to-texture effects), the GPU now puts it in the Xbox's swizzled order itself, shrinking it to the Xbox's size on the way at higher internal resolutions, and the driver writes it straight into the Xbox's memory. Before, it was read into a scratch buffer and the CPU shrank and swizzled it pixel by pixel. Depth buffers keep the CPU path.
