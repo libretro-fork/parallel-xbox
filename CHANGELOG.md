@@ -402,6 +402,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 - CPU Boost: the CPU emulation no longer calls a helper to find the carry flag at the start of a block of guest code. When a loop's block begins with INC or DEC (or ADC, SBB, JC) before anything in it has set the flags, it needed the carry flag the previous block left, and found it through a function call each time; now the block is translated knowing which kind of instruction set the flags last and computes the carry inline. A test loop of that kind runs 10% faster, a loop counting in RAM 8% faster; the guest's results are the same. A block that sets the flags itself before it reads them is translated once, however the block before it set them, so the extra translations stay with the blocks that need them: the GPU test ROM translates 419 blocks, against 441 without this and 414 with CPU Boost off.
 
+- The CPU emulation no longer stalls at the start of every block of guest code. Each block takes its instructions off the instruction budget and stores what is left as 16 bits; the next block read it back as 32 bits (with the exit-request half beside it), a load the processor cannot take from the store still on its way to the cache, so it waited for the store each time. Blocks now read the two halves separately. A guest that keeps the CPU busy runs 36% faster (16.5 s to 10.5 s for 600 frames of the test ROM), one that spins the way the Xbox kernel's idle thread does about 30% faster; the guest's results are the same.
+
 ## Test build 4 - 2026-10-25
 
 - The core info file names the core "Microsoft - Xbox / Sega Chihiro (xemu)" (NNshi).

@@ -160,14 +160,21 @@ static TCGOp *gen_tb_start(DisasContextBase *db, uint32_t cflags)
     bool budget = (cflags & CF_USE_ICOUNT) ||
                   (qatomic_read(&xemu_cpu_pace_on) && !(cflags & CF_NOIRQ));
 
-    if ((cflags & CF_USE_ICOUNT) || !(cflags & CF_NOIRQ)) {
-        count = tcg_temp_new_i32();
-        tcg_gen_ld_i32(count, tcg_env,
-                       offsetof(CPUState, neg.icount_decr.u32) -
-                       sizeof(CPUState));
-    }
+    TCGv_i32 test = NULL;
 
     if (budget) {
+        /*
+         * The budget's half alone: the block before stored it with a
+         * 16-bit store (below), and a 32-bit load of icount_decr.u32 over
+         * that store cannot be forwarded from it, so every block would
+         * wait for the store to reach the cache. The exit request half
+         * (u16.high, 0 or -1, set by other threads) is a load of its own;
+         * negative in either is what u32 < 0 was.
+         */
+        count = tcg_temp_new_i32();
+        tcg_gen_ld16u_i32(count, tcg_env,
+                          offsetof(CPUState, neg.icount_decr.u16.low) -
+                          sizeof(CPUState));
         /*
          * We emit a sub with a dummy immediate argument. Keep the insn index
          * of the sub so that we later (when we know the actual insn count)
@@ -175,10 +182,22 @@ static TCGOp *gen_tb_start(DisasContextBase *db, uint32_t cflags)
          */
         tcg_gen_sub_i32(count, count, tcg_constant_i32(0));
         icount_start_insn = tcg_last_op();
+        if (!(cflags & CF_NOIRQ)) {
+            test = tcg_temp_new_i32();
+            tcg_gen_ld16s_i32(test, tcg_env,
+                              offsetof(CPUState, neg.icount_decr.u16.high) -
+                              sizeof(CPUState));
+            tcg_gen_or_i32(test, test, count);
+        }
+    } else if (!(cflags & CF_NOIRQ)) {
+        test = tcg_temp_new_i32();
+        tcg_gen_ld_i32(test, tcg_env,
+                       offsetof(CPUState, neg.icount_decr.u32) -
+                       sizeof(CPUState));
     }
 
     /*
-     * Emit the check against icount_decr.u32 to see if we should exit
+     * Emit the check against icount_decr to see if we should exit
      * unless we suppress the check with CF_NOIRQ. If we are using
      * icount and have suppressed interruption the higher level code
      * should have ensured we don't run more instructions than the
@@ -188,7 +207,7 @@ static TCGOp *gen_tb_start(DisasContextBase *db, uint32_t cflags)
         tcg_ctx->exitreq_label = NULL;
     } else {
         tcg_ctx->exitreq_label = gen_new_label();
-        tcg_gen_brcondi_i32(TCG_COND_LT, count, 0, tcg_ctx->exitreq_label);
+        tcg_gen_brcondi_i32(TCG_COND_LT, test, 0, tcg_ctx->exitreq_label);
     }
 
     if (budget) {
