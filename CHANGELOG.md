@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- libretro-common is in step with RetroArch's again (retro_atomic, the SPSC queue, rtime and CRC32 had fallen behind): rtime_localtime() now uses the C library's thread-safe localtime_r()/localtime_s() instead of a spin flag, and the SPSC queue gains retro_spsc_grow_into().
+
 - The CPU emulation no longer carries QEMU's parallel mode, which this core never used: it runs its one vCPU serially, so guest loads and stores to RAM are now plain host loads and stores instead of going through atomicity checks that always came out the same, and the out-of-line atomic helpers and the stop-the-world fallback are gone (about 2,700 lines).
 
 - Indexed draws track vertex bounds while accepting index commands instead of scanning the finished list in both renderers. Non-incrementing index packets are decoded in one dispatch with per-word tracing preserved. Bounds are rebuilt from legacy savestates; the state format, index order and GPU uploads are unchanged.
