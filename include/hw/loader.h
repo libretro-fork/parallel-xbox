@@ -1,7 +1,7 @@
 #ifndef LOADER_H
 #define LOADER_H
-#include "hw/nvram/fw_cfg.h"
 #include "qemu/typedefs.h"
+#include "exec/hwaddr.h"
 
 /* loader.c */
 /**
@@ -83,12 +83,8 @@ typedef void (*symbol_fn_t)(const char *st_name, int st_info,
 ssize_t rom_add_file(const char *file, const char *fw_dir,
                      hwaddr addr, int32_t bootindex,
                      bool has_option_rom, MemoryRegion *mr, AddressSpace *as);
-MemoryRegion *rom_add_blob(const char *name, const void *blob, size_t len,
-                           size_t max_len, hwaddr addr,
-                           const char *fw_file_name,
-                           FWCfgCallback fw_callback,
-                           void *callback_opaque, AddressSpace *as,
-                           bool read_only);
+void rom_add_blob(const char *name, const void *blob, size_t len,
+                  size_t max_len, hwaddr addr, AddressSpace *as);
 int rom_add_elf_program(const char *name, GMappedFile *mapped_file, void *data,
                         size_t datasize, size_t romsize, hwaddr addr,
                         AddressSpace *as);
@@ -129,7 +125,7 @@ void *rom_ptr(hwaddr addr, size_t size);
 #define rom_add_file_fixed(_f, _a, _i)          \
     rom_add_file(_f, NULL, _a, _i, false, NULL, NULL)
 #define rom_add_blob_fixed(_f, _b, _l, _a)      \
-    rom_add_blob(_f, _b, _l, _l, _a, NULL, NULL, NULL, NULL, true)
+    rom_add_blob(_f, _b, _l, _l, _a, NULL)
 #define rom_add_file_mr(_f, _mr, _i)            \
     rom_add_file(_f, NULL, 0, _i, false, _mr, NULL)
 #define rom_add_file_as(_f, _as, _i)            \
@@ -137,7 +133,7 @@ void *rom_ptr(hwaddr addr, size_t size);
 #define rom_add_file_fixed_as(_f, _a, _i, _as)          \
     rom_add_file(_f, NULL, _a, _i, false, NULL, _as)
 #define rom_add_blob_fixed_as(_f, _b, _l, _a, _as)      \
-    rom_add_blob(_f, _b, _l, _l, _a, NULL, NULL, NULL, _as, true)
+    rom_add_blob(_f, _b, _l, _l, _a, _as)
 
 ssize_t rom_add_vga(const char *file);
 ssize_t rom_add_option(const char *file, int32_t bootindex);

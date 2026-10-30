@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <string.h>
 #define NV2A_MAX_BATCH_LENGTH 512u
+#define NV2A_MAX_TEXTURES 4
 #define ARRAY_SIZE(a) (sizeof(a)/sizeof((a)[0]))
 #define MIN(a,b) ((a)<(b)?(a):(b))
 #define MAX(a,b) ((a)>(b)?(a):(b))
@@ -20,6 +21,7 @@ typedef struct {
  unsigned draw_arrays_length,draw_arrays_min_start,draw_arrays_max_count;
  int32_t draw_arrays_start[1250],draw_arrays_count[1250];bool draw_arrays_prevent_connect;
  int ctx_switch_subchannel,flush_pending;
+ bool texture_dirty[NV2A_MAX_TEXTURES];
 } PGRAPHState;
 typedef struct {PGRAPHState pgraph;} NV2AState;
 static NV2AState d;
@@ -67,7 +69,7 @@ int main(void){
   unsigned op=rnd()%5,count=1+rnd()%16;
   if(op<4)packet(op<2,op&1,count);
   else {if(!nref){words[0]=rnd();packet(false,true,1);}unsigned start=rnd()&0xffff,count=1+rnd()%256;draw(start,count);for(unsigned i=0;i<count;i++)oracle(start+i);check();}
-  if(round%37==0){d.pgraph.inline_elements_min=0xdeadbeef;d.pgraph.inline_elements_max=0;assert(!nv2a_post_load(&d,5));assert(d.pgraph.ctx_switch_subchannel==-1&&d.pgraph.flush_pending==1);check();}
+  if(round%37==0){d.pgraph.inline_elements_min=0xdeadbeef;d.pgraph.inline_elements_max=0;assert(!nv2a_post_load(&d,5));assert(d.pgraph.ctx_switch_subchannel==-1&&d.pgraph.flush_pending==1);for(unsigned t=0;t<NV2A_MAX_TEXTURES;t++)assert(d.pgraph.texture_dirty[t]);check();}
  }
  reset();draw(10,3);assert(d.pgraph.draw_arrays_length==1);words[0]=5|(40u<<16);
  method_ARRAY_ELEMENT16(&d,&d.pgraph,2,0x1800,words[0],NULL,0,&(size_t){1},true);

@@ -488,9 +488,8 @@ static void apic_eoi(APICCommonState *s)
     if (isrv < 0)
         return;
     apic_reset_bit(s->isr, isrv);
-    if (!(s->spurious_vec & APIC_SV_DIRECTED_IO) && apic_get_bit(s->tmr, isrv)) {
-        ioapic_eoi_broadcast(isrv);
-    }
+    /* A level-triggered EOI goes to the IOAPICs; the Xbox has none (the
+     * MCPX's interrupts go through its i8259 pair) */
     apic_sync_vapic(s, SYNC_FROM_VAPIC | SYNC_TO_VAPIC);
     apic_update_irq(s);
 }
@@ -1114,9 +1113,8 @@ static void apic_realize(DeviceState *dev, Error **errp)
                           APIC_SPACE_SIZE);
 
     /*
-     * apic-msi's apic_mem_write can call into ioapic_eoi_broadcast, which can
-     * write back to apic-msi. As such mark the apic-msi region re-entrancy
-     * safe.
+     * Re-entrancy safe, as upstream marks it: there an IOAPIC's EOI broadcast
+     * from apic_mem_write can write back to apic-msi.  The Xbox has no IOAPIC.
      */
     s->io_memory.disable_reentrancy_guard = true;
 

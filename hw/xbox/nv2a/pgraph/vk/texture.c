@@ -876,6 +876,68 @@ static VkImage native_get_scratch(PGRAPHState *pg, VkFormat format,
     return image;
 }
 
+/* Only RAM layers need an upload. Keep GPU faces at their rendered size:
+ * upload native RAM faces once, then expand them on the GPU. The temporary
+ * image belongs to this recording and is pooled only after it has retired;
+ * a shared scratch could be overwritten while earlier draws still read it. */
+static void upload_mixed_cube_ram(PGRAPHState *pg, int texture_idx,
+                                  TextureBinding *binding, unsigned gpu_mask)
+{
+    if (binding->key.scale == 1) {
+        upload_texture_image(pg, texture_idx, binding, gpu_mask);
+        return;
+    }
+    PGRAPHVkState *r = pg->vk_renderer_state;
+    TextureBinding native = { 0 };
+    native.key = binding->key;
+    native.key.scale = 1;
+    native.submit_time = binding->submit_time;
+    native.image_ci = binding->image_ci;
+    native.image_ci.extent.width = native.key.state.width;
+    native.image_ci.extent.height = native.key.state.height;
+    native.image_ci.usage |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+    VmaAllocationCreateInfo aci = { .usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE };
+    if (!pgraph_vk_image_pool_get(r, &native.image_ci, &native.image,
+                                  &native.allocation)) {
+        VK_CHECK(vmaCreateImage(r->allocator, &native.image_ci, &aci,
+                                &native.image, &native.allocation, NULL));
+    }
+    upload_texture_image(pg, texture_idx, &native, gpu_mask);
+
+    VkCommandBuffer cmd = pgraph_vk_begin_nondraw_commands(pg);
+    VkFormat format = native.image_ci.format;
+    pgraph_vk_transition_image_layout(pg, cmd, native.image, format,
+        native.current_layout, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+    pgraph_vk_transition_image_layout(pg, cmd, binding->image, format,
+        binding->current_layout, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+    VkImageBlit regions[6];
+    unsigned count = 0;
+    for (unsigned face = 0; face < 6; face++) {
+        if (gpu_mask & (1u << face)) continue;
+        regions[count++] = (VkImageBlit) {
+            .srcSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, face, 1 },
+            .dstSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, face, 1 },
+            .srcOffsets[1] = { native.image_ci.extent.width,
+                               native.image_ci.extent.height, 1 },
+            .dstOffsets[1] = { binding->image_ci.extent.width,
+                               binding->image_ci.extent.height, 1 },
+        };
+    }
+    vkCmdBlitImage(cmd, native.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+        binding->image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, count, regions,
+        VK_FILTER_NEAREST);
+    /* The caller fills GPU layers next, then transitions the whole cube
+     * once for sampling. Avoid a redundant read-layout round trip here. */
+    binding->current_layout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    binding->cube_source_mask = 0;
+    binding->depth_source_copy = false;
+    struct XemuVkTrashEntry trash = {
+        .image = native.image, .allocation = native.allocation,
+        .image_ci = native.image_ci, .pool_ok = true,
+    };
+    pgraph_vk_trash_push(r, &trash);
+}
+
 static void copy_zeta_surface_to_texture(PGRAPHState *pg, SurfaceBinding *surface,
                                          TextureBinding *texture)
 {
@@ -1388,9 +1450,11 @@ static void copy_cube_faces_to_texture(PGRAPHState *pg,
     VkCommandBuffer cmd = pgraph_vk_begin_nondraw_commands(pg);
     pgraph_vk_begin_debug_marker(r, cmd, RGBA_GREEN, __func__);
 
-    pgraph_vk_transition_image_layout(pg, cmd, texture->image, vkf.vk_format,
-                                      texture->current_layout,
-                                      VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+    if (texture->current_layout != VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) {
+        pgraph_vk_transition_image_layout(pg, cmd, texture->image, vkf.vk_format,
+                                          texture->current_layout,
+                                          VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+    }
     texture->current_layout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
 
     int max_draw_time = 0;
@@ -2053,6 +2117,10 @@ static VkSampler create_sampler_for_state(PGRAPHState *pg,
     } else if (lod_bias < -r->device_props.limits.maxSamplerLodBias) {
         lod_bias = -r->device_props.limits.maxSamplerLodBias;
     }
+    if (pgraph_texture_force_anisotropy(&state, filter, address) &&
+        is_linear_filter_supported_for_format(r, state.color_format)) {
+        max_anisotropy = 16;
+    }
     uint32_t sampler_max_anisotropy =
         MIN(r->device_props.limits.maxSamplerAnisotropy, max_anisotropy);
 
@@ -2179,9 +2247,15 @@ static void create_texture(PGRAPHState *pg, int texture_idx)
             }
         }
         bool safe_mixed = cube_mask && cube_mask != 0x3f &&
-            pg->surface_scale_factor == 1 && state.dimensionality == 2 &&
-            !state.border &&
-            state.color_format == NV097_SET_TEXTURE_FORMAT_COLOR_SZ_A8R8G8B8;
+            state.dimensionality == 2 && !state.border &&
+            state.color_format == NV097_SET_TEXTURE_FORMAT_COLOR_SZ_A8R8G8B8 &&
+            (pg->surface_scale_factor == 1 ||
+             (nv2a_get_force_texture_lod0() && state.levels == 1 &&
+              (uint64_t)state.width * pg->surface_scale_factor <=
+                  r->device_props.limits.maxImageDimensionCube &&
+              (uint64_t)state.height * pg->surface_scale_factor <=
+                  r->device_props.limits.maxImageDimensionCube &&
+              format_blit_supported(r, texture_vkf(r, state.color_format).vk_format)));
         if (safe_mixed) {
             SurfaceBinding *other;
             QTAILQ_FOREACH(other, &r->surfaces, entry) {
@@ -2338,7 +2412,7 @@ static void create_texture(PGRAPHState *pg, int texture_idx)
                  * image must have those layers restored before GPU copies. */
                 upload_ram |= mixed_cube && replaced;
                 if (upload_ram) {
-                    upload_texture_image(pg, texture_idx, snode, cube_mask);
+                    upload_mixed_cube_ram(pg, texture_idx, snode, cube_mask);
                     snode->hash = content_hash;
                 }
                 copy_cube_faces_to_texture(pg, cube_faces, snode);
@@ -2462,7 +2536,7 @@ static void create_texture(PGRAPHState *pg, int texture_idx)
     r->texture_bindings[texture_idx] = snode;
 
     if (surface_to_texture_cube) {
-        if (mixed_cube) upload_texture_image(pg, texture_idx, snode, cube_mask);
+        if (mixed_cube) upload_mixed_cube_ram(pg, texture_idx, snode, cube_mask);
         copy_cube_faces_to_texture(pg, cube_faces, snode);
     } else if (s2t_borrow) {
         s2t_borrow_sync(pg, surface);

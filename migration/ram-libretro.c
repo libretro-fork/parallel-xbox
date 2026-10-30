@@ -120,17 +120,14 @@ static int ram_save_complete(QEMUFile *f, void *opaque)
 
             for (offset = 0; offset < block->used_length;
                  offset += TARGET_PAGE_SIZE) {
-                uint8_t *p = block->host + offset;
-
-                if (buffer_is_zero(p, TARGET_PAGE_SIZE)) {
-                    save_page_header(f, block, offset | RAM_SAVE_FLAG_ZERO);
-                    qemu_put_byte(f, 0);
-                    stat64_add(&mig_stats.zero_pages, 1);
-                } else {
-                    save_page_header(f, block, offset | RAM_SAVE_FLAG_PAGE);
-                    qemu_put_buffer(f, p, TARGET_PAGE_SIZE);
-                    stat64_add(&mig_stats.normal_pages, 1);
-                }
+                /* whole, zero or not, and from where it lies: the
+                 * frontend's buffer is the state's full size whatever
+                 * the stream's (RetroArch writes and compresses all of
+                 * it), and finding the zero pages read all of RAM once
+                 * more; loads still take the zero pages of older states */
+                save_page_header(f, block, offset | RAM_SAVE_FLAG_PAGE);
+                qemu_put_buffer_async(f, block->host + offset,
+                                      TARGET_PAGE_SIZE, false);
             }
         }
     }

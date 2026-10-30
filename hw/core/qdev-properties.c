@@ -897,13 +897,6 @@ void qdev_prop_set_string(DeviceState *dev, const char *name, const char *value)
     object_property_set_str(OBJECT(dev), name, value, &error_abort);
 }
 
-void qdev_prop_set_array(DeviceState *dev, const char *name, QList *values)
-{
-    object_property_set_qobject(OBJECT(dev), name, QOBJECT(values),
-                                &error_abort);
-    qobject_unref(values);
-}
-
 static GPtrArray *global_props(void)
 {
     static GPtrArray *gp;

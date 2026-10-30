@@ -128,7 +128,7 @@ static void apply_texture_parameters(PGRAPHGLState *r,
                                      unsigned int address,
                                      bool is_bordered,
                                      uint32_t border_color,
-                                     uint32_t max_anisotropy)
+                                     GLfloat max_anisotropy)
 {
     unsigned int min_filter = GET_MASK(filter, NV_PGRAPH_TEXFILTER0_MIN);
     unsigned int mag_filter = GET_MASK(filter, NV_PGRAPH_TEXFILTER0_MAG);
@@ -323,7 +323,7 @@ void pgraph_gl_bind_textures(NV2AState *d)
         uint32_t filter = pgraph_reg_r(pg, NV_PGRAPH_TEXFILTER0 + i*4);
         uint32_t address = pgraph_reg_r(pg, NV_PGRAPH_TEXADDRESS0 + i*4);
         uint32_t border_color = pgraph_reg_r(pg, NV_PGRAPH_BORDERCOLOR0 + i*4);
-        uint32_t max_anisotropy =
+        GLfloat max_anisotropy =
             1 << (GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_TEXCTL0_0 + i*4),
                            NV_PGRAPH_TEXCTL0_0_MAX_ANISOTROPY));
 
@@ -334,6 +334,13 @@ void pgraph_gl_bind_textures(NV2AState *d)
         if (filter & NV_PGRAPH_TEXFILTER0_BSIGNED) NV2A_UNIMPLEMENTED("NV_PGRAPH_TEXFILTER0_BSIGNED");
 
         TextureShape state = pgraph_get_texture_shape(pg, i);
+        bool force_anisotropy = pgraph_texture_force_anisotropy(&state, filter, address) &&
+            r->supported_extensions.texture_filter_anisotropic &&
+            r->supported_extensions.max_texture_anisotropy > 1.0f;
+        if (force_anisotropy) {
+            max_anisotropy = MIN(16.0f,
+                r->supported_extensions.max_texture_anisotropy);
+        }
         hwaddr texture_vram_offset, palette_vram_offset;
         size_t length, palette_length;
 
@@ -476,6 +483,7 @@ void pgraph_gl_bind_textures(NV2AState *d)
         memset(&key, 0, sizeof(TextureKey));
         key.state = state;
         key.byte_reinterpret = surf_to_tex_bytes;
+        key.force_anisotropy = force_anisotropy;
         key.texture_vram_offset = texture_vram_offset;
         key.texture_length = length;
         if (is_indexed) {

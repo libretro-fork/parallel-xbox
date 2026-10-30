@@ -29,7 +29,6 @@
 #include "hw/char/serial-isa.h"
 #include "hw/char/parallel.h"
 #include "hw/hyperv/hv-balloon.h"
-#include "hw/i386/fw_cfg.h"
 #include "hw/i386/vmport.h"
 #include "system/cpus.h"
 #include "hw/ide/ide-bus.h"
@@ -50,7 +49,6 @@
 #include "qemu/error-report.h"
 #include "hw/acpi/cpu_hotplug.h"
 #include "acpi-build.h"
-#include "hw/mem/nvdimm.h"
 #include "hw/cxl/cxl_host.h"
 #include "hw/usb.h"
 #include "hw/i386/intel_iommu.h"
@@ -363,173 +361,31 @@ void pc_i8259_create(ISABus *isa_bus, qemu_irq *i8259_irqs)
     g_free(i8259);
 }
 
-static void pc_memory_pre_plug(HotplugHandler *hotplug_dev, DeviceState *dev,
-                               Error **errp)
-{
-    const X86MachineState *x86ms = X86_MACHINE(hotplug_dev);
-    const MachineState *ms = MACHINE(hotplug_dev);
-    const bool is_nvdimm = object_dynamic_cast(OBJECT(dev), TYPE_NVDIMM);
-    Error *local_err = NULL;
-
-    /*
-     * When "acpi=off" is used with the Q35 machine type, no ACPI is built,
-     * but pcms->acpi_dev is still created. Check !acpi_enabled in
-     * addition to cover this case.
-     */
-    if (!x86ms->acpi_dev || !x86_machine_is_acpi_enabled(x86ms)) {
-        error_setg(errp,
-                   "memory hotplug is not enabled: missing acpi device or acpi disabled");
-        return;
-    }
-
-    if (is_nvdimm && !ms->nvdimms_state->is_enabled) {
-        error_setg(errp, "nvdimm is not enabled: missing 'nvdimm' in '-M'");
-        return;
-    }
-
-    hotplug_handler_pre_plug(x86ms->acpi_dev, dev, &local_err);
-    if (local_err) {
-        error_propagate(errp, local_err);
-        return;
-    }
-
-    pc_dimm_pre_plug(PC_DIMM(dev), MACHINE(hotplug_dev), errp);
-}
-
-static void pc_memory_plug(HotplugHandler *hotplug_dev,
-                           DeviceState *dev, Error **errp)
-{
-    PCMachineState *pcms = PC_MACHINE(hotplug_dev);
-    X86MachineState *x86ms = X86_MACHINE(hotplug_dev);
-    MachineState *ms = MACHINE(hotplug_dev);
-    bool is_nvdimm = object_dynamic_cast(OBJECT(dev), TYPE_NVDIMM);
-
-    pc_dimm_plug(PC_DIMM(dev), MACHINE(pcms));
-
-    if (is_nvdimm) {
-        nvdimm_plug(ms->nvdimms_state);
-    }
-
-    hotplug_handler_plug(x86ms->acpi_dev, dev, &error_abort);
-}
-
-static void pc_memory_unplug_request(HotplugHandler *hotplug_dev,
-                                     DeviceState *dev, Error **errp)
-{
-    X86MachineState *x86ms = X86_MACHINE(hotplug_dev);
-
-    /*
-     * When "acpi=off" is used with the Q35 machine type, no ACPI is built,
-     * but pcms->acpi_dev is still created. Check !acpi_enabled in
-     * addition to cover this case.
-     */
-    if (!x86ms->acpi_dev || !x86_machine_is_acpi_enabled(x86ms)) {
-        error_setg(errp,
-                   "memory hotplug is not enabled: missing acpi device or acpi disabled");
-        return;
-    }
-
-    if (object_dynamic_cast(OBJECT(dev), TYPE_NVDIMM)) {
-        error_setg(errp, "nvdimm device hot unplug is not supported yet.");
-        return;
-    }
-
-    hotplug_handler_unplug_request(x86ms->acpi_dev, dev,
-                                   errp);
-}
-
-static void pc_memory_unplug(HotplugHandler *hotplug_dev,
-                             DeviceState *dev, Error **errp)
-{
-    PCMachineState *pcms = PC_MACHINE(hotplug_dev);
-    X86MachineState *x86ms = X86_MACHINE(hotplug_dev);
-    Error *local_err = NULL;
-
-    hotplug_handler_unplug(x86ms->acpi_dev, dev, &local_err);
-    if (local_err) {
-        goto out;
-    }
-
-    pc_dimm_unplug(PC_DIMM(dev), MACHINE(pcms));
-    qdev_unrealize(dev);
- out:
-    error_propagate(errp, local_err);
-}
-
-static void pc_hv_balloon_pre_plug(HotplugHandler *hotplug_dev,
-                                   DeviceState *dev, Error **errp)
-{
-    /* The vmbus handler has no hotplug handler; we should never end up here. */
-    g_assert(!dev->hotplugged);
-    memory_device_pre_plug(MEMORY_DEVICE(dev), MACHINE(hotplug_dev), errp);
-}
-
-static void pc_hv_balloon_plug(HotplugHandler *hotplug_dev,
-                               DeviceState *dev, Error **errp)
-{
-    memory_device_plug(MEMORY_DEVICE(dev), MACHINE(hotplug_dev));
-}
-
+/*
+ * The machine is the hotplug handler of its CPUs only: the Xbox has no
+ * DIMMs, virtio memory, balloon or IOMMU to plug.
+ */
 static void pc_machine_device_pre_plug_cb(HotplugHandler *hotplug_dev,
                                           DeviceState *dev, Error **errp)
 {
-    if (object_dynamic_cast(OBJECT(dev), TYPE_PC_DIMM)) {
-        pc_memory_pre_plug(hotplug_dev, dev, errp);
-    } else if (object_dynamic_cast(OBJECT(dev), TYPE_CPU)) {
+    if (object_dynamic_cast(OBJECT(dev), TYPE_CPU)) {
         x86_cpu_pre_plug(hotplug_dev, dev, errp);
-    } else if (object_dynamic_cast(OBJECT(dev), TYPE_VIRTIO_MD_PCI)) {
-        virtio_md_pci_pre_plug(VIRTIO_MD_PCI(dev), MACHINE(hotplug_dev), errp);
-    } else if (object_dynamic_cast(OBJECT(dev), TYPE_VIRTIO_IOMMU_PCI)) {
-        /* Declare the APIC range as the reserved MSI region */
-        char *resv_prop_str = g_strdup_printf("0xfee00000:0xfeefffff:%d",
-                                              VIRTIO_IOMMU_RESV_MEM_T_MSI);
-        QList *reserved_regions = qlist_new();
-
-        qlist_append_str(reserved_regions, resv_prop_str);
-        qdev_prop_set_array(dev, "reserved-regions", reserved_regions);
-
-        g_free(resv_prop_str);
-    }
-
-    if (object_dynamic_cast(OBJECT(dev), TYPE_X86_IOMMU_DEVICE) ||
-        object_dynamic_cast(OBJECT(dev), TYPE_VIRTIO_IOMMU_PCI)) {
-        PCMachineState *pcms = PC_MACHINE(hotplug_dev);
-
-        if (pcms->iommu) {
-            error_setg(errp, "QEMU does not support multiple vIOMMUs "
-                       "for x86 yet.");
-            return;
-        }
-        pcms->iommu = dev;
-    } else if (object_dynamic_cast(OBJECT(dev), TYPE_HV_BALLOON)) {
-        pc_hv_balloon_pre_plug(hotplug_dev, dev, errp);
     }
 }
 
 static void pc_machine_device_plug_cb(HotplugHandler *hotplug_dev,
                                       DeviceState *dev, Error **errp)
 {
-    if (object_dynamic_cast(OBJECT(dev), TYPE_PC_DIMM)) {
-        pc_memory_plug(hotplug_dev, dev, errp);
-    } else if (object_dynamic_cast(OBJECT(dev), TYPE_CPU)) {
+    if (object_dynamic_cast(OBJECT(dev), TYPE_CPU)) {
         x86_cpu_plug(hotplug_dev, dev, errp);
-    } else if (object_dynamic_cast(OBJECT(dev), TYPE_VIRTIO_MD_PCI)) {
-        virtio_md_pci_plug(VIRTIO_MD_PCI(dev), MACHINE(hotplug_dev), errp);
-    } else if (object_dynamic_cast(OBJECT(dev), TYPE_HV_BALLOON)) {
-        pc_hv_balloon_plug(hotplug_dev, dev, errp);
     }
 }
 
 static void pc_machine_device_unplug_request_cb(HotplugHandler *hotplug_dev,
                                                 DeviceState *dev, Error **errp)
 {
-    if (object_dynamic_cast(OBJECT(dev), TYPE_PC_DIMM)) {
-        pc_memory_unplug_request(hotplug_dev, dev, errp);
-    } else if (object_dynamic_cast(OBJECT(dev), TYPE_CPU)) {
+    if (object_dynamic_cast(OBJECT(dev), TYPE_CPU)) {
         x86_cpu_unplug_request_cb(hotplug_dev, dev, errp);
-    } else if (object_dynamic_cast(OBJECT(dev), TYPE_VIRTIO_MD_PCI)) {
-        virtio_md_pci_unplug_request(VIRTIO_MD_PCI(dev), MACHINE(hotplug_dev),
-                                     errp);
     } else {
         error_setg(errp, "acpi: device unplug request for not supported device"
                    " type: %s", object_get_typename(OBJECT(dev)));
@@ -539,12 +395,8 @@ static void pc_machine_device_unplug_request_cb(HotplugHandler *hotplug_dev,
 static void pc_machine_device_unplug_cb(HotplugHandler *hotplug_dev,
                                         DeviceState *dev, Error **errp)
 {
-    if (object_dynamic_cast(OBJECT(dev), TYPE_PC_DIMM)) {
-        pc_memory_unplug(hotplug_dev, dev, errp);
-    } else if (object_dynamic_cast(OBJECT(dev), TYPE_CPU)) {
+    if (object_dynamic_cast(OBJECT(dev), TYPE_CPU)) {
         x86_cpu_unplug_cb(hotplug_dev, dev, errp);
-    } else if (object_dynamic_cast(OBJECT(dev), TYPE_VIRTIO_MD_PCI)) {
-        virtio_md_pci_unplug(VIRTIO_MD_PCI(dev), MACHINE(hotplug_dev), errp);
     } else {
         error_setg(errp, "acpi: device unplug for not supported device"
                    " type: %s", object_get_typename(OBJECT(dev)));
@@ -554,12 +406,7 @@ static void pc_machine_device_unplug_cb(HotplugHandler *hotplug_dev,
 static HotplugHandler *pc_get_hotplug_handler(MachineState *machine,
                                              DeviceState *dev)
 {
-    if (object_dynamic_cast(OBJECT(dev), TYPE_PC_DIMM) ||
-        object_dynamic_cast(OBJECT(dev), TYPE_CPU) ||
-        object_dynamic_cast(OBJECT(dev), TYPE_VIRTIO_MD_PCI) ||
-        object_dynamic_cast(OBJECT(dev), TYPE_VIRTIO_IOMMU_PCI) ||
-        object_dynamic_cast(OBJECT(dev), TYPE_HV_BALLOON) ||
-        object_dynamic_cast(OBJECT(dev), TYPE_X86_IOMMU_DEVICE)) {
+    if (object_dynamic_cast(OBJECT(dev), TYPE_CPU)) {
         return HOTPLUG_HANDLER(machine);
     }
 
@@ -851,7 +698,6 @@ static void pc_machine_class_init(ObjectClass *oc, const void *data)
     hc->unplug_request = pc_machine_device_unplug_request_cb;
     hc->unplug = pc_machine_device_unplug_cb;
     mc->default_cpu_type = TARGET_DEFAULT_CPU_TYPE;
-    mc->nvdimm_supported = true;
     mc->smp_props.dies_supported = true;
     mc->smp_props.modules_supported = true;
     mc->smp_props.cache_supported[CACHE_LEVEL_AND_TYPE_L1D] = true;

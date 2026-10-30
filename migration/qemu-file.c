@@ -437,6 +437,17 @@ void qemu_put_buffer(QEMUFile *f, const uint8_t *buf, size_t size)
 
 
 
+/* A page of guest RAM or the like, referenced where it lies until the
+ * flush writes it out, not copied into buf first */
+void qemu_put_buffer_async(QEMUFile *f, const uint8_t *buf, size_t size,
+                           bool may_free)
+{
+    if (f->last_error) {
+        return;
+    }
+    add_to_iovec(f, buf, size, may_free);
+}
+
 void qemu_put_byte(QEMUFile *f, int v)
 {
     if (f->last_error) {
@@ -445,6 +456,14 @@ void qemu_put_byte(QEMUFile *f, int v)
 
     f->buf[f->buf_index] = v;
     add_buf_to_iovec(f, 1);
+}
+
+/* n bytes of a big-endian number at once, where buf has the room (it
+ * flushes when full, so all but its last few bytes): vmstate's fields are
+ * mostly these, and a byte at a time each was a coalescing check */
+static inline bool put_fast(QEMUFile *f, size_t n)
+{
+    return !f->last_error && f->buf_index + n <= IO_BUF_SIZE;
 }
 
 void qemu_file_skip(QEMUFile *f, int size)
@@ -557,9 +576,18 @@ int coroutine_mixed_fn qemu_get_byte(QEMUFile *f)
 {
     int result;
 
+    if (f->buf_index < f->buf_size) {
+        return f->buf[f->buf_index++];
+    }
     result = qemu_peek_byte(f, 0);
     qemu_file_skip(f, 1);
     return result;
+}
+
+/* n bytes in the window already, as get_byte reads them */
+static inline bool get_fast(QEMUFile *f, size_t n)
+{
+    return f->buf_index + n <= f->buf_size;
 }
 
 uint64_t qemu_file_transferred(QEMUFile *f)
@@ -578,12 +606,22 @@ uint64_t qemu_file_transferred(QEMUFile *f)
 
 void qemu_put_be16(QEMUFile *f, unsigned int v)
 {
+    if (put_fast(f, 2)) {
+        stw_be_p(f->buf + f->buf_index, v);
+        add_buf_to_iovec(f, 2);
+        return;
+    }
     qemu_put_byte(f, v >> 8);
     qemu_put_byte(f, v);
 }
 
 void qemu_put_be32(QEMUFile *f, unsigned int v)
 {
+    if (put_fast(f, 4)) {
+        stl_be_p(f->buf + f->buf_index, v);
+        add_buf_to_iovec(f, 4);
+        return;
+    }
     qemu_put_byte(f, v >> 24);
     qemu_put_byte(f, v >> 16);
     qemu_put_byte(f, v >> 8);
@@ -592,6 +630,11 @@ void qemu_put_be32(QEMUFile *f, unsigned int v)
 
 void qemu_put_be64(QEMUFile *f, uint64_t v)
 {
+    if (put_fast(f, 8)) {
+        stq_be_p(f->buf + f->buf_index, v);
+        add_buf_to_iovec(f, 8);
+        return;
+    }
     qemu_put_be32(f, v >> 32);
     qemu_put_be32(f, v);
 }
@@ -599,6 +642,12 @@ void qemu_put_be64(QEMUFile *f, uint64_t v)
 unsigned int qemu_get_be16(QEMUFile *f)
 {
     unsigned int v;
+
+    if (get_fast(f, 2)) {
+        v = lduw_be_p(f->buf + f->buf_index);
+        f->buf_index += 2;
+        return v;
+    }
     v = qemu_get_byte(f) << 8;
     v |= qemu_get_byte(f);
     return v;
@@ -607,6 +656,12 @@ unsigned int qemu_get_be16(QEMUFile *f)
 unsigned int qemu_get_be32(QEMUFile *f)
 {
     unsigned int v;
+
+    if (get_fast(f, 4)) {
+        v = ldl_be_p(f->buf + f->buf_index);
+        f->buf_index += 4;
+        return v;
+    }
     v = (unsigned int)qemu_get_byte(f) << 24;
     v |= qemu_get_byte(f) << 16;
     v |= qemu_get_byte(f) << 8;
@@ -617,6 +672,12 @@ unsigned int qemu_get_be32(QEMUFile *f)
 uint64_t qemu_get_be64(QEMUFile *f)
 {
     uint64_t v;
+
+    if (get_fast(f, 8)) {
+        v = ldq_be_p(f->buf + f->buf_index);
+        f->buf_index += 8;
+        return v;
+    }
     v = (uint64_t)qemu_get_be32(f) << 32;
     v |= qemu_get_be32(f);
     return v;

@@ -207,15 +207,6 @@ void qemu_chr_fe_take_focus(CharFrontend *c)
     }
 }
 
-void qemu_chr_fe_set_echo(CharFrontend *c, bool echo)
-{
-    Chardev *chr = c->chr;
-
-    if (chr && CHARDEV_GET_CLASS(chr)->chr_set_echo) {
-        CHARDEV_GET_CLASS(chr)->chr_set_echo(chr, echo);
-    }
-}
-
 void qemu_chr_fe_set_open(CharFrontend *c, bool is_open)
 {
     Chardev *chr = c->chr;
@@ -256,11 +247,3 @@ guint qemu_chr_fe_add_watch(CharFrontend *c, GIOCondition cond,
     return tag;
 }
 
-void qemu_chr_fe_disconnect(CharFrontend *c)
-{
-    Chardev *chr = c->chr;
-
-    if (chr && CHARDEV_GET_CLASS(chr)->chr_disconnect) {
-        CHARDEV_GET_CLASS(chr)->chr_disconnect(chr);
-    }
-}

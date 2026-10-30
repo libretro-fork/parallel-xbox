@@ -410,7 +410,6 @@ SOURCES_UTIL := \
 	$(CORE_DIR)/stubs/cpus-virtual-clock.c \
 	$(CORE_DIR)/stubs/error-printf.c \
 	$(CORE_DIR)/stubs/fdset.c \
-	$(CORE_DIR)/stubs/fw_cfg.c \
 	$(CORE_DIR)/stubs/get-vm-name.c \
 	$(CORE_DIR)/stubs/graph-lock.c \
 	$(CORE_DIR)/stubs/hotplug-stubs.c \
@@ -425,7 +424,6 @@ SOURCES_UTIL := \
 	$(CORE_DIR)/stubs/qemu-timer-notify-cb.c \
 	$(CORE_DIR)/stubs/qmp-command-available.c \
 	$(CORE_DIR)/stubs/qmp-quit.c \
-	$(CORE_DIR)/stubs/qtest.c \
 	$(CORE_DIR)/stubs/ram-block.c \
 	$(CORE_DIR)/stubs/runstate-check.c \
 	$(CORE_DIR)/stubs/sysbus.c \
@@ -547,9 +545,6 @@ SOURCES_COMMON := \
 	$(CORE_DIR)/chardev/char.c \
 	$(CORE_DIR)/cpu-common.c \
 	$(CORE_DIR)/crypto/cipher.c \
-	$(CORE_DIR)/crypto/secret_common.c \
-	$(CORE_DIR)/crypto/tlscreds.c \
-	$(CORE_DIR)/crypto/tlssession.c \
 	$(CORE_DIR)/disas/disas-common.c \
 	$(CORE_DIR)/disas/disas-host.c \
 	$(CORE_DIR)/disas/disas-target.c \
@@ -568,15 +563,11 @@ SOURCES_COMMON := \
 	$(CORE_DIR)/hw/core/resettable.c \
 	$(CORE_DIR)/hw/core/vmstate-if.c \
 	$(CORE_DIR)/io/channel-buffer.c \
-	$(CORE_DIR)/io/channel-command.c \
 	$(CORE_DIR)/io/channel-file.c \
 	$(CORE_DIR)/io/channel-socket.c \
-	$(CORE_DIR)/io/channel-tls.c \
 	$(CORE_DIR)/io/channel-util.c \
 	$(CORE_DIR)/io/channel-watch.c \
 	$(CORE_DIR)/io/channel.c \
-	$(CORE_DIR)/io/dns-resolver.c \
-	$(CORE_DIR)/io/net-listener.c \
 	$(CORE_DIR)/migration/migration-stats.c \
 	$(CORE_DIR)/migration/qemu-file.c \
 	$(CORE_DIR)/migration/vmstate-types.c \
@@ -624,12 +615,7 @@ SOURCES_SYSTEM := \
 	$(CORE_DIR)/backends/hostmem.c \
 	$(CORE_DIR)/cpu-target.c \
 	$(CORE_DIR)/hw/acpi/acpi_interface.c \
-	$(CORE_DIR)/hw/acpi/aml-build.c \
-	$(CORE_DIR)/hw/acpi/bios-linker-loader.c \
 	$(CORE_DIR)/hw/acpi/core.c \
-	$(CORE_DIR)/hw/acpi/nvdimm.c \
-	$(CORE_DIR)/hw/acpi/pci-bridge.c \
-	$(CORE_DIR)/hw/acpi/pcihp.c \
 	$(CORE_DIR)/hw/audio/pcspk.c \
 	$(CORE_DIR)/hw/block/block.c \
 	$(CORE_DIR)/hw/block/cdrom.c \
@@ -667,15 +653,10 @@ SOURCES_SYSTEM := \
 	$(CORE_DIR)/hw/intc/i8259.c \
 	$(CORE_DIR)/hw/intc/i8259_common.c \
 	$(CORE_DIR)/hw/intc/intc.c \
-	$(CORE_DIR)/hw/intc/ioapic_common.c \
 	$(CORE_DIR)/hw/intc/kvm_irqcount.c \
 	$(CORE_DIR)/hw/isa/isa-bus.c \
-	$(CORE_DIR)/hw/mem/memory-device.c \
-	$(CORE_DIR)/hw/mem/pc-dimm.c \
 	$(CORE_DIR)/hw/misc/pci-testdev.c \
 	$(CORE_DIR)/hw/net/vhost_net-stub.c \
-	$(CORE_DIR)/hw/nvram/fw_cfg-interface.c \
-	$(CORE_DIR)/hw/nvram/fw_cfg.c \
 	$(CORE_DIR)/hw/pci/msi.c \
 	$(CORE_DIR)/hw/pci/msix.c \
 	$(CORE_DIR)/hw/pci/pci.c \
@@ -697,7 +678,6 @@ SOURCES_SYSTEM := \
 	$(CORE_DIR)/hw/usb/pcap.c \
 	$(CORE_DIR)/hw/vfio/iommufd-stubs.c \
 	$(CORE_DIR)/hw/virtio/vhost-stub.c \
-	$(CORE_DIR)/hw/virtio/virtio-md-stubs.c \
 	$(CORE_DIR)/hw/watchdog/watchdog.c \
 	$(CORE_DIR)/hw/xen/xen_stubs.c \
 	$(CORE_DIR)/migration/cpr-exec.c \
@@ -733,7 +713,6 @@ SOURCES_SYSTEM := \
 	$(CORE_DIR)/system/memory_mapping.c \
 	$(CORE_DIR)/system/physmem.c \
 	$(CORE_DIR)/system/qdev-monitor.c \
-	$(CORE_DIR)/system/qtest.c \
 	$(CORE_DIR)/system/ram-block-attributes.c \
 	$(CORE_DIR)/system/rtc.c \
 	$(CORE_DIR)/system/runstate-action.c \
@@ -783,7 +762,6 @@ SOURCES_TARGET := \
 	$(CORE_DIR)/accel/stubs/kvm-stub.c \
 	$(CORE_DIR)/accel/stubs/xen-stub.c \
 	$(CORE_DIR)/hw/i386/e820_memory_layout.c \
-	$(CORE_DIR)/hw/i386/fw_cfg.c \
 	$(CORE_DIR)/hw/i386/kvm/xen-stubs.c \
 	$(CORE_DIR)/hw/i386/pc.c \
 	$(CORE_DIR)/hw/i386/pc_sysfw.c \
@@ -795,7 +773,6 @@ SOURCES_TARGET := \
 	$(CORE_DIR)/hw/i386/x86.c \
 	$(CORE_DIR)/hw/intc/apic.c \
 	$(CORE_DIR)/hw/intc/apic_common.c \
-	$(CORE_DIR)/hw/intc/ioapic.c \
 	$(CORE_DIR)/hw/xbox/acpi_xbox.c \
 	$(CORE_DIR)/hw/xbox/amd_smbus.c \
 	$(CORE_DIR)/hw/xbox/chihiro/chihiro-8051.c \

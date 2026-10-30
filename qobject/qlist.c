@@ -50,11 +50,6 @@ void qlist_append_obj(QList *qlist, QObject *value)
     QTAILQ_INSERT_TAIL(&qlist->head, entry, next);
 }
 
-void qlist_append_str(QList *qlist, const char *value)
-{
-    qlist_append(qlist, qstring_from_str(value));
-}
-
 int qlist_empty(const QList *qlist)
 {
     return QTAILQ_EMPTY(&qlist->head);

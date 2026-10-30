@@ -2324,14 +2324,6 @@ RAMBlock *qemu_ram_alloc(ram_addr_t size, uint32_t ram_flags,
     return qemu_ram_alloc_internal(size, size, NULL, NULL, ram_flags, mr, errp);
 }
 
-RAMBlock *qemu_ram_alloc_resizeable(ram_addr_t size, ram_addr_t maxsz,
-                                    qemu_ram_resize_cb resized,
-                                    MemoryRegion *mr, Error **errp)
-{
-    return qemu_ram_alloc_internal(size, maxsz, resized, NULL,
-                                   RAM_RESIZEABLE, mr, errp);
-}
-
 static void reclaim_ramblock(RAMBlock *block)
 {
     if (block->flags & RAM_PREALLOC) {

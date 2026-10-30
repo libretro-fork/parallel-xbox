@@ -87,6 +87,10 @@ static void pgraph_gl_init(NV2AState *d, Error **errp)
 
     r->supported_extensions.texture_filter_anisotropic =
         glo_check_extension("GL_EXT_texture_filter_anisotropic");
+    if (r->supported_extensions.texture_filter_anisotropic) {
+        glGetFloatv(GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT,
+                    &r->supported_extensions.max_texture_anisotropy);
+    }
 }
 
 static void pgraph_gl_finalize(NV2AState *d)

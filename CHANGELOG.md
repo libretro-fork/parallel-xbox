@@ -5,10 +5,20 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 ## Unreleased
 
 - Adjacent native disk-write spans now share bulk writes on Windows and other platforms without vectored writes, avoiding one host call per span without staging copies.
+- Video gains a separate Force Quality Filtering option (restart required, disabled by default), requesting up to 16x anisotropic filtering on wrapping/mirrored linear 2D color textures. Point/depth, cube and clamped/bordered sampling keep game filtering, and OpenGL isolates forced filtering from shared point-sampled bindings. Force Texture LOD0 remains independent.
+
+- Force Texture LOD0 keeps eligible Vulkan mixed RAM/GPU cubemaps at internal resolution without GPU-face readback; RAM faces expand on the GPU and temporary images retire through the existing pool. Compatible Vulkan 2D surfaces continue to use direct sampling.
+
+- RCU startup is initialized once and its callback queue admits only one worker. This prevents the duplicate-consumer queue abort observed during startup fast-forward; fork children can still replace their inherited worker.
+
+- The PC machine code the Xbox is built on loses what the Xbox never has: memory hotplug (DIMMs, NVDIMMs, virtio memory), the fw_cfg firmware interface (and the -fw_cfg option) and the ACPI table builder the PC BIOS reads. The Xbox's own ACPI power management (acpi_xbox.c) stays. Nothing changes for someone using the core.
+
+- Devices and services the Xbox machine never creates are removed: the TLS channel, credentials and sessions, the command, DNS-resolver and network-listener channels, the qtest server (and its -qtest options), and the IOAPIC (the Xbox's interrupts go through the MCPX's i8259 pair). Nothing changes for someone using the core.
 
 - The test harness checks audio cadence with an integer phase, avoiding false sample-count failures when hard-FPU tests change host rounding. The declared timing is checked explicitly, and failed x87 test output is retained in CI logs. Core audio output is unchanged.
 
 - CPU Boost avoids saving dead x87 operand scratch values into CPU state between instructions. Real stack registers, helper synchronization and rounding retain their existing handling.
+- Savestate loads revalidate bound texture state after restoring GPU registers, fixing OpenGL retaining a later mip clamp. Mip/LOD0 regression covers CPU edits and states loaded under the opposite frontend setting.
 
 - Voice lock masks use unsigned 64-bit shifts at voices 63, 127, 191 and 255. Regression checks now exercise the production lock helpers and verify that locked voices stop advancing, without relying on signed-wrap behavior.
 - qcow2 HDD transfers combine adjacent memory spans before the bounded file-I/O vector is built, avoiding extra read/write calls and fragmented copies for contiguous buffers. Empty spans are skipped; scattered buffers and cluster boundaries keep their existing behavior.
@@ -551,6 +561,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 - `libretro/tests/dspdiff` compares the DSP JIT's registers, memories, cycle count and loop state with the interpreter's for real: it compared a copy of them that nothing filled in, so only the scratch RAM, the FIFOs and the interrupts were ever checked. The JIT and the interpreter do agree on the test program (checked with the fix).
 
 - Run-Ahead, and loading states, are faster. A state load wrote all of the guest's 64 MB of RAM back, threw away every piece of translated CPU code, and had the GPU renderer copy the whole RAM again, twice (OpenGL and Vulkan alike). Now it writes back only the pages that differ, drops only the translated code from those pages, and the renderer takes RAM again only where its draws read it. On the test ROM Run-Ahead 1 runs at 0.69x real time where it ran at 0.39x on OpenGL, 0.64x where it ran at 0.39x on Vulkan; games keep their translated code across the load as well, which the test ROM barely has.
+
+- Saving and loading states takes less work again (a sixth less CPU time with Run-Ahead 1 on the test ROM): a state no longer ends with a description of every field in it that nothing reads, the guest's RAM goes into it without being checked for empty pages first and without a copy on the way, and the devices' numbers are written and read four or eight bytes at a time instead of one. What is left is copying the 64 MB of RAM into the state and comparing it back on load. States from earlier builds still load.
 
 ## Test build 4 - 2026-10-25
 

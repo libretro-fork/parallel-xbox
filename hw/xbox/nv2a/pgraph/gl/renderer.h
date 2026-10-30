@@ -141,7 +141,7 @@ typedef struct TextureBinding {
     unsigned int addrp;
     uint32_t border_color;
     bool border_color_set;
-    unsigned int max_anisotropy;
+    GLfloat max_anisotropy;
     GLenum gl_target;
     GLuint gl_texture;
     /* Storage last allocated by render_surface_to_texture, so a repeat
@@ -237,6 +237,9 @@ typedef struct VertexLruNode {
 typedef struct TextureKey {
     TextureShape state;
     bool byte_reinterpret;
+    /* GL stores sampler parameters on the image. Keep forced AF separate
+     * from point/data bindings of the same guest texture. */
+    bool force_anisotropy;
     hwaddr texture_vram_offset;
     hwaddr texture_length;
     hwaddr palette_vram_offset;
@@ -545,6 +548,7 @@ typedef struct PGRAPHGLState {
 
     struct supported_extensions {
         GLboolean texture_filter_anisotropic;
+        GLfloat max_texture_anisotropy;
     } supported_extensions;
 } PGRAPHGLState;
 

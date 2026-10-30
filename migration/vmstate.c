@@ -463,7 +463,7 @@ int vmstate_save_state_v(QEMUFile *f, const VMStateDescription *vmsd,
             void *first_elem = opaque + field->offset;
             int i, n_elems = vmstate_n_elems(opaque, field);
             int size = vmstate_size(opaque, field);
-            uint64_t old_offset, written_bytes;
+            uint64_t old_offset = 0, written_bytes;
             JSONWriter *vmdesc_loop = vmdesc;
             bool is_prev_null = false;
 
@@ -479,7 +479,11 @@ int vmstate_save_state_v(QEMUFile *f, const VMStateDescription *vmsd,
                 bool is_null;
                 int max_elems = n_elems - i;
 
-                old_offset = qemu_file_transferred(f);
+                /* the field's size, for the JSON description alone: it
+                 * walks the iovecs, which was twice per element */
+                if (vmdesc) {
+                    old_offset = qemu_file_transferred(f);
+                }
                 if (field->flags & VMS_ARRAY_OF_POINTER) {
                     assert(curr_elem);
                     curr_elem = *(void **)curr_elem;
@@ -541,9 +545,11 @@ int vmstate_save_state_v(QEMUFile *f, const VMStateDescription *vmsd,
                                                  inner_field, vmdesc_loop);
                 }
 
-                written_bytes = qemu_file_transferred(f) - old_offset;
-                vmsd_desc_field_end(vmsd, vmdesc_loop, inner_field,
-                                    written_bytes);
+                if (vmdesc) {
+                    written_bytes = qemu_file_transferred(f) - old_offset;
+                    vmsd_desc_field_end(vmsd, vmdesc_loop, inner_field,
+                                        written_bytes);
+                }
 
                 /* If we used a fake temp field.. free it now */
                 if (is_null) {

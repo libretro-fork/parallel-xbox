@@ -231,17 +231,6 @@ int64_t cpus_get_virtual_clock(void)
     return cpu_get_clock();
 }
 
-/*
- * Signal the new virtual time to the accelerator. This is only needed
- * by accelerators that need to track the changes as we warp time.
- */
-void cpus_set_virtual_clock(int64_t new_time)
-{
-    if (cpus_accel && cpus_accel->set_virtual_clock) {
-        cpus_accel->set_virtual_clock(new_time);
-    }
-}
-
 void cpu_set_interrupt(CPUState *cpu, int mask)
 {
     /* Pairs with cpu_test_interrupt(). */

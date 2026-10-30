@@ -43,6 +43,7 @@
  */
 
 #include "qemu/osdep.h"
+#include "system/address-spaces.h"
 #include "qemu/datadir.h"
 #include "qemu/error-report.h"
 #include "qapi/error.h"
@@ -59,7 +60,6 @@
 #include "system/system.h"
 #include "uboot_image.h"
 #include "hw/loader.h"
-#include "hw/nvram/fw_cfg.h"
 #include "system/memory.h"
 #include "hw/boards.h"
 #include "qemu/cutils.h"
@@ -181,7 +181,6 @@ struct Rom {
     QTAILQ_ENTRY(Rom) next;
 };
 
-static FWCfgState *fw_cfg;
 static QTAILQ_HEAD(, Rom) roms = QTAILQ_HEAD_INITIALIZER(roms);
 
 /*
@@ -242,39 +241,11 @@ static void rom_insert(Rom *rom)
     QTAILQ_INSERT_TAIL(&roms, rom, next);
 }
 
-static void fw_cfg_resized(const char *id, uint64_t length, void *host)
-{
-    if (fw_cfg) {
-        fw_cfg_modify_file(fw_cfg, id + strlen("/rom@"), host, length);
-    }
-}
-
-static void *rom_set_mr(Rom *rom, Object *owner, const char *name, bool ro)
-{
-    void *data;
-
-    rom->mr = g_malloc(sizeof(*rom->mr));
-    memory_region_init_resizeable_ram(rom->mr, owner, name,
-                                      rom->datasize, rom->romsize,
-                                      fw_cfg_resized,
-                                      &error_fatal);
-    memory_region_set_readonly(rom->mr, ro);
-    vmstate_register_ram_global(rom->mr);
-
-    data = memory_region_get_ram_ptr(rom->mr);
-    if (!cpr_is_incoming()) {
-        memcpy(data, rom->data, rom->datasize);
-    }
-
-    return data;
-}
-
 ssize_t rom_add_file(const char *file, const char *fw_dir,
                      hwaddr addr, int32_t bootindex,
                      bool has_option_rom, MemoryRegion *mr,
                      AddressSpace *as)
 {
-    MachineClass *mc = MACHINE_GET_CLASS(qdev_get_machine());
     Rom *rom;
     gsize size;
     g_autoptr(GError) gerr = NULL;
@@ -310,35 +281,12 @@ ssize_t rom_add_file(const char *file, const char *fw_dir,
     rom->romsize  = size;
     rom->datasize = rom->romsize;
     rom_insert(rom);
-    if (rom->fw_file && fw_cfg) {
-        const char *basename;
-        char fw_file_name[FW_CFG_MAX_FILE_PATH];
-        void *data;
-
-        basename = strrchr(rom->fw_file, '/');
-        if (basename) {
-            basename++;
-        } else {
-            basename = rom->fw_file;
-        }
-        snprintf(fw_file_name, sizeof(fw_file_name), "%s/%s", rom->fw_dir,
-                 basename);
-        snprintf(devpath, sizeof(devpath), "/rom@%s", fw_file_name);
-
-        if ((!has_option_rom || mc->option_rom_has_mr) && mc->rom_file_has_mr) {
-            data = rom_set_mr(rom, OBJECT(fw_cfg), devpath, true);
-        } else {
-            data = rom->data;
-        }
-
-        fw_cfg_add_file(fw_cfg, fw_file_name, data, rom->romsize);
+    /* There is no fw_cfg device to hand the file to firmware */
+    if (mr) {
+        rom->mr = mr;
+        snprintf(devpath, sizeof(devpath), "/rom@%s", file);
     } else {
-        if (mr) {
-            rom->mr = mr;
-            snprintf(devpath, sizeof(devpath), "/rom@%s", file);
-        } else {
-            snprintf(devpath, sizeof(devpath), "/rom@" HWADDR_FMT_plx, addr);
-        }
+        snprintf(devpath, sizeof(devpath), "/rom@" HWADDR_FMT_plx, addr);
     }
 
     add_boot_device_path(bootindex, NULL, devpath);
@@ -349,14 +297,10 @@ err:
     return -1;
 }
 
-MemoryRegion *rom_add_blob(const char *name, const void *blob, size_t len,
-                   size_t max_len, hwaddr addr, const char *fw_file_name,
-                   FWCfgCallback fw_callback, void *callback_opaque,
-                   AddressSpace *as, bool read_only)
+void rom_add_blob(const char *name, const void *blob, size_t len,
+                  size_t max_len, hwaddr addr, AddressSpace *as)
 {
-    MachineClass *mc = MACHINE_GET_CLASS(qdev_get_machine());
     Rom *rom;
-    MemoryRegion *mr = NULL;
 
     rom           = g_malloc0(sizeof(*rom));
     rom->name     = g_strdup(name);
@@ -368,28 +312,6 @@ MemoryRegion *rom_add_blob(const char *name, const void *blob, size_t len,
     rom->data     = g_malloc0(rom->datasize);
     memcpy(rom->data, blob, len);
     rom_insert(rom);
-    if (fw_file_name && fw_cfg) {
-        char devpath[100];
-        void *data;
-
-        if (read_only) {
-            snprintf(devpath, sizeof(devpath), "/rom@%s", fw_file_name);
-        } else {
-            snprintf(devpath, sizeof(devpath), "/ram@%s", fw_file_name);
-        }
-
-        if (mc->rom_file_has_mr) {
-            data = rom_set_mr(rom, OBJECT(fw_cfg), devpath, read_only);
-            mr = rom->mr;
-        } else {
-            data = rom->data;
-        }
-
-        fw_cfg_add_file_callback(fw_cfg, fw_file_name,
-                                 fw_callback, NULL, callback_opaque,
-                                 data, rom->datasize, read_only);
-    }
-    return mr;
 }
 
 ssize_t rom_add_vga(const char *file)

@@ -4224,39 +4224,6 @@ SRST
     Limitation: covers only syntactic aspects of QMP.
 ERST
 
-DEF("fw_cfg", HAS_ARG, QEMU_OPTION_fwcfg,
-    "-fw_cfg [name=]<name>,file=<file>\n"
-    "                add named fw_cfg entry with contents from file\n"
-    "-fw_cfg [name=]<name>,string=<str>\n"
-    "                add named fw_cfg entry with contents from string\n",
-    QEMU_ARCH_ALL)
-SRST
-``-fw_cfg [name=]name,file=file``
-    Add named fw\_cfg entry with contents from file file.
-    If the filename contains comma, you must double it (for instance,
-    "file=my,,file" to use file "my,file").
-
-``-fw_cfg [name=]name,string=str``
-    Add named fw\_cfg entry with contents from string str.
-    If the string contains comma, you must double it (for instance,
-    "string=my,,string" to use file "my,string").
-
-    The terminating NUL character of the contents of str will not be
-    included as part of the fw\_cfg item data. To insert contents with
-    embedded NUL characters, you have to use the file parameter.
-
-    The fw\_cfg entries are passed by QEMU through to the guest.
-
-    Example:
-
-    ::
-
-            -fw_cfg name=opt/com.mycompany/blob,file=./my_blob.bin
-
-    creates an fw\_cfg entry named opt/com.mycompany/blob with contents
-    from ./my\_blob.bin.
-ERST
-
 DEF("serial", HAS_ARG, QEMU_OPTION_serial, \
     "-serial dev     redirect the serial port to char device 'dev'\n",
     QEMU_ARCH_ALL)
@@ -4958,10 +4925,6 @@ SRST
     ``argname=argvalue``
         Argument passed to the plugin. (Can be given multiple times.)
 ERST
-
-HXCOMM Internal use
-DEF("qtest", HAS_ARG, QEMU_OPTION_qtest, "", QEMU_ARCH_ALL)
-DEF("qtest-log", HAS_ARG, QEMU_OPTION_qtest_log, "", QEMU_ARCH_ALL)
 
 #if defined(CONFIG_POSIX) && !defined(EMSCRIPTEN)
 DEF("run-with", HAS_ARG, QEMU_OPTION_run_with,

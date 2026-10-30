@@ -733,13 +733,6 @@ DEF("compat", HAS_ARG, QEMU_OPTION_compat,
 "                Policy for handling unstable management interfaces\n",
 QEMU_ARCH_ALL)
 
-DEF("fw_cfg", HAS_ARG, QEMU_OPTION_fwcfg,
-"-fw_cfg [name=]<name>,file=<file>\n"
-"                add named fw_cfg entry with contents from file\n"
-"-fw_cfg [name=]<name>,string=<str>\n"
-"                add named fw_cfg entry with contents from string\n",
-QEMU_ARCH_ALL)
-
 DEF("serial", HAS_ARG, QEMU_OPTION_serial, \
 "-serial dev     redirect the serial port to char device 'dev'\n",
 QEMU_ARCH_ALL)
@@ -904,9 +897,6 @@ DEF("plugin", HAS_ARG, QEMU_OPTION_plugin,
 "-plugin [file=]<file>[,<argname>=<argvalue>]\n"
 "                load a plugin\n",
 QEMU_ARCH_ALL)
-
-DEF("qtest", HAS_ARG, QEMU_OPTION_qtest, "", QEMU_ARCH_ALL)
-DEF("qtest-log", HAS_ARG, QEMU_OPTION_qtest_log, "", QEMU_ARCH_ALL)
 
 #if defined(CONFIG_POSIX) && !defined(EMSCRIPTEN)
 DEF("run-with", HAS_ARG, QEMU_OPTION_run_with,

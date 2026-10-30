@@ -266,7 +266,21 @@ struct retro_core_option_v2_definition option_defs_us[] = {
         "xemu_force_texture_lod0",
         "Force Texture LOD0 (Restart)",
         NULL,
-        "Bypass mipmapping and always sample the largest texture level (LOD0). This can sharpen distant textures, but may increase shimmering. Takes effect when content is restarted.",
+        "Always sample the largest texture level (LOD0) and preserve compatible high-resolution GPU render textures. Vulkan also preserves scaled mixed RAM/GPU cubemaps. Filtering is controlled separately by Force Quality Filtering. May increase shimmering; restart content to apply.",
+        NULL,
+        "video",
+        {
+            { "disabled", "Disabled" },
+            { "enabled",  "Enabled" },
+            { NULL, NULL },
+        },
+        "disabled"
+    },
+    {
+        "xemu_force_quality_filtering",
+        "Force Quality Filtering (Restart)",
+        NULL,
+        "Request up to 16x anisotropic filtering for wrapping, linearly filtered 2D color textures, capped by device support. Preserve game filtering for point/depth sampling, cubemaps and clamped/bordered textures to avoid filtering artifacts and seams. Independent of Force Texture LOD0. Restart content to apply.",
         NULL,
         "video",
         {

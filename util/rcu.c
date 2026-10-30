@@ -280,10 +280,23 @@ retry:
     return node;
 }
 
+/* The callback queue is MPSC, including while startup is racing. Claim
+ * its sole consumer before registering or touching the queue. */
+static retro_atomic_int_t rcu_callback_worker_claimed;
+
+static bool rcu_claim_callback_worker(void)
+{
+    return retro_atomic_cas_int(&rcu_callback_worker_claimed, 0, 1);
+}
+
 static void *call_rcu_thread(void *opaque)
 {
     struct rcu_head *node;
 
+    if (!rcu_claim_callback_worker()) {
+        fprintf(stderr, "xemu: duplicate RCU callback worker ignored\n");
+        return NULL;
+    }
     rcu_register_thread();
 
     for (;;) {
@@ -482,15 +495,27 @@ static void rcu_init_child(void)
     }
 
     memset(&registry, 0, sizeof(registry));
+    /* The parent's consumer does not survive fork. */
+    retro_atomic_store_relaxed_int(&rcu_callback_worker_claimed, 0);
     rcu_init_complete();
 }
 #endif
 
 static void __attribute__((__constructor__)) rcu_init(void)
 {
+    static gsize initialized;
+
+    /* Initialize once per loaded core image. This queue has one consumer:
+     * never reset its locks/events or launch a second callback worker.
+     * The fork child calls rcu_init_complete() directly to replace its
+     * worker. */
+    if (!g_once_init_enter(&initialized)) {
+        return;
+    }
     smp_mb_global_init();
 #ifdef CONFIG_POSIX
     pthread_atfork(rcu_init_lock, rcu_init_unlock, rcu_init_child);
 #endif
     rcu_init_complete();
+    g_once_init_leave(&initialized, 1);
 }

@@ -185,19 +185,6 @@ GSource *qio_channel_create_watch(QIOChannel *ioc,
 }
 
 
-void qio_channel_set_aio_fd_handler(QIOChannel *ioc,
-                                    AioContext *read_ctx,
-                                    IOHandler *io_read,
-                                    AioContext *write_ctx,
-                                    IOHandler *io_write,
-                                    void *opaque)
-{
-    QIOChannelClass *klass = QIO_CHANNEL_GET_CLASS(ioc);
-
-    klass->io_set_aio_fd_handler(ioc, read_ctx, io_read, write_ctx, io_write,
-            opaque);
-}
-
 
 int qio_channel_shutdown(QIOChannel *ioc,
                          QIOChannelShutdown how,
@@ -214,26 +201,6 @@ int qio_channel_shutdown(QIOChannel *ioc,
 }
 
 
-void qio_channel_set_delay(QIOChannel *ioc,
-                           bool enabled)
-{
-    QIOChannelClass *klass = QIO_CHANNEL_GET_CLASS(ioc);
-
-    if (klass->io_set_delay) {
-        klass->io_set_delay(ioc, enabled);
-    }
-}
-
-
-void qio_channel_set_cork(QIOChannel *ioc,
-                          bool enabled)
-{
-    QIOChannelClass *klass = QIO_CHANNEL_GET_CLASS(ioc);
-
-    if (klass->io_set_cork) {
-        klass->io_set_cork(ioc, enabled);
-    }
-}
 
 
 static gboolean qio_channel_wait_complete(QIOChannel *ioc,

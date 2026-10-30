@@ -37,7 +37,6 @@
 #include "qemu/range.h"
 #include "qapi/error.h"
 #include "hw/acpi/acpi_aml_interface.h"
-#include "hw/acpi/pci.h"
 #include "hw/qdev-properties.h"
 
 /* PCI bridge subsystem vendor ID helper functions */
@@ -380,11 +379,9 @@ static const Property pci_bridge_properties[] = {
 
 static void pci_bridge_class_init(ObjectClass *klass, const void *data)
 {
-    AcpiDevAmlIfClass *adevc = ACPI_DEV_AML_IF_CLASS(klass);
     DeviceClass *k = DEVICE_CLASS(klass);
 
     device_class_set_props(k, pci_bridge_properties);
-    adevc->build_dev_aml = build_pci_bridge_aml;
 }
 
 static const TypeInfo pci_bridge_type_info = {
@@ -393,10 +390,6 @@ static const TypeInfo pci_bridge_type_info = {
     .instance_size = sizeof(PCIBridge),
     .class_init = pci_bridge_class_init,
     .abstract = true,
-    .interfaces = (const InterfaceInfo[]) {
-        { TYPE_ACPI_DEV_AML_IF },
-        { },
-    },
 };
 
 static void pci_bridge_register_types(void)

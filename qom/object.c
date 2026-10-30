@@ -1921,15 +1921,6 @@ object_class_property_add_link(ObjectClass *oc,
     return op;
 }
 
-ObjectProperty *
-object_property_add_const_link(Object *obj, const char *name,
-                               Object *target)
-{
-    return object_add_link_prop(obj, name,
-                                object_get_typename(target), target,
-                                NULL, OBJ_PROP_LINK_DIRECT);
-}
-
 const char *object_get_canonical_path_component(const Object *obj)
 {
     ObjectProperty *prop = NULL;
@@ -2130,23 +2121,6 @@ static void property_release_data(Object *obj, const char *name,
                                   void *opaque)
 {
     g_free(opaque);
-}
-
-ObjectProperty *
-object_property_add_str(Object *obj, const char *name,
-                        char *(*get)(Object *, Error **),
-                        void (*set)(Object *, const char *, Error **))
-{
-    StringProperty *prop = g_malloc0(sizeof(*prop));
-
-    prop->get = get;
-    prop->set = set;
-
-    return object_property_add(obj, name, "string",
-                               get ? property_get_str : NULL,
-                               set ? property_set_str : NULL,
-                               property_release_data,
-                               prop);
 }
 
 ObjectProperty *
