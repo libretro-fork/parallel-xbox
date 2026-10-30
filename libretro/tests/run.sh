@@ -62,6 +62,7 @@ python3 "$here/test-kernel-idle.py" "$here/../.." "$cc"
 python3 "$here/test-interrupt-shadow.py" "$here/../.." "$cc"
 python3 "$here/test-idle-interrupts.py" "$here/../.." "$cc"
 python3 "$here/test-two-page-exit.py" "$here/../.." "$cc"
+python3 "$here/test-sse-broadcast.py" "$here/../.." "$cc"
 python3 "$here/test-frame-completion.py" "$here/../.." "$cc"
 python3 "$here/test-vk-cow-tail.py" "$here/../.." "$cc"
 python3 "$here/test-inline-index-bounds.py" "$here/../.." "$cc"
@@ -204,6 +205,9 @@ nasm -f bin -DSTI_BOUNDARY -I"$here/rom/" -o "$work/syscs/xemu/Complex_4627v1.03
 mkdir -p "$work/systwo/xemu"
 cp "$work/sys/xemu/mcpx_1.0.bin" "$work/systwo/xemu/"
 nasm -f bin -I"$here/rom/" -o "$work/systwo/xemu/Complex_4627v1.03.bin" "$here/rom/two-page.asm"
+mkdir -p "$work/sysshuf/xemu"
+cp "$work/sys/xemu/mcpx_1.0.bin" "$work/sysshuf/xemu/"
+nasm -f bin -I"$here/rom/" -o "$work/sysshuf/xemu/Complex_4627v1.03.bin" "$here/rom/sse-shuffle.asm"
 
 cp "$work/sys/xemu/mcpx_1.0.bin" "$work/sysf/xemu/"
 nasm -f bin -I"$here/rom/" -o "$work/sysf/xemu/Complex_4627v1.03.bin" "$here/rom/rep-stos.asm"
@@ -302,6 +306,17 @@ for boost in enabled disabled; do
       echo "FAIL: two-page invalidation ($boost)"; exit 1;
     }
   done
+done
+
+# Bitwise SHUFPS cases, including the native lane-broadcast lowering.
+for boost in enabled disabled; do
+  t "SSE shuffle/broadcast, CPU Boost $boost" $h "$(path "$core")" "$(path "$work/sysshuf")" \
+    $vp --opt "xemu_cpu_boost=$boost" --frames 60 --strict \
+    --peek 0x300000 --peek 0x300004 >"$work/sse-shuffle-$boost.txt"
+  if ! grep -q "peek_0x300000=0x4b4f4853" "$work/sse-shuffle-$boost.txt"; then
+    cat "$work/sse-shuffle-$boost.txt"
+    echo "FAIL: SSE shuffle ($boost)"; exit 1
+  fi
 done
 
 # Active register-only work crossing STI/CLI exits must not be parked.

@@ -5,6 +5,7 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 ## Unreleased
 
 - The host-audio precision regression avoids undefined signed shifts and now runs with undefined-behavior sanitizer traps. Audio output is unchanged.
+- CPU Boost lowers legacy same-register SHUFPS lane broadcasts without the generic shuffle helper call. All bit patterns and bytes above 128 bits are preserved; other selectors, memory sources, VEX/double encodings and big-endian layouts retain their existing paths.
 
 - Vulkan cubemap redraws copy only changed GPU faces when updating the existing texture image. Replacement images and RAM uploads still restore every required GPU face.
 

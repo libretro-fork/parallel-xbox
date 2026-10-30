@@ -4639,6 +4639,21 @@ static void gen_VROUNDSS(DisasContext *s, X86DecodedInsn *decode)
 
 static void gen_VSHUF(DisasContext *s, X86DecodedInsn *decode)
 {
+    unsigned lane = decode->immediate & 3;
+
+    /* Legacy SHUFPS of one register with a repeated selector is a bitwise
+     * lane broadcast. Preserve bytes above 128 bits and other encodings;
+     * big-endian register layouts retain the existing helper. */
+    if (!HOST_BIG_ENDIAN && xemu_cpu_boost && !s->vex_l &&
+        !(s->prefix & (PREFIX_DATA | PREFIX_VEX)) &&
+        !decode->op[1].has_ea && !decode->op[2].has_ea &&
+        decode->op[1].offset == decode->op[2].offset &&
+        (decode->immediate & 0xff) == lane * 0x55) {
+        tcg_gen_gvec_dup_mem(MO_32, decode->op[0].offset,
+                             decode->op[1].offset + lane * 4, 16, 16);
+        return;
+    }
+
     TCGv_i32 imm = tcg_constant_i32(decode->immediate);
     SSEFunc_0_pppi ps, pd, fn;
     ps = s->vex_l ? gen_helper_shufps_ymm : gen_helper_shufps_xmm;
