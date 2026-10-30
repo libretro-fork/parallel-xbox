@@ -47,8 +47,46 @@ static unsigned random_value(void)
     random_state ^= random_state << 13; random_state ^= random_state >> 17;
     random_state ^= random_state << 5; return random_state;
 }
+static void check_hash_spans(void)
+{
+    unsigned checks=0;
+    for (unsigned fmt=0;fmt<66;fmt++) {
+        BasicColorFormatInfo f=kelvin_color_format_info_map[fmt];
+        if (!f.bytes_per_pixel) continue;
+        for (unsigned w=1;w<=17;w++)
+        for (unsigned h=1;h<=5;h++) {
+            TextureShape s={.color_format=fmt,.width=w,.height=h,
+                .depth=1,.dimensionality=2,.levels=1,.pitch=w*f.bytes_per_pixel+64};
+            size_t length=(size_t)s.pitch*h, expected=length;
+            bool converted=fmt==NV097_SET_TEXTURE_FORMAT_COLOR_SZ_I8_A8R8G8B8 ||
+                fmt==NV097_SET_TEXTURE_FORMAT_COLOR_LC_IMAGE_CR8YB8CB8YA8 ||
+                fmt==NV097_SET_TEXTURE_FORMAT_COLOR_LC_IMAGE_YB8CR8YA8CB8 ||
+                fmt==NV097_SET_TEXTURE_FORMAT_COLOR_SZ_R6G5B5;
+            if(f.linear && !converted) {
+                expected=0;
+                for(unsigned y=0;y<h;y++)
+                for(unsigned byte=0;byte<w*f.bytes_per_pixel;byte++)
+                    expected=y*s.pitch+byte+1;
+            }
+            assert(pgraph_texture_hash_length(s,length)==expected);
+            s.pitch=w*f.bytes_per_pixel;
+            assert(pgraph_texture_hash_length(s,(size_t)s.pitch*h)==(size_t)s.pitch*h);
+            checks++;
+        }
+    }
+    TextureShape s={.color_format=NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_Y8,
+        .width=1,.height=0,.pitch=128};
+    assert(pgraph_texture_hash_length(s,0)==0);
+    s.height=1;
+    assert(pgraph_texture_hash_length(s,1)==1);
+    s.width=129;
+    assert(pgraph_texture_hash_length(s,128)==128);
+    printf("texture hash spans: %u format/byte-walk cases passed\n",checks);
+}
+
 int main(void)
 {
+    check_hash_spans();
     PGRAPHState pg = {0};
     TextureShape s = { .cubemap = true, .dimensionality = 2,
         .color_format = NV097_SET_TEXTURE_FORMAT_COLOR_L_DXT1_A1R5G5B5,

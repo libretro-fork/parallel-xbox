@@ -473,3 +473,7 @@ seen in Ninja Gaiden Black near a door.
 short kernel idle fast path, including both loop forms, exit positions,
 unreadable memory, pending work and self-modifying code. Active STI/CLI
 work must fail the proof and continue running.
+
+The texture-layout oracle also checks 3,570 hash-prefix cases against an independent active-byte walk. Only final-row padding of unconverted linear formats is excluded; packed, swizzled, compressed and converted formats retain their prior hash extent. GPU frames 1170/1190 both sample a white 1x1 linear Y8 texture before/after a CPU write to trailing padding. A separate temporary upload-count audit measured three uploads across the complete sequence after the change versus four before, on both APIs; the standard suite asserts the visible pixels.
+
+GPU frames 1210/1230 and 1250/1270 test width-one YUY2 and UYVY textures. Neutral Y/Cb/Cr bytes of 128 produce 828282 with the existing conversion; changing only the shared Cr byte to 255 produces ff1b82. Cr lies at byte 3 for YUY2 and byte 2 for UYVY, beyond the first pixel's nominal two-byte span. The cache must invalidate both converted formats; these checks protect their full-hash exception and host upload precision, not a new Xbox color-matrix calibration.

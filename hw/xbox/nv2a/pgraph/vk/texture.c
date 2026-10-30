@@ -2230,7 +2230,8 @@ static void create_texture(PGRAPHState *pg, int texture_idx)
     uint64_t content_hash = 0;
     if (!surface_to_texture && !surface_to_texture_cube && possibly_dirty &&
         snode->validation_frame != pg->frame_time) {
-        content_hash = fast_hash(texture_data, texture_length);
+        content_hash = fast_hash(texture_data,
+                pgraph_texture_hash_length(state, texture_length));
         if (is_indexed) {
             content_hash ^= fast_hash(palette_data, texture_palette_data_size);
         }

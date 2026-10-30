@@ -6,6 +6,10 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 - Fix Ninja Gaiden Black running in slow motion near the door despite low core latency. The short STI/CLI idle shortcut now requires a recognised kernel idle loop and empty work queues, retaining its fast path without skipping active game work. Instruction-threshold and device-poll waits remain.
 
+- The synthetic GPU suite now checks one-pixel YUY2 and UYVY textures, including cache updates when their shared chroma byte changes beyond the first pixel's nominal two bytes. This protects complete-pair conversion and its full hash span.
+
+- Both renderers now ignore unread padding after the final row when hashing unconverted linear textures. Padding-only writes no longer recreate or upload an unchanged texture; dirty tracking and guest allocation spans stay complete, and converted formats retain their full hashes.
+
 - Vulkan linear texture staging no longer copies padding after the final image row. Earlier rows retain guest pitch and each staged level still uses one copy; direct VRAM upload retains its full guest span.
 
 - About 300 more functions in QEMU's generic code that nothing in the core calls are gone (the TCG op builders, the I/O channel and socket layers, the TLS sessions, ELF and ROM loading, the memory-region IOMMU hooks and more), about 9,000 lines with their header declarations, now that the non-Xbox code that named them is gone. Nothing changes for someone using the core.

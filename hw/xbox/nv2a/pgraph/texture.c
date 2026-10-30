@@ -204,6 +204,22 @@ size_t pgraph_get_texture_length(PGRAPHState *pg, TextureShape *shape)
     return shape->dimensionality >= 2 ? texture_mip_chain_size(pg, *shape) : 0;
 }
 
+/* Ignore only the unread final-row tail. Dirty tracking and cache keys
+ * retain the full guest span. Converted formats may consume whole pairs. */
+size_t pgraph_texture_hash_length(TextureShape shape, size_t length)
+{
+    BasicColorFormatInfo f = kelvin_color_format_info_map[shape.color_format];
+    if (!f.linear || !shape.width || !shape.height ||
+        pgraph_converted_texture_size(shape, shape.width, shape.height, 1)) {
+        return length;
+    }
+    size_t row = (size_t)shape.width * f.bytes_per_pixel;
+    if (row <= shape.pitch && shape.pitch - row <= length) {
+        return length - (shape.pitch - row);
+    }
+    return length;
+}
+
 TextureShape pgraph_get_texture_shape(PGRAPHState *pg, int texture_idx)
 {
     int i = texture_idx;
