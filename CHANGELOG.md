@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Indexed textures now see palette colors rendered by the GPU before CPU palette expansion and cache validation. Both renderers synchronize overlapping palette surfaces; OpenGL also handles parked surfaces. This fixes stale or one-update-late colors when a render target supplies a palette.
+
 - The synthetic GPU regression suite now renders textures and indexed palettes ending exactly at the 64 MiB VRAM boundary, and checks that cached texture views sharing the last dirty page refresh together on both renderers at 1x, 2x and 4x.
 
 - CPU translation-block hashes reuse executable RAM pointers already resolved by decoding or invalidated-block lookup. Page-crossing hashes consume RAM as separate XXH3 spans, avoiding byte-by-byte reads and a page-sized gathering buffer. Device/sub-page spans retain ordered reads through 64-byte scratch storage instead of a size-dependent gathering array, and following-page resolution stays in fetch order.

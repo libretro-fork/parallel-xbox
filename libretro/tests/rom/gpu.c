@@ -974,6 +974,21 @@ void gpu_main(void)
             ram32(VRAM_END - 1024, 0xff000000u);
             texture_alias(0x0b, 1, 0x3f000000u, 0);
         }
+        if (frame == 920 || frame == 940) {
+            /* GPU-rendered palette: RAM still contains the earlier black
+             * entry. All 256 entries become red, then blue while cached. */
+            method(NV097_SET_SURFACE_CLIP_H, 32u << 16);
+            method(NV097_SET_SURFACE_CLIP_V, 8u << 16);
+            method(NV097_SET_SURFACE_FORMAT, 0x128u);
+            method(NV097_SET_SURFACE_PITCH, 128u | (128u << 16));
+            method(NV097_SET_SURFACE_COLOR_OFFSET, VRAM_END - 1024);
+            method(NV097_SET_COLOR_CLEAR_VALUE,
+                   frame == 920 ? 0xffff0000u : 0xff0000ffu);
+            method(NV097_SET_CLEAR_RECT_H, 31u << 16);
+            method(NV097_SET_CLEAR_RECT_V, 7u << 16);
+            method(NV097_CLEAR_SURFACE, 0xf0);
+            texture_alias(0x0b, 1, 0x3f000000u, 0);
+        }
         method(NV097_FLIP_INCREMENT_WRITE, 0);
         kick();
         if (frame >= 100 && frame < 125) {

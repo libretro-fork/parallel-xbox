@@ -2040,6 +2040,10 @@ static void create_texture(PGRAPHState *pg, int texture_idx)
                 pg, texture_idx, &texture_palette_data_size);
         key.palette_vram_offset = texture_palette_vram_offset;
         key.palette_length = texture_palette_data_size;
+        /* Indexed expansion consumes CPU palette bytes. Synchronize GPU
+         * palette producers before hashing or accepting a cached texture. */
+        pgraph_vk_download_surfaces_in_range_if_dirty(
+            pg, texture_palette_vram_offset, texture_palette_data_size);
     }
     key.scale = 1;
     /* Split samplers: the sampler fields stay zero in the key; the

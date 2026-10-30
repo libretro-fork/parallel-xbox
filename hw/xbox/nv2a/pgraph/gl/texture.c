@@ -334,6 +334,21 @@ void pgraph_gl_bind_textures(NV2AState *d)
                                        memory_region_size(d->vram)));
         bool is_indexed = (state.color_format ==
                 NV097_SET_TEXTURE_FORMAT_COLOR_SZ_I8_A8R8G8B8);
+        /* Indexed expansion reads the palette on the CPU, even when its
+         * bytes were produced by a GPU render target. Materialize it before
+         * the cache fast path can accept a binding or consume dirty bits. */
+        if (is_indexed) {
+            SurfaceBinding *palette_surface;
+            QTAILQ_FOREACH(palette_surface, &r->surfaces, entry) {
+                if (pgraph_vram_ranges_overlap(palette_vram_offset,
+                        palette_length, palette_surface->vram_addr,
+                        palette_surface->size)) {
+                    pgraph_gl_surface_download_if_dirty(d, palette_surface);
+                }
+            }
+            pgraph_gl_parked_materialize_range(d, palette_vram_offset,
+                                               palette_length);
+        }
         bool possibly_dirty = false;
         bool possibly_dirty_checked = false;
 
