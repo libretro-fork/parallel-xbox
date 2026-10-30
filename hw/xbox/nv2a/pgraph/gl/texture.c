@@ -925,7 +925,7 @@ static TextureBinding* generate_texture(const TextureShape s,
         glTexParameteri(gl_target, GL_TEXTURE_BASE_LEVEL,
             s.min_mipmap_level);
         glTexParameteri(gl_target, GL_TEXTURE_MAX_LEVEL,
-            s.levels - 1);
+            s.max_mipmap_level);
     }
 
     if (f.gl_swizzle_mask[0] != 0 || f.gl_swizzle_mask[1] != 0

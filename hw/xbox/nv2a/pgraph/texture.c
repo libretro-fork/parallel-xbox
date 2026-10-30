@@ -23,6 +23,14 @@
 #include "texture.h"
 #include "util.h"
 
+/* Core option, fixed for the lifetime of the running machine. */
+static bool force_texture_lod0;
+
+void nv2a_set_force_texture_lod0(bool enabled)
+{
+    force_texture_lod0 = enabled;
+}
+
 const BasicColorFormatInfo kelvin_color_format_info_map[66] = {
     [NV097_SET_TEXTURE_FORMAT_COLOR_SZ_Y8] = { 1, false },
     [NV097_SET_TEXTURE_FORMAT_COLOR_SZ_AY8] = { 1, false },
@@ -304,6 +312,13 @@ TextureShape pgraph_get_texture_shape(PGRAPHState *pg, int texture_idx)
         }
         min_mipmap_level = MIN(levels-1, min_mipmap_level);
         max_mipmap_level = MIN(levels-1, max_mipmap_level);
+    }
+
+    /* Keep the mip chain intact: its size also determines cubemap face
+     * offsets. Override sampling clamps only, for both renderers. */
+    if (force_texture_lod0) {
+        min_mipmap_level = 0;
+        max_mipmap_level = 0;
     }
 
     TextureShape shape;

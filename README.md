@@ -58,6 +58,8 @@ Each frame RetroArch asks for is one frame of the Xbox's time, 1001/60 ms (NTSC,
 
 ## Video
 
+Core Options > Video > Force Texture LOD0 (Restart) forces the largest texture level in both renderers. It is disabled by default. Enable it for sharper distant textures, with possible shimmering; restart content to apply the change.
+
 The core renders with OpenGL or Vulkan, whichever RetroArch's video driver is (`glcore` or `vulkan`). On Android it is Vulkan only. On macOS it is OpenGL: MoltenVK has no geometry shaders, which xemu's Vulkan renderer needs, so use RetroArch's `glcore` driver there.
 
 ## Building

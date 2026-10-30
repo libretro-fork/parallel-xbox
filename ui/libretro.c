@@ -1541,6 +1541,15 @@ static void update_variables(void)
         if (opt_surface_scale > 10) opt_surface_scale = 10;
     }
 
+    /* Texture caches use this setting for the lifetime of the machine. */
+    if (!emu_initialized) {
+        var.key = "xemu_force_texture_lod0";
+        var.value = NULL;
+        nv2a_set_force_texture_lod0(environ_cb &&
+            environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value &&
+            !strcmp(var.value, "enabled"));
+    }
+
     var.key = "xemu_use_dsp";
     var.value = NULL;
     if (environ_cb && environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value) {

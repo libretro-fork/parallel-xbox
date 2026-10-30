@@ -249,6 +249,20 @@ struct retro_core_option_v2_definition option_defs_us[] = {
         "auto"
     },
     {
+        "xemu_force_texture_lod0",
+        "Force Texture LOD0 (Restart)",
+        NULL,
+        "Bypass mipmapping and always sample the largest texture level (LOD0). This can sharpen distant textures, but may increase shimmering. Takes effect when content is restarted.",
+        NULL,
+        "video",
+        {
+            { "disabled", "Disabled" },
+            { "enabled",  "Enabled" },
+            { NULL, NULL },
+        },
+        "disabled"
+    },
+    {
         "xemu_surface_scale",
         "Internal Resolution Scale (Restart)",
         NULL,
