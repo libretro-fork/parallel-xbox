@@ -53,6 +53,7 @@
 #include "block/snapshot.h"
 #include "block/libretro-disk.h"
 #include "block/libretro-file.h"
+#include "block/libretro-vfs-read.h"
 #include "block/libretro-qcow2.h"
 #include "system/block-backend.h"
 #include "system/blockdev.h"
@@ -87,6 +88,7 @@ typedef struct LRMedium {
     uint64_t base;      /* where the drive's data starts in the image */
     int64_t length;     /* from there */
     bool writable;
+    int64_t vfs_position;
 } LRMedium;
 
 typedef struct LRDiskReq {
@@ -123,6 +125,18 @@ static QTAILQ_HEAD(, BlockBackend) lr_disks =
 
 int lr_disk_pending;
 
+const uint8_t *lr_disk_view(BlockBackend *blk, int64_t offset, size_t size)
+{
+    if (!blk || blk->m.kind != LR_MEDIUM_FILE || blk->m.writable ||
+        offset < 0 || offset > blk->m.length ||
+        size > (uint64_t)(blk->m.length - offset) ||
+        blk->m.base > INT64_MAX ||
+        (uint64_t)offset > (uint64_t)INT64_MAX - blk->m.base) {
+        return NULL;
+    }
+    return lr_file_view(blk->m.file, blk->m.base + offset, size);
+}
+
 QEMU_BUILD_BUG_ON(sizeof(struct iovec) != sizeof(LRFileIOV));
 
 /* ---- the media ---------------------------------------------------------- */
@@ -154,6 +168,7 @@ static bool lr_medium_open(LRMedium *m, const char *path, uint64_t offset,
     int64_t size;
 
     memset(m, 0, sizeof(*m));
+    m->vfs_position = -1;
     if (lr_disk_is_uri(path)) {
         if (!xemu_libretro_vfs) {
             error_setg(errp, "%s can only be read through the frontend's "
@@ -249,21 +264,9 @@ static int lr_disk_rw(BlockBackend *blk, int64_t offset, QEMUIOVector *qiov,
                                       qiov->niov);
         break;
     case LR_MEDIUM_VFS:
-        if (xemu_libretro_vfs->seek(m->vfs, (int64_t)m->base + offset,
-                                    RETRO_VFS_SEEK_POSITION_START) < 0) {
-            return -EIO;
-        }
-        for (int i = 0; i < qiov->niov; i++) {
-            int64_t r = xemu_libretro_vfs->read(m->vfs, qiov->iov[i].iov_base,
-                                                qiov->iov[i].iov_len);
-            if (r < 0) {
-                return -EIO;
-            }
-            if ((size_t)r < qiov->iov[i].iov_len) {
-                memset((uint8_t *)qiov->iov[i].iov_base + r, 0,
-                       qiov->iov[i].iov_len - r);
-            }
-        }
+        ret = lr_vfs_readv(xemu_libretro_vfs, m->vfs, &m->vfs_position,
+                           m->base + offset,
+                           (const LRFileIOV *)qiov->iov, qiov->niov);
         break;
     case LR_MEDIUM_MEMORY:
         for (int i = 0; i < qiov->niov; i++) {

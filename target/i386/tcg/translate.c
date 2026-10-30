@@ -21,6 +21,7 @@
 
 #include "qemu/host-utils.h"
 #include "cpu.h"
+#include "hw/xbox/xbe-runtime.h"
 #include "accel/tcg/cpu-mmu-index.h"
 #include "exec/translation-block.h"
 #include "tcg/tcg-op.h"
@@ -4476,6 +4477,9 @@ static void i386_tr_init_disas_context(DisasContextBase *dcbase, CPUState *cpu)
 
 static void i386_tr_tb_start(DisasContextBase *db, CPUState *cpu)
 {
+    if (xemu_xbe_runtime_entry && db->pc_first == xemu_xbe_runtime_entry) {
+        gen_helper_xemu_xbe_runtime(tcg_env, tcg_constant_tl(db->pc_first));
+    }
 }
 
 static void i386_tr_insn_start(DisasContextBase *dcbase, CPUState *cpu)

@@ -4,6 +4,7 @@ DEF_HELPER_FLAGS_3(cc_compute_nz, TCG_CALL_NO_RWG_SE, tl, tl, tl, int)
 
 DEF_HELPER_3(write_eflags, void, env, tl, i32)
 DEF_HELPER_1(read_eflags, tl, env)
+DEF_HELPER_2(xemu_xbe_runtime, void, env, tl)
 DEF_HELPER_2(divb_AL, void, env, tl)
 DEF_HELPER_2(idivb_AL, void, env, tl)
 DEF_HELPER_2(divw_AX, void, env, tl)

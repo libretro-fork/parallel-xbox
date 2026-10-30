@@ -7,6 +7,10 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 - The host-audio precision regression avoids undefined signed shifts and now runs with undefined-behavior sanitizer traps. Audio output is unchanged.
 - CPU Boost lowers legacy same-register SHUFPS lane broadcasts without the generic shuffle helper call. All bit patterns and bytes above 128 bits are preserved; other selectors, memory sources, VEX/double encodings and big-endian layouts retain their existing paths.
 
+- Fixed the non-futex lock-counter build: its retro_atomic compare/exchange helper is shared with macOS and other non-futex platforms, rather than being hidden in the futex-only section.
+
+- Otogi can start from an unmodified XISO or full disc image with Complex 4627. Runtime Disc-check Compatibility adjusts only the loaded executable's physical-disc check flag before entry; disable it to retain the original checks. No security dump or image preparation is needed for this workaround.
+- Read-only local images use libretro-common mapped views, removing repeated read syscalls and allowing zero-copy metadata access. Scatter reads go straight into guest buffers and combine adjacent spans. Native positional I/O remains the fallback, writable HDDs stay sparse, and frontend VFS reads avoid redundant seeks and handle partial reads correctly.
 - Vulkan cubemap redraws copy only changed GPU faces when updating the existing texture image. Replacement images and RAM uploads still restore every required GPU face.
 
 - Another round of the code no build of the core calls is removed now that QEMU's user-mode, coroutine and atomics code is gone (about 6,900 lines): among it QEMU's ELF, a.out and multiboot loaders (the Xbox boots its own BIOS), most of its socket address handling, the block layer's dictionary helpers and the task objects channels ran in a thread. Nothing changes for someone using the core.

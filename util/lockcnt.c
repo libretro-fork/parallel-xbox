@@ -11,8 +11,6 @@
 #include "qemu/thread.h"
 #include "trace.h"
 
-#ifdef HAVE_FUTEX
-
 /*
  * When futex is available, bits 0-1 are a futex-based lock, bits 2-31 are the
  * counter.
@@ -45,6 +43,8 @@ static inline int lockcnt_cmpxchg(QemuLockCnt *lockcnt, int expected, int new)
     } while (cur == expected);
     return cur;
 }
+
+#ifdef HAVE_FUTEX
 
 void qemu_lockcnt_init(QemuLockCnt *lockcnt)
 {

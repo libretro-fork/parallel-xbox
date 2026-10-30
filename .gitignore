@@ -40,3 +40,5 @@ build.log
 /libretro/tests/seedshaders
 /libretro/tests/s3tctest
 /libretro/tests/s3tctest.exe
+libretro/tests/fileiotest
+libretro/tests/fileiotest.exe

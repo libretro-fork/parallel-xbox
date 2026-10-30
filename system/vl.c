@@ -586,6 +586,9 @@ static void configure_blockdev(BlockdevOptionsQueue *bdo_queue,
                 warn_report_err(err);
                 xemu_queue_error_message(msg);
                 g_free(msg);
+            } else {
+                extern void xemu_xbe_runtime_disc(BlockBackend *blk);
+                xemu_xbe_runtime_disc(cd);
             }
         }
     }
@@ -2402,6 +2405,8 @@ void xemu_libretro_change_disc(const char *path, Error **errp)
     }
     /* a disc that does not open leaves the one in the drive */
     if (lr_disk_change(blk, path, offset, errp)) {
+        extern void xemu_xbe_runtime_disc(BlockBackend *blk);
+        xemu_xbe_runtime_disc(path && path[0] ? blk : NULL);
         xemu_settings_set_string(&g_config.sys.files.dvd_path,
                                  path ? path : "");
     }

@@ -33,6 +33,7 @@
 #include <glib/gstdio.h>
 #include "ui/libretro-widescreen-titles.h"
 #include "xemu-xbe.h"
+#include "hw/xbox/xbe-runtime.h"
 #include "qemu/bswap.h"
 #include "data/xbox_hdd.qcow2.h"
 
@@ -1512,6 +1513,12 @@ static void update_variables(void)
     if (environ_cb && environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value) {
         opt_skip_boot_anim = !strcmp(var.value, "enabled");
     }
+
+    var.key = "xemu_runtime_disc_checks";
+    var.value = NULL;
+    xemu_xbe_runtime_enabled = !(environ_cb &&
+        environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value &&
+        !strcmp(var.value, "disabled"));
 
     var.key = "xemu_network_backend";
     var.value = NULL;

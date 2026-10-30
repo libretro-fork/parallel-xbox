@@ -23,6 +23,12 @@
 #include "exec/helper-proto.h"
 #include "exec/cputlb.h"
 #include "helper-tcg.h"
+#include "hw/xbox/xbe-runtime.h"
+
+void helper_xemu_xbe_runtime(CPUX86State *env, target_ulong pc)
+{
+    xemu_xbe_runtime_apply(env_cpu(env), pc);
+}
 
 /*
  * NOTE: the translator must set DisasContext.cc_op to CC_OP_EFLAGS

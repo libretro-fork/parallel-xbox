@@ -40,7 +40,7 @@ For Sega Chihiro games, these files go under `system/xemu/Chihiro/` (MAME's name
 
 Xbox games as `.iso` or `.xiso` (xemu's XISO format, as made by extract-xiso). Sega Chihiro games as `.bin` netboot images, as made by [Chihiro-netboot](https://github.com/Tovarichtch/chihiro-netboot): an image that is not an Xbox disc boots a Chihiro. The machine is built once per RetroArch start: to play a Chihiro game after an Xbox one, or the other way round, restart RetroArch. Another Chihiro game loads into the same machine, unless it is larger than the media board memory the first one was given (Gundam needs 1024 MB, the others fit 512 MB): then restart RetroArch. Chihiro games start in free play (Sega Chihiro > Free Play); with it off, Select inserts a coin.
 
-For DOA2 Ultimate's long initial black screen and Otogi's return to the dashboard, see [game startup checks](docs/game-startup.md). An offline image-preparation utility is provided for Otogi's runtime disc check.
+For DOA2 Ultimate's long initial black screen and Otogi's startup, see [game startup checks](docs/game-startup.md). Runtime Disc-check Compatibility lets Otogi start from an unmodified image with Complex 4627; the offline preparation utility remains optional. The [PR #1659 audit](docs/xdvd-pr1659-audit.md) explains the signed-disc authentication requirements and the runtime fallback.
 
 ## Chihiro controls
 
