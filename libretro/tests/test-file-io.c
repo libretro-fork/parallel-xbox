@@ -2,6 +2,7 @@
  * Optional second argument benchmarks reads from an existing read-only image. */
 #include "block/libretro-file.h"
 #include <assert.h>
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -84,6 +85,30 @@ int main(int argc, char **argv)
     assert(!memcmp(out + 4, (uint8_t[12]) {0}, 12));
     assert(lr_file_pread(f, large + 4096, out, sizeof(out)) == 0);
     assert(!memcmp(out, (uint8_t[8192]) {0}, sizeof(out)));
+    /* Exercise vectored and fallback reads, EOF within a span or before the
+     * request, empty spans and untouched gaps between destinations. */
+    LRFileIOV tails[1302] = {{0}};
+    const unsigned counts[] = {128, 1300};
+    for (unsigned c = 0; c < 2; c++) {
+        unsigned count = counts[c];
+        for (unsigned i = 0; i < count; i++) {
+            tails[i + 1] = (LRFileIOV) {out + i * 6, 4};
+        }
+        tails[count + 1] = (LRFileIOV) {NULL, 0};
+        for (unsigned mode = 0; mode < 3; mode++) {
+            memset(out, 0xcc, sizeof(out));
+            int64_t start = mode == 0 ? large - 6 : large + (mode == 2 ? 4096 : 0);
+            assert(lr_file_preadv(f, start, tails, count + 2) == 0);
+            for (unsigned i = 0; i < count; i++) {
+                for (unsigned j = 0; j < 4; j++) {
+                    assert(out[i * 6 + j] == (mode == 0 && i * 4 + j < 6 ? 0x5a : 0));
+                }
+                assert(out[i * 6 + 4] == 0xcc && out[i * 6 + 5] == 0xcc);
+            }
+        }
+    }
+    LRFileIOV invalid[] = {{out, 4}, {out + 16, SIZE_MAX}};
+    assert(lr_file_preadv(f, large, invalid, 2) == -EINVAL);
     lr_file_close(f);
     puts("positional/scatter reads, >4GiB offsets, EOF and write guards: PASS");
     if (argc > 2) {

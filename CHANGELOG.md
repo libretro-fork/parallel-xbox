@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Native scattered reads stop issuing host reads once EOF is confirmed, zero-filling remaining destinations directly while preserving gaps. Short reads before EOF still retry, and read errors still propagate.
+
 - Release GLib main-context pending-source references when a readiness check is replaced or a context is destroyed before dispatch. This fixes leaked sources and skipped finalizers during cleanup.
 
 - qcow2 writes clear autoclear header flags before modifying existing data as well as allocating clusters. Failed header writes remain pending for retry; empty requests leave the header untouched.

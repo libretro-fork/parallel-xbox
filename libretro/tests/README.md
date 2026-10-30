@@ -789,3 +789,5 @@ Pending-source lifetime tests check a ready source once and twice without
 dispatching it, destroy the source, and release the context. Its finalizer must
 run exactly once in each case, matching system GLib. Repeated checks must release
 the previous pending references rather than silently dropping their pointers.
+
+The file-I/O fixture checks 128-span native vectors and 1,300-span fallback requests with EOF inside a destination span, exactly at EOF and beyond it. Empty NULL spans and destination gaps are preserved; bytes after EOF must be zero. Native EOF now pads the remaining destinations after a confirmed end instead of issuing a read for each gap.
