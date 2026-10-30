@@ -809,3 +809,10 @@ The child-source lifetime regression retains a child, releases its unattached
 parent, and attaches/readies the child independently. It must remain usable and
 must not propagate readiness through the finalized parent. The same sequence
 passes against system GLib; the old shim produces an ASan use-after-free.
+FP flag-capture tests execute emitted float/double comparison snapshots for
+524,288 special/random operand, MXCSR and result-register cases per target
+width, comparing native flags/status with PUSHF/POP. They cover 64-bit RAX
+preservation, high-byte encoding without REX, simulated CPUID leaf bounds
+and cached feature selection, plus 32-bit/old-host fallback. The x87 scratch
+ROM also keeps six memory-loaded guest GPRs live across ordered/unordered
+comparisons in both precision modes. No fixed RAX allocation is imposed.

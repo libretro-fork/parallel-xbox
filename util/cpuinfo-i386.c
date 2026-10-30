@@ -90,10 +90,11 @@ unsigned __attribute__((constructor)) cpuinfo_init(void)
         }
     }
 
-    max = __get_cpuid_max(0x8000000, 0);
-    if (max >= 1) {
+    max = __get_cpuid_max(0x80000000, 0);
+    if (max >= 0x80000001) {
         __cpuid(0x80000001, a, b, c, d);
         info |= (c & bit_LZCNT ? CPUINFO_LZCNT : 0);
+        info |= (c & bit_LAHF_LM ? CPUINFO_LAHF_LM : 0);
     }
 #endif
 

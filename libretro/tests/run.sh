@@ -81,6 +81,7 @@ python3 "$here/test-idle-interrupts.py" "$here/../.." "$cc"
 python3 "$here/test-two-page-exit.py" "$here/../.." "$cc"
 python3 "$here/test-sse-broadcast.py" "$here/../.." "$cc"
 python3 "$here/test-sse-native-gate.py" "$here/../.." "$cc"
+python3 "$here/test-fp-flags.py" "$here/../.." "$cc"
 python3 "$here/test-frame-completion.py" "$here/../.." "$cc"
 ${cc} -O2 -std=c11 -Wall -Wextra -Werror -I"$here/../.." \
     -o "$work/bin/xberuntimecheck" "$here/test-xbe-runtime.c"

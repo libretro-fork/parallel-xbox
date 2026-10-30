@@ -3026,6 +3026,27 @@ static void tgen_extrh_i64_i32(TCGContext *s, TCGType t, TCGReg a0, TCGReg a1)
     tcg_out_shifti(s, SHIFT_SHR + P_REXW, a0, 32);
 }
 
+/* COMI users consume C/P/Z only; other returned bits are unspecified. */
+static void tcg_out_com_flags(TCGContext *s, TCGReg dst)
+{
+    if (TCG_TARGET_REG_BITS == 64 && (cpuinfo & CPUINFO_LAHF_LM)) {
+        /* Preserve RAX using the allocator's normal output register,
+         * rather than imposing a fixed register or an extra spill slot. */
+        if (dst != TCG_REG_EAX) {
+            tcg_out_mov(s, TCG_TYPE_I64, dst, TCG_REG_EAX);
+        }
+        tcg_out8(s, 0x9f); /* LAHF: C/P/Z into AH, no stack access. */
+        /* MOVZX EAX,AH must have no REX prefix (which would select SPL). */
+        tcg_out_modrm(s, OPC_MOVZBL, TCG_REG_EAX, TCG_REG_EAX + 4);
+        if (dst != TCG_REG_EAX) {
+            tcg_out_xchg(s, TCG_TYPE_I64, TCG_REG_EAX, dst);
+        }
+    } else {
+        tcg_out8(s, OPC_PUSHF);
+        tcg_out_pop(s, dst);
+    }
+}
+
 static inline void tcg_out_op(TCGContext *s, TCGOpcode opc, TCGType type,
                               const TCGArg args[TCG_MAX_OP_ARGS],
                               const int const_args[TCG_MAX_OP_ARGS])
@@ -3177,8 +3198,7 @@ static inline void tcg_out_op(TCGContext *s, TCGOpcode opc, TCGType type,
         break;
     OP_f32_f64(com):
         tcg_out_modrm(s, dp ? OPC_COMISD : OPC_COMISS, a1, a2);
-        tcg_out8(s, OPC_PUSHF);
-        tcg_out_pop(s, a0);
+        tcg_out_com_flags(s, a0);
         break;
     OP_f32_f64(sqrt):
         tcg_out_modrm(s, dp ? OPC_SQRTSD : OPC_SQRTSS, a0, a1);

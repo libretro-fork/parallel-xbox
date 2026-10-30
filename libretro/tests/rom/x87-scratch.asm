@@ -133,6 +133,42 @@ org 0xfff00000
     %endif
     empty_stack %1
 %endmacro
+; Keep memory-loaded guest GPRs live across native FP flag capture.
+%macro flags_gpr_case 2
+    reset_case %1
+    mov eax,[gpr_seed]
+    mov edx,[gpr_seed+4]
+    mov ecx,[gpr_seed+8]
+    mov ebx,[gpr_seed+12]
+    mov esi,[gpr_seed+16]
+    mov edi,[gpr_seed+20]
+    fld1
+%if %2
+    fld dword [qnan32]
+%else
+    fldz
+%endif
+    fcom st1
+    mov [0x6400],eax
+    mov [0x6404],edx
+    mov [0x6408],ecx
+    mov [0x640c],ebx
+    mov [0x6410],esi
+    mov [0x6414],edi
+    check dword [0x6400],0x1acebeef
+    check dword [0x6404],0x2b1dca11
+    check dword [0x6408],0x3c2eb922
+    check dword [0x640c],0x4d3fa833
+    check dword [0x6410],0x5e409744
+    check dword [0x6414],0x6f518655
+    fnstsw ax
+    and eax,0x4500
+%if %2
+    check eax,0x4500
+%else
+    check eax,0x100
+%endif
+%endmacro
 start:
     rep_test_init
     mov eax,cr0
@@ -156,13 +192,20 @@ start:
     %endrep
     %assign precision precision+1
 %endrep
-    check ebp,97
+    flags_gpr_case 0x7f,0
+    flags_gpr_case 0x7f,1
+    flags_gpr_case 0x37f,0
+    flags_gpr_case 0x37f,1
+    fninit
+    check ebp,101
     mov dword [R],0x4b4f5058 ; XPOK
 .halt:
     cli
     hlt
     jmp .halt
 align 8
+gpr_seed: dd 0x1acebeef,0x2b1dca11,0x3c2eb922,0x4d3fa833,0x5e409744,0x6f518655
+qnan32: dd 0x7fc12345
 one: dd 1.0
 two: dd 2.0
 three: dd 3.0
