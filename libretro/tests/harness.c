@@ -1629,10 +1629,10 @@ int main(int argc, char **argv)
    int multi_batch_runs = 0;
    int64_t t0, t_load, run_max = 0, t_free = 0;
    long expected_total = 0;
-   double audio_frac = 0.0;
+   uint64_t audio_frac = 0;
    /* the 800/801 cadence goes with a state (the core's "libretro-frame"):
     * where it was at --save, put back at its loads */
-   double saved_audio_frac = 0.0;
+   uint64_t saved_audio_frac = 0;
    long cadence_errors = 0;
 
    void (*p_set_env)(retro_environment_t);
@@ -1844,6 +1844,14 @@ int main(int argc, char **argv)
       return 1;
    }
    p_av(&av);
+   /* This core declares 48 kHz at 60000/1001 Hz. Keep the cadence oracle
+    * in integer units: hard-FPU guests can leave host rounding changed. */
+   if (av.timing.sample_rate != 48000.0 ||
+         av.timing.fps < 59.94005993 || av.timing.fps > 59.94005995)
+   {
+      fprintf(stderr, "FAIL: unexpected sample rate or refresh rate\n");
+      return 1;
+   }
    if (use_vulkan && !vk_setup())
    {
       fprintf(stderr, "harness: no Vulkan device\n");
@@ -1985,10 +1993,10 @@ int main(int argc, char **argv)
          audio_max = run_audio;
       if (batches_this_run > 1)
          multi_batch_runs++;
-      audio_frac += av.timing.sample_rate / av.timing.fps;
+      audio_frac += UINT64_C(48000) * 1001;
       {
-         long want = (long)audio_frac;
-         audio_frac -= (double)want;
+         long want = (long)(audio_frac / 60000);
+         audio_frac %= 60000;
          expected_total += want;
          if (run_audio != want)
             cadence_errors++;

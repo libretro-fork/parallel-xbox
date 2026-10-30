@@ -1,5 +1,9 @@
 # The core's tests
 
+The harness validates the declared 48 kHz / 60000:1001 timing and counts audio
+with an integer phase, including phase save/restore. Its cadence oracle stays
+exact when hard-FPU tests leave host floating-point rounding changed.
+
 The qcow2 span test instruments the production layer's file calls while keeping
 the real file backend. It replaces existing data through 130 adjacent spans
 and checks one read/write call, then verifies separated buffers, the 64-run

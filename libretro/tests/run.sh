@@ -372,7 +372,9 @@ for hard in enabled disabled; do
   for boost in enabled disabled; do
     t "x87 scratch, hard FPU $hard, CPU Boost $boost" $h "$(path "$core")" "$(path "$work/sysft0")" \
       $vp --opt "xemu_hard_fpu=$hard" --opt "xemu_cpu_boost=$boost" --frames 60 --strict \
-      --peek 0x300000 --peek 0x300004 >"$work/x87-scratch-$hard-$boost.txt"
+      --peek 0x300000 --peek 0x300004 >"$work/x87-scratch-$hard-$boost.txt" || {
+        cat "$work/x87-scratch-$hard-$boost.txt"; exit 1;
+      }
     for want in "peek_0x300000=0x4b4f5058" "peek_0x300004=0x00000000"; do
       grep -q "^$want$" "$work/x87-scratch-$hard-$boost.txt" || {
         cat "$work/x87-scratch-$hard-$boost.txt"
