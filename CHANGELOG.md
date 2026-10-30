@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Translating the game's code no longer allocates and frees memory for every block translated (about 17,000 times in ten seconds of Ninja Gaiden): the table of the block's constants is made once and emptied in one step.
+
 - The GPU no longer allocates memory each time it raises an interrupt (a few hundred times in ten seconds of Ninja Gaiden): the callback that raises it is made once and reused.
 
 - The emulated graphics chip no longer draws every frame a second time, the old VGA way, into a picture nothing shows: the core shows what the GPU renders. That drawing allocated memory on most frames and made the game's next writes to the screen's memory take the slow path again.

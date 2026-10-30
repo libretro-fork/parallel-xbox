@@ -128,6 +128,14 @@ typedef struct TCGPool {
 #define TCG_POOL_CHUNK_SIZE 32768
 
 #define TCG_MAX_TEMPS 512
+/* twice the most temps a TB can have, so a probe always ends */
+#define TCG_CONST_SLOTS (2 * TCG_MAX_TEMPS)
+
+typedef struct TCGConstSlot {
+    int64_t val;
+    struct TCGTemp *ts;
+    uint32_t gen;
+} TCGConstSlot;
 #define TCG_MAX_INSNS 512
 
 /* when the size of the arguments of a called function is smaller than
@@ -446,7 +454,15 @@ struct TCGContext {
      */
     bool carry_live;
 
-    GHashTable *const_table[TCG_TYPE_COUNT];
+    /*
+     * The constant temps of the TB being translated, by type and value
+     * (tcg_constant_internal): an open-addressed table of
+     * TCG_CONST_SLOTS entries per type, made once. An entry holds when
+     * its gen is const_gen, so tcg_func_start empties them all by moving
+     * const_gen on, with no freeing, clearing or allocating.
+     */
+    struct TCGConstSlot *const_slots;
+    uint32_t const_gen;
     TCGTempSet free_temps[TCG_TYPE_COUNT];
     TCGTemp temps[TCG_MAX_TEMPS]; /* globals first, temps after */
 

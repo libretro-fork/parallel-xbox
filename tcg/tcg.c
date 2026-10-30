@@ -1994,10 +1994,13 @@ void tcg_func_start(TCGContext *s)
     tcg_temp_ebb_reset_freed(s);
 
     /* No constant temps have been previously allocated. */
-    for (int i = 0; i < TCG_TYPE_COUNT; ++i) {
-        if (s->const_table[i]) {
-            g_hash_table_remove_all(s->const_table[i]);
+    if (++s->const_gen == 0) {
+        /* after 2^32 TBs: entries of an old generation could match */
+        if (s->const_slots) {
+            memset(s->const_slots, 0, sizeof(TCGConstSlot) *
+                   TCG_TYPE_COUNT * TCG_CONST_SLOTS);
         }
+        s->const_gen = 1;
     }
 
     s->nb_ops = 0;
@@ -2366,18 +2369,29 @@ void tcg_temp_free_vec(TCGv_vec arg)
 TCGTemp *tcg_constant_internal(TCGType type, int64_t val)
 {
     TCGContext *s = tcg_ctx;
-    GHashTable *h = s->const_table[type];
+    TCGConstSlot *slots, *e;
+    unsigned i;
     TCGTemp *ts;
 
-    if (h == NULL) {
-        h = g_hash_table_new(g_int64_hash, g_int64_equal);
-        s->const_table[type] = h;
+    if (unlikely(s->const_slots == NULL)) {
+        /* zeroed: generation 0 never holds, const_gen starts at 1 */
+        s->const_slots = g_new0(TCGConstSlot,
+                                TCG_TYPE_COUNT * TCG_CONST_SLOTS);
+    }
+    slots = s->const_slots + (size_t)type * TCG_CONST_SLOTS;
+    i = ((uint64_t)val * 0x9E3779B97F4A7C15ull) >> 54;
+    QEMU_BUILD_BUG_ON(TCG_CONST_SLOTS != 1u << 10);
+    for (;; i = (i + 1) & (TCG_CONST_SLOTS - 1)) {
+        e = &slots[i];
+        if (e->gen != s->const_gen) {
+            break;
+        }
+        if (e->val == val) {
+            return e->ts;
+        }
     }
 
-    ts = g_hash_table_lookup(h, &val);
-    if (ts == NULL) {
-        int64_t *val_ptr;
-
+    {
         ts = tcg_temp_alloc(s);
 
         if (TCG_TARGET_REG_BITS == 32 && type == TCG_TYPE_I64) {
@@ -2398,21 +2412,20 @@ TCGTemp *tcg_constant_internal(TCGType type, int64_t val)
 
             /*
              * Retain the full value of the 64-bit constant in the low
-             * part, so that the hash table works.  Actual uses will
-             * truncate the value to the low part.
+             * part.  Actual uses will truncate the value to the low part.
              */
             ts[HOST_BIG_ENDIAN].val = val;
             ts[!HOST_BIG_ENDIAN].val = val >> 32;
-            val_ptr = &ts[HOST_BIG_ENDIAN].val;
         } else {
             ts->base_type = type;
             ts->type = type;
             ts->kind = TEMP_CONST;
             ts->temp_allocated = 1;
             ts->val = val;
-            val_ptr = &ts->val;
         }
-        g_hash_table_insert(h, val_ptr, ts);
+        e->val = val;
+        e->ts = ts;
+        e->gen = s->const_gen;
     }
 
     return ts;
