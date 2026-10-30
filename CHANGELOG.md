@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- OpenGL DXT volume textures preserve the Xbox block order when native VTC compression is available, fixing scrambled slices/colors from the old slice reorder and avoiding that CPU copy. Drivers with 2D S3TC but no VTC use the RGBA8 volume fallback.
+
 - macOS builds include the pthread declarations used by JIT write protection directly, fixing compilation after replacing GLib's headers.
 
 - The meson build is gone (meson.build files, configure, the meson subprojects, Kconfig and the device configs): every platform is built by the Makefile, and the buildbot's Linux jobs now are too, so the buildbot's Linux core is built the same way as the GitHub one. The macOS meson job is dropped; the Makefile's macOS job takes its place.

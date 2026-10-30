@@ -434,6 +434,8 @@ typedef struct PGRAPHGLState {
     size_t tex_scratch_size[2];
     /* S3TC textures uploaded as they are: GL_EXT_texture_compression_s3tc */
     bool s3tc_native;
+    /* Native volume blocks additionally require NV_texture_compression_vtc. */
+    bool s3tc_3d_native;
 
     Lru shader_cache;
     ShaderBinding *shader_cache_entries;
