@@ -12,6 +12,7 @@
 #include "qemu/osdep.h"
 #include "qemu/main-loop.h"
 #include "qemu/thread.h"
+#include "qemu/rcu.h"
 #include "system/system.h"
 #include "system/runstate.h"
 #include "system/memory.h"
@@ -2249,6 +2250,14 @@ static void lr_stop_machine(void)
 static void lr_thread_main(void *opaque)
 {
     int seen = 0;
+
+    /* QEMU's main loop and the vCPU read under RCU (the translation
+     * blocks' hash table, the memory map): registered, as upstream's main
+     * thread (rcu_init) and vCPU threads (rr_cpu_thread_fn) are, so a grace
+     * period waits for them and the vCPU is kicked out of the translated
+     * code for it (lr_start_vcpu's force-RCU notifier). Unregistered, the
+     * call_rcu thread freed what this thread was still reading. */
+    rcu_register_thread();
 
     for (;;) {
         int seq = retro_atomic_load_acquire_int(&lr_cmd_seq);
