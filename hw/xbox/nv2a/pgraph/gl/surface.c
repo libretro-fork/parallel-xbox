@@ -26,6 +26,7 @@
 #include "hw/xbox/nv2a/pgraph/swizzle.h"
 #include "debug.h"
 #include "renderer.h"
+#include "hw/xbox/nv2a/pgraph/scanout.h"
 
 static void surface_download(NV2AState *d, SurfaceBinding *surface, bool force);
 static bool check_surface_compatibility(SurfaceBinding *s1, SurfaceBinding *s2,
@@ -2956,6 +2957,250 @@ static void surface_get_dimensions(PGRAPHState *pg, unsigned int *width,
     }
 }
 
+/* Adapted from xemu PR #2190: resolve offset scanouts on the render thread,
+ * which owns the lists, rather than halting PFIFO from the frontend. Native
+ * linear color regions stay on the GPU. Other layouts use the established
+ * guest-byte readback path, only for this exceptional scanout. */
+typedef struct ScanoutLayer {
+    SurfaceBinding *surface;
+    PGRAPHScanoutRect rect;
+} ScanoutLayer;
+
+static bool scanout_add_layer(const PGRAPHScanout *scan, SurfaceBinding *s,
+                              unsigned format, ScanoutLayer *layers,
+                              unsigned *count)
+{
+    if (!s->width || !s->height || !(s->draw_dirty || s->writeback_owed) ||
+        !pgraph_scanout_overlaps(scan, s->vram_addr, s->size)) {
+        return true;
+    }
+    PGRAPHScanoutRect rect = { 0 };
+    bool native = s->color && !s->swizzle && s->gl_buffer &&
+        s->fmt.gl_internal_format ==
+            kelvin_surface_color_format_gl_map[format].gl_internal_format &&
+        pgraph_scanout_rect(scan, s->vram_addr, s->width, s->height,
+                            s->pitch, s->fmt.bytes_per_pixel, &rect);
+    if (*count == 1024) {
+        return false;
+    }
+    /* Overlapping views must be applied in guest draw order. */
+    unsigned i = (*count)++;
+    while (i && layers[i - 1].surface->draw_time > s->draw_time) {
+        layers[i] = layers[i - 1];
+        i--;
+    }
+    layers[i] = (ScanoutLayer){ s, rect };
+    return native;
+}
+
+SurfaceBinding *pgraph_gl_compose_scanout(NV2AState *d)
+{
+    PGRAPHState *pg = &d->pgraph;
+    PGRAPHGLState *r = pg->gl_renderer_state;
+    VGADisplayParams params;
+    int width, height;
+    d->vga.get_params(&d->vga, &params);
+    d->vga.get_resolution(&d->vga, &width, &height);
+    if (d->vga.cr[NV_PRMCIO_INTERLACE_MODE] !=
+        NV_PRMCIO_INTERLACE_MODE_DISABLED) {
+        height *= 2;
+    }
+    int bits = d->vga.get_bpp(&d->vga);
+    PGRAPHScanout scan;
+    /* start_addr is in words; line_offset is the pitch, not an extra
+     * row at the beginning of the visible framebuffer. */
+    if (!params.start_addr || width <= 0 || height <= 0 ||
+        !pgraph_scanout_init(&scan, (uint64_t)params.start_addr * 4,
+                             width, height, params.line_offset, bits,
+                             memory_region_size(d->vram))) {
+        return NULL;
+    }
+    unsigned format = bits == 32 ? NV097_SET_SURFACE_FORMAT_COLOR_LE_A8R8G8B8 :
+                      bits == 16 ? NV097_SET_SURFACE_FORMAT_COLOR_LE_R5G6B5 :
+                                   NV097_SET_SURFACE_FORMAT_COLOR_LE_X1R5G5B5_Z1R5G5B5;
+    ScanoutLayer layers[1024];
+    unsigned count = 0;
+    bool native = true, overlap = false;
+    SurfaceBinding *s;
+    QTAILQ_FOREACH(s, &r->surfaces, entry) {
+        if (pgraph_scanout_overlaps(&scan, s->vram_addr, s->size)) {
+            overlap = true;
+            s->frame_time = pg->frame_time;
+        }
+        native &= scanout_add_layer(&scan, s, format, layers, &count);
+    }
+    QTAILQ_FOREACH(s, &r->parked, entry) {
+        overlap |= s->writeback_owed &&
+                   pgraph_scanout_overlaps(&scan, s->vram_addr, s->size);
+        native &= scanout_add_layer(&scan, s, format, layers, &count);
+    }
+    /* Do not allocate composition images for ordinary boot/state-load
+     * gaps. After an offset scanout, its RAM-only picture may outlive the
+     * source surfaces, and can keep using the existing images. */
+    if (!overlap && !r->scanout_base) {
+        return NULL;
+    }
+    if (!native) {
+        /* Retired images can owe older bytes overlapping a newer live
+         * surface. Preserve draw order when materializing guest bytes. */
+        if (count == ARRAY_SIZE(layers)) {
+            /* Overflow: rescan for each oldest writer rather than allocate
+             * or omit any surface. The usual case uses the sorted array. */
+            for (;;) {
+                SurfaceBinding *oldest = NULL;
+                QTAILQ_FOREACH(s, &r->surfaces, entry) {
+                    if (s->width && s->height && s->draw_dirty &&
+                        pgraph_scanout_overlaps(&scan, s->vram_addr, s->size) &&
+                        (!oldest || s->draw_time < oldest->draw_time)) {
+                        oldest = s;
+                    }
+                }
+                QTAILQ_FOREACH(s, &r->parked, entry) {
+                    if (s->width && s->height && s->writeback_owed &&
+                        pgraph_scanout_overlaps(&scan, s->vram_addr, s->size) &&
+                        (!oldest || s->draw_time <= oldest->draw_time)) {
+                        oldest = s;
+                    }
+                }
+                if (!oldest) {
+                    break;
+                }
+                if (oldest->writeback_owed) {
+                    parked_materialize(d, oldest);
+                    pgraph_writeback_learn_live(pg, oldest->vram_addr,
+                                                oldest->size);
+                    parked_destroy(d, oldest);
+                } else {
+                    pgraph_gl_surface_download_if_dirty(d, oldest);
+                }
+            }
+        } else {
+            for (unsigned i = 0; i < count; i++) {
+                s = layers[i].surface;
+                if (s->writeback_owed) {
+                    parked_materialize(d, s);
+                    pgraph_writeback_learn_live(pg, s->vram_addr, s->size);
+                    parked_destroy(d, s);
+                } else {
+                    pgraph_gl_surface_download_if_dirty(d, s);
+                }
+            }
+        }
+        count = 0;
+    }
+
+    if (r->scanout_width != scan.width || r->scanout_height != scan.height ||
+        r->scanout_format != format || r->scanout_scale != pg->surface_scale_factor) {
+        for (unsigned i = 0; i < ARRAY_SIZE(r->scanout); i++) {
+            if (r->scanout[i].gl_buffer) {
+                pgraph_gl_display_surface_gone(d, &r->scanout[i]);
+            }
+            memset(&r->scanout[i], 0, sizeof(r->scanout[i]));
+        }
+        glDeleteTextures(1, &r->scanout_base);
+        glGenTextures(1, &r->scanout_base);
+        glBindTexture(GL_TEXTURE_2D, r->scanout_base);
+        SurfaceFormatInfo fmt = kelvin_surface_color_format_gl_map[format];
+        glTexImage2D(GL_TEXTURE_2D, 0, fmt.gl_internal_format,
+                     scan.width, scan.height, 0, fmt.gl_format, fmt.gl_type, NULL);
+        for (unsigned i = 0; i < ARRAY_SIZE(r->scanout); i++) {
+            SurfaceBinding *out = &r->scanout[i];
+            out->color = true;
+            out->width = scan.width;
+            out->height = scan.height;
+            out->fmt = fmt;
+            surface_alloc_texture(pg, out);
+        }
+        if (!r->scanout_fbo[0]) {
+            glGenFramebuffers(2, r->scanout_fbo);
+        }
+        r->scanout_width = scan.width;
+        r->scanout_height = scan.height;
+        r->scanout_format = format;
+        r->scanout_scale = pg->surface_scale_factor;
+        pgraph_gl_tex_shadow_invalidate(r);
+    }
+    SurfaceBinding *out = NULL;
+    for (unsigned i = 0; i < ARRAY_SIZE(r->scanout); i++) {
+        SurfaceBinding *candidate = &r->scanout[r->scanout_next++ % ARRAY_SIZE(r->scanout)];
+        if (!candidate->disp_ref || !qatomic_load_acquire(&candidate->disp_ref->refs)) {
+            out = candidate;
+            break;
+        }
+    }
+    if (!out) {
+        /* The UI fell behind. Keep its previous picture instead of
+         * overwriting a ticket or sending it back to the VGA path. */
+        for (unsigned i = 0; i < ARRAY_SIZE(r->scanout); i++) {
+            if (r->disp_last_surface == &r->scanout[i]) {
+                return &r->scanout[i];
+            }
+        }
+        return NULL;
+    }
+    pgraph_gl_display_surface_reuse(d, out);
+    out->vram_addr = scan.start;
+    out->pitch = scan.pitch;
+    out->size = scan.size;
+    for (unsigned i = 0; i < count; i++) {
+        pgraph_gl_upload_surface_data(d, layers[i].surface, false);
+    }
+    GLint texture, unpack_row, unpack_align, unpack_buffer, read_fbo, draw_fbo;
+    glGetIntegerv(GL_TEXTURE_BINDING_2D, &texture);
+    glGetIntegerv(GL_UNPACK_ROW_LENGTH, &unpack_row);
+    glGetIntegerv(GL_UNPACK_ALIGNMENT, &unpack_align);
+    glGetIntegerv(GL_PIXEL_UNPACK_BUFFER_BINDING, &unpack_buffer);
+    glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &read_fbo);
+    glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &draw_fbo);
+    glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+    glBindTexture(GL_TEXTURE_2D, r->scanout_base);
+    glPixelStorei(GL_UNPACK_ROW_LENGTH, scan.pitch / scan.bpp);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, scan.width, scan.height,
+                    out->fmt.gl_format, out->fmt.gl_type,
+                    (const uint8_t *)d->vram_ptr + scan.start);
+    glPixelStorei(GL_UNPACK_ROW_LENGTH, unpack_row);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, unpack_align);
+    glBindBuffer(GL_PIXEL_UNPACK_BUFFER, unpack_buffer);
+    glBindTexture(GL_TEXTURE_2D, texture);
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, r->scanout_fbo[0]);
+    glFramebufferTexture2D(GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+                           GL_TEXTURE_2D, r->scanout_base, 0);
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, r->scanout_fbo[1]);
+    glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+                           GL_TEXTURE_2D, out->gl_buffer, 0);
+    /* Blits work on GL 4.1 too, without ARB_copy_image. They honor scissor,
+     * so restore the cached draw state after temporarily disabling it. */
+    GLboolean scissor = glIsEnabled(GL_SCISSOR_TEST);
+    glDisable(GL_SCISSOR_TEST);
+    unsigned scale = pg->surface_scale_factor;
+    glBlitFramebuffer(0, 0, scan.width, scan.height,
+                       0, 0, scan.width * scale, scan.height * scale,
+                       GL_COLOR_BUFFER_BIT, GL_NEAREST);
+    for (unsigned i = 0; i < count; i++) {
+        s = layers[i].surface;
+        PGRAPHScanoutRect *p = &layers[i].rect;
+        glFramebufferTexture2D(GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+                               GL_TEXTURE_2D, s->gl_buffer, 0);
+        glBlitFramebuffer(p->sx * scale, p->sy * scale,
+                           (p->sx + p->width) * scale,
+                           (p->sy + p->height) * scale,
+                           p->dx * scale, p->dy * scale,
+                           (p->dx + p->width) * scale,
+                           (p->dy + p->height) * scale,
+                           GL_COLOR_BUFFER_BIT, GL_NEAREST);
+        s->frame_time = pg->frame_time;
+    }
+    if (scissor) {
+        glEnable(GL_SCISSOR_TEST);
+    }
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, read_fbo);
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, draw_fbo);
+    out->draw_time = ++pg->draw_time;
+    return out;
+
+}
+
 void pgraph_gl_init_surfaces(PGRAPHState *pg)
 {
     PGRAPHGLState *r = pg->gl_renderer_state;
@@ -3017,6 +3262,13 @@ void pgraph_gl_finalize_surfaces(PGRAPHState *pg)
 {
     NV2AState *d = container_of(pg, NV2AState, pgraph);
     PGRAPHGLState *r = pg->gl_renderer_state;
+    for (unsigned i = 0; i < ARRAY_SIZE(r->scanout); i++) {
+        if (r->scanout[i].gl_buffer) {
+            pgraph_gl_display_surface_gone(d, &r->scanout[i]);
+        }
+    }
+    glDeleteTextures(1, &r->scanout_base);
+    glDeleteFramebuffers(2, r->scanout_fbo);
 
     flush_surfaces(d);
     glDeleteFramebuffers(1, &r->gl_framebuffer);

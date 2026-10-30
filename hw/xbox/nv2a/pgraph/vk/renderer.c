@@ -131,7 +131,7 @@ static void pgraph_vk_sync(NV2AState *d)
         glo_set_current(g_gl_context);
     }
 #endif
-    pgraph_vk_render_display(pg);
+    pgraph_vk_render_display(pg, NULL);
 
     pgraph_clear_and_notify(&d->pgraph.sync_complete, &d->pgraph.sync_pending);
 }

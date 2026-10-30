@@ -29,6 +29,7 @@
 #include "qemu/compiler.h"
 #include "ui/xemu-settings.h"
 #include "renderer.h"
+#include "hw/xbox/nv2a/pgraph/scanout.h"
 #include <math.h>
 
 const int num_invalid_surfaces_to_keep = 10;  // FIXME: Make automatic
@@ -2413,6 +2414,203 @@ static bool check_surface_internal_formats_supported(
     return all_supported;
 }
 
+
+/* Adapted from xemu PR #2190: resolve offset scanouts on the render thread,
+ * which owns the lists, rather than halting PFIFO from the frontend. Native
+ * linear color regions stay on the GPU. Other layouts use the established
+ * guest-byte readback path, only for this exceptional scanout. */
+typedef struct ScanoutLayer {
+    SurfaceBinding *surface;
+    PGRAPHScanoutRect rect;
+} ScanoutLayer;
+
+static bool scanout_add_layer(const PGRAPHScanout *scan, SurfaceBinding *s,
+                              unsigned format, ScanoutLayer *layers,
+                              unsigned *count)
+{
+    if (!s->width || !s->height || !(s->draw_dirty || s->writeback_owed) ||
+        !pgraph_scanout_overlaps(scan, s->vram_addr, s->size)) {
+        return true;
+    }
+    PGRAPHScanoutRect rect = { 0 };
+    bool native = s->color && !s->swizzle && s->image &&
+        s->host_fmt.vk_format == kelvin_surface_color_format_vk_map[format].vk_format &&
+        pgraph_scanout_rect(scan, s->vram_addr, s->width, s->height,
+                            s->pitch, s->fmt.bytes_per_pixel, &rect);
+    if (*count == 1024) {
+        return false;
+    }
+    /* Overlapping views must be applied in guest draw order. */
+    unsigned i = (*count)++;
+    while (i && layers[i - 1].surface->draw_time > s->draw_time) {
+        layers[i] = layers[i - 1];
+        i--;
+    }
+    layers[i] = (ScanoutLayer){ s, rect };
+    return native;
+}
+
+SurfaceBinding *pgraph_vk_compose_scanout(NV2AState *d)
+{
+    PGRAPHState *pg = &d->pgraph;
+    PGRAPHVkState *r = pg->vk_renderer_state;
+    VGADisplayParams params;
+    int width, height;
+    d->vga.get_params(&d->vga, &params);
+    d->vga.get_resolution(&d->vga, &width, &height);
+    if (d->vga.cr[NV_PRMCIO_INTERLACE_MODE] !=
+        NV_PRMCIO_INTERLACE_MODE_DISABLED) {
+        height *= 2;
+    }
+    int bits = d->vga.get_bpp(&d->vga);
+    PGRAPHScanout scan;
+    /* start_addr is in words; line_offset is the pitch, not an extra
+     * row at the beginning of the visible framebuffer. */
+    if (!params.start_addr || width <= 0 || height <= 0 ||
+        !pgraph_scanout_init(&scan, (uint64_t)params.start_addr * 4,
+                             width, height, params.line_offset, bits,
+                             memory_region_size(d->vram))) {
+        return NULL;
+    }
+    unsigned format = bits == 32 ? NV097_SET_SURFACE_FORMAT_COLOR_LE_A8R8G8B8 :
+                      bits == 16 ? NV097_SET_SURFACE_FORMAT_COLOR_LE_R5G6B5 :
+                                   NV097_SET_SURFACE_FORMAT_COLOR_LE_X1R5G5B5_Z1R5G5B5;
+    ScanoutLayer layers[1024];
+    unsigned count = 0;
+    bool native = true, overlap = false;
+    SurfaceBinding *s;
+    QTAILQ_FOREACH(s, &r->surfaces, entry) {
+        if (pgraph_scanout_overlaps(&scan, s->vram_addr, s->size)) {
+            overlap = true;
+            s->frame_time = pg->frame_time;
+        }
+        native &= scanout_add_layer(&scan, s, format, layers, &count);
+    }
+    QTAILQ_FOREACH(s, &r->invalid_surfaces, entry) {
+        overlap |= s->writeback_owed &&
+                   pgraph_scanout_overlaps(&scan, s->vram_addr, s->size);
+        native &= scanout_add_layer(&scan, s, format, layers, &count);
+    }
+    /* Leave ordinary boot/state-load gaps on their existing path. A
+     * composed framebuffer may subsequently remain visible from RAM. */
+    if (!overlap && !r->scanout.image) {
+        return NULL;
+    }
+    if (!native) {
+        /* Retired images can owe older bytes overlapping a newer live
+         * surface. Preserve draw order when materializing guest bytes. */
+        if (count == ARRAY_SIZE(layers)) {
+            /* Overflow: rescan for each oldest writer rather than allocate
+             * or omit any surface. The usual case uses the sorted array. */
+            for (;;) {
+                SurfaceBinding *oldest = NULL;
+                QTAILQ_FOREACH(s, &r->surfaces, entry) {
+                    if (s->width && s->height && s->draw_dirty &&
+                        pgraph_scanout_overlaps(&scan, s->vram_addr, s->size) &&
+                        (!oldest || s->draw_time < oldest->draw_time)) {
+                        oldest = s;
+                    }
+                }
+                QTAILQ_FOREACH(s, &r->invalid_surfaces, entry) {
+                    if (s->width && s->height && s->writeback_owed &&
+                        pgraph_scanout_overlaps(&scan, s->vram_addr, s->size) &&
+                        (!oldest || s->draw_time <= oldest->draw_time)) {
+                        oldest = s;
+                    }
+                }
+                if (!oldest) {
+                    break;
+                }
+                if (oldest->writeback_owed) {
+                    parked_materialize(d, oldest);
+                    pgraph_writeback_learn_live(pg, oldest->vram_addr,
+                                                oldest->size);
+                } else {
+                    pgraph_vk_surface_download_if_dirty(d, oldest);
+                }
+            }
+        } else {
+            readback_batch_begin(r);
+            for (unsigned i = 0; i < count; i++) {
+                pgraph_vk_surface_download_if_dirty(d, layers[i].surface);
+            }
+            readback_batch_end(d);
+            for (unsigned i = 0; i < count; i++) {
+                s = layers[i].surface;
+                if (s->writeback_owed) {
+                    parked_owed_settled(d, s);
+                    pgraph_writeback_learn_live(pg, s->vram_addr, s->size);
+                }
+            }
+        }
+        count = 0;
+    }
+
+    SurfaceBinding *out = &r->scanout;
+    if (!out->image || out->width != scan.width || out->height != scan.height ||
+        out->shape.color_format != format ||
+        r->scanout_scale != pg->surface_scale_factor) {
+        if (out->image) {
+            /* A mode change only: an empty aux fence follows the display
+             * submissions too, before retiring their input view. */
+            pgraph_vk_finish(pg, VK_FINISH_REASON_FLUSH);
+            VkCommandBuffer drain = pgraph_vk_begin_single_time_commands(pg);
+            pgraph_vk_end_single_time_commands(pg, drain);
+            destroy_surface_image(r, out);
+        }
+        memset(out, 0, sizeof(*out));
+        out->color = true;
+        out->width = scan.width;
+        out->height = scan.height;
+        out->shape.color_format = format;
+        out->fmt = kelvin_surface_color_format_map[format];
+        out->host_fmt = kelvin_surface_color_format_vk_map[format];
+        create_surface_image(pg, out);
+        r->scanout_scale = pg->surface_scale_factor;
+    }
+    out->vram_addr = scan.start;
+    out->pitch = scan.pitch;
+    out->size = scan.size;
+    /* The CPU's border/background bytes go straight from imported RAM
+     * where supported. Dirty GPU regions replace their stale RAM below. */
+    pgraph_vk_upload_surface_data(d, out, true);
+    for (unsigned i = 0; i < count; i++) {
+        s = layers[i].surface;
+        pgraph_vk_upload_surface_data(d, s, false);
+    }
+    VkCommandBuffer cmd = pgraph_vk_begin_nondraw_commands(pg);
+    pgraph_vk_transition_image_layout(pg, cmd, out->image,
+        out->host_fmt.vk_format, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+    unsigned scale = pg->surface_scale_factor;
+    for (unsigned i = 0; i < count; i++) {
+        s = layers[i].surface;
+        PGRAPHScanoutRect *p = &layers[i].rect;
+        VkImageLayout layout = pgraph_vk_surface_base_layout(s);
+        pgraph_vk_transition_image_layout(pg, cmd, s->image,
+            s->host_fmt.vk_format, layout, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+        VkImageCopy copy = {
+            .srcSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 },
+            .dstSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 },
+            .srcOffset = { p->sx * scale, p->sy * scale, 0 },
+            .dstOffset = { p->dx * scale, p->dy * scale, 0 },
+            .extent = { p->width * scale, p->height * scale, 1 },
+        };
+        vkCmdCopyImage(cmd, s->image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                       out->image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy);
+        pgraph_vk_transition_image_layout(pg, cmd, s->image,
+            s->host_fmt.vk_format, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, layout);
+        s->frame_time = pg->frame_time;
+    }
+    pgraph_vk_transition_image_layout(pg, cmd, out->image,
+        out->host_fmt.vk_format, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+    pgraph_vk_end_nondraw_commands(pg, cmd);
+    out->draw_time = ++pg->draw_time;
+    return out;
+
+}
+
 void pgraph_vk_init_surfaces(PGRAPHState *pg)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
@@ -2461,6 +2659,9 @@ void pgraph_vk_init_surfaces(PGRAPHState *pg)
 void pgraph_vk_finalize_surfaces(PGRAPHState *pg)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
+    if (r->scanout.image) {
+        destroy_surface_image(r, &r->scanout);
+    }
 
     pgraph_vk_surface_flush(container_of(pg, NV2AState, pgraph));
     obj_pool_finalize(&r->surface_pool);

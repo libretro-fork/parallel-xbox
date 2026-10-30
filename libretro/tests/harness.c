@@ -30,6 +30,7 @@
  *                       for LEN runs from run F, on --pad-port's port
  *     --lstick F:X:Y[:LEN]  as --stick, the right stick left centred
  *     --shot N FILE     write run N's frame to FILE as a PPM
+ *     --pixel F[:X:Y]   sample the shown picture at X,Y (default centre)
  *     --csv FILE        per-run log: run, audio frames, video flag, us,
  *                       and with --stutter the GPU time of the frame
  *     --stutter         frame-time statistics at the end: of retro_run on
@@ -139,9 +140,11 @@ static int run_no_cb;
 static int shot_at[MAX_SHOTS], nshots;
 static const char *shot_path[MAX_SHOTS];
 /* --pixel: the centre of the picture shown, and its value after given runs */
-#define MAX_PIXELS 8
+#define MAX_PIXELS 32
 static int pixel_at[MAX_PIXELS], npixels;
+static int pixel_x[MAX_PIXELS], pixel_y[MAX_PIXELS];
 static long pixel_val[MAX_PIXELS];
+static long pixel_shown[MAX_PIXELS];
 static long shown_px = -1;
 static unsigned pad_port; /* --pad-port: the RetroPad's port, 0 by default */
 static int stick_first, stick_len, stick_on, stick_left_only;
@@ -1030,6 +1033,24 @@ static bool env_cb(unsigned cmd, void *data)
    }
 }
 
+static void sample_pixels(const unsigned char *px, unsigned w, unsigned h,
+                          int flipped)
+{
+   for (int k = 0; k < npixels; k++)
+   {
+      if (pixel_x[k] < 0)
+         continue;
+      if ((unsigned)pixel_x[k] >= w || (unsigned)pixel_y[k] >= h)
+      {
+         pixel_shown[k] = -1;
+         continue;
+      }
+      unsigned y = flipped ? h - 1 - pixel_y[k] : pixel_y[k];
+      const unsigned char *c = px + ((size_t)y * w + pixel_x[k]) * 4;
+      pixel_shown[k] = ((long)c[0] << 16) | (c[1] << 8) | c[2];
+   }
+}
+
 static void video_cb(const void *data, unsigned w, unsigned h, size_t pitch)
 {
    (void)pitch;
@@ -1048,6 +1069,7 @@ static void video_cb(const void *data, unsigned w, unsigned h, size_t pitch)
       if (!hash_video || !vpx)
          return;
       video_hash = fnv(video_hash, vpx, (size_t)w * h * 4);
+      sample_pixels(vpx, w, h, 0);
       {
          const unsigned char *c = vpx + ((size_t)(h / 2) * w + w / 2) * 4;
          shown_px = ((long)c[0] << 16) | (c[1] << 8) | c[2];
@@ -1087,6 +1109,7 @@ static void video_cb(const void *data, unsigned w, unsigned h, size_t pitch)
       glReadPixels(0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, px);
       p_glBindFramebuffer(GL_FRAMEBUFFER, 0);
       video_hash = fnv(video_hash, px, need);
+      sample_pixels(px, w, h, 1);
       {
          const unsigned char *c = px + ((size_t)(h - 1 - h / 2) * w + w / 2) * 4;
          shown_px = ((long)c[0] << 16) | (c[1] << 8) | c[2];
@@ -1521,7 +1544,17 @@ int main(int argc, char **argv)
                npixels < MAX_PIXELS)
       {
          pixel_val[npixels] = -1;
-         pixel_at[npixels++] = atoi(argv[++i]);
+         pixel_shown[npixels] = -1;
+         pixel_x[npixels] = pixel_y[npixels] = -1;
+         int count = sscanf(argv[++i], "%d:%d:%d", &pixel_at[npixels],
+                            &pixel_x[npixels], &pixel_y[npixels]);
+         if ((count != 1 && count != 3) ||
+             (count == 3 && (pixel_x[npixels] < 0 || pixel_y[npixels] < 0)))
+         {
+            fprintf(stderr, "harness: --pixel expects FRAME or FRAME:X:Y\n");
+            return 1;
+         }
+         npixels++;
          hash_video = 1;
       }
       else if (!strcmp(argv[i], "--peek") && i + 1 < argc && npeek < MAX_PEEK)
@@ -1759,7 +1792,7 @@ int main(int argc, char **argv)
       d = now_us() - a;
       for (k = 0; k < npixels; k++)
          if (pixel_at[k] == run_no)
-            pixel_val[k] = shown_px;
+            pixel_val[k] = pixel_x[k] < 0 ? shown_px : pixel_shown[k];
       if (st_cpu_us)
          st_cpu_us[run_no] = d;
       if (d > run_max)
@@ -1904,6 +1937,14 @@ int main(int argc, char **argv)
       }
       for (k = 0; k < npixels; k++)
       {
+         if (pixel_x[k] >= 0)
+         {
+            if (pixel_val[k] < 0)
+               printf("pixel_%d_%d_%d=none\n", pixel_at[k], pixel_x[k], pixel_y[k]);
+            else
+               printf("pixel_%d_%d_%d=0x%06lx\n", pixel_at[k], pixel_x[k], pixel_y[k], pixel_val[k]);
+            continue;
+         }
          if (pixel_val[k] < 0)
             printf("pixel_%d=none\n", pixel_at[k]);
          else

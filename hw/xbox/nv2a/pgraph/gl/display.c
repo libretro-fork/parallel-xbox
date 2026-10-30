@@ -441,7 +441,7 @@ void pgraph_gl_init_display(NV2AState *d)
     r->disp_post_middle = 2;
     memset(r->disp_posts, 0, sizeof(r->disp_posts));
     QTAILQ_INIT(&r->disp_orphans);
-    r->disp_shown = false;
+    qatomic_set(&r->disp_shown, false);
     /* A ticket per surface the display ever saw, few at a time */
     obj_pool_init(&r->disp_ref_pool, sizeof(DispRef), 64);
     scratch_init(&r->pvideo_scratch, 720 * 576 * 4);
@@ -506,13 +506,16 @@ static bool post_scanout(NV2AState *d, bool *fresh)
     *fresh = false;
     SurfaceBinding *surface = pgraph_gl_surface_get_within(
         d, d->pcrtc.start + vga_display_params.line_offset);
+    if (surface == NULL || !surface->color) {
+        surface = pgraph_gl_compose_scanout(d);
+    }
     if (surface == NULL || !surface->color || !surface->width ||
         !surface->height) {
         r->disp_last_surface = NULL;
-        if (r->disp_shown) {
+        if (qatomic_read(&r->disp_shown)) {
             /* The CRTC left the surfaces (a CPU-drawn frame): an empty ticket
              * sends the UI thread back to the VGA path. */
-            r->disp_shown = false;
+            qatomic_set(&r->disp_shown, false);
             DispPost none = { 0 };
             disp_post_ticket(r, &none);
         }
@@ -590,7 +593,7 @@ static bool post_scanout(NV2AState *d, bool *fresh)
     qatomic_inc(&p.ref->refs);
 
     disp_post_ticket(r, &p);
-    r->disp_shown = true;
+    qatomic_set(&r->disp_shown, true);
 
     r->disp_last_surface = surface;
     r->disp_last_draw_time = surface->draw_time;
@@ -644,11 +647,11 @@ int pgraph_gl_get_framebuffer_surface(NV2AState *d)
 
     /* The surface list belongs to the render thread; walking it here
      * raced against insertions and evictions. Only consult the atomic
-     * emptiness hint -- the render thread resolves the actual scanout on
-     * its own thread and posts it. An empty list (early boot, VGA text)
+     * surface/published-picture hints -- the render thread resolves scanout on
+     * its own thread and posts it. No surfaces or published picture (early boot)
      * keeps the no-kick behaviour, so this never waits on a renderer with
      * nothing to say. */
-    if (!qatomic_read(&r->have_surfaces)) {
+    if (!qatomic_read(&r->have_surfaces) && !qatomic_read(&r->disp_shown)) {
         return 0;
     }
 

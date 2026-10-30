@@ -740,6 +740,8 @@ typedef struct PGRAPHVkState {
     /* The bindings themselves and the swizzled download's staging, kept:
      * no allocation when a surface is met or written back (pool.h) */
     ObjPool surface_pool;
+    SurfaceBinding scanout;
+    unsigned scanout_scale;
     SurfaceBinding *color_binding, *zeta_binding;
     retro_eventcount_t downloads_complete;
     bool download_dirty_surfaces_pending;
@@ -990,6 +992,7 @@ VkDeviceSize pgraph_vk_update_vertex_inline_buffer(PGRAPHState *pg, void **data,
                                                    size_t count);
 
 // surface.c
+SurfaceBinding *pgraph_vk_compose_scanout(NV2AState *d);
 void pgraph_vk_init_surfaces(PGRAPHState *pg);
 void pgraph_vk_finalize_surfaces(PGRAPHState *pg);
 void pgraph_vk_surface_flush(NV2AState *d);
@@ -1033,7 +1036,7 @@ void pgraph_vk_unpack_depth_stencil(PGRAPHState *pg, SurfaceBinding *surface,
 // display.c
 void pgraph_vk_init_display(PGRAPHState *pg);
 void pgraph_vk_finalize_display(PGRAPHState *pg);
-void pgraph_vk_render_display(PGRAPHState *pg);
+void pgraph_vk_render_display(PGRAPHState *pg, SurfaceBinding *surface);
 void pgraph_vk_present_scanout(NV2AState *d);
 
 // texture.c

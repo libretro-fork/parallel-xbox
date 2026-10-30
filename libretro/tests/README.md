@@ -1,5 +1,16 @@
 # The core's tests
 
+`run.sh` also runs `test-scanout.c`: 12,896 clipped linear mappings checked
+against per-pixel guest-byte addresses, plus range boundaries, alignment,
+pitch mismatch and overflow. The GPU ROM tests CPU-written borders around
+two offset render surfaces, a later border write, swizzled byte readback
+overlapping an older parked surface, switching to a RAM-only front buffer,
+retaining the composed picture past surface eviction ages, and switching
+between 32-, 15- and 16-bit display formats. Both OpenGL
+and Vulkan are checked at native and 2x scales. The harness accepts
+`--pixel FRAME:X:Y` to sample a top-left-based physical coordinate, including
+on repeated frames; `--pixel FRAME` retains its centre-pixel behavior.
+
 `rom/rep.asm` and `rom/rep-stos.asm` check REP MOVS copies and STOS fills
 in bare-metal guests with CPU Boost on and off. They share setup and handlers
 in `rom/rep-common.inc`. They cover byte/word/dword operations, fill-value and

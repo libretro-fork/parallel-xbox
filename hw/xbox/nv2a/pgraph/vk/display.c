@@ -1595,6 +1595,9 @@ void pgraph_vk_present_scanout(NV2AState *d)
     d->vga.get_params(&d->vga, &vga_display_params);
     SurfaceBinding *surface = pgraph_vk_surface_get_within(
         d, d->pcrtc.start + vga_display_params.line_offset);
+    if (surface == NULL || !surface->color) {
+        surface = pgraph_vk_compose_scanout(d);
+    }
     if (surface == NULL || !surface->color || !surface->width ||
         !surface->height) {
         return;
@@ -1627,10 +1630,10 @@ void pgraph_vk_present_scanout(NV2AState *d)
     disp->last_mode_height = height;
     disp->last_interlaced = interlaced;
     disp->last_scale = pg->surface_scale_factor;
-    pgraph_vk_render_display(pg);
+    pgraph_vk_render_display(pg, surface);
 }
 
-void pgraph_vk_render_display(PGRAPHState *pg)
+void pgraph_vk_render_display(PGRAPHState *pg, SurfaceBinding *surface)
 {
     NV2AState *d = container_of(pg, NV2AState, pgraph);
     PGRAPHVkState *r = pg->vk_renderer_state;
@@ -1638,8 +1641,13 @@ void pgraph_vk_render_display(PGRAPHState *pg)
     VGADisplayParams vga_display_params;
     d->vga.get_params(&d->vga, &vga_display_params);
 
-    SurfaceBinding *surface = pgraph_vk_surface_get_within(
-        d, d->pcrtc.start + vga_display_params.line_offset);
+    if (!surface) {
+        surface = pgraph_vk_surface_get_within(
+            d, d->pcrtc.start + vga_display_params.line_offset);
+    }
+    if (surface == NULL || !surface->color) {
+        surface = pgraph_vk_compose_scanout(d);
+    }
     if (surface == NULL || !surface->color || !surface->width ||
         !surface->height) {
         return;

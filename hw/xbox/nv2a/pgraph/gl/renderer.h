@@ -336,6 +336,10 @@ typedef struct PGRAPHGLState {
         GLint fmt;
     } texpool[10];
     unsigned int texpool_n;
+    SurfaceBinding scanout[3];
+    GLuint scanout_base, scanout_fbo[2];
+    unsigned scanout_width, scanout_height, scanout_format, scanout_scale;
+    unsigned scanout_next;
     SurfaceBinding *color_binding, *zeta_binding;
     /* One cached FBO per (color, zeta) pair, so a target switch is a plain
      * glBindFramebuffer and the driver keeps its per-FBO validation;
@@ -577,6 +581,7 @@ void pgraph_gl_init_reports(NV2AState *d);
 void pgraph_gl_finalize_reports(PGRAPHState *pg);
 void pgraph_gl_init_shaders(PGRAPHState *pg);
 void pgraph_gl_finalize_shaders(PGRAPHState *pg);
+SurfaceBinding *pgraph_gl_compose_scanout(NV2AState *d);
 void pgraph_gl_init_surfaces(PGRAPHState *pg);
 void pgraph_gl_finalize_surfaces(PGRAPHState *pg);
 void pgraph_gl_init_textures(NV2AState *d);

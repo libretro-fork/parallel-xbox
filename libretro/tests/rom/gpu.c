@@ -61,7 +61,7 @@
  *   from frame 50: into B, a triangle drawn, B cleared, the same triangle
  *              drawn again: draws and clears on both renderers, the
  *              picture (A) unchanged by them
- *   from frame 100: after that, until the vblank and at most TRIPS_MAX
+ *   from frame 100 through 124: until the vblank and at most TRIPS_MAX
  *              times, the GPU given a run of no-ops (NOP_SUB, 8 times)
  *              and waited for on a semaphore in RAM: the fewest of these
  *              round trips in a frame (from frame 101, the first whole
@@ -69,6 +69,13 @@
  *              guest no more than the GPU's time. Its time moving on to
  *              its next deadline while it waited instead made 1; Ninja
  *              Gaiden Black, waiting so on its GPU, ran in slow motion
+ *
+ *   frames 125..154: offset red/green GPU tiles over a blue CPU frame;
+ *              the CPU changes its top border to yellow at 140.
+ *   frame 155: swizzled cyan bytes overlap an older parked red view.
+ *   frames 175/185: leave and return; the static picture survives to 240.
+ *   frames 255/285: change to 15/16-bit scanout, red tile and blue border.
+ * The larger command ring keeps this extended scenario before wraparound.
  *
  * The frame count is at GPU_FRAMES in RAM, GPU_STATUS says how far the
  * setup got (0 running).
@@ -92,6 +99,7 @@ typedef unsigned int u32;
 #define GPU_ZETA2    0x00300034u   /* u32: B's depth word at frame 72 */
 #define GPU_SWZ2_BAD 0x00300038u   /* u32: E's wrong texels, read at frame 75 */
 #define GPU_ZETA3    0x0030003Cu   /* u32: B's first depth word, frame 65 */
+#define GPU_SCANOUT  0x00300040u   /* u32: offset scanout test steps, 0x7f */
 /* 0x00300010: the pushbuffer's write offset (put) */
 
 #define NV2A         0xFD000000u   /* BAR0, the registers */
@@ -119,10 +127,11 @@ typedef unsigned int u32;
 #define PRMVIO_MISC_W     0x0C03C2
 #define PRMCIO_CRX        0x6013D4
 #define PRMCIO_CR         0x6013D5
+#define PRAMDAC_GENERAL   0x680600
 
 /* RAM: the pushbuffer and the surfaces (the NV2A's memory is the RAM) */
 #define PUSHBUF      0x00800000u
-#define PUSHBUF_SIZE 0x00010000u
+#define PUSHBUF_SIZE 0x00040000u
 /* a pushbuffer subroutine of 14329 no-ops: GPU work that takes the GPU's
  * thread a while and any renderer the same */
 #define NOP_SUB      PUSHBUF_SIZE
@@ -141,6 +150,8 @@ typedef unsigned int u32;
 #define C_H          (1u << C_LOG_H)
 #define ZETA_B       (SURF_B + 0x200000u)
 #define SURF_D       0x01A00000u   /* shown from frame 105 */
+#define SURF_F       0x02000000u   /* CPU border, two offset GPU tiles */
+#define SURF_G       0x02400000u   /* 15-bit mode change, offset tile */
 #define ZS_CLEAR     0x12345678u   /* depth 0x123456, stencil 0x78 */
 
 /* RAMIN: the hash table, then the objects (16 bytes each) */
@@ -444,6 +455,7 @@ void gpu_main(void)
      * then 640x480, 32 bits, a line of PITCH bytes */
     wr8(PRMVIO_MISC_W, 0x01);
     cr(0x11, 0x00);
+    cr(0x39, 0xFF); /* progressive scanout */
     cr(0x01, WIDTH / 8 - 1);
     cr(0x12, (HEIGHT - 1) & 0xFF);
     cr(0x07, (((HEIGHT - 1) >> 8) & 1) << 1 | (((HEIGHT - 1) >> 9) & 1) << 6);
@@ -520,6 +532,7 @@ void gpu_main(void)
     kick();
     wr(PCRTC_START, SURF_A);
     ram32(GPU_STATUS, 0);
+    ram32(GPU_SCANOUT, 0);
 
     for (u32 frame = 1;; frame++) {
         wait_vblank();
@@ -595,7 +608,7 @@ void gpu_main(void)
         } else {
             clear(SURF_B, 0xFF0000FFu | (frame << 8));
         }
-        if (frame >= 105) {
+        if (frame >= 105 && frame < 125) {
             /* into D, shown: a draw, a clear of a corner's colour channels
              * but alpha (the surface left as it is), the same draw. Such a
              * clear is drawn with the clear's own pipeline; the draw after
@@ -613,9 +626,81 @@ void gpu_main(void)
                 wr(PCRTC_START, SURF_D);
             }
         }
+        if (frame == 125) {
+            ram32(GPU_SCANOUT, rd32(GPU_SCANOUT) | 1);
+            for (u32 i = 0; i < PITCH * HEIGHT; i += 4) {
+                ram32(SURF_F + i, 0xFF0000FFu);
+            }
+            wr(PCRTC_START, SURF_F);
+        }
+        if (frame == 140) {
+            ram32(GPU_SCANOUT, rd32(GPU_SCANOUT) | 2);
+            for (u32 i = 0; i < PITCH * 64; i += 4) {
+                ram32(SURF_F + i, 0xFFFFFF00u);
+            }
+        }
+        if (frame >= 125 && frame < 155) {
+            method(NV097_SET_SURFACE_CLIP_H, 608u << 16);
+            method(NV097_SET_SURFACE_CLIP_V, 176u << 16);
+            clear(SURF_F + 64 * PITCH + 16 * 4, 0xFFFF0000u);
+            clear(SURF_F + 240 * PITCH + 16 * 4, 0xFF00FF00u);
+            method(NV097_SET_SURFACE_CLIP_H, (u32)WIDTH << 16);
+            method(NV097_SET_SURFACE_CLIP_V, (u32)HEIGHT << 16);
+        }
+        if (frame == 155) {
+            ram32(GPU_SCANOUT, rd32(GPU_SCANOUT) | 4);
+            /* Raw-byte fallback: 32x16 Morton pixels occupy 512 contiguous
+             * words in scanout row 120, not a 32x16 display rectangle. */
+            method(NV097_SET_SURFACE_CLIP_H, 32u << 16);
+            method(NV097_SET_SURFACE_CLIP_V, 16u << 16);
+            method(NV097_SET_SURFACE_FORMAT, 0x08u | (2u << 4) | (2u << 8) |
+                                                 (5u << 16) | (4u << 24));
+            method(NV097_SET_SURFACE_COLOR_OFFSET, SURF_F + 120 * PITCH + 16 * 4);
+            method(NV097_SET_COLOR_CLEAR_VALUE, 0xFF00FFFFu);
+            method(NV097_SET_CLEAR_RECT_H, 31u << 16);
+            method(NV097_SET_CLEAR_RECT_V, 15u << 16);
+            method(NV097_CLEAR_SURFACE, 0xF0);
+            method(NV097_SET_SURFACE_FORMAT, 0x08u | (2u << 4) | (1u << 8));
+            method(NV097_SET_SURFACE_CLIP_H, (u32)WIDTH << 16);
+            method(NV097_SET_SURFACE_CLIP_V, (u32)HEIGHT << 16);
+            method(NV097_SET_SURFACE_COLOR_OFFSET, SURF_B);
+        }
+        if (frame == 175) {
+            wr(PCRTC_START, SURF_A);
+            ram32(GPU_SCANOUT, rd32(GPU_SCANOUT) | 8);
+        }
+        if (frame == 185) {
+            wr(PCRTC_START, SURF_F);
+            ram32(GPU_SCANOUT, rd32(GPU_SCANOUT) | 16);
+        }
+        if (frame == 255) {
+            for (u32 i = 0; i < WIDTH * HEIGHT * 2; i += 4) {
+                ram32(SURF_G + i, 0x001F001Fu);
+            }
+            cr(0x13, ((WIDTH * 2) / 8) & 0xFF);
+            cr(0x19, 0);
+            cr(0x28, 2); /* 15 bits: PRAMDAC ALT_MODE_SEL is zero */
+            wr(PCRTC_START, SURF_G);
+            ram32(GPU_SCANOUT, rd32(GPU_SCANOUT) | 32);
+        }
+        if (frame == 285) {
+            wr(PRAMDAC_GENERAL, rd(PRAMDAC_GENERAL) | (1u << 12));
+            ram32(GPU_SCANOUT, rd32(GPU_SCANOUT) | 64);
+        }
+        if (frame >= 255) {
+            method(NV097_SET_SURFACE_FORMAT, (frame < 285 ? 0x01u : 0x03u) |
+                                              (2u << 4) | (1u << 8));
+            method(NV097_SET_SURFACE_PITCH, WIDTH * 2 | ((u32)WIDTH * 2 << 16));
+            method(NV097_SET_SURFACE_CLIP_H, 608u << 16);
+            method(NV097_SET_SURFACE_CLIP_V, 352u << 16);
+            clear(SURF_G + 64 * WIDTH * 2 + 16 * 2,
+                  frame < 285 ? 0x7C007C00u : 0xF800F800u);
+            method(NV097_SET_SURFACE_CLIP_H, (u32)WIDTH << 16);
+            method(NV097_SET_SURFACE_CLIP_V, (u32)HEIGHT << 16);
+        }
         method(NV097_FLIP_INCREMENT_WRITE, 0);
         kick();
-        if (frame >= 100) {
+        if (frame >= 100 && frame < 125) {
             /* until the vblank: work for the GPU, then a wait on it, as a
              * game waits on a fence. The wait spins on RAM (a wait the
              * core sees as one), and takes the guest only the GPU's
