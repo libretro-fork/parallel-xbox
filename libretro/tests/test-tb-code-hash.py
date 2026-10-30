@@ -11,4 +11,5 @@ env=os.environ.copy();env['PATH']=str(Path(cc).resolve().parent)+os.pathsep+env.
 with tempfile.TemporaryDirectory(prefix='tb-code-hash-',dir=repo.parent) as directory:
  p=Path(directory);(p/'test.c').write_text(code);exe=p/('test.exe' if os.name=='nt' else 'test')
  subprocess.run([cc,'-O2','-std=gnu11','-Wall','-Wextra','-Werror','-I'+str(repo/'include'),'-I'+str(repo/'libretro-common/include'),'-fsanitize=undefined','-fsanitize-undefined-trap-on-error',str(p/'test.c'),str(repo/'util/fast-hash.c'),str(repo/'libretro-common/encodings/encoding_xxh3.c'),'-o',str(exe)],check=True,env=env)
- subprocess.run([str(exe)],check=True,env=env)
+ for mode in [[],["sse2"],["avx2"],["avx512"]]:
+  subprocess.run([str(exe)]+mode,check=True,env=env)

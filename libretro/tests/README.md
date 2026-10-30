@@ -359,7 +359,11 @@ host pixel-transfer test.
 hashing against byte-fetch oracles with the portable XXH3 implementation.
 It covers page ends, nonadjacent/aliased mappings, device-read side effects,
 sub-page fallback, mutations and executable-page faults, including 200,000
-randomized comparisons under undefined-behavior traps.
+randomized comparisons per available scalar/SSE2/AVX2/AVX-512 path under
+undefined-behavior traps. Each case also checks an already-resolved first-page
+pointer: no extra probe for same-page RAM, with boundaries/devices retaining
+their fallback. Cross-page device reads must precede resolving a later page
+whose mapping they enable.
 
 `python3 libretro/tests/test-vulkan-rgb-snorm.py CHECKOUT [CC]` requires Linux
 Vulkan and Khronos validation layers. It runs the production RGB655 conversion,

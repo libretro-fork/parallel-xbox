@@ -273,6 +273,7 @@ struct tb_desc {
     TCGTBCPUState s;
     CPUArchState *env;
     tb_page_addr_t page_addr0;
+    const void *host_pc;
 };
 
 static bool tb_lookup_cmp(const void *p, const void *d)
@@ -314,7 +315,8 @@ static bool tb_lookup_cmp(const void *p, const void *d)
 
 static TranslationBlock *
 tb_htable_lookup_common(CPUState *cpu, TCGTBCPUState s, const struct qht *ht,
-                        qht_lookup_func_t func, tb_page_addr_t phys_pc)
+                        qht_lookup_func_t func, tb_page_addr_t phys_pc,
+                        const void *host_pc)
 {
     struct tb_desc desc;
     uint32_t h;
@@ -325,6 +327,7 @@ tb_htable_lookup_common(CPUState *cpu, TCGTBCPUState s, const struct qht *ht,
         return NULL;
     }
     desc.page_addr0 = phys_pc;
+    desc.host_pc = host_pc;
     h = tb_hash_func(phys_pc, (s.cflags & CF_PCREL ? 0 : s.pc),
                      s.flags, s.cs_base, s.cflags);
     return qht_lookup_custom(ht, &desc, h, func);
@@ -334,7 +337,7 @@ static TranslationBlock *tb_htable_lookup(CPUState *cpu, TCGTBCPUState s)
 {
     tb_page_addr_t phys_pc = get_page_addr_code(cpu_env(cpu), s.pc);
     return tb_htable_lookup_common(cpu, s, &tb_ctx.htable, tb_lookup_cmp,
-                                  phys_pc);
+                                  phys_pc, NULL);
 }
 
 static bool inv_tb_lookup_cmp(const void *p, const void *d)
@@ -343,16 +346,18 @@ static bool inv_tb_lookup_cmp(const void *p, const void *d)
     const struct tb_desc *desc = d;
 
     return tb_lookup_cmp(p, d) &&
-           tb->ihash == tb_code_hash_func(desc->env, desc->s.pc, tb->size);
+           tb->ihash == tb_code_hash_func_host(desc->env, desc->s.pc, tb->size,
+                                                desc->host_pc);
 }
 
 TranslationBlock *inv_tb_htable_lookup(CPUState *cpu, TCGTBCPUState s,
-                                       tb_page_addr_t phys_pc)
+                                       tb_page_addr_t phys_pc,
+                                       const void *host_pc)
 {
     /* tb_gen_code already performed the executable-page probe. Reuse that
      * result, including the non-cacheable -1 sentinel, before any execution. */
     return tb_htable_lookup_common(cpu, s, &tb_ctx.inv_htable, inv_tb_lookup_cmp,
-                                  phys_pc);
+                                  phys_pc, host_pc);
 }
 
 /* HACK (CPU boost): xemu builds only x86, so this hottest hook is called

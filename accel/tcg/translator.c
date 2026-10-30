@@ -387,7 +387,9 @@ void translator_loop(CPUState *cpu, TranslationBlock *tb, int *max_insns,
     /* May be used by disas_log or plugin callbacks. */
     tb->size = db->pc_next - db->pc_first;
     tb->icount = db->num_insns;
-    tb->ihash = tb_code_hash_func(cpu_env(cpu), db->pc_first, tb->size);
+    tb->ihash = tb_code_hash_func_host(cpu_env(cpu), db->pc_first, tb->size,
+                                      tb_page_addr0(tb) != -1 ?
+                                      db->host_addr[0] : NULL);
 
     if (plugin_enabled) {
         plugin_gen_tb_end(cpu, db->num_insns);

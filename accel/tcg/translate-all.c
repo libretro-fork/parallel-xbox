@@ -290,7 +290,7 @@ TranslationBlock *tb_gen_code(CPUState *cpu, TCGTBCPUState s)
     }
     QEMU_BUILD_BUG_ON(CF_COUNT_MASK + 1 != TCG_MAX_INSNS);
 
-    tb = inv_tb_htable_lookup(cpu, s, phys_pc);
+    tb = inv_tb_htable_lookup(cpu, s, phys_pc, host_pc);
     if (tb) {
         qemu_spin_lock(&tb->jmp_lock);
         qatomic_set(&tb->cflags, tb->cflags & ~CF_INVALID);
