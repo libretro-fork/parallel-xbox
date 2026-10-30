@@ -165,6 +165,7 @@ QEMU_EXTERN_C int daemon(int, int);
 
 #ifdef __APPLE__
 #include <AvailabilityMacros.h>
+#include <pthread.h>
 #endif
 
 /*
