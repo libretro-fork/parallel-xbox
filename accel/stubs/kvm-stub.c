@@ -44,16 +44,6 @@ int kvm_on_sigbus(int code, void *addr)
     return 1;
 }
 
-unsigned int kvm_get_max_memslots(void)
-{
-    return 0;
-}
-
-unsigned int kvm_get_free_memslots(void)
-{
-    return 0;
-}
-
 bool kvm_dirty_ring_enabled(void)
 {
     return false;

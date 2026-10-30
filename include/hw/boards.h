@@ -268,7 +268,6 @@ struct MachineClass {
     bool auto_enable_numa_with_memdev;
     bool ignore_boot_device_suffixes;
     bool smbus_no_migration_support;
-    bool nvdimm_supported;
     bool numa_mem_supported;
     bool auto_enable_numa;
     bool cpu_cluster_has_numa_boundary;
@@ -390,7 +389,6 @@ struct MachineState {
     CPUArchIdList *possible_cpus;
     CpuTopology smp;
     SmpCache smp_cache;
-    struct NVDIMMState *nvdimms_state;
     struct NumaState *numa_state;
     bool acpi_spcr_enabled;
 };

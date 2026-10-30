@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- The PC machine code the Xbox is built on loses what the Xbox never has: memory hotplug (DIMMs, NVDIMMs, virtio memory), the fw_cfg firmware interface (and the -fw_cfg option) and the ACPI table builder the PC BIOS reads. The Xbox's own ACPI power management (acpi_xbox.c) stays. Nothing changes for someone using the core.
+
 - Devices and services the Xbox machine never creates are removed: the TLS channel, credentials and sessions, the command, DNS-resolver and network-listener channels, the qtest server (and its -qtest options), and the IOAPIC (the Xbox's interrupts go through the MCPX's i8259 pair). Nothing changes for someone using the core.
 
 - The test harness checks audio cadence with an integer phase, avoiding false sample-count failures when hard-FPU tests change host rounding. The declared timing is checked explicitly, and failed x87 test output is retained in CI logs. Core audio output is unchanged.

@@ -2929,3 +2929,15 @@ stubs/qtest.c
 hw/intc/ioapic.c
 hw/intc/ioapic_common.c
 hw/intc/ioapic_internal.h
+hw/acpi/nvdimm.c
+hw/mem/pc-dimm.c
+hw/mem/memory-device.c
+hw/virtio/virtio-md-stubs.c
+hw/acpi/aml-build.c
+hw/acpi/pcihp.c
+hw/acpi/pci-bridge.c
+hw/acpi/bios-linker-loader.c
+hw/nvram/fw_cfg.c
+hw/nvram/fw_cfg-interface.c
+hw/i386/fw_cfg.c
+stubs/fw_cfg.c

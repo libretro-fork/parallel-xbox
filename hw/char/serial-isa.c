@@ -27,7 +27,6 @@
 #include "qapi/error.h"
 #include "qemu/module.h"
 #include "system/system.h"
-#include "hw/acpi/acpi_aml_interface.h"
 #include "hw/char/serial.h"
 #include "hw/char/serial-isa.h"
 #include "hw/isa/isa.h"
@@ -84,25 +83,6 @@ static void serial_isa_realizefn(DeviceState *dev, Error **errp)
     isa_register_ioport(isadev, &s->io, isa->iobase);
 }
 
-static void serial_isa_build_aml(AcpiDevAmlIf *adev, Aml *scope)
-{
-    ISASerialState *isa = ISA_SERIAL(adev);
-    Aml *dev;
-    Aml *crs;
-
-    crs = aml_resource_template();
-    aml_append(crs, aml_io(AML_DECODE16, isa->iobase, isa->iobase, 0x00, 0x08));
-    aml_append(crs, aml_irq_no_flags(isa->isairq));
-
-    dev = aml_device("COM%d", isa->index + 1);
-    aml_append(dev, aml_name_decl("_HID", aml_eisaid("PNP0501")));
-    aml_append(dev, aml_name_decl("_UID", aml_int(isa->index + 1)));
-    aml_append(dev, aml_name_decl("_STA", aml_int(0xf)));
-    aml_append(dev, aml_name_decl("_CRS", crs));
-
-    aml_append(scope, dev);
-}
-
 static const VMStateDescription vmstate_isa_serial = {
     .name = "serial",
     .version_id = 3,
@@ -122,11 +102,9 @@ static const Property serial_isa_properties[] = {
 static void serial_isa_class_initfn(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
-    AcpiDevAmlIfClass *adevc = ACPI_DEV_AML_IF_CLASS(klass);
 
     dc->realize = serial_isa_realizefn;
     dc->vmsd = &vmstate_isa_serial;
-    adevc->build_dev_aml = serial_isa_build_aml;
     device_class_set_props(dc, serial_isa_properties);
     set_bit(DEVICE_CATEGORY_INPUT, dc->categories);
 }
@@ -146,10 +124,6 @@ static const TypeInfo serial_isa_info = {
     .instance_size = sizeof(ISASerialState),
     .instance_init = serial_isa_initfn,
     .class_init    = serial_isa_class_initfn,
-    .interfaces = (const InterfaceInfo[]) {
-        { TYPE_ACPI_DEV_AML_IF },
-        { },
-    },
 };
 
 static void serial_register_types(void)

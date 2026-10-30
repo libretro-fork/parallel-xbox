@@ -20,9 +20,9 @@
  */
 
 #include "qemu/osdep.h"
+#include "qemu/timer.h"
 #include "hw/irq.h"
 #include "hw/acpi/acpi.h"
-#include "hw/nvram/fw_cfg.h"
 #include "qemu/config-file.h"
 #include "qapi/error.h"
 #include "qapi/opts-visitor.h"
@@ -545,8 +545,6 @@ void acpi_pm1_cnt_init(ACPIREGS *ar, MemoryRegion *parent,
                        bool disable_s3, bool disable_s4, uint8_t s4_val,
                        bool acpi_only)
 {
-    FWCfgState *fw_cfg;
-
     ar->pm1.cnt.s4_val = s4_val;
     ar->pm1.cnt.acpi_only = acpi_only;
     ar->wakeup.notify = acpi_notify_wakeup;
@@ -560,15 +558,6 @@ void acpi_pm1_cnt_init(ACPIREGS *ar, MemoryRegion *parent,
     memory_region_init_io(&ar->pm1.cnt.io, memory_region_owner(parent),
                           &acpi_pm_cnt_ops, ar, "acpi-cnt", 2);
     memory_region_add_subregion(parent, 4, &ar->pm1.cnt.io);
-
-    fw_cfg = fw_cfg_find();
-    if (fw_cfg) {
-        uint8_t suspend[6] = {128, 0, 0, 129, 128, 128};
-        suspend[3] = 1 | ((!disable_s3) << 7);
-        suspend[4] = s4_val | ((!disable_s4) << 7);
-
-        fw_cfg_add_file(fw_cfg, "etc/system-states", g_memdup(suspend, 6), 6);
-    }
 }
 
 void acpi_pm1_cnt_reset(ACPIREGS *ar)

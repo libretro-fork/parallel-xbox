@@ -113,19 +113,6 @@ bool qnum_get_try_uint(const QNum *qn, uint64_t *val)
 }
 
 /**
- * qnum_get_uint(): Get an unsigned integer from the number
- *
- * assert() on failure.
- */
-uint64_t qnum_get_uint(const QNum *qn)
-{
-    uint64_t val;
-    bool success = qnum_get_try_uint(qn, &val);
-    assert(success);
-    return val;
-}
-
-/**
  * qnum_get_double(): Get a float representation of the number
  *
  * qnum_get_double() loses precision for integers beyond 53 bits.

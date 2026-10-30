@@ -1562,32 +1562,6 @@ bool memory_region_init_ram_flags_nomigrate(MemoryRegion *mr,
     return true;
 }
 
-bool memory_region_init_resizeable_ram(MemoryRegion *mr,
-                                       Object *owner,
-                                       const char *name,
-                                       uint64_t size,
-                                       uint64_t max_size,
-                                       void (*resized)(const char*,
-                                                       uint64_t length,
-                                                       void *host),
-                                       Error **errp)
-{
-    Error *err = NULL;
-    memory_region_init(mr, owner, name, size);
-    mr->ram = true;
-    mr->terminates = true;
-    mr->destructor = memory_region_destructor_ram;
-    mr->ram_block = qemu_ram_alloc_resizeable(size, max_size, resized,
-                                              mr, &err);
-    if (err) {
-        mr->size = int128_zero();
-        object_unparent(OBJECT(mr));
-        error_propagate(errp, err);
-        return false;
-    }
-    return true;
-}
-
 #if defined(CONFIG_POSIX) && !defined(EMSCRIPTEN)
 
 #endif
@@ -2108,13 +2082,6 @@ ram_addr_t memory_region_get_ram_addr(MemoryRegion *mr)
     return mr->ram_block ? mr->ram_block->offset : RAM_ADDR_INVALID;
 }
 
-void memory_region_ram_resize(MemoryRegion *mr, ram_addr_t newsize, Error **errp)
-{
-    assert(mr->ram_block);
-
-    qemu_ram_resize(mr->ram_block, newsize, errp);
-}
-
 /*
  * Call proper memory listeners about the change on the newly
  * added/removed CoalescedMemoryRange.
@@ -2363,11 +2330,6 @@ void memory_region_set_size(MemoryRegion *mr, uint64_t size)
     mr->size = s;
     memory_region_update_pending = true;
     memory_region_transaction_commit();
-}
-
-uint64_t memory_region_get_alignment(const MemoryRegion *mr)
-{
-    return mr->align;
 }
 
 static int cmp_flatrange_addr(const void *addr_, const void *fr_)

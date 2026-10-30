@@ -410,7 +410,6 @@ SOURCES_UTIL := \
 	$(CORE_DIR)/stubs/cpus-virtual-clock.c \
 	$(CORE_DIR)/stubs/error-printf.c \
 	$(CORE_DIR)/stubs/fdset.c \
-	$(CORE_DIR)/stubs/fw_cfg.c \
 	$(CORE_DIR)/stubs/get-vm-name.c \
 	$(CORE_DIR)/stubs/graph-lock.c \
 	$(CORE_DIR)/stubs/hotplug-stubs.c \
@@ -616,12 +615,7 @@ SOURCES_SYSTEM := \
 	$(CORE_DIR)/backends/hostmem.c \
 	$(CORE_DIR)/cpu-target.c \
 	$(CORE_DIR)/hw/acpi/acpi_interface.c \
-	$(CORE_DIR)/hw/acpi/aml-build.c \
-	$(CORE_DIR)/hw/acpi/bios-linker-loader.c \
 	$(CORE_DIR)/hw/acpi/core.c \
-	$(CORE_DIR)/hw/acpi/nvdimm.c \
-	$(CORE_DIR)/hw/acpi/pci-bridge.c \
-	$(CORE_DIR)/hw/acpi/pcihp.c \
 	$(CORE_DIR)/hw/audio/pcspk.c \
 	$(CORE_DIR)/hw/block/block.c \
 	$(CORE_DIR)/hw/block/cdrom.c \
@@ -661,12 +655,8 @@ SOURCES_SYSTEM := \
 	$(CORE_DIR)/hw/intc/intc.c \
 	$(CORE_DIR)/hw/intc/kvm_irqcount.c \
 	$(CORE_DIR)/hw/isa/isa-bus.c \
-	$(CORE_DIR)/hw/mem/memory-device.c \
-	$(CORE_DIR)/hw/mem/pc-dimm.c \
 	$(CORE_DIR)/hw/misc/pci-testdev.c \
 	$(CORE_DIR)/hw/net/vhost_net-stub.c \
-	$(CORE_DIR)/hw/nvram/fw_cfg-interface.c \
-	$(CORE_DIR)/hw/nvram/fw_cfg.c \
 	$(CORE_DIR)/hw/pci/msi.c \
 	$(CORE_DIR)/hw/pci/msix.c \
 	$(CORE_DIR)/hw/pci/pci.c \
@@ -688,7 +678,6 @@ SOURCES_SYSTEM := \
 	$(CORE_DIR)/hw/usb/pcap.c \
 	$(CORE_DIR)/hw/vfio/iommufd-stubs.c \
 	$(CORE_DIR)/hw/virtio/vhost-stub.c \
-	$(CORE_DIR)/hw/virtio/virtio-md-stubs.c \
 	$(CORE_DIR)/hw/watchdog/watchdog.c \
 	$(CORE_DIR)/hw/xen/xen_stubs.c \
 	$(CORE_DIR)/migration/cpr-exec.c \
@@ -773,7 +762,6 @@ SOURCES_TARGET := \
 	$(CORE_DIR)/accel/stubs/kvm-stub.c \
 	$(CORE_DIR)/accel/stubs/xen-stub.c \
 	$(CORE_DIR)/hw/i386/e820_memory_layout.c \
-	$(CORE_DIR)/hw/i386/fw_cfg.c \
 	$(CORE_DIR)/hw/i386/kvm/xen-stubs.c \
 	$(CORE_DIR)/hw/i386/pc.c \
 	$(CORE_DIR)/hw/i386/pc_sysfw.c \

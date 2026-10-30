@@ -2124,23 +2124,6 @@ static void property_release_data(Object *obj, const char *name,
 }
 
 ObjectProperty *
-object_property_add_str(Object *obj, const char *name,
-                        char *(*get)(Object *, Error **),
-                        void (*set)(Object *, const char *, Error **))
-{
-    StringProperty *prop = g_malloc0(sizeof(*prop));
-
-    prop->get = get;
-    prop->set = set;
-
-    return object_property_add(obj, name, "string",
-                               get ? property_get_str : NULL,
-                               set ? property_set_str : NULL,
-                               property_release_data,
-                               prop);
-}
-
-ObjectProperty *
 object_class_property_add_str(ObjectClass *klass, const char *name,
                                    char *(*get)(Object *, Error **),
                                    void (*set)(Object *, const char *,

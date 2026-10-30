@@ -435,34 +435,6 @@ static QemuOptsList qemu_icount_opts = {
     },
 };
 
-static QemuOptsList qemu_fw_cfg_opts = {
-    .name = "fw_cfg",
-    .implied_opt_name = "name",
-    .head = QTAILQ_HEAD_INITIALIZER(qemu_fw_cfg_opts.head),
-    .desc = {
-        {
-            .name = "name",
-            .type = QEMU_OPT_STRING,
-            .help = "Sets the fw_cfg name of the blob to be inserted",
-        }, {
-            .name = "file",
-            .type = QEMU_OPT_STRING,
-            .help = "Sets the name of the file from which "
-                    "the fw_cfg blob will be loaded",
-        }, {
-            .name = "string",
-            .type = QEMU_OPT_STRING,
-            .help = "Sets content of the blob to be inserted from a string",
-        }, {
-            .name = "gen_id",
-            .type = QEMU_OPT_STRING,
-            .help = "Sets id of the object generating the fw_cfg blob "
-                    "to be inserted",
-        },
-        { /* end of list */ }
-    },
-};
-
 static QemuOptsList qemu_action_opts = {
     .name = "action",
     .merge_lists = true,
@@ -994,70 +966,6 @@ static void parse_display(const char *p)
 #endif
 
     parse_display_qapi(p);
-}
-
-static inline bool nonempty_str(const char *str)
-{
-    return str && *str;
-}
-
-static int parse_fw_cfg(void *opaque, QemuOpts *opts, Error **errp)
-{
-    gchar *buf;
-    size_t size;
-    const char *name, *file, *str, *gen_id;
-    FWCfgState *fw_cfg = (FWCfgState *) opaque;
-
-    if (fw_cfg == NULL) {
-        error_setg(errp, "fw_cfg device not available");
-        return -1;
-    }
-    name = qemu_opt_get(opts, "name");
-    file = qemu_opt_get(opts, "file");
-    str = qemu_opt_get(opts, "string");
-    gen_id = qemu_opt_get(opts, "gen_id");
-
-    /* we need the name, and exactly one of: file, content string, gen_id */
-    if (!nonempty_str(name) ||
-        nonempty_str(file) + nonempty_str(str) + nonempty_str(gen_id) != 1) {
-        error_setg(errp, "name, plus exactly one of file,"
-                         " string and gen_id, are needed");
-        return -1;
-    }
-    if (strlen(name) > FW_CFG_MAX_FILE_PATH - 1) {
-        error_setg(errp, "name too long (max. %d char)",
-                   FW_CFG_MAX_FILE_PATH - 1);
-        return -1;
-    }
-    if (nonempty_str(gen_id)) {
-        /*
-         * In this particular case where the content is populated
-         * internally, the "etc/" namespace protection is relaxed,
-         * so do not emit a warning.
-         */
-    } else if (strncmp(name, "opt/", 4) != 0) {
-        warn_report("externally provided fw_cfg item names "
-                    "should be prefixed with \"opt/\"");
-    }
-    if (nonempty_str(str)) {
-        size = strlen(str); /* NUL terminator NOT included in fw_cfg blob */
-        buf = g_memdup(str, size);
-    } else if (nonempty_str(gen_id)) {
-        if (!fw_cfg_add_file_from_generator(fw_cfg, object_get_objects_root(),
-                                            gen_id, name, errp)) {
-            return -1;
-        }
-        return 0;
-    } else {
-        GError *err = NULL;
-        if (!g_file_get_contents(file, &buf, &size, &err)) {
-            error_setg(errp, "can't load %s: %s", file, err->message);
-            g_error_free(err);
-            return -1;
-        }
-    }
-    fw_cfg_add_file(fw_cfg, name, buf, size);
-    return 0;
 }
 
 static int device_help_func(void *opaque, QemuOpts *opts, Error **errp)
@@ -2626,9 +2534,6 @@ static void qemu_create_cli_devices(void)
 {
     DeviceOption *opt;
 
-    qemu_opts_foreach(qemu_find_opts("fw_cfg"),
-                      parse_fw_cfg, fw_cfg_find(), &error_fatal);
-
     /* init USB devices */
     if (machine_usb(current_machine)) {
         foreach_device_config_or_exit(DEV_USB, usb_parse);
@@ -3034,7 +2939,6 @@ void qemu_init(int argc, char **argv)
     qemu_add_opts(&qemu_numa_opts);
     qemu_add_opts(&qemu_icount_opts);
     qemu_add_opts(&qemu_semihosting_config_opts);
-    qemu_add_opts(&qemu_fw_cfg_opts);
     qemu_add_opts(&qemu_action_opts);
     qemu_add_run_with_opts();
     module_call_init(MODULE_INIT_OPTS);
@@ -3464,13 +3368,6 @@ void qemu_init(int argc, char **argv)
                     exit(1);
                 }
                 smbios_entry_add(opts, &error_fatal);
-                break;
-            case QEMU_OPTION_fwcfg:
-                opts = qemu_opts_parse_noisily(qemu_find_opts("fw_cfg"),
-                                               optarg, true);
-                if (opts == NULL) {
-                    exit(1);
-                }
                 break;
             case QEMU_OPTION_enable_kvm:
                 qdict_put_str(machine_opts_dict, "accel", "kvm");

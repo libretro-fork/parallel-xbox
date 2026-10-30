@@ -180,14 +180,6 @@ static void x86_machine_set_smm(Object *obj, Visitor *v, const char *name,
     visit_type_OnOffAuto(v, name, &x86ms->smm, errp);
 }
 
-bool x86_machine_is_acpi_enabled(const X86MachineState *x86ms)
-{
-    if (x86ms->acpi == ON_OFF_AUTO_OFF) {
-        return false;
-    }
-    return true;
-}
-
 static void x86_machine_get_acpi(Object *obj, Visitor *v, const char *name,
                                  void *opaque, Error **errp)
 {
