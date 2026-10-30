@@ -8,6 +8,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 - Apple Silicon JIT write protection uses libretro-common's `memjit_write_begin/end` helpers. A per-thread adapter preserves QEMU's absolute write/execute switches, including repeated requests across the CPU and DSP JITs. Intel macOS keeps no-op switches.
 
+- OpenGL DXT volume textures preserve the Xbox block order when native VTC compression is available, fixing scrambled slices/colors from the old slice reorder and avoiding that CPU copy. Drivers with 2D S3TC but no VTC use the RGBA8 volume fallback.
+
 - The meson build is gone (meson.build files, configure, the meson subprojects, Kconfig and the device configs): every platform is built by the Makefile, and the buildbot's Linux jobs now are too, so the buildbot's Linux core is built the same way as the GitHub one. The macOS meson job is dropped; the Makefile's macOS job takes its place.
 
 - With APU DSP Emulation disabled, audio now preserves normalized PCM values at unity volume and rounds once to the nearest output sample after host volume. This removes avoidable low-level truncation and the 32767-scale amplitude loss in the host float output path. DSP arithmetic and its integer output path are unchanged.

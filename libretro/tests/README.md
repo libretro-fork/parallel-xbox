@@ -317,3 +317,17 @@ boundary values, adjacent floats around half steps, one million arbitrary
 float encodings, clipping, mute and nonfinite inputs. The old conversion
 loses one step on 65535 of 65536 normalized PCM round trips; the new one
 preserves every value. The test runs as part of `run.sh`.
+
+`python libretro/tests/test-gl-volume-compression.py CHECKOUT [CC]` runs the
+production DXT volume uploader and decoder on real OpenGL. It checks DXT1,
+DXT3 and DXT5 slice/block order, alpha, depths 1/2/4/8, mip levels, RGBA8
+fallback storage and native uploads without scratch allocation. Windows uses
+WGL and the built `deps/libepoxy.a`; Linux uses surfaceless EGL. Every driver
+checks the forced software fallback; drivers advertising
+`GL_NV_texture_compression_vtc` also check native volume uploads. 2D S3TC
+support alone does not imply volume support. The native oracle was confirmed
+on NVIDIA and the S3TC-without-VTC fallback on Mesa llvmpipe.
+
+The layout/capability contract follows the Khronos
+[VTC specification](https://registry.khronos.org/OpenGL/extensions/NV/NV_texture_compression_vtc.txt)
+and [S3TC specification](https://registry.khronos.org/OpenGL/extensions/EXT/EXT_texture_compression_s3tc.txt).

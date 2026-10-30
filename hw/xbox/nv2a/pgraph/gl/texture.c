@@ -615,6 +615,26 @@ static uint8_t *tex_scratch(PGRAPHGLState *r, int which, size_t size)
     return r->tex_scratch[which];
 }
 
+/* EXT_texture_compression_s3tc alone only covers 2D images. VTC accepts
+ * the Xbox's 4-deep block groups directly; slice reordering corrupts them. */
+static void upload_compressed_volume(PGRAPHGLState *r, GLenum target,
+                                      GLint level, GLenum format,
+                                      const uint8_t *data, unsigned width,
+                                      unsigned height, unsigned depth,
+                                      size_t compressed_size)
+{
+    if (r->s3tc_3d_native) {
+        glCompressedTexImage3D(target, level, format, width, height, depth, 0,
+                               compressed_size, data);
+    } else {
+        uint8_t *converted = tex_scratch(r, 1, (size_t)width * height * depth * 4);
+        s3tc_decompress_3d_into(gl_internal_format_to_s3tc_enum(format), data,
+                               width, height, depth, converted);
+        glTexImage3D(target, level, GL_RGBA8, width, height, depth, 0,
+                     GL_RGBA, GL_UNSIGNED_INT_8_8_8_8_REV, converted);
+    }
+}
+
 /* A swizzled level, unswizzled into the scratch, and converted there where
  * the host cannot sample its format (palette, YUV, R6G5B5): the pixels to
  * upload, their rows width * bpp apart */
@@ -821,40 +841,9 @@ static void upload_gl_texture(GLenum gl_target,
 
                 size_t texture_size = physical_width/4 * physical_height/4 * depth * block_size;
 
-                if (r->s3tc_native) {
-                    /* The Xbox's 3D blocks come in 4-deep groups, slice by
-                     * slice within each block: put into slice order */
-                    unsigned int bw = physical_width / 4,
-                                 bh = physical_height / 4;
-                    size_t slice = (size_t)bw * bh * block_size;
-                    uint8_t *ordered = tex_scratch(r, 1, texture_size);
-                    const uint8_t *src = texture_data;
-                    for (unsigned int z0 = 0; z0 < depth; z0 += 4) {
-                        unsigned int nz = MIN(depth - z0, 4);
-                        for (unsigned int b = 0; b < bw * bh; b++) {
-                            for (unsigned int z = 0; z < nz; z++) {
-                                memcpy(ordered + (z0 + z) * slice +
-                                           b * block_size,
-                                       src, block_size);
-                                src += block_size;
-                            }
-                        }
-                    }
-                    glCompressedTexImage3D(gl_target, level,
-                                           f.gl_internal_format, width,
-                                           height, depth, 0, texture_size,
-                                           ordered);
-                } else {
-                    uint8_t *converted = tex_scratch(
-                        r, 1, (size_t)width * height * depth * 4);
-                    s3tc_decompress_3d_into(
-                        gl_internal_format_to_s3tc_enum(f.gl_internal_format),
-                        texture_data, width, height, depth, converted);
-                    glTexImage3D(gl_target, level,  GL_RGBA8,
-                                 width, height, depth, 0,
-                                 GL_RGBA, GL_UNSIGNED_INT_8_8_8_8_REV,
-                                 converted);
-                }
+                upload_compressed_volume(r, gl_target, level,
+                    f.gl_internal_format, texture_data, width, height, depth,
+                    texture_size);
 
                 texture_data += texture_size;
             } else {
@@ -1075,6 +1064,8 @@ void pgraph_gl_init_textures(NV2AState *d)
         r->tex_scratch_size[i] = 0;
     }
     r->s3tc_native = epoxy_has_gl_extension("GL_EXT_texture_compression_s3tc");
+    r->s3tc_3d_native = r->s3tc_native &&
+        epoxy_has_gl_extension("GL_NV_texture_compression_vtc");
 }
 
 void pgraph_gl_finalize_textures(PGRAPHState *pg)
