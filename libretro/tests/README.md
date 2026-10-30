@@ -709,3 +709,5 @@ The SSE native-gate test compiles the production arithmetic helper macros with r
 The VFS scatter-read test covers EOF zero-fill with a null, zero-length trailing span. The standard driver runs it with undefined-behavior sanitizer traps; empty vectors must not cause library calls on null pointers. Existing short-read, cursor-reuse, gap-preservation and error-recovery checks remain covered.
 
 The SHUFPS emission oracle now covers every legacy register selector and both source-register aliases, with all loads checked before overlapping writes. Both memory-source positions, other encodings and the big-endian selection model retain the helper. The guest ROM exercises all 256 selectors with same-register, distinct-register and memory operands.
+
+The EP DSP Run-Ahead regression compares 150-frame unity-output captures with and without one hidden frame. The captured ramp must contain at least 200,000 progressing channel samples with no breaks, and both WAV files must match byte-for-byte. This covers the EP DMA output queued eight engine frames at a time and its queued-ahead state across repeated serialization. Both runs retain strict audio cadence checks.

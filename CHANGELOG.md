@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- The Run-Ahead audio regression now covers the EP DSP burst-output queue, checking an unbroken ramp and byte-identical output after repeated save/load cycles. Runtime audio behavior is unchanged.
+
 - CPU Boost lowers all legacy register SHUFPS selectors directly, extending the existing broadcast optimization. Identity shuffles avoid the helper and self-copy; other selectors read every input before writing any result. Memory operands and other encodings keep their existing paths.
 
 - Frontend VFS disc reads combine adjacent destination spans into bulk provider requests without staging buffers. Seeks honor the API's zero-on-success result, URI-backed Xbox discs are classified correctly, and short reads during partition probing are retried. Local disc probes borrow libretro-common mapped views; gapped spans and EOF zero-fill are preserved.

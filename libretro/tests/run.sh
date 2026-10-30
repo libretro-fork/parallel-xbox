@@ -1226,6 +1226,15 @@ t "Run-Ahead 1, GP DSP" $h "$(path "$core")" "$(path "$work/sysd")" $dsp --opt x
 cmp "$work/rad0.wav" "$work/rad1.wav" || {
   echo "FAIL: the GP DSP's sound with Run-Ahead is not the sound without it"; exit 1; }
 
+# EP DMA commits eight engine frames at once, including queued-ahead state.
+timeout 300 $h "$(path "$core")" "$(path "$work/syse")" $dsp --opt xemu_dsp_jit=enabled \
+  --frames 150 --strict --wav "$(path "$work/rae0.wav")" >/dev/null
+t "Run-Ahead 1, EP DSP" $h "$(path "$core")" "$(path "$work/syse")" $dsp --opt xemu_dsp_jit=enabled \
+  --frames 150 --strict --runahead 1 --wav "$(path "$work/rae1.wav")"
+"$work/bin/rampcheck" "$work/rae1.wav" --min 200000
+cmp "$work/rae0.wav" "$work/rae1.wav" || {
+    echo "FAIL: the EP DSP's sound with Run-Ahead is not the sound without it"; exit 1; }
+
 # The main loop's step (util/main-loop.c, XBOX) runs the bottom halves and
 # timers straight: no GLib main context and no poll. Before, every pass of
 # the frame loop polled, about 30 ppoll a frame (8651 in 300 frames of the
