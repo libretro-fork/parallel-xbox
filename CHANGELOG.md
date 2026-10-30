@@ -352,6 +352,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 - Aspect Ratio Auto: 16:9 when Widescreen is on in the dashboard's video settings and the game is one that renders 16:9 then, 4:3 otherwise and always on a Chihiro. The core knows the games by their Title ID, from a list of 200 games (226 releases) with 16:9 support; before, Auto waited for the game to switch the AV pack to widescreen, which games hardly do, and stayed at 4:3. The log says which Title ID runs, whether it is on the list and what the dashboard is set to (NNshi).
 - New option System > Trim HDD on Close (Experimental), off by default: when the game is closed, the hard disk's cache partitions X, Y and Z are emptied (games format them again when they need them) and the image is rewritten without unused space, so `xbox_hdd.qcow2` shrinks. It needs as much free space as the image's data for a moment, and is skipped while the image holds a savestate, which would keep the space and be lost by the rewrite (NNshi, Akrido).
 
+- The source tree holds the core and nothing else: every file no platform's build compiles or includes is gone (about 7,900 files): QEMU's other targets and their machines, user-mode emulation, the standalone's tools (qemu-img, qemu-io, the guest agent and the like), its tests, documentation, scripts, Python and Rust code, translations, firmware blobs and ROM sources, and the unused devices, accelerators and backends. They are listed in `.upstream-excluded`, so a merge of upstream does not bring them back.
+
 ## Test build 4 - 2026-10-25
 
 - The core info file names the core "Microsoft - Xbox / Sega Chihiro (xemu)" (NNshi).
