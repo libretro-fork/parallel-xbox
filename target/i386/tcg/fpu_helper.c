@@ -429,11 +429,9 @@ static void fpu_raise_exception(CPUX86State *env, uintptr_t retaddr)
     if (env->cr[0] & CR0_NE_MASK) {
         raise_exception_ra(env, EXCP10_COPR, retaddr);
     }
-#if !defined(CONFIG_USER_ONLY)
     else {
         fpu_check_raise_ferr_irq(env);
     }
-#endif
 }
 
 void helper_flds_FT0(CPUX86State *env, uint32_t val)
@@ -2745,7 +2743,6 @@ static void cpu_set_fpus(CPUX86State *env, uint16_t fpus)
     env->fpstt = (fpus >> 11) & 7;
     env->fpus = fpus & ~0x3800 & ~FPUS_B;
     env->fpus |= env->fpus & FPUS_SE ? FPUS_B : 0;
-#if !defined(CONFIG_USER_ONLY)
     if (!(env->fpus & FPUS_SE)) {
         /*
          * Here the processor deasserts FERR#; in response, the chipset deasserts
@@ -2753,7 +2750,6 @@ static void cpu_set_fpus(CPUX86State *env, uint16_t fpus)
          */
         cpu_clear_ignne();
     }
-#endif
 }
 
 static void do_fldenv(X86Access *ac, target_ulong ptr, int data32)
@@ -3323,95 +3319,6 @@ void helper_xrstor(CPUX86State *env, target_ulong ptr, uint64_t rfbm)
     do_xrstor(&ac, ptr, rfbm, xstate_bv);
 }
 
-#if defined(CONFIG_USER_ONLY)
-void cpu_x86_fsave(CPUX86State *env, void *host, size_t len)
-{
-    X86Access ac = {
-        .haddr1 = host,
-        .size = 4 * 7 + 8 * 10,
-        .env = env,
-    };
-
-    assert(ac.size <= len);
-    do_fsave(&ac, 0, true);
-}
-
-void cpu_x86_frstor(CPUX86State *env, void *host, size_t len)
-{
-    X86Access ac = {
-        .haddr1 = host,
-        .size = 4 * 7 + 8 * 10,
-        .env = env,
-    };
-
-    assert(ac.size <= len);
-    do_frstor(&ac, 0, true);
-}
-
-void cpu_x86_fxsave(CPUX86State *env, void *host, size_t len)
-{
-    X86Access ac = {
-        .haddr1 = host,
-        .size = sizeof(X86LegacyXSaveArea),
-        .env = env,
-    };
-
-    assert(ac.size <= len);
-    do_fxsave(&ac, 0);
-}
-
-void cpu_x86_fxrstor(CPUX86State *env, void *host, size_t len)
-{
-    X86Access ac = {
-        .haddr1 = host,
-        .size = sizeof(X86LegacyXSaveArea),
-        .env = env,
-    };
-
-    assert(ac.size <= len);
-    do_fxrstor(&ac, 0);
-}
-
-void cpu_x86_xsave(CPUX86State *env, void *host, size_t len, uint64_t rfbm)
-{
-    X86Access ac = {
-        .haddr1 = host,
-        .env = env,
-    };
-
-    /*
-     * Since this is only called from user-level signal handling,
-     * we should have done the job correctly there.
-     */
-    assert((rfbm & ~env->xcr0) == 0);
-    ac.size = xsave_area_size(rfbm, false);
-    assert(ac.size <= len);
-    do_xsave_access(&ac, 0, rfbm, get_xinuse(env), rfbm);
-}
-
-bool cpu_x86_xrstor(CPUX86State *env, void *host, size_t len, uint64_t rfbm)
-{
-    X86Access ac = {
-        .haddr1 = host,
-        .env = env,
-    };
-    uint64_t xstate_bv;
-
-    /*
-     * Since this is only called from user-level signal handling,
-     * we should have done the job correctly there.
-     */
-    assert((rfbm & ~env->xcr0) == 0);
-    ac.size = xsave_area_size(rfbm, false);
-    assert(ac.size <= len);
-
-    if (!valid_xrstor_header(&ac, &xstate_bv, 0)) {
-        return false;
-    }
-    do_xrstor(&ac, 0, rfbm, xstate_bv);
-    return true;
-}
-#endif
 
 uint64_t helper_xgetbv(CPUX86State *env, uint32_t ecx)
 {

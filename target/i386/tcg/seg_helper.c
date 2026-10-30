@@ -590,12 +590,10 @@ static void switch_tss_ra(CPUX86State *env, int tss_selector,
         raise_exception_err_ra(env, EXCP0D_GPF, 0, retaddr);
     }
 
-#ifndef CONFIG_USER_ONLY
     /* reset local breakpoints */
     if (env->dr[7] & DR7_LOCAL_BP_MASK) {
         cpu_x86_update_dr7(env, env->dr[7] & ~DR7_LOCAL_BP_MASK);
     }
-#endif
 
     if (has_error_code) {
         int cpl = env->hflags & HF_CPL_MASK;
@@ -1230,11 +1228,9 @@ void do_interrupt_all(X86CPU *cpu, int intno, int is_int,
         }
     }
     if (env->cr[0] & CR0_PE_MASK) {
-#if !defined(CONFIG_USER_ONLY)
         if (env->hflags & HF_GUEST_MASK) {
             handle_even_inj(env, intno, is_int, error_code, is_hw, 0);
         }
-#endif
 #ifdef TARGET_X86_64
         if (env->hflags & HF_LMA_MASK) {
             do_interrupt64(env, intno, is_int, error_code, next_eip, is_hw);
@@ -1245,15 +1241,12 @@ void do_interrupt_all(X86CPU *cpu, int intno, int is_int,
                                    is_hw);
         }
     } else {
-#if !defined(CONFIG_USER_ONLY)
         if (env->hflags & HF_GUEST_MASK) {
             handle_even_inj(env, intno, is_int, error_code, is_hw, 1);
         }
-#endif
         do_interrupt_real(env, intno, is_int, error_code, next_eip);
     }
 
-#if !defined(CONFIG_USER_ONLY)
     if (env->hflags & HF_GUEST_MASK) {
         CPUState *cs = CPU(cpu);
         uint32_t event_inj = x86_ldl_phys(cs, env->vm_vmcb +
@@ -1264,7 +1257,6 @@ void do_interrupt_all(X86CPU *cpu, int intno, int is_int,
                  env->vm_vmcb + offsetof(struct vmcb, control.event_inj),
                  event_inj & ~SVM_EVTINJ_VALID);
     }
-#endif
 
     qemu_plugin_vcpu_interrupt_cb(CPU(cpu), last_pc);
 }

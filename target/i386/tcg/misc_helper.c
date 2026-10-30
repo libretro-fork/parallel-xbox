@@ -132,15 +132,5 @@ void helper_wrpkru(CPUX86State *env, uint32_t ecx, uint64_t val)
 
 target_ulong HELPER(rdpid)(CPUX86State *env)
 {
-#if !defined CONFIG_USER_ONLY
     return env->tsc_aux;
-#elif defined CONFIG_LINUX && defined CONFIG_GETCPU
-    unsigned cpu, node;
-    getcpu(&cpu, &node);
-    return (node << 12) | (cpu & 0xfff);
-#elif defined CONFIG_SCHED_GETCPU
-    return sched_getcpu();
-#else
-    return 0;
-#endif
 }

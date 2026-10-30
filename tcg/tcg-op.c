@@ -104,152 +104,143 @@ TCGOp * NI tcg_gen_op6(TCGOpcode opc, TCGType type, TCGArg a1, TCGArg a2,
     return op;
 }
 
-/*
- * With CONFIG_DEBUG_TCG, tcgv_*_tmp via tcgv_*_arg, is an out-of-line
- * assertion check.  Force tail calls to avoid too much code expansion.
- */
-#ifdef CONFIG_DEBUG_TCG
-# define DNI NI
-#else
-# define DNI
-#endif
 
-static void DNI tcg_gen_op1_i32(TCGOpcode opc, TCGType type, TCGv_i32 a1)
+static void tcg_gen_op1_i32(TCGOpcode opc, TCGType type, TCGv_i32 a1)
 {
     tcg_gen_op1(opc, type, tcgv_i32_arg(a1));
 }
 
-static void DNI tcg_gen_op1_i64(TCGOpcode opc, TCGType type, TCGv_i64 a1)
+static void tcg_gen_op1_i64(TCGOpcode opc, TCGType type, TCGv_i64 a1)
 {
     tcg_gen_op1(opc, type, tcgv_i64_arg(a1));
 }
 
-static TCGOp * DNI tcg_gen_op1i(TCGOpcode opc, TCGType type, TCGArg a1)
+static TCGOp *tcg_gen_op1i(TCGOpcode opc, TCGType type, TCGArg a1)
 {
     return tcg_gen_op1(opc, type, a1);
 }
 
-static void DNI tcg_gen_op2_i32(TCGOpcode opc, TCGv_i32 a1, TCGv_i32 a2)
+static void tcg_gen_op2_i32(TCGOpcode opc, TCGv_i32 a1, TCGv_i32 a2)
 {
     tcg_gen_op2(opc, TCG_TYPE_I32, tcgv_i32_arg(a1), tcgv_i32_arg(a2));
 }
 
-static void DNI tcg_gen_op2_i64(TCGOpcode opc, TCGv_i64 a1, TCGv_i64 a2)
+static void tcg_gen_op2_i64(TCGOpcode opc, TCGv_i64 a1, TCGv_i64 a2)
 {
     tcg_gen_op2(opc, TCG_TYPE_I64, tcgv_i64_arg(a1), tcgv_i64_arg(a2));
 }
 
-static void DNI tcg_gen_op3_i32(TCGOpcode opc, TCGv_i32 a1,
+static void tcg_gen_op3_i32(TCGOpcode opc, TCGv_i32 a1,
                                 TCGv_i32 a2, TCGv_i32 a3)
 {
     tcg_gen_op3(opc, TCG_TYPE_I32, tcgv_i32_arg(a1),
                 tcgv_i32_arg(a2), tcgv_i32_arg(a3));
 }
 
-static void DNI tcg_gen_op3_i64(TCGOpcode opc, TCGv_i64 a1,
+static void tcg_gen_op3_i64(TCGOpcode opc, TCGv_i64 a1,
                                 TCGv_i64 a2, TCGv_i64 a3)
 {
     tcg_gen_op3(opc, TCG_TYPE_I64, tcgv_i64_arg(a1),
                 tcgv_i64_arg(a2), tcgv_i64_arg(a3));
 }
 
-static void DNI tcg_gen_op3i_i32(TCGOpcode opc, TCGv_i32 a1,
+static void tcg_gen_op3i_i32(TCGOpcode opc, TCGv_i32 a1,
                                  TCGv_i32 a2, TCGArg a3)
 {
     tcg_gen_op3(opc, TCG_TYPE_I32, tcgv_i32_arg(a1), tcgv_i32_arg(a2), a3);
 }
 
-static void DNI tcg_gen_op3i_i64(TCGOpcode opc, TCGv_i64 a1,
+static void tcg_gen_op3i_i64(TCGOpcode opc, TCGv_i64 a1,
                                  TCGv_i64 a2, TCGArg a3)
 {
     tcg_gen_op3(opc, TCG_TYPE_I64, tcgv_i64_arg(a1), tcgv_i64_arg(a2), a3);
 }
 
-static void DNI tcg_gen_ldst_op_i32(TCGOpcode opc, TCGv_i32 val,
+static void tcg_gen_ldst_op_i32(TCGOpcode opc, TCGv_i32 val,
                                     TCGv_ptr base, TCGArg offset)
 {
     tcg_gen_op3(opc, TCG_TYPE_I32, tcgv_i32_arg(val),
                 tcgv_ptr_arg(base), offset);
 }
 
-static void DNI tcg_gen_ldst_op_i64(TCGOpcode opc, TCGv_i64 val,
+static void tcg_gen_ldst_op_i64(TCGOpcode opc, TCGv_i64 val,
                                     TCGv_ptr base, TCGArg offset)
 {
     tcg_gen_op3(opc, TCG_TYPE_I64, tcgv_i64_arg(val),
                 tcgv_ptr_arg(base), offset);
 }
 
-static void DNI tcg_gen_op4_i32(TCGOpcode opc, TCGv_i32 a1, TCGv_i32 a2,
+static void tcg_gen_op4_i32(TCGOpcode opc, TCGv_i32 a1, TCGv_i32 a2,
                                 TCGv_i32 a3, TCGv_i32 a4)
 {
     tcg_gen_op4(opc, TCG_TYPE_I32, tcgv_i32_arg(a1), tcgv_i32_arg(a2),
                 tcgv_i32_arg(a3), tcgv_i32_arg(a4));
 }
 
-static void DNI tcg_gen_op4_i64(TCGOpcode opc, TCGv_i64 a1, TCGv_i64 a2,
+static void tcg_gen_op4_i64(TCGOpcode opc, TCGv_i64 a1, TCGv_i64 a2,
                                 TCGv_i64 a3, TCGv_i64 a4)
 {
     tcg_gen_op4(opc, TCG_TYPE_I64, tcgv_i64_arg(a1), tcgv_i64_arg(a2),
                 tcgv_i64_arg(a3), tcgv_i64_arg(a4));
 }
 
-static void DNI tcg_gen_op4i_i32(TCGOpcode opc, TCGv_i32 a1, TCGv_i32 a2,
+static void tcg_gen_op4i_i32(TCGOpcode opc, TCGv_i32 a1, TCGv_i32 a2,
                                  TCGv_i32 a3, TCGArg a4)
 {
     tcg_gen_op4(opc, TCG_TYPE_I32, tcgv_i32_arg(a1), tcgv_i32_arg(a2),
                 tcgv_i32_arg(a3), a4);
 }
 
-static void DNI tcg_gen_op4i_i64(TCGOpcode opc, TCGv_i64 a1, TCGv_i64 a2,
+static void tcg_gen_op4i_i64(TCGOpcode opc, TCGv_i64 a1, TCGv_i64 a2,
                                  TCGv_i64 a3, TCGArg a4)
 {
     tcg_gen_op4(opc, TCG_TYPE_I64, tcgv_i64_arg(a1), tcgv_i64_arg(a2),
                 tcgv_i64_arg(a3), a4);
 }
 
-static TCGOp * DNI tcg_gen_op4ii_i32(TCGOpcode opc, TCGv_i32 a1, TCGv_i32 a2,
+static TCGOp *tcg_gen_op4ii_i32(TCGOpcode opc, TCGv_i32 a1, TCGv_i32 a2,
                                      TCGArg a3, TCGArg a4)
 {
     return tcg_gen_op4(opc, TCG_TYPE_I32,
                        tcgv_i32_arg(a1), tcgv_i32_arg(a2), a3, a4);
 }
 
-static TCGOp * DNI tcg_gen_op4ii_i64(TCGOpcode opc, TCGv_i64 a1, TCGv_i64 a2,
+static TCGOp *tcg_gen_op4ii_i64(TCGOpcode opc, TCGv_i64 a1, TCGv_i64 a2,
                                      TCGArg a3, TCGArg a4)
 {
     return tcg_gen_op4(opc, TCG_TYPE_I64,
                        tcgv_i64_arg(a1), tcgv_i64_arg(a2), a3, a4);
 }
 
-static void DNI tcg_gen_op5_i32(TCGOpcode opc, TCGv_i32 a1, TCGv_i32 a2,
+static void tcg_gen_op5_i32(TCGOpcode opc, TCGv_i32 a1, TCGv_i32 a2,
                                 TCGv_i32 a3, TCGv_i32 a4, TCGv_i32 a5)
 {
     tcg_gen_op5(opc, TCG_TYPE_I32, tcgv_i32_arg(a1), tcgv_i32_arg(a2),
                 tcgv_i32_arg(a3), tcgv_i32_arg(a4), tcgv_i32_arg(a5));
 }
 
-static void DNI tcg_gen_op5_i64(TCGOpcode opc, TCGv_i64 a1, TCGv_i64 a2,
+static void tcg_gen_op5_i64(TCGOpcode opc, TCGv_i64 a1, TCGv_i64 a2,
                                 TCGv_i64 a3, TCGv_i64 a4, TCGv_i64 a5)
 {
     tcg_gen_op5(opc, TCG_TYPE_I64, tcgv_i64_arg(a1), tcgv_i64_arg(a2),
                 tcgv_i64_arg(a3), tcgv_i64_arg(a4), tcgv_i64_arg(a5));
 }
 
-static void DNI tcg_gen_op5ii_i32(TCGOpcode opc, TCGv_i32 a1, TCGv_i32 a2,
+static void tcg_gen_op5ii_i32(TCGOpcode opc, TCGv_i32 a1, TCGv_i32 a2,
                                   TCGv_i32 a3, TCGArg a4, TCGArg a5)
 {
     tcg_gen_op5(opc, TCG_TYPE_I32, tcgv_i32_arg(a1), tcgv_i32_arg(a2),
                 tcgv_i32_arg(a3), a4, a5);
 }
 
-static void DNI tcg_gen_op5ii_i64(TCGOpcode opc, TCGv_i64 a1, TCGv_i64 a2,
+static void tcg_gen_op5ii_i64(TCGOpcode opc, TCGv_i64 a1, TCGv_i64 a2,
                                   TCGv_i64 a3, TCGArg a4, TCGArg a5)
 {
     tcg_gen_op5(opc, TCG_TYPE_I64, tcgv_i64_arg(a1), tcgv_i64_arg(a2),
                 tcgv_i64_arg(a3), a4, a5);
 }
 
-static void DNI tcg_gen_op6i_i32(TCGOpcode opc, TCGv_i32 a1, TCGv_i32 a2,
+static void tcg_gen_op6i_i32(TCGOpcode opc, TCGv_i32 a1, TCGv_i32 a2,
                                  TCGv_i32 a3, TCGv_i32 a4,
                                  TCGv_i32 a5, TCGArg a6)
 {
@@ -257,7 +248,7 @@ static void DNI tcg_gen_op6i_i32(TCGOpcode opc, TCGv_i32 a1, TCGv_i32 a2,
                 tcgv_i32_arg(a3), tcgv_i32_arg(a4), tcgv_i32_arg(a5), a6);
 }
 
-static void DNI tcg_gen_op6i_i64(TCGOpcode opc, TCGv_i64 a1, TCGv_i64 a2,
+static void tcg_gen_op6i_i64(TCGOpcode opc, TCGv_i64 a1, TCGv_i64 a2,
                                  TCGv_i64 a3, TCGv_i64 a4,
                                  TCGv_i64 a5, TCGArg a6)
 {
@@ -265,7 +256,7 @@ static void DNI tcg_gen_op6i_i64(TCGOpcode opc, TCGv_i64 a1, TCGv_i64 a2,
                 tcgv_i64_arg(a3), tcgv_i64_arg(a4), tcgv_i64_arg(a5), a6);
 }
 
-static TCGOp * DNI tcg_gen_op6ii_i32(TCGOpcode opc, TCGv_i32 a1, TCGv_i32 a2,
+static TCGOp *tcg_gen_op6ii_i32(TCGOpcode opc, TCGv_i32 a1, TCGv_i32 a2,
                                      TCGv_i32 a3, TCGv_i32 a4,
                                      TCGArg a5, TCGArg a6)
 {
@@ -3187,11 +3178,6 @@ void tcg_gen_exit_tb(const TranslationBlock *tb, unsigned idx)
     if (tb == NULL) {
         tcg_debug_assert(idx == 0);
     } else if (idx <= TB_EXIT_IDXMAX) {
-#ifdef CONFIG_DEBUG_TCG
-        /* This is an exit following a goto_tb.  Verify that we have
-           seen this numbered exit before, via tcg_gen_goto_tb.  */
-        tcg_debug_assert(tcg_ctx->goto_tb_issue_mask & (1 << idx));
-#endif
     } else {
         /* This is an exit via the exitreq label.  */
         tcg_debug_assert(idx == TB_EXIT_REQUESTED);
@@ -3206,11 +3192,6 @@ void tcg_gen_goto_tb(unsigned idx)
     tcg_debug_assert(!(tcg_ctx->gen_tb->cflags & CF_NO_GOTO_TB));
     /* We only support two chained exits.  */
     tcg_debug_assert(idx <= TB_EXIT_IDXMAX);
-#ifdef CONFIG_DEBUG_TCG
-    /* Verify that we haven't seen this numbered exit before.  */
-    tcg_debug_assert((tcg_ctx->goto_tb_issue_mask & (1 << idx)) == 0);
-    tcg_ctx->goto_tb_issue_mask |= 1 << idx;
-#endif
     plugin_gen_disable_mem_helpers();
     tcg_gen_op1i(INDEX_op_goto_tb, 0, idx);
 }

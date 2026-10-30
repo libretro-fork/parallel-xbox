@@ -42,7 +42,6 @@
 QEMU_BUILD_BUG_ON(TARGET_PAGE_BITS < TARGET_PAGE_BITS_MIN);
 #endif
 
-#ifndef CONFIG_USER_ONLY
 #include "exec/tlb-flags.h"
 
 QEMU_BUILD_BUG_ON(TLB_FLAGS_MASK & ((1u < TARGET_PAGE_BITS_MIN) - 1));
@@ -56,7 +55,6 @@ int migration_legacy_page_bits(void)
     return TARGET_PAGE_BITS;
 #endif
 }
-#endif
 
 bool set_preferred_target_page_bits(int bits)
 {
@@ -72,9 +70,6 @@ void finalize_target_page_bits(void)
 {
 #ifndef TARGET_PAGE_BITS_VARY
     finalize_target_page_bits_common(TARGET_PAGE_BITS);
-#elif defined(CONFIG_USER_ONLY)
-    assert(target_page.bits != 0);
-    finalize_target_page_bits_common(target_page.bits);
 #else
     finalize_target_page_bits_common(TARGET_PAGE_BITS_LEGACY);
 #endif

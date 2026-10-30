@@ -175,7 +175,6 @@ typedef struct SyncClocks {
     int64_t realtime_clock;
 } SyncClocks;
 
-#if !defined(CONFIG_USER_ONLY)
 /* Allow the guest to have a max 3ms advance.
  * The difference between the 2 clocks could therefore
  * oscillate around 0.
@@ -261,15 +260,6 @@ static void init_delay_params(SyncClocks *sc, CPUState *cpu)
        of printed messages to NB_PRINT_MAX(currently 100) */
     print_delay(sc);
 }
-#else
-static void align_clocks(SyncClocks *sc, const CPUState *cpu)
-{
-}
-
-static void init_delay_params(SyncClocks *sc, const CPUState *cpu)
-{
-}
-#endif /* CONFIG USER ONLY */
 
 struct tb_desc {
     TCGTBCPUState s;
@@ -503,13 +493,9 @@ static bool check_for_breakpoints_slow(CPUState *cpu, vaddr pc,
             if (bp->flags & BP_GDB) {
                 match_bp = true;
             } else if (bp->flags & BP_CPU) {
-#ifdef CONFIG_USER_ONLY
-                g_assert_not_reached();
-#else
                 const TCGCPUOps *tcg_ops = cpu->cc->tcg_ops;
                 assert(tcg_ops->debug_check_breakpoint);
                 match_bp = tcg_ops->debug_check_breakpoint(cpu);
-#endif
             }
 
             if (match_bp) {
@@ -767,12 +753,6 @@ static void cpu_exec_longjmp_cleanup(CPUState *cpu)
     /* Non-buggy compilers preserve this; assert the correct value. */
     g_assert(cpu == current_cpu);
 
-#ifdef CONFIG_USER_ONLY
-    clear_helper_retaddr();
-    if (have_mmap_lock()) {
-        mmap_unlock();
-    }
-#else
     /*
      * For softmmu, a tlb_fill fault during translation will land here,
      * and we need to release any page locks held.  In system mode we
@@ -792,7 +772,6 @@ static void cpu_exec_longjmp_cleanup(CPUState *cpu)
         tb_unlock_pages(tcg_ctx->gen_tb);
         tcg_ctx->gen_tb = NULL;
     }
-#endif
     if (bql_locked()) {
         bql_unlock();
     }
@@ -851,7 +830,6 @@ static inline void tb_add_jump(TranslationBlock *tb, int n,
 
 static inline bool cpu_handle_halt(CPUState *cpu)
 {
-#ifndef CONFIG_USER_ONLY
     if (cpu->halted) {
         const TCGCPUOps *tcg_ops = cpu->cc->tcg_ops;
         bool leave_halt = tcg_ops->cpu_exec_halt(cpu);
@@ -862,7 +840,6 @@ static inline bool cpu_handle_halt(CPUState *cpu)
 
         cpu->halted = 0;
     }
-#endif /* !CONFIG_USER_ONLY */
 
     return false;
 }
@@ -899,19 +876,6 @@ static inline bool cpu_handle_exception(CPUState *cpu, int *ret)
         return true;
     }
 
-#if defined(CONFIG_USER_ONLY)
-    /*
-     * If user mode only, we simulate a fake exception which will be
-     * handled outside the cpu execution loop.
-     */
-    const TCGCPUOps *tcg_ops = cpu->cc->tcg_ops;
-    if (tcg_ops->fake_user_interrupt) {
-        tcg_ops->fake_user_interrupt(cpu);
-    }
-    *ret = cpu->exception_index;
-    cpu->exception_index = -1;
-    return true;
-#else
     const TCGCPUOps *tcg_ops = cpu->cc->tcg_ops;
 
     bql_lock();
@@ -929,14 +893,12 @@ static inline bool cpu_handle_exception(CPUState *cpu, int *ret)
         cpu_handle_debug_exception(cpu);
         return true;
     }
-#endif
 
     return false;
 }
 
 void tcg_kick_vcpu_thread(CPUState *cpu)
 {
-#ifndef CONFIG_USER_ONLY
     /*
      * Ensure cpu_exec will see the reason why the exit request was set.
      * FIXME: this is not always needed.  Other accelerators instead
@@ -944,7 +906,6 @@ void tcg_kick_vcpu_thread(CPUState *cpu)
      * CPU thread; see kvm_arch_pre_run() for example.
      */
     retro_atomic_store_release_int(&cpu->exit_request, 1);
-#endif
 
     /* Ensure cpu_exec will see the exit request after TCG has exited.  */
     retro_atomic_store_release_u16(&cpu->neg.icount_decr.u16.high, 0xffff);
@@ -983,9 +944,6 @@ static inline bool cpu_handle_interrupt(CPUState *cpu,
     retro_atomic_store_release_u16(&cpu->neg.icount_decr.u16.high, 0);
     retro_atomic_thread_fence_seq_cst();
 
-#ifdef CONFIG_USER_ONLY
-    assert(!cpu_test_interrupt(cpu, ~0));
-#else
     if (unlikely(cpu_test_interrupt(cpu, ~0))) {
         bql_lock();
         if (cpu_test_interrupt(cpu, CPU_INTERRUPT_DEBUG)) {
@@ -1050,7 +1008,6 @@ static inline bool cpu_handle_interrupt(CPUState *cpu,
         /* If we exit via cpu_loop_exit/longjmp it is reset in cpu_exec */
         bql_unlock();
     }
-#endif /* !CONFIG_USER_ONLY */
 
     /*
      * Finally, check if we need to exit to the main loop.
@@ -1207,7 +1164,6 @@ static inline void cpu_loop_exec_tb(CPUState *cpu, TranslationBlock *tb,
 
     /* Instruction counter expired.  */
     assert(icount_enabled());
-#ifndef CONFIG_USER_ONLY
     /* Ensure global icount has gone forward */
     icount_update(cpu);
     /* Refill decrementer and continue execution.  */
@@ -1225,7 +1181,6 @@ static inline void cpu_loop_exec_tb(CPUState *cpu, TranslationBlock *tb,
         assert(cpu->icount_extra == 0);
         cpu->cflags_next_tb = (tb->cflags & ~CF_COUNT_MASK) | insns_left;
     }
-#endif
 }
 
 /* main execution loop */
@@ -1294,7 +1249,6 @@ cpu_exec_loop(CPUState *cpu, SyncClocks *sc)
                 retro_atomic_store_relaxed_ptr(&jc->array[h].tb, tb);
             }
 
-#ifndef CONFIG_USER_ONLY
             /*
              * We don't take care of direct jumps when address mapping
              * changes in system emulation.  So it's not safe to make a
@@ -1307,7 +1261,6 @@ cpu_exec_loop(CPUState *cpu, SyncClocks *sc)
                 }
                 last_tb = NULL;
             }
-#endif
             /* See if we can patch the calling TB. */
             if (last_tb) {
                 tb_add_jump(last_tb, tb_exit, tb);
@@ -1372,12 +1325,10 @@ bool tcg_exec_realizefn(CPUState *cpu, Error **errp)
     if (!tcg_target_initialized) {
         /* Check mandatory TCGCPUOps handlers */
         const TCGCPUOps *tcg_ops = cpu->cc->tcg_ops;
-#ifndef CONFIG_USER_ONLY
         assert(tcg_ops->cpu_exec_halt);
         assert(tcg_ops->cpu_exec_interrupt);
         assert(tcg_ops->cpu_exec_reset);
         assert(tcg_ops->pointer_wrap);
-#endif /* !CONFIG_USER_ONLY */
         assert(tcg_ops->translate_code);
         assert(tcg_ops->get_tb_cpu_state);
         assert(tcg_ops->mmu_index);
@@ -1387,9 +1338,7 @@ bool tcg_exec_realizefn(CPUState *cpu, Error **errp)
 
     cpu->tb_jmp_cache = g_new0(CPUJumpCache, 1);
     tlb_init(cpu);
-#ifndef CONFIG_USER_ONLY
     tcg_iommu_init_notifier_list(cpu);
-#endif /* !CONFIG_USER_ONLY */
     /* qemu_plugin_vcpu_init_hook delayed until cpu_index assigned. */
 
     return true;
@@ -1398,9 +1347,7 @@ bool tcg_exec_realizefn(CPUState *cpu, Error **errp)
 /* undo the initializations in reverse order */
 void tcg_exec_unrealizefn(CPUState *cpu)
 {
-#ifndef CONFIG_USER_ONLY
     tcg_iommu_free_notifier_list(cpu);
-#endif /* !CONFIG_USER_ONLY */
 
     tlb_destroy(cpu);
     g_free_rcu(cpu->tb_jmp_cache, rcu);

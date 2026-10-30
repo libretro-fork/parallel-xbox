@@ -2472,9 +2472,7 @@ struct X86CPUClass {
     ResettablePhases parent_phases;
 };
 
-#ifndef CONFIG_USER_ONLY
 extern const VMStateDescription vmstate_x86_cpu;
-#endif
 
 int x86_cpu_write_elf64_note(WriteCoreDumpFunction f, CPUState *cpu,
                              int cpuid, DumpState *s);
@@ -2494,7 +2492,6 @@ int x86_cpu_gdb_read_register(CPUState *cpu, GByteArray *buf, int reg);
 int x86_cpu_gdb_write_register(CPUState *cpu, uint8_t *buf, int reg);
 void x86_cpu_gdb_init(CPUState *cs);
 
-#ifndef CONFIG_USER_ONLY
 int x86_cpu_pending_interrupt(CPUState *cs, int interrupt_request);
 
 hwaddr x86_cpu_get_phys_page_attrs_debug(CPUState *cpu, vaddr addr,
@@ -2505,7 +2502,6 @@ int cpu_get_pic_interrupt(CPUX86State *s);
 void x86_register_ferr_irq(qemu_irq irq);
 void fpu_check_raise_ferr_irq(CPUX86State *s);
 void cpu_clear_ignne(void);
-#endif
 
 /* mpx_helper.c */
 void cpu_sync_bndcs_hflags(CPUX86State *env);
@@ -2658,7 +2654,6 @@ typedef enum X86ASIdx {
     X86ASIdx_SMM = 1,
 } X86ASIdx;
 
-#ifndef CONFIG_USER_ONLY
 static inline int x86_asidx_from_attrs(CPUState *cs, MemTxAttrs attrs)
 {
     return !!attrs.secure;
@@ -2681,7 +2676,6 @@ uint64_t x86_ldq_phys(CPUState *cs, hwaddr addr);
 void x86_stb_phys(CPUState *cs, hwaddr addr, uint8_t val);
 void x86_stl_phys(CPUState *cs, hwaddr addr, uint32_t val);
 void x86_stq_phys(CPUState *cs, hwaddr addr, uint64_t val);
-#endif
 
 /* will be suppressed */
 void cpu_x86_update_cr0(CPUX86State *env, uint32_t new_cr0);
@@ -2710,13 +2704,6 @@ uint64_t cpu_get_tsc(CPUX86State *env);
 #define MMU_PHYS_IDX       6
 #define MMU_NESTED_IDX     7
 
-#ifdef CONFIG_USER_ONLY
-#ifdef TARGET_X86_64
-#define MMU_USER_IDX MMU_USER64_IDX
-#else
-#define MMU_USER_IDX MMU_USER32_IDX
-#endif
-#endif
 
 static inline bool is_mmu_index_smap(int mmu_index)
 {
@@ -2741,9 +2728,7 @@ static inline bool is_mmu_index_32(int mmu_index)
 
 #include "svm.h"
 
-#if !defined(CONFIG_USER_ONLY)
 #include "hw/i386/apic.h"
-#endif
 
 void do_cpu_init(X86CPU *cpu);
 
@@ -2869,19 +2854,9 @@ static inline void cpu_set_fpuc(CPUX86State *env, uint16_t fpuc)
 }
 
 /* svm_helper.c */
-#ifdef CONFIG_USER_ONLY
-static inline void
-cpu_svm_check_intercept_param(CPUX86State *env1, uint32_t type,
-                              uint64_t param, uintptr_t retaddr)
-{ /* no-op */ }
-static inline bool
-cpu_svm_has_intercept(CPUX86State *env, uint32_t type)
-{ return false; }
-#else
 void cpu_svm_check_intercept_param(CPUX86State *env1, uint32_t type,
                                    uint64_t param, uintptr_t retaddr);
 bool cpu_svm_has_intercept(CPUX86State *env, uint32_t type);
-#endif
 
 /* apic.c */
 void cpu_report_tpr_access(CPUX86State *env, TPRAccess access);
@@ -2910,14 +2885,12 @@ typedef int X86CPUVersion;
  */
 void x86_cpu_set_default_version(X86CPUVersion version);
 
-#ifndef CONFIG_USER_ONLY
 
 void do_cpu_sipi(X86CPU *cpu);
 
 #define APIC_DEFAULT_ADDRESS 0xfee00000
 #define APIC_SPACE_SIZE      0x100000
 
-#endif
 
 /* igvm.c */
 void qigvm_x86_bsp_reset(CPUX86State *env);
@@ -2985,11 +2958,6 @@ static inline bool ctl_has_irq(CPUX86State *env)
     return (env->int_ctl & V_IRQ_MASK) && (int_prio >= tpr);
 }
 
-#if defined(TARGET_X86_64) && \
-    defined(CONFIG_USER_ONLY) && \
-    defined(CONFIG_LINUX)
-# define TARGET_VSYSCALL_PAGE  (UINT64_C(-10) << 20)
-#endif
 
 /* majority(NOT a, b, c) = (a ^ b) ? b : c */
 #define MAJ_INV1(a, b, c)  ((((a) ^ (b)) & ((b) ^ (c))) ^ (c))

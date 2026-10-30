@@ -38,10 +38,8 @@ QEMU_BUILD_BUG_ON(TCG_PHYS_ADDR_BITS > TARGET_PHYS_ADDR_SPACE_BITS);
  * @cpu: vCPU the interrupt is to be handled by.
  */
 void x86_cpu_do_interrupt(CPUState *cpu);
-#ifndef CONFIG_USER_ONLY
 bool x86_cpu_exec_halt(CPUState *cpu);
 bool x86_cpu_exec_interrupt(CPUState *cpu, int int_req);
-#endif
 
 void breakpoint_handler(CPUState *cs);
 
@@ -72,20 +70,12 @@ G_NORETURN void raise_interrupt(CPUX86State *nenv, int intno, int next_eip_adden
 G_NORETURN void handle_unaligned_access(CPUX86State *env, vaddr vaddr,
                                         MMUAccessType access_type,
                                         uintptr_t retaddr);
-#ifdef CONFIG_USER_ONLY
-void x86_cpu_record_sigsegv(CPUState *cs, vaddr addr,
-                            MMUAccessType access_type,
-                            bool maperr, uintptr_t ra);
-void x86_cpu_record_sigbus(CPUState *cs, vaddr addr,
-                           MMUAccessType access_type, uintptr_t ra);
-#else
 bool x86_cpu_tlb_fill(CPUState *cs, vaddr address, int size,
                       MMUAccessType access_type, int mmu_idx,
                       bool probe, uintptr_t retaddr);
 G_NORETURN void x86_cpu_do_unaligned_access(CPUState *cs, vaddr vaddr,
                                             MMUAccessType access_type,
                                             int mmu_idx, uintptr_t retaddr);
-#endif
 
 /* cc_helper.c */
 static inline unsigned int compute_pf(uint8_t x)
@@ -97,11 +87,9 @@ static inline unsigned int compute_pf(uint8_t x)
 void cpu_load_eflags(CPUX86State *env, int eflags, int update_mask);
 
 /* system/svm_helper.c */
-#ifndef CONFIG_USER_ONLY
 G_NORETURN void cpu_vmexit(CPUX86State *nenv, uint64_t exit_code,
                            uint64_t exit_info_1, uintptr_t retaddr);
 void do_vmexit(CPUX86State *env);
-#endif
 
 /* seg_helper.c */
 void do_interrupt_x86_hardirq(CPUX86State *env, int intno, int is_hw);

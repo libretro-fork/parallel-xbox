@@ -42,7 +42,6 @@ static inline void *probe_read(CPUArchState *env, vaddr addr, int size,
     return probe_access(env, addr, size, MMU_DATA_LOAD, mmu_idx, retaddr);
 }
 
-#ifndef CONFIG_USER_ONLY
 
 /**
  * probe_access_full_mmu:
@@ -58,6 +57,5 @@ int probe_access_full_mmu(CPUArchState *env, vaddr addr, int size,
                           MMUAccessType access_type, int mmu_idx,
                           void **phost, CPUTLBEntryFull **pfull);
 
-#endif /* !CONFIG_USER_ONLY */
 
 #endif

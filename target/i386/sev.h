@@ -14,11 +14,9 @@
 #ifndef I386_SEV_H
 #define I386_SEV_H
 
-#ifndef CONFIG_USER_ONLY
 #include CONFIG_DEVICES /* CONFIG_SEV */
-#endif
 
-#if !defined(CONFIG_SEV) || defined(CONFIG_USER_ONLY)
+#if !defined(CONFIG_SEV)
 #define sev_enabled() 0
 #define sev_es_enabled() 0
 #define sev_snp_enabled() 0
@@ -28,7 +26,6 @@ bool sev_es_enabled(void);
 bool sev_snp_enabled(void);
 #endif
 
-#if !defined(CONFIG_USER_ONLY)
 
 #define TYPE_SEV_COMMON "sev-common"
 #define TYPE_SEV_GUEST "sev-guest"
@@ -190,7 +187,6 @@ void sev_es_set_reset_vector(CPUState *cpu);
 
 void pc_system_parse_sev_metadata(uint8_t *flash_ptr, size_t flash_size);
 
-#endif /* !CONFIG_USER_ONLY */
 
 uint32_t sev_get_cbit_position(void);
 uint32_t sev_get_reduced_phys_bits(void);

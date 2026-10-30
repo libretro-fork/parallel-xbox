@@ -171,10 +171,6 @@ static inline unsigned memop_size(MemOp op)
 /* Size in bytes to MemOp.  */
 static inline MemOp size_memop(unsigned size)
 {
-#ifdef CONFIG_DEBUG_TCG
-    /* Power of 2 up to 1024 */
-    assert(is_power_of_2(size) && size >= 1 && size <= (1 << MO_SIZE));
-#endif
     return (MemOp)ctz32(size);
 }
 

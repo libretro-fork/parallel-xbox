@@ -192,10 +192,8 @@ typedef struct DisasContext {
     bool has_modrm;
     uint8_t modrm;
 
-#ifndef CONFIG_USER_ONLY
     uint8_t cpl;   /* code priv level */
     uint8_t iopl;  /* i/o priv level */
-#endif
     uint8_t vex_l;  /* vex vector length */
     uint8_t vex_v;  /* vex vvvv register, without 1's complement.  */
     uint8_t popl_esp_hack; /* for correct popl with esp base handling */
@@ -294,38 +292,21 @@ typedef struct DisasContext {
 #define DISAS_JUMP_FAR         DISAS_TARGET_5
 
 /* The environment in which user-only runs is constrained. */
-#ifdef CONFIG_USER_ONLY
-#define PE(S)     true
-#define CPL(S)    3
-#define IOPL(S)   0
-#define SVME(S)   false
-#define GUEST(S)  false
-#else
 #define PE(S)     (((S)->flags & HF_PE_MASK) != 0)
 #define CPL(S)    ((S)->cpl)
 #define IOPL(S)   ((S)->iopl)
 #define SVME(S)   (((S)->flags & HF_SVME_MASK) != 0)
 #define GUEST(S)  (((S)->flags & HF_GUEST_MASK) != 0)
-#endif
-#if defined(CONFIG_USER_ONLY) && defined(TARGET_X86_64)
-#define VM86(S)   false
-#define CODE32(S) true
-#define SS32(S)   true
-#define ADDSEG(S) false
-#else
 #define VM86(S)   (((S)->flags & HF_VM_MASK) != 0)
 #define CODE32(S) (((S)->flags & HF_CS32_MASK) != 0)
 #define SS32(S)   (((S)->flags & HF_SS32_MASK) != 0)
 #define ADDSEG(S) (((S)->flags & HF_ADDSEG_MASK) != 0)
-#endif
 #if !defined(TARGET_X86_64)
 #define CODE64(S) false
-#elif defined(CONFIG_USER_ONLY)
-#define CODE64(S) true
 #else
 #define CODE64(S) (((S)->flags & HF_CS64_MASK) != 0)
 #endif
-#if defined(CONFIG_USER_ONLY) || defined(TARGET_X86_64)
+#if defined(TARGET_X86_64)
 #define LMA(S)    (((S)->flags & HF_LMA_MASK) != 0)
 #else
 #define LMA(S)    false
@@ -354,25 +335,6 @@ typedef struct DisasContext {
     static inline void gen_helper_##NAME(__VA_ARGS__) \
     { qemu_build_not_reached(); }
 
-#ifdef CONFIG_USER_ONLY
-STUB_HELPER(clgi, TCGv_env env)
-STUB_HELPER(flush_page, TCGv_env env, TCGv addr)
-STUB_HELPER(inb, TCGv ret, TCGv_env env, TCGv_i32 port)
-STUB_HELPER(inw, TCGv ret, TCGv_env env, TCGv_i32 port)
-STUB_HELPER(inl, TCGv ret, TCGv_env env, TCGv_i32 port)
-STUB_HELPER(monitor, TCGv_env env, TCGv addr)
-STUB_HELPER(mwait, TCGv_env env, TCGv_i32 pc_ofs)
-STUB_HELPER(outb, TCGv_env env, TCGv_i32 port, TCGv_i32 val)
-STUB_HELPER(outw, TCGv_env env, TCGv_i32 port, TCGv_i32 val)
-STUB_HELPER(outl, TCGv_env env, TCGv_i32 port, TCGv_i32 val)
-STUB_HELPER(stgi, TCGv_env env)
-STUB_HELPER(svm_check_intercept, TCGv_env env, TCGv_i32 type)
-STUB_HELPER(vmload, TCGv_env env, TCGv_i32 aflag)
-STUB_HELPER(vmmcall, TCGv_env env)
-STUB_HELPER(vmrun, TCGv_env env, TCGv_i32 aflag, TCGv_i32 pc_ofs)
-STUB_HELPER(vmsave, TCGv_env env, TCGv_i32 aflag)
-STUB_HELPER(write_crN, TCGv_env env, TCGv_i32 reg, TCGv val)
-#endif
 
 static void gen_jmp_rel(DisasContext *s, MemOp ot, int diff, int tb_num);
 static void gen_jmp_rel_csize(DisasContext *s, int diff, int tb_num);
@@ -924,14 +886,6 @@ static void gen_helper_out_func(MemOp ot, TCGv_i32 v, TCGv_i32 n)
 static bool gen_check_io(DisasContext *s, MemOp ot, TCGv_i32 port,
                          uint32_t svm_flags)
 {
-#ifdef CONFIG_USER_ONLY
-    /*
-     * We do not implement the ioperm(2) syscall, so the TSS check
-     * will always fail.
-     */
-    gen_exception_gpf(s);
-    return false;
-#else
     if (PE(s) && (CPL(s) > IOPL(s) || VM86(s))) {
         gen_helper_check_io(tcg_env, port, tcg_constant_i32(1 << ot));
     }
@@ -947,7 +901,6 @@ static bool gen_check_io(DisasContext *s, MemOp ot, TCGv_i32 port,
                                 cur_insn_len_i32(s));
     }
     return true;
-#endif
 }
 
 static void gen_movs(DisasContext *s, MemOp ot, TCGv dshift)
@@ -1496,14 +1449,9 @@ static void gen_cmps(DisasContext *s, MemOp ot, TCGv dshift)
 static void gen_bpt_io(DisasContext *s, TCGv_i32 t_port, int ot)
 {
     if (s->flags & HF_IOBPT_MASK) {
-#ifdef CONFIG_USER_ONLY
-        /* user-mode cpu should not be in IOBPT mode */
-        g_assert_not_reached();
-#else
         TCGv_i32 t_size = tcg_constant_i32(1 << ot);
         TCGv t_next = eip_next_tl(s);
         gen_helper_bpt_io(tcg_env, t_port, t_size, t_next);
-#endif /* CONFIG_USER_ONLY */
     }
 }
 
@@ -4440,10 +4388,8 @@ static void i386_tr_init_disas_context(DisasContextBase *dcbase, CPUState *cpu)
     dc->cf_entry_class = tb_cf_class_of_flags(flags);
     dc->cc_op_entry = true;
     dc->cf_entry_used = false;
-#ifndef CONFIG_USER_ONLY
     dc->cpl = cpl;
     dc->iopl = iopl;
-#endif
 
     /* We make some simplifying assumptions; validate they're correct. */
     g_assert(PE(dc) == ((flags & HF_PE_MASK) != 0));
@@ -4517,17 +4463,6 @@ static void i386_tr_translate_insn(DisasContextBase *dcbase, CPUState *cpu)
     bool orig_cc_op_dirty = dc->cc_op_dirty;
     CCOp orig_cc_op = dc->cc_op;
     target_ulong orig_pc_save = dc->pc_save;
-
-#ifdef TARGET_VSYSCALL_PAGE
-    /*
-     * Detect entry into the vsyscall page and invoke the syscall.
-     */
-    if ((dc->base.pc_next & TARGET_PAGE_MASK) == TARGET_VSYSCALL_PAGE) {
-        gen_exception(dc, EXCP_VSYSCALL);
-        dc->base.pc_next = dc->pc + 1;
-        return;
-    }
-#endif
 
     switch (sigsetjmp(dc->jmpbuf, 0)) {
     case 0:

@@ -2,7 +2,6 @@
 
 #include "qemu/osdep.h"
 #include "qemu/interval-tree.h"
-#include "qemu/atomic.h"
 
 /*
  * Red Black Trees.
@@ -32,22 +31,6 @@
  *  We shall indicate color with case, where black nodes are uppercase and red
  *  nodes will be lowercase. Unknown color nodes shall be drawn as red within
  *  parentheses and have some accompanying text comment.
- *
- * Notes on lockless lookups:
- *
- * All stores to the tree structure (rb_left and rb_right) must be done using
- * WRITE_ONCE [qatomic_set for QEMU]. And we must not inadvertently cause
- * (temporary) loops in the tree structure as seen in program order.
- *
- * These two requirements will allow lockless iteration of the tree -- not
- * correct iteration mind you, tree rotations are not atomic so a lookup might
- * miss entire subtrees.
- *
- * But they do guarantee that any such traversal will only see valid elements
- * and that it will indeed complete -- does not get stuck in a loop.
- *
- * It also guarantees that if the lookup returns an element it is the 'correct'
- * one. But not returning an element does _NOT_ mean it's not present.
  */
 
 typedef enum RBColor
@@ -64,12 +47,12 @@ typedef struct RBAugmentCallbacks {
 
 static inline uintptr_t rb_pc(const RBNode *n)
 {
-    return qatomic_read(&n->rb_parent_color);
+    return n->rb_parent_color;
 }
 
 static inline void rb_set_pc(RBNode *n, uintptr_t pc)
 {
-    qatomic_set(&n->rb_parent_color, pc);
+    n->rb_parent_color = pc;
 }
 
 static inline RBNode *pc_parent(uintptr_t pc)
@@ -136,12 +119,7 @@ static inline void rb_link_node(RBNode *node, RBNode *parent, RBNode **rb_link)
 {
     node->rb_parent_color = (uintptr_t)parent;
     node->rb_left = node->rb_right = NULL;
-
-    /*
-     * Ensure that node is initialized before insertion,
-     * as viewed by a concurrent search.
-     */
-    qatomic_set_mb(rb_link, node);
+    *rb_link = node;
 }
 
 static RBNode *rb_next(RBNode *node)
@@ -179,11 +157,11 @@ static inline void rb_change_child(RBNode *old, RBNode *new,
                                    RBNode *parent, RBRoot *root)
 {
     if (!parent) {
-        qatomic_set(&root->rb_node, new);
+        root->rb_node = new;
     } else if (parent->rb_left == old) {
-        qatomic_set(&parent->rb_left, new);
+        parent->rb_left = new;
     } else {
-        qatomic_set(&parent->rb_right, new);
+        parent->rb_right = new;
     }
 }
 
@@ -266,8 +244,8 @@ static void rb_insert_augmented(RBNode *node, RBRoot *root,
                  * continuation into Case 3 will fix that.
                  */
                 tmp = node->rb_left;
-                qatomic_set(&parent->rb_right, tmp);
-                qatomic_set(&node->rb_left, parent);
+                parent->rb_right = tmp;
+                node->rb_left = parent;
                 if (tmp) {
                     rb_set_parent_color(tmp, parent, RB_BLACK);
                 }
@@ -287,8 +265,8 @@ static void rb_insert_augmented(RBNode *node, RBRoot *root,
              *     /                 \
              *    n                   U
              */
-            qatomic_set(&gparent->rb_left, tmp); /* == parent->rb_right */
-            qatomic_set(&parent->rb_right, gparent);
+            gparent->rb_left = tmp; /* == parent->rb_right */
+            parent->rb_right = gparent;
             if (tmp) {
                 rb_set_parent_color(tmp, gparent, RB_BLACK);
             }
@@ -311,8 +289,8 @@ static void rb_insert_augmented(RBNode *node, RBRoot *root,
             if (node == tmp) {
                 /* Case 2 - right rotate at parent */
                 tmp = node->rb_right;
-                qatomic_set(&parent->rb_left, tmp);
-                qatomic_set(&node->rb_right, parent);
+                parent->rb_left = tmp;
+                node->rb_right = parent;
                 if (tmp) {
                     rb_set_parent_color(tmp, parent, RB_BLACK);
                 }
@@ -323,8 +301,8 @@ static void rb_insert_augmented(RBNode *node, RBRoot *root,
             }
 
             /* Case 3 - left rotate at gparent */
-            qatomic_set(&gparent->rb_right, tmp); /* == parent->rb_left */
-            qatomic_set(&parent->rb_left, gparent);
+            gparent->rb_right = tmp; /* == parent->rb_left */
+            parent->rb_left = gparent;
             if (tmp) {
                 rb_set_parent_color(tmp, gparent, RB_BLACK);
             }
@@ -371,8 +349,8 @@ static void rb_erase_color(RBNode *parent, RBRoot *root,
                  *     Sl  Sr      N   Sl
                  */
                 tmp1 = sibling->rb_left;
-                qatomic_set(&parent->rb_right, tmp1);
-                qatomic_set(&sibling->rb_left, parent);
+                parent->rb_right = tmp1;
+                sibling->rb_left = parent;
                 rb_set_parent_color(tmp1, parent, RB_BLACK);
                 rb_rotate_set_parents(parent, sibling, root, RB_RED);
                 augment->rotate(parent, sibling);
@@ -437,9 +415,9 @@ static void rb_erase_color(RBNode *parent, RBRoot *root,
                  *          Sr
                  */
                 tmp1 = tmp2->rb_right;
-                qatomic_set(&sibling->rb_left, tmp1);
-                qatomic_set(&tmp2->rb_right, sibling);
-                qatomic_set(&parent->rb_right, tmp2);
+                sibling->rb_left = tmp1;
+                tmp2->rb_right = sibling;
+                parent->rb_right = tmp2;
                 if (tmp1) {
                     rb_set_parent_color(tmp1, sibling, RB_BLACK);
                 }
@@ -460,8 +438,8 @@ static void rb_erase_color(RBNode *parent, RBRoot *root,
              *      (sl) sr      N  (sl)
              */
             tmp2 = sibling->rb_left;
-            qatomic_set(&parent->rb_right, tmp2);
-            qatomic_set(&sibling->rb_left, parent);
+            parent->rb_right = tmp2;
+            sibling->rb_left = parent;
             rb_set_parent_color(tmp1, sibling, RB_BLACK);
             if (tmp2) {
                 rb_set_parent(tmp2, parent);
@@ -474,8 +452,8 @@ static void rb_erase_color(RBNode *parent, RBRoot *root,
             if (rb_is_red(sibling)) {
                 /* Case 1 - right rotate at parent */
                 tmp1 = sibling->rb_right;
-                qatomic_set(&parent->rb_left, tmp1);
-                qatomic_set(&sibling->rb_right, parent);
+                parent->rb_left = tmp1;
+                sibling->rb_right = parent;
                 rb_set_parent_color(tmp1, parent, RB_BLACK);
                 rb_rotate_set_parents(parent, sibling, root, RB_RED);
                 augment->rotate(parent, sibling);
@@ -500,9 +478,9 @@ static void rb_erase_color(RBNode *parent, RBRoot *root,
                 }
                 /* Case 3 - left rotate at sibling */
                 tmp1 = tmp2->rb_left;
-                qatomic_set(&sibling->rb_right, tmp1);
-                qatomic_set(&tmp2->rb_left, sibling);
-                qatomic_set(&parent->rb_left, tmp2);
+                sibling->rb_right = tmp1;
+                tmp2->rb_left = sibling;
+                parent->rb_left = tmp2;
                 if (tmp1) {
                     rb_set_parent_color(tmp1, sibling, RB_BLACK);
                 }
@@ -512,8 +490,8 @@ static void rb_erase_color(RBNode *parent, RBRoot *root,
             }
             /* Case 4 - right rotate at parent + color flips */
             tmp2 = sibling->rb_right;
-            qatomic_set(&parent->rb_left, tmp2);
-            qatomic_set(&sibling->rb_right, parent);
+            parent->rb_left = tmp2;
+            sibling->rb_right = parent;
             rb_set_parent_color(tmp1, sibling, RB_BLACK);
             if (tmp2) {
                 rb_set_parent(tmp2, parent);
@@ -597,8 +575,8 @@ static void rb_erase_augmented(RBNode *node, RBRoot *root,
                 tmp = tmp->rb_left;
             } while (tmp);
             child2 = successor->rb_right;
-            qatomic_set(&parent->rb_left, child2);
-            qatomic_set(&successor->rb_right, child);
+            parent->rb_left = child2;
+            successor->rb_right = child;
             rb_set_parent(child, successor);
 
             augment->copy(node, successor);
@@ -606,7 +584,7 @@ static void rb_erase_augmented(RBNode *node, RBRoot *root,
         }
 
         tmp = node->rb_left;
-        qatomic_set(&successor->rb_left, tmp);
+        successor->rb_left = tmp;
         rb_set_parent(tmp, successor);
 
         pc = rb_pc(node);
@@ -759,7 +737,7 @@ static IntervalTreeNode *interval_tree_subtree_search(IntervalTreeNode *node,
          * Loop invariant: start <= node->subtree_last
          * (Cond2 is satisfied by one of the subtree nodes)
          */
-        RBNode *tmp = qatomic_read(&node->rb.rb_left);
+        RBNode *tmp = node->rb.rb_left;
         if (tmp) {
             IntervalTreeNode *left = rb_to_itree(tmp);
 
@@ -780,7 +758,7 @@ static IntervalTreeNode *interval_tree_subtree_search(IntervalTreeNode *node,
             if (start <= node->last) {     /* Cond2 */
                 return node; /* node is leftmost match */
             }
-            tmp = qatomic_read(&node->rb.rb_right);
+            tmp = node->rb.rb_right;
             if (tmp) {
                 node = rb_to_itree(tmp);
                 if (start <= node->subtree_last) {
@@ -832,7 +810,7 @@ IntervalTreeNode *interval_tree_iter_next(IntervalTreeNode *node,
 {
     RBNode *rb, *prev;
 
-    rb = qatomic_read(&node->rb.rb_right);
+    rb = node->rb.rb_right;
     while (true) {
         /*
          * Loop invariants:
@@ -857,7 +835,7 @@ IntervalTreeNode *interval_tree_iter_next(IntervalTreeNode *node,
             }
             prev = &node->rb;
             node = rb_to_itree(rb);
-            rb = qatomic_read(&node->rb.rb_right);
+            rb = node->rb.rb_right;
         } while (prev == rb);
 
         /* Check if the node intersects [start;last] */

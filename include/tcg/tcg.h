@@ -398,10 +398,6 @@ struct TCGContext {
     tcg_insn_unit *code_buf;      /* pointer for start of tb */
     tcg_insn_unit *code_ptr;      /* pointer for running end of tb */
 
-#ifdef CONFIG_DEBUG_TCG
-    int goto_tb_issue_mask;
-    const TCGOpcode *vecop_list;
-#endif
 
     /* Code generation.  Note that we specifically do not use tcg_insn_unit
        here, because there's too much arithmetic throughout that relies
@@ -493,11 +489,7 @@ static inline bool temp_readonly(TCGTemp *ts)
     return ts->kind >= TEMP_FIXED;
 }
 
-#ifdef CONFIG_USER_ONLY
-extern bool tcg_use_softmmu;
-#else
 #define tcg_use_softmmu  true
-#endif
 
 #if defined(_WIN32)
 extern unsigned long tls_key_tcg_ctx;
@@ -521,10 +513,6 @@ extern TCGv_env tcg_env;
 
 bool in_code_gen_buffer(const void *p);
 
-#ifdef CONFIG_DEBUG_TCG
-const void *tcg_splitwx_to_rx(void *rw);
-void *tcg_splitwx_to_rw(const void *rx);
-#else
 static inline const void *tcg_splitwx_to_rx(void *rw)
 {
     return rw ? rw + tcg_splitwx_diff : NULL;
@@ -534,7 +522,6 @@ static inline void *tcg_splitwx_to_rw(const void *rx)
 {
     return rx ? (void *)rx - tcg_splitwx_diff : NULL;
 }
-#endif
 
 static inline TCGArg temp_arg(TCGTemp *ts)
 {
@@ -546,10 +533,6 @@ static inline TCGTemp *arg_temp(TCGArg a)
     return (TCGTemp *)(uintptr_t)a;
 }
 
-#ifdef CONFIG_DEBUG_TCG
-size_t temp_idx(TCGTemp *ts);
-TCGTemp *tcgv_i32_temp(TCGv_i32 v);
-#else
 static inline size_t temp_idx(TCGTemp *ts)
 {
     return ts - tcg_ctx->temps;
@@ -564,7 +547,6 @@ static inline TCGTemp *tcgv_i32_temp(TCGv_i32 v)
 {
     return (void *)tcg_ctx + (uintptr_t)v;
 }
-#endif
 
 static inline TCGTemp *tcgv_i64_temp(TCGv_i64 v)
 {
@@ -1057,13 +1039,7 @@ uint64_t dup_const(unsigned vece, uint64_t c);
 
 static inline const TCGOpcode *tcg_swap_vecop_list(const TCGOpcode *n)
 {
-#ifdef CONFIG_DEBUG_TCG
-    const TCGOpcode *o = tcg_ctx->vecop_list;
-    tcg_ctx->vecop_list = n;
-    return o;
-#else
     return NULL;
-#endif
 }
 
 bool tcg_can_emit_vecop_list(const TCGOpcode *, TCGType, unsigned);

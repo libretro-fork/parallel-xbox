@@ -34,12 +34,7 @@
 #include "tb-internal.h"
 #include "internal-common.h"
 #include "qemu/cpu-boost.h"
-#ifdef CONFIG_USER_ONLY
-#include "user/page-protection.h"
-#define runstate_is_running()  true
-#else
 #include "system/runstate.h"
-#endif
 #include "trace.h"
 
 /* List iterators for lists of tagged pointers in TranslationBlock. */
@@ -80,93 +75,6 @@ void tb_htable_init(void)
 
 typedef struct PageDesc PageDesc;
 
-#ifdef CONFIG_USER_ONLY
-
-/*
- * In user-mode page locks aren't used; mmap_lock is enough.
- */
-#define assert_page_locked(pd) tcg_debug_assert(have_mmap_lock())
-
-static inline void tb_lock_pages(const TranslationBlock *tb) { }
-
-/*
- * For user-only, since we are protecting all of memory with a single lock,
- * and because the two pages of a TranslationBlock are always contiguous,
- * use a single data structure to record all TranslationBlocks.
- */
-static IntervalTreeRoot tb_root;
-
-static void tb_remove_all(void)
-{
-    /*
-     * Only called from tb_flush__exclusive_or_serial, where we have already
-     * asserted that we're in an exclusive state.
-     */
-    memset(&tb_root, 0, sizeof(tb_root));
-}
-
-/* Call with mmap_lock held. */
-static void tb_record(TranslationBlock *tb)
-{
-    vaddr addr;
-    int flags;
-
-    assert_memory_lock();
-    tb->itree.last = tb->itree.start + tb->size - 1;
-
-    /* translator_loop() must have made all TB pages non-writable */
-    addr = tb_page_addr0(tb);
-    flags = page_get_flags(addr);
-    assert(!(flags & PAGE_WRITE));
-
-    addr = tb_page_addr1(tb);
-    if (addr != -1) {
-        flags = page_get_flags(addr);
-        assert(!(flags & PAGE_WRITE));
-    }
-
-    interval_tree_insert(&tb->itree, &tb_root);
-}
-
-/* Call with mmap_lock held. */
-static void tb_remove(TranslationBlock *tb)
-{
-    assert_memory_lock();
-    interval_tree_remove(&tb->itree, &tb_root);
-}
-
-/* TODO: For now, still shared with translate-all.c for system mode. */
-#define PAGE_FOR_EACH_TB(start, last, pagedesc, T, N)   \
-    for (T = foreach_tb_first(start, last),             \
-         N = foreach_tb_next(T, start, last);           \
-         T != NULL;                                     \
-         T = N, N = foreach_tb_next(N, start, last))
-
-typedef TranslationBlock *PageForEachNext;
-
-static PageForEachNext foreach_tb_first(tb_page_addr_t start,
-                                        tb_page_addr_t last)
-{
-    IntervalTreeNode *n = interval_tree_iter_first(&tb_root, start, last);
-    return n ? container_of(n, TranslationBlock, itree) : NULL;
-}
-
-static PageForEachNext foreach_tb_next(PageForEachNext tb,
-                                       tb_page_addr_t start,
-                                       tb_page_addr_t last)
-{
-    IntervalTreeNode *n;
-
-    if (tb) {
-        n = interval_tree_iter_next(&tb->itree, start, last);
-        if (n) {
-            return container_of(n, TranslationBlock, itree);
-        }
-    }
-    return NULL;
-}
-
-#else
 /*
  * In system mode we want L1_MAP to be based on ram offsets.
  */
@@ -329,68 +237,11 @@ typedef int PageForEachNext;
 #define PAGE_FOR_EACH_TB(start, last, pagedesc, tb, n) \
     TB_FOR_EACH_TAGGED((pagedesc)->first_tb, tb, n, page_next)
 
-#ifdef CONFIG_DEBUG_TCG
-
-static __thread GHashTable *ht_pages_locked_debug;
-
-static void ht_pages_locked_debug_init(void)
-{
-    if (ht_pages_locked_debug) {
-        return;
-    }
-    ht_pages_locked_debug = g_hash_table_new(NULL, NULL);
-}
-
-static bool page_is_locked(const PageDesc *pd)
-{
-    PageDesc *found;
-
-    ht_pages_locked_debug_init();
-    found = g_hash_table_lookup(ht_pages_locked_debug, pd);
-    return !!found;
-}
-
-static void page_lock__debug(PageDesc *pd)
-{
-    ht_pages_locked_debug_init();
-    g_assert(!page_is_locked(pd));
-    g_hash_table_insert(ht_pages_locked_debug, pd, pd);
-}
-
-static void page_unlock__debug(const PageDesc *pd)
-{
-    bool removed;
-
-    ht_pages_locked_debug_init();
-    g_assert(page_is_locked(pd));
-    removed = g_hash_table_remove(ht_pages_locked_debug, pd);
-    g_assert(removed);
-}
-
-static void do_assert_page_locked(const PageDesc *pd,
-                                  const char *file, int line)
-{
-    if (unlikely(!page_is_locked(pd))) {
-        error_report("assert_page_lock: PageDesc %p not locked @ %s:%d",
-                     pd, file, line);
-        abort();
-    }
-}
-#define assert_page_locked(pd) do_assert_page_locked(pd, __FILE__, __LINE__)
-
-void assert_no_pages_locked(void)
-{
-    ht_pages_locked_debug_init();
-    g_assert(g_hash_table_size(ht_pages_locked_debug) == 0);
-}
-
-#else /* !CONFIG_DEBUG_TCG */
 
 static inline void page_lock__debug(const PageDesc *pd) { }
 static inline void page_unlock__debug(const PageDesc *pd) { }
 static inline void assert_page_locked(const PageDesc *pd) { }
 
-#endif /* CONFIG_DEBUG_TCG */
 
 static void page_lock(PageDesc *pd)
 {
@@ -765,7 +616,6 @@ static void tb_remove(TranslationBlock *tb)
     }
     tb_page_remove(page_find_alloc(pindex0, false), tb);
 }
-#endif /* CONFIG_USER_ONLY */
 
 /*
  * Flush all the translation blocks.
@@ -1027,93 +877,6 @@ TranslationBlock *tb_link_page(TranslationBlock *tb)
     return tb;
 }
 
-#ifdef CONFIG_USER_ONLY
-/*
- * Invalidate all TBs which intersect with the target address range.
- * Called with mmap_lock held for user-mode emulation.
- * NOTE: this function must not be called while a TB is running.
- */
-void tb_invalidate_phys_range(CPUState *cpu, tb_page_addr_t start,
-                              tb_page_addr_t last)
-{
-    TranslationBlock *tb;
-    PageForEachNext n;
-
-    assert_memory_lock();
-
-    PAGE_FOR_EACH_TB(start, last, unused, tb, n) {
-        tb_phys_invalidate__locked(tb);
-    }
-}
-
-/*
- * Invalidate all TBs which intersect with the target address page @addr.
- * Called with mmap_lock held for user-mode emulation
- * NOTE: this function must not be called while a TB is running.
- */
-static void tb_invalidate_phys_page(tb_page_addr_t addr)
-{
-    tb_page_addr_t start, last;
-
-    start = addr & TARGET_PAGE_MASK;
-    last = addr | ~TARGET_PAGE_MASK;
-    tb_invalidate_phys_range(NULL, start, last);
-}
-
-/*
- * Called with mmap_lock held. If pc is not 0 then it indicates the
- * host PC of the faulting store instruction that caused this invalidate.
- * Returns true if the caller needs to abort execution of the current TB.
- */
-bool tb_invalidate_phys_page_unwind(CPUState *cpu, tb_page_addr_t addr,
-                                    uintptr_t pc)
-{
-    TranslationBlock *current_tb;
-    bool current_tb_modified;
-    TranslationBlock *tb;
-    PageForEachNext n;
-    tb_page_addr_t last;
-
-    /*
-     * Without precise smc semantics, or when outside of a TB,
-     * we can skip to invalidate.
-     */
-    if (!pc || !cpu || !cpu->cc->tcg_ops->precise_smc) {
-        tb_invalidate_phys_page(addr);
-        return false;
-    }
-
-    assert_memory_lock();
-    current_tb = tcg_tb_lookup(pc);
-
-    last = addr | ~TARGET_PAGE_MASK;
-    addr &= TARGET_PAGE_MASK;
-    current_tb_modified = false;
-
-    PAGE_FOR_EACH_TB(addr, last, unused, tb, n) {
-        if (current_tb == tb &&
-            (tb_cflags(current_tb) & CF_COUNT_MASK) != 1) {
-            /*
-             * If we are modifying the current TB, we must stop its
-             * execution. We could be more precise by checking that
-             * the modification is after the current PC, but it would
-             * require a specialized function to partially restore
-             * the CPU state.
-             */
-            current_tb_modified = true;
-            cpu_restore_state_from_tb(cpu, current_tb, pc);
-        }
-        tb_phys_invalidate__locked(tb);
-    }
-
-    if (current_tb_modified) {
-        /* Force execution of one insn next time.  */
-        cpu->cflags_next_tb = 1 | CF_NOIRQ | curr_cflags(cpu);
-        return true;
-    }
-    return false;
-}
-#else
 /*
  * @p must be non-NULL.
  * Call with all @pages locked.
@@ -1228,4 +991,3 @@ void tb_invalidate_phys_range_fast(CPUState *cpu, ram_addr_t start,
     }
 }
 
-#endif /* CONFIG_USER_ONLY */

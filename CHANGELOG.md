@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- QEMU's user-mode emulation code (linux-user's side of TCG and the target) and TCG's debug build checks, which no build of the core turned on, are removed; so are the lockless-lookup atomics of the interval tree, which only TCG's optimizer still uses, on one thread. Nothing changes for someone using the core.
+
 - Vulkan no longer emits normal-draw dynamic state while a clear pipeline is bound. Partial-channel clears preserve untouched channels, and subsequent draws restore their own state.
 
 - Vulkan permits full-surface, all-channel clears when rebinding an exactly matching live swizzled color view, avoiding the previous assertion. Partial clears, depth views and layout/size changes retain their existing guards.

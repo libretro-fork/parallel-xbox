@@ -20,11 +20,7 @@
  * which requires writable pages.  We must defer to the helper for user-only,
  * but in system mode all ram is writable for the host.
  */
-#ifdef CONFIG_USER_ONLY
-#define TCG_TARGET_HAS_qemu_ldst_i128   have_lse2
-#else
 #define TCG_TARGET_HAS_qemu_ldst_i128   1
-#endif
 
 #define TCG_TARGET_HAS_tst              1
 

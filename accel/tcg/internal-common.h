@@ -126,27 +126,13 @@ static inline tb_page_addr_t get_page_addr_code(CPUArchState *env,
  * memory related structures are protected with mmap_lock.
  * In !user-mode we use per-page locks.
  */
-#ifdef CONFIG_USER_ONLY
-#define assert_memory_lock() tcg_debug_assert(have_mmap_lock())
-#else
 #define assert_memory_lock()
-#endif
 
-#if defined(CONFIG_SOFTMMU) && defined(CONFIG_DEBUG_TCG)
-void assert_no_pages_locked(void);
-#else
 static inline void assert_no_pages_locked(void) { }
-#endif
 
-#ifdef CONFIG_USER_ONLY
-static inline void page_table_config_init(void) { }
-#else
 void page_table_config_init(void);
-#endif
 
-#ifndef CONFIG_USER_ONLY
 G_NORETURN void cpu_io_recompile(CPUState *cpu, uintptr_t retaddr);
-#endif /* CONFIG_USER_ONLY */
 
 void tb_phys_invalidate(TranslationBlock *tb, tb_page_addr_t page_addr);
 void tb_phys_invalidate_recompile(TranslationBlock *tb);

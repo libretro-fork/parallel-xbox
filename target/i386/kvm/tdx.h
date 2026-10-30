@@ -3,9 +3,7 @@
 #ifndef QEMU_I386_TDX_H
 #define QEMU_I386_TDX_H
 
-#ifndef CONFIG_USER_ONLY
 #include CONFIG_DEVICES /* CONFIG_TDX */
-#endif
 
 #include "confidential-guest.h"
 #include "cpu.h"

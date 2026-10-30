@@ -57,7 +57,6 @@ extern FeatureWordInfo feature_word_info[];
 
 void x86_cpu_expand_features(X86CPU *cpu, Error **errp);
 
-#ifndef CONFIG_USER_ONLY
 GuestPanicInformation *x86_cpu_get_crash_info(CPUState *cs);
 void x86_cpu_get_crash_info_qom(Object *obj, Visitor *v,
                                 const char *name, void *opaque, Error **errp);
@@ -65,6 +64,5 @@ void x86_cpu_get_crash_info_qom(Object *obj, Visitor *v,
 void x86_cpu_apic_create(X86CPU *cpu, Error **errp);
 void x86_cpu_apic_realize(X86CPU *cpu, Error **errp);
 void x86_cpu_machine_reset_cb(void *opaque);
-#endif /* !CONFIG_USER_ONLY */
 
 #endif /* I386_CPU_INTERNAL_H */

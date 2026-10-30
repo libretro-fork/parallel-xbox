@@ -24,10 +24,6 @@ typedef uint32_t MemOpIdx;
  */
 static inline MemOpIdx make_memop_idx(MemOp op, unsigned idx)
 {
-#ifdef CONFIG_DEBUG_TCG
-    assert(idx <= 31);
-    assert(clz32(op) >= 5);
-#endif
     return (op << 5) | idx;
 }
 

@@ -27,11 +27,7 @@
 
 #define MAX_UNROLL  4
 
-#ifdef CONFIG_DEBUG_TCG
-static const TCGOpcode vecop_list_empty[1] = { 0 };
-#else
 #define vecop_list_empty NULL
-#endif
 
 
 /* Verify vector size and alignment rules.  OFS should be the OR of all

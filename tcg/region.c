@@ -122,28 +122,6 @@ static int host_prot_read_exec(void)
 }
 #endif
 
-#ifdef CONFIG_DEBUG_TCG
-const void *tcg_splitwx_to_rx(void *rw)
-{
-    /* Pass NULL pointers unchanged. */
-    if (rw) {
-        g_assert(in_code_gen_buffer(rw));
-        rw += tcg_splitwx_diff;
-    }
-    return rw;
-}
-
-void *tcg_splitwx_to_rw(const void *rx)
-{
-    /* Pass NULL pointers unchanged. */
-    if (rx) {
-        rx -= tcg_splitwx_diff;
-        /* Assert that we end with a pointer in the rw region. */
-        g_assert(in_code_gen_buffer(rx));
-    }
-    return (void *)rx;
-}
-#endif /* CONFIG_DEBUG_TCG */
 
 static void tb_destroy(TranslationBlock *tb)
 {
@@ -436,9 +414,6 @@ void tcg_region_reset_all(void)
 
 static size_t tcg_n_regions(size_t tb_size, unsigned max_threads)
 {
-#ifdef CONFIG_USER_ONLY
-    return 1;
-#else
     size_t n_regions;
 
     /*
@@ -462,7 +437,6 @@ static size_t tcg_n_regions(size_t tb_size, unsigned max_threads)
         return max_threads;
     }
     return MIN(n_regions, max_threads * 8);
-#endif
 }
 
 /*
@@ -478,30 +452,13 @@ static size_t tcg_n_regions(size_t tb_size, unsigned max_threads)
 
 #if TCG_TARGET_REG_BITS == 32
 #define DEFAULT_CODE_GEN_BUFFER_SIZE_1 (32 * MiB)
-#ifdef CONFIG_USER_ONLY
-/*
- * For user mode on smaller 32 bit systems we may run into trouble
- * allocating big chunks of data in the right place. On these systems
- * we utilise a static code generation buffer directly in the binary.
- */
-#define USE_STATIC_CODE_GEN_BUFFER
-#endif
 #else /* TCG_TARGET_REG_BITS == 64 */
-#ifdef CONFIG_USER_ONLY
-/*
- * As user-mode emulation typically means running multiple instances
- * of the translator don't go too nuts with our default code gen
- * buffer lest we make things too hard for the OS.
- */
-#define DEFAULT_CODE_GEN_BUFFER_SIZE_1 (128 * MiB)
-#else
 /*
  * We expect most system emulation to run one or two guests per host.
  * Users running large scale system emulation may want to tweak their
  * runtime setup via the tb-size control on the command line.
  */
 #define DEFAULT_CODE_GEN_BUFFER_SIZE_1 (1 * GiB)
-#endif
 #endif
 
 #define DEFAULT_CODE_GEN_BUFFER_SIZE \
@@ -867,7 +824,6 @@ void tcg_region_init(size_t tb_size, int splitwx, unsigned max_threads)
     /*
      * Leave the initial context initialized to the first region.
      * This will be the context into which we generate the prologue.
-     * It is also the only context for CONFIG_USER_ONLY.
      */
     tcg_region_initial_alloc__locked(&tcg_init_ctx);
 }

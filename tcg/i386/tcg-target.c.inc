@@ -42,21 +42,6 @@
 # define TCG_TARGET_CALL_RET_I128    TCG_CALL_RET_BY_REF
 #endif
 
-#ifdef CONFIG_DEBUG_TCG
-static const char * const tcg_target_reg_names[TCG_TARGET_NB_REGS] = {
-#if TCG_TARGET_REG_BITS == 64
-    "%rax", "%rcx", "%rdx", "%rbx", "%rsp", "%rbp", "%rsi", "%rdi",
-#else
-    "%eax", "%ecx", "%edx", "%ebx", "%esp", "%ebp", "%esi", "%edi",
-#endif
-    "%r8",  "%r9",  "%r10", "%r11", "%r12", "%r13", "%r14", "%r15",
-    "%xmm0", "%xmm1", "%xmm2", "%xmm3", "%xmm4", "%xmm5", "%xmm6", "%xmm7",
-#if TCG_TARGET_REG_BITS == 64
-    "%xmm8", "%xmm9", "%xmm10", "%xmm11",
-    "%xmm12", "%xmm13", "%xmm14", "%xmm15",
-#endif
-};
-#endif
 
 static const int tcg_target_reg_alloc_order[] = {
 #if TCG_TARGET_REG_BITS == 64
@@ -2172,38 +2157,7 @@ static bool tcg_out_qemu_st_slow_path(TCGContext *s, TCGLabelQemuLdst *l)
     return true;
 }
 
-#ifdef CONFIG_USER_ONLY
-static HostAddress x86_guest_base = {
-    .index = -1
-};
-
-#if defined(__x86_64__) && defined(__linux__)
-# include <asm/prctl.h>
-# include <sys/prctl.h>
-int arch_prctl(int code, unsigned long addr);
-static inline int setup_guest_base_seg(void)
-{
-    if (arch_prctl(ARCH_SET_GS, guest_base) == 0) {
-        return P_GS;
-    }
-    return 0;
-}
-#define setup_guest_base_seg  setup_guest_base_seg
-#elif defined(__x86_64__) && \
-      (defined (__FreeBSD__) || defined (__FreeBSD_kernel__))
-# include <machine/sysarch.h>
-static inline int setup_guest_base_seg(void)
-{
-    if (sysarch(AMD64_SET_GSBASE, &guest_base) == 0) {
-        return P_GS;
-    }
-    return 0;
-}
-#define setup_guest_base_seg  setup_guest_base_seg
-#endif
-#else
 # define x86_guest_base (*(HostAddress *)({ qemu_build_not_reached(); NULL; }))
-#endif /* CONFIG_USER_ONLY */
 #ifndef setup_guest_base_seg
 # define setup_guest_base_seg()  0
 #endif

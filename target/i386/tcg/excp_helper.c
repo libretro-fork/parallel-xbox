@@ -53,7 +53,6 @@ static int check_exception(CPUX86State *env, int intno, int *error_code,
     qemu_log_mask(CPU_LOG_INT, "check_exception old: 0x%x new 0x%x\n",
                 env->old_exception, intno);
 
-#if !defined(CONFIG_USER_ONLY)
     if (env->old_exception == EXCP08_DBLE) {
         if (env->hflags & HF_GUEST_MASK) {
             cpu_vmexit(env, SVM_EXIT_SHUTDOWN, 0, retaddr); /* does not return */
@@ -64,7 +63,6 @@ static int check_exception(CPUX86State *env, int intno, int *error_code,
         qemu_system_reset_request(SHUTDOWN_CAUSE_GUEST_RESET);
         return EXCP_HLT;
     }
-#endif
 
     if ((first_contributory && second_contributory)
         || (env->old_exception == EXCP0E_PAGE &&

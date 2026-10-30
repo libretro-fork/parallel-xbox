@@ -250,7 +250,6 @@ static void gen_load(DisasContext *s, X86DecodedInsn *decode, int opn, TCGv v)
         tcg_gen_ld32u_tl(v, tcg_env,
                          offsetof(CPUX86State,segs[op->n].selector));
         break;
-#ifndef CONFIG_USER_ONLY
     case X86_OP_CR:
         if (op->n == 8) {
             translator_io_start(&s->base);
@@ -263,7 +262,6 @@ static void gen_load(DisasContext *s, X86DecodedInsn *decode, int opn, TCGv v)
         /* CR4.DE tested in the helper.  */
         gen_helper_get_dr(v, tcg_env, tcg_constant_i32(op->n));
         break;
-#endif
     case X86_OP_INT:
         if (op->has_ea) {
             if (v == s->T0 && decode->e.special == X86_SPECIAL_SExtT0) {
@@ -360,7 +358,6 @@ static void gen_writeback(DisasContext *s, X86DecodedInsn *decode, int opn, TCGv
                                  16, 16, 0);
         }
         break;
-#ifndef CONFIG_USER_ONLY
     case X86_OP_CR:
         if (op->n == 8) {
             translator_io_start(&s->base);
@@ -373,7 +370,6 @@ static void gen_writeback(DisasContext *s, X86DecodedInsn *decode, int opn, TCGv
         gen_helper_set_dr(tcg_env, tcg_constant_i32(op->n), v);
         s->base.is_jmp = DISAS_EOB_NEXT;
         break;
-#endif
     default:
         g_assert_not_reached();
     }
@@ -3548,23 +3544,13 @@ static void gen_RCR(DisasContext *s, X86DecodedInsn *decode)
     }
 }
 
-#ifdef CONFIG_USER_ONLY
-static void gen_unreachable(DisasContext *s, X86DecodedInsn *decode)
-{
-    g_assert_not_reached();
-}
-#endif
 
-#ifndef CONFIG_USER_ONLY
 static void gen_RDMSR(DisasContext *s, X86DecodedInsn *decode)
 {
     gen_update_cc_op(s);
     gen_update_eip_cur(s);
     gen_helper_rdmsr(tcg_env);
 }
-#else
-#define gen_RDMSR gen_unreachable
-#endif
 
 static void gen_RDPMC(DisasContext *s, X86DecodedInsn *decode)
 {
@@ -3759,16 +3745,12 @@ static void gen_RORX(DisasContext *s, X86DecodedInsn *decode)
     }
 }
 
-#ifndef CONFIG_USER_ONLY
 static void gen_RSM(DisasContext *s, X86DecodedInsn *decode)
 {
     gen_helper_rsm(tcg_env);
     assume_cc_op(s, CC_OP_EFLAGS);
     s->base.is_jmp = DISAS_EOB_ONLY;
 }
-#else
-#define gen_RSM gen_UD
-#endif
 
 static void gen_SAHF(DisasContext *s, X86DecodedInsn *decode)
 {
@@ -4703,7 +4685,6 @@ static void gen_WAIT(DisasContext *s, X86DecodedInsn *decode)
     }
 }
 
-#ifndef CONFIG_USER_ONLY
 static void gen_WRMSR(DisasContext *s, X86DecodedInsn *decode)
 {
     gen_update_cc_op(s);
@@ -4711,9 +4692,6 @@ static void gen_WRMSR(DisasContext *s, X86DecodedInsn *decode)
     gen_helper_wrmsr(tcg_env);
     s->base.is_jmp = DISAS_EOB_NEXT;
 }
-#else
-#define gen_WRMSR gen_unreachable
-#endif
 
 static void gen_WRxxBASE(DisasContext *s, X86DecodedInsn *decode)
 {

@@ -607,7 +607,6 @@ void tb_check_watchpoint(CPUState *cpu, uintptr_t retaddr)
     }
 }
 
-#ifndef CONFIG_USER_ONLY
 /*
  * In deterministic execution mode, instructions doing device I/Os
  * must be at the end of the TB.
@@ -692,7 +691,6 @@ void cpu_io_recompile(CPUState *cpu, uintptr_t retaddr)
     cpu_loop_exit_noexc(cpu);
 }
 
-#endif /* CONFIG_USER_ONLY */
 
 /*
  * Called by generic code at e.g. cpu reset after cpu creation,

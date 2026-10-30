@@ -37,14 +37,12 @@
 #include "hw/qdev-properties.h"
 #include "hw/i386/topology.h"
 #include "exec/watchpoint.h"
-#ifndef CONFIG_USER_ONLY
 #include "confidential-guest.h"
 #include "system/reset.h"
 #include "qapi/qapi-commands-machine.h"
 #include "system/address-spaces.h"
 #include "hw/boards.h"
 #include "hw/i386/sgx-epc.h"
-#endif
 #include "system/qtest.h"
 #include "tcg/tcg-cpu.h"
 
@@ -492,12 +490,7 @@ void x86_cpu_vendor_words2str(char *dst, uint32_t vendor1,
  * they aren't actually supported by TCG, because qemu-user only runs
  * in CPL=3; remove them if they are ever implemented for system emulation.
  */
-#if defined CONFIG_USER_ONLY
-#define CPUID_EXT_KERNEL_FEATURES \
-          (CPUID_EXT_PCID | CPUID_EXT_TSC_DEADLINE_TIMER)
-#else
 #define CPUID_EXT_KERNEL_FEATURES 0
-#endif
 #define TCG_EXT_FEATURES (CPUID_EXT_SSE3 | CPUID_EXT_PCLMULQDQ | \
           CPUID_EXT_MONITOR | CPUID_EXT_SSSE3 | CPUID_EXT_CX16 | \
           CPUID_EXT_SSE41 | CPUID_EXT_SSE42 | CPUID_EXT_POPCNT | \
@@ -532,9 +525,6 @@ void x86_cpu_vendor_words2str(char *dst, uint32_t vendor1,
  */
 #if defined CONFIG_LINUX_USER
 #define CPUID_EXT2_KERNEL_FEATURES (CPUID_EXT2_LM | CPUID_EXT2_FFXSR)
-#elif defined CONFIG_USER_ONLY
-/* FIXME: Long mode not yet supported for i386 bsd-user */
-#define CPUID_EXT2_KERNEL_FEATURES CPUID_EXT2_FFXSR
 #else
 #define CPUID_EXT2_KERNEL_FEATURES 0
 #endif
@@ -545,11 +535,7 @@ void x86_cpu_vendor_words2str(char *dst, uint32_t vendor1,
           CPUID_EXT2_SYSCALL | TCG_EXT2_X86_64_FEATURES | \
           CPUID_EXT2_KERNEL_FEATURES)
 
-#if defined CONFIG_USER_ONLY
-#define CPUID_EXT3_KERNEL_FEATURES CPUID_EXT3_OSVW
-#else
 #define CPUID_EXT3_KERNEL_FEATURES 0
-#endif
 
 #define TCG_EXT3_FEATURES (CPUID_EXT3_LAHF_LM | CPUID_EXT3_SVM | \
           CPUID_EXT3_CR8LEG | CPUID_EXT3_ABM | CPUID_EXT3_SSE4A | \
@@ -558,21 +544,13 @@ void x86_cpu_vendor_words2str(char *dst, uint32_t vendor1,
 
 #define TCG_EXT4_FEATURES 0
 
-#if defined CONFIG_USER_ONLY
-#define CPUID_SVM_KERNEL_FEATURES (CPUID_SVM_NRIPSAVE | CPUID_SVM_VNMI)
-#else
 #define CPUID_SVM_KERNEL_FEATURES 0
-#endif
 #define TCG_SVM_FEATURES (CPUID_SVM_NPT | CPUID_SVM_VGIF | \
           CPUID_SVM_SVME_ADDR_CHK | CPUID_SVM_KERNEL_FEATURES)
 
 #define TCG_KVM_FEATURES 0
 
-#if defined CONFIG_USER_ONLY
-#define CPUID_7_0_EBX_KERNEL_FEATURES CPUID_7_0_EBX_INVPCID
-#else
 #define CPUID_7_0_EBX_KERNEL_FEATURES 0
-#endif
 #define TCG_7_0_EBX_FEATURES (CPUID_7_0_EBX_SMEP | CPUID_7_0_EBX_SMAP | \
           CPUID_7_0_EBX_BMI1 | CPUID_7_0_EBX_BMI2 | CPUID_7_0_EBX_ADX | \
           CPUID_7_0_EBX_CLFLUSHOPT |            \
@@ -583,22 +561,13 @@ void x86_cpu_vendor_words2str(char *dst, uint32_t vendor1,
           CPUID_7_0_EBX_HLE
           CPUID_7_0_EBX_INVPCID, CPUID_7_0_EBX_RTM */
 
-#if !defined CONFIG_USER_ONLY || defined CONFIG_LINUX
 #define TCG_7_0_ECX_RDPID CPUID_7_0_ECX_RDPID
-#else
-#define TCG_7_0_ECX_RDPID 0
-#endif
 #define TCG_7_0_ECX_FEATURES (CPUID_7_0_ECX_UMIP | CPUID_7_0_ECX_PKU | \
           /* CPUID_7_0_ECX_OSPKE is dynamic */ \
           CPUID_7_0_ECX_LA57 | CPUID_7_0_ECX_PKS | CPUID_7_0_ECX_VAES | \
           TCG_7_0_ECX_RDPID)
 
-#if defined CONFIG_USER_ONLY
-#define CPUID_7_0_EDX_KERNEL_FEATURES (CPUID_7_0_EDX_SPEC_CTRL | \
-          CPUID_7_0_EDX_ARCH_CAPABILITIES | CPUID_7_0_EDX_SPEC_CTRL_SSBD)
-#else
 #define CPUID_7_0_EDX_KERNEL_FEATURES 0
-#endif
 #define TCG_7_0_EDX_FEATURES (CPUID_7_0_EDX_FSRM | CPUID_7_0_EDX_KERNEL_FEATURES)
 
 #define TCG_7_1_EAX_FEATURES (CPUID_7_1_EAX_FZRM | CPUID_7_1_EAX_FSRS | \
@@ -617,23 +586,12 @@ void x86_cpu_vendor_words2str(char *dst, uint32_t vendor1,
 #define TCG_SGX_12_1_EAX_FEATURES 0
 #define TCG_24_0_EBX_FEATURES 0
 
-#if defined CONFIG_USER_ONLY
-#define CPUID_8000_0008_EBX_KERNEL_FEATURES (CPUID_8000_0008_EBX_IBPB | \
-          CPUID_8000_0008_EBX_IBRS | CPUID_8000_0008_EBX_STIBP | \
-          CPUID_8000_0008_EBX_STIBP_ALWAYS_ON | CPUID_8000_0008_EBX_AMD_SSBD | \
-          CPUID_8000_0008_EBX_AMD_PSFD)
-#else
 #define CPUID_8000_0008_EBX_KERNEL_FEATURES 0
-#endif
 
 #define TCG_8000_0008_EBX  (CPUID_8000_0008_EBX_XSAVEERPTR | \
           CPUID_8000_0008_EBX_WBNOINVD | CPUID_8000_0008_EBX_KERNEL_FEATURES)
 
-#if defined CONFIG_USER_ONLY
-#define CPUID_8000_0021_EAX_KERNEL_FEATURES CPUID_8000_0021_EAX_AUTO_IBRS
-#else
 #define CPUID_8000_0021_EAX_KERNEL_FEATURES 0
-#endif
 
 #define TCG_8000_0021_EAX_FEATURES ( \
             CPUID_8000_0021_EAX_NO_NESTED_DATA_BP | \
@@ -2538,9 +2496,7 @@ static void x86_cpu_list(void)
     g_list_free(names);
 }
 
-#ifndef CONFIG_USER_ONLY
 
-#endif /* !CONFIG_USER_ONLY */
 
 uint64_t x86_cpu_get_supported_feature_word(X86CPU *cpu, FeatureWord w)
 {
@@ -2595,18 +2551,14 @@ uint64_t x86_cpu_get_supported_feature_word(X86CPU *cpu, FeatureWord w)
         break;
 
     case FEAT_7_0_EBX:
-#ifndef CONFIG_USER_ONLY
         if (!check_sgx_support()) {
             unavail = CPUID_7_0_EBX_SGX;
         }
-#endif
         break;
     case FEAT_7_0_ECX:
-#ifndef CONFIG_USER_ONLY
         if (!check_sgx_support()) {
             unavail = CPUID_7_0_ECX_SGX_LC;
         }
-#endif
         break;
 
     case FEAT_7_0_EDX:
@@ -2958,13 +2910,11 @@ void cpu_x86_cpuid(CPUX86State *env, uint32_t index, uint32_t count,
 
 static void x86_cpu_set_sgxlepubkeyhash(CPUX86State *env)
 {
-#ifndef CONFIG_USER_ONLY
     /* Those default values are defined in Skylake HW */
     env->msr_ia32_sgxlepubkeyhash[0] = 0xa6053e051270b7acULL;
     env->msr_ia32_sgxlepubkeyhash[1] = 0x6cfbe8ba8b3b413dULL;
     env->msr_ia32_sgxlepubkeyhash[2] = 0xc4916d99f2b3735dULL;
     env->msr_ia32_sgxlepubkeyhash[3] = 0xd4f8c05909f9bb3bULL;
-#endif
 }
 
 static bool cpuid_has_xsave_feature(CPUX86State *env, const ExtSaveArea *esa)
@@ -3019,11 +2969,7 @@ static void x86_cpu_reset_hold(Object *obj, ResetType type)
 
     env->idt.limit = 0xffff;
     env->gdt.limit = 0xffff;
-#if defined(CONFIG_USER_ONLY)
-    env->ldt.limit = 0;
-#else
     env->ldt.limit = 0xffff;
-#endif
     env->ldt.flags = DESC_P_MASK | (2 << DESC_TYPE_SHIFT);
     env->tr.limit = 0xffff;
     env->tr.flags = DESC_P_MASK | (11 << DESC_TYPE_SHIFT);
@@ -3090,28 +3036,6 @@ static void x86_cpu_reset_hold(Object *obj, ResetType type)
     cr4 = 0;
     xcr0 = XSTATE_FP_MASK;
 
-#ifdef CONFIG_USER_ONLY
-    /* Enable all the features for user-mode.  */
-    if (env->features[FEAT_1_EDX] & CPUID_SSE) {
-        xcr0 |= XSTATE_SSE_MASK;
-    }
-    for (i = 2; i < ARRAY_SIZE(x86_ext_save_areas); i++) {
-        const ExtSaveArea *esa = &x86_ext_save_areas[i];
-        if (!((1 << i) & CPUID_XSTATE_XCR0_MASK)) {
-            continue;
-        }
-        if (cpuid_has_xsave_feature(env, esa)) {
-            xcr0 |= 1ull << i;
-        }
-    }
-
-    if (env->features[FEAT_1_ECX] & CPUID_EXT_XSAVE) {
-        cr4 |= CR4_OSFXSR_MASK | CR4_OSXSAVE_MASK;
-    }
-    if (env->features[FEAT_7_0_EBX] & CPUID_7_0_EBX_FSGSBASE) {
-        cr4 |= CR4_FSGSBASE_MASK;
-    }
-#endif
 
     env->xcr0 = xcr0;
     cpu_x86_update_cr4(env, cr4);
@@ -3134,7 +3058,6 @@ static void x86_cpu_reset_hold(Object *obj, ResetType type)
     env->exception_payload = 0;
     env->nmi_injected = false;
     env->triple_fault_pending = false;
-#if !defined(CONFIG_USER_ONLY)
     /* We hard-wire the BSP to the first CPU. */
     apic_designate_bsp(cpu->apic_state, cs->cpu_index == 0);
 
@@ -3154,12 +3077,10 @@ static void x86_cpu_reset_hold(Object *obj, ResetType type)
 
     env->amd_tsc_scale_msr =  MSR_AMD64_TSC_RATIO_DEFAULT;
 
-#endif
 }
 
 void x86_cpu_after_reset(X86CPU *cpu)
 {
-#ifndef CONFIG_USER_ONLY
     if (kvm_enabled()) {
         kvm_arch_after_reset_vcpu(cpu);
     }
@@ -3167,7 +3088,6 @@ void x86_cpu_after_reset(X86CPU *cpu)
     if (cpu->apic_state) {
         device_cold_reset(DEVICE(cpu->apic_state));
     }
-#endif
 }
 
 static void mce_init(X86CPU *cpu)
@@ -3587,7 +3507,6 @@ static void x86_cpu_hyperv_realize(X86CPU *cpu)
     cpu->hyperv_limits[2] = 0;
 }
 
-#ifndef CONFIG_USER_ONLY
 static bool x86_cpu_update_smp_cache_topo(MachineState *ms, X86CPU *cpu,
                                           Error **errp)
 {
@@ -3631,7 +3550,6 @@ static bool x86_cpu_update_smp_cache_topo(MachineState *ms, X86CPU *cpu,
     }
     return true;
 }
-#endif
 
 static void x86_cpu_realizefn(DeviceState *dev, Error **errp)
 {
@@ -3642,7 +3560,7 @@ static void x86_cpu_realizefn(DeviceState *dev, Error **errp)
     Error *local_err = NULL;
     unsigned requested_lbr_fmt;
 
-#if defined(CONFIG_TCG) && !defined(CONFIG_USER_ONLY)
+#if defined(CONFIG_TCG)
     /* Use pc-relative instructions in system-mode */
     tcg_cflags_set(cs, CF_PCREL);
 #endif
@@ -3878,7 +3796,6 @@ static void x86_cpu_realizefn(DeviceState *dev, Error **errp)
         }
     }
 
-#ifndef CONFIG_USER_ONLY
     MachineState *ms = MACHINE(qdev_get_machine());
     MachineClass *mc = MACHINE_GET_CLASS(ms);
 
@@ -3896,19 +3813,16 @@ static void x86_cpu_realizefn(DeviceState *dev, Error **errp)
             goto out;
         }
     }
-#endif
 
     mce_init(cpu);
 
     x86_cpu_gdb_init(cs);
     qemu_init_vcpu(cs);
 
-#ifndef CONFIG_USER_ONLY
     x86_cpu_apic_realize(cpu, &local_err);
     if (local_err != NULL) {
         goto out;
     }
-#endif /* !CONFIG_USER_ONLY */
     cpu_reset(cs);
 
     xcc->parent_realize(dev, &local_err);
@@ -3925,10 +3839,8 @@ static void x86_cpu_unrealizefn(DeviceState *dev)
     X86CPU *cpu = X86_CPU(dev);
     X86CPUClass *xcc = X86_CPU_GET_CLASS(dev);
 
-#ifndef CONFIG_USER_ONLY
     cpu_remove_sync(CPU(dev));
     qemu_unregister_reset(x86_cpu_machine_reset_cb, dev);
-#endif
 
     if (cpu->apic_state) {
         object_unparent(OBJECT(cpu->apic_state));
@@ -4034,12 +3946,10 @@ static void x86_cpu_register_feature_bit_props(X86CPUClass *xcc,
 
 static void x86_cpu_post_initfn(Object *obj)
 {
-#ifndef CONFIG_USER_ONLY
     if (current_machine && current_machine->cgs) {
         x86_confidential_guest_cpu_instance_init(
             X86_CONFIDENTIAL_GUEST(current_machine->cgs), (CPU(obj)));
     }
-#endif
 }
 
 static void x86_cpu_init_xsave(void)
@@ -4147,14 +4057,12 @@ static int64_t x86_cpu_get_arch_id(CPUState *cs)
     return cpu->apic_id;
 }
 
-#if !defined(CONFIG_USER_ONLY)
 static bool x86_cpu_get_paging_enabled(const CPUState *cs)
 {
     X86CPU *cpu = X86_CPU(cs);
 
     return cpu->env.cr[0] & CR0_PG_MASK;
 }
-#endif /* !CONFIG_USER_ONLY */
 
 static void x86_cpu_set_pc(CPUState *cs, vaddr value)
 {
@@ -4171,7 +4079,6 @@ static vaddr x86_cpu_get_pc(CPUState *cs)
     return cpu->env.eip + cpu->env.segs[R_CS].base;
 }
 
-#if !defined(CONFIG_USER_ONLY)
 int x86_cpu_pending_interrupt(CPUState *cs, int interrupt_request)
 {
     X86CPU *cpu = X86_CPU(cs);
@@ -4217,7 +4124,6 @@ static bool x86_cpu_has_work(CPUState *cs)
     return x86_cpu_pending_interrupt(cs,
                retro_atomic_load_relaxed_int(&cs->interrupt_request)) != 0;
 }
-#endif /* !CONFIG_USER_ONLY */
 
 static void x86_disas_set_info(CPUState *cs, disassemble_info *info)
 {
@@ -4238,22 +4144,12 @@ static void x86_disas_set_info(CPUState *cs, disassemble_info *info)
 }
 
 static const Property x86_cpu_properties[] = {
-#ifdef CONFIG_USER_ONLY
-    /* apic_id = 0 by default for *-user, see commit 9886e834 */
-    DEFINE_PROP_UINT32("apic-id", X86CPU, apic_id, 0),
-    DEFINE_PROP_INT32("thread-id", X86CPU, thread_id, 0),
-    DEFINE_PROP_INT32("core-id", X86CPU, core_id, 0),
-    DEFINE_PROP_INT32("module-id", X86CPU, module_id, 0),
-    DEFINE_PROP_INT32("die-id", X86CPU, die_id, 0),
-    DEFINE_PROP_INT32("socket-id", X86CPU, socket_id, 0),
-#else
     DEFINE_PROP_UINT32("apic-id", X86CPU, apic_id, UNASSIGNED_APIC_ID),
     DEFINE_PROP_INT32("thread-id", X86CPU, thread_id, -1),
     DEFINE_PROP_INT32("core-id", X86CPU, core_id, -1),
     DEFINE_PROP_INT32("module-id", X86CPU, module_id, -1),
     DEFINE_PROP_INT32("die-id", X86CPU, die_id, -1),
     DEFINE_PROP_INT32("socket-id", X86CPU, socket_id, -1),
-#endif
     DEFINE_PROP_INT32("node-id", X86CPU, node_id, CPU_UNSET_NUMA_NODE_ID),
     DEFINE_PROP_BOOL("pmu", X86CPU, enable_pmu, false),
     DEFINE_PROP_UINT64_CHECKMASK("lbr-fmt", X86CPU, lbr_fmt, PERF_CAP_LBR_FMT),
@@ -4388,7 +4284,6 @@ static const Property x86_cpu_properties[] = {
                      pdcm_on_even_without_pmu, false),
 };
 
-#ifndef CONFIG_USER_ONLY
 #include "hw/core/sysemu-cpu-ops.h"
 
 static const struct SysemuCPUOps i386_sysemu_ops = {
@@ -4404,7 +4299,6 @@ static const struct SysemuCPUOps i386_sysemu_ops = {
     .write_elf64_qemunote = x86_cpu_write_elf64_qemunote,
     .legacy_vmsd = &vmstate_x86_cpu,
 };
-#endif
 
 static void x86_cpu_common_class_init(ObjectClass *oc, const void *data)
 {
@@ -4434,9 +4328,7 @@ static void x86_cpu_common_class_init(ObjectClass *oc, const void *data)
     cc->gdb_write_register = x86_cpu_gdb_write_register;
     cc->get_arch_id = x86_cpu_get_arch_id;
 
-#ifndef CONFIG_USER_ONLY
     cc->sysemu_ops = &i386_sysemu_ops;
-#endif /* !CONFIG_USER_ONLY */
 #ifdef CONFIG_TCG
     cc->tcg_ops = &x86_tcg_ops;
 #endif /* CONFIG_TCG */
@@ -4479,10 +4371,8 @@ static void x86_cpu_common_class_init(ObjectClass *oc, const void *data)
                               x86_cpu_get_unavailable_features,
                               NULL, NULL, NULL);
 
-#if !defined(CONFIG_USER_ONLY)
     object_class_property_add(oc, "crash-information", "GuestPanicInformation",
                               x86_cpu_get_crash_info_qom, NULL, NULL, NULL);
-#endif
 
     for (w = 0; w < FEATURE_WORDS; w++) {
         int bitnr;

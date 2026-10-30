@@ -7,9 +7,6 @@
 #ifndef ACCEL_TCG_IOMMU_H
 #define ACCEL_TCG_IOMMU_H
 
-#ifdef CONFIG_USER_ONLY
-#error Cannot include accel/tcg/iommu.h from user emulation
-#endif
 
 #include "exec/hwaddr.h"
 #include "exec/memattrs.h"

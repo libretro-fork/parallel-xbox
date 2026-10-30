@@ -31,10 +31,6 @@ extern ICountMode use_icount;
 
 /* Protect the CONFIG_USER_ONLY test vs poisoning. */
 #if defined(COMPILING_PER_TARGET) || defined(COMPILING_SYSTEM_VS_USER)
-# ifdef CONFIG_USER_ONLY
-#  undef  icount_enabled
-#  define icount_enabled() ICOUNT_DISABLED
-# endif
 #endif
 
 /*

@@ -45,17 +45,6 @@
  */
 static void tcg_assert_listed_vecop(TCGOpcode op)
 {
-#ifdef CONFIG_DEBUG_TCG
-    const TCGOpcode *p = tcg_ctx->vecop_list;
-    if (p) {
-        for (; *p; ++p) {
-            if (*p == op) {
-                return;
-            }
-        }
-        g_assert_not_reached();
-    }
-#endif
 }
 
 bool tcg_can_emit_vecop_list(const TCGOpcode *list,
@@ -68,26 +57,6 @@ bool tcg_can_emit_vecop_list(const TCGOpcode *list,
     for (; *list; ++list) {
         TCGOpcode opc = *list;
 
-#ifdef CONFIG_DEBUG_TCG
-        switch (opc) {
-        case INDEX_op_and_vec:
-        case INDEX_op_or_vec:
-        case INDEX_op_xor_vec:
-        case INDEX_op_mov_vec:
-        case INDEX_op_dup_vec:
-        case INDEX_op_dup2_vec:
-        case INDEX_op_ld_vec:
-        case INDEX_op_st_vec:
-        case INDEX_op_bitsel_vec:
-            /* These opcodes are mandatory and should not be listed.  */
-            g_assert_not_reached();
-        case INDEX_op_not_vec:
-            /* These opcodes have generic expansions using the above.  */
-            g_assert_not_reached();
-        default:
-            break;
-        }
-#endif
 
         if (tcg_can_emit_vec_op(opc, type, vece)) {
             continue;

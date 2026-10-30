@@ -48,14 +48,5 @@ void cpu_abort(CPUState *cpu, const char *fmt, ...)
     }
     va_end(ap2);
     va_end(ap);
-#if defined(CONFIG_USER_ONLY)
-    {
-        struct sigaction act;
-        sigfillset(&act.sa_mask);
-        act.sa_handler = SIG_DFL;
-        act.sa_flags = 0;
-        sigaction(SIGABRT, &act, NULL);
-    }
-#endif
     abort();
 }

@@ -12,23 +12,14 @@
 #include "qemu/thread.h"
 #include "exec/cpu-common.h"
 #include "exec/vaddr.h"
-#ifdef CONFIG_USER_ONLY
-#include "qemu/interval-tree.h"
-#include "exec/target_page.h"
-#endif
 
 /*
  * Page tracking code uses ram addresses in system mode, and virtual
  * addresses in userspace mode.  Define tb_page_addr_t to be an
  * appropriate type.
  */
-#if defined(CONFIG_USER_ONLY)
-typedef vaddr tb_page_addr_t;
-#define TB_PAGE_ADDR_FMT "%" VADDR_PRIx
-#else
 typedef ram_addr_t tb_page_addr_t;
 #define TB_PAGE_ADDR_FMT RAM_ADDR_FMT
-#endif
 
 /*
  * Translation Cache-related fields of a TB.
@@ -103,12 +94,8 @@ struct TranslationBlock {
      * of the previous pointer tells the index of page_next[], and the
      * list is protected by the PageDesc lock(s).
      */
-#ifdef CONFIG_USER_ONLY
-    IntervalTreeNode itree;
-#else
     uintptr_t page_next[2];
     tb_page_addr_t page_addr[2];
-#endif
 
     /* jmp_lock placed here to fill a 4-byte hole. Its documentation is below */
     QemuSpin jmp_lock;
@@ -161,51 +148,24 @@ void tcg_cflags_set(CPUState *cpu, uint32_t flags);
 
 static inline tb_page_addr_t tb_page_addr0(const TranslationBlock *tb)
 {
-#ifdef CONFIG_USER_ONLY
-    return tb->itree.start;
-#else
     return tb->page_addr[0];
-#endif
 }
 
 static inline tb_page_addr_t tb_page_addr1(const TranslationBlock *tb)
 {
-#ifdef CONFIG_USER_ONLY
-    tb_page_addr_t next = tb->itree.last & TARGET_PAGE_MASK;
-    return next == (tb->itree.start & TARGET_PAGE_MASK) ? -1 : next;
-#else
     return tb->page_addr[1];
-#endif
 }
 
 static inline void tb_set_page_addr0(TranslationBlock *tb,
                                      tb_page_addr_t addr)
 {
-#ifdef CONFIG_USER_ONLY
-    tb->itree.start = addr;
-    /*
-     * To begin, we record an interval of one byte.  When the translation
-     * loop encounters a second page, the interval will be extended to
-     * include the first byte of the second page, which is sufficient to
-     * allow tb_page_addr1() above to work properly.  The final corrected
-     * interval will be set by tb_page_add() from tb->size before the
-     * node is added to the interval tree.
-     */
-    tb->itree.last = addr;
-#else
     tb->page_addr[0] = addr;
-#endif
 }
 
 static inline void tb_set_page_addr1(TranslationBlock *tb,
                                      tb_page_addr_t addr)
 {
-#ifdef CONFIG_USER_ONLY
-    /* Extend the interval to the first byte of the second page.  See above. */
-    tb->itree.last = addr;
-#else
     tb->page_addr[1] = addr;
-#endif
 }
 
 /* TranslationBlock invalidate API */

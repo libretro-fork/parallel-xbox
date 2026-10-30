@@ -58,9 +58,6 @@
 #include "tcg-internal.h"
 #include "tcg/perf.h"
 #include "tcg-has.h"
-#ifdef CONFIG_USER_ONLY
-#include "user/guest-base.h"
-#endif
 
 /* Forward declarations for functions declared in tcg-target.c.inc and
    used here. */
@@ -191,9 +188,7 @@ static TCGReg tcg_target_call_oarg_reg(TCGCallReturnKind kind, int slot);
 static bool tcg_target_const_match(int64_t val, int ct,
                                    TCGType type, TCGCond cond, int vece);
 
-#ifndef CONFIG_USER_ONLY
 #define guest_base  ({ qemu_build_not_reached(); (uintptr_t)0; })
-#endif
 
 typedef struct TCGLdstHelperParam {
     TCGReg (*ra_gen)(TCGContext *s, const TCGLabelQemuLdst *l, int arg_reg);
@@ -243,9 +238,6 @@ static TCGAtomAlign atom_and_align_for_opc(TCGContext *s, MemOp opc,
                                            MemOp host_atom, bool allow_two_ops)
     __attribute__((unused));
 
-#ifdef CONFIG_USER_ONLY
-bool tcg_use_softmmu;
-#endif
 
 TCGContext tcg_init_ctx;
 #if defined(_WIN32)
@@ -1287,12 +1279,6 @@ static const TCGOutOp * const all_outop[NB_OPS] = {
  * iterates over the array (e.g. tcg_code_size() the same for both system/user
  * modes.
  */
-#ifdef CONFIG_USER_ONLY
-void tcg_register_thread(void)
-{
-    SET_tcg_ctx(&tcg_init_ctx);
-}
-#else
 
 
 void tcg_register_thread(void)
@@ -1322,7 +1308,6 @@ void tcg_register_thread(void)
 
     SET_tcg_ctx(s);
 }
-#endif /* !CONFIG_USER_ONLY */
 
 /* pool based memory allocation */
 void *tcg_malloc_internal(TCGContext *s, int size)
@@ -1851,14 +1836,8 @@ static void tcg_context_init(unsigned max_threads)
      * reasoning behind this.
      * In system-mode we will have at most max_threads TCG threads.
      */
-#ifdef CONFIG_USER_ONLY
-    tcg_ctxs = &tcg_ctx;
-    tcg_cur_ctxs = 1;
-    tcg_max_ctxs = 1;
-#else
     tcg_max_ctxs = max_threads;
     tcg_ctxs = g_new0(retro_atomic_ptr_t, max_threads);
-#endif
 
     tcg_debug_assert(!tcg_regset_test_reg(s->reserved_regs, TCG_AREG0));
     ts = tcg_global_reg_new_internal(s, TCG_TYPE_PTR, TCG_AREG0, "env");
@@ -1994,9 +1973,6 @@ void tcg_func_start(TCGContext *s)
     s->nb_labels = 0;
     s->current_frame_offset = s->frame_start;
 
-#ifdef CONFIG_DEBUG_TCG
-    s->goto_tb_issue_mask = 0;
-#endif
 
     QTAILQ_INIT(&s->ops);
     QTAILQ_INIT(&s->free_ops);
@@ -2249,21 +2225,6 @@ TCGv_vec tcg_temp_new_vec(TCGType type)
 {
     TCGTemp *t;
 
-#ifdef CONFIG_DEBUG_TCG
-    switch (type) {
-    case TCG_TYPE_V64:
-        assert(TCG_TARGET_HAS_v64);
-        break;
-    case TCG_TYPE_V128:
-        assert(TCG_TARGET_HAS_v128);
-        break;
-    case TCG_TYPE_V256:
-        assert(TCG_TARGET_HAS_v256);
-        break;
-    default:
-        g_assert_not_reached();
-    }
-#endif
 
     t = tcg_temp_new_internal(type, TEMP_EBB);
     return temp_tcgv_vec(t);
@@ -2419,24 +2380,6 @@ TCGv_vec tcg_constant_vec_matching(TCGv_vec match, unsigned vece, int64_t val)
     return tcg_constant_vec(t->base_type, vece, val);
 }
 
-#ifdef CONFIG_DEBUG_TCG
-size_t temp_idx(TCGTemp *ts)
-{
-    ptrdiff_t n = ts - tcg_ctx->temps;
-    assert(n >= 0 && n < tcg_ctx->nb_temps);
-    return n;
-}
-
-TCGTemp *tcgv_i32_temp(TCGv_i32 v)
-{
-    uintptr_t o = (uintptr_t)v - offsetof(TCGContext, temps);
-
-    assert(o < sizeof(TCGTemp) * tcg_ctx->nb_temps);
-    assert(o % sizeof(TCGTemp) == 0);
-
-    return (void *)tcg_ctx + (uintptr_t)v;
-}
-#endif /* CONFIG_DEBUG_TCG */
 
 /*
  * Return true if OP may appear in the opcode stream with TYPE.
@@ -3316,11 +3259,6 @@ void tcg_dump_ops(TCGContext *s, FILE *f, bool have_prefs)
                     ne_fprintf(f, "none");
                 } else if (set == MAKE_64BIT_MASK(0, TCG_TARGET_NB_REGS)) {
                     ne_fprintf(f, "all");
-#ifdef CONFIG_DEBUG_TCG
-                } else if (tcg_regset_single(set)) {
-                    TCGReg reg = tcg_regset_first(set);
-                    ne_fprintf(f, "%s", tcg_target_reg_names[reg]);
-#endif
                 } else if (TCG_TARGET_NB_REGS <= 32) {
                     ne_fprintf(f, "0x%x", (uint32_t)set);
                 } else {
@@ -6948,22 +6886,6 @@ int tcg_gen_code(TCGContext *s, TranslationBlock *tb, uint64_t pc_start)
         }
     }
 
-#ifdef CONFIG_DEBUG_TCG
-    /* Ensure all labels referenced have been emitted.  */
-    {
-        TCGLabel *l;
-        bool error = false;
-
-        QSIMPLEQ_FOREACH(l, &s->labels, next) {
-            if (unlikely(!l->present) && !QSIMPLEQ_EMPTY(&l->branches)) {
-                qemu_log_mask(CPU_LOG_TB_OP,
-                              "$L%d referenced but not present.\n", l->id);
-                error = true;
-            }
-        }
-        assert(!error);
-    }
-#endif
 
     /* Do not reuse any EBB that may be allocated within the TB. */
     tcg_temp_ebb_reset_freed(s);

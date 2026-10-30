@@ -24,25 +24,9 @@
 
 void tb_lock_page0(tb_page_addr_t);
 
-#ifdef CONFIG_USER_ONLY
-/*
- * For user-only, page_protect sets the page read-only.
- * Since most execution is already on read-only pages, and we'd need to
- * account for other TBs on the same page, defer undoing any page protection
- * until we receive the write fault.
- */
-static inline void tb_lock_page1(tb_page_addr_t p0, tb_page_addr_t p1)
-{
-    tb_lock_page0(p1);
-}
-
-static inline void tb_unlock_page1(tb_page_addr_t p0, tb_page_addr_t p1) { }
-static inline void tb_unlock_pages(TranslationBlock *tb) { }
-#else
 void tb_lock_page1(tb_page_addr_t, tb_page_addr_t);
 void tb_unlock_page1(tb_page_addr_t, tb_page_addr_t);
 void tb_unlock_pages(TranslationBlock *);
-#endif
 
 #ifdef CONFIG_SOFTMMU
 void tb_invalidate_phys_range_fast(CPUState *cpu, ram_addr_t ram_addr,

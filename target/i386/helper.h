@@ -45,10 +45,8 @@ DEF_HELPER_3(iret_protected, void, env, int, int)
 DEF_HELPER_3(lret_protected, void, env, int, int)
 DEF_HELPER_1(clts, void, env)
 
-#ifndef CONFIG_USER_ONLY
 DEF_HELPER_FLAGS_3(set_dr, TCG_CALL_NO_WG, void, env, int, tl)
 DEF_HELPER_FLAGS_2(get_dr, TCG_CALL_NO_WG, tl, env, int)
-#endif /* !CONFIG_USER_ONLY */
 
 DEF_HELPER_1(sysenter, void, env)
 DEF_HELPER_2(sysexit, void, env, int)
@@ -61,9 +59,7 @@ DEF_HELPER_FLAGS_1(icebp, TCG_CALL_NO_WG, noreturn, env)
 DEF_HELPER_3(boundw, void, env, tl, int)
 DEF_HELPER_3(boundl, void, env, tl, int)
 
-#ifndef CONFIG_USER_ONLY
 DEF_HELPER_1(rsm, void, env)
-#endif /* !CONFIG_USER_ONLY */
 
 DEF_HELPER_2(into, void, env, int)
 DEF_HELPER_FLAGS_1(single_step, TCG_CALL_NO_WG, noreturn, env)
@@ -73,7 +69,6 @@ DEF_HELPER_FLAGS_1(rdpid, TCG_CALL_NO_WG, tl, env)
 DEF_HELPER_1(rdtsc, void, env)
 DEF_HELPER_FLAGS_1(rdpmc, TCG_CALL_NO_WG, noreturn, env)
 
-#ifndef CONFIG_USER_ONLY
 DEF_HELPER_3(outb, void, env, i32, i32)
 DEF_HELPER_2(inb, tl, env, i32)
 DEF_HELPER_3(outw, void, env, i32, i32)
@@ -98,7 +93,6 @@ DEF_HELPER_1(rdmsr, void, env)
 DEF_HELPER_1(wrmsr, void, env)
 DEF_HELPER_FLAGS_1(read_cr8, TCG_CALL_NO_RWG, tl, env)
 DEF_HELPER_FLAGS_3(write_crN, TCG_CALL_NO_RWG, void, env, int, tl)
-#endif /* !CONFIG_USER_ONLY */
 
 /* x86 FPU */
 #if defined(XBOX) && defined(__x86_64__)

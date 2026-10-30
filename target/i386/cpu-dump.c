@@ -20,9 +20,7 @@
 #include "qemu/osdep.h"
 #include "cpu.h"
 #include "qemu/qemu-print.h"
-#ifndef CONFIG_USER_ONLY
 #include "hw/i386/apic_internal.h"
-#endif
 
 /***********************************************************/
 /* x86 debug */
@@ -152,7 +150,6 @@ done:
     qemu_fprintf(f, "\n");
 }
 
-#ifndef CONFIG_USER_ONLY
 
 /* ARRAY_SIZE check is not required because
  * DeliveryMode(dm) has a size of 3 bit.
@@ -200,7 +197,6 @@ static inline void mask2str(char *str, uint32_t val, uint8_t size)
 
 #define MAX_LOGICAL_APIC_ID_MASK_SIZE 16
 
-#endif /* !CONFIG_USER_ONLY */
 
 #define DUMP_CODE_BYTES_TOTAL    50
 #define DUMP_CODE_BYTES_BACKWARD 20

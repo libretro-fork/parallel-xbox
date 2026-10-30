@@ -37,11 +37,7 @@ void access_prepare_mmu(X86Access *ret, CPUX86State *env,
         if (haddr2 == haddr1 + size1) {
             ret->size1 = size;
         } else {
-#ifdef CONFIG_USER_ONLY
-            g_assert_not_reached();
-#else
             ret->haddr2 = haddr2;
-#endif
         }
     }
 }
@@ -64,10 +60,6 @@ static void *access_ptr(X86Access *ac, vaddr addr, unsigned len)
         return NULL;
     }
 
-#ifdef CONFIG_USER_ONLY
-    assert(offset <= ac->size1 - len);
-    return ac->haddr1 + offset;
-#else
     if (likely(offset <= ac->size1 - len)) {
         return ac->haddr1 + offset;
     }
@@ -81,7 +73,6 @@ static void *access_ptr(X86Access *ac, vaddr addr, unsigned len)
         return ac->haddr2 + (offset - ac->size1);
     }
     return NULL;
-#endif
 }
 
 uint8_t access_ldb(X86Access *ac, vaddr addr)
