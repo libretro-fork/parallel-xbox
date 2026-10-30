@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- The synthetic GPU suite now checks a GPU-written palette change while the indexed texture and sampler stay bound. This extends the unchanged-state surface-write regression from texture bytes to independently addressed palettes.
+
 - Vulkan surface writes now invalidate overlapping bound texture and palette views, including when the game draws again without resending texture state. This fixes stale samples from GPU-owned data that has not been written back to RAM. Only the four bound units are checked at write time.
 
 - About 170,000 lines of QEMU no build of the core compiles are gone: QEMU's whole block layer (block.c, block/io.c, its qcow2 driver, the mirror/backup/stream jobs, blockdev), NBD, the LUKS and qcow crypto, the coroutine library, and the 745 headers nothing includes any more (the ARM, s390x, virtio and other machines' devices among them). The core reads and writes its disks through its own libretro disk layer, as before; the macOS build no longer links IOKit, which only QEMU's host CD-ROM code used.

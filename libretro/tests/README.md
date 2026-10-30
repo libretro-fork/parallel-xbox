@@ -505,3 +505,5 @@ endpoint pairs and 100,000 mixed operations, including partial packet
 consumption, tracing, capacity, wrapping ranges, reset and legacy loads.
 
 At guest frame 1320 a retained one-byte Y8 view samples a red GPU surface, then the producer is cleared blue and sampled again without texture/sampler state changes. Capture 1330 must be white; Vulkan previously kept the old black private texture. Bound-view invalidation tests cover overlapping texture/palette byte ranges, nonoverlapping ranges in the same page, empty ranges and null bindings without RAM queries. The harness now accepts 64 pixel captures so the standard alias loop can include this case.
+
+At guest frame 1340 a retained indexed texture samples a red GPU palette. After a backend semaphore, the GPU clears only the palette blue; index RAM and texture/sampler/combiner state stay unchanged before the second draw. Capture 1350 must be blue. Vulkan before bound-surface consumer tracking stayed red. The standard loop checks this on both APIs at scales 1, 2 and 4.

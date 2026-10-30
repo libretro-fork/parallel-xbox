@@ -466,13 +466,13 @@ for api in OpenGL Vulkan; do
   for scale in 1 2 4; do
     set +e
     timeout 300 $h "$(path "$core")" "$(path "$work/sysg")" $vp $o \
-      --opt xemu_memory=64 --opt xemu_surface_scale=$scale --frames 1340 --strict \
+      --opt xemu_memory=64 --opt xemu_surface_scale=$scale --frames 1360 --strict \
       --pixel 690 --pixel 710 --pixel 730 --pixel 750 \
       --pixel 770 --pixel 790 --pixel 810 \
       --pixel 830 --pixel 850 --pixel 870 --pixel 890 --pixel 910 \
       --pixel 930 --pixel 950 --pixel 970 --pixel 990 --pixel 1005 --pixel 1030 --pixel 1050 --pixel 1070 \
       --pixel 1090 --pixel 1110 --pixel 1130 --pixel 1150 --pixel 1170 --pixel 1190 \
-      --pixel 1210 --pixel 1230 --pixel 1250 --pixel 1270 --pixel 1290 --pixel 1310 --pixel 1330 \
+      --pixel 1210 --pixel 1230 --pixel 1250 --pixel 1270 --pixel 1290 --pixel 1310 --pixel 1330 --pixel 1350 \
       --peek 0x300008 >"$work/gpu_texture_alias.txt"
     r=$?
     set -e
@@ -494,6 +494,7 @@ for api in OpenGL Vulkan; do
                 "pixel_1210=0x828282" "pixel_1230=0xff1b82" \
                 "pixel_1250=0x828282" "pixel_1270=0xff1b82" \
                 "pixel_1290=0xffffff" "pixel_1310=0x00ff00" "pixel_1330=0xffffff" \
+                "pixel_1350=0x0000ff" \
                 "peek_0x300008=0x00000000"; do
       grep -q "^$want$" "$work/gpu_texture_alias.txt" || {
         echo "FAIL: $api texture alias ${scale}x: $want"; exit 1; }
