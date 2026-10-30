@@ -75,6 +75,33 @@ static inline bool pgraph_scanout_rect(const PGRAPHScanout *s, uint64_t addr,
     return w && h;
 }
 
+/* A packed byte span has at most a head row, full rows, and a tail row.
+ * Only complete scanout pixels are eligible; padding never becomes coverage. */
+static inline unsigned pgraph_scanout_byte_rects(const PGRAPHScanout *s,
+        uint64_t addr, uint64_t size, PGRAPHScanoutRect rects[3])
+{
+    if (addr > UINT64_MAX - size || addr % s->bpp || size % s->bpp || !size ||
+        !pgraph_scanout_overlaps(s, addr, size)) return 0;
+    uint64_t begin = addr > s->start ? addr : s->start;
+    uint64_t end = addr + size < s->start + s->size ? addr + size : s->start + s->size;
+    unsigned first = (begin - s->start) / s->pitch;
+    unsigned last = (end - s->start - 1) / s->pitch;
+    unsigned x = ((begin - s->start) % s->pitch) / s->bpp;
+    unsigned n = 0;
+    if (first == last) {
+        unsigned right = ((end - s->start - 1) % s->pitch + 1) / s->bpp;
+        if (right > s->width) right = s->width;
+        if (x < right) rects[n++] = (PGRAPHScanoutRect){0,0,x,first,right-x,1};
+        return n;
+    }
+    if (x < s->width) rects[n++] = (PGRAPHScanoutRect){0,0,x,first,s->width-x,1};
+    if (last > first + 1) rects[n++] = (PGRAPHScanoutRect){0,0,0,first+1,s->width,last-first-1};
+    unsigned right = ((end - s->start - 1) % s->pitch + 1) / s->bpp;
+    if (right > s->width) right = s->width;
+    if (right) rects[n++] = (PGRAPHScanoutRect){0,0,0,last,right,1};
+    return n;
+}
+
 /* Exact metadata comparisons, not pixel hashes: no collision can hide a change.
  * The VGA dirty client is independent of surface/texture dirty consumers. */
 #define PGRAPH_SCANOUT_LAYERS 1024
@@ -82,6 +109,7 @@ typedef struct PGRAPHScanoutKey {
     uint64_t image;
     unsigned draw_time;
     PGRAPHScanoutRect rect;
+    bool holes; /* a byte-stride layer discards padding rather than covering it */
 } PGRAPHScanoutKey;
 
 typedef struct PGRAPHScanoutCache {
@@ -105,7 +133,7 @@ static inline void pgraph_scanout_cache_update(PGRAPHScanoutCache *c,
     if (!geometry) {
         for (unsigned i = 0; i < count; i++) {
             geometry |= memcmp(&c->keys[i].rect, &keys[i].rect,
-                               sizeof(keys[i].rect)) != 0;
+                               sizeof(keys[i].rect)) != 0 || c->keys[i].holes != keys[i].holes;
             content |= geometry || c->keys[i].image != keys[i].image ||
                        c->keys[i].draw_time != keys[i].draw_time;
         }
@@ -161,6 +189,7 @@ typedef struct PGRAPHScanoutBackground {
     unsigned cols, rows, width, height;
     uint64_t pending[PGRAPH_SCANOUT_BG_WORDS];
     uint64_t covered[PGRAPH_SCANOUT_BG_WORDS];
+    uint64_t touched[PGRAPH_SCANOUT_BG_WORDS]; /* includes partially covered edge cells */
     bool valid;
 } PGRAPHScanoutBackground;
 
@@ -178,6 +207,7 @@ static inline bool pgraph_scanout_background_init(PGRAPHScanoutBackground *b,
     unsigned words = (b->cols * b->rows + 63) / 64;
     memset(b->pending, 0xFF, words * sizeof(*b->pending));
     memset(b->covered, 0, words * sizeof(*b->covered));
+    memset(b->touched, 0, words * sizeof(*b->touched));
     return true;
 }
 
@@ -230,9 +260,23 @@ static inline void pgraph_scanout_background_cover(PGRAPHScanoutBackground *b,
         return;
     }
     unsigned words = (b->cols * b->rows + 63) / 64;
+    /* The old GPU footprint becomes stale if exposed. Include edge cells:
+     * uploading their visible CPU pixels did not refresh their hidden pixels. */
+    for (unsigned i = 0; i < words; i++) b->pending[i] |= b->touched[i];
     memset(b->covered, 0, words * sizeof(*b->covered));
+    memset(b->touched, 0, words * sizeof(*b->touched));
     for (unsigned n = 0; n < count; n++) {
         const PGRAPHScanoutRect *r = &keys[n].rect;
+        if (!r->width || !r->height) continue;
+        unsigned tx1 = (r->dx + r->width + PGRAPH_SCANOUT_TILE - 1) / PGRAPH_SCANOUT_TILE;
+        unsigned ty1 = (r->dy + r->height + PGRAPH_SCANOUT_TILE - 1) / PGRAPH_SCANOUT_TILE;
+        for (unsigned y = r->dy / PGRAPH_SCANOUT_TILE; y < ty1; y++) {
+            for (unsigned x = r->dx / PGRAPH_SCANOUT_TILE; x < tx1; x++) {
+                unsigned i = y * b->cols + x;
+                b->touched[i / 64] |= UINT64_C(1) << (i % 64);
+            }
+        }
+        if (keys[n].holes) continue;
         unsigned x0 = (r->dx + PGRAPH_SCANOUT_TILE - 1) / PGRAPH_SCANOUT_TILE;
         unsigned y0 = (r->dy + PGRAPH_SCANOUT_TILE - 1) / PGRAPH_SCANOUT_TILE;
         unsigned x1 = r->dx + r->width == b->width ? b->cols :
@@ -350,6 +394,7 @@ static inline void pgraph_scanout_background_regions(PGRAPHScanoutRegions *out,
     *out = (PGRAPHScanoutRegions){ 0 };
     pgraph_scanout_regions_add(out, 0, 0, scan->width, scan->height);
     for (unsigned n = 0; n < count; n++) {
+        if (keys[n].holes) continue;
         const PGRAPHScanoutRect *cover = &keys[n].rect;
         if (!cover->width || !cover->height ||
             cover->dx >= scan->width || cover->dy >= scan->height) continue;

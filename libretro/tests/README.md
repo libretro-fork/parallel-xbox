@@ -6,8 +6,16 @@ adjacent-strip coalescing, the eight-rectangle fallback and a scale-aware
 draw-cost guard (64K removed output pixels per additional background draw).
 
 Vulkan timing-only harness runs submit a completion marker without copying
-image pixels. Readbacks occur only for requested hashing/pixel captures; GPU
+image pixels. Readbacks prefer host-cached coherent memory, falling back to
+coherent memory where unavailable. They occur only for requested hashing/pixel captures; GPU
 completion intervals measure whole frames, not isolated shader execution.
+
+`run.sh` also runs `test-scanout-bytes.c`: 6,000 per-pixel reference cases
+for mapping packed byte spans to at most three rectangles, including padding,
+clipping, alignment and overflow. The extended Vulkan GPU fixture checks
+nonuniform Morton data, 16-to-32 and 32-to-16/15 reinterpretation, RGB1555/565
+changes, R8/RG8 color bytes and mismatched row strides whose padding must
+leave the older GPU layer visible. These are byte reinterpretations, not color blits.
 
 `run.sh` also runs `test-scanout-background.c`: 2,500 independent dirty-byte,
 pitch-padding, partial-edge, coverage and deferred-exposure cases. Sparse CPU
@@ -24,7 +32,7 @@ returning after mode-cache eviction, and save/load invalidation of a
 composed picture after later mode changes. Exact metadata cache tests also cover
 unchanged content, tile changes, CPU writes, coverage changes, state-load
 invalidation, and selective readback dependencies. The GPU fixture additionally checks the
-32-layer direct-display limit, 33-layer fallback, return to direct display,
+32/33-layer layouts (Vulkan now draws both directly), return to sparse coverage,
 and Vulkan keyed/unkeyed PVIDEO over both a GPU tile and CPU border, including
 an overlay input resize. Both OpenGL
 and Vulkan are checked at native and 2x scales. The harness accepts

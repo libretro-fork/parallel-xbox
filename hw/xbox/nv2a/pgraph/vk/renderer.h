@@ -311,13 +311,13 @@ typedef struct PvideoState {
 } PvideoState;
 
 typedef struct PGRAPHVkDisplayState {
-    ShaderModuleInfo *display_frag;
+    ShaderModuleInfo *display_frag, *native_frag;
 
     VkDescriptorPool descriptor_pool;
     VkDescriptorSetLayout descriptor_set_layout;
     /* One set per source, eight worst-case presentations in flight.
      * Background rectangles share one set without rewriting its bindings. */
-#define PGRAPH_VK_SCANOUT_DIRECT_LAYERS 32
+#define PGRAPH_VK_SCANOUT_DIRECT_LAYERS PGRAPH_SCANOUT_LAYERS
 #define PGRAPH_VK_DISPLAY_SETS (8 * (PGRAPH_VK_SCANOUT_DIRECT_LAYERS + 1))
     VkDescriptorSet descriptor_sets[PGRAPH_VK_DISPLAY_SETS];
     int descriptor_index;
@@ -327,7 +327,7 @@ typedef struct PGRAPHVkDisplayState {
     } descriptor_keys[PGRAPH_VK_DISPLAY_SETS];
 
     VkPipelineLayout pipeline_layout;
-    VkPipeline pipeline;
+    VkPipeline pipeline, byte_pipeline;
 
     VkRenderPass render_pass;
     VkFramebuffer framebuffer;
@@ -755,14 +755,17 @@ typedef struct PGRAPHVkState {
     struct PGRAPHVkScanoutMode {
         SurfaceBinding out;
         unsigned scale;
-        bool direct, trim_background;
+        uint64_t last_used;
+        bool trim_background;
         PGRAPHScanoutCache cache;
         PGRAPHScanoutBackground background;
         PGRAPHScanoutRegions uncovered;
-    } scanout_modes[2];
+    } scanout_modes[8];
+    uint64_t scanout_mode_clock;
     struct PGRAPHVkScanoutLayer {
         SurfaceBinding *surface;
         PGRAPHScanoutRect rect;
+        bool reinterpret, holes;
     } scanout_layers[PGRAPH_VK_SCANOUT_DIRECT_LAYERS];
     unsigned scanout_layer_count;
     unsigned scanout_mode;

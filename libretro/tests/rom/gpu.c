@@ -782,6 +782,48 @@ void gpu_main(void)
             wr(0x8928, 32u | (64u << 16)); /* resize overlay input */
             wr(0x8958, 64u | (1u << 16));
         }
+        /* Byte reinterpretation tests: nonuniform Morton colors, packed
+         * 16-bit pairs shown as 32-bit pixels, 32-bit halves in 16/15-bit
+         * scanout, and narrow R8/RG8 color surfaces. No CPU reads these. */
+        if (frame == 500) {
+            wr(0x8700, 0); /* disable PVIDEO */
+            draw_swizzled(SURF_H + 120 * PITCH + 16 * 4,
+                          0xFF39A5C7u, 0xFFDA630Bu);
+        }
+        if (frame == 520 || frame == 540 || frame == 580 || frame == 600 || frame == 620 || frame == 640) {
+            u32 fmt = frame == 520 || frame == 640 ? 0x03u : frame == 540 ? 0x08u :
+                      frame == 580 ? 0x01u : frame == 600 ? 0x0Au : 0x09u;
+            u32 pitch = frame == 640 ? 2048 : frame == 540 || frame == 580 ? WIDTH * 2 : PITCH;
+            u32 w = frame == 540 ? 304 : 608;
+            if (frame == 540 || frame == 600) {
+                cr(0x13, (pitch / 8) & 0xFF);
+                cr(0x19, (((pitch / 8) >> 8) & 7) << 5);
+                cr(0x28, frame == 540 ? 2 : 3);
+                wr(PRAMDAC_GENERAL, rd(PRAMDAC_GENERAL) | (1u << 12));
+            }
+            if (frame == 580) wr(PRAMDAC_GENERAL, rd(PRAMDAC_GENERAL) | (1u << 12));
+            method(NV097_SET_SURFACE_FORMAT, fmt | (2u << 4) | (1u << 8));
+            method(NV097_SET_SURFACE_PITCH, pitch | (pitch << 16));
+            method(NV097_SET_SURFACE_CLIP_H, w << 16);
+            method(NV097_SET_SURFACE_CLIP_V, 32u << 16);
+            u32 addr = frame == 640 ? SURF_H + 150 * PITCH + 128 * 4 :
+                SURF_H + 200 * pitch + 16 * (frame == 540 || frame == 580 ? 2 : 4);
+            if (frame < 600 || frame == 640) {
+                clear(addr, frame == 520 || frame == 640 ? 0x39A539A5u : frame == 540 ? 0x7C0039A5u : 0x45674567u);
+            } else {
+                /* These narrow formats have no CLEAR_SURFACE command. A
+                 * clipped draw keeps their uploaded byte pattern unchanged. */
+                for (u32 i = 0; i < pitch * 32; i += 4)
+                    ram32(addr + i, frame == 600 ? 0xC7A5C7A5u : 0x5A5A5A5Au);
+                method(NV097_SET_SURFACE_COLOR_OFFSET, addr);
+                triangle();
+            }
+            method(NV097_SET_SURFACE_CLIP_H, (u32)WIDTH << 16);
+            method(NV097_SET_SURFACE_CLIP_V, (u32)HEIGHT << 16);
+            method(NV097_SET_SURFACE_FORMAT, 0x08u | (2u << 4) | (1u << 8));
+            method(NV097_SET_SURFACE_PITCH, PITCH | ((u32)PITCH << 16));
+        }
+        if (frame == 560) wr(PRAMDAC_GENERAL, rd(PRAMDAC_GENERAL) & ~(1u << 12));
         method(NV097_FLIP_INCREMENT_WRITE, 0);
         kick();
         if (frame >= 100 && frame < 125) {

@@ -34,6 +34,7 @@ int main(void)
         uint64_t length = n % 13 == 0 ? UINT64_MAX : next_random() % (scan.size + 16);
         pgraph_scanout_background_dirty(&bg, &scan, offset, length);
         bool pending[64] = { 0 }, covered[64] = { 0 }, consumed[64] = { 0 };
+        bool touched[64] = { 0 }, exposed[64] = { 0 };
         uint64_t end = offset >= scan.size ? offset :
                        offset + (length > scan.size - offset ? scan.size - offset : length);
         for (unsigned y = 0; y < h; y++) {
@@ -47,6 +48,7 @@ int main(void)
         PGRAPHScanoutKey keys[3] = { 0 };
         for (unsigned k = 0; k < 3; k++) {
             unsigned x0 = next_random() % w, y0 = next_random() % h;
+            keys[k].holes = n % 17 == 0 && k == 0;
             keys[k].rect = (PGRAPHScanoutRect){ 0, 0, x0, y0,
                 1 + next_random() % (w - x0), 1 + next_random() % (h - y0) };
         }
@@ -57,7 +59,9 @@ int main(void)
             unsigned y1 = y0 + 16 < h ? y0 + 16 : h;
             for (unsigned k = 0; k < 3; k++) {
                 PGRAPHScanoutRect *r = &keys[k].rect;
-                covered[i] |= x0 >= r->dx && y0 >= r->dy &&
+                touched[i] |= x0 < r->dx + r->width && x1 > r->dx &&
+                              y0 < r->dy + r->height && y1 > r->dy;
+                covered[i] |= !keys[k].holes && x0 >= r->dx && y0 >= r->dy &&
                               x1 <= r->dx + r->width && y1 <= r->dy + r->height;
             }
             assert(!!((bg.pending[i / 64] >> (i % 64)) & 1) == pending[i]);
@@ -82,12 +86,13 @@ int main(void)
         while (pgraph_scanout_background_next(&bg, &cursor, &rect)) {
             for (unsigned x = rect.dx; x < rect.dx + rect.width; x += 16) {
                 unsigned i = (rect.dy / 16) * bg.cols + x / 16;
-                assert(pending[i] && covered[i] && !consumed[i]);
+                assert(touched[i] && !exposed[i]);
+                exposed[i] = true;
                 consumed[i] = true;
             }
             pgraph_scanout_background_clean(&bg, &rect);
         }
-        for (unsigned i = 0; i < bg.cols * bg.rows; i++) assert(consumed[i] == pending[i]);
+        for (unsigned i = 0; i < bg.cols * bg.rows; i++) assert(consumed[i] == (pending[i] || touched[i]));
         tested++;
     }
     PGRAPHScanout oversized = { .width = 8193, .height = 1 };

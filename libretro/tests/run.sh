@@ -52,6 +52,8 @@ ${cc} -O2 -std=c11 -Wall -o "$work/bin/scanoutbgcheck" "$here/test-scanout-backg
 "$work/bin/scanoutbgcheck"
 ${cc} -O2 -std=c11 -Wall -o "$work/bin/scanoutregions" "$here/test-scanout-regions.c"
 "$work/bin/scanoutregions"
+${cc} -O2 -std=c11 -Wall -o "$work/bin/scanoutbytes" "$here/test-scanout-bytes.c"
+"$work/bin/scanoutbytes"
 # The audio pull's margin without waiting for the DSPs' thread (monitor.h)
 ${cc} -O2 -std=c99 -Wall -o "$work/bin/audiomargin" "$here/test-audio-margin.c"
 "$work/bin/audiomargin"
@@ -237,6 +239,22 @@ case $r in
    for want in "pixel_470_32_120=0xffffff" "pixel_470_10_120=0x800080" \
                "pixel_480_10_120=0xffffff" "pixel_484_10_120=0xffffff"; do
      grep -q "^$want$" "$work/gpu_vk.txt" || { echo "FAIL: Vulkan overlay: $want"; exit 1; }
+   done
+   echo "== GPU byte reinterpretation, Vulkan"
+   timeout 300 $h "$(path "$core")" "$(path "$work/sysg")" $vp --vulkan \
+     --opt xemu_renderer=vulkan --frames 655 --strict \
+     --pixel 510:32:120 --pixel 510:320:120 --pixel 530:100:210 \
+     --pixel 550:32:210 --pixel 550:33:210 --pixel 570:32:210 --pixel 570:33:210 \
+     --pixel 590:100:210 --pixel 610:100:210 --pixel 630:100:210 \
+     --pixel 650:200:150 --pixel 650:100:151 --pixel 650:400:151 >"$work/gpu_bytes.txt"
+   for want in "pixel_510_32_120=0x39a5c7" "pixel_510_320_120=0xda630b" \
+               "pixel_530_100_210=0xa539a5" "pixel_550_32_210=0x393429" \
+               "pixel_550_33_210=0x7b8200" "pixel_570_32_210=0x736b29" \
+               "pixel_570_33_210=0xff0000" "pixel_590_100_210=0xc6ae39" \
+               "pixel_610_100_210=0xa5c7a5" "pixel_630_100_210=0x5a5a5a" \
+               "pixel_650_200_150=0xa539a5" "pixel_650_100_151=0xa539a5" \
+               "pixel_650_400_151=0xff0000"; do
+     grep -q "^$want$" "$work/gpu_bytes.txt" || { echo "FAIL: byte reinterpretation: $want"; exit 1; }
    done ;;
 3) echo "no Vulkan device: skipped" ;;
 *) echo "FAIL: the Vulkan run exited $r"; exit 1 ;;

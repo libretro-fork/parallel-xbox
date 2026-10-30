@@ -124,6 +124,7 @@ static bool check_surface_overlaps_range(const SurfaceBinding *surface,
     return !(surface->vram_addr >= range_end || range_start >= surface_end);
 }
 
+static void parked_materialize(NV2AState *d, SurfaceBinding *s);
 static void parked_materialize_range(NV2AState *d, hwaddr start,
                                      hwaddr size);
 static void readback_batch_begin(PGRAPHVkState *r);
@@ -215,6 +216,7 @@ static void download_settled(NV2AState *d, SurfaceBinding *surface)
 
     surface->download_pending = false;
     surface->draw_dirty = false;
+    if (surface->writeback_owed) parked_owed_settled(d, surface);
 }
 
 /* The GPU's writes into the RAM for the host, which reads it once the fence
@@ -797,7 +799,7 @@ void pgraph_vk_process_pending_downloads(NV2AState *d)
                                          cpu->dl_len)) {
             surface->download_pending = true;
         }
-        download_surface(d, surface, false);
+        if (surface->download_pending) pgraph_vk_surface_download_if_dirty(d, surface);
     }
     readback_batch_end(d);
     QTAILQ_FOREACH(surface, &r->invalid_surfaces, entry) {
@@ -809,8 +811,7 @@ void pgraph_vk_process_pending_downloads(NV2AState *d)
             pgraph_writeback_learn_live(&d->pgraph, surface->vram_addr,
                                         surface->size);
             surface->download_pending = true;
-            download_surface(d, surface, false);
-            parked_owed_settled(d, surface);
+            parked_materialize(d, surface);
         }
     }
 
@@ -1031,6 +1032,8 @@ static bool check_surfaces_overlap(const SurfaceBinding *surface,
 static void parked_materialize(NV2AState *d, SurfaceBinding *s)
 {
     pgraph_vk_surface_download_if_dirty(d, s);
+    /* An open batch must reach RAM before its ownership callback goes away. */
+    readback_batch_flush(d);
     parked_owed_settled(d, s);
 }
 
@@ -1459,9 +1462,31 @@ static bool check_surface_compatibility(SurfaceBinding const *s1,
 
 void pgraph_vk_surface_download_if_dirty(NV2AState *d, SurfaceBinding *surface)
 {
-    if (surface->draw_dirty) {
-        download_surface(d, surface, true);
+    if (!surface->draw_dirty) return;
+    PGRAPHVkState *r = d->pgraph.vk_renderer_state;
+    for (unsigned i = 0; i < r->readback_batch.n; i++) {
+        if (r->readback_batch.surfaces[i] == surface) return;
     }
+    /* A younger image may already cover part of an owed older view. Settle
+     * that debt first: later pruning must never overwrite the younger RAM.
+     * Read-only display sampling keeps both images on GPU until RAM is needed. */
+    for (;;) {
+        SurfaceBinding *older = NULL, *s;
+        QTAILQ_FOREACH(s, &r->invalid_surfaces, entry) {
+            bool queued = false;
+            for (unsigned i = 0; i < r->readback_batch.n; i++)
+                queued |= r->readback_batch.surfaces[i] == s;
+            if (!queued && s != surface && s->writeback_owed &&
+                s->draw_time < surface->draw_time &&
+                check_surface_overlaps_range(s, surface->vram_addr, surface->size) &&
+                (!older || s->draw_time < older->draw_time)) older = s;
+        }
+        if (!older) break;
+        /* The existing per-download GPU dependencies order aliased writes.
+         * Batch retirement releases each parked callback only after its fence. */
+        pgraph_vk_surface_download_if_dirty(d, older);
+    }
+    download_surface(d, surface, true);
 }
 
 void pgraph_vk_upload_surface_data(NV2AState *d, SurfaceBinding *surface,
@@ -2278,8 +2303,8 @@ static void update_surface_part(NV2AState *d, bool upload, bool color)
     if (!upload && pg_surface->draw_dirty) {
         if (!tcg_enabled()) {
             // FIXME: Cannot monitor for reads/writes; flush now
-            download_surface(d, color ? r->color_binding : r->zeta_binding,
-                             true);
+            pgraph_vk_surface_download_if_dirty(d,
+                color ? r->color_binding : r->zeta_binding);
         }
 
         pg_surface->write_enabled_cache = false;
@@ -2442,7 +2467,21 @@ static bool check_surface_internal_formats_supported(
 typedef struct ScanoutLayer {
     SurfaceBinding *surface;
     PGRAPHScanoutRect rect;
+    bool reinterpret, holes;
 } ScanoutLayer;
+
+/* These normalized image formats preserve all guest color bits on readback. */
+static unsigned scanout_color_kind(VkFormat format)
+{
+    switch (format) {
+    case VK_FORMAT_B8G8R8A8_UNORM: return 1;
+    case VK_FORMAT_R5G6B5_UNORM_PACK16: return 2;
+    case VK_FORMAT_A1R5G5B5_UNORM_PACK16: return 3;
+    case VK_FORMAT_R8_UNORM: return 4;
+    case VK_FORMAT_R8G8_UNORM: return 5;
+    default: return 0;
+    }
+}
 
 static bool scanout_add_layer(const PGRAPHScanout *scan, SurfaceBinding *s,
                               unsigned format, ScanoutLayer *layers,
@@ -2452,21 +2491,49 @@ static bool scanout_add_layer(const PGRAPHScanout *scan, SurfaceBinding *s,
         !pgraph_scanout_overlaps(scan, s->vram_addr, s->size)) {
         return true;
     }
-    PGRAPHScanoutRect rect = { 0 };
+    PGRAPHScanoutRect rects[3] = { 0 };
+    unsigned n = 1;
+    bool raw = false, holes = false;
     bool native = s->color && !s->swizzle && s->image &&
         s->host_fmt.vk_format == kelvin_surface_color_format_vk_map[format].vk_format &&
         pgraph_scanout_rect(scan, s->vram_addr, s->width, s->height,
-                            s->pitch, s->fmt.bytes_per_pixel, &rect);
-    if (*count == 1024) {
-        return false;
+                            s->pitch, s->fmt.bytes_per_pixel, &rects[0]);
+    if (!native && s->color && s->image &&
+        scanout_color_kind(s->host_fmt.vk_format)) {
+        if (s->swizzle && is_power_of_2(s->width) && is_power_of_2(s->height)) {
+            n = pgraph_scanout_byte_rects(scan, s->vram_addr,
+                    (uint64_t)s->width * s->height * s->fmt.bytes_per_pixel, rects);
+            raw = n != 0;
+        } else if (!s->swizzle && (s->width * s->fmt.bytes_per_pixel) % scan->bpp == 0) {
+            raw = pgraph_scanout_rect(scan, s->vram_addr,
+                    s->width * s->fmt.bytes_per_pixel / scan->bpp, s->height,
+                    s->pitch, scan->bpp, &rects[0]);
+        }
+        if (!raw && !s->swizzle && s->pitch % scan->bpp == 0 &&
+            (s->width * s->fmt.bytes_per_pixel) % scan->bpp == 0 &&
+            s->width * s->fmt.bytes_per_pixel <= s->pitch) {
+            n = pgraph_scanout_byte_rects(scan, s->vram_addr,
+                (uint64_t)s->pitch * (s->height - 1) + s->width * s->fmt.bytes_per_pixel, rects);
+            raw = n != 0;
+            holes = raw;
+        }
+        native = raw;
+        if (!raw) n = 1;
     }
-    /* Overlapping views must be applied in guest draw order. */
-    unsigned i = (*count)++;
-    while (i && layers[i - 1].surface->draw_time > s->draw_time) {
-        layers[i] = layers[i - 1];
-        i--;
+    if (*count == PGRAPH_SCANOUT_LAYERS) return false;
+    if (*count + n > PGRAPH_SCANOUT_LAYERS) {
+        n = 1; raw = native = holes = false;
+        rects[0] = (PGRAPHScanoutRect){ 0 };
     }
-    layers[i] = (ScanoutLayer){ s, rect };
+    /* Split swizzled byte spans remain consecutive in guest draw order. */
+    for (unsigned j = 0; j < n; j++) {
+        unsigned i = (*count)++;
+        while (i && layers[i - 1].surface->draw_time > s->draw_time) {
+            layers[i] = layers[i - 1];
+            i--;
+        }
+        layers[i] = (ScanoutLayer){ s, rects[j], raw, holes };
+    }
     return native;
 }
 
@@ -2530,6 +2597,18 @@ static void upload_scanout_background(NV2AState *d, SurfaceBinding *out,
         out->host_fmt.vk_format, pgraph_vk_surface_base_layout(out),
         VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
     VkImage target = via_scratch ? out->image_scratch : out->image;
+    VkBuffer source = from_vram ? r->vram_buffer :
+                      r->storage_buffers[BUFFER_STAGING_SRC].buffer;
+    VkBufferMemoryBarrier host = {
+        .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
+        .srcAccessMask = VK_ACCESS_HOST_WRITE_BIT,
+        .dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT,
+        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .buffer = source, .size = VK_WHOLE_SIZE,
+    };
+    vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_HOST_BIT,
+        VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 1, &host, 0, NULL);
     for (;;) {
         if (via_scratch && out->image_scratch_current_layout !=
                            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) {
@@ -2561,21 +2640,6 @@ static void upload_scanout_background(NV2AState *d, SurfaceBinding *out,
             };
             offset += ROUND_UP((VkDeviceSize)p->width * p->height * scan->bpp, 16);
         }
-        if (!from_vram) {
-            pgraph_vk_staging_flush(pg, staged_offset + staged_used, bytes);
-        }
-        VkBuffer source = from_vram ? r->vram_buffer :
-                          r->storage_buffers[BUFFER_STAGING_SRC].buffer;
-        VkBufferMemoryBarrier host = {
-            .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
-            .srcAccessMask = VK_ACCESS_HOST_WRITE_BIT,
-            .dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT,
-            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-            .buffer = source, .size = VK_WHOLE_SIZE,
-        };
-        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_HOST_BIT,
-            VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 1, &host, 0, NULL);
         vkCmdCopyBufferToImage(cmd, source, target,
             VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, count, regions);
         if (via_scratch) {
@@ -2596,14 +2660,6 @@ static void upload_scanout_background(NV2AState *d, SurfaceBinding *out,
             vkCmdCopyImage(cmd, target, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
                 out->image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, count, copies);
         }
-        /* Same dependency as the full upload: subsequent GPU RAM/ring
-         * writes cannot overtake these source reads. */
-        VkBufferMemoryBarrier consumed = host;
-        consumed.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-        consumed.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT | VK_ACCESS_SHADER_WRITE_BIT;
-        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
-            VK_PIPELINE_STAGE_TRANSFER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-            0, 0, NULL, 1, &consumed, 0, NULL);
         for (unsigned i = 0; i < count; i++) {
             pgraph_scanout_background_clean(background, &rects[i]);
         }
@@ -2617,6 +2673,15 @@ static void upload_scanout_background(NV2AState *d, SurfaceBinding *out,
             break;
         }
     }
+    if (!from_vram) pgraph_vk_staging_flush(pg, staged_offset, staged_used);
+    /* Same dependency as the full upload: subsequent GPU RAM/ring
+     * writes cannot overtake these source reads. */
+    VkBufferMemoryBarrier consumed = host;
+    consumed.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+    consumed.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+    vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
+        VK_PIPELINE_STAGE_TRANSFER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+        0, 0, NULL, 1, &consumed, 0, NULL);
     pgraph_vk_transition_image_layout(pg, cmd, out->image, out->host_fmt.vk_format,
         VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
     pgraph_vk_end_single_time_commands_async(pg, cmd);
@@ -2739,104 +2804,106 @@ SurfaceBinding *pgraph_vk_compose_scanout(NV2AState *d)
     }
 
 
-    /* Native background + borrowed tile images can go straight to the
-     * final display pass. Keep the old compositor beyond the fixed bound. */
-    bool direct = count <= PGRAPH_VK_SCANOUT_DIRECT_LAYERS;
-    r->scanout_layer_count = direct ? count : 0;
-    if (direct) {
-        for (unsigned i = 0; i < count; i++) {
-            r->scanout_layers[i] = (struct PGRAPHVkScanoutLayer){
-                layers[i].surface, layers[i].rect };
-        }
+    /* All bounded layers use the final display pass. Bindings are reserved
+     * at startup: no scaled composition image or tile-copy fallback. */
+    r->scanout_layer_count = count;
+    for (unsigned i = 0; i < count; i++) {
+        r->scanout_layers[i] = (struct PGRAPHVkScanoutLayer){
+            layers[i].surface, layers[i].rect, layers[i].reinterpret, layers[i].holes };
     }
     struct PGRAPHVkScanoutMode *m = &r->scanout_modes[r->scanout_mode];
-    if (!r->scanout_active || !m->out.image || m->out.width != scan.width ||
-        m->out.height != scan.height || m->out.shape.color_format != format ||
-        m->scale != pg->surface_scale_factor || m->direct != direct) {
-        unsigned next = r->scanout_active ? 1 - r->scanout_mode : 0;
-        struct PGRAPHVkScanoutMode *other = &r->scanout_modes[next];
-        bool reuse = other->out.image && other->out.width == scan.width &&
-            other->out.height == scan.height && other->out.shape.color_format == format &&
-            other->scale == pg->surface_scale_factor && other->direct == direct;
-        uint64_t bytes = (uint64_t)scan.width * scan.height * scan.bpp;
-        if (!direct) {
-            bytes *= pg->surface_scale_factor * pg->surface_scale_factor;
-        }
-        uint64_t kept = (uint64_t)m->out.image_ci.extent.width *
-                         m->out.image_ci.extent.height * m->out.fmt.bytes_per_pixel;
-        if (m->out.image_scratch) {
-            kept += (uint64_t)m->out.scratch_ci.extent.width *
-                    m->out.scratch_ci.extent.height * m->out.fmt.bytes_per_pixel;
-        }
-        /* Reserve the incoming native upload image too. */
-        if (!direct && pg->surface_scale_factor > 1) {
-            bytes += (uint64_t)scan.width * scan.height * scan.bpp;
-        }
-        bool evict = m != other && m->out.image && bytes + kept > 32 * MiB;
-        if ((!reuse && other->out.image) || evict) {
-            /* Only cache eviction, not a switch back to a warm mode:
-             * cover display reads before their input view is retired. */
-            pgraph_vk_finish(pg, VK_FINISH_REASON_FLUSH);
-            VkCommandBuffer drain = pgraph_vk_begin_single_time_commands(pg);
-            pgraph_vk_end_single_time_commands(pg, drain);
-            if (!reuse && other->out.image) {
-                destroy_surface_image(r, &other->out);
+    bool match = m->out.image && m->out.width == scan.width &&
+        m->out.height == scan.height && m->out.shape.color_format == format;
+    if (!match) {
+        unsigned next = ARRAY_SIZE(r->scanout_modes), empty = next, oldest = 0;
+        for (unsigned i = 0; i < ARRAY_SIZE(r->scanout_modes); i++) {
+            struct PGRAPHVkScanoutMode *p = &r->scanout_modes[i];
+            if (p->out.image && p->out.width == scan.width &&
+                p->out.height == scan.height && p->out.shape.color_format == format) {
+                next = i; break;
             }
-            if (evict) {
-                destroy_surface_image(r, &m->out);
-                m->cache.valid = false;
+            if (!p->out.image) empty = i;
+            if (p->last_used < r->scanout_modes[oldest].last_used) oldest = i;
+        }
+        if (next == ARRAY_SIZE(r->scanout_modes)) {
+            next = empty < ARRAY_SIZE(r->scanout_modes) ? empty : oldest;
+            uint64_t required = (uint64_t)scan.width * scan.height * scan.bpp;
+            if (r->device_props.vendorID == 0x1002)
+                required += (uint64_t)scan.width * scan.height * scan.bpp;
+            uint64_t kept = 0;
+            for (unsigned i = 0; i < ARRAY_SIZE(r->scanout_modes); i++) {
+                SurfaceBinding *o = &r->scanout_modes[i].out;
+                kept += (uint64_t)o->image_ci.extent.width * o->image_ci.extent.height * o->fmt.bytes_per_pixel;
+                if (o->image_scratch) kept += (uint64_t)o->scratch_ci.extent.width * o->scratch_ci.extent.height * o->fmt.bytes_per_pixel;
             }
+            bool drained = false;
+            for (;;) {
+                struct PGRAPHVkScanoutMode *victim = &r->scanout_modes[next];
+                if (!victim->out.image && kept + required <= 32 * MiB) break;
+                if (!victim->out.image) {
+                    victim = NULL;
+                    for (unsigned i = 0; i < ARRAY_SIZE(r->scanout_modes); i++) {
+                        struct PGRAPHVkScanoutMode *p = &r->scanout_modes[i];
+                        if (i != next && p->out.image && (!victim || p->last_used < victim->last_used)) victim = p;
+                    }
+                    if (!victim) break; /* One oversized native mode remains usable. */
+                }
+                if (!drained) {
+                    pgraph_vk_finish(pg, VK_FINISH_REASON_FLUSH);
+                    VkCommandBuffer cmd = pgraph_vk_begin_single_time_commands(pg);
+                    pgraph_vk_end_single_time_commands(pg, cmd);
+                    drained = true;
+                }
+                SurfaceBinding *o = &victim->out;
+                kept -= (uint64_t)o->image_ci.extent.width * o->image_ci.extent.height * o->fmt.bytes_per_pixel;
+                if (o->image_scratch) kept -= (uint64_t)o->scratch_ci.extent.width * o->scratch_ci.extent.height * o->fmt.bytes_per_pixel;
+                destroy_surface_image(r, o);
+                memset(victim, 0, sizeof(*victim));
+            }
+            struct PGRAPHVkScanoutMode *p = &r->scanout_modes[next];
+            memset(p, 0, sizeof(*p));
+            SurfaceBinding *o = &p->out;
+            o->color = true;
+            o->native_resolution = true;
+            o->width = scan.width; o->height = scan.height;
+            o->shape.color_format = format;
+            o->fmt = kelvin_surface_color_format_map[format];
+            o->host_fmt = kelvin_surface_color_format_vk_map[format];
+            create_surface_image(pg, o);
         }
-        if (!reuse) {
-            memset(other, 0, sizeof(*other));
-            SurfaceBinding *out = &other->out;
-            out->color = true;
-            out->native_resolution = direct;
-            out->width = scan.width;
-            out->height = scan.height;
-            out->shape.color_format = format;
-            out->fmt = kelvin_surface_color_format_map[format];
-            out->host_fmt = kelvin_surface_color_format_vk_map[format];
-            create_surface_image(pg, out);
-            other->scale = pg->surface_scale_factor;
-            other->direct = direct;
-        }
-        other->cache.valid = false;
         r->scanout_mode = next;
-        r->scanout_active = true;
-        m = other;
+        m = &r->scanout_modes[next];
+        m->cache.valid = false;
     }
+    if (m->scale != pg->surface_scale_factor) m->cache.valid = false;
+    m->scale = pg->surface_scale_factor;
+    m->last_used = ++r->scanout_mode_clock;
+    r->scanout_active = true;
     SurfaceBinding *out = &m->out;
     out->vram_addr = scan.start;
     out->pitch = scan.pitch;
     out->size = scan.size;
     for (unsigned i = 0; i < count; i++) {
+        if (i && layers[i - 1].surface == layers[i].surface) continue;
         pgraph_vk_upload_surface_data(d, layers[i].surface, false);
     }
     PGRAPHScanoutKey keys[PGRAPH_SCANOUT_LAYERS];
     for (unsigned i = 0; i < count; i++) {
         s = layers[i].surface;
         keys[i] = (PGRAPHScanoutKey){ (uint64_t)(uintptr_t)s->image,
-                                     s->draw_time, layers[i].rect };
+                                     s->draw_time, layers[i].rect, layers[i].holes };
     }
     bool reset_background = !m->cache.valid || !m->background.valid ||
         m->cache.scan.start != scan.start || m->cache.scan.size != scan.size ||
         m->cache.scan.width != scan.width || m->cache.scan.height != scan.height ||
         m->cache.scan.pitch != scan.pitch || m->cache.scan.bpp != scan.bpp;
-    if (direct && reset_background) {
+    if (reset_background) {
         pgraph_scanout_background_init(&m->background, &scan);
     }
-    bool ram_dirty;
-    if (direct) {
-        ScanoutDirtyRange dirty = { &m->background, &scan };
-        ram_dirty = memory_region_test_and_clear_dirty_ranges(d->vram, scan.start,
-                    scan.size, DIRTY_MEMORY_VGA, scanout_background_dirty, &dirty);
-    } else {
-        ram_dirty = memory_region_test_and_clear_dirty(d->vram, scan.start,
-                                                       scan.size, DIRTY_MEMORY_VGA);
-    }
+    ScanoutDirtyRange dirty = { &m->background, &scan };
+    bool ram_dirty = memory_region_test_and_clear_dirty_ranges(d->vram, scan.start,
+                scan.size, DIRTY_MEMORY_VGA, scanout_background_dirty, &dirty);
     uint64_t old_content = m->cache.content;
-    uint64_t old_background = m->cache.background;
     uint64_t old_geometry = m->cache.geometry;
     pgraph_scanout_cache_update(&m->cache, &scan, keys, count,
                                 ram_dirty || materialized);
@@ -2845,58 +2912,20 @@ SurfaceBinding *pgraph_vk_compose_scanout(NV2AState *d)
     }
     /* Same coverage + unchanged RAM: the existing background is already
      * correct. Replace just the GPU tiles, without staging/upload/upscale. */
-    if (direct) {
-        if (old_geometry != m->cache.geometry) {
-            /* A disappearing GPU view may expose bytes that were deferred,
-             * or were refreshed by an ordered GPU writeback. */
-            pgraph_scanout_background_init(&m->background, &scan);
-            pgraph_scanout_background_cover(&m->background, keys, count);
-            pgraph_scanout_background_regions(&m->uncovered, &scan, keys, count);
-            m->trim_background = pgraph_scanout_regions_worthwhile(&m->uncovered,
-                scan.width, scan.height, pg->surface_scale_factor);
-        }
-        upload_scanout_background(d, out, &m->background, &scan);
-    } else if (old_background != m->cache.background || old_geometry != m->cache.geometry) {
-        pgraph_vk_upload_surface_data(d, out, true);
+    if (old_geometry != m->cache.geometry) {
+        /* Refresh the previous GPU footprint if exposed; preserve unrelated
+         * cached CPU pixels. A mode/address change already reset the cache. */
+        pgraph_scanout_background_cover(&m->background, keys, count);
+        pgraph_scanout_background_regions(&m->uncovered, &scan, keys, count);
+        m->trim_background = pgraph_scanout_regions_worthwhile(&m->uncovered,
+            scan.width, scan.height, pg->surface_scale_factor);
     }
-    if (direct) {
-        /* The display shader samples the existing tile images. Only the
-         * native RAM background is private; no scaled composition image,
-         * scratch upscale, or tile image copy is recorded. */
-        out->draw_time = ++pg->draw_time;
-        return out;
-    }
-    VkCommandBuffer cmd = pgraph_vk_begin_nondraw_commands(pg);
-    pgraph_vk_transition_image_layout(pg, cmd, out->image,
-        out->host_fmt.vk_format, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
-    unsigned scale = pg->surface_scale_factor;
-    for (unsigned i = 0; i < count; i++) {
-        s = layers[i].surface;
-        PGRAPHScanoutRect *p = &layers[i].rect;
-        VkImageLayout layout = pgraph_vk_surface_base_layout(s);
-        pgraph_vk_transition_image_layout(pg, cmd, s->image,
-            s->host_fmt.vk_format, layout, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
-        VkImageCopy copy = {
-            .srcSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 },
-            .dstSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 },
-            .srcOffset = { p->sx * scale, p->sy * scale, 0 },
-            .dstOffset = { p->dx * scale, p->dy * scale, 0 },
-            .extent = { p->width * scale, p->height * scale, 1 },
-        };
-        vkCmdCopyImage(cmd, s->image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                       out->image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy);
-        pgraph_vk_transition_image_layout(pg, cmd, s->image,
-            s->host_fmt.vk_format, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, layout);
-        s->frame_time = pg->frame_time;
-    }
-    pgraph_vk_transition_image_layout(pg, cmd, out->image,
-        out->host_fmt.vk_format, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
-    pgraph_vk_end_nondraw_commands(pg, cmd);
+    upload_scanout_background(d, out, &m->background, &scan);
+    /* Only the native RAM background is private. Every GPU layer is sampled
+     * in the final display pass, including layouts formerly copied via the
+     * scaled composition fallback. */
     out->draw_time = ++pg->draw_time;
     return out;
-
 }
 
 void pgraph_vk_init_surfaces(PGRAPHState *pg)
@@ -2942,6 +2971,30 @@ void pgraph_vk_init_surfaces(PGRAPHState *pg)
     r->eager_interval = r->eager_count = 0;
 
     pgraph_vk_reload_surface_scale_factor(pg); // FIXME: Move internal
+    /* Native backgrounds are independent of internal render scale. Reserve
+     * common TV modes before gameplay, about 10 MiB (twice on AMD scratch).
+     * Unusual modes use the same bounded LRU, not unbounded storage. */
+    const unsigned modes[][3] = {
+        {640,480,NV097_SET_SURFACE_FORMAT_COLOR_LE_A8R8G8B8},
+        {640,480,NV097_SET_SURFACE_FORMAT_COLOR_LE_R5G6B5},
+        {640,480,NV097_SET_SURFACE_FORMAT_COLOR_LE_X1R5G5B5_Z1R5G5B5},
+        {720,480,NV097_SET_SURFACE_FORMAT_COLOR_LE_A8R8G8B8},
+        {720,576,NV097_SET_SURFACE_FORMAT_COLOR_LE_A8R8G8B8},
+        {640,576,NV097_SET_SURFACE_FORMAT_COLOR_LE_A8R8G8B8},
+        {1280,720,NV097_SET_SURFACE_FORMAT_COLOR_LE_A8R8G8B8},
+    };
+    for (unsigned i = 0; i < ARRAY_SIZE(modes); i++) {
+        struct PGRAPHVkScanoutMode *m = &r->scanout_modes[i];
+        SurfaceBinding *o = &m->out;
+        m->scale = pg->surface_scale_factor;
+        o->color = true; o->native_resolution = true;
+        o->width = modes[i][0]; o->height = modes[i][1];
+        o->shape.color_format = modes[i][2];
+        o->fmt = kelvin_surface_color_format_map[modes[i][2]];
+        o->host_fmt = kelvin_surface_color_format_vk_map[modes[i][2]];
+        create_surface_image(pg, o);
+        if (r->device_props.vendorID == 0x1002) ensure_surface_scratch(r, o);
+    }
 }
 
 void pgraph_vk_finalize_surfaces(PGRAPHState *pg)

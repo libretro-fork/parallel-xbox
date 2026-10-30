@@ -17,6 +17,7 @@ int main(void)
                 random_u() % (w + 8), random_u() % (h + 8),
                 random_u() % (w + 8), random_u() % (h + 8) };
         }
+        if (count && n % 23 == 0) keys[0].holes = true;
         if (count && n % 11 == 0) keys[0].rect.width = UINT32_MAX;
         if (count && n % 17 == 0) keys[0].rect.dx = UINT32_MAX;
         PGRAPHScanoutRegions plan;
@@ -32,7 +33,7 @@ int main(void)
                 bool covered = false;
                 for (unsigned k = 0; k < count; k++) {
                     PGRAPHScanoutRect *a = &keys[k].rect;
-                    covered |= x >= a->dx && y >= a->dy &&
+                    covered |= !keys[k].holes && x >= a->dx && y >= a->dy &&
                         (uint64_t)x < (uint64_t)a->dx + a->width &&
                         (uint64_t)y < (uint64_t)a->dy + a->height;
                 }

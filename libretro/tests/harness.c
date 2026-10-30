@@ -465,10 +465,18 @@ static uint32_t vk_memory_type(uint32_t bits, VkMemoryPropertyFlags want)
    VkPhysicalDeviceMemoryProperties mp;
    uint32_t i;
    p_vkGetPhysicalDeviceMemoryProperties(vk_gpu, &mp);
-   for (i = 0; i < mp.memoryTypeCount; i++)
-      if ((bits & (1u << i)) &&
-          (mp.memoryTypes[i].propertyFlags & want) == want)
-         return i;
+   /* Readback is consumed directly by the CPU. Prefer cached coherent
+    * memory over an uncached BAR mapping; no intermediate CPU image copy. */
+   for (unsigned pass = 0; pass < 2; pass++)
+   {
+      VkMemoryPropertyFlags preferred = want;
+      if (!pass && (want & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT))
+         preferred |= VK_MEMORY_PROPERTY_HOST_CACHED_BIT;
+      for (i = 0; i < mp.memoryTypeCount; i++)
+         if ((bits & (1u << i)) &&
+             (mp.memoryTypes[i].propertyFlags & preferred) == preferred)
+            return i;
+   }
    return 0;
 }
 

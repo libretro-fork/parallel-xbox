@@ -18,6 +18,7 @@
  */
 
 #include "renderer.h"
+#include "hw/xbox/nv2a/pgraph/swizzle.h"
 #include "ui/libretro-crosshair.h"
 #include <math.h>
 
@@ -218,6 +219,7 @@ static void upload_pvideo_image(PGRAPHState *pg, PvideoState state)
 
 static const char *display_frag_glsl =
     "#version 450\n"
+    "const bool byte_scanout = true;\n"
     "layout(binding = 0) uniform sampler2D tex;\n"
     "layout(binding = 1) uniform sampler2D pvideo_tex;\n"
     "layout(push_constant, std430) uniform PushConstants {\n"
@@ -230,8 +232,69 @@ static const char *display_frag_glsl =
     "    bool pvideo_color_key_enable;\n"
     "    vec3 pvideo_color_key;\n"
     "    vec4 source_transform;\n"
+    "    uvec4 source_bytes; /* relative address, pitch/mask X, mask Y, formats */\n"
     "};\n"
     "layout(location = 0) out vec4 out_Color;\n"
+    "uint compact_bits(uint v, uint mask) {\n"
+    "    uint r = 0u, bit = 1u;\n"
+    "    while (mask != 0u) {\n"
+    "        uint low = mask & (0u - mask);\n"
+    "        if ((v & low) != 0u) r |= bit;\n"
+    "        mask &= ~low; bit <<= 1u;\n"
+    "    }\n"
+    "    return r;\n"
+    "}\n"
+    "uint source_bpp() {\n"
+    "    uint kind = source_bytes.w & 255u;\n"
+    "    return kind == 1u ? 4u : kind == 4u ? 1u : 2u;\n"
+    "}\n"
+    "vec4 byte_texel(uint off) {\n"
+    "    uint bpp = source_bpp();\n"
+    "    uvec2 xy;\n"
+    "    if ((source_bytes.w & 65536u) != 0u) {\n"
+    "        uint t = off / bpp;\n"
+    "        xy = uvec2(compact_bits(t, source_bytes.y), compact_bits(t, source_bytes.z));\n"
+    "    } else xy = uvec2((off % source_bytes.y) / bpp, off / source_bytes.y);\n"
+    "    int scale = int(source_transform.z);\n"
+    "    return texelFetch(tex, ivec2(xy) * scale + ivec2(scale / 2), 0);\n"
+    "}\n"
+    "uint byte_word(uint off) {\n"
+    "    uint kind = source_bytes.w & 255u;\n"
+    "    vec4 c = byte_texel(off);\n"
+    "    if (kind == 1u) return packUnorm4x8(c.bgra);\n"
+    "    if (kind == 2u) {\n"
+    "        uvec3 v = uvec3(round(clamp(c.rgb, 0.0, 1.0) * vec3(31,63,31)));\n"
+    "        return (v.r << 11u) | (v.g << 5u) | v.b;\n"
+    "    }\n"
+    "    if (kind == 3u) {\n"
+    "        uvec4 v = uvec4(round(clamp(c, 0.0, 1.0) * vec4(31,31,31,1)));\n"
+    "        return (v.a << 15u) | (v.r << 10u) | (v.g << 5u) | v.b;\n"
+    "    }\n"
+    "    uvec2 v = uvec2(round(clamp(c.rg, 0.0, 1.0) * 255.0));\n"
+    "    return kind == 4u ? v.r : v.r | (v.g << 8u);\n"
+    "}\n"
+    "vec4 byte_color() {\n"
+    "    uint src_kind = source_bytes.w & 255u, dst_kind = (source_bytes.w >> 8u) & 255u;\n"
+    "    uint dst_bpp = dst_kind == 1u ? 4u : 2u, src_bpp = source_bpp();\n"
+    "    uvec2 p = uvec2(gl_FragCoord.xy / source_transform.z);\n"
+    "    uint off = p.y * uint(source_transform.x) + p.x * dst_bpp - source_bytes.x;\n"
+    "    if ((source_bytes.w & 131072u) != 0u) {\n"
+    "        uvec2 size = uvec2(textureSize(tex, 0)) / uint(source_transform.z);\n"
+    "        if (off / source_bytes.y >= size.y || off % source_bytes.y + dst_bpp > size.x * src_bpp) discard;\n"
+    "    }\n"
+    "    if (src_kind == dst_kind) return byte_texel(off);\n"
+    "    uint word = 0u;\n"
+    "    if (src_bpp >= dst_bpp) {\n"
+    "        word = byte_word(off) >> ((off % src_bpp) * 8u);\n"
+    "    } else {\n"
+    "        for (uint k = 0u; k < dst_bpp; k += src_bpp) word |= byte_word(off + k) << (k * 8u);\n"
+    "    }\n"
+    "    if (dst_kind == 1u) return unpackUnorm4x8(word).bgra;\n"
+    "    uvec3 v = dst_kind == 2u ? uvec3((word >> 11u) & 31u, (word >> 5u) & 63u, word & 31u) : uvec3((word >> 10u) & 31u, (word >> 5u) & 31u, word & 31u);\n"
+    "    uvec3 rgb = (v << 3u) | (v >> 2u);\n"
+    "    if (dst_kind == 2u) rgb.g = (v.g << 2u) | (v.g >> 4u);\n"
+    "    return vec4(vec3(rgb) / 255.0, dst_kind == 2u ? 1.0 : float((word >> 15u) & 1u));\n"
+    "}\n"
     "void main()\n"
     "{\n"
     "    vec2 tex_coord = gl_FragCoord.xy/display_size;\n"
@@ -241,7 +304,8 @@ static const char *display_frag_glsl =
     "        float rel = display_size.y/textureSize(tex, 0).y/line_offset;\n"
     "        tex_coord.y = 1 + rel*(tex_coord.y - 1);\n"
     "    }\n"
-    "    out_Color.rgba = texture(tex, tex_coord);\n"
+    "    if (byte_scanout) out_Color = byte_color();\n"
+    "    else out_Color = texture(tex, tex_coord);\n"
     "    if (pvideo_enable) {\n"
     "        vec2 screen_coord = vec2(gl_FragCoord.x, display_size.y - gl_FragCoord.y) * pvideo_scale.z;\n"
     "        vec4 output_region = vec4(pvideo_pos.xy, pvideo_pos.xy + pvideo_pos.zw);\n"
@@ -399,6 +463,13 @@ static void create_display_pipeline(PGRAPHState *pg)
     r->display.display_frag =
         pgraph_vk_create_shader_module_from_glsl(
             r, VK_SHADER_STAGE_FRAGMENT_BIT, display_frag_glsl);
+    /* The internal GLSL compiler has no specialization constants. Compile
+     * startup variants with a literal constant instead; both share the layout. */
+    const char *body = strchr(strchr(display_frag_glsl, '\n') + 1, '\n') + 1;
+    char *native = g_strdup_printf("#version 450\nconst bool byte_scanout = false;\n%s", body);
+    r->display.native_frag = pgraph_vk_create_shader_module_from_glsl(
+        r, VK_SHADER_STAGE_FRAGMENT_BIT, native);
+    g_free(native);
 
     VkPipelineShaderStageCreateInfo shader_stages[] = {
         (VkPipelineShaderStageCreateInfo){
@@ -410,7 +481,7 @@ static void create_display_pipeline(PGRAPHState *pg)
         (VkPipelineShaderStageCreateInfo){
             .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
             .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
-            .module = r->display.display_frag->module,
+            .module = r->display.native_frag->module,
             .pName = "main",
         },
      };
@@ -515,6 +586,10 @@ static void create_display_pipeline(PGRAPHState *pg)
     VK_CHECK(vkCreateGraphicsPipelines(r->device, r->vk_pipeline_cache, 1,
                                        &pipeline_info, NULL,
                                        &r->display.pipeline));
+    /* The ordinary pipeline has no byte addressing/conversion/discard work. */
+    shader_stages[1].module = r->display.display_frag->module;
+    VK_CHECK(vkCreateGraphicsPipelines(r->device, r->vk_pipeline_cache, 1,
+        &pipeline_info, NULL, &r->display.byte_pipeline));
 }
 
 static void destroy_display_pipeline(PGRAPHState *pg)
@@ -523,12 +598,16 @@ static void destroy_display_pipeline(PGRAPHState *pg)
 
     vkDestroyPipeline(r->device, r->display.pipeline, NULL);
     r->display.pipeline = VK_NULL_HANDLE;
+    vkDestroyPipeline(r->device, r->display.byte_pipeline, NULL);
+    r->display.byte_pipeline = VK_NULL_HANDLE;
 
     vkDestroyPipelineLayout(r->device, r->display.pipeline_layout, NULL);
     r->display.pipeline_layout = VK_NULL_HANDLE;
 
     pgraph_vk_destroy_shader_module(r, r->display.display_frag);
     r->display.display_frag = NULL;
+    pgraph_vk_destroy_shader_module(r, r->display.native_frag);
+    r->display.native_frag = NULL;
 }
 
 static void create_frame_buffer(PGRAPHState *pg)
@@ -1420,11 +1499,13 @@ static void render_display(PGRAPHState *pg, SurfaceBinding *surface)
     PGRAPHVkDisplayState *disp = &r->display;
 
     struct PGRAPHVkScanoutMode *mode = &r->scanout_modes[r->scanout_mode];
-    bool direct = r->scanout_active && mode->direct && surface == &mode->out;
+    bool direct = r->scanout_active && surface == &mode->out;
     unsigned layer_count = direct ? r->scanout_layer_count : 0;
     bool layers_pending = false;
     for (unsigned i = 0; i < layer_count; i++) {
         SurfaceBinding *s = r->scanout_layers[i].surface;
+        /* Packed spans split into consecutive scissors sharing one image. */
+        if (i && r->scanout_layers[i - 1].surface == s) continue;
         layers_pending |= s->draw_time >= r->command_buffer_start_time ||
                           pgraph_vk_surface_borrow_pending(r, s);
     }
@@ -1489,6 +1570,8 @@ static void render_display(PGRAPHState *pg, SurfaceBinding *surface)
     }
     for (unsigned i = 0; i < layer_count; i++) {
         SurfaceBinding *s = r->scanout_layers[i].surface;
+        /* Packed spans split into consecutive scissors sharing one image. */
+        if (i && r->scanout_layers[i - 1].surface == s) continue;
         if (!s->in_shader_read) {
             pgraph_vk_transition_image_layout(pg, cmd, s->image,
                 s->host_fmt.vk_format, pgraph_vk_surface_base_layout(s),
@@ -1543,7 +1626,14 @@ static void render_display(PGRAPHState *pg, SurfaceBinding *surface)
     const unsigned sets_per_frame = PGRAPH_VK_SCANOUT_DIRECT_LAYERS + 1;
     unsigned set_base = ((disp->descriptor_index / sets_per_frame + 1) % 8) *
                         sets_per_frame;
+    VkPipeline bound = disp->pipeline;
     for (unsigned i = 0; i <= layer_count; i++) {
+        VkPipeline pipeline = i && r->scanout_layers[i - 1].reinterpret ?
+                              disp->byte_pipeline : disp->pipeline;
+        if (pipeline != bound) {
+            vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
+            bound = pipeline;
+        }
         SurfaceBinding *source = surface;
         if (i) {
             struct PGRAPHVkScanoutLayer *layer = &r->scanout_layers[i - 1];
@@ -1555,6 +1645,25 @@ static void render_display(PGRAPHState *pg, SurfaceBinding *surface)
             uniform4f(uniforms, source_loc,
                 ((float)p->sx - p->dx) * scale,
                 ((float)p->sy - p->dy) * scale, 1, 1);
+            if (layer->reinterpret) {
+                const PGRAPHScanout *scan = &mode->cache.scan;
+                uint32_t mx = 0, my = 0, mz;
+                if (source->swizzle) generate_swizzle_masks(source->width,
+                    source->height, 1, &mx, &my, &mz);
+                unsigned src_kind = source->host_fmt.vk_format == VK_FORMAT_B8G8R8A8_UNORM ? 1 :
+                    source->host_fmt.vk_format == VK_FORMAT_R5G6B5_UNORM_PACK16 ? 2 :
+                    source->host_fmt.vk_format == VK_FORMAT_A1R5G5B5_UNORM_PACK16 ? 3 :
+                    source->host_fmt.vk_format == VK_FORMAT_R8_UNORM ? 4 : 5;
+                unsigned dst_kind = scan->bpp == 4 ? 1 :
+                    mode->out.host_fmt.vk_format == VK_FORMAT_R5G6B5_UNORM_PACK16 ? 2 : 3;
+                uint32_t bytes[4] = { (uint32_t)(source->vram_addr - scan->start),
+                    source->swizzle ? mx : source->pitch, my,
+                    src_kind | (dst_kind << 8) | (source->swizzle ? 65536 : 0) |
+                        (layer->holes ? 131072 : 0) };
+                memcpy(uniform_ptr(uniforms, uniform_index(uniforms, "source_bytes")),
+                    bytes, sizeof(bytes));
+                uniform4f(uniforms, source_loc, scan->pitch, 0, scale, -1);
+            }
         } else if (direct) {
             float inv_scale = 1.0f / pg->surface_scale_factor;
             uniform4f(uniforms, source_loc, 0, 0, inv_scale, inv_scale);
@@ -1597,6 +1706,8 @@ static void render_display(PGRAPHState *pg, SurfaceBinding *surface)
 
     for (unsigned i = 0; i < layer_count; i++) {
         SurfaceBinding *s = r->scanout_layers[i].surface;
+        /* Packed spans split into consecutive scissors sharing one image. */
+        if (i && r->scanout_layers[i - 1].surface == s) continue;
         if (!s->in_shader_read) {
             pgraph_vk_transition_image_layout(pg, cmd, s->image,
                 s->host_fmt.vk_format, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
