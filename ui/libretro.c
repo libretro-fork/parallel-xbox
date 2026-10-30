@@ -1975,6 +1975,31 @@ void lr_quiet_exit(CPUState *cpu)
     lr_vcpu_exit(cpu);
 }
 
+static void lr_finish_frame(void)
+{
+    /* Finish submitted GPU work and the resulting display composition
+     * before handing the picture to the frontend. This completion barrier
+     * leaves guest time unchanged in both timing modes. */
+    extern bool nv2a_libretro_busy(void);
+    extern void nv2a_libretro_display_check(void);
+    /* twice: the frame's work done, then the display drawn from what
+     * it left */
+    for (int pass = 0; pass < 2; pass++) {
+        for (;;) {
+            retro_atomic_store_relaxed_int(&nv2a_libretro_waiter, 1);
+            retro_atomic_thread_fence_seq_cst();
+            if (!runstate_is_running() || !nv2a_libretro_busy()) {
+                break;
+            }
+            main_loop_wait(false);
+        }
+        retro_atomic_store_relaxed_int(&nv2a_libretro_waiter, 0);
+        if (pass == 0 && runstate_is_running()) {
+            nv2a_libretro_display_check();
+        }
+    }
+}
+
 /* One frame of guest time, from the end of the last one on a grid of
  * exactly 1001/60 ms. Under the BQL. */
 static void lr_run_frame(void)
@@ -2097,32 +2122,7 @@ static void lr_run_frame(void)
         retro_atomic_store_relaxed_int(&nv2a_libretro_waiter, 0);
     }
 
-    /* The guest ran on while the GPU's thread worked; the frame is handed
-     * over when the GPU's thread has done what the guest gave it in the
-     * frame, so each run still hands over the picture drawn in it (no
-     * repeated frame, no frame of delay). The guest's time does not move
-     * meanwhile. (Deterministic: the guest's waits for it are its only
-     * ones.) */
-    if (!opt_deterministic) {
-        extern bool nv2a_libretro_busy(void);
-        extern void nv2a_libretro_display_check(void);
-        /* twice: the frame's work done, then the display drawn from what
-         * it left */
-        for (int pass = 0; pass < 2; pass++) {
-            for (;;) {
-                retro_atomic_store_relaxed_int(&nv2a_libretro_waiter, 1);
-                retro_atomic_thread_fence_seq_cst();
-                if (!runstate_is_running() || !nv2a_libretro_busy()) {
-                    break;
-                }
-                main_loop_wait(false);
-            }
-            retro_atomic_store_relaxed_int(&nv2a_libretro_waiter, 0);
-            if (pass == 0 && runstate_is_running()) {
-                nv2a_libretro_display_check();
-            }
-        }
-    }
+    lr_finish_frame();
 }
 
 

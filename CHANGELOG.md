@@ -4,6 +4,9 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Kernel idle checks inspect freshly translated RAM directly instead of copying overlapping instruction windows and list words through debug buffers. Page-boundary and non-RAM mappings retain the existing reads; idle instructions, work checks and interrupt handling are unchanged.
+- Deterministic mode now finishes submitted GPU work and display composition before handing the frame to the frontend, just like normal mode. This prevents repeated or incomplete pictures when CPU execution outruns the render thread, without advancing guest time during the wait.
+
 - Vulkan keeps the six GPU-produced cubemap sources available while their copied texture is sampled, avoiding six face readbacks and a cubemap upload on a later filter change. Sources still expire after sampling stops.
 
 - Vulkan keeps actively sampled ARGB-to-RGB565 source surfaces available across sampler changes, avoiding a source readback and texture re-upload after age-based eviction. Idle surfaces still expire normally.

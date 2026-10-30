@@ -549,3 +549,11 @@ Focused counters showed six face readbacks plus one upload at the filter change
 before the fix. Afterward readback waits for a real CPU reader or teardown;
 there is no texture upload at the filter change. Native-depth copies remain a
 separate audit target.
+
+The kernel-idle oracle also compares borrowed ordinary RAM with the original
+read path over 20,000 mutations, work-list changes and failed reads. It covers
+page/region boundaries, RAM-device rejection, address-space attributes and RCU
+lifetime, and asserts zero copied bytes for supported RAM.
+`test-frame-completion.py` compiles the production GPU handoff against a waking
+worker: 972 combinations cover pending draws, display work, racing/spurious
+wakeups and stopping while waiting. Guest time is not advanced by this helper.

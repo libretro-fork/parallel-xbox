@@ -28,18 +28,58 @@
 #include "tcg/helper-tcg.h"
 #include "hw/i386/apic.h"
 #include "system/cpus.h"
+#include "system/hw_accel.h"
+#include "qemu/rcu.h"
+#include "exec/target_page.h"
 
 /* A short store-free run is not proof of idleness: NGB does active work
  * across STI/CLI boundaries. Recognise the kernel's actual idle loops and
  * check their empty-list conditions before advancing any guest time.
  * Read afresh so guest patches and self-modifying code cannot leave a
  * stale idle classification. No allocations or translation-cache state. */
+/* Borrow only ordinary RAM, in one guest page and one memory region. The
+ * caller holds RCU through every use; no mapping or byte snapshot survives
+ * this proof. Debug translation preserves failure behavior without raising
+ * guest exceptions or touching MMIO just to inspect its backing. */
+static const uint8_t *lr_idle_ram_ptr(CPUState *cpu, uint32_t addr, size_t len)
+{
+    MemTxAttrs attrs;
+    hwaddr phys, offset, available = len;
+    MemoryRegion *mr;
+
+    if (!len || len > TARGET_PAGE_SIZE - (addr & ~TARGET_PAGE_MASK)) {
+        return NULL;
+    }
+    cpu_synchronize_state(cpu);
+    phys = cpu_get_phys_page_attrs_debug(cpu, addr & TARGET_PAGE_MASK, &attrs);
+    if (phys == (hwaddr)-1) {
+        return NULL;
+    }
+    phys += addr & ~TARGET_PAGE_MASK;
+    mr = address_space_translate(cpu_get_address_space(cpu,
+                                    cpu_asidx_from_attrs(cpu, attrs)),
+                                 phys, &offset, &available, false, attrs);
+    if (available < len || !memory_region_is_ram(mr) ||
+        memory_region_is_ram_device(mr)) {
+        return NULL;
+    }
+    return (const uint8_t *)memory_region_get_ram_ptr(mr) + offset;
+}
+
 static bool lr_idle_read_word(CPUState *cpu, uint32_t addr, uint32_t *value)
 {
     uint8_t bytes[4];
+    const uint8_t *ram;
 
-    if (addr < 0x80000000U || addr > 0x87fffffcU ||
-        cpu_memory_rw_debug(cpu, addr, bytes, sizeof(bytes), false)) {
+    if (addr < 0x80000000U || addr > 0x87fffffcU) {
+        return false;
+    }
+    ram = lr_idle_ram_ptr(cpu, addr, sizeof(bytes));
+    if (ram) {
+        *value = ldl_le_p(ram);
+        return true;
+    }
+    if (cpu_memory_rw_debug(cpu, addr, bytes, sizeof(bytes), false)) {
         return false;
     }
     *value = ldl_le_p(bytes);
@@ -52,17 +92,24 @@ bool xemu_libretro_kernel_idle(CPUState *cpu)
     static const unsigned positions[] = { 0, 1, 4 };
     uint32_t eip = env->eip, list, pending;
     unsigned i;
+    const uint8_t *window;
+    RCU_READ_LOCK_GUARD();
 
     if (env->segs[R_CS].base || (env->hflags & HF_CPL_MASK) ||
         eip < 0x80000004U || eip > 0x87ffffe4U) {
         return false;
     }
+    /* These three candidate windows overlap. Inspect their shared RAM
+     * directly when possible, retaining the original reads at page/region
+     * boundaries or on non-RAM mappings. Keep exactly the same exit positions. */
+    window = lr_idle_ram_ptr(cpu, eip - 4, 31);
     for (i = 0; i < ARRAY_SIZE(positions); i++) {
-        uint8_t code[27];
+        uint8_t bytes[27];
+        const uint8_t *code = window ? window + 4 - positions[i] : bytes;
         uint32_t start = eip - positions[i];
         bool dispatch;
 
-        if (cpu_memory_rw_debug(cpu, start, code, sizeof(code), false) ||
+        if ((!window && cpu_memory_rw_debug(cpu, start, bytes, sizeof(bytes), false)) ||
             memcmp(code, "\xfb\x90\x90\xfa\x3b\x6d\x00\x74", 8)) {
             continue;
         }

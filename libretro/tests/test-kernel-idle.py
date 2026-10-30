@@ -4,7 +4,7 @@ from pathlib import Path
 import subprocess,sys,tempfile
 repo=Path(sys.argv[1]).resolve()
 source=(repo/"target/i386/tcg/system/misc_helper.c").read_text(encoding="utf-8",errors="surrogateescape")
-a=source.index("static bool lr_idle_read_word(")
+a=source.index("static const uint8_t *lr_idle_ram_ptr(")
 b=source.index("/* A port read",a)
 code=Path(__file__).with_suffix(".c").read_text().replace("/* PRODUCTION */",source[a:b])
 with tempfile.TemporaryDirectory(prefix="kernel-idle-") as directory:
