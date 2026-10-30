@@ -754,3 +754,7 @@ signed zeros, subnormals, host MXCSR and software exception status. Packed
 CPU Boost arithmetic uses 16-byte host SIMD groups without temporary buffers.
 
 The qcow2 span fixture also replaces complete clusters directly from 256 source spans. Instrumented production file calls require no old-data reads and the original source pointer for full replacements, while partial replacements preserve both sides. Optional qemu-img fixtures cover compressed, v2 and snapshot-shared clusters, including a primed decompression cache and unchanged snapshot contents.
+
+Large partial qcow2 zeroing uses one counted range-zero operation for an exclusive cluster, including an unaligned range in a 2-MiB cluster. Tests preserve both edges and cover cluster crossings, compressed originals and v2/v3 snapshots on independent disposable images. Shared entries retain COW; native range-zero fallback remains in the file backend.
+
+Tiny partial zero ranges (up to 4 KiB) retain one bulk buffer write, avoiding a file-size query and sparse-operation overhead. The crossing fixture checks both paths in one request.

@@ -117,7 +117,8 @@ static void put_be64(uint8_t *p, uint64_t v)
     }
 }
 
-static const uint8_t zeroes[64 * 1024];
+/* Tiny ranges need only one write, without a size query or hole-punch call. */
+static const uint8_t zeroes[4096];
 
 /* ---- requests in pieces ------------------------------------------------- */
 
@@ -882,14 +883,12 @@ int lr_qcow2_zero(LRQcow2 *q, int64_t off, int64_t length)
         } else if (len < q->cs && !(in == 0 && pos + len == q->size)) {
             /* part of a cluster: the rest stays */
             if (in_place(q, e)) {
-                for (uint64_t k = 0; ret == 0 && k < len;) {
-                    uint64_t m = len - k < sizeof(zeroes) ? len - k
-                                                          : sizeof(zeroes);
-                    ret = lr_file_pwrite(q->f, (int64_t)((e & OFFSET_MASK) +
-                                                         in + k), zeroes,
-                                         (size_t)m);
-                    k += m;
-                }
+                /* Only exclusive clusters can have their host ranges
+                 * punched; shared entries still preserve data through COW. */
+                uint64_t host = (e & OFFSET_MASK) + in;
+                ret = len <= sizeof(zeroes)
+                    ? lr_file_pwrite(q->f, (int64_t)host, zeroes, (size_t)len)
+                    : lr_file_zero(q->f, (int64_t)host, (int64_t)len);
             } else if (!reads_zero(q, e)) {
                 ret = write_new(q, gc, in, len, NULL, true);
             }

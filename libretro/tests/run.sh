@@ -158,6 +158,7 @@ ${cc} -O2 -std=gnu99 -Wall -DLR_FILE_FILESTREAM=0 -I"$lrc/include" -o "$work/bin
 "$work/bin/qcow2test" "$here/../../data/xbox_hdd.qcow2" "$work"
 # Count the production qcow2 layer's file calls without replacing its backend.
 ${cc} -O2 -std=gnu99 -Wall -DLR_FILE_FILESTREAM=0 -I"$here/../.." -I"$lrc/include" \
+    -Dlr_file_zero=counted_zero -Dlr_file_pwrite=counted_pwrite \
     -Dlr_file_pread=counted_pread -Dlr_file_preadv=counted_preadv -Dlr_file_pwritev=counted_pwritev \
     -c "$here/../../block/libretro-qcow2.c" -o "$work/bin/qcow2-spans.o"
 ${cc} -O2 -std=gnu99 -Wall -DLR_FILE_FILESTREAM=0 -I"$here/../.." -I"$lrc/include" \
@@ -200,13 +201,21 @@ if command -v qemu-img >/dev/null 2>&1; then
         if [ "$kind" = snapshot ] || [ "$kind" = v2-snapshot ]; then
             qemu-img snapshot -c original "$image"
         fi
+        cp "$image" "$work/zero-$kind.qcow2"
         "$work/bin/qcow2spans" "$image" --replace
+        "$work/bin/qcow2spans" "$work/zero-$kind.qcow2" --zero
         qemu-img check "$image"
+        qemu-img check "$work/zero-$kind.qcow2"
         if [ "$kind" = snapshot ] || [ "$kind" = v2-snapshot ]; then
             qemu-img convert -l snapshot.name=original -O raw "$image" "$work/replacement-snapshot.raw"
             cmp "$work/replacement.raw" "$work/replacement-snapshot.raw"
+            qemu-img convert -l snapshot.name=original -O raw "$work/zero-$kind.qcow2" "$work/zero-snapshot.raw"
+            cmp "$work/replacement.raw" "$work/zero-snapshot.raw"
         fi
     done
+    qemu-img create -f qcow2 -o cluster_size=2097152 "$work/zero-large.qcow2" 8M
+    "$work/bin/qcow2spans" "$work/zero-large.qcow2" --zero
+    qemu-img check "$work/zero-large.qcow2"
     q="$work/qcow2"
     mkdir -p "$q"
     head -c 40000000 /dev/urandom > "$q/base.raw"

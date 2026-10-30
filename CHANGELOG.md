@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Partial zeroing of exclusive qcow2 clusters uses the native sparse range-zero operation, avoiding zero-buffer writes where supported. Tiny ranges retain a single bulk write; shared clusters retain copy-on-write, and unsupported filesystems retain bulk zero-write fallback.
+
 - Full-cluster qcow2 replacement writes bypass scratch copies and old-data reads/decompression. Partial writes still preserve unchanged bytes, and snapshot copy-on-write remains intact.
 
 - Adjacent native disk-write spans now share bulk writes on Windows and other platforms without vectored writes, avoiding one host call per span without staging copies.
