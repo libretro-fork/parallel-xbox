@@ -770,3 +770,7 @@ Windows threads and delayed key allocation. Exactly two keys must be allocated;
 all threads must retain their own cell and value across concurrent first access.
 The RCU startup test also enters two independent nested once locations that
 collided in the old 64-slot table; the nested initializer must complete.
+
+The Vulkan harness reload path destroys the old frontend device after core
+context destruction and negotiates a new device before context reset. It clears
+old command/fence/readback/query handles and balances loader/queue-lock lifetime.

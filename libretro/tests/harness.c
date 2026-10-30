@@ -963,6 +963,30 @@ static void vk_teardown(void)
    printf("vulkan_readback_allocations=%u max_bytes=%" PRIu64 "\n",
          vk_readback_allocations, (uint64_t)vk_readback_max);
    vk_device = VK_NULL_HANDLE;
+   vk_instance = VK_NULL_HANDLE;
+   vk_gpu = VK_NULL_HANDLE;
+   vk_queue = VK_NULL_HANDLE;
+   vk_pool = VK_NULL_HANDLE;
+   vk_ts_pool = VK_NULL_HANDLE;
+   vk_ts_period_ns = 0;
+   vk_image = NULL;
+   vk_sync_index = vk_num_wait_sems = 0;
+   vk_signal_sem = VK_NULL_HANDLE;
+   memset(vk_cmd, 0, sizeof(vk_cmd));
+   memset(vk_fence, 0, sizeof(vk_fence));
+   memset(vk_fence_pending, 0, sizeof(vk_fence_pending));
+   memset(vk_readback, 0, sizeof(vk_readback));
+   memset(vk_readback_mem, 0, sizeof(vk_readback_mem));
+   memset(vk_readback_ptr, 0, sizeof(vk_readback_ptr));
+   memset(vk_readback_size, 0, sizeof(vk_readback_size));
+   memset(vk_ts_pending, 0, sizeof(vk_ts_pending));
+#ifdef _WIN32
+   DeleteCriticalSection(&vk_queue_lock);
+   FreeLibrary((HMODULE)vk_lib);
+#else
+   dlclose(vk_lib);
+#endif
+   vk_lib = NULL;
 }
 
 /* Read-only URI provider for exercising the core's frontend-VFS path with
@@ -1955,6 +1979,8 @@ int main(int argc, char **argv)
             hw.context_destroy();
          p_unload();
          p_deinit();
+         if (use_vulkan)
+            vk_teardown();
          have_hw = 0;
          p_set_env(env_cb);
          p_init();
@@ -1962,6 +1988,10 @@ int main(int argc, char **argv)
          {
             fprintf(stderr, "harness: reload failed\n");
             return 1;
+         }
+         if (use_vulkan && !vk_setup()) {
+            fprintf(stderr, "harness: no Vulkan device after reload\n");
+            return 3;
          }
          if (have_hw && hw.context_reset)
             hw.context_reset();
