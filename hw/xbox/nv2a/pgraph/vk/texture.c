@@ -62,6 +62,7 @@ typedef struct TextureLevel {
     unsigned int width, height, depth;
     unsigned int row_length; /* texels a buffer row holds, 0 = width */
     VkDeviceSize offset;
+    VkDeviceSize crop_offset; /* copy-only skip; offset/size retain the full allocation */
     size_t size;
     /* where the offset is: the staging ring, the Xbox's RAM
      * (r->vram_buffer), or the GPU unswizzle's output ring */
@@ -121,6 +122,7 @@ static uint8_t *stage_level(PGRAPHState *pg, TextureLevel *level,
     level->height = height;
     level->depth = depth;
     level->row_length = 0;
+    level->crop_offset = 0;
     level->size = size;
     level->source = LEVEL_STAGING;
     level->offset = pgraph_vk_staging_alloc(pg, size, 16, &ptr);
@@ -147,6 +149,7 @@ static bool level_from_vram(PGRAPHState *pg, TextureLevel *level,
     level->height = height;
     level->depth = depth;
     level->row_length = 0;
+    level->crop_offset = 0;
     level->size = size;
     level->source = LEVEL_VRAM;
     level->offset = offset;
@@ -258,6 +261,7 @@ static void stage_swizzled(PGRAPHState *pg, VkCommandBuffer cmd,
             level->height = height;
             level->depth = depth;
             level->row_length = 0;
+            level->crop_offset = 0;
             level->size = converted ? converted : raw;
             level->source = LEVEL_UNSWIZZLED;
             level->offset = out;
@@ -292,6 +296,43 @@ static void stage_swizzled(PGRAPHState *pg, VkCommandBuffer cmd,
     if (expand_rgb) {
         expand_rgb_snorm_alpha(dst, texels);
     }
+}
+
+/* Match the existing GL base-face crop. Higher mip border origins remain
+ * at their existing Vulkan location pending a hardware layout reference,
+ * but their copy extents must fit the actual destination mip images. */
+static void crop_cubemap_level(TextureLevel *level, unsigned width,
+                                unsigned height, unsigned mip, size_t block_size)
+{
+    unsigned source_width = level->width, source_height = level->height;
+    unsigned origin = mip ? 0 : 4;
+    assert(origin + width <= source_width && origin + height <= source_height);
+    if (block_size) {
+        unsigned blocks_per_row = (source_width + 3) / 4;
+        VkDeviceSize first_block = (VkDeviceSize)(origin / 4) * blocks_per_row + origin / 4;
+        level->crop_offset = first_block * block_size;
+        level->row_length = blocks_per_row * 4;
+    } else {
+        size_t bpp = level->size / ((size_t)source_width * source_height);
+        assert(bpp && level->size == (size_t)source_width * source_height * bpp);
+        level->crop_offset = ((VkDeviceSize)origin * source_width + origin) * bpp;
+        level->row_length = source_width;
+    }
+    level->width = width;
+    level->height = height;
+}
+
+static VkBufferImageCopy texture_level_copy(const TextureLevel *level,
+                                             unsigned layer, unsigned mip)
+{
+    return (VkBufferImageCopy){
+        .bufferOffset = level->offset + level->crop_offset,
+        .bufferRowLength = level->row_length,
+        .bufferImageHeight = 0,
+        .imageSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, mip, layer, 1 },
+        .imageOffset = { 0, 0, 0 },
+        .imageExtent = { level->width, level->height, level->depth },
+    };
 }
 
 /* The texture's levels, from the guest's memory into the staging ring, in
@@ -417,31 +458,18 @@ static void stage_texture(PGRAPHState *pg, VkCommandBuffer cmd,
                         decode_level_2d(pg, level, s3tc_fmt, texture_data_ptr,
                                         width, height);
                     }
-                    if (s.cubemap && adjusted_width != s.width) {
-                        // FIXME: Consider preserving the border.
-                        // There does not seem to be a way to reference the border
-                        // texels in a cubemap, so they are discarded.
-                        // FIXME: Crop by 4 pixels on each side
-                        level->row_length = width;
-                        level->width = s.width;
-                        level->height = s.height;
-                    }
                     texture_data_ptr +=
                         physical_width / 4 * physical_height / 4 * block_size;
                 } else {
                     stage_swizzled(pg, cmd, level, &s, texture_data_ptr,
                                    palette_data_ptr, width, height, 1,
                                    f.bytes_per_pixel);
-                    if (s.cubemap && adjusted_width != s.width) {
-                        // FIXME: Consider preserving the border.
-                        // There does not seem to be a way to reference the border
-                        // texels in a cubemap, so they are discarded.
-                        // FIXME: Crop by 4 pixels on each side
-                        level->row_length = width;
-                        level->width = s.width;
-                        level->height = s.height;
-                    }
                     texture_data_ptr += width * height * f.bytes_per_pixel;
+                }
+                if (s.cubemap && adjusted_width != s.width) {
+                    crop_cubemap_level(level, MAX(s.width >> level_idx, 1),
+                        MAX(s.height >> level_idx, 1), level_idx,
+                        is_compressed && r->bc_native ? block_size : 0);
                 }
 
                 width /= 2;
@@ -617,18 +645,7 @@ static void upload_texture_image(PGRAPHState *pg, int texture_idx,
                 level->source == LEVEL_UNSWIZZLED ?
                     &unswizzled_regions[num_unswizzled_regions++] :
                     &regions[num_regions++];
-            *region = (VkBufferImageCopy){
-                .bufferOffset = level->offset,
-                .bufferRowLength = level->row_length,
-                .bufferImageHeight = 0,
-                .imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-                .imageSubresource.mipLevel = level_idx,
-                .imageSubresource.baseArrayLayer = layer_idx,
-                .imageSubresource.layerCount = 1,
-                .imageOffset = (VkOffset3D){ 0, 0, 0 },
-                .imageExtent =
-                    (VkExtent3D){ level->width, level->height, level->depth },
-            };
+            *region = texture_level_copy(level, layer_idx, level_idx);
             if (level->source == LEVEL_STAGING) {
                 flush_lo = MIN(flush_lo, level->offset);
                 flush_hi = MAX(flush_hi, level->offset + level->size);

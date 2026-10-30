@@ -372,3 +372,12 @@ span as the cache's guest-memory range calculation.
 shader-seed naming: immediate retail-disc names, stable normalization,
 missing paths, Chihiro's 900-flip grace period and detected-title renames,
 with undefined-behavior traps enabled.
+
+`python3 libretro/tests/test-vulkan-cube-crop.py CHECKOUT [CC]` requires Linux
+Vulkan, BC formats and Khronos validation layers. It extracts the production
+cube crop and buffer-image region builder, then checks 168 actual GPU copy/
+readback cases: R8/RG8/RGB565/RGBA8/SNORM and BC1/2/3, tiny faces and later
+mips, cube layers 0/3/5 and all source-kind metadata values. It checks exact
+bytes, mip extents, compressed row alignment and preservation of the original
+allocation spans. Base crops follow OpenGL's existing four-texel convention;
+higher mip source origins remain unchanged and are not a hardware oracle.

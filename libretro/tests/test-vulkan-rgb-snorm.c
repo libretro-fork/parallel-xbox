@@ -19,6 +19,7 @@ typedef struct {
 typedef struct {
     unsigned width, height, depth, row_length;
     VkDeviceSize offset;
+    VkDeviceSize crop_offset;
     size_t size;
     enum { LEVEL_STAGING, LEVEL_VRAM, LEVEL_UNSWIZZLED } source;
 } TextureLevel;
@@ -165,6 +166,7 @@ int main(void)
             .pgraph = { upload.mapped, 32, count * 6 + 128 } };
         TextureLevel level;
         stage_swizzled(&d.pgraph, cmd, &level, &shape, (uint8_t *)guest, NULL, width, height, 1, 2);
+        assert(level.crop_offset == 0);
         assert(level.source == LEVEL_STAGING && level.size == count * 4 && level.offset % 4 == 0);
         assert(level.width == width && level.height == height && level.depth == 1 && level.row_length == 0);
         for (unsigned i = 0; i < count; i++) {
