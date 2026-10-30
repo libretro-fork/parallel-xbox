@@ -1,7 +1,6 @@
 #ifndef QDEV_CORE_H
 #define QDEV_CORE_H
 
-#include "qemu/atomic.h"
 #include "qemu/queue.h"
 #include "qemu/bitmap.h"
 #include "qemu/rcu.h"
@@ -239,7 +238,7 @@ struct DeviceState {
     /**
      * @realized: has device been realized?
      */
-    bool realized;
+    retro_atomic_int_t realized;   /* read with qdev_is_realized() */
     /**
      * @pending_deleted_event: track pending deletion events during unplug
      */
@@ -464,7 +463,7 @@ DeviceState *qdev_try_new(const char *name);
  */
 static inline bool qdev_is_realized(DeviceState *dev)
 {
-    return qatomic_load_acquire(&dev->realized);
+    return retro_atomic_load_acquire_int(&dev->realized);
 }
 
 /**

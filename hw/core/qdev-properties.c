@@ -32,7 +32,7 @@ static bool qdev_prop_allow_set(Object *obj, const char *name,
 {
     DeviceState *dev = DEVICE(obj);
 
-    if (dev->realized && !info->realized_set_allowed) {
+    if (qdev_is_realized(dev) && !info->realized_set_allowed) {
         qdev_prop_set_after_realize(dev, name, errp);
         return false;
     }
@@ -45,7 +45,7 @@ void qdev_prop_allow_set_link_before_realize(const Object *obj,
 {
     DeviceState *dev = DEVICE(obj);
 
-    if (dev->realized) {
+    if (qdev_is_realized(dev)) {
         error_setg(errp, "Attempt to set link property '%s' on device '%s' "
                    "(type '%s') after it was realized",
                    name, dev->id, object_get_typename(obj));

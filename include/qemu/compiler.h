@@ -375,4 +375,7 @@
       (expr)+0))))))
 #endif
 
+/* Compiler barrier */
+#define barrier()   ({ asm volatile("" ::: "memory"); (void)0; })
+
 #endif /* COMPILER_H */

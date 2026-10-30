@@ -40,6 +40,8 @@
 #ifndef QEMU_SYS_QUEUE_H
 #define QEMU_SYS_QUEUE_H
 
+#include <retro_atomic.h>
+
 /*
  * This file defines four types of data structures: singly-linked lists,
  * lists, simple queues, and tail queues.
@@ -364,8 +366,10 @@ struct {                                                                \
 /*
  * Simple queue access methods.
  */
+/* Read without the lock the writers hold: one relaxed atomic load */
 #define QSIMPLEQ_EMPTY_ATOMIC(head) \
-    (qatomic_read(&((head)->sqh_first)) == NULL)
+    (retro_atomic_load_relaxed_ptr( \
+        (retro_atomic_ptr_t *)&((head)->sqh_first)) == NULL)
 #define QSIMPLEQ_EMPTY(head)        ((head)->sqh_first == NULL)
 #define QSIMPLEQ_FIRST(head)        ((head)->sqh_first)
 #define QSIMPLEQ_NEXT(elm, field)   ((elm)->field.sqe_next)

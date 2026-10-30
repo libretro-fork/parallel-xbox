@@ -34,7 +34,7 @@ static void adjust_polling_time(AioContext *ctx, AioPolledEvent *poll,
 
 bool aio_poll_disabled(AioContext *ctx)
 {
-    return qatomic_read(&ctx->poll_disable_cnt);
+    return retro_atomic_load_relaxed_int(&ctx->poll_disable_cnt);
 }
 
 void aio_add_ready_handler(AioHandlerList *ready_list,
@@ -158,8 +158,9 @@ void aio_set_fd_handler(AioContext *ctx,
      * Changing handlers is a rare event, and a little wasted polling until
      * the aio_notify below is not an issue.
      */
-    qatomic_set(&ctx->poll_disable_cnt,
-               qatomic_read(&ctx->poll_disable_cnt) + poll_disable_change);
+    retro_atomic_store_relaxed_int(&ctx->poll_disable_cnt,
+        retro_atomic_load_relaxed_int(&ctx->poll_disable_cnt) +
+        poll_disable_change);
 
     ctx->fdmon_ops->update(ctx, node, new_node);
     if (node) {
@@ -668,15 +669,16 @@ bool aio_poll(AioContext *ctx, bool blocking)
      */
     use_notify_me = timeout != 0;
     if (use_notify_me) {
-        qatomic_set(&ctx->notify_me, qatomic_read(&ctx->notify_me) + 2);
+        retro_atomic_store_relaxed_int(&ctx->notify_me,
+            retro_atomic_load_relaxed_int(&ctx->notify_me) + 2);
         /*
          * Write ctx->notify_me before reading ctx->notified.  Pairs with
-         * smp_mb in aio_notify().
+         * the full fence in aio_notify().
          */
-        smp_mb();
+        retro_atomic_thread_fence_seq_cst();
 
         /* Don't block if aio_notify() was called */
-        if (qatomic_read(&ctx->notified)) {
+        if (retro_atomic_load_relaxed_int(&ctx->notified)) {
             timeout = 0;
         }
     }
@@ -701,8 +703,8 @@ bool aio_poll(AioContext *ctx, bool blocking)
 
     if (use_notify_me) {
         /* Finish the poll before clearing the flag.  */
-        qatomic_store_release(&ctx->notify_me,
-                             qatomic_read(&ctx->notify_me) - 2);
+        retro_atomic_store_release_int(&ctx->notify_me,
+            retro_atomic_load_relaxed_int(&ctx->notify_me) - 2);
     }
 
     aio_notify_accept(ctx);

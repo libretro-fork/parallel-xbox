@@ -132,7 +132,9 @@ static inline bool ptw_setl(const PTETranslate *in, uint32_t old, uint32_t set)
         if (likely(in->haddr)) {
             old = cpu_to_le32(old);
             new = cpu_to_le32(new);
-            return qatomic_cmpxchg((uint32_t *)in->haddr, old, new) == old;
+            /* Guest memory: a single 32-bit atomic, as on hardware */
+            return retro_atomic_cas_int((retro_atomic_int_t *)in->haddr,
+                                        (int)old, (int)new);
         }
         return ptw_setl_slow(in, old, new);
     }

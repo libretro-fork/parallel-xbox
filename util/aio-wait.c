@@ -36,21 +36,21 @@ static void dummy_bh_cb(void *opaque)
 void aio_wait_kick(void)
 {
     /*
-     * Paired with smp_mb in AIO_WAIT_WHILE. Here we have:
+     * Paired with the full barrier in AIO_WAIT_WHILE. Here we have:
      * write(condition);
      * aio_wait_kick() {
-     *      smp_mb();
+     *      full fence;
      *      read(num_waiters);
      * }
      *
      * And in AIO_WAIT_WHILE:
      * write(num_waiters);
-     * smp_mb();
+     * full barrier;
      * read(condition);
      */
-    smp_mb();
+    retro_atomic_thread_fence_seq_cst();
 
-    if (qatomic_read(&global_aio_wait.num_waiters)) {
+    if (retro_atomic_load_relaxed_int(&global_aio_wait.num_waiters)) {
         aio_bh_schedule_oneshot(qemu_get_aio_context(), dummy_bh_cb, NULL);
     }
 }

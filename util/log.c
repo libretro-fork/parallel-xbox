@@ -40,7 +40,7 @@ typedef struct RCUCloseFILE {
 /* Mutex covering the other global_* variables. */
 static QemuMutex global_mutex;
 static char *global_filename;
-static FILE *global_file;
+static retro_atomic_ptr_t global_file;  /* FILE *, published under RCU */
 #if defined(_WIN32)
 static DWORD tls_key_thread_file = TLS_OUT_OF_INDEXES;
 static DWORD tls_key_qemu_log_thread_cleanup_notifier = TLS_OUT_OF_INDEXES;
@@ -78,7 +78,7 @@ bool qemu_log_separate(void)
     if (log_per_thread) {
         return true;
     } else {
-        FILE *logfile = qatomic_read(&global_file);
+        FILE *logfile = retro_atomic_load_relaxed_ptr(&global_file);
         return logfile && logfile != stderr;
     }
 }
@@ -90,8 +90,8 @@ static int log_thread_id(void)
 #elif defined(SYS_gettid)
     return syscall(SYS_gettid);
 #else
-    static int counter;
-    return qatomic_fetch_inc(&counter);
+    static retro_atomic_int_t counter;
+    return retro_atomic_fetch_add_int(&counter, 1);
 #endif
 }
 
@@ -126,14 +126,7 @@ static FILE *qemu_log_trylock_with_err(Error **errp)
             qemu_thread_atexit_add(&qemu_log_thread_cleanup_notifier);
         } else {
             rcu_read_lock();
-            /*
-             * FIXME: typeof_strip_qual, as used by qatomic_rcu_read,
-             * does not work with pointers to undefined structures,
-             * such as we have with struct _IO_FILE and musl libc.
-             * Since all we want is a read of a pointer, cast to void**,
-             * which does work with typeof_strip_qual.
-             */
-            logfile = qatomic_rcu_read((void **)&global_file);
+            logfile = retro_atomic_load_acquire_ptr(&global_file);
             if (!logfile) {
                 rcu_read_unlock();
                 return NULL;
@@ -249,7 +242,7 @@ static bool qemu_set_log_internal(const char *filename, bool changed_name,
     FILE *logfile;
 
     QEMU_LOCK_GUARD(&global_mutex);
-    logfile = global_file;
+    logfile = retro_atomic_load_relaxed_ptr(&global_file);
 
     /* The per-thread flag is immutable. */
     if (log_per_thread) {
@@ -332,7 +325,7 @@ static bool qemu_set_log_internal(const char *filename, bool changed_name,
         if (changed_name && logfile != stderr) {
             RCUCloseFILE *r = g_new0(RCUCloseFILE, 1);
             r->fd = logfile;
-            qatomic_rcu_set(&global_file, NULL);
+            retro_atomic_store_release_ptr(&global_file, NULL);
             call_rcu(r, rcu_close_file, rcu);
         }
         if (changed_name) {
@@ -379,7 +372,7 @@ static bool qemu_set_log_internal(const char *filename, bool changed_name,
         if (log_per_thread && daemonized) {
             SET_thread_file(logfile);
         } else {
-            qatomic_rcu_set(&global_file, logfile);
+            retro_atomic_store_release_ptr(&global_file, logfile);
         }
     }
     return true;

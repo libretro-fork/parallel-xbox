@@ -9,19 +9,11 @@
 #ifndef QEMU_SYS_MEMBARRIER_H
 #define QEMU_SYS_MEMBARRIER_H
 
-#ifdef CONFIG_MEMBARRIER
-/* Only block reordering at the compiler level in the performance-critical
- * side.  The slow side forces processor-level ordering on all other cores
- * through a system call.
- */
-void smp_mb_global_init(void);
-void smp_mb_global(void);
-#define smp_mb_placeholder()       barrier()
-#else
-/* Keep it simple, execute a real memory barrier on both sides.  */
+#include <retro_atomic.h>
+
+/* A real memory barrier on both sides.  */
 static inline void smp_mb_global_init(void) {}
-#define smp_mb_global()            smp_mb()
-#define smp_mb_placeholder()       smp_mb()
-#endif
+#define smp_mb_global()            retro_atomic_thread_fence_seq_cst()
+#define smp_mb_placeholder()       retro_atomic_thread_fence_seq_cst()
 
 #endif

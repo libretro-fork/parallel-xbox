@@ -50,16 +50,9 @@ struct {
     /*
      * Global number of generated multifd packets.
      *
-     * Note that we used 'uintptr_t' because it'll naturally support atomic
-     * operations on both 32bit / 64 bits hosts.  It means on 32bit systems
-     * multifd will overflow the packet_num easier, but that should be
-     * fine.
-     *
-     * Another option is to use QEMU's Stat64 then it'll be 64 bits on all
-     * hosts, however so far it does not support atomic fetch_add() yet.
-     * Make it easy for now.
+     * The core runs on 64-bit hosts only, so a size_t counter is 64 bits.
      */
-    uintptr_t packet_num;
+    retro_atomic_size_t packet_num;
     /*
      * Synchronization point past which no more channels will be
      * created.
@@ -150,7 +143,7 @@ void multifd_send_fill_packet(MultiFDSendParams *p)
     packet->hdr.flags = cpu_to_be32(p->flags);
     packet->next_packet_size = cpu_to_be32(p->next_packet_size);
 
-    packet_num = qatomic_fetch_inc(&multifd_send_state->packet_num);
+    packet_num = retro_atomic_fetch_add_size(&multifd_send_state->packet_num, 1);
     packet->packet_num = cpu_to_be64(packet_num);
 
     p->packets_sent++;

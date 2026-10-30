@@ -131,7 +131,6 @@
 #include "qapi/qapi-commands-ui.h"
 #include "block/qdict.h"
 #include "qapi/qmp/qerror.h"
-#include "system/iothread.h"
 #include "qemu/guest-random.h"
 #include "qemu/keyval.h"
 

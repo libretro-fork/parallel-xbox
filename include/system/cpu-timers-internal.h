@@ -39,7 +39,7 @@ typedef struct TimersState {
     QemuSeqLock vm_clock_seqlock;
     QemuSpin vm_clock_lock;
 
-    int16_t cpu_ticks_enabled;
+    retro_atomic_int_t cpu_ticks_enabled;
 
     /* Conversion factor from emulated instructions to virtual clock ticks.  */
     int16_t icount_time_shift;
@@ -47,7 +47,7 @@ typedef struct TimersState {
     int64_t last_delta;
 
     /* Compensate for varying guest execution speed.  */
-    aligned_int64_t qemu_icount_bias;
+    int64_t qemu_icount_bias;
 
     int64_t vm_clock_warp_start;
     int64_t cpu_clock_offset;

@@ -43,7 +43,7 @@ int64_t cpu_get_clock_locked(void)
     int64_t time;
 
     time = timers_state.cpu_clock_offset;
-    if (timers_state.cpu_ticks_enabled) {
+    if (retro_atomic_load_relaxed_int(&timers_state.cpu_ticks_enabled)) {
         time += get_clock();
     }
 
@@ -75,10 +75,10 @@ void cpu_enable_ticks(void)
 {
     seqlock_write_lock(&timers_state.vm_clock_seqlock,
                        &timers_state.vm_clock_lock);
-    if (!timers_state.cpu_ticks_enabled) {
+    if (!retro_atomic_load_relaxed_int(&timers_state.cpu_ticks_enabled)) {
         timers_state.cpu_ticks_offset -= cpu_get_host_ticks();
         timers_state.cpu_clock_offset -= get_clock();
-        timers_state.cpu_ticks_enabled = 1;
+        retro_atomic_store_relaxed_int(&timers_state.cpu_ticks_enabled, 1);
     }
     seqlock_write_unlock(&timers_state.vm_clock_seqlock,
                        &timers_state.vm_clock_lock);
@@ -93,10 +93,10 @@ void cpu_disable_ticks(void)
 {
     seqlock_write_lock(&timers_state.vm_clock_seqlock,
                        &timers_state.vm_clock_lock);
-    if (timers_state.cpu_ticks_enabled) {
+    if (retro_atomic_load_relaxed_int(&timers_state.cpu_ticks_enabled)) {
         timers_state.cpu_ticks_offset += cpu_get_host_ticks();
         timers_state.cpu_clock_offset = cpu_get_clock_locked();
-        timers_state.cpu_ticks_enabled = 0;
+        retro_atomic_store_relaxed_int(&timers_state.cpu_ticks_enabled, 0);
     }
     seqlock_write_unlock(&timers_state.vm_clock_seqlock,
                          &timers_state.vm_clock_lock);
@@ -130,7 +130,7 @@ void cpu_clock_skip_to(int64_t vt)
 
 bool cpu_ticks_enabled(void)
 {
-    return qatomic_read(&timers_state.cpu_ticks_enabled);
+    return retro_atomic_load_relaxed_int(&timers_state.cpu_ticks_enabled);
 }
 
 static bool icount_state_needed(void *opaque)

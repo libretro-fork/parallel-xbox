@@ -142,12 +142,12 @@ static void qemu_loadvm_thread_pool_create(MigrationIncomingState *mis)
 {
     assert(!mis->load_threads);
     mis->load_threads = thread_pool_new();
-    mis->load_threads_abort = false;
+    retro_atomic_store_relaxed_int(&mis->load_threads_abort, false);
 }
 
 static void qemu_loadvm_thread_pool_destroy(MigrationIncomingState *mis)
 {
-    qatomic_set(&mis->load_threads_abort, true);
+    retro_atomic_store_relaxed_int(&mis->load_threads_abort, true);
 
     bql_unlock(); /* Load threads might be waiting for BQL */
     g_clear_pointer(&mis->load_threads, thread_pool_free);
@@ -2700,7 +2700,7 @@ int qemu_loadvm_state(QEMUFile *f, Error **errp)
      * Set this flag unconditionally so we'll catch further attempts to
      * start additional threads via an appropriate assert()
      */
-    qatomic_set(&mis->load_threads_abort, true);
+    retro_atomic_store_relaxed_int(&mis->load_threads_abort, true);
 
     /*
      * Try to read in the VMDESC section as well, so that dumping tools that

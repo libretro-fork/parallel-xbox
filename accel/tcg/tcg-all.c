@@ -30,7 +30,6 @@
 #include "qapi/error.h"
 #include "qemu/error-report.h"
 #include "qemu/accel.h"
-#include "qemu/atomic.h"
 #include "qapi/qapi-types-common.h"
 #include "qapi/qapi-builtin-visit.h"
 #include "qemu/units.h"

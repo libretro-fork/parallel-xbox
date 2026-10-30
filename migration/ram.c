@@ -373,7 +373,7 @@ struct RAMState {
      * bitmap synchronizations.  This field is unused in other stages of
      * RAM migration.
      */
-    unsigned int postcopy_bmap_sync_requested;
+    retro_atomic_int_t postcopy_bmap_sync_requested;
     /*
      * Page hint during postcopy when preempt mode is on.  Return path
      * thread sets it, while background migration thread consumes it.
@@ -3604,17 +3604,17 @@ static int ram_dirty_bitmap_sync_all(MigrationState *s, RAMState *rs)
 
     trace_ram_dirty_bitmap_sync_start();
 
-    qatomic_set(&rs->postcopy_bmap_sync_requested, 0);
+    retro_atomic_store_relaxed_int(&rs->postcopy_bmap_sync_requested, 0);
     RAMBLOCK_FOREACH_NOT_IGNORED(block) {
         qemu_savevm_send_recv_bitmap(file, block->idstr);
         trace_ram_dirty_bitmap_request(block->idstr);
-        qatomic_inc(&rs->postcopy_bmap_sync_requested);
+        retro_atomic_inc_int(&rs->postcopy_bmap_sync_requested);
     }
 
     trace_ram_dirty_bitmap_sync_wait();
 
     /* Wait until all the ramblocks' dirty bitmap synced */
-    while (qatomic_read(&rs->postcopy_bmap_sync_requested)) {
+    while (retro_atomic_load_acquire_int(&rs->postcopy_bmap_sync_requested)) {
         if (migration_rp_wait(s)) {
             return -1;
         }

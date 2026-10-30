@@ -32,13 +32,16 @@ static QemuCond qemu_work_cond;
 /* >= 1 if a thread is inside start_exclusive/end_exclusive.  Written
  * under qemu_cpu_list_lock, read with atomic operations.
  */
-static int pending_cpus;
+/* Written under qemu_cpu_list_lock, read without it by the vCPUs */
+static retro_atomic_int_t pending_cpus_v;
+#define pending_cpus retro_atomic_load_relaxed_int(&pending_cpus_v)
+#define set_pending_cpus(v) retro_atomic_store_relaxed_int(&pending_cpus_v, (v))
 
 void qemu_init_cpu_list(void)
 {
     /* This is needed because qemu_init_cpu_list is also called by the
      * child process in a fork.  */
-    pending_cpus = 0;
+    set_pending_cpus(0);
 
     qemu_mutex_init(&qemu_cpu_list_lock);
     qemu_cond_init(&exclusive_cond);
@@ -116,14 +119,15 @@ struct qemu_work_item {
     QSIMPLEQ_ENTRY(qemu_work_item) node;
     run_on_cpu_func func;
     run_on_cpu_data data;
-    bool free, exclusive, done;
+    bool free, exclusive;
+    retro_atomic_int_t done;   /* read without work_mutex */
 };
 
 static void queue_work_on_cpu(CPUState *cpu, struct qemu_work_item *wi)
 {
     qemu_mutex_lock(&cpu->work_mutex);
     QSIMPLEQ_INSERT_TAIL(&cpu->work_list, wi, node);
-    wi->done = false;
+    retro_atomic_store_relaxed_int(&wi->done, false);
     qemu_mutex_unlock(&cpu->work_mutex);
 
     /* exit the inner loop and reach qemu_process_cpu_events_common().  */
@@ -142,12 +146,12 @@ void do_run_on_cpu(CPUState *cpu, run_on_cpu_func func, run_on_cpu_data data,
 
     wi.func = func;
     wi.data = data;
-    wi.done = false;
+    retro_atomic_int_init(&wi.done, false);
     wi.free = false;
     wi.exclusive = false;
 
     queue_work_on_cpu(cpu, &wi);
-    while (!qatomic_load_acquire(&wi.done)) {
+    while (!retro_atomic_load_acquire_int(&wi.done)) {
         CPUState *self_cpu = current_cpu;
 
         qemu_cond_wait(&qemu_work_cond, mutex);
@@ -195,10 +199,10 @@ void start_exclusive(void)
     exclusive_idle();
 
     /* Make all other cpus stop executing.  */
-    qatomic_set(&pending_cpus, 1);
+    set_pending_cpus(1);
 
     /* Write pending_cpus before reading other_cpu->running.  */
-    smp_mb();
+    retro_atomic_thread_fence_seq_cst();
     running_cpus = 0;
     CPU_FOREACH(other_cpu) {
         if (retro_atomic_load_relaxed_int(&other_cpu->running)) {
@@ -208,7 +212,7 @@ void start_exclusive(void)
         }
     }
 
-    qatomic_set(&pending_cpus, running_cpus + 1);
+    set_pending_cpus(running_cpus + 1);
     while (pending_cpus > 1) {
         qemu_cond_wait(&exclusive_cond, &qemu_cpu_list_lock);
     }
@@ -230,7 +234,7 @@ void end_exclusive(void)
     }
 
     qemu_mutex_lock(&qemu_cpu_list_lock);
-    qatomic_set(&pending_cpus, 0);
+    set_pending_cpus(0);
     qemu_cond_broadcast(&exclusive_resume);
     qemu_mutex_unlock(&qemu_cpu_list_lock);
 }
@@ -243,7 +247,7 @@ void cpu_exec_start(CPUState *cpu)
     retro_atomic_store_relaxed_int(&cpu->running, 1);
 
     /* Write cpu->running before reading pending_cpus.  */
-    smp_mb();
+    retro_atomic_thread_fence_seq_cst();
 
     /* 1. start_exclusive saw cpu->running == true and pending_cpus >= 1.
      * After taking the lock we'll see cpu->has_waiter == true and run---not
@@ -258,7 +262,7 @@ void cpu_exec_start(CPUState *cpu)
      * 3. pending_cpus == 0.  Then start_exclusive is definitely going to
      * see cpu->running == true, and it will kick the CPU.
      */
-    if (unlikely(qatomic_read(&pending_cpus))) {
+    if (unlikely(pending_cpus)) {
         QEMU_LOCK_GUARD(&qemu_cpu_list_lock);
         if (!cpu->has_waiter) {
             /* Not counted in pending_cpus, let the exclusive item
@@ -283,7 +287,7 @@ void cpu_exec_end(CPUState *cpu)
     retro_atomic_store_relaxed_int(&cpu->running, 0);
 
     /* Write cpu->running before reading pending_cpus.  */
-    smp_mb();
+    retro_atomic_thread_fence_seq_cst();
 
     /* 1. start_exclusive saw cpu->running == true.  Then it will increment
      * pending_cpus and wait for exclusive_cond.  After taking the lock
@@ -300,11 +304,11 @@ void cpu_exec_end(CPUState *cpu)
      * see cpu->running == false, and it can ignore this CPU until the
      * next cpu_exec_start.
      */
-    if (unlikely(qatomic_read(&pending_cpus))) {
+    if (unlikely(pending_cpus)) {
         QEMU_LOCK_GUARD(&qemu_cpu_list_lock);
         if (cpu->has_waiter) {
             cpu->has_waiter = false;
-            qatomic_set(&pending_cpus, pending_cpus - 1);
+            set_pending_cpus(pending_cpus - 1);
             if (pending_cpus == 1) {
                 qemu_cond_signal(&exclusive_cond);
             }
@@ -370,7 +374,7 @@ void process_queued_cpu_work(CPUState *cpu)
         if (wi->free) {
             g_free(wi);
         } else {
-            qatomic_store_release(&wi->done, true);
+            retro_atomic_store_release_int(&wi->done, true);
         }
     }
     qemu_mutex_unlock(&cpu->work_mutex);

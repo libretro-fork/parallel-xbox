@@ -578,7 +578,6 @@ SOURCES_COMMON := \
 	$(CORE_DIR)/io/dns-resolver.c \
 	$(CORE_DIR)/io/net-listener.c \
 	$(CORE_DIR)/io/task.c \
-	$(CORE_DIR)/iothread.c \
 	$(CORE_DIR)/migration/migration-stats.c \
 	$(CORE_DIR)/migration/page_cache.c \
 	$(CORE_DIR)/migration/qemu-file.c \

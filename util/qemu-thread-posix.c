@@ -12,7 +12,6 @@
  */
 #include "qemu/osdep.h"
 #include "qemu/thread.h"
-#include "qemu/atomic.h"
 #include "qemu/notify.h"
 #include "qemu-thread-common.h"
 #include "qemu/tsan.h"

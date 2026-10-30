@@ -440,12 +440,12 @@ static struct addrinfo *inet_parse_connect_saddr(InetSocketAddress *saddr,
     ERRP_GUARD();
     struct addrinfo ai, *res;
     int rc;
-    static int useV4Mapped = 1;
+    static retro_atomic_int_t useV4Mapped = 1;
 
     memset(&ai, 0, sizeof(ai));
 
     ai.ai_flags = AI_CANONNAME | AI_ADDRCONFIG;
-    if (qatomic_read(&useV4Mapped)) {
+    if (retro_atomic_load_relaxed_int(&useV4Mapped)) {
         ai.ai_flags |= AI_V4MAPPED;
     }
     ai.ai_socktype = SOCK_STREAM;
@@ -469,7 +469,7 @@ static struct addrinfo *inet_parse_connect_saddr(InetSocketAddress *saddr,
      */
     if (rc == EAI_BADFLAGS &&
         (ai.ai_flags & AI_V4MAPPED)) {
-        qatomic_set(&useV4Mapped, 0);
+        retro_atomic_store_relaxed_int(&useV4Mapped, 0);
         ai.ai_flags &= ~AI_V4MAPPED;
         rc = getaddrinfo(saddr->host, saddr->port, &ai, &res);
     }

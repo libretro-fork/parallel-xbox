@@ -141,7 +141,6 @@ int qemu_ram_foreach_block(RAMBlockIterFunc func, void *opaque);
 void list_cpus(void);
 
 #ifdef CONFIG_TCG
-#include "qemu/atomic.h"
 
 /**
  * cpu_unwind_state_data:

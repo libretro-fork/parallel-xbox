@@ -554,7 +554,7 @@ const char *qdev_set_id(DeviceState *dev, char *id, Error **errp)
 {
     ObjectProperty *prop;
 
-    assert(!dev->id && !dev->realized);
+    assert(!dev->id && !qdev_is_realized(dev));
 
     /*
      * object_property_[try_]add_child() below will assert the device

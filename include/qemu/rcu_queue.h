@@ -31,8 +31,8 @@
 /*
  * Lists that RCU readers walk while a writer changes them. The links a
  * reader follows (the head's first pointer and each element's next one)
- * are retro_atomic_ptr_t; a reader loads them relaxed, as QEMU's
- * qatomic_rcu_read did (the address dependency orders what it reads
+ * are retro_atomic_ptr_t; a reader loads them relaxed, as QEMU's own
+ * RCU read did (the address dependency orders what it reads
  * through them), and a writer publishes a new element with a release
  * store once its own links are set. The back links only writers use
  * stay plain. Every access to such a list, the writer's too, goes

@@ -23,7 +23,6 @@
 #include "qemu/module.h"
 #include "io/channel-tls.h"
 #include "trace.h"
-#include "qemu/atomic.h"
 
 
 static ssize_t qio_channel_tls_write_handler(const void *buf,
@@ -185,7 +184,7 @@ qio_channel_tls_allow_premature_termination(QIOChannelTLS *tioc, int flags)
         return true;
     }
 
-    if (qatomic_read(&tioc->shutdown) & QIO_CHANNEL_SHUTDOWN_READ) {
+    if (retro_atomic_load_relaxed_int(&tioc->shutdown) & QIO_CHANNEL_SHUTDOWN_READ) {
         return true;
     }
 
@@ -300,7 +299,7 @@ static int qio_channel_tls_shutdown(QIOChannel *ioc,
 {
     QIOChannelTLS *tioc = QIO_CHANNEL_TLS(ioc);
 
-    qatomic_or(&tioc->shutdown, how);
+    retro_atomic_fetch_or_int(&tioc->shutdown, how);
 
     return qio_channel_shutdown(tioc->master, how, errp);
 }

@@ -59,7 +59,7 @@ static int memory_device_build_list(Object *obj, void *opaque)
 
     if (object_dynamic_cast(obj, TYPE_MEMORY_DEVICE)) {
         DeviceState *dev = DEVICE(obj);
-        if (dev->realized) { /* only realized memory devices matter */
+        if (qdev_is_realized(dev)) { /* only realized memory devices matter */
             *list = g_slist_insert_sorted(*list, dev, memory_device_addr_sort);
         }
     }

@@ -77,7 +77,7 @@ void qht_destroy(struct qht *ht);
  * Attempting to insert a NULL @p is a bug.
  * Inserting the same pointer @p with different @hash values is a bug.
  *
- * In case of successful operation, smp_wmb() is implied before the pointer is
+ * In case of successful operation, a release barrier is implied before the pointer is
  * inserted into the hash table.
  *
  * Returns true on success.
@@ -96,7 +96,7 @@ bool qht_insert(struct qht *ht, void *p, uint32_t hash, void **existing);
  *
  * Needs to be called under an RCU read-critical section.
  *
- * smp_read_barrier_depends() is implied before the call to @func.
+ * The pointer is read before @func is called, and what it points to after.
  *
  * The user-provided @func compares pointers in QHT against @userp.
  * If the function returns true, a match has been found.

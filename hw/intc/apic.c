@@ -475,7 +475,7 @@ static void apic_set_irq(APICCommonState *s, int vector_num, int trigger_mode)
          * TPR value. That way, if we miss a lowering of the TRP, the guest
          * has the chance to notice the new IRR and poll for IRQs on its own.
          */
-        smp_wmb();
+        retro_atomic_thread_fence_release();
         apic_sync_vapic(s, SYNC_FROM_VAPIC);
     }
     apic_update_irq(s);

@@ -24,7 +24,7 @@ static struct {
     MultiFDSendData *send_data;
 
     ThreadPool *threads;
-    bool threads_abort;
+    retro_atomic_int_t threads_abort;
 } *multifd_send_device_state;
 
 void multifd_send_data_clear_device_state(MultiFDDeviceState_t *device_state)
@@ -84,7 +84,7 @@ multifd_spawn_device_state_save_thread(SaveCompletePrecopyThreadHandler hdlr,
     assert(multifd_device_state_supported());
     assert(multifd_send_device_state);
 
-    assert(!qatomic_read(&multifd_send_device_state->threads_abort));
+    assert(!retro_atomic_load_relaxed_int(&multifd_send_device_state->threads_abort));
 
     data = g_new(SaveCompletePrecopyThreadData, 1);
     data->hdlr = hdlr;
@@ -102,7 +102,7 @@ void multifd_abort_device_state_save_threads(void)
 {
     assert(multifd_device_state_supported());
 
-    qatomic_set(&multifd_send_device_state->threads_abort, true);
+    retro_atomic_store_relaxed_int(&multifd_send_device_state->threads_abort, true);
 }
 
 bool multifd_join_device_state_save_threads(void)

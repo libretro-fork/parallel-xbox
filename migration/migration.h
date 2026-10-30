@@ -190,7 +190,7 @@ struct MigrationIncomingState {
 
     /* Optional load threads pool and its thread exit request flag */
     ThreadPool *load_threads;
-    bool load_threads_abort;
+    retro_atomic_int_t load_threads_abort;
 
     /*
      * PostcopyBlocktimeContext to keep information for postcopy
@@ -218,7 +218,7 @@ struct MigrationIncomingState {
      * For postcopy only, count the number of requested page faults that
      * still haven't been resolved.
      */
-    int page_requested_count;
+    retro_atomic_int_t page_requested_count;
     /*
      * The mutex helps to maintain the requested pages that we sent to the
      * source, IOW, to guarantee coherent between the page_requests tree and

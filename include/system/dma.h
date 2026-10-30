@@ -55,7 +55,7 @@ static inline void dma_barrier(AddressSpace *as, DMADirection dir)
      * operations are responsible for providing their own
      * ordering via barriers.
      *
-     * This primitive implementation does a simple smp_mb()
+     * This primitive implementation does a full fence
      * before each operation which provides pretty much full
      * ordering.
      *
@@ -63,7 +63,7 @@ static inline void dma_barrier(AddressSpace *as, DMADirection dir)
      * use lighter barriers based on the direction of the
      * transfer, the DMA context, etc...
      */
-    smp_mb();
+    retro_atomic_thread_fence_seq_cst();
 }
 
 /* Checks that the given range of addresses is valid for DMA.  This is

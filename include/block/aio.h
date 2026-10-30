@@ -268,7 +268,7 @@ struct AioContext {
      * Instead, the aio_poll calls include both the prepare and the
      * dispatch phase, hence a simple counter is enough for them.
      */
-    uint32_t notify_me;
+    retro_atomic_int_t notify_me;
 
     /* A lock to protect between QEMUBH and AioHandler adders and deleter,
      * and to ensure that no callbacks are removed while we're walking and
@@ -294,7 +294,7 @@ struct AioContext {
      * more information on the problem that would result, see "#ifdef BUG2"
      * in the docs/aio_notify_accept.promela formal model.
      */
-    bool notified;
+    retro_atomic_int_t notified;
     EventNotifier notifier;
 
     int thread_pool_min;
@@ -323,7 +323,7 @@ struct AioContext {
     QEMUTimerListGroup tlg;
 
     /* Number of AioHandlers without .io_poll() */
-    int poll_disable_cnt;
+    retro_atomic_int_t poll_disable_cnt;
 
     /* Polling mode parameters */
     int64_t poll_max_ns;    /* maximum polling time in nanoseconds */

@@ -2875,3 +2875,13 @@ util/stats64.c
 block/block-gen.h
 block/coroutines.h
 include/qemu/coroutine_int.h
+iothread.c
+include/system/iothread.h
+include/hw/xen/xen-block.h
+host/include/aarch64/host/atomic128-cas.h.inc
+host/include/aarch64/host/atomic128-ldst.h.inc
+host/include/generic/host/atomic128-cas.h.inc
+host/include/generic/host/atomic128-ldst.h.inc
+host/include/x86_64/host/atomic128-ldst.h.inc
+include/qemu/atomic128.h
+include/qemu/atomic.h

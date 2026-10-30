@@ -17,6 +17,7 @@
  */
 
 #include "qemu/osdep.h"
+#include "qemu/barrier.h"
 #include "qemu/madvise.h"
 #include "exec/target_page.h"
 #include "migration.h"
@@ -689,11 +690,12 @@ static int qemu_ufd_copy_ioctl(MigrationIncomingState *mis, void *host_addr,
          */
         if (g_tree_lookup(mis->page_requested, host_addr)) {
             g_tree_remove(mis->page_requested, host_addr);
-            int left_pages = qatomic_dec_fetch(&mis->page_requested_count);
+            int left_pages =
+                retro_atomic_fetch_sub_int(&mis->page_requested_count, 1) - 1;
 
-            trace_postcopy_page_req_del(host_addr, mis->page_requested_count);
+            trace_postcopy_page_req_del(host_addr, left_pages);
             /* Order the update of count and read of preempt status */
-            smp_mb();
+            qemu_mb_after_rmw();
             if (mis->preempt_thread_status == PREEMPT_THREAD_QUIT &&
                 left_pages == 0) {
                 /*
@@ -868,17 +870,17 @@ void postcopy_temp_page_reset(PostcopyTmpPage *tmp_page)
  * MigrationIncomingState since it's state is used during cleanup
  * at the end as MIS is being freed.
  */
-static PostcopyState incoming_postcopy_state;
+static retro_atomic_int_t incoming_postcopy_state;   /* PostcopyState */
 
 PostcopyState  postcopy_state_get(void)
 {
-    return qatomic_load_acquire(&incoming_postcopy_state);
+    return retro_atomic_load_acquire_int(&incoming_postcopy_state);
 }
 
 /* Set the state and return the old state */
 PostcopyState postcopy_state_set(PostcopyState new_state)
 {
-    return qatomic_xchg(&incoming_postcopy_state, new_state);
+    return retro_atomic_exchange_int(&incoming_postcopy_state, new_state);
 }
 
 static void postcopy_listen_thread_bh(void *opaque)

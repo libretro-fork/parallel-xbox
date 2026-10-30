@@ -3,7 +3,6 @@
 
 #include "qemu/processor.h"
 #include <retro_atomic.h>
-#include "qemu/atomic.h"
 #include "qemu/futex.h"
 
 typedef struct QemuCond QemuCond;

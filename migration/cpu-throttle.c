@@ -34,7 +34,7 @@
 
 /* vcpu throttling controls */
 static QEMUTimer *throttle_timer, *throttle_dirty_sync_timer;
-static unsigned int throttle_percentage;
+static retro_atomic_int_t throttle_percentage;
 static uint64_t throttle_dirty_sync_count_prev;
 
 #define CPU_THROTTLE_PCT_MIN 1
@@ -96,7 +96,7 @@ static void cpu_throttle_timer_tick(void *opaque)
 
 int cpu_throttle_get_percentage(void)
 {
-    return qatomic_read(&throttle_percentage);
+    return retro_atomic_load_relaxed_int(&throttle_percentage);
 }
 
 void cpu_throttle_dirty_sync_timer_tick(void *opaque)

@@ -1011,10 +1011,10 @@ int qemu_shm_alloc(size_t size, Error **errp)
 #else
     g_autoptr(GString) shm_name = g_string_new(NULL);
     int fd, oflag, cur_sequence;
-    static int sequence;
+    static retro_atomic_int_t sequence;
     mode_t mode;
 
-    cur_sequence = qatomic_fetch_inc(&sequence);
+    cur_sequence = retro_atomic_fetch_add_int(&sequence, 1);
 
     /*
      * Let's use `mode = 0` because we don't want other processes to open our

@@ -7,7 +7,6 @@
 #ifndef EXEC_TRANSLATION_BLOCK_H
 #define EXEC_TRANSLATION_BLOCK_H
 
-#include "qemu/atomic.h"
 #include <retro_atomic.h>
 #include "qemu/thread.h"
 #include "exec/cpu-common.h"

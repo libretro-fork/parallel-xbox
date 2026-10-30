@@ -364,7 +364,7 @@ int vm_state_notify(bool running, RunState state)
 }
 
 static ShutdownCause reset_requested;
-static ShutdownCause shutdown_requested;
+static retro_atomic_int_t shutdown_requested;   /* ShutdownCause */
 static int shutdown_signal;
 static bool force_shutdown;
 static pid_t shutdown_pid;
@@ -384,7 +384,7 @@ static uint32_t wakeup_reason_mask = ~(1 << QEMU_WAKEUP_REASON_NONE);
 
 static int qemu_shutdown_requested(void)
 {
-    return qatomic_xchg(&shutdown_requested, SHUTDOWN_CAUSE_NONE);
+    return retro_atomic_exchange_int(&shutdown_requested, SHUTDOWN_CAUSE_NONE);
 }
 
 /* The libretro core's own main loop only looks at the request
@@ -503,10 +503,10 @@ void qemu_system_reset_request(ShutdownCause reason)
 {
     if (reboot_action == REBOOT_ACTION_SHUTDOWN &&
         reason != SHUTDOWN_CAUSE_SUBSYSTEM_RESET) {
-        shutdown_requested = reason;
+        retro_atomic_store_relaxed_int(&shutdown_requested, reason);
     } else if (!cpus_are_resettable()) {
         error_report("cpus are not resettable, terminating");
-        shutdown_requested = reason;
+        retro_atomic_store_relaxed_int(&shutdown_requested, reason);
     } else {
         reset_requested = reason;
     }
@@ -584,7 +584,7 @@ void qemu_system_killed(int signal, pid_t pid)
     /* Cannot call qemu_system_shutdown_request directly because
      * we are in a signal handler.
      */
-    shutdown_requested = SHUTDOWN_CAUSE_HOST_SIGNAL;
+    retro_atomic_store_relaxed_int(&shutdown_requested, SHUTDOWN_CAUSE_HOST_SIGNAL);
     force_shutdown = true;
     qemu_notify_event();
 }
@@ -592,7 +592,7 @@ void qemu_system_killed(int signal, pid_t pid)
 void qemu_system_shutdown_request(ShutdownCause reason)
 {
     trace_qemu_system_shutdown_request(reason);
-    shutdown_requested = reason;
+    retro_atomic_store_relaxed_int(&shutdown_requested, reason);
     if (reason == SHUTDOWN_CAUSE_HOST_QMP_QUIT) {
         force_shutdown = true;
     }

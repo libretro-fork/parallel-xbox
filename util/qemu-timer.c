@@ -68,7 +68,7 @@ static QEMUClock qemu_clocks[QEMU_CLOCK_MAX];
 struct QEMUTimerList {
     QEMUClock *clock;
     QemuMutex active_timers_lock;
-    QEMUTimer *active_timers;
+    QEMUTimer *active_timers;   /* links change under active_timers_lock */
     QLIST_ENTRY(QEMUTimerList) list;
     QEMUTimerListNotifyCB *notify_cb;
     void *notify_opaque;
@@ -76,6 +76,15 @@ struct QEMUTimerList {
     /* lightweight method to mark the end of timerlist's running */
     QemuEvent timers_done_ev;
 };
+
+/*
+ * Whether a timer list is empty is read without its lock, so every store
+ * to a link (the head among them) is a single relaxed atomic one.
+ */
+#define TIMER_LINK(pt) ((retro_atomic_ptr_t *)(pt))
+#define timer_link_set(pt, v) retro_atomic_store_relaxed_ptr(TIMER_LINK(pt), (v))
+#define timer_list_head(tl) \
+    ((QEMUTimer *)retro_atomic_load_relaxed_ptr(TIMER_LINK(&(tl)->active_timers)))
 
 /**
  * qemu_clock_ptr:
@@ -173,7 +182,7 @@ void qemu_clock_enable(QEMUClockType type, bool enabled)
 
 bool timerlist_has_timers(QEMUTimerList *timer_list)
 {
-    return !!qatomic_read(&timer_list->active_timers);
+    return !!timer_list_head(timer_list);
 }
 
 bool qemu_clock_has_timers(QEMUClockType type)
@@ -186,7 +195,7 @@ bool timerlist_expired(QEMUTimerList *timer_list)
 {
     int64_t expire_time = 0;
 
-    if (!qatomic_read(&timer_list->active_timers)) {
+    if (!timer_list_head(timer_list)) {
         return false;
     }
 
@@ -216,7 +225,7 @@ int64_t timerlist_deadline_ns(QEMUTimerList *timer_list)
     int64_t delta;
     int64_t expire_time = 0;
 
-    if (!qatomic_read(&timer_list->active_timers)) {
+    if (!timer_list_head(timer_list)) {
         return -1;
     }
 
@@ -263,7 +272,7 @@ int64_t qemu_clock_deadline_ns_all(QEMUClockType type, int attr_mask)
     }
 
     QLIST_FOREACH(timer_list, &clock->timerlists, list) {
-        if (!qatomic_read(&timer_list->active_timers)) {
+        if (!timer_list_head(timer_list)) {
             continue;
         }
         qemu_mutex_lock(&timer_list->active_timers_lock);
@@ -451,7 +460,7 @@ static void timer_del_locked(QEMUTimerList *timer_list, QEMUTimer *ts)
         if (!t)
             break;
         if (t == ts) {
-            qatomic_set(pt, t->next);
+            timer_link_set(pt, t->next);
             break;
         }
         pt = &t->next;
@@ -474,7 +483,7 @@ static bool timer_mod_ns_locked(QEMUTimerList *timer_list,
     }
     ts->expire_time = MAX(expire_time, 0);
     ts->next = *pt;
-    qatomic_set(pt, ts);
+    timer_link_set(pt, ts);
 
     return pt == &timer_list->active_timers;
 }
@@ -564,7 +573,7 @@ bool timerlist_run_timers(QEMUTimerList *timer_list)
     QEMUTimerCB *cb;
     void *opaque;
 
-    if (!qatomic_read(&timer_list->active_timers)) {
+    if (!timer_list_head(timer_list)) {
         return false;
     }
 
@@ -583,7 +592,7 @@ bool timerlist_run_timers(QEMUTimerList *timer_list)
         }
 
         /* remove timer from the list before calling the callback */
-        timer_list->active_timers = ts->next;
+        timer_link_set(&timer_list->active_timers, ts->next);
         ts->next = NULL;
         ts->expire_time = -1;
         cb = ts->cb;

@@ -26,7 +26,6 @@
 
 #include "qemu/thread.h"
 #include "qemu/queue.h"
-#include "qemu/atomic.h"
 #include <retro_atomic.h>
 #include "qemu/notify.h"
 #include "qemu/sys_membarrier.h"

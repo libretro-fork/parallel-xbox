@@ -160,7 +160,7 @@ void qemu_event_wait(QemuEvent *ev)
 
         /*
          * This is the final check for a concurrent set, so it does need
-         * a smp_mb() pairing with the second barrier of qemu_event_set().
+         * a full barrier pairing with the second barrier of qemu_event_set().
          * The barrier is inside the FUTEX_WAIT system call.
          */
         qemu_futex_wait(ev, EV_BUSY);

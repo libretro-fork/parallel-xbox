@@ -12,7 +12,6 @@
 #include "qemu/osdep.h"
 #include "qemu/bitops.h"
 #include "qemu/bitmap.h"
-#include "qemu/atomic.h"
 
 void bitmap_set(unsigned long *map, long start, long nr)
 {

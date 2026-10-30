@@ -40,16 +40,6 @@ typedef uint32_t grant_ref_t;
 #define XEN_PAGE_SIZE        (1UL << XEN_PAGE_SHIFT)
 #define XEN_PAGE_MASK        (~(XEN_PAGE_SIZE - 1))
 
-#ifndef xen_rmb
-#define xen_rmb() smp_rmb()
-#endif
-#ifndef xen_wmb
-#define xen_wmb() smp_wmb()
-#endif
-#ifndef xen_mb
-#define xen_mb() smp_mb()
-#endif
-
 struct evtchn_backend_ops {
     xenevtchn_handle *(*open)(void);
     int (*bind_interdomain)(xenevtchn_handle *xc, uint32_t domid,

@@ -67,7 +67,6 @@
  */
 #include "qemu/osdep.h"
 #include "qemu/qht.h"
-#include "qemu/atomic.h"
 #include "qemu/rcu.h"
 #include "qemu/memalign.h"
 
@@ -661,7 +660,7 @@ static void *qht_insert__locked(const struct qht *ht, struct qht_map *map,
     if (new) {
         retro_atomic_store_release_ptr(&prev->next, b);
     }
-    /* smp_wmb() implicit in seqlock_write_begin.  */
+    /* The release fence is implicit in seqlock_write_begin.  */
     QHT_SET(b, i, hash, p);
     seqlock_write_end(&head->sequence);
     return NULL;

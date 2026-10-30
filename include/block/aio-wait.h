@@ -27,6 +27,7 @@
 
 #include "block/aio.h"
 #include "qemu/main-loop.h"
+#include "qemu/barrier.h"
 
 /**
  * AioWait:
@@ -53,7 +54,7 @@
  */
 typedef struct {
     /* Number of waiting AIO_WAIT_WHILE() callers. Accessed with atomic ops. */
-    unsigned num_waiters;
+    retro_atomic_int_t num_waiters;
 } AioWait;
 
 extern AioWait global_aio_wait;
@@ -80,9 +81,9 @@ extern AioWait global_aio_wait;
     AioWait *wait_ = &global_aio_wait;                             \
     AioContext *ctx_ = (ctx);                                      \
     /* Increment wait_->num_waiters before evaluating cond. */     \
-    qatomic_inc(&wait_->num_waiters);                              \
-    /* Paired with smp_mb in aio_wait_kick(). */                   \
-    smp_mb__after_rmw();                                           \
+    retro_atomic_inc_int(&wait_->num_waiters);                     \
+    /* Paired with the full fence in aio_wait_kick(). */           \
+    qemu_mb_after_rmw();                                           \
     if (ctx_ && in_aio_context_home_thread(ctx_)) {                \
         while ((cond)) {                                           \
             aio_poll(ctx_, true);                                  \
@@ -96,7 +97,7 @@ extern AioWait global_aio_wait;
             waited_ = true;                                        \
         }                                                          \
     }                                                              \
-    qatomic_dec(&wait_->num_waiters);                              \
+    retro_atomic_dec_int(&wait_->num_waiters);                     \
     waited_; })
 
 #define AIO_WAIT_WHILE(ctx, cond)                                  \

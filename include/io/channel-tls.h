@@ -47,7 +47,7 @@ struct QIOChannelTLS {
     QIOChannel parent;
     QIOChannel *master;
     QCryptoTLSSession *session;
-    QIOChannelShutdown shutdown;
+    retro_atomic_int_t shutdown;   /* QIOChannelShutdown bits */
     guint hs_ioc_tag;
     guint bye_ioc_tag;
 };

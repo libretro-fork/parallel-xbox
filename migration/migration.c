@@ -493,7 +493,8 @@ void migrate_set_state(MigrationStatus *state, MigrationStatus old_state,
                        MigrationStatus new_state)
 {
     assert(new_state < MIGRATION_STATUS__MAX);
-    if (qatomic_cmpxchg(state, old_state, new_state) == old_state) {
+    /* *state is otherwise read plainly; it is int-sized, as an enum */
+    if (retro_atomic_cas_int((retro_atomic_int_t *)state, old_state, new_state)) {
         trace_migrate_set_state(MigrationStatus_str(new_state));
         migrate_generate_event(new_state);
     }
@@ -512,9 +513,8 @@ void migrate_set_error(MigrationState *s, const Error *error)
 
 bool migrate_has_error(MigrationState *s)
 {
-    /* The lock is not helpful here, but still follow the rule */
     QEMU_LOCK_GUARD(&s->error_mutex);
-    return qatomic_read(&s->error);
+    return s->error != NULL;
 }
 
 void migration_cancel(void)

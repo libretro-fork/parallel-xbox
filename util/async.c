@@ -29,7 +29,6 @@
 #include "block/thread-pool.h"
 #include "block/graph-lock.h"
 #include "qemu/main-loop.h"
-#include "qemu/atomic.h"
 #include "qemu/lockcnt.h"
 #include "qemu/rcu_queue.h"
 #include "block/raw-aio.h"
@@ -64,7 +63,7 @@ struct QEMUBH {
     QEMUBHFunc *cb;
     void *opaque;
     QSLIST_RCU_ENTRY(QEMUBH) next;
-    unsigned flags;
+    retro_atomic_int_t flags;
     MemReentrancyGuard *reentrancy_guard;
 };
 
@@ -75,10 +74,10 @@ static void aio_bh_enqueue(QEMUBH *bh, unsigned new_flags)
     unsigned old_flags;
 
     /*
-     * Synchronizes with atomic_fetch_and() in aio_bh_dequeue(), ensuring that
+     * Synchronizes with the fetch_and in aio_bh_dequeue(), ensuring that
      * insertion starts after BH_PENDING is set.
      */
-    old_flags = qatomic_fetch_or(&bh->flags, BH_PENDING | new_flags);
+    old_flags = retro_atomic_fetch_or_int(&bh->flags, BH_PENDING | new_flags);
 
     if (!(old_flags & BH_PENDING)) {
         /*
@@ -117,11 +116,11 @@ static QEMUBH *aio_bh_dequeue(BHList *head, unsigned *flags)
     QSLIST_REMOVE_HEAD_RCU(head, next);
 
     /*
-     * Synchronizes with qatomic_fetch_or() in aio_bh_enqueue(), ensuring that
+     * Synchronizes with the fetch_or in aio_bh_enqueue(), ensuring that
      * the removal finishes before BH_PENDING is reset.
      */
-    *flags = qatomic_fetch_and(&bh->flags,
-                              ~(BH_PENDING | BH_SCHEDULED | BH_IDLE));
+    *flags = retro_atomic_fetch_and_int(&bh->flags,
+                                        ~(BH_PENDING | BH_SCHEDULED | BH_IDLE));
     return bh;
 }
 
@@ -239,7 +238,7 @@ void qemu_bh_schedule(QEMUBH *bh)
  */
 void qemu_bh_cancel(QEMUBH *bh)
 {
-    qatomic_and(&bh->flags, ~BH_SCHEDULED);
+    retro_atomic_fetch_and_int(&bh->flags, ~BH_SCHEDULED);
 }
 
 /* This func is async.The bottom half will do the delete action at the finial
@@ -255,7 +254,7 @@ static int64_t aio_compute_bh_timeout(BHList *head, int timeout)
     QEMUBH *bh;
 
     QSLIST_FOREACH_RCU(bh, head, next) {
-        int flags = qatomic_load_acquire(&bh->flags);
+        int flags = retro_atomic_load_acquire_int(&bh->flags);
         if ((flags & (BH_SCHEDULED | BH_DELETED)) == BH_SCHEDULED) {
             if (flags & BH_IDLE) {
                 /* idle bottom halves will be polled at least
@@ -304,14 +303,15 @@ aio_ctx_prepare(GSource *source, gint    *timeout)
 {
     AioContext *ctx = (AioContext *) source;
 
-    qatomic_set(&ctx->notify_me, qatomic_read(&ctx->notify_me) | 1);
+    retro_atomic_store_relaxed_int(&ctx->notify_me,
+        retro_atomic_load_relaxed_int(&ctx->notify_me) | 1);
 
     /*
      * Write ctx->notify_me before computing the timeout
      * (reading bottom half flags, etc.).  Pairs with
-     * smp_mb in aio_notify().
+     * the full fence in aio_notify().
      */
-    smp_mb();
+    retro_atomic_thread_fence_seq_cst();
 
     /* We assume there is no timeout already supplied */
     *timeout = qemu_timeout_ns_to_ms(aio_compute_timeout(ctx));
@@ -331,11 +331,12 @@ aio_ctx_check(GSource *source)
     BHListSlice *s;
 
     /* Finish computing the timeout before clearing the flag.  */
-    qatomic_store_release(&ctx->notify_me, qatomic_read(&ctx->notify_me) & ~1);
+    retro_atomic_store_release_int(&ctx->notify_me,
+        retro_atomic_load_relaxed_int(&ctx->notify_me) & ~1);
     aio_notify_accept(ctx);
 
     QSLIST_FOREACH_RCU(bh, &ctx->bh_list, next) {
-        int flags = qatomic_load_acquire(&bh->flags);
+        int flags = retro_atomic_load_acquire_int(&bh->flags);
         if ((flags & (BH_SCHEDULED | BH_DELETED)) == BH_SCHEDULED) {
             return true;
         }
@@ -343,7 +344,7 @@ aio_ctx_check(GSource *source)
 
     QSIMPLEQ_FOREACH(s, &ctx->bh_slice_list, next) {
         QSLIST_FOREACH_RCU(bh, &s->bh_list, next) {
-            int flags = qatomic_load_acquire(&bh->flags);
+            int flags = retro_atomic_load_acquire_int(&bh->flags);
             if ((flags & (BH_SCHEDULED | BH_DELETED)) == BH_SCHEDULED) {
                 return true;
             }
@@ -466,17 +467,16 @@ void aio_notify(AioContext *ctx)
 {
     /*
      * Write e.g. ctx->bh_list before writing ctx->notified.  Pairs with
-     * smp_mb() in aio_notify_accept().
+     * the full fence in aio_notify_accept().
      */
-    smp_wmb();
-    qatomic_set(&ctx->notified, true);
+    retro_atomic_store_release_int(&ctx->notified, true);
 
     /*
      * Write ctx->notified (and also ctx->bh_list) before reading ctx->notify_me.
-     * Pairs with smp_mb() in aio_ctx_prepare or aio_poll.
+     * Pairs with the full fence in aio_ctx_prepare or aio_poll.
      */
-    smp_mb();
-    if (qatomic_read(&ctx->notify_me)) {
+    retro_atomic_thread_fence_seq_cst();
+    if (retro_atomic_load_relaxed_int(&ctx->notify_me)) {
         event_notifier_set(&ctx->notifier);
     }
     if (aio_main_notify_hook && ctx == qemu_get_aio_context()) {
@@ -487,14 +487,14 @@ void aio_notify(AioContext *ctx)
 
 void aio_notify_accept(AioContext *ctx)
 {
-    qatomic_set(&ctx->notified, false);
+    retro_atomic_store_relaxed_int(&ctx->notified, false);
 
     /*
      * Order reads of ctx->notified (in aio_context_notifier_poll()) and the
      * above clearing of ctx->notified before reads of e.g. bh->flags.  Pairs
-     * with smp_wmb() in aio_notify.
+     * with the release store in aio_notify.
      */
-    smp_mb();
+    retro_atomic_thread_fence_seq_cst();
 }
 
 static void aio_timerlist_notify(void *opaque, QEMUClockType type)
@@ -520,7 +520,7 @@ static bool aio_context_notifier_poll(void *opaque)
      * event loop.  aio_notify_accept() takes care of synchronizing
      * the event loop with the producers.
      */
-    return qatomic_read(&ctx->notified);
+    return retro_atomic_load_relaxed_int(&ctx->notified);
 }
 
 static void aio_context_notifier_poll_ready(EventNotifier *e)

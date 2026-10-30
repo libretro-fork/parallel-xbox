@@ -133,7 +133,7 @@ bool qdev_set_parent_bus(DeviceState *dev, BusState *bus, Error **errp)
     dev->parent_bus = bus;
     object_ref(OBJECT(bus));
     bus_add_child(bus, dev);
-    if (dev->realized) {
+    if (qdev_is_realized(dev)) {
         resettable_change_parent(OBJECT(dev), OBJECT(bus),
                                  OBJECT(old_parent_bus));
     }
@@ -209,7 +209,7 @@ bool qdev_should_hide_device(const QDict *opts, bool from_json, Error **errp)
 void qdev_set_legacy_instance_id(DeviceState *dev, int alias_id,
                                  int required_for_version)
 {
-    assert(!dev->realized);
+    assert(!qdev_is_realized(dev));
     dev->instance_id_alias = alias_id;
     dev->alias_required_for_version = required_for_version;
 }
@@ -238,7 +238,7 @@ static void device_reset_child_foreach(Object *obj, ResettableChildCallback cb,
 
 bool qdev_realize(DeviceState *dev, BusState *bus, Error **errp)
 {
-    assert(!dev->realized && !dev->parent_bus);
+    assert(!qdev_is_realized(dev) && !dev->parent_bus);
 
     if (bus) {
         if (!qdev_set_parent_bus(dev, bus, errp)) {
@@ -272,7 +272,7 @@ static int qdev_assert_realized_properly_cb(Object *obj, void *opaque)
 
     if (dev) {
         dc = DEVICE_GET_CLASS(dev);
-        assert(dev->realized);
+        assert(qdev_is_realized(dev));
         assert(dev->parent_bus || !dc->bus_type);
     }
     return 0;
@@ -351,7 +351,7 @@ char *qdev_get_dev_path(DeviceState *dev)
 static bool device_get_realized(Object *obj, Error **errp)
 {
     DeviceState *dev = DEVICE(obj);
-    return dev->realized;
+    return qdev_is_realized(dev);
 }
 
 static bool check_only_migratable(Object *obj, Error **errp)
@@ -385,7 +385,7 @@ static void device_set_realized(Object *obj, bool value, Error **errp)
         return;
     }
 
-    if (value && !dev->realized) {
+    if (value && !qdev_is_realized(dev)) {
         if (!check_only_migratable(obj, errp)) {
             goto fail;
         }
@@ -471,9 +471,9 @@ static void device_set_realized(Object *obj, bool value, Error **errp)
             }
        }
 
-       qatomic_store_release(&dev->realized, value);
+       retro_atomic_store_release_int(&dev->realized, value);
 
-    } else if (!value && dev->realized) {
+    } else if (!value && qdev_is_realized(dev)) {
 
         /*
          * Change the value so that any concurrent users are aware
@@ -483,12 +483,12 @@ static void device_set_realized(Object *obj, bool value, Error **errp)
          * each phase of the device realization/unrealization
          */
 
-        qatomic_set(&dev->realized, value);
+        retro_atomic_store_relaxed_int(&dev->realized, value);
         /*
          * Ensure that concurrent users see this update prior to
          * any other changes done by unrealize.
          */
-        smp_wmb();
+        retro_atomic_thread_fence_release();
 
         QLIST_FOREACH(bus, &dev->child_bus, sibling) {
             qbus_unrealize(bus);
@@ -560,7 +560,7 @@ static void device_initfn(Object *obj)
     }
 
     dev->instance_id_alias = -1;
-    dev->realized = false;
+    retro_atomic_int_init(&dev->realized, false);
     dev->allow_unplug_during_migration = false;
 
     QLIST_INIT(&dev->gpios);
@@ -626,7 +626,7 @@ static void device_unparent(Object *obj)
     DeviceState *dev = DEVICE(obj);
     BusState *bus;
 
-    if (dev->realized) {
+    if (qdev_is_realized(dev)) {
         qdev_unrealize(dev);
     }
     while (dev->num_child_bus) {

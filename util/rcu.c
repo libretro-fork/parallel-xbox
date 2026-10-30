@@ -28,7 +28,6 @@
 
 #include "qemu/osdep.h"
 #include "qemu/rcu.h"
-#include "qemu/atomic.h"
 #include "qemu/thread.h"
 #include "qemu/main-loop.h"
 #include "qemu/lockable.h"

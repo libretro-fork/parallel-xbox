@@ -594,8 +594,8 @@ void qemu_main_loop_wake(void)
 /* Something to do was signalled: aio_notify sets notified before it wakes */
 static bool main_loop_notified(AioContext *io)
 {
-    return qatomic_read(&qemu_aio_context->notified) ||
-           qatomic_read(&io->notified);
+    return retro_atomic_load_relaxed_int(&qemu_aio_context->notified) ||
+           retro_atomic_load_relaxed_int(&io->notified);
 }
 
 static bool main_loop_dispatch(AioContext *io)

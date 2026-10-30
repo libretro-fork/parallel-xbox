@@ -349,13 +349,14 @@ bool aio_poll(AioContext *ctx, bool blocking)
      * so disable the optimization now.
      */
     if (blocking) {
-        qatomic_set(&ctx->notify_me, qatomic_read(&ctx->notify_me) + 2);
+        retro_atomic_store_relaxed_int(&ctx->notify_me,
+            retro_atomic_load_relaxed_int(&ctx->notify_me) + 2);
         /*
          * Write ctx->notify_me before computing the timeout
          * (reading bottom half flags, etc.).  Pairs with
-         * smp_mb in aio_notify().
+         * the full fence in aio_notify().
          */
-        smp_mb();
+        retro_atomic_thread_fence_seq_cst();
     }
 
     qemu_lockcnt_inc(&ctx->list_lock);
@@ -388,8 +389,8 @@ bool aio_poll(AioContext *ctx, bool blocking)
         ret = WaitForMultipleObjects(count, events, FALSE, timeout);
         if (blocking) {
             assert(first);
-            qatomic_store_release(&ctx->notify_me,
-                                  qatomic_read(&ctx->notify_me) - 2);
+            retro_atomic_store_release_int(&ctx->notify_me,
+                retro_atomic_load_relaxed_int(&ctx->notify_me) - 2);
             aio_notify_accept(ctx);
         }
 

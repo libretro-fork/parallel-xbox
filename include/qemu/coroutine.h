@@ -16,7 +16,6 @@
 #define QEMU_COROUTINE_H
 
 #include "qemu/coroutine-core.h"
-#include "qemu/atomic.h"
 #include "qemu/queue.h"
 #include "qemu/timer.h"
 
@@ -68,22 +67,6 @@ struct CoMutex {
 
     Coroutine *holder;
 };
-
-/**
- * Assert that the current coroutine holds @mutex.
- */
-static inline coroutine_fn void qemu_co_mutex_assert_locked(CoMutex *mutex)
-{
-    /*
-     * mutex->holder doesn't need any synchronisation if the assertion holds
-     * true because the mutex protects it. If it doesn't hold true, we still
-     * don't mind if another thread takes or releases mutex behind our back,
-     * because the condition will be false no matter whether we read NULL or
-     * the pointer for any other coroutine.
-     */
-    assert(qatomic_read(&mutex->locked) &&
-           mutex->holder == qemu_coroutine_self());
-}
 
 #include "qemu/lockable.h"
 

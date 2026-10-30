@@ -10,6 +10,7 @@
 #define ACCEL_TCG_BACKEND_LDST_H
 
 #include "tcg-target-mo.h"
+#include <retro_atomic.h>
 
 /**
  * tcg_req_mo:
@@ -34,7 +35,7 @@
 #define cpu_req_mo(cpu, type)     \
     do {                          \
         if (tcg_req_mo(cpu->cc->tcg_ops->guest_default_memory_order, type)) { \
-            smp_mb();             \
+            retro_atomic_thread_fence_seq_cst(); \
         }                         \
     } while (0)
 
