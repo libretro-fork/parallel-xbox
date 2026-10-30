@@ -412,14 +412,6 @@ G_DEFINE_AUTOPTR_CLEANUP_FUNC(BQLLockAuto, bql_auto_unlock)
         = bql_auto_lock(__FILE__, __LINE__)
 
 /*
- * qemu_cond_wait_bql: Wait on condition for the Big QEMU Lock (BQL)
- *
- * This function atomically releases the Big QEMU Lock (BQL) and causes
- * the calling thread to block on the condition.
- */
-void qemu_cond_wait_bql(QemuCond *cond);
-
-/*
  * qemu_cond_timedwait_bql: like the previous, but with timeout
  */
 void qemu_cond_timedwait_bql(QemuCond *cond, int ms);

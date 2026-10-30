@@ -415,40 +415,6 @@ static void qemu_cpu_stop(CPUState *cpu, bool exit)
     qemu_cond_broadcast(&qemu_pause_cond);
 }
 
-void qemu_process_cpu_events_common(CPUState *cpu)
-{
-    qatomic_set_mb(&cpu->thread_kicked, false);
-    if (cpu->stop) {
-        qemu_cpu_stop(cpu, false);
-    }
-    process_queued_cpu_work(cpu);
-}
-
-void qemu_process_cpu_events(CPUState *cpu)
-{
-    bool slept = false;
-
-    qatomic_set(&cpu->exit_request, false);
-    while (cpu_thread_is_idle(cpu)) {
-        if (!slept) {
-            slept = true;
-            qemu_plugin_vcpu_idle_cb(cpu);
-        }
-        if (unlikely(xemu_tbrate_enabled())) {
-            int64_t t0 = get_clock();
-            qemu_cond_wait(cpu->halt_cond, &bql);
-            xemu_vcpu_waits.halt_ns += get_clock() - t0;
-        } else {
-            qemu_cond_wait(cpu->halt_cond, &bql);
-        }
-    }
-    if (slept) {
-        qemu_plugin_vcpu_resume_cb(cpu);
-    }
-
-    qemu_process_cpu_events_common(cpu);
-}
-
 void cpus_kick_thread(CPUState *cpu)
 {
     if (qatomic_read(&cpu->thread_kicked)) {
@@ -534,11 +500,6 @@ bool bql_locked(void)
     return get_bql_locked();
 }
 
-bool qemu_in_main_thread(void)
-{
-    return bql_locked();
-}
-
 void rust_bql_mock_lock(void)
 {
     error_report("This function should be used only from tests");
@@ -576,11 +537,6 @@ void bql_unlock(void)
     g_assert(bql_locked());
     g_assert(!bql_unlock_blocked);
     qemu_mutex_unlock(&bql);
-}
-
-void qemu_cond_wait_bql(QemuCond *cond)
-{
-    qemu_cond_wait(cond, &bql);
 }
 
 void qemu_cond_timedwait_bql(QemuCond *cond, int ms)
@@ -674,13 +630,6 @@ void cpus_register_accel(const AccelOpsClass *ops)
     assert(ops->handle_interrupt);
 
     cpus_accel = ops;
-}
-
-const AccelOpsClass *cpus_get_accel(void)
-{
-    /* broken if we call this early */
-    assert(cpus_accel);
-    return cpus_accel;
 }
 
 void qemu_init_vcpu(CPUState *cpu)
@@ -791,81 +740,3 @@ void vm_resume(RunState state)
     }
 }
 
-void qmp_memsave(uint64_t addr, uint64_t size, const char *filename,
-                 bool has_cpu, int64_t cpu_index, Error **errp)
-{
-    FILE *f;
-    uint64_t l;
-    CPUState *cpu;
-    uint8_t buf[1024];
-    uint64_t orig_addr = addr, orig_size = size;
-
-    if (!has_cpu) {
-        cpu_index = 0;
-    }
-
-    cpu = qemu_get_cpu(cpu_index);
-    if (cpu == NULL) {
-        error_setg(errp, QERR_INVALID_PARAMETER_VALUE, "cpu-index",
-                   "a CPU number");
-        return;
-    }
-
-    f = fopen(filename, "wb");
-    if (!f) {
-        error_setg_file_open(errp, errno, filename);
-        return;
-    }
-
-    while (size != 0) {
-        l = sizeof(buf);
-        if (l > size)
-            l = size;
-        if (cpu_memory_rw_debug(cpu, addr, buf, l, 0) != 0) {
-            error_setg(errp, "Invalid addr 0x%016" PRIx64 "/size %" PRIu64
-                             " specified", orig_addr, orig_size);
-            goto exit;
-        }
-        if (fwrite(buf, 1, l, f) != l) {
-            error_setg(errp, "writing memory to '%s' failed",
-                       filename);
-            goto exit;
-        }
-        addr += l;
-        size -= l;
-    }
-
-exit:
-    fclose(f);
-}
-
-void qmp_pmemsave(uint64_t addr, uint64_t size, const char *filename,
-                  Error **errp)
-{
-    FILE *f;
-    uint64_t l;
-    uint8_t buf[1024];
-
-    f = fopen(filename, "wb");
-    if (!f) {
-        error_setg_file_open(errp, errno, filename);
-        return;
-    }
-
-    while (size != 0) {
-        l = sizeof(buf);
-        if (l > size)
-            l = size;
-        cpu_physical_memory_read(addr, buf, l);
-        if (fwrite(buf, 1, l, f) != l) {
-            error_setg(errp, "writing memory to '%s' failed",
-                       filename);
-            goto exit;
-        }
-        addr += l;
-        size -= l;
-    }
-
-exit:
-    fclose(f);
-}

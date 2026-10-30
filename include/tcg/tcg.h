@@ -763,22 +763,6 @@ void tcg_tb_remove(TranslationBlock *tb);
  */
 TranslationBlock *tcg_tb_lookup(uintptr_t tc_ptr);
 
-/**
- * tcg_tb_foreach:
- * @func: callback
- * @user_data: opaque value to pass to @callback
- *
- * Call @func for each translation block inserted into the region trees.
- */
-void tcg_tb_foreach(GTraverseFunc func, gpointer user_data);
-
-/**
- * tcg_nb_tbs:
- *
- * Returns: the number of translation blocks inserted into the region trees.
- */
-size_t tcg_nb_tbs(void);
-
 /* user-mode: Called with mmap_lock held.  */
 static inline void *tcg_malloc(int size)
 {

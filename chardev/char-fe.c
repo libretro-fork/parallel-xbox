@@ -51,39 +51,6 @@ int qemu_chr_fe_write_all(CharFrontend *c, const uint8_t *buf, int len)
     return qemu_chr_write(s, buf, len, true);
 }
 
-int qemu_chr_fe_read_all(CharFrontend *c, uint8_t *buf, int len)
-{
-    Chardev *s = c->chr;
-    int offset = 0;
-    int res;
-
-    if (!s || !CHARDEV_GET_CLASS(s)->chr_sync_read) {
-        return 0;
-    }
-
-    while (offset < len) {
-    retry:
-        res = CHARDEV_GET_CLASS(s)->chr_sync_read(s, buf + offset,
-                                                  len - offset);
-        if (res == -1 && errno == EAGAIN) {
-            g_usleep(100);
-            goto retry;
-        }
-
-        if (res == 0) {
-            break;
-        }
-
-        if (res < 0) {
-            return res;
-        }
-
-        offset += res;
-    }
-
-    return offset;
-}
-
 int qemu_chr_fe_ioctl(CharFrontend *c, int cmd, void *arg)
 {
     Chardev *s = c->chr;
@@ -96,37 +63,6 @@ int qemu_chr_fe_ioctl(CharFrontend *c, int cmd, void *arg)
     }
 
     return res;
-}
-
-int qemu_chr_fe_get_msgfd(CharFrontend *c)
-{
-    int fd;
-
-    return (qemu_chr_fe_get_msgfds(c, &fd, 1) == 1) ? fd : -1;
-}
-
-int qemu_chr_fe_get_msgfds(CharFrontend *c, int *fds, int len)
-{
-    Chardev *s = c->chr;
-
-    if (!s) {
-        return -1;
-    }
-
-    return CHARDEV_GET_CLASS(s)->get_msgfds ?
-        CHARDEV_GET_CLASS(s)->get_msgfds(s, fds, len) : -1;
-}
-
-int qemu_chr_fe_set_msgfds(CharFrontend *c, int *fds, int num)
-{
-    Chardev *s = c->chr;
-
-    if (!s) {
-        return -1;
-    }
-
-    return CHARDEV_GET_CLASS(s)->set_msgfds ?
-        CHARDEV_GET_CLASS(s)->set_msgfds(s, fds, num) : -1;
 }
 
 void qemu_chr_fe_accept_input(CharFrontend *c)
@@ -143,33 +79,11 @@ void qemu_chr_fe_accept_input(CharFrontend *c)
     qemu_notify_event();
 }
 
-void qemu_chr_fe_printf(CharFrontend *c, const char *fmt, ...)
-{
-    char buf[CHR_READ_BUF_LEN];
-    va_list ap;
-    va_start(ap, fmt);
-    vsnprintf(buf, sizeof(buf), fmt, ap);
-    /* XXX this blocks entire thread. Rewrite to use
-     * qemu_chr_fe_write and background I/O callbacks */
-    qemu_chr_fe_write_all(c, (uint8_t *)buf, strlen(buf));
-    va_end(ap);
-}
-
 Chardev *qemu_chr_fe_get_driver(CharFrontend *c)
 {
     /* this is unsafe for the users that support chardev hotswap */
     assert(c->chr_be_change == NULL);
     return c->chr;
-}
-
-bool qemu_chr_fe_backend_connected(CharFrontend *c)
-{
-    return !!c->chr;
-}
-
-bool qemu_chr_fe_backend_open(CharFrontend *c)
-{
-    return c->chr && c->chr->be_open;
 }
 
 bool qemu_chr_fe_init(CharFrontend *c, Chardev *s, Error **errp)
@@ -291,16 +205,6 @@ void qemu_chr_fe_take_focus(CharFrontend *c)
     if (CHARDEV_IS_MUX(c->chr)) {
         mux_set_focus(c->chr, c->tag);
     }
-}
-
-int qemu_chr_fe_wait_connected(CharFrontend *c, Error **errp)
-{
-    if (!c->chr) {
-        error_setg(errp, "missing associated backend");
-        return -1;
-    }
-
-    return qemu_chr_wait_connected(c->chr, errp);
 }
 
 void qemu_chr_fe_set_echo(CharFrontend *c, bool echo)

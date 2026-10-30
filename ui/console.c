@@ -783,51 +783,6 @@ static const GraphicHwOps unused_ops = {
     /* no callbacks */
 };
 
-QemuConsole *qemu_console_lookup_by_device(DeviceState *dev, uint32_t head)
-{
-    QemuConsole *con;
-    Object *obj;
-    uint32_t h;
-
-    QTAILQ_FOREACH(con, &consoles, next) {
-        obj = object_property_get_link(OBJECT(con),
-                                       "device", &error_abort);
-        if (DEVICE(obj) != dev) {
-            continue;
-        }
-        h = object_property_get_uint(OBJECT(con),
-                                     "head", &error_abort);
-        if (h != head) {
-            continue;
-        }
-        return con;
-    }
-    return NULL;
-}
-
-QemuConsole *qemu_console_lookup_by_device_name(const char *device_id,
-                                                uint32_t head, Error **errp)
-{
-    DeviceState *dev;
-    QemuConsole *con;
-
-    dev = qdev_find_recursive(sysbus_get_default(), device_id);
-    if (dev == NULL) {
-        error_set(errp, ERROR_CLASS_DEVICE_NOT_FOUND,
-                  "Device '%s' not found", device_id);
-        return NULL;
-    }
-
-    con = qemu_console_lookup_by_device(dev, head);
-    if (con == NULL) {
-        error_setg(errp, "Device %s (head %d) is not bound to a QemuConsole",
-                   device_id, head);
-        return NULL;
-    }
-
-    return con;
-}
-
 static QemuConsole *qemu_graphic_console_lookup_unused(void)
 {
     QemuConsole *con;
@@ -850,11 +805,6 @@ static QemuConsole *qemu_graphic_console_lookup_unused(void)
 bool qemu_console_is_visible(QemuConsole *con)
 {
     return con->dcls > 0;
-}
-
-int qemu_console_get_index(QemuConsole *con)
-{
-    return con ? con->index : -1;
 }
 
 uint32_t qemu_console_get_head(QemuConsole *con)

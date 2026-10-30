@@ -130,16 +130,6 @@ int i2c_start_recv(I2CBus *bus, uint8_t address);
  */
 int i2c_start_send(I2CBus *bus, uint8_t address);
 
-/**
- * i2c_start_send_async: start an asynchronous 'send' transfer on an I2C bus.
- *
- * @bus: #I2CBus to be used
- * @address: address of the slave
- *
- * Return: 0 on success, -1 on error
- */
-int i2c_start_send_async(I2CBus *bus, uint8_t address);
-
 void i2c_end_transfer(I2CBus *bus);
 void i2c_nack(I2CBus *bus);
 int i2c_send(I2CBus *bus, uint8_t data);

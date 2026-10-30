@@ -176,21 +176,6 @@ void qio_task_run_in_thread(QIOTask *task,
 }
 
 
-void qio_task_wait_thread(QIOTask *task)
-{
-    qemu_mutex_lock(&task->thread_lock);
-    g_assert(task->thread != NULL);
-    while (task->thread->completion == NULL) {
-        qemu_cond_wait(&task->thread_cond, &task->thread_lock);
-    }
-
-    trace_qio_task_thread_source_cancel(task, task->thread->completion);
-    g_source_destroy(task->thread->completion);
-    qemu_mutex_unlock(&task->thread_lock);
-
-    qio_task_thread_result(task);
-}
-
 
 void qio_task_complete(QIOTask *task)
 {
@@ -207,32 +192,7 @@ void qio_task_set_error(QIOTask *task,
 }
 
 
-bool qio_task_propagate_error(QIOTask *task,
-                              Error **errp)
-{
-    if (task->err) {
-        error_propagate(errp, task->err);
-        task->err = NULL;
-        return true;
-    }
 
-    return false;
-}
-
-
-void qio_task_set_result_pointer(QIOTask *task,
-                                 gpointer result,
-                                 GDestroyNotify destroy)
-{
-    task->result = result;
-    task->destroyResult = destroy;
-}
-
-
-gpointer qio_task_get_result_pointer(QIOTask *task)
-{
-    return task->result;
-}
 
 
 Object *qio_task_get_source(QIOTask *task)

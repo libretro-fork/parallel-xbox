@@ -234,16 +234,6 @@ bool runstate_is_running(void)
     return runstate_check(RUN_STATE_RUNNING);
 }
 
-StatusInfo *qmp_query_status(Error **errp)
-{
-    StatusInfo *info = g_malloc0(sizeof(*info));
-
-    info->running = runstate_is_running();
-    info->status = current_run_state;
-
-    return info;
-}
-
 bool qemu_vmstop_requested(RunState *r)
 {
     qemu_mutex_lock(&vmstop_lock);

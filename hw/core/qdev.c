@@ -348,26 +348,6 @@ char *qdev_get_dev_path(DeviceState *dev)
     return NULL;
 }
 
-void qdev_add_unplug_blocker(DeviceState *dev, Error *reason)
-{
-    dev->unplug_blockers = g_slist_prepend(dev->unplug_blockers, reason);
-}
-
-void qdev_del_unplug_blocker(DeviceState *dev, Error *reason)
-{
-    dev->unplug_blockers = g_slist_remove(dev->unplug_blockers, reason);
-}
-
-bool qdev_unplug_blocked(DeviceState *dev, Error **errp)
-{
-    if (dev->unplug_blockers) {
-        error_propagate(errp, error_copy(dev->unplug_blockers->data));
-        return true;
-    }
-
-    return false;
-}
-
 static bool device_get_realized(Object *obj, Error **errp)
 {
     DeviceState *dev = DEVICE(obj);

@@ -102,17 +102,6 @@ void qemu_register_reset(QEMUResetHandler *func, void *opaque)
     qemu_register_resettable(obj);
 }
 
-void qemu_register_reset_nosnapshotload(QEMUResetHandler *func, void *opaque)
-{
-    Object *obj = object_new(TYPE_LEGACY_RESET);
-    LegacyReset *lr = LEGACY_RESET(obj);
-
-    lr->func = func;
-    lr->opaque = opaque;
-    lr->skip_on_snapshot_load = true;
-    qemu_register_resettable(obj);
-}
-
 typedef struct FindLegacyInfo {
     QEMUResetHandler *func;
     void *opaque;

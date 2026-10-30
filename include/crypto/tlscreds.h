@@ -50,21 +50,6 @@ struct QCryptoTLSCredsClass {
     const char *prioritySuffix;
 };
 
-/**
- * qcrypto_tls_creds_check_endpoint:
- * @creds: pointer to a TLS credentials object
- * @endpoint: type of network endpoint that will be using the credentials
- * @errp: pointer to a NULL-initialized error object
- *
- * Check whether the credentials is setup according to
- * the type of @endpoint argument.
- *
- * Returns true if the credentials is setup for the endpoint, false otherwise
- */
-bool qcrypto_tls_creds_check_endpoint(QCryptoTLSCreds *creds,
-                                      QCryptoTLSCredsEndpoint endpoint,
-                                      Error **errp);
-
 
 /**
  * qcrypto_tls_creds_get_priority:
@@ -77,17 +62,5 @@ bool qcrypto_tls_creds_check_endpoint(QCryptoTLSCreds *creds,
  */
 char *qcrypto_tls_creds_get_priority(QCryptoTLSCreds *creds);
 
-
-/**
- * qcrypto_tls_creds_reload:
- * @creds: pointer to a TLS credentials object
- * @errp: pointer to a NULL-initialized error object
- *
- * Request a reload of the TLS credentials, if supported
- *
- * Returns: true on success, false on error or if not supported
- */
-bool qcrypto_tls_creds_reload(QCryptoTLSCreds *creds,
-                              Error **errp);
 
 #endif /* QCRYPTO_TLSCREDS_H */

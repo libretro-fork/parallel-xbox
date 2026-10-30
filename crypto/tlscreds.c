@@ -253,18 +253,6 @@ qcrypto_tls_creds_finalize(Object *obj)
     g_free(creds->priority);
 }
 
-bool qcrypto_tls_creds_check_endpoint(QCryptoTLSCreds *creds,
-                                      QCryptoTLSCredsEndpoint endpoint,
-                                      Error **errp)
-{
-    if (creds->endpoint != endpoint) {
-        error_setg(errp, "Expected TLS credentials for a %s endpoint",
-                   QCryptoTLSCredsEndpoint_str(endpoint));
-        return false;
-    }
-    return true;
-}
-
 
 char *qcrypto_tls_creds_get_priority(QCryptoTLSCreds *creds)
 {
@@ -279,20 +267,6 @@ char *qcrypto_tls_creds_get_priority(QCryptoTLSCreds *creds)
     }
 }
 
-
-bool qcrypto_tls_creds_reload(QCryptoTLSCreds *creds,
-                              Error **errp)
-{
-    QCryptoTLSCredsClass *credscls = QCRYPTO_TLS_CREDS_GET_CLASS(creds);
-
-    if (credscls->reload) {
-        return credscls->reload(creds, errp);
-    }
-
-    error_setg(errp, "%s does not support reloading credentials",
-               object_get_typename(OBJECT(creds)));
-    return false;
-}
 
 
 static const TypeInfo qcrypto_tls_creds_info = {

@@ -637,74 +637,6 @@ Object *object_new_with_class(ObjectClass *klass);
  */
 Object *object_new(const char *typename);
 
-/**
- * object_new_with_props:
- * @typename:  The name of the type of the object to instantiate.
- * @parent: the parent object
- * @id: The unique ID of the object
- * @errp: pointer to error object
- * @...: list of property names and values
- *
- * This function will initialize a new object using heap allocated memory.
- * The returned object has a reference count of 1, and will be freed when
- * the last reference is dropped.
- *
- * The @id parameter will be used when registering the object as a
- * child of @parent in the composition tree.
- *
- * The variadic parameters are a list of pairs of (propname, propvalue)
- * strings. The propname of %NULL indicates the end of the property
- * list. If the object implements the user creatable interface, the
- * object will be marked complete once all the properties have been
- * processed.
- *
- * .. code-block:: c
- *    :caption: Creating an object with properties
- *
- *      Error *err = NULL;
- *      Object *obj;
- *
- *      obj = object_new_with_props(TYPE_MEMORY_BACKEND_FILE,
- *                                  object_get_objects_root(),
- *                                  "hostmem0",
- *                                  &err,
- *                                  "share", "yes",
- *                                  "mem-path", "/dev/shm/somefile",
- *                                  "prealloc", "yes",
- *                                  "size", "1048576",
- *                                  NULL);
- *
- *      if (!obj) {
- *        error_reportf_err(err, "Cannot create memory backend: ");
- *      }
- *
- * The returned object will have one stable reference maintained
- * for as long as it is present in the object hierarchy.
- *
- * Returns: The newly allocated, instantiated & initialized object.
- */
-Object *object_new_with_props(const char *typename,
-                              Object *parent,
-                              const char *id,
-                              Error **errp,
-                              ...) G_GNUC_NULL_TERMINATED;
-
-/**
- * object_new_with_propv:
- * @typename:  The name of the type of the object to instantiate.
- * @parent: the parent object
- * @id: The unique ID of the object
- * @errp: pointer to error object
- * @vargs: list of property names and values
- *
- * See object_new_with_props() for documentation.
- */
-Object *object_new_with_propv(const char *typename,
-                              Object *parent,
-                              const char *id,
-                              Error **errp,
-                              va_list vargs);
-
 bool object_apply_global_props(Object *obj, const GPtrArray *props,
                                Error **errp);
 void object_set_machine_compat_props(GPtrArray *compat_props);
@@ -712,42 +644,6 @@ void object_set_accelerator_compat_props(GPtrArray *compat_props);
 void object_register_sugar_prop(const char *driver, const char *prop,
                                 const char *value, bool optional);
 void object_apply_compat_props(Object *obj);
-
-/**
- * object_set_props:
- * @obj: the object instance to set properties on
- * @errp: pointer to error object
- * @...: list of property names and values
- *
- * This function will set a list of properties on an existing object
- * instance.
- *
- * The variadic parameters are a list of pairs of (propname, propvalue)
- * strings. The propname of %NULL indicates the end of the property
- * list.
- *
- * .. code-block:: c
- *    :caption: Update an object's properties
- *
- *      Error *err = NULL;
- *      Object *obj = ...get / create object...;
- *
- *      if (!object_set_props(obj,
- *                            &err,
- *                            "share", "yes",
- *                            "mem-path", "/dev/shm/somefile",
- *                            "prealloc", "yes",
- *                            "size", "1048576",
- *                            NULL)) {
- *        error_reportf_err(err, "Cannot set properties: ");
- *      }
- *
- * The returned object will have one stable reference maintained
- * for as long as it is present in the object hierarchy.
- *
- * Returns: %true on success, %false on error.
- */
-bool object_set_props(Object *obj, Error **errp, ...) G_GNUC_NULL_TERMINATED;
 
 /**
  * object_set_propv:
@@ -1214,20 +1110,6 @@ ObjectProperty *object_property_find_err(Object *obj,
 ObjectProperty *object_class_property_find(ObjectClass *klass,
                                            const char *name);
 
-/**
- * object_class_property_find_err:
- * @klass: the object class
- * @name: the name of the property
- * @errp: returns an error if this function fails
- *
- * Look up a property for an object class.
- *
- * Return its #ObjectProperty if found, or NULL.
- */
-ObjectProperty *object_class_property_find_err(ObjectClass *klass,
-                                               const char *name,
-                                               Error **errp);
-
 typedef struct ObjectPropertyIterator {
     ObjectClass *nextclass;
     GHashTableIter iter;
@@ -1445,20 +1327,6 @@ uint64_t object_property_get_uint(Object *obj, const char *name,
                                   Error **errp);
 
 /**
- * object_property_get_enum:
- * @obj: the object
- * @name: the name of the property
- * @typename: the name of the enum data type
- * @errp: returns an error if this function fails
- *
- * Returns: the value of the property, converted to an integer (which
- * can't be negative), or -1 on error (including when the property
- * value is not an enum).
- */
-int object_property_get_enum(Object *obj, const char *name,
-                             const char *typename, Error **errp);
-
-/**
  * object_property_set:
  * @obj: the object
  * @name: the name of the property
@@ -1487,19 +1355,6 @@ bool object_property_set(Object *obj, const char *name, Visitor *v,
  */
 bool object_property_parse(Object *obj, const char *name,
                            const char *string, Error **errp);
-
-/**
- * object_property_print:
- * @obj: the object
- * @name: the name of the property
- * @human: if true, print for human consumption
- * @errp: returns an error if this function fails
- *
- * Returns a string representation of the value of the property.  The
- * caller shall free the string.
- */
-char *object_property_print(Object *obj, const char *name, bool human,
-                            Error **errp);
 
 /**
  * object_property_get_type:
@@ -1540,17 +1395,6 @@ Object *object_get_container(const char *name);
  * Returns: the user object container
  */
 Object *object_get_objects_root(void);
-
-/**
- * object_get_internal_root:
- *
- * Get the container object that holds internally used object
- * instances.  Any object which is put into this container must not be
- * user visible, and it will not be exposed in the QOM tree.
- *
- * Returns: the internal object container
- */
-Object *object_get_internal_root(void);
 
 /**
  * object_get_canonical_path_component:
@@ -1617,31 +1461,6 @@ Object *object_resolve_path(const char *path, bool *ambiguous);
  */
 Object *object_resolve_path_type(const char *path, const char *typename,
                                  bool *ambiguous);
-
-/**
- * object_resolve_type_unambiguous:
- * @typename: the type to look for
- * @errp: pointer to error object
- *
- * Return the only object in the QOM tree of type @typename.
- * If no match or more than one match is found, an error is
- * returned.
- *
- * Returns: The matched object or NULL on path lookup failure.
- */
-Object *object_resolve_type_unambiguous(const char *typename, Error **errp);
-
-/**
- * object_resolve_path_at:
- * @parent: the object in which to resolve the path
- * @path: the path to resolve
- *
- * This is like object_resolve_path(), except paths not starting with
- * a slash are relative to @parent.
- *
- * Returns: The resolved object or NULL on path lookup failure.
- */
-Object *object_resolve_path_at(Object *parent, const char *path);
 
 /**
  * object_resolve_path_component:
@@ -1799,26 +1618,6 @@ ObjectProperty *object_class_property_add_bool(ObjectClass *klass,
                                     bool (*get)(Object *, Error **),
                                     void (*set)(Object *, bool, Error **));
 
-/**
- * object_property_add_enum:
- * @obj: the object to add a property to
- * @name: the name of the property
- * @typename: the name of the enum data type
- * @lookup: enum value namelookup table
- * @get: the getter or %NULL if the property is write-only.
- * @set: the setter or %NULL if the property is read-only
- *
- * Add an enum property using getters/setters.  This function will add a
- * property of type '@typename'.
- *
- * Returns: The newly added property on success, or %NULL on failure.
- */
-ObjectProperty *object_property_add_enum(Object *obj, const char *name,
-                              const char *typename,
-                              const QEnumLookup *lookup,
-                              int (*get)(Object *, Error **),
-                              void (*set)(Object *, int, Error **));
-
 ObjectProperty *object_class_property_add_enum(ObjectClass *klass,
                                     const char *name,
                                     const char *typename,
@@ -1848,54 +1647,6 @@ typedef enum {
     /* Automatically add a getter and a setter to the property */
     OBJ_PROP_FLAG_READWRITE = (OBJ_PROP_FLAG_READ | OBJ_PROP_FLAG_WRITE),
 } ObjectPropertyFlags;
-
-/**
- * object_property_add_uint8_ptr:
- * @obj: the object to add a property to
- * @name: the name of the property
- * @v: pointer to value
- * @flags: bitwise-or'd ObjectPropertyFlags
- *
- * Add an integer property in memory.  This function will add a
- * property of type 'uint8'.
- *
- * Returns: The newly added property on success, or %NULL on failure.
- */
-ObjectProperty *object_property_add_uint8_ptr(Object *obj, const char *name,
-                                              const uint8_t *v,
-                                              ObjectPropertyFlags flags);
-
-/**
- * object_property_add_uint16_ptr:
- * @obj: the object to add a property to
- * @name: the name of the property
- * @v: pointer to value
- * @flags: bitwise-or'd ObjectPropertyFlags
- *
- * Add an integer property in memory.  This function will add a
- * property of type 'uint16'.
- *
- * Returns: The newly added property on success, or %NULL on failure.
- */
-ObjectProperty *object_property_add_uint16_ptr(Object *obj, const char *name,
-                                    const uint16_t *v,
-                                    ObjectPropertyFlags flags);
-
-/**
- * object_property_add_uint32_ptr:
- * @obj: the object to add a property to
- * @name: the name of the property
- * @v: pointer to value
- * @flags: bitwise-or'd ObjectPropertyFlags
- *
- * Add an integer property in memory.  This function will add a
- * property of type 'uint32'.
- *
- * Returns: The newly added property on success, or %NULL on failure.
- */
-ObjectProperty *object_property_add_uint32_ptr(Object *obj, const char *name,
-                                    const uint32_t *v,
-                                    ObjectPropertyFlags flags);
 
 /**
  * object_property_add_uint64_ptr:

@@ -11,6 +11,3 @@
 
 bool xen_allowed;
 
-void qmp_xen_set_global_dirty_log(bool enable, Error **errp)
-{
-}

@@ -322,30 +322,6 @@ int qcrypto_secret_lookup(const char *secretid,
 }
 
 
-char *qcrypto_secret_lookup_as_utf8(const char *secretid,
-                                    Error **errp)
-{
-    uint8_t *data;
-    size_t datalen;
-
-    if (qcrypto_secret_lookup(secretid,
-                              &data,
-                              &datalen,
-                              errp) < 0) {
-        return NULL;
-    }
-
-    if (!g_utf8_validate((const gchar *)data, datalen, NULL)) {
-        error_setg(errp,
-                   "Data from secret %s is not valid UTF-8",
-                   secretid);
-        g_free(data);
-        return NULL;
-    }
-
-    return (char *)data;
-}
-
 
 
 static const TypeInfo qcrypto_secret_info = {

@@ -61,15 +61,6 @@ struct UserCreatableClass {
 bool user_creatable_complete(UserCreatable *uc, Error **errp);
 
 /**
- * user_creatable_can_be_deleted:
- * @uc: the object whose can_be_deleted() method is called if implemented
- *
- * Wrapper to call can_be_deleted() method if one of types it's inherited
- * from implements USER_CREATABLE interface.
- */
-bool user_creatable_can_be_deleted(UserCreatable *uc);
-
-/**
  * user_creatable_add_type:
  * @type: the object type name
  * @id: the unique ID for the object
@@ -98,52 +89,6 @@ Object *user_creatable_add_type(const char *type, const char *id,
 void user_creatable_add_qapi(ObjectOptions *options, Error **errp);
 
 /**
- * user_creatable_parse_str:
- * @str: the object definition string as passed on the command line
- * @errp: if an error occurs, a pointer to an area to store the error
- *
- * Parses the option for the user creatable object with a keyval parser and
- * implicit key 'qom-type', converting the result to ObjectOptions.
- *
- * If a help option is given, print help instead.
- *
- * Returns: ObjectOptions on success, NULL when an error occurred (*errp is set
- * then) or help was printed (*errp is not set).
- */
-ObjectOptions *user_creatable_parse_str(const char *str, Error **errp);
-
-/**
- * user_creatable_add_from_str:
- * @str: the object definition string as passed on the command line
- * @errp: if an error occurs, a pointer to an area to store the error
- *
- * Create an instance of the user creatable object by parsing @str
- * with a keyval parser and implicit key 'qom-type', converting the
- * result to ObjectOptions and calling into qmp_object_add().
- *
- * If a help option is given, print help instead.
- *
- * Returns: true when an object was successfully created, false when an error
- * occurred (*errp is set then) or help was printed (*errp is not set).
- */
-bool user_creatable_add_from_str(const char *str, Error **errp);
-
-/**
- * user_creatable_process_cmdline:
- * @cmdline: the object definition string as passed on the command line
- *
- * Create an instance of the user creatable object by parsing @cmdline
- * with a keyval parser and implicit key 'qom-type', converting the
- * result to ObjectOptions and calling into qmp_object_add().
- *
- * If a help option is given, print help instead and exit.
- *
- * This function is only meant to be called during command line parsing.
- * It exits the process on failure or after printing help.
- */
-void user_creatable_process_cmdline(const char *cmdline);
-
-/**
  * user_creatable_print_help:
  * @type: the QOM type to be added
  * @opts: options to create
@@ -156,25 +101,5 @@ void user_creatable_process_cmdline(const char *cmdline);
  * otherwise.
  */
 bool user_creatable_print_help(const char *type, QemuOpts *opts);
-
-/**
- * user_creatable_del:
- * @id: the unique ID for the object
- * @errp: if an error occurs, a pointer to an area to store the error
- *
- * Delete an instance of the user creatable object identified
- * by @id.
- *
- * Returns: %true on success, %false on failure.
- */
-bool user_creatable_del(const char *id, Error **errp);
-
-/**
- * user_creatable_cleanup:
- *
- * Delete all user-creatable objects and the user-creatable
- * objects container.
- */
-void user_creatable_cleanup(void);
 
 #endif

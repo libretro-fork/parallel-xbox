@@ -46,11 +46,6 @@ void qemu_init_cpu_list(void)
     qemu_cond_init(&qemu_work_cond);
 }
 
-void cpu_list_lock(void)
-{
-    qemu_mutex_lock(&qemu_cpu_list_lock);
-}
-
 
 int cpu_get_free_index(void)
 {

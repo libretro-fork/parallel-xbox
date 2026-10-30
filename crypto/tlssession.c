@@ -248,11 +248,6 @@ qcrypto_tls_session_new(QCryptoTLSCreds *creds,
     return NULL;
 }
 
-void qcrypto_tls_session_require_thread_safety(QCryptoTLSSession *sess)
-{
-    sess->requireThreadSafety = true;
-}
-
 static int
 qcrypto_tls_session_check_certificate(QCryptoTLSSession *session,
                                       Error **errp)
@@ -388,38 +383,6 @@ qcrypto_tls_session_check_certificate(QCryptoTLSSession *session,
 }
 
 
-int
-qcrypto_tls_session_check_credentials(QCryptoTLSSession *session,
-                                      Error **errp)
-{
-    if (object_dynamic_cast(OBJECT(session->creds),
-                            TYPE_QCRYPTO_TLS_CREDS_ANON)) {
-        trace_qcrypto_tls_session_check_creds(session, "nop");
-        return 0;
-    } else if (object_dynamic_cast(OBJECT(session->creds),
-                            TYPE_QCRYPTO_TLS_CREDS_PSK)) {
-        trace_qcrypto_tls_session_check_creds(session, "nop");
-        return 0;
-    } else if (object_dynamic_cast(OBJECT(session->creds),
-                            TYPE_QCRYPTO_TLS_CREDS_X509)) {
-        if (session->creds->verifyPeer) {
-            int ret = qcrypto_tls_session_check_certificate(session,
-                                                            errp);
-            trace_qcrypto_tls_session_check_creds(session,
-                                                  ret == 0 ? "pass" : "fail");
-            return ret;
-        } else {
-            trace_qcrypto_tls_session_check_creds(session, "skip");
-            return 0;
-        }
-    } else {
-        trace_qcrypto_tls_session_check_creds(session, "error");
-        error_setg(errp, "Unexpected credential type %s",
-                   object_get_typename(OBJECT(session->creds)));
-        return -1;
-    }
-}
-
 
 void
 qcrypto_tls_session_set_callbacks(QCryptoTLSSession *session,
@@ -520,138 +483,7 @@ qcrypto_tls_session_check_pending(QCryptoTLSSession *session)
 }
 
 
-int
-qcrypto_tls_session_handshake(QCryptoTLSSession *session,
-                              Error **errp)
-{
-    int ret;
-    ret = gnutls_handshake(session->handle);
 
-    if (!ret) {
-#ifdef CONFIG_GNUTLS_BUG1717_WORKAROUND
-        gnutls_cipher_algorithm_t cipher =
-            gnutls_cipher_get(session->handle);
-
-        /*
-         * Any use of rekeying in TLS 1.3 is unsafe for
-         * a gnutls with bug 1717, however, we know that
-         * QEMU won't initiate manual rekeying. Thus we
-         * only have to protect against automatic rekeying
-         * which doesn't trigger with CHACHA20
-         */
-        trace_qcrypto_tls_session_parameters(
-            session,
-            session->requireThreadSafety,
-            gnutls_protocol_get_version(session->handle),
-            cipher);
-
-        if (session->requireThreadSafety &&
-            gnutls_protocol_get_version(session->handle) ==
-            GNUTLS_TLS1_3 &&
-            cipher != GNUTLS_CIPHER_CHACHA20_POLY1305) {
-            warn_report("WARNING: activating thread safety countermeasures "
-                        "for potentially broken GNUTLS with TLS1.3 cipher=%d",
-                        cipher);
-            trace_qcrypto_tls_session_bug1717_workaround(session);
-            session->lockEnabled = true;
-        }
-#endif
-
-        session->handshakeComplete = true;
-        return QCRYPTO_TLS_HANDSHAKE_COMPLETE;
-    }
-
-    if (ret == GNUTLS_E_INTERRUPTED || ret == GNUTLS_E_AGAIN) {
-        int direction = gnutls_record_get_direction(session->handle);
-        return direction ? QCRYPTO_TLS_HANDSHAKE_SENDING :
-            QCRYPTO_TLS_HANDSHAKE_RECVING;
-    }
-
-    if (session->rerr || session->werr) {
-        error_setg(errp, "TLS handshake failed: %s: %s",
-                   gnutls_strerror(ret),
-                   error_get_pretty(session->rerr ?
-                                    session->rerr : session->werr));
-    } else {
-        error_setg(errp, "TLS handshake failed: %s",
-                   gnutls_strerror(ret));
-    }
-
-    error_free(session->rerr);
-    error_free(session->werr);
-    session->rerr = session->werr = NULL;
-
-    return -1;
-}
-
-
-int
-qcrypto_tls_session_bye(QCryptoTLSSession *session, Error **errp)
-{
-    int ret;
-
-    if (!session->handshakeComplete) {
-        return 0;
-    }
-
-    if (session->lockEnabled) {
-        qemu_mutex_lock(&session->lock);
-    }
-    ret = gnutls_bye(session->handle, GNUTLS_SHUT_WR);
-
-    if (session->lockEnabled) {
-        qemu_mutex_unlock(&session->lock);
-    }
-
-    if (!ret) {
-        return QCRYPTO_TLS_BYE_COMPLETE;
-    }
-
-    if (ret == GNUTLS_E_INTERRUPTED || ret == GNUTLS_E_AGAIN) {
-        int direction = gnutls_record_get_direction(session->handle);
-        return direction ? QCRYPTO_TLS_BYE_SENDING : QCRYPTO_TLS_BYE_RECVING;
-    }
-
-    if (session->rerr || session->werr) {
-        error_setg(errp, "TLS termination failed: %s: %s", gnutls_strerror(ret),
-                   error_get_pretty(session->rerr ?
-                                    session->rerr : session->werr));
-    } else {
-        error_setg(errp, "TLS termination failed: %s", gnutls_strerror(ret));
-    }
-
-    error_free(session->rerr);
-    error_free(session->werr);
-    session->rerr = session->werr = NULL;
-
-    return -1;
-}
-
-int
-qcrypto_tls_session_get_key_size(QCryptoTLSSession *session,
-                                 Error **errp)
-{
-    gnutls_cipher_algorithm_t cipher;
-    int ssf;
-
-    cipher = gnutls_cipher_get(session->handle);
-    ssf = gnutls_cipher_get_key_size(cipher);
-    if (!ssf) {
-        error_setg(errp, "Cannot get TLS cipher key size");
-        return -1;
-    }
-    return ssf;
-}
-
-
-char *
-qcrypto_tls_session_get_peer_name(QCryptoTLSSession *session)
-{
-    if (session->peername) {
-        return g_strdup(session->peername);
-    }
-    return NULL;
-}
 
 
 #else /* ! CONFIG_GNUTLS */

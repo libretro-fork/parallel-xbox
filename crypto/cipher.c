@@ -43,61 +43,8 @@ static const size_t alg_key_len[QCRYPTO_CIPHER_ALGO__MAX] = {
 #endif
 };
 
-static const size_t alg_block_len[QCRYPTO_CIPHER_ALGO__MAX] = {
-    [QCRYPTO_CIPHER_ALGO_AES_128] = 16,
-    [QCRYPTO_CIPHER_ALGO_AES_192] = 16,
-    [QCRYPTO_CIPHER_ALGO_AES_256] = 16,
-    [QCRYPTO_CIPHER_ALGO_DES] = 8,
-    [QCRYPTO_CIPHER_ALGO_3DES] = 8,
-    [QCRYPTO_CIPHER_ALGO_CAST5_128] = 8,
-    [QCRYPTO_CIPHER_ALGO_SERPENT_128] = 16,
-    [QCRYPTO_CIPHER_ALGO_SERPENT_192] = 16,
-    [QCRYPTO_CIPHER_ALGO_SERPENT_256] = 16,
-    [QCRYPTO_CIPHER_ALGO_TWOFISH_128] = 16,
-    [QCRYPTO_CIPHER_ALGO_TWOFISH_192] = 16,
-    [QCRYPTO_CIPHER_ALGO_TWOFISH_256] = 16,
-#ifdef CONFIG_CRYPTO_SM4
-    [QCRYPTO_CIPHER_ALGO_SM4] = 16,
-#endif
-};
-
-static const bool mode_need_iv[QCRYPTO_CIPHER_MODE__MAX] = {
-    [QCRYPTO_CIPHER_MODE_ECB] = false,
-    [QCRYPTO_CIPHER_MODE_CBC] = true,
-    [QCRYPTO_CIPHER_MODE_XTS] = true,
-    [QCRYPTO_CIPHER_MODE_CTR] = true,
-};
 
 
-size_t qcrypto_cipher_get_block_len(QCryptoCipherAlgo alg)
-{
-    assert(alg < G_N_ELEMENTS(alg_key_len));
-    return alg_block_len[alg];
-}
-
-
-size_t qcrypto_cipher_get_key_len(QCryptoCipherAlgo alg)
-{
-    assert(alg < G_N_ELEMENTS(alg_key_len));
-    return alg_key_len[alg];
-}
-
-
-size_t qcrypto_cipher_get_iv_len(QCryptoCipherAlgo alg,
-                                 QCryptoCipherMode mode)
-{
-    if (alg >= G_N_ELEMENTS(alg_block_len)) {
-        return 0;
-    }
-    if (mode >= G_N_ELEMENTS(mode_need_iv)) {
-        return 0;
-    }
-
-    if (mode_need_iv[mode]) {
-        return alg_block_len[alg];
-    }
-    return 0;
-}
 
 
 static bool
@@ -172,16 +119,6 @@ QCryptoCipher *qcrypto_cipher_new(QCryptoCipherAlgo alg,
     return cipher;
 }
 
-
-int qcrypto_cipher_encrypt(QCryptoCipher *cipher,
-                           const void *in,
-                           void *out,
-                           size_t len,
-                           Error **errp)
-{
-    const QCryptoCipherDriver *drv = cipher->driver;
-    return drv->cipher_encrypt(cipher, in, out, len, errp);
-}
 
 
 int qcrypto_cipher_decrypt(QCryptoCipher *cipher,

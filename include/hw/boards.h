@@ -56,22 +56,6 @@ void machine_set_cache_topo_level(MachineState *ms, CacheLevelAndType cache,
 bool machine_check_smp_cache(const MachineState *ms, Error **errp);
 
 /**
- * machine_class_allow_dynamic_sysbus_dev: Add type to list of valid devices
- * @mc: Machine class
- * @type: type to allow (should be a subtype of TYPE_SYS_BUS_DEVICE)
- *
- * Add the QOM type @type to the list of devices of which are subtypes
- * of TYPE_SYS_BUS_DEVICE but which are still permitted to be dynamically
- * created (eg by the user on the command line with -device).
- * By default if the user tries to create any devices on the command line
- * that are subtypes of TYPE_SYS_BUS_DEVICE they will get an error message;
- * for the special cases which are permitted for this machine model, the
- * machine model class init code must call this function to add them
- * to the list of specifically permitted devices.
- */
-void machine_class_allow_dynamic_sysbus_dev(MachineClass *mc, const char *type);
-
-/**
  * device_type_is_dynamic_sysbus: Check if type is an allowed sysbus device
  * type for the machine class.
  * @mc: Machine class
@@ -85,30 +69,6 @@ void machine_class_allow_dynamic_sysbus_dev(MachineClass *mc, const char *type);
  * Note that if @type has a parent type in the list, it is allowed too.
  */
 bool device_type_is_dynamic_sysbus(MachineClass *mc, const char *type);
-
-/**
- * device_is_dynamic_sysbus: test whether device is a dynamic sysbus device
- * @mc: Machine class
- * @dev: device to check
- *
- * Returns: true if @dev is a sysbus device on the machine's list
- * of dynamically pluggable sysbus devices; otherwise false.
- *
- * This function checks whether @dev is a valid dynamic sysbus device,
- * by first confirming that it is a sysbus device and then checking it
- * against the list of permitted dynamic sysbus devices which has been
- * set up by the machine using machine_class_allow_dynamic_sysbus_dev().
- *
- * It is valid to call this with something that is not a subclass of
- * TYPE_SYS_BUS_DEVICE; the function will return false in this case.
- * This allows hotplug callback functions to be written as:
- *     if (device_is_dynamic_sysbus(mc, dev)) {
- *         handle dynamic sysbus case;
- *     } else if (some other kind of hotplug) {
- *         handle that;
- *     }
- */
-bool device_is_dynamic_sysbus(MachineClass *mc, DeviceState *dev);
 
 /*
  * Checks that backend isn't used, preps it for exclusive usage and

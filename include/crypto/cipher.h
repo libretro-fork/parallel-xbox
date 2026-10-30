@@ -96,42 +96,7 @@ struct QCryptoCipher {
 bool qcrypto_cipher_supports(QCryptoCipherAlgo alg,
                              QCryptoCipherMode mode);
 
-/**
- * qcrypto_cipher_get_block_len:
- * @alg: the cipher algorithm
- *
- * Get the required data block size in bytes. When
- * encrypting data, it must be a multiple of the
- * block size.
- *
- * Returns: the block size in bytes
- */
-size_t qcrypto_cipher_get_block_len(QCryptoCipherAlgo alg);
 
-
-/**
- * qcrypto_cipher_get_key_len:
- * @alg: the cipher algorithm
- *
- * Get the required key size in bytes.
- *
- * Returns: the key size in bytes
- */
-size_t qcrypto_cipher_get_key_len(QCryptoCipherAlgo alg);
-
-
-/**
- * qcrypto_cipher_get_iv_len:
- * @alg: the cipher algorithm
- * @mode: the cipher mode
- *
- * Get the required initialization vector size
- * in bytes, if one is required.
- *
- * Returns: the IV size in bytes, or 0 if no IV is permitted
- */
-size_t qcrypto_cipher_get_iv_len(QCryptoCipherAlgo alg,
-                                 QCryptoCipherMode mode);
 
 
 /**
@@ -171,27 +136,6 @@ QCryptoCipher *qcrypto_cipher_new(QCryptoCipherAlgo alg,
 void qcrypto_cipher_free(QCryptoCipher *cipher);
 
 G_DEFINE_AUTOPTR_CLEANUP_FUNC(QCryptoCipher, qcrypto_cipher_free)
-
-/**
- * qcrypto_cipher_encrypt:
- * @cipher: the cipher object
- * @in: buffer holding the plain text input data
- * @out: buffer to fill with the cipher text output data
- * @len: the length of @in and @out buffers
- * @errp: pointer to a NULL-initialized error object
- *
- * Encrypts the plain text stored in @in, filling
- * @out with the resulting ciphered text. Both the
- * @in and @out buffers must have the same size,
- * given by @len.
- *
- * Returns: 0 on success, or -1 on error
- */
-int qcrypto_cipher_encrypt(QCryptoCipher *cipher,
-                           const void *in,
-                           void *out,
-                           size_t len,
-                           Error **errp);
 
 
 /**

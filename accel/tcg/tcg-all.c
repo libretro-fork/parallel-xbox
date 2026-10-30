@@ -62,11 +62,6 @@ DECLARE_INSTANCE_CHECKER(TCGState, TCG_STATE,
                          TYPE_TCG_ACCEL)
 
 #ifndef CONFIG_USER_ONLY
-bool qemu_tcg_mttcg_enabled(void)
-{
-    TCGState *s = TCG_STATE(current_accel());
-    return s->mttcg_enabled == ON_OFF_AUTO_ON;
-}
 #endif /* !CONFIG_USER_ONLY */
 
 static void tcg_accel_instance_init(Object *obj)

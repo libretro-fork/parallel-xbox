@@ -714,57 +714,6 @@ extern __thread CPUState *current_cpu;
 bool cpu_paging_enabled(const CPUState *cpu);
 
 /**
- * cpu_get_memory_mapping:
- * @cpu: The CPU whose memory mappings are to be obtained.
- * @list: Where to write the memory mappings to.
- * @errp: Pointer for reporting an #Error.
- *
- * Returns: %true on success, %false otherwise.
- */
-bool cpu_get_memory_mapping(CPUState *cpu, MemoryMappingList *list,
-                            Error **errp);
-
-/**
- * cpu_write_elf64_note:
- * @f: pointer to a function that writes memory to a file
- * @cpu: The CPU whose memory is to be dumped
- * @cpuid: ID number of the CPU
- * @opaque: pointer to the CPUState struct
- */
-int cpu_write_elf64_note(WriteCoreDumpFunction f, CPUState *cpu,
-                         int cpuid, void *opaque);
-
-/**
- * cpu_write_elf64_qemunote:
- * @f: pointer to a function that writes memory to a file
- * @cpu: The CPU whose memory is to be dumped
- * @cpuid: ID number of the CPU
- * @opaque: pointer to the CPUState struct
- */
-int cpu_write_elf64_qemunote(WriteCoreDumpFunction f, CPUState *cpu,
-                             void *opaque);
-
-/**
- * cpu_write_elf32_note:
- * @f: pointer to a function that writes memory to a file
- * @cpu: The CPU whose memory is to be dumped
- * @cpuid: ID number of the CPU
- * @opaque: pointer to the CPUState struct
- */
-int cpu_write_elf32_note(WriteCoreDumpFunction f, CPUState *cpu,
-                         int cpuid, void *opaque);
-
-/**
- * cpu_write_elf32_qemunote:
- * @f: pointer to a function that writes memory to a file
- * @cpu: The CPU whose memory is to be dumped
- * @cpuid: ID number of the CPU
- * @opaque: pointer to the CPUState struct
- */
-int cpu_write_elf32_qemunote(WriteCoreDumpFunction f, CPUState *cpu,
-                             void *opaque);
-
-/**
  * cpu_memory_rw_debug:
  * @cpu: The CPU whose memory is to be accessed
  * @addr: guest virtual address
@@ -783,15 +732,6 @@ int cpu_write_elf32_qemunote(WriteCoreDumpFunction f, CPUState *cpu,
  */
 int cpu_memory_rw_debug(CPUState *cpu, vaddr addr,
                         void *ptr, size_t len, bool is_write);
-
-/**
- * cpu_get_crash_info:
- * @cpu: The CPU to get crash information for
- *
- * Gets the previously saved crash information.
- * Caller is responsible for freeing the data.
- */
-GuestPanicInformation *cpu_get_crash_info(CPUState *cpu);
 
 /**
  * CPUDumpFlags:
@@ -854,15 +794,6 @@ hwaddr cpu_get_phys_page_debug(CPUState *cpu, vaddr addr);
 int cpu_asidx_from_attrs(CPUState *cpu, MemTxAttrs attrs);
 
 /**
- * cpu_virtio_is_big_endian:
- * @cpu: CPU
-
- * Returns %true if a CPU which supports runtime configurable endianness
- * is currently big-endian.
- */
-bool cpu_virtio_is_big_endian(CPUState *cpu);
-
-/**
  * cpu_has_work:
  * @cpu: The vCPU to check.
  *
@@ -914,16 +845,6 @@ ObjectClass *cpu_class_by_name(const char *typename, const char *cpu_model);
  *          The user should g_free() the string once no longer needed.
  */
 char *cpu_model_from_type(const char *typename);
-
-/**
- * cpu_create:
- * @typename: The CPU type.
- *
- * Instantiates a CPU and realizes the CPU.
- *
- * Returns: A #CPUState or %NULL if an error occurred.
- */
-CPUState *cpu_create(const char *typename);
 
 /**
  * parse_cpu_option:
@@ -1033,16 +954,6 @@ static inline bool cpu_in_exclusive_context(const CPUState *cpu)
  * Returns: The CPU or %NULL if there is no matching CPU.
  */
 CPUState *qemu_get_cpu(int index);
-
-/**
- * cpu_exists:
- * @id: Guest-exposed CPU ID to lookup.
- *
- * Search for CPU with specified ID.
- *
- * Returns: %true - CPU is found, %false - CPU isn't found.
- */
-bool cpu_exists(int64_t id);
 
 /**
  * cpu_by_arch_id:
@@ -1200,15 +1111,6 @@ void qemu_init_vcpu(CPUState *cpu);
 #define SSTEP_NOIRQ   0x2  /* Do not use IRQ while single stepping */
 #define SSTEP_NOTIMER 0x4  /* Do not Timers while single stepping */
 
-/**
- * cpu_single_step:
- * @cpu: CPU to the flags for.
- * @enabled: Flags to enable.
- *
- * Enables or disables single-stepping for @cpu.
- */
-void cpu_single_step(CPUState *cpu, int enabled);
-
 /* Breakpoint/watchpoint flags */
 #define BP_MEM_READ           0x01
 #define BP_MEM_WRITE          0x02
@@ -1278,15 +1180,6 @@ AddressSpace *cpu_get_address_space(CPUState *cpu, int asidx);
 
 G_NORETURN void cpu_abort(CPUState *cpu, const char *fmt, ...)
     G_GNUC_PRINTF(2, 3);
-
-/**
- * qemu_process_cpu_events:
- * @cpu: CPU that left the execution loop
- *
- * Perform accelerator-independent work after the CPU has left
- * the inner execution loop.
- */
-void qemu_process_cpu_events(CPUState *cpu);
 
 /* $(top_srcdir)/cpu.c */
 void cpu_class_init_props(DeviceClass *dc);

@@ -53,17 +53,6 @@ struct QIOChannelTLS {
 };
 
 /**
- * qio_channel_tls_bye:
- * @ioc: the TLS channel object
- * @errp: pointer to a NULL-initialized error object
- *
- * Perform the TLS session termination. This method will return
- * immediately and the termination will continue in the background,
- * provided the main loop is running.
- */
-void qio_channel_tls_bye(QIOChannelTLS *ioc, Error **errp);
-
-/**
  * qio_channel_tls_new_server:
  * @master: the underlying channel object
  * @creds: the credentials to use for TLS handshake
@@ -122,37 +111,5 @@ qio_channel_tls_new_client(QIOChannel *master,
                            QCryptoTLSCreds *creds,
                            const char *hostname,
                            Error **errp);
-
-/**
- * qio_channel_tls_handshake:
- * @ioc: the TLS channel object
- * @func: the callback to invoke when completed
- * @opaque: opaque data to pass to @func
- * @destroy: optional callback to free @opaque
- * @context: the context that TLS handshake will run with. If %NULL,
- *           the default context will be used
- *
- * Perform the TLS session handshake. This method
- * will return immediately and the handshake will
- * continue in the background, provided the main
- * loop is running. When the handshake is complete,
- * or fails, the @func callback will be invoked.
- */
-void qio_channel_tls_handshake(QIOChannelTLS *ioc,
-                               QIOTaskFunc func,
-                               gpointer opaque,
-                               GDestroyNotify destroy,
-                               GMainContext *context);
-
-/**
- * qio_channel_tls_get_session:
- * @ioc: the TLS channel object
- *
- * Get the TLS session used by the channel.
- *
- * Returns: the TLS session
- */
-QCryptoTLSSession *
-qio_channel_tls_get_session(QIOChannelTLS *ioc);
 
 #endif /* QIO_CHANNEL_TLS_H */

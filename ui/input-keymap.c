@@ -22,11 +22,3 @@
 #include "ui/input-keymap-xorgxwin-to-qcode.c.inc"
 #include "ui/input-keymap-osx-to-qcode.c.inc"
 
-int qemu_input_key_number_to_qcode(unsigned int nr)
-{
-    if (nr >= qemu_input_map_qnum_to_qcode_len) {
-        return 0;
-    }
-    return qemu_input_map_qnum_to_qcode[nr];
-}
-

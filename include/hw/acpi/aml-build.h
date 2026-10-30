@@ -261,16 +261,6 @@ struct CrsRangeSet {
  * Returns: toplevel container which accumulates all other
  * AML elements for a table.
  */
-Aml *init_aml_allocator(void);
-
-/**
- * free_aml_allocator:
- *
- * Releases all elements used by AML API, frees associated memory
- * and invalidates AML allocator. After this call @init_aml_allocator
- * should be called again if AML API is to be used again.
- */
-void free_aml_allocator(void);
 
 /**
  * aml_append:
@@ -327,26 +317,6 @@ typedef struct AcpiTable {
     GArray *array;
     unsigned table_offset;
 } AcpiTable;
-
-/**
- * acpi_table_begin:
- * initializes table header and keeps track of
- * table data/offsets
- * @desc: ACPI table descriptor
- * @array: blob where the ACPI table will be composed/stored.
- */
-void acpi_table_begin(AcpiTable *desc, GArray *array);
-
-/**
- * acpi_table_end:
- * sets actual table length and tells bios loader
- * where table is for the later initialization on
- * guest side.
- * @linker: reference to BIOSLinker object to use for the table
- * @table: ACPI table descriptor that was used with @acpi_table_begin
- * counterpart
- */
-void acpi_table_end(BIOSLinker *linker, AcpiTable *table);
 
 void *acpi_data_push(GArray *table_data, unsigned size);
 

@@ -719,22 +719,6 @@ static void machine_set_nvdimm_persistence(Object *obj, const char *value,
     nvdimms_state->persistence_string = g_strdup(value);
 }
 
-void machine_class_allow_dynamic_sysbus_dev(MachineClass *mc, const char *type)
-{
-    QAPI_LIST_PREPEND(mc->allowed_dynamic_sysbus_devices, g_strdup(type));
-}
-
-bool device_is_dynamic_sysbus(MachineClass *mc, DeviceState *dev)
-{
-    Object *obj = OBJECT(dev);
-
-    if (!object_dynamic_cast(obj, TYPE_SYS_BUS_DEVICE)) {
-        return false;
-    }
-
-    return device_type_is_dynamic_sysbus(mc, object_get_typename(obj));
-}
-
 bool device_type_is_dynamic_sysbus(MachineClass *mc, const char *type)
 {
     bool allowed = false;

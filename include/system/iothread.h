@@ -49,12 +49,7 @@ IOThread *iothread_by_id(const char *id);
 AioContext *iothread_get_aio_context(IOThread *iothread);
 GMainContext *iothread_get_g_main_context(IOThread *iothread);
 
-/*
- * Helpers used to allocate iothreads for internal use.  These
- * iothreads will not be seen by monitor clients when query using
- * "query-iothreads".
- */
-IOThread *iothread_create(const char *id, Error **errp);
+/* Stop and free an iothread made for internal use. */
 void iothread_stop(IOThread *iothread);
 void iothread_destroy(IOThread *iothread);
 

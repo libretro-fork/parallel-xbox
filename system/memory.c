@@ -684,21 +684,6 @@ static void render_memory_region(FlatView *view,
     }
 }
 
-void flatview_for_each_range(FlatView *fv, flatview_cb cb , void *opaque)
-{
-    FlatRange *fr;
-
-    assert(fv);
-    assert(cb);
-
-    FOR_EACH_FLAT_RANGE(fr, fv) {
-        if (cb(fr->addr.start, fr->addr.size, fr->mr,
-               fr->offset_in_region, opaque)) {
-            break;
-        }
-    }
-}
-
 static MemoryRegion *memory_region_get_flatview_root(MemoryRegion *mr)
 {
     while (mr->enabled) {
@@ -1361,43 +1346,6 @@ const MemoryRegionOps unassigned_mem_ops = {
     .endianness = DEVICE_NATIVE_ENDIAN,
 };
 
-static uint64_t memory_region_ram_device_read(void *opaque,
-                                              hwaddr addr, unsigned size)
-{
-    MemoryRegion *mr = opaque;
-    uint64_t data = ldn_he_p(mr->ram_block->host + addr, size);
-
-    trace_memory_region_ram_device_read(get_cpu_index(), mr, addr, data, size);
-
-    return data;
-}
-
-static void memory_region_ram_device_write(void *opaque, hwaddr addr,
-                                           uint64_t data, unsigned size)
-{
-    MemoryRegion *mr = opaque;
-
-    trace_memory_region_ram_device_write(get_cpu_index(), mr, addr, data, size);
-
-    stn_he_p(mr->ram_block->host + addr, size, data);
-}
-
-static const MemoryRegionOps ram_device_mem_ops = {
-    .read = memory_region_ram_device_read,
-    .write = memory_region_ram_device_write,
-    .endianness = HOST_BIG_ENDIAN ? DEVICE_BIG_ENDIAN : DEVICE_LITTLE_ENDIAN,
-    .valid = {
-        .min_access_size = 1,
-        .max_access_size = 8,
-        .unaligned = true,
-    },
-    .impl = {
-        .min_access_size = 1,
-        .max_access_size = 8,
-        .unaligned = true,
-    },
-};
-
 bool memory_region_access_valid(MemoryRegion *mr,
                                 hwaddr addr,
                                 unsigned size,
@@ -1631,95 +1579,8 @@ bool memory_region_init_resizeable_ram(MemoryRegion *mr,
 }
 
 #if defined(CONFIG_POSIX) && !defined(EMSCRIPTEN)
-bool memory_region_init_ram_from_file(MemoryRegion *mr,
-                                      Object *owner,
-                                      const char *name,
-                                      uint64_t size,
-                                      uint64_t align,
-                                      uint32_t ram_flags,
-                                      const char *path,
-                                      ram_addr_t offset,
-                                      Error **errp)
-{
-    Error *err = NULL;
-    memory_region_init(mr, owner, name, size);
-    mr->ram = true;
-    mr->readonly = !!(ram_flags & RAM_READONLY);
-    mr->terminates = true;
-    mr->destructor = memory_region_destructor_ram;
-    mr->align = align;
-    mr->ram_block = qemu_ram_alloc_from_file(size, mr, ram_flags, path,
-                                             offset, &err);
-    if (err) {
-        mr->size = int128_zero();
-        object_unparent(OBJECT(mr));
-        error_propagate(errp, err);
-        return false;
-    }
-    return true;
-}
 
-bool memory_region_init_ram_from_fd(MemoryRegion *mr,
-                                    Object *owner,
-                                    const char *name,
-                                    uint64_t size,
-                                    uint32_t ram_flags,
-                                    int fd,
-                                    ram_addr_t offset,
-                                    Error **errp)
-{
-    Error *err = NULL;
-    memory_region_init(mr, owner, name, size);
-    mr->ram = true;
-    mr->readonly = !!(ram_flags & RAM_READONLY);
-    mr->terminates = true;
-    mr->destructor = memory_region_destructor_ram;
-    mr->ram_block = qemu_ram_alloc_from_fd(size, size, NULL, mr, ram_flags, fd,
-                                           offset, false, &err);
-    if (err) {
-        mr->size = int128_zero();
-        object_unparent(OBJECT(mr));
-        error_propagate(errp, err);
-        return false;
-    }
-    return true;
-}
 #endif
-
-void memory_region_init_ram_ptr(MemoryRegion *mr,
-                                Object *owner,
-                                const char *name,
-                                uint64_t size,
-                                void *ptr)
-{
-    memory_region_init(mr, owner, name, size);
-    mr->ram = true;
-    mr->terminates = true;
-    mr->destructor = memory_region_destructor_ram;
-
-    /* qemu_ram_alloc_from_ptr cannot fail with ptr != NULL.  */
-    assert(ptr != NULL);
-    mr->ram_block = qemu_ram_alloc_from_ptr(size, ptr, mr, &error_abort);
-}
-
-void memory_region_init_ram_device_ptr(MemoryRegion *mr,
-                                       Object *owner,
-                                       const char *name,
-                                       uint64_t size,
-                                       void *ptr)
-{
-    memory_region_init(mr, owner, name, size);
-    mr->ram = true;
-    mr->terminates = true;
-    mr->ram_device = true;
-    mr->ops = &ram_device_mem_ops;
-    mr->opaque = mr;
-    mr->destructor = memory_region_destructor_ram;
-
-    /* qemu_ram_alloc_from_ptr cannot fail with ptr != NULL.  */
-    assert(ptr != NULL);
-    mr->ram_block = qemu_ram_alloc_from_ptr(size, ptr, mr, &error_abort);
-}
 
 void memory_region_init_alias(MemoryRegion *mr,
                               Object *owner,
@@ -1772,25 +1633,6 @@ bool memory_region_init_rom_device_nomigrate(MemoryRegion *mr,
         return false;
     }
     return true;
-}
-
-void memory_region_init_iommu(void *_iommu_mr,
-                              size_t instance_size,
-                              const char *mrtypename,
-                              Object *owner,
-                              const char *name,
-                              uint64_t size)
-{
-    struct IOMMUMemoryRegion *iommu_mr;
-    struct MemoryRegion *mr;
-
-    object_initialize(_iommu_mr, instance_size, mrtypename);
-    mr = MEMORY_REGION(_iommu_mr);
-    memory_region_do_init(mr, owner, name, size);
-    iommu_mr = IOMMU_MEMORY_REGION(mr);
-    mr->terminates = true;  /* then re-forwards */
-    QLIST_INIT(&iommu_mr->iommu_notify);
-    iommu_mr->iommu_notify_flags = IOMMU_NOTIFIER_NONE;
 }
 
 static void memory_region_finalize(Object *obj)
@@ -1902,16 +1744,6 @@ bool memory_region_is_ram_device(MemoryRegion *mr)
     return mr->ram_device;
 }
 
-bool memory_region_is_protected(MemoryRegion *mr)
-{
-    return mr->ram && (mr->ram_block->flags & RAM_PROTECTED);
-}
-
-bool memory_region_has_guest_memfd(MemoryRegion *mr)
-{
-    return mr->ram_block && mr->ram_block->guest_memfd >= 0;
-}
-
 uint8_t memory_region_get_dirty_log_mask(MemoryRegion *mr)
 {
     uint8_t mask = mr->dirty_log_mask;
@@ -1927,11 +1759,6 @@ uint8_t memory_region_get_dirty_log_mask(MemoryRegion *mr)
         mask |= (1 << DIRTY_MEMORY_CODE);
     }
     return mask;
-}
-
-bool memory_region_is_logging(MemoryRegion *mr, uint8_t client)
-{
-    return memory_region_get_dirty_log_mask(mr) & (1 << client);
 }
 
 static int memory_region_update_iommu_notify_flags(IOMMUMemoryRegion *iommu_mr,
@@ -1983,45 +1810,6 @@ int memory_region_register_iommu_notifier(MemoryRegion *mr,
     return ret;
 }
 
-uint64_t memory_region_iommu_get_min_page_size(IOMMUMemoryRegion *iommu_mr)
-{
-    IOMMUMemoryRegionClass *imrc = IOMMU_MEMORY_REGION_GET_CLASS(iommu_mr);
-
-    if (imrc->get_min_page_size) {
-        return imrc->get_min_page_size(iommu_mr);
-    }
-    return TARGET_PAGE_SIZE;
-}
-
-void memory_region_iommu_replay(IOMMUMemoryRegion *iommu_mr, IOMMUNotifier *n)
-{
-    MemoryRegion *mr = MEMORY_REGION(iommu_mr);
-    IOMMUMemoryRegionClass *imrc = IOMMU_MEMORY_REGION_GET_CLASS(iommu_mr);
-    hwaddr addr, granularity;
-    IOMMUTLBEntry iotlb;
-
-    /* If the IOMMU has its own replay callback, override */
-    if (imrc->replay) {
-        imrc->replay(iommu_mr, n);
-        return;
-    }
-
-    granularity = memory_region_iommu_get_min_page_size(iommu_mr);
-
-    for (addr = 0; addr < memory_region_size(mr); addr += granularity) {
-        iotlb = imrc->translate(iommu_mr, addr, IOMMU_NONE, n->iommu_idx);
-        if (iotlb.perm != IOMMU_NONE) {
-            n->notify(n, &iotlb);
-        }
-
-        /* if (2^64 - MR size) < granularity, it's possible to get an
-         * infinite loop here.  This should catch such a wraparound */
-        if ((addr + granularity) < addr) {
-            break;
-        }
-    }
-}
-
 void memory_region_unregister_iommu_notifier(MemoryRegion *mr,
                                              IOMMUNotifier *n)
 {
@@ -2034,87 +1822,6 @@ void memory_region_unregister_iommu_notifier(MemoryRegion *mr,
     QLIST_REMOVE(n, node);
     iommu_mr = IOMMU_MEMORY_REGION(mr);
     memory_region_update_iommu_notify_flags(iommu_mr, NULL);
-}
-
-void memory_region_notify_iommu_one(IOMMUNotifier *notifier,
-                                    const IOMMUTLBEvent *event)
-{
-    const IOMMUTLBEntry *entry = &event->entry;
-    hwaddr entry_end = entry->iova + entry->addr_mask;
-    IOMMUTLBEntry tmp = *entry;
-
-    if (event->type == IOMMU_NOTIFIER_UNMAP) {
-        assert(entry->perm == IOMMU_NONE);
-    }
-
-    /*
-     * Skip the notification if the notification does not overlap
-     * with registered range.
-     */
-    if (notifier->start > entry_end || notifier->end < entry->iova) {
-        return;
-    }
-
-    /* Crop (iova, addr_mask) to range */
-    tmp.iova = MAX(tmp.iova, notifier->start);
-    tmp.addr_mask = MIN(entry_end, notifier->end) - tmp.iova;
-
-    if (event->type & notifier->notifier_flags) {
-        notifier->notify(notifier, &tmp);
-    }
-}
-
-void memory_region_unmap_iommu_notifier_range(IOMMUNotifier *notifier)
-{
-    IOMMUTLBEvent event;
-
-    event.type = IOMMU_NOTIFIER_UNMAP;
-    event.entry.target_as = &address_space_memory;
-    event.entry.iova = notifier->start;
-    event.entry.perm = IOMMU_NONE;
-    event.entry.addr_mask = notifier->end - notifier->start;
-
-    memory_region_notify_iommu_one(notifier, &event);
-}
-
-void memory_region_notify_iommu(IOMMUMemoryRegion *iommu_mr,
-                                int iommu_idx,
-                                const IOMMUTLBEvent event)
-{
-    IOMMUNotifier *iommu_notifier;
-
-    assert(memory_region_is_iommu(MEMORY_REGION(iommu_mr)));
-
-    IOMMU_NOTIFIER_FOREACH(iommu_notifier, iommu_mr) {
-        if (iommu_notifier->iommu_idx == iommu_idx) {
-            memory_region_notify_iommu_one(iommu_notifier, &event);
-        }
-    }
-}
-
-int memory_region_iommu_get_attr(IOMMUMemoryRegion *iommu_mr,
-                                 enum IOMMUMemoryRegionAttr attr,
-                                 void *data)
-{
-    IOMMUMemoryRegionClass *imrc = IOMMU_MEMORY_REGION_GET_CLASS(iommu_mr);
-
-    if (!imrc->get_attr) {
-        return -EINVAL;
-    }
-
-    return imrc->get_attr(iommu_mr, attr, data);
-}
-
-int memory_region_iommu_attrs_to_index(IOMMUMemoryRegion *iommu_mr,
-                                       MemTxAttrs attrs)
-{
-    IOMMUMemoryRegionClass *imrc = IOMMU_MEMORY_REGION_GET_CLASS(iommu_mr);
-
-    if (!imrc->attrs_to_index) {
-        return 0;
-    }
-
-    return imrc->attrs_to_index(iommu_mr, attrs);
 }
 
 int memory_region_iommu_num_indexes(IOMMUMemoryRegion *iommu_mr)
@@ -2148,26 +1855,6 @@ int memory_region_set_ram_discard_manager(MemoryRegion *mr,
     return 0;
 }
 
-bool ram_discard_manager_is_populated(const RamDiscardManager *rdm,
-                                      const MemoryRegionSection *section)
-{
-    RamDiscardManagerClass *rdmc = RAM_DISCARD_MANAGER_GET_CLASS(rdm);
-
-    g_assert(rdmc->is_populated);
-    return rdmc->is_populated(rdm, section);
-}
-
-int ram_discard_manager_replay_populated(const RamDiscardManager *rdm,
-                                         MemoryRegionSection *section,
-                                         ReplayRamDiscardState replay_fn,
-                                         void *opaque)
-{
-    RamDiscardManagerClass *rdmc = RAM_DISCARD_MANAGER_GET_CLASS(rdm);
-
-    g_assert(rdmc->replay_populated);
-    return rdmc->replay_populated(rdm, section, replay_fn, opaque);
-}
-
 int ram_discard_manager_replay_discarded(const RamDiscardManager *rdm,
                                          MemoryRegionSection *section,
                                          ReplayRamDiscardState replay_fn,
@@ -2177,59 +1864,6 @@ int ram_discard_manager_replay_discarded(const RamDiscardManager *rdm,
 
     g_assert(rdmc->replay_discarded);
     return rdmc->replay_discarded(rdm, section, replay_fn, opaque);
-}
-
-/* Called with rcu_read_lock held.  */
-MemoryRegion *memory_translate_iotlb(IOMMUTLBEntry *iotlb, hwaddr *xlat_p,
-                                     Error **errp)
-{
-    MemoryRegion *mr;
-    hwaddr xlat;
-    hwaddr len = iotlb->addr_mask + 1;
-    bool writable = iotlb->perm & IOMMU_WO;
-
-    /*
-     * The IOMMU TLB entry we have just covers translation through
-     * this IOMMU to its immediate target.  We need to translate
-     * it the rest of the way through to memory.
-     */
-    mr = address_space_translate(&address_space_memory, iotlb->translated_addr,
-                                 &xlat, &len, writable, MEMTXATTRS_UNSPECIFIED);
-    if (!memory_region_is_ram(mr)) {
-        error_setg(errp, "iommu map to non memory area %" HWADDR_PRIx "", xlat);
-        return NULL;
-    } else if (memory_region_has_ram_discard_manager(mr)) {
-        RamDiscardManager *rdm = memory_region_get_ram_discard_manager(mr);
-        MemoryRegionSection tmp = {
-            .mr = mr,
-            .offset_within_region = xlat,
-            .size = int128_make64(len),
-        };
-        /*
-         * Malicious VMs can map memory into the IOMMU, which is expected
-         * to remain discarded. vfio will pin all pages, populating memory.
-         * Disallow that. vmstate priorities make sure any RamDiscardManager
-         * were already restored before IOMMUs are restored.
-         */
-        if (!ram_discard_manager_is_populated(rdm, &tmp)) {
-            error_setg(errp, "iommu map to discarded memory (e.g., unplugged"
-                         " via virtio-mem): %" HWADDR_PRIx "",
-                         iotlb->translated_addr);
-            return NULL;
-        }
-    }
-
-    /*
-     * Translation truncates length to the IOMMU page size,
-     * check that it did not truncate too much.
-     */
-    if (len & iotlb->addr_mask) {
-        error_setg(errp, "iommu has granularity incompatible with target AS");
-        return NULL;
-    }
-
-    *xlat_p = xlat;
-    return mr;
 }
 
 void memory_region_set_log(MemoryRegion *mr, bool log, unsigned client)
@@ -2434,16 +2068,6 @@ void memory_region_set_readonly(MemoryRegion *mr, bool readonly)
     }
 }
 
-void memory_region_set_nonvolatile(MemoryRegion *mr, bool nonvolatile)
-{
-    if (mr->nonvolatile != nonvolatile) {
-        memory_region_transaction_begin();
-        mr->nonvolatile = nonvolatile;
-        memory_region_update_pending |= mr->enabled;
-        memory_region_transaction_commit();
-    }
-}
-
 void memory_region_rom_device_set_romd(MemoryRegion *mr, bool romd_mode)
 {
     if (mr->romd_mode != romd_mode) {
@@ -2452,19 +2076,6 @@ void memory_region_rom_device_set_romd(MemoryRegion *mr, bool romd_mode)
         memory_region_update_pending |= mr->enabled;
         memory_region_transaction_commit();
     }
-}
-
-void memory_region_reset_dirty(MemoryRegion *mr, hwaddr addr,
-                               hwaddr size, unsigned client)
-{
-    if (mr->alias) {
-        memory_region_reset_dirty(mr->alias, addr - mr->alias_offset,
-                                  size, client);
-        return;
-    }
-    assert(mr->ram_block);
-    physical_memory_test_and_clear_dirty(
-        memory_region_get_ram_addr(mr) + addr, size, client);
 }
 
 int memory_region_get_fd(MemoryRegion *mr)
@@ -2513,24 +2124,6 @@ void memory_region_ram_resize(MemoryRegion *mr, ram_addr_t newsize, Error **errp
     qemu_ram_resize(mr->ram_block, newsize, errp);
 }
 
-void memory_region_msync(MemoryRegion *mr, hwaddr addr, hwaddr size)
-{
-    if (mr->ram_block) {
-        qemu_ram_msync(mr->ram_block, addr, size);
-    }
-}
-
-void memory_region_writeback(MemoryRegion *mr, hwaddr addr, hwaddr size)
-{
-    /*
-     * Might be extended case needed to cover
-     * different types of memory regions
-     */
-    if (mr->dirty_log_mask) {
-        memory_region_msync(mr, addr, size);
-    }
-}
-
 /*
  * Call proper memory listeners about the change on the newly
  * added/removed CoalescedMemoryRange.
@@ -2552,12 +2145,6 @@ static void memory_region_update_coalesced_range(MemoryRegion *mr,
         }
         flatview_unref(view);
     }
-}
-
-void memory_region_set_coalescing(MemoryRegion *mr)
-{
-    memory_region_clear_coalescing(mr);
-    memory_region_add_coalescing(mr, 0, int128_get64(mr->size));
 }
 
 void memory_region_add_coalescing(MemoryRegion *mr,
@@ -2594,14 +2181,6 @@ void memory_region_clear_coalescing(MemoryRegion *mr)
 void memory_region_set_flush_coalesced(MemoryRegion *mr)
 {
     mr->flush_coalesced_mmio = true;
-}
-
-void memory_region_clear_flush_coalesced(MemoryRegion *mr)
-{
-    qemu_flush_coalesced_mmio_buffer();
-    if (QTAILQ_EMPTY(&mr->coalesced)) {
-        mr->flush_coalesced_mmio = false;
-    }
 }
 
 void memory_region_enable_lockless_io(MemoryRegion *mr)
@@ -2795,54 +2374,6 @@ void memory_region_set_size(MemoryRegion *mr, uint64_t size)
     memory_region_transaction_commit();
 }
 
-static void memory_region_readd_subregion(MemoryRegion *mr)
-{
-    MemoryRegion *container = mr->container;
-
-    if (container) {
-        memory_region_transaction_begin();
-        memory_region_ref(mr);
-        memory_region_del_subregion(container, mr);
-        memory_region_add_subregion_common(container, mr->addr, mr);
-        memory_region_unref(mr);
-        memory_region_transaction_commit();
-    }
-}
-
-void memory_region_set_address(MemoryRegion *mr, hwaddr addr)
-{
-    if (addr != mr->addr) {
-        mr->addr = addr;
-        memory_region_readd_subregion(mr);
-    }
-}
-
-void memory_region_set_alias_offset(MemoryRegion *mr, hwaddr offset)
-{
-    assert(mr->alias);
-
-    if (offset == mr->alias_offset) {
-        return;
-    }
-
-    memory_region_transaction_begin();
-    mr->alias_offset = offset;
-    memory_region_update_pending |= mr->enabled;
-    memory_region_transaction_commit();
-}
-
-void memory_region_set_unmergeable(MemoryRegion *mr, bool unmergeable)
-{
-    if (unmergeable == mr->unmergeable) {
-        return;
-    }
-
-    memory_region_transaction_begin();
-    mr->unmergeable = unmergeable;
-    memory_region_update_pending |= mr->enabled;
-    memory_region_transaction_commit();
-}
-
 uint64_t memory_region_get_alignment(const MemoryRegion *mr)
 {
     return mr->align;
@@ -2957,15 +2488,6 @@ void memory_region_section_free_copy(MemoryRegionSection *s)
         memory_region_unref(s->mr);
     }
     g_free(s);
-}
-
-bool memory_region_present(MemoryRegion *container, hwaddr addr)
-{
-    MemoryRegion *mr;
-
-    RCU_READ_LOCK_GUARD();
-    mr = memory_region_find_rcu(container, addr, 1).mr;
-    return mr && mr != container;
 }
 
 void memory_global_dirty_log_sync(bool last_stage)
@@ -3274,13 +2796,6 @@ void memory_listener_unregister(MemoryListener *listener)
     QTAILQ_REMOVE(&memory_listeners, listener, link);
     QTAILQ_REMOVE(&listener->address_space->listeners, listener, link_as);
     listener->address_space = NULL;
-}
-
-void address_space_remove_listeners(AddressSpace *as)
-{
-    while (!QTAILQ_EMPTY(&as->listeners)) {
-        memory_listener_unregister(QTAILQ_FIRST(&as->listeners));
-    }
 }
 
 void address_space_init(AddressSpace *as, MemoryRegion *root, const char *name)

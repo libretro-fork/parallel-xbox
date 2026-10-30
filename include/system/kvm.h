@@ -197,17 +197,6 @@ int kvm_max_nested_state_length(void);
 int kvm_has_gsi_routing(void);
 void kvm_close(void);
 
-/**
- * kvm_arm_supports_user_irq
- *
- * Not all KVM implementations support notifications for kernel generated
- * interrupt events to user space. This function indicates whether the current
- * KVM implementation does support them.
- *
- * Returns: true if KVM supports using kernel generated IRQs from user space
- */
-bool kvm_arm_supports_user_irq(void);
-
 
 int kvm_on_sigbus_vcpu(CPUState *cpu, int code, void *addr);
 int kvm_on_sigbus(int code, void *addr);
@@ -538,12 +527,6 @@ bool kvm_dirty_ring_enabled(void);
 uint32_t kvm_dirty_ring_size(void);
 
 void kvm_mark_guest_state_protected(void);
-
-/**
- * kvm_hwpoisoned_mem - indicate if there is any hwpoisoned page
- * reported for the VM.
- */
-bool kvm_hwpoisoned_mem(void);
 
 int kvm_create_guest_memfd(uint64_t size, uint64_t flags, Error **errp);
 

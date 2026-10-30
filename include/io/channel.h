@@ -314,36 +314,6 @@ ssize_t qio_channel_writev_full(QIOChannel *ioc,
                                 Error **errp);
 
 /**
- * qio_channel_readv_all_eof:
- * @ioc: the channel object
- * @iov: the array of memory regions to read data into
- * @niov: the length of the @iov array
- * @errp: pointer to a NULL-initialized error object
- *
- * Read data from the IO channel, storing it in the
- * memory regions referenced by @iov. Each element
- * in the @iov will be fully populated with data
- * before the next one is used. The @niov parameter
- * specifies the total number of elements in @iov.
- *
- * The function will wait for all requested data
- * to be read, yielding from the current coroutine
- * if required.
- *
- * If end-of-file occurs before any data is read,
- * no error is reported; otherwise, if it occurs
- * before all requested data has been read, an error
- * will be reported.
- *
- * Returns: 1 if all bytes were read, 0 if end-of-file
- *          occurs without data, or -1 on error
- */
-int coroutine_mixed_fn qio_channel_readv_all_eof(QIOChannel *ioc,
-                                                 const struct iovec *iov,
-                                                 size_t niov,
-                                                 Error **errp);
-
-/**
  * qio_channel_readv_all:
  * @ioc: the channel object
  * @iov: the array of memory regions to read data into
@@ -396,36 +366,6 @@ int coroutine_mixed_fn qio_channel_writev_all(QIOChannel *ioc,
                                               Error **errp);
 
 /**
- * qio_channel_readv:
- * @ioc: the channel object
- * @iov: the array of memory regions to read data into
- * @niov: the length of the @iov array
- * @errp: pointer to a NULL-initialized error object
- *
- * Behaves as qio_channel_readv_full() but does not support
- * receiving of file handles.
- */
-ssize_t qio_channel_readv(QIOChannel *ioc,
-                          const struct iovec *iov,
-                          size_t niov,
-                          Error **errp);
-
-/**
- * qio_channel_writev:
- * @ioc: the channel object
- * @iov: the array of memory regions to write data from
- * @niov: the length of the @iov array
- * @errp: pointer to a NULL-initialized error object
- *
- * Behaves as qio_channel_writev_full() but does not support
- * sending of file handles.
- */
-ssize_t qio_channel_writev(QIOChannel *ioc,
-                           const struct iovec *iov,
-                           size_t niov,
-                           Error **errp);
-
-/**
  * qio_channel_read:
  * @ioc: the channel object
  * @buf: the memory region to read data into
@@ -456,48 +396,6 @@ ssize_t qio_channel_write(QIOChannel *ioc,
                           const void *buf,
                           size_t buflen,
                           Error **errp);
-
-/**
- * qio_channel_read_all_eof:
- * @ioc: the channel object
- * @buf: the memory region to read data into
- * @buflen: the number of bytes to @buf
- * @errp: pointer to a NULL-initialized error object
- *
- * Reads @buflen bytes into @buf, possibly blocking or (if the
- * channel is non-blocking) yielding from the current coroutine
- * multiple times until the entire content is read. If end-of-file
- * occurs immediately it is not an error, but if it occurs after
- * data has been read it will return an error rather than a
- * short-read. Otherwise behaves as qio_channel_read().
- *
- * Returns: 1 if all bytes were read, 0 if end-of-file occurs
- *          without data, or -1 on error
- */
-int coroutine_mixed_fn qio_channel_read_all_eof(QIOChannel *ioc,
-                                                void *buf,
-                                                size_t buflen,
-                                                Error **errp);
-
-/**
- * qio_channel_read_all:
- * @ioc: the channel object
- * @buf: the memory region to read data into
- * @buflen: the number of bytes to @buf
- * @errp: pointer to a NULL-initialized error object
- *
- * Reads @buflen bytes into @buf, possibly blocking or (if the
- * channel is non-blocking) yielding from the current coroutine
- * multiple times until the entire content is read. If end-of-file
- * occurs it will return an error rather than a short-read. Otherwise
- * behaves as qio_channel_read().
- *
- * Returns: 0 if all bytes were read, or -1 on error
- */
-int coroutine_mixed_fn qio_channel_read_all(QIOChannel *ioc,
-                                            void *buf,
-                                            size_t buflen,
-                                            Error **errp);
 
 /**
  * qio_channel_write_all:
@@ -536,21 +434,6 @@ bool qio_channel_set_blocking(QIOChannel *ioc,
                               Error **errp);
 
 /**
- * qio_channel_set_follow_coroutine_ctx:
- * @ioc: the channel object
- * @enabled: whether or not to follow the coroutine's AioContext
- *
- * If @enabled is true, calls to qio_channel_yield() use the current
- * coroutine's AioContext. Usually this is desirable.
- *
- * If @enabled is false, calls to qio_channel_yield() use the global iohandler
- * AioContext. This is may be used by coroutines that run in the main loop and
- * do not wish to respond to I/O during nested event loops. This is the
- * default for compatibility with code that is not aware of AioContexts.
- */
-void qio_channel_set_follow_coroutine_ctx(QIOChannel *ioc, bool enabled);
-
-/**
  * qio_channel_close:
  * @ioc: the channel object
  * @errp: pointer to a NULL-initialized error object
@@ -561,78 +444,6 @@ void qio_channel_set_follow_coroutine_ctx(QIOChannel *ioc, bool enabled);
  */
 int qio_channel_close(QIOChannel *ioc,
                       Error **errp);
-
-/**
- * qio_channel_pwritev
- * @ioc: the channel object
- * @iov: the array of memory regions to write data from
- * @niov: the length of the @iov array
- * @offset: offset in the channel where writes should begin
- * @errp: pointer to a NULL-initialized error object
- *
- * Not all implementations will support this facility, so may report
- * an error. To avoid errors, the caller may check for the feature
- * flag QIO_CHANNEL_FEATURE_SEEKABLE prior to calling this method.
- *
- * Behaves as qio_channel_writev_full, apart from not supporting
- * sending of file handles as well as beginning the write at the
- * passed @offset
- *
- */
-ssize_t qio_channel_pwritev(QIOChannel *ioc, const struct iovec *iov,
-                            size_t niov, off_t offset, Error **errp);
-
-/**
- * qio_channel_pwrite
- * @ioc: the channel object
- * @buf: the memory region to write data into
- * @buflen: the number of bytes to @buf
- * @offset: offset in the channel where writes should begin
- * @errp: pointer to a NULL-initialized error object
- *
- * Not all implementations will support this facility, so may report
- * an error. To avoid errors, the caller may check for the feature
- * flag QIO_CHANNEL_FEATURE_SEEKABLE prior to calling this method.
- *
- */
-ssize_t qio_channel_pwrite(QIOChannel *ioc, void *buf, size_t buflen,
-                           off_t offset, Error **errp);
-
-/**
- * qio_channel_preadv
- * @ioc: the channel object
- * @iov: the array of memory regions to read data into
- * @niov: the length of the @iov array
- * @offset: offset in the channel where writes should begin
- * @errp: pointer to a NULL-initialized error object
- *
- * Not all implementations will support this facility, so may report
- * an error.  To avoid errors, the caller may check for the feature
- * flag QIO_CHANNEL_FEATURE_SEEKABLE prior to calling this method.
- *
- * Behaves as qio_channel_readv_full, apart from not supporting
- * receiving of file handles as well as beginning the read at the
- * passed @offset
- *
- */
-ssize_t qio_channel_preadv(QIOChannel *ioc, const struct iovec *iov,
-                           size_t niov, off_t offset, Error **errp);
-
-/**
- * qio_channel_pread
- * @ioc: the channel object
- * @buf: the memory region to write data into
- * @buflen: the number of bytes to @buf
- * @offset: offset in the channel where writes should begin
- * @errp: pointer to a NULL-initialized error object
- *
- * Not all implementations will support this facility, so may report
- * an error.  To avoid errors, the caller may check for the feature
- * flag QIO_CHANNEL_FEATURE_SEEKABLE prior to calling this method.
- *
- */
-ssize_t qio_channel_pread(QIOChannel *ioc, void *buf, size_t buflen,
-                          off_t offset, Error **errp);
 
 /**
  * qio_channel_shutdown:
@@ -729,35 +540,6 @@ GSource *qio_channel_create_watch(QIOChannel *ioc,
                                   GIOCondition condition);
 
 /**
- * qio_channel_add_watch:
- * @ioc: the channel object
- * @condition: the I/O condition to monitor
- * @func: callback to invoke when the source becomes ready
- * @user_data: opaque data to pass to @func
- * @notify: callback to free @user_data
- *
- * Create a new main loop source that is used to watch
- * for the I/O condition @condition. The callback @func
- * will be registered against the source, to be invoked
- * when the source becomes ready. The optional @user_data
- * will be passed to @func when it is invoked. The @notify
- * callback will be used to free @user_data when the
- * watch is deleted
- *
- * The returned source ID can be used with g_source_remove()
- * to remove and free the source when no longer required.
- * Alternatively the @func callback can return a FALSE
- * value.
- *
- * Returns: the source ID
- */
-guint qio_channel_add_watch(QIOChannel *ioc,
-                            GIOCondition condition,
-                            QIOChannelFunc func,
-                            gpointer user_data,
-                            GDestroyNotify notify);
-
-/**
  * qio_channel_add_watch_full:
  * @ioc: the channel object
  * @condition: the I/O condition to monitor
@@ -820,16 +602,6 @@ GSource *qio_channel_add_watch_source(QIOChannel *ioc,
  */
 void coroutine_fn qio_channel_yield(QIOChannel *ioc,
                                     GIOCondition condition);
-
-/**
- * qio_channel_wake_read:
- * @ioc: the channel object
- *
- * If qio_channel_yield() is currently waiting for the channel to become
- * readable, interrupt it and reenter immediately. This function is safe to call
- * from any thread.
- */
-void qio_channel_wake_read(QIOChannel *ioc);
 
 /**
  * qio_channel_wait:
@@ -976,24 +748,5 @@ int coroutine_mixed_fn qio_channel_writev_full_all(QIOChannel *ioc,
                                                    size_t niov,
                                                    int *fds, size_t nfds,
                                                    int flags, Error **errp);
-
-/**
- * qio_channel_flush:
- * @ioc: the channel object
- * @errp: pointer to a NULL-initialized error object
- *
- * Will block until every packet queued with
- * qio_channel_writev_full() + QIO_CHANNEL_WRITE_FLAG_ZERO_COPY
- * is sent, or return in case of any error.
- *
- * If not implemented, acts as a no-op, and returns 0.
- *
- * Returns -1 if any error is found,
- *          1 if every send failed to use zero copy.
- *          0 otherwise.
- */
-
-int qio_channel_flush(QIOChannel *ioc,
-                      Error **errp);
 
 #endif /* QIO_CHANNEL_H */

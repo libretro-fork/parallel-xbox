@@ -29,13 +29,6 @@ struct QemuInputHandler {
     QemuInputHandlerSync   sync;
 };
 
-void qemu_input_event_send(QemuConsole *src, InputEvent *evt);
-void qemu_input_event_sync(void);
-
-void qemu_input_event_send_key(QemuConsole *src, KeyValue *key, bool down);
-void qemu_input_event_send_key_qcode(QemuConsole *src, QKeyCode q, bool down);
-int qemu_input_key_number_to_qcode(unsigned int nr);
-
 void qemu_input_check_mode_change(void);
 
 extern const guint qemu_input_map_atset1_to_qcode_len;

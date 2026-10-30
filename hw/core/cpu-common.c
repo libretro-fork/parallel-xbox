@@ -50,23 +50,6 @@ CPUState *cpu_by_arch_id(int64_t id)
     return NULL;
 }
 
-bool cpu_exists(int64_t id)
-{
-    return !!cpu_by_arch_id(id);
-}
-
-CPUState *cpu_create(const char *typename)
-{
-    Error *err = NULL;
-    CPUState *cpu = CPU(object_new(typename));
-    if (!qdev_realize(DEVICE(cpu), NULL, &err)) {
-        error_report_err(err);
-        object_unref(OBJECT(cpu));
-        exit(EXIT_FAILURE);
-    }
-    return cpu;
-}
-
 void cpu_reset_interrupt(CPUState *cpu, int mask)
 {
     qatomic_and(&cpu->interrupt_request, ~mask);

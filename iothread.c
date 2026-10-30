@@ -379,24 +379,12 @@ GMainContext *iothread_get_g_main_context(IOThread *iothread)
     return iothread->worker_context;
 }
 
-IOThread *iothread_create(const char *id, Error **errp)
-{
-    Object *obj;
-
-    obj = object_new_with_props(TYPE_IOTHREAD,
-                                object_get_internal_root(),
-                                id, errp, NULL);
-
-    return IOTHREAD(obj);
-}
-
 void iothread_destroy(IOThread *iothread)
 {
     object_unparent(OBJECT(iothread));
 }
 
-/* Lookup IOThread by its id.  Only finds user-created objects, not internal
- * iothread_create() objects. */
+/* Lookup IOThread by its id. */
 IOThread *iothread_by_id(const char *id)
 {
     return IOTHREAD(object_resolve_path_type(id, TYPE_IOTHREAD, NULL));

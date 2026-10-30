@@ -299,16 +299,4 @@ BlockAIOCB *dma_blk_write(BlockBackend *blk,
                           QEMUSGList *sg, uint64_t offset, uint32_t align,
                           BlockCompletionFunc *cb, void *opaque);
 
-/**
- * dma_aligned_pow2_mask: Return the address bit mask of the largest
- * power of 2 size less or equal than @end - @start + 1, aligned with @start,
- * and bounded by 1 << @max_addr_bits bits.
- *
- * @start: range start address
- * @end: range end address (greater than @start)
- * @max_addr_bits: max address bits (<= 64)
- */
-uint64_t dma_aligned_pow2_mask(uint64_t start, uint64_t end,
-                               int max_addr_bits);
-
 #endif

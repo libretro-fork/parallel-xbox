@@ -83,17 +83,6 @@ void tlb_set_page_with_attrs(CPUState *cpu, vaddr addr,
                              hwaddr paddr, MemTxAttrs attrs,
                              int prot, int mmu_idx, vaddr size);
 
-/**
- * tlb_set_page:
- *
- * This function is equivalent to calling tlb_set_page_with_attrs()
- * with an @attrs argument of MEMTXATTRS_UNSPECIFIED. It's provided
- * as a convenience for CPUs which don't use memory transaction attributes.
- */
-void tlb_set_page(CPUState *cpu, vaddr addr,
-                  hwaddr paddr, int prot,
-                  int mmu_idx, vaddr size);
-
 #if defined(CONFIG_TCG) && !defined(CONFIG_USER_ONLY)
 /**
  * tlb_flush_page:
@@ -104,19 +93,6 @@ void tlb_set_page(CPUState *cpu, vaddr addr,
  * MMU indexes.
  */
 void tlb_flush_page(CPUState *cpu, vaddr addr);
-
-/**
- * tlb_flush_page_all_cpus_synced:
- * @cpu: src CPU of the flush
- * @addr: virtual address of page to be flushed
- *
- * Flush one page from the TLB of all CPUs, for all
- * MMU indexes.
- *
- * When this function returns, no CPUs will subsequently perform
- * translations using the flushed TLBs.
- */
-void tlb_flush_page_all_cpus_synced(CPUState *src, vaddr addr);
 
 /**
  * tlb_flush:
@@ -153,21 +129,6 @@ void tlb_flush_page_by_mmuidx(CPUState *cpu, vaddr addr,
                               MMUIdxMap idxmap);
 
 /**
- * tlb_flush_page_by_mmuidx_all_cpus_synced:
- * @cpu: Originating CPU of the flush
- * @addr: virtual address of page to be flushed
- * @idxmap: bitmap of MMU indexes to flush
- *
- * Flush one page from the TLB of all CPUs, for the specified
- * MMU indexes.
- *
- * When this function returns, no CPUs will subsequently perform
- * translations using the flushed TLBs.
- */
-void tlb_flush_page_by_mmuidx_all_cpus_synced(CPUState *cpu, vaddr addr,
-                                              MMUIdxMap idxmap);
-
-/**
  * tlb_flush_by_mmuidx:
  * @cpu: CPU whose TLB should be flushed
  * @wait: If true ensure synchronisation by exiting the cpu_loop
@@ -190,33 +151,6 @@ void tlb_flush_by_mmuidx(CPUState *cpu, MMUIdxMap idxmap);
  * translations using the flushed TLBs.
  */
 void tlb_flush_by_mmuidx_all_cpus_synced(CPUState *cpu, MMUIdxMap idxmap);
-
-/**
- * tlb_flush_page_bits_by_mmuidx
- * @cpu: CPU whose TLB should be flushed
- * @addr: virtual address of page to be flushed
- * @idxmap: bitmap of mmu indexes to flush
- * @bits: number of significant bits in address
- *
- * Similar to tlb_flush_page_mask, but with a bitmap of indexes.
- */
-void tlb_flush_page_bits_by_mmuidx(CPUState *cpu, vaddr addr,
-                                   MMUIdxMap idxmap, unsigned bits);
-
-/**
- * tlb_flush_range_by_mmuidx
- * @cpu: CPU whose TLB should be flushed
- * @addr: virtual address of the start of the range to be flushed
- * @len: length of range to be flushed
- * @idxmap: bitmap of mmu indexes to flush
- * @bits: number of significant bits in address
- *
- * For each mmuidx in @idxmap, flush all pages within [@addr,@addr+@len),
- * comparing only the low @bits worth of each virtual page.
- */
-void tlb_flush_range_by_mmuidx(CPUState *cpu, vaddr addr,
-                               vaddr len, MMUIdxMap idxmap,
-                               unsigned bits);
 
 #else
 static inline void tlb_flush_page(CPUState *cpu, vaddr addr)

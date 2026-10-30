@@ -748,27 +748,6 @@ struct RamDiscardManagerClass {
                                 RamDiscardListener *rdl);
 };
 
-bool ram_discard_manager_is_populated(const RamDiscardManager *rdm,
-                                      const MemoryRegionSection *section);
-
-/**
- * ram_discard_manager_replay_populated:
- *
- * A wrapper to call the #RamDiscardManagerClass.replay_populated callback
- * of the #RamDiscardManager.
- *
- * @rdm: the #RamDiscardManager
- * @section: the #MemoryRegionSection
- * @replay_fn: the #ReplayRamDiscardState callback
- * @opaque: pointer to forward to the callback
- *
- * Returns 0 on success, or a negative error if any notification failed.
- */
-int ram_discard_manager_replay_populated(const RamDiscardManager *rdm,
-                                         MemoryRegionSection *section,
-                                         ReplayRamDiscardState replay_fn,
-                                         void *opaque);
-
 /**
  * ram_discard_manager_replay_discarded:
  *
@@ -786,22 +765,6 @@ int ram_discard_manager_replay_discarded(const RamDiscardManager *rdm,
                                          MemoryRegionSection *section,
                                          ReplayRamDiscardState replay_fn,
                                          void *opaque);
-
-/**
- * memory_translate_iotlb: Extract addresses from a TLB entry.
- *                         Called with rcu_read_lock held.
- *
- * @iotlb: pointer to an #IOMMUTLBEntry
- * @xlat_p: return the offset of the entry from the start of the returned
- *          MemoryRegion.
- * @errp: pointer to Error*, to store an error if it happens.
- *
- * Return: On success, return the MemoryRegion containing the @iotlb translated
- *         addr.  The MemoryRegion must not be accessed after rcu_read_unlock.
- *         On failure, return NULL, setting @errp with error.
- */
-MemoryRegion *memory_translate_iotlb(IOMMUTLBEntry *iotlb, hwaddr *xlat_p,
-                                     Error **errp);
 
 typedef struct CoalescedMemoryRange CoalescedMemoryRange;
 typedef struct MemoryRegionIoeventfd MemoryRegionIoeventfd;
@@ -1216,19 +1179,6 @@ typedef bool (*flatview_cb)(Int128 start,
                             hwaddr offset_in_region,
                             void *opaque);
 
-/**
- * flatview_for_each_range: Iterate through a FlatView
- * @fv: the FlatView to iterate through
- * @cb: function to call for each range
- * @opaque: opaque data pointer to pass to @cb
- *
- * A FlatView is made up of a list of non-overlapping ranges, each of
- * which is a slice of a MemoryRegion. This function iterates through
- * each range in @fv, calling @cb. The callback function can terminate
- * iteration early by returning 'true'.
- */
-void flatview_for_each_range(FlatView *fv, flatview_cb cb, void *opaque);
-
 static inline bool MemoryRegionSection_eq(MemoryRegionSection *a,
                                           MemoryRegionSection *b)
 {
@@ -1446,117 +1396,7 @@ bool memory_region_init_resizeable_ram(MemoryRegion *mr,
                                        Error **errp);
 #ifdef CONFIG_POSIX
 
-/**
- * memory_region_init_ram_from_file:  Initialize RAM memory region with a
- *                                    mmap-ed backend.
- *
- * @mr: the #MemoryRegion to be initialized.
- * @owner: the object that tracks the region's reference count
- * @name: Region name, becomes part of RAMBlock name used in migration stream
- *        must be unique within any device
- * @size: size of the region.
- * @align: alignment of the region base address; if 0, the default alignment
- *         (getpagesize()) will be used.
- * @ram_flags: RamBlock flags. Supported flags: RAM_SHARED, RAM_PMEM,
- *             RAM_NORESERVE, RAM_PROTECTED, RAM_NAMED_FILE, RAM_READONLY,
- *             RAM_READONLY_FD, RAM_GUEST_MEMFD
- * @path: the path in which to allocate the RAM.
- * @offset: offset within the file referenced by path
- * @errp: pointer to Error*, to store an error if it happens.
- *
- * Note that this function does not do anything to cause the data in the
- * RAM memory region to be migrated; that is the responsibility of the caller.
- *
- * Return: true on success, else false setting @errp with error.
- */
-bool memory_region_init_ram_from_file(MemoryRegion *mr,
-                                      Object *owner,
-                                      const char *name,
-                                      uint64_t size,
-                                      uint64_t align,
-                                      uint32_t ram_flags,
-                                      const char *path,
-                                      ram_addr_t offset,
-                                      Error **errp);
-
-/**
- * memory_region_init_ram_from_fd:  Initialize RAM memory region with a
- *                                  mmap-ed backend.
- *
- * @mr: the #MemoryRegion to be initialized.
- * @owner: the object that tracks the region's reference count
- * @name: the name of the region.
- * @size: size of the region.
- * @ram_flags: RamBlock flags. Supported flags: RAM_SHARED, RAM_PMEM,
- *             RAM_NORESERVE, RAM_PROTECTED, RAM_NAMED_FILE, RAM_READONLY,
- *             RAM_READONLY_FD, RAM_GUEST_MEMFD
- * @fd: the fd to mmap.
- * @offset: offset within the file referenced by fd
- * @errp: pointer to Error*, to store an error if it happens.
- *
- * Note that this function does not do anything to cause the data in the
- * RAM memory region to be migrated; that is the responsibility of the caller.
- *
- * Return: true on success, else false setting @errp with error.
- */
-bool memory_region_init_ram_from_fd(MemoryRegion *mr,
-                                    Object *owner,
-                                    const char *name,
-                                    uint64_t size,
-                                    uint32_t ram_flags,
-                                    int fd,
-                                    ram_addr_t offset,
-                                    Error **errp);
 #endif
-
-/**
- * memory_region_init_ram_ptr:  Initialize RAM memory region from a
- *                              user-provided pointer.  Accesses into the
- *                              region will modify memory directly.
- *
- * @mr: the #MemoryRegion to be initialized.
- * @owner: the object that tracks the region's reference count
- * @name: Region name, becomes part of RAMBlock name used in migration stream
- *        must be unique within any device
- * @size: size of the region.
- * @ptr: memory to be mapped; must contain at least @size bytes.
- *
- * Note that this function does not do anything to cause the data in the
- * RAM memory region to be migrated; that is the responsibility of the caller.
- */
-void memory_region_init_ram_ptr(MemoryRegion *mr,
-                                Object *owner,
-                                const char *name,
-                                uint64_t size,
-                                void *ptr);
-
-/**
- * memory_region_init_ram_device_ptr:  Initialize RAM device memory region from
- *                                     a user-provided pointer.
- *
- * A RAM device represents a mapping to a physical device, such as to a PCI
- * MMIO BAR of an vfio-pci assigned device.  The memory region may be mapped
- * into the VM address space and access to the region will modify memory
- * directly.  However, the memory region should not be included in a memory
- * dump (device may not be enabled/mapped at the time of the dump), and
- * operations incompatible with manipulating MMIO should be avoided.  Replaces
- * skip_dump flag.
- *
- * @mr: the #MemoryRegion to be initialized.
- * @owner: the object that tracks the region's reference count
- * @name: the name of the region.
- * @size: size of the region.
- * @ptr: memory to be mapped; must contain at least @size bytes.
- *
- * Note that this function does not do anything to cause the data in the
- * RAM memory region to be migrated; that is the responsibility of the caller.
- * (For RAM device memory regions, migrating the contents rarely makes sense.)
- */
-void memory_region_init_ram_device_ptr(MemoryRegion *mr,
-                                       Object *owner,
-                                       const char *name,
-                                       uint64_t size,
-                                       void *ptr);
 
 /**
  * memory_region_init_alias: Initialize a memory region that aliases all or a
@@ -1629,35 +1469,6 @@ bool memory_region_init_rom_device_nomigrate(MemoryRegion *mr,
                                              const char *name,
                                              uint64_t size,
                                              Error **errp);
-
-/**
- * memory_region_init_iommu: Initialize a memory region of a custom type
- * that translates addresses
- *
- * An IOMMU region translates addresses and forwards accesses to a target
- * memory region.
- *
- * The IOMMU implementation must define a subclass of TYPE_IOMMU_MEMORY_REGION.
- * @_iommu_mr should be a pointer to enough memory for an instance of
- * that subclass, @instance_size is the size of that subclass, and
- * @mrtypename is its name. This function will initialize @_iommu_mr as an
- * instance of the subclass, and its methods will then be called to handle
- * accesses to the memory region. See the documentation of
- * #IOMMUMemoryRegionClass for further details.
- *
- * @_iommu_mr: the #IOMMUMemoryRegion to be initialized
- * @instance_size: the IOMMUMemoryRegion subclass instance size
- * @mrtypename: the type name of the #IOMMUMemoryRegion
- * @owner: the object that tracks the region's reference count
- * @name: used for debugging; not visible to the user or ABI
- * @size: size of the region.
- */
-void memory_region_init_iommu(void *_iommu_mr,
-                              size_t instance_size,
-                              const char *mrtypename,
-                              Object *owner,
-                              const char *name,
-                              uint64_t size);
 
 /**
  * memory_region_init_ram - Initialize RAM memory region.  Accesses into the
@@ -1803,26 +1614,6 @@ static inline bool memory_region_is_romd(MemoryRegion *mr)
 }
 
 /**
- * memory_region_is_protected: check whether a memory region is protected
- *
- * Returns %true if a memory region is protected RAM and cannot be accessed
- * via standard mechanisms, e.g. DMA.
- *
- * @mr: the memory region being queried
- */
-bool memory_region_is_protected(MemoryRegion *mr);
-
-/**
- * memory_region_has_guest_memfd: check whether a memory region has guest_memfd
- *     associated
- *
- * Returns %true if a memory region's ram_block has valid guest_memfd assigned.
- *
- * @mr: the memory region being queried
- */
-bool memory_region_has_guest_memfd(MemoryRegion *mr);
-
-/**
  * memory_region_get_iommu: check whether a memory region is an iommu
  *
  * Returns pointer to IOMMUMemoryRegion if a memory region is an iommu,
@@ -1858,56 +1649,6 @@ static inline IOMMUMemoryRegionClass *memory_region_get_iommu_class_nocheck(
 
 #define memory_region_is_iommu(mr) (memory_region_get_iommu(mr) != NULL)
 
-/**
- * memory_region_iommu_get_min_page_size: get minimum supported page size
- * for an iommu
- *
- * Returns minimum supported page size for an iommu.
- *
- * @iommu_mr: the memory region being queried
- */
-uint64_t memory_region_iommu_get_min_page_size(IOMMUMemoryRegion *iommu_mr);
-
-/**
- * memory_region_notify_iommu: notify a change in an IOMMU translation entry.
- *
- * Note: for any IOMMU implementation, an in-place mapping change
- * should be notified with an UNMAP followed by a MAP.
- *
- * @iommu_mr: the memory region that was changed
- * @iommu_idx: the IOMMU index for the translation table which has changed
- * @event: TLB event with the new entry in the IOMMU translation table.
- *         The entry replaces all old entries for the same virtual I/O address
- *         range.
- */
-void memory_region_notify_iommu(IOMMUMemoryRegion *iommu_mr,
-                                int iommu_idx,
-                                const IOMMUTLBEvent event);
-
-/**
- * memory_region_notify_iommu_one: notify a change in an IOMMU translation
- *                           entry to a single notifier
- *
- * This works just like memory_region_notify_iommu(), but it only
- * notifies a specific notifier, not all of them.
- *
- * @notifier: the notifier to be notified
- * @event: TLB event with the new entry in the IOMMU translation table.
- *         The entry replaces all old entries for the same virtual I/O address
- *         range.
- */
-void memory_region_notify_iommu_one(IOMMUNotifier *notifier,
-                                    const IOMMUTLBEvent *event);
-
-/**
- * memory_region_unmap_iommu_notifier_range: notify a unmap for an IOMMU
- *                                           translation that covers the
- *                                           range of a notifier
- *
- * @notifier: the notifier to be notified
- */
-void memory_region_unmap_iommu_notifier_range(IOMMUNotifier *notifier);
-
 
 /**
  * memory_region_register_iommu_notifier: register a notifier for changes to
@@ -1928,18 +1669,6 @@ int memory_region_register_iommu_notifier(MemoryRegion *mr,
                                           IOMMUNotifier *n, Error **errp);
 
 /**
- * memory_region_iommu_replay: replay existing IOMMU translations to
- * a notifier with the minimum page granularity returned by
- * mr->iommu_ops->get_page_size().
- *
- * Note: this is not related to record-and-replay functionality.
- *
- * @iommu_mr: the memory region to observe
- * @n: the notifier to which to replay iommu mappings
- */
-void memory_region_iommu_replay(IOMMUMemoryRegion *iommu_mr, IOMMUNotifier *n);
-
-/**
  * memory_region_unregister_iommu_notifier: unregister a notifier for
  * changes to IOMMU translation entries.
  *
@@ -1949,32 +1678,6 @@ void memory_region_iommu_replay(IOMMUMemoryRegion *iommu_mr, IOMMUNotifier *n);
  */
 void memory_region_unregister_iommu_notifier(MemoryRegion *mr,
                                              IOMMUNotifier *n);
-
-/**
- * memory_region_iommu_get_attr: return an IOMMU attr if get_attr() is
- * defined on the IOMMU.
- *
- * Returns 0 on success, or a negative errno otherwise. In particular,
- * -EINVAL indicates that the IOMMU does not support the requested
- * attribute.
- *
- * @iommu_mr: the memory region
- * @attr: the requested attribute
- * @data: a pointer to the requested attribute data
- */
-int memory_region_iommu_get_attr(IOMMUMemoryRegion *iommu_mr,
-                                 enum IOMMUMemoryRegionAttr attr,
-                                 void *data);
-
-/**
- * memory_region_iommu_attrs_to_index: return the IOMMU index to
- * use for translations with the given memory transaction attributes.
- *
- * @iommu_mr: the memory region
- * @attrs: the memory transaction attributes
- */
-int memory_region_iommu_attrs_to_index(IOMMUMemoryRegion *iommu_mr,
-                                       MemTxAttrs attrs);
 
 /**
  * memory_region_iommu_num_indexes: return the total number of IOMMU
@@ -1992,16 +1695,6 @@ int memory_region_iommu_num_indexes(IOMMUMemoryRegion *iommu_mr);
  * @mr: the memory region being queried
  */
 const char *memory_region_name(const MemoryRegion *mr);
-
-/**
- * memory_region_is_logging: return whether a memory region is logging writes
- *
- * Returns %true if the memory region is logging writes for the given client
- *
- * @mr: the memory region being queried
- * @client: the client being queried
- */
-bool memory_region_is_logging(MemoryRegion *mr, uint8_t client);
 
 /**
  * memory_region_get_dirty_log_mask: return the clients for which a
@@ -2094,26 +1787,6 @@ void *memory_region_get_ram_ptr(MemoryRegion *mr);
  */
 void memory_region_ram_resize(MemoryRegion *mr, ram_addr_t newsize,
                               Error **errp);
-
-/**
- * memory_region_msync: Synchronize selected address range of
- * a memory mapped region
- *
- * @mr: the memory region to be msync
- * @addr: the initial address of the range to be sync
- * @size: the size of the range to be sync
- */
-void memory_region_msync(MemoryRegion *mr, hwaddr addr, hwaddr size);
-
-/**
- * memory_region_writeback: Trigger cache writeback for
- * selected address range
- *
- * @mr: the memory region to be updated
- * @addr: the initial address of the range to be written back
- * @size: the size of the range to be written back
- */
-void memory_region_writeback(MemoryRegion *mr, hwaddr addr, hwaddr size);
 
 /**
  * memory_region_set_log: Turn dirty logging on or off for a region.
@@ -2227,39 +1900,6 @@ bool memory_region_snapshot_get_dirty(MemoryRegion *mr,
                                       hwaddr addr, hwaddr size);
 
 /**
- * memory_region_reset_dirty: Mark a range of pages as clean, for a specified
- *                            client.
- *
- * Marks a range of pages as no longer dirty.
- *
- * @mr: the region being updated.
- * @addr: the start of the subrange being cleaned.
- * @size: the size of the subrange being cleaned.
- * @client: the user of the logging information; %DIRTY_MEMORY_MIGRATION or
- *          %DIRTY_MEMORY_VGA.
- */
-void memory_region_reset_dirty(MemoryRegion *mr, hwaddr addr,
-                               hwaddr size, unsigned client);
-
-/**
- * memory_region_flush_rom_device: Mark a range of pages dirty and invalidate
- *                                 TBs (for self-modifying code).
- *
- * The MemoryRegionOps->write() callback of a ROM device must use this function
- * to mark byte ranges that have been modified internally, such as by directly
- * accessing the memory returned by memory_region_get_ram_ptr().
- *
- * This function marks the range dirty and invalidates TBs so that TCG can
- * detect self-modifying code.
- *
- * @mr: the region being flushed.
- * @addr: the start, relative to the start of the region, of the range being
- *        flushed.
- * @size: the size, in bytes, of the range being flushed.
- */
-void memory_region_flush_rom_device(MemoryRegion *mr, hwaddr addr, hwaddr size);
-
-/**
  * memory_region_set_readonly: Turn a memory region read-only (or read-write)
  *
  * Allows a memory region to be marked as read-only (turning it into a ROM).
@@ -2269,17 +1909,6 @@ void memory_region_flush_rom_device(MemoryRegion *mr, hwaddr addr, hwaddr size);
  * @readonly: whether the region is to be ROM or RAM.
  */
 void memory_region_set_readonly(MemoryRegion *mr, bool readonly);
-
-/**
- * memory_region_set_nonvolatile: Turn a memory region non-volatile
- *
- * Allows a memory region to be marked as non-volatile.
- * only useful on RAM regions.
- *
- * @mr: the region being updated.
- * @nonvolatile: whether the region is to be non-volatile.
- */
-void memory_region_set_nonvolatile(MemoryRegion *mr, bool nonvolatile);
 
 /**
  * memory_region_rom_device_set_romd: enable/disable ROMD mode
@@ -2294,17 +1923,6 @@ void memory_region_set_nonvolatile(MemoryRegion *mr, bool nonvolatile);
  * @romd_mode: %true to put the region into ROMD mode
  */
 void memory_region_rom_device_set_romd(MemoryRegion *mr, bool romd_mode);
-
-/**
- * memory_region_set_coalescing: Enable memory coalescing for the region.
- *
- * Enabled writes to a region to be queued for later processing. MMIO ->write
- * callbacks may be delayed until a non-coalesced MMIO is issued.
- * Only useful for IO regions.  Roughly similar to write-combining hardware.
- *
- * @mr: the memory region to be write coalesced
- */
-void memory_region_set_coalescing(MemoryRegion *mr);
 
 /**
  * memory_region_add_coalescing: Enable memory coalescing for a sub-range of
@@ -2343,19 +1961,6 @@ void memory_region_clear_coalescing(MemoryRegion *mr);
  * @mr: the memory region to be updated.
  */
 void memory_region_set_flush_coalesced(MemoryRegion *mr);
-
-/**
- * memory_region_clear_flush_coalesced: Disable memory coalescing flush before
- *                                      accesses.
- *
- * Clear the automatic coalesced MMIO flushing enabled via
- * memory_region_set_flush_coalesced. Note that this service has no effect on
- * memory regions that have MMIO coalescing enabled for themselves. For them,
- * automatic flushing will stop once coalescing is disabled.
- *
- * @mr: the memory region to be updated.
- */
-void memory_region_clear_flush_coalesced(MemoryRegion *mr);
 
 /**
  * memory_region_enable_lockless_io: Enable lockless (BQL free) acceess.
@@ -2486,17 +2091,6 @@ void memory_region_del_subregion(MemoryRegion *mr,
 void memory_region_set_enabled(MemoryRegion *mr, bool enabled);
 
 /*
- * memory_region_set_address: dynamically update the address of a region
- *
- * Dynamically updates the address of a region, relative to its container.
- * May be used on regions are currently part of a memory hierarchy.
- *
- * @mr: the region to be updated
- * @addr: new address, relative to container region
- */
-void memory_region_set_address(MemoryRegion *mr, hwaddr addr);
-
-/*
  * memory_region_set_size: dynamically update the size of a region.
  *
  * Dynamically updates the size of a region.
@@ -2505,49 +2099,6 @@ void memory_region_set_address(MemoryRegion *mr, hwaddr addr);
  * @size: used size of the region.
  */
 void memory_region_set_size(MemoryRegion *mr, uint64_t size);
-
-/*
- * memory_region_set_alias_offset: dynamically update a memory alias's offset
- *
- * Dynamically updates the offset into the target region that an alias points
- * to, as if the fourth argument to memory_region_init_alias() has changed.
- *
- * @mr: the #MemoryRegion to be updated; should be an alias.
- * @offset: the new offset into the target memory region
- */
-void memory_region_set_alias_offset(MemoryRegion *mr,
-                                    hwaddr offset);
-
-/*
- * memory_region_set_unmergeable: Set a memory region unmergeable
- *
- * Mark a memory region unmergeable, resulting in the memory region (or
- * everything contained in a memory region container) not getting merged when
- * simplifying the address space and notifying memory listeners. Consequently,
- * memory listeners will never get notified about ranges that are larger than
- * the original memory regions.
- *
- * This is primarily useful when multiple aliases to a RAM memory region are
- * mapped into a memory region container, and updates (e.g., enable/disable or
- * map/unmap) of individual memory region aliases are not supposed to affect
- * other memory regions in the same container.
- *
- * @mr: the #MemoryRegion to be updated
- * @unmergeable: whether to mark the #MemoryRegion unmergeable
- */
-void memory_region_set_unmergeable(MemoryRegion *mr, bool unmergeable);
-
-/**
- * memory_region_present: checks if an address relative to a @container
- * translates into #MemoryRegion within @container
- *
- * Answer whether a #MemoryRegion within @container covers the address
- * @addr.
- *
- * @container: a #MemoryRegion within which @addr is a relative address
- * @addr: the area within @container to be searched
- */
-bool memory_region_present(MemoryRegion *container, hwaddr addr);
 
 /**
  * memory_region_is_mapped: returns true if #MemoryRegion is mapped
@@ -2767,16 +2318,6 @@ void address_space_destroy(AddressSpace *as);
 void address_space_destroy_free(AddressSpace *as);
 
 /**
- * address_space_remove_listeners: unregister all listeners of an address space
- *
- * Removes all callbacks previously registered with memory_listener_register()
- * for @as.
- *
- * @as: an initialized #AddressSpace
- */
-void address_space_remove_listeners(AddressSpace *as);
-
-/**
  * address_space_rw: read from or write to an address space.
  *
  * Return a MemTxResult indicating whether the operation succeeded
@@ -2949,31 +2490,6 @@ static inline void address_space_stb_cached(MemoryRegionCache *cache,
 #define ARG1_DECL    MemoryRegionCache *cache
 #include "exec/memory_ldst_phys.h.inc"
 
-/* address_space_cache_init: prepare for repeated access to a physical
- * memory region
- *
- * @cache: #MemoryRegionCache to be filled
- * @as: #AddressSpace to be accessed
- * @addr: address within that address space
- * @len: length of buffer
- * @is_write: indicates the transfer direction
- *
- * Will only work with RAM, and may map a subset of the requested range by
- * returning a value that is less than @len.  On failure, return a negative
- * errno value.
- *
- * Because it only works with RAM, this function can be used for
- * read-modify-write operations.  In this case, is_write should be %true.
- *
- * Note that addresses passed to the address_space_*_cached functions
- * are relative to @addr.
- */
-int64_t address_space_cache_init(MemoryRegionCache *cache,
-                                 AddressSpace *as,
-                                 hwaddr addr,
-                                 hwaddr len,
-                                 bool is_write);
-
 /**
  * address_space_cache_init_empty: Initialize empty #MemoryRegionCache
  *
@@ -2989,32 +2505,7 @@ static inline void address_space_cache_init_empty(MemoryRegionCache *cache)
     cache->fv = NULL;
 }
 
-/**
- * address_space_cache_invalidate: complete a write to a #MemoryRegionCache
- *
- * @cache: The #MemoryRegionCache to operate on.
- * @addr: The first physical address that was written, relative to the
- * address that was passed to @address_space_cache_init.
- * @access_len: The number of bytes that were written starting at @addr.
- */
-void address_space_cache_invalidate(MemoryRegionCache *cache,
-                                    hwaddr addr,
-                                    hwaddr access_len);
-
-/**
- * address_space_cache_destroy: free a #MemoryRegionCache
- *
- * @cache: The #MemoryRegionCache whose memory should be released.
- */
-void address_space_cache_destroy(MemoryRegionCache *cache);
-
 void address_space_flush_icache_range(AddressSpace *as, hwaddr addr, hwaddr len);
-
-/* address_space_get_iotlb_entry: translate an address into an IOTLB
- * entry. Should be called from an RCU critical section.
- */
-IOMMUTLBEntry address_space_get_iotlb_entry(AddressSpace *as, hwaddr addr,
-                                            bool is_write, MemTxAttrs attrs);
 
 /* address_space_translate: translate an address range into an address space
  * into a MemoryRegion and an address range into that section.  Should be

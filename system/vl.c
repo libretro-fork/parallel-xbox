@@ -967,11 +967,6 @@ static void parse_display_qapi(const char *str)
     visit_free(v);
 }
 
-DisplayOptions *qmp_query_display_options(Error **errp)
-{
-    return QAPI_CLONE(DisplayOptions, &dpy);
-}
-
 static void parse_display(const char *p)
 {
     if (is_help_option(p)) {

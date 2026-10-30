@@ -539,7 +539,6 @@ void qdev_set_legacy_instance_id(DeviceState *dev, int alias_id,
 HotplugHandler *qdev_get_bus_hotplug_handler(DeviceState *dev);
 HotplugHandler *qdev_get_machine_hotplug_handler(DeviceState *dev);
 bool qdev_hotplug_allowed(DeviceState *dev, BusState *bus, Error **errp);
-bool qdev_hotunplug_allowed(DeviceState *dev, Error **errp);
 
 /**
  * qdev_get_hotplug_handler() - Get handler responsible for device wiring
@@ -552,39 +551,9 @@ bool qdev_hotunplug_allowed(DeviceState *dev, Error **errp);
  * or NULL if there aren't any.
  */
 HotplugHandler *qdev_get_hotplug_handler(DeviceState *dev);
-void qdev_unplug(DeviceState *dev, Error **errp);
-int qdev_sync_config(DeviceState *dev, Error **errp);
 void qdev_simple_device_unplug_cb(HotplugHandler *hotplug_dev,
                                   DeviceState *dev, Error **errp);
 void qdev_machine_creation_done(void);
-
-/**
- * qdev_add_unplug_blocker: Add an unplug blocker to a device
- *
- * @dev: Device to be blocked from unplug
- * @reason: Reason for blocking
- */
-void qdev_add_unplug_blocker(DeviceState *dev, Error *reason);
-
-/**
- * qdev_del_unplug_blocker: Remove an unplug blocker from a device
- *
- * @dev: Device to be unblocked
- * @reason: Pointer to the Error used with qdev_add_unplug_blocker.
- *          Used as a handle to lookup the blocker for deletion.
- */
-void qdev_del_unplug_blocker(DeviceState *dev, Error *reason);
-
-/**
- * qdev_unplug_blocked: Confirm if a device is blocked from unplug
- *
- * @dev: Device to be tested
- * @errp: The reasons why the device is blocked, if any
- *
- * Returns: true (also setting @errp) if device is blocked from unplug,
- * false otherwise
- */
-bool qdev_unplug_blocked(DeviceState *dev, Error **errp);
 
 /**
  * typedef GpioPolarity - Polarity of a GPIO line
@@ -705,27 +674,6 @@ void qdev_connect_gpio_out_named(DeviceState *dev, const char *name, int n,
                                  qemu_irq input_pin);
 
 /**
- * qdev_get_gpio_out_connector: Get the qemu_irq connected to an output GPIO
- * @dev: Device whose output GPIO we are interested in
- * @name: Name of the output GPIO array
- * @n: Number of the output GPIO line within that array
- *
- * Returns whatever qemu_irq is currently connected to the specified
- * output GPIO line of @dev. This will be NULL if the output GPIO line
- * has never been wired up to the anything.  Note that the qemu_irq
- * returned does not belong to @dev -- it will be the input GPIO or
- * IRQ of whichever device the board code has connected up to @dev's
- * output GPIO.
- *
- * You probably don't need to use this function -- it is used only
- * by the platform-bus subsystem.
- *
- * Return: qemu_irq associated with GPIO or NULL if un-wired.
- */
-qemu_irq qdev_get_gpio_out_connector(const DeviceState *dev,
-                                     const char *name, int n);
-
-/**
  * qdev_intercept_gpio_out: Intercept an existing GPIO connection
  * @dev: Device to intercept the outbound GPIO line from
  * @icpt: New qemu_irq to connect instead
@@ -842,28 +790,6 @@ static inline void qdev_init_gpio_in_named(DeviceState *dev,
 {
     qdev_init_gpio_in_named_with_opaque(dev, handler, dev, name, n);
 }
-
-/**
- * qdev_pass_gpios: create GPIO lines on container which pass through to device
- * @dev: Device which has GPIO lines
- * @container: Container device which needs to expose them
- * @name: Name of GPIO array to pass through (NULL for the anonymous GPIO array)
- *
- * In QEMU, complicated devices like SoCs are often modelled with a
- * "container" QOM device which itself contains other QOM devices and
- * which wires them up appropriately. This function allows the container
- * to create GPIO arrays on itself which simply pass through to a GPIO
- * array of one of its internal devices.
- *
- * If @dev has both input and output GPIOs named @name then both will
- * be passed through. It is not possible to pass a subset of the array
- * with this function.
- *
- * To users of the container device, the GPIO array created on @container
- * behaves exactly like any other.
- */
-void qdev_pass_gpios(DeviceState *dev, DeviceState *container,
-                     const char *name);
 
 BusState *qdev_get_parent_bus(const DeviceState *dev);
 

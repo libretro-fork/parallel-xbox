@@ -32,18 +32,6 @@ bool user_creatable_complete(UserCreatable *uc, Error **errp)
     return !*errp;
 }
 
-bool user_creatable_can_be_deleted(UserCreatable *uc)
-{
-
-    UserCreatableClass *ucc = USER_CREATABLE_GET_CLASS(uc);
-
-    if (ucc->can_be_deleted) {
-        return ucc->can_be_deleted(uc);
-    } else {
-        return true;
-    }
-}
-
 static void object_set_properties_from_qdict(Object *obj, const QDict *qdict,
                                              Visitor *v, Error **errp)
 {
@@ -265,110 +253,6 @@ bool user_creatable_print_help(const char *type, QemuOpts *opts)
     }
 
     return false;
-}
-
-static void user_creatable_print_help_from_qdict(QDict *args)
-{
-    const char *type = qdict_get_try_str(args, "qom-type");
-
-    if (!type || !type_print_class_properties(type)) {
-        user_creatable_print_types();
-    }
-}
-
-ObjectOptions *user_creatable_parse_str(const char *str, Error **errp)
-{
-    ERRP_GUARD();
-    QObject *obj;
-    bool help;
-    Visitor *v;
-    ObjectOptions *options;
-
-    if (str[0] == '{') {
-        obj = qobject_from_json(str, errp);
-        if (!obj) {
-            return NULL;
-        }
-        v = qobject_input_visitor_new(obj);
-    } else {
-        QDict *args = keyval_parse(str, "qom-type", &help, errp);
-        if (*errp) {
-            return NULL;
-        }
-        if (help) {
-            user_creatable_print_help_from_qdict(args);
-            qobject_unref(args);
-            return NULL;
-        }
-
-        obj = QOBJECT(args);
-        v = qobject_input_visitor_new_keyval(obj);
-    }
-
-    visit_type_ObjectOptions(v, NULL, &options, errp);
-    visit_free(v);
-    qobject_unref(obj);
-
-    return options;
-}
-
-bool user_creatable_add_from_str(const char *str, Error **errp)
-{
-    ERRP_GUARD();
-    ObjectOptions *options;
-
-    options = user_creatable_parse_str(str, errp);
-    if (!options) {
-        return false;
-    }
-
-    user_creatable_add_qapi(options, errp);
-    qapi_free_ObjectOptions(options);
-    return !*errp;
-}
-
-void user_creatable_process_cmdline(const char *cmdline)
-{
-    if (!user_creatable_add_from_str(cmdline, &error_fatal)) {
-        /* Help was printed */
-        exit(EXIT_SUCCESS);
-    }
-}
-
-bool user_creatable_del(const char *id, Error **errp)
-{
-    QemuOptsList *opts_list;
-    Object *container;
-    Object *obj;
-
-    container = object_get_objects_root();
-    obj = object_resolve_path_component(container, id);
-    if (!obj) {
-        error_setg(errp, "object '%s' not found", id);
-        return false;
-    }
-
-    if (!user_creatable_can_be_deleted(USER_CREATABLE(obj))) {
-        error_setg(errp, "object '%s' is in use, can not be deleted", id);
-        return false;
-    }
-
-    /*
-     * if object was defined on the command-line, remove its corresponding
-     * option group entry
-     */
-    opts_list = qemu_find_opts_err("object", NULL);
-    if (opts_list) {
-        qemu_opts_del(qemu_opts_find(opts_list, id));
-    }
-
-    object_unparent(obj);
-    return true;
-}
-
-void user_creatable_cleanup(void)
-{
-    object_unparent(object_get_objects_root());
 }
 
 static void register_types(void)

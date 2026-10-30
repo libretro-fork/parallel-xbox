@@ -35,9 +35,6 @@ AddressSpaceDispatch *address_space_dispatch_new(FlatView *fv);
 void address_space_dispatch_compact(AddressSpaceDispatch *d);
 void address_space_dispatch_free(AddressSpaceDispatch *d);
 
-void mtree_print_dispatch(struct AddressSpaceDispatch *d,
-                          MemoryRegion *root);
-
 /* returns true if end is big endian. */
 static inline bool devend_big_endian(enum device_endian end)
 {

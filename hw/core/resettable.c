@@ -72,14 +72,6 @@ void resettable_release_reset(Object *obj, ResetType type)
     trace_resettable_reset_release_end(obj);
 }
 
-bool resettable_is_in_reset(Object *obj)
-{
-    ResettableClass *rc = RESETTABLE_GET_CLASS(obj);
-    ResettableState *s = rc->get_state(obj);
-
-    return s->count > 0;
-}
-
 /**
  * resettable_child_foreach:
  * helper to avoid checking the existence of the method.
@@ -239,11 +231,6 @@ void resettable_change_parent(Object *obj, Object *newp, Object *oldp)
     for (unsigned i = newp_count; i < oldp_count; i++) {
         resettable_release_reset(obj, RESET_TYPE_COLD);
     }
-}
-
-void resettable_cold_reset_fn(void *opaque)
-{
-    resettable_reset((Object *) opaque, RESET_TYPE_COLD);
 }
 
 void resettable_class_set_parent_phases(ResettableClass *rc,

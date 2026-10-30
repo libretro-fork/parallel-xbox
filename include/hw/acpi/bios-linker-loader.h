@@ -7,8 +7,4 @@ typedef struct BIOSLinker {
     GArray *file_list;
 } BIOSLinker;
 
-void bios_linker_loader_add_checksum(BIOSLinker *linker, const char *file,
-                                     unsigned start_offset, unsigned size,
-                                     unsigned checksum_offset);
-
 #endif

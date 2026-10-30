@@ -239,30 +239,6 @@ void qio_task_run_in_thread(QIOTask *task,
                             GMainContext *context);
 
 
-/**
- * qio_task_wait_thread:
- * @task: the task struct
- *
- * Wait for completion of a task that was previously
- * invoked using qio_task_run_in_thread. This MUST
- * ONLY be invoked if the task has not already
- * completed, since after the completion callback
- * is invoked, @task will have been freed.
- *
- * To avoid racing with execution of the completion
- * callback provided with qio_task_new, this method
- * MUST ONLY be invoked from the thread that is
- * running the main loop associated with @context
- * parameter to qio_task_run_in_thread.
- *
- * When the thread has completed, the completion
- * callback provided to qio_task_new will be invoked.
- * When that callback returns @task will be freed,
- * so @task must not be referenced after this
- * method completes.
- */
-void qio_task_wait_thread(QIOTask *task);
-
 
 /**
  * qio_task_complete:
@@ -292,45 +268,7 @@ void qio_task_set_error(QIOTask *task,
                         Error *err);
 
 
-/**
- * qio_task_propagate_error:
- * @task: the task struct
- * @errp: pointer to a NULL-initialized error object
- *
- * Propagate the error associated with @task
- * into @errp.
- *
- * Returns: true if an error was propagated, false otherwise
- */
-bool qio_task_propagate_error(QIOTask *task,
-                              Error **errp);
 
-
-/**
- * qio_task_set_result_pointer:
- * @task: the task struct
- * @result: pointer to the result data
- *
- * Associate an opaque result with the task,
- * which can later be retrieved with the
- * qio_task_get_result_pointer() method
- *
- */
-void qio_task_set_result_pointer(QIOTask *task,
-                                 gpointer result,
-                                 GDestroyNotify notify);
-
-
-/**
- * qio_task_get_result_pointer:
- * @task: the task struct
- *
- * Retrieve the opaque result data associated
- * with the task, if any.
- *
- * Returns: the task result, or NULL
- */
-gpointer qio_task_get_result_pointer(QIOTask *task);
 
 
 /**

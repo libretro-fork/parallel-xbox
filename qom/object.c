@@ -790,85 +790,7 @@ Object *object_new(const char *typename)
 }
 
 
-Object *object_new_with_props(const char *typename,
-                              Object *parent,
-                              const char *id,
-                              Error **errp,
-                              ...)
-{
-    va_list vargs;
-    Object *obj;
 
-    va_start(vargs, errp);
-    obj = object_new_with_propv(typename, parent, id, errp, vargs);
-    va_end(vargs);
-
-    return obj;
-}
-
-
-Object *object_new_with_propv(const char *typename,
-                              Object *parent,
-                              const char *id,
-                              Error **errp,
-                              va_list vargs)
-{
-    Object *obj;
-    ObjectClass *klass;
-    UserCreatable *uc;
-
-    klass = object_class_by_name(typename);
-    if (!klass) {
-        error_setg(errp, "invalid object type: %s", typename);
-        return NULL;
-    }
-
-    if (object_class_is_abstract(klass)) {
-        error_setg(errp, "object type '%s' is abstract", typename);
-        return NULL;
-    }
-    obj = object_new_with_type(klass->type);
-
-    if (!object_set_propv(obj, errp, vargs)) {
-        goto error;
-    }
-
-    if (id != NULL) {
-        object_property_add_child(parent, id, obj);
-    }
-
-    uc = (UserCreatable *)object_dynamic_cast(obj, TYPE_USER_CREATABLE);
-    if (uc) {
-        if (!user_creatable_complete(uc, errp)) {
-            if (id != NULL) {
-                object_unparent(obj);
-            }
-            goto error;
-        }
-    }
-
-    object_unref(obj);
-    return obj;
-
- error:
-    object_unref(obj);
-    return NULL;
-}
-
-
-bool object_set_props(Object *obj,
-                     Error **errp,
-                     ...)
-{
-    va_list vargs;
-    bool ret;
-
-    va_start(vargs, errp);
-    ret = object_set_propv(obj, errp, vargs);
-    va_end(vargs);
-
-    return ret;
-}
 
 
 bool object_set_propv(Object *obj,
@@ -1390,17 +1312,6 @@ ObjectProperty *object_class_property_find(ObjectClass *klass, const char *name)
     return g_hash_table_lookup(klass->properties, name);
 }
 
-ObjectProperty *object_class_property_find_err(ObjectClass *klass,
-                                               const char *name,
-                                               Error **errp)
-{
-    ObjectProperty *prop = object_class_property_find(klass, name);
-    if (!prop) {
-        error_setg(errp, "Property '.%s' not found", name);
-    }
-    return prop;
-}
-
 
 void object_property_del(Object *obj, const char *name)
 {
@@ -1659,38 +1570,6 @@ typedef struct EnumProperty {
     void (*set)(Object *, int, Error **);
 } EnumProperty;
 
-int object_property_get_enum(Object *obj, const char *name,
-                             const char *typename, Error **errp)
-{
-    char *str;
-    int ret;
-    ObjectProperty *prop = object_property_find_err(obj, name, errp);
-    EnumProperty *enumprop;
-
-    if (prop == NULL) {
-        return -1;
-    }
-
-    if (!g_str_equal(prop->type, typename)) {
-        error_setg(errp, "Property %s on %s is not '%s' enum type",
-                   name, object_class_get_name(
-                       object_get_class(obj)), typename);
-        return -1;
-    }
-
-    enumprop = prop->opaque;
-
-    str = object_property_get_str(obj, name, errp);
-    if (!str) {
-        return -1;
-    }
-
-    ret = qapi_enum_parse(enumprop->lookup, str, -1, errp);
-    g_free(str);
-
-    return ret;
-}
-
 bool object_property_parse(Object *obj, const char *name,
                            const char *string, Error **errp)
 {
@@ -1699,24 +1578,6 @@ bool object_property_parse(Object *obj, const char *name,
 
     visit_free(v);
     return ok;
-}
-
-char *object_property_print(Object *obj, const char *name, bool human,
-                            Error **errp)
-{
-    Visitor *v;
-    char *string = NULL;
-
-    v = string_output_visitor_new(human, &string);
-    if (!object_property_get(obj, name, v, errp)) {
-        goto out;
-    }
-
-    visit_complete(v, &string);
-
-out:
-    visit_free(v);
-    return string;
 }
 
 const char *object_property_get_type(Object *obj, const char *name, Error **errp)
@@ -1775,17 +1636,6 @@ Object *object_get_root(void)
 Object *object_get_objects_root(void)
 {
     return object_get_container("objects");
-}
-
-Object *object_get_internal_root(void)
-{
-    static Object *internal_root;
-
-    if (!internal_root) {
-        internal_root = object_new(TYPE_CONTAINER);
-    }
-
-    return internal_root;
 }
 
 static void object_get_child_property(Object *obj, Visitor *v,
@@ -2235,33 +2085,6 @@ Object *object_resolve_path(const char *path, bool *ambiguous)
     return object_resolve_path_type(path, TYPE_OBJECT, ambiguous);
 }
 
-Object *object_resolve_path_at(Object *parent, const char *path)
-{
-    g_auto(GStrv) parts = g_strsplit(path, "/", 0);
-
-    if (*path == '/') {
-        return object_resolve_abs_path(object_get_root(), parts + 1,
-                                       TYPE_OBJECT);
-    }
-    return object_resolve_abs_path(parent, parts, TYPE_OBJECT);
-}
-
-Object *object_resolve_type_unambiguous(const char *typename, Error **errp)
-{
-    bool ambig = false;
-    Object *o = object_resolve_path_type("", typename, &ambig);
-
-    if (ambig) {
-        error_setg(errp, "More than one object of type %s", typename);
-        return NULL;
-    }
-    if (!o) {
-        error_setg(errp, "No object found of type %s", typename);
-        return NULL;
-    }
-    return o;
-}
-
 typedef struct StringProperty
 {
     char *(*get)(Object *, Error **);
@@ -2438,26 +2261,6 @@ static void property_set_enum(Object *obj, Visitor *v, const char *name,
 }
 
 ObjectProperty *
-object_property_add_enum(Object *obj, const char *name,
-                         const char *typename,
-                         const QEnumLookup *lookup,
-                         int (*get)(Object *, Error **),
-                         void (*set)(Object *, int, Error **))
-{
-    EnumProperty *prop = g_malloc(sizeof(*prop));
-
-    prop->lookup = lookup;
-    prop->get = get;
-    prop->set = set;
-
-    return object_property_add(obj, name, typename,
-                               get ? property_get_enum : NULL,
-                               set ? property_set_enum : NULL,
-                               property_release_data,
-                               prop);
-}
-
-ObjectProperty *
 object_class_property_add_enum(ObjectClass *klass, const char *name,
                                     const char *typename,
                                     const QEnumLookup *lookup,
@@ -2539,66 +2342,6 @@ static char *object_get_type(Object *obj, Error **errp)
     return g_strdup(object_get_typename(obj));
 }
 
-static void property_get_uint8_ptr(Object *obj, Visitor *v, const char *name,
-                                   void *opaque, Error **errp)
-{
-    uint8_t value = *(uint8_t *)opaque;
-    visit_type_uint8(v, name, &value, errp);
-}
-
-static void property_set_uint8_ptr(Object *obj, Visitor *v, const char *name,
-                                   void *opaque, Error **errp)
-{
-    uint8_t *field = opaque;
-    uint8_t value;
-
-    if (!visit_type_uint8(v, name, &value, errp)) {
-        return;
-    }
-
-    *field = value;
-}
-
-static void property_get_uint16_ptr(Object *obj, Visitor *v, const char *name,
-                                    void *opaque, Error **errp)
-{
-    uint16_t value = *(uint16_t *)opaque;
-    visit_type_uint16(v, name, &value, errp);
-}
-
-static void property_set_uint16_ptr(Object *obj, Visitor *v, const char *name,
-                                    void *opaque, Error **errp)
-{
-    uint16_t *field = opaque;
-    uint16_t value;
-
-    if (!visit_type_uint16(v, name, &value, errp)) {
-        return;
-    }
-
-    *field = value;
-}
-
-static void property_get_uint32_ptr(Object *obj, Visitor *v, const char *name,
-                                    void *opaque, Error **errp)
-{
-    uint32_t value = *(uint32_t *)opaque;
-    visit_type_uint32(v, name, &value, errp);
-}
-
-static void property_set_uint32_ptr(Object *obj, Visitor *v, const char *name,
-                                    void *opaque, Error **errp)
-{
-    uint32_t *field = opaque;
-    uint32_t value;
-
-    if (!visit_type_uint32(v, name, &value, errp)) {
-        return;
-    }
-
-    *field = value;
-}
-
 static void property_get_uint64_ptr(Object *obj, Visitor *v, const char *name,
                                     void *opaque, Error **errp)
 {
@@ -2617,66 +2360,6 @@ static void property_set_uint64_ptr(Object *obj, Visitor *v, const char *name,
     }
 
     *field = value;
-}
-
-ObjectProperty *
-object_property_add_uint8_ptr(Object *obj, const char *name,
-                              const uint8_t *v,
-                              ObjectPropertyFlags flags)
-{
-    ObjectPropertyAccessor *getter = NULL;
-    ObjectPropertyAccessor *setter = NULL;
-
-    if ((flags & OBJ_PROP_FLAG_READ) == OBJ_PROP_FLAG_READ) {
-        getter = property_get_uint8_ptr;
-    }
-
-    if ((flags & OBJ_PROP_FLAG_WRITE) == OBJ_PROP_FLAG_WRITE) {
-        setter = property_set_uint8_ptr;
-    }
-
-    return object_property_add(obj, name, "uint8",
-                               getter, setter, NULL, (void *)v);
-}
-
-ObjectProperty *
-object_property_add_uint16_ptr(Object *obj, const char *name,
-                               const uint16_t *v,
-                               ObjectPropertyFlags flags)
-{
-    ObjectPropertyAccessor *getter = NULL;
-    ObjectPropertyAccessor *setter = NULL;
-
-    if ((flags & OBJ_PROP_FLAG_READ) == OBJ_PROP_FLAG_READ) {
-        getter = property_get_uint16_ptr;
-    }
-
-    if ((flags & OBJ_PROP_FLAG_WRITE) == OBJ_PROP_FLAG_WRITE) {
-        setter = property_set_uint16_ptr;
-    }
-
-    return object_property_add(obj, name, "uint16",
-                               getter, setter, NULL, (void *)v);
-}
-
-ObjectProperty *
-object_property_add_uint32_ptr(Object *obj, const char *name,
-                               const uint32_t *v,
-                               ObjectPropertyFlags flags)
-{
-    ObjectPropertyAccessor *getter = NULL;
-    ObjectPropertyAccessor *setter = NULL;
-
-    if ((flags & OBJ_PROP_FLAG_READ) == OBJ_PROP_FLAG_READ) {
-        getter = property_get_uint32_ptr;
-    }
-
-    if ((flags & OBJ_PROP_FLAG_WRITE) == OBJ_PROP_FLAG_WRITE) {
-        setter = property_set_uint32_ptr;
-    }
-
-    return object_property_add(obj, name, "uint32",
-                               getter, setter, NULL, (void *)v);
 }
 
 ObjectProperty *

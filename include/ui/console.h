@@ -353,11 +353,7 @@ void graphic_hw_gl_block(QemuConsole *con, bool block);
 
 void qemu_console_early_init(void);
 
-QemuConsole *qemu_console_lookup_by_device(DeviceState *dev, uint32_t head);
-QemuConsole *qemu_console_lookup_by_device_name(const char *device_id,
-                                                uint32_t head, Error **errp);
 bool qemu_console_is_visible(QemuConsole *con);
-int qemu_console_get_index(QemuConsole *con);
 uint32_t qemu_console_get_head(QemuConsole *con);
 int qemu_console_get_width(QemuConsole *con, int fallback);
 int qemu_console_get_height(QemuConsole *con, int fallback);

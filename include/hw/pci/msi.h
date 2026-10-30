@@ -31,7 +31,6 @@ struct MSIMessage {
 extern bool msi_nonbroken;
 
 MSIMessage msi_get_message(PCIDevice *dev, unsigned int vector);
-bool msi_enabled(const PCIDevice *dev);
 void msi_set_enabled(PCIDevice *dev);
 void msi_reset(PCIDevice *dev);
 bool msi_is_masked(const PCIDevice *dev, unsigned int vector);

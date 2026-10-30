@@ -529,43 +529,6 @@ static MemoryRegionSection flatview_do_translate(FlatView *fv,
 }
 
 /* Called from RCU critical section */
-IOMMUTLBEntry address_space_get_iotlb_entry(AddressSpace *as, hwaddr addr,
-                                            bool is_write, MemTxAttrs attrs)
-{
-    MemoryRegionSection section;
-    hwaddr xlat, page_mask;
-
-    /*
-     * This can never be MMIO, and we don't really care about plen,
-     * but page mask.
-     */
-    section = flatview_do_translate(address_space_to_flatview(as), addr, &xlat,
-                                    NULL, &page_mask, is_write, false, &as,
-                                    attrs);
-
-    /* Illegal translation */
-    if (section.mr == &io_mem_unassigned) {
-        goto iotlb_fail;
-    }
-
-    /* Convert memory region offset into address space offset */
-    xlat += section.offset_within_address_space -
-        section.offset_within_region;
-
-    return (IOMMUTLBEntry) {
-        .target_as = as,
-        .iova = addr & ~page_mask,
-        .translated_addr = xlat & ~page_mask,
-        .addr_mask = page_mask,
-        /* IOTLBs are for DMAs, and DMA only allows on RAMs. */
-        .perm = IOMMU_RW,
-    };
-
-iotlb_fail:
-    return (IOMMUTLBEntry) {0};
-}
-
-/* Called from RCU critical section */
 MemoryRegion *flatview_translate(FlatView *fv, hwaddr addr, hwaddr *xlat,
                                  hwaddr *plen, bool is_write,
                                  MemTxAttrs attrs)
@@ -1652,87 +1615,6 @@ static int64_t get_file_align(int fd)
     return align;
 }
 
-static int file_ram_open(const char *path,
-                         const char *region_name,
-                         bool readonly,
-                         bool *created)
-{
-    char *filename;
-    char *sanitized_name;
-    char *c;
-    int fd = -1;
-
-    *created = false;
-    for (;;) {
-        fd = open(path, readonly ? O_RDONLY : O_RDWR);
-        if (fd >= 0) {
-            /*
-             * open(O_RDONLY) won't fail with EISDIR. Check manually if we
-             * opened a directory and fail similarly to how we fail ENOENT
-             * in readonly mode. Note that mkstemp() would imply O_RDWR.
-             */
-            if (readonly) {
-                struct stat file_stat;
-
-                if (fstat(fd, &file_stat)) {
-                    close(fd);
-                    if (errno == EINTR) {
-                        continue;
-                    }
-                    return -errno;
-                } else if (S_ISDIR(file_stat.st_mode)) {
-                    close(fd);
-                    return -EISDIR;
-                }
-            }
-            /* @path names an existing file, use it */
-            break;
-        }
-        if (errno == ENOENT) {
-            if (readonly) {
-                /* Refuse to create new, readonly files. */
-                return -ENOENT;
-            }
-            /* @path names a file that doesn't exist, create it */
-            fd = open(path, O_RDWR | O_CREAT | O_EXCL, 0644);
-            if (fd >= 0) {
-                *created = true;
-                break;
-            }
-        } else if (errno == EISDIR) {
-            /* @path names a directory, create a file there */
-            /* Make name safe to use with mkstemp by replacing '/' with '_'. */
-            sanitized_name = g_strdup(region_name);
-            for (c = sanitized_name; *c != '\0'; c++) {
-                if (*c == '/') {
-                    *c = '_';
-                }
-            }
-
-            filename = g_strdup_printf("%s/qemu_back_mem.%s.XXXXXX", path,
-                                       sanitized_name);
-            g_free(sanitized_name);
-
-            fd = mkstemp(filename);
-            if (fd >= 0) {
-                unlink(filename);
-                g_free(filename);
-                break;
-            }
-            g_free(filename);
-        }
-        if (errno != EEXIST && errno != EINTR) {
-            return -errno;
-        }
-        /*
-         * Try again on EINTR and EEXIST.  The latter happens when
-         * something else creates the file between our two open().
-         */
-    }
-
-    return fd;
-}
-
 static void *file_ram_alloc(RAMBlock *block,
                             ram_addr_t memory,
                             int fd,
@@ -2375,53 +2257,6 @@ RAMBlock *qemu_ram_alloc_from_fd(ram_addr_t size, ram_addr_t max_size,
 }
 
 
-RAMBlock *qemu_ram_alloc_from_file(ram_addr_t size, MemoryRegion *mr,
-                                   uint32_t ram_flags, const char *mem_path,
-                                   off_t offset, Error **errp)
-{
-    int fd;
-    bool created;
-    RAMBlock *block;
-
-    fd = file_ram_open(mem_path, memory_region_name(mr),
-                       !!(ram_flags & RAM_READONLY_FD), &created);
-    if (fd < 0) {
-        error_setg_errno(errp, -fd, "can't open backing store %s for guest RAM",
-                         mem_path);
-        if (!(ram_flags & RAM_READONLY_FD) && !(ram_flags & RAM_SHARED) &&
-            fd == -EACCES) {
-            /*
-             * If we can open the file R/O (note: will never create a new file)
-             * and we are dealing with a private mapping, there are still ways
-             * to consume such files and get RAM instead of ROM.
-             */
-            fd = file_ram_open(mem_path, memory_region_name(mr), true,
-                               &created);
-            if (fd < 0) {
-                return NULL;
-            }
-            assert(!created);
-            close(fd);
-            error_append_hint(errp, "Consider opening the backing store"
-                " read-only but still creating writable RAM using"
-                " '-object memory-backend-file,readonly=on,rom=off...'"
-                " (see \"VM templating\" documentation)\n");
-        }
-        return NULL;
-    }
-
-    block = qemu_ram_alloc_from_fd(size, size, NULL, mr, ram_flags, fd, offset,
-                                   false, errp);
-    if (!block) {
-        if (created) {
-            unlink(mem_path);
-        }
-        close(fd);
-        return NULL;
-    }
-
-    return block;
-}
 #endif
 
 #ifdef CONFIG_POSIX
@@ -2539,13 +2374,6 @@ RAMBlock *qemu_ram_alloc_internal(ram_addr_t size, ram_addr_t max_size,
         return NULL;
     }
     return new_block;
-}
-
-RAMBlock *qemu_ram_alloc_from_ptr(ram_addr_t size, void *host,
-                                   MemoryRegion *mr, Error **errp)
-{
-    return qemu_ram_alloc_internal(size, size, NULL, host, RAM_PREALLOC, mr,
-                                   errp);
 }
 
 RAMBlock *qemu_ram_alloc(ram_addr_t size, uint32_t ram_flags,
@@ -3122,19 +2950,6 @@ static void invalidate_and_set_dirty(MemoryRegion *mr, hwaddr addr,
     physical_memory_set_dirty_range(addr, length, dirty_log_mask);
 }
 
-void memory_region_flush_rom_device(MemoryRegion *mr, hwaddr addr, hwaddr size)
-{
-    /*
-     * In principle this function would work on other memory region types too,
-     * but the ROM device use case is the only one where this operation is
-     * necessary.  Other memory regions should use the
-     * address_space_read/write() APIs.
-     */
-    assert(memory_region_is_romd(mr));
-
-    invalidate_and_set_dirty(mr, addr, size);
-}
-
 int memory_access_size(MemoryRegion *mr, unsigned l, hwaddr addr)
 {
     unsigned access_size_max = mr->ops->valid.max_access_size;
@@ -3629,17 +3444,6 @@ static bool flatview_access_valid(FlatView *fv, hwaddr addr, hwaddr len,
     return true;
 }
 
-bool address_space_access_valid(AddressSpace *as, hwaddr addr,
-                                hwaddr len, bool is_write,
-                                MemTxAttrs attrs)
-{
-    FlatView *fv;
-
-    RCU_READ_LOCK_GUARD();
-    fv = address_space_to_flatview(as);
-    return flatview_access_valid(fv, addr, len, is_write, attrs);
-}
-
 bool address_space_is_io(AddressSpace *as, hwaddr addr)
 {
     MemoryRegion *mr;
@@ -3805,79 +3609,6 @@ void address_space_unmap(AddressSpace *as, void *buffer, hwaddr len,
 #define RCU_READ_LOCK(...)       rcu_read_lock()
 #define RCU_READ_UNLOCK(...)     rcu_read_unlock()
 #include "memory_ldst.c.inc"
-
-int64_t address_space_cache_init(MemoryRegionCache *cache,
-                                 AddressSpace *as,
-                                 hwaddr addr,
-                                 hwaddr len,
-                                 bool is_write)
-{
-    AddressSpaceDispatch *d;
-    hwaddr l;
-    MemoryRegion *mr;
-    Int128 diff;
-
-    assert(len > 0);
-
-    l = len;
-    cache->fv = address_space_get_flatview(as);
-    d = flatview_to_dispatch(cache->fv);
-    cache->mrs = *address_space_translate_internal(d, addr, &cache->xlat, &l, true);
-
-    /*
-     * cache->xlat is now relative to cache->mrs.mr, not to the section itself.
-     * Take that into account to compute how many bytes are there between
-     * cache->xlat and the end of the section.
-     */
-    diff = int128_sub(cache->mrs.size,
-                      int128_make64(cache->xlat - cache->mrs.offset_within_region));
-    l = int128_get64(int128_min(diff, int128_make64(l)));
-
-    mr = cache->mrs.mr;
-    memory_region_ref(mr);
-    if (memory_access_is_direct(mr, is_write, MEMTXATTRS_UNSPECIFIED)) {
-        /* We don't care about the memory attributes here as we're only
-         * doing this if we found actual RAM, which behaves the same
-         * regardless of attributes; so UNSPECIFIED is fine.
-         */
-        l = flatview_extend_translation(cache->fv, addr, len, mr,
-                                        cache->xlat, l, is_write,
-                                        MEMTXATTRS_UNSPECIFIED);
-        cache->ptr = qemu_ram_ptr_length(mr->ram_block, cache->xlat, &l, true,
-                                         is_write);
-    } else {
-        cache->ptr = NULL;
-    }
-
-    cache->len = l;
-    cache->is_write = is_write;
-    return l;
-}
-
-void address_space_cache_invalidate(MemoryRegionCache *cache,
-                                    hwaddr addr,
-                                    hwaddr access_len)
-{
-    assert(cache->is_write);
-    if (likely(cache->ptr)) {
-        invalidate_and_set_dirty(cache->mrs.mr, addr + cache->xlat, access_len);
-    }
-}
-
-void address_space_cache_destroy(MemoryRegionCache *cache)
-{
-    if (!cache->mrs.mr) {
-        return;
-    }
-
-    if (xen_enabled()) {
-        xen_invalidate_map_cache_entry(cache->ptr);
-    }
-    memory_region_unref(cache->mrs.mr);
-    flatview_unref(cache->fv);
-    cache->mrs.mr = NULL;
-    cache->fv = NULL;
-}
 
 /* Called from RCU critical section.  This function has the same
  * semantics as address_space_translate, but it only works on a
@@ -4097,84 +3828,8 @@ bool ram_block_is_pmem(RAMBlock *rb)
     return rb->flags & RAM_PMEM;
 }
 
-static void mtree_print_phys_entries(int start, int end, int skip, int ptr)
-{
-    if (start == end - 1) {
-        qemu_printf("\t%3d      ", start);
-    } else {
-        qemu_printf("\t%3d..%-3d ", start, end - 1);
-    }
-    qemu_printf(" skip=%d ", skip);
-    if (ptr == PHYS_MAP_NODE_NIL) {
-        qemu_printf(" ptr=NIL");
-    } else if (!skip) {
-        qemu_printf(" ptr=#%d", ptr);
-    } else {
-        qemu_printf(" ptr=[%d]", ptr);
-    }
-    qemu_printf("\n");
-}
-
 #define MR_SIZE(size) (int128_nz(size) ? (hwaddr)int128_get64( \
                            int128_sub((size), int128_one())) : 0)
-
-void mtree_print_dispatch(AddressSpaceDispatch *d, MemoryRegion *root)
-{
-    int i;
-
-    qemu_printf("  Dispatch\n");
-    qemu_printf("    Physical sections\n");
-
-    for (i = 0; i < d->map.sections_nb; ++i) {
-        MemoryRegionSection *s = d->map.sections + i;
-        const char *names[] = { " [unassigned]", " [not dirty]",
-                                " [ROM]", " [watch]" };
-
-        qemu_printf("      #%d @" HWADDR_FMT_plx ".." HWADDR_FMT_plx
-                    " %s%s%s%s%s",
-            i,
-            s->offset_within_address_space,
-            s->offset_within_address_space + MR_SIZE(s->size),
-            s->mr->name ? s->mr->name : "(noname)",
-            i < ARRAY_SIZE(names) ? names[i] : "",
-            s->mr == root ? " [ROOT]" : "",
-            s == d->mru_section ? " [MRU]" : "",
-            s->mr->is_iommu ? " [iommu]" : "");
-
-        if (s->mr->alias) {
-            qemu_printf(" alias=%s", s->mr->alias->name ?
-                    s->mr->alias->name : "noname");
-        }
-        qemu_printf("\n");
-    }
-
-    qemu_printf("    Nodes (%d bits per level, %d levels) ptr=[%d] skip=%d\n",
-               P_L2_BITS, P_L2_LEVELS, d->phys_map.ptr, d->phys_map.skip);
-    for (i = 0; i < d->map.nodes_nb; ++i) {
-        int j, jprev;
-        PhysPageEntry prev;
-        Node *n = d->map.nodes + i;
-
-        qemu_printf("      [%d]\n", i);
-
-        for (j = 0, jprev = 0, prev = *n[0]; j < ARRAY_SIZE(*n); ++j) {
-            PhysPageEntry *pe = *n + j;
-
-            if (pe->ptr == prev.ptr && pe->skip == prev.skip) {
-                continue;
-            }
-
-            mtree_print_phys_entries(jprev, j, prev.skip, prev.ptr);
-
-            jprev = j;
-            prev = *pe;
-        }
-
-        if (jprev != ARRAY_SIZE(*n)) {
-            mtree_print_phys_entries(jprev, j, prev.skip, prev.ptr);
-        }
-    }
-}
 
 /* Require any discards to work. */
 static unsigned int ram_block_discard_required_cnt;

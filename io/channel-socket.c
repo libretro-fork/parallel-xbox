@@ -43,24 +43,6 @@ static int qio_channel_socket_flush_internal(QIOChannel *ioc,
                                              Error **errp);
 #endif
 
-SocketAddress *
-qio_channel_socket_get_local_address(QIOChannelSocket *ioc,
-                                     Error **errp)
-{
-    return socket_sockaddr_to_address(&ioc->localAddr,
-                                      ioc->localAddrLen,
-                                      errp);
-}
-
-SocketAddress *
-qio_channel_socket_get_remote_address(QIOChannelSocket *ioc,
-                                      Error **errp)
-{
-    return socket_sockaddr_to_address(&ioc->remoteAddr,
-                                      ioc->remoteAddrLen,
-                                      errp);
-}
-
 QIOChannelSocket *
 qio_channel_socket_new(void)
 {
@@ -84,18 +66,6 @@ qio_channel_socket_new(void)
     trace_qio_channel_socket_new(sioc);
 
     return sioc;
-}
-
-int qio_channel_socket_set_send_buffer(QIOChannelSocket *ioc,
-                                       size_t size,
-                                       Error **errp)
-{
-    if (setsockopt(ioc->fd, SOL_SOCKET, SO_SNDBUF, &size, sizeof(size)) < 0) {
-        error_setg_errno(errp, errno, "Unable to set socket send buffer size");
-        return -1;
-    }
-
-    return 0;
 }
 
 static int

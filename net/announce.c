@@ -196,20 +196,3 @@ void qemu_announce_self(AnnounceTimer *timer, AnnounceParameters *params)
     }
 }
 
-void qmp_announce_self(AnnounceParameters *params, Error **errp)
-{
-    AnnounceTimer *named_timer;
-
-    if (!params->id) {
-        params->id = g_strdup("");
-    }
-
-    named_timer = g_datalist_get_data(&named_timers, params->id);
-
-    if (!named_timer) {
-        named_timer = g_new0(AnnounceTimer, 1);
-        g_datalist_set_data(&named_timers, params->id, named_timer);
-    }
-
-    qemu_announce_self(named_timer, params);
-}

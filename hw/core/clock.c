@@ -26,21 +26,6 @@ void clock_setup_canonical_path(Clock *clk)
     clk->canonical_path = object_get_canonical_path(OBJECT(clk));
 }
 
-Clock *clock_new(Object *parent, const char *name)
-{
-    Object *obj;
-    Clock *clk;
-
-    obj = object_new(TYPE_CLOCK);
-    object_property_add_child(parent, name, obj);
-    object_unref(obj);
-
-    clk = CLOCK(obj);
-    clock_setup_canonical_path(clk);
-
-    return clk;
-}
-
 void clock_set_callback(Clock *clk, ClockCallback *cb, void *opaque,
                         unsigned int events)
 {
@@ -133,11 +118,6 @@ static void clock_disconnect(Clock *clk)
 
     clk->source = NULL;
     QLIST_REMOVE(clk, sibling);
-}
-
-char *clock_display_freq(Clock *clk)
-{
-    return freq_to_str(clock_get_hz(clk));
 }
 
 bool clock_set_mul_div(Clock *clk, uint32_t multiplier, uint32_t divider)

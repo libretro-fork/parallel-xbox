@@ -8,9 +8,6 @@
 /* register accel-specific operations */
 void cpus_register_accel(const AccelOpsClass *i);
 
-/* return registers ops */
-const AccelOpsClass *cpus_get_accel(void);
-
 /* interface available for cpus accelerator threads */
 
 /* For temporary buffers for forming a name */
@@ -21,7 +18,6 @@ bool cpu_work_list_empty(CPUState *cpu);
 bool cpu_thread_is_idle(CPUState *cpu);
 bool all_cpu_threads_idle(void);
 bool cpu_can_run(CPUState *cpu);
-void qemu_process_cpu_events_common(CPUState *cpu);
 void cpu_thread_signal_created(CPUState *cpu);
 void cpu_handle_guest_debug(CPUState *cpu);
 

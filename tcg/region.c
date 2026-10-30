@@ -318,40 +318,6 @@ static void tcg_region_tree_unlock_all(void)
     }
 }
 
-void tcg_tb_foreach(GTraverseFunc func, gpointer user_data)
-{
-    size_t i;
-
-    tcg_region_tree_lock_all();
-    for (i = 0; i < region.n; i++) {
-        struct tcg_region_tree *rt = region_trees + i * tree_size;
-
-        for (size_t j = 0; j < rt->n; j++) {
-            TranslationBlock *tb = rt->tbs[j].tb;
-
-            if (tb && func(&tb->tc, tb, user_data)) {
-                break;
-            }
-        }
-    }
-    tcg_region_tree_unlock_all();
-}
-
-size_t tcg_nb_tbs(void)
-{
-    size_t nb_tbs = 0;
-    size_t i;
-
-    tcg_region_tree_lock_all();
-    for (i = 0; i < region.n; i++) {
-        struct tcg_region_tree *rt = region_trees + i * tree_size;
-
-        nb_tbs += rt->nb_tbs;
-    }
-    tcg_region_tree_unlock_all();
-    return nb_tbs;
-}
-
 static void tcg_region_tree_reset_all(void)
 {
     size_t i;

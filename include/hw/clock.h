@@ -114,19 +114,6 @@ extern const VMStateDescription vmstate_clock;
 void clock_setup_canonical_path(Clock *clk);
 
 /**
- * clock_new:
- * @parent: the clock parent
- * @name: the clock object name
- *
- * Helper function to create a new clock and parent it to @parent. There is no
- * need to call clock_setup_canonical_path on the returned clock as it is done
- * by this function.
- *
- * @return the newly created clock
- */
-Clock *clock_new(Object *parent, const char *name);
-
-/**
  * clock_set_callback:
  * @clk: the clock to register the callback into
  * @cb: the callback function
@@ -330,18 +317,6 @@ static inline bool clock_is_enabled(const Clock *clk)
 {
     return clock_get(clk) != 0;
 }
-
-/**
- * clock_display_freq: return human-readable representation of clock frequency
- * @clk: clock
- *
- * Return a string which has a human-readable representation of the
- * clock's frequency, e.g. "33.3 MHz". This is intended for debug
- * and display purposes.
- *
- * The caller is responsible for freeing the string with g_free().
- */
-char *clock_display_freq(Clock *clk);
 
 /**
  * clock_set_mul_div: set multiplier/divider for child clocks

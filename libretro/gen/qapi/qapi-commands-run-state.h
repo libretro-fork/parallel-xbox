@@ -15,7 +15,6 @@
 
 #include "qapi-types-run-state.h"
 
-StatusInfo *qmp_query_status(Error **errp);
 void qmp_marshal_query_status(QDict *args, QObject **ret, Error **errp);
 void qmp_watchdog_set_action(WatchdogAction action, Error **errp);
 void qmp_marshal_watchdog_set_action(QDict *args, QObject **ret, Error **errp);

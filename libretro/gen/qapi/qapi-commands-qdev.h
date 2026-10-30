@@ -18,9 +18,7 @@
 
 ObjectPropertyInfoList *qmp_device_list_properties(const char *q_typename, Error **errp);
 void qmp_marshal_device_list_properties(QDict *args, QObject **ret, Error **errp);
-void qmp_device_del(const char *id, Error **errp);
 void qmp_marshal_device_del(QDict *args, QObject **ret, Error **errp);
-void qmp_device_sync_config(const char *id, Error **errp);
 void qmp_marshal_device_sync_config(QDict *args, QObject **ret, Error **errp);
 
 #endif /* QAPI_COMMANDS_QDEV_H */

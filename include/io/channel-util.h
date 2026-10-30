@@ -30,26 +30,6 @@
 
 
 /**
- * qio_channel_new_fd:
- * @fd: the file descriptor
- * @errp: pointer to a NULL-initialized error object
- *
- * Create a channel for performing I/O on the file
- * descriptor @fd. The particular subclass of QIOChannel
- * that is returned will depend on what underlying object
- * the file descriptor is associated with. It may be either
- * a QIOChannelSocket or a QIOChannelFile instance. Upon
- * success, the returned QIOChannel instance will own
- * the @fd file descriptor, and take responsibility for
- * closing it when no longer required. On failure, the
- * caller is responsible for closing @fd.
- *
- * Returns: the channel object, or NULL on error
- */
-QIOChannel *qio_channel_new_fd(int fd,
-                               Error **errp);
-
-/**
  * qio_channel_util_set_aio_fd_handler:
  * @read_fd: the file descriptor for the read handler
  * @read_ctx: the AioContext for the read handler

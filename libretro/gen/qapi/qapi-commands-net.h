@@ -18,13 +18,9 @@
 
 void qmp_set_link(const char *name, bool up, Error **errp);
 void qmp_marshal_set_link(QDict *args, QObject **ret, Error **errp);
-void qmp_netdev_add(Netdev *arg, Error **errp);
 void qmp_marshal_netdev_add(QDict *args, QObject **ret, Error **errp);
-void qmp_netdev_del(const char *id, Error **errp);
 void qmp_marshal_netdev_del(QDict *args, QObject **ret, Error **errp);
-RxFilterInfoList *qmp_query_rx_filter(const char *name, Error **errp);
 void qmp_marshal_query_rx_filter(QDict *args, QObject **ret, Error **errp);
-void qmp_announce_self(AnnounceParameters *arg, Error **errp);
 void qmp_marshal_announce_self(QDict *args, QObject **ret, Error **errp);
 
 #endif /* QAPI_COMMANDS_NET_H */

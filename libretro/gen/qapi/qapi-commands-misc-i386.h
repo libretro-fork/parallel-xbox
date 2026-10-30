@@ -27,9 +27,7 @@ void qmp_sev_inject_launch_secret(const char *packet_header, const char *secret,
 void qmp_marshal_sev_inject_launch_secret(QDict *args, QObject **ret, Error **errp);
 SevAttestationReport *qmp_query_sev_attestation_report(const char *mnonce, Error **errp);
 void qmp_marshal_query_sev_attestation_report(QDict *args, QObject **ret, Error **errp);
-SgxInfo *qmp_query_sgx(Error **errp);
 void qmp_marshal_query_sgx(QDict *args, QObject **ret, Error **errp);
-SgxInfo *qmp_query_sgx_capabilities(Error **errp);
 void qmp_marshal_query_sgx_capabilities(QDict *args, QObject **ret, Error **errp);
 EvtchnInfoList *qmp_xen_event_list(Error **errp);
 void qmp_marshal_xen_event_list(QDict *args, QObject **ret, Error **errp);

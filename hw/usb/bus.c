@@ -497,19 +497,6 @@ int usb_device_detach(USBDevice *dev)
     return 0;
 }
 
-static const char *usb_speed(unsigned int speed)
-{
-    static const char *txt[] = {
-        [ USB_SPEED_LOW  ] = "1.5",
-        [ USB_SPEED_FULL ] = "12",
-        [ USB_SPEED_HIGH ] = "480",
-        [ USB_SPEED_SUPER ] = "5000",
-    };
-    if (speed >= ARRAY_SIZE(txt))
-        return "?";
-    return txt[speed];
-}
-
 static char *usb_get_dev_path(DeviceState *qdev)
 {
     USBDevice *dev = USB_DEVICE(qdev);
@@ -549,36 +536,6 @@ static char *usb_get_fw_dev_path(DeviceState *qdev)
         }
     }
     return fw_path;
-}
-
-HumanReadableText *qmp_x_query_usb(Error **errp)
-{
-    g_autoptr(GString) buf = g_string_new("");
-    USBBus *bus;
-    USBDevice *dev;
-    USBPort *port;
-
-    if (QTAILQ_EMPTY(&busses)) {
-        error_setg(errp, "USB support not enabled");
-        return NULL;
-    }
-
-    QTAILQ_FOREACH(bus, &busses, next) {
-        QTAILQ_FOREACH(port, &bus->used, next) {
-            dev = port->dev;
-            if (!dev)
-                continue;
-            g_string_append_printf(buf,
-                                   "  Device %d.%d, Port %s, Speed %s Mb/s, "
-                                   "Product %s%s%s\n",
-                                   bus->busnr, dev->addr, port->path,
-                                   usb_speed(dev->speed), dev->product_desc,
-                                   dev->qdev.id ? ", ID: " : "",
-                                   dev->qdev.id ?: "");
-        }
-    }
-
-    return human_readable_text_from_str(buf);
 }
 
 /* handle legacy -usbdevice cmd line option */

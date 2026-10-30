@@ -37,9 +37,7 @@ void qmp_system_wakeup(Error **errp);
 void qmp_marshal_system_wakeup(QDict *args, QObject **ret, Error **errp);
 void qmp_inject_nmi(Error **errp);
 void qmp_marshal_inject_nmi(QDict *args, QObject **ret, Error **errp);
-void qmp_memsave(uint64_t val, uint64_t size, const char *filename, bool has_cpu_index, int64_t cpu_index, Error **errp);
 void qmp_marshal_memsave(QDict *args, QObject **ret, Error **errp);
-void qmp_pmemsave(uint64_t val, uint64_t size, const char *filename, Error **errp);
 void qmp_marshal_pmemsave(QDict *args, QObject **ret, Error **errp);
 MemdevList *qmp_query_memdev(Error **errp);
 void qmp_marshal_query_memdev(QDict *args, QObject **ret, Error **errp);
@@ -67,9 +65,7 @@ HumanReadableText *qmp_x_query_numa(Error **errp);
 void qmp_marshal_x_query_numa(QDict *args, QObject **ret, Error **errp);
 HumanReadableText *qmp_x_query_ramblock(Error **errp);
 void qmp_marshal_x_query_ramblock(QDict *args, QObject **ret, Error **errp);
-HumanReadableText *qmp_x_query_roms(Error **errp);
 void qmp_marshal_x_query_roms(QDict *args, QObject **ret, Error **errp);
-HumanReadableText *qmp_x_query_usb(Error **errp);
 void qmp_marshal_x_query_usb(QDict *args, QObject **ret, Error **errp);
 #if defined(CONFIG_FDT)
 void qmp_dumpdtb(const char *filename, Error **errp);
@@ -85,9 +81,7 @@ CpuModelCompareInfo *qmp_query_cpu_model_comparison(CpuModelInfo *modela, CpuMod
 void qmp_marshal_query_cpu_model_comparison(QDict *args, QObject **ret, Error **errp);
 CpuModelBaselineInfo *qmp_query_cpu_model_baseline(CpuModelInfo *modela, CpuModelInfo *modelb, Error **errp);
 void qmp_marshal_query_cpu_model_baseline(QDict *args, QObject **ret, Error **errp);
-CpuModelExpansionInfo *qmp_query_cpu_model_expansion(CpuModelExpansionType type, CpuModelInfo *model, Error **errp);
 void qmp_marshal_query_cpu_model_expansion(QDict *args, QObject **ret, Error **errp);
-CpuDefinitionInfoList *qmp_query_cpu_definitions(Error **errp);
 void qmp_marshal_query_cpu_definitions(QDict *args, QObject **ret, Error **errp);
 
 #endif /* QAPI_COMMANDS_MACHINE_H */

@@ -693,8 +693,3 @@ uint32_t translator_ldl_end(CPUArchState *env, DisasContextBase *db,
     return val;
 }
 
-void translator_fake_ld(DisasContextBase *db, const void *data, size_t len)
-{
-    db->fake_insn = true;
-    record_save(db, db->pc_first, data, len);
-}

@@ -124,13 +124,6 @@ Chardev *qemu_chr_new(const char *label, const char *filename,
 void qemu_chr_change(QemuOpts *opts, Error **errp);
 
 /**
- * qemu_chr_cleanup:
- *
- * Delete all chardevs (when leaving qemu)
- */
-void qemu_chr_cleanup(void);
-
-/**
  * qemu_chr_be_can_write:
  *
  * Determine how much data the front end can currently accept.  This function
@@ -188,7 +181,6 @@ void qemu_chr_set_feature(Chardev *chr,
 QemuOpts *qemu_chr_parse_compat(const char *label, const char *filename);
 int qemu_chr_write(Chardev *s, const uint8_t *buf, int len, bool write_all);
 #define qemu_chr_write_all(s, buf, len) qemu_chr_write(s, buf, len, true)
-int qemu_chr_wait_connected(Chardev *chr, Error **errp);
 
 #define TYPE_CHARDEV "chardev"
 OBJECT_DECLARE_TYPE(Chardev, ChardevClass, CHARDEV)

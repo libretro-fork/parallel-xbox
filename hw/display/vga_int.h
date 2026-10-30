@@ -175,8 +175,6 @@ void vga_invalidate_scanlines(VGACommonState *s, int y1, int y2);
 
 int vga_ioport_invalid(VGACommonState *s, uint32_t addr);
 
-void vbe_ioport_write_index(void *opaque, uint32_t addr, uint32_t val);
-
 extern const uint8_t sr_mask[8];
 extern const uint8_t gr_mask[16];
 

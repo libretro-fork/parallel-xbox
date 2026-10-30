@@ -29,7 +29,6 @@ void cpu_exec_step_atomic(CPUState *cpu);
 /* The CPU list lock nests outside page_(un)lock or mmap_(un)lock */
 extern QemuMutex qemu_cpu_list_lock;
 void qemu_init_cpu_list(void);
-void cpu_list_lock(void);
 
 int cpu_get_free_index(void);
 

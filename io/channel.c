@@ -110,15 +110,6 @@ ssize_t qio_channel_writev_full(QIOChannel *ioc,
 }
 
 
-int coroutine_mixed_fn qio_channel_readv_all_eof(QIOChannel *ioc,
-                                                 const struct iovec *iov,
-                                                 size_t niov,
-                                                 Error **errp)
-{
-    return qio_channel_readv_full_all_eof(ioc, iov, niov, NULL, NULL, 0,
-                                          errp);
-}
-
 int coroutine_mixed_fn qio_channel_readv_all(QIOChannel *ioc,
                                              const struct iovec *iov,
                                              size_t niov,
@@ -283,22 +274,6 @@ int coroutine_mixed_fn qio_channel_writev_full_all(QIOChannel *ioc,
     return ret;
 }
 
-ssize_t qio_channel_readv(QIOChannel *ioc,
-                          const struct iovec *iov,
-                          size_t niov,
-                          Error **errp)
-{
-    return qio_channel_readv_full(ioc, iov, niov, NULL, NULL, 0, errp);
-}
-
-
-ssize_t qio_channel_writev(QIOChannel *ioc,
-                           const struct iovec *iov,
-                           size_t niov,
-                           Error **errp)
-{
-    return qio_channel_writev_full(ioc, iov, niov, NULL, 0, 0, errp);
-}
 
 
 ssize_t qio_channel_read(QIOChannel *ioc,
@@ -321,34 +296,7 @@ ssize_t qio_channel_write(QIOChannel *ioc,
 }
 
 
-int coroutine_mixed_fn qio_channel_read_all_eof(QIOChannel *ioc,
-                                                void *buf,
-                                                size_t buflen,
-                                                Error **errp)
-{
-    struct iovec iov = { .iov_base = buf, .iov_len = buflen };
-    return qio_channel_readv_all_eof(ioc, &iov, 1, errp);
-}
 
-
-int coroutine_mixed_fn qio_channel_read_all(QIOChannel *ioc,
-                                            void *buf,
-                                            size_t buflen,
-                                            Error **errp)
-{
-    struct iovec iov = { .iov_base = buf, .iov_len = buflen };
-    return qio_channel_readv_all(ioc, &iov, 1, errp);
-}
-
-
-int coroutine_mixed_fn qio_channel_write_all(QIOChannel *ioc,
-                                             const void *buf,
-                                             size_t buflen,
-                                             Error **errp)
-{
-    struct iovec iov = { .iov_base = (char *)buf, .iov_len = buflen };
-    return qio_channel_writev_all(ioc, &iov, 1, errp);
-}
 
 
 bool qio_channel_set_blocking(QIOChannel *ioc,
@@ -359,11 +307,6 @@ bool qio_channel_set_blocking(QIOChannel *ioc,
     return klass->io_set_blocking(ioc, enabled, errp) == 0;
 }
 
-
-void qio_channel_set_follow_coroutine_ctx(QIOChannel *ioc, bool enabled)
-{
-    ioc->follow_coroutine_ctx = enabled;
-}
 
 
 int qio_channel_close(QIOChannel *ioc,
@@ -421,16 +364,6 @@ guint qio_channel_add_watch_full(QIOChannel *ioc,
     return id;
 }
 
-guint qio_channel_add_watch(QIOChannel *ioc,
-                            GIOCondition condition,
-                            QIOChannelFunc func,
-                            gpointer user_data,
-                            GDestroyNotify notify)
-{
-    return qio_channel_add_watch_full(ioc, condition, func,
-                                      user_data, notify, NULL);
-}
-
 GSource *qio_channel_add_watch_source(QIOChannel *ioc,
                                       GIOCondition condition,
                                       QIOChannelFunc func,
@@ -448,64 +381,6 @@ GSource *qio_channel_add_watch_source(QIOChannel *ioc,
     return source;
 }
 
-
-ssize_t qio_channel_pwritev(QIOChannel *ioc, const struct iovec *iov,
-                            size_t niov, off_t offset, Error **errp)
-{
-    QIOChannelClass *klass = QIO_CHANNEL_GET_CLASS(ioc);
-
-    if (!klass->io_pwritev) {
-        error_setg(errp, "Channel does not support pwritev");
-        return -1;
-    }
-
-    if (!qio_channel_has_feature(ioc, QIO_CHANNEL_FEATURE_SEEKABLE)) {
-        error_setg_errno(errp, EINVAL, "Requested channel is not seekable");
-        return -1;
-    }
-
-    return klass->io_pwritev(ioc, iov, niov, offset, errp);
-}
-
-ssize_t qio_channel_pwrite(QIOChannel *ioc, void *buf, size_t buflen,
-                           off_t offset, Error **errp)
-{
-    struct iovec iov = {
-        .iov_base = buf,
-        .iov_len = buflen
-    };
-
-    return qio_channel_pwritev(ioc, &iov, 1, offset, errp);
-}
-
-ssize_t qio_channel_preadv(QIOChannel *ioc, const struct iovec *iov,
-                           size_t niov, off_t offset, Error **errp)
-{
-    QIOChannelClass *klass = QIO_CHANNEL_GET_CLASS(ioc);
-
-    if (!klass->io_preadv) {
-        error_setg(errp, "Channel does not support preadv");
-        return -1;
-    }
-
-    if (!qio_channel_has_feature(ioc, QIO_CHANNEL_FEATURE_SEEKABLE)) {
-        error_setg_errno(errp, EINVAL, "Requested channel is not seekable");
-        return -1;
-    }
-
-    return klass->io_preadv(ioc, iov, niov, offset, errp);
-}
-
-ssize_t qio_channel_pread(QIOChannel *ioc, void *buf, size_t buflen,
-                          off_t offset, Error **errp)
-{
-    struct iovec iov = {
-        .iov_base = buf,
-        .iov_len = buflen
-    };
-
-    return qio_channel_preadv(ioc, &iov, 1, offset, errp);
-}
 
 int qio_channel_shutdown(QIOChannel *ioc,
                          QIOChannelShutdown how,
@@ -541,19 +416,6 @@ void qio_channel_set_cork(QIOChannel *ioc,
     if (klass->io_set_cork) {
         klass->io_set_cork(ioc, enabled);
     }
-}
-
-int qio_channel_flush(QIOChannel *ioc,
-                                Error **errp)
-{
-    QIOChannelClass *klass = QIO_CHANNEL_GET_CLASS(ioc);
-
-    if (!klass->io_flush ||
-        !qio_channel_has_feature(ioc, QIO_CHANNEL_FEATURE_WRITE_ZERO_COPY)) {
-        return 0;
-    }
-
-    return klass->io_flush(ioc, errp);
 }
 
 
@@ -693,14 +555,6 @@ void coroutine_fn qio_channel_yield(QIOChannel *ioc,
         assert(ioc->write_coroutine == NULL);
     }
     qio_channel_clear_fd_handlers(ioc, condition);
-}
-
-void qio_channel_wake_read(QIOChannel *ioc)
-{
-    Coroutine *co = qatomic_xchg(&ioc->read_coroutine, NULL);
-    if (co) {
-        aio_co_wake(co);
-    }
 }
 
 static gboolean qio_channel_wait_complete(QIOChannel *ioc,

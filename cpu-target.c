@@ -25,24 +25,6 @@
 #include "hw/core/cpu.h"
 #include "trace/trace-root.h"
 
-/* enable or disable single step mode. EXCP_DEBUG is returned by the
-   CPU loop after each instruction */
-void cpu_single_step(CPUState *cpu, int enabled)
-{
-    if (cpu->singlestep_enabled != enabled) {
-        cpu->singlestep_enabled = enabled;
-
-#if !defined(CONFIG_USER_ONLY)
-        const AccelOpsClass *ops = cpus_get_accel();
-        if (ops->update_guest_debug) {
-            ops->update_guest_debug(cpu);
-        }
-#endif
-
-        trace_breakpoint_singlestep(cpu->cpu_index, enabled);
-    }
-}
-
 void cpu_abort(CPUState *cpu, const char *fmt, ...)
 {
     va_list ap;

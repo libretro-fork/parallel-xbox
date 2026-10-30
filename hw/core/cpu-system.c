@@ -44,17 +44,6 @@ bool cpu_paging_enabled(const CPUState *cpu)
     return false;
 }
 
-bool cpu_get_memory_mapping(CPUState *cpu, MemoryMappingList *list,
-                            Error **errp)
-{
-    if (cpu->cc->sysemu_ops->get_memory_mapping) {
-        return cpu->cc->sysemu_ops->get_memory_mapping(cpu, list, errp);
-    }
-
-    error_setg(errp, "Obtaining memory mappings is unsupported on this CPU.");
-    return false;
-}
-
 hwaddr cpu_get_phys_page_attrs_debug(CPUState *cpu, vaddr addr,
                                      MemTxAttrs *attrs)
 {
@@ -89,60 +78,6 @@ int cpu_asidx_from_attrs(CPUState *cpu, MemTxAttrs attrs)
         assert(ret < cpu->num_ases && ret >= 0);
     }
     return ret;
-}
-
-int cpu_write_elf32_qemunote(WriteCoreDumpFunction f, CPUState *cpu,
-                             void *opaque)
-{
-    if (!cpu->cc->sysemu_ops->write_elf32_qemunote) {
-        return 0;
-    }
-    return (*cpu->cc->sysemu_ops->write_elf32_qemunote)(f, cpu, opaque);
-}
-
-int cpu_write_elf32_note(WriteCoreDumpFunction f, CPUState *cpu,
-                         int cpuid, void *opaque)
-{
-    if (!cpu->cc->sysemu_ops->write_elf32_note) {
-        return -1;
-    }
-    return (*cpu->cc->sysemu_ops->write_elf32_note)(f, cpu, cpuid, opaque);
-}
-
-int cpu_write_elf64_qemunote(WriteCoreDumpFunction f, CPUState *cpu,
-                             void *opaque)
-{
-    if (!cpu->cc->sysemu_ops->write_elf64_qemunote) {
-        return 0;
-    }
-    return (*cpu->cc->sysemu_ops->write_elf64_qemunote)(f, cpu, opaque);
-}
-
-int cpu_write_elf64_note(WriteCoreDumpFunction f, CPUState *cpu,
-                         int cpuid, void *opaque)
-{
-    if (!cpu->cc->sysemu_ops->write_elf64_note) {
-        return -1;
-    }
-    return (*cpu->cc->sysemu_ops->write_elf64_note)(f, cpu, cpuid, opaque);
-}
-
-bool cpu_virtio_is_big_endian(CPUState *cpu)
-{
-    if (cpu->cc->sysemu_ops->virtio_is_big_endian) {
-        return cpu->cc->sysemu_ops->virtio_is_big_endian(cpu);
-    }
-    return target_big_endian();
-}
-
-GuestPanicInformation *cpu_get_crash_info(CPUState *cpu)
-{
-    GuestPanicInformation *res = NULL;
-
-    if (cpu->cc->sysemu_ops->get_crash_info) {
-        res = cpu->cc->sysemu_ops->get_crash_info(cpu);
-    }
-    return res;
 }
 
 static const Property cpu_system_props[] = {

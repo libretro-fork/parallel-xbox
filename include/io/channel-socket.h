@@ -217,40 +217,6 @@ void qio_channel_socket_dgram_async(QIOChannelSocket *ioc,
                                     GMainContext *context);
 
 
-/**
- * qio_channel_socket_get_local_address:
- * @ioc: the socket channel object
- * @errp: pointer to a NULL-initialized error object
- *
- * Get the string representation of the local socket
- * address. A pointer to the allocated address information
- * struct will be returned, which the caller is required to
- * release with a call qapi_free_SocketAddress() when no
- * longer required.
- *
- * Returns: the socket address struct, or NULL on error
- */
-SocketAddress *
-qio_channel_socket_get_local_address(QIOChannelSocket *ioc,
-                                     Error **errp);
-
-/**
- * qio_channel_socket_get_remote_address:
- * @ioc: the socket channel object
- * @errp: pointer to a NULL-initialized error object
- *
- * Get the string representation of the local socket
- * address. A pointer to the allocated address information
- * struct will be returned, which the caller is required to
- * release with a call qapi_free_SocketAddress() when no
- * longer required.
- *
- * Returns: the socket address struct, or NULL on error
- */
-SocketAddress *
-qio_channel_socket_get_remote_address(QIOChannelSocket *ioc,
-                                      Error **errp);
-
 
 /**
  * qio_channel_socket_accept:
@@ -266,19 +232,5 @@ qio_channel_socket_get_remote_address(QIOChannelSocket *ioc,
 QIOChannelSocket *
 qio_channel_socket_accept(QIOChannelSocket *ioc,
                           Error **errp);
-
-/**
- * qio_channel_socket_set_send_buffer:
- * @ioc: the socket channel object
- * @size: buffer size
- * @errp: pointer to a NULL-initialized error object
- *
- * Set the underlying socket send buffer size.
- *
- * Retruns: 0 on success, or -1 on error.
- */
-int qio_channel_socket_set_send_buffer(QIOChannelSocket *ioc,
-                                       size_t size,
-                                       Error **errp);
 
 #endif /* QIO_CHANNEL_SOCKET_H */

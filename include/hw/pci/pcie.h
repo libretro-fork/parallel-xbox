@@ -87,13 +87,9 @@ struct PCIExpressDevice {
 #define COMPAT_PROP_PCP "power_controller_present"
 
 uint8_t pcie_cap_get_type(const PCIDevice *dev);
-uint8_t pcie_cap_flags_get_vector(PCIDevice *dev);
 
 /* PCI express extended capability helper functions */
 uint16_t pcie_find_capability(PCIDevice *dev, uint16_t cap_id);
 void pcie_sync_bridge_lnk(PCIDevice *dev);
 
-bool pcie_pri_enabled(const PCIDevice *dev);
-bool pcie_pasid_enabled(const PCIDevice *dev);
-bool pcie_ats_enabled(const PCIDevice *dev);
 #endif /* QEMU_PCIE_H */

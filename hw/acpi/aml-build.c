@@ -52,19 +52,6 @@ static void build_append_byte(GArray *array, uint8_t val)
     g_array_append_val(array, val);
 }
 
-static void build_append_padded_str(GArray *array, const char *str,
-                                    size_t maxlen, char pad)
-{
-    size_t i;
-    size_t len = strlen(str);
-
-    g_assert(len <= maxlen);
-    g_array_append_vals(array, str, len);
-    for (i = maxlen - len; i > 0; i--) {
-        g_array_append_val(array, pad);
-    }
-}
-
 static void build_append_array(GArray *array, GArray *val)
 {
     g_array_append_vals(array, val->data, val->len);
@@ -295,27 +282,6 @@ static Aml *aml_bundle(uint8_t op, AmlBlockFlags flags)
     var->op  = op;
     var->block_flags = flags;
     return var;
-}
-
-static void aml_free(gpointer data, gpointer user_data)
-{
-    Aml *var = data;
-    build_free_array(var->buf);
-    g_free(var);
-}
-
-Aml *init_aml_allocator(void)
-{
-    assert(!alloc_list);
-    alloc_list = g_ptr_array_new();
-    return aml_alloc();
-}
-
-void free_aml_allocator(void)
-{
-    g_ptr_array_foreach(alloc_list, aml_free, NULL);
-    g_ptr_array_free(alloc_list, true);
-    alloc_list = 0;
 }
 
 /* pack data with DefBuffer encoding */
@@ -637,55 +603,6 @@ Aml *aml_eisaid(const char *str)
     build_append_byte(var->buf, 0x0C); /* DWordPrefix */
     build_append_int_noprefix(var->buf, bswap32(id), sizeof(id));
     return var;
-}
-
-void acpi_table_begin(AcpiTable *desc, GArray *array)
-{
-
-    desc->array = array;
-    desc->table_offset = array->len;
-
-    /*
-     * ACPI spec 1.0b
-     * 5.2.3 System Description Table Header
-     */
-    g_assert(strlen(desc->sig) == 4);
-    g_array_append_vals(array, desc->sig, 4); /* Signature */
-    /*
-     * reserve space for Length field, which will be patched by
-     * acpi_table_end() when the table creation is finished.
-     */
-    build_append_int_noprefix(array, 0, 4); /* Length */
-    build_append_int_noprefix(array, desc->rev, 1); /* Revision */
-    build_append_int_noprefix(array, 0, 1); /* Checksum */
-    build_append_padded_str(array, desc->oem_id, 6, '\0'); /* OEMID */
-    /* OEM Table ID */
-    build_append_padded_str(array, desc->oem_table_id, 8, '\0');
-    build_append_int_noprefix(array, 1, 4); /* OEM Revision */
-    g_array_append_vals(array, ACPI_BUILD_APPNAME8, 4); /* Creator ID */
-    build_append_int_noprefix(array, 1, 4); /* Creator Revision */
-}
-
-void acpi_table_end(BIOSLinker *linker, AcpiTable *desc)
-{
-    /*
-     * ACPI spec 1.0b
-     * 5.2.3 System Description Table Header
-     * Table 5-2 DESCRIPTION_HEADER Fields
-     */
-    const unsigned checksum_offset = 9;
-    uint32_t table_len = desc->array->len - desc->table_offset;
-    uint32_t table_len_le = cpu_to_le32(table_len);
-    gchar *len_ptr = &desc->array->data[desc->table_offset + 4];
-
-    /* patch "Length" field that has been reserved by acpi_table_begin()
-     * to the actual length, i.e. accumulated table length from
-     * acpi_table_begin() till acpi_table_end()
-     */
-    memcpy(len_ptr, &table_len_le, sizeof table_len_le);
-
-    bios_linker_loader_add_checksum(linker, ACPI_BUILD_TABLE_FILE,
-        desc->table_offset, table_len, desc->table_offset + checksum_offset);
 }
 
 void *acpi_data_push(GArray *table_data, unsigned size)

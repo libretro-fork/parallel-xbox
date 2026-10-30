@@ -43,7 +43,6 @@ void qmp_migrate_incoming(const char *uri, bool has_channels, MigrationChannelLi
 void qmp_marshal_migrate_incoming(QDict *args, QObject **ret, Error **errp);
 void qmp_xen_save_devices_state(const char *filename, bool has_live, bool live, Error **errp);
 void qmp_marshal_xen_save_devices_state(QDict *args, QObject **ret, Error **errp);
-void qmp_xen_set_global_dirty_log(bool enable, Error **errp);
 void qmp_marshal_xen_set_global_dirty_log(QDict *args, QObject **ret, Error **errp);
 void qmp_xen_load_devices_state(const char *filename, Error **errp);
 void qmp_marshal_xen_load_devices_state(QDict *args, QObject **ret, Error **errp);

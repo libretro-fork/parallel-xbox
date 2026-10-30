@@ -41,13 +41,10 @@ void qmp_marshal_query_vnc_servers(QDict *args, QObject **ret, Error **errp);
 void qmp_change_vnc_password(const char *password, Error **errp);
 void qmp_marshal_change_vnc_password(QDict *args, QObject **ret, Error **errp);
 #endif /* defined(CONFIG_VNC) */
-MouseInfoList *qmp_query_mice(Error **errp);
 void qmp_marshal_query_mice(QDict *args, QObject **ret, Error **errp);
 void qmp_send_key(KeyValueList *keys, bool has_hold_time, int64_t hold_time, Error **errp);
 void qmp_marshal_send_key(QDict *args, QObject **ret, Error **errp);
-void qmp_input_send_event(const char *device, bool has_head, int64_t head, InputEventList *events, Error **errp);
 void qmp_marshal_input_send_event(QDict *args, QObject **ret, Error **errp);
-DisplayOptions *qmp_query_display_options(Error **errp);
 void qmp_marshal_query_display_options(QDict *args, QObject **ret, Error **errp);
 void qmp_display_reload(DisplayReloadOptions *arg, Error **errp);
 void qmp_marshal_display_reload(QDict *args, QObject **ret, Error **errp);

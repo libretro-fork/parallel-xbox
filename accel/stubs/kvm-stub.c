@@ -59,11 +59,6 @@ unsigned int kvm_get_free_memslots(void)
     return 0;
 }
 
-bool kvm_arm_supports_user_irq(void)
-{
-    return false;
-}
-
 bool kvm_dirty_ring_enabled(void)
 {
     return false;
@@ -72,11 +67,6 @@ bool kvm_dirty_ring_enabled(void)
 uint32_t kvm_dirty_ring_size(void)
 {
     return 0;
-}
-
-bool kvm_hwpoisoned_mem(void)
-{
-    return false;
 }
 
 int kvm_create_guest_memfd(uint64_t size, uint64_t flags, Error **errp)

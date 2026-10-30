@@ -52,12 +52,6 @@ uint8_t pcie_cap_get_type(const PCIDevice *dev)
 /* pci express interrupt message number */
 /* 7.8.2 PCI Express Capabilities Register: Interrupt Message Number */
 
-uint8_t pcie_cap_flags_get_vector(PCIDevice *dev)
-{
-    return (pci_get_word(dev->config + dev->exp.exp_cap + PCI_EXP_FLAGS) &
-            PCI_EXP_FLAGS_IRQ) >> PCI_EXP_FLAGS_IRQ_SHIFT;
-}
-
 /**************************************************************************
  * pci express extended capability list management functions
  * uint16_t ext_cap_id (16 bit)
@@ -153,29 +147,3 @@ void pcie_sync_bridge_lnk(PCIDevice *bridge_dev)
                                (PCI_EXP_LNKSTA_CLS | PCI_EXP_LNKSTA_NLW));
 }
 
-bool pcie_pri_enabled(const PCIDevice *dev)
-{
-    if (!pci_is_express(dev) || !dev->exp.pri_cap) {
-        return false;
-    }
-    return (pci_get_word(dev->config + dev->exp.pri_cap + PCI_PRI_CTRL) &
-                PCI_PRI_CTRL_ENABLE) != 0;
-}
-
-bool pcie_pasid_enabled(const PCIDevice *dev)
-{
-    if (!pci_is_express(dev) || !dev->exp.pasid_cap) {
-        return false;
-    }
-    return (pci_get_word(dev->config + dev->exp.pasid_cap + PCI_PASID_CTRL) &
-                PCI_PASID_CTRL_ENABLE) != 0;
-}
-
-bool pcie_ats_enabled(const PCIDevice *dev)
-{
-    if (!pci_is_express(dev) || !dev->exp.ats_cap) {
-        return false;
-    }
-    return (pci_get_word(dev->config + dev->exp.ats_cap + PCI_ATS_CTRL) &
-                PCI_ATS_CTRL_ENABLE) != 0;
-}

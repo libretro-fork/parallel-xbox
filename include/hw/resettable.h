@@ -189,14 +189,6 @@ void resettable_assert_reset(Object *obj, ResetType type);
 void resettable_release_reset(Object *obj, ResetType type);
 
 /**
- * resettable_is_in_reset:
- * Return true if @obj is under reset.
- *
- * @obj must implement Resettable interface.
- */
-bool resettable_is_in_reset(Object *obj);
-
-/**
  * resettable_change_parent:
  * Indicate that the parent of Ressettable @obj is changing from @oldp to @newp.
  * All 3 objects must implement resettable interface. @oldp or @newp may be
@@ -211,15 +203,6 @@ bool resettable_is_in_reset(Object *obj);
  * a hold phase method. Calling this during enter or exit phase is an error.
  */
 void resettable_change_parent(Object *obj, Object *newp, Object *oldp);
-
-/**
- * resettable_cold_reset_fn:
- * Helper to call resettable_reset((Object *) opaque, RESET_TYPE_COLD).
- *
- * This function is typically useful to register a reset handler with
- * qemu_register_reset.
- */
-void resettable_cold_reset_fn(void *opaque);
 
 /**
  * resettable_class_set_parent_phases:

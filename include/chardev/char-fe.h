@@ -57,20 +57,6 @@ void qemu_chr_fe_deinit(CharFrontend *c, bool del);
 Chardev *qemu_chr_fe_get_driver(CharFrontend *c);
 
 /**
- * qemu_chr_fe_backend_connected:
- *
- * Returns: true if there is a backend associated with @c.
- */
-bool qemu_chr_fe_backend_connected(CharFrontend *c);
-
-/**
- * qemu_chr_fe_backend_open:
- *
- * Returns: true if the backend associated with @c is open.
- */
-bool qemu_chr_fe_backend_open(CharFrontend *c);
-
-/**
  * qemu_chr_fe_set_handlers_full:
  * @c: a CharFrontend
  * @fd_can_read: callback to get the amount of data the frontend may
@@ -139,14 +125,6 @@ void qemu_chr_fe_accept_input(CharFrontend *c);
 void qemu_chr_fe_disconnect(CharFrontend *c);
 
 /**
- * qemu_chr_fe_wait_connected:
- *
- * Wait for character backend to be connected, return < 0 on error or
- * if no associated Chardev.
- */
-int qemu_chr_fe_wait_connected(CharFrontend *c, Error **errp);
-
-/**
  * qemu_chr_fe_set_echo:
  * @echo: true to enable echo, false to disable echo
  *
@@ -166,17 +144,6 @@ void qemu_chr_fe_set_echo(CharFrontend *c, bool echo);
  * doing I/O. Without associated Chardev, do nothing.
  */
 void qemu_chr_fe_set_open(CharFrontend *c, bool is_open);
-
-/**
- * qemu_chr_fe_printf:
- * @fmt: see #printf
- *
- * Write to a character backend using a printf style interface.  This
- * function is thread-safe. It does nothing without associated
- * Chardev.
- */
-void qemu_chr_fe_printf(CharFrontend *c, const char *fmt, ...)
-    G_GNUC_PRINTF(2, 3);
 
 
 /**
@@ -247,18 +214,6 @@ int qemu_chr_fe_write(CharFrontend *c, const uint8_t *buf, int len);
 int qemu_chr_fe_write_all(CharFrontend *c, const uint8_t *buf, int len);
 
 /**
- * qemu_chr_fe_read_all:
- * @buf: the data buffer
- * @len: the number of bytes to read
- *
- * Read data to a buffer from the back end.
- *
- * Returns: the number of bytes read (0 if no associated Chardev)
- *          or -1 on error.
- */
-int qemu_chr_fe_read_all(CharFrontend *c, uint8_t *buf, int len);
-
-/**
  * qemu_chr_fe_ioctl:
  * @cmd: see CHR_IOCTL_*
  * @arg: the data associated with @cmd
@@ -270,44 +225,5 @@ int qemu_chr_fe_read_all(CharFrontend *c, uint8_t *buf, int len);
  *          value depends on the semantics of @cmd
  */
 int qemu_chr_fe_ioctl(CharFrontend *c, int cmd, void *arg);
-
-/**
- * qemu_chr_fe_get_msgfd:
- *
- * For backends capable of fd passing, return the latest file descriptor passed
- * by a client.
- *
- * Returns: -1 if fd passing isn't supported or there is no pending file
- *          descriptor.  If a file descriptor is returned, subsequent calls to
- *          this function will return -1 until a client sends a new file
- *          descriptor.
- */
-int qemu_chr_fe_get_msgfd(CharFrontend *c);
-
-/**
- * qemu_chr_fe_get_msgfds:
- *
- * For backends capable of fd passing, return the number of file received
- * descriptors and fills the fds array up to num elements
- *
- * Returns: -1 if fd passing isn't supported or there are no pending file
- *          descriptors.  If file descriptors are returned, subsequent calls to
- *          this function will return -1 until a client sends a new set of file
- *          descriptors.
- */
-int qemu_chr_fe_get_msgfds(CharFrontend *c, int *fds, int num);
-
-/**
- * qemu_chr_fe_set_msgfds:
- *
- * For backends capable of fd passing, set an array of fds to be passed with
- * the next send operation.
- * A subsequent call to this function before calling a write function will
- * result in overwriting the fd array with the new value without being send.
- * Upon writing the message the fd array is freed.
- *
- * Returns: -1 if fd passing isn't supported or no associated Chardev.
- */
-int qemu_chr_fe_set_msgfds(CharFrontend *c, int *fds, int num);
 
 #endif /* QEMU_CHAR_FE_H */

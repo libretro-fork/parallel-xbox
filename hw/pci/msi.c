@@ -150,13 +150,6 @@ MSIMessage msi_get_message(PCIDevice *dev, unsigned int vector)
     return dev->msi_prepare_message(dev, vector);
 }
 
-bool msi_enabled(const PCIDevice *dev)
-{
-    return msi_present(dev) &&
-        (pci_get_word(dev->config + msi_flags_off(dev)) &
-         PCI_MSI_FLAGS_ENABLE);
-}
-
 void msi_reset(PCIDevice *dev)
 {
     uint16_t flags;
