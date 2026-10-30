@@ -12,7 +12,7 @@ libretro/deps/src), which built them the same way.
 | `nv2a_vsh_cpu` | The NV2A's vertex shader on the CPU | 561fe80 | Unlicense (public domain) | all |
 | `libslirp` | The NAT network backend, on the core's GLib (`libretro/glib`) | 4.9.1 | BSD-3-Clause | all |
 | `libepoxy` | OpenGL function loading (WGL; EGL on Android) | 1.5.10 | MIT | Windows, Android |
-| `vulkan-headers` | Vulkan's headers | 1.4.350 | Apache-2.0 OR MIT | Windows, Android |
+| `vulkan-headers` | Vulkan's headers | 1.4.350 | Apache-2.0 OR MIT | all |
 
 On Windows and Android the Makefile builds the libraries marked so from
 here (`Makefile.deps`); on Linux and macOS it takes libepoxy from the

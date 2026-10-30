@@ -88,7 +88,7 @@ source in `deps/` (`deps/README.md`), and
 **Linux** (x86_64, aarch64), with libepoxy from the system:
 
 ```
-sudo apt install build-essential pkg-config libepoxy-dev libvulkan-dev curl
+sudo apt install build-essential pkg-config libepoxy-dev curl
 make -j$(nproc)
 ```
 

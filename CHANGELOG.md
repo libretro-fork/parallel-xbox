@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Every platform uses the bundled Vulkan headers, fixing macOS builds that could not find Homebrew's headers through the MacPorts dependency paths.
+
 - Apple Silicon JIT write protection uses libretro-common's `memjit_write_begin/end` helpers. A per-thread adapter preserves QEMU's absolute write/execute switches, including repeated requests across the CPU and DSP JITs. Intel macOS keeps no-op switches.
 
 - The meson build is gone (meson.build files, configure, the meson subprojects, Kconfig and the device configs): every platform is built by the Makefile, and the buildbot's Linux jobs now are too, so the buildbot's Linux core is built the same way as the GitHub one. The macOS meson job is dropped; the Makefile's macOS job takes its place.
