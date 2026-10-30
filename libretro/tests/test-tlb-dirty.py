@@ -7,12 +7,14 @@ import os,re,subprocess,sys,tempfile
 repo=Path(sys.argv[1]).resolve();cc=sys.argv[2] if len(sys.argv)>2 else 'gcc'
 s=(repo/'accel/tcg/cputlb.c').read_text()
 def function(name):
- m=re.search(r'^(?:static )?(?:inline )?void '+name+r'\(',s,re.M);assert m
+ m=re.search(r'^(?:static )?(?:inline )?(?:void|bool|uint64_t) '+name+r'\(',s,re.M);assert m
  at=s.index('{',m.start());end=at+1;depth=1
  while depth:depth+=(s[end]=='{')-(s[end]=='}');end+=1
  return s[m.start():end]
+assert 'memset(desc->dirty_write_tags, 0' in function('tlb_mmu_flush_locked')
+assert 'tlb_dirty_index_mark(desc, cpu_tlb_fast(cpu, mmu_idx), index)' in function('tlb_set_page_full')
 fixture=Path(__file__).with_suffix('.c').read_text()
-code=fixture.replace('/* PRODUCTION */','\n'.join(function(name) for name in ['tlb_reset_dirty_range_locked','tlb_reset_dirty','tlb_set_dirty1_locked','tlb_set_dirty']))
+code=fixture.replace('/* PRODUCTION */','\n'.join(function(name) for name in ['tlb_dirty_host_tag','tlb_dirty_range_tags','tlb_dirty_index_mark','tlb_reset_dirty_range_locked','tlb_reset_dirty','tlb_set_dirty1_locked','tlb_set_dirty','copy_tlb_helper_locked','victim_tlb_hit']))
 env=os.environ.copy();env['PATH']=str(Path(cc).resolve().parent)+os.pathsep+env.get('PATH','')
 with tempfile.TemporaryDirectory(prefix='tlb-dirty-',dir=repo.parent) as directory:
  p=Path(directory);(p/'test.c').write_text(code);exe=p/('test.exe' if os.name=='nt' else 'test')

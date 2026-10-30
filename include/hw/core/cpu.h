@@ -294,6 +294,9 @@ typedef struct CPUTLBDesc {
     CPUTLBEntry vtable[CPU_VTLB_SIZE];
     CPUTLBEntryFull vfulltlb[CPU_VTLB_SIZE];
     CPUTLBEntryFull *fulltlb;
+    /* Conservative host-address tags for 64 groups of primary entries.
+     * Protected by tlb_c.lock; stale bits only cause an extra scan. */
+    uint64_t dirty_write_tags[64];
 } CPUTLBDesc;
 
 /*

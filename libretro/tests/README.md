@@ -104,7 +104,10 @@ dirty-range functions against a full-scan reference in 1,655,360 cases:
 fast/slow flags, aliases, wrapped/empty ranges, active MMU modes and victim
 entries. Another 10,000 states compare first-write dirty promotion against
 an exhaustive scan, including primary/victim aliases and preservation of
-other page flags. GCC's undefined-behavior traps are enabled.
+other page flags. GCC's undefined-behavior traps are enabled. The tag index additionally
+checks 20,000 larger-table mutation/reprotection states, victim restoration,
+stale tags and 200,000 range/tag cases including unsigned wrap and host-width
+shift boundaries, under undefined-behavior sanitization.
 
 `python libretro/tests/test-page-collection.py . gcc` compiles the
 production TB page collection (the pages a code write or an invalidated

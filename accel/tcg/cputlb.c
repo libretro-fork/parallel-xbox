@@ -291,6 +291,7 @@ static void tlb_mmu_flush_locked(CPUTLBDesc *desc, CPUTLBDescFast *fast)
     desc->vindex = 0;
     memset(fast->table, -1, sizeof_tlb(fast));
     memset(desc->vtable, -1, sizeof(desc->vtable));
+    memset(desc->dirty_write_tags, 0, sizeof(desc->dirty_write_tags));
 }
 
 static void tlb_flush_one_mmuidx_locked(CPUState *cpu, int mmu_idx,
@@ -876,6 +877,54 @@ void tlb_unprotect_code(ram_addr_t ram_addr)
 }
 
 
+/* Tag a primary entry by the host-address region above its TLB index.
+ * Aliases use the same host address. A collision or an invalidated entry
+ * can only keep a group in the scan, never hide a writable mapping. */
+static uint64_t tlb_dirty_host_tag(uintptr_t host, unsigned shift)
+{
+    uintptr_t tag = shift < sizeof(host) * CHAR_BIT ? host >> shift : 0;
+    return UINT64_C(1) << (tag & 63);
+}
+
+static uint64_t tlb_dirty_range_tags(uintptr_t start, uintptr_t length,
+                                      unsigned shift)
+{
+    if (!length) {
+        return 0;
+    }
+    uintptr_t end = start + length - 1;
+    if (end < start) {
+        return UINT64_MAX; /* wrapped range: conservatively scan all */
+    }
+    if (shift >= sizeof(start) * CHAR_BIT) {
+        return 1;
+    }
+    uintptr_t first = start >> shift, last = end >> shift;
+    if (last - first >= 63) {
+        return UINT64_MAX;
+    }
+    unsigned count = last - first + 1;
+    unsigned rotate = first & 63;
+    uint64_t mask = UINT64_MAX >> (64 - count);
+    return (mask << rotate) | (rotate ? mask >> (64 - rotate) : 0);
+}
+
+static void tlb_dirty_index_mark(CPUTLBDesc *desc, CPUTLBDescFast *fast,
+                                  unsigned index)
+{
+    CPUTLBEntry *ent = &fast->table[index];
+    uintptr_t addr = ent->addr_write;
+    const int mask = TLB_INVALID_MASK | TLB_MMIO |
+                     TLB_DISCARD_WRITE | TLB_NOTDIRTY;
+    if (!(addr & mask)) {
+        unsigned bits = ctz32(tlb_n_entries(fast));
+        unsigned group_shift = bits > 6 ? bits - 6 : 0;
+        uintptr_t host = (addr & TARGET_PAGE_MASK) + ent->addend;
+        desc->dirty_write_tags[index >> group_shift] |=
+            tlb_dirty_host_tag(host, TARGET_PAGE_BITS + bits);
+    }
+}
+
 /*
  * Dirty write flag handling
  *
@@ -936,9 +985,31 @@ void tlb_reset_dirty(CPUState *cpu, uintptr_t start, uintptr_t length)
         unsigned int n = tlb_n_entries(fast);
         unsigned int i;
 
-        for (i = 0; i < n; i++) {
-            tlb_reset_dirty_range_locked(&desc->fulltlb[i], &fast->table[i],
-                                         start, length);
+        unsigned bits = ctz32(n);
+        unsigned group_shift = bits > 6 ? bits - 6 : 0;
+        unsigned group_size = 1u << group_shift;
+        unsigned tag_shift = TARGET_PAGE_BITS + bits;
+        uint64_t tags = tlb_dirty_range_tags(start, length, tag_shift);
+        for (unsigned group = 0; group < n / group_size; group++) {
+            if (!(desc->dirty_write_tags[group] & tags)) {
+                continue;
+            }
+            /* Rebuild the selected group after reprotection. Fill/promotion
+             * can OR tags in cheaply; invalidations need not maintain them. */
+            uint64_t remaining = 0;
+            for (i = group * group_size; i < (group + 1) * group_size; i++) {
+                CPUTLBEntry *ent = &fast->table[i];
+                tlb_reset_dirty_range_locked(&desc->fulltlb[i], ent,
+                                             start, length);
+                const int mask = TLB_INVALID_MASK | TLB_MMIO |
+                                 TLB_DISCARD_WRITE | TLB_NOTDIRTY;
+                if (!(ent->addr_write & mask)) {
+                    uintptr_t host = (ent->addr_write & TARGET_PAGE_MASK) +
+                                     ent->addend;
+                    remaining |= tlb_dirty_host_tag(host, tag_shift);
+                }
+            }
+            desc->dirty_write_tags[group] = remaining;
         }
 
         for (i = 0; i < CPU_VTLB_SIZE; i++) {
@@ -975,7 +1046,11 @@ static void tlb_set_dirty(CPUState *cpu, vaddr addr)
         int mmu_idx = ctz32(work);
         int k;
 
-        tlb_set_dirty1_locked(tlb_entry(cpu, mmu_idx, addr), addr);
+        CPUTLBDesc *desc = &cpu->neg.tlb.d[mmu_idx];
+        CPUTLBDescFast *fast = cpu_tlb_fast(cpu, mmu_idx);
+        CPUTLBEntry *ent = tlb_entry(cpu, mmu_idx, addr);
+        tlb_set_dirty1_locked(ent, addr);
+        tlb_dirty_index_mark(desc, fast, ent - fast->table);
         for (k = 0; k < CPU_VTLB_SIZE; k++) {
             tlb_set_dirty1_locked(&cpu->neg.tlb.d[mmu_idx].vtable[k], addr);
         }
@@ -1196,6 +1271,7 @@ void tlb_set_page_full(CPUState *cpu, int mmu_idx,
                     MMU_DATA_STORE, prot & PAGE_WRITE);
 
     copy_tlb_helper_locked(te, &tn);
+    tlb_dirty_index_mark(desc, cpu_tlb_fast(cpu, mmu_idx), index);
     tlb_n_used_entries_inc(cpu, mmu_idx);
     qemu_spin_unlock(&tlb->c.lock);
 }
@@ -1338,12 +1414,14 @@ static bool victim_tlb_hit(CPUState *cpu, size_t mmu_idx, size_t index,
             copy_tlb_helper_locked(&tmptlb, tlb);
             copy_tlb_helper_locked(tlb, vtlb);
             copy_tlb_helper_locked(vtlb, &tmptlb);
-            qemu_spin_unlock(&cpu->neg.tlb.c.lock);
 
             CPUTLBEntryFull *f1 = &cpu->neg.tlb.d[mmu_idx].fulltlb[index];
             CPUTLBEntryFull *f2 = &cpu->neg.tlb.d[mmu_idx].vfulltlb[vidx];
             CPUTLBEntryFull tmpf;
             tmpf = *f1; *f1 = *f2; *f2 = tmpf;
+            tlb_dirty_index_mark(&cpu->neg.tlb.d[mmu_idx],
+                                 cpu_tlb_fast(cpu, mmu_idx), index);
+            qemu_spin_unlock(&cpu->neg.tlb.c.lock);
             return true;
         }
     }
