@@ -526,6 +526,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 - Audio with APU DSP Emulation on: the DSPs' thread is woken for four audio frames at a time, and for the rest at the end of each video frame, instead of for every audio frame (1,500 a second of game time). With the game's CPU busy, as in a game, the test ROM went from 8,100 thread switches in 300 video frames to 2,700, and the time spent in the system from 0.30 to 0.23 s. When the core has to wait for the DSPs, it wakes them first, so nothing waits longer.
 
+- `libretro/tests/dspdiff` compares the DSP JIT's registers, memories, cycle count and loop state with the interpreter's for real: it compared a copy of them that nothing filled in, so only the scratch RAM, the FIFOs and the interrupts were ever checked. The JIT and the interpreter do agree on the test program (checked with the fix).
+
 ## Test build 4 - 2026-10-25
 
 - The core info file names the core "Microsoft - Xbox / Sega Chihiro (xemu)" (NNshi).

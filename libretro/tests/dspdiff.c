@@ -71,7 +71,6 @@ typedef struct Machine {
     uint8_t scratch[SCRATCH_BYTES];
     uint8_t fifo[FIFO_COUNT][FIFO_BYTES];
     uint32_t fifo_cur[FIFO_COUNT];
-    DspCoreState state;
 } Machine;
 
 #define INTERRUPT_START_FRAME (1 << 1)
@@ -310,7 +309,8 @@ static int compare(const char *what, const void *a, const void *b, size_t n, siz
 
 static int compare_machines(Machine *a, Machine *b)
 {
-    DspCoreState *sa = &a->state, *sb = &b->state;
+    /* the state sync_to_vm fills: the DSPState's own */
+    DspCoreState *sa = &a->dsp->core, *sb = &b->dsp->core;
     int bad = 0;
 
     a->dsp->ops->sync_to_vm(a->dsp);
