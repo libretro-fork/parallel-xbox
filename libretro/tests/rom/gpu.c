@@ -163,6 +163,7 @@ typedef unsigned int u32;
 #define SURF_F       0x02000000u   /* CPU border, two offset GPU tiles */
 #define SURF_H       0x02800000u   /* direct-layer limit and fallback */
 #define VIDEO_DATA   0x02C00000u
+#define VRAM_END     0x04000000u   /* boundary tests require xemu_memory=64 */
 #define TEX_SOURCE   0x02E00000u   /* GPU-produced pixels, sampled through aliases */
 #define SURF_G       0x02400000u   /* 15-bit mode change, offset tile */
 #define ZS_CLEAR     0x12345678u   /* depth 0x123456, stencil 0x78 */
@@ -219,6 +220,7 @@ typedef unsigned int u32;
 #define NV097_SET_WINDOW_CLIP_TYPE 0x02b4
 #define NV097_SET_WINDOW_CLIP_HORIZONTAL 0x02c0
 #define NV097_SET_WINDOW_CLIP_VERTICAL 0x02e0
+#define NV097_SET_TEXTURE_PALETTE 0x1b20
 #define NV097_SET_TEXTURE_OFFSET 0x1b00
 #define NV097_SET_TEXTURE_FORMAT 0x1b04
 #define NV097_SET_TEXTURE_ADDRESS 0x1b08
@@ -356,8 +358,9 @@ static void triangle(void)
  * RGB565 texture with the same byte pitch. Red's bytes are 00 00 FF FF:
  * the narrow view must alternate black and white, not stale CPU blue.
  * A one-byte Y8 view additionally checks the surface writeback boundary. */
-static __attribute__((noinline)) void texture_alias(u32 format, u32 width,
-                                                   u32 u, u32 redraw)
+static __attribute__((noinline)) void texture_alias_at(u32 format, u32 width,
+                                                      u32 u, u32 redraw,
+                                                      u32 texture_address)
 {
     if (redraw) {
         method(NV097_SET_SURFACE_CLIP_H, 32u << 16);
@@ -389,8 +392,8 @@ static __attribute__((noinline)) void texture_alias(u32 format, u32 width,
     method(NV097_SET_WINDOW_CLIP_HORIZONTAL, (WIDTH - 1) << 16);
     method(NV097_SET_WINDOW_CLIP_VERTICAL, (HEIGHT - 1) << 16);
     /* Texture stage zero: nearest sampling, DMA A. Width 1 selects a
-     * one-byte swizzled Y8 view; other cases use rectangle coordinates. */
-    method(NV097_SET_TEXTURE_OFFSET, TEX_SOURCE);
+     * single texel; other cases use rectangle coordinates. */
+    method(NV097_SET_TEXTURE_OFFSET, texture_address);
     method(NV097_SET_TEXTURE_FORMAT, 1u | (2u << 4) | (1u << 3) | (format << 8) |
                    (1u << 16) | ((width == 1 ? 0u : width == 32 ? 5u : 6u) << 20) |
                    ((width == 1 ? 0u : 4u) << 24));
@@ -415,6 +418,12 @@ static __attribute__((noinline)) void texture_alias(u32 format, u32 width,
     cr(0x13, (PITCH / 8) & 0xff);
     cr(0x19, (((PITCH / 8) >> 8) & 7) << 5);
     wr(PCRTC_START, SURF_D);
+}
+
+static __attribute__((noinline)) void texture_alias(u32 format, u32 width,
+                                                   u32 u, u32 redraw)
+{
+    texture_alias_at(format, width, u, redraw, TEX_SOURCE);
 }
 
 /* x's bits and y's interleaved from bit 0, x first, until the shorter
@@ -939,6 +948,31 @@ void gpu_main(void)
              * back, so an empty/one-byte overlap error displays black. */
             for (u32 i = 0; i < 32u * 16u; i++) ram32(TEX_SOURCE + i * 4, 0);
             texture_alias(0x00, 1, 0x3f000000u, 0xff0000ffu);
+        }
+        if (frame == 820) {
+            /* Linear Y8: pitch 128, one row, exclusive end exactly VRAM_END. */
+            ram32(VRAM_END - 128, 0x000000ffu);
+            texture_alias_at(0x13, 1, 0x3f000000u, 0, VRAM_END - 128);
+        }
+        if (frame == 840) {
+            /* Clear this page's dirty flag through another cached shape. */
+            ram32(VRAM_END - 128, 0);
+            texture_alias_at(0x00, 1, 0x3f000000u, 0, VRAM_END - 128);
+        }
+        if (frame == 860) {
+            /* No CPU write: the previous query must have invalidated this view. */
+            texture_alias_at(0x13, 1, 0x3f000000u, 0, VRAM_END - 128);
+        }
+        if (frame == 880) {
+            /* 256 ARGB entries occupy the last 1024 bytes of VRAM. */
+            ram32(TEX_SOURCE, 0);
+            ram32(VRAM_END - 1024, 0xffffffffu);
+            method(NV097_SET_TEXTURE_PALETTE, VRAM_END - 1024);
+            texture_alias(0x0b, 1, 0x3f000000u, 0);
+        }
+        if (frame == 900) {
+            ram32(VRAM_END - 1024, 0xff000000u);
+            texture_alias(0x0b, 1, 0x3f000000u, 0);
         }
         method(NV097_FLIP_INCREMENT_WRITE, 0);
         kick();

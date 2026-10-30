@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- The synthetic GPU regression suite now renders textures and indexed palettes ending exactly at the 64 MiB VRAM boundary, and checks that cached texture views sharing the last dirty page refresh together on both renderers at 1x, 2x and 4x.
+
 - Both renderers now accept texture dirty-page queries ending exactly at the end of VRAM. Empty spans no longer clear or invalidate a page; texture and palette invalidation retains page-wide coverage so cached views sharing a dirty page stay coherent.
 
 - Added an offline image-preparation utility with an explicit runtime disc-check adjustment for Otogi. It creates a separate image and preserves the input. Startup notes record DOA2 Ultimate's roughly 100-second initial black screen with both MCPX boot paths.
