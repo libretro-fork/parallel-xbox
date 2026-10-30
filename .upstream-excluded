@@ -44,6 +44,7 @@ hw/audio/ac97.h
 hw/audio/ac97_int.h
 hw/audio/model.c
 hw/usb/dev-audio.c
+hw/xbox/nv2a-stock
 hw/xbox/nv2a/pgraph/thirdparty/gloffscreen/sdl.c
 hw/xbox/xblc.c
 include/hw/audio/model.h

@@ -787,8 +787,8 @@ static void shader_create_cache_folder(void)
     g_free(shader_path);
 }
 
-/* The stock GPU keeps its own cache under the emulator's names
- * (shader_cache_list, shaders/): each GPU would drop the other's binaries. */
+/* "_boost": a second GPU, since removed, kept its own cache under the
+ * plain names; the names stay so the caches already on disk stay valid. */
 static char *shader_get_lru_cache_path(void)
 {
     return g_strdup_printf("%s/shader_cache_list_boost",

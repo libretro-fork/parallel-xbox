@@ -77,13 +77,9 @@ extern int64_t xemu_flip_ready_ns;
 extern int64_t xemu_flip_completed_ns;
 extern int64_t xemu_gpu_free_ns;
 
-/* GPU boost (perf.optimizations), read once: its menu toggle takes effect at
- * the next start. Off, the stock GPU runs instead of this one
- * (nv2a_stock_active). */
-bool pgraph_gpu_boost(void);
-/* GPU boost with a GL driver that passed the self-test (ui/xemu.c): the gate
- * of the separable and dynamic shader paths, whose generator the Vulkan
- * renderer shares. */
+/* A GL driver that passed the self-test (ui/xemu.c): the gate of the
+ * separable and dynamic shader paths, whose generator the Vulkan renderer
+ * shares. */
 bool pgraph_gpu_boost_gl(void);
 bool pgraph_blit_gpu_fits(NV2AState *d, hwaddr dest_addr,
                           unsigned int bytes_per_pixel,

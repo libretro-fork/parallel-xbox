@@ -1181,63 +1181,6 @@ SOURCES_TARGET := \
 	$(CORE_DIR)/hw/xbox/mcpx/apu/monitor.c \
 	$(CORE_DIR)/hw/xbox/mcpx/apu/vp/vp.c \
 	$(CORE_DIR)/hw/xbox/mcpx/nvnet/nvnet.c \
-	$(CORE_DIR)/hw/xbox/nv2a-stock/nv2a.c \
-	$(CORE_DIR)/hw/xbox/nv2a-stock/pbus.c \
-	$(CORE_DIR)/hw/xbox/nv2a-stock/pcrtc.c \
-	$(CORE_DIR)/hw/xbox/nv2a-stock/pfb.c \
-	$(CORE_DIR)/hw/xbox/nv2a-stock/pfifo.c \
-	$(CORE_DIR)/hw/xbox/nv2a-stock/pgraph/gl/blit.c \
-	$(CORE_DIR)/hw/xbox/nv2a-stock/pgraph/gl/debug.c \
-	$(CORE_DIR)/hw/xbox/nv2a-stock/pgraph/gl/display.c \
-	$(CORE_DIR)/hw/xbox/nv2a-stock/pgraph/gl/draw.c \
-	$(CORE_DIR)/hw/xbox/nv2a-stock/pgraph/gl/gpuprops.c \
-	$(CORE_DIR)/hw/xbox/nv2a-stock/pgraph/gl/renderer.c \
-	$(CORE_DIR)/hw/xbox/nv2a-stock/pgraph/gl/reports.c \
-	$(CORE_DIR)/hw/xbox/nv2a-stock/pgraph/gl/shaders.c \
-	$(CORE_DIR)/hw/xbox/nv2a-stock/pgraph/gl/surface.c \
-	$(CORE_DIR)/hw/xbox/nv2a-stock/pgraph/gl/texture.c \
-	$(CORE_DIR)/hw/xbox/nv2a-stock/pgraph/gl/vertex.c \
-	$(CORE_DIR)/hw/xbox/nv2a-stock/pgraph/glsl/common.c \
-	$(CORE_DIR)/hw/xbox/nv2a-stock/pgraph/glsl/geom.c \
-	$(CORE_DIR)/hw/xbox/nv2a-stock/pgraph/glsl/psh.c \
-	$(CORE_DIR)/hw/xbox/nv2a-stock/pgraph/glsl/shaders.c \
-	$(CORE_DIR)/hw/xbox/nv2a-stock/pgraph/glsl/vsh-ff.c \
-	$(CORE_DIR)/hw/xbox/nv2a-stock/pgraph/glsl/vsh-prog.c \
-	$(CORE_DIR)/hw/xbox/nv2a-stock/pgraph/glsl/vsh.c \
-	$(CORE_DIR)/hw/xbox/nv2a-stock/pgraph/null/renderer.c \
-	$(CORE_DIR)/hw/xbox/nv2a-stock/pgraph/pgraph.c \
-	$(CORE_DIR)/hw/xbox/nv2a-stock/pgraph/profile.c \
-	$(CORE_DIR)/hw/xbox/nv2a-stock/pgraph/rdi.c \
-	$(CORE_DIR)/hw/xbox/nv2a-stock/pgraph/s3tc.c \
-	$(CORE_DIR)/hw/xbox/nv2a-stock/pgraph/swizzle.c \
-	$(CORE_DIR)/hw/xbox/nv2a-stock/pgraph/texture.c \
-	$(CORE_DIR)/hw/xbox/nv2a-stock/pgraph/vertex.c \
-	$(CORE_DIR)/hw/xbox/nv2a-stock/pgraph/vk/blit.c \
-	$(CORE_DIR)/hw/xbox/nv2a-stock/pgraph/vk/buffer.c \
-	$(CORE_DIR)/hw/xbox/nv2a-stock/pgraph/vk/command.c \
-	$(CORE_DIR)/hw/xbox/nv2a-stock/pgraph/vk/debug.c \
-	$(CORE_DIR)/hw/xbox/nv2a-stock/pgraph/vk/display.c \
-	$(CORE_DIR)/hw/xbox/nv2a-stock/pgraph/vk/draw.c \
-	$(CORE_DIR)/hw/xbox/nv2a-stock/pgraph/vk/glsl.c \
-	$(CORE_DIR)/hw/xbox/nv2a-stock/pgraph/vk/gpuprops.c \
-	$(CORE_DIR)/hw/xbox/nv2a-stock/pgraph/vk/image.c \
-	$(CORE_DIR)/hw/xbox/nv2a-stock/pgraph/vk/instance.c \
-	$(CORE_DIR)/hw/xbox/nv2a-stock/pgraph/vk/renderer.c \
-	$(CORE_DIR)/hw/xbox/nv2a-stock/pgraph/vk/reports.c \
-	$(CORE_DIR)/hw/xbox/nv2a-stock/pgraph/vk/shaders.c \
-	$(CORE_DIR)/hw/xbox/nv2a-stock/pgraph/vk/surface-compute.c \
-	$(CORE_DIR)/hw/xbox/nv2a-stock/pgraph/vk/surface.c \
-	$(CORE_DIR)/hw/xbox/nv2a-stock/pgraph/vk/texture.c \
-	$(CORE_DIR)/hw/xbox/nv2a-stock/pgraph/vk/vertex.c \
-	$(CORE_DIR)/hw/xbox/nv2a-stock/pmc.c \
-	$(CORE_DIR)/hw/xbox/nv2a-stock/pramdac.c \
-	$(CORE_DIR)/hw/xbox/nv2a-stock/prmcio.c \
-	$(CORE_DIR)/hw/xbox/nv2a-stock/prmdio.c \
-	$(CORE_DIR)/hw/xbox/nv2a-stock/prmvio.c \
-	$(CORE_DIR)/hw/xbox/nv2a-stock/ptimer.c \
-	$(CORE_DIR)/hw/xbox/nv2a-stock/pvideo.c \
-	$(CORE_DIR)/hw/xbox/nv2a-stock/stubs.c \
-	$(CORE_DIR)/hw/xbox/nv2a-stock/user.c \
 	$(CORE_DIR)/hw/xbox/nv2a/nv2a.c \
 	$(CORE_DIR)/hw/xbox/nv2a/pbus.c \
 	$(CORE_DIR)/hw/xbox/nv2a/pcrtc.c \

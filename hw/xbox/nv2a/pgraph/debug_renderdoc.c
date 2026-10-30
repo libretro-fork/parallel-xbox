@@ -86,21 +86,13 @@ void *nv2a_dbg_renderdoc_get_api(void)
     return (void*)rdoc_api;
 }
 
-/* The UI's two calls go to the GPU that runs (see nv2a_stock_active). */
 bool nv2a_dbg_renderdoc_available(void)
 {
-    if (nv2a_stock_active()) {
-        return stock_nv2a_dbg_renderdoc_available();
-    }
     return rdoc_api != NULL;
 }
 
 void nv2a_dbg_renderdoc_capture_frames(int num_frames, bool trace)
 {
-    if (nv2a_stock_active()) {
-        stock_nv2a_dbg_renderdoc_capture_frames(num_frames, trace);
-        return;
-    }
     renderdoc_capture_frames += num_frames;
     renderdoc_trace_frames = trace;
 }

@@ -19,5 +19,4 @@ specific_ss.add(files(
 	))
 subdir('chihiro')
 subdir('nv2a')
-subdir('nv2a-stock')
 subdir('mcpx')

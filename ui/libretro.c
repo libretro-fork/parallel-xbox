@@ -1774,11 +1774,8 @@ static void populate_config(const char *dvd_path)
     g_config.perf.hard_fpu = opt_hard_fpu;
     g_config.perf.native_sse = opt_cpu_boost;
     g_config.perf.shader_seeding = opt_smooth_first_play;
-    /* GPU boost is the renderer the core is made for: the stock one the fork
-     * keeps for it being off (hw/xbox/nv2a-stock) has none of the core's
-     * frontend handover. Real hardware speed paces the machine itself, which
-     * in the core is the frontend's job. */
-    g_config.perf.optimizations = true;
+    /* Real hardware speed paces the machine itself, which in the core is
+     * the frontend's job. */
     g_config.perf.real_hw_speed = false;
     g_config.audio.use_dsp = opt_use_dsp;
     g_config.audio.use_dsp_jit = opt_dsp_jit;

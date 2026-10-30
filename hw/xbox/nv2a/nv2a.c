@@ -192,24 +192,13 @@ static void nv2a_get_params(VGACommonState *s, VGADisplayParams *params)
                            ((s->cr[VGA_CRTC_MAX_SCAN] & 0x40) << 3);
 }
 
-bool nv2a_stock_active(void)
-{
-    return !pgraph_gpu_boost();
-}
-
 const uint8_t *nv2a_get_dac_palette(void)
 {
-    if (nv2a_stock_active()) {
-        return stock_nv2a_get_dac_palette();
-    }
     return g_nv2a->puserdac.palette;
 }
 
 int nv2a_get_screen_off(void)
 {
-    if (nv2a_stock_active()) {
-        return stock_nv2a_get_screen_off();
-    }
     return g_nv2a->vga.sr[VGA_SEQ_CLOCK_MODE] & VGA_SR01_SCREEN_OFF;
 }
 
@@ -816,11 +805,6 @@ type_init(nv2a_register);
 
 void nv2a_init(PCIBus *bus, int devfn, MemoryRegion *ram)
 {
-    if (nv2a_stock_active()) {
-        fprintf(stderr, "nv2a: GPU boost off, the stock GPU runs\n");
-        stock_nv2a_init(bus, devfn, ram);
-        return;
-    }
     PCIDevice *dev = pci_create_simple(bus, devfn, "nv2a");
     NV2AState *d = NV2A_DEVICE(dev);
     nv2a_init_memory(d, ram);

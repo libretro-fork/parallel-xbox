@@ -470,18 +470,9 @@ const char *pgraph_seed_game_tag(void)
     return pgraph_game_tag[0] ? pgraph_game_tag : NULL;
 }
 
-bool pgraph_gpu_boost(void)
-{
-    static int on = -1;
-    if (on < 0) {
-        on = g_config.perf.optimizations;
-    }
-    return on;
-}
-
 bool pgraph_gpu_boost_gl(void)
 {
-    return pgraph_gpu_boost() && xemu_gl_opt_capable;
+    return xemu_gl_opt_capable;
 }
 
 /* Whether the NV09F blit may run as a GPU copy between surfaces of these
@@ -583,10 +574,6 @@ static CONFIG_DISPLAY_RENDERER get_default_renderer(void)
 
 void nv2a_context_init(void)
 {
-    if (nv2a_stock_active()) {
-        stock_nv2a_context_init();
-        return;
-    }
     if (!renderers[g_config.display.renderer]) {
         g_config.display.renderer = get_default_renderer();
         fprintf(stderr,
@@ -693,9 +680,6 @@ void nv2a_fifo_kick_safety(void)
 
 int nv2a_get_framebuffer_surface(void)
 {
-    if (nv2a_stock_active()) {
-        return stock_nv2a_get_framebuffer_surface();
-    }
     NV2AState *d = g_nv2a;
     if (!d) {
         return 0;
@@ -716,10 +700,6 @@ int nv2a_get_framebuffer_surface(void)
 
 void nv2a_release_framebuffer_surface(void)
 {
-    if (nv2a_stock_active()) {
-        stock_nv2a_release_framebuffer_surface();
-        return;
-    }
     NV2AState *d = g_nv2a;
     PGRAPHState *pg = &d->pgraph;
     retro_atomic_store_release_int(&pg->framebuffer_in_use, 0);
@@ -792,10 +772,6 @@ void nv2a_trigger_display_render(void)
 
 void nv2a_set_surface_scale_factor(unsigned int scale)
 {
-    if (nv2a_stock_active()) {
-        stock_nv2a_set_surface_scale_factor(scale);
-        return;
-    }
     NV2AState *d = g_nv2a;
 
     const PGRAPHRenderer *renderer =
@@ -809,9 +785,6 @@ void nv2a_set_surface_scale_factor(unsigned int scale)
 
 unsigned int nv2a_get_surface_scale_factor(void)
 {
-    if (nv2a_stock_active()) {
-        return stock_nv2a_get_surface_scale_factor();
-    }
     NV2AState *d = g_nv2a;
     int s = 1;
 

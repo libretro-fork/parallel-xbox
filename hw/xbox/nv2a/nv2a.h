@@ -51,23 +51,4 @@ extern int xemu_gl_opt_capable;
 void nv2a_fifo_kick_safety(void);
 void nv2a_set_game_name(const char *name, const char *before);
 
-/* The stock GPU (hw/xbox/nv2a-stock) is plugged in instead of this one when
- * GPU boost is off at start-up; the first group of entry points above, the
- * profiler's counter names and values and the UI's RenderDoc calls
- * (debug.h) then hand every call over to its own. */
-bool nv2a_stock_active(void);
-void stock_nv2a_init(PCIBus *bus, int devfn, MemoryRegion *ram);
-void stock_nv2a_context_init(void);
-int stock_nv2a_get_framebuffer_surface(void);
-void stock_nv2a_profile_present(void);
-void stock_nv2a_release_framebuffer_surface(void);
-void stock_nv2a_set_surface_scale_factor(unsigned int scale);
-unsigned int stock_nv2a_get_surface_scale_factor(void);
-const uint8_t *stock_nv2a_get_dac_palette(void);
-int stock_nv2a_get_screen_off(void);
-const char *stock_nv2a_profile_get_counter_name(unsigned int cnt);
-int stock_nv2a_profile_get_counter_value(unsigned int cnt);
-bool stock_nv2a_dbg_renderdoc_available(void);
-void stock_nv2a_dbg_renderdoc_capture_frames(int num_frames, bool trace);
-
 #endif
