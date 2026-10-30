@@ -331,3 +331,13 @@ on NVIDIA and the S3TC-without-VTC fallback on Mesa llvmpipe.
 The layout/capability contract follows the Khronos
 [VTC specification](https://registry.khronos.org/OpenGL/extensions/NV/NV_texture_compression_vtc.txt)
 and [S3TC specification](https://registry.khronos.org/OpenGL/extensions/EXT/EXT_texture_compression_s3tc.txt).
+
+`python libretro/tests/test-gl-upload-alignment.py CHECKOUT [CC]` runs the
+production GL uploader on independently supplied post-unswizzle/conversion
+bytes. On WGL (Windows, built libepoxy) or surfaceless EGL (Linux), it checks
+46 cases spanning R8, RG8, RGB565, RGB8_SNORM and RGBA8; narrow 2D mips,
+3D slices/mips, explicit linear pitch, and incoming unpack alignments
+1/2/4/8, plus bordered RGB8_SNORM and palette-expanded RGBA8 cubemap crops.
+Every uploaded byte must match, and unpack alignment must be
+restored. Guest swizzling and format-conversion arithmetic are outside this
+host pixel-transfer test.

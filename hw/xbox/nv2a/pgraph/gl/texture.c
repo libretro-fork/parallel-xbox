@@ -672,6 +672,12 @@ static void upload_gl_texture(GLenum gl_target,
     PGRAPHGLState *r = g_nv2a->pgraph.gl_renderer_state;
     ColorFormatInfo f = kelvin_color_format_gl_map[s.color_format];
     nv2a_profile_inc_counter(NV2A_PROF_TEX_UPLOAD);
+    /* Unswizzled/converted levels are tightly packed, including narrow
+     * mip rows and RGB8 conversion output. Guest linear pitch is supplied
+     * through ROW_LENGTH below, without implicit host row padding. */
+    GLint unpack_alignment;
+    glGetIntegerv(GL_UNPACK_ALIGNMENT, &unpack_alignment);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
 
     unsigned int adjusted_width = s.width;
     unsigned int adjusted_height = s.height;
@@ -782,7 +788,6 @@ static void upload_gl_texture(GLenum gl_target,
                 }
                 texture_data += level_size;
             } else {
-                unsigned int pitch = width * f.bytes_per_pixel;
                 const uint8_t *pixel_data =
                     unswizzle_level(r, &s, texture_data, palette_data, width,
                                     height, 1, f.bytes_per_pixel);
@@ -790,13 +795,19 @@ static void upload_gl_texture(GLenum gl_target,
                 unsigned int tex_height = height;
 
                 if (s.cubemap && adjusted_width != s.width) {
+                    size_t converted_size =
+                        pgraph_converted_texture_size(s, width, height, 1);
+                    unsigned int upload_bpp = converted_size
+                        ? converted_size / ((size_t)width * height)
+                        : f.bytes_per_pixel;
+                    unsigned int pitch = width * upload_bpp;
                     // FIXME: Consider preserving the border.
                     // There does not seem to be a way to reference the border
                     // texels in a cubemap, so they are discarded.
                     glPixelStorei(GL_UNPACK_ROW_LENGTH, adjusted_width);
                     tex_width = s.width;
                     tex_height = s.height;
-                    pixel_data += 4 * f.bytes_per_pixel + 4 * pitch;
+                    pixel_data += 4 * upload_bpp + 4 * pitch;
                 }
 
                 glTexImage2D(gl_target, level, f.gl_internal_format, tex_width,
@@ -871,6 +882,7 @@ static void upload_gl_texture(GLenum gl_target,
         assert(!"Invalid gl target texture type");
         break;
     }
+    glPixelStorei(GL_UNPACK_ALIGNMENT, unpack_alignment);
 }
 
 static TextureBinding* generate_texture(const TextureShape s,
