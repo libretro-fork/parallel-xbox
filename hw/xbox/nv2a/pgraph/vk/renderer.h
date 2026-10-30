@@ -383,7 +383,7 @@ typedef struct PGRAPHVkDisplayState {
     struct PGRAPHVkFrameSync {
         VkCommandBuffer cmd;
         VkFence fence;
-        bool pending;
+        bool pending, signalled;
         uint64_t serial;
         VkSemaphore drawn, shown;
     } sync[XEMU_LIBRETRO_VK_FRAMES];

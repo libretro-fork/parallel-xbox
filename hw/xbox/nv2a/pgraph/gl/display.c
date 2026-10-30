@@ -145,6 +145,7 @@ void pgraph_gl_display_surface_reuse(NV2AState *d, SurfaceBinding *surface)
 static struct {
     bool ready;
     GLuint prog, vao, vbo, fbo, pvideo_tex;
+    unsigned pvideo_width, pvideo_height;
     GLint tex_loc, pvideo_enable_loc, pvideo_tex_loc, pvideo_in_pos_loc,
           pvideo_pos_loc, pvideo_scale_loc, pvideo_color_key_enable_loc,
           pvideo_color_key_loc, display_size_loc, line_offset_loc;
@@ -326,8 +327,15 @@ static void ui_pvideo_overlay(NV2AState *d, const DispPost *p,
     uint8_t *tex_rgba = convert_texture_data__CR8YB8CB8YA8(
         d->pgraph.gl_renderer_state, d->vram_ptr + base + offset, in_width,
         in_height, in_pitch);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, in_width, in_height, 0, GL_RGBA,
-                 GL_UNSIGNED_BYTE, tex_rgba);
+    if (ui.pvideo_width != in_width || ui.pvideo_height != in_height) {
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, in_width, in_height, 0, GL_RGBA,
+                     GL_UNSIGNED_BYTE, tex_rgba);
+        ui.pvideo_width = in_width;
+        ui.pvideo_height = in_height;
+    } else {
+        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, in_width, in_height,
+                        GL_RGBA, GL_UNSIGNED_BYTE, tex_rgba);
+    }
     glUniform1i(ui.pvideo_tex_loc, 1);
     glUniform2f(ui.pvideo_in_pos_loc, in_s / 16.f, in_t / 8.f);
     glUniform4f(ui.pvideo_pos_loc, out_x, out_y, out_width, out_height);

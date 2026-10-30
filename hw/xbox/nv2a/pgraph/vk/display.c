@@ -1165,10 +1165,15 @@ static void create_frame_sync(PGRAPHState *pg)
 static void wait_frame_sync(PGRAPHVkState *r, struct PGRAPHVkFrameSync *s)
 {
     if (s->pending) {
-        VK_CHECK(vkWaitForFences(r->device, 1, &s->fence, VK_TRUE,
-                                 UINT64_MAX));
+        /* Retirement polling already proved completion for this exact
+         * submission. Reset still belongs here, before command-buffer reuse. */
+        if (!s->signalled) {
+            VK_CHECK(vkWaitForFences(r->device, 1, &s->fence, VK_TRUE,
+                                     UINT64_MAX));
+        }
         VK_CHECK(vkResetFences(r->device, 1, &s->fence));
         s->pending = false;
+        s->signalled = false;
         r->display.settled = MAX(r->display.settled, s->serial);
     }
 }
@@ -1182,6 +1187,7 @@ void pgraph_vk_poll_display_retired(PGRAPHVkState *r)
         struct PGRAPHVkFrameSync *sync = &disp->sync[i];
         if (sync->pending && sync->serial > disp->settled &&
             vkGetFenceStatus(r->device, sync->fence) == VK_SUCCESS) {
+            sync->signalled = true;
             disp->settled = sync->serial;
         }
     }
@@ -1477,6 +1483,7 @@ static void submit_frame(PGRAPHVkState *r, struct PGRAPHVkFrameSync *s)
     }
     nv2a_profile_inc_counter(NV2A_PROF_QUEUE_SUBMIT_5);
     s->serial = ++r->display.submitted;
+    s->signalled = false;
     s->pending = true;
 }
 

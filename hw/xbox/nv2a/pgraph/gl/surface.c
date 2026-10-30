@@ -3021,6 +3021,17 @@ static void scanout_mode_release(NV2AState *d, struct PGRAPHGLScanoutMode *m)
     m->last = -1;
 }
 
+typedef struct ScanoutDirtyRange {
+    PGRAPHScanoutBackground *background;
+    const PGRAPHScanout *scan;
+} ScanoutDirtyRange;
+
+static void scanout_background_dirty(void *opaque, hwaddr offset, hwaddr length)
+{
+    ScanoutDirtyRange *range = opaque;
+    pgraph_scanout_background_dirty(range->background, range->scan, offset, length);
+}
+
 SurfaceBinding *pgraph_gl_compose_scanout(NV2AState *d)
 {
     PGRAPHState *pg = &d->pgraph;
@@ -3184,10 +3195,25 @@ SurfaceBinding *pgraph_gl_compose_scanout(NV2AState *d)
         s = layers[i].surface;
         keys[i] = (PGRAPHScanoutKey){ s->gl_buffer, s->draw_time, layers[i].rect };
     }
-    bool ram_dirty = memory_region_test_and_clear_dirty(d->vram, scan.start,
-                                                       scan.size, DIRTY_MEMORY_VGA);
+    bool reset_background = !m->cache.valid || !m->dirty_background.valid ||
+        m->cache.scan.start != scan.start || m->cache.scan.size != scan.size ||
+        m->cache.scan.width != scan.width || m->cache.scan.height != scan.height ||
+        m->cache.scan.pitch != scan.pitch || m->cache.scan.bpp != scan.bpp;
+    if (reset_background) {
+        pgraph_scanout_background_init(&m->dirty_background, &scan);
+    }
+    ScanoutDirtyRange dirty = { &m->dirty_background, &scan };
+    bool ram_dirty = memory_region_test_and_clear_dirty_ranges(d->vram, scan.start,
+                scan.size, DIRTY_MEMORY_VGA, scanout_background_dirty, &dirty);
+    uint64_t old_geometry = m->cache.geometry;
     pgraph_scanout_cache_update(&m->cache, &scan, keys, count,
                                 ram_dirty || materialized);
+    if (old_geometry != m->cache.geometry) {
+        pgraph_scanout_background_cover(&m->dirty_background, keys, count);
+        pgraph_scanout_background_regions(&m->uncovered, &scan, keys, count);
+        m->trim_background = pgraph_scanout_regions_worthwhile(&m->uncovered,
+            scan.width, scan.height, pg->surface_scale_factor);
+    }
     PGRAPHScanoutCache *cache = &m->cache;
     if (m->last >= 0 && m->content[m->last] == cache->content) {
         return &m->out[m->last];
@@ -3247,9 +3273,48 @@ SurfaceBinding *pgraph_gl_compose_scanout(NV2AState *d)
     glPixelStorei(GL_UNPACK_ROW_LENGTH, scan.pitch / scan.bpp);
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
     if (upload_background) {
-        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, scan.width, scan.height,
-                        out->fmt.gl_format, out->fmt.gl_type,
-                        (const uint8_t *)d->vram_ptr + scan.start);
+        if (!m->dirty_background.valid) {
+            glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, scan.width, scan.height,
+                            out->fmt.gl_format, out->fmt.gl_type,
+                            (const uint8_t *)d->vram_ptr + scan.start);
+        } else {
+            /* Upload visible dirty runs straight from guest RAM. Covered
+             * bytes stay pending until GPU coverage moves away; no transient
+             * packed CPU image or full-frame upload is needed. */
+            unsigned cursor = 0;
+            PGRAPHScanoutRect rect;
+            while (pgraph_scanout_background_next(&m->dirty_background,
+                                                   &cursor, &rect)) {
+                /* Adjacent equal runs form one strided upload, including
+                 * the initial full background. Keep fragmented runs bounded
+                 * by the existing fixed tile bitmap. */
+                for (;;) {
+                    unsigned next_cursor = cursor;
+                    PGRAPHScanoutRect next;
+                    if (!pgraph_scanout_background_next(&m->dirty_background,
+                                                        &next_cursor, &next) ||
+                        next.dx != rect.dx || next.width != rect.width ||
+                        next.dy != rect.dy + rect.height) {
+                        break;
+                    }
+                    rect.height += next.height;
+                    cursor = next_cursor;
+                }
+                glTexSubImage2D(GL_TEXTURE_2D, 0, rect.dx, rect.dy,
+                                rect.width, rect.height,
+                                out->fmt.gl_format, out->fmt.gl_type,
+                                (const uint8_t *)d->vram_ptr + scan.start +
+                                    (uint64_t)rect.dy * scan.pitch + rect.dx * scan.bpp);
+                for (unsigned y = rect.dy; y < rect.dy + rect.height;
+                     y += PGRAPH_SCANOUT_TILE) {
+                    PGRAPHScanoutRect row = rect;
+                    row.dy = y;
+                    row.height = MIN(PGRAPH_SCANOUT_TILE,
+                                     rect.dy + rect.height - y);
+                    pgraph_scanout_background_clean(&m->dirty_background, &row);
+                }
+            }
+        }
         m->base_background = cache->background;
         m->base_geometry = cache->geometry;
     }
@@ -3269,9 +3334,24 @@ SurfaceBinding *pgraph_gl_compose_scanout(NV2AState *d)
     glDisable(GL_SCISSOR_TEST);
     unsigned scale = pg->surface_scale_factor;
     if (restore_background) {
-        glBlitFramebuffer(0, 0, scan.width, scan.height,
-                           0, 0, scan.width * scale, scan.height * scale,
-                           GL_COLOR_BUFFER_BIT, GL_NEAREST);
+        if (m->trim_background) {
+            /* Avoid scaling background pixels immediately hidden by a GPU
+             * tile. The bounded plan retains one full blit when fragmentation
+             * would cost more commands than the saved pixel work warrants. */
+            for (unsigned i = 0; i < m->uncovered.count; i++) {
+                const PGRAPHScanoutRect *p = &m->uncovered.rects[i];
+                glBlitFramebuffer(p->dx, p->dy,
+                                   p->dx + p->width, p->dy + p->height,
+                                   p->dx * scale, p->dy * scale,
+                                   (p->dx + p->width) * scale,
+                                   (p->dy + p->height) * scale,
+                                   GL_COLOR_BUFFER_BIT, GL_NEAREST);
+            }
+        } else {
+            glBlitFramebuffer(0, 0, scan.width, scan.height,
+                               0, 0, scan.width * scale, scan.height * scale,
+                               GL_COLOR_BUFFER_BIT, GL_NEAREST);
+        }
     }
     for (unsigned i = 0; i < count; i++) {
         s = layers[i].surface;

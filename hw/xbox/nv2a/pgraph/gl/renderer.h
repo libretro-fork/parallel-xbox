@@ -344,6 +344,9 @@ typedef struct PGRAPHGLState {
         int last;
         uint64_t base_background, base_geometry, background[3], geometry[3], content[3];
         PGRAPHScanoutCache cache;
+        PGRAPHScanoutBackground dirty_background;
+        PGRAPHScanoutRegions uncovered;
+        bool trim_background;
     } scanout_modes[2];
     unsigned scanout_mode;
     bool scanout_active;
