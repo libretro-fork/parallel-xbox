@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- About 170,000 lines of QEMU no build of the core compiles are gone: QEMU's whole block layer (block.c, block/io.c, its qcow2 driver, the mirror/backup/stream jobs, blockdev), NBD, the LUKS and qcow crypto, the coroutine library, and the 745 headers nothing includes any more (the ARM, s390x, virtio and other machines' devices among them). The core reads and writes its disks through its own libretro disk layer, as before; the macOS build no longer links IOKit, which only QEMU's host CD-ROM code used.
+
 - libretro-common is in step with RetroArch's again (retro_atomic, the SPSC queue, rtime and CRC32 had fallen behind): rtime_localtime() now uses the C library's thread-safe localtime_r()/localtime_s() instead of a spin flag, and the SPSC queue gains retro_spsc_grow_into().
 
 - The CPU emulation no longer carries QEMU's parallel mode, which this core never used: it runs its one vCPU serially, so guest loads and stores to RAM are now plain host loads and stores instead of going through atomicity checks that always came out the same, and the out-of-line atomic helpers and the stop-the-world fallback are gone (about 2,700 lines).

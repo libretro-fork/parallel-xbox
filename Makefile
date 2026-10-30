@@ -159,9 +159,8 @@ else ifeq ($(platform),osx)
    # the rest; Metal surfaces are the frontend's
    OS_CFLAGS   := $(OSX_ARCH_FLAGS) -DVK_USE_PLATFORM_METAL_EXT
    OS_ASFLAGS  := $(OSX_ARCH_FLAGS)
-   # CoreFoundation and IOKit: block/file-posix.c's host CD-ROM support
-   OS_LIBS     := -lm -lresolv -framework CoreFoundation -framework IOKit \
-                  -framework OpenGL
+   # CoreFoundation: libretro-common's file paths and VFS
+   OS_LIBS     := -lm -lresolv -framework CoreFoundation -framework OpenGL
 
    PKGS := epoxy
    DEPS_CFLAGS := $(shell $(PKG_CONFIG) --cflags $(PKGS)) -pthread

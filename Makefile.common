@@ -57,18 +57,14 @@ CFLAGS_DSP := $(QEMU_CFLAGS) -I$(CORE_DIR)/hw/xbox/mcpx/apu/dsp \
 	-I$(CORE_DIR)/hw/xbox/mcpx/apu/dsp/interp
 CFLAGS_GLOFF := $(QEMU_CFLAGS) -I$(CORE_DIR)/hw/xbox/nv2a/pgraph/thirdparty
 # HAVE_MMAP: the VFS maps files through mmap; on Windows through its own
-# file mappings, which need no define. path_is_absolute is a name QEMU's
-# block layer has too (block.c): libretro-common's is renamed here, in
-# every file of it, so the two can share the core.
-CFLAGS_LRCOMMON := -I$(CORE_DIR)/libretro-common/include -w \
-	-Dpath_is_absolute=lrc_path_is_absolute
+# file mappings, which need no define.
+CFLAGS_LRCOMMON := -I$(CORE_DIR)/libretro-common/include -w
 ifneq ($(HOST_OS),win32)
 CFLAGS_LRCOMMON += -DHAVE_MMAP
 endif
 # The core's GLib (libretro/glib): GLib's API on libretro-common
 CFLAGS_GLIB := -std=gnu11 -Wall -I$(CORE_DIR)/libretro/glib \
-	-I$(CORE_DIR)/libretro-common/include \
-	-Dpath_is_absolute=lrc_path_is_absolute $(OS_CFLAGS)
+	-I$(CORE_DIR)/libretro-common/include $(OS_CFLAGS)
 CFLAGS_VOLK := -I$(CORE_DIR)/deps/volk -DVK_NO_PROTOTYPES $(OS_CFLAGS) \
 	$(DEPS_CFLAGS)
 CFLAGS_SPIRV_REFLECT := -I$(CORE_DIR)/deps/SPIRV-Reflect
