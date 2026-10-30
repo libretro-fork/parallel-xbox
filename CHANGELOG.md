@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- CPU Boost processes eligible packed SSE add/subtract/multiply operations four floats or two doubles at a time, reducing per-lane loads and stores while retaining the existing rounding, flushing and software-fallback rules.
+
 - x87 status/control-word reads use generated loads instead of C helper calls, avoiding their general register bookkeeping while preserving floating-point stack flushes and instruction-pointer publication.
 
 - Video gains a separate Force Quality Filtering option (restart required, disabled by default), requesting up to 16x anisotropic filtering on wrapping/mirrored linear 2D color textures. Point/depth, cube and clamped/bordered sampling keep game filtering, and OpenGL isolates forced filtering from shared point-sampled bindings. Force Texture LOD0 remains independent.

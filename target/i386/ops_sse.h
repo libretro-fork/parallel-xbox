@@ -470,6 +470,7 @@ void glue(helper_pshufhw, SUFFIX)(Reg *d, Reg *s, int order)
     {                                                                   \
         INIT                                                            \
         int i;                                                          \
+        glue(XEMU_SSE_PACKED32_, name)                                   \
         for (i = 0; i < 2 << SHIFT; i++) {                              \
             d->ZMM_S(i) = F(32, v->ZMM_S(i), s->ZMM_S(i));              \
         }                                                               \
@@ -480,6 +481,7 @@ void glue(helper_pshufhw, SUFFIX)(Reg *d, Reg *s, int order)
     {                                                                   \
         INIT                                                            \
         int i;                                                          \
+        glue(XEMU_SSE_PACKED64_, name)                                   \
         for (i = 0; i < 1 << SHIFT; i++) {                              \
             d->ZMM_D(i) = F(64, v->ZMM_D(i), s->ZMM_D(i));              \
         }                                                               \
@@ -537,6 +539,9 @@ void glue(helper_pshufhw, SUFFIX)(Reg *d, Reg *s, int order)
 #ifndef XEMU_SSE_NATIVE_DECLARED
 #define XEMU_SSE_NATIVE_DECLARED
 
+typedef float XemuSseF32 __attribute__((vector_size(16)));
+typedef double XemuSseF64 __attribute__((vector_size(16)));
+
 static inline bool sse_native_ok(CPUX86State *env)
 {
     const float_status *s = &env->sse_status;
@@ -570,6 +575,28 @@ static inline bool sse_native_ok(CPUX86State *env)
  * exception flags in their original order. */
 #define XEMU_SSE_NATIVE_INIT bool xemu_sse_native = sse_native_ok(env);
 
+/* Keep each native 16-byte group in host SIMD registers. memcpy provides
+ * unaligned, alias-safe accesses and folds to SIMD moves. */
+#define XEMU_SSE_PACKED(size, view, op)                                   \
+    if (likely(xemu_sse_native)) {                                       \
+        for (unsigned lane = 0; lane < ((size == 32 ? 2u : 1u) << SHIFT);  \
+             lane += 128 / size) {                                      \
+            XemuSseF##size a, b, result;                                 \
+            memcpy(&a, &v->view(lane), 16);                               \
+            memcpy(&b, &s->view(lane), 16);                               \
+            result = a op b;                                            \
+            memcpy(&d->view(lane), &result, 16);                          \
+        }                                                               \
+        return;                                                         \
+    }
+#define XEMU_SSE_PACKED32_add XEMU_SSE_PACKED(32, ZMM_S, +)
+#define XEMU_SSE_PACKED32_sub XEMU_SSE_PACKED(32, ZMM_S, -)
+#define XEMU_SSE_PACKED32_mul XEMU_SSE_PACKED(32, ZMM_S, *)
+#define XEMU_SSE_PACKED64_add XEMU_SSE_PACKED(64, ZMM_D, +)
+#define XEMU_SSE_PACKED64_sub XEMU_SSE_PACKED(64, ZMM_D, -)
+#define XEMU_SSE_PACKED64_mul XEMU_SSE_PACKED(64, ZMM_D, *)
+
+
 #define XEMU_SSE_OP(size, a, b, op, softfn)                              \
     ({                                                                   \
         float ## size _r;                                                \
@@ -592,6 +619,20 @@ static inline bool sse_native_ok(CPUX86State *env)
 #define FPU_ADD(size, a, b) float ## size ## _add(a, b, &env->sse_status)
 #define FPU_SUB(size, a, b) float ## size ## _sub(a, b, &env->sse_status)
 #define FPU_MUL(size, a, b) float ## size ## _mul(a, b, &env->sse_status)
+#endif
+#define XEMU_SSE_PACKED32_div
+#define XEMU_SSE_PACKED32_min
+#define XEMU_SSE_PACKED32_max
+#define XEMU_SSE_PACKED64_div
+#define XEMU_SSE_PACKED64_min
+#define XEMU_SSE_PACKED64_max
+#if !defined(XBOX) || !defined(__x86_64__)
+#define XEMU_SSE_PACKED32_add
+#define XEMU_SSE_PACKED32_sub
+#define XEMU_SSE_PACKED32_mul
+#define XEMU_SSE_PACKED64_add
+#define XEMU_SSE_PACKED64_sub
+#define XEMU_SSE_PACKED64_mul
 #endif
 #define FPU_DIV(size, a, b) float ## size ## _div(a, b, &env->sse_status)
 

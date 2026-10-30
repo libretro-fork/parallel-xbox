@@ -745,3 +745,8 @@ The 4180 phase samples x=-0.25 at the edge of the striped texture using linear f
 `x87-status.asm` checks all 65,536 loaded status words and control words,
 AX upper-half preservation, exact 16-bit memory writes and live stack/TOP
 transitions with hard FPU and CPU Boost independently enabled and disabled.
+
+Native SSE arithmetic tests cover 128/256/512-bit helpers against the prior
+scalar-lane reference, including destination/source aliases, NaN payloads,
+signed zeros, subnormals, host MXCSR and software exception status. Packed
+CPU Boost arithmetic uses 16-byte host SIMD groups without temporary buffers.
