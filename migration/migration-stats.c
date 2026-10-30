@@ -46,11 +46,6 @@ uint64_t migration_rate_get(void)
 
 #define XFER_LIMIT_RATIO (1000 / BUFFER_DELAY)
 
-void migration_rate_reset(void)
-{
-    stat64_set(&mig_stats.rate_limit_start, migration_transferred_bytes());
-}
-
 uint64_t migration_transferred_bytes(void)
 {
     uint64_t multifd = stat64_get(&mig_stats.multifd_bytes);

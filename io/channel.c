@@ -34,13 +34,6 @@ bool qio_channel_has_feature(QIOChannel *ioc,
 
 
 
-void qio_channel_set_name(QIOChannel *ioc,
-                          const char *name)
-{
-    g_free(ioc->name);
-    ioc->name = g_strdup(name);
-}
-
 
 ssize_t qio_channel_readv_full(QIOChannel *ioc,
                                const struct iovec *iov,
@@ -103,121 +96,6 @@ ssize_t qio_channel_writev_full(QIOChannel *ioc,
     return klass->io_writev(ioc, iov, niov, fds, nfds, flags, errp);
 }
 
-
-int coroutine_mixed_fn qio_channel_readv_all(QIOChannel *ioc,
-                                             const struct iovec *iov,
-                                             size_t niov,
-                                             Error **errp)
-{
-    return qio_channel_readv_full_all(ioc, iov, niov, NULL, NULL, errp);
-}
-
-int coroutine_mixed_fn qio_channel_readv_full_all_eof(QIOChannel *ioc,
-                                                      const struct iovec *iov,
-                                                      size_t niov,
-                                                      int **fds, size_t *nfds,
-                                                      int flags,
-                                                      Error **errp)
-{
-    int ret = -1;
-    struct iovec *local_iov = g_new(struct iovec, niov);
-    struct iovec *local_iov_head = local_iov;
-    unsigned int nlocal_iov = niov;
-    int **local_fds = fds;
-    size_t *local_nfds = nfds;
-    bool partial = false;
-
-    if (nfds) {
-        *nfds = 0;
-    }
-
-    if (fds) {
-        *fds = NULL;
-    }
-
-    nlocal_iov = iov_copy(local_iov, nlocal_iov,
-                          iov, niov,
-                          0, iov_size(iov, niov));
-
-    while ((nlocal_iov > 0) || local_fds) {
-        ssize_t len;
-        len = qio_channel_readv_full(ioc, local_iov, nlocal_iov, local_fds,
-                                     local_nfds, flags, errp);
-        if (len == QIO_CHANNEL_ERR_BLOCK) {
-            qio_channel_wait_cond(ioc, G_IO_IN);
-            continue;
-        }
-
-        if (len == 0) {
-            if (local_nfds && *local_nfds) {
-                /*
-                 * Got some FDs, but no data yet. This isn't an EOF
-                 * scenario (yet), so carry on to try to read data
-                 * on next loop iteration
-                 */
-                goto next_iter;
-            } else if (!partial) {
-                /* No fds and no data - EOF before any data read */
-                ret = 0;
-                goto cleanup;
-            } else {
-                len = -1;
-                error_setg(errp,
-                           "Unexpected end-of-file before all data were read");
-                /* Fallthrough into len < 0 handling */
-            }
-        }
-
-        if (len < 0) {
-            /* Close any FDs we previously received */
-            if (nfds && fds) {
-                size_t i;
-                for (i = 0; i < (*nfds); i++) {
-                    close((*fds)[i]);
-                }
-                g_free(*fds);
-                *fds = NULL;
-                *nfds = 0;
-            }
-            goto cleanup;
-        }
-
-        if (nlocal_iov) {
-            iov_discard_front(&local_iov, &nlocal_iov, len);
-        }
-
-next_iter:
-        partial = true;
-        local_fds = NULL;
-        local_nfds = NULL;
-    }
-
-    ret = 1;
-
- cleanup:
-    g_free(local_iov_head);
-    return ret;
-}
-
-int coroutine_mixed_fn qio_channel_readv_full_all(QIOChannel *ioc,
-                                                  const struct iovec *iov,
-                                                  size_t niov,
-                                                  int **fds, size_t *nfds,
-                                                  Error **errp)
-{
-    int ret = qio_channel_readv_full_all_eof(ioc, iov, niov, fds, nfds, 0,
-                                             errp);
-
-    if (ret == 0) {
-        error_setg(errp, "Unexpected end-of-file before all data were read");
-        return -1;
-    }
-    if (ret == 1) {
-        return 0;
-    }
-
-    return ret;
-}
 
 int coroutine_mixed_fn qio_channel_writev_all(QIOChannel *ioc,
                                               const struct iovec *iov,

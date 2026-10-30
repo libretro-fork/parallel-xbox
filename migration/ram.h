@@ -73,53 +73,16 @@ extern XBZRLECacheStats xbzrle_counters;
         if (!qemu_ram_is_migratable(block)) {} else
 
 void ram_mig_init(void);
-int xbzrle_cache_resize(uint64_t new_size, Error **errp);
-uint64_t ram_bytes_remaining(void);
-uint64_t ram_bytes_total(void);
-void mig_throttle_counter_reset(void);
 
-uint64_t ram_pagesize_summary(void);
-int ram_save_queue_pages(const char *rbname, ram_addr_t start, ram_addr_t len,
-                         Error **errp);
-void ram_postcopy_migrated_memory_release(MigrationState *ms);
 /* For outgoing discard bitmap */
-void ram_postcopy_send_discard_bitmap(MigrationState *ms);
 /* For incoming postcopy discard */
-int ram_discard_range(const char *block_name, uint64_t start, size_t length);
-int ram_postcopy_incoming_init(MigrationIncomingState *mis, Error **errp);
-int ram_load_postcopy(QEMUFile *f, int channel);
 
 void ram_handle_zero(void *host, uint64_t size);
 
-void ram_transferred_add(uint64_t bytes);
-void ram_release_page(const char *rbname, uint64_t offset);
 
-int ramblock_recv_bitmap_test(RAMBlock *rb, void *host_addr);
-bool ramblock_recv_bitmap_test_byte_offset(RAMBlock *rb, uint64_t byte_offset);
-void ramblock_recv_bitmap_set(RAMBlock *rb, void *host_addr);
-void ramblock_recv_bitmap_set_range(RAMBlock *rb, void *host_addr, size_t nr);
-void ramblock_recv_bitmap_set_offset(RAMBlock *rb, uint64_t byte_offset);
-int64_t ramblock_recv_bitmap_send(QEMUFile *file,
-                                  const char *block_name);
-bool ram_dirty_bitmap_reload(MigrationState *s, RAMBlock *rb, Error **errp);
-bool ramblock_page_is_discarded(RAMBlock *rb, ram_addr_t start);
-void postcopy_preempt_shutdown_file(MigrationState *s);
-void *postcopy_preempt_thread(void *opaque);
-void ramblock_set_file_bmap_atomic(RAMBlock *block, ram_addr_t offset,
-                                   bool set);
 
 /* ram cache */
-int colo_init_ram_cache(Error **errp);
-void colo_flush_ram_cache(void);
-void colo_release_ram_cache(void);
-void colo_incoming_start_dirty_log(void);
-void colo_record_bitmap(RAMBlock *block, ram_addr_t *normal, uint32_t pages);
 
 /* Background snapshot */
-bool ram_write_tracking_available(void);
-bool ram_write_tracking_compatible(void);
-void ram_write_tracking_prepare(void);
-int ram_write_tracking_start(void);
-void ram_write_tracking_stop(void);
 
 #endif

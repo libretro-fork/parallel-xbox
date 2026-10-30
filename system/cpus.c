@@ -528,11 +528,6 @@ void bql_unlock(void)
     qemu_mutex_unlock(&bql);
 }
 
-void qemu_cond_timedwait_bql(QemuCond *cond, int ms)
-{
-    qemu_cond_timedwait(cond, &bql, ms);
-}
-
 /* signal CPU creation */
 void cpu_thread_signal_created(CPUState *cpu)
 {

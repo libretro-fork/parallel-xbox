@@ -69,53 +69,6 @@ struct QEMUFile {
     QTAILQ_HEAD(, FdEntry) fds;
 };
 
-/*
- * Stop a file from being read/written - not all backing files can do this
- * typically only sockets can.
- *
- * TODO: convert to propagate Error objects instead of squashing
- * to a fixed errno value
- */
-int qemu_file_shutdown(QEMUFile *f)
-{
-    Error *err = NULL;
-
-    /*
-     * We must set qemufile error before the real shutdown(), otherwise
-     * there can be a race window where we thought IO all went though
-     * (because last_error==NULL) but actually IO has already stopped.
-     *
-     * If without correct ordering, the race can happen like this:
-     *
-     *      page receiver                     other thread
-     *      -------------                     ------------
-     *      qemu_get_buffer()
-     *                                        do shutdown()
-     *        returns 0 (buffer all zero)
-     *        (we didn't check this retcode)
-     *      try to detect IO error
-     *        last_error==NULL, IO okay
-     *      install ALL-ZERO page
-     *                                        set last_error
-     *      --> guest crash!
-     */
-    if (!f->last_error) {
-        qemu_file_set_error(f, -EIO);
-    }
-
-    if (!qio_channel_has_feature(f->ioc,
-                                 QIO_CHANNEL_FEATURE_SHUTDOWN)) {
-        return -ENOSYS;
-    }
-
-    if (qio_channel_shutdown(f->ioc, QIO_CHANNEL_SHUTDOWN_BOTH, &err) < 0) {
-        error_report_err(err);
-        return -EIO;
-    }
-
-    return 0;
-}
-
 static QEMUFile *qemu_file_new_impl(QIOChannel *ioc, bool is_writable)
 {
     QEMUFile *f;
@@ -132,22 +85,9 @@ static QEMUFile *qemu_file_new_impl(QIOChannel *ioc, bool is_writable)
     return f;
 }
 
-/*
- * Result: QEMUFile* for a 'return path' for comms in the opposite direction
- */
-QEMUFile *qemu_file_get_return_path(QEMUFile *f)
-{
-    return qemu_file_new_impl(f->ioc, !f->is_writable);
-}
-
 QEMUFile *qemu_file_new_output(QIOChannel *ioc)
 {
     return qemu_file_new_impl(ioc, true);
-}
-
-QEMUFile *qemu_file_new_input(QIOChannel *ioc)
-{
-    return qemu_file_new_impl(ioc, false);
 }
 
 /*
@@ -472,16 +412,6 @@ static void add_buf_to_iovec(QEMUFile *f, size_t len)
     }
 }
 
-void qemu_put_buffer_async(QEMUFile *f, const uint8_t *buf, size_t size,
-                           bool may_free)
-{
-    if (f->last_error) {
-        return;
-    }
-
-    add_to_iovec(f, buf, size, may_free);
-}
-
 void qemu_put_buffer(QEMUFile *f, const uint8_t *buf, size_t size)
 {
     size_t l;
@@ -603,43 +533,6 @@ size_t coroutine_mixed_fn qemu_get_buffer(QEMUFile *f, uint8_t *buf, size_t size
 }
 
 /*
- * Read 'size' bytes of data from the file.
- * 'size' can be larger than the internal buffer.
- *
- * The data:
- *   may be held on an internal buffer (in which case *buf is updated
- *     to point to it) that is valid until the next qemu_file operation.
- * OR
- *   will be copied to the *buf that was passed in.
- *
- * The code tries to avoid the copy if possible.
- *
- * It will return size bytes unless there was an error, in which case it will
- * return as many as it managed to read (assuming blocking fd's which
- * all current QEMUFile are)
- *
- * Note: Since **buf may get changed, the caller should take care to
- *       keep a pointer to the original buffer if it needs to deallocate it.
- */
-size_t coroutine_mixed_fn qemu_get_buffer_in_place(QEMUFile *f, uint8_t **buf, size_t size)
-{
-    if (size < IO_BUF_SIZE) {
-        size_t res;
-        uint8_t *src = NULL;
-
-        res = qemu_peek_buffer(f, &src, size, 0);
-
-        if (res == size) {
-            qemu_file_skip(f, res);
-            *buf = src;
-            return res;
-        }
-    }
-
-    return qemu_get_buffer(f, *buf, size);
-}
-
-/*
  * Peeks a single byte from the buffer; this isn't guaranteed to work if
  * offset leaves a gap after the previous read/peeked data.
  */
@@ -744,17 +637,6 @@ size_t coroutine_fn qemu_get_counted_string(QEMUFile *f, char buf[256])
     buf[res] = 0;
 
     return res == len ? res : 0;
-}
-
-/*
- * Set the blocking state of the QEMUFile.
- * Note: On some transports the OS only keeps a single blocking state for
- *       both directions, and thus changing the blocking on the main
- *       QEMUFile can also affect the return path.
- */
-bool qemu_file_set_blocking(QEMUFile *f, bool block, Error **errp)
-{
-    return qio_channel_set_blocking(f->ioc, block, errp);
 }
 
 /*

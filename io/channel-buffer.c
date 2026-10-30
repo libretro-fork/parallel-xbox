@@ -25,21 +25,6 @@
 #include "qemu/sockets.h"
 #include "trace.h"
 
-QIOChannelBuffer *
-qio_channel_buffer_new(size_t capacity)
-{
-    QIOChannelBuffer *ioc;
-
-    ioc = QIO_CHANNEL_BUFFER(object_new(TYPE_QIO_CHANNEL_BUFFER));
-
-    if (capacity) {
-        ioc->data = g_new0(uint8_t, capacity);
-        ioc->capacity = capacity;
-    }
-
-    return ioc;
-}
-
 
 static void qio_channel_buffer_finalize(Object *obj)
 {

@@ -449,19 +449,6 @@ void qemu_del_nic(NICState *nic)
     g_free(nic);
 }
 
-void qemu_foreach_nic(qemu_nic_foreach func, void *opaque)
-{
-    NetClientState *nc;
-
-    QTAILQ_FOREACH(nc, &net_clients, next) {
-        if (nc->info->type == NET_CLIENT_DRIVER_NIC) {
-            if (nc->queue_index == 0) {
-                func(qemu_get_nic(nc), opaque);
-            }
-        }
-    }
-}
-
 int qemu_can_receive_packet(NetClientState *nc)
 {
     if (nc->receive_disabled) {
@@ -616,12 +603,6 @@ ssize_t qemu_send_packet_async(NetClientState *sender,
 ssize_t qemu_send_packet(NetClientState *nc, const uint8_t *buf, int size)
 {
     return qemu_send_packet_async(nc, buf, size, NULL);
-}
-
-ssize_t qemu_send_packet_raw(NetClientState *nc, const uint8_t *buf, int size)
-{
-    return qemu_send_packet_async_with_flags(nc, QEMU_NET_PACKET_FLAG_RAW,
-                                             buf, size, NULL);
 }
 
 static ssize_t nc_sendv_compat(NetClientState *nc, const struct iovec *iov,

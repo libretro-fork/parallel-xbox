@@ -52,17 +52,6 @@ static inline clockid_t qemu_timedwait_clockid(void)
 #endif
 }
 
-static void compute_abs_deadline(struct timespec *ts, int ms)
-{
-    clock_gettime(qemu_timedwait_clockid(), ts);
-    ts->tv_nsec += (ms % 1000) * 1000000;
-    ts->tv_sec += ms / 1000;
-    if (ts->tv_nsec >= 1000000000) {
-        ts->tv_sec++;
-        ts->tv_nsec -= 1000000000;
-    }
-}
-
 void qemu_mutex_init(QemuMutex *mutex)
 {
     int err;
@@ -212,31 +201,6 @@ void qemu_cond_wait_impl(QemuCond *cond, QemuMutex *mutex, const char *file, con
         error_exit(err, __func__);
 }
 
-static bool TSA_NO_TSA
-qemu_cond_timedwait_ts(QemuCond *cond, QemuMutex *mutex, struct timespec *ts,
-                       const char *file, const int line)
-{
-    int err;
-
-    assert(cond->initialized);
-    trace_qemu_mutex_unlock(mutex, file, line);
-    err = pthread_cond_timedwait(&cond->cond, &mutex->lock, ts);
-    trace_qemu_mutex_locked(mutex, file, line);
-    if (err && err != ETIMEDOUT) {
-        error_exit(err, __func__);
-    }
-    return err != ETIMEDOUT;
-}
-
-bool qemu_cond_timedwait_impl(QemuCond *cond, QemuMutex *mutex, int ms,
-                              const char *file, const int line)
-{
-    struct timespec ts;
-
-    compute_abs_deadline(&ts, ms);
-    return qemu_cond_timedwait_ts(cond, mutex, &ts, file, line);
-}
-
 void qemu_sem_init(QemuSemaphore *sem, int init)
 {
     qemu_mutex_init(&sem->mutex);
@@ -264,31 +228,6 @@ void qemu_sem_post(QemuSemaphore *sem)
         qemu_cond_signal(&sem->cond);
     }
     qemu_mutex_unlock(&sem->mutex);
-}
-
-int qemu_sem_timedwait(QemuSemaphore *sem, int ms)
-{
-    bool rc = true;
-    struct timespec ts;
-
-    compute_abs_deadline(&ts, ms);
-    qemu_mutex_lock(&sem->mutex);
-    while (sem->count == 0) {
-        if (ms == 0) {
-            rc = false;
-        } else {
-            rc = qemu_cond_timedwait_ts(&sem->cond, &sem->mutex, &ts,
-                                        __FILE__, __LINE__);
-        }
-        if (!rc) { /* timeout */
-            break;
-        }
-    }
-    if (rc) {
-        --sem->count;
-    }
-    qemu_mutex_unlock(&sem->mutex);
-    return (rc ? 0 : -1);
 }
 
 void qemu_sem_wait(QemuSemaphore *sem)

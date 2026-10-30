@@ -21,7 +21,6 @@
 #include "migration/blocker.h"
 #include "system/runstate.h"
 #include "system/system.h"
-#include "system/cpu-throttle.h"
 #include "rdma.h"
 #include "ram.h"
 #include "migration/cpr.h"
@@ -53,7 +52,6 @@
 #include "monitor/monitor.h"
 #include "net/announce.h"
 #include "qemu/queue.h"
-#include "multifd.h"
 #include "qemu/yank.h"
 #include "system/cpus.h"
 #include "yank_functions.h"
@@ -97,7 +95,6 @@ static MigrationIncomingState *current_incoming;
 static GSList *migration_blockers[MIG_MODE__MAX];
 
 static bool migration_object_check(MigrationState *ms, Error **errp);
-static void migrate_hup_delete(MigrationState *s);
 
 static gint page_request_addr_cmp(gconstpointer ap, gconstpointer bp)
 {
@@ -142,7 +139,6 @@ void migration_object_init(void)
     cpr_exec_init();
 
     /* Initialize cpu throttle timers */
-    cpu_throttle_init();
 }
 
 typedef struct {
@@ -150,41 +146,6 @@ typedef struct {
     QEMUBHFunc *cb;
     void *opaque;
 } MigrationBH;
-
-static void migration_bh_dispatch_bh(void *opaque)
-{
-    MigrationState *s = migrate_get_current();
-    MigrationBH *migbh = opaque;
-
-    /* cleanup this BH */
-    qemu_bh_delete(migbh->bh);
-    migbh->bh = NULL;
-
-    /* dispatch the other one */
-    migbh->cb(migbh->opaque);
-    object_unref(OBJECT(s));
-
-    g_free(migbh);
-}
-
-void migration_bh_schedule(QEMUBHFunc *cb, void *opaque)
-{
-    MigrationState *s = migrate_get_current();
-    MigrationBH *migbh = g_new0(MigrationBH, 1);
-    QEMUBH *bh = qemu_bh_new(migration_bh_dispatch_bh, migbh);
-
-    /* Store these to dispatch when the BH runs */
-    migbh->bh = bh;
-    migbh->cb = cb;
-    migbh->opaque = opaque;
-
-    /*
-     * Ref the state for bh, because it may be called when
-     * there're already no other refs
-     */
-    object_ref(OBJECT(s));
-    qemu_bh_schedule(bh);
-}
 
 /* For outgoing */
 MigrationState *migrate_get_current(void)
@@ -216,15 +177,8 @@ void migration_incoming_transport_cleanup(MigrationIncomingState *mis)
 void migration_incoming_state_destroy(void)
 {
     MigrationIncomingState *mis = migration_incoming_get_current();
-    PostcopyState ps = postcopy_state_get();
-
-    if (ps != POSTCOPY_INCOMING_NONE) {
-        postcopy_incoming_cleanup(mis);
-    }
 
     /*
-     * RAM state cleanup needs to happen after multifd cleanup, because
-     * multifd threads can use some of its states (receivedmap).
      * The VFIO load_cleanup() implementation is BQL-sensitive. It requires
      * BQL must NOT be taken when recycling load threads, so that it won't
      * block the load threads from making progress on address space
@@ -277,9 +231,6 @@ void migration_incoming_state_destroy(void)
 
 static void migrate_generate_event(MigrationStatus new_state)
 {
-    if (migrate_events()) {
-        qapi_event_send_migration(new_state);
-    }
 }
 
 /*
@@ -310,82 +261,6 @@ static int migrate_send_rp_message(MigrationIncomingState *mis,
     return qemu_fflush(mis->to_src_file);
 }
 
-/* Request one page from the source VM at the given start address.
- *   rb: the RAMBlock to request the page in
- *   Start: Address offset within the RB
- *   Len: Length in bytes required - must be a multiple of pagesize
- */
-int migrate_send_rp_message_req_pages(MigrationIncomingState *mis,
-                                      RAMBlock *rb, ram_addr_t start)
-{
-    uint8_t bufc[12 + 1 + 255]; /* start (8), len (4), rbname up to 256 */
-    size_t msglen = 12; /* start + len */
-    size_t len = qemu_ram_pagesize(rb);
-    enum mig_rp_message_type msg_type;
-    const char *rbname;
-    int rbname_len;
-
-    *(uint64_t *)bufc = cpu_to_be64((uint64_t)start);
-    *(uint32_t *)(bufc + 8) = cpu_to_be32((uint32_t)len);
-
-    /*
-     * We maintain the last ramblock that we requested for page.  Note that we
-     * don't need locking because this function will only be called within the
-     * postcopy ram fault thread.
-     */
-    if (rb != mis->last_rb) {
-        mis->last_rb = rb;
-
-        rbname = qemu_ram_get_idstr(rb);
-        rbname_len = strlen(rbname);
-
-        assert(rbname_len < 256);
-
-        bufc[msglen++] = rbname_len;
-        memcpy(bufc + msglen, rbname, rbname_len);
-        msglen += rbname_len;
-        msg_type = MIG_RP_MSG_REQ_PAGES_ID;
-    } else {
-        msg_type = MIG_RP_MSG_REQ_PAGES;
-    }
-
-    return migrate_send_rp_message(mis, msg_type, msglen, bufc);
-}
-
-static bool migration_colo_enabled;
-bool migration_incoming_colo_enabled(void)
-{
-    return migration_colo_enabled;
-}
-
-void migration_incoming_disable_colo(void)
-{
-    ram_block_discard_disable(false);
-    migration_colo_enabled = false;
-}
-
-int migration_incoming_enable_colo(Error **errp)
-{
-#ifndef CONFIG_REPLICATION
-    error_setg(errp, "ENABLE_COLO command come in migration stream, but the "
-               "replication module is not built in");
-    return -ENOTSUP;
-#endif
-
-    if (!migrate_colo()) {
-        error_setg(errp, "ENABLE_COLO command come in migration stream"
-                   ", but x-colo capability is not set");
-        return -EINVAL;
-    }
-
-    if (ram_block_discard_disable(true)) {
-        error_setg(errp, "COLO: cannot disable RAM discard");
-        return -EBUSY;
-    }
-    migration_colo_enabled = true;
-    return 0;
-}
-
 /*
  * Send a 'SHUT' message on the return channel with the given value
  * to indicate that we've finished with the RP.  Non-0 value indicates
@@ -398,66 +273,6 @@ void migrate_send_rp_shut(MigrationIncomingState *mis,
 
     buf = cpu_to_be32(value);
     migrate_send_rp_message(mis, MIG_RP_MSG_SHUT, sizeof(buf), &buf);
-}
-
-/*
- * Send a 'PONG' message on the return channel with the given value
- * (normally in response to a 'PING')
- */
-void migrate_send_rp_pong(MigrationIncomingState *mis,
-                          uint32_t value)
-{
-    uint32_t buf;
-
-    buf = cpu_to_be32(value);
-    migrate_send_rp_message(mis, MIG_RP_MSG_PONG, sizeof(buf), &buf);
-}
-
-void migrate_send_rp_recv_bitmap(MigrationIncomingState *mis,
-                                 char *block_name)
-{
-    char buf[512];
-    int len;
-    int64_t res;
-
-    /*
-     * First, we send the header part. It contains only the len of
-     * idstr, and the idstr itself.
-     */
-    len = strlen(block_name);
-    buf[0] = len;
-    memcpy(buf + 1, block_name, len);
-
-    if (mis->state != MIGRATION_STATUS_POSTCOPY_RECOVER) {
-        error_report("%s: MSG_RP_RECV_BITMAP only used for recovery",
-                     __func__);
-        return;
-    }
-
-    migrate_send_rp_message(mis, MIG_RP_MSG_RECV_BITMAP, len + 1, buf);
-
-    /*
-     * Next, we dump the received bitmap to the stream.
-     *
-     * TODO: currently we are safe since we are the only one that is
-     * using the to_src_file handle (fault thread is still paused),
-     * and it's ok even not taking the mutex. However the best way is
-     * to take the lock before sending the message header, and release
-     * the lock after sending the bitmap.
-     */
-    qemu_mutex_lock(&mis->rp_mutex);
-    res = ramblock_recv_bitmap_send(mis->to_src_file, block_name);
-    qemu_mutex_unlock(&mis->rp_mutex);
-
-    trace_migrate_send_rp_recv_bitmap(block_name, res);
-}
-
-void migrate_send_rp_resume_ack(MigrationIncomingState *mis, uint32_t value)
-{
-    uint32_t buf;
-
-    buf = cpu_to_be32(value);
-    migrate_send_rp_message(mis, MIG_RP_MSG_RESUME_ACK, sizeof(buf), &buf);
 }
 
 bool migration_is_running(void)
@@ -517,58 +332,6 @@ bool migrate_has_error(MigrationState *s)
     return s->error != NULL;
 }
 
-void migration_cancel(void)
-{
-    MigrationState *s = migrate_get_current();
-    int old_state ;
-    bool setup = (s->state == MIGRATION_STATUS_SETUP);
-
-    trace_migration_cancel();
-
-    WITH_QEMU_LOCK_GUARD(&s->qemu_file_lock) {
-        if (s->rp_state.from_dst_file) {
-            /* shutdown the rp socket, so causing the rp thread to shutdown */
-            qemu_file_shutdown(s->rp_state.from_dst_file);
-        }
-    }
-
-    do {
-        old_state = s->state;
-        if (!migration_is_running()) {
-            break;
-        }
-        /* If the migration is paused, kick it out of the pause */
-        if (old_state == MIGRATION_STATUS_PRE_SWITCHOVER) {
-            qemu_event_set(&s->pause_event);
-        }
-        migrate_set_state(&s->state, old_state, MIGRATION_STATUS_CANCELLING);
-    } while (s->state != MIGRATION_STATUS_CANCELLING);
-
-    /*
-     * If we're unlucky the migration code might be stuck somewhere in a
-     * send/write while the network has failed and is waiting to timeout;
-     * if we've got shutdown(2) available then we can force it to quit.
-     */
-    if (s->state == MIGRATION_STATUS_CANCELLING) {
-        WITH_QEMU_LOCK_GUARD(&s->qemu_file_lock) {
-            if (s->to_dst_file) {
-                qemu_file_shutdown(s->to_dst_file);
-            }
-        }
-    }
-
-    /*
-     * If qmp_migrate_finish has not been called, then there is no path that
-     * will complete the cancellation.  Do it now.
-     */
-    if (setup && !s->to_dst_file) {
-        migrate_set_state(&s->state, MIGRATION_STATUS_CANCELLING,
-                          MIGRATION_STATUS_CANCELLED);
-        cpr_state_close();
-        migrate_hup_delete(s);
-    }
-}
-
 static void add_notifiers(NotifierWithReturn *notify, unsigned modes)
 {
     for (MigMode mode = 0; mode < MIG_MODE__MAX; mode++) {
@@ -614,29 +377,6 @@ int migration_call_notifiers(MigrationState *s, MigrationEventType type,
     }
 
     return 0;
-}
-
-bool migration_in_postcopy(void)
-{
-    MigrationState *s = migrate_get_current();
-
-    switch (s->state) {
-    case MIGRATION_STATUS_POSTCOPY_DEVICE:
-    case MIGRATION_STATUS_POSTCOPY_ACTIVE:
-    case MIGRATION_STATUS_POSTCOPY_PAUSED:
-    case MIGRATION_STATUS_POSTCOPY_RECOVER_SETUP:
-    case MIGRATION_STATUS_POSTCOPY_RECOVER:
-        return true;
-    default:
-        return false;
-    }
-}
-
-bool migration_incoming_postcopy_advised(void)
-{
-    PostcopyState ps = postcopy_state_get();
-
-    return ps >= POSTCOPY_INCOMING_ADVISE && ps < POSTCOPY_INCOMING_END;
 }
 
 int migrate_init(MigrationState *s, Error **errp)
@@ -754,32 +494,6 @@ void migrate_del_blocker(Error **reasonp)
 }
 
 
-static void migrate_hup_delete(MigrationState *s)
-{
-    if (s->hup_source) {
-        g_source_destroy(s->hup_source);
-        g_source_unref(s->hup_source);
-        s->hup_source = NULL;
-    }
-}
-
-int migration_rp_wait(MigrationState *s)
-{
-    /* If migration has failure already, ignore the wait */
-    if (migrate_has_error(s)) {
-        return -1;
-    }
-
-    qemu_sem_wait(&s->rp_state.rp_sem);
-
-    /* After wait, double check that there's no failure */
-    if (migrate_has_error(s)) {
-        return -1;
-    }
-
-    return 0;
-}
-
 static inline void
 migration_wait_main_channel(MigrationState *ms)
 {
@@ -796,124 +510,12 @@ typedef enum MigThrError {
     MIG_THR_ERR_FATAL = 2,
 } MigThrError;
 
-static void update_iteration_initial_status(MigrationState *s)
-{
-    /*
-     * Update these three fields at the same time to avoid mismatch info lead
-     * wrong speed calculation.
-     */
-    s->iteration_start_time = qemu_clock_get_ms(QEMU_CLOCK_REALTIME);
-    s->iteration_initial_bytes = migration_transferred_bytes();
-    s->iteration_initial_pages = ram_get_total_transferred_pages();
-}
-
-static void migration_update_counters(MigrationState *s,
-                                      int64_t current_time)
-{
-    uint64_t transferred, transferred_pages, time_spent;
-    uint64_t current_bytes; /* bytes transferred since the beginning */
-    uint64_t switchover_bw;
-    /* Expected bandwidth when switching over to destination QEMU */
-    double expected_bw_per_ms;
-    double bandwidth;
-
-    if (current_time < s->iteration_start_time + BUFFER_DELAY) {
-        return;
-    }
-
-    switchover_bw = migrate_avail_switchover_bandwidth();
-    current_bytes = migration_transferred_bytes();
-    transferred = current_bytes - s->iteration_initial_bytes;
-    time_spent = current_time - s->iteration_start_time;
-    bandwidth = (double)transferred / time_spent;
-
-    if (switchover_bw) {
-        /*
-         * If the user specified a switchover bandwidth, let's trust the
-         * user so that can be more accurate than what we estimated.
-         */
-        expected_bw_per_ms = switchover_bw / 1000;
-    } else {
-        /* If the user doesn't specify bandwidth, we use the estimated */
-        expected_bw_per_ms = bandwidth;
-    }
-
-    s->threshold_size = expected_bw_per_ms * migrate_downtime_limit();
-
-    s->mbps = (((double) transferred * 8.0) /
-               ((double) time_spent / 1000.0)) / 1000.0 / 1000.0;
-
-    transferred_pages = ram_get_total_transferred_pages() -
-                            s->iteration_initial_pages;
-    s->pages_per_second = (double) transferred_pages /
-                             (((double) time_spent / 1000.0));
-
-    /*
-     * if we haven't sent anything, we don't want to
-     * recalculate. 10000 is a small enough number for our purposes
-     */
-    if (stat64_get(&mig_stats.dirty_pages_rate) &&
-        transferred > 10000) {
-        s->expected_downtime =
-            stat64_get(&mig_stats.dirty_bytes_last_sync) / expected_bw_per_ms;
-    }
-
-    migration_rate_reset();
-
-    update_iteration_initial_status(s);
-
-    trace_migrate_transferred(transferred, time_spent,
-                              /* Both in unit bytes/ms */
-                              bandwidth, switchover_bw / 1000,
-                              s->threshold_size);
-}
-
 /* Migration thread iteration status */
 typedef enum {
     MIG_ITERATE_RESUME,         /* Resume current iteration */
     MIG_ITERATE_SKIP,           /* Skip current iteration */
     MIG_ITERATE_BREAK,          /* Break the loop */
 } MigIterateState;
-
-void migration_consume_urgent_request(void)
-{
-    qemu_sem_wait(&migrate_get_current()->rate_limit_sem);
-}
-
-/* Returns true if the rate limiting was broken by an urgent request */
-bool migration_rate_limit(void)
-{
-    int64_t now = qemu_clock_get_ms(QEMU_CLOCK_REALTIME);
-    MigrationState *s = migrate_get_current();
-
-    bool urgent = false;
-    migration_update_counters(s, now);
-    if (migration_rate_exceeded(s->to_dst_file)) {
-
-        if (qemu_file_get_error(s->to_dst_file)) {
-            return false;
-        }
-        /*
-         * Wait for a delay to do rate limiting OR
-         * something urgent to post the semaphore.
-         */
-        int ms = s->iteration_start_time + BUFFER_DELAY - now;
-        trace_migration_rate_limit_pre(ms);
-        if (qemu_sem_timedwait(&s->rate_limit_sem, ms) == 0) {
-            /*
-             * We were woken by one or more urgent things but
-             * the timedwait will have consumed one of them.
-             * The service routine for the urgent wake will dec
-             * the semaphore itself for each item it consumes,
-             * so add this one we just eat back.
-             */
-            qemu_sem_post(&s->rate_limit_sem);
-            urgent = true;
-        }
-        trace_migration_rate_limit_post(urgent);
-    }
-    return urgent;
-}
 
 static void migration_class_init(ObjectClass *klass, const void *data)
 {

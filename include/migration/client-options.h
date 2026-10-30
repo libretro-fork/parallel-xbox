@@ -25,6 +25,5 @@ static inline bool migrate_switchover_ack(void) { return false; }
 
 /* only QMP set another mode, and the core has none */
 static inline MigMode migrate_mode(void) { return MIG_MODE_NORMAL; }
-uint64_t migrate_vcpu_dirty_limit_period(void);
 
 #endif

@@ -97,8 +97,6 @@ bool cpr_walk_fd(cpr_walk_fd_cb cb)
 /*************************************************************************/
 /*************************************************************************/
 
-static QEMUFile *cpr_state_file;
-
 static MigMode incoming_mode = MIG_MODE_NONE;
 
 void cpr_set_incoming_mode(MigMode mode)
@@ -109,13 +107,5 @@ void cpr_set_incoming_mode(MigMode mode)
 bool cpr_is_incoming(void)
 {
     return incoming_mode != MIG_MODE_NONE;
-}
-
-void cpr_state_close(void)
-{
-    if (cpr_state_file) {
-        qemu_fclose(cpr_state_file);
-        cpr_state_file = NULL;
-    }
 }
 

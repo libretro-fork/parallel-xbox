@@ -183,6 +183,7 @@ void timed_average_account(TimedAverage *ta, uint64_t value)
 }
 
 
+
 /* Get the sum of all accounted values
  * @ta:      the TimedAverage structure
  * @elapsed: if non-NULL, the elapsed time (in ns) will be stored here
