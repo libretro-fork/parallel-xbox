@@ -426,3 +426,11 @@ The GPU alias sequence also tests the last VRAM page with `xemu_memory=64`: fram
 GPU alias frames 930/950 sample an indexed texture after GPU clears write red then blue into the palette surface. CPU palette RAM starts black and the indexed binding is already cached, so these checks detect missing GPU palette synchronization and stale cache revalidation. Both APIs run at scales 1, 2 and 4.
 
 After the GPU palette updates, guest frames 960 through 999 rebind the same indexed texture and draw without modifying its palette. Captures at frontend frames 970, 990 and 1005 must remain blue. A separate temporary transfer-counter audit measured actual palette readbacks and indexed uploads across this sequence; those counters are not part of the shipped core or the standard visual regression assertions.
+
+`python libretro/tests/test-vk-vertex-copies.py CHECKOUT [CC]` runs the
+production vertex range merge, dirty/COW dispatch and remap copy against
+independent page-union and byte-fetch oracles. It covers 100,000 interval
+sets, 10,000 zero/nonzero sync-queue cases and 20,000 multi-attribute copies
+with output guard bytes, packed/strided sources and zero vertex counts. It
+checks that merged ranges stay in the input array and packed attributes use
+one copy; undefined-behavior traps are enabled. No graphics driver is needed.

@@ -3807,6 +3807,60 @@ static void vertex_cow_bind_attributes(PGRAPHVkState *r,
     }
 }
 
+/* Most draws' interleaved attributes already form one connected span.
+ * Coalesce that case while scanning, without sorting or copying records.
+ * A gap keeps the general sorted, in-place merge. */
+static int merge_vertex_sync_ranges(MemorySyncRequirement *ranges, int count)
+{
+    assert(count > 0 && count <= NV2A_VERTEXSHADER_ATTRIBUTES);
+    hwaddr lo = ranges[0].addr;
+    hwaddr hi = lo + ranges[0].size;
+    int i;
+    for (i = 1; i < count; i++) {
+        hwaddr end = ranges[i].addr + ranges[i].size;
+        if (ranges[i].addr > hi || end < lo) {
+            break;
+        }
+        lo = MIN(lo, ranges[i].addr);
+        hi = MAX(hi, end);
+    }
+    if (i == count) {
+        if (ranges[0].addr != lo || ranges[0].size != hi - lo) {
+            ranges[0] = (MemorySyncRequirement){ lo, hi - lo };
+        }
+        return 1;
+    }
+    if (count > 1) {
+        qsort(ranges, count,
+              sizeof(MemorySyncRequirement),
+              compare_memory_sync_requirement_by_addr);
+    }
+
+    /* Compact into the sorted input: each output is at or behind the input
+     * being consumed, so no separate range array is needed. */
+    int num_syncs = 1;
+
+    for (int i = 1; i < count; i++) {
+        MemorySyncRequirement *p = &ranges[num_syncs - 1];
+        MemorySyncRequirement *t = &ranges[i];
+
+        if (t->addr <= (p->addr + p->size)) {
+            // Merge with previous
+            hwaddr p_end_addr = p->addr + p->size;
+            hwaddr t_end_addr = t->addr + t->size;
+            hwaddr new_end_addr = MAX(p_end_addr, t_end_addr);
+            p->size = new_end_addr - p->addr;
+        } else {
+            if (num_syncs != i) {
+                ranges[num_syncs] = *t;
+            }
+            num_syncs++;
+        }
+    }
+
+    return num_syncs;
+}
+
 static void sync_vertex_ram_buffer(PGRAPHState *pg)
 {
     NV2AState *d = container_of(pg, NV2AState, pgraph);
@@ -3841,31 +3895,9 @@ static void sync_vertex_ram_buffer(PGRAPHState *pg)
         r->vertex_ram_buffer_syncs[i].size = end_addr - start_addr;
     }
 
-    // Sort the requirements in increasing order of addresses
-    qsort(r->vertex_ram_buffer_syncs, r->num_vertex_ram_buffer_syncs,
-          sizeof(MemorySyncRequirement),
-          compare_memory_sync_requirement_by_addr);
-
-    // Merge overlapping/adjacent requests to minimize number of tests
-    MemorySyncRequirement merged[16];
-    int num_syncs = 1;
-
-    merged[0] = r->vertex_ram_buffer_syncs[0];
-
-    for (int i = 1; i < r->num_vertex_ram_buffer_syncs; i++) {
-        MemorySyncRequirement *p = &merged[num_syncs - 1];
-        MemorySyncRequirement *t = &r->vertex_ram_buffer_syncs[i];
-
-        if (t->addr <= (p->addr + p->size)) {
-            // Merge with previous
-            hwaddr p_end_addr = p->addr + p->size;
-            hwaddr t_end_addr = t->addr + t->size;
-            hwaddr new_end_addr = MAX(p_end_addr, t_end_addr);
-            p->size = new_end_addr - p->addr;
-        } else {
-            merged[num_syncs++] = *t;
-        }
-    }
+    MemorySyncRequirement *merged = r->vertex_ram_buffer_syncs;
+    int num_syncs = merge_vertex_sync_ranges(
+        merged, r->num_vertex_ram_buffer_syncs);
 
     if (num_syncs < r->num_vertex_ram_buffer_syncs) {
         NV2A_VK_DPRINTF("Reduced to %d sync checks", num_syncs);
@@ -3874,8 +3906,8 @@ static void sync_vertex_ram_buffer(PGRAPHState *pg)
     /* A range needing upload (guest-dirty, or mirror stale) goes to the
      * mirror unless unsettled work reads one of its pages; then it is copied
      * into an arena, and only this draw's bindings point at the copy. */
-    VertexCowDispatch dispatch[ARRAY_SIZE(merged)];
-    memset(dispatch, 0, sizeof(dispatch));
+    VertexCowDispatch dispatch[NV2A_VERTEXSHADER_ATTRIBUTES];
+    memset(dispatch, 0, num_syncs * sizeof(dispatch[0]));
 
     for (int i = 0; i < num_syncs; i++) {
         hwaddr addr = merged[i].addr;
@@ -4308,7 +4340,6 @@ static void copy_remapped_attributes_to_inline_buffer(PGRAPHState *pg,
     assert(pgraph_vk_buffer_has_space_for(pg, BUFFER_VERTEX_INLINE_STAGING,
                                           remap.buffer_space_required, 256));
 
-    // FIXME: SIMD memcpy
     // FIXME: Caching
     // FIXME: Account for only what is drawn
     assert(start_vertex == 0);
@@ -4326,10 +4357,20 @@ static void copy_remapped_attributes_to_inline_buffer(PGRAPHState *pg,
         uint8_t *out_ptr = buffer->mapped + attr_buffer_offset;
         uint8_t *in_ptr = d->vram_ptr + r->vertex_attribute_offsets[attr_id];
 
-        for (int vertex_id = 0; vertex_id < num_vertices; vertex_id++) {
-            memcpy(out_ptr, in_ptr, remap.map[attr_id].new_stride);
-            out_ptr += remap.map[attr_id].new_stride;
-            in_ptr += remap.map[attr_id].old_stride;
+        size_t width = remap.map[attr_id].new_stride;
+        size_t stride = remap.map[attr_id].old_stride;
+        if (stride == width) {
+            /* An unaligned base can require remapping even when the vertex
+             * elements are packed. Copy that span once, without gathering. */
+            if (num_vertices) {
+                memcpy(out_ptr, in_ptr, width * num_vertices);
+            }
+        } else {
+            for (uint32_t vertex_id = 0; vertex_id < num_vertices; vertex_id++) {
+                memcpy(out_ptr, in_ptr, width);
+                out_ptr += width;
+                in_ptr += stride;
+            }
         }
 
         r->vertex_attribute_offsets[attr_id] = attr_buffer_offset;

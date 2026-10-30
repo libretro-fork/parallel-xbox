@@ -107,10 +107,14 @@ static void update_memory_buffer(NV2AState *d, int attr_index, hwaddr addr,
     PGRAPHState *pg = &d->pgraph;
     PGRAPHVkState *r = pg->vk_renderer_state;
 
-    assert(r->num_vertex_ram_buffer_syncs <
-           ARRAY_SIZE(r->vertex_ram_buffer_syncs));
-    r->vertex_ram_buffer_syncs[r->num_vertex_ram_buffer_syncs++] =
-        (MemorySyncRequirement){ .addr = addr, .size = size };
+    /* Zero-stride attributes become uniforms, not vertex-buffer readers.
+     * Do not turn their empty spans into page-wide uploads/consumed marks. */
+    if (size) {
+        assert(r->num_vertex_ram_buffer_syncs <
+               ARRAY_SIZE(r->vertex_ram_buffer_syncs));
+        r->vertex_ram_buffer_syncs[r->num_vertex_ram_buffer_syncs++] =
+            (MemorySyncRequirement){ .addr = addr, .size = size };
+    }
     r->vertex_attr_span[attr_index] =
         (MemorySyncRequirement){ .addr = addr, .size = size };
 }
