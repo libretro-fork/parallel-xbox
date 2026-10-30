@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- About 150 pieces of QEMU that nothing in the core ever reaches are no longer built into it (unused USB, SCSI, ACPI, chardev, block filter and network filter devices, TLS and auth backends, and stubs nothing calls): the core is about 0.8 MB smaller and registers fewer device types at load.
+
 - Two of QEMU's ways of running the emulated CPU that the core never uses (one thread per CPU, and round-robin) are no longer built into it.
 
 - Vulkan offset scanout shades only the background rectangles left visible by its GPU regions, instead of shading the whole background and painting over it again. The exact rectangle plan is cached until coverage changes; adjacent pieces coalesce. It uses at most eight background draws sharing one descriptor set, with the previous full-background draw retained for complex layouts or too little covered area to justify extra draw calls. Video overlay coordinates and color keying are unchanged. Timing-only Vulkan harness runs now submit a completion marker without an unintended frame readback.
