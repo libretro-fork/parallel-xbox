@@ -1981,17 +1981,33 @@ static void create_texture(PGRAPHState *pg, int texture_idx)
         key.scale = pg->surface_scale_factor;
     }
 
+    /* The same eligibility applies to a cache hit: a texture first made
+     * from RAM or for feedback need not keep a private copy after its
+     * surface becomes available for in-place sampling. */
+    bool s2t_borrow =
+        surface_to_texture &&
+        surface != r->color_binding &&
+        state.dimensionality == 2 && !state.cubemap &&
+        texture_vkf(r, state.color_format).vk_format ==
+            surface->host_fmt.vk_format;
+
     uint64_t key_hash = fast_hash((void*)&key, sizeof(key));
     LruNode *node = lru_lookup(&r->texture_cache, key_hash, &key);
     TextureBinding *snode = container_of(node, TextureBinding, node);
     bool binding_found = snode->image != VK_NULL_HANDLE;
 
     /* In-place sampling: a borrowed node holds only while it aliases the
-     * live surface here, not bound as the color target; else rebuilt. */
-    if (binding_found && snode->s2t_borrowed &&
-        (!surface_to_texture || snode->image != surface->image ||
-         surface == r->color_binding)) {
+     * live surface here, not bound as the color target; else rebuilt.
+     * A private image can in turn become an alias when it is eligible. */
+    if (binding_found &&
+        ((snode->s2t_borrowed &&
+          (!s2t_borrow || snode->image != surface->image)) ||
+         (!snode->s2t_borrowed && s2t_borrow))) {
+        /* Recorded draws retain the old view/image through deferred
+         * retirement. Invalidate descriptors in either direction, even
+         * if the driver recycles a view handle. */
         texture_cache_release_node_resources(r, snode);
+        snode->seq = ++r->texture_binding_seq;
         binding_found = false;
     }
 
@@ -2113,15 +2129,6 @@ static void create_texture(PGRAPHState *pg, int texture_idx)
         vkf = texture_vkf(r, state.color_format);
         fprintf(stderr, "nv2a: SEGABOOT logo replaced (vk)\n");
     }
-
-    /* In-place sampling: in place for the class the copy serves, minus
-     * feedback, with the surface's exact VkFormat (no MUTABLE_FORMAT). */
-    bool s2t_borrow =
-        surface_to_texture &&
-        surface != r->color_binding &&
-        state.dimensionality == 2 && !state.cubemap &&
-        texture_vkf(r, state.color_format).vk_format ==
-            surface->host_fmt.vk_format;
 
     VkImageCreateInfo image_create_info = {
         .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
