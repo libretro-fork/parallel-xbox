@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- The Windows shader-dictionary test builds its helper with the Windows compiler and runs it under Wine when cross-testing. Helper failures now propagate instead of being hidden by the summary pipeline.
+
 - macOS links the system resolver library required by the bundled libslirp DNS backend, fixing the final core link.
 
 - macOS architecture and deployment-target flags now reach every compiled source group, including libretro-common and libslirp, fixing Intel core builds on Apple Silicon runners.

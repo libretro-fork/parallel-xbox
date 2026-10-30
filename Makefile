@@ -316,14 +316,14 @@ dspdiff: $(DSPDIFF)
 # Every seed-dictionary shader through the GLSL to SPIR-V compiler
 # (libretro/tests/seedshaders.c), linked with the core's own generators and
 # compiler objects: built after the core, for the host
-SEEDSHADERS := $(CORE_DIR)/libretro/tests/seedshaders
+SEEDSHADERS := $(CORE_DIR)/libretro/tests/seedshaders$(if $(filter win,$(platform)),.exe,)
 SEEDSHADERS_OBJS := $(call obj,$(addprefix $(CORE_DIR)/hw/xbox/nv2a/pgraph/, \
 		glsl/common.c glsl/geom.c glsl/psh.c glsl/shaders.c glsl/vsh.c \
 		glsl/vsh-ff.c glsl/vsh-prog.c glsl/uniform-cache.c texture.c)) \
 	$(OBJS_GLSLC) $(OBJS_VSH) $(OBJS_GLIB) $(OBJS_LRCOMMON)
 $(SEEDSHADERS): $(CORE_DIR)/libretro/tests/seedshaders.c $(SEEDSHADERS_OBJS) \
 		$(LIBQEMUUTIL)
-	$(CC) -O2 $(CFLAGS_TARGET) -o $@ $< $(filter-out $<,$^) \
+	$(CC) -O2 $(CFLAGS_TARGET) $(if $(filter win,$(platform)),-static,) -o $@ $< $(filter-out $<,$^) \
 		$(DEPS_LIBS) $(OS_LIBS)
 seedshaders: $(SEEDSHADERS)
 

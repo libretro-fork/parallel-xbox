@@ -1,5 +1,9 @@
 # The core's tests
 
+Shader-dictionary tests reuse the core's object files and compiler platform.
+For a Windows core tested from Linux, the helper is a static MinGW executable
+run through Wine. Its exit status is checked before printing its summary.
+
 On Linux, `python3 libretro/tests/test-libretro-jit.py CHECKOUT [CC]`
 compiles the production Apple Silicon JIT adapter against a strict mock of
 libretro-common's nested write scopes, with UBSan. It checks initial execute,

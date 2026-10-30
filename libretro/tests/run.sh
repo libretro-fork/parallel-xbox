@@ -715,11 +715,33 @@ fi
 # Every shader of the seed dictionary through the GLSL to SPIR-V compiler
 # (seedshaders.c): what a generator writes for any state a game is known
 # to meet, the compiler takes. Built from the core's own objects, so only
-# where the core was built here (a Linux build directory).
+# where the core was built here. Reuse the core's platform and run a
+# cross-compiled Windows helper under Wine, just like the harness.
 if [ -f "$here/../../hw/xbox/nv2a/pgraph/spv/glslc.o" ]; then
     echo "== seed dictionary shaders"
-    make -s -C "$here/../.." seedshaders
-    "$here/seedshaders" "$here/../../data/shader_seeds.bin" | tail -1
+    seedshaders_run() {
+        case $core in
+        *.dll)
+            case $(uname -s) in
+            MINGW*|MSYS*)
+                make -s -C "$here/../.." platform=win seedshaders
+                "$here/seedshaders.exe" "$(path "$here/../../data/shader_seeds.bin")"
+                ;;
+            *)
+                make -s -C "$here/../.." platform=win \
+                    CROSS_PREFIX="${CROSS_PREFIX:-x86_64-w64-mingw32-}" seedshaders
+                wine "$here/seedshaders.exe" "$(path "$here/../../data/shader_seeds.bin")"
+                ;;
+            esac
+            ;;
+        *)
+            make -s -C "$here/../.." seedshaders
+            "$here/seedshaders" "$here/../../data/shader_seeds.bin"
+            ;;
+        esac
+    }
+    seedshaders_run >"$work/seedshaders.txt"
+    tail -1 "$work/seedshaders.txt"
 fi
 
 # The DSP JIT against the interpreter on the test ROM's GP program
