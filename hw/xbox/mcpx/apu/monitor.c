@@ -41,6 +41,7 @@
 #include "apu_int.h"
 #include "dsp/gp_ep.h"
 #include <retro_spsc.h>
+#include "monitor.h"
 
 #define LIBRETRO_APU_QUEUE_FRAMES 16384
 #define FRAME_BYTES 4 /* stereo S16 */
@@ -50,15 +51,12 @@ static bool apu_queue_ready;
 /* Audio > Audio Volume, as standalone's curve: the gain the samples are
  * scaled by, in 1/65536 */
 static int32_t apu_gain_q16 = 65536;
-/* Engine frames dropped because the frontend stopped taking samples */
-uint32_t libretro_audio_dropped;
 
 static void apu_queue_reset(void)
 {
-    /* two engine frames: the 25 or 26 of a video frame against its 800
-     * or 801 samples can leave the queue a frame short at the worst
-     * phase of the two, and one more frame keeps every pull whole */
-    static const int16_t preroll[2 * NUM_SAMPLES_PER_FRAME * 2];
+    /* MCPX_APU_MONITOR_PREROLL_FRAMES engine frames (monitor.h) */
+    static const int16_t preroll[MCPX_APU_MONITOR_PREROLL_FRAMES *
+                                 NUM_SAMPLES_PER_FRAME * 2];
 
     retro_spsc_clear(&apu_queue);
     retro_spsc_write(&apu_queue, preroll, sizeof(preroll));
@@ -71,17 +69,16 @@ void libretro_audio_set_volume(float volume)
 }
 
 /* Consumer, the frontend's thread, the emulator thread parked: a pointer
- * to the samples there, contiguous, and how many frames; the DSPs' thread
- * done with the engine's last frame first */
+ * to the samples there, contiguous, and how many frames. It does not wait
+ * for the DSPs' thread: the queue's preroll covers the engine frame that
+ * thread may still be on (monitor.h), so the samples a frame hands over
+ * are the same however the two threads ran. */
 size_t libretro_audio_read_begin(const int16_t **samples)
 {
     const void *p;
 
     if (!apu_queue_ready) {
         return 0;
-    }
-    if (g_state) {
-        mcpx_apu_dsp_quiesce(g_state);
     }
     size_t bytes = retro_spsc_read_begin(&apu_queue, &p);
     *samples = p;
@@ -138,12 +135,10 @@ static int16_t *monitor_room(size_t frames)
 
     if (!apu_queue_ready ||
         retro_spsc_write_avail(&apu_queue) < frames * FRAME_BYTES) {
-        libretro_audio_dropped++;
         return NULL;
     }
     /* mirrored: the room is contiguous */
     if (retro_spsc_write_begin(&apu_queue, &p) < frames * FRAME_BYTES) {
-        libretro_audio_dropped++;
         return NULL;
     }
     return p;

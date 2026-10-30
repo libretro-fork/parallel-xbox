@@ -11,6 +11,12 @@ and Vulkan are checked at native and 2x scales. The harness accepts
 `--pixel FRAME:X:Y` to sample a top-left-based physical coordinate, including
 on repeated frames; `--pixel FRAME` retains its centre-pixel behavior.
 
+`test-audio-margin.c` works out the worst room the frontend's audio pull
+finds without waiting for the DSPs' thread, over every phase of the APU's
+engine frames against the video frames, with the engine frame in flight
+not counted: the queue's preroll (`hw/xbox/mcpx/apu/monitor.h`) has to
+leave a whole engine frame to spare.
+
 `rom/rep.asm` and `rom/rep-stos.asm` check REP MOVS copies and STOS fills
 in bare-metal guests with CPU Boost on and off. They share setup and handlers
 in `rom/rep-common.inc`. They cover byte/word/dword operations, fill-value and

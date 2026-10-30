@@ -20,6 +20,7 @@
 #include "ui/console.h"
 #include "hw/xbox/nv2a/nv2a.h"
 #include "hw/xbox/chihiro/chihiro.h"
+#include "hw/xbox/mcpx/apu/monitor.h"
 #include "libretro-crosshair.h"
 #include "ui/xemu-widescreen.h"
 #include "system/blockdev.h"
@@ -59,8 +60,6 @@
 #include <rthreads/retro_eventcount.h>
 
 extern bool qemu_libretro_handle_requests(void);
-extern void libretro_audio_discard(void);
-extern void libretro_audio_set_volume(float volume);
 
 /* ========================================================================= */
 /* Libretro callback storage                                                 */
@@ -3082,8 +3081,6 @@ static int lr_audio_frames_this_run(void)
 
 static void lr_present_audio(bool have_frame)
 {
-    extern size_t libretro_audio_read_begin(const int16_t **samples);
-    extern void libretro_audio_read_end(size_t frames);
     const int want = lr_audio_frames_this_run();
     const int16_t *samples = NULL;
     size_t got = 0;
