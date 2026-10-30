@@ -358,7 +358,7 @@ typedef struct MemAccessCallback {
     void *opaque;
     /* Accesses caught, BP_MEM_READ|BP_MEM_WRITE at insertion; the owner may
      * drop READ, or both, through mem_access_callback_set_flags(). */
-    int watch_flags;
+    retro_atomic_int_t watch_flags;
     QTAILQ_ENTRY(MemAccessCallback) entry;
 } MemAccessCallback;
 

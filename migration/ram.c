@@ -854,12 +854,12 @@ static uint64_t physical_memory_sync_dirty_bitmap(RAMBlock *rb,
                                         DIRTY_MEMORY_BLOCK_SIZE);
         unsigned long page = BIT_WORD(start >> TARGET_PAGE_BITS);
 
-        src = qatomic_rcu_read(
-                &ram_list.dirty_memory[DIRTY_MEMORY_MIGRATION])->blocks;
+        src = ((DirtyMemoryBlocks *)retro_atomic_load_acquire_ptr(
+                &ram_list.dirty_memory[DIRTY_MEMORY_MIGRATION]))->blocks;
 
         for (k = page; k < page + nr; k++) {
-            if (src[idx][offset]) {
-                unsigned long bits = qatomic_xchg(&src[idx][offset], 0);
+            if (bitmap_word_read(&src[idx][offset])) {
+                unsigned long bits = bitmap_word_xchg(&src[idx][offset], 0);
                 unsigned long new_dirty;
                 new_dirty = ~dest[k];
                 dest[k] |= bits;
@@ -1996,7 +1996,7 @@ static void ram_state_reset(RAMState *rs)
 
     rs->last_seen_block = NULL;
     rs->last_page = 0;
-    rs->last_version = ram_list.version;
+    rs->last_version = retro_atomic_load_acquire_int(&ram_list.version);
     rs->xbzrle_started = false;
 
     ram_page_hint_reset(&rs->page_hint);
@@ -2499,12 +2499,11 @@ static int ram_save_iterate(QEMUFile *f, void *opaque)
      */
     WITH_QEMU_LOCK_GUARD(&rs->bitmap_mutex) {
         WITH_RCU_READ_LOCK_GUARD() {
-            if (ram_list.version != rs->last_version) {
+            /* Read version before ram_list.blocks */
+            if ((uint32_t)retro_atomic_load_acquire_int(&ram_list.version) !=
+                rs->last_version) {
                 ram_state_reset(rs);
             }
-
-            /* Read version before ram_list.blocks */
-            smp_rmb();
 
             ret = rdma_registration_start(f, RAM_CONTROL_ROUND);
             if (ret < 0) {

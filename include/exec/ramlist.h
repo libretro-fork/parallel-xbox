@@ -21,7 +21,7 @@ typedef struct RAMBlockNotifier RAMBlockNotifier;
  *   rcu_read_lock();
  *
  *   DirtyMemoryBlocks *blocks =
- *       qatomic_rcu_read(&ram_list.dirty_memory[DIRTY_MEMORY_MIGRATION]);
+ *       retro_atomic_load_acquire_ptr(&ram_list.dirty_memory[DIRTY_MEMORY_MIGRATION]);
  *
  *   ram_addr_t idx = (addr >> TARGET_PAGE_BITS) / DIRTY_MEMORY_BLOCK_SIZE;
  *   unsigned long *block = blocks.blocks[idx];
@@ -48,12 +48,12 @@ typedef struct {
 
 typedef struct RAMList {
     QemuMutex mutex;
-    RAMBlock *mru_block;
+    retro_atomic_ptr_t mru_block;  /* RAMBlock * */
     /* RCU-enabled, writes protected by the ramlist lock. */
     QLIST_RCU_HEAD(, RAMBlock) blocks;
-    DirtyMemoryBlocks *dirty_memory[DIRTY_MEMORY_NUM];
+    retro_atomic_ptr_t dirty_memory[DIRTY_MEMORY_NUM]; /* DirtyMemoryBlocks * */
     unsigned int num_dirty_blocks;
-    uint32_t version;
+    retro_atomic_int_t version;
     QLIST_HEAD(, RAMBlockNotifier) ramblock_notifiers;
 } RAMList;
 extern RAMList ram_list;

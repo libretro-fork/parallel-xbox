@@ -4,13 +4,13 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- QEMU's own atomics (qemu/atomic.h) are moving onto libretro-common's retro_atomic.h, as the emulated GPU and sound chip already did: so far the object and QObject reference counts, the QOM cast caches, RCU's grace-period counter, reader state and call_rcu queue, and the lists RCU readers walk (the RAM blocks, the CPUs, each bus's devices, the event loop's handlers and bottom halves), the vCPU's shared state (its exit and interrupt requests, its kick and running flags) and TCG's (the compile flags, chained jumps, jump cache and page descriptors), the translated-code hash table, spinlocks, events, lock counters, seqlocks, the 64-bit statistics counters, the dirty-memory bitmaps and the blocks that hold them, the RAM block list's cached block and version, each address space's memory map and DMA bounce-buffer count, and the memory maps' reference counts. QEMU's lock profiler (-enable-sync-profile), which the core never turned on, is gone, and locking a mutex no longer goes through a function pointer. Guest code reads and translated-code patching stay single plain-width accesses. Nothing changes for someone using the core.
+
 - QEMU's user-mode emulation code (linux-user's side of TCG and the target) and TCG's debug build checks, which no build of the core turned on, are removed; so are the lockless-lookup atomics of the interval tree, which only TCG's optimizer still uses, on one thread. Nothing changes for someone using the core.
 
 - Vulkan no longer emits normal-draw dynamic state while a clear pipeline is bound. Partial-channel clears preserve untouched channels, and subsequent draws restore their own state.
 
 - Vulkan permits full-surface, all-channel clears when rebinding an exactly matching live swizzled color view, avoiding the previous assertion. Partial clears, depth views and layout/size changes retain their existing guards.
-
-- QEMU's own atomics (qemu/atomic.h) are moving onto libretro-common's retro_atomic.h, as the emulated GPU and sound chip already did: so far the object and QObject reference counts, the QOM cast caches, RCU's grace-period counter, reader state and call_rcu queue, and the lists RCU readers walk (the RAM blocks, the CPUs, each bus's devices, the event loop's handlers and bottom halves), the vCPU's shared state (its exit and interrupt requests, its kick and running flags) and TCG's (the compile flags, chained jumps, jump cache and page descriptors), the translated-code hash table, spinlocks, events, lock counters, seqlocks, the 64-bit statistics counters and the dirty-memory bitmaps. QEMU's lock profiler (-enable-sync-profile), which the core never turned on, is gone, and locking a mutex no longer goes through a function pointer. Guest code reads and translated-code patching stay single plain-width accesses. Nothing changes for someone using the core.
 
 - Vulkan combines live GPU cubemap faces with RAM-backed faces at native resolution for single-level ARGB cubes, avoiding GPU face readback at texture binds. Scaled, unsupported and ambiguously aliased cubes retain the existing fallback.
 

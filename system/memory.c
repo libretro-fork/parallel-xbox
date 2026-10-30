@@ -264,7 +264,7 @@ static FlatView *flatview_new(MemoryRegion *mr_root)
     FlatView *view;
 
     view = g_new0(FlatView, 1);
-    view->ref = 1;
+    retro_atomic_int_init(&view->ref, 1);
     view->root = mr_root;
     memory_region_ref(mr_root);
     trace_flatview_new(view, mr_root);
@@ -307,12 +307,22 @@ static void flatview_destroy(FlatView *view)
 
 static bool flatview_ref(FlatView *view)
 {
-    return qatomic_fetch_inc_nonzero(&view->ref) > 0;
+    int ref = retro_atomic_load_relaxed_int(&view->ref);
+
+    do {
+        if (ref == 0) {
+            return false;
+        }
+        if (retro_atomic_cas_int(&view->ref, ref, ref + 1)) {
+            return true;
+        }
+        ref = retro_atomic_load_relaxed_int(&view->ref);
+    } while (true);
 }
 
 void flatview_unref(FlatView *view)
 {
-    if (qatomic_fetch_dec(&view->ref) == 1) {
+    if (retro_atomic_fetch_sub_int(&view->ref, 1) == 1) {
         trace_flatview_destroy_rcu(view, view->root);
         assert(view->root);
         call_rcu(view, flatview_destroy, rcu);
@@ -1092,7 +1102,7 @@ static void address_space_set_flatview(AddressSpace *as)
     }
 
     /* Writes are protected by the BQL.  */
-    qatomic_rcu_set(&as->current_map, new_view);
+    retro_atomic_store_release_ptr(&as->current_map, new_view);
     if (old_view) {
         flatview_unref(old_view);
     }
@@ -2802,13 +2812,13 @@ void address_space_init(AddressSpace *as, MemoryRegion *root, const char *name)
 {
     memory_region_ref(root);
     as->root = root;
-    as->current_map = NULL;
+    retro_atomic_ptr_init(&as->current_map, NULL);
     as->ioeventfd_nb = 0;
     as->ioeventfds = NULL;
     QTAILQ_INIT(&as->listeners);
     QTAILQ_INSERT_TAIL(&address_spaces, as, address_spaces_link);
     as->max_bounce_buffer_size = DEFAULT_MAX_BOUNCE_BUFFER_SIZE;
-    as->bounce_buffer_size = 0;
+    retro_atomic_64_init(&as->bounce_buffer_size, 0);
     qemu_mutex_init(&as->map_client_list_lock);
     QLIST_INIT(&as->map_client_list);
     as->name = g_strdup(name ? name : "anonymous");
@@ -2818,13 +2828,13 @@ void address_space_init(AddressSpace *as, MemoryRegion *root, const char *name)
 
 static void do_address_space_destroy(AddressSpace *as)
 {
-    assert(qatomic_read(&as->bounce_buffer_size) == 0);
+    assert(retro_atomic_load_relaxed_64(&as->bounce_buffer_size) == 0);
     assert(QLIST_EMPTY(&as->map_client_list));
     qemu_mutex_destroy(&as->map_client_list_lock);
 
     assert(QTAILQ_EMPTY(&as->listeners));
 
-    flatview_unref(as->current_map);
+    flatview_unref(retro_atomic_load_relaxed_ptr(&as->current_map));
     g_free(as->name);
     g_free(as->ioeventfds);
     memory_region_unref(as->root);

@@ -1117,7 +1117,7 @@ struct AddressSpace {
     MemoryRegion *root;
 
     /* Accessed via RCU.  */
-    struct FlatView *current_map;
+    retro_atomic_ptr_t current_map;  /* struct FlatView * */
 
     int ioeventfd_nb;
     int ioeventfd_notifiers;
@@ -1135,7 +1135,7 @@ struct AddressSpace {
      */
     size_t max_bounce_buffer_size;
     /* Total size of bounce buffers currently allocated, atomically accessed */
-    size_t bounce_buffer_size;
+    retro_atomic_64_t bounce_buffer_size;
     /* List of callbacks to invoke when buffers free up */
     QemuMutex map_client_list_lock;
     QLIST_HEAD(, AddressSpaceMapClient) map_client_list;
@@ -1149,7 +1149,7 @@ typedef struct FlatRange FlatRange;
  */
 struct FlatView {
     struct rcu_head rcu;
-    unsigned ref;
+    retro_atomic_int_t ref;
     FlatRange *ranges;
     unsigned nr;
     unsigned nr_allocated;
@@ -1159,7 +1159,7 @@ struct FlatView {
 
 static inline FlatView *address_space_to_flatview(AddressSpace *as)
 {
-    return qatomic_rcu_read(&as->current_map);
+    return retro_atomic_load_acquire_ptr(&as->current_map);
 }
 
 /**

@@ -139,7 +139,7 @@ typedef struct PhysPageMap {
 } PhysPageMap;
 
 struct AddressSpaceDispatch {
-    MemoryRegionSection *mru_section;
+    retro_atomic_ptr_t mru_section;  /* MemoryRegionSection * */
     /* This is a multi-level map on the physical address space.
      * The bottom level has pointers to MemoryRegionSections.
      */
@@ -347,13 +347,13 @@ static MemoryRegionSection *address_space_lookup_region(AddressSpaceDispatch *d,
                                                         hwaddr addr,
                                                         bool resolve_subpage)
 {
-    MemoryRegionSection *section = qatomic_read(&d->mru_section);
+    MemoryRegionSection *section = retro_atomic_load_relaxed_ptr(&d->mru_section);
     subpage_t *subpage;
 
     if (!section || section == &d->map.sections[PHYS_SECTION_UNASSIGNED] ||
         !section_covers_addr(section, addr)) {
         section = phys_page_find(d, addr);
-        qatomic_set(&d->mru_section, section);
+        retro_atomic_store_relaxed_ptr(&d->mru_section, section);
     }
     if (resolve_subpage && section->mr->subpage) {
         subpage = container_of(section->mr, subpage_t, iomem);
@@ -821,7 +821,7 @@ int mem_access_callback_address_matches(CPUState *cpu, hwaddr addr, hwaddr len)
     MemAccessCallback *cb;
     QTAILQ_FOREACH(cb, &cpu->mem_access_callbacks, entry) {
         if (access_callback_address_matches(cb, addr, len)) {
-            ret |= qatomic_read(&cb->watch_flags);
+            ret |= retro_atomic_load_relaxed_int(&cb->watch_flags);
         }
     }
 
@@ -848,7 +848,7 @@ MemAccessCallback *mem_access_callback_insert(CPUState *cpu, MemoryRegion *mr,
     cb->len = len;
     cb->func = func;
     cb->opaque = opaque;
-    cb->watch_flags = BP_MEM_READ | BP_MEM_WRITE;
+    retro_atomic_int_init(&cb->watch_flags, BP_MEM_READ | BP_MEM_WRITE);
 
     async_safe_run_on_cpu(cpu, do_mem_access_callback_insert,
                           RUN_ON_CPU_HOST_PTR(cb));
@@ -883,10 +883,10 @@ void mem_access_callback_remove_by_ref(CPUState *cpu, MemAccessCallback *cb)
 void mem_access_callback_set_flags(CPUState *cpu, MemAccessCallback *cb,
                                    int flags)
 {
-    if (!cb || qatomic_read(&cb->watch_flags) == flags) {
+    if (!cb || retro_atomic_load_relaxed_int(&cb->watch_flags) == flags) {
         return;
     }
-    qatomic_set(&cb->watch_flags, flags);
+    retro_atomic_store_relaxed_int(&cb->watch_flags, flags);
     /* Filled TLB entries keep the old flags. Never flush them at once: a
      * caller in the access path (mmu_watch_or_dirty) still uses its entry's
      * xlat_section. Queued, the flush applies once cpu_exit() ends the TB. */
@@ -925,7 +925,7 @@ static RAMBlock *qemu_get_ram_block(ram_addr_t addr)
 {
     RAMBlock *block;
 
-    block = qatomic_rcu_read(&ram_list.mru_block);
+    block = retro_atomic_load_acquire_ptr(&ram_list.mru_block);
     if (block && addr - block->offset < block->max_length) {
         return block;
     }
@@ -951,11 +951,11 @@ found:
      *                                        call_rcu(reclaim_ramblock, xxx);
      *                  rcu_read_unlock()
      *
-     * qatomic_rcu_set is not needed here.  The block was already published
+     * A release store is not needed here.  The block was already published
      * when it was placed into the list.  Here we're just making an extra
      * copy of the pointer.
      */
-    ram_list.mru_block = block;
+    retro_atomic_store_relaxed_ptr(&ram_list.mru_block, block);
     return block;
 }
 
@@ -1000,7 +1000,7 @@ static bool physical_memory_get_dirty(ram_addr_t start, ram_addr_t length,
     page = start >> TARGET_PAGE_BITS;
 
     WITH_RCU_READ_LOCK_GUARD() {
-        blocks = qatomic_rcu_read(&ram_list.dirty_memory[client]);
+        blocks = retro_atomic_load_acquire_ptr(&ram_list.dirty_memory[client]);
 
         idx = page / DIRTY_MEMORY_BLOCK_SIZE;
         offset = page % DIRTY_MEMORY_BLOCK_SIZE;
@@ -1056,7 +1056,7 @@ static bool physical_memory_all_dirty(ram_addr_t start, ram_addr_t length,
 
     RCU_READ_LOCK_GUARD();
 
-    blocks = qatomic_rcu_read(&ram_list.dirty_memory[client]);
+    blocks = retro_atomic_load_acquire_ptr(&ram_list.dirty_memory[client]);
 
     idx = page / DIRTY_MEMORY_BLOCK_SIZE;
     offset = page % DIRTY_MEMORY_BLOCK_SIZE;
@@ -1122,7 +1122,7 @@ void physical_memory_set_dirty_flag(ram_addr_t addr, unsigned client)
 
     RCU_READ_LOCK_GUARD();
 
-    blocks = qatomic_rcu_read(&ram_list.dirty_memory[client]);
+    blocks = retro_atomic_load_acquire_ptr(&ram_list.dirty_memory[client]);
 
     set_bit_atomic(offset, blocks->blocks[idx]);
 }
@@ -1144,7 +1144,7 @@ void physical_memory_set_dirty_range(ram_addr_t start, ram_addr_t length,
 
     WITH_RCU_READ_LOCK_GUARD() {
         for (i = 0; i < DIRTY_MEMORY_NUM; i++) {
-            blocks[i] = qatomic_rcu_read(&ram_list.dirty_memory[i]);
+            blocks[i] = retro_atomic_load_acquire_ptr(&ram_list.dirty_memory[i]);
         }
 
         idx = page / DIRTY_MEMORY_BLOCK_SIZE;
@@ -1206,7 +1206,7 @@ bool physical_memory_test_and_clear_dirty(ram_addr_t start,
     page = start_page;
 
     WITH_RCU_READ_LOCK_GUARD() {
-        blocks = qatomic_rcu_read(&ram_list.dirty_memory[client]);
+        blocks = retro_atomic_load_acquire_ptr(&ram_list.dirty_memory[client]);
         ramblock = qemu_get_ram_block(start);
         /* Range sanity check on the ramblock */
         assert(start >= ramblock->offset &&
@@ -1250,7 +1250,7 @@ bool physical_memory_test_and_clear_dirty_ranges(ram_addr_t start,
     unsigned long page = first, run = 0;
     bool dirty = false, in_run = false;
     WITH_RCU_READ_LOCK_GUARD() {
-        DirtyMemoryBlocks *blocks = qatomic_rcu_read(&ram_list.dirty_memory[client]);
+        DirtyMemoryBlocks *blocks = retro_atomic_load_acquire_ptr(&ram_list.dirty_memory[client]);
         RAMBlock *block = qemu_get_ram_block(start);
         assert(start >= block->offset && start + length <= block->offset + block->used_length);
         while (page < end) {
@@ -1260,9 +1260,9 @@ bool physical_memory_test_and_clear_dirty_ranges(ram_addr_t start,
             unsigned n = MIN(end - page, BITS_PER_LONG - shift);
             unsigned long mask = (~0UL >> (BITS_PER_LONG - n)) << shift;
             unsigned long *word = &blocks->blocks[index][offset / BITS_PER_LONG];
-            unsigned long bits = qatomic_read(word) & mask;
+            unsigned long bits = bitmap_word_read(word) & mask;
             if (bits) {
-                bits = qatomic_fetch_and(word, ~mask) & mask;
+                bits = bitmap_word_fetch_and(word, ~mask) & mask;
             }
             for (unsigned i = 0; i < n; i++) {
                 bool set = (bits >> (shift + i)) & 1;
@@ -1331,7 +1331,7 @@ DirtyBitmapSnapshot *physical_memory_snapshot_and_clear_dirty
     dest = 0;
 
     WITH_RCU_READ_LOCK_GUARD() {
-        blocks = qatomic_rcu_read(&ram_list.dirty_memory[client]);
+        blocks = retro_atomic_load_acquire_ptr(&ram_list.dirty_memory[client]);
 
         while (page < end) {
             unsigned long idx = page / DIRTY_MEMORY_BLOCK_SIZE;
@@ -2002,7 +2002,7 @@ static void dirty_memory_extend(ram_addr_t new_ram_size)
         DirtyMemoryBlocks *new_blocks;
         int j;
 
-        old_blocks = qatomic_rcu_read(&ram_list.dirty_memory[i]);
+        old_blocks = retro_atomic_load_acquire_ptr(&ram_list.dirty_memory[i]);
         new_blocks = g_malloc(sizeof(*new_blocks) +
                               sizeof(new_blocks->blocks[0]) * new_num_blocks);
 
@@ -2015,7 +2015,7 @@ static void dirty_memory_extend(ram_addr_t new_ram_size)
             new_blocks->blocks[j] = bitmap_new(DIRTY_MEMORY_BLOCK_SIZE);
         }
 
-        qatomic_rcu_set(&ram_list.dirty_memory[i], new_blocks);
+        retro_atomic_store_release_ptr(&ram_list.dirty_memory[i], new_blocks);
 
         if (old_blocks) {
             g_free_rcu(old_blocks, rcu);
@@ -2139,11 +2139,11 @@ static void ram_block_add(RAMBlock *new_block, Error **errp)
     } else { /* list is empty */
         QLIST_INSERT_HEAD_RCU(&ram_list.blocks, new_block, next);
     }
-    ram_list.mru_block = NULL;
+    retro_atomic_store_relaxed_ptr(&ram_list.mru_block, NULL);
 
     /* Write list before version */
-    smp_wmb();
-    ram_list.version++;
+    retro_atomic_store_release_int(&ram_list.version,
+        retro_atomic_load_relaxed_int(&ram_list.version) + 1);
     qemu_mutex_unlock_ramlist();
 
     physical_memory_set_dirty_range(new_block->offset,
@@ -2433,10 +2433,10 @@ void qemu_ram_free(RAMBlock *block)
     name = cpr_name(block->mr);
     cpr_delete_fd(name, 0);
     QLIST_REMOVE_RCU(block, next);
-    ram_list.mru_block = NULL;
+    retro_atomic_store_relaxed_ptr(&ram_list.mru_block, NULL);
     /* Write list before version */
-    smp_wmb();
-    ram_list.version++;
+    retro_atomic_store_release_int(&ram_list.version,
+        retro_atomic_load_relaxed_int(&ram_list.version) + 1);
     call_rcu(block, reclaim_ramblock, rcu);
     qemu_mutex_unlock_ramlist();
 }
@@ -2620,7 +2620,7 @@ RAMBlock *qemu_ram_block_from_host(void *ptr, bool round_offset,
     }
 
     RCU_READ_LOCK_GUARD();
-    block = qatomic_rcu_read(&ram_list.mru_block);
+    block = retro_atomic_load_acquire_ptr(&ram_list.mru_block);
     if (block && block->host && host - block->host < block->max_length) {
         goto found;
     }
@@ -3382,8 +3382,9 @@ void address_space_register_map_client(AddressSpace *as, QEMUBH *bh)
     client->bh = bh;
     QLIST_INSERT_HEAD(&as->map_client_list, client, link);
     /* Write map_client_list before reading bounce_buffer_size. */
-    smp_mb();
-    if (qatomic_read(&as->bounce_buffer_size) < as->max_bounce_buffer_size) {
+    retro_atomic_thread_fence_seq_cst();
+    if ((size_t)retro_atomic_load_relaxed_64(&as->bounce_buffer_size) <
+        as->max_bounce_buffer_size) {
         address_space_notify_map_clients_locked(as);
     }
 }
@@ -3512,17 +3513,16 @@ void *address_space_map(AddressSpace *as,
     mr = flatview_translate(fv, addr, &xlat, &l, is_write, attrs);
 
     if (!memory_access_is_direct(mr, is_write, attrs)) {
-        size_t used = qatomic_read(&as->bounce_buffer_size);
+        size_t used = (size_t)retro_atomic_load_relaxed_64(&as->bounce_buffer_size);
         for (;;) {
             hwaddr alloc = MIN(as->max_bounce_buffer_size - used, l);
             size_t new_size = used + alloc;
-            size_t actual =
-                qatomic_cmpxchg(&as->bounce_buffer_size, used, new_size);
-            if (actual == used) {
+            if (retro_atomic_cas_64(&as->bounce_buffer_size, (int64_t)used,
+                                    (int64_t)new_size)) {
                 l = alloc;
                 break;
             }
-            used = actual;
+            used = (size_t)retro_atomic_load_relaxed_64(&as->bounce_buffer_size);
         }
 
         if (l == 0) {
@@ -3593,12 +3593,12 @@ void address_space_unmap(AddressSpace *as, void *buffer, hwaddr len,
                             bounce->buffer, access_len);
     }
 
-    qatomic_sub(&as->bounce_buffer_size, bounce->len);
+    retro_atomic_fetch_sub_64(&as->bounce_buffer_size, bounce->len);
     bounce->magic = ~BOUNCE_BUFFER_MAGIC;
     memory_region_unref(bounce->mr);
     g_free(bounce);
     /* Write bounce_buffer_size before reading map_client_list. */
-    smp_mb();
+    retro_atomic_thread_fence_seq_cst();
     address_space_notify_map_clients(as);
 }
 
