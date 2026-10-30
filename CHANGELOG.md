@@ -462,6 +462,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 - Audio: 3D voices with HRTF take less than half the time they did: the convolution reads its history straight instead of through a ring's division per tap, and ramps its taps by an addition a sample. The sound is the same, bit for bit.
 
+- Audio: the emulator thread no longer sleeps on the Voice Processor Threads. Each audio frame (1,500 a second) it handed them shares of the voices and slept until the last was done; now it takes voices from the same list as they do and, when none is left, waits only for voices a thread has already started, a few microseconds, without sleeping. It also fixes a multipass voice that mixes back into the bin it reads: the next multipass voice could run on another thread and read an empty bin, so its sound depended on how the voices were split.
+
 ## Test build 4 - 2026-10-25
 
 - The core info file names the core "Microsoft - Xbox / Sega Chihiro (xemu)" (NNshi).

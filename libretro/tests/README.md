@@ -205,6 +205,16 @@ checks callback ordering for reads/writes, preservation of newly written
 DMA data, translated and shortened mapping ranges, failed/empty maps and
 the separate bounce path. GCC's undefined-behavior traps are enabled.
 
+`python libretro/tests/test-vp-threads.py . gcc` (run by `run.sh`, 3 s)
+builds the voice processor's frame with its own dispatch: the unit schedule,
+the claims, the worker threads (libretro-common's rthreads and eventcount).
+It runs 400 random voice setups on four threads and on one and checks every
+24-bit bin and VP monitor sample of each frame is the same. Half the setups
+use DirectSound's layout, 3D voices into the multipass bin, so their frames
+split into units; multipass voices mixing into the bin they read are among
+them. `VP_THREADS_CFLAGS=-fsanitize=thread` runs it under ThreadSanitizer,
+which finds no race.
+
 `test-vpmath.c` checks the voice processor's integer control math
 (`hw/xbox/mcpx/apu/vp/vpmath.h`) against the double-precision code it
 replaced: the Lagrange kernel table and the cutoff curve over every input,

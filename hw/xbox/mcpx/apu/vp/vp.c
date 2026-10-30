@@ -22,6 +22,7 @@
 
 #include "qemu/fast-hash.h"
 #include "qemu/cpu-boost.h"
+#include "qemu/processor.h"
 #include "data/segaboot_jingle.raw.h"
 #include "ui/xemu-settings.h"
 #include "hw/xbox/mcpx/apu/apu_int.h"
@@ -56,7 +57,7 @@ static void set_notify_status(MCPXAPUState *d, uint32_t v, int notifier,
     retro_atomic_fetch_or_int(&d->regs[NV_PAPU_ISTS],
                               (int)(NV_PAPU_ISTS_FEVINTSTS |
                                     NV_PAPU_ISTS_FENINTSTS));
-    d->set_irq = true;
+    retro_atomic_store_relaxed_int(&d->set_irq, 1);
 }
 
 static void voice_resample_reset(MCPXAPUVoiceFilter *filter);
@@ -611,7 +612,7 @@ static void fe_method(MCPXAPUState *d, uint32_t method, uint32_t argument)
             fectl |= NV_PAPU_FECTL_FETRAPREASON_REQUESTED;
             apu_reg_w(d, NV_PAPU_FECTL, fectl);
             DPRINTF("idle voice %d\n", argument);
-            d->set_irq = true;
+            retro_atomic_store_relaxed_int(&d->set_irq, 1);
         }
         /* Without the forced trap an idle voice is skipped: on hardware it can
          * stay in a list with FETFORCE1 clear. */
@@ -1874,14 +1875,35 @@ static void get_voice_bin_src_dst(MCPXAPUState *d, int v,
 }
 
 /* Process a worker's queue into the buffers owned by its executing thread. */
-static void voice_worker_process(MCPXAPUState *d, VoiceWorker *self,
-                                 int64_t mixbins[][NUM_SAMPLES_PER_FRAME],
-                                 int64_t sample_buf[][2])
+/* A unit of this frame's voices, or -1: none left, or the frame is no
+ * longer the one asked for */
+static int voice_work_claim(VoiceWorkDispatch *vwd, int gen)
 {
-    for (int i = 0; i < self->queue_len; i++) {
-        voice_process(d, mixbins, sample_buf,
-                      self->queue[i].voice, self->queue[i].list);
+    for (;;) {
+        int v = retro_atomic_load_acquire_int(&vwd->claim);
+        int unit = v & 0xFFFF;
+
+        if ((v >> 16) != gen ||
+            unit >= retro_atomic_load_relaxed_int(&vwd->claim_limit)) {
+            return -1;
+        }
+        if (retro_atomic_cas_int(&vwd->claim, v, v + 1)) {
+            return unit;
+        }
     }
+}
+
+static void voice_work_unit(MCPXAPUState *d, VoiceWorkDispatch *vwd, int unit,
+                            int64_t mixbins[][NUM_SAMPLES_PER_FRAME],
+                            int64_t sample_buf[][2])
+{
+    const VoiceWorkUnit *u = &vwd->units[unit];
+
+    for (int i = u->start; i < u->start + u->count; i++) {
+        voice_process(d, mixbins, sample_buf,
+                      vwd->queue[i].voice, vwd->queue[i].list);
+    }
+    retro_atomic_fetch_add_int(&vwd->units_done, 1);
 }
 
 static void voice_worker_thread(void *arg)
@@ -1906,13 +1928,20 @@ static void voice_worker_thread(void *arg)
         if (retro_atomic_load_acquire_int(&vwd->should_exit)) {
             break;
         }
-        memset(self->mixbins, 0, sizeof(self->mixbins));
-        if (d->monitor.point == MCPX_APU_DEBUG_MON_VP) {
-            memset(self->sample_buf, 0, sizeof(self->sample_buf));
+        /* the frame's claim generation, published before the wake */
+        int claim_gen = retro_atomic_load_acquire_int(&vwd->claim) >> 16;
+        bool first = true;
+        for (int unit; (unit = voice_work_claim(vwd, claim_gen)) >= 0;) {
+            if (first) {
+                memset(self->mixbins, 0, sizeof(self->mixbins));
+                if (d->monitor.point == MCPX_APU_DEBUG_MON_VP) {
+                    memset(self->sample_buf, 0, sizeof(self->sample_buf));
+                }
+                retro_atomic_store_release_int(&self->used_gen, claim_gen);
+                first = false;
+            }
+            voice_work_unit(d, vwd, unit, self->mixbins, self->sample_buf);
         }
-        voice_worker_process(d, self, self->mixbins, self->sample_buf);
-        retro_atomic_fetch_add_int(&vwd->done, 1);
-        retro_eventcount_notify(&vwd->finished);
     }
     rcu_unregister_thread();
 }
@@ -1928,10 +1957,13 @@ static void voice_work_enqueue(MCPXAPUState *d, int v, int list)
     };
 }
 
+/* The frame's voices as units, in list order: a voice, or a multipass
+ * group (its sub-voices and the voice that reads their bin) kept whole,
+ * since it shares a bin. False for any other layout of bins, which needs
+ * list order and shared mix bins: the frame runs serially. */
 static bool voice_work_schedule(MCPXAPUState *d)
 {
     VoiceWorkDispatch *vwd = &d->vp.voice_work_dispatch;
-    int next_worker_to_schedule = 0;
     bool group = false;
     uint32_t dirty = 0;
 
@@ -1954,24 +1986,38 @@ static bool voice_work_schedule(MCPXAPUState *d)
     }
     dirty = 0;
 
+    /* A voice that reads or writes the multipass bin while it holds a mix
+     * goes in the unit that last wrote it, which has that mix in its
+     * buffer: the open group, or the voice before (a multipass voice that
+     * mixes back into the bin it read, for the next to read). Any other
+     * unit would read or add to an empty bin: the frame runs serially. */
+    int mp_writer = -1;
+    vwd->num_units = 0;
     for (int i = 0; i < vwd->queue_len; i++) {
-        uint32_t dst = masks[i].dst, clr = masks[i].clr;
+        uint32_t src = masks[i].src, dst = masks[i].dst, clr = masks[i].clr;
+        bool open = group;
+
+        if (((src | dst) & dirty & MULTIPASS_BIN_MASK)) {
+            if (mp_writer != vwd->num_units - 1) {
+                return false;
+            }
+            open = true;
+        }
         if ((dst & MULTIPASS_BIN_MASK) & ~dirty) {
             group = true;
         }
-
-        // Assign voice to worker
-        VoiceWorker *worker = &vwd->workers[next_worker_to_schedule];
-        worker->queue[worker->queue_len++] = vwd->queue[i];
-
+        if (open) {
+            vwd->units[vwd->num_units - 1].count++;
+        } else {
+            vwd->units[vwd->num_units++] = (VoiceWorkUnit){ .start = i,
+                                                            .count = 1 };
+        }
         dirty = (dirty & ~clr) | dst;
+        if (dst & MULTIPASS_BIN_MASK) {
+            mp_writer = vwd->num_units - 1;
+        }
         if (clr & MULTIPASS_BIN_MASK) {
             group = false;
-        }
-
-        if (!group) {
-            next_worker_to_schedule =
-                (next_worker_to_schedule + 1) % vwd->num_workers;
         }
     }
     return true;
@@ -1982,18 +2028,13 @@ voice_work_dispatch(MCPXAPUState *d,
                     int64_t mixbins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME])
 {
     VoiceWorkDispatch *vwd = &d->vp.voice_work_dispatch;
-    int started = 0;
 
     if (!vwd->queue_len) {
         return;
     }
-
-    for (int w = 0; w < vwd->num_workers; w++) {
-        vwd->workers[w].queue_len = 0;
-    }
     if (vwd->num_workers == 1 || !voice_work_schedule(d)) {
-        /* No queue copy, scratch mix, wakeup or reduction on a serial frame.
-         * The caller has already cleared the DSP output buffer. */
+        /* No wakeup, claims or reduction on a serial frame. The caller has
+         * already cleared the DSP output buffer. */
         for (int i = 0; i < vwd->queue_len; i++) {
             voice_process(d, mixbins, d->vp.sample_buf,
                           vwd->queue[i].voice, vwd->queue[i].list);
@@ -2001,35 +2042,35 @@ voice_work_dispatch(MCPXAPUState *d,
         vwd->queue_len = 0;
         return;
     }
+
+    /* The frame's units, then its claim word, then the workers' wake */
+    vwd->gen = (vwd->gen + 1) & 0x7FFF;
+    retro_atomic_store_relaxed_int(&vwd->units_done, 0);
+    retro_atomic_store_relaxed_int(&vwd->claim_limit, vwd->num_units);
+    retro_atomic_store_release_int(&vwd->claim, vwd->gen << 16);
+    for (int w = 1; w < vwd->num_workers; w++) {
+        retro_atomic_fetch_add_int(&vwd->workers[w].generation, 1);
+        retro_eventcount_notify(&vwd->workers[w].wake);
+    }
+    /* This thread takes units like any worker, into the DSP's buffer;
+     * what the workers have started when none is left takes a few
+     * microseconds: it spins for those, it does not sleep. */
+    for (int unit; (unit = voice_work_claim(vwd, vwd->gen)) >= 0;) {
+        voice_work_unit(d, vwd, unit, mixbins, d->vp.sample_buf);
+    }
+    /* none left: the word exhausted for good, so a claim a worker read
+     * before cannot succeed once the next frame's units are written */
+    retro_atomic_store_release_int(&vwd->claim, (vwd->gen << 16) | 0xFFFF);
+    while (retro_atomic_load_acquire_int(&vwd->units_done) < vwd->num_units) {
+        cpu_relax();
+    }
     vwd->queue_len = 0;
 
-    /* The shares of the threads, then the emulator thread's own */
-    retro_atomic_store_release_int(&vwd->done, 0);
+    /* The workers that mixed units of this frame. Integer sums: the same
+     * whoever took which unit. */
     for (int w = 1; w < vwd->num_workers; w++) {
         VoiceWorker *worker = &vwd->workers[w];
-        if (worker->queue_len) {
-            retro_atomic_fetch_add_int(&worker->generation, 1);
-            retro_eventcount_notify(&worker->wake);
-            started++;
-        }
-    }
-    /* Worker zero owns the caller's output; other workers retain private
-     * accumulators until joined, so no concurrent writes share a mix bin. */
-    voice_worker_process(d, &vwd->workers[0], mixbins, d->vp.sample_buf);
-
-    while (retro_atomic_load_acquire_int(&vwd->done) < started) {
-        int key = retro_eventcount_prepare_wait(&vwd->finished);
-        if (retro_atomic_load_acquire_int(&vwd->done) >= started) {
-            retro_eventcount_cancel_wait(&vwd->finished);
-            break;
-        }
-        retro_eventcount_commit_wait(&vwd->finished, key);
-    }
-
-    /* Worker zero is already in the output. Reduce only background shares. */
-    for (int w = 1; w < vwd->num_workers; w++) {
-        VoiceWorker *worker = &vwd->workers[w];
-        if (!worker->queue_len) {
+        if (retro_atomic_load_acquire_int(&worker->used_gen) != vwd->gen) {
             continue;
         }
         for (int b = 0; b < NUM_MIXBINS; b++) {
@@ -2059,15 +2100,18 @@ static void voice_work_init(MCPXAPUState *d)
     vwd->num_workers = MAX(1, MIN(num_workers, MAX_VOICE_WORKERS));
     vwd->workers = g_malloc0_n(vwd->num_workers, sizeof(VoiceWorker));
     vwd->queue_len = 0;
+    vwd->gen = 0;
     retro_atomic_int_init(&vwd->should_exit, 0);
-    retro_atomic_int_init(&vwd->done, 0);
-    retro_eventcount_init(&vwd->finished);
+    retro_atomic_int_init(&vwd->claim, 0);
+    retro_atomic_int_init(&vwd->claim_limit, 0);
+    retro_atomic_int_init(&vwd->units_done, 0);
 
     for (int i = 0; i < vwd->num_workers; i++) {
         VoiceWorker *worker = &vwd->workers[i];
         worker->apu = d;
         worker->id = i;
         retro_atomic_int_init(&worker->generation, 0);
+        retro_atomic_int_init(&worker->used_gen, -1);
         worker->seen_generation = 0;
         if (i > 0) {
             retro_eventcount_init(&worker->wake);
@@ -2089,7 +2133,6 @@ static void voice_work_finalize(MCPXAPUState *d)
         sthread_join(vwd->workers[i].thread);
         retro_eventcount_free(&vwd->workers[i].wake);
     }
-    retro_eventcount_free(&vwd->finished);
     g_free(vwd->workers);
     vwd->workers = NULL;
 }

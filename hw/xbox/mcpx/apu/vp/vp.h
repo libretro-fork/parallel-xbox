@@ -78,13 +78,14 @@ typedef struct VoiceWorkItem {
     int list;
 } VoiceWorkItem;
 
-/* A voice processor worker: the emulator thread hands it a share of the
- * frame's voices and waits for all shares (voice_work_dispatch). Worker
- * zero mixes directly into the DSP output; background workers use private
- * buffers, reduced after all shares finish. Lock-free:
- * a worker is woken by its generation counter moving on and reports by
- * the shared done counter; it mixes into its own buffers, which the
- * emulator thread adds up once every share is done. */
+/* A voice processor worker. A frame's voices are a list of units (a voice,
+ * or a multipass group: the voices that mix into its bin and the voice
+ * that reads it); the emulator thread and every worker take units from
+ * one claim word until none is left (voice_work_dispatch). The emulator
+ * thread mixes into the DSP's buffer, a worker into its own, which the
+ * emulator thread adds in once every unit is done; it never sleeps on a
+ * worker, it only spins for the units a worker has already started.
+ * Lock-free: a worker is woken by its generation counter moving on. */
 typedef struct VoiceWorker {
     struct sthread *thread;
     struct MCPXAPUState *apu;
@@ -92,19 +93,35 @@ typedef struct VoiceWorker {
     retro_atomic_int_t generation; /* moved on by the dispatcher */
     int seen_generation;           /* the worker's own */
     retro_eventcount_t wake;
+    /* the frame (claim generation) its buffers hold units of: set before
+     * its first unit of the frame is mixed */
+    retro_atomic_int_t used_gen;
     int64_t mixbins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME];
     int64_t sample_buf[NUM_SAMPLES_PER_FRAME][2];
-    VoiceWorkItem queue[MCPX_HW_MAX_VOICES];
-    int queue_len;
 } VoiceWorker;
+
+typedef struct VoiceWorkUnit {
+    int16_t start;
+    int16_t count;
+} VoiceWorkUnit;
 
 typedef struct VoiceWorkDispatch {
     /* workers[0] is the emulator thread itself; 1.. have threads */
     int num_workers;
     VoiceWorker *workers;
     retro_atomic_int_t should_exit;
-    retro_atomic_int_t done;       /* shares finished this frame */
-    retro_eventcount_t finished;
+    /* the frame's claim generation (15 bits) and next unit (16): a
+     * worker still on an earlier frame finds another generation and
+     * stops, never taking a unit of this one */
+    retro_atomic_int_t claim;
+    /* num_units for the claims: a worker can look at it while the next
+     * frame's schedule is made, its claim then failing (atomic: no torn
+     * or undefined read) */
+    retro_atomic_int_t claim_limit;
+    retro_atomic_int_t units_done; /* units mixed this frame */
+    int gen;
+    VoiceWorkUnit units[MCPX_HW_MAX_VOICES];
+    int num_units;
     VoiceWorkItem queue[MCPX_HW_MAX_VOICES];
     int queue_len;
 } VoiceWorkDispatch;

@@ -33,7 +33,7 @@ static struct {struct {bool hrtf;}audio;}g_config;
 struct MCPXAPUState {
     uint32_t regs[0x20000];
     uint8_t *ram_ptr;
-    bool set_irq;
+    int set_irq;
     struct {
         MCPXAPUVoiceFilter filters[256];MCPXAPUVPSSLData ssl[256];
         uint8_t hrtf_submix[4],submix_headroom[32];
@@ -52,6 +52,7 @@ static struct {MCPXAPUState *d;}address_space_memory;
 static uint32_t apu_reg_r(MCPXAPUState *d,unsigned r){return d->regs[r];}
 static void apu_reg_w(MCPXAPUState *d,unsigned r,uint32_t v){d->regs[r]=v;}
 #define retro_atomic_fetch_or_int(p,v) (*(p)|=(v))
+#define retro_atomic_store_relaxed_int(p,v) (*(p)=(v))
 static void cpu_physical_memory_read(hwaddr a,void *out,hwaddr bytes)
 {assert(a+bytes<=RAM_SIZE);memcpy(out,address_space_memory.d->ram_ptr+a,bytes);}
 static unsigned sge_reads;

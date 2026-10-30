@@ -153,11 +153,11 @@ static void apu_step(MCPXAPUState *d)
     if (xcntmode == NV_PAPU_SECTL_XCNTMODE_OFF ||
         (fectl & NV_PAPU_FECTL_FEMETHMODE_TRAPPED) ||
         (fectl & NV_PAPU_FECTL_FEMETHMODE_HALTED)) {
-        d->set_irq = true;
+        retro_atomic_store_relaxed_int(&d->set_irq, 1);
     }
-    if (d->set_irq) {
+    if (retro_atomic_load_relaxed_int(&d->set_irq)) {
         update_irq(d);
-        d->set_irq = false;
+        retro_atomic_store_relaxed_int(&d->set_irq, 0);
     }
 
     xcntmode = GET_MASK(apu_reg_r(d, NV_PAPU_SECTL),
@@ -171,9 +171,9 @@ static void apu_step(MCPXAPUState *d)
     }
 
     se_frame(d);
-    if (d->set_irq) {
+    if (retro_atomic_load_relaxed_int(&d->set_irq)) {
         update_irq(d);
-        d->set_irq = false;
+        retro_atomic_store_relaxed_int(&d->set_irq, 0);
     }
 }
 
@@ -218,7 +218,7 @@ static void mcpx_apu_reset_locked(MCPXAPUState *d)
     dsp_reset(d->ep.dsp);
     dsp_invalidate_opcache(d->gp.dsp);
     dsp_invalidate_opcache(d->ep.dsp);
-    d->set_irq = false;
+    retro_atomic_store_relaxed_int(&d->set_irq, 0);
 }
 
 static void mcpx_apu_reset_hold(Object *obj, ResetType type)
@@ -503,7 +503,7 @@ static void mcpx_apu_realize(PCIDevice *dev, Error **errp)
 
     pci_register_bar(dev, 0, PCI_BASE_ADDRESS_SPACE_MEMORY, &d->mmio);
 
-    d->set_irq = false;
+    retro_atomic_store_relaxed_int(&d->set_irq, 0);
 
     mcpx_apu_vp_init(d);
     mcpx_apu_dsp_init(d);

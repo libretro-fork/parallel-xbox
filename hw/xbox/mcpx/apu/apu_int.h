@@ -79,7 +79,9 @@ typedef struct MCPXAPUState {
     PCIDevice parent_obj;
     /*< public >*/
 
-    bool set_irq;
+    /* an interrupt status bit was set: the interrupt line is updated at
+     * the frame's end (voice threads set it, so atomic) */
+    retro_atomic_int_t set_irq;
 
     /* The engine's frames (apu.c): the next one's QEMU_CLOCK_VIRTUAL time,
      * on an exact grid of 2000000/3 ns */
