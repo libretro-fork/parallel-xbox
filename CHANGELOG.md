@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- The synthetic GPU suite now checks one-pixel YUY2 and UYVY textures, including cache updates when their shared chroma byte changes beyond the first pixel's nominal two bytes. This protects complete-pair conversion and its full hash span.
+
 - Both renderers now ignore unread padding after the final row when hashing unconverted linear textures. Padding-only writes no longer recreate or upload an unchanged texture; dirty tracking and guest allocation spans stay complete, and converted formats retain their full hashes.
 
 - Vulkan linear texture staging no longer copies padding after the final image row. Earlier rows retain guest pitch and each staged level still uses one copy; direct VRAM upload retains its full guest span.

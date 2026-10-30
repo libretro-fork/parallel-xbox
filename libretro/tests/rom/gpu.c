@@ -165,6 +165,7 @@ typedef unsigned int u32;
 #define VIDEO_DATA   0x02C00000u
 #define VRAM_END     0x04000000u   /* boundary tests require xemu_memory=64 */
 #define SURF_ORDER   0x03000000u   /* retained second draw for ordering checks */
+#define TEX_YUV      0x03200000u   /* odd-width packed YUV pair tests */
 #define TEX_SOURCE   0x02E00000u   /* GPU-produced pixels, sampled through aliases */
 #define SURF_G       0x02400000u   /* 15-bit mode change, offset tile */
 #define ZS_CLEAR     0x12345678u   /* depth 0x123456, stencil 0x78 */
@@ -1068,6 +1069,21 @@ void gpu_main(void)
             /* Only padding after the last row changes; the texel stays white. */
             ram32(VRAM_END - 4, 0x12345678u);
             texture_alias_at(0x13, 1, 0x3f000000u, 0, VRAM_END - 128);
+        }
+        if (frame == 1200 || frame == 1240) {
+            ram32(TEX_YUV, 0x80808080u);
+            texture_alias_at(frame == 1200 ? 0x24 : 0x25, 1,
+                             0x3f000000u, 0, TEX_YUV);
+        }
+        if (frame == 1220) {
+            /* YUY2 width one still consumes Cr at byte three. */
+            ram32(TEX_YUV, 0xff808080u);
+            texture_alias_at(0x24, 1, 0x3f000000u, 0, TEX_YUV);
+        }
+        if (frame == 1260) {
+            /* UYVY width one still consumes Cr at byte two. */
+            ram32(TEX_YUV, 0x80ff8080u);
+            texture_alias_at(0x25, 1, 0x3f000000u, 0, TEX_YUV);
         }
         method(NV097_FLIP_INCREMENT_WRITE, 0);
         kick();
