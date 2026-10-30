@@ -26,6 +26,10 @@ to retain the original checks. This is a compatibility fallback, not physical
 DVD authentication or support for booting retail BIOSes without their security
 data. See the [PR audit](xdvd-pr1659-audit.md).
 
+Reset and RAM-exact save-state restore were checked with both MCPX paths.
+The core's current OpenGL policy requires restarting RetroArch to reload
+content; reset and save-state restore stay within the running session.
+
 An unadjusted retail image can return to the dashboard immediately after
 the Xbox logo. This was reproduced in both boot modes and in standalone
 xemu 0.8.136 (the core's upstream base, without the fork's later changes).

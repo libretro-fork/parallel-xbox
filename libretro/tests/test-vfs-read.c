@@ -39,20 +39,22 @@ int main(void)
 {
     struct retro_vfs_interface vfs = { .seek = seek_file, .read = read_file };
     struct retro_vfs_file_handle f = {0};
-    memset(f.bytes, 0xa5, sizeof(f.bytes));
+    for (unsigned i = 0; i < sizeof(f.bytes); i++) {
+        f.bytes[i] = i;
+    }
     uint8_t out[48];
     LRFileIOV iov[] = { {out, 16}, {out + 24, 16} };
     int64_t cursor = 0;
     memset(out, 0xcc, sizeof(out));
     assert(lr_vfs_readv(&vfs, &f, &cursor, 0, iov, 2) == 0);
     assert(cursor == 32 && f.seeks == 0 && f.reads == 6);
-    assert(!memcmp(out, f.bytes, 16) && !memcmp(out + 24, f.bytes, 16));
+    assert(!memcmp(out, f.bytes, 16) && !memcmp(out + 24, f.bytes + 16, 16));
     assert(out[16] == 0xcc && out[47] == 0xcc);
     assert(lr_vfs_readv(&vfs, &f, &cursor, 32, iov, 2) == 0);
     assert(cursor == 64 && f.seeks == 0);
     assert(lr_vfs_readv(&vfs, &f, &cursor, 60, iov, 2) == 0);
     assert(cursor == 64 && f.seeks == 1);
-    assert(!memcmp(out, f.bytes, 4));
+    assert(!memcmp(out, f.bytes + 60, 4));
     assert(!memcmp(out + 4, (uint8_t[12]) {0}, 12));
     assert(!memcmp(out + 24, (uint8_t[16]) {0}, 16));
     f.error = -1;

@@ -168,6 +168,7 @@ static bool lr_medium_open(LRMedium *m, const char *path, uint64_t offset,
     int64_t size;
 
     memset(m, 0, sizeof(*m));
+    m->vfs_position = -1;
     if (lr_disk_is_uri(path)) {
         if (!xemu_libretro_vfs) {
             error_setg(errp, "%s can only be read through the frontend's "

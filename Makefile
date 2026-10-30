@@ -295,7 +295,7 @@ ALL_OBJECTS := $(OBJECTS) $(OBJS_UTIL) $(DEP_OBJECTS)
 
 clean:
 	rm -f $(TARGET) $(LIBQEMUUTIL) $(VERSION_H) $(filter %.a,$(DEPS_LIBS))
-	rm -f $(ALL_OBJECTS) $(ALL_OBJECTS:.o=.d) $(DSPDIFF) $(SEEDSHADERS) $(S3TCTEST) $(S3TCTEST).exe
+	rm -f $(ALL_OBJECTS) $(ALL_OBJECTS:.o=.d) $(DSPDIFF) $(SEEDSHADERS) $(S3TCTEST) $(S3TCTEST).exe $(FILEIOTEST)
 
 # The DSP JIT against the interpreter (libretro/tests/dspdiff.c), built
 # from the DSP's own sources, nothing else of the core: a plain program,

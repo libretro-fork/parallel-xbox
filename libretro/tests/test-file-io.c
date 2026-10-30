@@ -34,6 +34,7 @@ int main(int argc, char **argv)
     assert(f && !lr_file_view(f, 0, 1));
     assert(lr_file_set_size(f, large) == 0);
     assert(lr_file_pwrite(f, 0, block, sizeof(block)) == 0);
+    memset(block, 0x5a, sizeof(block)); /* distinguish >4GiB from truncated offsets */
     assert(lr_file_pwrite(f, large - 4096, block, 4096) == 0);
     lr_file_close(f);
     f = lr_file_open(argv[1], false, false);
@@ -45,6 +46,7 @@ int main(int argc, char **argv)
         assert(lr_file_pwrite(f, 0, block, 1) < 0);
         assert(lr_file_set_size(f, 0) < 0);
         assert(lr_file_zero(f, 0, 4096) < 0);
+        assert(*lr_file_view(f, 0, 1) == 0xa5);
     }
     assert(!lr_file_view(f, -1, 1));
     assert(!lr_file_view(f, large - 1, 2));

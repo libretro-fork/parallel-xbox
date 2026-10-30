@@ -2,8 +2,9 @@
  * A disk image file, as the core's disk layer (block/libretro-disk.c) and
  * the HDD's conversion (block/qcow2-raw.c) reach it: positional reads and
  * writes, a size that leaves the file sparse, and holes punched where the
- * data is dropped. The host's own calls (POSIX, Win32), not the
- * frontend's VFS, which has no sparse files and no holes. Plain C, no QEMU
+ * data is dropped. Writable files use host calls (POSIX, Win32), preserving
+ * sparse files and holes. Read-only files can borrow libretro-common mapped
+ * views, with positional host I/O as fallback. Plain C, no QEMU
  * headers: libretro/tests/test-qcow2-raw.c builds it on its own.
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
