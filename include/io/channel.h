@@ -371,23 +371,6 @@ int coroutine_mixed_fn qio_channel_write_all(QIOChannel *ioc,
                                              Error **errp);
 
 /**
- * qio_channel_set_blocking:
- * @ioc: the channel object
- * @enabled: the blocking flag state
- * @errp: pointer to a NULL-initialized error object
- *
- * If @enabled is true, then the channel is put into
- * blocking mode, otherwise it will be non-blocking.
- *
- * In non-blocking mode, read/write operations may
- * return QIO_CHANNEL_ERR_BLOCK if they would otherwise
- * block on I/O
- */
-bool qio_channel_set_blocking(QIOChannel *ioc,
-                              bool enabled,
-                              Error **errp);
-
-/**
  * qio_channel_close:
  * @ioc: the channel object
  * @errp: pointer to a NULL-initialized error object

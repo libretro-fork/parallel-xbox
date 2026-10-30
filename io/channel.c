@@ -153,14 +153,6 @@ int coroutine_mixed_fn qio_channel_writev_full_all(QIOChannel *ioc,
 
 
 
-bool qio_channel_set_blocking(QIOChannel *ioc,
-                              bool enabled,
-                              Error **errp)
-{
-    QIOChannelClass *klass = QIO_CHANNEL_GET_CLASS(ioc);
-    return klass->io_set_blocking(ioc, enabled, errp) == 0;
-}
-
 
 
 int qio_channel_close(QIOChannel *ioc,

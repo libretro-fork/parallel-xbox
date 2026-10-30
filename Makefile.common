@@ -11,7 +11,7 @@ GEN_DIR := $(CORE_DIR)/libretro/gen
 QEMU_INCFLAGS := \
 	-I$(GEN_DIR) -I$(CORE_DIR) -I$(CORE_DIR)/libretro/glib \
 	-I$(CORE_DIR)/libretro-common/include \
-	-I$(GEN_DIR)/qapi -I$(GEN_DIR)/trace -I$(GEN_DIR)/ui -I$(GEN_DIR)/data \
+	-I$(GEN_DIR)/qapi -I$(GEN_DIR)/trace -I$(GEN_DIR)/data \
 	$(OS_INCFLAGS) \
 	-iquote $(GEN_DIR) -iquote $(CORE_DIR) -iquote $(CORE_DIR)/include \
 	-iquote $(CORE_DIR)/host/include/$(HOST_INCLUDE_ARCH) \
@@ -95,7 +95,6 @@ SOURCES_UTIL := \
 	$(CORE_DIR)/crypto/clmul.c \
 	$(CORE_DIR)/crypto/init.c \
 	$(CORE_DIR)/crypto/random-platform.c \
-	$(CORE_DIR)/crypto/sm4.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-builtin-types.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-builtin-visit.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-events-misc.c \
@@ -146,7 +145,6 @@ SOURCES_UTIL := \
 	$(CORE_DIR)/qapi/qapi-visit-core.c \
 	$(CORE_DIR)/qapi/qmp-dispatch.c \
 	$(CORE_DIR)/qapi/qmp-event.c \
-	$(CORE_DIR)/qapi/qmp-registry.c \
 	$(CORE_DIR)/qapi/qobject-input-visitor.c \
 	$(CORE_DIR)/qapi/qobject-output-visitor.c \
 	$(CORE_DIR)/qapi/string-input-visitor.c \
@@ -166,53 +164,38 @@ SOURCES_UTIL := \
 	$(CORE_DIR)/qobject/qobject.c \
 	$(CORE_DIR)/qobject/qstring.c \
 	$(CORE_DIR)/stubs/blk-commit-all.c \
-	$(CORE_DIR)/stubs/blk-exp-close-all.c \
 	$(CORE_DIR)/stubs/change-state-handler.c \
-	$(CORE_DIR)/stubs/cmos.c \
 	$(CORE_DIR)/stubs/cpu-get-clock.c \
 	$(CORE_DIR)/stubs/coroutine-none.c \
 	$(CORE_DIR)/stubs/cpus-virtual-clock.c \
 	$(CORE_DIR)/stubs/error-printf.c \
 	$(CORE_DIR)/stubs/fdset.c \
-	$(CORE_DIR)/stubs/get-vm-name.c \
 	$(CORE_DIR)/stubs/graph-lock.c \
 	$(CORE_DIR)/stubs/hotplug-stubs.c \
 	$(CORE_DIR)/stubs/icount.c \
-	$(CORE_DIR)/stubs/igvm.c \
 	$(CORE_DIR)/stubs/iothread-lock.c \
 	$(CORE_DIR)/stubs/is-daemonized.c \
 	$(CORE_DIR)/stubs/migr-blocker.c \
 	$(CORE_DIR)/stubs/monitor-core.c \
-	$(CORE_DIR)/stubs/monitor-internal.c \
 	$(CORE_DIR)/stubs/physmem.c \
 	$(CORE_DIR)/stubs/qemu-timer-notify-cb.c \
-	$(CORE_DIR)/stubs/qmp-command-available.c \
 	$(CORE_DIR)/stubs/qmp-quit.c \
 	$(CORE_DIR)/stubs/ram-block.c \
 	$(CORE_DIR)/stubs/runstate-check.c \
 	$(CORE_DIR)/stubs/sysbus.c \
 	$(CORE_DIR)/stubs/thread-pool-none.c \
-	$(CORE_DIR)/stubs/uuid.c \
 	$(CORE_DIR)/stubs/vm-stop.c \
 	$(CORE_DIR)/stubs/vmstate.c \
-	$(CORE_DIR)/stubs/win32-kbd-hook.c \
 	$(CORE_DIR)/stubs/xen-hw-stub.c \
-	$(CORE_DIR)/util/aio-wait.c \
 	$(CORE_DIR)/util/aiocb.c \
 	$(CORE_DIR)/util/async.c \
-	$(CORE_DIR)/util/base64.c \
 	$(CORE_DIR)/util/bitmap.c \
 	$(CORE_DIR)/util/bitops.c \
 	$(CORE_DIR)/util/block-helpers.c \
-	$(CORE_DIR)/util/buffer.c \
 	$(CORE_DIR)/util/bufferiszero.c \
 	$(CORE_DIR)/util/cacheflush.c \
 	$(CORE_DIR)/util/cpu-boost.c \
-	$(CORE_DIR)/util/crc-ccitt.c \
-	$(CORE_DIR)/util/crc32c.c \
 	$(CORE_DIR)/util/cutils.c \
-	$(CORE_DIR)/util/defer-call.c \
-	$(CORE_DIR)/util/envlist.c \
 	$(CORE_DIR)/util/error-report.c \
 	$(CORE_DIR)/util/error.c \
 	$(CORE_DIR)/util/event.c \
@@ -221,14 +204,10 @@ SOURCES_UTIL := \
 	$(CORE_DIR)/util/fifo8.c \
 	$(CORE_DIR)/util/getauxval.c \
 	$(CORE_DIR)/util/guest-random.c \
-	$(CORE_DIR)/util/hbitmap.c \
-	$(CORE_DIR)/util/hexdump.c \
-	$(CORE_DIR)/util/host-utils.c \
 	$(CORE_DIR)/util/id.c \
 	$(CORE_DIR)/util/int128.c \
 	$(CORE_DIR)/util/interval-tree.c \
 	$(CORE_DIR)/util/iov.c \
-	$(CORE_DIR)/util/iova-tree.c \
 	$(CORE_DIR)/util/keyval.c \
 	$(CORE_DIR)/util/lockcnt.c \
 	$(CORE_DIR)/util/log.c \
@@ -236,13 +215,10 @@ SOURCES_UTIL := \
 	$(CORE_DIR)/util/memalign.c \
 	$(CORE_DIR)/util/module.c \
 	$(CORE_DIR)/util/notify.c \
-	$(CORE_DIR)/util/nvdimm-utils.c \
 	$(CORE_DIR)/util/osdep.c \
-	$(CORE_DIR)/util/path.c \
 	$(CORE_DIR)/util/qemu-config.c \
 	$(CORE_DIR)/util/qemu-option.c \
 	$(CORE_DIR)/util/qemu-print.c \
-	$(CORE_DIR)/util/qemu-progress.c \
 	$(CORE_DIR)/util/qemu-sockets.c \
 	$(CORE_DIR)/util/qemu-timer-common.c \
 	$(CORE_DIR)/util/qemu-timer.c \
@@ -251,22 +227,15 @@ SOURCES_UTIL := \
 	$(CORE_DIR)/util/rc4.c \
 	$(CORE_DIR)/util/rcu.c \
 	$(CORE_DIR)/util/process-barrier.c \
-	$(CORE_DIR)/util/readline.c \
-	$(CORE_DIR)/util/reserved-region.c \
 	$(CORE_DIR)/util/sha1.c \
-	$(CORE_DIR)/util/systemd.c \
 	$(CORE_DIR)/util/thread-context.c \
-	$(CORE_DIR)/util/throttle.c \
 	$(CORE_DIR)/util/timed-average.c \
-	$(CORE_DIR)/util/transactions.c \
 	$(CORE_DIR)/util/unicode.c \
 	$(CORE_DIR)/util/uuid.c \
 	$(CORE_DIR)/util/yank.c \
 
 SOURCES_UTIL_POSIX := \
 	$(CORE_DIR)/util/aio-posix.c \
-	$(CORE_DIR)/util/compatfd.c \
-	$(CORE_DIR)/util/drm.c \
 	$(CORE_DIR)/util/event_notifier-posix.c \
 	$(CORE_DIR)/util/fdmon-poll.c \
 	$(CORE_DIR)/util/memfd.c \
@@ -275,20 +244,15 @@ SOURCES_UTIL_POSIX := \
 	$(CORE_DIR)/util/qemu-thread-posix.c \
 
 SOURCES_UTIL_LINUX := \
-	$(CORE_DIR)/util/chardev_open.c \
 	$(CORE_DIR)/util/fdmon-epoll.c \
-	$(CORE_DIR)/util/filemonitor-inotify.c \
-	$(CORE_DIR)/util/userfaultfd.c \
 	$(CORE_DIR)/util/vfio-helpers.c \
 
 # macOS: QEMU never takes ucontext coroutines there (upstream's meson.build)
 SOURCES_UTIL_DARWIN := \
-	$(CORE_DIR)/util/filemonitor-stub.c \
 
 SOURCES_UTIL_WIN32 := \
 	$(CORE_DIR)/util/aio-win32.c \
 	$(CORE_DIR)/util/event_notifier-win32.c \
-	$(CORE_DIR)/util/filemonitor-stub.c \
 	$(CORE_DIR)/util/oslib-win32.c \
 	$(CORE_DIR)/util/qemu-thread-win32.c \
 
@@ -306,7 +270,6 @@ SOURCES_COMMON := \
 	$(CORE_DIR)/chardev/char-null.c \
 	$(CORE_DIR)/chardev/char.c \
 	$(CORE_DIR)/cpu-common.c \
-	$(CORE_DIR)/crypto/cipher.c \
 	$(CORE_DIR)/disas/disas-common.c \
 	$(CORE_DIR)/disas/disas-host.c \
 	$(CORE_DIR)/disas/disas-target.c \
@@ -383,7 +346,6 @@ SOURCES_SYSTEM := \
 	$(CORE_DIR)/hw/block/cdrom.c \
 	$(CORE_DIR)/hw/block/hd-geometry.c \
 	$(CORE_DIR)/hw/block/pflash_cfi01.c \
-	$(CORE_DIR)/hw/char/parallel-isa.c \
 	$(CORE_DIR)/hw/char/serial-isa.c \
 	$(CORE_DIR)/hw/char/serial.c \
 	$(CORE_DIR)/hw/core/cpu-system.c \
@@ -438,8 +400,6 @@ SOURCES_SYSTEM := \
 	$(CORE_DIR)/hw/usb/hcd-ohci-pci.c \
 	$(CORE_DIR)/hw/usb/hcd-ohci.c \
 	$(CORE_DIR)/hw/usb/pcap.c \
-	$(CORE_DIR)/hw/vfio/iommufd-stubs.c \
-	$(CORE_DIR)/hw/virtio/vhost-stub.c \
 	$(CORE_DIR)/hw/watchdog/watchdog.c \
 	$(CORE_DIR)/hw/xen/xen_stubs.c \
 	$(CORE_DIR)/migration/cpr-exec.c \
@@ -450,9 +410,6 @@ SOURCES_SYSTEM := \
 	$(CORE_DIR)/migration/ram-libretro.c \
 	$(CORE_DIR)/migration/savevm.c \
 	$(CORE_DIR)/migration/vfio-stub.c \
-	$(CORE_DIR)/net/announce.c \
-	$(CORE_DIR)/net/checksum.c \
-	$(CORE_DIR)/net/colo-stubs.c \
 	$(CORE_DIR)/net/eth.c \
 	$(CORE_DIR)/net/filter.c \
 	$(CORE_DIR)/net/hub.c \
@@ -494,8 +451,6 @@ SOURCES_SYSTEM := \
 	$(CORE_DIR)/ui/console.c \
 	$(CORE_DIR)/ui/cursor.c \
 	$(CORE_DIR)/ui/dmabuf.c \
-	$(CORE_DIR)/ui/input-keymap.c \
-	$(CORE_DIR)/ui/input.c \
 	$(CORE_DIR)/ui/libretro-chihiro.c \
 	$(CORE_DIR)/ui/libretro-settings-stub.c \
 	$(CORE_DIR)/ui/libretro-state.c \
@@ -522,11 +477,9 @@ SOURCES_TARGET := \
 	$(CORE_DIR)/accel/accel-target.c \
 	$(CORE_DIR)/accel/stubs/kvm-stub.c \
 	$(CORE_DIR)/accel/stubs/xen-stub.c \
-	$(CORE_DIR)/hw/i386/e820_memory_layout.c \
 	$(CORE_DIR)/hw/i386/kvm/xen-stubs.c \
 	$(CORE_DIR)/hw/i386/pc.c \
 	$(CORE_DIR)/hw/i386/pc_sysfw.c \
-	$(CORE_DIR)/hw/i386/pc_sysfw_ovmf-stubs.c \
 	$(CORE_DIR)/hw/i386/sgx-stub.c \
 	$(CORE_DIR)/hw/i386/vapic.c \
 	$(CORE_DIR)/hw/i386/x86-common.c \
@@ -571,7 +524,6 @@ SOURCES_TARGET := \
 	$(CORE_DIR)/hw/xbox/nv2a/pgraph/gl/display.c \
 	$(CORE_DIR)/hw/xbox/nv2a/pgraph/gl/draw.c \
 	$(CORE_DIR)/hw/xbox/nv2a/pgraph/gl/gpuprops.c \
-	$(CORE_DIR)/hw/xbox/nv2a/pgraph/gl/probe.c \
 	$(CORE_DIR)/hw/xbox/nv2a/pgraph/gl/renderer.c \
 	$(CORE_DIR)/hw/xbox/nv2a/pgraph/gl/reports.c \
 	$(CORE_DIR)/hw/xbox/nv2a/pgraph/gl/shaders.c \

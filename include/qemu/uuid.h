@@ -23,7 +23,7 @@ typedef struct {
     union {
         unsigned char data[16];
         struct {
-            /* Generated in BE endian, can be swapped with qemu_uuid_bswap. */
+            /* Generated in BE endian */
             uint32_t time_low;
             uint16_t time_mid;
             uint16_t time_high_and_version;
@@ -85,18 +85,10 @@ QEMU_BUILD_BUG_ON(sizeof(UUID_NONE) - 1 != 36);
 
 void qemu_uuid_generate(QemuUUID *out);
 
-int qemu_uuid_is_null(const QemuUUID *uu);
-
 int qemu_uuid_is_equal(const QemuUUID *lhv, const QemuUUID *rhv);
 
 void qemu_uuid_unparse(const QemuUUID *uuid, char *out);
 
-char *qemu_uuid_unparse_strdup(const QemuUUID *uuid);
-
 int qemu_uuid_parse(const char *str, QemuUUID *uuid);
-
-QemuUUID qemu_uuid_bswap(QemuUUID uuid);
-
-uint32_t qemu_uuid_hash(const void *uuid);
 
 #endif

@@ -37,12 +37,6 @@ void qemu_uuid_generate(QemuUUID *uuid)
     uuid->data[6] = (uuid->data[6] & 0xf) | 0x40;
 }
 
-int qemu_uuid_is_null(const QemuUUID *uu)
-{
-    static QemuUUID null_uuid;
-    return qemu_uuid_is_equal(uu, &null_uuid);
-}
-
 int qemu_uuid_is_equal(const QemuUUID *lhv, const QemuUUID *rhv)
 {
     return memcmp(lhv, rhv, sizeof(QemuUUID)) == 0;
@@ -54,15 +48,6 @@ void qemu_uuid_unparse(const QemuUUID *uuid, char *out)
     snprintf(out, UUID_STR_LEN, UUID_FMT,
              uu[0], uu[1], uu[2], uu[3], uu[4], uu[5], uu[6], uu[7],
              uu[8], uu[9], uu[10], uu[11], uu[12], uu[13], uu[14], uu[15]);
-}
-
-char *qemu_uuid_unparse_strdup(const QemuUUID *uuid)
-{
-    const unsigned char *uu = &uuid->data[0];
-    return g_strdup_printf(UUID_FMT,
-                           uu[0], uu[1], uu[2], uu[3], uu[4], uu[5], uu[6],
-                           uu[7], uu[8], uu[9], uu[10], uu[11], uu[12],
-                           uu[13], uu[14], uu[15]);
 }
 
 static bool qemu_uuid_is_valid(const char *str)
@@ -107,26 +92,3 @@ int qemu_uuid_parse(const char *str, QemuUUID *uuid)
     return 0;
 }
 
-/* Swap from UUID format endian (BE) to the opposite or vice versa.
- */
-QemuUUID qemu_uuid_bswap(QemuUUID uuid)
-{
-    bswap32s(&uuid.fields.time_low);
-    bswap16s(&uuid.fields.time_mid);
-    bswap16s(&uuid.fields.time_high_and_version);
-    return uuid;
-}
-
-/* djb2 hash algorithm */
-uint32_t qemu_uuid_hash(const void *uuid)
-{
-    QemuUUID *qid = (QemuUUID *) uuid;
-    uint32_t h = 5381;
-    int i;
-
-    for (i = 0; i < ARRAY_SIZE(qid->data); i++) {
-        h = (h << 5) + h + qid->data[i];
-    }
-
-    return h;
-}
