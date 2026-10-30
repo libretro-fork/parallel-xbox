@@ -229,8 +229,9 @@ static int32_t bmdma_prepare_buf(const IDEDMA *dma, int32_t limit)
     } prd;
     int l, len;
 
-    pci_dma_sglist_init(&s->sg, pci_dev,
-                        s->nsector / (BMDMA_PAGE_SIZE / BDRV_SECTOR_SIZE) + 1);
+    ide_sglist_init(s, DEVICE(pci_dev),
+                    s->nsector / (BMDMA_PAGE_SIZE / BDRV_SECTOR_SIZE) + 1,
+                    pci_get_address_space(pci_dev));
     s->io_buffer_size = 0;
     for(;;) {
         if (bm->cur_prd_len == 0) {

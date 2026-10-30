@@ -66,10 +66,23 @@ static unsigned int global_pool_max_size = COROUTINE_POOL_BATCH_MAX_SIZE;
 
 QEMU_DEFINE_STATIC_CO_TLS(CoroutinePool, local_pool);
 QEMU_DEFINE_STATIC_CO_TLS(Notifier, local_pool_cleanup_notifier);
+/*
+ * The last batch the local pool emptied, kept for the next one it needs: a
+ * thread that takes one coroutine and gives it back (a block request at a
+ * time) would otherwise free a batch at each take and allocate one at each
+ * give back.
+ */
+QEMU_DEFINE_STATIC_CO_TLS(CoroutinePoolBatch *, local_spare_batch);
 
 static CoroutinePoolBatch *coroutine_pool_batch_new(void)
 {
-    CoroutinePoolBatch *batch = g_new(CoroutinePoolBatch, 1);
+    CoroutinePoolBatch *batch = get_local_spare_batch();
+
+    if (batch) {
+        set_local_spare_batch(NULL);
+    } else {
+        batch = g_new(CoroutinePoolBatch, 1);
+    }
 
     QSLIST_INIT(&batch->list);
     batch->size = 0;
@@ -98,6 +111,8 @@ static void local_pool_cleanup(Notifier *n, void *value)
         QSLIST_REMOVE_HEAD(local_pool, next);
         coroutine_pool_batch_delete(batch);
     }
+    g_free(get_local_spare_batch());
+    set_local_spare_batch(NULL);
 }
 
 /* Ensure the atexit notifier is registered */
@@ -127,7 +142,13 @@ static Coroutine *coroutine_pool_get_local(void)
 
     if (batch->size == 0) {
         QSLIST_REMOVE_HEAD(local_pool, next);
-        coroutine_pool_batch_delete(batch);
+        if (!get_local_spare_batch()) {
+            /* empty: nothing in it to delete */
+            set_local_spare_batch(batch);
+            local_pool_cleanup_init_once();
+        } else {
+            coroutine_pool_batch_delete(batch);
+        }
     }
     return co;
 }

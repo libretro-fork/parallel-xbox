@@ -845,7 +845,40 @@ void ide_dma_buf_commit(IDEState *s, uint32_t tx_bytes)
         s->bus->dma->ops->commit_buf(s->bus->dma, tx_bytes);
     }
     s->io_buffer_offset += tx_bytes;
-    qemu_sglist_destroy(&s->sg);
+    /* as qemu_sglist_destroy, but the array is kept for the next
+     * transfer (ide_sglist_init) */
+    if (s->sg.sg) {
+        if (s->sg.nalloc > s->sg_spare_alloc) {
+            g_free(s->sg_spare);
+            s->sg_spare = s->sg.sg;
+            s->sg_spare_alloc = s->sg.nalloc;
+        } else {
+            g_free(s->sg.sg);
+        }
+        object_unref(OBJECT(s->sg.dev));
+    }
+    memset(&s->sg, 0, sizeof(s->sg));
+}
+
+/* qemu_sglist_init into the array the last transfer left, when there is
+ * one: it has room for that transfer's entries, and qemu_sglist_add
+ * grows it if this one needs more */
+void ide_sglist_init(IDEState *s, DeviceState *dev, int alloc_hint,
+                     AddressSpace *as)
+{
+    if (!s->sg_spare) {
+        qemu_sglist_init(&s->sg, dev, alloc_hint, as);
+        return;
+    }
+    s->sg.sg = s->sg_spare;
+    s->sg.nalloc = s->sg_spare_alloc;
+    s->sg_spare = NULL;
+    s->sg_spare_alloc = 0;
+    s->sg.nsg = 0;
+    s->sg.size = 0;
+    s->sg.as = as;
+    s->sg.dev = dev;
+    object_ref(OBJECT(dev));
 }
 
 void ide_set_inactive(IDEState *s, bool more)
@@ -2896,6 +2929,8 @@ void ide_exit(IDEState *s)
     timer_free(s->sector_write_timer);
     qemu_vfree(s->smart_selftest_data);
     qemu_vfree(s->io_buffer);
+    g_free(s->sg_spare);
+    s->sg_spare = NULL;
 }
 
 static bool is_identify_set(void *opaque, int version_id)

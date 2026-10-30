@@ -75,6 +75,14 @@ typedef struct {
 
 static void dma_blk_cb(void *opaque, int ret);
 
+/*
+ * The iovec array of the thread's last transfer, kept for its next one, so
+ * a transfer allocates nothing (its DMAAIOCB comes from qemu_aio_get's
+ * cache). Transfers start and complete in their AioContext's thread.
+ */
+static __thread struct iovec *dma_iov_spare;
+static __thread int dma_iov_spare_alloc;
+
 static void reschedule_dma(void *opaque)
 {
     DMAAIOCB *dbs = (DMAAIOCB *)opaque;
@@ -106,7 +114,15 @@ static void dma_complete(DMAAIOCB *dbs, int ret)
     if (dbs->common.cb) {
         dbs->common.cb(dbs->common.opaque, ret);
     }
-    qemu_iovec_destroy(&dbs->iov);
+    /* as qemu_iovec_destroy, the array kept for the next transfer */
+    if (dbs->iov.nalloc > dma_iov_spare_alloc) {
+        g_free(dma_iov_spare);
+        dma_iov_spare = dbs->iov.iov;
+        dma_iov_spare_alloc = dbs->iov.nalloc;
+    } else {
+        g_free(dbs->iov.iov);
+    }
+    memset(&dbs->iov, 0, sizeof(dbs->iov));
     qemu_aio_unref(dbs);
 }
 
@@ -232,7 +248,17 @@ BlockAIOCB *dma_blk_io(
     dbs->io_func = io_func;
     dbs->io_func_opaque = io_func_opaque;
     dbs->bh = NULL;
-    qemu_iovec_init(&dbs->iov, sg->nsg);
+    if (dma_iov_spare) {
+        /* qemu_iovec_add grows it if this transfer needs more */
+        dbs->iov.iov = dma_iov_spare;
+        dbs->iov.nalloc = dma_iov_spare_alloc;
+        dbs->iov.niov = 0;
+        dbs->iov.size = 0;
+        dma_iov_spare = NULL;
+        dma_iov_spare_alloc = 0;
+    } else {
+        qemu_iovec_init(&dbs->iov, sg->nsg);
+    }
     dma_blk_cb(dbs, 0);
     return &dbs->common;
 }

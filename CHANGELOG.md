@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- DVD and hard disk reads no longer allocate memory while a game runs (about seven allocations per read before): the request records, scatter-gather lists and coroutine bookkeeping of a finished read are kept and reused by the next.
+
 - Translating the game's code no longer allocates memory for each new block (about 2,500 times in ten seconds of Ninja Gaiden): the index of translated blocks is a sorted array kept from one code-cache flush to the next, instead of a tree with a node allocated per block. With this, Ninja Gaiden's gameplay no longer allocates in the core at all, except for a few DVD reads.
 
 - Graphics: a game that clears its depth buffer (or colour) while it has depth writes (or colour writes) turned off now finds the cleared values in memory when it reads them back, uses them as a texture, or saves a state. The Xbox clears regardless of those write settings, as measured on hardware by nxdk_pgraph_tests, and so did the core's GPU, but the core took the picture for unchanged and kept handing out the old contents. Both renderers.

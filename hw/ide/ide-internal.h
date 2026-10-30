@@ -399,6 +399,8 @@ void ide_set_sector(IDEState *s, int64_t sector_num);
 
 void ide_start_dma(IDEState *s, BlockCompletionFunc *cb);
 void ide_dma_buf_commit(IDEState *s, uint32_t tx_bytes);
+void ide_sglist_init(IDEState *s, DeviceState *dev, int alloc_hint,
+                     AddressSpace *as);
 void ide_dma_error(IDEState *s);
 void ide_abort_command(IDEState *s);
 

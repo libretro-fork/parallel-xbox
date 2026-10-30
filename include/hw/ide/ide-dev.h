@@ -115,6 +115,10 @@ struct IDEState {
     uint64_t io_buffer_offset;
     int32_t io_buffer_size;
     QEMUSGList sg;
+    /* the array of the last transfer's sg, kept for the next one
+     * (ide_sglist_init) so a transfer allocates nothing */
+    ScatterGatherEntry *sg_spare;
+    int sg_spare_alloc;
     /* PIO transfer handling */
     int req_nb_sectors; /* number of sectors per interrupt */
     EndTransferFunc *end_transfer_func;
