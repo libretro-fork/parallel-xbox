@@ -18,7 +18,14 @@ typedef struct { unsigned offset;bool has_ea; } Op;
 typedef struct { unsigned immediate;Op op[3]; } X86DecodedInsn;
 static bool xemu_cpu_boost;
 static uint8_t env[512];
-static unsigned duplicates,helpers,kind;
+static unsigned duplicates,helpers,kind,moves,loads,stores;
+static uint32_t temps[4];
+static unsigned next_temp;
+#define tcg_env env
+static TCGv_i32 tcg_temp_new_i32(void) { assert(next_temp<4);return next_temp++; }
+static void tcg_gen_ld_i32(TCGv_i32 n,uint8_t *base,unsigned offset) { assert(n<4 && offset+4<=sizeof(env));memcpy(&temps[n],base+offset,4);loads++; }
+static void tcg_gen_st_i32(TCGv_i32 n,uint8_t *base,unsigned offset) { assert(n<4 && offset+4<=sizeof(env));memcpy(base+offset,&temps[n],4);stores++; }
+static void tcg_gen_gvec_mov(unsigned vece,unsigned d,unsigned a,unsigned size,unsigned max) { assert(vece==MO_32 && size==16 && max==16);memmove(env+d,env+a,size);moves++; }
 static uint32_t rng=0xa91b42d3;
 static uint32_t random32(void) { rng^=rng<<13;rng^=rng>>17;rng^=rng<<5;return rng; }
 static unsigned tcg_constant_i32(unsigned n) { return n; }
@@ -48,24 +55,27 @@ static void tcg_gen_gvec_dup_mem(unsigned vece,unsigned d,unsigned a,unsigned si
 }
 /* PRODUCTION */
 int main(void) {
- static const unsigned offsets[][3]={{64,64,64},{64,64,128},{128,64,128},{192,64,64},{192,64,128},{64,64,256}};
+ static const unsigned offsets[][3]={{64,64,64},{64,64,128},{128,64,128},{192,64,64},{192,64,128},{64,64,256},{64,256,64}};
  static const uint32_t special[]={0,0x80000000,0x7fc12345,0x7f812345,1,0x7f800000,0xff800000,0xffffffff};
  unsigned cases=0,hits=0;
  for(unsigned boost=0;boost<2;boost++)for(unsigned prefix=0;prefix<4;prefix++)
- for(unsigned wide=0;wide<2;wide++)for(unsigned alias=0;alias<6;alias++)
+ for(unsigned wide=0;wide<2;wide++)for(unsigned alias=0;alias<7;alias++)
  for(unsigned imm=0;imm<256;imm++)for(unsigned pattern=0;pattern<4;pattern++) {
   for(unsigned i=0;i<sizeof(env);i+=4) {uint32_t x=pattern==0?special[(i/4)%8]:pattern==1?special[((i/4)+3)%8]:random32();memcpy(env+i,&x,4);}
   uint8_t reference[sizeof(env)];memcpy(reference,env,sizeof(env));
   DisasContext s={.prefix=prefix,.vex_l=wide};X86DecodedInsn decode={.immediate=imm};
   for(unsigned i=0;i<3;i++)decode.op[i].offset=offsets[alias][i];
-  decode.op[2].has_ea=alias==5;xemu_cpu_boost=boost;duplicates=helpers=kind=0;
+  decode.op[2].has_ea=alias==5;decode.op[1].has_ea=alias==6;xemu_cpu_boost=boost;duplicates=helpers=kind=moves=loads=stores=next_temp=0;
   shuffle(reference+offsets[alias][0],reference+offsets[alias][1],reference+offsets[alias][2],imm,wide?32:16,prefix&PREFIX_DATA);
   gen_VSHUF(&s,&decode);
-  bool eligible=!HOST_BIG_ENDIAN && boost && !wide && !prefix && (alias==0 || alias==3) && (imm==0 || imm==0x55 || imm==0xaa || imm==0xff);
-  assert(duplicates==(unsigned)eligible && helpers==(unsigned)!eligible);
+  bool eligible=!HOST_BIG_ENDIAN && boost && !wide && !prefix && alias<5;
+  bool same=alias==0||alias==3,broadcast=eligible && same && (imm==0||imm==0x55||imm==0xaa||imm==0xff);
+  bool move=eligible && same && imm==0xe4,scalar=eligible && !broadcast && !move;
+  assert(duplicates==(unsigned)broadcast && moves==(unsigned)move && helpers==(unsigned)!eligible);
+  assert(loads==(scalar?4u:0u) && stores==(scalar?4u:0u));
   if(!eligible)assert(kind==((prefix&PREFIX_DATA)?2u:1u)+2*wide);
   assert(!memcmp(env,reference,sizeof(env)));
   cases++;hits+=eligible;
  }
- printf("SSE broadcast emission: %u bitwise/alias/encoding cases, %u fast-path cases passed\n",cases,hits);
+ printf("SSE register shuffle emission: %u bitwise/alias/encoding cases, %u fast-path cases passed\n",cases,hits);
 }

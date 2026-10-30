@@ -4639,18 +4639,37 @@ static void gen_VROUNDSS(DisasContext *s, X86DecodedInsn *decode)
 
 static void gen_VSHUF(DisasContext *s, X86DecodedInsn *decode)
 {
-    unsigned lane = decode->immediate & 3;
+    unsigned selector = decode->immediate & 0xff;
+    unsigned lane = selector & 3;
 
-    /* Legacy SHUFPS of one register with a repeated selector is a bitwise
-     * lane broadcast. Preserve bytes above 128 bits and other encodings;
+    /* Legacy register SHUFPS is purely bitwise. Load every selected input
+     * before any output so d may alias either source. Other encodings and
      * big-endian register layouts retain the existing helper. */
     if (!HOST_BIG_ENDIAN && xemu_cpu_boost && !s->vex_l &&
         !(s->prefix & (PREFIX_DATA | PREFIX_VEX)) &&
-        !decode->op[1].has_ea && !decode->op[2].has_ea &&
-        decode->op[1].offset == decode->op[2].offset &&
-        (decode->immediate & 0xff) == lane * 0x55) {
-        tcg_gen_gvec_dup_mem(MO_32, decode->op[0].offset,
-                             decode->op[1].offset + lane * 4, 16, 16);
+        !decode->op[1].has_ea && !decode->op[2].has_ea) {
+        if (decode->op[1].offset == decode->op[2].offset) {
+            if (selector == lane * 0x55) {
+                tcg_gen_gvec_dup_mem(MO_32, decode->op[0].offset,
+                                     decode->op[1].offset + lane * 4, 16, 16);
+                return;
+            }
+            if (selector == 0xe4) {
+                tcg_gen_gvec_mov(MO_32, decode->op[0].offset,
+                                 decode->op[1].offset, 16, 16);
+                return;
+            }
+        }
+        TCGv_i32 value[4];
+        for (unsigned i = 0; i < 4; i++) {
+            int source = decode->op[i < 2 ? 1 : 2].offset;
+            value[i] = tcg_temp_new_i32();
+            tcg_gen_ld_i32(value[i], tcg_env,
+                           source + ((selector >> (2 * i)) & 3) * 4);
+        }
+        for (unsigned i = 0; i < 4; i++) {
+            tcg_gen_st_i32(value[i], tcg_env, decode->op[0].offset + i * 4);
+        }
         return;
     }
 
