@@ -371,7 +371,7 @@ static VkBufferImageCopy texture_level_copy(const TextureLevel *level,
  * the open single-time command buffer's range. No buffer of its own: a
  * level is decoded, unswizzled or copied straight into the ring. */
 static void stage_texture(PGRAPHState *pg, VkCommandBuffer cmd,
-                          int texture_idx, TextureLayout *layout)
+                          int texture_idx, TextureLayout *layout, unsigned skip_layers)
 {
     NV2AState *d = container_of(pg, NV2AState, pgraph);
     PGRAPHVkState *r = pg->vk_renderer_state;
@@ -461,6 +461,7 @@ static void stage_texture(PGRAPHState *pg, VkCommandBuffer cmd,
         hwaddr layer_size = s.cubemap ? pgraph_get_cubemap_face_length(pg, s) : 0;
         const int num_layers = s.cubemap ? 6 : 1;
         for (int layer = 0; layer < num_layers; layer++) {
+            if (skip_layers & (1u << layer)) continue;
             unsigned int width = adjusted_width, height = adjusted_height;
             texture_data_ptr = (uint8_t *)d->vram_ptr + texture_vram_offset +
                                layer * layer_size;
@@ -661,9 +662,9 @@ static bool check_texture_possibly_dirty(NV2AState *d,
 // FIXME: Make sure we update sampler when data matches. Should we add filtering
 // options to the textureshape?
 static void upload_texture_image(PGRAPHState *pg, int texture_idx,
-                                 TextureBinding *binding)
+                                 TextureBinding *binding, unsigned skip_layers)
 {
-    binding->cube_source_count = 0;
+    binding->cube_source_mask = 0;
     binding->depth_source_copy = false;
     /* An aux upload runs before the open recording: when draws recorded
      * there sample this binding, the recording is submitted first, or they
@@ -693,7 +694,7 @@ static void upload_texture_image(PGRAPHState *pg, int texture_idx,
                                    512, 1, segaboot_logo_size);
         memcpy(dst, segaboot_logo_data, segaboot_logo_size);
     } else {
-        stage_texture(pg, cmd, texture_idx, &layout);
+        stage_texture(pg, cmd, texture_idx, &layout, skip_layers);
     }
     const int num_layers = state->cubemap ? 6 : 1;
     const int num_levels = binding->logo ? 1 : state->levels;
@@ -706,6 +707,7 @@ static void upload_texture_image(PGRAPHState *pg, int texture_idx,
     VkDeviceSize flush_lo = (VkDeviceSize)-1, flush_hi = 0;
 
     for (int layer_idx = 0; layer_idx < num_layers; layer_idx++) {
+        if (skip_layers & (1u << layer_idx)) continue;
         TextureLayer *layer = &layout.layers[layer_idx];
         NV2A_VK_DPRINTF("Layer %d", layer_idx);
         for (int level_idx = 0; level_idx < num_levels; level_idx++) {
@@ -1390,7 +1392,10 @@ static void copy_cube_faces_to_texture(PGRAPHState *pg,
     texture->current_layout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
 
     int max_draw_time = 0;
+    unsigned source_mask = 0;
     for (int f = 0; f < 6; f++) {
+        if (!faces[f]) continue;
+        source_mask |= 1u << f;
         record_surface_copy(pg, cmd, faces[f], texture, f);
         texture->cube_source_draw_time[f] = faces[f]->draw_time;
         if (faces[f]->draw_time > max_draw_time) {
@@ -1407,7 +1412,7 @@ static void copy_cube_faces_to_texture(PGRAPHState *pg,
     pgraph_vk_end_nondraw_commands(pg, cmd);
 
     texture->draw_time = max_draw_time;
-    texture->cube_source_count = 6;
+    texture->cube_source_mask = source_mask;
 }
 
 static unsigned int vk_format_texel_size(VkFormat format)
@@ -2122,6 +2127,8 @@ static void create_texture(PGRAPHState *pg, int texture_idx)
     bool possibly_dirty_checked = false;
     bool surface_to_texture = false;
     bool surface_to_texture_cube = false;
+    bool mixed_cube = false;
+    unsigned cube_mask = 0;
     bool surface_to_texture_bytes = false;
     SurfaceBinding *cube_faces[6] = { 0 };
 
@@ -2147,30 +2154,55 @@ static void create_texture(PGRAPHState *pg, int texture_idx)
         }
     }
 
-    /* A cubemap whose six faces are live, compatible color surfaces takes
-     * them by GPU copy. */
+    /* Native ARGB cubes can combine disjoint live faces with RAM faces.
+     * Other layouts retain the existing all-GPU or RAM fallback paths. */
     if (!surface_to_texture && state.cubemap && state.levels == 1) {
         size_t face_len = texture_length / 6;
         TextureShape flat = state;
         flat.cubemap = false;
-        bool all = true;
-        for (int f = 0; f < 6; f++) {
+        for (unsigned f = 0; f < 6; f++) {
             SurfaceBinding *fs = pgraph_vk_surface_get(
                 d, texture_vram_offset + f * face_len);
-            if (!fs || !fs->color ||
-                !check_surface_to_texture_compatiblity(fs, &flat)) {
-                all = false;
-                break;
+            if (fs && fs->color &&
+                check_surface_to_texture_compatiblity(fs, &flat)) {
+                cube_faces[f] = fs;
+                cube_mask |= 1u << f;
             }
-            cube_faces[f] = fs;
         }
-        if (all) {
-            surface_to_texture_cube = true;
-            for (int f = 0; f < 6; f++) {
-                if (cube_faces[f]->upload_pending) {
-                    pgraph_vk_upload_surface_data(d, cube_faces[f],
-                                                  false);
-                }
+        bool safe_mixed = cube_mask && cube_mask != 0x3f &&
+            pg->surface_scale_factor == 1 && state.dimensionality == 2 &&
+            !state.border &&
+            state.color_format == NV097_SET_TEXTURE_FORMAT_COLOR_SZ_A8R8G8B8;
+        if (safe_mixed) {
+            SurfaceBinding *other;
+            QTAILQ_FOREACH(other, &r->surfaces, entry) {
+                if (!other->draw_dirty || !pgraph_vram_ranges_overlap(
+                        texture_vram_offset, texture_length, other->vram_addr,
+                        other->size)) continue;
+                bool selected = false;
+                for (unsigned f = 0; f < 6; f++) selected |= cube_faces[f] == other;
+                if (!selected) safe_mixed = false;
+            }
+            QTAILQ_FOREACH(other, &r->invalid_surfaces, entry) {
+                if (other->writeback_owed && pgraph_vram_ranges_overlap(
+                        texture_vram_offset, texture_length, other->vram_addr,
+                        other->size)) safe_mixed = false;
+            }
+            for (unsigned f = 0; f < 6; f++) {
+                if (cube_faces[f] &&
+                    (cube_faces[f]->size != face_len ||
+                     cube_faces[f]->native_resolution ||
+                     cube_faces[f]->host_fmt.vk_format !=
+                         texture_vkf(r, state.color_format).vk_format))
+                    safe_mixed = false;
+            }
+        }
+        mixed_cube = safe_mixed;
+        surface_to_texture_cube = cube_mask == 0x3f || mixed_cube;
+        if (surface_to_texture_cube) {
+            for (unsigned f = 0; f < 6; f++) {
+                if (cube_faces[f] && cube_faces[f]->upload_pending)
+                    pgraph_vk_upload_surface_data(d, cube_faces[f], false);
             }
         }
     }
@@ -2238,7 +2270,7 @@ static void create_texture(PGRAPHState *pg, int texture_idx)
         possibly_dirty = true;
     }
 
-    if (!surface_to_texture && !surface_to_texture_cube &&
+    if (!surface_to_texture && (!surface_to_texture_cube || mixed_cube) &&
         !possibly_dirty_checked) {
         possibly_dirty |= check_texture_possibly_dirty(
             d, texture_vram_offset, texture_length, texture_palette_vram_offset,
@@ -2254,7 +2286,7 @@ static void create_texture(PGRAPHState *pg, int texture_idx)
      * validation_frame after this call (-1 on a fresh node, which always
      * hashes). The sampler is still resolved on every bind below. */
     uint64_t content_hash = 0;
-    if (!surface_to_texture && !surface_to_texture_cube && possibly_dirty &&
+    if (!surface_to_texture && (!surface_to_texture_cube || mixed_cube) && possibly_dirty &&
         snode->validation_frame != pg->frame_time) {
         content_hash = fast_hash(texture_data,
                 pgraph_texture_hash_length(state, texture_length));
@@ -2278,12 +2310,24 @@ static void create_texture(PGRAPHState *pg, int texture_idx)
         if (surface_to_texture_cube) {
             unsigned int maxdt = 0;
             for (int f = 0; f < 6; f++) {
-                if ((unsigned int)cube_faces[f]->draw_time > maxdt) {
+                if (cube_faces[f] && (unsigned int)cube_faces[f]->draw_time > maxdt) {
                     maxdt = cube_faces[f]->draw_time;
                 }
             }
-            if (maxdt != snode->draw_time) {
-                texture_cow_if_referenced(pg, snode, false);
+            bool ram_changed = mixed_cube && possibly_dirty &&
+                snode->validation_frame != pg->frame_time && content_hash != snode->hash;
+            bool faces_changed = cube_mask != snode->cube_source_mask;
+            for (unsigned f = 0; f < 6; f++) {
+                if (cube_faces[f] && cube_faces[f]->draw_time !=
+                    snode->cube_source_draw_time[f]) faces_changed = true;
+            }
+            if (maxdt != snode->draw_time || faces_changed || ram_changed) {
+                bool upload_ram = mixed_cube && (faces_changed || ram_changed);
+                texture_cow_if_referenced(pg, snode, upload_ram);
+                if (upload_ram) {
+                    upload_texture_image(pg, texture_idx, snode, cube_mask);
+                    snode->hash = content_hash;
+                }
                 copy_cube_faces_to_texture(pg, cube_faces, snode);
             }
         } else if (surface_to_texture && snode->s2t_borrowed) {
@@ -2303,7 +2347,7 @@ static void create_texture(PGRAPHState *pg, int texture_idx)
         } else if (snode->validation_frame != pg->frame_time) {
             if (possibly_dirty && content_hash != snode->hash) {
                 texture_cow_if_referenced(pg, snode, true);
-                upload_texture_image(pg, texture_idx, snode);
+                upload_texture_image(pg, texture_idx, snode, 0);
                 snode->hash = content_hash;
             }
             /* Validated for this frame: dirty pages found later in its RAM
@@ -2405,6 +2449,7 @@ static void create_texture(PGRAPHState *pg, int texture_idx)
     r->texture_bindings[texture_idx] = snode;
 
     if (surface_to_texture_cube) {
+        if (mixed_cube) upload_texture_image(pg, texture_idx, snode, cube_mask);
         copy_cube_faces_to_texture(pg, cube_faces, snode);
     } else if (s2t_borrow) {
         s2t_borrow_sync(pg, surface);
@@ -2412,7 +2457,7 @@ static void create_texture(PGRAPHState *pg, int texture_idx)
     } else if (surface_to_texture) {
         copy_surface_to_texture(pg, surface, snode);
     } else {
-        upload_texture_image(pg, texture_idx, snode);
+        upload_texture_image(pg, texture_idx, snode, 0);
         snode->draw_time = 0;
     }
 
@@ -2535,7 +2580,7 @@ static void texture_cache_entry_init(Lru *lru, LruNode *node, const void *state)
     snode->seq = ++r->texture_binding_seq;
     snode->validation_frame = (unsigned int)-1;
     snode->sampled_frame = 0;
-    snode->cube_source_count = 0;
+    snode->cube_source_mask = 0;
     snode->depth_source_copy = false;
 }
 
@@ -2543,7 +2588,7 @@ static void texture_cache_release_node_resources(PGRAPHVkState *r, TextureBindin
 {
     /* In-place sampling: a borrowed image belongs to its surface; only the
      * view and sampler are released (a borrowed node has no allocation). */
-    snode->cube_source_count = 0;
+    snode->cube_source_mask = 0;
     snode->depth_source_copy = false;
     bool borrowed = snode->s2t_borrowed &&
                     snode->allocation == VK_NULL_HANDLE;

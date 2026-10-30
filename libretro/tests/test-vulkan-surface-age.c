@@ -10,7 +10,7 @@ typedef uint64_t hwaddr;
 typedef struct TextureBinding { bool s2t_borrowed,depth_source_copy; uintptr_t image;
     struct { bool byte_reinterpret; uint64_t texture_vram_offset;
         size_t texture_length; struct { bool cubemap; } state; } key;
-    unsigned cube_source_count, cube_source_draw_time[6];
+    unsigned cube_source_mask, cube_source_draw_time[6];
     unsigned draw_time;
     unsigned sampled_frame,submit_time; } TextureBinding;
 typedef struct SurfaceBinding { unsigned frame_time; uintptr_t image;
@@ -68,20 +68,20 @@ int main(void) {
     }
     /* Each cube face needs exact address/alignment, draw provenance and use. */
     for(unsigned face=0;face<6;face++)
-    for(unsigned copied=0;copied<2;copied++)
+    for(unsigned copied=0;copied<3;copied++)
     for(unsigned cube=0;cube<2;cube++)
     for(unsigned matches=0;matches<2;matches++)
     for(unsigned recent=0;recent<2;recent++) {
         SurfaceBinding s={.frame_time=0,.image=1,.vram_addr=100+face*1024,.draw_time=12+face};
         TextureBinding t={.sampled_frame=recent?9:0,.image=2,
             .key={.texture_vram_offset=100,.texture_length=6144,.state={cube}},
-            .cube_source_count=copied?6:0};
+            .cube_source_mask=copied==1?1u<<face:copied==2?1u<<((face+1)%6):0};
         for(unsigned f=0;f<6;f++) t.cube_source_draw_time[f]=12+f;
         if (!matches) t.cube_source_draw_time[face]--;
         PGRAPHVkState r={.surfaces={&s},.texture_bindings={&t}};
         NV2AState d={.pgraph={10,&r}};
         expire_old_surfaces(&d);
-        assert(s.evicted==!(copied && cube && matches && recent));
+        assert(s.evicted==!(copied==1 && cube && matches && recent));
         if(!s.evicted) {
             d.pgraph.frame_time=15; expire_old_surfaces(&d); assert(s.evicted);
         }
@@ -92,7 +92,7 @@ int main(void) {
         SurfaceBinding s={.frame_time=0,.image=1,.vram_addr=invalid_addresses[a],.draw_time=12};
         TextureBinding t={.sampled_frame=9,.image=2,
             .key={.texture_vram_offset=100,.texture_length=6144,.state={true}},
-            .cube_source_count=6,.cube_source_draw_time={12,12,12,12,12,12}};
+            .cube_source_mask=0x3f,.cube_source_draw_time={12,12,12,12,12,12}};
         PGRAPHVkState r={.surfaces={&s},.texture_bindings={&t}};
         NV2AState d={.pgraph={10,&r}};
         expire_old_surfaces(&d); assert(s.evicted); cases++;

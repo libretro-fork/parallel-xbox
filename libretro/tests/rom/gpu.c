@@ -1356,6 +1356,71 @@ void gpu_main(void)
             ram32(0x00300074u, rd32(0x03600400u));
             ram32(0x00300078u, rd32(0x03600800u));
         }
+        if (frame == 2720) {
+            method(NV097_SET_SURFACE_CLIP_H, 16u << 16);
+            method(NV097_SET_SURFACE_CLIP_V, 16u << 16);
+            method(NV097_SET_SURFACE_FORMAT, 0x04040228u);
+            method(NV097_SET_SURFACE_PITCH, 64u | (64u << 16));
+            method(NV097_SET_SURFACE_COLOR_OFFSET, 0x03600400u);
+            method(NV097_SET_COLOR_CLEAR_VALUE, 0xffff00ffu);
+            method(NV097_SET_CLEAR_RECT_H, 15u << 16);
+            method(NV097_SET_CLEAR_RECT_V, 15u << 16);
+            method(NV097_CLEAR_SURFACE, 0xf0);
+            texture_alias_at(0xc0000006u, 32, 0x3f000000u, 0, 0x03600000u);
+            method(NV097_SET_TEXTURE_FORMAT, 1u | (1u << 2) | (2u << 4) |
+                   (1u << 3) | (6u << 8) | (1u << 16) | (4u << 20) | (4u << 24));
+            method(NV097_SET_SHADER_STAGE_PROGRAM, 3);
+            method(0x1a00u + 9 * 16, 0xbf800000u);
+            method(0x1a00u + 9 * 16 + 4, 0);
+            method(0x1a00u + 9 * 16 + 8, 0);
+            method(0x1a00u + 9 * 16 + 12, 0x3f800000u);
+            triangle(); kick();
+        }
+        if (frame == 2745) {
+            texture_cpu_barrier();
+            for (u32 offset = 0; offset < 1024; offset += 4)
+                ram32(0x03600000u + offset, 0xffffff00u);
+        }
+        if (frame == 2760) {
+            method(NV097_SET_SURFACE_CLIP_H, 16u << 16);
+            method(NV097_SET_SURFACE_CLIP_V, 16u << 16);
+            method(NV097_SET_SURFACE_FORMAT, 0x04040228u);
+            method(NV097_SET_SURFACE_PITCH, 64u | (64u << 16));
+            method(NV097_SET_SURFACE_COLOR_OFFSET, 0x03600400u);
+            disable_texture();
+            method(NV097_SET_COMBINER_SPECULAR_FOG_CW0, 4); /* V0 */
+            method(NV097_SET_COMBINER_SPECULAR_FOG_CW1, 0x00001400u); /* V0.a */
+            method(0x1a00u + 3 * 16, 0);
+            method(0x1a00u + 3 * 16 + 4, 0x3f800000u);
+            method(0x1a00u + 3 * 16 + 8, 0x3f800000u);
+            method(0x1a00u + 3 * 16 + 12, 0x3f800000u);
+            method(NV097_SET_BEGIN_END, 5);
+            push(0x40000000u | (12u << 18) | NV097_INLINE_ARRAY);
+            const u32 positions[12] = {0,0,0,0x3f800000u,
+                0x42000000u,0,0,0x3f800000u,0,0x42000000u,0,0x3f800000u};
+            for (u32 vertex = 0; vertex < 12; vertex++) push(positions[vertex]);
+            method(NV097_SET_BEGIN_END, 0);
+            method(NV097_SET_TEXTURE_CONTROL0, 1u << 30);
+            method(NV097_SET_SHADER_STAGE_PROGRAM, 3);
+            method(NV097_SET_COMBINER_SPECULAR_FOG_CW0, 8);
+            method(NV097_SET_COMBINER_SPECULAR_FOG_CW1, 0x00001800u);
+            method(NV097_SET_SURFACE_CLIP_H, WIDTH << 16);
+            method(NV097_SET_SURFACE_CLIP_V, HEIGHT << 16);
+            method(NV097_SET_SURFACE_FORMAT, 0x128u);
+            method(NV097_SET_SURFACE_PITCH, PITCH | (PITCH << 16));
+            method(0x1a00u + 9 * 16, 0xbf800000u); /* -X */
+        }
+        if (frame == 2780) method(0x1a00u + 9 * 16, 0x3f800000u); /* +X */
+        if (frame == 2740) method(0x1a00u + 9 * 16, 0x3f800000u);
+        if (frame >= 2721 && frame <= 2800) {
+            method(NV097_SET_SURFACE_COLOR_OFFSET, SURF_D);
+            triangle(); if (frame == 2800) disable_texture(); kick();
+        }
+        if (frame == 2820) {
+            ram32(0x0030007cu, rd32(0x03600400u));
+            ram32(0x00300080u, rd32(0x03600000u));
+            ram32(0x00300084u, rd32(0x03600800u));
+        }
         method(NV097_FLIP_INCREMENT_WRITE, 0);
         kick();
         if (frame >= 100 && frame < 125) {

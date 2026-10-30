@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Vulkan combines live GPU cubemap faces with RAM-backed faces at native resolution for single-level ARGB cubes, avoiding GPU face readback at texture binds. Scaled, unsupported and ambiguously aliased cubes retain the existing fallback.
+
 - Added a two-renderer regression for GPU-copied cubemaps becoming RAM-backed: independent CPU face edits, a filter change and face switching must preserve both changed and untouched faces.
 
 - Strengthened the synthetic texture-lifetime tests so ongoing draws reach the captured surface. Added a depth-cache transition test that verifies CPU-written zeros and subsequent GPU depth writes across a filter change.

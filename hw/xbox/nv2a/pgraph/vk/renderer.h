@@ -282,7 +282,7 @@ typedef struct TextureBinding {
     bool s2t_borrowed;
     bool depth_source_copy; /* draw_time identifies a GPU depth snapshot */
     unsigned int cube_source_draw_time[6];
-    unsigned int cube_source_count; /* six only for GPU-produced cube faces */
+    unsigned int cube_source_mask; /* bit per GPU-produced cube face */
     bool logo; /* doge mode: the SEGABOOT logo replaced */
     VkImageCreateInfo image_ci; /* creation parameters (image pool key) */
 } TextureBinding;

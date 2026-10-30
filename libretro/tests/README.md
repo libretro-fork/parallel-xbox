@@ -520,7 +520,7 @@ At guest frame 1340 a retained indexed texture samples a red GPU palette. After 
 
 At guest frame 1360 a fresh ARGB GPU source is sampled directly, changed red to blue, and sampled again without texture-state changes. It then ages out before the CPU reads it at frame 1460. Captures 1370/1410 must stay blue and GPU_READ0 must contain ff0000ff. A Vulkan snapshot at frontend 1447, load at 1470, and later CPU read verify that deferred retired content survives state handling. Temporary readback counters measured expiry-time readback moving from guest frame counter 1364 to the real CPU reader at 1389; context destruction still materializes owed content.
 
-The compatible source created at guest frame 1360 is now sampled on every frame through 1440 without texture-state changes, before the later CPU read. A separate per-binding sample clock keeps its borrowed surface from aging out during use. `test-vulkan-surface-age.py CHECKOUT [CC]` compiles production expiry/timestamp functions and checks 292 combinations, including copied-source and cubemap address/draw mismatches, plus idle expiry and unsigned frame wrap without a graphics driver. Temporary GPU counters showed an expiry-triggered readback/upload before the change; afterward no texture upload occurs and the source readback waits for the real CPU reader.
+The compatible source created at guest frame 1360 is now sampled on every frame through 1440 without texture-state changes, before the later CPU read. A separate per-binding sample clock keeps its borrowed surface from aging out during use. `test-vulkan-surface-age.py CHECKOUT [CC]` compiles production expiry/timestamp functions and checks 340 combinations, including copied-source and cubemap address/draw mismatches, plus idle expiry and unsigned frame wrap without a graphics driver. Temporary GPU counters showed an expiry-triggered readback/upload before the change; afterward no texture upload occurs and the source readback waits for the real CPU reader.
 
 The shared compatible-source fixture now samples through frame 1440 to exceed OpenGL's 60-frame age limit, with additional blue captures at 1430/1470. OpenGL marks already-resolved flat or cubemap GPU source surfaces used on successful texture-copy reuse. Temporary counters measured readback and RAM upload at counter 1419 before the fix; afterward the sole readback waits for the CPU reader at 1459, with no RAM texture upload. Conversion arithmetic, copied pixel data and the 60-frame idle limit are unchanged.
 
@@ -592,3 +592,22 @@ green, green, blue, yellow, green, green at 2490/2530/2550/2570/2590/2610/2650.
 CPU words 0x00300070/74/78 verify green +X, yellow -X and untouched blue +Y.
 The standard test covers OpenGL and Vulkan at 1x, exercising whole-cube hashing
 and face strides after GPU-copy provenance has been replaced by RAM data.
+
+Vulkan mixed cubemaps: native-resolution, single-level unbordered ARGB cubes can
+combine compatible live GPU faces with RAM faces. Each selected surface must
+cover exactly one face and use the matching host format; overlapping dirty
+unselected surfaces or owed parked surfaces force the existing RAM fallback.
+The staging/region builders skip GPU faces; RAM faces upload first, then the
+GPU copies execute after prior source draws. Cache updates track per-face source
+draw timestamps and a source bitmask; RAM edits still trigger content validation.
+Lifetime tracking consults only the selected face bits. Scaling above 1x and
+other layouts retain the existing all-GPU or RAM behavior.
+The mixed fixture creates -X magenta on the GPU at 2720 with other faces in RAM,
+selects +X green at 2740, edits it yellow on the CPU at 2745, redraws -X cyan on
+the GPU at 2760, then checks +X yellow again at 2780. The GPU redraw uses an
+ordinary triangle rather than the existing unsupported clear-of-live-swizzled-
+surface path. Six captures plus cyan/yellow/untouched-blue CPU words verify
+layer selection, updates, copy-on-write preservation and delayed CPU reads.
+Focused native-resolution counters removed the bind-time 1 KiB GPU-face readback;
+only five RAM faces are uploaded, with the GPU face copied directly. Later
+idle expiry or CPU reads still settle owed GPU content normally.

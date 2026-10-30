@@ -1449,7 +1449,7 @@ static void expire_old_surfaces(NV2AState *d)
                     ((binding->key.byte_reinterpret || binding->depth_source_copy) &&
                      binding->key.texture_vram_offset == s->vram_addr &&
                      binding->draw_time == s->draw_time);
-                if (binding->cube_source_count == 6 &&
+                if (binding->cube_source_mask != 0 &&
                     binding->key.state.cubemap &&
                     s->vram_addr >= binding->key.texture_vram_offset) {
                     size_t face_length = binding->key.texture_length / 6;
@@ -1457,8 +1457,8 @@ static void expire_old_surfaces(NV2AState *d)
                     if (face_length && offset % face_length == 0 &&
                         offset / face_length < 6) {
                         unsigned face = offset / face_length;
-                        source_matches |= binding->cube_source_draw_time[face] ==
-                                          s->draw_time;
+                        source_matches |= (binding->cube_source_mask & (1u << face)) &&
+                                          binding->cube_source_draw_time[face] == s->draw_time;
                     }
                 }
                 if (source_matches) {
