@@ -80,6 +80,9 @@
  *   frame 385: 32 offset strips; at 405 a 33rd exceeds the direct-draw cap.
  *   frame 425: CPU purple replaces them; at 445 one new red tile.
  *   frames 465/475: keyed/unkeyed white PVIDEO crosses tile and CPU border.
+ *   frames 680/700/720/740: matching and incompatible texture views of a
+ *              GPU-produced surface: red ARGB, black/white RGB565 words,
+ *              then a GPU redraw that must invalidate the aliased texture.
  * The larger command ring keeps this extended scenario before wraparound.
  *
  * The frame count is at GPU_FRAMES in RAM, GPU_STATUS says how far the
@@ -158,6 +161,7 @@ typedef unsigned int u32;
 #define SURF_F       0x02000000u   /* CPU border, two offset GPU tiles */
 #define SURF_H       0x02800000u   /* direct-layer limit and fallback */
 #define VIDEO_DATA   0x02C00000u
+#define TEX_SOURCE   0x02E00000u   /* GPU-produced pixels, sampled through aliases */
 #define SURF_G       0x02400000u   /* 15-bit mode change, offset tile */
 #define ZS_CLEAR     0x12345678u   /* depth 0x123456, stencil 0x78 */
 
@@ -201,6 +205,30 @@ typedef unsigned int u32;
 #define NV097_CLEAR_SURFACE             0x1D94
 #define NV097_SET_CLEAR_RECT_H          0x1D98
 #define NV097_SET_CLEAR_RECT_V          0x1D9C
+
+#define NV097_SET_COMPOSITE_MATRIX 0x0680
+#define NV097_SET_VIEWPORT_OFFSET 0x0a20
+#define NV097_SET_CLIP_MIN 0x0394
+#define NV097_SET_CLIP_MAX 0x0398
+#define NV097_SET_ALPHA_TEST_ENABLE 0x0300
+#define NV097_SET_CULL_FACE_ENABLE 0x0308
+#define NV097_SET_DEPTH_TEST_ENABLE 0x030c
+#define NV097_SET_STENCIL_TEST_ENABLE 0x032c
+#define NV097_SET_WINDOW_CLIP_TYPE 0x02b4
+#define NV097_SET_WINDOW_CLIP_HORIZONTAL 0x02c0
+#define NV097_SET_WINDOW_CLIP_VERTICAL 0x02e0
+#define NV097_SET_TEXTURE_OFFSET 0x1b00
+#define NV097_SET_TEXTURE_FORMAT 0x1b04
+#define NV097_SET_TEXTURE_ADDRESS 0x1b08
+#define NV097_SET_TEXTURE_CONTROL0 0x1b0c
+#define NV097_SET_TEXTURE_CONTROL1 0x1b10
+#define NV097_SET_TEXTURE_FILTER 0x1b14
+#define NV097_SET_TEXTURE_IMAGE_RECT 0x1b1c
+#define NV097_SET_SHADER_STAGE_PROGRAM 0x1e70
+#define NV097_SET_COMBINER_CONTROL 0x1e60
+#define NV097_SET_COMBINER_SPECULAR_FOG_CW0 0x0288
+#define NV097_SET_COMBINER_SPECULAR_FOG_CW1 0x028c
+#define NV097_SET_VERTEX_DATA2F_M 0x1880
 
 static inline void wr(u32 reg, u32 v) { *(volatile u32 *)(NV2A + reg) = v; }
 static inline u32 rd(u32 reg) { return *(volatile u32 *)(NV2A + reg); }
@@ -320,6 +348,68 @@ static void triangle(void)
         push(v[i]);
     }
     method(NV097_SET_BEGIN_END, 0);
+}
+
+/* A 32x16 ARGB surface viewed as either matching ARGB pixels or a 64x16
+ * RGB565 texture with the same byte pitch. Red's bytes are 00 00 FF FF:
+ * the narrow view must alternate black and white, not stale CPU blue. */
+static __attribute__((noinline)) void texture_alias(u32 format, u32 width,
+                                                   u32 u, u32 redraw)
+{
+    if (redraw) {
+        method(NV097_SET_SURFACE_CLIP_H, 32u << 16);
+        method(NV097_SET_SURFACE_CLIP_V, 16u << 16);
+        method(NV097_SET_SURFACE_FORMAT, 0x128u);
+        method(NV097_SET_SURFACE_PITCH, 128u | (128u << 16));
+        method(NV097_SET_SURFACE_COLOR_OFFSET, TEX_SOURCE);
+        method(NV097_SET_COLOR_CLEAR_VALUE, redraw);
+        method(NV097_SET_CLEAR_RECT_H, 31u << 16);
+        method(NV097_SET_CLEAR_RECT_V, 15u << 16);
+        method(NV097_CLEAR_SURFACE, 0xf0);
+    }
+    method(NV097_SET_SURFACE_CLIP_H, WIDTH << 16);
+    method(NV097_SET_SURFACE_CLIP_V, HEIGHT << 16);
+    method(NV097_SET_SURFACE_FORMAT, 0x128u);
+    method(NV097_SET_SURFACE_PITCH, PITCH | (PITCH << 16));
+    clear(SURF_D, 0xff0000ffu);
+    /* Window-space positions through an identity composite matrix. Earlier
+     * clear/readback cases do not need initialized transform constants. */
+    for (u32 i = 0; i < 16; i++) method(NV097_SET_COMPOSITE_MATRIX + i * 4, i % 5 == 0 ? 0x3f800000u : 0);
+    for (u32 i = 0; i < 4; i++) method(NV097_SET_VIEWPORT_OFFSET + i * 4, 0);
+    method(NV097_SET_CLIP_MIN, 0);
+    method(NV097_SET_CLIP_MAX, 0x3f800000u);
+    method(NV097_SET_ALPHA_TEST_ENABLE, 0); /* alpha test */
+    method(NV097_SET_CULL_FACE_ENABLE, 0); /* cull */
+    method(NV097_SET_DEPTH_TEST_ENABLE, 0); /* depth test */
+    method(NV097_SET_STENCIL_TEST_ENABLE, 0); /* stencil test */
+    method(NV097_SET_WINDOW_CLIP_TYPE, 0); /* inclusive window clip */
+    method(NV097_SET_WINDOW_CLIP_HORIZONTAL, (WIDTH - 1) << 16);
+    method(NV097_SET_WINDOW_CLIP_VERTICAL, (HEIGHT - 1) << 16);
+    /* Texture stage zero: rectangle coordinates, nearest sampling, DMA A. */
+    method(NV097_SET_TEXTURE_OFFSET, TEX_SOURCE);
+    method(NV097_SET_TEXTURE_FORMAT, 1u | (2u << 4) | (1u << 3) | (format << 8) |
+                   (1u << 16) | ((width == 32 ? 5u : 6u) << 20) | (4u << 24));
+    method(NV097_SET_TEXTURE_ADDRESS, 0x00030303u);
+    method(NV097_SET_TEXTURE_CONTROL0, 1u << 30);
+    method(NV097_SET_TEXTURE_CONTROL1, 128u << 16);
+    method(NV097_SET_TEXTURE_FILTER, 0x01010000u);
+    method(NV097_SET_TEXTURE_IMAGE_RECT, (width << 16) | 16u);
+    method(NV097_SET_SHADER_STAGE_PROGRAM, 1);           /* PROJECT2D on stage zero */
+    method(NV097_SET_COMBINER_CONTROL, 0);           /* final combiner only */
+    method(NV097_SET_COMBINER_SPECULAR_FOG_CW0, 8);           /* final RGB = T0 */
+    method(NV097_SET_COMBINER_SPECULAR_FOG_CW1, 0x00001800u); /* final alpha = T0.a */
+    method(NV097_SET_VERTEX_DATA2F_M + 9 * 8, u);   /* constant texture coordinates */
+    method(NV097_SET_VERTEX_DATA2F_M + 9 * 8 + 4, 0x3f000000u);
+    triangle();
+    method(NV097_SET_TEXTURE_CONTROL0, 0);
+    method(NV097_SET_SHADER_STAGE_PROGRAM, 0);
+    method(NV097_SET_COMBINER_SPECULAR_FOG_CW0, 0);
+    method(NV097_SET_COMBINER_SPECULAR_FOG_CW1, 0);
+    kick();
+    cr(0x28, 3);
+    cr(0x13, (PITCH / 8) & 0xff);
+    cr(0x19, (((PITCH / 8) >> 8) & 7) << 5);
+    wr(PCRTC_START, SURF_D);
 }
 
 /* x's bits and y's interleaved from bit 0, x first, until the shorter
@@ -824,6 +914,18 @@ void gpu_main(void)
             method(NV097_SET_SURFACE_PITCH, PITCH | ((u32)PITCH << 16));
         }
         if (frame == 560) wr(PRAMDAC_GENERAL, rd(PRAMDAC_GENERAL) & ~(1u << 12));
+        if (frame == 680) {
+            for (u32 i = 0; i < 32u * 16u; i++) ram32(TEX_SOURCE + i * 4, 0xff0000ffu);
+            texture_alias(0x12, 32, 0x3f000000u, 0xffff0000u);
+        }
+        if (frame == 700) {
+            /* Keep the source live even on a renderer with short eviction
+             * age, and make stale RAM observably wrong for the alias. */
+            for (u32 i = 0; i < 32u * 16u; i++) ram32(TEX_SOURCE + i * 4, 0xff0000ffu);
+            texture_alias(0x11, 64, 0x3f000000u, 0xffff0000u);
+        }
+        if (frame == 720) texture_alias(0x11, 64, 0x3fc00000u, 0);
+        if (frame == 740) texture_alias(0x11, 64, 0x3f000000u, 0xffffffffu);
         method(NV097_FLIP_INCREMENT_WRITE, 0);
         kick();
         if (frame >= 100 && frame < 125) {

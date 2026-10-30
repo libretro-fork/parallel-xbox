@@ -13,7 +13,7 @@ ld -m elf_i386 -Ttext=$base -e gpu_main -o "$work/gpu.elf" "$work/gpu.o"
 entry=$(nm "$work/gpu.elf" | awk '$3 == "gpu_main" { print $1 }')
 objcopy -O binary -j .text -j .rodata -j .data "$work/gpu.elf" "$work/gpu.bin"
 {
-    echo "; gpu.c built by pad.sh: 32-bit code at $base, entered at gpu_main;"
+    echo "; gpu.c built by gpu.sh: 32-bit code at $base, entered at gpu_main;"
     echo "; included at the top of flash.asm, which lays the bytes out with gpu_bytes"
     echo "%define GPU_BASE $base"
     echo "%define GPU_ENTRY 0x$entry"

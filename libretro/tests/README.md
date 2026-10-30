@@ -1,5 +1,13 @@
 # The core's tests
 
+The GPU ROM's texture-alias phase (frames 680 through 750) samples a red
+GPU-produced 32x16 ARGB surface directly and through an incompatible 64x16
+RGB565 view with the same pitch. Red's little-endian words become black and
+white texels in the narrow view. A later GPU redraw must refresh the cached
+aliased texture. The source RAM starts blue, so stale-RAM sampling cannot pass.
+This phase initializes its transform and window-clip state explicitly and
+exercises both compatible GPU reuse and the incompatible readback/upload path.
+
 Vulkan captures allocate mapped readback buffers lazily per sync slot and
 grow them to the actual output dimensions. Requested captures fail explicitly
 if the image, size or allocation is invalid. Timing-only runs allocate no

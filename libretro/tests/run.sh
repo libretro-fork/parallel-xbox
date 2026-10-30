@@ -375,6 +375,28 @@ for r in OpenGL Vulkan; do
     done
 done
 
+# Compatible surface reuse and incompatible byte-layout texture aliases.
+for api in OpenGL Vulkan; do
+  o=; [ "$api" = Vulkan ] && o="--vulkan --opt xemu_renderer=vulkan"
+  for scale in 1 2 4; do
+    set +e
+    timeout 300 $h "$(path "$core")" "$(path "$work/sysg")" $vp $o \
+      --opt xemu_surface_scale=$scale --frames 760 --strict \
+      --pixel 690 --pixel 710 --pixel 730 --pixel 750 \
+      --peek 0x300008 >"$work/gpu_texture_alias.txt"
+    r=$?
+    set -e
+    [ "$r" = 3 ] && [ "$api" = Vulkan ] && continue
+    [ "$r" = 0 ] || { echo "FAIL: $api texture alias ${scale}x exited $r"; exit 1; }
+    for want in "pixel_690=0xff0000" "pixel_710=0x000000" \
+                "pixel_730=0xffffff" "pixel_750=0xffffff" \
+                "peek_0x300008=0x00000000"; do
+      grep -q "^$want$" "$work/gpu_texture_alias.txt" || {
+        echo "FAIL: $api texture alias ${scale}x: $want"; exit 1; }
+    done
+  done
+done
+
 # A 4x capture exceeds the old fixed 1920x1080 readback allocation. A
 # timing-only run at the same size must not allocate capture buffers at all.
 set +e
