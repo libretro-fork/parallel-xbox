@@ -160,7 +160,7 @@ else ifeq ($(platform),osx)
    OS_CFLAGS   := $(OSX_ARCH_FLAGS) -DVK_USE_PLATFORM_METAL_EXT
    OS_ASFLAGS  := $(OSX_ARCH_FLAGS)
    # CoreFoundation and IOKit: block/file-posix.c's host CD-ROM support
-   OS_LIBS     := -lm -framework CoreFoundation -framework IOKit \
+   OS_LIBS     := -lm -lresolv -framework CoreFoundation -framework IOKit \
                   -framework OpenGL
 
    PKGS := epoxy

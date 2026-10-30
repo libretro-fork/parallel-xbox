@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- macOS links the system resolver library required by the bundled libslirp DNS backend, fixing the final core link.
+
 - macOS architecture and deployment-target flags now reach every compiled source group, including libretro-common and libslirp, fixing Intel core builds on Apple Silicon runners.
 
 - Linux and Android no longer compile the unused vhost-user server utility, whose dependency was removed with the meson subprojects. This fixes clean builds without restoring that dependency.
