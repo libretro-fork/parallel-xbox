@@ -118,9 +118,9 @@ killed partway leave no error; without `qemu-img` that part is skipped.
 
 `test-audio-margin.c` works out the worst room the frontend's audio pull
 finds without waiting for the DSPs' thread, over every phase of the APU's
-engine frames against the video frames, with the engine frame in flight
-not counted: the queue's preroll (`hw/xbox/mcpx/apu/monitor.h`) has to
-leave a whole engine frame to spare.
+engine frames against the video frames, with the engine frames in flight
+(`MCPX_APU_MONITOR_FRAMES_IN_FLIGHT`) not counted: the queue's preroll
+(`hw/xbox/mcpx/apu/monitor.h`) has to leave a whole engine frame to spare.
 
 `rom/cf.asm` checks the carry flag across translation block boundaries:
 every flag-setting instruction, on operands around the carry, then a jump,
@@ -253,7 +253,9 @@ Linux build.
   processor, a 1 kHz sine at 48 kHz and 0 dB (`sine.inc`, 40 periods), and
   halts; built with `-DBUSY` it counts in RAM at 0x300000 instead, so the
   CPU never rests; built with `-DDSP` it also loads `gp.a56` into the APU's
-  GP DSP and starts it (`-DGP_PASSES=n` sets its load, 1 by default);
+  GP DSP and starts it (`-DGP_PASSES=n` sets its load, 1 by default; with
+  `-DGPWRITE` the CPU then writes and reads back the GP's memory while its
+  frames run, and puts the GP in reset on a word that comes back wrong);
   built with `-DSPIN` it spins on a word in RAM that nothing writes; built
   with `-DPAD` it runs `pad.c`; built with `-DGPU` it runs `gpu.c`; built
   with `-DDVD` it runs `dvd.c`; built with `-DHDD` it runs `hdd.c`; built

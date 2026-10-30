@@ -25,7 +25,7 @@ fi
 mkdir -p "$work/bin" "$work/sys/xemu" "$work/sysb/xemu" "$work/sysd/xemu" \
     "$work/syss/xemu" "$work/sysp/xemu" "$work/sysg/xemu" "$work/sysv/xemu" \
     "$work/sysr/xemu" "$work/sysf/xemu" "$work/syswork/xemu" "$work/sysa/xemu" "$work/syse/xemu" \
-    "$work/sysh/xemu" "$work/sysc/xemu"
+    "$work/sysh/xemu" "$work/sysc/xemu" "$work/sysw/xemu"
 
 # The harness's paths, as the core's OS spells them
 path() { echo "$1"; }
@@ -215,6 +215,8 @@ cp "$work/sys/xemu/mcpx_1.0.bin" "$work/syse/xemu/"
 nasm -f bin -DEP -I"$here/rom/" -o "$work/syse/xemu/Complex_4627v1.03.bin" "$here/rom/flash.asm"
 cp "$work/sys/xemu/mcpx_1.0.bin" "$work/sysd/xemu/"
 nasm -f bin -DDSP -DGP_PASSES=16 -I"$here/rom/" -o "$work/sysd/xemu/Complex_4627v1.03.bin" "$here/rom/flash.asm"
+cp "$work/sys/xemu/mcpx_1.0.bin" "$work/sysw/xemu/"
+nasm -f bin -DDSP -DGP_PASSES=16 -DGPWRITE -I"$here/rom/" -o "$work/sysw/xemu/Complex_4627v1.03.bin" "$here/rom/flash.asm"
 
 cp "$work/sys/xemu/mcpx_1.0.bin" "$work/syswork/xemu/"
 nasm -f bin -DEXITWORK -I"$here/rom/" -o "$work/syswork/xemu/Complex_4627v1.03.bin" "$here/rom/flash.asm"
@@ -1000,6 +1002,13 @@ t "GP DSP, JIT" $h "$(path "$core")" "$(path "$work/sysd")" --frames 600 --stric
 t "GP DSP, JIT: save, load, reset" $h "$(path "$core")" "$(path "$work/sysd")" --frames 600 \
   --strict $dsp --opt xemu_dsp_jit=enabled --save 200 --load 350 \
   --verify-load --reset 450
+
+# The CPU writing and reading the GP's memory while its frames run
+# (flash.asm -DGPWRITE): every word read back is the one written, through
+# the DSPs' thread's write queue, and the tone goes on whole.
+t "GP DSP, JIT, guest writes" $h "$(path "$core")" "$(path "$work/sysw")" --frames 120 --strict \
+  $dsp --opt xemu_dsp_jit=enabled --wav "$(path "$work/dspw.wav")"
+"$work/bin/sinecheck" "$work/dspw.wav" --frames 96096 --peak 16385
 
 # The EP DSP's output (rom/ep.a56), which the core sinks to the frontend:
 # its 256 samples a run go into the frontend's queue as the EP's DMA

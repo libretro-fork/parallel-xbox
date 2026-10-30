@@ -13,15 +13,22 @@
 #include <stdint.h>
 
 /*
+ * Engine frames the DSPs' thread may be behind the engine (gp_ep.h): the
+ * engine waits for it only past that. Eight covers the EP's frame, eight
+ * engine frames' work at once, and the engine's frames coming in a run.
+ */
+#define MCPX_APU_MONITOR_FRAMES_IN_FLIGHT 8
+
+/*
  * Engine frames of silence the queue starts with. The frontend's thread
  * takes each video frame's 800 or 801 samples without waiting for the
- * DSPs' thread, so the engine frame that thread may still be working on
- * (at most one: posting a frame waits for the one before) is not there
- * yet. One frame covers the 25 or 26 engine frames of a video frame
- * against its samples at the worst phase of the two, one the frame in
- * flight, and one is a frame of slack. The test works the margin out.
+ * DSPs' thread, so the engine frames that thread may still be working on
+ * are not there yet. One frame covers the 25 or 26 engine frames of a
+ * video frame against its samples at the worst phase of the two, the
+ * frames in flight theirs, and one is a frame of slack: 10 frames, 6.7 ms.
+ * The test works the margin out.
  */
-#define MCPX_APU_MONITOR_PREROLL_FRAMES 3
+#define MCPX_APU_MONITOR_PREROLL_FRAMES (MCPX_APU_MONITOR_FRAMES_IN_FLIGHT + 2)
 
 /* Host volume only, after the guest's S16 output conversion. Gain is Q16
  * in [0, 65536]. Round symmetrically: shifting a signed product downward

@@ -267,17 +267,35 @@ static void proc_rst_write(DSPState *dsp, uint32_t oldval, uint32_t val)
     }
 }
 
+/* Whether a GP/EP offset is in one of the DSP's memories */
+static bool gp_is_memory(hwaddr addr)
+{
+    return addr < NV_PAPU_GPXMEM + 0x1000 * 4 ||
+           (addr >= NV_PAPU_GPMIXBUF && addr < NV_PAPU_GPMIXBUF + 0x400 * 4) ||
+           (addr >= NV_PAPU_GPYMEM && addr < NV_PAPU_GPYMEM + 0x800 * 4) ||
+           (addr >= NV_PAPU_GPPMEM && addr < NV_PAPU_GPPMEM + 0x1000 * 4);
+}
+
+static bool ep_is_memory(hwaddr addr)
+{
+    return addr < NV_PAPU_EPXMEM + 0xC00 * 4 ||
+           (addr >= NV_PAPU_EPYMEM && addr < NV_PAPU_EPYMEM + 0x100 * 4) ||
+           (addr >= NV_PAPU_EPPMEM && addr < NV_PAPU_EPPMEM + 0x1000 * 4);
+}
+
 /* Global Processor - programmable DSP */
 static uint64_t gp_read(void *opaque, hwaddr addr, unsigned int size)
 {
     MCPXAPUState *d = opaque;
 
-    mcpx_apu_dsp_quiesce(d);
-
     assert(size == 4);
     assert(addr % 4 == 0);
 
     uint64_t r = 0;
+    if (gp_is_memory(addr)) {
+        /* the DSP's memories: the thread done, the writes applied */
+        mcpx_apu_dsp_quiesce(d);
+    }
     switch (addr) {
     case NV_PAPU_GPXMEM ... NV_PAPU_GPXMEM + 0x1000 * 4 - 1: {
         uint32_t xaddr = (addr - NV_PAPU_GPXMEM) / 4;
@@ -304,6 +322,7 @@ static uint64_t gp_read(void *opaque, hwaddr addr, unsigned int size)
         break;
     }
     default:
+        /* the guest's view, the engine's own (gp_write) */
         r = d->gp.regs[addr];
         break;
     }
@@ -312,49 +331,56 @@ static uint64_t gp_read(void *opaque, hwaddr addr, unsigned int size)
     return r;
 }
 
+/* A GP write as the DSP takes it, in order with its frames: on its
+ * thread, or on the emulator thread with that one idle */
+static void gp_apply(MCPXAPUState *d, hwaddr addr, uint32_t val)
+{
+    switch (addr) {
+    case NV_PAPU_GPXMEM ... NV_PAPU_GPXMEM + 0x1000 * 4 - 1: {
+        uint32_t xaddr = (addr - NV_PAPU_GPXMEM) / 4;
+        dsp_write_memory(d->gp.dsp, 'X', xaddr, val);
+        break;
+    }
+    case NV_PAPU_GPMIXBUF ... NV_PAPU_GPMIXBUF + 0x400 * 4 - 1: {
+        uint32_t xaddr = (addr - NV_PAPU_GPMIXBUF) / 4;
+        dsp_write_memory(d->gp.dsp, 'X', GP_DSP_MIXBUF_BASE + xaddr, val);
+        break;
+    }
+    case NV_PAPU_GPYMEM ... NV_PAPU_GPYMEM + 0x800 * 4 - 1: {
+        uint32_t yaddr = (addr - NV_PAPU_GPYMEM) / 4;
+        dsp_write_memory(d->gp.dsp, 'Y', yaddr, val);
+        break;
+    }
+    case NV_PAPU_GPPMEM ... NV_PAPU_GPPMEM + 0x1000 * 4 - 1: {
+        uint32_t paddr = (addr - NV_PAPU_GPPMEM) / 4;
+        dsp_write_memory(d->gp.dsp, 'P', paddr, val);
+        break;
+    }
+    case NV_PAPU_GPRST:
+        proc_rst_write(d->gp.dsp, d->dsp_thread.gp_rst, val);
+        d->dsp_thread.gp_rst = val;
+        break;
+    default:
+        break;
+    }
+}
+
 static void gp_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
 {
     MCPXAPUState *d = opaque;
-
-    mcpx_apu_dsp_quiesce(d);
 
     assert(size == 4);
     assert(addr % 4 == 0);
 
     DPRINTF("mcpx apu GP: [0x%" HWADDR_PRIx "] = 0x%lx\n", addr, val);
 
-    switch (addr) {
-    case NV_PAPU_GPXMEM ... NV_PAPU_GPXMEM + 0x1000 * 4 - 1: {
-        uint32_t xaddr = (addr - NV_PAPU_GPXMEM) / 4;
-        // fprintf(stderr, "gp write xmem %x = %x\n", xaddr, val);
-        dsp_write_memory(d->gp.dsp, 'X', xaddr, val);
-        break;
-    }
-    case NV_PAPU_GPMIXBUF ... NV_PAPU_GPMIXBUF + 0x400 * 4 - 1: {
-        uint32_t xaddr = (addr - NV_PAPU_GPMIXBUF) / 4;
-        // fprintf(stderr, "gp write xmixbuf %x = %x\n", xaddr, val);
-        dsp_write_memory(d->gp.dsp, 'X', GP_DSP_MIXBUF_BASE + xaddr, val);
-        break;
-    }
-    case NV_PAPU_GPYMEM ... NV_PAPU_GPYMEM + 0x800 * 4 - 1: {
-        uint32_t yaddr = (addr - NV_PAPU_GPYMEM) / 4;
-        // fprintf(stderr, "gp write ymem %x = %x\n", yaddr, val);
-        dsp_write_memory(d->gp.dsp, 'Y', yaddr, val);
-        break;
-    }
-    case NV_PAPU_GPPMEM ... NV_PAPU_GPPMEM + 0x1000 * 4 - 1: {
-        uint32_t paddr = (addr - NV_PAPU_GPPMEM) / 4;
-        // fprintf(stderr, "gp write pmem %x = %x\n", paddr, val);
-        dsp_write_memory(d->gp.dsp, 'P', paddr, val);
-        break;
-    }
-    case NV_PAPU_GPRST:
-        proc_rst_write(d->gp.dsp, d->gp.regs[NV_PAPU_GPRST], val);
-        d->gp.regs[NV_PAPU_GPRST] = val;
-        break;
-    default:
+    /* the registers are the guest's view, at once; the memories and the
+     * reset go to the DSP in order with its frames (gp_apply) */
+    if (!gp_is_memory(addr)) {
         d->gp.regs[addr] = val;
-        break;
+    }
+    if (gp_is_memory(addr) || addr == NV_PAPU_GPRST) {
+        mcpx_apu_dsp_write(d, MCPX_APU_DSP_WRITE_GP, addr, val);
     }
 }
 
@@ -368,12 +394,14 @@ static uint64_t ep_read(void *opaque, hwaddr addr, unsigned int size)
 {
     MCPXAPUState *d = opaque;
 
-    mcpx_apu_dsp_quiesce(d);
-
     assert(size == 4);
     assert(addr % 4 == 0);
 
     uint64_t r = 0;
+    if (ep_is_memory(addr)) {
+        /* the DSP's memories: the thread done, the writes applied */
+        mcpx_apu_dsp_quiesce(d);
+    }
     switch (addr) {
     case NV_PAPU_EPXMEM ... NV_PAPU_EPXMEM + 0xC00 * 4 - 1: {
         uint32_t xaddr = (addr - NV_PAPU_EPXMEM) / 4;
@@ -394,6 +422,7 @@ static uint64_t ep_read(void *opaque, hwaddr addr, unsigned int size)
         break;
     }
     default:
+        /* the guest's view, the engine's own (ep_write) */
         r = d->ep.regs[addr];
         break;
     }
@@ -402,44 +431,53 @@ static uint64_t ep_read(void *opaque, hwaddr addr, unsigned int size)
     return r;
 }
 
+/* An EP write as the DSP takes it (gp_apply) */
+static void ep_apply(MCPXAPUState *d, hwaddr addr, uint32_t val)
+{
+    switch (addr) {
+    case NV_PAPU_EPXMEM ... NV_PAPU_EPXMEM + 0xC00 * 4 - 1: {
+        uint32_t xaddr = (addr - NV_PAPU_EPXMEM) / 4;
+        dsp_write_memory(d->ep.dsp, 'X', xaddr, val);
+        break;
+    }
+    case NV_PAPU_EPYMEM ... NV_PAPU_EPYMEM + 0x100 * 4 - 1: {
+        uint32_t yaddr = (addr - NV_PAPU_EPYMEM) / 4;
+        dsp_write_memory(d->ep.dsp, 'Y', yaddr, val);
+        break;
+    }
+    case NV_PAPU_EPPMEM ... NV_PAPU_EPPMEM + 0x1000 * 4 - 1: {
+        uint32_t paddr = (addr - NV_PAPU_EPPMEM) / 4;
+        dsp_write_memory(d->ep.dsp, 'P', paddr, val);
+        break;
+    }
+    case NV_PAPU_EPRST:
+        proc_rst_write(d->ep.dsp, d->dsp_thread.ep_rst, val);
+        d->dsp_thread.ep_rst = val;
+        break;
+    default:
+        break;
+    }
+}
+
 static void ep_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
 {
     MCPXAPUState *d = opaque;
-
-    mcpx_apu_dsp_quiesce(d);
 
     assert(size == 4);
     assert(addr % 4 == 0);
 
     DPRINTF("mcpx apu EP: [0x%" HWADDR_PRIx "] = 0x%lx\n", addr, val);
 
-    switch (addr) {
-    case NV_PAPU_EPXMEM ... NV_PAPU_EPXMEM + 0xC00 * 4 - 1: {
-        uint32_t xaddr = (addr - NV_PAPU_EPXMEM) / 4;
-        dsp_write_memory(d->ep.dsp, 'X', xaddr, val);
-        // fprintf(stderr, "ep write xmem %x = %x\n", xaddr, val);
-        break;
-    }
-    case NV_PAPU_EPYMEM ... NV_PAPU_EPYMEM + 0x100 * 4 - 1: {
-        uint32_t yaddr = (addr - NV_PAPU_EPYMEM) / 4;
-        dsp_write_memory(d->ep.dsp, 'Y', yaddr, val);
-        // fprintf(stderr, "ep write ymem %x = %x\n", yaddr, val);
-        break;
-    }
-    case NV_PAPU_EPPMEM ... NV_PAPU_EPPMEM + 0x1000 * 4 - 1: {
-        uint32_t paddr = (addr - NV_PAPU_EPPMEM) / 4;
-        // fprintf(stderr, "ep write pmem %x = %x\n", paddr, val);
-        dsp_write_memory(d->ep.dsp, 'P', paddr, val);
-        break;
-    }
-    case NV_PAPU_EPRST:
-        proc_rst_write(d->ep.dsp, d->ep.regs[NV_PAPU_EPRST], val);
-        d->ep.regs[NV_PAPU_EPRST] = val;
-        d->ep_frame_div = 0; /* FIXME: Still unsure about frame sync */
-        break;
-    default:
+    /* as gp_write; the engine's count of the EP's frames starts over at
+     * once, the frames posted from here on taking it (mcpx_apu_dsp_post) */
+    if (!ep_is_memory(addr)) {
         d->ep.regs[addr] = val;
-        break;
+    }
+    if (ep_is_memory(addr) || addr == NV_PAPU_EPRST) {
+        mcpx_apu_dsp_write(d, MCPX_APU_DSP_WRITE_EP, addr, val);
+    }
+    if (addr == NV_PAPU_EPRST) {
+        d->ep_frame_div = 0; /* FIXME: Still unsure about frame sync */
     }
 }
 
@@ -465,11 +503,12 @@ static void dsp_thread_frame(MCPXAPUState *d, int64_t mixbins[NUM_MIXBINS][NUM_S
         mixbuf[i] = (uint32_t)vp_mix_to_24(in[i]) & 0xffffff;
     }
 
-    bool ep_enabled = (d->ep.regs[NV_PAPU_EPRST] & NV_PAPU_GPRST_GPRST) &&
-                      (d->ep.regs[NV_PAPU_EPRST] & NV_PAPU_GPRST_GPDSPRST);
+    uint32_t ep_rst = d->dsp_thread.ep_rst, gp_rst = d->dsp_thread.gp_rst;
+    bool ep_enabled = (ep_rst & NV_PAPU_GPRST_GPRST) &&
+                      (ep_rst & NV_PAPU_GPRST_GPDSPRST);
 
-    bool gp_enabled = (d->gp.regs[NV_PAPU_GPRST] & NV_PAPU_GPRST_GPRST) &&
-                      (d->gp.regs[NV_PAPU_GPRST] & NV_PAPU_GPRST_GPDSPRST);
+    bool gp_enabled = (gp_rst & NV_PAPU_GPRST_GPRST) &&
+                      (gp_rst & NV_PAPU_GPRST_GPDSPRST);
     bool gp_out = (d->monitor.point == MCPX_APU_DEBUG_MON_GP) ||
                   (d->monitor.point == MCPX_APU_DEBUG_MON_GP_OR_EP && !ep_enabled);
 
@@ -536,6 +575,36 @@ static void dsp_thread_frame(MCPXAPUState *d, int64_t mixbins[NUM_MIXBINS][NUM_S
     }
 }
 
+/* The queued writes up to frame n (those written with fewer than n frames
+ * posted), in order, by the side that owns the DSPs: the thread before
+ * its frame n, or the engine with the thread idle (n past every tag) */
+static void dsp_apply_writes(MCPXAPUState *d, int n)
+{
+    MCPXAPUDSPThread *t = &d->dsp_thread;
+    int tail = retro_atomic_load_relaxed_int(&t->write_tail);
+    int head = retro_atomic_load_acquire_int(&t->write_head);
+
+    while (tail != head) {
+        const MCPXAPUDSPWrite *w = &t->writes[tail & (MCPX_APU_DSP_WRITES - 1)];
+        if ((int)((unsigned)w->tag - (unsigned)n) >= 0) {
+            break;
+        }
+        switch (w->kind) {
+        case MCPX_APU_DSP_WRITE_GP:
+            gp_apply(d, w->addr, w->val);
+            break;
+        case MCPX_APU_DSP_WRITE_EP:
+            ep_apply(d, w->addr, w->val);
+            break;
+        default:
+            apu_reg_w(d, w->addr, w->val);
+            break;
+        }
+        tail++;
+    }
+    retro_atomic_store_release_int(&t->write_tail, tail);
+}
+
 static void dsp_thread_main(void *arg)
 {
     MCPXAPUState *d = arg;
@@ -556,26 +625,32 @@ static void dsp_thread_main(void *arg)
         if (retro_atomic_load_acquire_int(&t->should_exit)) {
             break;
         }
-        t->seen = n;
-        dsp_thread_frame(d, t->mixbins[n & 1], t->frame_div[n & 1]);
-        retro_atomic_store_release_int(&t->done, n);
-        retro_eventcount_notify(&t->finished);
+        /* every frame posted, in order, each after the writes before it */
+        while (t->seen != n) {
+            int m = t->seen + 1;
+            int slot = m & (MCPX_APU_DSP_RING - 1);
+            dsp_apply_writes(d, m);
+            if (t->silent[slot]) {
+                mcpx_apu_monitor_push_silence();
+            } else {
+                dsp_thread_frame(d, t->mixbins[slot], t->frame_div[slot]);
+            }
+            t->seen = m;
+            retro_atomic_store_release_int(&t->done, m);
+            retro_eventcount_notify(&t->finished);
+        }
     }
     rcu_unregister_thread();
 }
 
-void mcpx_apu_dsp_quiesce(MCPXAPUState *d)
+/* The engine until the thread has done frame want or later */
+static void dsp_wait_done(MCPXAPUDSPThread *t, int want)
 {
-    MCPXAPUDSPThread *t = &d->dsp_thread;
-    int want;
-
-    if (!t->thread) {
-        return;
-    }
-    want = retro_atomic_load_acquire_int(&t->posted);
-    while (retro_atomic_load_acquire_int(&t->done) != want) {
+    while ((int)((unsigned)retro_atomic_load_acquire_int(&t->done) -
+                 (unsigned)want) < 0) {
         int key = retro_eventcount_prepare_wait(&t->finished);
-        if (retro_atomic_load_acquire_int(&t->done) == want) {
+        if ((int)((unsigned)retro_atomic_load_acquire_int(&t->done) -
+                  (unsigned)want) >= 0) {
             retro_eventcount_cancel_wait(&t->finished);
             break;
         }
@@ -583,20 +658,110 @@ void mcpx_apu_dsp_quiesce(MCPXAPUState *d)
     }
 }
 
-int64_t (*mcpx_apu_dsp_mixbins(MCPXAPUState *d))[NUM_SAMPLES_PER_FRAME]
+void mcpx_apu_dsp_quiesce(MCPXAPUState *d)
+{
+    MCPXAPUDSPThread *t = &d->dsp_thread;
+    int posted;
+
+    if (!t->thread) {
+        return;
+    }
+    posted = retro_atomic_load_acquire_int(&t->posted);
+    dsp_wait_done(t, posted);
+    /* the thread idle until the next post: the writes since, here */
+    dsp_apply_writes(d, posted + 1);
+}
+
+void mcpx_apu_dsp_write(MCPXAPUState *d, uint32_t kind, hwaddr addr, uint32_t val)
 {
     MCPXAPUDSPThread *t = &d->dsp_thread;
 
-    /* frame n is posted as t->posted == n and runs on mixbins[n & 1]:
-     * the next one's buffer is the other, free once frame n - 1 is done,
-     * which the post of frame n waited for */
-    return t->mixbins[(retro_atomic_load_acquire_int(&t->posted) + 1) & 1];
+    if (t->thread) {
+        int posted = retro_atomic_load_acquire_int(&t->posted);
+        int head = retro_atomic_load_relaxed_int(&t->write_head);
+
+        if (retro_atomic_load_acquire_int(&t->done) != posted) {
+            /* the thread on a frame: the write after the frames posted */
+            if (head - retro_atomic_load_acquire_int(&t->write_tail) <
+                MCPX_APU_DSP_WRITES) {
+                MCPXAPUDSPWrite *w = &t->writes[head & (MCPX_APU_DSP_WRITES - 1)];
+                w->tag = posted;
+                w->kind = kind;
+                w->addr = addr;
+                w->val = val;
+                retro_atomic_store_release_int(&t->write_head, head + 1);
+                return;
+            }
+            /* the queue full (a program loaded word by word while the
+             * frames run): the thread done first */
+        }
+        mcpx_apu_dsp_quiesce(d);
+    }
+    switch (kind) {
+    case MCPX_APU_DSP_WRITE_GP:
+        gp_apply(d, addr, val);
+        break;
+    case MCPX_APU_DSP_WRITE_EP:
+        ep_apply(d, addr, val);
+        break;
+    default:
+        apu_reg_w(d, addr, val);
+        break;
+    }
+}
+
+void mcpx_apu_dsp_sync_regs(MCPXAPUState *d)
+{
+    d->dsp_thread.gp_rst = d->gp.regs[NV_PAPU_GPRST];
+    d->dsp_thread.ep_rst = d->ep.regs[NV_PAPU_EPRST];
+}
+
+/* The thread, at the engine's first frame with the DSPs on */
+static void dsp_thread_start(MCPXAPUState *d)
+{
+    MCPXAPUDSPThread *t = &d->dsp_thread;
+
+    retro_eventcount_init(&t->wake);
+    retro_eventcount_init(&t->finished);
+    retro_atomic_int_init(&t->posted, 0);
+    retro_atomic_int_init(&t->done, 0);
+    retro_atomic_int_init(&t->should_exit, 0);
+    retro_atomic_int_init(&t->write_head, 0);
+    retro_atomic_int_init(&t->write_tail, 0);
+    t->seen = 0;
+    t->thread = sthread_create(dsp_thread_main, d);
+}
+
+int64_t (*mcpx_apu_dsp_mixbins(MCPXAPUState *d))[NUM_SAMPLES_PER_FRAME]
+{
+    MCPXAPUDSPThread *t = &d->dsp_thread;
+    int n;
+
+    if (!t->thread) {
+        return t->mixbins[0];
+    }
+    /* frame n runs on slot n % RING, free once the thread is done with
+     * frame n - RING: the engine waits only that far behind */
+    n = retro_atomic_load_acquire_int(&t->posted) + 1;
+    dsp_wait_done(t, n - MCPX_APU_DSP_RING);
+    return t->mixbins[n & (MCPX_APU_DSP_RING - 1)];
+}
+
+static void dsp_post_slot(MCPXAPUState *d, bool silent)
+{
+    MCPXAPUDSPThread *t = &d->dsp_thread;
+    int n = retro_atomic_load_acquire_int(&t->posted) + 1;
+    int slot = n & (MCPX_APU_DSP_RING - 1);
+
+    t->frame_div[slot] = d->ep_frame_div;
+    t->silent[slot] = silent;
+    retro_atomic_store_release_int(&t->posted, n);
+    retro_eventcount_notify(&t->wake);
 }
 
 void mcpx_apu_dsp_post(MCPXAPUState *d, int64_t mixbins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME])
 {
     MCPXAPUDSPThread *t = &d->dsp_thread;
-    int n;
 
     if (!g_config.audio.use_dsp) {
         /* no DSP work: the frame on this thread, as it was; the VP's
@@ -606,30 +771,31 @@ void mcpx_apu_dsp_post(MCPXAPUState *d, int64_t mixbins[NUM_MIXBINS][NUM_SAMPLES
         return;
     }
     if (!t->thread) {
-        retro_eventcount_init(&t->wake);
-        retro_eventcount_init(&t->finished);
-        retro_atomic_int_init(&t->posted, 0);
-        retro_atomic_int_init(&t->done, 0);
-        retro_atomic_int_init(&t->should_exit, 0);
-        t->thread = sthread_create(dsp_thread_main, d);
+        /* the first frame, built in slot 0 before there was a thread: the
+         * thread's frame 1 runs on slot 1 */
+        dsp_thread_start(d);
+        memcpy(t->mixbins[1], mixbins, sizeof(t->mixbins[1]));
+        mixbins = t->mixbins[1];
     }
-    n = retro_atomic_load_acquire_int(&t->posted) + 1;
-    assert(mixbins == t->mixbins[n & 1]);
-    /* the frame before this one's buffer is done before the buffer is
-     * handed out again (mcpx_apu_dsp_mixbins of the next frame) */
-    while (retro_atomic_load_acquire_int(&t->done) != n - 1) {
-        int key = retro_eventcount_prepare_wait(&t->finished);
-        if (retro_atomic_load_acquire_int(&t->done) == n - 1) {
-            retro_eventcount_cancel_wait(&t->finished);
-            break;
-        }
-        retro_eventcount_commit_wait(&t->finished, key);
-    }
-    t->frame_div[n & 1] = d->ep_frame_div;
-    retro_atomic_store_release_int(&t->posted, n);
-    retro_eventcount_notify(&t->wake);
+    assert(mixbins == t->mixbins[(retro_atomic_load_acquire_int(&t->posted) + 1) &
+                                 (MCPX_APU_DSP_RING - 1)]);
+    dsp_post_slot(d, false);
 }
 
+void mcpx_apu_dsp_post_silence(MCPXAPUState *d)
+{
+    MCPXAPUDSPThread *t = &d->dsp_thread;
+
+    if (!t->thread || !g_config.audio.use_dsp) {
+        mcpx_apu_dsp_quiesce(d);
+        mcpx_apu_monitor_push_silence();
+        return;
+    }
+    /* in the frames' order, on the thread: the queue has one producer */
+    dsp_wait_done(t, retro_atomic_load_acquire_int(&t->posted) + 1 -
+                     MCPX_APU_DSP_RING);
+    dsp_post_slot(d, true);
+}
 bool mcpx_apu_dsp_uses_reg(hwaddr addr)
 {
     /* the scatter-gather tables and FIFOs (gp_scratch_walk, ep_scratch_walk,
@@ -675,7 +841,6 @@ void mcpx_apu_dsp_finalize(MCPXAPUState *d)
         retro_eventcount_free(&t->wake);
         retro_eventcount_free(&t->finished);
         t->thread = NULL;
-        t->seen = 0;
     }
     dsp_destroy(d->gp.dsp);
     dsp_destroy(d->ep.dsp);

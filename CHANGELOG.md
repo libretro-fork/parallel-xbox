@@ -479,6 +479,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 - Audio: the emulator thread no longer sleeps on the Voice Processor Threads. Each audio frame (1,500 a second) it handed them shares of the voices and slept until the last was done; now it takes voices from the same list as they do and, when none is left, waits only for voices a thread has already started, a few microseconds, without sleeping. It also fixes a multipass voice that mixes back into the bin it reads: the next multipass voice could run on another thread and read an empty bin, so its sound depended on how the voices were split.
 
+- Audio with APU DSP Emulation on: the emulator thread no longer waits for the DSPs' thread. It waited before every audio frame for the frame before to be done, and whenever the game wrote to a DSP or to a register the DSPs use; now the DSPs may be up to 8 audio frames behind, and the game's writes go to them in order between frames, where they would have landed. It still waits for a game reading a DSP's memory. The sound queue starts with 7 more audio frames of silence to cover the frames in flight (about 5 ms more latency), so every video frame hands over the same samples as before. With the sound engine stopped, its silent frames no longer wait either.
+
 ## Test build 4 - 2026-10-25
 
 - The core info file names the core "Microsoft - Xbox / Sega Chihiro (xemu)" (NNshi).

@@ -2,11 +2,12 @@
  *
  * The frontend's audio pull never waits for the DSPs' thread
  * (hw/xbox/mcpx/apu/monitor.c), so the queue's preroll has to cover the
- * engine frame that thread may still be on. This works out the worst
+ * engine frames that thread may still be on (MCPX_APU_MONITOR_FRAMES_IN_
+ * FLIGHT). This works out the worst
  * margin over every phase of the APU's engine frames (32 samples, 1500 a
  * second of the guest's time) against the video frames (1001/60 ms, 800
  * or 801 samples, 4004 every 5: ui/libretro.c), with the worst
- * assumptions: the last engine frame of the video frame not yet made, and
+ * assumptions: the last engine frames of the video frame not yet made, and
  * one due exactly at the frame's end not yet run. Every pull has to find
  * its samples there, with a whole engine frame to spare. */
 #include <stdio.h>
@@ -33,8 +34,9 @@ static long long worst_margin(int preroll)
             if (end > t0) {
                 made = (end - t0 - 1) / T_ENGINE + 1;   /* due before end */
             }
-            if (made > 0) {
-                made--;                                 /* one in flight */
+            made -= MCPX_APU_MONITOR_FRAMES_IN_FLIGHT;    /* in flight */
+            if (made < 0) {
+                made = 0;
             }
             room = (long long)preroll * SAMPLES + made * SAMPLES - taken;
             if (room - want < worst) {
@@ -55,7 +57,7 @@ int main(void)
            "(%lld with a frame less of preroll)\n", m, less);
     if (m < SAMPLES) {
         printf("FAIL: the preroll (%d engine frames) does not cover the "
-               "frame in flight with a frame to spare\n",
+               "frames in flight with a frame to spare\n",
                MCPX_APU_MONITOR_PREROLL_FRAMES);
         return 1;
     }

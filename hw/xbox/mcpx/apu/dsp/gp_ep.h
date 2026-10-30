@@ -27,6 +27,7 @@
 #include "hw/xbox/mcpx/apu/apu_regs.h"
 
 #include "dsp.h"
+#include "hw/xbox/mcpx/apu/monitor.h"
 #include <retro_atomic.h>
 #include <rthreads/retro_eventcount.h>
 
@@ -51,17 +52,40 @@ extern const MemoryRegionOps ep_ops;
 
 /*
  * The DSPs' thread (gp_ep.c): the GP and EP run each engine frame on a
- * thread of their own, alongside the engine's next frame, so the emulator
- * thread is not held for the DSP programs (a quarter of a frame's time in
- * Dead or Alive 3). The engine mixes a frame's voices into one of two
- * mixbins buffers (mcpx_apu_dsp_mixbins) and posts it (post), once the
- * frame before is done, and the thread puts the frame's output straight
- * into the frontend's queue (monitor.c); anything else that touches the
- * DSPs or the registers their frame uses (MMIO, reset, a state, the
- * queue's discard) waits for the posted frame to be done first
- * (quiesce); the frontend's read of the queue does not (monitor.h). Lock-free: a generation each way, an eventcount each
- * way.
+ * thread of their own, behind the engine, so the emulator thread is not
+ * held for the DSP programs (a quarter of a frame's time in Dead or Alive
+ * 3) and does not wait on them either. The engine mixes a frame's voices
+ * into a slot of a ring of mixbins buffers (mcpx_apu_dsp_mixbins) and
+ * posts it; the thread runs the frames in order and puts their output
+ * straight into the frontend's queue (monitor.c). The engine waits only
+ * when the thread is a whole ring behind (MCPX_APU_MONITOR_FRAMES_IN_FLIGHT,
+ * which the queue's preroll covers, monitor.h).
+ *
+ * The guest's writes to the DSPs (their memories, GPRST/EPRST) and to the
+ * APU registers their frames use (mcpx_apu_dsp_uses_reg) go into a write
+ * queue, tagged with the frames posted so far, and the thread applies them
+ * in order before the next frame, where they would have landed had the
+ * DSPs run in step. With the thread idle they are applied at once. Only a
+ * guest read of the DSPs' memories or of those registers, a reset, a
+ * state and the option's change wait for the thread (quiesce), and a write
+ * queue full. Lock-free: a generation each way, an eventcount each way.
  */
+#define MCPX_APU_DSP_RING MCPX_APU_MONITOR_FRAMES_IN_FLIGHT
+#define MCPX_APU_DSP_WRITES 4096 /* a power of two */
+
+enum {
+    MCPX_APU_DSP_WRITE_GP,          /* gp_ops offset */
+    MCPX_APU_DSP_WRITE_EP,          /* ep_ops offset */
+    MCPX_APU_DSP_WRITE_APU,         /* APU register (mcpx_apu_dsp_uses_reg) */
+};
+
+typedef struct MCPXAPUDSPWrite {
+    int tag;                        /* frames posted when it was written */
+    uint32_t kind;
+    uint32_t addr;
+    uint32_t val;
+} MCPXAPUDSPWrite;
+
 typedef struct MCPXAPUDSPThread {
     struct sthread *thread;
     retro_atomic_int_t posted;      /* frames posted, moved on by the engine */
@@ -70,10 +94,19 @@ typedef struct MCPXAPUDSPThread {
     retro_eventcount_t wake;        /* the thread, for a post */
     retro_eventcount_t finished;    /* the engine, for a done */
     int seen;                       /* the thread's own count */
-    /* The frames' mixbins, the VP's output: the one the thread may be
-     * on and the one the engine builds (mcpx_apu_dsp_mixbins) */
-    int64_t mixbins[2][NUM_MIXBINS][NUM_SAMPLES_PER_FRAME];
-    int frame_div[2];               /* the frames' engine count (EP 1 in 8) */
+    /* The frames' mixbins, the VP's output: frame n in slot n % RING */
+    int64_t mixbins[MCPX_APU_DSP_RING][NUM_MIXBINS][NUM_SAMPLES_PER_FRAME];
+    int frame_div[MCPX_APU_DSP_RING]; /* the frames' engine count (EP 1 in 8) */
+    bool silent[MCPX_APU_DSP_RING]; /* the engine stopped: silence */
+    /* The write queue: the engine adds at head, the side that owns the
+     * DSPs (the thread, or the engine with the thread idle) takes from
+     * tail */
+    retro_atomic_int_t write_head;
+    retro_atomic_int_t write_tail;
+    MCPXAPUDSPWrite writes[MCPX_APU_DSP_WRITES];
+    /* GPRST and EPRST as the DSPs have them, in the writes' order (the
+     * guest's view, gp.regs/ep.regs, is the engine's) */
+    uint32_t gp_rst, ep_rst;
     /* Where the EP's 256 samples (8 engine frames) go when it runs: the
      * frontend's queue, straight (dsp_thread_frame), or ep_spare when
      * the queue has no room; and whether its program wrote them */
@@ -85,15 +118,22 @@ typedef struct MCPXAPUDSPThread {
 void mcpx_apu_dsp_init(MCPXAPUState *d);
 void mcpx_apu_dsp_finalize(MCPXAPUState *d);
 void mcpx_apu_update_dsp_preference(MCPXAPUState *d);
-/* The engine's frame: the mixbins buffer the VP fills for it (free: the
- * thread is on the other one at most), then that handed to the thread.
- * The thread puts the DSPs' output straight into the frontend's queue
- * (monitor.c). */
+/* The engine's frame: the mixbins buffer the VP fills for it (its slot,
+ * free once the thread is done with the frame a ring before), then that
+ * handed to the thread, or a frame of silence with the engine stopped */
 int64_t (*mcpx_apu_dsp_mixbins(MCPXAPUState *d))[NUM_SAMPLES_PER_FRAME];
 void mcpx_apu_dsp_post(MCPXAPUState *d, int64_t mixbins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME]);
-/* The posted frame done, before anything else touches the DSPs */
+void mcpx_apu_dsp_post_silence(MCPXAPUState *d);
+/* The posted frames done and the queued writes applied, before anything
+ * else reads or changes the DSPs */
 void mcpx_apu_dsp_quiesce(MCPXAPUState *d);
-/* Whether a GP/EP register the DSPs' frame uses is at this APU offset */
+/* A write to the DSPs or to a register their frames use (kind
+ * MCPX_APU_DSP_WRITE_*), in order with the frames posted */
+void mcpx_apu_dsp_write(MCPXAPUState *d, uint32_t kind, hwaddr addr, uint32_t val);
+/* The DSPs' copies of GPRST/EPRST from the registers, both sides stopped
+ * (a reset, a state loaded) */
+void mcpx_apu_dsp_sync_regs(MCPXAPUState *d);
+/* Whether a register the DSPs' frames use is at this APU offset */
 bool mcpx_apu_dsp_uses_reg(hwaddr addr);
 
 #endif

@@ -75,7 +75,9 @@ static void mcpx_apu_write(void *opaque, hwaddr addr, uint64_t val,
     trace_mcpx_apu_reg_write(addr, size, val);
 
     if (mcpx_apu_dsp_uses_reg(addr)) {
-        mcpx_apu_dsp_quiesce(d);
+        /* in order with the DSPs' frames, which use it (gp_ep.c) */
+        mcpx_apu_dsp_write(d, MCPX_APU_DSP_WRITE_APU, addr, val);
+        return;
     }
     switch (addr) {
     case NV_PAPU_ISTS:
@@ -111,8 +113,8 @@ static void se_frame(MCPXAPUState *d)
 {
     mcpx_apu_update_dsp_preference(d);
 
-    /* This frame's mixbins, the VP's into the DSPs': the thread's buffer
-     * for this frame, the other one holding the frame it may still be on */
+    /* This frame's mixbins, the VP's into the DSPs': its slot of the
+     * thread's ring, the others holding frames it may still be on */
     int64_t (*mixbins)[NUM_SAMPLES_PER_FRAME] = mcpx_apu_dsp_mixbins(d);
 
     memset(mixbins, 0, sizeof(int64_t[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME]));
@@ -211,6 +213,7 @@ static void mcpx_apu_reset_locked(MCPXAPUState *d)
     memset(d->regs, 0, sizeof(d->regs));
     memset(d->gp.regs, 0, sizeof(d->gp.regs));
     memset(d->ep.regs, 0, sizeof(d->ep.regs));
+    mcpx_apu_dsp_sync_regs(d);
 
     mcpx_apu_vp_reset(d);
 
@@ -264,6 +267,7 @@ static int mcpx_apu_post_load(void *opaque, int version_id)
 {
     MCPXAPUState *d = opaque;
 
+    mcpx_apu_dsp_sync_regs(d);
     if (d->saved_output.loaded) {
         /* the engine's next frame where it was, the queue as it was */
         timer_mod_ns(d->tick_timer, d->next_tick_ns);
@@ -376,6 +380,19 @@ static int mcpx_apu_output_post_load(void *opaque, int version_id)
             *p = vp_pitch_from_double_bits((uint64_t)*p);
         }
     }
+    if (version_id < 4) {
+        /* the queue's preroll was 3 engine frames then: the frames it is
+         * longer now, silence ahead of what was queued, or the frames in
+         * flight would come up short (monitor.h) */
+        uint32_t extra = (MCPX_APU_MONITOR_PREROLL_FRAMES - 3) *
+                         NUM_SAMPLES_PER_FRAME;
+        uint32_t keep = MIN(d->saved_output.frames,
+                            MCPX_APU_MONITOR_STATE_FRAMES - extra);
+        memmove(&d->saved_output.samples[extra * 2], d->saved_output.samples,
+                keep * 2 * sizeof(int16_t));
+        memset(d->saved_output.samples, 0, extra * 2 * sizeof(int16_t));
+        d->saved_output.frames = keep + extra;
+    }
     d->saved_output.loaded = true;
     return 0;
 }
@@ -384,7 +401,8 @@ static int mcpx_apu_output_post_load(void *opaque, int version_id)
  * are: every host the core runs on is little-endian. An SVF's output
  * pointer is set by setup_svf before each run and is not saved. Version 1
  * of the output subsection held floats in the same words, versions 1 and 2
- * the pitch as a double: post_load turns them into the integers. */
+ * the pitch as a double: post_load turns them into the integers. Up to
+ * version 3 the queue it carries had a shorter preroll. */
 QEMU_BUILD_BUG_ON(offsetof(sv_filter, n) - offsetof(sv_filter, f) !=
                   6 * sizeof(int32_t));
 
@@ -458,7 +476,7 @@ static bool mcpx_apu_output_needed(void *opaque)
 
 static const VMStateDescription vmstate_mcpx_apu_output = {
     .name = "mcpx-apu/output",
-    .version_id = 3,
+    .version_id = 4,
     .minimum_version_id = 1,
     .needed = mcpx_apu_output_needed,
     .pre_save = mcpx_apu_output_pre_save,

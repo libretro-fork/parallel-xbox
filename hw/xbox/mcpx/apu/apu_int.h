@@ -70,8 +70,9 @@
 #define MCPX_APU_DEVICE(obj) \
     OBJECT_CHECK(MCPXAPUState, (obj), "mcpx-apu")
 
-/* The most queued frames a state carries: the queue holds about its preroll,
- * part of a video frame and the EP's eight engine frames between frames */
+/* The most queued frames a state carries: the queue holds about its preroll
+ * (320), part of a video frame and the EP's eight engine frames between
+ * frames */
 #define MCPX_APU_MONITOR_STATE_FRAMES 2048
 
 typedef struct MCPXAPUState {

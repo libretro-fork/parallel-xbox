@@ -172,6 +172,40 @@ entry:
         jmp halt
 %endif
 
+%ifdef GPWRITE
+        ; with -DDSP: the CPU writes 1024 words of the GP's X memory (X:$0100
+        ; on, which its program does not use) and the passes at X:$0000
+        ; while the GP's frames run on the DSPs' thread, then reads the
+        ; words back, round after round. The writes go into the thread's
+        ; write queue when it is on a frame (gp_ep.c), the reads wait for
+        ; it and take what is queued first: a word read back other than
+        ; the one written puts the GP in reset, and the tone stops.
+        xor ebx, ebx
+gpw:    mov dword [GP + 0x0000], GP_PASSES
+        xor ecx, ecx
+.w:     mov eax, ebx
+        shl eax, 10
+        add eax, ecx
+        and eax, 0xFFFFFF
+        mov [GP + 0x400 + ecx * 4], eax
+        inc ecx
+        cmp ecx, 1024
+        jne .w
+        xor ecx, ecx
+.r:     mov eax, ebx
+        shl eax, 10
+        add eax, ecx
+        and eax, 0xFFFFFF
+        cmp [GP + 0x400 + ecx * 4], eax
+        jne .bad
+        inc ecx
+        cmp ecx, 1024
+        jne .r
+        inc ebx
+        jmp gpw
+.bad:   mov dword [GP + 0xFFFC], 0       ; GPRST: in reset
+        jmp halt
+%endif
 %ifdef BUSY
         ; the CPU counts in RAM at 0x300000, for measuring guest progress
 busy:   inc dword [0x00300000]

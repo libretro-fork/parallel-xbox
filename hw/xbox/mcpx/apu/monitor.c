@@ -103,7 +103,7 @@ void mcpx_apu_monitor_restore(const int16_t *samples, size_t frames,
 
 /* Consumer, the frontend's thread, the emulator thread parked: a pointer
  * to the samples there, contiguous, and how many frames. It does not wait
- * for the DSPs' thread: the queue's preroll covers the engine frame that
+ * for the DSPs' thread: the queue's preroll covers the engine frames that
  * thread may still be on (monitor.h), so the samples a frame hands over
  * are the same however the two threads ran. */
 size_t libretro_audio_read_begin(const int16_t **samples)
@@ -256,10 +256,9 @@ void mcpx_apu_monitor_push_silence(void)
     retro_spsc_write_end(&apu_queue, NUM_SAMPLES_PER_FRAME * FRAME_BYTES);
 }
 
-/* An engine frame with the engine stopped, on the emulator thread, once
- * the DSPs' thread is done producing */
+/* An engine frame with the engine stopped: silence, in order with the
+ * frames before it, from the DSPs' thread (the queue's one producer) */
 void mcpx_apu_monitor_silence(MCPXAPUState *d)
 {
-    mcpx_apu_dsp_quiesce(d);
-    mcpx_apu_monitor_push_silence();
+    mcpx_apu_dsp_post_silence(d);
 }
