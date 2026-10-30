@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Graphics: a game that clears its depth buffer (or colour) while it has depth writes (or colour writes) turned off now finds the cleared values in memory when it reads them back, uses them as a texture, or saves a state. The Xbox clears regardless of those write settings, as measured on hardware by nxdk_pgraph_tests, and so did the core's GPU, but the core took the picture for unchanged and kept handing out the old contents. Both renderers.
+
 - Game code that writes over code already translated (self-modifying code) no longer allocates memory on each such write; the pages it locks are kept in a small array instead.
 
 - Translating the game's code no longer allocates and frees memory for every block translated (about 17,000 times in ten seconds of Ninja Gaiden): the table of the block's constants is made once and emptied in one step.

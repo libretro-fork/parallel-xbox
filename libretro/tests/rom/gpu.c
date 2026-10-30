@@ -45,6 +45,12 @@
  *              reads its first and last words back (GPU_ZETA0, GPU_ZETA1):
  *              both the clear value
  *
+ *   frame 64   B's depth and stencil cleared again, to 0x33333344, with
+ *              depth and stencil writes off: the NV2A clears regardless of
+ *              the write masks (nxdk_pgraph_tests Clear on hardware); at 65
+ *              the CPU reads the first word, the clear value, at GPU_ZETA3.
+ *              The renderers cleared but took the surface for unchanged
+ *              and gave the CPU the old 0x12345678
  *   frame 70   the CPU writes B's whole depth buffer: depth 0xAABBCC,
  *              stencil 0x11, as a game writes its depth buffer
  *   frame 71   only B's stencil cleared, to 0x55: the renderer takes the
@@ -85,6 +91,7 @@ typedef unsigned int u32;
 #define GPU_ZETA1    0x00300030u   /* u32: B's last depth word, frame 63 */
 #define GPU_ZETA2    0x00300034u   /* u32: B's depth word at frame 72 */
 #define GPU_SWZ2_BAD 0x00300038u   /* u32: E's wrong texels, read at frame 75 */
+#define GPU_ZETA3    0x0030003Cu   /* u32: B's first depth word, frame 65 */
 /* 0x00300010: the pushbuffer's write offset (put) */
 
 #define NV2A         0xFD000000u   /* BAR0, the registers */
@@ -405,6 +412,7 @@ void gpu_main(void)
     ram32(GPU_ZETA1, 0);
     ram32(GPU_ZETA2, 0);
     ram32(GPU_SWZ2_BAD, 0xFFFFFFFFu);
+    ram32(GPU_ZETA3, 0);
     /* the no-op subroutine: seven no-op methods of 2047 words, a return */
     {
         u32 at = PUSHBUF + NOP_SUB;
@@ -546,6 +554,17 @@ void gpu_main(void)
         }
         if (frame == 60) {
             draw_swizzled(SURF_C, 0xFFFF0000u, 0xFF0000FFu);
+        }
+        if (frame == 64) {
+            /* depth and stencil writes off (as frame 62 left them) */
+            method(NV097_SET_SURFACE_COLOR_OFFSET, SURF_B);
+            method(NV097_SET_ZSTENCIL_CLEAR_VALUE, 0x33333344u);
+            method(NV097_SET_CLEAR_RECT_H, (u32)(WIDTH - 1) << 16);
+            method(NV097_SET_CLEAR_RECT_V, (u32)(HEIGHT - 1) << 16);
+            method(NV097_CLEAR_SURFACE, 0x03); /* Z, stencil */
+        }
+        if (frame == 65) {
+            ram32(GPU_ZETA3, rd32(ZETA_B));
         }
         if (frame == 70) {
             write_zeta();

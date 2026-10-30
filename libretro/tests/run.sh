@@ -168,6 +168,9 @@ done
 # drawn at frame 5 and left alone, is evicted at 60 frames while dirty and
 # read back without waiting (OpenGL: a PBO the binding parks with); at 75
 # the CPU checks all its texels, which takes that read-back (0x300038: 0).
+# At 64 the depth and stencil are cleared with their write masks off: the
+# NV2A clears regardless (nxdk_pgraph_tests Clear on hardware), so the CPU
+# reads the clear value at 65 (0x30003c: 0x33333344, not the old value).
 # On Vulkan the front buffer was dropped as an old surface and a CPU write
 # to it was not a new picture: the display stopped after the first frame
 # (Jet Set Radio Future black after the Xbox logo).
@@ -183,7 +186,8 @@ gpu_check() {
                 "peek_0x300018=0xffff0000" "peek_0x30001c=0x00000004" \
                 "peek_0x300024=0x00000000" "peek_0x30002c=0x12345678" \
                 "peek_0x300030=0x12345678" "peek_0x300034=0xaabbcc55" \
-                "peek_0x300038=0x00000000" "pixel_115=0x000000"; do
+                "peek_0x300038=0x00000000" "peek_0x30003c=0x33333344" \
+                "pixel_115=0x000000"; do
         grep -E "^$want$" "$1" >/dev/null || {
             echo "FAIL: $2: $want expected, $(grep "^${want%%=*}=" "$1")"; exit 1; }
     done
@@ -192,7 +196,8 @@ echo "== the display, OpenGL"
 timeout 300 $h "$(path "$core")" "$(path "$work/sysg")" $vp --frames 125 --strict \
   --min-speed 0.2 --pixel 10 --pixel 25 --pixel 45 --pixel 85 --pixel 115 --peek 0x300014 --peek 0x300018 \
   --peek 0x30001c --peek 0x300024 --peek 0x300028 --peek 0x30002c \
-  --peek 0x300030 --peek 0x300034 --peek 0x300038 >"$work/gpu_gl.txt"
+  --peek 0x300030 --peek 0x300034 --peek 0x300038 --peek 0x30003c \
+  >"$work/gpu_gl.txt"
 grep -E "pixel_|peek_" "$work/gpu_gl.txt"
 gpu_check "$work/gpu_gl.txt" "OpenGL"
 echo "== the display, Vulkan"
@@ -201,7 +206,8 @@ timeout 300 $h "$(path "$core")" "$(path "$work/sysg")" $vp --vulkan \
   --opt xemu_renderer=vulkan --frames 125 --strict \
   --pixel 10 --pixel 25 --pixel 45 --pixel 85 --pixel 115 --peek 0x300014 --peek 0x300018 \
   --peek 0x30001c --peek 0x300024 --peek 0x300028 --peek 0x30002c \
-  --peek 0x300030 --peek 0x300034 --peek 0x300038 >"$work/gpu_vk.txt"
+  --peek 0x300030 --peek 0x300034 --peek 0x300038 --peek 0x30003c \
+  >"$work/gpu_vk.txt"
 r=$?
 set -e
 case $r in

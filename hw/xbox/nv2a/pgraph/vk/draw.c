@@ -3989,13 +3989,13 @@ void pgraph_vk_clear_surface(NV2AState *d, uint32_t parameter)
     end_draw(pg);
     pgraph_vk_end_debug_marker(r, r->command_buffer);
 
-    pg->clearing = false;
-
     if (cost_suspended) {
         xemu_cost_blit_resume(d, &pgraph_vk_cost_ops);
     }
 
+    /* still clearing: the write masks do not apply (set_surface_dirty) */
     pgraph_vk_set_surface_dirty(pg, write_color, write_zeta);
+    pg->clearing = false;
 
     NV2A_VK_DGROUP_END();
 }
@@ -4087,9 +4087,16 @@ void pgraph_vk_set_surface_dirty(PGRAPHState *pg, bool color, bool zeta)
 
     PGRAPHVkState *r = pg->vk_renderer_state;
 
-    /* FIXME: Does this apply to CLEARs too? */
-    color = color && pgraph_color_write_enabled(pg);
-    zeta = zeta && pgraph_zeta_write_enabled(pg);
+    /* A draw writes only what the write masks let through. A clear writes
+     * whatever they say: the NV2A ignores them for CLEAR_SURFACE
+     * (nxdk_pgraph_tests Clear, C00000000_Depth_n_ZB on hardware: depth
+     * cleared with depth and stencil writes off, the colour with every
+     * channel masked), as both renderers' clears do, so it leaves the
+     * surface ahead of RAM all the same. */
+    if (!pg->clearing) {
+        color = color && pgraph_color_write_enabled(pg);
+        zeta = zeta && pgraph_zeta_write_enabled(pg);
+    }
     pg->surface_color.draw_dirty |= color;
     pg->surface_zeta.draw_dirty |= zeta;
 
