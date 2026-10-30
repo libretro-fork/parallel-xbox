@@ -295,9 +295,6 @@ static bool qemu_set_log_internal(const char *filename, bool changed_name,
     }
     /* The flag itself is not relevant for need_to_open_file. */
     log_flags &= ~LOG_PER_THREAD;
-#ifdef CONFIG_TRACE_LOG
-    log_flags |= LOG_TRACE;
-#endif
     qemu_loglevel = log_flags;
 
     daemonized = is_daemonized();
@@ -536,11 +533,6 @@ int qemu_str_to_log_mask(const char *str)
             for (item = qemu_log_items; item->mask != 0; item++) {
                 mask |= item->mask;
             }
-#ifdef CONFIG_TRACE_LOG
-        } else if (g_str_has_prefix(*tmp, "trace:") && (*tmp)[6] != '\0') {
-            trace_enable_events((*tmp) + 6);
-            mask |= LOG_TRACE;
-#endif
         } else {
             for (item = qemu_log_items; item->mask != 0; item++) {
                 if (g_str_equal(*tmp, item->name)) {
@@ -568,10 +560,6 @@ void qemu_print_log_usage(FILE *f)
     for (item = qemu_log_items; item->mask != 0; item++) {
         fprintf(f, "%-15s %s\n", item->name, item->help);
     }
-#ifdef CONFIG_TRACE_LOG
-    fprintf(f, "trace:PATTERN   enable trace events\n");
-    fprintf(f, "\nUse \"-d trace:help\" to get a list of trace events.\n\n");
-#endif
 }
 
 #ifdef CONFIG_HAVE_RUST

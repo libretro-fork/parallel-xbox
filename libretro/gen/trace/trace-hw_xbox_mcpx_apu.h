@@ -6,32 +6,14 @@
 
 #include "trace/control.h"
 
-extern TraceEvent _TRACE_MCPX_APU_METHOD_EVENT;
-extern TraceEvent _TRACE_MCPX_APU_REG_READ_EVENT;
-extern TraceEvent _TRACE_MCPX_APU_REG_WRITE_EVENT;
-extern uint16_t _TRACE_MCPX_APU_METHOD_DSTATE;
-extern uint16_t _TRACE_MCPX_APU_REG_READ_DSTATE;
-extern uint16_t _TRACE_MCPX_APU_REG_WRITE_DSTATE;
-#define TRACE_MCPX_APU_METHOD_ENABLED 1
-#define TRACE_MCPX_APU_REG_READ_ENABLED 1
-#define TRACE_MCPX_APU_REG_WRITE_ENABLED 1
-
-#define TRACE_MCPX_APU_METHOD_BACKEND_DSTATE() ( \
-    false)
 
 static inline void trace_mcpx_apu_method(uint32_t addr, uint32_t parameter)
 {
 }
 
-#define TRACE_MCPX_APU_REG_READ_BACKEND_DSTATE() ( \
-    false)
-
 static inline void trace_mcpx_apu_reg_read(uint32_t addr, unsigned int size, uint64_t val)
 {
 }
-
-#define TRACE_MCPX_APU_REG_WRITE_BACKEND_DSTATE() ( \
-    false)
 
 static inline void trace_mcpx_apu_reg_write(uint32_t addr, unsigned int size, uint64_t val)
 {

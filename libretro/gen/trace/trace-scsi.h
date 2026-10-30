@@ -6,22 +6,10 @@
 
 #include "trace/control.h"
 
-extern TraceEvent _TRACE_PR_MANAGER_EXECUTE_EVENT;
-extern TraceEvent _TRACE_PR_MANAGER_RUN_EVENT;
-extern uint16_t _TRACE_PR_MANAGER_EXECUTE_DSTATE;
-extern uint16_t _TRACE_PR_MANAGER_RUN_DSTATE;
-#define TRACE_PR_MANAGER_EXECUTE_ENABLED 1
-#define TRACE_PR_MANAGER_RUN_ENABLED 1
-
-#define TRACE_PR_MANAGER_EXECUTE_BACKEND_DSTATE() ( \
-    false)
 
 static inline void trace_pr_manager_execute(int fd, int cmd, int sa)
 {
 }
-
-#define TRACE_PR_MANAGER_RUN_BACKEND_DSTATE() ( \
-    false)
 
 static inline void trace_pr_manager_run(int fd, int cmd, int sa)
 {

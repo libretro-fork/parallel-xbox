@@ -2941,3 +2941,10 @@ hw/nvram/fw_cfg.c
 hw/nvram/fw_cfg-interface.c
 hw/i386/fw_cfg.c
 stubs/fw_cfg.c
+trace/control.c
+trace/control-target.c
+stubs/trace-control.c
+trace/control-internal.h
+trace/event-internal.h
+trace/ftrace.h
+trace/simple.h

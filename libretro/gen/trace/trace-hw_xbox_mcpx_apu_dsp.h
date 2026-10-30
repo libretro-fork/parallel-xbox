@@ -6,42 +6,18 @@
 
 #include "trace/control.h"
 
-extern TraceEvent _TRACE_DSP_READ_PERIPHERAL_EVENT;
-extern TraceEvent _TRACE_DSP_WRITE_PERIPHERAL_EVENT;
-extern TraceEvent _TRACE_DSP56K_EXECUTE_INSTRUCTION_EVENT;
-extern TraceEvent _TRACE_DSP56K_EXECUTE_INSTRUCTION_DISASM_EVENT;
-extern uint16_t _TRACE_DSP_READ_PERIPHERAL_DSTATE;
-extern uint16_t _TRACE_DSP_WRITE_PERIPHERAL_DSTATE;
-extern uint16_t _TRACE_DSP56K_EXECUTE_INSTRUCTION_DSTATE;
-extern uint16_t _TRACE_DSP56K_EXECUTE_INSTRUCTION_DISASM_DSTATE;
-#define TRACE_DSP_READ_PERIPHERAL_ENABLED 1
-#define TRACE_DSP_WRITE_PERIPHERAL_ENABLED 1
-#define TRACE_DSP56K_EXECUTE_INSTRUCTION_ENABLED 1
-#define TRACE_DSP56K_EXECUTE_INSTRUCTION_DISASM_ENABLED 1
-
-#define TRACE_DSP_READ_PERIPHERAL_BACKEND_DSTATE() ( \
-    false)
 
 static inline void trace_dsp_read_peripheral(uint32_t addr, uint32_t val)
 {
 }
 
-#define TRACE_DSP_WRITE_PERIPHERAL_BACKEND_DSTATE() ( \
-    false)
-
 static inline void trace_dsp_write_peripheral(uint32_t addr, uint32_t val)
 {
 }
 
-#define TRACE_DSP56K_EXECUTE_INSTRUCTION_BACKEND_DSTATE() ( \
-    false)
-
 static inline void trace_dsp56k_execute_instruction(uint32_t id, uint32_t pc)
 {
 }
-
-#define TRACE_DSP56K_EXECUTE_INSTRUCTION_DISASM_BACKEND_DSTATE() ( \
-    false)
 
 static inline void trace_dsp56k_execute_instruction_disasm(const char *disasm)
 {

@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- QEMU's trace points are gone from the build: they were compiled with no backend, so each was already an empty call, but their event tables (about 50,000 generated lines), the trace control code and the -trace option were still built. Nothing changes for someone using the core.
+
 - Detach surviving GLib child sources when their parent is finalized. A retained child can now be attached and readied independently without following a dangling parent pointer.
 
 - Failed qcow2 L2 entry writes no longer publish the new mapping in memory. A failed whole-cluster zero keeps reading the original data, and retrying still updates the on-disk entry.

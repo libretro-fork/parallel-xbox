@@ -2,7 +2,7 @@
 
 QEMU's build generates part of the code it compiles: the QAPI types,
 visitors, command declarations and events (from `qapi/*.json`), the trace
-points (from the `trace-events` files), the configuration headers, the
+point headers (from the `trace-events` files), the configuration headers, the
 command line's option table (from `qemu-options.hx`), the keymaps and the
 i386 GDB XML. The core is built by its Makefile alone, and the tree has no
 meson build any more, so they are here, made once by meson and committed:
@@ -36,7 +36,11 @@ ninja <each file below>
 ```
 
 The `nop` trace backend: QEMU's trace points compile to nothing (with the
-default `log` backend each one tested at run time whether to log).
+default `log` backend each one tested at run time whether to log). Only the
+`trace.h` headers the core's sources include are kept, without the event
+tables (`trace.c`, the `TraceEvent` and `_DSTATE` declarations): the core
+builds no trace control, and `trace/control.h` answers every
+`trace_event_get_state()` with false.
 
 Then, by hand:
 

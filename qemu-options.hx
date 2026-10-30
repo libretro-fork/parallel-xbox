@@ -4902,15 +4902,6 @@ SRST
     user-provided config files on sysconfdir.
 ERST
 
-DEF("trace", HAS_ARG, QEMU_OPTION_trace,
-    "-trace [[enable=]<pattern>][,events=<file>][,file=<file>]\n"
-    "                specify tracing options\n",
-    QEMU_ARCH_ALL)
-SRST
-``-trace [[enable=]pattern][,events=file][,file=file]``
-  .. include:: ../qemu-option-trace.rst.inc
-
-ERST
 DEF("plugin", HAS_ARG, QEMU_OPTION_plugin,
     "-plugin [file=]<file>[,<argname>=<argvalue>]\n"
     "                load a plugin\n",

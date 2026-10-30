@@ -2924,7 +2924,6 @@ void qemu_init(int argc, char **argv)
     qemu_add_opts(&qemu_net_opts);
     qemu_add_opts(&qemu_rtc_opts);
     qemu_add_opts(&qemu_global_opts);
-    qemu_add_opts(&qemu_trace_opts);
     qemu_plugin_add_opts();
     qemu_add_opts(&qemu_option_rom_opts);
     qemu_add_opts(&qemu_accel_opts);
@@ -3541,9 +3540,6 @@ void qemu_init(int argc, char **argv)
                 }
                 xen_domid_restrict = true;
                 break;
-            case QEMU_OPTION_trace:
-                trace_opt_parse(optarg);
-                break;
             case QEMU_OPTION_plugin:
                 qemu_plugin_opt_parse(optarg, &plugin_list);
                 break;
@@ -3683,19 +3679,6 @@ void qemu_init(int argc, char **argv)
 
     qemu_process_help_options();
     qemu_maybe_daemonize(pid_file);
-
-    /*
-     * The trace backend must be initialized after daemonizing.
-     * trace_init_backends() will call st_init(), which will create the
-     * trace thread in the parent, and also register st_flush_trace_buffer()
-     * in atexit(). This function will force the parent to wait for the
-     * writeout thread to finish, which will not occur, and the parent
-     * process will be left in the host.
-     */
-    if (!trace_init_backends()) {
-        exit(1);
-    }
-    trace_init_file();
 
     qemu_init_main_loop(&error_fatal);
     cpu_timers_init();

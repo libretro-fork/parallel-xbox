@@ -88,7 +88,7 @@ endif
 # The data files the core carries
 SOURCES_DATA_ASM := $(CORE_DIR)/libretro/data.S
 
-# QEMU's utility library and the generated QAPI and trace code
+# QEMU's utility library and the generated QAPI code
 SOURCES_UTIL := \
 	$(CORE_DIR)/util/libretro-jit.c \
 	$(CORE_DIR)/crypto/aes.c \
@@ -235,144 +235,6 @@ SOURCES_UTIL := \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-visit-virtio.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-visit-yank.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-visit.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-accel_hvf.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-accel_kvm.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-accel_mshv.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-accel_tcg.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-authz.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-backends.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-backends_tpm.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-block.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-chardev.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-crypto.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-ebpf.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-hw_9pfs.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-hw_acpi.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-hw_adc.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-hw_alpha.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-hw_arm.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-hw_audio.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-hw_block.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-hw_char.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-hw_core.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-hw_display.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-hw_dma.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-hw_fsi.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-hw_gpio.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-hw_hyperv.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-hw_i2c.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-hw_i386.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-hw_i386_kvm.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-hw_i386_xen.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-hw_ide.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-hw_input.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-hw_intc.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-hw_isa.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-hw_mem.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-hw_mips.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-hw_misc.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-hw_misc_macio.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-hw_net.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-hw_net_can.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-hw_nubus.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-hw_nvme.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-hw_nvram.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-hw_pci.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-hw_pci_host.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-hw_ppc.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-hw_remote.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-hw_riscv.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-hw_rtc.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-hw_s390x.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-hw_scsi.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-hw_sd.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-hw_sensor.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-hw_sh4.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-hw_sparc.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-hw_sparc64.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-hw_ssi.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-hw_timer.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-hw_tpm.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-hw_uefi.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-hw_ufs.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-hw_usb.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-hw_vfio.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-hw_vfio_user.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-hw_virtio.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-hw_vmapple.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-hw_watchdog.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-hw_xbox_mcpx_apu.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-hw_xbox_mcpx_apu_dsp.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-hw_xbox_mcpx_nvnet.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-hw_xbox_nv2a.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-hw_xen.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-io.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-migration.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-nbd.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-net.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-qapi.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-qapi_commands_accelerator_trace_events.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-qapi_commands_acpi_hest_trace_events.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-qapi_commands_acpi_trace_events.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-qapi_commands_authz_trace_events.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-qapi_commands_block_core_trace_events.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-qapi_commands_block_export_trace_events.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-qapi_commands_block_trace_events.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-qapi_commands_char_trace_events.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-qapi_commands_common_trace_events.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-qapi_commands_compat_trace_events.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-qapi_commands_control_trace_events.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-qapi_commands_crypto_trace_events.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-qapi_commands_cryptodev_trace_events.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-qapi_commands_cxl_trace_events.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-qapi_commands_dump_trace_events.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-qapi_commands_ebpf_trace_events.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-qapi_commands_error_trace_events.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-qapi_commands_introspect_trace_events.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-qapi_commands_job_trace_events.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-qapi_commands_machine_common_trace_events.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-qapi_commands_machine_s390x_trace_events.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-qapi_commands_machine_trace_events.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-qapi_commands_migration_trace_events.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-qapi_commands_misc_arm_trace_events.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-qapi_commands_misc_i386_trace_events.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-qapi_commands_misc_trace_events.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-qapi_commands_net_trace_events.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-qapi_commands_pci_trace_events.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-qapi_commands_pragma_trace_events.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-qapi_commands_qdev_trace_events.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-qapi_commands_qom_trace_events.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-qapi_commands_replay_trace_events.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-qapi_commands_rocker_trace_events.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-qapi_commands_run_state_trace_events.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-qapi_commands_sockets_trace_events.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-qapi_commands_stats_trace_events.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-qapi_commands_tpm_trace_events.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-qapi_commands_trace_trace_events.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-qapi_commands_transaction_trace_events.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-qapi_commands_uefi_trace_events.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-qapi_commands_ui_trace_events.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-qapi_commands_vfio_trace_events.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-qapi_commands_virtio_trace_events.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-qapi_commands_yank_trace_events.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-qom.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-root.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-scsi.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-system.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-target_arm.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-target_arm_hvf.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-target_hppa.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-target_i386.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-target_i386_kvm.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-target_loongarch.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-target_mips_tcg.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-target_ppc.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-target_riscv.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-target_s390x.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-target_s390x_kvm.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-target_sparc.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-ui.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-util.c \
 	$(CORE_DIR)/qapi/opts-visitor.c \
 	$(CORE_DIR)/qapi/qapi-clone-visitor.c \
 	$(CORE_DIR)/qapi/qapi-dealloc-visitor.c \
@@ -428,13 +290,11 @@ SOURCES_UTIL := \
 	$(CORE_DIR)/stubs/runstate-check.c \
 	$(CORE_DIR)/stubs/sysbus.c \
 	$(CORE_DIR)/stubs/thread-pool-none.c \
-	$(CORE_DIR)/stubs/trace-control.c \
 	$(CORE_DIR)/stubs/uuid.c \
 	$(CORE_DIR)/stubs/vm-stop.c \
 	$(CORE_DIR)/stubs/vmstate.c \
 	$(CORE_DIR)/stubs/win32-kbd-hook.c \
 	$(CORE_DIR)/stubs/xen-hw-stub.c \
-	$(CORE_DIR)/trace/control.c \
 	$(CORE_DIR)/util/aio-wait.c \
 	$(CORE_DIR)/util/aiocb.c \
 	$(CORE_DIR)/util/async.c \
@@ -728,7 +588,6 @@ SOURCES_SYSTEM := \
 	$(CORE_DIR)/tcg/tcg-op-vec.c \
 	$(CORE_DIR)/tcg/tcg-op.c \
 	$(CORE_DIR)/tcg/tcg.c \
-	$(CORE_DIR)/trace/control-target.c \
 	$(CORE_DIR)/ui/console-vc-stubs.c \
 	$(CORE_DIR)/ui/console.c \
 	$(CORE_DIR)/ui/cursor.c \
