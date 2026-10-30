@@ -296,26 +296,3 @@ bool lr_state_load(const void *data, size_t size, bool *disk_newer,
     }
     return ret == 0;
 }
-
-/* States from before this file were a snapshot named libretro_save in the
- * HDD image, as big as the guest's RAM, which also kept Trim HDD on Close
- * from running: it goes when content starts. */
-void lr_state_drop_legacy(void)
-{
-    BlockBackend *blk = lr_state_hdd();
-    BlockDriverState *bs = blk ? blk_bs(blk) : NULL;
-    QEMUSnapshotInfo sn;
-    Error *err = NULL;
-
-    if (!bs) {
-        return;
-    }
-    bdrv_drain_all_begin();
-    bdrv_graph_rdlock_main_loop();
-    if (bdrv_snapshot_find(bs, &sn, "libretro_save") >= 0) {
-        bdrv_snapshot_delete(bs, sn.id_str, sn.name, &err);
-    }
-    bdrv_graph_rdunlock_main_loop();
-    bdrv_drain_all_end();
-    error_free(err);
-}

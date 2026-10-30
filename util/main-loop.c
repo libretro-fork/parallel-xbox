@@ -709,13 +709,14 @@ void main_loop_wait(int nonblocking)
  * straight, with no GLib main context, no poll and no system call. When
  * it has to wait (nonblocking false, nothing done) the thread sleeps on an
  * eventcount that aio_notify wakes - a bottom half scheduled from another
- * thread (a disk read done, the GPU's thread parking, qemu_notify_event),
+ * thread (the GPU's thread parking, qemu_notify_event),
  * lock-free and without a descriptor.
  *
  * The wait has no timeout: the core waits only while work it started is
- * under way on another thread (the GPU, a disk read: lr_devices_busy),
- * whose end wakes it. A timer on a host clock due meanwhile (the RTC, the
- * qcow2 cache's cleaning) runs on the pass after the wake.
+ * under way on another thread (the GPU: lr_devices_busy), whose end wakes
+ * it; a disk request is done when it is made, and its completion is a
+ * bottom half already due (block/libretro-disk.c). A timer on a host clock
+ * due meanwhile (the RTC) runs on the pass after the wake.
  *
  * What does need poll goes the polling way (main_loop_wait_poll), as it
  * is: NAT networking's sockets (slirp's poll notifier) and a descriptor

@@ -381,8 +381,7 @@ void xbox_smc_update_tray_state(void)
         smc->traystate_reg = SMC_REG_TRAYSTATE_OPEN;
         smc->intstatus_reg |= SMC_REG_INTSTATUS_TRAYOPENING;
     } else {
-        BlockDriverState *bs = blk_bs(blk);
-        smc->traystate_reg = (bs && bs->drv)
+        smc->traystate_reg = blk_is_inserted(blk)
                                 ? SMC_REG_TRAYSTATE_MEDIA_DETECTED
                                 : SMC_REG_TRAYSTATE_NO_MEDIA_DETECTED;
         smc->intstatus_reg |= SMC_REG_INTSTATUS_TRAYCLOSED;

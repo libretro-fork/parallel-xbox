@@ -190,7 +190,7 @@ struct retro_core_option_v2_definition option_defs_us[] = {
         "xemu_hdd_trim",
         "Trim HDD on Close",
         NULL,
-        "When the game is closed, empties the hard disk's cache partitions X, Y and Z (games format them again when they need them) and rewrites the image without unused space, so the file shrinks. Needs as much free space as the image's data for a moment. Skipped while the image holds a savestate. Done when the game closes, not at its next start.",
+        "When the game is closed, empties the hard disk's cache partitions X, Y and Z (games format them again when they need them) and gives the space they took back to the disk, so the image takes less (not on FAT32 or exFAT, whose files cannot have holes). Done when the game closes, not at its next start.",
         NULL,
         "system",
         {

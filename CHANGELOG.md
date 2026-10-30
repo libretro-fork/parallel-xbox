@@ -4,6 +4,18 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- The hard disk and the DVD drive no longer go through QEMU's block layer (its request layers, coroutines and I/O thread pool, about 65,000 lines): the core reads and writes them itself, each request one system call straight between the image and the guest's memory, on the emulator thread, with no thread switch and no allocation. A disk request now takes the same, fixed guest time every run (the moment it completes no longer depends on the host), which keeps run-ahead and deterministic emulation exact through disk access. Savestates (and each run-ahead frame) no longer sync the hard disk image to the disk when the game has written to it; the image is synced when the content closes, and a write is in the system's cache, safe from a crash of RetroArch, as soon as it is made.
+
+- The hard disk image may be a qcow2 (`xbox_hdd.qcow2`) or a raw image (`xbox_hdd.img`). A qcow2 is read and written as it is, so standalone xemu and the core can keep sharing one, its internal snapshots kept. When there is no image, the core writes its bundled one as a raw `xbox_hdd.img` (8 GB, of which only the data, about 2.5 MB, takes space), or as `xbox_hdd.qcow2` on FAT32 and exFAT, which have no sparse files. A qcow2's tables are written as each write needs them, so a crash or a kill of RetroArch leaves at most unused space in it (which `qemu-img check` reports as leaked), not lost writes.
+
+- Trim HDD on Close empties X, Y and Z and gives their space back to the disk in place: it no longer rewrites the image, needs no free space, and runs whether or not the image holds a snapshot.
+
+- A full host disk is now a write error to the game, as on an Xbox, instead of a machine stopped for good.
+
+- The Chihiro's snapshot store (`chihiro_snapshots.qcow2`) is no longer made: it held QEMU's own snapshots, which the core never took (its savestates are its own).
+
+- QEMU's coroutines and thread pools are no longer built into the core, and a state load no longer makes and destroys a thread pool each time (each frame with run-ahead).
+
 - More of QEMU that the core never used is gone, from the code and not only from the build: record/replay, the GDB debugger stub, the last of the monitor (the "info" printers, device and network commands, the -monitor, -qmp, -mon, -gdb, -add-fd and --preconfig options), the TAP, stream and datagram network backends (networking is NAT, and the Chihiro cabinet link uses the socket backend, which stays), the accelerator statistics and the ring-buffer character device. Record/replay sat on the emulator's paths even when off: the main loop, the timers, the CPU's interrupt and exception handling and every input event went through it, and they no longer do. The Android and macOS builds drop the same pieces.
 
 - Vulkan draws that reuse vertex data first check four recently used immutable snapshots before searching the full 512-entry cache. Repeated draws avoid those searches without another RAM copy or more VRAM; invalidated snapshots and recycled arena generations still miss. This reduces CPU bookkeeping for repeated vertex draws; the guest instruction count and the work sent to the GPU stay the same.

@@ -66,6 +66,7 @@
 #include "monitor/qdev.h"
 #include "net/net.h"
 #include "net/slirp.h"
+#include "block/libretro-disk.h"
 #include "ui/console.h"
 #include "ui/input.h"
 #include "system/system.h"
@@ -562,6 +563,7 @@ bool defaults_enabled(void)
 #define MTD_OPTS ""
 #define SD_OPTS ""
 
+#ifndef XBOX
 static int drive_init_func(void *opaque, QemuOpts *opts, Error **errp)
 {
     BlockInterfaceType *block_default_type = opaque;
@@ -613,10 +615,53 @@ static void default_drive(int enable, int snapshot, BlockInterfaceType type,
     dinfo->is_default = true;
 
 }
+#endif
+
+static int xemu_check_file(const char *path);
+#ifdef XBOX
+static uint64_t xbox_game_partition_offset(const char *path);
+#endif
 
 static void configure_blockdev(BlockdevOptionsQueue *bdo_queue,
                                MachineClass *machine_class, int snapshot)
 {
+#ifdef XBOX
+    /* The core's own drives (block/libretro-disk.c), from the settings:
+     * the hard disk (a raw image, ui/libretro.c) and the DVD drive, empty
+     * when there is no disc. A Chihiro has neither: its IDE slave is the
+     * media board's interface (chihiro_ide_interface_init). */
+    if (!xemu_chihiro_mode()) {
+        const char *hdd_path = g_config.sys.files.hdd_path;
+        const char *dvd_path = g_config.sys.files.dvd_path;
+        Error *err = NULL;
+
+        if (hdd_path[0] && !xemu_check_file(hdd_path)) {
+            BlockBackend *hd = lr_disk_new("ide0-hd0", IF_IDE, 0, 0, false,
+                                           true);
+            if (!lr_disk_open(hd, hdd_path, 0, true, &err)) {
+                xemu_queue_error_message(error_get_pretty(err));
+                error_free(err);
+                err = NULL;
+            }
+        }
+        BlockBackend *cd = lr_disk_new("ide0-cd1", IF_IDE, 0, 1, true, false);
+        if (dvd_path[0]) {
+            uint64_t offset = xbox_game_partition_offset(dvd_path);
+            if (offset) {
+                info_report("DVD: Redump image, the game partition from "
+                            "offset 0x%" PRIx64, offset);
+            }
+            if (!lr_disk_open(cd, dvd_path, offset, false, &err)) {
+                char *msg = g_strdup_printf("Failed to open DVD image file "
+                                            "'%s'. Please check machine "
+                                            "settings.", dvd_path);
+                warn_report_err(err);
+                xemu_queue_error_message(msg);
+                g_free(msg);
+            }
+        }
+    }
+#else
     /*
      * If the currently selected machine wishes to override the
      * units-per-bus property of its default HBA interface type, do so
@@ -652,7 +697,7 @@ static void configure_blockdev(BlockdevOptionsQueue *bdo_queue,
                   CDROM_OPTS);
     default_drive(default_floppy, snapshot, IF_FLOPPY, 0, FD_OPTS);
     default_drive(auto_create_sdcard, snapshot, IF_SD, 0, SD_OPTS);
-
+#endif
 }
 
 static QemuOptsList qemu_smp_opts = {
@@ -1892,67 +1937,19 @@ static void qemu_apply_machine_options(QDict *qdict)
     }
 }
 
-static int xemu_check_file(const char *path);
 static char *strdup_double_commas(const char *input);
 
-/* Chihiro: the qcow2 that holds VM snapshots. Off-bus (if=none) so the
- * guest never sees it, still reachable by savevm. Defaults to
- * chihiro_snapshots.qcow2 in the data directory and is created there when
- * missing: nothing else creates images on the user's machine. */
+/* Earlier builds kept the Chihiro's snapshot store, chihiro_snapshots.qcow2,
+ * in the hard disk setting; an Xbox must not boot from it. (The store held
+ * savevm's snapshots, which the core does not take: its states are its own,
+ * ui/libretro-state.c. It is no longer made.) */
 static void chihiro_snapshot_store_setup(void)
 {
-    /* Earlier builds kept the store, chihiro_snapshots.qcow2, in the hard
-     * disk setting; an Xbox must not boot from it. */
     char *hdd_name = g_path_get_basename(g_config.sys.files.hdd_path);
     if (strcmp(hdd_name, "chihiro_snapshots.qcow2") == 0) {
-        if (strlen(g_config.chihiro.roms.snapshot_store_path) == 0) {
-            xemu_settings_set_string(&g_config.chihiro.roms.snapshot_store_path,
-                                     g_config.sys.files.hdd_path);
-        }
         xemu_settings_set_string(&g_config.sys.files.hdd_path, "");
     }
     g_free(hdd_name);
-    if (!xemu_chihiro_mode()) {
-        return;
-    }
-    if (strlen(g_config.chihiro.roms.snapshot_store_path) == 0) {
-        char *path = g_strdup_printf("%schihiro_snapshots.qcow2",
-                                     xemu_settings_get_base_path());
-        xemu_settings_set_string(&g_config.chihiro.roms.snapshot_store_path,
-                                 path);
-        g_free(path);
-    }
-    const char *path = g_config.chihiro.roms.snapshot_store_path;
-    if (qemu_access(path, F_OK) == -1) {
-        Error *err = NULL;
-        bdrv_img_create(path, "qcow2", NULL, NULL, NULL, 64 * MiB, 0, true,
-                        &err);
-        if (err) {
-            char *msg = g_strdup_printf("Failed to create the snapshot store "
-                                        "'%s': %s\n\nSnapshots are unavailable.",
-                                        path, error_get_pretty(err));
-            xemu_queue_error_message(msg);
-            g_free(msg);
-            error_free(err);
-            return;
-        }
-        printf("Chihiro: snapshot store created at '%s'\n", path);
-    } else if (xemu_check_file(path)) {
-        char *msg = g_strdup_printf("Failed to open the snapshot store '%s'. "
-                                    "Please check machine settings.", path);
-        xemu_queue_error_message(msg);
-        g_free(msg);
-        return;
-    }
-    char *escaped = strdup_double_commas(path);
-    char *spec = g_strdup_printf("if=none,id=snapshots,format=qcow2,file=%s",
-                                 escaped);
-    free(escaped);
-    if (!qemu_opts_parse_noisily(qemu_find_opts("drive"), spec, false)) {
-        xemu_queue_error_message("The snapshot store could not be attached. "
-                                 "Snapshots are unavailable.");
-    }
-    g_free(spec);
 }
 
 static void qemu_create_early_backends(void)
@@ -2532,40 +2529,24 @@ static uint64_t xbox_game_partition_offset(const char *path)
  * tray empty. Under the BQL. */
 void xemu_libretro_change_disc(const char *path, Error **errp)
 {
-    Error *err = NULL;
+    BlockBackend *blk = blk_by_name("ide0-cd1");
+    uint64_t offset = 0;
 
-    xemu_settings_set_string(&g_config.sys.files.dvd_path, "");
-    if (!path || !path[0]) {
-        qmp_eject("ide0-cd1", NULL, true, true, &err);
-        /* nothing in the drive to eject is not a failure */
-        error_free(err);
-        xbox_smc_update_tray_state();
+    if (!blk) {
+        error_setg(errp, "this machine has no DVD drive");
         return;
     }
-
-    const uint64_t offset = xbox_game_partition_offset(path);
-    if (offset) {
-        QDict *options = qdict_new();
-        qdict_put_str(options, "driver", "raw");
-        qdict_put_int(options, "offset", (int64_t)offset);
-        qdict_put_str(options, "file.filename", path);
-        GString *json = qobject_to_json(QOBJECT(options));
-        char *filename = g_strdup_printf("json:%s", json->str);
-        fprintf(stderr, "xemu: DVD: Redump image, the game partition from "
-                "offset 0x%" PRIx64 "\n", offset);
-        qmp_blockdev_change_medium("ide0-cd1", NULL, filename, "raw", true,
-                                   true, false, 0, &err);
-        g_free(filename);
-        g_string_free(json, true);
-        qobject_unref(options);
-    } else {
-        qmp_blockdev_change_medium("ide0-cd1", NULL, path, "raw", true, true,
-                                   false, 0, &err);
+    if (path && path[0]) {
+        offset = xbox_game_partition_offset(path);
+        if (offset) {
+            info_report("DVD: Redump image, the game partition from offset "
+                        "0x%" PRIx64, offset);
+        }
     }
-    if (err) {
-        error_propagate(errp, err);
-    } else {
-        xemu_settings_set_string(&g_config.sys.files.dvd_path, path);
+    /* a disc that does not open leaves the one in the drive */
+    if (lr_disk_change(blk, path, offset, errp)) {
+        xemu_settings_set_string(&g_config.sys.files.dvd_path,
+                                 path ? path : "");
     }
     xbox_smc_update_tray_state();
 }
@@ -3167,49 +3148,15 @@ void qemu_init(int argc, char **argv)
         g_string_free(missing, TRUE);
     }
 
-    const char *hdd_path = g_config.sys.files.hdd_path;
-    if (chihiro_machine) {
-        /* Chihiro has no IDE hard disk; hdd_path is the Xbox's. Snapshots go
-         * to chihiro.roms.snapshot_store_path, attached once the block layer
-         * is up (chihiro_snapshot_store_setup), created there when absent. */
-    } else if (strlen(hdd_path) > 0) {
-        if (xemu_check_file(hdd_path)) {
-            char *msg = g_strdup_printf("Failed to open hard disk image file '%s'. Please check machine settings.", hdd_path);
-            xemu_queue_error_message(msg);
-            g_free(msg);
-        } else {
-            fake_argv[fake_argc++] = strdup("-drive");
-            char *escaped_hdd_path = strdup_double_commas(hdd_path);
-            fake_argv[fake_argc++] = g_strdup_printf("index=0,media=disk,file=%s%s",
-                escaped_hdd_path,
-                strlen(escaped_hdd_path) > 0 ? ",locked=on" : "");
-            free(escaped_hdd_path);
-        }
+    if (!chihiro_machine && strlen(g_config.sys.files.hdd_path) > 0 &&
+        xemu_check_file(g_config.sys.files.hdd_path)) {
+        char *msg = g_strdup_printf("Failed to open hard disk image file '%s'. Please check machine settings.", g_config.sys.files.hdd_path);
+        xemu_queue_error_message(msg);
+        g_free(msg);
     }
-
-    const char *dvd_path = g_config.sys.files.dvd_path;
-
-    /* An Xbox mounts the image in its DVD drive. A Chihiro has none: its IDE
-     * slave is the media board's interface (chihiro_ide_interface_init),
-     * which serves a FATX image from the DIMM; another -drive at index 1
-     * crashes QEMU's check of orphaned drives. */
-    if (!chihiro_machine) {
-        // Always populate DVD drive. If disc path is the empty string, drive is
-        // connected but no media present.
-        fake_argv[fake_argc++] = strdup("-drive");
-        char *escaped_dvd_path = strdup_double_commas(dvd_path);
-        uint64_t dvd_offset = xbox_game_partition_offset(dvd_path);
-        if (dvd_offset) {
-            info_report("DVD: Redump image, the game partition from offset "
-                        "0x%" PRIx64, dvd_offset);
-            fake_argv[fake_argc++] = g_strdup_printf(
-                "index=1,media=cdrom,format=raw,offset=%" PRIu64 ",file=%s",
-                dvd_offset, escaped_dvd_path);
-        } else
-        fake_argv[fake_argc++] = g_strdup_printf("index=1,media=cdrom,file=%s",
-            escaped_dvd_path);
-        free(escaped_dvd_path);
-    }
+    /* The drives themselves: configure_blockdev, the core's own (a Chihiro
+     * has no DVD drive: its IDE slave is the media board's interface,
+     * chihiro_ide_interface_init) */
 
     fake_argv[fake_argc++] = strdup("-display");
     fake_argv[fake_argc++] = strdup("none");
@@ -3239,11 +3186,6 @@ void qemu_init(int argc, char **argv)
 /*****************************************************************************/
 
 
-    qemu_add_opts(&qemu_drive_opts);
-    qemu_add_drive_opts(&qemu_legacy_drive_opts);
-    qemu_add_drive_opts(&qemu_common_drive_opts);
-    qemu_add_drive_opts(&qemu_drive_opts);
-    qemu_add_drive_opts(&bdrv_runtime_opts);
     qemu_add_opts(&qemu_chardev_opts);
     qemu_add_opts(&qemu_device_opts);
     qemu_add_opts(&qemu_netdev_opts);

@@ -16,7 +16,8 @@ here=$(cd "$(dirname "$0")" && pwd)
 work=${2:-$(mktemp -d)}
 mkdir -p "$work/bin" "$work/sys/xemu" "$work/sysb/xemu" "$work/sysd/xemu" \
     "$work/syss/xemu" "$work/sysp/xemu" "$work/sysg/xemu" "$work/sysv/xemu" \
-    "$work/sysr/xemu" "$work/sysf/xemu" "$work/sysa/xemu" "$work/syse/xemu"
+    "$work/sysr/xemu" "$work/sysf/xemu" "$work/sysa/xemu" "$work/syse/xemu" \
+    "$work/sysh/xemu"
 
 # The harness's paths, as the core's OS spells them
 path() { echo "$1"; }
@@ -63,6 +64,74 @@ ${cc} -O2 -std=c99 -Wall -o "$work/bin/sinecheck" "$here/sinecheck.c"
 ${cc} -O2 -std=c99 -Wall -o "$work/bin/rampcheck" "$here/rampcheck.c"
 ${cc} -O2 -std=c99 -Wall -o "$work/bin/mkdisc" "$here/mkdisc.c"
 "$work/bin/mkdisc" "$work/disc.iso"
+# The HDD's qcow2 images (block/qcow2-raw.c, block/libretro-qcow2.c), on
+# their own: the bundled image written out raw; then, where there is a
+# qemu-img to make the images and judge them (the Linux CI installs it),
+# random writes, zeroed ranges and reads on qcow2 images of every kind
+# xemu has (versions 2 and 3, 64 KB and 4 KB clusters, compressed, with a
+# snapshot, the bundled HDD), each checked against a raw copy. qemu-img
+# check must find no errors and no leaks, qemu-img compare no difference,
+# the snapshot must read as it was taken; and an image whose writer is
+# killed partway must still have no errors (leaks at most).
+lrc="$here/../../libretro-common"
+${cc} -O2 -std=gnu99 -Wall -I"$lrc/include" -o "$work/bin/qcow2test" "$here/test-qcow2.c" \
+    "$here/../../block/qcow2-raw.c" "$here/../../block/libretro-qcow2.c" \
+    "$here/../../block/libretro-file.c" \
+    "$lrc/encodings/encoding_deflate.c" "$lrc/encodings/encoding_crc32.c" \
+    "$lrc/features/features_cpu.c" "$lrc/time/rtime.c" "$lrc/compat/compat_strl.c" -lpthread
+"$work/bin/qcow2test" "$here/../../data/xbox_hdd.qcow2" "$work"
+if command -v qemu-img >/dev/null 2>&1; then
+    q="$work/qcow2"
+    mkdir -p "$q"
+    head -c 40000000 /dev/urandom > "$q/base.raw"
+    truncate -s 128M "$q/base.raw"
+    seed=1
+    for kind in v3 v2 v3-4k compressed snapshot bundled; do
+        rm -f "$q/img.qcow2"
+        case $kind in
+        v3) qemu-img convert -O qcow2 -o compat=1.1 "$q/base.raw" "$q/img.qcow2" ;;
+        v2) qemu-img convert -O qcow2 -o compat=0.10 "$q/base.raw" "$q/img.qcow2" ;;
+        v3-4k) qemu-img convert -O qcow2 -o cluster_size=4096 "$q/base.raw" "$q/img.qcow2" ;;
+        compressed) qemu-img convert -c -O qcow2 "$q/base.raw" "$q/img.qcow2" ;;
+        snapshot) qemu-img convert -O qcow2 "$q/base.raw" "$q/img.qcow2"
+                  qemu-img snapshot -c s1 "$q/img.qcow2" ;;
+        bundled) cp "$here/../../data/xbox_hdd.qcow2" "$q/img.qcow2" ;;
+        esac
+        rm -f "$q/ref.raw"
+        qemu-img convert -O raw "$q/img.qcow2" "$q/ref.raw"
+        "$work/bin/qcow2test" --workload "$q/img.qcow2" "$q/ref.raw" $seed 600
+        seed=$((seed + 1))
+        qemu-img check "$q/img.qcow2" >"$q/check.txt" 2>&1 || {
+            cat "$q/check.txt"; echo "FAIL: qemu-img check, $kind image"; exit 1; }
+        qemu-img compare "$q/img.qcow2" "$q/ref.raw" >/dev/null || {
+            echo "FAIL: the $kind image differs from its reference"; exit 1; }
+        if [ $kind = snapshot ]; then
+            rm -f "$q/s1.raw"
+            qemu-img convert -l snapshot.name=s1 -O raw "$q/img.qcow2" "$q/s1.raw"
+            cmp "$q/s1.raw" "$q/base.raw" || {
+                echo "FAIL: the snapshot changed under the writes"; exit 1; }
+        fi
+        echo "qcow2, $kind: qemu-img check clean, the same as its reference"
+    done
+    case $(uname -s) in
+    Linux)
+        for i in 1 2 3 4 5 6; do
+            set +e
+            timeout -s KILL 0.0$i "$work/bin/qcow2test" --workload "$q/img.qcow2" \
+              "$q/ref.raw" $((100 + i)) 1000000 >/dev/null 2>&1
+            qemu-img check "$q/img.qcow2" >"$q/check.txt" 2>&1
+            rc=$?
+            set -e
+            # 0: clean, 3: leaked clusters only; 2 would be corruption
+            [ $rc -eq 0 ] || [ $rc -eq 3 ] || {
+                cat "$q/check.txt"; echo "FAIL: a killed writer left the image corrupt"; exit 1; }
+        done
+        echo "qcow2: a writer killed six times left no errors"
+        ;;
+    esac
+else
+    echo "qcow2 writes: skipped, no qemu-img to make and check the images"
+fi
 nasm -f bin -o "$work/sys/xemu/mcpx_1.0.bin" "$here/rom/bootrom.asm"
 cp "$work/sys/xemu/mcpx_1.0.bin" "$work/sysr/xemu/"
 nasm -f bin -I"$here/rom/" -o "$work/sysr/xemu/Complex_4627v1.03.bin" "$here/rom/rep.asm"
@@ -79,6 +148,8 @@ cp "$work/sys/xemu/mcpx_1.0.bin" "$work/sysg/xemu/"
 nasm -f bin -DGPU -I"$here/rom/" -o "$work/sysg/xemu/Complex_4627v1.03.bin" "$here/rom/flash.asm"
 cp "$work/sys/xemu/mcpx_1.0.bin" "$work/sysv/xemu/"
 nasm -f bin -DDVD -I"$here/rom/" -o "$work/sysv/xemu/Complex_4627v1.03.bin" "$here/rom/flash.asm"
+cp "$work/sys/xemu/mcpx_1.0.bin" "$work/sysh/xemu/"
+nasm -f bin -DHDD -I"$here/rom/" -o "$work/sysh/xemu/Complex_4627v1.03.bin" "$here/rom/flash.asm"
 cp "$work/sys/xemu/mcpx_1.0.bin" "$work/sysa/xemu/"
 nasm -f bin -DACI -I"$here/rom/" -o "$work/sysa/xemu/Complex_4627v1.03.bin" "$here/rom/flash.asm"
 cp "$work/sys/xemu/mcpx_1.0.bin" "$work/syse/xemu/"
@@ -435,17 +506,82 @@ sr=$(( $(sed -n 's/^peek_0x300010=//p' "$work/aci-load.txt") ))
 [ $((sr & 8)) -ne 0 ] && [ $((sr & 1)) -eq 0 ] || {
     echo "FAIL: AC97 PCM out status $sr after the load: halted"; exit 1; }
 
+# The hard disk (rom/hdd.c), both kinds of image: the raw xbox_hdd.img the
+# core makes from the HDD it carries when there is none (8 GB, sparse),
+# and an xbox_hdd.qcow2 (as standalone xemu and earlier builds have it),
+# used as it is, without a copy. The guest writes 40 sectors past the
+# partitions by DMA from two PRD entries, flushes, reads them back by DMA
+# into three and one by PIO, and reads past the disk's end, which must
+# fail: status 0, all 0x1480 words right, and the words are in the image
+# where the sectors are (the qcow2's read by qemu-img, which must also find
+# it clean). Each image twice: written, then used as it was left.
+hdd_test() {
+    sysdir=$1
+    for pass in 1 2; do
+        timeout 300 $h "$(path "$core")" "$(path "$sysdir")" $vp --frames 120 --strict \
+          --peek 0x300008 --peek 0x30000c --peek 0x300010 >"$sysdir/hdd-rw$pass.txt" 2>&1
+        grep -E "peek_|bundled" "$sysdir/hdd-rw$pass.txt"
+        grep -E "peek_0x300008=0x00000000$" "$sysdir/hdd-rw$pass.txt" >/dev/null &&
+        grep -E "peek_0x30000c=0x00001480$" "$sysdir/hdd-rw$pass.txt" >/dev/null || {
+            echo "FAIL: the HDD's writes and reads: step $(grep peek_0x300008 "$sysdir/hdd-rw$pass.txt"), first wrong word at $(grep peek_0x300010 "$sysdir/hdd-rw$pass.txt")"; exit 1; }
+    done
+}
+echo "== the HDD, a raw image the core makes: written and read by the guest"
+img="$work/sysh/xemu/xbox_hdd.img"
+rm -f "$work/sysh/xemu/xbox_hdd."*
+hdd_test "$work/sysh"
+grep "wrote the bundled one" "$work/sysh/hdd-rw1.txt" >/dev/null || {
+    echo "FAIL: no HDD was made"; exit 1; }
+if grep "wrote the bundled one" "$work/sysh/hdd-rw2.txt"; then
+    echo "FAIL: the HDD was made again"; exit 1
+fi
+[ -f "$img" ] || { echo "FAIL: the new HDD is not a raw xbox_hdd.img"; exit 1; }
+[ "$(wc -c < "$img")" -eq 8589934592 ] || {
+    echo "FAIL: the raw HDD is $(wc -c < "$img") bytes, not 8 GB"; exit 1; }
+words=$(od -An -tx4 -j 8588886016 -N 8 "$img" | tr -s ' ')
+[ "$words" = " c8400000 c8400001" ] || {
+    echo "FAIL: the guest's sectors are not in the raw image ($words)"; exit 1; }
+case $core in
+*.so)
+    kb=$(du -k "$img" | cut -f1)
+    echo "the raw HDD takes $kb KB on the disk"
+    [ "$kb" -lt 65536 ] || { echo "FAIL: the raw HDD is not sparse ($kb KB)"; exit 1; }
+    ;;
+esac
+echo "== the HDD, a qcow2 image: written and read by the guest in place"
+mkdir -p "$work/sysq/xemu"
+cp "$work/sysh/xemu/mcpx_1.0.bin" "$work/sysh/xemu/Complex_4627v1.03.bin" "$work/sysq/xemu/"
+rm -f "$work/sysq/xemu/xbox_hdd."*
+cp "$here/../../data/xbox_hdd.qcow2" "$work/sysq/xemu/xbox_hdd.qcow2"
+hdd_test "$work/sysq"
+[ ! -e "$work/sysq/xemu/xbox_hdd.img" ] || {
+    echo "FAIL: the qcow2 HDD was copied to a raw one"; exit 1; }
+if command -v qemu-img >/dev/null 2>&1; then
+    qemu-img check "$work/sysq/xemu/xbox_hdd.qcow2" || {
+        echo "FAIL: qemu-img check of the qcow2 HDD the guest wrote"; exit 1; }
+    rm -f "$work/sysq/hdd.raw"
+    qemu-img convert -O raw "$work/sysq/xemu/xbox_hdd.qcow2" "$work/sysq/hdd.raw"
+    words=$(od -An -tx4 -j 8588886016 -N 8 "$work/sysq/hdd.raw" | tr -s ' ')
+    rm -f "$work/sysq/hdd.raw"
+    [ "$words" = " c8400000 c8400001" ] || {
+        echo "FAIL: the guest's sectors are not in the qcow2 image ($words)"; exit 1; }
+fi
+
 # A session killed with the game running (a crash, the frontend killed):
-# the HDD image's cache partitions may name data that never reached it,
-# and a game read its broken cache back at every boot after (Jet Set Radio
-# Future and Ninja Gaiden Black black past the Xbox logo). The mark beside
+# the game may have been cut off partway through writing its cache in the
+# HDD's cache partitions, and read it back broken at every boot after (Jet
+# Set Radio Future and Ninja Gaiden Black black past the Xbox logo, with
+# the qcow2 images of earlier builds). The mark beside
 # the image (<image>.open) outlives the killed session, the next load
 # empties X, Y and Z and says so, and a clean close takes the mark away.
 # Linux only: a killed Wine launcher may leave the process behind it.
 case $core in
 *.so)
     echo "== a killed session, then the next load"
-    hdd="$work/sys/xemu/xbox_hdd.qcow2"
+    # the image the earlier runs used: the raw one the core made, or a
+    # qcow2 a work dir from before kept
+    hdd="$work/sys/xemu/xbox_hdd.img"
+    [ -f "$hdd" ] || hdd="$work/sys/xemu/xbox_hdd.qcow2"
     set +e
     timeout -s KILL 15 $h "$(path "$core")" "$(path "$work/sys")" $vp --frames 1000000 \
       >/dev/null 2>&1

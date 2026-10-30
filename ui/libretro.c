@@ -26,10 +26,9 @@
 #include "ui/xemu-widescreen.h"
 #include "system/blockdev.h"
 #include "system/block-backend.h"
-#include "block/block.h"
-#include "block/snapshot.h"
-#include "block/graph-lock.h"
-#include "qobject/qdict.h"
+#include "block/libretro-disk.h"
+#include "block/libretro-file.h"
+#include "block/qcow2-raw.h"
 #include <glib/gstdio.h>
 #include "ui/libretro-widescreen-titles.h"
 #include "xemu-xbe.h"
@@ -1910,8 +1909,9 @@ static void lr_main_notify(void)
 }
 
 /* Whether something the guest may be waiting for is under way on another
- * thread: then an idle guest waits for it (lr_run_frame), rather than its
- * time moving on to the next deadline past it. Skipping on while the GPU
+ * thread (the GPU) or due (a disk request's completion): then an idle guest
+ * waits for it (lr_run_frame), rather than its time moving on to the next
+ * deadline past it. Skipping on while the GPU
  * drew ran a game's frame out from under it: Ninja Gaiden Black, waiting
  * on its GPU in a heavy scene, saw its time race to the vblank while the
  * GPU worked, missed its frames and ran in slow motion, with each run
@@ -1919,9 +1919,9 @@ static void lr_main_notify(void)
 static bool lr_devices_busy(void)
 {
     extern bool nv2a_libretro_busy(void);
-    extern int thread_pool_aio_inflight;
-
-    return thread_pool_aio_inflight > 0 || nv2a_libretro_busy();
+    /* a disk request's completion due (block/libretro-disk.c): it runs at
+     * the frame loop's next pass, before the guest's time moves on */
+    return lr_disk_pending > 0 || nv2a_libretro_busy();
 }
 /* set while the emulator thread looks and waits: the GPU's thread wakes it
  * when it parks (hw/xbox/nv2a/pfifo.c) */
@@ -2198,7 +2198,6 @@ static bool lr_start_machine(void)
         LRLOG_INFO("[xemu] The machine is reset and started with the new disc\n");
     }
     snprintf(machine_image, sizeof(machine_image), "%s", opt_dvd_path);
-    lr_state_drop_legacy();
 
     lr_frame_end_vt = 0;
     lr_title_poll = 0;
@@ -2340,118 +2339,147 @@ static bool lr_command(int cmd)
     return lr_cmd_ok;
 }
 
-/* Trim HDD on Close (experimental, NNshi, Akrido): when the content closes,
- * the cache partitions X, Y and Z are emptied - games format them again
- * when they need them - and the image is written anew without the clusters
- * nothing uses, so the file shrinks. Skipped while the image holds a
- * snapshot (it keeps its clusters, and copying the disk alone would drop
- * it); the core's savestates are not kept there. The copy needs as much free space as the data for a
- * moment. Runs on the emulator thread with the VM shut down. */
+/* The hard disk image, in either format (block/libretro-disk.c tells them
+ * apart): an xbox_hdd.qcow2 (standalone xemu's, an earlier build's) is used
+ * as it is, read and written in place, so the two keep sharing it; an
+ * xbox_hdd.img is a raw image. With neither, the core makes one from the
+ * pre-formatted HDD it carries (xemu-dashboard's, data/xbox_hdd.qcow2,
+ * MIT), so only the boot ROM and the BIOS have to come from the user
+ * (NNshi): raw (xbox_hdd.img) where the file system has holes, so the
+ * image takes only what holds data; the qcow2 as it is where there are
+ * none (FAT32, which cannot hold an 8 GB file; exFAT, where a raw image
+ * would take all 8 GB). */
 
 #define HDD_CACHE_START 0x00080000LL           /* X, then Y and Z */
 #define HDD_CACHE_LEN   (3 * 0x2EE00000LL)     /* 750 MB each */
-#define HDD_COPY_CHUNK  (1024 * 1024)
 
-/* xemu-dashboard's pre-formatted HDD, which the core carries
- * (data/xbox_hdd.qcow2, MIT): written where the HDD is looked for when there
- * is none, so only the boot ROM and the BIOS have to come from the user
- * (NNshi). The image is small and grows as games use the disk. */
-static bool write_bundled_hdd(const char *path)
+static int64_t hdd_read_bundled(void *opaque, uint64_t off, void *buf,
+                                size_t len)
 {
-    g_autofree char *dir = g_path_get_dirname(path);
-    g_autoptr(GError) err = NULL;
-    if (g_mkdir_with_parents(dir, 0755) != 0 ||
-        !g_file_set_contents(path, (const char *)xbox_hdd_data,
-                             xbox_hdd_size, &err)) {
-        LRLOG_ERROR("[xemu] Cannot write the bundled HDD to %s: %s\n", path,
-                    err ? err->message : g_strerror(errno));
+    if (off >= xbox_hdd_size) {
+        return 0;
+    }
+    len = MIN(len, (size_t)(xbox_hdd_size - off));
+    memcpy(buf, (const uint8_t *)xbox_hdd_data + off, len);
+    return (int64_t)len;
+}
+
+/* whether files in dir take no space for what they hold no data in */
+static bool hdd_dir_has_holes(const char *dir)
+{
+    g_autofree char *probe = g_build_filename(dir, ".xemu_holes", NULL);
+    LRFile *f = lr_file_open(probe, true, true);
+    int64_t used = -1;
+
+    if (f) {
+        if (lr_file_set_size(f, 64 << 20) == 0) {
+            used = lr_file_allocated(f);
+        }
+        lr_file_close(f);
+    }
+    g_remove(probe);
+    return used >= 0 && used < (1 << 20);
+}
+
+/* The bundled HDD, written to path (raw, or the qcow2 for a path ending
+ * in .qcow2), by way of path.part: a write cut short leaves no image
+ * behind that looks whole */
+static bool hdd_write_bundled(const char *path)
+{
+    g_autofree char *part = g_strdup_printf("%s.part", path);
+    const bool raw = !g_str_has_suffix(path, ".qcow2");
+    char err[256] = "";
+    int ret;
+
+    g_remove(part);
+    LRFile *f = lr_file_open(part, true, true);
+    if (!f) {
+        LRLOG_ERROR("[xemu] Cannot write %s: %s\n", part, g_strerror(errno));
         return false;
     }
-    LRLOG_INFO("[xemu] No HDD: wrote the bundled one (xemu-dashboard) to %s\n",
-               path);
+    if (raw) {
+        ret = lr_qcow2_to_raw(hdd_read_bundled, NULL, f, err, sizeof(err));
+    } else {
+        ret = lr_file_pwrite(f, 0, xbox_hdd_data, xbox_hdd_size);
+        snprintf(err, sizeof(err), "%s", ret < 0 ? g_strerror(-ret) : "");
+    }
+    if (ret == 0) {
+        ret = lr_file_sync(f);
+        if (ret < 0) {
+            snprintf(err, sizeof(err), "%s", g_strerror(-ret));
+        }
+    }
+    lr_file_close(f);
+    if (ret == 0 && g_rename(part, path) != 0) {
+        ret = -errno;
+        snprintf(err, sizeof(err), "cannot rename it: %s", g_strerror(errno));
+    }
+    if (ret < 0) {
+        LRLOG_ERROR("[xemu] Cannot write the bundled HDD to %s: %s\n", path,
+                    err);
+        g_remove(part);
+        return false;
+    }
+    LRLOG_INFO("[xemu] No HDD: wrote the bundled one (xemu-dashboard) to %s "
+               "(%s)\n", path, raw ? "raw" : "qcow2");
     return true;
 }
 
-static bool hdd_has_snapshot(BlockDriverState *bs)
+/* The HDD setting's path (size bytes) names an image, made when there is
+ * none; whether it does */
+static bool hdd_prepare(char *path, size_t size)
 {
-    GRAPH_RDLOCK_GUARD_MAINLOOP();
-    QEMUSnapshotInfo *sn = NULL;
-    int n = bdrv_snapshot_list(bs, &sn);
-    g_free(sn);
-    return n > 0;
-}
+    g_autofree char *dir = g_path_get_dirname(path);
 
-static bool hdd_is_zero(const uint8_t *buf, size_t len)
-{
-    return buf[0] == 0 && !memcmp(buf, buf + 1, len - 1);
-}
-
-/* Every chunk of blk that is not all zero, into a new qcow2 image at path */
-static bool hdd_copy_used(BlockBackend *blk, const char *path, int64_t size)
-{
-    Error *err = NULL;
-    bdrv_img_create(path, "qcow2", NULL, NULL, NULL, size, 0, true, &err);
-    if (err) {
-        LRLOG_ERROR("[xemu] Trim HDD: cannot create %s: %s\n", path, error_get_pretty(err));
-        error_free(err);
+    if (g_file_test(path, G_FILE_TEST_EXISTS)) {
+        return true;
+    }
+    if (g_mkdir_with_parents(dir, 0755) != 0) {
+        LRLOG_ERROR("[xemu] Cannot make %s: %s\n", dir, g_strerror(errno));
         return false;
     }
-    QDict *opts = qdict_new();
-    qdict_put_str(opts, "driver", "qcow2");
-    BlockBackend *out = blk_new_open(path, NULL, opts, BDRV_O_RDWR, &err);
-    if (!out) {
-        LRLOG_ERROR("[xemu] Trim HDD: cannot open %s: %s\n", path, error_get_pretty(err));
-        error_free(err);
-        return false;
-    }
-    uint8_t *buf = g_malloc(HDD_COPY_CHUNK);
-    bool ok = true;
-    for (int64_t off = 0; off < size && ok; off += HDD_COPY_CHUNK) {
-        const int64_t len = MIN(HDD_COPY_CHUNK, size - off);
-        if (blk_pread(blk, off, len, buf, 0) < 0) {
-            ok = false;
-        } else if (!hdd_is_zero(buf, len) && blk_pwrite(out, off, len, buf, 0) < 0) {
-            ok = false;
+    /* a raw image where it costs only its data, the format the setting's
+     * name asks for otherwise */
+    if (g_str_has_suffix(path, ".img") && !hdd_dir_has_holes(dir)) {
+        g_autofree char *qcow2 = g_strdup_printf("%.*s.qcow2",
+                                                 (int)(strlen(path) - 4), path);
+        LRLOG_INFO("[xemu] HDD: no sparse files in %s, the HDD is made as a "
+                   "qcow2 image\n", dir);
+        snprintf(path, size, "%s", qcow2);
+        if (g_file_test(path, G_FILE_TEST_EXISTS)) {
+            return true;
         }
     }
-    g_free(buf);
-    if (ok && blk_flush(out) < 0) {
-        ok = false;
-    }
-    blk_unref(out);
-    if (!ok) {
-        LRLOG_ERROR("[xemu] Trim HDD: copying the image failed (free space?), the image stays as it was\n");
-    }
-    return ok;
+    return hdd_write_bundled(path);
 }
 
-static BlockDriverState *hdd_open(const char *path, int flags)
+static BlockBackend *hdd_drive(void)
 {
-    Error *err = NULL;
-    QDict *opts = qdict_new();
-    qdict_put_str(opts, "driver", "qcow2");
-    BlockDriverState *bs = bdrv_open(path, NULL, opts, flags, &err);
-    if (!bs) {
-        LRLOG_ERROR("[xemu] Trim HDD: cannot open %s: %s\n", path, error_get_pretty(err));
-        error_free(err);
-    }
-    return bs;
+    DriveInfo *dinfo = drive_get(IF_IDE, 0, 0);
+    return dinfo && !xemu_chihiro_mode() ? blk_by_legacy_dinfo(dinfo) : NULL;
+}
+
+/* X, Y and Z emptied: freed from the image where its file system has holes,
+ * zeroes elsewhere. The games format them again when they need them (the
+ * dashboard empties them too). */
+static bool hdd_empty_cache(BlockBackend *blk)
+{
+    return blk_getlength(blk) >= HDD_CACHE_START + HDD_CACHE_LEN &&
+           lr_disk_zero(blk, HDD_CACHE_START, HDD_CACHE_LEN) == 0;
 }
 
 /*
  * A session the HDD image was open in, marked by a file beside it
- * (<image>.open) from the content's load to its close: the guest's writes
- * reach the image through qcow2, whose tables of where the data lies are
- * kept in memory and written out at a flush, the close's. When RetroArch
+ * (<image>.open) from the content's load to its close. When RetroArch
  * died or was killed with a game running (a crash in the core, the
- * frontend's), the cache partitions X, Y and Z could be left naming data
- * that never reached the image, and the game read its own cache back
- * broken at every boot after - a black screen past the Xbox logo (Jet Set
- * Radio Future, Ninja Gaiden Black), until Trim HDD on Close emptied them.
- * Found at the next load, the mark empties X, Y and Z before the guest's
- * first instruction: they only ever hold caches, which the games rebuild
- * (the dashboard empties them too). C and E, the system and the saves,
- * are not touched.
+ * frontend's), the game could be cut off partway through writing its
+ * cache in X, Y and Z, as pulling an Xbox's plug would, and read it back
+ * broken at every boot after: a black screen past the Xbox logo (Jet Set
+ * Radio Future, Ninja Gaiden Black, with the qcow2 images of earlier
+ * builds, whose tables of where the data lay were written only at the
+ * close). Found at the next load, the mark empties X, Y and Z before the
+ * guest's first instruction: they only ever hold caches, which the games
+ * rebuild. C and E, the system and the saves, are not touched.
  */
 static char *hdd_session_mark(void)
 {
@@ -2461,25 +2489,15 @@ static char *hdd_session_mark(void)
 
 static void hdd_session_begin(void)
 {
-    if (xemu_chihiro_mode()) {
-        return;
-    }
-    char *mark = hdd_session_mark();
+    BlockBackend *blk = hdd_drive();
+    char *mark = blk ? hdd_session_mark() : NULL;
+
     if (!mark) {
         return;
     }
-    if (g_file_test(mark, G_FILE_TEST_EXISTS)) {
-        DriveInfo *dinfo = drive_get(IF_IDE, 0, 0);
-        BlockBackend *blk = dinfo ? blk_by_legacy_dinfo(dinfo) : NULL;
-        BlockDriverState *bs = blk ? blk_bs(blk) : NULL;
-        if (bs && !hdd_has_snapshot(bs) &&
-            blk_getlength(blk) >= HDD_CACHE_START + HDD_CACHE_LEN &&
-            blk_pwrite_zeroes(blk, HDD_CACHE_START, HDD_CACHE_LEN,
-                              BDRV_REQ_MAY_UNMAP) >= 0 &&
-            blk_flush(blk) >= 0) {
-            LRLOG_INFO("[xemu] The last session did not close: the HDD's "
-                       "cache partitions X, Y and Z were emptied\n");
-        }
+    if (g_file_test(mark, G_FILE_TEST_EXISTS) && hdd_empty_cache(blk)) {
+        LRLOG_INFO("[xemu] The last session did not close: the HDD's "
+                   "cache partitions X, Y and Z were emptied\n");
     }
     if (!g_file_set_contents(mark, "", 0, NULL)) {
         LRLOG_ERROR("[xemu] Cannot write %s: a crash will not be noticed "
@@ -2488,96 +2506,42 @@ static void hdd_session_begin(void)
     g_free(mark);
 }
 
-/* The content closed: the image is flushed (vm_shutdown) */
+/* The content closed (vm_shutdown): what the guest wrote goes to the disk
+ * (its flushes did not wait for that), then the mark goes */
 static void hdd_session_end(void)
 {
     char *mark = hdd_session_mark();
+
+    lr_disk_sync_all();
     if (mark) {
         g_remove(mark);
         g_free(mark);
     }
 }
 
+/* Trim HDD on Close (experimental, NNshi, Akrido): when the content closes,
+ * X, Y and Z are emptied, and the space they took on the disk is freed
+ * (on file systems with holes: not FAT or exFAT). Runs on the emulator
+ * thread with the VM shut down. */
 static void hdd_trim(void)
 {
-    const char *path = g_config.sys.files.hdd_path;
-    DriveInfo *dinfo = drive_get(IF_IDE, 0, 0);
-    BlockBackend *blk = dinfo ? blk_by_legacy_dinfo(dinfo) : NULL;
-    BlockDriverState *bs = blk ? blk_bs(blk) : NULL;
-    if (!bs || !path || !path[0]) {
-        return;
-    }
-    if (hdd_has_snapshot(bs)) {
-        LRLOG_INFO("[xemu] Trim HDD: skipped, the image holds a snapshot\n");
-        return;
-    }
-    const int64_t size = blk_getlength(blk);
-    if (size < HDD_CACHE_START + HDD_CACHE_LEN) {
-        return;
-    }
-    struct stat before;
-    const bool had_size = stat(path, &before) == 0;
+    BlockBackend *blk = hdd_drive();
+    int64_t before, after;
 
-    if (blk_pwrite_zeroes(blk, HDD_CACHE_START, HDD_CACHE_LEN, BDRV_REQ_MAY_UNMAP) < 0 ||
-        blk_flush(blk) < 0) {
-        LRLOG_ERROR("[xemu] Trim HDD: emptying X, Y and Z failed, the image stays as it was\n");
+    if (!blk) {
         return;
     }
-
-    char *tmp = g_strdup_printf("%s.trim", path);
-    char *bak = g_strdup_printf("%s.untrimmed", path);
-    if (!hdd_copy_used(blk, tmp, size)) {
-        g_remove(tmp);
-        goto out;
+    before = lr_disk_allocated(blk);
+    if (!hdd_empty_cache(blk)) {
+        LRLOG_ERROR("[xemu] Trim HDD: emptying X, Y and Z failed\n");
+        return;
     }
-
-    /* The new image in the old one's place, under the same drive */
-    const int flags = bdrv_get_flags(bs);
-    blk_remove_bs(blk);
-    bool replaced = g_rename(path, bak) == 0;
-    if (replaced && g_rename(tmp, path) != 0) {
-        g_rename(bak, path);
-        replaced = false;
+    after = lr_disk_allocated(blk);
+    if (before >= 0 && after >= 0) {
+        LRLOG_INFO("[xemu] Trim HDD: X, Y and Z emptied, the image went from "
+                   "%lld to %lld MB on the disk\n", (long long)(before >> 20),
+                   (long long)(after >> 20));
     }
-    if (!replaced) {
-        LRLOG_ERROR("[xemu] Trim HDD: cannot replace the image, the old one is kept\n");
-        g_remove(tmp);
-    }
-    BlockDriverState *nbs = hdd_open(path, flags);
-    Error *err = NULL;
-    if (!nbs || blk_insert_bs(blk, nbs, &err) < 0) {
-        if (err) {
-            LRLOG_ERROR("[xemu] Trim HDD: %s\n", error_get_pretty(err));
-            error_free(err);
-        }
-        if (nbs) {
-            bdrv_unref(nbs);
-            nbs = NULL;
-        }
-        if (replaced) {
-            /* back to the image as it was */
-            LRLOG_ERROR("[xemu] Trim HDD: the new image did not open, the old one is put back\n");
-            g_remove(path);
-            g_rename(bak, path);
-            nbs = hdd_open(path, flags);
-            if (nbs) {
-                blk_insert_bs(blk, nbs, NULL);
-            }
-        }
-    } else if (replaced) {
-        g_remove(bak);
-        struct stat after;
-        if (had_size && stat(path, &after) == 0) {
-            LRLOG_INFO("[xemu] Trim HDD: X, Y and Z emptied, the image went from %lld to %lld MB\n",
-                       (long long)(before.st_size >> 20), (long long)(after.st_size >> 20));
-        }
-    }
-    if (nbs) {
-        bdrv_unref(nbs);
-    }
-out:
-    g_free(tmp);
-    g_free(bak);
 }
 
 /* ========================================================================= */
@@ -2907,7 +2871,7 @@ RETRO_API bool retro_load_game(const struct retro_game_info *game)
         static const char *const dirs[] = { "xemu/", "" };
         static const char *const bootrom_names[] = { "mcpx_1.0.bin", NULL };
         static const char *const bios_names[] = { "Complex_4627v1.03.bin", "Complex_4627.bin", NULL };
-        static const char *const hdd_names[] = { "xbox_hdd.qcow2", NULL };
+        static const char *const hdd_names[] = { "xbox_hdd.img", "xbox_hdd.qcow2", NULL };
         static const char *const eeprom_names[] = { "xbox_eeprom.bin", NULL };
         const struct {
             char *path;
@@ -2966,16 +2930,11 @@ RETRO_API bool retro_load_game(const struct retro_game_info *game)
         fclose(f);
         LRLOG_INFO("[xemu] Found bios: %s\n", opt_bios_path);
 
-        f = fopen(opt_hdd_path, "rb");
-        if (!f && write_bundled_hdd(opt_hdd_path)) {
-            f = fopen(opt_hdd_path, "rb");
-        }
-        if (!f) {
-            LRLOG_ERROR("[xemu] Xbox HDD image not found: %s\n", opt_hdd_path);
-            LRLOG_ERROR("[xemu] Place xbox_hdd.qcow2 in RetroArch system/xemu/ directory\n");
+        if (!hdd_prepare(opt_hdd_path, sizeof(opt_hdd_path))) {
+            LRLOG_ERROR("[xemu] No Xbox HDD image at %s, and none could be "
+                        "made there\n", opt_hdd_path);
             return false;
         }
-        fclose(f);
         LRLOG_INFO("[xemu] Found hdd: %s\n", opt_hdd_path);
     }
 

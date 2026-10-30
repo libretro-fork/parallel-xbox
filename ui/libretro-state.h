@@ -11,6 +11,5 @@ size_t lr_state_size(void);
 bool lr_state_save(void *data, size_t size, Error **errp);
 bool lr_state_load(const void *data, size_t size, bool *disk_newer,
                    Error **errp);
-void lr_state_drop_legacy(void);
 
 #endif

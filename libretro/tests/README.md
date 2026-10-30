@@ -56,6 +56,16 @@ and Vulkan are checked at native and 2x scales. The harness accepts
 `--pixel FRAME:X:Y` to sample a top-left-based physical coordinate, including
 on repeated frames; `--pixel FRAME` retains its centre-pixel behavior.
 
+`test-qcow2.c` checks the HDD's qcow2 code on its own: the bundled image
+written out raw (`block/qcow2-raw.c`) against `qemu-img convert`'s, on
+images it makes of every kind the reader takes; and, with `--workload`,
+random writes, zeroed ranges and reads on a qcow2 read and written in place
+(`block/libretro-qcow2.c`), each checked against a raw copy. `run.sh` makes
+those images with `qemu-img` (versions 2 and 3, 64 KB and 4 KB clusters,
+compressed, with a snapshot, the bundled HDD) and has `qemu-img check` and
+`compare` judge them after, the snapshot read back unchanged, and a writer
+killed partway leave no error; without `qemu-img` that part is skipped.
+
 `test-audio-margin.c` works out the worst room the frontend's audio pull
 finds without waiting for the DSPs' thread, over every phase of the APU's
 engine frames against the video frames, with the engine frame in flight
@@ -152,8 +162,9 @@ Linux build.
   GP DSP and starts it (`-DGP_PASSES=n` sets its load, 1 by default);
   built with `-DSPIN` it spins on a word in RAM that nothing writes; built
   with `-DPAD` it runs `pad.c`; built with `-DGPU` it runs `gpu.c`; built
-  with `-DDVD` it runs `dvd.c`; built with `-DACI` it runs `aci.c`; built
-  with `-DEP` it loads `ep.a56` into the EP DSP and starts it.
+  with `-DDVD` it runs `dvd.c`; built with `-DHDD` it runs `hdd.c`; built
+  with `-DACI` it runs `aci.c`; built with `-DEP` it loads `ep.a56` into
+  the EP DSP and starts it.
 - `rom/pad.c`: the pad through the USB controller, as the kernel reads it:
   the two hubs found by their status-change reports and configured, their
   ports reset, the pad's reports taken over its interrupt endpoint on the
@@ -174,6 +185,11 @@ Linux build.
   checked. `dvd.sh` builds it into `dvd.inc` (committed, like `pad.inc`);
   `mkdisc.c` makes its disc, whose every 32-bit word says which sector and
   word it is.
+- `rom/hdd.c`: the hard disk, the primary channel's master: 40 sectors past
+  its partitions written by WRITE DMA from two PRD entries, FLUSH CACHE,
+  read back by READ DMA into three and one by PIO, every word checked, and
+  a read past the disk's end that must fail. `hdd.sh` builds it into
+  `hdd.inc` (committed, like `pad.inc`).
 - `rom/aci.c`: the MCPX AC97 controller's PCM out DMA: 32 buffers of 50 ms,
   its position read 100 ms after the start and a second later by the TSC,
   for how many samples a second of guest time takes. `aci.sh` builds it
@@ -204,7 +220,10 @@ idle and busy; the tone has no gap; an idle guest runs far faster than real
 time when the frontend does not pace it (fast-forward), and so does one
 that spins waiting; the busy guest does the same work paced and unpaced;
 the pad's buttons reach the guest over USB; DVD reads by DMA land in the
-guest's memory byte for byte; the idle guest runs the same
+guest's memory byte for byte; the hard disk's writes and reads by DMA and
+PIO come back byte for byte and are in the image file, on a raw image the
+core makes and on a qcow2 used as it is (which `qemu-img check` then finds
+clean); the idle guest runs the same
 on a Vulkan context, where there is a Vulkan device, through version 2 of
 the context negotiation interface and as a frontend that knows only
 version 1; with APU DSP

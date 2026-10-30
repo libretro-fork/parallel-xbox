@@ -36,9 +36,7 @@
 #include "chihiro-asic.h"
 #include "system/blockdev.h"
 #include "system/system.h"
-#include "block/blkmemory.h"
-#include "block/block-global-state.h"
-#include "block/block_int-global-state.h"
+#include "block/libretro-disk.h"
 #include "migration/vmstate.h"
 #include <encodings/crc32.h>
 #include "qemu/file-map.h"
@@ -3870,22 +3868,10 @@ void chihiro_ide_interface_init(void)
     address_space_init(&chihiro_interface_as, &chihiro_interface_container,
                        "chihiro.interface");
 
-    BlockDriverState *bs = bdrv_new();
-    bdrv_memory_open(bs, &chihiro_interface_as, chihiro_fs_size());
-    bdrv_set_monitor_owned(bs);
-
-    BlockBackend *blk = blk_new(qemu_get_aio_context(),
-                                BLK_PERM_CONSISTENT_READ | BLK_PERM_WRITE,
-                                BLK_PERM_ALL);
-    blk_insert_bs(blk, bs, &error_fatal);
-    monitor_add_blk(blk, "chihiro-interface", &error_fatal);
-
-    DriveInfo *dinfo = g_malloc0(sizeof(*dinfo));
-    dinfo->type = IF_IDE;
-    dinfo->bus = 0;
-    dinfo->unit = 1;
-    dinfo->media_cd = false;
-    blk_set_legacy_dinfo(blk, dinfo);
+    /* the IDE slave (bus 0, unit 1): a hard disk over the address space */
+    BlockBackend *blk = lr_disk_new("chihiro-interface", IF_IDE, 0, 1, false,
+                                    false);
+    lr_disk_open_memory(blk, &chihiro_interface_as, chihiro_fs_size());
 
     chihiro_interface_ready = true;
     printf("Chihiro: IDE interface initialized (%u MB fs, ROM via hook)\n",
