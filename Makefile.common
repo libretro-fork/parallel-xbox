@@ -9,7 +9,8 @@ GEN_DIR := $(CORE_DIR)/libretro/gen
 
 # What every part of QEMU is built with
 QEMU_INCFLAGS := \
-	-I$(GEN_DIR) -I$(CORE_DIR) -I$(CORE_DIR)/libretro-common/include \
+	-I$(GEN_DIR) -I$(CORE_DIR) -I$(CORE_DIR)/libretro/glib \
+	-I$(CORE_DIR)/libretro-common/include \
 	-I$(GEN_DIR)/qapi -I$(GEN_DIR)/trace -I$(GEN_DIR)/ui -I$(GEN_DIR)/data \
 	-I$(GEN_DIR)/block \
 	$(OS_INCFLAGS) \
@@ -19,9 +20,7 @@ QEMU_INCFLAGS := \
 	-iquote $(CORE_DIR)/tcg/$(TCG_ARCH)
 
 QEMU_DEFINES := -DXBOX=1 -D_GNU_SOURCE -D_FILE_OFFSET_BITS=64 \
-	-D_LARGEFILE_SOURCE -DLIBSLIRP_STATIC -DEPOXY_PUBLIC=extern \
-	-DGLIB_STATIC_COMPILATION -DGIO_STATIC_COMPILATION \
-	-DGMODULE_STATIC_COMPILATION -DGOBJECT_STATIC_COMPILATION
+	-D_LARGEFILE_SOURCE -DLIBSLIRP_STATIC -DEPOXY_PUBLIC=extern
 
 QEMU_WARNINGS := -Wall -Wempty-body -Wendif-labels -Wexpansion-to-defined \
 	-Wformat-security -Wformat-y2k -Wignored-qualifiers \
@@ -66,6 +65,10 @@ CFLAGS_LRCOMMON := -I$(CORE_DIR)/libretro-common/include -w \
 ifneq ($(HOST_OS),win32)
 CFLAGS_LRCOMMON += -DHAVE_MMAP
 endif
+# The core's GLib (libretro/glib): GLib's API on libretro-common
+CFLAGS_GLIB := -std=gnu11 -Wall -I$(CORE_DIR)/libretro/glib \
+	-I$(CORE_DIR)/libretro-common/include \
+	-Dpath_is_absolute=lrc_path_is_absolute $(OS_CFLAGS)
 CFLAGS_VOLK := -I$(CORE_DIR)/deps/volk -DVK_NO_PROTOTYPES $(OS_CFLAGS) \
 	$(DEPS_CFLAGS)
 CFLAGS_SPIRV_REFLECT := -I$(CORE_DIR)/deps/SPIRV-Reflect
@@ -976,12 +979,21 @@ SOURCES_GLOFF := \
 	$(CORE_DIR)/hw/xbox/nv2a/pgraph/thirdparty/gloffscreen/common.c \
 	$(CORE_DIR)/hw/xbox/nv2a/pgraph/thirdparty/gloffscreen/gloffscreen_libretro.c \
 
+# The core's GLib
+SOURCES_GLIB := \
+	$(CORE_DIR)/libretro/glib/gcontainers.c \
+	$(CORE_DIR)/libretro/glib/gcore.c \
+	$(CORE_DIR)/libretro/glib/gfile.c \
+	$(CORE_DIR)/libretro/glib/gmain.c \
+	$(CORE_DIR)/libretro/glib/gunix.c \
+
 # libretro-common
 SOURCES_LRCOMMON := \
 	$(CORE_DIR)/libretro-common/compat/compat_posix_string.c \
 	$(CORE_DIR)/libretro-common/compat/compat_strcasestr.c \
 	$(CORE_DIR)/libretro-common/compat/compat_strl.c \
 	$(CORE_DIR)/libretro-common/compat/fopen_utf8.c \
+	$(CORE_DIR)/libretro-common/encodings/encoding_base64.c \
 	$(CORE_DIR)/libretro-common/encodings/encoding_crc32.c \
 	$(CORE_DIR)/libretro-common/encodings/encoding_deflate.c \
 	$(CORE_DIR)/libretro-common/encodings/encoding_utf.c \
@@ -989,6 +1001,8 @@ SOURCES_LRCOMMON := \
 	$(CORE_DIR)/libretro-common/features/features_cpu.c \
 	$(CORE_DIR)/libretro-common/file/file_path.c \
 	$(CORE_DIR)/libretro-common/file/file_path_io.c \
+	$(CORE_DIR)/libretro-common/file/retro_dirent.c \
+	$(CORE_DIR)/libretro-common/hash/lrc_hash.c \
 	$(CORE_DIR)/libretro-common/queues/retro_spsc.c \
 	$(CORE_DIR)/libretro-common/rthreads/retro_eventcount.c \
 	$(CORE_DIR)/libretro-common/rthreads/rthreads.c \

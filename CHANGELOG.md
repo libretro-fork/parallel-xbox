@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- GLib is no longer linked into the core on any platform. QEMU and libslirp are built on the core's own `libretro/glib`, only the part of GLib's API they use, on libretro-common where it has the piece (file streams and its VFS, paths, directories, UTF-8 and UTF-16, base64, SHA-1, the clock, atomics). Its main context is a list of sources driven by QEMU's own loop, without GLib's wakeup pipe, locks, or an allocation on each dispatch. The Linux core is one file now: libslirp is built from `deps/` and linked in, so `libslirp.so.0` no longer goes next to it, and building needs neither GLib nor libslirp installed. The Windows build no longer compiles GLib, PCRE2 and proxy-libintl from `deps/`.
+
 - OpenGL avoids uploading pending RAM pixels when a full-surface, all-channel color clear immediately replaces them. Partial or masked clears, clip offsets, multisampled surfaces and forced uploads keep the existing path.
 
 - OpenGL now keeps live, tightly packed ARGB-to-RGB565 texture reinterpretation on the GPU, including at higher internal resolutions. Pixel buffers preserve the original bytes without CPU readback or texture upload; unsupported layouts and competing dirty surfaces retain the existing fallback.

@@ -92,7 +92,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get -qy update
-          sudo apt-get -qy install pkg-config libglib2.0-dev libslirp-dev \
+          sudo apt-get -qy install pkg-config \
             libepoxy-dev libvulkan-dev patchelf \
             nasm libegl-dev libgl-dev libegl-mesa0 libgl1-mesa-dri \
             mesa-vulkan-drivers strace qemu-utils
@@ -108,9 +108,8 @@ jobs:
       - name: Frame and audio tests
         run: libretro/tests/run.sh parallel_xbox_libretro.so
 
-      # libslirp is not in every frontend's runtime (Flatpak
-      # RetroArch's, for one), so it goes next to the core, found through
-      # $ORIGIN.
+      # GLib is the core's own and libslirp is linked in: the core is the
+      # one file
       - name: Collect
         run: |
           mkdir -p dist
@@ -122,9 +121,6 @@ jobs:
           patchelf --set-rpath '$ORIGIN' symbols/parallel_xbox_libretro.so
           strip --strip-unneeded dist/parallel_xbox_libretro.so
           patchelf --set-rpath '$ORIGIN' dist/parallel_xbox_libretro.so
-          for lib in libslirp.so.0; do
-            cp -L "/usr/lib/${{ matrix.arch }}-linux-gnu/$lib" dist/
-          done
           ls -la dist
           readelf -d dist/parallel_xbox_libretro.so | grep -E 'NEEDED|RUNPATH'
 

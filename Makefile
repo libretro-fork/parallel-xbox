@@ -13,13 +13,14 @@
 # Makefile.common lists the core's sources and their flags; what QEMU's own
 # build would generate is in libretro/gen (libretro/gen/README.md).
 #
-# Windows: every library the core links is built from source in deps/
-# (Makefile.deps), and the DLL needs only Windows' own DLLs: nothing but
-# the compiler has to be installed (pacman -S mingw-w64-x86_64-gcc make).
-# Linux (x86-64, AArch64): the libraries come from the system, through
-# pkg-config (README.md, Building). macOS (arm64, x86_64): from MacPorts,
-# through pkg-config, as upstream xemu's build takes them
-# (scripts/download-macos-libs.py, PKG_CONFIG_LIBDIR pointed at them).
+# GLib is the core's own (libretro/glib), and libslirp is built from deps/
+# on it everywhere (Makefile.deps). Windows: every other library the core
+# links is built from source in deps/ too, and the DLL needs only Windows'
+# own DLLs: nothing but the compiler has to be installed (pacman -S
+# mingw-w64-x86_64-gcc make). Linux (x86-64, AArch64): libepoxy comes from
+# the system, through pkg-config (README.md, Building). macOS (arm64,
+# x86_64): from MacPorts, through pkg-config, as upstream xemu's build
+# takes it (scripts/download-macos-libs.py, PKG_CONFIG_LIBDIR pointed at it).
 
 .DEFAULT_GOAL := all
 
@@ -91,7 +92,7 @@ ifeq ($(platform),unix)
    OS_CFLAGS   :=
    OS_LIBS     := -lpthread -ldl -lm -lutil
 
-   PKGS := glib-2.0 slirp epoxy
+   PKGS := epoxy
    DEPS_CFLAGS := $(shell $(PKG_CONFIG) --cflags $(PKGS)) -pthread
    DEPS_LIBS   := $(shell $(PKG_CONFIG) --libs $(PKGS)) \
                   -lstdc++
@@ -143,7 +144,7 @@ else ifeq ($(platform),osx)
    OS_LIBS     := -lm -framework CoreFoundation -framework IOKit \
                   -framework OpenGL
 
-   PKGS := glib-2.0 slirp epoxy
+   PKGS := epoxy
    DEPS_CFLAGS := $(shell $(PKG_CONFIG) --cflags $(PKGS)) -pthread
    DEPS_LIBS   := $(shell $(PKG_CONFIG) --libs $(PKGS))
    ifeq ($(DEPS_CFLAGS),-pthread)
@@ -161,10 +162,13 @@ else
    OPT := -O2
 endif
 
+include Makefile.deps
 ifeq ($(VENDORED_DEPS),1)
-   include Makefile.deps
    DEPS_CFLAGS := $(DEPS_VENDORED_CFLAGS)
    DEPS_LIBS   := $(DEP_LIBS)
+else
+   DEPS_CFLAGS := $(DEPS_VENDORED_CFLAGS) $(DEPS_CFLAGS)
+   DEPS_LIBS   := $(DEP_LIBS) $(DEPS_LIBS)
 endif
 
 include Makefile.common
@@ -187,6 +191,7 @@ OBJS_TARGET   := $(call obj,$(SOURCES_TARGET))
 OBJS_DSP      := $(call obj,$(SOURCES_DSP))
 OBJS_GLOFF    := $(call obj,$(SOURCES_GLOFF))
 OBJS_LRCOMMON := $(call obj,$(SOURCES_LRCOMMON))
+OBJS_GLIB     := $(call obj,$(SOURCES_GLIB))
 OBJS_VOLK     := $(call obj,$(SOURCES_VOLK))
 OBJS_SPIRV_REFLECT := $(call obj,$(SOURCES_SPIRV_REFLECT))
 OBJS_GLSLC    := $(call obj,$(SOURCES_GLSLC))
@@ -199,7 +204,7 @@ OBJS_DATA     := $(patsubst %.S,%.o,$(SOURCES_DATA_ASM))
 LIBQEMUUTIL := $(CORE_DIR)/libqemuutil.a
 
 OBJECTS := $(OBJS_COMMON) $(OBJS_SYSTEM) $(OBJS_TARGET) \
-           $(OBJS_DSP) $(OBJS_GLOFF) $(OBJS_LRCOMMON) \
+           $(OBJS_DSP) $(OBJS_GLOFF) $(OBJS_LRCOMMON) $(OBJS_GLIB) \
            $(OBJS_VOLK) $(OBJS_SPIRV_REFLECT) $(OBJS_GLSLC) $(OBJS_VSH) \
            $(OBJS_VMA) \
            $(OBJS_DATA)
@@ -211,6 +216,7 @@ $(OBJS_TARGET):   GROUP_CFLAGS := $(CFLAGS_TARGET)
 $(OBJS_DSP):      GROUP_CFLAGS := $(CFLAGS_DSP)
 $(OBJS_GLOFF):    GROUP_CFLAGS := $(CFLAGS_GLOFF)
 $(OBJS_LRCOMMON): GROUP_CFLAGS := $(CFLAGS_LRCOMMON)
+$(OBJS_GLIB):     GROUP_CFLAGS := $(CFLAGS_GLIB)
 $(OBJS_VOLK):     GROUP_CFLAGS := $(CFLAGS_VOLK)
 $(OBJS_SPIRV_REFLECT): GROUP_CFLAGS := $(CFLAGS_SPIRV_REFLECT)
 $(OBJS_GLSLC):    GROUP_CFLAGS := $(CFLAGS_GLSLC)
@@ -279,12 +285,7 @@ SEEDSHADERS := $(CORE_DIR)/libretro/tests/seedshaders
 SEEDSHADERS_OBJS := $(call obj,$(addprefix $(CORE_DIR)/hw/xbox/nv2a/pgraph/, \
 		glsl/common.c glsl/geom.c glsl/psh.c glsl/shaders.c glsl/vsh.c \
 		glsl/vsh-ff.c glsl/vsh-prog.c glsl/uniform-cache.c texture.c)) \
-	$(OBJS_GLSLC) $(OBJS_VSH) \
-	$(call obj,$(CORE_DIR)/libretro-common/encodings/encoding_deflate.c \
-		$(CORE_DIR)/libretro-common/encodings/encoding_crc32.c \
-		$(CORE_DIR)/libretro-common/encodings/encoding_xxh3.c \
-		$(CORE_DIR)/libretro-common/features/features_cpu.c \
-		$(CORE_DIR)/libretro-common/time/rtime.c)
+	$(OBJS_GLSLC) $(OBJS_VSH) $(OBJS_GLIB) $(OBJS_LRCOMMON)
 $(SEEDSHADERS): $(CORE_DIR)/libretro/tests/seedshaders.c $(SEEDSHADERS_OBJS) \
 		$(LIBQEMUUTIL)
 	$(CC) -O2 $(CFLAGS_TARGET) -o $@ $< $(filter-out $<,$^) \
@@ -293,9 +294,11 @@ seedshaders: $(SEEDSHADERS)
 
 S3TCTEST := $(CORE_DIR)/libretro/tests/s3tctest
 $(S3TCTEST): $(CORE_DIR)/libretro/tests/test-s3tc.c \
-		$(CORE_DIR)/hw/xbox/nv2a/pgraph/s3tc.o $(LIBQEMUUTIL)
+		$(CORE_DIR)/hw/xbox/nv2a/pgraph/s3tc.o $(OBJS_GLIB) $(OBJS_LRCOMMON) \
+		$(LIBQEMUUTIL)
 	$(CC) -O2 $(CFLAGS_TARGET) -o $@ $< \
-		$(CORE_DIR)/hw/xbox/nv2a/pgraph/s3tc.o $(DEPS_LIBS) $(OS_LIBS) -lm
+		$(CORE_DIR)/hw/xbox/nv2a/pgraph/s3tc.o $(OBJS_GLIB) $(OBJS_LRCOMMON) \
+		$(DEPS_LIBS) $(OS_LIBS) -lm
 s3tctest: $(S3TCTEST)
 
 .PHONY: all clean dspdiff seedshaders s3tctest FORCE

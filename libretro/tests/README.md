@@ -87,6 +87,14 @@ and Vulkan are checked at native and 2x scales. The harness accepts
 `--pixel FRAME:X:Y` to sample a top-left-based physical coordinate, including
 on repeated frames; `--pixel FRAME` retains its centre-pixel behavior.
 
+`test-glib.c` checks the core's GLib (`libretro/glib`) on its own, against
+what GLib does: hash tables (removal while iterating included), balanced
+trees, lists, queues, sequences, arrays, strings, base64 and SHA-1, paths,
+files and directories, and a main context driven as QEMU's main loop drives
+it (prepare, query, check, dispatch; idle and timeout sources). `run.sh`
+runs it natively, and with the Windows core under Wine its Windows build
+too.
+
 `test-qcow2.c` checks the HDD's qcow2 code on its own: the bundled image
 written out raw (`block/qcow2-raw.c`) against `qemu-img convert`'s, on
 images it makes of every kind the reader takes; and, with `--workload`,

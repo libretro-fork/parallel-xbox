@@ -8,7 +8,7 @@ The emulator is upstream's: this repository follows [xemu-project/xemu](https://
 
 The core is built by libretro's buildbot for Windows and Linux (x86_64, aarch64), and is installed from RetroArch: Online Updater > Core Downloader. Every push to the `libretro` branch is also built in [Actions](https://github.com/WizzardSK/xemu-libretro/actions/workflows/libretro.yml), macOS (Apple Silicon, Intel) and Android (arm64-v8a, x86_64) included; the builds are the artifacts of a run, and downloading them needs a GitHub login.
 
-- **Linux:** `parallel_xbox_libretro.so` and `libslirp.so.0`; put both into RetroArch's `cores` folder. glibc builds, they do not load into a musl frontend.
+- **Linux:** `parallel_xbox_libretro.so`; put it into RetroArch's `cores` folder. A glibc build, it does not load into a musl frontend.
 - **macOS:** `parallel_xbox_libretro.dylib` and the folder `parallel_xbox_libretro_libs`; put both into RetroArch's `cores` folder.
 - **Windows:** `parallel_xbox_libretro.dll`.
 - **Android:** `parallel_xbox_libretro_android.so`, Android 10 or newer.
@@ -78,17 +78,15 @@ cd xemu-libretro
 make -j$(nproc)
 ```
 
-Every library the core links (GLib, libslirp, libepoxy) is built from
+Every library the core links (libslirp, libepoxy) is built from
 source in `deps/` (`deps/README.md`), and
 `parallel_xbox_libretro.dll` needs only Windows' own DLLs. From Linux:
 `make platform=win CROSS_PREFIX=x86_64-w64-mingw32-` with MinGW-w64.
 
-**Linux** (x86_64, aarch64), with the libraries the core links from the
-system:
+**Linux** (x86_64, aarch64), with libepoxy from the system:
 
 ```
-sudo apt install build-essential pkg-config libglib2.0-dev libslirp-dev \
-    libepoxy-dev libvulkan-dev curl
+sudo apt install build-essential pkg-config libepoxy-dev libvulkan-dev curl
 make -j$(nproc)
 ```
 
@@ -108,6 +106,8 @@ For an Intel Mac's core, `x86_64` in place of `arm64`, and `ARCH=x86_64` to
 there.
 
 What QEMU's build generates is pregenerated in `libretro/gen` (its README).
+GLib is not linked: QEMU and libslirp are built on the core's own
+`libretro/glib`, the part of GLib's API they use, on libretro-common.
 Android is built with meson for now: the CI workflow
 `.github/workflows/libretro.yml` shows how, and its dependencies.
 

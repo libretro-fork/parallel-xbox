@@ -76,6 +76,32 @@ ${cc} -O2 -std=c99 -Wall -o "$work/bin/mkdisc" "$here/mkdisc.c"
 # the snapshot must read as it was taken; and an image whose writer is
 # killed partway must still have no errors (leaks at most).
 lrc="$here/../../libretro-common"
+# The core's GLib (libretro/glib) on its own: containers, strings, paths,
+# files, checksums and the main context as QEMU drives it. With the
+# Windows core under Wine, its Windows build as well.
+glibsrc="$here/test-glib.c $here/../glib/gcontainers.c $here/../glib/gcore.c \
+    $here/../glib/gfile.c $here/../glib/gmain.c $here/../glib/gunix.c \
+    $lrc/compat/compat_strl.c $lrc/compat/compat_posix_string.c \
+    $lrc/compat/fopen_utf8.c $lrc/encodings/encoding_utf.c \
+    $lrc/encodings/encoding_base64.c $lrc/hash/lrc_hash.c \
+    $lrc/features/features_cpu.c $lrc/file/file_path.c \
+    $lrc/file/file_path_io.c $lrc/file/retro_dirent.c \
+    $lrc/streams/file_stream.c $lrc/string/stdstring.c \
+    $lrc/string/rstrtod.c $lrc/time/rtime.c $lrc/vfs/vfs_implementation.c \
+    $lrc/rthreads/rthreads.c"
+glibflags="-O2 -std=gnu11 -w -I$here/../glib -I$lrc/include -Dpath_is_absolute=lrc_path_is_absolute"
+mkdir -p "$work/glib"
+# shellcheck disable=SC2086
+${cc} $glibflags -o "$work/bin/glibtest" $glibsrc -lpthread
+"$work/bin/glibtest" "$work/glib"
+case $h in
+wine*)
+    # shellcheck disable=SC2086
+    ${HARNESS_CC:-x86_64-w64-mingw32-gcc} $glibflags -o "$work/bin/glibtest.exe" \
+        $glibsrc -static
+    wine "$work/bin/glibtest.exe" "$(path "$work/glib")"
+    ;;
+esac
 ${cc} -O2 -std=gnu99 -Wall -I"$lrc/include" -o "$work/bin/qcow2test" "$here/test-qcow2.c" \
     "$here/../../block/qcow2-raw.c" "$here/../../block/libretro-qcow2.c" \
     "$here/../../block/libretro-file.c" \
