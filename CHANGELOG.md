@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- The macOS core can be built with the plain Makefile (`make` on a Mac, `ARCH=x86_64` for Intel), as the Linux and Windows cores are, with the same MacPorts libraries upstream xemu uses. The CI builds it alongside the meson build for now.
+
 - The stock xemu GPU the fork carried as a fallback is gone (about 28,000 lines and 0.6 MB of the core). The core never ran it: GPU boost is always on in the core, and the stock GPU has none of the core's handover to RetroArch.
 
 - The emulated GPU and sound chip, and the core's glue to RetroArch, now use libretro-common's atomics (retro_atomic) for everything their threads share, instead of QEMU's. Along the way, several places that forced the PC's CPU to wait for all its outstanding memory writes no longer do where it isn't needed, mostly on x86: whenever a game touches memory the GPU draws into, and whenever the GPU marks a picture it drew as not yet written back. Two ordering slips that could hand the GPU's thread a stale download request or lose a register write from the game on a CPU with weaker memory ordering than x86 (ARM) are fixed too. Savestates are unchanged.

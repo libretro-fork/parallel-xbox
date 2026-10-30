@@ -5,6 +5,8 @@
 #                            parallel_xbox_libretro.so on Linux
 #   make platform=win CROSS_PREFIX=x86_64-w64-mingw32-
 #                            the Windows core, cross-compiled
+#   make ARCH=x86_64         on macOS: the core for that CPU (arm64 or
+#                            x86_64; the Mac's own by default)
 #   make DEBUG=1             unoptimized, with debug information
 #   make clean
 #
@@ -15,7 +17,9 @@
 # (Makefile.deps), and the DLL needs only Windows' own DLLs: nothing but
 # the compiler has to be installed (pacman -S mingw-w64-x86_64-gcc make).
 # Linux (x86-64, AArch64): the libraries come from the system, through
-# pkg-config (README.md, Building).
+# pkg-config (README.md, Building). macOS (arm64, x86_64): from MacPorts,
+# through pkg-config, as upstream xemu's build takes them
+# (scripts/download-macos-libs.py, PKG_CONFIG_LIBDIR pointed at them).
 
 .DEFAULT_GOAL := all
 
@@ -56,13 +60,19 @@ else ifeq ($(platform),win)
    endif
 endif
 
-# The host's CPU: TCG generates code for it
-HOST_TRIPLE := $(shell $(CC) -dumpmachine)
+# The host's CPU: TCG generates code for it. On macOS the compiler builds
+# for whichever -arch it is given, so it is ARCH, not the compiler's own.
+ifeq ($(platform),osx)
+   ARCH ?= $(shell uname -m)
+   HOST_TRIPLE := $(ARCH)-apple-darwin
+else
+   HOST_TRIPLE := $(shell $(CC) -dumpmachine)
+endif
 ifneq ($(findstring x86_64,$(HOST_TRIPLE)),)
    TCG_ARCH          := i386
    HOST_INCLUDE_ARCH := x86_64
    ARCH_CFLAGS       := -mcx16 -msse2
-else ifneq ($(findstring aarch64,$(HOST_TRIPLE)),)
+else ifneq ($(findstring aarch64,$(HOST_TRIPLE))$(findstring arm64,$(HOST_TRIPLE)),)
    TCG_ARCH          := aarch64
    HOST_INCLUDE_ARCH := aarch64
    ARCH_CFLAGS       :=
@@ -103,8 +113,38 @@ else ifeq ($(platform),win)
                   -lshell32 -luuid -ladvapi32 -luser32 -lgdi32 -lcomdlg32 \
                   -lwinspool -lopengl32 -lpathcch -lsynchronization
    VENDORED_DEPS := 1
+else ifeq ($(platform),osx)
+   HOST_OS     := darwin
+   TARGET      := $(TARGET_NAME)_libretro.dylib
+   fpic        := -fPIC
+   # the minimum macOS versions upstream xemu targets
+   ifeq ($(ARCH),arm64)
+      MACOSX_MIN ?= 13.7.4
+   else
+      MACOSX_MIN ?= 12.7.5
+   endif
+   OSX_ARCH_FLAGS := -arch $(ARCH) -mmacosx-version-min=$(MACOSX_MIN)
+   # only retro_* are the core's interface, as ui/libretro.map on Linux
+   SHARED      := -dynamiclib $(OSX_ARCH_FLAGS) \
+                  -Wl,-exported_symbol,_retro_* \
+                  -Wl,-headerpad_max_install_names
+   OS_INCFLAGS :=
+   # the Vulkan entry points come from the frontend (MoltenVK), volk loads
+   # the rest; Metal surfaces are the frontend's
+   OS_CFLAGS   := $(OSX_ARCH_FLAGS) -DVK_USE_PLATFORM_METAL_EXT
+   OS_ASFLAGS  := $(OSX_ARCH_FLAGS)
+   # CoreFoundation and IOKit: block/file-posix.c's host CD-ROM support
+   OS_LIBS     := -lm -framework CoreFoundation -framework IOKit \
+                  -framework OpenGL
+
+   PKGS := glib-2.0 slirp epoxy
+   DEPS_CFLAGS := $(shell $(PKG_CONFIG) --cflags $(PKGS)) -pthread
+   DEPS_LIBS   := $(shell $(PKG_CONFIG) --libs $(PKGS))
+   ifeq ($(DEPS_CFLAGS),-pthread)
+      $(error pkg-config found none of: $(PKGS))
+   endif
 else
-   $(error platform=$(platform) is not built by this Makefile yet: Linux and Windows)
+   $(error platform=$(platform) is not built by this Makefile: unix (Linux), win or osx)
 endif
 
 # --- Flags ---------------------------------------------------------------
@@ -194,7 +234,7 @@ $(LIBQEMUUTIL): $(OBJS_UTIL)
 
 # .incbin finds data/ from the core's directory
 %.o: %.S
-	$(CC) $(fpic) -Wa,-I$(CORE_DIR) -c -o $@ $<
+	$(CC) $(fpic) $(OS_ASFLAGS) -Wa,-I$(CORE_DIR) -c -o $@ $<
 
 ALL_OBJECTS := $(OBJECTS) $(OBJS_UTIL) $(DEP_OBJECTS)
 

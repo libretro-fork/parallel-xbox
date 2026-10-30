@@ -90,10 +90,24 @@ sudo apt install build-essential pkg-config libglib2.0-dev libslirp-dev \
 make -j$(nproc)
 ```
 
+**macOS** (arm64, x86_64), with Xcode's command line tools and the
+libraries upstream xemu's build takes from MacPorts:
+
+```
+brew install pkgconf
+pip3 install requests
+python3 scripts/download-macos-libs.py arm64
+PKG_CONFIG_LIBDIR=$PWD/macos-libs/arm64/opt/local/lib/pkgconfig make -j$(sysctl -n hw.ncpu)
+```
+
+For an Intel Mac's core, `x86_64` in place of `arm64`, and `ARCH=x86_64` to
+`make`. The libraries are dylibs: the CI workflow puts them in
+`parallel_xbox_libretro_libs` next to the core, with their paths pointed
+there.
+
 What QEMU's build generates is pregenerated in `libretro/gen` (its README).
-macOS and Android are built with meson for now: the CI workflow
-`.github/workflows/libretro.yml` shows how, and each platform's
-dependencies.
+Android is built with meson for now: the CI workflow
+`.github/workflows/libretro.yml` shows how, and its dependencies.
 
 ## License
 

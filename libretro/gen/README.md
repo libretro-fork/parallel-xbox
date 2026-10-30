@@ -13,6 +13,10 @@ directory (the Makefile puts this directory first on the include path).
 `config-host-win32.h` (the only generated file that differs between the
 two; Windows' was made by a MinGW-w64 cross configure, with
 `--cross-prefix=x86_64-w64-mingw32- --static` added to the line below).
+`config-host-darwin.h`, for macOS, is not generated: it is
+`config-host-linux.h` with each value that comes out differently on Darwin
+changed, by the tests in `meson.build` (its header lists them). When
+`config-host-linux.h` is made again, carry the change over to it.
 
 They were made by a meson build directory configured as the core's:
 

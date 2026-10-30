@@ -25,11 +25,17 @@ QEMU_DEFINES := -DXBOX=1 -D_GNU_SOURCE -D_FILE_OFFSET_BITS=64 \
 
 QEMU_WARNINGS := -Wall -Wempty-body -Wendif-labels -Wexpansion-to-defined \
 	-Wformat-security -Wformat-y2k -Wignored-qualifiers \
-	-Wimplicit-fallthrough=2 -Winit-self -Wmissing-format-attribute \
-	-Wmissing-prototypes -Wnested-externs -Wold-style-declaration \
-	-Wold-style-definition -Wredundant-decls -Wshadow=local \
+	-Winit-self -Wmissing-format-attribute \
+	-Wmissing-prototypes -Wnested-externs \
+	-Wold-style-definition -Wredundant-decls \
 	-Wstrict-prototypes -Wtype-limits -Wwrite-strings \
-	-Wno-missing-include-dirs -Wno-psabi -Wno-shift-negative-value
+	-Wno-missing-include-dirs -Wno-shift-negative-value
+# GCC's alone: clang (Apple's on macOS) warns of each as unknown, as meson
+# leaves out what the compiler does not take
+ifeq ($(findstring clang,$(shell $(CC) --version 2>/dev/null)),)
+QEMU_WARNINGS += -Wimplicit-fallthrough=2 -Wold-style-declaration \
+	-Wshadow=local -Wno-psabi
+endif
 
 QEMU_CFLAGS := -std=gnu11 -fno-strict-aliasing -fno-common -fwrapv \
 	$(QEMU_WARNINGS) $(QEMU_DEFINES) $(OS_CFLAGS) $(QEMU_INCFLAGS) \
@@ -575,21 +581,28 @@ SOURCES_UTIL := \
 
 SOURCES_UTIL_POSIX := \
 	$(CORE_DIR)/util/aio-posix.c \
-	$(CORE_DIR)/util/chardev_open.c \
 	$(CORE_DIR)/util/compatfd.c \
-	$(CORE_DIR)/util/coroutine-ucontext.c \
 	$(CORE_DIR)/util/drm.c \
 	$(CORE_DIR)/util/event_notifier-posix.c \
-	$(CORE_DIR)/util/fdmon-epoll.c \
 	$(CORE_DIR)/util/fdmon-poll.c \
-	$(CORE_DIR)/util/filemonitor-inotify.c \
 	$(CORE_DIR)/util/memfd.c \
 	$(CORE_DIR)/util/mmap-alloc.c \
 	$(CORE_DIR)/util/oslib-posix.c \
 	$(CORE_DIR)/util/qemu-thread-posix.c \
+
+SOURCES_UTIL_LINUX := \
+	$(CORE_DIR)/util/chardev_open.c \
+	$(CORE_DIR)/util/coroutine-ucontext.c \
+	$(CORE_DIR)/util/fdmon-epoll.c \
+	$(CORE_DIR)/util/filemonitor-inotify.c \
 	$(CORE_DIR)/util/userfaultfd.c \
 	$(CORE_DIR)/util/vfio-helpers.c \
 	$(CORE_DIR)/util/vhost-user-server.c \
+
+# macOS: QEMU never takes ucontext coroutines there (meson.build)
+SOURCES_UTIL_DARWIN := \
+	$(CORE_DIR)/util/coroutine-sigaltstack.c \
+	$(CORE_DIR)/util/filemonitor-stub.c \
 
 SOURCES_UTIL_WIN32 := \
 	$(CORE_DIR)/util/aio-win32.c \
@@ -754,12 +767,17 @@ SOURCES_COMMON := \
 
 SOURCES_COMMON_POSIX := \
 	$(CORE_DIR)/block/file-posix.c \
-	$(CORE_DIR)/block/nvme.c \
 	$(CORE_DIR)/chardev/char-fd.c \
 	$(CORE_DIR)/chardev/char-parallel.c \
 	$(CORE_DIR)/chardev/char-pty.c \
+
+SOURCES_COMMON_LINUX := \
+	$(CORE_DIR)/block/nvme.c \
 	$(CORE_DIR)/scsi/pr-manager-helper.c \
 	$(CORE_DIR)/scsi/pr-manager.c \
+
+SOURCES_COMMON_DARWIN := \
+	$(CORE_DIR)/scsi/pr-manager-stub.c \
 
 SOURCES_COMMON_WIN32 := \
 	$(CORE_DIR)/block/file-win32.c \
@@ -1101,22 +1119,27 @@ SOURCES_SYSTEM := \
 	$(CORE_DIR)/ui/xemu-widescreen.c \
 
 SOURCES_SYSTEM_POSIX := \
-	$(CORE_DIR)/backends/host_iommu_device.c \
 	$(CORE_DIR)/backends/hostmem-file.c \
-	$(CORE_DIR)/backends/hostmem-memfd.c \
 	$(CORE_DIR)/backends/hostmem-shm.c \
 	$(CORE_DIR)/backends/rng-random.c \
 	$(CORE_DIR)/fsdev/qemu-fsdev-dummy.c \
 	$(CORE_DIR)/fsdev/qemu-fsdev-opts.c \
 	$(CORE_DIR)/fsdev/qemu-fsdev-throttle.c \
 	$(CORE_DIR)/hw/usb/dev-mtp.c \
+	$(CORE_DIR)/net/tap.c \
+
+SOURCES_SYSTEM_LINUX := \
+	$(CORE_DIR)/backends/host_iommu_device.c \
+	$(CORE_DIR)/backends/hostmem-memfd.c \
 	$(CORE_DIR)/hw/usb/u2f-passthru.c \
 	$(CORE_DIR)/net/tap-linux.c \
-	$(CORE_DIR)/net/tap.c \
 	$(CORE_DIR)/system/async-teardown.c \
 	$(CORE_DIR)/tcg/perf.c \
 	$(CORE_DIR)/ui/input-linux.c \
 	$(CORE_DIR)/ui/udmabuf.c \
+
+SOURCES_SYSTEM_DARWIN := \
+	$(CORE_DIR)/net/tap-bsd.c \
 
 SOURCES_SYSTEM_WIN32 := \
 	$(CORE_DIR)/net/capture_win_ifnames.c \
@@ -1364,4 +1387,13 @@ else
 SOURCES_UTIL   += $(SOURCES_UTIL_POSIX)
 SOURCES_COMMON += $(SOURCES_COMMON_POSIX)
 SOURCES_SYSTEM += $(SOURCES_SYSTEM_POSIX)
+ifeq ($(HOST_OS),darwin)
+SOURCES_UTIL   += $(SOURCES_UTIL_DARWIN)
+SOURCES_COMMON += $(SOURCES_COMMON_DARWIN)
+SOURCES_SYSTEM += $(SOURCES_SYSTEM_DARWIN)
+else
+SOURCES_UTIL   += $(SOURCES_UTIL_LINUX)
+SOURCES_COMMON += $(SOURCES_COMMON_LINUX)
+SOURCES_SYSTEM += $(SOURCES_SYSTEM_LINUX)
+endif
 endif
