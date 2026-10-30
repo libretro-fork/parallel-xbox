@@ -3605,16 +3605,53 @@ typedef struct VertexCowDispatch {
     VkDeviceSize arena_offset;
 } VertexCowDispatch;
 
+/* Most adjacent draws revisit a few immutable snapshots. Keep a tiny
+ * render-thread-owned index in front of the full containment search. */
+static void vertex_cow_remember(PGRAPHVkState *r, unsigned index)
+{
+    unsigned key = index + 1;
+    unsigned n = 0;
+    while (n + 1 < ARRAY_SIZE(r->vertex_cow_recent) &&
+           r->vertex_cow_recent[n] != key) {
+        n++;
+    }
+    for (; n; n--) {
+        r->vertex_cow_recent[n] = r->vertex_cow_recent[n - 1];
+    }
+    r->vertex_cow_recent[0] = key;
+}
+
+static bool vertex_cow_contains(PGRAPHVkState *r,
+                                 const VertexCowCacheEntry *e,
+                                 hwaddr lo, hwaddr end)
+{
+    return e->valid && e->addr <= lo && end <= e->addr + e->size &&
+           e->epoch == r->vertex_arena_epoch[e->slot];
+}
+
 /* A valid snapshot containing [lo, end): containment, not equality, since
  * draws of one buffer use varying element windows, and any subrange of a
  * valid snapshot is exact. */
 static VertexCowCacheEntry *vertex_cow_lookup(PGRAPHVkState *r, hwaddr lo,
                                               hwaddr end)
 {
-    for (int c = 0; c < ARRAY_SIZE(r->vertex_cow_cache); c++) {
+    for (unsigned i = 0; i < ARRAY_SIZE(r->vertex_cow_recent); i++) {
+        unsigned key = r->vertex_cow_recent[i];
+        if (!key) {
+            continue;
+        }
+        VertexCowCacheEntry *e = &r->vertex_cow_cache[key - 1];
+        if (vertex_cow_contains(r, e, lo, end)) {
+            if (i) {
+                vertex_cow_remember(r, key - 1);
+            }
+            return e;
+        }
+    }
+    for (unsigned c = 0; c < ARRAY_SIZE(r->vertex_cow_cache); c++) {
         VertexCowCacheEntry *e = &r->vertex_cow_cache[c];
-        if (e->valid && e->addr <= lo && end <= e->addr + e->size &&
-            e->epoch == r->vertex_arena_epoch[e->slot]) {
+        if (vertex_cow_contains(r, e, lo, end)) {
+            vertex_cow_remember(r, c);
             return e;
         }
     }
@@ -3649,6 +3686,7 @@ static void vertex_cow_store(PGRAPHVkState *r, hwaddr lo, VkDeviceSize size,
         .slot = r->slot & 1,
         .valid = true,
     };
+    vertex_cow_remember(r, store - r->vertex_cow_cache);
 }
 
 /* A range that unsettled work reads: this draw reads a snapshot of it in an

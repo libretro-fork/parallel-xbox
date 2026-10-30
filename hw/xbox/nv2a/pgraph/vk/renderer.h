@@ -736,6 +736,9 @@ typedef struct PGRAPHVkState {
     /* Snapshots reused by later draws of unchanged content; an entry dies on
      * a newer guest or mirror write, a stale mark, or its arena's reset. */
     VertexCowCacheEntry vertex_cow_cache[512];
+    /* Indices plus one, never pointers: validity/arena epoch are checked
+     * on each hit, including after invalidation or arena recycling. */
+    unsigned vertex_cow_recent[4];
     unsigned vertex_cow_cache_rr;
     uint32_t vertex_arena_epoch[2];
 

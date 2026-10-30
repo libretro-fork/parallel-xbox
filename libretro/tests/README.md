@@ -77,6 +77,12 @@ ownership. It prevents an unchanged old I/O block from being resurrected,
 while checking ordinary block reuse, PC-relative hashes, page/jump cleanup,
 duplicate invalidation and one-shot blocks in 513 cases with UB traps.
 
+`python libretro/tests/test-vertex-snapshot-cache.py . gcc` executes the
+production Vulkan snapshot lookup, insertion and invalidation functions. It
+checks cached subranges, touching versus overlapping writes, both arena
+generations, replacement beyond 512 entries, stale recent indices after cache
+reset, and 80,000 randomized lookups under undefined-behavior sanitization.
+
 `python libretro/tests/test-uniform-stage-uploads.py . gcc` exercises the
 production Vulkan uniform tracker, upload planning and descriptor-reuse
 decision against bounded upload storage. It checks independent stages,

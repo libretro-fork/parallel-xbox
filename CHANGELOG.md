@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Vulkan draws that reuse vertex data first check four recently used immutable snapshots before searching the full 512-entry cache. Repeated draws avoid those searches without another RAM copy or more VRAM; invalidated snapshots and recycled arena generations still miss. This reduces CPU bookkeeping for repeated vertex draws; the guest instruction count and the work sent to the GPU stay the same.
+
 - Software DXT decoding now keeps the original endpoint precision through color interpolation and rounds once to RGBA8; DXT5 alpha interpolation also rounds to nearest. This removes the fallback decoder's downward bias, verified against Microsoft's DirectXTex decoder. Native compressed texture uploads are unchanged.
 
 - OpenGL's software DXT fallback explicitly requests RGBA8 storage for decoded 2D textures and cubemap faces, matching the existing 3D fallback and preserving all eight decoded bits per channel.
