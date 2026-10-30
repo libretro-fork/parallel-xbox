@@ -15,5 +15,5 @@ code=fixture.replace('/* PRODUCTION MAP */',s[m.start():end])
 env=os.environ.copy();env['PATH']=str(Path(cc).resolve().parent)+os.pathsep+env.get('PATH','')
 with tempfile.TemporaryDirectory(prefix='dma-map-',dir=repo.parent) as directory:
     p=Path(directory);(p/'test.c').write_text(code);exe=p/('test.exe' if os.name=='nt' else 'test')
-    subprocess.run([cc,'-std=gnu11','-O2','-Wall','-Wextra','-Werror','-Wno-unused-parameter','-fsanitize=undefined','-fsanitize-undefined-trap-on-error',str(p/'test.c'),'-o',str(exe)],check=True,env=env)
+    subprocess.run([cc,'-std=gnu11','-O2','-Wall','-Wextra','-Werror','-Wno-unused-parameter','-fsanitize=undefined','-fsanitize-undefined-trap-on-error','-I',str(repo/'libretro-common/include'),str(p/'test.c'),'-o',str(exe)],check=True,env=env)
     subprocess.run([str(exe)],check=True,env=env)

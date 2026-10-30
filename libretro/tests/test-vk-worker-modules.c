@@ -10,14 +10,16 @@
 #define TRUE true
 #define ARRAY_SIZE(a) (sizeof(a)/sizeof((a)[0]))
 typedef struct {char *data;unsigned len;} GArray;
-typedef struct {GArray a;retro_atomic_int_t ref_count;unsigned elt_size,alloc;} GRealArray;
+typedef void (*GDestroyNotify)(void *);
+typedef struct {GArray a;retro_atomic_int_t ref_count;unsigned elt_size,alloc;GDestroyNotify clear_func;} GRealArray;
 typedef char gchar;typedef unsigned guint;typedef size_t gsize;typedef uint8_t guint8;
 typedef GArray GByteArray;
+/* Blocks the arrays own: their structs and the buffers they take */
 static retro_atomic_int_t live_arrays;
 static void *new_array(size_t n){assert(n==1);void *r=calloc(1,sizeof(GRealArray));assert(r);retro_atomic_fetch_add_int(&live_arrays,1);return r;}
 #define g_new0(type,n) ((type *)new_array(n))
 GByteArray *g_byte_array_new_take(guint8 *,gsize);
-static char *g_array_free(GArray *a,bool segment){assert(segment);free(a->data);free(a);retro_atomic_fetch_sub_int(&live_arrays,1);return NULL;}
+static void g_free(void *p){if(p){free(p);retro_atomic_fetch_sub_int(&live_arrays,1);}}
 GArray *g_array_ref(GArray *);
 void g_array_unref(GArray *);
 static GByteArray *g_byte_array_ref(GByteArray *a){return g_array_ref(a);}
@@ -35,7 +37,7 @@ static unsigned payload_byte(const ShaderModuleCacheKey *key){return (key->id*13
 static GByteArray *pgraph_vk_compile_glsl_to_spv(unsigned kind,const char *str)
 {
  const ShaderModuleCacheKey *key=(const void *)str;assert(kind==key->kind);compiles++;
- guint8 *data=malloc(key->len);assert(data);memset(data,payload_byte(key),key->len);return g_byte_array_new_take(data,key->len);
+ guint8 *data=malloc(key->len);assert(data);retro_atomic_fetch_add_int(&live_arrays,1);memset(data,payload_byte(key),key->len);return g_byte_array_new_take(data,key->len);
 }
 static int vk_state_module_keys(const ShaderState *st,bool push,ShaderModuleCacheKey *keys)
 {keys[0]=(ShaderModuleCacheKey){.kind=1,.id=1,.len=64,.opts={push}};keys[1]=(ShaderModuleCacheKey){.kind=2,.id=2,.len=128};keys[2]=(ShaderModuleCacheKey){.kind=3,.id=st->id+100,.len=256};return 3;}

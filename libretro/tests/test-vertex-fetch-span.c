@@ -27,6 +27,7 @@ static bool memory_region_test_and_clear_dirty(void *mr,hwaddr addr,hwaddr size,
 static void glBufferSubData(unsigned target,hwaddr addr,hwaddr size,const void *data){assert(target==GL_ARRAY_BUFFER&&addr==queried_addr&&size==queried_size&&data==ram+addr);uploads++;}
 static void nv2a_profile_inc_counter(unsigned counter){assert(counter==0);}
 /* HELPER */
+static hwaddr last_addr,last_end; /* gl/vertex.c's, at file scope there */
 /* UPDATERS */
 static bool gl_bind_range(hwaddr attrib_data_addr,uint32_t min_element,uint32_t num_elements,size_t stride,size_t element_size,bool updated_memory_buffer){
  NV2AState *d=&machine;hwaddr start;

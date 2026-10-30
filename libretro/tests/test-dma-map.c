@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <retro_atomic.h>
 #define XBOX 1
 #define BP_MEM_WRITE 2
 #define BP_MEM_READ 1
@@ -14,12 +15,10 @@
 #define MIN(a,b) ((a)<(b)?(a):(b))
 #define RCU_READ_LOCK_GUARD() ((void)0)
 #define trace_address_space_map(...) ((void)0)
-#define qatomic_read(p) (*(p))
-#define qatomic_cmpxchg(p,old,value) (*(p)==(old)?(*(p)=(value),(old)):*(p))
 #define g_malloc0(n) calloc(1,n)
 typedef uint64_t hwaddr;
 typedef uint32_t MemTxAttrs;
-typedef struct {size_t bounce_buffer_size,max_bounce_buffer_size;} AddressSpace;
+typedef struct {size_t max_bounce_buffer_size;retro_atomic_64_t bounce_buffer_size;} AddressSpace;
 typedef struct {int dummy;} CPUState;
 typedef struct {int dummy;} FlatView;
 typedef struct {void *ram_block;hwaddr base;bool direct;unsigned refs;} MemoryRegion;

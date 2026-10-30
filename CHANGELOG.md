@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- The test suite runs every test script: 25 test scripts were never run by run.sh, and four of them no longer compiled against the code they check (DMA mapping, vertex fetch spans, the vertex snapshot cache, the Vulkan shader-module cache). They are fixed and run now, the GL and MCPX boot ones with the Linux core and the Vulkan copy ones where there is a Vulkan device.
+
 - 47 source files the core compiled but never linked (QEMU utilities such as the dirty-bitmap, throttling, readline and keymap code, and stubs nothing calls) and 163 headers nothing includes are gone, about 29,000 lines. Nothing changes for someone using the core.
 
 - The generated QAPI code is pruned to what the core uses: QEMU generates a type, a visitor and a QMP event for everything in its management schemas (block jobs, migration, the QMP schema's own 32,000-line introspection table), and the core reaches about a quarter of them. About 80,000 generated lines go: 98 of the 139 generated sources and 103 of the 186 generated headers. Nothing changes for someone using the core.

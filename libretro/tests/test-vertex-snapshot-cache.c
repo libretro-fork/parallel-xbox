@@ -12,6 +12,7 @@ typedef uint64_t VkDeviceSize;
 typedef struct {
     VertexCowCacheEntry vertex_cow_cache[512];
     unsigned vertex_cow_recent[4], vertex_cow_cache_rr;
+    unsigned vertex_cow_tail[2];
     unsigned vertex_arena_epoch[2];
     unsigned slot;
 } PGRAPHVkState;

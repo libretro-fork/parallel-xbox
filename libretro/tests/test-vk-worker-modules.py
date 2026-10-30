@@ -14,7 +14,7 @@ def function(source,name):
 record=re.search(r'typedef struct VkSpecDone \{.*?\} VkSpecDone;',s,re.S)[0]
 state=s[s.index('#define VK_SPEC_MODULE_SLOTS'):s.index('static void vk_spec_module_evict')]
 code=Path(__file__).with_suffix('.c').read_text().replace('/* RECORD */',record)
-code=code.replace('/* PRODUCTION */','\n'.join([function(g,'g_array_ref'),function(g,'g_array_unref'),function(g,'g_byte_array_new_take'),state]+[function(s,n) for n in ['vk_spec_module_evict','vk_spec_modules_clear','vk_spec_compile_module','vk_spec_compile_state','vk_spec_ready_push','vk_spec_take_ready']]))
+code=code.replace('/* PRODUCTION */','\n'.join([function(g,'g_array_ref'),function(g,'g_array_clear_range'),function(g,'g_array_unref'),function(g,'g_byte_array_new_take'),state]+[function(s,n) for n in ['vk_spec_module_evict','vk_spec_modules_clear','vk_spec_compile_module','vk_spec_compile_state','vk_spec_ready_push','vk_spec_take_ready']]))
 env=os.environ.copy();env['PATH']=str(Path(cc).resolve().parent)+os.pathsep+env.get('PATH','')
 with tempfile.TemporaryDirectory(prefix='vk-worker-modules-',dir=repo.parent) as directory:
  p=Path(directory);(p/'test.c').write_text(code);exe=p/('test.exe' if os.name=='nt' else 'test')

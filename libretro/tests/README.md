@@ -1,5 +1,14 @@
 # The core's tests
 
+`run.sh` runs every test script here. The extracted-code tests (`test-*.py`, which
+compile production functions into a fixture) run for either core; the ones
+that need Mesa's GL on EGL, and `test-mcpx-hle.py`, run with the Linux core;
+the Vulkan copy tests run with the Linux core where there is a Vulkan
+device. Each can also be run on its own, as below. Two more are built by
+the Makefile and run on their own: `make s3tctest` (the S3TC decoder against
+its oracle) and `make fileiotest` (the disk file layer; it takes a scratch
+file's path).
+
 The harness validates the declared 48 kHz / 60000:1001 timing and counts audio
 with an integer phase, including phase save/restore. Its cadence oracle stays
 exact when hard-FPU tests leave host floating-point rounding changed.

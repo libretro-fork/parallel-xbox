@@ -7,7 +7,8 @@
 # Needs nasm, a C compiler, and an OpenGL 4.5 core context: on Linux an EGL
 # with a surfaceless display (Mesa's llvmpipe will do). The Vulkan test runs
 # where there is a Vulkan device (Mesa's lavapipe will do) and is skipped
-# where there is none. The Windows core runs in a Windows build of the
+# where there is none; the Vulkan copy tests then also need the Vulkan
+# loader's development files and the Khronos validation layer. The Windows core runs in a Windows build of the
 # harness: in MSYS2's MINGW64 shell as it is, on Linux under Wine (with the
 # MinGW-w64 compiler, HARNESS_CC, and an X display for Wine's OpenGL).
 set -e
@@ -118,6 +119,34 @@ ${cc} -O2 -std=c99 -Wall -I"$here/../.." -o "$work/bin/vramranges" "$here/test-v
 "$work/bin/vramranges"
 python3 "$here/test-texture-dirty.py" "$here/../.." "$cc"
 python3 "$here/test-vulkan-surface-age.py" "$here/../.." "$cc"
+python3 "$here/test-dma-map.py" "$here/../.." "$cc"
+python3 "$here/test-io-recompile.py" "$here/../.." "$cc"
+python3 "$here/test-packed-uniforms.py" "$here/../.." "$cc"
+python3 "$here/test-page-collection.py" "$here/../.." "$cc"
+python3 "$here/test-region-tbs.py" "$here/../.." "$cc"
+python3 "$here/test-retail-seed-name.py" "$here/../.." "$cc"
+python3 "$here/test-spv-reflection-borrow.py" "$here/../.." "$cc"
+python3 "$here/test-tb-code-hash.py" "$here/../.." "$cc"
+python3 "$here/test-texture-layout.py" "$here/../.." "$cc"
+python3 "$here/test-texture-reinterpret.py" "$here/../.." "$cc"
+python3 "$here/test-tlb-dirty.py" "$here/../.." "$cc"
+python3 "$here/test-uniform-stage-uploads.py" "$here/../.." "$cc"
+python3 "$here/test-vertex-fetch-span.py" "$here/../.." "$cc"
+python3 "$here/test-vertex-snapshot-cache.py" "$here/../.." "$cc"
+python3 "$here/test-vk-vertex-copies.py" "$here/../.." "$cc"
+python3 "$here/test-vk-worker-modules.py" "$here/../.." "$cc"
+python3 "$here/test-prepare-xiso.py"
+# Production GL transfers against Mesa's GL on a surfaceless EGL display
+case $core in
+*.so)
+    python3 "$here/test-gl-texture-reinterpret.py" "$here/../.." "$cc"
+    python3 "$here/test-gl-upload-alignment.py" "$here/../.." "$cc"
+    python3 "$here/test-gl-volume-compression.py" "$here/../.." "$cc"
+    # The MCPX HLE boot with synthetic flash images, in the Linux harness
+    rm -rf "$work/mcpxhle"
+    python3 "$here/test-mcpx-hle.py" "$core" "$h" "$work/mcpxhle"
+    ;;
+esac
 # The voice processor's own functions, lifted from vp.c: decoding, the
 # resampler, filters, gains, voice ends and the frame's voice list
 TAIL_TEST_CFLAGS="-fno-wrapv -fsanitize=undefined -fsanitize-undefined-trap-on-error" \
@@ -519,10 +548,21 @@ r=$?
 set -e
 case $r in
 0) ;;
-3) echo "no Vulkan device: skipped" ;;
+3) echo "no Vulkan device: skipped"; novk=1 ;;
 *) echo "FAIL: the Vulkan run exited $r"; exit 1 ;;
 esac
 done
+# Production Vulkan copies on that device, under the validation layer
+case $core in
+*.so)
+    if [ -z "$novk" ]; then
+        python3 "$here/test-vulkan-cube-crop.py" "$here/../.." "$cc"
+        python3 "$here/test-vulkan-linear-span.py" "$here/../.." "$cc"
+        python3 "$here/test-vulkan-rgb-snorm.py" "$here/../.." "$cc"
+        python3 "$here/test-vulkan-volume-blocks.py" "$here/../.." "$cc"
+    fi
+    ;;
+esac
 
 # The display (rom/gpu.c): the NV2A programmed from bare metal, a surface
 # cleared red and shown, then left alone - another surface drawn and a
