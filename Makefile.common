@@ -491,6 +491,7 @@ SOURCES_UTIL := \
 	$(CORE_DIR)/util/range.c \
 	$(CORE_DIR)/util/rc4.c \
 	$(CORE_DIR)/util/rcu.c \
+	$(CORE_DIR)/util/process-barrier.c \
 	$(CORE_DIR)/util/readline.c \
 	$(CORE_DIR)/util/reserved-region.c \
 	$(CORE_DIR)/util/sha1.c \
