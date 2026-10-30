@@ -1325,6 +1325,37 @@ void gpu_main(void)
             triangle(); if (frame == 2380) disable_texture(); kick();
         }
         if (frame == 2400) ram32(0x00300068u, rd32(0x03700000u));
+        /* Reuse the retired GPU cube as RAM, changing its faces independently. */
+        if (frame == 2480) {
+            texture_alias_at(0xc0000006u, 32, 0x3f000000u, 0, 0x03600000u);
+            method(NV097_SET_TEXTURE_FORMAT, 1u | (1u << 2) | (2u << 4) |
+                   (1u << 3) | (6u << 8) | (1u << 16) | (4u << 20) | (4u << 24));
+            method(NV097_SET_SHADER_STAGE_PROGRAM, 3);
+            method(0x1a00u + 9 * 16, 0x3f800000u);
+            method(0x1a00u + 9 * 16 + 4, 0);
+            method(0x1a00u + 9 * 16 + 8, 0);
+            method(0x1a00u + 9 * 16 + 12, 0x3f800000u);
+            triangle(); kick();
+        }
+        if (frame == 2520 || frame == 2580) {
+            texture_cpu_barrier();
+            u32 face = frame == 2520 ? 0 : 1;
+            for (u32 offset = 0; offset < 1024; offset += 4)
+                ram32(0x03600000u + face * 1024 + offset,
+                      face ? 0xffffff00u : 0xff00ff00u);
+        }
+        if (frame == 2540) method(NV097_SET_TEXTURE_FILTER, 0x02020000u);
+        if (frame == 2560) method(0x1a00u + 9 * 16, 0xbf800000u); /* -X */
+        if (frame == 2600) method(0x1a00u + 9 * 16, 0x3f800000u); /* +X */
+        if (frame >= 2481 && frame <= 2620) {
+            method(NV097_SET_SURFACE_COLOR_OFFSET, SURF_D);
+            triangle(); if (frame == 2620) disable_texture(); kick();
+        }
+        if (frame == 2640) {
+            ram32(0x00300070u, rd32(0x03600000u));
+            ram32(0x00300074u, rd32(0x03600400u));
+            ram32(0x00300078u, rd32(0x03600800u));
+        }
         method(NV097_FLIP_INCREMENT_WRITE, 0);
         kick();
         if (frame >= 100 && frame < 125) {

@@ -646,6 +646,35 @@ elif [ "$r" != 3 ]; then
   echo "FAIL: depth transition exited $r"; exit 1
 fi
 
+# Retired GPU cube -> RAM: independent CPU face edits with unchanged bindings.
+for cube_api in gl vk; do
+  cube_api_args="--opt xemu_renderer=opengl"
+  if [ "$cube_api" = vk ]; then
+    cube_api_args="--vulkan --opt xemu_renderer=vulkan"
+  fi
+  set +e
+  timeout 300 $h "$core" "$work/sysg" $vp $cube_api_args \
+    --opt xemu_memory=64 --opt xemu_surface_scale=1 --frames 2660 --strict \
+    --pixel 2490 --pixel 2530 --pixel 2550 --pixel 2570 --pixel 2590 \
+    --pixel 2610 --pixel 2650 --peek 0x300070 --peek 0x300074 --peek 0x300078 \
+    >"$work/gpu_cube_transition_$cube_api.txt"
+  r=$?
+  set -e
+  if [ "$r" = 0 ]; then
+    for want in "pixel_2490=0xff0000" "pixel_2530=0x00ff00" \
+                "pixel_2550=0x00ff00" "pixel_2570=0x0000ff" \
+                "pixel_2590=0xffff00" "pixel_2610=0x00ff00" \
+                "pixel_2650=0x00ff00" "peek_0x300070=0xff00ff00" \
+                "peek_0x300074=0xffffff00" "peek_0x300078=0xff0000ff"; do
+      grep -q "^$want$" "$work/gpu_cube_transition_$cube_api.txt" || {
+        echo "FAIL: $cube_api cube transition: $want"; exit 1;
+      }
+    done
+  elif [ "$r" != 3 ]; then
+    echo "FAIL: $cube_api cube transition exited $r"; exit 1
+  fi
+done
+
 # A savestate taken while surfaces live only on the GPU (rom/gpu.c: before
 # run 64, B drawn and its depth cleared at frame 62, nothing read back), then
 # loaded in a new process, which has no GPU surfaces: the depth the guest

@@ -582,3 +582,13 @@ then clears the depth source on the GPU at 2360. Display captures must go white
 (2290), black (2330/2350), then white (2370/2410). CPU markers verify zero after
 the CPU rewrite and `0x80008000` after the GPU rewrite. The standard test uses
 scale 2. This adds regression coverage without changing renderer behavior.
+
+The cubemap transition case reuses the retired GPU cube as RAM at 2480, writes
++X green at 2520, changes filtering at 2540, selects unchanged -X blue at 2560,
+writes -X yellow at 2580, then switches back to +X green at 2600. Draws explicitly
+select displayed D. The +X and -X edits resend no texture binding state; a backend
+semaphore orders prior sampling before each CPU write. Captures verify red,
+green, green, blue, yellow, green, green at 2490/2530/2550/2570/2590/2610/2650.
+CPU words 0x00300070/74/78 verify green +X, yellow -X and untouched blue +Y.
+The standard test covers OpenGL and Vulkan at 1x, exercising whole-cube hashing
+and face strides after GPU-copy provenance has been replaced by RAM data.
