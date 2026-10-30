@@ -21,6 +21,7 @@
 
 #include "qapi/qapi-builtin-types.h"
 #include "qemu/module.h"
+#include <retro_atomic.h>
 
 struct TypeImpl;
 typedef struct TypeImpl *Type;
@@ -136,8 +137,9 @@ struct ObjectClass
     Type type;
     GSList *interfaces;
 
-    const char *object_cast_cache[OBJECT_CLASS_CAST_CACHE];
-    const char *class_cast_cache[OBJECT_CLASS_CAST_CACHE];
+    /* type names (const char *) */
+    retro_atomic_ptr_t object_cast_cache[OBJECT_CLASS_CAST_CACHE];
+    retro_atomic_ptr_t class_cast_cache[OBJECT_CLASS_CAST_CACHE];
 
     ObjectUnparent *unparent;
 
@@ -162,7 +164,7 @@ struct Object
     ObjectClass *class;
     ObjectFree *free;
     GHashTable *properties;
-    uint32_t ref;
+    retro_atomic_int_t ref;
     Object *parent;
 };
 

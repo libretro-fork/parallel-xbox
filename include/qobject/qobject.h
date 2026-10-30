@@ -32,13 +32,13 @@
 #ifndef QOBJECT_H
 #define QOBJECT_H
 
-#include "qemu/atomic.h"
+#include <retro_atomic.h>
 #include "qapi/qapi-builtin-types.h"
 
 /* Not for use outside include/qobject/ */
 struct QObjectBase_ {
     QType type;
-    size_t refcnt;
+    retro_atomic_size_t refcnt;
 };
 
 /* this struct must have no other members than base */
@@ -74,7 +74,7 @@ QEMU_BUILD_BUG_MSG(QTYPE__MAX != 7,
 static inline void qobject_ref_impl(QObject *obj)
 {
     if (obj) {
-        qatomic_inc(&obj->base.refcnt);
+        retro_atomic_inc_size(&obj->base.refcnt);
     }
 }
 
@@ -95,8 +95,8 @@ void qobject_destroy(QObject *obj);
 
 static inline void qobject_unref_impl(QObject *obj)
 {
-    assert(!obj || obj->base.refcnt);
-    if (obj && qatomic_fetch_dec(&obj->base.refcnt) == 1) {
+    assert(!obj || retro_atomic_load_relaxed_size(&obj->base.refcnt));
+    if (obj && retro_atomic_fetch_sub_size(&obj->base.refcnt, 1) == 1) {
         qobject_destroy(obj);
     }
 }

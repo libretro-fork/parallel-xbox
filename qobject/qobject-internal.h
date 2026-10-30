@@ -15,7 +15,7 @@
 static inline void qobject_init(QObject *obj, QType type)
 {
     assert(QTYPE_NONE < type && type < QTYPE__MAX);
-    obj->base.refcnt = 1;
+    retro_atomic_size_init(&obj->base.refcnt, 1);
     obj->base.type = type;
 }
 

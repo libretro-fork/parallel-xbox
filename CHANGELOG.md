@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- QEMU's own atomics (qemu/atomic.h) are moving onto libretro-common's retro_atomic.h, as the emulated GPU and sound chip already did: so far the object and QObject reference counts and the QOM cast caches. Nothing changes for someone using the core.
+
 - OpenGL refreshes render-target surface age when its GPU texture copy is sampled, including unchanged-state reuse and cubemap sources. Actively sampled sources no longer expire into a readback and native texture re-upload after 60 frames.
 
 - Vulkan keeps compatible surface images alive while bound texture views are still sampled, including unchanged-state draws. This avoids expiry-triggered readback and private texture upload during continued GPU sampling. Surfaces still expire after sampling stops.

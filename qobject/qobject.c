@@ -37,7 +37,7 @@ static void (*qdestroy[QTYPE__MAX])(QObject *) = {
 
 void qobject_destroy(QObject *obj)
 {
-    assert(!obj->base.refcnt);
+    assert(!retro_atomic_load_relaxed_size(&obj->base.refcnt));
     assert(QTYPE_QNULL < obj->base.type && obj->base.type < QTYPE__MAX);
     qdestroy[obj->base.type](obj);
 }

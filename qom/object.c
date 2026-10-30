@@ -728,7 +728,7 @@ static void object_finalize(void *data)
     object_property_del_all(obj);
     object_deinit(obj, ti);
 
-    g_assert(obj->ref == 0);
+    g_assert(retro_atomic_load_relaxed_int(&obj->ref) == 0);
     g_assert(obj->parent == NULL);
     if (obj->free) {
         obj->free(obj);
@@ -834,7 +834,8 @@ Object *object_dynamic_cast_assert(Object *obj, const char *typename,
     Object *inst;
 
     for (i = 0; obj && i < OBJECT_CLASS_CAST_CACHE; i++) {
-        if (qatomic_read(&obj->class->object_cast_cache[i]) == typename) {
+        if (retro_atomic_load_relaxed_ptr(&obj->class->object_cast_cache[i])
+            == typename) {
             goto out;
         }
     }
@@ -851,10 +852,11 @@ Object *object_dynamic_cast_assert(Object *obj, const char *typename,
 
     if (obj && obj == inst) {
         for (i = 1; i < OBJECT_CLASS_CAST_CACHE; i++) {
-            qatomic_set(&obj->class->object_cast_cache[i - 1],
-                       qatomic_read(&obj->class->object_cast_cache[i]));
+            retro_atomic_store_relaxed_ptr(&obj->class->object_cast_cache[i - 1],
+                retro_atomic_load_relaxed_ptr(&obj->class->object_cast_cache[i]));
         }
-        qatomic_set(&obj->class->object_cast_cache[i - 1], typename);
+        retro_atomic_store_relaxed_ptr(&obj->class->object_cast_cache[i - 1],
+                                       (void *)typename);
     }
 
 out:
@@ -924,7 +926,8 @@ ObjectClass *object_class_dynamic_cast_assert(ObjectClass *class,
     int i;
 
     for (i = 0; class && i < OBJECT_CLASS_CAST_CACHE; i++) {
-        if (qatomic_read(&class->class_cast_cache[i]) == typename) {
+        if (retro_atomic_load_relaxed_ptr(&class->class_cast_cache[i])
+            == typename) {
             ret = class;
             goto out;
         }
@@ -945,10 +948,11 @@ ObjectClass *object_class_dynamic_cast_assert(ObjectClass *class,
 #ifdef CONFIG_QOM_CAST_DEBUG
     if (class && ret == class) {
         for (i = 1; i < OBJECT_CLASS_CAST_CACHE; i++) {
-            qatomic_set(&class->class_cast_cache[i - 1],
-                       qatomic_read(&class->class_cast_cache[i]));
+            retro_atomic_store_relaxed_ptr(&class->class_cast_cache[i - 1],
+                retro_atomic_load_relaxed_ptr(&class->class_cast_cache[i]));
         }
-        qatomic_set(&class->class_cast_cache[i - 1], typename);
+        retro_atomic_store_relaxed_ptr(&class->class_cast_cache[i - 1],
+                                       (void *)typename);
     }
 out:
 #endif
@@ -1130,12 +1134,12 @@ GSList *object_class_get_list_sorted(const char *implements_type,
 Object *object_ref(void *objptr)
 {
     Object *obj = OBJECT(objptr);
-    uint32_t ref;
+    int ref;
 
     if (!obj) {
         return NULL;
     }
-    ref = qatomic_fetch_inc(&obj->ref);
+    ref = retro_atomic_fetch_add_int(&obj->ref, 1);
     /* Assert waaay before the integer overflows */
     g_assert(ref < INT_MAX);
     return obj;
@@ -1147,10 +1151,10 @@ void object_unref(void *objptr)
     if (!obj) {
         return;
     }
-    g_assert(obj->ref > 0);
+    g_assert(retro_atomic_load_relaxed_int(&obj->ref) > 0);
 
     /* parent always holds a reference to its children */
-    if (qatomic_fetch_dec(&obj->ref) == 1) {
+    if (retro_atomic_fetch_sub_int(&obj->ref, 1) == 1) {
         object_finalize(obj);
     }
 }
