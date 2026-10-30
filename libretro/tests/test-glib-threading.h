@@ -1,4 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
+#include <stdint.h>
+
 /* Included by test-glib.c so both the shim and system GLib run this oracle. */
 #ifdef _WIN32
 #include <windows.h>
@@ -22,9 +24,12 @@ static GHashTable *threaded_hash;
 static GTree *threaded_tree;
 static GDateTime *threaded_date;
 static void *threaded_default;
+static GData *threaded_data;
 
 static GLIB_TEST_FN glib_test_thread(void *opaque)
 {
+    gchar data_key[40];
+    snprintf(data_key, sizeof(data_key), "worker-%u", (unsigned)(uintptr_t)opaque);
     __atomic_add_fetch(&threading_ready, 1, __ATOMIC_RELEASE);
     while (!__atomic_load_n(&threading_start, __ATOMIC_ACQUIRE)) {
         GLIB_TEST_YIELD();
@@ -47,6 +52,13 @@ static GLIB_TEST_FN glib_test_thread(void *opaque)
             strcmp(g_quark_to_string(q), name)) {
             __atomic_add_fetch(&threading_failures, 1, __ATOMIC_RELAXED);
         }
+    }
+    for (unsigned i = 1; i <= 512; i++) {
+        g_datalist_set_data(&threaded_data, data_key, GUINT_TO_POINTER(i));
+        if (g_datalist_get_data(&threaded_data, data_key) != GUINT_TO_POINTER(i)) {
+            __atomic_add_fetch(&threading_failures, 1, __ATOMIC_RELAXED);
+        }
+        g_datalist_remove_data(&threaded_data, data_key);
     }
     for (unsigned i = 0; i < 50000; i++) {
         g_date_time_ref(threaded_date);
@@ -77,10 +89,10 @@ static void test_threading(void)
     for (unsigned i = 0; i < GLIB_TEST_THREADS; i++) {
 #ifdef _WIN32
         threads[i] = (HANDLE)_beginthreadex(NULL, 0, glib_test_thread,
-                                          NULL, 0, NULL);
+                                          (void *)(uintptr_t)(i + 1), 0, NULL);
         CHECK(threads[i] != NULL);
 #else
-        CHECK(!pthread_create(&threads[i], NULL, glib_test_thread, NULL));
+        CHECK(!pthread_create(&threads[i], NULL, glib_test_thread, (void *)(uintptr_t)(i + 1)));
 #endif
     }
     while (__atomic_load_n(&threading_ready, __ATOMIC_ACQUIRE) != GLIB_TEST_THREADS) {
@@ -96,6 +108,7 @@ static void test_threading(void)
 #endif
     }
     CHECK(threading_failures == 0 && destroyed == 0);
+    g_datalist_clear(&threaded_data);
     g_ptr_array_unref(threaded_array);
     g_hash_table_unref(threaded_hash);
     g_tree_unref(threaded_tree);

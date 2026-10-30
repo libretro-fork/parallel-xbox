@@ -48,6 +48,114 @@ static gboolean remove_odd(gpointer k, gpointer v, gpointer d)
     return GPOINTER_TO_INT(v) & 1;
 }
 
+static GHashTable *reentrant_hash;
+static gboolean clear_from_key_destroy;
+static int reentrant_destroyed;
+
+static void reentrant_key_destroy(gpointer key)
+{
+    reentrant_destroyed++;
+    if (clear_from_key_destroy) {
+        clear_from_key_destroy = FALSE;
+        CHECK(GPOINTER_TO_INT(g_hash_table_lookup(reentrant_hash, "reentrant-99")) == 999);
+        g_hash_table_remove_all(reentrant_hash);
+    }
+    g_free(key);
+}
+
+static void test_hash_reentrant_replace(void)
+{
+    reentrant_hash = g_hash_table_new_full(g_str_hash, g_str_equal,
+                                          reentrant_key_destroy, NULL);
+    for (int i = 0; i < 100; i++) {
+        g_hash_table_insert(reentrant_hash, g_strdup_printf("reentrant-%d", i),
+                            GINT_TO_POINTER(i));
+    }
+    clear_from_key_destroy = TRUE;
+    g_hash_table_replace(reentrant_hash, g_strdup("reentrant-99"),
+                         GINT_TO_POINTER(999));
+    CHECK(g_hash_table_size(reentrant_hash) == 0);
+    CHECK(reentrant_destroyed == 101);
+    g_hash_table_unref(reentrant_hash);
+}
+
+static gboolean insert_from_destroy;
+static void reentrant_insert_destroy(gpointer key)
+{
+    reentrant_destroyed++;
+    if (insert_from_destroy) {
+        insert_from_destroy = FALSE;
+        CHECK(g_hash_table_size(reentrant_hash) == 0);
+        g_hash_table_insert(reentrant_hash, g_strdup("survivor"),
+                            GINT_TO_POINTER(123));
+    }
+    g_free(key);
+}
+
+static void test_hash_reentrant_clear(void)
+{
+    reentrant_destroyed = 0;
+    reentrant_hash = g_hash_table_new_full(g_str_hash, g_str_equal,
+                                          reentrant_insert_destroy, NULL);
+    for (int i = 0; i < 100; i++) {
+        g_hash_table_insert(reentrant_hash, g_strdup_printf("clear-%d", i), NULL);
+    }
+    insert_from_destroy = TRUE;
+    g_hash_table_remove_all(reentrant_hash);
+    CHECK(g_hash_table_size(reentrant_hash) == 1);
+    CHECK(GPOINTER_TO_INT(g_hash_table_lookup(reentrant_hash, "survivor")) == 123);
+    CHECK(reentrant_destroyed == 100);
+    g_hash_table_unref(reentrant_hash);
+    CHECK(reentrant_destroyed == 101);
+}
+
+static int replacement_unref_count;
+static void replacement_unref(gpointer pointer)
+{
+    replacement_unref_count++;
+}
+
+static void test_hash_same_reference(void)
+{
+    int object;
+    GHashTable *h = g_hash_table_new_full(g_direct_hash, g_direct_equal,
+                                         replacement_unref, replacement_unref);
+    replacement_unref_count = 0;
+    g_hash_table_insert(h, &object, &object);
+    g_hash_table_replace(h, &object, &object);
+    CHECK(replacement_unref_count == 2);
+    g_hash_table_insert(h, &object, &object);
+    CHECK(replacement_unref_count == 4);
+    g_hash_table_unref(h);
+    CHECK(replacement_unref_count == 6);
+}
+
+static GData *reentrant_data;
+static gboolean clear_from_data_destroy;
+static int data_destroyed;
+static void reentrant_data_destroy(gpointer data)
+{
+    data_destroyed++;
+    if (clear_from_data_destroy) {
+        clear_from_data_destroy = FALSE;
+        CHECK(GPOINTER_TO_INT(g_datalist_get_data(&reentrant_data, "slot")) == 2);
+        g_datalist_clear(&reentrant_data);
+    }
+}
+
+static void test_datalist_reentrant_replace(void)
+{
+    g_datalist_init(&reentrant_data);
+    g_datalist_set_data_full(&reentrant_data, "slot", GINT_TO_POINTER(1),
+                             reentrant_data_destroy);
+    clear_from_data_destroy = TRUE;
+    g_datalist_set_data_full(&reentrant_data, "slot", GINT_TO_POINTER(2),
+                             reentrant_data_destroy);
+    CHECK(g_datalist_get_data(&reentrant_data, "slot") == NULL);
+    CHECK(data_destroyed == 2);
+    g_datalist_clear(&reentrant_data);
+}
+
 static void test_hash(void)
 {
     GHashTable *h = g_hash_table_new_full(g_str_hash, g_str_equal,
@@ -612,6 +720,10 @@ int main(int argc, char **argv)
 
     test_threading();
     test_hash();
+    test_hash_reentrant_replace();
+    test_hash_reentrant_clear();
+    test_hash_same_reference();
+    test_datalist_reentrant_replace();
     test_tree();
     test_lists();
     test_arrays();

@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Fix GLib hash-table replacement writing through a stale slot after a destructor clears/resizes the table, and keyed-data replacement using a freed node after recursive cleanup. Hash clearing now detaches old entries before callbacks, replacement releases discarded references even for equal pointers, and keyed-data operations serialize their list access.
+
 - A failed qcow2 metadata sync remains pending, so later flushes retry the host sync instead of silently reporting success. Successful syncs still let clean flushes skip host I/O.
 
 - Correct the test frontend's Vulkan close/reopen lifecycle: tear down the old device and negotiate a fresh device before resetting the core context. This removes a harness-only reload crash and stale GPU handles; it is not a fix for the reported RetroArch heap corruption.

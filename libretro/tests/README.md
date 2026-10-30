@@ -776,3 +776,9 @@ context destruction and negotiates a new device before context reset. It clears
 old command/fence/readback/query handles and balances loader/queue-lock lifetime.
 
 The qcow2 fixture injects two consecutive sync failures after a metadata change, requires both errors to propagate, then performs a real successful host sync. A following clean flush must skip host I/O. This guards retry behavior without replacing the real file backend.
+
+GLib callback regressions replace a hash entry whose key destructor clears and
+resizes the table, insert a surviving entry from a clear callback, replace the
+same referenced key/value pointers, and clear a datalist from its replacement
+destructor. The same cases pass against system GLib. The concurrency test also
+sets, reads and removes 16 independent datalist keys on the shared list.

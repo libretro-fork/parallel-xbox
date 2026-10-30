@@ -12,6 +12,7 @@
 
 #include "glib.h"
 #include <retro_atomic.h>
+#include <retro_timers.h>
 
 /* ---- arrays --------------------------------------------------------------- */
 
@@ -1261,12 +1262,36 @@ static void g_hash_clear_slot(GHashTable *t, guint i, gboolean notify)
 
 void g_hash_table_remove_all(GHashTable *t)
 {
-    for (guint i = 0; i < t->size; i++) {
-        if (t->hashes[i] >= 2) {
-            g_hash_clear_slot(t, i, TRUE);
+    guint size = t->size;
+    guint *hashes = t->hashes;
+    gpointer *keys = t->keys, *values = t->values;
+    GDestroyNotify key_destroy = t->key_destroy_func;
+    GDestroyNotify value_destroy = t->value_destroy_func;
+
+    if (!t->nnodes) {
+        memset(hashes, 0, (gsize)size * sizeof(*hashes));
+        t->noccupied = 0;
+        return;
+    }
+    /* Destructors may recursively clear, insert or remove. Detach the old
+     * entries first: callbacks see an empty table and own their mutations.
+     */
+    g_hash_alloc(t, 8);
+    t->nnodes = 0;
+    t->version++;
+    for (guint i = 0; i < size; i++) {
+        if (hashes[i] >= 2) {
+            if (key_destroy) {
+                key_destroy(keys[i]);
+            }
+            if (value_destroy) {
+                value_destroy(values[i]);
+            }
         }
     }
-    g_hash_maybe_resize(t);
+    g_free(hashes);
+    g_free(keys);
+    g_free(values);
 }
 
 GHashTable *g_hash_table_ref(GHashTable *t)
@@ -1299,17 +1324,24 @@ static gboolean g_hash_insert(GHashTable *t, gpointer key, gpointer value,
 
     if (i != ~0u) {
         gpointer old_key = t->keys[i], old_value = t->values[i];
+        gpointer discarded_key = keep_new_key ? old_key : key;
+        GDestroyNotify key_destroy = t->key_destroy_func;
+        GDestroyNotify value_destroy = t->value_destroy_func;
+
+        /* Destroy callbacks may remove entries and resize this table. Publish
+         * the complete replacement before calling them, and never reuse i
+         * afterwards. The callbacks own the discarded references, even when
+         * a caller supplies the same pointer with another reference.
+         */
         if (keep_new_key) {
             t->keys[i] = key;
-            if (t->key_destroy_func && old_key != key) {
-                t->key_destroy_func(old_key);
-            }
-        } else if (t->key_destroy_func && old_key != key) {
-            t->key_destroy_func(key);
         }
         t->values[i] = value;
-        if (t->value_destroy_func && old_value != value) {
-            t->value_destroy_func(old_value);
+        if (key_destroy) {
+            key_destroy(discarded_key);
+        }
+        if (value_destroy) {
+            value_destroy(old_value);
         }
         return FALSE;
     }
@@ -2094,56 +2126,84 @@ struct _GData {
     GData *next;
 };
 
+/* GLib serializes access to a datalist, but calls user destructors unlocked. */
+static retro_atomic_int_t g_datalist_lock;
+
+static void g_datalist_acquire(void)
+{
+    while (!retro_atomic_cas_int(&g_datalist_lock, 0, 1)) {
+        retro_sleep(0);
+    }
+}
+
+static void g_datalist_release(void)
+{
+    retro_atomic_store_release_int(&g_datalist_lock, 0);
+}
+
 gpointer g_datalist_get_data(GData **datalist, const gchar *key)
 {
     GQuark q = g_quark_try_string(key);
+    gpointer data = NULL;
 
+    g_datalist_acquire();
     for (GData *d = *datalist; q && d; d = d->next) {
         if (d->key == q) {
-            return d->data;
+            data = d->data;
+            break;
         }
     }
-    return NULL;
+    g_datalist_release();
+    return data;
 }
 
 void g_datalist_id_set_data_full(GData **datalist, GQuark key_id,
                                  gpointer data, GDestroyNotify destroy_func)
 {
     GData **p = datalist, *d;
+    GDestroyNotify old_destroy = NULL;
+    gpointer old_data = NULL;
 
     if (!key_id) {
         return;
     }
+    g_datalist_acquire();
     while (*p && (*p)->key != key_id) {
         p = &(*p)->next;
     }
     d = *p;
     if (d) {
-        if (d->destroy) {
-            d->destroy(d->data);
-        }
+        old_destroy = d->destroy;
+        old_data = d->data;
         if (!data) {
             *p = d->next;
             g_free(d);
-            return;
+            d = NULL;
         }
-    } else {
-        if (!data) {
-            return;
-        }
+    } else if (data) {
         d = g_new0(GData, 1);
         d->key = key_id;
         *p = d;
     }
-    d->data = data;
-    d->destroy = destroy_func;
+    if (d) {
+        d->data = data;
+        d->destroy = destroy_func;
+    }
+    g_datalist_release();
+    /* A callback may clear or replace this list: no node accesses follow. */
+    if (old_destroy) {
+        old_destroy(old_data);
+    }
 }
 
 void g_datalist_clear(GData **datalist)
 {
-    GData *d = *datalist;
+    GData *d;
 
+    g_datalist_acquire();
+    d = *datalist;
     *datalist = NULL;
+    g_datalist_release();
     while (d) {
         GData *n = d->next;
         if (d->destroy) {
