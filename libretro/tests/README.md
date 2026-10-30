@@ -290,7 +290,10 @@ The harness's options are listed at the top of `harness.c`.
 The OpenGL byte reinterpretation oracle runs the production transfer and
 native-size shrink functions in a surfaceless EGL context. It checks every
 RGB565 word at 1x, 2x and 4x, repeated source updates, and pixel-store/PBO state
-restoration. On Linux with EGL/OpenGL development libraries installed, run:
+restoration. It also runs the production asynchronous download function and
+checks native depth allocation, scaled color storage, buffer growth/reuse and
+returned pixels at 1x/2x/4x. On Linux with EGL/OpenGL development libraries
+installed, run:
 
 ```sh
 python3 libretro/tests/test-gl-texture-reinterpret.py .

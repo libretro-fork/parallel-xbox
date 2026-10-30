@@ -11,12 +11,18 @@
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof((a)[0]))
 typedef struct {
     GLenum gl_internal_format, gl_format, gl_type, gl_attachment;
+    unsigned bytes_per_pixel;
 } Format;
 typedef struct {
     bool color;
     unsigned width, height, pitch;
     GLuint gl_buffer;
     Format fmt;
+    GLuint dl_pbo;
+    size_t dl_pbo_size;
+    GLsync dl_fence;
+    int dl_draw_time, draw_time;
+    bool dl_native, dl_swz;
 } SurfaceBinding;
 typedef struct { GLuint gl_texture; } TextureBinding;
 typedef struct {
@@ -30,9 +36,10 @@ typedef struct {
     unsigned surface_scale_factor;
 } PGRAPHState;
 typedef struct { PGRAPHState pgraph; } NV2AState;
-enum { NV2A_PROF_SURF_TO_TEX_REINTERPRET };
+enum { NV2A_PROF_SURF_TO_TEX_REINTERPRET, NV2A_PROF_SURF_DOWNLOAD };
 static unsigned conversions;
-static void nv2a_profile_inc_counter(int id) { (void)id; conversions++; }
+static void nv2a_profile_inc_counter(int id)
+{ if (id == NV2A_PROF_SURF_TO_TEX_REINTERPRET) conversions++; }
 static void pgraph_gl_draw_state_invalidate(PGRAPHGLState *r) { (void)r; }
 static void pgraph_gl_tex_shadow_invalidate(PGRAPHGLState *r) { (void)r; }
 static void pgraph_apply_scaling_factor(PGRAPHState *pg, unsigned *w, unsigned *h)
@@ -41,7 +48,85 @@ static void fb_bind(PGRAPHGLState *r, GLuint fbo)
 { glBindFramebuffer(GL_FRAMEBUFFER, fbo); r->fb_bound = fbo; }
 static void bind_current_surface(NV2AState *d)
 { fb_bind(d->pgraph.gl_renderer_state, 0); }
+/* Swizzled rendering is covered by the guest GPU fixture. This oracle
+ * exercises linear color and depth download sizing with real GL transfers. */
+static bool surface_swizzle_on_gpu(NV2AState *d, SurfaceBinding *surface)
+{ (void)d; (void)surface; return false; }
 /* PRODUCTION */
+
+static void check_download_storage(NV2AState *d)
+{
+    PGRAPHGLState *r = d->pgraph.gl_renderer_state;
+    for (unsigned color = 0; color <= 1; color++) {
+        SurfaceBinding s = {
+            .color = color, .width = 32, .height = 16,
+            .pitch = color ? 128 : 64,
+            .fmt = color ? (Format){ GL_RGBA8, GL_BGRA,
+                GL_UNSIGNED_INT_8_8_8_8_REV, GL_COLOR_ATTACHMENT0, 4 } :
+                (Format){ GL_DEPTH_COMPONENT16, GL_DEPTH_COMPONENT,
+                          GL_UNSIGNED_SHORT, GL_DEPTH_ATTACHMENT, 2 }
+        };
+        glGenTextures(1, &s.gl_buffer);
+        /* Grow a reused PBO, then return to native scale. Native-converted
+         * depth must never allocate scale-squared storage. */
+        const unsigned scales[] = {1, 2, 4, 1};
+        for (unsigned pass = 0; pass < ARRAY_SIZE(scales); pass++) {
+            unsigned scale = scales[pass], bpp = color ? 4 : 2;
+            d->pgraph.surface_scale_factor = scale;
+            unsigned w = s.width * scale, h = s.height * scale;
+            uint8_t *pixels = malloc((size_t)w * h * bpp);
+            assert(pixels);
+            for (unsigned y = 0; y < h; y++) {
+                for (unsigned x = 0; x < w; x++) {
+                    unsigned value = (x / scale) + (y / scale) * s.width;
+                    for (unsigned c = 0; c < bpp; c++) {
+                        pixels[(y * w + x) * bpp + c] =
+                            (value * 71 + c * 39 + pass * 17) & 255;
+                    }
+                }
+            }
+            glBindTexture(GL_TEXTURE_2D, s.gl_buffer);
+            glTexImage2D(GL_TEXTURE_2D, 0, s.fmt.gl_internal_format, w, h,
+                         0, s.fmt.gl_format, s.fmt.gl_type, pixels);
+            surface_download_issue(d, &s);
+            GLenum result = glClientWaitSync(s.dl_fence,
+                GL_SYNC_FLUSH_COMMANDS_BIT, 5000000000ULL);
+            assert(result == GL_ALREADY_SIGNALED || result == GL_CONDITION_SATISFIED);
+            assert(glGetError() == GL_NO_ERROR);
+            unsigned rs = color ? scale : 1;
+            size_t expected_size = (size_t)rs * rs * s.pitch * s.height;
+            if (color && pass == 3) expected_size *= 16;
+            glBindBuffer(GL_PIXEL_PACK_BUFFER, s.dl_pbo);
+            GLint64 actual_size;
+            glGetBufferParameteri64v(GL_PIXEL_PACK_BUFFER, GL_BUFFER_SIZE, &actual_size);
+            assert((size_t)actual_size == expected_size);
+            assert(s.dl_pbo_size == expected_size);
+            const uint8_t *mapped = glMapBufferRange(GL_PIXEL_PACK_BUFFER,
+                0, s.dl_pbo_size, GL_MAP_READ_BIT);
+            assert(mapped);
+            for (unsigned y = 0; y < s.height * rs; y++) {
+                for (unsigned x = 0; x < s.width * rs; x++) {
+                    const uint8_t *want = pixels +
+                        (((color ? y : y * scale) * w) +
+                         (color ? x : x * scale)) * bpp;
+                    assert(!memcmp(mapped + (y * s.width * rs + x) * bpp,
+                                   want, bpp));
+                }
+            }
+            assert(glUnmapBuffer(GL_PIXEL_PACK_BUFFER));
+            glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+            free(pixels);
+            printf("download color=%u scale=%u: storage=%zu bytes; pixels exact\n",
+                   color, scale, s.dl_pbo_size);
+        }
+        glDeleteSync(s.dl_fence);
+        glDeleteBuffers(1, &s.dl_pbo);
+        glDeleteTextures(1, &s.gl_buffer);
+    }
+    glDeleteTextures(1, &r->dl_zshrink_tex);
+    glDeleteFramebuffers(1, &r->dl_zshrink_fbo);
+}
+
 
 int main(void)
 {
@@ -62,7 +147,7 @@ int main(void)
     SurfaceBinding surface = {
         .color = true, .width = 1024, .height = 32, .pitch = 4096,
         .fmt = { GL_RGBA8, GL_BGRA, GL_UNSIGNED_INT_8_8_8_8_REV,
-                 GL_COLOR_ATTACHMENT0 }
+                 GL_COLOR_ATTACHMENT0, 4 }
     };
     TextureBinding binding;
     glGenFramebuffers(1, &r.gl_fb_util);
@@ -129,6 +214,7 @@ int main(void)
         }
     }
     assert(conversions == 6);
+    check_download_storage(&d);
     glDeleteBuffers(1, &r.s2t_byte_pbo);
     glDeleteBuffers(2, sentinels);
     glDeleteTextures(1, &surface.gl_buffer);

@@ -1936,15 +1936,6 @@ static void surface_download_issue(NV2AState *d, SurfaceBinding *surface)
         surface->dl_fence = NULL;
     }
     unsigned int sf = pg->surface_scale_factor;
-    size_t need = (size_t)sf * sf * surface->pitch * surface->height;
-    if (!surface->dl_pbo) {
-        glGenBuffers(1, &surface->dl_pbo);
-    }
-    glBindBuffer(GL_PIXEL_PACK_BUFFER, surface->dl_pbo);
-    if (surface->dl_pbo_size < need) {
-        glBufferData(GL_PIXEL_PACK_BUFFER, need, NULL, GL_STREAM_READ);
-        surface->dl_pbo_size = need;
-    }
     nv2a_profile_inc_counter(NV2A_PROF_SURF_DOWNLOAD);
     fb_bind(r, r->gl_fb_util);
     glFramebufferTexture2D(GL_FRAMEBUFFER, surface->fmt.gl_attachment,
@@ -1957,6 +1948,17 @@ static void surface_download_issue(NV2AState *d, SurfaceBinding *surface)
     surface->dl_native = !surface->dl_swz && !surface->color &&
                          surface_shrink_on_gpu(pg, surface);
     unsigned int rs = surface->dl_native || surface->dl_swz ? 1 : sf;
+    /* Converted readbacks hold only native-size rows. Keep scaled storage
+     * for color evictions that can feed a replacement GPU surface. */
+    size_t need = (size_t)rs * rs * surface->pitch * surface->height;
+    if (!surface->dl_pbo) {
+        glGenBuffers(1, &surface->dl_pbo);
+    }
+    glBindBuffer(GL_PIXEL_PACK_BUFFER, surface->dl_pbo);
+    if (surface->dl_pbo_size < need) {
+        glBufferData(GL_PIXEL_PACK_BUFFER, need, NULL, GL_STREAM_READ);
+        surface->dl_pbo_size = need;
+    }
     glo_readpixels(surface->fmt.gl_format, surface->fmt.gl_type,
                    surface->fmt.bytes_per_pixel, rs * surface->pitch,
                    rs * surface->width, rs * surface->height, false, NULL);

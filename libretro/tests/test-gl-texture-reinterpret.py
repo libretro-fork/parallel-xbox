@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""GPU byte oracle using the production GL transfer and shrink functions.
+"""GPU byte/storage oracle using the production GL transfer and shrink functions.
 
 Requires Linux EGL/OpenGL development packages and a surfaceless EGL driver.
 Usage: python3 SCRIPT CHECKOUT
@@ -14,7 +14,10 @@ import tempfile
 repo = Path(sys.argv[1]).resolve()
 source = (repo / "hw/xbox/nv2a/pgraph/gl/surface.c").read_text()
 functions = []
-for name in ("surface_shrink_on_gpu", "pgraph_gl_reinterpret_surface_to_texture"):
+common = (repo / "hw/xbox/nv2a/pgraph/thirdparty/gloffscreen/common.c").read_text()
+source += "\n" + common
+for name in ("glo_readpixels", "surface_shrink_on_gpu",
+             "pgraph_gl_reinterpret_surface_to_texture", "surface_download_issue"):
     match = re.search(r"^(?:static )?(?:bool|void) " + name + r"\(", source, re.M)
     assert match
     start = source.index("{", match.start())
@@ -29,7 +32,7 @@ with tempfile.TemporaryDirectory(prefix="gl-alias-") as directory:
     folder = Path(directory)
     (folder / "test.c").write_text(code)
     subprocess.run([os.environ.get("CC", "cc"), "-O2", "-Wall", "-Wextra",
-                    "-Werror", str(folder / "test.c"), "-o", str(folder / "test"),
+                    "-Werror", "-Wno-sign-compare", str(folder / "test.c"), "-o", str(folder / "test"),
                     "-lEGL", "-lGL"], check=True)
     env = dict(os.environ, EGL_PLATFORM="surfaceless")
     subprocess.run([str(folder / "test")], env=env, check=True)
