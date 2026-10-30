@@ -12,7 +12,6 @@ QEMU_INCFLAGS := \
 	-I$(GEN_DIR) -I$(CORE_DIR) -I$(CORE_DIR)/libretro/glib \
 	-I$(CORE_DIR)/libretro-common/include \
 	-I$(GEN_DIR)/qapi -I$(GEN_DIR)/trace -I$(GEN_DIR)/ui -I$(GEN_DIR)/data \
-	-I$(GEN_DIR)/block \
 	$(OS_INCFLAGS) \
 	-iquote $(GEN_DIR) -iquote $(CORE_DIR) -iquote $(CORE_DIR)/include \
 	-iquote $(CORE_DIR)/host/include/$(HOST_INCLUDE_ARCH) \

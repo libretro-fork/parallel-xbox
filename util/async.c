@@ -33,7 +33,6 @@
 #include "qemu/lockcnt.h"
 #include "qemu/rcu_queue.h"
 #include "block/raw-aio.h"
-#include "qemu/coroutine_int.h"
 #include "qemu/coroutine-tls.h"
 #include "exec/icount.h"
 #include "trace.h"
@@ -386,9 +385,6 @@ aio_ctx_finalize(GSource *source)
     }
 #endif
 
-    assert(QSLIST_EMPTY(&ctx->scheduled_coroutines));
-    qemu_bh_delete(ctx->co_schedule_bh);
-
     /* There must be no aio_bh_poll() calls going on */
     assert(QSIMPLEQ_EMPTY(&ctx->bh_slice_list));
 
@@ -532,31 +528,6 @@ static void aio_context_notifier_poll_ready(EventNotifier *e)
     /* Do nothing, we just wanted to kick the event loop */
 }
 
-static void co_schedule_bh_cb(void *opaque)
-{
-    AioContext *ctx = opaque;
-    QSLIST_HEAD(, Coroutine) straight, reversed;
-
-    QSLIST_MOVE_ATOMIC(&reversed, &ctx->scheduled_coroutines);
-    QSLIST_INIT(&straight);
-
-    while (!QSLIST_EMPTY(&reversed)) {
-        Coroutine *co = QSLIST_FIRST(&reversed);
-        QSLIST_REMOVE_HEAD(&reversed, co_scheduled_next);
-        QSLIST_INSERT_HEAD(&straight, co, co_scheduled_next);
-    }
-
-    while (!QSLIST_EMPTY(&straight)) {
-        Coroutine *co = QSLIST_FIRST(&straight);
-        QSLIST_REMOVE_HEAD(&straight, co_scheduled_next);
-        trace_aio_co_schedule_bh_cb(ctx, co);
-
-        /* Protected by write barrier in qemu_aio_coroutine_enter */
-        qatomic_set(&co->scheduled, NULL);
-        qemu_aio_coroutine_enter(ctx, co);
-    }
-}
-
 AioContext *aio_context_new(Error **errp)
 {
     ERRP_GUARD();
@@ -598,9 +569,6 @@ AioContext *aio_context_new(Error **errp)
     g_source_set_can_recurse(&ctx->source, true);
     qemu_lockcnt_init(&ctx->list_lock);
 
-    ctx->co_schedule_bh = aio_bh_new(ctx, co_schedule_bh_cb, ctx);
-    QSLIST_INIT(&ctx->scheduled_coroutines);
-
     aio_set_event_notifier(ctx, &ctx->notifier,
                            aio_context_notifier_cb,
                            aio_context_notifier_poll,
@@ -630,91 +598,6 @@ AioContext *aio_context_new(Error **errp)
 fail:
     g_source_unref(&ctx->source);
     return NULL;
-}
-
-void aio_co_schedule(AioContext *ctx, Coroutine *co)
-{
-    trace_aio_co_schedule(ctx, co);
-    const char *scheduled = qatomic_cmpxchg(&co->scheduled, NULL,
-                                           __func__);
-
-    if (scheduled) {
-        fprintf(stderr,
-                "%s: Co-routine was already scheduled in '%s'\n",
-                __func__, scheduled);
-        abort();
-    }
-
-    /* The coroutine might run and release the last ctx reference before we
-     * invoke qemu_bh_schedule().  Take a reference to keep ctx alive until
-     * we're done.
-     */
-    aio_context_ref(ctx);
-
-    QSLIST_INSERT_HEAD_ATOMIC(&ctx->scheduled_coroutines,
-                              co, co_scheduled_next);
-    qemu_bh_schedule(ctx->co_schedule_bh);
-
-    aio_context_unref(ctx);
-}
-
-typedef struct AioCoRescheduleSelf {
-    Coroutine *co;
-    AioContext *new_ctx;
-} AioCoRescheduleSelf;
-
-static void aio_co_reschedule_self_bh(void *opaque)
-{
-    AioCoRescheduleSelf *data = opaque;
-    aio_co_schedule(data->new_ctx, data->co);
-}
-
-void coroutine_fn aio_co_reschedule_self(AioContext *new_ctx)
-{
-    AioContext *old_ctx = qemu_get_current_aio_context();
-
-    if (old_ctx != new_ctx) {
-        AioCoRescheduleSelf data = {
-            .co = qemu_coroutine_self(),
-            .new_ctx = new_ctx,
-        };
-        /*
-         * We can't directly schedule the coroutine in the target context
-         * because this would be racy: The other thread could try to enter the
-         * coroutine before it has yielded in this one.
-         */
-        aio_bh_schedule_oneshot(old_ctx, aio_co_reschedule_self_bh, &data);
-        qemu_coroutine_yield();
-    }
-}
-
-void aio_co_wake(Coroutine *co)
-{
-    AioContext *ctx;
-
-    /* Read coroutine before co->ctx.  Matches smp_wmb in
-     * qemu_coroutine_enter.
-     */
-    smp_read_barrier_depends();
-    ctx = qatomic_read(&co->ctx);
-
-    aio_co_enter(ctx, co);
-}
-
-void aio_co_enter(AioContext *ctx, Coroutine *co)
-{
-    if (ctx != qemu_get_current_aio_context()) {
-        aio_co_schedule(ctx, co);
-        return;
-    }
-
-    if (qemu_in_coroutine()) {
-        Coroutine *self = qemu_coroutine_self();
-        assert(self != co);
-        QSIMPLEQ_INSERT_TAIL(&self->co_queue_wakeup, co, co_queue_next);
-    } else {
-        qemu_aio_coroutine_enter(ctx, co);
-    }
 }
 
 void aio_context_ref(AioContext *ctx)

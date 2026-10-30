@@ -2872,3 +2872,6 @@ include/hw/s390x/adapter.h
 util/qsp.c
 include/qemu/qsp.h
 util/stats64.c
+block/block-gen.h
+block/coroutines.h
+include/qemu/coroutine_int.h

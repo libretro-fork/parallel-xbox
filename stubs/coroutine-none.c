@@ -34,11 +34,6 @@ void qemu_coroutine_enter(Coroutine *co)
     abort();
 }
 
-void qemu_aio_coroutine_enter(AioContext *ctx, Coroutine *co)
-{
-    abort();
-}
-
 void coroutine_fn qemu_coroutine_yield(void)
 {
     abort();

@@ -297,9 +297,6 @@ struct AioContext {
     bool notified;
     EventNotifier notifier;
 
-    QSLIST_HEAD(, Coroutine) scheduled_coroutines;
-    QEMUBH *co_schedule_bh;
-
     int thread_pool_min;
     int thread_pool_max;
     /* Thread pool for performing work and receiving completion callbacks.
@@ -714,70 +711,6 @@ static inline void aio_timer_init(AioContext *ctx,
  * Compute the timeout that a blocking aio_poll should use.
  */
 int64_t aio_compute_timeout(AioContext *ctx);
-
-/**
- * aio_co_schedule:
- * @ctx: the aio context
- * @co: the coroutine
- *
- * Start a coroutine on a remote AioContext.
- *
- * The coroutine must not be entered by anyone else while aio_co_schedule()
- * is active.  In addition the coroutine must have yielded unless ctx
- * is the context in which the coroutine is running (i.e. the value of
- * qemu_get_current_aio_context() from the coroutine itself).
- */
-void aio_co_schedule(AioContext *ctx, Coroutine *co);
-
-/**
- * aio_co_reschedule_self:
- * @new_ctx: the new context
- *
- * Move the currently running coroutine to new_ctx. If the coroutine is already
- * running in new_ctx, do nothing.
- *
- * Note that this function cannot reschedule from iohandler_ctx to
- * qemu_aio_context.
- */
-void coroutine_fn aio_co_reschedule_self(AioContext *new_ctx);
-
-/**
- * aio_co_wake:
- * @co: the coroutine
- *
- * Restart a coroutine on the AioContext where it was running last, thus
- * preventing coroutines from jumping from one context to another when they
- * go to sleep.
- *
- * aio_co_wake may be executed either in coroutine or non-coroutine
- * context.  The coroutine must not be entered by anyone else while
- * aio_co_wake() is active.
- *
- * If `co`'s AioContext differs from the current AioContext, this will call
- * aio_co_schedule(), which makes this safe to use even when `co` has not
- * yielded yet.  In such a case, it will be entered once it yields.
- *
- * In contrast, if `co`'s AioContext is equal to the current one, it is
- * required for `co` to currently be yielding.  This is generally the case
- * if the caller is not in `co` (i.e. invoked by `co`), because the only
- * other way for the caller to be running then is for `co` to currently be
- * yielding.
- *
- * Therefore, if there is no way for the caller to be invoked/entered by
- * `co`, it is generally safe to call this regardless of whether `co` is
- * known to already be yielding or not -- it only has to yield at some
- * point.
- */
-void aio_co_wake(Coroutine *co);
-
-/**
- * aio_co_enter:
- * @ctx: the context to run the coroutine
- * @co: the coroutine to run
- *
- * Enter a coroutine in the specified AioContext.
- */
-void aio_co_enter(AioContext *ctx, Coroutine *co);
 
 /**
  * Return the AioContext whose event loop runs in the current thread.

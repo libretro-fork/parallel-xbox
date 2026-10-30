@@ -85,11 +85,6 @@ struct QIOChannel {
     Object parent;
     unsigned int features; /* bitmask of QIOChannelFeatures */
     char *name;
-    AioContext *read_ctx;
-    Coroutine *read_coroutine;
-    AioContext *write_ctx;
-    Coroutine *write_coroutine;
-    bool follow_coroutine_ctx;
 #ifdef _WIN32
     HANDLE event; /* For use with GSource on Win32 */
 #endif
@@ -585,25 +580,6 @@ GSource *qio_channel_add_watch_source(QIOChannel *ioc,
                                       GMainContext *context);
 
 /**
- * qio_channel_yield:
- * @ioc: the channel object
- * @condition: the I/O condition to wait for
- *
- * Yields execution from the current coroutine until the condition
- * indicated by @condition becomes available.  @condition must
- * be either %G_IO_IN or %G_IO_OUT; it cannot contain both.  In
- * addition, no two coroutine can be waiting on the same condition
- * and channel at the same time.
- *
- * This must only be called from coroutine context. It is safe to
- * reenter the coroutine externally while it is waiting; in this
- * case the function will return even if @condition is not yet
- * available.
- */
-void coroutine_fn qio_channel_yield(QIOChannel *ioc,
-                                    GIOCondition condition);
-
-/**
  * qio_channel_wait:
  * @ioc: the channel object
  * @condition: the I/O condition to wait for
@@ -627,8 +603,7 @@ void qio_channel_wait(QIOChannel *ioc,
  * the condition indicated by @condition becomes
  * available.
  *
- * This will work with/without a coroutine context, by automatically select
- * the proper API to wait.
+ * The core runs no coroutines, so this is qio_channel_wait().
  */
 void qio_channel_wait_cond(QIOChannel *ioc,
                            GIOCondition condition);
@@ -642,8 +617,7 @@ void qio_channel_wait_cond(QIOChannel *ioc,
  * @io_write: the write handler
  * @opaque: the opaque value passed to the handler
  *
- * This is used internally by qio_channel_yield().  It can
- * be used by channel implementations to forward the handlers
+ * It can be used by channel implementations to forward the handlers
  * to another channel (e.g. from #QIOChannelTLS to the
  * underlying socket).
  *

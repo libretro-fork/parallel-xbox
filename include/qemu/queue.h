@@ -214,18 +214,6 @@ struct {                                                                \
         (head)->slh_first = (elm);                                       \
 } while (/*CONSTCOND*/0)
 
-#define QSLIST_INSERT_HEAD_ATOMIC(head, elm, field) do {                     \
-        typeof(elm) save_sle_next;                                           \
-        do {                                                                 \
-            save_sle_next = (elm)->field.sle_next = (head)->slh_first;       \
-        } while (qatomic_cmpxchg(&(head)->slh_first, save_sle_next, (elm)) !=\
-                 save_sle_next);                                             \
-} while (/*CONSTCOND*/0)
-
-#define QSLIST_MOVE_ATOMIC(dest, src) do {                               \
-        (dest)->slh_first = qatomic_xchg(&(src)->slh_first, NULL);       \
-} while (/*CONSTCOND*/0)
-
 #define QSLIST_REMOVE_HEAD(head, field) do {                             \
         typeof((head)->slh_first) elm = (head)->slh_first;               \
         (head)->slh_first = elm->field.sle_next;                         \

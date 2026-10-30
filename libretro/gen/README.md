@@ -1,14 +1,14 @@
 # Pregenerated sources
 
 QEMU's build generates part of the code it compiles: the QAPI types,
-visitors, commands and events (from `qapi/*.json`), the trace points (from
-the `trace-events` files), the configuration headers, the command line's
-option table (from `qemu-options.hx`), the keymaps, `block/block-gen.c` and the
+visitors, command declarations and events (from `qapi/*.json`), the trace
+points (from the `trace-events` files), the configuration headers, the
+command line's option table (from `qemu-options.hx`), the keymaps and the
 i386 GDB XML. The core is built by its Makefile alone, and the tree has no
 meson build any more, so they are here, made once by meson and committed:
-the files the core's objects compile or include, under the paths meson
-gives them in its build directory (the Makefile puts this directory first
-on the include path).
+the files the core's objects compile or include, under the paths meson gives
+them in its build directory (the Makefile puts this directory first on the
+include path).
 
 `config-host.h` chooses between `config-host-linux.h` and
 `config-host-win32.h` (the only generated file that differs between the

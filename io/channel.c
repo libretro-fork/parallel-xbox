@@ -419,144 +419,6 @@ void qio_channel_set_cork(QIOChannel *ioc,
 }
 
 
-static void qio_channel_restart_read(void *opaque)
-{
-    QIOChannel *ioc = opaque;
-    Coroutine *co = qatomic_xchg(&ioc->read_coroutine, NULL);
-
-    if (!co) {
-        return;
-    }
-
-    /* Assert that aio_co_wake() reenters the coroutine directly */
-    assert(qemu_get_current_aio_context() ==
-           qemu_coroutine_get_aio_context(co));
-    aio_co_wake(co);
-}
-
-static void qio_channel_restart_write(void *opaque)
-{
-    QIOChannel *ioc = opaque;
-    Coroutine *co = qatomic_xchg(&ioc->write_coroutine, NULL);
-
-    if (!co) {
-        return;
-    }
-
-    /* Assert that aio_co_wake() reenters the coroutine directly */
-    assert(qemu_get_current_aio_context() ==
-           qemu_coroutine_get_aio_context(co));
-    aio_co_wake(co);
-}
-
-static void coroutine_fn
-qio_channel_set_fd_handlers(QIOChannel *ioc, GIOCondition condition)
-{
-    AioContext *ctx = ioc->follow_coroutine_ctx ?
-        qemu_coroutine_get_aio_context(qemu_coroutine_self()) :
-        iohandler_get_aio_context();
-    AioContext *read_ctx = NULL;
-    IOHandler *io_read = NULL;
-    AioContext *write_ctx = NULL;
-    IOHandler *io_write = NULL;
-
-    if (condition == G_IO_IN) {
-        ioc->read_coroutine = qemu_coroutine_self();
-        ioc->read_ctx = ctx;
-        read_ctx = ctx;
-        io_read = qio_channel_restart_read;
-
-        /*
-         * Thread safety: if the other coroutine is set and its AioContext
-         * matches ours, then there is mutual exclusion between read and write
-         * because they share a single thread and it's safe to set both read
-         * and write fd handlers here. If the AioContext does not match ours,
-         * then both threads may run in parallel but there is no shared state
-         * to worry about.
-         */
-        if (ioc->write_coroutine && ioc->write_ctx == ctx) {
-            write_ctx = ctx;
-            io_write = qio_channel_restart_write;
-        }
-    } else if (condition == G_IO_OUT) {
-        ioc->write_coroutine = qemu_coroutine_self();
-        ioc->write_ctx = ctx;
-        write_ctx = ctx;
-        io_write = qio_channel_restart_write;
-        if (ioc->read_coroutine && ioc->read_ctx == ctx) {
-            read_ctx = ctx;
-            io_read = qio_channel_restart_read;
-        }
-    } else {
-        abort();
-    }
-
-    qio_channel_set_aio_fd_handler(ioc, read_ctx, io_read,
-            write_ctx, io_write, ioc);
-}
-
-static void coroutine_fn
-qio_channel_clear_fd_handlers(QIOChannel *ioc, GIOCondition condition)
-{
-    AioContext *read_ctx = NULL;
-    IOHandler *io_read = NULL;
-    AioContext *write_ctx = NULL;
-    IOHandler *io_write = NULL;
-    AioContext *ctx;
-
-    if (condition == G_IO_IN) {
-        ctx = ioc->read_ctx;
-        read_ctx = ctx;
-        io_read = NULL;
-        if (ioc->write_coroutine && ioc->write_ctx == ctx) {
-            write_ctx = ctx;
-            io_write = qio_channel_restart_write;
-        }
-    } else if (condition == G_IO_OUT) {
-        ctx = ioc->write_ctx;
-        write_ctx = ctx;
-        io_write = NULL;
-        if (ioc->read_coroutine && ioc->read_ctx == ctx) {
-            read_ctx = ctx;
-            io_read = qio_channel_restart_read;
-        }
-    } else {
-        abort();
-    }
-
-    qio_channel_set_aio_fd_handler(ioc, read_ctx, io_read,
-            write_ctx, io_write, ioc);
-}
-
-void coroutine_fn qio_channel_yield(QIOChannel *ioc,
-                                    GIOCondition condition)
-{
-    AioContext *ioc_ctx;
-
-    assert(qemu_in_coroutine());
-    ioc_ctx = qemu_coroutine_get_aio_context(qemu_coroutine_self());
-
-    if (condition == G_IO_IN) {
-        assert(!ioc->read_coroutine);
-    } else if (condition == G_IO_OUT) {
-        assert(!ioc->write_coroutine);
-    } else {
-        abort();
-    }
-    qio_channel_set_fd_handlers(ioc, condition);
-    qemu_coroutine_yield();
-    assert(in_aio_context_home_thread(ioc_ctx));
-
-    /* Allow interrupting the operation by reentering the coroutine other than
-     * through the aio_fd_handlers. */
-    if (condition == G_IO_IN) {
-        assert(ioc->read_coroutine == NULL);
-    } else if (condition == G_IO_OUT) {
-        assert(ioc->write_coroutine == NULL);
-    }
-    qio_channel_clear_fd_handlers(ioc, condition);
-}
-
 static gboolean qio_channel_wait_complete(QIOChannel *ioc,
                                           GIOCondition condition,
                                           gpointer opaque)
@@ -594,20 +456,13 @@ void qio_channel_wait(QIOChannel *ioc,
 void qio_channel_wait_cond(QIOChannel *ioc,
                            GIOCondition condition)
 {
-    if (qemu_in_coroutine()) {
-        qio_channel_yield(ioc, condition);
-    } else {
-        qio_channel_wait(ioc, condition);
-    }
+    qio_channel_wait(ioc, condition);
 }
 
 static void qio_channel_finalize(Object *obj)
 {
     QIOChannel *ioc = QIO_CHANNEL(obj);
 
-    /* Must not have coroutines in qio_channel_yield() */
-    assert(!ioc->read_coroutine);
-    assert(!ioc->write_coroutine);
 
     g_free(ioc->name);
 
