@@ -664,6 +664,7 @@ static void upload_texture_image(PGRAPHState *pg, int texture_idx,
                                  TextureBinding *binding)
 {
     binding->cube_source_count = 0;
+    binding->depth_source_copy = false;
     /* An aux upload runs before the open recording: when draws recorded
      * there sample this binding, the recording is submitted first, or they
      * would see the new content. */
@@ -1134,6 +1135,7 @@ static void copy_zeta_surface_to_texture(PGRAPHState *pg, SurfaceBinding *surfac
     pgraph_vk_end_nondraw_commands(pg, cmd);
 
     texture->draw_time = surface->draw_time;
+    texture->depth_source_copy = true;
 }
 
 /* Compatible render surfaces are sampled in place, not copied per bind:
@@ -2534,6 +2536,7 @@ static void texture_cache_entry_init(Lru *lru, LruNode *node, const void *state)
     snode->validation_frame = (unsigned int)-1;
     snode->sampled_frame = 0;
     snode->cube_source_count = 0;
+    snode->depth_source_copy = false;
 }
 
 static void texture_cache_release_node_resources(PGRAPHVkState *r, TextureBinding *snode)
@@ -2541,6 +2544,7 @@ static void texture_cache_release_node_resources(PGRAPHVkState *r, TextureBindin
     /* In-place sampling: a borrowed image belongs to its surface; only the
      * view and sampler are released (a borrowed node has no allocation). */
     snode->cube_source_count = 0;
+    snode->depth_source_copy = false;
     bool borrowed = snode->s2t_borrowed &&
                     snode->allocation == VK_NULL_HANDLE;
     snode->s2t_borrowed = false;

@@ -603,6 +603,27 @@ elif [ "$r" != 3 ]; then
   echo "FAIL: cube source exited $r"; exit 1
 fi
 
+# D16 and D24 GPU depth copies survive filter changes and later CPU reads.
+set +e
+timeout 300 $h "$core" "$work/sysg" $vp --vulkan --opt xemu_renderer=vulkan \
+  --opt xemu_memory=64 --opt xemu_surface_scale=2 --frames 2240 --strict \
+  --pixel 1970 --pixel 2010 --pixel 2070 --pixel 2130 --pixel 2170 --pixel 2230 \
+  --peek 0x300060 --peek 0x300064 >"$work/gpu_depth_source.txt"
+r=$?
+set -e
+if [ "$r" = 0 ]; then
+  for want in "pixel_1970=0xffffff" "pixel_2010=0xffffff" \
+              "pixel_2070=0xffffff" "pixel_2130=0xffffff" \
+              "pixel_2170=0xffffff" "pixel_2230=0xffffff" \
+              "peek_0x300060=0x80008000" "peek_0x300064=0x80000000"; do
+    grep -q "^$want$" "$work/gpu_depth_source.txt" || {
+      echo "FAIL: depth source: $want"; exit 1;
+    }
+  done
+elif [ "$r" != 3 ]; then
+  echo "FAIL: depth source exited $r"; exit 1
+fi
+
 # A savestate taken while surfaces live only on the GPU (rom/gpu.c: before
 # run 64, B drawn and its depth cleared at frame 62, nothing read back), then
 # loaded in a new process, which has no GPU surfaces: the depth the guest

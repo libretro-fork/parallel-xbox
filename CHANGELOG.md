@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Vulkan keeps actively sampled GPU depth-copy sources available across filter changes, avoiding an age-triggered readback and texture upload. D16 and D24 conversion arithmetic and idle expiry remain unchanged.
+
 - Vulkan keeps the six GPU-produced cubemap sources available while their copied texture is sampled, avoiding six face readbacks and a cubemap upload on a later filter change. Sources still expire after sampling stops.
 
 - Vulkan keeps actively sampled ARGB-to-RGB565 source surfaces available across sampler changes, avoiding a source readback and texture re-upload after age-based eviction. Idle surfaces still expire normally.
