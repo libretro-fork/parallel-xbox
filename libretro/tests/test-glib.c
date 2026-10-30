@@ -620,6 +620,41 @@ static void iterate(GMainContext *c)
     }
 }
 
+static int pending_source_finalized;
+static void pending_source_finalize(GSource *source)
+{
+    pending_source_finalized++;
+}
+static GSourceFuncs pending_source_funcs = {
+    .prepare = ts_prepare,
+    .check = ts_check,
+    .dispatch = ts_dispatch,
+    .finalize = pending_source_finalize,
+};
+
+static void test_pending_source_lifetime(void)
+{
+    for (int checks = 1; checks <= 2; checks++) {
+        GMainContext *c = g_main_context_new();
+        TestSource *ts = (TestSource *)g_source_new(&pending_source_funcs,
+                                                  sizeof(TestSource));
+        GPollFD fds[16];
+        gint priority, timeout, n;
+        ts->ready = TRUE;
+        g_source_attach(&ts->source, c);
+        for (int i = 0; i < checks; i++) {
+            g_main_context_prepare(c, &priority);
+            n = g_main_context_query(c, priority, &timeout, fds, 16);
+            CHECK(n <= 16);
+            CHECK(g_main_context_check(c, priority, fds, n));
+        }
+        g_source_destroy(&ts->source);
+        g_source_unref(&ts->source);
+        g_main_context_unref(c);
+        CHECK(pending_source_finalized == checks);
+    }
+}
+
 static void test_main(void)
 {
     GMainContext *c = g_main_context_new();
@@ -730,6 +765,7 @@ int main(int argc, char **argv)
     test_strings();
     test_paths(dir);
     test_main();
+    test_pending_source_lifetime();
     test_misc();
     if (failures) {
         fprintf(stderr, "glib: %d checks failed\n", failures);

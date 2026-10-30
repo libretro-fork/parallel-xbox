@@ -63,6 +63,15 @@ GMainContext *g_main_context_ref(GMainContext *context)
     return context;
 }
 
+/* Remove ownership before unref: a finalizer may re-enter the context. */
+static void g_main_context_clear_sources(GPtrArray *sources)
+{
+    while (sources->len) {
+        GSource *source = sources->pdata[--sources->len];
+        g_source_unref(source);
+    }
+}
+
 void g_main_context_unref(GMainContext *context)
 {
     if (__atomic_sub_fetch(&context->ref_count, 1, __ATOMIC_ACQ_REL)) {
@@ -71,6 +80,8 @@ void g_main_context_unref(GMainContext *context)
     while (context->sources) {
         g_source_destroy(context->sources);
     }
+    g_main_context_clear_sources(context->pending);
+    g_main_context_clear_sources(context->dispatching);
     g_ptr_array_free(context->pending, TRUE);
     g_ptr_array_free(context->dispatching, TRUE);
     g_free(context);
@@ -271,7 +282,7 @@ gboolean g_main_context_check(GMainContext *context, gint max_priority,
         }
     }
 
-    g_ptr_array_set_size(c->pending, 0);
+    g_main_context_clear_sources(c->pending);
     for (GSource *s = c->sources; s; s = s->next) {
         if (g_source_blocked(s)) {
             continue;

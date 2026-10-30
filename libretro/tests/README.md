@@ -784,3 +784,8 @@ destructor. The same cases pass against system GLib. The concurrency test also
 sets, reads and removes 16 independent datalist keys on the shared list.
 
 The autoclear fixture arms synthetic unknown feature bits in a disposable v3 header, injects repeated header failures (including a partially written header), and exercises in-place writes, allocating writes and zeroing. No guest bytes may change before the header clear succeeds. On-disk flags, retry counts, no-op requests and the absence of redundant later header writes are checked.
+
+Pending-source lifetime tests check a ready source once and twice without
+dispatching it, destroy the source, and release the context. Its finalizer must
+run exactly once in each case, matching system GLib. Repeated checks must release
+the previous pending references rather than silently dropping their pointers.
