@@ -5041,15 +5041,6 @@ SRST
     file in file
 ERST
 
-DEF("enable-sync-profile", 0, QEMU_OPTION_enable_sync_profile,
-    "-enable-sync-profile\n"
-    "                enable synchronization profiling\n",
-    QEMU_ARCH_ALL)
-SRST
-``-enable-sync-profile``
-    Enable synchronization profiling.
-ERST
-
 #if defined(CONFIG_TCG) && defined(CONFIG_LINUX)
 DEF("perfmap", 0, QEMU_OPTION_perfmap,
     "-perfmap        generate a /tmp/perf-${pid}.map file for perf\n",

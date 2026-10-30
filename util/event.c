@@ -2,6 +2,8 @@
 
 #include "qemu/osdep.h"
 #include "qemu/thread.h"
+#include "qemu/barrier.h"
+
 
 /*
  * Valid transitions:
@@ -36,7 +38,7 @@ void qemu_event_init(QemuEvent *ev, bool init)
     pthread_cond_init(&ev->cond, NULL);
 #endif
 
-    ev->value = (init ? EV_SET : EV_FREE);
+    retro_atomic_int_init(&ev->value, init ? EV_SET : EV_FREE);
     ev->initialized = true;
 }
 
@@ -61,12 +63,12 @@ void qemu_event_set(QemuEvent *ev)
      * qemu_event_set has release semantics, but because it *loads*
      * ev->value we need a full memory barrier here.
      */
-    smp_mb();
-    if (qatomic_read(&ev->value) != EV_SET) {
-        int old = qatomic_xchg(&ev->value, EV_SET);
+    retro_atomic_thread_fence_seq_cst();
+    if (retro_atomic_load_relaxed_int(&ev->value) != EV_SET) {
+        int old = retro_atomic_exchange_int(&ev->value, EV_SET);
 
         /* Pairs with memory barrier in kernel futex_wait system call.  */
-        smp_mb__after_rmw();
+        qemu_mb_after_rmw();
         if (old == EV_BUSY) {
             /* There were waiters, wake them up.  */
             qemu_futex_wake_all(ev);
@@ -75,7 +77,7 @@ void qemu_event_set(QemuEvent *ev)
 #else
     pthread_mutex_lock(&ev->lock);
     /* Pairs with qemu_event_reset()'s load acquire.  */
-    qatomic_store_release(&ev->value, EV_SET);
+    retro_atomic_store_release_int(&ev->value, EV_SET);
     pthread_cond_broadcast(&ev->cond);
     pthread_mutex_unlock(&ev->lock);
 #endif
@@ -90,18 +92,18 @@ void qemu_event_reset(QemuEvent *ev)
      * If there was a concurrent reset (or even reset+wait),
      * do nothing.  Otherwise change EV_SET->EV_FREE.
      */
-    qatomic_or(&ev->value, EV_FREE);
+    retro_atomic_fetch_or_int(&ev->value, EV_FREE);
 
     /*
      * Order reset before checking the condition in the caller.
      * Pairs with the first memory barrier in qemu_event_set().
      */
-    smp_mb__after_rmw();
+    qemu_mb_after_rmw();
 #else
     /*
      * If futexes are not available, there are no EV_FREE->EV_BUSY
      * transitions because wakeups are done entirely through the
-     * condition variable.  Since qatomic_set() only writes EV_FREE,
+     * condition variable.  Since the store only writes EV_FREE,
      * the load seems useless but in reality, the acquire synchronizes
      * with qemu_event_set()'s store release: if qemu_event_reset()
      * sees EV_SET here, then the caller will certainly see a
@@ -117,7 +119,8 @@ void qemu_event_reset(QemuEvent *ev)
      * }                           if (done == 0)
      *                               // qemu_event_wait() not called
      */
-    qatomic_set(&ev->value, qatomic_load_acquire(&ev->value) | EV_FREE);
+    retro_atomic_store_relaxed_int(&ev->value,
+        retro_atomic_load_acquire_int(&ev->value) | EV_FREE);
 #endif
 }
 
@@ -132,7 +135,7 @@ void qemu_event_wait(QemuEvent *ev)
          * not go down the slow path, so this load-acquire is needed that
          * synchronizes with the first memory barrier in qemu_event_set().
          */
-        unsigned value = qatomic_load_acquire(&ev->value);
+        int value = retro_atomic_load_acquire_int(&ev->value);
         if (value == EV_SET) {
             break;
         }
@@ -149,7 +152,8 @@ void qemu_event_wait(QemuEvent *ev)
              * qemu_event_set() to issue _more_ wakeups), the failing case needs
              * acquire semantics like the load above.
              */
-            if (qatomic_cmpxchg(&ev->value, EV_FREE, EV_BUSY) == EV_SET) {
+            if (!retro_atomic_cas_int(&ev->value, EV_FREE, EV_BUSY) &&
+                retro_atomic_load_acquire_int(&ev->value) == EV_SET) {
                 break;
             }
         }
@@ -163,7 +167,7 @@ void qemu_event_wait(QemuEvent *ev)
     }
 #else
     pthread_mutex_lock(&ev->lock);
-    while (qatomic_read(&ev->value) != EV_SET) {
+    while (retro_atomic_load_relaxed_int(&ev->value) != EV_SET) {
         pthread_cond_wait(&ev->cond, &ev->lock);
     }
     pthread_mutex_unlock(&ev->lock);

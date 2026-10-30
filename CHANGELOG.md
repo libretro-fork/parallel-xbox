@@ -4,13 +4,13 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- QEMU's own atomics (qemu/atomic.h) are moving onto libretro-common's retro_atomic.h, as the emulated GPU and sound chip already did: so far the object and QObject reference counts, the QOM cast caches, RCU's grace-period counter, reader state and call_rcu queue, and the lists RCU readers walk (the RAM blocks, the CPUs, each bus's devices, the event loop's handlers and bottom halves), the vCPU's shared state (its exit and interrupt requests, its kick and running flags) and TCG's (the compile flags, chained jumps, jump cache and page descriptors), the translated-code hash table, spinlocks, events, lock counters, seqlocks, the 64-bit statistics counters and the dirty-memory bitmaps. QEMU's lock profiler (-enable-sync-profile), which the core never turned on, is gone, and locking a mutex no longer goes through a function pointer. Guest code reads and translated-code patching stay single plain-width accesses. Nothing changes for someone using the core.
+
 - Vulkan combines live GPU cubemap faces with RAM-backed faces at native resolution for single-level ARGB cubes, avoiding GPU face readback at texture binds. Scaled, unsupported and ambiguously aliased cubes retain the existing fallback.
 
 - Added a two-renderer regression for GPU-copied cubemaps becoming RAM-backed: independent CPU face edits, a filter change and face switching must preserve both changed and untouched faces.
 
 - Strengthened the synthetic texture-lifetime tests so ongoing draws reach the captured surface. Added a depth-cache transition test that verifies CPU-written zeros and subsequent GPU depth writes across a filter change.
-
-- QEMU's own atomics (qemu/atomic.h) are moving onto libretro-common's retro_atomic.h, as the emulated GPU and sound chip already did: so far the object and QObject reference counts, the QOM cast caches, RCU's grace-period counter, reader state and call_rcu queue, and the lists RCU readers walk (the RAM blocks, the CPUs, each bus's devices, the event loop's handlers and bottom halves), the vCPU's shared state (its exit and interrupt requests, its kick and running flags) and TCG's (the compile flags, chained jumps, jump cache and page descriptors). Guest code reads and translated-code patching stay single plain-width accesses. Nothing changes for someone using the core.
 
 - Vulkan keeps the six GPU-produced cubemap sources available while their copied texture is sampled, avoiding six face readbacks and a cubemap upload on a later filter change. Sources still expire after sampling stops.
 

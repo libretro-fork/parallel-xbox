@@ -489,14 +489,12 @@ SOURCES_UTIL := \
 	$(CORE_DIR)/util/qemu-timer-common.c \
 	$(CORE_DIR)/util/qemu-timer.c \
 	$(CORE_DIR)/util/qht.c \
-	$(CORE_DIR)/util/qsp.c \
 	$(CORE_DIR)/util/range.c \
 	$(CORE_DIR)/util/rc4.c \
 	$(CORE_DIR)/util/rcu.c \
 	$(CORE_DIR)/util/readline.c \
 	$(CORE_DIR)/util/reserved-region.c \
 	$(CORE_DIR)/util/sha1.c \
-	$(CORE_DIR)/util/stats64.c \
 	$(CORE_DIR)/util/systemd.c \
 	$(CORE_DIR)/util/thread-context.c \
 	$(CORE_DIR)/util/throttle.c \

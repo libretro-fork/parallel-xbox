@@ -2,6 +2,7 @@
 #define QEMU_THREAD_H
 
 #include "qemu/processor.h"
+#include <retro_atomic.h>
 #include "qemu/atomic.h"
 #include "qemu/futex.h"
 
@@ -25,7 +26,7 @@ typedef struct QemuEvent {
     pthread_mutex_t lock;
     pthread_cond_t cond;
 #endif
-    unsigned value;
+    retro_atomic_int_t value;   /* the futex word */
     bool initialized;
 } QemuEvent;
 
@@ -34,9 +35,6 @@ typedef struct QemuEvent {
 #else
 #include "qemu/thread-posix.h"
 #endif
-
-/* include QSP header once QemuMutex, QemuCond etc. are defined */
-#include "qemu/qsp.h"
 
 #define QEMU_THREAD_JOINABLE 0
 #define QEMU_THREAD_DETACHED 1
@@ -56,34 +54,6 @@ void qemu_rec_mutex_lock_impl(QemuRecMutex *mutex, const char *file, int line);
 int qemu_rec_mutex_trylock_impl(QemuRecMutex *mutex, const char *file, int line);
 void qemu_rec_mutex_unlock_impl(QemuRecMutex *mutex, const char *file, int line);
 
-typedef void (*QemuMutexLockFunc)(QemuMutex *m, const char *f, int l);
-typedef int (*QemuMutexTrylockFunc)(QemuMutex *m, const char *f, int l);
-typedef void (*QemuRecMutexLockFunc)(QemuRecMutex *m, const char *f, int l);
-typedef int (*QemuRecMutexTrylockFunc)(QemuRecMutex *m, const char *f, int l);
-typedef void (*QemuCondWaitFunc)(QemuCond *c, QemuMutex *m, const char *f,
-                                 int l);
-typedef bool (*QemuCondTimedWaitFunc)(QemuCond *c, QemuMutex *m, int ms,
-                                      const char *f, int l);
-
-extern QemuMutexLockFunc bql_mutex_lock_func;
-extern QemuMutexLockFunc qemu_mutex_lock_func;
-extern QemuMutexTrylockFunc qemu_mutex_trylock_func;
-extern QemuRecMutexLockFunc qemu_rec_mutex_lock_func;
-extern QemuRecMutexTrylockFunc qemu_rec_mutex_trylock_func;
-extern QemuCondWaitFunc qemu_cond_wait_func;
-extern QemuCondTimedWaitFunc qemu_cond_timedwait_func;
-
-/* convenience macros to bypass the profiler */
-#define qemu_mutex_lock__raw(m)                         \
-        qemu_mutex_lock_impl(m, __FILE__, __LINE__)
-#define qemu_mutex_trylock__raw(m)                      \
-        qemu_mutex_trylock_impl(m, __FILE__, __LINE__)
-
-#ifdef __COVERITY__
-/*
- * Coverity is severely confused by the indirect function calls,
- * hide them.
- */
 #define qemu_mutex_lock(m)                                              \
             qemu_mutex_lock_impl(m, __FILE__, __LINE__)
 #define qemu_mutex_trylock(m)                                           \
@@ -96,38 +66,6 @@ extern QemuCondTimedWaitFunc qemu_cond_timedwait_func;
             qemu_cond_wait_impl(c, m, __FILE__, __LINE__)
 #define qemu_cond_timedwait(c, m, ms)                                   \
             qemu_cond_timedwait_impl(c, m, ms, __FILE__, __LINE__)
-#else
-#define qemu_mutex_lock(m) ({                                           \
-            QemuMutexLockFunc _f = qatomic_read(&qemu_mutex_lock_func); \
-            _f(m, __FILE__, __LINE__);                                  \
-        })
-
-#define qemu_mutex_trylock(m) ({                                              \
-            QemuMutexTrylockFunc _f = qatomic_read(&qemu_mutex_trylock_func); \
-            _f(m, __FILE__, __LINE__);                                        \
-        })
-
-#define qemu_rec_mutex_lock(m) ({                                             \
-            QemuRecMutexLockFunc _f = qatomic_read(&qemu_rec_mutex_lock_func);\
-            _f(m, __FILE__, __LINE__);                                        \
-        })
-
-#define qemu_rec_mutex_trylock(m) ({                            \
-            QemuRecMutexTrylockFunc _f;                         \
-            _f = qatomic_read(&qemu_rec_mutex_trylock_func);    \
-            _f(m, __FILE__, __LINE__);                          \
-        })
-
-#define qemu_cond_wait(c, m) ({                                         \
-            QemuCondWaitFunc _f = qatomic_read(&qemu_cond_wait_func);   \
-            _f(c, m, __FILE__, __LINE__);                               \
-        })
-
-#define qemu_cond_timedwait(c, m, ms) ({                                       \
-            QemuCondTimedWaitFunc _f = qatomic_read(&qemu_cond_timedwait_func);\
-            _f(c, m, ms, __FILE__, __LINE__);                                  \
-        })
-#endif
 
 #define qemu_mutex_unlock(mutex) \
         qemu_mutex_unlock_impl(mutex, __FILE__, __LINE__)
@@ -248,12 +186,12 @@ void qemu_thread_atexit_remove(struct Notifier *notifier);
 #endif
 
 struct QemuSpin {
-    int value;
+    retro_atomic_int_t value;
 };
 
 static inline void qemu_spin_init(QemuSpin *spin)
 {
-    qatomic_set(&spin->value, 0);
+    retro_atomic_store_relaxed_int(&spin->value, 0);
 #ifdef CONFIG_TSAN
     __tsan_mutex_create(spin, __tsan_mutex_not_static);
 #endif
@@ -271,8 +209,8 @@ static inline void qemu_spin_lock(QemuSpin *spin)
 #ifdef CONFIG_TSAN
     __tsan_mutex_pre_lock(spin, 0);
 #endif
-    while (unlikely(qatomic_xchg(&spin->value, 1))) {
-        while (qatomic_read(&spin->value)) {
+    while (unlikely(retro_atomic_exchange_int(&spin->value, 1))) {
+        while (retro_atomic_load_relaxed_int(&spin->value)) {
             cpu_relax();
         }
     }
@@ -286,7 +224,7 @@ static inline bool qemu_spin_trylock(QemuSpin *spin)
 #ifdef CONFIG_TSAN
     __tsan_mutex_pre_lock(spin, __tsan_mutex_try_lock);
 #endif
-    bool busy = qatomic_xchg(&spin->value, true);
+    bool busy = retro_atomic_exchange_int(&spin->value, 1);
 #ifdef CONFIG_TSAN
     unsigned flags = __tsan_mutex_try_lock;
     flags |= busy ? __tsan_mutex_try_lock_failed : 0;
@@ -297,7 +235,7 @@ static inline bool qemu_spin_trylock(QemuSpin *spin)
 
 static inline bool qemu_spin_locked(QemuSpin *spin)
 {
-    return qatomic_read(&spin->value);
+    return retro_atomic_load_relaxed_int(&spin->value);
 }
 
 static inline void qemu_spin_unlock(QemuSpin *spin)
@@ -305,7 +243,7 @@ static inline void qemu_spin_unlock(QemuSpin *spin)
 #ifdef CONFIG_TSAN
     __tsan_mutex_pre_unlock(spin, 0);
 #endif
-    qatomic_store_release(&spin->value, 0);
+    retro_atomic_store_release_int(&spin->value, 0);
 #ifdef CONFIG_TSAN
     __tsan_mutex_post_unlock(spin, 0);
 #endif

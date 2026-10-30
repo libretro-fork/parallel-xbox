@@ -14,36 +14,42 @@
 #ifndef QEMU_SEQLOCK_H
 #define QEMU_SEQLOCK_H
 
-#include "qemu/atomic.h"
+#include <retro_atomic.h>
 #include "qemu/thread.h"
 #include "qemu/lockable.h"
 
 typedef struct QemuSeqLock QemuSeqLock;
 
+/*
+ * The fields a seqlock guards are themselves read and written with
+ * relaxed atomics; the fences below order them against the sequence.
+ */
 struct QemuSeqLock {
-    unsigned sequence;
+    retro_atomic_int_t sequence;
 };
 
 static inline void seqlock_init(QemuSeqLock *sl)
 {
-    sl->sequence = 0;
+    retro_atomic_int_init(&sl->sequence, 0);
 }
 
 /* Lock out other writers and update the count.  */
 static inline void seqlock_write_begin(QemuSeqLock *sl)
 {
-    qatomic_set(&sl->sequence, sl->sequence + 1);
+    int seq = retro_atomic_load_relaxed_int(&sl->sequence);
+
+    retro_atomic_store_relaxed_int(&sl->sequence, seq + 1);
 
     /* Write sequence before updating other fields.  */
-    smp_wmb();
+    retro_atomic_thread_fence_release();
 }
 
 static inline void seqlock_write_end(QemuSeqLock *sl)
 {
-    /* Write other fields before finalizing sequence.  */
-    smp_wmb();
+    int seq = retro_atomic_load_relaxed_int(&sl->sequence);
 
-    qatomic_set(&sl->sequence, sl->sequence + 1);
+    /* Write other fields before finalizing sequence.  */
+    retro_atomic_store_release_int(&sl->sequence, seq + 1);
 }
 
 /* Lock out other writers and update the count.  */
@@ -67,19 +73,20 @@ static inline void seqlock_write_unlock_impl(QemuSeqLock *sl, QemuLockable *lock
 
 static inline unsigned seqlock_read_begin(const QemuSeqLock *sl)
 {
-    /* Always fail if a write is in progress.  */
-    unsigned ret = qatomic_read(&sl->sequence);
+    /* Always fail if a write is in progress.  Read sequence before
+     * reading other fields.  */
+    unsigned ret = retro_atomic_load_acquire_int(
+        (retro_atomic_int_t *)&sl->sequence);
 
-    /* Read sequence before reading other fields.  */
-    smp_rmb();
     return ret & ~1;
 }
 
 static inline int seqlock_read_retry(const QemuSeqLock *sl, unsigned start)
 {
     /* Read other fields before reading final sequence.  */
-    smp_rmb();
-    return unlikely(qatomic_read(&sl->sequence) != start);
+    retro_atomic_thread_fence_acquire();
+    return unlikely((unsigned)retro_atomic_load_relaxed_int(
+        (retro_atomic_int_t *)&sl->sequence) != start);
 }
 
 #endif

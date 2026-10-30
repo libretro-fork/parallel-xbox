@@ -20,7 +20,7 @@ struct QemuLockCnt {
 #ifndef HAVE_FUTEX
     QemuMutex mutex;
 #endif
-    unsigned count;
+    retro_atomic_int_t count;
 };
 
 /**

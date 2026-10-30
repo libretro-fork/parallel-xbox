@@ -506,14 +506,8 @@ void rust_bql_mock_lock(void)
     abort();
 }
 
-/*
- * The BQL is taken from so many places that it is worth profiling the
- * callers directly, instead of funneling them all through a single function.
- */
 void bql_lock_impl(const char *file, int line)
 {
-    QemuMutexLockFunc bql_lock_fn = qatomic_read(&bql_mutex_lock_func);
-
     g_assert(!bql_locked());
     if (unlikely(xemu_tbrate_enabled() ||
                  retro_atomic_load_relaxed_int(&xemu_cpu_pace_on)) &&
@@ -522,7 +516,7 @@ void bql_lock_impl(const char *file, int line)
          * someone else holds costs a wait, so that is the only case timed. */
         if (qemu_mutex_trylock_impl(&bql, file, line) != 0) {
             int64_t t0 = get_clock();
-            bql_lock_fn(&bql, file, line);
+            qemu_mutex_lock_impl(&bql, file, line);
             t0 = get_clock() - t0;
             xemu_vcpu_waits.bql_ns += t0;
             xemu_vcpu_waits.bql_waits++;
@@ -530,7 +524,7 @@ void bql_lock_impl(const char *file, int line)
         }
         return;
     }
-    bql_lock_fn(&bql, file, line);
+    qemu_mutex_lock_impl(&bql, file, line);
 }
 
 void bql_unlock(void)

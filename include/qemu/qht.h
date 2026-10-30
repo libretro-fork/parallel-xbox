@@ -10,11 +10,12 @@
 #include "qemu/seqlock.h"
 #include "qemu/thread.h"
 #include "qemu/qdist.h"
+#include <retro_atomic.h>
 
 typedef bool (*qht_cmp_func_t)(const void *a, const void *b);
 
 struct qht {
-    struct qht_map *map;
+    retro_atomic_ptr_t map;     /* struct qht_map * */
     qht_cmp_func_t cmp;
     QemuMutex lock; /* serializes setters of ht->map */
     unsigned int mode;
@@ -47,7 +48,6 @@ typedef void (*qht_iter_func_t)(void *p, uint32_t h, void *up);
 typedef bool (*qht_iter_bool_func_t)(void *p, uint32_t h, void *up);
 
 #define QHT_MODE_AUTO_RESIZE 0x1 /* auto-resize when heavily loaded */
-#define QHT_MODE_RAW_MUTEXES 0x2 /* bypass the profiler (QSP) */
 
 /**
  * qht_init - Initialize a QHT

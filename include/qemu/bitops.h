@@ -14,7 +14,37 @@
 
 
 #include "host-utils.h"
-#include "atomic.h"
+#include "qemu/barrier.h"
+
+/*
+ * Atomic access to a word of a bitmap that is otherwise plain memory.
+ * unsigned long is 64 bits wide on LP64 hosts and 32 on Windows.
+ */
+#if ULONG_MAX > 0xffffffffUL
+#define BITMAP_WORD(p) ((retro_atomic_64_t *)(p))
+#define bitmap_word_read(p) \
+    ((unsigned long)retro_atomic_load_relaxed_64(BITMAP_WORD(p)))
+#define bitmap_word_set(p, v) \
+    retro_atomic_store_relaxed_64(BITMAP_WORD(p), (int64_t)(v))
+#define bitmap_word_fetch_or(p, v) \
+    ((unsigned long)retro_atomic_fetch_or_64(BITMAP_WORD(p), (int64_t)(v)))
+#define bitmap_word_fetch_and(p, v) \
+    ((unsigned long)retro_atomic_fetch_and_64(BITMAP_WORD(p), (int64_t)(v)))
+#define bitmap_word_xchg(p, v) \
+    ((unsigned long)retro_atomic_exchange_64(BITMAP_WORD(p), (int64_t)(v)))
+#else
+#define BITMAP_WORD(p) ((retro_atomic_int_t *)(p))
+#define bitmap_word_read(p) \
+    ((unsigned long)(unsigned)retro_atomic_load_relaxed_int(BITMAP_WORD(p)))
+#define bitmap_word_set(p, v) \
+    retro_atomic_store_relaxed_int(BITMAP_WORD(p), (int)(v))
+#define bitmap_word_fetch_or(p, v) \
+    ((unsigned long)(unsigned)retro_atomic_fetch_or_int(BITMAP_WORD(p), (int)(v)))
+#define bitmap_word_fetch_and(p, v) \
+    ((unsigned long)(unsigned)retro_atomic_fetch_and_int(BITMAP_WORD(p), (int)(v)))
+#define bitmap_word_xchg(p, v) \
+    ((unsigned long)(unsigned)retro_atomic_exchange_int(BITMAP_WORD(p), (int)(v)))
+#endif
 
 #define BITS_PER_BYTE           CHAR_BIT
 #define BITS_PER_LONG           (sizeof (unsigned long) * BITS_PER_BYTE)
@@ -82,7 +112,8 @@ static inline void set_bit_atomic(long nr, unsigned long *addr)
     unsigned long mask = BIT_MASK(nr);
     unsigned long *p = addr + BIT_WORD(nr);
 
-    qatomic_or(p, mask);
+    bitmap_word_fetch_or(p, mask);
+    qemu_mb_after_rmw();
 }
 
 /**
@@ -108,7 +139,8 @@ static inline void clear_bit_atomic(long nr, unsigned long *addr)
     unsigned long mask = BIT_MASK(nr);
     unsigned long *p = addr + BIT_WORD(nr);
 
-    return qatomic_and(p, ~mask);
+    bitmap_word_fetch_and(p, ~mask);
+    qemu_mb_after_rmw();
 }
 
 /**
@@ -285,7 +317,8 @@ static inline void set_bit32_atomic(long nr, uint32_t *addr)
     uint32_t mask = BIT32_MASK(nr);
     uint32_t *p = addr + BIT32_WORD(nr);
 
-    qatomic_or(p, mask);
+    retro_atomic_fetch_or_int((retro_atomic_int_t *)p, (int)mask);
+    qemu_mb_after_rmw();
 }
 
 /**
@@ -311,7 +344,8 @@ static inline void clear_bit32_atomic(long nr, uint32_t *addr)
     uint32_t mask = BIT32_MASK(nr);
     uint32_t *p = addr + BIT32_WORD(nr);
 
-    return qatomic_and(p, ~mask);
+    retro_atomic_fetch_and_int((retro_atomic_int_t *)p, (int)~mask);
+    qemu_mb_after_rmw();
 }
 
 /**
