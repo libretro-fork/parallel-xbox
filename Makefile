@@ -211,7 +211,9 @@ include Makefile.common
 # (retro_*) and QEMU's constructors reach: the QEMU functions nothing in the
 # core calls are not in the binary.
 SECTION_FLAGS := -ffunction-sections -fdata-sections $(OS_SECTION_FLAGS)
-BASE_FLAGS := $(OPT) $(fpic) $(ARCH_CFLAGS) $(SECTION_FLAGS)
+# Every compiled source group, including bundled libraries, must use the
+# requested macOS architecture and deployment target.
+BASE_FLAGS := $(OPT) $(fpic) $(ARCH_CFLAGS) $(OSX_ARCH_FLAGS) $(SECTION_FLAGS)
 
 # --- Objects -------------------------------------------------------------
 

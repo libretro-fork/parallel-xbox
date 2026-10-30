@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- macOS architecture and deployment-target flags now reach every compiled source group, including libretro-common and libslirp, fixing Intel core builds on Apple Silicon runners.
+
 - Linux and Android no longer compile the unused vhost-user server utility, whose dependency was removed with the meson subprojects. This fixes clean builds without restoring that dependency.
 
 - OpenGL texture uploads now use byte-aligned rows and restore the prior unpack alignment, fixing corrupted narrow mip levels, small volume slices and tightly packed RGB conversion output. Linear guest pitches remain explicit row lengths. Bordered palette/RGB cubemaps also crop using the expanded host pixel stride.
