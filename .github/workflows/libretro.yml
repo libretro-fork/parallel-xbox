@@ -3,8 +3,7 @@ name: Build libretro core
 # The core with the static Makefile: parallel_xbox_libretro.so for Linux x86_64 and
 # aarch64, parallel_xbox_libretro.dll for Windows (cross-compiled with MinGW-w64,
 # tested under Wine), parallel_xbox_libretro_android.so for Android (the NDK's
-# clang) and parallel_xbox_libretro.dylib for macOS (macos-make).
-# macOS also with meson until the Makefile's build has been seen to work.
+# clang) and parallel_xbox_libretro.dylib for macOS.
 
 on:
   workflow_dispatch:
@@ -169,107 +168,11 @@ jobs:
           name: parallel_xbox_libretro-android-${{ matrix.abi }}
           path: dist/
 
-  # As upstream's macOS build (build.sh): the libraries from MacPorts through
-  # scripts/download-macos-libs.py, Apple clang with the SDK and the minimum
-  # versions upstream targets
+  # The macOS core by the Makefile (platform=osx), with the libraries
+  # upstream xemu's build takes from MacPorts
   macos:
     if: github.event_name != 'workflow_dispatch' || inputs.platforms == 'all' || contains(inputs.platforms, 'macos')
     name: macOS ${{ matrix.arch }}
-    runs-on: macos-15
-    strategy:
-      fail-fast: false
-      matrix:
-        arch: [arm64, x86_64]
-    env:
-      HOMEBREW_NO_AUTO_UPDATE: 1
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          filter: blob:none
-          submodules: false
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
-      - name: Install dependencies
-        run: |
-          brew install ninja coreutils vulkan-headers
-          pip install pyyaml requests tomli
-          python3 ./scripts/download-macos-libs.py ${{ matrix.arch }}
-
-      - name: Configure
-        run: |
-          arch=${{ matrix.arch }}
-          if [ "$arch" = arm64 ]; then min=13.7.4; else min=12.7.5; fi
-          sdk=$(xcrun --sdk macosx --show-sdk-path)
-          lib=$PWD/macos-libs/$arch/opt/local
-          export CFLAGS="-arch $arch -target $arch-apple-macos$min -isysroot $sdk -I$lib/include -mmacosx-version-min=$min"
-          export LDFLAGS="-arch $arch -isysroot $sdk"
-          export PKG_CONFIG_LIBDIR="$lib/lib/pkgconfig"
-          ./configure \
-            --extra-cflags="-DXBOX=1 -Wno-error $CFLAGS" \
-            --extra-ldflags="-headerpad_max_install_names" \
-            --target-list=i386-softmmu --disable-cocoa --disable-vnc --cross-prefix= \
-            -Dlibretro=true -Db_staticpic=true
-
-      - name: Build
-        run: |
-          ninja -k 0 -C build parallel_xbox_libretro.dylib > ninja.log 2>&1 && exit 0
-          grep -E -B2 -A8 "error:|FAILED:" ninja.log | head -600
-          exit 1
-
-      - name: Collect
-        run: |
-          mkdir -p dist
-          cp build/parallel_xbox_libretro.dylib dist/parallel_xbox_libretro.dylib
-          cp ui/parallel_xbox_libretro.info dist/
-          strip -x dist/parallel_xbox_libretro.dylib
-          # The MacPorts libraries (glib, pixman, epoxy, ...) go along in a
-          # folder of their own next to the core, as upstream bundles them
-          # into its app. Their install names are under /opt/local/lib, where
-          # nothing is on the runner: they are taken from macos-libs and
-          # pointed at that folder, and so are their own dependencies.
-          src=$PWD/macos-libs/${{ matrix.arch }}/opt/local/lib
-          libs=dist/parallel_xbox_libretro_libs
-          mkdir -p $libs
-          todo=dist/parallel_xbox_libretro.dylib
-          while [ -n "$todo" ]; do
-            next=""
-            for f in $todo; do
-              for dep in $(otool -L "$f" | awk 'NR>1 && $1 ~ /^\/opt\/local\// {print $1}'); do
-                name=$(basename "$dep")
-                if [ ! -f "$libs/$name" ]; then
-                  cp -L "$src/$name" "$libs/$name"
-                  chmod u+w "$libs/$name"
-                  install_name_tool -id "@loader_path/$name" "$libs/$name"
-                  next="$next $libs/$name"
-                fi
-                if [ "$f" = dist/parallel_xbox_libretro.dylib ]; then
-                  install_name_tool -change "$dep" "@loader_path/parallel_xbox_libretro_libs/$name" "$f"
-                else
-                  install_name_tool -change "$dep" "@loader_path/$name" "$f"
-                fi
-              done
-            done
-            todo=$next
-          done
-          ls $libs
-          codesign -f -s - $libs/*.dylib dist/parallel_xbox_libretro.dylib
-          otool -L dist/parallel_xbox_libretro.dylib
-          lipo -info dist/parallel_xbox_libretro.dylib
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: parallel_xbox_libretro-macos-${{ matrix.arch }}
-          path: dist/
-
-  # The same core by the plain Makefile (platform=osx), alongside the meson
-  # build until it has been seen to work; the meson job goes with meson
-  macos-make:
-    if: github.event_name != 'workflow_dispatch' || inputs.platforms == 'all' || contains(inputs.platforms, 'macos')
-    name: macOS ${{ matrix.arch }} (make)
     runs-on: macos-15
     strategy:
       fail-fast: false
@@ -307,7 +210,7 @@ jobs:
           cp parallel_xbox_libretro.dylib dist/parallel_xbox_libretro.dylib
           cp ui/parallel_xbox_libretro.info dist/
           strip -x dist/parallel_xbox_libretro.dylib
-          # The MacPorts libraries (glib, pixman, epoxy, ...) go along in a
+          # The MacPorts libraries (libepoxy) go along in a
           # folder of their own next to the core, as upstream bundles them
           # into its app. Their install names are under /opt/local/lib, where
           # nothing is on the runner: they are taken from macos-libs and
@@ -343,5 +246,5 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: parallel_xbox_libretro-macos-make-${{ matrix.arch }}
+          name: parallel_xbox_libretro-macos-${{ matrix.arch }}
           path: dist/

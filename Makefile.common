@@ -1,7 +1,7 @@
 # What the xemu libretro core is made of, for the Makefile: the sources by
 # the flags they are compiled with, and those flags. QEMU's build makes some
 # of its sources (QAPI, trace points, config headers): they are in
-# libretro/gen, made by meson for the core (libretro/gen/README.md).
+# libretro/gen, made once by meson for the core (libretro/gen/README.md).
 
 GEN_DIR := $(CORE_DIR)/libretro/gen
 
@@ -528,7 +528,7 @@ SOURCES_UTIL_LINUX := \
 	$(CORE_DIR)/util/vfio-helpers.c \
 	$(CORE_DIR)/util/vhost-user-server.c \
 
-# macOS: QEMU never takes ucontext coroutines there (meson.build)
+# macOS: QEMU never takes ucontext coroutines there (upstream's meson.build)
 SOURCES_UTIL_DARWIN := \
 	$(CORE_DIR)/util/filemonitor-stub.c \
 

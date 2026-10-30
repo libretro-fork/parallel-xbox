@@ -4,10 +4,11 @@ QEMU's build generates part of the code it compiles: the QAPI types,
 visitors, commands and events (from `qapi/*.json`), the trace points (from
 the `trace-events` files), the configuration headers, the command line's
 option table (from `qemu-options.hx`), the keymaps, `block/block-gen.c` and the
-i386 GDB XML. The core's Makefile has no meson, ninja or python, so they
-are here, made once by meson and committed: the files the core's objects
-compile or include, under the paths meson gives them in its build
-directory (the Makefile puts this directory first on the include path).
+i386 GDB XML. The core is built by its Makefile alone, and the tree has no
+meson build any more, so they are here, made once by meson and committed:
+the files the core's objects compile or include, under the paths meson
+gives them in its build directory (the Makefile puts this directory first
+on the include path).
 
 `config-host.h` chooses between `config-host-linux.h` and
 `config-host-win32.h` (the only generated file that differs between the
@@ -15,12 +16,16 @@ two; Windows' was made by a MinGW-w64 cross configure, with
 `--cross-prefix=x86_64-w64-mingw32- --static` added to the line below).
 `config-host-darwin.h`, for macOS, is not generated: it is
 `config-host-linux.h` with each value that comes out differently on Darwin
-changed, by the tests in `meson.build` (its header lists them).
+changed, by the tests in upstream's `meson.build` (its header lists them).
 `config-host-android.h`, for Android, is made the same way: the functions
 bionic does not have at API level 29, probed with the NDK, undefined. When
 `config-host-linux.h` is made again, carry the changes over to both.
 
-They were made by a meson build directory configured as the core's:
+They were made by a meson build directory configured as the core's, in a
+checkout of the tree from before meson was taken out (the commit that took
+it out, "build: meson removed, the Makefile builds every platform", has
+its parent for that; or upstream xemu
+with the core's sources over it):
 
 ```
 mkdir build-gen && cd build-gen

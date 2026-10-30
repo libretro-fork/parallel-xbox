@@ -328,3 +328,15 @@ ui/xui
 util/miniz
 xemu.entitlements
 xemu.metainfo.xml
+*meson.build
+*Kconfig
+Kconfig.host
+meson_options.txt
+scripts/meson-buildoptions.py
+scripts/meson-buildoptions.sh
+scripts/minikconf.py
+configure
+pythondeps.toml
+build.sh
+subprojects
+configs
