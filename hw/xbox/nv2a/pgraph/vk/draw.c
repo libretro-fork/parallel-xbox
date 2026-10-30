@@ -4410,12 +4410,8 @@ void pgraph_vk_flush_draw(NV2AState *d)
         pgraph_vk_bind_vertex_attributes(d, pg->draw_arrays_min_start,
                                          pg->draw_arrays_max_count - 1, false,
                                          0, pg->draw_arrays_max_count - 1);
-        uint32_t min_element = INT_MAX;
-        uint32_t max_element = 0;
-        for (int i = 0; i < pg->draw_arrays_length; i++) {
-            min_element = MIN(pg->draw_arrays_start[i], min_element);
-            max_element = MAX(max_element, pg->draw_arrays_start[i] + pg->draw_arrays_count[i]);
-        }
+        /* DRAW_ARRAYS maintains this bound as batches are appended/connected. */
+        uint32_t max_element = pg->draw_arrays_max_count;
         sync_vertex_ram_buffer(pg);
         VertexBufferRemap remap = remap_unaligned_attributes(pg, max_element);
 

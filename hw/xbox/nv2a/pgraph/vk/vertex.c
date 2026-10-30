@@ -239,6 +239,8 @@ void pgraph_vk_bind_vertex_attributes(NV2AState *d, unsigned int min_element,
         nv2a_profile_inc_counter(NV2A_PROF_ATTR_BIND);
         hwaddr attrib_data_addr;
         size_t stride;
+        size_t element_size = attr->size * attr->count;
+        assert(element_size <= sizeof(attr->inline_value));
 
         hwaddr start = 0;
         if (inline_data) {
@@ -253,12 +255,11 @@ void pgraph_vk_bind_vertex_attributes(NV2AState *d, unsigned int min_element,
             attrib_data_addr = attr_data + attr->offset - d->vram_ptr;
             stride = attr->stride;
             start = attrib_data_addr + min_element * stride;
-            update_memory_buffer(d, i, start, num_elements * stride);
+            update_memory_buffer(d, i, start, pgraph_vertex_fetch_span(
+                num_elements, stride, element_size));
         }
 
         uint32_t provoking_element_index = provoking_element - min_element;
-        size_t element_size = attr->size * attr->count;
-        assert(element_size <= sizeof(attr->inline_value));
         const uint8_t *last_entry;
 
         if (inline_data) {

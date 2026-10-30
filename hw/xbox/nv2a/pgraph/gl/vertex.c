@@ -35,7 +35,7 @@ static void update_memory_buffer(NV2AState *d, hwaddr addr, hwaddr size,
 
     hwaddr end = TARGET_PAGE_ALIGN(addr + size);
     addr &= TARGET_PAGE_MASK;
-    assert(end < memory_region_size(d->vram));
+    assert(end <= memory_region_size(d->vram));
 
     static hwaddr last_addr, last_end;
     if (quick && (addr >= last_addr) && (end <= last_end)) {
@@ -302,6 +302,8 @@ void pgraph_gl_bind_vertex_attributes(NV2AState *d, unsigned int min_element,
 
         hwaddr attrib_data_addr;
         size_t stride;
+        size_t element_size = attr->size * attr->count;
+        assert(element_size <= sizeof(attr->inline_value));
 
         if (needs_conversion) {
             pg->compressed_attrs |= (1 << i);
@@ -320,14 +322,15 @@ void pgraph_gl_bind_vertex_attributes(NV2AState *d, unsigned int min_element,
             attrib_data_addr = attr_data + attr->offset - d->vram_ptr;
             stride = attr->stride;
             start = attrib_data_addr + min_element * stride;
-            update_memory_buffer(d, start, num_elements * stride,
-                                        updated_memory_buffer);
-            updated_memory_buffer = true;
+            hwaddr span = pgraph_vertex_fetch_span(num_elements, stride,
+                                                    element_size);
+            if (span) {
+                update_memory_buffer(d, start, span, updated_memory_buffer);
+                updated_memory_buffer = true;
+            }
         }
 
         uint32_t provoking_element_index = provoking_element - min_element;
-        size_t element_size = attr->size * attr->count;
-        assert(element_size <= sizeof(attr->inline_value));
         const uint8_t *last_entry;
 
         if (inline_data) {

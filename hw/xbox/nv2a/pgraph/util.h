@@ -22,6 +22,18 @@
 #ifndef HW_XBOX_NV2A_PGRAPH_UTIL_H
 #define HW_XBOX_NV2A_PGRAPH_UTIL_H
 
+/* Bytes fetched by a non-uniform vertex attribute. There is no trailing
+ * stride after the last element; overlapping elements can extend beyond it. */
+static inline uint64_t pgraph_vertex_fetch_span(uint32_t count,
+                                                uint32_t stride,
+                                                size_t element_size)
+{
+    if (!count || !stride) {
+        return 0;
+    }
+    return (uint64_t)(count - 1) * stride + element_size;
+}
+
 static const float f16_max = 511.9375f;
 static const float f24_max = 1.0E30;
 
