@@ -81,13 +81,22 @@ struct DspJit {
 /* a block's longest span in P words: its instructions, two words each */
 #define DSPJIT_BLOCK_MAX_WORDS (DSPJIT_BLOCK_MAX_INSNS * 2)
 
+/* The code cache. On macOS it is MAP_JIT: Apple Silicon maps no page
+ * writable and executable otherwise (nor Intel Macs under the hardened
+ * runtime), and the mmap failed, the DSP falling back to the interpreter.
+ * A MAP_JIT page is either writable or executable to a thread at a time:
+ * the translator switches the thread to writing for a block and back
+ * (qemu_thread_jit_write/execute, as TCG does; nothing elsewhere). */
 static void *dspjit_map_exec(size_t len)
 {
 #ifdef _WIN32
     return VirtualAlloc(NULL, len, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
 #else
-    void *p = mmap(NULL, len, PROT_READ | PROT_WRITE | PROT_EXEC,
-                   MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    int flags = MAP_PRIVATE | MAP_ANONYMOUS;
+#ifdef __APPLE__
+    flags |= MAP_JIT;
+#endif
+    void *p = mmap(NULL, len, PROT_READ | PROT_WRITE | PROT_EXEC, flags, -1, 0);
     return p == MAP_FAILED ? NULL : p;
 #endif
 }
@@ -2447,11 +2456,13 @@ static void emit_trampolines(DspJit *jit)
 {
     Emitter e;
 
+    qemu_thread_jit_write();
     emit_init(&e, jit->cache, jit->cache_len);
     jit->enter = (dspjit_enter_fn)e.buf;
     h_enter(&e);
     jit->leave = e.buf + e.len;
     h_leave(&e);
+    qemu_thread_jit_execute();
 
     dspjit_code_written(e.buf, e.len);
     jit->cache_base = (e.len + 15) & ~(size_t)15;
@@ -2470,6 +2481,8 @@ static void translate_begin(DspJit *jit, int mode)
     t->lazy_acc = -1;
     t->leave = jit->leave;
     t->table = jit->blocks[mode];
+    /* the cache writable to this thread until translate_end (macOS) */
+    qemu_thread_jit_write();
     emit_init(e, jit->cache + jit->cache_used, jit->cache_len - jit->cache_used);
 }
 
@@ -2481,6 +2494,7 @@ static dspjit_block_fn translate_end(DspJit *jit)
     Emitter *e = &t->e;
 
     emit_stubs(t);
+    qemu_thread_jit_execute();
 
     if (e->overflow) {
         return NULL;

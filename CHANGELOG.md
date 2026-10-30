@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- macOS: the audio DSPs' JIT works on Apple Silicon. macOS there only hands out memory that can hold code being written and run when asked for it as JIT memory; the core did not ask, its request failed, and the DSPs ran on the slower interpreter instead. It now asks for JIT memory and switches the thread between writing code and running it, as QEMU's CPU JIT does. Not yet seen running on a Mac.
+
 - The macOS core can be built with the plain Makefile (`make` on a Mac, `ARCH=x86_64` for Intel), as the Linux and Windows cores are, with the same MacPorts libraries upstream xemu uses. The CI builds it alongside the meson build for now.
 
 - The stock xemu GPU the fork carried as a fallback is gone (about 28,000 lines and 0.6 MB of the core). The core never ran it: GPU boost is always on in the core, and the stock GPU has none of the core's handover to RetroArch.
