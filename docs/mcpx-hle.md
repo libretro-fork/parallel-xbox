@@ -93,3 +93,13 @@ second boot by counting entries into its bootloader.
 
 This is boot validation for that BIOS and dashboard, not an all-games
 compatibility claim or a comparison of every register against original ROM.
+
+Native Windows x86-64 validation on 2026-10-30 used the Windows CI artifact
+from commit `fb7dfdcc586a7ace1090aa369998eadd4d928bed`, with the native Windows
+headless harness (not Wine). An isolated system directory held a copy of
+Complex 4627 v1.03 and a fresh disk; no MCPX file was present. Cold boot
+reached xemu-dashboard at 3600 frames. An 8000-frame run with reset at 2000,
+save at 6500 and load at 7000 also rendered the dashboard at frame 7999.
+The load restored RAM with zero differing bytes, and the log confirmed
+the experimental HLE path and tested core commit. The installed RetroArch
+directory and its disk were not modified.
