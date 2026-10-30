@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Vulkan shader switches reuse the current immutable descriptor set when its textures, uniform buffer and both uniform ranges still match. Dynamic offsets continue to select each draw's snapshots. This avoids redundant descriptor writes and pool consumption without another cache or GPU allocation.
+
 - OpenGL allocates native-size readback buffers for depth and swizzled color surfaces already converted to native pixels on the GPU, avoiding scale-squared excess allocation. Scaled color buffers remain available for GPU-only surface restoration.
 
 - GLib is no longer linked into the core on any platform. QEMU and libslirp are built on the core's own `libretro/glib`, only the part of GLib's API they use, on libretro-common where it has the piece (file streams and its VFS, paths, directories, UTF-8 and UTF-16, base64, SHA-1, the clock, atomics). Its main context is a list of sources driven by QEMU's own loop, without GLib's wakeup pipe, locks, or an allocation on each dispatch. The Linux core is one file now: libslirp is built from `deps/` and linked in, so `libslirp.so.0` no longer goes next to it, and building needs neither GLib nor libslirp installed. The Windows build no longer compiles GLib, PCRE2 and proxy-libintl from `deps/`.

@@ -186,20 +186,23 @@ void pgraph_vk_update_descriptor_sets(PGRAPHState *pg)
             uniform_uploads |= 1u << i;
         }
     }
-    bool need_uniform_write = uniform_uploads != 0;
-    bool need_descriptor_write = r->shader_bindings_changed ||
-        r->texture_bindings_changed ||
-        r->descriptor_set_index == r->descriptor_set_base;
-
-    if (!(r->shader_bindings_changed || r->texture_bindings_changed ||
-          (r->descriptor_set_index == r->descriptor_set_base) ||
-          need_uniform_write)) {
-        r->uniforms_changed = 0;
-        return; // Nothing changed
-    }
-
     ShaderUniformLayout *layouts[] = { &binding->vsh.module_info->uniforms,
                                        &binding->psh.module_info->uniforms };
+    bool need_uniform_write = uniform_uploads != 0;
+    /* All draw pipelines use the same descriptor set layout. A shader
+     * switch only needs a new set when its UBO ranges change; the buffer
+     * offsets are dynamic draw state. Never modify a recorded set. */
+    bool need_descriptor_write = r->texture_bindings_changed ||
+        r->descriptor_set_index == r->descriptor_set_base ||
+        r->descriptor_uniform_buffer != r->storage_buffers[BUFFER_UNIFORM].buffer ||
+        r->descriptor_uniform_sizes[0] != layouts[0]->total_size ||
+        r->descriptor_uniform_sizes[1] != layouts[1]->total_size;
+
+    if (!need_uniform_write && !need_descriptor_write) {
+        r->uniforms_changed = 0;
+        return;
+    }
+
     VkDeviceSize ubo_buffer_total_size = 0;
     /* Each uploaded stage starts at its own alignment boundary. */
     for (int i = 0; i < ARRAY_SIZE(layouts); i++) {
@@ -254,6 +257,10 @@ void pgraph_vk_update_descriptor_sets(PGRAPHState *pg)
      * reuse the immutable descriptor set already recorded in this slot. */
     if (!need_descriptor_write) {
         return;
+    }
+    r->descriptor_uniform_buffer = r->storage_buffers[BUFFER_UNIFORM].buffer;
+    for (unsigned i = 0; i < ARRAY_SIZE(layouts); i++) {
+        r->descriptor_uniform_sizes[i] = layouts[i]->total_size;
     }
     assert(r->descriptor_set_index < ARRAY_SIZE(r->descriptor_sets));
 

@@ -8,13 +8,14 @@
 #define ROUND_UP(n,a) (((n)+(a)-1)&~((a)-1))
 #define PGRAPH_VK_SLOTS 2
 #define BUFFER_UNIFORM_STAGING 0
+#define BUFFER_UNIFORM 0
 #define VK_FINISH_REASON_NEED_BUFFER_SPACE 1
 typedef uint64_t VkDeviceSize;
 typedef struct {size_t total_size;void *allocation;} ShaderUniformLayout;
 typedef struct ShaderModuleInfo {ShaderUniformLayout uniforms;VkDeviceSize uniform_staged_offset;uint64_t uniform_staged_epoch;bool uniform_staged_valid;} ShaderModuleInfo;
 typedef struct {struct{ShaderModuleInfo *module_info;int uniform_locs[1];}vsh,psh;struct{int vsh;}state;} ShaderBinding;
-typedef struct {size_t buffer_offset,buffer_size;} StorageBuffer;
-typedef struct {StorageBuffer storage_buffers[1];uint64_t uniform_upload_epoch;unsigned uniforms_changed;bool shader_bindings_changed,texture_bindings_changed;int descriptor_sets[32],descriptor_set_index,descriptor_set_base;ShaderBinding *shader_binding;struct{struct{size_t minUniformBufferOffsetAlignment;}limits;}device_props;size_t uniform_buffer_offsets[2];const ShaderModuleInfo *uni_last_pushed[2];struct{int values;}vsh_uni_src;uint8_t gpu[512];unsigned copies[2],finishes;} PGRAPHVkState;
+typedef struct {size_t buffer_offset,buffer_size;uint64_t buffer;} StorageBuffer;
+typedef struct {StorageBuffer storage_buffers[1];uint64_t uniform_upload_epoch;unsigned uniforms_changed;bool shader_bindings_changed,texture_bindings_changed;int descriptor_sets[32],descriptor_set_index,descriptor_set_base;ShaderBinding *shader_binding;struct{struct{size_t minUniformBufferOffsetAlignment;}limits;}device_props;size_t uniform_buffer_offsets[2];uint64_t descriptor_uniform_buffer;VkDeviceSize descriptor_uniform_sizes[2];const ShaderModuleInfo *uni_last_pushed[2];struct{int values;}vsh_uni_src;uint8_t gpu[512];unsigned copies[2],finishes;} PGRAPHVkState;
 typedef struct {PGRAPHVkState *vk_renderer_state;} PGRAPHState;
 typedef int PshUniformValues;
 static const int VshUniformInfo[1]={0},PshUniformInfo[1]={0};
@@ -39,7 +40,7 @@ int main(void)
 {
  uint8_t blocks[4][51];ShaderModuleInfo mods[4]={0};for(unsigned i=0;i<4;i++){memset(blocks[i],i+1,sizeof(blocks[i]));mods[i].uniforms=(ShaderUniformLayout){i%2?51:19,blocks[i]};}
  ShaderBinding b={.vsh.module_info=&mods[0],.psh.module_info=&mods[1]};
- PGRAPHVkState r={.shader_binding=&b,.device_props.limits.minUniformBufferOffsetAlignment=16,.storage_buffers={{0,512}}};PGRAPHState pg={&r};
+ PGRAPHVkState r={.shader_binding=&b,.device_props.limits.minUniformBufferOffsetAlignment=16,.storage_buffers={{0,512,1}}};PGRAPHState pg={&r};
  pending[0]=pending[1]=false;update_shader_uniforms_tracked(&pg);assert(r.uniforms_changed==3);pgraph_vk_update_descriptor_sets(&pg);assert(r.copies[0]==1&&r.copies[1]==1);
  /* Mutating only one stage must not duplicate its unchanged partner. */
  for(unsigned stage=0;stage<2;stage++){
@@ -54,10 +55,12 @@ int main(void)
  size_t snapshot[2]={r.uniform_buffer_offsets[0],r.uniform_buffer_offsets[1]};
  b.vsh.module_info=&mods[2];b.psh.module_info=&mods[3];pending[0]=pending[1]=false;r.shader_bindings_changed=true;
  update_shader_uniforms_tracked(&pg);pgraph_vk_update_descriptor_sets(&pg);
+ assert(r.descriptor_set_index==1); /* same ranges, new modules, same set */
  unsigned oldcopies[2]={r.copies[0],r.copies[1]};
  b.vsh.module_info=&mods[0];b.psh.module_info=&mods[1];
  update_shader_uniforms_tracked(&pg);pgraph_vk_update_descriptor_sets(&pg);
  assert(r.copies[0]==oldcopies[0]&&r.copies[1]==oldcopies[1]);
+ assert(r.descriptor_set_index==1);
  assert(r.uniform_buffer_offsets[0]==snapshot[0]&&r.uniform_buffer_offsets[1]==snapshot[1]);
  r.shader_bindings_changed=false;
  uint8_t prior=r.gpu[snapshot[0]];blocks[0][0]++;pending[0]=true;
@@ -76,11 +79,33 @@ int main(void)
  unsigned finishes=r.finishes;
  update_shader_uniforms_tracked(&pg);pgraph_vk_update_descriptor_sets(&pg);
  assert(r.descriptor_set_index==16&&r.finishes==finishes);
+ /* A shader-only switch with matching ranges also leaves a full slot alone. */
+ b.vsh.module_info=&mods[2];b.psh.module_info=&mods[3];
+ pending[0]=pending[1]=false;r.shader_bindings_changed=true;
+ update_shader_uniforms_tracked(&pg);pgraph_vk_update_descriptor_sets(&pg);
+ assert(r.descriptor_set_index==16&&r.finishes==finishes);
+ r.shader_bindings_changed=false;
  /* A texture change does need another set and must retire the full slot. */
  r.texture_bindings_changed=true;
  pgraph_vk_update_descriptor_sets(&pg);
  assert(r.finishes==finishes+1&&r.descriptor_set_index==1);
  r.texture_bindings_changed=false;
+ /* Either changed range must allocate a new immutable descriptor set. */
+ for(unsigned stage=0;stage<2;stage++){
+  ShaderModuleInfo *m=stage?b.psh.module_info:b.vsh.module_info;
+  size_t size=m->uniforms.total_size;unsigned sets=r.descriptor_set_index;
+  m->uniforms.total_size--;m->uniform_staged_valid=false;r.uniforms_changed=1u<<stage;
+  r.shader_bindings_changed=true;pgraph_vk_update_descriptor_sets(&pg);
+  assert(r.descriptor_set_index==sets+1);
+  assert(r.descriptor_uniform_sizes[stage]==size-1);
+  m->uniforms.total_size=size;m->uniform_staged_valid=false;r.uniforms_changed=1u<<stage;
+  pgraph_vk_update_descriptor_sets(&pg);assert(r.descriptor_set_index==sets+2);
+ }
+ /* A changed backing buffer needs a new set even with identical ranges. */
+ unsigned sets=r.descriptor_set_index;r.storage_buffers[0].buffer++;
+ r.shader_bindings_changed=true;pgraph_vk_update_descriptor_sets(&pg);
+ assert(r.descriptor_set_index==sets+1);
+ r.shader_bindings_changed=false;
  /* Repeatedly switch modules, dirty either/both stages, exhaust descriptor
   * slots and upload space, and force external buffer resets. */
  for(unsigned trial=0;trial<100000;trial++){
@@ -92,7 +117,7 @@ int main(void)
   update_shader_uniforms_tracked(&pg);pgraph_vk_update_descriptor_sets(&pg);
   assert(!r.uniforms_changed);
   ShaderUniformLayout*l[2]={&b.vsh.module_info->uniforms,&b.psh.module_info->uniforms};
-  for(unsigned i=0;i<2;i++){assert(r.uniform_buffer_offsets[i]%16==0);assert(memcmp(r.gpu+r.uniform_buffer_offsets[i],l[i]->allocation,l[i]->total_size)==0);}
+  for(unsigned i=0;i<2;i++){assert(r.descriptor_uniform_sizes[i]==l[i]->total_size);assert(r.descriptor_uniform_buffer==r.storage_buffers[0].buffer);assert(r.uniform_buffer_offsets[i]%16==0);assert(memcmp(r.gpu+r.uniform_buffer_offsets[i],l[i]->allocation,l[i]->total_size)==0);}
  }
  printf("PASS: independent uniform stages, module switches, aligned capacity, external resets and descriptor exhaustion across 100000 mixed draws (%u resets)\n",r.finishes);
 }

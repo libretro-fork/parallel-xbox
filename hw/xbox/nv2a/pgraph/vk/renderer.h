@@ -834,12 +834,12 @@ typedef struct PGRAPHVkState {
 
     // FIXME: Merge these into a structure
     size_t uniform_buffer_offsets[2];
+    VkBuffer descriptor_uniform_buffer;
+    VkDeviceSize descriptor_uniform_sizes[2];
     uint8_t uniforms_changed; /* bit 0: vertex UBO, bit 1: fragment UBO */
-    /* Tracked uniforms (shaders.c): the vertex uniform values; the last
-     * values written into each module's UBO allocation, keyed by module
-     * address (a module that finds no slot is pushed on every draw); and
-     * which modules' values uniform_buffer_offsets hold, as a module switch
-     * must re-push even with equal field values. */
+    /* Tracked uniforms (shaders.c): canonical packed values belong to each
+     * module; epochs invalidate their sources and staged snapshots. Stage
+     * selection changes resolve the new modules' immutable upload offsets. */
     VshUniformSource vsh_uni_src;
     uint64_t uniform_epoch;
     uint64_t uniform_upload_epoch;

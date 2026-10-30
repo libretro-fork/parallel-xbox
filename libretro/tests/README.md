@@ -141,8 +141,9 @@ with undefined-behavior traps enabled.
 `python libretro/tests/test-uniform-stage-uploads.py . gcc` exercises the
 production Vulkan uniform tracker, upload planning and descriptor-reuse
 decision against bounded upload storage. It checks independent stages,
-module switches, alignment, resets and descriptor exhaustion in 100,000
-mixed draws, with GCC's undefined-behavior traps enabled. It also checks
+module switches (including descriptor reuse for matching ranges), changed
+uniform ranges/backing buffers, alignment, resets and descriptor exhaustion
+in 100,000 mixed draws, with GCC's undefined-behavior traps enabled. It also checks
 A-to-B-to-A snapshot reuse without copies, append-on-mutation while old draw
 bytes stay unchanged, stale offsets after external resets, and overflow-safe
 snapshot bounds.
