@@ -241,6 +241,9 @@ nasm -f bin -I"$here/rom/" -o "$work/systwo/xemu/Complex_4627v1.03.bin" "$here/r
 mkdir -p "$work/sysshuf/xemu"
 cp "$work/sys/xemu/mcpx_1.0.bin" "$work/sysshuf/xemu/"
 nasm -f bin -I"$here/rom/" -o "$work/sysshuf/xemu/Complex_4627v1.03.bin" "$here/rom/sse-shuffle.asm"
+mkdir -p "$work/sysft0/xemu"
+cp "$work/sys/xemu/mcpx_1.0.bin" "$work/sysft0/xemu/"
+nasm -f bin -I"$here/rom/" -o "$work/sysft0/xemu/Complex_4627v1.03.bin" "$here/rom/x87-scratch.asm"
 
 cp "$work/sys/xemu/mcpx_1.0.bin" "$work/sysf/xemu/"
 nasm -f bin -I"$here/rom/" -o "$work/sysf/xemu/Complex_4627v1.03.bin" "$here/rom/rep-stos.asm"
@@ -350,6 +353,21 @@ for boost in enabled disabled; do
     cat "$work/sse-shuffle-$boost.txt"
     echo "FAIL: SSE shuffle ($boost)"; exit 1
   fi
+done
+
+# Instruction-local x87 scratch must still reach helpers within its instruction.
+for hard in enabled disabled; do
+  for boost in enabled disabled; do
+    t "x87 scratch, hard FPU $hard, CPU Boost $boost" $h "$(path "$core")" "$(path "$work/sysft0")" \
+      $vp --opt "xemu_hard_fpu=$hard" --opt "xemu_cpu_boost=$boost" --frames 60 --strict \
+      --peek 0x300000 --peek 0x300004 >"$work/x87-scratch-$hard-$boost.txt"
+    for want in "peek_0x300000=0x4b4f5058" "peek_0x300004=0x00000000"; do
+      grep -q "^$want$" "$work/x87-scratch-$hard-$boost.txt" || {
+        cat "$work/x87-scratch-$hard-$boost.txt"
+        echo "FAIL: x87 scratch ($hard/$boost)"; exit 1;
+      }
+    done
+  done
 done
 
 # Active register-only work crossing STI/CLI exits must not be parked.

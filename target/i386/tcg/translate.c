@@ -4528,6 +4528,14 @@ static void i386_tr_translate_insn(DisasContextBase *dcbase, CPUState *cpu)
      * Instruction decoding completed (possibly with #GP if the
      * 15-byte boundary was exceeded).
      */
+    /* FT0 is an instruction-local operand, not an architectural x87
+     * register. Every consumer stages it in this instruction. Helpers and
+     * internal branches have already synchronized it where needed; do not
+     * carry a dead scratch value into later helper/block writebacks. */
+    if (xemu_cpu_boost && g_use_hard_fpu) {
+        dc->ft0 = NULL;
+    }
+
     dc->base.pc_next = dc->pc;
     if (dc->base.is_jmp == DISAS_NEXT) {
         if (dc->flags & (HF_TF_MASK | HF_INHIBIT_IRQ_MASK)) {

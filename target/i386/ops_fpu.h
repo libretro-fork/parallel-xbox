@@ -25,6 +25,7 @@
 #define tcg_gen_st80f_fp glue(tcg_gen_st80f, PREC_SUFFIX)
 #define tcg_gen_ld80f_fp glue(tcg_gen_ld80f, PREC_SUFFIX)
 #define get_ft0 glue(get_ft0, PREC_SUFFIX)
+#define get_ft0_write glue(get_ft0_write, PREC_SUFFIX)
 #define get_stn glue(get_stn, PREC_SUFFIX)
 #define get_st0 glue(get_st0, PREC_SUFFIX)
 
@@ -40,6 +41,21 @@ static PREC_TYPE get_ft0(DisasContext *s)
         tcg_gen_ld80f_fp(*v, p);
     }
 
+    return *v;
+}
+
+/* A newly staged operand does not need the old scratch value. Keep the
+ * non-boost path unchanged; gen_flcr still establishes conversion rounding. */
+static PREC_TYPE get_ft0_write(DisasContext *s)
+{
+    if (!xemu_cpu_boost) {
+        return get_ft0(s);
+    }
+    gen_flcr(s);
+    PREC_TYPE *v = (PREC_TYPE *)&s->ft0;
+    if (*v == NULL) {
+        *v = tcg_temp_new_fp();
+    }
     return *v;
 }
 
@@ -194,7 +210,8 @@ static void glue(gen_helper_fp_arith_STN_ST0, PREC_SUFFIX)(DisasContext *s,
 
 static void glue(gen_fmov_FT0_STN, PREC_SUFFIX)(DisasContext *s, int st_index)
 {
-    glue(tcg_gen_mov, PREC_SUFFIX)(get_ft0(s), get_stn(s, st_index));
+    PREC_TYPE source = get_stn(s, st_index);
+    glue(tcg_gen_mov, PREC_SUFFIX)(get_ft0_write(s), source);
 }
 
 static void glue(gen_fmov_ST0_STN, PREC_SUFFIX)(DisasContext *s, int st_index)
@@ -209,7 +226,7 @@ static void glue(gen_fmov_STN_ST0, PREC_SUFFIX)(DisasContext *s, int st_index)
 
 static void glue(gen_flds_FT0, PREC_SUFFIX)(DisasContext *s, TCGv_i32 arg)
 {
-    glue(gen_mov32i, PREC_SUFFIX)(get_ft0(s), arg);
+    glue(gen_mov32i, PREC_SUFFIX)(get_ft0_write(s), arg);
 }
 
 static void glue(gen_flds_ST0, PREC_SUFFIX)(DisasContext *s, TCGv_i32 arg)
@@ -219,7 +236,7 @@ static void glue(gen_flds_ST0, PREC_SUFFIX)(DisasContext *s, TCGv_i32 arg)
 
 static void glue(gen_fldl_FT0, PREC_SUFFIX)(DisasContext *s, TCGv_i64 arg)
 {
-    glue(gen_mov64i, PREC_SUFFIX)(get_ft0(s), arg);
+    glue(gen_mov64i, PREC_SUFFIX)(get_ft0_write(s), arg);
 }
 
 static void glue(gen_fldl_ST0, PREC_SUFFIX)(DisasContext *s, TCGv_i64 arg)
@@ -229,7 +246,7 @@ static void glue(gen_fldl_ST0, PREC_SUFFIX)(DisasContext *s, TCGv_i64 arg)
 
 static void glue(gen_fildl_FT0, PREC_SUFFIX)(DisasContext *s, TCGv_i32 arg)
 {
-    glue(tcg_gen_cvt32i, PREC_SUFFIX)(get_ft0(s), arg);
+    glue(tcg_gen_cvt32i, PREC_SUFFIX)(get_ft0_write(s), arg);
 }
 
 static void glue(gen_fildl_ST0, PREC_SUFFIX)(DisasContext *s, TCGv_i32 arg)
@@ -304,5 +321,5 @@ static void glue(gen_fldz_ST0, PREC_SUFFIX)(DisasContext *s)
 
 static void glue(gen_fldz_FT0, PREC_SUFFIX)(DisasContext *s)
 {
-    glue(gen_movi, PREC_SUFFIX)(s, get_ft0(s), 0.0);
+    glue(gen_movi, PREC_SUFFIX)(s, get_ft0_write(s), 0.0);
 }

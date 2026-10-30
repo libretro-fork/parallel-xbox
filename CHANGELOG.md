@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- CPU Boost avoids saving dead x87 operand scratch values into CPU state between instructions. Real stack registers, helper synchronization and rounding retain their existing handling.
+
 - Voice lock masks use unsigned 64-bit shifts at voices 63, 127, 191 and 255. Regression checks now exercise the production lock helpers and verify that locked voices stop advancing, without relying on signed-wrap behavior.
 
 - ParaEQ and spatial direct/room filters scale negative samples with defined multiplication, and voice register masks reaching bit 31 are unsigned. Existing filtered output and rounding are preserved; the voice regression now checks signed filter histories without signed-wrap assumptions.
