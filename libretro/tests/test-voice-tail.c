@@ -94,7 +94,6 @@ static const struct {hwaddr top,current,next;}voice_list_regs[]={
     {NV_PAPU_TVL3D,NV_PAPU_CVL3D,NV_PAPU_NVL3D},
     {NV_PAPU_TVLMP,NV_PAPU_CVLMP,NV_PAPU_NVLMP}
 };
-static bool is_voice_locked(MCPXAPUState*d,uint16_t v){return false;}
 static void fe_method(MCPXAPUState*d,uint32_t method,uint32_t arg){assert(method==SE2FE_IDLE_VOICE);d->idle++;}
 static void voice_work_enqueue(MCPXAPUState*d,int v,int list){assert(d->queued<256);d->queue[d->queued++]=v;}
 static void voice_work_dispatch(MCPXAPUState*d,int64_t mix[][32])
@@ -481,10 +480,60 @@ static void signed_filters(void)
     printf("PASS: ParaEQ/spatial signed filter histories, hash=%016llx\n",
            (unsigned long long)hash);
 }
+static void check_locks(MCPXAPUState *d, const bool expected[256])
+{
+    for (unsigned word = 0; word < 4; word++) {
+        uint64_t value = 0, weight = 1;
+        for (unsigned bit = 0; bit < 64; bit++) {
+            if (expected[word * 64 + bit]) value += weight;
+            weight *= 2;
+        }
+        assert(d->vp.voice_locked[word] == value);
+    }
+    for (unsigned v = 0; v < 256; v++) {
+        assert(is_voice_locked(d, v) == expected[v]);
+    }
+}
+static void lock_boundaries(void)
+{
+    MCPXAPUState *d = calloc(1, sizeof(*d));
+    assert(d);
+    bool expected[256] = {false};
+    check_locks(d, expected);
+    for (unsigned pass = 0; pass < 4; pass++) {
+        for (unsigned step = 0; step < 256; step++) {
+            unsigned v = (step * 73) % 256;
+            bool lock = pass < 2;
+            voice_lock(d, v, lock);
+            expected[v] = lock;
+            check_locks(d, expected);
+        }
+    }
+    free(d);
+    d = setup(1024, 1, false, 0);
+    int64_t mix[32][32];
+    voice_lock(d, 64, true);
+    frame(d, mix);
+    assert(voice_get_mask(d, 64, NV_PAVS_VOICE_PAR_OFFSET,
+                          NV_PAVS_VOICE_PAR_OFFSET_CBO) == 0);
+    voice_lock(d, 64, false);
+    frame(d, mix);
+    uint32_t advanced = voice_get_mask(d, 64, NV_PAVS_VOICE_PAR_OFFSET,
+                                       NV_PAVS_VOICE_PAR_OFFSET_CBO);
+    assert(advanced > 0);
+    voice_lock(d, 64, true);
+    frame(d, mix);
+    assert(voice_get_mask(d, 64, NV_PAVS_VOICE_PAR_OFFSET,
+                          NV_PAVS_VOICE_PAR_OFFSET_CBO) == advanced);
+    dispose(d);
+    puts("PASS: all 256 voice locks, 1024 transitions, idempotence and frame gating");
+}
 int main(int argc,char**argv)
 {
     if(argc>1&&strcmp(argv[1],"tail")==0){tails();return 0;}
     if(argc>1&&strcmp(argv[1],"filters")==0){signed_filters();return 0;}
+    if(argc>1&&strcmp(argv[1],"locks")==0){lock_boundaries();return 0;}
+    lock_boundaries();
     signed_filters();
     inclusive_boundary();tails();loops();streams();control_paths();adpcm_pages();rejected_adpcm();pitch_cache();return 0;
 }

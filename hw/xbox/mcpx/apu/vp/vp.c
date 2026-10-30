@@ -182,7 +182,7 @@ static void voice_lock(MCPXAPUState *d, uint16_t v, bool lock)
 {
     assert(v < MCPX_HW_MAX_VOICES);
 
-    uint64_t mask = 1LL << (v % 64);
+    uint64_t mask = UINT64_C(1) << (v % 64);
     if (lock) {
         d->vp.voice_locked[v / 64] |= mask;
     } else {
@@ -193,7 +193,7 @@ static void voice_lock(MCPXAPUState *d, uint16_t v, bool lock)
 static bool is_voice_locked(MCPXAPUState *d, uint16_t v)
 {
     assert(v < MCPX_HW_MAX_VOICES);
-    uint64_t mask = 1LL << (v % 64);
+    uint64_t mask = UINT64_C(1) << (v % 64);
     return (d->vp.voice_locked[v / 64] & mask) != 0;
 }
 

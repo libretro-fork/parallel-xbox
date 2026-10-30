@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Voice lock masks use unsigned 64-bit shifts at voices 63, 127, 191 and 255. Regression checks now exercise the production lock helpers and verify that locked voices stop advancing, without relying on signed-wrap behavior.
+
 - ParaEQ and spatial direct/room filters scale negative samples with defined multiplication, and voice register masks reaching bit 31 are unsigned. Existing filtered output and rounding are preserved; the voice regression now checks signed filter histories without signed-wrap assumptions.
 
 - Audio filter feedback uses defined signed scaling instead of shifting negative values. Existing fixed-point rounding and clipping are unchanged; a wide-integer regression checks boundary values and filter histories without signed-wrap compiler assumptions.
