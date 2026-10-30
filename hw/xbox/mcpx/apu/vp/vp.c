@@ -78,25 +78,6 @@ static void voice_reset_filters(MCPXAPUState *d, uint16_t v)
     voice_resample_reset(&d->vp.filters[v]);
 }
 
-static bool voice_should_mute(uint16_t v)
-{
-    bool m = (g_dbg_voice_monitor >= 0) && (v != g_dbg_voice_monitor);
-
-    if (m && g_dbg_cache.vp.v[g_dbg_voice_monitor].multipass) {
-        uint8_t mp_bin = g_dbg_cache.vp.v[g_dbg_voice_monitor].multipass_bin;
-        struct McpxApuDebugVoice *d = &g_dbg_cache.vp.v[v];
-
-        for (int i = 0; i < sizeof(d->bin) / sizeof(d->bin[0]); i++) {
-            if (d->bin[i] == mp_bin) {
-                m = false;
-                break;
-            }
-        }
-    }
-
-    return m || mcpx_apu_debug_is_muted(v);
-}
-
 /* Measured coefficient grid: 1/1024 octave, rounded to 1/65536.
  * D97Eh gives 3043h and unity is limited to FFFFh/65536. */
 static float filter_coefficient(double x)
@@ -942,8 +923,6 @@ static int voice_get_samples(MCPXAPUState *d, uint32_t v, float samples[][2],
                                   NV_PAVS_VOICE_CFG_FMT_PERSIST);
     bool multipass = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_FMT,
                                     NV_PAVS_VOICE_CFG_FMT_MULTIPASS);
-    bool linked = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_FMT,
-                                 NV_PAVS_VOICE_CFG_FMT_LINKED); /* FIXME? */
 
     assert(!multipass); // Multipass is handled before this
 
@@ -962,21 +941,6 @@ static int voice_get_samples(MCPXAPUState *d, uint32_t v, float samples[][2],
     int adpcm_block_index = -1;
     uint8_t adpcm_block[36 * 2];
     int16_t adpcm_decoded[65*2]; // FIXME: Move out of here
-
-    // FIXME: Only update if necessary
-    struct McpxApuDebugVoice *dbg = &g_dbg.vp.v[v];
-    dbg->container_size = container_size_index;
-    dbg->sample_size = sample_size;
-    dbg->stream = stream;
-    dbg->loop = loop;
-    dbg->ebo = ebo;
-    dbg->cbo = cbo;
-    dbg->lbo = lbo;
-    dbg->ba = ba;
-    dbg->samples_per_block = samples_per_block;
-    dbg->persist = persist;
-    dbg->multipass = multipass;
-    dbg->linked = linked;
 
     // This is probably cleared when the first sample is played
     // FIXME: How will this behave if CBO > EBO on first play?
@@ -1460,53 +1424,13 @@ static int peek_ahead_multipass_bin(MCPXAPUState *d, uint16_t v,
     return -1;
 }
 
-static void dump_multipass_unused_debug_info(MCPXAPUState *d, uint16_t v)
-{
-    unsigned int sample_size = voice_get_mask(
-        d, v, NV_PAVS_VOICE_CFG_FMT, NV_PAVS_VOICE_CFG_FMT_SAMPLE_SIZE);
-    unsigned int container_size_index = voice_get_mask(
-        d, v, NV_PAVS_VOICE_CFG_FMT, NV_PAVS_VOICE_CFG_FMT_CONTAINER_SIZE);
-    bool stream = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_FMT,
-                                 NV_PAVS_VOICE_CFG_FMT_DATA_TYPE);
-    bool loop =
-        voice_get_mask(d, v, NV_PAVS_VOICE_CFG_FMT, NV_PAVS_VOICE_CFG_FMT_LOOP);
-    uint32_t ebo = voice_get_mask(d, v, NV_PAVS_VOICE_PAR_NEXT,
-                                  NV_PAVS_VOICE_PAR_NEXT_EBO);
-    uint32_t cbo = voice_get_mask(d, v, NV_PAVS_VOICE_PAR_OFFSET,
-                                  NV_PAVS_VOICE_PAR_OFFSET_CBO);
-    uint32_t lbo = voice_get_mask(d, v, NV_PAVS_VOICE_CUR_PSH_SAMPLE,
-                                  NV_PAVS_VOICE_CUR_PSH_SAMPLE_LBO);
-    uint32_t ba = voice_get_mask(d, v, NV_PAVS_VOICE_CUR_PSL_START,
-                                 NV_PAVS_VOICE_CUR_PSL_START_BA);
-    bool persist = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_FMT,
-                                  NV_PAVS_VOICE_CFG_FMT_PERSIST);
-    bool linked = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_FMT,
-                                 NV_PAVS_VOICE_CFG_FMT_LINKED);
-
-    struct McpxApuDebugVoice *dbg = &g_dbg.vp.v[v];
-    dbg->container_size = container_size_index;
-    dbg->sample_size = sample_size;
-    dbg->stream = stream;
-    dbg->loop = loop;
-    dbg->ebo = ebo;
-    dbg->cbo = cbo;
-    dbg->lbo = lbo;
-    dbg->ba = ba;
-    dbg->samples_per_block = 0; // Value overloaded with multipass bin
-    dbg->persist = persist;
-    dbg->linked = linked;
-}
-
 static void get_multipass_samples(MCPXAPUState *d,
                                   float mixbins[][NUM_SAMPLES_PER_FRAME],
                                   uint16_t v, float samples[][2])
 {
-    struct McpxApuDebugVoice *dbg = &g_dbg.vp.v[v];
-
     // DirectSound sets bin to 31, but hardware would allow other bins
     int mp_bin = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_FMT,
                                 NV_PAVS_VOICE_CFG_FMT_MULTIPASS_BIN);
-    dbg->multipass_bin = mp_bin;
 
     /* The bin is read as 24-bit samples and scaled up by 2^(format headroom),
      * undoing the bin headroom its voices were mixed with (measured). */
@@ -1528,9 +1452,6 @@ static void get_multipass_samples(MCPXAPUState *d,
     if (clear_mix) {
         memset(&mixbins[mp_bin][0], 0, sizeof(mixbins[0]));
     }
-
-    // Dump irrelevant data for audio debug UI to avoid showing stale info
-    dump_multipass_unused_debug_info(d, v);
 }
 
 static void voice_process(MCPXAPUState *d,
@@ -1547,11 +1468,6 @@ static void voice_process(MCPXAPUState *d,
     unsigned int channels = !three_d && stereo ? 2 : 1;
     bool paused = voice_get_mask(d, v, NV_PAVS_VOICE_PAR_STATE,
                                  NV_PAVS_VOICE_PAR_STATE_PAUSED);
-
-    struct McpxApuDebugVoice *dbg = &g_dbg.vp.v[v];
-    dbg->active = true;
-    dbg->stereo = stereo;
-    dbg->paused = paused;
 
     if (paused) {
         return;
@@ -1571,8 +1487,6 @@ static void voice_process(MCPXAPUState *d,
     float lfo_attenuation, lfo_pitch, lfo_cutoff;
     voice_step_lfos(d, v, &lfo_attenuation, &lfo_pitch, &lfo_cutoff);
     double pitch = p + ps * 32.0 * ef_value + lfo_pitch;
-    float rate = 1.0 / powf(2.0f, pitch / 4096.0f);
-    dbg->rate = rate;
 
     float ea_value = voice_step_envelope(
         d, v, NV_PAVS_VOICE_CFG_ENV0, NV_PAVS_VOICE_CFG_ENVA,
@@ -1586,7 +1500,6 @@ static void voice_process(MCPXAPUState *d,
 
     bool multipass = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_FMT,
                                     NV_PAVS_VOICE_CFG_FMT_MULTIPASS);
-    dbg->multipass = multipass;
 
     if (multipass) {
         /* Keep the previous-frame target current across format switches,
@@ -1679,18 +1592,6 @@ static void voice_process(MCPXAPUState *d,
 
     // FIXME: If phase negations means to flip the signal upside down
     //        we should modify volume of bin6 and bin7 here.
-
-    for (int i = 0; i < 8; i++) {
-        dbg->bin[i] = bin[i];
-        dbg->vol[i] = vol[i];
-    }
-
-    if (voice_should_mute(v)) {
-        if (source_finished) {
-            voice_off(d, v);
-        }
-        return;
-    }
 
     int fmode = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_MISC,
                                NV_PAVS_VOICE_CFG_MISC_FMODE);
@@ -1879,17 +1780,14 @@ static void voice_process(MCPXAPUState *d,
         if (voice_list == NV1BA0_PIO_SET_ANTECEDENT_VOICE_LIST_MP_TOP - 1) {
             mp_bin = peek_ahead_multipass_bin(d, v, &mp_dst_voice);
         }
-        dbg->multipass_dst_voice = mp_dst_voice;
 
-        bool debug_isolation =
-            g_dbg_voice_monitor >= 0 && g_dbg_voice_monitor == v;
         /* DSP-off audio uses this monitor: ramp it too. Compare gains at
          * a common headroom of seven without per-sample float divisions. */
         for (int i = 0; i < NUM_SAMPLES_PER_FRAME; i++) {
             uint32_t best = 0;
             for (int b = 0; b < 8; b++) {
                 if ((three_d && b < 4 && !spatial) ||
-                    (bin[b] == mp_bin && !debug_isolation)) {
+                    bin[b] == mp_bin) {
                     continue;
                 }
                 uint32_t gain = ((32 - i) * previous_gain[b] +
@@ -1972,7 +1870,6 @@ static void voice_worker_process(MCPXAPUState *d, VoiceWorker *self,
                                  float mixbins[][NUM_SAMPLES_PER_FRAME],
                                  float sample_buf[][2])
 {
-    g_dbg.vp.workers[self->id].num_voices = self->queue_len;
     for (int i = 0; i < self->queue_len; i++) {
         voice_process(d, mixbins, sample_buf,
                       self->queue[i].voice, self->queue[i].list);
@@ -2089,9 +1986,6 @@ voice_work_dispatch(MCPXAPUState *d,
     if (vwd->num_workers == 1 || !voice_work_schedule(d)) {
         /* No queue copy, scratch mix, wakeup or reduction on a serial frame.
          * The caller has already cleared the DSP output buffer. */
-        for (int w = 0; w < vwd->num_workers; w++) {
-            g_dbg.vp.workers[w].num_voices = w ? 0 : vwd->queue_len;
-        }
         for (int i = 0; i < vwd->queue_len; i++) {
             voice_process(d, mixbins, d->vp.sample_buf,
                           vwd->queue[i].voice, vwd->queue[i].list);
@@ -2160,8 +2054,6 @@ static void voice_work_init(MCPXAPUState *d)
     retro_atomic_int_init(&vwd->should_exit, 0);
     retro_atomic_int_init(&vwd->done, 0);
     retro_eventcount_init(&vwd->finished);
-
-    g_dbg.vp.num_workers = vwd->num_workers;
 
     for (int i = 0; i < vwd->num_workers; i++) {
         VoiceWorker *worker = &vwd->workers[i];

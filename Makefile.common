@@ -837,7 +837,6 @@ SOURCES_TARGET := \
 	$(CORE_DIR)/hw/xbox/lpc47m157.c \
 	$(CORE_DIR)/hw/xbox/mcpx/aci.c \
 	$(CORE_DIR)/hw/xbox/mcpx/apu/apu.c \
-	$(CORE_DIR)/hw/xbox/mcpx/apu/debug.c \
 	$(CORE_DIR)/hw/xbox/mcpx/apu/dsp/gp_ep.c \
 	$(CORE_DIR)/hw/xbox/mcpx/apu/monitor.c \
 	$(CORE_DIR)/hw/xbox/mcpx/apu/vp/vp.c \

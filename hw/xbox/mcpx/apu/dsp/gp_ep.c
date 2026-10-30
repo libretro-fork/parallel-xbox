@@ -479,7 +479,6 @@ static void dsp_thread_frame(MCPXAPUState *d, float mixbins[NUM_MIXBINS][NUM_SAM
         do {
             dsp_run(d->gp.dsp, 1000);
         } while (!dsp_get_halt_requested(d->gp.dsp) && d->gp.realtime);
-        g_dbg.gp.cycles = dsp_get_cycle_count(d->gp.dsp);
 
         if (gp_out) {
             /* mixbins 0 and 1, straight into the frontend's queue */
@@ -518,7 +517,6 @@ static void dsp_thread_frame(MCPXAPUState *d, float mixbins[NUM_MIXBINS][NUM_SAM
         do {
             dsp_run(d->ep.dsp, 1000);
         } while (!dsp_get_halt_requested(d->ep.dsp) && d->ep.realtime);
-        g_dbg.ep.cycles = dsp_get_cycle_count(d->ep.dsp);
         if (q) {
             if (!t->ep_written) {
                 memset(q, 0, 256 * 2 * sizeof(int16_t));

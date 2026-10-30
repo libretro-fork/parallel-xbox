@@ -205,11 +205,11 @@ checks callback ordering for reads/writes, preservation of newly written
 DMA data, translated and shortened mapping ranges, failed/empty maps and
 the separate bounce path. GCC's undefined-behavior traps are enabled.
 
-`python libretro/tests/test-voice-tail.py . gcc` runs the decoder-to-mix
-regression without booting a complete core. It compiles the checkout's
+`python libretro/tests/test-voice-tail.py . gcc` (run by `run.sh`) runs the
+decoder-to-mix regression without booting a complete core. It compiles the checkout's
 actual PCM/ADPCM decoder, resampler, envelope/filter/routing functions and
 voice-list active gate against bounded guest RAM and notification writes.
-Worker execution and platform/debug glue are fixtures. The 944 finite-source
+Worker execution and platform glue are fixtures. The 944 finite-source
 cases cover source lengths around frame/block boundaries, slow/fast pitch,
 mono/stereo and DSP-off output; additional cases cover loops, SSL bank
 completion, persistent underrun/refill, explicit stop, pause, restart and

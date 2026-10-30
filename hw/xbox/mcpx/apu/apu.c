@@ -22,7 +22,7 @@
 #include "apu_int.h"
 #include "monitor.h"
 
-MCPXAPUState *g_state; // Used via debug handlers
+MCPXAPUState *g_state; /* for monitor.c */
 
 static void update_irq(MCPXAPUState *d)
 {
@@ -110,9 +110,6 @@ static const MemoryRegionOps mcpx_apu_mmio_ops = {
 static void se_frame(MCPXAPUState *d)
 {
     mcpx_apu_update_dsp_preference(d);
-    mcpx_debug_begin_frame();
-    g_dbg.gp_realtime = d->gp.realtime;
-    g_dbg.ep_realtime = d->ep.realtime;
 
     /* This frame's mixbins, the VP's into the DSPs': the thread's buffer
      * for this frame, the other one holding the frame it may still be on */
@@ -123,8 +120,6 @@ static void se_frame(MCPXAPUState *d)
     mcpx_apu_dsp_post(d, mixbins);
 
     d->ep_frame_div++;
-
-    mcpx_debug_end_frame();
 }
 
 /*

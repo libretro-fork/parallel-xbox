@@ -80,6 +80,9 @@ ${cc} -O2 -std=c99 -Wall -I"$here/../.." -o "$work/bin/surfaceclear" "$here/test
 ${cc} -O2 -std=c99 -Wall -I"$here/../.." -o "$work/bin/vramranges" "$here/test-vram-ranges.c"
 "$work/bin/vramranges"
 python3 "$here/test-texture-dirty.py" "$here/../.." "$cc"
+# The voice processor's own functions, lifted from vp.c: decoding, the
+# resampler, filters, gains, voice ends and the frame's voice list
+python3 "$here/test-voice-tail.py" "$here/../.." "$cc"
 ${cc} -O2 -std=c99 -Wall -o "$work/bin/sinecheck" "$here/sinecheck.c"
 ${cc} -O2 -std=c99 -Wall -o "$work/bin/rampcheck" "$here/rampcheck.c"
 ${cc} -O2 -std=c99 -Wall -o "$work/bin/mkdisc" "$here/mkdisc.c"

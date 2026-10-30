@@ -137,13 +137,7 @@ static inline void apu_reg_w(MCPXAPUState *d, unsigned int r, uint32_t v)
         apu_reg_w((d), (r), apu_v_);        \
     } while (0)
 
-extern MCPXAPUState *g_state; // Used via debug handlers
-extern struct McpxApuDebug g_dbg, g_dbg_cache;
-extern int g_dbg_voice_monitor;
-extern uint64_t g_dbg_muted_voices[4];
-
-void mcpx_debug_begin_frame(void);
-void mcpx_debug_end_frame(void);
+extern MCPXAPUState *g_state; /* for monitor.c */
 
 void mcpx_apu_monitor_init(MCPXAPUState *d, Error **errp);
 /* The queue for a state, both sides stopped: the oldest frames up to max

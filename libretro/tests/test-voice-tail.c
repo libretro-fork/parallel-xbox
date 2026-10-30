@@ -28,13 +28,6 @@ typedef struct MCPXAPUState MCPXAPUState;
 #define RAM_SIZE (1u<<20)
 static size_t direct_ram_size=RAM_SIZE;
 #define memory_region_size(region) direct_ram_size
-struct McpxApuDebugVoice {
-    float rate;int bin[8],vol[8];
-    int active,stereo,paused,multipass,multipass_dst_voice;
-    int container_size,sample_size,stream,loop,ebo,cbo,lbo,ba,samples_per_block,persist,linked;
-};
-static struct {struct {struct McpxApuDebugVoice v[256];}vp;} g_dbg;
-static int g_dbg_voice_monitor=-1;
 static struct {struct {bool hrtf;}audio;}g_config;
 struct MCPXAPUState {
     uint32_t regs[0x20000];
@@ -52,9 +45,12 @@ struct MCPXAPUState {
     struct {int point;}monitor;
     unsigned notices[2],queued,idle;
     uint16_t queue[256];
-    bool muted;
 };
 static struct {MCPXAPUState *d;}address_space_memory;
+/* the APU's register file, word-atomic in the core (apu_int.h) */
+static uint32_t apu_reg_r(MCPXAPUState *d,unsigned r){return d->regs[r];}
+static void apu_reg_w(MCPXAPUState *d,unsigned r,uint32_t v){d->regs[r]=v;}
+#define retro_atomic_fetch_or_int(p,v) (*(p)|=(v))
 static void cpu_physical_memory_read(hwaddr a,void *out,hwaddr bytes)
 {assert(a+bytes<=RAM_SIZE);memcpy(out,address_space_memory.d->ram_ptr+a,bytes);}
 static unsigned sge_reads;
@@ -85,7 +81,6 @@ static bool xemu_doge_mode(void){return false;}
 static uint64_t fast_hash(const void *p,size_t n){return 0;}
 static const uint8_t segaboot_jingle_data[2]={0};
 static const size_t segaboot_jingle_size=0;
-static bool voice_should_mute(uint16_t v){return address_space_memory.d->muted;}
 static int peek_ahead_multipass_bin(MCPXAPUState*d,uint16_t v,uint16_t*dest){*dest=0xffff;return -1;}
 static bool allow_multipass;
 static void get_multipass_samples(MCPXAPUState*d,float mix[][32],uint16_t v,float out[][2])
@@ -285,9 +280,6 @@ static void control_paths(void)
     put(d,NV_PAVS_VOICE_PAR_OFFSET,NV_PAVS_VOICE_PAR_OFFSET_CBO,0);
     frame(d,mix);assert(active(d));
     dispose(d);
-    d=setup(3,1,false,0);d->muted=true;
-    for(unsigned frames=0;active(d);frames++){assert(frames<10);frame(d,mix);}
-    assert(d->notices[0]==1);dispose(d);
     /* Finite SSL source in release drains rather than stopping on prefetch. */
     d=setup(33,1,false,0);
     put(d,NV_PAVS_VOICE_CFG_FMT,NV_PAVS_VOICE_CFG_FMT_DATA_TYPE,1);
@@ -311,7 +303,7 @@ static void control_paths(void)
     put(d,NV_PAVS_VOICE_CUR_PSH_SAMPLE,NV_PAVS_VOICE_CUR_PSH_SAMPLE_LBO,2);
     put(d,NV_PAVS_VOICE_PAR_OFFSET,NV_PAVS_VOICE_PAR_OFFSET_CBO,2);
     frame(d,mix);assert(active(d));dispose(d);
-    puts("PASS: pause, immediate explicit stop, restart, VP reset/pre-load, muted completion, finite SSL drain and zero-progress guard");
+    puts("PASS: pause, immediate explicit stop, restart, VP reset/pre-load, finite SSL drain and zero-progress guard");
 }
 static void adpcm_pages(void)
 {
