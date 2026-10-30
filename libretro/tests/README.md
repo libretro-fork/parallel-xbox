@@ -37,6 +37,14 @@ that every page in it and no other is locked, the retries, the array's
 move to the heap past 16 pages, and the unlock, in 160,000 cases with
 GCC's undefined-behavior traps enabled.
 
+`python libretro/tests/test-region-tbs.py . gcc` compiles the production
+index of translated blocks by host code address (insert, remove, lookup,
+walk, count, flush) and drives it as block translation does: new blocks
+upwards, the newest dropped and its space taken again, old blocks
+recycled in place, flushes. 25,000 checks compare every lookup, walk and
+count with a reference, the array growing past its first size; GCC's
+undefined-behavior traps are enabled.
+
 `python libretro/tests/test-dma-map.py . gcc` compiles the production direct
 DMA mapping function against bounded RAM and a pending GPU writeback. It
 checks callback ordering for reads/writes, preservation of newly written
