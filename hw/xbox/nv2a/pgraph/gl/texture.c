@@ -37,7 +37,7 @@ static TextureBinding *generate_texture(const TextureShape s,
 static void texture_binding_destroy(gpointer data);
 
 struct pgraph_texture_possibly_dirty_struct {
-    hwaddr addr, end;
+    hwaddr addr, size;
 };
 
 static void mark_textures_possibly_dirty_visitor(Lru *lru, LruNode *node, void *opaque)
@@ -50,15 +50,12 @@ static void mark_textures_possibly_dirty_visitor(Lru *lru, LruNode *node, void *
         return;
     }
 
-    uintptr_t k_tex_addr = tnode->key.texture_vram_offset;
-    uintptr_t k_tex_end = k_tex_addr + tnode->key.texture_length - 1;
-    bool overlapping = !(test->addr > k_tex_end || k_tex_addr > test->end);
-
-    if (tnode->key.palette_length > 0) {
-        uintptr_t k_pal_addr = tnode->key.palette_vram_offset;
-        uintptr_t k_pal_end = k_pal_addr + tnode->key.palette_length - 1;
-        overlapping |= !(test->addr > k_pal_end || k_pal_addr > test->end);
-    }
+    bool overlapping = pgraph_vram_ranges_overlap(
+        test->addr, test->size, tnode->key.texture_vram_offset,
+        tnode->key.texture_length);
+    overlapping |= pgraph_vram_ranges_overlap(
+        test->addr, test->size, tnode->key.palette_vram_offset,
+        tnode->key.palette_length);
 
     tnode->possibly_dirty |= overlapping;
 }
@@ -69,13 +66,19 @@ void pgraph_gl_mark_textures_possibly_dirty(NV2AState *d,
     PGRAPHState *pg = &d->pgraph;
     PGRAPHGLState *r = pg->gl_renderer_state;
 
-    hwaddr end = TARGET_PAGE_ALIGN(addr + size) - 1;
+    if (!size) {
+        return;
+    }
+    assert(pgraph_vram_range_valid(addr, size, memory_region_size(d->vram)));
+    /* Dirty tracking clears whole pages, so invalidate every cached view
+     * sharing those pages, including palettes. */
+    hwaddr end = TARGET_PAGE_ALIGN(addr + size);
     addr &= TARGET_PAGE_MASK;
     assert(end <= memory_region_size(d->vram));
 
     struct pgraph_texture_possibly_dirty_struct test = {
         .addr = addr,
-        .end = end,
+        .size = end - addr,
     };
 
     lru_visit_active(&r->texture_cache,
@@ -85,9 +88,13 @@ void pgraph_gl_mark_textures_possibly_dirty(NV2AState *d,
 
 static bool check_texture_dirty(NV2AState *d, hwaddr addr, hwaddr size)
 {
+    if (!size) {
+        return false;
+    }
+    assert(pgraph_vram_range_valid(addr, size, memory_region_size(d->vram)));
     hwaddr end = TARGET_PAGE_ALIGN(addr + size);
     addr &= TARGET_PAGE_MASK;
-    assert(end < memory_region_size(d->vram));
+    assert(end <= memory_region_size(d->vram));
     return memory_region_test_and_clear_dirty(d->vram, addr, end - addr,
                                               DIRTY_MEMORY_NV2A_TEX);
 }
@@ -321,9 +328,10 @@ void pgraph_gl_bind_textures(NV2AState *d)
         texture_vram_offset = pgraph_get_texture_phys_addr(pg, i);
         palette_vram_offset = pgraph_get_texture_palette_phys_addr_length(pg, i, &palette_length);
 
-        assert((texture_vram_offset + length) < memory_region_size(d->vram));
-        assert((palette_vram_offset + palette_length)
-               < memory_region_size(d->vram));
+        assert(pgraph_vram_range_valid(texture_vram_offset, length,
+                                       memory_region_size(d->vram)));
+        assert(pgraph_vram_range_valid(palette_vram_offset, palette_length,
+                                       memory_region_size(d->vram)));
         bool is_indexed = (state.color_format ==
                 NV097_SET_TEXTURE_FORMAT_COLOR_SZ_I8_A8R8G8B8);
         bool possibly_dirty = false;

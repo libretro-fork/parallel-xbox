@@ -405,3 +405,5 @@ original immutable words and can be destroyed independently. Production
 layout construction/destruction is compared with a copy-mode control; layouts
 must survive freeing all parser/source data, and all packed uniform storage
 must be released.
+
+`test-texture-dirty.py CHECKOUT [CC]` compiles the actual OpenGL and Vulkan cache-invalidation functions against a page-dirty RAM oracle. It covers the final VRAM byte/page, palettes sharing cleared pages, writes crossing a page boundary, and empty spans. The standard runner executes it alongside the VRAM range test.

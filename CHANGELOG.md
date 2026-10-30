@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Both renderers now accept texture dirty-page queries ending exactly at the end of VRAM. Empty spans no longer clear or invalidate a page; texture and palette invalidation retains page-wide coverage so cached views sharing a dirty page stay coherent.
+
 - Added an offline image-preparation utility with an explicit runtime disc-check adjustment for Otogi. It creates a separate image and preserves the input. Startup notes record DOA2 Ultimate's roughly 100-second initial black screen with both MCPX boot paths.
 
 - QEMU's migration code is cut down to what the savestates use (a state is one stream into the frontend's buffer): the migration transports (socket, exec, fd, file, TLS), multifd compression, RDMA, COLO, dirty-rate measurement and the QMP migration commands are gone, about 15,000 lines, and the -incoming and -loadvm options with them. The migration capabilities, which nothing in the core ever turned on, are constants now, so the code behind them is not built either. States saved before load as they did.

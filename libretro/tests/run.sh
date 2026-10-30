@@ -69,6 +69,7 @@ ${cc} -O2 -std=c99 -Wall -I"$here/../.." -o "$work/bin/surfaceclear" "$here/test
 "$work/bin/surfaceclear"
 ${cc} -O2 -std=c99 -Wall -I"$here/../.." -o "$work/bin/vramranges" "$here/test-vram-ranges.c"
 "$work/bin/vramranges"
+python3 "$here/test-texture-dirty.py" "$here/../.." "$cc"
 ${cc} -O2 -std=c99 -Wall -o "$work/bin/sinecheck" "$here/sinecheck.c"
 ${cc} -O2 -std=c99 -Wall -o "$work/bin/rampcheck" "$here/rampcheck.c"
 ${cc} -O2 -std=c99 -Wall -o "$work/bin/mkdisc" "$here/mkdisc.c"

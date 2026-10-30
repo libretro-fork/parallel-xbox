@@ -5,6 +5,13 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+/* Validate without overflowing the exclusive endpoint. */
+static inline bool pgraph_vram_range_valid(uint64_t addr, uint64_t size,
+                                          uint64_t limit)
+{
+    return addr <= limit && size <= limit - addr;
+}
+
 /* Half-open, non-wrapping byte spans. Subtraction avoids overflowing an
  * endpoint addition, and empty spans never own a byte. */
 static inline bool pgraph_vram_ranges_overlap(uint64_t a, uint64_t a_size,
