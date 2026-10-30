@@ -42,9 +42,7 @@
 
 #include "chardev-internal.h"
 
-#ifdef XBOX
 extern GMainContext *qemu_main_context; /* FIXME: Cleanup */
-#endif
 
 /***********************************************************/
 /* character device */
@@ -208,15 +206,11 @@ void qemu_chr_be_update_read_handlers(Chardev *s,
     assert(qemu_chr_has_feature(s, QEMU_CHAR_FEATURE_GCONTEXT)
            || !context);
 
-#ifdef XBOX
     if (context != NULL) {
-#endif
 
     s->gcontext = context;
 
-#ifdef XBOX
     }
-#endif
 
     if (cc->chr_update_read_handler) {
         cc->chr_update_read_handler(s);
@@ -256,10 +250,8 @@ static void char_init(Object *obj)
     chr->handover_yank_instance = false;
     chr->logfd = -1;
 
-#ifdef XBOX
     /* Explicitly default to qemu_main_context, not the global context via NULL. */
     chr->gcontext = qemu_main_context;
-#endif
 
     qemu_mutex_init(&chr->chr_write_lock);
 
@@ -908,15 +900,11 @@ static Chardev *chardev_new(const char *id, const char *typename,
     chr->handover_yank_instance = handover_yank_instance;
     chr->label = g_strdup(id);
 
-#ifdef XBOX
     if (gcontext != NULL) {
-#endif
 
     chr->gcontext = gcontext;
 
-#ifdef XBOX
     }
-#endif
 
     qemu_char_open(chr, backend, &be_opened, &local_err);
     if (local_err) {

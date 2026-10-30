@@ -30,15 +30,11 @@
 #include "qapi/error.h"
 #include "qom/object.h"
 
-#ifdef XBOX
 /* FIXME: As 8254 code is written, this cannot be exactly 1125000, as counter
  * will always trigger w/ how Xbox software configures PIT. Use a small delta
  * for now.
  */
 #define PIT_FREQ 1125001
-#else
-#define PIT_FREQ 1193182
-#endif
 
 typedef struct PITChannelInfo {
     int gate;

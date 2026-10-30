@@ -440,7 +440,6 @@ void aio_context_set_aio_params(AioContext *ctx, int64_t max_batch)
 {
 }
 
-#ifdef XBOX
 /* Whether anything but the context's own notifier waits on a handle or
  * socket: the libretro main loop (main-loop.c) polls only then */
 bool aio_has_fd_handlers(AioContext *ctx)
@@ -454,4 +453,3 @@ bool aio_has_fd_handlers(AioContext *ctx)
     }
     return false;
 }
-#endif

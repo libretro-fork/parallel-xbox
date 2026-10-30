@@ -34,11 +34,8 @@
 #include "qemu/error-report.h"
 #include "qemu/queue.h"
 #include "qom/object.h"
-#ifdef XBOX
 #include <rthreads/retro_eventcount.h>
-#endif
 
-#ifdef XBOX
 /* FIXME: This is a slightly incomplete implementation of moving
  * QEMU to a dedicated glib context.
  *
@@ -58,113 +55,21 @@ GMainLoop *qemu_main_loop_obj = NULL;
  * thread that gives up the BQL but expects the main loop to not be running.
  */
 QemuMutex qemu_main_loop_lock;
-#endif
 
 #ifndef _WIN32
 #include <sys/wait.h>
 #endif
 
-#ifndef _WIN32
-
-/* If we have signalfd, we mask out the signals we want to handle and then
- * use signalfd to listen for them.  We rely on whatever the current signal
- * handler is to dispatch the signals when we receive them.
- */
 /*
- * Disable CFI checks.
- * We are going to call a signal handler directly. Such handler may or may not
- * have been defined in our binary, so there's no guarantee that the pointer
- * used to set the handler is a cfi-valid pointer. Since the handlers are
- * stored in kernel memory, changing the handler to an attacker-defined
- * function requires being able to call a sigaction() syscall,
- * which is not as easy as overwriting a pointer in memory.
+ * The libretro core takes no signals: they are the frontend's process'
+ * (SIGBUS from memory preallocation, SIGIO, SIGALRM are not used, and
+ * the vCPU is kicked without SIG_IPI). Their signalfd was a descriptor
+ * the main loop had to poll on every pass.
  */
-QEMU_DISABLE_CFI
-static void sigfd_handler(void *opaque)
-{
-    int fd = (intptr_t)opaque;
-    struct qemu_signalfd_siginfo info;
-    struct sigaction action;
-    ssize_t len;
-
-    while (1) {
-        len = RETRY_ON_EINTR(read(fd, &info, sizeof(info)));
-
-        if (len == -1 && errno == EAGAIN) {
-            break;
-        }
-
-        if (len != sizeof(info)) {
-            error_report("read from sigfd returned %zd: %s", len,
-                         g_strerror(errno));
-            return;
-        }
-
-        sigaction(info.ssi_signo, NULL, &action);
-        if ((action.sa_flags & SA_SIGINFO) && action.sa_sigaction) {
-            sigaction_invoke(&action, &info);
-        } else if (action.sa_handler) {
-            action.sa_handler(info.ssi_signo);
-        }
-    }
-}
-
-static int qemu_signal_init(Error **errp)
-{
-#ifdef XBOX
-    /*
-     * The libretro core takes no signals: they are the frontend's process'
-     * (SIGBUS from memory preallocation, SIGIO, SIGALRM are not used, and
-     * the vCPU is kicked without SIG_IPI). Their signalfd was a descriptor
-     * the main loop had to poll on every pass.
-     */
-    return 0;
-#else
-    int sigfd;
-    sigset_t set;
-
-    /*
-     * SIG_IPI must be blocked in the main thread and must not be caught
-     * by sigwait() in the signal thread. Otherwise, the cpu thread will
-     * not catch it reliably.
-     */
-    sigemptyset(&set);
-    sigaddset(&set, SIG_IPI);
-    sigaddset(&set, SIGIO);
-    sigaddset(&set, SIGALRM);
-    sigaddset(&set, SIGBUS);
-    /* SIGINT cannot be handled via signalfd, so that ^C can be used
-     * to interrupt QEMU when it is being run under gdb.  SIGHUP and
-     * SIGTERM are also handled asynchronously, even though it is not
-     * strictly necessary, because they use the same handler as SIGINT.
-     */
-    pthread_sigmask(SIG_BLOCK, &set, NULL);
-
-    sigdelset(&set, SIG_IPI);
-    sigfd = qemu_signalfd(&set);
-    if (sigfd == -1) {
-        error_setg_errno(errp, errno, "failed to create signalfd");
-        return -errno;
-    }
-
-    if (!qemu_set_blocking(sigfd, false, errp)) {
-        close(sigfd);
-        return -EINVAL;
-    }
-
-    qemu_set_fd_handler(sigfd, sigfd_handler, NULL, (void *)(intptr_t)sigfd);
-
-    return 0;
-#endif
-}
-
-#else /* _WIN32 */
-
 static int qemu_signal_init(Error **errp)
 {
     return 0;
 }
-#endif
 
 static AioContext *qemu_aio_context;
 static QEMUBH *qemu_notify_bh;
@@ -190,12 +95,9 @@ void qemu_notify_event(void)
 }
 
 static GArray *gpollfds;
-#ifdef XBOX
 /* the libretro main loop's wait (main_loop_wait) */
 static retro_eventcount_t main_loop_ec;
-#endif
 
-#ifdef XBOX
 void qemu_init_main_loop_lock(void)
 {
     qemu_mutex_init(&qemu_main_loop_lock);
@@ -210,20 +112,17 @@ void qemu_mutex_unlock_main_loop(void)
 {
     qemu_mutex_unlock(&qemu_main_loop_lock);
 }
-#endif
 
 int qemu_init_main_loop(Error **errp)
 {
     int ret;
     GSource *src;
 
-#ifdef XBOX
     retro_eventcount_init(&main_loop_ec);
     qemu_main_context = g_main_context_new();
     assert(qemu_main_context != NULL);
     g_main_context_push_thread_default(qemu_main_context);
     qemu_main_loop_obj = g_main_loop_new(qemu_main_context, FALSE);
-#endif
 
     qemu_init_clocks(qemu_timer_notify_cb);
 
@@ -241,19 +140,11 @@ int qemu_init_main_loop(Error **errp)
     gpollfds = g_array_new(FALSE, FALSE, sizeof(GPollFD));
     src = aio_get_g_source(qemu_aio_context);
     g_source_set_name(src, "aio-context");
-#ifdef XBOX
     g_source_attach(src, qemu_main_context);
-#else
-    g_source_attach(src, NULL);
-#endif
     g_source_unref(src);
     src = iohandler_get_g_source();
     g_source_set_name(src, "io-handler");
-#ifdef XBOX
     g_source_attach(src, qemu_main_context);
-#else
-    g_source_attach(src, NULL);
-#endif
     g_source_unref(src);
     return 0;
 }
@@ -325,11 +216,7 @@ static int glib_n_poll_fds;
 
 static void glib_pollfds_fill(int64_t *cur_timeout)
 {
-#ifdef XBOX
     GMainContext *context = g_main_context_get_thread_default();
-#else
-    GMainContext *context = g_main_context_default();
-#endif
     int timeout = 0;
     int64_t timeout_ns;
     int n;
@@ -358,11 +245,7 @@ static void glib_pollfds_fill(int64_t *cur_timeout)
 
 static void glib_pollfds_poll(void)
 {
-#ifdef XBOX
     GMainContext *context = g_main_context_get_thread_default();
-#else
-    GMainContext *context = g_main_context_default();
-#endif
     GPollFD *pfds = &g_array_index(gpollfds, GPollFD, glib_pollfds_idx);
 
     if (g_main_context_check(context, max_priority, pfds, glib_n_poll_fds)) {
@@ -374,11 +257,7 @@ static void glib_pollfds_poll(void)
 
 static int os_host_main_loop_wait(int64_t timeout)
 {
-#ifdef XBOX
     GMainContext *context = g_main_context_get_thread_default();
-#else
-    GMainContext *context = g_main_context_default();
-#endif
     int ret;
 
     g_main_context_acquire(context);
@@ -387,13 +266,9 @@ static int os_host_main_loop_wait(int64_t timeout)
 
     bql_unlock();
 
-#ifdef XBOX
     qemu_mutex_unlock_main_loop();
-#endif
     ret = qemu_poll_ns((GPollFD *)gpollfds->data, gpollfds->len, timeout);
-#ifdef XBOX
     qemu_mutex_lock_main_loop();
-#endif
 
     bql_lock();
 
@@ -548,11 +423,7 @@ static void pollfds_poll(GArray *pollfds, int nfds, fd_set *rfds,
 
 static int os_host_main_loop_wait(int64_t timeout)
 {
-#ifdef XBOX
     GMainContext *context = g_main_context_get_thread_default();
-#else
-    GMainContext *context = g_main_context_default();
-#endif
     GPollFD poll_fds[1024 * 2]; /* this is probably overkill */
     int select_ret = 0;
     int g_poll_ret, ret, i, n_poll_fds;
@@ -600,13 +471,9 @@ static int os_host_main_loop_wait(int64_t timeout)
 
     bql_unlock();
 
-#ifdef XBOX
     qemu_mutex_unlock_main_loop();
-#endif
     g_poll_ret = qemu_poll_ns(poll_fds, n_poll_fds + w->num, poll_timeout_ns);
-#ifdef XBOX
     qemu_mutex_lock_main_loop();
-#endif
 
     bql_lock();
     if (g_poll_ret > 0) {
@@ -653,12 +520,8 @@ void main_loop_poll_remove_notifier(Notifier *notify)
     notifier_remove(notify);
 }
 
-#ifdef XBOX
 /* the loop that polls: NAT networking's sockets, and descriptors */
 static void main_loop_wait_poll(int nonblocking)
-#else
-void main_loop_wait(int nonblocking)
-#endif
 {
     MainLoopPoll mlpoll = {
         .state = MAIN_LOOP_POLL_FILL,
@@ -701,7 +564,6 @@ void main_loop_wait(int nonblocking)
     qemu_clock_run_all_timers();
 }
 
-#ifdef XBOX
 /*
  * The libretro core's main loop step: the frame loop (ui/libretro.c) calls
  * it on every pass, so it does no more than the work that is there. The
@@ -786,7 +648,6 @@ void main_loop_wait(int nonblocking)
     }
     qemu_clock_run_all_timers();
 }
-#endif
 
 /* Functions to operate on the main QEMU AioContext.  */
 

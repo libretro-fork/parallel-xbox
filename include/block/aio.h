@@ -451,11 +451,9 @@ QEMUBH *aio_bh_new_full(AioContext *ctx, QEMUBHFunc *cb, void *opaque,
 void aio_notify(AioContext *ctx);
 /* Called when the main loop's context is notified (util/async.c) */
 extern void (*aio_main_notify_hook)(void);
-#ifdef XBOX
 bool aio_has_fd_handlers(AioContext *ctx);
 /* the libretro main loop's wake-up, from aio_notify of any context */
 void qemu_main_loop_wake(void);
-#endif
 
 /**
  * aio_notify_accept: Acknowledge receiving an aio_notify.

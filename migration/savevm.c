@@ -1511,9 +1511,7 @@ static int qemu_savevm_state(QEMUFile *f, Error **errp)
     }
     ms->to_dst_file = f;
 
-#ifdef XBOX
     xemu_snapshots_save_extra_data(f);
-#endif
 
     qemu_savevm_state_header(f);
     ret = qemu_savevm_state_setup(f, errp);
@@ -2669,11 +2667,9 @@ int qemu_loadvm_state(QEMUFile *f, Error **errp)
         return -EINVAL;
     }
 
-#ifdef XBOX
     if (!xemu_snapshots_offset_extra_data(f)) {
         return -EINVAL;
     }
-#endif
 
     qemu_loadvm_thread_pool_create(mis);
 

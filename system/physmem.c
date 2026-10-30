@@ -841,7 +841,6 @@ AddressSpace *cpu_get_address_space(CPUState *cpu, int asidx)
     return cpu->cpu_ases[asidx].as;
 }
 
-#ifdef XBOX
 
 static inline bool access_callback_address_matches(MemAccessCallback *cb,
                                                    hwaddr addr, hwaddr len)
@@ -957,7 +956,6 @@ void mem_check_access_callback_ramaddr(CPUState *cpu,
     }
 }
 
-#endif // ifdef XBOX
 
 /* Called from RCU critical section */
 static RAMBlock *qemu_get_ram_block(ram_addr_t addr)
@@ -3266,11 +3264,9 @@ static MemTxResult flatview_write_continue(FlatView *fv, hwaddr addr,
     MemTxResult result = MEMTX_OK;
     const uint8_t *buf = ptr;
 
-#ifdef XBOX
     CPUState *cpu = qemu_get_cpu(0);
     ram_addr_t ram_addr = mr_addr + memory_region_get_ram_addr(mr);
     mem_check_access_callback_ramaddr(cpu, ram_addr, len, BP_MEM_WRITE);
-#endif
 
     for (;;) {
         result |= flatview_write_continue_step(attrs, buf, len, mr_addr, &l,
@@ -3363,11 +3359,9 @@ MemTxResult flatview_read_continue(FlatView *fv, hwaddr addr,
     MemTxResult result = MEMTX_OK;
     uint8_t *buf = ptr;
 
-#ifdef XBOX
     CPUState *cpu = qemu_get_cpu(0);
     ram_addr_t ram_addr = mr_addr + memory_region_get_ram_addr(mr);
     mem_check_access_callback_ramaddr(cpu, ram_addr, len, BP_MEM_READ);
-#endif
 
     fuzz_dma_read_cb(addr, len, mr);
     for (;;) {
@@ -3753,7 +3747,6 @@ void *address_space_map(AddressSpace *as,
                                         l, is_write, attrs);
     fuzz_dma_read_cb(addr, *plen, mr);
     void *ptr = qemu_ram_ptr_length(mr->ram_block, xlat, plen, true, is_write);
-#ifdef XBOX
     /* Direct DMA must observe the same GPU/CPU ownership transitions as
      * flatview_read/write before the caller accesses the borrowed RAM.
      * Unmap's dirty tracking is too late to settle an old GPU writeback. */
@@ -3762,7 +3755,6 @@ void *address_space_map(AddressSpace *as,
             qemu_get_cpu(0), memory_region_get_ram_addr(mr) + xlat, *plen,
             is_write ? BP_MEM_WRITE : BP_MEM_READ);
     }
-#endif
     return ptr;
 }
 

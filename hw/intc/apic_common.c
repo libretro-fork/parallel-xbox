@@ -246,7 +246,6 @@ static void apic_reset_common(DeviceState *dev)
 
     apic_init_reset(s);
 
-#ifdef XBOX
     /* XBOX
      * The following code was removed in b8eb551 stating:
      *
@@ -265,7 +264,6 @@ static void apic_reset_common(DeviceState *dev)
          */
         s->lvt[APIC_LVT_LINT0] = 0x700;
     }
-#endif
 }
 
 static const VMStateDescription vmstate_apic_common;

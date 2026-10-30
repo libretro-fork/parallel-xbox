@@ -389,7 +389,6 @@ int qemu_poll_ns(GPollFD *fds, guint nfds, int64_t timeout)
     }
 #else
 
-#ifdef XBOX
     /* Timers are facilitated by this function. A poll honours only whole
      * milliseconds, so a nearer deadline is busy-waited, or, with CPU boost
      * on Windows 10 1803+, woken by a high-resolution waitable timer polled
@@ -413,7 +412,6 @@ int qemu_poll_ns(GPollFD *fds, guint nfds, int64_t timeout)
             timeout = 0;
         }
     }
-#endif
 
     return g_poll(fds, nfds, qemu_timeout_ns_to_ms(timeout));
 #endif

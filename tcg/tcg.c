@@ -1294,8 +1294,6 @@ void tcg_register_thread(void)
 }
 #else
 
-#ifdef XBOX
-#endif
 
 void tcg_register_thread(void)
 {

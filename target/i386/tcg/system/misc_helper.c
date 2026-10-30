@@ -473,11 +473,9 @@ void helper_rdmsr(CPUX86State *env)
             val = 0;
         }
         break;
-#ifdef XBOX
     case MSR_IA32_EBL_CR_POWERON:
         val = 0xc5040000;
         break;
-#endif
     case MSR_MCG_CAP:
         val = env->mcg_cap;
         break;

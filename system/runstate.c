@@ -697,9 +697,6 @@ static void qemu_run_exit_notifiers(void)
 
 void qemu_init_subsystems(void)
 {
-#ifndef XBOX
-    Error *err = NULL;
-#endif
 
     os_set_line_buffering();
 
@@ -708,10 +705,8 @@ void qemu_init_subsystems(void)
     qemu_init_cpu_list();
     qemu_init_cpu_loop();
 
-#ifdef XBOX
     qemu_init_main_loop_lock();
     qemu_mutex_lock_main_loop();
-#endif
 
     bql_lock();
 
@@ -724,12 +719,6 @@ void qemu_init_subsystems(void)
     precopy_infrastructure_init();
     postcopy_infrastructure_init();
 
-#ifndef XBOX
-    if (qcrypto_init(&err) < 0) {
-        error_reportf_err(err, "cannot initialize crypto: ");
-        exit(1);
-    }
-#endif
 
     os_setup_early_signal_handling();
 

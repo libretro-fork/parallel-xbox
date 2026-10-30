@@ -720,14 +720,12 @@ static SlirpState *slirp_lookup(const char *id)
     return QTAILQ_FIRST(&slirp_stacks);
 }
 
-#ifdef XBOX
 void *slirp_get_state_from_netdev(const char *id)
 {
     SlirpState *s = slirp_lookup(id);
     if (!s) return NULL;
     return s->slirp;
 }
-#endif
 
 static int slirp_hostfwd(SlirpState *s, const char *redir_str, Error **errp)
 {

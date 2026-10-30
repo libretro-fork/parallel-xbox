@@ -548,69 +548,13 @@ static int parse_name(void *opaque, QemuOpts *opts, Error **errp)
 #define MTD_OPTS ""
 #define SD_OPTS ""
 
-#ifndef XBOX
-static int drive_init_func(void *opaque, QemuOpts *opts, Error **errp)
-{
-    BlockInterfaceType *block_default_type = opaque;
-    const char *file_path = qemu_opt_get(opts, "file");
-    bool is_cdrom_with_file = !g_strcmp0(qemu_opt_get(opts, "media"), "cdrom") &&
-        file_path && strlen(file_path) > 0;
-
-    Error *error_warn = NULL;
-    bool failed = drive_new(opts, *block_default_type, is_cdrom_with_file ? &error_warn : errp) == NULL;
-    if (error_warn) {
-        warn_report_err(error_warn);
-    }
-
-    if (failed && is_cdrom_with_file) {
-        char *msg = g_strdup_printf("Failed to open DVD image file '%s'. Please check machine settings.", file_path);
-        xemu_queue_error_message(msg);
-        g_free(msg);
-        qemu_opt_set(opts, "file", "", errp);
-        failed = drive_new(opts, *block_default_type, errp) == NULL;
-    }
-
-    return failed;
-}
-
-static int drive_enable_snapshot(void *opaque, QemuOpts *opts, Error **errp)
-{
-    if (qemu_opt_get(opts, "snapshot") == NULL) {
-        qemu_opt_set(opts, "snapshot", "on", &error_abort);
-    }
-    return 0;
-}
-
-static void default_drive(int enable, int snapshot, BlockInterfaceType type,
-                          int index, const char *optstr)
-{
-    QemuOpts *opts;
-    DriveInfo *dinfo;
-
-    if (!enable || drive_get_by_index(type, index)) {
-        return;
-    }
-
-    opts = drive_add(type, index, NULL, optstr);
-    if (snapshot) {
-        drive_enable_snapshot(NULL, opts, NULL);
-    }
-
-    dinfo = drive_new(opts, type, &error_abort);
-    dinfo->is_default = true;
-
-}
-#endif
 
 static int xemu_check_file(const char *path);
-#ifdef XBOX
 static uint64_t xbox_game_partition_offset(const char *path);
-#endif
 
 static void configure_blockdev(BlockdevOptionsQueue *bdo_queue,
                                MachineClass *machine_class, int snapshot)
 {
-#ifdef XBOX
     /* The core's own drives (block/libretro-disk.c), from the settings:
      * the hard disk (a raw image, ui/libretro.c) and the DVD drive, empty
      * when there is no disc. A Chihiro has neither: its IDE slave is the
@@ -646,43 +590,6 @@ static void configure_blockdev(BlockdevOptionsQueue *bdo_queue,
             }
         }
     }
-#else
-    /*
-     * If the currently selected machine wishes to override the
-     * units-per-bus property of its default HBA interface type, do so
-     * now.
-     */
-    if (machine_class->units_per_default_bus) {
-        override_max_devs(machine_class->block_default_type,
-                          machine_class->units_per_default_bus);
-    }
-
-    /* open the virtual block devices */
-    while (!QSIMPLEQ_EMPTY(bdo_queue)) {
-        BlockdevOptionsQueueEntry *bdo = QSIMPLEQ_FIRST(bdo_queue);
-
-        QSIMPLEQ_REMOVE_HEAD(bdo_queue, entry);
-        loc_push_restore(&bdo->loc);
-        qmp_blockdev_add(bdo->bdo, &error_fatal);
-        loc_pop(&bdo->loc);
-        qapi_free_BlockdevOptions(bdo->bdo);
-        g_free(bdo);
-    }
-    if (snapshot) {
-        qemu_opts_foreach(qemu_find_opts("drive"), drive_enable_snapshot,
-                          NULL, NULL);
-    }
-    if (qemu_opts_foreach(qemu_find_opts("drive"), drive_init_func,
-                          &machine_class->block_default_type, &error_fatal)) {
-        /* We printed help */
-        exit(0);
-    }
-
-    default_drive(default_cdrom, snapshot, machine_class->block_default_type, 2,
-                  CDROM_OPTS);
-    default_drive(default_floppy, snapshot, IF_FLOPPY, 0, FD_OPTS);
-    default_drive(auto_create_sdcard, snapshot, IF_SD, 0, SD_OPTS);
-#endif
 }
 
 static QemuOptsList qemu_smp_opts = {
@@ -1348,11 +1255,6 @@ static void qemu_create_default_devices(void)
     if (default_net) {
         QemuOptsList *net = qemu_find_opts("net");
         qemu_opts_parse(net, "nic", true, &error_abort);
-#ifndef XBOX
-#ifdef CONFIG_SLIRP
-        qemu_opts_parse(net, "user", true, &error_abort);
-#endif
-#endif
     }
 
     /* If no default VGA is requested, the default is "none".  */
@@ -2799,14 +2701,12 @@ static void qemu_start_machine(Error **errp)
     qemu_init_board();
     qemu_create_cli_devices();
 
-#ifdef XBOX
     if (g_config.net.enable) {
         xemu_net_enable();
     } else {
         xemu_net_disable();
     }
     xemu_link_enable();
-#endif
 
     if (!qemu_machine_creation_done(errp)) {
         return;

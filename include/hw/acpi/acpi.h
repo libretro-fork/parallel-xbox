@@ -51,11 +51,7 @@
 #define ACPI_PM_PROP_ACPI_PCI_ROOTHP "acpi-root-pci-hotplug"
 
 /* PM Timer ticks per second (HZ) */
-#ifdef XBOX
 #define PM_TIMER_FREQUENCY  3375000
-#else
-#define PM_TIMER_FREQUENCY  3579545
-#endif
 
 
 /* ACPI fixed hardware registers */

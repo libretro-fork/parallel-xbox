@@ -2236,7 +2236,6 @@ void memory_region_set_log(MemoryRegion *mr, bool log, unsigned client)
 {
     uint8_t mask = 1 << client;
 
-#ifdef XBOX
     assert((client == DIRTY_MEMORY_VGA) \
         || (client == DIRTY_MEMORY_NV2A) \
         || (client == DIRTY_MEMORY_NV2A_TEX));
@@ -2245,16 +2244,6 @@ void memory_region_set_log(MemoryRegion *mr, bool log, unsigned client)
         return;
     }
     mr->vga_logging_count += log ? 1 : -1;
-#else
-    uint8_t old_logging;
-
-    assert(client == DIRTY_MEMORY_VGA);
-    old_logging = mr->vga_logging_count;
-    mr->vga_logging_count += log ? 1 : -1;
-    if (!!old_logging == !!mr->vga_logging_count) {
-        return;
-    }
-#endif
 
     memory_region_transaction_begin();
     mr->dirty_log_mask = (mr->dirty_log_mask & ~mask) | (log * mask);

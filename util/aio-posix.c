@@ -816,7 +816,6 @@ void aio_add_sqe(void (*prep_sqe)(struct io_uring_sqe *sqe, void *opaque),
 }
 #endif /* CONFIG_LINUX_IO_URING */
 
-#ifdef XBOX
 /* Whether anything but the context's own notifier waits on a descriptor:
  * the libretro main loop (main-loop.c) polls only then */
 bool aio_has_fd_handlers(AioContext *ctx)
@@ -831,4 +830,3 @@ bool aio_has_fd_handlers(AioContext *ctx)
     }
     return false;
 }
-#endif
