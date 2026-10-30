@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Audio regression tests now compare captured GP and EP DSP output against an exact decimal host-volume oracle. EP coverage includes every S16 input at mute and 20/40/60/80 percent volume on both DSP engines, guarding against double attenuation and biased rounding.
+
 - About 1,100 functions in QEMU's generic code that nothing in the core ever calls are gone (TCG, softfloat, ACPI, PCI, the character devices, QAPI/QObject helpers, the console and input layers, networking and more), about 24,000 lines with their header declarations. The core behaves the same; the Windows build is smaller, since its linker keeps every function it is given.
 
 - The synthetic GPU fixture now publishes the wrapped pushbuffer write pointer before waiting for the read pointer, preventing old-command replay and stalls at ring wrap. New tests retain both draws across same-frame texture and palette updates and verify their distinct colors.

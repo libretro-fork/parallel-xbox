@@ -819,6 +819,37 @@ t "EP DSP, JIT, through a reset" $h "$(path "$core")" "$(path "$work/syse")" --f
   $dsp --opt xemu_dsp_jit=enabled --reset 150 --wav "$(path "$work/epj.wav")"
 "$work/bin/rampcheck" "$work/epj.wav" --min 400000
 
+# Host volume integration: the EP ramp covers every S16 value. Compare
+# captured output against exact decimal attenuation, including both signs,
+# mute, and the actual option curve's Q16 gains (20/40/60/80 percent).
+for jit in disabled enabled; do
+  reference="$work/ep-volume-$jit-100.wav"
+  t "EP volume reference, $jit" $h "$(path "$core")" "$(path "$work/syse")" \
+    --frames 120 --strict $dsp --opt xemu_dsp_jit=$jit \
+    --opt xemu_audio_volume=100 --wav "$(path "$reference")"
+  for setting in 0:0 20:825 40:5430 60:16347 80:35731; do
+    volume=${setting%:*}; gain=${setting#*:}
+    capture="$work/ep-volume-$jit-$volume.wav"
+    t "EP volume $volume percent, $jit" $h "$(path "$core")" "$(path "$work/syse")" \
+      --frames 120 --strict $dsp --opt xemu_dsp_jit=$jit \
+      --opt xemu_audio_volume=$volume --wav "$(path "$capture")"
+    python3 "$here/test-audio-volume-wav.py" "$reference" "$capture" "$gain" --all-s16
+  done
+  # GP output applies gain directly; EP applies it while committing DMA.
+  reference="$work/dspi.wav"
+  if [ "$jit" = enabled ]; then
+    reference="$work/gp-volume-enabled-100.wav"
+    t "GP volume reference, JIT" $h "$(path "$core")" "$(path "$work/sysd")" \
+      --frames 120 --strict $dsp --opt xemu_dsp_jit=enabled \
+      --opt xemu_audio_volume=100 --wav "$(path "$reference")"
+  fi
+  capture="$work/gp-volume-$jit-40.wav"
+  t "GP volume 40 percent, $jit" $h "$(path "$core")" "$(path "$work/sysd")" \
+    --frames 120 --strict $dsp --opt xemu_dsp_jit=$jit \
+    --opt xemu_audio_volume=40 --wav "$(path "$capture")"
+  python3 "$here/test-audio-volume-wav.py" "$reference" "$capture" 5430
+done
+
 # Run-Ahead: after every run a save, hidden runs and a load, as RetroArch
 # does. The sound has to be exactly the sound without it: the state carries
 # the samples queued, the APU's engine phase, the voices' resamplers and
