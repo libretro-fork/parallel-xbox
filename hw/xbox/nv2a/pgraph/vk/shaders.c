@@ -145,13 +145,46 @@ static void destroy_descriptor_sets(PGRAPHState *pg)
     }
 }
 
+/* Offsets are reusable only before the staging set is reset or rotated.
+ * Zero offset is the common reset marker for every buffer-family path. */
+static bool uniform_snapshot_valid(PGRAPHVkState *r, ShaderModuleInfo *mod)
+{
+    VkDeviceSize end = r->storage_buffers[BUFFER_UNIFORM_STAGING].buffer_offset;
+    return mod->uniform_staged_valid &&
+           mod->uniform_staged_epoch == r->uniform_upload_epoch &&
+           mod->uniform_staged_offset <= end &&
+           mod->uniforms.total_size <= end - mod->uniform_staged_offset;
+}
+
 void pgraph_vk_update_descriptor_sets(PGRAPHState *pg)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
 
-    unsigned uniform_uploads = r->uniforms_changed;
+    /* Every uniform-staging append goes through this function. A reset,
+     * rotation or reallocation leaves offset zero; invalidate old offsets
+     * before choosing any snapshot in the newly installed buffer set. */
+    unsigned resolve = r->uniforms_changed;
     if (!r->storage_buffers[BUFFER_UNIFORM_STAGING].buffer_offset) {
-        uniform_uploads = 3;
+        r->uniform_upload_epoch++;
+        resolve = 3;
+    }
+    if (!resolve && !r->shader_bindings_changed && !r->texture_bindings_changed &&
+        r->descriptor_set_index != r->descriptor_set_base) {
+        return;
+    }
+    ShaderBinding *binding = r->shader_binding;
+    ShaderModuleInfo *modules[] = { binding->vsh.module_info,
+                                   binding->psh.module_info };
+    unsigned uniform_uploads = 0;
+    for (unsigned i = 0; i < ARRAY_SIZE(modules); i++) {
+        if (!(resolve & (1u << i))) {
+            continue; /* selected module and its current offset are unchanged */
+        }
+        if (uniform_snapshot_valid(r, modules[i])) {
+            r->uniform_buffer_offsets[i] = modules[i]->uniform_staged_offset;
+        } else {
+            uniform_uploads |= 1u << i;
+        }
     }
     bool need_uniform_write = uniform_uploads != 0;
     bool need_descriptor_write = r->shader_bindings_changed ||
@@ -161,10 +194,10 @@ void pgraph_vk_update_descriptor_sets(PGRAPHState *pg)
     if (!(r->shader_bindings_changed || r->texture_bindings_changed ||
           (r->descriptor_set_index == r->descriptor_set_base) ||
           need_uniform_write)) {
+        r->uniforms_changed = 0;
         return; // Nothing changed
     }
 
-    ShaderBinding *binding = r->shader_binding;
     ShaderUniformLayout *layouts[] = { &binding->vsh.module_info->uniforms,
                                        &binding->psh.module_info->uniforms };
     VkDeviceSize ubo_buffer_total_size = 0;
@@ -192,6 +225,7 @@ void pgraph_vk_update_descriptor_sets(PGRAPHState *pg)
 
     if (need_descriptor_write_reset || need_ubo_staging_buffer_reset) {
         pgraph_vk_finish(pg, VK_FINISH_REASON_NEED_BUFFER_SPACE);
+        r->uniform_upload_epoch++;
         need_uniform_write = true;
         uniform_uploads = 3;
         need_descriptor_write = true;
@@ -209,10 +243,12 @@ void pgraph_vk_update_descriptor_sets(PGRAPHState *pg)
             r->uniform_buffer_offsets[i] = pgraph_vk_append_to_buffer(
                 pg, BUFFER_UNIFORM_STAGING, &data, &size, 1,
                 r->device_props.limits.minUniformBufferOffsetAlignment);
+            modules[i]->uniform_staged_offset = r->uniform_buffer_offsets[i];
+            modules[i]->uniform_staged_epoch = r->uniform_upload_epoch;
+            modules[i]->uniform_staged_valid = true;
         }
-
-        r->uniforms_changed = 0;
     }
+    r->uniforms_changed = 0;
 
     /* Offsets are draw state, passed at bind time. Uniform-only changes
      * reuse the immutable descriptor set already recorded in this slot. */
@@ -952,6 +988,7 @@ void pgraph_vk_uniform_sources_invalidate(PGRAPHVkState *r)
     r->uni_last_pushed[0] = NULL;
     r->uni_last_pushed[1] = NULL;
     r->uniform_epoch++;
+    r->uniform_upload_epoch++;
 }
 
 /* Compare directly with this module's packed UBO, not a duplicate value
@@ -979,6 +1016,9 @@ static bool vk_apply_uniform_updates(PGRAPHVkState *r,
         const void *value = (const char *)values + info[i].val_offs;
         changed |= uniform_update(layout, locs[i], value,
                                    info[i].size * info[i].count, !valid);
+    }
+    if (changed) {
+        mod->uniform_staged_valid = false;
     }
     mod->uniform_valid = true;
     mod->uniform_epoch = r->uniform_epoch;
@@ -1039,8 +1079,8 @@ static void update_shader_uniforms_tracked(PGRAPHState *pg)
         changed |= 2;
     }
 
-    /* The UBO offsets hold the last pushed modules' blocks: a module
-     * switch re-pushes that stage even with equal fields. */
+    /* Track stage selection for draw-change statistics. Descriptor setup
+     * can reuse an immutable snapshot when a selected module is unchanged. */
     if (binding->vsh.module_info != r->uni_last_pushed[0]) {
         changed |= 1;
         r->uni_last_pushed[0] = binding->vsh.module_info;

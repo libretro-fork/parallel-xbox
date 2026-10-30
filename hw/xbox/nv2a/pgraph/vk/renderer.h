@@ -201,6 +201,10 @@ typedef struct ShaderModuleInfo {
     uint64_t uniform_epoch;
     unsigned uniform_sec_gen[UNISEC__COUNT];
     bool uniform_valid;
+    /* Immutable UBO snapshot in the current staging generation. */
+    VkDeviceSize uniform_staged_offset;
+    uint64_t uniform_staged_epoch;
+    bool uniform_staged_valid;
 } ShaderModuleInfo;
 
 typedef struct ShaderModuleCacheKey {
@@ -838,6 +842,7 @@ typedef struct PGRAPHVkState {
      * must re-push even with equal field values. */
     VshUniformSource vsh_uni_src;
     uint64_t uniform_epoch;
+    uint64_t uniform_upload_epoch;
     const ShaderModuleInfo *uni_last_pushed[2];
 
     VkQueryPool query_pool;

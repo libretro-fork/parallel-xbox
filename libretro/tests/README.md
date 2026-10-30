@@ -133,7 +133,10 @@ with undefined-behavior traps enabled.
 production Vulkan uniform tracker, upload planning and descriptor-reuse
 decision against bounded upload storage. It checks independent stages,
 module switches, alignment, resets and descriptor exhaustion in 100,000
-mixed draws, with GCC's undefined-behavior traps enabled.
+mixed draws, with GCC's undefined-behavior traps enabled. It also checks
+A-to-B-to-A snapshot reuse without copies, append-on-mutation while old draw
+bytes stay unchanged, stale offsets after external resets, and overflow-safe
+snapshot bounds.
 
 `python libretro/tests/test-tlb-dirty.py . gcc` checks the production TLB
 dirty-range functions against a full-scan reference in 1,655,360 cases:

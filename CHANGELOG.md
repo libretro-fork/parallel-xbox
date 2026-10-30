@@ -5,6 +5,7 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 ## Unreleased
 
 - OpenGL now keeps live, tightly packed ARGB-to-RGB565 texture reinterpretation on the GPU, including at higher internal resolutions. Pixel buffers preserve the original bytes without CPU readback or texture upload; unsupported layouts and competing dirty surfaces retain the existing fallback.
+- Vulkan reuses unchanged shaders' immutable uniform snapshots within the current staging generation. Switching back to a shader can select its existing offset, avoiding another CPU upload copy and duplicate GPU-buffer transfer bytes. Changed values, state loads and staging resets/rotation invalidate reuse; existing fences still protect in-flight draws. No buffers or VRAM allocations are added. Unchanged draw bindings retain their fast path.
 
 - The core is about 2 MB smaller (15.7 to 13.7 MB on Linux): it is built with each function in a section of its own, and the link drops the 4,400 or so QEMU functions nothing in the core calls. Every build does it: the Makefile on Linux, Windows and macOS, and meson.
 

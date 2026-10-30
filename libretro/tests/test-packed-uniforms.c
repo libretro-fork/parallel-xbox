@@ -6,8 +6,8 @@
 #include <string.h>
 enum UniformElementType { TEST_FLOAT };
 /* TYPES */
-typedef struct {uint64_t uniform_epoch;unsigned uniform_sec_gen[UNISEC__COUNT];bool uniform_valid;} ShaderModuleInfo;
-typedef struct {uint64_t uniform_epoch;struct{unsigned gen[UNISEC__COUNT];bool valid,ff_valid;}vsh_uni_src;const ShaderModuleInfo *uni_last_pushed[2];} PGRAPHVkState;
+typedef struct {uint64_t uniform_epoch;unsigned uniform_sec_gen[UNISEC__COUNT];bool uniform_valid;bool uniform_staged_valid;} ShaderModuleInfo;
+typedef struct {uint64_t uniform_epoch,uniform_upload_epoch;struct{unsigned gen[UNISEC__COUNT];bool valid,ff_valid;}vsh_uni_src;const ShaderModuleInfo *uni_last_pushed[2];} PGRAPHVkState;
 static uintptr_t watched_start,watched_end;
 static size_t copied,copies;
 static void *count_copy(void *dst,const void *src,size_t n)
@@ -49,13 +49,14 @@ int main(void)
  PGRAPHVkState r={0};ShaderModuleInfo mod={0};
  memset(packed,0xab,sizeof(packed));watch(packed,sizeof(packed));
  assert(vk_apply_uniform_updates(&r,&layout,info,locs,&values,2,&mod,sections));assert(copied==52);
- watch(packed,sizeof(packed));assert(!vk_apply_uniform_updates(&r,&layout,info,locs,&values,2,&mod,sections));assert(!copied);
+ mod.uniform_staged_valid=true;
+ watch(packed,sizeof(packed));assert(!vk_apply_uniform_updates(&r,&layout,info,locs,&values,2,&mod,sections));assert(!copied&&mod.uniform_staged_valid);
  values.constants[3]++;values.live^=0x80000000;
- watch(packed,sizeof(packed));assert(vk_apply_uniform_updates(&r,&layout,info,locs,&values,2,&mod,sections));assert(copied==4);
+ watch(packed,sizeof(packed));assert(vk_apply_uniform_updates(&r,&layout,info,locs,&values,2,&mod,sections));assert(copied==4&&!mod.uniform_staged_valid);
  r.vsh_uni_src.gen[UNISEC_VSHC]++;
  watch(packed,sizeof(packed));assert(vk_apply_uniform_updates(&r,&layout,info,locs,&values,2,&mod,sections));assert(copied==12);
  r.vsh_uni_src.valid=r.vsh_uni_src.ff_valid=true;r.uni_last_pushed[0]=r.uni_last_pushed[1]=&mod;
- pgraph_vk_uniform_sources_invalidate(&r);assert(!r.vsh_uni_src.valid&&!r.vsh_uni_src.ff_valid&&!r.uni_last_pushed[0]&&!r.uni_last_pushed[1]);
+ pgraph_vk_uniform_sources_invalidate(&r);assert(r.uniform_upload_epoch==1);assert(!r.vsh_uni_src.valid&&!r.vsh_uni_src.ff_valid&&!r.uni_last_pushed[0]&&!r.uni_last_pushed[1]);
  watch(packed,sizeof(packed));assert(vk_apply_uniform_updates(&r,&layout,info,locs,&values,2,&mod,sections));assert(copied==52);
  locs[1]=-1;values.constants[0]++;r.vsh_uni_src.gen[UNISEC_VSHC]++;
  watch(packed,sizeof(packed));assert(!vk_apply_uniform_updates(&r,&layout,info,locs,&values,2,&mod,NULL));assert(!copied);

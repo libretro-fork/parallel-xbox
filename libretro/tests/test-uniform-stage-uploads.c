@@ -11,10 +11,10 @@
 #define VK_FINISH_REASON_NEED_BUFFER_SPACE 1
 typedef uint64_t VkDeviceSize;
 typedef struct {size_t total_size;void *allocation;} ShaderUniformLayout;
-typedef struct ShaderModuleInfo {ShaderUniformLayout uniforms;} ShaderModuleInfo;
+typedef struct ShaderModuleInfo {ShaderUniformLayout uniforms;VkDeviceSize uniform_staged_offset;uint64_t uniform_staged_epoch;bool uniform_staged_valid;} ShaderModuleInfo;
 typedef struct {struct{ShaderModuleInfo *module_info;int uniform_locs[1];}vsh,psh;struct{int vsh;}state;} ShaderBinding;
 typedef struct {size_t buffer_offset,buffer_size;} StorageBuffer;
-typedef struct {StorageBuffer storage_buffers[1];unsigned uniforms_changed;bool shader_bindings_changed,texture_bindings_changed;int descriptor_sets[32],descriptor_set_index,descriptor_set_base;ShaderBinding *shader_binding;struct{struct{size_t minUniformBufferOffsetAlignment;}limits;}device_props;size_t uniform_buffer_offsets[2];const ShaderModuleInfo *uni_last_pushed[2];struct{int values;}vsh_uni_src;uint8_t gpu[512];unsigned copies[2],finishes;} PGRAPHVkState;
+typedef struct {StorageBuffer storage_buffers[1];uint64_t uniform_upload_epoch;unsigned uniforms_changed;bool shader_bindings_changed,texture_bindings_changed;int descriptor_sets[32],descriptor_set_index,descriptor_set_base;ShaderBinding *shader_binding;struct{struct{size_t minUniformBufferOffsetAlignment;}limits;}device_props;size_t uniform_buffer_offsets[2];const ShaderModuleInfo *uni_last_pushed[2];struct{int values;}vsh_uni_src;uint8_t gpu[512];unsigned copies[2],finishes;} PGRAPHVkState;
 typedef struct {PGRAPHVkState *vk_renderer_state;} PGRAPHState;
 typedef int PshUniformValues;
 static const int VshUniformInfo[1]={0},PshUniformInfo[1]={0};
@@ -25,7 +25,7 @@ static void pgraph_vsh_uniform_source_refresh(PGRAPHState*p,void*s,void*v,void*l
 static void pgraph_glsl_set_psh_uniform_values(PGRAPHState*p,int*l,PshUniformValues*v){*v=0;}
 static void set_psh_texscale_values(PGRAPHState*p,PshUniformValues*v){}
 static bool vk_apply_uniform_updates(PGRAPHVkState*r,ShaderUniformLayout*l,const int*i,int*loc,void*values,size_t n,const ShaderModuleInfo*m,const int8_t*sections)
-{return pending[m==r->shader_binding->psh.module_info];}
+{bool changed=pending[m==r->shader_binding->psh.module_info];if(changed)((ShaderModuleInfo*)m)->uniform_staged_valid=false;return changed;}
 static bool pgraph_vk_buffer_has_space_for(PGRAPHState*p,int index,VkDeviceSize n,size_t align)
 {StorageBuffer*b=&p->vk_renderer_state->storage_buffers[index];return ROUND_UP(b->buffer_offset,align)+n<=b->buffer_size;}
 static void pgraph_vk_finish(PGRAPHState*p,int reason)
@@ -37,7 +37,7 @@ static uint32_t seed=17;
 static uint32_t rnd(void){seed^=seed<<13;seed^=seed>>17;seed^=seed<<5;return seed;}
 int main(void)
 {
- uint8_t blocks[4][51];ShaderModuleInfo mods[4];for(unsigned i=0;i<4;i++){memset(blocks[i],i+1,sizeof(blocks[i]));mods[i].uniforms=(ShaderUniformLayout){i%2?51:19,blocks[i]};}
+ uint8_t blocks[4][51];ShaderModuleInfo mods[4]={0};for(unsigned i=0;i<4;i++){memset(blocks[i],i+1,sizeof(blocks[i]));mods[i].uniforms=(ShaderUniformLayout){i%2?51:19,blocks[i]};}
  ShaderBinding b={.vsh.module_info=&mods[0],.psh.module_info=&mods[1]};
  PGRAPHVkState r={.shader_binding=&b,.device_props.limits.minUniformBufferOffsetAlignment=16,.storage_buffers={{0,512}}};PGRAPHState pg={&r};
  pending[0]=pending[1]=false;update_shader_uniforms_tracked(&pg);assert(r.uniforms_changed==3);pgraph_vk_update_descriptor_sets(&pg);assert(r.copies[0]==1&&r.copies[1]==1);
@@ -49,6 +49,28 @@ int main(void)
   assert(r.copies[1-stage]==old&&r.uniform_buffer_offsets[1-stage]==offset);
   assert(r.descriptor_set_index==1); /* offsets change without new sets */
  }
+ /* A -> B -> A within one staging generation reuses both old offsets.
+  * A later mutation appends, preserving bytes earlier draws still read. */
+ size_t snapshot[2]={r.uniform_buffer_offsets[0],r.uniform_buffer_offsets[1]};
+ b.vsh.module_info=&mods[2];b.psh.module_info=&mods[3];pending[0]=pending[1]=false;r.shader_bindings_changed=true;
+ update_shader_uniforms_tracked(&pg);pgraph_vk_update_descriptor_sets(&pg);
+ unsigned oldcopies[2]={r.copies[0],r.copies[1]};
+ b.vsh.module_info=&mods[0];b.psh.module_info=&mods[1];
+ update_shader_uniforms_tracked(&pg);pgraph_vk_update_descriptor_sets(&pg);
+ assert(r.copies[0]==oldcopies[0]&&r.copies[1]==oldcopies[1]);
+ assert(r.uniform_buffer_offsets[0]==snapshot[0]&&r.uniform_buffer_offsets[1]==snapshot[1]);
+ r.shader_bindings_changed=false;
+ uint8_t prior=r.gpu[snapshot[0]];blocks[0][0]++;pending[0]=true;
+ update_shader_uniforms_tracked(&pg);pgraph_vk_update_descriptor_sets(&pg);
+ assert(r.uniform_buffer_offsets[0]!=snapshot[0]&&r.gpu[snapshot[0]]==prior);
+ assert(r.gpu[r.uniform_buffer_offsets[0]]==blocks[0][0]);
+ assert(r.uniform_buffer_offsets[1]==snapshot[1]);
+ VkDeviceSize save=mods[0].uniform_staged_offset;
+ mods[0].uniform_staged_offset=UINT64_MAX;assert(!uniform_snapshot_valid(&r,&mods[0]));
+ mods[0].uniform_staged_offset=save;
+ VkDeviceSize oldsize=mods[0].uniforms.total_size;
+ mods[0].uniforms.total_size=UINT64_MAX;assert(!uniform_snapshot_valid(&r,&mods[0]));
+ mods[0].uniforms.total_size=oldsize;
  /* Exhausted descriptors must not force a finish for uniform-only draws. */
  r.descriptor_set_index=16;pending[0]=true;pending[1]=false;
  unsigned finishes=r.finishes;
