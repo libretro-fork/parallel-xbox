@@ -240,7 +240,7 @@ ALL_OBJECTS := $(OBJECTS) $(OBJS_UTIL) $(DEP_OBJECTS)
 
 clean:
 	rm -f $(TARGET) $(LIBQEMUUTIL) $(VERSION_H) $(filter %.a,$(DEPS_LIBS))
-	rm -f $(ALL_OBJECTS) $(ALL_OBJECTS:.o=.d) $(DSPDIFF) $(SEEDSHADERS)
+	rm -f $(ALL_OBJECTS) $(ALL_OBJECTS:.o=.d) $(DSPDIFF) $(SEEDSHADERS) $(S3TCTEST) $(S3TCTEST).exe
 
 # The DSP JIT against the interpreter (libretro/tests/dspdiff.c), built
 # from the DSP's own sources, nothing else of the core: a plain program,
@@ -276,6 +276,13 @@ $(SEEDSHADERS): $(CORE_DIR)/libretro/tests/seedshaders.c $(SEEDSHADERS_OBJS) \
 		$(DEPS_LIBS) $(OS_LIBS)
 seedshaders: $(SEEDSHADERS)
 
-.PHONY: all clean dspdiff seedshaders FORCE
+S3TCTEST := $(CORE_DIR)/libretro/tests/s3tctest
+$(S3TCTEST): $(CORE_DIR)/libretro/tests/test-s3tc.c \
+		$(CORE_DIR)/hw/xbox/nv2a/pgraph/s3tc.o $(LIBQEMUUTIL)
+	$(CC) -O2 $(CFLAGS_TARGET) -o $@ $< \
+		$(CORE_DIR)/hw/xbox/nv2a/pgraph/s3tc.o $(DEPS_LIBS) $(OS_LIBS) -lm
+s3tctest: $(S3TCTEST)
+
+.PHONY: all clean dspdiff seedshaders s3tctest FORCE
 
 -include $(ALL_OBJECTS:.o=.d)

@@ -25,41 +25,33 @@
 #include "qemu/osdep.h"
 #include "s3tc.h"
 
+/* Interpolate the normalized 5/6-bit endpoints before rounding to RGBA8.
+ * Expanding endpoints to bytes first adds a second quantization step and
+ * downward bias. Integer ratios preserve precision without host FP variance. */
+static void decode_bc1_channel(unsigned c0, unsigned c1, unsigned max,
+                               uint8_t values[4], bool transparent)
+{
+    values[0] = (c0 * 255 + max / 2) / max;
+    values[1] = (c1 * 255 + max / 2) / max;
+    if (transparent) {
+        values[2] = ((c0 + c1) * 255 + max) / (2 * max);
+        values[3] = 0;
+    } else {
+        unsigned denom = 3 * max;
+        values[2] = ((2 * c0 + c1) * 255 + denom / 2) / denom;
+        values[3] = ((c0 + 2 * c1) * 255 + denom / 2) / denom;
+    }
+}
+
 static void decode_bc1_colors(uint16_t c0, uint16_t c1, uint8_t r[4],
                               uint8_t g[4], uint8_t b[4], uint8_t a[16],
                               bool transparent)
 {
-    r[0] = ((c0 & 0xF800) >> 8) * 0xFF / 0xF8,
-    g[0] = ((c0 & 0x07E0) >> 3) * 0xFF / 0xFC,
-    b[0] = ((c0 & 0x001F) << 3) * 0xFF / 0xF8,
-    a[0] = 255;
-
-    r[1] = ((c1 & 0xF800) >> 8) * 0xFF / 0xF8,
-    g[1] = ((c1 & 0x07E0) >> 3) * 0xFF / 0xFC,
-    b[1] = ((c1 & 0x001F) << 3) * 0xFF / 0xF8,
-    a[1] = 255;
-
-    if (transparent) {
-        r[2] = (r[0]+r[1])/2;
-        g[2] = (g[0]+g[1])/2;
-        b[2] = (b[0]+b[1])/2;
-        a[2] = 255;
-
-        r[3] = 0;
-        g[3] = 0;
-        b[3] = 0;
-        a[3] = 0;
-    } else {
-        r[2] = (2*r[0]+r[1])/3;
-        g[2] = (2*g[0]+g[1])/3,
-        b[2] = (2*b[0]+b[1])/3;
-        a[2] = 255;
-
-        r[3] = (r[0]+2*r[1])/3;
-        g[3] = (g[0]+2*g[1])/3;
-        b[3] = (b[0]+2*b[1])/3;
-        a[3] = 255;
-    }
+    decode_bc1_channel((c0 >> 11) & 31, (c1 >> 11) & 31, 31, r, transparent);
+    decode_bc1_channel((c0 >> 5) & 63, (c1 >> 5) & 63, 63, g, transparent);
+    decode_bc1_channel(c0 & 31, c1 & 31, 31, b, transparent);
+    a[0] = a[1] = a[2] = 255;
+    a[3] = transparent ? 0 : 255;
 }
 
 static void write_block_to_texture(uint8_t *converted_data, uint32_t indices,
@@ -141,17 +133,17 @@ static void decompress_dxt5_block(const uint8_t block_data[16],
     a_palette[0] = a0;
     a_palette[1] = a1;
     if (a0 > a1) {
-        a_palette[2] = (6*a0+1*a1)/7;
-        a_palette[3] = (5*a0+2*a1)/7;
-        a_palette[4] = (4*a0+3*a1)/7;
-        a_palette[5] = (3*a0+4*a1)/7;
-        a_palette[6] = (2*a0+5*a1)/7;
-        a_palette[7] = (1*a0+6*a1)/7;
+        a_palette[2] = (6*a0+1*a1+3)/7;
+        a_palette[3] = (5*a0+2*a1+3)/7;
+        a_palette[4] = (4*a0+3*a1+3)/7;
+        a_palette[5] = (3*a0+4*a1+3)/7;
+        a_palette[6] = (2*a0+5*a1+3)/7;
+        a_palette[7] = (1*a0+6*a1+3)/7;
     } else {
-        a_palette[2] = (4*a0+1*a1)/5;
-        a_palette[3] = (3*a0+2*a1)/5;
-        a_palette[4] = (2*a0+3*a1)/5;
-        a_palette[5] = (1*a0+4*a1)/5;
+        a_palette[2] = (4*a0+1*a1+2)/5;
+        a_palette[3] = (3*a0+2*a1+2)/5;
+        a_palette[4] = (2*a0+3*a1+2)/5;
+        a_palette[5] = (1*a0+4*a1+2)/5;
         a_palette[6] = 0;
         a_palette[7] = 255;
     }

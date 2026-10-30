@@ -1,5 +1,15 @@
 # The core's tests
 
+After building the core, `make s3tctest && libretro/tests/s3tctest` checks
+5,374,016 decoded components against an independent normalized BC1/2/3
+reference: every per-channel color endpoint pair, both BC1 palette modes,
+four-color BC2/3 in either endpoint order, all explicit alpha nibbles and
+every BC3 alpha endpoint pair and selector, plus parity with the 3D decoder.
+The reference was cross-checked
+against Microsoft's DirectXTex decoder (BC.cpp, commit
+`ec66b78b37389e8373a8e14ccc3cd29be94146b3`) using its original decode functions
+and DirectXMath. Only the final normalized-to-byte conversion is quantized.
+
 `test-audio-volume.c` checks host volume rounding against a floating-point
 reference over every S16 sample at 257 gains, plus boundary samples at every
 Q16 gain. It checks zero DC bias for symmetric inputs, half-LSB error bounds,

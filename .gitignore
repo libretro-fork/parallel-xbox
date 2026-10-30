@@ -38,3 +38,5 @@ build.log
 /libretro/gen/xemu-version-macro.h
 /libretro/tests/dspdiff
 /libretro/tests/seedshaders
+/libretro/tests/s3tctest
+/libretro/tests/s3tctest.exe
