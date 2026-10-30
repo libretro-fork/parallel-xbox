@@ -2032,7 +2032,13 @@ voice_work_dispatch(MCPXAPUState *d,
     if (!vwd->queue_len) {
         return;
     }
-    if (vwd->num_workers == 1 || !voice_work_schedule(d)) {
+    /* the workers this frame has units for: the emulator thread takes
+     * one, so a frame of one unit runs here, with no worker woken */
+    int wake = 0;
+    if (vwd->num_workers > 1 && voice_work_schedule(d)) {
+        wake = MIN(vwd->num_workers, vwd->num_units) - 1;
+    }
+    if (wake <= 0) {
         /* No wakeup, claims or reduction on a serial frame. The caller has
          * already cleared the DSP output buffer. */
         for (int i = 0; i < vwd->queue_len; i++) {
@@ -2048,7 +2054,7 @@ voice_work_dispatch(MCPXAPUState *d,
     retro_atomic_store_relaxed_int(&vwd->units_done, 0);
     retro_atomic_store_relaxed_int(&vwd->claim_limit, vwd->num_units);
     retro_atomic_store_release_int(&vwd->claim, vwd->gen << 16);
-    for (int w = 1; w < vwd->num_workers; w++) {
+    for (int w = 1; w <= wake; w++) {
         retro_atomic_fetch_add_int(&vwd->workers[w].generation, 1);
         retro_eventcount_notify(&vwd->workers[w].wake);
     }

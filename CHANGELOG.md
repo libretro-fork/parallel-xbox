@@ -513,6 +513,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 - At the end of each frame RetroArch's thread asks the emulated GPU once to finish the frame's work and draw the display, and waits once. It used to wait for the work, then ask for the redraw and wait again: two handoffs between the threads a frame. On the test ROM's GPU scenario the wait at the frame's end is 10 to 30% shorter with Vulkan; with OpenGL the difference is within noise.
 
+- Audio: the Voice Processor Threads are woken only when an audio frame has work for them: a frame with one voice, or one group of voices that must stay together, runs on the emulator thread alone. Before, every thread was woken 1,500 times a second of game time whatever the frame held: with 4 threads and one voice playing, 35,000 thread switches in 300 video frames of the test ROM, 2,700 now.
+
 ## Test build 4 - 2026-10-25
 
 - The core info file names the core "Microsoft - Xbox / Sega Chihiro (xemu)" (NNshi).
