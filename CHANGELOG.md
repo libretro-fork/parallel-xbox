@@ -4,7 +4,7 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
-- QEMU's own atomics (qemu/atomic.h) are moving onto libretro-common's retro_atomic.h, as the emulated GPU and sound chip already did: so far the object and QObject reference counts and the QOM cast caches. Nothing changes for someone using the core.
+- QEMU's own atomics (qemu/atomic.h) are moving onto libretro-common's retro_atomic.h, as the emulated GPU and sound chip already did: so far the object and QObject reference counts, the QOM cast caches, and RCU's grace-period counter, reader state and call_rcu queue. Nothing changes for someone using the core.
 
 - OpenGL refreshes render-target surface age when its GPU texture copy is sampled, including unchanged-state reuse and cubemap sources. Actively sampled sources no longer expire into a readback and native texture re-upload after 60 frames.
 

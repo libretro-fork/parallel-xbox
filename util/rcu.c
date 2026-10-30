@@ -46,11 +46,10 @@
 
 #define RCU_CALL_MIN_SIZE        30
 
-unsigned long rcu_gp_ctr = RCU_GP_LOCKED;
+retro_atomic_size_t rcu_gp_ctr = RCU_GP_LOCKED;
 
 QemuEvent rcu_gp_event;
-static int in_drain_call_rcu;
-static int rcu_call_count;
+static retro_atomic_int_t rcu_call_count;
 static QemuMutex rcu_registry_lock;
 static QemuMutex rcu_sync_lock;
 
@@ -58,12 +57,12 @@ static QemuMutex rcu_sync_lock;
  * Check whether a quiescent state was crossed between the beginning of
  * update_counter_and_wait and now.
  */
-static inline int rcu_gp_ongoing(unsigned long *ctr)
+static inline int rcu_gp_ongoing(retro_atomic_size_t *ctr)
 {
-    unsigned long v;
+    size_t v;
 
-    v = qatomic_read(ctr);
-    return v && (v != rcu_gp_ctr);
+    v = retro_atomic_load_relaxed_size(ctr);
+    return v && (v != retro_atomic_load_relaxed_size(&rcu_gp_ctr));
 }
 
 /* Written to only by each individual reader. Read by both the reader and the
@@ -101,7 +100,7 @@ static void wait_for_readers(void)
 
             QLIST_FOREACH(index, &registry, node) {
                 notifier_list_notify(&index->force_rcu, NULL);
-                qatomic_set(&index->waiting, true);
+                retro_atomic_store_relaxed_int(&index->waiting, 1);
             }
         }
 
@@ -111,7 +110,7 @@ static void wait_for_readers(void)
          *
          * If this is the last iteration, this barrier also prevents
          * frees from seeping upwards, and orders the two wait phases
-         * on architectures with 32-bit longs; see synchronize_rcu().
+         * on architectures with a 32-bit size_t; see synchronize_rcu().
          */
         smp_mb_global();
 
@@ -123,7 +122,7 @@ static void wait_for_readers(void)
                 /* No need for memory barriers here, worst of all we
                  * get some extra futex wakeups.
                  */
-                qatomic_set(&index->waiting, false);
+                retro_atomic_store_relaxed_int(&index->waiting, 0);
             }
         }
 
@@ -185,18 +184,21 @@ void synchronize_rcu(void)
 
     QEMU_LOCK_GUARD(&rcu_registry_lock);
     if (!QLIST_EMPTY(&registry)) {
-        if (sizeof(rcu_gp_ctr) < 8) {
-            /* For architectures with 32-bit longs, a two-subphases algorithm
-             * ensures we do not encounter overflow bugs.
+        /* only this thread, under rcu_sync_lock, writes rcu_gp_ctr */
+        size_t gp = retro_atomic_load_relaxed_size(&rcu_gp_ctr);
+
+        if (sizeof(size_t) < 8) {
+            /* For architectures with 32-bit size_t, a two-subphases
+             * algorithm ensures we do not encounter overflow bugs.
              *
              * Switch parity: 0 -> 1, 1 -> 0.
              */
-            qatomic_set(&rcu_gp_ctr, rcu_gp_ctr ^ RCU_GP_CTR);
+            retro_atomic_store_relaxed_size(&rcu_gp_ctr, gp ^ RCU_GP_CTR);
             wait_for_readers();
-            qatomic_set(&rcu_gp_ctr, rcu_gp_ctr ^ RCU_GP_CTR);
+            retro_atomic_store_relaxed_size(&rcu_gp_ctr, gp);
         } else {
             /* Increment current grace period.  */
-            qatomic_set(&rcu_gp_ctr, rcu_gp_ctr + RCU_GP_CTR);
+            retro_atomic_store_relaxed_size(&rcu_gp_ctr, gp + RCU_GP_CTR);
         }
 
         wait_for_readers();
@@ -207,30 +209,31 @@ void synchronize_rcu(void)
  * from liburcu.  Note that head is only used by the consumer.
  */
 static struct rcu_head dummy;
-static struct rcu_head *head = &dummy, **tail = &dummy.next;
+static struct rcu_head *head = &dummy;
+static retro_atomic_ptr_t tail = &dummy.next;    /* retro_atomic_ptr_t * */
 static QemuEvent rcu_call_ready_event;
 
 static void enqueue(struct rcu_head *node)
 {
-    struct rcu_head **old_tail;
+    retro_atomic_ptr_t *old_tail;
 
-    node->next = NULL;
+    retro_atomic_store_relaxed_ptr(&node->next, NULL);
 
     /*
      * Make this node the tail of the list.  The node will be
      * used by further enqueue operations, but it will not
      * be dequeued yet...
      */
-    old_tail = qatomic_xchg(&tail, &node->next);
+    old_tail = retro_atomic_exchange_ptr(&tail, &node->next);
 
     /*
      * ... until it is pointed to from another item in the list.
      * In the meantime, try_dequeue() will find a NULL next pointer
      * and loop.
      *
-     * Synchronizes with qatomic_load_acquire() in try_dequeue().
+     * Synchronizes with the acquire load in try_dequeue().
      */
-    qatomic_store_release(old_tail, node);
+    retro_atomic_store_release_ptr(old_tail, node);
 }
 
 static struct rcu_head *try_dequeue(void)
@@ -245,7 +248,7 @@ retry:
      * If the head node has NULL in its next pointer, the value is
      * wrong and we need to wait until its enqueuer finishes the update.
      */
-    next = qatomic_load_acquire(&node->next);
+    next = retro_atomic_load_acquire_ptr(&node->next);
     if (!next) {
         return NULL;
     }
@@ -257,7 +260,7 @@ retry:
      * The tail, because it is the first step in the enqueuing.
      * It is only the next pointers that might be inconsistent.
      */
-    if (head == &dummy && qatomic_read(&tail) == &dummy.next) {
+    if (head == &dummy && retro_atomic_load_relaxed_ptr(&tail) == &dummy.next) {
         abort();
     }
 
@@ -293,7 +296,7 @@ static void *call_rcu_thread(void *opaque)
          */
         for (;;) {
             qemu_event_reset(&rcu_call_ready_event);
-            n = qatomic_read(&rcu_call_count);
+            n = retro_atomic_load_relaxed_int(&rcu_call_count);
             if (n) {
                 break;
             }
@@ -305,7 +308,7 @@ static void *call_rcu_thread(void *opaque)
         }
 
         synchronize_rcu();
-        qatomic_sub(&rcu_call_count, n);
+        retro_atomic_fetch_sub_int(&rcu_call_count, n);
         bql_lock();
         while (n > 0) {
             node = try_dequeue();
@@ -332,7 +335,7 @@ void call_rcu1(struct rcu_head *node, void (*func)(struct rcu_head *node))
 {
     node->func = func;
     enqueue(node);
-    qatomic_inc(&rcu_call_count);
+    retro_atomic_inc_int(&rcu_call_count);
     qemu_event_set(&rcu_call_ready_event);
 }
 
@@ -382,10 +385,8 @@ void drain_call_rcu(void)
      * assumed.
      */
 
-    qatomic_inc(&in_drain_call_rcu);
     call_rcu1(&rcu_drain.rcu, drain_rcu_callback);
     qemu_event_wait(&rcu_drain.drain_complete_event);
-    qatomic_dec(&in_drain_call_rcu);
 
     if (locked) {
         bql_lock();
@@ -395,7 +396,7 @@ void drain_call_rcu(void)
 
 void rcu_register_thread(void)
 {
-    assert(get_ptr_rcu_reader()->ctr == 0);
+    assert(retro_atomic_load_relaxed_size(&get_ptr_rcu_reader()->ctr) == 0);
     qemu_mutex_lock(&rcu_registry_lock);
     QLIST_INSERT_HEAD(&registry, get_ptr_rcu_reader(), node);
     qemu_mutex_unlock(&rcu_registry_lock);

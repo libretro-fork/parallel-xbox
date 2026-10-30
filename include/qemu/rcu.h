@@ -27,6 +27,7 @@
 #include "qemu/thread.h"
 #include "qemu/queue.h"
 #include "qemu/atomic.h"
+#include <retro_atomic.h>
 #include "qemu/notify.h"
 #include "qemu/sys_membarrier.h"
 #include "qemu/coroutine-tls.h"
@@ -50,14 +51,14 @@
  * Using a int rather than a char to eliminate false register dependencies
  * causing stalls on some architectures.
  */
-extern unsigned long rcu_gp_ctr;
+extern retro_atomic_size_t rcu_gp_ctr;
 
 extern QemuEvent rcu_gp_event;
 
 struct rcu_reader_data {
     /* Data used by both reader and synchronize_rcu() */
-    unsigned long ctr;
-    bool waiting;
+    retro_atomic_size_t ctr;
+    retro_atomic_int_t waiting;
 
     /* Data used by reader only */
     unsigned depth;
@@ -78,14 +79,14 @@ QEMU_DECLARE_CO_TLS(struct rcu_reader_data, rcu_reader)
 static inline void rcu_read_lock(void)
 {
     struct rcu_reader_data *p_rcu_reader = get_ptr_rcu_reader();
-    unsigned ctr;
+    size_t ctr;
 
     if (p_rcu_reader->depth++ > 0) {
         return;
     }
 
-    ctr = qatomic_read(&rcu_gp_ctr);
-    qatomic_set(&p_rcu_reader->ctr, ctr);
+    ctr = retro_atomic_load_relaxed_size(&rcu_gp_ctr);
+    retro_atomic_store_relaxed_size(&p_rcu_reader->ctr, ctr);
 
     /*
      * Read rcu_gp_ptr and write p_rcu_reader->ctr before reading
@@ -108,12 +109,12 @@ static inline void rcu_read_unlock(void)
      * smp_mb_placeholder(), this ensures writes to p_rcu_reader->ctr
      * are sequentially consistent.
      */
-    qatomic_store_release(&p_rcu_reader->ctr, 0);
+    retro_atomic_store_release_size(&p_rcu_reader->ctr, 0);
 
     /* Write p_rcu_reader->ctr before reading p_rcu_reader->waiting.  */
     smp_mb_placeholder();
-    if (unlikely(qatomic_read(&p_rcu_reader->waiting))) {
-        qatomic_set(&p_rcu_reader->waiting, false);
+    if (unlikely(retro_atomic_load_relaxed_int(&p_rcu_reader->waiting))) {
+        retro_atomic_store_relaxed_int(&p_rcu_reader->waiting, 0);
         qemu_event_set(&rcu_gp_event);
     }
 }
@@ -132,7 +133,7 @@ struct rcu_head;
 typedef void RCUCBFunc(struct rcu_head *head);
 
 struct rcu_head {
-    struct rcu_head *next;
+    retro_atomic_ptr_t next;    /* struct rcu_head * */
     RCUCBFunc *func;
 };
 
