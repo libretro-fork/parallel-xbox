@@ -99,8 +99,6 @@ static int g_use_hard_fpu;
 #define gen_helper_fldln2_ST0     MAP_GEN_HELPER_SOFT_HARD(fldln2_ST0)
 #define gen_helper_fldz_ST0       MAP_GEN_HELPER_SOFT_HARD(fldz_ST0)
 #define gen_helper_fldz_FT0       MAP_GEN_HELPER_SOFT_HARD(fldz_FT0)
-#define gen_helper_fnstsw         MAP_GEN_HELPER_SOFT_HARD(fnstsw)
-#define gen_helper_fnstcw         MAP_GEN_HELPER_SOFT_HARD(fnstcw)
 #define gen_helper_fldcw          MAP_GEN_HELPER_SOFT_HARD(fldcw)
 #define gen_helper_fclex          MAP_GEN_HELPER_SOFT_HARD(fclex)
 #define gen_helper_fwait          MAP_GEN_HELPER_SOFT_HARD(fwait)
@@ -1830,6 +1828,25 @@ static void gen_flush_fp(DisasContext *s)
     gen_flush_fip(s);
 }
 
+static void gen_fnstsw(DisasContext *s, TCGv_i32 result)
+{
+    TCGv_i32 top = tcg_temp_new_i32();
+
+    /* Preserve the helper boundary's hard-FPU conversion and FIP publication. */
+    gen_flush_fp(s);
+    tcg_gen_ld16u_i32(result, tcg_env, offsetof(CPUX86State, fpus));
+    tcg_gen_andi_i32(result, result, ~0x3800);
+    tcg_gen_andi_i32(top, fpstt, 7);
+    tcg_gen_shli_i32(top, top, 11);
+    tcg_gen_or_i32(result, result, top);
+}
+
+static void gen_fnstcw(DisasContext *s, TCGv_i32 result)
+{
+    gen_flush_fp(s);
+    tcg_gen_ld16u_i32(result, tcg_env, offsetof(CPUX86State, fpuc));
+}
+
 /*
  * Ugly macros to handle soft FPU helper generation
  */
@@ -3259,7 +3276,7 @@ static void gen_x87(DisasContext *s, X86DecodedInsn *decode)
             update_fip = update_fdp = false;
             break;
         case 0x0f: /* fnstcw mem */
-            gen_helper_fnstcw(s->tmp2_i32, tcg_env);
+            gen_fnstcw(s, s->tmp2_i32);
             tcg_gen_qemu_st_i32(s->tmp2_i32, s->A0,
                                 s->mem_index, MO_LEUW);
             update_fip = update_fdp = false;
@@ -3282,7 +3299,7 @@ static void gen_x87(DisasContext *s, X86DecodedInsn *decode)
             update_fip = update_fdp = false;
             break;
         case 0x2f: /* fnstsw mem */
-            gen_helper_fnstsw(s->tmp2_i32, tcg_env);
+            gen_fnstsw(s, s->tmp2_i32);
             tcg_gen_qemu_st_i32(s->tmp2_i32, s->A0,
                                 s->mem_index, MO_LEUW);
             update_fip = update_fdp = false;
@@ -3593,7 +3610,7 @@ static void gen_x87(DisasContext *s, X86DecodedInsn *decode)
         case 0x3c: /* df/4 */
             switch (rm) {
             case 0:
-                gen_helper_fnstsw(s->tmp2_i32, tcg_env);
+                gen_fnstsw(s, s->tmp2_i32);
                 tcg_gen_extu_i32_tl(s->T0, s->tmp2_i32);
                 gen_op_mov_reg_v(s, MO_16, R_EAX, s->T0);
                 break;

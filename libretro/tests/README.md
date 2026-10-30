@@ -741,3 +741,7 @@ The scaled cube save/load case verifies full RAM restoration and checks that a p
 The 4020 phase binds the same striped RAM texture to a point-sampled T0 and a linear-filtered T1, toggling T1 off and on. T0 must stay solid red with Force Quality Filtering enabled. OpenGL keeps forced-AF cache entries separate because its sampler parameters live on texture objects; Vulkan already separates sampler state from images. Disabled OpenGL retains the existing cache behavior.
 
 The 4180 phase samples x=-0.25 at the edge of the striped texture using linear filtering. Clamp-to-edge, border, emulated OGL clamp, repeat and mirror modes must retain their normal edge colors with quality filtering enabled or disabled. The independent-option cases also check that quality filtering alone preserves the guest mip clamps, while LOD0 alone still selects the red/yellow base mip and preserves scaled cube detail. The two-unit fixture uses repeat addressing so that its linear unit qualifies for forced AF.
+
+`x87-status.asm` checks all 65,536 loaded status words and control words,
+AX upper-half preservation, exact 16-bit memory writes and live stack/TOP
+transitions with hard FPU and CPU Boost independently enabled and disabled.

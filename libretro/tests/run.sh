@@ -257,6 +257,9 @@ nasm -f bin -I"$here/rom/" -o "$work/sysshuf/xemu/Complex_4627v1.03.bin" "$here/
 mkdir -p "$work/sysft0/xemu"
 cp "$work/sys/xemu/mcpx_1.0.bin" "$work/sysft0/xemu/"
 nasm -f bin -I"$here/rom/" -o "$work/sysft0/xemu/Complex_4627v1.03.bin" "$here/rom/x87-scratch.asm"
+mkdir -p "$work/sysfsw/xemu"
+cp "$work/sys/xemu/mcpx_1.0.bin" "$work/sysfsw/xemu/"
+nasm -f bin -I"$here/rom/" -o "$work/sysfsw/xemu/Complex_4627v1.03.bin" "$here/rom/x87-status.asm"
 
 cp "$work/sys/xemu/mcpx_1.0.bin" "$work/sysf/xemu/"
 nasm -f bin -I"$here/rom/" -o "$work/sysf/xemu/Complex_4627v1.03.bin" "$here/rom/rep-stos.asm"
@@ -380,6 +383,21 @@ for hard in enabled disabled; do
       grep -q "^$want$" "$work/x87-scratch-$hard-$boost.txt" || {
         cat "$work/x87-scratch-$hard-$boost.txt"
         echo "FAIL: x87 scratch ($hard/$boost)"; exit 1;
+      }
+    done
+  done
+done
+
+# Status/control getters preserve TOP, register widths and the live x87 stack.
+for hard in enabled disabled; do
+  for boost in enabled disabled; do
+    t "x87 status/control, hard FPU $hard, CPU Boost $boost" $h "$(path "$core")" "$(path "$work/sysfsw")" \
+      $vp --opt "xemu_hard_fpu=$hard" --opt "xemu_cpu_boost=$boost" --frames 60 --strict \
+      --peek 0x300000 --peek 0x300004 >"$work/x87-status-$hard-$boost.txt"
+    for want in "peek_0x300000=0x4b4f5753" "peek_0x300004=0x00000000"; do
+      grep -q "^$want$" "$work/x87-status-$hard-$boost.txt" || {
+        cat "$work/x87-status-$hard-$boost.txt"
+        echo "FAIL: x87 status/control ($hard/$boost)"; exit 1;
       }
     done
   done
