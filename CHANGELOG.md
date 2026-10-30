@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Game code that writes over code already translated (self-modifying code) no longer allocates memory on each such write; the pages it locks are kept in a small array instead.
+
 - Translating the game's code no longer allocates and frees memory for every block translated (about 17,000 times in ten seconds of Ninja Gaiden): the table of the block's constants is made once and emptied in one step.
 
 - The GPU no longer allocates memory each time it raises an interrupt (a few hundred times in ten seconds of Ninja Gaiden): the callback that raises it is made once and reused.

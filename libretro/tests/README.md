@@ -28,6 +28,15 @@ entries. Another 10,000 states compare first-write dirty promotion against
 an exhaustive scan, including primary/victim aliases and preservation of
 other page flags. GCC's undefined-behavior traps are enabled.
 
+`python libretro/tests/test-page-collection.py . gcc` compiles the
+production TB page collection (the pages a code write or an invalidated
+range locks: the range's own and those of every TB on them) against a
+reference over random pages and TBs, with other threads' locks simulated
+by trylocks that fail at random. It checks the set, its ascending order,
+that every page in it and no other is locked, the retries, the array's
+move to the heap past 16 pages, and the unlock, in 160,000 cases with
+GCC's undefined-behavior traps enabled.
+
 `python libretro/tests/test-dma-map.py . gcc` compiles the production direct
 DMA mapping function against bounded RAM and a pending GPU writeback. It
 checks callback ordering for reads/writes, preservation of newly written

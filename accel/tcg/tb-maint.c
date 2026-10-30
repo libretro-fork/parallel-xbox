@@ -19,7 +19,6 @@
 
 #include "qemu/osdep.h"
 #include "qemu/interval-tree.h"
-#include "qemu/qtree.h"
 #include "exec/cputlb.h"
 #include "exec/log.h"
 #include "exec/page-protection.h"
@@ -299,20 +298,27 @@ struct page_entry {
     bool locked;
 };
 
+#define PAGE_COLLECTION_INLINE 16
+
 /**
  * struct page_collection - tracks a set of pages (i.e. &struct page_entry's)
- * @tree:   Binary search tree (BST) of the pages, with key == page index
- * @max:    Pointer to the page in @tree with the highest page index
+ * @entries: the pages, sorted by page index: @inl, or a heap array once
+ *           more than PAGE_COLLECTION_INLINE pages are collected
+ * @n:       number of pages in @entries
+ * @cap:     room in @entries
+ * @inl:     room for the usual few pages, so collecting them allocates
+ *           nothing (a code write locks its page and the pages of the TBs
+ *           on it)
  *
  * To avoid deadlock we lock pages in ascending order of page index.
  * When operating on a set of pages, we need to keep track of them so that
  * we can lock them in order and also unlock them later. For this we collect
- * pages (i.e. &struct page_entry's) in a binary search @tree. Given that the
- * @tree implementation we use does not provide an O(1) operation to obtain the
- * highest-ranked element, we use @max to keep track of the inserted page
- * with the highest index. This is valuable because if a page is not in
- * the tree and its index is higher than @max's, then we can lock it
- * without breaking the locking order rule.
+ * pages (i.e. &struct page_entry's) in an array sorted by page index. Its
+ * last entry has the highest index, so a page not in the set whose index is
+ * higher can be locked without breaking the locking order rule.
+ *
+ * The collection lives on its user's stack; page_collection_unlock() frees
+ * nothing but a grown array.
  *
  * Note on naming: 'struct page_set' would be shorter, but we already have a few
  * page_set_*() helpers, so page_collection is used instead to avoid confusion.
@@ -320,8 +326,9 @@ struct page_entry {
  * See also: page_collection_lock().
  */
 struct page_collection {
-    QTree *tree;
-    struct page_entry *max;
+    struct page_entry *entries;
+    unsigned n, cap;
+    struct page_entry inl[PAGE_COLLECTION_INLINE];
 };
 
 typedef int PageForEachNext;
@@ -499,26 +506,6 @@ void tb_unlock_pages(TranslationBlock *tb)
     page_unlock(page_find_alloc(pindex0, false));
 }
 
-static inline struct page_entry *
-page_entry_new(PageDesc *pd, tb_page_addr_t index)
-{
-    struct page_entry *pe = g_malloc(sizeof(*pe));
-
-    pe->index = index;
-    pe->pd = pd;
-    pe->locked = false;
-    return pe;
-}
-
-static void page_entry_destroy(gpointer p)
-{
-    struct page_entry *pe = p;
-
-    g_assert(pe->locked);
-    page_unlock(pe->pd);
-    g_free(pe);
-}
-
 /* returns false on success */
 static bool page_entry_trylock(struct page_entry *pe)
 {
@@ -537,23 +524,24 @@ static void do_page_entry_lock(struct page_entry *pe)
     pe->locked = true;
 }
 
-static gboolean page_entry_lock(gpointer key, gpointer value, gpointer data)
+/* every page of the set, in ascending order */
+static void page_collection_lock_all(struct page_collection *set)
 {
-    struct page_entry *pe = value;
-
-    do_page_entry_lock(pe);
-    return FALSE;
+    for (unsigned i = 0; i < set->n; i++) {
+        do_page_entry_lock(&set->entries[i]);
+    }
 }
 
-static gboolean page_entry_unlock(gpointer key, gpointer value, gpointer data)
+static void page_collection_unlock_all(struct page_collection *set)
 {
-    struct page_entry *pe = value;
+    for (unsigned i = 0; i < set->n; i++) {
+        struct page_entry *pe = &set->entries[i];
 
-    if (pe->locked) {
-        pe->locked = false;
-        page_unlock(pe->pd);
+        if (pe->locked) {
+            pe->locked = false;
+            page_unlock(pe->pd);
+        }
     }
-    return FALSE;
 }
 
 /*
@@ -564,10 +552,20 @@ static bool page_trylock_add(struct page_collection *set, tb_page_addr_t addr)
 {
     tb_page_addr_t index = addr >> TARGET_PAGE_BITS;
     struct page_entry *pe;
+    unsigned lo = 0, hi = set->n;
     PageDesc *pd;
 
-    pe = q_tree_lookup(set->tree, &index);
-    if (pe) {
+    /* the first entry with an index not below this one's */
+    while (lo < hi) {
+        unsigned mid = (lo + hi) / 2;
+
+        if (set->entries[mid].index < index) {
+            lo = mid + 1;
+        } else {
+            hi = mid;
+        }
+    }
+    if (lo < set->n && set->entries[lo].index == index) {
         return false;
     }
 
@@ -576,15 +574,29 @@ static bool page_trylock_add(struct page_collection *set, tb_page_addr_t addr)
         return false;
     }
 
-    pe = page_entry_new(pd, index);
-    q_tree_insert(set->tree, &pe->index, pe);
+    if (set->n == set->cap) {
+        /* a large range: the array moves to the heap */
+        set->cap *= 2;
+        if (set->entries == set->inl) {
+            set->entries = g_new(struct page_entry, set->cap);
+            memcpy(set->entries, set->inl, sizeof(set->inl));
+        } else {
+            set->entries = g_renew(struct page_entry, set->entries,
+                                   set->cap);
+        }
+    }
+    pe = &set->entries[lo];
+    memmove(pe + 1, pe, (set->n - lo) * sizeof(*pe));
+    set->n++;
+    pe->index = index;
+    pe->pd = pd;
+    pe->locked = false;
 
     /*
      * If this is either (1) the first insertion or (2) a page whose index
      * is higher than any other so far, just lock the page and move on.
      */
-    if (set->max == NULL || pe->index > set->max->index) {
-        set->max = pe;
+    if (lo == set->n - 1) {
         do_page_entry_lock(pe);
         return false;
     }
@@ -595,28 +607,14 @@ static bool page_trylock_add(struct page_collection *set, tb_page_addr_t addr)
     return page_entry_trylock(pe);
 }
 
-static gint tb_page_addr_cmp(gconstpointer ap, gconstpointer bp, gpointer udata)
-{
-    tb_page_addr_t a = *(const tb_page_addr_t *)ap;
-    tb_page_addr_t b = *(const tb_page_addr_t *)bp;
-
-    if (a == b) {
-        return 0;
-    } else if (a < b) {
-        return -1;
-    }
-    return 1;
-}
-
 /*
  * Lock a range of pages ([@start,@last]) as well as the pages of all
  * intersecting TBs.
  * Locking order: acquire locks in ascending order of page index.
  */
-static struct page_collection *page_collection_lock(tb_page_addr_t start,
-                                                    tb_page_addr_t last)
+static void page_collection_lock(struct page_collection *set,
+                                 tb_page_addr_t start, tb_page_addr_t last)
 {
-    struct page_collection *set = g_malloc(sizeof(*set));
     tb_page_addr_t index;
     PageDesc *pd;
 
@@ -624,13 +622,13 @@ static struct page_collection *page_collection_lock(tb_page_addr_t start,
     last >>= TARGET_PAGE_BITS;
     g_assert(start <= last);
 
-    set->tree = q_tree_new_full(tb_page_addr_cmp, NULL, NULL,
-                                page_entry_destroy);
-    set->max = NULL;
+    set->entries = set->inl;
+    set->n = 0;
+    set->cap = PAGE_COLLECTION_INLINE;
     assert_no_pages_locked();
 
  retry:
-    q_tree_foreach(set->tree, page_entry_lock, NULL);
+    page_collection_lock_all(set);
 
     for (index = start; index <= last; index++) {
         TranslationBlock *tb;
@@ -641,7 +639,7 @@ static struct page_collection *page_collection_lock(tb_page_addr_t start,
             continue;
         }
         if (page_trylock_add(set, index << TARGET_PAGE_BITS)) {
-            q_tree_foreach(set->tree, page_entry_unlock, NULL);
+            page_collection_unlock_all(set);
             goto retry;
         }
         assert_page_locked(pd);
@@ -650,19 +648,23 @@ static struct page_collection *page_collection_lock(tb_page_addr_t start,
                 (tb_page_addr1(tb) != -1 &&
                  page_trylock_add(set, tb_page_addr1(tb)))) {
                 /* drop all locks, and reacquire in order */
-                q_tree_foreach(set->tree, page_entry_unlock, NULL);
+                page_collection_unlock_all(set);
                 goto retry;
             }
         }
     }
-    return set;
 }
 
 static void page_collection_unlock(struct page_collection *set)
 {
-    /* entries are unlocked and freed via page_entry_destroy */
-    q_tree_destroy(set->tree);
-    g_free(set);
+    for (unsigned i = 0; i < set->n; i++) {
+        g_assert(set->entries[i].locked);
+        page_unlock(set->entries[i].pd);
+    }
+    if (set->entries != set->inl) {
+        g_free(set->entries);
+    }
+    set->n = 0;
 }
 
 /* Set to NULL all the 'first_tb' fields in all PageDescs. */
@@ -1223,10 +1225,10 @@ tb_invalidate_phys_page_range__locked(CPUState *cpu,
 void tb_invalidate_phys_range(CPUState *cpu, tb_page_addr_t start,
                               tb_page_addr_t last)
 {
-    struct page_collection *pages;
+    struct page_collection pages;
     tb_page_addr_t index, index_last;
 
-    pages = page_collection_lock(start, last);
+    page_collection_lock(&pages, start, last);
 
     index_last = last >> TARGET_PAGE_BITS;
     for (index = start >> TARGET_PAGE_BITS; index <= index_last; index++) {
@@ -1240,10 +1242,10 @@ void tb_invalidate_phys_range(CPUState *cpu, tb_page_addr_t start,
         page_start = index << TARGET_PAGE_BITS;
         page_last = page_start | ~TARGET_PAGE_MASK;
         page_last = MIN(page_last, last);
-        tb_invalidate_phys_page_range__locked(cpu, pages, pd,
+        tb_invalidate_phys_page_range__locked(cpu, &pages, pd,
                                               page_start, page_last, 0);
     }
-    page_collection_unlock(pages);
+    page_collection_unlock(&pages);
 }
 
 /*
@@ -1258,11 +1260,12 @@ void tb_invalidate_phys_range_fast(CPUState *cpu, ram_addr_t start,
 
     if (p) {
         ram_addr_t last = start + len - 1;
-        struct page_collection *pages = page_collection_lock(start, last);
+        struct page_collection pages;
 
-        tb_invalidate_phys_page_range__locked(cpu, pages, p,
+        page_collection_lock(&pages, start, last);
+        tb_invalidate_phys_page_range__locked(cpu, &pages, p,
                                               start, last, ra);
-        page_collection_unlock(pages);
+        page_collection_unlock(&pages);
     }
 }
 
