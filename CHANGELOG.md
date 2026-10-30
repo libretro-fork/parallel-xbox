@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- The synthetic GPU suite now repeatedly rebinds an unchanged GPU-produced palette for 40 draws and checks that its final blue color remains stable on both renderers at 1x, 2x and 4x.
+
 - Indexed textures now see palette colors rendered by the GPU before CPU palette expansion and cache validation. Both renderers synchronize overlapping palette surfaces; OpenGL also handles parked surfaces. This fixes stale or one-update-late colors when a render target supplies a palette.
 
 - The synthetic GPU regression suite now renders textures and indexed palettes ending exactly at the 64 MiB VRAM boundary, and checks that cached texture views sharing the last dirty page refresh together on both renderers at 1x, 2x and 4x.

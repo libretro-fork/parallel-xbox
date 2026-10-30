@@ -989,6 +989,11 @@ void gpu_main(void)
             method(NV097_CLEAR_SURFACE, 0xf0);
             texture_alias(0x0b, 1, 0x3f000000u, 0);
         }
+        if (frame >= 960 && frame < 1000) {
+            /* Rebind and draw each frame without changing the palette.
+             * Dirty-only synchronization must keep this view blue. */
+            texture_alias(0x0b, 1, 0x3f000000u, 0);
+        }
         method(NV097_FLIP_INCREMENT_WRITE, 0);
         kick();
         if (frame >= 100 && frame < 125) {

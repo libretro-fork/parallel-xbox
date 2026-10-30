@@ -424,3 +424,5 @@ must be released.
 The GPU alias sequence also tests the last VRAM page with `xemu_memory=64`: frame 830 samples a linear Y8 texture ending at 64 MiB (white), frames 850/870 sample two cached views after a shared-page CPU write (black), and frames 890/910 sample a 256-entry palette ending at 64 MiB before/after a CPU update (white/black). These checks run on OpenGL and Vulkan at scales 1, 2 and 4.
 
 GPU alias frames 930/950 sample an indexed texture after GPU clears write red then blue into the palette surface. CPU palette RAM starts black and the indexed binding is already cached, so these checks detect missing GPU palette synchronization and stale cache revalidation. Both APIs run at scales 1, 2 and 4.
+
+After the GPU palette updates, guest frames 960 through 999 rebind the same indexed texture and draw without modifying its palette. Captures at frontend frames 970, 990 and 1005 must remain blue. A separate temporary transfer-counter audit measured actual palette readbacks and indexed uploads across this sequence; those counters are not part of the shipped core or the standard visual regression assertions.
