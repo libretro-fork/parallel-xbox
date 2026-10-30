@@ -149,6 +149,29 @@ entry:
         ; start the sound engine
         apu 0x2000, (1 << 3)             ; SECTL XCNTMODE
 
+%ifdef EXITWORK
+        ; Active register work can cross STI/CLI block boundaries without
+        ; storing. Finish well inside one frame; an exit-count idle rule
+        ; incorrectly skips to timers and stretches it over many frames.
+        mov al, 0xff
+        out 0x21, al
+        out 0xa1, al
+        xor eax, eax
+        mov edx, 1024
+.outer: mov ecx, 64
+.inner: sti
+        nop
+        cli
+        add eax, 1
+        dec ecx
+        jnz .inner
+        mov [0x00300004], eax
+        dec edx
+        jnz .outer
+        mov dword [0x00300000], 0x574f524b
+        jmp halt
+%endif
+
 %ifdef BUSY
         ; the CPU counts in RAM at 0x300000, for measuring guest progress
 busy:   inc dword [0x00300000]

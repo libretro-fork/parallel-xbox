@@ -1184,18 +1184,10 @@ static inline void cpu_loop_exec_tb(CPUState *cpu, TranslationBlock *tb,
     tb = cpu_tb_exec(cpu, tb, tb_exit);
     if (*tb_exit != TB_EXIT_REQUESTED) {
         *last_tb = tb;
-        /* The libretro core's idle detection, the other way a wait shows:
-         * the Xbox kernel's idle thread is "sti; nop; nop; cli; cmp; je",
-         * and sti ends a block with a plain exit to this loop (no block to
-         * chain to: tb NULL), so the thread comes through here twice a
-         * turn, 7.6 M times a second, and runs only a few thousand
-         * instructions a millisecond of guest time, never enough to spend
-         * LR_QUIET_INSNS before the next timer. A run of LR_QUIET_EXITS
-         * such exits with nothing stored and no device touched between
-         * them (lr_quiet only counted down since the last) is the same
-         * wait: a
-         * game's own work chains its blocks, and exits here only on a
-         * store-free stretch of that many sti/cli pairs, which is none. */
+        /* The kernel idle loop exits at STI/CLI without chaining. A
+         * short run of such exits only nominates a candidate: the opcode
+         * pattern and empty-list/dispatch conditions must prove the wait.
+         * Active code that happens to exit this way keeps running. */
         if (tb) {
             return;
         }
@@ -1210,6 +1202,9 @@ static inline void cpu_loop_exec_tb(CPUState *cpu, TranslationBlock *tb,
                 return;
             }
             cpu->lr_quiet_exits = 0;
+            if (!xemu_libretro_kernel_idle(cpu)) {
+                return;
+            }
             cpu->neg.lr_quiet = -1;
         } else {
             cpu->lr_quiet_exits = 0;

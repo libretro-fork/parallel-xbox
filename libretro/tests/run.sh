@@ -24,7 +24,7 @@ else
 fi
 mkdir -p "$work/bin" "$work/sys/xemu" "$work/sysb/xemu" "$work/sysd/xemu" \
     "$work/syss/xemu" "$work/sysp/xemu" "$work/sysg/xemu" "$work/sysv/xemu" \
-    "$work/sysr/xemu" "$work/sysf/xemu" "$work/sysa/xemu" "$work/syse/xemu" \
+    "$work/sysr/xemu" "$work/sysf/xemu" "$work/syswork/xemu" "$work/sysa/xemu" "$work/syse/xemu" \
     "$work/sysh/xemu" "$work/sysc/xemu"
 
 # The harness's paths, as the core's OS spells them
@@ -58,6 +58,7 @@ esac
 case $core in
 *.so) python3 "$here/test-libretro-jit.py" "$here/../.." "$cc" ;;
 esac
+python3 "$here/test-kernel-idle.py" "$here/../.." "$cc"
 ${cc} -O2 -std=c11 -Wall -o "$work/bin/scanoutcheck" "$here/test-scanout.c"
 ${cc} -O2 -std=c11 -Wall -I"$here/../.." -o "$work/bin/mcpxcheck" "$here/test-mcpx-boot.c"
 "$work/bin/mcpxcheck"
@@ -202,6 +203,9 @@ nasm -f bin -DEP -I"$here/rom/" -o "$work/syse/xemu/Complex_4627v1.03.bin" "$her
 cp "$work/sys/xemu/mcpx_1.0.bin" "$work/sysd/xemu/"
 nasm -f bin -DDSP -DGP_PASSES=16 -I"$here/rom/" -o "$work/sysd/xemu/Complex_4627v1.03.bin" "$here/rom/flash.asm"
 
+cp "$work/sys/xemu/mcpx_1.0.bin" "$work/syswork/xemu/"
+nasm -f bin -DEXITWORK -I"$here/rom/" -o "$work/syswork/xemu/Complex_4627v1.03.bin" "$here/rom/flash.asm"
+
 t() { echo "== $1"; shift; timeout 300 "$@"; }
 
 # The plain test ROMs play their tone on the voice processor alone and never
@@ -248,6 +252,19 @@ for boost in enabled disabled; do
     echo "FAIL: CF across blocks ($boost): case $(grep -o 'peek_0x300004=.*' "$work/cf-$boost.txt")"
     exit 1
   fi
+done
+
+# Active register-only work crossing STI/CLI exits must not be parked.
+for boost in enabled disabled; do
+  t "active STI/CLI work, CPU Boost $boost" $h "$(path "$core")" "$(path "$work/syswork")" \
+    $vp --opt "xemu_cpu_boost=$boost" --frames 20 --strict \
+    --peek 0x300000 --peek 0x300004 >"$work/exitwork-$boost.txt"
+  for want in "peek_0x300000=0x574f524b" "peek_0x300004=0x00010000"; do
+    if ! grep -q "$want" "$work/exitwork-$boost.txt"; then
+      cat "$work/exitwork-$boost.txt"
+      echo "FAIL: active STI/CLI work ($boost): expected $want"; exit 1
+    fi
+  done
 done
 
 # The guest idles: unpaced, the frontend's fast-forward. One frame's worth

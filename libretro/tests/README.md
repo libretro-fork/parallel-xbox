@@ -463,3 +463,13 @@ The GL upload-alignment oracle now uses the production BC decoder for 36 additio
 The volume-block oracle also records production copy operations. Direct VRAM levels must copy nothing; ordered layouts falling back because VRAM is absent or unaligned must use one bulk copy; layouts requiring rearrangement must retain their per-block copies. The 324-case matrix records 1,314 operations after coalescing versus 1,548 before, with identical GPU bytes. These are source-level copy-operation counts, not a game frame-time benchmark.
 
 `python3 libretro/tests/test-vulkan-linear-span.py CHECKOUT [CC]` validates production linear staging and copy-region functions with 324 Vulkan image transfers. R8, RG8, RGBA8 and RGB565 cases cover narrow/padded rows, one/multiple rows, absent VRAM buffers, unaligned offsets, and valid VRAM-end ranges. It checks exact pixels, row pitch, unchanged direct spans and exclusion of trailing padding from staging writes/allocation, plus an empty-height underflow check. Requires Linux Vulkan and Khronos validation layers.
+
+The `EXITWORK` flash scenario checks that register-only work crossing STI/CLI
+block exits completes inside 20 runs, with CPU Boost enabled and disabled.
+It guards against speculative idle detection skipping active game work, as
+seen in Ninja Gaiden Black near a door.
+
+`test-kernel-idle.py` tests the production opcode/empty-queue proof for the
+short kernel idle fast path, including both loop forms, exit positions,
+unreadable memory, pending work and self-modifying code. Active STI/CLI
+work must fail the proof and continue running.

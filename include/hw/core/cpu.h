@@ -402,8 +402,8 @@ typedef struct CPUNegativeOffsetState {
 /* the instructions a wait is recognised after: a few hundred turns of a
  * spin loop, and more than any store-free stretch of a game's own work */
 #define LR_QUIET_INSNS 8192
-/* and the block-end exits (sti, hlt-like, a few turns of the kernel's
- * idle loop) with nothing stored between them (accel/tcg/cpu-exec.c) */
+/* A short run of block-end exits nominates a kernel-idle candidate;
+ * its instruction pattern and empty queues must also be verified. */
 #define LR_QUIET_EXITS 16
 /* and the same device read giving the same value again and again, at most
  * LR_POLL_GAP instructions apart, LR_POLL_RUNS times in a row: a poll loop

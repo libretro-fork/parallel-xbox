@@ -18,6 +18,8 @@ bool cpu_work_list_empty(CPUState *cpu);
 bool cpu_thread_is_idle(CPUState *cpu);
 bool all_cpu_threads_idle(void);
 bool cpu_can_run(CPUState *cpu);
+/* Prove the Xbox kernel is in an empty idle loop before skipping time. */
+bool xemu_libretro_kernel_idle(CPUState *cpu);
 void cpu_thread_signal_created(CPUState *cpu);
 void cpu_handle_guest_debug(CPUState *cpu);
 

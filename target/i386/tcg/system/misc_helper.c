@@ -27,6 +27,69 @@
 #include "exec/cputlb.h"
 #include "tcg/helper-tcg.h"
 #include "hw/i386/apic.h"
+#include "system/cpus.h"
+
+/* A short store-free run is not proof of idleness: NGB does active work
+ * across STI/CLI boundaries. Recognise the kernel's actual idle loops and
+ * check their empty-list conditions before advancing any guest time.
+ * Read afresh so guest patches and self-modifying code cannot leave a
+ * stale idle classification. No allocations or translation-cache state. */
+static bool lr_idle_read_word(CPUState *cpu, uint32_t addr, uint32_t *value)
+{
+    uint8_t bytes[4];
+
+    if (addr < 0x80000000U || addr > 0x87fffffcU ||
+        cpu_memory_rw_debug(cpu, addr, bytes, sizeof(bytes), false)) {
+        return false;
+    }
+    *value = ldl_le_p(bytes);
+    return true;
+}
+
+bool xemu_libretro_kernel_idle(CPUState *cpu)
+{
+    CPUX86State *env = cpu_env(cpu);
+    static const unsigned positions[] = { 0, 1, 4 };
+    uint32_t eip = env->eip, list, pending;
+    unsigned i;
+
+    if (env->segs[R_CS].base || (env->hflags & HF_CPL_MASK) ||
+        eip < 0x80000004U || eip > 0x87ffffe4U) {
+        return false;
+    }
+    for (i = 0; i < ARRAY_SIZE(positions); i++) {
+        uint8_t code[27];
+        uint32_t start = eip - positions[i];
+        bool dispatch;
+
+        if (cpu_memory_rw_debug(cpu, start, code, sizeof(code), false) ||
+            memcmp(code, "\xfb\x90\x90\xfa\x3b\x6d\x00\x74", 8)) {
+            continue;
+        }
+        /* sti; nop; nop; cli; cmp ebp,[ebp]; je back to sti. */
+        dispatch = code[8] != 0xf7;
+        if (dispatch &&
+            (code[8] != 0x0c || code[9] != 0xb1 || code[10] != 0x02 ||
+             code[11] != 0xe8 || code[16] != 0xe8 ||
+             memcmp(code + 21, "\x83\x7b\x2c\x00\x74\xe5", 6))) {
+            continue;
+        }
+        if (!lr_idle_read_word(cpu, env->regs[R_EBP], &list) ||
+            list != env->regs[R_EBP]) {
+            return false;
+        }
+        /* The longer loop also checks [ebx+0x2c] before its back edge;
+         * either a nonempty list or queued work must keep the CPU running. */
+        if (dispatch &&
+            (env->regs[R_EBX] > UINT32_MAX - 0x2cU ||
+             !lr_idle_read_word(cpu, env->regs[R_EBX] + 0x2cU, &pending) ||
+             pending)) {
+            return false;
+        }
+        return true;
+    }
+    return false;
+}
 
 /* A port read is a device access, unless it is the last one again with the
  * same value: a loop polling a status port that has not changed waits
