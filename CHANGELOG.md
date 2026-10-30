@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- The test script (libretro/tests/run.sh) removes the temporary folder it makes, about 500 MB, when it ends, whether the tests passed or failed; each run used to leave one behind. A folder given as its second argument is still kept.
+
 - The code QEMU and xemu kept for builds other than the Xbox one is gone: every `#ifndef XBOX` branch, which this core never compiles, about 5,900 lines, most of them the PC CPU models (Skylake, EPYC and the rest) the core never offers. Nothing changes for someone using the core.
 
 - Audio regression tests now compare captured GP and EP DSP output against an exact decimal host-volume oracle. EP coverage includes every S16 input at mute and 20/40/60/80 percent volume on both DSP engines, guarding against double attenuation and biased rounding.

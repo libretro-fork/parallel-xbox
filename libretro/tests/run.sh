@@ -13,7 +13,15 @@
 set -e
 core=$(readlink -f "$1")
 here=$(cd "$(dirname "$0")" && pwd)
-work=${2:-$(mktemp -d)}
+# A work dir of its own (about 500 MB) is removed when the script ends, passed
+# or failed; one given as the second argument is kept to look into.
+if [ -n "$2" ]; then
+    work=$2
+else
+    work=$(mktemp -d)
+    trap 'rm -rf "$work"' EXIT
+    trap 'exit 1' INT TERM HUP
+fi
 mkdir -p "$work/bin" "$work/sys/xemu" "$work/sysb/xemu" "$work/sysd/xemu" \
     "$work/syss/xemu" "$work/sysp/xemu" "$work/sysg/xemu" "$work/sysv/xemu" \
     "$work/sysr/xemu" "$work/sysf/xemu" "$work/sysa/xemu" "$work/syse/xemu" \
