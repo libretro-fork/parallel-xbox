@@ -578,11 +578,9 @@ SOURCES_COMMON := \
 	$(CORE_DIR)/io/dns-resolver.c \
 	$(CORE_DIR)/io/net-listener.c \
 	$(CORE_DIR)/migration/migration-stats.c \
-	$(CORE_DIR)/migration/page_cache.c \
 	$(CORE_DIR)/migration/qemu-file.c \
 	$(CORE_DIR)/migration/vmstate-types.c \
 	$(CORE_DIR)/migration/vmstate.c \
-	$(CORE_DIR)/migration/xbzrle.c \
 	$(CORE_DIR)/migration/yank_functions.c \
 	$(CORE_DIR)/os-libretro.c \
 	$(CORE_DIR)/page-vary-common.c \
@@ -702,19 +700,12 @@ SOURCES_SYSTEM := \
 	$(CORE_DIR)/hw/virtio/virtio-md-stubs.c \
 	$(CORE_DIR)/hw/watchdog/watchdog.c \
 	$(CORE_DIR)/hw/xen/xen_stubs.c \
-	$(CORE_DIR)/migration/colo-stubs.c \
 	$(CORE_DIR)/migration/cpr-exec.c \
 	$(CORE_DIR)/migration/cpr.c \
-	$(CORE_DIR)/migration/cpu-throttle.c \
 	$(CORE_DIR)/migration/global_state.c \
 	$(CORE_DIR)/migration/migration.c \
-	$(CORE_DIR)/migration/multifd-device-state.c \
-	$(CORE_DIR)/migration/multifd-nocomp.c \
-	$(CORE_DIR)/migration/multifd-zero-page.c \
-	$(CORE_DIR)/migration/multifd.c \
 	$(CORE_DIR)/migration/options.c \
-	$(CORE_DIR)/migration/postcopy-ram.c \
-	$(CORE_DIR)/migration/ram.c \
+	$(CORE_DIR)/migration/ram-libretro.c \
 	$(CORE_DIR)/migration/savevm.c \
 	$(CORE_DIR)/migration/vfio-stub.c \
 	$(CORE_DIR)/net/announce.c \

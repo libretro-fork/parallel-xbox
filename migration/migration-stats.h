@@ -120,15 +120,6 @@ uint64_t migration_rate_get(void);
 void migration_rate_reset(void);
 
 /**
- * migration_rate_set: Set the maximum amount that can be transferred.
- *
- * Sets the maximum amount of bytes that can be transferred in one cycle.
- *
- * @new_rate: new maximum amount
- */
-void migration_rate_set(uint64_t new_rate);
-
-/**
  * migration_transferred_bytes: Return number of bytes transferred
  *
  * Returns how many bytes have we transferred since the beginning of

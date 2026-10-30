@@ -2890,3 +2890,17 @@ io/task.c
 util/qdist.c
 hw/i386/multiboot.c
 hw/i386/multiboot.h
+migration/postcopy-ram.c
+migration/colo-stubs.c
+migration/multifd-device-state.c
+migration/multifd-nocomp.c
+migration/multifd-zero-page.c
+migration/multifd.c
+migration/multifd.h
+migration/page_cache.c
+migration/page_cache.h
+migration/ram.c
+migration/xbzrle.c
+migration/xbzrle.h
+migration/cpu-throttle.c
+include/system/cpu-throttle.h

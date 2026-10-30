@@ -706,9 +706,6 @@ void qemu_init_subsystems(void)
     module_call_init(MODULE_INIT_MIGRATION);
 
     runstate_init();
-    precopy_infrastructure_init();
-    postcopy_infrastructure_init();
-
 
     os_setup_early_signal_handling();
 

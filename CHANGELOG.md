@@ -5,6 +5,9 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 ## Unreleased
 
 - Frontend VFS disc reads combine adjacent destination spans into bulk provider requests without staging buffers. Seeks honor the API's zero-on-success result, URI-backed Xbox discs are classified correctly, and short reads during partition probing are retried. Local disc probes borrow libretro-common mapped views; gapped spans and EOF zero-fill are preserved.
+- Read-only frontend VFS reads safely skip empty scatter spans when filling a request past EOF, avoiding a null-pointer library call for zero-length vectors.
+
+- Savestates no longer go through QEMU's live-migration code: the guest's RAM is written once, every page, while the machine is stopped (migration/ram-libretro.c), in the same stream format, so savestates made before load after and the other way round. Gone with it (about 9,000 lines): postcopy, multifd, XBZRLE compression and its page cache, COLO, background snapshots, auto-converge throttling and the migration commands only two running QEMUs exchange. Saving no longer turns on dirty-memory logging for the whole RAM.
 
 - CPU Boost checks native SSE arithmetic eligibility once per add, subtract or multiply instruction rather than once per lane. Rounding, flushing and software fallback behavior retain the existing policy.
 
@@ -527,6 +530,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 - Audio: the Voice Processor Threads are woken only when an audio frame has work for them: a frame with one voice, or one group of voices that must stay together, runs on the emulator thread alone. Before, every thread was woken 1,500 times a second of game time whatever the frame held: with 4 threads and one voice playing, 35,000 thread switches in 300 video frames of the test ROM, 2,700 now.
 
 - Audio with APU DSP Emulation on: the DSPs' thread is woken for four audio frames at a time, and for the rest at the end of each video frame, instead of for every audio frame (1,500 a second of game time). With the game's CPU busy, as in a game, the test ROM went from 8,100 thread switches in 300 video frames to 2,700, and the time spent in the system from 0.30 to 0.23 s. When the core has to wait for the DSPs, it wakes them first, so nothing waits longer.
+
+- `libretro/tests/dspdiff` compares the DSP JIT's registers, memories, cycle count and loop state with the interpreter's for real: it compared a copy of them that nothing filled in, so only the scratch RAM, the FIFOs and the interrupts were ever checked. The JIT and the interpreter do agree on the test program (checked with the fix).
 
 ## Test build 4 - 2026-10-25
 

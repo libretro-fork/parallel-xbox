@@ -46,7 +46,9 @@ static inline int lr_vfs_readv(const struct retro_vfs_interface *vfs,
             if (!n) {
                 memset(data, 0, left);
                 for (int j = i; j < count; j++) {
-                    memset(iov[j].base, 0, iov[j].len);
+                    if (iov[j].len) {
+                        memset(iov[j].base, 0, iov[j].len);
+                    }
                 }
                 return 0;
             }

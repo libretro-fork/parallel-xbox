@@ -1763,29 +1763,9 @@ static void qemu_ram_setup_dump(void *addr, ram_addr_t size)
     }
 }
 
-const char *qemu_ram_get_idstr(RAMBlock *rb)
-{
-    return rb->idstr;
-}
-
-void *qemu_ram_get_host_addr(RAMBlock *rb)
-{
-    return rb->host;
-}
-
-ram_addr_t qemu_ram_get_offset(RAMBlock *rb)
-{
-    return rb->offset;
-}
-
 ram_addr_t qemu_ram_get_used_length(RAMBlock *rb)
 {
     return rb->used_length;
-}
-
-ram_addr_t qemu_ram_get_max_length(RAMBlock *rb)
-{
-    return rb->max_length;
 }
 
 bool qemu_ram_is_shared(RAMBlock *rb)
@@ -1796,12 +1776,6 @@ bool qemu_ram_is_shared(RAMBlock *rb)
 bool qemu_ram_is_noreserve(RAMBlock *rb)
 {
     return rb->flags & RAM_NORESERVE;
-}
-
-/* Note: Only set at the start of postcopy */
-bool qemu_ram_is_uf_zeroable(RAMBlock *rb)
-{
-    return rb->flags & RAM_UF_ZEROPAGE;
 }
 
 bool qemu_ram_is_migratable(RAMBlock *rb)
@@ -1948,40 +1922,6 @@ int qemu_ram_resize(RAMBlock *block, ram_addr_t newsize, Error **errp)
         block->resized(block->idstr, unaligned_size, block->host);
     }
     return 0;
-}
-
-/*
- * Trigger sync on the given ram block for range [start, start + length]
- * with the backing store if one is available.
- * Otherwise no-op.
- * @Note: this is supposed to be a synchronous op.
- */
-void qemu_ram_msync(RAMBlock *block, ram_addr_t start, ram_addr_t length)
-{
-    /* The requested range should fit in within the block range */
-    g_assert((start + length) <= block->used_length);
-
-#ifdef CONFIG_LIBPMEM
-    /* The lack of support for pmem should not block the sync */
-    if (ram_block_is_pmem(block)) {
-        void *addr = ramblock_ptr(block, start);
-        pmem_persist(addr, length);
-        return;
-    }
-#endif
-    if (block->fd >= 0) {
-        /**
-         * Case there is no support for PMEM or the memory has not been
-         * specified as persistent (or is not one) - use the msync.
-         * Less optimal but still achieves the same goal
-         */
-        void *addr = ramblock_ptr(block, start);
-        if (qemu_msync(addr, length, block->fd)) {
-            warn_report("%s: failed to sync memory range: start: "
-                    RAM_ADDR_FMT " length: " RAM_ADDR_FMT,
-                    __func__, start, length);
-        }
-    }
 }
 
 /* Called with ram_list.mutex held */
@@ -2586,16 +2526,6 @@ static void *qemu_ram_ptr_length(RAMBlock *block, ram_addr_t addr,
 void *qemu_map_ram_ptr(RAMBlock *ram_block, ram_addr_t addr)
 {
     return qemu_ram_ptr_length(ram_block, addr, NULL, false, true);
-}
-
-/* Return the offset of a hostpointer within a ramblock */
-ram_addr_t qemu_ram_block_host_offset(RAMBlock *rb, void *host)
-{
-    ram_addr_t res = (uint8_t *)host - (uint8_t *)rb->host;
-    assert((uintptr_t)host >= (uintptr_t)rb->host);
-    assert(res < rb->max_length);
-
-    return res;
 }
 
 RAMBlock *qemu_ram_block_from_host(void *ptr, bool round_offset,
@@ -3823,16 +3753,10 @@ err:
     return ret;
 }
 
-bool ram_block_is_pmem(RAMBlock *rb)
-{
-    return rb->flags & RAM_PMEM;
-}
-
 #define MR_SIZE(size) (int128_nz(size) ? (hwaddr)int128_get64( \
                            int128_sub((size), int128_one())) : 0)
 
 /* Require any discards to work. */
-static unsigned int ram_block_discard_required_cnt;
 /* Require only coordinated discards to work. */
 static unsigned int ram_block_coordinated_discard_required_cnt;
 /* Disable any discards. */
@@ -3854,23 +3778,6 @@ static void ram_block_discard_disable_mutex_lock(void)
 static void ram_block_discard_disable_mutex_unlock(void)
 {
     qemu_mutex_unlock(&ram_block_discard_disable_mutex);
-}
-
-int ram_block_discard_disable(bool state)
-{
-    int ret = 0;
-
-    ram_block_discard_disable_mutex_lock();
-    if (!state) {
-        ram_block_discard_disabled_cnt--;
-    } else if (ram_block_discard_required_cnt ||
-               ram_block_coordinated_discard_required_cnt) {
-        ret = -EBUSY;
-    } else {
-        ram_block_discard_disabled_cnt++;
-    }
-    ram_block_discard_disable_mutex_unlock();
-    return ret;
 }
 
 int ram_block_coordinated_discard_require(bool state)

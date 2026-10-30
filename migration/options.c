@@ -184,63 +184,6 @@ bool migrate_send_switchover_start(void)
     return s->send_switchover_start;
 }
 
-typedef enum WriteTrackingSupport {
-    WT_SUPPORT_UNKNOWN = 0,
-    WT_SUPPORT_ABSENT,
-    WT_SUPPORT_AVAILABLE,
-    WT_SUPPORT_COMPATIBLE
-} WriteTrackingSupport;
-
-static
-WriteTrackingSupport migrate_query_write_tracking(void)
-{
-    /* Check if kernel supports required UFFD features */
-    if (!ram_write_tracking_available()) {
-        return WT_SUPPORT_ABSENT;
-    }
-    /*
-     * Check if current memory configuration is
-     * compatible with required UFFD features.
-     */
-    if (!ram_write_tracking_compatible()) {
-        return WT_SUPPORT_AVAILABLE;
-    }
-
-    return WT_SUPPORT_COMPATIBLE;
-}
-
-/* Migration capabilities set */
-struct MigrateCapsSet {
-    int size;                       /* Capability set size */
-    MigrationCapability caps[];     /* Variadic array of capabilities */
-};
-typedef struct MigrateCapsSet MigrateCapsSet;
-
-/* Define and initialize MigrateCapsSet */
-#define INITIALIZE_MIGRATE_CAPS_SET(_name, ...)   \
-    MigrateCapsSet _name = {    \
-        .size = sizeof((int []) { __VA_ARGS__ }) / sizeof(int), \
-        .caps = { __VA_ARGS__ } \
-    }
-
-/* Background-snapshot compatibility check list */
-static const
-INITIALIZE_MIGRATE_CAPS_SET(check_caps_background_snapshot,
-    MIGRATION_CAPABILITY_POSTCOPY_RAM,
-    MIGRATION_CAPABILITY_DIRTY_BITMAPS,
-    MIGRATION_CAPABILITY_POSTCOPY_BLOCKTIME,
-    MIGRATION_CAPABILITY_LATE_BLOCK_ACTIVATE,
-    MIGRATION_CAPABILITY_RETURN_PATH,
-    MIGRATION_CAPABILITY_MULTIFD,
-    MIGRATION_CAPABILITY_PAUSE_BEFORE_SWITCHOVER,
-    MIGRATION_CAPABILITY_AUTO_CONVERGE,
-    MIGRATION_CAPABILITY_RELEASE_RAM,
-    MIGRATION_CAPABILITY_RDMA_PIN_ALL,
-    MIGRATION_CAPABILITY_XBZRLE,
-    MIGRATION_CAPABILITY_X_COLO,
-    MIGRATION_CAPABILITY_VALIDATE_UUID,
-    MIGRATION_CAPABILITY_ZERO_COPY_SEND);
-
 static bool migrate_incoming_started(void)
 {
     return !!migration_incoming_get_current()->transport_data;
@@ -259,7 +202,6 @@ static bool migrate_incoming_started(void)
 bool migrate_caps_check(bool *old_caps, bool *new_caps, Error **errp)
 {
     ERRP_GUARD();
-    MigrationIncomingState *mis = migration_incoming_get_current();
 
     if (new_caps[MIGRATION_CAPABILITY_ZERO_BLOCKS]) {
         warn_report("zero-blocks capability is deprecated");
@@ -275,62 +217,20 @@ bool migrate_caps_check(bool *old_caps, bool *new_caps, Error **errp)
 #endif
 
     if (new_caps[MIGRATION_CAPABILITY_POSTCOPY_RAM]) {
-        /* This check is reasonably expensive, so only when it's being
-         * set the first time, also it's only the destination that needs
-         * special support.
-         */
-        if (!old_caps[MIGRATION_CAPABILITY_POSTCOPY_RAM] &&
-            runstate_check(RUN_STATE_INMIGRATE) &&
-            !postcopy_ram_supported_by_host(mis, errp)) {
-            error_prepend(errp, "Postcopy is not supported: ");
-            return false;
-        }
-
-        if (new_caps[MIGRATION_CAPABILITY_X_IGNORE_SHARED]) {
-            error_setg(errp, "Postcopy is not compatible with ignore-shared");
-            return false;
-        }
+        error_setg(errp, "Postcopy is not supported: a savestate is "
+                   "loaded whole");
+        return false;
     }
 
     if (new_caps[MIGRATION_CAPABILITY_BACKGROUND_SNAPSHOT]) {
-        WriteTrackingSupport wt_support;
-        int idx;
-        /*
-         * Check if 'background-snapshot' capability is supported by
-         * host kernel and compatible with guest memory configuration.
-         */
-        wt_support = migrate_query_write_tracking();
-        if (wt_support < WT_SUPPORT_AVAILABLE) {
-            error_setg(errp, "Background-snapshot is not supported by host kernel");
-            return false;
-        }
-        if (wt_support < WT_SUPPORT_COMPATIBLE) {
-            error_setg(errp, "Background-snapshot is not compatible "
-                    "with guest memory configuration");
-            return false;
-        }
-
-        /*
-         * Check if there are any migration capabilities
-         * incompatible with 'background-snapshot'.
-         */
-        for (idx = 0; idx < check_caps_background_snapshot.size; idx++) {
-            int incomp_cap = check_caps_background_snapshot.caps[idx];
-            if (new_caps[incomp_cap]) {
-                error_setg(errp,
-                        "Background-snapshot is not compatible with %s",
-                        MigrationCapability_str(incomp_cap));
-                return false;
-            }
-        }
+        error_setg(errp, "Background-snapshot is not supported: a savestate "
+                   "is taken while the machine is stopped");
+        return false;
     }
 
 #ifdef CONFIG_LINUX
     if (new_caps[MIGRATION_CAPABILITY_ZERO_COPY_SEND] &&
-        (!new_caps[MIGRATION_CAPABILITY_MULTIFD] ||
-         new_caps[MIGRATION_CAPABILITY_XBZRLE] ||
-         migrate_multifd_compression() ||
-         migrate_tls())) {
+        (!new_caps[MIGRATION_CAPABILITY_MULTIFD] || new_caps[MIGRATION_CAPABILITY_XBZRLE] || migrate_multifd_compression())) {
         error_setg(errp,
                    "Zero copy only available for non-compressed non-TLS multifd migration");
         return false;
@@ -349,7 +249,7 @@ bool migrate_caps_check(bool *old_caps, bool *new_caps, Error **errp)
             return false;
         }
 
-        if (!migrate_postcopy_preempt() && migrate_incoming_started()) {
+        if (migrate_incoming_started()) {
             error_setg(errp,
                        "Postcopy preempt must be set before incoming starts");
             return false;
@@ -357,7 +257,7 @@ bool migrate_caps_check(bool *old_caps, bool *new_caps, Error **errp)
     }
 
     if (new_caps[MIGRATION_CAPABILITY_MULTIFD]) {
-        if (!migrate_multifd() && migrate_incoming_started()) {
+        if (migrate_incoming_started()) {
             error_setg(errp, "Multifd must be set before incoming starts");
             return false;
         }
@@ -409,24 +309,7 @@ bool migrate_caps_check(bool *old_caps, bool *new_caps, Error **errp)
      * On destination side, check the cases that capability is being set
      * after incoming thread has started.
      */
-    if (migrate_rdma() && !migrate_rdma_caps_check(new_caps, errp)) {
-        return false;
-    }
     return true;
-}
-
-uint64_t migrate_downtime_limit(void)
-{
-    MigrationState *s = migrate_get_current();
-
-    return s->parameters.downtime_limit;
-}
-
-uint64_t migrate_avail_switchover_bandwidth(void)
-{
-    MigrationState *s = migrate_get_current();
-
-    return s->parameters.avail_switchover_bandwidth;
 }
 
 MultiFDCompression migrate_multifd_compression(void)
@@ -435,36 +318,6 @@ MultiFDCompression migrate_multifd_compression(void)
 
     assert(s->parameters.multifd_compression < MULTIFD_COMPRESSION__MAX);
     return s->parameters.multifd_compression;
-}
-
-uint8_t migrate_throttle_trigger_threshold(void)
-{
-    MigrationState *s = migrate_get_current();
-
-    return s->parameters.throttle_trigger_threshold;
-}
-
-ZeroPageDetection migrate_zero_page_detection(void)
-{
-    MigrationState *s = migrate_get_current();
-
-    return s->parameters.zero_page_detection;
-}
-
-/* parameters helpers */
-
-AnnounceParameters *migrate_announce_params(void)
-{
-    static AnnounceParameters ap;
-
-    MigrationState *s = migrate_get_current();
-
-    ap.initial = s->parameters.announce_initial;
-    ap.max = s->parameters.announce_max;
-    ap.rounds = s->parameters.announce_rounds;
-    ap.step = s->parameters.announce_step;
-
-    return &ap;
 }
 
 void migrate_params_init(MigrationParameters *params)
@@ -647,21 +500,7 @@ bool migrate_params_check(MigrationParameters *params, Error **errp)
     }
 
 #ifdef CONFIG_LINUX
-    if (migrate_zero_copy_send() &&
-        ((params->has_multifd_compression && params->multifd_compression) ||
-         (params->tls_creds && *params->tls_creds))) {
-        error_setg(errp,
-                   "Zero copy only available for non-compressed non-TLS multifd migration");
-        return false;
-    }
 #endif
-
-    if (migrate_mapped_ram() &&
-        (migrate_multifd_compression() || migrate_tls())) {
-        error_setg(errp,
-                   "Mapped-ram only available for non-compressed non-TLS multifd migration");
-        return false;
-    }
 
     if (params->has_x_vcpu_dirty_limit_period &&
         (params->x_vcpu_dirty_limit_period < 1 ||

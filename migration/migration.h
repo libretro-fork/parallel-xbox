@@ -254,11 +254,9 @@ struct MigrationIncomingState {
 MigrationIncomingState *migration_incoming_get_current(void);
 void migration_incoming_state_destroy(void);
 void migration_incoming_transport_cleanup(MigrationIncomingState *mis);
-void migration_incoming_qemu_exit(void);
 /*
  * Functions to work with blocktime context
  */
-void fill_destination_postcopy_migration_info(MigrationInfo *info);
 
 #define TYPE_MIGRATION "migration"
 
@@ -519,44 +517,27 @@ struct MigrationState {
 void migrate_set_state(MigrationStatus *state, MigrationStatus old_state,
                        MigrationStatus new_state);
 
-void migration_fd_process_incoming(QEMUFile *f);
-void migration_ioc_process_incoming(QIOChannel *ioc, Error **errp);
-void migration_incoming_process(void);
-
-bool  migration_has_all_channels(void);
 
 void migrate_set_error(MigrationState *s, const Error *error);
 bool migrate_has_error(MigrationState *s);
-
-void migration_connect(MigrationState *s, Error *error_in);
 
 int migration_call_notifiers(MigrationState *s, MigrationEventType type,
                              Error **errp);
 
 int migrate_init(MigrationState *s, Error **errp);
-bool migration_is_blocked(Error **errp);
 /* True if outgoing migration has entered postcopy phase */
-bool migration_in_postcopy(void);
-bool migration_postcopy_is_alive(MigrationStatus state);
+/* Postcopy cannot be turned on (migrate_caps_check refuses it) */
+static inline bool migration_in_postcopy(void)
+{
+    return false;
+}
 MigrationState *migrate_get_current(void);
-bool migration_has_failed(MigrationState *);
-bool migrate_mode_is_cpr(MigrationState *);
 
 uint64_t ram_get_total_transferred_pages(void);
 
 /* Sending on the return path - generic and then for each message type */
 void migrate_send_rp_shut(MigrationIncomingState *mis,
                           uint32_t value);
-void migrate_send_rp_pong(MigrationIncomingState *mis,
-                          uint32_t value);
-int migrate_send_rp_req_pages(MigrationIncomingState *mis, RAMBlock *rb,
-                              ram_addr_t start, uint64_t haddr, uint32_t tid);
-int migrate_send_rp_message_req_pages(MigrationIncomingState *mis,
-                                      RAMBlock *rb, ram_addr_t start);
-void migrate_send_rp_recv_bitmap(MigrationIncomingState *mis,
-                                 char *block_name);
-void migrate_send_rp_resume_ack(MigrationIncomingState *mis, uint32_t value);
-int migrate_send_rp_switchover_ack(MigrationIncomingState *mis);
 
 void dirty_bitmap_mig_before_vm_start(void);
 void dirty_bitmap_mig_cancel_outgoing(void);
@@ -564,19 +545,15 @@ void dirty_bitmap_mig_cancel_incoming(void);
 bool check_dirty_bitmap_mig_alias_map(const BitmapMigrationNodeAliasList *bbm,
                                       Error **errp);
 
-void migrate_add_address(SocketAddress *address);
 int foreach_not_ignored_block(RAMBlockIterFunc func, void *opaque);
 
 #define qemu_ram_foreach_block \
   #warning "Use foreach_not_ignored_block in migration code"
 
-void migration_make_urgent_request(void);
 void migration_consume_urgent_request(void);
 bool migration_rate_limit(void);
-void migration_bh_schedule(QEMUBHFunc *cb, void *opaque);
 void migration_cancel(void);
 
-void migration_populate_vfio_info(MigrationInfo *info);
 void migration_reset_vfio_bytes_transferred(void);
 void postcopy_temp_page_reset(PostcopyTmpPage *tmp_page);
 
@@ -590,9 +567,6 @@ int migration_rp_wait(MigrationState *s);
  * name can be slightly confusing (when read as "kick the rp thread"), just
  * to remember the target is always the migration thread.
  */
-void migration_rp_kick(MigrationState *s);
-
-void migration_bitmap_sync_precopy(bool last_stage);
 
 /* migration/block-dirty-bitmap.c */
 void dirty_bitmap_mig_init(void);

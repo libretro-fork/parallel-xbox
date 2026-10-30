@@ -50,41 +50,21 @@ static inline bool migrate_zero_copy_send(void) { return false; }
 
 /* pseudo capabilities: not capabilities, used like them */
 
-bool migrate_multifd_flush_after_each_section(void);
 static inline bool migrate_postcopy(void) { return false; }
 static inline bool migrate_rdma(void) { return false; }
 static inline bool migrate_tls(void) { return false; }
 
 /* capabilities helpers */
 
-bool migrate_rdma_caps_check(bool *caps, Error **errp);
 bool migrate_caps_check(bool *old_caps, bool *new_caps, Error **errp);
-bool migrate_can_snapshot(Error **errp);
 
 /* parameters */
 
-const BitmapMigrationNodeAliasList *migrate_block_bitmap_mapping(void);
-bool migrate_has_block_bitmap_mapping(void);
 
-uint32_t migrate_checkpoint_delay(void);
-uint8_t migrate_cpu_throttle_increment(void);
-uint8_t migrate_cpu_throttle_initial(void);
-bool migrate_cpu_throttle_tailslow(void);
-bool migrate_direct_io(void);
 uint64_t migrate_downtime_limit(void);
-uint8_t migrate_max_cpu_throttle(void);
-uint64_t migrate_max_bandwidth(void);
 uint64_t migrate_avail_switchover_bandwidth(void);
-uint64_t migrate_max_postcopy_bandwidth(void);
 MultiFDCompression migrate_multifd_compression(void);
-int migrate_multifd_zlib_level(void);
-int migrate_multifd_qatzip_level(void);
-int migrate_multifd_zstd_level(void);
 uint8_t migrate_throttle_trigger_threshold(void);
-const char *migrate_tls_authz(void);
-const char *migrate_tls_creds(void);
-const char *migrate_tls_hostname(void);
-uint64_t migrate_xbzrle_cache_size(void);
 ZeroPageDetection migrate_zero_page_detection(void);
 
 /* parameters helpers */
