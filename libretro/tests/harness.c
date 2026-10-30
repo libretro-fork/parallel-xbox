@@ -145,7 +145,7 @@ static int run_no_cb;
 static int shot_at[MAX_SHOTS], nshots;
 static const char *shot_path[MAX_SHOTS];
 /* --pixel: the centre of the picture shown, and its value after given runs */
-#define MAX_PIXELS 32
+#define MAX_PIXELS 64
 static int pixel_at[MAX_PIXELS], npixels;
 static int pixel_x[MAX_PIXELS], pixel_y[MAX_PIXELS];
 static long pixel_val[MAX_PIXELS];

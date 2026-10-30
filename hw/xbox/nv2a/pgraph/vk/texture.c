@@ -605,6 +605,25 @@ void pgraph_vk_invalidate_textures_from_gpu(NV2AState *d,
     mark_textures_possibly_dirty(d, addr, size, true);
 }
 
+/* Surface writes leave RAM behind. Mark just the bound consumers here;
+ * normal creation materializes and invalidates unbound cached views later. */
+void pgraph_vk_invalidate_bound_textures(PGRAPHState *pg, hwaddr addr,
+                                         hwaddr size)
+{
+    PGRAPHVkState *r = pg->vk_renderer_state;
+    for (unsigned i = 0; i < NV2A_MAX_TEXTURES; i++) {
+        TextureBinding *binding = r->texture_bindings[i];
+        if (binding &&
+            (pgraph_vram_ranges_overlap(addr, size,
+                binding->key.texture_vram_offset, binding->key.texture_length) ||
+             pgraph_vram_ranges_overlap(addr, size,
+                binding->key.palette_vram_offset, binding->key.palette_length))) {
+            binding->possibly_dirty = true;
+            binding->validation_frame = (unsigned int)-1;
+        }
+    }
+}
+
 static bool check_texture_dirty(NV2AState *d, hwaddr addr, hwaddr size)
 {
     if (!size) {
@@ -2287,6 +2306,9 @@ static void create_texture(PGRAPHState *pg, int texture_idx)
             snode->possibly_dirty = false;
         }
 
+        if (surface_to_texture || surface_to_texture_cube) {
+            snode->possibly_dirty = false;
+        }
         resolve_unit_sampler(pg, texture_idx, &state, filter, address,
                              border_color_pack32, max_anisotropy);
 
@@ -2440,8 +2462,6 @@ void pgraph_vk_bind_textures(NV2AState *d)
 
     PGRAPHState *pg = &d->pgraph;
     PGRAPHVkState *r = pg->vk_renderer_state;
-
-    // FIXME: Mark textures that are sourced from surfaces so we can track them
 
     r->texture_bindings_changed = false;
 

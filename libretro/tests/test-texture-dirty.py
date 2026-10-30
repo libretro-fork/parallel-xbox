@@ -135,6 +135,31 @@ int main(void) {
     ram.dirty[3]=true;
     assert(!check_textures_dirty(&d));
     assert(!ram.queries && ram.dirty[3]);
+    for (unsigned i=0;i<4;i++) {
+        r.texture_cache.nodes[i].possibly_dirty=false;
+        r.texture_cache.nodes[i].validation_frame=7;
+    }
+    r.texture_bindings[0]=&r.texture_cache.nodes[0];
+    r.texture_bindings[1]=&r.texture_cache.nodes[1];
+    r.texture_cache.nodes[1].key.palette_vram_offset=16380;
+    r.texture_cache.nodes[1].key.palette_length=4;
+    r.texture_bindings[2]=&r.texture_cache.nodes[2];
+    r.texture_cache.nodes[2].key.texture_vram_offset=14000;
+    r.texture_bindings[3]=&r.texture_cache.nodes[3];
+    pgraph_vk_invalidate_bound_textures(&d.pgraph,16383,1);
+    assert(!ram.queries);
+    assert(r.texture_cache.nodes[0].possibly_dirty);
+    assert(r.texture_cache.nodes[1].possibly_dirty);
+    assert(r.texture_cache.nodes[0].validation_frame==(unsigned)-1);
+    assert(r.texture_cache.nodes[1].validation_frame==(unsigned)-1);
+    assert(!r.texture_cache.nodes[2].possibly_dirty);
+    assert(!r.texture_cache.nodes[3].possibly_dirty);
+    r.texture_cache.nodes[0].possibly_dirty=false;
+    r.texture_cache.nodes[1].possibly_dirty=false;
+    r.texture_bindings[2]=NULL;
+    pgraph_vk_invalidate_bound_textures(&d.pgraph,16383,0);
+    assert(!r.texture_cache.nodes[0].possibly_dirty);
+    assert(!r.texture_cache.nodes[1].possibly_dirty);
     puts("vk texture/palette''')
     with tempfile.TemporaryDirectory(prefix='texture-dirty-', dir=repo.parent) as directory:
         folder = Path(directory)

@@ -503,3 +503,5 @@ handlers, mixed DRAW_ARRAYS expansion, derived bounds and NV2A post-load
 hook. An independent list walk checks order/bounds for 65,536 complementary packed
 endpoint pairs and 100,000 mixed operations, including partial packet
 consumption, tracing, capacity, wrapping ranges, reset and legacy loads.
+
+At guest frame 1320 a retained one-byte Y8 view samples a red GPU surface, then the producer is cleared blue and sampled again without texture/sampler state changes. Capture 1330 must be white; Vulkan previously kept the old black private texture. Bound-view invalidation tests cover overlapping texture/palette byte ranges, nonoverlapping ranges in the same page, empty ranges and null bindings without RAM queries. The harness now accepts 64 pixel captures so the standard alias loop can include this case.

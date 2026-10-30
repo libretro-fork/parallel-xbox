@@ -4250,6 +4250,8 @@ void pgraph_vk_set_surface_dirty(PGRAPHState *pg, bool color, bool zeta)
         if (color) {
             pgraph_cpu_ahead_mark(pg, r->color_binding->vram_addr,
                                   r->color_binding->size);
+            pgraph_vk_invalidate_bound_textures(pg, r->color_binding->vram_addr,
+                                                r->color_binding->size);
         }
         r->color_binding->draw_dirty |= color;
         r->color_binding->frame_time = pg->frame_time;
@@ -4260,6 +4262,8 @@ void pgraph_vk_set_surface_dirty(PGRAPHState *pg, bool color, bool zeta)
         if (zeta) {
             pgraph_cpu_ahead_mark(pg, r->zeta_binding->vram_addr,
                                   r->zeta_binding->size);
+            pgraph_vk_invalidate_bound_textures(pg, r->zeta_binding->vram_addr,
+                                                r->zeta_binding->size);
         }
         r->zeta_binding->draw_dirty |= zeta;
         r->zeta_binding->frame_time = pg->frame_time;

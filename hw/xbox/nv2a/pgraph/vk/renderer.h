@@ -1087,6 +1087,7 @@ void pgraph_vk_bind_textures(NV2AState *d);
 void pgraph_vk_mark_textures_possibly_dirty(NV2AState *d, hwaddr addr,
                                             hwaddr size);
 void pgraph_vk_invalidate_textures_from_gpu(NV2AState *d, hwaddr addr, hwaddr size);
+void pgraph_vk_invalidate_bound_textures(PGRAPHState *pg, hwaddr addr, hwaddr size);
 void pgraph_vk_trim_texture_cache(PGRAPHState *pg);
 
 // shaders.c

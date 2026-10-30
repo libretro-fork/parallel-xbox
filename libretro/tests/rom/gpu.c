@@ -1124,6 +1124,28 @@ void gpu_main(void)
             disable_texture();
             kick();
         }
+        if (frame == 1320) {
+            texture_alias_at(0x80000000u, 1, 0x3f000000u, 0xffff0000u, TEX_SOURCE);
+            texture_cpu_barrier();
+            /* Rewrite the GPU producer, then draw with the same bound
+             * texture and sampler; RAM still contains the old red pixels. */
+            method(NV097_SET_SURFACE_CLIP_H, 32u << 16);
+            method(NV097_SET_SURFACE_CLIP_V, 16u << 16);
+            method(NV097_SET_SURFACE_FORMAT, 0x128u);
+            method(NV097_SET_SURFACE_PITCH, 128u | (128u << 16));
+            method(NV097_SET_SURFACE_COLOR_OFFSET, TEX_SOURCE);
+            method(NV097_SET_COLOR_CLEAR_VALUE, 0xff0000ffu);
+            method(NV097_SET_CLEAR_RECT_H, 31u << 16);
+            method(NV097_SET_CLEAR_RECT_V, 15u << 16);
+            method(NV097_CLEAR_SURFACE, 0xf0);
+            method(NV097_SET_SURFACE_CLIP_H, WIDTH << 16);
+            method(NV097_SET_SURFACE_CLIP_V, HEIGHT << 16);
+            method(NV097_SET_SURFACE_PITCH, PITCH | (PITCH << 16));
+            method(NV097_SET_SURFACE_COLOR_OFFSET, SURF_D);
+            triangle();
+            disable_texture();
+            kick();
+        }
         method(NV097_FLIP_INCREMENT_WRITE, 0);
         kick();
         if (frame >= 100 && frame < 125) {
