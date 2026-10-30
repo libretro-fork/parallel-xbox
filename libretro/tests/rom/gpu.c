@@ -320,6 +320,18 @@ static void kick(void)
     }
 }
 
+/* Ensure the first draw has consumed its texture before a CPU rewrite;
+ * waiting for pushbuffer GET alone only drains the command parser. */
+static void texture_cpu_barrier(void)
+{
+    ram32(GPU_SEM, 0);
+    method(NV097_SET_SEMAPHORE_OFFSET, GPU_SEM);
+    method(NV097_BACK_END_WRITE_SEMAPHORE_RELEASE, 1);
+    kick();
+    while (rd32(GPU_SEM) != 1) {
+    }
+}
+
 static void clear(u32 surface, u32 argb)
 {
     method(NV097_SET_SURFACE_COLOR_OFFSET, surface);
@@ -356,6 +368,14 @@ static void triangle(void)
     method(NV097_SET_BEGIN_END, 0);
 }
 
+static void disable_texture(void)
+{
+    method(NV097_SET_TEXTURE_CONTROL0, 0);
+    method(NV097_SET_SHADER_STAGE_PROGRAM, 0);
+    method(NV097_SET_COMBINER_SPECULAR_FOG_CW0, 0);
+    method(NV097_SET_COMBINER_SPECULAR_FOG_CW1, 0);
+}
+
 /* A 32x16 ARGB surface viewed as either matching ARGB pixels or a 64x16
  * RGB565 texture with the same byte pitch. Red's bytes are 00 00 FF FF:
  * the narrow view must alternate black and white, not stale CPU blue.
@@ -365,6 +385,8 @@ static __attribute__((noinline)) void texture_alias_target(u32 format, u32 width
                                                           u32 texture_address,
                                                           u32 target)
 {
+    u32 retain = format >> 31; /* Fixture-only: leave sampling state bound. */
+    format &= 0x7fffffffu;
     if (redraw) {
         method(NV097_SET_SURFACE_CLIP_H, 32u << 16);
         method(NV097_SET_SURFACE_CLIP_V, 16u << 16);
@@ -412,10 +434,7 @@ static __attribute__((noinline)) void texture_alias_target(u32 format, u32 width
     method(NV097_SET_VERTEX_DATA2F_M + 9 * 8, u);   /* constant texture coordinates */
     method(NV097_SET_VERTEX_DATA2F_M + 9 * 8 + 4, 0x3f000000u);
     triangle();
-    method(NV097_SET_TEXTURE_CONTROL0, 0);
-    method(NV097_SET_SHADER_STAGE_PROGRAM, 0);
-    method(NV097_SET_COMBINER_SPECULAR_FOG_CW0, 0);
-    method(NV097_SET_COMBINER_SPECULAR_FOG_CW1, 0);
+    if (!retain) disable_texture();
     kick();
     cr(0x28, 3);
     cr(0x13, (PITCH / 8) & 0xff);
@@ -1084,6 +1103,26 @@ void gpu_main(void)
             /* UYVY width one still consumes Cr at byte two. */
             ram32(TEX_YUV, 0x80ff8080u);
             texture_alias_at(0x25, 1, 0x3f000000u, 0, TEX_YUV);
+        }
+        if (frame == 1280) {
+            /* No texture state is resent before the second draw. */
+            ram32(TEX_YUV, 0);
+            texture_alias_at(0x80000013u, 1, 0x3f000000u, 0, TEX_YUV);
+            texture_cpu_barrier();
+            ram32(TEX_YUV, 0x000000ffu);
+            triangle();
+            disable_texture();
+            kick();
+        }
+        if (frame == 1300) {
+            ram32(TEX_YUV, 0);
+            ram32(VRAM_END - 1024, 0xffff0000u);
+            texture_alias_at(0x8000000bu, 1, 0x3f000000u, 0, TEX_YUV);
+            texture_cpu_barrier();
+            ram32(VRAM_END - 1024, 0xff00ff00u);
+            triangle();
+            disable_texture();
+            kick();
         }
         method(NV097_FLIP_INCREMENT_WRITE, 0);
         kick();

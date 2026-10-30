@@ -592,7 +592,9 @@ static void mark_textures_possibly_dirty(NV2AState *d, hwaddr addr,
 void pgraph_vk_mark_textures_possibly_dirty(NV2AState *d,
                                             hwaddr addr, hwaddr size)
 {
-    mark_textures_possibly_dirty(d, addr, size, false);
+    /* A newly observed dirty page can contain a CPU update after an
+     * earlier sample in this same frame. Do not defer that revalidation. */
+    mark_textures_possibly_dirty(d, addr, size, true);
 }
 
 /* A GPU writeback can supply new bytes between draws in the same frame.
@@ -2223,8 +2225,8 @@ static void create_texture(PGRAPHState *pg, int texture_idx)
     void *texture_data = (char*)d->vram_ptr + texture_vram_offset;
     void *palette_data = (char*)d->vram_ptr + texture_palette_vram_offset;
 
-    /* HEURISTIC: the content hash, the costly part of revalidation, runs at
-     * most once per frame per binding: bind_textures stamps
+    /* Without a newly observed dirty page or GPU writeback, content hashing
+     * runs at most once per frame per binding: bind_textures stamps
      * validation_frame after this call (-1 on a fresh node, which always
      * hashes). The sampler is still resolved on every bind below. */
     uint64_t content_hash = 0;
@@ -2393,20 +2395,31 @@ static void create_texture(PGRAPHState *pg, int texture_idx)
     NV2A_VK_DGROUP_END();
 }
 
-static bool check_textures_dirty(PGRAPHState *pg)
+static bool check_textures_dirty(NV2AState *d)
 {
+    PGRAPHState *pg = &d->pgraph;
     PGRAPHVkState *r = pg->vk_renderer_state;
 
     for (int i = 0; i < NV2A_MAX_TEXTURES; i++) {
         if (!r->texture_bindings[i] || pg->texture_dirty[i]) {
             return true;
         }
-        /* A binding whose RAM may have changed (possibly_dirty) revalidates
-         * at most once per frame. HEURISTIC: a RAM change after its first
-         * bind in a frame shows from the next frame on. */
+        /* Newly observed dirty pages reset validation_frame, including CPU
+         * changes found after an earlier bind in the same frame. */
         if (r->texture_bindings[i]->possibly_dirty &&
             r->texture_bindings[i]->validation_frame != pg->frame_time) {
             return true;
+        }
+        /* CPU writes can change texels without any texture method being
+         * resent. Checking pages also marks other cached views sharing them
+         * before their dirty flags are cleared. Clean pages need no hash. */
+        if (pgraph_is_texture_enabled(pg, i)) {
+            const TextureKey *key = &r->texture_bindings[i]->key;
+            if (check_texture_possibly_dirty(d, key->texture_vram_offset,
+                    key->texture_length, key->palette_vram_offset,
+                    key->palette_length)) {
+                return true;
+            }
         }
     }
     return false;
@@ -2428,12 +2441,11 @@ void pgraph_vk_bind_textures(NV2AState *d)
     PGRAPHState *pg = &d->pgraph;
     PGRAPHVkState *r = pg->vk_renderer_state;
 
-    // FIXME: Check for modifications on bind fastpath (CPU hook)
     // FIXME: Mark textures that are sourced from surfaces so we can track them
 
     r->texture_bindings_changed = false;
 
-    if (!check_textures_dirty(pg)) {
+    if (!check_textures_dirty(d)) {
         NV2A_VK_DPRINTF("Not dirty");
         NV2A_VK_DGROUP_END();
         update_timestamps(r);

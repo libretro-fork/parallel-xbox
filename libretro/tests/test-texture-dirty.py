@@ -13,6 +13,16 @@ for api in ('gl', 'vk'):
     start = source.index('struct pgraph_texture_possibly_dirty_struct {')
     end = source.index('// Check if any of the pages', start)
     production = source[start:end]
+    if api == 'vk':
+        for name in ('check_texture_possibly_dirty', 'check_textures_dirty'):
+            start = source.index('static bool ' + name + '(')
+            end = source.index('{', start) + 1
+            depth = 1
+            while depth:
+                depth += (source[end] == '{') - (source[end] == '}')
+                end += 1
+            production += source[start:end] + '\n'
+
     code = r'''
 #include <assert.h>
 #include <stddef.h>
@@ -24,12 +34,16 @@ typedef uint64_t hwaddr;
 #define DIRTY_MEMORY_NV2A_TEX 1
 #define container_of(p,t,m) ((t *)((char *)(p)-offsetof(t,m)))
 typedef struct LruNode { int unused; } LruNode;
+#define NV2A_MAX_TEXTURES 4
 typedef struct Key { hwaddr texture_vram_offset,texture_length,palette_vram_offset,palette_length; } Key;
+typedef Key TextureKey;
 typedef struct TextureLruNode { LruNode node; Key key; bool possibly_dirty; void *binding; unsigned int validation_frame; } TextureLruNode;
 typedef TextureLruNode TextureBinding;
 typedef struct Lru { TextureBinding nodes[4]; unsigned visits; } Lru;
-typedef struct Renderer { Lru texture_cache; } PGRAPHGLState;
-typedef struct PGRAPHState { PGRAPHGLState *gl_renderer_state,*vk_renderer_state; } PGRAPHState;
+typedef struct Renderer { Lru texture_cache; TextureBinding *texture_bindings[4]; } PGRAPHGLState;
+typedef PGRAPHGLState PGRAPHVkState;
+typedef struct PGRAPHState { PGRAPHGLState *gl_renderer_state,*vk_renderer_state; bool texture_dirty[4],enabled[4]; unsigned frame_time; } PGRAPHState;
+static bool pgraph_is_texture_enabled(PGRAPHState *pg,unsigned i) { return pg->enabled[i]; }
 typedef struct RAM { hwaddr size; bool dirty[4]; unsigned queries; } RAM;
 typedef struct NV2AState { PGRAPHState pgraph; RAM *vram; } NV2AState;
 static hwaddr memory_region_size(RAM *r) { return r->size; }
@@ -45,7 +59,7 @@ static void lru_visit_active(Lru *l,void (*fn)(Lru *,LruNode *,void *),void *p) 
 /* PRODUCTION */
 int main(void) {
     RAM ram={.size=16384}; PGRAPHGLState r={0};
-    NV2AState d={.pgraph={&r,&r},.vram=&ram};
+    NV2AState d={.pgraph={.gl_renderer_state=&r,.vk_renderer_state=&r},.vram=&ram};
     assert(pgraph_vram_range_valid(16383,1,16384));
     assert(pgraph_vram_range_valid(16384,0,16384));
     assert(!pgraph_vram_range_valid(16384,1,16384));
@@ -81,11 +95,46 @@ int main(void) {
         r.texture_cache.nodes[i].validation_frame=7;
         r.texture_cache.nodes[i].possibly_dirty=true;
     }
+    pgraph_vk_mark_textures_possibly_dirty(&d,16383,1);
+    assert(r.texture_cache.nodes[0].validation_frame == (unsigned)-1);
+    assert(r.texture_cache.nodes[1].validation_frame == (unsigned)-1);
+    r.texture_cache.nodes[0].validation_frame=7;
+    r.texture_cache.nodes[1].validation_frame=7;
     pgraph_vk_invalidate_textures_from_gpu(&d,16383,1);
     assert(r.texture_cache.nodes[0].validation_frame == (unsigned)-1);
     assert(r.texture_cache.nodes[1].validation_frame == (unsigned)-1);
     assert(r.texture_cache.nodes[2].validation_frame == 7);
     assert(r.texture_cache.nodes[3].validation_frame == 7);
+    puts("vk texture/palette''')
+    if api == 'gl':
+        code = code.replace('static bool pgraph_is_texture_enabled(PGRAPHState *pg,unsigned i) { return pg->enabled[i]; }', '')
+    if api == 'vk':
+        code = code.replace('    puts("vk texture/palette', r'''    TextureBinding dummy={0};
+    for (unsigned i=0;i<4;i++) {
+        r.texture_bindings[i]=&dummy;
+        ram.dirty[i]=false;
+    }
+    r.texture_bindings[0]=&r.texture_cache.nodes[0];
+    r.texture_bindings[0]->possibly_dirty=false;
+    d.pgraph.frame_time=7;
+    r.texture_bindings[0]->validation_frame=7;
+    d.pgraph.enabled[0]=true;
+    ram.queries=0;
+    assert(!check_textures_dirty(&d));
+    assert(ram.queries==1);
+    ram.dirty[3]=true;
+    assert(check_textures_dirty(&d));
+    assert(!ram.dirty[3]);
+    assert(r.texture_bindings[0]->possibly_dirty);
+    assert(r.texture_bindings[0]->validation_frame==(unsigned)-1);
+    ram.queries=0;
+    assert(check_textures_dirty(&d));
+    assert(!ram.queries);
+    r.texture_bindings[0]=&dummy;
+    d.pgraph.enabled[0]=false;
+    ram.dirty[3]=true;
+    assert(!check_textures_dirty(&d));
+    assert(!ram.queries && ram.dirty[3]);
     puts("vk texture/palette''')
     with tempfile.TemporaryDirectory(prefix='texture-dirty-', dir=repo.parent) as directory:
         folder = Path(directory)
