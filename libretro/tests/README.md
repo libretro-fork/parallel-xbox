@@ -802,3 +802,5 @@ and check, or remove the next source during prepare. Removed sources must not
 run again, later sources must still be visited, and every removed source must
 finalize once. The same cases run against system GLib. The shim retains each
 walk's source references in a reusable snapshot; nested walks use separate storage.
+
+The L2 publication fixture injects repeated failures while zeroing a private cluster, including a four-byte prefix written before EIO. Cached reads must retain old data until the slot update succeeds. Raw L1/L2 lookup checks the on-disk word, retries must issue the missing writes, a later repeated zero must skip them, and reopening must match. v2/v3 snapshot copies retain their original contents and pass independent image checks. This tests publication ordering, not general transactional recovery from arbitrary metadata failures.

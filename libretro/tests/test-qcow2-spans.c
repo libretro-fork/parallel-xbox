@@ -17,6 +17,9 @@ static unsigned sync_calls, sync_failures;
 static unsigned header_attempts, header_failures;
 static bool watch_header;
 static bool partial_header;
+static int64_t l2_fail_offset = -1;
+static unsigned l2_attempts, l2_failures;
+static bool partial_l2;
 
 int counted_sync(LRFile *f)
 {
@@ -52,6 +55,16 @@ int counted_zero(LRFile *f, int64_t off, int64_t len)
 int counted_pwrite(LRFile *f, int64_t off, const void *buf, size_t len)
 {
     scalar_writes++;
+    if (off == l2_fail_offset && len == 8) {
+        l2_attempts++;
+        if (l2_failures) {
+            l2_failures--;
+            if (partial_l2) {
+                assert(lr_file_pwrite(f, off, buf, 4) == 0);
+            }
+            return -EIO;
+        }
+    }
     if (watch_header && off == 88 && len == 8) {
         header_attempts++;
         if (header_failures) {
@@ -83,6 +96,68 @@ int counted_pwritev(LRFile *f, int64_t off, const LRFileIOV *iov, int n)
     writes++;
     last_write_base = n ? iov[0].base : NULL;
     return lr_file_pwritev(f, off, iov, n);
+}
+
+static uint64_t disk_be64(const uint8_t *p)
+{
+    uint64_t v = 0;
+    for (unsigned i = 0; i < 8; i++) {
+        v = (v << 8) | p[i];
+    }
+    return v;
+}
+
+static void l2_publication(LRFile *f)
+{
+    uint8_t input[65536], output[65536], word[8], expected[8], bits[4], version[4];
+    char why[256];
+    LRFileIOV in = {input, sizeof(input)}, out = {output, sizeof(output)};
+    assert(lr_file_pread(f, 20, bits, 4) == 0 && bits[3] == 16);
+    assert(lr_file_pread(f, 4, version, 4) == 0);
+    for (unsigned mode = 0; mode < 2; mode++) {
+        LRQcow2 *q = lr_qcow2_open(f, true, why, sizeof(why));
+        assert(q);
+        for (unsigned i = 0; i < sizeof(input); i++) {
+            input[i] = (uint8_t)(i * 17 + i / 251);
+        }
+        assert(lr_qcow2_pwritev(q, 0, &in, 1) == 0);
+        assert(lr_qcow2_flush(q) == 0);
+        /* Resolve guest cluster zero's actual on-disk L2 slot independently. */
+        assert(lr_file_pread(f, 40, word, 8) == 0);
+        assert(lr_file_pread(f, disk_be64(word), word, 8) == 0);
+        l2_fail_offset = disk_be64(word) & UINT64_C(0x00fffffffffffe00);
+        assert(l2_fail_offset > 0);
+        assert(lr_file_pread(f, l2_fail_offset, expected, 8) == 0);
+        l2_attempts = 0;
+        l2_failures = 2;
+        partial_l2 = mode != 0;
+        for (unsigned attempt = 0; attempt < 3; attempt++) {
+            assert(lr_qcow2_zero(q, 0, sizeof(input)) == (attempt < 2 ? -EIO : 0));
+            assert(l2_attempts == attempt + 1);
+            if (attempt < 2) {
+                if (partial_l2) {
+                    memset(expected, 0, 4);
+                }
+            } else {
+                memset(expected, 0, 8);
+                expected[7] = version[3] == 3 ? 1 : 0;
+                memset(input, 0, sizeof(input));
+            }
+            assert(lr_file_pread(f, l2_fail_offset, word, 8) == 0);
+            assert(!memcmp(word, expected, 8));
+            assert(lr_qcow2_preadv(q, 0, &out, 1) == 0);
+            assert(!memcmp(input, output, sizeof(input)));
+        }
+        assert(lr_qcow2_zero(q, 0, sizeof(input)) == 0 && l2_attempts == 3);
+        l2_fail_offset = -1;
+        assert(lr_qcow2_flush(q) == 0);
+        lr_qcow2_close(q);
+        q = lr_qcow2_open(f, false, why, sizeof(why));
+        assert(q && lr_qcow2_preadv(q, 0, &out, 1) == 0);
+        assert(!memcmp(input, output, sizeof(input)));
+        lr_qcow2_close(q);
+    }
+    puts("L2 publication: failed zero preserves data, full/partial errors retry, reopen agrees: PASS");
 }
 
 static void autoclear_retry(LRFile *f)
@@ -214,10 +289,14 @@ static void sparse_zero(LRQcow2 *q, size_t cs)
 
 int main(int argc, char **argv)
 {
-    if (argc == 3 && !strcmp(argv[2], "--autoclear")) {
+    if (argc == 3 && (!strcmp(argv[2], "--autoclear") || !strcmp(argv[2], "--l2pub"))) {
         LRFile *f = lr_file_open(argv[1], true, false);
         assert(f);
-        autoclear_retry(f);
+        if (!strcmp(argv[2], "--l2pub")) {
+            l2_publication(f);
+        } else {
+            autoclear_retry(f);
+        }
         lr_file_close(f);
         return 0;
     }

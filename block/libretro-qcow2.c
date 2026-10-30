@@ -417,9 +417,12 @@ static int l2_writable(LRQcow2 *q, uint32_t i)
 static int set_l2(LRQcow2 *q, uint64_t gc, uint64_t e)
 {
     uint32_t i = (uint32_t)(gc / q->l2e);
+    int ret = write_be64(q, (q->l1[i] & OFFSET_MASK) + (gc % q->l2e) * 8, e);
 
-    *l2_entry(q, gc) = e;
-    return write_be64(q, (q->l1[i] & OFFSET_MASK) + (gc % q->l2e) * 8, e);
+    if (ret == 0) {
+        *l2_entry(q, gc) = e;
+    }
+    return ret;
 }
 
 /* compressed cluster gc into dcache */

@@ -186,6 +186,8 @@ cp "$here/../../data/xbox_hdd.qcow2" "$work/qcow2-spans.qcow2"
 "$work/bin/qcow2spans" "$work/qcow2-spans.qcow2"
 cp "$here/../../data/xbox_hdd.qcow2" "$work/qcow2-autoclear.qcow2"
 "$work/bin/qcow2spans" "$work/qcow2-autoclear.qcow2" --autoclear
+cp "$here/../../data/xbox_hdd.qcow2" "$work/qcow2-l2pub.qcow2"
+"$work/bin/qcow2spans" "$work/qcow2-l2pub.qcow2" --l2pub
 echo "== mapped read-only file I/O"
 case $core in
 *.dll)
@@ -220,15 +222,20 @@ if command -v qemu-img >/dev/null 2>&1; then
             qemu-img snapshot -c original "$image"
         fi
         cp "$image" "$work/zero-$kind.qcow2"
+        cp "$image" "$work/l2-$kind.qcow2"
         "$work/bin/qcow2spans" "$image" --replace
         "$work/bin/qcow2spans" "$work/zero-$kind.qcow2" --zero
+        "$work/bin/qcow2spans" "$work/l2-$kind.qcow2" --l2pub
         qemu-img check "$image"
         qemu-img check "$work/zero-$kind.qcow2"
+        qemu-img check "$work/l2-$kind.qcow2"
         if [ "$kind" = snapshot ] || [ "$kind" = v2-snapshot ]; then
             qemu-img convert -l snapshot.name=original -O raw "$image" "$work/replacement-snapshot.raw"
             cmp "$work/replacement.raw" "$work/replacement-snapshot.raw"
             qemu-img convert -l snapshot.name=original -O raw "$work/zero-$kind.qcow2" "$work/zero-snapshot.raw"
             cmp "$work/replacement.raw" "$work/zero-snapshot.raw"
+            qemu-img convert -l snapshot.name=original -O raw "$work/l2-$kind.qcow2" "$work/l2-snapshot.raw"
+            cmp "$work/replacement.raw" "$work/l2-snapshot.raw"
         fi
     done
     qemu-img create -f qcow2 -o cluster_size=2097152 "$work/zero-large.qcow2" 8M

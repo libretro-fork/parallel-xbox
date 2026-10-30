@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Failed qcow2 L2 entry writes no longer publish the new mapping in memory. A failed whole-cluster zero keeps reading the original data, and retrying still updates the on-disk entry.
+
 - Keep GLib sources alive while prepare/check callbacks run, and skip sources removed by a callback. This prevents use-after-free when a source removes itself or another source during a main-context readiness walk; ordinary walks reuse their snapshot storage.
 
 - CPU Boost computes parity-only conditions after logical operations directly from the low result byte, avoiding a full flag helper while retaining other lazy flags and existing floating-point flush boundaries.
