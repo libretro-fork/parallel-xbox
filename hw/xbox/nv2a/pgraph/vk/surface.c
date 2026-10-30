@@ -200,12 +200,9 @@ static void store_packed_to_ram(PGRAPHState *pg, VkCommandBuffer cmd,
 }
 
 /* After the read-back is in the RAM: the RAM marked changed for the
- * display and the texture cache, the surface clean */
+ * texture cache, the surface clean */
 static void download_settled(NV2AState *d, SurfaceBinding *surface)
 {
-    memory_region_set_client_dirty(d->vram, surface->vram_addr,
-                                   surface->pitch * surface->height,
-                                   DIRTY_MEMORY_VGA);
     memory_region_set_client_dirty(d->vram, surface->vram_addr,
                                    surface->pitch * surface->height,
                                    DIRTY_MEMORY_NV2A_TEX);

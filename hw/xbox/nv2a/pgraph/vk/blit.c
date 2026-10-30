@@ -315,7 +315,5 @@ void pgraph_vk_image_blit(NV2AState *d)
 
     dest_addr += dest_offset;
     memory_region_set_client_dirty(d->vram, dest_addr, clipped_dest_size,
-                                   DIRTY_MEMORY_VGA);
-    memory_region_set_client_dirty(d->vram, dest_addr, clipped_dest_size,
                                    DIRTY_MEMORY_NV2A_TEX);
 }

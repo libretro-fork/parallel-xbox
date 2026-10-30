@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- The emulated graphics chip no longer draws every frame a second time, the old VGA way, into a picture nothing shows: the core shows what the GPU renders. That drawing allocated memory on most frames and made the game's next writes to the screen's memory take the slow path again.
+
 - OpenGL: when a game reads back a picture it drew into a swizzled texture (render-to-texture effects), the GPU now puts it in the Xbox's swizzled order itself, shrinking it to the Xbox's size on the way at higher internal resolutions, and the driver writes it straight into the Xbox's memory. Before, it was read into a scratch buffer and the CPU shrank and swizzled it pixel by pixel. Depth buffers keep the CPU path.
 
 - Vulkan: every picture the game draws into (its render targets) now takes half the graphics memory and half the allocations on non-AMD GPUs. Each one used to come with a second, same-size image that the Xbox's memory was copied through on its way in, an extra copy of the whole picture each time; that detour is only needed for a driver bug on AMD, where it stays. Render targets the game drops are also kept for reuse, within the GPU's memory budget, instead of being freed and allocated again.

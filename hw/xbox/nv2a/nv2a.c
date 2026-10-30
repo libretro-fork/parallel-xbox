@@ -262,7 +262,13 @@ int64_t xemu_gpu_free_ns;
 static void nv2a_vga_gfx_update(void *opaque)
 {
     VGACommonState *vga = opaque;
-    vga->hw_ops->gfx_update(vga);
+    /* VGA's own update (vga_update_display) is not called: it draws the
+     * scanout into the console's surface, which nothing in the core
+     * shows (the renderers present the frame themselves and read the
+     * CRTC registers directly), and each call allocated a display
+     * surface on a page flip and a dirty-bitmap snapshot, and cleared
+     * the scanout's dirty bits, so the CPU's next writes to those pages
+     * took the slow path again. */
     /* In the core the guest's vblank comes once in each frame of guest
      * time the emulator thread runs, just before its end (ui/libretro.c
      * lr_run_frame), not from the wall-clock timer below, so it follows
