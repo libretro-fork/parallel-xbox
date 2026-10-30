@@ -14,6 +14,9 @@ static unsigned scalar_reads;
 static const void *last_write_base;
 static unsigned zero_calls, scalar_writes;
 static unsigned sync_calls, sync_failures;
+static unsigned header_attempts, header_failures;
+static bool watch_header;
+static bool partial_header;
 
 int counted_sync(LRFile *f)
 {
@@ -49,6 +52,16 @@ int counted_zero(LRFile *f, int64_t off, int64_t len)
 int counted_pwrite(LRFile *f, int64_t off, const void *buf, size_t len)
 {
     scalar_writes++;
+    if (watch_header && off == 88 && len == 8) {
+        header_attempts++;
+        if (header_failures) {
+            header_failures--;
+            if (partial_header) {
+                assert(lr_file_pwrite(f, off, buf, 4) == 0);
+            }
+            return -EIO;
+        }
+    }
     return lr_file_pwrite(f, off, buf, len);
 }
 
@@ -70,6 +83,60 @@ int counted_pwritev(LRFile *f, int64_t off, const LRFileIOV *iov, int n)
     writes++;
     last_write_base = n ? iov[0].base : NULL;
     return lr_file_pwritev(f, off, iov, n);
+}
+
+static void autoclear_retry(LRFile *f)
+{
+    char why[256];
+    uint8_t block[65536], before[16], after[16], header[8];
+    const uint8_t flags[8] = {0x80, 0, 0, 0, 0, 1, 0, 0};
+    const uint8_t cleared[8] = {0};
+    const uint8_t partial[8] = {0, 0, 0, 0, 0, 1, 0, 0};
+    LRFileIOV whole = {block, sizeof(block)}, out = {before, sizeof(before)};
+    LRQcow2 *q = lr_qcow2_open(f, true, why, sizeof(why));
+    assert(q && lr_qcow2_size(q) > 32 * 1024 * 1024 + 65536);
+    memset(block, 0x5a, sizeof(block));
+    assert(lr_qcow2_pwritev(q, 0, &whole, 1) == 0); /* private allocated data */
+    assert(lr_qcow2_zero(q, 32 * 1024 * 1024, 65536) == 0); /* new allocation */
+    assert(lr_qcow2_flush(q) == 0);
+    lr_qcow2_close(q);
+    for (unsigned mode = 0; mode < 3; mode++) {
+        assert(lr_file_pwrite(f, 88, flags, sizeof(flags)) == 0);
+        q = lr_qcow2_open(f, true, why, sizeof(why));
+        assert(q);
+        int64_t offset = mode == 1 ? 32 * 1024 * 1024 : 0;
+        assert(lr_qcow2_preadv(q, offset, &out, 1) == 0);
+        header_attempts = 0;
+        header_failures = 2;
+        partial_header = mode == 2;
+        watch_header = true;
+        LRFileIOV empty = {NULL, 0}, input = {block, 16}, result = {after, 16};
+        assert(lr_qcow2_pwritev(q, offset, &empty, 1) == 0);
+        assert(lr_qcow2_zero(q, offset, 0) == 0 && header_attempts == 0);
+        memset(block, 0xa5, 16);
+        for (unsigned attempt = 0; attempt < 3; attempt++) {
+            int ret = mode == 2 ? lr_qcow2_zero(q, offset, 16)
+                               : lr_qcow2_pwritev(q, offset, &input, 1);
+            assert(ret == (attempt < 2 ? -EIO : 0));
+            assert(header_attempts == attempt + 1);
+            assert(lr_file_pread(f, 88, header, 8) == 0);
+            assert(!memcmp(header, attempt < 2 ? (partial_header ? partial : flags)
+                                               : cleared, 8));
+            assert(lr_qcow2_preadv(q, offset, &result, 1) == 0);
+            if (attempt < 2) {
+                assert(!memcmp(before, after, 16));
+            } else {
+                uint8_t zero[16] = {0};
+                assert(!memcmp(after, mode == 2 ? zero : block, 16));
+            }
+        }
+        assert(lr_qcow2_pwritev(q, offset, &input, 1) == 0);
+        assert(header_attempts == 3); /* no redundant header write */
+        watch_header = false;
+        assert(lr_qcow2_flush(q) == 0);
+        lr_qcow2_close(q);
+    }
+    puts("autoclear: in-place/allocation/zero retries, unchanged failed data, no-op I/O: PASS");
 }
 
 static void replacements(LRQcow2 *q, int64_t offset)
@@ -147,6 +214,13 @@ static void sparse_zero(LRQcow2 *q, size_t cs)
 
 int main(int argc, char **argv)
 {
+    if (argc == 3 && !strcmp(argv[2], "--autoclear")) {
+        LRFile *f = lr_file_open(argv[1], true, false);
+        assert(f);
+        autoclear_retry(f);
+        lr_file_close(f);
+        return 0;
+    }
     if (argc == 3 && !strcmp(argv[2], "--make-raw")) {
         uint8_t data[65536];
         memset(data, 0x35, sizeof(data));

@@ -184,6 +184,8 @@ ${cc} -O2 -std=gnu99 -Wall -DLR_FILE_FILESTREAM=0 -I"$here/../.." -I"$lrc/includ
     "$lrc/features/features_cpu.c" "$lrc/time/rtime.c" "$lrc/compat/compat_strl.c" -lpthread
 cp "$here/../../data/xbox_hdd.qcow2" "$work/qcow2-spans.qcow2"
 "$work/bin/qcow2spans" "$work/qcow2-spans.qcow2"
+cp "$here/../../data/xbox_hdd.qcow2" "$work/qcow2-autoclear.qcow2"
+"$work/bin/qcow2spans" "$work/qcow2-autoclear.qcow2" --autoclear
 echo "== mapped read-only file I/O"
 case $core in
 *.dll)

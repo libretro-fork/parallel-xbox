@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- qcow2 writes clear autoclear header flags before modifying existing data as well as allocating clusters. Failed header writes remain pending for retry; empty requests leave the header untouched.
+
 - Fix GLib hash-table replacement writing through a stale slot after a destructor clears/resizes the table, and keyed-data replacement using a freed node after recursive cleanup. Hash clearing now detaches old entries before callbacks, replacement releases discarded references even for equal pointers, and keyed-data operations serialize their list access.
 
 - A failed qcow2 metadata sync remains pending, so later flushes retry the host sync instead of silently reporting success. Successful syncs still let clean flushes skip host I/O.

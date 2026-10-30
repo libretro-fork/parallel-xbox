@@ -746,13 +746,16 @@ static int clear_autoclear(LRQcow2 *q)
     if (q->autoclear_done) {
         return 0;
     }
-    q->autoclear_done = true;
     /* features this does not keep up (bitmaps) are declared stale, as the
      * format asks of a writer that does not know them */
     if (q->autoclear) {
+        int ret = write_be64(q, HDR_AUTOCLEAR, 0);
+        if (ret < 0) {
+            return ret;
+        }
         q->autoclear = 0;
-        return write_be64(q, HDR_AUTOCLEAR, 0);
     }
+    q->autoclear_done = true;
     return 0;
 }
 
@@ -832,6 +835,13 @@ int lr_qcow2_pwritev(LRQcow2 *q, int64_t off, const LRFileIOV *iov, int n)
     if (off < 0 || pos > q->size || left > q->size - pos) {
         return -EIO;
     }
+    if (!left) {
+        return 0;
+    }
+    ret = clear_autoclear(q);
+    if (ret < 0) {
+        return ret;
+    }
     while (left) {
         uint64_t gc = pos >> q->cluster_bits, in = pos & (q->cs - 1);
         uint64_t len = q->cs - in < left ? q->cs - in : left;
@@ -852,10 +862,7 @@ int lr_qcow2_pwritev(LRQcow2 *q, int64_t off, const LRFileIOV *iov, int n)
             }
             ret = cursor_io(q, &c, host, (size_t)len, true);
         } else {
-            ret = clear_autoclear(q);
-            if (ret == 0) {
-                ret = write_new(q, gc, in, len, &c, false);
-            }
+            ret = write_new(q, gc, in, len, &c, false);
         }
         if (ret < 0) {
             return ret;
@@ -876,6 +883,9 @@ int lr_qcow2_zero(LRQcow2 *q, int64_t off, int64_t length)
     }
     if (off < 0 || length < 0 || pos > q->size || left > q->size - pos) {
         return -EIO;
+    }
+    if (!left) {
+        return 0;
     }
     ret = clear_autoclear(q);
     while (ret == 0 && left) {
