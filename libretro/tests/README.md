@@ -367,3 +367,8 @@ check tiny compressed faces, borders, shrinking 3D mip depth, linear pitch,
 face alignment and LOD-clamp independence under UBSan. It requires a C
 compiler and no graphics driver. OpenGL and Vulkan use the same aligned face
 span as the cache's guest-memory range calculation.
+
+`python libretro/tests/test-retail-seed-name.py . gcc` checks production
+shader-seed naming: immediate retail-disc names, stable normalization,
+missing paths, Chihiro's 900-flip grace period and detected-title renames,
+with undefined-behavior traps enabled.

@@ -455,13 +455,13 @@ void nv2a_set_game_name(const char *name, const char *before)
 const char *pgraph_seed_game_tag(void)
 {
     if (!pgraph_game_tag[0]) {
-        /* A boot that never names the game keys the seeds on the disc
-         * image name after 900 flips (15 s), so they still load and learn.
-         * A Chihiro's image is the one it booted (Load Disc waits for the
-         * next launch). */
-        const char *dvd = xemu_chihiro_mode() ? xemu_chihiro_image()
-                                              : g_config.sys.files.dvd_path;
-        if (xemu_flip_inc_count > 900 && dvd && dvd[0]) {
+        /* Retail Xbox games have no SEGABOOT title detection: their disc
+         * name is final from startup. Keep Chihiro's grace period so its
+         * detected title can select the embedded dictionary first. */
+        bool chihiro = xemu_chihiro_mode();
+        const char *dvd = chihiro ? xemu_chihiro_image()
+                                   : g_config.sys.files.dvd_path;
+        if ((!chihiro || xemu_flip_inc_count > 900) && dvd && dvd[0]) {
             char *base = g_path_get_basename(dvd);
             nv2a_set_game_name(base, NULL);
             g_free(base);

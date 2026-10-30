@@ -1214,9 +1214,9 @@ void pgraph_vk_init_shaders(PGRAPHState *pg)
     retro_atomic_store_relaxed_int(&r->seed_writeback_pending, 0);
 }
 
-/* Per flip: once the boot has named the game (the seeds are keyed by the
- * game's name, known at the latest a few seconds into SEGABOOT) the seed
- * is read, then fed to the worker a ring's worth per flip. */
+/* Per flip: once the game is named (retail disc name from startup, or
+ * Chihiro's detected title), read its seeds and feed the worker a ring's
+ * worth per flip. */
 void pgraph_vk_seed_service(void)
 {
     static bool done;

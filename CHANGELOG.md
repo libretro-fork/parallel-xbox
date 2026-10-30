@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Retail Xbox games queue their learned shader seeds from the first flip instead of waiting 15 seconds to name the disc. This gives the existing workers boot time to prepare known shaders and avoids delaying seed loading into play. Chihiro retains its detected-title priority and fallback delay.
+
 - Texture face offsets and dirty-tracking ranges now share the renderers' mip-storage rules: tiny DXT cubemaps retain complete blocks, padded borders are included, and volume mip depths shrink per level. This fixes zero face strides and stale bordered texture ranges while avoiding excess volume hashing/readback ranges. Sampling LOD clamps leave storage offsets unchanged.
 
 - Vulkan stores converted R6G5B5 textures as RGBA8 SNORM with opaque alpha, preserving the existing RGB bytes while avoiding unsupported three-channel optimal images and misaligned three-byte copy offsets. This uses one additional host byte per texel; guest storage and conversion arithmetic stay unchanged.
