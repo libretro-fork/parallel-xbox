@@ -804,3 +804,8 @@ finalize once. The same cases run against system GLib. The shim retains each
 walk's source references in a reusable snapshot; nested walks use separate storage.
 
 The L2 publication fixture injects repeated failures while zeroing a private cluster, including a four-byte prefix written before EIO. Cached reads must retain old data until the slot update succeeds. Raw L1/L2 lookup checks the on-disk word, retries must issue the missing writes, a later repeated zero must skip them, and reopening must match. v2/v3 snapshot copies retain their original contents and pass independent image checks. This tests publication ordering, not general transactional recovery from arbitrary metadata failures.
+
+The child-source lifetime regression retains a child, releases its unattached
+parent, and attaches/readies the child independently. It must remain usable and
+must not propagate readiness through the finalized parent. The same sequence
+passes against system GLib; the old shim produces an ASan use-after-free.

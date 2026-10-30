@@ -753,6 +753,22 @@ static void test_source_removes_next(void)
     g_main_context_unref(c);
 }
 
+static void test_child_source_parent_lifetime(void)
+{
+    GSource *parent = g_idle_source_new();
+    GSource *child = g_idle_source_new();
+    g_source_add_child_source(parent, child);
+    g_source_unref(parent);
+    GMainContext *c = g_main_context_new();
+    gint priority;
+    CHECK(!g_source_is_destroyed(child));
+    CHECK(g_source_attach(child, c) != 0);
+    CHECK(g_main_context_prepare(c, &priority));
+    g_source_destroy(child);
+    g_source_unref(child);
+    g_main_context_unref(c);
+}
+
 static void test_main(void)
 {
     GMainContext *c = g_main_context_new();
@@ -866,6 +882,7 @@ int main(int argc, char **argv)
     test_pending_source_lifetime();
     test_source_self_removal();
     test_source_removes_next();
+    test_child_source_parent_lifetime();
     test_misc();
     if (failures) {
         fprintf(stderr, "glib: %d checks failed\n", failures);

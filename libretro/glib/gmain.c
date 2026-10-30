@@ -592,8 +592,15 @@ void g_source_unref(GSource *source)
     }
     g_slist_free(source->poll_fds);
     g_slist_free_full(source->unix_fds, g_free);
-    g_slist_free_full(source->child_sources,
-                      (GDestroyNotify)g_source_unref);
+    GSList *children = source->child_sources;
+    source->child_sources = NULL;
+    /* A caller may retain a child after this parent is finalized. Detach all
+     * parent links before unref callbacks can reuse one of those children.
+     */
+    for (GSList *l = children; l; l = l->next) {
+        ((GSource *)l->data)->parent = NULL;
+    }
+    g_slist_free_full(children, (GDestroyNotify)g_source_unref);
     g_free(source->name);
     g_free(source);
 }
