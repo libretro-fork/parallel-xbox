@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Vulkan now revalidates a cached texture immediately when a newly detected dirty page contains a CPU write after an earlier draw in the same frame. This fixes stale pixels caused by the frame validation throttle; clean textures keep their fast path.
+
 - Fix Ninja Gaiden Black running in slow motion near the door despite low core latency. The short STI/CLI idle shortcut now requires a recognised kernel idle loop and empty work queues, retaining its fast path without skipping active game work. Instruction-threshold and device-poll waits remain.
 
 - The synthetic GPU suite now checks one-pixel YUY2 and UYVY textures, including cache updates when their shared chroma byte changes beyond the first pixel's nominal two bytes. This protects complete-pair conversion and its full hash span.

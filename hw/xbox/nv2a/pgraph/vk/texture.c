@@ -592,7 +592,9 @@ static void mark_textures_possibly_dirty(NV2AState *d, hwaddr addr,
 void pgraph_vk_mark_textures_possibly_dirty(NV2AState *d,
                                             hwaddr addr, hwaddr size)
 {
-    mark_textures_possibly_dirty(d, addr, size, false);
+    /* A newly observed dirty page can contain a CPU update after an
+     * earlier sample in this same frame. Do not defer that revalidation. */
+    mark_textures_possibly_dirty(d, addr, size, true);
 }
 
 /* A GPU writeback can supply new bytes between draws in the same frame.
@@ -2223,8 +2225,8 @@ static void create_texture(PGRAPHState *pg, int texture_idx)
     void *texture_data = (char*)d->vram_ptr + texture_vram_offset;
     void *palette_data = (char*)d->vram_ptr + texture_palette_vram_offset;
 
-    /* HEURISTIC: the content hash, the costly part of revalidation, runs at
-     * most once per frame per binding: bind_textures stamps
+    /* Without a newly observed dirty page or GPU writeback, content hashing
+     * runs at most once per frame per binding: bind_textures stamps
      * validation_frame after this call (-1 on a fresh node, which always
      * hashes). The sampler is still resolved on every bind below. */
     uint64_t content_hash = 0;
@@ -2401,9 +2403,8 @@ static bool check_textures_dirty(PGRAPHState *pg)
         if (!r->texture_bindings[i] || pg->texture_dirty[i]) {
             return true;
         }
-        /* A binding whose RAM may have changed (possibly_dirty) revalidates
-         * at most once per frame. HEURISTIC: a RAM change after its first
-         * bind in a frame shows from the next frame on. */
+        /* Newly observed dirty pages reset validation_frame, including CPU
+         * changes found after an earlier bind in the same frame. */
         if (r->texture_bindings[i]->possibly_dirty &&
             r->texture_bindings[i]->validation_frame != pg->frame_time) {
             return true;

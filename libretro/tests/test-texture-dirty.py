@@ -81,6 +81,11 @@ int main(void) {
         r.texture_cache.nodes[i].validation_frame=7;
         r.texture_cache.nodes[i].possibly_dirty=true;
     }
+    pgraph_vk_mark_textures_possibly_dirty(&d,16383,1);
+    assert(r.texture_cache.nodes[0].validation_frame == (unsigned)-1);
+    assert(r.texture_cache.nodes[1].validation_frame == (unsigned)-1);
+    r.texture_cache.nodes[0].validation_frame=7;
+    r.texture_cache.nodes[1].validation_frame=7;
     pgraph_vk_invalidate_textures_from_gpu(&d,16383,1);
     assert(r.texture_cache.nodes[0].validation_frame == (unsigned)-1);
     assert(r.texture_cache.nodes[1].validation_frame == (unsigned)-1);

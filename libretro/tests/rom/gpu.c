@@ -320,6 +320,18 @@ static void kick(void)
     }
 }
 
+/* Ensure the first draw has consumed its texture before a CPU rewrite;
+ * waiting for pushbuffer GET alone only drains the command parser. */
+static void texture_cpu_barrier(void)
+{
+    ram32(GPU_SEM, 0);
+    method(NV097_SET_SEMAPHORE_OFFSET, GPU_SEM);
+    method(NV097_BACK_END_WRITE_SEMAPHORE_RELEASE, 1);
+    kick();
+    while (rd32(GPU_SEM) != 1) {
+    }
+}
+
 static void clear(u32 surface, u32 argb)
 {
     method(NV097_SET_SURFACE_COLOR_OFFSET, surface);
@@ -1084,6 +1096,22 @@ void gpu_main(void)
             /* UYVY width one still consumes Cr at byte two. */
             ram32(TEX_YUV, 0x80ff8080u);
             texture_alias_at(0x25, 1, 0x3f000000u, 0, TEX_YUV);
+        }
+        if (frame == 1280) {
+            /* Two CPU texture versions consumed before the next flip. */
+            ram32(TEX_YUV, 0);
+            texture_alias_at(0x13, 1, 0x3f000000u, 0, TEX_YUV);
+            texture_cpu_barrier();
+            ram32(TEX_YUV, 0x000000ffu);
+            texture_alias_at(0x13, 1, 0x3f000000u, 0, TEX_YUV);
+        }
+        if (frame == 1300) {
+            ram32(TEX_YUV, 0);
+            ram32(VRAM_END - 1024, 0xffff0000u);
+            texture_alias_at(0x0b, 1, 0x3f000000u, 0, TEX_YUV);
+            texture_cpu_barrier();
+            ram32(VRAM_END - 1024, 0xff00ff00u);
+            texture_alias_at(0x0b, 1, 0x3f000000u, 0, TEX_YUV);
         }
         method(NV097_FLIP_INCREMENT_WRITE, 0);
         kick();
