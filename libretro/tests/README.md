@@ -341,3 +341,9 @@ bytes. On WGL (Windows, built libepoxy) or surfaceless EGL (Linux), it checks
 Every uploaded byte must match, and unpack alignment must be
 restored. Guest swizzling and format-conversion arithmetic are outside this
 host pixel-transfer test.
+
+`python libretro/tests/test-tb-code-hash.py . gcc` checks production code
+hashing against byte-fetch oracles with the portable XXH3 implementation.
+It covers page ends, nonadjacent/aliased mappings, device-read side effects,
+sub-page fallback, mutations and executable-page faults, including 200,000
+randomized comparisons under undefined-behavior traps.

@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- CPU translation-block hashes read executable RAM directly when the code fits in one guest page, avoiding a temporary byte copy and one guest-memory helper call per byte. Hash values and code-invalidation checks are unchanged. Cross-page, device-backed and sub-page mappings retain their existing fetch behavior.
+
 - macOS architecture and deployment-target flags now reach every compiled source group, including libretro-common and libslirp, fixing Intel core builds on Apple Silicon runners.
 
 - Linux and Android no longer compile the unused vhost-user server utility, whose dependency was removed with the meson subprojects. This fixes clean builds without restoring that dependency.
