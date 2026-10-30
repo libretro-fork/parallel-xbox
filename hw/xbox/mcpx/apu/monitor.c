@@ -125,6 +125,13 @@ void libretro_audio_read_end(size_t frames)
     }
 }
 
+void libretro_audio_frame_end(void)
+{
+    if (g_state) {
+        mcpx_apu_dsp_kick(g_state);
+    }
+}
+
 /* Both sides stopped (a reset, a state loaded, new content): the queue
  * starts over, once the DSPs' thread is done producing */
 void libretro_audio_discard(void)

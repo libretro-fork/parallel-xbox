@@ -67,5 +67,8 @@ void libretro_audio_set_volume(float volume);
 size_t libretro_audio_read_begin(const int16_t **samples);
 void libretro_audio_read_end(size_t frames);
 void libretro_audio_discard(void);
+/* The end of a video frame of guest time (ui/libretro.c): the DSPs'
+ * thread woken for the engine frames posted and not yet handed to it */
+void libretro_audio_frame_end(void);
 
 #endif

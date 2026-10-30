@@ -2122,6 +2122,9 @@ static void lr_run_frame(void)
         retro_atomic_store_relaxed_int(&nv2a_libretro_waiter, 0);
     }
 
+    /* the frame's last audio frames to the DSPs' thread, which is woken
+     * for a few at a time (gp_ep.c) */
+    libretro_audio_frame_end();
     lr_finish_frame();
 }
 

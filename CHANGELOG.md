@@ -515,6 +515,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 - Audio: the Voice Processor Threads are woken only when an audio frame has work for them: a frame with one voice, or one group of voices that must stay together, runs on the emulator thread alone. Before, every thread was woken 1,500 times a second of game time whatever the frame held: with 4 threads and one voice playing, 35,000 thread switches in 300 video frames of the test ROM, 2,700 now.
 
+- Audio with APU DSP Emulation on: the DSPs' thread is woken for four audio frames at a time, and for the rest at the end of each video frame, instead of for every audio frame (1,500 a second of game time). With the game's CPU busy, as in a game, the test ROM went from 8,100 thread switches in 300 video frames to 2,700, and the time spent in the system from 0.30 to 0.23 s. When the core has to wait for the DSPs, it wakes them first, so nothing waits longer.
+
 ## Test build 4 - 2026-10-25
 
 - The core info file names the core "Microsoft - Xbox / Sega Chihiro (xemu)" (NNshi).

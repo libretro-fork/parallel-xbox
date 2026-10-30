@@ -68,7 +68,9 @@ extern const MemoryRegionOps ep_ops;
  * DSPs run in step. With the thread idle they are applied at once. Only a
  * guest read of the DSPs' memories or of those registers, a reset, a
  * state and the option's change wait for the thread (quiesce), and a write
- * queue full. Lock-free: a generation each way, an eventcount each way.
+ * queue full. Lock-free: a generation each way, an eventcount each way;
+ * the thread is woken for half a ring of frames at a time, at the video
+ * frame's end, or before the engine waits for it, not for every frame.
  */
 #define MCPX_APU_DSP_RING MCPX_APU_MONITOR_FRAMES_IN_FLIGHT
 #define MCPX_APU_DSP_WRITES 4096 /* a power of two */
@@ -94,6 +96,7 @@ typedef struct MCPXAPUDSPThread {
     retro_eventcount_t wake;        /* the thread, for a post */
     retro_eventcount_t finished;    /* the engine, for a done */
     int seen;                       /* the thread's own count */
+    int notified;                   /* posted when the thread was last woken */
     /* The frames' mixbins, the VP's output: frame n in slot n % RING */
     int64_t mixbins[MCPX_APU_DSP_RING][NUM_MIXBINS][NUM_SAMPLES_PER_FRAME];
     int frame_div[MCPX_APU_DSP_RING]; /* the frames' engine count (EP 1 in 8) */
@@ -124,6 +127,9 @@ void mcpx_apu_update_dsp_preference(MCPXAPUState *d);
 int64_t (*mcpx_apu_dsp_mixbins(MCPXAPUState *d))[NUM_SAMPLES_PER_FRAME];
 void mcpx_apu_dsp_post(MCPXAPUState *d, int64_t mixbins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME]);
 void mcpx_apu_dsp_post_silence(MCPXAPUState *d);
+/* The thread woken for the frames posted and not yet handed to it: at the
+ * end of each video frame (libretro_audio_frame_end) */
+void mcpx_apu_dsp_kick(MCPXAPUState *d);
 /* The posted frames done and the queued writes applied, before anything
  * else reads or changes the DSPs */
 void mcpx_apu_dsp_quiesce(MCPXAPUState *d);

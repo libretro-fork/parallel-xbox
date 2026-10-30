@@ -643,9 +643,26 @@ static void dsp_thread_main(void *arg)
     rcu_unregister_thread();
 }
 
-/* The engine until the thread has done frame want or later */
+/* The thread woken for the frames posted since it last was */
+static void dsp_notify(MCPXAPUDSPThread *t)
+{
+    int posted = retro_atomic_load_relaxed_int(&t->posted);
+
+    if (t->notified != posted) {
+        t->notified = posted;
+        retro_eventcount_notify(&t->wake);
+    }
+}
+
+/* The engine until the thread has done frame want or later; the thread
+ * woken for every frame posted first */
 static void dsp_wait_done(MCPXAPUDSPThread *t, int want)
 {
+    if ((int)((unsigned)retro_atomic_load_acquire_int(&t->done) -
+              (unsigned)want) >= 0) {
+        return;
+    }
+    dsp_notify(t);
     while ((int)((unsigned)retro_atomic_load_acquire_int(&t->done) -
                  (unsigned)want) < 0) {
         int key = retro_eventcount_prepare_wait(&t->finished);
@@ -729,6 +746,7 @@ static void dsp_thread_start(MCPXAPUState *d)
     retro_atomic_int_init(&t->write_head, 0);
     retro_atomic_int_init(&t->write_tail, 0);
     t->seen = 0;
+    t->notified = 0;
     t->thread = sthread_create(dsp_thread_main, d);
 }
 
@@ -756,7 +774,19 @@ static void dsp_post_slot(MCPXAPUState *d, bool silent)
     t->frame_div[slot] = d->ep_frame_div;
     t->silent[slot] = silent;
     retro_atomic_store_release_int(&t->posted, n);
-    retro_eventcount_notify(&t->wake);
+    /* the thread woken for half a ring of frames at a time, not for each
+     * (1,500 a second of guest time): the rest at the video frame's end
+     * (mcpx_apu_dsp_kick) or before the engine waits for it */
+    if (n - retro_atomic_load_acquire_int(&t->done) >= MCPX_APU_DSP_RING / 2) {
+        dsp_notify(t);
+    }
+}
+
+void mcpx_apu_dsp_kick(MCPXAPUState *d)
+{
+    if (d->dsp_thread.thread) {
+        dsp_notify(&d->dsp_thread);
+    }
 }
 
 void mcpx_apu_dsp_post(MCPXAPUState *d, int64_t mixbins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME])
