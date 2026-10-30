@@ -99,50 +99,6 @@ SOURCES_UTIL := \
 	$(CORE_DIR)/crypto/sm4.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-builtin-types.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-builtin-visit.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-commands-accelerator.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-commands-acpi-hest.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-commands-acpi.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-commands-authz.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-commands-block-core.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-commands-block-export.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-commands-block.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-commands-char.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-commands-common.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-commands-compat.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-commands-control.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-commands-crypto.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-commands-cryptodev.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-commands-cxl.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-commands-dump.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-commands-ebpf.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-commands-error.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-commands-introspect.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-commands-job.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-commands-machine-common.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-commands-machine-s390x.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-commands-machine.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-commands-migration.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-commands-misc-arm.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-commands-misc-i386.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-commands-misc.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-commands-net.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-commands-pci.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-commands-pragma.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-commands-qdev.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-commands-qom.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-commands-replay.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-commands-rocker.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-commands-run-state.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-commands-sockets.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-commands-stats.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-commands-tpm.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-commands-trace.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-commands-transaction.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-commands-uefi.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-commands-ui.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-commands-vfio.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-commands-virtio.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-commands-yank.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-commands.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-emit-events.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-events-accelerator.c \
@@ -190,7 +146,6 @@ SOURCES_UTIL := \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-events-virtio.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-events-yank.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-events.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-init-commands.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-introspect.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-types-accelerator.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-types-acpi-hest.c \
@@ -483,6 +438,7 @@ SOURCES_UTIL := \
 	$(CORE_DIR)/stubs/monitor-i386-sgx.c \
 	$(CORE_DIR)/stubs/monitor-i386-xen.c \
 	$(CORE_DIR)/stubs/monitor-internal.c \
+	$(CORE_DIR)/stubs/monitor-none.c \
 	$(CORE_DIR)/stubs/physmem.c \
 	$(CORE_DIR)/stubs/qemu-timer-notify-cb.c \
 	$(CORE_DIR)/stubs/qmp-command-available.c \
@@ -618,14 +574,12 @@ SOURCES_COMMON := \
 	$(CORE_DIR)/block.c \
 	$(CORE_DIR)/block/accounting.c \
 	$(CORE_DIR)/block/aio_task.c \
-	$(CORE_DIR)/block/amend.c \
 	$(CORE_DIR)/block/backup.c \
 	$(CORE_DIR)/block/block-backend.c \
 	$(CORE_DIR)/block/block-copy.c \
 	$(CORE_DIR)/block/commit.c \
 	$(CORE_DIR)/block/copy-before-write.c \
 	$(CORE_DIR)/block/copy-on-read.c \
-	$(CORE_DIR)/block/create.c \
 	$(CORE_DIR)/block/crypto.c \
 	$(CORE_DIR)/block/dirty-bitmap.c \
 	$(CORE_DIR)/block/export/export.c \
@@ -705,7 +659,6 @@ SOURCES_COMMON := \
 	$(CORE_DIR)/io/net-listener.c \
 	$(CORE_DIR)/io/task.c \
 	$(CORE_DIR)/iothread.c \
-	$(CORE_DIR)/job-qmp.c \
 	$(CORE_DIR)/job.c \
 	$(CORE_DIR)/libretro/gen/block/block-gen.c \
 	$(CORE_DIR)/migration/migration-stats.c \
@@ -715,9 +668,6 @@ SOURCES_COMMON := \
 	$(CORE_DIR)/migration/vmstate.c \
 	$(CORE_DIR)/migration/xbzrle.c \
 	$(CORE_DIR)/migration/yank_functions.c \
-	$(CORE_DIR)/monitor/monitor.c \
-	$(CORE_DIR)/monitor/qmp-cmds-control.c \
-	$(CORE_DIR)/monitor/qmp.c \
 	$(CORE_DIR)/nbd/client-connection.c \
 	$(CORE_DIR)/nbd/client.c \
 	$(CORE_DIR)/nbd/common.c \
@@ -728,7 +678,6 @@ SOURCES_COMMON := \
 	$(CORE_DIR)/qom/container.c \
 	$(CORE_DIR)/qom/object.c \
 	$(CORE_DIR)/qom/object_interfaces.c \
-	$(CORE_DIR)/qom/qom-qmp-cmds.c \
 	$(CORE_DIR)/qom/qom-qobject.c \
 	$(CORE_DIR)/semihosting/stubs-all.c \
 	$(CORE_DIR)/target-info.c \
@@ -770,26 +719,17 @@ SOURCES_SYSTEM := \
 	$(CORE_DIR)/accel/tcg/translate-all.c \
 	$(CORE_DIR)/accel/tcg/translator.c \
 	$(CORE_DIR)/accel/tcg/watchpoint.c \
-	$(CORE_DIR)/backends/cryptodev-hmp-cmds.c \
-	$(CORE_DIR)/backends/cryptodev.c \
 	$(CORE_DIR)/backends/hostmem.c \
 	$(CORE_DIR)/block/blkmemory.c \
-	$(CORE_DIR)/block/monitor/block-hmp-cmds.c \
 	$(CORE_DIR)/block/qapi-system.c \
-	$(CORE_DIR)/chardev/char-hmp-cmds.c \
 	$(CORE_DIR)/cpu-target.c \
-	$(CORE_DIR)/disas/disas-mon.c \
-	$(CORE_DIR)/dump/dump-hmp-cmds.c \
-	$(CORE_DIR)/dump/dump.c \
 	$(CORE_DIR)/gdbstub/gdbstub.c \
 	$(CORE_DIR)/gdbstub/syscalls.c \
 	$(CORE_DIR)/gdbstub/system.c \
-	$(CORE_DIR)/hw/acpi/acpi-qmp-cmds.c \
 	$(CORE_DIR)/hw/acpi/acpi_interface.c \
 	$(CORE_DIR)/hw/acpi/aml-build.c \
 	$(CORE_DIR)/hw/acpi/bios-linker-loader.c \
 	$(CORE_DIR)/hw/acpi/core.c \
-	$(CORE_DIR)/hw/acpi/ghes_cper_stub.c \
 	$(CORE_DIR)/hw/acpi/nvdimm.c \
 	$(CORE_DIR)/hw/acpi/pci-bridge.c \
 	$(CORE_DIR)/hw/acpi/pcihp.c \
@@ -806,8 +746,6 @@ SOURCES_SYSTEM := \
 	$(CORE_DIR)/hw/core/gpio.c \
 	$(CORE_DIR)/hw/core/hotplug.c \
 	$(CORE_DIR)/hw/core/loader.c \
-	$(CORE_DIR)/hw/core/machine-hmp-cmds.c \
-	$(CORE_DIR)/hw/core/machine-qmp-cmds.c \
 	$(CORE_DIR)/hw/core/machine.c \
 	$(CORE_DIR)/hw/core/nmi.c \
 	$(CORE_DIR)/hw/core/numa.c \
@@ -819,7 +757,6 @@ SOURCES_SYSTEM := \
 	$(CORE_DIR)/hw/cxl/cxl-host-stubs.c \
 	$(CORE_DIR)/hw/display/vga.c \
 	$(CORE_DIR)/hw/dma/i8257.c \
-	$(CORE_DIR)/hw/hyperv/hv-balloon-stub.c \
 	$(CORE_DIR)/hw/i2c/core.c \
 	$(CORE_DIR)/hw/i2c/smbus_master.c \
 	$(CORE_DIR)/hw/i2c/smbus_slave.c \
@@ -836,30 +773,23 @@ SOURCES_SYSTEM := \
 	$(CORE_DIR)/hw/intc/ioapic_common.c \
 	$(CORE_DIR)/hw/intc/kvm_irqcount.c \
 	$(CORE_DIR)/hw/isa/isa-bus.c \
-	$(CORE_DIR)/hw/mem/cxl_type3_stubs.c \
 	$(CORE_DIR)/hw/mem/memory-device.c \
 	$(CORE_DIR)/hw/mem/pc-dimm.c \
 	$(CORE_DIR)/hw/misc/pci-testdev.c \
-	$(CORE_DIR)/hw/net/rocker/qmp-norocker.c \
-	$(CORE_DIR)/hw/net/rocker/rocker-hmp-cmds.c \
 	$(CORE_DIR)/hw/net/vhost_net-stub.c \
 	$(CORE_DIR)/hw/nvram/fw_cfg-interface.c \
 	$(CORE_DIR)/hw/nvram/fw_cfg.c \
 	$(CORE_DIR)/hw/pci/msi.c \
 	$(CORE_DIR)/hw/pci/msix.c \
-	$(CORE_DIR)/hw/pci/pci-hmp-cmds.c \
-	$(CORE_DIR)/hw/pci/pci-qmp-cmds.c \
 	$(CORE_DIR)/hw/pci/pci.c \
 	$(CORE_DIR)/hw/pci/pci_bridge.c \
 	$(CORE_DIR)/hw/pci/pci_host.c \
 	$(CORE_DIR)/hw/pci/pcie.c \
-	$(CORE_DIR)/hw/pci/pcie_aer.c \
 	$(CORE_DIR)/hw/pci/pcie_sriov.c \
 	$(CORE_DIR)/hw/rtc/mc146818rtc.c \
 	$(CORE_DIR)/hw/smbios/smbios-stub.c \
 	$(CORE_DIR)/hw/timer/i8254.c \
 	$(CORE_DIR)/hw/timer/i8254_common.c \
-	$(CORE_DIR)/hw/uefi/ovmf-log.c \
 	$(CORE_DIR)/hw/usb/bus.c \
 	$(CORE_DIR)/hw/usb/core.c \
 	$(CORE_DIR)/hw/usb/desc-msos.c \
@@ -870,9 +800,7 @@ SOURCES_SYSTEM := \
 	$(CORE_DIR)/hw/usb/pcap.c \
 	$(CORE_DIR)/hw/vfio/iommufd-stubs.c \
 	$(CORE_DIR)/hw/virtio/vhost-stub.c \
-	$(CORE_DIR)/hw/virtio/virtio-hmp-cmds.c \
 	$(CORE_DIR)/hw/virtio/virtio-md-stubs.c \
-	$(CORE_DIR)/hw/virtio/virtio-stub.c \
 	$(CORE_DIR)/hw/watchdog/watchdog.c \
 	$(CORE_DIR)/hw/xen/xen_stubs.c \
 	$(CORE_DIR)/migration/block-active.c \
@@ -889,7 +817,6 @@ SOURCES_SYSTEM := \
 	$(CORE_DIR)/migration/fd.c \
 	$(CORE_DIR)/migration/file.c \
 	$(CORE_DIR)/migration/global_state.c \
-	$(CORE_DIR)/migration/migration-hmp-cmds.c \
 	$(CORE_DIR)/migration/migration.c \
 	$(CORE_DIR)/migration/multifd-device-state.c \
 	$(CORE_DIR)/migration/multifd-nocomp.c \
@@ -903,11 +830,6 @@ SOURCES_SYSTEM := \
 	$(CORE_DIR)/migration/threadinfo.c \
 	$(CORE_DIR)/migration/tls.c \
 	$(CORE_DIR)/migration/vfio-stub.c \
-	$(CORE_DIR)/monitor/fds.c \
-	$(CORE_DIR)/monitor/hmp-cmds.c \
-	$(CORE_DIR)/monitor/hmp.c \
-	$(CORE_DIR)/monitor/qemu-config-qmp.c \
-	$(CORE_DIR)/monitor/qmp-cmds.c \
 	$(CORE_DIR)/net/announce.c \
 	$(CORE_DIR)/net/checksum.c \
 	$(CORE_DIR)/net/colo-stubs.c \
@@ -915,7 +837,6 @@ SOURCES_SYSTEM := \
 	$(CORE_DIR)/net/eth.c \
 	$(CORE_DIR)/net/filter.c \
 	$(CORE_DIR)/net/hub.c \
-	$(CORE_DIR)/net/net-hmp-cmds.c \
 	$(CORE_DIR)/net/net.c \
 	$(CORE_DIR)/net/pcap-stub.c \
 	$(CORE_DIR)/net/queue.c \
@@ -924,7 +845,6 @@ SOURCES_SYSTEM := \
 	$(CORE_DIR)/net/stream.c \
 	$(CORE_DIR)/net/stream_data.c \
 	$(CORE_DIR)/net/util.c \
-	$(CORE_DIR)/qom/qom-hmp-cmds.c \
 	$(CORE_DIR)/replay/replay-char.c \
 	$(CORE_DIR)/replay/replay-debugging.c \
 	$(CORE_DIR)/replay/replay-events.c \
@@ -936,9 +856,6 @@ SOURCES_SYSTEM := \
 	$(CORE_DIR)/replay/replay-time.c \
 	$(CORE_DIR)/replay/replay.c \
 	$(CORE_DIR)/semihosting/stubs-system.c \
-	$(CORE_DIR)/stats/stats-hmp-cmds.c \
-	$(CORE_DIR)/stats/stats-qmp-cmds.c \
-	$(CORE_DIR)/system/balloon.c \
 	$(CORE_DIR)/system/bootdevice.c \
 	$(CORE_DIR)/system/cpu-timers.c \
 	$(CORE_DIR)/system/cpus.c \
@@ -956,9 +873,7 @@ SOURCES_SYSTEM := \
 	$(CORE_DIR)/system/ram-block-attributes.c \
 	$(CORE_DIR)/system/rtc.c \
 	$(CORE_DIR)/system/runstate-action.c \
-	$(CORE_DIR)/system/runstate-hmp-cmds.c \
 	$(CORE_DIR)/system/runstate.c \
-	$(CORE_DIR)/system/tpm-hmp-cmds.c \
 	$(CORE_DIR)/system/vl.c \
 	$(CORE_DIR)/system/watchpoint.c \
 	$(CORE_DIR)/tcg/optimize.c \
@@ -971,13 +886,11 @@ SOURCES_SYSTEM := \
 	$(CORE_DIR)/tcg/tcg-op.c \
 	$(CORE_DIR)/tcg/tcg.c \
 	$(CORE_DIR)/trace/control-target.c \
-	$(CORE_DIR)/trace/trace-hmp-cmds.c \
 	$(CORE_DIR)/ui/console-vc-stubs.c \
 	$(CORE_DIR)/ui/console.c \
 	$(CORE_DIR)/ui/cursor.c \
 	$(CORE_DIR)/ui/dmabuf.c \
 	$(CORE_DIR)/ui/input-keymap.c \
-	$(CORE_DIR)/ui/input-legacy.c \
 	$(CORE_DIR)/ui/input.c \
 	$(CORE_DIR)/ui/libretro-chihiro.c \
 	$(CORE_DIR)/ui/libretro-settings-stub.c \
@@ -986,9 +899,6 @@ SOURCES_SYSTEM := \
 	$(CORE_DIR)/ui/libretro.c \
 	$(CORE_DIR)/ui/qemu-pixman.c \
 	$(CORE_DIR)/ui/spice-module.c \
-	$(CORE_DIR)/ui/ui-hmp-cmds.c \
-	$(CORE_DIR)/ui/ui-qmp-cmds.c \
-	$(CORE_DIR)/ui/vnc-stubs.c \
 	$(CORE_DIR)/ui/xemu-net.c \
 	$(CORE_DIR)/ui/xemu-widescreen.c \
 
@@ -1012,11 +922,9 @@ SOURCES_TARGET := \
 	$(CORE_DIR)/accel/accel-target.c \
 	$(CORE_DIR)/accel/stubs/kvm-stub.c \
 	$(CORE_DIR)/accel/stubs/xen-stub.c \
-	$(CORE_DIR)/dump/win_dump.c \
 	$(CORE_DIR)/hw/i386/e820_memory_layout.c \
 	$(CORE_DIR)/hw/i386/fw_cfg.c \
 	$(CORE_DIR)/hw/i386/kvm/xen-stubs.c \
-	$(CORE_DIR)/hw/i386/monitor.c \
 	$(CORE_DIR)/hw/i386/multiboot.c \
 	$(CORE_DIR)/hw/i386/pc.c \
 	$(CORE_DIR)/hw/i386/pc_sysfw.c \
@@ -1131,8 +1039,6 @@ SOURCES_TARGET := \
 	$(CORE_DIR)/hw/xbox/xid-light-gun.c \
 	$(CORE_DIR)/hw/xbox/xid.c \
 	$(CORE_DIR)/libretro/gen/i386-softmmu-gdbstub-xml.c \
-	$(CORE_DIR)/monitor/hmp-cmds-target.c \
-	$(CORE_DIR)/monitor/hmp-target.c \
 	$(CORE_DIR)/page-vary-target.c \
 	$(CORE_DIR)/system/arch_init.c \
 	$(CORE_DIR)/system/globals-target.c \
@@ -1147,8 +1053,6 @@ SOURCES_TARGET := \
 	$(CORE_DIR)/target/i386/helper.c \
 	$(CORE_DIR)/target/i386/kvm/hyperv-stub.c \
 	$(CORE_DIR)/target/i386/machine.c \
-	$(CORE_DIR)/target/i386/monitor.c \
-	$(CORE_DIR)/target/i386/sev-system-stub.c \
 	$(CORE_DIR)/target/i386/tcg/access.c \
 	$(CORE_DIR)/target/i386/tcg/bpt_helper.c \
 	$(CORE_DIR)/target/i386/tcg/cc_helper.c \

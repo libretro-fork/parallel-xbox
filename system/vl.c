@@ -3067,7 +3067,13 @@ void qmp_x_exit_preconfig(Error **errp)
             }
         }
     } else if (autostart) {
+#ifdef XBOX
+        /* qmp_cont, which the core does not build (monitor/qmp-cmds.c): at
+         * this point nothing has migrated in or stopped for a reset */
+        vm_start();
+#else
         qmp_cont(NULL);
+#endif
     }
 }
 
