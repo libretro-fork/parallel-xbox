@@ -947,6 +947,7 @@ SOURCES_TARGET := \
 	$(CORE_DIR)/target/i386/tcg/translate.c \
 	$(CORE_DIR)/xemu-version.c \
 	$(CORE_DIR)/xemu-xbe.c \
+	$(CORE_DIR)/hw/xbox/xbe-runtime.c \
 
 # The APU's DSP56300 (interpreter; the JIT's glue is chosen in the Makefile)
 SOURCES_DSP := \

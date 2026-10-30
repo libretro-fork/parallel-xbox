@@ -19,6 +19,10 @@
  * thread only. */
 extern int lr_disk_pending;
 
+/* Immutable bytes of a read-only mapped image; no read/copy. NULL means use
+ * blk_pread. The loan ends on eject/change, and never exposes a writable HDD. */
+const uint8_t *lr_disk_view(BlockBackend *blk, int64_t offset, size_t size);
+
 /* A drive, empty: bus and unit as -drive gives them (ide0-hd0, ide0-cd1).
  * locked: the hard disk's ATA lock (hw/block's blkconf_locked). */
 BlockBackend *lr_disk_new(const char *name, BlockInterfaceType type,

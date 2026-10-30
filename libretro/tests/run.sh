@@ -63,6 +63,9 @@ python3 "$here/test-interrupt-shadow.py" "$here/../.." "$cc"
 python3 "$here/test-idle-interrupts.py" "$here/../.." "$cc"
 python3 "$here/test-two-page-exit.py" "$here/../.." "$cc"
 python3 "$here/test-frame-completion.py" "$here/../.." "$cc"
+${cc} -O2 -std=c11 -Wall -Wextra -Werror -I"$here/../.." \
+    -o "$work/bin/xberuntimecheck" "$here/test-xbe-runtime.c"
+"$work/bin/xberuntimecheck"
 python3 "$here/test-vk-cow-tail.py" "$here/../.." "$cc"
 python3 "$here/test-inline-index-bounds.py" "$here/../.." "$cc"
 ${cc} -O2 -std=c11 -Wall -o "$work/bin/scanoutcheck" "$here/test-scanout.c"
@@ -134,12 +137,32 @@ wine*)
     wine "$work/bin/glibtest.exe" "$(path "$work/glib")"
     ;;
 esac
-${cc} -O2 -std=gnu99 -Wall -I"$lrc/include" -o "$work/bin/qcow2test" "$here/test-qcow2.c" \
+${cc} -O2 -std=gnu99 -Wall -DLR_FILE_FILESTREAM=0 -I"$lrc/include" -o "$work/bin/qcow2test" "$here/test-qcow2.c" \
     "$here/../../block/qcow2-raw.c" "$here/../../block/libretro-qcow2.c" \
     "$here/../../block/libretro-file.c" \
     "$lrc/encodings/encoding_deflate.c" "$lrc/encodings/encoding_crc32.c" \
     "$lrc/features/features_cpu.c" "$lrc/time/rtime.c" "$lrc/compat/compat_strl.c" -lpthread
 "$work/bin/qcow2test" "$here/../../data/xbox_hdd.qcow2" "$work"
+echo "== mapped read-only file I/O"
+case $core in
+*.dll)
+    case $(uname -s) in
+    MINGW*|MSYS*)
+        make -s -C "$here/../.." platform=win fileiotest
+        "$here/fileiotest.exe" "$(path "$work/fileio-sparse.img")"
+        ;;
+    *)
+        make -s -C "$here/../.." platform=win \
+            CROSS_PREFIX="${HARNESS_CROSS_PREFIX:-x86_64-w64-mingw32-}" fileiotest
+        wine "$here/fileiotest.exe" "$(path "$work/fileio-sparse.img")"
+        ;;
+    esac
+    ;;
+*)
+    make -s -C "$here/../.." fileiotest
+    "$here/fileiotest" "$work/fileio-sparse.img"
+    ;;
+esac
 if command -v qemu-img >/dev/null 2>&1; then
     q="$work/qcow2"
     mkdir -p "$q"

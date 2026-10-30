@@ -335,6 +335,18 @@ $(S3TCTEST): $(CORE_DIR)/libretro/tests/test-s3tc.c \
 		$(DEPS_LIBS) $(OS_LIBS) -lm
 s3tctest: $(S3TCTEST)
 
-.PHONY: all clean dspdiff seedshaders s3tctest FORCE
+FILEIOTEST := $(CORE_DIR)/libretro/tests/fileiotest$(if $(filter win,$(platform)),.exe,)
+FILEIOTEST_GC := -Wl,--gc-sections
+ifeq ($(platform),osx)
+FILEIOTEST_GC := -Wl,-dead_strip
+endif
+$(FILEIOTEST): $(CORE_DIR)/libretro/tests/test-file-io.c \
+		$(CORE_DIR)/block/libretro-file.o $(OBJS_LRCOMMON) $(OBJS_GLIB) $(LIBQEMUUTIL)
+	$(CC) -O2 $(CFLAGS_TARGET) $(if $(filter win,$(platform)),-static,) -o $@ $^ \
+		$(FILEIOTEST_GC) \
+		$(DEPS_LIBS) $(OS_LIBS)
+fileiotest: $(FILEIOTEST)
+
+.PHONY: all clean dspdiff seedshaders s3tctest fileiotest FORCE
 
 -include $(ALL_OBJECTS:.o=.d)

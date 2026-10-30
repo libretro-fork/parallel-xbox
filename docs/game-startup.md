@@ -15,6 +15,17 @@ This establishes startup, rather than complete gameplay compatibility.
 
 ## Otogi: Myth of Demons
 
+Runtime Disc-check Compatibility is enabled by default under System. With
+Complex 4627, load the original XISO or full disc image directly. At its entry
+point the core clears bit 0 of the loaded Otogi certificate's runtime-security
+flags; it does not alter the ISO, executable sections, BIOS, or on-disk saves.
+The loaded title ID, decoded entry point, certificate bounds, and RAM mappings
+are checked before the four-byte write. The same action runs on later boots
+and works with cached translated code. Disable the option and reload content
+to retain the original checks. This is a compatibility fallback, not physical
+DVD authentication or support for booting retail BIOSes without their security
+data. See the [PR audit](xdvd-pr1659-audit.md).
+
 An unadjusted retail image can return to the dashboard immediately after
 the Xbox logo. This was reproduced in both boot modes and in standalone
 xemu 0.8.136 (the core's upstream base, without the fork's later changes).
@@ -22,7 +33,7 @@ The game requests MODE SENSE page `0x3e`, which the emulated drive rejects;
 the title's runtime disc-check flag also requests the physical disc's
 security sector. Repacking the filesystem alone did not fix startup.
 
-For Complex 4627, clearing bit 0 of `default.xbe`'s runtime security flags
+As an optional offline alternative for Complex 4627, clearing bit 0 of `default.xbe`'s runtime security flags
 in a separate image lets startup continue. The supplied utility makes a
 new image and changes only this flag when explicitly requested:
 

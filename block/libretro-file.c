@@ -21,6 +21,9 @@
 #include <errno.h>
 #include <stdlib.h>
 #include <string.h>
+#if LR_FILE_FILESTREAM
+#include <streams/file_stream.h>
+#endif
 
 #ifdef _WIN32
 #ifndef _WIN32_WINNT
@@ -45,6 +48,11 @@
 static const uint8_t lr_file_zeroes[64 * 1024];
 
 struct LRFile {
+#if LR_FILE_FILESTREAM
+    RFILE *stream;
+#endif
+    const uint8_t *mapped;
+    int64_t mapped_size;
 #ifdef _WIN32
     HANDLE h;
 #else
@@ -75,7 +83,7 @@ static int lr_file_errno(void)
     }
 }
 
-LRFile *lr_file_open(const char *path, bool writable, bool create)
+static LRFile *lr_file_open_native(const char *path, bool writable, bool create)
 {
     int wlen = MultiByteToWideChar(CP_UTF8, 0, path, -1, NULL, 0);
     wchar_t *wpath;
@@ -124,6 +132,13 @@ void lr_file_close(LRFile *f)
     if (!f) {
         return;
     }
+#if LR_FILE_FILESTREAM
+    if (f->stream) {
+        filestream_close(f->stream);
+        free(f);
+        return;
+    }
+#endif
     if (f->writable) {
         FlushFileBuffers(f->h);
     }
@@ -133,6 +148,9 @@ void lr_file_close(LRFile *f)
 
 int64_t lr_file_size(LRFile *f)
 {
+    if (f->mapped) {
+        return f->mapped_size;
+    }
     LARGE_INTEGER sz;
 
     if (!GetFileSizeEx(f->h, &sz)) {
@@ -143,6 +161,9 @@ int64_t lr_file_size(LRFile *f)
 
 int lr_file_set_size(LRFile *f, int64_t size)
 {
+    if (f->mapped) {
+        return -EPERM;
+    }
     FILE_END_OF_FILE_INFO eof;
 
     eof.EndOfFile.QuadPart = size;
@@ -160,6 +181,21 @@ static int lr_file_rw(LRFile *f, int64_t off, void *buf, size_t len,
     uint8_t *p = buf;
 
     *done = 0;
+    if (f->mapped) {
+        if (write || off < 0) {
+            return write ? -EPERM : -EINVAL;
+        }
+        size_t n = off >= f->mapped_size ? 0 :
+                   (size_t)(f->mapped_size - off);
+        if (n > len) {
+            n = len;
+        }
+        if (n) {
+            memcpy(buf, f->mapped + off, n);
+        }
+        *done = n;
+        return 0;
+    }
     while (len) {
         OVERLAPPED ov;
         DWORD n = len > 0x40000000u ? 0x40000000u : (DWORD)len, got = 0;
@@ -189,6 +225,9 @@ static int lr_file_rw(LRFile *f, int64_t off, void *buf, size_t len,
 
 int lr_file_zero(LRFile *f, int64_t off, int64_t len)
 {
+    if (f->mapped) {
+        return -EPERM;
+    }
     FILE_ZERO_DATA_INFORMATION z;
     DWORD got;
     int64_t size = lr_file_size(f);
@@ -224,11 +263,17 @@ int lr_file_zero(LRFile *f, int64_t off, int64_t len)
 
 int lr_file_sync(LRFile *f)
 {
+    if (f->mapped) {
+        return 0;
+    }
     return FlushFileBuffers(f->h) ? 0 : -lr_file_errno();
 }
 
 int64_t lr_file_allocated(LRFile *f)
 {
+    if (f->mapped) {
+        return -1;
+    }
     FILE_STANDARD_INFO info;
 
     if (!GetFileInformationByHandleEx(f->h, FileStandardInfo, &info,
@@ -240,7 +285,7 @@ int64_t lr_file_allocated(LRFile *f)
 
 #else /* POSIX */
 
-LRFile *lr_file_open(const char *path, bool writable, bool create)
+static LRFile *lr_file_open_native(const char *path, bool writable, bool create)
 {
     int flags = (writable ? O_RDWR : O_RDONLY) | (create ? O_CREAT : 0);
     LRFile *f;
@@ -271,6 +316,13 @@ void lr_file_close(LRFile *f)
     if (!f) {
         return;
     }
+#if LR_FILE_FILESTREAM
+    if (f->stream) {
+        filestream_close(f->stream);
+        free(f);
+        return;
+    }
+#endif
     if (f->writable) {
         lr_file_sync(f);
     }
@@ -280,6 +332,9 @@ void lr_file_close(LRFile *f)
 
 int64_t lr_file_size(LRFile *f)
 {
+    if (f->mapped) {
+        return f->mapped_size;
+    }
     struct stat st;
 
     if (fstat(f->fd, &st) < 0) {
@@ -290,6 +345,9 @@ int64_t lr_file_size(LRFile *f)
 
 int lr_file_set_size(LRFile *f, int64_t size)
 {
+    if (f->mapped) {
+        return -EPERM;
+    }
     int ret;
 
     do {
@@ -304,6 +362,21 @@ static int lr_file_rw(LRFile *f, int64_t off, void *buf, size_t len,
     uint8_t *p = buf;
 
     *done = 0;
+    if (f->mapped) {
+        if (write || off < 0) {
+            return write ? -EPERM : -EINVAL;
+        }
+        size_t n = off >= f->mapped_size ? 0 :
+                   (size_t)(f->mapped_size - off);
+        if (n > len) {
+            n = len;
+        }
+        if (n) {
+            memcpy(buf, f->mapped + off, n);
+        }
+        *done = n;
+        return 0;
+    }
     while (len) {
         ssize_t n = write ? pwrite(f->fd, p, len, (off_t)off)
                           : pread(f->fd, p, len, (off_t)off);
@@ -343,6 +416,9 @@ static int lr_file_write_zeroes(LRFile *f, int64_t off, int64_t len)
 
 int lr_file_zero(LRFile *f, int64_t off, int64_t len)
 {
+    if (f->mapped) {
+        return -EPERM;
+    }
     int64_t size = lr_file_size(f);
 
     if (size < 0) {
@@ -382,6 +458,9 @@ int lr_file_zero(LRFile *f, int64_t off, int64_t len)
 
 int lr_file_sync(LRFile *f)
 {
+    if (f->mapped) {
+        return 0;
+    }
 #if defined(__linux__)
     return fdatasync(f->fd) < 0 ? -errno : 0;
 #else
@@ -391,6 +470,9 @@ int lr_file_sync(LRFile *f)
 
 int64_t lr_file_allocated(LRFile *f)
 {
+    if (f->mapped) {
+        return -1;
+    }
     struct stat st;
 
     if (fstat(f->fd, &st) < 0) {
@@ -400,6 +482,45 @@ int64_t lr_file_allocated(LRFile *f)
 }
 
 #endif
+
+LRFile *lr_file_open(const char *path, bool writable, bool create)
+{
+#if LR_FILE_FILESTREAM
+    if (!writable && !create) {
+        RFILE *stream = filestream_open(path, RETRO_VFS_FILE_ACCESS_READ,
+                                        RETRO_VFS_FILE_ACCESS_HINT_FREQUENT_ACCESS);
+        if (stream) {
+            int64_t size = 0;
+            const uint8_t *mapped = filestream_get_mapped_ptr(stream, &size);
+            if (mapped && size >= 0) {
+                LRFile *f = calloc(1, sizeof(*f));
+                if (!f) {
+                    filestream_close(stream);
+                    errno = ENOMEM;
+                    return NULL;
+                }
+                f->stream = stream;
+                f->mapped = mapped;
+                f->mapped_size = size;
+                return f;
+            }
+            filestream_close(stream);
+        }
+    }
+#endif
+    /* Mapping is optional (including a >address-space file on 32-bit hosts).
+     * Keep native positional/vectored I/O and sparse writable HDD behavior. */
+    return lr_file_open_native(path, writable, create);
+}
+
+const uint8_t *lr_file_view(LRFile *f, int64_t off, size_t len)
+{
+    if (!f->mapped || off < 0 || off > f->mapped_size ||
+        len > (uint64_t)(f->mapped_size - off)) {
+        return NULL;
+    }
+    return f->mapped + off;
+}
 
 int lr_file_pread(LRFile *f, int64_t off, void *buf, size_t len)
 {
@@ -421,6 +542,26 @@ int lr_file_pwrite(LRFile *f, int64_t off, const void *buf, size_t len)
 
 int lr_file_preadv(LRFile *f, int64_t off, const LRFileIOV *iov, int n)
 {
+    if (f->mapped) {
+        for (int i = 0; i < n;) {
+            void *base = iov[i].base;
+            size_t length = iov[i++].len;
+            while (i < n && length <= UINTPTR_MAX - (uintptr_t)base &&
+                   (uintptr_t)iov[i].base == (uintptr_t)base + length &&
+                   iov[i].len <= SIZE_MAX - length) {
+                length += iov[i++].len;
+            }
+            if (off < 0 || length > (uint64_t)(INT64_MAX - off)) {
+                return -EINVAL;
+            }
+            int ret = lr_file_pread(f, off, base, length);
+            if (ret < 0) {
+                return ret;
+            }
+            off += length;
+        }
+        return 0;
+    }
 #ifdef LR_FILE_HAVE_PREADV
     /* the whole request in one call (LRFileIOV is laid out as iovec), on
      * to the piece by piece path for what a short read left */
@@ -457,18 +598,31 @@ int lr_file_preadv(LRFile *f, int64_t off, const LRFileIOV *iov, int n)
         }
     }
 #endif
-    for (int i = 0; i < n; i++) {
-        int ret = lr_file_pread(f, off, iov[i].base, iov[i].len);
+    for (int i = 0; i < n;) {
+        void *base = iov[i].base;
+        size_t length = iov[i++].len;
+        while (i < n && length <= UINTPTR_MAX - (uintptr_t)base &&
+               (uintptr_t)iov[i].base == (uintptr_t)base + length &&
+               iov[i].len <= SIZE_MAX - length) {
+            length += iov[i++].len;
+        }
+        if (off < 0 || length > (uint64_t)(INT64_MAX - off)) {
+            return -EINVAL;
+        }
+        int ret = lr_file_pread(f, off, base, length);
         if (ret < 0) {
             return ret;
         }
-        off += iov[i].len;
+        off += length;
     }
     return 0;
 }
 
 int lr_file_pwritev(LRFile *f, int64_t off, const LRFileIOV *iov, int n)
 {
+    if (f->mapped) {
+        return -EPERM;
+    }
 #ifdef LR_FILE_HAVE_PREADV
     if (n > 1 && n <= 1024 && sizeof(LRFileIOV) == sizeof(struct iovec)) {
         ssize_t put;

@@ -141,6 +141,20 @@ struct retro_core_option_v2_definition option_defs_us[] = {
         "enabled"
     },
     {
+        "xemu_runtime_disc_checks",
+        "Runtime Disc-check Compatibility",
+        NULL,
+        "Allows Otogi to start from an unmodified image by adjusting its loaded executable's physical-disc check flag. Does not change files. Disable to retain the original runtime checks; reload content after changing this setting.",
+        NULL,
+        "system",
+        {
+            { "enabled", "Enabled" },
+            { "disabled", "Disabled" },
+            { NULL, NULL },
+        },
+        "enabled"
+    },
+    {
         "xemu_hard_fpu",
         "Hardware FPU Emulation",
         NULL,

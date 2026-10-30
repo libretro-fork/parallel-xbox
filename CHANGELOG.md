@@ -4,6 +4,9 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Otogi can start from an unmodified XISO or full disc image with Complex 4627. Runtime Disc-check Compatibility adjusts only the loaded executable's physical-disc check flag before entry; disable it to retain the original checks. No security dump or image preparation is needed for this workaround.
+- Read-only local images use libretro-common mapped views, removing repeated read syscalls and allowing zero-copy metadata access. Scatter reads go straight into guest buffers and combine adjacent spans. Native positional I/O remains the fallback, writable HDDs stay sparse, and frontend VFS reads avoid redundant seeks and handle partial reads correctly.
+
 - CPU Boost reuses checked jump-cache entries for same-page branches into instructions spanning two code pages, avoiding repeated dispatcher trips without installing unsafe permanent links. Cache misses, remapping, code writes, debugger restrictions and instruction budgets retain their existing handling. Only targets in the final 14 bytes of a page gain the extra fallback code.
 
 - Vulkan mixed cubemaps no longer re-upload unchanged RAM faces for an in-place GPU-only face update. RAM layers are still restored when an update needs a replacement image.
