@@ -53,9 +53,37 @@ typedef struct SMBusStorageDevice {
     bool persist;
 } SMBusStorageDevice;
 
+/*
+ * The one storage device (the EEPROM), for smbus_storage_peek/poke, found
+ * at its realize instead of by a walk of the object tree at every call;
+ * with more than one, none, as object_resolve_path_type answers then.
+ */
+static SMBusStorageDevice *smbus_storage_the;
+static unsigned smbus_storage_count;
+
+static SMBusStorageDevice *smbus_storage_find(void)
+{
+    return smbus_storage_count == 1 ? smbus_storage_the : NULL;
+}
+
+static void smbus_storage_finalize(Object *obj)
+{
+    SMBusStorageDevice *s = SMBUS_STORAGE(obj);
+
+    if (s->data) {
+        /* realized: counted */
+        smbus_storage_count--;
+        if (smbus_storage_the == s) {
+            smbus_storage_the = NULL;
+        }
+    }
+}
+
 static void smbus_storage_realize(DeviceState *dev, Error **errp)
 {
     SMBusStorageDevice *s = SMBUS_STORAGE(dev);
+    smbus_storage_the = s;
+    smbus_storage_count++;
     qdev_prop_set_uint8(dev, "address", s->addr);
     s->data = g_malloc0(s->size);
     s->offset = 0;
@@ -129,11 +157,10 @@ static int smbus_storage_write_data(SMBusDevice *dev, uint8_t *buf, uint8_t len)
 
 bool smbus_storage_peek(uint32_t offset, void *buf, uint32_t len)
 {
-    Object *obj = object_resolve_path_type("", TYPE_SMBUS_STORAGE, NULL);
-    if (!obj) {
+    SMBusStorageDevice *s = smbus_storage_find();
+    if (!s) {
         return false;
     }
-    SMBusStorageDevice *s = SMBUS_STORAGE(obj);
     if (!s->data || offset + len > s->size) {
         return false;
     }
@@ -143,11 +170,10 @@ bool smbus_storage_peek(uint32_t offset, void *buf, uint32_t len)
 
 bool smbus_storage_poke(uint32_t offset, const void *buf, uint32_t len)
 {
-    Object *obj = object_resolve_path_type("", TYPE_SMBUS_STORAGE, NULL);
-    if (!obj) {
+    SMBusStorageDevice *s = smbus_storage_find();
+    if (!s) {
         return false;
     }
-    SMBusStorageDevice *s = SMBUS_STORAGE(obj);
     if (!s->data || offset + len > s->size) {
         return false;
     }
@@ -203,6 +229,7 @@ static TypeInfo smbus_storage_info = {
     .name = TYPE_SMBUS_STORAGE,
     .parent = TYPE_SMBUS_DEVICE,
     .instance_size = sizeof(SMBusStorageDevice),
+    .instance_finalize = smbus_storage_finalize,
     .class_init = smbus_storage_class_init,
 };
 

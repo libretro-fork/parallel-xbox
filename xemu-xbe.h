@@ -22,6 +22,7 @@
 #ifndef XEMU_XBE_H
 #define XEMU_XBE_H
 
+#include <stdbool.h>
 #include <stdint.h>
 
 // http://www.caustik.com/cxbx/download/xbe.htm
@@ -107,6 +108,7 @@ extern "C" {
 
 // Get current XBE info
 struct xbe *xemu_get_xbe_info(void);
+bool xemu_get_xbe_title_id(uint32_t *title_id);
 
 #ifdef __cplusplus
 }

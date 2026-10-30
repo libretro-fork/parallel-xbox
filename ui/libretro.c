@@ -1386,11 +1386,10 @@ static void apply_video_aspect(void)
 static void poll_guest_title(void)
 {
     extern bool smbus_storage_peek(uint32_t offset, void *buf, uint32_t len);
-    struct xbe *xbe = xemu_get_xbe_info();
-    uint32_t flags = 0;
+    uint32_t flags = 0, title_id = 0;
 
     qatomic_set(&guest_title_id,
-                xbe && xbe->cert ? ldl_le_p(&xbe->cert->m_titleid) : 0);
+                xemu_get_xbe_title_id(&title_id) ? title_id : 0);
     if (smbus_storage_peek(EEPROM_VIDEO_FLAGS, &flags, sizeof(flags))) {
         qatomic_set(&guest_video_flags, le32_to_cpu(flags));
     }

@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- The core's once-a-second check of the running game's title (for the Auto aspect ratio) no longer copies the game's headers into a newly allocated buffer, nor searches the emulated machine's device tree for the EEPROM.
+
 - DVD and hard disk reads no longer allocate memory while a game runs (about seven allocations per read before): the request records, scatter-gather lists and coroutine bookkeeping of a finished read are kept and reused by the next.
 
 - Translating the game's code no longer allocates memory for each new block (about 2,500 times in ten seconds of Ninja Gaiden): the index of translated blocks is a sorted array kept from one code-cache flush to the next, instead of a tree with a node allocated per block. With this, Ninja Gaiden's gameplay no longer allocates in the core at all, except for a few DVD reads.

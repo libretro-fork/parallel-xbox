@@ -135,3 +135,40 @@ struct xbe *xemu_get_xbe_info(void)
 
     return &xbe;
 }
+
+/*
+ * The running XBE's title id alone, with the checks xemu_get_xbe_info
+ * makes, from four reads of the guest's memory: nothing allocated, no
+ * headers copied (the core asks once a second).
+ */
+bool xemu_get_xbe_title_id(uint32_t *title_id)
+{
+    const vaddr hdr_addr_virt = 0x10000;
+    hwaddr hdr_addr_phys = 0;
+    uint32_t headers_len, titleid;
+    vaddr cert_addr_virt;
+
+    if (virt_to_phys(hdr_addr_virt, &hdr_addr_phys) != 0 ||
+        ldl_le_phys(&address_space_memory, hdr_addr_phys) != 0x48454258) {
+        return false;
+    }
+    headers_len = ldl_le_phys(&address_space_memory,
+        hdr_addr_phys + offsetof(struct xbe_header, m_sizeof_headers));
+    if (headers_len > 8 * TARGET_PAGE_SIZE) {
+        return false;
+    }
+    cert_addr_virt = ldl_le_phys(&address_space_memory,
+        hdr_addr_phys + offsetof(struct xbe_header, m_certificate_addr));
+    if (cert_addr_virt == 0 ||
+        cert_addr_virt + sizeof(struct xbe_certificate) >
+            hdr_addr_virt + headers_len) {
+        return false;
+    }
+    if (virt_dma_memory_read(cert_addr_virt +
+                             offsetof(struct xbe_certificate, m_titleid),
+                             &titleid, sizeof(titleid)) != sizeof(titleid)) {
+        return false;
+    }
+    *title_id = le32_to_cpu(titleid);
+    return true;
+}
