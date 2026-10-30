@@ -1,5 +1,11 @@
 # The core's tests
 
+Vulkan captures allocate mapped readback buffers lazily per sync slot and
+grow them to the actual output dimensions. Requested captures fail explicitly
+if the image, size or allocation is invalid. Timing-only runs allocate no
+readback buffers. The harness reports `vulkan_readback_allocations` and
+`max_bytes` at teardown so tests can verify both paths.
+
 `test-surface-clear.c` checks the full-color-clear upload bypass against
 200,000 per-pixel/channel overwrite cases, including partial channels,
 partial rectangles, inclusive edges and empty surfaces. `run.sh` runs it.

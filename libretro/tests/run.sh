@@ -375,6 +375,25 @@ for r in OpenGL Vulkan; do
     done
 done
 
+# A 4x capture exceeds the old fixed 1920x1080 readback allocation. A
+# timing-only run at the same size must not allocate capture buffers at all.
+set +e
+timeout 300 $h "$(path "$core")" "$(path "$work/sysg")" $vp --vulkan \
+  --opt xemu_renderer=vulkan --opt xemu_surface_scale=4 --frames 150 --strict \
+  --pixel 130:1280:400 >"$work/gpu_4x_capture.txt"
+r=$?
+set -e
+if [ "$r" = 0 ]; then
+  grep -q '^pixel_130_1280_400=0xff0000$' "$work/gpu_4x_capture.txt"
+  grep -q '^vulkan_readback_allocations=3 max_bytes=19660800$' "$work/gpu_4x_capture.txt"
+  timeout 300 $h "$(path "$core")" "$(path "$work/sysg")" $vp --vulkan \
+    --opt xemu_renderer=vulkan --opt xemu_surface_scale=4 --frames 40 --strict \
+    --stutter >"$work/gpu_4x_timing.txt"
+  grep -q '^vulkan_readback_allocations=0 max_bytes=0$' "$work/gpu_4x_timing.txt"
+elif [ "$r" != 3 ]; then
+  echo "FAIL: Vulkan 4x capture exited $r"; exit 1
+fi
+
 # A savestate taken while surfaces live only on the GPU (rom/gpu.c: before
 # run 64, B drawn and its depth cleared at frame 62, nothing read back), then
 # loaded in a new process, which has no GPU surfaces: the depth the guest

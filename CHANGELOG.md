@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- The Vulkan test harness now captures outputs larger than 1920x1080 instead of silently skipping their pixel/hash checks. Readback buffers grow on demand; timing-only runs allocate none, and capture failures are explicit.
+
 - Vulkan compares uniforms directly against each shader's packed block, removing the fixed 2.65 MiB duplicate CPU value cache and the extra copy of changed fields into it. Only generation metadata is kept per shader; state loads invalidate it by epoch. Contiguous arrays copy in bulk, padded arrays update only changed elements, and small padded vectors use inline bitwise comparisons/copies. The staging copy that protects in-flight GPU draws is retained.
 
 - Vulkan no longer uploads old RAM contents before a single-sample clear that replaces every color pixel and all RGBA channels. This also avoids the command-buffer drain those uploads could require. Partial clears, offset clip regions, multisample surfaces and depth/stencil keep their existing upload behavior.

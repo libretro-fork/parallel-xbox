@@ -75,6 +75,7 @@
 #define _GNU_SOURCE
 #include <stdarg.h>
 #include <stdint.h>
+#include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -253,7 +254,6 @@ static bool set_rumble(unsigned port, enum retro_rumble_effect e, uint16_t s)
 /* ---- Vulkan, as RetroArch's vulkan driver gives it to a core ---- */
 
 #define VK_SYNC_INDICES 3
-#define VK_READBACK_BYTES (1920 * 1080 * 4)
 
 static void *vk_lib;
 static PFN_vkGetInstanceProcAddr p_vkGetInstanceProcAddr;
@@ -271,6 +271,9 @@ static int vk_fence_pending[VK_SYNC_INDICES];
 static VkBuffer vk_readback[VK_SYNC_INDICES];
 static VkDeviceMemory vk_readback_mem[VK_SYNC_INDICES];
 static unsigned char *vk_readback_ptr[VK_SYNC_INDICES];
+static VkDeviceSize vk_readback_size[VK_SYNC_INDICES];
+static unsigned vk_readback_allocations;
+static VkDeviceSize vk_readback_max;
 static unsigned vk_sync_index;
 static const struct retro_vulkan_image *vk_image;
 static VkSemaphore vk_wait_sems[8];
@@ -315,6 +318,7 @@ VKFN(vkAllocateMemory);
 VKFN(vkFreeMemory);
 VKFN(vkBindBufferMemory);
 VKFN(vkMapMemory);
+VKFN(vkUnmapMemory);
 VKFN(vkDeviceWaitIdle);
 VKFN(vkGetPhysicalDeviceProperties);
 VKFN(vkCreateQueryPool);
@@ -477,7 +481,8 @@ static uint32_t vk_memory_type(uint32_t bits, VkMemoryPropertyFlags want)
              (mp.memoryTypes[i].propertyFlags & preferred) == preferred)
             return i;
    }
-   return 0;
+   fprintf(stderr, "harness: no Vulkan memory type for flags 0x%x\n", want);
+   exit(1);
 }
 
 /* v2 of the negotiation interface: the core makes the instance and the
@@ -633,6 +638,7 @@ static int vk_setup(void)
    DFN(vkFreeMemory);
    DFN(vkBindBufferMemory);
    DFN(vkMapMemory);
+   DFN(vkUnmapMemory);
    DFN(vkDeviceWaitIdle);
    DFN(vkCreateQueryPool);
    DFN(vkDestroyQueryPool);
@@ -684,26 +690,7 @@ static int vk_setup(void)
       fci.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
       for (i = 0; i < VK_SYNC_INDICES; i++)
       {
-         VkBufferCreateInfo bci;
-         VkMemoryRequirements req;
-         VkMemoryAllocateInfo mai;
          p_vkCreateFence(vk_device, &fci, NULL, &vk_fence[i]);
-         memset(&bci, 0, sizeof(bci));
-         bci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-         bci.size = VK_READBACK_BYTES;
-         bci.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
-         p_vkCreateBuffer(vk_device, &bci, NULL, &vk_readback[i]);
-         p_vkGetBufferMemoryRequirements(vk_device, vk_readback[i], &req);
-         memset(&mai, 0, sizeof(mai));
-         mai.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-         mai.allocationSize = req.size;
-         mai.memoryTypeIndex = vk_memory_type(req.memoryTypeBits,
-               VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-               VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-         p_vkAllocateMemory(vk_device, &mai, NULL, &vk_readback_mem[i]);
-         p_vkBindBufferMemory(vk_device, vk_readback[i], vk_readback_mem[i], 0);
-         p_vkMapMemory(vk_device, vk_readback_mem[i], 0, VK_WHOLE_SIZE, 0,
-               (void **)&vk_readback_ptr[i]);
       }
    }
 
@@ -734,6 +721,49 @@ static int vk_setup(void)
  * semaphores set_image gave, then on to the next index, whose last frame
  * is waited for (the swapchain's fence). The pixels, when wanted, are read
  * once this frame's fence has signalled. */
+/* Called only after this slot's fence completes. Timing-only runs need no
+ * mapped buffers; captures grow each slot to the actual output dimensions. */
+static void vk_ensure_readback(unsigned i, VkDeviceSize bytes)
+{
+   VkBufferCreateInfo bci;
+   VkMemoryRequirements req;
+   VkMemoryAllocateInfo mai;
+   if (vk_readback_size[i] >= bytes)
+      return;
+   if (vk_readback_ptr[i])
+      p_vkUnmapMemory(vk_device, vk_readback_mem[i]);
+   p_vkDestroyBuffer(vk_device, vk_readback[i], NULL);
+   p_vkFreeMemory(vk_device, vk_readback_mem[i], NULL);
+   vk_readback[i] = VK_NULL_HANDLE;
+   vk_readback_mem[i] = VK_NULL_HANDLE;
+   vk_readback_ptr[i] = NULL;
+   memset(&bci, 0, sizeof(bci));
+   bci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+   bci.size = bytes;
+   bci.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+   if (p_vkCreateBuffer(vk_device, &bci, NULL, &vk_readback[i]) != VK_SUCCESS)
+      goto fail;
+   p_vkGetBufferMemoryRequirements(vk_device, vk_readback[i], &req);
+   memset(&mai, 0, sizeof(mai));
+   mai.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+   mai.allocationSize = req.size;
+   mai.memoryTypeIndex = vk_memory_type(req.memoryTypeBits,
+         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+   if (p_vkAllocateMemory(vk_device, &mai, NULL, &vk_readback_mem[i]) != VK_SUCCESS ||
+       p_vkBindBufferMemory(vk_device, vk_readback[i], vk_readback_mem[i], 0) != VK_SUCCESS ||
+       p_vkMapMemory(vk_device, vk_readback_mem[i], 0, VK_WHOLE_SIZE, 0,
+          (void **)&vk_readback_ptr[i]) != VK_SUCCESS)
+      goto fail;
+   vk_readback_size[i] = bytes;
+   vk_readback_allocations++;
+   if (bytes > vk_readback_max) vk_readback_max = bytes;
+   return;
+fail:
+   fprintf(stderr, "harness: Vulkan readback allocation failed (%" PRIu64 " bytes)\n",
+         (uint64_t)bytes);
+   exit(1);
+}
+
 static void vk_frame(unsigned w, unsigned h, unsigned char **px_out)
 {
    unsigned i = vk_sync_index;
@@ -746,9 +776,23 @@ static void vk_frame(unsigned w, unsigned h, unsigned char **px_out)
 
    if (px_out)
       *px_out = NULL;
-   if (!vk_image || (px_out && (size_t)w * h * 4 > VK_READBACK_BYTES))
+   if (!vk_image)
+   {
+      if (px_out)
+      {
+         fprintf(stderr, "harness: requested Vulkan capture has no image\n");
+         exit(1);
+      }
       return;
+   }
+   if (px_out && (!w || !h || (size_t)w > SIZE_MAX / 4 / h))
+   {
+      fprintf(stderr, "harness: invalid Vulkan capture size %ux%u\n", w, h);
+      exit(1);
+   }
    vk_wait_fence(i);
+   if (px_out)
+      vk_ensure_readback(i, (VkDeviceSize)w * h * 4);
    if (vk_ts_period_ns)
       vk_ts_collect(i);
    memset(&bi, 0, sizeof(bi));
@@ -904,6 +948,8 @@ static void vk_teardown(void)
       if (vk_ts_period_ns)
          vk_ts_collect(i);
       p_vkDestroyFence(vk_device, vk_fence[i], NULL);
+      if (vk_readback_ptr[i])
+         p_vkUnmapMemory(vk_device, vk_readback_mem[i]);
       p_vkDestroyBuffer(vk_device, vk_readback[i], NULL);
       p_vkFreeMemory(vk_device, vk_readback_mem[i], NULL);
    }
@@ -914,6 +960,8 @@ static void vk_teardown(void)
       vk_nego->destroy_device();
    p_vkDestroyDevice(vk_device, NULL);
    p_vkDestroyInstance(vk_instance, NULL);
+   printf("vulkan_readback_allocations=%u max_bytes=%" PRIu64 "\n",
+         vk_readback_allocations, (uint64_t)vk_readback_max);
    vk_device = VK_NULL_HANDLE;
 }
 
