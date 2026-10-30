@@ -2175,6 +2175,12 @@ bool memory_region_test_and_clear_dirty(MemoryRegion *mr, hwaddr addr,
 void memory_region_set_client_dirty(MemoryRegion *mr, hwaddr addr,
                                     hwaddr size, unsigned client);
 
+/* Allocation-free dirty-page runs. notify offsets are relative to the
+ * requested range, clipped to it. The callback must not mutate dirty logging. */
+bool memory_region_test_and_clear_dirty_ranges(MemoryRegion *mr, hwaddr addr,
+        hwaddr size, unsigned client,
+        void (*notify)(void *, hwaddr, hwaddr), void *opaque);
+
 /**
  * memory_region_clear_dirty_bitmap - clear dirty bitmap for memory range
  *

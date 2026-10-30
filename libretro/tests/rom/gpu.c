@@ -646,6 +646,12 @@ void gpu_main(void)
                 ram32(SURF_F + i, 0xFFFFFF00u);
             }
         }
+        if (frame == 146) {
+            ram32(SURF_F + 20 * PITCH + 4 * 4, 0xFFFFFFFFu);
+        }
+        if (frame == 148) {
+            ram32(SURF_F + 479 * PITCH + 639 * 4, 0xFF00FFFFu);
+        }
         if (frame >= 125 && frame < 155) {
             method(NV097_SET_SURFACE_CLIP_H, 608u << 16);
             method(NV097_SET_SURFACE_CLIP_V, 176u << 16);

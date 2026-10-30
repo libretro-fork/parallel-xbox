@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Vulkan offset scanout uploads only dirty native background tiles that are visible, rather than the whole framebuffer after any CPU write. Fully GPU-covered tiles remain deferred until exposed. Dirty page ranges are collected without allocating a bitmap snapshot, uploads share one recording, and imported RAM stays the direct source. Staging devices pack straight into the existing upload ring; the scratch-image workaround also copies only the selected regions.
+
 - Vulkan offset scanout samples up to 32 compatible GPU surfaces directly into the final frontend display image. The common path no longer allocates a scaled intermediate composition image or copies its tiles; only a native-size RAM background is kept. Larger layer sets retain the previous compositor. Video overlays reuse their image/sampler between size changes and queue uploads without a per-frame CPU drain. Retired renderer resources also wait for outstanding display reads before recycling.
 
 - Games whose sound goes through the Xbox's encoder DSP (the EP) now have it written straight into the queue RetroArch takes its sound from, eight engine frames (256 samples) at a time, with the volume applied there. Before, it went into a buffer first and was copied out and cleared 32 samples at a time. The sound is the same, sample for sample, except after a reset that came in the middle of the encoder's eight frames: the queue used to repeat up to a few hundred samples there, and now it does not.

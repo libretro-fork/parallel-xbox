@@ -757,6 +757,7 @@ typedef struct PGRAPHVkState {
         unsigned scale;
         bool direct;
         PGRAPHScanoutCache cache;
+        PGRAPHScanoutBackground background;
     } scanout_modes[2];
     struct PGRAPHVkScanoutLayer {
         SurfaceBinding *surface;

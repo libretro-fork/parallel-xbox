@@ -1275,6 +1275,66 @@ bool physical_memory_test_and_clear_dirty(ram_addr_t start,
     return dirty;
 }
 
+/* Collect page runs without allocating a bitmap snapshot or reprotecting
+ * the TLB once per page. Atomic word clears retain concurrent later writes. */
+bool physical_memory_test_and_clear_dirty_ranges(ram_addr_t start,
+        ram_addr_t length, unsigned client,
+        void (*notify)(void *, hwaddr, hwaddr), void *opaque)
+{
+    if (!length) {
+        return false;
+    }
+    assert(client < DIRTY_MEMORY_NUM);
+    unsigned long first = start >> TARGET_PAGE_BITS;
+    unsigned long end = TARGET_PAGE_ALIGN(start + length) >> TARGET_PAGE_BITS;
+    unsigned long page = first, run = 0;
+    bool dirty = false, in_run = false;
+    WITH_RCU_READ_LOCK_GUARD() {
+        DirtyMemoryBlocks *blocks = qatomic_rcu_read(&ram_list.dirty_memory[client]);
+        RAMBlock *block = qemu_get_ram_block(start);
+        assert(start >= block->offset && start + length <= block->offset + block->used_length);
+        while (page < end) {
+            unsigned long index = page / DIRTY_MEMORY_BLOCK_SIZE;
+            unsigned long offset = page % DIRTY_MEMORY_BLOCK_SIZE;
+            unsigned shift = offset % BITS_PER_LONG;
+            unsigned n = MIN(end - page, BITS_PER_LONG - shift);
+            unsigned long mask = (~0UL >> (BITS_PER_LONG - n)) << shift;
+            unsigned long *word = &blocks->blocks[index][offset / BITS_PER_LONG];
+            unsigned long bits = qatomic_read(word) & mask;
+            if (bits) {
+                bits = qatomic_fetch_and(word, ~mask) & mask;
+            }
+            for (unsigned i = 0; i < n; i++) {
+                bool set = (bits >> (shift + i)) & 1;
+                if (set && !in_run) {
+                    run = page + i;
+                    in_run = true;
+                    dirty = true;
+                } else if (!set && in_run) {
+                    hwaddr a = MAX((ram_addr_t)run << TARGET_PAGE_BITS, start);
+                    hwaddr b = MIN((ram_addr_t)(page + i) << TARGET_PAGE_BITS, start + length);
+                    if (notify) {
+                        notify(opaque, a - start, b - a);
+                    }
+                    in_run = false;
+                }
+            }
+            page += n;
+        }
+        if (in_run && notify) {
+            hwaddr a = MAX((ram_addr_t)run << TARGET_PAGE_BITS, start);
+            notify(opaque, a - start, start + length - a);
+        }
+        memory_region_clear_dirty_bitmap(block->mr,
+                ((ram_addr_t)first << TARGET_PAGE_BITS) - block->offset,
+                (ram_addr_t)(end - first) << TARGET_PAGE_BITS);
+    }
+    if (dirty) {
+        physical_memory_dirty_bits_cleared(start, length);
+    }
+    return dirty;
+}
+
 static void physical_memory_clear_dirty_range(ram_addr_t addr, ram_addr_t length)
 {
     physical_memory_test_and_clear_dirty(addr, length, DIRTY_MEMORY_MIGRATION);

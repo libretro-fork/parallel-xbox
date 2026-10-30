@@ -151,4 +151,150 @@ static inline void pgraph_scanout_readback_sources(
     }
 }
 
+/* Native background tracking: fixed storage, no pixel snapshots. Covered
+ * dirty cells remain pending so exposing them cannot show an old CPU image. */
+#define PGRAPH_SCANOUT_TILE 16
+#define PGRAPH_SCANOUT_MAX_DIM 8192
+#define PGRAPH_SCANOUT_BG_WORDS ((PGRAPH_SCANOUT_MAX_DIM / PGRAPH_SCANOUT_TILE) * \
+                                (PGRAPH_SCANOUT_MAX_DIM / PGRAPH_SCANOUT_TILE) / 64)
+typedef struct PGRAPHScanoutBackground {
+    unsigned cols, rows, width, height;
+    uint64_t pending[PGRAPH_SCANOUT_BG_WORDS];
+    uint64_t covered[PGRAPH_SCANOUT_BG_WORDS];
+    bool valid;
+} PGRAPHScanoutBackground;
+
+static inline bool pgraph_scanout_background_init(PGRAPHScanoutBackground *b,
+                                                 const PGRAPHScanout *scan)
+{
+    b->valid = scan->width <= PGRAPH_SCANOUT_MAX_DIM && scan->height <= PGRAPH_SCANOUT_MAX_DIM;
+    if (!b->valid) {
+        return false;
+    }
+    b->width = scan->width;
+    b->height = scan->height;
+    b->cols = (b->width + PGRAPH_SCANOUT_TILE - 1) / PGRAPH_SCANOUT_TILE;
+    b->rows = (b->height + PGRAPH_SCANOUT_TILE - 1) / PGRAPH_SCANOUT_TILE;
+    unsigned words = (b->cols * b->rows + 63) / 64;
+    memset(b->pending, 0xFF, words * sizeof(*b->pending));
+    memset(b->covered, 0, words * sizeof(*b->covered));
+    return true;
+}
+
+static inline void pgraph_scanout_background_mark(PGRAPHScanoutBackground *b,
+        unsigned x, unsigned y, unsigned width, unsigned height)
+{
+    if (!b->valid || !width || !height) {
+        return;
+    }
+    unsigned end_x = (x + width + PGRAPH_SCANOUT_TILE - 1) / PGRAPH_SCANOUT_TILE;
+    unsigned end_y = (y + height + PGRAPH_SCANOUT_TILE - 1) / PGRAPH_SCANOUT_TILE;
+    for (unsigned ty = y / PGRAPH_SCANOUT_TILE; ty < end_y; ty++) {
+        for (unsigned tx = x / PGRAPH_SCANOUT_TILE; tx < end_x; tx++) {
+            unsigned i = ty * b->cols + tx;
+            b->pending[i / 64] |= UINT64_C(1) << (i % 64);
+        }
+    }
+}
+
+static inline void pgraph_scanout_background_dirty(PGRAPHScanoutBackground *b,
+        const PGRAPHScanout *scan, uint64_t offset, uint64_t length)
+{
+    if (!b->valid || !length || offset >= scan->size) {
+        return;
+    }
+    if (length > scan->size - offset) {
+        length = scan->size - offset;
+    }
+    uint64_t end = offset + length;
+    unsigned y = offset / scan->pitch;
+    while ((uint64_t)y * scan->pitch < end) {
+        uint64_t row = (uint64_t)y * scan->pitch;
+        unsigned lo = offset > row ? (offset - row) / scan->bpp : 0;
+        unsigned hi = end - row < scan->pitch ?
+                      (end - row + scan->bpp - 1) / scan->bpp : scan->width;
+        if (hi > scan->width) {
+            hi = scan->width;
+        }
+        if (lo < hi) {
+            pgraph_scanout_background_mark(b, lo, y, hi - lo, 1);
+        }
+        y++;
+    }
+}
+
+static inline void pgraph_scanout_background_cover(PGRAPHScanoutBackground *b,
+        const PGRAPHScanoutKey *keys, unsigned count)
+{
+    if (!b->valid) {
+        return;
+    }
+    unsigned words = (b->cols * b->rows + 63) / 64;
+    memset(b->covered, 0, words * sizeof(*b->covered));
+    for (unsigned n = 0; n < count; n++) {
+        const PGRAPHScanoutRect *r = &keys[n].rect;
+        unsigned x0 = (r->dx + PGRAPH_SCANOUT_TILE - 1) / PGRAPH_SCANOUT_TILE;
+        unsigned y0 = (r->dy + PGRAPH_SCANOUT_TILE - 1) / PGRAPH_SCANOUT_TILE;
+        unsigned x1 = r->dx + r->width == b->width ? b->cols :
+                      (r->dx + r->width) / PGRAPH_SCANOUT_TILE;
+        unsigned y1 = r->dy + r->height == b->height ? b->rows :
+                      (r->dy + r->height) / PGRAPH_SCANOUT_TILE;
+        for (unsigned y = y0; y < y1; y++) {
+            for (unsigned x = x0; x < x1; x++) {
+                unsigned i = y * b->cols + x;
+                b->covered[i / 64] |= UINT64_C(1) << (i % 64);
+            }
+        }
+    }
+}
+
+static inline bool pgraph_scanout_background_visible(const PGRAPHScanoutBackground *b,
+                                                     unsigned i)
+{
+    return ((b->pending[i / 64] & ~b->covered[i / 64]) >> (i % 64)) & 1;
+}
+
+/* One horizontal run of dirty visible cells; the cursor permits a size
+ * pass without copying metadata. Mark it clean only once its upload is queued. */
+static inline bool pgraph_scanout_background_next(PGRAPHScanoutBackground *b,
+        unsigned *cursor, PGRAPHScanoutRect *rect)
+{
+    if (!b->valid) {
+        return false;
+    }
+    unsigned end = b->cols * b->rows, i = *cursor;
+    while (i < end && !pgraph_scanout_background_visible(b, i)) {
+        i++;
+    }
+    if (i == end) {
+        *cursor = end;
+        return false;
+    }
+    unsigned start = i, row_end = (i / b->cols + 1) * b->cols;
+    while (i < row_end && pgraph_scanout_background_visible(b, i)) {
+        i++;
+    }
+    unsigned x = (start % b->cols) * PGRAPH_SCANOUT_TILE;
+    unsigned y = (start / b->cols) * PGRAPH_SCANOUT_TILE;
+    unsigned right = (i - start) * PGRAPH_SCANOUT_TILE + x;
+    if (right > b->width) right = b->width;
+    unsigned bottom = y + PGRAPH_SCANOUT_TILE;
+    if (bottom > b->height) bottom = b->height;
+    *rect = (PGRAPHScanoutRect){ x, y, x, y, right - x, bottom - y };
+    *cursor = i;
+    return true;
+}
+
+static inline void pgraph_scanout_background_clean(PGRAPHScanoutBackground *b,
+                                                  const PGRAPHScanoutRect *rect)
+{
+    unsigned x0 = rect->dx / PGRAPH_SCANOUT_TILE;
+    unsigned x1 = (rect->dx + rect->width + PGRAPH_SCANOUT_TILE - 1) / PGRAPH_SCANOUT_TILE;
+    unsigned y = rect->dy / PGRAPH_SCANOUT_TILE;
+    for (unsigned x = x0; x < x1; x++) {
+        unsigned i = y * b->cols + x;
+        b->pending[i / 64] &= ~(UINT64_C(1) << (i % 64));
+    }
+}
+
 #endif

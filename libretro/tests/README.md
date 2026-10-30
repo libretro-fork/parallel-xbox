@@ -1,5 +1,9 @@
 # The core's tests
 
+`run.sh` also runs `test-scanout-background.c`: 2,500 independent dirty-byte,
+pitch-padding, partial-edge, coverage and deferred-exposure cases. Sparse CPU
+writes at opposite ends of the GPU fixture's framebuffer check partial uploads.
+
 `run.sh` also runs `test-scanout.c`: 12,896 clipped linear mappings checked
 against per-pixel guest-byte addresses, plus range boundaries, alignment,
 pitch mismatch and overflow. The GPU ROM tests CPU-written borders around

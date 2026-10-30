@@ -2469,6 +2469,161 @@ static bool scanout_add_layer(const PGRAPHScanout *scan, SurfaceBinding *s,
     return native;
 }
 
+
+typedef struct ScanoutDirtyRange {
+    PGRAPHScanoutBackground *background;
+    const PGRAPHScanout *scan;
+} ScanoutDirtyRange;
+
+static void scanout_background_dirty(void *opaque, hwaddr offset, hwaddr length)
+{
+    ScanoutDirtyRange *range = opaque;
+    pgraph_scanout_background_dirty(range->background, range->scan, offset, length);
+}
+
+/* One auxiliary recording for all visible native background runs. Host-import
+ * uses the guest RAM directly; the fallback packs straight into the upload
+ * ring, never an intermediate CPU image. */
+static void upload_scanout_background(NV2AState *d, SurfaceBinding *out,
+        PGRAPHScanoutBackground *background, const PGRAPHScanout *scan)
+{
+    if (!background->valid) {
+        pgraph_vk_upload_surface_data(d, out, true);
+        return;
+    }
+    PGRAPHState *pg = &d->pgraph;
+    PGRAPHVkState *r = pg->vk_renderer_state;
+    unsigned cursor = 0;
+    PGRAPHScanoutRect rects[64];
+    VkBufferImageCopy regions[64];
+    unsigned count = 0;
+    while (count < ARRAY_SIZE(rects) &&
+           pgraph_scanout_background_next(background, &cursor, &rects[count])) {
+        count++;
+    }
+    if (!count) {
+        return;
+    }
+    bool from_vram = r->vram_buffer && scan->start % 4 == 0;
+    bool via_scratch = r->device_props.vendorID == 0x1002;
+    if (via_scratch) {
+        ensure_surface_scratch(r, out);
+    }
+    size_t total_bytes = 0;
+    if (!from_vram) {
+        unsigned size_cursor = 0;
+        PGRAPHScanoutRect sized;
+        while (pgraph_scanout_background_next(background, &size_cursor, &sized)) {
+            total_bytes += ROUND_UP((size_t)sized.width * sized.height * scan->bpp, 16);
+        }
+    }
+    VkCommandBuffer cmd = pgraph_vk_begin_single_time_commands(pg);
+    VkDeviceSize staged_offset = 0, staged_used = 0;
+    uint8_t *staged = NULL;
+    if (!from_vram) {
+        /* One reservation for the whole recording: multiple allocations
+         * could wrap the ring onto an earlier, still-unsubmitted batch. */
+        staged_offset = pgraph_vk_staging_alloc(pg, total_bytes, 16, &staged);
+    }
+    pgraph_vk_transition_image_layout(pg, cmd, out->image,
+        out->host_fmt.vk_format, pgraph_vk_surface_base_layout(out),
+        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+    VkImage target = via_scratch ? out->image_scratch : out->image;
+    for (;;) {
+        if (via_scratch && out->image_scratch_current_layout !=
+                           VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) {
+            pgraph_vk_transition_image_layout(pg, cmd, target,
+                out->host_fmt.vk_format, out->image_scratch_current_layout,
+                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+            out->image_scratch_current_layout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+        }
+        size_t bytes = 0;
+        for (unsigned i = 0; i < count; i++) {
+            bytes += ROUND_UP((size_t)rects[i].width * rects[i].height * scan->bpp, 16);
+        }
+        VkDeviceSize offset = staged_offset + staged_used;
+        for (unsigned i = 0; i < count; i++) {
+            PGRAPHScanoutRect *p = &rects[i];
+            VkDeviceSize ram_offset = scan->start +
+                (VkDeviceSize)p->dy * scan->pitch + p->dx * scan->bpp;
+            if (!from_vram) {
+                size_t row_bytes = (size_t)p->width * scan->bpp;
+                memcpy_image(staged + offset - staged_offset,
+                    d->vram_ptr + ram_offset, row_bytes, scan->pitch, p->height);
+            }
+            regions[i] = (VkBufferImageCopy){
+                .bufferOffset = from_vram ? ram_offset : offset,
+                .bufferRowLength = from_vram ? scan->pitch / scan->bpp : 0,
+                .imageSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 },
+                .imageOffset = { p->dx, p->dy, 0 },
+                .imageExtent = { p->width, p->height, 1 },
+            };
+            offset += ROUND_UP((VkDeviceSize)p->width * p->height * scan->bpp, 16);
+        }
+        if (!from_vram) {
+            pgraph_vk_staging_flush(pg, staged_offset + staged_used, bytes);
+        }
+        VkBuffer source = from_vram ? r->vram_buffer :
+                          r->storage_buffers[BUFFER_STAGING_SRC].buffer;
+        VkBufferMemoryBarrier host = {
+            .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
+            .srcAccessMask = VK_ACCESS_HOST_WRITE_BIT,
+            .dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT,
+            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .buffer = source, .size = VK_WHOLE_SIZE,
+        };
+        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_HOST_BIT,
+            VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 1, &host, 0, NULL);
+        vkCmdCopyBufferToImage(cmd, source, target,
+            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, count, regions);
+        if (via_scratch) {
+            pgraph_vk_transition_image_layout(pg, cmd, target,
+                out->host_fmt.vk_format, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+            out->image_scratch_current_layout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+            VkImageCopy copies[64];
+            for (unsigned i = 0; i < count; i++) {
+                copies[i] = (VkImageCopy){
+                    .srcSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 },
+                    .dstSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 },
+                    .srcOffset = regions[i].imageOffset,
+                    .dstOffset = regions[i].imageOffset,
+                    .extent = regions[i].imageExtent,
+                };
+            }
+            vkCmdCopyImage(cmd, target, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                out->image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, count, copies);
+        }
+        /* Same dependency as the full upload: subsequent GPU RAM/ring
+         * writes cannot overtake these source reads. */
+        VkBufferMemoryBarrier consumed = host;
+        consumed.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+        consumed.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
+            VK_PIPELINE_STAGE_TRANSFER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+            0, 0, NULL, 1, &consumed, 0, NULL);
+        for (unsigned i = 0; i < count; i++) {
+            pgraph_scanout_background_clean(background, &rects[i]);
+        }
+        staged_used += bytes;
+        count = 0;
+        while (count < ARRAY_SIZE(rects) &&
+               pgraph_scanout_background_next(background, &cursor, &rects[count])) {
+            count++;
+        }
+        if (!count) {
+            break;
+        }
+    }
+    pgraph_vk_transition_image_layout(pg, cmd, out->image, out->host_fmt.vk_format,
+        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+    pgraph_vk_end_single_time_commands_async(pg, cmd);
+    out->initialized = true;
+    out->upload_pending = false;
+    nv2a_profile_inc_counter(NV2A_PROF_SURF_UPLOAD);
+}
+
 SurfaceBinding *pgraph_vk_compose_scanout(NV2AState *d)
 {
     PGRAPHState *pg = &d->pgraph;
@@ -2663,8 +2818,22 @@ SurfaceBinding *pgraph_vk_compose_scanout(NV2AState *d)
         keys[i] = (PGRAPHScanoutKey){ (uint64_t)(uintptr_t)s->image,
                                      s->draw_time, layers[i].rect };
     }
-    bool ram_dirty = memory_region_test_and_clear_dirty(d->vram, scan.start,
+    bool reset_background = !m->cache.valid || !m->background.valid ||
+        m->cache.scan.start != scan.start || m->cache.scan.size != scan.size ||
+        m->cache.scan.width != scan.width || m->cache.scan.height != scan.height ||
+        m->cache.scan.pitch != scan.pitch || m->cache.scan.bpp != scan.bpp;
+    if (direct && reset_background) {
+        pgraph_scanout_background_init(&m->background, &scan);
+    }
+    bool ram_dirty;
+    if (direct) {
+        ScanoutDirtyRange dirty = { &m->background, &scan };
+        ram_dirty = memory_region_test_and_clear_dirty_ranges(d->vram, scan.start,
+                    scan.size, DIRTY_MEMORY_VGA, scanout_background_dirty, &dirty);
+    } else {
+        ram_dirty = memory_region_test_and_clear_dirty(d->vram, scan.start,
                                                        scan.size, DIRTY_MEMORY_VGA);
+    }
     uint64_t old_content = m->cache.content;
     uint64_t old_background = m->cache.background;
     uint64_t old_geometry = m->cache.geometry;
@@ -2675,7 +2844,15 @@ SurfaceBinding *pgraph_vk_compose_scanout(NV2AState *d)
     }
     /* Same coverage + unchanged RAM: the existing background is already
      * correct. Replace just the GPU tiles, without staging/upload/upscale. */
-    if (old_background != m->cache.background || old_geometry != m->cache.geometry) {
+    if (direct) {
+        if (old_geometry != m->cache.geometry) {
+            /* A disappearing GPU view may expose bytes that were deferred,
+             * or were refreshed by an ordered GPU writeback. */
+            pgraph_scanout_background_init(&m->background, &scan);
+            pgraph_scanout_background_cover(&m->background, keys, count);
+        }
+        upload_scanout_background(d, out, &m->background, &scan);
+    } else if (old_background != m->cache.background || old_geometry != m->cache.geometry) {
         pgraph_vk_upload_surface_data(d, out, true);
     }
     if (direct) {
