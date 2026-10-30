@@ -23,7 +23,15 @@ static VkDeviceSize pgraph_vk_staging_alloc(PGRAPHState *pg, size_t bytes,
     pg->head = offset + bytes; *out = pg->arena + offset;
     return offset;
 }
+static size_t copy_calls;
+static void *record_copy(void *dst, const void *src, size_t bytes)
+{
+    copy_calls++;
+    return memcpy(dst, src, bytes);
+}
+#define memcpy record_copy
 /* PRODUCTION */
+#undef memcpy
 
 static VkDevice device;
 static VkPhysicalDeviceMemoryProperties memory_properties;
@@ -110,7 +118,7 @@ int main(void)
     const VkFormat formats[] = {VK_FORMAT_BC1_RGBA_UNORM_BLOCK,
         VK_FORMAT_BC2_UNORM_BLOCK, VK_FORMAT_BC3_UNORM_BLOCK};
     const unsigned widths[] = {1,4,8}, heights[] = {1,4,8}, depths[] = {1,2,4,5};
-    unsigned cases = 0, direct = 0; size_t avoided = 0;
+    unsigned cases = 0, direct = 0; size_t avoided = 0, total_copies = 0;
     for (unsigned f=0;f<3;f++)
     for (unsigned wi=0;wi<3;wi++)
     for (unsigned hi=0;hi<3;hi++)
@@ -138,9 +146,13 @@ int main(void)
         NV2AState state={.vram_ptr=upload.mapped,.vram=&limit,
             .pgraph={.vk_renderer_state=&renderer,.arena=staging.mapped}};
         TextureLevel level={0};
+        copy_calls = 0;
         stage_blocks_3d(&state.pgraph,&level,upload.mapped+offset,w,h,depth,bs);
+        total_copies += copy_calls;
         bool eligible=kind==0 && (depth==1 || blocks==1);
         assert((level.source==LEVEL_VRAM)==eligible);
+        assert(copy_calls == (eligible ? 0 :
+            depth==1 || blocks==1 ? 1 : (size_t)blocks*depth));
         assert(level.width==w && level.height==h && level.depth==depth && level.size==bytes);
         assert(!level.row_length && !level.crop_offset);
         if(eligible) {
@@ -192,6 +204,7 @@ int main(void)
         CHECK(vkResetCommandBuffer(cmd, 0)); cases++;
     }
     printf("volume cases=%u direct=%u avoided_staging_bytes=%zu; all bytes exact\n",cases,direct,avoided);
+    printf("CPU copy calls=%zu\n",total_copies);
     vkDestroyCommandPool(device, pool, NULL); vkDestroyDevice(device, NULL);
     destroy(instance, messenger, NULL); vkDestroyInstance(instance, NULL);
     printf("validation_errors=%u\n", errors);

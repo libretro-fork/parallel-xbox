@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- When compressed volume data is already in slice order but cannot use direct VRAM upload, Vulkan now stages it with one contiguous copy rather than a copy for each compression block. Layouts needing rearrangement keep the existing block conversion.
+
 - Vulkan can upload compressed volume levels directly from VRAM when they have one depth slice or one compression block per slice. Eligible levels avoid the CPU staging copy; other block layouts and unavailable/misaligned VRAM retain the existing rearrangement path.
 
 - OpenGL fallback upload tests now cover BC1/BC2/BC3 partial blocks, one-pixel rows, and mip tails at all unpack alignments, checking exact RGBA8 pixels and restoration of the caller's unpack alignment.
