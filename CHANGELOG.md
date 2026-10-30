@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Added an offline image-preparation utility with an explicit runtime disc-check adjustment for Otogi. It creates a separate image and preserves the input. Startup notes record DOA2 Ultimate's roughly 100-second initial black screen with both MCPX boot paths.
+
 - QEMU's migration code is cut down to what the savestates use (a state is one stream into the frontend's buffer): the migration transports (socket, exec, fd, file, TLS), multifd compression, RDMA, COLO, dirty-rate measurement and the QMP migration commands are gone, about 15,000 lines, and the -incoming and -loadvm options with them. The migration capabilities, which nothing in the core ever turned on, are constants now, so the code behind them is not built either. States saved before load as they did.
 
 - OpenGL now writes back GPU surfaces before uploading a one-byte texture view that overlaps them, fixing stale texture pixels from an inclusive-end off-by-one. Both renderers share an overflow-safe half-open VRAM overlap test; empty ranges no longer trigger surface writeback or reject GPU texture reuse.
