@@ -460,10 +460,8 @@ static void dsp_thread_frame(MCPXAPUState *d, float mixbins[NUM_MIXBINS][NUM_SAM
     /* Write VP results to the GP DSP MIXBUF, in place */
     uint32_t *mixbuf = dsp_memory_ptr(d->gp.dsp, 'X', GP_DSP_MIXBUF_BASE,
                                       NUM_MIXBINS * NUM_SAMPLES_PER_FRAME);
-    const float *in = &mixbins[0][0];
-    for (int i = 0; i < NUM_MIXBINS * NUM_SAMPLES_PER_FRAME; i++) {
-        mixbuf[i] = float_to_24b(in[i]);
-    }
+    QEMU_BUILD_BUG_ON((NUM_MIXBINS * NUM_SAMPLES_PER_FRAME) % 4);
+    float_to_24b_n(mixbuf, &mixbins[0][0], NUM_MIXBINS * NUM_SAMPLES_PER_FRAME);
 
     bool ep_enabled = (d->ep.regs[NV_PAPU_EPRST] & NV_PAPU_GPRST_GPRST) &&
                       (d->ep.regs[NV_PAPU_EPRST] & NV_PAPU_GPRST_GPDSPRST);

@@ -412,6 +412,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 - The CPU emulation no longer clears its 1 MB block lookup cache when the guest flushes a TLB that holds nothing. The GPU test ROM does that about once a frame, and 95% of the flushes found nothing to drop.
 
+- Audio: handing the mix bins to the GP DSP each audio frame (1,500 times a second, 1,024 samples each) takes a tenth of the time. The conversion to the DSP's 24-bit samples now works in single precision, four samples at a time, and gives the same value as before for every possible input; the sound is the same, bit for bit.
+
 ## Test build 4 - 2026-10-25
 
 - The core info file names the core "Microsoft - Xbox / Sega Chihiro (xemu)" (NNshi).
