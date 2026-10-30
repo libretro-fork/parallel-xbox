@@ -464,10 +464,11 @@ void glue(helper_pshufhw, SUFFIX)(Reg *d, Reg *s, int order)
 /* FPU ops */
 /* XXX: not accurate */
 
-#define SSE_HELPER_P(name, F)                                           \
+#define SSE_HELPER_P(name, F, INIT)                                     \
     void glue(helper_ ## name ## ps, SUFFIX)(CPUX86State *env,          \
             Reg *d, Reg *v, Reg *s)                                     \
     {                                                                   \
+        INIT                                                            \
         int i;                                                          \
         for (i = 0; i < 2 << SHIFT; i++) {                              \
             d->ZMM_S(i) = F(32, v->ZMM_S(i), s->ZMM_S(i));              \
@@ -477,6 +478,7 @@ void glue(helper_pshufhw, SUFFIX)(Reg *d, Reg *s, int order)
     void glue(helper_ ## name ## pd, SUFFIX)(CPUX86State *env,          \
             Reg *d, Reg *v, Reg *s)                                     \
     {                                                                   \
+        INIT                                                            \
         int i;                                                          \
         for (i = 0; i < 1 << SHIFT; i++) {                              \
             d->ZMM_D(i) = F(64, v->ZMM_D(i), s->ZMM_D(i));              \
@@ -485,11 +487,12 @@ void glue(helper_pshufhw, SUFFIX)(Reg *d, Reg *s, int order)
 
 #if SHIFT == 1
 
-#define SSE_HELPER_S(name, F)                                           \
-    SSE_HELPER_P(name, F)                                               \
+#define SSE_HELPER_S(name, F, INIT)                                     \
+    SSE_HELPER_P(name, F, INIT)                                         \
                                                                         \
     void helper_ ## name ## ss(CPUX86State *env, Reg *d, Reg *v, Reg *s)\
     {                                                                   \
+        INIT                                                            \
         int i;                                                          \
         d->ZMM_S(0) = F(32, v->ZMM_S(0), s->ZMM_S(0));                  \
         /* CPU boost: non-VEX encodings have d == v, a self-move. */    \
@@ -502,6 +505,7 @@ void glue(helper_pshufhw, SUFFIX)(Reg *d, Reg *s, int order)
                                                                         \
     void helper_ ## name ## sd(CPUX86State *env, Reg *d, Reg *v, Reg *s)\
     {                                                                   \
+        INIT                                                            \
         int i;                                                          \
         d->ZMM_D(0) = F(64, v->ZMM_D(0), s->ZMM_D(0));                  \
         if (!xemu_cpu_boost || d != v) {                                \
@@ -513,7 +517,7 @@ void glue(helper_pshufhw, SUFFIX)(Reg *d, Reg *s, int order)
 
 #else
 
-#define SSE_HELPER_S(name, F) SSE_HELPER_P(name, F)
+#define SSE_HELPER_S(name, F, INIT) SSE_HELPER_P(name, F, INIT)
 
 #endif
 
@@ -561,10 +565,15 @@ static inline bool sse_native_ok(CPUX86State *env)
 }
 #endif
 
+/* Rounding, flushing, CPU Boost and the tracked host mode cannot change
+ * between lanes. Decide once per helper; software lanes still update their
+ * exception flags in their original order. */
+#define XEMU_SSE_NATIVE_INIT bool xemu_sse_native = sse_native_ok(env);
+
 #define XEMU_SSE_OP(size, a, b, op, softfn)                              \
     ({                                                                   \
         float ## size _r;                                                \
-        if (likely(sse_native_ok(env))) {                                \
+        if (likely(xemu_sse_native)) {                                  \
             union { float ## size s; XEMU_HOST_F ## size h; }            \
                 _ua = { .s = (a) }, _ub = { .s = (b) }, _ur;             \
             _ur.h = _ua.h op _ub.h;                                      \
@@ -579,6 +588,7 @@ static inline bool sse_native_ok(CPUX86State *env)
 #define FPU_SUB(size, a, b) XEMU_SSE_OP(size, a, b, -, float ## size ## _sub)
 #define FPU_MUL(size, a, b) XEMU_SSE_OP(size, a, b, *, float ## size ## _mul)
 #else
+#define XEMU_SSE_NATIVE_INIT
 #define FPU_ADD(size, a, b) float ## size ## _add(a, b, &env->sse_status)
 #define FPU_SUB(size, a, b) float ## size ## _sub(a, b, &env->sse_status)
 #define FPU_MUL(size, a, b) float ## size ## _mul(a, b, &env->sse_status)
@@ -594,12 +604,12 @@ static inline bool sse_native_ok(CPUX86State *env)
 #define FPU_MAX(size, a, b)                                     \
     (float ## size ## _lt(b, a, &env->sse_status) ? (a) : (b))
 
-SSE_HELPER_S(add, FPU_ADD)
-SSE_HELPER_S(sub, FPU_SUB)
-SSE_HELPER_S(mul, FPU_MUL)
-SSE_HELPER_S(div, FPU_DIV)
-SSE_HELPER_S(min, FPU_MIN)
-SSE_HELPER_S(max, FPU_MAX)
+SSE_HELPER_S(add, FPU_ADD, XEMU_SSE_NATIVE_INIT)
+SSE_HELPER_S(sub, FPU_SUB, XEMU_SSE_NATIVE_INIT)
+SSE_HELPER_S(mul, FPU_MUL, XEMU_SSE_NATIVE_INIT)
+SSE_HELPER_S(div, FPU_DIV, )
+SSE_HELPER_S(min, FPU_MIN, )
+SSE_HELPER_S(max, FPU_MAX, )
 
 void glue(helper_sqrtps, SUFFIX)(CPUX86State *env, Reg *d, Reg *s)
 {
