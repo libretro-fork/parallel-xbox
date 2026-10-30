@@ -120,6 +120,67 @@ void *uniform_ptr(ShaderUniformLayout *layout, int idx)
     return (char *)layout->allocation + layout->uniforms[idx - 1].offset;
 }
 
+/* Fixed vector widths let the compiler inline unaligned bitwise accesses
+ * instead of calling libc once for every padded array element. */
+static inline bool uniform_element_equal(const void *a, const void *b, size_t n)
+{
+    switch (n) {
+    case 4: return memcmp(a, b, 4) == 0;
+    case 8: return memcmp(a, b, 8) == 0;
+    case 12: return memcmp(a, b, 12) == 0;
+    case 16: return memcmp(a, b, 16) == 0;
+    default: return memcmp(a, b, n) == 0;
+    }
+}
+
+static inline void uniform_element_copy(void *dst, const void *src, size_t n)
+{
+    switch (n) {
+    case 4: memcpy(dst, src, 4); break;
+    case 8: memcpy(dst, src, 8); break;
+    case 12: memcpy(dst, src, 12); break;
+    case 16: memcpy(dst, src, 16); break;
+    default: memcpy(dst, src, n); break;
+    }
+}
+
+/* Compare against the packed block itself, preserving std140 padding.
+ * Contiguous vectors/matrices need one comparison and copy; padded arrays
+ * update only changed elements. No second unpacked value cache is needed. */
+static inline bool uniform_update(ShaderUniformLayout *layout, int idx,
+                                    const void *values, size_t bytes, bool force)
+{
+    assert(idx > 0 && (size_t)idx <= layout->num_uniforms);
+    const ShaderUniform *u = &layout->uniforms[idx - 1];
+    size_t element = sizeof(uint32_t) * u->dim_v;
+    assert(element && bytes % element == 0);
+    size_t count = bytes / element;
+    assert(count <= u->dim_a);
+    size_t stride = u->stride ? u->stride : element;
+    char *dst = (char *)layout->allocation + u->offset;
+    const char *src = values;
+    if (stride == element || count <= 1) {
+        assert(u->offset <= layout->total_size &&
+               bytes <= layout->total_size - u->offset);
+        if (force || memcmp(dst, src, bytes)) {
+            memcpy(dst, src, bytes);
+            return true;
+        }
+        return false;
+    }
+    bool changed = false;
+    for (size_t i = 0; i < count; i++) {
+        assert(u->offset + i * stride <= layout->total_size &&
+               element <= layout->total_size - (u->offset + i * stride));
+        if (force || !uniform_element_equal(dst + i * stride,
+                                            src + i * element, element)) {
+            uniform_element_copy(dst + i * stride, src + i * element, element);
+            changed = true;
+        }
+    }
+    return changed;
+}
+
 static inline void uniform_copy(ShaderUniformLayout *layout, int idx,
                                 void *values, size_t value_size, size_t count)
 {

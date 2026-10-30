@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Vulkan compares uniforms directly against each shader's packed block, removing the fixed 2.65 MiB duplicate CPU value cache and the extra copy of changed fields into it. Only generation metadata is kept per shader; state loads invalidate it by epoch. Contiguous arrays copy in bulk, padded arrays update only changed elements, and small padded vectors use inline bitwise comparisons/copies. The staging copy that protects in-flight GPU draws is retained.
+
 - Vulkan no longer uploads old RAM contents before a single-sample clear that replaces every color pixel and all RGBA channels. This also avoids the command-buffer drain those uploads could require. Partial clears, offset clip regions, multisample surfaces and depth/stencil keep their existing upload behavior.
 
 - Dirty-memory reprotection skips primary TLB groups whose conservative host-address tags cannot overlap the changed range, instead of scanning every entry in every populated mode. The index uses 512 bytes per MMU mode, with no allocation; fills, first writes, victim restores and flushes maintain it under the existing TLB lock. Tag collisions still run the ordinary checks. Victim translation entries and their slow-path metadata now swap together under that lock.

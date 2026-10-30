@@ -197,6 +197,10 @@ typedef struct ShaderModuleInfo {
     SpvReflectDescriptorSet **descriptor_sets;
     ShaderUniformLayout uniforms;
     ShaderUniformLayout push_constants;
+    /* Packed uniforms are the comparison cache; only generations remain. */
+    uint64_t uniform_epoch;
+    unsigned uniform_sec_gen[UNISEC__COUNT];
+    bool uniform_valid;
 } ShaderModuleInfo;
 
 typedef struct ShaderModuleCacheKey {
@@ -832,7 +836,7 @@ typedef struct PGRAPHVkState {
      * which modules' values uniform_buffer_offsets hold, as a module switch
      * must re-push even with equal field values. */
     VshUniformSource vsh_uni_src;
-    UniformCache uni_cache;
+    uint64_t uniform_epoch;
     const ShaderModuleInfo *uni_last_pushed[2];
 
     VkQueryPool query_pool;

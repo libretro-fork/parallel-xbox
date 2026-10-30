@@ -97,6 +97,12 @@ checks cached subranges, touching versus overlapping writes, both arena
 generations, replacement beyond 512 entries, stale recent indices after cache
 reset, and 80,000 randomized lookups under undefined-behavior sanitization.
 
+`python libretro/tests/test-packed-uniforms.py . gcc` runs production packed
+uniform comparison/copy and epoch invalidation functions. It checks padding,
+unchanged and sparse writes, contiguous vector arrays, exact-bit values,
+source generations, module recycling and 20,000 independent packing cases
+with undefined-behavior traps enabled.
+
 `python libretro/tests/test-uniform-stage-uploads.py . gcc` exercises the
 production Vulkan uniform tracker, upload planning and descriptor-reuse
 decision against bounded upload storage. It checks independent stages,

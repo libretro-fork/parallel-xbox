@@ -370,8 +370,6 @@ static void shader_module_cache_entry_init(Lru *lru, LruNode *node,
         mstring_unref(code);
     }
     module->module_info = pgraph_vk_create_shader_module_from_spirv(r, spv);
-    /* A recycled address must not find the previous module's values. */
-    uniform_cache_forget(&r->uni_cache, (uintptr_t)module->module_info);
     pgraph_vk_ref_shader_module(module->module_info);
 }
 
@@ -953,29 +951,42 @@ void pgraph_vk_uniform_sources_invalidate(PGRAPHVkState *r)
     r->vsh_uni_src.ff_valid = false;
     r->uni_last_pushed[0] = NULL;
     r->uni_last_pushed[1] = NULL;
-    uniform_cache_invalidate(&r->uni_cache);
+    r->uniform_epoch++;
 }
 
-static void vk_upload_uniform(void *opaque, const UniformInfo *info, int loc,
-                              const void *value)
-{
-    uniform_copy(opaque, loc, (void *)value, 4,
-                 info->size * info->count / 4);
-}
-
-/* Per-field compare+copy into the module's UBO allocation. Returns
- * whether the allocation content changed (= a re-push is needed). */
+/* Compare directly with this module's packed UBO, not a duplicate value
+ * cache. Module lifetime owns the metadata; state loads invalidate it by
+ * epoch without walking modules or clearing a large shadow allocation. */
 static bool vk_apply_uniform_updates(PGRAPHVkState *r,
                                      ShaderUniformLayout *layout,
                                      const UniformInfo *info, int *locs,
                                      void *values, size_t count,
-                                     const ShaderModuleInfo *mod,
+                                     ShaderModuleInfo *mod,
                                      const int8_t *sections)
 {
-    int cs = uniform_cache_slot(&r->uni_cache, (uintptr_t)mod);
-    return uniform_cache_apply(&r->uni_cache, cs, r->vsh_uni_src.gen, info,
-                               locs, values, count, sections,
-                               vk_upload_uniform, layout);
+    bool valid = mod->uniform_valid && mod->uniform_epoch == r->uniform_epoch;
+    bool skip[UNISEC__COUNT] = { false };
+    if (sections && valid) {
+        for (unsigned s = UNISEC_LIVE + 1; s < UNISEC__COUNT; s++) {
+            skip[s] = mod->uniform_sec_gen[s] == r->vsh_uni_src.gen[s];
+        }
+    }
+    bool changed = false;
+    for (size_t i = 0; i < count; i++) {
+        if (locs[i] == -1 || (sections && skip[(unsigned)sections[i]])) {
+            continue;
+        }
+        const void *value = (const char *)values + info[i].val_offs;
+        changed |= uniform_update(layout, locs[i], value,
+                                   info[i].size * info[i].count, !valid);
+    }
+    mod->uniform_valid = true;
+    mod->uniform_epoch = r->uniform_epoch;
+    if (sections) {
+        memcpy(mod->uniform_sec_gen, r->vsh_uni_src.gen,
+                sizeof(mod->uniform_sec_gen));
+    }
+    return changed;
 }
 
 static void set_psh_texscale_values(PGRAPHState *pg,
