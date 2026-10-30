@@ -1,5 +1,11 @@
 # The core's tests
 
+The qcow2 span test instruments the production layer's file calls while keeping
+the real file backend. It replaces existing data through 130 adjacent spans
+and checks one read/write call, then verifies separated buffers, the 64-run
+limit, null empty spans and a cluster split inside an original span. Images
+are disposable copies of the bundled HDD; qemu-img checks their metadata.
+
 DVD DMA checks run the same word-pattern image through native I/O and the
 harness's read-only `content://` and `saf://` VFS providers. The provider uses
 the API's zero-on-success seek result and deliberately returns at most seven
