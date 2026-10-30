@@ -697,7 +697,9 @@ static void upload_gl_texture(GLenum gl_target,
                         }
                     }
 
-                    glTexImage2D(gl_target, level, GL_RGBA, tex_width,
+                    /* Preserve every decoded channel bit, as the 3D path
+                     * does; an unsized format leaves storage to the driver. */
+                    glTexImage2D(gl_target, level, GL_RGBA8, tex_width,
                                  tex_height, 0, GL_RGBA,
                                  GL_UNSIGNED_INT_8_8_8_8_REV, converted);
                     if (cropped) {
