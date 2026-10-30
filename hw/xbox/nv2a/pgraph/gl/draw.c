@@ -112,6 +112,7 @@ void pgraph_gl_clear_surface(NV2AState *d, uint32_t parameter)
 
     NV2A_DPRINTF("---------PRE CLEAR ------\n");
     pg->clearing = true;
+    r->clear_parameter = parameter;
 
     GLbitfield gl_mask = 0;
 

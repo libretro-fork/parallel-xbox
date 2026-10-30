@@ -268,6 +268,7 @@ typedef struct PGRAPHGLState {
      * under the reports' own ordering, the display one is the render
      * thread's alone (the UI thread only counts references down). */
     ObjPool surface_pool, texture_pool, report_pool, disp_ref_pool;
+    uint32_t clear_parameter;
     GLuint s2t_byte_pbo;
     Scratch surf_scratch, pitch_scratch, s2t_scratch, pvideo_scratch;
     /* Display-thread coordination for the scanout. The surface list is

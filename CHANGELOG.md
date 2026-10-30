@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- OpenGL avoids uploading pending RAM pixels when a full-surface, all-channel color clear immediately replaces them. Partial or masked clears, clip offsets, multisampled surfaces and forced uploads keep the existing path.
+
 - OpenGL now keeps live, tightly packed ARGB-to-RGB565 texture reinterpretation on the GPU, including at higher internal resolutions. Pixel buffers preserve the original bytes without CPU readback or texture upload; unsupported layouts and competing dirty surfaces retain the existing fallback.
 - Vulkan reuses unchanged shaders' immutable uniform snapshots within the current staging generation. Switching back to a shader can select its existing offset, avoiding another CPU upload copy and duplicate GPU-buffer transfer bytes. Changed values, state loads and staging resets/rotation invalidate reuse; existing fences still protect in-flight draws. No buffers or VRAM allocations are added. Unchanged draw bindings retain their fast path.
 

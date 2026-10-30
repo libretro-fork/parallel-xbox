@@ -26,7 +26,8 @@ if the image, size or allocation is invalid. Timing-only runs allocate no
 readback buffers. The harness reports `vulkan_readback_allocations` and
 `max_bytes` at teardown so tests can verify both paths.
 
-`test-surface-clear.c` checks the full-color-clear upload bypass against
+`test-surface-clear.c` checks the full-color-clear upload predicate shared by
+OpenGL and Vulkan against
 200,000 per-pixel/channel overwrite cases, including partial channels,
 partial rectangles, inclusive edges and empty surfaces. `run.sh` runs it.
 

@@ -26,6 +26,7 @@
 #include "hw/xbox/nv2a/pgraph/swizzle.h"
 #include "debug.h"
 #include "renderer.h"
+#include "../surface-clear.h"
 #include "hw/xbox/nv2a/pgraph/scanout.h"
 
 static void surface_download(NV2AState *d, SurfaceBinding *surface, bool force);
@@ -2393,16 +2394,42 @@ static void upload_surface_data_impl(NV2AState *d, SurfaceBinding *surface,
         return;
     }
 
-    nv2a_profile_inc_counter(NV2A_PROF_SURF_UPLOAD);
+    PGRAPHState *pg = &d->pgraph;
+    PGRAPHGLState *r = pg->gl_renderer_state;
     pgraph_gl_display_surface_reuse(d, surface);
+
+    /* A complete color clear replaces the RAM data this upload would read.
+     * The GL image already has storage; the pending clear supplies every
+     * channel. Other surfaces/aspects and partial clears retain the upload. */
+    if (!force && pg->clearing && surface->color &&
+        surface == r->color_binding &&
+        surface->width == pg->surface_binding_dim.width &&
+        surface->height == pg->surface_binding_dim.height &&
+        !pg->surface_shape.clip_x && !pg->surface_shape.clip_y &&
+        pg->surface_shape.anti_aliasing ==
+            NV097_SET_SURFACE_FORMAT_ANTI_ALIASING_CENTER_1) {
+        uint32_t x = pgraph_reg_r(pg, NV_PGRAPH_CLEARRECTX);
+        uint32_t y = pgraph_reg_r(pg, NV_PGRAPH_CLEARRECTY);
+        if (pgraph_full_color_clear(r->clear_parameter,
+                GET_MASK(x, NV_PGRAPH_CLEARRECTX_XMIN),
+                GET_MASK(x, NV_PGRAPH_CLEARRECTX_XMAX),
+                GET_MASK(y, NV_PGRAPH_CLEARRECTY_YMIN),
+                GET_MASK(y, NV_PGRAPH_CLEARRECTY_YMAX),
+                surface->width, surface->height)) {
+            surface->upload_pending = false;
+            surface->draw_time = pg->draw_time;
+            nv2a_profile_inc_counter(NV2A_PROF_SURF_UPLOAD_SKIPPED_CLEAR);
+            return;
+        }
+    }
+
+    nv2a_profile_inc_counter(NV2A_PROF_SURF_UPLOAD);
 
     trace_nv2a_pgraph_surface_upload(
                  surface->color ? "COLOR" : "ZETA",
                  surface->swizzle ? "sz" : "lin", surface->vram_addr,
                  surface->width, surface->height, surface->pitch,
                  surface->fmt.bytes_per_pixel);
-
-    PGRAPHState *pg = &d->pgraph;
 
     surface->upload_pending = false;
     if (surface->watch_read_off) {
