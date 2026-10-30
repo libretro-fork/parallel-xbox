@@ -181,6 +181,13 @@ static void stage_blocks_3d(PGRAPHState *pg, TextureLevel *level,
 {
     unsigned int bw = ((width + 3) & ~3) / 4, bh = ((height + 3) & ~3) / 4;
     size_t slice = (size_t)bw * bh * block_size;
+    /* With one slice or one XY block, Xbox's four-deep block groups
+     * already have Vulkan slice order. Keep those bytes in VRAM. */
+    if ((depth == 1 || bw * bh == 1) &&
+        level_from_vram(pg, level, data, width, height, depth,
+                        slice * depth, block_size)) {
+        return;
+    }
     uint8_t *dst = stage_level(pg, level, width, height, depth, slice * depth);
     const uint8_t *src = data;
     for (unsigned int z0 = 0; z0 < depth; z0 += 4) {

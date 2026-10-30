@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Vulkan can upload compressed volume levels directly from VRAM when they have one depth slice or one compression block per slice. Eligible levels avoid the CPU staging copy; other block layouts and unavailable/misaligned VRAM retain the existing rearrangement path.
+
 - OpenGL fallback upload tests now cover BC1/BC2/BC3 partial blocks, one-pixel rows, and mip tails at all unpack alignments, checking exact RGBA8 pixels and restoration of the caller's unpack alignment.
 
 - The OpenGL compressed-volume regression oracle now verifies interpolated RGB, transparent BC1 colors, and BC2/BC3 alpha through actual RGBA8 fallback uploads, including odd dimensions and one-texel mip tails.
