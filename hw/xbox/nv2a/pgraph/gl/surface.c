@@ -2025,6 +2025,9 @@ static void surface_download(NV2AState *d, SurfaceBinding *surface, bool force)
     memory_region_set_client_dirty(d->vram, surface->vram_addr,
                                    surface->pitch * surface->height,
                                    DIRTY_MEMORY_NV2A_TEX);
+    memory_region_set_client_dirty(d->vram, surface->vram_addr,
+                                   surface->pitch * surface->height,
+                                   DIRTY_MEMORY_VGA);
     pgraph_writeback_clear_discard(&d->pgraph, surface->vram_addr,
                                    surface->pitch * surface->height);
 
@@ -2993,6 +2996,29 @@ static bool scanout_add_layer(const PGRAPHScanout *scan, SurfaceBinding *s,
     return native;
 }
 
+static uint64_t scanout_mode_bytes(const struct PGRAPHGLScanoutMode *m)
+{
+    uint64_t bytes = (uint64_t)m->width * m->height *
+                    kelvin_surface_color_format_gl_map[m->format].bytes_per_pixel;
+    for (unsigned i = 0; i < ARRAY_SIZE(m->out); i++) {
+        bytes += (uint64_t)m->out[i].tex_w * m->out[i].tex_h *
+                 m->out[i].fmt.bytes_per_pixel;
+    }
+    return bytes;
+}
+
+static void scanout_mode_release(NV2AState *d, struct PGRAPHGLScanoutMode *m)
+{
+    for (unsigned i = 0; i < ARRAY_SIZE(m->out); i++) {
+        if (m->out[i].gl_buffer) {
+            pgraph_gl_display_surface_gone(d, &m->out[i]);
+        }
+    }
+    glDeleteTextures(1, &m->base);
+    memset(m, 0, sizeof(*m));
+    m->last = -1;
+}
+
 SurfaceBinding *pgraph_gl_compose_scanout(NV2AState *d)
 {
     PGRAPHState *pg = &d->pgraph;
@@ -3018,7 +3044,7 @@ SurfaceBinding *pgraph_gl_compose_scanout(NV2AState *d)
     unsigned format = bits == 32 ? NV097_SET_SURFACE_FORMAT_COLOR_LE_A8R8G8B8 :
                       bits == 16 ? NV097_SET_SURFACE_FORMAT_COLOR_LE_R5G6B5 :
                                    NV097_SET_SURFACE_FORMAT_COLOR_LE_X1R5G5B5_Z1R5G5B5;
-    ScanoutLayer layers[1024];
+    ScanoutLayer layers[PGRAPH_SCANOUT_LAYERS];
     unsigned count = 0;
     bool native = true, overlap = false;
     SurfaceBinding *s;
@@ -3037,9 +3063,10 @@ SurfaceBinding *pgraph_gl_compose_scanout(NV2AState *d)
     /* Do not allocate composition images for ordinary boot/state-load
      * gaps. After an offset scanout, its RAM-only picture may outlive the
      * source surfaces, and can keep using the existing images. */
-    if (!overlap && !r->scanout_base) {
+    if (!overlap && !r->scanout_active) {
         return NULL;
     }
+    bool materialized = !native;
     if (!native) {
         /* Retired images can owe older bytes overlapping a newer live
          * surface. Preserve draw order when materializing guest bytes. */
@@ -3074,8 +3101,22 @@ SurfaceBinding *pgraph_gl_compose_scanout(NV2AState *d)
                     pgraph_gl_surface_download_if_dirty(d, oldest);
                 }
             }
+            count = 0;
         } else {
+            PGRAPHScanoutSource sources[PGRAPH_SCANOUT_LAYERS];
+            bool readback[PGRAPH_SCANOUT_LAYERS];
             for (unsigned i = 0; i < count; i++) {
+                s = layers[i].surface;
+                sources[i] = (PGRAPHScanoutSource){ s->vram_addr, s->size,
+                                                   layers[i].rect.width != 0 };
+            }
+            pgraph_scanout_readback_sources(sources, count, readback);
+            unsigned kept = 0;
+            for (unsigned i = 0; i < count; i++) {
+                if (!readback[i]) {
+                    layers[kept++] = layers[i];
+                    continue;
+                }
                 s = layers[i].surface;
                 if (s->writeback_owed) {
                     parked_materialize(d, s);
@@ -3085,66 +3126,113 @@ SurfaceBinding *pgraph_gl_compose_scanout(NV2AState *d)
                     pgraph_gl_surface_download_if_dirty(d, s);
                 }
             }
+            count = kept;
         }
-        count = 0;
     }
 
-    if (r->scanout_width != scan.width || r->scanout_height != scan.height ||
-        r->scanout_format != format || r->scanout_scale != pg->surface_scale_factor) {
-        for (unsigned i = 0; i < ARRAY_SIZE(r->scanout); i++) {
-            if (r->scanout[i].gl_buffer) {
-                pgraph_gl_display_surface_gone(d, &r->scanout[i]);
-            }
-            memset(&r->scanout[i], 0, sizeof(r->scanout[i]));
+
+    /* Two recently used modes, bounded by a 32 MiB retention budget.
+     * Keep at least the current mode; oversized modes are not duplicated. */
+    struct PGRAPHGLScanoutMode *m = &r->scanout_modes[r->scanout_mode];
+    if (!r->scanout_active || m->width != scan.width ||
+        m->height != scan.height || m->format != format ||
+        m->scale != pg->surface_scale_factor) {
+        unsigned next = r->scanout_active ? 1 - r->scanout_mode : 0;
+        struct PGRAPHGLScanoutMode *other = &r->scanout_modes[next];
+        if (!other->base || other->width != scan.width ||
+            other->height != scan.height || other->format != format ||
+            other->scale != pg->surface_scale_factor) {
+            scanout_mode_release(d, other);
+            other->width = scan.width;
+            other->height = scan.height;
+            other->format = format;
+            other->scale = pg->surface_scale_factor;
+            other->last = -1;
+            glGenTextures(1, &other->base);
+            glBindTexture(GL_TEXTURE_2D, other->base);
+            SurfaceFormatInfo fmt = kelvin_surface_color_format_gl_map[format];
+            glTexImage2D(GL_TEXTURE_2D, 0, fmt.gl_internal_format,
+                         scan.width, scan.height, 0, fmt.gl_format, fmt.gl_type, NULL);
         }
-        glDeleteTextures(1, &r->scanout_base);
-        glGenTextures(1, &r->scanout_base);
-        glBindTexture(GL_TEXTURE_2D, r->scanout_base);
-        SurfaceFormatInfo fmt = kelvin_surface_color_format_gl_map[format];
-        glTexImage2D(GL_TEXTURE_2D, 0, fmt.gl_internal_format,
-                     scan.width, scan.height, 0, fmt.gl_format, fmt.gl_type, NULL);
-        for (unsigned i = 0; i < ARRAY_SIZE(r->scanout); i++) {
-            SurfaceBinding *out = &r->scanout[i];
-            out->color = true;
-            out->width = scan.width;
-            out->height = scan.height;
-            out->fmt = fmt;
-            surface_alloc_texture(pg, out);
+        /* Retained storage is reusable, retained pixels need revalidation:
+         * another mode may have consumed dirty bits for these same bytes. */
+        other->cache.valid = false;
+        r->scanout_mode = next;
+        r->scanout_active = true;
+        r->disp_last_surface = NULL;
+        uint64_t bytes = scanout_mode_bytes(other);
+        if (!other->out[0].gl_buffer) {
+            bytes += (uint64_t)scan.width * scan.height * scan.bpp *
+                     pg->surface_scale_factor * pg->surface_scale_factor;
         }
-        if (!r->scanout_fbo[0]) {
-            glGenFramebuffers(2, r->scanout_fbo);
+        if (m != other && bytes + scanout_mode_bytes(m) > 32 * MiB) {
+            scanout_mode_release(d, m);
         }
-        r->scanout_width = scan.width;
-        r->scanout_height = scan.height;
-        r->scanout_format = format;
-        r->scanout_scale = pg->surface_scale_factor;
+        m = other;
         pgraph_gl_tex_shadow_invalidate(r);
     }
-    SurfaceBinding *out = NULL;
-    for (unsigned i = 0; i < ARRAY_SIZE(r->scanout); i++) {
-        SurfaceBinding *candidate = &r->scanout[r->scanout_next++ % ARRAY_SIZE(r->scanout)];
-        if (!candidate->disp_ref || !qatomic_load_acquire(&candidate->disp_ref->refs)) {
-            out = candidate;
+    if (!r->scanout_fbo[0]) {
+        glGenFramebuffers(2, r->scanout_fbo);
+    }
+    for (unsigned i = 0; i < count; i++) {
+        pgraph_gl_upload_surface_data(d, layers[i].surface, false);
+    }
+    PGRAPHScanoutKey keys[PGRAPH_SCANOUT_LAYERS];
+    for (unsigned i = 0; i < count; i++) {
+        s = layers[i].surface;
+        keys[i] = (PGRAPHScanoutKey){ s->gl_buffer, s->draw_time, layers[i].rect };
+    }
+    bool ram_dirty = memory_region_test_and_clear_dirty(d->vram, scan.start,
+                                                       scan.size, DIRTY_MEMORY_VGA);
+    pgraph_scanout_cache_update(&m->cache, &scan, keys, count,
+                                ram_dirty || materialized);
+    PGRAPHScanoutCache *cache = &m->cache;
+    if (m->last >= 0 && m->content[m->last] == cache->content) {
+        return &m->out[m->last];
+    }
+    int slot = -1;
+    /* Prefer an existing free image; allocate extra mailbox storage only
+     * when the UI actually still holds the preceding picture. */
+    for (unsigned i = 0; i < ARRAY_SIZE(m->out); i++) {
+        SurfaceBinding *candidate = &m->out[i];
+        if (candidate->gl_buffer && (!candidate->disp_ref ||
+            !qatomic_load_acquire(&candidate->disp_ref->refs))) {
+            slot = i;
             break;
         }
     }
-    if (!out) {
-        /* The UI fell behind. Keep its previous picture instead of
-         * overwriting a ticket or sending it back to the VGA path. */
-        for (unsigned i = 0; i < ARRAY_SIZE(r->scanout); i++) {
-            if (r->disp_last_surface == &r->scanout[i]) {
-                return &r->scanout[i];
+    if (slot < 0) {
+        for (unsigned i = 0; i < ARRAY_SIZE(m->out); i++) {
+            if (!m->out[i].gl_buffer) {
+                slot = i;
+                SurfaceBinding *candidate = &m->out[i];
+                candidate->color = true;
+                candidate->width = scan.width;
+                candidate->height = scan.height;
+                candidate->fmt = kelvin_surface_color_format_gl_map[format];
+                surface_alloc_texture(pg, candidate);
+                struct PGRAPHGLScanoutMode *idle =
+                    &r->scanout_modes[1 - r->scanout_mode];
+                if (idle->base && scanout_mode_bytes(m) +
+                    scanout_mode_bytes(idle) > 32 * MiB) {
+                    scanout_mode_release(d, idle);
+                }
+                break;
             }
         }
-        return NULL;
     }
+    if (slot < 0) {
+        return m->last >= 0 ? &m->out[m->last] : NULL;
+    }
+    SurfaceBinding *out = &m->out[slot];
+    bool upload_background = m->base_background != cache->background ||
+                             m->base_geometry != cache->geometry;
+    bool restore_background = m->background[slot] != cache->background ||
+                               m->geometry[slot] != cache->geometry;
     pgraph_gl_display_surface_reuse(d, out);
     out->vram_addr = scan.start;
     out->pitch = scan.pitch;
     out->size = scan.size;
-    for (unsigned i = 0; i < count; i++) {
-        pgraph_gl_upload_surface_data(d, layers[i].surface, false);
-    }
     GLint texture, unpack_row, unpack_align, unpack_buffer, read_fbo, draw_fbo;
     glGetIntegerv(GL_TEXTURE_BINDING_2D, &texture);
     glGetIntegerv(GL_UNPACK_ROW_LENGTH, &unpack_row);
@@ -3153,19 +3241,23 @@ SurfaceBinding *pgraph_gl_compose_scanout(NV2AState *d)
     glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &read_fbo);
     glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &draw_fbo);
     glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
-    glBindTexture(GL_TEXTURE_2D, r->scanout_base);
+    glBindTexture(GL_TEXTURE_2D, m->base);
     glPixelStorei(GL_UNPACK_ROW_LENGTH, scan.pitch / scan.bpp);
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, scan.width, scan.height,
-                    out->fmt.gl_format, out->fmt.gl_type,
-                    (const uint8_t *)d->vram_ptr + scan.start);
+    if (upload_background) {
+        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, scan.width, scan.height,
+                        out->fmt.gl_format, out->fmt.gl_type,
+                        (const uint8_t *)d->vram_ptr + scan.start);
+        m->base_background = cache->background;
+        m->base_geometry = cache->geometry;
+    }
     glPixelStorei(GL_UNPACK_ROW_LENGTH, unpack_row);
     glPixelStorei(GL_UNPACK_ALIGNMENT, unpack_align);
     glBindBuffer(GL_PIXEL_UNPACK_BUFFER, unpack_buffer);
     glBindTexture(GL_TEXTURE_2D, texture);
     glBindFramebuffer(GL_READ_FRAMEBUFFER, r->scanout_fbo[0]);
     glFramebufferTexture2D(GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
-                           GL_TEXTURE_2D, r->scanout_base, 0);
+                           GL_TEXTURE_2D, m->base, 0);
     glBindFramebuffer(GL_DRAW_FRAMEBUFFER, r->scanout_fbo[1]);
     glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
                            GL_TEXTURE_2D, out->gl_buffer, 0);
@@ -3174,9 +3266,11 @@ SurfaceBinding *pgraph_gl_compose_scanout(NV2AState *d)
     GLboolean scissor = glIsEnabled(GL_SCISSOR_TEST);
     glDisable(GL_SCISSOR_TEST);
     unsigned scale = pg->surface_scale_factor;
-    glBlitFramebuffer(0, 0, scan.width, scan.height,
-                       0, 0, scan.width * scale, scan.height * scale,
-                       GL_COLOR_BUFFER_BIT, GL_NEAREST);
+    if (restore_background) {
+        glBlitFramebuffer(0, 0, scan.width, scan.height,
+                           0, 0, scan.width * scale, scan.height * scale,
+                           GL_COLOR_BUFFER_BIT, GL_NEAREST);
+    }
     for (unsigned i = 0; i < count; i++) {
         s = layers[i].surface;
         PGRAPHScanoutRect *p = &layers[i].rect;
@@ -3196,6 +3290,10 @@ SurfaceBinding *pgraph_gl_compose_scanout(NV2AState *d)
     }
     glBindFramebuffer(GL_READ_FRAMEBUFFER, read_fbo);
     glBindFramebuffer(GL_DRAW_FRAMEBUFFER, draw_fbo);
+    m->background[slot] = cache->background;
+    m->geometry[slot] = cache->geometry;
+    m->content[slot] = cache->content;
+    m->last = slot;
     out->draw_time = ++pg->draw_time;
     return out;
 
@@ -3228,6 +3326,10 @@ static void flush_surfaces(NV2AState *d)
 {
     PGRAPHState *pg = &d->pgraph;
     PGRAPHGLState *r = pg->gl_renderer_state;
+
+    for (unsigned i = 0; i < ARRAY_SIZE(r->scanout_modes); i++) {
+        r->scanout_modes[i].cache.valid = false;
+    }
 
     /* Clear last surface shape to force recreation of buffers at next draw */
     pg->surface_color.draw_dirty = false;
@@ -3262,12 +3364,10 @@ void pgraph_gl_finalize_surfaces(PGRAPHState *pg)
 {
     NV2AState *d = container_of(pg, NV2AState, pgraph);
     PGRAPHGLState *r = pg->gl_renderer_state;
-    for (unsigned i = 0; i < ARRAY_SIZE(r->scanout); i++) {
-        if (r->scanout[i].gl_buffer) {
-            pgraph_gl_display_surface_gone(d, &r->scanout[i]);
-        }
+    for (unsigned mode = 0; mode < ARRAY_SIZE(r->scanout_modes); mode++) {
+        struct PGRAPHGLScanoutMode *m = &r->scanout_modes[mode];
+        scanout_mode_release(d, m);
     }
-    glDeleteTextures(1, &r->scanout_base);
     glDeleteFramebuffers(2, r->scanout_fbo);
 
     flush_surfaces(d);

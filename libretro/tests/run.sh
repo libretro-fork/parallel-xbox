@@ -198,16 +198,16 @@ gpu_check() {
                 "pixel_130_4_20=0x0000ff" "pixel_130_320_100=0xff0000" \
                 "pixel_130_320_350=0x00ff00" "pixel_130_4_100=0x0000ff" \
                 "pixel_145_4_20=0xffff00" "pixel_165_320_120=0x00ffff" \
-                "pixel_180=0x00ff00" "pixel_240_320_120=0x00ffff" "pixel_270_320_100=0xff0000" "pixel_270_4_20=0x0000ff" "pixel_300_320_100=0xff0000" "pixel_300_4_20=0x0000ff"; do
+                "pixel_180=0x00ff00" "pixel_240_320_120=0x00ffff" "pixel_270_320_100=0xff0000" "pixel_270_4_20=0x0000ff" "pixel_300_320_100=0xff0000" "pixel_300_4_20=0x0000ff" "pixel_325_320_100=0xff0000" "pixel_345_320_100=0xff0000" "pixel_375_320_120=0x00ffff"; do
         grep -E "^$want$" "$1" >/dev/null || {
             echo "FAIL: $2: $want expected, $(grep "^${want%%=*}=" "$1")"; exit 1; }
     done
 }
 echo "== the display, OpenGL"
-timeout 300 $h "$(path "$core")" "$(path "$work/sysg")" $vp --frames 310 --strict \
+timeout 300 $h "$(path "$core")" "$(path "$work/sysg")" $vp --frames 390 --strict \
   --min-speed 0.2 --pixel 10 --pixel 25 --pixel 45 --pixel 85 --pixel 115 --pixel 130:4:20 --pixel 130:320:100 --pixel 130:320:350 \
   --pixel 130:4:100 --pixel 145:4:20 --pixel 165:320:120 --pixel 180 \
-  --pixel 240:320:120 --pixel 270:320:100 --pixel 270:4:20 --pixel 300:320:100 --pixel 300:4:20 --peek 0x300040 --peek 0x300014 --peek 0x300018 \
+  --pixel 240:320:120 --pixel 270:320:100 --pixel 270:4:20 --pixel 300:320:100 --pixel 300:4:20 --pixel 325:320:100 --pixel 345:320:100 --pixel 375:320:120 --peek 0x300040 --peek 0x300014 --peek 0x300018 \
   --peek 0x30001c --peek 0x300024 --peek 0x300028 --peek 0x30002c \
   --peek 0x300030 --peek 0x300034 --peek 0x300038 --peek 0x30003c \
   >"$work/gpu_gl.txt"
@@ -216,10 +216,10 @@ gpu_check "$work/gpu_gl.txt" "OpenGL"
 echo "== the display, Vulkan"
 set +e
 timeout 300 $h "$(path "$core")" "$(path "$work/sysg")" $vp --vulkan \
-  --opt xemu_renderer=vulkan --frames 310 --strict \
+  --opt xemu_renderer=vulkan --frames 390 --strict \
   --pixel 10 --pixel 25 --pixel 45 --pixel 85 --pixel 115 --pixel 130:4:20 --pixel 130:320:100 --pixel 130:320:350 \
   --pixel 130:4:100 --pixel 145:4:20 --pixel 165:320:120 --pixel 180 \
-  --pixel 240:320:120 --pixel 270:320:100 --pixel 270:4:20 --pixel 300:320:100 --pixel 300:4:20 --peek 0x300040 --peek 0x300014 --peek 0x300018 \
+  --pixel 240:320:120 --pixel 270:320:100 --pixel 270:4:20 --pixel 300:320:100 --pixel 300:4:20 --pixel 325:320:100 --pixel 345:320:100 --pixel 375:320:120 --peek 0x300040 --peek 0x300014 --peek 0x300018 \
   --peek 0x30001c --peek 0x300024 --peek 0x300028 --peek 0x30002c \
   --peek 0x300030 --peek 0x300034 --peek 0x300038 --peek 0x30003c \
   >"$work/gpu_vk.txt"
@@ -239,9 +239,9 @@ for r in OpenGL Vulkan; do
     echo "== the display at 2x, $r"
     set +e
     timeout 300 $h "$(path "$core")" "$(path "$work/sysg")" $vp $o \
-      --opt xemu_surface_scale=2 --frames 310 --strict \
+      --opt xemu_surface_scale=2 --frames 390 --strict \
       --pixel 130:8:40 --pixel 130:640:200 --pixel 130:640:700 \
-      --pixel 165:640:240 --pixel 240:640:240 --pixel 270:640:200 --pixel 270:8:40 --pixel 300:640:200 --pixel 300:8:40 --peek 0x300014 \
+      --pixel 165:640:240 --pixel 240:640:240 --pixel 270:640:200 --pixel 270:8:40 --pixel 300:640:200 --pixel 300:8:40 --pixel 325:640:200 --pixel 345:640:200 --pixel 375:640:240 --peek 0x300014 \
       --peek 0x300018 --peek 0x300024 --peek 0x30002c --peek 0x300034 \
       --peek 0x300038 >"$work/gpu_2x.txt"
     a=$?
@@ -251,7 +251,7 @@ for r in OpenGL Vulkan; do
     if [ $a = 0 ]; then
       for want in "pixel_130_8_40=0x0000ff" "pixel_130_640_200=0xff0000" \
                   "pixel_130_640_700=0x00ff00" "pixel_165_640_240=0x00ffff" \
-                  "pixel_240_640_240=0x00ffff" "pixel_270_640_200=0xff0000" "pixel_270_8_40=0x0000ff" "pixel_300_640_200=0xff0000" "pixel_300_8_40=0x0000ff"; do
+                  "pixel_240_640_240=0x00ffff" "pixel_270_640_200=0xff0000" "pixel_270_8_40=0x0000ff" "pixel_300_640_200=0xff0000" "pixel_300_8_40=0x0000ff" "pixel_325_640_200=0xff0000" "pixel_345_640_200=0xff0000" "pixel_375_640_240=0x00ffff"; do
         grep -q "^$want$" "$work/gpu_2x.txt" || {
           cat "$work/gpu_2x.txt"; echo "FAIL: scaled scanout: $want"; exit 1; }
       done
@@ -289,6 +289,25 @@ for r in OpenGL Vulkan; do
     for want in "peek_0x30002c=0x12345678" "peek_0x300030=0x12345678"; do
         grep -E "^$want$" "$work/gpu_state.txt" >/dev/null || {
             echo "FAIL: $r: $want expected after the load, $(grep "^${want%%=*}=" "$work/gpu_state.txt")"; exit 1; }
+    done
+done
+
+# Save the composed (cyan/green) frame, switch modes and evict its images,
+# then load it back in the same process: no cached pre-load pixels/keys survive.
+for r in OpenGL Vulkan; do
+    o=; [ $r = Vulkan ] && o="--vulkan --opt xemu_renderer=vulkan"
+    echo "== offset composition after a state load, $r"
+    set +e
+    timeout 300 $h "$(path "$core")" "$(path "$work/sysg")" $vp $o --frames 400 \
+      --save 240 --load 390 --verify-load --state-out "$(path "$work/scanout.state")" \
+      --pixel 395:320:120 --pixel 395:320:350 >"$work/scanout_state.txt"
+    a=$?
+    set -e
+    if [ $a = 3 ]; then echo "no Vulkan device: skipped"; continue; fi
+    [ $a = 0 ] || { echo "FAIL: $r: composed state load exited $a"; exit 1; }
+    for want in "pixel_395_320_120=0x00ffff" "pixel_395_320_350=0x00ff00"; do
+        grep -q "^$want$" "$work/scanout_state.txt" || {
+            echo "FAIL: $r: $want after the composed state load"; exit 1; }
     done
 done
 

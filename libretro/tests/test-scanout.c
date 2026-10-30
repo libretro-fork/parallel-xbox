@@ -58,6 +58,45 @@ int main(void)
     assert(!pgraph_scanout_init(&s, UINT64_MAX - 8, 640, 480, 2560, 32, UINT64_MAX));
     assert(pgraph_scanout_init(&s, 0, 720, 480, 2560, 32, 1 << 24));
     assert(s.width == 640);
+    /* Exact cache keys: unchanged pixels do not imply metadata changes,
+     * and every byte-authority/coverage transition invalidates correctly. */
+    PGRAPHScanoutCache c = { 0 };
+    PGRAPHScanoutKey k = { .image = 17, .draw_time = 1,
+                           .rect = { 0, 0, 16, 64, 608, 176 } };
+    pgraph_scanout_cache_update(&c, &s, &k, 1, false);
+    assert(c.content == 1 && c.background == 1 && c.geometry == 1);
+    pgraph_scanout_cache_update(&c, &s, &k, 1, false);
+    assert(c.content == 1 && c.background == 1 && c.geometry == 1);
+    k.draw_time++;
+    pgraph_scanout_cache_update(&c, &s, &k, 1, false);
+    assert(c.content == 2 && c.background == 1 && c.geometry == 1);
+    k.image++;
+    pgraph_scanout_cache_update(&c, &s, &k, 1, false);
+    assert(c.content == 3 && c.background == 1 && c.geometry == 1);
+    pgraph_scanout_cache_update(&c, &s, &k, 1, true);
+    assert(c.content == 4 && c.background == 2 && c.geometry == 1);
+    k.rect.dx++;
+    pgraph_scanout_cache_update(&c, &s, &k, 1, false);
+    assert(c.content == 5 && c.background == 2 && c.geometry == 2);
+    pgraph_scanout_cache_update(&c, &s, NULL, 0, false);
+    assert(c.content == 6 && c.background == 2 && c.geometry == 3);
+    c.valid = false; /* state load or switching back to a warm mode */
+    pgraph_scanout_cache_update(&c, &s, NULL, 0, false);
+    assert(c.content == 7 && c.background == 3 && c.geometry == 4);
+    s.start += 4096;
+    pgraph_scanout_cache_update(&c, &s, NULL, 0, false);
+    assert(c.content == 8 && c.background == 4 && c.geometry == 5);
+    PGRAPHScanoutSource sources[] = {
+        { 0, 100, true }, { 90, 20, true }, { 105, 2, false },
+        { 1000, 200, true }, { 0, 200, true }, { UINT64_MAX - 4, 4, true }
+    };
+    bool readback[6];
+    pgraph_scanout_readback_sources(sources, 6, readback);
+    assert(readback[0] && readback[1] && readback[2]);
+    assert(!readback[3] && !readback[4] && !readback[5]);
+    sources[2].addr = 110; /* half-open adjacency: no overlap with [90,110) */
+    pgraph_scanout_readback_sources(sources, 6, readback);
+    assert(!readback[0] && !readback[1] && readback[2]);
     printf("scanout: %u clipped mappings passed\n", tested);
     return 0;
 }

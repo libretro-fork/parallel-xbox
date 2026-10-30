@@ -34,6 +34,7 @@
 #include "hw/xbox/nv2a/nv2a_regs.h"
 #include "hw/xbox/nv2a/pgraph/cost.h"
 #include "hw/xbox/nv2a/pgraph/surface.h"
+#include "hw/xbox/nv2a/pgraph/scanout.h"
 #include "hw/xbox/nv2a/pgraph/texture.h"
 #include "hw/xbox/nv2a/pgraph/glsl/shaders.h"
 #include "hw/xbox/nv2a/pgraph/pool.h"
@@ -336,10 +337,17 @@ typedef struct PGRAPHGLState {
         GLint fmt;
     } texpool[10];
     unsigned int texpool_n;
-    SurfaceBinding scanout[3];
-    GLuint scanout_base, scanout_fbo[2];
-    unsigned scanout_width, scanout_height, scanout_format, scanout_scale;
-    unsigned scanout_next;
+    struct PGRAPHGLScanoutMode {
+        SurfaceBinding out[3];
+        GLuint base;
+        unsigned width, height, format, scale;
+        int last;
+        uint64_t base_background, base_geometry, background[3], geometry[3], content[3];
+        PGRAPHScanoutCache cache;
+    } scanout_modes[2];
+    unsigned scanout_mode;
+    bool scanout_active;
+    GLuint scanout_fbo[2];
     SurfaceBinding *color_binding, *zeta_binding;
     /* One cached FBO per (color, zeta) pair, so a target switch is a plain
      * glBindFramebuffer and the driver keeps its per-FBO validation;

@@ -75,6 +75,8 @@
  *   frame 155: swizzled cyan bytes overlap an older parked red view.
  *   frames 175/185: leave and return; the static picture survives to 240.
  *   frames 255/285: change to 15/16-bit scanout, red tile and blue border.
+ *   frames 315/335: return to the warmed 15/16-bit modes; at 355 return
+ *              to the 32-bit static picture after mode-cache eviction.
  * The larger command ring keeps this extended scenario before wraparound.
  *
  * The frame count is at GPU_FRAMES in RAM, GPU_STATUS says how far the
@@ -687,14 +689,28 @@ void gpu_main(void)
             wr(PRAMDAC_GENERAL, rd(PRAMDAC_GENERAL) | (1u << 12));
             ram32(GPU_SCANOUT, rd32(GPU_SCANOUT) | 64);
         }
-        if (frame >= 255) {
-            method(NV097_SET_SURFACE_FORMAT, (frame < 285 ? 0x01u : 0x03u) |
+        if (frame == 315 || frame == 335) {
+            u32 general = rd(PRAMDAC_GENERAL);
+            wr(PRAMDAC_GENERAL, frame == 315 ? general & ~(1u << 12) :
+                                              general | (1u << 12));
+        }
+        if (frame == 355) {
+            cr(0x13, (PITCH / 8) & 0xFF);
+            cr(0x19, (((PITCH / 8) >> 8) & 7) << 5);
+            cr(0x28, 3);
+            wr(PCRTC_START, SURF_F);
+            method(NV097_SET_SURFACE_FORMAT, 0x08u | (2u << 4) | (1u << 8));
+            method(NV097_SET_SURFACE_PITCH, PITCH | ((u32)PITCH << 16));
+        }
+        if (frame >= 255 && frame < 355) {
+            int mode15 = frame < 285 || (frame >= 315 && frame < 335);
+            method(NV097_SET_SURFACE_FORMAT, (mode15 ? 0x01u : 0x03u) |
                                               (2u << 4) | (1u << 8));
             method(NV097_SET_SURFACE_PITCH, WIDTH * 2 | ((u32)WIDTH * 2 << 16));
             method(NV097_SET_SURFACE_CLIP_H, 608u << 16);
             method(NV097_SET_SURFACE_CLIP_V, 352u << 16);
             clear(SURF_G + 64 * WIDTH * 2 + 16 * 2,
-                  frame < 285 ? 0x7C007C00u : 0xF800F800u);
+                  mode15 ? 0x7C007C00u : 0xF800F800u);
             method(NV097_SET_SURFACE_CLIP_H, (u32)WIDTH << 16);
             method(NV097_SET_SURFACE_CLIP_V, (u32)HEIGHT << 16);
         }

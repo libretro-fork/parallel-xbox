@@ -6,7 +6,11 @@ pitch mismatch and overflow. The GPU ROM tests CPU-written borders around
 two offset render surfaces, a later border write, swizzled byte readback
 overlapping an older parked surface, switching to a RAM-only front buffer,
 retaining the composed picture past surface eviction ages, and switching
-between 32-, 15- and 16-bit display formats. Both OpenGL
+between 32-, 15- and 16-bit display formats, returning to warmed modes,
+returning after mode-cache eviction, and save/load invalidation of a
+composed picture after later mode changes. Exact metadata cache tests also cover
+unchanged content, tile changes, CPU writes, coverage changes, state-load
+invalidation, and selective readback dependencies. Both OpenGL
 and Vulkan are checked at native and 2x scales. The harness accepts
 `--pixel FRAME:X:Y` to sample a top-left-based physical coordinate, including
 on repeated frames; `--pixel FRAME` retains its centre-pixel behavior.

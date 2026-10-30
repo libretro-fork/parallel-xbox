@@ -30,6 +30,7 @@
 #include "hw/xbox/nv2a/nv2a_regs.h"
 #include "hw/xbox/nv2a/pgraph/cost.h"
 #include "hw/xbox/nv2a/pgraph/surface.h"
+#include "hw/xbox/nv2a/pgraph/scanout.h"
 #include "hw/xbox/nv2a/pgraph/texture.h"
 #include "hw/xbox/nv2a/pgraph/glsl/shaders.h"
 #include "hw/xbox/nv2a/pgraph/pool.h"
@@ -172,9 +173,9 @@ typedef struct SurfaceBinding {
     VkImage image;
     VkImageView image_view;
     VmaAllocation allocation;
-    /* how image (and image_scratch) were created: the image pool's key
+    /* How the images were created: the image pool's exact keys
      * when they retire (surface.c destroy_surface_image) */
-    VkImageCreateInfo image_ci;
+    VkImageCreateInfo image_ci, scratch_ci;
 
     /* For an upload (the CPU's data goes through it) and a downscaled
      * read-back; made the first time one needs it (surface.c
@@ -740,8 +741,13 @@ typedef struct PGRAPHVkState {
     /* The bindings themselves and the swizzled download's staging, kept:
      * no allocation when a surface is met or written back (pool.h) */
     ObjPool surface_pool;
-    SurfaceBinding scanout;
-    unsigned scanout_scale;
+    struct PGRAPHVkScanoutMode {
+        SurfaceBinding out;
+        unsigned scale;
+        PGRAPHScanoutCache cache;
+    } scanout_modes[2];
+    unsigned scanout_mode;
+    bool scanout_active;
     SurfaceBinding *color_binding, *zeta_binding;
     retro_eventcount_t downloads_complete;
     bool download_dirty_surfaces_pending;
