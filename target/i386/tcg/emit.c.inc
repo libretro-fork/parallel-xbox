@@ -4084,7 +4084,7 @@ static void gen_STD(DisasContext *s, X86DecodedInsn *decode)
 static void gen_STI(DisasContext *s, X86DecodedInsn *decode)
 {
     gen_set_eflags(s, IF_MASK);
-    s->base.is_jmp = DISAS_EOB_INHIBIT_IRQ;
+    s->base.is_jmp = DISAS_EOB_STI;
 }
 
 static void gen_VAESKEYGEN(DisasContext *s, X86DecodedInsn *decode)

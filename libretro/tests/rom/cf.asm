@@ -14,6 +14,16 @@ bits 32
 org 0xfff00000
 %include "rep-common.inc"
 
+; Optional second build: establish the interrupt shadow instead of a JMP.
+; The very next instruction must still observe the original carry class.
+%macro cf_boundary 1
+%ifdef STI_BOUNDARY
+    sti
+%else
+    jmp %1
+%endif
+%endmacro
+
 %macro popf_cf1 0
     push dword 0x003
     popfd
@@ -39,20 +49,20 @@ org 0xfff00000
     inc ebp
     cfset {%1},%2,%3,%4
     setc byte [R+64]
-    jmp %%a
+    cf_boundary %%a
 %%a:
     inc ebx
     setc dl
     check dl,[R+64]
     cfset {%1},%2,%3,%4
-    jmp %%b
+    cf_boundary %%b
 %%b:
     mov edx,0
     adc edx,0
     movzx esi,byte [R+64]
     check edx,esi
     cfset {%1},%2,%3,%4
-    jmp %%c
+    cf_boundary %%c
 %%c:
     jc %%set
     check byte [R+64],0
@@ -98,6 +108,12 @@ org 0xfff00000
 
 start:
     rep_test_init
+%ifdef STI_BOUNDARY
+    ; This variant tests carry, not delivery: mask both PICs before STI.
+    mov al,0xff
+    out 0x21,al
+    out 0xa1,al
+%endif
     xor ebp,ebp
     mov edi,2
 .pass:
@@ -134,13 +150,16 @@ start:
     hlt
     jmp .halt
 shared:
+%ifdef STI_BOUNDARY
+    sti
+%endif
     inc ebx
     setc dl
     jmp esi
 ; flags untouched: its exit's CC_OP is the one it started with
 pass:
     lea ebx,[ebx+1]
-    jmp pass_cf
+    cf_boundary pass_cf
 pass_cf:
     setc dl
     jmp esi
@@ -148,7 +167,7 @@ pass_cf:
 ownflags:
     mov ecx,1
     sub ecx,2
-    jmp ownflags_cf
+    cf_boundary ownflags_cf
 ownflags_cf:
     setc dh
     jmp esi

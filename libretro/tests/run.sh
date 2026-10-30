@@ -59,6 +59,8 @@ case $core in
 *.so) python3 "$here/test-libretro-jit.py" "$here/../.." "$cc" ;;
 esac
 python3 "$here/test-kernel-idle.py" "$here/../.." "$cc"
+python3 "$here/test-interrupt-shadow.py" "$here/../.." "$cc"
+python3 "$here/test-idle-interrupts.py" "$here/../.." "$cc"
 python3 "$here/test-frame-completion.py" "$here/../.." "$cc"
 python3 "$here/test-vk-cow-tail.py" "$here/../.." "$cc"
 python3 "$here/test-inline-index-bounds.py" "$here/../.." "$cc"
@@ -194,6 +196,10 @@ cp "$work/sys/xemu/mcpx_1.0.bin" "$work/sysr/xemu/"
 nasm -f bin -I"$here/rom/" -o "$work/sysr/xemu/Complex_4627v1.03.bin" "$here/rom/rep.asm"
 cp "$work/sys/xemu/mcpx_1.0.bin" "$work/sysc/xemu/"
 nasm -f bin -I"$here/rom/" -o "$work/sysc/xemu/Complex_4627v1.03.bin" "$here/rom/cf.asm"
+mkdir -p "$work/syscs/xemu"
+cp "$work/sys/xemu/mcpx_1.0.bin" "$work/syscs/xemu/"
+nasm -f bin -DSTI_BOUNDARY -I"$here/rom/" -o "$work/syscs/xemu/Complex_4627v1.03.bin" "$here/rom/cf.asm"
+
 cp "$work/sys/xemu/mcpx_1.0.bin" "$work/sysf/xemu/"
 nasm -f bin -I"$here/rom/" -o "$work/sysf/xemu/Complex_4627v1.03.bin" "$here/rom/rep-stos.asm"
 nasm -f bin -I"$here/rom/" -o "$work/sys/xemu/Complex_4627v1.03.bin" "$here/rom/flash.asm"
@@ -266,6 +272,17 @@ for boost in enabled disabled; do
     cat "$work/cf-$boost.txt"
     echo "FAIL: CF across blocks ($boost): case $(grep -o 'peek_0x300004=.*' "$work/cf-$boost.txt")"
     exit 1
+  fi
+done
+
+# Carry in the instruction covered by STI's interrupt shadow. PICs masked.
+for boost in enabled disabled; do
+  t "CF after STI, CPU Boost $boost" $h "$(path "$core")" "$(path "$work/syscs")" \
+    $vp --opt "xemu_cpu_boost=$boost" --frames 30 --strict \
+    --peek 0x300000 --peek 0x300004 >"$work/cf-sti-$boost.txt"
+  if ! grep -q "peek_0x300000=0x4b4f4643" "$work/cf-sti-$boost.txt"; then
+    cat "$work/cf-sti-$boost.txt"
+    echo "FAIL: CF after STI ($boost)"; exit 1
   fi
 done
 

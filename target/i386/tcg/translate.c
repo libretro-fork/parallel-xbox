@@ -291,6 +291,9 @@ typedef struct DisasContext {
  */
 #define DISAS_JUMP_FAR         DISAS_TARGET_5
 
+/* STI changes interrupt shadow, but not the segment state in TB flags. */
+#define DISAS_EOB_STI          DISAS_TARGET_6
+
 /* The environment in which user-only runs is constrained. */
 #define PE(S)     (((S)->flags & HF_PE_MASK) != 0)
 #define CPL(S)    ((S)->cpl)
@@ -2872,7 +2875,7 @@ gen_eob(DisasContext *s, int mode)
     if (s->flags & HF_INHIBIT_IRQ_MASK) {
         gen_reset_hflag(s, HF_INHIBIT_IRQ_MASK);
         inhibit_reset = true;
-    } else if (mode == DISAS_EOB_INHIBIT_IRQ) {
+    } else if (mode == DISAS_EOB_INHIBIT_IRQ || mode == DISAS_EOB_STI) {
         gen_set_hflag(s, HF_INHIBIT_IRQ_MASK);
     }
 
@@ -2884,6 +2887,21 @@ gen_eob(DisasContext *s, int mode)
         tcg_gen_exit_tb(NULL, 0);
     } else if (s->flags & HF_TF_MASK) {
         gen_helper_single_step(tcg_env);
+    } else if (xemu_cpu_boost && mode == DISAS_EOB_STI &&
+               !inhibit_reset && !(s->flags & HF_RF_MASK)) {
+        /* Probe only a carry-independent destination. The existing runtime
+         * fallback recomputes flags for class-dependent blocks. Only STI
+         * leaves segment flags unchanged; MOV/POP SS keeps its old exit. */
+        TCGv_i64 pc = tcg_temp_new_i64();
+        tcg_gen_extu_tl_i64(pc, cpu_eip);
+        if (!(s->flags & HF_CS64_MASK)) {
+            if (s->cs_base) {
+                tcg_gen_addi_i64(pc, pc, s->cs_base);
+            }
+            tcg_gen_ext32u_i64(pc, pc);
+        }
+        tcg_gen_lookup_and_goto_ptr_fast(pc, s->cs_base,
+                s->flags | HF_INHIBIT_IRQ_MASK | tb_cf_flags(TB_CF_ANY));
     } else if ((mode == DISAS_JUMP || mode == DISAS_JUMP_FAR) &&
                /* give irqs a chance to happen */
                !inhibit_reset) {
@@ -4533,6 +4551,7 @@ static void i386_tr_tb_stop(DisasContextBase *dcbase, CPUState *cpu)
         break;
     case DISAS_EOB_NEXT:
     case DISAS_EOB_INHIBIT_IRQ:
+    case DISAS_EOB_STI:
         assert(dc->base.pc_next == dc->pc);
         gen_update_eip_cur(dc);
         /* fall through */

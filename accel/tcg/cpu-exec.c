@@ -1085,6 +1085,19 @@ static void xemu_cpu_pace_refill(CPUState *cpu)
     last = now;
 }
 
+/* A posted interrupt need not be deliverable (for example, masked by the
+ * target). Use the existing handler before the idle proof rather than
+ * disabling idle handling whenever any interrupt bit is set. */
+static bool cpu_kernel_idle_wait(CPUState *cpu, TranslationBlock **last_tb)
+{
+    if ((cpu_test_interrupt(cpu, ~0) ||
+         retro_atomic_load_acquire_int(&cpu->exit_request)) &&
+        cpu_handle_interrupt(cpu, last_tb)) {
+        cpu_loop_exit(cpu);
+    }
+    return xemu_libretro_kernel_idle(cpu);
+}
+
 static inline void cpu_loop_exec_tb(CPUState *cpu, TranslationBlock *tb,
                                     vaddr pc, TranslationBlock **last_tb,
                                     int *tb_exit)
@@ -1093,7 +1106,7 @@ static inline void cpu_loop_exec_tb(CPUState *cpu, TranslationBlock *tb,
     tb = cpu_tb_exec(cpu, tb, tb_exit);
     if (*tb_exit != TB_EXIT_REQUESTED) {
         *last_tb = tb;
-        /* The kernel idle loop exits at STI/CLI without chaining. A
+        /* Kernel idle loops can return at interrupt-shadow boundaries. A
          * short run of such exits only nominates a candidate: the opcode
          * pattern and empty-list/dispatch conditions must prove the wait.
          * Active code that happens to exit this way keeps running. */
@@ -1111,7 +1124,7 @@ static inline void cpu_loop_exec_tb(CPUState *cpu, TranslationBlock *tb,
                 return;
             }
             cpu->lr_quiet_exits = 0;
-            if (!xemu_libretro_kernel_idle(cpu)) {
+            if (!cpu_kernel_idle_wait(cpu, last_tb)) {
                 return;
             }
             cpu->neg.lr_quiet = -1;

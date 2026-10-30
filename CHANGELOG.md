@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- CPU Boost can chain STI to its one shadowed instruction using the existing checked cache lookup. Pending-stop and instruction-budget checks remain at the next block, and interrupts are checked when the shadow ends. Segment-changing MOV/POP SS, debug and resume paths retain their exits. The guarded kernel-idle proof also accepts the loop's second NOP, retaining opcode and empty-work checks. Already-posted CPU interrupts/stops go through the normal interrupt handler before the idle proof; masked interrupts do not disable idle handling.
+
 - OpenGL reuses a still-current speculative surface readback when eviction requests the same data, avoiding a duplicate GPU download and fence replacement. Redraws still invalidate and replace stale snapshots.
 
 - OpenGL permits clears after rebinding an exactly matching swizzled color view, avoiding the old assertion while preserving channel masks and rectangles. Layout changes, larger cached views and depth targets retain their guards.

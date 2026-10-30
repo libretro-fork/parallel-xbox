@@ -80,8 +80,17 @@ static void setup(CPUState *cpu, bool dispatch) {
 int main(void) {
     CPUState cpu;
     for (unsigned mode=0;mode<2;mode++) for (unsigned dispatch=0;dispatch<2;dispatch++) {
-        default_fallback=mode;unsigned positions[]={0,1,4};
-        for(unsigned j=0;j<3;j++) { setup(&cpu,dispatch);cpu.env.eip+=positions[j];assert(xemu_libretro_kernel_idle(&cpu)); }
+        default_fallback=mode;unsigned positions[]={0,1,2,4};
+        for(unsigned j=0;j<ARRAY_SIZE(positions);j++) {
+            setup(&cpu,dispatch);cpu.env.eip+=positions[j];assert(xemu_libretro_kernel_idle(&cpu));
+            list+=4;assert(!xemu_libretro_kernel_idle(&cpu));
+            setup(&cpu,dispatch);cpu.env.eip+=positions[j];list_fault=true;assert(!xemu_libretro_kernel_idle(&cpu));
+            setup(&cpu,dispatch);cpu.env.eip+=positions[j];code[4]^=1;assert(!xemu_libretro_kernel_idle(&cpu));
+            if(dispatch) {
+                setup(&cpu,true);cpu.env.eip+=positions[j];pending=1;assert(!xemu_libretro_kernel_idle(&cpu));
+                setup(&cpu,true);cpu.env.eip+=positions[j];pending_fault=true;assert(!xemu_libretro_kernel_idle(&cpu));
+            }
+        }
         setup(&cpu,dispatch);list+=4;assert(!xemu_libretro_kernel_idle(&cpu));
         setup(&cpu,dispatch);list_fault=true;assert(!xemu_libretro_kernel_idle(&cpu));
         setup(&cpu,dispatch);code_fault=true;assert(!xemu_libretro_kernel_idle(&cpu));
@@ -105,7 +114,7 @@ int main(void) {
     default_fallback=0;
     setup(&cpu,true);assert(xemu_libretro_kernel_idle(&cpu));assert(!reads && !copied_bytes && probes==3 && !rcu_depth);
     setup(&cpu,true);cpu.env.eip+=4;assert(xemu_libretro_kernel_idle(&cpu));assert(!reads && probes==3 && !rcu_depth);
-    setup(&cpu,false);cpu.env.eip+=2;assert(!xemu_libretro_kernel_idle(&cpu));assert(!rcu_depth);
+    setup(&cpu,false);cpu.env.eip+=2;assert(xemu_libretro_kernel_idle(&cpu));assert(!rcu_depth);
     for(unsigned kind=0;kind<4;kind++) {
         setup(&cpu,true);
         if(kind==0) force_fallback=true;

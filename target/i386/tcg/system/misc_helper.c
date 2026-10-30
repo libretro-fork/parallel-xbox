@@ -89,7 +89,8 @@ static bool lr_idle_read_word(CPUState *cpu, uint32_t addr, uint32_t *value)
 bool xemu_libretro_kernel_idle(CPUState *cpu)
 {
     CPUX86State *env = cpu_env(cpu);
-    static const unsigned positions[] = { 0, 1, 4 };
+    /* The interrupt-shadow TB can return at the second NOP. */
+    static const unsigned positions[] = { 0, 1, 2, 4 };
     uint32_t eip = env->eip, list, pending;
     unsigned i;
     const uint8_t *window;
@@ -99,9 +100,9 @@ bool xemu_libretro_kernel_idle(CPUState *cpu)
         eip < 0x80000004U || eip > 0x87ffffe4U) {
         return false;
     }
-    /* These three candidate windows overlap. Inspect their shared RAM
+    /* The candidate windows overlap. Inspect their shared RAM
      * directly when possible, retaining the original reads at page/region
-     * boundaries or on non-RAM mappings. Keep exactly the same exit positions. */
+     * boundaries or on non-RAM mappings. Both paths use the same positions. */
     window = lr_idle_ram_ptr(cpu, eip - 4, 31);
     for (i = 0; i < ARRAY_SIZE(positions); i++) {
         uint8_t bytes[27];
