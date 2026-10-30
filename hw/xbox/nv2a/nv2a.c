@@ -534,6 +534,7 @@ static int nv2a_post_load(void *opaque, int version_id)
     /* The switch registers come back with the snapshot; the subchannel they
      * were loaded for does not. */
     d->pgraph.ctx_switch_subchannel = -1;
+    pgraph_rebuild_inline_elements_bounds(&d->pgraph);
     retro_atomic_store_relaxed_int(&d->pgraph.flush_pending, 1);
     /* The compression flag follows the restored PFB registers. */
     pfb_update_zcomp(d);

@@ -342,6 +342,7 @@ typedef struct PGRAPHState {
     uint32_t inline_array[NV2A_MAX_BATCH_LENGTH];
 
     unsigned int inline_elements_length;
+    uint32_t inline_elements_min, inline_elements_max;
     uint32_t inline_elements[NV2A_MAX_BATCH_LENGTH];
 
     unsigned int inline_buffer_length;
@@ -658,6 +659,24 @@ void pgraph_get_clear_color(PGRAPHState *pg, float rgba[4]);
 void pgraph_get_clear_depth_stencil_value(PGRAPHState *pg, float *depth, int *stencil);
 
 /* Vertex */
+/* Derived from the canonical index list, never serialized. Called before
+ * appending, so the first indices replace bounds left by an older batch. */
+static inline void pgraph_update_inline_elements_bounds(PGRAPHState *pg,
+                                                         uint32_t low,
+                                                         uint32_t high)
+{
+    if (!pg->inline_elements_length) {
+        pg->inline_elements_min = low;
+        pg->inline_elements_max = high;
+    } else {
+        pg->inline_elements_min = MIN(pg->inline_elements_min, low);
+        pg->inline_elements_max = MAX(pg->inline_elements_max, high);
+    }
+}
+
+void pgraph_append_inline_elements_range(PGRAPHState *pg, uint32_t start,
+                                          unsigned int count);
+void pgraph_rebuild_inline_elements_bounds(PGRAPHState *pg);
 void pgraph_allocate_inline_buffer_vertices(PGRAPHState *pg, unsigned int attr);
 void pgraph_finish_inline_buffer_vertex(PGRAPHState *pg);
 void pgraph_reset_inline_buffers(PGRAPHState *pg);

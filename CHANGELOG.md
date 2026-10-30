@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Indexed draws track vertex bounds while accepting index commands instead of scanning the finished list in both renderers. Non-incrementing index packets are decoded in one dispatch with per-word tracing preserved. Bounds are rebuilt from legacy savestates; the state format, index order and GPU uploads are unchanged.
+
 - Vulkan can grow a clean vertex snapshot by appending only its new tail, keeping the prefix immutable for earlier GPU readers. The active arena tracks its last allocation without searching, and needed prefix pages are rechecked after downloads/settles. Dirty/invalidated, non-tail, out-of-space and unsafe non-coherent atom boundaries retain the existing copy path; arena capacity and VRAM allocation are unchanged.
 
 - Vulkan now checks bound texture and palette dirty pages before taking its unchanged-state bind fast path. CPU-written texture pixels can refresh on the next draw even when the game does not resend texture state; clean pages avoid content hashing.

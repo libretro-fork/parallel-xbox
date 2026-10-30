@@ -497,3 +497,9 @@ non-coherent host writes synchronize at atom granularity.
 At guest frames 1280/1300 the fixture samples two CPU-written texture/palette versions before a flip. A backend semaphore between the first draw and the second CPU write ensures that pushbuffer parsing alone cannot hide the old version. Frontend captures 1290/1310 must show white/green. The old Vulkan validation throttle showed stale black in the texture case; the palette case is a passing control. The dirty-page extraction test also requires CPU invalidation to reset stamps of already-dirty overlapping texture and palette views.
 
 The CPU-write GPU cases at frames 1280/1300 now leave texture sampling enabled after the first draw. After the backend semaphore and CPU rewrite, the second draw resends no texture, sampler or combiner state. This directly exercises the unchanged-state Vulkan bind fast path. The extracted fast-path test verifies clean-page reuse, same-frame dirty detection and validation-stamp reset, and preservation of dirty bits when bindings are disabled.
+
+`test-inline-index-bounds.py` compiles the actual 16/32-bit index packet
+handlers, mixed DRAW_ARRAYS expansion, derived bounds and NV2A post-load
+hook. An independent list walk checks order/bounds for 65,536 complementary packed
+endpoint pairs and 100,000 mixed operations, including partial packet
+consumption, tracing, capacity, wrapping ranges, reset and legacy loads.

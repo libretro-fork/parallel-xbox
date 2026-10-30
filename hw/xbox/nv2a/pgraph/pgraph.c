@@ -3163,10 +3163,7 @@ static void pgraph_expand_draw_arrays(NV2AState *d)
         pgraph_renderer(&d->pgraph)->ops.flush_draw(d);
         pgraph_reset_inline_buffers(pg);
     }
-    assert((pg->inline_elements_length + count) < NV2A_MAX_BATCH_LENGTH);
-    for (unsigned int i = 0; i < count; i++) {
-        pg->inline_elements[pg->inline_elements_length++] = start + i;
-    }
+    pgraph_append_inline_elements_range(pg, start, count);
 
     pgraph_reset_draw_arrays(pg);
 }
@@ -3178,29 +3175,75 @@ void pgraph_check_within_begin_end_block(PGRAPHState *pg)
     }
 }
 
-DEF_METHOD_NON_INC(NV097, ARRAY_ELEMENT16)
+/* Consume a non-incrementing packet in one dispatch, preserving word
+ * tracing and endian-safe loads. Fold bounds while indices are in registers
+ * instead of rereading the completed list in either renderer. */
+DEF_METHOD(NV097, ARRAY_ELEMENT16)
 {
+    if (!inc && !num_words_available) {
+        *num_words_consumed = 0;
+        return;
+    }
     pgraph_check_within_begin_end_block(pg);
-
     if (pg->draw_arrays_length) {
         pgraph_expand_draw_arrays(d);
     }
-
     assert(pg->inline_elements_length + 1 < NV2A_MAX_BATCH_LENGTH);
-    pg->inline_elements[pg->inline_elements_length++] = parameter & 0xFFFF;
-    pg->inline_elements[pg->inline_elements_length++] = parameter >> 16;
+    size_t count = inc ? 1 : MIN(num_words_available,
+        (NV2A_MAX_BATCH_LENGTH - pg->inline_elements_length) / 2);
+    uint32_t *out = pg->inline_elements + pg->inline_elements_length;
+    uint32_t low = UINT32_MAX, high = 0;
+    for (size_t i = 0; i < count; i++) {
+        uint32_t value = (inc || !i) ? parameter : ldl_le_p(parameters + i);
+        if (i) {
+            pgraph_method_log(subchannel, NV_KELVIN_PRIMITIVE, method, value);
+        }
+        uint32_t a = value & 0xffff, b = value >> 16;
+        out[2 * i] = a;
+        out[2 * i + 1] = b;
+        low = MIN(low, MIN(a, b));
+        high = MAX(high, MAX(a, b));
+    }
+    if (count) {
+        pgraph_update_inline_elements_bounds(pg, low, high);
+        pg->inline_elements_length += 2 * count;
+    }
+    if (!inc) {
+        *num_words_consumed = count;
+    }
 }
 
-DEF_METHOD_NON_INC(NV097, ARRAY_ELEMENT32)
+DEF_METHOD(NV097, ARRAY_ELEMENT32)
 {
+    if (!inc && !num_words_available) {
+        *num_words_consumed = 0;
+        return;
+    }
     pgraph_check_within_begin_end_block(pg);
-
     if (pg->draw_arrays_length) {
         pgraph_expand_draw_arrays(d);
     }
-
     assert(pg->inline_elements_length < NV2A_MAX_BATCH_LENGTH);
-    pg->inline_elements[pg->inline_elements_length++] = parameter;
+    size_t count = inc ? 1 : MIN(num_words_available,
+        NV2A_MAX_BATCH_LENGTH - pg->inline_elements_length);
+    uint32_t *out = pg->inline_elements + pg->inline_elements_length;
+    uint32_t low = UINT32_MAX, high = 0;
+    for (size_t i = 0; i < count; i++) {
+        uint32_t value = (inc || !i) ? parameter : ldl_le_p(parameters + i);
+        if (i) {
+            pgraph_method_log(subchannel, NV_KELVIN_PRIMITIVE, method, value);
+        }
+        out[i] = value;
+        low = MIN(low, value);
+        high = MAX(high, value);
+    }
+    if (count) {
+        pgraph_update_inline_elements_bounds(pg, low, high);
+        pg->inline_elements_length += count;
+    }
+    if (!inc) {
+        *num_words_consumed = count;
+    }
 }
 
 DEF_METHOD(NV097, DRAW_ARRAYS)
@@ -3216,12 +3259,8 @@ DEF_METHOD(NV097, DRAW_ARRAYS)
          * NV2A_MAX_BATCH_LENGTH (which must be larger to accommodate
          * NV097_INLINE_ARRAY anyway)
          */
-        assert((pg->inline_elements_length + count) < NV2A_MAX_BATCH_LENGTH);
         assert(!pg->draw_arrays_prevent_connect);
-
-        for (unsigned int i = 0; i < count; i++) {
-            pg->inline_elements[pg->inline_elements_length++] = start + i;
-        }
+        pgraph_append_inline_elements_range(pg, start, count);
         return;
     }
 

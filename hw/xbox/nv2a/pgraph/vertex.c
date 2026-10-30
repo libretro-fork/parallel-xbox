@@ -134,9 +134,43 @@ void pgraph_finish_inline_buffer_vertex(PGRAPHState *pg)
     pg->inline_buffer_length++;
 }
 
+/* DRAW_ARRAYS mixed with explicit indices: endpoints provide the bounds
+ * while generating the required index list, without scanning it later. */
+void pgraph_append_inline_elements_range(PGRAPHState *pg, uint32_t start,
+                                          unsigned int count)
+{
+    assert((size_t)pg->inline_elements_length + count < NV2A_MAX_BATCH_LENGTH);
+    if (!count) {
+        return;
+    }
+    uint32_t end = start + count - 1;
+    pgraph_update_inline_elements_bounds(pg, end < start ? 0 : start,
+                                         end < start ? UINT32_MAX : end);
+    uint32_t *out = pg->inline_elements + pg->inline_elements_length;
+    for (unsigned int i = 0; i < count; i++) {
+        out[i] = start + i;
+    }
+    pg->inline_elements_length += count;
+}
+
+/* Legacy states contain only the canonical list. Rebuild once on load,
+ * before a restored partial primitive can be flushed or extended. */
+void pgraph_rebuild_inline_elements_bounds(PGRAPHState *pg)
+{
+    uint32_t low = UINT32_MAX, high = 0;
+    for (unsigned int i = 0; i < pg->inline_elements_length; i++) {
+        low = MIN(low, pg->inline_elements[i]);
+        high = MAX(high, pg->inline_elements[i]);
+    }
+    pg->inline_elements_min = low;
+    pg->inline_elements_max = high;
+}
+
 void pgraph_reset_inline_buffers(PGRAPHState *pg)
 {
     pg->inline_elements_length = 0;
+    pg->inline_elements_min = UINT32_MAX;
+    pg->inline_elements_max = 0;
     pg->inline_array_length = 0;
     pg->inline_buffer_length = 0;
     pgraph_reset_draw_arrays(pg);
