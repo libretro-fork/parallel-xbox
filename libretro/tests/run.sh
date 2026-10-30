@@ -381,8 +381,9 @@ for api in OpenGL Vulkan; do
   for scale in 1 2 4; do
     set +e
     timeout 300 $h "$(path "$core")" "$(path "$work/sysg")" $vp $o \
-      --opt xemu_surface_scale=$scale --frames 760 --strict \
+      --opt xemu_surface_scale=$scale --frames 800 --strict \
       --pixel 690 --pixel 710 --pixel 730 --pixel 750 \
+      --pixel 770 --pixel 790 \
       --peek 0x300008 >"$work/gpu_texture_alias.txt"
     r=$?
     set -e
@@ -390,12 +391,31 @@ for api in OpenGL Vulkan; do
     [ "$r" = 0 ] || { echo "FAIL: $api texture alias ${scale}x exited $r"; exit 1; }
     for want in "pixel_690=0xff0000" "pixel_710=0x000000" \
                 "pixel_730=0xffffff" "pixel_750=0xffffff" \
+                "pixel_770=0x001cff" "pixel_790=0xffe300" \
                 "peek_0x300008=0x00000000"; do
       grep -q "^$want$" "$work/gpu_texture_alias.txt" || {
         echo "FAIL: $api texture alias ${scale}x: $want"; exit 1; }
     done
   done
 done
+
+# Restore an earlier alias snapshot after a different GPU source redraw.
+set +e
+timeout 300 $h "$(path "$core")" "$(path "$work/sysg")" $vp --vulkan \
+  --opt xemu_renderer=vulkan --frames 820 --strict --save 705 --load 785 \
+  --verify-load --pixel 710 --pixel 770 --pixel 790 --pixel 810 \
+  >"$work/gpu_texture_alias_state.txt"
+r=$?
+set -e
+if [ "$r" = 0 ]; then
+  for want in "pixel_710=0x000000" "pixel_770=0x001cff" \
+              "pixel_790=0x000000" "pixel_810=0xffffff"; do
+    grep -q "^$want$" "$work/gpu_texture_alias_state.txt" || {
+      echo "FAIL: Vulkan texture alias state: $want"; exit 1; }
+  done
+elif [ "$r" != 3 ]; then
+  echo "FAIL: Vulkan texture alias state exited $r"; exit 1
+fi
 
 # A 4x capture exceeds the old fixed 1920x1080 readback allocation. A
 # timing-only run at the same size must not allocate capture buffers at all.

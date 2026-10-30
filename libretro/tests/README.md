@@ -1,12 +1,24 @@
 # The core's tests
 
-The GPU ROM's texture-alias phase (frames 680 through 750) samples a red
+`python libretro/tests/test-texture-reinterpret.py CHECKOUT [CC]` compiles
+the production GPU-alias eligibility gate and checks format/layout exclusions,
+overflow boundaries, transfer-buffer capacity, native scratch availability
+and dirty active/parked overlaps under the undefined-behavior sanitizer.
+The GPU texture-alias phase also redraws the source blue and checks both
+RGB565 halfwords (`001cff` and `ffe300`) at frames 770/790, covering channel
+order and packed bit fields beyond all-zero/all-one texels.
+
+The GPU ROM's texture-alias phase (frames 680 through 790) samples a red
 GPU-produced 32x16 ARGB surface directly and through an incompatible 64x16
 RGB565 view with the same pitch. Red's little-endian words become black and
 white texels in the narrow view. A later GPU redraw must refresh the cached
 aliased texture. The source RAM starts blue, so stale-RAM sampling cannot pass.
 This phase initializes its transform and window-clip state explicitly and
 exercises both compatible GPU reuse and the incompatible readback/upload path.
+Vulkan uses a device-buffer reinterpretation for the supported live ARGB-to-
+RGB565 layout; the fallback remains covered when the source has aged out.
+The suite also restores an earlier alias state after a differently colored
+GPU redraw and checks both the restored picture and subsequent sampling.
 
 Vulkan captures allocate mapped readback buffers lazily per sync slot and
 grow them to the actual output dimensions. Requested captures fail explicitly

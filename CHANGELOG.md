@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Vulkan can reinterpret a live, tightly packed ARGB surface as a twice-wide RGB565 texture entirely on the GPU. A device-buffer transfer preserves the original bytes; at higher scales a nearest native-size GPU copy comes first. Other layouts, competing dirty views and unavailable transfer storage retain the RAM fallback. Texture snapshots and redraw invalidation are preserved.
+
 - The GPU test ROM now checks compatible and incompatible render-to-texture views, including reinterpretation of ARGB bytes as RGB565 and refreshing an aliased texture after a GPU redraw.
 
 - The Vulkan test harness now captures outputs larger than 1920x1080 instead of silently skipping their pixel/hash checks. Readback buffers grow on demand; timing-only runs allocate none, and capture failures are explicit.

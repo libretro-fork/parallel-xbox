@@ -739,17 +739,15 @@ static bool format_blit_supported(PGRAPHVkState *r, VkFormat format)
     }
     if (!ok) {
         fprintf(stderr, "vk: format %d cannot be blitted on this driver,"
-                " native depth path off\n", format);
+                " native-size transfer path off\n", format);
     }
     return ok;
 }
 
-/* A zeta surface sampled as a texture is served at native 1x, as on the
- * hardware and GL: a NEAREST blit takes each native texel's sub-sample at
- * its pixel centre (source texel floor((x + 0.5) * scale)) into a native
- * scratch image, kept here per format and size, and only that goes through
- * the copy/pack/upload chain. */
-static VkImage znative_get_scratch(PGRAPHState *pg, VkFormat format,
+/* Native-size transfer scratch, shared by depth sampling and packed color
+ * aliases. NEAREST takes each native texel's centre sub-sample (source texel
+ * floor((x + 0.5) * scale)) before the copy/pack chain. Kept per format/size. */
+static VkImage native_get_scratch(PGRAPHState *pg, VkFormat format,
                                    unsigned int width, unsigned int height)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
@@ -834,7 +832,7 @@ static void copy_zeta_surface_to_texture(PGRAPHState *pg, SurfaceBinding *surfac
      * (native when the scratch blit is in play, scaled otherwise). */
     VkImage znative_scratch = VK_NULL_HANDLE;
     if (pg->surface_scale_factor > 1) {
-        znative_scratch = znative_get_scratch(pg, surface->host_fmt.vk_format,
+        znative_scratch = native_get_scratch(pg, surface->host_fmt.vk_format,
                                               surface->width, surface->height);
     }
     unsigned int cw = znative_scratch ? surface->width : scaled_width;
@@ -1170,12 +1168,98 @@ static void record_surface_copy(PGRAPHState *pg, VkCommandBuffer cmd,
                          VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
 }
 
+/* A tight ARGB row is the same bytes as a twice-as-wide RGB565 row. Transfer
+ * through a device buffer to reinterpret those bytes without host readback,
+ * arithmetic conversion or a CPU upload. Keep the ordinary CoW snapshot. */
+static void copy_argb_to_rgb565_texture(PGRAPHState *pg, SurfaceBinding *surface,
+                                       TextureBinding *texture)
+{
+    PGRAPHVkState *r = pg->vk_renderer_state;
+    const TextureShape *shape = &texture->key.state;
+    VkBuffer buffer = r->storage_buffers[BUFFER_COMPUTE_DST].buffer;
+    VkImage scratch = pg->surface_scale_factor > 1 ?
+        native_get_scratch(pg, surface->host_fmt.vk_format,
+                            surface->width, surface->height) : VK_NULL_HANDLE;
+    assert(pg->surface_scale_factor == 1 || scratch != VK_NULL_HANDLE);
+    VkCommandBuffer cmd = pgraph_vk_begin_nondraw_commands(pg);
+    VkBufferMemoryBarrier storage = {
+        .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
+        .srcAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT,
+        .dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
+        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .buffer = buffer, .size = VK_WHOLE_SIZE,
+    };
+    /* Also orders reuse of the native scratch after earlier transfer reads. */
+    vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+        VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 1, &storage, 0, NULL);
+    pgraph_vk_transition_image_layout(pg, cmd, surface->image,
+        surface->host_fmt.vk_format, pgraph_vk_surface_base_layout(surface),
+        VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+    pgraph_vk_surface_left_shader_read(pg, surface);
+    VkImage source = surface->image;
+    if (scratch) {
+        pgraph_vk_transition_image_layout(pg, cmd, scratch,
+            surface->host_fmt.vk_format, VK_IMAGE_LAYOUT_UNDEFINED,
+            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+        VkImageBlit region = {
+            .srcSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 },
+            .dstSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 },
+            .srcOffsets[1] = { surface->width * pg->surface_scale_factor,
+                               surface->height * pg->surface_scale_factor, 1 },
+            .dstOffsets[1] = { surface->width, surface->height, 1 },
+        };
+        vkCmdBlitImage(cmd, source, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+            scratch, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region,
+            VK_FILTER_NEAREST);
+        pgraph_vk_transition_image_layout(pg, cmd, scratch,
+            surface->host_fmt.vk_format, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+            VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+        source = scratch;
+    }
+    VkBufferImageCopy region = {
+        .imageSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 },
+        .imageExtent = { surface->width, surface->height, 1 },
+    };
+    vkCmdCopyImageToBuffer(cmd, source, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                           buffer, 1, &region);
+    storage.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    storage.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+    vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
+        VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 1, &storage, 0, NULL);
+    pgraph_vk_transition_image_layout(pg, cmd, texture->image,
+        VK_FORMAT_R5G6B5_UNORM_PACK16, texture->current_layout,
+        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+    region.imageExtent.width = shape->width;
+    region.imageExtent.height = shape->height;
+    vkCmdCopyBufferToImage(cmd, buffer, texture->image,
+                           VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+    storage.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+    storage.dstAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
+    vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
+        VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 0, NULL, 1, &storage, 0, NULL);
+    pgraph_vk_transition_image_layout(pg, cmd, surface->image,
+        surface->host_fmt.vk_format, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+    pgraph_vk_transition_image_layout(pg, cmd, texture->image,
+        VK_FORMAT_R5G6B5_UNORM_PACK16, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    texture->current_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    texture->draw_time = surface->draw_time;
+    nv2a_profile_inc_counter(NV2A_PROF_SURF_TO_TEX_REINTERPRET);
+    pgraph_vk_end_nondraw_commands(pg, cmd);
+}
+
 // FIXME: Should be able to skip the copy and sample the original surface image
 static void copy_surface_to_texture(PGRAPHState *pg, SurfaceBinding *surface,
                                     TextureBinding *texture)
 {
     if (!surface->color) {
         copy_zeta_surface_to_texture(pg, surface, texture);
+        return;
+    }
+    if (texture->key.byte_reinterpret) {
+        copy_argb_to_rgb565_texture(pg, surface, texture);
         return;
     }
 
@@ -1284,6 +1368,48 @@ static bool check_surface_to_texture_compatiblity(const SurfaceBinding *surface,
     VkColorFormatInfo tex_vkf = kelvin_color_format_vk_map[shape->color_format];
     return tex_vkf.vk_format &&
            surface->host_fmt.host_bytes_per_pixel == vk_format_texel_size(tex_vkf.vk_format);
+}
+
+static bool can_reinterpret_argb_as_rgb565(PGRAPHState *pg,
+                                           const SurfaceBinding *surface,
+                                           const TextureShape *shape)
+{
+    PGRAPHVkState *r = pg->vk_renderer_state;
+    if (!surface->color || surface->swizzle || surface->native_resolution ||
+        surface->shape.color_format != NV097_SET_SURFACE_FORMAT_COLOR_LE_A8R8G8B8 ||
+        surface->shape.anti_aliasing != NV097_SET_SURFACE_FORMAT_ANTI_ALIASING_CENTER_1 ||
+        surface->host_fmt.vk_format != VK_FORMAT_B8G8R8A8_UNORM ||
+        shape->color_format != NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_R5G6B5 ||
+        shape->dimensionality != 2 || shape->cubemap || shape->border ||
+        shape->levels != 1 || !surface->width || !surface->height ||
+        (uint64_t)shape->width != (uint64_t)surface->width * 2 ||
+        shape->height != surface->height ||
+        (uint64_t)surface->pitch != (uint64_t)surface->width * 4 ||
+        shape->pitch != surface->pitch ||
+        r->storage_buffers[BUFFER_COMPUTE_DST].buffer_size <
+            (uint64_t)surface->pitch * surface->height) {
+        return false;
+    }
+    /* A single image must own the whole range. Do not bypass the ordered
+     * RAM materialization when another live/parked dirty view overlaps it. */
+    SurfaceBinding *other;
+    uint64_t start = surface->vram_addr, end = start + surface->size;
+    QTAILQ_FOREACH(other, &r->surfaces, entry) {
+        if (other != surface && other->draw_dirty &&
+            other->vram_addr < end && start < other->vram_addr + other->size) {
+            return false;
+        }
+    }
+    QTAILQ_FOREACH(other, &r->invalid_surfaces, entry) {
+        if (other != surface && (other->writeback_owed || other->draw_dirty) &&
+            other->vram_addr < end &&
+            start < other->vram_addr + other->size) {
+            return false;
+        }
+    }
+    return pg->surface_scale_factor == 1 ||
+        native_get_scratch(pg, surface->host_fmt.vk_format,
+                            surface->width, surface->height) != VK_NULL_HANDLE;
 }
 
 /* Texture images retired by the CoW rule below or by cache eviction, and
@@ -1910,6 +2036,7 @@ static void create_texture(PGRAPHState *pg, int texture_idx)
     bool possibly_dirty_checked = false;
     bool surface_to_texture = false;
     bool surface_to_texture_cube = false;
+    bool surface_to_texture_bytes = false;
     SurfaceBinding *cube_faces[6] = { 0 };
 
     // Check active surfaces to see if this texture was a render target
@@ -1917,6 +2044,11 @@ static void create_texture(PGRAPHState *pg, int texture_idx)
     if (surface && state.levels == 1) {
         surface_to_texture =
             check_surface_to_texture_compatiblity(surface, &state);
+        if (!surface_to_texture) {
+            surface_to_texture_bytes =
+                can_reinterpret_argb_as_rgb565(pg, surface, &state);
+            surface_to_texture |= surface_to_texture_bytes;
+        }
 
         if (!surface_to_texture && surface->color) {
             trace_nv2a_pgraph_surface_texture_compat_failed(
@@ -1973,19 +2105,20 @@ static void create_texture(PGRAPHState *pg, int texture_idx)
      * slot, once taken, stays. */
     bool znative_zeta = surface_to_texture && !surface->color &&
                         pg->surface_scale_factor > 1 &&
-                        znative_get_scratch(pg, surface->host_fmt.vk_format,
+                        native_get_scratch(pg, surface->host_fmt.vk_format,
                                             surface->width, surface->height) !=
                             VK_NULL_HANDLE;
     if ((surface_to_texture || surface_to_texture_cube) &&
-        pg->surface_scale_factor > 1 && !znative_zeta) {
+        pg->surface_scale_factor > 1 && !znative_zeta && !surface_to_texture_bytes) {
         key.scale = pg->surface_scale_factor;
     }
+    key.byte_reinterpret = surface_to_texture_bytes;
 
     /* The same eligibility applies to a cache hit: a texture first made
      * from RAM or for feedback need not keep a private copy after its
      * surface becomes available for in-place sampling. */
     bool s2t_borrow =
-        surface_to_texture &&
+        surface_to_texture && !surface_to_texture_bytes &&
         surface != r->color_binding &&
         state.dimensionality == 2 && !state.cubemap &&
         texture_vkf(r, state.color_format).vk_format ==
@@ -2147,7 +2280,8 @@ static void create_texture(PGRAPHState *pg, int texture_idx)
         .flags = (state.cubemap ? VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT : 0),
     };
 
-    if ((surface_to_texture || surface_to_texture_cube) && !znative_zeta) {
+    if ((surface_to_texture || surface_to_texture_cube) &&
+        !znative_zeta && !surface_to_texture_bytes) {
         pgraph_apply_scaling_factor(pg, &image_create_info.extent.width,
                                         &image_create_info.extent.height);
     }

@@ -83,6 +83,8 @@
  *   frames 680/700/720/740: matching and incompatible texture views of a
  *              GPU-produced surface: red ARGB, black/white RGB565 words,
  *              then a GPU redraw that must invalidate the aliased texture.
+ *   frames 760/780: blue's nontrivial RGB565 words, 00FF and FF00, sampled
+ *              as 001CFF and FFE300 to catch channel-order mistakes.
  * The larger command ring keeps this extended scenario before wraparound.
  *
  * The frame count is at GPU_FRAMES in RAM, GPU_STATUS says how far the
@@ -926,6 +928,8 @@ void gpu_main(void)
         }
         if (frame == 720) texture_alias(0x11, 64, 0x3fc00000u, 0);
         if (frame == 740) texture_alias(0x11, 64, 0x3f000000u, 0xffffffffu);
+        if (frame == 760) texture_alias(0x11, 64, 0x3f000000u, 0xff0000ffu);
+        if (frame == 780) texture_alias(0x11, 64, 0x3fc00000u, 0);
         method(NV097_FLIP_INCREMENT_WRITE, 0);
         kick();
         if (frame >= 100 && frame < 125) {
