@@ -422,9 +422,6 @@ void usb_packet_addbuf(USBPacket *p, void *ptr, size_t len);
 int usb_packet_map(USBPacket *p, QEMUSGList *sgl);
 void usb_packet_unmap(USBPacket *p, QEMUSGList *sgl);
 void usb_packet_copy(USBPacket *p, void *ptr, size_t bytes);
-void usb_packet_skip(USBPacket *p, size_t bytes);
-size_t usb_packet_size(USBPacket *p);
-void usb_packet_cleanup(USBPacket *p);
 
 static inline bool usb_packet_is_inflight(USBPacket *p)
 {
@@ -435,23 +432,16 @@ static inline bool usb_packet_is_inflight(USBPacket *p)
 USBDevice *usb_find_device(USBPort *port, uint8_t addr);
 
 void usb_handle_packet(USBDevice *dev, USBPacket *p);
-void usb_packet_complete(USBDevice *dev, USBPacket *p);
-void usb_packet_complete_one(USBDevice *dev, USBPacket *p);
 void usb_cancel_packet(USBPacket * p);
 
 void usb_ep_init(USBDevice *dev);
 void usb_ep_reset(USBDevice *dev);
-void usb_ep_dump(USBDevice *dev);
 struct USBEndpoint *usb_ep_get(USBDevice *dev, int pid, int ep);
-uint8_t usb_ep_get_type(USBDevice *dev, int pid, int ep);
 void usb_ep_set_type(USBDevice *dev, int pid, int ep, uint8_t type);
 void usb_ep_set_ifnum(USBDevice *dev, int pid, int ep, uint8_t ifnum);
 void usb_ep_set_max_packet_size(USBDevice *dev, int pid, int ep,
                                 uint16_t raw);
 void usb_ep_set_max_streams(USBDevice *dev, int pid, int ep, uint8_t raw);
-void usb_ep_set_halted(USBDevice *dev, int pid, int ep, bool halted);
-USBPacket *usb_ep_find_packet_by_id(USBDevice *dev, int pid, int ep,
-                                    uint64_t id);
 
 void usb_ep_combine_input_packets(USBEndpoint *ep);
 void usb_combined_input_packet_complete(USBDevice *dev, USBPacket *p);
@@ -463,7 +453,6 @@ void usb_detach(USBPort *port);
 void usb_port_reset(USBPort *port);
 void usb_device_reset(USBDevice *dev);
 void usb_wakeup(USBEndpoint *ep, unsigned int stream);
-void usb_generic_async_ctrl_complete(USBDevice *s, USBPacket *p);
 
 /* usb-linux.c */
 void hmp_info_usbhost(Monitor *mon, const QDict *qdict);
@@ -498,8 +487,6 @@ struct USBBusOps {
 void usb_bus_new(USBBus *bus, size_t bus_size,
                  USBBusOps *ops, DeviceState *host);
 void usb_bus_release(USBBus *bus);
-void usb_legacy_register(const char *typename, const char *usbdevice_name,
-                         USBDevice *(*usbdevice_init)(void));
 USBDevice *usbdevice_create(const char *cmdline);
 void usb_register_port(USBBus *bus, USBPort *port, void *opaque, int index,
                        USBPortOps *ops, int speedmask);
@@ -549,10 +536,6 @@ void usb_device_set_interface(USBDevice *dev, int interface,
 void usb_device_flush_ep_queue(USBDevice *dev, USBEndpoint *ep);
 
 void usb_device_ep_stopped(USBDevice *dev, USBEndpoint *ep);
-
-int usb_device_alloc_streams(USBDevice *dev, USBEndpoint **eps, int nr_eps,
-                             int streams);
-void usb_device_free_streams(USBDevice *dev, USBEndpoint **eps, int nr_eps);
 
 const char *usb_device_get_product_desc(USBDevice *dev);
 

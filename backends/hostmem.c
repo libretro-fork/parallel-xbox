@@ -36,16 +36,6 @@ QEMU_BUILD_BUG_ON(HOST_MEM_POLICY_BIND != MPOL_BIND);
 QEMU_BUILD_BUG_ON(HOST_MEM_POLICY_INTERLEAVE != MPOL_INTERLEAVE);
 #endif
 
-char *
-host_memory_backend_get_name(HostMemoryBackend *backend)
-{
-    if (!backend->use_canonical_path) {
-        return g_strdup(object_get_canonical_path_component(OBJECT(backend)));
-    }
-
-    return object_get_canonical_path(OBJECT(backend));
-}
-
 static void
 host_memory_backend_get_size(Object *obj, Visitor *v, const char *name,
                              void *opaque, Error **errp)
@@ -320,13 +310,6 @@ void host_memory_backend_set_mapped(HostMemoryBackend *backend, bool mapped)
 bool host_memory_backend_is_mapped(HostMemoryBackend *backend)
 {
     return backend->is_mapped;
-}
-
-size_t host_memory_backend_pagesize(HostMemoryBackend *memdev)
-{
-    size_t pagesize = qemu_ram_pagesize(memdev->mr.ram_block);
-    g_assert(pagesize >= qemu_real_host_page_size());
-    return pagesize;
 }
 
 static void

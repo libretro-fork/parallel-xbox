@@ -210,11 +210,6 @@ static void smbus_device_class_init(ObjectClass *klass, const void *data)
     sc->send = smbus_i2c_send;
 }
 
-bool smbus_vmstate_needed(SMBusDevice *dev)
-{
-    return dev->mode != SMBUS_IDLE;
-}
-
 const VMStateDescription vmstate_smbus_device = {
     .name = TYPE_SMBUS_DEVICE,
     .version_id = 1,

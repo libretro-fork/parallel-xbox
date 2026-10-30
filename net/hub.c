@@ -199,30 +199,6 @@ NetClientState *net_hub_add_port(int hub_id, const char *name,
     return &port->nc;
 }
 
-/**
- * Get the hub id that a client is connected to
- *
- * @id: Pointer for hub id output, may be NULL
- */
-int net_hub_id_for_client(NetClientState *nc, int *id)
-{
-    NetHubPort *port;
-
-    if (nc->info->type == NET_CLIENT_DRIVER_HUBPORT) {
-        port = DO_UPCAST(NetHubPort, nc, nc);
-    } else if (nc->peer != NULL && nc->peer->info->type ==
-            NET_CLIENT_DRIVER_HUBPORT) {
-        port = DO_UPCAST(NetHubPort, nc, nc->peer);
-    } else {
-        return -ENOENT;
-    }
-
-    if (id) {
-        *id = port->hub->id;
-    }
-    return 0;
-}
-
 int net_init_hubport(const Netdev *netdev, const char *name,
                      NetClientState *peer, Error **errp)
 {

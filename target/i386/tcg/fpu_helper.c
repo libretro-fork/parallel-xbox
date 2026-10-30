@@ -3050,12 +3050,6 @@ void helper_xsave(CPUX86State *env, target_ulong ptr, uint64_t rfbm)
     do_xsave(env, ptr, rfbm, get_xinuse(env), rfbm, GETPC());
 }
 
-void helper_xsaveopt(CPUX86State *env, target_ulong ptr, uint64_t rfbm)
-{
-    uint64_t inuse = get_xinuse(env);
-    do_xsave(env, ptr, rfbm, inuse, inuse, GETPC());
-}
-
 static void do_xrstor_fpu(X86Access *ac, target_ulong ptr)
 {
     CPUX86State *env = ac->env;

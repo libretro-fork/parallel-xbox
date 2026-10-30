@@ -384,15 +384,6 @@ static void apic_set_tpr(APICCommonState *s, uint8_t val)
     }
 }
 
-int apic_get_highest_priority_irr(APICCommonState *s)
-{
-    if (!s) {
-        /* no interrupts */
-        return -1;
-    }
-    return get_highest_priority_int(s->irr);
-}
-
 static uint8_t apic_get_tpr(APICCommonState *s)
 {
     apic_sync_vapic(s, SYNC_FROM_VAPIC);

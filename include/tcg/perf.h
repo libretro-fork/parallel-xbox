@@ -21,8 +21,6 @@ void perf_report_prologue(const void *start, size_t size);
 void perf_report_code(uint64_t guest_pc, TranslationBlock *tb,
                       const void *start);
 
-/* Stop writing perf-<pid>.map and/or jit-<pid>.dump. */
-void perf_exit(void);
 #else
 static inline void perf_enable_perfmap(void)
 {

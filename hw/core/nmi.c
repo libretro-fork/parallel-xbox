@@ -57,22 +57,6 @@ static void nmi_children(Object *o, struct do_nmi_s *ns)
     object_child_foreach(o, do_nmi, ns);
 }
 
-void nmi_monitor_handle(int cpu_index, Error **errp)
-{
-    struct do_nmi_s ns = {
-        .cpu_index = cpu_index,
-        .err = NULL,
-        .handled = false
-    };
-
-    nmi_children(object_get_root(), &ns);
-    if (ns.handled) {
-        error_propagate(errp, ns.err);
-    } else {
-        error_setg(errp, "machine does not provide NMIs");
-    }
-}
-
 static const TypeInfo nmi_info = {
     .name          = TYPE_NMI,
     .parent        = TYPE_INTERFACE,

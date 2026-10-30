@@ -203,11 +203,6 @@ void tlb_flush_by_mmuidx_all_cpus_synced(CPUState *cpu, MMUIdxMap idxmap);
 void tlb_flush_page_bits_by_mmuidx(CPUState *cpu, vaddr addr,
                                    MMUIdxMap idxmap, unsigned bits);
 
-/* Similarly, with broadcast and syncing. */
-void tlb_flush_page_bits_by_mmuidx_all_cpus_synced(CPUState *cpu, vaddr addr,
-                                                   MMUIdxMap idxmap,
-                                                   unsigned bits);
-
 /**
  * tlb_flush_range_by_mmuidx
  * @cpu: CPU whose TLB should be flushed
@@ -223,12 +218,6 @@ void tlb_flush_range_by_mmuidx(CPUState *cpu, vaddr addr,
                                vaddr len, MMUIdxMap idxmap,
                                unsigned bits);
 
-/* Similarly, with broadcast and syncing. */
-void tlb_flush_range_by_mmuidx_all_cpus_synced(CPUState *cpu,
-                                               vaddr addr,
-                                               vaddr len,
-                                               MMUIdxMap idxmap,
-                                               unsigned bits);
 #else
 static inline void tlb_flush_page(CPUState *cpu, vaddr addr)
 {

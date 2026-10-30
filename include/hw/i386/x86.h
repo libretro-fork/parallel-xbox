@@ -123,11 +123,6 @@ void x86_cpu_unplug_request_cb(HotplugHandler *hotplug_dev,
 void x86_cpu_unplug_cb(HotplugHandler *hotplug_dev,
                        DeviceState *dev, Error **errp);
 
-void x86_isa_bios_init(MemoryRegion *isa_bios, MemoryRegion *isa_memory,
-                       MemoryRegion *bios, bool read_only);
-void x86_bios_rom_init(X86MachineState *x86ms, const char *default_firmware,
-                       MemoryRegion *rom_memory, bool isapc_ram_fw);
-
 void x86_load_linux(X86MachineState *x86ms,
                     FWCfgState *fw_cfg,
                     int acpi_data_size,
@@ -148,10 +143,5 @@ typedef struct GSIState {
 
 qemu_irq x86_allocate_cpu_irq(void);
 void gsi_handler(void *opaque, int n, int level);
-void ioapic_init_gsi(GSIState *gsi_state, Object *parent);
-DeviceState *ioapic_init_secondary(GSIState *gsi_state);
-
-/* pc_sysfw.c */
-void x86_firmware_configure(hwaddr gpa, void *ptr, int size);
 
 #endif

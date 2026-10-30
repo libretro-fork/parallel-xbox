@@ -1132,14 +1132,6 @@ static inline bool cpu_handle_interrupt(CPUState *cpu,
 bool xemu_cpu_pace_on;
 int64_t xemu_cpu_pace_stall_ns;
 
-void xemu_cpu_pace_sync(bool want)
-{
-    if (want != qatomic_read(&xemu_cpu_pace_on) && first_cpu) {
-        qatomic_set(&xemu_cpu_pace_on, want);
-        queue_tb_flush(first_cpu);
-    }
-}
-
 static void xemu_cpu_pace_refill(CPUState *cpu)
 {
     /* `due`: when the real CPU would be where the guest is. `credit`: how

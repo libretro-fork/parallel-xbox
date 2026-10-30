@@ -1418,104 +1418,6 @@ bool physical_memory_snapshot_get_dirty(DirtyBitmapSnapshot *snap,
     return false;
 }
 
-uint64_t physical_memory_set_dirty_lebitmap(unsigned long *bitmap,
-                                                ram_addr_t start,
-                                                ram_addr_t pages)
-{
-    unsigned long i, j;
-    unsigned long page_number, c, nbits;
-    hwaddr addr;
-    ram_addr_t ram_addr;
-    uint64_t num_dirty = 0;
-    unsigned long len = (pages + HOST_LONG_BITS - 1) / HOST_LONG_BITS;
-    unsigned long hpratio = qemu_real_host_page_size() / TARGET_PAGE_SIZE;
-    unsigned long page = BIT_WORD(start >> TARGET_PAGE_BITS);
-
-    /* start address is aligned at the start of a word? */
-    if ((((page * BITS_PER_LONG) << TARGET_PAGE_BITS) == start) &&
-        (hpratio == 1)) {
-        unsigned long **blocks[DIRTY_MEMORY_NUM];
-        unsigned long idx;
-        unsigned long offset;
-        long k;
-        long nr = BITS_TO_LONGS(pages);
-
-        idx = (start >> TARGET_PAGE_BITS) / DIRTY_MEMORY_BLOCK_SIZE;
-        offset = BIT_WORD((start >> TARGET_PAGE_BITS) %
-                          DIRTY_MEMORY_BLOCK_SIZE);
-
-        WITH_RCU_READ_LOCK_GUARD() {
-            for (i = 0; i < DIRTY_MEMORY_NUM; i++) {
-                blocks[i] =
-                    qatomic_rcu_read(&ram_list.dirty_memory[i])->blocks;
-            }
-
-            for (k = 0; k < nr; k++) {
-                if (bitmap[k]) {
-                    unsigned long temp = leul_to_cpu(bitmap[k]);
-
-                    nbits = ctpopl(temp);
-                    qatomic_or(&blocks[DIRTY_MEMORY_VGA][idx][offset], temp);
-                    qatomic_or(&blocks[DIRTY_MEMORY_NV2A][idx][offset], temp);
-                    qatomic_or(&blocks[DIRTY_MEMORY_NV2A_TEX][idx][offset], temp);
-
-                    if (global_dirty_tracking) {
-                        qatomic_or(
-                                &blocks[DIRTY_MEMORY_MIGRATION][idx][offset],
-                                temp);
-                    }
-
-                    num_dirty += nbits;
-
-                    if (tcg_enabled()) {
-                        qatomic_or(&blocks[DIRTY_MEMORY_CODE][idx][offset],
-                                   temp);
-                    }
-                }
-
-                if (++offset >= BITS_TO_LONGS(DIRTY_MEMORY_BLOCK_SIZE)) {
-                    offset = 0;
-                    idx++;
-                }
-            }
-        }
-
-        if (xen_enabled()) {
-            xen_hvm_modified_memory(start, pages << TARGET_PAGE_BITS);
-        }
-    } else {
-        uint8_t clients = tcg_enabled() ? DIRTY_CLIENTS_ALL
-                                        : DIRTY_CLIENTS_NOCODE;
-
-        if (!global_dirty_tracking) {
-            clients &= ~(1 << DIRTY_MEMORY_MIGRATION);
-        }
-
-        /*
-         * bitmap-traveling is faster than memory-traveling (for addr...)
-         * especially when most of the memory is not dirty.
-         */
-        for (i = 0; i < len; i++) {
-            if (bitmap[i] != 0) {
-                c = leul_to_cpu(bitmap[i]);
-                nbits = ctpopl(c);
-                num_dirty += nbits;
-                do {
-                    j = ctzl(c);
-                    c &= ~(1ul << j);
-                    page_number = (i * HOST_LONG_BITS + j) * hpratio;
-                    addr = page_number * TARGET_PAGE_SIZE;
-                    ram_addr = start + addr;
-                    physical_memory_set_dirty_range(ram_addr,
-                                       TARGET_PAGE_SIZE * hpratio, clients);
-                } while (c != 0);
-            }
-        }
-    }
-
-    return num_dirty;
-}
-
 static int subpage_register(subpage_t *mmio, uint32_t start, uint32_t end,
                             uint16_t section);
 static subpage_t *subpage_init(FlatView *fv, hwaddr base);
@@ -1665,88 +1567,6 @@ void qemu_mutex_lock_ramlist(void)
 void qemu_mutex_unlock_ramlist(void)
 {
     qemu_mutex_unlock(&ram_list.mutex);
-}
-
-GString *ram_block_format(void)
-{
-    RAMBlock *block;
-    char *psize;
-    GString *buf = g_string_new("");
-
-    RCU_READ_LOCK_GUARD();
-    g_string_append_printf(buf, "%24s %8s  %18s %18s %18s %18s %3s\n",
-                           "Block Name", "PSize", "Offset", "Used", "Total",
-                           "HVA", "RO");
-
-    RAMBLOCK_FOREACH(block) {
-        psize = size_to_str(block->page_size);
-        g_string_append_printf(buf, "%24s %8s  0x%016" PRIx64 " 0x%016" PRIx64
-                               " 0x%016" PRIx64 " 0x%016" PRIx64 " %3s\n",
-                               block->idstr, psize,
-                               (uint64_t)block->offset,
-                               (uint64_t)block->used_length,
-                               (uint64_t)block->max_length,
-                               (uint64_t)(uintptr_t)block->host,
-                               block->mr->readonly ? "ro" : "rw");
-
-        g_free(psize);
-    }
-
-    return buf;
-}
-
-static int find_min_backend_pagesize(Object *obj, void *opaque)
-{
-    long *hpsize_min = opaque;
-
-    if (object_dynamic_cast(obj, TYPE_MEMORY_BACKEND)) {
-        HostMemoryBackend *backend = MEMORY_BACKEND(obj);
-        long hpsize = host_memory_backend_pagesize(backend);
-
-        if (host_memory_backend_is_mapped(backend) && (hpsize < *hpsize_min)) {
-            *hpsize_min = hpsize;
-        }
-    }
-
-    return 0;
-}
-
-static int find_max_backend_pagesize(Object *obj, void *opaque)
-{
-    long *hpsize_max = opaque;
-
-    if (object_dynamic_cast(obj, TYPE_MEMORY_BACKEND)) {
-        HostMemoryBackend *backend = MEMORY_BACKEND(obj);
-        long hpsize = host_memory_backend_pagesize(backend);
-
-        if (host_memory_backend_is_mapped(backend) && (hpsize > *hpsize_max)) {
-            *hpsize_max = hpsize;
-        }
-    }
-
-    return 0;
-}
-
-/*
- * TODO: We assume right now that all mapped host memory backends are
- * used as RAM, however some might be used for different purposes.
- */
-long qemu_minrampagesize(void)
-{
-    long hpsize = LONG_MAX;
-    Object *memdev_root = object_resolve_path("/objects", NULL);
-
-    object_child_foreach(memdev_root, find_min_backend_pagesize, &hpsize);
-    return hpsize;
-}
-
-long qemu_maxrampagesize(void)
-{
-    long pagesize = 0;
-    Object *memdev_root = object_resolve_path("/objects", NULL);
-
-    object_child_foreach(memdev_root, find_max_backend_pagesize, &pagesize);
-    return pagesize;
 }
 
 #if defined(CONFIG_POSIX) && !defined(EMSCRIPTEN)
@@ -2078,11 +1898,6 @@ ram_addr_t qemu_ram_get_offset(RAMBlock *rb)
     return rb->offset;
 }
 
-ram_addr_t qemu_ram_get_fd_offset(RAMBlock *rb)
-{
-    return rb->fd_offset;
-}
-
 ram_addr_t qemu_ram_get_used_length(RAMBlock *rb)
 {
     return rb->used_length;
@@ -2109,11 +1924,6 @@ bool qemu_ram_is_uf_zeroable(RAMBlock *rb)
     return rb->flags & RAM_UF_ZEROPAGE;
 }
 
-void qemu_ram_set_uf_zeroable(RAMBlock *rb)
-{
-    rb->flags |= RAM_UF_ZEROPAGE;
-}
-
 bool qemu_ram_is_migratable(RAMBlock *rb)
 {
     return rb->flags & RAM_MIGRATABLE;
@@ -2127,16 +1937,6 @@ void qemu_ram_set_migratable(RAMBlock *rb)
 void qemu_ram_unset_migratable(RAMBlock *rb)
 {
     rb->flags &= ~RAM_MIGRATABLE;
-}
-
-bool qemu_ram_is_named_file(RAMBlock *rb)
-{
-    return rb->flags & RAM_NAMED_FILE;
-}
-
-int qemu_ram_get_fd(RAMBlock *rb)
-{
-    return rb->fd;
 }
 
 /* Called with the BQL held.  */
@@ -2194,19 +1994,6 @@ static char *cpr_name(MemoryRegion *mr)
 size_t qemu_ram_pagesize(RAMBlock *rb)
 {
     return rb->page_size;
-}
-
-/* Returns the largest size of page in use */
-size_t qemu_ram_pagesize_largest(void)
-{
-    RAMBlock *block;
-    size_t largest = 0;
-
-    RAMBLOCK_FOREACH(block) {
-        largest = MAX(largest, qemu_ram_pagesize(block));
-    }
-
-    return largest;
 }
 
 static int memory_try_enable_merging(void *addr, size_t len)
@@ -4019,20 +3806,6 @@ void address_space_unmap(AddressSpace *as, void *buffer, hwaddr len,
     address_space_notify_map_clients(as);
 }
 
-void *cpu_physical_memory_map(hwaddr addr,
-                              hwaddr *plen,
-                              bool is_write)
-{
-    return address_space_map(&address_space_memory, addr, plen, is_write,
-                             MEMTXATTRS_UNSPECIFIED);
-}
-
-void cpu_physical_memory_unmap(void *buffer, hwaddr len,
-                               bool is_write, hwaddr access_len)
-{
-    return address_space_unmap(&address_space_memory, buffer, len, is_write, access_len);
-}
-
 #define ARG1_DECL                AddressSpace *as
 #define ARG1                     as
 #define SUFFIX
@@ -4142,93 +3915,6 @@ static inline MemoryRegion *address_space_translate_cached(
                                             NULL, is_write, true,
                                             &target_as, attrs);
     return section.mr;
-}
-
-/* Called within RCU critical section.  */
-static MemTxResult address_space_write_continue_cached(MemTxAttrs attrs,
-                                                       const void *ptr,
-                                                       hwaddr len,
-                                                       hwaddr mr_addr,
-                                                       hwaddr l,
-                                                       MemoryRegion *mr)
-{
-    MemTxResult result = MEMTX_OK;
-    const uint8_t *buf = ptr;
-
-    for (;;) {
-        result |= flatview_write_continue_step(attrs, buf, len, mr_addr, &l,
-                                               mr);
-
-        len -= l;
-        buf += l;
-        mr_addr += l;
-
-        if (!len) {
-            break;
-        }
-
-        l = len;
-    }
-
-    return result;
-}
-
-/* Called within RCU critical section.  */
-static MemTxResult address_space_read_continue_cached(MemTxAttrs attrs,
-                                                      void *ptr, hwaddr len,
-                                                      hwaddr mr_addr, hwaddr l,
-                                                      MemoryRegion *mr)
-{
-    MemTxResult result = MEMTX_OK;
-    uint8_t *buf = ptr;
-
-    for (;;) {
-        result |= flatview_read_continue_step(attrs, buf, len, mr_addr, &l, mr);
-        len -= l;
-        buf += l;
-        mr_addr += l;
-
-        if (!len) {
-            break;
-        }
-        l = len;
-    }
-
-    return result;
-}
-
-/* Called from RCU critical section. address_space_read_cached uses this
- * out of line function when the target is an MMIO or IOMMU region.
- */
-MemTxResult
-address_space_read_cached_slow(MemoryRegionCache *cache, hwaddr addr,
-                                   void *buf, hwaddr len)
-{
-    hwaddr mr_addr, l;
-    MemoryRegion *mr;
-
-    l = len;
-    mr = address_space_translate_cached(cache, addr, &mr_addr, &l, false,
-                                        MEMTXATTRS_UNSPECIFIED);
-    return address_space_read_continue_cached(MEMTXATTRS_UNSPECIFIED,
-                                              buf, len, mr_addr, l, mr);
-}
-
-/* Called from RCU critical section. address_space_write_cached uses this
- * out of line function when the target is an MMIO or IOMMU region.
- */
-MemTxResult
-address_space_write_cached_slow(MemoryRegionCache *cache, hwaddr addr,
-                                    const void *buf, hwaddr len)
-{
-    hwaddr mr_addr, l;
-    MemoryRegion *mr;
-
-    l = len;
-    mr = address_space_translate_cached(cache, addr, &mr_addr, &l, true,
-                                        MEMTXATTRS_UNSPECIFIED);
-    return address_space_write_continue_cached(MEMTXATTRS_UNSPECIFIED,
-                                               buf, len, mr_addr, l, mr);
 }
 
 #define ARG1_DECL                MemoryRegionCache *cache
@@ -4414,30 +4100,6 @@ err:
     return ret;
 }
 
-int ram_block_discard_guest_memfd_range(RAMBlock *rb, uint64_t offset,
-                                        size_t length)
-{
-    int ret = -1;
-
-#ifdef CONFIG_FALLOCATE_PUNCH_HOLE
-    /* ignore fd_offset with guest_memfd */
-    ret = fallocate(rb->guest_memfd, FALLOC_FL_PUNCH_HOLE | FALLOC_FL_KEEP_SIZE,
-                    offset, length);
-
-    if (ret) {
-        ret = -errno;
-        error_report("%s: Failed to fallocate %s:%" PRIx64 " +%zx (%d)",
-                     __func__, rb->idstr, offset, length, ret);
-    }
-#else
-    ret = -ENOSYS;
-    error_report("%s: fallocate not available %s:%" PRIx64 " +%zx (%d)",
-                 __func__, rb->idstr, offset, length, ret);
-#endif
-
-    return ret;
-}
-
 bool ram_block_is_pmem(RAMBlock *rb)
 {
     return rb->flags & RAM_PMEM;
@@ -4529,7 +4191,6 @@ static unsigned int ram_block_coordinated_discard_required_cnt;
 /* Disable any discards. */
 static unsigned int ram_block_discard_disabled_cnt;
 /* Disable only uncoordinated discards. */
-static unsigned int ram_block_uncoordinated_discard_disabled_cnt;
 static QemuMutex ram_block_discard_disable_mutex;
 
 static void ram_block_discard_disable_mutex_lock(void)
@@ -4565,39 +4226,6 @@ int ram_block_discard_disable(bool state)
     return ret;
 }
 
-int ram_block_uncoordinated_discard_disable(bool state)
-{
-    int ret = 0;
-
-    ram_block_discard_disable_mutex_lock();
-    if (!state) {
-        ram_block_uncoordinated_discard_disabled_cnt--;
-    } else if (ram_block_discard_required_cnt) {
-        ret = -EBUSY;
-    } else {
-        ram_block_uncoordinated_discard_disabled_cnt++;
-    }
-    ram_block_discard_disable_mutex_unlock();
-    return ret;
-}
-
-int ram_block_discard_require(bool state)
-{
-    int ret = 0;
-
-    ram_block_discard_disable_mutex_lock();
-    if (!state) {
-        ram_block_discard_required_cnt--;
-    } else if (ram_block_discard_disabled_cnt ||
-               ram_block_uncoordinated_discard_disabled_cnt) {
-        ret = -EBUSY;
-    } else {
-        ram_block_discard_required_cnt++;
-    }
-    ram_block_discard_disable_mutex_unlock();
-    return ret;
-}
-
 int ram_block_coordinated_discard_require(bool state)
 {
     int ret = 0;
@@ -4612,18 +4240,6 @@ int ram_block_coordinated_discard_require(bool state)
     }
     ram_block_discard_disable_mutex_unlock();
     return ret;
-}
-
-bool ram_block_discard_is_disabled(void)
-{
-    return qatomic_read(&ram_block_discard_disabled_cnt) ||
-           qatomic_read(&ram_block_uncoordinated_discard_disabled_cnt);
-}
-
-bool ram_block_discard_is_required(void)
-{
-    return qatomic_read(&ram_block_discard_required_cnt) ||
-           qatomic_read(&ram_block_coordinated_discard_required_cnt);
 }
 
 /*

@@ -134,11 +134,6 @@ int qemu_kill_thread(int tid, int sig)
 #endif
 }
 
-int qemu_daemon(int nochdir, int noclose)
-{
-    return daemon(nochdir, noclose);
-}
-
 bool qemu_write_pidfile(const char *path, Error **errp)
 {
     int fd;

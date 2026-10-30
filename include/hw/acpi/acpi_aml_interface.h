@@ -47,6 +47,4 @@ static inline void call_dev_aml_func(DeviceState *dev, Aml *scope)
     }
 }
 
-void qbus_build_aml(BusState *bus, Aml *scope);
-
 #endif

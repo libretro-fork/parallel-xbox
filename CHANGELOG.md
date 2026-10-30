@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- About 1,100 functions in QEMU's generic code that nothing in the core ever calls are gone (TCG, softfloat, ACPI, PCI, the character devices, QAPI/QObject helpers, the console and input layers, networking and more), about 24,000 lines with their header declarations. The core behaves the same; the Windows build is smaller, since its linker keeps every function it is given.
+
 - The synthetic GPU fixture now publishes the wrapped pushbuffer write pointer before waiting for the read pointer, preventing old-command replay and stalls at ring wrap. New tests retain both draws across same-frame texture and palette updates and verify their distinct colors.
 
 - The synthetic GPU suite now checks two same-frame updates to GPU-produced texture bytes and indexed texture indices, extending the palette-only coverage of immediate cache invalidation across both renderers and all tested scales.

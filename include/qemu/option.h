@@ -45,7 +45,6 @@ const char *get_opt_value(const char *p, char **value);
 
 bool parse_option_size(const char *name, const char *value,
                        uint64_t *ret, Error **errp);
-bool has_help_option(const char *param);
 
 enum QemuOptType {
     QEMU_OPT_STRING = 0,  /* no parsing (use string as-is)                        */
@@ -113,9 +112,6 @@ typedef struct {
     const char *name;
 } QemuOptsIter;
 
-void qemu_opt_iter_init(QemuOptsIter *iter, QemuOpts *opts, const char *name);
-const char *qemu_opt_iter_next(QemuOptsIter *iter);
-
 QemuOpts *qemu_opts_find(QemuOptsList *list, const char *id);
 QemuOpts *qemu_opts_create(QemuOptsList *list, const char *id,
                            int fail_if_exists, Error **errp);
@@ -124,7 +120,6 @@ void qemu_opts_loc_restore(QemuOpts *opts);
 const char *qemu_opts_id(QemuOpts *opts);
 void qemu_opts_set_id(QemuOpts *opts, char *id);
 void qemu_opts_del(QemuOpts *opts);
-bool qemu_opts_validate(QemuOpts *opts, const QemuOptDesc *desc, Error **errp);
 bool qemu_opts_do_parse(QemuOpts *opts, const char *params,
                         const char *firstname, Error **errp);
 QemuOpts *qemu_opts_parse_noisily(QemuOptsList *list, const char *params,

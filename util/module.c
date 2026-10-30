@@ -81,19 +81,6 @@ void register_module_init(void (*fn)(void), module_init_type type)
     QTAILQ_INSERT_TAIL(l, e, node);
 }
 
-void register_dso_module_init(void (*fn)(void), module_init_type type)
-{
-    ModuleEntry *e;
-
-    init_lists();
-
-    e = g_malloc0(sizeof(*e));
-    e->init = fn;
-    e->type = type;
-
-    QTAILQ_INSERT_TAIL(&dso_init_list, e, node);
-}
-
 void module_call_init(module_init_type type)
 {
     ModuleTypeList *l;
@@ -123,11 +110,6 @@ static const char *module_arch;
 void module_init_info(const QemuModinfo *info)
 {
     module_info = info;
-}
-
-void module_allow_arch(const char *arch)
-{
-    module_arch = arch;
 }
 
 static bool module_check_arch(const QemuModinfo *modinfo)

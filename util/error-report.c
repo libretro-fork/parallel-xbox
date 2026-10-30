@@ -218,41 +218,6 @@ static void vreport(report_type type, const char *fmt, va_list ap)
 
 /*
  * Print an error message to current monitor if we have one, else to stderr.
- * Format arguments like vsprintf().  The resulting message should be
- * a single phrase, with no newline or trailing punctuation.
- * Prepend the current location and append a newline.
- * It's wrong to call this in a QMP monitor.  Use error_setg() there.
- */
-void error_vreport(const char *fmt, va_list ap)
-{
-    vreport(REPORT_TYPE_ERROR, fmt, ap);
-}
-
-/*
- * Print a warning message to current monitor if we have one, else to stderr.
- * Format arguments like vsprintf().  The resulting message should be
- * a single phrase, with no newline or trailing punctuation.
- * Prepend the current location and append a newline.
- */
-void warn_vreport(const char *fmt, va_list ap)
-{
-    vreport(REPORT_TYPE_WARNING, fmt, ap);
-}
-
-/*
- * Print an information message to current monitor if we have one, else to
- * stderr.
- * Format arguments like vsprintf().  The resulting message should be
- * a single phrase, with no newline or trailing punctuation.
- * Prepend the current location and append a newline.
- */
-void info_vreport(const char *fmt, va_list ap)
-{
-    vreport(REPORT_TYPE_INFO, fmt, ap);
-}
-
-/*
- * Print an error message to current monitor if we have one, else to stderr.
  * Format arguments like sprintf().  The resulting message should be
  * a single phrase, with no newline or trailing punctuation.
  * Prepend the current location and append a newline.
@@ -296,26 +261,6 @@ void info_report(const char *fmt, ...)
     va_start(ap, fmt);
     vreport(REPORT_TYPE_INFO, fmt, ap);
     va_end(ap);
-}
-
-/*
- * Like error_report(), except print just once.
- * If *printed is false, print the message, and flip *printed to true.
- * Return whether the message was printed.
- */
-bool error_report_once_cond(bool *printed, const char *fmt, ...)
-{
-    va_list ap;
-
-    assert(printed);
-    if (*printed) {
-        return false;
-    }
-    *printed = true;
-    va_start(ap, fmt);
-    vreport(REPORT_TYPE_ERROR, fmt, ap);
-    va_end(ap);
-    return true;
 }
 
 /*

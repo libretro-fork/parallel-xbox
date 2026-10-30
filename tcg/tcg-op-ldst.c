@@ -903,17 +903,6 @@ static void tcg_gen_nonatomic_cmpxchg_i32_int(TCGv_i32 retv, TCGTemp *addr,
     tcg_temp_free_i32(t1);
 }
 
-void tcg_gen_nonatomic_cmpxchg_i32_chk(TCGv_i32 retv, TCGTemp *addr,
-                                       TCGv_i32 cmpv, TCGv_i32 newv,
-                                       TCGArg idx, MemOp memop,
-                                       TCGType addr_type)
-{
-    LR_QUIET_STORE();
-    tcg_debug_assert(addr_type == tcg_ctx->addr_type);
-    tcg_debug_assert((memop & MO_SIZE) <= MO_32);
-    tcg_gen_nonatomic_cmpxchg_i32_int(retv, addr, cmpv, newv, idx, memop);
-}
-
 static void tcg_gen_atomic_cmpxchg_i32_int(TCGv_i32 retv, TCGTemp *addr,
                                            TCGv_i32 cmpv, TCGv_i32 newv,
                                            TCGArg idx, MemOp memop)
@@ -1068,102 +1057,6 @@ void tcg_gen_atomic_cmpxchg_i64_chk(TCGv_i64 retv, TCGTemp *addr,
     tcg_debug_assert(addr_type == tcg_ctx->addr_type);
     tcg_debug_assert((memop & MO_SIZE) <= MO_64);
     tcg_gen_atomic_cmpxchg_i64_int(retv, addr, cmpv, newv, idx, memop);
-}
-
-static void tcg_gen_nonatomic_cmpxchg_i128_int(TCGv_i128 retv, TCGTemp *addr,
-                                               TCGv_i128 cmpv, TCGv_i128 newv,
-                                               TCGArg idx, MemOp memop)
-{
-    if (TCG_TARGET_REG_BITS == 32) {
-        /* Inline expansion below is simply too large for 32-bit hosts. */
-        MemOpIdx oi = make_memop_idx(memop, idx);
-        TCGv_i64 a64 = maybe_extend_addr64(addr);
-
-        gen_helper_nonatomic_cmpxchgo(retv, tcg_env, a64, cmpv, newv,
-                                      tcg_constant_i32(oi));
-        maybe_free_addr64(a64);
-    } else {
-        TCGv_i128 oldv = tcg_temp_ebb_new_i128();
-        TCGv_i128 tmpv = tcg_temp_ebb_new_i128();
-        TCGv_i64 t0 = tcg_temp_ebb_new_i64();
-        TCGv_i64 t1 = tcg_temp_ebb_new_i64();
-        TCGv_i64 z = tcg_constant_i64(0);
-
-        tcg_gen_qemu_ld_i128_int(oldv, addr, idx, memop);
-
-        /* Compare i128 */
-        tcg_gen_xor_i64(t0, TCGV128_LOW(oldv), TCGV128_LOW(cmpv));
-        tcg_gen_xor_i64(t1, TCGV128_HIGH(oldv), TCGV128_HIGH(cmpv));
-        tcg_gen_or_i64(t0, t0, t1);
-
-        /* tmpv = equal ? newv : oldv */
-        tcg_gen_movcond_i64(TCG_COND_EQ, TCGV128_LOW(tmpv), t0, z,
-                            TCGV128_LOW(newv), TCGV128_LOW(oldv));
-        tcg_gen_movcond_i64(TCG_COND_EQ, TCGV128_HIGH(tmpv), t0, z,
-                            TCGV128_HIGH(newv), TCGV128_HIGH(oldv));
-
-        /* Unconditional writeback. */
-        tcg_gen_qemu_st_i128_int(tmpv, addr, idx, memop);
-        tcg_gen_mov_i128(retv, oldv);
-
-        tcg_temp_free_i64(t0);
-        tcg_temp_free_i64(t1);
-        tcg_temp_free_i128(tmpv);
-        tcg_temp_free_i128(oldv);
-    }
-}
-
-void tcg_gen_nonatomic_cmpxchg_i128_chk(TCGv_i128 retv, TCGTemp *addr,
-                                        TCGv_i128 cmpv, TCGv_i128 newv,
-                                        TCGArg idx, MemOp memop,
-                                        TCGType addr_type)
-{
-    LR_QUIET_STORE();
-    tcg_debug_assert(addr_type == tcg_ctx->addr_type);
-    tcg_debug_assert((memop & (MO_SIZE | MO_SIGN)) == MO_128);
-    tcg_gen_nonatomic_cmpxchg_i128_int(retv, addr, cmpv, newv, idx, memop);
-}
-
-static void tcg_gen_atomic_cmpxchg_i128_int(TCGv_i128 retv, TCGTemp *addr,
-                                            TCGv_i128 cmpv, TCGv_i128 newv,
-                                            TCGArg idx, MemOp memop)
-{
-    gen_atomic_cx_i128 gen;
-
-    if (!(tcg_ctx->gen_tb->cflags & CF_PARALLEL)) {
-        tcg_gen_nonatomic_cmpxchg_i128_int(retv, addr, cmpv, newv, idx, memop);
-        return;
-    }
-
-    gen = table_cmpxchg[memop & (MO_SIZE | MO_BSWAP)];
-    if (gen) {
-        MemOpIdx oi = make_memop_idx(memop, idx);
-        TCGv_i64 a64 = maybe_extend_addr64(addr);
-        gen(retv, tcg_env, a64, cmpv, newv, tcg_constant_i32(oi));
-        maybe_free_addr64(a64);
-        return;
-    }
-
-    gen_helper_exit_atomic(tcg_env);
-
-    /*
-     * Produce a result for a well-formed opcode stream.  This satisfies
-     * liveness for set before used, which happens before this dead code
-     * is removed.
-     */
-    tcg_gen_movi_i64(TCGV128_LOW(retv), 0);
-    tcg_gen_movi_i64(TCGV128_HIGH(retv), 0);
-}
-
-void tcg_gen_atomic_cmpxchg_i128_chk(TCGv_i128 retv, TCGTemp *addr,
-                                     TCGv_i128 cmpv, TCGv_i128 newv,
-                                     TCGArg idx, MemOp memop,
-                                     TCGType addr_type)
-{
-    LR_QUIET_STORE();
-    tcg_debug_assert(addr_type == tcg_ctx->addr_type);
-    tcg_debug_assert((memop & (MO_SIZE | MO_SIGN)) == MO_128);
-    tcg_gen_atomic_cmpxchg_i128_int(retv, addr, cmpv, newv, idx, memop);
 }
 
 static void do_nonatomic_op_i32(TCGv_i32 ret, TCGTemp *addr, TCGv_i32 val,

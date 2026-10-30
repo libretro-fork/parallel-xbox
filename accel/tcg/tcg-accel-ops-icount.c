@@ -67,35 +67,6 @@ static void icount_notify_aio_contexts(void)
     qemu_clock_run_timers(QEMU_CLOCK_VIRTUAL);
 }
 
-void icount_handle_deadline(void)
-{
-    assert(qemu_in_vcpu_thread());
-    int64_t deadline = qemu_clock_deadline_ns_all(QEMU_CLOCK_VIRTUAL,
-                                                  QEMU_TIMER_ATTR_ALL);
-
-    /*
-     * Instructions, interrupts, and exceptions are processed in cpu-exec.
-     * Don't interrupt cpu thread, when these events are waiting
-     * (i.e., there is no checkpoint)
-     */
-    if (deadline == 0) {
-        icount_notify_aio_contexts();
-    }
-}
-
-/* Distribute the budget evenly across all CPUs */
-int64_t icount_percpu_budget(int cpu_count)
-{
-    int64_t limit = icount_get_limit();
-    int64_t timeslice = limit / cpu_count;
-
-    if (timeslice == 0) {
-        timeslice = limit;
-    }
-
-    return timeslice;
-}
-
 void icount_prepare_for_run(CPUState *cpu, int64_t cpu_budget)
 {
     int insns_left;

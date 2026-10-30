@@ -429,13 +429,6 @@ uint64_t migrate_avail_switchover_bandwidth(void)
     return s->parameters.avail_switchover_bandwidth;
 }
 
-int migrate_multifd_channels(void)
-{
-    MigrationState *s = migrate_get_current();
-
-    return s->parameters.multifd_channels;
-}
-
 MultiFDCompression migrate_multifd_compression(void)
 {
     MigrationState *s = migrate_get_current();

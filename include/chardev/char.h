@@ -179,7 +179,6 @@ void qemu_chr_be_update_read_handlers(Chardev *s,
  */
 void qemu_chr_be_event(Chardev *s, QEMUChrEvent event);
 
-int qemu_chr_add_client(Chardev *s, int fd);
 Chardev *qemu_chr_find(const char *name);
 
 bool qemu_chr_has_feature(Chardev *chr,
@@ -278,9 +277,6 @@ Chardev *qemu_chardev_new(const char *id, const char *typename,
                           Error **errp);
 
 extern int term_escape_char;
-
-GSource *qemu_chr_timeout_add_ms(Chardev *chr, guint ms,
-                                 GSourceFunc func, void *private);
 
 void suspend_mux_open(void);
 void resume_mux_open(void);

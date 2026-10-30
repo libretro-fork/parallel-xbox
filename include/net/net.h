@@ -156,7 +156,6 @@ struct SocketReadState {
 };
 
 int net_fill_rstate(SocketReadState *rs, const uint8_t *buf, int size);
-char *qemu_mac_strdup_printf(const uint8_t *macaddr);
 NetClientState *qemu_find_netdev(const char *id);
 int qemu_find_net_clients_except(const char *id, NetClientState **ncs,
                                  NetClientDriver type, int max);
@@ -164,10 +163,6 @@ NetClientState *qemu_new_net_client(NetClientInfo *info,
                                     NetClientState *peer,
                                     const char *model,
                                     const char *name);
-NetClientState *qemu_new_net_control_client(NetClientInfo *info,
-                                        NetClientState *peer,
-                                        const char *model,
-                                        const char *name);
 NICState *qemu_new_nic(NetClientInfo *info,
                        NICConf *conf,
                        const char *model,
@@ -189,7 +184,6 @@ ssize_t qemu_sendv_packet(NetClientState *nc, const struct iovec *iov,
 ssize_t qemu_sendv_packet_async(NetClientState *nc, const struct iovec *iov,
                                 int iovcnt, NetPacketSent *sent_cb);
 ssize_t qemu_send_packet(NetClientState *nc, const uint8_t *buf, int size);
-ssize_t qemu_receive_packet(NetClientState *nc, const uint8_t *buf, int size);
 ssize_t qemu_send_packet_raw(NetClientState *nc, const uint8_t *buf, int size);
 ssize_t qemu_send_packet_async(NetClientState *nc, const uint8_t *buf,
                                int size, NetPacketSent *sent_cb);
@@ -198,18 +192,6 @@ void qemu_flush_queued_packets(NetClientState *nc);
 void qemu_flush_or_purge_queued_packets(NetClientState *nc, bool purge);
 void qemu_set_info_str(NetClientState *nc,
                        const char *fmt, ...) G_GNUC_PRINTF(2, 3);
-void qemu_format_nic_info_str(NetClientState *nc, uint8_t macaddr[6]);
-bool qemu_has_ufo(NetClientState *nc);
-bool qemu_has_uso(NetClientState *nc);
-bool qemu_has_tunnel(NetClientState *nc);
-bool qemu_has_vnet_hdr(NetClientState *nc);
-bool qemu_has_vnet_hdr_len(NetClientState *nc, int len);
-void qemu_set_offload(NetClientState *nc, const NetOffloads *ol);
-int qemu_get_vnet_hdr_len(NetClientState *nc);
-void qemu_set_vnet_hdr_len(NetClientState *nc, int len);
-bool qemu_get_vnet_hash_supported_types(NetClientState *nc, uint32_t *types);
-int qemu_set_vnet_le(NetClientState *nc, bool is_le);
-int qemu_set_vnet_be(NetClientState *nc, bool is_be);
 void qemu_macaddr_default_if_unset(MACAddr *macaddr);
 /**
  * qemu_find_nic_info: Obtain NIC configuration information
@@ -279,7 +261,6 @@ bool net_socket_is_connected(NetClientState *nc);
 void net_socket_rs_init(SocketReadState *rs,
                         SocketReadStateFinalize *finalize,
                         bool vnet_hdr);
-NetClientState *qemu_get_peer(NetClientState *nc, int queue_index);
 
 /**
  * qemu_get_nic_models:
@@ -319,12 +300,9 @@ void show_netdevs(void);
 void net_init_clients(void);
 void net_check_clients(void);
 void net_client_set_link(NetClientState **ncs, int queues, bool up);
-void net_cleanup(void);
 void hmp_host_net_add(Monitor *mon, const QDict *qdict);
 void hmp_host_net_remove(Monitor *mon, const QDict *qdict);
 void netdev_add(QemuOpts *opts, Error **errp);
-
-int net_hub_id_for_client(NetClientState *nc, int *id);
 
 #define DEFAULT_NETWORK_SCRIPT CONFIG_SYSCONFDIR "/qemu-ifup"
 #define DEFAULT_NETWORK_DOWN_SCRIPT CONFIG_SYSCONFDIR "/qemu-ifdown"
@@ -335,8 +313,6 @@ void qdev_set_nic_properties(DeviceState *dev, NICInfo *nd);
 
 #define POLYNOMIAL_BE 0x04c11db6
 #define POLYNOMIAL_LE 0xedb88320
-uint32_t net_crc32(const uint8_t *p, int len);
-uint32_t net_crc32_le(const uint8_t *p, int len);
 
 #define vmstate_offset_macaddr(_state, _field)                       \
     vmstate_offset_array(_state, _field.a, uint8_t,                \

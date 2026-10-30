@@ -2923,15 +2923,6 @@ void ide_bus_set_irq(IDEBus *bus)
     }
 }
 
-void ide_exit(IDEState *s)
-{
-    timer_free(s->sector_write_timer);
-    qemu_vfree(s->smart_selftest_data);
-    qemu_vfree(s->io_buffer);
-    g_free(s->sg_spare);
-    s->sg_spare = NULL;
-}
-
 static bool is_identify_set(void *opaque, int version_id)
 {
     IDEState *s = opaque;

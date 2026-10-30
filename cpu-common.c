@@ -51,11 +51,6 @@ void cpu_list_lock(void)
     qemu_mutex_lock(&qemu_cpu_list_lock);
 }
 
-void cpu_list_unlock(void)
-{
-    qemu_mutex_unlock(&qemu_cpu_list_lock);
-}
-
 
 int cpu_get_free_index(void)
 {
@@ -72,11 +67,6 @@ int cpu_get_free_index(void)
 
 CPUTailQ cpus_queue = QTAILQ_HEAD_INITIALIZER(cpus_queue);
 static unsigned int cpu_list_generation_id;
-
-unsigned int cpu_list_generation_id_get(void)
-{
-    return cpu_list_generation_id;
-}
 
 void cpu_list_add(CPUState *cpu)
 {

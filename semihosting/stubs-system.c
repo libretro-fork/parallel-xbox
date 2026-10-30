@@ -35,19 +35,9 @@ int qemu_semihosting_config_options(const char *optstr)
     return 1;
 }
 
-const char *semihosting_get_arg(int i)
-{
-    return NULL;
-}
-
 int semihosting_get_argc(void)
 {
     return 0;
-}
-
-const char *semihosting_get_cmdline(void)
-{
-    return NULL;
 }
 
 void semihosting_arg_fallback(const char *file, const char *cmd)

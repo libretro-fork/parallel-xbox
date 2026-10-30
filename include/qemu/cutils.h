@@ -193,7 +193,6 @@ char *freq_to_str(uint64_t freq_hz);
 
 bool buffer_is_zero_ool(const void *vbuf, size_t len);
 bool buffer_is_zero_ge256(const void *vbuf, size_t len);
-bool test_buffer_is_zero_next_accel(void);
 
 static inline bool buffer_is_zero_sample3(const char *buf, size_t len)
 {
@@ -274,11 +273,6 @@ static inline const char *yes_no(bool b)
      return b ? "yes" : "no";
 }
 
-/*
- * helper to parse debug environment variables
- */
-int parse_debug_env(const char *name, int max, int initial);
-
 /**
  * qemu_hexdump_line:
  * @str: GString into which to append
@@ -294,13 +288,6 @@ int parse_debug_env(const char *name, int max, int initial);
  */
 GString *qemu_hexdump_line(GString *str, const void *buf, size_t len,
                            size_t unit_len, size_t block_len);
-
-/*
- * Hexdump a buffer to a file. An optional string prefix is added to every line
- */
-
-void qemu_hexdump(FILE *fp, const char *prefix,
-                  const void *bufptr, size_t size);
 
 /**
  * qemu_hexdump_to_buffer:

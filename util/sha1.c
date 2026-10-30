@@ -127,11 +127,3 @@ void sha1_result(SHA1Context *ctx, uint8_t *data)
     }
 }
 
-void sha1_reset(SHA1Context *ctx)
-{
-    sha1_fill(ctx, 0x67452301, 0xEFCDAB89, 0x98BADCFE, 0x10325476, 0xC3D2E1F0);
-
-    ctx->msg_blk_index = 0;
-    ctx->computed = false;
-    ctx->length = 0;
-}

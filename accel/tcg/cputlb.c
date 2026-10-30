@@ -763,14 +763,6 @@ static void tlb_flush_range_by_mmuidx_async_0(CPUState *cpu,
     }
 }
 
-static void tlb_flush_range_by_mmuidx_async_1(CPUState *cpu,
-                                              run_on_cpu_data data)
-{
-    TLBFlushRangeData *d = data.host_ptr;
-    tlb_flush_range_by_mmuidx_async_0(cpu, *d);
-    g_free(d);
-}
-
 void tlb_flush_range_by_mmuidx(CPUState *cpu, vaddr addr,
                                vaddr len, MMUIdxMap idxmap,
                                unsigned bits)
@@ -806,58 +798,6 @@ void tlb_flush_page_bits_by_mmuidx(CPUState *cpu, vaddr addr,
                                    MMUIdxMap idxmap, unsigned bits)
 {
     tlb_flush_range_by_mmuidx(cpu, addr, TARGET_PAGE_SIZE, idxmap, bits);
-}
-
-void tlb_flush_range_by_mmuidx_all_cpus_synced(CPUState *src_cpu,
-                                               vaddr addr,
-                                               vaddr len,
-                                               MMUIdxMap idxmap,
-                                               unsigned bits)
-{
-    TLBFlushRangeData d, *p;
-    CPUState *dst_cpu;
-
-    /* If no page bits are significant, this devolves to tlb_flush. */
-    if (bits < TARGET_PAGE_BITS) {
-        tlb_flush_by_mmuidx_all_cpus_synced(src_cpu, idxmap);
-        return;
-    }
-    /*
-     * If all bits are significant, and len is small,
-     * this devolves to tlb_flush_page.
-     */
-    if (len <= TARGET_PAGE_SIZE && bits >= target_long_bits()) {
-        tlb_flush_page_by_mmuidx_all_cpus_synced(src_cpu, addr, idxmap);
-        return;
-    }
-
-    /* This should already be page aligned */
-    d.addr = addr & TARGET_PAGE_MASK;
-    d.len = len;
-    d.idxmap = idxmap;
-    d.bits = bits;
-
-    /* Allocate a separate data block for each destination cpu.  */
-    CPU_FOREACH(dst_cpu) {
-        if (dst_cpu != src_cpu) {
-            p = g_memdup(&d, sizeof(d));
-            async_run_on_cpu(dst_cpu, tlb_flush_range_by_mmuidx_async_1,
-                             RUN_ON_CPU_HOST_PTR(p));
-        }
-    }
-
-    p = g_memdup(&d, sizeof(d));
-    async_safe_run_on_cpu(src_cpu, tlb_flush_range_by_mmuidx_async_1,
-                          RUN_ON_CPU_HOST_PTR(p));
-}
-
-void tlb_flush_page_bits_by_mmuidx_all_cpus_synced(CPUState *src_cpu,
-                                                   vaddr addr,
-                                                   MMUIdxMap idxmap,
-                                                   unsigned bits)
-{
-    tlb_flush_range_by_mmuidx_all_cpus_synced(src_cpu, addr, TARGET_PAGE_SIZE,
-                                              idxmap, bits);
 }
 
 /* update the TLBs so that writes to code in the virtual page 'addr'
@@ -3124,27 +3064,7 @@ uint32_t cpu_ldl_code_mmu(CPUArchState *env, vaddr addr,
     return do_ld4_mmu(env_cpu(env), addr, oi, retaddr, MMU_INST_FETCH);
 }
 
-uint64_t cpu_ldq_code_mmu(CPUArchState *env, vaddr addr,
-                          MemOpIdx oi, uintptr_t retaddr)
-{
-    return do_ld8_mmu(env_cpu(env), addr, oi, retaddr, MMU_INST_FETCH);
-}
-
 /*
  * Common pointer_wrap implementations.
  */
 
-/*
- * To be used for strict alignment targets.
- * Because no accesses are unaligned, no accesses wrap either.
- */
-vaddr cpu_pointer_wrap_notreached(CPUState *cs, int idx, vaddr res, vaddr base)
-{
-    g_assert_not_reached();
-}
-
-/* To be used for strict 32-bit targets. */
-vaddr cpu_pointer_wrap_uint32(CPUState *cs, int idx, vaddr res, vaddr base)
-{
-    return (uint32_t)res;
-}

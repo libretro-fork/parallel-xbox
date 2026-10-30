@@ -36,10 +36,7 @@ bool semihosting_enabled(bool is_user);
 bool semihosting_arm_compatible(void);
 void semihosting_arm_compatible_init(void);
 
-SemihostingTarget semihosting_get_target(void);
-const char *semihosting_get_arg(int i);
 int semihosting_get_argc(void);
-const char *semihosting_get_cmdline(void);
 void semihosting_arg_fallback(const char *file, const char *cmd);
 
 /* for vl.c hooks */

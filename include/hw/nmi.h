@@ -40,6 +40,4 @@ struct NMIClass {
     void (*nmi_monitor_handler)(NMIState *n, int cpu_index, Error **errp);
 };
 
-void nmi_monitor_handle(int cpu_index, Error **errp);
-
 #endif /* NMI_H */

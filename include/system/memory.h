@@ -748,9 +748,6 @@ struct RamDiscardManagerClass {
                                 RamDiscardListener *rdl);
 };
 
-uint64_t ram_discard_manager_get_min_granularity(const RamDiscardManager *rdm,
-                                                 const MemoryRegion *mr);
-
 bool ram_discard_manager_is_populated(const RamDiscardManager *rdm,
                                       const MemoryRegionSection *section);
 
@@ -789,13 +786,6 @@ int ram_discard_manager_replay_discarded(const RamDiscardManager *rdm,
                                          MemoryRegionSection *section,
                                          ReplayRamDiscardState replay_fn,
                                          void *opaque);
-
-void ram_discard_manager_register_listener(RamDiscardManager *rdm,
-                                           RamDiscardListener *rdl,
-                                           MemoryRegionSection *section);
-
-void ram_discard_manager_unregister_listener(RamDiscardManager *rdm,
-                                             RamDiscardListener *rdl);
 
 /**
  * memory_translate_iotlb: Extract addresses from a TLB entry.
@@ -1698,12 +1688,6 @@ bool memory_region_init_ram(MemoryRegion *mr,
                             const char *name,
                             uint64_t size,
                             Error **errp);
-
-bool memory_region_init_ram_guest_memfd(MemoryRegion *mr,
-                                        Object *owner,
-                                        const char *name,
-                                        uint64_t size,
-                                        Error **errp);
 
 /**
  * memory_region_init_rom: Initialize a ROM memory region.
@@ -2708,8 +2692,6 @@ bool memory_global_dirty_log_start(unsigned int flags, Error **errp);
  */
 void memory_global_dirty_log_stop(unsigned int flags);
 
-void mtree_info(bool flatview, bool dispatch_tree, bool owner, bool disabled);
-
 bool memory_region_access_valid(MemoryRegion *mr, hwaddr addr,
                                 unsigned size, bool is_write,
                                 MemTxAttrs attrs);
@@ -3321,36 +3303,12 @@ MemTxResult address_space_set(AddressSpace *as, hwaddr addr,
 int ram_block_discard_disable(bool state);
 
 /*
- * See ram_block_discard_disable(): only disable uncoordinated discards,
- * keeping coordinated discards (via the RamDiscardManager) enabled.
- */
-int ram_block_uncoordinated_discard_disable(bool state);
-
-/*
- * Inhibit technologies that disable discarding of pages in RAM blocks.
- *
- * Returns 0 if successful. Returns -EBUSY if discards are already set to
- * broken.
- */
-int ram_block_discard_require(bool state);
-
-/*
  * See ram_block_discard_require(): only inhibit technologies that disable
  * uncoordinated discarding of pages in RAM blocks, allowing co-existence with
  * technologies that only inhibit uncoordinated discards (via the
  * RamDiscardManager).
  */
 int ram_block_coordinated_discard_require(bool state);
-
-/*
- * Test if any discarding of memory in ram blocks is disabled.
- */
-bool ram_block_discard_is_disabled(void);
-
-/*
- * Test if any discarding of memory in ram blocks is required to work reliably.
- */
-bool ram_block_discard_is_required(void);
 
 void ram_block_add_cpr_blocker(RAMBlock *rb, Error **errp);
 void ram_block_del_cpr_blocker(RAMBlock *rb);

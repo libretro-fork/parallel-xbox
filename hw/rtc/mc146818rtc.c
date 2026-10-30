@@ -97,11 +97,6 @@ static void rtc_coalesced_timer_update(MC146818RtcState *s)
     }
 }
 
-void rtc_reset_reinjection(MC146818RtcState *rtc)
-{
-    rtc->irq_coalesced = 0;
-}
-
 static bool rtc_policy_slew_deliver_irq(MC146818RtcState *s)
 {
     kvm_reset_irq_delivered();
@@ -745,12 +740,6 @@ void mc146818rtc_set_cmos_data(MC146818RtcState *s, int addr, int val)
 {
     assert(addr >= 0 && addr < ARRAY_SIZE(s->cmos_data));
     s->cmos_data[addr] = val;
-}
-
-int mc146818rtc_get_cmos_data(MC146818RtcState *s, int addr)
-{
-    assert(addr >= 0 && addr < ARRAY_SIZE(s->cmos_data));
-    return s->cmos_data[addr];
 }
 
 static void rtc_set_date_from_host(ISADevice *dev)

@@ -34,50 +34,9 @@ void qbus_set_bus_hotplug_handler(BusState *bus)
     qbus_set_hotplug_handler(bus, OBJECT(bus));
 }
 
-int qbus_walk_children(BusState *bus,
-                       qdev_walkerfn *pre_devfn, qbus_walkerfn *pre_busfn,
-                       qdev_walkerfn *post_devfn, qbus_walkerfn *post_busfn,
-                       void *opaque)
-{
-    BusChild *kid;
-    int err;
-
-    if (pre_busfn) {
-        err = pre_busfn(bus, opaque);
-        if (err) {
-            return err;
-        }
-    }
-
-    WITH_RCU_READ_LOCK_GUARD() {
-        QTAILQ_FOREACH_RCU(kid, &bus->children, sibling) {
-            err = qdev_walk_children(kid->child,
-                                     pre_devfn, pre_busfn,
-                                     post_devfn, post_busfn, opaque);
-            if (err < 0) {
-                return err;
-            }
-        }
-    }
-
-    if (post_busfn) {
-        err = post_busfn(bus, opaque);
-        if (err) {
-            return err;
-        }
-    }
-
-    return 0;
-}
-
 void bus_cold_reset(BusState *bus)
 {
     resettable_reset(OBJECT(bus), RESET_TYPE_COLD);
-}
-
-bool bus_is_in_reset(BusState *bus)
-{
-    return resettable_is_in_reset(OBJECT(bus));
 }
 
 static ResettableState *bus_get_reset_state(Object *obj)

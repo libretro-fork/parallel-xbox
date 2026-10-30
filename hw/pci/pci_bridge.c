@@ -45,23 +45,6 @@
 #define PCI_SSVID_SVID          4
 #define PCI_SSVID_SSID          6
 
-int pci_bridge_ssvid_init(PCIDevice *dev, uint8_t offset,
-                          uint16_t svid, uint16_t ssid,
-                          Error **errp)
-{
-    int pos;
-
-    pos = pci_add_capability(dev, PCI_CAP_ID_SSVID, offset,
-                             PCI_SSVID_SIZEOF, errp);
-    if (pos < 0) {
-        return pos;
-    }
-
-    pci_set_word(dev->config + pos + PCI_SSVID_SVID, svid);
-    pci_set_word(dev->config + pos + PCI_SSVID_SSID, ssid);
-    return pos;
-}
-
 /* Accessor function to get parent bridge device from pci bus. */
 PCIDevice *pci_bridge_get_device(PCIBus *bus)
 {
@@ -279,26 +262,6 @@ void pci_bridge_write_config(PCIDevice *d,
     }
 }
 
-void pci_bridge_disable_base_limit(PCIDevice *dev)
-{
-    uint8_t *conf = dev->config;
-
-    pci_byte_test_and_set_mask(conf + PCI_IO_BASE,
-                               PCI_IO_RANGE_MASK & 0xff);
-    pci_byte_test_and_clear_mask(conf + PCI_IO_LIMIT,
-                                 PCI_IO_RANGE_MASK & 0xff);
-    pci_word_test_and_set_mask(conf + PCI_MEMORY_BASE,
-                               PCI_MEMORY_RANGE_MASK & 0xffff);
-    pci_word_test_and_clear_mask(conf + PCI_MEMORY_LIMIT,
-                                 PCI_MEMORY_RANGE_MASK & 0xffff);
-    pci_word_test_and_set_mask(conf + PCI_PREF_MEMORY_BASE,
-                               PCI_PREF_RANGE_MASK & 0xffff);
-    pci_word_test_and_clear_mask(conf + PCI_PREF_MEMORY_LIMIT,
-                                 PCI_PREF_RANGE_MASK & 0xffff);
-    pci_set_long(conf + PCI_PREF_BASE_UPPER32, 0);
-    pci_set_long(conf + PCI_PREF_LIMIT_UPPER32, 0);
-}
-
 /* reset bridge specific configuration registers */
 void pci_bridge_reset(DeviceState *qdev)
 {
@@ -409,73 +372,6 @@ void pci_bridge_exitfn(PCIDevice *pci_dev)
     /* object_unparent() is called automatically during device deletion */
 }
 
-/*
- * before qdev initialization(qdev_init()), this function sets bus_name and
- * map_irq callback which are necessary for pci_bridge_initfn() to
- * initialize bus.
- */
-void pci_bridge_map_irq(PCIBridge *br, const char* bus_name,
-                        pci_map_irq_fn map_irq)
-{
-    br->map_irq = map_irq;
-    br->bus_name = bus_name;
-}
-
-
-int pci_bridge_qemu_reserve_cap_init(PCIDevice *dev, int cap_offset,
-                                     PCIResReserve res_reserve, Error **errp)
-{
-    if (res_reserve.mem_pref_32 != (uint64_t)-1 &&
-        res_reserve.mem_pref_64 != (uint64_t)-1) {
-        error_setg(errp,
-                   "PCI resource reserve cap: PREF32 and PREF64 conflict");
-        return -EINVAL;
-    }
-
-    if (res_reserve.mem_non_pref != (uint64_t)-1 &&
-        res_reserve.mem_non_pref >= 4 * GiB) {
-        error_setg(errp,
-                   "PCI resource reserve cap: mem-reserve must be less than 4G");
-        return -EINVAL;
-    }
-
-    if (res_reserve.mem_pref_32 != (uint64_t)-1 &&
-        res_reserve.mem_pref_32 >= 4 * GiB) {
-        error_setg(errp,
-                   "PCI resource reserve cap: pref32-reserve  must be less than 4G");
-        return -EINVAL;
-    }
-
-    if (res_reserve.bus == (uint32_t)-1 &&
-        res_reserve.io == (uint64_t)-1 &&
-        res_reserve.mem_non_pref == (uint64_t)-1 &&
-        res_reserve.mem_pref_32 == (uint64_t)-1 &&
-        res_reserve.mem_pref_64 == (uint64_t)-1) {
-        return 0;
-    }
-
-    size_t cap_len = sizeof(PCIBridgeQemuCap);
-    PCIBridgeQemuCap cap = {
-            .len = cap_len,
-            .type = REDHAT_PCI_CAP_RESOURCE_RESERVE,
-            .bus_res = cpu_to_le32(res_reserve.bus),
-            .io = cpu_to_le64(res_reserve.io),
-            .mem = cpu_to_le32(res_reserve.mem_non_pref),
-            .mem_pref_32 = cpu_to_le32(res_reserve.mem_pref_32),
-            .mem_pref_64 = cpu_to_le64(res_reserve.mem_pref_64)
-    };
-
-    int offset = pci_add_capability(dev, PCI_CAP_ID_VNDR,
-                                    cap_offset, cap_len, errp);
-    if (offset < 0) {
-        return offset;
-    }
-
-    memcpy(dev->config + offset + PCI_CAP_FLAGS,
-           (char *)&cap + PCI_CAP_FLAGS,
-           cap_len - PCI_CAP_FLAGS);
-    return 0;
-}
 
 static const Property pci_bridge_properties[] = {
     DEFINE_PROP_BOOL("x-pci-express-writeable-slt-bug", PCIBridge,

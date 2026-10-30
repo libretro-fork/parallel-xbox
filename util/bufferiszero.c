@@ -105,22 +105,13 @@ bool buffer_is_zero_ool(const void *buf, size_t len)
     return buffer_is_zero_int_lt256(buf, len);
 }
 
-bool buffer_is_zero_ge256(const void *buf, size_t len)
-{
-    return buffer_is_zero_accel(buf, len);
-}
-
-bool test_buffer_is_zero_next_accel(void)
-{
-    if (accel_index != 0) {
-        buffer_is_zero_accel = accel_table[--accel_index];
-        return true;
-    }
-    return false;
-}
-
 static void __attribute__((constructor)) init_accel(void)
 {
     accel_index = best_accel();
     buffer_is_zero_accel = accel_table[accel_index];
+}
+
+bool buffer_is_zero_ge256(const void *buf, size_t len)
+{
+    return buffer_is_zero_accel(buf, len);
 }

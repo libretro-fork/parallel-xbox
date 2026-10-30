@@ -120,23 +120,6 @@ static inline uint8_t msi_pending_off(const PCIDevice* dev, bool msi64bit)
     return dev->msi_cap + (msi64bit ? PCI_MSI_PENDING_64 : PCI_MSI_PENDING_32);
 }
 
-/*
- * Special API for POWER to configure the vectors through
- * a side channel. Should never be used by devices.
- */
-void msi_set_message(PCIDevice *dev, MSIMessage msg)
-{
-    uint16_t flags = pci_get_word(dev->config + msi_flags_off(dev));
-    bool msi64bit = flags & PCI_MSI_FLAGS_64BIT;
-
-    if (msi64bit) {
-        pci_set_quad(dev->config + msi_address_lo_off(dev), msg.address);
-    } else {
-        pci_set_long(dev->config + msi_address_lo_off(dev), msg.address);
-    }
-    pci_set_word(dev->config + msi_data_off(dev, msi64bit), msg.data);
-}
-
 static MSIMessage msi_prepare_message(PCIDevice *dev, unsigned int vector)
 {
     uint16_t flags = pci_get_word(dev->config + msi_flags_off(dev));
@@ -172,103 +155,6 @@ bool msi_enabled(const PCIDevice *dev)
     return msi_present(dev) &&
         (pci_get_word(dev->config + msi_flags_off(dev)) &
          PCI_MSI_FLAGS_ENABLE);
-}
-
-/*
- * Make PCI device @dev MSI-capable.
- * Non-zero @offset puts capability MSI at that offset in PCI config
- * space.
- * @nr_vectors is the number of MSI vectors (1, 2, 4, 8, 16 or 32).
- * If @msi64bit, make the device capable of sending a 64-bit message
- * address.
- * If @msi_per_vector_mask, make the device support per-vector masking.
- * @errp is for returning errors.
- * Return 0 on success; set @errp and return -errno on error.
- *
- * -ENOTSUP means lacking msi support for a msi-capable platform.
- * -EINVAL means capability overlap, happens when @offset is non-zero,
- *  also means a programming error, except device assignment, which can check
- *  if a real HW is broken.
- */
-int msi_init(struct PCIDevice *dev, uint8_t offset,
-             unsigned int nr_vectors, bool msi64bit,
-             bool msi_per_vector_mask, Error **errp)
-{
-    unsigned int vectors_order;
-    uint16_t flags;
-    uint8_t cap_size;
-    int config_offset;
-
-    if (!msi_nonbroken) {
-        error_setg(errp, "MSI is not supported by interrupt controller");
-        return -ENOTSUP;
-    }
-
-    MSI_DEV_PRINTF(dev,
-                   "init offset: 0x%"PRIx8" vector: %"PRId8
-                   " 64bit %d mask %d\n",
-                   offset, nr_vectors, msi64bit, msi_per_vector_mask);
-
-    assert(!(nr_vectors & (nr_vectors - 1)));   /* power of 2 */
-    assert(nr_vectors > 0);
-    assert(nr_vectors <= PCI_MSI_VECTORS_MAX);
-    /* the nr of MSI vectors is up to 32 */
-    vectors_order = ctz32(nr_vectors);
-
-    flags = vectors_order << ctz32(PCI_MSI_FLAGS_QMASK);
-    if (msi64bit) {
-        flags |= PCI_MSI_FLAGS_64BIT;
-    }
-    if (msi_per_vector_mask) {
-        flags |= PCI_MSI_FLAGS_MASKBIT;
-    }
-
-    cap_size = msi_cap_sizeof(flags);
-    config_offset = pci_add_capability(dev, PCI_CAP_ID_MSI, offset,
-                                        cap_size, errp);
-    if (config_offset < 0) {
-        return config_offset;
-    }
-
-    dev->msi_cap = config_offset;
-    dev->cap_present |= QEMU_PCI_CAP_MSI;
-
-    pci_set_word(dev->config + msi_flags_off(dev), flags);
-    pci_set_word(dev->wmask + msi_flags_off(dev),
-                 PCI_MSI_FLAGS_QSIZE | PCI_MSI_FLAGS_ENABLE);
-    pci_set_long(dev->wmask + msi_address_lo_off(dev),
-                 PCI_MSI_ADDRESS_LO_MASK);
-    if (msi64bit) {
-        pci_set_long(dev->wmask + msi_address_hi_off(dev), 0xffffffff);
-    }
-    pci_set_word(dev->wmask + msi_data_off(dev, msi64bit), 0xffff);
-
-    if (msi_per_vector_mask) {
-        /* Make mask bits 0 to nr_vectors - 1 writable. */
-        pci_set_long(dev->wmask + msi_mask_off(dev, msi64bit),
-                     0xffffffff >> (PCI_MSI_VECTORS_MAX - nr_vectors));
-    }
-
-    dev->msi_prepare_message = msi_prepare_message;
-
-    return 0;
-}
-
-void msi_uninit(struct PCIDevice *dev)
-{
-    uint16_t flags;
-    uint8_t cap_size;
-
-    if (!msi_present(dev)) {
-        return;
-    }
-    flags = pci_get_word(dev->config + msi_flags_off(dev));
-    cap_size = msi_cap_sizeof(flags);
-    pci_del_capability(dev, PCI_CAP_ID_MSI, cap_size);
-    dev->cap_present &= ~QEMU_PCI_CAP_MSI;
-    dev->msi_prepare_message = NULL;
-
-    MSI_DEV_PRINTF(dev, "uninit\n");
 }
 
 void msi_reset(PCIDevice *dev)
@@ -316,38 +202,6 @@ bool msi_is_masked(const PCIDevice *dev, unsigned int vector)
     mask = pci_get_long(dev->config +
                         msi_mask_off(dev, flags & PCI_MSI_FLAGS_64BIT));
     return mask & (1U << vector);
-}
-
-void msi_set_mask(PCIDevice *dev, int vector, bool mask, Error **errp)
-{
-    uint16_t flags = pci_get_word(dev->config + msi_flags_off(dev));
-    bool msi64bit = flags & PCI_MSI_FLAGS_64BIT;
-    uint32_t irq_state, vector_mask, pending;
-
-    if (vector >= PCI_MSI_VECTORS_MAX) {
-        error_setg(errp, "msi: vector %d not allocated. max vector is %d",
-                   vector, (PCI_MSI_VECTORS_MAX - 1));
-        return;
-    }
-
-    vector_mask = (1U << vector);
-
-    irq_state = pci_get_long(dev->config + msi_mask_off(dev, msi64bit));
-
-    if (mask) {
-        irq_state |= vector_mask;
-    } else {
-        irq_state &= ~vector_mask;
-    }
-
-    pci_set_long(dev->config + msi_mask_off(dev, msi64bit), irq_state);
-
-    pending = pci_get_long(dev->config + msi_pending_off(dev, msi64bit));
-    if (!mask && (pending & vector_mask)) {
-        pending &= ~vector_mask;
-        pci_set_long(dev->config + msi_pending_off(dev, msi64bit), pending);
-        msi_notify(dev, vector);
-    }
 }
 
 void msi_notify(PCIDevice *dev, unsigned int vector)
@@ -483,8 +337,3 @@ void msi_write_config(PCIDevice *dev, uint32_t addr, uint32_t val, int len)
     }
 }
 
-unsigned int msi_nr_vectors_allocated(const PCIDevice *dev)
-{
-    uint16_t flags = pci_get_word(dev->config + msi_flags_off(dev));
-    return msi_nr_vectors(flags);
-}

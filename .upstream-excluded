@@ -2053,3 +2053,5 @@ CONTRIBUTING.md
 util/vhost-user-server.c
 include/qemu/vhost-user-server.h
 get_deps.py
+ui/cursor_hidden.xpm
+ui/cursor_left_ptr.xpm

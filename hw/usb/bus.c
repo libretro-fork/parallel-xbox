@@ -204,24 +204,6 @@ void usb_device_ep_stopped(USBDevice *dev, USBEndpoint *ep)
     }
 }
 
-int usb_device_alloc_streams(USBDevice *dev, USBEndpoint **eps, int nr_eps,
-                             int streams)
-{
-    USBDeviceClass *klass = USB_DEVICE_GET_CLASS(dev);
-    if (klass->alloc_streams) {
-        return klass->alloc_streams(dev, eps, nr_eps, streams);
-    }
-    return 0;
-}
-
-void usb_device_free_streams(USBDevice *dev, USBEndpoint **eps, int nr_eps)
-{
-    USBDeviceClass *klass = USB_DEVICE_GET_CLASS(dev);
-    if (klass->free_streams) {
-        klass->free_streams(dev, eps, nr_eps);
-    }
-}
-
 static void usb_qdev_realize(DeviceState *qdev, Error **errp)
 {
     USBDevice *dev = USB_DEVICE(qdev);
@@ -299,18 +281,6 @@ typedef struct LegacyUSBFactory
 } LegacyUSBFactory;
 
 static GSList *legacy_usb_factory;
-
-void usb_legacy_register(const char *typename, const char *usbdevice_name,
-                         USBDevice *(*usbdevice_init)(void))
-{
-    if (usbdevice_name) {
-        LegacyUSBFactory *f = g_malloc0(sizeof(*f));
-        f->name = typename;
-        f->usbdevice_name = usbdevice_name;
-        f->usbdevice_init = usbdevice_init;
-        legacy_usb_factory = g_slist_append(legacy_usb_factory, f);
-    }
-}
 
 static void usb_fill_port(USBPort *port, void *opaque, int index,
                           USBPortOps *ops, int speedmask)

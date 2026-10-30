@@ -755,66 +755,6 @@ void numa_cpu_pre_plug(const CPUArchId *slot, DeviceState *dev, Error **errp)
     }
 }
 
-static void numa_stat_memory_devices(NumaNodeMem node_mem[])
-{
-    MemoryDeviceInfoList *info_list = qmp_memory_device_list();
-    MemoryDeviceInfoList *info;
-    PCDIMMDeviceInfo     *pcdimm_info;
-    VirtioPMEMDeviceInfo *vpi;
-    VirtioMEMDeviceInfo *vmi;
-    SgxEPCDeviceInfo *se;
-
-    for (info = info_list; info; info = info->next) {
-        MemoryDeviceInfo *value = info->value;
-
-        if (value) {
-            switch (value->type) {
-            case MEMORY_DEVICE_INFO_KIND_DIMM:
-            case MEMORY_DEVICE_INFO_KIND_NVDIMM:
-                pcdimm_info = value->type == MEMORY_DEVICE_INFO_KIND_DIMM ?
-                              value->u.dimm.data : value->u.nvdimm.data;
-                node_mem[pcdimm_info->node].node_mem += pcdimm_info->size;
-                node_mem[pcdimm_info->node].node_plugged_mem +=
-                    pcdimm_info->size;
-                break;
-            case MEMORY_DEVICE_INFO_KIND_VIRTIO_PMEM:
-                vpi = value->u.virtio_pmem.data;
-                /* TODO: once we support numa, assign to right node */
-                node_mem[0].node_mem += vpi->size;
-                node_mem[0].node_plugged_mem += vpi->size;
-                break;
-            case MEMORY_DEVICE_INFO_KIND_VIRTIO_MEM:
-                vmi = value->u.virtio_mem.data;
-                node_mem[vmi->node].node_mem += vmi->size;
-                node_mem[vmi->node].node_plugged_mem += vmi->size;
-                break;
-            case MEMORY_DEVICE_INFO_KIND_SGX_EPC:
-                se = value->u.sgx_epc.data;
-                node_mem[se->node].node_mem += se->size;
-                node_mem[se->node].node_plugged_mem = 0;
-                break;
-            default:
-                g_assert_not_reached();
-            }
-        }
-    }
-    qapi_free_MemoryDeviceInfoList(info_list);
-}
-
-void query_numa_node_mem(NumaNodeMem node_mem[], MachineState *ms)
-{
-    int i;
-
-    if (ms->numa_state == NULL || ms->numa_state->num_nodes <= 0) {
-        return;
-    }
-
-    numa_stat_memory_devices(node_mem);
-    for (i = 0; i < ms->numa_state->num_nodes; i++) {
-        node_mem[i].node_mem += ms->numa_state->nodes[i].node_mem;
-    }
-}
-
 static int ram_block_notify_add_single(RAMBlock *rb, void *opaque)
 {
     const ram_addr_t max_size = qemu_ram_get_max_length(rb);
@@ -828,19 +768,6 @@ static int ram_block_notify_add_single(RAMBlock *rb, void *opaque)
     return 0;
 }
 
-static int ram_block_notify_remove_single(RAMBlock *rb, void *opaque)
-{
-    const ram_addr_t max_size = qemu_ram_get_max_length(rb);
-    const ram_addr_t size = qemu_ram_get_used_length(rb);
-    void *host = qemu_ram_get_host_addr(rb);
-    RAMBlockNotifier *notifier = opaque;
-
-    if (host) {
-        notifier->ram_block_removed(notifier, host, size, max_size);
-    }
-    return 0;
-}
-
 void ram_block_notifier_add(RAMBlockNotifier *n)
 {
     QLIST_INSERT_HEAD(&ram_list.ramblock_notifiers, n, next);
@@ -848,15 +775,6 @@ void ram_block_notifier_add(RAMBlockNotifier *n)
     /* Notify about all existing ram blocks. */
     if (n->ram_block_added) {
         qemu_ram_foreach_block(ram_block_notify_add_single, n);
-    }
-}
-
-void ram_block_notifier_remove(RAMBlockNotifier *n)
-{
-    QLIST_REMOVE(n, next);
-
-    if (n->ram_block_removed) {
-        qemu_ram_foreach_block(ram_block_notify_remove_single, n);
     }
 }
 

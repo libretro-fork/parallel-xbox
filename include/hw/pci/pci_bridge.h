@@ -121,10 +121,6 @@ typedef struct PXBCXLDev {
 #define TYPE_PXB_CXL_DEV "pxb-cxl"
 OBJECT_DECLARE_SIMPLE_TYPE(PXBCXLDev, PXB_CXL_DEV)
 
-int pci_bridge_ssvid_init(PCIDevice *dev, uint8_t offset,
-                          uint16_t svid, uint16_t ssid,
-                          Error **errp);
-
 PCIDevice *pci_bridge_get_device(PCIBus *bus);
 PCIBus *pci_bridge_get_sec_bus(PCIBridge *br);
 
@@ -134,7 +130,6 @@ pcibus_t pci_bridge_get_limit(const PCIDevice *bridge, uint8_t type);
 void pci_bridge_update_mappings(PCIBridge *br);
 void pci_bridge_write_config(PCIDevice *d,
                              uint32_t address, uint32_t val, int len);
-void pci_bridge_disable_base_limit(PCIDevice *dev);
 void pci_bridge_reset(DeviceState *qdev);
 
 void pci_bridge_initfn(PCIDevice *pci_dev, const char *typename);
@@ -146,14 +141,6 @@ void pci_bridge_dev_unplug_cb(HotplugHandler *hotplug_dev, DeviceState *dev,
                               Error **errp);
 void pci_bridge_dev_unplug_request_cb(HotplugHandler *hotplug_dev,
                                       DeviceState *dev, Error **errp);
-
-/*
- * before qdev initialization(qdev_init()), this function sets bus_name and
- * map_irq callback which are necessary for pci_bridge_initfn() to
- * initialize bus.
- */
-void pci_bridge_map_irq(PCIBridge *br, const char* bus_name,
-                        pci_map_irq_fn map_irq);
 
 /* TODO: add this define to pci_regs.h in linux and then in qemu. */
 #define  PCI_BRIDGE_CTL_VGA_16BIT       0x10    /* VGA 16-bit decode */
@@ -199,8 +186,5 @@ typedef struct PCIResReserve {
 #define REDHAT_PCI_CAP_RES_RESERVE_PREF_MEM_32 20
 #define REDHAT_PCI_CAP_RES_RESERVE_PREF_MEM_64 24
 #define REDHAT_PCI_CAP_RES_RESERVE_CAP_SIZE    32
-
-int pci_bridge_qemu_reserve_cap_init(PCIDevice *dev, int cap_offset,
-                               PCIResReserve res_reserve, Error **errp);
 
 #endif /* QEMU_PCI_BRIDGE_H */

@@ -27,16 +27,6 @@ void physical_memory_set_dirty_flag(ram_addr_t addr, unsigned client);
 void physical_memory_set_dirty_range(ram_addr_t start, ram_addr_t length,
                                      uint8_t mask);
 
-/*
- * Contrary to physical_memory_sync_dirty_bitmap() this function returns
- * the number of dirty pages in @bitmap passed as argument. On the other hand,
- * physical_memory_sync_dirty_bitmap() returns newly dirtied pages that
- * weren't set in the global migration bitmap.
- */
-uint64_t physical_memory_set_dirty_lebitmap(unsigned long *bitmap,
-                                            ram_addr_t start,
-                                            ram_addr_t pages);
-
 void physical_memory_dirty_bits_cleared(ram_addr_t start, ram_addr_t length);
 
 bool physical_memory_test_and_clear_dirty(ram_addr_t start,

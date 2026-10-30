@@ -341,24 +341,6 @@ eth_get_pkt_tci(const void *p)
     }
 }
 
-size_t
-eth_strip_vlan(const struct iovec *iov, int iovcnt, size_t iovoff,
-               void *new_ehdr_buf,
-               uint16_t *payload_offset, uint16_t *tci);
-
-size_t
-eth_strip_vlan_ex(const struct iovec *iov, int iovcnt, size_t iovoff, int index,
-                  uint16_t vet, uint16_t vet_ext, void *new_ehdr_buf,
-                  uint16_t *payload_offset, uint16_t *tci);
-
-uint16_t
-eth_get_l3_proto(const struct iovec *l2hdr_iov, int iovcnt, size_t l2hdr_len);
-
-void eth_setup_vlan_headers(struct eth_header *ehdr, size_t *ehdr_size,
-                            uint16_t vlan_tag, uint16_t vlan_ethtype);
-
-
-uint8_t eth_get_gso_type(uint16_t l3_proto, uint8_t *l3_hdr, uint8_t l4proto);
 
 typedef struct eth_ip6_hdr_info_st {
     uint8_t l4proto;
@@ -393,33 +375,6 @@ typedef struct eth_l4_hdr_info_st {
     EthL4HdrProto proto;
     bool has_tcp_data;
 } eth_l4_hdr_info;
-
-void eth_get_protocols(const struct iovec *iov, size_t iovcnt, size_t iovoff,
-                       bool *hasip4, bool *hasip6,
-                       size_t *l3hdr_off,
-                       size_t *l4hdr_off,
-                       size_t *l5hdr_off,
-                       eth_ip6_hdr_info *ip6hdr_info,
-                       eth_ip4_hdr_info *ip4hdr_info,
-                       eth_l4_hdr_info  *l4hdr_info);
-
-void
-eth_fix_ip4_checksum(void *l3hdr, size_t l3hdr_len);
-
-uint32_t
-eth_calc_ip4_pseudo_hdr_csum(struct ip_header *iphdr,
-                             uint16_t csl,
-                             uint32_t *cso);
-
-uint32_t
-eth_calc_ip6_pseudo_hdr_csum(struct ip6_header *iphdr,
-                             uint16_t csl,
-                             uint8_t l4_proto,
-                             uint32_t *cso);
-
-bool
-eth_parse_ipv6_hdr(const struct iovec *pkt, int pkt_frags,
-                   size_t ip6hdr_off, eth_ip6_hdr_info *info);
 
 /**
  * eth_pad_short_frame - pad a short frame to the minimum Ethernet frame length

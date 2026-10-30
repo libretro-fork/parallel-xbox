@@ -732,9 +732,6 @@ TranslationBlock *tcg_tb_alloc(TCGContext *s);
 
 void tcg_region_reset_all(void);
 
-size_t tcg_code_size(void);
-size_t tcg_code_capacity(void);
-
 /**
  * tcg_tb_insert:
  * @tb: translation block to insert

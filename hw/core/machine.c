@@ -750,33 +750,6 @@ bool device_type_is_dynamic_sysbus(MachineClass *mc, const char *type)
     return allowed;
 }
 
-HotpluggableCPUList *machine_query_hotpluggable_cpus(MachineState *machine)
-{
-    int i;
-    HotpluggableCPUList *head = NULL;
-    MachineClass *mc = MACHINE_GET_CLASS(machine);
-
-    /* force board to initialize possible_cpus if it hasn't been done yet */
-    mc->possible_cpu_arch_ids(machine);
-
-    for (i = 0; i < machine->possible_cpus->len; i++) {
-        CPUState *cpu;
-        HotpluggableCPU *cpu_item = g_new0(typeof(*cpu_item), 1);
-
-        cpu_item->type = g_strdup(machine->possible_cpus->cpus[i].type);
-        cpu_item->vcpus_count = machine->possible_cpus->cpus[i].vcpus_count;
-        cpu_item->props = g_memdup(&machine->possible_cpus->cpus[i].props,
-                                   sizeof(*cpu_item->props));
-
-        cpu = machine->possible_cpus->cpus[i].cpu;
-        if (cpu) {
-            cpu_item->qom_path = object_get_canonical_path(OBJECT(cpu));
-        }
-        QAPI_LIST_PREPEND(head, cpu_item);
-    }
-    return head;
-}
-
 /**
  * machine_set_cpu_numa_node:
  * @machine: machine object to modify
@@ -1325,11 +1298,6 @@ static void machine_finalize(Object *obj)
 bool machine_usb(MachineState *machine)
 {
     return machine->usb;
-}
-
-int machine_phandle_start(MachineState *machine)
-{
-    return machine->phandle_start;
 }
 
 bool machine_dump_guest_core(MachineState *machine)

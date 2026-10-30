@@ -488,11 +488,6 @@ static QemuOptsList qemu_action_opts = {
     },
 };
 
-const char *qemu_get_vm_name(void)
-{
-    return qemu_name;
-}
-
 static void default_driver_disable(const char *driver)
 {
     int i;
@@ -541,11 +536,6 @@ static int parse_name(void *opaque, QemuOpts *opts, Error **errp)
     }
 
     return 0;
-}
-
-bool defaults_enabled(void)
-{
-    return has_defaults;
 }
 
 /***********************************************************/

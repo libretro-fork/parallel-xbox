@@ -557,7 +557,6 @@ int qdev_sync_config(DeviceState *dev, Error **errp);
 void qdev_simple_device_unplug_cb(HotplugHandler *hotplug_dev,
                                   DeviceState *dev, Error **errp);
 void qdev_machine_creation_done(void);
-bool qdev_machine_modified(void);
 
 /**
  * qdev_add_unplug_blocker: Add an unplug blocker to a device
@@ -882,18 +881,6 @@ BusState *qbus_new(const char *typename, DeviceState *parent, const char *name);
 bool qbus_realize(BusState *bus, Error **errp);
 void qbus_unrealize(BusState *bus);
 
-/* Returns > 0 if either devfn or busfn skip walk somewhere in cursion,
- *         < 0 if either devfn or busfn terminate walk somewhere in cursion,
- *           0 otherwise. */
-int qbus_walk_children(BusState *bus,
-                       qdev_walkerfn *pre_devfn, qbus_walkerfn *pre_busfn,
-                       qdev_walkerfn *post_devfn, qbus_walkerfn *post_busfn,
-                       void *opaque);
-int qdev_walk_children(DeviceState *dev,
-                       qdev_walkerfn *pre_devfn, qbus_walkerfn *pre_busfn,
-                       qdev_walkerfn *post_devfn, qbus_walkerfn *post_busfn,
-                       void *opaque);
-
 /**
  * device_cold_reset() - perform a recursive cold reset on a device
  * @dev: device to reset.
@@ -911,22 +898,6 @@ void device_cold_reset(DeviceState *dev);
  * interface. It triggers a RESET_TYPE_COLD.
  */
 void bus_cold_reset(BusState *bus);
-
-/**
- * device_is_in_reset() - check device reset state
- * @dev: device to check
- *
- * Return: true if the device @dev is currently being reset.
- */
-bool device_is_in_reset(DeviceState *dev);
-
-/**
- * bus_is_in_reset() - check bus reset state
- * @bus: bus to check
- *
- * Return: true if the bus @bus is currently being reset.
- */
-bool bus_is_in_reset(BusState *bus);
 
 /* This should go away once we get rid of the NULL bus hack */
 BusState *sysbus_get_default(void);
@@ -1063,7 +1034,6 @@ bool qdev_set_parent_bus(DeviceState *dev, BusState *bus, Error **errp);
 extern bool qdev_hot_removed;
 
 char *qdev_get_dev_path(DeviceState *dev);
-const char *qdev_get_printable_name(DeviceState *dev);
 
 void qbus_set_hotplug_handler(BusState *bus, Object *handler);
 void qbus_set_bus_hotplug_handler(BusState *bus);
@@ -1106,9 +1076,6 @@ static inline void qbus_mark_full(BusState *bus)
 {
     bus->full = true;
 }
-
-void device_listener_register(DeviceListener *listener);
-void device_listener_unregister(DeviceListener *listener);
 
 /**
  * qdev_should_hide_device() - check if device should be hidden

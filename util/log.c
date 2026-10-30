@@ -72,12 +72,6 @@ unsigned qemu_loglevel;
 static bool log_per_thread;
 static GArray *debug_regions;
 
-/* Returns true if qemu_log() will really write somewhere. */
-bool qemu_log_enabled(void)
-{
-    return log_per_thread || qatomic_read(&global_file) != NULL;
-}
-
 /* Returns true if qemu_log() will write somewhere other than stderr. */
 bool qemu_log_separate(void)
 {
@@ -389,16 +383,6 @@ static bool qemu_set_log_internal(const char *filename, bool changed_name,
         }
     }
     return true;
-}
-
-bool qemu_set_log(int log_flags, Error **errp)
-{
-    return qemu_set_log_internal(NULL, false, log_flags, errp);
-}
-
-bool qemu_set_log_filename(const char *filename, Error **errp)
-{
-    return qemu_set_log_internal(filename, true, qemu_loglevel, errp);
 }
 
 bool qemu_set_log_filename_flags(const char *name, int flags, Error **errp)

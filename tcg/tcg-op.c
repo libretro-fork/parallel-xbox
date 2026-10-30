@@ -313,16 +313,6 @@ void tcg_gen_mb(TCGBar mb_type)
     }
 }
 
-void tcg_gen_plugin_cb(unsigned from)
-{
-    tcg_gen_op1(INDEX_op_plugin_cb, 0, from);
-}
-
-void tcg_gen_plugin_mem_cb(TCGv_i64 addr, unsigned meminfo)
-{
-    tcg_gen_op2(INDEX_op_plugin_mem_cb, 0, tcgv_i64_arg(addr), meminfo);
-}
-
 /* 32 bit ops */
 
 void tcg_gen_discard_i32(TCGv_i32 arg)

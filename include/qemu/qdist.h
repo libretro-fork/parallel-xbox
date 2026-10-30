@@ -43,19 +43,5 @@ void qdist_destroy(struct qdist *dist);
 
 void qdist_add(struct qdist *dist, double x, long count);
 void qdist_inc(struct qdist *dist, double x);
-double qdist_xmin(const struct qdist *dist);
-double qdist_xmax(const struct qdist *dist);
-double qdist_avg(const struct qdist *dist);
-unsigned long qdist_sample_count(const struct qdist *dist);
-size_t qdist_unique_entries(const struct qdist *dist);
-
-/* callers must free the returned string with g_free() */
-char *qdist_pr_plain(const struct qdist *dist, size_t n_groups);
-
-/* callers must free the returned string with g_free() */
-char *qdist_pr(const struct qdist *dist, size_t n_groups, uint32_t opt);
-
-/* Only qdist code and test code should ever call this function */
-void qdist_bin__internal(struct qdist *to, const struct qdist *from, size_t n);
 
 #endif /* QEMU_QDIST_H */

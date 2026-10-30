@@ -1840,10 +1840,6 @@ ObjectProperty *object_class_property_add_enum(ObjectClass *klass,
 ObjectProperty *object_property_add_tm(Object *obj, const char *name,
                             void (*get)(Object *, struct tm *, Error **));
 
-ObjectProperty *object_class_property_add_tm(ObjectClass *klass,
-                            const char *name,
-                            void (*get)(Object *, struct tm *, Error **));
-
 typedef enum {
     /* Automatically add a getter to the property */
     OBJ_PROP_FLAG_READ = 1 << 0,
@@ -1869,11 +1865,6 @@ ObjectProperty *object_property_add_uint8_ptr(Object *obj, const char *name,
                                               const uint8_t *v,
                                               ObjectPropertyFlags flags);
 
-ObjectProperty *object_class_property_add_uint8_ptr(ObjectClass *klass,
-                                         const char *name,
-                                         const uint8_t *v,
-                                         ObjectPropertyFlags flags);
-
 /**
  * object_property_add_uint16_ptr:
  * @obj: the object to add a property to
@@ -1889,11 +1880,6 @@ ObjectProperty *object_class_property_add_uint8_ptr(ObjectClass *klass,
 ObjectProperty *object_property_add_uint16_ptr(Object *obj, const char *name,
                                     const uint16_t *v,
                                     ObjectPropertyFlags flags);
-
-ObjectProperty *object_class_property_add_uint16_ptr(ObjectClass *klass,
-                                          const char *name,
-                                          const uint16_t *v,
-                                          ObjectPropertyFlags flags);
 
 /**
  * object_property_add_uint32_ptr:
@@ -1911,11 +1897,6 @@ ObjectProperty *object_property_add_uint32_ptr(Object *obj, const char *name,
                                     const uint32_t *v,
                                     ObjectPropertyFlags flags);
 
-ObjectProperty *object_class_property_add_uint32_ptr(ObjectClass *klass,
-                                          const char *name,
-                                          const uint32_t *v,
-                                          ObjectPropertyFlags flags);
-
 /**
  * object_property_add_uint64_ptr:
  * @obj: the object to add a property to
@@ -1931,11 +1912,6 @@ ObjectProperty *object_class_property_add_uint32_ptr(ObjectClass *klass,
 ObjectProperty *object_property_add_uint64_ptr(Object *obj, const char *name,
                                     const uint64_t *v,
                                     ObjectPropertyFlags flags);
-
-ObjectProperty *object_class_property_add_uint64_ptr(ObjectClass *klass,
-                                          const char *name,
-                                          const uint64_t *v,
-                                          ObjectPropertyFlags flags);
 
 /**
  * object_property_add_alias:

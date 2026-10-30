@@ -1019,119 +1019,11 @@ static void fw_cfg_common_realize(DeviceState *dev, Error **errp)
     qemu_add_machine_init_done_notifier(&s->machine_ready);
 }
 
-FWCfgState *fw_cfg_init_io_dma(uint32_t iobase, uint32_t dma_iobase,
-                                AddressSpace *dma_as)
-{
-    DeviceState *dev;
-    SysBusDevice *sbd;
-    FWCfgIoState *ios;
-    FWCfgState *s;
-    MemoryRegion *iomem = get_system_io();
-    bool dma_requested = dma_iobase && dma_as;
-
-    dev = qdev_new(TYPE_FW_CFG_IO);
-    if (!dma_requested) {
-        qdev_prop_set_bit(dev, "dma_enabled", false);
-    }
-
-    object_property_add_child(OBJECT(qdev_get_machine()), TYPE_FW_CFG,
-                              OBJECT(dev));
-
-    sbd = SYS_BUS_DEVICE(dev);
-    sysbus_realize_and_unref(sbd, &error_fatal);
-    ios = FW_CFG_IO(dev);
-    memory_region_add_subregion(iomem, iobase, &ios->comb_iomem);
-
-    s = FW_CFG(dev);
-
-    if (s->dma_enabled) {
-        /* 64 bits for the address field */
-        s->dma_as = dma_as;
-        s->dma_addr = 0;
-        memory_region_add_subregion(iomem, dma_iobase, &s->dma_iomem);
-    }
-
-    return s;
-}
-
-FWCfgState *fw_cfg_init_mem_wide(hwaddr ctl_addr,
-                                 hwaddr data_addr, uint32_t data_width,
-                                 hwaddr dma_addr, AddressSpace *dma_as)
-{
-    DeviceState *dev;
-    SysBusDevice *sbd;
-    FWCfgState *s;
-    bool dma_requested = dma_addr && dma_as;
-
-    dev = qdev_new(TYPE_FW_CFG_MEM);
-    qdev_prop_set_uint32(dev, "data_width", data_width);
-    if (!dma_requested) {
-        qdev_prop_set_bit(dev, "dma_enabled", false);
-    }
-
-    object_property_add_child(OBJECT(qdev_get_machine()), TYPE_FW_CFG,
-                              OBJECT(dev));
-
-    sbd = SYS_BUS_DEVICE(dev);
-    sysbus_realize_and_unref(sbd, &error_fatal);
-    sysbus_mmio_map(sbd, 0, ctl_addr);
-    sysbus_mmio_map(sbd, 1, data_addr);
-
-    s = FW_CFG(dev);
-
-    if (s->dma_enabled) {
-        s->dma_as = dma_as;
-        s->dma_addr = 0;
-        sysbus_mmio_map(sbd, 2, dma_addr);
-    }
-
-    return s;
-}
-
-FWCfgState *fw_cfg_init_mem(hwaddr ctl_addr, hwaddr data_addr)
-{
-    return fw_cfg_init_mem_wide(ctl_addr, data_addr,
-                                fw_cfg_data_mem_ops.valid.max_access_size,
-                                0, NULL);
-}
-
 
 FWCfgState *fw_cfg_find(void)
 {
     /* Returns NULL unless there is exactly one fw_cfg device */
     return FW_CFG(object_resolve_path_type("", TYPE_FW_CFG, NULL));
-}
-
-void load_image_to_fw_cfg(FWCfgState *fw_cfg, uint16_t size_key,
-                          uint16_t data_key, const char *image_name,
-                          bool try_decompress)
-{
-    size_t size = -1;
-    uint8_t *data;
-
-    if (image_name == NULL) {
-        return;
-    }
-
-    if (try_decompress) {
-        size = load_image_gzipped_buffer(image_name,
-                                         LOAD_IMAGE_MAX_GUNZIP_BYTES, &data);
-    }
-
-    if (size == (size_t)-1) {
-        gchar *contents;
-        gsize length;
-
-        if (!g_file_get_contents(image_name, &contents, &length, NULL)) {
-            error_report("failed to load \"%s\"", image_name);
-            exit(1);
-        }
-        size = length;
-        data = (uint8_t *)contents;
-    }
-
-    fw_cfg_add_i32(fw_cfg, size_key, size);
-    fw_cfg_add_bytes(fw_cfg, data_key, data, size);
 }
 
 static void fw_cfg_class_init(ObjectClass *klass, const void *data)

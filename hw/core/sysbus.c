@@ -30,74 +30,12 @@ typedef struct SysBusFind {
     FindSysbusDeviceFunc *func;
 } SysBusFind;
 
-/* Run func() for every sysbus device, traverse the tree for everything else */
-static int find_sysbus_device(Object *obj, void *opaque)
-{
-    SysBusFind *find = opaque;
-    Object *dev;
-    SysBusDevice *sbdev;
-
-    dev = object_dynamic_cast(obj, TYPE_SYS_BUS_DEVICE);
-    sbdev = (SysBusDevice *)dev;
-
-    if (!sbdev) {
-        /* Container, traverse it for children */
-        return object_child_foreach(obj, find_sysbus_device, opaque);
-    }
-
-    find->func(sbdev, find->opaque);
-
-    return 0;
-}
-
-/*
- * Loop through all dynamically created sysbus devices and call
- * func() for each instance.
- */
-void foreach_dynamic_sysbus_device(FindSysbusDeviceFunc *func, void *opaque)
-{
-    Object *container;
-    SysBusFind find = {
-        .func = func,
-        .opaque = opaque,
-    };
-
-    /* Loop through all sysbus devices that were spawned outside the machine */
-    container = machine_get_container("peripheral");
-    find_sysbus_device(container, &find);
-    container = machine_get_container("peripheral-anon");
-    find_sysbus_device(container, &find);
-}
-
 
 static void system_bus_class_init(ObjectClass *klass, const void *data)
 {
     BusClass *k = BUS_CLASS(klass);
 
     k->get_fw_dev_path = sysbus_get_fw_dev_path;
-}
-
-/* Check whether an IRQ source exists */
-bool sysbus_has_irq(const SysBusDevice *dev, int n)
-{
-    char *prop = g_strdup_printf("%s[%d]", SYSBUS_DEVICE_GPIO_IRQ, n);
-    ObjectProperty *r;
-
-    r = object_property_find(OBJECT(dev), prop);
-    g_free(prop);
-
-    return (r != NULL);
-}
-
-bool sysbus_is_irq_connected(const SysBusDevice *dev, int n)
-{
-    return !!sysbus_get_connected_irq(dev, n);
-}
-
-qemu_irq sysbus_get_connected_irq(const SysBusDevice *dev, int n)
-{
-    DeviceState *d = DEVICE(dev);
-    return qdev_get_gpio_out_connector(d, SYSBUS_DEVICE_GPIO_IRQ, n);
 }
 
 void sysbus_connect_irq(SysBusDevice *dev, int n, qemu_irq irq)
@@ -109,12 +47,6 @@ void sysbus_connect_irq(SysBusDevice *dev, int n, qemu_irq irq)
     if (sbd->connect_irq_notifier) {
         sbd->connect_irq_notifier(dev, irq);
     }
-}
-
-/* Check whether an MMIO region exists */
-bool sysbus_has_mmio(const SysBusDevice *dev, unsigned int n)
-{
-    return (n < dev->num_mmio);
 }
 
 static void sysbus_mmio_map_common(SysBusDevice *dev, int n, hwaddr addr,
@@ -149,35 +81,6 @@ void sysbus_mmio_map(SysBusDevice *dev, int n, hwaddr addr)
     sysbus_mmio_map_common(dev, n, addr, false, 0);
 }
 
-int sysbus_mmio_map_name(SysBusDevice *dev, const char *name, hwaddr addr)
-{
-    for (int i = 0; i < dev->num_mmio; i++) {
-        if (!strcmp(dev->mmio[i].memory->name, name)) {
-            sysbus_mmio_map(dev, i, addr);
-            return i;
-        }
-    }
-    return -1;
-}
-
-void sysbus_mmio_map_overlap(SysBusDevice *dev, int n, hwaddr addr,
-                             int priority)
-{
-    sysbus_mmio_map_common(dev, n, addr, true, priority);
-}
-
-/* Request an IRQ source.  The actual IRQ object may be populated later.  */
-void sysbus_init_irq(SysBusDevice *dev, qemu_irq *p)
-{
-    qdev_init_gpio_out_named(DEVICE(dev), p, SYSBUS_DEVICE_GPIO_IRQ, 1);
-}
-
-/* Pass IRQs from a target device.  */
-void sysbus_pass_irq(SysBusDevice *dev, SysBusDevice *target)
-{
-    qdev_pass_gpios(DEVICE(target), DEVICE(dev), SYSBUS_DEVICE_GPIO_IRQ);
-}
-
 void sysbus_init_mmio(SysBusDevice *dev, MemoryRegion *memory)
 {
     int n;
@@ -186,12 +89,6 @@ void sysbus_init_mmio(SysBusDevice *dev, MemoryRegion *memory)
     n = dev->num_mmio++;
     dev->mmio[n].addr = -1;
     dev->mmio[n].memory = memory;
-}
-
-MemoryRegion *sysbus_mmio_get_region(const SysBusDevice *dev, int n)
-{
-    assert(n >= 0 && n < QDEV_MAX_MMIO);
-    return dev->mmio[n].memory;
 }
 
 void sysbus_init_ioports(SysBusDevice *dev, uint32_t ioport, uint32_t size)
@@ -240,11 +137,6 @@ DeviceState *sysbus_create_varargs(const char *name,
     }
     va_end(va);
     return dev;
-}
-
-bool sysbus_realize(SysBusDevice *dev, Error **errp)
-{
-    return qdev_realize(DEVICE(dev), sysbus_get_default(), errp);
 }
 
 bool sysbus_realize_and_unref(SysBusDevice *dev, Error **errp)

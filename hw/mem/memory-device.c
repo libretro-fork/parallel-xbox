@@ -93,23 +93,6 @@ static unsigned int get_reserved_memslots(MachineState *ms)
            ms->device_memory->used_memslots;
 }
 
-unsigned int memory_devices_get_reserved_memslots(void)
-{
-    if (!current_machine->device_memory) {
-        return 0;
-    }
-    return get_reserved_memslots(current_machine);
-}
-
-bool memory_devices_memslot_auto_decision_active(void)
-{
-    if (!current_machine->device_memory) {
-        return false;
-    }
-
-    return current_machine->device_memory->memslot_auto_decision_active;
-}
-
 static unsigned int memory_device_memslot_decision_limit(MachineState *ms,
                                                          MemoryRegion *mr)
 {
@@ -293,57 +276,6 @@ out:
     return range_lob(&new);
 }
 
-MemoryDeviceInfoList *qmp_memory_device_list(void)
-{
-    GSList *devices = NULL, *item;
-    MemoryDeviceInfoList *list = NULL, **tail = &list;
-
-    object_child_foreach(qdev_get_machine(), memory_device_build_list,
-                         &devices);
-
-    for (item = devices; item; item = g_slist_next(item)) {
-        const MemoryDeviceState *md = MEMORY_DEVICE(item->data);
-        const MemoryDeviceClass *mdc = MEMORY_DEVICE_GET_CLASS(item->data);
-        MemoryDeviceInfo *info = g_new0(MemoryDeviceInfo, 1);
-
-        /* Let's query infotmation even for empty memory devices. */
-        mdc->fill_device_info(md, info);
-
-        QAPI_LIST_APPEND(tail, info);
-    }
-
-    g_slist_free(devices);
-
-    return list;
-}
-
-static int memory_device_plugged_size(Object *obj, void *opaque)
-{
-    uint64_t *size = opaque;
-
-    if (object_dynamic_cast(obj, TYPE_MEMORY_DEVICE)) {
-        const DeviceState *dev = DEVICE(obj);
-        const MemoryDeviceState *md = MEMORY_DEVICE(obj);
-        const MemoryDeviceClass *mdc = MEMORY_DEVICE_GET_CLASS(obj);
-
-        if (dev->realized && !memory_device_is_empty(md)) {
-            *size += mdc->get_plugged_size(md, &error_abort);
-        }
-    }
-
-    object_child_foreach(obj, memory_device_plugged_size, opaque);
-    return 0;
-}
-
-uint64_t get_plugged_memory_size(void)
-{
-    uint64_t size = 0;
-
-    memory_device_plugged_size(qdev_get_machine(), &size);
-
-    return size;
-}
-
 void memory_device_pre_plug(MemoryDeviceState *md, MachineState *ms,
                             Error **errp)
 {
@@ -480,71 +412,6 @@ uint64_t memory_device_get_region_size(const MemoryDeviceState *md,
     }
 
     return memory_region_size(mr);
-}
-
-static void memory_devices_region_mod(MemoryListener *listener,
-                                      MemoryRegionSection *mrs, bool add)
-{
-    DeviceMemoryState *dms = container_of(listener, DeviceMemoryState,
-                                          listener);
-
-    if (!memory_region_is_ram(mrs->mr)) {
-        warn_report("Unexpected memory region mapped into device memory region.");
-        return;
-    }
-
-    /*
-     * The expectation is that each distinct RAM memory region section in
-     * our region for memory devices consumes exactly one memslot in KVM
-     * and in vhost. For vhost, this is true, except:
-     * * ROM memory regions don't consume a memslot. These get used very
-     *   rarely for memory devices (R/O NVDIMMs).
-     * * Memslots without a fd (memory-backend-ram) don't necessarily
-     *   consume a memslot. Such setups are quite rare and possibly bogus:
-     *   the memory would be inaccessible by such vhost devices.
-     *
-     * So for vhost, in corner cases we might over-estimate the number of
-     * memslots that are currently used or that might still be reserved
-     * (required - used).
-     */
-    dms->used_memslots += add ? 1 : -1;
-
-    if (dms->used_memslots > dms->required_memslots) {
-        warn_report("Memory devices use more memory slots than indicated as required.");
-    }
-}
-
-static void memory_devices_region_add(MemoryListener *listener,
-                                      MemoryRegionSection *mrs)
-{
-    return memory_devices_region_mod(listener, mrs, true);
-}
-
-static void memory_devices_region_del(MemoryListener *listener,
-                                      MemoryRegionSection *mrs)
-{
-    return memory_devices_region_mod(listener, mrs, false);
-}
-
-void machine_memory_devices_init(MachineState *ms, hwaddr base, uint64_t size)
-{
-    g_assert(size);
-    g_assert(!ms->device_memory);
-    ms->device_memory = g_new0(DeviceMemoryState, 1);
-    ms->device_memory->base = base;
-
-    memory_region_init(&ms->device_memory->mr, OBJECT(ms), "device-memory",
-                       size);
-    address_space_init(&ms->device_memory->as, &ms->device_memory->mr,
-                       "device-memory");
-    memory_region_add_subregion(get_system_memory(), ms->device_memory->base,
-                                &ms->device_memory->mr);
-
-    /* Track the number of memslots used by memory devices. */
-    ms->device_memory->listener.region_add = memory_devices_region_add;
-    ms->device_memory->listener.region_del = memory_devices_region_del;
-    memory_listener_register(&ms->device_memory->listener,
-                             &ms->device_memory->as);
 }
 
 static const TypeInfo memory_device_info = {

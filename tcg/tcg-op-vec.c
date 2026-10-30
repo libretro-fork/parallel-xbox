@@ -324,48 +324,6 @@ void tcg_gen_andc_vec(unsigned vece, TCGv_vec r, TCGv_vec a, TCGv_vec b)
     }
 }
 
-void tcg_gen_orc_vec(unsigned vece, TCGv_vec r, TCGv_vec a, TCGv_vec b)
-{
-    if (TCG_TARGET_HAS_orc_vec) {
-        vec_gen_op3(INDEX_op_orc_vec, 0, r, a, b);
-    } else {
-        TCGv_vec t = tcg_temp_new_vec_matching(r);
-        tcg_gen_not_vec(0, t, b);
-        tcg_gen_or_vec(0, r, a, t);
-        tcg_temp_free_vec(t);
-    }
-}
-
-void tcg_gen_nand_vec(unsigned vece, TCGv_vec r, TCGv_vec a, TCGv_vec b)
-{
-    if (TCG_TARGET_HAS_nand_vec) {
-        vec_gen_op3(INDEX_op_nand_vec, 0, r, a, b);
-    } else {
-        tcg_gen_and_vec(0, r, a, b);
-        tcg_gen_not_vec(0, r, r);
-    }
-}
-
-void tcg_gen_nor_vec(unsigned vece, TCGv_vec r, TCGv_vec a, TCGv_vec b)
-{
-    if (TCG_TARGET_HAS_nor_vec) {
-        vec_gen_op3(INDEX_op_nor_vec, 0, r, a, b);
-    } else {
-        tcg_gen_or_vec(0, r, a, b);
-        tcg_gen_not_vec(0, r, r);
-    }
-}
-
-void tcg_gen_eqv_vec(unsigned vece, TCGv_vec r, TCGv_vec a, TCGv_vec b)
-{
-    if (TCG_TARGET_HAS_eqv_vec) {
-        vec_gen_op3(INDEX_op_eqv_vec, 0, r, a, b);
-    } else {
-        tcg_gen_xor_vec(0, r, a, b);
-        tcg_gen_not_vec(0, r, r);
-    }
-}
-
 static bool do_op2(unsigned vece, TCGv_vec r, TCGv_vec a, TCGOpcode opc)
 {
     TCGTemp *rt = tcgv_vec_temp(r);
@@ -489,18 +447,6 @@ void tcg_gen_shri_vec(unsigned vece, TCGv_vec r, TCGv_vec a, int64_t i)
 void tcg_gen_sari_vec(unsigned vece, TCGv_vec r, TCGv_vec a, int64_t i)
 {
     do_shifti(INDEX_op_sari_vec, vece, r, a, i);
-}
-
-void tcg_gen_rotli_vec(unsigned vece, TCGv_vec r, TCGv_vec a, int64_t i)
-{
-    do_shifti(INDEX_op_rotli_vec, vece, r, a, i);
-}
-
-void tcg_gen_rotri_vec(unsigned vece, TCGv_vec r, TCGv_vec a, int64_t i)
-{
-    int bits = 8 << vece;
-    tcg_debug_assert(i >= 0 && i < bits);
-    do_shifti(INDEX_op_rotli_vec, vece, r, a, -i & (bits - 1));
 }
 
 void tcg_gen_cmp_vec(TCGCond cond, unsigned vece,
@@ -678,19 +624,9 @@ void tcg_gen_shrv_vec(unsigned vece, TCGv_vec r, TCGv_vec a, TCGv_vec b)
     do_op3_nofail(vece, r, a, b, INDEX_op_shrv_vec);
 }
 
-void tcg_gen_sarv_vec(unsigned vece, TCGv_vec r, TCGv_vec a, TCGv_vec b)
-{
-    do_op3_nofail(vece, r, a, b, INDEX_op_sarv_vec);
-}
-
 void tcg_gen_rotlv_vec(unsigned vece, TCGv_vec r, TCGv_vec a, TCGv_vec b)
 {
     do_op3_nofail(vece, r, a, b, INDEX_op_rotlv_vec);
-}
-
-void tcg_gen_rotrv_vec(unsigned vece, TCGv_vec r, TCGv_vec a, TCGv_vec b)
-{
-    do_op3_nofail(vece, r, a, b, INDEX_op_rotrv_vec);
 }
 
 static void do_shifts(unsigned vece, TCGv_vec r, TCGv_vec a,
@@ -727,16 +663,6 @@ void tcg_gen_shls_vec(unsigned vece, TCGv_vec r, TCGv_vec a, TCGv_i32 b)
 void tcg_gen_shrs_vec(unsigned vece, TCGv_vec r, TCGv_vec a, TCGv_i32 b)
 {
     do_shifts(vece, r, a, b, INDEX_op_shrs_vec);
-}
-
-void tcg_gen_sars_vec(unsigned vece, TCGv_vec r, TCGv_vec a, TCGv_i32 b)
-{
-    do_shifts(vece, r, a, b, INDEX_op_sars_vec);
-}
-
-void tcg_gen_rotls_vec(unsigned vece, TCGv_vec r, TCGv_vec a, TCGv_i32 s)
-{
-    do_shifts(vece, r, a, s, INDEX_op_rotls_vec);
 }
 
 void tcg_gen_bitsel_vec(unsigned vece, TCGv_vec r, TCGv_vec a,

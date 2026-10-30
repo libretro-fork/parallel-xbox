@@ -136,13 +136,6 @@ out:
     return ret;
 }
 
-char *qemu_mac_strdup_printf(const uint8_t *macaddr)
-{
-    return g_strdup_printf("%.2x:%.2x:%.2x:%.2x:%.2x:%.2x",
-                           macaddr[0], macaddr[1], macaddr[2],
-                           macaddr[3], macaddr[4], macaddr[5]);
-}
-
 void qemu_set_info_str(NetClientState *nc, const char *fmt, ...)
 {
     va_list ap;
@@ -150,13 +143,6 @@ void qemu_set_info_str(NetClientState *nc, const char *fmt, ...)
     va_start(ap, fmt);
     vsnprintf(nc->info_str, sizeof(nc->info_str), fmt, ap);
     va_end(ap);
-}
-
-void qemu_format_nic_info_str(NetClientState *nc, uint8_t macaddr[6])
-{
-    qemu_set_info_str(nc, "model=%s,macaddr=%02x:%02x:%02x:%02x:%02x:%02x",
-                      nc->model, macaddr[0], macaddr[1], macaddr[2],
-                      macaddr[3], macaddr[4], macaddr[5]);
 }
 
 static int mac_table[256] = {0};
@@ -300,22 +286,6 @@ NetClientState *qemu_new_net_client(NetClientInfo *info,
     return nc;
 }
 
-NetClientState *qemu_new_net_control_client(NetClientInfo *info,
-                                            NetClientState *peer,
-                                            const char *model,
-                                            const char *name)
-{
-    NetClientState *nc;
-
-    assert(info->size >= sizeof(NetClientState));
-
-    nc = g_malloc0(info->size);
-    qemu_net_client_setup(nc, info, peer, model, name,
-                          qemu_net_client_destructor, false);
-
-    return nc;
-}
-
 NICState *qemu_new_nic(NetClientInfo *info,
                        NICConf *conf,
                        const char *model,
@@ -367,13 +337,6 @@ void *qemu_get_nic_opaque(NetClientState *nc)
     NICState *nic = qemu_get_nic(nc);
 
     return nic->opaque;
-}
-
-NetClientState *qemu_get_peer(NetClientState *nc, int queue_index)
-{
-    assert(nc != NULL);
-    NetClientState *ncs = nc + queue_index;
-    return ncs->peer;
 }
 
 static void qemu_cleanup_net_client(NetClientState *nc,
@@ -497,119 +460,6 @@ void qemu_foreach_nic(qemu_nic_foreach func, void *opaque)
             }
         }
     }
-}
-
-bool qemu_has_ufo(NetClientState *nc)
-{
-    if (!nc || !nc->info->has_ufo) {
-        return false;
-    }
-
-    return nc->info->has_ufo(nc);
-}
-
-bool qemu_has_uso(NetClientState *nc)
-{
-    if (!nc || !nc->info->has_uso) {
-        return false;
-    }
-
-    return nc->info->has_uso(nc);
-}
-
-bool qemu_has_tunnel(NetClientState *nc)
-{
-    if (!nc || !nc->info->has_tunnel) {
-        return false;
-    }
-
-    return nc->info->has_tunnel(nc);
-}
-
-bool qemu_has_vnet_hdr(NetClientState *nc)
-{
-    if (!nc || !nc->info->has_vnet_hdr) {
-        return false;
-    }
-
-    return nc->info->has_vnet_hdr(nc);
-}
-
-bool qemu_has_vnet_hdr_len(NetClientState *nc, int len)
-{
-    if (!nc || !nc->info->has_vnet_hdr_len) {
-        return false;
-    }
-
-    return nc->info->has_vnet_hdr_len(nc, len);
-}
-
-void qemu_set_offload(NetClientState *nc, const NetOffloads *ol)
-{
-    if (!nc || !nc->info->set_offload) {
-        return;
-    }
-
-    nc->info->set_offload(nc, ol);
-}
-
-int qemu_get_vnet_hdr_len(NetClientState *nc)
-{
-    if (!nc) {
-        return 0;
-    }
-
-    return nc->vnet_hdr_len;
-}
-
-void qemu_set_vnet_hdr_len(NetClientState *nc, int len)
-{
-    if (!nc || !nc->info->set_vnet_hdr_len) {
-        return;
-    }
-
-    assert(len == sizeof(struct virtio_net_hdr_mrg_rxbuf) ||
-           len == sizeof(struct virtio_net_hdr) ||
-           len == sizeof(struct virtio_net_hdr_v1_hash) ||
-           len == sizeof(struct virtio_net_hdr_v1_hash_tunnel));
-
-    nc->vnet_hdr_len = len;
-    nc->info->set_vnet_hdr_len(nc, len);
-}
-
-bool qemu_get_vnet_hash_supported_types(NetClientState *nc, uint32_t *types)
-{
-    if (!nc || !nc->info->get_vnet_hash_supported_types) {
-        return false;
-    }
-
-    return nc->info->get_vnet_hash_supported_types(nc, types);
-}
-
-int qemu_set_vnet_le(NetClientState *nc, bool is_le)
-{
-#if HOST_BIG_ENDIAN
-    if (!nc || !nc->info->set_vnet_le) {
-        return -ENOSYS;
-    }
-
-    return nc->info->set_vnet_le(nc, is_le);
-#else
-    return 0;
-#endif
-}
-
-int qemu_set_vnet_be(NetClientState *nc, bool is_be)
-{
-#if HOST_BIG_ENDIAN
-    return 0;
-#else
-    if (!nc || !nc->info->set_vnet_be) {
-        return -ENOSYS;
-    }
-
-    return nc->info->set_vnet_be(nc, is_be);
-#endif
 }
 
 int qemu_can_receive_packet(NetClientState *nc)
@@ -766,25 +616,6 @@ ssize_t qemu_send_packet_async(NetClientState *sender,
 ssize_t qemu_send_packet(NetClientState *nc, const uint8_t *buf, int size)
 {
     return qemu_send_packet_async(nc, buf, size, NULL);
-}
-
-ssize_t qemu_receive_packet(NetClientState *nc, const uint8_t *buf, int size)
-{
-    uint8_t min_pkt[ETH_ZLEN];
-    size_t min_pktsz = sizeof(min_pkt);
-
-    if (!qemu_can_receive_packet(nc)) {
-        return 0;
-    }
-
-    if (net_peer_needs_padding(nc)) {
-        if (eth_pad_short_frame(min_pkt, &min_pktsz, buf, size)) {
-            buf = min_pkt;
-            size = min_pktsz;
-        }
-    }
-
-    return qemu_net_queue_receive(nc->incoming_queue, buf, size);
 }
 
 ssize_t qemu_send_packet_raw(NetClientState *nc, const uint8_t *buf, int size)
@@ -1555,25 +1386,6 @@ RxFilterInfoList *qmp_query_rx_filter(const char *name, Error **errp)
     return filter_list;
 }
 
-void colo_notify_filters_event(int event, Error **errp)
-{
-    NetClientState *nc;
-    NetFilterState *nf;
-    NetFilterClass *nfc = NULL;
-    Error *local_err = NULL;
-
-    QTAILQ_FOREACH(nc, &net_clients, next) {
-        QTAILQ_FOREACH(nf, &nc->filters, next) {
-            nfc = NETFILTER_GET_CLASS(OBJECT(nf));
-            nfc->handle_event(nf, event, &local_err);
-            if (local_err) {
-                error_propagate(errp, local_err);
-                return;
-            }
-        }
-    }
-}
-
 void net_client_set_link(NetClientState **ncs, int queues, bool up)
 {
     NetClientState *nc;
@@ -1646,58 +1458,6 @@ static void net_vm_change_state_handler(void *opaque, bool running,
             qemu_flush_or_purge_queued_packets(nc, true);
         }
     }
-}
-
-void net_cleanup(void)
-{
-    NetClientState *nc, **p = &QTAILQ_FIRST(&net_clients);
-
-    /*cleanup colo compare module for COLO*/
-    colo_compare_cleanup();
-
-    /*
-     * Walk the net_clients list and remove the netdevs but *not* any
-     * NET_CLIENT_DRIVER_NIC entries. The latter are owned by the device
-     * model which created them, and in some cases (e.g. xen-net-device)
-     * the device itself may do cleanup at exit and will be upset if we
-     * just delete its NIC from underneath it.
-     *
-     * Since qemu_del_net_client() may delete multiple entries, using
-     * QTAILQ_FOREACH_SAFE() is not safe here. The only safe pointer
-     * to keep as a bookmark is a NET_CLIENT_DRIVER_NIC entry, so keep
-     * 'p' pointing to either the head of the list, or the 'next' field
-     * of the latest NET_CLIENT_DRIVER_NIC, and operate on *p as we walk
-     * the list.
-     *
-     * However, the NIC may have peers that trust to be clean beyond this
-     * point.  For example, if they have been removed with device_del.
-     *
-     * The 'nc' variable isn't part of the list traversal; it's purely
-     * for convenience as too much '(*p)->' has a tendency to make the
-     * readers' eyes bleed.
-     */
-    while (*p) {
-        nc = *p;
-        if (nc->info->type == NET_CLIENT_DRIVER_NIC) {
-            NICState *nic = qemu_get_nic(nc);
-
-            if (nic->peer_deleted) {
-                int queues = MAX(nic->conf->peers.queues, 1);
-
-                for (int i = 0; i < queues; i++) {
-                    nc = qemu_get_subqueue(nic, i);
-                    qemu_cleanup_net_client(nc->peer, false);
-                }
-            }
-
-            /* Skip NET_CLIENT_DRIVER_NIC entries */
-            p = &QTAILQ_NEXT(nc, next);
-        } else {
-            qemu_del_net_client(nc);
-        }
-    }
-
-    qemu_del_vm_change_state_handler(net_change_state_entry);
 }
 
 void net_check_clients(void)
@@ -1934,49 +1694,6 @@ void net_client_parse(QemuOptsList *opts_list, const char *optstr)
 
 /* From FreeBSD */
 /* XXX: optimize */
-uint32_t net_crc32(const uint8_t *p, int len)
-{
-    uint32_t crc;
-    int carry, i, j;
-    uint8_t b;
-
-    crc = 0xffffffff;
-    for (i = 0; i < len; i++) {
-        b = *p++;
-        for (j = 0; j < 8; j++) {
-            carry = ((crc & 0x80000000L) ? 1 : 0) ^ (b & 0x01);
-            crc <<= 1;
-            b >>= 1;
-            if (carry) {
-                crc = ((crc ^ POLYNOMIAL_BE) | carry);
-            }
-        }
-    }
-
-    return crc;
-}
-
-uint32_t net_crc32_le(const uint8_t *p, int len)
-{
-    uint32_t crc;
-    int carry, i, j;
-    uint8_t b;
-
-    crc = 0xffffffff;
-    for (i = 0; i < len; i++) {
-        b = *p++;
-        for (j = 0; j < 8; j++) {
-            carry = (crc & 0x1) ^ (b & 0x01);
-            crc >>= 1;
-            b >>= 1;
-            if (carry) {
-                crc ^= POLYNOMIAL_LE;
-            }
-        }
-    }
-
-    return crc;
-}
 
 QemuOptsList qemu_netdev_opts = {
     .name = "netdev",

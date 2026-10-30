@@ -68,11 +68,6 @@ void tcg_cpu_init_cflags(CPUState *cpu, bool parallel)
     tcg_cflags_set(cpu, cflags);
 }
 
-void tcg_cpu_destroy(CPUState *cpu)
-{
-    cpu_thread_signal_destroyed(cpu);
-}
-
 int tcg_cpu_exec(CPUState *cpu)
 {
     int ret;

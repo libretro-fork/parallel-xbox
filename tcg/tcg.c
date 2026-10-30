@@ -1295,17 +1295,6 @@ void tcg_register_thread(void)
 #else
 
 #ifdef XBOX
-void tcg_register_init_ctx(void)
-{
-    /*
-     * For xemu we may exercise functions on the UI thread that would otherwise
-     * run on the main thread following initialization. We retain the BQL when
-     * running such commands, which should make this safe, but there are some
-     * data stored in TLS which get initialized early on and may be required
-     * later.
-     */
-    SET_tcg_ctx(&tcg_init_ctx);
-}
 #endif
 
 void tcg_register_thread(void)
@@ -2140,24 +2129,6 @@ TCGv_i64 tcg_global_mem_new_i64(TCGv_ptr reg, intptr_t off, const char *name)
     return temp_tcgv_i64(ts);
 }
 
-TCGv_f32 tcg_global_mem_new_f32(TCGv_ptr reg, intptr_t offset, const char *name)
-{
-    TCGTemp *t = tcg_global_mem_new_internal(reg, offset, name, TCG_TYPE_F32);
-    return temp_tcgv_f32(t);
-}
-
-TCGv_f64 tcg_global_mem_new_f64(TCGv_ptr reg, intptr_t offset, const char *name)
-{
-    TCGTemp *t = tcg_global_mem_new_internal(reg, offset, name, TCG_TYPE_F64);
-    return temp_tcgv_f64(t);
-}
-
-TCGv_ptr tcg_global_mem_new_ptr(TCGv_ptr reg, intptr_t off, const char *name)
-{
-    TCGTemp *ts = tcg_global_mem_new_internal(reg, off, name, TCG_TYPE_PTR);
-    return temp_tcgv_ptr(ts);
-}
-
 TCGTemp *tcg_temp_new_internal(TCGType type, TCGTempKind kind)
 {
     TCGContext *s = tcg_ctx;
@@ -2346,16 +2317,6 @@ void tcg_temp_free_i128(TCGv_i128 arg)
     tcg_temp_free_internal(tcgv_i128_temp(arg));
 }
 
-void tcg_temp_free_f32(TCGv_f32 arg)
-{
-    tcg_temp_free_internal(tcgv_f32_temp(arg));
-}
-
-void tcg_temp_free_f64(TCGv_f64 arg)
-{
-    tcg_temp_free_internal(tcgv_f64_temp(arg));
-}
-
 void tcg_temp_free_ptr(TCGv_ptr arg)
 {
     tcg_temp_free_internal(tcgv_ptr_temp(arg));
@@ -2439,11 +2400,6 @@ TCGv_i32 tcg_constant_i32(int32_t val)
 TCGv_i64 tcg_constant_i64(int64_t val)
 {
     return temp_tcgv_i64(tcg_constant_internal(TCG_TYPE_I64, val));
-}
-
-TCGv_vaddr tcg_constant_vaddr(uintptr_t val)
-{
-    return temp_tcgv_vaddr(tcg_constant_internal(TCG_TYPE_PTR, val));
 }
 
 TCGv_ptr tcg_constant_ptr_int(intptr_t val)

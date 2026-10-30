@@ -133,10 +133,6 @@ OBJECT_DECLARE_TYPE(PCMachineState, PCMachineClass, PC_MACHINE)
 
 GSIState *pc_gsi_create(qemu_irq **irqs, bool pci_enabled);
 
-/* pc.c */
-
-void pc_acpi_smi_interrupt(void *opaque, int irq, int level);
-
 #define PCI_HOST_PROP_RAM_MEM          "ram-mem"
 #define PCI_HOST_PROP_PCI_MEM          "pci-mem"
 #define PCI_HOST_PROP_SYSTEM_MEM       "system-mem"
@@ -179,23 +175,6 @@ typedef struct __attribute__((__packed__)) OvmfSevMetadata {
 
 OvmfSevMetadata *pc_system_get_ovmf_sev_metadata_ptr(void);
 
-void pc_pci_as_mapping_init(MemoryRegion *system_memory,
-                            MemoryRegion *pci_address_space);
-
-void xen_load_linux(PCMachineState *pcms);
-void pc_memory_init(PCMachineState *pcms,
-                    MemoryRegion *system_memory,
-                    MemoryRegion *rom_memory,
-                    uint64_t pci_hole64_size);
-uint64_t pc_pci_hole64_start(void);
-DeviceState *pc_vga_init(ISABus *isa_bus, PCIBus *pci_bus);
-void pc_basic_device_init(struct PCMachineState *pcms,
-                          ISABus *isa_bus, qemu_irq *gsi,
-                          ISADevice *rtc_state,
-                          bool create_fdctrl,
-                          uint32_t hpet_irqs);
-void pc_nic_init(PCMachineClass *pcmc, ISABus *isa_bus, PCIBus *pci_bus);
-
 void pc_i8259_create(ISABus *isa_bus, qemu_irq *i8259_irqs);
 
 /* port92.c */
@@ -206,13 +185,6 @@ void pc_i8259_create(ISABus *isa_bus, qemu_irq *i8259_irqs);
 /* pc_sysfw.c */
 void pc_system_flash_create(PCMachineState *pcms);
 void pc_system_flash_cleanup_unused(PCMachineState *pcms);
-void pc_system_firmware_init(PCMachineState *pcms, MemoryRegion *rom_memory);
-bool pc_system_ovmf_table_find(const char *entry, uint8_t **data,
-                               int *data_len);
-void pc_system_parse_ovmf_flash(uint8_t *flash_ptr, size_t flash_size);
-
-/* sgx.c */
-void pc_machine_init_sgx_epc(PCMachineState *pcms);
 
 extern GlobalProperty pc_compat_10_1[];
 extern const size_t pc_compat_10_1_len;

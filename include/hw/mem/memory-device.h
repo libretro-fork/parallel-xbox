@@ -164,10 +164,6 @@ struct MemoryDeviceClass {
 #define MEMORY_DEVICES_SOFT_MEMSLOT_LIMIT 256
 #define MEMORY_DEVICES_SAFE_MAX_MEMSLOTS 509
 
-MemoryDeviceInfoList *qmp_memory_device_list(void);
-uint64_t get_plugged_memory_size(void);
-unsigned int memory_devices_get_reserved_memslots(void);
-bool memory_devices_memslot_auto_decision_active(void);
 void memory_device_pre_plug(MemoryDeviceState *md, MachineState *ms,
                             Error **errp);
 void memory_device_plug(MemoryDeviceState *md, MachineState *ms);

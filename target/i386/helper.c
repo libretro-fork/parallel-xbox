@@ -76,36 +76,6 @@ void cpu_sync_bndcs_hflags(CPUX86State *env)
     env->hflags2 = hflags2;
 }
 
-static void cpu_x86_version(CPUX86State *env, int *family, int *model)
-{
-    int cpuver = env->cpuid_version;
-
-    if (family == NULL || model == NULL) {
-        return;
-    }
-
-    *family = (cpuver >> 8) & 0x0f;
-    *model = ((cpuver >> 12) & 0xf0) + ((cpuver >> 4) & 0x0f);
-}
-
-/* Broadcast MCA signal for processor version 06H_EH and above */
-int cpu_x86_support_mca_broadcast(CPUX86State *env)
-{
-    int family = 0;
-    int model = 0;
-
-    if (IS_AMD_CPU(env)) {
-        return 0;
-    }
-
-    cpu_x86_version(env, &family, &model);
-    if ((family == 6 && model >= 14) || family > 6) {
-        return 1;
-    }
-
-    return 0;
-}
-
 /***********************************************************/
 /* x86 mmu */
 /* XXX: add PGE support */
@@ -527,26 +497,6 @@ void x86_stb_phys(CPUState *cs, hwaddr addr, uint8_t val)
     AddressSpace *as = cpu_addressspace(cs, attrs);
 
     address_space_stb(as, addr, val, attrs, NULL);
-}
-
-void x86_stl_phys_notdirty(CPUState *cs, hwaddr addr, uint32_t val)
-{
-    X86CPU *cpu = X86_CPU(cs);
-    CPUX86State *env = &cpu->env;
-    MemTxAttrs attrs = cpu_get_mem_attrs(env);
-    AddressSpace *as = cpu_addressspace(cs, attrs);
-
-    address_space_stl_notdirty(as, addr, val, attrs, NULL);
-}
-
-void x86_stw_phys(CPUState *cs, hwaddr addr, uint32_t val)
-{
-    X86CPU *cpu = X86_CPU(cs);
-    CPUX86State *env = &cpu->env;
-    MemTxAttrs attrs = cpu_get_mem_attrs(env);
-    AddressSpace *as = cpu_addressspace(cs, attrs);
-
-    address_space_stw(as, addr, val, attrs, NULL);
 }
 
 void x86_stl_phys(CPUState *cs, hwaddr addr, uint32_t val)

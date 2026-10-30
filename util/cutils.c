@@ -924,30 +924,6 @@ int uleb128_decode_small(const uint8_t *in, uint32_t *n)
     }
 }
 
-/*
- * helper to parse debug environment variables
- */
-int parse_debug_env(const char *name, int max, int initial)
-{
-    char *debug_env = getenv(name);
-    char *inv = NULL;
-    long debug;
-
-    if (!debug_env) {
-        return initial;
-    }
-    errno = 0;
-    debug = strtol(debug_env, &inv, 10);
-    if (inv == debug_env) {
-        return initial;
-    }
-    if (debug < 0 || debug > max || errno != 0) {
-        warn_report("%s not in [0, %d]", name, max);
-        return initial;
-    }
-    return debug;
-}
-
 const char *si_prefix(unsigned int exp10)
 {
     static const char *prefixes[] = {

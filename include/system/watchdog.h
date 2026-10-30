@@ -25,8 +25,4 @@
 #include "qemu/queue.h"
 #include "qapi/qapi-types-run-state.h"
 
-/* in hw/watchdog.c */
-WatchdogAction get_watchdog_action(void);
-void watchdog_perform_action(void);
-
 #endif /* QEMU_WATCHDOG_H */

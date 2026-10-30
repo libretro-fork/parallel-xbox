@@ -271,25 +271,6 @@ const char *qemu_opt_get(QemuOpts *opts, const char *name)
     return opt->str;
 }
 
-void qemu_opt_iter_init(QemuOptsIter *iter, QemuOpts *opts, const char *name)
-{
-    iter->opts = opts;
-    iter->opt = QTAILQ_FIRST(&opts->head);
-    iter->name = name;
-}
-
-const char *qemu_opt_iter_next(QemuOptsIter *iter)
-{
-    QemuOpt *ret = iter->opt;
-    if (iter->name) {
-        while (ret && !g_str_equal(iter->name, ret->name)) {
-            ret = QTAILQ_NEXT(ret, next);
-        }
-    }
-    iter->opt = ret ? QTAILQ_NEXT(ret, next) : NULL;
-    return ret ? ret->str : NULL;
-}
-
 /* Get a known option (or its default) and remove it from the list
  * all in one action. Return a malloced string of the option value.
  * Result must be freed by caller with g_free().
@@ -848,24 +829,6 @@ static char *opts_parse_id(const char *params)
     return NULL;
 }
 
-bool has_help_option(const char *params)
-{
-    const char *p;
-    char *name, *value;
-    bool ret = false;
-
-    for (p = params; *p;) {
-        p = get_opt_name_value(p, NULL, false, &ret, &name, &value);
-        g_free(name);
-        g_free(value);
-        if (ret) {
-            return true;
-        }
-    }
-
-    return false;
-}
-
 /**
  * Store options parsed from @params into @opts.
  * If @firstname is non-null, the first key=value in @params may omit
@@ -1089,30 +1052,6 @@ QDict *qemu_opts_to_qdict_filtered(QemuOpts *opts, QDict *qdict,
 QDict *qemu_opts_to_qdict(QemuOpts *opts, QDict *qdict)
 {
     return qemu_opts_to_qdict_filtered(opts, qdict, NULL, false);
-}
-
-/* Validate parsed opts against descriptions where no
- * descriptions were provided in the QemuOptsList.
- */
-bool qemu_opts_validate(QemuOpts *opts, const QemuOptDesc *desc, Error **errp)
-{
-    QemuOpt *opt;
-
-    assert(opts_accepts_any(opts->list));
-
-    QTAILQ_FOREACH(opt, &opts->head, next) {
-        opt->desc = find_desc_by_name(desc, opt->name);
-        if (!opt->desc) {
-            error_setg(errp, "Invalid parameter '%s'", opt->name);
-            return false;
-        }
-
-        if (!qemu_opt_parse(opt, errp)) {
-            return false;
-        }
-    }
-
-    return true;
 }
 
 /**

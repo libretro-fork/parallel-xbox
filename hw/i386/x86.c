@@ -163,31 +163,6 @@ static void x86_nmi(NMIState *n, int cpu_index, Error **errp)
     }
 }
 
-bool x86_machine_is_smm_enabled(const X86MachineState *x86ms)
-{
-    bool smm_available = false;
-
-    if (x86ms->smm == ON_OFF_AUTO_OFF) {
-        return false;
-    }
-
-    if (tcg_enabled() || qtest_enabled()) {
-        smm_available = true;
-    } else if (kvm_enabled()) {
-        smm_available = kvm_has_smm();
-    }
-
-    if (smm_available) {
-        return true;
-    }
-
-    if (x86ms->smm == ON_OFF_AUTO_ON) {
-        error_report("System Management Mode not supported by this hypervisor.");
-        exit(1);
-    }
-    return false;
-}
-
 static void x86_machine_get_smm(Object *obj, Visitor *v, const char *name,
                                void *opaque, Error **errp)
 {

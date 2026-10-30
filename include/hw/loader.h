@@ -84,8 +84,6 @@ ssize_t load_image_mr(const char *filename, MemoryRegion *mr);
  */
 #define LOAD_IMAGE_MAX_GUNZIP_BYTES (256 << 20)
 
-ssize_t load_image_gzipped_buffer(const char *filename, uint64_t max_sz,
-                                  uint8_t **buffer);
 /**
  * unpack_efi_zboot_image:
  * @buffer: pointer to a variable holding the address of a buffer containing the
@@ -110,7 +108,6 @@ ssize_t unpack_efi_zboot_image(uint8_t **buffer, ssize_t *size);
 #define ELF_LOAD_WRONG_ARCH   -3
 #define ELF_LOAD_WRONG_ENDIAN -4
 #define ELF_LOAD_TOO_BIG      -5
-const char *load_elf_strerror(ssize_t error);
 
 /** load_elf_ram_sym:
  * @filename: Path of ELF file
@@ -191,9 +188,6 @@ ssize_t load_elf(const char *filename,
  */
 void load_elf_hdr(const char *filename, void *hdr, bool *is64, Error **errp);
 
-ssize_t load_aout(const char *filename, hwaddr addr, int max_sz,
-                  bool big_endian, hwaddr target_page_size);
-
 #define LOAD_UIMAGE_LOADADDR_INVALID (-1)
 
 /** load_uimage_as:
@@ -252,12 +246,6 @@ ssize_t load_ramdisk(const char *filename, hwaddr addr, uint64_t max_sz);
 
 ssize_t gunzip(void *dst, size_t dstlen, uint8_t *src, size_t srclen);
 
-ssize_t read_targphys(const char *name,
-                      int fd, hwaddr dst_addr, size_t nbytes);
-void pstrcpy_targphys(const char *name,
-                      hwaddr dest, int buf_size,
-                      const char *source);
-
 ssize_t rom_add_file(const char *file, const char *fw_dir,
                      hwaddr addr, int32_t bootindex,
                      bool has_option_rom, MemoryRegion *mr, AddressSpace *as);
@@ -271,7 +259,6 @@ int rom_add_elf_program(const char *name, GMappedFile *mapped_file, void *data,
                         size_t datasize, size_t romsize, hwaddr addr,
                         AddressSpace *as);
 int rom_check_and_register_reset(void);
-void rom_set_fw(FWCfgState *f);
 
 /**
  * rom_transaction_begin:

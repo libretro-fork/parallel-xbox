@@ -845,37 +845,6 @@ const PropertyInfo qdev_prop_array = {
     .set_default_value = default_prop_array,
 };
 
-/* --- public helpers --- */
-
-static const Property *qdev_prop_walk(DeviceClass *cls, const char *name)
-{
-    for (int i = 0, n = cls->props_count_; i < n; ++i) {
-        const Property *prop = &cls->props_[i];
-        if (strcmp(prop->name, name) == 0) {
-            return prop;
-        }
-    }
-    return NULL;
-}
-
-static const Property *qdev_prop_find(DeviceState *dev, const char *name)
-{
-    ObjectClass *class;
-    const Property *prop;
-
-    /* device properties */
-    class = object_get_class(OBJECT(dev));
-    do {
-        prop = qdev_prop_walk(DEVICE_CLASS(class), name);
-        if (prop) {
-            return prop;
-        }
-        class = object_class_get_parent(class);
-    } while (class != object_class_by_name(TYPE_DEVICE));
-
-    return NULL;
-}
-
 void error_set_from_qdev_prop_error(Error **errp, int ret, Object *obj,
                                     const char *name, const char *value)
 {
@@ -908,11 +877,6 @@ void qdev_prop_set_uint8(DeviceState *dev, const char *name, uint8_t value)
     object_property_set_int(OBJECT(dev), name, value, &error_abort);
 }
 
-void qdev_prop_set_uint16(DeviceState *dev, const char *name, uint16_t value)
-{
-    object_property_set_int(OBJECT(dev), name, value, &error_abort);
-}
-
 void qdev_prop_set_uint32(DeviceState *dev, const char *name, uint32_t value)
 {
     object_property_set_int(OBJECT(dev), name, value, &error_abort);
@@ -931,16 +895,6 @@ void qdev_prop_set_uint64(DeviceState *dev, const char *name, uint64_t value)
 void qdev_prop_set_string(DeviceState *dev, const char *name, const char *value)
 {
     object_property_set_str(OBJECT(dev), name, value, &error_abort);
-}
-
-void qdev_prop_set_enum(DeviceState *dev, const char *name, int value)
-{
-    const Property *prop;
-
-    prop = qdev_prop_find(dev, name);
-    object_property_set_str(OBJECT(dev), name,
-                            qapi_enum_lookup(prop->info->enum_table, value),
-                            &error_abort);
 }
 
 void qdev_prop_set_array(DeviceState *dev, const char *name, QList *values)

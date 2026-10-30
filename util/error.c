@@ -214,11 +214,6 @@ Error *error_copy(const Error *err)
     return err_new;
 }
 
-ErrorClass error_get_class(const Error *err)
-{
-    return err->err_class;
-}
-
 const char *error_get_pretty(const Error *err)
 {
     return err->msg;
@@ -240,17 +235,6 @@ void warn_report_err(Error *err)
         error_printf("%s", err->hint->str);
     }
     error_free(err);
-}
-
-bool warn_report_err_once_cond(bool *printed, Error *err)
-{
-    if (*printed) {
-        error_free(err);
-        return false;
-    }
-    *printed = true;
-    warn_report_err(err);
-    return true;
 }
 
 void error_reportf_err(Error *err, const char *fmt, ...)

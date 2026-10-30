@@ -415,13 +415,6 @@ void rcu_add_force_rcu_notifier(Notifier *n)
     qemu_mutex_unlock(&rcu_registry_lock);
 }
 
-void rcu_remove_force_rcu_notifier(Notifier *n)
-{
-    qemu_mutex_lock(&rcu_registry_lock);
-    notifier_remove(n);
-    qemu_mutex_unlock(&rcu_registry_lock);
-}
-
 static void rcu_init_complete(void)
 {
     QemuThread thread;
@@ -442,11 +435,6 @@ static void rcu_init_complete(void)
 }
 
 static int atfork_depth = 1;
-
-void rcu_enable_atfork(void)
-{
-    atfork_depth++;
-}
 
 void rcu_disable_atfork(void)
 {

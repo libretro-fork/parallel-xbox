@@ -102,23 +102,6 @@ QObject *qobject_from_vjsonf_nofail(const char *string, va_list ap)
 }
 
 /*
- * Parse @string as JSON value with %-escapes interpolated.
- * Abort on error.  Do not use with untrusted @string.
- * Return the resulting QObject.  It is never null.
- */
-QObject *qobject_from_jsonf_nofail(const char *string, ...)
-{
-    QObject *obj;
-    va_list ap;
-
-    va_start(ap, string);
-    obj = qobject_from_vjsonf_nofail(string, ap);
-    va_end(ap);
-
-    return obj;
-}
-
-/*
  * Parse @string as JSON object with %-escapes interpolated.
  * Abort on error.  Do not use with untrusted @string.
  * Return the resulting QDict.  It is never null.

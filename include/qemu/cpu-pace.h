@@ -28,9 +28,6 @@
  */
 extern bool xemu_cpu_pace_on;
 
-/* Follows the setting; blocks are translated again when it changes. */
-void xemu_cpu_pace_sync(bool want);
-
 /*
  * Time the vCPU thread lost to the emulator itself: a lock another thread
  * held, a block being translated. The real CPU would have gone on, so the

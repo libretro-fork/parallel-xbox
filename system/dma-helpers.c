@@ -50,13 +50,6 @@ void qemu_sglist_add(QEMUSGList *qsg, dma_addr_t base, dma_addr_t len)
     ++qsg->nsg;
 }
 
-void qemu_sglist_destroy(QEMUSGList *qsg)
-{
-    object_unref(OBJECT(qsg->dev));
-    g_free(qsg->sg);
-    memset(qsg, 0, sizeof(*qsg));
-}
-
 typedef struct {
     BlockAIOCB common;
     AioContext *ctx;
@@ -300,51 +293,6 @@ BlockAIOCB *dma_blk_write(BlockBackend *blk,
                       DMA_DIRECTION_TO_DEVICE);
 }
 
-
-static MemTxResult dma_buf_rw(void *buf, dma_addr_t len, dma_addr_t *residual,
-                              QEMUSGList *sg, DMADirection dir,
-                              MemTxAttrs attrs)
-{
-    uint8_t *ptr = buf;
-    dma_addr_t xresidual;
-    int sg_cur_index;
-    MemTxResult res = MEMTX_OK;
-
-    xresidual = sg->size;
-    sg_cur_index = 0;
-    len = MIN(len, xresidual);
-    while (len > 0) {
-        ScatterGatherEntry entry = sg->sg[sg_cur_index++];
-        dma_addr_t xfer = MIN(len, entry.len);
-        res |= dma_memory_rw(sg->as, entry.base, ptr, xfer, dir, attrs);
-        ptr += xfer;
-        len -= xfer;
-        xresidual -= xfer;
-    }
-
-    if (residual) {
-        *residual = xresidual;
-    }
-    return res;
-}
-
-MemTxResult dma_buf_read(void *ptr, dma_addr_t len, dma_addr_t *residual,
-                         QEMUSGList *sg, MemTxAttrs attrs)
-{
-    return dma_buf_rw(ptr, len, residual, sg, DMA_DIRECTION_FROM_DEVICE, attrs);
-}
-
-MemTxResult dma_buf_write(void *ptr, dma_addr_t len, dma_addr_t *residual,
-                          QEMUSGList *sg, MemTxAttrs attrs)
-{
-    return dma_buf_rw(ptr, len, residual, sg, DMA_DIRECTION_TO_DEVICE, attrs);
-}
-
-void dma_acct_start(BlockBackend *blk, BlockAcctCookie *cookie,
-                    QEMUSGList *sg, enum BlockAcctType type)
-{
-    block_acct_start(blk_get_stats(blk), cookie, sg->size, type);
-}
 
 uint64_t dma_aligned_pow2_mask(uint64_t start, uint64_t end, int max_addr_bits)
 {

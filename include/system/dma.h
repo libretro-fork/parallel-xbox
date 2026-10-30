@@ -284,7 +284,6 @@ struct ScatterGatherEntry {
 void qemu_sglist_init(QEMUSGList *qsg, DeviceState *dev, int alloc_hint,
                       AddressSpace *as);
 void qemu_sglist_add(QEMUSGList *qsg, dma_addr_t base, dma_addr_t len);
-void qemu_sglist_destroy(QEMUSGList *qsg);
 
 typedef BlockAIOCB *DMAIOFunc(int64_t offset, QEMUIOVector *iov,
                               BlockCompletionFunc *cb, void *cb_opaque,
@@ -299,13 +298,6 @@ BlockAIOCB *dma_blk_read(BlockBackend *blk,
 BlockAIOCB *dma_blk_write(BlockBackend *blk,
                           QEMUSGList *sg, uint64_t offset, uint32_t align,
                           BlockCompletionFunc *cb, void *opaque);
-MemTxResult dma_buf_read(void *ptr, dma_addr_t len, dma_addr_t *residual,
-                         QEMUSGList *sg, MemTxAttrs attrs);
-MemTxResult dma_buf_write(void *ptr, dma_addr_t len, dma_addr_t *residual,
-                          QEMUSGList *sg, MemTxAttrs attrs);
-
-void dma_acct_start(BlockBackend *blk, BlockAcctCookie *cookie,
-                    QEMUSGList *sg, enum BlockAcctType type);
 
 /**
  * dma_aligned_pow2_mask: Return the address bit mask of the largest

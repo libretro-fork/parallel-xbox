@@ -13,15 +13,6 @@ void acpi_send_event(DeviceState *dev, AcpiEventStatusBits event)
     }
 }
 
-void qbus_build_aml(BusState *bus, Aml *scope)
-{
-    BusChild *kid;
-
-    QTAILQ_FOREACH(kid, &bus->children, sibling) {
-        call_dev_aml_func(DEVICE(kid->child), scope);
-    }
-}
-
 static void register_types(void)
 {
     static const TypeInfo acpi_dev_if_info = {

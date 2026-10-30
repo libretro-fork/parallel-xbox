@@ -81,8 +81,6 @@ void qemu_remove_led_event_handler(QEMUPutLEDEntry *entry);
 
 void kbd_put_ledstate(int ledstate);
 
-bool qemu_mouse_set(int index, Error **errp);
-
 /* keysym is a unicode code except for special keys (see QEMU_KEY_xxx
    constants) */
 #define QEMU_KEY_ESC1(c) ((c) | 0xe100)
@@ -107,10 +105,6 @@ bool qemu_mouse_set(int index, Error **errp);
 #define QEMU_KEY_CTRL_PAGEUP     0xe406
 #define QEMU_KEY_CTRL_PAGEDOWN   0xe407
 
-void qemu_text_console_put_keysym(QemuTextConsole *s, int keysym);
-bool qemu_text_console_put_qcode(QemuTextConsole *s, int qcode, bool ctrl);
-void qemu_text_console_put_string(QemuTextConsole *s, const char *str, int len);
-
 /* Touch devices */
 typedef struct touch_slot {
     int x;
@@ -118,13 +112,6 @@ typedef struct touch_slot {
     int tracking_id;
 } touch_slot;
 
-void console_handle_touch_event(QemuConsole *con,
-                                struct touch_slot touch_slots[INPUT_EVENT_SLOTS_MAX],
-                                uint64_t num_slot,
-                                int width, int height,
-                                double x, double y,
-                                InputMultiTouchType type,
-                                Error **errp);
 /* consoles */
 
 struct QemuConsoleClass {
@@ -163,17 +150,8 @@ typedef struct QEMUCursor {
     uint32_t            data[];
 } QEMUCursor;
 
-QEMUCursor *cursor_alloc(uint16_t width, uint16_t height);
 QEMUCursor *cursor_ref(QEMUCursor *c);
 void cursor_unref(QEMUCursor *c);
-QEMUCursor *cursor_builtin_hidden(void);
-QEMUCursor *cursor_builtin_left_ptr(void);
-void cursor_print_ascii_art(QEMUCursor *c, const char *prefix);
-int cursor_get_mono_bpl(QEMUCursor *c);
-void cursor_set_mono(QEMUCursor *c,
-                     uint32_t foreground, uint32_t background, uint8_t *image,
-                     int transparent, uint8_t *mask);
-void cursor_get_mono_mask(QEMUCursor *c, int transparent, uint8_t *mask);
 
 typedef void *QEMUGLContext;
 typedef struct QEMUGLParams QEMUGLParams;
@@ -303,15 +281,6 @@ struct DisplayGLCtx {
 
 DisplayState *init_displaystate(void);
 
-void register_displaychangelistener(DisplayChangeListener *dcl);
-void update_displaychangelistener(DisplayChangeListener *dcl,
-                                  uint64_t interval);
-void unregister_displaychangelistener(DisplayChangeListener *dcl);
-
-bool dpy_ui_info_supported(const QemuConsole *con);
-const QemuUIInfo *dpy_get_ui_info(const QemuConsole *con);
-int dpy_set_ui_info(QemuConsole *con, QemuUIInfo *info, bool delay);
-
 void dpy_gfx_update(QemuConsole *con, int x, int y, int w, int h);
 void dpy_gfx_update_full(QemuConsole *con);
 void dpy_gfx_replace_surface(QemuConsole *con,
@@ -346,8 +315,6 @@ QEMUGLContext dpy_gl_ctx_create(QemuConsole *con,
 void dpy_gl_ctx_destroy(QemuConsole *con, QEMUGLContext ctx);
 int dpy_gl_ctx_make_current(QemuConsole *con, QEMUGLContext ctx);
 
-bool console_has_gl(QemuConsole *con);
-
 typedef uint32_t console_ch_t;
 
 static inline void console_write_ch(console_ch_t *dest, uint32_t ch)
@@ -379,42 +346,26 @@ QemuConsole *graphic_console_init(DeviceState *dev, uint32_t head,
 void graphic_console_set_hwops(QemuConsole *con,
                                const GraphicHwOps *hw_ops,
                                void *opaque);
-void graphic_console_close(QemuConsole *con);
 
 void graphic_hw_update(QemuConsole *con);
 void graphic_hw_update_done(QemuConsole *con);
-void graphic_hw_invalidate(QemuConsole *con);
-void graphic_hw_text_update(QemuConsole *con, console_ch_t *chardata);
 void graphic_hw_gl_block(QemuConsole *con, bool block);
 
 void qemu_console_early_init(void);
 
-void qemu_console_set_display_gl_ctx(QemuConsole *con, DisplayGLCtx *ctx);
-
-QemuConsole *qemu_console_lookup_default(void);
-QemuConsole *qemu_console_lookup_by_index(unsigned int index);
 QemuConsole *qemu_console_lookup_by_device(DeviceState *dev, uint32_t head);
 QemuConsole *qemu_console_lookup_by_device_name(const char *device_id,
                                                 uint32_t head, Error **errp);
-QEMUCursor *qemu_console_get_cursor(QemuConsole *con);
 bool qemu_console_is_visible(QemuConsole *con);
-bool qemu_console_is_graphic(QemuConsole *con);
-bool qemu_console_is_fixedsize(QemuConsole *con);
-bool qemu_console_is_gl_blocked(QemuConsole *con);
-char *qemu_console_get_label(QemuConsole *con);
 int qemu_console_get_index(QemuConsole *con);
 uint32_t qemu_console_get_head(QemuConsole *con);
 int qemu_console_get_width(QemuConsole *con, int fallback);
 int qemu_console_get_height(QemuConsole *con, int fallback);
 /* Return the low-level window id for the console */
-int qemu_console_get_window_id(QemuConsole *con);
 /* Set the low-level window id for the console */
-void qemu_console_set_window_id(QemuConsole *con, int window_id);
 
 void qemu_console_resize(QemuConsole *con, int width, int height);
 DisplaySurface *qemu_console_surface(QemuConsole *con);
-void coroutine_fn qemu_console_co_wait_update(QemuConsole *con);
-int qemu_invalidate_text_consoles(void);
 
 /* console-gl.c */
 #ifdef CONFIG_OPENGL
@@ -446,7 +397,6 @@ struct QemuDisplay {
     const char *vc;
 };
 
-void qemu_display_register(QemuDisplay *ui);
 bool qemu_display_find_default(DisplayOptions *opts);
 void qemu_display_early_init(DisplayOptions *opts);
 void qemu_display_init(DisplayState *ds, DisplayOptions *opts);

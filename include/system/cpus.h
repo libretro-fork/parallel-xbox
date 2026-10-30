@@ -23,7 +23,6 @@ bool all_cpu_threads_idle(void);
 bool cpu_can_run(CPUState *cpu);
 void qemu_process_cpu_events_common(CPUState *cpu);
 void cpu_thread_signal_created(CPUState *cpu);
-void cpu_thread_signal_destroyed(CPUState *cpu);
 void cpu_handle_guest_debug(CPUState *cpu);
 
 /*
@@ -82,9 +81,6 @@ void qemu_init_cpu_loop(void);
 void resume_all_vcpus(void);
 void pause_all_vcpus(void);
 void cpu_stop_current(void);
-
-/* Unblock cpu */
-void qemu_cpu_kick_self(void);
 
 bool cpus_are_resettable(void);
 

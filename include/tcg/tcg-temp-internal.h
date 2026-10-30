@@ -36,8 +36,6 @@ void tcg_temp_free_i64(TCGv_i64 arg);
 void tcg_temp_free_i128(TCGv_i128 arg);
 void tcg_temp_free_ptr(TCGv_ptr arg);
 void tcg_temp_free_vec(TCGv_vec arg);
-void tcg_temp_free_f32(TCGv_f32 arg);
-void tcg_temp_free_f64(TCGv_f64 arg);
 
 TCGv_i32 tcg_temp_ebb_new_i32(void);
 TCGv_i64 tcg_temp_ebb_new_i64(void);

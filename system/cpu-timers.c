@@ -38,39 +38,6 @@
 #include "exec/icount.h"
 #include "system/libretro-vcpu.h"
 
-/* clock and ticks */
-
-static int64_t cpu_get_ticks_locked(void)
-{
-    int64_t ticks = timers_state.cpu_ticks_offset;
-    if (timers_state.cpu_ticks_enabled) {
-        ticks += cpu_get_host_ticks();
-    }
-
-    if (timers_state.cpu_ticks_prev > ticks) {
-        /* Non increasing ticks may happen if the host uses software suspend. */
-        timers_state.cpu_ticks_offset += timers_state.cpu_ticks_prev - ticks;
-        ticks = timers_state.cpu_ticks_prev;
-    }
-
-    timers_state.cpu_ticks_prev = ticks;
-    return ticks;
-}
-
-/*
- * return the time elapsed in VM between vm_start and vm_stop.
- * cpu_get_ticks() uses units of the host CPU cycle counter.
- */
-int64_t cpu_get_ticks(void)
-{
-    int64_t ticks;
-
-    qemu_spin_lock(&timers_state.vm_clock_lock);
-    ticks = cpu_get_ticks_locked();
-    qemu_spin_unlock(&timers_state.vm_clock_lock);
-    return ticks;
-}
-
 int64_t cpu_get_clock_locked(void)
 {
     int64_t time;

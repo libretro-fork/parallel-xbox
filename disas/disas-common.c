@@ -68,20 +68,6 @@ void disas_initialize_debug_target(CPUDebug *s, CPUState *cpu)
     }
 }
 
-int disas_gstring_printf(FILE *stream, const char *fmt, ...)
-{
-    /* We abuse the FILE parameter to pass a GString. */
-    GString *s = (GString *)stream;
-    int initial_len = s->len;
-    va_list va;
-
-    va_start(va, fmt);
-    g_string_append_vprintf(s, fmt, va);
-    va_end(va);
-
-    return s->len - initial_len;
-}
-
 /* Look up symbol for debugging purpose.  Returns "" if unknown. */
 const char *lookup_symbol(uint64_t orig_addr)
 {

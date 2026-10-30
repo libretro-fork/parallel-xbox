@@ -128,19 +128,6 @@ static int64_t icount_get_locked(void)
         icount_to_ns(icount);
 }
 
-int64_t icount_get_raw(void)
-{
-    int64_t icount;
-    unsigned start;
-
-    do {
-        start = seqlock_read_begin(&timers_state.vm_clock_seqlock);
-        icount = icount_get_raw_locked();
-    } while (seqlock_read_retry(&timers_state.vm_clock_seqlock, start));
-
-    return icount;
-}
-
 /* Return the virtual CPU time, based on the instruction counter.  */
 int64_t icount_get(void)
 {
@@ -401,24 +388,6 @@ void icount_start_warp_timer(void)
     } else if (deadline == 0) {
         qemu_clock_notify(QEMU_CLOCK_VIRTUAL);
     }
-}
-
-void icount_account_warp_timer(void)
-{
-    if (!icount_sleep) {
-        return;
-    }
-
-    /*
-     * Nothing to do if the VM is stopped: QEMU_CLOCK_VIRTUAL timers
-     * do not fire, so computing the deadline does not make sense.
-     */
-    if (!runstate_is_running()) {
-        return;
-    }
-
-    timer_del(timers_state.icount_warp_timer);
-    icount_warp_rt();
 }
 
 bool icount_configure(QemuOpts *opts, Error **errp)

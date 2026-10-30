@@ -40,25 +40,9 @@ void notifier_list_notify(NotifierList *list, void *data)
     }
 }
 
-bool notifier_list_empty(NotifierList *list)
-{
-    return QLIST_EMPTY(&list->notifiers);
-}
-
 void notifier_with_return_list_init(NotifierWithReturnList *list)
 {
     QLIST_INIT(&list->notifiers);
-}
-
-void notifier_with_return_list_add(NotifierWithReturnList *list,
-                                   NotifierWithReturn *notifier)
-{
-    QLIST_INSERT_HEAD(&list->notifiers, notifier, node);
-}
-
-void notifier_with_return_remove(NotifierWithReturn *notifier)
-{
-    QLIST_REMOVE(notifier, node);
 }
 
 int notifier_with_return_list_notify(NotifierWithReturnList *list, void *data,

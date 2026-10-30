@@ -128,14 +128,6 @@ ssize_t iov_send_recv(int sockfd, const struct iovec *iov, unsigned iov_cnt,
 #define iov_send(sockfd, iov, iov_cnt, offset, bytes) \
   iov_send_recv(sockfd, iov, iov_cnt, offset, bytes, true)
 
-/**
- * Produce a text hexdump of iovec `iov' with `iov_cnt' number of elements
- * in file `fp', prefixing each line with `prefix' and processing not more
- * than `limit' data bytes.
- */
-void iov_hexdump(const struct iovec *iov, const unsigned int iov_cnt,
-                 FILE *fp, const char *prefix, size_t limit);
-
 /*
  * Partial copy of vector from iov to dst_iov (data is not copied).
  * dst_iov overlaps iov at a specified offset.
@@ -163,14 +155,6 @@ typedef struct {
     struct iovec *modified_iov;
     struct iovec orig;
 } IOVDiscardUndo;
-
-/*
- * Undo an iov_discard_front_undoable() or iov_discard_back_undoable()
- * operation. If multiple operations are made then each one needs a separate
- * IOVDiscardUndo and iov_discard_undo() must be called in the reverse order
- * that the operations were made.
- */
-void iov_discard_undo(IOVDiscardUndo *undo);
 
 /*
  * Undoable versions of iov_discard_front() and iov_discard_back(). Use
@@ -249,7 +233,6 @@ static inline void *qemu_iovec_buf(QEMUIOVector *qiov)
 }
 
 void qemu_iovec_init(QEMUIOVector *qiov, int alloc_hint);
-void qemu_iovec_init_external(QEMUIOVector *qiov, struct iovec *iov, int niov);
 void qemu_iovec_init_slice(QEMUIOVector *qiov, QEMUIOVector *source,
                            size_t offset, size_t len);
 struct iovec *qemu_iovec_slice(QEMUIOVector *qiov,
@@ -271,8 +254,6 @@ size_t qemu_iovec_from_buf(QEMUIOVector *qiov, size_t offset,
                            const void *buf, size_t bytes);
 size_t qemu_iovec_memset(QEMUIOVector *qiov, size_t offset,
                          int fillc, size_t bytes);
-ssize_t qemu_iovec_compare(QEMUIOVector *a, QEMUIOVector *b);
-void qemu_iovec_clone(QEMUIOVector *dest, const QEMUIOVector *src, void *buf);
 void qemu_iovec_discard_back(QEMUIOVector *qiov, size_t bytes);
 
 #endif

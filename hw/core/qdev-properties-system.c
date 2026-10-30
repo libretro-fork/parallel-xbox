@@ -57,33 +57,6 @@ static bool check_prop_still_unset(Object *obj, const char *name,
     return false;
 }
 
-bool qdev_prop_sanitize_s390x_loadparm(uint8_t *loadparm, const char *str,
-                                       Error **errp)
-{
-    int i, len;
-
-    len = strlen(str);
-    if (len > 8) {
-        error_setg(errp, "'loadparm' can only contain up to 8 characters");
-        return false;
-    }
-
-    for (i = 0; i < len; i++) {
-        uint8_t c = qemu_toupper(str[i]); /* mimic HMC */
-
-        if (qemu_isalnum(c) || c == '.' || c == ' ') {
-            loadparm[i] = c;
-        } else {
-            error_setg(errp,
-                       "invalid character in 'loadparm': '%c' (ASCII 0x%02x)",
-                       c, c);
-            return false;
-        }
-    }
-
-    return true;
-}
-
 /* --- drive --- */
 
 static void get_drive(Object *obj, Visitor *v, const char *name, void *opaque,
@@ -497,12 +470,6 @@ bool qdev_prop_set_drive_err(DeviceState *dev, const char *name,
     }
 
     return object_property_set_str(OBJECT(dev), name, ref, errp);
-}
-
-void qdev_prop_set_drive(DeviceState *dev, const char *name,
-                         BlockBackend *value)
-{
-    qdev_prop_set_drive_err(dev, name, value, &error_abort);
 }
 
 void qdev_prop_set_chr(DeviceState *dev, const char *name,

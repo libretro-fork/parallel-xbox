@@ -154,9 +154,6 @@ struct ACPIREGS {
     Notifier wakeup;
 };
 
-/* Return whether ACPI subsystem is built in */
-bool acpi_builtin(void);
-
 /* PM_TMR */
 void acpi_pm_tmr_update(ACPIREGS *ar, bool enable);
 void acpi_pm_tmr_calc_overflow_time(ACPIREGS *ar);
@@ -166,7 +163,6 @@ void acpi_pm_tmr_reset(ACPIREGS *ar);
 
 /* PM1a_EVT: piix and ich9 don't implement PM1b. */
 uint16_t acpi_pm1_evt_get_sts(ACPIREGS *ar);
-void acpi_pm1_evt_power_down(ACPIREGS *ar);
 void acpi_pm1_evt_reset(ACPIREGS *ar);
 void acpi_pm1_evt_init(ACPIREGS *ar, acpi_update_sci_fn update_sci,
                        MemoryRegion *parent);
@@ -175,8 +171,6 @@ void acpi_pm1_evt_init(ACPIREGS *ar, acpi_update_sci_fn update_sci,
 void acpi_pm1_cnt_init(ACPIREGS *ar, MemoryRegion *parent,
                        bool disable_s3, bool disable_s4, uint8_t s4_val,
                        bool acpi_only);
-void acpi_pm1_cnt_update(ACPIREGS *ar,
-                         bool sci_enable, bool sci_disable);
 void acpi_pm1_cnt_reset(ACPIREGS *ar);
 
 /* GPE0 */
@@ -195,9 +189,6 @@ void acpi_update_sci(ACPIREGS *acpi_regs, qemu_irq irq);
 extern char unsigned *acpi_tables;
 extern size_t acpi_tables_len;
 
-uint8_t *acpi_table_first(void);
-uint8_t *acpi_table_next(uint8_t *current);
-unsigned acpi_table_len(void *current);
 void acpi_table_add(const QemuOpts *opts, Error **errp);
 
 typedef struct AcpiSlicOem AcpiSlicOem;
@@ -205,6 +196,5 @@ struct AcpiSlicOem {
   char *id;
   char *table_id;
 };
-int acpi_get_slic_oem(AcpiSlicOem *oem);
 
 #endif /* QEMU_HW_ACPI_H */

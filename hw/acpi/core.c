@@ -78,11 +78,6 @@ static void acpi_register_config(void)
 
 opts_init(acpi_register_config);
 
-bool acpi_builtin(void)
-{
-    return true;
-}
-
 static int acpi_checksum(const uint8_t *data, int len)
 {
     int sum, i;
@@ -311,54 +306,6 @@ out:
     qapi_free_AcpiTableOptions(hdrs);
 }
 
-unsigned acpi_table_len(void *current)
-{
-    struct acpi_table_header *hdr = current - sizeof(hdr->_length);
-    return hdr->_length;
-}
-
-static
-void *acpi_table_hdr(void *h)
-{
-    struct acpi_table_header *hdr = h;
-    return &hdr->sig;
-}
-
-uint8_t *acpi_table_first(void)
-{
-    if (!acpi_tables) {
-        return NULL;
-    }
-    return acpi_table_hdr(acpi_tables + ACPI_TABLE_PFX_SIZE);
-}
-
-uint8_t *acpi_table_next(uint8_t *current)
-{
-    uint8_t *next = current + acpi_table_len(current);
-
-    if (next - acpi_tables >= acpi_tables_len) {
-        return NULL;
-    } else {
-        return acpi_table_hdr(next);
-    }
-}
-
-int acpi_get_slic_oem(AcpiSlicOem *oem)
-{
-    uint8_t *u;
-
-    for (u = acpi_table_first(); u; u = acpi_table_next(u)) {
-        struct acpi_table_header *hdr = (void *)(u - sizeof(hdr->_length));
-
-        if (memcmp(hdr->sig, "SLIC", 4) == 0) {
-            oem->id = g_strndup(hdr->oem_id, 6);
-            oem->table_id = g_strndup(hdr->oem_table_id, 8);
-            return 0;
-        }
-    }
-    return -1;
-}
-
 static void acpi_notify_wakeup(Notifier *notifier, void *data)
 {
     ACPIREGS *ar = container_of(notifier, ACPIREGS, wakeup);
@@ -414,14 +361,6 @@ static void acpi_pm1_evt_write_en(ACPIREGS *ar, uint16_t val)
                               val & ACPI_BITMASK_RT_CLOCK_ENABLE);
     qemu_system_wakeup_enable(QEMU_WAKEUP_REASON_PMTIMER,
                               val & ACPI_BITMASK_TIMER_ENABLE);
-}
-
-void acpi_pm1_evt_power_down(ACPIREGS *ar)
-{
-    if (ar->pm1.evt.en & ACPI_BITMASK_POWER_BUTTON_ENABLE) {
-        ar->pm1.evt.sts |= ACPI_BITMASK_POWER_BUTTON_STATUS;
-        ar->tmr.update_sci(ar);
-    }
 }
 
 void acpi_pm1_evt_reset(ACPIREGS *ar)
@@ -563,22 +502,6 @@ void acpi_pm_tmr_reset(ACPIREGS *ar)
 {
     ar->tmr.overflow_time = 0;
     timer_del(ar->tmr.timer);
-}
-
-/* ACPI PM1aCNT */
-void acpi_pm1_cnt_update(ACPIREGS *ar,
-                         bool sci_enable, bool sci_disable)
-{
-    /* ACPI specs 3.0, 4.7.2.5 */
-    if (ar->pm1.cnt.acpi_only) {
-        return;
-    }
-
-    if (sci_enable) {
-        ar->pm1.cnt.cnt |= ACPI_BITMASK_SCI_ENABLE;
-    } else if (sci_disable) {
-        ar->pm1.cnt.cnt &= ~ACPI_BITMASK_SCI_ENABLE;
-    }
 }
 
 static uint64_t acpi_pm_cnt_read(void *opaque, hwaddr addr, unsigned width)

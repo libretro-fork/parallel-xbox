@@ -42,8 +42,6 @@ int qemu_accept(int s, struct sockaddr *addr, socklen_t *addrlen);
  *   - return a short write (then name is wrong)
  *   - busy wait adding (errno == EAGAIN) to the loop
  */
-ssize_t qemu_send_full(int s, const void *buf, size_t count)
-    G_GNUC_WARN_UNUSED_RESULT;
 int socket_set_cork(int fd, int v);
 int socket_set_nodelay(int fd);
 int socket_set_fast_reuse(int fd);
@@ -60,13 +58,6 @@ int inet_ai_family_from_address(InetSocketAddress *addr,
 int inet_parse(InetSocketAddress *addr, const char *str, Error **errp);
 int inet_connect_saddr(InetSocketAddress *saddr, Error **errp);
 
-NetworkAddressFamily inet_netfamily(int family);
-
-int unix_listen(const char *path, Error **errp);
-int unix_connect(const char *path, Error **errp);
-
-char *socket_uri(SocketAddress *addr);
-SocketAddress *socket_parse(const char *str, Error **errp);
 int socket_connect(SocketAddress *addr, Error **errp);
 int socket_listen(SocketAddress *addr, int num, Error **errp);
 void socket_listen_cleanup(int fd, Error **errp);

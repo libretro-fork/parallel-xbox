@@ -711,31 +711,6 @@ void qio_channel_set_cork(QIOChannel *ioc,
                           bool enabled);
 
 
-/**
- * qio_channel_seek:
- * @ioc: the channel object
- * @offset: the position to seek to, relative to @whence
- * @whence: one of the (POSIX) SEEK_* constants listed below
- * @errp: pointer to a NULL-initialized error object
- *
- * Moves the current I/O position within the channel
- * @ioc, to be @offset. The value of @offset is
- * interpreted relative to @whence:
- *
- * SEEK_SET - the position is set to @offset bytes
- * SEEK_CUR - the position is moved by @offset bytes
- * SEEK_END - the position is set to end of the file plus @offset bytes
- *
- * Not all implementations will support this facility,
- * so may report an error.
- *
- * Returns: the new position on success, (off_t)-1 on failure
- */
-off_t qio_channel_io_seek(QIOChannel *ioc,
-                          off_t offset,
-                          int whence,
-                          Error **errp);
-
 
 /**
  * qio_channel_create_watch:
@@ -1020,23 +995,5 @@ int coroutine_mixed_fn qio_channel_writev_full_all(QIOChannel *ioc,
 
 int qio_channel_flush(QIOChannel *ioc,
                       Error **errp);
-
-/**
- * qio_channel_get_peercred:
- * @ioc: the channel object
- * @pid: pointer to pid
- * @errp: pointer to a NULL-initialized error object
- *
- * Returns the pid of the peer process connected to this socket.
- *
- * The use of this function is possible only for connected
- * AF_UNIX stream sockets and for AF_UNIX stream and datagram
- * socket pairs on Linux.
- * Return -1 on error with pid -1 for the non-Linux OS.
- *
- */
-int qio_channel_get_peerpid(QIOChannel *ioc,
-                             unsigned int *pid,
-                             Error **errp);
 
 #endif /* QIO_CHANNEL_H */

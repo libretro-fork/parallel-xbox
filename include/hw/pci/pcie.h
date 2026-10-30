@@ -86,79 +86,13 @@ struct PCIExpressDevice {
 
 #define COMPAT_PROP_PCP "power_controller_present"
 
-/* PCI express capability helper functions */
-int pcie_cap_init(PCIDevice *dev, uint8_t offset, uint8_t type,
-                  uint8_t port, Error **errp);
-int pcie_cap_v1_init(PCIDevice *dev, uint8_t offset,
-                     uint8_t type, uint8_t port);
-int pcie_endpoint_cap_init(PCIDevice *dev, uint8_t offset);
-void pcie_cap_exit(PCIDevice *dev);
-int pcie_endpoint_cap_v1_init(PCIDevice *dev, uint8_t offset);
-void pcie_cap_v1_exit(PCIDevice *dev);
 uint8_t pcie_cap_get_type(const PCIDevice *dev);
-uint8_t pcie_cap_get_version(const PCIDevice *dev);
-void pcie_cap_flags_set_vector(PCIDevice *dev, uint8_t vector);
 uint8_t pcie_cap_flags_get_vector(PCIDevice *dev);
-
-void pcie_cap_deverr_init(PCIDevice *dev);
-void pcie_cap_deverr_reset(PCIDevice *dev);
-
-void pcie_cap_lnkctl_init(PCIDevice *dev);
-void pcie_cap_lnkctl_reset(PCIDevice *dev);
-
-void pcie_cap_slot_init(PCIDevice *dev, PCIESlot *s);
-void pcie_cap_slot_reset(PCIDevice *dev);
-void pcie_cap_slot_get(PCIDevice *dev, uint16_t *slt_ctl, uint16_t *slt_sta);
-void pcie_cap_slot_write_config(PCIDevice *dev,
-                                uint16_t old_slt_ctl, uint16_t old_slt_sta,
-                                uint32_t addr, uint32_t val, int len);
-int pcie_cap_slot_post_load(void *opaque, int version_id);
-void pcie_cap_slot_push_attention_button(PCIDevice *dev);
-void pcie_cap_slot_enable_power(PCIDevice *dev);
-
-void pcie_cap_root_init(PCIDevice *dev);
-void pcie_cap_root_reset(PCIDevice *dev);
-
-void pcie_cap_flr_init(PCIDevice *dev);
-void pcie_cap_flr_write_config(PCIDevice *dev,
-                           uint32_t addr, uint32_t val, int len);
-
-/* ARI forwarding capability and control */
-void pcie_cap_arifwd_init(PCIDevice *dev);
-void pcie_cap_arifwd_reset(PCIDevice *dev);
-bool pcie_cap_is_arifwd_enabled(const PCIDevice *dev);
 
 /* PCI express extended capability helper functions */
 uint16_t pcie_find_capability(PCIDevice *dev, uint16_t cap_id);
-void pcie_add_capability(PCIDevice *dev,
-                         uint16_t cap_id, uint8_t cap_ver,
-                         uint16_t offset, uint16_t size);
 void pcie_sync_bridge_lnk(PCIDevice *dev);
 
-void pcie_acs_init(PCIDevice *dev, uint16_t offset);
-void pcie_acs_reset(PCIDevice *dev);
-
-void pcie_ari_init(PCIDevice *dev, uint16_t offset);
-void pcie_dev_ser_num_init(PCIDevice *dev, uint16_t offset, uint64_t ser_num);
-void pcie_ats_init(PCIDevice *dev, uint16_t offset, bool aligned);
-void pcie_cap_fill_link_ep_usp(PCIDevice *dev, PCIExpLinkWidth width,
-                               PCIExpLinkSpeed speed);
-
-void pcie_cap_slot_pre_plug_cb(HotplugHandler *hotplug_dev, DeviceState *dev,
-                               Error **errp);
-void pcie_cap_slot_plug_cb(HotplugHandler *hotplug_dev, DeviceState *dev,
-                           Error **errp);
-void pcie_cap_slot_unplug_cb(HotplugHandler *hotplug_dev, DeviceState *dev,
-                             Error **errp);
-void pcie_cap_slot_unplug_request_cb(HotplugHandler *hotplug_dev,
-                                     DeviceState *dev, Error **errp);
-
-void pcie_pasid_init(PCIDevice *dev, uint16_t offset, uint8_t pasid_width,
-                     bool exec_perm, bool priv_mod);
-void pcie_pri_init(PCIDevice *dev, uint16_t offset, uint32_t outstanding_pr_cap,
-                   bool prg_response_pasid_req);
-
-uint32_t pcie_pri_get_req_alloc(const PCIDevice *dev);
 bool pcie_pri_enabled(const PCIDevice *dev);
 bool pcie_pasid_enabled(const PCIDevice *dev);
 bool pcie_ats_enabled(const PCIDevice *dev);

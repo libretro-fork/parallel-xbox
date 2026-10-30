@@ -86,10 +86,4 @@ extern const VMStateDescription vmstate_smbus_device;
     .offset     = vmstate_offset_value(_state, _field, SMBusDevice), \
 }
 
-/*
- * Users should call this in their .needed functions to know if the
- * SMBus slave data needs to be transferred.
- */
-bool smbus_vmstate_needed(SMBusDevice *dev);
-
 #endif

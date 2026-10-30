@@ -336,13 +336,6 @@ static void qtest_irq_handler(void *opaque, int n, int level)
 
 static bool (*process_command_cb)(CharFrontend *chr, gchar **words);
 
-void qtest_set_command_cb(bool (*pc_cb)(CharFrontend *chr, gchar **words))
-{
-    assert(!process_command_cb);  /* Switch to a list if we need more than one */
-
-    process_command_cb = pc_cb;
-}
-
 static void qtest_install_gpio_out_intercept(DeviceState *dev, const char *name, int n)
 {
     qemu_irq *disconnected = g_new0(qemu_irq, 1);
@@ -891,24 +884,6 @@ void qtest_server_set_send_handler(void (*send)(void*, const char*),
 {
     qtest_server_send = send;
     qtest_server_send_opaque = opaque;
-}
-
-bool qtest_driver(void)
-{
-    return qtest && qtest->qtest_chr.chr != NULL;
-}
-
-void qtest_server_inproc_recv(void *dummy, const char *buf)
-{
-    static GString *gstr;
-    if (!gstr) {
-        gstr = g_string_new(NULL);
-    }
-    g_string_append(gstr, buf);
-    if (gstr->str[gstr->len - 1] == '\n') {
-        qtest_process_inbuf(NULL, gstr);
-        g_string_truncate(gstr, 0);
-    }
 }
 
 static void qtest_complete(UserCreatable *uc, Error **errp)

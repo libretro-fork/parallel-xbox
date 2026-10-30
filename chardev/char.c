@@ -223,12 +223,6 @@ void qemu_chr_be_update_read_handlers(Chardev *s,
     }
 }
 
-int qemu_chr_add_client(Chardev *s, int fd)
-{
-    return CHARDEV_GET_CLASS(s)->chr_add_client ?
-        CHARDEV_GET_CLASS(s)->chr_add_client(s, fd) : -1;
-}
-
 static void qemu_char_open(Chardev *chr, ChardevBackend *backend,
                            bool *be_opened, Error **errp)
 {
@@ -1128,41 +1122,6 @@ void qmp_chardev_send_break(const char *id, Error **errp)
         return;
     }
     qemu_chr_be_event(chr, CHR_EVENT_BREAK);
-}
-
-bool qmp_add_client_char(int fd, bool has_skipauth, bool skipauth,
-                         bool has_tls, bool tls, const char *protocol,
-                         Error **errp)
-{
-    Chardev *s = qemu_chr_find(protocol);
-
-    if (!s) {
-        error_setg(errp, "protocol '%s' is invalid", protocol);
-        return false;
-    }
-    if (qemu_chr_add_client(s, fd) < 0) {
-        error_setg(errp, "failed to add client");
-        return false;
-    }
-    return true;
-}
-
-/*
- * Add a timeout callback for the chardev (in milliseconds), return
- * the GSource object created. Please use this to add timeout hook for
- * chardev instead of g_timeout_add() and g_timeout_add_seconds(), to
- * make sure the gcontext that the task bound to is correct.
- */
-GSource *qemu_chr_timeout_add_ms(Chardev *chr, guint ms,
-                                 GSourceFunc func, void *private)
-{
-    GSource *source = g_timeout_source_new(ms);
-
-    assert(func);
-    g_source_set_callback(source, func, private, NULL);
-    g_source_attach(source, chr->gcontext);
-
-    return source;
 }
 
 void qemu_chr_cleanup(void)

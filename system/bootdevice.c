@@ -45,12 +45,6 @@ static QTAILQ_HEAD(, FWBootEntry) fw_boot_order =
 static QEMUBootSetHandler *boot_set_handler;
 static void *boot_set_opaque;
 
-void qemu_register_boot_set(QEMUBootSetHandler *func, void *opaque)
-{
-    boot_set_handler = func;
-    boot_set_opaque = opaque;
-}
-
 void qemu_boot_set(const char *boot_order, Error **errp)
 {
     Error *local_err = NULL;
@@ -187,24 +181,6 @@ void add_boot_device_path(int32_t bootindex, DeviceState *dev,
     QTAILQ_INSERT_TAIL(&fw_boot_order, node, link);
 }
 
-DeviceState *get_boot_device(uint32_t position)
-{
-    uint32_t counter = 0;
-    FWBootEntry *i = NULL;
-    DeviceState *res = NULL;
-
-    if (!QTAILQ_EMPTY(&fw_boot_order)) {
-        QTAILQ_FOREACH(i, &fw_boot_order, link) {
-            if (counter == position) {
-                res = i->dev;
-                break;
-            }
-            counter++;
-        }
-    }
-    return res;
-}
-
 static char *get_boot_device_path(DeviceState *dev, bool ignore_suffixes,
                                   const char *suffix)
 {
@@ -287,65 +263,6 @@ typedef struct {
     DeviceState *dev;
 } BootIndexProperty;
 
-static void device_get_bootindex(Object *obj, Visitor *v, const char *name,
-                                 void *opaque, Error **errp)
-{
-    BootIndexProperty *prop = opaque;
-    visit_type_int32(v, name, prop->bootindex, errp);
-}
-
-static void device_set_bootindex(Object *obj, Visitor *v, const char *name,
-                                 void *opaque, Error **errp)
-{
-    BootIndexProperty *prop = opaque;
-    int32_t boot_index;
-    Error *local_err = NULL;
-
-    if (!visit_type_int32(v, name, &boot_index, errp)) {
-        return;
-    }
-    /* check whether bootindex is present in fw_boot_order list  */
-    check_boot_index(boot_index, &local_err);
-    if (local_err) {
-        error_propagate(errp, local_err);
-        return;
-    }
-    /* change bootindex to a new one */
-    *prop->bootindex = boot_index;
-
-    add_boot_device_path(*prop->bootindex, prop->dev, prop->suffix);
-}
-
-static void property_release_bootindex(Object *obj, const char *name,
-                                       void *opaque)
-
-{
-    BootIndexProperty *prop = opaque;
-
-    del_boot_device_path(prop->dev, prop->suffix);
-    g_free(prop);
-}
-
-void device_add_bootindex_property(Object *obj, int32_t *bootindex,
-                                   const char *name, const char *suffix,
-                                   DeviceState *dev)
-{
-    BootIndexProperty *prop = g_malloc0(sizeof(*prop));
-
-    prop->bootindex = bootindex;
-    prop->suffix = suffix;
-    prop->dev = dev;
-
-    object_property_add(obj, name, "int32",
-                        device_get_bootindex,
-                        device_set_bootindex,
-                        property_release_bootindex,
-                        prop);
-
-    /* initialize devices' bootindex property to -1 */
-    object_property_set_int(obj, name, -1, NULL);
-}
-
 typedef struct FWLCHSEntry FWLCHSEntry;
 
 struct FWLCHSEntry {
@@ -379,26 +296,6 @@ void add_boot_device_lchs(DeviceState *dev, const char *suffix,
     node->lsecs = lsecs;
 
     QTAILQ_INSERT_TAIL(&fw_lchs, node, link);
-}
-
-void del_boot_device_lchs(DeviceState *dev, const char *suffix)
-{
-    FWLCHSEntry *i;
-
-    if (dev == NULL) {
-        return;
-    }
-
-    QTAILQ_FOREACH(i, &fw_lchs, link) {
-        if ((!suffix || !g_strcmp0(i->suffix, suffix)) &&
-             i->dev == dev) {
-            QTAILQ_REMOVE(&fw_lchs, i, link);
-            g_free(i->suffix);
-            g_free(i);
-
-            break;
-        }
-    }
 }
 
 char *get_boot_devices_lchs_list(size_t *size)

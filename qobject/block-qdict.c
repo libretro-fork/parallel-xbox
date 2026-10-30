@@ -587,68 +587,6 @@ static QObject *qdict_crumple_for_keyval_qiv(QDict *src, Error **errp)
 }
 
 /**
- * qdict_array_entries(): Returns the number of direct array entries if the
- * sub-QDict of src specified by the prefix in subqdict (or src itself for
- * prefix == "") is valid as an array, i.e. the length of the created list if
- * the sub-QDict would become empty after calling qdict_array_split() on it. If
- * the array is not valid, -EINVAL is returned.
- */
-int qdict_array_entries(QDict *src, const char *subqdict)
-{
-    const QDictEntry *entry;
-    unsigned i;
-    unsigned entries = 0;
-    size_t subqdict_len = strlen(subqdict);
-
-    assert(!subqdict_len || subqdict[subqdict_len - 1] == '.');
-
-    /* qdict_array_split() loops until UINT_MAX, but as we want to return
-     * negative errors, we only have a signed return value here. Any additional
-     * entries will lead to -EINVAL. */
-    for (i = 0; i < INT_MAX; i++) {
-        QObject *subqobj;
-        int subqdict_entries;
-        char *prefix = g_strdup_printf("%s%u.", subqdict, i);
-
-        subqdict_entries = qdict_count_prefixed_entries(src, prefix);
-
-        /* Remove ending "." */
-        prefix[strlen(prefix) - 1] = 0;
-        subqobj = qdict_get(src, prefix);
-
-        g_free(prefix);
-
-        if (subqdict_entries < 0) {
-            return subqdict_entries;
-        }
-
-        /* There may be either a single subordinate object (named "%u") or
-         * multiple objects (each with a key prefixed "%u."), but not both. */
-        if (subqobj && subqdict_entries) {
-            return -EINVAL;
-        } else if (!subqobj && !subqdict_entries) {
-            break;
-        }
-
-        entries += subqdict_entries ? subqdict_entries : 1;
-    }
-
-    /* Consider everything handled that isn't part of the given sub-QDict */
-    for (entry = qdict_first(src); entry; entry = qdict_next(src, entry)) {
-        if (!strstart(qdict_entry_key(entry), subqdict, NULL)) {
-            entries++;
-        }
-    }
-
-    /* Anything left in the sub-QDict that wasn't handled? */
-    if (qdict_size(src) != entries) {
-        return -EINVAL;
-    }
-
-    return i;
-}
-
-/**
  * qdict_join(): Absorb the src QDict into the dest QDict, that is, move all
  * elements from src to dest.
  *

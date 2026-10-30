@@ -242,32 +242,10 @@ void cpus_set_virtual_clock(int64_t new_time)
     }
 }
 
-/*
- * return the time elapsed in VM between vm_start and vm_stop.  Unless
- * icount is active, cpus_get_elapsed_ticks() uses units of the host CPU cycle
- * counter.
- */
-int64_t cpus_get_elapsed_ticks(void)
-{
-    if (cpus_accel->get_elapsed_ticks) {
-        return cpus_accel->get_elapsed_ticks();
-    }
-    return cpu_get_ticks();
-}
-
 void cpu_set_interrupt(CPUState *cpu, int mask)
 {
     /* Pairs with cpu_test_interrupt(). */
     qatomic_or(&cpu->interrupt_request, mask);
-}
-
-void generic_handle_interrupt(CPUState *cpu, int mask)
-{
-    cpu_set_interrupt(cpu, mask);
-
-    if (!qemu_cpu_is_self(cpu)) {
-        qemu_cpu_kick(cpu);
-    }
 }
 
 void cpu_interrupt(CPUState *cpu, int mask)
@@ -499,12 +477,6 @@ void qemu_cpu_kick(CPUState *cpu)
     }
 }
 
-void qemu_cpu_kick_self(void)
-{
-    assert(current_cpu);
-    cpus_kick_thread(current_cpu);
-}
-
 bool qemu_cpu_is_self(CPUState *cpu)
 {
     return qemu_thread_is_self(cpu->thread);
@@ -556,18 +528,6 @@ void bql_update_status(bool locked)
 }
 
 static uint32_t bql_unlock_blocked;
-
-void bql_block_unlock(bool increase)
-{
-    uint32_t new_value;
-
-    assert(bql_locked());
-
-    /* check for overflow! */
-    new_value = bql_unlock_blocked + increase - !increase;
-    assert((new_value > bql_unlock_blocked) == increase);
-    bql_unlock_blocked = new_value;
-}
 
 bool bql_locked(void)
 {
@@ -632,13 +592,6 @@ void qemu_cond_timedwait_bql(QemuCond *cond, int ms)
 void cpu_thread_signal_created(CPUState *cpu)
 {
     cpu->created = true;
-    qemu_cond_signal(&qemu_cpu_cond);
-}
-
-/* signal CPU destruction */
-void cpu_thread_signal_destroyed(CPUState *cpu)
-{
-    cpu->created = false;
     qemu_cond_signal(&qemu_cpu_cond);
 }
 
@@ -835,25 +788,6 @@ void vm_resume(RunState state)
         vm_start();
     } else {
         runstate_set(state);
-    }
-}
-
-/* does a state transition even if the VM is already stopped,
-   current state is forgotten forever */
-int vm_stop_force_state(RunState state)
-{
-    if (runstate_is_live(runstate_get())) {
-        return vm_stop(state);
-    } else {
-        int ret;
-        runstate_set(state);
-
-        bdrv_drain_all();
-        /* Make sure to return an error if the flush in a previous vm_stop()
-         * failed. */
-        ret = bdrv_flush_all();
-        trace_vm_stop_flush_all(ret);
-        return ret;
     }
 }
 

@@ -234,12 +234,6 @@ bool runstate_is_running(void)
     return runstate_check(RUN_STATE_RUNNING);
 }
 
-bool runstate_needs_reset(void)
-{
-    return runstate_check(RUN_STATE_INTERNAL_ERROR) ||
-        runstate_check(RUN_STATE_SHUTDOWN);
-}
-
 StatusInfo *qmp_query_status(Error **errp)
 {
     StatusInfo *info = g_malloc0(sizeof(*info));
@@ -381,7 +375,6 @@ int vm_state_notify(bool running, RunState state)
 
 static ShutdownCause reset_requested;
 static ShutdownCause shutdown_requested;
-static int shutdown_exit_code = EXIT_SUCCESS;
 static int shutdown_signal;
 static bool force_shutdown;
 static pid_t shutdown_pid;
@@ -399,26 +392,6 @@ static NotifierList shutdown_notifiers =
     NOTIFIER_LIST_INITIALIZER(shutdown_notifiers);
 static uint32_t wakeup_reason_mask = ~(1 << QEMU_WAKEUP_REASON_NONE);
 
-ShutdownCause qemu_shutdown_requested_get(void)
-{
-    return shutdown_requested;
-}
-
-bool qemu_force_shutdown_requested(void)
-{
-    return force_shutdown;
-}
-
-ShutdownCause qemu_reset_requested_get(void)
-{
-    return reset_requested;
-}
-
-ShutdownCause qemu_reset_requested_consume(void)
-{
-    return qatomic_xchg(&reset_requested, SHUTDOWN_CAUSE_NONE);
-}
-
 static int qemu_shutdown_requested(void)
 {
     return qatomic_xchg(&shutdown_requested, SHUTDOWN_CAUSE_NONE);
@@ -431,26 +404,6 @@ static int qemu_shutdown_requested(void)
 void qemu_libretro_clear_shutdown_request(void)
 {
     qemu_shutdown_requested();
-}
-
-static void qemu_kill_report(void)
-{
-    if (!qtest_driver() && shutdown_signal) {
-        if (shutdown_pid == 0) {
-            /* This happens for eg ^C at the terminal, so it's worth
-             * avoiding printing an odd message in that case.
-             */
-            error_report("terminating on signal %d", shutdown_signal);
-        } else {
-            char *shutdown_cmd = qemu_get_pid_name(shutdown_pid);
-
-            error_report("terminating on signal %d from pid " FMT_pid " (%s)",
-                         shutdown_signal, shutdown_pid,
-                         shutdown_cmd ? shutdown_cmd : "<unknown process>");
-            g_free(shutdown_cmd);
-        }
-        shutdown_signal = 0;
-    }
 }
 
 static ShutdownCause qemu_reset_requested(void)
@@ -556,130 +509,6 @@ static void qemu_system_wakeup(void)
     }
 }
 
-static char *tdx_parse_panic_message(char *message)
-{
-    bool printable = false;
-    char *buf = NULL;
-    int len = 0, i;
-
-    /*
-     * Although message is defined as a json string, we shouldn't
-     * unconditionally treat it as is because the guest generated it and
-     * it's not necessarily trustable.
-     */
-    if (message) {
-        /* The caller guarantees the NULL-terminated string. */
-        len = strlen(message);
-
-        printable = len > 0;
-        for (i = 0; i < len; i++) {
-            if (!(0x20 <= message[i] && message[i] <= 0x7e)) {
-                printable = false;
-                break;
-            }
-        }
-    }
-
-    if (len == 0) {
-        buf = g_malloc(1);
-        buf[0] = '\0';
-    } else {
-        if (!printable) {
-            /* 3 = length of "%02x " */
-            buf = g_malloc(len * 3);
-            for (i = 0; i < len; i++) {
-                if (message[i] == '\0') {
-                    break;
-                } else {
-                    sprintf(buf + 3 * i, "%02x ", message[i]);
-                }
-            }
-            if (i > 0) {
-                /* replace the last ' '(space) to NULL */
-                buf[i * 3 - 1] = '\0';
-            } else {
-                buf[0] = '\0';
-            }
-        } else {
-            buf = g_strdup(message);
-        }
-    }
-
-    return buf;
-}
-
-void qemu_system_guest_panicked(GuestPanicInformation *info)
-{
-    qemu_log_mask(LOG_GUEST_ERROR, "Guest crashed");
-
-    if (current_cpu) {
-        current_cpu->crash_occurred = true;
-    }
-    /*
-     * TODO:  Currently the available panic actions are: none, pause, and
-     * shutdown, but in principle debug and reset could be supported as well.
-     * Investigate any potential use cases for the unimplemented actions.
-     */
-    if (panic_action == PANIC_ACTION_PAUSE
-        || (panic_action == PANIC_ACTION_SHUTDOWN && shutdown_action == SHUTDOWN_ACTION_PAUSE)) {
-        qapi_event_send_guest_panicked(GUEST_PANIC_ACTION_PAUSE, info);
-        vm_stop(RUN_STATE_GUEST_PANICKED);
-    } else if (panic_action == PANIC_ACTION_SHUTDOWN ||
-               panic_action == PANIC_ACTION_EXIT_FAILURE) {
-        qapi_event_send_guest_panicked(GUEST_PANIC_ACTION_POWEROFF, info);
-        vm_stop(RUN_STATE_GUEST_PANICKED);
-        qemu_system_shutdown_request(SHUTDOWN_CAUSE_GUEST_PANIC);
-    } else {
-        qapi_event_send_guest_panicked(GUEST_PANIC_ACTION_RUN, info);
-    }
-
-    if (info) {
-        if (info->type == GUEST_PANIC_INFORMATION_TYPE_HYPER_V) {
-            qemu_log_mask(LOG_GUEST_ERROR, "\nHV crash parameters: (%#"PRIx64
-                          " %#"PRIx64" %#"PRIx64" %#"PRIx64" %#"PRIx64")\n",
-                          info->u.hyper_v.arg1,
-                          info->u.hyper_v.arg2,
-                          info->u.hyper_v.arg3,
-                          info->u.hyper_v.arg4,
-                          info->u.hyper_v.arg5);
-        } else if (info->type == GUEST_PANIC_INFORMATION_TYPE_S390) {
-            qemu_log_mask(LOG_GUEST_ERROR, " on cpu %d: %s\n"
-                          "PSW: 0x%016" PRIx64 " 0x%016" PRIx64"\n",
-                          info->u.s390.core,
-                          S390CrashReason_str(info->u.s390.reason),
-                          info->u.s390.psw_mask,
-                          info->u.s390.psw_addr);
-        } else if (info->type == GUEST_PANIC_INFORMATION_TYPE_TDX) {
-            char *message = tdx_parse_panic_message(info->u.tdx.message);
-            qemu_log_mask(LOG_GUEST_ERROR,
-                          "\nTDX guest reports fatal error."
-                          " error code: 0x%" PRIx32 " error message:\"%s\"\n",
-                          info->u.tdx.error_code, message);
-            g_free(message);
-            if (info->u.tdx.gpa != -1ull) {
-                qemu_log_mask(LOG_GUEST_ERROR, "Additional error information "
-                              "can be found at gpa page: 0x%" PRIx64 "\n",
-                              info->u.tdx.gpa);
-            }
-        }
-
-        qapi_free_GuestPanicInformation(info);
-    }
-}
-
-void qemu_system_guest_crashloaded(GuestPanicInformation *info)
-{
-    qemu_log_mask(LOG_GUEST_ERROR, "Guest crash loaded");
-    qapi_event_send_guest_crashloaded(GUEST_PANIC_ACTION_RUN, info);
-    qapi_free_GuestPanicInformation(info);
-}
-
-void qemu_system_guest_pvshutdown(void)
-{
-    qapi_event_send_guest_pvshutdown();
-    qemu_system_shutdown_request(SHUTDOWN_CAUSE_GUEST_SHUTDOWN);
-}
-
 void qemu_system_reset_request(ShutdownCause reason)
 {
     if (reboot_action == REBOOT_ACTION_SHUTDOWN &&
@@ -756,11 +585,6 @@ void qemu_register_wakeup_support(void)
     wakeup_suspend_enabled = true;
 }
 
-bool qemu_wakeup_suspend_enabled(void)
-{
-    return wakeup_suspend_enabled;
-}
-
 void qemu_system_killed(int signal, pid_t pid)
 {
     shutdown_signal = signal;
@@ -773,13 +597,6 @@ void qemu_system_killed(int signal, pid_t pid)
     shutdown_requested = SHUTDOWN_CAUSE_HOST_SIGNAL;
     force_shutdown = true;
     qemu_notify_event();
-}
-
-void qemu_system_shutdown_request_with_code(ShutdownCause reason,
-                                            int exit_code)
-{
-    shutdown_exit_code = exit_code;
-    qemu_system_shutdown_request(reason);
 }
 
 void qemu_system_shutdown_request(ShutdownCause reason)
@@ -804,86 +621,10 @@ static void qemu_system_shutdown(ShutdownCause cause)
     notifier_list_notify(&shutdown_notifiers, &cause);
 }
 
-void qemu_system_powerdown_request(void)
-{
-    trace_qemu_system_powerdown_request();
-    powerdown_requested = 1;
-    qemu_notify_event();
-}
-
-void qemu_register_powerdown_notifier(Notifier *notifier)
-{
-    notifier_list_add(&powerdown_notifiers, notifier);
-}
-
-void qemu_register_shutdown_notifier(Notifier *notifier)
-{
-    notifier_list_add(&shutdown_notifiers, notifier);
-}
-
 void qemu_system_debug_request(void)
 {
     debug_requested = 1;
     qemu_notify_event();
-}
-
-static bool main_loop_should_exit(int *status)
-{
-    RunState r;
-    ShutdownCause request;
-
-    if (qemu_debug_requested()) {
-        vm_stop(RUN_STATE_DEBUG);
-    }
-    if (qemu_suspend_requested()) {
-        qemu_system_suspend();
-    }
-    request = qemu_shutdown_requested();
-    if (request) {
-        qemu_kill_report();
-        qemu_system_shutdown(request);
-        if (shutdown_action == SHUTDOWN_ACTION_PAUSE) {
-            vm_stop(RUN_STATE_SHUTDOWN);
-        } else {
-            if (shutdown_exit_code != EXIT_SUCCESS) {
-                *status = shutdown_exit_code;
-            } else if (request == SHUTDOWN_CAUSE_GUEST_PANIC &&
-                panic_action == PANIC_ACTION_EXIT_FAILURE) {
-                *status = EXIT_FAILURE;
-            }
-            return true;
-        }
-    }
-    request = qemu_reset_requested();
-    if (request) {
-        pause_all_vcpus();
-        qemu_system_reset(request);
-        resume_all_vcpus();
-        /*
-         * runstate can change in pause_all_vcpus()
-         * as iothread mutex is unlocked
-         */
-        if (!runstate_check(RUN_STATE_RUNNING) &&
-                !runstate_check(RUN_STATE_INMIGRATE) &&
-                !runstate_check(RUN_STATE_FINISH_MIGRATE)) {
-            runstate_set(RUN_STATE_PRELAUNCH);
-        }
-    }
-    if (qemu_wakeup_requested()) {
-        pause_all_vcpus();
-        qemu_system_wakeup();
-        notifier_list_notify(&wakeup_notifiers, &wakeup_reason);
-        wakeup_reason = QEMU_WAKEUP_REASON_NONE;
-        resume_all_vcpus();
-        qapi_event_send_wakeup();
-    }
-    if (qemu_powerdown_requested()) {
-        qemu_system_powerdown();
-    }
-    if (qemu_vmstop_requested(&r)) {
-        vm_stop(r);
-    }
-    return false;
 }
 
 /*
@@ -936,16 +677,6 @@ bool qemu_libretro_handle_requests(void)
         vm_stop(r);
     }
     return shutdown;
-}
-
-int qemu_main_loop(void)
-{
-    int status = EXIT_SUCCESS;
-
-    while (!main_loop_should_exit(&status)) {
-        main_loop_wait(false);
-    }
-    return status;
 }
 
 void qemu_add_exit_notifier(Notifier *notify)

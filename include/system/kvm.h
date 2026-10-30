@@ -392,10 +392,6 @@ int kvm_irqchip_send_msi(KVMState *s, MSIMessage msg);
 
 void kvm_irqchip_add_irq_route(KVMState *s, int gsi, int irqchip, int pin);
 
-void kvm_irqchip_add_change_notifier(Notifier *n);
-void kvm_irqchip_remove_change_notifier(Notifier *n);
-void kvm_irqchip_change_notify(void);
-
 struct kvm_guest_debug;
 struct kvm_debug_exit_arch;
 
@@ -472,8 +468,6 @@ void kvm_init_cpu_signals(CPUState *cpu);
  * @return: virq (>=0) when success, errno (<0) when failed.
  */
 int kvm_irqchip_add_msi_route(KVMRouteChange *c, int vector, PCIDevice *dev);
-int kvm_irqchip_update_msi_route(KVMState *s, int virq, MSIMessage msg,
-                                 PCIDevice *dev);
 void kvm_irqchip_commit_routes(KVMState *s);
 
 static inline KVMRouteChange kvm_irqchip_begin_route_changes(KVMState *s)
@@ -490,21 +484,15 @@ static inline void kvm_irqchip_commit_route_changes(KVMRouteChange *c)
 }
 
 int kvm_irqchip_get_virq(KVMState *s);
-void kvm_irqchip_release_virq(KVMState *s, int virq);
 
 void kvm_add_routing_entry(KVMState *s,
                            struct kvm_irq_routing_entry *entry);
 
-int kvm_irqchip_add_irqfd_notifier_gsi(KVMState *s, EventNotifier *n,
-                                       EventNotifier *rn, int virq);
-int kvm_irqchip_remove_irqfd_notifier_gsi(KVMState *s, EventNotifier *n,
-                                          int virq);
 int kvm_irqchip_add_irqfd_notifier(KVMState *s, EventNotifier *n,
                                    EventNotifier *rn, qemu_irq irq);
 int kvm_irqchip_remove_irqfd_notifier(KVMState *s, EventNotifier *n,
                                       qemu_irq irq);
 void kvm_irqchip_set_qemuirq_gsi(KVMState *s, qemu_irq irq, int gsi);
-void kvm_init_irq_routing(KVMState *s);
 
 bool kvm_kernel_irqchip_allowed(void);
 bool kvm_kernel_irqchip_required(void);

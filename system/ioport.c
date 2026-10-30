@@ -139,24 +139,6 @@ void portio_list_init(PortioList *piolist,
     piolist->flush_coalesced_mmio = false;
 }
 
-void portio_list_set_flush_coalesced(PortioList *piolist)
-{
-    piolist->flush_coalesced_mmio = true;
-}
-
-void portio_list_destroy(PortioList *piolist)
-{
-    MemoryRegionPortioList *mrpio;
-    unsigned i;
-
-    for (i = 0; i < piolist->nr; ++i) {
-        mrpio = container_of(piolist->regions[i], MemoryRegionPortioList, mr);
-        object_unparent(OBJECT(&mrpio->mr));
-        object_unref(mrpio);
-    }
-    g_free(piolist->regions);
-}
-
 static const MemoryRegionPortio *find_portio(MemoryRegionPortioList *mrpio,
                                              uint64_t offset, unsigned size,
                                              bool write)
@@ -310,43 +292,6 @@ void portio_list_add(PortioList *piolist,
 
     /* There will always be an open sub-list.  */
     portio_list_add_1(piolist, pio_start, count, start, off_low, off_high);
-}
-
-void portio_list_del(PortioList *piolist)
-{
-    MemoryRegionPortioList *mrpio;
-    unsigned i;
-
-    for (i = 0; i < piolist->nr; ++i) {
-        mrpio = container_of(piolist->regions[i], MemoryRegionPortioList, mr);
-        memory_region_del_subregion(piolist->address_space, &mrpio->mr);
-    }
-}
-
-void portio_list_set_enabled(PortioList *piolist, bool enabled)
-{
-    unsigned i;
-
-    for (i = 0; i < piolist->nr; ++i) {
-        memory_region_set_enabled(piolist->regions[i], enabled);
-    }
-}
-
-void portio_list_set_address(PortioList *piolist, uint32_t addr)
-{
-    MemoryRegionPortioList *mrpio;
-    unsigned i, j;
-
-    for (i = 0; i < piolist->nr; ++i) {
-        mrpio = container_of(piolist->regions[i], MemoryRegionPortioList, mr);
-        memory_region_set_address(&mrpio->mr,
-                                  mrpio->mr.addr - piolist->addr + addr);
-        for (j = 0; mrpio->ports[j].size; ++j) {
-            mrpio->ports[j].offset += addr - piolist->addr;
-        }
-    }
-
-    piolist->addr = addr;
 }
 
 static void memory_region_portio_list_finalize(Object *obj)

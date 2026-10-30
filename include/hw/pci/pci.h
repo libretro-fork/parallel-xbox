@@ -257,23 +257,12 @@ void pci_register_bar(PCIDevice *pci_dev, int region_num,
 void pci_register_vga(PCIDevice *pci_dev, MemoryRegion *mem,
                       MemoryRegion *io_lo, MemoryRegion *io_hi);
 void pci_unregister_vga(PCIDevice *pci_dev);
-pcibus_t pci_get_bar_addr(PCIDevice *pci_dev, int region_num);
-
-int pci_add_capability(PCIDevice *pdev, uint8_t cap_id,
-                       uint8_t offset, uint8_t size,
-                       Error **errp);
-
-void pci_del_capability(PCIDevice *pci_dev, uint8_t cap_id, uint8_t cap_size);
-
-uint8_t pci_find_capability(PCIDevice *pci_dev, uint8_t cap_id);
 
 
 uint32_t pci_default_read_config(PCIDevice *d,
                                  uint32_t address, int len);
 void pci_default_write_config(PCIDevice *d,
                               uint32_t address, uint32_t val, int len);
-void pci_device_save(PCIDevice *s, QEMUFile *f);
-int pci_device_load(PCIDevice *s, QEMUFile *f);
 MemoryRegion *pci_address_space(PCIDevice *dev);
 MemoryRegion *pci_address_space_io(PCIDevice *dev);
 
@@ -298,74 +287,30 @@ typedef void *(*pci_bus_ret_fn)(PCIBus *b, void *opaque);
 
 bool pci_bus_is_express(const PCIBus *bus);
 
-void pci_root_bus_init(PCIBus *bus, size_t bus_size, DeviceState *parent,
-                       const char *name,
-                       MemoryRegion *mem, MemoryRegion *io,
-                       uint8_t devfn_min, const char *typename);
 PCIBus *pci_root_bus_new(DeviceState *parent, const char *name,
                          MemoryRegion *mem, MemoryRegion *io,
                          uint8_t devfn_min, const char *typename);
-void pci_root_bus_cleanup(PCIBus *bus);
 void pci_bus_irqs(PCIBus *bus, pci_set_irq_fn set_irq,
                   void *irq_opaque, int nirq);
 void pci_bus_map_irqs(PCIBus *bus, pci_map_irq_fn map_irq);
-void pci_bus_irqs_cleanup(PCIBus *bus);
-int pci_bus_get_irq_level(PCIBus *bus, int irq_num);
-uint32_t pci_bus_get_slot_reserved_mask(PCIBus *bus);
-void pci_bus_set_slot_reserved_mask(PCIBus *bus, uint32_t mask);
-void pci_bus_clear_slot_reserved_mask(PCIBus *bus, uint32_t mask);
-bool pci_bus_add_fw_cfg_extra_pci_roots(FWCfgState *fw_cfg,
-                                        PCIBus *bus,
-                                        Error **errp);
 /* 0 <= pin <= 3 0 = INTA, 1 = INTB, 2 = INTC, 3 = INTD */
 static inline int pci_swizzle(int slot, int pin)
 {
     return (slot + pin) % PCI_NUM_PINS;
 }
 int pci_swizzle_map_irq_fn(PCIDevice *pci_dev, int pin);
-PCIBus *pci_register_root_bus(DeviceState *parent, const char *name,
-                              pci_set_irq_fn set_irq, pci_map_irq_fn map_irq,
-                              void *irq_opaque,
-                              MemoryRegion *mem, MemoryRegion *io,
-                              uint8_t devfn_min, int nirq,
-                              const char *typename);
-void pci_unregister_root_bus(PCIBus *bus);
-void pci_bus_set_route_irq_fn(PCIBus *, pci_route_irq_fn);
-PCIINTxRoute pci_device_route_intx_to_irq(PCIDevice *dev, int pin);
-bool pci_intx_route_changed(PCIINTxRoute *old, PCIINTxRoute *new);
-void pci_bus_fire_intx_routing_notifier(PCIBus *bus);
-void pci_device_set_intx_routing_notifier(PCIDevice *dev,
-                                          PCIINTxRoutingNotifier notifier);
 void pci_device_reset(PCIDevice *dev);
-
-void pci_init_nic_devices(PCIBus *bus, const char *default_model);
-bool pci_init_nic_in_slot(PCIBus *rootbus, const char *default_model,
-                          const char *alias, const char *devaddr);
-PCIDevice *pci_vga_init(PCIBus *bus);
 
 static inline PCIBus *pci_get_bus(const PCIDevice *dev)
 {
     return PCI_BUS(qdev_get_parent_bus(DEVICE(dev)));
 }
 int pci_bus_num(PCIBus *s);
-void pci_bus_range(PCIBus *bus, int *min_bus, int *max_bus);
 static inline int pci_dev_bus_num(const PCIDevice *dev)
 {
     return pci_bus_num(pci_get_bus(dev));
 }
 
-int pci_bus_numa_node(PCIBus *bus);
-void pci_for_each_device(PCIBus *bus, int bus_num,
-                         pci_bus_dev_fn fn,
-                         void *opaque);
-void pci_for_each_device_reverse(PCIBus *bus, int bus_num,
-                                 pci_bus_dev_fn fn,
-                                 void *opaque);
-void pci_for_each_device_under_bus(PCIBus *bus,
-                                   pci_bus_dev_fn fn, void *opaque);
-void pci_for_each_device_under_bus_reverse(PCIBus *bus,
-                                           pci_bus_dev_fn fn,
-                                           void *opaque);
 void pci_for_each_bus_depth_first(PCIBus *bus, pci_bus_ret_fn begin,
                                   pci_bus_fn end, void *parent_state);
 PCIDevice *pci_get_function_0(PCIDevice *pci_dev);
@@ -382,7 +327,6 @@ const char *pci_root_bus_path(PCIDevice *dev);
 bool pci_bus_bypass_iommu(PCIBus *bus);
 PCIDevice *pci_find_device(PCIBus *bus, int bus_num, uint8_t devfn);
 int pci_qdev_find_device(const char *id, PCIDevice **pdev);
-void pci_bus_get_w64_range(PCIBus *bus, Range *range);
 
 void pci_device_deassert_intx(PCIDevice *dev);
 
@@ -638,9 +582,6 @@ typedef struct PCIIOMMUOps {
 } PCIIOMMUOps;
 
 AddressSpace *pci_device_iommu_address_space(PCIDevice *dev);
-bool pci_device_set_iommu_device(PCIDevice *dev, HostIOMMUDevice *hiod,
-                                 Error **errp);
-void pci_device_unset_iommu_device(PCIDevice *dev);
 
 /**
  * pci_iommu_get_iotlb_info: get properties required to initialize a
@@ -772,8 +713,6 @@ int pci_iommu_unregister_iotlb_notifier(PCIDevice *dev, uint32_t pasid,
  * @opaque: passed to callbacks of the @ops structure.
  */
 void pci_setup_iommu(PCIBus *bus, const PCIIOMMUOps *ops, void *opaque);
-
-void pci_setup_iommu_per_bus(PCIBus *bus, const PCIIOMMUOps *ops, void *opaque);
 
 pcibus_t pci_bar_address(PCIDevice *d,
                          int reg, uint8_t type, pcibus_t size);
@@ -1008,9 +947,7 @@ static inline void pci_irq_deassert(PCIDevice *pci_dev)
     pci_set_irq(pci_dev, 0);
 }
 
-MSIMessage pci_get_msi_message(PCIDevice *dev, int vector);
 void pci_set_enabled(PCIDevice *pci_dev, bool state);
 void pci_set_power(PCIDevice *pci_dev, bool state);
-int pci_pm_init(PCIDevice *pci_dev, uint8_t offset, Error **errp);
 
 #endif

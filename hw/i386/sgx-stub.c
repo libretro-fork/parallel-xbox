@@ -6,10 +6,6 @@
 #include "qapi/qapi-commands-misc-i386.h"
 #include "qapi/error.h"
 
-void sgx_epc_build_srat(GArray *table_data)
-{
-}
-
 SgxInfo *qmp_query_sgx(Error **errp)
 {
     error_setg(errp, "SGX support is not compiled in");
@@ -22,17 +18,8 @@ SgxInfo *qmp_query_sgx_capabilities(Error **errp)
     return NULL;
 }
 
-void pc_machine_init_sgx_epc(PCMachineState *pcms)
-{
-    memset(&pcms->sgx_epc, 0, sizeof(SGXEPCState));
-}
-
 bool check_sgx_support(void)
 {
     return false;
 }
 
-bool sgx_epc_get_section(int section_nr, uint64_t *addr, uint64_t *size)
-{
-    return true;
-}

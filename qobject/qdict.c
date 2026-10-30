@@ -185,73 +185,6 @@ size_t qdict_size(const QDict *qdict)
 }
 
 /**
- * qdict_get_double(): Get an number mapped by 'key'
- *
- * This function assumes that 'key' exists and it stores a QNum.
- *
- * Return number mapped by 'key'.
- */
-double qdict_get_double(const QDict *qdict, const char *key)
-{
-    return qnum_get_double(qobject_to(QNum, qdict_get(qdict, key)));
-}
-
-/**
- * qdict_get_int(): Get an integer mapped by 'key'
- *
- * This function assumes that 'key' exists and it stores a
- * QNum representable as int.
- *
- * Return integer mapped by 'key'.
- */
-int64_t qdict_get_int(const QDict *qdict, const char *key)
-{
-    return qnum_get_int(qobject_to(QNum, qdict_get(qdict, key)));
-}
-
-/**
- * qdict_get_uint(): Get an unsigned integer mapped by 'key'
- *
- * This function assumes that 'key' exists and it stores a
- * QNum representable as uint.
- *
- * Return unsigned integer mapped by 'key'.
- */
-uint64_t qdict_get_uint(const QDict *qdict, const char *key)
-{
-    return qnum_get_uint(qobject_to(QNum, qdict_get(qdict, key)));
-}
-
-/**
- * qdict_get_bool(): Get a bool mapped by 'key'
- *
- * This function assumes that 'key' exists and it stores a
- * QBool object.
- *
- * Return bool mapped by 'key'.
- */
-bool qdict_get_bool(const QDict *qdict, const char *key)
-{
-    return qbool_get_bool(qobject_to(QBool, qdict_get(qdict, key)));
-}
-
-/**
- * qdict_get_qlist(): If @qdict maps @key to a QList, return it, else NULL.
- */
-QList *qdict_get_qlist(const QDict *qdict, const char *key)
-{
-    return qobject_to(QList, qdict_get(qdict, key));
-}
-
-/**
- * qdict_get_qdict(): If @qdict maps @key to a QDict, return it, else NULL.
- */
-QDict *qdict_get_qdict(const QDict *qdict, const char *key)
-{
-    return qobject_to(QDict, qdict_get(qdict, key));
-}
-
-/**
  * qdict_get_str(): Get a pointer to the stored string mapped
  * by 'key'
  *
@@ -263,26 +196,6 @@ QDict *qdict_get_qdict(const QDict *qdict, const char *key)
 const char *qdict_get_str(const QDict *qdict, const char *key)
 {
     return qstring_get_str(qobject_to(QString, qdict_get(qdict, key)));
-}
-
-/**
- * qdict_get_try_int(): Try to get integer mapped by 'key'
- *
- * Return integer mapped by 'key', if it is not present in the
- * dictionary or if the stored object is not a QNum representing an
- * integer, 'def_value' will be returned.
- */
-int64_t qdict_get_try_int(const QDict *qdict, const char *key,
-                          int64_t def_value)
-{
-    QNum *qnum = qobject_to(QNum, qdict_get(qdict, key));
-    int64_t val;
-
-    if (!qnum || !qnum_get_try_int(qnum, &val)) {
-        return def_value;
-    }
-
-    return val;
 }
 
 /**

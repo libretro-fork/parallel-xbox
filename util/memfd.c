@@ -169,29 +169,6 @@ enum {
 };
 
 /**
- * qemu_memfd_alloc_check():
- *
- * Check if qemu_memfd_alloc() can allocate, including using a
- * fallback implementation when host doesn't support memfd.
- */
-bool qemu_memfd_alloc_check(void)
-{
-    static int memfd_check = MEMFD_TODO;
-
-    if (memfd_check == MEMFD_TODO) {
-        int fd;
-        void *ptr;
-
-        fd = -1;
-        ptr = qemu_memfd_alloc("test", 4096, 0, &fd, NULL);
-        memfd_check = ptr ? MEMFD_OK : MEMFD_KO;
-        qemu_memfd_free(ptr, 4096, fd);
-    }
-
-    return memfd_check == MEMFD_OK;
-}
-
-/**
  * qemu_memfd_check():
  *
  * Check if host supports memfd.  Cache the answer for the common case flags=0.

@@ -546,93 +546,6 @@ void vga_ioport_write(void *opaque, uint32_t addr, uint32_t val)
     }
 }
 
-/*
- * Sanity check vbe register writes.
- *
- * As we don't have a way to signal errors to the guest in the bochs
- * dispi interface we'll go adjust the registers to the closest valid
- * value.
- */
-static void vbe_fixup_regs(VGACommonState *s)
-{
-    uint16_t *r = s->vbe_regs;
-    uint32_t bits, linelength, maxy, offset;
-
-    if (!vbe_enabled(s)) {
-        /* vbe is turned off -- nothing to do */
-        return;
-    }
-
-    /* check depth */
-    switch (r[VBE_DISPI_INDEX_BPP]) {
-    case 4:
-    case 8:
-    case 16:
-    case 24:
-    case 32:
-        bits = r[VBE_DISPI_INDEX_BPP];
-        break;
-    case 15:
-        bits = 16;
-        break;
-    default:
-        bits = r[VBE_DISPI_INDEX_BPP] = 8;
-        break;
-    }
-
-    /* check width */
-    r[VBE_DISPI_INDEX_XRES] &= ~7u;
-    if (r[VBE_DISPI_INDEX_XRES] == 0) {
-        r[VBE_DISPI_INDEX_XRES] = 8;
-    }
-    if (r[VBE_DISPI_INDEX_XRES] > VBE_DISPI_MAX_XRES) {
-        r[VBE_DISPI_INDEX_XRES] = VBE_DISPI_MAX_XRES;
-    }
-    r[VBE_DISPI_INDEX_VIRT_WIDTH] &= ~7u;
-    if (r[VBE_DISPI_INDEX_VIRT_WIDTH] > VBE_DISPI_MAX_XRES) {
-        r[VBE_DISPI_INDEX_VIRT_WIDTH] = VBE_DISPI_MAX_XRES;
-    }
-    if (r[VBE_DISPI_INDEX_VIRT_WIDTH] < r[VBE_DISPI_INDEX_XRES]) {
-        r[VBE_DISPI_INDEX_VIRT_WIDTH] = r[VBE_DISPI_INDEX_XRES];
-    }
-
-    /* check height */
-    linelength = r[VBE_DISPI_INDEX_VIRT_WIDTH] * bits / 8;
-    maxy = s->vbe_size / linelength;
-    if (r[VBE_DISPI_INDEX_YRES] == 0) {
-        r[VBE_DISPI_INDEX_YRES] = 1;
-    }
-    if (r[VBE_DISPI_INDEX_YRES] > VBE_DISPI_MAX_YRES) {
-        r[VBE_DISPI_INDEX_YRES] = VBE_DISPI_MAX_YRES;
-    }
-    if (r[VBE_DISPI_INDEX_YRES] > maxy) {
-        r[VBE_DISPI_INDEX_YRES] = maxy;
-    }
-
-    /* check offset */
-    if (r[VBE_DISPI_INDEX_X_OFFSET] > VBE_DISPI_MAX_XRES) {
-        r[VBE_DISPI_INDEX_X_OFFSET] = VBE_DISPI_MAX_XRES;
-    }
-    if (r[VBE_DISPI_INDEX_Y_OFFSET] > VBE_DISPI_MAX_YRES) {
-        r[VBE_DISPI_INDEX_Y_OFFSET] = VBE_DISPI_MAX_YRES;
-    }
-    offset = r[VBE_DISPI_INDEX_X_OFFSET] * bits / 8;
-    offset += r[VBE_DISPI_INDEX_Y_OFFSET] * linelength;
-    if (offset + r[VBE_DISPI_INDEX_YRES] * linelength > s->vbe_size) {
-        r[VBE_DISPI_INDEX_Y_OFFSET] = 0;
-        offset = r[VBE_DISPI_INDEX_X_OFFSET] * bits / 8;
-        if (offset + r[VBE_DISPI_INDEX_YRES] * linelength > s->vbe_size) {
-            r[VBE_DISPI_INDEX_X_OFFSET] = 0;
-            offset = 0;
-        }
-    }
-
-    /* update vga state */
-    r[VBE_DISPI_INDEX_VIRT_HEIGHT] = maxy;
-    s->vbe_line_offset = linelength;
-    s->vbe_start_addr  = offset / 4;
-}
-
 /* we initialize the VGA graphic mode */
 static void vbe_update_vgaregs(VGACommonState *s)
 {
@@ -676,112 +589,10 @@ static void vbe_update_vgaregs(VGACommonState *s)
     s->cr[VGA_CRTC_MAX_SCAN] &= ~0x9f; /* no double scan */
 }
 
-static uint32_t vbe_ioport_read_index(void *opaque, uint32_t addr)
-{
-    VGACommonState *s = opaque;
-    return s->vbe_index;
-}
-
-uint32_t vbe_ioport_read_data(void *opaque, uint32_t addr)
-{
-    VGACommonState *s = opaque;
-    uint32_t val;
-
-    if (s->vbe_index < VBE_DISPI_INDEX_NB) {
-        if (s->vbe_regs[VBE_DISPI_INDEX_ENABLE] & VBE_DISPI_GETCAPS) {
-            switch(s->vbe_index) {
-                /* XXX: do not hardcode ? */
-            case VBE_DISPI_INDEX_XRES:
-                val = VBE_DISPI_MAX_XRES;
-                break;
-            case VBE_DISPI_INDEX_YRES:
-                val = VBE_DISPI_MAX_YRES;
-                break;
-            case VBE_DISPI_INDEX_BPP:
-                val = VBE_DISPI_MAX_BPP;
-                break;
-            default:
-                val = s->vbe_regs[s->vbe_index];
-                break;
-            }
-        } else {
-            val = s->vbe_regs[s->vbe_index];
-        }
-    } else if (s->vbe_index == VBE_DISPI_INDEX_VIDEO_MEMORY_64K) {
-        val = s->vbe_size / (64 * KiB);
-    } else {
-        val = 0;
-    }
-    trace_vga_vbe_read(s->vbe_index, val);
-    return val;
-}
-
 void vbe_ioport_write_index(void *opaque, uint32_t addr, uint32_t val)
 {
     VGACommonState *s = opaque;
     s->vbe_index = val;
-}
-
-void vbe_ioport_write_data(void *opaque, uint32_t addr, uint32_t val)
-{
-    VGACommonState *s = opaque;
-
-    if (s->vbe_index <= VBE_DISPI_INDEX_NB) {
-        trace_vga_vbe_write(s->vbe_index, val);
-        switch(s->vbe_index) {
-        case VBE_DISPI_INDEX_ID:
-            if (val == VBE_DISPI_ID0 ||
-                val == VBE_DISPI_ID1 ||
-                val == VBE_DISPI_ID2 ||
-                val == VBE_DISPI_ID3 ||
-                val == VBE_DISPI_ID4 ||
-                val == VBE_DISPI_ID5) {
-                s->vbe_regs[s->vbe_index] = val;
-            }
-            break;
-        case VBE_DISPI_INDEX_XRES:
-        case VBE_DISPI_INDEX_YRES:
-        case VBE_DISPI_INDEX_BPP:
-        case VBE_DISPI_INDEX_VIRT_WIDTH:
-        case VBE_DISPI_INDEX_X_OFFSET:
-        case VBE_DISPI_INDEX_Y_OFFSET:
-            s->vbe_regs[s->vbe_index] = val;
-            vbe_fixup_regs(s);
-            vbe_update_vgaregs(s);
-            break;
-        case VBE_DISPI_INDEX_BANK:
-            val &= s->vbe_bank_mask;
-            s->vbe_regs[s->vbe_index] = val;
-            s->bank_offset = (val << 16);
-            vga_update_memory_access(s);
-            break;
-        case VBE_DISPI_INDEX_ENABLE:
-            if ((val & VBE_DISPI_ENABLED) &&
-                !(s->vbe_regs[VBE_DISPI_INDEX_ENABLE] & VBE_DISPI_ENABLED)) {
-
-                s->vbe_regs[VBE_DISPI_INDEX_VIRT_WIDTH] = 0;
-                s->vbe_regs[VBE_DISPI_INDEX_X_OFFSET] = 0;
-                s->vbe_regs[VBE_DISPI_INDEX_Y_OFFSET] = 0;
-                s->vbe_regs[VBE_DISPI_INDEX_ENABLE] |= VBE_DISPI_ENABLED;
-                vbe_fixup_regs(s);
-                vbe_update_vgaregs(s);
-
-                /* clear the screen */
-                if (!(val & VBE_DISPI_NOCLEARMEM)) {
-                    memset(s->vram_ptr, 0,
-                           s->vbe_regs[VBE_DISPI_INDEX_YRES] * s->vbe_line_offset);
-                }
-            } else {
-                s->bank_offset = 0;
-            }
-            s->dac_8bit = (val & VBE_DISPI_8BIT_DAC) > 0;
-            s->vbe_regs[s->vbe_index] = val;
-            vga_update_memory_access(s);
-            break;
-        default:
-            break;
-        }
-    }
 }
 
 /* called for accesses between 0xa0000 and 0xc0000 */
@@ -1467,11 +1278,6 @@ void vga_dirty_log_start(VGACommonState *s)
     memory_region_set_log(&s->vram, true, DIRTY_MEMORY_VGA);
 }
 
-void vga_dirty_log_stop(VGACommonState *s)
-{
-    memory_region_set_log(&s->vram, false, DIRTY_MEMORY_VGA);
-}
-
 /*
  * graphic modes
  */
@@ -1886,12 +1692,6 @@ void vga_common_reset(VGACommonState *s)
     vga_update_memory_access(s);
 }
 
-static void vga_reset(void *opaque)
-{
-    VGACommonState *s =  opaque;
-    vga_common_reset(s);
-}
-
 #define TEXTMODE_X(x)	((x) % width)
 #define TEXTMODE_Y(x)	((x) / width)
 #define VMEM2CHTYPE(v)	((v & 0xff0007ff) | \
@@ -2272,81 +2072,3 @@ bool vga_common_init(VGACommonState *s, Object *obj, Error **errp)
     return true;
 }
 
-static const MemoryRegionPortio vga_portio_list[] = {
-    { 0x04,  2, 1, .read = vga_ioport_read, .write = vga_ioport_write }, /* 3b4 */
-    { 0x0a,  1, 1, .read = vga_ioport_read, .write = vga_ioport_write }, /* 3ba */
-    { 0x10, 16, 1, .read = vga_ioport_read, .write = vga_ioport_write }, /* 3c0 */
-    { 0x24,  2, 1, .read = vga_ioport_read, .write = vga_ioport_write }, /* 3d4 */
-    { 0x2a,  1, 1, .read = vga_ioport_read, .write = vga_ioport_write }, /* 3da */
-    PORTIO_END_OF_LIST(),
-};
-
-static const MemoryRegionPortio vbe_portio_list_x86[] = {
-    { 0, 1, 2, .read = vbe_ioport_read_index, .write = vbe_ioport_write_index },
-    { 1, 1, 2, .read = vbe_ioport_read_data, .write = vbe_ioport_write_data },
-    { 2, 1, 2, .read = vbe_ioport_read_data, .write = vbe_ioport_write_data },
-    PORTIO_END_OF_LIST(),
-};
-
-static const MemoryRegionPortio vbe_portio_list_no_x86[] = {
-    { 0, 1, 2, .read = vbe_ioport_read_index, .write = vbe_ioport_write_index },
-    { 2, 1, 2, .read = vbe_ioport_read_data, .write = vbe_ioport_write_data },
-    PORTIO_END_OF_LIST(),
-};
-
-/* Used by both ISA and PCI */
-MemoryRegion *vga_init_io(VGACommonState *s, Object *obj,
-                          const MemoryRegionPortio **vga_ports,
-                          const MemoryRegionPortio **vbe_ports)
-{
-    MemoryRegion *vga_mem;
-    MachineState *ms = MACHINE(qdev_get_machine());
-
-    /*
-     * We unfortunately need two VBE lists since non-x86 machines might
-     * not be able to do 16-bit accesses at unaligned addresses (0x1cf)
-     */
-    if (object_dynamic_cast(OBJECT(ms), TYPE_X86_MACHINE)) {
-        *vbe_ports = vbe_portio_list_x86;
-    } else {
-        *vbe_ports = vbe_portio_list_no_x86;
-    }
-
-    *vga_ports = vga_portio_list;
-
-    vga_mem = g_malloc(sizeof(*vga_mem));
-    memory_region_init_io(vga_mem, obj, &vga_mem_ops, s,
-                          "vga-lowmem", 0x20000);
-    memory_region_set_flush_coalesced(vga_mem);
-
-    return vga_mem;
-}
-
-void vga_init(VGACommonState *s, Object *obj, MemoryRegion *address_space,
-              MemoryRegion *address_space_io, bool init_vga_ports)
-{
-    MemoryRegion *vga_io_memory;
-    const MemoryRegionPortio *vga_ports, *vbe_ports;
-
-    qemu_register_reset(vga_reset, s);
-
-    s->bank_offset = 0;
-
-    s->legacy_address_space = address_space;
-
-    vga_io_memory = vga_init_io(s, obj, &vga_ports, &vbe_ports);
-    memory_region_add_subregion_overlap(address_space,
-                                        0x000a0000,
-                                        vga_io_memory,
-                                        1);
-    memory_region_set_coalescing(vga_io_memory);
-    if (init_vga_ports) {
-        portio_list_init(&s->vga_port_list, obj, vga_ports, s, "vga");
-        portio_list_set_flush_coalesced(&s->vga_port_list);
-        portio_list_add(&s->vga_port_list, address_space_io, 0x3b0);
-    }
-    if (vbe_ports) {
-        portio_list_init(&s->vbe_port_list, obj, vbe_ports, s, "vbe");
-        portio_list_add(&s->vbe_port_list, address_space_io, 0x1ce);
-    }
-}

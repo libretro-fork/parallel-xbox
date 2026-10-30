@@ -162,15 +162,9 @@ static inline int c6_to_8(int v)
 }
 
 bool vga_common_init(VGACommonState *s, Object *obj, Error **errp);
-void vga_init(VGACommonState *s, Object *obj, MemoryRegion *address_space,
-              MemoryRegion *address_space_io, bool init_vga_ports);
-MemoryRegion *vga_init_io(VGACommonState *s, Object *obj,
-                          const MemoryRegionPortio **vga_ports,
-                          const MemoryRegionPortio **vbe_ports);
 void vga_common_reset(VGACommonState *s);
 
 void vga_dirty_log_start(VGACommonState *s);
-void vga_dirty_log_stop(VGACommonState *s);
 
 extern const VMStateDescription vmstate_vga_common;
 uint32_t vga_ioport_read(void *opaque, uint32_t addr);
@@ -181,9 +175,7 @@ void vga_invalidate_scanlines(VGACommonState *s, int y1, int y2);
 
 int vga_ioport_invalid(VGACommonState *s, uint32_t addr);
 
-uint32_t vbe_ioport_read_data(void *opaque, uint32_t addr);
 void vbe_ioport_write_index(void *opaque, uint32_t addr, uint32_t val);
-void vbe_ioport_write_data(void *opaque, uint32_t addr, uint32_t val);
 
 extern const uint8_t sr_mask[8];
 extern const uint8_t gr_mask[16];

@@ -674,22 +674,6 @@ uint32_t translator_ldl_end(CPUArchState *env, DisasContextBase *db,
     return val;
 }
 
-uint64_t translator_ldq_end(CPUArchState *env, DisasContextBase *db,
-                            vaddr pc, MemOp endian)
-{
-    uint64_t val;
-
-    if (!translator_ld(env, db, &val, pc, sizeof(val))) {
-        MemOpIdx oi = make_memop_idx(MO_UQ, db->code_mmuidx);
-        val = cpu_ldq_code_mmu(env, pc, oi, 0);
-        record_save(db, pc, &val, sizeof(val));
-    }
-    if (endian & MO_BSWAP) {
-        val = bswap64(val);
-    }
-    return val;
-}
-
 void translator_fake_ld(DisasContextBase *db, const void *data, size_t len)
 {
     db->fake_insn = true;

@@ -55,14 +55,4 @@ void qemu_guest_random_seed_thread_part2(uint64_t seed);
  */
 int qemu_guest_getrandom(void *buf, size_t len, Error **errp);
 
-/**
- * qemu_guest_getrandom_nofail(void *buf, size_t len)
- * @buf: a buffer of bytes to be written
- * @len: the number of bytes in @buf
- *
- * Like qemu_guest_getrandom, but will assert for failure.
- * Use this when there is no reasonable recovery.
- */
-void qemu_guest_getrandom_nofail(void *buf, size_t len);
-
 #endif /* QEMU_GUEST_RANDOM_H */

@@ -107,20 +107,6 @@ void qemu_free_irq(qemu_irq irq)
     object_unref(OBJECT(irq));
 }
 
-static void qemu_notirq(void *opaque, int line, int level)
-{
-    IRQState *irq = opaque;
-
-    irq->handler(irq->opaque, irq->n, !level);
-}
-
-qemu_irq qemu_irq_invert(qemu_irq irq)
-{
-    /* The default state for IRQs is low, so raise the output now.  */
-    qemu_irq_raise(irq);
-    return qemu_allocate_irq(qemu_notirq, irq, 0);
-}
-
 void qemu_irq_intercept_in(qemu_irq *gpio_in, qemu_irq_handler handler, int n)
 {
     int i;

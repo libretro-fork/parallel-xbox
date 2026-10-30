@@ -311,48 +311,6 @@ static void do_parameter(USBDevice *s, USBPacket *p)
     usb_pcap_ctrl(p, false);
 }
 
-/* ctrl complete function for devices which use usb_generic_handle_packet and
-   may return USB_RET_ASYNC from their handle_control callback. Device code
-   which does this *must* call this function instead of the normal
-   usb_packet_complete to complete their async control packets. */
-void usb_generic_async_ctrl_complete(USBDevice *s, USBPacket *p)
-{
-    if (p->status < 0) {
-        s->setup_state = SETUP_STATE_IDLE;
-        usb_pcap_ctrl(p, false);
-    }
-
-    switch (s->setup_state) {
-    case SETUP_STATE_SETUP:
-        if (p->actual_length < s->setup_len) {
-            s->setup_len = p->actual_length;
-        }
-        s->setup_state = SETUP_STATE_DATA;
-        p->actual_length = 8;
-        break;
-
-    case SETUP_STATE_ACK:
-        s->setup_state = SETUP_STATE_IDLE;
-        p->actual_length = 0;
-        usb_pcap_ctrl(p, false);
-        break;
-
-    case SETUP_STATE_PARAM:
-        if (p->actual_length < s->setup_len) {
-            s->setup_len = p->actual_length;
-        }
-        if (p->pid == USB_TOKEN_IN) {
-            p->actual_length = 0;
-            usb_packet_copy(p, s->data_buf, s->setup_len);
-        }
-        break;
-
-    default:
-        break;
-    }
-    usb_packet_complete(s, p);
-}
-
 USBDevice *usb_find_device(USBPort *port, uint8_t addr)
 {
     USBDevice *dev = port->dev;
@@ -460,54 +418,6 @@ void usb_handle_packet(USBDevice *dev, USBPacket *p)
         }
     } else {
         usb_queue_one(p);
-    }
-}
-
-void usb_packet_complete_one(USBDevice *dev, USBPacket *p)
-{
-    USBEndpoint *ep = p->ep;
-
-    assert(p->stream || QTAILQ_FIRST(&ep->queue) == p);
-    assert(p->status != USB_RET_ASYNC && p->status != USB_RET_NAK);
-
-    if (p->status != USB_RET_SUCCESS ||
-            (p->short_not_ok && (p->actual_length < p->iov.size))) {
-        ep->halted = true;
-    }
-    usb_pcap_data(p, false);
-    usb_packet_set_state(p, USB_PACKET_COMPLETE);
-    QTAILQ_REMOVE(&ep->queue, p, queue);
-    dev->port->ops->complete(dev->port, p);
-}
-
-/* Notify the controller that an async packet is complete.  This should only
-   be called for packets previously deferred by returning USB_RET_ASYNC from
-   handle_packet. */
-void usb_packet_complete(USBDevice *dev, USBPacket *p)
-{
-    USBEndpoint *ep = p->ep;
-
-    usb_packet_check_state(p, USB_PACKET_ASYNC);
-    usb_packet_complete_one(dev, p);
-
-    while (!QTAILQ_EMPTY(&ep->queue)) {
-        p = QTAILQ_FIRST(&ep->queue);
-        if (ep->halted) {
-            /* Empty the queue on a halt */
-            p->status = USB_RET_REMOVE_FROM_QUEUE;
-            dev->port->ops->complete(dev->port, p);
-            continue;
-        }
-        if (p->state == USB_PACKET_ASYNC) {
-            break;
-        }
-        usb_packet_check_state(p, USB_PACKET_QUEUED);
-        usb_process_one(p);
-        if (p->status == USB_RET_ASYNC) {
-            usb_packet_set_state(p, USB_PACKET_ASYNC);
-            break;
-        }
-        usb_packet_complete_one(ep->dev, p);
     }
 }
 
@@ -625,29 +535,6 @@ void usb_packet_copy(USBPacket *p, void *ptr, size_t bytes)
     p->actual_length += bytes;
 }
 
-void usb_packet_skip(USBPacket *p, size_t bytes)
-{
-    QEMUIOVector *iov = p->combined ? &p->combined->iov : &p->iov;
-
-    assert(p->actual_length >= 0);
-    assert(p->actual_length + bytes <= iov->size);
-    if (p->pid == USB_TOKEN_IN) {
-        iov_memset(iov->iov, iov->niov, p->actual_length, 0, bytes);
-    }
-    p->actual_length += bytes;
-}
-
-size_t usb_packet_size(USBPacket *p)
-{
-    return p->combined ? p->combined->iov.size : p->iov.size;
-}
-
-void usb_packet_cleanup(USBPacket *p)
-{
-    assert(!usb_packet_is_inflight(p));
-    qemu_iovec_destroy(&p->iov);
-}
-
 void usb_ep_reset(USBDevice *dev)
 {
     int ep;
@@ -691,48 +578,6 @@ void usb_ep_init(USBDevice *dev)
     }
 }
 
-void usb_ep_dump(USBDevice *dev)
-{
-    static const char *tname[] = {
-        [USB_ENDPOINT_XFER_CONTROL] = "control",
-        [USB_ENDPOINT_XFER_ISOC]    = "isoc",
-        [USB_ENDPOINT_XFER_BULK]    = "bulk",
-        [USB_ENDPOINT_XFER_INT]     = "int",
-    };
-    int ifnum, ep, first;
-
-    fprintf(stderr, "Device \"%s\", config %d\n",
-            dev->product_desc, dev->configuration);
-    for (ifnum = 0; ifnum < 16; ifnum++) {
-        first = 1;
-        for (ep = 0; ep < USB_MAX_ENDPOINTS; ep++) {
-            if (dev->ep_in[ep].type != USB_ENDPOINT_XFER_INVALID &&
-                dev->ep_in[ep].ifnum == ifnum) {
-                if (first) {
-                    first = 0;
-                    fprintf(stderr, "  Interface %d, alternative %d\n",
-                            ifnum, dev->altsetting[ifnum]);
-                }
-                fprintf(stderr, "    Endpoint %d, IN, %s, %d max\n", ep,
-                        tname[dev->ep_in[ep].type],
-                        dev->ep_in[ep].max_packet_size);
-            }
-            if (dev->ep_out[ep].type != USB_ENDPOINT_XFER_INVALID &&
-                dev->ep_out[ep].ifnum == ifnum) {
-                if (first) {
-                    first = 0;
-                    fprintf(stderr, "  Interface %d, alternative %d\n",
-                            ifnum, dev->altsetting[ifnum]);
-                }
-                fprintf(stderr, "    Endpoint %d, OUT, %s, %d max\n", ep,
-                        tname[dev->ep_out[ep].type],
-                        dev->ep_out[ep].max_packet_size);
-            }
-        }
-    }
-    fprintf(stderr, "--\n");
-}
-
 struct USBEndpoint *usb_ep_get(USBDevice *dev, int pid, int ep)
 {
     struct USBEndpoint *eps;
@@ -745,12 +590,6 @@ struct USBEndpoint *usb_ep_get(USBDevice *dev, int pid, int ep)
     assert(ep > 0 && ep <= USB_MAX_ENDPOINTS);
     eps = (pid == USB_TOKEN_IN) ? dev->ep_in : dev->ep_out;
     return eps + ep - 1;
-}
-
-uint8_t usb_ep_get_type(USBDevice *dev, int pid, int ep)
-{
-    struct USBEndpoint *uep = usb_ep_get(dev, pid, ep);
-    return uep->type;
 }
 
 void usb_ep_set_type(USBDevice *dev, int pid, int ep, uint8_t type)
@@ -799,23 +638,3 @@ void usb_ep_set_max_streams(USBDevice *dev, int pid, int ep, uint8_t raw)
     }
 }
 
-void usb_ep_set_halted(USBDevice *dev, int pid, int ep, bool halted)
-{
-    struct USBEndpoint *uep = usb_ep_get(dev, pid, ep);
-    uep->halted = halted;
-}
-
-USBPacket *usb_ep_find_packet_by_id(USBDevice *dev, int pid, int ep,
-                                    uint64_t id)
-{
-    struct USBEndpoint *uep = usb_ep_get(dev, pid, ep);
-    USBPacket *p;
-
-    QTAILQ_FOREACH(p, &uep->queue, queue) {
-        if (p->id == id) {
-            return p;
-        }
-    }
-
-    return NULL;
-}

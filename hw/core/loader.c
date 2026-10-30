@@ -107,21 +107,6 @@ ssize_t load_image_size(const char *filename, void *addr, size_t size)
     return actsize < 0 ? -1 : l;
 }
 
-/* read()-like version */
-ssize_t read_targphys(const char *name,
-                      int fd, hwaddr dst_addr, size_t nbytes)
-{
-    uint8_t *buf;
-    ssize_t did;
-
-    buf = g_malloc(nbytes);
-    did = read(fd, buf, nbytes);
-    if (did > 0)
-        rom_add_blob_fixed("read", buf, did, dst_addr);
-    g_free(buf);
-    return did;
-}
-
 ssize_t load_image_targphys(const char *filename,
                             hwaddr addr, uint64_t max_sz, Error **errp)
 {
@@ -181,23 +166,6 @@ ssize_t load_image_mr(const char *filename, MemoryRegion *mr)
     return size;
 }
 
-void pstrcpy_targphys(const char *name, hwaddr dest, int buf_size,
-                      const char *source)
-{
-    const char *nulp;
-    char *ptr;
-
-    if (buf_size <= 0) return;
-    nulp = memchr(source, 0, buf_size);
-    if (nulp) {
-        rom_add_blob_fixed(name, source, (nulp - source) + 1, dest);
-    } else {
-        rom_add_blob_fixed(name, source, buf_size, dest);
-        ptr = rom_ptr(dest + buf_size - 1, sizeof(*ptr));
-        *ptr = 0;
-    }
-}
-
 /* A.OUT loader */
 
 struct exec
@@ -211,18 +179,6 @@ struct exec
   uint32_t a_trsize; /* length of relocation info for text, in bytes */
   uint32_t a_drsize; /* length of relocation info for data, in bytes */
 };
-
-static void bswap_ahdr(struct exec *e)
-{
-    bswap32s(&e->a_info);
-    bswap32s(&e->a_text);
-    bswap32s(&e->a_data);
-    bswap32s(&e->a_bss);
-    bswap32s(&e->a_syms);
-    bswap32s(&e->a_entry);
-    bswap32s(&e->a_trsize);
-    bswap32s(&e->a_drsize);
-}
 
 #define N_MAGIC(exec) ((exec).a_info & 0xffff)
 #define OMAGIC 0407
@@ -242,61 +198,6 @@ static void bswap_ahdr(struct exec *e)
     (N_MAGIC(x)==OMAGIC? (_N_TXTENDADDR(x, target_page_size)) \
      : (_N_SEGMENT_ROUND (_N_TXTENDADDR(x, target_page_size), target_page_size)))
 
-
-ssize_t load_aout(const char *filename, hwaddr addr, int max_sz,
-                  bool big_endian, hwaddr target_page_size)
-{
-    int fd;
-    ssize_t size, ret;
-    struct exec e;
-    uint32_t magic;
-
-    fd = qemu_open(filename, O_RDONLY | O_BINARY, NULL);
-    if (fd < 0)
-        return -1;
-
-    size = read(fd, &e, sizeof(e));
-    if (size < 0)
-        goto fail;
-
-    if (big_endian != HOST_BIG_ENDIAN) {
-        bswap_ahdr(&e);
-    }
-
-    magic = N_MAGIC(e);
-    switch (magic) {
-    case ZMAGIC:
-    case QMAGIC:
-    case OMAGIC:
-        if (e.a_text + e.a_data > max_sz)
-            goto fail;
-        lseek(fd, N_TXTOFF(e), SEEK_SET);
-        size = read_targphys(filename, fd, addr, e.a_text + e.a_data);
-        if (size < 0)
-            goto fail;
-        break;
-    case NMAGIC:
-        if (N_DATADDR(e, target_page_size) + e.a_data > max_sz)
-            goto fail;
-        lseek(fd, N_TXTOFF(e), SEEK_SET);
-        size = read_targphys(filename, fd, addr, e.a_text);
-        if (size < 0)
-            goto fail;
-        ret = read_targphys(filename, fd, addr + N_DATADDR(e, target_page_size),
-                            e.a_data);
-        if (ret < 0)
-            goto fail;
-        size += ret;
-        break;
-    default:
-        goto fail;
-    }
-    close(fd);
-    return size;
- fail:
-    close(fd);
-    return -1;
-}
 
 /* ELF loader */
 
@@ -343,26 +244,6 @@ static void *load_at(int fd, off_t offset, size_t size)
 #define bswapSZs        bswap64s
 #define SZ              64
 #include "hw/elf_ops.h.inc"
-
-const char *load_elf_strerror(ssize_t error)
-{
-    switch (error) {
-    case 0:
-        return "No error";
-    case ELF_LOAD_FAILED:
-        return "Failed to load ELF";
-    case ELF_LOAD_NOT_ELF:
-        return "The image is not ELF";
-    case ELF_LOAD_WRONG_ARCH:
-        return "The image is from incompatible architecture";
-    case ELF_LOAD_WRONG_ENDIAN:
-        return "The image has incorrect endianness";
-    case ELF_LOAD_TOO_BIG:
-        return "The image segments are too big to load";
-    default:
-        return "Unknown error";
-    }
-}
 
 void load_elf_hdr(const char *filename, void *hdr, bool *is64, Error **errp)
 {
@@ -763,52 +644,6 @@ ssize_t load_ramdisk_as(const char *filename, hwaddr addr, uint64_t max_sz,
 {
     return load_uboot_image(filename, NULL, &addr, NULL, IH_TYPE_RAMDISK,
                             NULL, NULL, as);
-}
-
-/* Load a gzip-compressed kernel to a dynamically allocated buffer. */
-ssize_t load_image_gzipped_buffer(const char *filename, uint64_t max_sz,
-                                  uint8_t **buffer)
-{
-    uint8_t *compressed_data = NULL;
-    uint8_t *data = NULL;
-    gsize len;
-    ssize_t bytes;
-    int ret = -1;
-
-    if (!g_file_get_contents(filename, (char **) &compressed_data, &len,
-                             NULL)) {
-        goto out;
-    }
-
-    /* Is it a gzip-compressed file? */
-    if (len < 2 ||
-        compressed_data[0] != 0x1f ||
-        compressed_data[1] != 0x8b) {
-        goto out;
-    }
-
-    if (max_sz > LOAD_IMAGE_MAX_GUNZIP_BYTES) {
-        max_sz = LOAD_IMAGE_MAX_GUNZIP_BYTES;
-    }
-
-    data = g_malloc(max_sz);
-    bytes = gunzip(data, max_sz, compressed_data, len);
-    if (bytes < 0) {
-        fprintf(stderr, "%s: unable to decompress gzipped kernel file\n",
-                filename);
-        goto out;
-    }
-
-    /* trim to actual size and return to caller */
-    *buffer = g_realloc(data, bytes);
-    ret = bytes;
-    /* ownership has been transferred to caller */
-    data = NULL;
-
- out:
-    g_free(compressed_data);
-    g_free(data);
-    return ret;
 }
 
 
@@ -1313,11 +1148,6 @@ int rom_check_and_register_reset(void)
     qemu_register_reset(rom_reset, NULL);
     roms_loaded = 1;
     return 0;
-}
-
-void rom_set_fw(FWCfgState *f)
-{
-    fw_cfg = f;
 }
 
 void rom_transaction_begin(void)

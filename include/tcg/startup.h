@@ -26,7 +26,6 @@
 #define TCG_STARTUP_H
 
 #ifdef XBOX
-void tcg_register_init_ctx(void);
 #endif
 
 /**

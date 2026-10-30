@@ -126,10 +126,6 @@ void synchronize_rcu(void);
 void rcu_register_thread(void);
 void rcu_unregister_thread(void);
 
-/*
- * Support for fork().  fork() support is enabled at startup.
- */
-void rcu_enable_atfork(void);
 void rcu_disable_atfork(void);
 
 struct rcu_head;
@@ -193,6 +189,5 @@ G_DEFINE_AUTOPTR_CLEANUP_FUNC(RCUReadAuto, rcu_read_auto_unlock)
  * read-side critical section.
  */
 void rcu_add_force_rcu_notifier(Notifier *n);
-void rcu_remove_force_rcu_notifier(Notifier *n);
 
 #endif /* QEMU_RCU_H */

@@ -35,20 +35,6 @@ QList *qlist_new(void)
     return qlist;
 }
 
-QList *qlist_copy(QList *src)
-{
-    QList *dst = qlist_new();
-    QListEntry *entry;
-    QObject *elt;
-
-    QLIST_FOREACH_ENTRY(src, entry) {
-        elt = qlist_entry_obj(entry);
-        qobject_ref(elt);
-        qlist_append_obj(dst, elt);
-    }
-    return dst;
-}
-
 /**
  * qlist_append_obj(): Append an QObject into QList
  *
@@ -64,71 +50,14 @@ void qlist_append_obj(QList *qlist, QObject *value)
     QTAILQ_INSERT_TAIL(&qlist->head, entry, next);
 }
 
-void qlist_append_int(QList *qlist, int64_t value)
-{
-    qlist_append(qlist, qnum_from_int(value));
-}
-
-void qlist_append_bool(QList *qlist, bool value)
-{
-    qlist_append(qlist, qbool_from_bool(value));
-}
-
 void qlist_append_str(QList *qlist, const char *value)
 {
     qlist_append(qlist, qstring_from_str(value));
 }
 
-void qlist_append_null(QList *qlist)
-{
-    qlist_append(qlist, qnull());
-}
-
-QObject *qlist_pop(QList *qlist)
-{
-    QListEntry *entry;
-    QObject *ret;
-
-    if (qlist == NULL || QTAILQ_EMPTY(&qlist->head)) {
-        return NULL;
-    }
-
-    entry = QTAILQ_FIRST(&qlist->head);
-    QTAILQ_REMOVE(&qlist->head, entry, next);
-
-    ret = entry->value;
-    g_free(entry);
-
-    return ret;
-}
-
-QObject *qlist_peek(QList *qlist)
-{
-    QListEntry *entry;
-
-    if (qlist == NULL || QTAILQ_EMPTY(&qlist->head)) {
-        return NULL;
-    }
-
-    entry = QTAILQ_FIRST(&qlist->head);
-
-    return entry->value;
-}
-
 int qlist_empty(const QList *qlist)
 {
     return QTAILQ_EMPTY(&qlist->head);
-}
-
-size_t qlist_size(const QList *qlist)
-{
-    size_t count = 0;
-    QListEntry *entry;
-
-    QLIST_FOREACH_ENTRY(qlist, entry) {
-        count++;
-    }
-    return count;
 }
 
 /**

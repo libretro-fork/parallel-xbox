@@ -67,17 +67,6 @@ I2CBus *i2c_init_bus(DeviceState *parent, const char *name)
     return bus;
 }
 
-void i2c_slave_set_address(I2CSlave *dev, uint8_t address)
-{
-    dev->address = address;
-}
-
-/* Return nonzero if bus is busy.  */
-int i2c_bus_busy(I2CBus *bus)
-{
-    return !QLIST_EMPTY(&bus->current_devs) || bus->bh;
-}
-
 bool i2c_scan_bus(I2CBus *bus, uint8_t address, bool broadcast,
                   I2CNodeList *current_devs)
 {
@@ -182,43 +171,6 @@ int i2c_start_transfer(I2CBus *bus, uint8_t address, bool is_recv)
                                                : I2C_START_SEND);
 }
 
-void i2c_bus_master(I2CBus *bus, QEMUBH *bh)
-{
-    I2CPendingMaster *node = g_new(struct I2CPendingMaster, 1);
-    node->bh = bh;
-
-    QSIMPLEQ_INSERT_TAIL(&bus->pending_masters, node, entry);
-}
-
-void i2c_schedule_pending_master(I2CBus *bus)
-{
-    I2CPendingMaster *node;
-
-    if (i2c_bus_busy(bus)) {
-        /* someone is already controlling the bus; wait for it to release it */
-        return;
-    }
-
-    if (QSIMPLEQ_EMPTY(&bus->pending_masters)) {
-        return;
-    }
-
-    node = QSIMPLEQ_FIRST(&bus->pending_masters);
-    bus->bh = node->bh;
-
-    QSIMPLEQ_REMOVE_HEAD(&bus->pending_masters, entry);
-    g_free(node);
-
-    qemu_bh_schedule(bus->bh);
-}
-
-void i2c_bus_release(I2CBus *bus)
-{
-    bus->bh = NULL;
-
-    i2c_schedule_pending_master(bus);
-}
-
 int i2c_start_recv(I2CBus *bus, uint8_t address)
 {
     return i2c_do_start_transfer(bus, address, I2C_START_RECV);
@@ -273,23 +225,6 @@ int i2c_send(I2CBus *bus, uint8_t data)
     return ret ? -1 : 0;
 }
 
-int i2c_send_async(I2CBus *bus, uint8_t data)
-{
-    I2CNode *node = QLIST_FIRST(&bus->current_devs);
-    I2CSlave *slave = node->elt;
-    I2CSlaveClass *sc = I2C_SLAVE_GET_CLASS(slave);
-
-    if (!sc->send_async) {
-        return -1;
-    }
-
-    trace_i2c_send_async(slave->address, data);
-
-    sc->send_async(slave, data);
-
-    return 0;
-}
-
 uint8_t i2c_recv(I2CBus *bus)
 {
     uint8_t data = 0xff;
@@ -326,17 +261,6 @@ void i2c_nack(I2CBus *bus)
     }
 }
 
-void i2c_ack(I2CBus *bus)
-{
-    if (!bus->bh) {
-        return;
-    }
-
-    trace_i2c_ack();
-
-    qemu_bh_schedule(bus->bh);
-}
-
 static int i2c_slave_post_load(void *opaque, int version_id)
 {
     I2CSlave *dev = opaque;
@@ -363,29 +287,6 @@ const VMStateDescription vmstate_i2c_slave = {
         VMSTATE_END_OF_LIST()
     }
 };
-
-I2CSlave *i2c_slave_new(const char *name, uint8_t addr)
-{
-    DeviceState *dev;
-
-    dev = qdev_new(name);
-    qdev_prop_set_uint8(dev, "address", addr);
-    return I2C_SLAVE(dev);
-}
-
-bool i2c_slave_realize_and_unref(I2CSlave *dev, I2CBus *bus, Error **errp)
-{
-    return qdev_realize_and_unref(&dev->qdev, &bus->qbus, errp);
-}
-
-I2CSlave *i2c_slave_create_simple(I2CBus *bus, const char *name, uint8_t addr)
-{
-    I2CSlave *dev = i2c_slave_new(name, addr);
-
-    i2c_slave_realize_and_unref(dev, bus, &error_abort);
-
-    return dev;
-}
 
 static bool i2c_slave_match(I2CSlave *candidate, uint8_t address,
                             bool broadcast, I2CNodeList *current_devs)

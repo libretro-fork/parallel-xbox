@@ -90,6 +90,4 @@ struct AccelOpsClass {
     void (*remove_all_breakpoints)(CPUState *cpu);
 };
 
-void generic_handle_interrupt(CPUState *cpu, int mask);
-
 #endif /* QEMU_ACCEL_CPU_OPS_H */

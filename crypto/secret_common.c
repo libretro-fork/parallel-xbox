@@ -347,25 +347,6 @@ char *qcrypto_secret_lookup_as_utf8(const char *secretid,
 }
 
 
-char *qcrypto_secret_lookup_as_base64(const char *secretid,
-                                      Error **errp)
-{
-    uint8_t *data;
-    size_t datalen;
-    char *ret;
-
-    if (qcrypto_secret_lookup(secretid,
-                              &data,
-                              &datalen,
-                              errp) < 0) {
-        return NULL;
-    }
-
-    ret = g_base64_encode(data, datalen);
-    g_free(data);
-    return ret;
-}
-
 
 static const TypeInfo qcrypto_secret_info = {
     .parent = TYPE_OBJECT,

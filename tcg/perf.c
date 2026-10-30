@@ -362,20 +362,3 @@ void perf_report_code(uint64_t guest_pc, TranslationBlock *tb,
     g_free(q);
 }
 
-void perf_exit(void)
-{
-    if (perfmap) {
-        fclose(perfmap);
-        perfmap = NULL;
-    }
-
-    if (perf_marker != MAP_FAILED) {
-        munmap(perf_marker, perf_marker_size);
-        perf_marker = MAP_FAILED;
-    }
-
-    if (jitdump) {
-        fclose(jitdump);
-        jitdump = NULL;
-    }
-}

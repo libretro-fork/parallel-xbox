@@ -176,30 +176,6 @@ int uffd_register_memory(int uffd_fd, void *addr, uint64_t length,
 }
 
 /**
- * uffd_unregister_memory: un-register memory range with UFFD-IO
- *
- * Returns 0 in case of success, negative value in case of an error
- *
- * @uffd_fd: UFFD file descriptor
- * @addr: base address of memory range
- * @length: length of memory range
- */
-int uffd_unregister_memory(int uffd_fd, void *addr, uint64_t length)
-{
-    struct uffdio_range uffd_range;
-
-    uffd_range.start = (uintptr_t) addr;
-    uffd_range.len = length;
-
-    if (ioctl(uffd_fd, UFFDIO_UNREGISTER, &uffd_range)) {
-        trace_uffd_unregister_memory_failed(addr, length, errno);
-        return -1;
-    }
-
-    return 0;
-}
-
-/**
  * uffd_change_protection: protect/un-protect memory range for writes via UFFD-IO
  *
  * Returns 0 on success, negative value in case of error
@@ -294,37 +270,6 @@ int uffd_zero_page(int uffd_fd, void *addr, uint64_t length, bool dont_wake)
         error_report("uffd_zero_page() failed: addr=%p length=%" PRIu64
                 " mode=%" PRIx64 " errno=%i", addr, length,
                 (uint64_t) uffd_zeropage.mode, e);
-        return -e;
-    }
-
-    return 0;
-}
-
-/**
- * uffd_wakeup: wake up threads waiting on page UFFD-managed page fault resolution
- *
- * Wake up threads waiting on any page/pages from the designated range.
- * The main use case is when during some period, page faults are resolved
- * via UFFD-IO IOCTLs with MODE_DONTWAKE flag set, then after that all waits
- * for the whole memory range are satisfied in a single call to uffd_wakeup().
- *
- * Returns 0 on success, -errno in case of an error
- *
- * @uffd_fd: UFFD file descriptor
- * @addr: base address
- * @length: length of the range
- */
-int uffd_wakeup(int uffd_fd, void *addr, uint64_t length)
-{
-    struct uffdio_range uffd_range;
-
-    uffd_range.start = (uintptr_t) addr;
-    uffd_range.len = length;
-
-    if (ioctl(uffd_fd, UFFDIO_WAKE, &uffd_range)) {
-        int e = errno;
-        error_report("uffd_wakeup() failed: addr=%p length=%" PRIu64 " errno=%i",
-                addr, length, e);
         return -e;
     }
 

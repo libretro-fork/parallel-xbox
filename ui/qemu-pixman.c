@@ -10,61 +10,6 @@
 #include "standard-headers/drm/drm_fourcc.h"
 #include "trace.h"
 
-PixelFormat qemu_pixelformat_from_pixman(pixman_format_code_t format)
-{
-    PixelFormat pf;
-    uint8_t bpp;
-
-    bpp = pf.bits_per_pixel = PIXMAN_FORMAT_BPP(format);
-    pf.bytes_per_pixel = PIXMAN_FORMAT_BPP(format) / 8;
-    pf.depth = PIXMAN_FORMAT_DEPTH(format);
-
-    pf.abits = PIXMAN_FORMAT_A(format);
-    pf.rbits = PIXMAN_FORMAT_R(format);
-    pf.gbits = PIXMAN_FORMAT_G(format);
-    pf.bbits = PIXMAN_FORMAT_B(format);
-
-    switch (PIXMAN_FORMAT_TYPE(format)) {
-    case PIXMAN_TYPE_ARGB:
-        pf.ashift = pf.bbits + pf.gbits + pf.rbits;
-        pf.rshift = pf.bbits + pf.gbits;
-        pf.gshift = pf.bbits;
-        pf.bshift = 0;
-        break;
-    case PIXMAN_TYPE_ABGR:
-        pf.ashift = pf.rbits + pf.gbits + pf.bbits;
-        pf.bshift = pf.rbits + pf.gbits;
-        pf.gshift = pf.rbits;
-        pf.rshift = 0;
-        break;
-    case PIXMAN_TYPE_BGRA:
-        pf.bshift = bpp - pf.bbits;
-        pf.gshift = bpp - (pf.bbits + pf.gbits);
-        pf.rshift = bpp - (pf.bbits + pf.gbits + pf.rbits);
-        pf.ashift = 0;
-        break;
-    case PIXMAN_TYPE_RGBA:
-        pf.rshift = bpp - pf.rbits;
-        pf.gshift = bpp - (pf.rbits + pf.gbits);
-        pf.bshift = bpp - (pf.rbits + pf.gbits + pf.bbits);
-        pf.ashift = 0;
-        break;
-    default:
-        g_assert_not_reached();
-    }
-
-    pf.amax = (1 << pf.abits) - 1;
-    pf.rmax = (1 << pf.rbits) - 1;
-    pf.gmax = (1 << pf.gbits) - 1;
-    pf.bmax = (1 << pf.bbits) - 1;
-    pf.amask = pf.amax << pf.ashift;
-    pf.rmask = pf.rmax << pf.rshift;
-    pf.gmask = pf.gmax << pf.gshift;
-    pf.bmask = pf.bmax << pf.bshift;
-
-    return pf;
-}
-
 pixman_format_code_t qemu_default_pixman_format(int bpp, bool native_endian)
 {
     if (native_endian) {
@@ -90,63 +35,6 @@ pixman_format_code_t qemu_default_pixman_format(int bpp, bool native_endian)
     return 0;
 }
 
-/* Note: drm is little endian, pixman is native endian */
-static const struct {
-    uint32_t drm_format;
-    pixman_format_code_t pixman_format;
-} drm_format_pixman_map[] = {
-    { DRM_FORMAT_RGB888,   PIXMAN_LE_r8g8b8   },
-    { DRM_FORMAT_ARGB8888, PIXMAN_LE_a8r8g8b8 },
-    { DRM_FORMAT_XRGB8888, PIXMAN_LE_x8r8g8b8 },
-    { DRM_FORMAT_XBGR8888, PIXMAN_LE_x8b8g8r8 },
-    { DRM_FORMAT_ABGR8888, PIXMAN_LE_a8b8g8r8 },
-};
-
-pixman_format_code_t qemu_drm_format_to_pixman(uint32_t drm_format)
-{
-    int i;
-
-    for (i = 0; i < ARRAY_SIZE(drm_format_pixman_map); i++) {
-        if (drm_format == drm_format_pixman_map[i].drm_format) {
-            return drm_format_pixman_map[i].pixman_format;
-        }
-    }
-    return 0;
-}
-
-uint32_t qemu_pixman_to_drm_format(pixman_format_code_t pixman_format)
-{
-    int i;
-
-    for (i = 0; i < ARRAY_SIZE(drm_format_pixman_map); i++) {
-        if (pixman_format == drm_format_pixman_map[i].pixman_format) {
-            return drm_format_pixman_map[i].drm_format;
-        }
-    }
-    return 0;
-}
-
-int qemu_pixman_get_type(int rshift, int gshift, int bshift, int endian)
-{
-    int type = PIXMAN_TYPE_OTHER;
-    bool native_endian = (endian == G_BYTE_ORDER);
-
-    if (rshift > gshift && gshift > bshift) {
-        if (bshift == 0) {
-            type = native_endian ? PIXMAN_TYPE_ARGB : PIXMAN_TYPE_BGRA;
-        } else {
-            type = native_endian ? PIXMAN_TYPE_RGBA : PIXMAN_TYPE_ABGR;
-        }
-    } else if (rshift < gshift && gshift < bshift) {
-        if (rshift == 0) {
-            type = native_endian ? PIXMAN_TYPE_ABGR : PIXMAN_TYPE_RGBA;
-        } else {
-            type = native_endian ? PIXMAN_TYPE_BGRA : PIXMAN_TYPE_ARGB;
-        }
-    }
-    return type;
-}
-
 #ifdef CONFIG_PIXMAN
 pixman_format_code_t qemu_pixman_get_format(PixelFormat *pf, int endian)
 {
@@ -162,33 +50,6 @@ pixman_format_code_t qemu_pixman_get_format(PixelFormat *pf, int endian)
     return format;
 }
 #endif
-
-/*
- * Return true for known-good pixman conversions.
- *
- * UIs using pixman for format conversion can hook this into
- * DisplayChangeListenerOps->dpy_gfx_check_format
- */
-bool qemu_pixman_check_format(DisplayChangeListener *dcl,
-                              pixman_format_code_t format)
-{
-    switch (format) {
-    /* 32 bpp */
-    case PIXMAN_x8r8g8b8:
-    case PIXMAN_a8r8g8b8:
-    case PIXMAN_b8g8r8x8:
-    case PIXMAN_b8g8r8a8:
-    /* 24 bpp */
-    case PIXMAN_r8g8b8:
-    case PIXMAN_b8g8r8:
-    /* 16 bpp */
-    case PIXMAN_x1r5g5b5:
-    case PIXMAN_r5g6b5:
-        return true;
-    default:
-        return false;
-    }
-}
 
 #ifdef CONFIG_PIXMAN
 pixman_image_t *qemu_pixman_linebuf_create(pixman_format_code_t format,

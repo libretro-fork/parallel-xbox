@@ -188,26 +188,6 @@ enum ListenerDirection { Forward, Reverse };
         }                                                         \
     } while (0)
 
-static int device_listener_add(DeviceState *dev, void *opaque)
-{
-    DEVICE_LISTENER_CALL(realize, Forward, dev);
-
-    return 0;
-}
-
-void device_listener_register(DeviceListener *listener)
-{
-    QTAILQ_INSERT_TAIL(&device_listeners, listener, link);
-
-    qbus_walk_children(sysbus_get_default(), NULL, NULL, device_listener_add,
-                       NULL, NULL);
-}
-
-void device_listener_unregister(DeviceListener *listener)
-{
-    QTAILQ_REMOVE(&device_listeners, listener, link);
-}
-
 bool qdev_should_hide_device(const QDict *opts, bool from_json, Error **errp)
 {
     ERRP_GUARD();
@@ -237,11 +217,6 @@ void qdev_set_legacy_instance_id(DeviceState *dev, int alias_id,
 void device_cold_reset(DeviceState *dev)
 {
     resettable_reset(OBJECT(dev), RESET_TYPE_COLD);
-}
-
-bool device_is_in_reset(DeviceState *dev)
-{
-    return resettable_is_in_reset(OBJECT(dev));
 }
 
 static ResettableState *device_get_reset_state(Object *obj)
@@ -309,11 +284,6 @@ void qdev_assert_realized_properly(void)
                                    qdev_assert_realized_properly_cb, NULL);
 }
 
-bool qdev_machine_modified(void)
-{
-    return qdev_hot_added || qdev_hot_removed;
-}
-
 BusState *qdev_get_parent_bus(const DeviceState *dev)
 {
     return dev->parent_bus;
@@ -335,39 +305,6 @@ BusState *qdev_get_child_bus(DeviceState *dev, const char *name)
         }
     }
     return NULL;
-}
-
-int qdev_walk_children(DeviceState *dev,
-                       qdev_walkerfn *pre_devfn, qbus_walkerfn *pre_busfn,
-                       qdev_walkerfn *post_devfn, qbus_walkerfn *post_busfn,
-                       void *opaque)
-{
-    BusState *bus;
-    int err;
-
-    if (pre_devfn) {
-        err = pre_devfn(dev, opaque);
-        if (err) {
-            return err;
-        }
-    }
-
-    QLIST_FOREACH(bus, &dev->child_bus, sibling) {
-        err = qbus_walk_children(bus, pre_devfn, pre_busfn,
-                                 post_devfn, post_busfn, opaque);
-        if (err < 0) {
-            return err;
-        }
-    }
-
-    if (post_devfn) {
-        err = post_devfn(dev, opaque);
-        if (err) {
-            return err;
-        }
-    }
-
-    return 0;
 }
 
 DeviceState *qdev_find_recursive(BusState *bus, const char *id)
@@ -409,35 +346,6 @@ char *qdev_get_dev_path(DeviceState *dev)
     }
 
     return NULL;
-}
-
-const char *qdev_get_printable_name(DeviceState *vdev)
-{
-    /*
-     * Return device ID if explicity set
-     * (e.g. -device virtio-blk-pci,id=foo)
-     * This allows users to correlate errors with their custom device
-     * names.
-     */
-    if (vdev->id) {
-        return vdev->id;
-    }
-    /*
-     * Fall back to the canonical QOM device path (eg. ID for PCI
-     * devices).
-     * This ensures the device is still uniquely and meaningfully
-     * identified.
-     */
-    const char *path = qdev_get_dev_path(vdev);
-    if (path) {
-        return path;
-    }
-
-    /*
-     * Final fallback: if all else fails, return a placeholder string.
-     * This ensures the error message always contains a valid string.
-     */
-    return "<unknown device>";
 }
 
 void qdev_add_unplug_blocker(DeviceState *dev, Error *reason)

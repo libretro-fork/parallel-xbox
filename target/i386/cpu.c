@@ -1841,22 +1841,6 @@ FeatureWordInfo feature_word_info[FEATURE_WORDS] = {
     },
 };
 
-bool is_feature_word_cpuid(uint32_t feature, uint32_t index, int reg)
-{
-    FeatureWordInfo *wi;
-    FeatureWord w;
-
-    for (w = 0; w < FEATURE_WORDS; w++) {
-        wi = &feature_word_info[w];
-        if (wi->type == CPUID_FEATURE_WORD && wi->cpuid.eax == feature &&
-            (!wi->cpuid.needs_ecx || wi->cpuid.ecx == index) &&
-            wi->cpuid.reg == reg) {
-            return true;
-        }
-    }
-    return false;
-}
-
 static FeatureDep feature_dependencies[] = {
     {
         .from = { FEAT_7_0_EDX,             CPUID_7_0_EDX_ARCH_CAPABILITIES },
@@ -2146,40 +2130,6 @@ static uint64_t x86_cpu_get_migratable_flags(X86CPU *cpu, FeatureWord w)
     }
 
     return r;
-}
-
-void host_cpuid(uint32_t function, uint32_t count,
-                uint32_t *eax, uint32_t *ebx, uint32_t *ecx, uint32_t *edx)
-{
-    uint32_t vec[4];
-
-#ifdef __x86_64__
-    asm volatile("cpuid"
-                 : "=a"(vec[0]), "=b"(vec[1]),
-                   "=c"(vec[2]), "=d"(vec[3])
-                 : "0"(function), "c"(count) : "cc");
-#elif defined(__i386__)
-    asm volatile("pusha \n\t"
-                 "cpuid \n\t"
-                 "mov %%eax, 0(%2) \n\t"
-                 "mov %%ebx, 4(%2) \n\t"
-                 "mov %%ecx, 8(%2) \n\t"
-                 "mov %%edx, 12(%2) \n\t"
-                 "popa"
-                 : : "a"(function), "c"(count), "S"(vec)
-                 : "memory", "cc");
-#else
-    abort();
-#endif
-
-    if (eax)
-        *eax = vec[0];
-    if (ebx)
-        *ebx = vec[1];
-    if (ecx)
-        *ecx = vec[2];
-    if (edx)
-        *edx = vec[3];
 }
 
 /* CPU class name definitions: */
@@ -6863,35 +6813,6 @@ void mark_unavailable_features(X86CPU *cpu, FeatureWord w, uint64_t mask,
     }
 }
 
-void mark_forced_on_features(X86CPU *cpu, FeatureWord w, uint64_t mask,
-                             const char *verbose_prefix)
-{
-    CPUX86State *env = &cpu->env;
-    FeatureWordInfo *f = &feature_word_info[w];
-    int i;
-
-    if (!cpu->force_features) {
-        env->features[w] |= mask;
-    }
-
-    cpu->forced_on_features[w] |= mask;
-
-    if (!verbose_prefix) {
-        return;
-    }
-
-    for (i = 0; i < 64; ++i) {
-        if ((1ULL << i) & mask) {
-            g_autofree char *feat_word_str = feature_word_description(f);
-            warn_report("%s: %s%s%s [bit %d]",
-                        verbose_prefix,
-                        feat_word_str,
-                        f->feat_names[i] ? "." : "",
-                        f->feat_names[i] ? f->feat_names[i] : "", i);
-        }
-    }
-}
-
 static void x86_cpuid_version_get_family(Object *obj, Visitor *v,
                                          const char *name, void *opaque,
                                          Error **errp)
@@ -9912,48 +9833,6 @@ static void x86_disas_set_info(CPUState *cs, disassemble_info *info)
                       : CS_MODE_16);
     info->cap_insn_unit = 1;
     info->cap_insn_split = 8;
-}
-
-void x86_update_hflags(CPUX86State *env)
-{
-   uint32_t hflags;
-#define HFLAG_COPY_MASK \
-    ~( HF_CPL_MASK | HF_PE_MASK | HF_MP_MASK | HF_EM_MASK | \
-       HF_TS_MASK | HF_TF_MASK | HF_VM_MASK | HF_IOPL_MASK | \
-       HF_OSFXSR_MASK | HF_LMA_MASK | HF_CS32_MASK | \
-       HF_SS32_MASK | HF_CS64_MASK | HF_ADDSEG_MASK)
-
-    hflags = env->hflags & HFLAG_COPY_MASK;
-    hflags |= (env->segs[R_SS].flags >> DESC_DPL_SHIFT) & HF_CPL_MASK;
-    hflags |= (env->cr[0] & CR0_PE_MASK) << (HF_PE_SHIFT - CR0_PE_SHIFT);
-    hflags |= (env->cr[0] << (HF_MP_SHIFT - CR0_MP_SHIFT)) &
-                (HF_MP_MASK | HF_EM_MASK | HF_TS_MASK);
-    hflags |= (env->eflags & (HF_TF_MASK | HF_VM_MASK | HF_IOPL_MASK));
-
-    if (env->cr[4] & CR4_OSFXSR_MASK) {
-        hflags |= HF_OSFXSR_MASK;
-    }
-
-    if (env->efer & MSR_EFER_LMA) {
-        hflags |= HF_LMA_MASK;
-    }
-
-    if ((hflags & HF_LMA_MASK) && (env->segs[R_CS].flags & DESC_L_MASK)) {
-        hflags |= HF_CS32_MASK | HF_SS32_MASK | HF_CS64_MASK;
-    } else {
-        hflags |= (env->segs[R_CS].flags & DESC_B_MASK) >>
-                    (DESC_B_SHIFT - HF_CS32_SHIFT);
-        hflags |= (env->segs[R_SS].flags & DESC_B_MASK) >>
-                    (DESC_B_SHIFT - HF_SS32_SHIFT);
-        if (!(env->cr[0] & CR0_PE_MASK) || (env->eflags & VM_MASK) ||
-            !(hflags & HF_CS32_MASK)) {
-            hflags |= HF_ADDSEG_MASK;
-        } else {
-            hflags |= ((env->segs[R_DS].base | env->segs[R_ES].base |
-                        env->segs[R_SS].base) != 0) << HF_ADDSEG_SHIFT;
-        }
-    }
-    env->hflags = hflags;
 }
 
 static const Property x86_cpu_properties[] = {

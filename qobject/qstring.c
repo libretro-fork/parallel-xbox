@@ -15,16 +15,6 @@
 #include "qobject-internal.h"
 
 /**
- * qstring_new(): Create a new empty QString
- *
- * Return strong reference.
- */
-QString *qstring_new(void)
-{
-    return qstring_from_str("");
-}
-
-/**
  * qstring_from_substr(): Create a new QString from a C string substring
  *
  * Return string reference

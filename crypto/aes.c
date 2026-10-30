@@ -998,16 +998,6 @@ aesenc_MC_swap(AESState *r, const AESState *st, bool swap)
     r->w[swap_w ^ 3] = t;
 }
 
-void aesenc_MC_gen(AESState *r, const AESState *st)
-{
-    aesenc_MC_swap(r, st, false);
-}
-
-void aesenc_MC_genrev(AESState *r, const AESState *st)
-{
-    aesenc_MC_swap(r, st, true);
-}
-
 /*
  * Perform SubBytes + ShiftRows + AddRoundKey.
  */
@@ -1046,11 +1036,6 @@ aesenc_SB_SR_AK_swap(AESState *ret, const AESState *st,
 void aesenc_SB_SR_AK_gen(AESState *r, const AESState *s, const AESState *k)
 {
     aesenc_SB_SR_AK_swap(r, s, k, false);
-}
-
-void aesenc_SB_SR_AK_genrev(AESState *r, const AESState *s, const AESState *k)
-{
-    aesenc_SB_SR_AK_swap(r, s, k, true);
 }
 
 /*
@@ -1103,12 +1088,6 @@ void aesenc_SB_SR_MC_AK_gen(AESState *r, const AESState *st,
                             const AESState *rk)
 {
     aesenc_SB_SR_MC_AK_swap(r, st, rk, false);
-}
-
-void aesenc_SB_SR_MC_AK_genrev(AESState *r, const AESState *st,
-                               const AESState *rk)
-{
-    aesenc_SB_SR_MC_AK_swap(r, st, rk, true);
 }
 
 /*
@@ -1165,11 +1144,6 @@ void aesdec_IMC_gen(AESState *r, const AESState *st)
     aesdec_IMC_swap(r, st, false);
 }
 
-void aesdec_IMC_genrev(AESState *r, const AESState *st)
-{
-    aesdec_IMC_swap(r, st, true);
-}
-
 /*
  * Perform InvSubBytes + InvShiftRows + AddRoundKey.
  */
@@ -1208,11 +1182,6 @@ aesdec_ISB_ISR_AK_swap(AESState *ret, const AESState *st,
 void aesdec_ISB_ISR_AK_gen(AESState *r, const AESState *s, const AESState *k)
 {
     aesdec_ISB_ISR_AK_swap(r, s, k, false);
-}
-
-void aesdec_ISB_ISR_AK_genrev(AESState *r, const AESState *s, const AESState *k)
-{
-    aesdec_ISB_ISR_AK_swap(r, s, k, true);
 }
 
 /*
@@ -1265,26 +1234,6 @@ void aesdec_ISB_ISR_IMC_AK_gen(AESState *r, const AESState *st,
                                const AESState *rk)
 {
     aesdec_ISB_ISR_IMC_AK_swap(r, st, rk, false);
-}
-
-void aesdec_ISB_ISR_IMC_AK_genrev(AESState *r, const AESState *st,
-                                  const AESState *rk)
-{
-    aesdec_ISB_ISR_IMC_AK_swap(r, st, rk, true);
-}
-
-void aesdec_ISB_ISR_AK_IMC_gen(AESState *ret, const AESState *st,
-                               const AESState *rk)
-{
-    aesdec_ISB_ISR_AK_gen(ret, st, rk);
-    aesdec_IMC_gen(ret, ret);
-}
-
-void aesdec_ISB_ISR_AK_IMC_genrev(AESState *ret, const AESState *st,
-                                  const AESState *rk)
-{
-    aesdec_ISB_ISR_AK_genrev(ret, st, rk);
-    aesdec_IMC_genrev(ret, ret);
 }
 
 /**

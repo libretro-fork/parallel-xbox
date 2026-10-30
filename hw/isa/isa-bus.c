@@ -112,12 +112,6 @@ void isa_bus_dma(ISABus *bus, IsaDma *dma8, IsaDma *dma16)
     bus->dma[1] = dma16;
 }
 
-IsaDma *isa_bus_get_dma(ISABus *bus, int nchan)
-{
-    assert(bus);
-    return bus->dma[nchan > 3 ? 1 : 0];
-}
-
 static inline void isa_init_ioport(ISADevice *dev, uint16_t ioport)
 {
     if (dev && (dev->ioport_id == 0 || ioport < dev->ioport_id)) {
@@ -166,11 +160,6 @@ ISADevice *isa_new(const char *name)
     return ISA_DEVICE(qdev_new(name));
 }
 
-ISADevice *isa_try_new(const char *name)
-{
-    return ISA_DEVICE(qdev_try_new(name));
-}
-
 ISADevice *isa_create_simple(ISABus *bus, const char *name)
 {
     ISADevice *dev;
@@ -188,29 +177,6 @@ bool isa_realize_and_unref(ISADevice *dev, ISABus *bus, Error **errp)
 ISABus *isa_bus_from_device(ISADevice *dev)
 {
     return ISA_BUS(qdev_get_parent_bus(DEVICE(dev)));
-}
-
-ISADevice *isa_vga_init(ISABus *bus)
-{
-    vga_interface_created = true;
-    switch (vga_interface_type) {
-    case VGA_CIRRUS:
-        return isa_create_simple(bus, "isa-cirrus-vga");
-    case VGA_QXL:
-        error_report("%s: qxl: no PCI bus", __func__);
-        return NULL;
-    case VGA_STD:
-        return isa_create_simple(bus, "isa-vga");
-    case VGA_VMWARE:
-        error_report("%s: vmware_vga: no PCI bus", __func__);
-        return NULL;
-    case VGA_VIRTIO:
-        error_report("%s: virtio-vga: no PCI bus", __func__);
-        return NULL;
-    case VGA_NONE:
-    default:
-        return NULL;
-    }
 }
 
 static void isabus_bridge_class_init(ObjectClass *klass, const void *data)
@@ -262,15 +228,6 @@ static char *isabus_get_fw_dev_path(DeviceState *dev)
     }
 
     return g_strdup(path);
-}
-
-MemoryRegion *isa_address_space(ISADevice *dev)
-{
-    if (dev) {
-        return isa_bus_from_device(dev)->address_space;
-    }
-
-    return isabus->address_space;
 }
 
 MemoryRegion *isa_address_space_io(ISADevice *dev)
