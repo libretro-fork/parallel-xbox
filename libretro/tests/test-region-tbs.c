@@ -1,12 +1,12 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 /*
  * The production TB index of a code region (tcg/region.c: insert, remove,
- * lookup by host address, foreach, count, reset) against a reference, in
- * the order tb_gen_code drives it: new TBs upwards, the newest one dropped
- * when another thread linked the same TB first (and its code space taken
- * again), old invalidated TBs recycled in place, lookups anywhere, TB
- * flushes. test-region-tbs.py puts the production code in place of
- * PRODUCTION.
+ * lookup by host address, reset; walked and counted here) against a
+ * reference, in the order tb_gen_code drives it: new TBs upwards, the
+ * newest one dropped when another thread linked the same TB first (and
+ * its code space taken again), old invalidated TBs recycled in place,
+ * lookups anywhere, TB flushes. test-region-tbs.py puts the production
+ * code in place of PRODUCTION.
  */
 #include <assert.h>
 #include <stdbool.h>
@@ -63,6 +63,42 @@ static struct tcg_region_tree *tc_ptr_to_region_tree(const void *p)
 }
 
 /* PRODUCTION */
+
+/* Walk and count the index; the core itself no longer needs either. */
+static void tcg_tb_foreach(GTraverseFunc func, gpointer user_data)
+{
+    size_t i;
+
+    tcg_region_tree_lock_all();
+    for (i = 0; i < region.n; i++) {
+        struct tcg_region_tree *rt = region_trees + i * tree_size;
+
+        for (size_t j = 0; j < rt->n; j++) {
+            TranslationBlock *tb = rt->tbs[j].tb;
+
+            if (tb && func(&tb->tc, tb, user_data)) {
+                break;
+            }
+        }
+    }
+    tcg_region_tree_unlock_all();
+}
+
+static size_t tcg_nb_tbs(void)
+{
+    size_t nb_tbs = 0;
+    size_t i;
+
+    tcg_region_tree_lock_all();
+    for (i = 0; i < region.n; i++) {
+        struct tcg_region_tree *rt = region_trees + i * tree_size;
+
+        nb_tbs += rt->nb_tbs;
+    }
+    tcg_region_tree_unlock_all();
+    return nb_tbs;
+}
+
 
 /* the reference: which TBs are in the index */
 static bool live[NTB];

@@ -18,7 +18,7 @@ def struct(name):
  return block(m,True)
 parts=[struct('tcg_region_tb'),struct('tcg_region_tree')]+[function(n) for n in
  ['tb_destroy','region_tb_upper','tcg_tb_insert','tcg_tb_remove','tcg_tb_lookup',
-  'tcg_region_tree_lock_all','tcg_region_tree_unlock_all','tcg_tb_foreach','tcg_nb_tbs',
+  'tcg_region_tree_lock_all','tcg_region_tree_unlock_all',
   'tcg_region_tree_reset_all']]
 fixture=Path(__file__).with_suffix('.c').read_text()
 code=fixture.replace('/* PRODUCTION */','\n'.join(parts))
