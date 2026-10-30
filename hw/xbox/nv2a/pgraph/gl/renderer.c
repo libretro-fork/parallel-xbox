@@ -80,7 +80,7 @@ static void pgraph_gl_init(NV2AState *d, Error **errp)
     pgraph_gl_init_shaders(pg);
     pgraph_gl_init_display(d);
 
-    pgraph_gl_update_entire_memory_buffer(d);
+    pgraph_gl_invalidate_memory_buffer(d);
 
     pg->uniform_attrs = 0;
     pg->swizzle_attrs = 0;
@@ -173,7 +173,7 @@ static void pgraph_gl_flush(NV2AState *d)
      * pointers, so forget the one it published from. */
     r->disp_last_surface = NULL;
     pgraph_gl_mark_textures_possibly_dirty(d, 0, memory_region_size(d->vram));
-    pgraph_gl_update_entire_memory_buffer(d);
+    pgraph_gl_invalidate_memory_buffer(d);
     pgraph_gl_uniform_sources_invalidate(r);
     /* FIXME: Flush more? */
 

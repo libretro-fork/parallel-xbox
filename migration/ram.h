@@ -77,7 +77,6 @@ void ram_mig_init(void);
 /* For outgoing discard bitmap */
 /* For incoming postcopy discard */
 
-void ram_handle_zero(void *host, uint64_t size);
 
 
 

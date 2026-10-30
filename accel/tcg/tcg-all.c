@@ -69,21 +69,6 @@ static void tcg_accel_instance_init(Object *obj)
 
 retro_atomic_int_t one_insn_per_tb;
 
-static void tcg_vm_change_state(void *opaque, bool running, RunState state)
-{
-    if (state == RUN_STATE_RESTORE_VM) {
-        /*
-         * loadvm will update the content of RAM, bypassing the usual
-         * mechanisms that ensure we flush TBs for writes to memory
-         * we've translated code from, so we must flush all TBs.
-         *
-         * vm_stop() has just stopped all cpus, so we are exclusive.
-         */
-        assert(!running);
-        tb_flush__exclusive_or_serial();
-    }
-}
-
 static int tcg_init_machine(AccelState *as, MachineState *ms)
 {
     TCGState *s = TCG_STATE(as);
@@ -129,7 +114,9 @@ static int tcg_init_machine(AccelState *as, MachineState *ms)
         g_assert_not_reached();
     }
 
-    qemu_add_vm_change_state_handler(tcg_vm_change_state, NULL);
+    /* No flush of every translation when a state is loaded: the load drops
+     * those of the pages it changes (migration/ram-libretro.c), the way a
+     * guest write does */
 
     tcg_allowed = true;
 

@@ -546,6 +546,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 - `libretro/tests/dspdiff` compares the DSP JIT's registers, memories, cycle count and loop state with the interpreter's for real: it compared a copy of them that nothing filled in, so only the scratch RAM, the FIFOs and the interrupts were ever checked. The JIT and the interpreter do agree on the test program (checked with the fix).
 
+- Run-Ahead, and loading states, are faster. A state load wrote all of the guest's 64 MB of RAM back, threw away every piece of translated CPU code, and had the GPU renderer copy the whole RAM again, twice (OpenGL and Vulkan alike). Now it writes back only the pages that differ, drops only the translated code from those pages, and the renderer takes RAM again only where its draws read it. On the test ROM Run-Ahead 1 runs at 0.69x real time where it ran at 0.39x on OpenGL, 0.64x where it ran at 0.39x on Vulkan; games keep their translated code across the load as well, which the test ROM barely has.
+
 ## Test build 4 - 2026-10-25
 
 - The core info file names the core "Microsoft - Xbox / Sega Chihiro (xemu)" (NNshi).

@@ -9,6 +9,14 @@
  * format (section version 4, precopy, no capabilities): states written by
  * either load with the other.
  *
+ * A load writes only the pages that differ from the guest's RAM as it is,
+ * and treats those as the guest's writes would be: the translated code
+ * from them dropped, the dirty logs (the GPU's caches, the display) told.
+ * The rest keep their translations and the GPU's copies. Run-Ahead loads
+ * a state every frame, a few frames after saving it: a handful of pages,
+ * where it rewrote all 64 MB, dropped all the translated code and had the
+ * GPU take the whole RAM again.
+ *
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
@@ -21,6 +29,8 @@
 #include "exec/target_page.h"
 #include "system/ramblock.h"
 #include "system/ram_addr.h"
+#include "system/physmem.h"
+#include "exec/translation-block.h"
 #include "migration/misc.h"
 #include "migration/register.h"
 #include "migration-stats.h"
@@ -51,13 +61,6 @@ int foreach_not_ignored_block(RAMBlockIterFunc func, void *opaque)
         }
     }
     return ret;
-}
-
-void ram_handle_zero(void *host, uint64_t size)
-{
-    if (!buffer_is_zero(host, size)) {
-        memset(host, 0, size);
-    }
 }
 
 static uint64_t ram_bytes_migratable(void)
@@ -205,6 +208,38 @@ static RAMBlock *ram_block_from_stream(QEMUFile *f, int flags)
     return block;
 }
 
+/* A page the load changed, as a guest write to it is seen */
+static void ram_load_changed(RAMBlock *block, ram_addr_t offset)
+{
+    ram_addr_t addr = block->offset + offset;
+
+    tb_invalidate_phys_range(NULL, addr, addr + TARGET_PAGE_SIZE - 1);
+    physical_memory_set_dirty_range(addr, TARGET_PAGE_SIZE,
+                                    DIRTY_CLIENTS_NOCODE);
+}
+
+/* The page from the stream, where it lies when it can (a mapped state),
+ * into the guest's RAM if it differs */
+static void ram_load_page(QEMUFile *f, RAMBlock *block, ram_addr_t offset,
+                          uint8_t *host)
+{
+    uint8_t copy[TARGET_PAGE_SIZE];
+    uint8_t *src = NULL;
+
+    if (qemu_peek_buffer(f, &src, TARGET_PAGE_SIZE, 0) == TARGET_PAGE_SIZE) {
+        qemu_file_skip(f, TARGET_PAGE_SIZE);
+    } else {
+        src = copy;
+        if (qemu_get_buffer(f, copy, TARGET_PAGE_SIZE) != TARGET_PAGE_SIZE) {
+            return; /* the stream's error, which the caller sees */
+        }
+    }
+    if (memcmp(host, src, TARGET_PAGE_SIZE)) {
+        memcpy(host, src, TARGET_PAGE_SIZE);
+        ram_load_changed(block, offset);
+    }
+}
+
 static int ram_load(QEMUFile *f, void *opaque, int version_id)
 {
     int flags = 0, ret = 0;
@@ -217,6 +252,7 @@ static int ram_load(QEMUFile *f, void *opaque, int version_id)
 
     while (!ret && !(flags & RAM_SAVE_FLAG_EOS)) {
         ram_addr_t addr = qemu_get_be64(f);
+        RAMBlock *block = NULL;
         void *host = NULL;
         uint8_t ch;
 
@@ -230,7 +266,7 @@ static int ram_load(QEMUFile *f, void *opaque, int version_id)
         addr &= TARGET_PAGE_MASK;
 
         if (flags & (RAM_SAVE_FLAG_ZERO | RAM_SAVE_FLAG_PAGE)) {
-            RAMBlock *block = ram_block_from_stream(f, flags);
+            block = ram_block_from_stream(f, flags);
 
             if (block && offset_in_ramblock(block, addr)) {
                 host = block->host + addr;
@@ -254,11 +290,14 @@ static int ram_load(QEMUFile *f, void *opaque, int version_id)
                 ret = -EINVAL;
                 break;
             }
-            ram_handle_zero(host, TARGET_PAGE_SIZE);
+            if (!buffer_is_zero(host, TARGET_PAGE_SIZE)) {
+                memset(host, 0, TARGET_PAGE_SIZE);
+                ram_load_changed(block, addr);
+            }
             break;
 
         case RAM_SAVE_FLAG_PAGE:
-            qemu_get_buffer(f, host, TARGET_PAGE_SIZE);
+            ram_load_page(f, block, addr, host);
             break;
 
         case RAM_SAVE_FLAG_EOS:

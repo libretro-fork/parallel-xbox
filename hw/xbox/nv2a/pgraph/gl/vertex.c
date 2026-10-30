@@ -25,6 +25,9 @@
 #include "debug.h"
 #include "renderer.h"
 
+/* The range a draw last took, which a quick update within it trusts */
+static hwaddr last_addr, last_end;
+
 static void update_memory_buffer(NV2AState *d, hwaddr addr, hwaddr size,
                                  bool quick)
 {
@@ -37,7 +40,6 @@ static void update_memory_buffer(NV2AState *d, hwaddr addr, hwaddr size,
     addr &= TARGET_PAGE_MASK;
     assert(end <= memory_region_size(d->vram));
 
-    static hwaddr last_addr, last_end;
     if (quick && (addr >= last_addr) && (end <= last_end)) {
         return;
     }
@@ -53,13 +55,15 @@ static void update_memory_buffer(NV2AState *d, hwaddr addr, hwaddr size,
     }
 }
 
-void pgraph_gl_update_entire_memory_buffer(NV2AState *d)
+/* The whole buffer to be taken from RAM again (at start, a reset, a state
+ * loaded), page by page as draws first read it (update_memory_buffer):
+ * every page dirty for it. It took all of RAM at once, 64 MB a state load,
+ * which Run-Ahead does every frame. */
+void pgraph_gl_invalidate_memory_buffer(NV2AState *d)
 {
-    PGRAPHState *pg = &d->pgraph;
-    PGRAPHGLState *r = pg->gl_renderer_state;
-
-    glBindBuffer(GL_ARRAY_BUFFER, r->gl_memory_buffer);
-    glBufferSubData(GL_ARRAY_BUFFER, 0, memory_region_size(d->vram), d->vram_ptr);
+    memory_region_set_client_dirty(d->vram, 0, memory_region_size(d->vram),
+                                   DIRTY_MEMORY_NV2A);
+    last_addr = last_end = 0;
 }
 
 void pgraph_gl_attr_pointer(PGRAPHGLState *r, int i, GLuint buffer,

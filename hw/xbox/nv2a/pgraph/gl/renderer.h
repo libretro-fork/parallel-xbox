@@ -591,7 +591,7 @@ void pgraph_gl_present_scanout(NV2AState *d);
 void pgraph_gl_surfaces_refresh_any_dirty(NV2AState *d);
 void pgraph_gl_display_surface_gone(NV2AState *d, SurfaceBinding *surface);
 void pgraph_gl_display_surface_reuse(NV2AState *d, SurfaceBinding *surface);
-void pgraph_gl_update_entire_memory_buffer(NV2AState *d);
+void pgraph_gl_invalidate_memory_buffer(NV2AState *d);
 void pgraph_gl_init_display(NV2AState *d);
 void pgraph_gl_finalize_display(PGRAPHState *pg);
 void pgraph_gl_init_reports(NV2AState *d);

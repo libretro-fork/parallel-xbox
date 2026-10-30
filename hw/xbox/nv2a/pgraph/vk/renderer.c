@@ -110,8 +110,9 @@ static void pgraph_vk_flush(NV2AState *d)
     pgraph_vk_finish(pg, VK_FINISH_REASON_FLUSH);
     pgraph_vk_surface_flush(d);
     pgraph_vk_mark_textures_possibly_dirty(d, 0, memory_region_size(d->vram));
-    pgraph_vk_update_vertex_ram_buffer(&d->pgraph, 0, d->vram_ptr,
-                                       memory_region_size(d->vram));
+    /* the vertex mirror behind RAM, refreshed where draws read it: it was
+     * copied whole, 64 MB a state load, which Run-Ahead does every frame */
+    pgraph_vk_vertex_mark_stale(&d->pgraph, 0, memory_region_size(d->vram));
     pgraph_vk_uniform_sources_invalidate(pg->vk_renderer_state);
     for (int i = 0; i < 4; i++) {
         pg->texture_dirty[i] = true;
