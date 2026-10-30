@@ -797,57 +797,6 @@ static void cpu_exec_longjmp_cleanup(CPUState *cpu)
     assert_no_pages_locked();
 }
 
-void cpu_exec_step_atomic(CPUState *cpu)
-{
-    TranslationBlock *tb;
-    int tb_exit;
-
-    if (sigsetjmp(cpu->jmp_env, 0) == 0) {
-        start_exclusive();
-        g_assert(cpu == current_cpu);
-        g_assert(!cpu->running);
-        cpu->running = true;
-
-        TCGTBCPUState s = xemu_get_tb_cpu_state(cpu);
-        s.cflags = curr_cflags(cpu);
-
-        /* Execute in a serial context. */
-        s.cflags &= ~CF_PARALLEL;
-        /* After 1 insn, return and release the exclusive lock. */
-        s.cflags |= CF_NO_GOTO_TB | CF_NO_GOTO_PTR | 1;
-        /*
-         * No need to check_for_breakpoints here.
-         * We only arrive in cpu_exec_step_atomic after beginning execution
-         * of an insn that includes an atomic operation we can't handle.
-         * Any breakpoint for this insn will have been recognized earlier.
-         */
-
-        tb = tb_lookup(cpu, s);
-        if (tb == NULL) {
-            mmap_lock();
-            tb = tb_gen_code(cpu, s);
-            mmap_unlock();
-        }
-
-        cpu_exec_enter(cpu);
-        /* execute the generated code */
-        trace_exec_tb(tb, s.pc);
-        cpu_tb_exec(cpu, tb, &tb_exit);
-        cpu_exec_exit(cpu);
-    } else {
-        cpu_exec_longjmp_cleanup(cpu);
-    }
-
-    /*
-     * As we start the exclusive region before codegen we must still
-     * be in the region if we longjump out of either the codegen or
-     * the execution.
-     */
-    g_assert(cpu_in_exclusive_context(cpu));
-    cpu->running = false;
-    end_exclusive();
-}
-
 void tb_set_jmp_target(TranslationBlock *tb, int n, uintptr_t addr)
 {
     /*

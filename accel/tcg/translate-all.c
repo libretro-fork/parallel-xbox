@@ -313,17 +313,10 @@ TranslationBlock *tb_gen_code(CPUState *cpu, TCGTBCPUState s)
     assert_no_pages_locked();
     tb = tcg_tb_alloc(tcg_ctx);
     if (unlikely(!tb)) {
-        /* flush must be done */
-        if (cpu_in_serial_context(cpu)) {
-            trace_tb_gen_code_buffer_overflow("tcg_tb_alloc");
-            tb_flush__exclusive_or_serial();
-            goto buffer_overflow;
-        }
-        queue_tb_flush(cpu);
-        mmap_unlock();
-        /* Make the execution loop process the flush as soon as possible.  */
-        cpu->exception_index = EXCP_INTERRUPT;
-        cpu_loop_exit(cpu);
+        /* flush must be done; the core's one vCPU is always serial */
+        trace_tb_gen_code_buffer_overflow("tcg_tb_alloc");
+        tb_flush__exclusive_or_serial();
+        goto buffer_overflow;
     }
 
     gen_code_buf = tcg_ctx->code_gen_ptr;

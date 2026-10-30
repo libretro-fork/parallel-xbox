@@ -1358,8 +1358,29 @@ tb_page_addr_t get_page_addr_code_hostp(CPUArchState *env, vaddr addr,
     return qemu_ram_addr_from_host_nofail(p);
 }
 
-/* Load/store with atomicity primitives. */
-#include "ldst_atomicity.c.inc"
+/*
+ * The core runs one vCPU and TCG has no parallel mode, so a
+ * guest load or store needs no host atomicity: QEMU's required_atomicity()
+ * reduced every access to single bytes in that serial context. Accesses to
+ * RAM are plain host loads and stores; a page-crossing one goes by bytes.
+ */
+/**
+ * store_bytes_leN:
+ * @pv: host address
+ * @size: number of bytes to store
+ * @val_le: data to store
+ *
+ * Store @size bytes at @p.  The bytes to store are extracted in little-endian order
+ * from @val_le; return the bytes of @val_le beyond @size that have not been stored.
+ */
+static uint64_t store_bytes_leN(void *pv, int size, uint64_t val_le)
+{
+    uint8_t *p = pv;
+    for (int i = 0; i < size; i++, val_le >>= 8) {
+        p[i] = val_le;
+    }
+    return val_le;
+}
 
 #ifdef CONFIG_PLUGIN
 /*
@@ -1606,117 +1627,6 @@ static bool mmu_lookup(CPUState *cpu, vaddr addr, MemOpIdx oi,
 }
 
 /*
- * Probe for an atomic operation.  Do not allow unaligned operations,
- * or io operations to proceed.  Return the host address.
- */
-static void *atomic_mmu_lookup(CPUState *cpu, vaddr addr, MemOpIdx oi,
-                               int size, uintptr_t retaddr)
-{
-    uintptr_t mmu_idx = get_mmuidx(oi);
-    MemOp mop = get_memop(oi);
-    uintptr_t index;
-    CPUTLBEntry *tlbe;
-    vaddr tlb_addr;
-    void *hostaddr;
-    CPUTLBEntryFull *full;
-    bool did_tlb_fill = false;
-
-    tcg_debug_assert(mmu_idx < NB_MMU_MODES);
-
-    /* Adjust the given return address.  */
-    retaddr -= GETPC_ADJ;
-
-    index = tlb_index(cpu, mmu_idx, addr);
-    tlbe = tlb_entry(cpu, mmu_idx, addr);
-
-    /* Check TLB entry and enforce page permissions.  */
-    tlb_addr = tlb_addr_write(tlbe);
-    if (!tlb_hit(tlb_addr, addr)) {
-        if (!victim_tlb_hit(cpu, mmu_idx, index, MMU_DATA_STORE,
-                            addr & TARGET_PAGE_MASK)) {
-            tlb_fill_align(cpu, addr, MMU_DATA_STORE, mmu_idx,
-                           mop, size, false, retaddr);
-            did_tlb_fill = true;
-            index = tlb_index(cpu, mmu_idx, addr);
-            tlbe = tlb_entry(cpu, mmu_idx, addr);
-        }
-        tlb_addr = tlb_addr_write(tlbe) & ~TLB_INVALID_MASK;
-    }
-
-    /*
-     * Let the guest notice RMW on a write-only page.
-     * We have just verified that the page is writable.
-     * Subpage lookups may have left TLB_INVALID_MASK set,
-     * but addr_read will only be -1 if PAGE_READ was unset.
-     */
-    if (unlikely(tlbe->addr_read == -1)) {
-        tlb_fill_align(cpu, addr, MMU_DATA_LOAD, mmu_idx,
-                       0, size, false, retaddr);
-        /*
-         * Since we don't support reads and writes to different
-         * addresses, and we do have the proper page loaded for
-         * write, this shouldn't ever return.
-         */
-        g_assert_not_reached();
-    }
-
-    /* Enforce guest required alignment, if not handled by tlb_fill_align. */
-    if (!did_tlb_fill && (addr & ((1 << memop_alignment_bits(mop)) - 1))) {
-        cpu_unaligned_access(cpu, addr, MMU_DATA_STORE, mmu_idx, retaddr);
-    }
-
-    /* Enforce qemu required alignment.  */
-    if (unlikely(addr & (size - 1))) {
-        /*
-         * We get here if guest alignment was not requested, or was not
-         * enforced by cpu_unaligned_access or tlb_fill_align above.
-         * We might widen the access and emulate, but for now
-         * mark an exception and exit the cpu loop.
-         */
-        goto stop_the_world;
-    }
-
-    /* Finish collecting tlb flags for both read and write. */
-    full = &cpu->neg.tlb.d[mmu_idx].fulltlb[index];
-    tlb_addr |= tlbe->addr_read;
-    tlb_addr &= TLB_FLAGS_MASK & ~TLB_FORCE_SLOW;
-    tlb_addr |= full->slow_flags[MMU_DATA_STORE];
-    tlb_addr |= full->slow_flags[MMU_DATA_LOAD];
-
-    /* Notice an IO access or a needs-MMU-lookup access */
-    if (unlikely(tlb_addr & (TLB_MMIO | TLB_DISCARD_WRITE))) {
-        /* There's really nothing that can be done to
-           support this apart from stop-the-world.  */
-        goto stop_the_world;
-    }
-
-    hostaddr = (void *)((uintptr_t)addr + tlbe->addend);
-
-    if (unlikely(tlb_addr & TLB_NOTDIRTY)) {
-        notdirty_write(cpu, addr, size, full, retaddr, 0, 0);
-    }
-
-    if (unlikely(tlb_addr & TLB_WATCHPOINT)) {
-        int wp_flags = 0;
-
-        if (full->slow_flags[MMU_DATA_STORE] & TLB_WATCHPOINT) {
-            wp_flags |= BP_MEM_WRITE;
-        }
-        if (full->slow_flags[MMU_DATA_LOAD] & TLB_WATCHPOINT) {
-            wp_flags |= BP_MEM_READ;
-        }
-        mem_check_access_callback_vaddr(cpu, addr, size, wp_flags, full);
-        cpu_check_watchpoint(cpu, addr, size,
-                             full->attrs, wp_flags, retaddr);
-    }
-
-    return hostaddr;
-
- stop_the_world:
-    cpu_loop_exit_atomic(cpu, retaddr);
-}
-
-/*
  * Load Helpers
  *
  * We support two different access types. SOFTMMU_CODE_ACCESS is
@@ -1892,118 +1802,6 @@ static uint64_t do_ld_bytes_beN(MMULookupPageData *p, uint64_t ret_be)
     return ret_be;
 }
 
-/**
- * do_ld_parts_beN
- * @p: translation parameters
- * @ret_be: accumulated data
- *
- * As do_ld_bytes_beN, but atomically on each aligned part.
- */
-static uint64_t do_ld_parts_beN(MMULookupPageData *p, uint64_t ret_be)
-{
-    void *haddr = p->haddr;
-    int size = p->size;
-
-    do {
-        uint64_t x;
-        int n;
-
-        /*
-         * Find minimum of alignment and size.
-         * This is slightly stronger than required by MO_ATOM_SUBALIGN, which
-         * would have only checked the low bits of addr|size once at the start,
-         * but is just as easy.
-         */
-        switch (((uintptr_t)haddr | size) & 7) {
-        case 4:
-            x = cpu_to_be32(load_atomic4(haddr));
-            ret_be = (ret_be << 32) | x;
-            n = 4;
-            break;
-        case 2:
-        case 6:
-            x = cpu_to_be16(load_atomic2(haddr));
-            ret_be = (ret_be << 16) | x;
-            n = 2;
-            break;
-        default:
-            x = *(uint8_t *)haddr;
-            ret_be = (ret_be << 8) | x;
-            n = 1;
-            break;
-        case 0:
-            g_assert_not_reached();
-        }
-        haddr += n;
-        size -= n;
-    } while (size != 0);
-    return ret_be;
-}
-
-/**
- * do_ld_parts_be4
- * @p: translation parameters
- * @ret_be: accumulated data
- *
- * As do_ld_bytes_beN, but with one atomic load.
- * Four aligned bytes are guaranteed to cover the load.
- */
-static uint64_t do_ld_whole_be4(MMULookupPageData *p, uint64_t ret_be)
-{
-    int o = p->addr & 3;
-    uint32_t x = load_atomic4(p->haddr - o);
-
-    x = cpu_to_be32(x);
-    x <<= o * 8;
-    x >>= (4 - p->size) * 8;
-    return (ret_be << (p->size * 8)) | x;
-}
-
-/**
- * do_ld_parts_be8
- * @p: translation parameters
- * @ret_be: accumulated data
- *
- * As do_ld_bytes_beN, but with one atomic load.
- * Eight aligned bytes are guaranteed to cover the load.
- */
-static uint64_t do_ld_whole_be8(CPUState *cpu, uintptr_t ra,
-                                MMULookupPageData *p, uint64_t ret_be)
-{
-    int o = p->addr & 7;
-    uint64_t x = load_atomic8_or_exit(cpu, ra, p->haddr - o);
-
-    x = cpu_to_be64(x);
-    x <<= o * 8;
-    x >>= (8 - p->size) * 8;
-    return (ret_be << (p->size * 8)) | x;
-}
-
-/**
- * do_ld_parts_be16
- * @p: translation parameters
- * @ret_be: accumulated data
- *
- * As do_ld_bytes_beN, but with one atomic load.
- * 16 aligned bytes are guaranteed to cover the load.
- */
-static Int128 do_ld_whole_be16(CPUState *cpu, uintptr_t ra,
-                               MMULookupPageData *p, uint64_t ret_be)
-{
-    int o = p->addr & 15;
-    Int128 x, y = load_atomic16_or_exit(cpu, ra, p->haddr - o);
-    int size = p->size;
-
-    if (!HOST_BIG_ENDIAN) {
-        y = bswap128(y);
-    }
-    y = int128_lshift(y, o * 8);
-    y = int128_urshift(y, (16 - size) * 8);
-    x = int128_make64(ret_be);
-    x = int128_lshift(x, size * 8);
-    return int128_or(x, y);
-}
-
 /*
  * Wrapper for the above.
  */
@@ -2011,47 +1809,11 @@ static uint64_t do_ld_beN(CPUState *cpu, MMULookupPageData *p,
                           uint64_t ret_be, int mmu_idx, MMUAccessType type,
                           MemOp mop, uintptr_t ra)
 {
-    MemOp atom;
-    unsigned tmp, half_size;
-
     if (unlikely(p->flags & TLB_MMIO)) {
         return do_ld_mmio_beN(cpu, p->full, ret_be, p->addr, p->size,
                               mmu_idx, type, ra);
     }
-
-    /*
-     * It is a given that we cross a page and therefore there is no
-     * atomicity for the load as a whole, but subobjects may need attention.
-     */
-    atom = mop & MO_ATOM_MASK;
-    switch (atom) {
-    case MO_ATOM_SUBALIGN:
-        return do_ld_parts_beN(p, ret_be);
-
-    case MO_ATOM_IFALIGN_PAIR:
-    case MO_ATOM_WITHIN16_PAIR:
-        tmp = mop & MO_SIZE;
-        tmp = tmp ? tmp - 1 : 0;
-        half_size = 1 << tmp;
-        if (atom == MO_ATOM_IFALIGN_PAIR
-            ? p->size == half_size
-            : p->size >= half_size) {
-            if (!HAVE_al8_fast && p->size < 4) {
-                return do_ld_whole_be4(p, ret_be);
-            } else {
-                return do_ld_whole_be8(cpu, ra, p, ret_be);
-            }
-        }
-        /* fall through */
-
-    case MO_ATOM_IFALIGN:
-    case MO_ATOM_WITHIN16:
-    case MO_ATOM_NONE:
-        return do_ld_bytes_beN(p, ret_be);
-
-    default:
-        g_assert_not_reached();
-    }
+    return do_ld_bytes_beN(p, ret_be);
 }
 
 /*
@@ -2062,46 +1824,14 @@ static Int128 do_ld16_beN(CPUState *cpu, MMULookupPageData *p,
 {
     int size = p->size;
     uint64_t b;
-    MemOp atom;
 
     if (unlikely(p->flags & TLB_MMIO)) {
         return do_ld16_mmio_beN(cpu, p->full, a, p->addr, size, mmu_idx, ra);
     }
 
-    /*
-     * It is a given that we cross a page and therefore there is no
-     * atomicity for the load as a whole, but subobjects may need attention.
-     */
-    atom = mop & MO_ATOM_MASK;
-    switch (atom) {
-    case MO_ATOM_SUBALIGN:
-        p->size = size - 8;
-        a = do_ld_parts_beN(p, a);
-        p->haddr += size - 8;
-        p->size = 8;
-        b = do_ld_parts_beN(p, 0);
-        break;
-
-    case MO_ATOM_WITHIN16_PAIR:
-        /* Since size > 8, this is the half that must be atomic. */
-        return do_ld_whole_be16(cpu, ra, p, a);
-
-    case MO_ATOM_IFALIGN_PAIR:
-        /*
-         * Since size > 8, both halves are misaligned,
-         * and so neither is atomic.
-         */
-    case MO_ATOM_IFALIGN:
-    case MO_ATOM_WITHIN16:
-    case MO_ATOM_NONE:
-        p->size = size - 8;
-        a = do_ld_bytes_beN(p, a);
-        b = ldq_be_p(p->haddr + size - 8);
-        break;
-
-    default:
-        g_assert_not_reached();
-    }
+    p->size = size - 8;
+    a = do_ld_bytes_beN(p, a);
+    b = ldq_be_p(p->haddr + size - 8);
 
     return int128_make128(b, a);
 }
@@ -2128,7 +1858,7 @@ static uint16_t do_ld_2(CPUState *cpu, MMULookupPageData *p, int mmu_idx,
         }
     } else {
         /* Perform the load host endian, then swap if necessary. */
-        ret = load_atom_2(cpu, ra, p->haddr, memop);
+        ret = lduw_he_p(p->haddr);
         if (memop & MO_BSWAP) {
             ret = bswap16(ret);
         }
@@ -2148,7 +1878,7 @@ static uint32_t do_ld_4(CPUState *cpu, MMULookupPageData *p, int mmu_idx,
         }
     } else {
         /* Perform the load host endian. */
-        ret = load_atom_4(cpu, ra, p->haddr, memop);
+        ret = ldl_he_p(p->haddr);
         if (memop & MO_BSWAP) {
             ret = bswap32(ret);
         }
@@ -2168,7 +1898,7 @@ static uint64_t do_ld_8(CPUState *cpu, MMULookupPageData *p, int mmu_idx,
         }
     } else {
         /* Perform the load host endian. */
-        ret = load_atom_8(cpu, ra, p->haddr, memop);
+        ret = ldq_he_p(p->haddr);
         if (memop & MO_BSWAP) {
             ret = bswap64(ret);
         }
@@ -2276,7 +2006,7 @@ static Int128 do_ld16_mmu(CPUState *cpu, vaddr addr,
             }
         } else {
             /* Perform the load host endian. */
-            ret = load_atom_16(cpu, ra, l.page[0].haddr, l.memop);
+            memcpy(&ret, l.page[0].haddr, 16);
             if (l.memop & MO_BSWAP) {
                 ret = bswap128(ret);
             }
@@ -2420,51 +2150,13 @@ static uint64_t do_st_leN(CPUState *cpu, MMULookupPageData *p,
                           uint64_t val_le, int mmu_idx,
                           MemOp mop, uintptr_t ra)
 {
-    MemOp atom;
-    unsigned tmp, half_size;
-
     if (unlikely(p->flags & TLB_MMIO)) {
         return do_st_mmio_leN(cpu, p->full, val_le, p->addr,
                               p->size, mmu_idx, ra);
     } else if (unlikely(p->flags & TLB_DISCARD_WRITE)) {
         return val_le >> (p->size * 8);
     }
-
-    /*
-     * It is a given that we cross a page and therefore there is no atomicity
-     * for the store as a whole, but subobjects may need attention.
-     */
-    atom = mop & MO_ATOM_MASK;
-    switch (atom) {
-    case MO_ATOM_SUBALIGN:
-        return store_parts_leN(p->haddr, p->size, val_le);
-
-    case MO_ATOM_IFALIGN_PAIR:
-    case MO_ATOM_WITHIN16_PAIR:
-        tmp = mop & MO_SIZE;
-        tmp = tmp ? tmp - 1 : 0;
-        half_size = 1 << tmp;
-        if (atom == MO_ATOM_IFALIGN_PAIR
-            ? p->size == half_size
-            : p->size >= half_size) {
-            if (!HAVE_al8_fast && p->size <= 4) {
-                return store_whole_le4(p->haddr, p->size, val_le);
-            } else if (HAVE_al8) {
-                return store_whole_le8(p->haddr, p->size, val_le);
-            } else {
-                cpu_loop_exit_atomic(cpu, ra);
-            }
-        }
-        /* fall through */
-
-    case MO_ATOM_IFALIGN:
-    case MO_ATOM_WITHIN16:
-    case MO_ATOM_NONE:
-        return store_bytes_leN(p->haddr, p->size, val_le);
-
-    default:
-        g_assert_not_reached();
-    }
+    return store_bytes_leN(p->haddr, p->size, val_le);
 }
 
 /*
@@ -2475,7 +2167,6 @@ static uint64_t do_st16_leN(CPUState *cpu, MMULookupPageData *p,
                             MemOp mop, uintptr_t ra)
 {
     int size = p->size;
-    MemOp atom;
 
     if (unlikely(p->flags & TLB_MMIO)) {
         return do_st16_mmio_leN(cpu, p->full, val_le, p->addr,
@@ -2484,39 +2175,9 @@ static uint64_t do_st16_leN(CPUState *cpu, MMULookupPageData *p,
         return int128_gethi(val_le) >> ((size - 8) * 8);
     }
 
-    /*
-     * It is a given that we cross a page and therefore there is no atomicity
-     * for the store as a whole, but subobjects may need attention.
-     */
-    atom = mop & MO_ATOM_MASK;
-    switch (atom) {
-    case MO_ATOM_SUBALIGN:
-        store_parts_leN(p->haddr, 8, int128_getlo(val_le));
-        return store_parts_leN(p->haddr + 8, p->size - 8,
-                               int128_gethi(val_le));
-
-    case MO_ATOM_WITHIN16_PAIR:
-        /* Since size > 8, this is the half that must be atomic. */
-        if (!HAVE_CMPXCHG128) {
-            cpu_loop_exit_atomic(cpu, ra);
-        }
-        return store_whole_le16(p->haddr, p->size, val_le);
-
-    case MO_ATOM_IFALIGN_PAIR:
-        /*
-         * Since size > 8, both halves are misaligned,
-         * and so neither is atomic.
-         */
-    case MO_ATOM_IFALIGN:
-    case MO_ATOM_WITHIN16:
-    case MO_ATOM_NONE:
-        stq_le_p(p->haddr, int128_getlo(val_le));
-        return store_bytes_leN(p->haddr + 8, p->size - 8,
-                               int128_gethi(val_le));
-
-    default:
-        g_assert_not_reached();
-    }
+    stq_le_p(p->haddr, int128_getlo(val_le));
+    return store_bytes_leN(p->haddr + 8, p->size - 8,
+                           int128_gethi(val_le));
 }
 
 static void do_st_1(CPUState *cpu, MMULookupPageData *p, uint8_t val,
@@ -2546,7 +2207,7 @@ static void do_st_2(CPUState *cpu, MMULookupPageData *p, uint16_t val,
         if (memop & MO_BSWAP) {
             val = bswap16(val);
         }
-        store_atom_2(cpu, ra, p->haddr, memop, val);
+        stw_he_p(p->haddr, val);
     }
 }
 
@@ -2565,7 +2226,7 @@ static void do_st_4(CPUState *cpu, MMULookupPageData *p, uint32_t val,
         if (memop & MO_BSWAP) {
             val = bswap32(val);
         }
-        store_atom_4(cpu, ra, p->haddr, memop, val);
+        stl_he_p(p->haddr, val);
     }
 }
 
@@ -2584,7 +2245,7 @@ static void do_st_8(CPUState *cpu, MMULookupPageData *p, uint64_t val,
         if (memop & MO_BSWAP) {
             val = bswap64(val);
         }
-        store_atom_8(cpu, ra, p->haddr, memop, val);
+        stq_he_p(p->haddr, val);
     }
 }
 
@@ -2703,7 +2364,7 @@ static void do_st16_mmu(CPUState *cpu, vaddr addr, Int128 val,
             if (l.memop & MO_BSWAP) {
                 val = bswap128(val);
             }
-            store_atom_16(cpu, ra, l.page[0].haddr, l.memop, val);
+            memcpy(l.page[0].haddr, &val, 16);
         }
         return;
     }
@@ -2739,37 +2400,6 @@ static void do_st16_mmu(CPUState *cpu, vaddr addr, Int128 val,
 }
 
 #include "ldst_common.c.inc"
-
-/*
- * First set of functions passes in OI and RETADDR.
- * This makes them callable from other helpers.
- */
-
-#define ATOMIC_NAME(X) \
-    glue(glue(glue(cpu_atomic_ ## X, SUFFIX), END), _mmu)
-
-#define ATOMIC_MMU_CLEANUP
-
-#include "atomic_common.c.inc"
-
-#define DATA_SIZE 1
-#include "atomic_template.h"
-
-#define DATA_SIZE 2
-#include "atomic_template.h"
-
-#define DATA_SIZE 4
-#include "atomic_template.h"
-
-#ifdef CONFIG_ATOMIC64
-#define DATA_SIZE 8
-#include "atomic_template.h"
-#endif
-
-#if defined(CONFIG_ATOMIC128) || HAVE_CMPXCHG128
-#define DATA_SIZE 16
-#include "atomic_template.h"
-#endif
 
 /* Code access functions.  */
 

@@ -42,7 +42,7 @@ static void lr_force_rcu_cb(Notifier *notify, void *data)
 void lr_start_vcpu(CPUState *cpu)
 {
     g_assert(tcg_enabled());
-    tcg_cpu_init_cflags(cpu, false);
+    tcg_cpu_init_cflags(cpu);
 
     /* The thread qemu_init runs on runs the guest: it is the vCPU's */
     qemu_thread_get_self(cpu->thread);
@@ -119,10 +119,6 @@ int lr_vcpu_run_slice(CPUState *cpu, int64_t ns)
 
     if (r == EXCP_DEBUG) {
         cpu_handle_guest_debug(cpu);
-    } else if (r == EXCP_ATOMIC) {
-        bql_unlock();
-        cpu_exec_step_atomic(cpu);
-        bql_lock();
     }
     return r;
 }

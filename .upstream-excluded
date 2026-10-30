@@ -2055,3 +2055,6 @@ include/qemu/vhost-user-server.h
 get_deps.py
 ui/cursor_hidden.xpm
 ui/cursor_left_ptr.xpm
+accel/tcg/ldst_atomicity.c.inc
+accel/tcg/atomic_template.h
+accel/tcg/atomic_common.c.inc

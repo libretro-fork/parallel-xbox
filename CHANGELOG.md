@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- The CPU emulation no longer carries QEMU's parallel mode, which this core never used: it runs its one vCPU serially, so guest loads and stores to RAM are now plain host loads and stores instead of going through atomicity checks that always came out the same, and the out-of-line atomic helpers and the stop-the-world fallback are gone (about 2,700 lines).
+
 - Indexed draws track vertex bounds while accepting index commands instead of scanning the finished list in both renderers. Non-incrementing index packets are decoded in one dispatch with per-word tracing preserved. Bounds are rebuilt from legacy savestates; the state format, index order and GPU uploads are unchanged.
 
 - Vulkan can grow a clean vertex snapshot by appending only its new tail, keeping the prefix immutable for earlier GPU readers. The active arena tracks its last allocation without searching, and needed prefix pages are rechecked after downloads/settles. Dirty/invalidated, non-tail, out-of-space and unsafe non-coherent atom boundaries retain the existing copy path; arena capacity and VRAM allocation are unchanged.

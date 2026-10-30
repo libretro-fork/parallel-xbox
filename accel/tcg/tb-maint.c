@@ -783,9 +783,8 @@ void tb_flush__exclusive_or_serial(void)
 
     trace_tb_flush();
     assert(tcg_enabled());
-    /* Note that cpu_in_serial_context checks cpu_in_exclusive_context. */
-    assert(!runstate_is_running() ||
-           (current_cpu && cpu_in_serial_context(current_cpu)));
+    /* The core's TCG is serial: its one vCPU never runs in parallel. */
+    assert(!runstate_is_running() || current_cpu);
 
     CPU_FOREACH(cpu) {
         tcg_flush_jmp_cache(cpu);
@@ -799,23 +798,6 @@ void tb_flush__exclusive_or_serial(void)
     /* XXX: flush processor icache at this point if cache flush is expensive */
     qatomic_inc(&tb_ctx.tb_flush_count);
     qemu_plugin_flush_cb();
-}
-
-static void do_tb_flush(CPUState *cpu, run_on_cpu_data tb_flush_count)
-{
-    /* If it is already been done on request of another CPU, just retry. */
-    if (tb_ctx.tb_flush_count == tb_flush_count.host_int) {
-        tb_flush__exclusive_or_serial();
-    }
-}
-
-void queue_tb_flush(CPUState *cs)
-{
-    if (tcg_enabled()) {
-        unsigned tb_flush_count = qatomic_read(&tb_ctx.tb_flush_count);
-        async_safe_run_on_cpu(cs, do_tb_flush,
-                              RUN_ON_CPU_HOST_INT(tb_flush_count));
-    }
 }
 
 /* remove @orig from its @n_orig-th jump list */

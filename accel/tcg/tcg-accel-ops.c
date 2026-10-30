@@ -49,7 +49,7 @@
 
 /* common functionality among all TCG variants */
 
-void tcg_cpu_init_cflags(CPUState *cpu, bool parallel)
+void tcg_cpu_init_cflags(CPUState *cpu)
 {
     uint32_t cflags;
 
@@ -63,7 +63,6 @@ void tcg_cpu_init_cflags(CPUState *cpu, bool parallel)
      */
     cflags = cpu->cluster_index << CF_CLUSTER_SHIFT;
 
-    cflags |= parallel ? CF_PARALLEL : 0;
     cflags |= icount_enabled() ? CF_USE_ICOUNT : 0;
     tcg_cflags_set(cpu, cflags);
 }

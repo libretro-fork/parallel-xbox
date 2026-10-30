@@ -19,10 +19,8 @@
 #define EXCP_DEBUG      0x10002 /* cpu stopped after a breakpoint or singlestep */
 #define EXCP_HALTED     0x10003 /* cpu is halted (waiting for external event) */
 #define EXCP_YIELD      0x10004 /* cpu wants to yield timeslice to another */
-#define EXCP_ATOMIC     0x10005 /* stop-the-world and emulate atomic */
 
 void cpu_exec_init_all(void);
-void cpu_exec_step_atomic(CPUState *cpu);
 
 #define REAL_HOST_PAGE_ALIGN(addr) ROUND_UP((addr), qemu_real_host_page_size())
 
@@ -188,7 +186,6 @@ static inline bool cpu_loop_exit_requested(CPUState *cpu)
 }
 
 G_NORETURN void cpu_loop_exit_noexc(CPUState *cpu);
-G_NORETURN void cpu_loop_exit_atomic(CPUState *cpu, uintptr_t pc);
 G_NORETURN void cpu_loop_exit_restore(CPUState *cpu, uintptr_t pc);
 #endif /* CONFIG_TCG */
 G_NORETURN void cpu_loop_exit(CPUState *cpu);
