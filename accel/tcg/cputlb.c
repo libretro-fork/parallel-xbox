@@ -121,8 +121,9 @@ static inline uint64_t tlb_read_idx(const CPUTLBEntry *entry,
                       MMU_INST_FETCH * sizeof(uintptr_t));
 
     const uintptr_t *ptr = &entry->addr_idx[access_type];
-    /* ofs might correspond to .addr_write, so use qatomic_read */
-    return qatomic_read(ptr);
+    /* ofs might correspond to .addr_write, which another thread may set
+     * TLB_NOTDIRTY in; generated code reads the entry as plain words */
+    return retro_atomic_load_relaxed_size((retro_atomic_size_t *)ptr);
 }
 
 static inline uint64_t tlb_addr_write(const CPUTLBEntry *entry)
@@ -164,7 +165,7 @@ static void tb_jmp_cache_clear_page(CPUState *cpu, vaddr page_addr)
 
     i0 = tb_jmp_cache_hash_page(page_addr);
     for (i = 0; i < TB_JMP_PAGE_SIZE; i++) {
-        qatomic_set(&jc->array[i0 + i].tb, NULL);
+        retro_atomic_store_relaxed_ptr(&jc->array[i0 + i].tb, NULL);
     }
 }
 
@@ -409,18 +410,6 @@ static void tlb_flush_by_mmuidx_async_work(CPUState *cpu, run_on_cpu_data data)
         tcg_flush_jmp_cache(cpu);
     }
 
-    if (to_clean == ALL_MMUIDX_BITS) {
-        qatomic_set(&cpu->neg.tlb.c.full_flush_count,
-                    cpu->neg.tlb.c.full_flush_count + 1);
-    } else {
-        qatomic_set(&cpu->neg.tlb.c.part_flush_count,
-                    cpu->neg.tlb.c.part_flush_count + ctpop16(to_clean));
-        if (to_clean != asked) {
-            qatomic_set(&cpu->neg.tlb.c.elide_flush_count,
-                        cpu->neg.tlb.c.elide_flush_count +
-                        ctpop16(asked & ~to_clean));
-        }
-    }
 }
 
 void tlb_flush_by_mmuidx(CPUState *cpu, MMUIdxMap idxmap)
@@ -675,7 +664,7 @@ static void tlb_dirty_index_mark(CPUTLBDesc *desc, CPUTLBDescFast *fast,
  * generated code.
  *
  * Other vCPUs might be reading their TLBs during guest execution, so we update
- * te->addr_write with qatomic_set. We don't need to worry about this for
+ * te->addr_write atomically. We don't need to worry about this for
  * oversized guests as MTTCG is disabled for them.
  *
  * Called with tlb_c.lock held.
@@ -692,7 +681,8 @@ static void tlb_reset_dirty_range_locked(CPUTLBEntryFull *full, CPUTLBEntry *ent
     uintptr_t host = (addr & TARGET_PAGE_MASK) + ent->addend;
     if ((host - start) < length &&
         !(full->slow_flags[MMU_DATA_STORE] & mask)) {
-        qatomic_set(&ent->addr_write, addr | TLB_NOTDIRTY);
+        retro_atomic_store_relaxed_size((retro_atomic_size_t *)&ent->addr_write,
+                                        addr | TLB_NOTDIRTY);
     }
 }
 
@@ -1729,7 +1719,8 @@ static uint64_t do_ld_mmio_beN(CPUState *cpu, CPUTLBEntryFull *full,
 void lr_poll_read(CPUState *cpu, vaddr tag, uint64_t val)
 {
     int64_t now = cpu->icount_budget -
-                  (cpu->neg.icount_decr.u16.low + cpu->icount_extra);
+                  (retro_atomic_load_relaxed_u16(&cpu->neg.icount_decr.u16.low)
+                   + cpu->icount_extra);
     int64_t gap = now - cpu->lr_poll_at;
     bool any = cpu->lr_poll_any;
 
@@ -1755,7 +1746,7 @@ void lr_poll_read(CPUState *cpu, vaddr tag, uint64_t val)
          * block (which resets lr_quiet) */
         cpu->lr_poll_runs = 0;
         cpu->lr_poll_wait = true;
-        qatomic_set(&cpu->neg.icount_decr.u16.high, -1);
+        retro_atomic_store_relaxed_u16(&cpu->neg.icount_decr.u16.high, 0xffff);
     }
 }
 

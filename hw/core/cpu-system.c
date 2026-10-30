@@ -199,7 +199,9 @@ const VMStateDescription vmstate_cpu_common = {
     .post_load = cpu_common_post_load,
     .fields = (const VMStateField[]) {
         VMSTATE_UINT32(halted, CPUState),
-        VMSTATE_UINT32(interrupt_request, CPUState),
+        /* saved with the vCPU stopped: the atomic word as a plain one */
+        VMSTATE_SINGLE(interrupt_request, CPUState, 0, vmstate_info_uint32,
+                       retro_atomic_int_t),
         VMSTATE_END_OF_LIST()
     },
     .subsections = (const VMStateDescription * const []) {

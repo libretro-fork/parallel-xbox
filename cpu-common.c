@@ -184,7 +184,7 @@ void start_exclusive(void)
     int running_cpus;
 
     /* Ensure we are not running, or start_exclusive will be blocked. */
-    g_assert(!current_cpu->running);
+    g_assert(!retro_atomic_load_relaxed_int(&current_cpu->running));
 
     if (current_cpu->exclusive_context_count) {
         current_cpu->exclusive_context_count++;
@@ -201,7 +201,7 @@ void start_exclusive(void)
     smp_mb();
     running_cpus = 0;
     CPU_FOREACH(other_cpu) {
-        if (qatomic_read(&other_cpu->running)) {
+        if (retro_atomic_load_relaxed_int(&other_cpu->running)) {
             other_cpu->has_waiter = true;
             running_cpus++;
             qemu_cpu_kick(other_cpu);
@@ -240,7 +240,7 @@ void cpu_exec_start(CPUState *cpu)
 {
     trace_cpu_exec_start(cpu->cpu_index);
 
-    qatomic_set(&cpu->running, true);
+    retro_atomic_store_relaxed_int(&cpu->running, 1);
 
     /* Write cpu->running before reading pending_cpus.  */
     smp_mb();
@@ -265,10 +265,10 @@ void cpu_exec_start(CPUState *cpu)
              * run.  Since we have the lock, just set cpu->running to true
              * while holding it; no need to check pending_cpus again.
              */
-            qatomic_set(&cpu->running, false);
+            retro_atomic_store_relaxed_int(&cpu->running, 0);
             exclusive_idle();
             /* Now pending_cpus is zero.  */
-            qatomic_set(&cpu->running, true);
+            retro_atomic_store_relaxed_int(&cpu->running, 1);
         } else {
             /* Counted in pending_cpus, go ahead and release the
              * waiter at cpu_exec_end.
@@ -280,7 +280,7 @@ void cpu_exec_start(CPUState *cpu)
 /* Mark cpu as not executing, and release pending exclusive ops.  */
 void cpu_exec_end(CPUState *cpu)
 {
-    qatomic_set(&cpu->running, false);
+    retro_atomic_store_relaxed_int(&cpu->running, 0);
 
     /* Write cpu->running before reading pending_cpus.  */
     smp_mb();

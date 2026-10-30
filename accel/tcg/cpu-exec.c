@@ -196,7 +196,8 @@ static void align_clocks(SyncClocks *sc, CPUState *cpu)
         return;
     }
 
-    cpu_icount = cpu->icount_extra + cpu->neg.icount_decr.u16.low;
+    cpu_icount = cpu->icount_extra +
+        retro_atomic_load_relaxed_u16(&cpu->neg.icount_decr.u16.low);
     sc->diff_clk += icount_to_ns(sc->last_cpu_icount - cpu_icount);
     sc->last_cpu_icount = cpu_icount;
 
@@ -247,7 +248,8 @@ static void init_delay_params(SyncClocks *sc, CPUState *cpu)
     sc->realtime_clock = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL_RT);
     sc->diff_clk = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) - sc->realtime_clock;
     sc->last_cpu_icount
-        = cpu->icount_extra + cpu->neg.icount_decr.u16.low;
+        = cpu->icount_extra +
+          retro_atomic_load_relaxed_u16(&cpu->neg.icount_decr.u16.low);
     if (sc->diff_clk < max_delay) {
         max_delay = sc->diff_clk;
     }
@@ -416,7 +418,7 @@ static inline TranslationBlock *tb_lookup(CPUState *cpu, TCGTBCPUState s)
     hash = tb_jmp_cache_hash_func(s.pc);
     jc = cpu->tb_jmp_cache;
 
-    tb = qatomic_read(&jc->array[hash].tb);
+    tb = retro_atomic_load_relaxed_ptr(&jc->array[hash].tb);
     if (likely(tb &&
                jc->array[hash].pc == s.pc &&
                tb->cs_base == s.cs_base &&
@@ -432,7 +434,7 @@ static inline TranslationBlock *tb_lookup(CPUState *cpu, TCGTBCPUState s)
     }
 
     jc->array[hash].pc = s.pc;
-    qatomic_set(&jc->array[hash].tb, tb);
+    retro_atomic_store_relaxed_ptr(&jc->array[hash].tb, tb);
 
 hit:
     /*
@@ -451,7 +453,7 @@ static void log_cpu_exec(vaddr pc, CPUState *cpu,
                       "Trace %d: %p [%08" PRIx64
                       "/%016" VADDR_PRIx "/%08x/%08x] %s\n",
                       cpu->cpu_index, tb->tc.ptr, tb->cs_base, pc,
-                      tb->flags, tb->cflags, lookup_symbol(pc));
+                      tb->flags, tb_cflags(tb), lookup_symbol(pc));
 
         if (qemu_loglevel_mask(CPU_LOG_TB_CPU)) {
             FILE *logfile = qemu_log_trylock();
@@ -816,20 +818,17 @@ void tb_set_jmp_target(TranslationBlock *tb, int n, uintptr_t addr)
 static inline void tb_add_jump(TranslationBlock *tb, int n,
                                TranslationBlock *tb_next)
 {
-    uintptr_t old;
-
     qemu_thread_jit_write();
     assert(n < ARRAY_SIZE(tb->jmp_list_next));
     qemu_spin_lock(&tb_next->jmp_lock);
 
     /* make sure the destination TB is valid */
-    if (tb_next->cflags & CF_INVALID) {
+    if (tb_cflags(tb_next) & CF_INVALID) {
         goto out_unlock_next;
     }
     /* Atomically claim the jump destination slot only if it was NULL */
-    old = qatomic_cmpxchg(&tb->jmp_dest[n], (uintptr_t)NULL,
-                          (uintptr_t)tb_next);
-    if (old) {
+    if (!retro_atomic_cas_64(&tb->jmp_dest[n], 0,
+                             (int64_t)(uintptr_t)tb_next)) {
         goto out_unlock_next;
     }
 
@@ -944,11 +943,11 @@ void tcg_kick_vcpu_thread(CPUState *cpu)
      * read interrupt_request and set exit_request on demand from the
      * CPU thread; see kvm_arch_pre_run() for example.
      */
-    qatomic_store_release(&cpu->exit_request, true);
+    retro_atomic_store_release_int(&cpu->exit_request, 1);
 #endif
 
     /* Ensure cpu_exec will see the exit request after TCG has exited.  */
-    qatomic_store_release(&cpu->neg.icount_decr.u16.high, -1);
+    retro_atomic_store_release_u16(&cpu->neg.icount_decr.u16.high, 0xffff);
 }
 
 static inline bool icount_exit_request(CPUState *cpu)
@@ -959,7 +958,8 @@ static inline bool icount_exit_request(CPUState *cpu)
     if (cpu->cflags_next_tb != -1 && !(cpu->cflags_next_tb & CF_USE_ICOUNT)) {
         return false;
     }
-    return cpu->neg.icount_decr.u16.low + cpu->icount_extra == 0;
+    return retro_atomic_load_relaxed_u16(&cpu->neg.icount_decr.u16.low)
+           + cpu->icount_extra == 0;
 }
 
 static inline bool cpu_handle_interrupt(CPUState *cpu,
@@ -980,7 +980,8 @@ static inline bool cpu_handle_interrupt(CPUState *cpu,
      * cpu->interrupt_request (see also store-release in
      * tcg_kick_vcpu_thread())
      */
-    qatomic_set_mb(&cpu->neg.icount_decr.u16.high, 0);
+    retro_atomic_store_release_u16(&cpu->neg.icount_decr.u16.high, 0);
+    retro_atomic_thread_fence_seq_cst();
 
 #ifdef CONFIG_USER_ONLY
     assert(!cpu_test_interrupt(cpu, ~0));
@@ -1001,7 +1002,8 @@ static inline bool cpu_handle_interrupt(CPUState *cpu,
             return true;
         } else {
             const TCGCPUOps *tcg_ops = cpu->cc->tcg_ops;
-            int interrupt_request = cpu->interrupt_request;
+            int interrupt_request =
+                retro_atomic_load_relaxed_int(&cpu->interrupt_request);
 
             if (cpu_test_interrupt(cpu, CPU_INTERRUPT_RESET)) {
                 tcg_ops->cpu_exec_reset(cpu);
@@ -1054,7 +1056,8 @@ static inline bool cpu_handle_interrupt(CPUState *cpu,
      * Finally, check if we need to exit to the main loop.
      * The corresponding store-release is in cpu_exit.
      */
-    if (unlikely(qatomic_load_acquire(&cpu->exit_request)) || icount_exit_request(cpu)) {
+    if (unlikely(retro_atomic_load_acquire_int(&cpu->exit_request)) ||
+        icount_exit_request(cpu)) {
         if (cpu->exception_index == -1) {
             cpu->exception_index = EXCP_INTERRUPT;
         }
@@ -1078,7 +1081,7 @@ static inline bool cpu_handle_interrupt(CPUState *cpu,
 #define XEMU_PACE_BUDGET        4096
 #define XEMU_PACE_MAX_CREDIT_NS 5000000
 
-bool xemu_cpu_pace_on;
+retro_atomic_int_t xemu_cpu_pace_on;
 int64_t xemu_cpu_pace_stall_ns;
 
 static void xemu_cpu_pace_refill(CPUState *cpu)
@@ -1087,11 +1090,11 @@ static void xemu_cpu_pace_refill(CPUState *cpu)
      * far behind it the guest may be and still run uncapped to come back. */
     static int64_t due, frac, credit, last;
     static unsigned given;
-    unsigned left = cpu->neg.icount_decr.u16.low;
+    unsigned left = retro_atomic_load_relaxed_u16(&cpu->neg.icount_decr.u16.low);
     int64_t now, behind;
 
-    cpu->neg.icount_decr.u16.low = XEMU_PACE_BUDGET;
-    if (!qatomic_read(&xemu_cpu_pace_on)) {
+    retro_atomic_store_relaxed_u16(&cpu->neg.icount_decr.u16.low, XEMU_PACE_BUDGET);
+    if (!retro_atomic_load_relaxed_int(&xemu_cpu_pace_on)) {
         /* blocks translated before the setting was turned off */
         given = 0;
         return;
@@ -1209,7 +1212,7 @@ static inline void cpu_loop_exec_tb(CPUState *cpu, TranslationBlock *tb,
     icount_update(cpu);
     /* Refill decrementer and continue execution.  */
     int32_t insns_left = MIN(0xffff, cpu->icount_budget);
-    cpu->neg.icount_decr.u16.low = insns_left;
+    retro_atomic_store_relaxed_u16(&cpu->neg.icount_decr.u16.low, insns_left);
     cpu->icount_extra = cpu->icount_budget - insns_left;
 
     /*
@@ -1270,7 +1273,7 @@ cpu_exec_loop(CPUState *cpu, SyncClocks *sc)
 
                 mmap_lock();
                 if (unlikely(xemu_tbrate_enabled() ||
-                             qatomic_read(&xemu_cpu_pace_on))) {
+                             retro_atomic_load_relaxed_int(&xemu_cpu_pace_on))) {
                     int64_t t0 = get_clock();
                     tb = tb_gen_code(cpu, s);
                     t0 = get_clock() - t0;
@@ -1288,7 +1291,7 @@ cpu_exec_loop(CPUState *cpu, SyncClocks *sc)
                 h = tb_jmp_cache_hash_func(s.pc);
                 jc = cpu->tb_jmp_cache;
                 jc->array[h].pc = s.pc;
-                qatomic_set(&jc->array[h].tb, tb);
+                retro_atomic_store_relaxed_ptr(&jc->array[h].tb, tb);
             }
 
 #ifndef CONFIG_USER_ONLY

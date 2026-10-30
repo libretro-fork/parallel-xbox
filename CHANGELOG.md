@@ -4,16 +4,16 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- QEMU's own atomics (qemu/atomic.h) are moving onto libretro-common's retro_atomic.h, as the emulated GPU and sound chip already did: so far the object and QObject reference counts, the QOM cast caches, RCU's grace-period counter, reader state and call_rcu queue, and the lists RCU readers walk (the RAM blocks, the CPUs, each bus's devices, the event loop's handlers and bottom halves), the vCPU's shared state (its exit and interrupt requests, its kick and running flags) and TCG's (the compile flags, chained jumps, jump cache and page descriptors). Guest code reads and translated-code patching stay single plain-width accesses. Nothing changes for someone using the core.
+
+- Vulkan keeps the six GPU-produced cubemap sources available while their copied texture is sampled, avoiding six face readbacks and a cubemap upload on a later filter change. Sources still expire after sampling stops.
+
 - Kernel idle checks inspect freshly translated RAM directly instead of copying overlapping instruction windows and list words through debug buffers. Page-boundary and non-RAM mappings retain the existing reads; idle instructions, work checks and interrupt handling are unchanged.
 - Deterministic mode now finishes submitted GPU work and display composition before handing the frame to the frontend, just like normal mode. This prevents repeated or incomplete pictures when CPU execution outruns the render thread, without advancing guest time during the wait.
 
 - Vulkan keeps actively sampled GPU depth-copy sources available across filter changes, avoiding an age-triggered readback and texture upload. D16 and D24 conversion arithmetic and idle expiry remain unchanged.
 
-- Vulkan keeps the six GPU-produced cubemap sources available while their copied texture is sampled, avoiding six face readbacks and a cubemap upload on a later filter change. Sources still expire after sampling stops.
-
 - Vulkan keeps actively sampled ARGB-to-RGB565 source surfaces available across sampler changes, avoiding a source readback and texture re-upload after age-based eviction. Idle surfaces still expire normally.
-
-- QEMU's own atomics (qemu/atomic.h) are moving onto libretro-common's retro_atomic.h, as the emulated GPU and sound chip already did: so far the object and QObject reference counts, the QOM cast caches, RCU's grace-period counter, reader state and call_rcu queue, and the lists RCU readers walk (the RAM blocks, the CPUs, each bus's devices, the event loop's handlers and bottom halves). Nothing changes for someone using the core.
 
 - OpenGL refreshes render-target surface age when its GPU texture copy is sampled, including unchanged-state reuse and cubemap sources. Actively sampled sources no longer expire into a readback and native texture re-upload after 60 frames.
 

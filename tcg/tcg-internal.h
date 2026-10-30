@@ -30,8 +30,8 @@
 #define TCG_HIGHWATER 1024
 
 extern TCGContext tcg_init_ctx;
-extern TCGContext **tcg_ctxs;
-extern unsigned int tcg_cur_ctxs;
+extern retro_atomic_ptr_t *tcg_ctxs;
+extern retro_atomic_int_t tcg_cur_ctxs;
 extern unsigned int tcg_max_ctxs;
 
 void tcg_region_init(size_t tb_size, int splitwx, unsigned max_threads);

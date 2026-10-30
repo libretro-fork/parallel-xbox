@@ -65,7 +65,8 @@ static inline bool xemu_tbrate_enabled(void)
  * holds is timed. */
 static inline void xemu_tbrate_lock(QemuMutex *m)
 {
-    if (likely(!xemu_tbrate_enabled() && !xemu_cpu_pace_on)) {
+    if (likely(!xemu_tbrate_enabled() &&
+               !retro_atomic_load_relaxed_int(&xemu_cpu_pace_on))) {
         qemu_mutex_lock(m);
     } else {
         xemu_tbrate_lock_slow(m);

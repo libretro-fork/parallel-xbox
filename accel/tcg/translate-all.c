@@ -192,7 +192,9 @@ void cpu_restore_state_from_tb(CPUState *cpu, TranslationBlock *tb,
          * Reset the cycle counter to the start of the block and
          * shift if to the number of actually executed instructions.
          */
-        cpu->neg.icount_decr.u16.low += insns_left;
+        retro_atomic_store_relaxed_u16(&cpu->neg.icount_decr.u16.low,
+            retro_atomic_load_relaxed_u16(&cpu->neg.icount_decr.u16.low)
+            + insns_left);
     }
 
     cpu->cc->tcg_ops->restore_state_to_opc(cpu, tb, data);
@@ -293,10 +295,11 @@ TranslationBlock *tb_gen_code(CPUState *cpu, TCGTBCPUState s)
     tb = inv_tb_htable_lookup(cpu, s, phys_pc, host_pc);
     if (tb) {
         qemu_spin_lock(&tb->jmp_lock);
-        qatomic_set(&tb->cflags, tb->cflags & ~CF_INVALID);
+        retro_atomic_store_relaxed_int(&tb->cflags, tb_cflags(tb) & ~CF_INVALID);
         qemu_spin_unlock(&tb->jmp_lock);
-        uint32_t h = tb_hash_func(phys_pc, (tb->cflags & CF_PCREL ? 0 : tb->pc),
-                                  tb->flags, tb->cs_base, tb->cflags);
+        uint32_t h = tb_hash_func(phys_pc,
+                                  (tb_cflags(tb) & CF_PCREL ? 0 : tb->pc),
+                                  tb->flags, tb->cs_base, tb_cflags(tb));
         bool removed = qht_remove(&tb_ctx.inv_htable, tb, h);
         g_assert(removed);
         if (phys_pc != -1) {
@@ -326,7 +329,7 @@ TranslationBlock *tb_gen_code(CPUState *cpu, TCGTBCPUState s)
     }
     tb->cs_base = s.cs_base;
     tb->flags = s.flags;
-    tb->cflags = s.cflags;
+    retro_atomic_store_relaxed_int(&tb->cflags, s.cflags);
     tb_set_page_addr0(tb, phys_pc);
     tb_set_page_addr1(tb, -1);
     if (phys_pc != -1) {
@@ -494,9 +497,10 @@ TranslationBlock *tb_gen_code(CPUState *cpu, TCGTBCPUState s)
         }
     }
 
-    qatomic_set(&tcg_ctx->code_gen_ptr, (void *)
+    /* only the vCPU thread, the one TCG context, moves it */
+    tcg_ctx->code_gen_ptr = (void *)
         ROUND_UP((uintptr_t)gen_code_buf + gen_code_size + search_size,
-                 CODE_GEN_ALIGN));
+                 CODE_GEN_ALIGN);
 
     /* init jump list */
     qemu_spin_init(&tb->jmp_lock);
@@ -505,8 +509,8 @@ recycle_tb:
     tb->jmp_list_head = (uintptr_t)NULL;
     tb->jmp_list_next[0] = (uintptr_t)NULL;
     tb->jmp_list_next[1] = (uintptr_t)NULL;
-    tb->jmp_dest[0] = (uintptr_t)NULL;
-    tb->jmp_dest[1] = (uintptr_t)NULL;
+    retro_atomic_store_relaxed_64(&tb->jmp_dest[0], 0);
+    retro_atomic_store_relaxed_64(&tb->jmp_dest[1], 0);
 
     /* init original jump addresses which have been set during tcg_gen_code() */
     if (tb->jmp_reset_offset[0] != TB_JMP_OFFSET_INVALID) {
@@ -555,7 +559,7 @@ recycle_tb:
             uintptr_t orig_aligned = (uintptr_t)gen_code_buf;
 
             orig_aligned -= ROUND_UP(sizeof(*tb), qemu_icache_linesize);
-            qatomic_set(&tcg_ctx->code_gen_ptr, (void *)orig_aligned);
+            tcg_ctx->code_gen_ptr = (void *)orig_aligned;
         }
         tcg_tb_remove(tb);
         return existing_tb;
@@ -663,7 +667,8 @@ void cpu_io_recompile(CPUState *cpu, uintptr_t retaddr)
     cc = cpu->cc;
     if (cc->tcg_ops->io_recompile_replay_branch &&
         cc->tcg_ops->io_recompile_replay_branch(cpu, tb)) {
-        cpu->neg.icount_decr.u16.low++;
+        retro_atomic_store_relaxed_u16(&cpu->neg.icount_decr.u16.low,
+            retro_atomic_load_relaxed_u16(&cpu->neg.icount_decr.u16.low) + 1);
         n = 2;
     }
 
@@ -703,6 +708,6 @@ void tcg_flush_jmp_cache(CPUState *cpu)
     }
 
     for (int i = 0; i < TB_JMP_CACHE_SIZE; i++) {
-        qatomic_set(&jc->array[i].tb, NULL);
+        retro_atomic_store_relaxed_ptr(&jc->array[i].tb, NULL);
     }
 }

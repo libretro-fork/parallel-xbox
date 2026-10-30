@@ -2055,7 +2055,8 @@ static void lr_run_frame(void)
 
         /* cleared before anything that may want the guest to leave the
          * translated code: what follows sets it again */
-        qatomic_set_mb(&cpu->exit_request, false);
+        retro_atomic_store_release_int(&cpu->exit_request, 0);
+        retro_atomic_thread_fence_seq_cst();
         main_loop_wait(true);
         /* the guest's timers that are due: with icount the main loop
          * leaves them to the vCPU's loop, which this is */

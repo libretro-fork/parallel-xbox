@@ -15,6 +15,9 @@
 #define VADDR_PRIx "llx"
 #define g_assert assert
 #define qatomic_set(p,v) (*(p)=(v))
+#define retro_atomic_load_relaxed_u16(p) (*(p))
+#define retro_atomic_store_relaxed_u16(p,v) (*(p)=(v))
+#define retro_atomic_store_relaxed_int(p,v) (*(p)=(v))
 typedef uint64_t vaddr;
 typedef uint64_t tb_page_addr_t;
 typedef struct TranslationBlock {vaddr pc;uint64_t cs_base;uint32_t flags,cflags;tb_page_addr_t physical;unsigned jmp_lock;} TranslationBlock;
@@ -22,7 +25,7 @@ typedef struct CPUState CPUState;
 typedef struct CPUClass {vaddr(*get_pc)(CPUState*);struct TCGOps {bool(*io_recompile_replay_branch)(CPUState*,TranslationBlock*);}*tcg_ops;} CPUClass;
 struct CPUState {CPUClass*cc;vaddr pc;uint32_t cflags_next_tb;struct{union{struct{uint16_t low,high;}u16;}icount_decr;}neg;};
 typedef struct {TranslationBlock*slot;uint32_t hash;} Table;
-static struct {Table htable,inv_htable;unsigned tb_phys_invalidate_count;}tb_ctx;
+static struct {Table htable,inv_htable;}tb_ctx;
 static unsigned pages_locked,page_removed,cache_removed,jumps_removed[2],unlinked,restored;
 static jmp_buf escaped;
 static vaddr get_pc(CPUState*c){return c->pc;}
@@ -70,7 +73,7 @@ int main(void)
   recompile(&cpu);
   assert(tb_io_insn_known(cpu.pc));assert(restored==1);
   assert(!tb_ctx.htable.slot&&!tb_ctx.inv_htable.slot);
-  assert(tb.cflags&CF_INVALID);assert(tb_ctx.tb_phys_invalidate_count==1);
+  assert(tb.cflags&CF_INVALID);
   assert(page_removed==1&&!pages_locked&&cache_removed==1&&jumps_removed[0]==1&&jumps_removed[1]==1&&unlinked==1);
   assert(cpu.cflags_next_tb==(CF_USE_ICOUNT|CF_MEMI_ONLY|CF_NOIRQ|1));
  }
@@ -79,9 +82,9 @@ int main(void)
   TranslationBlock tb={.pc=0x4000+32*i,.physical=0x8000+32*i,.cflags=(i&1)?CF_PCREL:0,.flags=i,.cs_base=i&4};setup(&tb);
   uint32_t h=tb_ctx.htable.hash;tb_phys_invalidate(&tb,-1);
   assert(!tb_ctx.htable.slot&&tb_ctx.inv_htable.slot==&tb&&tb_ctx.inv_htable.hash==h);
-  assert(tb_ctx.tb_phys_invalidate_count==1&&page_removed==1&&!pages_locked);
+  assert(unlinked==1&&page_removed==1&&!pages_locked);
   /* Invalidating again cannot reinsert or unlink an already removed TB. */
-  tb_phys_invalidate(&tb,-1);assert(tb_ctx.tb_phys_invalidate_count==1&&unlinked==1);
+  tb_phys_invalidate(&tb,-1);assert(unlinked==1);
  }
  /* One-shot code without a physical page has no page lock/list to remove. */
  TranslationBlock tb={.physical=(uint64_t)-1,.cflags=CF_USE_ICOUNT};setup(&tb);

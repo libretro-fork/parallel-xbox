@@ -21,15 +21,14 @@
 
 /*
  * Invalidated in parallel; all accesses to 'tb' must be atomic.
- * A valid entry is read/written by a single CPU, therefore there is
- * no need for qatomic_rcu_read() and pc is always consistent with a
- * non-NULL value of 'tb'.  Strictly speaking pc is only needed for
+ * A valid entry is read/written by a single CPU, therefore relaxed
+ * loads do and pc is always consistent with a non-NULL value of 'tb'.  Strictly speaking pc is only needed for
  * CF_PCREL, but it's used always for simplicity.
  */
 typedef struct CPUJumpCache {
     struct rcu_head rcu;
     struct {
-        TranslationBlock *tb;
+        retro_atomic_ptr_t tb;      /* TranslationBlock * */
         vaddr pc;
     } array[TB_JMP_CACHE_SIZE_MAX];
 } CPUJumpCache;

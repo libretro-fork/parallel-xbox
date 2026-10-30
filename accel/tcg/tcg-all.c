@@ -76,7 +76,7 @@ static void tcg_accel_instance_init(Object *obj)
 #endif
 }
 
-bool one_insn_per_tb;
+retro_atomic_int_t one_insn_per_tb;
 
 #ifndef CONFIG_USER_ONLY
 static void tcg_vm_change_state(void *opaque, bool running, RunState state)
@@ -236,7 +236,7 @@ static void tcg_set_one_insn_per_tb(Object *obj, bool value, Error **errp)
     TCGState *s = TCG_STATE(obj);
     s->one_insn_per_tb = value;
     /* Set the global also: this changes the behaviour */
-    qatomic_set(&one_insn_per_tb, value);
+    retro_atomic_store_relaxed_int(&one_insn_per_tb, value);
 }
 
 static int tcg_gdbstub_supported_sstep_flags(AccelState *as)

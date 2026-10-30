@@ -13,7 +13,8 @@
 #define NB_MMU_MODES 8
 #define CPU_VTLB_SIZE 4
 #define ctz32(x) __builtin_ctz(x)
-#define qatomic_set(p,v) (*(p)=(v))
+typedef uintptr_t retro_atomic_size_t;
+#define retro_atomic_store_relaxed_size(p,v) (*(p)=(v))
 typedef uint32_t MMUIdxMap;
 typedef uintptr_t vaddr;
 typedef struct {uintptr_t addr_write,addend;} CPUTLBEntry;

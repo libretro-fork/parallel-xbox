@@ -4214,7 +4214,8 @@ int x86_cpu_pending_interrupt(CPUState *cs, int interrupt_request)
 
 static bool x86_cpu_has_work(CPUState *cs)
 {
-    return x86_cpu_pending_interrupt(cs, cs->interrupt_request) != 0;
+    return x86_cpu_pending_interrupt(cs,
+               retro_atomic_load_relaxed_int(&cs->interrupt_request)) != 0;
 }
 #endif /* !CONFIG_USER_ONLY */
 

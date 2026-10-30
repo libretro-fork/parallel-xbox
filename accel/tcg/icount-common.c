@@ -38,6 +38,17 @@
 #include "system/cpu-timers-internal.h"
 #include "system/libretro-vcpu.h"
 
+/* The savestate keeps these fields plain (vmstate checks their types);
+ * other threads read them, so they are accessed as retro_atomic. */
+#define TS_LOAD64(f) \
+    retro_atomic_load_relaxed_64((retro_atomic_64_t *)&timers_state.f)
+#define TS_STORE64(f, v) \
+    retro_atomic_store_relaxed_64((retro_atomic_64_t *)&timers_state.f, (v))
+#define TS_LOAD16(f) \
+    ((int16_t)retro_atomic_load_relaxed_u16((retro_atomic_u16_t *)&timers_state.f))
+#define TS_STORE16(f, v) \
+    retro_atomic_store_relaxed_u16((retro_atomic_u16_t *)&timers_state.f, (v))
+
 /*
  * ICOUNT: Instruction Counter
  *
@@ -73,7 +84,8 @@ static void icount_enable_adaptive(void)
 static int64_t icount_get_executed(CPUState *cpu)
 {
     return (cpu->icount_budget -
-            (cpu->neg.icount_decr.u16.low + cpu->icount_extra));
+            (retro_atomic_load_relaxed_u16(&cpu->neg.icount_decr.u16.low)
+             + cpu->icount_extra));
 }
 
 /*
@@ -86,7 +98,7 @@ static void icount_update_locked(CPUState *cpu)
     int64_t executed = icount_get_executed(cpu);
     cpu->icount_budget -= executed;
 
-    qatomic_set_i64(&timers_state.qemu_icount,
+    TS_STORE64(qemu_icount,
                     timers_state.qemu_icount + executed);
 }
 
@@ -108,23 +120,23 @@ static int64_t icount_get_raw_locked(void)
 {
     CPUState *cpu = current_cpu;
 
-    if (cpu && cpu->running) {
+    if (cpu && retro_atomic_load_relaxed_int(&cpu->running)) {
         if (!cpu->neg.can_do_io) {
             /* never end the frontend's process: the count as of the
              * block's start, a few instructions behind */
-            return qatomic_read_i64(&timers_state.qemu_icount);
+            return TS_LOAD64(qemu_icount);
         }
         /* Take into account what has run */
         icount_update_locked(cpu);
     }
     /* The read is protected by the seqlock, but needs atomic64 to avoid UB */
-    return qatomic_read_i64(&timers_state.qemu_icount);
+    return TS_LOAD64(qemu_icount);
 }
 
 static int64_t icount_get_locked(void)
 {
     int64_t icount = icount_get_raw_locked();
-    return qatomic_read_i64(&timers_state.qemu_icount_bias) +
+    return TS_LOAD64(qemu_icount_bias) +
         icount_to_ns(icount);
 }
 
@@ -167,7 +179,7 @@ void icount_skip_to(int64_t vt)
     {
         int64_t now = icount_get_locked();
         if (vt > now) {
-            qatomic_set_i64(&timers_state.qemu_icount_bias,
+            TS_STORE64(qemu_icount_bias,
                             timers_state.qemu_icount_bias + vt - now);
         }
     }
@@ -205,18 +217,18 @@ static void icount_adjust(void)
         && timers_state.last_delta + ICOUNT_WOBBLE < delta * 2
         && timers_state.icount_time_shift > 0) {
         /* The guest is getting too far ahead.  Slow time down.  */
-        qatomic_set(&timers_state.icount_time_shift,
+        TS_STORE16(icount_time_shift,
                     timers_state.icount_time_shift - 1);
     }
     if (delta < 0
         && timers_state.last_delta - ICOUNT_WOBBLE > delta * 2
         && timers_state.icount_time_shift < MAX_ICOUNT_SHIFT) {
         /* The guest is getting too far behind.  Speed time up.  */
-        qatomic_set(&timers_state.icount_time_shift,
+        TS_STORE16(icount_time_shift,
                     timers_state.icount_time_shift + 1);
     }
     timers_state.last_delta = delta;
-    qatomic_set_i64(&timers_state.qemu_icount_bias,
+    TS_STORE64(qemu_icount_bias,
                     cur_icount - (timers_state.qemu_icount
                                   << timers_state.icount_time_shift));
     seqlock_write_unlock(&timers_state.vm_clock_seqlock,
@@ -243,7 +255,7 @@ int64_t icount_round(int64_t count)
     /* the instructions that take at least count ns */
     return (count * LR_ICOUNT_NS_DEN + LR_ICOUNT_NS_NUM - 1) /
            LR_ICOUNT_NS_NUM;
-    int shift = qatomic_read(&timers_state.icount_time_shift);
+    int shift = TS_LOAD16(icount_time_shift);
     return (count + (1 << shift) - 1) >> shift;
 }
 
@@ -286,7 +298,7 @@ static void icount_warp_rt(void)
             }
             warp_delta = MIN(warp_delta, delta);
         }
-        qatomic_set_i64(&timers_state.qemu_icount_bias,
+        TS_STORE64(qemu_icount_bias,
                         timers_state.qemu_icount_bias + warp_delta);
     }
     timers_state.vm_clock_warp_start = -1;
@@ -360,7 +372,7 @@ void icount_start_warp_timer(void)
              */
             seqlock_write_lock(&timers_state.vm_clock_seqlock,
                                &timers_state.vm_clock_lock);
-            qatomic_set_i64(&timers_state.qemu_icount_bias,
+            TS_STORE64(qemu_icount_bias,
                             timers_state.qemu_icount_bias + deadline);
             seqlock_write_unlock(&timers_state.vm_clock_seqlock,
                                  &timers_state.vm_clock_lock);

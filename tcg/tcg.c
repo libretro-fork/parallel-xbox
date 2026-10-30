@@ -254,8 +254,8 @@ unsigned long tls_key_tcg_ctx = 0xFFFFFFFF; /* TLS_OUT_OF_INDEXES */
 __thread TCGContext *tcg_ctx;
 #endif
 
-TCGContext **tcg_ctxs;
-unsigned int tcg_cur_ctxs;
+retro_atomic_ptr_t *tcg_ctxs;      /* TCGContext *[tcg_max_ctxs] */
+retro_atomic_int_t tcg_cur_ctxs;
 unsigned int tcg_max_ctxs;
 TCGv_env tcg_env;
 const void *tcg_code_gen_epilogue;
@@ -1312,9 +1312,9 @@ void tcg_register_thread(void)
     }
 
     /* Claim an entry in tcg_ctxs */
-    n = qatomic_fetch_inc(&tcg_cur_ctxs);
+    n = retro_atomic_fetch_add_int(&tcg_cur_ctxs, 1);
     g_assert(n < tcg_max_ctxs);
-    qatomic_set(&tcg_ctxs[n], s);
+    retro_atomic_store_relaxed_ptr(&tcg_ctxs[n], s);
 
     if (n > 0) {
         tcg_region_initial_alloc(s);
@@ -1857,7 +1857,7 @@ static void tcg_context_init(unsigned max_threads)
     tcg_max_ctxs = 1;
 #else
     tcg_max_ctxs = max_threads;
-    tcg_ctxs = g_new0(TCGContext *, max_threads);
+    tcg_ctxs = g_new0(retro_atomic_ptr_t, max_threads);
 #endif
 
     tcg_debug_assert(!tcg_regset_test_reg(s->reserved_regs, TCG_AREG0));
@@ -1891,7 +1891,7 @@ TranslationBlock *tcg_tb_alloc(TCGContext *s)
         }
         goto retry;
     }
-    qatomic_set(&s->code_gen_ptr, next);
+    s->code_gen_ptr = next;
     return tb;
 }
 

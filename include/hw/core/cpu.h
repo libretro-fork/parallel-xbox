@@ -32,6 +32,7 @@
 #include "qapi/qapi-types-run-state.h"
 #include "qemu/bitmap.h"
 #include "qemu/rcu_queue.h"
+#include <retro_atomic.h>
 #include "qemu/queue.h"
 #include "qemu/lockcnt.h"
 #include "qemu/thread.h"
@@ -311,14 +312,6 @@ typedef struct CPUTLBCommon {
      * Protected by tlb_c.lock.
      */
     MMUIdxMap dirty;
-    /*
-     * Statistics.  These are not lock protected, but are read and
-     * written atomically.  This allows the monitor to print a snapshot
-     * of the stats without interfering with the cpu.
-     */
-    size_t full_flush_count;
-    size_t part_flush_count;
-    size_t elide_flush_count;
 } CPUTLBCommon;
 
 /*
@@ -343,14 +336,14 @@ typedef struct CPUTLB {
  * for both decrementer underflow and exceptions.
  */
 typedef union IcountDecr {
-    uint32_t u32;
+    retro_atomic_int_t u32;     /* generated code reads it whole */
     struct {
 #if HOST_BIG_ENDIAN
-        uint16_t high;
-        uint16_t low;
+        retro_atomic_u16_t high;
+        retro_atomic_u16_t low;
 #else
-        uint16_t low;
-        uint16_t high;
+        retro_atomic_u16_t low;
+        retro_atomic_u16_t high;
 #endif
     } u16;
 } IcountDecr;
@@ -528,9 +521,10 @@ struct CPUState {
     QemuSemaphore sem;
 #endif
     int thread_id;
-    bool running, has_waiter;
+    retro_atomic_int_t running;
+    bool has_waiter;
     struct QemuCond *halt_cond;
-    bool thread_kicked;
+    retro_atomic_int_t thread_kicked;
     bool created;
     bool stop;
     bool stopped;
@@ -540,10 +534,10 @@ struct CPUState {
 
     bool unplug;
     bool crash_occurred;
-    bool exit_request;
+    retro_atomic_int_t exit_request;
     int exclusive_context_count;
     uint32_t cflags_next_tb;
-    uint32_t interrupt_request;
+    retro_atomic_int_t interrupt_request;
     int singlestep_enabled;
     int64_t icount_budget;
     int64_t icount_extra;
@@ -609,7 +603,7 @@ struct CPUState {
     /* Used to keep track of an outstanding cpu throttle thread for migration
      * autoconverge
      */
-    bool throttle_thread_scheduled;
+    retro_atomic_int_t throttle_thread_scheduled;
 
     /*
      * Sleep throttle_us_per_full microseconds once dirty ring is full
@@ -984,7 +978,7 @@ void cpu_interrupt(CPUState *cpu, int mask);
  */
 static inline bool cpu_test_interrupt(CPUState *cpu, int mask)
 {
-    return qatomic_load_acquire(&cpu->interrupt_request) & mask;
+    return retro_atomic_load_acquire_int(&cpu->interrupt_request) & mask;
 }
 
 /**

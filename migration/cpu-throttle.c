@@ -70,7 +70,7 @@ static void cpu_throttle_thread(CPUState *cpu, run_on_cpu_data opaque)
         }
         sleeptime_ns = endtime_ns - qemu_clock_get_ns(QEMU_CLOCK_REALTIME);
     }
-    qatomic_set(&cpu->throttle_thread_scheduled, 0);
+    retro_atomic_store_relaxed_int(&cpu->throttle_thread_scheduled, 0);
 }
 
 static void cpu_throttle_timer_tick(void *opaque)
@@ -83,7 +83,7 @@ static void cpu_throttle_timer_tick(void *opaque)
         return;
     }
     CPU_FOREACH(cpu) {
-        if (!qatomic_xchg(&cpu->throttle_thread_scheduled, 1)) {
+        if (!retro_atomic_exchange_int(&cpu->throttle_thread_scheduled, 1)) {
             async_run_on_cpu(cpu, cpu_throttle_thread,
                              RUN_ON_CPU_NULL);
         }

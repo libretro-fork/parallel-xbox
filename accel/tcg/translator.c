@@ -34,7 +34,7 @@ void tcg_gen_lookup_and_goto_ptr_fast(TCGv_i64 pc, uint64_t cs_base,
                                       uint32_t flags)
 {
 #ifdef CONFIG_SOFTMMU
-    uint32_t cflags = tcg_ctx->gen_tb->cflags;
+    uint32_t cflags = tb_cflags(tcg_ctx->gen_tb);
     TCGLabel *slow;
     TCGv_i64 t, hash;
     TCGv_i32 t32;
@@ -158,7 +158,8 @@ static TCGOp *gen_tb_start(DisasContextBase *db, uint32_t cflags)
      * budget in icount_decr.u16.low, as with icount, and stops below when
      * the budget is spent. */
     bool budget = (cflags & CF_USE_ICOUNT) ||
-                  (qatomic_read(&xemu_cpu_pace_on) && !(cflags & CF_NOIRQ));
+                  (retro_atomic_load_relaxed_int(&xemu_cpu_pace_on) &&
+                   !(cflags & CF_NOIRQ));
 
     TCGv_i32 test = NULL;
 
@@ -534,14 +535,14 @@ static bool translator_ld(CPUArchState *env, DisasContextBase *db,
     switch (len) {
     case 2:
         if (QEMU_IS_ALIGNED(pc, 2)) {
-            uint16_t t = qatomic_read((uint16_t *)host);
+            uint16_t t = retro_atomic_load_relaxed_u16((retro_atomic_u16_t *)host);
             stw_he_p(dest, t);
             return true;
         }
         break;
     case 4:
         if (QEMU_IS_ALIGNED(pc, 4)) {
-            uint32_t t = qatomic_read((uint32_t *)host);
+            uint32_t t = retro_atomic_load_relaxed_int((retro_atomic_int_t *)host);
             stl_he_p(dest, t);
             return true;
         }
@@ -549,7 +550,7 @@ static bool translator_ld(CPUArchState *env, DisasContextBase *db,
 #ifdef CONFIG_ATOMIC64
     case 8:
         if (QEMU_IS_ALIGNED(pc, 8)) {
-            uint64_t t = qatomic_read__nocheck((uint64_t *)host);
+            uint64_t t = retro_atomic_load_relaxed_64((retro_atomic_64_t *)host);
             stq_he_p(dest, t);
             return true;
         }

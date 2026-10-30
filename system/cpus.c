@@ -245,7 +245,7 @@ void cpus_set_virtual_clock(int64_t new_time)
 void cpu_set_interrupt(CPUState *cpu, int mask)
 {
     /* Pairs with cpu_test_interrupt(). */
-    qatomic_or(&cpu->interrupt_request, mask);
+    retro_atomic_fetch_or_int(&cpu->interrupt_request, mask);
 }
 
 void cpu_interrupt(CPUState *cpu, int mask)
@@ -417,10 +417,10 @@ static void qemu_cpu_stop(CPUState *cpu, bool exit)
 
 void cpus_kick_thread(CPUState *cpu)
 {
-    if (qatomic_read(&cpu->thread_kicked)) {
+    if (retro_atomic_load_relaxed_int(&cpu->thread_kicked)) {
         return;
     }
-    qatomic_set(&cpu->thread_kicked, true);
+    retro_atomic_store_relaxed_int(&cpu->thread_kicked, 1);
 
 #ifndef _WIN32
     int err = pthread_kill(cpu->thread->thread, SIG_IPI);
@@ -515,7 +515,8 @@ void bql_lock_impl(const char *file, int line)
     QemuMutexLockFunc bql_lock_fn = qatomic_read(&bql_mutex_lock_func);
 
     g_assert(!bql_locked());
-    if (unlikely(xemu_tbrate_enabled() || qatomic_read(&xemu_cpu_pace_on)) &&
+    if (unlikely(xemu_tbrate_enabled() ||
+                 retro_atomic_load_relaxed_int(&xemu_cpu_pace_on)) &&
         current_cpu) {
         /* XEMU_TBRATE, and Real hardware speed's stall account: only a lock
          * someone else holds costs a wait, so that is the only case timed. */

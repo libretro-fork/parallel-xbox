@@ -182,7 +182,7 @@ bool cpu_restore_state(CPUState *cpu, uintptr_t host_pc);
  */
 static inline bool cpu_loop_exit_requested(CPUState *cpu)
 {
-    return (int32_t)qatomic_read(&cpu->neg.icount_decr.u32) < 0;
+    return retro_atomic_load_relaxed_int(&cpu->neg.icount_decr.u32) < 0;
 }
 
 G_NORETURN void cpu_loop_exit_noexc(CPUState *cpu);

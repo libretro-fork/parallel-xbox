@@ -90,7 +90,8 @@ int lr_vcpu_run_slice(CPUState *cpu, int64_t ns)
 
     /* exit_request is not cleared here: the caller clears it before it
      * gives anyone a reason to set it for this slice */
-    qatomic_set_mb(&cpu->thread_kicked, false);
+    retro_atomic_store_release_int(&cpu->thread_kicked, 0);
+    retro_atomic_thread_fence_seq_cst();
     if (cpu->stop) {
         cpu->stop = false;
         cpu->stopped = true;

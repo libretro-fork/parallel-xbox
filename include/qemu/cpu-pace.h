@@ -20,13 +20,15 @@
 #ifndef QEMU_CPU_PACE_H
 #define QEMU_CPU_PACE_H
 
+#include <retro_atomic.h>
+
 /*
  * The CPU side of the "Real hardware speed" setting (perf.real_hw_speed).
  * Translated blocks draw their instructions from a budget and stop when it
  * is spent (translator.c); cpu-exec.c refills it once the Xbox CPU would
  * have run them. Off, nothing is emitted and the guest is uncapped.
  */
-extern bool xemu_cpu_pace_on;
+extern retro_atomic_int_t xemu_cpu_pace_on;
 
 /*
  * Time the vCPU thread lost to the emulator itself: a lock another thread

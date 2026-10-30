@@ -52,13 +52,13 @@ CPUState *cpu_by_arch_id(int64_t id)
 
 void cpu_reset_interrupt(CPUState *cpu, int mask)
 {
-    qatomic_and(&cpu->interrupt_request, ~mask);
+    retro_atomic_fetch_and_int(&cpu->interrupt_request, ~mask);
 }
 
 void cpu_exit(CPUState *cpu)
 {
     /* Ensure cpu_exec will see the reason why the exit request was set.  */
-    qatomic_store_release(&cpu->exit_request, true);
+    retro_atomic_store_release_int(&cpu->exit_request, 1);
     qemu_cpu_kick(cpu);
 }
 
@@ -91,11 +91,11 @@ static void cpu_common_reset_hold(Object *obj, ResetType type)
 {
     CPUState *cpu = CPU(obj);
 
-    cpu->interrupt_request = 0;
+    retro_atomic_store_relaxed_int(&cpu->interrupt_request, 0);
     cpu->halted = cpu->start_powered_off;
     cpu->mem_io_pc = 0;
     cpu->icount_extra = 0;
-    qatomic_set(&cpu->neg.icount_decr.u32, 0);
+    retro_atomic_store_relaxed_int(&cpu->neg.icount_decr.u32, 0);
     cpu->neg.can_do_io = true;
     cpu->exception_index = -1;
     cpu->crash_occurred = false;

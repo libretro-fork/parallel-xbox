@@ -17,7 +17,7 @@
 extern int64_t max_delay;
 extern int64_t max_advance;
 
-extern bool one_insn_per_tb;
+extern retro_atomic_int_t one_insn_per_tb;
 
 extern bool icount_align_option;
 

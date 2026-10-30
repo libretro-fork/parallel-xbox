@@ -8,6 +8,7 @@
 #define EXEC_TRANSLATION_BLOCK_H
 
 #include "qemu/atomic.h"
+#include <retro_atomic.h>
 #include "qemu/thread.h"
 #include "exec/cpu-common.h"
 #include "exec/vaddr.h"
@@ -67,7 +68,7 @@ struct TranslationBlock {
     uint64_t cs_base;
 
     uint32_t flags; /* flags defining in which context the code was generated */
-    uint32_t cflags;    /* compile flags */
+    retro_atomic_int_t cflags;    /* compile flags; read with tb_cflags() */
 
 /* Note that TCG_MAX_INSNS is 512; we validate this match elsewhere. */
 #define CF_COUNT_MASK    0x000001ff
@@ -143,16 +144,16 @@ struct TranslationBlock {
      */
     uintptr_t jmp_list_head;
     uintptr_t jmp_list_next[2];
-    uintptr_t jmp_dest[2];
+    retro_atomic_64_t jmp_dest[2];  /* uintptr_t; 64-bit hosts only */
 };
 
 /* The alignment given to TranslationBlock during allocation. */
 #define CODE_GEN_ALIGN  16
 
-/* Hide the qatomic_read to make code a little easier on the eyes */
+/* Hide the atomic load to make code a little easier on the eyes */
 static inline uint32_t tb_cflags(const TranslationBlock *tb)
 {
-    return qatomic_read(&tb->cflags);
+    return retro_atomic_load_relaxed_int((retro_atomic_int_t *)&tb->cflags);
 }
 
 bool tcg_cflags_has(CPUState *cpu, uint32_t flags);

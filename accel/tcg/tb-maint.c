@@ -191,7 +191,7 @@ static int v_l2_levels;
 #define V_L1_MAX_BITS (V_L2_BITS + 3)
 #define V_L1_MAX_SIZE (1 << V_L1_MAX_BITS)
 
-static void *l1_map[V_L1_MAX_SIZE];
+static retro_atomic_ptr_t l1_map[V_L1_MAX_SIZE];
 
 struct PageDesc {
     QemuSpin lock;
@@ -222,36 +222,31 @@ void page_table_config_init(void)
 static PageDesc *page_find_alloc(tb_page_addr_t index, bool alloc)
 {
     PageDesc *pd;
-    void **lp;
+    retro_atomic_ptr_t *lp;
 
     /* Level 1.  Always allocated.  */
     lp = l1_map + ((index >> v_l1_shift) & (v_l1_size - 1));
 
     /* Level 2..N-1.  */
     for (int i = v_l2_levels; i > 0; i--) {
-        void **p = qatomic_rcu_read(lp);
+        retro_atomic_ptr_t *p = retro_atomic_load_acquire_ptr(lp);
 
         if (p == NULL) {
-            void *existing;
-
             if (!alloc) {
                 return NULL;
             }
-            p = g_new0(void *, V_L2_SIZE);
-            existing = qatomic_cmpxchg(lp, NULL, p);
-            if (unlikely(existing)) {
+            p = g_new0(retro_atomic_ptr_t, V_L2_SIZE);
+            if (unlikely(!retro_atomic_cas_ptr(lp, NULL, p))) {
                 g_free(p);
-                p = existing;
+                p = retro_atomic_load_acquire_ptr(lp);
             }
         }
 
         lp = p + ((index >> (i * V_L2_BITS)) & (V_L2_SIZE - 1));
     }
 
-    pd = qatomic_rcu_read(lp);
+    pd = retro_atomic_load_acquire_ptr(lp);
     if (pd == NULL) {
-        void *existing;
-
         if (!alloc) {
             return NULL;
         }
@@ -261,13 +256,12 @@ static PageDesc *page_find_alloc(tb_page_addr_t index, bool alloc)
             qemu_spin_init(&pd[i].lock);
         }
 
-        existing = qatomic_cmpxchg(lp, NULL, pd);
-        if (unlikely(existing)) {
+        if (unlikely(!retro_atomic_cas_ptr(lp, NULL, pd))) {
             for (int i = 0; i < V_L2_SIZE; i++) {
                 qemu_spin_destroy(&pd[i].lock);
             }
             g_free(pd);
-            pd = existing;
+            pd = retro_atomic_load_acquire_ptr(lp);
         }
     }
 
@@ -668,15 +662,16 @@ static void page_collection_unlock(struct page_collection *set)
 }
 
 /* Set to NULL all the 'first_tb' fields in all PageDescs. */
-static void tb_remove_all_1(int level, void **lp)
+static void tb_remove_all_1(int level, retro_atomic_ptr_t *lp)
 {
     int i;
+    void *p = retro_atomic_load_acquire_ptr(lp);
 
-    if (*lp == NULL) {
+    if (p == NULL) {
         return;
     }
     if (level == 0) {
-        PageDesc *pd = *lp;
+        PageDesc *pd = p;
 
         for (i = 0; i < V_L2_SIZE; ++i) {
             page_lock(&pd[i]);
@@ -684,7 +679,7 @@ static void tb_remove_all_1(int level, void **lp)
             page_unlock(&pd[i]);
         }
     } else {
-        void **pp = *lp;
+        retro_atomic_ptr_t *pp = p;
 
         for (i = 0; i < V_L2_SIZE; ++i) {
             tb_remove_all_1(level - 1, pp + i);
@@ -796,7 +791,6 @@ void tb_flush__exclusive_or_serial(void)
 
     tcg_region_reset_all();
     /* XXX: flush processor icache at this point if cache flush is expensive */
-    qatomic_inc(&tb_ctx.tb_flush_count);
     qemu_plugin_flush_cb();
 }
 
@@ -810,7 +804,7 @@ static inline void tb_remove_from_jmp_list(TranslationBlock *orig, int n_orig)
     int n;
 
     /* mark the LSB of jmp_dest[] so that no further jumps can be inserted */
-    ptr = qatomic_or_fetch(&orig->jmp_dest[n_orig], 1);
+    ptr = (uintptr_t)retro_atomic_fetch_or_64(&orig->jmp_dest[n_orig], 1) | 1;
     dest = (TranslationBlock *)(ptr & ~1);
     if (dest == NULL) {
         return;
@@ -821,7 +815,7 @@ static inline void tb_remove_from_jmp_list(TranslationBlock *orig, int n_orig)
      * While acquiring the lock, the jump might have been removed if the
      * destination TB was invalidated; check again.
      */
-    ptr_locked = qatomic_read(&orig->jmp_dest[n_orig]);
+    ptr_locked = (uintptr_t)retro_atomic_load_relaxed_64(&orig->jmp_dest[n_orig]);
     if (ptr_locked != ptr) {
         qemu_spin_unlock(&dest->jmp_lock);
         /*
@@ -829,7 +823,7 @@ static inline void tb_remove_from_jmp_list(TranslationBlock *orig, int n_orig)
          * tb_jump_unlink(dest). Seeing here another destination would be a bug,
          * because we set the LSB above.
          */
-        g_assert(ptr_locked == 1 && dest->cflags & CF_INVALID);
+        g_assert(ptr_locked == 1 && tb_cflags(dest) & CF_INVALID);
         return;
     }
     /*
@@ -876,7 +870,7 @@ static inline void tb_jmp_unlink(TranslationBlock *dest)
 
     TB_FOR_EACH_JMP(dest, tb, n) {
         tb_reset_jump(tb, n);
-        qatomic_and(&tb->jmp_dest[n], (uintptr_t)NULL | 1);
+        retro_atomic_fetch_and_64(&tb->jmp_dest[n], 1);
         /* No need to clear the list entry; setting the dest ptr is enough */
     }
     dest->jmp_list_head = (uintptr_t)NULL;
@@ -905,8 +899,8 @@ static void tb_jmp_cache_inval_tb(TranslationBlock *tb)
         CPU_FOREACH(cpu) {
             CPUJumpCache *jc = cpu->tb_jmp_cache;
 
-            if (qatomic_read(&jc->array[h].tb) == tb) {
-                qatomic_set(&jc->array[h].tb, NULL);
+            if (retro_atomic_load_relaxed_ptr(&jc->array[h].tb) == tb) {
+                retro_atomic_store_relaxed_ptr(&jc->array[h].tb, NULL);
             }
         }
     }
@@ -929,7 +923,7 @@ static void do_tb_phys_invalidate(TranslationBlock *tb, bool rm_from_page_list,
 
     /* make sure no further incoming jumps will be chained to this TB */
     qemu_spin_lock(&tb->jmp_lock);
-    qatomic_set(&tb->cflags, tb->cflags | CF_INVALID);
+    retro_atomic_store_relaxed_int(&tb->cflags, tb_cflags(tb) | CF_INVALID);
     qemu_spin_unlock(&tb->jmp_lock);
 
     /* remove the TB from the hash list */
@@ -960,8 +954,6 @@ static void do_tb_phys_invalidate(TranslationBlock *tb, bool rm_from_page_list,
     /* suppress any remaining jumps to this TB */
     tb_jmp_unlink(tb);
 
-    qatomic_set(&tb_ctx.tb_phys_invalidate_count,
-                tb_ctx.tb_phys_invalidate_count + 1);
 }
 
 static void tb_phys_invalidate__locked(TranslationBlock *tb)
@@ -1015,13 +1007,13 @@ TranslationBlock *tb_link_page(TranslationBlock *tb)
     uint32_t h;
 
     assert_memory_lock();
-    tcg_debug_assert(!(tb->cflags & CF_INVALID));
+    tcg_debug_assert(!(tb_cflags(tb) & CF_INVALID));
 
     tb_record(tb);
 
     /* add in the hash table */
-    h = tb_hash_func(tb_page_addr0(tb), (tb->cflags & CF_PCREL ? 0 : tb->pc),
-                     tb->flags, tb->cs_base, tb->cflags);
+    h = tb_hash_func(tb_page_addr0(tb), (tb_cflags(tb) & CF_PCREL ? 0 : tb->pc),
+                     tb->flags, tb->cs_base, tb_cflags(tb));
     qht_insert(&tb_ctx.htable, tb, h, &existing_tb);
 
     /* remove TB from the page(s) if we couldn't insert it */

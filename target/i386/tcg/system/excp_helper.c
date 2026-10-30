@@ -112,7 +112,7 @@ static bool ptw_setl_slow(const PTETranslate *in, uint32_t old, uint32_t new)
 
     CPUState *cpu = env_cpu(in->env);
     /* We are in cpu_exec, and start_exclusive can't be called directly.*/
-    g_assert(cpu->running);
+    g_assert(retro_atomic_load_relaxed_int(&cpu->running));
     cpu_exec_end(cpu);
     /* Does x86 really perform a rmw cycle on mmio for ptw? */
     start_exclusive();

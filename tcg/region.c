@@ -418,7 +418,7 @@ void tcg_region_initial_alloc(TCGContext *s)
 /* Call from a safe-work context */
 void tcg_region_reset_all(void)
 {
-    unsigned int n_ctxs = qatomic_read(&tcg_cur_ctxs);
+    unsigned int n_ctxs = retro_atomic_load_relaxed_int(&tcg_cur_ctxs);
     unsigned int i;
 
     qemu_mutex_lock(&region.lock);
@@ -426,7 +426,7 @@ void tcg_region_reset_all(void)
     region.agg_size_full = 0;
 
     for (i = 0; i < n_ctxs; i++) {
-        TCGContext *s = qatomic_read(&tcg_ctxs[i]);
+        TCGContext *s = retro_atomic_load_relaxed_ptr(&tcg_ctxs[i]);
         tcg_region_initial_alloc__locked(s);
     }
     qemu_mutex_unlock(&region.lock);
