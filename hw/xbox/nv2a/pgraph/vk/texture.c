@@ -110,43 +110,6 @@ static enum S3TC_DECOMPRESS_FORMAT kelvin_format_to_s3tc_format(int color_format
     }
 }
 
-// FIXME: Move to common
-static size_t get_cubemap_layer_size(PGRAPHState *pg, TextureShape s)
-{
-    BasicColorFormatInfo f = kelvin_color_format_info_map[s.color_format];
-    bool is_compressed =
-        pgraph_is_texture_format_compressed(pg, s.color_format);
-    unsigned int block_size;
-
-    unsigned int w = s.width, h = s.height;
-    size_t length = 0;
-
-    if (!f.linear && s.border) {
-        w = MAX(16, w * 2);
-        h = MAX(16, h * 2);
-    }
-
-    if (is_compressed) {
-        block_size =
-            s.color_format == NV097_SET_TEXTURE_FORMAT_COLOR_L_DXT1_A1R5G5B5 ?
-                8 :
-                16;
-    }
-
-    for (int level = 0; level < s.levels; level++) {
-        if (is_compressed) {
-            length += w / 4 * h / 4 * block_size;
-        } else {
-            length += w * h * f.bytes_per_pixel;
-        }
-
-        w /= 2;
-        h /= 2;
-    }
-
-    return ROUND_UP(length, NV2A_CUBEMAP_FACE_ALIGNMENT);
-}
-
 /* A level's bytes: a range of the staging ring, 16-byte aligned (a texel
  * or a block, as vkCmdCopyBufferToImage wants its offset) */
 static uint8_t *stage_level(PGRAPHState *pg, TextureLevel *level,
@@ -429,7 +392,7 @@ static void stage_texture(PGRAPHState *pg, VkCommandBuffer cmd,
     }
 
     if (s.dimensionality == 2) {
-        hwaddr layer_size = s.cubemap ? get_cubemap_layer_size(pg, s) : 0;
+        hwaddr layer_size = s.cubemap ? pgraph_get_cubemap_face_length(pg, s) : 0;
         const int num_layers = s.cubemap ? 6 : 1;
         for (int layer = 0; layer < num_layers; layer++) {
             unsigned int width = adjusted_width, height = adjusted_height;

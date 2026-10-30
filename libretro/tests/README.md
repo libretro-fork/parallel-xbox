@@ -359,3 +359,11 @@ that expanded host storage cannot alias a guest render target directly, and
 compares actual GPU upload/readback bytes with synchronization validation on.
 RGB bytes must remain identical; signed alpha 127 supplies the RGB format's
 implicit alpha of one. Guest unswizzle output is provided linearly by the fixture.
+
+`python libretro/tests/test-texture-layout.py CHECKOUT [CC]` extracts the
+production texture-span and cubemap-face calculation, format table and shape
+from the core. Fixed edge cases and 5000 independent row/block mip walks
+check tiny compressed faces, borders, shrinking 3D mip depth, linear pitch,
+face alignment and LOD-clamp independence under UBSan. It requires a C
+compiler and no graphics driver. OpenGL and Vulkan use the same aligned face
+span as the cache's guest-memory range calculation.

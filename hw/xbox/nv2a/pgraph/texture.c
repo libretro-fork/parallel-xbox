@@ -148,55 +148,60 @@ hwaddr pgraph_get_texture_palette_phys_addr_length(PGRAPHState *pg, int texture_
     return palette_data - d->vram_ptr;
 }
 
+/* Guest bytes consumed by the renderers' mip walkers, before any host
+ * conversion. Compressed sub-block mips still occupy a complete block. */
+static size_t texture_mip_chain_size(PGRAPHState *pg, TextureShape shape)
+{
+    BasicColorFormatInfo f = kelvin_color_format_info_map[shape.color_format];
+    unsigned w = shape.width, h = shape.height;
+    unsigned d = shape.dimensionality >= 3 ? shape.depth : 1;
+    if (shape.border) {
+        w = MAX(16, w * 2);
+        h = MAX(16, h * 2);
+        if (shape.dimensionality >= 3) {
+            d = MAX(16, d * 2);
+        }
+    }
+    bool compressed = pgraph_is_texture_format_compressed(pg, shape.color_format);
+    unsigned block_size = shape.color_format ==
+        NV097_SET_TEXTURE_FORMAT_COLOR_L_DXT1_A1R5G5B5 ? 8 : 16;
+    size_t length = 0;
+    for (unsigned level = 0; level < shape.levels; level++) {
+        w = MAX(w, 1);
+        h = MAX(h, 1);
+        d = MAX(d, 1);
+        if (compressed) {
+            length += (size_t)((w + 3) / 4) * ((h + 3) / 4) * d * block_size;
+        } else {
+            length += (size_t)w * h * d * f.bytes_per_pixel;
+        }
+        w /= 2;
+        h /= 2;
+        d /= 2;
+    }
+    return length;
+}
+
+size_t pgraph_get_cubemap_face_length(PGRAPHState *pg, TextureShape shape)
+{
+    assert(shape.cubemap && shape.dimensionality == 2);
+    assert(!kelvin_color_format_info_map[shape.color_format].linear);
+    size_t length = texture_mip_chain_size(pg, shape);
+    return (length + NV2A_CUBEMAP_FACE_ALIGNMENT - 1) &
+           ~(size_t)(NV2A_CUBEMAP_FACE_ALIGNMENT - 1);
+}
+
 size_t pgraph_get_texture_length(PGRAPHState *pg, TextureShape *shape)
 {
     BasicColorFormatInfo f = kelvin_color_format_info_map[shape->color_format];
-    size_t length = 0;
-
     if (f.linear) {
-        assert(shape->cubemap == false);
-        assert(shape->dimensionality == 2);
-        length = shape->height * shape->pitch;
-    } else {
-        if (shape->dimensionality >= 2) {
-            unsigned int w = shape->width, h = shape->height;
-            int level;
-            if (!pgraph_is_texture_format_compressed(pg, shape->color_format)) {
-                for (level = 0; level < shape->levels; level++) {
-                    w = MAX(w, 1);
-                    h = MAX(h, 1);
-                    length += w * h * f.bytes_per_pixel;
-                    w /= 2;
-                    h /= 2;
-                }
-            } else {
-                /* Compressed textures are a bit different */
-                unsigned int block_size =
-                    shape->color_format ==
-                            NV097_SET_TEXTURE_FORMAT_COLOR_L_DXT1_A1R5G5B5 ?
-                        8 : 16;
-                for (level = 0; level < shape->levels; level++) {
-                    w = MAX(w, 1);
-                    h = MAX(h, 1);
-                    unsigned int phys_w = (w + 3) & ~3,
-                                 phys_h = (h + 3) & ~3;
-                    length += phys_w/4 * phys_h/4 * block_size;
-                    w /= 2;
-                    h /= 2;
-                }
-            }
-            if (shape->cubemap) {
-                assert(shape->dimensionality == 2);
-                length = (length + NV2A_CUBEMAP_FACE_ALIGNMENT - 1) & ~(NV2A_CUBEMAP_FACE_ALIGNMENT - 1);
-                length *= 6;
-            }
-            if (shape->dimensionality >= 3) {
-                length *= shape->depth;
-            }
-        }
+        assert(!shape->cubemap && shape->dimensionality == 2);
+        return (size_t)shape->height * shape->pitch;
     }
-
-    return length;
+    if (shape->cubemap) {
+        return pgraph_get_cubemap_face_length(pg, *shape) * 6;
+    }
+    return shape->dimensionality >= 2 ? texture_mip_chain_size(pg, *shape) : 0;
 }
 
 TextureShape pgraph_get_texture_shape(PGRAPHState *pg, int texture_idx)
