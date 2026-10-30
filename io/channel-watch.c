@@ -312,36 +312,3 @@ GSource *qio_channel_create_socket_watch(QIOChannel *ioc,
 }
 #endif
 
-GSource *qio_channel_create_fd_pair_watch(QIOChannel *ioc,
-                                          int fdread,
-                                          int fdwrite,
-                                          GIOCondition condition)
-{
-    GSource *source;
-    QIOChannelFDPairSource *ssource;
-
-    source = g_source_new(&qio_channel_fd_pair_source_funcs,
-                          sizeof(QIOChannelFDPairSource));
-    ssource = (QIOChannelFDPairSource *)source;
-
-    ssource->ioc = ioc;
-    object_ref(OBJECT(ioc));
-
-    ssource->condition = condition;
-
-#ifdef CONFIG_WIN32
-    ssource->fdread.fd = (gint64)_get_osfhandle(fdread);
-    ssource->fdwrite.fd = (gint64)_get_osfhandle(fdwrite);
-#else
-    ssource->fdread.fd = fdread;
-    ssource->fdwrite.fd = fdwrite;
-#endif
-
-    ssource->fdread.events = condition & G_IO_IN;
-    ssource->fdwrite.events = condition & G_IO_OUT;
-
-    g_source_add_poll(source, &ssource->fdread);
-    g_source_add_poll(source, &ssource->fdwrite);
-
-    return source;
-}

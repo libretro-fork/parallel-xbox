@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Devices and services the Xbox machine never creates are removed: the TLS channel, credentials and sessions, the command, DNS-resolver and network-listener channels, the qtest server (and its -qtest options), and the IOAPIC (the Xbox's interrupts go through the MCPX's i8259 pair). Nothing changes for someone using the core.
+
 - The test harness checks audio cadence with an integer phase, avoiding false sample-count failures when hard-FPU tests change host rounding. The declared timing is checked explicitly, and failed x87 test output is retained in CI logs. Core audio output is unchanged.
 
 - CPU Boost avoids saving dead x87 operand scratch values into CPU state between instructions. Real stack registers, helper synchronization and rounding retain their existing handling.

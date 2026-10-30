@@ -14,20 +14,10 @@
 #ifndef QTEST_H
 #define QTEST_H
 
-#include "chardev/char.h"
-
-extern bool qtest_allowed;
-
+/* The qtest protocol server is not built: the core never runs under it */
 static inline bool qtest_enabled(void)
 {
-    return qtest_allowed;
+    return false;
 }
-
-void G_GNUC_PRINTF(2, 3) qtest_sendf(CharFrontend *chr, const char *fmt, ...);
-
-void qtest_server_init(const char *qtest_chrdev, const char *qtest_log, Error **errp);
-
-void qtest_server_set_send_handler(void (*send)(void *, const char *),
-                                 void *opaque);
 
 #endif

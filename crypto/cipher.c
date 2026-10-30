@@ -95,50 +95,8 @@ qcrypto_cipher_validate_key_length(QCryptoCipherAlgo alg,
 #include "cipher-stub.c.inc"
 #endif
 
-QCryptoCipher *qcrypto_cipher_new(QCryptoCipherAlgo alg,
-                                  QCryptoCipherMode mode,
-                                  const uint8_t *key, size_t nkey,
-                                  Error **errp)
-{
-    QCryptoCipher *cipher = NULL;
-
-#ifdef CONFIG_AF_ALG
-    cipher = qcrypto_afalg_cipher_ctx_new(alg, mode, key, nkey, NULL);
-#endif
-
-    if (!cipher) {
-        cipher = qcrypto_cipher_ctx_new(alg, mode, key, nkey, errp);
-        if (!cipher) {
-            return NULL;
-        }
-    }
-
-    cipher->alg = alg;
-    cipher->mode = mode;
-
-    return cipher;
-}
 
 
-
-int qcrypto_cipher_decrypt(QCryptoCipher *cipher,
-                           const void *in,
-                           void *out,
-                           size_t len,
-                           Error **errp)
-{
-    const QCryptoCipherDriver *drv = cipher->driver;
-    return drv->cipher_decrypt(cipher, in, out, len, errp);
-}
-
-
-int qcrypto_cipher_setiv(QCryptoCipher *cipher,
-                         const uint8_t *iv, size_t niv,
-                         Error **errp)
-{
-    const QCryptoCipherDriver *drv = cipher->driver;
-    return drv->cipher_setiv(cipher, iv, niv, errp);
-}
 
 
 void qcrypto_cipher_free(QCryptoCipher *cipher)

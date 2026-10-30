@@ -187,8 +187,6 @@ static Chardev **serial_hds;
 static const char *log_mask;
 static const char *log_file;
 static bool list_data_dirs;
-static const char *qtest_chrdev;
-static const char *qtest_log;
 
 static int has_defaults = 1;
 static int default_serial = 1;
@@ -1747,8 +1745,7 @@ static bool object_create_early(const char *type)
     }
 
     /* Reason: property "chardev" */
-    if (g_str_equal(type, "rng-egd") ||
-        g_str_equal(type, "qtest")) {
+    if (g_str_equal(type, "rng-egd")) {
         return false;
     }
 
@@ -1877,10 +1874,6 @@ static bool object_create_late(const char *type)
 
 static void qemu_create_late_backends(void)
 {
-    if (qtest_chrdev) {
-        qtest_server_init(qtest_chrdev, qtest_log, &error_fatal);
-    }
-
     net_init_clients();
 
     object_option_foreach_add(object_create_late);
@@ -2167,19 +2160,14 @@ static int do_configure_accelerator(void *opaque, QemuOpts *opts, Error **errp)
     AccelClass *ac = accel_find(acc);
     AccelState *accel;
     int ret;
-    bool qtest_with_kvm;
 
     if (!acc) {
         error_setg(errp, QERR_MISSING_PARAMETER, "accel");
         goto bad;
     }
 
-    qtest_with_kvm = g_str_equal(acc, "kvm") && qtest_chrdev != NULL;
-
     if (!ac) {
-        if (!qtest_with_kvm) {
-            error_report("invalid accelerator %s", acc);
-        }
+        error_report("invalid accelerator %s", acc);
         goto bad;
     }
     accel = ACCEL(object_new_with_class(OBJECT_CLASS(ac)));
@@ -2190,9 +2178,7 @@ static int do_configure_accelerator(void *opaque, QemuOpts *opts, Error **errp)
 
     ret = accel_init_machine(accel, current_machine);
     if (ret < 0) {
-        if (!qtest_with_kvm || ret != -ENOENT) {
-            error_report("failed to initialize %s: %s", acc, strerror(-ret));
-        }
+        error_report("failed to initialize %s: %s", acc, strerror(-ret));
         goto bad;
     }
 
@@ -2268,7 +2254,7 @@ static void configure_accelerators(const char *progname)
         exit(1);
     }
 
-    if (init_failed && !qtest_chrdev) {
+    if (init_failed) {
         error_report("falling back to %s", current_accel_name());
     }
 
@@ -3676,12 +3662,6 @@ void qemu_init(int argc, char **argv)
                 display_remote++;
                 break;
 #endif
-            case QEMU_OPTION_qtest:
-                qtest_chrdev = optarg;
-                break;
-            case QEMU_OPTION_qtest_log:
-                qtest_log = optarg;
-                break;
             case QEMU_OPTION_sandbox:
                 olist = qemu_find_opts("sandbox");
                 if (!olist) {

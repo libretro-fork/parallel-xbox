@@ -425,7 +425,6 @@ SOURCES_UTIL := \
 	$(CORE_DIR)/stubs/qemu-timer-notify-cb.c \
 	$(CORE_DIR)/stubs/qmp-command-available.c \
 	$(CORE_DIR)/stubs/qmp-quit.c \
-	$(CORE_DIR)/stubs/qtest.c \
 	$(CORE_DIR)/stubs/ram-block.c \
 	$(CORE_DIR)/stubs/runstate-check.c \
 	$(CORE_DIR)/stubs/sysbus.c \
@@ -547,9 +546,6 @@ SOURCES_COMMON := \
 	$(CORE_DIR)/chardev/char.c \
 	$(CORE_DIR)/cpu-common.c \
 	$(CORE_DIR)/crypto/cipher.c \
-	$(CORE_DIR)/crypto/secret_common.c \
-	$(CORE_DIR)/crypto/tlscreds.c \
-	$(CORE_DIR)/crypto/tlssession.c \
 	$(CORE_DIR)/disas/disas-common.c \
 	$(CORE_DIR)/disas/disas-host.c \
 	$(CORE_DIR)/disas/disas-target.c \
@@ -568,15 +564,11 @@ SOURCES_COMMON := \
 	$(CORE_DIR)/hw/core/resettable.c \
 	$(CORE_DIR)/hw/core/vmstate-if.c \
 	$(CORE_DIR)/io/channel-buffer.c \
-	$(CORE_DIR)/io/channel-command.c \
 	$(CORE_DIR)/io/channel-file.c \
 	$(CORE_DIR)/io/channel-socket.c \
-	$(CORE_DIR)/io/channel-tls.c \
 	$(CORE_DIR)/io/channel-util.c \
 	$(CORE_DIR)/io/channel-watch.c \
 	$(CORE_DIR)/io/channel.c \
-	$(CORE_DIR)/io/dns-resolver.c \
-	$(CORE_DIR)/io/net-listener.c \
 	$(CORE_DIR)/migration/migration-stats.c \
 	$(CORE_DIR)/migration/qemu-file.c \
 	$(CORE_DIR)/migration/vmstate-types.c \
@@ -667,7 +659,6 @@ SOURCES_SYSTEM := \
 	$(CORE_DIR)/hw/intc/i8259.c \
 	$(CORE_DIR)/hw/intc/i8259_common.c \
 	$(CORE_DIR)/hw/intc/intc.c \
-	$(CORE_DIR)/hw/intc/ioapic_common.c \
 	$(CORE_DIR)/hw/intc/kvm_irqcount.c \
 	$(CORE_DIR)/hw/isa/isa-bus.c \
 	$(CORE_DIR)/hw/mem/memory-device.c \
@@ -733,7 +724,6 @@ SOURCES_SYSTEM := \
 	$(CORE_DIR)/system/memory_mapping.c \
 	$(CORE_DIR)/system/physmem.c \
 	$(CORE_DIR)/system/qdev-monitor.c \
-	$(CORE_DIR)/system/qtest.c \
 	$(CORE_DIR)/system/ram-block-attributes.c \
 	$(CORE_DIR)/system/rtc.c \
 	$(CORE_DIR)/system/runstate-action.c \
@@ -795,7 +785,6 @@ SOURCES_TARGET := \
 	$(CORE_DIR)/hw/i386/x86.c \
 	$(CORE_DIR)/hw/intc/apic.c \
 	$(CORE_DIR)/hw/intc/apic_common.c \
-	$(CORE_DIR)/hw/intc/ioapic.c \
 	$(CORE_DIR)/hw/xbox/acpi_xbox.c \
 	$(CORE_DIR)/hw/xbox/amd_smbus.c \
 	$(CORE_DIR)/hw/xbox/chihiro/chihiro-8051.c \
