@@ -2020,3 +2020,4 @@ README.rst
 CONTRIBUTING.md
 util/vhost-user-server.c
 include/qemu/vhost-user-server.h
+get_deps.py

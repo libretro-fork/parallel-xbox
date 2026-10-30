@@ -4,7 +4,8 @@
 #
 # The static Makefile, as the GitHub workflow builds it: GLib is the core's
 # own (libretro/glib) and libslirp is built from deps/ and linked in, so the
-# one file the buildbot ships is the whole core.
+# one file the buildbot ships is the whole core. Vulkan's headers are in
+# deps/.
 set -euxo pipefail
 
 NUMPROC=${NUMPROC:-$(nproc)}
@@ -13,7 +14,7 @@ export DEBIAN_FRONTEND=noninteractive
 
 apt-get -qy update
 apt-get -qy install --no-install-recommends \
-  build-essential git ca-certificates pkg-config libepoxy-dev libvulkan-dev
+  build-essential git ca-certificates pkg-config libepoxy-dev
 git config --global --add safe.directory '*'
 
 make -j "$NUMPROC"
