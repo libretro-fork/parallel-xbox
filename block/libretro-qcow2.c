@@ -668,11 +668,16 @@ int64_t lr_qcow2_size(LRQcow2 *q)
 
 int lr_qcow2_flush(LRQcow2 *q)
 {
+    int ret;
+
     if (!q->meta_dirty) {
         return 0;
     }
-    q->meta_dirty = false;
-    return lr_file_sync(q->f);
+    ret = lr_file_sync(q->f);
+    if (ret == 0) {
+        q->meta_dirty = false;
+    }
+    return ret;
 }
 
 /* ---- reads -------------------------------------------------------------- */

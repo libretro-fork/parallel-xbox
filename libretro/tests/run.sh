@@ -174,7 +174,7 @@ ${cc} -O2 -std=gnu99 -Wall -DLR_FILE_FILESTREAM=0 -I"$lrc/include" -o "$work/bin
 "$work/bin/qcow2test" "$here/../../data/xbox_hdd.qcow2" "$work"
 # Count the production qcow2 layer's file calls without replacing its backend.
 ${cc} -O2 -std=gnu99 -Wall -DLR_FILE_FILESTREAM=0 -I"$here/../.." -I"$lrc/include" \
-    -Dlr_file_zero=counted_zero -Dlr_file_pwrite=counted_pwrite \
+    -Dlr_file_sync=counted_sync -Dlr_file_zero=counted_zero -Dlr_file_pwrite=counted_pwrite \
     -Dlr_file_pread=counted_pread -Dlr_file_preadv=counted_preadv -Dlr_file_pwritev=counted_pwritev \
     -c "$here/../../block/libretro-qcow2.c" -o "$work/bin/qcow2-spans.o"
 ${cc} -O2 -std=gnu99 -Wall -DLR_FILE_FILESTREAM=0 -I"$here/../.." -I"$lrc/include" \

@@ -3,6 +3,7 @@
  * user's disk. */
 #include "block/libretro-qcow2.h"
 #include <assert.h>
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -12,6 +13,32 @@ static int last_read_iov;
 static unsigned scalar_reads;
 static const void *last_write_base;
 static unsigned zero_calls, scalar_writes;
+static unsigned sync_calls, sync_failures;
+
+int counted_sync(LRFile *f)
+{
+    sync_calls++;
+    if (sync_failures) {
+        sync_failures--;
+        return -EIO;
+    }
+    return lr_file_sync(f);
+}
+
+static void flush_retry(LRQcow2 *q, int64_t offset, size_t cs)
+{
+    /* After the transfer checks, release an allocated test cluster so even
+     * in-place-only fixtures have pending metadata. Failed syncs must retry;
+     * once a real sync succeeds, the next clean flush needs no host call. */
+    assert(lr_qcow2_zero(q, offset, cs) == 0);
+    sync_calls = 0;
+    sync_failures = 2;
+    assert(lr_qcow2_flush(q) == -EIO);
+    assert(lr_qcow2_flush(q) == -EIO);
+    assert(lr_qcow2_flush(q) == 0 && sync_calls == 3);
+    assert(lr_qcow2_flush(q) == 0 && sync_calls == 3);
+    puts("metadata flush: failed syncs retried, clean flush skipped: PASS");
+}
 
 int counted_zero(LRFile *f, int64_t off, int64_t len)
 {
@@ -153,7 +180,7 @@ int main(int argc, char **argv)
         } else {
             replacements(q, 0);
         }
-        assert(lr_qcow2_flush(q) == 0);
+        flush_retry(q, 0, cs);
         lr_qcow2_close(q);
         lr_file_close(f);
         return 0;
@@ -230,7 +257,7 @@ int main(int argc, char **argv)
         assert(!memcmp(output + i * PIECE * 2, input + i * PIECE, PIECE));
         assert(!memcmp(output + (i * 2 + 1) * PIECE, gap, PIECE));
     }
-    assert(lr_qcow2_flush(q) == 0);
+    flush_retry(q, offset, 65536);
     lr_qcow2_close(q);
     lr_file_close(f);
     puts("qcow2 bulk spans, bounded gaps, empty spans and cluster splits: PASS");

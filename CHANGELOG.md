@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- A failed qcow2 metadata sync remains pending, so later flushes retry the host sync instead of silently reporting success. Successful syncs still let clean flushes skip host I/O.
+
 - Correct the test frontend's Vulkan close/reopen lifecycle: tear down the old device and negotiate a fresh device before resetting the core context. This removes a harness-only reload crash and stale GPU handles; it is not a fix for the reported RetroArch heap corruption.
 
 - Fix Windows thread-local key publication races in RCU readers and QEMU helpers, GLib global string/random state races, non-atomic shared-object references, shared-array use-after-free, nested one-time initialization deadlocks, and duplicate default-context initialization. These are confirmed defects; the intermittent heap-corruption report is not yet conclusively attributed.

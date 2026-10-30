@@ -774,3 +774,5 @@ collided in the old 64-slot table; the nested initializer must complete.
 The Vulkan harness reload path destroys the old frontend device after core
 context destruction and negotiates a new device before context reset. It clears
 old command/fence/readback/query handles and balances loader/queue-lock lifetime.
+
+The qcow2 fixture injects two consecutive sync failures after a metadata change, requires both errors to propagate, then performs a real successful host sync. A following clean flush must skip host I/O. This guards retry behavior without replacing the real file backend.
