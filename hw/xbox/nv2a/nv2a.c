@@ -555,6 +555,11 @@ static int nv2a_post_load(void *opaque, int version_id)
     /* The switch registers come back with the snapshot; the subchannel they
      * were loaded for does not. */
     d->pgraph.ctx_switch_subchannel = -1;
+    /* Texture registers return to the snapshot, but bound host textures
+     * may still reflect later sampler/format state. Revalidate every unit. */
+    for (unsigned i = 0; i < NV2A_MAX_TEXTURES; i++) {
+        d->pgraph.texture_dirty[i] = true;
+    }
     pgraph_rebuild_inline_elements_bounds(&d->pgraph);
     retro_atomic_store_relaxed_int(&d->pgraph.flush_pending, 1);
     /* The compression flag follows the restored PFB registers. */

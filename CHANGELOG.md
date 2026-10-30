@@ -11,6 +11,7 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 - The test harness checks audio cadence with an integer phase, avoiding false sample-count failures when hard-FPU tests change host rounding. The declared timing is checked explicitly, and failed x87 test output is retained in CI logs. Core audio output is unchanged.
 
 - CPU Boost avoids saving dead x87 operand scratch values into CPU state between instructions. Real stack registers, helper synchronization and rounding retain their existing handling.
+- Savestate loads revalidate bound texture state after restoring GPU registers, fixing OpenGL retaining a later mip clamp. Mip/LOD0 regression covers CPU edits and states loaded under the opposite frontend setting.
 
 - Voice lock masks use unsigned 64-bit shifts at voices 63, 127, 191 and 255. Regression checks now exercise the production lock helpers and verify that locked voices stop advancing, without relying on signed-wrap behavior.
 - qcow2 HDD transfers combine adjacent memory spans before the bounded file-I/O vector is built, avoiding extra read/write calls and fragmented copies for contiguous buffers. Empty spans are skipped; scattered buffers and cluster boundaries keep their existing behavior.

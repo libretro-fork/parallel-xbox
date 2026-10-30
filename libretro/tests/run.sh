@@ -883,6 +883,49 @@ elif [ "$r" != 3 ]; then
   echo "FAIL: speculative readback exited $r"; exit 1
 fi
 
+# Mip selection, CPU edits and sampler state across a load, with LOD0 on/off.
+for lod_api in gl vk; do
+  lod_args="--opt xemu_renderer=opengl"
+  [ "$lod_api" = vk ] && lod_args="--vulkan --opt xemu_renderer=vulkan"
+  lod_available=true
+  for lod_option in disabled enabled; do
+    lod_file="$work/gpu-lod-$lod_api-$lod_option"
+    set +e
+    timeout 300 $h "$(path "$core")" "$(path "$work/sysg")" $vp $lod_args \
+      --opt xemu_force_texture_lod0=$lod_option --frames 3675 --strict \
+      --save 3520 --load 3620 --verify-load --state-out "$(path "$lod_file.state")" \
+      --pixel 3450 --pixel 3510 --pixel 3570 --pixel 3625 --pixel 3670 >"$lod_file.txt"
+    r=$?
+    set -e
+    if [ "$r" = 3 ] && [ "$lod_api" = vk ]; then lod_available=false; break; fi
+    [ "$r" = 0 ] || { echo "FAIL: $lod_api LOD0 $lod_option exited $r"; exit 1; }
+    if [ "$lod_option" = enabled ]; then
+      lod_wants="pixel_3450=0xff0000 pixel_3510=0xffff00 pixel_3570=0xffff00 pixel_3625=0xffff00 pixel_3670=0xffff00"
+    else
+      lod_wants="pixel_3450=0x00ff00 pixel_3510=0x00ff00 pixel_3570=0x0000ff pixel_3625=0x00ff00 pixel_3670=0x0000ff"
+    fi
+    for want in $lod_wants; do
+      grep -q "^$want$" "$lod_file.txt" || { echo "FAIL: $lod_api LOD0 $lod_option: $want"; exit 1; }
+    done
+  done
+  [ "$lod_available" = true ] || continue
+  for lod_option in disabled enabled; do
+    if [ "$lod_option" = enabled ]; then
+      lod_saved=disabled; lod_wants="pixel_3=0xffff00 pixel_60=0xffff00"
+    else
+      lod_saved=enabled; lod_wants="pixel_3=0x00ff00 pixel_60=0x0000ff"
+    fi
+    lod_file="$work/gpu-lod-$lod_api-$lod_saved-to-$lod_option"
+    timeout 300 $h "$(path "$core")" "$(path "$work/sysg")" $vp $lod_args \
+      --opt xemu_force_texture_lod0=$lod_option --frames 80 --load 1 --verify-load \
+      --state-in "$(path "$work/gpu-lod-$lod_api-$lod_saved.state")" \
+      --pixel 3 --pixel 60 >"$lod_file.txt"
+    for want in $lod_wants; do
+      grep -q "^$want$" "$lod_file.txt" || { echo "FAIL: $lod_api LOD0 state policy: $want"; exit 1; }
+    done
+  done
+done
+
 # A savestate taken while surfaces live only on the GPU (rom/gpu.c: before
 # run 64, B drawn and its depth cleared at frame 62, nothing read back), then
 # loaded in a new process, which has no GPU surfaces: the depth the guest

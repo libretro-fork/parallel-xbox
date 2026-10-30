@@ -1570,6 +1570,27 @@ void gpu_main(void)
             ram32(0x003000c0u, bad);
             ram32(0x003000c4u, rd32(0x03d80000u));
         }
+        if (frame == 3440) {
+            for (u32 o = 0; o < 1024; o += 4) ram32(0x03c00000u + o, 0xffff0000u);
+            for (u32 o = 0; o < 256; o += 4) ram32(0x03c00400u + o, 0xff00ff00u);
+            for (u32 o = 0; o < 64; o += 4) ram32(0x03c00500u + o, 0xff0000ffu);
+            texture_alias_at(0xc0000006u, 32, 0x3f000000u, 0, 0x03c00000u);
+            method(NV097_SET_TEXTURE_FORMAT, 1u | (2u << 4) | (1u << 3) |
+                   (6u << 8) | (3u << 16) | (4u << 20) | (4u << 24));
+            method(NV097_SET_TEXTURE_CONTROL0, (1u << 30) | (1u << 18) | (1u << 6));
+            method(NV097_SET_TEXTURE_FILTER, 0x01030000u);
+            triangle(); kick();
+        }
+        if (frame == 3500) {
+            texture_cpu_barrier();
+            for (u32 o = 0; o < 1024; o += 4) ram32(0x03c00000u + o, 0xffffff00u);
+        }
+        if (frame == 3560)
+            method(NV097_SET_TEXTURE_CONTROL0, (1u << 30) | (2u << 18) | (2u << 6));
+        if (frame >= 3441 && frame <= 3740) {
+            method(NV097_SET_SURFACE_COLOR_OFFSET, SURF_D);
+            triangle(); if (frame == 3740) disable_texture(); kick();
+        }
         method(NV097_FLIP_INCREMENT_WRITE, 0);
         kick();
         if (frame >= 100 && frame < 125) {
