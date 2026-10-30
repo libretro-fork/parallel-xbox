@@ -948,3 +948,15 @@ int qemu_shm_alloc(size_t size, Error **errp)
     error_setg(errp, "Shared memory is not supported.");
     return -1;
 }
+
+/* ftruncate is mapped to this helper by system/os-win32.h. It belongs to
+ * the platform layer even when no QEMU block backend is built. */
+int qemu_ftruncate64(int fd, int64_t length)
+{
+    int ret = _chsize_s(fd, length);
+    if (ret) {
+        errno = ret;
+        return -1;
+    }
+    return 0;
+}

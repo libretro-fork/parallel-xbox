@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Windows builds retain the file-truncation helper needed by migration file channels after removal of the old block backend.
+
 - The hard disk and the DVD drive no longer go through QEMU's block layer (its request layers, coroutines and I/O thread pool, about 65,000 lines): the core reads and writes them itself, each request one system call straight between the image and the guest's memory, on the emulator thread, with no thread switch and no allocation. A disk request now takes the same, fixed guest time every run (the moment it completes no longer depends on the host), which keeps run-ahead and deterministic emulation exact through disk access. Savestates (and each run-ahead frame) no longer sync the hard disk image to the disk when the game has written to it; the image is synced when the content closes, and a write is in the system's cache, safe from a crash of RetroArch, as soon as it is made.
 
 - The hard disk image may be a qcow2 (`xbox_hdd.qcow2`) or a raw image (`xbox_hdd.img`). A qcow2 is read and written as it is, so standalone xemu and the core can keep sharing one, its internal snapshots kept. When there is no image, the core writes its bundled one as a raw `xbox_hdd.img` (8 GB, of which only the data, about 2.5 MB, takes space), or as `xbox_hdd.qcow2` on FAT32 and exFAT, which have no sparse files. A qcow2's tables are written as each write needs them, so a crash or a kill of RetroArch leaves at most unused space in it (which `qemu-img check` reports as leaked), not lost writes.
