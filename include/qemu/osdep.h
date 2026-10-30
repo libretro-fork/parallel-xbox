@@ -613,8 +613,6 @@ struct qemu_signalfd_siginfo {
 };
 
 int qemu_signalfd(const sigset_t *mask);
-void sigaction_invoke(struct sigaction *action,
-                      struct qemu_signalfd_siginfo *info);
 #endif
 
 /*
@@ -664,15 +662,6 @@ bool qemu_has_direct_io(void);
 bool qemu_write_pidfile(const char *pidfile, Error **errp);
 
 int qemu_get_thread_id(void);
-
-/**
- * qemu_kill_thread:
- * @tid: thread id.
- * @sig: host signal.
- *
- * Send @sig to one of QEMU's own threads with identifier @tid.
- */
-int qemu_kill_thread(int tid, int sig);
 
 #ifndef CONFIG_IOVEC
 struct iovec {

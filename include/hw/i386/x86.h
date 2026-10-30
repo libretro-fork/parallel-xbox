@@ -123,11 +123,6 @@ void x86_cpu_unplug_request_cb(HotplugHandler *hotplug_dev,
 void x86_cpu_unplug_cb(HotplugHandler *hotplug_dev,
                        DeviceState *dev, Error **errp);
 
-void x86_load_linux(X86MachineState *x86ms,
-                    FWCfgState *fw_cfg,
-                    int acpi_data_size,
-                    bool pvh_enabled);
-
 bool x86_machine_is_smm_enabled(const X86MachineState *x86ms);
 bool x86_machine_is_acpi_enabled(const X86MachineState *x86ms);
 

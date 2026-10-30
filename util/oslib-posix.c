@@ -117,23 +117,6 @@ int qemu_get_thread_id(void)
 #endif
 }
 
-int qemu_kill_thread(int tid, int sig)
-{
-#if defined(__ANDROID__) && defined(__NR_tgkill)
-    return syscall(__NR_tgkill, getpid(), tid, sig);
-#elif defined(__linux__)
-    return syscall(__NR_tgkill, getpid(), tid, sig);
-#elif defined(__FreeBSD__)
-    return thr_kill2(getpid(), tid, sig);
-#elif defined(__NetBSD__)
-    return _lwp_kill(tid, sig);
-#elif defined(__OpenBSD__)
-    return thrkill(tid, sig, NULL);
-#else
-    return kill(tid, sig);
-#endif
-}
-
 bool qemu_write_pidfile(const char *path, Error **errp)
 {
     int fd;
@@ -288,25 +271,6 @@ void qemu_set_cloexec(int fd)
     assert(f != -1);
 }
 
-int qemu_socketpair(int domain, int type, int protocol, int sv[2])
-{
-    int ret;
-
-#ifdef SOCK_CLOEXEC
-    ret = socketpair(domain, type | SOCK_CLOEXEC, protocol, sv);
-    if (ret != -1 || errno != EINVAL) {
-        return ret;
-    }
-#endif
-    ret = socketpair(domain, type, protocol, sv);
-    if (ret == 0) {
-        qemu_set_cloexec(sv[0]);
-        qemu_set_cloexec(sv[1]);
-    }
-
-    return ret;
-}
-
 void qemu_clear_cloexec(int fd)
 {
     int f;
@@ -314,27 +278,6 @@ void qemu_clear_cloexec(int fd)
     assert(f != -1);
     f = fcntl(fd, F_SETFD, f & ~FD_CLOEXEC);
     assert(f != -1);
-}
-
-char *
-qemu_get_local_state_dir(void)
-{
-    return get_relocated_path(CONFIG_QEMU_LOCALSTATEDIR);
-}
-
-void qemu_set_tty_echo(int fd, bool echo)
-{
-    struct termios tty;
-
-    tcgetattr(fd, &tty);
-
-    if (echo) {
-        tty.c_lflag |= ECHO | ECHONL | ICANON | IEXTEN;
-    } else {
-        tty.c_lflag &= ~(ECHO | ECHONL | ICANON | IEXTEN);
-    }
-
-    tcsetattr(fd, TCSANOW, &tty);
 }
 
 #ifdef CONFIG_LINUX
@@ -683,31 +626,6 @@ bool qemu_prealloc_mem(int fd, char *area, size_t sz, int max_threads,
     return rv;
 }
 
-char *qemu_get_pid_name(pid_t pid)
-{
-    char *name = NULL;
-
-#if defined(__FreeBSD__)
-    /* BSDs don't have /proc, but they provide a nice substitute */
-    struct kinfo_proc *proc = kinfo_getproc(pid);
-
-    if (proc) {
-        name = g_strdup(proc->ki_comm);
-        free(proc);
-    }
-#else
-    /* Assume a system with reasonable procfs */
-    char *pid_path;
-    size_t len;
-
-    pid_path = g_strdup_printf("/proc/%d/cmdline", pid);
-    g_file_get_contents(pid_path, &name, &len, NULL);
-    g_free(pid_path);
-#endif
-
-    return name;
-}
-
 
 void *qemu_alloc_stack(size_t *sz)
 {
@@ -762,70 +680,6 @@ void *qemu_alloc_stack(size_t *sz)
 #ifdef CONFIG_DEBUG_STACK_USAGE
 static __thread unsigned int max_stack_usage;
 #endif
-
-void qemu_free_stack(void *stack, size_t sz)
-{
-#ifdef CONFIG_DEBUG_STACK_USAGE
-    unsigned int usage;
-    void *ptr;
-
-    for (ptr = stack + qemu_real_host_page_size(); ptr < stack + sz;
-         ptr += sizeof(uint32_t)) {
-        if (*(uint32_t *)ptr != 0xdeadbeaf) {
-            break;
-        }
-    }
-    usage = sz - (uintptr_t) (ptr - stack);
-    if (usage > max_stack_usage) {
-        error_report("thread %d max stack usage increased from %u to %u",
-                     qemu_get_thread_id(), max_stack_usage, usage);
-        max_stack_usage = usage;
-    }
-#endif
-
-    munmap(stack, sz);
-}
-
-/*
- * Disable CFI checks.
- * We are going to call a signal handler directly. Such handler may or may not
- * have been defined in our binary, so there's no guarantee that the pointer
- * used to set the handler is a cfi-valid pointer. Since the handlers are
- * stored in kernel memory, changing the handler to an attacker-defined
- * function requires being able to call a sigaction() syscall,
- * which is not as easy as overwriting a pointer in memory.
- */
-QEMU_DISABLE_CFI
-void sigaction_invoke(struct sigaction *action,
-                      struct qemu_signalfd_siginfo *info)
-{
-    siginfo_t si = {};
-    si.si_signo = info->ssi_signo;
-    si.si_errno = info->ssi_errno;
-    si.si_code = info->ssi_code;
-
-    /* Convert the minimal set of fields defined by POSIX.
-     * Positive si_code values are reserved for kernel-generated
-     * signals, where the valid siginfo fields are determined by
-     * the signal number.  But according to POSIX, it is unspecified
-     * whether SI_USER and SI_QUEUE have values less than or equal to
-     * zero.
-     */
-    if (info->ssi_code == SI_USER || info->ssi_code == SI_QUEUE ||
-        info->ssi_code <= 0) {
-        /* SIGTERM, etc.  */
-        si.si_pid = info->ssi_pid;
-        si.si_uid = info->ssi_uid;
-    } else if (info->ssi_signo == SIGILL || info->ssi_signo == SIGFPE ||
-               info->ssi_signo == SIGSEGV || info->ssi_signo == SIGBUS) {
-        si.si_addr = (void *)(uintptr_t)info->ssi_addr;
-    } else if (info->ssi_signo == SIGCHLD) {
-        si.si_pid = info->ssi_pid;
-        si.si_status = info->ssi_status;
-        si.si_uid = info->ssi_uid;
-    }
-    action->sa_sigaction(info->ssi_signo, &si, NULL);
-}
 
 size_t qemu_get_host_physmem(void)
 {

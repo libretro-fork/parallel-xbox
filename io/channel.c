@@ -33,12 +33,6 @@ bool qio_channel_has_feature(QIOChannel *ioc,
 }
 
 
-void qio_channel_set_feature(QIOChannel *ioc,
-                             QIOChannelFeature feature)
-{
-    ioc->features |= (1 << feature);
-}
-
 
 void qio_channel_set_name(QIOChannel *ioc,
                           const char *name)
@@ -276,24 +270,6 @@ int coroutine_mixed_fn qio_channel_writev_full_all(QIOChannel *ioc,
 
 
 
-ssize_t qio_channel_read(QIOChannel *ioc,
-                         void *buf,
-                         size_t buflen,
-                         Error **errp)
-{
-    struct iovec iov = { .iov_base = buf, .iov_len = buflen };
-    return qio_channel_readv_full(ioc, &iov, 1, NULL, NULL, 0, errp);
-}
-
-
-ssize_t qio_channel_write(QIOChannel *ioc,
-                          const void *buf,
-                          size_t buflen,
-                          Error **errp)
-{
-    struct iovec iov = { .iov_base = (char *)buf, .iov_len = buflen };
-    return qio_channel_writev_full(ioc, &iov, 1, NULL, 0, 0, errp);
-}
 
 
 
@@ -342,43 +318,6 @@ void qio_channel_set_aio_fd_handler(QIOChannel *ioc,
 
     klass->io_set_aio_fd_handler(ioc, read_ctx, io_read, write_ctx, io_write,
             opaque);
-}
-
-guint qio_channel_add_watch_full(QIOChannel *ioc,
-                                 GIOCondition condition,
-                                 QIOChannelFunc func,
-                                 gpointer user_data,
-                                 GDestroyNotify notify,
-                                 GMainContext *context)
-{
-    GSource *source;
-    guint id;
-
-    source = qio_channel_create_watch(ioc, condition);
-
-    g_source_set_callback(source, (GSourceFunc)func, user_data, notify);
-
-    id = g_source_attach(source, context);
-    g_source_unref(source);
-
-    return id;
-}
-
-GSource *qio_channel_add_watch_source(QIOChannel *ioc,
-                                      GIOCondition condition,
-                                      QIOChannelFunc func,
-                                      gpointer user_data,
-                                      GDestroyNotify notify,
-                                      GMainContext *context)
-{
-    GSource *source;
-    guint id;
-
-    id = qio_channel_add_watch_full(ioc, condition, func,
-                                    user_data, notify, context);
-    source = g_main_context_find_source_by_id(context, id);
-    g_source_ref(source);
-    return source;
 }
 
 

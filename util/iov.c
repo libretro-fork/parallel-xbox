@@ -58,24 +58,6 @@ size_t iov_to_buf_full(const struct iovec *iov, const unsigned int iov_cnt,
     return done;
 }
 
-size_t iov_memset(const struct iovec *iov, const unsigned int iov_cnt,
-                  size_t offset, int fillc, size_t bytes)
-{
-    size_t done;
-    unsigned int i;
-    for (i = 0, done = 0; (offset || done < bytes) && i < iov_cnt; i++) {
-        if (offset < iov[i].iov_len) {
-            size_t len = MIN(iov[i].iov_len - offset, bytes - done);
-            memset(iov[i].iov_base + offset, fillc, len);
-            done += len;
-            offset = 0;
-        } else {
-            offset -= iov[i].iov_len;
-        }
-    }
-    return done;
-}
-
 size_t iov_size(const struct iovec *iov, const unsigned int iov_cnt)
 {
     size_t len;
@@ -284,172 +266,6 @@ void qemu_iovec_add(QEMUIOVector *qiov, void *base, size_t len)
     ++qiov->niov;
 }
 
-/*
- * Concatenates (partial) iovecs from src_iov to the end of dst.
- * It starts copying after skipping `soffset' bytes at the
- * beginning of src and adds individual vectors from src to
- * dst copies up to `sbytes' bytes total, or up to the end
- * of src_iov if it comes first.  This way, it is okay to specify
- * very large value for `sbytes' to indicate "up to the end
- * of src".
- * Only vector pointers are processed, not the actual data buffers.
- */
-size_t qemu_iovec_concat_iov(QEMUIOVector *dst,
-                             struct iovec *src_iov, unsigned int src_cnt,
-                             size_t soffset, size_t sbytes)
-{
-    int i;
-    size_t done;
-
-    if (!sbytes) {
-        return 0;
-    }
-    assert(dst->nalloc != -1);
-    for (i = 0, done = 0; done < sbytes && i < src_cnt; i++) {
-        if (soffset < src_iov[i].iov_len) {
-            size_t len = MIN(src_iov[i].iov_len - soffset, sbytes - done);
-            qemu_iovec_add(dst, src_iov[i].iov_base + soffset, len);
-            done += len;
-            soffset = 0;
-        } else {
-            soffset -= src_iov[i].iov_len;
-        }
-    }
-
-    return done;
-}
-
-/*
- * Concatenates (partial) iovecs from src to the end of dst.
- * It starts copying after skipping `soffset' bytes at the
- * beginning of src and adds individual vectors from src to
- * dst copies up to `sbytes' bytes total, or up to the end
- * of src if it comes first.  This way, it is okay to specify
- * very large value for `sbytes' to indicate "up to the end
- * of src".
- * Only vector pointers are processed, not the actual data buffers.
- */
-void qemu_iovec_concat(QEMUIOVector *dst,
-                       QEMUIOVector *src, size_t soffset, size_t sbytes)
-{
-    qemu_iovec_concat_iov(dst, src->iov, src->niov, soffset, sbytes);
-}
-
-/*
- * qiov_find_iov
- *
- * Return pointer to iovec structure, where byte at @offset in original vector
- * @iov exactly is.
- * Set @remaining_offset to be offset inside that iovec to the same byte.
- */
-static struct iovec *iov_skip_offset(struct iovec *iov, size_t offset,
-                                     size_t *remaining_offset)
-{
-    while (offset > 0 && offset >= iov->iov_len) {
-        offset -= iov->iov_len;
-        iov++;
-    }
-    *remaining_offset = offset;
-
-    return iov;
-}
-
-/*
- * qemu_iovec_slice
- *
- * Find subarray of iovec's, containing requested range. @head would
- * be offset in first iov (returned by the function), @tail would be
- * count of extra bytes in last iovec (returned iov + @niov - 1).
- */
-struct iovec *qemu_iovec_slice(QEMUIOVector *qiov,
-                               size_t offset, size_t len,
-                               size_t *head, size_t *tail, int *niov)
-{
-    struct iovec *iov, *end_iov;
-
-    assert(offset + len <= qiov->size);
-
-    iov = iov_skip_offset(qiov->iov, offset, head);
-    end_iov = iov_skip_offset(iov, *head + len, tail);
-
-    if (*tail > 0) {
-        assert(*tail < end_iov->iov_len);
-        *tail = end_iov->iov_len - *tail;
-        end_iov++;
-    }
-
-    *niov = end_iov - iov;
-
-    return iov;
-}
-
-int qemu_iovec_subvec_niov(QEMUIOVector *qiov, size_t offset, size_t len)
-{
-    size_t head, tail;
-    int niov;
-
-    qemu_iovec_slice(qiov, offset, len, &head, &tail, &niov);
-
-    return niov;
-}
-
-/*
- * Check if the contents of subrange of qiov data is all zeroes.
- */
-bool qemu_iovec_is_zero(QEMUIOVector *qiov, size_t offset, size_t bytes)
-{
-    struct iovec *iov;
-    size_t current_offset;
-
-    assert(offset + bytes <= qiov->size);
-
-    iov = iov_skip_offset(qiov->iov, offset, &current_offset);
-
-    while (bytes) {
-        uint8_t *base = (uint8_t *)iov->iov_base + current_offset;
-        size_t len = MIN(iov->iov_len - current_offset, bytes);
-
-        if (!buffer_is_zero(base, len)) {
-            return false;
-        }
-
-        current_offset = 0;
-        bytes -= len;
-        iov++;
-    }
-
-    return true;
-}
-
-void qemu_iovec_init_slice(QEMUIOVector *qiov, QEMUIOVector *source,
-                           size_t offset, size_t len)
-{
-    struct iovec *slice_iov;
-    int slice_niov;
-    size_t slice_head, slice_tail;
-
-    assert(source->size >= len);
-    assert(source->size - len >= offset);
-
-    slice_iov = qemu_iovec_slice(source, offset, len,
-                                 &slice_head, &slice_tail, &slice_niov);
-    if (slice_niov == 1) {
-        qemu_iovec_init_buf(qiov, slice_iov[0].iov_base + slice_head, len);
-    } else {
-        qemu_iovec_init(qiov, slice_niov);
-        qemu_iovec_concat_iov(qiov, slice_iov, slice_niov, slice_head, len);
-    }
-}
-
-void qemu_iovec_destroy(QEMUIOVector *qiov)
-{
-    if (qiov->nalloc != -1) {
-        g_free(qiov->iov);
-    }
-
-    memset(qiov, 0, sizeof(*qiov));
-}
-
 void qemu_iovec_reset(QEMUIOVector *qiov)
 {
     assert(qiov->nalloc != -1);
@@ -458,22 +274,10 @@ void qemu_iovec_reset(QEMUIOVector *qiov)
     qiov->size = 0;
 }
 
-size_t qemu_iovec_to_buf(QEMUIOVector *qiov, size_t offset,
-                         void *buf, size_t bytes)
-{
-    return iov_to_buf(qiov->iov, qiov->niov, offset, buf, bytes);
-}
-
 size_t qemu_iovec_from_buf(QEMUIOVector *qiov, size_t offset,
                            const void *buf, size_t bytes)
 {
     return iov_from_buf(qiov->iov, qiov->niov, offset, buf, bytes);
-}
-
-size_t qemu_iovec_memset(QEMUIOVector *qiov, size_t offset,
-                         int fillc, size_t bytes)
-{
-    return iov_memset(qiov->iov, qiov->niov, offset, fillc, bytes);
 }
 
 typedef struct {

@@ -43,16 +43,6 @@ void trace_event_iter_init_all(TraceEventIter *iter);
 void trace_event_iter_init_pattern(TraceEventIter *iter, const char *pattern);
 
 /**
- * trace_event_iter_init_group:
- * @iter: the event iterator struct
- * @group_id: group_id to filter events by group.
- *
- * Initialize the event iterator struct @iter,
- * using @group_id to filter for events in the group.
- */
-void trace_event_iter_init_group(TraceEventIter *iter, size_t group_id);
-
-/**
  * trace_event_iter_next:
  * @iter: the event iterator struct
  *
@@ -63,16 +53,6 @@ void trace_event_iter_init_group(TraceEventIter *iter, size_t group_id);
  */
 TraceEvent *trace_event_iter_next(TraceEventIter *iter);
 
-
-/**
- * trace_event_name:
- * @id: Event name.
- *
- * Search an event by its name.
- *
- * Returns: pointer to #TraceEvent or NULL if not found.
- */
-TraceEvent *trace_event_name(const char *name);
 
 /**
  * trace_event_is_pattern:
@@ -202,13 +182,6 @@ extern QemuOptsList qemu_trace_opts;
  * Initialize tracing subsystem.
  */
 void trace_opt_parse(const char *optstr);
-
-/**
- * trace_get_vcpu_event_count:
- *
- * Return the number of known vcpu-specific events
- */
-uint32_t trace_get_vcpu_event_count(void);
 
 
 #include "control-internal.h"

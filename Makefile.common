@@ -479,7 +479,6 @@ SOURCES_UTIL := \
 	$(CORE_DIR)/util/nvdimm-utils.c \
 	$(CORE_DIR)/util/osdep.c \
 	$(CORE_DIR)/util/path.c \
-	$(CORE_DIR)/util/qdist.c \
 	$(CORE_DIR)/util/qemu-config.c \
 	$(CORE_DIR)/util/qemu-option.c \
 	$(CORE_DIR)/util/qemu-print.c \
@@ -578,7 +577,6 @@ SOURCES_COMMON := \
 	$(CORE_DIR)/io/channel.c \
 	$(CORE_DIR)/io/dns-resolver.c \
 	$(CORE_DIR)/io/net-listener.c \
-	$(CORE_DIR)/io/task.c \
 	$(CORE_DIR)/migration/migration-stats.c \
 	$(CORE_DIR)/migration/page_cache.c \
 	$(CORE_DIR)/migration/qemu-file.c \
@@ -796,7 +794,6 @@ SOURCES_TARGET := \
 	$(CORE_DIR)/hw/i386/e820_memory_layout.c \
 	$(CORE_DIR)/hw/i386/fw_cfg.c \
 	$(CORE_DIR)/hw/i386/kvm/xen-stubs.c \
-	$(CORE_DIR)/hw/i386/multiboot.c \
 	$(CORE_DIR)/hw/i386/pc.c \
 	$(CORE_DIR)/hw/i386/pc_sysfw.c \
 	$(CORE_DIR)/hw/i386/pc_sysfw_ovmf-stubs.c \

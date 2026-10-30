@@ -25,14 +25,6 @@
 #include "qemu/coroutine.h"
 #include "qemu/main-loop.h"
 
-Visitor *qobject_input_visitor_new_qmp(QObject *obj)
-{
-    Visitor *v = qobject_input_visitor_new(obj);
-
-    visit_set_policy(v, &compat_policy);
-    return v;
-}
-
 Visitor *qobject_output_visitor_new_qmp(QObject **result)
 {
     Visitor *v = qobject_output_visitor_new(result);

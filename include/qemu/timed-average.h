@@ -57,9 +57,6 @@ void timed_average_init(TimedAverage *ta, QEMUClockType clock_type,
 
 void timed_average_account(TimedAverage *ta, uint64_t value);
 
-uint64_t timed_average_min(TimedAverage *ta);
-uint64_t timed_average_avg(TimedAverage *ta);
-uint64_t timed_average_max(TimedAverage *ta);
 uint64_t timed_average_sum(TimedAverage *ta, uint64_t *elapsed);
 
 #endif

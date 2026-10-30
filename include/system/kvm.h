@@ -524,8 +524,6 @@ void kvm_resample_fd_notify(int gsi);
 
 bool kvm_dirty_ring_enabled(void);
 
-uint32_t kvm_dirty_ring_size(void);
-
 void kvm_mark_guest_state_protected(void);
 
 int kvm_create_guest_memfd(uint64_t size, uint64_t flags, Error **errp);

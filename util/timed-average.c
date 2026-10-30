@@ -182,42 +182,6 @@ void timed_average_account(TimedAverage *ta, uint64_t value)
     }
 }
 
-/* Get the minimum value
- *
- * @ta:  the TimedAverage structure
- * @ret: the minimum value
- */
-uint64_t timed_average_min(TimedAverage *ta)
-{
-    TimedAverageWindow *w;
-    check_expirations(ta, NULL);
-    w = current_window(ta);
-    return w->min < UINT64_MAX ? w->min : 0;
-}
-
-/* Get the average value
- *
- * @ta:  the TimedAverage structure
- * @ret: the average value
- */
-uint64_t timed_average_avg(TimedAverage *ta)
-{
-    TimedAverageWindow *w;
-    check_expirations(ta, NULL);
-    w = current_window(ta);
-    return w->count > 0 ? w->sum / w->count : 0;
-}
-
-/* Get the maximum value
- *
- * @ta:  the TimedAverage structure
- * @ret: the maximum value
- */
-uint64_t timed_average_max(TimedAverage *ta)
-{
-    check_expirations(ta, NULL);
-    return current_window(ta)->max;
-}
 
 /* Get the sum of all accounted values
  * @ta:      the TimedAverage structure

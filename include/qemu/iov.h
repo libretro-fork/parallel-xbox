@@ -74,8 +74,6 @@ iov_to_buf(const struct iovec *iov, const unsigned int iov_cnt,
  * min(size, iov_size(iov) - offset).
  * Returns 0 when `offset' points to the outside of iovec.
  */
-size_t iov_memset(const struct iovec *iov, const unsigned int iov_cnt,
-                  size_t offset, int fillc, size_t bytes);
 
 /*
  * Send/recv data from/to iovec buffers directly, with the provided
@@ -233,27 +231,11 @@ static inline void *qemu_iovec_buf(QEMUIOVector *qiov)
 }
 
 void qemu_iovec_init(QEMUIOVector *qiov, int alloc_hint);
-void qemu_iovec_init_slice(QEMUIOVector *qiov, QEMUIOVector *source,
-                           size_t offset, size_t len);
-struct iovec *qemu_iovec_slice(QEMUIOVector *qiov,
-                               size_t offset, size_t len,
-                               size_t *head, size_t *tail, int *niov);
-int qemu_iovec_subvec_niov(QEMUIOVector *qiov, size_t offset, size_t len);
 void qemu_iovec_add(QEMUIOVector *qiov, void *base, size_t len);
-void qemu_iovec_concat(QEMUIOVector *dst,
-                       QEMUIOVector *src, size_t soffset, size_t sbytes);
-size_t qemu_iovec_concat_iov(QEMUIOVector *dst,
-                             struct iovec *src_iov, unsigned int src_cnt,
-                             size_t soffset, size_t sbytes);
-bool qemu_iovec_is_zero(QEMUIOVector *qiov, size_t qiov_offeset, size_t bytes);
 void qemu_iovec_destroy(QEMUIOVector *qiov);
 void qemu_iovec_reset(QEMUIOVector *qiov);
-size_t qemu_iovec_to_buf(QEMUIOVector *qiov, size_t offset,
-                         void *buf, size_t bytes);
 size_t qemu_iovec_from_buf(QEMUIOVector *qiov, size_t offset,
                            const void *buf, size_t bytes);
-size_t qemu_iovec_memset(QEMUIOVector *qiov, size_t offset,
-                         int fillc, size_t bytes);
 void qemu_iovec_discard_back(QEMUIOVector *qiov, size_t bytes);
 
 #endif

@@ -31,7 +31,6 @@ bool compat_policy_input_ok(uint64_t features,
  * policy for handling deprecated management interfaces set with
  * -compat.
  */
-Visitor *qobject_input_visitor_new_qmp(QObject *obj);
 
 /*
  * Create a QObject output visitor for @obj for use with QMP

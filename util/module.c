@@ -298,41 +298,6 @@ out:
 
 static bool module_loaded_qom_all;
 
-int module_load_qom(const char *type, Error **errp)
-{
-    const QemuModinfo *modinfo;
-    const char **sl;
-    int rv = 0;
-
-    if (!type) {
-        error_setg(errp, "%s", "type is NULL");
-        return -1;
-    }
-
-    trace_module_lookup_object_type(type);
-    for (modinfo = module_info; modinfo->name != NULL; modinfo++) {
-        if (!modinfo->objs) {
-            continue;
-        }
-        if (!module_check_arch(modinfo)) {
-            continue;
-        }
-        for (sl = modinfo->objs; *sl != NULL; sl++) {
-            if (strcmp(type, *sl) == 0) {
-                if (rv > 0) {
-                    error_setg(errp, "multiple modules providing '%s'", type);
-                    return -1;
-                }
-                rv = module_load("", modinfo->name, errp);
-                if (rv < 0) {
-                    return rv;
-                }
-            }
-        }
-    }
-    return rv;
-}
-
 void module_load_qom_all(void)
 {
     const QemuModinfo *modinfo;

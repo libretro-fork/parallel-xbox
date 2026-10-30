@@ -20,20 +20,13 @@ static inline void qobject_init(QObject *obj, QType type)
 }
 
 void qbool_destroy_obj(QObject *obj);
-bool qbool_is_equal(const QObject *x, const QObject *y);
 
 void qdict_destroy_obj(QObject *obj);
-bool qdict_is_equal(const QObject *x, const QObject *y);
 
 void qlist_destroy_obj(QObject *obj);
-bool qlist_is_equal(const QObject *x, const QObject *y);
-
-bool qnull_is_equal(const QObject *x, const QObject *y);
 
 void qnum_destroy_obj(QObject *obj);
-bool qnum_is_equal(const QObject *x, const QObject *y);
 
 void qstring_destroy_obj(QObject *obj);
-bool qstring_is_equal(const QObject *x, const QObject *y);
 
 #endif

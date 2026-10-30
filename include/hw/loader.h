@@ -78,37 +78,6 @@ ssize_t load_image_size(const char *filename, void *addr, size_t size);
 typedef void (*symbol_fn_t)(const char *st_name, int st_info,
                             uint64_t st_value, uint64_t st_size);
 
-ssize_t load_elf_ram_sym(const char *filename,
-                         uint64_t (*elf_note_fn)(void *, void *, bool),
-                         uint64_t (*translate_fn)(void *, uint64_t),
-                         void *translate_opaque, uint64_t *pentry,
-                         uint64_t *lowaddr, uint64_t *highaddr,
-                         uint32_t *pflags, int elf_data_order, int elf_machine,
-                         int clear_lsb, int data_swab,
-                         AddressSpace *as, bool load_rom, symbol_fn_t sym_cb);
-
-/** load_elf_as:
- * Same as load_elf_ram_sym(), but always loads the elf as ROM
- */
-ssize_t load_elf_as(const char *filename,
-                    uint64_t (*elf_note_fn)(void *, void *, bool),
-                    uint64_t (*translate_fn)(void *, uint64_t),
-                    void *translate_opaque, uint64_t *pentry, uint64_t *lowaddr,
-                    uint64_t *highaddr, uint32_t *pflags, int elf_data_order,
-                    int elf_machine, int clear_lsb, int data_swab,
-                    AddressSpace *as);
-
-/** load_elf:
- * Same as load_elf_as(), but doesn't allow the caller to specify an
- * AddressSpace.
- */
-ssize_t load_elf(const char *filename,
-                 uint64_t (*elf_note_fn)(void *, void *, bool),
-                 uint64_t (*translate_fn)(void *, uint64_t),
-                 void *translate_opaque, uint64_t *pentry, uint64_t *lowaddr,
-                 uint64_t *highaddr, uint32_t *pflags, int elf_data_order,
-                 int elf_machine, int clear_lsb, int data_swab);
-
 #define LOAD_UIMAGE_LOADADDR_INVALID (-1)
 
 ssize_t rom_add_file(const char *file, const char *fw_dir,
@@ -125,7 +94,6 @@ int rom_add_elf_program(const char *name, GMappedFile *mapped_file, void *data,
                         AddressSpace *as);
 int rom_check_and_register_reset(void);
 
-int rom_copy(uint8_t *dest, hwaddr addr, size_t size);
 void *rom_ptr(hwaddr addr, size_t size);
 /**
  * rom_ptr_for_as: Return a pointer to ROM blob data for the address

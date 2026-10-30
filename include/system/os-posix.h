@@ -72,16 +72,6 @@ int os_mlock(bool on_fault);
  */
 void *qemu_alloc_stack(size_t *sz);
 
-/**
- * qemu_free_stack:
- * @stack: stack to free
- * @sz: size of stack in bytes
- *
- * Free a stack allocated via qemu_alloc_stack(). Note that sz must
- * be exactly the adjusted stack size returned by qemu_alloc_stack.
- */
-void qemu_free_stack(void *stack, size_t sz);
-
 /* POSIX and Mingw32 differ in the name of the stdio lock functions.  */
 
 static inline void qemu_flockfile(FILE *f)

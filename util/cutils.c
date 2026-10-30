@@ -102,22 +102,6 @@ int strstart(const char *str, const char *val, const char **ptr)
     return 1;
 }
 
-int stristart(const char *str, const char *val, const char **ptr)
-{
-    const char *p, *q;
-    p = str;
-    q = val;
-    while (*q != '\0') {
-        if (qemu_toupper(*p) != qemu_toupper(*q))
-            return 0;
-        p++;
-        q++;
-    }
-    if (ptr)
-        *ptr = p;
-    return 1;
-}
-
 /* XXX: use host strnlen if available ? */
 int qemu_strnlen(const char *s, int max_len)
 {
@@ -129,27 +113,6 @@ int qemu_strnlen(const char *s, int max_len)
         }
     }
     return i;
-}
-
-char *qemu_strsep(char **input, const char *delim)
-{
-    char *result = *input;
-    if (result != NULL) {
-        char *p;
-
-        for (p = result; *p != '\0'; p++) {
-            if (strchr(delim, *p)) {
-                break;
-            }
-        }
-        if (*p == '\0') {
-            *input = NULL;
-        } else {
-            *p = '\0';
-            *input = p + 1;
-        }
-    }
-    return result;
 }
 
 time_t mktimegm(struct tm *tm)
@@ -924,17 +887,6 @@ int uleb128_decode_small(const uint8_t *in, uint32_t *n)
     }
 }
 
-const char *si_prefix(unsigned int exp10)
-{
-    static const char *prefixes[] = {
-        "a", "f", "p", "n", "u", "m", "", "K", "M", "G", "T", "P", "E"
-    };
-
-    exp10 += 18;
-    assert(exp10 % 3 == 0 && exp10 / 3 < ARRAY_SIZE(prefixes));
-    return prefixes[exp10 / 3];
-}
-
 const char *iec_binary_prefix(unsigned int exp2)
 {
     static const char *prefixes[] = { "", "Ki", "Mi", "Gi", "Ti", "Pi", "Ei" };
@@ -965,19 +917,6 @@ char *size_to_str(uint64_t val)
     div = 1ULL << i;
 
     return g_strdup_printf("%0.3g %sB", (double)val / div, iec_binary_prefix(i));
-}
-
-char *freq_to_str(uint64_t freq_hz)
-{
-    double freq = freq_hz;
-    size_t exp10 = 0;
-
-    while (freq >= 1000.0) {
-        freq /= 1000.0;
-        exp10 += 3;
-    }
-
-    return g_strdup_printf("%0.3g %sHz", freq, si_prefix(exp10));
 }
 
 int qemu_pstrcmp0(const char **str1, const char **str2)

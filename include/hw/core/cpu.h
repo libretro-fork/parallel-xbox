@@ -950,16 +950,6 @@ static inline bool cpu_in_exclusive_context(const CPUState *cpu)
 CPUState *qemu_get_cpu(int index);
 
 /**
- * cpu_by_arch_id:
- * @id: Guest-exposed CPU ID of the CPU to obtain.
- *
- * Get a CPU with matching @id.
- *
- * Returns: The CPU or %NULL if there is no matching CPU.
- */
-CPUState *cpu_by_arch_id(int64_t id);
-
-/**
  * cpu_interrupt:
  * @cpu: The CPU to set an interrupt on.
  * @mask: The interrupts to set.

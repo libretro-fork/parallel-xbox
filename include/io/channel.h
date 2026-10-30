@@ -189,16 +189,6 @@ bool qio_channel_has_feature(QIOChannel *ioc,
                              QIOChannelFeature feature);
 
 /**
- * qio_channel_set_feature:
- * @ioc: the channel object
- * @feature: the feature to set support for
- *
- * Add channel support for the feature named in @feature.
- */
-void qio_channel_set_feature(QIOChannel *ioc,
-                             QIOChannelFeature feature);
-
-/**
  * qio_channel_set_name:
  * @ioc: the channel object
  * @name: the name of the channel
@@ -360,37 +350,6 @@ int coroutine_mixed_fn qio_channel_writev_all(QIOChannel *ioc,
                                               size_t niov,
                                               Error **errp);
 
-/**
- * qio_channel_read:
- * @ioc: the channel object
- * @buf: the memory region to read data into
- * @buflen: the length of @buf
- * @errp: pointer to a NULL-initialized error object
- *
- * Behaves as qio_channel_readv_full() but does not support
- * receiving of file handles, and only supports reading into
- * a single memory region.
- */
-ssize_t qio_channel_read(QIOChannel *ioc,
-                         void *buf,
-                         size_t buflen,
-                         Error **errp);
-
-/**
- * qio_channel_write:
- * @ioc: the channel object
- * @buf: the memory regions to send data from
- * @buflen: the length of @buf
- * @errp: pointer to a NULL-initialized error object
- *
- * Behaves as qio_channel_writev_full() but does not support
- * sending of file handles, and only supports writing from a
- * single memory region.
- */
-ssize_t qio_channel_write(QIOChannel *ioc,
-                          const void *buf,
-                          size_t buflen,
-                          Error **errp);
 
 /**
  * qio_channel_write_all:
@@ -534,50 +493,6 @@ void qio_channel_set_cork(QIOChannel *ioc,
 GSource *qio_channel_create_watch(QIOChannel *ioc,
                                   GIOCondition condition);
 
-/**
- * qio_channel_add_watch_full:
- * @ioc: the channel object
- * @condition: the I/O condition to monitor
- * @func: callback to invoke when the source becomes ready
- * @user_data: opaque data to pass to @func
- * @notify: callback to free @user_data
- * @context: the context to run the watch source
- *
- * Similar as qio_channel_add_watch(), but allows to specify context
- * to run the watch source.
- *
- * Returns: the source ID
- */
-guint qio_channel_add_watch_full(QIOChannel *ioc,
-                                 GIOCondition condition,
-                                 QIOChannelFunc func,
-                                 gpointer user_data,
-                                 GDestroyNotify notify,
-                                 GMainContext *context);
-
-/**
- * qio_channel_add_watch_source:
- * @ioc: the channel object
- * @condition: the I/O condition to monitor
- * @func: callback to invoke when the source becomes ready
- * @user_data: opaque data to pass to @func
- * @notify: callback to free @user_data
- * @context: gcontext to bind the source to
- *
- * Similar as qio_channel_add_watch(), but allows to specify context
- * to run the watch source, meanwhile return the GSource object
- * instead of tag ID, with the GSource referenced already.
- *
- * Note: callers is responsible to unref the source when not needed.
- *
- * Returns: the source pointer
- */
-GSource *qio_channel_add_watch_source(QIOChannel *ioc,
-                                      GIOCondition condition,
-                                      QIOChannelFunc func,
-                                      gpointer user_data,
-                                      GDestroyNotify notify,
-                                      GMainContext *context);
 
 /**
  * qio_channel_wait:
