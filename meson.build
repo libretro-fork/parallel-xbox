@@ -809,8 +809,16 @@ if get_option('libretro')
                           '-DGIO_STATIC_COMPILATION', '-DGMODULE_STATIC_COMPILATION',
                           '-DGOBJECT_STATIC_COMPILATION']
   qemu_cflags += libretro_static_defs
+  # each function and variable in a section of its own, so that the link
+  # drops what nothing in the core reaches (see libretro_link_args). Not
+  # on Windows: MinGW's __try1/__except1 (util/oslib-win32.c) put their
+  # directives in .text, which the assembler rejects in a function's own
+  # section, and meson has no per-file flags (the Makefile builds that
+  # file alone without them)
+  libretro_section_flags = host_os == 'windows' ? [] : ['-ffunction-sections', '-fdata-sections']
+  qemu_cflags += libretro_section_flags
   if 'cpp' in all_languages
-    qemu_cxxflags += libretro_static_defs
+    qemu_cxxflags += libretro_static_defs + libretro_section_flags
   endif
 endif
 
@@ -4516,17 +4524,25 @@ foreach target : target_dirs
       # Build as shared library for libretro
       execs = []
       libretro_link_args = link_args
+      # The link keeps only what the core's interface (retro_*) and QEMU's
+      # constructors reach, and drops the rest (QEMU's functions nothing in
+      # the core calls), with the section flags above
       if host_os == 'windows'
-        libretro_link_args += ['-liphlpapi', '-static', '-static-libgcc', '-static-libstdc++']
+        libretro_link_args += ['-liphlpapi', '-static', '-static-libgcc', '-static-libstdc++',
+          '-Wl,--gc-sections']
         libretro_suffix = 'dll'
       elif host_os == 'darwin'
+        # only retro_* exported, as ui/libretro.map elsewhere, so that what
+        # nothing reaches can be stripped
+        libretro_link_args += ['-Wl,-exported_symbol,_retro_*', '-Wl,-dead_strip']
         libretro_suffix = 'dylib'
       else
         # Only retro_* are the core's interface (ui/libretro.map); everything
         # else stays inside, so the core does not bind to, or interpose on,
         # the frontend's own glib, SDL or GL symbols.
         libretro_link_args += ['-Wl,-Bsymbolic', '-Wl,--exclude-libs,ALL',
-          '-Wl,--version-script=' + meson.current_source_dir() / 'ui' / 'libretro.map']
+          '-Wl,--version-script=' + meson.current_source_dir() / 'ui' / 'libretro.map',
+          '-Wl,--gc-sections']
         libretro_suffix = 'so'
       endif
       parallel_xbox_libretro = shared_library('parallel_xbox_libretro',

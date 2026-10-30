@@ -86,7 +86,7 @@ ifeq ($(platform),unix)
    fpic        := -fPIC
    SHARED      := -shared -Wl,--version-script=$(CORE_DIR)/ui/libretro.map \
                   -Wl,--no-undefined -Wl,-Bsymbolic -Wl,--exclude-libs,ALL \
-                  -Wl,-z,relro -Wl,-z,now
+                  -Wl,-z,relro -Wl,-z,now -Wl,--gc-sections
    OS_INCFLAGS := -isystem $(CORE_DIR)/linux-headers
    OS_CFLAGS   :=
    OS_LIBS     := -lpthread -ldl -lm -lutil
@@ -103,10 +103,16 @@ else ifeq ($(platform),win)
    TARGET      := $(TARGET_NAME)_libretro.dll
    fpic        :=
    # -static: libgcc, libstdc++ and winpthread go into the DLL too
+   # --discard-all: with a section per function the DLL's symbol table
+   # would carry a local symbol for every one of them (.text$name,
+   # .pdata$name, .xdata$name: 30 MB instead of 22)
    SHARED      := -shared -static -Wl,--no-undefined \
-                  -Wl,--exclude-all-symbols
+                  -Wl,--exclude-all-symbols -Wl,--gc-sections -Wl,--discard-all
    OS_INCFLAGS :=
    OS_CFLAGS   := -DWIN32 -DVK_USE_PLATFORM_WIN32_KHR
+   # a section per function overflows COFF's 32767 sections in the larger
+   # files (libepoxy's generated dispatch): the big object format has room
+   OS_SECTION_FLAGS := -Wa,-mbig-obj
    # -lsynchronization: WaitOnAddress/WakeByAddress, which QEMU's own
    # QemuEvent and QemuLockCnt (util/event.c, util/lockcnt.c) are built on
    OS_LIBS     := -lws2_32 -liphlpapi -lwinmm -lole32 -loleaut32 -lshlwapi \
@@ -127,7 +133,7 @@ else ifeq ($(platform),osx)
    # only retro_* are the core's interface, as ui/libretro.map on Linux
    SHARED      := -dynamiclib $(OSX_ARCH_FLAGS) \
                   -Wl,-exported_symbol,_retro_* \
-                  -Wl,-headerpad_max_install_names
+                  -Wl,-headerpad_max_install_names -Wl,-dead_strip
    OS_INCFLAGS :=
    # the Vulkan entry points come from the frontend (MoltenVK), volk loads
    # the rest; Metal surfaces are the frontend's
@@ -163,7 +169,12 @@ endif
 
 include Makefile.common
 
-BASE_FLAGS := $(OPT) $(fpic) $(ARCH_CFLAGS)
+# Each function and variable in a section of its own, and the link
+# (--gc-sections, -dead_strip on macOS) keeps only what the core's interface
+# (retro_*) and QEMU's constructors reach: the QEMU functions nothing in the
+# core calls are not in the binary.
+SECTION_FLAGS := -ffunction-sections -fdata-sections $(OS_SECTION_FLAGS)
+BASE_FLAGS := $(OPT) $(fpic) $(ARCH_CFLAGS) $(SECTION_FLAGS)
 
 # --- Objects -------------------------------------------------------------
 
@@ -205,6 +216,10 @@ $(OBJS_SPIRV_REFLECT): GROUP_CFLAGS := $(CFLAGS_SPIRV_REFLECT)
 $(OBJS_GLSLC):    GROUP_CFLAGS := $(CFLAGS_GLSLC)
 $(OBJS_VSH):      GROUP_CFLAGS := $(CFLAGS_VSH)
 $(OBJS_VMA):      GROUP_CXXFLAGS := $(CXXFLAGS_VMA)
+# MinGW's __try1/__except1 (util/oslib-win32.c) put the exception handler's
+# directives in .text, which the assembler rejects in a function's own
+# section: that file keeps one .text
+$(CORE_DIR)/util/oslib-win32.o: BASE_FLAGS := $(OPT) $(fpic) $(ARCH_CFLAGS)
 
 # --- Rules ---------------------------------------------------------------
 
