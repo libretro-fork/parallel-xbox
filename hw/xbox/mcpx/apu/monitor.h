@@ -32,6 +32,28 @@ static inline int16_t mcpx_apu_monitor_scale_s16(int16_t sample, int32_t gain)
     return (int16_t)((product + (product < 0 ? -32768 : 32768)) / 65536);
 }
 
+/* The VP's normalized host floats use the same 32768 scale as PCM input.
+ * Quantize once, after host gain, with symmetric nearest rounding. Double
+ * holds the float-by-Q16 product exactly and avoids premature float rounding
+ * around half steps. Nonfinite filter output cannot be cast to an integer. */
+static inline int16_t mcpx_apu_monitor_convert_f32(float sample, int32_t gain)
+{
+    if (!gain) {
+        return 0;
+    }
+    double value = (double)sample * gain * 0.5;
+    if (value != value) {
+        return 0;
+    }
+    if (value >= 32767.0) {
+        return 32767;
+    }
+    if (value <= -32768.0) {
+        return -32768;
+    }
+    return (int16_t)(value + (value < 0 ? -0.5 : 0.5));
+}
+
 void libretro_audio_set_volume(float volume);
 size_t libretro_audio_read_begin(const int16_t **samples);
 void libretro_audio_read_end(size_t frames);

@@ -232,15 +232,14 @@ void mcpx_apu_monitor_end(size_t frames)
 /* Producer: stereo float frames, as the VP makes them */
 void mcpx_apu_monitor_push_f32(const float (*samples)[2], size_t frames)
 {
-    const float gain = (float)retro_atomic_load_relaxed_int(&apu_gain_q16) * (32767.0f / 65536.0f);
+    const int32_t gain = retro_atomic_load_relaxed_int(&apu_gain_q16);
     int16_t *out = mcpx_apu_monitor_begin(frames);
 
     if (!out) {
         return;
     }
     for (size_t i = 0; i < 2 * frames; i++) {
-        float v = ((const float *)samples)[i] * gain;
-        out[i] = (int16_t)(v > 32767.0f ? 32767.0f : v < -32768.0f ? -32768.0f : v);
+        out[i] = mcpx_apu_monitor_convert_f32(((const float *)samples)[i], gain);
     }
     retro_spsc_write_end(&apu_queue, frames * FRAME_BYTES);
 }

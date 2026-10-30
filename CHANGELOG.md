@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- With APU DSP Emulation disabled, audio now preserves normalized PCM values at unity volume and rounds once to the nearest output sample after host volume. This removes avoidable low-level truncation and the 32767-scale amplitude loss in the host float output path. DSP arithmetic and its integer output path are unchanged.
+
 - An absent MCPX boot ROM uses an experimental, independently implemented MCPX 1.0 HLE boot path. The flash BIOS is still required. Supplied ROMs retain the existing boot path; Chihiro retains its BIOS's built-in boot code. MCPX 1.1/FBL boot is not implemented by the fallback.
 
 - Android is built with the plain Makefile (`make platform=android NDK=... ANDROID_ABI=arm64-v8a` or `x86_64`), with nothing but the NDK: libepoxy (EGL) and libslirp come from `deps/`, the core's own GLib from `libretro/glib`. The Android core now has NAT networking too, which the meson build left out.
