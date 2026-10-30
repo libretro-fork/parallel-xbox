@@ -3993,7 +3993,7 @@ common_ss.add(pagevary)
 specific_ss.add(files('page-vary-target.c'))
 
 common_ss.add(files('target-info.c'))
-system_ss.add(files('target-info-qom.c'))
+system_ss.add(files())
 
 subdir('backends')
 subdir('configs/targets')
@@ -4178,7 +4178,9 @@ libio = static_library('io', io_ss.sources() + genh,
 io = declare_dependency(objects: libio.extract_all_objects(recursive: false),
                         dependencies: [io_ss.dependencies(), crypto, qom])
 
+# vmstate-types.c puts libretro-common's atomics on the wire
 libmigration = static_library('migration', sources: migration_files + genh,
+                              include_directories: libretro_common_inc,
                               build_by_default: false)
 migration = declare_dependency(objects: libmigration.extract_all_objects(recursive: false),
                                dependencies: [qom, io])
@@ -4544,7 +4546,7 @@ foreach target : target_dirs
         libretro_suffix = 'so'
       endif
       parallel_xbox_libretro = shared_library('parallel_xbox_libretro',
-        files('system/main.c'),
+        files(),
         install: true,
         c_args: c_args + libretro_static_defs,
         dependencies: arch_deps,
@@ -4559,14 +4561,14 @@ foreach target : target_dirs
     execs = [{
       'name': 'qemu-system-' + target_name,
       'win_subsystem': 'console',
-      'sources': files('system/main.c'),
+      'sources': files(),
       'dependencies': [sdl]
     }]
     if host_os == 'windows' and (sdl.found() or gtk.found())
       execs += [{
         'name': 'qemu-system-' + target_name + 'w',
         'win_subsystem': 'windows',
-        'sources': files('system/main.c'),
+        'sources': files(),
         'dependencies': [sdl]
       }]
     endif

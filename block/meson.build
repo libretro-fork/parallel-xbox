@@ -4,9 +4,6 @@ block_ss.add(files(
   'aio_task.c',
   'amend.c',
   'backup.c',
-  'blkdebug.c',
-  'blklogwrites.c',
-  'blkverify.c',
   'block-backend.c',
   'block-copy.c',
   'commit.c',
@@ -15,14 +12,11 @@ block_ss.add(files(
   'create.c',
   'crypto.c',
   'dirty-bitmap.c',
-  'filter-compress.c',
   'graph-lock.c',
   'io.c',
   'mirror.c',
   'nbd.c',
-  'null.c',
   'libretro-vfs.c',
-  'preallocate.c',
   'progress_meter.c',
   'qapi.c',
   'qcow2.c',
@@ -32,18 +26,15 @@ block_ss.add(files(
   'qcow2-refcount.c',
   'qcow2-snapshot.c',
   'qcow2-threads.c',
-  'quorum.c',
   'raw-format.c',
   'reqlist.c',
   'snapshot.c',
-  'snapshot-access.c',
-  'throttle.c',
   'throttle-groups.c',
   'write-threshold.c',
 ), zstd, zlib)
 
-system_ss.add(when: 'CONFIG_TCG', if_true: files('blkreplay.c'))
-system_ss.add(files('block-ram-registrar.c'))
+system_ss.add(when: 'CONFIG_TCG', if_true: files())
+system_ss.add(files())
 system_ss.add(files('blkmemory.c'))
 
 if get_option('qcow1').allowed()
@@ -97,7 +88,7 @@ else
 endif
 block_ss.add(when: libiscsi, if_true: files('iscsi-opts.c'))
 if host_os == 'linux'
-  block_ss.add(files('nvme.c'))
+  block_ss.add(files())
 endif
 if get_option('replication').allowed()
   block_ss.add(files('replication.c'))

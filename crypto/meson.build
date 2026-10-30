@@ -1,27 +1,19 @@
 crypto_ss.add(genh)
 crypto_ss.add(files(
   'afsplit.c',
-  'akcipher.c',
   'block-luks.c',
   'block-qcow.c',
   'block.c',
   'cipher.c',
-  'der.c',
   'hash.c',
-  'hmac.c',
   'ivgen-essiv.c',
   'ivgen-plain.c',
   'ivgen-plain64.c',
   'ivgen.c',
   'pbkdf.c',
   'secret_common.c',
-  'secret.c',
   'tlscreds.c',
-  'tlscredsanon.c',
-  'tlscredspsk.c',
-  'tlscredsx509.c',
   'tlssession.c',
-  'rsakey.c',
 ))
 
 if gnutls.found()
@@ -41,7 +33,7 @@ elif gcrypt.found()
 elif gnutls.found()
   crypto_ss.add(gnutls, files('hash-gnutls.c', 'hmac-gnutls.c', 'pbkdf-gnutls.c'))
 else
-  crypto_ss.add(files('hash-glib.c', 'hmac-glib.c', 'pbkdf-stub.c'))
+  crypto_ss.add(files('hash-glib.c', 'pbkdf-stub.c'))
 endif
 
 if have_keyring

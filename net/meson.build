@@ -2,10 +2,7 @@ system_ss.add(files(
   'announce.c',
   'checksum.c',
   'dgram.c',
-  'dump.c',
   'eth.c',
-  'filter-buffer.c',
-  'filter-mirror.c',
   'filter.c',
   'hub.c',
   'net-hmp-cmds.c',
@@ -29,7 +26,7 @@ if get_option('colo_proxy').allowed()
   system_ss.add(files('filter-rewriter.c'))
 endif
 
-system_ss.add(when: 'CONFIG_TCG', if_true: files('filter-replay.c'))
+system_ss.add(when: 'CONFIG_TCG', if_true: files())
 
 if have_l2tpv3
   system_ss.add(files('l2tpv3.c'))

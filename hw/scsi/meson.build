@@ -4,10 +4,6 @@ virtio_scsi_ss = ss.source_set()
 specific_virtio_scsi_ss = ss.source_set()
 
 scsi_ss.add(files(
-  'emulation.c',
-  'scsi-bus.c',
-  'scsi-disk.c',
-  'scsi-generic.c',
 ))
 scsi_ss.add(when: 'CONFIG_ESP', if_true: files('esp.c'))
 scsi_ss.add(when: 'CONFIG_ESP_PCI', if_true: files('esp-pci.c'))

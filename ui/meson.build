@@ -1,20 +1,15 @@
 system_ss.add(pixman)
 system_ss.add(png)
 system_ss.add(files(
-  'clipboard.c',
   'console.c',
   'cursor.c',
   'dmabuf.c',
   'input-keymap.c',
   'input-legacy.c',
-  'input-barrier.c',
   'input.c',
-  'kbd-state.c',
-  'keymaps.c',
   'qemu-pixman.c',
   'ui-hmp-cmds.c',
   'ui-qmp-cmds.c',
-  'util.c',
 ))
 
 subdir('thirdparty')
@@ -48,7 +43,7 @@ system_ss.add([spice_headers, files('spice-module.c')])
 system_ss.add(when: spice_protocol, if_true: files('vdagent.c'))
 
 if host_os == 'linux'
-  system_ss.add(files('input-linux.c', 'udmabuf.c'))
+  system_ss.add(files())
 endif
 system_ss.add(when: cocoa, if_true: files('cocoa.m'))
 

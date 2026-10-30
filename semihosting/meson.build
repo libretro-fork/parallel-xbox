@@ -13,7 +13,7 @@ system_ss.add(when: 'CONFIG_SEMIHOSTING', if_true: files(
 ))
 system_ss.add(when: 'CONFIG_ARM_COMPATIBLE_SEMIHOSTING',
   if_true: files('arm-compat-semi.c'),
-  if_false: files('arm-compat-semi-stub.c'))
+  if_false: files())
 
 specific_ss.add(when: ['CONFIG_SEMIHOSTING', 'CONFIG_USER_ONLY'],
                 if_true: files('syscalls.c'))

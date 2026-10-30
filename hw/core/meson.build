@@ -15,7 +15,7 @@ hwcore_ss.add(files(
 common_ss.add(files('cpu-common.c'))
 common_ss.add(files('machine-smp.c'))
 system_ss.add(when: 'CONFIG_FITLOADER', if_true: files('loader-fit.c'))
-system_ss.add(when: 'CONFIG_GENERIC_LOADER', if_true: files('generic-loader.c'))
+system_ss.add(when: 'CONFIG_GENERIC_LOADER', if_true: files())
 system_ss.add(when: 'CONFIG_GUEST_LOADER', if_true: files('guest-loader.c'))
 system_ss.add(when: 'CONFIG_OR_IRQ', if_true: files('or-irq.c'))
 system_ss.add(when: 'CONFIG_PLATFORM_BUS', if_true: files('platform-bus.c'))
@@ -36,15 +36,12 @@ system_ss.add(files(
   'machine-qmp-cmds.c',
   'machine.c',
   'nmi.c',
-  'null-machine.c',
   'numa.c',
   'qdev-fw.c',
   'qdev-hotplug.c',
   'qdev-properties-system.c',
   'reset.c',
   'sysbus.c',
-  'vm-change-state-handler.c',
-  'clock-vmstate.c',
 ))
 user_ss.add(files(
   'cpu-user.c',

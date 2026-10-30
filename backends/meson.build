@@ -1,25 +1,19 @@
 system_ss.add([files(
-  'cryptodev-builtin.c',
   'cryptodev-hmp-cmds.c',
   'cryptodev.c',
-  'hostmem-ram.c',
   'hostmem.c',
-  'rng-builtin.c',
-  'rng-egd.c',
-  'rng.c',
-  'confidential-guest-support.c',
 ), numa])
 
 if host_os != 'windows'
-  system_ss.add(files('rng-random.c'))
+  system_ss.add(files())
   if host_os != 'emscripten'
-    system_ss.add(files('hostmem-file.c'))
-    system_ss.add([files('hostmem-shm.c'), rt])
+    system_ss.add(files())
+    system_ss.add([files(), rt])
   endif
 endif
 if host_os == 'linux'
-  system_ss.add(files('hostmem-memfd.c'))
-  system_ss.add(files('host_iommu_device.c'))
+  system_ss.add(files())
+  system_ss.add(files())
 endif
 if keyutils.found()
     system_ss.add(keyutils, files('cryptodev-lkcf.c'))
@@ -40,6 +34,6 @@ if igvm.found()
   system_ss.add(files('igvm.c'), igvm)
 endif
 
-system_ss.add(when: 'CONFIG_SPDM_SOCKET', if_true: files('spdm-socket.c'))
+system_ss.add(when: 'CONFIG_SPDM_SOCKET', if_true: files())
 
 subdir('tpm')
