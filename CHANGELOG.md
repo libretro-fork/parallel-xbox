@@ -10,6 +10,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 - QEMU's migration code is cut down to what the savestates use (a state is one stream into the frontend's buffer): the migration transports (socket, exec, fd, file, TLS), multifd compression, RDMA, COLO, dirty-rate measurement and the QMP migration commands are gone, about 15,000 lines, and the -incoming and -loadvm options with them. The migration capabilities, which nothing in the core ever turned on, are constants now, so the code behind them is not built either. States saved before load as they did.
 
+- CPU block generation reuses its executable-page resolution for invalidated-block lookup, avoiding a second probe of the same address. Ordinary cache lookups still resolve their address, and MMIO/non-cacheable mappings retain their bypass behavior.
+
 - OpenGL now writes back GPU surfaces before uploading a one-byte texture view that overlaps them, fixing stale texture pixels from an inclusive-end off-by-one. Both renderers share an overflow-safe half-open VRAM overlap test; empty ranges no longer trigger surface writeback or reject GPU texture reuse.
 
 - Vulkan bordered cubemap base uploads now skip the same four-texel source border as OpenGL. Higher mip copies fit their destination levels and compressed rows retain block alignment. Copy skips remain separate from allocation/flush spans. Higher mip source origins retain the existing Vulkan policy pending an Xbox layout reference.

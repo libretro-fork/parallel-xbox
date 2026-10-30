@@ -314,15 +314,13 @@ static bool tb_lookup_cmp(const void *p, const void *d)
 
 static TranslationBlock *
 tb_htable_lookup_common(CPUState *cpu, TCGTBCPUState s, const struct qht *ht,
-                        qht_lookup_func_t func)
+                        qht_lookup_func_t func, tb_page_addr_t phys_pc)
 {
-    tb_page_addr_t phys_pc;
     struct tb_desc desc;
     uint32_t h;
 
     desc.s = s;
     desc.env = cpu_env(cpu);
-    phys_pc = get_page_addr_code(desc.env, s.pc);
     if (phys_pc == -1) {
         return NULL;
     }
@@ -334,7 +332,9 @@ tb_htable_lookup_common(CPUState *cpu, TCGTBCPUState s, const struct qht *ht,
 
 static TranslationBlock *tb_htable_lookup(CPUState *cpu, TCGTBCPUState s)
 {
-    return tb_htable_lookup_common(cpu, s, &tb_ctx.htable, tb_lookup_cmp);
+    tb_page_addr_t phys_pc = get_page_addr_code(cpu_env(cpu), s.pc);
+    return tb_htable_lookup_common(cpu, s, &tb_ctx.htable, tb_lookup_cmp,
+                                  phys_pc);
 }
 
 static bool inv_tb_lookup_cmp(const void *p, const void *d)
@@ -346,9 +346,13 @@ static bool inv_tb_lookup_cmp(const void *p, const void *d)
            tb->ihash == tb_code_hash_func(desc->env, desc->s.pc, tb->size);
 }
 
-TranslationBlock *inv_tb_htable_lookup(CPUState *cpu, TCGTBCPUState s)
+TranslationBlock *inv_tb_htable_lookup(CPUState *cpu, TCGTBCPUState s,
+                                       tb_page_addr_t phys_pc)
 {
-    return tb_htable_lookup_common(cpu, s, &tb_ctx.inv_htable, inv_tb_lookup_cmp);
+    /* tb_gen_code already performed the executable-page probe. Reuse that
+     * result, including the non-cacheable -1 sentinel, before any execution. */
+    return tb_htable_lookup_common(cpu, s, &tb_ctx.inv_htable, inv_tb_lookup_cmp,
+                                  phys_pc);
 }
 
 /* HACK (CPU boost): xemu builds only x86, so this hottest hook is called

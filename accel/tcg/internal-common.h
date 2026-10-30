@@ -67,7 +67,9 @@ static inline bool cpu_plugin_mem_cbs_enabled(const CPUState *cpu)
 TranslationBlock *tb_gen_code(CPUState *cpu, TCGTBCPUState s);
 void page_init(void);
 void tb_htable_init(void);
-TranslationBlock *inv_tb_htable_lookup(CPUState *cpu, TCGTBCPUState s);
+/* phys_pc is the executable-page result already resolved by tb_gen_code. */
+TranslationBlock *inv_tb_htable_lookup(CPUState *cpu, TCGTBCPUState s,
+                                       tb_page_addr_t phys_pc);
 void tb_reset_jump(TranslationBlock *tb, int n);
 TranslationBlock *tb_link_page(TranslationBlock *tb);
 void cpu_restore_state_from_tb(CPUState *cpu, TranslationBlock *tb,
