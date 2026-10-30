@@ -718,6 +718,27 @@ elif [ "$r" != 3 ]; then
   echo "FAIL: swizzled reclear exited $r"; exit 1
 fi
 
+# Partial clears use clear-specific masks; normal draws restore their own state.
+set +e
+timeout 300 $h "$core" "$work/sysg" $vp --vulkan --opt xemu_renderer=vulkan \
+  --opt xemu_memory=64 --opt xemu_surface_scale=1 --frames 3080 --strict \
+  --pixel 2990 --pixel 3070 --peek 0x300098 --peek 0x30009c --peek 0x3000a0 \
+  --peek 0x3000a4 --peek 0x3000a8 --peek 0x3000ac >"$work/gpu_partial_clear.txt"
+r=$?
+set -e
+if [ "$r" = 0 ]; then
+  for want in "pixel_2990=0x0000ff" "pixel_3070=0x0000ff" \
+              "peek_0x300098=0x00000000" "peek_0x30009c=0xffff00ff" \
+              "peek_0x3000a0=0xff0000ff" "peek_0x3000a4=0x00000000" \
+              "peek_0x3000a8=0xffff00ff" "peek_0x3000ac=0xff0000ff"; do
+    grep -q "^$want$" "$work/gpu_partial_clear.txt" || {
+      echo "FAIL: partial clear: $want"; exit 1;
+    }
+  done
+elif [ "$r" != 3 ]; then
+  echo "FAIL: partial clear exited $r"; exit 1
+fi
+
 # A savestate taken while surfaces live only on the GPU (rom/gpu.c: before
 # run 64, B drawn and its depth cleared at frame 62, nothing read back), then
 # loaded in a new process, which has no GPU surfaces: the depth the guest

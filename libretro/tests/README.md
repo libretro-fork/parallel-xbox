@@ -623,3 +623,14 @@ face blue then rebinds and clears it magenta at 2860. CPU verification at 2880
 checks all 256 swizzled pixels, both endpoint words and an untouched adjacent
 blue face. This validates storage/reuse behavior without changing clear color
 arithmetic or asserting new hardware-accuracy results.
+
+Partial-clear state isolation: Vulkan clear pipelines encode their own static
+blend, write-mask and depth state. The normal-draw dynamic-state emitter now
+skips clears and invalidates its shadow so subsequent normal draws re-emit state.
+A fresh 16x16 swizzled target at 2960 and linear target at 3040 are cleared blue,
+then red-only on the left half without rebinding. CPU checks at 2980/3060 verify
+all 256 pixels each: left magenta, right blue, alpha unchanged. The normal draw
+after each clear must display the existing blue texture at 2990/3070. The
+focused pre-fix swizzled run lost blue in 128 pixels; afterward all pixels match.
+This fixes host pipeline-state interference; it does not enable separately
+guarded partial clears of rebound swizzled views or change color arithmetic.

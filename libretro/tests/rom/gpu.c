@@ -1441,6 +1441,44 @@ void gpu_main(void)
             ram32(0x00300090u, rd32(0x03600400u + swizzled(15, 15) * 4));
             ram32(0x00300094u, rd32(0x03600800u));
         }
+        /* Static clear masks must survive normal-draw dynamic state emission. */
+        if (frame == 2960 || frame == 3040) {
+            u32 linear = frame == 3040;
+            method(NV097_SET_SURFACE_CLIP_H, 16u << 16);
+            method(NV097_SET_SURFACE_CLIP_V, 16u << 16);
+            method(NV097_SET_SURFACE_FORMAT, linear ? 0x128u : 0x04040228u);
+            method(NV097_SET_SURFACE_PITCH, 64u | (64u << 16));
+            method(NV097_SET_SURFACE_COLOR_OFFSET,
+                   linear ? 0x03c00000u : 0x03b00000u);
+            method(NV097_SET_COLOR_CLEAR_VALUE, 0xff0000ffu);
+            method(NV097_SET_CLEAR_RECT_H, 15u << 16);
+            method(NV097_SET_CLEAR_RECT_V, 15u << 16);
+            method(NV097_CLEAR_SURFACE, 0xf0);
+            method(NV097_SET_COLOR_CLEAR_VALUE, 0xffff0000u);
+            method(NV097_SET_CLEAR_RECT_H, 7u << 16);
+            method(NV097_CLEAR_SURFACE, 0x10); /* R only: blue must survive. */
+            method(NV097_SET_SURFACE_CLIP_H, WIDTH << 16);
+            method(NV097_SET_SURFACE_CLIP_V, HEIGHT << 16);
+            method(NV097_SET_SURFACE_FORMAT, 0x128u);
+            method(NV097_SET_SURFACE_PITCH, PITCH | (PITCH << 16));
+            method(NV097_SET_SURFACE_COLOR_OFFSET, SURF_D);
+            kick();
+            texture_alias_at(0x12u, 32, 0x3f000000u, 0, TEX_RETIRED);
+        }
+        if (frame == 2980 || frame == 3060) {
+            u32 linear = frame == 3060;
+            u32 address = linear ? 0x03c00000u : 0x03b00000u;
+            u32 result = linear ? 0x003000a4u : 0x00300098u;
+            u32 bad = 0;
+            for (u32 y = 0; y < 16; y++) for (u32 x = 0; x < 16; x++) {
+                u32 offset = linear ? y * 64 + x * 4 : swizzled(x, y) * 4;
+                bad += rd32(address + offset) !=
+                       (x < 8 ? 0xffff00ffu : 0xff0000ffu);
+            }
+            ram32(result, bad);
+            ram32(result + 4, rd32(address));
+            ram32(result + 8, rd32(address + 1020));
+        }
         method(NV097_FLIP_INCREMENT_WRITE, 0);
         kick();
         if (frame >= 100 && frame < 125) {
