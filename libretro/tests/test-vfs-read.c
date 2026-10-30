@@ -43,7 +43,7 @@ int main(void)
         f.bytes[i] = i;
     }
     uint8_t out[48];
-    LRFileIOV iov[] = { {out, 16}, {out + 24, 16} };
+    LRFileIOV iov[] = { {out, 16}, {out + 24, 16}, {NULL, 0} };
     int64_t cursor = 0;
     memset(out, 0xcc, sizeof(out));
     assert(lr_vfs_readv(&vfs, &f, &cursor, 0, iov, 2) == 0);
@@ -52,7 +52,8 @@ int main(void)
     assert(out[16] == 0xcc && out[47] == 0xcc);
     assert(lr_vfs_readv(&vfs, &f, &cursor, 32, iov, 2) == 0);
     assert(cursor == 64 && f.seeks == 0);
-    assert(lr_vfs_readv(&vfs, &f, &cursor, 60, iov, 2) == 0);
+    /* EOF zero-fill must ignore a null, empty trailing vector. */
+    assert(lr_vfs_readv(&vfs, &f, &cursor, 60, iov, 3) == 0);
     assert(cursor == 64 && f.seeks == 1);
     assert(!memcmp(out, f.bytes + 60, 4));
     assert(!memcmp(out + 4, (uint8_t[12]) {0}, 12));
@@ -65,5 +66,5 @@ int main(void)
     assert(f.seeks == seeks + 1 && cursor == 32);
     f.error = 1000;
     assert(lr_vfs_readv(&vfs, &f, &cursor, 32, iov, 2) == -EIO);
-    puts("VFS short reads, sequential seeks, scatter gaps, EOF and recovery: PASS");
+    puts("VFS short reads, sequential seeks, scatter gaps, EOF, empty spans and recovery: PASS");
 }
