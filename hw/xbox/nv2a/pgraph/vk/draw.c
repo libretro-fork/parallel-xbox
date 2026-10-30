@@ -3922,6 +3922,8 @@ void pgraph_vk_clear_surface(NV2AState *d, uint32_t parameter)
         (parameter & (NV097_CLEAR_SURFACE_Z | NV097_CLEAR_SURFACE_STENCIL));
 
     pg->clearing = true;
+    /* Surface uploads must know whether this clear replaces all contents. */
+    r->clear_parameter = parameter;
 
     // FIXME: If doing a full surface clear, mark the surface for full clear
     // and we can just do the clear as part of the surface load.
@@ -3933,8 +3935,6 @@ void pgraph_vk_clear_surface(NV2AState *d, uint32_t parameter)
         pg->clearing = false;
         return;
     }
-
-    r->clear_parameter = parameter;
 
     uint32_t clearrectx = pgraph_reg_r(pg, NV_PGRAPH_CLEARRECTX);
     uint32_t clearrecty = pgraph_reg_r(pg, NV_PGRAPH_CLEARRECTY);

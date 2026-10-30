@@ -26,6 +26,7 @@
 
 #include "hw/xbox/nv2a/nv2a_int.h"
 #include "hw/xbox/nv2a/pgraph/swizzle.h"
+#include "hw/xbox/nv2a/pgraph/surface-clear.h"
 #include "qemu/compiler.h"
 #include "ui/xemu-settings.h"
 #include "renderer.h"
@@ -1497,6 +1498,33 @@ void pgraph_vk_upload_surface_data(NV2AState *d, SurfaceBinding *surface,
 
     if (!(surface->upload_pending || force)) {
         return;
+    }
+
+    /* A complete color clear replaces the RAM data this upload would read.
+     * Record the clear in order with the draws, without an aux upload that
+     * may first drain them. Other surfaces/aspects and partial clears retain
+     * the normal upload path. */
+    if (!force && pg->clearing && surface->color &&
+        surface == r->color_binding &&
+        surface->width == pg->surface_binding_dim.width &&
+        surface->height == pg->surface_binding_dim.height &&
+        !pg->surface_shape.clip_x && !pg->surface_shape.clip_y &&
+        pg->surface_shape.anti_aliasing ==
+            NV097_SET_SURFACE_FORMAT_ANTI_ALIASING_CENTER_1) {
+        uint32_t x = pgraph_reg_r(pg, NV_PGRAPH_CLEARRECTX);
+        uint32_t y = pgraph_reg_r(pg, NV_PGRAPH_CLEARRECTY);
+        if (pgraph_full_color_clear(r->clear_parameter,
+                GET_MASK(x, NV_PGRAPH_CLEARRECTX_XMIN),
+                GET_MASK(x, NV_PGRAPH_CLEARRECTX_XMAX),
+                GET_MASK(y, NV_PGRAPH_CLEARRECTY_YMIN),
+                GET_MASK(y, NV_PGRAPH_CLEARRECTY_YMAX),
+                surface->width, surface->height)) {
+            surface->upload_pending = false;
+            surface->initialized = true;
+            surface->draw_time = pg->draw_time;
+            nv2a_profile_inc_counter(NV2A_PROF_SURF_UPLOAD_SKIPPED_CLEAR);
+            return;
+        }
     }
 
     nv2a_profile_inc_counter(NV2A_PROF_SURF_UPLOAD);

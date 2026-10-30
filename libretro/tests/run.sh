@@ -60,6 +60,8 @@ ${cc} -O2 -std=c99 -Wall -o "$work/bin/audiomargin" "$here/test-audio-margin.c"
 "$work/bin/audiomargin"
 ${cc} -O2 -std=c99 -Wall -I"$here/../.." -o "$work/bin/audiovolume" "$here/test-audio-volume.c" -lm
 "$work/bin/audiovolume"
+${cc} -O2 -std=c99 -Wall -I"$here/../.." -o "$work/bin/surfaceclear" "$here/test-surface-clear.c"
+"$work/bin/surfaceclear"
 ${cc} -O2 -std=c99 -Wall -o "$work/bin/sinecheck" "$here/sinecheck.c"
 ${cc} -O2 -std=c99 -Wall -o "$work/bin/rampcheck" "$here/rampcheck.c"
 ${cc} -O2 -std=c99 -Wall -o "$work/bin/mkdisc" "$here/mkdisc.c"

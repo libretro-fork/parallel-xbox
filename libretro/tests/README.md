@@ -1,5 +1,9 @@
 # The core's tests
 
+`test-surface-clear.c` checks the full-color-clear upload bypass against
+200,000 per-pixel/channel overwrite cases, including partial channels,
+partial rectangles, inclusive edges and empty surfaces. `run.sh` runs it.
+
 After building the core, `make s3tctest && libretro/tests/s3tctest` checks
 5,374,016 decoded components against an independent normalized BC1/2/3
 reference: every per-channel color endpoint pair, both BC1 palette modes,

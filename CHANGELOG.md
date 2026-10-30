@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Vulkan no longer uploads old RAM contents before a single-sample clear that replaces every color pixel and all RGBA channels. This also avoids the command-buffer drain those uploads could require. Partial clears, offset clip regions, multisample surfaces and depth/stencil keep their existing upload behavior.
+
 - Dirty-memory reprotection skips primary TLB groups whose conservative host-address tags cannot overlap the changed range, instead of scanning every entry in every populated mode. The index uses 512 bytes per MMU mode, with no allocation; fills, first writes, victim restores and flushes maintain it under the existing TLB lock. Tag collisions still run the ordinary checks. Victim translation entries and their slow-path metadata now swap together under that lock.
 
 - Windows builds retain the file-truncation helper needed by migration file channels after removal of the old block backend.
