@@ -36,6 +36,29 @@ int main(int argc, char **argv)
     assert(lr_file_pwrite(f, 0, block, sizeof(block)) == 0);
     memset(block, 0x5a, sizeof(block)); /* distinguish >4GiB from truncated offsets */
     assert(lr_file_pwrite(f, large - 4096, block, 4096) == 0);
+    /* More than the native vector limit also exercises the POSIX fallback.
+     * Distinct per-byte data catches span offsets and accidental gap copies. */
+    LRFileIOV writes[1302];
+    for (unsigned i = 0; i < sizeof(block); i++) {
+        block[i] = (uint8_t)(i * 29 + i / 251);
+    }
+    writes[0] = (LRFileIOV) {NULL, 0};
+    for (unsigned i = 0; i < 1300; i++) {
+        writes[i + 1] = (LRFileIOV) {block + i * 16, 16};
+    }
+    writes[1301] = (LRFileIOV) {NULL, 0};
+    assert(lr_file_pwritev(f, 65536, writes, 1302) == 0);
+    for (unsigned i = 0; i < 1300; i++) {
+        writes[i + 1].base = block + i * 32;
+    }
+    assert(lr_file_pwritev(f, 131072, writes, 1302) == 0);
+    for (unsigned i = 0; i < 1300; i++) {
+        assert(lr_file_pread(f, 65536 + i * 16, out, 16) == 0);
+        assert(!memcmp(out, block + i * 16, 16));
+        assert(lr_file_pread(f, 131072 + i * 16, out, 16) == 0);
+        assert(!memcmp(out, block + i * 32, 16));
+    }
+    memset(block, 0x5a, sizeof(block));
     lr_file_close(f);
     f = lr_file_open(argv[1], false, false);
     assert(f && lr_file_size(f) == large);

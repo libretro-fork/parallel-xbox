@@ -653,12 +653,22 @@ int lr_file_pwritev(LRFile *f, int64_t off, const LRFileIOV *iov, int n)
         }
     }
 #endif
-    for (int i = 0; i < n; i++) {
-        int ret = lr_file_pwrite(f, off, iov[i].base, iov[i].len);
+    for (int i = 0; i < n;) {
+        const void *base = iov[i].base;
+        size_t length = iov[i++].len;
+        while (i < n && length <= UINTPTR_MAX - (uintptr_t)base &&
+               (uintptr_t)iov[i].base == (uintptr_t)base + length &&
+               iov[i].len <= SIZE_MAX - length) {
+            length += iov[i++].len;
+        }
+        if (off < 0 || length > (uint64_t)(INT64_MAX - off)) {
+            return -EINVAL;
+        }
+        int ret = lr_file_pwrite(f, off, base, length);
         if (ret < 0) {
             return ret;
         }
-        off += iov[i].len;
+        off += length;
     }
     return 0;
 }
