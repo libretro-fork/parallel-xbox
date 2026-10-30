@@ -333,11 +333,23 @@ tb_htable_lookup_common(CPUState *cpu, TCGTBCPUState s, const struct qht *ht,
     return qht_lookup_custom(ht, &desc, h, func);
 }
 
+/*
+ * CPU boost: a miss falls back to the block translated for any class of the
+ * carry flag it starts with (XEMU_TB_CF_ANY), in both tables.
+ */
 static TranslationBlock *tb_htable_lookup(CPUState *cpu, TCGTBCPUState s)
 {
     tb_page_addr_t phys_pc = get_page_addr_code(cpu_env(cpu), s.pc);
-    return tb_htable_lookup_common(cpu, s, &tb_ctx.htable, tb_lookup_cmp,
-                                  phys_pc, NULL);
+    TranslationBlock *tb = tb_htable_lookup_common(cpu, s, &tb_ctx.htable,
+                                                   tb_lookup_cmp, phys_pc,
+                                                   NULL);
+
+    if (!tb && xemu_cpu_boost) {
+        s.flags |= XEMU_TB_CF_ANY;
+        tb = tb_htable_lookup_common(cpu, s, &tb_ctx.htable, tb_lookup_cmp,
+                                     phys_pc, NULL);
+    }
+    return tb;
 }
 
 static bool inv_tb_lookup_cmp(const void *p, const void *d)
@@ -356,8 +368,16 @@ TranslationBlock *inv_tb_htable_lookup(CPUState *cpu, TCGTBCPUState s,
 {
     /* tb_gen_code already performed the executable-page probe. Reuse that
      * result, including the non-cacheable -1 sentinel, before any execution. */
-    return tb_htable_lookup_common(cpu, s, &tb_ctx.inv_htable, inv_tb_lookup_cmp,
-                                  phys_pc, host_pc);
+    TranslationBlock *tb = tb_htable_lookup_common(cpu, s, &tb_ctx.inv_htable,
+                                                   inv_tb_lookup_cmp, phys_pc,
+                                                   host_pc);
+
+    if (!tb && xemu_cpu_boost) {
+        s.flags |= XEMU_TB_CF_ANY;
+        tb = tb_htable_lookup_common(cpu, s, &tb_ctx.inv_htable,
+                                     inv_tb_lookup_cmp, phys_pc, host_pc);
+    }
+    return tb;
 }
 
 /* HACK (CPU boost): xemu builds only x86, so this hottest hook is called
@@ -400,7 +420,8 @@ static inline TranslationBlock *tb_lookup(CPUState *cpu, TCGTBCPUState s)
     if (likely(tb &&
                jc->array[hash].pc == s.pc &&
                tb->cs_base == s.cs_base &&
-               tb->flags == s.flags &&
+               (tb->flags == s.flags ||
+                tb->flags == (s.flags | XEMU_TB_CF_ANY)) &&
                tb_cflags(tb) == s.cflags)) {
         goto hit;
     }

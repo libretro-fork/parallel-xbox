@@ -213,6 +213,15 @@ typedef enum X86Seg {
 #define TB_CF_SRC_LSB 3 /* EFLAGS, SAR: CC_SRC & 1 */
 #define TB_CF_ADDL    4 /* (uint32_t)CC_DST < (uint32_t)CC_SRC */
 #define TB_CF_SUBL    5 /* (uint32_t)(CC_DST + CC_SRC) < (uint32_t)CC_SRC */
+/*
+ * Never a CPU state's: the class of a block that reads neither CF nor the
+ * CC_OP it starts with before setting the flags, so its code is the same for
+ * every class; it is translated once, with these bits (XEMU_TB_CF_ANY), and
+ * the lookups fall back to it. Translated again (a retranslation), it gets
+ * the code that works for any class: the helper, no goto_tb on the CC_OP it
+ * started with.
+ */
+#define TB_CF_ANY     7
 #define TB_CF_FLAGS_MASK ((3u << 30) | (1u << 2))
 
 static inline uint32_t tb_cf_flags(int cf_class)

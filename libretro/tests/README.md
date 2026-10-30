@@ -127,6 +127,10 @@ every flag-setting instruction, on operands around the carry, then a jump,
 then a block that reads CF before it sets the flags (INC, which keeps CF,
 ADC, JC, and one block reached from blocks of every kind and left by an
 indirect jump), each against what SETC saw right after the instruction.
+Two more blocks are reached from every kind: one sets the flags before it
+reads CF, so CPU Boost translates it once for all of them (`TB_CF_ANY`),
+and one leaves by a direct jump with the flags untouched, so it must not be
+(a translator that shared it fails this case).
 `run.sh` runs it with CPU Boost on, where the next block knows from its TB
 flags how to compute CF and does it inline, and off, where QEMU's helper
 does.

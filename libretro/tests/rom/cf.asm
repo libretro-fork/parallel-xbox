@@ -4,9 +4,12 @@
 ; the block, and the next block reads CF before setting the flags: INC
 ; (which keeps CF), ADC, JC, and a block shared by every case (reached from
 ; blocks of every CC_OP, left by an indirect jump). Each must see the CF
-; SETC saw right after the instruction. Run with CPU Boost on and off
-; (run.sh). Results at 0x300000: R+0 "CFOK" when every case passed, R+4 the
-; number of the case that failed.
+; SETC saw right after the instruction. Two more shared blocks, which CPU
+; Boost translates once for every class of CC_OP (TB_CF_ANY) or must not:
+; one that sets the flags before reading CF, and one that leaves by a
+; direct jump, flags untouched, for a block that reads CF. Run with CPU
+; Boost on and off (run.sh). Results at 0x300000: R+0 "CFOK" when every
+; case passed, R+4 the number of the case that failed.
 bits 32
 org 0xfff00000
 %include "rep-common.inc"
@@ -62,6 +65,17 @@ org 0xfff00000
     jmp shared
 %%e:
     check dl,[R+64]
+    cfset {%1},%2,%3,%4
+    mov esi,%%f
+    jmp pass
+%%f:
+    check dl,[R+64]
+    cfset {%1},%2,%3,%4
+    mov dh,0
+    mov esi,%%g
+    jmp ownflags
+%%g:
+    check dh,1
 %endmacro
 
 ; every operand pair, with CF clear and set before
@@ -122,6 +136,21 @@ start:
 shared:
     inc ebx
     setc dl
+    jmp esi
+; flags untouched: its exit's CC_OP is the one it started with
+pass:
+    lea ebx,[ebx+1]
+    jmp pass_cf
+pass_cf:
+    setc dl
+    jmp esi
+; sets the flags first: the same code whatever it starts with
+ownflags:
+    mov ecx,1
+    sub ecx,2
+    jmp ownflags_cf
+ownflags_cf:
+    setc dh
     jmp esi
     rep_test_handlers
 times 0x100000-($-$$) db 0xff

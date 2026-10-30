@@ -36,6 +36,7 @@
 
 #include "exec/log.h"
 #include "ui/xemu-settings.h" /* CPU boost's setting, on every host */
+#include "qemu/cpu-boost.h"
 
 static int g_use_hard_fpu;
 
@@ -216,6 +217,8 @@ typedef struct DisasContext {
      */
     int cf_entry_class;
     bool cc_op_entry;
+    /* the block's code depends on cf_entry_class: not a TB_CF_ANY block */
+    bool cf_entry_used;
     int mem_index; /* select memory access functions */
     uint32_t flags; /* all execution flags */
     int cpuid_features;
@@ -1089,7 +1092,8 @@ static bool gen_exit_tb_flags(DisasContext *s, uint32_t *flags)
     }
     if (s->cc_op != CC_OP_DYNAMIC) {
         cf_class = x86_cc_op_cf_class(s->cc_op);
-    } else if (s->cc_op_entry) {
+    } else if (s->cc_op_entry && s->cf_entry_class != TB_CF_ANY) {
+        s->cf_entry_used = true;
         cf_class = s->cf_entry_class;
     } else {
         return false;
@@ -1161,8 +1165,12 @@ static CCPrepare gen_prepare_eflags_c(DisasContext *s, TCGv reg)
           in efficiently implementing e.g. INC at the start of a TB.  */
        gen_update_cc_op(s);
        if (s->cc_op == CC_OP_DYNAMIC && s->cc_op_entry &&
-           s->cf_entry_class != TB_CF_UNKNOWN) {
-           return gen_prepare_eflags_c_entry(s);
+           s->cf_entry_class != TB_CF_ANY) {
+           /* the helper's code too: classes that have their own do better */
+           s->cf_entry_used = true;
+           if (s->cf_entry_class != TB_CF_UNKNOWN) {
+               return gen_prepare_eflags_c_entry(s);
+           }
        }
        if (!reg) {
            reg = tcg_temp_new();
@@ -4431,6 +4439,7 @@ static void i386_tr_init_disas_context(DisasContextBase *dcbase, CPUState *cpu)
     dc->flags = flags & ~TB_CF_FLAGS_MASK;
     dc->cf_entry_class = tb_cf_class_of_flags(flags);
     dc->cc_op_entry = true;
+    dc->cf_entry_used = false;
 #ifndef CONFIG_USER_ONLY
     dc->cpl = cpl;
     dc->iopl = iopl;
@@ -4600,6 +4609,15 @@ static void i386_tr_tb_stop(DisasContextBase *dcbase, CPUState *cpu)
         break;
     default:
         g_assert_not_reached();
+    }
+
+    /*
+     * CPU boost: code that never used the class it started with serves
+     * them all; tb_gen_code() hashes the TB with these flags.
+     */
+    QEMU_BUILD_BUG_ON(XEMU_TB_CF_ANY != TB_CF_FLAGS_MASK);
+    if (xemu_cpu_boost && !dc->cf_entry_used) {
+        dc->base.tb->flags |= tb_cf_flags(TB_CF_ANY);
     }
 }
 

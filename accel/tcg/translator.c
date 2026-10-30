@@ -28,6 +28,7 @@
 #include "hw/core/cpu.h"
 #include "system/cpus.h"
 #include "qemu/cpu-pace.h"
+#include "qemu/cpu-boost.h"
 
 void tcg_gen_lookup_and_goto_ptr_fast(TCGv_i64 pc, uint64_t cs_base,
                                       uint32_t flags)
@@ -86,8 +87,15 @@ void tcg_gen_lookup_and_goto_ptr_fast(TCGv_i64 pc, uint64_t cs_base,
     tcg_gen_brcond_i64(TCG_COND_NE, t, pc, slow);
     tcg_gen_ld_i64(t, tb, offsetof(TranslationBlock, cs_base));
     tcg_gen_brcondi_i64(TCG_COND_NE, t, cs_base, slow);
+    /* the flags, or the block for any carry-flag class (XEMU_TB_CF_ANY):
+     * their difference is 0 or exactly those bits; no label, so the
+     * EBB temps live on */
     tcg_gen_ld_i32(t32, tb, offsetof(TranslationBlock, flags));
-    tcg_gen_brcondi_i32(TCG_COND_NE, t32, flags, slow);
+    tcg_gen_xori_i32(t32, t32, flags);
+    tcg_gen_movcond_i32(TCG_COND_EQ, t32, t32,
+                        tcg_constant_i32(XEMU_TB_CF_ANY & ~flags),
+                        tcg_constant_i32(0), t32);
+    tcg_gen_brcondi_i32(TCG_COND_NE, t32, 0, slow);
     tcg_gen_ld_i32(t32, tb, offsetof(TranslationBlock, cflags));
     tcg_gen_brcondi_i32(TCG_COND_NE, t32, cflags, slow);
     tcg_gen_ld_i64(t, tcg_env,

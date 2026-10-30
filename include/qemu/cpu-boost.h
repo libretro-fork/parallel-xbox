@@ -27,4 +27,12 @@
  */
 extern int xemu_cpu_boost;
 
+/*
+ * The x86 TB flag bits that carry the class of the carry flag a block starts
+ * with (TB_CF_*, target/i386/cpu.h), all set: TB_CF_ANY, a block whose code
+ * is the same whatever that class is. One translation serves every class;
+ * the TB lookups (cpu-exec.c, translator.c) fall back to it.
+ */
+#define XEMU_TB_CF_ANY ((3u << 30) | (1u << 2))
+
 #endif
