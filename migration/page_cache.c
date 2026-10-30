@@ -38,55 +38,6 @@ struct PageCache {
     size_t num_items;
 };
 
-PageCache *cache_init(uint64_t new_size, size_t page_size, Error **errp)
-{
-    int64_t i;
-    size_t num_pages = new_size / page_size;
-    PageCache *cache;
-
-    if (new_size < page_size) {
-        error_setg(errp, QERR_INVALID_PARAMETER_VALUE, "cache size",
-                   "is smaller than one target page size");
-        return NULL;
-    }
-
-    /* round down to the nearest power of 2 */
-    if (!is_power_of_2(num_pages)) {
-        error_setg(errp, QERR_INVALID_PARAMETER_VALUE, "cache size",
-                   "is not a power of two number of pages");
-        return NULL;
-    }
-
-    /* We prefer not to abort if there is no memory */
-    cache = g_try_malloc(sizeof(*cache));
-    if (!cache) {
-        error_setg(errp, "Failed to allocate cache");
-        return NULL;
-    }
-    cache->page_size = page_size;
-    cache->num_items = 0;
-    cache->max_num_items = num_pages;
-
-    trace_migration_pagecache_init(cache->max_num_items);
-
-    /* We prefer not to abort if there is no memory */
-    cache->page_cache = g_try_malloc((cache->max_num_items) *
-                                     sizeof(*cache->page_cache));
-    if (!cache->page_cache) {
-        error_setg(errp, "Failed to allocate page cache");
-        g_free(cache);
-        return NULL;
-    }
-
-    for (i = 0; i < cache->max_num_items; i++) {
-        cache->page_cache[i].it_data = NULL;
-        cache->page_cache[i].it_age = 0;
-        cache->page_cache[i].it_addr = -1;
-    }
-
-    return cache;
-}
-
 void cache_fini(PageCache *cache)
 {
     int64_t i;

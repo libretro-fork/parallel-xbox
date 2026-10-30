@@ -14,16 +14,17 @@
 /* properties */
 bool migrate_send_switchover_start(void);
 
-/* capabilities */
+/* capabilities: never on in the core (migration/options.h) */
 
-bool migrate_background_snapshot(void);
-bool migrate_dirty_limit(void);
-bool migrate_postcopy_ram(void);
-bool migrate_switchover_ack(void);
+static inline bool migrate_background_snapshot(void) { return false; }
+static inline bool migrate_dirty_limit(void) { return false; }
+static inline bool migrate_postcopy_ram(void) { return false; }
+static inline bool migrate_switchover_ack(void) { return false; }
 
 /* parameters */
 
-MigMode migrate_mode(void);
+/* only QMP set another mode, and the core has none */
+static inline MigMode migrate_mode(void) { return MIG_MODE_NORMAL; }
 uint64_t migrate_vcpu_dirty_limit_period(void);
 
 #endif

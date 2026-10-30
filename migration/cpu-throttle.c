@@ -35,7 +35,6 @@
 /* vcpu throttling controls */
 static QEMUTimer *throttle_timer, *throttle_dirty_sync_timer;
 static unsigned int throttle_percentage;
-static bool throttle_dirty_sync_timer_active;
 static uint64_t throttle_dirty_sync_count_prev;
 
 #define CPU_THROTTLE_PCT_MIN 1
@@ -95,38 +94,6 @@ static void cpu_throttle_timer_tick(void *opaque)
                                    CPU_THROTTLE_TIMESLICE_NS / (1 - pct));
 }
 
-void cpu_throttle_set(int new_throttle_pct)
-{
-    /*
-     * boolean to store whether throttle is already active or not,
-     * before modifying throttle_percentage
-     */
-    bool throttle_active = cpu_throttle_active();
-
-    trace_cpu_throttle_set(new_throttle_pct);
-
-    /* Ensure throttle percentage is within valid range */
-    new_throttle_pct = MIN(new_throttle_pct, CPU_THROTTLE_PCT_MAX);
-    new_throttle_pct = MAX(new_throttle_pct, CPU_THROTTLE_PCT_MIN);
-
-    qatomic_set(&throttle_percentage, new_throttle_pct);
-
-    if (!throttle_active) {
-        cpu_throttle_timer_tick(NULL);
-    }
-}
-
-void cpu_throttle_stop(void)
-{
-    qatomic_set(&throttle_percentage, 0);
-    cpu_throttle_dirty_sync_timer(false);
-}
-
-bool cpu_throttle_active(void)
-{
-    return (cpu_throttle_get_percentage() != 0);
-}
-
 int cpu_throttle_get_percentage(void)
 {
     return qatomic_read(&throttle_percentage);
@@ -158,35 +125,6 @@ end:
     timer_mod(throttle_dirty_sync_timer,
         qemu_clock_get_ms(QEMU_CLOCK_VIRTUAL_RT) +
             CPU_THROTTLE_DIRTY_SYNC_TIMESLICE_MS);
-}
-
-static bool cpu_throttle_dirty_sync_active(void)
-{
-    return qatomic_read(&throttle_dirty_sync_timer_active);
-}
-
-void cpu_throttle_dirty_sync_timer(bool enable)
-{
-    assert(throttle_dirty_sync_timer);
-
-    if (enable) {
-        if (!cpu_throttle_dirty_sync_active()) {
-            /*
-             * Always reset the dirty sync count cache, in case migration
-             * was cancelled once.
-             */
-            throttle_dirty_sync_count_prev = 0;
-            timer_mod(throttle_dirty_sync_timer,
-                qemu_clock_get_ms(QEMU_CLOCK_VIRTUAL_RT) +
-                    CPU_THROTTLE_DIRTY_SYNC_TIMESLICE_MS);
-            qatomic_set(&throttle_dirty_sync_timer_active, 1);
-        }
-    } else {
-        if (cpu_throttle_dirty_sync_active()) {
-            timer_del(throttle_dirty_sync_timer);
-            qatomic_set(&throttle_dirty_sync_timer_active, 0);
-        }
-    }
 }
 
 void cpu_throttle_init(void)

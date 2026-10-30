@@ -821,11 +821,6 @@ DEF("action", HAS_ARG, QEMU_OPTION_action,
 "                   action when watchdog fires [default=reset]\n",
 QEMU_ARCH_ALL)
 
-DEF("loadvm", HAS_ARG, QEMU_OPTION_loadvm, \
-"-loadvm [tag|id]\n" \
-"                start right away with a saved state (loadvm in monitor)\n",
-QEMU_ARCH_ALL)
-
 #if !defined(_WIN32) && !defined(EMSCRIPTEN)
 DEF("daemonize", 0, QEMU_OPTION_daemonize, \
 "-daemonize      daemonize QEMU after initializing\n", QEMU_ARCH_ALL)
@@ -855,23 +850,6 @@ QEMU_ARCH_ALL)
 
 DEF("echr", HAS_ARG, QEMU_OPTION_echr, \
 "-echr chr       set terminal escape character instead of ctrl-a\n",
-QEMU_ARCH_ALL)
-
-DEF("incoming", HAS_ARG, QEMU_OPTION_incoming, \
-"-incoming tcp:[host]:port[,to=maxport][,ipv4=on|off][,ipv6=on|off]\n" \
-"-incoming rdma:host:port[,ipv4=on|off][,ipv6=on|off]\n" \
-"-incoming unix:socketpath\n" \
-"                prepare for incoming migration, listen on\n" \
-"                specified protocol and socket address\n" \
-"-incoming fd:fd\n" \
-"-incoming file:filename[,offset=offset]\n" \
-"-incoming exec:cmdline\n" \
-"                accept incoming migration on given file descriptor\n" \
-"                or from given external command\n" \
-"-incoming <channel>\n" \
-"                accept incoming migration on the migration channel\n" \
-"-incoming defer\n" \
-"                wait for the URI to be specified via migrate_incoming\n",
 QEMU_ARCH_ALL)
 
 DEF("only-migratable", 0, QEMU_OPTION_only_migratable, \

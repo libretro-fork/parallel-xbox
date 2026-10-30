@@ -1463,10 +1463,6 @@ uint64_t physical_memory_set_dirty_lebitmap(unsigned long *bitmap,
                         qatomic_or(
                                 &blocks[DIRTY_MEMORY_MIGRATION][idx][offset],
                                 temp);
-                        if (unlikely(
-                            global_dirty_tracking & GLOBAL_DIRTY_DIRTY_RATE)) {
-                            total_dirty_pages += nbits;
-                        }
                     }
 
                     num_dirty += nbits;
@@ -1503,9 +1499,6 @@ uint64_t physical_memory_set_dirty_lebitmap(unsigned long *bitmap,
             if (bitmap[i] != 0) {
                 c = leul_to_cpu(bitmap[i]);
                 nbits = ctpopl(c);
-                if (unlikely(global_dirty_tracking & GLOBAL_DIRTY_DIRTY_RATE)) {
-                    total_dirty_pages += nbits;
-                }
                 num_dirty += nbits;
                 do {
                     j = ctzl(c);

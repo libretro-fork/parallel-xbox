@@ -4642,14 +4642,6 @@ SRST
 
 ERST
 
-DEF("loadvm", HAS_ARG, QEMU_OPTION_loadvm, \
-    "-loadvm [tag|id]\n" \
-    "                start right away with a saved state (loadvm in monitor)\n",
-    QEMU_ARCH_ALL)
-SRST
-``-loadvm file``
-    Start right away with a saved state (``loadvm`` in monitor)
-ERST
 
 #if !defined(_WIN32) && !defined(EMSCRIPTEN)
 DEF("daemonize", 0, QEMU_OPTION_daemonize, \
@@ -4798,66 +4790,6 @@ SRST
 
 ERST
 
-DEF("incoming", HAS_ARG, QEMU_OPTION_incoming, \
-    "-incoming tcp:[host]:port[,to=maxport][,ipv4=on|off][,ipv6=on|off]\n" \
-    "-incoming rdma:host:port[,ipv4=on|off][,ipv6=on|off]\n" \
-    "-incoming unix:socketpath\n" \
-    "                prepare for incoming migration, listen on\n" \
-    "                specified protocol and socket address\n" \
-    "-incoming fd:fd\n" \
-    "-incoming file:filename[,offset=offset]\n" \
-    "-incoming exec:cmdline\n" \
-    "                accept incoming migration on given file descriptor\n" \
-    "                or from given external command\n" \
-    "-incoming <channel>\n" \
-    "                accept incoming migration on the migration channel\n" \
-    "-incoming defer\n" \
-    "                wait for the URI to be specified via migrate_incoming\n",
-    QEMU_ARCH_ALL)
-SRST
-The -incoming option specifies the migration channel for an incoming
-migration.  It may be used multiple times to specify multiple
-migration channel types.  The channel type is specified in <channel>,
-or is 'main' for all other forms of -incoming.  If multiple -incoming
-options are specified for a channel type, the last one takes precedence.
-
-``-incoming tcp:[host]:port[,to=maxport][,ipv4=on|off][,ipv6=on|off]``
-  \ 
-``-incoming rdma:host:port[,ipv4=on|off][,ipv6=on|off]``
-    Prepare for incoming migration, listen on a given tcp port.
-
-``-incoming unix:socketpath``
-    Prepare for incoming migration, listen on a given unix socket.
-
-``-incoming fd:fd``
-    Accept incoming migration from a given file descriptor.
-
-``-incoming file:filename[,offset=offset]``
-    Accept incoming migration from a given file starting at offset.
-    offset allows the common size suffixes, or a 0x prefix, but not both.
-
-``-incoming exec:cmdline``
-    Accept incoming migration as an output from specified external
-    command.
-
-``-incoming <channel>``
-    Accept incoming migration on the migration channel.  For the syntax
-    of <channel>, see the QAPI documentation of ``MigrationChannel``.
-    Examples:
-    ::
-
-        -incoming '{"channel-type": "main",
-                    "addr": { "transport": "socket",
-                              "type": "unix",
-                              "path": "my.sock" }}'
-
-        -incoming main,addr.transport=socket,addr.type=unix,addr.path=my.sock
-
-``-incoming defer``
-    Wait for the URI to be specified via migrate\_incoming. The monitor
-    can be used to change settings (such as migration parameters) prior
-    to issuing the migrate\_incoming to allow the migration to begin.
-ERST
 
 DEF("only-migratable", 0, QEMU_OPTION_only_migratable, \
     "-only-migratable     allow only migratable devices\n", QEMU_ARCH_ALL)

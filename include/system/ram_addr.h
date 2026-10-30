@@ -23,7 +23,6 @@
 #include "exec/target_page.h"
 #include "exec/hwaddr.h"
 
-extern uint64_t total_dirty_pages;
 
 /**
  * clear_bmap_size: calculate clear bitmap size

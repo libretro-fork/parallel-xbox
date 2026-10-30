@@ -26,15 +26,6 @@ static bool migration_ioc_yank_supported(QIOChannel *ioc)
     return qio_channel_has_feature(ioc, QIO_CHANNEL_FEATURE_SHUTDOWN);
 }
 
-void migration_ioc_register_yank(QIOChannel *ioc)
-{
-    if (migration_ioc_yank_supported(ioc)) {
-        yank_register_function(MIGRATION_YANK_INSTANCE,
-                               migration_yank_iochannel,
-                               ioc);
-    }
-}
-
 void migration_ioc_unregister_yank(QIOChannel *ioc)
 {
     if (migration_ioc_yank_supported(ioc)) {

@@ -80,7 +80,6 @@
 #include "hw/block/block.h"
 #include "hw/i386/x86.h"
 #include "hw/i386/pc.h"
-#include "migration/cpr.h"
 #include "migration/misc.h"
 #include "migration/snapshot.h"
 #include "system/tpm.h"
@@ -170,10 +169,6 @@ typedef struct DeviceOption {
 
 static const char *cpu_option;
 static const char *mem_path;
-static const char *incoming;
-static const char *incoming_str[MIGRATION_CHANNEL_TYPE__MAX];
-static MigrationChannel *incoming_channels[MIGRATION_CHANNEL_TYPE__MAX];
-static const char *loadvm;
 static const char *accelerators;
 static bool have_custom_ram_size;
 static const char *ram_memdev_id;
@@ -1750,30 +1745,6 @@ static void object_option_add_visitor(Visitor *v)
     QTAILQ_INSERT_TAIL(&object_opts, opt, next);
 }
 
-static void incoming_option_parse(const char *str)
-{
-    MigrationChannelType type = MIGRATION_CHANNEL_TYPE_MAIN;
-    MigrationChannel *channel;
-    Visitor *v;
-
-    if (!strcmp(str, "defer")) {
-        channel = NULL;
-    } else if (migrate_is_uri(str)) {
-        migrate_uri_parse(str, &channel, &error_fatal);
-    } else {
-        v = qobject_input_visitor_new_str(str, "channel-type", &error_fatal);
-        visit_type_MigrationChannel(v, NULL, &channel, &error_fatal);
-        visit_free(v);
-        type = channel->channel_type;
-    }
-
-    /* New incoming spec replaces the previous */
-    qapi_free_MigrationChannel(incoming_channels[type]);
-    incoming_channels[type] = channel;
-    incoming_str[type] = str;
-    incoming = incoming_str[MIGRATION_CHANNEL_TYPE_MAIN];
-}
-
 static void object_option_parse(const char *str)
 {
     QemuOpts *opts;
@@ -2575,11 +2546,6 @@ static void qemu_validate_options(const QDict *machine_opts)
         }
     }
 
-    if (loadvm && incoming) {
-        error_report("'incoming' and 'loadvm' options are mutually exclusive");
-        exit(EXIT_FAILURE);
-    }
-
 #ifdef CONFIG_CURSES
     if (is_daemonized() && dpy.type == DISPLAY_TYPE_CURSES) {
         error_report("curses display cannot be used with -daemonize");
@@ -2856,26 +2822,7 @@ static void qemu_start_machine(Error **errp)
         return;
     }
 
-    if (loadvm) {
-        RunState state = autostart ? RUN_STATE_RUNNING : runstate_get();
-        load_snapshot(loadvm, NULL, false, NULL, &error_fatal);
-        load_snapshot_resume(state);
-    }
-
-    if (incoming) {
-        Error *local_err = NULL;
-        if (strcmp(incoming, "defer") != 0) {
-            g_autofree MigrationChannelList *channels =
-                g_new0(MigrationChannelList, 1);
-
-            channels->value = incoming_channels[MIGRATION_CHANNEL_TYPE_MAIN];
-            qmp_migrate_incoming(NULL, true, channels, true, true, &local_err);
-            if (local_err) {
-                error_reportf_err(local_err, "-incoming %s: ", incoming);
-                exit(1);
-            }
-        }
-    } else if (autostart) {
+    if (autostart) {
         /* not QMP's cont: at this point nothing has migrated in or stopped
          * for a reset, so what cont adds is nothing */
         vm_start();
@@ -3613,9 +3560,6 @@ void qemu_init(int argc, char **argv)
             case QEMU_OPTION_debugcon:
                 add_device_config(DEV_DEBUGCON, optarg);
                 break;
-            case QEMU_OPTION_loadvm:
-                loadvm = optarg;
-                break;
             case QEMU_OPTION_full_screen:
                 dpy.has_full_screen = true;
                 dpy.full_screen = true;
@@ -3793,12 +3737,6 @@ void qemu_init(int argc, char **argv)
                 if (!icount_opts) {
                     exit(1);
                 }
-                break;
-            case QEMU_OPTION_incoming:
-                if (!incoming) {
-                    runstate_set(RUN_STATE_INMIGRATE);
-                }
-                incoming_option_parse(optarg);
                 break;
             case QEMU_OPTION_only_migratable:
                 only_migratable = 1;
@@ -4004,12 +3942,6 @@ void qemu_init(int argc, char **argv)
 
     qemu_create_machine(machine_opts_dict);
 
-    /*
-     * Load incoming CPR state before any devices are created, because it
-     * contains file descriptors that are needed in device initialization code.
-     */
-    cpr_state_load(incoming_channels[MIGRATION_CHANNEL_TYPE_CPR], &error_fatal);
-
     suspend_mux_open();
 
     qemu_disable_default_devices();
@@ -4085,8 +4017,6 @@ void qemu_init(int argc, char **argv)
     qemu_start_machine(&error_fatal);
     qemu_init_displays();
     accel_setup_post(current_machine);
-    if (migrate_mode() != MIG_MODE_CPR_EXEC) {
-        os_setup_post();
-    }
+    os_setup_post();
     resume_mux_open();
 }

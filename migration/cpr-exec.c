@@ -24,56 +24,6 @@
 
 #define CPR_EXEC_STATE_NAME "QEMU_CPR_EXEC_STATE"
 
-static QEMUFile *qemu_file_new_fd_input(int fd, const char *name)
-{
-    g_autoptr(QIOChannelFile) fioc = qio_channel_file_new_fd(fd);
-    QIOChannel *ioc = QIO_CHANNEL(fioc);
-    qio_channel_set_name(ioc, name);
-    return qemu_file_new_input(ioc);
-}
-
-static QEMUFile *qemu_file_new_fd_output(int fd, const char *name)
-{
-    g_autoptr(QIOChannelFile) fioc = qio_channel_file_new_fd(fd);
-    QIOChannel *ioc = QIO_CHANNEL(fioc);
-    qio_channel_set_name(ioc, name);
-    return qemu_file_new_output(ioc);
-}
-
-bool cpr_exec_persist_state(QEMUFile *f, Error **errp)
-{
-    QIOChannelFile *fioc = QIO_CHANNEL_FILE(qemu_file_get_ioc(f));
-    /* coverity[leaked_storage] - mfd intentionally kept open across exec() */
-    int mfd = dup(fioc->fd);
-    char val[16];
-
-    /* Remember mfd in environment for post-exec load */
-    qemu_clear_cloexec(mfd);
-    snprintf(val, sizeof(val), "%d", mfd);
-    if (!g_setenv(CPR_EXEC_STATE_NAME, val, 1)) {
-        error_setg(errp, "Setting env %s = %s failed", CPR_EXEC_STATE_NAME, val);
-        return false;
-    }
-
-    return true;
-}
-
-static int cpr_exec_find_state(void)
-{
-    const char *val = g_getenv(CPR_EXEC_STATE_NAME);
-    int mfd;
-
-    assert(val);
-    g_unsetenv(CPR_EXEC_STATE_NAME);
-    assert(!qemu_strtoi(val, NULL, 10, &mfd));
-    return mfd;
-}
-
-bool cpr_exec_has_state(void)
-{
-    return g_getenv(CPR_EXEC_STATE_NAME) != NULL;
-}
-
 void cpr_exec_unpersist_state(void)
 {
     int mfd;
@@ -83,31 +33,6 @@ void cpr_exec_unpersist_state(void)
     assert(val);
     assert(!qemu_strtoi(val, NULL, 10, &mfd));
     close(mfd);
-}
-
-QEMUFile *cpr_exec_output(Error **errp)
-{
-    int mfd;
-
-#ifdef CONFIG_LINUX
-    mfd = qemu_memfd_create(CPR_EXEC_STATE_NAME, 0, false, 0, 0, errp);
-#else
-    mfd = -1;
-#endif
-
-    if (mfd < 0) {
-        return NULL;
-    }
-
-    return qemu_file_new_fd_output(mfd, CPR_EXEC_STATE_NAME);
-}
-
-QEMUFile *cpr_exec_input(Error **errp)
-{
-    int mfd = cpr_exec_find_state();
-
-    lseek(mfd, 0, SEEK_SET);
-    return qemu_file_new_fd_input(mfd, CPR_EXEC_STATE_NAME);
 }
 
 static bool preserve_fd(int fd)

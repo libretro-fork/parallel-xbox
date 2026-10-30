@@ -23,37 +23,37 @@
 extern const Property migration_properties[];
 extern const size_t migration_properties_count;
 
-/* capabilities */
-
-bool migrate_auto_converge(void);
-bool migrate_colo(void);
-bool migrate_dirty_bitmaps(void);
-bool migrate_events(void);
-bool migrate_mapped_ram(void);
-bool migrate_ignore_shared(void);
-bool migrate_late_block_activate(void);
-bool migrate_multifd(void);
-bool migrate_pause_before_switchover(void);
-bool migrate_postcopy_blocktime(void);
-bool migrate_postcopy_preempt(void);
-bool migrate_rdma_pin_all(void);
-bool migrate_release_ram(void);
-bool migrate_return_path(void);
-bool migrate_validate_uuid(void);
-bool migrate_xbzrle(void);
-bool migrate_zero_copy_send(void);
-
 /*
- * pseudo capabilities
- *
- * These are functions that are used in a similar way to capabilities
- * check, but they are not a capability.
+ * capabilities: the core's savestates are a plain precopy stream to a
+ * buffer, so none of them is ever on (no QMP sets them, and the properties
+ * that did are gone); they are constants, and what hangs off them folds
+ * away
  */
 
+static inline bool migrate_auto_converge(void) { return false; }
+static inline bool migrate_colo(void) { return false; }
+static inline bool migrate_dirty_bitmaps(void) { return false; }
+static inline bool migrate_events(void) { return false; }
+static inline bool migrate_mapped_ram(void) { return false; }
+static inline bool migrate_ignore_shared(void) { return false; }
+static inline bool migrate_late_block_activate(void) { return false; }
+static inline bool migrate_multifd(void) { return false; }
+static inline bool migrate_pause_before_switchover(void) { return false; }
+static inline bool migrate_postcopy_blocktime(void) { return false; }
+static inline bool migrate_postcopy_preempt(void) { return false; }
+static inline bool migrate_rdma_pin_all(void) { return false; }
+static inline bool migrate_release_ram(void) { return false; }
+static inline bool migrate_return_path(void) { return false; }
+static inline bool migrate_validate_uuid(void) { return false; }
+static inline bool migrate_xbzrle(void) { return false; }
+static inline bool migrate_zero_copy_send(void) { return false; }
+
+/* pseudo capabilities: not capabilities, used like them */
+
 bool migrate_multifd_flush_after_each_section(void);
-bool migrate_postcopy(void);
-bool migrate_rdma(void);
-bool migrate_tls(void);
+static inline bool migrate_postcopy(void) { return false; }
+static inline bool migrate_rdma(void) { return false; }
+static inline bool migrate_tls(void) { return false; }
 
 /* capabilities helpers */
 

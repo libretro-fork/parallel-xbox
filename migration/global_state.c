@@ -55,21 +55,6 @@ void global_state_store(void)
     global_state_do_store(runstate_get());
 }
 
-void global_state_store_running(void)
-{
-    global_state_do_store(RUN_STATE_RUNNING);
-}
-
-bool global_state_received(void)
-{
-    return global_state.received;
-}
-
-RunState global_state_get_runstate(void)
-{
-    return global_state.state;
-}
-
 static bool global_state_needed(void *opaque)
 {
     return migrate_get_current()->store_global_state;

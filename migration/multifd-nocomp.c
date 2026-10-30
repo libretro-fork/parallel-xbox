@@ -13,7 +13,6 @@
 #include "qemu/osdep.h"
 #include "system/ramblock.h"
 #include "exec/target_page.h"
-#include "file.h"
 #include "migration-stats.h"
 #include "multifd.h"
 #include "options.h"
@@ -26,19 +25,9 @@
 
 static MultiFDSendData *multifd_ram_send;
 
-void multifd_ram_payload_alloc(MultiFDPages_t *pages)
-{
-    pages->offset = g_new0(ram_addr_t, multifd_ram_page_count());
-}
-
 void multifd_ram_payload_free(MultiFDPages_t *pages)
 {
     g_clear_pointer(&pages->offset, g_free);
-}
-
-void multifd_ram_save_setup(void)
-{
-    multifd_ram_send = multifd_send_data_alloc();
 }
 
 void multifd_ram_save_cleanup(void)
@@ -163,10 +152,6 @@ static int multifd_nocomp_recv(MultiFDRecvParams *p, Error **errp)
 {
     uint32_t flags;
 
-    if (migrate_mapped_ram()) {
-        return multifd_file_recv_data(p, errp);
-    }
-
     flags = p->flags & MULTIFD_FLAG_COMPRESSION_MASK;
 
     if (flags != MULTIFD_FLAG_NOCOMP) {
@@ -187,17 +172,6 @@ static int multifd_nocomp_recv(MultiFDRecvParams *p, Error **errp)
         ramblock_recv_bitmap_set_offset(p->block, p->normal[i]);
     }
     return qio_channel_readv_all(p->c, p->iov, p->normal_num, errp);
-}
-
-static void multifd_pages_reset(MultiFDPages_t *pages)
-{
-    /*
-     * We don't need to touch offset[] array, because it will be
-     * overwritten later when reused.
-     */
-    pages->num = 0;
-    pages->normal_num = 0;
-    pages->block = NULL;
 }
 
 void multifd_ram_fill_packet(MultiFDSendParams *p)
@@ -226,77 +200,6 @@ void multifd_ram_fill_packet(MultiFDSendParams *p)
                                 zero_num);
 }
 
-int multifd_ram_unfill_packet(MultiFDRecvParams *p, Error **errp)
-{
-    MultiFDPacket_t *packet = p->packet;
-    uint32_t page_count = multifd_ram_page_count();
-    uint32_t page_size = multifd_ram_page_size();
-    uint32_t pages_per_packet = be32_to_cpu(packet->pages_alloc);
-    int i;
-
-    if (pages_per_packet > page_count) {
-        error_setg(errp, "multifd: received packet with %u pages, expected %u",
-                   pages_per_packet, page_count);
-        return -1;
-    }
-
-    p->normal_num = be32_to_cpu(packet->normal_pages);
-    if (p->normal_num > pages_per_packet) {
-        error_setg(errp, "multifd: received packet with %u non-zero pages, "
-                   "which exceeds maximum expected pages %u",
-                   p->normal_num, pages_per_packet);
-        return -1;
-    }
-
-    p->zero_num = be32_to_cpu(packet->zero_pages);
-    if (p->zero_num > pages_per_packet - p->normal_num) {
-        error_setg(errp,
-                   "multifd: received packet with %u zero pages, expected maximum %u",
-                   p->zero_num, pages_per_packet - p->normal_num);
-        return -1;
-    }
-
-    if (p->normal_num == 0 && p->zero_num == 0) {
-        return 0;
-    }
-
-    /* make sure that ramblock is 0 terminated */
-    packet->ramblock[255] = 0;
-    p->block = qemu_ram_block_by_name(packet->ramblock);
-    if (!p->block) {
-        error_setg(errp, "multifd: unknown ram block %s",
-                   packet->ramblock);
-        return -1;
-    }
-
-    p->host = p->block->host;
-    for (i = 0; i < p->normal_num; i++) {
-        uint64_t offset = be64_to_cpu(packet->offset[i]);
-
-        if (offset > (p->block->used_length - page_size)) {
-            error_setg(errp, "multifd: offset too long %" PRIu64
-                       " (max " RAM_ADDR_FMT ")",
-                       offset, p->block->used_length);
-            return -1;
-        }
-        p->normal[i] = offset;
-    }
-
-    for (i = 0; i < p->zero_num; i++) {
-        uint64_t offset = be64_to_cpu(packet->offset[p->normal_num + i]);
-
-        if (offset > (p->block->used_length - page_size)) {
-            error_setg(errp, "multifd: offset too long %" PRIu64
-                       " (max " RAM_ADDR_FMT ")",
-                       offset, p->block->used_length);
-            return -1;
-        }
-        p->zero[i] = offset;
-    }
-
-    return 0;
-}
-
 static inline bool multifd_queue_empty(MultiFDPages_t *pages)
 {
     return pages->num == 0;
@@ -310,46 +213,6 @@ static inline bool multifd_queue_full(MultiFDPages_t *pages)
 static inline void multifd_enqueue(MultiFDPages_t *pages, ram_addr_t offset)
 {
     pages->offset[pages->num++] = offset;
-}
-
-/* Returns true if enqueue successful, false otherwise */
-bool multifd_queue_page(RAMBlock *block, ram_addr_t offset)
-{
-    MultiFDPages_t *pages;
-
-retry:
-    pages = &multifd_ram_send->u.ram;
-
-    if (multifd_payload_empty(multifd_ram_send)) {
-        multifd_pages_reset(pages);
-        multifd_set_payload_type(multifd_ram_send, MULTIFD_PAYLOAD_RAM);
-    }
-
-    /* If the queue is empty, we can already enqueue now */
-    if (multifd_queue_empty(pages)) {
-        pages->block = block;
-        multifd_enqueue(pages, offset);
-        return true;
-    }
-
-    /*
-     * Not empty, meanwhile we need a flush.  It can because of either:
-     *
-     * (1) The page is not on the same ramblock of previous ones, or,
-     * (2) The queue is full.
-     *
-     * After flush, always retry.
-     */
-    if (pages->block != block || multifd_queue_full(pages)) {
-        if (!multifd_send(&multifd_ram_send)) {
-            return false;
-        }
-        goto retry;
-    }
-
-    /* Not empty, and we still have space, do it! */
-    multifd_enqueue(pages, offset);
-    return true;
 }
 
 /*
@@ -435,20 +298,6 @@ int multifd_ram_flush_and_sync(QEMUFile *f)
     qemu_fflush(f);
 
     return 0;
-}
-
-bool multifd_send_prepare_common(MultiFDSendParams *p)
-{
-    MultiFDPages_t *pages = &p->data->u.ram;
-    multifd_ram_prepare_header(p);
-    multifd_send_zero_page_detect(p);
-
-    if (!pages->normal_num) {
-        p->next_packet_size = 0;
-        return false;
-    }
-
-    return true;
 }
 
 static const MultiFDMethods multifd_nocomp_ops = {

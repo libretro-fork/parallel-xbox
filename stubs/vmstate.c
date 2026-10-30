@@ -23,8 +23,3 @@ bool vmstate_check_only_migratable(const VMStateDescription *vmsd)
 {
     return true;
 }
-
-MigMode migrate_mode(void)
-{
-    return MIG_MODE_NORMAL;
-}

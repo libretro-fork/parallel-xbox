@@ -711,16 +711,10 @@ SOURCES_SYSTEM := \
 	$(CORE_DIR)/hw/virtio/virtio-md-stubs.c \
 	$(CORE_DIR)/hw/watchdog/watchdog.c \
 	$(CORE_DIR)/hw/xen/xen_stubs.c \
-	$(CORE_DIR)/migration/channel.c \
 	$(CORE_DIR)/migration/colo-stubs.c \
 	$(CORE_DIR)/migration/cpr-exec.c \
-	$(CORE_DIR)/migration/cpr-transfer.c \
 	$(CORE_DIR)/migration/cpr.c \
 	$(CORE_DIR)/migration/cpu-throttle.c \
-	$(CORE_DIR)/migration/dirtyrate.c \
-	$(CORE_DIR)/migration/exec.c \
-	$(CORE_DIR)/migration/fd.c \
-	$(CORE_DIR)/migration/file.c \
 	$(CORE_DIR)/migration/global_state.c \
 	$(CORE_DIR)/migration/migration.c \
 	$(CORE_DIR)/migration/multifd-device-state.c \
@@ -731,9 +725,6 @@ SOURCES_SYSTEM := \
 	$(CORE_DIR)/migration/postcopy-ram.c \
 	$(CORE_DIR)/migration/ram.c \
 	$(CORE_DIR)/migration/savevm.c \
-	$(CORE_DIR)/migration/socket.c \
-	$(CORE_DIR)/migration/threadinfo.c \
-	$(CORE_DIR)/migration/tls.c \
 	$(CORE_DIR)/migration/vfio-stub.c \
 	$(CORE_DIR)/net/announce.c \
 	$(CORE_DIR)/net/checksum.c \
@@ -752,7 +743,6 @@ SOURCES_SYSTEM := \
 	$(CORE_DIR)/system/cpu-timers.c \
 	$(CORE_DIR)/system/cpus.c \
 	$(CORE_DIR)/system/datadir.c \
-	$(CORE_DIR)/system/dirtylimit.c \
 	$(CORE_DIR)/system/dma-helpers.c \
 	$(CORE_DIR)/system/exit-with-parent.c \
 	$(CORE_DIR)/system/globals.c \

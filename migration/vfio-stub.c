@@ -7,10 +7,6 @@
 #include "qemu/osdep.h"
 #include "migration.h"
 
-void migration_populate_vfio_info(MigrationInfo *info)
-{
-}
-
 void migration_reset_vfio_bytes_transferred(void)
 {
 }
