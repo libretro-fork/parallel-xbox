@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Adjacent native disk-write spans now share bulk writes on Windows and other platforms without vectored writes, avoiding one host call per span without staging copies.
+
 - The test harness checks audio cadence with an integer phase, avoiding false sample-count failures when hard-FPU tests change host rounding. The declared timing is checked explicitly, and failed x87 test output is retained in CI logs. Core audio output is unchanged.
 
 - CPU Boost avoids saving dead x87 operand scratch values into CPU state between instructions. Real stack registers, helper synchronization and rounding retain their existing handling.
