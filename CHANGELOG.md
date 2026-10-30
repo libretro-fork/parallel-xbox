@@ -408,6 +408,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 - The CPU emulation no longer stalls at the start of every block of guest code. Each block takes its instructions off the instruction budget and stores what is left as 16 bits; the next block read it back as 32 bits (with the exit-request half beside it), a load the processor cannot take from the store still on its way to the cache, so it waited for the store each time. Blocks now read the two halves separately. A guest that keeps the CPU busy runs 36% faster (16.5 s to 10.5 s for 600 frames of the test ROM), one that spins the way the Xbox kernel's idle thread does about 30% faster; the guest's results are the same.
 
+- The CPU emulation no longer clears its 1 MB block lookup cache when the guest flushes a TLB that holds nothing. The GPU test ROM does that about once a frame, and 95% of the flushes found nothing to drop.
+
 ## Test build 4 - 2026-10-25
 
 - The core info file names the core "Microsoft - Xbox / Sega Chihiro (xemu)" (NNshi).

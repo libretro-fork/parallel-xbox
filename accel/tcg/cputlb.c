@@ -398,7 +398,16 @@ static void tlb_flush_by_mmuidx_async_work(CPUState *cpu, run_on_cpu_data data)
 
     qemu_spin_unlock(&cpu->neg.tlb.c.lock);
 
-    tcg_flush_jmp_cache(cpu);
+    /*
+     * A jump cache entry is only made for code whose page the TLB holds
+     * (tb_lookup -> get_page_addr_code), which marks that mmu_idx dirty
+     * until a flush of it: when no asked mmu_idx was dirty, no entry can
+     * stand for a mapping this flush drops, and the cache (64 Ki entries,
+     * 1 MiB, with CPU boost) is left as it is.
+     */
+    if (to_clean) {
+        tcg_flush_jmp_cache(cpu);
+    }
 
     if (to_clean == ALL_MMUIDX_BITS) {
         qatomic_set(&cpu->neg.tlb.c.full_flush_count,
