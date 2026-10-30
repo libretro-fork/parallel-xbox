@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- qcow2 HDD transfers combine adjacent memory spans before the bounded file-I/O vector is built, avoiding extra read/write calls and fragmented copies for contiguous buffers. Empty spans are skipped; scattered buffers and cluster boundaries keep their existing behavior.
+
 - ParaEQ and spatial direct/room filters scale negative samples with defined multiplication, and voice register masks reaching bit 31 are unsigned. Existing filtered output and rounding are preserved; the voice regression now checks signed filter histories without signed-wrap assumptions.
 
 - Audio filter feedback uses defined signed scaling instead of shifting negative values. Existing fixed-point rounding and clipping are unchanged; a wide-integer regression checks boundary values and filter histories without signed-wrap compiler assumptions.

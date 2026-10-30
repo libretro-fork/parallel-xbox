@@ -155,6 +155,17 @@ ${cc} -O2 -std=gnu99 -Wall -DLR_FILE_FILESTREAM=0 -I"$lrc/include" -o "$work/bin
     "$lrc/encodings/encoding_deflate.c" "$lrc/encodings/encoding_crc32.c" \
     "$lrc/features/features_cpu.c" "$lrc/time/rtime.c" "$lrc/compat/compat_strl.c" -lpthread
 "$work/bin/qcow2test" "$here/../../data/xbox_hdd.qcow2" "$work"
+# Count the production qcow2 layer's file calls without replacing its backend.
+${cc} -O2 -std=gnu99 -Wall -DLR_FILE_FILESTREAM=0 -I"$here/../.." -I"$lrc/include" \
+    -Dlr_file_preadv=counted_preadv -Dlr_file_pwritev=counted_pwritev \
+    -c "$here/../../block/libretro-qcow2.c" -o "$work/bin/qcow2-spans.o"
+${cc} -O2 -std=gnu99 -Wall -DLR_FILE_FILESTREAM=0 -I"$here/../.." -I"$lrc/include" \
+    -o "$work/bin/qcow2spans" "$here/test-qcow2-spans.c" "$work/bin/qcow2-spans.o" \
+    "$here/../../block/libretro-file.c" "$lrc/encodings/encoding_deflate.c" \
+    "$lrc/encodings/encoding_crc32.c" \
+    "$lrc/features/features_cpu.c" "$lrc/time/rtime.c" "$lrc/compat/compat_strl.c" -lpthread
+cp "$here/../../data/xbox_hdd.qcow2" "$work/qcow2-spans.qcow2"
+"$work/bin/qcow2spans" "$work/qcow2-spans.qcow2"
 echo "== mapped read-only file I/O"
 case $core in
 *.dll)
@@ -176,6 +187,7 @@ case $core in
     ;;
 esac
 if command -v qemu-img >/dev/null 2>&1; then
+    qemu-img check "$work/qcow2-spans.qcow2"
     q="$work/qcow2"
     mkdir -p "$q"
     head -c 40000000 /dev/urandom > "$q/base.raw"

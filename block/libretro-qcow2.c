@@ -128,19 +128,33 @@ typedef struct {
     size_t off;
 } Cursor;
 
-/* up to max pieces of the next len bytes into out; the count */
+/* Up to max contiguous runs of the next len bytes; no staging copy. */
 static int cursor_take(Cursor *c, size_t len, LRFileIOV *out, int max,
                        size_t *took)
 {
     int k = 0;
 
     *took = 0;
-    while (len && c->i < c->n && k < max) {
+    while (len && c->i < c->n) {
         size_t here = c->iov[c->i].len - c->off;
+        if (!here) {
+            c->i++;
+            c->off = 0;
+            continue;
+        }
         size_t n = here < len ? here : len;
-        out[k].base = (uint8_t *)c->iov[c->i].base + c->off;
-        out[k].len = n;
-        k++;
+        uint8_t *base = (uint8_t *)c->iov[c->i].base + c->off;
+        if (k && out[k - 1].len <= UINTPTR_MAX - (uintptr_t)out[k - 1].base &&
+            (uintptr_t)base == (uintptr_t)out[k - 1].base + out[k - 1].len &&
+            n <= SIZE_MAX - out[k - 1].len) {
+            out[k - 1].len += n;
+        } else {
+            if (k == max) {
+                break;
+            }
+            out[k].base = base;
+            out[k++].len = n;
+        }
         *took += n;
         len -= n;
         c->off += n;
