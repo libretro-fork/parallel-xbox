@@ -354,6 +354,11 @@ void pgraph_vk_init_buffers(NV2AState *d)
 
     for (int i = 0; i < 2; i++) {
         create_buffer(pg, &r->vertex_arena[i]);
+        VkMemoryPropertyFlags props;
+        vmaGetAllocationMemoryProperties(r->allocator,
+                                         r->vertex_arena[i].allocation, &props);
+        r->vertex_arena_coherent[i] =
+            (props & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) != 0;
         VK_CHECK(vmaMapMemory(r->allocator, r->vertex_arena[i].allocation,
                               (void **)&r->vertex_arena[i].mapped));
     }

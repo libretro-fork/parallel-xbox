@@ -733,6 +733,7 @@ typedef struct PGRAPHVkState {
     unsigned long *vertex_stale_bitmap;
     size_t bitmap_size;
     StorageBuffer vertex_arena[2];
+    bool vertex_arena_coherent[2];
     bool vertex_arena_pending; /* cow staged, bind not recorded yet */
     bool vertex_arena_used;    /* current recording binds arena content */
     MemorySyncRequirement vertex_attr_span[NV2A_VERTEXSHADER_ATTRIBUTES];
@@ -745,6 +746,7 @@ typedef struct PGRAPHVkState {
     /* Indices plus one, never pointers: validity/arena epoch are checked
      * on each hit, including after invalidation or arena recycling. */
     unsigned vertex_cow_recent[4];
+    unsigned vertex_cow_tail[2]; /* last allocation cache index plus one */
     unsigned vertex_cow_cache_rr;
     uint32_t vertex_arena_epoch[2];
 

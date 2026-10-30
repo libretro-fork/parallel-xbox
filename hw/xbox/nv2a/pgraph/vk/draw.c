@@ -3686,7 +3686,37 @@ static void vertex_cow_store(PGRAPHVkState *r, hwaddr lo, VkDeviceSize size,
         .slot = r->slot & 1,
         .valid = true,
     };
+    r->vertex_cow_tail[r->slot & 1] = store - r->vertex_cow_cache + 1;
     vertex_cow_remember(r, store - r->vertex_cow_cache);
+}
+
+/* Only the active arena's last allocation can grow without moving bytes.
+ * Earlier draws keep their immutable prefix. On non-coherent memory, the
+ * tail must start in a separate atom from any existing reader. */
+static VertexCowCacheEntry *vertex_cow_extendable(PGRAPHVkState *r,
+                                                  hwaddr lo,
+                                                  VkDeviceSize size)
+{
+    unsigned slot = r->slot & 1;
+    unsigned key = r->vertex_cow_tail[slot];
+    if (!key || key > ARRAY_SIZE(r->vertex_cow_cache)) {
+        return NULL;
+    }
+    VertexCowCacheEntry *e = &r->vertex_cow_cache[key - 1];
+    StorageBuffer *arena = &r->vertex_arena[slot];
+    if (!e->valid || e->slot != slot ||
+        e->epoch != r->vertex_arena_epoch[slot] || e->addr != lo ||
+        size <= e->size || e->arena_offset > arena->buffer_offset ||
+        e->size != arena->buffer_offset - e->arena_offset ||
+        e->arena_offset > arena->buffer_size ||
+        size > arena->buffer_size - e->arena_offset) {
+        return NULL;
+    }
+    if (!r->vertex_arena_coherent[slot] &&
+        arena->buffer_offset % r->device_props.limits.nonCoherentAtomSize) {
+        return NULL;
+    }
+    return e;
 }
 
 /* A range that unsettled work reads: this draw reads a snapshot of it in an
@@ -3744,6 +3774,37 @@ static void vertex_cow_snapshot(PGRAPHState *pg, hwaddr addr,
      * appending needs no fence wait; it is reset at 3/4 full with
      * everything settled. */
     StorageBuffer *arena = &r->vertex_arena[r->slot & 1];
+    VertexCowCacheEntry *extend = dirty ? NULL :
+                                  vertex_cow_extendable(r, lo, copy_size);
+    if (extend && lo + extend->size > addr &&
+        memory_region_test_and_clear_dirty(d->vram, addr,
+                                            lo + extend->size - addr,
+                                            DIRTY_MEMORY_NV2A)) {
+        /* A CPU write during a download/settle must not reuse an older
+         * prefix. Only recheck prefix pages that this draw actually reads. */
+        dirty = true;
+        pgraph_vk_vertex_cow_cache_invalidate(r, lo, copy_size);
+        extend = NULL;
+    }
+    if (extend) {
+        /* Downloads above may rotate the slot or invalidate the prefix:
+         * select it only afterwards. Never overwrite the old allocation. */
+        VkDeviceSize tail = copy_size - extend->size;
+        nv2a_profile_inc_counter(NV2A_PROF_GEOM_BUFFER_UPDATE_1);
+        memcpy(arena->mapped + arena->buffer_offset,
+               d->vram_ptr + lo + extend->size, tail);
+        arena->buffer_offset += tail;
+        extend->size = copy_size;
+        vertex_cow_remember(r, extend - r->vertex_cow_cache);
+        *out = (VertexCowDispatch){
+            .cow = true,
+            .lo = extend->addr,
+            .slot = extend->slot,
+            .arena_offset = extend->arena_offset,
+        };
+        r->vertex_arena_pending = true;
+        return;
+    }
     VkDeviceSize dst = ROUND_UP(arena->buffer_offset, 256);
     if (dst + copy_size > (arena->buffer_size / 4) * 3 &&
         !r->vertex_arena_pending && !r->vertex_arena_used) {
@@ -3752,6 +3813,7 @@ static void vertex_cow_snapshot(PGRAPHState *pg, hwaddr addr,
         for (int s = 0; s < 2; s++) {
             r->vertex_arena[s].buffer_offset = 0;
             r->vertex_arena_epoch[s]++;
+            r->vertex_cow_tail[s] = 0;
         }
         dst = 0;
     }

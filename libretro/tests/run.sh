@@ -59,6 +59,7 @@ case $core in
 *.so) python3 "$here/test-libretro-jit.py" "$here/../.." "$cc" ;;
 esac
 python3 "$here/test-kernel-idle.py" "$here/../.." "$cc"
+python3 "$here/test-vk-cow-tail.py" "$here/../.." "$cc"
 ${cc} -O2 -std=c11 -Wall -o "$work/bin/scanoutcheck" "$here/test-scanout.c"
 ${cc} -O2 -std=c11 -Wall -I"$here/../.." -o "$work/bin/mcpxcheck" "$here/test-mcpx-boot.c"
 "$work/bin/mcpxcheck"

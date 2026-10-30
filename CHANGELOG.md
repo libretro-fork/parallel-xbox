@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Vulkan can grow a clean vertex snapshot by appending only its new tail, keeping the prefix immutable for earlier GPU readers. The active arena tracks its last allocation without searching, and needed prefix pages are rechecked after downloads/settles. Dirty/invalidated, non-tail, out-of-space and unsafe non-coherent atom boundaries retain the existing copy path; arena capacity and VRAM allocation are unchanged.
+
 - Fix Ninja Gaiden Black running in slow motion near the door despite low core latency. The short STI/CLI idle shortcut now requires a recognised kernel idle loop and empty work queues, retaining its fast path without skipping active game work. Instruction-threshold and device-poll waits remain.
 
 - The synthetic GPU suite now checks one-pixel YUY2 and UYVY textures, including cache updates when their shared chroma byte changes beyond the first pixel's nominal two bytes. This protects complete-pair conversion and its full hash span.
