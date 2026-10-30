@@ -55,19 +55,6 @@ const QEnumLookup ShutdownCause_lookup = {
     .size = SHUTDOWN_CAUSE__MAX
 };
 
-void qapi_free_StatusInfo(StatusInfo *obj)
-{
-    Visitor *v;
-
-    if (!obj) {
-        return;
-    }
-
-    v = qapi_dealloc_visitor_new();
-    visit_type_StatusInfo(v, NULL, &obj, NULL);
-    visit_free(v);
-}
-
 const QEnumLookup WatchdogAction_lookup = {
     .array = (const char *const[]) {
         [WATCHDOG_ACTION_RESET] = "reset",
@@ -107,15 +94,6 @@ const QEnumLookup PanicAction_lookup = {
     .size = PANIC_ACTION__MAX
 };
 
-const QEnumLookup GuestPanicAction_lookup = {
-    .array = (const char *const[]) {
-        [GUEST_PANIC_ACTION_PAUSE] = "pause",
-        [GUEST_PANIC_ACTION_POWEROFF] = "poweroff",
-        [GUEST_PANIC_ACTION_RUN] = "run",
-    },
-    .size = GUEST_PANIC_ACTION__MAX
-};
-
 const QEnumLookup GuestPanicInformationType_lookup = {
     .array = (const char *const[]) {
         [GUEST_PANIC_INFORMATION_TYPE_HYPER_V] = "hyper-v",
@@ -138,19 +116,6 @@ void qapi_free_GuestPanicInformation(GuestPanicInformation *obj)
     visit_free(v);
 }
 
-void qapi_free_GuestPanicInformationHyperV(GuestPanicInformationHyperV *obj)
-{
-    Visitor *v;
-
-    if (!obj) {
-        return;
-    }
-
-    v = qapi_dealloc_visitor_new();
-    visit_type_GuestPanicInformationHyperV(v, NULL, &obj, NULL);
-    visit_free(v);
-}
-
 const QEnumLookup S390CrashReason_lookup = {
     .array = (const char *const[]) {
         [S390_CRASH_REASON_UNKNOWN] = "unknown",
@@ -160,72 +125,6 @@ const QEnumLookup S390CrashReason_lookup = {
         [S390_CRASH_REASON_OPINT_LOOP] = "opint-loop",
     },
     .size = S390_CRASH_REASON__MAX
-};
-
-void qapi_free_GuestPanicInformationS390(GuestPanicInformationS390 *obj)
-{
-    Visitor *v;
-
-    if (!obj) {
-        return;
-    }
-
-    v = qapi_dealloc_visitor_new();
-    visit_type_GuestPanicInformationS390(v, NULL, &obj, NULL);
-    visit_free(v);
-}
-
-void qapi_free_GuestPanicInformationTdx(GuestPanicInformationTdx *obj)
-{
-    Visitor *v;
-
-    if (!obj) {
-        return;
-    }
-
-    v = qapi_dealloc_visitor_new();
-    visit_type_GuestPanicInformationTdx(v, NULL, &obj, NULL);
-    visit_free(v);
-}
-
-const QEnumLookup MemoryFailureRecipient_lookup = {
-    .array = (const char *const[]) {
-        [MEMORY_FAILURE_RECIPIENT_HYPERVISOR] = "hypervisor",
-        [MEMORY_FAILURE_RECIPIENT_GUEST] = "guest",
-    },
-    .size = MEMORY_FAILURE_RECIPIENT__MAX
-};
-
-const QEnumLookup MemoryFailureAction_lookup = {
-    .array = (const char *const[]) {
-        [MEMORY_FAILURE_ACTION_IGNORE] = "ignore",
-        [MEMORY_FAILURE_ACTION_INJECT] = "inject",
-        [MEMORY_FAILURE_ACTION_FATAL] = "fatal",
-        [MEMORY_FAILURE_ACTION_RESET] = "reset",
-    },
-    .size = MEMORY_FAILURE_ACTION__MAX
-};
-
-void qapi_free_MemoryFailureFlags(MemoryFailureFlags *obj)
-{
-    Visitor *v;
-
-    if (!obj) {
-        return;
-    }
-
-    v = qapi_dealloc_visitor_new();
-    visit_type_MemoryFailureFlags(v, NULL, &obj, NULL);
-    visit_free(v);
-}
-
-const QEnumLookup NotifyVmexitOption_lookup = {
-    .array = (const char *const[]) {
-        [NOTIFY_VMEXIT_OPTION_RUN] = "run",
-        [NOTIFY_VMEXIT_OPTION_INTERNAL_ERROR] = "internal-error",
-        [NOTIFY_VMEXIT_OPTION_DISABLE] = "disable",
-    },
-    .size = NOTIFY_VMEXIT_OPTION__MAX
 };
 
 /* Dummy declaration to prevent empty .o file */

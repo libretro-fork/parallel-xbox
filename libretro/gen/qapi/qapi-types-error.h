@@ -24,9 +24,4 @@ typedef enum QapiErrorClass {
     QAPI_ERROR_CLASS__MAX,
 } QapiErrorClass;
 
-#define QapiErrorClass_str(val) \
-    qapi_enum_lookup(&QapiErrorClass_lookup, (val))
-
-extern const QEnumLookup QapiErrorClass_lookup;
-
 #endif /* QAPI_TYPES_ERROR_H */

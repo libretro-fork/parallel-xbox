@@ -18,16 +18,6 @@
 
 #include "qapi-visit-qom.h"
 
-bool visit_type_q_obj_device_list_properties_arg_members(Visitor *v, q_obj_device_list_properties_arg *obj, Error **errp);
-
-bool visit_type_q_obj_device_add_arg_members(Visitor *v, q_obj_device_add_arg *obj, Error **errp);
-
-bool visit_type_q_obj_device_del_arg_members(Visitor *v, q_obj_device_del_arg *obj, Error **errp);
-
 bool visit_type_q_obj_DEVICE_DELETED_arg_members(Visitor *v, q_obj_DEVICE_DELETED_arg *obj, Error **errp);
-
-bool visit_type_q_obj_DEVICE_UNPLUG_GUEST_ERROR_arg_members(Visitor *v, q_obj_DEVICE_UNPLUG_GUEST_ERROR_arg *obj, Error **errp);
-
-bool visit_type_q_obj_device_sync_config_arg_members(Visitor *v, q_obj_device_sync_config_arg *obj, Error **errp);
 
 #endif /* QAPI_VISIT_QDEV_H */

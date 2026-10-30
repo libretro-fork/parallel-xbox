@@ -32,66 +32,12 @@ bool visit_type_YankInstanceBlockNode_members(Visitor *v, YankInstanceBlockNode 
     return true;
 }
 
-bool visit_type_YankInstanceBlockNode(Visitor *v, const char *name,
-                 YankInstanceBlockNode **obj, Error **errp)
-{
-    bool ok = false;
-
-    if (!visit_start_struct(v, name, (void **)obj, sizeof(YankInstanceBlockNode), errp)) {
-        return false;
-    }
-    if (!*obj) {
-        /* incomplete */
-        assert(visit_is_dealloc(v));
-        ok = true;
-        goto out_obj;
-    }
-    if (!visit_type_YankInstanceBlockNode_members(v, *obj, errp)) {
-        goto out_obj;
-    }
-    ok = visit_check_struct(v, errp);
-out_obj:
-    visit_end_struct(v, (void **)obj);
-    if (!ok && visit_is_input(v)) {
-        qapi_free_YankInstanceBlockNode(*obj);
-        *obj = NULL;
-    }
-    return ok;
-}
-
 bool visit_type_YankInstanceChardev_members(Visitor *v, YankInstanceChardev *obj, Error **errp)
 {
     if (!visit_type_str(v, "id", &obj->id, errp)) {
         return false;
     }
     return true;
-}
-
-bool visit_type_YankInstanceChardev(Visitor *v, const char *name,
-                 YankInstanceChardev **obj, Error **errp)
-{
-    bool ok = false;
-
-    if (!visit_start_struct(v, name, (void **)obj, sizeof(YankInstanceChardev), errp)) {
-        return false;
-    }
-    if (!*obj) {
-        /* incomplete */
-        assert(visit_is_dealloc(v));
-        ok = true;
-        goto out_obj;
-    }
-    if (!visit_type_YankInstanceChardev_members(v, *obj, errp)) {
-        goto out_obj;
-    }
-    ok = visit_check_struct(v, errp);
-out_obj:
-    visit_end_struct(v, (void **)obj);
-    if (!ok && visit_is_input(v)) {
-        qapi_free_YankInstanceChardev(*obj);
-        *obj = NULL;
-    }
-    return ok;
 }
 
 bool visit_type_q_obj_YankInstance_base_members(Visitor *v, q_obj_YankInstance_base *obj, Error **errp)
@@ -145,42 +91,6 @@ out_obj:
         *obj = NULL;
     }
     return ok;
-}
-
-bool visit_type_YankInstanceList(Visitor *v, const char *name,
-                 YankInstanceList **obj, Error **errp)
-{
-    bool ok = false;
-    YankInstanceList *tail;
-    size_t size = sizeof(**obj);
-
-    if (!visit_start_list(v, name, (GenericList **)obj, size, errp)) {
-        return false;
-    }
-
-    for (tail = *obj; tail;
-         tail = (YankInstanceList *)visit_next_list(v, (GenericList *)tail, size)) {
-        if (!visit_type_YankInstance(v, NULL, &tail->value, errp)) {
-            goto out_obj;
-        }
-    }
-
-    ok = visit_check_list(v, errp);
-out_obj:
-    visit_end_list(v, (void **)obj);
-    if (!ok && visit_is_input(v)) {
-        qapi_free_YankInstanceList(*obj);
-        *obj = NULL;
-    }
-    return ok;
-}
-
-bool visit_type_q_obj_yank_arg_members(Visitor *v, q_obj_yank_arg *obj, Error **errp)
-{
-    if (!visit_type_YankInstanceList(v, "instances", &obj->instances, errp)) {
-        return false;
-    }
-    return true;
 }
 
 /* Dummy declaration to prevent empty .o file */

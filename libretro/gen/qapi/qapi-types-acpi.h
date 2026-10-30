@@ -23,11 +23,6 @@ typedef enum ACPISlotType {
     ACPI_SLOT_TYPE__MAX,
 } ACPISlotType;
 
-#define ACPISlotType_str(val) \
-    qapi_enum_lookup(&ACPISlotType_lookup, (val))
-
-extern const QEnumLookup ACPISlotType_lookup;
-
 typedef struct ACPIOSTInfo ACPIOSTInfo;
 
 typedef struct ACPIOSTInfoList ACPIOSTInfoList;
@@ -60,16 +55,10 @@ struct ACPIOSTInfo {
     int64_t status;
 };
 
-void qapi_free_ACPIOSTInfo(ACPIOSTInfo *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(ACPIOSTInfo, qapi_free_ACPIOSTInfo)
-
 struct ACPIOSTInfoList {
     ACPIOSTInfoList *next;
     ACPIOSTInfo *value;
 };
-
-void qapi_free_ACPIOSTInfoList(ACPIOSTInfoList *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(ACPIOSTInfoList, qapi_free_ACPIOSTInfoList)
 
 struct q_obj_ACPI_DEVICE_OST_arg {
     ACPIOSTInfo *info;

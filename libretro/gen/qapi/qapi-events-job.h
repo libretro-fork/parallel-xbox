@@ -16,6 +16,4 @@
 #include "qapi/util.h"
 #include "qapi-types-job.h"
 
-void qapi_event_send_job_status_change(const char *id, JobStatus status);
-
 #endif /* QAPI_EVENTS_JOB_H */

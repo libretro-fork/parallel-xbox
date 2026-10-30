@@ -32,14 +32,4 @@ void qapi_event_send_suspend_disk(void);
 
 void qapi_event_send_wakeup(void);
 
-void qapi_event_send_watchdog(WatchdogAction action);
-
-void qapi_event_send_guest_panicked(GuestPanicAction action, GuestPanicInformation *info);
-
-void qapi_event_send_guest_crashloaded(GuestPanicAction action, GuestPanicInformation *info);
-
-void qapi_event_send_guest_pvshutdown(void);
-
-void qapi_event_send_memory_failure(MemoryFailureRecipient recipient, MemoryFailureAction action, MemoryFailureFlags *flags);
-
 #endif /* QAPI_EVENTS_RUN_STATE_H */

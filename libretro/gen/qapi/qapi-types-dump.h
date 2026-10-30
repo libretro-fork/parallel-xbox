@@ -27,11 +27,6 @@ typedef enum DumpGuestMemoryFormat {
     DUMP_GUEST_MEMORY_FORMAT__MAX,
 } DumpGuestMemoryFormat;
 
-#define DumpGuestMemoryFormat_str(val) \
-    qapi_enum_lookup(&DumpGuestMemoryFormat_lookup, (val))
-
-extern const QEnumLookup DumpGuestMemoryFormat_lookup;
-
 typedef struct q_obj_dump_guest_memory_arg q_obj_dump_guest_memory_arg;
 
 typedef enum DumpStatus {
@@ -41,11 +36,6 @@ typedef enum DumpStatus {
     DUMP_STATUS_FAILED,
     DUMP_STATUS__MAX,
 } DumpStatus;
-
-#define DumpStatus_str(val) \
-    qapi_enum_lookup(&DumpStatus_lookup, (val))
-
-extern const QEnumLookup DumpStatus_lookup;
 
 typedef struct DumpQueryResult DumpQueryResult;
 
@@ -74,9 +64,6 @@ struct DumpQueryResult {
     int64_t total;
 };
 
-void qapi_free_DumpQueryResult(DumpQueryResult *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(DumpQueryResult, qapi_free_DumpQueryResult)
-
 struct q_obj_DUMP_COMPLETED_arg {
     DumpQueryResult *result;
     char *error;
@@ -87,14 +74,8 @@ struct DumpGuestMemoryFormatList {
     DumpGuestMemoryFormat value;
 };
 
-void qapi_free_DumpGuestMemoryFormatList(DumpGuestMemoryFormatList *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(DumpGuestMemoryFormatList, qapi_free_DumpGuestMemoryFormatList)
-
 struct DumpGuestMemoryCapability {
     DumpGuestMemoryFormatList *formats;
 };
-
-void qapi_free_DumpGuestMemoryCapability(DumpGuestMemoryCapability *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(DumpGuestMemoryCapability, qapi_free_DumpGuestMemoryCapability)
 
 #endif /* QAPI_TYPES_DUMP_H */

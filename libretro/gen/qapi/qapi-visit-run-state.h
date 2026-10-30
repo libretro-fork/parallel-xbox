@@ -16,46 +16,12 @@
 #include "qapi/qapi-builtin-visit.h"
 #include "qapi-types-run-state.h"
 
-
-bool visit_type_RunState(Visitor *v, const char *name,
-                 RunState *obj, Error **errp);
-
 bool visit_type_ShutdownCause(Visitor *v, const char *name,
                  ShutdownCause *obj, Error **errp);
-
-bool visit_type_StatusInfo_members(Visitor *v, StatusInfo *obj, Error **errp);
-
-bool visit_type_StatusInfo(Visitor *v, const char *name,
-                 StatusInfo **obj, Error **errp);
 
 bool visit_type_q_obj_SHUTDOWN_arg_members(Visitor *v, q_obj_SHUTDOWN_arg *obj, Error **errp);
 
 bool visit_type_q_obj_RESET_arg_members(Visitor *v, q_obj_RESET_arg *obj, Error **errp);
-
-bool visit_type_q_obj_WATCHDOG_arg_members(Visitor *v, q_obj_WATCHDOG_arg *obj, Error **errp);
-
-bool visit_type_WatchdogAction(Visitor *v, const char *name,
-                 WatchdogAction *obj, Error **errp);
-
-bool visit_type_RebootAction(Visitor *v, const char *name,
-                 RebootAction *obj, Error **errp);
-
-bool visit_type_ShutdownAction(Visitor *v, const char *name,
-                 ShutdownAction *obj, Error **errp);
-
-bool visit_type_PanicAction(Visitor *v, const char *name,
-                 PanicAction *obj, Error **errp);
-
-bool visit_type_q_obj_watchdog_set_action_arg_members(Visitor *v, q_obj_watchdog_set_action_arg *obj, Error **errp);
-
-bool visit_type_q_obj_set_action_arg_members(Visitor *v, q_obj_set_action_arg *obj, Error **errp);
-
-bool visit_type_q_obj_GUEST_PANICKED_arg_members(Visitor *v, q_obj_GUEST_PANICKED_arg *obj, Error **errp);
-
-bool visit_type_q_obj_GUEST_CRASHLOADED_arg_members(Visitor *v, q_obj_GUEST_CRASHLOADED_arg *obj, Error **errp);
-
-bool visit_type_GuestPanicAction(Visitor *v, const char *name,
-                 GuestPanicAction *obj, Error **errp);
 
 bool visit_type_GuestPanicInformationType(Visitor *v, const char *name,
                  GuestPanicInformationType *obj, Error **errp);
@@ -69,36 +35,11 @@ bool visit_type_GuestPanicInformation(Visitor *v, const char *name,
 
 bool visit_type_GuestPanicInformationHyperV_members(Visitor *v, GuestPanicInformationHyperV *obj, Error **errp);
 
-bool visit_type_GuestPanicInformationHyperV(Visitor *v, const char *name,
-                 GuestPanicInformationHyperV **obj, Error **errp);
-
 bool visit_type_S390CrashReason(Visitor *v, const char *name,
                  S390CrashReason *obj, Error **errp);
 
 bool visit_type_GuestPanicInformationS390_members(Visitor *v, GuestPanicInformationS390 *obj, Error **errp);
 
-bool visit_type_GuestPanicInformationS390(Visitor *v, const char *name,
-                 GuestPanicInformationS390 **obj, Error **errp);
-
 bool visit_type_GuestPanicInformationTdx_members(Visitor *v, GuestPanicInformationTdx *obj, Error **errp);
-
-bool visit_type_GuestPanicInformationTdx(Visitor *v, const char *name,
-                 GuestPanicInformationTdx **obj, Error **errp);
-
-bool visit_type_q_obj_MEMORY_FAILURE_arg_members(Visitor *v, q_obj_MEMORY_FAILURE_arg *obj, Error **errp);
-
-bool visit_type_MemoryFailureRecipient(Visitor *v, const char *name,
-                 MemoryFailureRecipient *obj, Error **errp);
-
-bool visit_type_MemoryFailureAction(Visitor *v, const char *name,
-                 MemoryFailureAction *obj, Error **errp);
-
-bool visit_type_MemoryFailureFlags_members(Visitor *v, MemoryFailureFlags *obj, Error **errp);
-
-bool visit_type_MemoryFailureFlags(Visitor *v, const char *name,
-                 MemoryFailureFlags **obj, Error **errp);
-
-bool visit_type_NotifyVmexitOption(Visitor *v, const char *name,
-                 NotifyVmexitOption *obj, Error **errp);
 
 #endif /* QAPI_VISIT_RUN_STATE_H */

@@ -58,57 +58,5 @@ void qapi_free_QAuthZListRuleList(QAuthZListRuleList *obj)
     visit_free(v);
 }
 
-void qapi_free_AuthZListProperties(AuthZListProperties *obj)
-{
-    Visitor *v;
-
-    if (!obj) {
-        return;
-    }
-
-    v = qapi_dealloc_visitor_new();
-    visit_type_AuthZListProperties(v, NULL, &obj, NULL);
-    visit_free(v);
-}
-
-void qapi_free_AuthZListFileProperties(AuthZListFileProperties *obj)
-{
-    Visitor *v;
-
-    if (!obj) {
-        return;
-    }
-
-    v = qapi_dealloc_visitor_new();
-    visit_type_AuthZListFileProperties(v, NULL, &obj, NULL);
-    visit_free(v);
-}
-
-void qapi_free_AuthZPAMProperties(AuthZPAMProperties *obj)
-{
-    Visitor *v;
-
-    if (!obj) {
-        return;
-    }
-
-    v = qapi_dealloc_visitor_new();
-    visit_type_AuthZPAMProperties(v, NULL, &obj, NULL);
-    visit_free(v);
-}
-
-void qapi_free_AuthZSimpleProperties(AuthZSimpleProperties *obj)
-{
-    Visitor *v;
-
-    if (!obj) {
-        return;
-    }
-
-    v = qapi_dealloc_visitor_new();
-    visit_type_AuthZSimpleProperties(v, NULL, &obj, NULL);
-    visit_free(v);
-}
-
 /* Dummy declaration to prevent empty .o file */
 char qapi_dummy_qapi_types_authz_c;

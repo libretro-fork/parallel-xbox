@@ -74,30 +74,18 @@ struct AuthZListProperties {
     QAuthZListRuleList *rules;
 };
 
-void qapi_free_AuthZListProperties(AuthZListProperties *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(AuthZListProperties, qapi_free_AuthZListProperties)
-
 struct AuthZListFileProperties {
     char *filename;
     bool has_refresh;
     bool refresh;
 };
 
-void qapi_free_AuthZListFileProperties(AuthZListFileProperties *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(AuthZListFileProperties, qapi_free_AuthZListFileProperties)
-
 struct AuthZPAMProperties {
     char *service;
 };
 
-void qapi_free_AuthZPAMProperties(AuthZPAMProperties *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(AuthZPAMProperties, qapi_free_AuthZPAMProperties)
-
 struct AuthZSimpleProperties {
     char *identity;
 };
-
-void qapi_free_AuthZSimpleProperties(AuthZSimpleProperties *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(AuthZSimpleProperties, qapi_free_AuthZSimpleProperties)
 
 #endif /* QAPI_TYPES_AUTHZ_H */

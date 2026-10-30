@@ -49,11 +49,6 @@ typedef enum QCryptoHashAlgo {
     QCRYPTO_HASH_ALGO__MAX,
 } QCryptoHashAlgo;
 
-#define QCryptoHashAlgo_str(val) \
-    qapi_enum_lookup(&QCryptoHashAlgo_lookup, (val))
-
-extern const QEnumLookup QCryptoHashAlgo_lookup;
-
 typedef enum QCryptoCipherAlgo {
     QCRYPTO_CIPHER_ALGO_AES_128,
     QCRYPTO_CIPHER_ALGO_AES_192,
@@ -71,11 +66,6 @@ typedef enum QCryptoCipherAlgo {
     QCRYPTO_CIPHER_ALGO__MAX,
 } QCryptoCipherAlgo;
 
-#define QCryptoCipherAlgo_str(val) \
-    qapi_enum_lookup(&QCryptoCipherAlgo_lookup, (val))
-
-extern const QEnumLookup QCryptoCipherAlgo_lookup;
-
 typedef enum QCryptoCipherMode {
     QCRYPTO_CIPHER_MODE_ECB,
     QCRYPTO_CIPHER_MODE_CBC,
@@ -84,11 +74,6 @@ typedef enum QCryptoCipherMode {
     QCRYPTO_CIPHER_MODE__MAX,
 } QCryptoCipherMode;
 
-#define QCryptoCipherMode_str(val) \
-    qapi_enum_lookup(&QCryptoCipherMode_lookup, (val))
-
-extern const QEnumLookup QCryptoCipherMode_lookup;
-
 typedef enum QCryptoIVGenAlgo {
     QCRYPTO_IV_GEN_ALGO_PLAIN,
     QCRYPTO_IV_GEN_ALGO_PLAIN64,
@@ -96,21 +81,11 @@ typedef enum QCryptoIVGenAlgo {
     QCRYPTO_IV_GEN_ALGO__MAX,
 } QCryptoIVGenAlgo;
 
-#define QCryptoIVGenAlgo_str(val) \
-    qapi_enum_lookup(&QCryptoIVGenAlgo_lookup, (val))
-
-extern const QEnumLookup QCryptoIVGenAlgo_lookup;
-
 typedef enum QCryptoBlockFormat {
     QCRYPTO_BLOCK_FORMAT_QCOW,
     QCRYPTO_BLOCK_FORMAT_LUKS,
     QCRYPTO_BLOCK_FORMAT__MAX,
 } QCryptoBlockFormat;
-
-#define QCryptoBlockFormat_str(val) \
-    qapi_enum_lookup(&QCryptoBlockFormat_lookup, (val))
-
-extern const QEnumLookup QCryptoBlockFormat_lookup;
 
 typedef struct QCryptoBlockOptionsBase QCryptoBlockOptionsBase;
 
@@ -140,11 +115,6 @@ typedef enum QCryptoBlockLUKSKeyslotState {
     QCRYPTO_BLOCK_LUKS_KEYSLOT_STATE__MAX,
 } QCryptoBlockLUKSKeyslotState;
 
-#define QCryptoBlockLUKSKeyslotState_str(val) \
-    qapi_enum_lookup(&QCryptoBlockLUKSKeyslotState_lookup, (val))
-
-extern const QEnumLookup QCryptoBlockLUKSKeyslotState_lookup;
-
 typedef struct QCryptoBlockAmendOptionsLUKS QCryptoBlockAmendOptionsLUKS;
 
 typedef struct QCryptoBlockAmendOptions QCryptoBlockAmendOptions;
@@ -170,32 +140,17 @@ typedef enum QCryptoAkCipherAlgo {
     QCRYPTO_AK_CIPHER_ALGO__MAX,
 } QCryptoAkCipherAlgo;
 
-#define QCryptoAkCipherAlgo_str(val) \
-    qapi_enum_lookup(&QCryptoAkCipherAlgo_lookup, (val))
-
-extern const QEnumLookup QCryptoAkCipherAlgo_lookup;
-
 typedef enum QCryptoAkCipherKeyType {
     QCRYPTO_AK_CIPHER_KEY_TYPE_PUBLIC,
     QCRYPTO_AK_CIPHER_KEY_TYPE_PRIVATE,
     QCRYPTO_AK_CIPHER_KEY_TYPE__MAX,
 } QCryptoAkCipherKeyType;
 
-#define QCryptoAkCipherKeyType_str(val) \
-    qapi_enum_lookup(&QCryptoAkCipherKeyType_lookup, (val))
-
-extern const QEnumLookup QCryptoAkCipherKeyType_lookup;
-
 typedef enum QCryptoRSAPaddingAlgo {
     QCRYPTO_RSA_PADDING_ALGO_RAW,
     QCRYPTO_RSA_PADDING_ALGO_PKCS1,
     QCRYPTO_RSA_PADDING_ALGO__MAX,
 } QCryptoRSAPaddingAlgo;
-
-#define QCryptoRSAPaddingAlgo_str(val) \
-    qapi_enum_lookup(&QCryptoRSAPaddingAlgo_lookup, (val))
-
-extern const QEnumLookup QCryptoRSAPaddingAlgo_lookup;
 
 typedef struct QCryptoAkCipherOptionsRSA QCryptoAkCipherOptionsRSA;
 
@@ -207,22 +162,13 @@ struct QCryptoBlockOptionsBase {
     QCryptoBlockFormat format;
 };
 
-void qapi_free_QCryptoBlockOptionsBase(QCryptoBlockOptionsBase *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(QCryptoBlockOptionsBase, qapi_free_QCryptoBlockOptionsBase)
-
 struct QCryptoBlockOptionsQCow {
     char *key_secret;
 };
 
-void qapi_free_QCryptoBlockOptionsQCow(QCryptoBlockOptionsQCow *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(QCryptoBlockOptionsQCow, qapi_free_QCryptoBlockOptionsQCow)
-
 struct QCryptoBlockOptionsLUKS {
     char *key_secret;
 };
-
-void qapi_free_QCryptoBlockOptionsLUKS(QCryptoBlockOptionsLUKS *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(QCryptoBlockOptionsLUKS, qapi_free_QCryptoBlockOptionsLUKS)
 
 struct QCryptoBlockCreateOptionsLUKS {
     /* Members inherited from QCryptoBlockOptionsLUKS: */
@@ -247,9 +193,6 @@ static inline QCryptoBlockOptionsLUKS *qapi_QCryptoBlockCreateOptionsLUKS_base(c
     return (QCryptoBlockOptionsLUKS *)obj;
 }
 
-void qapi_free_QCryptoBlockCreateOptionsLUKS(QCryptoBlockCreateOptionsLUKS *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(QCryptoBlockCreateOptionsLUKS, qapi_free_QCryptoBlockCreateOptionsLUKS)
-
 struct QCryptoBlockOpenOptions {
     /* Members inherited from QCryptoBlockOptionsBase: */
     QCryptoBlockFormat format;
@@ -264,9 +207,6 @@ static inline QCryptoBlockOptionsBase *qapi_QCryptoBlockOpenOptions_base(const Q
 {
     return (QCryptoBlockOptionsBase *)obj;
 }
-
-void qapi_free_QCryptoBlockOpenOptions(QCryptoBlockOpenOptions *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(QCryptoBlockOpenOptions, qapi_free_QCryptoBlockOpenOptions)
 
 struct QCryptoBlockCreateOptions {
     /* Members inherited from QCryptoBlockOptionsBase: */
@@ -283,15 +223,9 @@ static inline QCryptoBlockOptionsBase *qapi_QCryptoBlockCreateOptions_base(const
     return (QCryptoBlockOptionsBase *)obj;
 }
 
-void qapi_free_QCryptoBlockCreateOptions(QCryptoBlockCreateOptions *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(QCryptoBlockCreateOptions, qapi_free_QCryptoBlockCreateOptions)
-
 struct QCryptoBlockInfoBase {
     QCryptoBlockFormat format;
 };
-
-void qapi_free_QCryptoBlockInfoBase(QCryptoBlockInfoBase *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(QCryptoBlockInfoBase, qapi_free_QCryptoBlockInfoBase)
 
 struct QCryptoBlockInfoLUKSSlot {
     bool active;
@@ -302,16 +236,10 @@ struct QCryptoBlockInfoLUKSSlot {
     int64_t key_offset;
 };
 
-void qapi_free_QCryptoBlockInfoLUKSSlot(QCryptoBlockInfoLUKSSlot *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(QCryptoBlockInfoLUKSSlot, qapi_free_QCryptoBlockInfoLUKSSlot)
-
 struct QCryptoBlockInfoLUKSSlotList {
     QCryptoBlockInfoLUKSSlotList *next;
     QCryptoBlockInfoLUKSSlot *value;
 };
-
-void qapi_free_QCryptoBlockInfoLUKSSlotList(QCryptoBlockInfoLUKSSlotList *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(QCryptoBlockInfoLUKSSlotList, qapi_free_QCryptoBlockInfoLUKSSlotList)
 
 struct QCryptoBlockInfoLUKS {
     QCryptoCipherAlgo cipher_alg;
@@ -327,9 +255,6 @@ struct QCryptoBlockInfoLUKS {
     QCryptoBlockInfoLUKSSlotList *slots;
 };
 
-void qapi_free_QCryptoBlockInfoLUKS(QCryptoBlockInfoLUKS *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(QCryptoBlockInfoLUKS, qapi_free_QCryptoBlockInfoLUKS)
-
 struct QCryptoBlockInfo {
     /* Members inherited from QCryptoBlockInfoBase: */
     QCryptoBlockFormat format;
@@ -344,9 +269,6 @@ static inline QCryptoBlockInfoBase *qapi_QCryptoBlockInfo_base(const QCryptoBloc
     return (QCryptoBlockInfoBase *)obj;
 }
 
-void qapi_free_QCryptoBlockInfo(QCryptoBlockInfo *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(QCryptoBlockInfo, qapi_free_QCryptoBlockInfo)
-
 struct QCryptoBlockAmendOptionsLUKS {
     QCryptoBlockLUKSKeyslotState state;
     char *new_secret;
@@ -357,9 +279,6 @@ struct QCryptoBlockAmendOptionsLUKS {
     int64_t iter_time;
     char *secret;
 };
-
-void qapi_free_QCryptoBlockAmendOptionsLUKS(QCryptoBlockAmendOptionsLUKS *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(QCryptoBlockAmendOptionsLUKS, qapi_free_QCryptoBlockAmendOptionsLUKS)
 
 struct QCryptoBlockAmendOptions {
     /* Members inherited from QCryptoBlockOptionsBase: */
@@ -375,18 +294,12 @@ static inline QCryptoBlockOptionsBase *qapi_QCryptoBlockAmendOptions_base(const 
     return (QCryptoBlockOptionsBase *)obj;
 }
 
-void qapi_free_QCryptoBlockAmendOptions(QCryptoBlockAmendOptions *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(QCryptoBlockAmendOptions, qapi_free_QCryptoBlockAmendOptions)
-
 struct SecretCommonProperties {
     bool has_format;
     QCryptoSecretFormat format;
     char *keyid;
     char *iv;
 };
-
-void qapi_free_SecretCommonProperties(SecretCommonProperties *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(SecretCommonProperties, qapi_free_SecretCommonProperties)
 
 struct SecretProperties {
     /* Members inherited from SecretCommonProperties: */
@@ -403,9 +316,6 @@ static inline SecretCommonProperties *qapi_SecretProperties_base(const SecretPro
 {
     return (SecretCommonProperties *)obj;
 }
-
-void qapi_free_SecretProperties(SecretProperties *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(SecretProperties, qapi_free_SecretProperties)
 
 #if defined(CONFIG_SECRET_KEYRING)
 struct SecretKeyringProperties {
@@ -425,8 +335,6 @@ static inline SecretCommonProperties *qapi_SecretKeyringProperties_base(const Se
     return (SecretCommonProperties *)obj;
 }
 
-void qapi_free_SecretKeyringProperties(SecretKeyringProperties *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(SecretKeyringProperties, qapi_free_SecretKeyringProperties)
 #endif /* defined(CONFIG_SECRET_KEYRING) */
 
 struct TlsCredsProperties {
@@ -437,9 +345,6 @@ struct TlsCredsProperties {
     QCryptoTLSCredsEndpoint endpoint;
     char *priority;
 };
-
-void qapi_free_TlsCredsProperties(TlsCredsProperties *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(TlsCredsProperties, qapi_free_TlsCredsProperties)
 
 struct TlsCredsAnonProperties {
     /* Members inherited from TlsCredsProperties: */
@@ -457,9 +362,6 @@ static inline TlsCredsProperties *qapi_TlsCredsAnonProperties_base(const TlsCred
     return (TlsCredsProperties *)obj;
 }
 
-void qapi_free_TlsCredsAnonProperties(TlsCredsAnonProperties *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(TlsCredsAnonProperties, qapi_free_TlsCredsAnonProperties)
-
 struct TlsCredsPskProperties {
     /* Members inherited from TlsCredsProperties: */
     bool has_verify_peer;
@@ -476,9 +378,6 @@ static inline TlsCredsProperties *qapi_TlsCredsPskProperties_base(const TlsCreds
 {
     return (TlsCredsProperties *)obj;
 }
-
-void qapi_free_TlsCredsPskProperties(TlsCredsPskProperties *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(TlsCredsPskProperties, qapi_free_TlsCredsPskProperties)
 
 struct TlsCredsX509Properties {
     /* Members inherited from TlsCredsProperties: */
@@ -499,16 +398,10 @@ static inline TlsCredsProperties *qapi_TlsCredsX509Properties_base(const TlsCred
     return (TlsCredsProperties *)obj;
 }
 
-void qapi_free_TlsCredsX509Properties(TlsCredsX509Properties *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(TlsCredsX509Properties, qapi_free_TlsCredsX509Properties)
-
 struct QCryptoAkCipherOptionsRSA {
     QCryptoHashAlgo hash_alg;
     QCryptoRSAPaddingAlgo padding_alg;
 };
-
-void qapi_free_QCryptoAkCipherOptionsRSA(QCryptoAkCipherOptionsRSA *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(QCryptoAkCipherOptionsRSA, qapi_free_QCryptoAkCipherOptionsRSA)
 
 struct q_obj_QCryptoAkCipherOptions_base {
     QCryptoAkCipherAlgo alg;
@@ -520,8 +413,5 @@ struct QCryptoAkCipherOptions {
         QCryptoAkCipherOptionsRSA rsa;
     } u;
 };
-
-void qapi_free_QCryptoAkCipherOptions(QCryptoAkCipherOptions *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(QCryptoAkCipherOptions, qapi_free_QCryptoAkCipherOptions)
 
 #endif /* QAPI_TYPES_CRYPTO_H */

@@ -64,11 +64,6 @@ typedef enum S390CpuState {
     S390_CPU_STATE__MAX,
 } S390CpuState;
 
-#define S390CpuState_str(val) \
-    qapi_enum_lookup(&S390CpuState_lookup, (val))
-
-extern const QEnumLookup S390CpuState_lookup;
-
 typedef struct CpuInfoS390 CpuInfoS390;
 
 typedef struct q_obj_CpuInfoFast_base q_obj_CpuInfoFast_base;
@@ -260,11 +255,6 @@ typedef enum MemoryDeviceInfoKind {
     MEMORY_DEVICE_INFO_KIND__MAX,
 } MemoryDeviceInfoKind;
 
-#define MemoryDeviceInfoKind_str(val) \
-    qapi_enum_lookup(&MemoryDeviceInfoKind_lookup, (val))
-
-extern const QEnumLookup MemoryDeviceInfoKind_lookup;
-
 typedef struct PCDIMMDeviceInfoWrapper PCDIMMDeviceInfoWrapper;
 
 typedef struct VirtioPMEMDeviceInfoWrapper VirtioPMEMDeviceInfoWrapper;
@@ -325,11 +315,6 @@ typedef enum CpuModelExpansionType {
     CPU_MODEL_EXPANSION_TYPE__MAX,
 } CpuModelExpansionType;
 
-#define CpuModelExpansionType_str(val) \
-    qapi_enum_lookup(&CpuModelExpansionType_lookup, (val))
-
-extern const QEnumLookup CpuModelExpansionType_lookup;
-
 typedef enum CpuModelCompareResult {
     CPU_MODEL_COMPARE_RESULT_INCOMPATIBLE,
     CPU_MODEL_COMPARE_RESULT_IDENTICAL,
@@ -337,11 +322,6 @@ typedef enum CpuModelCompareResult {
     CPU_MODEL_COMPARE_RESULT_SUBSET,
     CPU_MODEL_COMPARE_RESULT__MAX,
 } CpuModelCompareResult;
-
-#define CpuModelCompareResult_str(val) \
-    qapi_enum_lookup(&CpuModelCompareResult_lookup, (val))
-
-extern const QEnumLookup CpuModelCompareResult_lookup;
 
 typedef struct CpuModelBaselineInfo CpuModelBaselineInfo;
 
@@ -367,9 +347,6 @@ struct CpuInfoS390 {
     S390CpuEntitlement entitlement;
 };
 
-void qapi_free_CpuInfoS390(CpuInfoS390 *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(CpuInfoS390, qapi_free_CpuInfoS390)
-
 struct q_obj_CpuInfoFast_base {
     int64_t cpu_index;
     char *qom_type;
@@ -391,16 +368,10 @@ struct CpuInfoFast {
     } u;
 };
 
-void qapi_free_CpuInfoFast(CpuInfoFast *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(CpuInfoFast, qapi_free_CpuInfoFast)
-
 struct CpuInfoFastList {
     CpuInfoFastList *next;
     CpuInfoFast *value;
 };
-
-void qapi_free_CpuInfoFastList(CpuInfoFastList *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(CpuInfoFastList, qapi_free_CpuInfoFastList)
 
 struct CompatProperty {
     char *qom_type;
@@ -408,16 +379,10 @@ struct CompatProperty {
     char *value;
 };
 
-void qapi_free_CompatProperty(CompatProperty *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(CompatProperty, qapi_free_CompatProperty)
-
 struct CompatPropertyList {
     CompatPropertyList *next;
     CompatProperty *value;
 };
-
-void qapi_free_CompatPropertyList(CompatPropertyList *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(CompatPropertyList, qapi_free_CompatPropertyList)
 
 struct MachineInfo {
     char *name;
@@ -435,9 +400,6 @@ struct MachineInfo {
     CompatPropertyList *compat_props;
 };
 
-void qapi_free_MachineInfo(MachineInfo *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(MachineInfo, qapi_free_MachineInfo)
-
 struct q_obj_query_machines_arg {
     bool has_compat_props;
     bool compat_props;
@@ -448,36 +410,21 @@ struct MachineInfoList {
     MachineInfo *value;
 };
 
-void qapi_free_MachineInfoList(MachineInfoList *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(MachineInfoList, qapi_free_MachineInfoList)
-
 struct CurrentMachineParams {
     bool wakeup_suspend_support;
 };
-
-void qapi_free_CurrentMachineParams(CurrentMachineParams *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(CurrentMachineParams, qapi_free_CurrentMachineParams)
 
 struct QemuTargetInfo {
     SysEmuTarget arch;
 };
 
-void qapi_free_QemuTargetInfo(QemuTargetInfo *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(QemuTargetInfo, qapi_free_QemuTargetInfo)
-
 struct UuidInfo {
     char *UUID;
 };
 
-void qapi_free_UuidInfo(UuidInfo *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(UuidInfo, qapi_free_UuidInfo)
-
 struct GuidInfo {
     char *guid;
 };
-
-void qapi_free_GuidInfo(GuidInfo *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(GuidInfo, qapi_free_GuidInfo)
 
 struct q_obj_NumaOptions_base {
     NumaOptionsType type;
@@ -558,12 +505,6 @@ struct NumaOptions {
 void qapi_free_NumaOptions(NumaOptions *obj);
 G_DEFINE_AUTOPTR_CLEANUP_FUNC(NumaOptions, qapi_free_NumaOptions)
 
-void qapi_free_NumaNodeOptions(NumaNodeOptions *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(NumaNodeOptions, qapi_free_NumaNodeOptions)
-
-void qapi_free_NumaDistOptions(NumaDistOptions *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(NumaDistOptions, qapi_free_NumaDistOptions)
-
 struct CXLFixedMemoryWindowOptions {
     uint64_t size;
     bool has_interleave_granularity;
@@ -571,23 +512,14 @@ struct CXLFixedMemoryWindowOptions {
     strList *targets;
 };
 
-void qapi_free_CXLFixedMemoryWindowOptions(CXLFixedMemoryWindowOptions *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(CXLFixedMemoryWindowOptions, qapi_free_CXLFixedMemoryWindowOptions)
-
 struct CXLFixedMemoryWindowOptionsList {
     CXLFixedMemoryWindowOptionsList *next;
     CXLFixedMemoryWindowOptions *value;
 };
 
-void qapi_free_CXLFixedMemoryWindowOptionsList(CXLFixedMemoryWindowOptionsList *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(CXLFixedMemoryWindowOptionsList, qapi_free_CXLFixedMemoryWindowOptionsList)
-
 struct CXLFMWProperties {
     CXLFixedMemoryWindowOptionsList *cxl_fmw;
 };
-
-void qapi_free_CXLFMWProperties(CXLFMWProperties *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(CXLFMWProperties, qapi_free_CXLFMWProperties)
 
 struct X86CPUFeatureWordInfo {
     int64_t cpuid_input_eax;
@@ -612,22 +544,10 @@ struct DummyForceArrays {
     X86CPUFeatureWordInfoList *unused;
 };
 
-void qapi_free_DummyForceArrays(DummyForceArrays *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(DummyForceArrays, qapi_free_DummyForceArrays)
-
 static inline CpuInstanceProperties *qapi_NumaCpuOptions_base(const NumaCpuOptions *obj)
 {
     return (CpuInstanceProperties *)obj;
 }
-
-void qapi_free_NumaCpuOptions(NumaCpuOptions *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(NumaCpuOptions, qapi_free_NumaCpuOptions)
-
-void qapi_free_NumaHmatLBOptions(NumaHmatLBOptions *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(NumaHmatLBOptions, qapi_free_NumaHmatLBOptions)
-
-void qapi_free_NumaHmatCacheOptions(NumaHmatCacheOptions *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(NumaHmatCacheOptions, qapi_free_NumaHmatCacheOptions)
 
 struct q_obj_memsave_arg {
     uint64_t val;
@@ -656,16 +576,10 @@ struct Memdev {
     HostMemPolicy policy;
 };
 
-void qapi_free_Memdev(Memdev *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(Memdev, qapi_free_Memdev)
-
 struct MemdevList {
     MemdevList *next;
     Memdev *value;
 };
-
-void qapi_free_MemdevList(MemdevList *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(MemdevList, qapi_free_MemdevList)
 
 struct CpuInstanceProperties {
     bool has_node_id;
@@ -688,9 +602,6 @@ struct CpuInstanceProperties {
     int64_t thread_id;
 };
 
-void qapi_free_CpuInstanceProperties(CpuInstanceProperties *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(CpuInstanceProperties, qapi_free_CpuInstanceProperties)
-
 struct HotpluggableCPU {
     char *type;
     int64_t vcpus_count;
@@ -698,16 +609,10 @@ struct HotpluggableCPU {
     char *qom_path;
 };
 
-void qapi_free_HotpluggableCPU(HotpluggableCPU *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(HotpluggableCPU, qapi_free_HotpluggableCPU)
-
 struct HotpluggableCPUList {
     HotpluggableCPUList *next;
     HotpluggableCPU *value;
 };
-
-void qapi_free_HotpluggableCPUList(HotpluggableCPUList *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(HotpluggableCPUList, qapi_free_HotpluggableCPUList)
 
 struct q_obj_balloon_arg {
     int64_t value;
@@ -716,9 +621,6 @@ struct q_obj_balloon_arg {
 struct BalloonInfo {
     int64_t actual;
 };
-
-void qapi_free_BalloonInfo(BalloonInfo *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BalloonInfo, qapi_free_BalloonInfo)
 
 struct q_obj_BALLOON_CHANGE_arg {
     int64_t actual;
@@ -729,17 +631,11 @@ struct HvBalloonInfo {
     uint64_t available;
 };
 
-void qapi_free_HvBalloonInfo(HvBalloonInfo *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(HvBalloonInfo, qapi_free_HvBalloonInfo)
-
 struct MemoryInfo {
     uint64_t base_memory;
     bool has_plugged_memory;
     uint64_t plugged_memory;
 };
-
-void qapi_free_MemoryInfo(MemoryInfo *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(MemoryInfo, qapi_free_MemoryInfo)
 
 struct PCDIMMDeviceInfo {
     char *id;
@@ -752,18 +648,12 @@ struct PCDIMMDeviceInfo {
     bool hotpluggable;
 };
 
-void qapi_free_PCDIMMDeviceInfo(PCDIMMDeviceInfo *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(PCDIMMDeviceInfo, qapi_free_PCDIMMDeviceInfo)
-
 struct VirtioPMEMDeviceInfo {
     char *id;
     uint64_t memaddr;
     uint64_t size;
     char *memdev;
 };
-
-void qapi_free_VirtioPMEMDeviceInfo(VirtioPMEMDeviceInfo *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(VirtioPMEMDeviceInfo, qapi_free_VirtioPMEMDeviceInfo)
 
 struct VirtioMEMDeviceInfo {
     char *id;
@@ -776,9 +666,6 @@ struct VirtioMEMDeviceInfo {
     char *memdev;
 };
 
-void qapi_free_VirtioMEMDeviceInfo(VirtioMEMDeviceInfo *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(VirtioMEMDeviceInfo, qapi_free_VirtioMEMDeviceInfo)
-
 struct SgxEPCDeviceInfo {
     char *id;
     uint64_t memaddr;
@@ -786,9 +673,6 @@ struct SgxEPCDeviceInfo {
     int64_t node;
     char *memdev;
 };
-
-void qapi_free_SgxEPCDeviceInfo(SgxEPCDeviceInfo *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(SgxEPCDeviceInfo, qapi_free_SgxEPCDeviceInfo)
 
 struct HvBalloonDeviceInfo {
     char *id;
@@ -798,43 +682,25 @@ struct HvBalloonDeviceInfo {
     char *memdev;
 };
 
-void qapi_free_HvBalloonDeviceInfo(HvBalloonDeviceInfo *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(HvBalloonDeviceInfo, qapi_free_HvBalloonDeviceInfo)
-
 struct PCDIMMDeviceInfoWrapper {
     PCDIMMDeviceInfo *data;
 };
-
-void qapi_free_PCDIMMDeviceInfoWrapper(PCDIMMDeviceInfoWrapper *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(PCDIMMDeviceInfoWrapper, qapi_free_PCDIMMDeviceInfoWrapper)
 
 struct VirtioPMEMDeviceInfoWrapper {
     VirtioPMEMDeviceInfo *data;
 };
 
-void qapi_free_VirtioPMEMDeviceInfoWrapper(VirtioPMEMDeviceInfoWrapper *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(VirtioPMEMDeviceInfoWrapper, qapi_free_VirtioPMEMDeviceInfoWrapper)
-
 struct VirtioMEMDeviceInfoWrapper {
     VirtioMEMDeviceInfo *data;
 };
-
-void qapi_free_VirtioMEMDeviceInfoWrapper(VirtioMEMDeviceInfoWrapper *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(VirtioMEMDeviceInfoWrapper, qapi_free_VirtioMEMDeviceInfoWrapper)
 
 struct SgxEPCDeviceInfoWrapper {
     SgxEPCDeviceInfo *data;
 };
 
-void qapi_free_SgxEPCDeviceInfoWrapper(SgxEPCDeviceInfoWrapper *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(SgxEPCDeviceInfoWrapper, qapi_free_SgxEPCDeviceInfoWrapper)
-
 struct HvBalloonDeviceInfoWrapper {
     HvBalloonDeviceInfo *data;
 };
-
-void qapi_free_HvBalloonDeviceInfoWrapper(HvBalloonDeviceInfoWrapper *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(HvBalloonDeviceInfoWrapper, qapi_free_HvBalloonDeviceInfoWrapper)
 
 struct q_obj_MemoryDeviceInfo_base {
     MemoryDeviceInfoKind type;
@@ -851,9 +717,6 @@ struct MemoryDeviceInfo {
         HvBalloonDeviceInfoWrapper hv_balloon;
     } u;
 };
-
-void qapi_free_MemoryDeviceInfo(MemoryDeviceInfo *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(MemoryDeviceInfo, qapi_free_MemoryDeviceInfo)
 
 struct SgxEPC {
     char *memdev;
@@ -875,16 +738,10 @@ struct SgxEPCProperties {
     SgxEPCList *sgx_epc;
 };
 
-void qapi_free_SgxEPCProperties(SgxEPCProperties *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(SgxEPCProperties, qapi_free_SgxEPCProperties)
-
 struct MemoryDeviceInfoList {
     MemoryDeviceInfoList *next;
     MemoryDeviceInfo *value;
 };
-
-void qapi_free_MemoryDeviceInfoList(MemoryDeviceInfoList *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(MemoryDeviceInfoList, qapi_free_MemoryDeviceInfoList)
 
 struct q_obj_MEMORY_DEVICE_SIZE_CHANGE_arg {
     char *id;
@@ -958,9 +815,6 @@ struct FirmwareLog {
     char *log;
 };
 
-void qapi_free_FirmwareLog(FirmwareLog *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(FirmwareLog, qapi_free_FirmwareLog)
-
 struct q_obj_query_firmware_log_arg {
     bool has_max_size;
     uint64_t max_size;
@@ -975,23 +829,14 @@ struct CpuModelInfo {
     QObject *props;
 };
 
-void qapi_free_CpuModelInfo(CpuModelInfo *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(CpuModelInfo, qapi_free_CpuModelInfo)
-
 struct CpuModelBaselineInfo {
     CpuModelInfo *model;
 };
-
-void qapi_free_CpuModelBaselineInfo(CpuModelBaselineInfo *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(CpuModelBaselineInfo, qapi_free_CpuModelBaselineInfo)
 
 struct CpuModelCompareInfo {
     CpuModelCompareResult result;
     strList *responsible_properties;
 };
-
-void qapi_free_CpuModelCompareInfo(CpuModelCompareInfo *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(CpuModelCompareInfo, qapi_free_CpuModelCompareInfo)
 
 struct q_obj_query_cpu_model_comparison_arg {
     CpuModelInfo *modela;
@@ -1008,9 +853,6 @@ struct CpuModelExpansionInfo {
     bool has_deprecated_props;
     strList *deprecated_props;
 };
-
-void qapi_free_CpuModelExpansionInfo(CpuModelExpansionInfo *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(CpuModelExpansionInfo, qapi_free_CpuModelExpansionInfo)
 
 struct q_obj_query_cpu_model_expansion_arg {
     CpuModelExpansionType type;
@@ -1029,15 +871,9 @@ struct CpuDefinitionInfo {
     bool deprecated;
 };
 
-void qapi_free_CpuDefinitionInfo(CpuDefinitionInfo *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(CpuDefinitionInfo, qapi_free_CpuDefinitionInfo)
-
 struct CpuDefinitionInfoList {
     CpuDefinitionInfoList *next;
     CpuDefinitionInfo *value;
 };
-
-void qapi_free_CpuDefinitionInfoList(CpuDefinitionInfoList *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(CpuDefinitionInfoList, qapi_free_CpuDefinitionInfoList)
 
 #endif /* QAPI_TYPES_MACHINE_H */

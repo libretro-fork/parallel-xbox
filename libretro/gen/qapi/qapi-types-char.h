@@ -30,11 +30,6 @@ typedef enum DataFormat {
     DATA_FORMAT__MAX,
 } DataFormat;
 
-#define DataFormat_str(val) \
-    qapi_enum_lookup(&DataFormat_lookup, (val))
-
-extern const QEnumLookup DataFormat_lookup;
-
 typedef struct q_obj_ringbuf_write_arg q_obj_ringbuf_write_arg;
 
 typedef struct q_obj_ringbuf_read_arg q_obj_ringbuf_read_arg;
@@ -185,31 +180,19 @@ struct ChardevInfo {
     bool frontend_open;
 };
 
-void qapi_free_ChardevInfo(ChardevInfo *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(ChardevInfo, qapi_free_ChardevInfo)
-
 struct ChardevInfoList {
     ChardevInfoList *next;
     ChardevInfo *value;
 };
 
-void qapi_free_ChardevInfoList(ChardevInfoList *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(ChardevInfoList, qapi_free_ChardevInfoList)
-
 struct ChardevBackendInfo {
     char *name;
 };
-
-void qapi_free_ChardevBackendInfo(ChardevBackendInfo *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(ChardevBackendInfo, qapi_free_ChardevBackendInfo)
 
 struct ChardevBackendInfoList {
     ChardevBackendInfoList *next;
     ChardevBackendInfo *value;
 };
-
-void qapi_free_ChardevBackendInfoList(ChardevBackendInfoList *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(ChardevBackendInfoList, qapi_free_ChardevBackendInfoList)
 
 struct q_obj_ringbuf_write_arg {
     char *device;
@@ -524,57 +507,33 @@ struct ChardevFileWrapper {
     ChardevFile *data;
 };
 
-void qapi_free_ChardevFileWrapper(ChardevFileWrapper *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(ChardevFileWrapper, qapi_free_ChardevFileWrapper)
-
 struct ChardevHostdevWrapper {
     ChardevHostdev *data;
 };
-
-void qapi_free_ChardevHostdevWrapper(ChardevHostdevWrapper *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(ChardevHostdevWrapper, qapi_free_ChardevHostdevWrapper)
 
 struct ChardevSocketWrapper {
     ChardevSocket *data;
 };
 
-void qapi_free_ChardevSocketWrapper(ChardevSocketWrapper *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(ChardevSocketWrapper, qapi_free_ChardevSocketWrapper)
-
 struct ChardevUdpWrapper {
     ChardevUdp *data;
 };
-
-void qapi_free_ChardevUdpWrapper(ChardevUdpWrapper *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(ChardevUdpWrapper, qapi_free_ChardevUdpWrapper)
 
 struct ChardevCommonWrapper {
     ChardevCommon *data;
 };
 
-void qapi_free_ChardevCommonWrapper(ChardevCommonWrapper *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(ChardevCommonWrapper, qapi_free_ChardevCommonWrapper)
-
 struct ChardevMuxWrapper {
     ChardevMux *data;
 };
-
-void qapi_free_ChardevMuxWrapper(ChardevMuxWrapper *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(ChardevMuxWrapper, qapi_free_ChardevMuxWrapper)
 
 struct ChardevHubWrapper {
     ChardevHub *data;
 };
 
-void qapi_free_ChardevHubWrapper(ChardevHubWrapper *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(ChardevHubWrapper, qapi_free_ChardevHubWrapper)
-
 struct ChardevStdioWrapper {
     ChardevStdio *data;
 };
-
-void qapi_free_ChardevStdioWrapper(ChardevStdioWrapper *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(ChardevStdioWrapper, qapi_free_ChardevStdioWrapper)
 
 #if defined(CONFIG_SPICE)
 struct ChardevSpiceChannelWrapper {
@@ -583,19 +542,9 @@ struct ChardevSpiceChannelWrapper {
 #endif /* defined(CONFIG_SPICE) */
 
 #if defined(CONFIG_SPICE)
-void qapi_free_ChardevSpiceChannelWrapper(ChardevSpiceChannelWrapper *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(ChardevSpiceChannelWrapper, qapi_free_ChardevSpiceChannelWrapper)
-#endif /* defined(CONFIG_SPICE) */
-
-#if defined(CONFIG_SPICE)
 struct ChardevSpicePortWrapper {
     ChardevSpicePort *data;
 };
-#endif /* defined(CONFIG_SPICE) */
-
-#if defined(CONFIG_SPICE)
-void qapi_free_ChardevSpicePortWrapper(ChardevSpicePortWrapper *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(ChardevSpicePortWrapper, qapi_free_ChardevSpicePortWrapper)
 #endif /* defined(CONFIG_SPICE) */
 
 #if defined(CONFIG_SPICE_PROTOCOL)
@@ -604,42 +553,23 @@ struct ChardevQemuVDAgentWrapper {
 };
 #endif /* defined(CONFIG_SPICE_PROTOCOL) */
 
-#if defined(CONFIG_SPICE_PROTOCOL)
-void qapi_free_ChardevQemuVDAgentWrapper(ChardevQemuVDAgentWrapper *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(ChardevQemuVDAgentWrapper, qapi_free_ChardevQemuVDAgentWrapper)
-#endif /* defined(CONFIG_SPICE_PROTOCOL) */
-
 #if defined(CONFIG_DBUS_DISPLAY)
 struct ChardevDBusWrapper {
     ChardevDBus *data;
 };
 #endif /* defined(CONFIG_DBUS_DISPLAY) */
 
-#if defined(CONFIG_DBUS_DISPLAY)
-void qapi_free_ChardevDBusWrapper(ChardevDBusWrapper *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(ChardevDBusWrapper, qapi_free_ChardevDBusWrapper)
-#endif /* defined(CONFIG_DBUS_DISPLAY) */
-
 struct ChardevVCWrapper {
     ChardevVC *data;
 };
-
-void qapi_free_ChardevVCWrapper(ChardevVCWrapper *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(ChardevVCWrapper, qapi_free_ChardevVCWrapper)
 
 struct ChardevRingbufWrapper {
     ChardevRingbuf *data;
 };
 
-void qapi_free_ChardevRingbufWrapper(ChardevRingbufWrapper *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(ChardevRingbufWrapper, qapi_free_ChardevRingbufWrapper)
-
 struct ChardevPtyWrapper {
     ChardevPty *data;
 };
-
-void qapi_free_ChardevPtyWrapper(ChardevPtyWrapper *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(ChardevPtyWrapper, qapi_free_ChardevPtyWrapper)
 
 struct q_obj_ChardevBackend_base {
     ChardevBackendKind type;
@@ -696,9 +626,6 @@ G_DEFINE_AUTOPTR_CLEANUP_FUNC(ChardevBackend, qapi_free_ChardevBackend)
 struct ChardevReturn {
     char *pty;
 };
-
-void qapi_free_ChardevReturn(ChardevReturn *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(ChardevReturn, qapi_free_ChardevReturn)
 
 struct q_obj_chardev_add_arg {
     char *id;

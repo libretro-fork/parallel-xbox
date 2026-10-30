@@ -19,6 +19,4 @@
 
 void qapi_event_send_device_deleted(const char *device, const char *path);
 
-void qapi_event_send_device_unplug_guest_error(const char *device, const char *path);
-
 #endif /* QAPI_EVENTS_QDEV_H */

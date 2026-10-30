@@ -24,11 +24,6 @@ typedef enum NetworkAddressFamily {
     NETWORK_ADDRESS_FAMILY__MAX,
 } NetworkAddressFamily;
 
-#define NetworkAddressFamily_str(val) \
-    qapi_enum_lookup(&NetworkAddressFamily_lookup, (val))
-
-extern const QEnumLookup NetworkAddressFamily_lookup;
-
 typedef struct InetSocketAddressBase InetSocketAddressBase;
 
 typedef struct InetSocketAddress InetSocketAddress;
@@ -155,29 +150,17 @@ struct InetSocketAddressWrapper {
     InetSocketAddress *data;
 };
 
-void qapi_free_InetSocketAddressWrapper(InetSocketAddressWrapper *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(InetSocketAddressWrapper, qapi_free_InetSocketAddressWrapper)
-
 struct UnixSocketAddressWrapper {
     UnixSocketAddress *data;
 };
-
-void qapi_free_UnixSocketAddressWrapper(UnixSocketAddressWrapper *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(UnixSocketAddressWrapper, qapi_free_UnixSocketAddressWrapper)
 
 struct VsockSocketAddressWrapper {
     VsockSocketAddress *data;
 };
 
-void qapi_free_VsockSocketAddressWrapper(VsockSocketAddressWrapper *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(VsockSocketAddressWrapper, qapi_free_VsockSocketAddressWrapper)
-
 struct FdSocketAddressWrapper {
     FdSocketAddress *data;
 };
-
-void qapi_free_FdSocketAddressWrapper(FdSocketAddressWrapper *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(FdSocketAddressWrapper, qapi_free_FdSocketAddressWrapper)
 
 struct q_obj_SocketAddressLegacy_base {
     SocketAddressType type;

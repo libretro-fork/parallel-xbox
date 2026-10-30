@@ -18,29 +18,6 @@
 
 #include "qapi-visit-sockets.h"
 
-bool visit_type_ChardevInfo_members(Visitor *v, ChardevInfo *obj, Error **errp);
-
-bool visit_type_ChardevInfo(Visitor *v, const char *name,
-                 ChardevInfo **obj, Error **errp);
-
-bool visit_type_ChardevInfoList(Visitor *v, const char *name,
-                 ChardevInfoList **obj, Error **errp);
-
-bool visit_type_ChardevBackendInfo_members(Visitor *v, ChardevBackendInfo *obj, Error **errp);
-
-bool visit_type_ChardevBackendInfo(Visitor *v, const char *name,
-                 ChardevBackendInfo **obj, Error **errp);
-
-bool visit_type_ChardevBackendInfoList(Visitor *v, const char *name,
-                 ChardevBackendInfoList **obj, Error **errp);
-
-bool visit_type_DataFormat(Visitor *v, const char *name,
-                 DataFormat *obj, Error **errp);
-
-bool visit_type_q_obj_ringbuf_write_arg_members(Visitor *v, q_obj_ringbuf_write_arg *obj, Error **errp);
-
-bool visit_type_q_obj_ringbuf_read_arg_members(Visitor *v, q_obj_ringbuf_read_arg *obj, Error **errp);
-
 bool visit_type_ChardevCommon_members(Visitor *v, ChardevCommon *obj, Error **errp);
 
 bool visit_type_ChardevCommon(Visitor *v, const char *name,
@@ -129,86 +106,45 @@ bool visit_type_ChardevBackendKind(Visitor *v, const char *name,
 
 bool visit_type_ChardevFileWrapper_members(Visitor *v, ChardevFileWrapper *obj, Error **errp);
 
-bool visit_type_ChardevFileWrapper(Visitor *v, const char *name,
-                 ChardevFileWrapper **obj, Error **errp);
-
 bool visit_type_ChardevHostdevWrapper_members(Visitor *v, ChardevHostdevWrapper *obj, Error **errp);
-
-bool visit_type_ChardevHostdevWrapper(Visitor *v, const char *name,
-                 ChardevHostdevWrapper **obj, Error **errp);
 
 bool visit_type_ChardevSocketWrapper_members(Visitor *v, ChardevSocketWrapper *obj, Error **errp);
 
-bool visit_type_ChardevSocketWrapper(Visitor *v, const char *name,
-                 ChardevSocketWrapper **obj, Error **errp);
-
 bool visit_type_ChardevUdpWrapper_members(Visitor *v, ChardevUdpWrapper *obj, Error **errp);
-
-bool visit_type_ChardevUdpWrapper(Visitor *v, const char *name,
-                 ChardevUdpWrapper **obj, Error **errp);
 
 bool visit_type_ChardevCommonWrapper_members(Visitor *v, ChardevCommonWrapper *obj, Error **errp);
 
-bool visit_type_ChardevCommonWrapper(Visitor *v, const char *name,
-                 ChardevCommonWrapper **obj, Error **errp);
-
 bool visit_type_ChardevMuxWrapper_members(Visitor *v, ChardevMuxWrapper *obj, Error **errp);
-
-bool visit_type_ChardevMuxWrapper(Visitor *v, const char *name,
-                 ChardevMuxWrapper **obj, Error **errp);
 
 bool visit_type_ChardevHubWrapper_members(Visitor *v, ChardevHubWrapper *obj, Error **errp);
 
-bool visit_type_ChardevHubWrapper(Visitor *v, const char *name,
-                 ChardevHubWrapper **obj, Error **errp);
-
 bool visit_type_ChardevStdioWrapper_members(Visitor *v, ChardevStdioWrapper *obj, Error **errp);
-
-bool visit_type_ChardevStdioWrapper(Visitor *v, const char *name,
-                 ChardevStdioWrapper **obj, Error **errp);
 
 #if defined(CONFIG_SPICE)
 bool visit_type_ChardevSpiceChannelWrapper_members(Visitor *v, ChardevSpiceChannelWrapper *obj, Error **errp);
 
-bool visit_type_ChardevSpiceChannelWrapper(Visitor *v, const char *name,
-                 ChardevSpiceChannelWrapper **obj, Error **errp);
 #endif /* defined(CONFIG_SPICE) */
 
 #if defined(CONFIG_SPICE)
 bool visit_type_ChardevSpicePortWrapper_members(Visitor *v, ChardevSpicePortWrapper *obj, Error **errp);
 
-bool visit_type_ChardevSpicePortWrapper(Visitor *v, const char *name,
-                 ChardevSpicePortWrapper **obj, Error **errp);
 #endif /* defined(CONFIG_SPICE) */
 
 #if defined(CONFIG_SPICE_PROTOCOL)
 bool visit_type_ChardevQemuVDAgentWrapper_members(Visitor *v, ChardevQemuVDAgentWrapper *obj, Error **errp);
 
-bool visit_type_ChardevQemuVDAgentWrapper(Visitor *v, const char *name,
-                 ChardevQemuVDAgentWrapper **obj, Error **errp);
 #endif /* defined(CONFIG_SPICE_PROTOCOL) */
 
 #if defined(CONFIG_DBUS_DISPLAY)
 bool visit_type_ChardevDBusWrapper_members(Visitor *v, ChardevDBusWrapper *obj, Error **errp);
 
-bool visit_type_ChardevDBusWrapper(Visitor *v, const char *name,
-                 ChardevDBusWrapper **obj, Error **errp);
 #endif /* defined(CONFIG_DBUS_DISPLAY) */
 
 bool visit_type_ChardevVCWrapper_members(Visitor *v, ChardevVCWrapper *obj, Error **errp);
 
-bool visit_type_ChardevVCWrapper(Visitor *v, const char *name,
-                 ChardevVCWrapper **obj, Error **errp);
-
 bool visit_type_ChardevRingbufWrapper_members(Visitor *v, ChardevRingbufWrapper *obj, Error **errp);
 
-bool visit_type_ChardevRingbufWrapper(Visitor *v, const char *name,
-                 ChardevRingbufWrapper **obj, Error **errp);
-
 bool visit_type_ChardevPtyWrapper_members(Visitor *v, ChardevPtyWrapper *obj, Error **errp);
-
-bool visit_type_ChardevPtyWrapper(Visitor *v, const char *name,
-                 ChardevPtyWrapper **obj, Error **errp);
 
 bool visit_type_q_obj_ChardevBackend_base_members(Visitor *v, q_obj_ChardevBackend_base *obj, Error **errp);
 
@@ -216,20 +152,5 @@ bool visit_type_ChardevBackend_members(Visitor *v, ChardevBackend *obj, Error **
 
 bool visit_type_ChardevBackend(Visitor *v, const char *name,
                  ChardevBackend **obj, Error **errp);
-
-bool visit_type_ChardevReturn_members(Visitor *v, ChardevReturn *obj, Error **errp);
-
-bool visit_type_ChardevReturn(Visitor *v, const char *name,
-                 ChardevReturn **obj, Error **errp);
-
-bool visit_type_q_obj_chardev_add_arg_members(Visitor *v, q_obj_chardev_add_arg *obj, Error **errp);
-
-bool visit_type_q_obj_chardev_change_arg_members(Visitor *v, q_obj_chardev_change_arg *obj, Error **errp);
-
-bool visit_type_q_obj_chardev_remove_arg_members(Visitor *v, q_obj_chardev_remove_arg *obj, Error **errp);
-
-bool visit_type_q_obj_chardev_send_break_arg_members(Visitor *v, q_obj_chardev_send_break_arg *obj, Error **errp);
-
-bool visit_type_q_obj_VSERPORT_CHANGE_arg_members(Visitor *v, q_obj_VSERPORT_CHANGE_arg *obj, Error **errp);
 
 #endif /* QAPI_VISIT_CHAR_H */

@@ -98,143 +98,45 @@ SOURCES_UTIL := \
 	$(CORE_DIR)/crypto/sm4.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-builtin-types.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-builtin-visit.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-emit-events.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-events-accelerator.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-events-acpi-hest.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-events-acpi.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-events-authz.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-events-block-core.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-events-block-export.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-events-block.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-events-char.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-events-common.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-events-compat.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-events-control.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-events-crypto.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-events-cryptodev.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-events-cxl.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-events-dump.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-events-ebpf.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-events-error.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-events-introspect.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-events-job.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-events-machine-common.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-events-machine-s390x.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-events-machine.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-events-migration.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-events-misc-arm.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-events-misc-i386.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-events-misc.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-events-net.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-events-pci.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-events-pragma.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-events-qdev.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-events-qom.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-events-replay.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-events-rocker.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-events-run-state.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-events-sockets.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-events-stats.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-events-tpm.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-events-trace.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-events-transaction.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-events-uefi.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-events-ui.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-events-vfio.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-events-virtio.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-events-yank.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-events.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-introspect.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-types-accelerator.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-types-acpi-hest.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-types-acpi.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-types-authz.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-types-block-core.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-types-block-export.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-types-block.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-types-char.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-types-common.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-types-compat.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-types-control.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-types-crypto.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-types-cryptodev.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-types-cxl.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-types-dump.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-types-ebpf.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-types-error.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-types-introspect.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-types-job.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-types-machine-common.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-types-machine-s390x.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-types-machine.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-types-migration.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-types-misc-arm.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-types-misc-i386.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-types-misc.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-types-net.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-types-pci.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-types-pragma.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-types-qdev.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-types-qom.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-types-replay.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-types-rocker.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-types-run-state.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-types-sockets.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-types-stats.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-types-tpm.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-types-trace.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-types-transaction.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-types-uefi.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-types-ui.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-types-vfio.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-types-virtio.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-types-yank.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-types.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-visit-accelerator.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-visit-acpi-hest.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-visit-acpi.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-visit-authz.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-visit-block-core.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-visit-block-export.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-visit-block.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-visit-char.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-visit-common.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-visit-compat.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-visit-control.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-visit-crypto.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-visit-cryptodev.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-visit-cxl.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-visit-dump.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-visit-ebpf.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-visit-error.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-visit-introspect.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-visit-job.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-visit-machine-common.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-visit-machine-s390x.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-visit-machine.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-visit-migration.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-visit-misc-arm.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-visit-misc-i386.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-visit-misc.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-visit-net.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-visit-pci.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-visit-pragma.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-visit-qdev.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-visit-qom.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-visit-replay.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-visit-rocker.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-visit-run-state.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-visit-sockets.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-visit-stats.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-visit-tpm.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-visit-trace.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-visit-transaction.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-visit-uefi.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-visit-ui.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-visit-vfio.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-visit-virtio.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-visit-yank.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-visit.c \
 	$(CORE_DIR)/qapi/opts-visitor.c \
 	$(CORE_DIR)/qapi/qapi-clone-visitor.c \
 	$(CORE_DIR)/qapi/qapi-dealloc-visitor.c \

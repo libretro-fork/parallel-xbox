@@ -15,98 +15,11 @@
 #include "qapi-visit-common.h"
 #include "qapi-features.h"
 
-bool visit_type_IoOperationType(Visitor *v, const char *name,
-                 IoOperationType *obj, Error **errp)
-{
-    int value = *obj;
-    bool ok = visit_type_enum(v, name, &value, &IoOperationType_lookup, errp);
-    *obj = value;
-    return ok;
-}
-
 bool visit_type_OnOffAuto(Visitor *v, const char *name,
                  OnOffAuto *obj, Error **errp)
 {
     int value = *obj;
     bool ok = visit_type_enum(v, name, &value, &OnOffAuto_lookup, errp);
-    *obj = value;
-    return ok;
-}
-
-bool visit_type_OnOffSplit(Visitor *v, const char *name,
-                 OnOffSplit *obj, Error **errp)
-{
-    int value = *obj;
-    bool ok = visit_type_enum(v, name, &value, &OnOffSplit_lookup, errp);
-    *obj = value;
-    return ok;
-}
-
-bool visit_type_StrOrNull(Visitor *v, const char *name,
-                 StrOrNull **obj, Error **errp)
-{
-    bool ok = false;
-
-    if (!visit_start_alternate(v, name, (GenericAlternate **)obj,
-                               sizeof(**obj), errp)) {
-        return false;
-    }
-    if (!*obj) {
-        /* incomplete */
-        assert(visit_is_dealloc(v));
-        ok = true;
-        goto out_obj;
-    }
-    switch ((*obj)->type) {
-    case QTYPE_QSTRING:
-        ok = visit_type_str(v, name, &(*obj)->u.s, errp);
-        break;
-    case QTYPE_QNULL:
-        ok = visit_type_null(v, name, &(*obj)->u.n, errp);
-        break;
-    case QTYPE_NONE:
-        abort();
-    default:
-        assert(visit_is_input(v));
-        error_setg(errp,
-                   "Invalid parameter type for '%s', expected: StrOrNull",
-                   name ? name : "null");
-        /* Avoid passing invalid *obj to qapi_free_StrOrNull() */
-        g_free(*obj);
-        *obj = NULL;
-    }
-out_obj:
-    visit_end_alternate(v, (void **)obj);
-    if (!ok && visit_is_input(v)) {
-        qapi_free_StrOrNull(*obj);
-        *obj = NULL;
-    }
-    return ok;
-}
-
-bool visit_type_OffAutoPCIBAR(Visitor *v, const char *name,
-                 OffAutoPCIBAR *obj, Error **errp)
-{
-    int value = *obj;
-    bool ok = visit_type_enum(v, name, &value, &OffAutoPCIBAR_lookup, errp);
-    *obj = value;
-    return ok;
-}
-
-bool visit_type_PCIELinkSpeed(Visitor *v, const char *name,
-                 PCIELinkSpeed *obj, Error **errp)
-{
-    int value = *obj;
-    bool ok = visit_type_enum(v, name, &value, &PCIELinkSpeed_lookup, errp);
-    *obj = value;
-    return ok;
-}
-
-bool visit_type_PCIELinkWidth(Visitor *v, const char *name,
-                 PCIELinkWidth *obj, Error **errp)
-{
-    int value = *obj;
-    bool ok = visit_type_enum(v, name, &value, &PCIELinkWidth_lookup, errp);
     *obj = value;
     return ok;
 }
@@ -134,50 +47,6 @@ bool visit_type_GrabToggleKeys(Visitor *v, const char *name,
 {
     int value = *obj;
     bool ok = visit_type_enum(v, name, &value, &GrabToggleKeys_lookup, errp);
-    *obj = value;
-    return ok;
-}
-
-bool visit_type_HumanReadableText_members(Visitor *v, HumanReadableText *obj, Error **errp)
-{
-    if (!visit_type_str(v, "human-readable-text", &obj->human_readable_text, errp)) {
-        return false;
-    }
-    return true;
-}
-
-bool visit_type_HumanReadableText(Visitor *v, const char *name,
-                 HumanReadableText **obj, Error **errp)
-{
-    bool ok = false;
-
-    if (!visit_start_struct(v, name, (void **)obj, sizeof(HumanReadableText), errp)) {
-        return false;
-    }
-    if (!*obj) {
-        /* incomplete */
-        assert(visit_is_dealloc(v));
-        ok = true;
-        goto out_obj;
-    }
-    if (!visit_type_HumanReadableText_members(v, *obj, errp)) {
-        goto out_obj;
-    }
-    ok = visit_check_struct(v, errp);
-out_obj:
-    visit_end_struct(v, (void **)obj);
-    if (!ok && visit_is_input(v)) {
-        qapi_free_HumanReadableText(*obj);
-        *obj = NULL;
-    }
-    return ok;
-}
-
-bool visit_type_EndianMode(Visitor *v, const char *name,
-                 EndianMode *obj, Error **errp)
-{
-    int value = *obj;
-    bool ok = visit_type_enum(v, name, &value, &EndianMode_lookup, errp);
     *obj = value;
     return ok;
 }

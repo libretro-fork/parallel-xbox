@@ -36,11 +36,6 @@ typedef enum FuseExportAllowOther {
     FUSE_EXPORT_ALLOW_OTHER__MAX,
 } FuseExportAllowOther;
 
-#define FuseExportAllowOther_str(val) \
-    qapi_enum_lookup(&FuseExportAllowOther_lookup, (val))
-
-extern const QEnumLookup FuseExportAllowOther_lookup;
-
 #if defined(CONFIG_FUSE)
 typedef struct BlockExportOptionsFuse BlockExportOptionsFuse;
 #endif /* defined(CONFIG_FUSE) */
@@ -54,11 +49,6 @@ typedef enum BlockExportRemoveMode {
     BLOCK_EXPORT_REMOVE_MODE_HARD,
     BLOCK_EXPORT_REMOVE_MODE__MAX,
 } BlockExportRemoveMode;
-
-#define BlockExportRemoveMode_str(val) \
-    qapi_enum_lookup(&BlockExportRemoveMode_lookup, (val))
-
-extern const QEnumLookup BlockExportRemoveMode_lookup;
 
 typedef struct q_obj_nbd_server_remove_arg q_obj_nbd_server_remove_arg;
 
@@ -75,11 +65,6 @@ typedef enum BlockExportType {
 #endif /* defined(CONFIG_VDUSE_BLK_EXPORT) */
     BLOCK_EXPORT_TYPE__MAX,
 } BlockExportType;
-
-#define BlockExportType_str(val) \
-    qapi_enum_lookup(&BlockExportType_lookup, (val))
-
-extern const QEnumLookup BlockExportType_lookup;
 
 typedef struct q_obj_BlockExportOptions_base q_obj_BlockExportOptions_base;
 
@@ -102,9 +87,6 @@ struct NbdServerOptionsBase {
     uint32_t max_connections;
 };
 
-void qapi_free_NbdServerOptionsBase(NbdServerOptionsBase *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(NbdServerOptionsBase, qapi_free_NbdServerOptionsBase)
-
 struct NbdServerOptions {
     /* Members inherited from NbdServerOptionsBase: */
     bool has_handshake_max_seconds;
@@ -121,9 +103,6 @@ static inline NbdServerOptionsBase *qapi_NbdServerOptions_base(const NbdServerOp
 {
     return (NbdServerOptionsBase *)obj;
 }
-
-void qapi_free_NbdServerOptions(NbdServerOptions *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(NbdServerOptions, qapi_free_NbdServerOptions)
 
 struct NbdServerOptionsLegacy {
     /* Members inherited from NbdServerOptionsBase: */
@@ -142,16 +121,10 @@ static inline NbdServerOptionsBase *qapi_NbdServerOptionsLegacy_base(const NbdSe
     return (NbdServerOptionsBase *)obj;
 }
 
-void qapi_free_NbdServerOptionsLegacy(NbdServerOptionsLegacy *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(NbdServerOptionsLegacy, qapi_free_NbdServerOptionsLegacy)
-
 struct BlockExportOptionsNbdBase {
     char *name;
     char *description;
 };
-
-void qapi_free_BlockExportOptionsNbdBase(BlockExportOptionsNbdBase *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockExportOptionsNbdBase, qapi_free_BlockExportOptionsNbdBase)
 
 struct BlockExportOptionsNbd {
     /* Members inherited from BlockExportOptionsNbdBase: */
@@ -169,9 +142,6 @@ static inline BlockExportOptionsNbdBase *qapi_BlockExportOptionsNbd_base(const B
     return (BlockExportOptionsNbdBase *)obj;
 }
 
-void qapi_free_BlockExportOptionsNbd(BlockExportOptionsNbd *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockExportOptionsNbd, qapi_free_BlockExportOptionsNbd)
-
 struct BlockExportOptionsVhostUserBlk {
     SocketAddress *addr;
     bool has_logical_block_size;
@@ -179,9 +149,6 @@ struct BlockExportOptionsVhostUserBlk {
     bool has_num_queues;
     uint16_t num_queues;
 };
-
-void qapi_free_BlockExportOptionsVhostUserBlk(BlockExportOptionsVhostUserBlk *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockExportOptionsVhostUserBlk, qapi_free_BlockExportOptionsVhostUserBlk)
 
 #if defined(CONFIG_FUSE)
 struct BlockExportOptionsFuse {
@@ -191,11 +158,6 @@ struct BlockExportOptionsFuse {
     bool has_allow_other;
     FuseExportAllowOther allow_other;
 };
-#endif /* defined(CONFIG_FUSE) */
-
-#if defined(CONFIG_FUSE)
-void qapi_free_BlockExportOptionsFuse(BlockExportOptionsFuse *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockExportOptionsFuse, qapi_free_BlockExportOptionsFuse)
 #endif /* defined(CONFIG_FUSE) */
 
 struct BlockExportOptionsVduseBlk {
@@ -208,9 +170,6 @@ struct BlockExportOptionsVduseBlk {
     uint64_t logical_block_size;
     char *serial;
 };
-
-void qapi_free_BlockExportOptionsVduseBlk(BlockExportOptionsVduseBlk *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockExportOptionsVduseBlk, qapi_free_BlockExportOptionsVduseBlk)
 
 struct NbdServerAddOptions {
     /* Members inherited from BlockExportOptionsNbdBase: */
@@ -227,9 +186,6 @@ static inline BlockExportOptionsNbdBase *qapi_NbdServerAddOptions_base(const Nbd
 {
     return (BlockExportOptionsNbdBase *)obj;
 }
-
-void qapi_free_NbdServerAddOptions(NbdServerAddOptions *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(NbdServerAddOptions, qapi_free_NbdServerAddOptions)
 
 struct q_obj_nbd_server_remove_arg {
     char *name;
@@ -279,9 +235,6 @@ struct BlockExportOptions {
     } u;
 };
 
-void qapi_free_BlockExportOptions(BlockExportOptions *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockExportOptions, qapi_free_BlockExportOptions)
-
 struct q_obj_block_export_del_arg {
     char *id;
     bool has_mode;
@@ -299,15 +252,9 @@ struct BlockExportInfo {
     bool shutting_down;
 };
 
-void qapi_free_BlockExportInfo(BlockExportInfo *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockExportInfo, qapi_free_BlockExportInfo)
-
 struct BlockExportInfoList {
     BlockExportInfoList *next;
     BlockExportInfo *value;
 };
-
-void qapi_free_BlockExportInfoList(BlockExportInfoList *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockExportInfoList, qapi_free_BlockExportInfoList)
 
 #endif /* QAPI_TYPES_BLOCK_EXPORT_H */

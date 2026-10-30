@@ -21,11 +21,6 @@ typedef enum IoOperationType {
     IO_OPERATION_TYPE__MAX,
 } IoOperationType;
 
-#define IoOperationType_str(val) \
-    qapi_enum_lookup(&IoOperationType_lookup, (val))
-
-extern const QEnumLookup IoOperationType_lookup;
-
 typedef enum OnOffAuto {
     ON_OFF_AUTO_AUTO,
     ON_OFF_AUTO_ON,
@@ -44,11 +39,6 @@ typedef enum OnOffSplit {
     ON_OFF_SPLIT_SPLIT,
     ON_OFF_SPLIT__MAX,
 } OnOffSplit;
-
-#define OnOffSplit_str(val) \
-    qapi_enum_lookup(&OnOffSplit_lookup, (val))
-
-extern const QEnumLookup OnOffSplit_lookup;
 
 typedef struct StrOrNull StrOrNull;
 
@@ -162,14 +152,8 @@ struct StrOrNull {
     } u;
 };
 
-void qapi_free_StrOrNull(StrOrNull *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(StrOrNull, qapi_free_StrOrNull)
-
 struct HumanReadableText {
     char *human_readable_text;
 };
-
-void qapi_free_HumanReadableText(HumanReadableText *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(HumanReadableText, qapi_free_HumanReadableText)
 
 #endif /* QAPI_TYPES_COMMON_H */

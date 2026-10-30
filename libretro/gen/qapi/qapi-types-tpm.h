@@ -23,10 +23,6 @@ typedef enum TpmModel {
     TPM_MODEL__MAX,
 } TpmModel;
 
-#define TpmModel_str(val) \
-    qapi_enum_lookup(&TpmModel_lookup, (val))
-
-extern const QEnumLookup TpmModel_lookup;
 #endif /* defined(CONFIG_TPM) */
 
 #if defined(CONFIG_TPM)
@@ -40,10 +36,6 @@ typedef enum TpmType {
     TPM_TYPE__MAX,
 } TpmType;
 
-#define TpmType_str(val) \
-    qapi_enum_lookup(&TpmType_lookup, (val))
-
-extern const QEnumLookup TpmType_lookup;
 #endif /* defined(CONFIG_TPM) */
 
 #if defined(CONFIG_TPM)
@@ -88,8 +80,6 @@ struct TpmModelList {
     TpmModel value;
 };
 
-void qapi_free_TpmModelList(TpmModelList *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(TpmModelList, qapi_free_TpmModelList)
 #endif /* defined(CONFIG_TPM) */
 
 #if defined(CONFIG_TPM)
@@ -98,8 +88,6 @@ struct TpmTypeList {
     TpmType value;
 };
 
-void qapi_free_TpmTypeList(TpmTypeList *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(TpmTypeList, qapi_free_TpmTypeList)
 #endif /* defined(CONFIG_TPM) */
 
 #if defined(CONFIG_TPM)
@@ -110,19 +98,9 @@ struct TPMPassthroughOptions {
 #endif /* defined(CONFIG_TPM) */
 
 #if defined(CONFIG_TPM)
-void qapi_free_TPMPassthroughOptions(TPMPassthroughOptions *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(TPMPassthroughOptions, qapi_free_TPMPassthroughOptions)
-#endif /* defined(CONFIG_TPM) */
-
-#if defined(CONFIG_TPM)
 struct TPMEmulatorOptions {
     char *chardev;
 };
-#endif /* defined(CONFIG_TPM) */
-
-#if defined(CONFIG_TPM)
-void qapi_free_TPMEmulatorOptions(TPMEmulatorOptions *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(TPMEmulatorOptions, qapi_free_TPMEmulatorOptions)
 #endif /* defined(CONFIG_TPM) */
 
 #if defined(CONFIG_TPM)
@@ -132,19 +110,9 @@ struct TPMPassthroughOptionsWrapper {
 #endif /* defined(CONFIG_TPM) */
 
 #if defined(CONFIG_TPM)
-void qapi_free_TPMPassthroughOptionsWrapper(TPMPassthroughOptionsWrapper *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(TPMPassthroughOptionsWrapper, qapi_free_TPMPassthroughOptionsWrapper)
-#endif /* defined(CONFIG_TPM) */
-
-#if defined(CONFIG_TPM)
 struct TPMEmulatorOptionsWrapper {
     TPMEmulatorOptions *data;
 };
-#endif /* defined(CONFIG_TPM) */
-
-#if defined(CONFIG_TPM)
-void qapi_free_TPMEmulatorOptionsWrapper(TPMEmulatorOptionsWrapper *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(TPMEmulatorOptionsWrapper, qapi_free_TPMEmulatorOptionsWrapper)
 #endif /* defined(CONFIG_TPM) */
 
 #if defined(CONFIG_TPM)
@@ -164,11 +132,6 @@ struct TpmTypeOptions {
 #endif /* defined(CONFIG_TPM) */
 
 #if defined(CONFIG_TPM)
-void qapi_free_TpmTypeOptions(TpmTypeOptions *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(TpmTypeOptions, qapi_free_TpmTypeOptions)
-#endif /* defined(CONFIG_TPM) */
-
-#if defined(CONFIG_TPM)
 struct TPMInfo {
     char *id;
     TpmModel model;
@@ -177,18 +140,11 @@ struct TPMInfo {
 #endif /* defined(CONFIG_TPM) */
 
 #if defined(CONFIG_TPM)
-void qapi_free_TPMInfo(TPMInfo *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(TPMInfo, qapi_free_TPMInfo)
-#endif /* defined(CONFIG_TPM) */
-
-#if defined(CONFIG_TPM)
 struct TPMInfoList {
     TPMInfoList *next;
     TPMInfo *value;
 };
 
-void qapi_free_TPMInfoList(TPMInfoList *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(TPMInfoList, qapi_free_TPMInfoList)
 #endif /* defined(CONFIG_TPM) */
 
 #endif /* QAPI_TYPES_TPM_H */

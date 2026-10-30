@@ -16,14 +16,6 @@
 #include "qapi-visit-common.h"
 #include "qapi-features.h"
 
-const QEnumLookup IoOperationType_lookup = {
-    .array = (const char *const[]) {
-        [IO_OPERATION_TYPE_READ] = "read",
-        [IO_OPERATION_TYPE_WRITE] = "write",
-    },
-    .size = IO_OPERATION_TYPE__MAX
-};
-
 const QEnumLookup OnOffAuto_lookup = {
     .array = (const char *const[]) {
         [ON_OFF_AUTO_AUTO] = "auto",
@@ -32,28 +24,6 @@ const QEnumLookup OnOffAuto_lookup = {
     },
     .size = ON_OFF_AUTO__MAX
 };
-
-const QEnumLookup OnOffSplit_lookup = {
-    .array = (const char *const[]) {
-        [ON_OFF_SPLIT_ON] = "on",
-        [ON_OFF_SPLIT_OFF] = "off",
-        [ON_OFF_SPLIT_SPLIT] = "split",
-    },
-    .size = ON_OFF_SPLIT__MAX
-};
-
-void qapi_free_StrOrNull(StrOrNull *obj)
-{
-    Visitor *v;
-
-    if (!obj) {
-        return;
-    }
-
-    v = qapi_dealloc_visitor_new();
-    visit_type_StrOrNull(v, NULL, &obj, NULL);
-    visit_free(v);
-}
 
 const QEnumLookup OffAutoPCIBAR_lookup = {
     .array = (const char *const[]) {
@@ -124,19 +94,6 @@ const QEnumLookup GrabToggleKeys_lookup = {
     },
     .size = GRAB_TOGGLE_KEYS__MAX
 };
-
-void qapi_free_HumanReadableText(HumanReadableText *obj)
-{
-    Visitor *v;
-
-    if (!obj) {
-        return;
-    }
-
-    v = qapi_dealloc_visitor_new();
-    visit_type_HumanReadableText(v, NULL, &obj, NULL);
-    visit_free(v);
-}
 
 const QEnumLookup EndianMode_lookup = {
     .array = (const char *const[]) {

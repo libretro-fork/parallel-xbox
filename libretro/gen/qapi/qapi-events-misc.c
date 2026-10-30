@@ -49,35 +49,5 @@ void qapi_event_send_rtc_change(int64_t offset, const char *qom_path)
     qobject_unref(qmp);
 }
 
-void qapi_event_send_vfu_client_hangup(const char *vfu_id, const char *vfu_qom_path, const char *dev_id, const char *dev_qom_path)
-{
-    QDict *qmp;
-    QObject *obj;
-    Visitor *v;
-    q_obj_VFU_CLIENT_HANGUP_arg param = {
-        (char *)vfu_id, (char *)vfu_qom_path, (char *)dev_id, (char *)dev_qom_path
-    };
-
-    qmp = qmp_event_build_dict("VFU_CLIENT_HANGUP");
-
-    v = qobject_output_visitor_new_qmp(&obj);
-
-    visit_start_struct(v, "VFU_CLIENT_HANGUP", NULL, 0, &error_abort);
-    visit_type_q_obj_VFU_CLIENT_HANGUP_arg_members(v, &param, &error_abort);
-    visit_check_struct(v, &error_abort);
-    visit_end_struct(v, NULL);
-
-    visit_complete(v, &obj);
-    if (qdict_size(qobject_to(QDict, obj))) {
-        qdict_put_obj(qmp, "data", obj);
-    } else {
-        qobject_unref(obj);
-    }
-    qapi_event_emit(QAPI_EVENT_VFU_CLIENT_HANGUP, qmp);
-
-    visit_free(v);
-    qobject_unref(qmp);
-}
-
 /* Dummy declaration to prevent empty .o file */
 char qapi_dummy_qapi_events_misc_c;

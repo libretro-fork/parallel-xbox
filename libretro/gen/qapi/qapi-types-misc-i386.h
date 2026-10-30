@@ -25,21 +25,11 @@ typedef enum SevState {
     SEV_STATE__MAX,
 } SevState;
 
-#define SevState_str(val) \
-    qapi_enum_lookup(&SevState_lookup, (val))
-
-extern const QEnumLookup SevState_lookup;
-
 typedef enum SevGuestType {
     SEV_GUEST_TYPE_SEV,
     SEV_GUEST_TYPE_SEV_SNP,
     SEV_GUEST_TYPE__MAX,
 } SevGuestType;
-
-#define SevGuestType_str(val) \
-    qapi_enum_lookup(&SevGuestType_lookup, (val))
-
-extern const QEnumLookup SevGuestType_lookup;
 
 typedef struct SevGuestInfo SevGuestInfo;
 
@@ -75,11 +65,6 @@ typedef enum EvtchnPortType {
     EVTCHN_PORT_TYPE__MAX,
 } EvtchnPortType;
 
-#define EvtchnPortType_str(val) \
-    qapi_enum_lookup(&EvtchnPortType_lookup, (val))
-
-extern const QEnumLookup EvtchnPortType_lookup;
-
 typedef struct EvtchnInfo EvtchnInfo;
 
 typedef struct EvtchnInfoList EvtchnInfoList;
@@ -91,15 +76,9 @@ struct SevGuestInfo {
     uint32_t handle;
 };
 
-void qapi_free_SevGuestInfo(SevGuestInfo *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(SevGuestInfo, qapi_free_SevGuestInfo)
-
 struct SevSnpGuestInfo {
     uint64_t snp_policy;
 };
-
-void qapi_free_SevSnpGuestInfo(SevSnpGuestInfo *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(SevSnpGuestInfo, qapi_free_SevSnpGuestInfo)
 
 struct q_obj_SevInfo_base {
     bool enabled;
@@ -123,15 +102,9 @@ struct SevInfo {
     } u;
 };
 
-void qapi_free_SevInfo(SevInfo *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(SevInfo, qapi_free_SevInfo)
-
 struct SevLaunchMeasureInfo {
     char *data;
 };
-
-void qapi_free_SevLaunchMeasureInfo(SevLaunchMeasureInfo *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(SevLaunchMeasureInfo, qapi_free_SevLaunchMeasureInfo)
 
 struct SevCapability {
     char *pdh;
@@ -140,9 +113,6 @@ struct SevCapability {
     int64_t cbitpos;
     int64_t reduced_phys_bits;
 };
-
-void qapi_free_SevCapability(SevCapability *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(SevCapability, qapi_free_SevCapability)
 
 struct q_obj_sev_inject_launch_secret_arg {
     char *packet_header;
@@ -155,9 +125,6 @@ struct SevAttestationReport {
     char *data;
 };
 
-void qapi_free_SevAttestationReport(SevAttestationReport *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(SevAttestationReport, qapi_free_SevAttestationReport)
-
 struct q_obj_query_sev_attestation_report_arg {
     char *mnonce;
 };
@@ -167,16 +134,10 @@ struct SgxEpcSection {
     uint64_t size;
 };
 
-void qapi_free_SgxEpcSection(SgxEpcSection *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(SgxEpcSection, qapi_free_SgxEpcSection)
-
 struct SgxEpcSectionList {
     SgxEpcSectionList *next;
     SgxEpcSection *value;
 };
-
-void qapi_free_SgxEpcSectionList(SgxEpcSectionList *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(SgxEpcSectionList, qapi_free_SgxEpcSectionList)
 
 struct SgxInfo {
     bool sgx;
@@ -185,9 +146,6 @@ struct SgxInfo {
     bool flc;
     SgxEpcSectionList *sections;
 };
-
-void qapi_free_SgxInfo(SgxInfo *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(SgxInfo, qapi_free_SgxInfo)
 
 struct EvtchnInfo {
     uint16_t port;
@@ -199,16 +157,10 @@ struct EvtchnInfo {
     bool masked;
 };
 
-void qapi_free_EvtchnInfo(EvtchnInfo *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(EvtchnInfo, qapi_free_EvtchnInfo)
-
 struct EvtchnInfoList {
     EvtchnInfoList *next;
     EvtchnInfo *value;
 };
-
-void qapi_free_EvtchnInfoList(EvtchnInfoList *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(EvtchnInfoList, qapi_free_EvtchnInfoList)
 
 struct q_obj_xen_event_inject_arg {
     uint32_t port;

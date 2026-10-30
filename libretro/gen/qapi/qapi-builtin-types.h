@@ -56,11 +56,6 @@ typedef enum QType {
     QTYPE__MAX,
 } QType;
 
-#define QType_str(val) \
-    qapi_enum_lookup(&QType_lookup, (val))
-
-extern const QEnumLookup QType_lookup;
-
 struct strList {
     strList *next;
     char *value;
@@ -74,56 +69,35 @@ struct numberList {
     double value;
 };
 
-void qapi_free_numberList(numberList *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(numberList, qapi_free_numberList)
-
 struct intList {
     intList *next;
     int64_t value;
 };
-
-void qapi_free_intList(intList *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(intList, qapi_free_intList)
 
 struct int8List {
     int8List *next;
     int8_t value;
 };
 
-void qapi_free_int8List(int8List *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(int8List, qapi_free_int8List)
-
 struct int16List {
     int16List *next;
     int16_t value;
 };
-
-void qapi_free_int16List(int16List *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(int16List, qapi_free_int16List)
 
 struct int32List {
     int32List *next;
     int32_t value;
 };
 
-void qapi_free_int32List(int32List *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(int32List, qapi_free_int32List)
-
 struct int64List {
     int64List *next;
     int64_t value;
 };
 
-void qapi_free_int64List(int64List *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(int64List, qapi_free_int64List)
-
 struct uint8List {
     uint8List *next;
     uint8_t value;
 };
-
-void qapi_free_uint8List(uint8List *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(uint8List, qapi_free_uint8List)
 
 struct uint16List {
     uint16List *next;
@@ -138,47 +112,29 @@ struct uint32List {
     uint32_t value;
 };
 
-void qapi_free_uint32List(uint32List *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(uint32List, qapi_free_uint32List)
-
 struct uint64List {
     uint64List *next;
     uint64_t value;
 };
-
-void qapi_free_uint64List(uint64List *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(uint64List, qapi_free_uint64List)
 
 struct sizeList {
     sizeList *next;
     uint64_t value;
 };
 
-void qapi_free_sizeList(sizeList *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(sizeList, qapi_free_sizeList)
-
 struct boolList {
     boolList *next;
     bool value;
 };
-
-void qapi_free_boolList(boolList *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(boolList, qapi_free_boolList)
 
 struct anyList {
     anyList *next;
     QObject *value;
 };
 
-void qapi_free_anyList(anyList *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(anyList, qapi_free_anyList)
-
 struct nullList {
     nullList *next;
     QNull *value;
 };
-
-void qapi_free_nullList(nullList *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(nullList, qapi_free_nullList)
 
 #endif /* QAPI_BUILTIN_TYPES_H */

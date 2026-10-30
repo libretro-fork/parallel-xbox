@@ -28,11 +28,6 @@ typedef enum JobType {
     JOB_TYPE__MAX,
 } JobType;
 
-#define JobType_str(val) \
-    qapi_enum_lookup(&JobType_lookup, (val))
-
-extern const QEnumLookup JobType_lookup;
-
 typedef enum JobStatus {
     JOB_STATUS_UNDEFINED,
     JOB_STATUS_CREATED,
@@ -48,11 +43,6 @@ typedef enum JobStatus {
     JOB_STATUS__MAX,
 } JobStatus;
 
-#define JobStatus_str(val) \
-    qapi_enum_lookup(&JobStatus_lookup, (val))
-
-extern const QEnumLookup JobStatus_lookup;
-
 typedef enum JobVerb {
     JOB_VERB_CANCEL,
     JOB_VERB_PAUSE,
@@ -64,11 +54,6 @@ typedef enum JobVerb {
     JOB_VERB_CHANGE,
     JOB_VERB__MAX,
 } JobVerb;
-
-#define JobVerb_str(val) \
-    qapi_enum_lookup(&JobVerb_lookup, (val))
-
-extern const QEnumLookup JobVerb_lookup;
 
 typedef struct q_obj_JOB_STATUS_CHANGE_arg q_obj_JOB_STATUS_CHANGE_arg;
 
@@ -126,15 +111,9 @@ struct JobInfo {
     char *error;
 };
 
-void qapi_free_JobInfo(JobInfo *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(JobInfo, qapi_free_JobInfo)
-
 struct JobInfoList {
     JobInfoList *next;
     JobInfo *value;
 };
-
-void qapi_free_JobInfoList(JobInfoList *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(JobInfoList, qapi_free_JobInfoList)
 
 #endif /* QAPI_TYPES_JOB_H */

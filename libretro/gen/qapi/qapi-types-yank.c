@@ -25,32 +25,6 @@ const QEnumLookup YankInstanceType_lookup = {
     .size = YANK_INSTANCE_TYPE__MAX
 };
 
-void qapi_free_YankInstanceBlockNode(YankInstanceBlockNode *obj)
-{
-    Visitor *v;
-
-    if (!obj) {
-        return;
-    }
-
-    v = qapi_dealloc_visitor_new();
-    visit_type_YankInstanceBlockNode(v, NULL, &obj, NULL);
-    visit_free(v);
-}
-
-void qapi_free_YankInstanceChardev(YankInstanceChardev *obj)
-{
-    Visitor *v;
-
-    if (!obj) {
-        return;
-    }
-
-    v = qapi_dealloc_visitor_new();
-    visit_type_YankInstanceChardev(v, NULL, &obj, NULL);
-    visit_free(v);
-}
-
 void qapi_free_YankInstance(YankInstance *obj)
 {
     Visitor *v;
@@ -61,19 +35,6 @@ void qapi_free_YankInstance(YankInstance *obj)
 
     v = qapi_dealloc_visitor_new();
     visit_type_YankInstance(v, NULL, &obj, NULL);
-    visit_free(v);
-}
-
-void qapi_free_YankInstanceList(YankInstanceList *obj)
-{
-    Visitor *v;
-
-    if (!obj) {
-        return;
-    }
-
-    v = qapi_dealloc_visitor_new();
-    visit_type_YankInstanceList(v, NULL, &obj, NULL);
     visit_free(v);
 }
 

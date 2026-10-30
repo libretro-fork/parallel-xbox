@@ -134,11 +134,6 @@ typedef enum GuestPanicAction {
     GUEST_PANIC_ACTION__MAX,
 } GuestPanicAction;
 
-#define GuestPanicAction_str(val) \
-    qapi_enum_lookup(&GuestPanicAction_lookup, (val))
-
-extern const QEnumLookup GuestPanicAction_lookup;
-
 typedef enum GuestPanicInformationType {
     GUEST_PANIC_INFORMATION_TYPE_HYPER_V,
     GUEST_PANIC_INFORMATION_TYPE_S390,
@@ -183,11 +178,6 @@ typedef enum MemoryFailureRecipient {
     MEMORY_FAILURE_RECIPIENT__MAX,
 } MemoryFailureRecipient;
 
-#define MemoryFailureRecipient_str(val) \
-    qapi_enum_lookup(&MemoryFailureRecipient_lookup, (val))
-
-extern const QEnumLookup MemoryFailureRecipient_lookup;
-
 typedef enum MemoryFailureAction {
     MEMORY_FAILURE_ACTION_IGNORE,
     MEMORY_FAILURE_ACTION_INJECT,
@@ -195,11 +185,6 @@ typedef enum MemoryFailureAction {
     MEMORY_FAILURE_ACTION_RESET,
     MEMORY_FAILURE_ACTION__MAX,
 } MemoryFailureAction;
-
-#define MemoryFailureAction_str(val) \
-    qapi_enum_lookup(&MemoryFailureAction_lookup, (val))
-
-extern const QEnumLookup MemoryFailureAction_lookup;
 
 typedef struct MemoryFailureFlags MemoryFailureFlags;
 
@@ -210,18 +195,10 @@ typedef enum NotifyVmexitOption {
     NOTIFY_VMEXIT_OPTION__MAX,
 } NotifyVmexitOption;
 
-#define NotifyVmexitOption_str(val) \
-    qapi_enum_lookup(&NotifyVmexitOption_lookup, (val))
-
-extern const QEnumLookup NotifyVmexitOption_lookup;
-
 struct StatusInfo {
     bool running;
     RunState status;
 };
-
-void qapi_free_StatusInfo(StatusInfo *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(StatusInfo, qapi_free_StatusInfo)
 
 struct q_obj_SHUTDOWN_arg {
     bool guest;
@@ -300,15 +277,6 @@ struct GuestPanicInformation {
 void qapi_free_GuestPanicInformation(GuestPanicInformation *obj);
 G_DEFINE_AUTOPTR_CLEANUP_FUNC(GuestPanicInformation, qapi_free_GuestPanicInformation)
 
-void qapi_free_GuestPanicInformationHyperV(GuestPanicInformationHyperV *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(GuestPanicInformationHyperV, qapi_free_GuestPanicInformationHyperV)
-
-void qapi_free_GuestPanicInformationS390(GuestPanicInformationS390 *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(GuestPanicInformationS390, qapi_free_GuestPanicInformationS390)
-
-void qapi_free_GuestPanicInformationTdx(GuestPanicInformationTdx *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(GuestPanicInformationTdx, qapi_free_GuestPanicInformationTdx)
-
 struct q_obj_MEMORY_FAILURE_arg {
     MemoryFailureRecipient recipient;
     MemoryFailureAction action;
@@ -319,8 +287,5 @@ struct MemoryFailureFlags {
     bool action_required;
     bool recursive;
 };
-
-void qapi_free_MemoryFailureFlags(MemoryFailureFlags *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(MemoryFailureFlags, qapi_free_MemoryFailureFlags)
 
 #endif /* QAPI_TYPES_RUN_STATE_H */

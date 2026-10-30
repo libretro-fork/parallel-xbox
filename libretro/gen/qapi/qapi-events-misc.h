@@ -19,6 +19,4 @@
 
 void qapi_event_send_rtc_change(int64_t offset, const char *qom_path);
 
-void qapi_event_send_vfu_client_hangup(const char *vfu_id, const char *vfu_qom_path, const char *dev_id, const char *dev_qom_path);
-
 #endif /* QAPI_EVENTS_MISC_H */

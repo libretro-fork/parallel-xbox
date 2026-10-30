@@ -16,7 +16,6 @@
 #include "qapi/qapi-builtin-visit.h"
 #include "qapi-types-authz.h"
 
-
 bool visit_type_QAuthZListPolicy(Visitor *v, const char *name,
                  QAuthZListPolicy *obj, Error **errp);
 
@@ -33,22 +32,10 @@ bool visit_type_QAuthZListRuleList(Visitor *v, const char *name,
 
 bool visit_type_AuthZListProperties_members(Visitor *v, AuthZListProperties *obj, Error **errp);
 
-bool visit_type_AuthZListProperties(Visitor *v, const char *name,
-                 AuthZListProperties **obj, Error **errp);
-
 bool visit_type_AuthZListFileProperties_members(Visitor *v, AuthZListFileProperties *obj, Error **errp);
-
-bool visit_type_AuthZListFileProperties(Visitor *v, const char *name,
-                 AuthZListFileProperties **obj, Error **errp);
 
 bool visit_type_AuthZPAMProperties_members(Visitor *v, AuthZPAMProperties *obj, Error **errp);
 
-bool visit_type_AuthZPAMProperties(Visitor *v, const char *name,
-                 AuthZPAMProperties **obj, Error **errp);
-
 bool visit_type_AuthZSimpleProperties_members(Visitor *v, AuthZSimpleProperties *obj, Error **errp);
-
-bool visit_type_AuthZSimpleProperties(Visitor *v, const char *name,
-                 AuthZSimpleProperties **obj, Error **errp);
 
 #endif /* QAPI_VISIT_AUTHZ_H */

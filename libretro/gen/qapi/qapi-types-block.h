@@ -65,11 +65,6 @@ typedef enum BlockdevChangeReadOnlyMode {
     BLOCKDEV_CHANGE_READ_ONLY_MODE__MAX,
 } BlockdevChangeReadOnlyMode;
 
-#define BlockdevChangeReadOnlyMode_str(val) \
-    qapi_enum_lookup(&BlockdevChangeReadOnlyMode_lookup, (val))
-
-extern const QEnumLookup BlockdevChangeReadOnlyMode_lookup;
-
 typedef struct q_obj_blockdev_change_medium_arg q_obj_blockdev_change_medium_arg;
 
 typedef struct q_obj_DEVICE_TRAY_MOVED_arg q_obj_DEVICE_TRAY_MOVED_arg;
@@ -83,16 +78,10 @@ struct PRManagerInfo {
     bool connected;
 };
 
-void qapi_free_PRManagerInfo(PRManagerInfo *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(PRManagerInfo, qapi_free_PRManagerInfo)
-
 struct PRManagerInfoList {
     PRManagerInfoList *next;
     PRManagerInfo *value;
 };
-
-void qapi_free_PRManagerInfoList(PRManagerInfoList *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(PRManagerInfoList, qapi_free_PRManagerInfoList)
 
 struct q_obj_eject_arg {
     char *device;

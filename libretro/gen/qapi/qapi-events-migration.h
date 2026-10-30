@@ -18,12 +18,4 @@
 #include "qapi/util.h"
 #include "qapi-types-migration.h"
 
-void qapi_event_send_migration(MigrationStatus status);
-
-void qapi_event_send_migration_pass(int64_t pass);
-
-void qapi_event_send_colo_exit(COLOMode mode, COLOExitReason reason);
-
-void qapi_event_send_unplug_primary(const char *device_id);
-
 #endif /* QAPI_EVENTS_MIGRATION_H */

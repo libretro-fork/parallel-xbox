@@ -38,40 +38,5 @@ const QEnumLookup FloppyDriveType_lookup = {
     .size = FLOPPY_DRIVE_TYPE__MAX
 };
 
-void qapi_free_PRManagerInfo(PRManagerInfo *obj)
-{
-    Visitor *v;
-
-    if (!obj) {
-        return;
-    }
-
-    v = qapi_dealloc_visitor_new();
-    visit_type_PRManagerInfo(v, NULL, &obj, NULL);
-    visit_free(v);
-}
-
-void qapi_free_PRManagerInfoList(PRManagerInfoList *obj)
-{
-    Visitor *v;
-
-    if (!obj) {
-        return;
-    }
-
-    v = qapi_dealloc_visitor_new();
-    visit_type_PRManagerInfoList(v, NULL, &obj, NULL);
-    visit_free(v);
-}
-
-const QEnumLookup BlockdevChangeReadOnlyMode_lookup = {
-    .array = (const char *const[]) {
-        [BLOCKDEV_CHANGE_READ_ONLY_MODE_RETAIN] = "retain",
-        [BLOCKDEV_CHANGE_READ_ONLY_MODE_READ_ONLY] = "read-only",
-        [BLOCKDEV_CHANGE_READ_ONLY_MODE_READ_WRITE] = "read-write",
-    },
-    .size = BLOCKDEV_CHANGE_READ_ONLY_MODE__MAX
-};
-
 /* Dummy declaration to prevent empty .o file */
 char qapi_dummy_qapi_types_block_c;

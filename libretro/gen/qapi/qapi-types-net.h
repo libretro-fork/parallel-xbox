@@ -135,11 +135,6 @@ typedef enum RxState {
     RX_STATE__MAX,
 } RxState;
 
-#define RxState_str(val) \
-    qapi_enum_lookup(&RxState_lookup, (val))
-
-extern const QEnumLookup RxState_lookup;
-
 typedef struct RxFilterInfo RxFilterInfo;
 
 typedef struct q_obj_query_rx_filter_arg q_obj_query_rx_filter_arg;
@@ -177,9 +172,6 @@ struct NetLegacyNicOptions {
     bool has_vectors;
     uint32_t vectors;
 };
-
-void qapi_free_NetLegacyNicOptions(NetLegacyNicOptions *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(NetLegacyNicOptions, qapi_free_NetLegacyNicOptions)
 
 struct String {
     char *str;
@@ -254,11 +246,6 @@ struct NetDevPasstOptions {
 };
 #endif /* defined(CONFIG_PASST) */
 
-#if defined(CONFIG_PASST)
-void qapi_free_NetDevPasstOptions(NetDevPasstOptions *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(NetDevPasstOptions, qapi_free_NetDevPasstOptions)
-#endif /* defined(CONFIG_PASST) */
-
 struct NetdevUserOptions {
     char *hostname;
     bool has_q_restrict;
@@ -291,9 +278,6 @@ struct NetdevUserOptions {
     char *tftp_server_name;
 };
 
-void qapi_free_NetdevUserOptions(NetdevUserOptions *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(NetdevUserOptions, qapi_free_NetdevUserOptions)
-
 struct NetdevTapOptions {
     char *ifname;
     char *fd;
@@ -318,9 +302,6 @@ struct NetdevTapOptions {
     uint32_t poll_us;
 };
 
-void qapi_free_NetdevTapOptions(NetdevTapOptions *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(NetdevTapOptions, qapi_free_NetdevTapOptions)
-
 struct NetdevSocketOptions {
     char *fd;
     char *listen;
@@ -329,9 +310,6 @@ struct NetdevSocketOptions {
     char *localaddr;
     char *udp;
 };
-
-void qapi_free_NetdevSocketOptions(NetdevSocketOptions *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(NetdevSocketOptions, qapi_free_NetdevSocketOptions)
 
 struct NetdevL2TPv3Options {
     char *src;
@@ -359,9 +337,6 @@ struct NetdevL2TPv3Options {
     uint32_t offset;
 };
 
-void qapi_free_NetdevL2TPv3Options(NetdevL2TPv3Options *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(NetdevL2TPv3Options, qapi_free_NetdevL2TPv3Options)
-
 struct NetdevVdeOptions {
     char *sock;
     bool has_port;
@@ -371,32 +346,20 @@ struct NetdevVdeOptions {
     uint16_t mode;
 };
 
-void qapi_free_NetdevVdeOptions(NetdevVdeOptions *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(NetdevVdeOptions, qapi_free_NetdevVdeOptions)
-
 struct NetdevBridgeOptions {
     char *br;
     char *helper;
 };
-
-void qapi_free_NetdevBridgeOptions(NetdevBridgeOptions *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(NetdevBridgeOptions, qapi_free_NetdevBridgeOptions)
 
 struct NetdevHubPortOptions {
     int32_t hubid;
     char *netdev;
 };
 
-void qapi_free_NetdevHubPortOptions(NetdevHubPortOptions *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(NetdevHubPortOptions, qapi_free_NetdevHubPortOptions)
-
 struct NetdevNetmapOptions {
     char *ifname;
     char *devname;
 };
-
-void qapi_free_NetdevNetmapOptions(NetdevNetmapOptions *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(NetdevNetmapOptions, qapi_free_NetdevNetmapOptions)
 
 #if defined(CONFIG_AF_XDP)
 struct NetdevAFXDPOptions {
@@ -418,11 +381,6 @@ struct NetdevAFXDPOptions {
 };
 #endif /* defined(CONFIG_AF_XDP) */
 
-#if defined(CONFIG_AF_XDP)
-void qapi_free_NetdevAFXDPOptions(NetdevAFXDPOptions *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(NetdevAFXDPOptions, qapi_free_NetdevAFXDPOptions)
-#endif /* defined(CONFIG_AF_XDP) */
-
 struct NetdevVhostUserOptions {
     char *chardev;
     bool has_vhostforce;
@@ -430,9 +388,6 @@ struct NetdevVhostUserOptions {
     bool has_queues;
     int64_t queues;
 };
-
-void qapi_free_NetdevVhostUserOptions(NetdevVhostUserOptions *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(NetdevVhostUserOptions, qapi_free_NetdevVhostUserOptions)
 
 struct NetdevVhostVDPAOptions {
     char *vhostdev;
@@ -443,9 +398,6 @@ struct NetdevVhostVDPAOptions {
     bool x_svq;
 };
 
-void qapi_free_NetdevVhostVDPAOptions(NetdevVhostVDPAOptions *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(NetdevVhostVDPAOptions, qapi_free_NetdevVhostVDPAOptions)
-
 #if defined(CONFIG_VMNET)
 struct NetdevVmnetHostOptions {
     char *start_address;
@@ -455,11 +407,6 @@ struct NetdevVmnetHostOptions {
     bool isolated;
     char *net_uuid;
 };
-#endif /* defined(CONFIG_VMNET) */
-
-#if defined(CONFIG_VMNET)
-void qapi_free_NetdevVmnetHostOptions(NetdevVmnetHostOptions *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(NetdevVmnetHostOptions, qapi_free_NetdevVmnetHostOptions)
 #endif /* defined(CONFIG_VMNET) */
 
 #if defined(CONFIG_VMNET)
@@ -474,21 +421,11 @@ struct NetdevVmnetSharedOptions {
 #endif /* defined(CONFIG_VMNET) */
 
 #if defined(CONFIG_VMNET)
-void qapi_free_NetdevVmnetSharedOptions(NetdevVmnetSharedOptions *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(NetdevVmnetSharedOptions, qapi_free_NetdevVmnetSharedOptions)
-#endif /* defined(CONFIG_VMNET) */
-
-#if defined(CONFIG_VMNET)
 struct NetdevVmnetBridgedOptions {
     char *ifname;
     bool has_isolated;
     bool isolated;
 };
-#endif /* defined(CONFIG_VMNET) */
-
-#if defined(CONFIG_VMNET)
-void qapi_free_NetdevVmnetBridgedOptions(NetdevVmnetBridgedOptions *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(NetdevVmnetBridgedOptions, qapi_free_NetdevVmnetBridgedOptions)
 #endif /* defined(CONFIG_VMNET) */
 
 struct NetdevStreamOptions {
@@ -499,23 +436,14 @@ struct NetdevStreamOptions {
     int64_t reconnect_ms;
 };
 
-void qapi_free_NetdevStreamOptions(NetdevStreamOptions *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(NetdevStreamOptions, qapi_free_NetdevStreamOptions)
-
 struct NetdevDgramOptions {
     SocketAddress *local;
     SocketAddress *remote;
 };
 
-void qapi_free_NetdevDgramOptions(NetdevDgramOptions *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(NetdevDgramOptions, qapi_free_NetdevDgramOptions)
-
 struct NetdevPcapOptions {
     char *ifname;
 };
-
-void qapi_free_NetdevPcapOptions(NetdevPcapOptions *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(NetdevPcapOptions, qapi_free_NetdevPcapOptions)
 
 struct q_obj_Netdev_base {
     char *id;
@@ -576,9 +504,6 @@ struct RxFilterInfo {
     strList *multicast_table;
 };
 
-void qapi_free_RxFilterInfo(RxFilterInfo *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(RxFilterInfo, qapi_free_RxFilterInfo)
-
 struct q_obj_query_rx_filter_arg {
     char *name;
 };
@@ -587,9 +512,6 @@ struct RxFilterInfoList {
     RxFilterInfoList *next;
     RxFilterInfo *value;
 };
-
-void qapi_free_RxFilterInfoList(RxFilterInfoList *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(RxFilterInfoList, qapi_free_RxFilterInfoList)
 
 struct q_obj_NIC_RX_FILTER_CHANGED_arg {
     char *name;
@@ -605,9 +527,6 @@ struct AnnounceParameters {
     strList *interfaces;
     char *id;
 };
-
-void qapi_free_AnnounceParameters(AnnounceParameters *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(AnnounceParameters, qapi_free_AnnounceParameters)
 
 struct q_obj_FAILOVER_NEGOTIATED_arg {
     char *device_id;

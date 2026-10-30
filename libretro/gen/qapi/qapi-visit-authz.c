@@ -119,33 +119,6 @@ bool visit_type_AuthZListProperties_members(Visitor *v, AuthZListProperties *obj
     return true;
 }
 
-bool visit_type_AuthZListProperties(Visitor *v, const char *name,
-                 AuthZListProperties **obj, Error **errp)
-{
-    bool ok = false;
-
-    if (!visit_start_struct(v, name, (void **)obj, sizeof(AuthZListProperties), errp)) {
-        return false;
-    }
-    if (!*obj) {
-        /* incomplete */
-        assert(visit_is_dealloc(v));
-        ok = true;
-        goto out_obj;
-    }
-    if (!visit_type_AuthZListProperties_members(v, *obj, errp)) {
-        goto out_obj;
-    }
-    ok = visit_check_struct(v, errp);
-out_obj:
-    visit_end_struct(v, (void **)obj);
-    if (!ok && visit_is_input(v)) {
-        qapi_free_AuthZListProperties(*obj);
-        *obj = NULL;
-    }
-    return ok;
-}
-
 bool visit_type_AuthZListFileProperties_members(Visitor *v, AuthZListFileProperties *obj, Error **errp)
 {
     if (!visit_type_str(v, "filename", &obj->filename, errp)) {
@@ -159,33 +132,6 @@ bool visit_type_AuthZListFileProperties_members(Visitor *v, AuthZListFilePropert
     return true;
 }
 
-bool visit_type_AuthZListFileProperties(Visitor *v, const char *name,
-                 AuthZListFileProperties **obj, Error **errp)
-{
-    bool ok = false;
-
-    if (!visit_start_struct(v, name, (void **)obj, sizeof(AuthZListFileProperties), errp)) {
-        return false;
-    }
-    if (!*obj) {
-        /* incomplete */
-        assert(visit_is_dealloc(v));
-        ok = true;
-        goto out_obj;
-    }
-    if (!visit_type_AuthZListFileProperties_members(v, *obj, errp)) {
-        goto out_obj;
-    }
-    ok = visit_check_struct(v, errp);
-out_obj:
-    visit_end_struct(v, (void **)obj);
-    if (!ok && visit_is_input(v)) {
-        qapi_free_AuthZListFileProperties(*obj);
-        *obj = NULL;
-    }
-    return ok;
-}
-
 bool visit_type_AuthZPAMProperties_members(Visitor *v, AuthZPAMProperties *obj, Error **errp)
 {
     if (!visit_type_str(v, "service", &obj->service, errp)) {
@@ -194,66 +140,12 @@ bool visit_type_AuthZPAMProperties_members(Visitor *v, AuthZPAMProperties *obj, 
     return true;
 }
 
-bool visit_type_AuthZPAMProperties(Visitor *v, const char *name,
-                 AuthZPAMProperties **obj, Error **errp)
-{
-    bool ok = false;
-
-    if (!visit_start_struct(v, name, (void **)obj, sizeof(AuthZPAMProperties), errp)) {
-        return false;
-    }
-    if (!*obj) {
-        /* incomplete */
-        assert(visit_is_dealloc(v));
-        ok = true;
-        goto out_obj;
-    }
-    if (!visit_type_AuthZPAMProperties_members(v, *obj, errp)) {
-        goto out_obj;
-    }
-    ok = visit_check_struct(v, errp);
-out_obj:
-    visit_end_struct(v, (void **)obj);
-    if (!ok && visit_is_input(v)) {
-        qapi_free_AuthZPAMProperties(*obj);
-        *obj = NULL;
-    }
-    return ok;
-}
-
 bool visit_type_AuthZSimpleProperties_members(Visitor *v, AuthZSimpleProperties *obj, Error **errp)
 {
     if (!visit_type_str(v, "identity", &obj->identity, errp)) {
         return false;
     }
     return true;
-}
-
-bool visit_type_AuthZSimpleProperties(Visitor *v, const char *name,
-                 AuthZSimpleProperties **obj, Error **errp)
-{
-    bool ok = false;
-
-    if (!visit_start_struct(v, name, (void **)obj, sizeof(AuthZSimpleProperties), errp)) {
-        return false;
-    }
-    if (!*obj) {
-        /* incomplete */
-        assert(visit_is_dealloc(v));
-        ok = true;
-        goto out_obj;
-    }
-    if (!visit_type_AuthZSimpleProperties_members(v, *obj, errp)) {
-        goto out_obj;
-    }
-    ok = visit_check_struct(v, errp);
-out_obj:
-    visit_end_struct(v, (void **)obj);
-    if (!ok && visit_is_input(v)) {
-        qapi_free_AuthZSimpleProperties(*obj);
-        *obj = NULL;
-    }
-    return ok;
 }
 
 /* Dummy declaration to prevent empty .o file */

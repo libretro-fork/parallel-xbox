@@ -16,10 +16,6 @@
 #include "qapi/qapi-builtin-visit.h"
 #include "qapi-types-sockets.h"
 
-
-bool visit_type_NetworkAddressFamily(Visitor *v, const char *name,
-                 NetworkAddressFamily *obj, Error **errp);
-
 bool visit_type_InetSocketAddressBase_members(Visitor *v, InetSocketAddressBase *obj, Error **errp);
 
 bool visit_type_InetSocketAddressBase(Visitor *v, const char *name,
@@ -47,23 +43,11 @@ bool visit_type_FdSocketAddress(Visitor *v, const char *name,
 
 bool visit_type_InetSocketAddressWrapper_members(Visitor *v, InetSocketAddressWrapper *obj, Error **errp);
 
-bool visit_type_InetSocketAddressWrapper(Visitor *v, const char *name,
-                 InetSocketAddressWrapper **obj, Error **errp);
-
 bool visit_type_UnixSocketAddressWrapper_members(Visitor *v, UnixSocketAddressWrapper *obj, Error **errp);
-
-bool visit_type_UnixSocketAddressWrapper(Visitor *v, const char *name,
-                 UnixSocketAddressWrapper **obj, Error **errp);
 
 bool visit_type_VsockSocketAddressWrapper_members(Visitor *v, VsockSocketAddressWrapper *obj, Error **errp);
 
-bool visit_type_VsockSocketAddressWrapper(Visitor *v, const char *name,
-                 VsockSocketAddressWrapper **obj, Error **errp);
-
 bool visit_type_FdSocketAddressWrapper_members(Visitor *v, FdSocketAddressWrapper *obj, Error **errp);
-
-bool visit_type_FdSocketAddressWrapper(Visitor *v, const char *name,
-                 FdSocketAddressWrapper **obj, Error **errp);
 
 bool visit_type_q_obj_SocketAddressLegacy_base_members(Visitor *v, q_obj_SocketAddressLegacy_base *obj, Error **errp);
 

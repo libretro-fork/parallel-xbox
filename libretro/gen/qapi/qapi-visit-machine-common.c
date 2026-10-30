@@ -15,15 +15,6 @@
 #include "qapi-visit-machine-common.h"
 #include "qapi-features.h"
 
-bool visit_type_S390CpuEntitlement(Visitor *v, const char *name,
-                 S390CpuEntitlement *obj, Error **errp)
-{
-    int value = *obj;
-    bool ok = visit_type_enum(v, name, &value, &S390CpuEntitlement_lookup, errp);
-    *obj = value;
-    return ok;
-}
-
 bool visit_type_CpuTopologyLevel(Visitor *v, const char *name,
                  CpuTopologyLevel *obj, Error **errp)
 {
@@ -103,41 +94,6 @@ out_obj:
     visit_end_list(v, (void **)obj);
     if (!ok && visit_is_input(v)) {
         qapi_free_SmpCachePropertiesList(*obj);
-        *obj = NULL;
-    }
-    return ok;
-}
-
-bool visit_type_SmpCachePropertiesWrapper_members(Visitor *v, SmpCachePropertiesWrapper *obj, Error **errp)
-{
-    if (!visit_type_SmpCachePropertiesList(v, "caches", &obj->caches, errp)) {
-        return false;
-    }
-    return true;
-}
-
-bool visit_type_SmpCachePropertiesWrapper(Visitor *v, const char *name,
-                 SmpCachePropertiesWrapper **obj, Error **errp)
-{
-    bool ok = false;
-
-    if (!visit_start_struct(v, name, (void **)obj, sizeof(SmpCachePropertiesWrapper), errp)) {
-        return false;
-    }
-    if (!*obj) {
-        /* incomplete */
-        assert(visit_is_dealloc(v));
-        ok = true;
-        goto out_obj;
-    }
-    if (!visit_type_SmpCachePropertiesWrapper_members(v, *obj, errp)) {
-        goto out_obj;
-    }
-    ok = visit_check_struct(v, errp);
-out_obj:
-    visit_end_struct(v, (void **)obj);
-    if (!ok && visit_is_input(v)) {
-        qapi_free_SmpCachePropertiesWrapper(*obj);
         *obj = NULL;
     }
     return ok;

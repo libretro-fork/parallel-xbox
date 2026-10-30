@@ -23,22 +23,12 @@ typedef enum DisplayProtocol {
     DISPLAY_PROTOCOL__MAX,
 } DisplayProtocol;
 
-#define DisplayProtocol_str(val) \
-    qapi_enum_lookup(&DisplayProtocol_lookup, (val))
-
-extern const QEnumLookup DisplayProtocol_lookup;
-
 typedef enum SetPasswordAction {
     SET_PASSWORD_ACTION_KEEP,
     SET_PASSWORD_ACTION_FAIL,
     SET_PASSWORD_ACTION_DISCONNECT,
     SET_PASSWORD_ACTION__MAX,
 } SetPasswordAction;
-
-#define SetPasswordAction_str(val) \
-    qapi_enum_lookup(&SetPasswordAction_lookup, (val))
-
-extern const QEnumLookup SetPasswordAction_lookup;
 
 typedef struct q_obj_SetPasswordOptions_base q_obj_SetPasswordOptions_base;
 
@@ -57,11 +47,6 @@ typedef enum ImageFormat {
     IMAGE_FORMAT_PNG,
     IMAGE_FORMAT__MAX,
 } ImageFormat;
-
-#define ImageFormat_str(val) \
-    qapi_enum_lookup(&ImageFormat_lookup, (val))
-
-extern const QEnumLookup ImageFormat_lookup;
 
 #if defined(CONFIG_PIXMAN)
 typedef struct q_obj_screendump_arg q_obj_screendump_arg;
@@ -87,10 +72,6 @@ typedef enum SpiceQueryMouseMode {
     SPICE_QUERY_MOUSE_MODE__MAX,
 } SpiceQueryMouseMode;
 
-#define SpiceQueryMouseMode_str(val) \
-    qapi_enum_lookup(&SpiceQueryMouseMode_lookup, (val))
-
-extern const QEnumLookup SpiceQueryMouseMode_lookup;
 #endif /* defined(CONFIG_SPICE) */
 
 #if defined(CONFIG_SPICE)
@@ -147,10 +128,6 @@ typedef enum VncPrimaryAuth {
     VNC_PRIMARY_AUTH__MAX,
 } VncPrimaryAuth;
 
-#define VncPrimaryAuth_str(val) \
-    qapi_enum_lookup(&VncPrimaryAuth_lookup, (val))
-
-extern const QEnumLookup VncPrimaryAuth_lookup;
 #endif /* defined(CONFIG_VNC) */
 
 #if defined(CONFIG_VNC)
@@ -167,10 +144,6 @@ typedef enum VncVencryptSubAuth {
     VNC_VENCRYPT_SUB_AUTH__MAX,
 } VncVencryptSubAuth;
 
-#define VncVencryptSubAuth_str(val) \
-    qapi_enum_lookup(&VncVencryptSubAuth_lookup, (val))
-
-extern const QEnumLookup VncVencryptSubAuth_lookup;
 #endif /* defined(CONFIG_VNC) */
 
 #if defined(CONFIG_VNC)
@@ -375,21 +348,11 @@ typedef enum QKeyCode {
     Q_KEY_CODE__MAX,
 } QKeyCode;
 
-#define QKeyCode_str(val) \
-    qapi_enum_lookup(&QKeyCode_lookup, (val))
-
-extern const QEnumLookup QKeyCode_lookup;
-
 typedef enum KeyValueKind {
     KEY_VALUE_KIND_NUMBER,
     KEY_VALUE_KIND_QCODE,
     KEY_VALUE_KIND__MAX,
 } KeyValueKind;
-
-#define KeyValueKind_str(val) \
-    qapi_enum_lookup(&KeyValueKind_lookup, (val))
-
-extern const QEnumLookup KeyValueKind_lookup;
 
 typedef struct IntWrapper IntWrapper;
 
@@ -417,21 +380,11 @@ typedef enum InputButton {
     INPUT_BUTTON__MAX,
 } InputButton;
 
-#define InputButton_str(val) \
-    qapi_enum_lookup(&InputButton_lookup, (val))
-
-extern const QEnumLookup InputButton_lookup;
-
 typedef enum InputAxis {
     INPUT_AXIS_X,
     INPUT_AXIS_Y,
     INPUT_AXIS__MAX,
 } InputAxis;
-
-#define InputAxis_str(val) \
-    qapi_enum_lookup(&InputAxis_lookup, (val))
-
-extern const QEnumLookup InputAxis_lookup;
 
 typedef enum InputMultiTouchType {
     INPUT_MULTI_TOUCH_TYPE_BEGIN,
@@ -441,11 +394,6 @@ typedef enum InputMultiTouchType {
     INPUT_MULTI_TOUCH_TYPE_DATA,
     INPUT_MULTI_TOUCH_TYPE__MAX,
 } InputMultiTouchType;
-
-#define InputMultiTouchType_str(val) \
-    qapi_enum_lookup(&InputMultiTouchType_lookup, (val))
-
-extern const QEnumLookup InputMultiTouchType_lookup;
 
 typedef struct InputKeyEvent InputKeyEvent;
 
@@ -463,11 +411,6 @@ typedef enum InputEventKind {
     INPUT_EVENT_KIND_MTT,
     INPUT_EVENT_KIND__MAX,
 } InputEventKind;
-
-#define InputEventKind_str(val) \
-    qapi_enum_lookup(&InputEventKind_lookup, (val))
-
-extern const QEnumLookup InputEventKind_lookup;
 
 typedef struct InputKeyEventWrapper InputKeyEventWrapper;
 
@@ -564,11 +507,6 @@ typedef enum DisplayReloadType {
     DISPLAY_RELOAD_TYPE__MAX,
 } DisplayReloadType;
 
-#define DisplayReloadType_str(val) \
-    qapi_enum_lookup(&DisplayReloadType_lookup, (val))
-
-extern const QEnumLookup DisplayReloadType_lookup;
-
 typedef struct DisplayReloadOptionsVNC DisplayReloadOptionsVNC;
 
 typedef struct q_obj_DisplayReloadOptions_base q_obj_DisplayReloadOptions_base;
@@ -579,11 +517,6 @@ typedef enum DisplayUpdateType {
     DISPLAY_UPDATE_TYPE_VNC,
     DISPLAY_UPDATE_TYPE__MAX,
 } DisplayUpdateType;
-
-#define DisplayUpdateType_str(val) \
-    qapi_enum_lookup(&DisplayUpdateType_lookup, (val))
-
-extern const QEnumLookup DisplayUpdateType_lookup;
 
 typedef struct DisplayUpdateOptionsVNC DisplayUpdateOptionsVNC;
 
@@ -614,12 +547,6 @@ struct SetPasswordOptions {
     } u;
 };
 
-void qapi_free_SetPasswordOptions(SetPasswordOptions *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(SetPasswordOptions, qapi_free_SetPasswordOptions)
-
-void qapi_free_SetPasswordOptionsVnc(SetPasswordOptionsVnc *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(SetPasswordOptionsVnc, qapi_free_SetPasswordOptionsVnc)
-
 struct q_obj_ExpirePasswordOptions_base {
     DisplayProtocol protocol;
     char *time;
@@ -636,12 +563,6 @@ struct ExpirePasswordOptions {
         ExpirePasswordOptionsVnc vnc;
     } u;
 };
-
-void qapi_free_ExpirePasswordOptions(ExpirePasswordOptions *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(ExpirePasswordOptions, qapi_free_ExpirePasswordOptions)
-
-void qapi_free_ExpirePasswordOptionsVnc(ExpirePasswordOptionsVnc *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(ExpirePasswordOptionsVnc, qapi_free_ExpirePasswordOptionsVnc)
 
 #if defined(CONFIG_PIXMAN)
 struct q_obj_screendump_arg {
@@ -663,11 +584,6 @@ struct SpiceBasicInfo {
 #endif /* defined(CONFIG_SPICE) */
 
 #if defined(CONFIG_SPICE)
-void qapi_free_SpiceBasicInfo(SpiceBasicInfo *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(SpiceBasicInfo, qapi_free_SpiceBasicInfo)
-#endif /* defined(CONFIG_SPICE) */
-
-#if defined(CONFIG_SPICE)
 struct SpiceServerInfo {
     /* Members inherited from SpiceBasicInfo: */
     char *host;
@@ -684,8 +600,6 @@ static inline SpiceBasicInfo *qapi_SpiceServerInfo_base(const SpiceServerInfo *o
     return (SpiceBasicInfo *)obj;
 }
 
-void qapi_free_SpiceServerInfo(SpiceServerInfo *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(SpiceServerInfo, qapi_free_SpiceServerInfo)
 #endif /* defined(CONFIG_SPICE) */
 
 #if defined(CONFIG_SPICE)
@@ -708,8 +622,6 @@ static inline SpiceBasicInfo *qapi_SpiceChannel_base(const SpiceChannel *obj)
     return (SpiceBasicInfo *)obj;
 }
 
-void qapi_free_SpiceChannel(SpiceChannel *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(SpiceChannel, qapi_free_SpiceChannel)
 #endif /* defined(CONFIG_SPICE) */
 
 #if defined(CONFIG_SPICE)
@@ -718,8 +630,6 @@ struct SpiceChannelList {
     SpiceChannel *value;
 };
 
-void qapi_free_SpiceChannelList(SpiceChannelList *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(SpiceChannelList, qapi_free_SpiceChannelList)
 #endif /* defined(CONFIG_SPICE) */
 
 #if defined(CONFIG_SPICE)
@@ -737,11 +647,6 @@ struct SpiceInfo {
     bool has_channels;
     SpiceChannelList *channels;
 };
-#endif /* defined(CONFIG_SPICE) */
-
-#if defined(CONFIG_SPICE)
-void qapi_free_SpiceInfo(SpiceInfo *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(SpiceInfo, qapi_free_SpiceInfo)
 #endif /* defined(CONFIG_SPICE) */
 
 #if defined(CONFIG_SPICE)
@@ -775,11 +680,6 @@ struct VncBasicInfo {
 #endif /* defined(CONFIG_VNC) */
 
 #if defined(CONFIG_VNC)
-void qapi_free_VncBasicInfo(VncBasicInfo *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(VncBasicInfo, qapi_free_VncBasicInfo)
-#endif /* defined(CONFIG_VNC) */
-
-#if defined(CONFIG_VNC)
 struct VncServerInfo {
     /* Members inherited from VncBasicInfo: */
     char *host;
@@ -797,8 +697,6 @@ static inline VncBasicInfo *qapi_VncServerInfo_base(const VncServerInfo *obj)
     return (VncBasicInfo *)obj;
 }
 
-void qapi_free_VncServerInfo(VncServerInfo *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(VncServerInfo, qapi_free_VncServerInfo)
 #endif /* defined(CONFIG_VNC) */
 
 #if defined(CONFIG_VNC)
@@ -820,8 +718,6 @@ static inline VncBasicInfo *qapi_VncClientInfo_base(const VncClientInfo *obj)
     return (VncBasicInfo *)obj;
 }
 
-void qapi_free_VncClientInfo(VncClientInfo *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(VncClientInfo, qapi_free_VncClientInfo)
 #endif /* defined(CONFIG_VNC) */
 
 #if defined(CONFIG_VNC)
@@ -830,8 +726,6 @@ struct VncClientInfoList {
     VncClientInfo *value;
 };
 
-void qapi_free_VncClientInfoList(VncClientInfoList *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(VncClientInfoList, qapi_free_VncClientInfoList)
 #endif /* defined(CONFIG_VNC) */
 
 #if defined(CONFIG_VNC)
@@ -845,11 +739,6 @@ struct VncInfo {
     bool has_clients;
     VncClientInfoList *clients;
 };
-#endif /* defined(CONFIG_VNC) */
-
-#if defined(CONFIG_VNC)
-void qapi_free_VncInfo(VncInfo *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(VncInfo, qapi_free_VncInfo)
 #endif /* defined(CONFIG_VNC) */
 
 #if defined(CONFIG_VNC)
@@ -872,8 +761,6 @@ static inline VncBasicInfo *qapi_VncServerInfo2_base(const VncServerInfo2 *obj)
     return (VncBasicInfo *)obj;
 }
 
-void qapi_free_VncServerInfo2(VncServerInfo2 *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(VncServerInfo2, qapi_free_VncServerInfo2)
 #endif /* defined(CONFIG_VNC) */
 
 #if defined(CONFIG_VNC)
@@ -882,8 +769,6 @@ struct VncServerInfo2List {
     VncServerInfo2 *value;
 };
 
-void qapi_free_VncServerInfo2List(VncServerInfo2List *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(VncServerInfo2List, qapi_free_VncServerInfo2List)
 #endif /* defined(CONFIG_VNC) */
 
 #if defined(CONFIG_VNC)
@@ -899,18 +784,11 @@ struct VncInfo2 {
 #endif /* defined(CONFIG_VNC) */
 
 #if defined(CONFIG_VNC)
-void qapi_free_VncInfo2(VncInfo2 *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(VncInfo2, qapi_free_VncInfo2)
-#endif /* defined(CONFIG_VNC) */
-
-#if defined(CONFIG_VNC)
 struct VncInfo2List {
     VncInfo2List *next;
     VncInfo2 *value;
 };
 
-void qapi_free_VncInfo2List(VncInfo2List *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(VncInfo2List, qapi_free_VncInfo2List)
 #endif /* defined(CONFIG_VNC) */
 
 #if defined(CONFIG_VNC)
@@ -947,30 +825,18 @@ struct MouseInfo {
     bool absolute;
 };
 
-void qapi_free_MouseInfo(MouseInfo *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(MouseInfo, qapi_free_MouseInfo)
-
 struct MouseInfoList {
     MouseInfoList *next;
     MouseInfo *value;
 };
 
-void qapi_free_MouseInfoList(MouseInfoList *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(MouseInfoList, qapi_free_MouseInfoList)
-
 struct IntWrapper {
     int64_t data;
 };
 
-void qapi_free_IntWrapper(IntWrapper *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(IntWrapper, qapi_free_IntWrapper)
-
 struct QKeyCodeWrapper {
     QKeyCode data;
 };
-
-void qapi_free_QKeyCodeWrapper(QKeyCodeWrapper *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(QKeyCodeWrapper, qapi_free_QKeyCodeWrapper)
 
 struct q_obj_KeyValue_base {
     KeyValueKind type;
@@ -984,16 +850,10 @@ struct KeyValue {
     } u;
 };
 
-void qapi_free_KeyValue(KeyValue *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(KeyValue, qapi_free_KeyValue)
-
 struct KeyValueList {
     KeyValueList *next;
     KeyValue *value;
 };
-
-void qapi_free_KeyValueList(KeyValueList *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(KeyValueList, qapi_free_KeyValueList)
 
 struct q_obj_send_key_arg {
     KeyValueList *keys;
@@ -1006,24 +866,15 @@ struct InputKeyEvent {
     bool down;
 };
 
-void qapi_free_InputKeyEvent(InputKeyEvent *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(InputKeyEvent, qapi_free_InputKeyEvent)
-
 struct InputBtnEvent {
     InputButton button;
     bool down;
 };
 
-void qapi_free_InputBtnEvent(InputBtnEvent *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(InputBtnEvent, qapi_free_InputBtnEvent)
-
 struct InputMoveEvent {
     InputAxis axis;
     int64_t value;
 };
-
-void qapi_free_InputMoveEvent(InputMoveEvent *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(InputMoveEvent, qapi_free_InputMoveEvent)
 
 struct InputMultiTouchEvent {
     InputMultiTouchType type;
@@ -1033,36 +884,21 @@ struct InputMultiTouchEvent {
     int64_t value;
 };
 
-void qapi_free_InputMultiTouchEvent(InputMultiTouchEvent *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(InputMultiTouchEvent, qapi_free_InputMultiTouchEvent)
-
 struct InputKeyEventWrapper {
     InputKeyEvent *data;
 };
-
-void qapi_free_InputKeyEventWrapper(InputKeyEventWrapper *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(InputKeyEventWrapper, qapi_free_InputKeyEventWrapper)
 
 struct InputBtnEventWrapper {
     InputBtnEvent *data;
 };
 
-void qapi_free_InputBtnEventWrapper(InputBtnEventWrapper *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(InputBtnEventWrapper, qapi_free_InputBtnEventWrapper)
-
 struct InputMoveEventWrapper {
     InputMoveEvent *data;
 };
 
-void qapi_free_InputMoveEventWrapper(InputMoveEventWrapper *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(InputMoveEventWrapper, qapi_free_InputMoveEventWrapper)
-
 struct InputMultiTouchEventWrapper {
     InputMultiTouchEvent *data;
 };
-
-void qapi_free_InputMultiTouchEventWrapper(InputMultiTouchEventWrapper *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(InputMultiTouchEventWrapper, qapi_free_InputMultiTouchEventWrapper)
 
 struct q_obj_InputEvent_base {
     InputEventKind type;
@@ -1079,16 +915,10 @@ struct InputEvent {
     } u;
 };
 
-void qapi_free_InputEvent(InputEvent *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(InputEvent, qapi_free_InputEvent)
-
 struct InputEventList {
     InputEventList *next;
     InputEvent *value;
 };
-
-void qapi_free_InputEventList(InputEventList *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(InputEventList, qapi_free_InputEventList)
 
 struct q_obj_input_send_event_arg {
     char *device;
@@ -1112,15 +942,9 @@ struct DisplayGTK {
     double scale;
 };
 
-void qapi_free_DisplayGTK(DisplayGTK *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(DisplayGTK, qapi_free_DisplayGTK)
-
 struct DisplayEGLHeadless {
     char *rendernode;
 };
-
-void qapi_free_DisplayEGLHeadless(DisplayEGLHeadless *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(DisplayEGLHeadless, qapi_free_DisplayEGLHeadless)
 
 struct DisplayDBus {
     char *rendernode;
@@ -1130,15 +954,9 @@ struct DisplayDBus {
     char *audiodev;
 };
 
-void qapi_free_DisplayDBus(DisplayDBus *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(DisplayDBus, qapi_free_DisplayDBus)
-
 struct DisplayCurses {
     char *charset;
 };
-
-void qapi_free_DisplayCurses(DisplayCurses *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(DisplayCurses, qapi_free_DisplayCurses)
 
 struct DisplayCocoa {
     bool has_left_command_key;
@@ -1153,16 +971,10 @@ struct DisplayCocoa {
     bool zoom_interpolation;
 };
 
-void qapi_free_DisplayCocoa(DisplayCocoa *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(DisplayCocoa, qapi_free_DisplayCocoa)
-
 struct DisplaySDL {
     bool has_grab_mod;
     HotKeyMod grab_mod;
 };
-
-void qapi_free_DisplaySDL(DisplaySDL *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(DisplaySDL, qapi_free_DisplaySDL)
 
 struct q_obj_DisplayOptions_base {
     DisplayType type;
@@ -1216,9 +1028,6 @@ struct DisplayReloadOptionsVNC {
     bool tls_certs;
 };
 
-void qapi_free_DisplayReloadOptionsVNC(DisplayReloadOptionsVNC *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(DisplayReloadOptionsVNC, qapi_free_DisplayReloadOptionsVNC)
-
 struct q_obj_DisplayReloadOptions_base {
     DisplayReloadType type;
 };
@@ -1230,16 +1039,10 @@ struct DisplayReloadOptions {
     } u;
 };
 
-void qapi_free_DisplayReloadOptions(DisplayReloadOptions *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(DisplayReloadOptions, qapi_free_DisplayReloadOptions)
-
 struct DisplayUpdateOptionsVNC {
     bool has_addresses;
     SocketAddressList *addresses;
 };
-
-void qapi_free_DisplayUpdateOptionsVNC(DisplayUpdateOptionsVNC *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(DisplayUpdateOptionsVNC, qapi_free_DisplayUpdateOptionsVNC)
 
 struct q_obj_DisplayUpdateOptions_base {
     DisplayUpdateType type;
@@ -1251,9 +1054,6 @@ struct DisplayUpdateOptions {
         DisplayUpdateOptionsVNC vnc;
     } u;
 };
-
-void qapi_free_DisplayUpdateOptions(DisplayUpdateOptions *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(DisplayUpdateOptions, qapi_free_DisplayUpdateOptions)
 
 struct q_obj_client_migrate_info_arg {
     char *protocol;

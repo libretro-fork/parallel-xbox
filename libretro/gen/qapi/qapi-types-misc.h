@@ -58,11 +58,6 @@ typedef enum CommandLineParameterType {
     COMMAND_LINE_PARAMETER_TYPE__MAX,
 } CommandLineParameterType;
 
-#define CommandLineParameterType_str(val) \
-    qapi_enum_lookup(&CommandLineParameterType_lookup, (val))
-
-extern const QEnumLookup CommandLineParameterType_lookup;
-
 typedef struct CommandLineParameterInfo CommandLineParameterInfo;
 
 typedef struct CommandLineParameterInfoList CommandLineParameterInfoList;
@@ -90,9 +85,6 @@ struct NameInfo {
     char *name;
 };
 
-void qapi_free_NameInfo(NameInfo *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(NameInfo, qapi_free_NameInfo)
-
 struct IOThreadInfo {
     char *id;
     int64_t thread_id;
@@ -102,16 +94,10 @@ struct IOThreadInfo {
     int64_t aio_max_batch;
 };
 
-void qapi_free_IOThreadInfo(IOThreadInfo *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(IOThreadInfo, qapi_free_IOThreadInfo)
-
 struct IOThreadInfoList {
     IOThreadInfoList *next;
     IOThreadInfo *value;
 };
-
-void qapi_free_IOThreadInfoList(IOThreadInfoList *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(IOThreadInfoList, qapi_free_IOThreadInfoList)
 
 struct q_obj_human_monitor_command_arg {
     char *command_line;
@@ -141,9 +127,6 @@ struct AddfdInfo {
     int64_t fd;
 };
 
-void qapi_free_AddfdInfo(AddfdInfo *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(AddfdInfo, qapi_free_AddfdInfo)
-
 struct q_obj_add_fd_arg {
     bool has_fdset_id;
     int64_t fdset_id;
@@ -161,32 +144,20 @@ struct FdsetFdInfo {
     char *opaque;
 };
 
-void qapi_free_FdsetFdInfo(FdsetFdInfo *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(FdsetFdInfo, qapi_free_FdsetFdInfo)
-
 struct FdsetFdInfoList {
     FdsetFdInfoList *next;
     FdsetFdInfo *value;
 };
-
-void qapi_free_FdsetFdInfoList(FdsetFdInfoList *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(FdsetFdInfoList, qapi_free_FdsetFdInfoList)
 
 struct FdsetInfo {
     int64_t fdset_id;
     FdsetFdInfoList *fds;
 };
 
-void qapi_free_FdsetInfo(FdsetInfo *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(FdsetInfo, qapi_free_FdsetInfo)
-
 struct FdsetInfoList {
     FdsetInfoList *next;
     FdsetInfo *value;
 };
-
-void qapi_free_FdsetInfoList(FdsetInfoList *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(FdsetInfoList, qapi_free_FdsetInfoList)
 
 struct CommandLineParameterInfo {
     char *name;
@@ -195,24 +166,15 @@ struct CommandLineParameterInfo {
     char *q_default;
 };
 
-void qapi_free_CommandLineParameterInfo(CommandLineParameterInfo *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(CommandLineParameterInfo, qapi_free_CommandLineParameterInfo)
-
 struct CommandLineParameterInfoList {
     CommandLineParameterInfoList *next;
     CommandLineParameterInfo *value;
 };
 
-void qapi_free_CommandLineParameterInfoList(CommandLineParameterInfoList *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(CommandLineParameterInfoList, qapi_free_CommandLineParameterInfoList)
-
 struct CommandLineOptionInfo {
     char *option;
     CommandLineParameterInfoList *parameters;
 };
-
-void qapi_free_CommandLineOptionInfo(CommandLineOptionInfo *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(CommandLineOptionInfo, qapi_free_CommandLineOptionInfo)
 
 struct q_obj_query_command_line_options_arg {
     char *option;
@@ -222,9 +184,6 @@ struct CommandLineOptionInfoList {
     CommandLineOptionInfoList *next;
     CommandLineOptionInfo *value;
 };
-
-void qapi_free_CommandLineOptionInfoList(CommandLineOptionInfoList *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(CommandLineOptionInfoList, qapi_free_CommandLineOptionInfoList)
 
 struct q_obj_RTC_CHANGE_arg {
     int64_t offset;

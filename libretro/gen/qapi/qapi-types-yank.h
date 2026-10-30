@@ -43,15 +43,9 @@ struct YankInstanceBlockNode {
     char *node_name;
 };
 
-void qapi_free_YankInstanceBlockNode(YankInstanceBlockNode *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(YankInstanceBlockNode, qapi_free_YankInstanceBlockNode)
-
 struct YankInstanceChardev {
     char *id;
 };
-
-void qapi_free_YankInstanceChardev(YankInstanceChardev *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(YankInstanceChardev, qapi_free_YankInstanceChardev)
 
 struct q_obj_YankInstance_base {
     YankInstanceType type;
@@ -72,9 +66,6 @@ struct YankInstanceList {
     YankInstanceList *next;
     YankInstance *value;
 };
-
-void qapi_free_YankInstanceList(YankInstanceList *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(YankInstanceList, qapi_free_YankInstanceList)
 
 struct q_obj_yank_arg {
     YankInstanceList *instances;

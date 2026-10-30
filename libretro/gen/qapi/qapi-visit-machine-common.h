@@ -16,10 +16,6 @@
 #include "qapi/qapi-builtin-visit.h"
 #include "qapi-types-machine-common.h"
 
-
-bool visit_type_S390CpuEntitlement(Visitor *v, const char *name,
-                 S390CpuEntitlement *obj, Error **errp);
-
 bool visit_type_CpuTopologyLevel(Visitor *v, const char *name,
                  CpuTopologyLevel *obj, Error **errp);
 
@@ -33,10 +29,5 @@ bool visit_type_SmpCacheProperties(Visitor *v, const char *name,
 
 bool visit_type_SmpCachePropertiesList(Visitor *v, const char *name,
                  SmpCachePropertiesList **obj, Error **errp);
-
-bool visit_type_SmpCachePropertiesWrapper_members(Visitor *v, SmpCachePropertiesWrapper *obj, Error **errp);
-
-bool visit_type_SmpCachePropertiesWrapper(Visitor *v, const char *name,
-                 SmpCachePropertiesWrapper **obj, Error **errp);
 
 #endif /* QAPI_VISIT_MACHINE_COMMON_H */

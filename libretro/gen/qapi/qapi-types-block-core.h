@@ -48,11 +48,6 @@ typedef enum ImageInfoSpecificKind {
     IMAGE_INFO_SPECIFIC_KIND__MAX,
 } ImageInfoSpecificKind;
 
-#define ImageInfoSpecificKind_str(val) \
-    qapi_enum_lookup(&ImageInfoSpecificKind_lookup, (val))
-
-extern const QEnumLookup ImageInfoSpecificKind_lookup;
-
 typedef struct ImageInfoSpecificQCow2Wrapper ImageInfoSpecificQCow2Wrapper;
 
 typedef struct ImageInfoSpecificVmdkWrapper ImageInfoSpecificVmdkWrapper;
@@ -102,11 +97,6 @@ typedef enum BlockDeviceIoStatus {
     BLOCK_DEVICE_IO_STATUS__MAX,
 } BlockDeviceIoStatus;
 
-#define BlockDeviceIoStatus_str(val) \
-    qapi_enum_lookup(&BlockDeviceIoStatus_lookup, (val))
-
-extern const QEnumLookup BlockDeviceIoStatus_lookup;
-
 typedef struct BlockDirtyInfo BlockDirtyInfo;
 
 typedef enum Qcow2BitmapInfoFlags {
@@ -114,11 +104,6 @@ typedef enum Qcow2BitmapInfoFlags {
     QCOW2_BITMAP_INFO_FLAGS_AUTO,
     QCOW2_BITMAP_INFO_FLAGS__MAX,
 } Qcow2BitmapInfoFlags;
-
-#define Qcow2BitmapInfoFlags_str(val) \
-    qapi_enum_lookup(&Qcow2BitmapInfoFlags_lookup, (val))
-
-extern const QEnumLookup Qcow2BitmapInfoFlags_lookup;
 
 typedef struct Qcow2BitmapInfoFlagsList Qcow2BitmapInfoFlagsList;
 
@@ -175,11 +160,6 @@ typedef enum MirrorSyncMode {
     MIRROR_SYNC_MODE__MAX,
 } MirrorSyncMode;
 
-#define MirrorSyncMode_str(val) \
-    qapi_enum_lookup(&MirrorSyncMode_lookup, (val))
-
-extern const QEnumLookup MirrorSyncMode_lookup;
-
 typedef enum BitmapSyncMode {
     BITMAP_SYNC_MODE_ON_SUCCESS,
     BITMAP_SYNC_MODE_NEVER,
@@ -187,21 +167,11 @@ typedef enum BitmapSyncMode {
     BITMAP_SYNC_MODE__MAX,
 } BitmapSyncMode;
 
-#define BitmapSyncMode_str(val) \
-    qapi_enum_lookup(&BitmapSyncMode_lookup, (val))
-
-extern const QEnumLookup BitmapSyncMode_lookup;
-
 typedef enum MirrorCopyMode {
     MIRROR_COPY_MODE_BACKGROUND,
     MIRROR_COPY_MODE_WRITE_BLOCKING,
     MIRROR_COPY_MODE__MAX,
 } MirrorCopyMode;
-
-#define MirrorCopyMode_str(val) \
-    qapi_enum_lookup(&MirrorCopyMode_lookup, (val))
-
-extern const QEnumLookup MirrorCopyMode_lookup;
 
 typedef struct BlockJobInfoMirror BlockJobInfoMirror;
 
@@ -218,11 +188,6 @@ typedef enum NewImageMode {
     NEW_IMAGE_MODE_ABSOLUTE_PATHS,
     NEW_IMAGE_MODE__MAX,
 } NewImageMode;
-
-#define NewImageMode_str(val) \
-    qapi_enum_lookup(&NewImageMode_lookup, (val))
-
-extern const QEnumLookup NewImageMode_lookup;
 
 typedef struct BlockdevSnapshotSync BlockdevSnapshotSync;
 
@@ -250,11 +215,6 @@ typedef enum XDbgBlockGraphNodeType {
     XDBG_BLOCK_GRAPH_NODE_TYPE_BLOCK_DRIVER,
     XDBG_BLOCK_GRAPH_NODE_TYPE__MAX,
 } XDbgBlockGraphNodeType;
-
-#define XDbgBlockGraphNodeType_str(val) \
-    qapi_enum_lookup(&XDbgBlockGraphNodeType_lookup, (val))
-
-extern const QEnumLookup XDbgBlockGraphNodeType_lookup;
 
 typedef struct XDbgBlockGraphNode XDbgBlockGraphNode;
 
@@ -830,11 +790,6 @@ typedef enum BlockdevQcow2Version {
     BLOCKDEV_QCOW2_VERSION__MAX,
 } BlockdevQcow2Version;
 
-#define BlockdevQcow2Version_str(val) \
-    qapi_enum_lookup(&BlockdevQcow2Version_lookup, (val))
-
-extern const QEnumLookup BlockdevQcow2Version_lookup;
-
 typedef enum Qcow2CompressionType {
     QCOW2_COMPRESSION_TYPE_ZLIB,
 #if defined(CONFIG_ZSTD)
@@ -842,11 +797,6 @@ typedef enum Qcow2CompressionType {
 #endif /* defined(CONFIG_ZSTD) */
     QCOW2_COMPRESSION_TYPE__MAX,
 } Qcow2CompressionType;
-
-#define Qcow2CompressionType_str(val) \
-    qapi_enum_lookup(&Qcow2CompressionType_lookup, (val))
-
-extern const QEnumLookup Qcow2CompressionType_lookup;
 
 typedef struct BlockdevCreateOptionsQcow2 BlockdevCreateOptionsQcow2;
 
@@ -863,11 +813,6 @@ typedef enum BlockdevVmdkSubformat {
     BLOCKDEV_VMDK_SUBFORMAT__MAX,
 } BlockdevVmdkSubformat;
 
-#define BlockdevVmdkSubformat_str(val) \
-    qapi_enum_lookup(&BlockdevVmdkSubformat_lookup, (val))
-
-extern const QEnumLookup BlockdevVmdkSubformat_lookup;
-
 typedef enum BlockdevVmdkAdapterType {
     BLOCKDEV_VMDK_ADAPTER_TYPE_IDE,
     BLOCKDEV_VMDK_ADAPTER_TYPE_BUSLOGIC,
@@ -875,11 +820,6 @@ typedef enum BlockdevVmdkAdapterType {
     BLOCKDEV_VMDK_ADAPTER_TYPE_LEGACYESX,
     BLOCKDEV_VMDK_ADAPTER_TYPE__MAX,
 } BlockdevVmdkAdapterType;
-
-#define BlockdevVmdkAdapterType_str(val) \
-    qapi_enum_lookup(&BlockdevVmdkAdapterType_lookup, (val))
-
-extern const QEnumLookup BlockdevVmdkAdapterType_lookup;
 
 typedef struct BlockdevCreateOptionsVmdk BlockdevCreateOptionsVmdk;
 
@@ -893,11 +833,6 @@ typedef enum BlockdevVhdxSubformat {
     BLOCKDEV_VHDX_SUBFORMAT__MAX,
 } BlockdevVhdxSubformat;
 
-#define BlockdevVhdxSubformat_str(val) \
-    qapi_enum_lookup(&BlockdevVhdxSubformat_lookup, (val))
-
-extern const QEnumLookup BlockdevVhdxSubformat_lookup;
-
 typedef struct BlockdevCreateOptionsVhdx BlockdevCreateOptionsVhdx;
 
 typedef enum BlockdevVpcSubformat {
@@ -905,11 +840,6 @@ typedef enum BlockdevVpcSubformat {
     BLOCKDEV_VPC_SUBFORMAT_FIXED,
     BLOCKDEV_VPC_SUBFORMAT__MAX,
 } BlockdevVpcSubformat;
-
-#define BlockdevVpcSubformat_str(val) \
-    qapi_enum_lookup(&BlockdevVpcSubformat_lookup, (val))
-
-extern const QEnumLookup BlockdevVpcSubformat_lookup;
 
 typedef struct BlockdevCreateOptionsVpc BlockdevCreateOptionsVpc;
 
@@ -936,11 +866,6 @@ typedef enum BlockErrorAction {
     BLOCK_ERROR_ACTION__MAX,
 } BlockErrorAction;
 
-#define BlockErrorAction_str(val) \
-    qapi_enum_lookup(&BlockErrorAction_lookup, (val))
-
-extern const QEnumLookup BlockErrorAction_lookup;
-
 typedef struct q_obj_BLOCK_IMAGE_CORRUPTED_arg q_obj_BLOCK_IMAGE_CORRUPTED_arg;
 
 typedef struct q_obj_BLOCK_IO_ERROR_arg q_obj_BLOCK_IO_ERROR_arg;
@@ -963,11 +888,6 @@ typedef enum PreallocMode {
     PREALLOC_MODE__MAX,
 } PreallocMode;
 
-#define PreallocMode_str(val) \
-    qapi_enum_lookup(&PreallocMode_lookup, (val))
-
-extern const QEnumLookup PreallocMode_lookup;
-
 typedef struct q_obj_BLOCK_WRITE_THRESHOLD_arg q_obj_BLOCK_WRITE_THRESHOLD_arg;
 
 typedef struct q_obj_block_set_write_threshold_arg q_obj_block_set_write_threshold_arg;
@@ -982,11 +902,6 @@ typedef enum QuorumOpType {
     QUORUM_OP_TYPE_FLUSH,
     QUORUM_OP_TYPE__MAX,
 } QuorumOpType;
-
-#define QuorumOpType_str(val) \
-    qapi_enum_lookup(&QuorumOpType_lookup, (val))
-
-extern const QEnumLookup QuorumOpType_lookup;
 
 typedef struct q_obj_QUORUM_FAILURE_arg q_obj_QUORUM_FAILURE_arg;
 
@@ -1012,15 +927,9 @@ struct SnapshotInfo {
     int64_t icount;
 };
 
-void qapi_free_SnapshotInfo(SnapshotInfo *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(SnapshotInfo, qapi_free_SnapshotInfo)
-
 struct ImageInfoSpecificQCow2EncryptionBase {
     BlockdevQcow2EncryptionFormat format;
 };
-
-void qapi_free_ImageInfoSpecificQCow2EncryptionBase(ImageInfoSpecificQCow2EncryptionBase *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(ImageInfoSpecificQCow2EncryptionBase, qapi_free_ImageInfoSpecificQCow2EncryptionBase)
 
 struct ImageInfoSpecificQCow2Encryption {
     /* Members inherited from ImageInfoSpecificQCow2EncryptionBase: */
@@ -1036,16 +945,10 @@ static inline ImageInfoSpecificQCow2EncryptionBase *qapi_ImageInfoSpecificQCow2E
     return (ImageInfoSpecificQCow2EncryptionBase *)obj;
 }
 
-void qapi_free_ImageInfoSpecificQCow2Encryption(ImageInfoSpecificQCow2Encryption *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(ImageInfoSpecificQCow2Encryption, qapi_free_ImageInfoSpecificQCow2Encryption)
-
 struct Qcow2BitmapInfoList {
     Qcow2BitmapInfoList *next;
     Qcow2BitmapInfo *value;
 };
-
-void qapi_free_Qcow2BitmapInfoList(Qcow2BitmapInfoList *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(Qcow2BitmapInfoList, qapi_free_Qcow2BitmapInfoList)
 
 struct ImageInfoSpecificQCow2 {
     char *compat;
@@ -1065,16 +968,10 @@ struct ImageInfoSpecificQCow2 {
     Qcow2CompressionType compression_type;
 };
 
-void qapi_free_ImageInfoSpecificQCow2(ImageInfoSpecificQCow2 *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(ImageInfoSpecificQCow2, qapi_free_ImageInfoSpecificQCow2)
-
 struct VmdkExtentInfoList {
     VmdkExtentInfoList *next;
     VmdkExtentInfo *value;
 };
-
-void qapi_free_VmdkExtentInfoList(VmdkExtentInfoList *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(VmdkExtentInfoList, qapi_free_VmdkExtentInfoList)
 
 struct ImageInfoSpecificVmdk {
     char *create_type;
@@ -1082,9 +979,6 @@ struct ImageInfoSpecificVmdk {
     int64_t parent_cid;
     VmdkExtentInfoList *extents;
 };
-
-void qapi_free_ImageInfoSpecificVmdk(ImageInfoSpecificVmdk *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(ImageInfoSpecificVmdk, qapi_free_ImageInfoSpecificVmdk)
 
 struct VmdkExtentInfo {
     char *filename;
@@ -1096,59 +990,35 @@ struct VmdkExtentInfo {
     bool compressed;
 };
 
-void qapi_free_VmdkExtentInfo(VmdkExtentInfo *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(VmdkExtentInfo, qapi_free_VmdkExtentInfo)
-
 struct ImageInfoSpecificRbd {
     bool has_encryption_format;
     RbdImageEncryptionFormat encryption_format;
 };
-
-void qapi_free_ImageInfoSpecificRbd(ImageInfoSpecificRbd *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(ImageInfoSpecificRbd, qapi_free_ImageInfoSpecificRbd)
 
 struct ImageInfoSpecificFile {
     bool has_extent_size_hint;
     uint64_t extent_size_hint;
 };
 
-void qapi_free_ImageInfoSpecificFile(ImageInfoSpecificFile *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(ImageInfoSpecificFile, qapi_free_ImageInfoSpecificFile)
-
 struct ImageInfoSpecificQCow2Wrapper {
     ImageInfoSpecificQCow2 *data;
 };
-
-void qapi_free_ImageInfoSpecificQCow2Wrapper(ImageInfoSpecificQCow2Wrapper *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(ImageInfoSpecificQCow2Wrapper, qapi_free_ImageInfoSpecificQCow2Wrapper)
 
 struct ImageInfoSpecificVmdkWrapper {
     ImageInfoSpecificVmdk *data;
 };
 
-void qapi_free_ImageInfoSpecificVmdkWrapper(ImageInfoSpecificVmdkWrapper *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(ImageInfoSpecificVmdkWrapper, qapi_free_ImageInfoSpecificVmdkWrapper)
-
 struct ImageInfoSpecificLUKSWrapper {
     QCryptoBlockInfoLUKS *data;
 };
-
-void qapi_free_ImageInfoSpecificLUKSWrapper(ImageInfoSpecificLUKSWrapper *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(ImageInfoSpecificLUKSWrapper, qapi_free_ImageInfoSpecificLUKSWrapper)
 
 struct ImageInfoSpecificRbdWrapper {
     ImageInfoSpecificRbd *data;
 };
 
-void qapi_free_ImageInfoSpecificRbdWrapper(ImageInfoSpecificRbdWrapper *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(ImageInfoSpecificRbdWrapper, qapi_free_ImageInfoSpecificRbdWrapper)
-
 struct ImageInfoSpecificFileWrapper {
     ImageInfoSpecificFile *data;
 };
-
-void qapi_free_ImageInfoSpecificFileWrapper(ImageInfoSpecificFileWrapper *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(ImageInfoSpecificFileWrapper, qapi_free_ImageInfoSpecificFileWrapper)
 
 struct q_obj_ImageInfoSpecific_base {
     ImageInfoSpecificKind type;
@@ -1164,9 +1034,6 @@ struct ImageInfoSpecific {
         ImageInfoSpecificFileWrapper file;
     } u;
 };
-
-void qapi_free_ImageInfoSpecific(ImageInfoSpecific *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(ImageInfoSpecific, qapi_free_ImageInfoSpecific)
 
 struct BlockLimitsInfo {
     uint32_t request_alignment;
@@ -1191,16 +1058,10 @@ struct BlockLimitsInfo {
     uint64_t opt_mem_alignment;
 };
 
-void qapi_free_BlockLimitsInfo(BlockLimitsInfo *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockLimitsInfo, qapi_free_BlockLimitsInfo)
-
 struct SnapshotInfoList {
     SnapshotInfoList *next;
     SnapshotInfo *value;
 };
-
-void qapi_free_SnapshotInfoList(SnapshotInfoList *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(SnapshotInfoList, qapi_free_SnapshotInfoList)
 
 struct BlockNodeInfo {
     char *filename;
@@ -1224,9 +1085,6 @@ struct BlockNodeInfo {
     BlockLimitsInfo *limits;
     ImageInfoSpecific *format_specific;
 };
-
-void qapi_free_BlockNodeInfo(BlockNodeInfo *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockNodeInfo, qapi_free_BlockNodeInfo)
 
 struct ImageInfo {
     /* Members inherited from BlockNodeInfo: */
@@ -1259,24 +1117,15 @@ static inline BlockNodeInfo *qapi_ImageInfo_base(const ImageInfo *obj)
     return (BlockNodeInfo *)obj;
 }
 
-void qapi_free_ImageInfo(ImageInfo *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(ImageInfo, qapi_free_ImageInfo)
-
 struct BlockChildInfo {
     char *name;
     BlockGraphInfo *info;
 };
 
-void qapi_free_BlockChildInfo(BlockChildInfo *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockChildInfo, qapi_free_BlockChildInfo)
-
 struct BlockChildInfoList {
     BlockChildInfoList *next;
     BlockChildInfo *value;
 };
-
-void qapi_free_BlockChildInfoList(BlockChildInfoList *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockChildInfoList, qapi_free_BlockChildInfoList)
 
 struct BlockGraphInfo {
     /* Members inherited from BlockNodeInfo: */
@@ -1309,9 +1158,6 @@ static inline BlockNodeInfo *qapi_BlockGraphInfo_base(const BlockGraphInfo *obj)
     return (BlockNodeInfo *)obj;
 }
 
-void qapi_free_BlockGraphInfo(BlockGraphInfo *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockGraphInfo, qapi_free_BlockGraphInfo)
-
 struct ImageCheck {
     char *filename;
     char *format;
@@ -1336,9 +1182,6 @@ struct ImageCheck {
     int64_t compressed_clusters;
 };
 
-void qapi_free_ImageCheck(ImageCheck *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(ImageCheck, qapi_free_ImageCheck)
-
 struct MapEntry {
     int64_t start;
     int64_t length;
@@ -1352,41 +1195,26 @@ struct MapEntry {
     char *filename;
 };
 
-void qapi_free_MapEntry(MapEntry *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(MapEntry, qapi_free_MapEntry)
-
 struct BlockdevCacheInfo {
     bool writeback;
     bool direct;
     bool no_flush;
 };
 
-void qapi_free_BlockdevCacheInfo(BlockdevCacheInfo *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockdevCacheInfo, qapi_free_BlockdevCacheInfo)
-
 struct BlockdevChild {
     char *child;
     char *node_name;
 };
-
-void qapi_free_BlockdevChild(BlockdevChild *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockdevChild, qapi_free_BlockdevChild)
 
 struct BlockdevChildList {
     BlockdevChildList *next;
     BlockdevChild *value;
 };
 
-void qapi_free_BlockdevChildList(BlockdevChildList *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockdevChildList, qapi_free_BlockdevChildList)
-
 struct BlockDirtyInfoList {
     BlockDirtyInfoList *next;
     BlockDirtyInfo *value;
 };
-
-void qapi_free_BlockDirtyInfoList(BlockDirtyInfoList *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockDirtyInfoList, qapi_free_BlockDirtyInfoList)
 
 struct BlockDeviceInfo {
     char *file;
@@ -1439,9 +1267,6 @@ struct BlockDeviceInfo {
     BlockDirtyInfoList *dirty_bitmaps;
 };
 
-void qapi_free_BlockDeviceInfo(BlockDeviceInfo *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockDeviceInfo, qapi_free_BlockDeviceInfo)
-
 struct BlockDirtyInfo {
     char *name;
     int64_t count;
@@ -1453,16 +1278,10 @@ struct BlockDirtyInfo {
     bool inconsistent;
 };
 
-void qapi_free_BlockDirtyInfo(BlockDirtyInfo *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockDirtyInfo, qapi_free_BlockDirtyInfo)
-
 struct Qcow2BitmapInfoFlagsList {
     Qcow2BitmapInfoFlagsList *next;
     Qcow2BitmapInfoFlags value;
 };
-
-void qapi_free_Qcow2BitmapInfoFlagsList(Qcow2BitmapInfoFlagsList *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(Qcow2BitmapInfoFlagsList, qapi_free_Qcow2BitmapInfoFlagsList)
 
 struct Qcow2BitmapInfo {
     char *name;
@@ -1470,16 +1289,10 @@ struct Qcow2BitmapInfo {
     Qcow2BitmapInfoFlagsList *flags;
 };
 
-void qapi_free_Qcow2BitmapInfo(Qcow2BitmapInfo *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(Qcow2BitmapInfo, qapi_free_Qcow2BitmapInfo)
-
 struct BlockLatencyHistogramInfo {
     uint64List *boundaries;
     uint64List *bins;
 };
-
-void qapi_free_BlockLatencyHistogramInfo(BlockLatencyHistogramInfo *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockLatencyHistogramInfo, qapi_free_BlockLatencyHistogramInfo)
 
 struct BlockInfo {
     char *device;
@@ -1494,9 +1307,6 @@ struct BlockInfo {
     BlockDeviceIoStatus io_status;
 };
 
-void qapi_free_BlockInfo(BlockInfo *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockInfo, qapi_free_BlockInfo)
-
 struct BlockMeasureInfo {
     int64_t required;
     int64_t fully_allocated;
@@ -1504,16 +1314,10 @@ struct BlockMeasureInfo {
     int64_t bitmaps;
 };
 
-void qapi_free_BlockMeasureInfo(BlockMeasureInfo *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockMeasureInfo, qapi_free_BlockMeasureInfo)
-
 struct BlockInfoList {
     BlockInfoList *next;
     BlockInfo *value;
 };
-
-void qapi_free_BlockInfoList(BlockInfoList *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockInfoList, qapi_free_BlockInfoList)
 
 struct BlockDeviceTimedStats {
     int64_t interval_length;
@@ -1534,16 +1338,10 @@ struct BlockDeviceTimedStats {
     double avg_zone_append_queue_depth;
 };
 
-void qapi_free_BlockDeviceTimedStats(BlockDeviceTimedStats *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockDeviceTimedStats, qapi_free_BlockDeviceTimedStats)
-
 struct BlockDeviceTimedStatsList {
     BlockDeviceTimedStatsList *next;
     BlockDeviceTimedStats *value;
 };
-
-void qapi_free_BlockDeviceTimedStatsList(BlockDeviceTimedStatsList *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockDeviceTimedStatsList, qapi_free_BlockDeviceTimedStatsList)
 
 struct BlockDeviceStats {
     int64_t rd_bytes;
@@ -1586,26 +1384,17 @@ struct BlockDeviceStats {
     BlockLatencyHistogramInfo *flush_latency_histogram;
 };
 
-void qapi_free_BlockDeviceStats(BlockDeviceStats *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockDeviceStats, qapi_free_BlockDeviceStats)
-
 struct BlockStatsSpecificFile {
     uint64_t discard_nb_ok;
     uint64_t discard_nb_failed;
     uint64_t discard_bytes_ok;
 };
 
-void qapi_free_BlockStatsSpecificFile(BlockStatsSpecificFile *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockStatsSpecificFile, qapi_free_BlockStatsSpecificFile)
-
 struct BlockStatsSpecificNvme {
     uint64_t completion_errors;
     uint64_t aligned_accesses;
     uint64_t unaligned_accesses;
 };
-
-void qapi_free_BlockStatsSpecificNvme(BlockStatsSpecificNvme *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockStatsSpecificNvme, qapi_free_BlockStatsSpecificNvme)
 
 struct q_obj_BlockStatsSpecific_base {
     BlockdevDriver driver;
@@ -1622,9 +1411,6 @@ struct BlockStatsSpecific {
     } u;
 };
 
-void qapi_free_BlockStatsSpecific(BlockStatsSpecific *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockStatsSpecific, qapi_free_BlockStatsSpecific)
-
 struct BlockStats {
     char *device;
     char *qdev;
@@ -1634,9 +1420,6 @@ struct BlockStats {
     BlockStats *parent;
     BlockStats *backing;
 };
-
-void qapi_free_BlockStats(BlockStats *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockStats, qapi_free_BlockStats)
 
 struct q_obj_query_blockstats_arg {
     bool has_query_nodes;
@@ -1648,15 +1431,9 @@ struct BlockStatsList {
     BlockStats *value;
 };
 
-void qapi_free_BlockStatsList(BlockStatsList *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockStatsList, qapi_free_BlockStatsList)
-
 struct BlockJobInfoMirror {
     bool actively_synced;
 };
-
-void qapi_free_BlockJobInfoMirror(BlockJobInfoMirror *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockJobInfoMirror, qapi_free_BlockJobInfoMirror)
 
 struct q_obj_BlockJobInfo_base {
     JobType type;
@@ -1693,16 +1470,10 @@ struct BlockJobInfo {
     } u;
 };
 
-void qapi_free_BlockJobInfo(BlockJobInfo *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockJobInfo, qapi_free_BlockJobInfo)
-
 struct BlockJobInfoList {
     BlockJobInfoList *next;
     BlockJobInfo *value;
 };
-
-void qapi_free_BlockJobInfoList(BlockJobInfoList *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockJobInfoList, qapi_free_BlockJobInfoList)
 
 struct q_obj_block_resize_arg {
     char *device;
@@ -1720,16 +1491,10 @@ struct BlockdevSnapshotSync {
     NewImageMode mode;
 };
 
-void qapi_free_BlockdevSnapshotSync(BlockdevSnapshotSync *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockdevSnapshotSync, qapi_free_BlockdevSnapshotSync)
-
 struct BlockdevSnapshot {
     char *node;
     char *overlay;
 };
-
-void qapi_free_BlockdevSnapshot(BlockdevSnapshot *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockdevSnapshot, qapi_free_BlockdevSnapshot)
 
 struct BackupPerf {
     bool has_use_copy_range;
@@ -1741,9 +1506,6 @@ struct BackupPerf {
     bool has_min_cluster_size;
     uint64_t min_cluster_size;
 };
-
-void qapi_free_BackupPerf(BackupPerf *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BackupPerf, qapi_free_BackupPerf)
 
 struct BackupCommon {
     char *job_id;
@@ -1771,9 +1533,6 @@ struct BackupCommon {
     bool discard_source;
     BackupPerf *x_perf;
 };
-
-void qapi_free_BackupCommon(BackupCommon *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BackupCommon, qapi_free_BackupCommon)
 
 struct DriveBackup {
     /* Members inherited from BackupCommon: */
@@ -1813,9 +1572,6 @@ static inline BackupCommon *qapi_DriveBackup_base(const DriveBackup *obj)
     return (BackupCommon *)obj;
 }
 
-void qapi_free_DriveBackup(DriveBackup *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(DriveBackup, qapi_free_DriveBackup)
-
 struct BlockdevBackup {
     /* Members inherited from BackupCommon: */
     char *job_id;
@@ -1850,9 +1606,6 @@ static inline BackupCommon *qapi_BlockdevBackup_base(const BlockdevBackup *obj)
 {
     return (BackupCommon *)obj;
 }
-
-void qapi_free_BlockdevBackup(BlockdevBackup *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockdevBackup, qapi_free_BlockdevBackup)
 
 struct q_obj_change_backing_file_arg {
     char *device;
@@ -1891,17 +1644,11 @@ struct BlockDeviceInfoList {
     BlockDeviceInfo *value;
 };
 
-void qapi_free_BlockDeviceInfoList(BlockDeviceInfoList *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockDeviceInfoList, qapi_free_BlockDeviceInfoList)
-
 struct XDbgBlockGraphNode {
     uint64_t id;
     XDbgBlockGraphNodeType type;
     char *name;
 };
-
-void qapi_free_XDbgBlockGraphNode(XDbgBlockGraphNode *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(XDbgBlockGraphNode, qapi_free_XDbgBlockGraphNode)
 
 struct BlockPermissionList {
     BlockPermissionList *next;
@@ -1919,32 +1666,20 @@ struct XDbgBlockGraphEdge {
     BlockPermissionList *shared_perm;
 };
 
-void qapi_free_XDbgBlockGraphEdge(XDbgBlockGraphEdge *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(XDbgBlockGraphEdge, qapi_free_XDbgBlockGraphEdge)
-
 struct XDbgBlockGraphNodeList {
     XDbgBlockGraphNodeList *next;
     XDbgBlockGraphNode *value;
 };
-
-void qapi_free_XDbgBlockGraphNodeList(XDbgBlockGraphNodeList *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(XDbgBlockGraphNodeList, qapi_free_XDbgBlockGraphNodeList)
 
 struct XDbgBlockGraphEdgeList {
     XDbgBlockGraphEdgeList *next;
     XDbgBlockGraphEdge *value;
 };
 
-void qapi_free_XDbgBlockGraphEdgeList(XDbgBlockGraphEdgeList *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(XDbgBlockGraphEdgeList, qapi_free_XDbgBlockGraphEdgeList)
-
 struct XDbgBlockGraph {
     XDbgBlockGraphNodeList *nodes;
     XDbgBlockGraphEdgeList *edges;
 };
-
-void qapi_free_XDbgBlockGraph(XDbgBlockGraph *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(XDbgBlockGraph, qapi_free_XDbgBlockGraph)
 
 struct DriveMirror {
     char *job_id;
@@ -1976,9 +1711,6 @@ struct DriveMirror {
     bool auto_dismiss;
 };
 
-void qapi_free_DriveMirror(DriveMirror *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(DriveMirror, qapi_free_DriveMirror)
-
 struct BlockDirtyBitmap {
     char *node;
     char *name;
@@ -1998,9 +1730,6 @@ struct BlockDirtyBitmapAdd {
     bool disabled;
 };
 
-void qapi_free_BlockDirtyBitmapAdd(BlockDirtyBitmapAdd *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockDirtyBitmapAdd, qapi_free_BlockDirtyBitmapAdd)
-
 struct BlockDirtyBitmapOrStr {
     QType type;
     union { /* union tag is @type */
@@ -2009,16 +1738,10 @@ struct BlockDirtyBitmapOrStr {
     } u;
 };
 
-void qapi_free_BlockDirtyBitmapOrStr(BlockDirtyBitmapOrStr *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockDirtyBitmapOrStr, qapi_free_BlockDirtyBitmapOrStr)
-
 struct BlockDirtyBitmapOrStrList {
     BlockDirtyBitmapOrStrList *next;
     BlockDirtyBitmapOrStr *value;
 };
-
-void qapi_free_BlockDirtyBitmapOrStrList(BlockDirtyBitmapOrStrList *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockDirtyBitmapOrStrList, qapi_free_BlockDirtyBitmapOrStrList)
 
 struct BlockDirtyBitmapMerge {
     char *node;
@@ -2026,15 +1749,9 @@ struct BlockDirtyBitmapMerge {
     BlockDirtyBitmapOrStrList *bitmaps;
 };
 
-void qapi_free_BlockDirtyBitmapMerge(BlockDirtyBitmapMerge *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockDirtyBitmapMerge, qapi_free_BlockDirtyBitmapMerge)
-
 struct BlockDirtyBitmapSha256 {
     char *sha256;
 };
-
-void qapi_free_BlockDirtyBitmapSha256(BlockDirtyBitmapSha256 *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockDirtyBitmapSha256, qapi_free_BlockDirtyBitmapSha256)
 
 struct q_obj_blockdev_mirror_arg {
     char *job_id;
@@ -2100,9 +1817,6 @@ struct BlockIOThrottle {
     int64_t iops_size;
     char *group;
 };
-
-void qapi_free_BlockIOThrottle(BlockIOThrottle *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockIOThrottle, qapi_free_BlockIOThrottle)
 
 struct ThrottleLimits {
     bool has_iops_total;
@@ -2190,9 +1904,6 @@ struct ThrottleGroupProperties {
     int64_t x_iops_size;
 };
 
-void qapi_free_ThrottleGroupProperties(ThrottleGroupProperties *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(ThrottleGroupProperties, qapi_free_ThrottleGroupProperties)
-
 struct q_obj_block_stream_arg {
     char *job_id;
     char *device;
@@ -2248,9 +1959,6 @@ struct BlockJobChangeOptionsMirror {
     MirrorCopyMode copy_mode;
 };
 
-void qapi_free_BlockJobChangeOptionsMirror(BlockJobChangeOptionsMirror *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockJobChangeOptionsMirror, qapi_free_BlockJobChangeOptionsMirror)
-
 struct q_obj_BlockJobChangeOptions_base {
     char *id;
     JobType type;
@@ -2263,9 +1971,6 @@ struct BlockJobChangeOptions {
         BlockJobChangeOptionsMirror mirror;
     } u;
 };
-
-void qapi_free_BlockJobChangeOptions(BlockJobChangeOptions *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockJobChangeOptions, qapi_free_BlockJobChangeOptions)
 
 struct BlockdevCacheOptions {
     bool has_direct;
@@ -2294,9 +1999,6 @@ struct BlockdevOptionsFile {
     bool x_check_cache_dropped;
 };
 
-void qapi_free_BlockdevOptionsFile(BlockdevOptionsFile *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockdevOptionsFile, qapi_free_BlockdevOptionsFile)
-
 struct BlockdevOptionsNull {
     bool has_size;
     int64_t size;
@@ -2306,16 +2008,10 @@ struct BlockdevOptionsNull {
     bool read_zeroes;
 };
 
-void qapi_free_BlockdevOptionsNull(BlockdevOptionsNull *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockdevOptionsNull, qapi_free_BlockdevOptionsNull)
-
 struct BlockdevOptionsNVMe {
     char *device;
     int64_t q_namespace;
 };
-
-void qapi_free_BlockdevOptionsNVMe(BlockdevOptionsNVMe *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockdevOptionsNVMe, qapi_free_BlockdevOptionsNVMe)
 
 struct BlockdevOptionsVVFAT {
     char *dir;
@@ -2328,15 +2024,9 @@ struct BlockdevOptionsVVFAT {
     bool rw;
 };
 
-void qapi_free_BlockdevOptionsVVFAT(BlockdevOptionsVVFAT *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockdevOptionsVVFAT, qapi_free_BlockdevOptionsVVFAT)
-
 struct BlockdevOptionsGenericFormat {
     BlockdevRef *file;
 };
-
-void qapi_free_BlockdevOptionsGenericFormat(BlockdevOptionsGenericFormat *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockdevOptionsGenericFormat, qapi_free_BlockdevOptionsGenericFormat)
 
 struct BlockdevOptionsLUKS {
     /* Members inherited from BlockdevOptionsGenericFormat: */
@@ -2351,9 +2041,6 @@ static inline BlockdevOptionsGenericFormat *qapi_BlockdevOptionsLUKS_base(const 
     return (BlockdevOptionsGenericFormat *)obj;
 }
 
-void qapi_free_BlockdevOptionsLUKS(BlockdevOptionsLUKS *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockdevOptionsLUKS, qapi_free_BlockdevOptionsLUKS)
-
 struct BlockdevOptionsGenericCOWFormat {
     /* Members inherited from BlockdevOptionsGenericFormat: */
     BlockdevRef *file;
@@ -2365,9 +2052,6 @@ static inline BlockdevOptionsGenericFormat *qapi_BlockdevOptionsGenericCOWFormat
 {
     return (BlockdevOptionsGenericFormat *)obj;
 }
-
-void qapi_free_BlockdevOptionsGenericCOWFormat(BlockdevOptionsGenericCOWFormat *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockdevOptionsGenericCOWFormat, qapi_free_BlockdevOptionsGenericCOWFormat)
 
 struct Qcow2OverlapCheckFlags {
     bool has_q_template;
@@ -2391,9 +2075,6 @@ struct Qcow2OverlapCheckFlags {
     bool has_bitmap_directory;
     bool bitmap_directory;
 };
-
-void qapi_free_Qcow2OverlapCheckFlags(Qcow2OverlapCheckFlags *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(Qcow2OverlapCheckFlags, qapi_free_Qcow2OverlapCheckFlags)
 
 struct Qcow2OverlapChecks {
     QType type;
@@ -2433,9 +2114,6 @@ static inline BlockdevOptionsGenericCOWFormat *qapi_BlockdevOptionsQcow_base(con
     return (BlockdevOptionsGenericCOWFormat *)obj;
 }
 
-void qapi_free_BlockdevOptionsQcow(BlockdevOptionsQcow *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockdevOptionsQcow, qapi_free_BlockdevOptionsQcow)
-
 struct q_obj_BlockdevQcow2Encryption_base {
     BlockdevQcow2EncryptionFormat format;
 };
@@ -2465,9 +2143,6 @@ static inline BlockdevOptionsGenericFormat *qapi_BlockdevOptionsPreallocate_base
 {
     return (BlockdevOptionsGenericFormat *)obj;
 }
-
-void qapi_free_BlockdevOptionsPreallocate(BlockdevOptionsPreallocate *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockdevOptionsPreallocate, qapi_free_BlockdevOptionsPreallocate)
 
 struct BlockdevOptionsQcow2 {
     /* Members inherited from BlockdevOptionsGenericCOWFormat: */
@@ -2504,16 +2179,10 @@ static inline BlockdevOptionsGenericCOWFormat *qapi_BlockdevOptionsQcow2_base(co
     return (BlockdevOptionsGenericCOWFormat *)obj;
 }
 
-void qapi_free_BlockdevOptionsQcow2(BlockdevOptionsQcow2 *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockdevOptionsQcow2, qapi_free_BlockdevOptionsQcow2)
-
 struct SshHostKeyHash {
     SshHostKeyCheckHashType type;
     char *hash;
 };
-
-void qapi_free_SshHostKeyHash(SshHostKeyHash *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(SshHostKeyHash, qapi_free_SshHostKeyHash)
 
 struct q_obj_SshHostKeyCheck_base {
     SshHostKeyCheckMode mode;
@@ -2535,9 +2204,6 @@ struct BlockdevOptionsSsh {
     char *user;
     SshHostKeyCheck *host_key_check;
 };
-
-void qapi_free_BlockdevOptionsSsh(BlockdevOptionsSsh *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockdevOptionsSsh, qapi_free_BlockdevOptionsSsh)
 
 struct BlkdebugInjectErrorOptions {
     BlkdebugEvent event;
@@ -2609,9 +2275,6 @@ struct BlockdevOptionsBlkdebug {
     BlockPermissionList *unshare_child_perms;
 };
 
-void qapi_free_BlockdevOptionsBlkdebug(BlockdevOptionsBlkdebug *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockdevOptionsBlkdebug, qapi_free_BlockdevOptionsBlkdebug)
-
 struct BlockdevOptionsBlklogwrites {
     BlockdevRef *file;
     BlockdevRef *log;
@@ -2623,23 +2286,14 @@ struct BlockdevOptionsBlklogwrites {
     uint64_t log_super_update_interval;
 };
 
-void qapi_free_BlockdevOptionsBlklogwrites(BlockdevOptionsBlklogwrites *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockdevOptionsBlklogwrites, qapi_free_BlockdevOptionsBlklogwrites)
-
 struct BlockdevOptionsBlkverify {
     BlockdevRef *test;
     BlockdevRef *raw;
 };
 
-void qapi_free_BlockdevOptionsBlkverify(BlockdevOptionsBlkverify *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockdevOptionsBlkverify, qapi_free_BlockdevOptionsBlkverify)
-
 struct BlockdevOptionsBlkreplay {
     BlockdevRef *image;
 };
-
-void qapi_free_BlockdevOptionsBlkreplay(BlockdevOptionsBlkreplay *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockdevOptionsBlkreplay, qapi_free_BlockdevOptionsBlkreplay)
 
 struct BlockdevRefList {
     BlockdevRefList *next;
@@ -2660,9 +2314,6 @@ struct BlockdevOptionsQuorum {
     QuorumReadPattern read_pattern;
 };
 
-void qapi_free_BlockdevOptionsQuorum(BlockdevOptionsQuorum *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockdevOptionsQuorum, qapi_free_BlockdevOptionsQuorum)
-
 struct BlockdevOptionsGluster {
     char *volume;
     char *path;
@@ -2672,18 +2323,10 @@ struct BlockdevOptionsGluster {
     char *logfile;
 };
 
-void qapi_free_BlockdevOptionsGluster(BlockdevOptionsGluster *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockdevOptionsGluster, qapi_free_BlockdevOptionsGluster)
-
 #if defined(CONFIG_BLKIO)
 struct BlockdevOptionsIoUring {
     char *filename;
 };
-#endif /* defined(CONFIG_BLKIO) */
-
-#if defined(CONFIG_BLKIO)
-void qapi_free_BlockdevOptionsIoUring(BlockdevOptionsIoUring *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockdevOptionsIoUring, qapi_free_BlockdevOptionsIoUring)
 #endif /* defined(CONFIG_BLKIO) */
 
 #if defined(CONFIG_BLKIO)
@@ -2693,19 +2336,9 @@ struct BlockdevOptionsNvmeIoUring {
 #endif /* defined(CONFIG_BLKIO) */
 
 #if defined(CONFIG_BLKIO)
-void qapi_free_BlockdevOptionsNvmeIoUring(BlockdevOptionsNvmeIoUring *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockdevOptionsNvmeIoUring, qapi_free_BlockdevOptionsNvmeIoUring)
-#endif /* defined(CONFIG_BLKIO) */
-
-#if defined(CONFIG_BLKIO)
 struct BlockdevOptionsVirtioBlkVfioPci {
     char *path;
 };
-#endif /* defined(CONFIG_BLKIO) */
-
-#if defined(CONFIG_BLKIO)
-void qapi_free_BlockdevOptionsVirtioBlkVfioPci(BlockdevOptionsVirtioBlkVfioPci *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockdevOptionsVirtioBlkVfioPci, qapi_free_BlockdevOptionsVirtioBlkVfioPci)
 #endif /* defined(CONFIG_BLKIO) */
 
 #if defined(CONFIG_BLKIO)
@@ -2715,19 +2348,9 @@ struct BlockdevOptionsVirtioBlkVhostUser {
 #endif /* defined(CONFIG_BLKIO) */
 
 #if defined(CONFIG_BLKIO)
-void qapi_free_BlockdevOptionsVirtioBlkVhostUser(BlockdevOptionsVirtioBlkVhostUser *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockdevOptionsVirtioBlkVhostUser, qapi_free_BlockdevOptionsVirtioBlkVhostUser)
-#endif /* defined(CONFIG_BLKIO) */
-
-#if defined(CONFIG_BLKIO)
 struct BlockdevOptionsVirtioBlkVhostVdpa {
     char *path;
 };
-#endif /* defined(CONFIG_BLKIO) */
-
-#if defined(CONFIG_BLKIO)
-void qapi_free_BlockdevOptionsVirtioBlkVhostVdpa(BlockdevOptionsVirtioBlkVhostVdpa *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockdevOptionsVirtioBlkVhostVdpa, qapi_free_BlockdevOptionsVirtioBlkVhostVdpa)
 #endif /* defined(CONFIG_BLKIO) */
 
 struct BlockdevOptionsIscsi {
@@ -2745,15 +2368,9 @@ struct BlockdevOptionsIscsi {
     int64_t timeout;
 };
 
-void qapi_free_BlockdevOptionsIscsi(BlockdevOptionsIscsi *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockdevOptionsIscsi, qapi_free_BlockdevOptionsIscsi)
-
 struct RbdEncryptionOptionsLUKSBase {
     char *key_secret;
 };
-
-void qapi_free_RbdEncryptionOptionsLUKSBase(RbdEncryptionOptionsLUKSBase *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(RbdEncryptionOptionsLUKSBase, qapi_free_RbdEncryptionOptionsLUKSBase)
 
 struct RbdEncryptionCreateOptionsLUKSBase {
     /* Members inherited from RbdEncryptionOptionsLUKSBase: */
@@ -2768,9 +2385,6 @@ static inline RbdEncryptionOptionsLUKSBase *qapi_RbdEncryptionCreateOptionsLUKSB
     return (RbdEncryptionOptionsLUKSBase *)obj;
 }
 
-void qapi_free_RbdEncryptionCreateOptionsLUKSBase(RbdEncryptionCreateOptionsLUKSBase *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(RbdEncryptionCreateOptionsLUKSBase, qapi_free_RbdEncryptionCreateOptionsLUKSBase)
-
 struct RbdEncryptionOptionsLUKS {
     /* Members inherited from RbdEncryptionOptionsLUKSBase: */
     char *key_secret;
@@ -2781,9 +2395,6 @@ static inline RbdEncryptionOptionsLUKSBase *qapi_RbdEncryptionOptionsLUKS_base(c
 {
     return (RbdEncryptionOptionsLUKSBase *)obj;
 }
-
-void qapi_free_RbdEncryptionOptionsLUKS(RbdEncryptionOptionsLUKS *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(RbdEncryptionOptionsLUKS, qapi_free_RbdEncryptionOptionsLUKS)
 
 struct RbdEncryptionOptionsLUKS2 {
     /* Members inherited from RbdEncryptionOptionsLUKSBase: */
@@ -2796,9 +2407,6 @@ static inline RbdEncryptionOptionsLUKSBase *qapi_RbdEncryptionOptionsLUKS2_base(
     return (RbdEncryptionOptionsLUKSBase *)obj;
 }
 
-void qapi_free_RbdEncryptionOptionsLUKS2(RbdEncryptionOptionsLUKS2 *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(RbdEncryptionOptionsLUKS2, qapi_free_RbdEncryptionOptionsLUKS2)
-
 struct RbdEncryptionOptionsLUKSAny {
     /* Members inherited from RbdEncryptionOptionsLUKSBase: */
     char *key_secret;
@@ -2809,9 +2417,6 @@ static inline RbdEncryptionOptionsLUKSBase *qapi_RbdEncryptionOptionsLUKSAny_bas
 {
     return (RbdEncryptionOptionsLUKSBase *)obj;
 }
-
-void qapi_free_RbdEncryptionOptionsLUKSAny(RbdEncryptionOptionsLUKSAny *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(RbdEncryptionOptionsLUKSAny, qapi_free_RbdEncryptionOptionsLUKSAny)
 
 struct RbdEncryptionCreateOptionsLUKS {
     /* Members inherited from RbdEncryptionCreateOptionsLUKSBase: */
@@ -2826,9 +2431,6 @@ static inline RbdEncryptionCreateOptionsLUKSBase *qapi_RbdEncryptionCreateOption
     return (RbdEncryptionCreateOptionsLUKSBase *)obj;
 }
 
-void qapi_free_RbdEncryptionCreateOptionsLUKS(RbdEncryptionCreateOptionsLUKS *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(RbdEncryptionCreateOptionsLUKS, qapi_free_RbdEncryptionCreateOptionsLUKS)
-
 struct RbdEncryptionCreateOptionsLUKS2 {
     /* Members inherited from RbdEncryptionCreateOptionsLUKSBase: */
     char *key_secret;
@@ -2841,9 +2443,6 @@ static inline RbdEncryptionCreateOptionsLUKSBase *qapi_RbdEncryptionCreateOption
 {
     return (RbdEncryptionCreateOptionsLUKSBase *)obj;
 }
-
-void qapi_free_RbdEncryptionCreateOptionsLUKS2(RbdEncryptionCreateOptionsLUKS2 *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(RbdEncryptionCreateOptionsLUKS2, qapi_free_RbdEncryptionCreateOptionsLUKS2)
 
 struct q_obj_RbdEncryptionOptions_base {
     RbdImageEncryptionFormat format;
@@ -2875,9 +2474,6 @@ struct RbdEncryptionCreateOptions {
     } u;
 };
 
-void qapi_free_RbdEncryptionCreateOptions(RbdEncryptionCreateOptions *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(RbdEncryptionCreateOptions, qapi_free_RbdEncryptionCreateOptions)
-
 struct RbdAuthModeList {
     RbdAuthModeList *next;
     RbdAuthMode value;
@@ -2901,9 +2497,6 @@ struct BlockdevOptionsRbd {
     InetSocketAddressBaseList *server;
 };
 
-void qapi_free_BlockdevOptionsRbd(BlockdevOptionsRbd *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockdevOptionsRbd, qapi_free_BlockdevOptionsRbd)
-
 #if defined(CONFIG_REPLICATION)
 struct BlockdevOptionsReplication {
     /* Members inherited from BlockdevOptionsGenericFormat: */
@@ -2920,8 +2513,6 @@ static inline BlockdevOptionsGenericFormat *qapi_BlockdevOptionsReplication_base
     return (BlockdevOptionsGenericFormat *)obj;
 }
 
-void qapi_free_BlockdevOptionsReplication(BlockdevOptionsReplication *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockdevOptionsReplication, qapi_free_BlockdevOptionsReplication)
 #endif /* defined(CONFIG_REPLICATION) */
 
 struct NFSServer {
@@ -2949,9 +2540,6 @@ struct BlockdevOptionsNfs {
     int64_t debug;
 };
 
-void qapi_free_BlockdevOptionsNfs(BlockdevOptionsNfs *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockdevOptionsNfs, qapi_free_BlockdevOptionsNfs)
-
 struct BlockdevOptionsCurlBase {
     char *url;
     bool has_readahead;
@@ -2963,9 +2551,6 @@ struct BlockdevOptionsCurlBase {
     char *proxy_username;
     char *proxy_password_secret;
 };
-
-void qapi_free_BlockdevOptionsCurlBase(BlockdevOptionsCurlBase *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockdevOptionsCurlBase, qapi_free_BlockdevOptionsCurlBase)
 
 struct BlockdevOptionsCurlHttp {
     /* Members inherited from BlockdevOptionsCurlBase: */
@@ -2987,9 +2572,6 @@ static inline BlockdevOptionsCurlBase *qapi_BlockdevOptionsCurlHttp_base(const B
 {
     return (BlockdevOptionsCurlBase *)obj;
 }
-
-void qapi_free_BlockdevOptionsCurlHttp(BlockdevOptionsCurlHttp *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockdevOptionsCurlHttp, qapi_free_BlockdevOptionsCurlHttp)
 
 struct BlockdevOptionsCurlHttps {
     /* Members inherited from BlockdevOptionsCurlBase: */
@@ -3014,9 +2596,6 @@ static inline BlockdevOptionsCurlBase *qapi_BlockdevOptionsCurlHttps_base(const 
     return (BlockdevOptionsCurlBase *)obj;
 }
 
-void qapi_free_BlockdevOptionsCurlHttps(BlockdevOptionsCurlHttps *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockdevOptionsCurlHttps, qapi_free_BlockdevOptionsCurlHttps)
-
 struct BlockdevOptionsCurlFtp {
     /* Members inherited from BlockdevOptionsCurlBase: */
     char *url;
@@ -3035,9 +2614,6 @@ static inline BlockdevOptionsCurlBase *qapi_BlockdevOptionsCurlFtp_base(const Bl
 {
     return (BlockdevOptionsCurlBase *)obj;
 }
-
-void qapi_free_BlockdevOptionsCurlFtp(BlockdevOptionsCurlFtp *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockdevOptionsCurlFtp, qapi_free_BlockdevOptionsCurlFtp)
 
 struct BlockdevOptionsCurlFtps {
     /* Members inherited from BlockdevOptionsCurlBase: */
@@ -3060,9 +2636,6 @@ static inline BlockdevOptionsCurlBase *qapi_BlockdevOptionsCurlFtps_base(const B
     return (BlockdevOptionsCurlBase *)obj;
 }
 
-void qapi_free_BlockdevOptionsCurlFtps(BlockdevOptionsCurlFtps *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockdevOptionsCurlFtps, qapi_free_BlockdevOptionsCurlFtps)
-
 struct BlockdevOptionsNbd {
     SocketAddress *server;
     char *export;
@@ -3074,9 +2647,6 @@ struct BlockdevOptionsNbd {
     bool has_open_timeout;
     uint32_t open_timeout;
 };
-
-void qapi_free_BlockdevOptionsNbd(BlockdevOptionsNbd *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockdevOptionsNbd, qapi_free_BlockdevOptionsNbd)
 
 struct BlockdevOptionsRaw {
     /* Members inherited from BlockdevOptionsGenericFormat: */
@@ -3093,16 +2663,10 @@ static inline BlockdevOptionsGenericFormat *qapi_BlockdevOptionsRaw_base(const B
     return (BlockdevOptionsGenericFormat *)obj;
 }
 
-void qapi_free_BlockdevOptionsRaw(BlockdevOptionsRaw *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockdevOptionsRaw, qapi_free_BlockdevOptionsRaw)
-
 struct BlockdevOptionsThrottle {
     char *throttle_group;
     BlockdevRef *file;
 };
-
-void qapi_free_BlockdevOptionsThrottle(BlockdevOptionsThrottle *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockdevOptionsThrottle, qapi_free_BlockdevOptionsThrottle)
 
 struct BlockdevOptionsCor {
     /* Members inherited from BlockdevOptionsGenericFormat: */
@@ -3115,9 +2679,6 @@ static inline BlockdevOptionsGenericFormat *qapi_BlockdevOptionsCor_base(const B
 {
     return (BlockdevOptionsGenericFormat *)obj;
 }
-
-void qapi_free_BlockdevOptionsCor(BlockdevOptionsCor *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockdevOptionsCor, qapi_free_BlockdevOptionsCor)
 
 struct BlockdevOptionsCbw {
     /* Members inherited from BlockdevOptionsGenericFormat: */
@@ -3137,9 +2698,6 @@ static inline BlockdevOptionsGenericFormat *qapi_BlockdevOptionsCbw_base(const B
 {
     return (BlockdevOptionsGenericFormat *)obj;
 }
-
-void qapi_free_BlockdevOptionsCbw(BlockdevOptionsCbw *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockdevOptionsCbw, qapi_free_BlockdevOptionsCbw)
 
 struct q_obj_BlockdevOptions_base {
     BlockdevDriver driver;
@@ -3273,9 +2831,6 @@ struct BlockdevOptionsList {
     BlockdevOptions *value;
 };
 
-void qapi_free_BlockdevOptionsList(BlockdevOptionsList *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockdevOptionsList, qapi_free_BlockdevOptionsList)
-
 struct q_obj_blockdev_reopen_arg {
     BlockdevOptionsList *options;
 };
@@ -3300,18 +2855,12 @@ struct BlockdevCreateOptionsFile {
     uint64_t extent_size_hint;
 };
 
-void qapi_free_BlockdevCreateOptionsFile(BlockdevCreateOptionsFile *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockdevCreateOptionsFile, qapi_free_BlockdevCreateOptionsFile)
-
 struct BlockdevCreateOptionsGluster {
     BlockdevOptionsGluster *location;
     uint64_t size;
     bool has_preallocation;
     PreallocMode preallocation;
 };
-
-void qapi_free_BlockdevCreateOptionsGluster(BlockdevCreateOptionsGluster *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockdevCreateOptionsGluster, qapi_free_BlockdevCreateOptionsGluster)
 
 struct BlockdevCreateOptionsLUKS {
     /* Members inherited from QCryptoBlockCreateOptionsLUKS: */
@@ -3341,16 +2890,10 @@ static inline QCryptoBlockCreateOptionsLUKS *qapi_BlockdevCreateOptionsLUKS_base
     return (QCryptoBlockCreateOptionsLUKS *)obj;
 }
 
-void qapi_free_BlockdevCreateOptionsLUKS(BlockdevCreateOptionsLUKS *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockdevCreateOptionsLUKS, qapi_free_BlockdevCreateOptionsLUKS)
-
 struct BlockdevCreateOptionsNfs {
     BlockdevOptionsNfs *location;
     uint64_t size;
 };
-
-void qapi_free_BlockdevCreateOptionsNfs(BlockdevCreateOptionsNfs *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockdevCreateOptionsNfs, qapi_free_BlockdevCreateOptionsNfs)
 
 struct BlockdevCreateOptionsParallels {
     BlockdevRef *file;
@@ -3359,18 +2902,12 @@ struct BlockdevCreateOptionsParallels {
     uint64_t cluster_size;
 };
 
-void qapi_free_BlockdevCreateOptionsParallels(BlockdevCreateOptionsParallels *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockdevCreateOptionsParallels, qapi_free_BlockdevCreateOptionsParallels)
-
 struct BlockdevCreateOptionsQcow {
     BlockdevRef *file;
     uint64_t size;
     char *backing_file;
     QCryptoBlockCreateOptions *encrypt;
 };
-
-void qapi_free_BlockdevCreateOptionsQcow(BlockdevCreateOptionsQcow *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockdevCreateOptionsQcow, qapi_free_BlockdevCreateOptionsQcow)
 
 struct BlockdevCreateOptionsQcow2 {
     BlockdevRef *file;
@@ -3398,9 +2935,6 @@ struct BlockdevCreateOptionsQcow2 {
     Qcow2CompressionType compression_type;
 };
 
-void qapi_free_BlockdevCreateOptionsQcow2(BlockdevCreateOptionsQcow2 *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockdevCreateOptionsQcow2, qapi_free_BlockdevCreateOptionsQcow2)
-
 struct BlockdevCreateOptionsQed {
     BlockdevRef *file;
     uint64_t size;
@@ -3413,9 +2947,6 @@ struct BlockdevCreateOptionsQed {
     int64_t table_size;
 };
 
-void qapi_free_BlockdevCreateOptionsQed(BlockdevCreateOptionsQed *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockdevCreateOptionsQed, qapi_free_BlockdevCreateOptionsQed)
-
 struct BlockdevCreateOptionsRbd {
     BlockdevOptionsRbd *location;
     uint64_t size;
@@ -3423,9 +2954,6 @@ struct BlockdevCreateOptionsRbd {
     uint64_t cluster_size;
     RbdEncryptionCreateOptions *encrypt;
 };
-
-void qapi_free_BlockdevCreateOptionsRbd(BlockdevCreateOptionsRbd *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockdevCreateOptionsRbd, qapi_free_BlockdevCreateOptionsRbd)
 
 struct BlockdevCreateOptionsVmdk {
     BlockdevRef *file;
@@ -3443,16 +2971,10 @@ struct BlockdevCreateOptionsVmdk {
     bool zeroed_grain;
 };
 
-void qapi_free_BlockdevCreateOptionsVmdk(BlockdevCreateOptionsVmdk *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockdevCreateOptionsVmdk, qapi_free_BlockdevCreateOptionsVmdk)
-
 struct BlockdevCreateOptionsSsh {
     BlockdevOptionsSsh *location;
     uint64_t size;
 };
-
-void qapi_free_BlockdevCreateOptionsSsh(BlockdevCreateOptionsSsh *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockdevCreateOptionsSsh, qapi_free_BlockdevCreateOptionsSsh)
 
 struct BlockdevCreateOptionsVdi {
     BlockdevRef *file;
@@ -3460,9 +2982,6 @@ struct BlockdevCreateOptionsVdi {
     bool has_preallocation;
     PreallocMode preallocation;
 };
-
-void qapi_free_BlockdevCreateOptionsVdi(BlockdevCreateOptionsVdi *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockdevCreateOptionsVdi, qapi_free_BlockdevCreateOptionsVdi)
 
 struct BlockdevCreateOptionsVhdx {
     BlockdevRef *file;
@@ -3477,9 +2996,6 @@ struct BlockdevCreateOptionsVhdx {
     bool block_state_zero;
 };
 
-void qapi_free_BlockdevCreateOptionsVhdx(BlockdevCreateOptionsVhdx *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockdevCreateOptionsVhdx, qapi_free_BlockdevCreateOptionsVhdx)
-
 struct BlockdevCreateOptionsVpc {
     BlockdevRef *file;
     uint64_t size;
@@ -3488,9 +3004,6 @@ struct BlockdevCreateOptionsVpc {
     bool has_force_size;
     bool force_size;
 };
-
-void qapi_free_BlockdevCreateOptionsVpc(BlockdevCreateOptionsVpc *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockdevCreateOptionsVpc, qapi_free_BlockdevCreateOptionsVpc)
 
 struct q_obj_BlockdevCreateOptions_base {
     BlockdevDriver driver;
@@ -3516,9 +3029,6 @@ struct BlockdevCreateOptions {
     } u;
 };
 
-void qapi_free_BlockdevCreateOptions(BlockdevCreateOptions *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockdevCreateOptions, qapi_free_BlockdevCreateOptions)
-
 struct q_obj_blockdev_create_arg {
     char *job_id;
     BlockdevCreateOptions *options;
@@ -3542,15 +3052,9 @@ static inline QCryptoBlockAmendOptionsLUKS *qapi_BlockdevAmendOptionsLUKS_base(c
     return (QCryptoBlockAmendOptionsLUKS *)obj;
 }
 
-void qapi_free_BlockdevAmendOptionsLUKS(BlockdevAmendOptionsLUKS *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockdevAmendOptionsLUKS, qapi_free_BlockdevAmendOptionsLUKS)
-
 struct BlockdevAmendOptionsQcow2 {
     QCryptoBlockAmendOptions *encrypt;
 };
-
-void qapi_free_BlockdevAmendOptionsQcow2(BlockdevAmendOptionsQcow2 *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockdevAmendOptionsQcow2, qapi_free_BlockdevAmendOptionsQcow2)
 
 struct q_obj_BlockdevAmendOptions_base {
     BlockdevDriver driver;
@@ -3563,9 +3067,6 @@ struct BlockdevAmendOptions {
         BlockdevAmendOptionsQcow2 qcow2;
     } u;
 };
-
-void qapi_free_BlockdevAmendOptions(BlockdevAmendOptions *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockdevAmendOptions, qapi_free_BlockdevAmendOptions)
 
 struct q_obj_x_blockdev_amend_arg {
     char *job_id;
@@ -3676,9 +3177,6 @@ struct BlockdevSnapshotInternal {
     char *name;
 };
 
-void qapi_free_BlockdevSnapshotInternal(BlockdevSnapshotInternal *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockdevSnapshotInternal, qapi_free_BlockdevSnapshotInternal)
-
 struct q_obj_blockdev_snapshot_delete_internal_sync_arg {
     char *device;
     char *id;
@@ -3690,14 +3188,8 @@ struct BlockGraphInfoList {
     BlockGraphInfo *value;
 };
 
-void qapi_free_BlockGraphInfoList(BlockGraphInfoList *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BlockGraphInfoList, qapi_free_BlockGraphInfoList)
-
 struct DummyBlockCoreForceArrays {
     BlockGraphInfoList *unused_block_graph_info;
 };
-
-void qapi_free_DummyBlockCoreForceArrays(DummyBlockCoreForceArrays *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(DummyBlockCoreForceArrays, qapi_free_DummyBlockCoreForceArrays)
 
 #endif /* QAPI_TYPES_BLOCK_CORE_H */

@@ -92,16 +92,10 @@ struct VirtioInfo {
     char *name;
 };
 
-void qapi_free_VirtioInfo(VirtioInfo *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(VirtioInfo, qapi_free_VirtioInfo)
-
 struct VirtioInfoList {
     VirtioInfoList *next;
     VirtioInfo *value;
 };
-
-void qapi_free_VirtioInfoList(VirtioInfoList *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(VirtioInfoList, qapi_free_VirtioInfoList)
 
 struct VhostStatus {
     int64_t n_mem_sections;
@@ -117,9 +111,6 @@ struct VhostStatus {
     bool log_enabled;
     uint64_t log_size;
 };
-
-void qapi_free_VhostStatus(VhostStatus *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(VhostStatus, qapi_free_VhostStatus)
 
 struct VirtioStatus {
     char *name;
@@ -145,9 +136,6 @@ struct VirtioStatus {
     VhostStatus *vhost_dev;
 };
 
-void qapi_free_VirtioStatus(VirtioStatus *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(VirtioStatus, qapi_free_VirtioStatus)
-
 struct q_obj_x_query_virtio_status_arg {
     char *path;
 };
@@ -158,17 +146,11 @@ struct VirtioDeviceStatus {
     uint8_t unknown_statuses;
 };
 
-void qapi_free_VirtioDeviceStatus(VirtioDeviceStatus *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(VirtioDeviceStatus, qapi_free_VirtioDeviceStatus)
-
 struct VhostDeviceProtocols {
     strList *protocols;
     bool has_unknown_protocols;
     uint64_t unknown_protocols;
 };
-
-void qapi_free_VhostDeviceProtocols(VhostDeviceProtocols *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(VhostDeviceProtocols, qapi_free_VhostDeviceProtocols)
 
 struct VirtioDeviceFeatures {
     strList *transports;
@@ -179,9 +161,6 @@ struct VirtioDeviceFeatures {
     bool has_unknown_dev_features2;
     uint64_t unknown_dev_features2;
 };
-
-void qapi_free_VirtioDeviceFeatures(VirtioDeviceFeatures *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(VirtioDeviceFeatures, qapi_free_VirtioDeviceFeatures)
 
 struct VirtQueueStatus {
     char *name;
@@ -201,9 +180,6 @@ struct VirtQueueStatus {
     uint16_t signalled_used;
     bool signalled_used_valid;
 };
-
-void qapi_free_VirtQueueStatus(VirtQueueStatus *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(VirtQueueStatus, qapi_free_VirtQueueStatus)
 
 struct q_obj_x_query_virtio_queue_status_arg {
     char *path;
@@ -226,9 +202,6 @@ struct VirtVhostQueueStatus {
     uint32_t used_size;
 };
 
-void qapi_free_VirtVhostQueueStatus(VirtVhostQueueStatus *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(VirtVhostQueueStatus, qapi_free_VirtVhostQueueStatus)
-
 struct q_obj_x_query_virtio_vhost_queue_status_arg {
     char *path;
     uint16_t queue;
@@ -240,33 +213,21 @@ struct VirtioRingDesc {
     strList *flags;
 };
 
-void qapi_free_VirtioRingDesc(VirtioRingDesc *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(VirtioRingDesc, qapi_free_VirtioRingDesc)
-
 struct VirtioRingAvail {
     uint16_t flags;
     uint16_t idx;
     uint16_t ring;
 };
 
-void qapi_free_VirtioRingAvail(VirtioRingAvail *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(VirtioRingAvail, qapi_free_VirtioRingAvail)
-
 struct VirtioRingUsed {
     uint16_t flags;
     uint16_t idx;
 };
 
-void qapi_free_VirtioRingUsed(VirtioRingUsed *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(VirtioRingUsed, qapi_free_VirtioRingUsed)
-
 struct VirtioRingDescList {
     VirtioRingDescList *next;
     VirtioRingDesc *value;
 };
-
-void qapi_free_VirtioRingDescList(VirtioRingDescList *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(VirtioRingDescList, qapi_free_VirtioRingDescList)
 
 struct VirtioQueueElement {
     char *name;
@@ -275,9 +236,6 @@ struct VirtioQueueElement {
     VirtioRingAvail *avail;
     VirtioRingUsed *used;
 };
-
-void qapi_free_VirtioQueueElement(VirtioQueueElement *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(VirtioQueueElement, qapi_free_VirtioQueueElement)
 
 struct q_obj_x_query_virtio_queue_element_arg {
     char *path;
@@ -322,8 +280,5 @@ struct DummyVirtioForceArrays {
     IOThreadVirtQueueMappingList *unused_iothread_vq_mapping;
     VirtIOGPUOutputList *unused_virtio_gpu_output;
 };
-
-void qapi_free_DummyVirtioForceArrays(DummyVirtioForceArrays *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(DummyVirtioForceArrays, qapi_free_DummyVirtioForceArrays)
 
 #endif /* QAPI_TYPES_VIRTIO_H */

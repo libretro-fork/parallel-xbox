@@ -85,7 +85,4 @@ struct SmpCachePropertiesWrapper {
     SmpCachePropertiesList *caches;
 };
 
-void qapi_free_SmpCachePropertiesWrapper(SmpCachePropertiesWrapper *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(SmpCachePropertiesWrapper, qapi_free_SmpCachePropertiesWrapper)
-
 #endif /* QAPI_TYPES_MACHINE_COMMON_H */

@@ -77,18 +77,5 @@ void qapi_free_SmpCachePropertiesList(SmpCachePropertiesList *obj)
     visit_free(v);
 }
 
-void qapi_free_SmpCachePropertiesWrapper(SmpCachePropertiesWrapper *obj)
-{
-    Visitor *v;
-
-    if (!obj) {
-        return;
-    }
-
-    v = qapi_dealloc_visitor_new();
-    visit_type_SmpCachePropertiesWrapper(v, NULL, &obj, NULL);
-    visit_free(v);
-}
-
 /* Dummy declaration to prevent empty .o file */
 char qapi_dummy_qapi_types_machine_common_c;

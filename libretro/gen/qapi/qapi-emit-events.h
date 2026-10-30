@@ -76,11 +76,6 @@ typedef enum QAPIEvent {
     QAPI_EVENT__MAX,
 } QAPIEvent;
 
-#define QAPIEvent_str(val) \
-    qapi_enum_lookup(&QAPIEvent_lookup, (val))
-
-extern const QEnumLookup QAPIEvent_lookup;
-
 void qapi_event_emit(QAPIEvent event, QDict *qdict);
 
 #endif /* QAPI_EMIT_EVENTS_H */

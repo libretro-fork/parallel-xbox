@@ -179,11 +179,6 @@ typedef enum MigrationParameter {
     MIGRATION_PARAMETER__MAX,
 } MigrationParameter;
 
-#define MigrationParameter_str(val) \
-    qapi_enum_lookup(&MigrationParameter_lookup, (val))
-
-extern const QEnumLookup MigrationParameter_lookup;
-
 typedef struct BitmapMigrationNodeAliasList BitmapMigrationNodeAliasList;
 
 typedef struct MigrateSetParameters MigrateSetParameters;
@@ -205,22 +200,12 @@ typedef enum COLOMessage {
     COLO_MESSAGE__MAX,
 } COLOMessage;
 
-#define COLOMessage_str(val) \
-    qapi_enum_lookup(&COLOMessage_lookup, (val))
-
-extern const QEnumLookup COLOMessage_lookup;
-
 typedef enum COLOMode {
     COLO_MODE_NONE,
     COLO_MODE_PRIMARY,
     COLO_MODE_SECONDARY,
     COLO_MODE__MAX,
 } COLOMode;
-
-#define COLOMode_str(val) \
-    qapi_enum_lookup(&COLOMode_lookup, (val))
-
-extern const QEnumLookup COLOMode_lookup;
 
 typedef enum FailoverStatus {
     FAILOVER_STATUS_NONE,
@@ -230,11 +215,6 @@ typedef enum FailoverStatus {
     FAILOVER_STATUS_RELAUNCH,
     FAILOVER_STATUS__MAX,
 } FailoverStatus;
-
-#define FailoverStatus_str(val) \
-    qapi_enum_lookup(&FailoverStatus_lookup, (val))
-
-extern const QEnumLookup FailoverStatus_lookup;
 
 typedef struct q_obj_COLO_EXIT_arg q_obj_COLO_EXIT_arg;
 
@@ -246,11 +226,6 @@ typedef enum COLOExitReason {
     COLO_EXIT_REASON__MAX,
 } COLOExitReason;
 
-#define COLOExitReason_str(val) \
-    qapi_enum_lookup(&COLOExitReason_lookup, (val))
-
-extern const QEnumLookup COLOExitReason_lookup;
-
 typedef struct q_obj_migrate_continue_arg q_obj_migrate_continue_arg;
 
 typedef enum MigrationAddressType {
@@ -260,11 +235,6 @@ typedef enum MigrationAddressType {
     MIGRATION_ADDRESS_TYPE_FILE,
     MIGRATION_ADDRESS_TYPE__MAX,
 } MigrationAddressType;
-
-#define MigrationAddressType_str(val) \
-    qapi_enum_lookup(&MigrationAddressType_lookup, (val))
-
-extern const QEnumLookup MigrationAddressType_lookup;
 
 typedef struct FileMigrationArgs FileMigrationArgs;
 
@@ -279,11 +249,6 @@ typedef enum MigrationChannelType {
     MIGRATION_CHANNEL_TYPE_CPR,
     MIGRATION_CHANNEL_TYPE__MAX,
 } MigrationChannelType;
-
-#define MigrationChannelType_str(val) \
-    qapi_enum_lookup(&MigrationChannelType_lookup, (val))
-
-extern const QEnumLookup MigrationChannelType_lookup;
 
 typedef struct MigrationChannel MigrationChannel;
 
@@ -324,11 +289,6 @@ typedef enum DirtyRateStatus {
     DIRTY_RATE_STATUS__MAX,
 } DirtyRateStatus;
 
-#define DirtyRateStatus_str(val) \
-    qapi_enum_lookup(&DirtyRateStatus_lookup, (val))
-
-extern const QEnumLookup DirtyRateStatus_lookup;
-
 typedef enum DirtyRateMeasureMode {
     DIRTY_RATE_MEASURE_MODE_PAGE_SAMPLING,
     DIRTY_RATE_MEASURE_MODE_DIRTY_RING,
@@ -336,21 +296,11 @@ typedef enum DirtyRateMeasureMode {
     DIRTY_RATE_MEASURE_MODE__MAX,
 } DirtyRateMeasureMode;
 
-#define DirtyRateMeasureMode_str(val) \
-    qapi_enum_lookup(&DirtyRateMeasureMode_lookup, (val))
-
-extern const QEnumLookup DirtyRateMeasureMode_lookup;
-
 typedef enum TimeUnit {
     TIME_UNIT_SECOND,
     TIME_UNIT_MILLISECOND,
     TIME_UNIT__MAX,
 } TimeUnit;
-
-#define TimeUnit_str(val) \
-    qapi_enum_lookup(&TimeUnit_lookup, (val))
-
-extern const QEnumLookup TimeUnit_lookup;
 
 typedef struct DirtyRateVcpuList DirtyRateVcpuList;
 
@@ -398,9 +348,6 @@ struct MigrationStats {
     uint64_t dirty_sync_missed_zero_copy;
 };
 
-void qapi_free_MigrationStats(MigrationStats *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(MigrationStats, qapi_free_MigrationStats)
-
 struct XBZRLECacheStats {
     uint64_t cache_size;
     int64_t bytes;
@@ -411,9 +358,6 @@ struct XBZRLECacheStats {
     int64_t overflow;
 };
 
-void qapi_free_XBZRLECacheStats(XBZRLECacheStats *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(XBZRLECacheStats, qapi_free_XBZRLECacheStats)
-
 struct CompressionStats {
     int64_t pages;
     int64_t busy;
@@ -422,15 +366,9 @@ struct CompressionStats {
     double compression_rate;
 };
 
-void qapi_free_CompressionStats(CompressionStats *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(CompressionStats, qapi_free_CompressionStats)
-
 struct VfioStats {
     int64_t transferred;
 };
-
-void qapi_free_VfioStats(VfioStats *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(VfioStats, qapi_free_VfioStats)
 
 struct MigrationInfo {
     bool has_status;
@@ -471,24 +409,15 @@ struct MigrationInfo {
     uint64_t dirty_limit_ring_full_time;
 };
 
-void qapi_free_MigrationInfo(MigrationInfo *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(MigrationInfo, qapi_free_MigrationInfo)
-
 struct MigrationCapabilityStatus {
     MigrationCapability capability;
     bool state;
 };
 
-void qapi_free_MigrationCapabilityStatus(MigrationCapabilityStatus *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(MigrationCapabilityStatus, qapi_free_MigrationCapabilityStatus)
-
 struct MigrationCapabilityStatusList {
     MigrationCapabilityStatusList *next;
     MigrationCapabilityStatus *value;
 };
-
-void qapi_free_MigrationCapabilityStatusList(MigrationCapabilityStatusList *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(MigrationCapabilityStatusList, qapi_free_MigrationCapabilityStatusList)
 
 struct q_obj_migrate_set_capabilities_arg {
     MigrationCapabilityStatusList *capabilities;
@@ -499,25 +428,16 @@ struct BitmapMigrationBitmapAliasTransform {
     bool persistent;
 };
 
-void qapi_free_BitmapMigrationBitmapAliasTransform(BitmapMigrationBitmapAliasTransform *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BitmapMigrationBitmapAliasTransform, qapi_free_BitmapMigrationBitmapAliasTransform)
-
 struct BitmapMigrationBitmapAlias {
     char *name;
     char *alias;
     BitmapMigrationBitmapAliasTransform *transform;
 };
 
-void qapi_free_BitmapMigrationBitmapAlias(BitmapMigrationBitmapAlias *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BitmapMigrationBitmapAlias, qapi_free_BitmapMigrationBitmapAlias)
-
 struct BitmapMigrationBitmapAliasList {
     BitmapMigrationBitmapAliasList *next;
     BitmapMigrationBitmapAlias *value;
 };
-
-void qapi_free_BitmapMigrationBitmapAliasList(BitmapMigrationBitmapAliasList *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BitmapMigrationBitmapAliasList, qapi_free_BitmapMigrationBitmapAliasList)
 
 struct BitmapMigrationNodeAlias {
     char *node_name;
@@ -525,16 +445,10 @@ struct BitmapMigrationNodeAlias {
     BitmapMigrationBitmapAliasList *bitmaps;
 };
 
-void qapi_free_BitmapMigrationNodeAlias(BitmapMigrationNodeAlias *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BitmapMigrationNodeAlias, qapi_free_BitmapMigrationNodeAlias)
-
 struct BitmapMigrationNodeAliasList {
     BitmapMigrationNodeAliasList *next;
     BitmapMigrationNodeAlias *value;
 };
-
-void qapi_free_BitmapMigrationNodeAliasList(BitmapMigrationNodeAliasList *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(BitmapMigrationNodeAliasList, qapi_free_BitmapMigrationNodeAliasList)
 
 struct MigrateSetParameters {
     bool has_announce_initial;
@@ -596,9 +510,6 @@ struct MigrateSetParameters {
     strList *cpr_exec_command;
 };
 
-void qapi_free_MigrateSetParameters(MigrateSetParameters *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(MigrateSetParameters, qapi_free_MigrateSetParameters)
-
 struct MigrationParameters {
     bool has_announce_initial;
     uint64_t announce_initial;
@@ -659,9 +570,6 @@ struct MigrationParameters {
     strList *cpr_exec_command;
 };
 
-void qapi_free_MigrationParameters(MigrationParameters *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(MigrationParameters, qapi_free_MigrationParameters)
-
 struct q_obj_MIGRATION_arg {
     MigrationStatus status;
 };
@@ -684,15 +592,9 @@ struct FileMigrationArgs {
     uint64_t offset;
 };
 
-void qapi_free_FileMigrationArgs(FileMigrationArgs *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(FileMigrationArgs, qapi_free_FileMigrationArgs)
-
 struct MigrationExecCommand {
     strList *args;
 };
-
-void qapi_free_MigrationExecCommand(MigrationExecCommand *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(MigrationExecCommand, qapi_free_MigrationExecCommand)
 
 struct q_obj_MigrationAddress_base {
     MigrationAddressType transport;
@@ -708,24 +610,15 @@ struct MigrationAddress {
     } u;
 };
 
-void qapi_free_MigrationAddress(MigrationAddress *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(MigrationAddress, qapi_free_MigrationAddress)
-
 struct MigrationChannel {
     MigrationChannelType channel_type;
     MigrationAddress *addr;
 };
 
-void qapi_free_MigrationChannel(MigrationChannel *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(MigrationChannel, qapi_free_MigrationChannel)
-
 struct MigrationChannelList {
     MigrationChannelList *next;
     MigrationChannel *value;
 };
-
-void qapi_free_MigrationChannelList(MigrationChannelList *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(MigrationChannelList, qapi_free_MigrationChannelList)
 
 struct q_obj_migrate_arg {
     char *uri;
@@ -776,21 +669,11 @@ struct ReplicationStatus {
 #endif /* defined(CONFIG_REPLICATION) */
 
 #if defined(CONFIG_REPLICATION)
-void qapi_free_ReplicationStatus(ReplicationStatus *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(ReplicationStatus, qapi_free_ReplicationStatus)
-#endif /* defined(CONFIG_REPLICATION) */
-
-#if defined(CONFIG_REPLICATION)
 struct COLOStatus {
     COLOMode mode;
     COLOMode last_mode;
     COLOExitReason reason;
 };
-#endif /* defined(CONFIG_REPLICATION) */
-
-#if defined(CONFIG_REPLICATION)
-void qapi_free_COLOStatus(COLOStatus *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(COLOStatus, qapi_free_COLOStatus)
 #endif /* defined(CONFIG_REPLICATION) */
 
 struct q_obj_migrate_recover_arg {
@@ -806,16 +689,10 @@ struct DirtyRateVcpu {
     int64_t dirty_rate;
 };
 
-void qapi_free_DirtyRateVcpu(DirtyRateVcpu *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(DirtyRateVcpu, qapi_free_DirtyRateVcpu)
-
 struct DirtyRateVcpuList {
     DirtyRateVcpuList *next;
     DirtyRateVcpu *value;
 };
-
-void qapi_free_DirtyRateVcpuList(DirtyRateVcpuList *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(DirtyRateVcpuList, qapi_free_DirtyRateVcpuList)
 
 struct DirtyRateInfo {
     bool has_dirty_rate;
@@ -829,9 +706,6 @@ struct DirtyRateInfo {
     bool has_vcpu_dirty_rate;
     DirtyRateVcpuList *vcpu_dirty_rate;
 };
-
-void qapi_free_DirtyRateInfo(DirtyRateInfo *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(DirtyRateInfo, qapi_free_DirtyRateInfo)
 
 struct q_obj_calc_dirty_rate_arg {
     int64_t calc_time;
@@ -854,9 +728,6 @@ struct DirtyLimitInfo {
     uint64_t current_rate;
 };
 
-void qapi_free_DirtyLimitInfo(DirtyLimitInfo *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(DirtyLimitInfo, qapi_free_DirtyLimitInfo)
-
 struct q_obj_set_vcpu_dirty_limit_arg {
     bool has_cpu_index;
     int64_t cpu_index;
@@ -873,24 +744,15 @@ struct DirtyLimitInfoList {
     DirtyLimitInfo *value;
 };
 
-void qapi_free_DirtyLimitInfoList(DirtyLimitInfoList *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(DirtyLimitInfoList, qapi_free_DirtyLimitInfoList)
-
 struct MigrationThreadInfo {
     char *name;
     int64_t thread_id;
 };
 
-void qapi_free_MigrationThreadInfo(MigrationThreadInfo *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(MigrationThreadInfo, qapi_free_MigrationThreadInfo)
-
 struct MigrationThreadInfoList {
     MigrationThreadInfoList *next;
     MigrationThreadInfo *value;
 };
-
-void qapi_free_MigrationThreadInfoList(MigrationThreadInfoList *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(MigrationThreadInfoList, qapi_free_MigrationThreadInfoList)
 
 struct q_obj_snapshot_save_arg {
     char *job_id;

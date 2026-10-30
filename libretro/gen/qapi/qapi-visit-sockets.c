@@ -15,15 +15,6 @@
 #include "qapi-visit-sockets.h"
 #include "qapi-features.h"
 
-bool visit_type_NetworkAddressFamily(Visitor *v, const char *name,
-                 NetworkAddressFamily *obj, Error **errp)
-{
-    int value = *obj;
-    bool ok = visit_type_enum(v, name, &value, &NetworkAddressFamily_lookup, errp);
-    *obj = value;
-    return ok;
-}
-
 bool visit_type_InetSocketAddressBase_members(Visitor *v, InetSocketAddressBase *obj, Error **errp)
 {
     if (!visit_type_str(v, "host", &obj->host, errp)) {
@@ -280,66 +271,12 @@ bool visit_type_InetSocketAddressWrapper_members(Visitor *v, InetSocketAddressWr
     return true;
 }
 
-bool visit_type_InetSocketAddressWrapper(Visitor *v, const char *name,
-                 InetSocketAddressWrapper **obj, Error **errp)
-{
-    bool ok = false;
-
-    if (!visit_start_struct(v, name, (void **)obj, sizeof(InetSocketAddressWrapper), errp)) {
-        return false;
-    }
-    if (!*obj) {
-        /* incomplete */
-        assert(visit_is_dealloc(v));
-        ok = true;
-        goto out_obj;
-    }
-    if (!visit_type_InetSocketAddressWrapper_members(v, *obj, errp)) {
-        goto out_obj;
-    }
-    ok = visit_check_struct(v, errp);
-out_obj:
-    visit_end_struct(v, (void **)obj);
-    if (!ok && visit_is_input(v)) {
-        qapi_free_InetSocketAddressWrapper(*obj);
-        *obj = NULL;
-    }
-    return ok;
-}
-
 bool visit_type_UnixSocketAddressWrapper_members(Visitor *v, UnixSocketAddressWrapper *obj, Error **errp)
 {
     if (!visit_type_UnixSocketAddress(v, "data", &obj->data, errp)) {
         return false;
     }
     return true;
-}
-
-bool visit_type_UnixSocketAddressWrapper(Visitor *v, const char *name,
-                 UnixSocketAddressWrapper **obj, Error **errp)
-{
-    bool ok = false;
-
-    if (!visit_start_struct(v, name, (void **)obj, sizeof(UnixSocketAddressWrapper), errp)) {
-        return false;
-    }
-    if (!*obj) {
-        /* incomplete */
-        assert(visit_is_dealloc(v));
-        ok = true;
-        goto out_obj;
-    }
-    if (!visit_type_UnixSocketAddressWrapper_members(v, *obj, errp)) {
-        goto out_obj;
-    }
-    ok = visit_check_struct(v, errp);
-out_obj:
-    visit_end_struct(v, (void **)obj);
-    if (!ok && visit_is_input(v)) {
-        qapi_free_UnixSocketAddressWrapper(*obj);
-        *obj = NULL;
-    }
-    return ok;
 }
 
 bool visit_type_VsockSocketAddressWrapper_members(Visitor *v, VsockSocketAddressWrapper *obj, Error **errp)
@@ -350,66 +287,12 @@ bool visit_type_VsockSocketAddressWrapper_members(Visitor *v, VsockSocketAddress
     return true;
 }
 
-bool visit_type_VsockSocketAddressWrapper(Visitor *v, const char *name,
-                 VsockSocketAddressWrapper **obj, Error **errp)
-{
-    bool ok = false;
-
-    if (!visit_start_struct(v, name, (void **)obj, sizeof(VsockSocketAddressWrapper), errp)) {
-        return false;
-    }
-    if (!*obj) {
-        /* incomplete */
-        assert(visit_is_dealloc(v));
-        ok = true;
-        goto out_obj;
-    }
-    if (!visit_type_VsockSocketAddressWrapper_members(v, *obj, errp)) {
-        goto out_obj;
-    }
-    ok = visit_check_struct(v, errp);
-out_obj:
-    visit_end_struct(v, (void **)obj);
-    if (!ok && visit_is_input(v)) {
-        qapi_free_VsockSocketAddressWrapper(*obj);
-        *obj = NULL;
-    }
-    return ok;
-}
-
 bool visit_type_FdSocketAddressWrapper_members(Visitor *v, FdSocketAddressWrapper *obj, Error **errp)
 {
     if (!visit_type_FdSocketAddress(v, "data", &obj->data, errp)) {
         return false;
     }
     return true;
-}
-
-bool visit_type_FdSocketAddressWrapper(Visitor *v, const char *name,
-                 FdSocketAddressWrapper **obj, Error **errp)
-{
-    bool ok = false;
-
-    if (!visit_start_struct(v, name, (void **)obj, sizeof(FdSocketAddressWrapper), errp)) {
-        return false;
-    }
-    if (!*obj) {
-        /* incomplete */
-        assert(visit_is_dealloc(v));
-        ok = true;
-        goto out_obj;
-    }
-    if (!visit_type_FdSocketAddressWrapper_members(v, *obj, errp)) {
-        goto out_obj;
-    }
-    ok = visit_check_struct(v, errp);
-out_obj:
-    visit_end_struct(v, (void **)obj);
-    if (!ok && visit_is_input(v)) {
-        qapi_free_FdSocketAddressWrapper(*obj);
-        *obj = NULL;
-    }
-    return ok;
 }
 
 bool visit_type_q_obj_SocketAddressLegacy_base_members(Visitor *v, q_obj_SocketAddressLegacy_base *obj, Error **errp)

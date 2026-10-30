@@ -243,32 +243,20 @@ struct ObjectPropertyInfo {
     QObject *default_value;
 };
 
-void qapi_free_ObjectPropertyInfo(ObjectPropertyInfo *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(ObjectPropertyInfo, qapi_free_ObjectPropertyInfo)
-
 struct ObjectPropertyValue {
     char *name;
     char *type;
     QObject *value;
 };
 
-void qapi_free_ObjectPropertyValue(ObjectPropertyValue *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(ObjectPropertyValue, qapi_free_ObjectPropertyValue)
-
 struct ObjectPropertyValueList {
     ObjectPropertyValueList *next;
     ObjectPropertyValue *value;
 };
 
-void qapi_free_ObjectPropertyValueList(ObjectPropertyValueList *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(ObjectPropertyValueList, qapi_free_ObjectPropertyValueList)
-
 struct ObjectPropertiesValues {
     ObjectPropertyValueList *properties;
 };
-
-void qapi_free_ObjectPropertiesValues(ObjectPropertiesValues *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(ObjectPropertiesValues, qapi_free_ObjectPropertiesValues)
 
 struct q_obj_qom_list_arg {
     char *path;
@@ -278,9 +266,6 @@ struct ObjectPropertyInfoList {
     ObjectPropertyInfoList *next;
     ObjectPropertyInfo *value;
 };
-
-void qapi_free_ObjectPropertyInfoList(ObjectPropertyInfoList *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(ObjectPropertyInfoList, qapi_free_ObjectPropertyInfoList)
 
 struct q_obj_qom_get_arg {
     char *path;
@@ -296,9 +281,6 @@ struct ObjectPropertiesValuesList {
     ObjectPropertiesValues *value;
 };
 
-void qapi_free_ObjectPropertiesValuesList(ObjectPropertiesValuesList *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(ObjectPropertiesValuesList, qapi_free_ObjectPropertiesValuesList)
-
 struct q_obj_qom_set_arg {
     char *path;
     char *property;
@@ -312,9 +294,6 @@ struct ObjectTypeInfo {
     char *parent;
 };
 
-void qapi_free_ObjectTypeInfo(ObjectTypeInfo *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(ObjectTypeInfo, qapi_free_ObjectTypeInfo)
-
 struct q_obj_qom_list_types_arg {
     char *implements;
     bool has_abstract;
@@ -326,9 +305,6 @@ struct ObjectTypeInfoList {
     ObjectTypeInfo *value;
 };
 
-void qapi_free_ObjectTypeInfoList(ObjectTypeInfoList *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(ObjectTypeInfoList, qapi_free_ObjectTypeInfoList)
-
 struct q_obj_qom_list_properties_arg {
     char *q_typename;
 };
@@ -338,11 +314,6 @@ struct CanHostSocketcanProperties {
     char *q_if;
     char *canbus;
 };
-#endif /* defined(CONFIG_LINUX) */
-
-#if defined(CONFIG_LINUX)
-void qapi_free_CanHostSocketcanProperties(CanHostSocketcanProperties *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(CanHostSocketcanProperties, qapi_free_CanHostSocketcanProperties)
 #endif /* defined(CONFIG_LINUX) */
 
 struct ColoCompareProperties {
@@ -361,9 +332,6 @@ struct ColoCompareProperties {
     bool vnet_hdr_support;
 };
 
-void qapi_free_ColoCompareProperties(ColoCompareProperties *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(ColoCompareProperties, qapi_free_ColoCompareProperties)
-
 struct CryptodevBackendProperties {
     bool has_queues;
     uint32_t queues;
@@ -372,9 +340,6 @@ struct CryptodevBackendProperties {
     bool has_throttle_ops;
     uint64_t throttle_ops;
 };
-
-void qapi_free_CryptodevBackendProperties(CryptodevBackendProperties *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(CryptodevBackendProperties, qapi_free_CryptodevBackendProperties)
 
 #if defined(CONFIG_VHOST_CRYPTO)
 struct CryptodevVhostUserProperties {
@@ -396,17 +361,12 @@ static inline CryptodevBackendProperties *qapi_CryptodevVhostUserProperties_base
     return (CryptodevBackendProperties *)obj;
 }
 
-void qapi_free_CryptodevVhostUserProperties(CryptodevVhostUserProperties *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(CryptodevVhostUserProperties, qapi_free_CryptodevVhostUserProperties)
 #endif /* defined(CONFIG_VHOST_CRYPTO) */
 
 struct DBusVMStateProperties {
     char *addr;
     char *id_list;
 };
-
-void qapi_free_DBusVMStateProperties(DBusVMStateProperties *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(DBusVMStateProperties, qapi_free_DBusVMStateProperties)
 
 struct NetfilterProperties {
     char *netdev;
@@ -417,9 +377,6 @@ struct NetfilterProperties {
     bool has_insert;
     NetfilterInsert insert;
 };
-
-void qapi_free_NetfilterProperties(NetfilterProperties *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(NetfilterProperties, qapi_free_NetfilterProperties)
 
 struct FilterBufferProperties {
     /* Members inherited from NetfilterProperties: */
@@ -438,9 +395,6 @@ static inline NetfilterProperties *qapi_FilterBufferProperties_base(const Filter
 {
     return (NetfilterProperties *)obj;
 }
-
-void qapi_free_FilterBufferProperties(FilterBufferProperties *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(FilterBufferProperties, qapi_free_FilterBufferProperties)
 
 struct FilterDumpProperties {
     /* Members inherited from NetfilterProperties: */
@@ -462,9 +416,6 @@ static inline NetfilterProperties *qapi_FilterDumpProperties_base(const FilterDu
     return (NetfilterProperties *)obj;
 }
 
-void qapi_free_FilterDumpProperties(FilterDumpProperties *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(FilterDumpProperties, qapi_free_FilterDumpProperties)
-
 struct FilterMirrorProperties {
     /* Members inherited from NetfilterProperties: */
     char *netdev;
@@ -484,9 +435,6 @@ static inline NetfilterProperties *qapi_FilterMirrorProperties_base(const Filter
 {
     return (NetfilterProperties *)obj;
 }
-
-void qapi_free_FilterMirrorProperties(FilterMirrorProperties *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(FilterMirrorProperties, qapi_free_FilterMirrorProperties)
 
 struct FilterRedirectorProperties {
     /* Members inherited from NetfilterProperties: */
@@ -509,9 +457,6 @@ static inline NetfilterProperties *qapi_FilterRedirectorProperties_base(const Fi
     return (NetfilterProperties *)obj;
 }
 
-void qapi_free_FilterRedirectorProperties(FilterRedirectorProperties *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(FilterRedirectorProperties, qapi_free_FilterRedirectorProperties)
-
 struct FilterRewriterProperties {
     /* Members inherited from NetfilterProperties: */
     char *netdev;
@@ -531,9 +476,6 @@ static inline NetfilterProperties *qapi_FilterRewriterProperties_base(const Filt
     return (NetfilterProperties *)obj;
 }
 
-void qapi_free_FilterRewriterProperties(FilterRewriterProperties *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(FilterRewriterProperties, qapi_free_FilterRewriterProperties)
-
 struct InputBarrierProperties {
     char *name;
     char *server;
@@ -543,9 +485,6 @@ struct InputBarrierProperties {
     char *width;
     char *height;
 };
-
-void qapi_free_InputBarrierProperties(InputBarrierProperties *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(InputBarrierProperties, qapi_free_InputBarrierProperties)
 
 #if defined(CONFIG_LINUX)
 struct InputLinuxProperties {
@@ -559,11 +498,6 @@ struct InputLinuxProperties {
 };
 #endif /* defined(CONFIG_LINUX) */
 
-#if defined(CONFIG_LINUX)
-void qapi_free_InputLinuxProperties(InputLinuxProperties *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(InputLinuxProperties, qapi_free_InputLinuxProperties)
-#endif /* defined(CONFIG_LINUX) */
-
 struct EventLoopBaseProperties {
     bool has_aio_max_batch;
     int64_t aio_max_batch;
@@ -572,9 +506,6 @@ struct EventLoopBaseProperties {
     bool has_thread_pool_max;
     int64_t thread_pool_max;
 };
-
-void qapi_free_EventLoopBaseProperties(EventLoopBaseProperties *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(EventLoopBaseProperties, qapi_free_EventLoopBaseProperties)
 
 struct IothreadProperties {
     /* Members inherited from EventLoopBaseProperties: */
@@ -598,9 +529,6 @@ static inline EventLoopBaseProperties *qapi_IothreadProperties_base(const Iothre
     return (EventLoopBaseProperties *)obj;
 }
 
-void qapi_free_IothreadProperties(IothreadProperties *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(IothreadProperties, qapi_free_IothreadProperties)
-
 struct MainLoopProperties {
     /* Members inherited from EventLoopBaseProperties: */
     bool has_aio_max_batch;
@@ -616,9 +544,6 @@ static inline EventLoopBaseProperties *qapi_MainLoopProperties_base(const MainLo
 {
     return (EventLoopBaseProperties *)obj;
 }
-
-void qapi_free_MainLoopProperties(MainLoopProperties *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(MainLoopProperties, qapi_free_MainLoopProperties)
 
 struct MemoryBackendProperties {
     bool has_dump;
@@ -642,9 +567,6 @@ struct MemoryBackendProperties {
     bool has_x_use_canonical_path_for_ramblock_id;
     bool x_use_canonical_path_for_ramblock_id;
 };
-
-void qapi_free_MemoryBackendProperties(MemoryBackendProperties *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(MemoryBackendProperties, qapi_free_MemoryBackendProperties)
 
 struct MemoryBackendFileProperties {
     /* Members inherited from MemoryBackendProperties: */
@@ -691,9 +613,6 @@ static inline MemoryBackendProperties *qapi_MemoryBackendFileProperties_base(con
     return (MemoryBackendProperties *)obj;
 }
 
-void qapi_free_MemoryBackendFileProperties(MemoryBackendFileProperties *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(MemoryBackendFileProperties, qapi_free_MemoryBackendFileProperties)
-
 #if defined(CONFIG_LINUX)
 struct MemoryBackendMemfdProperties {
     /* Members inherited from MemoryBackendProperties: */
@@ -733,8 +652,6 @@ static inline MemoryBackendProperties *qapi_MemoryBackendMemfdProperties_base(co
     return (MemoryBackendProperties *)obj;
 }
 
-void qapi_free_MemoryBackendMemfdProperties(MemoryBackendMemfdProperties *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(MemoryBackendMemfdProperties, qapi_free_MemoryBackendMemfdProperties)
 #endif /* defined(CONFIG_LINUX) */
 
 #if defined(CONFIG_POSIX)
@@ -770,8 +687,6 @@ static inline MemoryBackendProperties *qapi_MemoryBackendShmProperties_base(cons
     return (MemoryBackendProperties *)obj;
 }
 
-void qapi_free_MemoryBackendShmProperties(MemoryBackendShmProperties *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(MemoryBackendShmProperties, qapi_free_MemoryBackendShmProperties)
 #endif /* defined(CONFIG_POSIX) */
 
 #if defined(CONFIG_LINUX)
@@ -807,8 +722,6 @@ static inline MemoryBackendProperties *qapi_MemoryBackendEpcProperties_base(cons
     return (MemoryBackendProperties *)obj;
 }
 
-void qapi_free_MemoryBackendEpcProperties(MemoryBackendEpcProperties *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(MemoryBackendEpcProperties, qapi_free_MemoryBackendEpcProperties)
 #endif /* defined(CONFIG_LINUX) */
 
 #if defined(CONFIG_LINUX)
@@ -817,65 +730,39 @@ struct PrManagerHelperProperties {
 };
 #endif /* defined(CONFIG_LINUX) */
 
-#if defined(CONFIG_LINUX)
-void qapi_free_PrManagerHelperProperties(PrManagerHelperProperties *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(PrManagerHelperProperties, qapi_free_PrManagerHelperProperties)
-#endif /* defined(CONFIG_LINUX) */
-
 struct QtestProperties {
     char *chardev;
     char *log;
 };
-
-void qapi_free_QtestProperties(QtestProperties *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(QtestProperties, qapi_free_QtestProperties)
 
 struct RemoteObjectProperties {
     char *fd;
     char *devid;
 };
 
-void qapi_free_RemoteObjectProperties(RemoteObjectProperties *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(RemoteObjectProperties, qapi_free_RemoteObjectProperties)
-
 struct VfioUserServerProperties {
     SocketAddress *socket;
     char *device;
 };
 
-void qapi_free_VfioUserServerProperties(VfioUserServerProperties *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(VfioUserServerProperties, qapi_free_VfioUserServerProperties)
-
 struct IOMMUFDProperties {
     char *fd;
 };
-
-void qapi_free_IOMMUFDProperties(IOMMUFDProperties *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(IOMMUFDProperties, qapi_free_IOMMUFDProperties)
 
 struct AcpiGenericInitiatorProperties {
     char *pci_dev;
     uint32_t node;
 };
 
-void qapi_free_AcpiGenericInitiatorProperties(AcpiGenericInitiatorProperties *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(AcpiGenericInitiatorProperties, qapi_free_AcpiGenericInitiatorProperties)
-
 struct AcpiGenericPortProperties {
     char *pci_bus;
     uint32_t node;
 };
 
-void qapi_free_AcpiGenericPortProperties(AcpiGenericPortProperties *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(AcpiGenericPortProperties, qapi_free_AcpiGenericPortProperties)
-
 struct RngProperties {
     bool has_opened;
     bool opened;
 };
-
-void qapi_free_RngProperties(RngProperties *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(RngProperties, qapi_free_RngProperties)
 
 struct RngEgdProperties {
     /* Members inherited from RngProperties: */
@@ -889,9 +776,6 @@ static inline RngProperties *qapi_RngEgdProperties_base(const RngEgdProperties *
 {
     return (RngProperties *)obj;
 }
-
-void qapi_free_RngEgdProperties(RngEgdProperties *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(RngEgdProperties, qapi_free_RngEgdProperties)
 
 #if defined(CONFIG_POSIX)
 struct RngRandomProperties {
@@ -909,19 +793,12 @@ static inline RngProperties *qapi_RngRandomProperties_base(const RngRandomProper
     return (RngProperties *)obj;
 }
 
-void qapi_free_RngRandomProperties(RngRandomProperties *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(RngRandomProperties, qapi_free_RngRandomProperties)
 #endif /* defined(CONFIG_POSIX) */
 
 #if defined(CONFIG_IGVM)
 struct IgvmCfgProperties {
     char *file;
 };
-#endif /* defined(CONFIG_IGVM) */
-
-#if defined(CONFIG_IGVM)
-void qapi_free_IgvmCfgProperties(IgvmCfgProperties *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(IgvmCfgProperties, qapi_free_IgvmCfgProperties)
 #endif /* defined(CONFIG_IGVM) */
 
 struct SevCommonProperties {
@@ -932,9 +809,6 @@ struct SevCommonProperties {
     bool has_kernel_hashes;
     bool kernel_hashes;
 };
-
-void qapi_free_SevCommonProperties(SevCommonProperties *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(SevCommonProperties, qapi_free_SevCommonProperties)
 
 struct SevGuestProperties {
     /* Members inherited from SevCommonProperties: */
@@ -959,9 +833,6 @@ static inline SevCommonProperties *qapi_SevGuestProperties_base(const SevGuestPr
 {
     return (SevCommonProperties *)obj;
 }
-
-void qapi_free_SevGuestProperties(SevGuestProperties *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(SevGuestProperties, qapi_free_SevGuestProperties)
 
 struct SevSnpGuestProperties {
     /* Members inherited from SevCommonProperties: */
@@ -989,9 +860,6 @@ static inline SevCommonProperties *qapi_SevSnpGuestProperties_base(const SevSnpG
     return (SevCommonProperties *)obj;
 }
 
-void qapi_free_SevSnpGuestProperties(SevSnpGuestProperties *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(SevSnpGuestProperties, qapi_free_SevSnpGuestProperties)
-
 struct TdxGuestProperties {
     bool has_attributes;
     uint64_t attributes;
@@ -1003,18 +871,12 @@ struct TdxGuestProperties {
     SocketAddress *quote_generation_socket;
 };
 
-void qapi_free_TdxGuestProperties(TdxGuestProperties *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(TdxGuestProperties, qapi_free_TdxGuestProperties)
-
 struct ThreadContextProperties {
     bool has_cpu_affinity;
     uint16List *cpu_affinity;
     bool has_node_affinity;
     uint16List *node_affinity;
 };
-
-void qapi_free_ThreadContextProperties(ThreadContextProperties *obj);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(ThreadContextProperties, qapi_free_ThreadContextProperties)
 
 struct q_obj_ObjectOptions_base {
     ObjectType qom_type;

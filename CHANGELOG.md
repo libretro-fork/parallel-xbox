@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- The generated QAPI code is pruned to what the core uses: QEMU generates a type, a visitor and a QMP event for everything in its management schemas (block jobs, migration, the QMP schema's own 32,000-line introspection table), and the core reaches about a quarter of them. About 80,000 generated lines go: 98 of the 139 generated sources and 103 of the 186 generated headers. Nothing changes for someone using the core.
+
 - QEMU's trace points are gone from the build: they were compiled with no backend, so each was already an empty call, but their event tables (about 50,000 generated lines), the trace control code and the -trace option were still built. Nothing changes for someone using the core.
 
 - Detach surviving GLib child sources when their parent is finalized. A retained child can now be attached and readied independently without following a dangling parent pointer.

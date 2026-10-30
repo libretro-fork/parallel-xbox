@@ -57,6 +57,11 @@ Then, by hand:
 - `xemu-version-macro.h` is not here: the version and commit the core logs
   change with every commit, so the Makefile writes it at each build
   (`libretro/version.sh`, as upstream's `scripts/xemu-version.py` does for meson).
+- `qapi/`: QAPI generates a type, visitor and event for everything in every
+  schema, and the core reaches about a quarter of them.
+  `libretro/tools/qapi-prune.py` removes the rest: the definitions neither
+  the linked core has nor hand-written code names, their declarations, and
+  the sources and headers left with nothing (it says how to run it).
 - `data/*.h`: the declarations upstream's `scripts/pack-file.py` writes next to
   the data files' C arrays; the Makefile assembles the data files
   themselves (`libretro/data.S`) instead of compiling those arrays.

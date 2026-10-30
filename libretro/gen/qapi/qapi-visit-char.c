@@ -15,179 +15,6 @@
 #include "qapi-visit-char.h"
 #include "qapi-features.h"
 
-bool visit_type_ChardevInfo_members(Visitor *v, ChardevInfo *obj, Error **errp)
-{
-    if (!visit_type_str(v, "label", &obj->label, errp)) {
-        return false;
-    }
-    if (!visit_type_str(v, "filename", &obj->filename, errp)) {
-        return false;
-    }
-    if (!visit_type_bool(v, "frontend-open", &obj->frontend_open, errp)) {
-        return false;
-    }
-    return true;
-}
-
-bool visit_type_ChardevInfo(Visitor *v, const char *name,
-                 ChardevInfo **obj, Error **errp)
-{
-    bool ok = false;
-
-    if (!visit_start_struct(v, name, (void **)obj, sizeof(ChardevInfo), errp)) {
-        return false;
-    }
-    if (!*obj) {
-        /* incomplete */
-        assert(visit_is_dealloc(v));
-        ok = true;
-        goto out_obj;
-    }
-    if (!visit_type_ChardevInfo_members(v, *obj, errp)) {
-        goto out_obj;
-    }
-    ok = visit_check_struct(v, errp);
-out_obj:
-    visit_end_struct(v, (void **)obj);
-    if (!ok && visit_is_input(v)) {
-        qapi_free_ChardevInfo(*obj);
-        *obj = NULL;
-    }
-    return ok;
-}
-
-bool visit_type_ChardevInfoList(Visitor *v, const char *name,
-                 ChardevInfoList **obj, Error **errp)
-{
-    bool ok = false;
-    ChardevInfoList *tail;
-    size_t size = sizeof(**obj);
-
-    if (!visit_start_list(v, name, (GenericList **)obj, size, errp)) {
-        return false;
-    }
-
-    for (tail = *obj; tail;
-         tail = (ChardevInfoList *)visit_next_list(v, (GenericList *)tail, size)) {
-        if (!visit_type_ChardevInfo(v, NULL, &tail->value, errp)) {
-            goto out_obj;
-        }
-    }
-
-    ok = visit_check_list(v, errp);
-out_obj:
-    visit_end_list(v, (void **)obj);
-    if (!ok && visit_is_input(v)) {
-        qapi_free_ChardevInfoList(*obj);
-        *obj = NULL;
-    }
-    return ok;
-}
-
-bool visit_type_ChardevBackendInfo_members(Visitor *v, ChardevBackendInfo *obj, Error **errp)
-{
-    if (!visit_type_str(v, "name", &obj->name, errp)) {
-        return false;
-    }
-    return true;
-}
-
-bool visit_type_ChardevBackendInfo(Visitor *v, const char *name,
-                 ChardevBackendInfo **obj, Error **errp)
-{
-    bool ok = false;
-
-    if (!visit_start_struct(v, name, (void **)obj, sizeof(ChardevBackendInfo), errp)) {
-        return false;
-    }
-    if (!*obj) {
-        /* incomplete */
-        assert(visit_is_dealloc(v));
-        ok = true;
-        goto out_obj;
-    }
-    if (!visit_type_ChardevBackendInfo_members(v, *obj, errp)) {
-        goto out_obj;
-    }
-    ok = visit_check_struct(v, errp);
-out_obj:
-    visit_end_struct(v, (void **)obj);
-    if (!ok && visit_is_input(v)) {
-        qapi_free_ChardevBackendInfo(*obj);
-        *obj = NULL;
-    }
-    return ok;
-}
-
-bool visit_type_ChardevBackendInfoList(Visitor *v, const char *name,
-                 ChardevBackendInfoList **obj, Error **errp)
-{
-    bool ok = false;
-    ChardevBackendInfoList *tail;
-    size_t size = sizeof(**obj);
-
-    if (!visit_start_list(v, name, (GenericList **)obj, size, errp)) {
-        return false;
-    }
-
-    for (tail = *obj; tail;
-         tail = (ChardevBackendInfoList *)visit_next_list(v, (GenericList *)tail, size)) {
-        if (!visit_type_ChardevBackendInfo(v, NULL, &tail->value, errp)) {
-            goto out_obj;
-        }
-    }
-
-    ok = visit_check_list(v, errp);
-out_obj:
-    visit_end_list(v, (void **)obj);
-    if (!ok && visit_is_input(v)) {
-        qapi_free_ChardevBackendInfoList(*obj);
-        *obj = NULL;
-    }
-    return ok;
-}
-
-bool visit_type_DataFormat(Visitor *v, const char *name,
-                 DataFormat *obj, Error **errp)
-{
-    int value = *obj;
-    bool ok = visit_type_enum(v, name, &value, &DataFormat_lookup, errp);
-    *obj = value;
-    return ok;
-}
-
-bool visit_type_q_obj_ringbuf_write_arg_members(Visitor *v, q_obj_ringbuf_write_arg *obj, Error **errp)
-{
-    if (!visit_type_str(v, "device", &obj->device, errp)) {
-        return false;
-    }
-    if (!visit_type_str(v, "data", &obj->data, errp)) {
-        return false;
-    }
-    if (visit_optional(v, "format", &obj->has_format)) {
-        if (!visit_type_DataFormat(v, "format", &obj->format, errp)) {
-            return false;
-        }
-    }
-    return true;
-}
-
-bool visit_type_q_obj_ringbuf_read_arg_members(Visitor *v, q_obj_ringbuf_read_arg *obj, Error **errp)
-{
-    if (!visit_type_str(v, "device", &obj->device, errp)) {
-        return false;
-    }
-    if (!visit_type_int(v, "size", &obj->size, errp)) {
-        return false;
-    }
-    if (visit_optional(v, "format", &obj->has_format)) {
-        if (!visit_type_DataFormat(v, "format", &obj->format, errp)) {
-            return false;
-        }
-    }
-    return true;
-}
-
 bool visit_type_ChardevCommon_members(Visitor *v, ChardevCommon *obj, Error **errp)
 {
     bool has_logfile = !!obj->logfile;
@@ -888,66 +715,12 @@ bool visit_type_ChardevFileWrapper_members(Visitor *v, ChardevFileWrapper *obj, 
     return true;
 }
 
-bool visit_type_ChardevFileWrapper(Visitor *v, const char *name,
-                 ChardevFileWrapper **obj, Error **errp)
-{
-    bool ok = false;
-
-    if (!visit_start_struct(v, name, (void **)obj, sizeof(ChardevFileWrapper), errp)) {
-        return false;
-    }
-    if (!*obj) {
-        /* incomplete */
-        assert(visit_is_dealloc(v));
-        ok = true;
-        goto out_obj;
-    }
-    if (!visit_type_ChardevFileWrapper_members(v, *obj, errp)) {
-        goto out_obj;
-    }
-    ok = visit_check_struct(v, errp);
-out_obj:
-    visit_end_struct(v, (void **)obj);
-    if (!ok && visit_is_input(v)) {
-        qapi_free_ChardevFileWrapper(*obj);
-        *obj = NULL;
-    }
-    return ok;
-}
-
 bool visit_type_ChardevHostdevWrapper_members(Visitor *v, ChardevHostdevWrapper *obj, Error **errp)
 {
     if (!visit_type_ChardevHostdev(v, "data", &obj->data, errp)) {
         return false;
     }
     return true;
-}
-
-bool visit_type_ChardevHostdevWrapper(Visitor *v, const char *name,
-                 ChardevHostdevWrapper **obj, Error **errp)
-{
-    bool ok = false;
-
-    if (!visit_start_struct(v, name, (void **)obj, sizeof(ChardevHostdevWrapper), errp)) {
-        return false;
-    }
-    if (!*obj) {
-        /* incomplete */
-        assert(visit_is_dealloc(v));
-        ok = true;
-        goto out_obj;
-    }
-    if (!visit_type_ChardevHostdevWrapper_members(v, *obj, errp)) {
-        goto out_obj;
-    }
-    ok = visit_check_struct(v, errp);
-out_obj:
-    visit_end_struct(v, (void **)obj);
-    if (!ok && visit_is_input(v)) {
-        qapi_free_ChardevHostdevWrapper(*obj);
-        *obj = NULL;
-    }
-    return ok;
 }
 
 bool visit_type_ChardevSocketWrapper_members(Visitor *v, ChardevSocketWrapper *obj, Error **errp)
@@ -958,66 +731,12 @@ bool visit_type_ChardevSocketWrapper_members(Visitor *v, ChardevSocketWrapper *o
     return true;
 }
 
-bool visit_type_ChardevSocketWrapper(Visitor *v, const char *name,
-                 ChardevSocketWrapper **obj, Error **errp)
-{
-    bool ok = false;
-
-    if (!visit_start_struct(v, name, (void **)obj, sizeof(ChardevSocketWrapper), errp)) {
-        return false;
-    }
-    if (!*obj) {
-        /* incomplete */
-        assert(visit_is_dealloc(v));
-        ok = true;
-        goto out_obj;
-    }
-    if (!visit_type_ChardevSocketWrapper_members(v, *obj, errp)) {
-        goto out_obj;
-    }
-    ok = visit_check_struct(v, errp);
-out_obj:
-    visit_end_struct(v, (void **)obj);
-    if (!ok && visit_is_input(v)) {
-        qapi_free_ChardevSocketWrapper(*obj);
-        *obj = NULL;
-    }
-    return ok;
-}
-
 bool visit_type_ChardevUdpWrapper_members(Visitor *v, ChardevUdpWrapper *obj, Error **errp)
 {
     if (!visit_type_ChardevUdp(v, "data", &obj->data, errp)) {
         return false;
     }
     return true;
-}
-
-bool visit_type_ChardevUdpWrapper(Visitor *v, const char *name,
-                 ChardevUdpWrapper **obj, Error **errp)
-{
-    bool ok = false;
-
-    if (!visit_start_struct(v, name, (void **)obj, sizeof(ChardevUdpWrapper), errp)) {
-        return false;
-    }
-    if (!*obj) {
-        /* incomplete */
-        assert(visit_is_dealloc(v));
-        ok = true;
-        goto out_obj;
-    }
-    if (!visit_type_ChardevUdpWrapper_members(v, *obj, errp)) {
-        goto out_obj;
-    }
-    ok = visit_check_struct(v, errp);
-out_obj:
-    visit_end_struct(v, (void **)obj);
-    if (!ok && visit_is_input(v)) {
-        qapi_free_ChardevUdpWrapper(*obj);
-        *obj = NULL;
-    }
-    return ok;
 }
 
 bool visit_type_ChardevCommonWrapper_members(Visitor *v, ChardevCommonWrapper *obj, Error **errp)
@@ -1028,66 +747,12 @@ bool visit_type_ChardevCommonWrapper_members(Visitor *v, ChardevCommonWrapper *o
     return true;
 }
 
-bool visit_type_ChardevCommonWrapper(Visitor *v, const char *name,
-                 ChardevCommonWrapper **obj, Error **errp)
-{
-    bool ok = false;
-
-    if (!visit_start_struct(v, name, (void **)obj, sizeof(ChardevCommonWrapper), errp)) {
-        return false;
-    }
-    if (!*obj) {
-        /* incomplete */
-        assert(visit_is_dealloc(v));
-        ok = true;
-        goto out_obj;
-    }
-    if (!visit_type_ChardevCommonWrapper_members(v, *obj, errp)) {
-        goto out_obj;
-    }
-    ok = visit_check_struct(v, errp);
-out_obj:
-    visit_end_struct(v, (void **)obj);
-    if (!ok && visit_is_input(v)) {
-        qapi_free_ChardevCommonWrapper(*obj);
-        *obj = NULL;
-    }
-    return ok;
-}
-
 bool visit_type_ChardevMuxWrapper_members(Visitor *v, ChardevMuxWrapper *obj, Error **errp)
 {
     if (!visit_type_ChardevMux(v, "data", &obj->data, errp)) {
         return false;
     }
     return true;
-}
-
-bool visit_type_ChardevMuxWrapper(Visitor *v, const char *name,
-                 ChardevMuxWrapper **obj, Error **errp)
-{
-    bool ok = false;
-
-    if (!visit_start_struct(v, name, (void **)obj, sizeof(ChardevMuxWrapper), errp)) {
-        return false;
-    }
-    if (!*obj) {
-        /* incomplete */
-        assert(visit_is_dealloc(v));
-        ok = true;
-        goto out_obj;
-    }
-    if (!visit_type_ChardevMuxWrapper_members(v, *obj, errp)) {
-        goto out_obj;
-    }
-    ok = visit_check_struct(v, errp);
-out_obj:
-    visit_end_struct(v, (void **)obj);
-    if (!ok && visit_is_input(v)) {
-        qapi_free_ChardevMuxWrapper(*obj);
-        *obj = NULL;
-    }
-    return ok;
 }
 
 bool visit_type_ChardevHubWrapper_members(Visitor *v, ChardevHubWrapper *obj, Error **errp)
@@ -1098,66 +763,12 @@ bool visit_type_ChardevHubWrapper_members(Visitor *v, ChardevHubWrapper *obj, Er
     return true;
 }
 
-bool visit_type_ChardevHubWrapper(Visitor *v, const char *name,
-                 ChardevHubWrapper **obj, Error **errp)
-{
-    bool ok = false;
-
-    if (!visit_start_struct(v, name, (void **)obj, sizeof(ChardevHubWrapper), errp)) {
-        return false;
-    }
-    if (!*obj) {
-        /* incomplete */
-        assert(visit_is_dealloc(v));
-        ok = true;
-        goto out_obj;
-    }
-    if (!visit_type_ChardevHubWrapper_members(v, *obj, errp)) {
-        goto out_obj;
-    }
-    ok = visit_check_struct(v, errp);
-out_obj:
-    visit_end_struct(v, (void **)obj);
-    if (!ok && visit_is_input(v)) {
-        qapi_free_ChardevHubWrapper(*obj);
-        *obj = NULL;
-    }
-    return ok;
-}
-
 bool visit_type_ChardevStdioWrapper_members(Visitor *v, ChardevStdioWrapper *obj, Error **errp)
 {
     if (!visit_type_ChardevStdio(v, "data", &obj->data, errp)) {
         return false;
     }
     return true;
-}
-
-bool visit_type_ChardevStdioWrapper(Visitor *v, const char *name,
-                 ChardevStdioWrapper **obj, Error **errp)
-{
-    bool ok = false;
-
-    if (!visit_start_struct(v, name, (void **)obj, sizeof(ChardevStdioWrapper), errp)) {
-        return false;
-    }
-    if (!*obj) {
-        /* incomplete */
-        assert(visit_is_dealloc(v));
-        ok = true;
-        goto out_obj;
-    }
-    if (!visit_type_ChardevStdioWrapper_members(v, *obj, errp)) {
-        goto out_obj;
-    }
-    ok = visit_check_struct(v, errp);
-out_obj:
-    visit_end_struct(v, (void **)obj);
-    if (!ok && visit_is_input(v)) {
-        qapi_free_ChardevStdioWrapper(*obj);
-        *obj = NULL;
-    }
-    return ok;
 }
 
 #if defined(CONFIG_SPICE)
@@ -1169,32 +780,6 @@ bool visit_type_ChardevSpiceChannelWrapper_members(Visitor *v, ChardevSpiceChann
     return true;
 }
 
-bool visit_type_ChardevSpiceChannelWrapper(Visitor *v, const char *name,
-                 ChardevSpiceChannelWrapper **obj, Error **errp)
-{
-    bool ok = false;
-
-    if (!visit_start_struct(v, name, (void **)obj, sizeof(ChardevSpiceChannelWrapper), errp)) {
-        return false;
-    }
-    if (!*obj) {
-        /* incomplete */
-        assert(visit_is_dealloc(v));
-        ok = true;
-        goto out_obj;
-    }
-    if (!visit_type_ChardevSpiceChannelWrapper_members(v, *obj, errp)) {
-        goto out_obj;
-    }
-    ok = visit_check_struct(v, errp);
-out_obj:
-    visit_end_struct(v, (void **)obj);
-    if (!ok && visit_is_input(v)) {
-        qapi_free_ChardevSpiceChannelWrapper(*obj);
-        *obj = NULL;
-    }
-    return ok;
-}
 #endif /* defined(CONFIG_SPICE) */
 
 #if defined(CONFIG_SPICE)
@@ -1206,32 +791,6 @@ bool visit_type_ChardevSpicePortWrapper_members(Visitor *v, ChardevSpicePortWrap
     return true;
 }
 
-bool visit_type_ChardevSpicePortWrapper(Visitor *v, const char *name,
-                 ChardevSpicePortWrapper **obj, Error **errp)
-{
-    bool ok = false;
-
-    if (!visit_start_struct(v, name, (void **)obj, sizeof(ChardevSpicePortWrapper), errp)) {
-        return false;
-    }
-    if (!*obj) {
-        /* incomplete */
-        assert(visit_is_dealloc(v));
-        ok = true;
-        goto out_obj;
-    }
-    if (!visit_type_ChardevSpicePortWrapper_members(v, *obj, errp)) {
-        goto out_obj;
-    }
-    ok = visit_check_struct(v, errp);
-out_obj:
-    visit_end_struct(v, (void **)obj);
-    if (!ok && visit_is_input(v)) {
-        qapi_free_ChardevSpicePortWrapper(*obj);
-        *obj = NULL;
-    }
-    return ok;
-}
 #endif /* defined(CONFIG_SPICE) */
 
 #if defined(CONFIG_SPICE_PROTOCOL)
@@ -1243,32 +802,6 @@ bool visit_type_ChardevQemuVDAgentWrapper_members(Visitor *v, ChardevQemuVDAgent
     return true;
 }
 
-bool visit_type_ChardevQemuVDAgentWrapper(Visitor *v, const char *name,
-                 ChardevQemuVDAgentWrapper **obj, Error **errp)
-{
-    bool ok = false;
-
-    if (!visit_start_struct(v, name, (void **)obj, sizeof(ChardevQemuVDAgentWrapper), errp)) {
-        return false;
-    }
-    if (!*obj) {
-        /* incomplete */
-        assert(visit_is_dealloc(v));
-        ok = true;
-        goto out_obj;
-    }
-    if (!visit_type_ChardevQemuVDAgentWrapper_members(v, *obj, errp)) {
-        goto out_obj;
-    }
-    ok = visit_check_struct(v, errp);
-out_obj:
-    visit_end_struct(v, (void **)obj);
-    if (!ok && visit_is_input(v)) {
-        qapi_free_ChardevQemuVDAgentWrapper(*obj);
-        *obj = NULL;
-    }
-    return ok;
-}
 #endif /* defined(CONFIG_SPICE_PROTOCOL) */
 
 #if defined(CONFIG_DBUS_DISPLAY)
@@ -1280,32 +813,6 @@ bool visit_type_ChardevDBusWrapper_members(Visitor *v, ChardevDBusWrapper *obj, 
     return true;
 }
 
-bool visit_type_ChardevDBusWrapper(Visitor *v, const char *name,
-                 ChardevDBusWrapper **obj, Error **errp)
-{
-    bool ok = false;
-
-    if (!visit_start_struct(v, name, (void **)obj, sizeof(ChardevDBusWrapper), errp)) {
-        return false;
-    }
-    if (!*obj) {
-        /* incomplete */
-        assert(visit_is_dealloc(v));
-        ok = true;
-        goto out_obj;
-    }
-    if (!visit_type_ChardevDBusWrapper_members(v, *obj, errp)) {
-        goto out_obj;
-    }
-    ok = visit_check_struct(v, errp);
-out_obj:
-    visit_end_struct(v, (void **)obj);
-    if (!ok && visit_is_input(v)) {
-        qapi_free_ChardevDBusWrapper(*obj);
-        *obj = NULL;
-    }
-    return ok;
-}
 #endif /* defined(CONFIG_DBUS_DISPLAY) */
 
 bool visit_type_ChardevVCWrapper_members(Visitor *v, ChardevVCWrapper *obj, Error **errp)
@@ -1316,33 +823,6 @@ bool visit_type_ChardevVCWrapper_members(Visitor *v, ChardevVCWrapper *obj, Erro
     return true;
 }
 
-bool visit_type_ChardevVCWrapper(Visitor *v, const char *name,
-                 ChardevVCWrapper **obj, Error **errp)
-{
-    bool ok = false;
-
-    if (!visit_start_struct(v, name, (void **)obj, sizeof(ChardevVCWrapper), errp)) {
-        return false;
-    }
-    if (!*obj) {
-        /* incomplete */
-        assert(visit_is_dealloc(v));
-        ok = true;
-        goto out_obj;
-    }
-    if (!visit_type_ChardevVCWrapper_members(v, *obj, errp)) {
-        goto out_obj;
-    }
-    ok = visit_check_struct(v, errp);
-out_obj:
-    visit_end_struct(v, (void **)obj);
-    if (!ok && visit_is_input(v)) {
-        qapi_free_ChardevVCWrapper(*obj);
-        *obj = NULL;
-    }
-    return ok;
-}
-
 bool visit_type_ChardevRingbufWrapper_members(Visitor *v, ChardevRingbufWrapper *obj, Error **errp)
 {
     if (!visit_type_ChardevRingbuf(v, "data", &obj->data, errp)) {
@@ -1351,66 +831,12 @@ bool visit_type_ChardevRingbufWrapper_members(Visitor *v, ChardevRingbufWrapper 
     return true;
 }
 
-bool visit_type_ChardevRingbufWrapper(Visitor *v, const char *name,
-                 ChardevRingbufWrapper **obj, Error **errp)
-{
-    bool ok = false;
-
-    if (!visit_start_struct(v, name, (void **)obj, sizeof(ChardevRingbufWrapper), errp)) {
-        return false;
-    }
-    if (!*obj) {
-        /* incomplete */
-        assert(visit_is_dealloc(v));
-        ok = true;
-        goto out_obj;
-    }
-    if (!visit_type_ChardevRingbufWrapper_members(v, *obj, errp)) {
-        goto out_obj;
-    }
-    ok = visit_check_struct(v, errp);
-out_obj:
-    visit_end_struct(v, (void **)obj);
-    if (!ok && visit_is_input(v)) {
-        qapi_free_ChardevRingbufWrapper(*obj);
-        *obj = NULL;
-    }
-    return ok;
-}
-
 bool visit_type_ChardevPtyWrapper_members(Visitor *v, ChardevPtyWrapper *obj, Error **errp)
 {
     if (!visit_type_ChardevPty(v, "data", &obj->data, errp)) {
         return false;
     }
     return true;
-}
-
-bool visit_type_ChardevPtyWrapper(Visitor *v, const char *name,
-                 ChardevPtyWrapper **obj, Error **errp)
-{
-    bool ok = false;
-
-    if (!visit_start_struct(v, name, (void **)obj, sizeof(ChardevPtyWrapper), errp)) {
-        return false;
-    }
-    if (!*obj) {
-        /* incomplete */
-        assert(visit_is_dealloc(v));
-        ok = true;
-        goto out_obj;
-    }
-    if (!visit_type_ChardevPtyWrapper_members(v, *obj, errp)) {
-        goto out_obj;
-    }
-    ok = visit_check_struct(v, errp);
-out_obj:
-    visit_end_struct(v, (void **)obj);
-    if (!ok && visit_is_input(v)) {
-        qapi_free_ChardevPtyWrapper(*obj);
-        *obj = NULL;
-    }
-    return ok;
 }
 
 bool visit_type_q_obj_ChardevBackend_base_members(Visitor *v, q_obj_ChardevBackend_base *obj, Error **errp)
@@ -1520,94 +946,6 @@ out_obj:
         *obj = NULL;
     }
     return ok;
-}
-
-bool visit_type_ChardevReturn_members(Visitor *v, ChardevReturn *obj, Error **errp)
-{
-    bool has_pty = !!obj->pty;
-
-    if (visit_optional(v, "pty", &has_pty)) {
-        if (!visit_type_str(v, "pty", &obj->pty, errp)) {
-            return false;
-        }
-    }
-    return true;
-}
-
-bool visit_type_ChardevReturn(Visitor *v, const char *name,
-                 ChardevReturn **obj, Error **errp)
-{
-    bool ok = false;
-
-    if (!visit_start_struct(v, name, (void **)obj, sizeof(ChardevReturn), errp)) {
-        return false;
-    }
-    if (!*obj) {
-        /* incomplete */
-        assert(visit_is_dealloc(v));
-        ok = true;
-        goto out_obj;
-    }
-    if (!visit_type_ChardevReturn_members(v, *obj, errp)) {
-        goto out_obj;
-    }
-    ok = visit_check_struct(v, errp);
-out_obj:
-    visit_end_struct(v, (void **)obj);
-    if (!ok && visit_is_input(v)) {
-        qapi_free_ChardevReturn(*obj);
-        *obj = NULL;
-    }
-    return ok;
-}
-
-bool visit_type_q_obj_chardev_add_arg_members(Visitor *v, q_obj_chardev_add_arg *obj, Error **errp)
-{
-    if (!visit_type_str(v, "id", &obj->id, errp)) {
-        return false;
-    }
-    if (!visit_type_ChardevBackend(v, "backend", &obj->backend, errp)) {
-        return false;
-    }
-    return true;
-}
-
-bool visit_type_q_obj_chardev_change_arg_members(Visitor *v, q_obj_chardev_change_arg *obj, Error **errp)
-{
-    if (!visit_type_str(v, "id", &obj->id, errp)) {
-        return false;
-    }
-    if (!visit_type_ChardevBackend(v, "backend", &obj->backend, errp)) {
-        return false;
-    }
-    return true;
-}
-
-bool visit_type_q_obj_chardev_remove_arg_members(Visitor *v, q_obj_chardev_remove_arg *obj, Error **errp)
-{
-    if (!visit_type_str(v, "id", &obj->id, errp)) {
-        return false;
-    }
-    return true;
-}
-
-bool visit_type_q_obj_chardev_send_break_arg_members(Visitor *v, q_obj_chardev_send_break_arg *obj, Error **errp)
-{
-    if (!visit_type_str(v, "id", &obj->id, errp)) {
-        return false;
-    }
-    return true;
-}
-
-bool visit_type_q_obj_VSERPORT_CHANGE_arg_members(Visitor *v, q_obj_VSERPORT_CHANGE_arg *obj, Error **errp)
-{
-    if (!visit_type_str(v, "id", &obj->id, errp)) {
-        return false;
-    }
-    if (!visit_type_bool(v, "open", &obj->open, errp)) {
-        return false;
-    }
-    return true;
 }
 
 /* Dummy declaration to prevent empty .o file */

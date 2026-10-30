@@ -16,17 +16,6 @@
 #include "qapi-visit-sockets.h"
 #include "qapi-features.h"
 
-const QEnumLookup NetworkAddressFamily_lookup = {
-    .array = (const char *const[]) {
-        [NETWORK_ADDRESS_FAMILY_IPV4] = "ipv4",
-        [NETWORK_ADDRESS_FAMILY_IPV6] = "ipv6",
-        [NETWORK_ADDRESS_FAMILY_UNIX] = "unix",
-        [NETWORK_ADDRESS_FAMILY_VSOCK] = "vsock",
-        [NETWORK_ADDRESS_FAMILY_UNKNOWN] = "unknown",
-    },
-    .size = NETWORK_ADDRESS_FAMILY__MAX
-};
-
 void qapi_free_InetSocketAddressBase(InetSocketAddressBase *obj)
 {
     Visitor *v;
@@ -89,58 +78,6 @@ void qapi_free_FdSocketAddress(FdSocketAddress *obj)
 
     v = qapi_dealloc_visitor_new();
     visit_type_FdSocketAddress(v, NULL, &obj, NULL);
-    visit_free(v);
-}
-
-void qapi_free_InetSocketAddressWrapper(InetSocketAddressWrapper *obj)
-{
-    Visitor *v;
-
-    if (!obj) {
-        return;
-    }
-
-    v = qapi_dealloc_visitor_new();
-    visit_type_InetSocketAddressWrapper(v, NULL, &obj, NULL);
-    visit_free(v);
-}
-
-void qapi_free_UnixSocketAddressWrapper(UnixSocketAddressWrapper *obj)
-{
-    Visitor *v;
-
-    if (!obj) {
-        return;
-    }
-
-    v = qapi_dealloc_visitor_new();
-    visit_type_UnixSocketAddressWrapper(v, NULL, &obj, NULL);
-    visit_free(v);
-}
-
-void qapi_free_VsockSocketAddressWrapper(VsockSocketAddressWrapper *obj)
-{
-    Visitor *v;
-
-    if (!obj) {
-        return;
-    }
-
-    v = qapi_dealloc_visitor_new();
-    visit_type_VsockSocketAddressWrapper(v, NULL, &obj, NULL);
-    visit_free(v);
-}
-
-void qapi_free_FdSocketAddressWrapper(FdSocketAddressWrapper *obj)
-{
-    Visitor *v;
-
-    if (!obj) {
-        return;
-    }
-
-    v = qapi_dealloc_visitor_new();
-    visit_type_FdSocketAddressWrapper(v, NULL, &obj, NULL);
     visit_free(v);
 }
 
