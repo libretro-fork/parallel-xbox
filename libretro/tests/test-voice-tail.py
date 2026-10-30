@@ -32,9 +32,9 @@ before=before.replace('/* TYPES */',types+pitch)
 functions=['set_notify_status','voice_get_mask','voice_set_mask','voice_off',
     'voice_resample_reset','voice_reset_filters','filter_coefficient','attenuation_gain',
     'get_data_ptr','envelope_level','voice_step_envelope','voice_step_lfos',
-    'voice_get_samples','voice_resample_fetch','lagrange_init','voice_pitch_ramp',
+    'voice_get_samples','voice_resample_fetch','voice_pitch_ramp',
     'voice_pitch_step','voice_resample','voice_process','mcpx_apu_vp_reset']
-generated=before+table+'static int32_t lagrange_rows[257][8];\n'+''.join(function(n) for n in functions)
+generated=before+table+''.join(function(n) for n in functions)
 generated+=after.replace('/* VOICE FRAME */',function('mcpx_apu_vp_frame'))
 env=os.environ.copy();env['PATH']=str(Path(cc).resolve().parent)+os.pathsep+env.get('PATH','')
 with tempfile.TemporaryDirectory(prefix='voice-tail-',dir=repo.parent) as directory:

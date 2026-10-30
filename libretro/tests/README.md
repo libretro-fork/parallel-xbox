@@ -205,6 +205,14 @@ checks callback ordering for reads/writes, preservation of newly written
 DMA data, translated and shortened mapping ranges, failed/empty maps and
 the separate bounce path. GCC's undefined-behavior traps are enabled.
 
+`test-vpmath.c` checks the voice processor's integer control math
+(`hw/xbox/mcpx/apu/vp/vpmath.h`) against the double-precision code it
+replaced: the Lagrange kernel table and the cutoff curve over every input,
+the pitch step and the envelopes' exponential decay and release at five
+million points. `run.sh` runs that; with the argument `full` it checks
+every steady pitch, 400 million ramped ones, every decay count and rate and
+400 million releases (1.1 billion, about a minute): no difference.
+
 `python libretro/tests/test-voice-tail.py . gcc` (run by `run.sh`) runs the
 decoder-to-mix regression without booting a complete core. It compiles the checkout's
 actual PCM/ADPCM decoder, resampler, envelope/filter/routing functions and

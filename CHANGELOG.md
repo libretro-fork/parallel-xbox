@@ -436,6 +436,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 - Audio: an ADPCM block with a header the decoder rejects plays silence. It used to play whatever was left in memory, which could differ from run to run (and between Run-Ahead's runs of the same frame).
 
+- Audio: the voice processor's control math is integer too: the pitch steps, the filter cutoff curve, the envelopes' decay and release curves, and the LFOs, from exact tables instead of the C library's exp2, exp and floor in double precision. The results are the same as before: checked over every input of the cutoff curve and every envelope count and rate, every steady pitch and 400 million pitch ramps, 1.1 billion values with no difference. Nothing in the voice processor or in its hand-off to the DSPs uses floating point any more.
+
 ## Test build 4 - 2026-10-25
 
 - The core info file names the core "Microsoft - Xbox / Sega Chihiro (xemu)" (NNshi).

@@ -14,6 +14,7 @@
 #include "hw/xbox/mcpx/apu/vp/adpcm.h"
 #include "hw/xbox/mcpx/apu/vp/svf.h"
 #include "hw/xbox/mcpx/apu/vp/hrtf.h"
+#include "hw/xbox/mcpx/apu/vp/vpmath.h"
 typedef uint64_t hwaddr;
 typedef struct MCPXAPUState MCPXAPUState;
 /* TYPES */
@@ -361,15 +362,16 @@ static void pitch_cache(void)
 {
     MCPXAPUState*d=setup(128,1,false,0);
     MCPXAPUVoiceFilter*f=&d->vp.filters[64];
-    static const double targets[]={0,-4096,1700.125,-32768,32767,0};
-    double previous=0;
+    /* pitches in 1/512 of the register's unit: 0, -4096, 1700.125, ... */
+    static const int64_t targets[]={0,-4096*512,870464,-32768*512,32767*512,0};
+    int64_t previous=0;
     for(unsigned t=0;t<ARRAY_SIZE(targets);t++){
-        double target=targets[t];
+        int64_t target=targets[t];
         for(unsigned repeat=0;repeat<8;repeat++){
-            double from=t==0||repeat?target:previous;
+            int64_t from=t==0||repeat?target:previous;
             VoicePitchRamp ramp=voice_pitch_ramp(f,target);
             for(unsigned n=0;n<32;n++)
-                assert(voice_pitch_step(&ramp,n)==(uint32_t)(exp2((from+(target-from)*n/32)/4096)*65536));
+                assert(voice_pitch_step(&ramp,n)==(uint32_t)(exp2((from*32+(target-from)*(int64_t)n)/16384.0/4096)*65536));
         }
         previous=target;
     }
@@ -379,12 +381,12 @@ static void pitch_cache(void)
     put(d,NV_PAVS_VOICE_CFG_FMT,NV_PAVS_VOICE_CFG_FMT_MULTIPASS,1);
     put(d,NV_PAVS_VOICE_TAR_PITCH_LINK,NV_PAVS_VOICE_TAR_PITCH_LINK_PITCH,4096);
     int64_t mix[32][32]={0};voice_process(d,mix,d->vp.sample_buf,64,0);
-    VoicePitchRamp ramp=voice_pitch_ramp(f,4096);
-    assert(ramp.from==4096&&ramp.fixed_step==131072);
+    VoicePitchRamp ramp=voice_pitch_ramp(f,4096*512);
+    assert(ramp.from==4096*512&&ramp.fixed_step==131072);
     allow_multipass=false;
     voice_reset_filters(d,64);
-    ramp=voice_pitch_ramp(f,-4096);
-    assert(ramp.from==-4096&&ramp.fixed_step==32768);
+    ramp=voice_pitch_ramp(f,-4096*512);
+    assert(ramp.from==-4096*512&&ramp.fixed_step==32768);
     dispose(d);
     puts("PASS: steady/changing fractional and extreme pitch steps, multipass-to-source transition and reset cache invalidation");
 }
@@ -408,7 +410,6 @@ static void rejected_adpcm(void)
 }
 int main(int argc,char**argv)
 {
-    lagrange_init();
     if(argc>1&&strcmp(argv[1],"tail")==0){tails();return 0;}
     inclusive_boundary();tails();loops();streams();control_paths();adpcm_pages();rejected_adpcm();pitch_cache();return 0;
 }

@@ -27,6 +27,7 @@
 #include "hw/xbox/mcpx/apu/apu_int.h"
 #include <rthreads/rthreads.h>
 #include "adpcm.h"
+#include "vpmath.h"
 
 static const struct {
     hwaddr top, current, next;
@@ -79,13 +80,11 @@ static void voice_reset_filters(MCPXAPUState *d, uint16_t v)
 }
 
 /* Measured coefficient grid: 1/1024 octave, rounded to 1/65536.
- * D97Eh gives 3043h and unity is limited to FFFFh/65536. */
-static int32_t filter_coefficient(double x)
+ * D97Eh gives 3043h and unity is limited to FFFFh/65536. x64 is the cutoff
+ * register's value with its envelope and LFO bends, in 1/64. */
+static int32_t filter_coefficient(int32_t x64)
 {
-    int k = floor(x / 4.0);
-    int octave = floor(k / 1024.0);
-    double c = ldexp(exp2((k - octave * 1024) / 1024.0) * 65536.0, octave);
-    return (int32_t)fmin(round(c), 65535.0);
+    return vp_cutoff_coefficient(x64 >> 8);
 }
 
 /* Measured gain nodes: round(4095 * 10^(-k/20)) through 48 dB,
@@ -728,14 +727,17 @@ static hwaddr get_data_ptr(MCPXAPUState *d, hwaddr sge_base,
     return prd_address + addr % TARGET_PAGE_SIZE;
 }
 
-static float envelope_level(MCPXAPUState *d, uint16_t v, uint32_t lvl_reg,
-                            uint32_t lvl_mask, double units)
+/* Envelope levels are in 2048ths: the level byte the register shows is
+ * the level in 256ths */
+static uint32_t envelope_level(MCPXAPUState *d, uint16_t v, uint32_t lvl_reg,
+                               uint32_t lvl_mask, uint32_t units)
 {
-    voice_set_mask(d, v, lvl_reg, lvl_mask, MIN(255, (int)units / 8));
-    return units / 2048.0;
+    voice_set_mask(d, v, lvl_reg, lvl_mask, MIN(255, units / 8));
+    return units;
 }
 
-/* Steps an envelope by one frame and returns its level (measured):
+/* Steps an envelope by one frame and returns its level in 2048ths
+ * (measured):
  * - Each phase steps before its frame plays; delay and hold last 16T + 1
  *   frames. Attack rises to 2048ths in R * 16 frames.
  * - Decay falls by e^(-1/2R) a frame from full to the sustain level, s/255;
@@ -744,7 +746,7 @@ static float envelope_level(MCPXAPUState *d, uint16_t v, uint32_t lvl_reg,
  *   e^(-1/2R) a frame, and from 11R frames runs in a straight line to
  *   nothing at 15R, when the envelope ends.
  * - The F envelope reads 0 while off. */
-static float voice_step_envelope(MCPXAPUState *d, uint16_t v, uint32_t reg_0,
+static uint32_t voice_step_envelope(MCPXAPUState *d, uint16_t v, uint32_t reg_0,
                            uint32_t reg_a, uint32_t rr_reg, uint32_t rr_mask,
                            uint32_t lvl_reg, uint32_t lvl_mask,
                            uint32_t count_mask, uint32_t cur_mask)
@@ -769,7 +771,7 @@ static float voice_step_envelope(MCPXAPUState *d, uint16_t v, uint32_t reg_0,
         uint32_t attack_rate = voice_get_mask(
             d, v, reg_0, NV_PAVS_VOICE_CFG_ENV0_EA_ATTACKRATE);
         count = MIN(count + 1, 0xFFFF);
-        double units = 2048;
+        uint32_t units = 2048;
         if (attack_rate != 0) {
             units = MIN(2048u, 2048u * count / (attack_rate * 16));
         }
@@ -795,10 +797,10 @@ static float voice_step_envelope(MCPXAPUState *d, uint16_t v, uint32_t reg_0,
         uint32_t sustain_level = voice_get_mask(
             d, v, reg_a, NV_PAVS_VOICE_CFG_ENVA_EA_SUSTAINLEVEL);
         uint32_t sustain = sustain_level * 2048 / 255;
-        double units = 2048;
+        uint32_t units = 2048;
         if (decay_rate != 0) {
             count = MIN(count + 1, 0xFFFF);
-            units = floor(2048.0 * exp(-(double)count / (2 * decay_rate)));
+            units = vp_exp_decay(2048, count, 2 * decay_rate);
         }
         if (decay_rate == 0 || units <= sustain) {
             units = decay_rate == 0 ? 2048 : sustain;
@@ -814,7 +816,7 @@ static float voice_step_envelope(MCPXAPUState *d, uint16_t v, uint32_t reg_0,
         uint32_t sustain = sustain_level * 2048 / 255;
         voice_set_mask(d, v, NV_PAVS_VOICE_CUR_ECNT, count_mask, 0);
         voice_set_mask(d, v, lvl_reg, lvl_mask, sustain_level);
-        return sustain / 2048.0f;
+        return sustain;
     }
     case NV_PAVS_VOICE_PAR_STATE_EFCUR_RELEASE: {
         uint32_t release_rate = voice_get_mask(d, v, rr_reg, rr_mask);
@@ -823,33 +825,38 @@ static float voice_step_envelope(MCPXAPUState *d, uint16_t v, uint32_t reg_0,
         if (release_rate == 0 || t >= release_rate * 15) {
             voice_set_mask(d, v, NV_PAVS_VOICE_PAR_STATE, cur_mask, cur + 1);
             voice_set_mask(d, v, NV_PAVS_VOICE_CUR_ECNT, count_mask, 0);
-            return 0.0f;
+            return 0;
         }
         voice_set_mask(d, v, NV_PAVS_VOICE_CUR_ECNT, count_mask,
                        count ? count - 1 : 0);
-        double start = voice_get_mask(d, v, lvl_reg, lvl_mask) * 8.0;
-        double fall = floor(start * exp(-(double)t / (2 * release_rate)));
-        double tail = floor(start * 2.0 * (release_rate * 15 - t) /
-                                (2048.0 * release_rate) +
-                            0.5);
-        return (t < release_rate * 11 ? MAX(fall, tail) : tail) / 2048.0;
+        uint32_t start = voice_get_mask(d, v, lvl_reg, lvl_mask) * 8;
+        /* the line: start * 2 * (15R - t) / 2048R, rounded half up */
+        uint32_t tail = (start * 2 * (release_rate * 15 - t) +
+                         1024 * release_rate) / (2048 * release_rate);
+        if (t < release_rate * 11) {
+            return MAX(vp_exp_decay(start, t, 2 * release_rate), tail);
+        }
+        return tail;
     }
     case NV_PAVS_VOICE_PAR_STATE_EFCUR_FORCE_RELEASE:
         if (amplitude) {
             voice_off(d, v);
         }
-        return 0.0f;
+        return 0;
     default:
         fprintf(stderr, "Unknown envelope state 0x%x\n", cur);
         assert(!"Unknown envelope state");
-        return 0.0f;
+        return 0;
     }
 }
 
-/* Two frame-rate bipolar triangles, rising first. Delays are latched on
- * first processing after voice restart; each phase wraps at 16 bits. */
-static void voice_step_lfos(MCPXAPUState *d, uint16_t v, float *attenuation,
-                            float *pitch, float *cutoff)
+/* Two frame-rate bipolar triangles, rising first, in 1/16384. Delays are
+ * latched on first processing after voice restart; each phase wraps at 16
+ * bits. Their swings, exact: attenuation in the volume's 1/64 dB steps
+ * (floored), pitch in 1/512 of the pitch register's 1/4096 octave, cutoff
+ * in 1/64 of the cutoff register's unit. */
+static void voice_step_lfos(MCPXAPUState *d, uint16_t v, int32_t *attenuation,
+                            int32_t *pitch9, int32_t *cutoff64)
 {
     MCPXAPUVoiceFilter *filter = &d->vp.filters[v];
     if (!filter->lfo_armed) {
@@ -869,7 +876,7 @@ static void voice_step_lfos(MCPXAPUState *d, uint16_t v, float *attenuation,
     /* Fetch the two packed words once, rather than six field reads. */
     uint32_t rates = voice_get_mask(d, v, NV_PAVS_VOICE_TAR_LFO_ENV, 0xFFFFFFFF);
     uint32_t depths = voice_get_mask(d, v, NV_PAVS_VOICE_TAR_LFO_MOD, 0xFFFFFFFF);
-    float value[2] = {0.0f, 0.0f};
+    int32_t value[2] = {0, 0};
     for (int k = 0; k < 2; k++) {
         if (filter->lfo_wait[k]) {
             filter->lfo_wait[k]--;
@@ -879,15 +886,15 @@ static void voice_step_lfos(MCPXAPUState *d, uint16_t v, float *attenuation,
         int phase = filter->lfo_phase[k];
         int triangle = phase < 0x4000 ? phase :
                        phase < 0xC000 ? 0x8000 - phase : phase - 0x10000;
-        value[k] = triangle / 16384.0f;
+        value[k] = triangle;
     }
     int8_t a_amplitude = depths;
     int8_t a_pitch = depths >> 8;
     int8_t a_cutoff = depths >> 16;
     int8_t f_pitch = depths >> 24;
-    *attenuation = a_amplitude * 8.0f * value[0];
-    *pitch = (a_pitch * value[0] + f_pitch * value[1]) * 32.0f;
-    *cutoff = a_cutoff * 256.0f * value[0];
+    *attenuation = (a_amplitude * value[0]) >> 11;
+    *pitch9 = a_pitch * value[0] + f_pitch * value[1];
+    *cutoff64 = a_cutoff * value[0];
 }
 
 static int voice_get_samples(MCPXAPUState *d, uint32_t v, int32_t samples[][2],
@@ -1281,46 +1288,34 @@ static void voice_resample_reset(MCPXAPUVoiceFilter *filter)
     filter->resample_phase = 5u << 16;
 }
 
-/* Measured eight-point Lagrange kernel, weights rounded to 1/65536 (the
- * table holds them in 1/65536). Half-sample pairs are 1225,-245,49,-5 /
- * 2048. Interpolating between 1/256-sample rows is an assumption inherited
- * from the source PR. */
-static int32_t lagrange_rows[257][8];
+/* The measured eight-point Lagrange kernel is lagrange_rows (vpmath.h):
+ * weights in 1/65536. Half-sample pairs are 1225,-245,49,-5 / 2048.
+ * Interpolating between 1/256-sample rows is an assumption inherited from
+ * the source PR. */
 
-static void lagrange_init(void)
-{
-    for (int row = 0; row <= 256; row++) {
-        for (int k = -3; k <= 4; k++) {
-            double weight = 1.0;
-            for (int j = -3; j <= 4; j++) {
-                if (j != k) {
-                    weight *= (row / 256.0 - j) / (k - j);
-                }
-            }
-            lagrange_rows[row][k + 3] = (int32_t)round(weight * 65536.0);
-        }
-    }
-}
-
+/* A frame's pitch, in 1/512 of the register's 1/4096 octave (exact: the
+ * envelope and LFO swings have no finer steps), and its ramp from the last
+ * frame's */
 typedef struct VoicePitchRamp {
-    double from;
-    double slope;
+    int64_t from;
+    int64_t delta;
     uint32_t fixed_step;
 } VoicePitchRamp;
 
 /* Keep exact log-pitch endpoints; steady frames reuse their source step.
  * Ramping computes its step on demand, not into a 32-element scratch array. */
-static VoicePitchRamp voice_pitch_ramp(MCPXAPUVoiceFilter *filter, double target)
+static VoicePitchRamp voice_pitch_ramp(MCPXAPUVoiceFilter *filter, int64_t target)
 {
-    double from = filter->pitched ? filter->pitch : target;
+    int64_t from = filter->pitched ? filter->pitch : target;
     VoicePitchRamp ramp = {
         .from = from,
-        .slope = (target - from) / NUM_SAMPLES_PER_FRAME,
+        .delta = target - from,
         .fixed_step = 0,
     };
     if (from == target) {
         ramp.fixed_step = filter->pitched && filter->pitch_step ?
-                          filter->pitch_step : exp2(target / 4096.0) * 65536.0;
+                          filter->pitch_step :
+                          vp_pitch_step(target * NUM_SAMPLES_PER_FRAME);
     }
     /* Zero also represents an uncached step. A legitimately zero step
      * can be recomputed without changing its quantized result. */
@@ -1330,12 +1325,14 @@ static VoicePitchRamp voice_pitch_ramp(MCPXAPUVoiceFilter *filter, double target
     return ramp;
 }
 
+/* The ramp's step at a sample: sample/32 of the way, exact in 1/2^14 */
 static uint32_t voice_pitch_step(const VoicePitchRamp *ramp, unsigned int sample)
 {
-    if (ramp->slope == 0.0) {
+    if (ramp->delta == 0) {
         return ramp->fixed_step;
     }
-    return exp2((ramp->from + ramp->slope * sample) / 4096.0) * 65536.0;
+    return vp_pitch_step(ramp->from * NUM_SAMPLES_PER_FRAME +
+                         ramp->delta * sample);
 }
 
 static int voice_resample(MCPXAPUState *d, uint16_t v, int32_t samples[][2],
@@ -1479,28 +1476,27 @@ static void voice_process(MCPXAPUState *d,
         return;
     }
 
-    float ef_value = voice_step_envelope(
+    uint32_t ef_units = voice_step_envelope(
         d, v, NV_PAVS_VOICE_CFG_ENV1, NV_PAVS_VOICE_CFG_ENVF,
         NV_PAVS_VOICE_CFG_MISC, NV_PAVS_VOICE_CFG_MISC_EF_RELEASERATE,
         NV_PAVS_VOICE_PAR_NEXT, NV_PAVS_VOICE_PAR_NEXT_EFLVL,
         NV_PAVS_VOICE_CUR_ECNT_EFCOUNT, NV_PAVS_VOICE_PAR_STATE_EFCUR);
-    assert(ef_value >= 0.0f);
-    assert(ef_value <= 1.0f);
+    assert(ef_units <= 2048);
     int16_t p = voice_get_mask(d, v, NV_PAVS_VOICE_TAR_PITCH_LINK,
                                NV_PAVS_VOICE_TAR_PITCH_LINK_PITCH);
     int8_t ps = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_ENV0,
                                NV_PAVS_VOICE_CFG_ENV0_EF_PITCHSCALE);
-    float lfo_attenuation, lfo_pitch, lfo_cutoff;
-    voice_step_lfos(d, v, &lfo_attenuation, &lfo_pitch, &lfo_cutoff);
-    double pitch = p + ps * 32.0 * ef_value + lfo_pitch;
+    int32_t lfo_att, lfo_pitch9, lfo_cutoff64;
+    voice_step_lfos(d, v, &lfo_att, &lfo_pitch9, &lfo_cutoff64);
+    /* p + ps * 32 * EF + LFOs, in 1/512 (exact) */
+    int64_t pitch = (int64_t)p * 512 + ps * (int32_t)ef_units * 8 + lfo_pitch9;
 
-    float ea_value = voice_step_envelope(
+    uint32_t level = voice_step_envelope(
         d, v, NV_PAVS_VOICE_CFG_ENV0, NV_PAVS_VOICE_CFG_ENVA,
         NV_PAVS_VOICE_TAR_LFO_ENV, NV_PAVS_VOICE_TAR_LFO_ENV_EA_RELEASERATE,
         NV_PAVS_VOICE_PAR_OFFSET, NV_PAVS_VOICE_PAR_OFFSET_EALVL,
         NV_PAVS_VOICE_CUR_ECNT_EACOUNT, NV_PAVS_VOICE_PAR_STATE_EACUR);
-    assert(ea_value >= 0.0f);
-    assert(ea_value <= 1.0f);
+    assert(level <= 2048);
 
     int32_t samples[NUM_SAMPLES_PER_FRAME][2] = { 0 };
 
@@ -1622,11 +1618,13 @@ static void voice_process(MCPXAPUState *d,
         lpf = channels == 2 ? (fmode == 1) : (fmode & 1);
         peq = channels == 2 ? (fmode == 2) : (fmode >= 2);
     }
-    double fc_bend = 0.0;
+    /* the cutoff's envelope and LFO bend, fc_scale * 256 * EF + LFO, in
+     * 1/64 of the cutoff register's unit (exact) */
+    int32_t fc_bend64 = 0;
     if (lpf || peq) {
         int8_t fc_scale = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_ENV1,
                                          NV_PAVS_VOICE_CFG_ENV1_EF_FCSCALE);
-        fc_bend = fc_scale * 256.0 * ef_value + lfo_cutoff;
+        fc_bend64 = fc_scale * (int32_t)ef_units * 8 + lfo_cutoff64;
     }
     if (lpf) {
         /* Keep both 2D filter histories warm for stereo format changes;
@@ -1639,7 +1637,7 @@ static void voice_process(MCPXAPUState *d,
             if (ch < channels) {
                 uint32_t c = voice_get_mask(d, v,
                     NV_PAVS_VOICE_TAR_FCA + ch * 4, 0xFFFFFFFF);
-                fc = filter_coefficient((int16_t)c + fc_bend);
+                fc = filter_coefficient((int16_t)c * 64 + fc_bend64);
                 q = c >> 16; /* 1/32768 */
             }
             sv_filter *filter = &d->vp.filters[v].svf[ch];
@@ -1671,7 +1669,7 @@ static void voice_process(MCPXAPUState *d,
                     channels == 2 ? NV_PAVS_VOICE_TAR_FCA + ch * 4 :
                                     NV_PAVS_VOICE_TAR_FCB;
                 uint32_t c = voice_get_mask(d, v, reg, 0xFFFFFFFF);
-                fc = filter_coefficient((int16_t)c + fc_bend);
+                fc = filter_coefficient((int16_t)c * 64 + fc_bend64);
                 gain = (int16_t)(c >> 16);
             }
             sv_filter *filter = &d->vp.filters[v].peq[ch];
@@ -1729,8 +1727,6 @@ static void voice_process(MCPXAPUState *d,
     /* Gains are integer 1/16384 units. Keep only 16 bytes of previous
      * gain metadata for the VP monitor, not a second sample frame. */
     MCPXAPUVoiceFilter *filter = &d->vp.filters[v];
-    uint32_t level = ea_value * 2048.0f;
-    int lfo_att = floorf(lfo_attenuation);
     uint16_t previous_gain[8];
     bool monitor = d->monitor.point == MCPX_APU_DEBUG_MON_VP;
     for (int b = 0; b < 8; b++) {
@@ -2147,7 +2143,6 @@ void mcpx_apu_vp_frame(MCPXAPUState *d, int64_t mixbins[NUM_MIXBINS][NUM_SAMPLES
 
 void mcpx_apu_vp_init(MCPXAPUState *d)
 {
-    lagrange_init();
     voice_work_init(d);
 }
 

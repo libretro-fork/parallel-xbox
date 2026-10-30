@@ -63,7 +63,7 @@ typedef struct MCPXAPUVoiceFilter {
     uint16_t route_gain[8];
     bool gains;
     uint32_t pitch_step;
-    double pitch;
+    int64_t pitch;          /* the last frame's, 1/512 of 1/4096 octave */
     bool pitched;
     bool dls2_set;
     bool peq_set;

@@ -306,6 +306,34 @@ static void vp_svf_from_float_bits(sv_filter *f)
     vp_fixed_from_float_bits(&f->h, 5, 23);
 }
 
+/* A double's bit pattern (a version 1 or 2 state's voice pitch) times
+ * 512, rounded half away from zero; NaN and infinities give 0. Integer
+ * arithmetic only. */
+static int64_t vp_pitch_from_double_bits(uint64_t bits)
+{
+    int exp = (bits >> 52) & 0x7ff;
+    uint64_t mant = bits & ((UINT64_C(1) << 52) - 1);
+    uint64_t mag;
+    int shift;
+
+    if (exp == 0x7ff || exp == 0) {
+        return 0;
+    }
+    mant |= UINT64_C(1) << 52;
+    shift = exp - 1075 + 9; /* value * 2^9 = mant * 2^(exp - 1075 + 9) */
+    if (shift >= 10) {
+        return 0; /* beyond any pitch the registers make */
+    }
+    if (shift >= 0) {
+        mag = mant << shift;
+    } else if (shift < -60) {
+        mag = 0;
+    } else {
+        mag = (mant + (UINT64_C(1) << (-shift - 1))) >> -shift;
+    }
+    return (bits >> 63) ? -(int64_t)mag : (int64_t)mag;
+}
+
 static void vp_state_from_float_bits(MCPXAPUState *d)
 {
     for (int v = 0; v < MCPX_HW_MAX_VOICES; v++) {
@@ -341,6 +369,13 @@ static int mcpx_apu_output_post_load(void *opaque, int version_id)
     if (version_id < 2) {
         vp_state_from_float_bits(d);
     }
+    if (version_id < 3) {
+        /* the voices' last pitch was a double then */
+        for (int v = 0; v < MCPX_HW_MAX_VOICES; v++) {
+            int64_t *p = &d->vp.filters[v].pitch;
+            *p = vp_pitch_from_double_bits((uint64_t)*p);
+        }
+    }
     d->saved_output.loaded = true;
     return 0;
 }
@@ -348,8 +383,8 @@ static int mcpx_apu_output_post_load(void *opaque, int version_id)
 /* The voices' filter and resampler state (vp.h), host integers as they
  * are: every host the core runs on is little-endian. An SVF's output
  * pointer is set by setup_svf before each run and is not saved. Version 1
- * of the output subsection held floats in the same words: post_load turns
- * them into the integers. */
+ * of the output subsection held floats in the same words, versions 1 and 2
+ * the pitch as a double: post_load turns them into the integers. */
 QEMU_BUILD_BUG_ON(offsetof(sv_filter, n) - offsetof(sv_filter, f) !=
                   6 * sizeof(int32_t));
 
@@ -403,7 +438,7 @@ static const VMStateDescription vmstate_vp_voice_filter = {
         VMSTATE_UINT16_ARRAY(route_gain, MCPXAPUVoiceFilter, 8),
         VMSTATE_BOOL(gains, MCPXAPUVoiceFilter),
         VMSTATE_UINT32(pitch_step, MCPXAPUVoiceFilter),
-        VMSTATE_BUFFER_UNSAFE(pitch, MCPXAPUVoiceFilter, 1, sizeof(double)),
+        VMSTATE_BUFFER_UNSAFE(pitch, MCPXAPUVoiceFilter, 1, sizeof(int64_t)),
         VMSTATE_BOOL(pitched, MCPXAPUVoiceFilter),
         VMSTATE_BOOL(dls2_set, MCPXAPUVoiceFilter),
         VMSTATE_BOOL(peq_set, MCPXAPUVoiceFilter),
@@ -423,7 +458,7 @@ static bool mcpx_apu_output_needed(void *opaque)
 
 static const VMStateDescription vmstate_mcpx_apu_output = {
     .name = "mcpx-apu/output",
-    .version_id = 2,
+    .version_id = 3,
     .minimum_version_id = 1,
     .needed = mcpx_apu_output_needed,
     .pre_save = mcpx_apu_output_pre_save,
