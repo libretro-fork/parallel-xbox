@@ -108,8 +108,16 @@ there.
 What QEMU's build generates is pregenerated in `libretro/gen` (its README).
 GLib is not linked: QEMU and libslirp are built on the core's own
 `libretro/glib`, the part of GLib's API they use, on libretro-common.
-Android is built with meson for now: the CI workflow
-`.github/workflows/libretro.yml` shows how, and its dependencies.
+
+**Android** (arm64-v8a, x86_64), with the Android NDK and nothing else
+(every library the core links is built from `deps/`):
+
+```
+make -j$(nproc) platform=android NDK=/path/to/android-ndk ANDROID_ABI=arm64-v8a
+```
+
+`ANDROID_ABI=x86_64` for the x86_64 core. It is
+`parallel_xbox_libretro_android.so`, for Android 10 or newer.
 
 ## License
 

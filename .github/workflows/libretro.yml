@@ -2,9 +2,9 @@ name: Build libretro core
 
 # The core with the static Makefile: parallel_xbox_libretro.so for Linux x86_64 and
 # aarch64, parallel_xbox_libretro.dll for Windows (cross-compiled with MinGW-w64,
-# tested under Wine), and parallel_xbox_libretro.dylib for macOS (macos-make).
-# Android with meson (-Dlibretro=true) until the Makefile builds it; macOS
-# also with meson until the Makefile's build has been seen to work.
+# tested under Wine), parallel_xbox_libretro_android.so for Android (the NDK's
+# clang) and parallel_xbox_libretro.dylib for macOS (macos-make).
+# macOS also with meson until the Makefile's build has been seen to work.
 
 on:
   workflow_dispatch:
@@ -134,10 +134,8 @@ jobs:
           name: parallel_xbox_libretro-linux-${{ matrix.arch }}-symbols
           path: symbols/
 
-  # After X-OG Mobile's recipe (Ashnar2602/X-OG_Mobile): glib and pixman
-  # from vcpkg's Android triplets, the NDK's clang, and QEMU's
-  # configure with what Android has no use for left out. The renderer is
-  # Vulkan, through the frontend's context.
+  # The Makefile with the NDK's clang (platform=android): Vulkan, through
+  # the frontend's context
   android:
     if: github.event_name != 'workflow_dispatch' || inputs.platforms == 'all' || contains(inputs.platforms, 'android')
     name: Android ${{ matrix.abi }}
@@ -145,15 +143,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - abi: arm64-v8a
-            triplet: arm64-android
-            cpu: aarch64
-            clang: aarch64-linux-android29
-          - abi: x86_64
-            triplet: x64-android
-            cpu: x86_64
-            clang: x86_64-linux-android29
+        abi: [arm64-v8a, x86_64]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -161,62 +151,18 @@ jobs:
           filter: blob:none
           submodules: false
 
-      - name: Install dependencies
-        run: |
-          sudo apt-get -qy update
-          sudo apt-get -qy install ninja-build python3-pip python3-tomli python3-yaml python3-venv \
-            pkg-config
-          echo "NDK=$ANDROID_NDK_LATEST_HOME" >> $GITHUB_ENV
-          echo "ANDROID_NDK_HOME=$ANDROID_NDK_LATEST_HOME" >> $GITHUB_ENV
-
-      - name: Cache vcpkg packages
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/vcpkg/archives
-          key: vcpkg-android-${{ matrix.triplet }}-v1
-
-      - name: vcpkg
-        run: |
-          "$VCPKG_INSTALLATION_ROOT/vcpkg" install --triplet=${{ matrix.triplet }} \
-            glib pixman libepoxy
-          echo "PREFIX=$VCPKG_INSTALLATION_ROOT/installed/${{ matrix.triplet }}" >> $GITHUB_ENV
-
-      - name: Configure
-        run: |
-          T=$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin
-          export PKG_CONFIG_LIBDIR=$PREFIX/lib/pkgconfig PKG_CONFIG_PATH=$PREFIX/lib/pkgconfig
-          export AR=$T/llvm-ar RANLIB=$T/llvm-ranlib NM=$T/llvm-nm STRIP=$T/llvm-strip
-          ./configure \
-            --cross-prefix= \
-            --cc=$T/${{ matrix.clang }}-clang --cxx=$T/${{ matrix.clang }}-clang++ \
-            --host-cc=cc --cpu=${{ matrix.cpu }} \
-            --target-list=i386-softmmu \
-            --disable-werror --disable-rust --disable-docs --disable-tools --disable-guest-agent \
-            --disable-gtk --disable-sdl --disable-sdl-image --disable-vnc --disable-spice --disable-curses \
-            --disable-virglrenderer --disable-libusb --disable-usb-redir --disable-curl \
-            --disable-gnutls --disable-nettle --disable-gcrypt --disable-bzip2 --disable-zstd --disable-lzo \
-            --disable-libnfs --disable-libiscsi --disable-linux-aio --disable-linux-io-uring \
-            --disable-slirp --disable-pa --disable-pipewire --disable-alsa --disable-jack --disable-oss \
-            --disable-sndio --audio-drv-list= \
-            --extra-cflags="-DXBOX=1 -Wno-error" \
-            --extra-ldflags="-L$PREFIX/lib" \
-            -Dlibretro=true -Db_staticpic=true
-
-      # Every error of the run, which a tail of the output cuts off
       - name: Build
-        run: |
-          ninja -k 0 -C build parallel_xbox_libretro.so > ninja.log 2>&1 && exit 0
-          grep -E -B2 -A8 "error:|FAILED:" ninja.log | head -600
-          exit 1
+        run: make -j$(nproc) platform=android NDK=$ANDROID_NDK_LATEST_HOME ANDROID_ABI=${{ matrix.abi }}
 
       - name: Collect
         run: |
           mkdir -p dist
-          cp build/parallel_xbox_libretro.so dist/parallel_xbox_libretro_android.so
+          cp parallel_xbox_libretro_android.so dist/
           cp ui/parallel_xbox_libretro.info dist/
-          $NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip --strip-unneeded dist/parallel_xbox_libretro_android.so
+          T=$ANDROID_NDK_LATEST_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin
+          $T/llvm-strip --strip-unneeded dist/parallel_xbox_libretro_android.so
           ls -la dist
-          $NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf -d dist/parallel_xbox_libretro_android.so | grep NEEDED
+          $T/llvm-readelf -d dist/parallel_xbox_libretro_android.so | grep NEEDED
 
       - uses: actions/upload-artifact@v4
         with:

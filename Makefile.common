@@ -1031,6 +1031,13 @@ SOURCES_VSH := \
 SOURCES_VMA_CXX := \
 	$(CORE_DIR)/thirdparty/vma.cc \
 
+# Android: Vulkan only, through the frontend's context
+ifeq ($(platform),android)
+SOURCES_TARGET := $(filter-out $(CORE_DIR)/hw/xbox/nv2a/pgraph/gl/%,$(SOURCES_TARGET))
+SOURCES_GLOFF  := $(filter-out %/gloffscreen_libretro.c,$(SOURCES_GLOFF))
+SOURCES_TARGET += $(CORE_DIR)/ui/libretro-gl-stubs.c
+endif
+
 # By the host OS
 ifeq ($(HOST_OS),win32)
 SOURCES_UTIL   += $(SOURCES_UTIL_WIN32)
