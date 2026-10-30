@@ -77,6 +77,9 @@
  *   frames 255/285: change to 15/16-bit scanout, red tile and blue border.
  *   frames 315/335: return to the warmed 15/16-bit modes; at 355 return
  *              to the 32-bit static picture after mode-cache eviction.
+ *   frame 385: 32 offset strips; at 405 a 33rd exceeds the direct-draw cap.
+ *   frame 425: CPU purple replaces them; at 445 one new red tile.
+ *   frames 465/475: keyed/unkeyed white PVIDEO crosses tile and CPU border.
  * The larger command ring keeps this extended scenario before wraparound.
  *
  * The frame count is at GPU_FRAMES in RAM, GPU_STATUS says how far the
@@ -153,6 +156,8 @@ typedef unsigned int u32;
 #define ZETA_B       (SURF_B + 0x200000u)
 #define SURF_D       0x01A00000u   /* shown from frame 105 */
 #define SURF_F       0x02000000u   /* CPU border, two offset GPU tiles */
+#define SURF_H       0x02800000u   /* direct-layer limit and fallback */
+#define VIDEO_DATA   0x02C00000u
 #define SURF_G       0x02400000u   /* 15-bit mode change, offset tile */
 #define ZS_CLEAR     0x12345678u   /* depth 0x123456, stencil 0x78 */
 
@@ -713,6 +718,63 @@ void gpu_main(void)
                   mode15 ? 0x7C007C00u : 0xF800F800u);
             method(NV097_SET_SURFACE_CLIP_H, (u32)WIDTH << 16);
             method(NV097_SET_SURFACE_CLIP_V, (u32)HEIGHT << 16);
+        }
+        if (frame == 385) {
+            for (u32 i = 0; i < PITCH * HEIGHT; i += 4) {
+                ram32(SURF_H + i, 0xFF0000FFu);
+            }
+            wr(PCRTC_START, SURF_H);
+            method(NV097_SET_SURFACE_CLIP_H, 608u << 16);
+            method(NV097_SET_SURFACE_CLIP_V, 8u << 16);
+            for (u32 i = 0; i < 32; i++) {
+                clear(SURF_H + (64 + i * 8) * PITCH + 16 * 4,
+                      i & 1 ? 0xFF00FF00u : 0xFFFF0000u);
+            }
+            method(NV097_SET_SURFACE_CLIP_H, (u32)WIDTH << 16);
+            method(NV097_SET_SURFACE_CLIP_V, (u32)HEIGHT << 16);
+        }
+        if (frame == 405) {
+            method(NV097_SET_SURFACE_CLIP_H, 608u << 16);
+            method(NV097_SET_SURFACE_CLIP_V, 8u << 16);
+            clear(SURF_H + 320 * PITCH + 16 * 4, 0xFFFF0000u);
+            method(NV097_SET_SURFACE_CLIP_H, (u32)WIDTH << 16);
+            method(NV097_SET_SURFACE_CLIP_V, (u32)HEIGHT << 16);
+        }
+        if (frame == 425) {
+            for (u32 i = 0; i < PITCH * HEIGHT; i += 4) {
+                ram32(SURF_H + i, 0xFF800080u);
+            }
+        }
+        if (frame == 445) {
+            method(NV097_SET_SURFACE_CLIP_H, 608u << 16);
+            method(NV097_SET_SURFACE_CLIP_V, 64u << 16);
+            clear(SURF_H + 100 * PITCH + 16 * 4, 0xFFFF0000u);
+            method(NV097_SET_SURFACE_CLIP_H, (u32)WIDTH << 16);
+            method(NV097_SET_SURFACE_CLIP_V, (u32)HEIGHT << 16);
+        }
+        if (frame == 465) {
+            for (u32 i = 0; i < 64 * 64 * 2; i += 4) {
+                ram32(VIDEO_DATA + i, 0x80FF80FFu);
+            }
+            wr(0x8900, VIDEO_DATA); /* PVIDEO BASE */
+            wr(0x8908, 64 * 64 * 2); /* LIMIT */
+            wr(0x8920, 0); /* OFFSET */
+            wr(0x8928, 64u | (64u << 16)); /* SIZE_IN */
+            wr(0x8930, 0); /* POINT_IN */
+            wr(0x8938, 1u << 20); /* DS_DX */
+            wr(0x8940, 1u << 20); /* DT_DY */
+            wr(0x8948, 8u | (320u << 16)); /* POINT_OUT */
+            wr(0x8950, 64u | (64u << 16)); /* SIZE_OUT */
+            wr(0x8958, 128u | (1u << 16) | (1u << 20)); /* keyed YUY2 */
+            wr(0x8B00, 0x00FF0000u); /* red color key */
+            wr(0x8700, 1); /* BUFFER */
+        }
+        if (frame == 475) {
+            wr(0x8958, 128u | (1u << 16)); /* unkeyed overlay */
+        }
+        if (frame == 482) {
+            wr(0x8928, 32u | (64u << 16)); /* resize overlay input */
+            wr(0x8958, 64u | (1u << 16));
         }
         method(NV097_FLIP_INCREMENT_WRITE, 0);
         kick();

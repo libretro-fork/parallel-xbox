@@ -10,7 +10,10 @@ between 32-, 15- and 16-bit display formats, returning to warmed modes,
 returning after mode-cache eviction, and save/load invalidation of a
 composed picture after later mode changes. Exact metadata cache tests also cover
 unchanged content, tile changes, CPU writes, coverage changes, state-load
-invalidation, and selective readback dependencies. Both OpenGL
+invalidation, and selective readback dependencies. The GPU fixture additionally checks the
+32-layer direct-display limit, 33-layer fallback, return to direct display,
+and Vulkan keyed/unkeyed PVIDEO over both a GPU tile and CPU border, including
+an overlay input resize. Both OpenGL
 and Vulkan are checked at native and 2x scales. The harness accepts
 `--pixel FRAME:X:Y` to sample a top-left-based physical coordinate, including
 on repeated frames; `--pixel FRAME` retains its centre-pixel behavior.

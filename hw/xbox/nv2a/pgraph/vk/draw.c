@@ -2871,11 +2871,22 @@ void pgraph_vk_frame_gpu_resolve(PGRAPHState *pg)
 static void trash_drain_retired(PGRAPHVkState *r)
 {
     int kept = 0;
+    bool display_polled = false;
     for (int i = 0; i < r->trash_n; i++) {
         struct XemuVkTrashEntry *e = &r->trash[i];
         if ((int32_t)(e->retire_after - r->settled_submit) > 0) {
             r->trash[kept++] = *e;
             continue;
+        }
+        if (e->display_after > r->display.settled) {
+            if (!display_polled) {
+                pgraph_vk_poll_display_retired(r);
+                display_polled = true;
+            }
+            if (e->display_after > r->display.settled) {
+                r->trash[kept++] = *e;
+                continue;
+            }
         }
         if (e->pipeline) {
             vkDestroyPipeline(r->device, e->pipeline, NULL);
@@ -2910,7 +2921,7 @@ void pgraph_vk_trash_drain(PGRAPHVkState *r)
     }
     r->settled_submit = r->submit_count;
     trash_drain_retired(r);
-    assert(r->trash_n == 0);
+    assert(r->trash_n == 0 || r->display.settled < r->display.submitted);
 }
 
 /* The open recording may still reference what is pushed here, so nothing is
@@ -2926,6 +2937,7 @@ void pgraph_vk_trash_push(PGRAPHVkState *r, const struct XemuVkTrashEntry *e)
     /* the open recording, if any, is the last that may use it */
     r->trash[r->trash_n].retire_after =
         r->submit_count + (r->in_command_buffer ? 1 : 0);
+    r->trash[r->trash_n].display_after = r->display.submitted;
     r->trash_n++;
 }
 

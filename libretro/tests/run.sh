@@ -201,16 +201,16 @@ gpu_check() {
                 "pixel_130_4_20=0x0000ff" "pixel_130_320_100=0xff0000" \
                 "pixel_130_320_350=0x00ff00" "pixel_130_4_100=0x0000ff" \
                 "pixel_145_4_20=0xffff00" "pixel_165_320_120=0x00ffff" \
-                "pixel_180=0x00ff00" "pixel_240_320_120=0x00ffff" "pixel_270_320_100=0xff0000" "pixel_270_4_20=0x0000ff" "pixel_300_320_100=0xff0000" "pixel_300_4_20=0x0000ff" "pixel_325_320_100=0xff0000" "pixel_345_320_100=0xff0000" "pixel_375_320_120=0x00ffff"; do
+                "pixel_180=0x00ff00" "pixel_240_320_120=0x00ffff" "pixel_270_320_100=0xff0000" "pixel_270_4_20=0x0000ff" "pixel_300_320_100=0xff0000" "pixel_300_4_20=0x0000ff" "pixel_325_320_100=0xff0000" "pixel_345_320_100=0xff0000" "pixel_375_320_120=0x00ffff" "pixel_390_320_316=0x00ff00" "pixel_420_320_324=0xff0000" "pixel_436_320_120=0x800080" "pixel_460_320_120=0xff0000" "pixel_460_4_20=0x800080"; do
         grep -E "^$want$" "$1" >/dev/null || {
             echo "FAIL: $2: $want expected, $(grep "^${want%%=*}=" "$1")"; exit 1; }
     done
 }
 echo "== the display, OpenGL"
-timeout 300 $h "$(path "$core")" "$(path "$work/sysg")" $vp --frames 390 --strict \
+timeout 300 $h "$(path "$core")" "$(path "$work/sysg")" $vp --frames 485 --strict \
   --min-speed 0.2 --pixel 10 --pixel 25 --pixel 45 --pixel 85 --pixel 115 --pixel 130:4:20 --pixel 130:320:100 --pixel 130:320:350 \
   --pixel 130:4:100 --pixel 145:4:20 --pixel 165:320:120 --pixel 180 \
-  --pixel 240:320:120 --pixel 270:320:100 --pixel 270:4:20 --pixel 300:320:100 --pixel 300:4:20 --pixel 325:320:100 --pixel 345:320:100 --pixel 375:320:120 --peek 0x300040 --peek 0x300014 --peek 0x300018 \
+  --pixel 240:320:120 --pixel 270:320:100 --pixel 270:4:20 --pixel 300:320:100 --pixel 300:4:20 --pixel 325:320:100 --pixel 345:320:100 --pixel 375:320:120 --pixel 390:320:316 --pixel 420:320:324 --pixel 436:320:120 --pixel 460:320:120 --pixel 460:4:20 --pixel 470:32:120 --pixel 470:10:120 --pixel 480:10:120 --pixel 484:10:120 --peek 0x300040 --peek 0x300014 --peek 0x300018 \
   --peek 0x30001c --peek 0x300024 --peek 0x300028 --peek 0x30002c \
   --peek 0x300030 --peek 0x300034 --peek 0x300038 --peek 0x30003c \
   >"$work/gpu_gl.txt"
@@ -219,17 +219,21 @@ gpu_check "$work/gpu_gl.txt" "OpenGL"
 echo "== the display, Vulkan"
 set +e
 timeout 300 $h "$(path "$core")" "$(path "$work/sysg")" $vp --vulkan \
-  --opt xemu_renderer=vulkan --frames 390 --strict \
+  --opt xemu_renderer=vulkan --frames 485 --strict \
   --pixel 10 --pixel 25 --pixel 45 --pixel 85 --pixel 115 --pixel 130:4:20 --pixel 130:320:100 --pixel 130:320:350 \
   --pixel 130:4:100 --pixel 145:4:20 --pixel 165:320:120 --pixel 180 \
-  --pixel 240:320:120 --pixel 270:320:100 --pixel 270:4:20 --pixel 300:320:100 --pixel 300:4:20 --pixel 325:320:100 --pixel 345:320:100 --pixel 375:320:120 --peek 0x300040 --peek 0x300014 --peek 0x300018 \
+  --pixel 240:320:120 --pixel 270:320:100 --pixel 270:4:20 --pixel 300:320:100 --pixel 300:4:20 --pixel 325:320:100 --pixel 345:320:100 --pixel 375:320:120 --pixel 390:320:316 --pixel 420:320:324 --pixel 436:320:120 --pixel 460:320:120 --pixel 460:4:20 --pixel 470:32:120 --pixel 470:10:120 --pixel 480:10:120 --pixel 484:10:120 --peek 0x300040 --peek 0x300014 --peek 0x300018 \
   --peek 0x30001c --peek 0x300024 --peek 0x300028 --peek 0x30002c \
   --peek 0x300030 --peek 0x300034 --peek 0x300038 --peek 0x30003c \
   >"$work/gpu_vk.txt"
 r=$?
 set -e
 case $r in
-0) grep -E "pixel_|peek_" "$work/gpu_vk.txt"; gpu_check "$work/gpu_vk.txt" "Vulkan" ;;
+0) grep -E "pixel_|peek_" "$work/gpu_vk.txt"; gpu_check "$work/gpu_vk.txt" "Vulkan"
+   for want in "pixel_470_32_120=0xffffff" "pixel_470_10_120=0x800080" \
+               "pixel_480_10_120=0xffffff" "pixel_484_10_120=0xffffff"; do
+     grep -q "^$want$" "$work/gpu_vk.txt" || { echo "FAIL: Vulkan overlay: $want"; exit 1; }
+   done ;;
 3) echo "no Vulkan device: skipped" ;;
 *) echo "FAIL: the Vulkan run exited $r"; exit 1 ;;
 esac
@@ -242,9 +246,9 @@ for r in OpenGL Vulkan; do
     echo "== the display at 2x, $r"
     set +e
     timeout 300 $h "$(path "$core")" "$(path "$work/sysg")" $vp $o \
-      --opt xemu_surface_scale=2 --frames 390 --strict \
+      --opt xemu_surface_scale=2 --frames 485 --strict \
       --pixel 130:8:40 --pixel 130:640:200 --pixel 130:640:700 \
-      --pixel 165:640:240 --pixel 240:640:240 --pixel 270:640:200 --pixel 270:8:40 --pixel 300:640:200 --pixel 300:8:40 --pixel 325:640:200 --pixel 345:640:200 --pixel 375:640:240 --peek 0x300014 \
+      --pixel 165:640:240 --pixel 240:640:240 --pixel 270:640:200 --pixel 270:8:40 --pixel 300:640:200 --pixel 300:8:40 --pixel 325:640:200 --pixel 345:640:200 --pixel 375:640:240 --pixel 390:640:632 --pixel 420:640:648 --pixel 436:640:240 --pixel 460:640:240 --pixel 460:8:40 --pixel 470:64:240 --pixel 470:20:240 --pixel 480:20:240 --pixel 484:20:240 --peek 0x300014 \
       --peek 0x300018 --peek 0x300024 --peek 0x30002c --peek 0x300034 \
       --peek 0x300038 >"$work/gpu_2x.txt"
     a=$?
@@ -254,9 +258,15 @@ for r in OpenGL Vulkan; do
     if [ $a = 0 ]; then
       for want in "pixel_130_8_40=0x0000ff" "pixel_130_640_200=0xff0000" \
                   "pixel_130_640_700=0x00ff00" "pixel_165_640_240=0x00ffff" \
-                  "pixel_240_640_240=0x00ffff" "pixel_270_640_200=0xff0000" "pixel_270_8_40=0x0000ff" "pixel_300_640_200=0xff0000" "pixel_300_8_40=0x0000ff" "pixel_325_640_200=0xff0000" "pixel_345_640_200=0xff0000" "pixel_375_640_240=0x00ffff"; do
+                  "pixel_240_640_240=0x00ffff" "pixel_270_640_200=0xff0000" "pixel_270_8_40=0x0000ff" "pixel_300_640_200=0xff0000" "pixel_300_8_40=0x0000ff" "pixel_325_640_200=0xff0000" "pixel_345_640_200=0xff0000" "pixel_375_640_240=0x00ffff" "pixel_390_640_632=0x00ff00" "pixel_420_640_648=0xff0000" "pixel_436_640_240=0x800080" "pixel_460_640_240=0xff0000" "pixel_460_8_40=0x800080"; do
         grep -q "^$want$" "$work/gpu_2x.txt" || {
           cat "$work/gpu_2x.txt"; echo "FAIL: scaled scanout: $want"; exit 1; }
+      done
+    fi
+    if [ "$r" = Vulkan ]; then
+      for want in "pixel_470_64_240=0xffffff" "pixel_470_20_240=0x800080" \
+                  "pixel_480_20_240=0xffffff" "pixel_484_20_240=0xffffff"; do
+        grep -q "^$want$" "$work/gpu_2x.txt" || { echo "FAIL: Vulkan 2x overlay: $want"; exit 1; }
       done
     fi
     grep -E "peek_" "$work/gpu_2x.txt"

@@ -1241,7 +1241,9 @@ static void create_surface_image(PGRAPHState *pg, SurfaceBinding *surface)
 
     unsigned int width = surface->width ? surface->width : 1;
     unsigned int height = surface->height ? surface->height : 1;
-    pgraph_apply_scaling_factor(pg, &width, &height);
+    if (!surface->native_resolution) {
+        pgraph_apply_scaling_factor(pg, &width, &height);
+    }
 
     assert(!surface->image);
     assert(!surface->image_scratch);
@@ -1297,6 +1299,7 @@ static void create_surface_image(PGRAPHState *pg, SurfaceBinding *surface)
     };
     VK_CHECK(vkCreateImageView(r->device, &image_view_create_info, NULL,
                                &surface->image_view));
+    surface->image_seq = ++r->texture_binding_seq;
 
     // FIXME: Go right into main command buffer
     VkCommandBuffer cmd = pgraph_vk_begin_single_time_commands(pg);
@@ -1322,6 +1325,7 @@ static void migrate_surface_image(SurfaceBinding *dst, SurfaceBinding *src)
     dst->scratch_ci = src->scratch_ci;
     dst->image = src->image;
     dst->image_view = src->image_view;
+    dst->image_seq = src->image_seq;
     dst->allocation = src->allocation;
     dst->image_scratch = src->image_scratch;
     dst->image_scratch_current_layout = src->image_scratch_current_layout;
@@ -1618,7 +1622,9 @@ void pgraph_vk_upload_surface_data(NV2AState *d, SurfaceBinding *surface,
 
 
     unsigned int scaled_width = surface->width, scaled_height = surface->height;
-    pgraph_apply_scaling_factor(pg, &scaled_width, &scaled_height);
+    if (!surface->native_resolution) {
+        pgraph_apply_scaling_factor(pg, &scaled_width, &scaled_height);
+    }
 
     if (use_compute_to_convert_depth_stencil_format) {
 
@@ -1727,7 +1733,7 @@ void pgraph_vk_upload_surface_data(NV2AState *d, SurfaceBinding *surface,
         source_buffer = unpack_buffer->buffer;
     }
 
-    bool upscale = pg->surface_scale_factor > 1 &&
+    bool upscale = !surface->native_resolution && pg->surface_scale_factor > 1 &&
                    !use_compute_to_convert_depth_stencil_format;
 
     /* Straight into the surface image, unless the upscale's blit needs the
@@ -2577,17 +2583,29 @@ SurfaceBinding *pgraph_vk_compose_scanout(NV2AState *d)
     }
 
 
+    /* Native background + borrowed tile images can go straight to the
+     * final display pass. Keep the old compositor beyond the fixed bound. */
+    bool direct = count <= PGRAPH_VK_SCANOUT_DIRECT_LAYERS;
+    r->scanout_layer_count = direct ? count : 0;
+    if (direct) {
+        for (unsigned i = 0; i < count; i++) {
+            r->scanout_layers[i] = (struct PGRAPHVkScanoutLayer){
+                layers[i].surface, layers[i].rect };
+        }
+    }
     struct PGRAPHVkScanoutMode *m = &r->scanout_modes[r->scanout_mode];
     if (!r->scanout_active || !m->out.image || m->out.width != scan.width ||
         m->out.height != scan.height || m->out.shape.color_format != format ||
-        m->scale != pg->surface_scale_factor) {
+        m->scale != pg->surface_scale_factor || m->direct != direct) {
         unsigned next = r->scanout_active ? 1 - r->scanout_mode : 0;
         struct PGRAPHVkScanoutMode *other = &r->scanout_modes[next];
         bool reuse = other->out.image && other->out.width == scan.width &&
             other->out.height == scan.height && other->out.shape.color_format == format &&
-            other->scale == pg->surface_scale_factor;
-        uint64_t bytes = (uint64_t)scan.width * scan.height * scan.bpp *
-                         pg->surface_scale_factor * pg->surface_scale_factor;
+            other->scale == pg->surface_scale_factor && other->direct == direct;
+        uint64_t bytes = (uint64_t)scan.width * scan.height * scan.bpp;
+        if (!direct) {
+            bytes *= pg->surface_scale_factor * pg->surface_scale_factor;
+        }
         uint64_t kept = (uint64_t)m->out.image_ci.extent.width *
                          m->out.image_ci.extent.height * m->out.fmt.bytes_per_pixel;
         if (m->out.image_scratch) {
@@ -2595,7 +2613,7 @@ SurfaceBinding *pgraph_vk_compose_scanout(NV2AState *d)
                     m->out.scratch_ci.extent.height * m->out.fmt.bytes_per_pixel;
         }
         /* Reserve the incoming native upload image too. */
-        if (pg->surface_scale_factor > 1) {
+        if (!direct && pg->surface_scale_factor > 1) {
             bytes += (uint64_t)scan.width * scan.height * scan.bpp;
         }
         bool evict = m != other && m->out.image && bytes + kept > 32 * MiB;
@@ -2617,6 +2635,7 @@ SurfaceBinding *pgraph_vk_compose_scanout(NV2AState *d)
             memset(other, 0, sizeof(*other));
             SurfaceBinding *out = &other->out;
             out->color = true;
+            out->native_resolution = direct;
             out->width = scan.width;
             out->height = scan.height;
             out->shape.color_format = format;
@@ -2624,6 +2643,7 @@ SurfaceBinding *pgraph_vk_compose_scanout(NV2AState *d)
             out->host_fmt = kelvin_surface_color_format_vk_map[format];
             create_surface_image(pg, out);
             other->scale = pg->surface_scale_factor;
+            other->direct = direct;
         }
         other->cache.valid = false;
         r->scanout_mode = next;
@@ -2657,6 +2677,13 @@ SurfaceBinding *pgraph_vk_compose_scanout(NV2AState *d)
      * correct. Replace just the GPU tiles, without staging/upload/upscale. */
     if (old_background != m->cache.background || old_geometry != m->cache.geometry) {
         pgraph_vk_upload_surface_data(d, out, true);
+    }
+    if (direct) {
+        /* The display shader samples the existing tile images. Only the
+         * native RAM background is private; no scaled composition image,
+         * scratch upscale, or tile image copy is recorded. */
+        out->draw_time = ++pg->draw_time;
+        return out;
     }
     VkCommandBuffer cmd = pgraph_vk_begin_nondraw_commands(pg);
     pgraph_vk_transition_image_layout(pg, cmd, out->image,

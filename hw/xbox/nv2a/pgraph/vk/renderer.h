@@ -142,6 +142,7 @@ typedef struct SurfaceBinding {
     uintptr_t dma_len;
     bool color;
     bool swizzle;
+    bool native_resolution; /* display background, independent of render scale */
 
     unsigned int width;
     unsigned int height;
@@ -172,6 +173,7 @@ typedef struct SurfaceBinding {
 
     VkImage image;
     VkImageView image_view;
+    uint64_t image_seq; /* distinguishes recycled view handles in display sets */
     VmaAllocation allocation;
     /* How the images were created: the image pool's exact keys
      * when they retire (surface.c destroy_surface_image) */
@@ -313,11 +315,16 @@ typedef struct PGRAPHVkDisplayState {
 
     VkDescriptorPool descriptor_pool;
     VkDescriptorSetLayout descriptor_set_layout;
-    /* one set a frame in flight: a frame's command buffer is not waited
-     * for before the next frame's set is written (display.c) */
-#define PGRAPH_VK_DISPLAY_SETS 8
+    /* One set per display draw, eight worst-case presentations in flight.
+     * Reserved at init: never rewrite an in-flight draw's descriptors. */
+#define PGRAPH_VK_SCANOUT_DIRECT_LAYERS 32
+#define PGRAPH_VK_DISPLAY_SETS (8 * (PGRAPH_VK_SCANOUT_DIRECT_LAYERS + 1))
     VkDescriptorSet descriptor_sets[PGRAPH_VK_DISPLAY_SETS];
     int descriptor_index;
+    struct {
+        VkImageView source, video;
+        uint64_t source_seq, video_seq;
+    } descriptor_keys[PGRAPH_VK_DISPLAY_SETS];
 
     VkPipelineLayout pipeline_layout;
     VkPipeline pipeline;
@@ -332,6 +339,7 @@ typedef struct PGRAPHVkDisplayState {
 
     struct {
         PvideoState state;
+        uint64_t seq;
         int width, height;
         VkImage image;
         VkImageView image_view;
@@ -376,6 +384,7 @@ typedef struct PGRAPHVkDisplayState {
         VkCommandBuffer cmd;
         VkFence fence;
         bool pending;
+        uint64_t serial;
         VkSemaphore drawn, shown;
     } sync[XEMU_LIBRETRO_VK_FRAMES];
     VkCommandPool frame_pool;
@@ -383,6 +392,7 @@ typedef struct PGRAPHVkDisplayState {
     // for (pgraph_vk_queue_submit); none while the queue is shared
     VkSemaphore shown_pending;
     uint64_t frame_count;
+    uint64_t submitted, settled; /* display reads protecting retired inputs */
     /* How many of the pictures rendered were another guest frame than the
      * one before: another surface, or one drawn to since */
     uint64_t guest_frame_count;
@@ -612,6 +622,7 @@ typedef struct PGRAPHVkState {
         /* the submission that may last use it: destroyed once it has
          * retired (pgraph_vk_slot_retired) */
         uint32_t retire_after;
+        uint64_t display_after;
     } *trash;                       /* grown as needed: it never overflows */
     int trash_n, trash_cap;
     /* Retired texture and surface images kept for reuse
@@ -744,8 +755,14 @@ typedef struct PGRAPHVkState {
     struct PGRAPHVkScanoutMode {
         SurfaceBinding out;
         unsigned scale;
+        bool direct;
         PGRAPHScanoutCache cache;
     } scanout_modes[2];
+    struct PGRAPHVkScanoutLayer {
+        SurfaceBinding *surface;
+        PGRAPHScanoutRect rect;
+    } scanout_layers[PGRAPH_VK_SCANOUT_DIRECT_LAYERS];
+    unsigned scanout_layer_count;
     unsigned scanout_mode;
     bool scanout_active;
     SurfaceBinding *color_binding, *zeta_binding;
@@ -1044,6 +1061,7 @@ void pgraph_vk_init_display(PGRAPHState *pg);
 void pgraph_vk_finalize_display(PGRAPHState *pg);
 void pgraph_vk_render_display(PGRAPHState *pg, SurfaceBinding *surface);
 void pgraph_vk_present_scanout(NV2AState *d);
+void pgraph_vk_poll_display_retired(PGRAPHVkState *r);
 
 // texture.c
 void pgraph_vk_init_textures(PGRAPHState *pg);

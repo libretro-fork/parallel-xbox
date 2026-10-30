@@ -77,13 +77,21 @@ static void destroy_pvideo_image(PGRAPHState *pg)
     }
 }
 
-static void create_pvideo_image(PGRAPHState *pg, int width, int height)
+static bool create_pvideo_image(PGRAPHState *pg, int width, int height)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
     PGRAPHVkDisplayState *d = &r->display;
 
-    if (d->pvideo.image == VK_NULL_HANDLE || d->pvideo.width != width ||
-        d->pvideo.height != height) {
+    if (d->pvideo.image != VK_NULL_HANDLE && d->pvideo.width == width &&
+        d->pvideo.height == height) {
+        return false;
+    }
+    if (d->pvideo.image != VK_NULL_HANDLE) {
+        /* Only a size change: cover prior display reads before retiring
+         * their input image and sampler. Ordinary updates reuse both. */
+        pgraph_vk_finish(pg, VK_FINISH_REASON_FLUSH);
+        VkCommandBuffer drain = pgraph_vk_begin_single_time_commands(pg);
+        pgraph_vk_end_single_time_commands(pg, drain);
         destroy_pvideo_image(pg);
     }
 
@@ -136,6 +144,10 @@ static void create_pvideo_image(PGRAPHState *pg, int width, int height)
     };
     VK_CHECK(vkCreateSampler(r->device, &sampler_create_info, NULL,
                              &d->pvideo.sampler));
+    d->pvideo.seq = ++r->texture_binding_seq;
+    d->pvideo.width = width;
+    d->pvideo.height = height;
+    return true;
 }
 
 static void upload_pvideo_image(PGRAPHState *pg, PvideoState state)
@@ -144,7 +156,7 @@ static void upload_pvideo_image(PGRAPHState *pg, PvideoState state)
     PGRAPHVkState *r = pg->vk_renderer_state;
     PGRAPHVkDisplayState *disp = &r->display;
 
-    create_pvideo_image(pg, state.in_width, state.in_height);
+    bool created = create_pvideo_image(pg, state.in_width, state.in_height);
 
     // FIXME: Dirty tracking. We don't necessarily need to upload so much.
 
@@ -176,8 +188,9 @@ static void upload_pvideo_image(PGRAPHState *pg, PvideoState state)
                          &host_barrier, 0, NULL);
 
     pgraph_vk_transition_image_layout(
-        pg, cmd, disp->pvideo.image, VK_FORMAT_R8_UNORM,
-        VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+        pg, cmd, disp->pvideo.image, VK_FORMAT_R8G8B8A8_UNORM,
+        created ? VK_IMAGE_LAYOUT_UNDEFINED : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
 
     VkBufferImageCopy region = {
         .bufferOffset = staged_offset,
@@ -198,7 +211,9 @@ static void upload_pvideo_image(PGRAPHState *pg, PvideoState state)
                                       VK_FORMAT_R8G8B8A8_UNORM,
                                       VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
                                       VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-    pgraph_vk_end_single_time_commands(pg, cmd);
+    /* Upload only: the following display submission consumes it in queue
+     * order; the aux fence protects staging reuse without a CPU drain. */
+    pgraph_vk_end_single_time_commands_async(pg, cmd);
 }
 
 static const char *display_frag_glsl =
@@ -214,13 +229,18 @@ static const char *display_frag_glsl =
     "    vec4 pvideo_scale;\n"
     "    bool pvideo_color_key_enable;\n"
     "    vec3 pvideo_color_key;\n"
+    "    vec4 source_transform;\n"
     "};\n"
     "layout(location = 0) out vec4 out_Color;\n"
     "void main()\n"
     "{\n"
     "    vec2 tex_coord = gl_FragCoord.xy/display_size;\n"
-    "    float rel = display_size.y/textureSize(tex, 0).y/line_offset;\n"
-    "    tex_coord.y = 1 + rel*(tex_coord.y - 1);\n"
+    "    if (source_transform.z > 0) {\n"
+    "        tex_coord = (gl_FragCoord.xy * source_transform.zw + source_transform.xy) / textureSize(tex, 0);\n"
+    "    } else {\n"
+    "        float rel = display_size.y/textureSize(tex, 0).y/line_offset;\n"
+    "        tex_coord.y = 1 + rel*(tex_coord.y - 1);\n"
+    "    }\n"
     "    out_Color.rgba = texture(tex, tex_coord);\n"
     "    if (pvideo_enable) {\n"
     "        vec2 screen_coord = vec2(gl_FragCoord.x, display_size.y - gl_FragCoord.y) * pvideo_scale.z;\n"
@@ -241,7 +261,7 @@ static void create_descriptor_pool(PGRAPHState *pg)
 
     VkDescriptorPoolSize pool_sizes = {
         .type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-        .descriptorCount = 2,
+        .descriptorCount = 2 * PGRAPH_VK_DISPLAY_SETS,
     };
 
     VkDescriptorPoolCreateInfo pool_info = {
@@ -457,6 +477,8 @@ static void create_display_pipeline(PGRAPHState *pg)
         .pDynamicStates = dynamic_states,
     };
 
+    assert(r->display.display_frag->push_constants.total_size <=
+           r->device_props.limits.maxPushConstantsSize);
     VkPushConstantRange push_constant_range = {
         .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
         .offset = 0,
@@ -797,8 +819,21 @@ static void update_descriptor_set(PGRAPHState *pg, SurfaceBinding *surface)
         .pImageInfo = &image_infos[1],
     };
 
+    PGRAPHVkDisplayState *disp = &r->display;
+    unsigned index = disp->descriptor_index;
+    uint64_t video_seq = disp->pvideo.state.enabled ? disp->pvideo.seq : 0;
+    if (disp->descriptor_keys[index].source == image_infos[0].imageView &&
+        disp->descriptor_keys[index].source_seq == surface->image_seq &&
+        disp->descriptor_keys[index].video == image_infos[1].imageView &&
+        disp->descriptor_keys[index].video_seq == video_seq) {
+        return;
+    }
     vkUpdateDescriptorSets(r->device, ARRAY_SIZE(descriptor_writes),
                            descriptor_writes, 0, NULL);
+    disp->descriptor_keys[index].source = image_infos[0].imageView;
+    disp->descriptor_keys[index].source_seq = surface->image_seq;
+    disp->descriptor_keys[index].video = image_infos[1].imageView;
+    disp->descriptor_keys[index].video_seq = video_seq;
 }
 
 static PvideoState get_pvideo_state(PGRAPHState *pg)
@@ -892,6 +927,7 @@ static void update_uniforms(PGRAPHState *pg, SurfaceBinding *surface)
     PGRAPHVkState *r = pg->vk_renderer_state;
     ShaderUniformLayout *l = &r->display.display_frag->push_constants;
 
+    uniform4f(l, uniform_index(l, "source_transform"), 0, 0, 0, 0);
     int display_size_loc = uniform_index(l, "display_size");  // FIXME: Cache
     uniform2f(l, display_size_loc, r->display.width, r->display.height);
 
@@ -1054,6 +1090,21 @@ static void wait_frame_sync(PGRAPHVkState *r, struct PGRAPHVkFrameSync *s)
                                  UINT64_MAX));
         VK_CHECK(vkResetFences(r->device, 1, &s->fence));
         s->pending = false;
+        r->display.settled = MAX(r->display.settled, s->serial);
+    }
+}
+
+/* Render-thread retirement query, never a CPU wait. The display can use
+ * surface inputs after the main draw slots have already retired. */
+void pgraph_vk_poll_display_retired(PGRAPHVkState *r)
+{
+    PGRAPHVkDisplayState *disp = &r->display;
+    for (unsigned i = 0; i < ARRAY_SIZE(disp->sync); i++) {
+        struct PGRAPHVkFrameSync *sync = &disp->sync[i];
+        if (sync->pending && sync->serial > disp->settled &&
+            vkGetFenceStatus(r->device, sync->fence) == VK_SUCCESS) {
+            disp->settled = sync->serial;
+        }
     }
 }
 
@@ -1346,6 +1397,7 @@ static void submit_frame(PGRAPHVkState *r, struct PGRAPHVkFrameSync *s)
         r->display.shown_pending = s->shown;
     }
     nv2a_profile_inc_counter(NV2A_PROF_QUEUE_SUBMIT_5);
+    s->serial = ++r->display.submitted;
     s->pending = true;
 }
 
@@ -1367,9 +1419,18 @@ static void render_display(PGRAPHState *pg, SurfaceBinding *surface)
     PGRAPHVkState *r = pg->vk_renderer_state;
     PGRAPHVkDisplayState *disp = &r->display;
 
+    struct PGRAPHVkScanoutMode *mode = &r->scanout_modes[r->scanout_mode];
+    bool direct = r->scanout_active && mode->direct && surface == &mode->out;
+    unsigned layer_count = direct ? r->scanout_layer_count : 0;
+    bool layers_pending = false;
+    for (unsigned i = 0; i < layer_count; i++) {
+        SurfaceBinding *s = r->scanout_layers[i].surface;
+        layers_pending |= s->draw_time >= r->command_buffer_start_time ||
+                          pgraph_vk_surface_borrow_pending(r, s);
+    }
     if (r->in_command_buffer &&
         (surface->draw_time >= r->command_buffer_start_time ||
-         pgraph_vk_surface_borrow_pending(r, surface))) {
+         pgraph_vk_surface_borrow_pending(r, surface) || layers_pending)) {
         pgraph_vk_finish(pg, VK_FINISH_REASON_PRESENTING);
     }
 
@@ -1381,11 +1442,6 @@ static void render_display(PGRAPHState *pg, SurfaceBinding *surface)
     }
 
     update_uniforms(pg, surface);
-    /* the next set: the last frame's command buffer may still be running
-     * with its own */
-    disp->descriptor_index =
-        (disp->descriptor_index + 1) % PGRAPH_VK_DISPLAY_SETS;
-    update_descriptor_set(pg, surface);
 
     /* The render target: the display image, or on the frontend's device
      * the frame image of its current sync index, in that index's own
@@ -1431,6 +1487,14 @@ static void render_display(PGRAPHState *pg, SurfaceBinding *surface)
             pgraph_vk_surface_base_layout(surface),
             VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
     }
+    for (unsigned i = 0; i < layer_count; i++) {
+        SurfaceBinding *s = r->scanout_layers[i].surface;
+        if (!s->in_shader_read) {
+            pgraph_vk_transition_image_layout(pg, cmd, s->image,
+                s->host_fmt.vk_format, pgraph_vk_surface_base_layout(s),
+                VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        }
+    }
     if (f) {
         /* after the frontend's fragment reads of the slot's last frame,
          * earlier on the queue */
@@ -1459,11 +1523,6 @@ static void render_display(PGRAPHState *pg, SurfaceBinding *surface)
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
                       disp->pipeline);
 
-    vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                            disp->pipeline_layout, 0, 1,
-                            &disp->descriptor_sets[disp->descriptor_index], 0,
-                            NULL);
-
     VkViewport viewport = {
         .width = disp->width,
         .height = disp->height,
@@ -1478,11 +1537,39 @@ static void render_display(PGRAPHState *pg, SurfaceBinding *surface)
     };
     vkCmdSetScissor(cmd, 0, 1, &scissor);
 
-    vkCmdPushConstants(cmd, disp->pipeline_layout, VK_SHADER_STAGE_FRAGMENT_BIT,
-                       0, disp->display_frag->push_constants.total_size,
-                       disp->display_frag->push_constants.allocation);
-
-    vkCmdDraw(cmd, 3, 1, 0, 0);
+    ShaderUniformLayout *uniforms = &disp->display_frag->push_constants;
+    int source_loc = uniform_index(uniforms, "source_transform");
+    /* Each draw has its own descriptor set, reserved at init for eight
+     * worst-case frames. No live set is rewritten by the following draw. */
+    const unsigned sets_per_frame = PGRAPH_VK_SCANOUT_DIRECT_LAYERS + 1;
+    unsigned set_base = ((disp->descriptor_index / sets_per_frame + 1) % 8) *
+                        sets_per_frame;
+    for (unsigned i = 0; i <= layer_count; i++) {
+        SurfaceBinding *source = surface;
+        if (i) {
+            struct PGRAPHVkScanoutLayer *layer = &r->scanout_layers[i - 1];
+            PGRAPHScanoutRect *p = &layer->rect;
+            source = layer->surface;
+            unsigned scale = pg->surface_scale_factor;
+            scissor.offset = (VkOffset2D){ p->dx * scale, p->dy * scale };
+            scissor.extent = (VkExtent2D){ p->width * scale, p->height * scale };
+            uniform4f(uniforms, source_loc,
+                ((float)p->sx - p->dx) * scale,
+                ((float)p->sy - p->dy) * scale, 1, 1);
+        } else if (direct) {
+            float inv_scale = 1.0f / pg->surface_scale_factor;
+            uniform4f(uniforms, source_loc, 0, 0, inv_scale, inv_scale);
+        }
+        vkCmdSetScissor(cmd, 0, 1, &scissor);
+        disp->descriptor_index = set_base + i;
+        update_descriptor_set(pg, source);
+        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
+            disp->pipeline_layout, 0, 1,
+            &disp->descriptor_sets[disp->descriptor_index], 0, NULL);
+        vkCmdPushConstants(cmd, disp->pipeline_layout, VK_SHADER_STAGE_FRAGMENT_BIT,
+            0, uniforms->total_size, uniforms->allocation);
+        vkCmdDraw(cmd, 3, 1, 0, 0);
+    }
 
     vkCmdEndRenderPass(cmd);
 
@@ -1493,6 +1580,14 @@ static void render_display(PGRAPHState *pg, SurfaceBinding *surface)
             pgraph_vk_surface_base_layout(surface));
     }
 
+    for (unsigned i = 0; i < layer_count; i++) {
+        SurfaceBinding *s = r->scanout_layers[i].surface;
+        if (!s->in_shader_read) {
+            pgraph_vk_transition_image_layout(pg, cmd, s->image,
+                s->host_fmt.vk_format, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                pgraph_vk_surface_base_layout(s));
+        }
+    }
     if (f) {
         frame_image_finish(r, cmd, f);
         pgraph_vk_end_debug_marker(r, cmd);
@@ -1561,12 +1656,13 @@ void pgraph_vk_finalize_display(PGRAPHState *pg)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
 
+    /* Retire display reads before destroying any of their input images. */
+    destroy_frame_sync(pg);
     destroy_pvideo_image(pg);
 
     if (r->display.image != VK_NULL_HANDLE) {
         destroy_current_display_image(pg);
     }
-    destroy_frame_sync(pg);
     destroy_frame_images(pg);
     destroy_crosshair_buffer(pg->vk_renderer_state);
 
