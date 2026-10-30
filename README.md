@@ -19,13 +19,15 @@ Put these files into RetroArch's system directory, under `system/xemu/`:
 
 | File | What it is |
 |---|---|
-| `mcpx_1.0.bin` | the MCPX boot ROM, 512 bytes, MD5 `d49c52a4102f6df7bcf8d0617ac475ed` |
+| `mcpx_1.0.bin` | optional: the MCPX boot ROM, 512 bytes, MD5 `d49c52a4102f6df7bcf8d0617ac475ed`. When absent, an experimental MCPX 1.0 HLE boot path runs instead |
 | `Complex_4627v1.03.bin` | the flash BIOS, a 1 MB or 256 KB image |
 | `xbox_hdd.img` or `xbox_hdd.qcow2` | optional: the hard disk, a raw image or a qcow2 one. A qcow2 is read and written as it is, so standalone xemu and the core can share one. Without either, the core writes the ready-made image it carries, [xemu-dashboard](https://github.com/xemu-project/xemu-dashboard)'s (MIT, an unsigned dashboard and no Microsoft software), the same one xemu offers: as a raw `xbox_hdd.img` (8 GB, of which only the data takes space), or as `xbox_hdd.qcow2` on FAT32 and exFAT, which have no sparse files |
 
 The boot ROM and the BIOS are Microsoft's and have to be dumped from your own console; see xemu's [required files](https://xemu.app/docs/required-files/). Other names and locations can be set in the core options. The EEPROM (`xbox_eeprom.bin`) is created in the same folder when it is missing.
 
-For Sega Chihiro games, these files go under `system/xemu/Chihiro/` (MAME's names; the boot ROM above is needed too, and the hard disk is written as for an Xbox):
+The HLE fallback independently implements the boot ROM's documented Xcode and RC4 behavior; it contains no Microsoft ROM instructions. It targets MCPX 1.0 BIOSes such as the configured Complex 4627 image. It does not replace the flash BIOS or implement MCPX 1.1/FBL boot, and is not instruction-, timing-, or register-exact. A supplied boot ROM keeps the existing emulated-ROM path; a malformed or unreadable supplied file is reported as an error. See [implementation and testing notes](docs/mcpx-hle.md).
+
+For Sega Chihiro games, these files go under `system/xemu/Chihiro/` (MAME's names; the Chihiro BIOS includes its boot code, and the hard disk is written as for an Xbox):
 
 | File | What it is |
 |---|---|

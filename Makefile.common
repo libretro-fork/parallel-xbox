@@ -922,6 +922,7 @@ SOURCES_TARGET := \
 	$(CORE_DIR)/hw/xbox/smbus_xbox_smc.c \
 	$(CORE_DIR)/hw/xbox/smbus_xcalibur.c \
 	$(CORE_DIR)/hw/xbox/xbox.c \
+	$(CORE_DIR)/hw/xbox/mcpx_boot.c \
 	$(CORE_DIR)/hw/xbox/xbox_pci.c \
 	$(CORE_DIR)/hw/xbox/xid-gamepad.c \
 	$(CORE_DIR)/hw/xbox/xid-light-gun.c \

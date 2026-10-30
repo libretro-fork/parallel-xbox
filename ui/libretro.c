@@ -1689,9 +1689,7 @@ static void populate_config(const char *dvd_path)
     LRLOG_INFO("[xemu] Populating g_config from core options\n");
 
     /* Set file paths in g_config */
-    if (opt_bootrom_path[0]) {
-        xemu_settings_set_string(&g_config.sys.files.bootrom_path, opt_bootrom_path);
-    }
+    xemu_settings_set_string(&g_config.sys.files.bootrom_path, opt_bootrom_path);
     if (opt_bios_path[0]) {
         xemu_settings_set_string(&g_config.sys.files.flashrom_path, opt_bios_path);
     }
@@ -2914,12 +2912,21 @@ RETRO_API bool retro_load_game(const struct retro_game_info *game)
         FILE *f;
         f = fopen(opt_bootrom_path, "rb");
         if (!f) {
-            LRLOG_ERROR("[xemu] MCPX Boot ROM not found: %s\n", opt_bootrom_path);
-            LRLOG_ERROR("[xemu] Place mcpx_1.0.bin in RetroArch system/xemu/ directory\n");
-            return false;
+            if (opt_bootrom_path[0] && errno != ENOENT) {
+                LRLOG_ERROR("[xemu] Cannot read MCPX Boot ROM: %s\n", opt_bootrom_path);
+                return false;
+            }
+            LRLOG_INFO("[xemu] No MCPX Boot ROM; using experimental MCPX 1.0 HLE\n");
+            opt_bootrom_path[0] = '\0';
+        } else {
+            if (fseek(f, 0, SEEK_END) || ftell(f) != 512) {
+                fclose(f);
+                LRLOG_ERROR("[xemu] MCPX Boot ROM must be 512 bytes: %s\n", opt_bootrom_path);
+                return false;
+            }
+            fclose(f);
+            LRLOG_INFO("[xemu] Found bootrom: %s\n", opt_bootrom_path);
         }
-        fclose(f);
-        LRLOG_INFO("[xemu] Found bootrom: %s\n", opt_bootrom_path);
 
         f = fopen(opt_bios_path, "rb");
         if (!f) {

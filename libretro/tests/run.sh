@@ -48,6 +48,8 @@ case $core in
     ;;
 esac
 ${cc} -O2 -std=c11 -Wall -o "$work/bin/scanoutcheck" "$here/test-scanout.c"
+${cc} -O2 -std=c11 -Wall -I"$here/../.." -o "$work/bin/mcpxcheck" "$here/test-mcpx-boot.c"
+"$work/bin/mcpxcheck"
 "$work/bin/scanoutcheck"
 ${cc} -O2 -std=c11 -Wall -o "$work/bin/scanoutbgcheck" "$here/test-scanout-background.c"
 "$work/bin/scanoutbgcheck"

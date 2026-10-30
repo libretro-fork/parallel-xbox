@@ -145,6 +145,18 @@ static void xbox_flash_init(MachineState *ms, MemoryRegion *rom_memory)
     const char *bootrom_file =
         object_property_get_str(qdev_get_machine(), "bootrom", NULL);
 
+    XBOX_MACHINE(ms)->mcpx_hle = !XBOX_MACHINE(ms)->chihiro &&
+                               (!bootrom_file || !*bootrom_file);
+    if (XBOX_MACHINE(ms)->mcpx_hle) {
+        /* Data-only flat GDT for the host boot implementation. No reset
+         * vector or other instructions from the console ROM are needed. */
+        uint8_t *gdt = (uint8_t *)bios_data + bios_size - 512;
+        memset(gdt, 0, 512);
+        stq_le_p(gdt + 8, 0x00cf9b000000ffffULL);
+        stq_le_p(gdt + 16, 0x00cf93000000ffffULL);
+        info_report("MCPX ROM absent: using experimental MCPX 1.0 HLE");
+    }
+
     if ((bootrom_file != NULL) && *bootrom_file) {
         filename = qemu_find_file(QEMU_FILE_TYPE_BIOS, bootrom_file);
         assert(filename);
@@ -629,11 +641,25 @@ static inline void xbox_machine_initfn(Object *obj)
     object_property_set_str(obj, "video-encoder", "conexant", &error_fatal);
 }
 
+static void xbox_machine_reset(MachineState *machine, ResetType type)
+{
+    XboxMachineClass *xmc = XBOX_MACHINE_CLASS(MACHINE_GET_CLASS(machine));
+    xmc->parent_reset(machine, type);
+    /* Run after all devices, including the LPC overlay and CPU, reset.
+     * Loading a snapshot restores an existing boot state instead.
+     */
+    if (XBOX_MACHINE(machine)->mcpx_hle && type != RESET_TYPE_SNAPSHOT_LOAD) {
+        xbox_mcpx_hle_reset(machine);
+    }
+}
+
 static void xbox_machine_class_init(ObjectClass *oc, const void *data)
 {
     MachineClass *mc = MACHINE_CLASS(oc);
     xbox_machine_options(mc);
     mc->init = xbox_init;
+    XBOX_MACHINE_CLASS(oc)->parent_reset = mc->reset;
+    mc->reset = xbox_machine_reset;
 }
 
 static const TypeInfo pc_machine_type_xbox = {

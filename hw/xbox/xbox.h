@@ -43,6 +43,7 @@ typedef struct XboxMachineState {
 
     /*< public >*/
     char *bootrom;
+    bool mcpx_hle;        /* No external ROM: host implements MCPX 1.0 boot. */
     char *avpack;
     bool chihiro;          /* CHIHIRO (not upstream): Sega Chihiro add-on boards */
     bool short_animation;
@@ -55,6 +56,9 @@ typedef struct XboxMachineClass {
     PCMachineClass parent_class;
 
     /*< public >*/
+    void (*parent_reset)(MachineState *machine, ResetType type);
 } XboxMachineClass;
+
+void xbox_mcpx_hle_reset(MachineState *machine);
 
 #endif
