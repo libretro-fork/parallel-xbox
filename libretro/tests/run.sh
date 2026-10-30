@@ -16,7 +16,7 @@ here=$(cd "$(dirname "$0")" && pwd)
 work=${2:-$(mktemp -d)}
 mkdir -p "$work/bin" "$work/sys/xemu" "$work/sysb/xemu" "$work/sysd/xemu" \
     "$work/syss/xemu" "$work/sysp/xemu" "$work/sysg/xemu" "$work/sysv/xemu" \
-    "$work/sysr/xemu" "$work/sysf/xemu"
+    "$work/sysr/xemu" "$work/sysf/xemu" "$work/sysa/xemu"
 
 # The harness's paths, as the core's OS spells them
 path() { echo "$1"; }
@@ -67,6 +67,8 @@ cp "$work/sys/xemu/mcpx_1.0.bin" "$work/sysg/xemu/"
 nasm -f bin -DGPU -I"$here/rom/" -o "$work/sysg/xemu/Complex_4627v1.03.bin" "$here/rom/flash.asm"
 cp "$work/sys/xemu/mcpx_1.0.bin" "$work/sysv/xemu/"
 nasm -f bin -DDVD -I"$here/rom/" -o "$work/sysv/xemu/Complex_4627v1.03.bin" "$here/rom/flash.asm"
+cp "$work/sys/xemu/mcpx_1.0.bin" "$work/sysa/xemu/"
+nasm -f bin -DACI -I"$here/rom/" -o "$work/sysa/xemu/Complex_4627v1.03.bin" "$here/rom/flash.asm"
 cp "$work/sys/xemu/mcpx_1.0.bin" "$work/sysd/xemu/"
 nasm -f bin -DDSP -DGP_PASSES=16 -I"$here/rom/" -o "$work/sysd/xemu/Complex_4627v1.03.bin" "$here/rom/flash.asm"
 
@@ -338,6 +340,23 @@ grep -E "peek_0x30001c=0x7fff0000$" "$work/pad2.txt" >/dev/null || {
     echo "FAIL: the left stick fully up is not 32767: $(grep peek_0x30001c "$work/pad2.txt")"; exit 1; }
 grep -E "peek_0x300020=0x7fff0000$" "$work/pad2.txt" >/dev/null || {
     echo "FAIL: the right stick fully up is not 32767: $(grep peek_0x300020 "$work/pad2.txt")"; exit 1; }
+
+# The AC97 controller's PCM out (rom/aci.c): its samples are dropped, but
+# how fast it takes them is the guest's to see. A second of guest time
+# takes 96000 16-bit samples (48 kHz stereo), within one 10 ms audio tick
+# (960), the buffer-complete status is set and the DMA has not halted.
+echo "== the AC97 controller's DMA in guest time"
+timeout 300 $h "$(path "$core")" "$(path "$work/sysa")" $vp --frames 200 --strict \
+  --peek 0x300008 --peek 0x30000c --peek 0x300010 --peek 0x300014 >"$work/aci.txt"
+grep -E "speed=|peek_" "$work/aci.txt"
+grep -E "peek_0x300008=0x00000000$" "$work/aci.txt" >/dev/null || {
+    echo "FAIL: the AC97 test did not finish: $(grep peek_0x300008 "$work/aci.txt")"; exit 1; }
+n=$(( $(sed -n 's/^peek_0x30000c=//p' "$work/aci.txt") ))
+[ "$n" -ge 95040 ] && [ "$n" -le 96960 ] || {
+    echo "FAIL: AC97 took $n samples in a second of guest time, not 96000"; exit 1; }
+sr=$(( $(sed -n 's/^peek_0x300010=//p' "$work/aci.txt") ))
+[ $((sr & 8)) -ne 0 ] && [ $((sr & 1)) -eq 0 ] || {
+    echo "FAIL: AC97 PCM out status $sr: no buffer completed, or halted"; exit 1; }
 
 # A session killed with the game running (a crash, the frontend killed):
 # the HDD image's cache partitions may name data that never reached it,

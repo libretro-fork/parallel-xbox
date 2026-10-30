@@ -34,7 +34,6 @@
     # Types, commands, and events with undocumented members / arguments:
     'documentation-exceptions': [
         'AbortWrapper',
-        'AudiodevDriver',
         'BlkdebugEvent',
         'BlockDirtyBitmapAddWrapper',
         'BlockDirtyBitmapMergeWrapper',

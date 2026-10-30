@@ -36,7 +36,6 @@
 #include "hw/virtio/virtio-net.h"
 #include "hw/virtio/virtio-iommu.h"
 #include "hw/acpi/generic_event_device.h"
-#include "qemu/audio.h"
 
 GlobalProperty hw_compat_10_1[] = {
     { TYPE_ACPI_GED, "x-has-hest-addr", "false" },
@@ -752,26 +751,6 @@ bool device_type_is_dynamic_sysbus(MachineClass *mc, const char *type)
     return allowed;
 }
 
-static char *machine_get_audiodev(Object *obj, Error **errp)
-{
-    MachineState *ms = MACHINE(obj);
-
-    return g_strdup(ms->audiodev);
-}
-
-static void machine_set_audiodev(Object *obj, const char *value,
-                                 Error **errp)
-{
-    MachineState *ms = MACHINE(obj);
-
-    if (!audio_be_by_name(value, errp)) {
-        return;
-    }
-
-    g_free(ms->audiodev);
-    ms->audiodev = g_strdup(value);
-}
-
 HotpluggableCPUList *machine_query_hotpluggable_cpus(MachineState *machine)
 {
     int i;
@@ -1064,17 +1043,6 @@ out_free:
     qapi_free_BootConfiguration(config);
 }
 
-void machine_add_audiodev_property(MachineClass *mc)
-{
-    ObjectClass *oc = OBJECT_CLASS(mc);
-
-    object_class_property_add_str(oc, "audiodev",
-                                  machine_get_audiodev,
-                                  machine_set_audiodev);
-    object_class_property_set_description(oc, "audiodev",
-                                          "Audiodev to use for default machine devices");
-}
-
 static bool create_default_memdev(MachineState *ms, const char *path,
                                   Error **errp)
 {
@@ -1353,7 +1321,6 @@ static void machine_finalize(Object *obj)
     g_free(ms->device_memory);
     g_free(ms->nvdimms_state);
     g_free(ms->numa_state);
-    g_free(ms->audiodev);
 }
 
 bool machine_usb(MachineState *machine)

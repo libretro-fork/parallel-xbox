@@ -268,7 +268,7 @@ jobs:
           ./configure \
             --extra-cflags="-DXBOX=1 -Wno-error $CFLAGS" \
             --extra-ldflags="-headerpad_max_install_names" \
-            --target-list=i386-softmmu --disable-cocoa --cross-prefix= \
+            --target-list=i386-softmmu --disable-cocoa --disable-vnc --cross-prefix= \
             -Dlibretro=true -Db_staticpic=true
 
       - name: Build

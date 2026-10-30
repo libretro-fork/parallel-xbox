@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- QEMU's audio layer is gone from the core: about 7,000 lines, with what hung off it. Game audio never went through it: it goes from the Xbox's audio processor straight to RetroArch, as before. What did go through it was thrown away at the end, after real work: the AC97 controller read every sample queued on it out of the Xbox's memory (192 KB a second while it plays), and QEMU's mixer resampled, converted and mixed them every 10 ms of the game's time. The AC97 controller now keeps only what a game can see of it, how fast it takes samples: its position, its buffer-complete status and its interrupts, at the codec's rate in the Xbox's time, exactly as before (checked by a new test). It reads no sample data at all. Also removed: QEMU's generic Intel AC97 card, its USB speaker and audio record/replay code, none of which any Xbox or Chihiro software can drive, the PC speaker's tone generator (its port, which guests time delays with, stays), and the `-audio`/`-audiodev` options that chose host sound drivers the core never had.
+
 - The core's once-a-second check of the running game's title (for the Auto aspect ratio) no longer copies the game's headers into a newly allocated buffer, nor searches the emulated machine's device tree for the EEPROM.
 
 - DVD and hard disk reads no longer allocate memory while a game runs (about seven allocations per read before): the request records, scatter-gather lists and coroutine bookkeeping of a finished read are kept and reused by the next.

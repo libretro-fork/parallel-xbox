@@ -5,7 +5,6 @@
 
 #pragma once
 
-#define CONFIG_AC97 1
 
 #define CONFIG_ACPI 1
 
@@ -119,7 +118,6 @@
 
 #define CONFIG_USB 1
 
-#define CONFIG_USB_AUDIO 1
 
 #define CONFIG_USB_CANOKEY 1
 

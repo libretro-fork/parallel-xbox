@@ -48,7 +48,6 @@
 #include "qapi-types-misc.h"
 #include "qapi-types-misc-arm.h"
 #include "qapi-types-misc-i386.h"
-#include "qapi-types-audio.h"
 #include "qapi-types-acpi.h"
 #include "qapi-types-acpi-hest.h"
 #include "qapi-types-pci.h"

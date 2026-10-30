@@ -96,7 +96,6 @@ SOURCES_UTIL := \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-commands-accelerator.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-commands-acpi-hest.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-commands-acpi.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-commands-audio.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-commands-authz.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-commands-block-core.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-commands-block-export.c \
@@ -143,7 +142,6 @@ SOURCES_UTIL := \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-events-accelerator.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-events-acpi-hest.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-events-acpi.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-events-audio.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-events-authz.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-events-block-core.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-events-block-export.c \
@@ -191,7 +189,6 @@ SOURCES_UTIL := \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-types-accelerator.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-types-acpi-hest.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-types-acpi.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-types-audio.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-types-authz.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-types-block-core.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-types-block-export.c \
@@ -237,7 +234,6 @@ SOURCES_UTIL := \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-visit-accelerator.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-visit-acpi-hest.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-visit-acpi.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-visit-audio.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-visit-authz.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-visit-block-core.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-visit-block-export.c \
@@ -284,7 +280,6 @@ SOURCES_UTIL := \
 	$(CORE_DIR)/libretro/gen/trace/trace-accel_kvm.c \
 	$(CORE_DIR)/libretro/gen/trace/trace-accel_mshv.c \
 	$(CORE_DIR)/libretro/gen/trace/trace-accel_tcg.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-audio.c \
 	$(CORE_DIR)/libretro/gen/trace/trace-authz.c \
 	$(CORE_DIR)/libretro/gen/trace/trace-backends.c \
 	$(CORE_DIR)/libretro/gen/trace/trace-backends_tpm.c \
@@ -362,7 +357,6 @@ SOURCES_UTIL := \
 	$(CORE_DIR)/libretro/gen/trace/trace-qapi_commands_accelerator_trace_events.c \
 	$(CORE_DIR)/libretro/gen/trace/trace-qapi_commands_acpi_hest_trace_events.c \
 	$(CORE_DIR)/libretro/gen/trace/trace-qapi_commands_acpi_trace_events.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-qapi_commands_audio_trace_events.c \
 	$(CORE_DIR)/libretro/gen/trace/trace-qapi_commands_authz_trace_events.c \
 	$(CORE_DIR)/libretro/gen/trace/trace-qapi_commands_block_core_trace_events.c \
 	$(CORE_DIR)/libretro/gen/trace/trace-qapi_commands_block_export_trace_events.c \
@@ -800,9 +794,6 @@ SOURCES_SYSTEM := \
 	$(CORE_DIR)/accel/tcg/translate-all.c \
 	$(CORE_DIR)/accel/tcg/translator.c \
 	$(CORE_DIR)/accel/tcg/watchpoint.c \
-	$(CORE_DIR)/audio/audio.c \
-	$(CORE_DIR)/audio/libretroadio.c \
-	$(CORE_DIR)/audio/mixeng.c \
 	$(CORE_DIR)/backends/confidential-guest-support.c \
 	$(CORE_DIR)/backends/cryptodev-builtin.c \
 	$(CORE_DIR)/backends/cryptodev-hmp-cmds.c \
@@ -853,8 +844,6 @@ SOURCES_SYSTEM := \
 	$(CORE_DIR)/hw/acpi/viot.c \
 	$(CORE_DIR)/hw/acpi/vmclock.c \
 	$(CORE_DIR)/hw/acpi/vmgenid.c \
-	$(CORE_DIR)/hw/audio/ac97.c \
-	$(CORE_DIR)/hw/audio/model.c \
 	$(CORE_DIR)/hw/audio/pcspk.c \
 	$(CORE_DIR)/hw/block/block.c \
 	$(CORE_DIR)/hw/block/cdrom.c \
@@ -956,7 +945,6 @@ SOURCES_SYSTEM := \
 	$(CORE_DIR)/hw/usb/core.c \
 	$(CORE_DIR)/hw/usb/desc-msos.c \
 	$(CORE_DIR)/hw/usb/desc.c \
-	$(CORE_DIR)/hw/usb/dev-audio.c \
 	$(CORE_DIR)/hw/usb/dev-hid.c \
 	$(CORE_DIR)/hw/usb/dev-hub.c \
 	$(CORE_DIR)/hw/usb/dev-network.c \
@@ -1037,7 +1025,6 @@ SOURCES_SYSTEM := \
 	$(CORE_DIR)/net/stream_data.c \
 	$(CORE_DIR)/net/util.c \
 	$(CORE_DIR)/qom/qom-hmp-cmds.c \
-	$(CORE_DIR)/replay/replay-audio.c \
 	$(CORE_DIR)/replay/replay-char.c \
 	$(CORE_DIR)/replay/replay-debugging.c \
 	$(CORE_DIR)/replay/replay-events.c \

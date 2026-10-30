@@ -60,7 +60,6 @@ if have_system
     'accelerator',
     'acpi',
     'acpi-hest',
-    'audio',
     'cryptodev',
     'qdev',
     'pci',

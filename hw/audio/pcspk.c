@@ -24,11 +24,7 @@
 
 #include "qemu/osdep.h"
 #include "hw/isa/isa.h"
-#include "hw/audio/model.h"
-#include "qemu/audio.h"
 #include "qemu/module.h"
-#include "qemu/timer.h"
-#include "qemu/error-report.h"
 #include "hw/timer/i8254.h"
 #include "migration/vmstate.h"
 #include "hw/audio/pcspk.h"
@@ -36,10 +32,11 @@
 #include "qom/object.h"
 #include "trace.h"
 
-#define PCSPK_BUF_LEN 1792
-#define PCSPK_SAMPLE_RATE 32000
-#define PCSPK_MAX_FREQ (PCSPK_SAMPLE_RATE >> 1)
-#define PCSPK_MIN_COUNT DIV_ROUND_UP(PIT_FREQ, PCSPK_MAX_FREQ)
+/*
+ * Port 0x61: PIT channel 2's gate and output and the refresh toggle, which
+ * guests time short delays with. The speaker's tone itself is not made:
+ * the core has nowhere to play it.
+ */
 
 OBJECT_DECLARE_SIMPLE_TYPE(PCSpkState, PC_SPEAKER)
 
@@ -48,89 +45,11 @@ struct PCSpkState {
 
     MemoryRegion ioport;
     uint32_t iobase;
-    uint8_t sample_buf[PCSPK_BUF_LEN];
-    AudioBackend *audio_be;
-    SWVoiceOut *voice;
     PITCommonState *pit;
-    unsigned int pit_count;
-    unsigned int samples;
-    unsigned int play_pos;
     uint8_t data_on;
     uint8_t dummy_refresh_clock;
     bool migrate;
 };
-
-static const char *s_spk = "pcspk";
-
-static inline void generate_samples(PCSpkState *s)
-{
-    unsigned int i;
-
-    if (s->pit_count) {
-        const uint32_t m = PCSPK_SAMPLE_RATE * s->pit_count;
-        const uint32_t n = ((uint64_t)PIT_FREQ << 32) / m;
-
-        /* multiple of wavelength for gapless looping */
-        s->samples = (QEMU_ALIGN_DOWN(PCSPK_BUF_LEN * PIT_FREQ, m) / (PIT_FREQ >> 1) + 1) >> 1;
-        for (i = 0; i < s->samples; ++i)
-            s->sample_buf[i] = (64 & (n * i >> 25)) - 32;
-    } else {
-        s->samples = PCSPK_BUF_LEN;
-        for (i = 0; i < PCSPK_BUF_LEN; ++i)
-            s->sample_buf[i] = 128; /* silence */
-    }
-}
-
-static void pcspk_callback(void *opaque, int free)
-{
-    PCSpkState *s = opaque;
-    PITChannelInfo ch;
-    unsigned int n;
-
-    pit_get_channel_info(s->pit, 2, &ch);
-
-    if (ch.mode != 3) {
-        return;
-    }
-
-    n = ch.initial_count;
-    /* avoid frequencies that are not reproducible with sample rate */
-    if (n < PCSPK_MIN_COUNT)
-        n = 0;
-
-    if (s->pit_count != n) {
-        s->pit_count = n;
-        s->play_pos = 0;
-        generate_samples(s);
-    }
-
-    while (free > 0) {
-        n = MIN(s->samples - s->play_pos, (unsigned int)free);
-        n = AUD_write(s->voice, &s->sample_buf[s->play_pos], n);
-        if (!n)
-            break;
-        s->play_pos = (s->play_pos + n) % s->samples;
-        free -= n;
-    }
-}
-
-static int pcspk_audio_init(PCSpkState *s)
-{
-    struct audsettings as = {PCSPK_SAMPLE_RATE, 1, AUDIO_FORMAT_U8, 0};
-
-    if (s->voice) {
-        /* already initialized */
-        return 0;
-    }
-
-    s->voice = AUD_open_out(s->audio_be, s->voice, s_spk, s, pcspk_callback, &as);
-    if (!s->voice) {
-        error_report("pcspk: Could not open voice");
-        return -1;
-    }
-
-    return 0;
-}
 
 static uint64_t pcspk_io_read(void *opaque, hwaddr addr,
                               unsigned size)
@@ -161,11 +80,6 @@ static void pcspk_io_write(void *opaque, hwaddr addr, uint64_t val,
 
     s->data_on = (val >> 1) & 1;
     pit_set_gate(s->pit, 2, gate);
-    if (s->voice) {
-        if (gate) /* restart */
-            s->play_pos = 0;
-        AUD_set_active_out(s->voice, gate & s->data_on);
-    }
 }
 
 static const MemoryRegionOps pcspk_io_ops = {
@@ -195,11 +109,6 @@ static void pcspk_realizefn(DeviceState *dev, Error **errp)
     }
 
     isa_register_ioport(isadev, &s->ioport, s->iobase);
-
-    if (s->audio_be && AUD_backend_check(&s->audio_be, errp)) {
-        pcspk_audio_init(s);
-        return;
-    }
 }
 
 static bool migrate_needed(void *opaque)
@@ -222,7 +131,6 @@ static const VMStateDescription vmstate_spk = {
 };
 
 static const Property pcspk_properties[] = {
-    DEFINE_AUDIO_PROPERTIES(PCSpkState, audio_be),
     DEFINE_PROP_UINT32("iobase", PCSpkState, iobase,  0x61),
     DEFINE_PROP_BOOL("migrate", PCSpkState, migrate,  true),
     DEFINE_PROP_LINK("pit", PCSpkState, pit, TYPE_PIT_COMMON, PITCommonState *),
@@ -233,7 +141,7 @@ static void pcspk_class_initfn(ObjectClass *klass, const void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
 
     dc->realize = pcspk_realizefn;
-    set_bit(DEVICE_CATEGORY_SOUND, dc->categories);
+    set_bit(DEVICE_CATEGORY_MISC, dc->categories);
     dc->vmsd = &vmstate_spk;
     device_class_set_props(dc, pcspk_properties);
     /* Reason: pit object link */

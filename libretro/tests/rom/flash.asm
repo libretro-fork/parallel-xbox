@@ -27,6 +27,9 @@
 %ifdef GPU
 %include "gpu.inc"          ; GPU_BASE, GPU_ENTRY and the bytes, laid out at the end
 %endif
+%ifdef ACI
+%include "aci.inc"          ; ACI_BASE, ACI_ENTRY and the bytes, laid out at the end
+%endif
 %ifdef DVD
 %include "dvd.inc"          ; DVD_BASE, DVD_ENTRY and the bytes, laid out at the end
 %endif
@@ -123,6 +126,10 @@ busy:   inc dword [0x00300000]
         ; the NV2A's display and renderer scenario (gpu.c): never returns
         call GPU_ENTRY
 %endif
+%ifdef ACI
+        ; the AC97 controller's PCM out, timed in guest time (aci.c)
+        call ACI_ENTRY
+%endif
 %ifdef DVD
         ; DVD reads by bus-master DMA, checked word by word (dvd.c)
         call DVD_ENTRY
@@ -154,6 +161,10 @@ pcm_end:
 %ifdef GPU
         times GPU_BASE - 0xFFF00000 - ($ - $$) db 0xFF
         gpu_bytes
+%endif
+%ifdef ACI
+        times ACI_BASE - 0xFFF00000 - ($ - $$) db 0xFF
+        aci_bytes
 %endif
 %ifdef DVD
         times DVD_BASE - 0xFFF00000 - ($ - $$) db 0xFF

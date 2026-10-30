@@ -3742,7 +3742,6 @@ if have_system
     'accel/hvf',
     'accel/kvm',
     'accel/mshv',
-    'audio',
     'backends',
     'backends/tpm',
     'ebpf',
@@ -3932,7 +3931,6 @@ if have_system or have_user
   subdir('target')
 endif
 
-subdir('audio')
 subdir('io')
 subdir('chardev')
 subdir('fsdev')

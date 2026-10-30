@@ -47,7 +47,6 @@
 #include "qapi-events-misc.h"
 #include "qapi-events-misc-arm.h"
 #include "qapi-events-misc-i386.h"
-#include "qapi-events-audio.h"
 #include "qapi-events-acpi.h"
 #include "qapi-events-acpi-hest.h"
 #include "qapi-events-pci.h"

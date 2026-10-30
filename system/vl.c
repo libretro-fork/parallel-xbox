@@ -87,8 +87,6 @@
 #include "migration/snapshot.h"
 #include "system/tpm.h"
 #include "system/dma.h"
-#include "hw/audio/model.h"
-#include "qemu/audio.h"
 #include "system/cpus.h"
 #include "system/cpu-timers.h"
 #include "exec/icount.h"
@@ -125,8 +123,6 @@
 #include "crypto/init.h"
 #include "system/replay.h"
 #include "qapi/qapi-events-run-state.h"
-#include "qapi/qapi-types-audio.h"
-#include "qapi/qapi-visit-audio.h"
 #include "qapi/qapi-visit-block-core.h"
 #include "qapi/qapi-visit-compat.h"
 #include "qapi/qapi-visit-machine.h"
@@ -205,7 +201,6 @@ static const char *qtest_chrdev;
 static const char *qtest_log;
 
 static int has_defaults = 1;
-static int default_audio = 1;
 static int default_serial = 1;
 static int default_parallel = 1;
 static int default_monitor = 1;
@@ -1385,7 +1380,6 @@ static void qemu_disable_default_devices(void)
         auto_create_sdcard = false;
     }
     if (!has_defaults) {
-        default_audio = 0;
         default_monitor = 0;
         default_net = 0;
         default_vga = 0;
@@ -2145,7 +2139,6 @@ static void qemu_create_early_backends(void)
     object_option_foreach_add(object_create_early);
 
     /* spice needs the timers to be initialized by this point */
-    /* spice must initialize before audio as it changes the default audiodev */
     /* spice must initialize before chardevs (for spicevmc and spiceport) */
     qemu_spice.init();
 
@@ -2158,14 +2151,10 @@ static void qemu_create_early_backends(void)
 #endif
 
     /*
-     * Note: we need to create audio and block backends before
+     * Note: we need to create block backends before
      * setting machine properties, so they can be referred to.
      */
     configure_blockdev(&bdo_queue, machine_class, snapshot);
-    audio_init_audiodevs();
-    if (default_audio) {
-        audio_create_default_audiodevs();
-    }
 }
 
 
@@ -2343,7 +2332,6 @@ static int global_init_func(void *opaque, QemuOpts *opts, Error **errp)
 static bool is_qemuopts_group(const char *group)
 {
     if (g_str_equal(group, "object") ||
-        g_str_equal(group, "audiodev") ||
         g_str_equal(group, "machine") ||
         g_str_equal(group, "smp-opts") ||
         g_str_equal(group, "boot-opts")) {
@@ -2358,14 +2346,6 @@ static void qemu_record_config_group(const char *group, QDict *dict,
     if (g_str_equal(group, "object")) {
         Visitor *v = qobject_input_visitor_new_keyval(QOBJECT(dict));
         object_option_add_visitor(v);
-        visit_free(v);
-
-    } else if (g_str_equal(group, "audiodev")) {
-        Audiodev *dev = NULL;
-        Visitor *v = qobject_input_visitor_new_keyval(QOBJECT(dict));
-        if (visit_type_Audiodev(v, NULL, &dev, errp)) {
-            audio_add_audiodev(dev);
-        }
         visit_free(v);
 
     } else if (g_str_equal(group, "machine")) {
@@ -2979,8 +2959,6 @@ static void qemu_init_board(void)
 static void qemu_create_cli_devices(void)
 {
     DeviceOption *opt;
-
-    audio_model_init();
 
     qemu_opts_foreach(qemu_find_opts("fw_cfg"),
                       parse_fw_cfg, fw_cfg_find(), &error_fatal);
@@ -3642,46 +3620,6 @@ void qemu_init(int argc, char **argv)
                 }
                 break;
 #endif
-            case QEMU_OPTION_audiodev:
-                default_audio = 0;
-                audio_parse_option(optarg);
-                break;
-            case QEMU_OPTION_audio: {
-                bool help;
-                char *model = NULL;
-                Audiodev *dev = NULL;
-                Visitor *v;
-                QDict *dict = keyval_parse(optarg, "driver", &help, &error_fatal);
-                default_audio = 0;
-                if (help || (qdict_haskey(dict, "driver") &&
-                             is_help_option(qdict_get_str(dict, "driver")))) {
-                    audio_help();
-                    exit(EXIT_SUCCESS);
-                }
-                if (!qdict_haskey(dict, "id")) {
-                    qdict_put_str(dict, "id", "audiodev0");
-                }
-                if (qdict_haskey(dict, "model")) {
-                    model = g_strdup(qdict_get_str(dict, "model"));
-                    qdict_del(dict, "model");
-                    if (is_help_option(model)) {
-                        audio_print_available_models();
-                        exit(0);
-                    }
-                }
-                v = qobject_input_visitor_new_keyval(QOBJECT(dict));
-                qobject_unref(dict);
-                visit_type_Audiodev(v, NULL, &dev, &error_fatal);
-                visit_free(v);
-                if (model) {
-                    audio_add_audiodev(dev);
-                    audio_set_model(model, dev->id);
-                    g_free(model);
-                } else {
-                    audio_add_default_audiodev(dev, &error_fatal);
-                }
-                break;
-            }
             case QEMU_OPTION_h:
                 help(0);
                 break;

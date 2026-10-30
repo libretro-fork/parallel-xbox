@@ -2097,25 +2097,18 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
     QLIT_QDICT(((QLitDictEntry[]) {
         { "arg-type", QLIT_QSTR("0"), },
         { "meta-type", QLIT_QSTR("command"), },
-        { "name", QLIT_QSTR("query-audiodevs"), },
+        { "name", QLIT_QSTR("query-acpi-ospm-status"), },
         { "ret-type", QLIT_QSTR("[266]"), },
         {}
     })),
     QLIT_QDICT(((QLitDictEntry[]) {
-        { "arg-type", QLIT_QSTR("0"), },
-        { "meta-type", QLIT_QSTR("command"), },
-        { "name", QLIT_QSTR("query-acpi-ospm-status"), },
-        { "ret-type", QLIT_QSTR("[267]"), },
-        {}
-    })),
-    QLIT_QDICT(((QLitDictEntry[]) {
-        { "arg-type", QLIT_QSTR("268"), },
+        { "arg-type", QLIT_QSTR("267"), },
         { "meta-type", QLIT_QSTR("event"), },
         { "name", QLIT_QSTR("ACPI_DEVICE_OST"), },
         {}
     })),
     QLIT_QDICT(((QLitDictEntry[]) {
-        { "arg-type", QLIT_QSTR("269"), },
+        { "arg-type", QLIT_QSTR("268"), },
         { "features", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("unstable"),
             {}
@@ -2129,21 +2122,21 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         { "arg-type", QLIT_QSTR("0"), },
         { "meta-type", QLIT_QSTR("command"), },
         { "name", QLIT_QSTR("query-pci"), },
-        { "ret-type", QLIT_QSTR("[270]"), },
+        { "ret-type", QLIT_QSTR("[269]"), },
         {}
     })),
     QLIT_QDICT(((QLitDictEntry[]) {
-        { "arg-type", QLIT_QSTR("271"), },
+        { "arg-type", QLIT_QSTR("270"), },
         { "meta-type", QLIT_QSTR("command"), },
         { "name", QLIT_QSTR("query-stats"), },
-        { "ret-type", QLIT_QSTR("[272]"), },
+        { "ret-type", QLIT_QSTR("[271]"), },
         {}
     })),
     QLIT_QDICT(((QLitDictEntry[]) {
-        { "arg-type", QLIT_QSTR("273"), },
+        { "arg-type", QLIT_QSTR("272"), },
         { "meta-type", QLIT_QSTR("command"), },
         { "name", QLIT_QSTR("query-stats-schemas"), },
-        { "ret-type", QLIT_QSTR("[274]"), },
+        { "ret-type", QLIT_QSTR("[273]"), },
         {}
     })),
     QLIT_QDICT(((QLitDictEntry[]) {
@@ -2154,55 +2147,55 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         { "meta-type", QLIT_QSTR("command"), },
         { "name", QLIT_QSTR("x-query-virtio"), },
-        { "ret-type", QLIT_QSTR("[275]"), },
+        { "ret-type", QLIT_QSTR("[274]"), },
         {}
     })),
     QLIT_QDICT(((QLitDictEntry[]) {
-        { "arg-type", QLIT_QSTR("276"), },
+        { "arg-type", QLIT_QSTR("275"), },
         { "features", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("unstable"),
             {}
         })), },
         { "meta-type", QLIT_QSTR("command"), },
         { "name", QLIT_QSTR("x-query-virtio-status"), },
-        { "ret-type", QLIT_QSTR("277"), },
+        { "ret-type", QLIT_QSTR("276"), },
         {}
     })),
     QLIT_QDICT(((QLitDictEntry[]) {
-        { "arg-type", QLIT_QSTR("278"), },
+        { "arg-type", QLIT_QSTR("277"), },
         { "features", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("unstable"),
             {}
         })), },
         { "meta-type", QLIT_QSTR("command"), },
         { "name", QLIT_QSTR("x-query-virtio-queue-status"), },
-        { "ret-type", QLIT_QSTR("279"), },
+        { "ret-type", QLIT_QSTR("278"), },
         {}
     })),
     QLIT_QDICT(((QLitDictEntry[]) {
-        { "arg-type", QLIT_QSTR("280"), },
+        { "arg-type", QLIT_QSTR("279"), },
         { "features", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("unstable"),
             {}
         })), },
         { "meta-type", QLIT_QSTR("command"), },
         { "name", QLIT_QSTR("x-query-virtio-vhost-queue-status"), },
-        { "ret-type", QLIT_QSTR("281"), },
+        { "ret-type", QLIT_QSTR("280"), },
         {}
     })),
     QLIT_QDICT(((QLitDictEntry[]) {
-        { "arg-type", QLIT_QSTR("282"), },
+        { "arg-type", QLIT_QSTR("281"), },
         { "features", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("unstable"),
             {}
         })), },
         { "meta-type", QLIT_QSTR("command"), },
         { "name", QLIT_QSTR("x-query-virtio-queue-element"), },
-        { "ret-type", QLIT_QSTR("283"), },
+        { "ret-type", QLIT_QSTR("282"), },
         {}
     })),
     QLIT_QDICT(((QLitDictEntry[]) {
-        { "arg-type", QLIT_QSTR("284"), },
+        { "arg-type", QLIT_QSTR("283"), },
         { "meta-type", QLIT_QSTR("event"), },
         { "name", QLIT_QSTR("VFIO_MIGRATION"), },
         {}
@@ -2211,53 +2204,53 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         { "arg-type", QLIT_QSTR("0"), },
         { "meta-type", QLIT_QSTR("command"), },
         { "name", QLIT_QSTR("query-cryptodev"), },
-        { "ret-type", QLIT_QSTR("[285]"), },
+        { "ret-type", QLIT_QSTR("[284]"), },
         {}
     })),
     QLIT_QDICT(((QLitDictEntry[]) {
-        { "arg-type", QLIT_QSTR("286"), },
+        { "arg-type", QLIT_QSTR("285"), },
         { "meta-type", QLIT_QSTR("command"), },
         { "name", QLIT_QSTR("cxl-inject-general-media-event"), },
         { "ret-type", QLIT_QSTR("0"), },
         {}
     })),
     QLIT_QDICT(((QLitDictEntry[]) {
-        { "arg-type", QLIT_QSTR("287"), },
+        { "arg-type", QLIT_QSTR("286"), },
         { "meta-type", QLIT_QSTR("command"), },
         { "name", QLIT_QSTR("cxl-inject-dram-event"), },
         { "ret-type", QLIT_QSTR("0"), },
         {}
     })),
     QLIT_QDICT(((QLitDictEntry[]) {
-        { "arg-type", QLIT_QSTR("288"), },
+        { "arg-type", QLIT_QSTR("287"), },
         { "meta-type", QLIT_QSTR("command"), },
         { "name", QLIT_QSTR("cxl-inject-memory-module-event"), },
         { "ret-type", QLIT_QSTR("0"), },
         {}
     })),
     QLIT_QDICT(((QLitDictEntry[]) {
-        { "arg-type", QLIT_QSTR("289"), },
+        { "arg-type", QLIT_QSTR("288"), },
         { "meta-type", QLIT_QSTR("command"), },
         { "name", QLIT_QSTR("cxl-inject-poison"), },
         { "ret-type", QLIT_QSTR("0"), },
         {}
     })),
     QLIT_QDICT(((QLitDictEntry[]) {
-        { "arg-type", QLIT_QSTR("290"), },
+        { "arg-type", QLIT_QSTR("289"), },
         { "meta-type", QLIT_QSTR("command"), },
         { "name", QLIT_QSTR("cxl-inject-uncorrectable-errors"), },
         { "ret-type", QLIT_QSTR("0"), },
         {}
     })),
     QLIT_QDICT(((QLitDictEntry[]) {
-        { "arg-type", QLIT_QSTR("291"), },
+        { "arg-type", QLIT_QSTR("290"), },
         { "meta-type", QLIT_QSTR("command"), },
         { "name", QLIT_QSTR("cxl-inject-correctable-error"), },
         { "ret-type", QLIT_QSTR("0"), },
         {}
     })),
     QLIT_QDICT(((QLitDictEntry[]) {
-        { "arg-type", QLIT_QSTR("292"), },
+        { "arg-type", QLIT_QSTR("291"), },
         { "features", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("unstable"),
             {}
@@ -2268,7 +2261,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         {}
     })),
     QLIT_QDICT(((QLitDictEntry[]) {
-        { "arg-type", QLIT_QSTR("293"), },
+        { "arg-type", QLIT_QSTR("292"), },
         { "features", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("unstable"),
             {}
@@ -2297,7 +2290,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("status"), },
-                { "type", QLIT_QSTR("294"), },
+                { "type", QLIT_QSTR("293"), },
                 {}
             })),
             {}
@@ -2316,7 +2309,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("reason"), },
-                { "type", QLIT_QSTR("295"), },
+                { "type", QLIT_QSTR("294"), },
                 {}
             })),
             {}
@@ -2335,7 +2328,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("reason"), },
-                { "type", QLIT_QSTR("295"), },
+                { "type", QLIT_QSTR("294"), },
                 {}
             })),
             {}
@@ -2349,7 +2342,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("action"), },
-                { "type", QLIT_QSTR("296"), },
+                { "type", QLIT_QSTR("295"), },
                 {}
             })),
             {}
@@ -2363,7 +2356,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("action"), },
-                { "type", QLIT_QSTR("296"), },
+                { "type", QLIT_QSTR("295"), },
                 {}
             })),
             {}
@@ -2378,25 +2371,25 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("reboot"), },
-                { "type", QLIT_QSTR("297"), },
+                { "type", QLIT_QSTR("296"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("shutdown"), },
-                { "type", QLIT_QSTR("298"), },
+                { "type", QLIT_QSTR("297"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("panic"), },
-                { "type", QLIT_QSTR("299"), },
+                { "type", QLIT_QSTR("298"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("watchdog"), },
-                { "type", QLIT_QSTR("296"), },
+                { "type", QLIT_QSTR("295"), },
                 {}
             })),
             {}
@@ -2410,13 +2403,13 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("action"), },
-                { "type", QLIT_QSTR("300"), },
+                { "type", QLIT_QSTR("299"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("info"), },
-                { "type", QLIT_QSTR("301"), },
+                { "type", QLIT_QSTR("300"), },
                 {}
             })),
             {}
@@ -2430,13 +2423,13 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("action"), },
-                { "type", QLIT_QSTR("300"), },
+                { "type", QLIT_QSTR("299"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("info"), },
-                { "type", QLIT_QSTR("301"), },
+                { "type", QLIT_QSTR("300"), },
                 {}
             })),
             {}
@@ -2450,17 +2443,17 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("recipient"), },
-                { "type", QLIT_QSTR("302"), },
+                { "type", QLIT_QSTR("301"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("action"), },
-                { "type", QLIT_QSTR("303"), },
+                { "type", QLIT_QSTR("302"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("flags"), },
-                { "type", QLIT_QSTR("304"), },
+                { "type", QLIT_QSTR("303"), },
                 {}
             })),
             {}
@@ -2479,7 +2472,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("status"), },
-                { "type", QLIT_QSTR("305"), },
+                { "type", QLIT_QSTR("304"), },
                 {}
             })),
             {}
@@ -2588,12 +2581,12 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("type"), },
-                { "type", QLIT_QSTR("306"), },
+                { "type", QLIT_QSTR("305"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("status"), },
-                { "type", QLIT_QSTR("305"), },
+                { "type", QLIT_QSTR("304"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -2656,12 +2649,12 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("enabled"), },
-                { "type", QLIT_QSTR("307"), },
+                { "type", QLIT_QSTR("306"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("present"), },
-                { "type", QLIT_QSTR("[307]"), },
+                { "type", QLIT_QSTR("[306]"), },
                 {}
             })),
             {}
@@ -2854,7 +2847,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("read-only-mode"), },
-                { "type", QLIT_QSTR("308"), },
+                { "type", QLIT_QSTR("307"), },
                 {}
             })),
             {}
@@ -3139,7 +3132,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("io-status"), },
-                { "type", QLIT_QSTR("309"), },
+                { "type", QLIT_QSTR("308"), },
                 {}
             })),
             {}
@@ -3192,13 +3185,13 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("stats"), },
-                { "type", QLIT_QSTR("310"), },
+                { "type", QLIT_QSTR("309"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("driver-specific"), },
-                { "type", QLIT_QSTR("311"), },
+                { "type", QLIT_QSTR("310"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -3230,7 +3223,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("type"), },
-                { "type", QLIT_QSTR("306"), },
+                { "type", QLIT_QSTR("305"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -3265,7 +3258,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("io-status"), },
-                { "type", QLIT_QSTR("309"), },
+                { "type", QLIT_QSTR("308"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -3275,7 +3268,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("status"), },
-                { "type", QLIT_QSTR("305"), },
+                { "type", QLIT_QSTR("304"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -3302,7 +3295,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         { "variants", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("mirror"), },
-                { "type", QLIT_QSTR("312"), },
+                { "type", QLIT_QSTR("311"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -3410,7 +3403,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("mode"), },
-                { "type", QLIT_QSTR("313"), },
+                { "type", QLIT_QSTR("312"), },
                 {}
             })),
             {}
@@ -3529,7 +3522,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("on-error"), },
-                { "type", QLIT_QSTR("314"), },
+                { "type", QLIT_QSTR("313"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -3572,7 +3565,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("sync"), },
-                { "type", QLIT_QSTR("315"), },
+                { "type", QLIT_QSTR("314"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -3590,7 +3583,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("bitmap-mode"), },
-                { "type", QLIT_QSTR("316"), },
+                { "type", QLIT_QSTR("315"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -3602,19 +3595,19 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("on-source-error"), },
-                { "type", QLIT_QSTR("314"), },
+                { "type", QLIT_QSTR("313"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("on-target-error"), },
-                { "type", QLIT_QSTR("314"), },
+                { "type", QLIT_QSTR("313"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("on-cbw-error"), },
-                { "type", QLIT_QSTR("317"), },
+                { "type", QLIT_QSTR("316"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -3648,7 +3641,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
                     {}
                 })), },
                 { "name", QLIT_QSTR("x-perf"), },
-                { "type", QLIT_QSTR("318"), },
+                { "type", QLIT_QSTR("317"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -3665,7 +3658,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("mode"), },
-                { "type", QLIT_QSTR("313"), },
+                { "type", QLIT_QSTR("312"), },
                 {}
             })),
             {}
@@ -3690,7 +3683,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("sync"), },
-                { "type", QLIT_QSTR("315"), },
+                { "type", QLIT_QSTR("314"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -3708,7 +3701,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("bitmap-mode"), },
-                { "type", QLIT_QSTR("316"), },
+                { "type", QLIT_QSTR("315"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -3720,19 +3713,19 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("on-source-error"), },
-                { "type", QLIT_QSTR("314"), },
+                { "type", QLIT_QSTR("313"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("on-target-error"), },
-                { "type", QLIT_QSTR("314"), },
+                { "type", QLIT_QSTR("313"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("on-cbw-error"), },
-                { "type", QLIT_QSTR("317"), },
+                { "type", QLIT_QSTR("316"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -3766,7 +3759,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
                     {}
                 })), },
                 { "name", QLIT_QSTR("x-perf"), },
-                { "type", QLIT_QSTR("318"), },
+                { "type", QLIT_QSTR("317"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -3837,7 +3830,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("children"), },
-                { "type", QLIT_QSTR("[319]"), },
+                { "type", QLIT_QSTR("[318]"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -3852,7 +3845,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("detect_zeroes"), },
-                { "type", QLIT_QSTR("320"), },
+                { "type", QLIT_QSTR("319"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -3887,7 +3880,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("image"), },
-                { "type", QLIT_QSTR("321"), },
+                { "type", QLIT_QSTR("320"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -3976,7 +3969,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("cache"), },
-                { "type", QLIT_QSTR("322"), },
+                { "type", QLIT_QSTR("321"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -3987,7 +3980,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("dirty-bitmaps"), },
-                { "type", QLIT_QSTR("[323]"), },
+                { "type", QLIT_QSTR("[322]"), },
                 {}
             })),
             {}
@@ -4001,12 +3994,12 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("nodes"), },
-                { "type", QLIT_QSTR("[324]"), },
+                { "type", QLIT_QSTR("[323]"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("edges"), },
-                { "type", QLIT_QSTR("[325]"), },
+                { "type", QLIT_QSTR("[324]"), },
                 {}
             })),
             {}
@@ -4054,13 +4047,13 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("sync"), },
-                { "type", QLIT_QSTR("315"), },
+                { "type", QLIT_QSTR("314"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("mode"), },
-                { "type", QLIT_QSTR("313"), },
+                { "type", QLIT_QSTR("312"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -4084,13 +4077,13 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("on-source-error"), },
-                { "type", QLIT_QSTR("314"), },
+                { "type", QLIT_QSTR("313"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("on-target-error"), },
-                { "type", QLIT_QSTR("314"), },
+                { "type", QLIT_QSTR("313"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -4102,7 +4095,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("copy-mode"), },
-                { "type", QLIT_QSTR("326"), },
+                { "type", QLIT_QSTR("325"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -4194,7 +4187,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("bitmaps"), },
-                { "type", QLIT_QSTR("[327]"), },
+                { "type", QLIT_QSTR("[326]"), },
                 {}
             })),
             {}
@@ -4244,7 +4237,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("sync"), },
-                { "type", QLIT_QSTR("315"), },
+                { "type", QLIT_QSTR("314"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -4268,13 +4261,13 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("on-source-error"), },
-                { "type", QLIT_QSTR("314"), },
+                { "type", QLIT_QSTR("313"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("on-target-error"), },
-                { "type", QLIT_QSTR("314"), },
+                { "type", QLIT_QSTR("313"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -4286,7 +4279,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("copy-mode"), },
-                { "type", QLIT_QSTR("326"), },
+                { "type", QLIT_QSTR("325"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -4366,7 +4359,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("on-error"), },
-                { "type", QLIT_QSTR("314"), },
+                { "type", QLIT_QSTR("313"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -4512,7 +4505,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("type"), },
-                { "type", QLIT_QSTR("306"), },
+                { "type", QLIT_QSTR("305"), },
                 {}
             })),
             {}
@@ -4523,7 +4516,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         { "variants", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("mirror"), },
-                { "type", QLIT_QSTR("328"), },
+                { "type", QLIT_QSTR("327"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -4575,7 +4568,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("driver"), },
-                { "type", QLIT_QSTR("329"), },
+                { "type", QLIT_QSTR("328"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -4587,13 +4580,13 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("discard"), },
-                { "type", QLIT_QSTR("330"), },
+                { "type", QLIT_QSTR("329"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("cache"), },
-                { "type", QLIT_QSTR("331"), },
+                { "type", QLIT_QSTR("330"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -4623,7 +4616,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("detect-zeroes"), },
-                { "type", QLIT_QSTR("320"), },
+                { "type", QLIT_QSTR("319"), },
                 {}
             })),
             {}
@@ -4634,253 +4627,253 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         { "variants", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("blkdebug"), },
-                { "type", QLIT_QSTR("332"), },
+                { "type", QLIT_QSTR("331"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("blklogwrites"), },
-                { "type", QLIT_QSTR("333"), },
+                { "type", QLIT_QSTR("332"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("blkverify"), },
-                { "type", QLIT_QSTR("334"), },
+                { "type", QLIT_QSTR("333"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("blkreplay"), },
-                { "type", QLIT_QSTR("335"), },
+                { "type", QLIT_QSTR("334"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("bochs"), },
-                { "type", QLIT_QSTR("336"), },
+                { "type", QLIT_QSTR("335"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("cloop"), },
-                { "type", QLIT_QSTR("336"), },
+                { "type", QLIT_QSTR("335"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("compress"), },
-                { "type", QLIT_QSTR("336"), },
+                { "type", QLIT_QSTR("335"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("copy-before-write"), },
-                { "type", QLIT_QSTR("337"), },
-                {}
-            })),
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "case", QLIT_QSTR("copy-on-read"), },
-                { "type", QLIT_QSTR("338"), },
-                {}
-            })),
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "case", QLIT_QSTR("dmg"), },
                 { "type", QLIT_QSTR("336"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
+                { "case", QLIT_QSTR("copy-on-read"), },
+                { "type", QLIT_QSTR("337"), },
+                {}
+            })),
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "case", QLIT_QSTR("dmg"), },
+                { "type", QLIT_QSTR("335"), },
+                {}
+            })),
+            QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("file"), },
-                { "type", QLIT_QSTR("339"), },
+                { "type", QLIT_QSTR("338"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("ftp"), },
-                { "type", QLIT_QSTR("340"), },
+                { "type", QLIT_QSTR("339"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("ftps"), },
-                { "type", QLIT_QSTR("341"), },
+                { "type", QLIT_QSTR("340"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("gluster"), },
-                { "type", QLIT_QSTR("342"), },
+                { "type", QLIT_QSTR("341"), },
                 {}
             })),
 #if defined(HAVE_HOST_BLOCK_DEVICE)
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("host_cdrom"), },
-                { "type", QLIT_QSTR("339"), },
+                { "type", QLIT_QSTR("338"), },
                 {}
             })),
 #endif /* defined(HAVE_HOST_BLOCK_DEVICE) */
 #if defined(HAVE_HOST_BLOCK_DEVICE)
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("host_device"), },
-                { "type", QLIT_QSTR("339"), },
+                { "type", QLIT_QSTR("338"), },
                 {}
             })),
 #endif /* defined(HAVE_HOST_BLOCK_DEVICE) */
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("http"), },
-                { "type", QLIT_QSTR("343"), },
+                { "type", QLIT_QSTR("342"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("https"), },
-                { "type", QLIT_QSTR("344"), },
+                { "type", QLIT_QSTR("343"), },
                 {}
             })),
 #if defined(CONFIG_BLKIO)
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("io_uring"), },
-                { "type", QLIT_QSTR("345"), },
+                { "type", QLIT_QSTR("344"), },
                 {}
             })),
 #endif /* defined(CONFIG_BLKIO) */
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("iscsi"), },
-                { "type", QLIT_QSTR("346"), },
+                { "type", QLIT_QSTR("345"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("luks"), },
-                { "type", QLIT_QSTR("347"), },
+                { "type", QLIT_QSTR("346"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("nbd"), },
-                { "type", QLIT_QSTR("348"), },
+                { "type", QLIT_QSTR("347"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("nfs"), },
-                { "type", QLIT_QSTR("349"), },
+                { "type", QLIT_QSTR("348"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("null-aio"), },
-                { "type", QLIT_QSTR("350"), },
+                { "type", QLIT_QSTR("349"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("null-co"), },
-                { "type", QLIT_QSTR("350"), },
+                { "type", QLIT_QSTR("349"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("nvme"), },
-                { "type", QLIT_QSTR("351"), },
+                { "type", QLIT_QSTR("350"), },
                 {}
             })),
 #if defined(CONFIG_BLKIO)
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("nvme-io_uring"), },
-                { "type", QLIT_QSTR("352"), },
+                { "type", QLIT_QSTR("351"), },
                 {}
             })),
 #endif /* defined(CONFIG_BLKIO) */
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("parallels"), },
-                { "type", QLIT_QSTR("336"), },
+                { "type", QLIT_QSTR("335"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("preallocate"), },
-                { "type", QLIT_QSTR("353"), },
+                { "type", QLIT_QSTR("352"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("qcow2"), },
-                { "type", QLIT_QSTR("354"), },
+                { "type", QLIT_QSTR("353"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("qcow"), },
-                { "type", QLIT_QSTR("355"), },
+                { "type", QLIT_QSTR("354"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("qed"), },
-                { "type", QLIT_QSTR("356"), },
+                { "type", QLIT_QSTR("355"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("quorum"), },
-                { "type", QLIT_QSTR("357"), },
+                { "type", QLIT_QSTR("356"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("raw"), },
-                { "type", QLIT_QSTR("358"), },
+                { "type", QLIT_QSTR("357"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("rbd"), },
-                { "type", QLIT_QSTR("359"), },
+                { "type", QLIT_QSTR("358"), },
                 {}
             })),
 #if defined(CONFIG_REPLICATION)
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("replication"), },
-                { "type", QLIT_QSTR("360"), },
+                { "type", QLIT_QSTR("359"), },
                 {}
             })),
 #endif /* defined(CONFIG_REPLICATION) */
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("snapshot-access"), },
-                { "type", QLIT_QSTR("336"), },
+                { "type", QLIT_QSTR("335"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("ssh"), },
-                { "type", QLIT_QSTR("361"), },
+                { "type", QLIT_QSTR("360"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("throttle"), },
-                { "type", QLIT_QSTR("362"), },
+                { "type", QLIT_QSTR("361"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("vdi"), },
-                { "type", QLIT_QSTR("336"), },
+                { "type", QLIT_QSTR("335"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("vhdx"), },
-                { "type", QLIT_QSTR("336"), },
+                { "type", QLIT_QSTR("335"), },
                 {}
             })),
 #if defined(CONFIG_BLKIO)
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("virtio-blk-vfio-pci"), },
-                { "type", QLIT_QSTR("363"), },
+                { "type", QLIT_QSTR("362"), },
                 {}
             })),
 #endif /* defined(CONFIG_BLKIO) */
 #if defined(CONFIG_BLKIO)
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("virtio-blk-vhost-user"), },
-                { "type", QLIT_QSTR("364"), },
+                { "type", QLIT_QSTR("363"), },
                 {}
             })),
 #endif /* defined(CONFIG_BLKIO) */
 #if defined(CONFIG_BLKIO)
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("virtio-blk-vhost-vdpa"), },
-                { "type", QLIT_QSTR("365"), },
+                { "type", QLIT_QSTR("364"), },
                 {}
             })),
 #endif /* defined(CONFIG_BLKIO) */
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("vmdk"), },
-                { "type", QLIT_QSTR("356"), },
+                { "type", QLIT_QSTR("355"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("vpc"), },
-                { "type", QLIT_QSTR("336"), },
+                { "type", QLIT_QSTR("335"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("vvfat"), },
-                { "type", QLIT_QSTR("366"), },
+                { "type", QLIT_QSTR("365"), },
                 {}
             })),
             {}
@@ -4945,7 +4938,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("options"), },
-                { "type", QLIT_QSTR("367"), },
+                { "type", QLIT_QSTR("366"), },
                 {}
             })),
             {}
@@ -4969,7 +4962,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("options"), },
-                { "type", QLIT_QSTR("368"), },
+                { "type", QLIT_QSTR("367"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -5047,12 +5040,12 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("operation"), },
-                { "type", QLIT_QSTR("369"), },
+                { "type", QLIT_QSTR("368"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("action"), },
-                { "type", QLIT_QSTR("370"), },
+                { "type", QLIT_QSTR("369"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -5077,7 +5070,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("type"), },
-                { "type", QLIT_QSTR("306"), },
+                { "type", QLIT_QSTR("305"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -5117,7 +5110,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("type"), },
-                { "type", QLIT_QSTR("306"), },
+                { "type", QLIT_QSTR("305"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -5156,12 +5149,12 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("operation"), },
-                { "type", QLIT_QSTR("369"), },
+                { "type", QLIT_QSTR("368"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("action"), },
-                { "type", QLIT_QSTR("370"), },
+                { "type", QLIT_QSTR("369"), },
                 {}
             })),
             {}
@@ -5175,7 +5168,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("type"), },
-                { "type", QLIT_QSTR("306"), },
+                { "type", QLIT_QSTR("305"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -5209,7 +5202,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("type"), },
-                { "type", QLIT_QSTR("306"), },
+                { "type", QLIT_QSTR("305"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -5302,7 +5295,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("iothread"), },
-                { "type", QLIT_QSTR("371"), },
+                { "type", QLIT_QSTR("370"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -5346,7 +5339,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("type"), },
-                { "type", QLIT_QSTR("372"), },
+                { "type", QLIT_QSTR("371"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -5500,7 +5493,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("addr"), },
-                { "type", QLIT_QSTR("373"), },
+                { "type", QLIT_QSTR("372"), },
                 {}
             })),
             {}
@@ -5558,7 +5551,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("mode"), },
-                { "type", QLIT_QSTR("374"), },
+                { "type", QLIT_QSTR("373"), },
                 {}
             })),
             {}
@@ -5572,7 +5565,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("type"), },
-                { "type", QLIT_QSTR("375"), },
+                { "type", QLIT_QSTR("374"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -5623,27 +5616,27 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         { "variants", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("nbd"), },
-                { "type", QLIT_QSTR("376"), },
+                { "type", QLIT_QSTR("375"), },
                 {}
             })),
 #if defined(CONFIG_VHOST_USER_BLK_SERVER)
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("vhost-user-blk"), },
-                { "type", QLIT_QSTR("377"), },
+                { "type", QLIT_QSTR("376"), },
                 {}
             })),
 #endif /* defined(CONFIG_VHOST_USER_BLK_SERVER) */
 #if defined(CONFIG_FUSE)
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("fuse"), },
-                { "type", QLIT_QSTR("378"), },
+                { "type", QLIT_QSTR("377"), },
                 {}
             })),
 #endif /* defined(CONFIG_FUSE) */
 #if defined(CONFIG_VDUSE_BLK_EXPORT)
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("vduse-blk"), },
-                { "type", QLIT_QSTR("379"), },
+                { "type", QLIT_QSTR("378"), },
                 {}
             })),
 #endif /* defined(CONFIG_VDUSE_BLK_EXPORT) */
@@ -5662,7 +5655,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("mode"), },
-                { "type", QLIT_QSTR("374"), },
+                { "type", QLIT_QSTR("373"), },
                 {}
             })),
             {}
@@ -5701,7 +5694,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("type"), },
-                { "type", QLIT_QSTR("375"), },
+                { "type", QLIT_QSTR("374"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -5786,7 +5779,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("format"), },
-                { "type", QLIT_QSTR("380"), },
+                { "type", QLIT_QSTR("379"), },
                 {}
             })),
             {}
@@ -5811,7 +5804,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("format"), },
-                { "type", QLIT_QSTR("380"), },
+                { "type", QLIT_QSTR("379"), },
                 {}
             })),
             {}
@@ -5836,7 +5829,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("backend"), },
-                { "type", QLIT_QSTR("381"), },
+                { "type", QLIT_QSTR("380"), },
                 {}
             })),
             {}
@@ -5870,7 +5863,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("backend"), },
-                { "type", QLIT_QSTR("381"), },
+                { "type", QLIT_QSTR("380"), },
                 {}
             })),
             {}
@@ -5960,7 +5953,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("format"), },
-                { "type", QLIT_QSTR("382"), },
+                { "type", QLIT_QSTR("381"), },
                 {}
             })),
             {}
@@ -5974,7 +5967,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("status"), },
-                { "type", QLIT_QSTR("383"), },
+                { "type", QLIT_QSTR("382"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -6018,7 +6011,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("formats"), },
-                { "type", QLIT_QSTR("[382]"), },
+                { "type", QLIT_QSTR("[381]"), },
                 {}
             })),
             {}
@@ -6056,7 +6049,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("type"), },
-                { "type", QLIT_QSTR("384"), },
+                { "type", QLIT_QSTR("383"), },
                 {}
             })),
             {}
@@ -6067,106 +6060,106 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         { "variants", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("nic"), },
-                { "type", QLIT_QSTR("385"), },
+                { "type", QLIT_QSTR("384"), },
                 {}
             })),
 #if defined(CONFIG_PASST)
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("passt"), },
-                { "type", QLIT_QSTR("386"), },
+                { "type", QLIT_QSTR("385"), },
                 {}
             })),
 #endif /* defined(CONFIG_PASST) */
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("user"), },
-                { "type", QLIT_QSTR("387"), },
+                { "type", QLIT_QSTR("386"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("tap"), },
-                { "type", QLIT_QSTR("388"), },
+                { "type", QLIT_QSTR("387"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("l2tpv3"), },
-                { "type", QLIT_QSTR("389"), },
+                { "type", QLIT_QSTR("388"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("socket"), },
-                { "type", QLIT_QSTR("390"), },
+                { "type", QLIT_QSTR("389"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("stream"), },
-                { "type", QLIT_QSTR("391"), },
+                { "type", QLIT_QSTR("390"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("dgram"), },
-                { "type", QLIT_QSTR("392"), },
+                { "type", QLIT_QSTR("391"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("vde"), },
-                { "type", QLIT_QSTR("393"), },
+                { "type", QLIT_QSTR("392"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("bridge"), },
-                { "type", QLIT_QSTR("394"), },
+                { "type", QLIT_QSTR("393"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("hubport"), },
-                { "type", QLIT_QSTR("395"), },
+                { "type", QLIT_QSTR("394"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("netmap"), },
-                { "type", QLIT_QSTR("396"), },
+                { "type", QLIT_QSTR("395"), },
                 {}
             })),
 #if defined(CONFIG_AF_XDP)
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("af-xdp"), },
-                { "type", QLIT_QSTR("397"), },
+                { "type", QLIT_QSTR("396"), },
                 {}
             })),
 #endif /* defined(CONFIG_AF_XDP) */
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("vhost-user"), },
-                { "type", QLIT_QSTR("398"), },
+                { "type", QLIT_QSTR("397"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("vhost-vdpa"), },
-                { "type", QLIT_QSTR("399"), },
+                { "type", QLIT_QSTR("398"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("pcap"), },
-                { "type", QLIT_QSTR("400"), },
+                { "type", QLIT_QSTR("399"), },
                 {}
             })),
 #if defined(CONFIG_VMNET)
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("vmnet-host"), },
-                { "type", QLIT_QSTR("401"), },
+                { "type", QLIT_QSTR("400"), },
                 {}
             })),
 #endif /* defined(CONFIG_VMNET) */
 #if defined(CONFIG_VMNET)
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("vmnet-shared"), },
-                { "type", QLIT_QSTR("402"), },
+                { "type", QLIT_QSTR("401"), },
                 {}
             })),
 #endif /* defined(CONFIG_VMNET) */
 #if defined(CONFIG_VMNET)
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("vmnet-bridged"), },
-                { "type", QLIT_QSTR("403"), },
+                { "type", QLIT_QSTR("402"), },
                 {}
             })),
 #endif /* defined(CONFIG_VMNET) */
@@ -6229,17 +6222,17 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("multicast"), },
-                { "type", QLIT_QSTR("404"), },
+                { "type", QLIT_QSTR("403"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("unicast"), },
-                { "type", QLIT_QSTR("404"), },
+                { "type", QLIT_QSTR("403"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("vlan"), },
-                { "type", QLIT_QSTR("404"), },
+                { "type", QLIT_QSTR("403"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -6368,7 +6361,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("addr"), },
-                { "type", QLIT_QSTR("405"), },
+                { "type", QLIT_QSTR("404"), },
                 {}
             })),
             {}
@@ -6430,7 +6423,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("id"), },
-                { "type", QLIT_QSTR("406"), },
+                { "type", QLIT_QSTR("405"), },
                 {}
             })),
             {}
@@ -6539,12 +6532,12 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("duplex"), },
-                { "type", QLIT_QSTR("407"), },
+                { "type", QLIT_QSTR("406"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("autoneg"), },
-                { "type", QLIT_QSTR("408"), },
+                { "type", QLIT_QSTR("407"), },
                 {}
             })),
             {}
@@ -6594,17 +6587,17 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("key"), },
-                { "type", QLIT_QSTR("409"), },
+                { "type", QLIT_QSTR("408"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("mask"), },
-                { "type", QLIT_QSTR("410"), },
+                { "type", QLIT_QSTR("409"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("action"), },
-                { "type", QLIT_QSTR("411"), },
+                { "type", QLIT_QSTR("410"), },
                 {}
             })),
             {}
@@ -6817,7 +6810,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("options"), },
-                { "type", QLIT_QSTR("412"), },
+                { "type", QLIT_QSTR("411"), },
                 {}
             })),
             {}
@@ -6832,7 +6825,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("protocol"), },
-                { "type", QLIT_QSTR("413"), },
+                { "type", QLIT_QSTR("412"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -6843,7 +6836,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("connected"), },
-                { "type", QLIT_QSTR("414"), },
+                { "type", QLIT_QSTR("413"), },
                 {}
             })),
             {}
@@ -6854,7 +6847,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         { "variants", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("vnc"), },
-                { "type", QLIT_QSTR("415"), },
+                { "type", QLIT_QSTR("414"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -6871,7 +6864,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("protocol"), },
-                { "type", QLIT_QSTR("413"), },
+                { "type", QLIT_QSTR("412"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -6887,7 +6880,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         { "variants", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("vnc"), },
-                { "type", QLIT_QSTR("416"), },
+                { "type", QLIT_QSTR("415"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -6923,7 +6916,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("format"), },
-                { "type", QLIT_QSTR("417"), },
+                { "type", QLIT_QSTR("416"), },
                 {}
             })),
             {}
@@ -6979,13 +6972,13 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("mouse-mode"), },
-                { "type", QLIT_QSTR("418"), },
+                { "type", QLIT_QSTR("417"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("channels"), },
-                { "type", QLIT_QSTR("[419]"), },
+                { "type", QLIT_QSTR("[418]"), },
                 {}
             })),
             {}
@@ -7001,12 +6994,12 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("server"), },
-                { "type", QLIT_QSTR("420"), },
+                { "type", QLIT_QSTR("419"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("client"), },
-                { "type", QLIT_QSTR("420"), },
+                { "type", QLIT_QSTR("419"), },
                 {}
             })),
             {}
@@ -7022,12 +7015,12 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("server"), },
-                { "type", QLIT_QSTR("421"), },
+                { "type", QLIT_QSTR("420"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("client"), },
-                { "type", QLIT_QSTR("419"), },
+                { "type", QLIT_QSTR("418"), },
                 {}
             })),
             {}
@@ -7043,12 +7036,12 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("server"), },
-                { "type", QLIT_QSTR("420"), },
+                { "type", QLIT_QSTR("419"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("client"), },
-                { "type", QLIT_QSTR("420"), },
+                { "type", QLIT_QSTR("419"), },
                 {}
             })),
             {}
@@ -7076,7 +7069,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("family"), },
-                { "type", QLIT_QSTR("422"), },
+                { "type", QLIT_QSTR("421"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -7094,7 +7087,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("clients"), },
-                { "type", QLIT_QSTR("[423]"), },
+                { "type", QLIT_QSTR("[422]"), },
                 {}
             })),
             {}
@@ -7123,23 +7116,23 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("server"), },
-                { "type", QLIT_QSTR("[424]"), },
-                {}
-            })),
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "name", QLIT_QSTR("clients"), },
                 { "type", QLIT_QSTR("[423]"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
+                { "name", QLIT_QSTR("clients"), },
+                { "type", QLIT_QSTR("[422]"), },
+                {}
+            })),
+            QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("auth"), },
-                { "type", QLIT_QSTR("425"), },
+                { "type", QLIT_QSTR("424"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("vencrypt"), },
-                { "type", QLIT_QSTR("426"), },
+                { "type", QLIT_QSTR("425"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -7177,12 +7170,12 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("server"), },
-                { "type", QLIT_QSTR("427"), },
+                { "type", QLIT_QSTR("426"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("client"), },
-                { "type", QLIT_QSTR("428"), },
+                { "type", QLIT_QSTR("427"), },
                 {}
             })),
             {}
@@ -7198,12 +7191,12 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("server"), },
-                { "type", QLIT_QSTR("427"), },
+                { "type", QLIT_QSTR("426"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("client"), },
-                { "type", QLIT_QSTR("423"), },
+                { "type", QLIT_QSTR("422"), },
                 {}
             })),
             {}
@@ -7219,12 +7212,12 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("server"), },
-                { "type", QLIT_QSTR("427"), },
+                { "type", QLIT_QSTR("426"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("client"), },
-                { "type", QLIT_QSTR("423"), },
+                { "type", QLIT_QSTR("422"), },
                 {}
             })),
             {}
@@ -7274,7 +7267,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("keys"), },
-                { "type", QLIT_QSTR("[429]"), },
+                { "type", QLIT_QSTR("[428]"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -7306,7 +7299,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("events"), },
-                { "type", QLIT_QSTR("[430]"), },
+                { "type", QLIT_QSTR("[429]"), },
                 {}
             })),
             {}
@@ -7320,7 +7313,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("type"), },
-                { "type", QLIT_QSTR("431"), },
+                { "type", QLIT_QSTR("430"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -7344,7 +7337,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("gl"), },
-                { "type", QLIT_QSTR("432"), },
+                { "type", QLIT_QSTR("431"), },
                 {}
             })),
             {}
@@ -7356,42 +7349,42 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
 #if defined(CONFIG_GTK)
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("gtk"), },
-                { "type", QLIT_QSTR("433"), },
+                { "type", QLIT_QSTR("432"), },
                 {}
             })),
 #endif /* defined(CONFIG_GTK) */
 #if defined(CONFIG_COCOA)
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("cocoa"), },
-                { "type", QLIT_QSTR("434"), },
+                { "type", QLIT_QSTR("433"), },
                 {}
             })),
 #endif /* defined(CONFIG_COCOA) */
 #if defined(CONFIG_CURSES)
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("curses"), },
-                { "type", QLIT_QSTR("435"), },
+                { "type", QLIT_QSTR("434"), },
                 {}
             })),
 #endif /* defined(CONFIG_CURSES) */
 #if defined(CONFIG_OPENGL)
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("egl-headless"), },
-                { "type", QLIT_QSTR("436"), },
+                { "type", QLIT_QSTR("435"), },
                 {}
             })),
 #endif /* defined(CONFIG_OPENGL) */
 #if defined(CONFIG_DBUS_DISPLAY)
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("dbus"), },
-                { "type", QLIT_QSTR("437"), },
+                { "type", QLIT_QSTR("436"), },
                 {}
             })),
 #endif /* defined(CONFIG_DBUS_DISPLAY) */
 #if defined(CONFIG_SDL)
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("sdl"), },
-                { "type", QLIT_QSTR("438"), },
+                { "type", QLIT_QSTR("437"), },
                 {}
             })),
 #endif /* defined(CONFIG_SDL) */
@@ -7426,7 +7419,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("type"), },
-                { "type", QLIT_QSTR("439"), },
+                { "type", QLIT_QSTR("438"), },
                 {}
             })),
             {}
@@ -7437,7 +7430,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         { "variants", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("vnc"), },
-                { "type", QLIT_QSTR("440"), },
+                { "type", QLIT_QSTR("439"), },
                 {}
             })),
             {}
@@ -7449,7 +7442,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("type"), },
-                { "type", QLIT_QSTR("441"), },
+                { "type", QLIT_QSTR("440"), },
                 {}
             })),
             {}
@@ -7460,7 +7453,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         { "variants", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("vnc"), },
-                { "type", QLIT_QSTR("442"), },
+                { "type", QLIT_QSTR("441"), },
                 {}
             })),
             {}
@@ -7510,25 +7503,25 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("status"), },
-                { "type", QLIT_QSTR("443"), },
+                { "type", QLIT_QSTR("442"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("ram"), },
-                { "type", QLIT_QSTR("444"), },
+                { "type", QLIT_QSTR("443"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("vfio"), },
-                { "type", QLIT_QSTR("445"), },
+                { "type", QLIT_QSTR("444"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("xbzrle-cache"), },
-                { "type", QLIT_QSTR("446"), },
+                { "type", QLIT_QSTR("445"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -7628,7 +7621,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("socket-address"), },
-                { "type", QLIT_QSTR("[405]"), },
+                { "type", QLIT_QSTR("[404]"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -7674,7 +7667,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("capability"), },
-                { "type", QLIT_QSTR("447"), },
+                { "type", QLIT_QSTR("446"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -7742,19 +7735,19 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("tls-creds"), },
-                { "type", QLIT_QSTR("371"), },
+                { "type", QLIT_QSTR("370"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("tls-hostname"), },
-                { "type", QLIT_QSTR("371"), },
+                { "type", QLIT_QSTR("370"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("tls-authz"), },
-                { "type", QLIT_QSTR("371"), },
+                { "type", QLIT_QSTR("370"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -7812,7 +7805,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("multifd-compression"), },
-                { "type", QLIT_QSTR("448"), },
+                { "type", QLIT_QSTR("447"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -7836,7 +7829,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("block-bitmap-mapping"), },
-                { "type", QLIT_QSTR("[449]"), },
+                { "type", QLIT_QSTR("[448]"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -7858,13 +7851,13 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("mode"), },
-                { "type", QLIT_QSTR("450"), },
+                { "type", QLIT_QSTR("449"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("zero-page-detection"), },
-                { "type", QLIT_QSTR("451"), },
+                { "type", QLIT_QSTR("450"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -8009,7 +8002,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("multifd-compression"), },
-                { "type", QLIT_QSTR("448"), },
+                { "type", QLIT_QSTR("447"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -8033,7 +8026,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("block-bitmap-mapping"), },
-                { "type", QLIT_QSTR("[449]"), },
+                { "type", QLIT_QSTR("[448]"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -8055,13 +8048,13 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("mode"), },
-                { "type", QLIT_QSTR("450"), },
+                { "type", QLIT_QSTR("449"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("zero-page-detection"), },
-                { "type", QLIT_QSTR("451"), },
+                { "type", QLIT_QSTR("450"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -8087,7 +8080,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("status"), },
-                { "type", QLIT_QSTR("443"), },
+                { "type", QLIT_QSTR("442"), },
                 {}
             })),
             {}
@@ -8115,12 +8108,12 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("mode"), },
-                { "type", QLIT_QSTR("452"), },
+                { "type", QLIT_QSTR("451"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("reason"), },
-                { "type", QLIT_QSTR("453"), },
+                { "type", QLIT_QSTR("452"), },
                 {}
             })),
             {}
@@ -8134,7 +8127,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("state"), },
-                { "type", QLIT_QSTR("443"), },
+                { "type", QLIT_QSTR("442"), },
                 {}
             })),
             {}
@@ -8155,7 +8148,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("channels"), },
-                { "type", QLIT_QSTR("[454]"), },
+                { "type", QLIT_QSTR("[453]"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -8192,7 +8185,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("channels"), },
-                { "type", QLIT_QSTR("[454]"), },
+                { "type", QLIT_QSTR("[453]"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -8310,17 +8303,17 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("mode"), },
-                { "type", QLIT_QSTR("452"), },
+                { "type", QLIT_QSTR("451"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("last-mode"), },
-                { "type", QLIT_QSTR("452"), },
+                { "type", QLIT_QSTR("451"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("reason"), },
-                { "type", QLIT_QSTR("453"), },
+                { "type", QLIT_QSTR("452"), },
                 {}
             })),
             {}
@@ -8369,7 +8362,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("calc-time-unit"), },
-                { "type", QLIT_QSTR("455"), },
+                { "type", QLIT_QSTR("454"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -8381,7 +8374,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("mode"), },
-                { "type", QLIT_QSTR("456"), },
+                { "type", QLIT_QSTR("455"), },
                 {}
             })),
             {}
@@ -8396,7 +8389,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("calc-time-unit"), },
-                { "type", QLIT_QSTR("455"), },
+                { "type", QLIT_QSTR("454"), },
                 {}
             })),
             {}
@@ -8416,7 +8409,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("status"), },
-                { "type", QLIT_QSTR("457"), },
+                { "type", QLIT_QSTR("456"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -8431,7 +8424,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("calc-time-unit"), },
-                { "type", QLIT_QSTR("455"), },
+                { "type", QLIT_QSTR("454"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -8441,13 +8434,13 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("mode"), },
-                { "type", QLIT_QSTR("456"), },
+                { "type", QLIT_QSTR("455"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("vcpu-dirty-rate"), },
-                { "type", QLIT_QSTR("[458]"), },
+                { "type", QLIT_QSTR("[457]"), },
                 {}
             })),
             {}
@@ -8633,13 +8626,13 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("actions"), },
-                { "type", QLIT_QSTR("[459]"), },
+                { "type", QLIT_QSTR("[458]"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("properties"), },
-                { "type", QLIT_QSTR("460"), },
+                { "type", QLIT_QSTR("459"), },
                 {}
             })),
             {}
@@ -8678,7 +8671,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("state"), },
-                { "type", QLIT_QSTR("461"), },
+                { "type", QLIT_QSTR("460"), },
                 {}
             })),
             {}
@@ -8718,7 +8711,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("enable"), },
-                { "type", QLIT_QSTR("[462]"), },
+                { "type", QLIT_QSTR("[461]"), },
                 {}
             })),
             {}
@@ -8732,7 +8725,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("qemu"), },
-                { "type", QLIT_QSTR("463"), },
+                { "type", QLIT_QSTR("462"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -8782,7 +8775,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("meta-type"), },
-                { "type", QLIT_QSTR("464"), },
+                { "type", QLIT_QSTR("463"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -8799,37 +8792,37 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         { "variants", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("builtin"), },
-                { "type", QLIT_QSTR("465"), },
+                { "type", QLIT_QSTR("464"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("enum"), },
-                { "type", QLIT_QSTR("466"), },
+                { "type", QLIT_QSTR("465"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("array"), },
-                { "type", QLIT_QSTR("467"), },
+                { "type", QLIT_QSTR("466"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("object"), },
-                { "type", QLIT_QSTR("468"), },
+                { "type", QLIT_QSTR("467"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("alternate"), },
-                { "type", QLIT_QSTR("469"), },
+                { "type", QLIT_QSTR("468"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("command"), },
-                { "type", QLIT_QSTR("470"), },
+                { "type", QLIT_QSTR("469"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("event"), },
-                { "type", QLIT_QSTR("471"), },
+                { "type", QLIT_QSTR("470"), },
                 {}
             })),
             {}
@@ -8937,7 +8930,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("properties"), },
-                { "type", QLIT_QSTR("[472]"), },
+                { "type", QLIT_QSTR("[471]"), },
                 {}
             })),
             {}
@@ -9042,7 +9035,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("qom-type"), },
-                { "type", QLIT_QSTR("473"), },
+                { "type", QLIT_QSTR("472"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -9058,262 +9051,262 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         { "variants", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("acpi-generic-initiator"), },
-                { "type", QLIT_QSTR("474"), },
+                { "type", QLIT_QSTR("473"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("acpi-generic-port"), },
-                { "type", QLIT_QSTR("475"), },
+                { "type", QLIT_QSTR("474"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("authz-list"), },
-                { "type", QLIT_QSTR("476"), },
+                { "type", QLIT_QSTR("475"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("authz-listfile"), },
-                { "type", QLIT_QSTR("477"), },
+                { "type", QLIT_QSTR("476"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("authz-pam"), },
-                { "type", QLIT_QSTR("478"), },
+                { "type", QLIT_QSTR("477"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("authz-simple"), },
-                { "type", QLIT_QSTR("479"), },
+                { "type", QLIT_QSTR("478"), },
                 {}
             })),
 #if defined(CONFIG_LINUX)
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("can-host-socketcan"), },
-                { "type", QLIT_QSTR("480"), },
+                { "type", QLIT_QSTR("479"), },
                 {}
             })),
 #endif /* defined(CONFIG_LINUX) */
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("colo-compare"), },
-                { "type", QLIT_QSTR("481"), },
+                { "type", QLIT_QSTR("480"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("cryptodev-backend"), },
-                { "type", QLIT_QSTR("482"), },
+                { "type", QLIT_QSTR("481"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("cryptodev-backend-builtin"), },
-                { "type", QLIT_QSTR("482"), },
+                { "type", QLIT_QSTR("481"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("cryptodev-backend-lkcf"), },
-                { "type", QLIT_QSTR("482"), },
+                { "type", QLIT_QSTR("481"), },
                 {}
             })),
 #if defined(CONFIG_VHOST_CRYPTO)
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("cryptodev-vhost-user"), },
-                { "type", QLIT_QSTR("483"), },
+                { "type", QLIT_QSTR("482"), },
                 {}
             })),
 #endif /* defined(CONFIG_VHOST_CRYPTO) */
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("dbus-vmstate"), },
-                { "type", QLIT_QSTR("484"), },
+                { "type", QLIT_QSTR("483"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("filter-buffer"), },
-                { "type", QLIT_QSTR("485"), },
+                { "type", QLIT_QSTR("484"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("filter-dump"), },
-                { "type", QLIT_QSTR("486"), },
+                { "type", QLIT_QSTR("485"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("filter-mirror"), },
-                { "type", QLIT_QSTR("487"), },
+                { "type", QLIT_QSTR("486"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("filter-redirector"), },
-                { "type", QLIT_QSTR("488"), },
+                { "type", QLIT_QSTR("487"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("filter-replay"), },
-                { "type", QLIT_QSTR("489"), },
+                { "type", QLIT_QSTR("488"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("filter-rewriter"), },
-                { "type", QLIT_QSTR("490"), },
+                { "type", QLIT_QSTR("489"), },
                 {}
             })),
 #if defined(CONFIG_IGVM)
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("igvm-cfg"), },
-                { "type", QLIT_QSTR("491"), },
+                { "type", QLIT_QSTR("490"), },
                 {}
             })),
 #endif /* defined(CONFIG_IGVM) */
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("input-barrier"), },
-                { "type", QLIT_QSTR("492"), },
+                { "type", QLIT_QSTR("491"), },
                 {}
             })),
 #if defined(CONFIG_LINUX)
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("input-linux"), },
-                { "type", QLIT_QSTR("493"), },
+                { "type", QLIT_QSTR("492"), },
                 {}
             })),
 #endif /* defined(CONFIG_LINUX) */
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("iommufd"), },
-                { "type", QLIT_QSTR("494"), },
+                { "type", QLIT_QSTR("493"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("iothread"), },
-                { "type", QLIT_QSTR("495"), },
+                { "type", QLIT_QSTR("494"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("main-loop"), },
-                { "type", QLIT_QSTR("496"), },
+                { "type", QLIT_QSTR("495"), },
                 {}
             })),
 #if defined(CONFIG_LINUX)
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("memory-backend-epc"), },
-                { "type", QLIT_QSTR("497"), },
+                { "type", QLIT_QSTR("496"), },
                 {}
             })),
 #endif /* defined(CONFIG_LINUX) */
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("memory-backend-file"), },
-                { "type", QLIT_QSTR("498"), },
+                { "type", QLIT_QSTR("497"), },
                 {}
             })),
 #if defined(CONFIG_LINUX)
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("memory-backend-memfd"), },
-                { "type", QLIT_QSTR("499"), },
+                { "type", QLIT_QSTR("498"), },
                 {}
             })),
 #endif /* defined(CONFIG_LINUX) */
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("memory-backend-ram"), },
-                { "type", QLIT_QSTR("500"), },
+                { "type", QLIT_QSTR("499"), },
                 {}
             })),
 #if defined(CONFIG_POSIX)
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("memory-backend-shm"), },
-                { "type", QLIT_QSTR("501"), },
+                { "type", QLIT_QSTR("500"), },
                 {}
             })),
 #endif /* defined(CONFIG_POSIX) */
 #if defined(CONFIG_LINUX)
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("pr-manager-helper"), },
-                { "type", QLIT_QSTR("502"), },
+                { "type", QLIT_QSTR("501"), },
                 {}
             })),
 #endif /* defined(CONFIG_LINUX) */
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("qtest"), },
-                { "type", QLIT_QSTR("503"), },
+                { "type", QLIT_QSTR("502"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("rng-builtin"), },
-                { "type", QLIT_QSTR("504"), },
+                { "type", QLIT_QSTR("503"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("rng-egd"), },
-                { "type", QLIT_QSTR("505"), },
+                { "type", QLIT_QSTR("504"), },
                 {}
             })),
 #if defined(CONFIG_POSIX)
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("rng-random"), },
-                { "type", QLIT_QSTR("506"), },
+                { "type", QLIT_QSTR("505"), },
                 {}
             })),
 #endif /* defined(CONFIG_POSIX) */
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("secret"), },
-                { "type", QLIT_QSTR("507"), },
+                { "type", QLIT_QSTR("506"), },
                 {}
             })),
 #if defined(CONFIG_SECRET_KEYRING)
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("secret_keyring"), },
-                { "type", QLIT_QSTR("508"), },
+                { "type", QLIT_QSTR("507"), },
                 {}
             })),
 #endif /* defined(CONFIG_SECRET_KEYRING) */
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("sev-guest"), },
-                { "type", QLIT_QSTR("509"), },
+                { "type", QLIT_QSTR("508"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("sev-snp-guest"), },
-                { "type", QLIT_QSTR("510"), },
+                { "type", QLIT_QSTR("509"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("tdx-guest"), },
-                { "type", QLIT_QSTR("511"), },
+                { "type", QLIT_QSTR("510"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("thread-context"), },
-                { "type", QLIT_QSTR("512"), },
+                { "type", QLIT_QSTR("511"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("throttle-group"), },
-                { "type", QLIT_QSTR("513"), },
+                { "type", QLIT_QSTR("512"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("tls-creds-anon"), },
-                { "type", QLIT_QSTR("514"), },
+                { "type", QLIT_QSTR("513"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("tls-creds-psk"), },
-                { "type", QLIT_QSTR("515"), },
+                { "type", QLIT_QSTR("514"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("tls-creds-x509"), },
-                { "type", QLIT_QSTR("516"), },
+                { "type", QLIT_QSTR("515"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("tls-cipher-suites"), },
-                { "type", QLIT_QSTR("517"), },
+                { "type", QLIT_QSTR("516"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("x-remote-object"), },
-                { "type", QLIT_QSTR("518"), },
+                { "type", QLIT_QSTR("517"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("x-vfio-user-server"), },
-                { "type", QLIT_QSTR("519"), },
+                { "type", QLIT_QSTR("518"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -9489,12 +9482,12 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("props"), },
-                { "type", QLIT_QSTR("520"), },
+                { "type", QLIT_QSTR("519"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("target"), },
-                { "type", QLIT_QSTR("521"), },
+                { "type", QLIT_QSTR("520"), },
                 {}
             })),
             {}
@@ -9505,7 +9498,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         { "variants", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("s390x"), },
-                { "type", QLIT_QSTR("522"), },
+                { "type", QLIT_QSTR("521"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -9741,7 +9734,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
                     {}
                 })), },
                 { "name", QLIT_QSTR("compat-props"), },
-                { "type", QLIT_QSTR("[523]"), },
+                { "type", QLIT_QSTR("[522]"), },
                 {}
             })),
             {}
@@ -9769,7 +9762,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("arch"), },
-                { "type", QLIT_QSTR("521"), },
+                { "type", QLIT_QSTR("520"), },
                 {}
             })),
             {}
@@ -9913,7 +9906,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("policy"), },
-                { "type", QLIT_QSTR("524"), },
+                { "type", QLIT_QSTR("523"), },
                 {}
             })),
             {}
@@ -9943,7 +9936,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("props"), },
-                { "type", QLIT_QSTR("520"), },
+                { "type", QLIT_QSTR("519"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -9963,7 +9956,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("type"), },
-                { "type", QLIT_QSTR("525"), },
+                { "type", QLIT_QSTR("524"), },
                 {}
             })),
             {}
@@ -9974,27 +9967,27 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         { "variants", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("node"), },
-                { "type", QLIT_QSTR("526"), },
+                { "type", QLIT_QSTR("525"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("dist"), },
-                { "type", QLIT_QSTR("527"), },
+                { "type", QLIT_QSTR("526"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("cpu"), },
-                { "type", QLIT_QSTR("528"), },
+                { "type", QLIT_QSTR("527"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("hmat-lb"), },
-                { "type", QLIT_QSTR("529"), },
+                { "type", QLIT_QSTR("528"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("hmat-cache"), },
-                { "type", QLIT_QSTR("530"), },
+                { "type", QLIT_QSTR("529"), },
                 {}
             })),
             {}
@@ -10093,7 +10086,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("type"), },
-                { "type", QLIT_QSTR("531"), },
+                { "type", QLIT_QSTR("530"), },
                 {}
             })),
             {}
@@ -10104,32 +10097,32 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         { "variants", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("dimm"), },
-                { "type", QLIT_QSTR("532"), },
+                { "type", QLIT_QSTR("531"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("nvdimm"), },
-                { "type", QLIT_QSTR("532"), },
+                { "type", QLIT_QSTR("531"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("virtio-pmem"), },
-                { "type", QLIT_QSTR("533"), },
+                { "type", QLIT_QSTR("532"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("virtio-mem"), },
-                { "type", QLIT_QSTR("534"), },
+                { "type", QLIT_QSTR("533"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("sgx-epc"), },
-                { "type", QLIT_QSTR("535"), },
+                { "type", QLIT_QSTR("534"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("hv-balloon"), },
-                { "type", QLIT_QSTR("536"), },
+                { "type", QLIT_QSTR("535"), },
                 {}
             })),
             {}
@@ -10231,12 +10224,12 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("modela"), },
-                { "type", QLIT_QSTR("537"), },
+                { "type", QLIT_QSTR("536"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("modelb"), },
-                { "type", QLIT_QSTR("537"), },
+                { "type", QLIT_QSTR("536"), },
                 {}
             })),
             {}
@@ -10250,7 +10243,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("result"), },
-                { "type", QLIT_QSTR("538"), },
+                { "type", QLIT_QSTR("537"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -10269,12 +10262,12 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("modela"), },
-                { "type", QLIT_QSTR("537"), },
+                { "type", QLIT_QSTR("536"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("modelb"), },
-                { "type", QLIT_QSTR("537"), },
+                { "type", QLIT_QSTR("536"), },
                 {}
             })),
             {}
@@ -10288,7 +10281,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("model"), },
-                { "type", QLIT_QSTR("537"), },
+                { "type", QLIT_QSTR("536"), },
                 {}
             })),
             {}
@@ -10302,12 +10295,12 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("type"), },
-                { "type", QLIT_QSTR("539"), },
+                { "type", QLIT_QSTR("538"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("model"), },
-                { "type", QLIT_QSTR("537"), },
+                { "type", QLIT_QSTR("536"), },
                 {}
             })),
             {}
@@ -10321,7 +10314,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("model"), },
-                { "type", QLIT_QSTR("537"), },
+                { "type", QLIT_QSTR("536"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -10418,7 +10411,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("entitlement"), },
-                { "type", QLIT_QSTR("540"), },
+                { "type", QLIT_QSTR("539"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -10438,7 +10431,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("polarization"), },
-                { "type", QLIT_QSTR("541"), },
+                { "type", QLIT_QSTR("540"), },
                 {}
             })),
             {}
@@ -10452,7 +10445,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("polarization"), },
-                { "type", QLIT_QSTR("541"), },
+                { "type", QLIT_QSTR("540"), },
                 {}
             })),
             {}
@@ -10466,7 +10459,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("mode"), },
-                { "type", QLIT_QSTR("542"), },
+                { "type", QLIT_QSTR("541"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -10539,7 +10532,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("type"), },
-                { "type", QLIT_QSTR("543"), },
+                { "type", QLIT_QSTR("542"), },
                 {}
             })),
             {}
@@ -10550,12 +10543,12 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         { "variants", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("block-node"), },
-                { "type", QLIT_QSTR("544"), },
+                { "type", QLIT_QSTR("543"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("chardev"), },
-                { "type", QLIT_QSTR("545"), },
+                { "type", QLIT_QSTR("544"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -10805,7 +10798,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("fds"), },
-                { "type", QLIT_QSTR("[546]"), },
+                { "type", QLIT_QSTR("[545]"), },
                 {}
             })),
             {}
@@ -10845,7 +10838,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("parameters"), },
-                { "type", QLIT_QSTR("[547]"), },
+                { "type", QLIT_QSTR("[546]"), },
                 {}
             })),
             {}
@@ -10957,12 +10950,12 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("state"), },
-                { "type", QLIT_QSTR("548"), },
+                { "type", QLIT_QSTR("547"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("sev-type"), },
-                { "type", QLIT_QSTR("549"), },
+                { "type", QLIT_QSTR("548"), },
                 {}
             })),
             {}
@@ -10973,12 +10966,12 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         { "variants", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("sev"), },
-                { "type", QLIT_QSTR("550"), },
+                { "type", QLIT_QSTR("549"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("sev-snp"), },
-                { "type", QLIT_QSTR("551"), },
+                { "type", QLIT_QSTR("550"), },
                 {}
             })),
             {}
@@ -11111,7 +11104,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("sections"), },
-                { "type", QLIT_QSTR("[552]"), },
+                { "type", QLIT_QSTR("[551]"), },
                 {}
             })),
             {}
@@ -11141,7 +11134,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("type"), },
-                { "type", QLIT_QSTR("553"), },
+                { "type", QLIT_QSTR("552"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -11190,47 +11183,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         { "name", QLIT_QSTR("[266]"), },
         {}
     })),
-    /* "266" = Audiodev */
-    QLIT_QDICT(((QLitDictEntry[]) {
-        { "members", QLIT_QLIST(((QLitObject[]) {
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "name", QLIT_QSTR("id"), },
-                { "type", QLIT_QSTR("str"), },
-                {}
-            })),
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "name", QLIT_QSTR("driver"), },
-                { "type", QLIT_QSTR("554"), },
-                {}
-            })),
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "default", QLIT_QNULL, },
-                { "name", QLIT_QSTR("timer-period"), },
-                { "type", QLIT_QSTR("int"), },
-                {}
-            })),
-            {}
-        })), },
-        { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("266"), },
-        { "tag", QLIT_QSTR("driver"), },
-        { "variants", QLIT_QLIST(((QLitObject[]) {
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "case", QLIT_QSTR("libretro"), },
-                { "type", QLIT_QSTR("555"), },
-                {}
-            })),
-            {}
-        })), },
-        {}
-    })),
-    QLIT_QDICT(((QLitDictEntry[]) {
-        { "element-type", QLIT_QSTR("267"), },
-        { "meta-type", QLIT_QSTR("array"), },
-        { "name", QLIT_QSTR("[267]"), },
-        {}
-    })),
-    /* "267" = ACPIOSTInfo */
+    /* "266" = ACPIOSTInfo */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -11246,7 +11199,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("slot-type"), },
-                { "type", QLIT_QSTR("556"), },
+                { "type", QLIT_QSTR("553"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -11262,24 +11215,24 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("267"), },
+        { "name", QLIT_QSTR("266"), },
         {}
     })),
-    /* "268" = q_obj_ACPI_DEVICE_OST-arg */
+    /* "267" = q_obj_ACPI_DEVICE_OST-arg */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("info"), },
-                { "type", QLIT_QSTR("267"), },
+                { "type", QLIT_QSTR("266"), },
                 {}
             })),
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("268"), },
+        { "name", QLIT_QSTR("267"), },
         {}
     })),
-    /* "269" = q_obj_inject-ghes-v2-error-arg */
+    /* "268" = q_obj_inject-ghes-v2-error-arg */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -11290,16 +11243,16 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("269"), },
+        { "name", QLIT_QSTR("268"), },
         {}
     })),
     QLIT_QDICT(((QLitDictEntry[]) {
-        { "element-type", QLIT_QSTR("270"), },
+        { "element-type", QLIT_QSTR("269"), },
         { "meta-type", QLIT_QSTR("array"), },
-        { "name", QLIT_QSTR("[270]"), },
+        { "name", QLIT_QSTR("[269]"), },
         {}
     })),
-    /* "270" = PciInfo */
+    /* "269" = PciInfo */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -11309,38 +11262,38 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("devices"), },
-                { "type", QLIT_QSTR("[557]"), },
+                { "type", QLIT_QSTR("[554]"), },
+                {}
+            })),
+            {}
+        })), },
+        { "meta-type", QLIT_QSTR("object"), },
+        { "name", QLIT_QSTR("269"), },
+        {}
+    })),
+    /* "270" = StatsFilter */
+    QLIT_QDICT(((QLitDictEntry[]) {
+        { "members", QLIT_QLIST(((QLitObject[]) {
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "name", QLIT_QSTR("target"), },
+                { "type", QLIT_QSTR("555"), },
+                {}
+            })),
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "default", QLIT_QNULL, },
+                { "name", QLIT_QSTR("providers"), },
+                { "type", QLIT_QSTR("[556]"), },
                 {}
             })),
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
         { "name", QLIT_QSTR("270"), },
-        {}
-    })),
-    /* "271" = StatsFilter */
-    QLIT_QDICT(((QLitDictEntry[]) {
-        { "members", QLIT_QLIST(((QLitObject[]) {
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "name", QLIT_QSTR("target"), },
-                { "type", QLIT_QSTR("558"), },
-                {}
-            })),
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "default", QLIT_QNULL, },
-                { "name", QLIT_QSTR("providers"), },
-                { "type", QLIT_QSTR("[559]"), },
-                {}
-            })),
-            {}
-        })), },
-        { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("271"), },
         { "tag", QLIT_QSTR("target"), },
         { "variants", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("vcpu"), },
-                { "type", QLIT_QSTR("560"), },
+                { "type", QLIT_QSTR("557"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -11358,17 +11311,17 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         {}
     })),
     QLIT_QDICT(((QLitDictEntry[]) {
-        { "element-type", QLIT_QSTR("272"), },
+        { "element-type", QLIT_QSTR("271"), },
         { "meta-type", QLIT_QSTR("array"), },
-        { "name", QLIT_QSTR("[272]"), },
+        { "name", QLIT_QSTR("[271]"), },
         {}
     })),
-    /* "272" = StatsResult */
+    /* "271" = StatsResult */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("provider"), },
-                { "type", QLIT_QSTR("561"), },
+                { "type", QLIT_QSTR("558"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -11379,7 +11332,22 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("stats"), },
-                { "type", QLIT_QSTR("[562]"), },
+                { "type", QLIT_QSTR("[559]"), },
+                {}
+            })),
+            {}
+        })), },
+        { "meta-type", QLIT_QSTR("object"), },
+        { "name", QLIT_QSTR("271"), },
+        {}
+    })),
+    /* "272" = q_obj_query-stats-schemas-arg */
+    QLIT_QDICT(((QLitDictEntry[]) {
+        { "members", QLIT_QLIST(((QLitObject[]) {
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "default", QLIT_QNULL, },
+                { "name", QLIT_QSTR("provider"), },
+                { "type", QLIT_QSTR("558"), },
                 {}
             })),
             {}
@@ -11388,13 +11356,28 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         { "name", QLIT_QSTR("272"), },
         {}
     })),
-    /* "273" = q_obj_query-stats-schemas-arg */
+    QLIT_QDICT(((QLitDictEntry[]) {
+        { "element-type", QLIT_QSTR("273"), },
+        { "meta-type", QLIT_QSTR("array"), },
+        { "name", QLIT_QSTR("[273]"), },
+        {}
+    })),
+    /* "273" = StatsSchema */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
-                { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("provider"), },
-                { "type", QLIT_QSTR("561"), },
+                { "type", QLIT_QSTR("558"), },
+                {}
+            })),
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "name", QLIT_QSTR("target"), },
+                { "type", QLIT_QSTR("555"), },
+                {}
+            })),
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "name", QLIT_QSTR("stats"), },
+                { "type", QLIT_QSTR("[560]"), },
                 {}
             })),
             {}
@@ -11409,37 +11392,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         { "name", QLIT_QSTR("[274]"), },
         {}
     })),
-    /* "274" = StatsSchema */
-    QLIT_QDICT(((QLitDictEntry[]) {
-        { "members", QLIT_QLIST(((QLitObject[]) {
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "name", QLIT_QSTR("provider"), },
-                { "type", QLIT_QSTR("561"), },
-                {}
-            })),
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "name", QLIT_QSTR("target"), },
-                { "type", QLIT_QSTR("558"), },
-                {}
-            })),
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "name", QLIT_QSTR("stats"), },
-                { "type", QLIT_QSTR("[563]"), },
-                {}
-            })),
-            {}
-        })), },
-        { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("274"), },
-        {}
-    })),
-    QLIT_QDICT(((QLitDictEntry[]) {
-        { "element-type", QLIT_QSTR("275"), },
-        { "meta-type", QLIT_QSTR("array"), },
-        { "name", QLIT_QSTR("[275]"), },
-        {}
-    })),
-    /* "275" = VirtioInfo */
+    /* "274" = VirtioInfo */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -11455,10 +11408,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("275"), },
+        { "name", QLIT_QSTR("274"), },
         {}
     })),
-    /* "276" = q_obj_x-query-virtio-status-arg */
+    /* "275" = q_obj_x-query-virtio-status-arg */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -11469,10 +11422,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("276"), },
+        { "name", QLIT_QSTR("275"), },
         {}
     })),
-    /* "277" = VirtioStatus */
+    /* "276" = VirtioStatus */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -11497,17 +11450,17 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("guest-features"), },
-                { "type", QLIT_QSTR("564"), },
+                { "type", QLIT_QSTR("561"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("host-features"), },
-                { "type", QLIT_QSTR("564"), },
+                { "type", QLIT_QSTR("561"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("backend-features"), },
-                { "type", QLIT_QSTR("564"), },
+                { "type", QLIT_QSTR("561"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -11517,7 +11470,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("status"), },
-                { "type", QLIT_QSTR("565"), },
+                { "type", QLIT_QSTR("562"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -11578,16 +11531,16 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("vhost-dev"), },
-                { "type", QLIT_QSTR("566"), },
+                { "type", QLIT_QSTR("563"), },
                 {}
             })),
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("277"), },
+        { "name", QLIT_QSTR("276"), },
         {}
     })),
-    /* "278" = q_obj_x-query-virtio-queue-status-arg */
+    /* "277" = q_obj_x-query-virtio-queue-status-arg */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -11603,10 +11556,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("278"), },
+        { "name", QLIT_QSTR("277"), },
         {}
     })),
-    /* "279" = VirtQueueStatus */
+    /* "278" = VirtQueueStatus */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -11684,10 +11637,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("279"), },
+        { "name", QLIT_QSTR("278"), },
         {}
     })),
-    /* "280" = q_obj_x-query-virtio-vhost-queue-status-arg */
+    /* "279" = q_obj_x-query-virtio-vhost-queue-status-arg */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -11703,10 +11656,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("280"), },
+        { "name", QLIT_QSTR("279"), },
         {}
     })),
-    /* "281" = VirtVhostQueueStatus */
+    /* "280" = VirtVhostQueueStatus */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -11777,10 +11730,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("281"), },
+        { "name", QLIT_QSTR("280"), },
         {}
     })),
-    /* "282" = q_obj_x-query-virtio-queue-element-arg */
+    /* "281" = q_obj_x-query-virtio-queue-element-arg */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -11802,10 +11755,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("282"), },
+        { "name", QLIT_QSTR("281"), },
         {}
     })),
-    /* "283" = VirtioQueueElement */
+    /* "282" = VirtioQueueElement */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -11820,26 +11773,26 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("descs"), },
-                { "type", QLIT_QSTR("[567]"), },
+                { "type", QLIT_QSTR("[564]"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("avail"), },
-                { "type", QLIT_QSTR("568"), },
+                { "type", QLIT_QSTR("565"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("used"), },
-                { "type", QLIT_QSTR("569"), },
+                { "type", QLIT_QSTR("566"), },
                 {}
             })),
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("283"), },
+        { "name", QLIT_QSTR("282"), },
         {}
     })),
-    /* "284" = q_obj_VFIO_MIGRATION-arg */
+    /* "283" = q_obj_VFIO_MIGRATION-arg */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -11854,22 +11807,22 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("device-state"), },
-                { "type", QLIT_QSTR("570"), },
+                { "type", QLIT_QSTR("567"), },
                 {}
             })),
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("284"), },
+        { "name", QLIT_QSTR("283"), },
         {}
     })),
     QLIT_QDICT(((QLitDictEntry[]) {
-        { "element-type", QLIT_QSTR("285"), },
+        { "element-type", QLIT_QSTR("284"), },
         { "meta-type", QLIT_QSTR("array"), },
-        { "name", QLIT_QSTR("[285]"), },
+        { "name", QLIT_QSTR("[284]"), },
         {}
     })),
-    /* "285" = QCryptodevInfo */
+    /* "284" = QCryptodevInfo */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -11879,21 +11832,21 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("service"), },
-                { "type", QLIT_QSTR("[571]"), },
+                { "type", QLIT_QSTR("[568]"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("client"), },
-                { "type", QLIT_QSTR("[572]"), },
+                { "type", QLIT_QSTR("[569]"), },
                 {}
             })),
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("285"), },
+        { "name", QLIT_QSTR("284"), },
         {}
     })),
-    /* "286" = q_obj_cxl-inject-general-media-event-arg */
+    /* "285" = q_obj_cxl-inject-general-media-event-arg */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -11903,7 +11856,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("log"), },
-                { "type", QLIT_QSTR("573"), },
+                { "type", QLIT_QSTR("570"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -11958,10 +11911,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("286"), },
+        { "name", QLIT_QSTR("285"), },
         {}
     })),
-    /* "287" = q_obj_cxl-inject-dram-event-arg */
+    /* "286" = q_obj_cxl-inject-dram-event-arg */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -11971,7 +11924,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("log"), },
-                { "type", QLIT_QSTR("573"), },
+                { "type", QLIT_QSTR("570"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -12050,10 +12003,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("287"), },
+        { "name", QLIT_QSTR("286"), },
         {}
     })),
-    /* "288" = q_obj_cxl-inject-memory-module-event-arg */
+    /* "287" = q_obj_cxl-inject-memory-module-event-arg */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -12063,7 +12016,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("log"), },
-                { "type", QLIT_QSTR("573"), },
+                { "type", QLIT_QSTR("570"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -12119,10 +12072,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("288"), },
+        { "name", QLIT_QSTR("287"), },
         {}
     })),
-    /* "289" = q_obj_cxl-inject-poison-arg */
+    /* "288" = q_obj_cxl-inject-poison-arg */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -12143,10 +12096,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("289"), },
+        { "name", QLIT_QSTR("288"), },
         {}
     })),
-    /* "290" = q_obj_cxl-inject-uncorrectable-errors-arg */
+    /* "289" = q_obj_cxl-inject-uncorrectable-errors-arg */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -12156,16 +12109,16 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("errors"), },
-                { "type", QLIT_QSTR("[574]"), },
+                { "type", QLIT_QSTR("[571]"), },
                 {}
             })),
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("290"), },
+        { "name", QLIT_QSTR("289"), },
         {}
     })),
-    /* "291" = q_obj_cxl-inject-correctable-error-arg */
+    /* "290" = q_obj_cxl-inject-correctable-error-arg */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -12175,16 +12128,16 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("type"), },
-                { "type", QLIT_QSTR("575"), },
+                { "type", QLIT_QSTR("572"), },
                 {}
             })),
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("291"), },
+        { "name", QLIT_QSTR("290"), },
         {}
     })),
-    /* "292" = q_obj_cxl-add-dynamic-capacity-arg */
+    /* "291" = q_obj_cxl-add-dynamic-capacity-arg */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -12199,7 +12152,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("selection-policy"), },
-                { "type", QLIT_QSTR("576"), },
+                { "type", QLIT_QSTR("573"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -12215,16 +12168,16 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("extents"), },
-                { "type", QLIT_QSTR("[577]"), },
+                { "type", QLIT_QSTR("[574]"), },
                 {}
             })),
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("292"), },
+        { "name", QLIT_QSTR("291"), },
         {}
     })),
-    /* "293" = q_obj_cxl-release-dynamic-capacity-arg */
+    /* "292" = q_obj_cxl-release-dynamic-capacity-arg */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -12239,7 +12192,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("removal-policy"), },
-                { "type", QLIT_QSTR("578"), },
+                { "type", QLIT_QSTR("575"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -12267,13 +12220,13 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("extents"), },
-                { "type", QLIT_QSTR("[577]"), },
+                { "type", QLIT_QSTR("[574]"), },
                 {}
             })),
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("293"), },
+        { "name", QLIT_QSTR("292"), },
         {}
     })),
     QLIT_QDICT(((QLitDictEntry[]) {
@@ -12282,7 +12235,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         { "name", QLIT_QSTR("bool"), },
         {}
     })),
-    /* "294" = RunState */
+    /* "293" = RunState */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -12352,7 +12305,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("294"), },
+        { "name", QLIT_QSTR("293"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("debug"),
             QLIT_QSTR("inmigrate"),
@@ -12374,7 +12327,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "295" = ShutdownCause */
+    /* "294" = ShutdownCause */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -12424,7 +12377,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("295"), },
+        { "name", QLIT_QSTR("294"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("none"),
             QLIT_QSTR("host-error"),
@@ -12441,7 +12394,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "296" = WatchdogAction */
+    /* "295" = WatchdogAction */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -12475,7 +12428,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("296"), },
+        { "name", QLIT_QSTR("295"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("reset"),
             QLIT_QSTR("shutdown"),
@@ -12488,7 +12441,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "297" = RebootAction */
+    /* "296" = RebootAction */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -12502,7 +12455,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("297"), },
+        { "name", QLIT_QSTR("296"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("reset"),
             QLIT_QSTR("shutdown"),
@@ -12510,7 +12463,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "298" = ShutdownAction */
+    /* "297" = ShutdownAction */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -12524,7 +12477,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("298"), },
+        { "name", QLIT_QSTR("297"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("poweroff"),
             QLIT_QSTR("pause"),
@@ -12532,7 +12485,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "299" = PanicAction */
+    /* "298" = PanicAction */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -12554,7 +12507,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("299"), },
+        { "name", QLIT_QSTR("298"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("pause"),
             QLIT_QSTR("shutdown"),
@@ -12564,7 +12517,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "300" = GuestPanicAction */
+    /* "299" = GuestPanicAction */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -12582,7 +12535,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("300"), },
+        { "name", QLIT_QSTR("299"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("pause"),
             QLIT_QSTR("poweroff"),
@@ -12591,40 +12544,40 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "301" = GuestPanicInformation */
+    /* "300" = GuestPanicInformation */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("type"), },
-                { "type", QLIT_QSTR("579"), },
+                { "type", QLIT_QSTR("576"), },
                 {}
             })),
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("301"), },
+        { "name", QLIT_QSTR("300"), },
         { "tag", QLIT_QSTR("type"), },
         { "variants", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("hyper-v"), },
-                { "type", QLIT_QSTR("580"), },
+                { "type", QLIT_QSTR("577"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("s390"), },
-                { "type", QLIT_QSTR("581"), },
+                { "type", QLIT_QSTR("578"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("tdx"), },
-                { "type", QLIT_QSTR("582"), },
+                { "type", QLIT_QSTR("579"), },
                 {}
             })),
             {}
         })), },
         {}
     })),
-    /* "302" = MemoryFailureRecipient */
+    /* "301" = MemoryFailureRecipient */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -12638,7 +12591,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("302"), },
+        { "name", QLIT_QSTR("301"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("hypervisor"),
             QLIT_QSTR("guest"),
@@ -12646,7 +12599,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "303" = MemoryFailureAction */
+    /* "302" = MemoryFailureAction */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -12668,7 +12621,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("303"), },
+        { "name", QLIT_QSTR("302"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("ignore"),
             QLIT_QSTR("inject"),
@@ -12678,7 +12631,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "304" = MemoryFailureFlags */
+    /* "303" = MemoryFailureFlags */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -12694,10 +12647,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("304"), },
+        { "name", QLIT_QSTR("303"), },
         {}
     })),
-    /* "305" = JobStatus */
+    /* "304" = JobStatus */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -12747,7 +12700,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("305"), },
+        { "name", QLIT_QSTR("304"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("undefined"),
             QLIT_QSTR("created"),
@@ -12764,7 +12717,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "306" = JobType */
+    /* "305" = JobType */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -12806,7 +12759,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("306"), },
+        { "name", QLIT_QSTR("305"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("commit"),
             QLIT_QSTR("stream"),
@@ -12827,7 +12780,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         { "name", QLIT_QSTR("int"), },
         {}
     })),
-    /* "307" = Accelerator */
+    /* "306" = Accelerator */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -12865,7 +12818,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("307"), },
+        { "name", QLIT_QSTR("306"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("hvf"),
             QLIT_QSTR("kvm"),
@@ -12880,12 +12833,12 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         {}
     })),
     QLIT_QDICT(((QLitDictEntry[]) {
-        { "element-type", QLIT_QSTR("307"), },
+        { "element-type", QLIT_QSTR("306"), },
         { "meta-type", QLIT_QSTR("array"), },
-        { "name", QLIT_QSTR("[307]"), },
+        { "name", QLIT_QSTR("[306]"), },
         {}
     })),
-    /* "308" = BlockdevChangeReadOnlyMode */
+    /* "307" = BlockdevChangeReadOnlyMode */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -12903,7 +12856,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("308"), },
+        { "name", QLIT_QSTR("307"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("retain"),
             QLIT_QSTR("read-only"),
@@ -12918,7 +12871,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         { "name", QLIT_QSTR("[int]"), },
         {}
     })),
-    /* "309" = BlockDeviceIoStatus */
+    /* "308" = BlockDeviceIoStatus */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -12936,7 +12889,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("309"), },
+        { "name", QLIT_QSTR("308"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("ok"),
             QLIT_QSTR("failed"),
@@ -12945,7 +12898,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "310" = BlockDeviceStats */
+    /* "309" = BlockDeviceStats */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -13111,68 +13064,68 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("timed_stats"), },
-                { "type", QLIT_QSTR("[583]"), },
+                { "type", QLIT_QSTR("[580]"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("rd_latency_histogram"), },
-                { "type", QLIT_QSTR("584"), },
+                { "type", QLIT_QSTR("581"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("wr_latency_histogram"), },
-                { "type", QLIT_QSTR("584"), },
+                { "type", QLIT_QSTR("581"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("zone_append_latency_histogram"), },
-                { "type", QLIT_QSTR("584"), },
+                { "type", QLIT_QSTR("581"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("flush_latency_histogram"), },
-                { "type", QLIT_QSTR("584"), },
+                { "type", QLIT_QSTR("581"), },
+                {}
+            })),
+            {}
+        })), },
+        { "meta-type", QLIT_QSTR("object"), },
+        { "name", QLIT_QSTR("309"), },
+        {}
+    })),
+    /* "310" = BlockStatsSpecific */
+    QLIT_QDICT(((QLitDictEntry[]) {
+        { "members", QLIT_QLIST(((QLitObject[]) {
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "name", QLIT_QSTR("driver"), },
+                { "type", QLIT_QSTR("328"), },
                 {}
             })),
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
         { "name", QLIT_QSTR("310"), },
-        {}
-    })),
-    /* "311" = BlockStatsSpecific */
-    QLIT_QDICT(((QLitDictEntry[]) {
-        { "members", QLIT_QLIST(((QLitObject[]) {
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "name", QLIT_QSTR("driver"), },
-                { "type", QLIT_QSTR("329"), },
-                {}
-            })),
-            {}
-        })), },
-        { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("311"), },
         { "tag", QLIT_QSTR("driver"), },
         { "variants", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("file"), },
-                { "type", QLIT_QSTR("585"), },
+                { "type", QLIT_QSTR("582"), },
                 {}
             })),
 #if defined(HAVE_HOST_BLOCK_DEVICE)
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("host_device"), },
-                { "type", QLIT_QSTR("585"), },
+                { "type", QLIT_QSTR("582"), },
                 {}
             })),
 #endif /* defined(HAVE_HOST_BLOCK_DEVICE) */
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("nvme"), },
-                { "type", QLIT_QSTR("586"), },
+                { "type", QLIT_QSTR("583"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -13413,7 +13366,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "312" = BlockJobInfoMirror */
+    /* "311" = BlockJobInfoMirror */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -13424,10 +13377,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("312"), },
+        { "name", QLIT_QSTR("311"), },
         {}
     })),
-    /* "313" = NewImageMode */
+    /* "312" = NewImageMode */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -13441,7 +13394,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("313"), },
+        { "name", QLIT_QSTR("312"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("existing"),
             QLIT_QSTR("absolute-paths"),
@@ -13449,7 +13402,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "314" = BlockdevOnError */
+    /* "313" = BlockdevOnError */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -13475,7 +13428,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("314"), },
+        { "name", QLIT_QSTR("313"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("report"),
             QLIT_QSTR("ignore"),
@@ -13486,7 +13439,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "315" = MirrorSyncMode */
+    /* "314" = MirrorSyncMode */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -13512,7 +13465,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("315"), },
+        { "name", QLIT_QSTR("314"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("top"),
             QLIT_QSTR("full"),
@@ -13523,7 +13476,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "316" = BitmapSyncMode */
+    /* "315" = BitmapSyncMode */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -13541,7 +13494,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("316"), },
+        { "name", QLIT_QSTR("315"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("on-success"),
             QLIT_QSTR("never"),
@@ -13550,7 +13503,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "317" = OnCbwError */
+    /* "316" = OnCbwError */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -13564,7 +13517,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("317"), },
+        { "name", QLIT_QSTR("316"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("break-guest-write"),
             QLIT_QSTR("break-snapshot"),
@@ -13572,7 +13525,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "318" = BackupPerf */
+    /* "317" = BackupPerf */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -13602,16 +13555,16 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("318"), },
+        { "name", QLIT_QSTR("317"), },
         {}
     })),
     QLIT_QDICT(((QLitDictEntry[]) {
-        { "element-type", QLIT_QSTR("319"), },
+        { "element-type", QLIT_QSTR("318"), },
         { "meta-type", QLIT_QSTR("array"), },
-        { "name", QLIT_QSTR("[319]"), },
+        { "name", QLIT_QSTR("[318]"), },
         {}
     })),
-    /* "319" = BlockdevChild */
+    /* "318" = BlockdevChild */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -13627,10 +13580,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("319"), },
+        { "name", QLIT_QSTR("318"), },
         {}
     })),
-    /* "320" = BlockdevDetectZeroesOptions */
+    /* "319" = BlockdevDetectZeroesOptions */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -13648,7 +13601,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("320"), },
+        { "name", QLIT_QSTR("319"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("off"),
             QLIT_QSTR("on"),
@@ -13657,7 +13610,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "321" = ImageInfo */
+    /* "320" = ImageInfo */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -13732,28 +13685,28 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("limits"), },
-                { "type", QLIT_QSTR("587"), },
+                { "type", QLIT_QSTR("584"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("format-specific"), },
-                { "type", QLIT_QSTR("588"), },
+                { "type", QLIT_QSTR("585"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("backing-image"), },
-                { "type", QLIT_QSTR("321"), },
+                { "type", QLIT_QSTR("320"), },
                 {}
             })),
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("321"), },
+        { "name", QLIT_QSTR("320"), },
         {}
     })),
-    /* "322" = BlockdevCacheInfo */
+    /* "321" = BlockdevCacheInfo */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -13774,16 +13727,16 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("322"), },
+        { "name", QLIT_QSTR("321"), },
         {}
     })),
     QLIT_QDICT(((QLitDictEntry[]) {
-        { "element-type", QLIT_QSTR("323"), },
+        { "element-type", QLIT_QSTR("322"), },
         { "meta-type", QLIT_QSTR("array"), },
-        { "name", QLIT_QSTR("[323]"), },
+        { "name", QLIT_QSTR("[322]"), },
         {}
     })),
-    /* "323" = BlockDirtyInfo */
+    /* "322" = BlockDirtyInfo */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -13826,16 +13779,16 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("323"), },
+        { "name", QLIT_QSTR("322"), },
         {}
     })),
     QLIT_QDICT(((QLitDictEntry[]) {
-        { "element-type", QLIT_QSTR("324"), },
+        { "element-type", QLIT_QSTR("323"), },
         { "meta-type", QLIT_QSTR("array"), },
-        { "name", QLIT_QSTR("[324]"), },
+        { "name", QLIT_QSTR("[323]"), },
         {}
     })),
-    /* "324" = XDbgBlockGraphNode */
+    /* "323" = XDbgBlockGraphNode */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -13845,7 +13798,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("type"), },
-                { "type", QLIT_QSTR("589"), },
+                { "type", QLIT_QSTR("586"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -13856,16 +13809,16 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("324"), },
+        { "name", QLIT_QSTR("323"), },
         {}
     })),
     QLIT_QDICT(((QLitDictEntry[]) {
-        { "element-type", QLIT_QSTR("325"), },
+        { "element-type", QLIT_QSTR("324"), },
         { "meta-type", QLIT_QSTR("array"), },
-        { "name", QLIT_QSTR("[325]"), },
+        { "name", QLIT_QSTR("[324]"), },
         {}
     })),
-    /* "325" = XDbgBlockGraphEdge */
+    /* "324" = XDbgBlockGraphEdge */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -13885,21 +13838,21 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("perm"), },
-                { "type", QLIT_QSTR("[590]"), },
+                { "type", QLIT_QSTR("[587]"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("shared-perm"), },
-                { "type", QLIT_QSTR("[590]"), },
+                { "type", QLIT_QSTR("[587]"), },
                 {}
             })),
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("325"), },
+        { "name", QLIT_QSTR("324"), },
         {}
     })),
-    /* "326" = MirrorCopyMode */
+    /* "325" = MirrorCopyMode */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -13913,7 +13866,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("326"), },
+        { "name", QLIT_QSTR("325"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("background"),
             QLIT_QSTR("write-blocking"),
@@ -13922,12 +13875,12 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         {}
     })),
     QLIT_QDICT(((QLitDictEntry[]) {
-        { "element-type", QLIT_QSTR("327"), },
+        { "element-type", QLIT_QSTR("326"), },
         { "meta-type", QLIT_QSTR("array"), },
-        { "name", QLIT_QSTR("[327]"), },
+        { "name", QLIT_QSTR("[326]"), },
         {}
     })),
-    /* "327" = BlockDirtyBitmapOrStr */
+    /* "326" = BlockDirtyBitmapOrStr */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -13941,24 +13894,24 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("alternate"), },
-        { "name", QLIT_QSTR("327"), },
+        { "name", QLIT_QSTR("326"), },
         {}
     })),
-    /* "328" = BlockJobChangeOptionsMirror */
+    /* "327" = BlockJobChangeOptionsMirror */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("copy-mode"), },
-                { "type", QLIT_QSTR("326"), },
+                { "type", QLIT_QSTR("325"), },
                 {}
             })),
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("328"), },
+        { "name", QLIT_QSTR("327"), },
         {}
     })),
-    /* "329" = BlockdevDriver */
+    /* "328" = BlockdevDriver */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -14172,7 +14125,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("329"), },
+        { "name", QLIT_QSTR("328"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("blkdebug"),
             QLIT_QSTR("blklogwrites"),
@@ -14241,7 +14194,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "330" = BlockdevDiscardOptions */
+    /* "329" = BlockdevDiscardOptions */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -14255,7 +14208,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("330"), },
+        { "name", QLIT_QSTR("329"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("ignore"),
             QLIT_QSTR("unmap"),
@@ -14263,7 +14216,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "331" = BlockdevCacheOptions */
+    /* "330" = BlockdevCacheOptions */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -14281,15 +14234,15 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("331"), },
+        { "name", QLIT_QSTR("330"), },
         {}
     })),
-    /* "332" = BlockdevOptionsBlkdebug */
+    /* "331" = BlockdevOptionsBlkdebug */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("image"), },
-                { "type", QLIT_QSTR("591"), },
+                { "type", QLIT_QSTR("588"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -14337,44 +14290,44 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("inject-error"), },
-                { "type", QLIT_QSTR("[592]"), },
+                { "type", QLIT_QSTR("[589]"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("set-state"), },
-                { "type", QLIT_QSTR("[593]"), },
+                { "type", QLIT_QSTR("[590]"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("take-child-perms"), },
-                { "type", QLIT_QSTR("[590]"), },
+                { "type", QLIT_QSTR("[587]"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("unshare-child-perms"), },
-                { "type", QLIT_QSTR("[590]"), },
+                { "type", QLIT_QSTR("[587]"), },
                 {}
             })),
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("332"), },
+        { "name", QLIT_QSTR("331"), },
         {}
     })),
-    /* "333" = BlockdevOptionsBlklogwrites */
+    /* "332" = BlockdevOptionsBlklogwrites */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("file"), },
-                { "type", QLIT_QSTR("591"), },
+                { "type", QLIT_QSTR("588"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("log"), },
-                { "type", QLIT_QSTR("591"), },
+                { "type", QLIT_QSTR("588"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -14398,20 +14351,34 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("333"), },
+        { "name", QLIT_QSTR("332"), },
         {}
     })),
-    /* "334" = BlockdevOptionsBlkverify */
+    /* "333" = BlockdevOptionsBlkverify */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("test"), },
-                { "type", QLIT_QSTR("591"), },
+                { "type", QLIT_QSTR("588"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("raw"), },
-                { "type", QLIT_QSTR("591"), },
+                { "type", QLIT_QSTR("588"), },
+                {}
+            })),
+            {}
+        })), },
+        { "meta-type", QLIT_QSTR("object"), },
+        { "name", QLIT_QSTR("333"), },
+        {}
+    })),
+    /* "334" = BlockdevOptionsBlkreplay */
+    QLIT_QDICT(((QLitDictEntry[]) {
+        { "members", QLIT_QLIST(((QLitObject[]) {
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "name", QLIT_QSTR("image"), },
+                { "type", QLIT_QSTR("588"), },
                 {}
             })),
             {}
@@ -14420,12 +14387,12 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         { "name", QLIT_QSTR("334"), },
         {}
     })),
-    /* "335" = BlockdevOptionsBlkreplay */
+    /* "335" = BlockdevOptionsGenericFormat */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
-                { "name", QLIT_QSTR("image"), },
-                { "type", QLIT_QSTR("591"), },
+                { "name", QLIT_QSTR("file"), },
+                { "type", QLIT_QSTR("588"), },
                 {}
             })),
             {}
@@ -14434,31 +14401,17 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         { "name", QLIT_QSTR("335"), },
         {}
     })),
-    /* "336" = BlockdevOptionsGenericFormat */
+    /* "336" = BlockdevOptionsCbw */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("file"), },
-                { "type", QLIT_QSTR("591"), },
-                {}
-            })),
-            {}
-        })), },
-        { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("336"), },
-        {}
-    })),
-    /* "337" = BlockdevOptionsCbw */
-    QLIT_QDICT(((QLitDictEntry[]) {
-        { "members", QLIT_QLIST(((QLitObject[]) {
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "name", QLIT_QSTR("file"), },
-                { "type", QLIT_QSTR("591"), },
+                { "type", QLIT_QSTR("588"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("target"), },
-                { "type", QLIT_QSTR("591"), },
+                { "type", QLIT_QSTR("588"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -14470,7 +14423,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("on-cbw-error"), },
-                { "type", QLIT_QSTR("317"), },
+                { "type", QLIT_QSTR("316"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -14488,15 +14441,15 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("337"), },
+        { "name", QLIT_QSTR("336"), },
         {}
     })),
-    /* "338" = BlockdevOptionsCor */
+    /* "337" = BlockdevOptionsCor */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("file"), },
-                { "type", QLIT_QSTR("591"), },
+                { "type", QLIT_QSTR("588"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -14508,10 +14461,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("338"), },
+        { "name", QLIT_QSTR("337"), },
         {}
     })),
-    /* "339" = BlockdevOptionsFile */
+    /* "338" = BlockdevOptionsFile */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "features", QLIT_QLIST(((QLitObject[]) {
 #if defined(CONFIG_POSIX)
@@ -14534,13 +14487,13 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("locking"), },
-                { "type", QLIT_QSTR("594"), },
+                { "type", QLIT_QSTR("591"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("aio"), },
-                { "type", QLIT_QSTR("595"), },
+                { "type", QLIT_QSTR("592"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -14570,10 +14523,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("339"), },
+        { "name", QLIT_QSTR("338"), },
         {}
     })),
-    /* "340" = BlockdevOptionsCurlFtp */
+    /* "339" = BlockdevOptionsCurlFtp */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -14620,10 +14573,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("340"), },
+        { "name", QLIT_QSTR("339"), },
         {}
     })),
-    /* "341" = BlockdevOptionsCurlFtps */
+    /* "340" = BlockdevOptionsCurlFtps */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -14676,10 +14629,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("341"), },
+        { "name", QLIT_QSTR("340"), },
         {}
     })),
-    /* "342" = BlockdevOptionsGluster */
+    /* "341" = BlockdevOptionsGluster */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -14694,7 +14647,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("server"), },
-                { "type", QLIT_QSTR("[405]"), },
+                { "type", QLIT_QSTR("[404]"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -14712,10 +14665,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("342"), },
+        { "name", QLIT_QSTR("341"), },
         {}
     })),
-    /* "343" = BlockdevOptionsCurlHttp */
+    /* "342" = BlockdevOptionsCurlHttp */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -14774,10 +14727,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("343"), },
+        { "name", QLIT_QSTR("342"), },
         {}
     })),
-    /* "344" = BlockdevOptionsCurlHttps */
+    /* "343" = BlockdevOptionsCurlHttps */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -14842,10 +14795,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("344"), },
+        { "name", QLIT_QSTR("343"), },
         {}
     })),
-    /* "345" = BlockdevOptionsIoUring */
+    /* "344" = BlockdevOptionsIoUring */
 #if defined(CONFIG_BLKIO)
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
@@ -14857,16 +14810,16 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("345"), },
+        { "name", QLIT_QSTR("344"), },
         {}
     })),
 #endif /* defined(CONFIG_BLKIO) */
-    /* "346" = BlockdevOptionsIscsi */
+    /* "345" = BlockdevOptionsIscsi */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("transport"), },
-                { "type", QLIT_QSTR("596"), },
+                { "type", QLIT_QSTR("593"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -14906,7 +14859,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("header-digest"), },
-                { "type", QLIT_QSTR("597"), },
+                { "type", QLIT_QSTR("594"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -14918,15 +14871,15 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("346"), },
+        { "name", QLIT_QSTR("345"), },
         {}
     })),
-    /* "347" = BlockdevOptionsLUKS */
+    /* "346" = BlockdevOptionsLUKS */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("file"), },
-                { "type", QLIT_QSTR("591"), },
+                { "type", QLIT_QSTR("588"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -14938,21 +14891,21 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("header"), },
-                { "type", QLIT_QSTR("591"), },
+                { "type", QLIT_QSTR("588"), },
                 {}
             })),
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("347"), },
+        { "name", QLIT_QSTR("346"), },
         {}
     })),
-    /* "348" = BlockdevOptionsNbd */
+    /* "347" = BlockdevOptionsNbd */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("server"), },
-                { "type", QLIT_QSTR("405"), },
+                { "type", QLIT_QSTR("404"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -14998,15 +14951,15 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("348"), },
+        { "name", QLIT_QSTR("347"), },
         {}
     })),
-    /* "349" = BlockdevOptionsNfs */
+    /* "348" = BlockdevOptionsNfs */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("server"), },
-                { "type", QLIT_QSTR("598"), },
+                { "type", QLIT_QSTR("595"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -15053,10 +15006,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("349"), },
+        { "name", QLIT_QSTR("348"), },
         {}
     })),
-    /* "350" = BlockdevOptionsNull */
+    /* "349" = BlockdevOptionsNull */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -15080,10 +15033,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("350"), },
+        { "name", QLIT_QSTR("349"), },
         {}
     })),
-    /* "351" = BlockdevOptionsNVMe */
+    /* "350" = BlockdevOptionsNVMe */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -15099,10 +15052,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("351"), },
+        { "name", QLIT_QSTR("350"), },
         {}
     })),
-    /* "352" = BlockdevOptionsNvmeIoUring */
+    /* "351" = BlockdevOptionsNvmeIoUring */
 #if defined(CONFIG_BLKIO)
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
@@ -15114,16 +15067,16 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("352"), },
+        { "name", QLIT_QSTR("351"), },
         {}
     })),
 #endif /* defined(CONFIG_BLKIO) */
-    /* "353" = BlockdevOptionsPreallocate */
+    /* "352" = BlockdevOptionsPreallocate */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("file"), },
-                { "type", QLIT_QSTR("591"), },
+                { "type", QLIT_QSTR("588"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -15141,21 +15094,21 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("353"), },
+        { "name", QLIT_QSTR("352"), },
         {}
     })),
-    /* "354" = BlockdevOptionsQcow2 */
+    /* "353" = BlockdevOptionsQcow2 */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("file"), },
-                { "type", QLIT_QSTR("591"), },
+                { "type", QLIT_QSTR("588"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("backing"), },
-                { "type", QLIT_QSTR("599"), },
+                { "type", QLIT_QSTR("596"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -15191,7 +15144,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("overlap-check"), },
-                { "type", QLIT_QSTR("600"), },
+                { "type", QLIT_QSTR("597"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -15227,13 +15180,39 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("encrypt"), },
-                { "type", QLIT_QSTR("601"), },
+                { "type", QLIT_QSTR("598"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("data-file"), },
-                { "type", QLIT_QSTR("591"), },
+                { "type", QLIT_QSTR("588"), },
+                {}
+            })),
+            {}
+        })), },
+        { "meta-type", QLIT_QSTR("object"), },
+        { "name", QLIT_QSTR("353"), },
+        {}
+    })),
+    /* "354" = BlockdevOptionsQcow */
+    QLIT_QDICT(((QLitDictEntry[]) {
+        { "members", QLIT_QLIST(((QLitObject[]) {
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "name", QLIT_QSTR("file"), },
+                { "type", QLIT_QSTR("588"), },
+                {}
+            })),
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "default", QLIT_QNULL, },
+                { "name", QLIT_QSTR("backing"), },
+                { "type", QLIT_QSTR("596"), },
+                {}
+            })),
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "default", QLIT_QNULL, },
+                { "name", QLIT_QSTR("encrypt"), },
+                { "type", QLIT_QSTR("599"), },
                 {}
             })),
             {}
@@ -15242,24 +15221,18 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         { "name", QLIT_QSTR("354"), },
         {}
     })),
-    /* "355" = BlockdevOptionsQcow */
+    /* "355" = BlockdevOptionsGenericCOWFormat */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("file"), },
-                { "type", QLIT_QSTR("591"), },
+                { "type", QLIT_QSTR("588"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("backing"), },
-                { "type", QLIT_QSTR("599"), },
-                {}
-            })),
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "default", QLIT_QNULL, },
-                { "name", QLIT_QSTR("encrypt"), },
-                { "type", QLIT_QSTR("602"), },
+                { "type", QLIT_QSTR("596"), },
                 {}
             })),
             {}
@@ -15268,27 +15241,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         { "name", QLIT_QSTR("355"), },
         {}
     })),
-    /* "356" = BlockdevOptionsGenericCOWFormat */
-    QLIT_QDICT(((QLitDictEntry[]) {
-        { "members", QLIT_QLIST(((QLitObject[]) {
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "name", QLIT_QSTR("file"), },
-                { "type", QLIT_QSTR("591"), },
-                {}
-            })),
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "default", QLIT_QNULL, },
-                { "name", QLIT_QSTR("backing"), },
-                { "type", QLIT_QSTR("599"), },
-                {}
-            })),
-            {}
-        })), },
-        { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("356"), },
-        {}
-    })),
-    /* "357" = BlockdevOptionsQuorum */
+    /* "356" = BlockdevOptionsQuorum */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -15299,7 +15252,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("children"), },
-                { "type", QLIT_QSTR("[591]"), },
+                { "type", QLIT_QSTR("[588]"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -15316,21 +15269,21 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("read-pattern"), },
-                { "type", QLIT_QSTR("603"), },
+                { "type", QLIT_QSTR("600"), },
                 {}
             })),
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("357"), },
+        { "name", QLIT_QSTR("356"), },
         {}
     })),
-    /* "358" = BlockdevOptionsRaw */
+    /* "357" = BlockdevOptionsRaw */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("file"), },
-                { "type", QLIT_QSTR("591"), },
+                { "type", QLIT_QSTR("588"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -15348,10 +15301,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("358"), },
+        { "name", QLIT_QSTR("357"), },
         {}
     })),
-    /* "359" = BlockdevOptionsRbd */
+    /* "358" = BlockdevOptionsRbd */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -15385,7 +15338,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("encrypt"), },
-                { "type", QLIT_QSTR("604"), },
+                { "type", QLIT_QSTR("601"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -15397,7 +15350,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("auth-client-required"), },
-                { "type", QLIT_QSTR("[605]"), },
+                { "type", QLIT_QSTR("[602]"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -15409,27 +15362,27 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("server"), },
-                { "type", QLIT_QSTR("[606]"), },
+                { "type", QLIT_QSTR("[603]"), },
                 {}
             })),
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("359"), },
+        { "name", QLIT_QSTR("358"), },
         {}
     })),
-    /* "360" = BlockdevOptionsReplication */
+    /* "359" = BlockdevOptionsReplication */
 #if defined(CONFIG_REPLICATION)
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("file"), },
-                { "type", QLIT_QSTR("591"), },
+                { "type", QLIT_QSTR("588"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("mode"), },
-                { "type", QLIT_QSTR("607"), },
+                { "type", QLIT_QSTR("604"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -15441,16 +15394,16 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("360"), },
+        { "name", QLIT_QSTR("359"), },
         {}
     })),
 #endif /* defined(CONFIG_REPLICATION) */
-    /* "361" = BlockdevOptionsSsh */
+    /* "360" = BlockdevOptionsSsh */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("server"), },
-                { "type", QLIT_QSTR("608"), },
+                { "type", QLIT_QSTR("605"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -15467,16 +15420,16 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("host-key-check"), },
-                { "type", QLIT_QSTR("609"), },
+                { "type", QLIT_QSTR("606"), },
                 {}
             })),
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("361"), },
+        { "name", QLIT_QSTR("360"), },
         {}
     })),
-    /* "362" = BlockdevOptionsThrottle */
+    /* "361" = BlockdevOptionsThrottle */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -15486,7 +15439,22 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("file"), },
-                { "type", QLIT_QSTR("591"), },
+                { "type", QLIT_QSTR("588"), },
+                {}
+            })),
+            {}
+        })), },
+        { "meta-type", QLIT_QSTR("object"), },
+        { "name", QLIT_QSTR("361"), },
+        {}
+    })),
+    /* "362" = BlockdevOptionsVirtioBlkVfioPci */
+#if defined(CONFIG_BLKIO)
+    QLIT_QDICT(((QLitDictEntry[]) {
+        { "members", QLIT_QLIST(((QLitObject[]) {
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "name", QLIT_QSTR("path"), },
+                { "type", QLIT_QSTR("str"), },
                 {}
             })),
             {}
@@ -15495,7 +15463,8 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         { "name", QLIT_QSTR("362"), },
         {}
     })),
-    /* "363" = BlockdevOptionsVirtioBlkVfioPci */
+#endif /* defined(CONFIG_BLKIO) */
+    /* "363" = BlockdevOptionsVirtioBlkVhostUser */
 #if defined(CONFIG_BLKIO)
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
@@ -15511,23 +15480,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         {}
     })),
 #endif /* defined(CONFIG_BLKIO) */
-    /* "364" = BlockdevOptionsVirtioBlkVhostUser */
-#if defined(CONFIG_BLKIO)
-    QLIT_QDICT(((QLitDictEntry[]) {
-        { "members", QLIT_QLIST(((QLitObject[]) {
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "name", QLIT_QSTR("path"), },
-                { "type", QLIT_QSTR("str"), },
-                {}
-            })),
-            {}
-        })), },
-        { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("364"), },
-        {}
-    })),
-#endif /* defined(CONFIG_BLKIO) */
-    /* "365" = BlockdevOptionsVirtioBlkVhostVdpa */
+    /* "364" = BlockdevOptionsVirtioBlkVhostVdpa */
 #if defined(CONFIG_BLKIO)
     QLIT_QDICT(((QLitDictEntry[]) {
         { "features", QLIT_QLIST(((QLitObject[]) {
@@ -15545,11 +15498,11 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("365"), },
+        { "name", QLIT_QSTR("364"), },
         {}
     })),
 #endif /* defined(CONFIG_BLKIO) */
-    /* "366" = BlockdevOptionsVVFAT */
+    /* "365" = BlockdevOptionsVVFAT */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -15584,7 +15537,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("366"), },
+        { "name", QLIT_QSTR("365"), },
         {}
     })),
     QLIT_QDICT(((QLitDictEntry[]) {
@@ -15593,12 +15546,281 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         { "name", QLIT_QSTR("[61]"), },
         {}
     })),
-    /* "367" = BlockdevCreateOptions */
+    /* "366" = BlockdevCreateOptions */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("driver"), },
-                { "type", QLIT_QSTR("329"), },
+                { "type", QLIT_QSTR("328"), },
+                {}
+            })),
+            {}
+        })), },
+        { "meta-type", QLIT_QSTR("object"), },
+        { "name", QLIT_QSTR("366"), },
+        { "tag", QLIT_QSTR("driver"), },
+        { "variants", QLIT_QLIST(((QLitObject[]) {
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "case", QLIT_QSTR("file"), },
+                { "type", QLIT_QSTR("607"), },
+                {}
+            })),
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "case", QLIT_QSTR("gluster"), },
+                { "type", QLIT_QSTR("608"), },
+                {}
+            })),
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "case", QLIT_QSTR("luks"), },
+                { "type", QLIT_QSTR("609"), },
+                {}
+            })),
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "case", QLIT_QSTR("nfs"), },
+                { "type", QLIT_QSTR("610"), },
+                {}
+            })),
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "case", QLIT_QSTR("parallels"), },
+                { "type", QLIT_QSTR("611"), },
+                {}
+            })),
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "case", QLIT_QSTR("qcow"), },
+                { "type", QLIT_QSTR("612"), },
+                {}
+            })),
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "case", QLIT_QSTR("qcow2"), },
+                { "type", QLIT_QSTR("613"), },
+                {}
+            })),
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "case", QLIT_QSTR("qed"), },
+                { "type", QLIT_QSTR("614"), },
+                {}
+            })),
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "case", QLIT_QSTR("rbd"), },
+                { "type", QLIT_QSTR("615"), },
+                {}
+            })),
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "case", QLIT_QSTR("ssh"), },
+                { "type", QLIT_QSTR("616"), },
+                {}
+            })),
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "case", QLIT_QSTR("vdi"), },
+                { "type", QLIT_QSTR("617"), },
+                {}
+            })),
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "case", QLIT_QSTR("vhdx"), },
+                { "type", QLIT_QSTR("618"), },
+                {}
+            })),
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "case", QLIT_QSTR("vmdk"), },
+                { "type", QLIT_QSTR("619"), },
+                {}
+            })),
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "case", QLIT_QSTR("vpc"), },
+                { "type", QLIT_QSTR("620"), },
+                {}
+            })),
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "case", QLIT_QSTR("blkdebug"), },
+                { "type", QLIT_QSTR("0"), },
+                {}
+            })),
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "case", QLIT_QSTR("blklogwrites"), },
+                { "type", QLIT_QSTR("0"), },
+                {}
+            })),
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "case", QLIT_QSTR("blkreplay"), },
+                { "type", QLIT_QSTR("0"), },
+                {}
+            })),
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "case", QLIT_QSTR("blkverify"), },
+                { "type", QLIT_QSTR("0"), },
+                {}
+            })),
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "case", QLIT_QSTR("bochs"), },
+                { "type", QLIT_QSTR("0"), },
+                {}
+            })),
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "case", QLIT_QSTR("cloop"), },
+                { "type", QLIT_QSTR("0"), },
+                {}
+            })),
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "case", QLIT_QSTR("compress"), },
+                { "type", QLIT_QSTR("0"), },
+                {}
+            })),
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "case", QLIT_QSTR("copy-before-write"), },
+                { "type", QLIT_QSTR("0"), },
+                {}
+            })),
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "case", QLIT_QSTR("copy-on-read"), },
+                { "type", QLIT_QSTR("0"), },
+                {}
+            })),
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "case", QLIT_QSTR("dmg"), },
+                { "type", QLIT_QSTR("0"), },
+                {}
+            })),
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "case", QLIT_QSTR("snapshot-access"), },
+                { "type", QLIT_QSTR("0"), },
+                {}
+            })),
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "case", QLIT_QSTR("ftp"), },
+                { "type", QLIT_QSTR("0"), },
+                {}
+            })),
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "case", QLIT_QSTR("ftps"), },
+                { "type", QLIT_QSTR("0"), },
+                {}
+            })),
+#if defined(HAVE_HOST_BLOCK_DEVICE)
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "case", QLIT_QSTR("host_cdrom"), },
+                { "type", QLIT_QSTR("0"), },
+                {}
+            })),
+#endif /* defined(HAVE_HOST_BLOCK_DEVICE) */
+#if defined(HAVE_HOST_BLOCK_DEVICE)
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "case", QLIT_QSTR("host_device"), },
+                { "type", QLIT_QSTR("0"), },
+                {}
+            })),
+#endif /* defined(HAVE_HOST_BLOCK_DEVICE) */
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "case", QLIT_QSTR("http"), },
+                { "type", QLIT_QSTR("0"), },
+                {}
+            })),
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "case", QLIT_QSTR("https"), },
+                { "type", QLIT_QSTR("0"), },
+                {}
+            })),
+#if defined(CONFIG_BLKIO)
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "case", QLIT_QSTR("io_uring"), },
+                { "type", QLIT_QSTR("0"), },
+                {}
+            })),
+#endif /* defined(CONFIG_BLKIO) */
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "case", QLIT_QSTR("iscsi"), },
+                { "type", QLIT_QSTR("0"), },
+                {}
+            })),
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "case", QLIT_QSTR("nbd"), },
+                { "type", QLIT_QSTR("0"), },
+                {}
+            })),
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "case", QLIT_QSTR("null-aio"), },
+                { "type", QLIT_QSTR("0"), },
+                {}
+            })),
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "case", QLIT_QSTR("null-co"), },
+                { "type", QLIT_QSTR("0"), },
+                {}
+            })),
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "case", QLIT_QSTR("nvme"), },
+                { "type", QLIT_QSTR("0"), },
+                {}
+            })),
+#if defined(CONFIG_BLKIO)
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "case", QLIT_QSTR("nvme-io_uring"), },
+                { "type", QLIT_QSTR("0"), },
+                {}
+            })),
+#endif /* defined(CONFIG_BLKIO) */
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "case", QLIT_QSTR("preallocate"), },
+                { "type", QLIT_QSTR("0"), },
+                {}
+            })),
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "case", QLIT_QSTR("quorum"), },
+                { "type", QLIT_QSTR("0"), },
+                {}
+            })),
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "case", QLIT_QSTR("raw"), },
+                { "type", QLIT_QSTR("0"), },
+                {}
+            })),
+#if defined(CONFIG_REPLICATION)
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "case", QLIT_QSTR("replication"), },
+                { "type", QLIT_QSTR("0"), },
+                {}
+            })),
+#endif /* defined(CONFIG_REPLICATION) */
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "case", QLIT_QSTR("throttle"), },
+                { "type", QLIT_QSTR("0"), },
+                {}
+            })),
+#if defined(CONFIG_BLKIO)
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "case", QLIT_QSTR("virtio-blk-vfio-pci"), },
+                { "type", QLIT_QSTR("0"), },
+                {}
+            })),
+#endif /* defined(CONFIG_BLKIO) */
+#if defined(CONFIG_BLKIO)
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "case", QLIT_QSTR("virtio-blk-vhost-user"), },
+                { "type", QLIT_QSTR("0"), },
+                {}
+            })),
+#endif /* defined(CONFIG_BLKIO) */
+#if defined(CONFIG_BLKIO)
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "case", QLIT_QSTR("virtio-blk-vhost-vdpa"), },
+                { "type", QLIT_QSTR("0"), },
+                {}
+            })),
+#endif /* defined(CONFIG_BLKIO) */
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "case", QLIT_QSTR("vvfat"), },
+                { "type", QLIT_QSTR("0"), },
+                {}
+            })),
+            {}
+        })), },
+        {}
+    })),
+    /* "367" = BlockdevAmendOptions */
+    QLIT_QDICT(((QLitDictEntry[]) {
+        { "members", QLIT_QLIST(((QLitObject[]) {
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "name", QLIT_QSTR("driver"), },
+                { "type", QLIT_QSTR("328"), },
                 {}
             })),
             {}
@@ -15608,282 +15830,13 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         { "tag", QLIT_QSTR("driver"), },
         { "variants", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
-                { "case", QLIT_QSTR("file"), },
-                { "type", QLIT_QSTR("610"), },
-                {}
-            })),
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "case", QLIT_QSTR("gluster"), },
-                { "type", QLIT_QSTR("611"), },
-                {}
-            })),
-            QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("luks"), },
-                { "type", QLIT_QSTR("612"), },
-                {}
-            })),
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "case", QLIT_QSTR("nfs"), },
-                { "type", QLIT_QSTR("613"), },
-                {}
-            })),
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "case", QLIT_QSTR("parallels"), },
-                { "type", QLIT_QSTR("614"), },
-                {}
-            })),
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "case", QLIT_QSTR("qcow"), },
-                { "type", QLIT_QSTR("615"), },
-                {}
-            })),
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "case", QLIT_QSTR("qcow2"), },
-                { "type", QLIT_QSTR("616"), },
-                {}
-            })),
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "case", QLIT_QSTR("qed"), },
-                { "type", QLIT_QSTR("617"), },
-                {}
-            })),
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "case", QLIT_QSTR("rbd"), },
-                { "type", QLIT_QSTR("618"), },
-                {}
-            })),
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "case", QLIT_QSTR("ssh"), },
-                { "type", QLIT_QSTR("619"), },
-                {}
-            })),
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "case", QLIT_QSTR("vdi"), },
-                { "type", QLIT_QSTR("620"), },
-                {}
-            })),
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "case", QLIT_QSTR("vhdx"), },
                 { "type", QLIT_QSTR("621"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
-                { "case", QLIT_QSTR("vmdk"), },
-                { "type", QLIT_QSTR("622"), },
-                {}
-            })),
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "case", QLIT_QSTR("vpc"), },
-                { "type", QLIT_QSTR("623"), },
-                {}
-            })),
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "case", QLIT_QSTR("blkdebug"), },
-                { "type", QLIT_QSTR("0"), },
-                {}
-            })),
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "case", QLIT_QSTR("blklogwrites"), },
-                { "type", QLIT_QSTR("0"), },
-                {}
-            })),
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "case", QLIT_QSTR("blkreplay"), },
-                { "type", QLIT_QSTR("0"), },
-                {}
-            })),
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "case", QLIT_QSTR("blkverify"), },
-                { "type", QLIT_QSTR("0"), },
-                {}
-            })),
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "case", QLIT_QSTR("bochs"), },
-                { "type", QLIT_QSTR("0"), },
-                {}
-            })),
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "case", QLIT_QSTR("cloop"), },
-                { "type", QLIT_QSTR("0"), },
-                {}
-            })),
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "case", QLIT_QSTR("compress"), },
-                { "type", QLIT_QSTR("0"), },
-                {}
-            })),
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "case", QLIT_QSTR("copy-before-write"), },
-                { "type", QLIT_QSTR("0"), },
-                {}
-            })),
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "case", QLIT_QSTR("copy-on-read"), },
-                { "type", QLIT_QSTR("0"), },
-                {}
-            })),
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "case", QLIT_QSTR("dmg"), },
-                { "type", QLIT_QSTR("0"), },
-                {}
-            })),
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "case", QLIT_QSTR("snapshot-access"), },
-                { "type", QLIT_QSTR("0"), },
-                {}
-            })),
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "case", QLIT_QSTR("ftp"), },
-                { "type", QLIT_QSTR("0"), },
-                {}
-            })),
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "case", QLIT_QSTR("ftps"), },
-                { "type", QLIT_QSTR("0"), },
-                {}
-            })),
-#if defined(HAVE_HOST_BLOCK_DEVICE)
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "case", QLIT_QSTR("host_cdrom"), },
-                { "type", QLIT_QSTR("0"), },
-                {}
-            })),
-#endif /* defined(HAVE_HOST_BLOCK_DEVICE) */
-#if defined(HAVE_HOST_BLOCK_DEVICE)
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "case", QLIT_QSTR("host_device"), },
-                { "type", QLIT_QSTR("0"), },
-                {}
-            })),
-#endif /* defined(HAVE_HOST_BLOCK_DEVICE) */
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "case", QLIT_QSTR("http"), },
-                { "type", QLIT_QSTR("0"), },
-                {}
-            })),
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "case", QLIT_QSTR("https"), },
-                { "type", QLIT_QSTR("0"), },
-                {}
-            })),
-#if defined(CONFIG_BLKIO)
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "case", QLIT_QSTR("io_uring"), },
-                { "type", QLIT_QSTR("0"), },
-                {}
-            })),
-#endif /* defined(CONFIG_BLKIO) */
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "case", QLIT_QSTR("iscsi"), },
-                { "type", QLIT_QSTR("0"), },
-                {}
-            })),
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "case", QLIT_QSTR("nbd"), },
-                { "type", QLIT_QSTR("0"), },
-                {}
-            })),
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "case", QLIT_QSTR("null-aio"), },
-                { "type", QLIT_QSTR("0"), },
-                {}
-            })),
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "case", QLIT_QSTR("null-co"), },
-                { "type", QLIT_QSTR("0"), },
-                {}
-            })),
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "case", QLIT_QSTR("nvme"), },
-                { "type", QLIT_QSTR("0"), },
-                {}
-            })),
-#if defined(CONFIG_BLKIO)
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "case", QLIT_QSTR("nvme-io_uring"), },
-                { "type", QLIT_QSTR("0"), },
-                {}
-            })),
-#endif /* defined(CONFIG_BLKIO) */
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "case", QLIT_QSTR("preallocate"), },
-                { "type", QLIT_QSTR("0"), },
-                {}
-            })),
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "case", QLIT_QSTR("quorum"), },
-                { "type", QLIT_QSTR("0"), },
-                {}
-            })),
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "case", QLIT_QSTR("raw"), },
-                { "type", QLIT_QSTR("0"), },
-                {}
-            })),
-#if defined(CONFIG_REPLICATION)
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "case", QLIT_QSTR("replication"), },
-                { "type", QLIT_QSTR("0"), },
-                {}
-            })),
-#endif /* defined(CONFIG_REPLICATION) */
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "case", QLIT_QSTR("throttle"), },
-                { "type", QLIT_QSTR("0"), },
-                {}
-            })),
-#if defined(CONFIG_BLKIO)
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "case", QLIT_QSTR("virtio-blk-vfio-pci"), },
-                { "type", QLIT_QSTR("0"), },
-                {}
-            })),
-#endif /* defined(CONFIG_BLKIO) */
-#if defined(CONFIG_BLKIO)
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "case", QLIT_QSTR("virtio-blk-vhost-user"), },
-                { "type", QLIT_QSTR("0"), },
-                {}
-            })),
-#endif /* defined(CONFIG_BLKIO) */
-#if defined(CONFIG_BLKIO)
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "case", QLIT_QSTR("virtio-blk-vhost-vdpa"), },
-                { "type", QLIT_QSTR("0"), },
-                {}
-            })),
-#endif /* defined(CONFIG_BLKIO) */
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "case", QLIT_QSTR("vvfat"), },
-                { "type", QLIT_QSTR("0"), },
-                {}
-            })),
-            {}
-        })), },
-        {}
-    })),
-    /* "368" = BlockdevAmendOptions */
-    QLIT_QDICT(((QLitDictEntry[]) {
-        { "members", QLIT_QLIST(((QLitObject[]) {
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "name", QLIT_QSTR("driver"), },
-                { "type", QLIT_QSTR("329"), },
-                {}
-            })),
-            {}
-        })), },
-        { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("368"), },
-        { "tag", QLIT_QSTR("driver"), },
-        { "variants", QLIT_QLIST(((QLitObject[]) {
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "case", QLIT_QSTR("luks"), },
-                { "type", QLIT_QSTR("624"), },
-                {}
-            })),
-            QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("qcow2"), },
-                { "type", QLIT_QSTR("625"), },
+                { "type", QLIT_QSTR("622"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -16131,7 +16084,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "369" = IoOperationType */
+    /* "368" = IoOperationType */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -16145,7 +16098,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("369"), },
+        { "name", QLIT_QSTR("368"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("read"),
             QLIT_QSTR("write"),
@@ -16153,7 +16106,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "370" = BlockErrorAction */
+    /* "369" = BlockErrorAction */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -16171,7 +16124,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("370"), },
+        { "name", QLIT_QSTR("369"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("ignore"),
             QLIT_QSTR("report"),
@@ -16180,7 +16133,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "371" = StrOrNull */
+    /* "370" = StrOrNull */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -16194,10 +16147,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("alternate"), },
-        { "name", QLIT_QSTR("371"), },
+        { "name", QLIT_QSTR("370"), },
         {}
     })),
-    /* "372" = QuorumOpType */
+    /* "371" = QuorumOpType */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -16215,7 +16168,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("372"), },
+        { "name", QLIT_QSTR("371"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("read"),
             QLIT_QSTR("write"),
@@ -16224,45 +16177,45 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "373" = SocketAddressLegacy */
+    /* "372" = SocketAddressLegacy */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("type"), },
-                { "type", QLIT_QSTR("626"), },
+                { "type", QLIT_QSTR("623"), },
                 {}
             })),
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("373"), },
+        { "name", QLIT_QSTR("372"), },
         { "tag", QLIT_QSTR("type"), },
         { "variants", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("inet"), },
-                { "type", QLIT_QSTR("627"), },
+                { "type", QLIT_QSTR("624"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("unix"), },
-                { "type", QLIT_QSTR("628"), },
+                { "type", QLIT_QSTR("625"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("vsock"), },
-                { "type", QLIT_QSTR("629"), },
+                { "type", QLIT_QSTR("626"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("fd"), },
-                { "type", QLIT_QSTR("630"), },
+                { "type", QLIT_QSTR("627"), },
                 {}
             })),
             {}
         })), },
         {}
     })),
-    /* "374" = BlockExportRemoveMode */
+    /* "373" = BlockExportRemoveMode */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -16276,7 +16229,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("374"), },
+        { "name", QLIT_QSTR("373"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("safe"),
             QLIT_QSTR("hard"),
@@ -16284,7 +16237,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "375" = BlockExportType */
+    /* "374" = BlockExportType */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -16312,7 +16265,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("375"), },
+        { "name", QLIT_QSTR("374"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("nbd"),
 #if defined(CONFIG_VHOST_USER_BLK_SERVER)
@@ -16328,7 +16281,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "376" = BlockExportOptionsNbd */
+    /* "375" = BlockExportOptionsNbd */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -16346,7 +16299,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("bitmaps"), },
-                { "type", QLIT_QSTR("[327]"), },
+                { "type", QLIT_QSTR("[326]"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -16358,15 +16311,15 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("376"), },
+        { "name", QLIT_QSTR("375"), },
         {}
     })),
-    /* "377" = BlockExportOptionsVhostUserBlk */
+    /* "376" = BlockExportOptionsVhostUserBlk */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("addr"), },
-                { "type", QLIT_QSTR("405"), },
+                { "type", QLIT_QSTR("404"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -16384,10 +16337,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("377"), },
+        { "name", QLIT_QSTR("376"), },
         {}
     })),
-    /* "378" = BlockExportOptionsFuse */
+    /* "377" = BlockExportOptionsFuse */
 #if defined(CONFIG_FUSE)
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
@@ -16405,17 +16358,17 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("allow-other"), },
-                { "type", QLIT_QSTR("631"), },
+                { "type", QLIT_QSTR("628"), },
                 {}
             })),
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("378"), },
+        { "name", QLIT_QSTR("377"), },
         {}
     })),
 #endif /* defined(CONFIG_FUSE) */
-    /* "379" = BlockExportOptionsVduseBlk */
+    /* "378" = BlockExportOptionsVduseBlk */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -16450,10 +16403,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("379"), },
+        { "name", QLIT_QSTR("378"), },
         {}
     })),
-    /* "380" = DataFormat */
+    /* "379" = DataFormat */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -16467,7 +16420,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("380"), },
+        { "name", QLIT_QSTR("379"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("utf8"),
             QLIT_QSTR("base64"),
@@ -16475,156 +16428,156 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "381" = ChardevBackend */
+    /* "380" = ChardevBackend */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("type"), },
-                { "type", QLIT_QSTR("632"), },
+                { "type", QLIT_QSTR("629"), },
                 {}
             })),
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("381"), },
+        { "name", QLIT_QSTR("380"), },
         { "tag", QLIT_QSTR("type"), },
         { "variants", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("file"), },
-                { "type", QLIT_QSTR("633"), },
+                { "type", QLIT_QSTR("630"), },
                 {}
             })),
 #if defined(HAVE_CHARDEV_SERIAL)
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("serial"), },
-                { "type", QLIT_QSTR("634"), },
+                { "type", QLIT_QSTR("631"), },
                 {}
             })),
 #endif /* defined(HAVE_CHARDEV_SERIAL) */
 #if defined(HAVE_CHARDEV_PARALLEL)
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("parallel"), },
-                { "type", QLIT_QSTR("634"), },
+                { "type", QLIT_QSTR("631"), },
                 {}
             })),
 #endif /* defined(HAVE_CHARDEV_PARALLEL) */
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("pipe"), },
-                { "type", QLIT_QSTR("634"), },
+                { "type", QLIT_QSTR("631"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("socket"), },
-                { "type", QLIT_QSTR("635"), },
+                { "type", QLIT_QSTR("632"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("udp"), },
-                { "type", QLIT_QSTR("636"), },
+                { "type", QLIT_QSTR("633"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("pty"), },
-                { "type", QLIT_QSTR("637"), },
+                { "type", QLIT_QSTR("634"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("null"), },
-                { "type", QLIT_QSTR("638"), },
+                { "type", QLIT_QSTR("635"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("mux"), },
-                { "type", QLIT_QSTR("639"), },
+                { "type", QLIT_QSTR("636"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("hub"), },
-                { "type", QLIT_QSTR("640"), },
+                { "type", QLIT_QSTR("637"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("msmouse"), },
-                { "type", QLIT_QSTR("638"), },
+                { "type", QLIT_QSTR("635"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("wctablet"), },
-                { "type", QLIT_QSTR("638"), },
+                { "type", QLIT_QSTR("635"), },
                 {}
             })),
 #if defined(CONFIG_BRLAPI)
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("braille"), },
-                { "type", QLIT_QSTR("638"), },
+                { "type", QLIT_QSTR("635"), },
                 {}
             })),
 #endif /* defined(CONFIG_BRLAPI) */
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("testdev"), },
-                { "type", QLIT_QSTR("638"), },
+                { "type", QLIT_QSTR("635"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("stdio"), },
-                { "type", QLIT_QSTR("641"), },
+                { "type", QLIT_QSTR("638"), },
                 {}
             })),
 #if defined(CONFIG_WIN32)
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("console"), },
-                { "type", QLIT_QSTR("638"), },
+                { "type", QLIT_QSTR("635"), },
                 {}
             })),
 #endif /* defined(CONFIG_WIN32) */
 #if defined(CONFIG_SPICE)
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("spicevmc"), },
-                { "type", QLIT_QSTR("642"), },
+                { "type", QLIT_QSTR("639"), },
                 {}
             })),
 #endif /* defined(CONFIG_SPICE) */
 #if defined(CONFIG_SPICE)
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("spiceport"), },
-                { "type", QLIT_QSTR("643"), },
+                { "type", QLIT_QSTR("640"), },
                 {}
             })),
 #endif /* defined(CONFIG_SPICE) */
 #if defined(CONFIG_SPICE_PROTOCOL)
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("qemu-vdagent"), },
-                { "type", QLIT_QSTR("644"), },
+                { "type", QLIT_QSTR("641"), },
                 {}
             })),
 #endif /* defined(CONFIG_SPICE_PROTOCOL) */
 #if defined(CONFIG_DBUS_DISPLAY)
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("dbus"), },
-                { "type", QLIT_QSTR("645"), },
+                { "type", QLIT_QSTR("642"), },
                 {}
             })),
 #endif /* defined(CONFIG_DBUS_DISPLAY) */
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("vc"), },
-                { "type", QLIT_QSTR("646"), },
+                { "type", QLIT_QSTR("643"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("ringbuf"), },
-                { "type", QLIT_QSTR("647"), },
+                { "type", QLIT_QSTR("644"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("memory"), },
-                { "type", QLIT_QSTR("647"), },
+                { "type", QLIT_QSTR("644"), },
                 {}
             })),
             {}
         })), },
         {}
     })),
-    /* "382" = DumpGuestMemoryFormat */
+    /* "381" = DumpGuestMemoryFormat */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -16662,7 +16615,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("382"), },
+        { "name", QLIT_QSTR("381"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("elf"),
             QLIT_QSTR("kdump-zlib"),
@@ -16676,7 +16629,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "383" = DumpStatus */
+    /* "382" = DumpStatus */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -16698,7 +16651,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("383"), },
+        { "name", QLIT_QSTR("382"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("none"),
             QLIT_QSTR("active"),
@@ -16709,12 +16662,12 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         {}
     })),
     QLIT_QDICT(((QLitDictEntry[]) {
-        { "element-type", QLIT_QSTR("382"), },
+        { "element-type", QLIT_QSTR("381"), },
         { "meta-type", QLIT_QSTR("array"), },
-        { "name", QLIT_QSTR("[382]"), },
+        { "name", QLIT_QSTR("[381]"), },
         {}
     })),
-    /* "384" = NetClientDriver */
+    /* "383" = NetClientDriver */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -16810,7 +16763,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("384"), },
+        { "name", QLIT_QSTR("383"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("none"),
             QLIT_QSTR("nic"),
@@ -16846,7 +16799,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "385" = NetLegacyNicOptions */
+    /* "384" = NetLegacyNicOptions */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -16882,10 +16835,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("385"), },
+        { "name", QLIT_QSTR("384"), },
         {}
     })),
-    /* "386" = NetDevPasstOptions */
+    /* "385" = NetDevPasstOptions */
 #if defined(CONFIG_PASST)
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
@@ -16970,7 +16923,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("search"), },
-                { "type", QLIT_QSTR("[648]"), },
+                { "type", QLIT_QSTR("[645]"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -17078,29 +17031,29 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("tcp-ports"), },
-                { "type", QLIT_QSTR("[648]"), },
+                { "type", QLIT_QSTR("[645]"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("udp-ports"), },
-                { "type", QLIT_QSTR("[648]"), },
+                { "type", QLIT_QSTR("[645]"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("param"), },
-                { "type", QLIT_QSTR("[648]"), },
+                { "type", QLIT_QSTR("[645]"), },
                 {}
             })),
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("386"), },
+        { "name", QLIT_QSTR("385"), },
         {}
     })),
 #endif /* defined(CONFIG_PASST) */
-    /* "387" = NetdevUserOptions */
+    /* "386" = NetdevUserOptions */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -17172,7 +17125,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("dnssearch"), },
-                { "type", QLIT_QSTR("[648]"), },
+                { "type", QLIT_QSTR("[645]"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -17220,13 +17173,13 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("hostfwd"), },
-                { "type", QLIT_QSTR("[648]"), },
+                { "type", QLIT_QSTR("[645]"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("guestfwd"), },
-                { "type", QLIT_QSTR("[648]"), },
+                { "type", QLIT_QSTR("[645]"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -17238,10 +17191,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("387"), },
+        { "name", QLIT_QSTR("386"), },
         {}
     })),
-    /* "388" = NetdevTapOptions */
+    /* "387" = NetdevTapOptions */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -17337,10 +17290,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("388"), },
+        { "name", QLIT_QSTR("387"), },
         {}
     })),
-    /* "389" = NetdevL2TPv3Options */
+    /* "388" = NetdevL2TPv3Options */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -17427,10 +17380,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("389"), },
+        { "name", QLIT_QSTR("388"), },
         {}
     })),
-    /* "390" = NetdevSocketOptions */
+    /* "389" = NetdevSocketOptions */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -17472,15 +17425,15 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("390"), },
+        { "name", QLIT_QSTR("389"), },
         {}
     })),
-    /* "391" = NetdevStreamOptions */
+    /* "390" = NetdevStreamOptions */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("addr"), },
-                { "type", QLIT_QSTR("405"), },
+                { "type", QLIT_QSTR("404"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -17498,31 +17451,31 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("391"), },
+        { "name", QLIT_QSTR("390"), },
         {}
     })),
-    /* "392" = NetdevDgramOptions */
+    /* "391" = NetdevDgramOptions */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("local"), },
-                { "type", QLIT_QSTR("405"), },
+                { "type", QLIT_QSTR("404"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("remote"), },
-                { "type", QLIT_QSTR("405"), },
+                { "type", QLIT_QSTR("404"), },
                 {}
             })),
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("392"), },
+        { "name", QLIT_QSTR("391"), },
         {}
     })),
-    /* "393" = NetdevVdeOptions */
+    /* "392" = NetdevVdeOptions */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -17552,10 +17505,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("393"), },
+        { "name", QLIT_QSTR("392"), },
         {}
     })),
-    /* "394" = NetdevBridgeOptions */
+    /* "393" = NetdevBridgeOptions */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -17573,10 +17526,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("394"), },
+        { "name", QLIT_QSTR("393"), },
         {}
     })),
-    /* "395" = NetdevHubPortOptions */
+    /* "394" = NetdevHubPortOptions */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -17593,10 +17546,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("395"), },
+        { "name", QLIT_QSTR("394"), },
         {}
     })),
-    /* "396" = NetdevNetmapOptions */
+    /* "395" = NetdevNetmapOptions */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -17613,10 +17566,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("396"), },
+        { "name", QLIT_QSTR("395"), },
         {}
     })),
-    /* "397" = NetdevAFXDPOptions */
+    /* "396" = NetdevAFXDPOptions */
 #if defined(CONFIG_AF_XDP)
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
@@ -17628,7 +17581,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("mode"), },
-                { "type", QLIT_QSTR("649"), },
+                { "type", QLIT_QSTR("646"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -17676,11 +17629,11 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("397"), },
+        { "name", QLIT_QSTR("396"), },
         {}
     })),
 #endif /* defined(CONFIG_AF_XDP) */
-    /* "398" = NetdevVhostUserOptions */
+    /* "397" = NetdevVhostUserOptions */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -17703,10 +17656,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("398"), },
+        { "name", QLIT_QSTR("397"), },
         {}
     })),
-    /* "399" = NetdevVhostVDPAOptions */
+    /* "398" = NetdevVhostVDPAOptions */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -17740,10 +17693,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("399"), },
+        { "name", QLIT_QSTR("398"), },
         {}
     })),
-    /* "400" = NetdevPcapOptions */
+    /* "399" = NetdevPcapOptions */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -17754,10 +17707,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("400"), },
+        { "name", QLIT_QSTR("399"), },
         {}
     })),
-    /* "401" = NetdevVmnetHostOptions */
+    /* "400" = NetdevVmnetHostOptions */
 #if defined(CONFIG_VMNET)
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
@@ -17794,11 +17747,11 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("401"), },
+        { "name", QLIT_QSTR("400"), },
         {}
     })),
 #endif /* defined(CONFIG_VMNET) */
-    /* "402" = NetdevVmnetSharedOptions */
+    /* "401" = NetdevVmnetSharedOptions */
 #if defined(CONFIG_VMNET)
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
@@ -17835,11 +17788,11 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("402"), },
+        { "name", QLIT_QSTR("401"), },
         {}
     })),
 #endif /* defined(CONFIG_VMNET) */
-    /* "403" = NetdevVmnetBridgedOptions */
+    /* "402" = NetdevVmnetBridgedOptions */
 #if defined(CONFIG_VMNET)
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
@@ -17857,11 +17810,11 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("403"), },
+        { "name", QLIT_QSTR("402"), },
         {}
     })),
 #endif /* defined(CONFIG_VMNET) */
-    /* "404" = RxState */
+    /* "403" = RxState */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -17879,7 +17832,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("404"), },
+        { "name", QLIT_QSTR("403"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("normal"),
             QLIT_QSTR("none"),
@@ -17894,45 +17847,45 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         { "name", QLIT_QSTR("[str]"), },
         {}
     })),
-    /* "405" = SocketAddress */
+    /* "404" = SocketAddress */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("type"), },
-                { "type", QLIT_QSTR("626"), },
+                { "type", QLIT_QSTR("623"), },
                 {}
             })),
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("405"), },
+        { "name", QLIT_QSTR("404"), },
         { "tag", QLIT_QSTR("type"), },
         { "variants", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("inet"), },
-                { "type", QLIT_QSTR("608"), },
+                { "type", QLIT_QSTR("605"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("unix"), },
-                { "type", QLIT_QSTR("650"), },
+                { "type", QLIT_QSTR("647"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("vsock"), },
-                { "type", QLIT_QSTR("651"), },
+                { "type", QLIT_QSTR("648"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("fd"), },
-                { "type", QLIT_QSTR("652"), },
+                { "type", QLIT_QSTR("649"), },
                 {}
             })),
             {}
         })), },
         {}
     })),
-    /* "406" = EbpfProgramID */
+    /* "405" = EbpfProgramID */
 #if defined(CONFIG_EBPF)
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
@@ -17943,7 +17896,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("406"), },
+        { "name", QLIT_QSTR("405"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("rss"),
             {}
@@ -17951,7 +17904,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         {}
     })),
 #endif /* defined(CONFIG_EBPF) */
-    /* "407" = RockerPortDuplex */
+    /* "406" = RockerPortDuplex */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -17965,7 +17918,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("407"), },
+        { "name", QLIT_QSTR("406"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("half"),
             QLIT_QSTR("full"),
@@ -17973,7 +17926,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "408" = RockerPortAutoneg */
+    /* "407" = RockerPortAutoneg */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -17987,7 +17940,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("408"), },
+        { "name", QLIT_QSTR("407"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("off"),
             QLIT_QSTR("on"),
@@ -17995,7 +17948,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "409" = RockerOfDpaFlowKey */
+    /* "408" = RockerOfDpaFlowKey */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -18065,10 +18018,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("409"), },
+        { "name", QLIT_QSTR("408"), },
         {}
     })),
-    /* "410" = RockerOfDpaFlowMask */
+    /* "409" = RockerOfDpaFlowMask */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -18116,10 +18069,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("410"), },
+        { "name", QLIT_QSTR("409"), },
         {}
     })),
-    /* "411" = RockerOfDpaFlowAction */
+    /* "410" = RockerOfDpaFlowAction */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -18161,10 +18114,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("411"), },
+        { "name", QLIT_QSTR("410"), },
         {}
     })),
-    /* "412" = TpmTypeOptions */
+    /* "411" = TpmTypeOptions */
 #if defined(CONFIG_TPM)
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
@@ -18176,17 +18129,17 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("412"), },
+        { "name", QLIT_QSTR("411"), },
         { "tag", QLIT_QSTR("type"), },
         { "variants", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("passthrough"), },
-                { "type", QLIT_QSTR("653"), },
+                { "type", QLIT_QSTR("650"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("emulator"), },
-                { "type", QLIT_QSTR("654"), },
+                { "type", QLIT_QSTR("651"), },
                 {}
             })),
             {}
@@ -18194,7 +18147,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         {}
     })),
 #endif /* defined(CONFIG_TPM) */
-    /* "413" = DisplayProtocol */
+    /* "412" = DisplayProtocol */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -18208,7 +18161,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("413"), },
+        { "name", QLIT_QSTR("412"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("vnc"),
             QLIT_QSTR("spice"),
@@ -18216,7 +18169,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "414" = SetPasswordAction */
+    /* "413" = SetPasswordAction */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -18234,7 +18187,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("414"), },
+        { "name", QLIT_QSTR("413"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("keep"),
             QLIT_QSTR("fail"),
@@ -18243,7 +18196,22 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "415" = SetPasswordOptionsVnc */
+    /* "414" = SetPasswordOptionsVnc */
+    QLIT_QDICT(((QLitDictEntry[]) {
+        { "members", QLIT_QLIST(((QLitObject[]) {
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "default", QLIT_QNULL, },
+                { "name", QLIT_QSTR("display"), },
+                { "type", QLIT_QSTR("str"), },
+                {}
+            })),
+            {}
+        })), },
+        { "meta-type", QLIT_QSTR("object"), },
+        { "name", QLIT_QSTR("414"), },
+        {}
+    })),
+    /* "415" = ExpirePasswordOptionsVnc */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -18258,22 +18226,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         { "name", QLIT_QSTR("415"), },
         {}
     })),
-    /* "416" = ExpirePasswordOptionsVnc */
-    QLIT_QDICT(((QLitDictEntry[]) {
-        { "members", QLIT_QLIST(((QLitObject[]) {
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "default", QLIT_QNULL, },
-                { "name", QLIT_QSTR("display"), },
-                { "type", QLIT_QSTR("str"), },
-                {}
-            })),
-            {}
-        })), },
-        { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("416"), },
-        {}
-    })),
-    /* "417" = ImageFormat */
+    /* "416" = ImageFormat */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -18287,7 +18240,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("417"), },
+        { "name", QLIT_QSTR("416"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("ppm"),
             QLIT_QSTR("png"),
@@ -18295,7 +18248,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "418" = SpiceQueryMouseMode */
+    /* "417" = SpiceQueryMouseMode */
 #if defined(CONFIG_SPICE)
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
@@ -18314,7 +18267,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("418"), },
+        { "name", QLIT_QSTR("417"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("client"),
             QLIT_QSTR("server"),
@@ -18326,13 +18279,13 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
 #endif /* defined(CONFIG_SPICE) */
 #if defined(CONFIG_SPICE)
     QLIT_QDICT(((QLitDictEntry[]) {
-        { "element-type", QLIT_QSTR("419"), },
+        { "element-type", QLIT_QSTR("418"), },
         { "meta-type", QLIT_QSTR("array"), },
-        { "name", QLIT_QSTR("[419]"), },
+        { "name", QLIT_QSTR("[418]"), },
         {}
     })),
 #endif /* defined(CONFIG_SPICE) */
-    /* "419" = SpiceChannel */
+    /* "418" = SpiceChannel */
 #if defined(CONFIG_SPICE)
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
@@ -18348,7 +18301,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("family"), },
-                { "type", QLIT_QSTR("422"), },
+                { "type", QLIT_QSTR("421"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -18374,11 +18327,11 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("419"), },
+        { "name", QLIT_QSTR("418"), },
         {}
     })),
 #endif /* defined(CONFIG_SPICE) */
-    /* "420" = SpiceBasicInfo */
+    /* "419" = SpiceBasicInfo */
 #if defined(CONFIG_SPICE)
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
@@ -18394,17 +18347,17 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("family"), },
-                { "type", QLIT_QSTR("422"), },
+                { "type", QLIT_QSTR("421"), },
                 {}
             })),
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("420"), },
+        { "name", QLIT_QSTR("419"), },
         {}
     })),
 #endif /* defined(CONFIG_SPICE) */
-    /* "421" = SpiceServerInfo */
+    /* "420" = SpiceServerInfo */
 #if defined(CONFIG_SPICE)
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
@@ -18420,7 +18373,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("family"), },
-                { "type", QLIT_QSTR("422"), },
+                { "type", QLIT_QSTR("421"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -18432,11 +18385,11 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("421"), },
+        { "name", QLIT_QSTR("420"), },
         {}
     })),
 #endif /* defined(CONFIG_SPICE) */
-    /* "422" = NetworkAddressFamily */
+    /* "421" = NetworkAddressFamily */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -18462,7 +18415,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("422"), },
+        { "name", QLIT_QSTR("421"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("ipv4"),
             QLIT_QSTR("ipv6"),
@@ -18475,13 +18428,13 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
     })),
 #if defined(CONFIG_VNC)
     QLIT_QDICT(((QLitDictEntry[]) {
-        { "element-type", QLIT_QSTR("423"), },
+        { "element-type", QLIT_QSTR("422"), },
         { "meta-type", QLIT_QSTR("array"), },
-        { "name", QLIT_QSTR("[423]"), },
+        { "name", QLIT_QSTR("[422]"), },
         {}
     })),
 #endif /* defined(CONFIG_VNC) */
-    /* "423" = VncClientInfo */
+    /* "422" = VncClientInfo */
 #if defined(CONFIG_VNC)
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
@@ -18497,7 +18450,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("family"), },
-                { "type", QLIT_QSTR("422"), },
+                { "type", QLIT_QSTR("421"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -18520,19 +18473,19 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("423"), },
+        { "name", QLIT_QSTR("422"), },
         {}
     })),
 #endif /* defined(CONFIG_VNC) */
 #if defined(CONFIG_VNC)
     QLIT_QDICT(((QLitDictEntry[]) {
-        { "element-type", QLIT_QSTR("424"), },
+        { "element-type", QLIT_QSTR("423"), },
         { "meta-type", QLIT_QSTR("array"), },
-        { "name", QLIT_QSTR("[424]"), },
+        { "name", QLIT_QSTR("[423]"), },
         {}
     })),
 #endif /* defined(CONFIG_VNC) */
-    /* "424" = VncServerInfo2 */
+    /* "423" = VncServerInfo2 */
 #if defined(CONFIG_VNC)
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
@@ -18548,7 +18501,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("family"), },
-                { "type", QLIT_QSTR("422"), },
+                { "type", QLIT_QSTR("421"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -18558,23 +18511,23 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("auth"), },
-                { "type", QLIT_QSTR("425"), },
+                { "type", QLIT_QSTR("424"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("vencrypt"), },
-                { "type", QLIT_QSTR("426"), },
+                { "type", QLIT_QSTR("425"), },
                 {}
             })),
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("424"), },
+        { "name", QLIT_QSTR("423"), },
         {}
     })),
 #endif /* defined(CONFIG_VNC) */
-    /* "425" = VncPrimaryAuth */
+    /* "424" = VncPrimaryAuth */
 #if defined(CONFIG_VNC)
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
@@ -18617,7 +18570,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("425"), },
+        { "name", QLIT_QSTR("424"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("none"),
             QLIT_QSTR("vnc"),
@@ -18633,7 +18586,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         {}
     })),
 #endif /* defined(CONFIG_VNC) */
-    /* "426" = VncVencryptSubAuth */
+    /* "425" = VncVencryptSubAuth */
 #if defined(CONFIG_VNC)
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
@@ -18676,7 +18629,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("426"), },
+        { "name", QLIT_QSTR("425"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("plain"),
             QLIT_QSTR("tls-none"),
@@ -18692,7 +18645,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         {}
     })),
 #endif /* defined(CONFIG_VNC) */
-    /* "427" = VncServerInfo */
+    /* "426" = VncServerInfo */
 #if defined(CONFIG_VNC)
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
@@ -18708,7 +18661,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("family"), },
-                { "type", QLIT_QSTR("422"), },
+                { "type", QLIT_QSTR("421"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -18725,11 +18678,11 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("427"), },
+        { "name", QLIT_QSTR("426"), },
         {}
     })),
 #endif /* defined(CONFIG_VNC) */
-    /* "428" = VncBasicInfo */
+    /* "427" = VncBasicInfo */
 #if defined(CONFIG_VNC)
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
@@ -18745,7 +18698,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("family"), },
-                { "type", QLIT_QSTR("422"), },
+                { "type", QLIT_QSTR("421"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -18756,17 +18709,51 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("428"), },
+        { "name", QLIT_QSTR("427"), },
         {}
     })),
 #endif /* defined(CONFIG_VNC) */
+    QLIT_QDICT(((QLitDictEntry[]) {
+        { "element-type", QLIT_QSTR("428"), },
+        { "meta-type", QLIT_QSTR("array"), },
+        { "name", QLIT_QSTR("[428]"), },
+        {}
+    })),
+    /* "428" = KeyValue */
+    QLIT_QDICT(((QLitDictEntry[]) {
+        { "members", QLIT_QLIST(((QLitObject[]) {
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "name", QLIT_QSTR("type"), },
+                { "type", QLIT_QSTR("652"), },
+                {}
+            })),
+            {}
+        })), },
+        { "meta-type", QLIT_QSTR("object"), },
+        { "name", QLIT_QSTR("428"), },
+        { "tag", QLIT_QSTR("type"), },
+        { "variants", QLIT_QLIST(((QLitObject[]) {
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "case", QLIT_QSTR("number"), },
+                { "type", QLIT_QSTR("653"), },
+                {}
+            })),
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "case", QLIT_QSTR("qcode"), },
+                { "type", QLIT_QSTR("654"), },
+                {}
+            })),
+            {}
+        })), },
+        {}
+    })),
     QLIT_QDICT(((QLitDictEntry[]) {
         { "element-type", QLIT_QSTR("429"), },
         { "meta-type", QLIT_QSTR("array"), },
         { "name", QLIT_QSTR("[429]"), },
         {}
     })),
-    /* "429" = KeyValue */
+    /* "429" = InputEvent */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -18781,69 +18768,35 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         { "tag", QLIT_QSTR("type"), },
         { "variants", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
-                { "case", QLIT_QSTR("number"), },
+                { "case", QLIT_QSTR("key"), },
                 { "type", QLIT_QSTR("656"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
-                { "case", QLIT_QSTR("qcode"), },
-                { "type", QLIT_QSTR("657"), },
-                {}
-            })),
-            {}
-        })), },
-        {}
-    })),
-    QLIT_QDICT(((QLitDictEntry[]) {
-        { "element-type", QLIT_QSTR("430"), },
-        { "meta-type", QLIT_QSTR("array"), },
-        { "name", QLIT_QSTR("[430]"), },
-        {}
-    })),
-    /* "430" = InputEvent */
-    QLIT_QDICT(((QLitDictEntry[]) {
-        { "members", QLIT_QLIST(((QLitObject[]) {
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "name", QLIT_QSTR("type"), },
-                { "type", QLIT_QSTR("658"), },
-                {}
-            })),
-            {}
-        })), },
-        { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("430"), },
-        { "tag", QLIT_QSTR("type"), },
-        { "variants", QLIT_QLIST(((QLitObject[]) {
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "case", QLIT_QSTR("key"), },
-                { "type", QLIT_QSTR("659"), },
-                {}
-            })),
-            QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("btn"), },
-                { "type", QLIT_QSTR("660"), },
+                { "type", QLIT_QSTR("657"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("rel"), },
-                { "type", QLIT_QSTR("661"), },
+                { "type", QLIT_QSTR("658"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("abs"), },
-                { "type", QLIT_QSTR("661"), },
+                { "type", QLIT_QSTR("658"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("mtt"), },
-                { "type", QLIT_QSTR("662"), },
+                { "type", QLIT_QSTR("659"), },
                 {}
             })),
             {}
         })), },
         {}
     })),
-    /* "431" = DisplayType */
+    /* "430" = DisplayType */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -18903,7 +18856,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("431"), },
+        { "name", QLIT_QSTR("430"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("default"),
             QLIT_QSTR("none"),
@@ -18933,7 +18886,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "432" = DisplayGLMode */
+    /* "431" = DisplayGLMode */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -18955,7 +18908,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("432"), },
+        { "name", QLIT_QSTR("431"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("off"),
             QLIT_QSTR("on"),
@@ -18965,7 +18918,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "433" = DisplayGTK */
+    /* "432" = DisplayGTK */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -19007,10 +18960,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("433"), },
+        { "name", QLIT_QSTR("432"), },
         {}
     })),
-    /* "434" = DisplayCocoa */
+    /* "433" = DisplayCocoa */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -19046,10 +18999,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("434"), },
+        { "name", QLIT_QSTR("433"), },
         {}
     })),
-    /* "435" = DisplayCurses */
+    /* "434" = DisplayCurses */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -19061,10 +19014,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("435"), },
+        { "name", QLIT_QSTR("434"), },
         {}
     })),
-    /* "436" = DisplayEGLHeadless */
+    /* "435" = DisplayEGLHeadless */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -19076,10 +19029,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("436"), },
+        { "name", QLIT_QSTR("435"), },
         {}
     })),
-    /* "437" = DisplayDBus */
+    /* "436" = DisplayDBus */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -19109,25 +19062,25 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("437"), },
+        { "name", QLIT_QSTR("436"), },
         {}
     })),
-    /* "438" = DisplaySDL */
+    /* "437" = DisplaySDL */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("grab-mod"), },
-                { "type", QLIT_QSTR("663"), },
+                { "type", QLIT_QSTR("660"), },
                 {}
             })),
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("438"), },
+        { "name", QLIT_QSTR("437"), },
         {}
     })),
-    /* "439" = DisplayReloadType */
+    /* "438" = DisplayReloadType */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -19137,14 +19090,14 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("439"), },
+        { "name", QLIT_QSTR("438"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("vnc"),
             {}
         })), },
         {}
     })),
-    /* "440" = DisplayReloadOptionsVNC */
+    /* "439" = DisplayReloadOptionsVNC */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -19156,10 +19109,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("440"), },
+        { "name", QLIT_QSTR("439"), },
         {}
     })),
-    /* "441" = DisplayUpdateType */
+    /* "440" = DisplayUpdateType */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -19169,29 +19122,29 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("441"), },
+        { "name", QLIT_QSTR("440"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("vnc"),
             {}
         })), },
         {}
     })),
-    /* "442" = DisplayUpdateOptionsVNC */
+    /* "441" = DisplayUpdateOptionsVNC */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("addresses"), },
-                { "type", QLIT_QSTR("[405]"), },
+                { "type", QLIT_QSTR("[404]"), },
                 {}
             })),
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("442"), },
+        { "name", QLIT_QSTR("441"), },
         {}
     })),
-    /* "443" = MigrationStatus */
+    /* "442" = MigrationStatus */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -19261,7 +19214,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("443"), },
+        { "name", QLIT_QSTR("442"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("none"),
             QLIT_QSTR("setup"),
@@ -19283,7 +19236,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "444" = MigrationStats */
+    /* "443" = MigrationStats */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -19374,10 +19327,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("444"), },
+        { "name", QLIT_QSTR("443"), },
         {}
     })),
-    /* "445" = VfioStats */
+    /* "444" = VfioStats */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -19388,10 +19341,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("445"), },
+        { "name", QLIT_QSTR("444"), },
         {}
     })),
-    /* "446" = XBZRLECacheStats */
+    /* "445" = XBZRLECacheStats */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -19432,16 +19385,16 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("446"), },
+        { "name", QLIT_QSTR("445"), },
         {}
     })),
     QLIT_QDICT(((QLitDictEntry[]) {
-        { "element-type", QLIT_QSTR("405"), },
+        { "element-type", QLIT_QSTR("404"), },
         { "meta-type", QLIT_QSTR("array"), },
-        { "name", QLIT_QSTR("[405]"), },
+        { "name", QLIT_QSTR("[404]"), },
         {}
     })),
-    /* "447" = MigrationCapability */
+    /* "446" = MigrationCapability */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -19547,7 +19500,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("447"), },
+        { "name", QLIT_QSTR("446"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("xbzrle"),
             QLIT_QSTR("rdma-pin-all"),
@@ -19575,7 +19528,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "448" = MultiFDCompression */
+    /* "447" = MultiFDCompression */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -19613,7 +19566,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("448"), },
+        { "name", QLIT_QSTR("447"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("none"),
             QLIT_QSTR("zlib"),
@@ -19634,12 +19587,12 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         {}
     })),
     QLIT_QDICT(((QLitDictEntry[]) {
-        { "element-type", QLIT_QSTR("449"), },
+        { "element-type", QLIT_QSTR("448"), },
         { "meta-type", QLIT_QSTR("array"), },
-        { "name", QLIT_QSTR("[449]"), },
+        { "name", QLIT_QSTR("[448]"), },
         {}
     })),
-    /* "449" = BitmapMigrationNodeAlias */
+    /* "448" = BitmapMigrationNodeAlias */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -19654,16 +19607,16 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("bitmaps"), },
-                { "type", QLIT_QSTR("[664]"), },
+                { "type", QLIT_QSTR("[661]"), },
                 {}
             })),
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("449"), },
+        { "name", QLIT_QSTR("448"), },
         {}
     })),
-    /* "450" = MigMode */
+    /* "449" = MigMode */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -19685,7 +19638,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("450"), },
+        { "name", QLIT_QSTR("449"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("normal"),
             QLIT_QSTR("cpr-reboot"),
@@ -19695,7 +19648,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "451" = ZeroPageDetection */
+    /* "450" = ZeroPageDetection */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -19713,7 +19666,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("451"), },
+        { "name", QLIT_QSTR("450"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("none"),
             QLIT_QSTR("legacy"),
@@ -19722,7 +19675,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "452" = COLOMode */
+    /* "451" = COLOMode */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -19740,7 +19693,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("452"), },
+        { "name", QLIT_QSTR("451"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("none"),
             QLIT_QSTR("primary"),
@@ -19749,7 +19702,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "453" = COLOExitReason */
+    /* "452" = COLOExitReason */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -19771,7 +19724,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("453"), },
+        { "name", QLIT_QSTR("452"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("none"),
             QLIT_QSTR("request"),
@@ -19782,31 +19735,31 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         {}
     })),
     QLIT_QDICT(((QLitDictEntry[]) {
-        { "element-type", QLIT_QSTR("454"), },
+        { "element-type", QLIT_QSTR("453"), },
         { "meta-type", QLIT_QSTR("array"), },
-        { "name", QLIT_QSTR("[454]"), },
+        { "name", QLIT_QSTR("[453]"), },
         {}
     })),
-    /* "454" = MigrationChannel */
+    /* "453" = MigrationChannel */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("channel-type"), },
-                { "type", QLIT_QSTR("665"), },
+                { "type", QLIT_QSTR("662"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("addr"), },
-                { "type", QLIT_QSTR("666"), },
+                { "type", QLIT_QSTR("663"), },
                 {}
             })),
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("454"), },
+        { "name", QLIT_QSTR("453"), },
         {}
     })),
-    /* "455" = TimeUnit */
+    /* "454" = TimeUnit */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -19820,7 +19773,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("455"), },
+        { "name", QLIT_QSTR("454"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("second"),
             QLIT_QSTR("millisecond"),
@@ -19828,7 +19781,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "456" = DirtyRateMeasureMode */
+    /* "455" = DirtyRateMeasureMode */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -19846,7 +19799,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("456"), },
+        { "name", QLIT_QSTR("455"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("page-sampling"),
             QLIT_QSTR("dirty-ring"),
@@ -19855,7 +19808,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "457" = DirtyRateStatus */
+    /* "456" = DirtyRateStatus */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -19873,7 +19826,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("457"), },
+        { "name", QLIT_QSTR("456"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("unstarted"),
             QLIT_QSTR("measuring"),
@@ -19883,12 +19836,12 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         {}
     })),
     QLIT_QDICT(((QLitDictEntry[]) {
-        { "element-type", QLIT_QSTR("458"), },
+        { "element-type", QLIT_QSTR("457"), },
         { "meta-type", QLIT_QSTR("array"), },
-        { "name", QLIT_QSTR("[458]"), },
+        { "name", QLIT_QSTR("[457]"), },
         {}
     })),
-    /* "458" = DirtyRateVcpu */
+    /* "457" = DirtyRateVcpu */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -19904,109 +19857,109 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("458"), },
+        { "name", QLIT_QSTR("457"), },
         {}
     })),
     QLIT_QDICT(((QLitDictEntry[]) {
-        { "element-type", QLIT_QSTR("459"), },
+        { "element-type", QLIT_QSTR("458"), },
         { "meta-type", QLIT_QSTR("array"), },
-        { "name", QLIT_QSTR("[459]"), },
+        { "name", QLIT_QSTR("[458]"), },
         {}
     })),
-    /* "459" = TransactionAction */
+    /* "458" = TransactionAction */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("type"), },
+                { "type", QLIT_QSTR("664"), },
+                {}
+            })),
+            {}
+        })), },
+        { "meta-type", QLIT_QSTR("object"), },
+        { "name", QLIT_QSTR("458"), },
+        { "tag", QLIT_QSTR("type"), },
+        { "variants", QLIT_QLIST(((QLitObject[]) {
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "case", QLIT_QSTR("abort"), },
+                { "type", QLIT_QSTR("665"), },
+                {}
+            })),
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "case", QLIT_QSTR("block-dirty-bitmap-add"), },
+                { "type", QLIT_QSTR("666"), },
+                {}
+            })),
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "case", QLIT_QSTR("block-dirty-bitmap-remove"), },
                 { "type", QLIT_QSTR("667"), },
+                {}
+            })),
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "case", QLIT_QSTR("block-dirty-bitmap-clear"), },
+                { "type", QLIT_QSTR("667"), },
+                {}
+            })),
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "case", QLIT_QSTR("block-dirty-bitmap-enable"), },
+                { "type", QLIT_QSTR("667"), },
+                {}
+            })),
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "case", QLIT_QSTR("block-dirty-bitmap-disable"), },
+                { "type", QLIT_QSTR("667"), },
+                {}
+            })),
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "case", QLIT_QSTR("block-dirty-bitmap-merge"), },
+                { "type", QLIT_QSTR("668"), },
+                {}
+            })),
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "case", QLIT_QSTR("blockdev-backup"), },
+                { "type", QLIT_QSTR("669"), },
+                {}
+            })),
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "case", QLIT_QSTR("blockdev-snapshot"), },
+                { "type", QLIT_QSTR("670"), },
+                {}
+            })),
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "case", QLIT_QSTR("blockdev-snapshot-internal-sync"), },
+                { "type", QLIT_QSTR("671"), },
+                {}
+            })),
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "case", QLIT_QSTR("blockdev-snapshot-sync"), },
+                { "type", QLIT_QSTR("672"), },
+                {}
+            })),
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "case", QLIT_QSTR("drive-backup"), },
+                { "type", QLIT_QSTR("673"), },
+                {}
+            })),
+            {}
+        })), },
+        {}
+    })),
+    /* "459" = TransactionProperties */
+    QLIT_QDICT(((QLitDictEntry[]) {
+        { "members", QLIT_QLIST(((QLitObject[]) {
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "default", QLIT_QNULL, },
+                { "name", QLIT_QSTR("completion-mode"), },
+                { "type", QLIT_QSTR("674"), },
                 {}
             })),
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
         { "name", QLIT_QSTR("459"), },
-        { "tag", QLIT_QSTR("type"), },
-        { "variants", QLIT_QLIST(((QLitObject[]) {
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "case", QLIT_QSTR("abort"), },
-                { "type", QLIT_QSTR("668"), },
-                {}
-            })),
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "case", QLIT_QSTR("block-dirty-bitmap-add"), },
-                { "type", QLIT_QSTR("669"), },
-                {}
-            })),
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "case", QLIT_QSTR("block-dirty-bitmap-remove"), },
-                { "type", QLIT_QSTR("670"), },
-                {}
-            })),
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "case", QLIT_QSTR("block-dirty-bitmap-clear"), },
-                { "type", QLIT_QSTR("670"), },
-                {}
-            })),
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "case", QLIT_QSTR("block-dirty-bitmap-enable"), },
-                { "type", QLIT_QSTR("670"), },
-                {}
-            })),
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "case", QLIT_QSTR("block-dirty-bitmap-disable"), },
-                { "type", QLIT_QSTR("670"), },
-                {}
-            })),
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "case", QLIT_QSTR("block-dirty-bitmap-merge"), },
-                { "type", QLIT_QSTR("671"), },
-                {}
-            })),
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "case", QLIT_QSTR("blockdev-backup"), },
-                { "type", QLIT_QSTR("672"), },
-                {}
-            })),
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "case", QLIT_QSTR("blockdev-snapshot"), },
-                { "type", QLIT_QSTR("673"), },
-                {}
-            })),
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "case", QLIT_QSTR("blockdev-snapshot-internal-sync"), },
-                { "type", QLIT_QSTR("674"), },
-                {}
-            })),
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "case", QLIT_QSTR("blockdev-snapshot-sync"), },
-                { "type", QLIT_QSTR("675"), },
-                {}
-            })),
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "case", QLIT_QSTR("drive-backup"), },
-                { "type", QLIT_QSTR("676"), },
-                {}
-            })),
-            {}
-        })), },
         {}
     })),
-    /* "460" = TransactionProperties */
-    QLIT_QDICT(((QLitDictEntry[]) {
-        { "members", QLIT_QLIST(((QLitObject[]) {
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "default", QLIT_QNULL, },
-                { "name", QLIT_QSTR("completion-mode"), },
-                { "type", QLIT_QSTR("677"), },
-                {}
-            })),
-            {}
-        })), },
-        { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("460"), },
-        {}
-    })),
-    /* "461" = TraceEventState */
+    /* "460" = TraceEventState */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -20024,7 +19977,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("461"), },
+        { "name", QLIT_QSTR("460"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("unavailable"),
             QLIT_QSTR("disabled"),
@@ -20034,12 +19987,12 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         {}
     })),
     QLIT_QDICT(((QLitDictEntry[]) {
-        { "element-type", QLIT_QSTR("462"), },
+        { "element-type", QLIT_QSTR("461"), },
         { "meta-type", QLIT_QSTR("array"), },
-        { "name", QLIT_QSTR("[462]"), },
+        { "name", QLIT_QSTR("[461]"), },
         {}
     })),
-    /* "462" = QMPCapability */
+    /* "461" = QMPCapability */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -20049,14 +20002,14 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("462"), },
+        { "name", QLIT_QSTR("461"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("oob"),
             {}
         })), },
         {}
     })),
-    /* "463" = VersionTriple */
+    /* "462" = VersionTriple */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -20077,10 +20030,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("463"), },
+        { "name", QLIT_QSTR("462"), },
         {}
     })),
-    /* "464" = SchemaMetaType */
+    /* "463" = SchemaMetaType */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -20114,7 +20067,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("464"), },
+        { "name", QLIT_QSTR("463"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("builtin"),
             QLIT_QSTR("enum"),
@@ -20127,26 +20080,26 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "465" = SchemaInfoBuiltin */
+    /* "464" = SchemaInfoBuiltin */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("json-type"), },
-                { "type", QLIT_QSTR("678"), },
+                { "type", QLIT_QSTR("675"), },
                 {}
             })),
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("465"), },
+        { "name", QLIT_QSTR("464"), },
         {}
     })),
-    /* "466" = SchemaInfoEnum */
+    /* "465" = SchemaInfoEnum */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("members"), },
-                { "type", QLIT_QSTR("[679]"), },
+                { "type", QLIT_QSTR("[676]"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -20161,10 +20114,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("466"), },
+        { "name", QLIT_QSTR("465"), },
         {}
     })),
-    /* "467" = SchemaInfoArray */
+    /* "466" = SchemaInfoArray */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -20175,15 +20128,15 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("467"), },
+        { "name", QLIT_QSTR("466"), },
         {}
     })),
-    /* "468" = SchemaInfoObject */
+    /* "467" = SchemaInfoObject */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("members"), },
-                { "type", QLIT_QSTR("[680]"), },
+                { "type", QLIT_QSTR("[677]"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -20195,7 +20148,21 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("variants"), },
-                { "type", QLIT_QSTR("[681]"), },
+                { "type", QLIT_QSTR("[678]"), },
+                {}
+            })),
+            {}
+        })), },
+        { "meta-type", QLIT_QSTR("object"), },
+        { "name", QLIT_QSTR("467"), },
+        {}
+    })),
+    /* "468" = SchemaInfoAlternate */
+    QLIT_QDICT(((QLitDictEntry[]) {
+        { "members", QLIT_QLIST(((QLitObject[]) {
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "name", QLIT_QSTR("members"), },
+                { "type", QLIT_QSTR("[679]"), },
                 {}
             })),
             {}
@@ -20204,21 +20171,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         { "name", QLIT_QSTR("468"), },
         {}
     })),
-    /* "469" = SchemaInfoAlternate */
-    QLIT_QDICT(((QLitDictEntry[]) {
-        { "members", QLIT_QLIST(((QLitObject[]) {
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "name", QLIT_QSTR("members"), },
-                { "type", QLIT_QSTR("[682]"), },
-                {}
-            })),
-            {}
-        })), },
-        { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("469"), },
-        {}
-    })),
-    /* "470" = SchemaInfoCommand */
+    /* "469" = SchemaInfoCommand */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -20240,10 +20193,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("470"), },
+        { "name", QLIT_QSTR("469"), },
         {}
     })),
-    /* "471" = SchemaInfoEvent */
+    /* "470" = SchemaInfoEvent */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -20254,16 +20207,16 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("471"), },
+        { "name", QLIT_QSTR("470"), },
         {}
     })),
     QLIT_QDICT(((QLitDictEntry[]) {
-        { "element-type", QLIT_QSTR("472"), },
+        { "element-type", QLIT_QSTR("471"), },
         { "meta-type", QLIT_QSTR("array"), },
-        { "name", QLIT_QSTR("[472]"), },
+        { "name", QLIT_QSTR("[471]"), },
         {}
     })),
-    /* "472" = ObjectPropertyValue */
+    /* "471" = ObjectPropertyValue */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -20285,10 +20238,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("472"), },
+        { "name", QLIT_QSTR("471"), },
         {}
     })),
-    /* "473" = ObjectType */
+    /* "472" = ObjectType */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -20526,7 +20479,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("473"), },
+        { "name", QLIT_QSTR("472"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("acpi-generic-initiator"),
             QLIT_QSTR("acpi-generic-port"),
@@ -20603,7 +20556,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "474" = AcpiGenericInitiatorProperties */
+    /* "473" = AcpiGenericInitiatorProperties */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -20619,10 +20572,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("474"), },
+        { "name", QLIT_QSTR("473"), },
         {}
     })),
-    /* "475" = AcpiGenericPortProperties */
+    /* "474" = AcpiGenericPortProperties */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -20638,31 +20591,31 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("475"), },
+        { "name", QLIT_QSTR("474"), },
         {}
     })),
-    /* "476" = AuthZListProperties */
+    /* "475" = AuthZListProperties */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("policy"), },
-                { "type", QLIT_QSTR("683"), },
+                { "type", QLIT_QSTR("680"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("rules"), },
-                { "type", QLIT_QSTR("[684]"), },
+                { "type", QLIT_QSTR("[681]"), },
                 {}
             })),
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("476"), },
+        { "name", QLIT_QSTR("475"), },
         {}
     })),
-    /* "477" = AuthZListFileProperties */
+    /* "476" = AuthZListFileProperties */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -20679,10 +20632,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("477"), },
+        { "name", QLIT_QSTR("476"), },
         {}
     })),
-    /* "478" = AuthZPAMProperties */
+    /* "477" = AuthZPAMProperties */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -20693,10 +20646,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("478"), },
+        { "name", QLIT_QSTR("477"), },
         {}
     })),
-    /* "479" = AuthZSimpleProperties */
+    /* "478" = AuthZSimpleProperties */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -20707,10 +20660,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("479"), },
+        { "name", QLIT_QSTR("478"), },
         {}
     })),
-    /* "480" = CanHostSocketcanProperties */
+    /* "479" = CanHostSocketcanProperties */
 #if defined(CONFIG_LINUX)
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
@@ -20727,11 +20680,11 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("480"), },
+        { "name", QLIT_QSTR("479"), },
         {}
     })),
 #endif /* defined(CONFIG_LINUX) */
-    /* "481" = ColoCompareProperties */
+    /* "480" = ColoCompareProperties */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -20787,10 +20740,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("481"), },
+        { "name", QLIT_QSTR("480"), },
         {}
     })),
-    /* "482" = CryptodevBackendProperties */
+    /* "481" = CryptodevBackendProperties */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -20814,10 +20767,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("482"), },
+        { "name", QLIT_QSTR("481"), },
         {}
     })),
-    /* "483" = CryptodevVhostUserProperties */
+    /* "482" = CryptodevVhostUserProperties */
 #if defined(CONFIG_VHOST_CRYPTO)
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
@@ -20847,11 +20800,11 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("483"), },
+        { "name", QLIT_QSTR("482"), },
         {}
     })),
 #endif /* defined(CONFIG_VHOST_CRYPTO) */
-    /* "484" = DBusVMStateProperties */
+    /* "483" = DBusVMStateProperties */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -20868,10 +20821,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("484"), },
+        { "name", QLIT_QSTR("483"), },
         {}
     })),
-    /* "485" = FilterBufferProperties */
+    /* "484" = FilterBufferProperties */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -20882,7 +20835,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("queue"), },
-                { "type", QLIT_QSTR("685"), },
+                { "type", QLIT_QSTR("682"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -20900,7 +20853,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("insert"), },
-                { "type", QLIT_QSTR("686"), },
+                { "type", QLIT_QSTR("683"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -20911,10 +20864,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("485"), },
+        { "name", QLIT_QSTR("484"), },
         {}
     })),
-    /* "486" = FilterDumpProperties */
+    /* "485" = FilterDumpProperties */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -20925,7 +20878,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("queue"), },
-                { "type", QLIT_QSTR("685"), },
+                { "type", QLIT_QSTR("682"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -20943,7 +20896,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("insert"), },
-                { "type", QLIT_QSTR("686"), },
+                { "type", QLIT_QSTR("683"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -20960,10 +20913,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("486"), },
+        { "name", QLIT_QSTR("485"), },
         {}
     })),
-    /* "487" = FilterMirrorProperties */
+    /* "486" = FilterMirrorProperties */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -20974,7 +20927,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("queue"), },
-                { "type", QLIT_QSTR("685"), },
+                { "type", QLIT_QSTR("682"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -20992,7 +20945,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("insert"), },
-                { "type", QLIT_QSTR("686"), },
+                { "type", QLIT_QSTR("683"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -21009,10 +20962,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("487"), },
+        { "name", QLIT_QSTR("486"), },
         {}
     })),
-    /* "488" = FilterRedirectorProperties */
+    /* "487" = FilterRedirectorProperties */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -21023,7 +20976,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("queue"), },
-                { "type", QLIT_QSTR("685"), },
+                { "type", QLIT_QSTR("682"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -21041,7 +20994,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("insert"), },
-                { "type", QLIT_QSTR("686"), },
+                { "type", QLIT_QSTR("683"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -21065,10 +21018,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("488"), },
+        { "name", QLIT_QSTR("487"), },
         {}
     })),
-    /* "489" = NetfilterProperties */
+    /* "488" = NetfilterProperties */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -21079,7 +21032,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("queue"), },
-                { "type", QLIT_QSTR("685"), },
+                { "type", QLIT_QSTR("682"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -21097,16 +21050,16 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("insert"), },
-                { "type", QLIT_QSTR("686"), },
+                { "type", QLIT_QSTR("683"), },
                 {}
             })),
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("489"), },
+        { "name", QLIT_QSTR("488"), },
         {}
     })),
-    /* "490" = FilterRewriterProperties */
+    /* "489" = FilterRewriterProperties */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -21117,7 +21070,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("queue"), },
-                { "type", QLIT_QSTR("685"), },
+                { "type", QLIT_QSTR("682"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -21135,7 +21088,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("insert"), },
-                { "type", QLIT_QSTR("686"), },
+                { "type", QLIT_QSTR("683"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -21147,10 +21100,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("490"), },
+        { "name", QLIT_QSTR("489"), },
         {}
     })),
-    /* "491" = IgvmCfgProperties */
+    /* "490" = IgvmCfgProperties */
 #if defined(CONFIG_IGVM)
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
@@ -21162,11 +21115,11 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("491"), },
+        { "name", QLIT_QSTR("490"), },
         {}
     })),
 #endif /* defined(CONFIG_IGVM) */
-    /* "492" = InputBarrierProperties */
+    /* "491" = InputBarrierProperties */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -21213,10 +21166,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("492"), },
+        { "name", QLIT_QSTR("491"), },
         {}
     })),
-    /* "493" = InputLinuxProperties */
+    /* "492" = InputLinuxProperties */
 #if defined(CONFIG_LINUX)
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
@@ -21240,17 +21193,17 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("grab-toggle"), },
-                { "type", QLIT_QSTR("687"), },
+                { "type", QLIT_QSTR("684"), },
                 {}
             })),
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("493"), },
+        { "name", QLIT_QSTR("492"), },
         {}
     })),
 #endif /* defined(CONFIG_LINUX) */
-    /* "494" = IOMMUFDProperties */
+    /* "493" = IOMMUFDProperties */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -21262,10 +21215,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("494"), },
+        { "name", QLIT_QSTR("493"), },
         {}
     })),
-    /* "495" = IothreadProperties */
+    /* "494" = IothreadProperties */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -21307,10 +21260,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("495"), },
+        { "name", QLIT_QSTR("494"), },
         {}
     })),
-    /* "496" = MainLoopProperties */
+    /* "495" = MainLoopProperties */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -21334,10 +21287,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("496"), },
+        { "name", QLIT_QSTR("495"), },
         {}
     })),
-    /* "497" = MemoryBackendEpcProperties */
+    /* "496" = MemoryBackendEpcProperties */
 #if defined(CONFIG_LINUX)
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
@@ -21362,7 +21315,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("policy"), },
-                { "type", QLIT_QSTR("524"), },
+                { "type", QLIT_QSTR("523"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -21409,11 +21362,11 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("497"), },
+        { "name", QLIT_QSTR("496"), },
         {}
     })),
 #endif /* defined(CONFIG_LINUX) */
-    /* "498" = MemoryBackendFileProperties */
+    /* "497" = MemoryBackendFileProperties */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -21437,7 +21390,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("policy"), },
-                { "type", QLIT_QSTR("524"), },
+                { "type", QLIT_QSTR("523"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -21521,16 +21474,16 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("rom"), },
-                { "type", QLIT_QSTR("594"), },
+                { "type", QLIT_QSTR("591"), },
                 {}
             })),
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("498"), },
+        { "name", QLIT_QSTR("497"), },
         {}
     })),
-    /* "499" = MemoryBackendMemfdProperties */
+    /* "498" = MemoryBackendMemfdProperties */
 #if defined(CONFIG_LINUX)
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
@@ -21555,7 +21508,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("policy"), },
-                { "type", QLIT_QSTR("524"), },
+                { "type", QLIT_QSTR("523"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -21620,11 +21573,11 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("499"), },
+        { "name", QLIT_QSTR("498"), },
         {}
     })),
 #endif /* defined(CONFIG_LINUX) */
-    /* "500" = MemoryBackendProperties */
+    /* "499" = MemoryBackendProperties */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -21648,7 +21601,82 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("policy"), },
-                { "type", QLIT_QSTR("524"), },
+                { "type", QLIT_QSTR("523"), },
+                {}
+            })),
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "default", QLIT_QNULL, },
+                { "name", QLIT_QSTR("prealloc"), },
+                { "type", QLIT_QSTR("bool"), },
+                {}
+            })),
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "default", QLIT_QNULL, },
+                { "name", QLIT_QSTR("prealloc-threads"), },
+                { "type", QLIT_QSTR("int"), },
+                {}
+            })),
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "default", QLIT_QNULL, },
+                { "name", QLIT_QSTR("prealloc-context"), },
+                { "type", QLIT_QSTR("str"), },
+                {}
+            })),
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "default", QLIT_QNULL, },
+                { "name", QLIT_QSTR("share"), },
+                { "type", QLIT_QSTR("bool"), },
+                {}
+            })),
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "default", QLIT_QNULL, },
+                { "name", QLIT_QSTR("reserve"), },
+                { "type", QLIT_QSTR("bool"), },
+                {}
+            })),
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "name", QLIT_QSTR("size"), },
+                { "type", QLIT_QSTR("int"), },
+                {}
+            })),
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "default", QLIT_QNULL, },
+                { "name", QLIT_QSTR("x-use-canonical-path-for-ramblock-id"), },
+                { "type", QLIT_QSTR("bool"), },
+                {}
+            })),
+            {}
+        })), },
+        { "meta-type", QLIT_QSTR("object"), },
+        { "name", QLIT_QSTR("499"), },
+        {}
+    })),
+    /* "500" = MemoryBackendShmProperties */
+#if defined(CONFIG_POSIX)
+    QLIT_QDICT(((QLitDictEntry[]) {
+        { "members", QLIT_QLIST(((QLitObject[]) {
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "default", QLIT_QNULL, },
+                { "name", QLIT_QSTR("dump"), },
+                { "type", QLIT_QSTR("bool"), },
+                {}
+            })),
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "default", QLIT_QNULL, },
+                { "name", QLIT_QSTR("host-nodes"), },
+                { "type", QLIT_QSTR("[int]"), },
+                {}
+            })),
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "default", QLIT_QNULL, },
+                { "name", QLIT_QSTR("merge"), },
+                { "type", QLIT_QSTR("bool"), },
+                {}
+            })),
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "default", QLIT_QNULL, },
+                { "name", QLIT_QSTR("policy"), },
+                { "type", QLIT_QSTR("523"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -21698,83 +21726,8 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         { "name", QLIT_QSTR("500"), },
         {}
     })),
-    /* "501" = MemoryBackendShmProperties */
-#if defined(CONFIG_POSIX)
-    QLIT_QDICT(((QLitDictEntry[]) {
-        { "members", QLIT_QLIST(((QLitObject[]) {
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "default", QLIT_QNULL, },
-                { "name", QLIT_QSTR("dump"), },
-                { "type", QLIT_QSTR("bool"), },
-                {}
-            })),
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "default", QLIT_QNULL, },
-                { "name", QLIT_QSTR("host-nodes"), },
-                { "type", QLIT_QSTR("[int]"), },
-                {}
-            })),
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "default", QLIT_QNULL, },
-                { "name", QLIT_QSTR("merge"), },
-                { "type", QLIT_QSTR("bool"), },
-                {}
-            })),
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "default", QLIT_QNULL, },
-                { "name", QLIT_QSTR("policy"), },
-                { "type", QLIT_QSTR("524"), },
-                {}
-            })),
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "default", QLIT_QNULL, },
-                { "name", QLIT_QSTR("prealloc"), },
-                { "type", QLIT_QSTR("bool"), },
-                {}
-            })),
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "default", QLIT_QNULL, },
-                { "name", QLIT_QSTR("prealloc-threads"), },
-                { "type", QLIT_QSTR("int"), },
-                {}
-            })),
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "default", QLIT_QNULL, },
-                { "name", QLIT_QSTR("prealloc-context"), },
-                { "type", QLIT_QSTR("str"), },
-                {}
-            })),
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "default", QLIT_QNULL, },
-                { "name", QLIT_QSTR("share"), },
-                { "type", QLIT_QSTR("bool"), },
-                {}
-            })),
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "default", QLIT_QNULL, },
-                { "name", QLIT_QSTR("reserve"), },
-                { "type", QLIT_QSTR("bool"), },
-                {}
-            })),
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "name", QLIT_QSTR("size"), },
-                { "type", QLIT_QSTR("int"), },
-                {}
-            })),
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "default", QLIT_QNULL, },
-                { "name", QLIT_QSTR("x-use-canonical-path-for-ramblock-id"), },
-                { "type", QLIT_QSTR("bool"), },
-                {}
-            })),
-            {}
-        })), },
-        { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("501"), },
-        {}
-    })),
 #endif /* defined(CONFIG_POSIX) */
-    /* "502" = PrManagerHelperProperties */
+    /* "501" = PrManagerHelperProperties */
 #if defined(CONFIG_LINUX)
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
@@ -21786,11 +21739,11 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("502"), },
+        { "name", QLIT_QSTR("501"), },
         {}
     })),
 #endif /* defined(CONFIG_LINUX) */
-    /* "503" = QtestProperties */
+    /* "502" = QtestProperties */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -21807,10 +21760,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("503"), },
+        { "name", QLIT_QSTR("502"), },
         {}
     })),
-    /* "504" = RngProperties */
+    /* "503" = RngProperties */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -21826,10 +21779,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("504"), },
+        { "name", QLIT_QSTR("503"), },
         {}
     })),
-    /* "505" = RngEgdProperties */
+    /* "504" = RngEgdProperties */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -21850,10 +21803,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("505"), },
+        { "name", QLIT_QSTR("504"), },
         {}
     })),
-    /* "506" = RngRandomProperties */
+    /* "505" = RngRandomProperties */
 #if defined(CONFIG_POSIX)
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
@@ -21876,17 +21829,17 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("506"), },
+        { "name", QLIT_QSTR("505"), },
         {}
     })),
 #endif /* defined(CONFIG_POSIX) */
-    /* "507" = SecretProperties */
+    /* "506" = SecretProperties */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("format"), },
-                { "type", QLIT_QSTR("688"), },
+                { "type", QLIT_QSTR("685"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -21916,17 +21869,17 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("507"), },
+        { "name", QLIT_QSTR("506"), },
         {}
     })),
-    /* "508" = SecretKeyringProperties */
+    /* "507" = SecretKeyringProperties */
 #if defined(CONFIG_SECRET_KEYRING)
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("format"), },
-                { "type", QLIT_QSTR("688"), },
+                { "type", QLIT_QSTR("685"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -21949,11 +21902,11 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("508"), },
+        { "name", QLIT_QSTR("507"), },
         {}
     })),
 #endif /* defined(CONFIG_SECRET_KEYRING) */
-    /* "509" = SevGuestProperties */
+    /* "508" = SevGuestProperties */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -22006,16 +21959,16 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("legacy-vm-type"), },
-                { "type", QLIT_QSTR("594"), },
+                { "type", QLIT_QSTR("591"), },
                 {}
             })),
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("509"), },
+        { "name", QLIT_QSTR("508"), },
         {}
     })),
-    /* "510" = SevSnpGuestProperties */
+    /* "509" = SevSnpGuestProperties */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -22086,10 +22039,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("510"), },
+        { "name", QLIT_QSTR("509"), },
         {}
     })),
-    /* "511" = TdxGuestProperties */
+    /* "510" = TdxGuestProperties */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -22125,16 +22078,16 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("quote-generation-socket"), },
-                { "type", QLIT_QSTR("405"), },
+                { "type", QLIT_QSTR("404"), },
                 {}
             })),
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("511"), },
+        { "name", QLIT_QSTR("510"), },
         {}
     })),
-    /* "512" = ThreadContextProperties */
+    /* "511" = ThreadContextProperties */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -22152,16 +22105,16 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("512"), },
+        { "name", QLIT_QSTR("511"), },
         {}
     })),
-    /* "513" = ThrottleGroupProperties */
+    /* "512" = ThrottleGroupProperties */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("limits"), },
-                { "type", QLIT_QSTR("689"), },
+                { "type", QLIT_QSTR("686"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -22357,10 +22310,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("513"), },
+        { "name", QLIT_QSTR("512"), },
         {}
     })),
-    /* "514" = TlsCredsAnonProperties */
+    /* "513" = TlsCredsAnonProperties */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -22378,7 +22331,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("endpoint"), },
-                { "type", QLIT_QSTR("690"), },
+                { "type", QLIT_QSTR("687"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -22390,10 +22343,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("514"), },
+        { "name", QLIT_QSTR("513"), },
         {}
     })),
-    /* "515" = TlsCredsPskProperties */
+    /* "514" = TlsCredsPskProperties */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -22411,7 +22364,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("endpoint"), },
-                { "type", QLIT_QSTR("690"), },
+                { "type", QLIT_QSTR("687"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -22429,10 +22382,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("515"), },
+        { "name", QLIT_QSTR("514"), },
         {}
     })),
-    /* "516" = TlsCredsX509Properties */
+    /* "515" = TlsCredsX509Properties */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -22450,7 +22403,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("endpoint"), },
-                { "type", QLIT_QSTR("690"), },
+                { "type", QLIT_QSTR("687"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -22474,10 +22427,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("516"), },
+        { "name", QLIT_QSTR("515"), },
         {}
     })),
-    /* "517" = TlsCredsProperties */
+    /* "516" = TlsCredsProperties */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -22495,7 +22448,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("endpoint"), },
-                { "type", QLIT_QSTR("690"), },
+                { "type", QLIT_QSTR("687"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -22507,10 +22460,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("517"), },
+        { "name", QLIT_QSTR("516"), },
         {}
     })),
-    /* "518" = RemoteObjectProperties */
+    /* "517" = RemoteObjectProperties */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -22526,15 +22479,15 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("518"), },
+        { "name", QLIT_QSTR("517"), },
         {}
     })),
-    /* "519" = VfioUserServerProperties */
+    /* "518" = VfioUserServerProperties */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("socket"), },
-                { "type", QLIT_QSTR("405"), },
+                { "type", QLIT_QSTR("404"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -22545,10 +22498,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("519"), },
+        { "name", QLIT_QSTR("518"), },
         {}
     })),
-    /* "520" = CpuInstanceProperties */
+    /* "519" = CpuInstanceProperties */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -22608,10 +22561,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("520"), },
+        { "name", QLIT_QSTR("519"), },
         {}
     })),
-    /* "521" = SysEmuTarget */
+    /* "520" = SysEmuTarget */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -22733,7 +22686,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("521"), },
+        { "name", QLIT_QSTR("520"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("aarch64"),
             QLIT_QSTR("alpha"),
@@ -22768,12 +22721,12 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "522" = CpuInfoS390 */
+    /* "521" = CpuInfoS390 */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("cpu-state"), },
-                { "type", QLIT_QSTR("691"), },
+                { "type", QLIT_QSTR("688"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -22785,22 +22738,22 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("entitlement"), },
-                { "type", QLIT_QSTR("540"), },
+                { "type", QLIT_QSTR("539"), },
                 {}
             })),
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("522"), },
+        { "name", QLIT_QSTR("521"), },
         {}
     })),
     QLIT_QDICT(((QLitDictEntry[]) {
-        { "element-type", QLIT_QSTR("523"), },
+        { "element-type", QLIT_QSTR("522"), },
         { "meta-type", QLIT_QSTR("array"), },
-        { "name", QLIT_QSTR("[523]"), },
+        { "name", QLIT_QSTR("[522]"), },
         {}
     })),
-    /* "523" = CompatProperty */
+    /* "522" = CompatProperty */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -22821,10 +22774,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("523"), },
+        { "name", QLIT_QSTR("522"), },
         {}
     })),
-    /* "524" = HostMemPolicy */
+    /* "523" = HostMemPolicy */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -22846,7 +22799,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("524"), },
+        { "name", QLIT_QSTR("523"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("default"),
             QLIT_QSTR("preferred"),
@@ -22856,7 +22809,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "525" = NumaOptionsType */
+    /* "524" = NumaOptionsType */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -22882,7 +22835,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("525"), },
+        { "name", QLIT_QSTR("524"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("node"),
             QLIT_QSTR("dist"),
@@ -22893,7 +22846,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "526" = NumaNodeOptions */
+    /* "525" = NumaNodeOptions */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -22929,10 +22882,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("526"), },
+        { "name", QLIT_QSTR("525"), },
         {}
     })),
-    /* "527" = NumaDistOptions */
+    /* "526" = NumaDistOptions */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -22953,10 +22906,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("527"), },
+        { "name", QLIT_QSTR("526"), },
         {}
     })),
-    /* "528" = NumaCpuOptions */
+    /* "527" = NumaCpuOptions */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -23016,10 +22969,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("528"), },
+        { "name", QLIT_QSTR("527"), },
         {}
     })),
-    /* "529" = NumaHmatLBOptions */
+    /* "528" = NumaHmatLBOptions */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -23034,12 +22987,12 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("hierarchy"), },
-                { "type", QLIT_QSTR("692"), },
+                { "type", QLIT_QSTR("689"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("data-type"), },
-                { "type", QLIT_QSTR("693"), },
+                { "type", QLIT_QSTR("690"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -23057,10 +23010,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("529"), },
+        { "name", QLIT_QSTR("528"), },
         {}
     })),
-    /* "530" = NumaHmatCacheOptions */
+    /* "529" = NumaHmatCacheOptions */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -23080,12 +23033,12 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("associativity"), },
-                { "type", QLIT_QSTR("694"), },
+                { "type", QLIT_QSTR("691"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("policy"), },
-                { "type", QLIT_QSTR("695"), },
+                { "type", QLIT_QSTR("692"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -23096,10 +23049,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("530"), },
+        { "name", QLIT_QSTR("529"), },
         {}
     })),
-    /* "531" = MemoryDeviceInfoKind */
+    /* "530" = MemoryDeviceInfoKind */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -23129,7 +23082,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("531"), },
+        { "name", QLIT_QSTR("530"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("dimm"),
             QLIT_QSTR("nvdimm"),
@@ -23141,7 +23094,49 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "532" = PCDIMMDeviceInfoWrapper */
+    /* "531" = PCDIMMDeviceInfoWrapper */
+    QLIT_QDICT(((QLitDictEntry[]) {
+        { "members", QLIT_QLIST(((QLitObject[]) {
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "name", QLIT_QSTR("data"), },
+                { "type", QLIT_QSTR("693"), },
+                {}
+            })),
+            {}
+        })), },
+        { "meta-type", QLIT_QSTR("object"), },
+        { "name", QLIT_QSTR("531"), },
+        {}
+    })),
+    /* "532" = VirtioPMEMDeviceInfoWrapper */
+    QLIT_QDICT(((QLitDictEntry[]) {
+        { "members", QLIT_QLIST(((QLitObject[]) {
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "name", QLIT_QSTR("data"), },
+                { "type", QLIT_QSTR("694"), },
+                {}
+            })),
+            {}
+        })), },
+        { "meta-type", QLIT_QSTR("object"), },
+        { "name", QLIT_QSTR("532"), },
+        {}
+    })),
+    /* "533" = VirtioMEMDeviceInfoWrapper */
+    QLIT_QDICT(((QLitDictEntry[]) {
+        { "members", QLIT_QLIST(((QLitObject[]) {
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "name", QLIT_QSTR("data"), },
+                { "type", QLIT_QSTR("695"), },
+                {}
+            })),
+            {}
+        })), },
+        { "meta-type", QLIT_QSTR("object"), },
+        { "name", QLIT_QSTR("533"), },
+        {}
+    })),
+    /* "534" = SgxEPCDeviceInfoWrapper */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -23152,10 +23147,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("532"), },
+        { "name", QLIT_QSTR("534"), },
         {}
     })),
-    /* "533" = VirtioPMEMDeviceInfoWrapper */
+    /* "535" = HvBalloonDeviceInfoWrapper */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -23166,52 +23161,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("533"), },
-        {}
-    })),
-    /* "534" = VirtioMEMDeviceInfoWrapper */
-    QLIT_QDICT(((QLitDictEntry[]) {
-        { "members", QLIT_QLIST(((QLitObject[]) {
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "name", QLIT_QSTR("data"), },
-                { "type", QLIT_QSTR("698"), },
-                {}
-            })),
-            {}
-        })), },
-        { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("534"), },
-        {}
-    })),
-    /* "535" = SgxEPCDeviceInfoWrapper */
-    QLIT_QDICT(((QLitDictEntry[]) {
-        { "members", QLIT_QLIST(((QLitObject[]) {
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "name", QLIT_QSTR("data"), },
-                { "type", QLIT_QSTR("699"), },
-                {}
-            })),
-            {}
-        })), },
-        { "meta-type", QLIT_QSTR("object"), },
         { "name", QLIT_QSTR("535"), },
         {}
     })),
-    /* "536" = HvBalloonDeviceInfoWrapper */
-    QLIT_QDICT(((QLitDictEntry[]) {
-        { "members", QLIT_QLIST(((QLitObject[]) {
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "name", QLIT_QSTR("data"), },
-                { "type", QLIT_QSTR("700"), },
-                {}
-            })),
-            {}
-        })), },
-        { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("536"), },
-        {}
-    })),
-    /* "537" = CpuModelInfo */
+    /* "536" = CpuModelInfo */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -23228,10 +23181,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("537"), },
+        { "name", QLIT_QSTR("536"), },
         {}
     })),
-    /* "538" = CpuModelCompareResult */
+    /* "537" = CpuModelCompareResult */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -23253,7 +23206,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("538"), },
+        { "name", QLIT_QSTR("537"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("incompatible"),
             QLIT_QSTR("identical"),
@@ -23263,7 +23216,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "539" = CpuModelExpansionType */
+    /* "538" = CpuModelExpansionType */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -23277,7 +23230,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("539"), },
+        { "name", QLIT_QSTR("538"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("static"),
             QLIT_QSTR("full"),
@@ -23285,7 +23238,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "540" = S390CpuEntitlement */
+    /* "539" = S390CpuEntitlement */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -23307,7 +23260,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("540"), },
+        { "name", QLIT_QSTR("539"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("auto"),
             QLIT_QSTR("low"),
@@ -23317,7 +23270,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "541" = S390CpuPolarization */
+    /* "540" = S390CpuPolarization */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -23331,7 +23284,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("541"), },
+        { "name", QLIT_QSTR("540"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("horizontal"),
             QLIT_QSTR("vertical"),
@@ -23339,7 +23292,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "542" = ReplayMode */
+    /* "541" = ReplayMode */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -23357,7 +23310,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("542"), },
+        { "name", QLIT_QSTR("541"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("none"),
             QLIT_QSTR("record"),
@@ -23366,7 +23319,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "543" = YankInstanceType */
+    /* "542" = YankInstanceType */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -23384,7 +23337,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("543"), },
+        { "name", QLIT_QSTR("542"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("block-node"),
             QLIT_QSTR("chardev"),
@@ -23393,7 +23346,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "544" = YankInstanceBlockNode */
+    /* "543" = YankInstanceBlockNode */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -23404,10 +23357,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("544"), },
+        { "name", QLIT_QSTR("543"), },
         {}
     })),
-    /* "545" = YankInstanceChardev */
+    /* "544" = YankInstanceChardev */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -23418,16 +23371,16 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("545"), },
+        { "name", QLIT_QSTR("544"), },
         {}
     })),
     QLIT_QDICT(((QLitDictEntry[]) {
-        { "element-type", QLIT_QSTR("546"), },
+        { "element-type", QLIT_QSTR("545"), },
         { "meta-type", QLIT_QSTR("array"), },
-        { "name", QLIT_QSTR("[546]"), },
+        { "name", QLIT_QSTR("[545]"), },
         {}
     })),
-    /* "546" = FdsetFdInfo */
+    /* "545" = FdsetFdInfo */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -23444,16 +23397,16 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("546"), },
+        { "name", QLIT_QSTR("545"), },
         {}
     })),
     QLIT_QDICT(((QLitDictEntry[]) {
-        { "element-type", QLIT_QSTR("547"), },
+        { "element-type", QLIT_QSTR("546"), },
         { "meta-type", QLIT_QSTR("array"), },
-        { "name", QLIT_QSTR("[547]"), },
+        { "name", QLIT_QSTR("[546]"), },
         {}
     })),
-    /* "547" = CommandLineParameterInfo */
+    /* "546" = CommandLineParameterInfo */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -23463,7 +23416,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("type"), },
-                { "type", QLIT_QSTR("701"), },
+                { "type", QLIT_QSTR("698"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -23481,10 +23434,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("547"), },
+        { "name", QLIT_QSTR("546"), },
         {}
     })),
-    /* "548" = SevState */
+    /* "547" = SevState */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -23514,7 +23467,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("548"), },
+        { "name", QLIT_QSTR("547"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("uninit"),
             QLIT_QSTR("launch-update"),
@@ -23526,7 +23479,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "549" = SevGuestType */
+    /* "548" = SevGuestType */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -23540,7 +23493,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("549"), },
+        { "name", QLIT_QSTR("548"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("sev"),
             QLIT_QSTR("sev-snp"),
@@ -23548,7 +23501,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "550" = SevGuestInfo */
+    /* "549" = SevGuestInfo */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -23564,10 +23517,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("550"), },
+        { "name", QLIT_QSTR("549"), },
         {}
     })),
-    /* "551" = SevSnpGuestInfo */
+    /* "550" = SevSnpGuestInfo */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -23578,16 +23531,16 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("551"), },
+        { "name", QLIT_QSTR("550"), },
         {}
     })),
     QLIT_QDICT(((QLitDictEntry[]) {
-        { "element-type", QLIT_QSTR("552"), },
+        { "element-type", QLIT_QSTR("551"), },
         { "meta-type", QLIT_QSTR("array"), },
-        { "name", QLIT_QSTR("[552]"), },
+        { "name", QLIT_QSTR("[551]"), },
         {}
     })),
-    /* "552" = SgxEpcSection */
+    /* "551" = SgxEpcSection */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -23603,10 +23556,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("552"), },
+        { "name", QLIT_QSTR("551"), },
         {}
     })),
-    /* "553" = EvtchnPortType */
+    /* "552" = EvtchnPortType */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -23636,7 +23589,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("553"), },
+        { "name", QLIT_QSTR("552"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("closed"),
             QLIT_QSTR("unbound"),
@@ -23648,45 +23601,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "554" = AudiodevDriver */
-    QLIT_QDICT(((QLitDictEntry[]) {
-        { "members", QLIT_QLIST(((QLitObject[]) {
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "name", QLIT_QSTR("libretro"), },
-                {}
-            })),
-            {}
-        })), },
-        { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("554"), },
-        { "values", QLIT_QLIST(((QLitObject[]) {
-            QLIT_QSTR("libretro"),
-            {}
-        })), },
-        {}
-    })),
-    /* "555" = AudiodevGenericOptions */
-    QLIT_QDICT(((QLitDictEntry[]) {
-        { "members", QLIT_QLIST(((QLitObject[]) {
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "default", QLIT_QNULL, },
-                { "name", QLIT_QSTR("in"), },
-                { "type", QLIT_QSTR("702"), },
-                {}
-            })),
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "default", QLIT_QNULL, },
-                { "name", QLIT_QSTR("out"), },
-                { "type", QLIT_QSTR("702"), },
-                {}
-            })),
-            {}
-        })), },
-        { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("555"), },
-        {}
-    })),
-    /* "556" = ACPISlotType */
+    /* "553" = ACPISlotType */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -23700,7 +23615,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("556"), },
+        { "name", QLIT_QSTR("553"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("DIMM"),
             QLIT_QSTR("CPU"),
@@ -23709,12 +23624,12 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         {}
     })),
     QLIT_QDICT(((QLitDictEntry[]) {
-        { "element-type", QLIT_QSTR("557"), },
+        { "element-type", QLIT_QSTR("554"), },
         { "meta-type", QLIT_QSTR("array"), },
-        { "name", QLIT_QSTR("[557]"), },
+        { "name", QLIT_QSTR("[554]"), },
         {}
     })),
-    /* "557" = PciDeviceInfo */
+    /* "554" = PciDeviceInfo */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -23734,12 +23649,12 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("class_info"), },
-                { "type", QLIT_QSTR("703"), },
+                { "type", QLIT_QSTR("699"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("id"), },
-                { "type", QLIT_QSTR("704"), },
+                { "type", QLIT_QSTR("700"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -23761,21 +23676,21 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("pci_bridge"), },
-                { "type", QLIT_QSTR("705"), },
+                { "type", QLIT_QSTR("701"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("regions"), },
-                { "type", QLIT_QSTR("[706]"), },
+                { "type", QLIT_QSTR("[702]"), },
                 {}
             })),
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("557"), },
+        { "name", QLIT_QSTR("554"), },
         {}
     })),
-    /* "558" = StatsTarget */
+    /* "555" = StatsTarget */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -23793,7 +23708,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("558"), },
+        { "name", QLIT_QSTR("555"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("vm"),
             QLIT_QSTR("vcpu"),
@@ -23803,17 +23718,17 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         {}
     })),
     QLIT_QDICT(((QLitDictEntry[]) {
-        { "element-type", QLIT_QSTR("559"), },
+        { "element-type", QLIT_QSTR("556"), },
         { "meta-type", QLIT_QSTR("array"), },
-        { "name", QLIT_QSTR("[559]"), },
+        { "name", QLIT_QSTR("[556]"), },
         {}
     })),
-    /* "559" = StatsRequest */
+    /* "556" = StatsRequest */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("provider"), },
-                { "type", QLIT_QSTR("561"), },
+                { "type", QLIT_QSTR("558"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -23825,10 +23740,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("559"), },
+        { "name", QLIT_QSTR("556"), },
         {}
     })),
-    /* "560" = StatsVCPUFilter */
+    /* "557" = StatsVCPUFilter */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -23840,10 +23755,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("560"), },
+        { "name", QLIT_QSTR("557"), },
         {}
     })),
-    /* "561" = StatsProvider */
+    /* "558" = StatsProvider */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -23857,7 +23772,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("561"), },
+        { "name", QLIT_QSTR("558"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("kvm"),
             QLIT_QSTR("cryptodev"),
@@ -23866,12 +23781,12 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         {}
     })),
     QLIT_QDICT(((QLitDictEntry[]) {
-        { "element-type", QLIT_QSTR("562"), },
+        { "element-type", QLIT_QSTR("559"), },
         { "meta-type", QLIT_QSTR("array"), },
-        { "name", QLIT_QSTR("[562]"), },
+        { "name", QLIT_QSTR("[559]"), },
         {}
     })),
-    /* "562" = Stats */
+    /* "559" = Stats */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -23881,22 +23796,22 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("value"), },
-                { "type", QLIT_QSTR("707"), },
+                { "type", QLIT_QSTR("703"), },
                 {}
             })),
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("562"), },
+        { "name", QLIT_QSTR("559"), },
         {}
     })),
     QLIT_QDICT(((QLitDictEntry[]) {
-        { "element-type", QLIT_QSTR("563"), },
+        { "element-type", QLIT_QSTR("560"), },
         { "meta-type", QLIT_QSTR("array"), },
-        { "name", QLIT_QSTR("[563]"), },
+        { "name", QLIT_QSTR("[560]"), },
         {}
     })),
-    /* "563" = StatsSchemaValue */
+    /* "560" = StatsSchemaValue */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -23906,13 +23821,13 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("type"), },
-                { "type", QLIT_QSTR("708"), },
+                { "type", QLIT_QSTR("704"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("unit"), },
-                { "type", QLIT_QSTR("709"), },
+                { "type", QLIT_QSTR("705"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -23935,10 +23850,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("563"), },
+        { "name", QLIT_QSTR("560"), },
         {}
     })),
-    /* "564" = VirtioDeviceFeatures */
+    /* "561" = VirtioDeviceFeatures */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -23967,10 +23882,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("564"), },
+        { "name", QLIT_QSTR("561"), },
         {}
     })),
-    /* "565" = VirtioDeviceStatus */
+    /* "562" = VirtioDeviceStatus */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -23987,10 +23902,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("565"), },
+        { "name", QLIT_QSTR("562"), },
         {}
     })),
-    /* "566" = VhostStatus */
+    /* "563" = VhostStatus */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -24015,22 +23930,22 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("features"), },
-                { "type", QLIT_QSTR("564"), },
+                { "type", QLIT_QSTR("561"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("acked-features"), },
-                { "type", QLIT_QSTR("564"), },
+                { "type", QLIT_QSTR("561"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("backend-features"), },
-                { "type", QLIT_QSTR("564"), },
+                { "type", QLIT_QSTR("561"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("protocol-features"), },
-                { "type", QLIT_QSTR("710"), },
+                { "type", QLIT_QSTR("706"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -24056,16 +23971,16 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("566"), },
+        { "name", QLIT_QSTR("563"), },
         {}
     })),
     QLIT_QDICT(((QLitDictEntry[]) {
-        { "element-type", QLIT_QSTR("567"), },
+        { "element-type", QLIT_QSTR("564"), },
         { "meta-type", QLIT_QSTR("array"), },
-        { "name", QLIT_QSTR("[567]"), },
+        { "name", QLIT_QSTR("[564]"), },
         {}
     })),
-    /* "567" = VirtioRingDesc */
+    /* "564" = VirtioRingDesc */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -24086,10 +24001,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("567"), },
+        { "name", QLIT_QSTR("564"), },
         {}
     })),
-    /* "568" = VirtioRingAvail */
+    /* "565" = VirtioRingAvail */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -24110,10 +24025,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("568"), },
+        { "name", QLIT_QSTR("565"), },
         {}
     })),
-    /* "569" = VirtioRingUsed */
+    /* "566" = VirtioRingUsed */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -24129,10 +24044,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("569"), },
+        { "name", QLIT_QSTR("566"), },
         {}
     })),
-    /* "570" = QapiVfioMigrationState */
+    /* "567" = QapiVfioMigrationState */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -24166,7 +24081,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("570"), },
+        { "name", QLIT_QSTR("567"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("stop"),
             QLIT_QSTR("running"),
@@ -24180,12 +24095,12 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         {}
     })),
     QLIT_QDICT(((QLitDictEntry[]) {
-        { "element-type", QLIT_QSTR("571"), },
+        { "element-type", QLIT_QSTR("568"), },
         { "meta-type", QLIT_QSTR("array"), },
-        { "name", QLIT_QSTR("[571]"), },
+        { "name", QLIT_QSTR("[568]"), },
         {}
     })),
-    /* "571" = QCryptodevBackendServiceType */
+    /* "568" = QCryptodevBackendServiceType */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -24211,7 +24126,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("571"), },
+        { "name", QLIT_QSTR("568"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("cipher"),
             QLIT_QSTR("hash"),
@@ -24223,12 +24138,12 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         {}
     })),
     QLIT_QDICT(((QLitDictEntry[]) {
-        { "element-type", QLIT_QSTR("572"), },
+        { "element-type", QLIT_QSTR("569"), },
         { "meta-type", QLIT_QSTR("array"), },
-        { "name", QLIT_QSTR("[572]"), },
+        { "name", QLIT_QSTR("[569]"), },
         {}
     })),
-    /* "572" = QCryptodevBackendClient */
+    /* "569" = QCryptodevBackendClient */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -24238,16 +24153,16 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("type"), },
-                { "type", QLIT_QSTR("711"), },
+                { "type", QLIT_QSTR("707"), },
                 {}
             })),
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("572"), },
+        { "name", QLIT_QSTR("569"), },
         {}
     })),
-    /* "573" = CxlEventLog */
+    /* "570" = CxlEventLog */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -24269,7 +24184,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("573"), },
+        { "name", QLIT_QSTR("570"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("informational"),
             QLIT_QSTR("warning"),
@@ -24280,17 +24195,17 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         {}
     })),
     QLIT_QDICT(((QLitDictEntry[]) {
-        { "element-type", QLIT_QSTR("574"), },
+        { "element-type", QLIT_QSTR("571"), },
         { "meta-type", QLIT_QSTR("array"), },
-        { "name", QLIT_QSTR("[574]"), },
+        { "name", QLIT_QSTR("[571]"), },
         {}
     })),
-    /* "574" = CXLUncorErrorRecord */
+    /* "571" = CXLUncorErrorRecord */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("type"), },
-                { "type", QLIT_QSTR("712"), },
+                { "type", QLIT_QSTR("708"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -24301,10 +24216,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("574"), },
+        { "name", QLIT_QSTR("571"), },
         {}
     })),
-    /* "575" = CxlCorErrorType */
+    /* "572" = CxlCorErrorType */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -24338,7 +24253,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("575"), },
+        { "name", QLIT_QSTR("572"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("cache-data-ecc"),
             QLIT_QSTR("mem-data-ecc"),
@@ -24351,7 +24266,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "576" = CxlExtentSelectionPolicy */
+    /* "573" = CxlExtentSelectionPolicy */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -24373,7 +24288,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("576"), },
+        { "name", QLIT_QSTR("573"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("free"),
             QLIT_QSTR("contiguous"),
@@ -24384,12 +24299,12 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         {}
     })),
     QLIT_QDICT(((QLitDictEntry[]) {
-        { "element-type", QLIT_QSTR("577"), },
+        { "element-type", QLIT_QSTR("574"), },
         { "meta-type", QLIT_QSTR("array"), },
-        { "name", QLIT_QSTR("[577]"), },
+        { "name", QLIT_QSTR("[574]"), },
         {}
     })),
-    /* "577" = CxlDynamicCapacityExtent */
+    /* "574" = CxlDynamicCapacityExtent */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -24405,10 +24320,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("577"), },
+        { "name", QLIT_QSTR("574"), },
         {}
     })),
-    /* "578" = CxlExtentRemovalPolicy */
+    /* "575" = CxlExtentRemovalPolicy */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -24422,7 +24337,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("578"), },
+        { "name", QLIT_QSTR("575"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("tag-based"),
             QLIT_QSTR("prescriptive"),
@@ -24430,7 +24345,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "579" = GuestPanicInformationType */
+    /* "576" = GuestPanicInformationType */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -24448,7 +24363,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("579"), },
+        { "name", QLIT_QSTR("576"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("hyper-v"),
             QLIT_QSTR("s390"),
@@ -24457,7 +24372,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "580" = GuestPanicInformationHyperV */
+    /* "577" = GuestPanicInformationHyperV */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -24488,10 +24403,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("580"), },
+        { "name", QLIT_QSTR("577"), },
         {}
     })),
-    /* "581" = GuestPanicInformationS390 */
+    /* "578" = GuestPanicInformationS390 */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -24511,16 +24426,16 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("reason"), },
-                { "type", QLIT_QSTR("713"), },
+                { "type", QLIT_QSTR("709"), },
                 {}
             })),
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("581"), },
+        { "name", QLIT_QSTR("578"), },
         {}
     })),
-    /* "582" = GuestPanicInformationTdx */
+    /* "579" = GuestPanicInformationTdx */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -24542,16 +24457,16 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("582"), },
+        { "name", QLIT_QSTR("579"), },
         {}
     })),
     QLIT_QDICT(((QLitDictEntry[]) {
-        { "element-type", QLIT_QSTR("583"), },
+        { "element-type", QLIT_QSTR("580"), },
         { "meta-type", QLIT_QSTR("array"), },
-        { "name", QLIT_QSTR("[583]"), },
+        { "name", QLIT_QSTR("[580]"), },
         {}
     })),
-    /* "583" = BlockDeviceTimedStats */
+    /* "580" = BlockDeviceTimedStats */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -24637,10 +24552,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("583"), },
+        { "name", QLIT_QSTR("580"), },
         {}
     })),
-    /* "584" = BlockLatencyHistogramInfo */
+    /* "581" = BlockLatencyHistogramInfo */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -24656,10 +24571,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("584"), },
+        { "name", QLIT_QSTR("581"), },
         {}
     })),
-    /* "585" = BlockStatsSpecificFile */
+    /* "582" = BlockStatsSpecificFile */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -24680,10 +24595,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("585"), },
+        { "name", QLIT_QSTR("582"), },
         {}
     })),
-    /* "586" = BlockStatsSpecificNvme */
+    /* "583" = BlockStatsSpecificNvme */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -24704,7 +24619,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("586"), },
+        { "name", QLIT_QSTR("583"), },
         {}
     })),
     QLIT_QDICT(((QLitDictEntry[]) {
@@ -24713,7 +24628,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         { "name", QLIT_QSTR("[82]"), },
         {}
     })),
-    /* "587" = BlockLimitsInfo */
+    /* "584" = BlockLimitsInfo */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -24787,53 +24702,53 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("587"), },
+        { "name", QLIT_QSTR("584"), },
         {}
     })),
-    /* "588" = ImageInfoSpecific */
+    /* "585" = ImageInfoSpecific */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("type"), },
-                { "type", QLIT_QSTR("714"), },
+                { "type", QLIT_QSTR("710"), },
                 {}
             })),
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("588"), },
+        { "name", QLIT_QSTR("585"), },
         { "tag", QLIT_QSTR("type"), },
         { "variants", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("qcow2"), },
-                { "type", QLIT_QSTR("715"), },
+                { "type", QLIT_QSTR("711"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("vmdk"), },
-                { "type", QLIT_QSTR("716"), },
+                { "type", QLIT_QSTR("712"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("luks"), },
-                { "type", QLIT_QSTR("717"), },
+                { "type", QLIT_QSTR("713"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("rbd"), },
-                { "type", QLIT_QSTR("718"), },
+                { "type", QLIT_QSTR("714"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("file"), },
-                { "type", QLIT_QSTR("719"), },
+                { "type", QLIT_QSTR("715"), },
                 {}
             })),
             {}
         })), },
         {}
     })),
-    /* "589" = XDbgBlockGraphNodeType */
+    /* "586" = XDbgBlockGraphNodeType */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -24851,7 +24766,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("589"), },
+        { "name", QLIT_QSTR("586"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("block-backend"),
             QLIT_QSTR("block-job"),
@@ -24861,12 +24776,12 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         {}
     })),
     QLIT_QDICT(((QLitDictEntry[]) {
-        { "element-type", QLIT_QSTR("590"), },
+        { "element-type", QLIT_QSTR("587"), },
         { "meta-type", QLIT_QSTR("array"), },
-        { "name", QLIT_QSTR("[590]"), },
+        { "name", QLIT_QSTR("[587]"), },
         {}
     })),
-    /* "590" = BlockPermission */
+    /* "587" = BlockPermission */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -24888,7 +24803,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("590"), },
+        { "name", QLIT_QSTR("587"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("consistent-read"),
             QLIT_QSTR("write"),
@@ -24898,7 +24813,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "591" = BlockdevRef */
+    /* "588" = BlockdevRef */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -24912,21 +24827,21 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("alternate"), },
-        { "name", QLIT_QSTR("591"), },
+        { "name", QLIT_QSTR("588"), },
         {}
     })),
     QLIT_QDICT(((QLitDictEntry[]) {
-        { "element-type", QLIT_QSTR("592"), },
+        { "element-type", QLIT_QSTR("589"), },
         { "meta-type", QLIT_QSTR("array"), },
-        { "name", QLIT_QSTR("[592]"), },
+        { "name", QLIT_QSTR("[589]"), },
         {}
     })),
-    /* "592" = BlkdebugInjectErrorOptions */
+    /* "589" = BlkdebugInjectErrorOptions */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("event"), },
-                { "type", QLIT_QSTR("720"), },
+                { "type", QLIT_QSTR("716"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -24938,7 +24853,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("iotype"), },
-                { "type", QLIT_QSTR("721"), },
+                { "type", QLIT_QSTR("717"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -24968,21 +24883,21 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("592"), },
+        { "name", QLIT_QSTR("589"), },
         {}
     })),
     QLIT_QDICT(((QLitDictEntry[]) {
-        { "element-type", QLIT_QSTR("593"), },
+        { "element-type", QLIT_QSTR("590"), },
         { "meta-type", QLIT_QSTR("array"), },
-        { "name", QLIT_QSTR("[593]"), },
+        { "name", QLIT_QSTR("[590]"), },
         {}
     })),
-    /* "593" = BlkdebugSetStateOptions */
+    /* "590" = BlkdebugSetStateOptions */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("event"), },
-                { "type", QLIT_QSTR("720"), },
+                { "type", QLIT_QSTR("716"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -24999,10 +24914,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("593"), },
+        { "name", QLIT_QSTR("590"), },
         {}
     })),
-    /* "594" = OnOffAuto */
+    /* "591" = OnOffAuto */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -25020,7 +24935,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("594"), },
+        { "name", QLIT_QSTR("591"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("auto"),
             QLIT_QSTR("on"),
@@ -25029,7 +24944,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "595" = BlockdevAioOptions */
+    /* "592" = BlockdevAioOptions */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -25049,7 +24964,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("595"), },
+        { "name", QLIT_QSTR("592"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("threads"),
             QLIT_QSTR("native"),
@@ -25060,7 +24975,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "596" = IscsiTransport */
+    /* "593" = IscsiTransport */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -25074,7 +24989,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("596"), },
+        { "name", QLIT_QSTR("593"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("tcp"),
             QLIT_QSTR("iser"),
@@ -25082,7 +24997,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "597" = IscsiHeaderDigest */
+    /* "594" = IscsiHeaderDigest */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -25104,7 +25019,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("597"), },
+        { "name", QLIT_QSTR("594"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("crc32c"),
             QLIT_QSTR("none"),
@@ -25114,12 +25029,12 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "598" = NFSServer */
+    /* "595" = NFSServer */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("type"), },
-                { "type", QLIT_QSTR("722"), },
+                { "type", QLIT_QSTR("718"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -25130,10 +25045,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("598"), },
+        { "name", QLIT_QSTR("595"), },
         {}
     })),
-    /* "599" = BlockdevRefOrNull */
+    /* "596" = BlockdevRefOrNull */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -25151,71 +25066,71 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("alternate"), },
-        { "name", QLIT_QSTR("599"), },
+        { "name", QLIT_QSTR("596"), },
         {}
     })),
-    /* "600" = Qcow2OverlapChecks */
+    /* "597" = Qcow2OverlapChecks */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
-                { "type", QLIT_QSTR("723"), },
+                { "type", QLIT_QSTR("719"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
-                { "type", QLIT_QSTR("724"), },
+                { "type", QLIT_QSTR("720"), },
                 {}
             })),
             {}
         })), },
         { "meta-type", QLIT_QSTR("alternate"), },
-        { "name", QLIT_QSTR("600"), },
+        { "name", QLIT_QSTR("597"), },
         {}
     })),
-    /* "601" = BlockdevQcow2Encryption */
+    /* "598" = BlockdevQcow2Encryption */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("format"), },
-                { "type", QLIT_QSTR("725"), },
+                { "type", QLIT_QSTR("721"), },
                 {}
             })),
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("601"), },
+        { "name", QLIT_QSTR("598"), },
         { "tag", QLIT_QSTR("format"), },
         { "variants", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("aes"), },
-                { "type", QLIT_QSTR("726"), },
+                { "type", QLIT_QSTR("722"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("luks"), },
-                { "type", QLIT_QSTR("727"), },
+                { "type", QLIT_QSTR("723"), },
                 {}
             })),
             {}
         })), },
         {}
     })),
-    /* "602" = BlockdevQcowEncryption */
+    /* "599" = BlockdevQcowEncryption */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("format"), },
-                { "type", QLIT_QSTR("728"), },
+                { "type", QLIT_QSTR("724"), },
                 {}
             })),
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("602"), },
+        { "name", QLIT_QSTR("599"), },
         { "tag", QLIT_QSTR("format"), },
         { "variants", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("aes"), },
-                { "type", QLIT_QSTR("726"), },
+                { "type", QLIT_QSTR("722"), },
                 {}
             })),
             {}
@@ -25223,12 +25138,12 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         {}
     })),
     QLIT_QDICT(((QLitDictEntry[]) {
-        { "element-type", QLIT_QSTR("591"), },
+        { "element-type", QLIT_QSTR("588"), },
         { "meta-type", QLIT_QSTR("array"), },
-        { "name", QLIT_QSTR("[591]"), },
+        { "name", QLIT_QSTR("[588]"), },
         {}
     })),
-    /* "603" = QuorumReadPattern */
+    /* "600" = QuorumReadPattern */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -25242,7 +25157,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("603"), },
+        { "name", QLIT_QSTR("600"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("quorum"),
             QLIT_QSTR("fifo"),
@@ -25250,39 +25165,39 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "604" = RbdEncryptionOptions */
+    /* "601" = RbdEncryptionOptions */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("format"), },
-                { "type", QLIT_QSTR("729"), },
+                { "type", QLIT_QSTR("725"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("parent"), },
-                { "type", QLIT_QSTR("604"), },
+                { "type", QLIT_QSTR("601"), },
                 {}
             })),
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("604"), },
+        { "name", QLIT_QSTR("601"), },
         { "tag", QLIT_QSTR("format"), },
         { "variants", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("luks"), },
-                { "type", QLIT_QSTR("730"), },
+                { "type", QLIT_QSTR("726"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("luks2"), },
-                { "type", QLIT_QSTR("731"), },
+                { "type", QLIT_QSTR("727"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("luks-any"), },
-                { "type", QLIT_QSTR("732"), },
+                { "type", QLIT_QSTR("728"), },
                 {}
             })),
             {}
@@ -25290,12 +25205,12 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         {}
     })),
     QLIT_QDICT(((QLitDictEntry[]) {
-        { "element-type", QLIT_QSTR("605"), },
+        { "element-type", QLIT_QSTR("602"), },
         { "meta-type", QLIT_QSTR("array"), },
-        { "name", QLIT_QSTR("[605]"), },
+        { "name", QLIT_QSTR("[602]"), },
         {}
     })),
-    /* "605" = RbdAuthMode */
+    /* "602" = RbdAuthMode */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -25309,7 +25224,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("605"), },
+        { "name", QLIT_QSTR("602"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("cephx"),
             QLIT_QSTR("none"),
@@ -25318,12 +25233,12 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         {}
     })),
     QLIT_QDICT(((QLitDictEntry[]) {
-        { "element-type", QLIT_QSTR("606"), },
+        { "element-type", QLIT_QSTR("603"), },
         { "meta-type", QLIT_QSTR("array"), },
-        { "name", QLIT_QSTR("[606]"), },
+        { "name", QLIT_QSTR("[603]"), },
         {}
     })),
-    /* "606" = InetSocketAddressBase */
+    /* "603" = InetSocketAddressBase */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -25339,10 +25254,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("606"), },
+        { "name", QLIT_QSTR("603"), },
         {}
     })),
-    /* "607" = ReplicationMode */
+    /* "604" = ReplicationMode */
 #if defined(CONFIG_REPLICATION)
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
@@ -25357,7 +25272,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("607"), },
+        { "name", QLIT_QSTR("604"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("primary"),
             QLIT_QSTR("secondary"),
@@ -25366,7 +25281,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         {}
     })),
 #endif /* defined(CONFIG_REPLICATION) */
-    /* "608" = InetSocketAddress */
+    /* "605" = InetSocketAddress */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -25444,26 +25359,26 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("608"), },
+        { "name", QLIT_QSTR("605"), },
         {}
     })),
-    /* "609" = SshHostKeyCheck */
+    /* "606" = SshHostKeyCheck */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("mode"), },
-                { "type", QLIT_QSTR("733"), },
+                { "type", QLIT_QSTR("729"), },
                 {}
             })),
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("609"), },
+        { "name", QLIT_QSTR("606"), },
         { "tag", QLIT_QSTR("mode"), },
         { "variants", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("hash"), },
-                { "type", QLIT_QSTR("734"), },
+                { "type", QLIT_QSTR("730"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -25480,7 +25395,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "610" = BlockdevCreateOptionsFile */
+    /* "607" = BlockdevCreateOptionsFile */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -25496,7 +25411,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("preallocation"), },
-                { "type", QLIT_QSTR("735"), },
+                { "type", QLIT_QSTR("731"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -25514,15 +25429,15 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("610"), },
+        { "name", QLIT_QSTR("607"), },
         {}
     })),
-    /* "611" = BlockdevCreateOptionsGluster */
+    /* "608" = BlockdevCreateOptionsGluster */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("location"), },
-                { "type", QLIT_QSTR("342"), },
+                { "type", QLIT_QSTR("341"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -25533,16 +25448,16 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("preallocation"), },
-                { "type", QLIT_QSTR("735"), },
+                { "type", QLIT_QSTR("731"), },
                 {}
             })),
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("611"), },
+        { "name", QLIT_QSTR("608"), },
         {}
     })),
-    /* "612" = BlockdevCreateOptionsLUKS */
+    /* "609" = BlockdevCreateOptionsLUKS */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -25554,31 +25469,31 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("cipher-alg"), },
-                { "type", QLIT_QSTR("736"), },
+                { "type", QLIT_QSTR("732"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("cipher-mode"), },
-                { "type", QLIT_QSTR("737"), },
+                { "type", QLIT_QSTR("733"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("ivgen-alg"), },
-                { "type", QLIT_QSTR("738"), },
+                { "type", QLIT_QSTR("734"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("ivgen-hash-alg"), },
-                { "type", QLIT_QSTR("739"), },
+                { "type", QLIT_QSTR("735"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("hash-alg"), },
-                { "type", QLIT_QSTR("739"), },
+                { "type", QLIT_QSTR("735"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -25590,13 +25505,13 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("file"), },
-                { "type", QLIT_QSTR("591"), },
+                { "type", QLIT_QSTR("588"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("header"), },
-                { "type", QLIT_QSTR("591"), },
+                { "type", QLIT_QSTR("588"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -25607,21 +25522,21 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("preallocation"), },
-                { "type", QLIT_QSTR("735"), },
+                { "type", QLIT_QSTR("731"), },
                 {}
             })),
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("612"), },
+        { "name", QLIT_QSTR("609"), },
         {}
     })),
-    /* "613" = BlockdevCreateOptionsNfs */
+    /* "610" = BlockdevCreateOptionsNfs */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("location"), },
-                { "type", QLIT_QSTR("349"), },
+                { "type", QLIT_QSTR("348"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -25632,15 +25547,15 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("613"), },
+        { "name", QLIT_QSTR("610"), },
         {}
     })),
-    /* "614" = BlockdevCreateOptionsParallels */
+    /* "611" = BlockdevCreateOptionsParallels */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("file"), },
-                { "type", QLIT_QSTR("591"), },
+                { "type", QLIT_QSTR("588"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -25657,15 +25572,15 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("614"), },
+        { "name", QLIT_QSTR("611"), },
         {}
     })),
-    /* "615" = BlockdevCreateOptionsQcow */
+    /* "612" = BlockdevCreateOptionsQcow */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("file"), },
-                { "type", QLIT_QSTR("591"), },
+                { "type", QLIT_QSTR("588"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -25682,27 +25597,27 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("encrypt"), },
-                { "type", QLIT_QSTR("740"), },
+                { "type", QLIT_QSTR("736"), },
                 {}
             })),
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("615"), },
+        { "name", QLIT_QSTR("612"), },
         {}
     })),
-    /* "616" = BlockdevCreateOptionsQcow2 */
+    /* "613" = BlockdevCreateOptionsQcow2 */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("file"), },
-                { "type", QLIT_QSTR("591"), },
+                { "type", QLIT_QSTR("588"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("data-file"), },
-                { "type", QLIT_QSTR("591"), },
+                { "type", QLIT_QSTR("588"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -25725,7 +25640,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("version"), },
-                { "type", QLIT_QSTR("741"), },
+                { "type", QLIT_QSTR("737"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -25737,13 +25652,13 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("backing-fmt"), },
-                { "type", QLIT_QSTR("329"), },
+                { "type", QLIT_QSTR("328"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("encrypt"), },
-                { "type", QLIT_QSTR("740"), },
+                { "type", QLIT_QSTR("736"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -25755,7 +25670,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("preallocation"), },
-                { "type", QLIT_QSTR("735"), },
+                { "type", QLIT_QSTR("731"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -25773,21 +25688,21 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("compression-type"), },
-                { "type", QLIT_QSTR("742"), },
+                { "type", QLIT_QSTR("738"), },
                 {}
             })),
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("616"), },
+        { "name", QLIT_QSTR("613"), },
         {}
     })),
-    /* "617" = BlockdevCreateOptionsQed */
+    /* "614" = BlockdevCreateOptionsQed */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("file"), },
-                { "type", QLIT_QSTR("591"), },
+                { "type", QLIT_QSTR("588"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -25804,7 +25719,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("backing-fmt"), },
-                { "type", QLIT_QSTR("329"), },
+                { "type", QLIT_QSTR("328"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -25822,15 +25737,15 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("617"), },
+        { "name", QLIT_QSTR("614"), },
         {}
     })),
-    /* "618" = BlockdevCreateOptionsRbd */
+    /* "615" = BlockdevCreateOptionsRbd */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("location"), },
-                { "type", QLIT_QSTR("359"), },
+                { "type", QLIT_QSTR("358"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -25847,21 +25762,21 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("encrypt"), },
-                { "type", QLIT_QSTR("743"), },
+                { "type", QLIT_QSTR("739"), },
                 {}
             })),
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("618"), },
+        { "name", QLIT_QSTR("615"), },
         {}
     })),
-    /* "619" = BlockdevCreateOptionsSsh */
+    /* "616" = BlockdevCreateOptionsSsh */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("location"), },
-                { "type", QLIT_QSTR("361"), },
+                { "type", QLIT_QSTR("360"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -25872,15 +25787,15 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("619"), },
+        { "name", QLIT_QSTR("616"), },
         {}
     })),
-    /* "620" = BlockdevCreateOptionsVdi */
+    /* "617" = BlockdevCreateOptionsVdi */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("file"), },
-                { "type", QLIT_QSTR("591"), },
+                { "type", QLIT_QSTR("588"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -25891,21 +25806,21 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("preallocation"), },
-                { "type", QLIT_QSTR("735"), },
+                { "type", QLIT_QSTR("731"), },
                 {}
             })),
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("620"), },
+        { "name", QLIT_QSTR("617"), },
         {}
     })),
-    /* "621" = BlockdevCreateOptionsVhdx */
+    /* "618" = BlockdevCreateOptionsVhdx */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("file"), },
-                { "type", QLIT_QSTR("591"), },
+                { "type", QLIT_QSTR("588"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -25928,7 +25843,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("subformat"), },
-                { "type", QLIT_QSTR("744"), },
+                { "type", QLIT_QSTR("740"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -25940,15 +25855,15 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("621"), },
+        { "name", QLIT_QSTR("618"), },
         {}
     })),
-    /* "622" = BlockdevCreateOptionsVmdk */
+    /* "619" = BlockdevCreateOptionsVmdk */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("file"), },
-                { "type", QLIT_QSTR("591"), },
+                { "type", QLIT_QSTR("588"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -25959,13 +25874,13 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("extents"), },
-                { "type", QLIT_QSTR("[591]"), },
+                { "type", QLIT_QSTR("[588]"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("subformat"), },
-                { "type", QLIT_QSTR("745"), },
+                { "type", QLIT_QSTR("741"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -25977,7 +25892,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("adapter-type"), },
-                { "type", QLIT_QSTR("746"), },
+                { "type", QLIT_QSTR("742"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -26001,15 +25916,15 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("622"), },
+        { "name", QLIT_QSTR("619"), },
         {}
     })),
-    /* "623" = BlockdevCreateOptionsVpc */
+    /* "620" = BlockdevCreateOptionsVpc */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("file"), },
-                { "type", QLIT_QSTR("591"), },
+                { "type", QLIT_QSTR("588"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -26020,7 +25935,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("subformat"), },
-                { "type", QLIT_QSTR("747"), },
+                { "type", QLIT_QSTR("743"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -26032,15 +25947,15 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("623"), },
+        { "name", QLIT_QSTR("620"), },
         {}
     })),
-    /* "624" = BlockdevAmendOptionsLUKS */
+    /* "621" = BlockdevAmendOptionsLUKS */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("state"), },
-                { "type", QLIT_QSTR("748"), },
+                { "type", QLIT_QSTR("744"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -26076,22 +25991,22 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("624"), },
+        { "name", QLIT_QSTR("621"), },
         {}
     })),
-    /* "625" = BlockdevAmendOptionsQcow2 */
+    /* "622" = BlockdevAmendOptionsQcow2 */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("encrypt"), },
-                { "type", QLIT_QSTR("749"), },
+                { "type", QLIT_QSTR("745"), },
                 {}
             })),
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("625"), },
+        { "name", QLIT_QSTR("622"), },
         {}
     })),
     QLIT_QDICT(((QLitDictEntry[]) {
@@ -26100,7 +26015,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         { "name", QLIT_QSTR("null"), },
         {}
     })),
-    /* "626" = SocketAddressType */
+    /* "623" = SocketAddressType */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -26122,7 +26037,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("626"), },
+        { "name", QLIT_QSTR("623"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("inet"),
             QLIT_QSTR("unix"),
@@ -26132,12 +26047,54 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "627" = InetSocketAddressWrapper */
+    /* "624" = InetSocketAddressWrapper */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("data"), },
-                { "type", QLIT_QSTR("608"), },
+                { "type", QLIT_QSTR("605"), },
+                {}
+            })),
+            {}
+        })), },
+        { "meta-type", QLIT_QSTR("object"), },
+        { "name", QLIT_QSTR("624"), },
+        {}
+    })),
+    /* "625" = UnixSocketAddressWrapper */
+    QLIT_QDICT(((QLitDictEntry[]) {
+        { "members", QLIT_QLIST(((QLitObject[]) {
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "name", QLIT_QSTR("data"), },
+                { "type", QLIT_QSTR("647"), },
+                {}
+            })),
+            {}
+        })), },
+        { "meta-type", QLIT_QSTR("object"), },
+        { "name", QLIT_QSTR("625"), },
+        {}
+    })),
+    /* "626" = VsockSocketAddressWrapper */
+    QLIT_QDICT(((QLitDictEntry[]) {
+        { "members", QLIT_QLIST(((QLitObject[]) {
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "name", QLIT_QSTR("data"), },
+                { "type", QLIT_QSTR("648"), },
+                {}
+            })),
+            {}
+        })), },
+        { "meta-type", QLIT_QSTR("object"), },
+        { "name", QLIT_QSTR("626"), },
+        {}
+    })),
+    /* "627" = FdSocketAddressWrapper */
+    QLIT_QDICT(((QLitDictEntry[]) {
+        { "members", QLIT_QLIST(((QLitObject[]) {
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "name", QLIT_QSTR("data"), },
+                { "type", QLIT_QSTR("649"), },
                 {}
             })),
             {}
@@ -26146,49 +26103,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         { "name", QLIT_QSTR("627"), },
         {}
     })),
-    /* "628" = UnixSocketAddressWrapper */
-    QLIT_QDICT(((QLitDictEntry[]) {
-        { "members", QLIT_QLIST(((QLitObject[]) {
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "name", QLIT_QSTR("data"), },
-                { "type", QLIT_QSTR("650"), },
-                {}
-            })),
-            {}
-        })), },
-        { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("628"), },
-        {}
-    })),
-    /* "629" = VsockSocketAddressWrapper */
-    QLIT_QDICT(((QLitDictEntry[]) {
-        { "members", QLIT_QLIST(((QLitObject[]) {
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "name", QLIT_QSTR("data"), },
-                { "type", QLIT_QSTR("651"), },
-                {}
-            })),
-            {}
-        })), },
-        { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("629"), },
-        {}
-    })),
-    /* "630" = FdSocketAddressWrapper */
-    QLIT_QDICT(((QLitDictEntry[]) {
-        { "members", QLIT_QLIST(((QLitObject[]) {
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "name", QLIT_QSTR("data"), },
-                { "type", QLIT_QSTR("652"), },
-                {}
-            })),
-            {}
-        })), },
-        { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("630"), },
-        {}
-    })),
-    /* "631" = FuseExportAllowOther */
+    /* "628" = FuseExportAllowOther */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -26206,7 +26121,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("631"), },
+        { "name", QLIT_QSTR("628"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("off"),
             QLIT_QSTR("on"),
@@ -26215,7 +26130,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "632" = ChardevBackendKind */
+    /* "629" = ChardevBackendKind */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -26333,7 +26248,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("632"), },
+        { "name", QLIT_QSTR("629"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("file"),
 #if defined(HAVE_CHARDEV_SERIAL)
@@ -26378,7 +26293,63 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "633" = ChardevFileWrapper */
+    /* "630" = ChardevFileWrapper */
+    QLIT_QDICT(((QLitDictEntry[]) {
+        { "members", QLIT_QLIST(((QLitObject[]) {
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "name", QLIT_QSTR("data"), },
+                { "type", QLIT_QSTR("746"), },
+                {}
+            })),
+            {}
+        })), },
+        { "meta-type", QLIT_QSTR("object"), },
+        { "name", QLIT_QSTR("630"), },
+        {}
+    })),
+    /* "631" = ChardevHostdevWrapper */
+    QLIT_QDICT(((QLitDictEntry[]) {
+        { "members", QLIT_QLIST(((QLitObject[]) {
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "name", QLIT_QSTR("data"), },
+                { "type", QLIT_QSTR("747"), },
+                {}
+            })),
+            {}
+        })), },
+        { "meta-type", QLIT_QSTR("object"), },
+        { "name", QLIT_QSTR("631"), },
+        {}
+    })),
+    /* "632" = ChardevSocketWrapper */
+    QLIT_QDICT(((QLitDictEntry[]) {
+        { "members", QLIT_QLIST(((QLitObject[]) {
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "name", QLIT_QSTR("data"), },
+                { "type", QLIT_QSTR("748"), },
+                {}
+            })),
+            {}
+        })), },
+        { "meta-type", QLIT_QSTR("object"), },
+        { "name", QLIT_QSTR("632"), },
+        {}
+    })),
+    /* "633" = ChardevUdpWrapper */
+    QLIT_QDICT(((QLitDictEntry[]) {
+        { "members", QLIT_QLIST(((QLitObject[]) {
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "name", QLIT_QSTR("data"), },
+                { "type", QLIT_QSTR("749"), },
+                {}
+            })),
+            {}
+        })), },
+        { "meta-type", QLIT_QSTR("object"), },
+        { "name", QLIT_QSTR("633"), },
+        {}
+    })),
+    /* "634" = ChardevPtyWrapper */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -26389,10 +26360,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("633"), },
+        { "name", QLIT_QSTR("634"), },
         {}
     })),
-    /* "634" = ChardevHostdevWrapper */
+    /* "635" = ChardevCommonWrapper */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -26403,10 +26374,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("634"), },
+        { "name", QLIT_QSTR("635"), },
         {}
     })),
-    /* "635" = ChardevSocketWrapper */
+    /* "636" = ChardevMuxWrapper */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -26417,10 +26388,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("635"), },
+        { "name", QLIT_QSTR("636"), },
         {}
     })),
-    /* "636" = ChardevUdpWrapper */
+    /* "637" = ChardevHubWrapper */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -26431,10 +26402,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("636"), },
+        { "name", QLIT_QSTR("637"), },
         {}
     })),
-    /* "637" = ChardevPtyWrapper */
+    /* "638" = ChardevStdioWrapper */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -26445,10 +26416,11 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("637"), },
+        { "name", QLIT_QSTR("638"), },
         {}
     })),
-    /* "638" = ChardevCommonWrapper */
+    /* "639" = ChardevSpiceChannelWrapper */
+#if defined(CONFIG_SPICE)
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -26459,10 +26431,12 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("638"), },
+        { "name", QLIT_QSTR("639"), },
         {}
     })),
-    /* "639" = ChardevMuxWrapper */
+#endif /* defined(CONFIG_SPICE) */
+    /* "640" = ChardevSpicePortWrapper */
+#if defined(CONFIG_SPICE)
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -26473,10 +26447,12 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("639"), },
+        { "name", QLIT_QSTR("640"), },
         {}
     })),
-    /* "640" = ChardevHubWrapper */
+#endif /* defined(CONFIG_SPICE) */
+    /* "641" = ChardevQemuVDAgentWrapper */
+#if defined(CONFIG_SPICE_PROTOCOL)
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -26487,10 +26463,12 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("640"), },
+        { "name", QLIT_QSTR("641"), },
         {}
     })),
-    /* "641" = ChardevStdioWrapper */
+#endif /* defined(CONFIG_SPICE_PROTOCOL) */
+    /* "642" = ChardevDBusWrapper */
+#if defined(CONFIG_DBUS_DISPLAY)
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -26501,11 +26479,11 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("641"), },
+        { "name", QLIT_QSTR("642"), },
         {}
     })),
-    /* "642" = ChardevSpiceChannelWrapper */
-#if defined(CONFIG_SPICE)
+#endif /* defined(CONFIG_DBUS_DISPLAY) */
+    /* "643" = ChardevVCWrapper */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -26516,12 +26494,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("642"), },
+        { "name", QLIT_QSTR("643"), },
         {}
     })),
-#endif /* defined(CONFIG_SPICE) */
-    /* "643" = ChardevSpicePortWrapper */
-#if defined(CONFIG_SPICE)
+    /* "644" = ChardevRingbufWrapper */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -26532,77 +26508,16 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("643"), },
-        {}
-    })),
-#endif /* defined(CONFIG_SPICE) */
-    /* "644" = ChardevQemuVDAgentWrapper */
-#if defined(CONFIG_SPICE_PROTOCOL)
-    QLIT_QDICT(((QLitDictEntry[]) {
-        { "members", QLIT_QLIST(((QLitObject[]) {
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "name", QLIT_QSTR("data"), },
-                { "type", QLIT_QSTR("761"), },
-                {}
-            })),
-            {}
-        })), },
-        { "meta-type", QLIT_QSTR("object"), },
         { "name", QLIT_QSTR("644"), },
         {}
     })),
-#endif /* defined(CONFIG_SPICE_PROTOCOL) */
-    /* "645" = ChardevDBusWrapper */
-#if defined(CONFIG_DBUS_DISPLAY)
     QLIT_QDICT(((QLitDictEntry[]) {
-        { "members", QLIT_QLIST(((QLitObject[]) {
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "name", QLIT_QSTR("data"), },
-                { "type", QLIT_QSTR("762"), },
-                {}
-            })),
-            {}
-        })), },
-        { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("645"), },
-        {}
-    })),
-#endif /* defined(CONFIG_DBUS_DISPLAY) */
-    /* "646" = ChardevVCWrapper */
-    QLIT_QDICT(((QLitDictEntry[]) {
-        { "members", QLIT_QLIST(((QLitObject[]) {
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "name", QLIT_QSTR("data"), },
-                { "type", QLIT_QSTR("763"), },
-                {}
-            })),
-            {}
-        })), },
-        { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("646"), },
-        {}
-    })),
-    /* "647" = ChardevRingbufWrapper */
-    QLIT_QDICT(((QLitDictEntry[]) {
-        { "members", QLIT_QLIST(((QLitObject[]) {
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "name", QLIT_QSTR("data"), },
-                { "type", QLIT_QSTR("764"), },
-                {}
-            })),
-            {}
-        })), },
-        { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("647"), },
-        {}
-    })),
-    QLIT_QDICT(((QLitDictEntry[]) {
-        { "element-type", QLIT_QSTR("648"), },
+        { "element-type", QLIT_QSTR("645"), },
         { "meta-type", QLIT_QSTR("array"), },
-        { "name", QLIT_QSTR("[648]"), },
+        { "name", QLIT_QSTR("[645]"), },
         {}
     })),
-    /* "648" = String */
+    /* "645" = String */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -26613,10 +26528,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("648"), },
+        { "name", QLIT_QSTR("645"), },
         {}
     })),
-    /* "649" = AFXDPMode */
+    /* "646" = AFXDPMode */
 #if defined(CONFIG_AF_XDP)
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
@@ -26631,7 +26546,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("649"), },
+        { "name", QLIT_QSTR("646"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("native"),
             QLIT_QSTR("skb"),
@@ -26640,7 +26555,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         {}
     })),
 #endif /* defined(CONFIG_AF_XDP) */
-    /* "650" = UnixSocketAddress */
+    /* "647" = UnixSocketAddress */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -26667,10 +26582,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("650"), },
+        { "name", QLIT_QSTR("647"), },
         {}
     })),
-    /* "651" = VsockSocketAddress */
+    /* "648" = VsockSocketAddress */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -26686,10 +26601,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("651"), },
+        { "name", QLIT_QSTR("648"), },
         {}
     })),
-    /* "652" = FdSocketAddress */
+    /* "649" = FdSocketAddress */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -26700,42 +26615,42 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("652"), },
+        { "name", QLIT_QSTR("649"), },
         {}
     })),
-    /* "653" = TPMPassthroughOptionsWrapper */
+    /* "650" = TPMPassthroughOptionsWrapper */
 #if defined(CONFIG_TPM)
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("data"), },
-                { "type", QLIT_QSTR("765"), },
+                { "type", QLIT_QSTR("761"), },
                 {}
             })),
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("653"), },
+        { "name", QLIT_QSTR("650"), },
         {}
     })),
 #endif /* defined(CONFIG_TPM) */
-    /* "654" = TPMEmulatorOptionsWrapper */
+    /* "651" = TPMEmulatorOptionsWrapper */
 #if defined(CONFIG_TPM)
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("data"), },
-                { "type", QLIT_QSTR("766"), },
+                { "type", QLIT_QSTR("762"), },
                 {}
             })),
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("654"), },
+        { "name", QLIT_QSTR("651"), },
         {}
     })),
 #endif /* defined(CONFIG_TPM) */
-    /* "655" = KeyValueKind */
+    /* "652" = KeyValueKind */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -26749,7 +26664,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("655"), },
+        { "name", QLIT_QSTR("652"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("number"),
             QLIT_QSTR("qcode"),
@@ -26757,7 +26672,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "656" = IntWrapper */
+    /* "653" = IntWrapper */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -26768,24 +26683,24 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("656"), },
+        { "name", QLIT_QSTR("653"), },
         {}
     })),
-    /* "657" = QKeyCodeWrapper */
+    /* "654" = QKeyCodeWrapper */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("data"), },
-                { "type", QLIT_QSTR("767"), },
+                { "type", QLIT_QSTR("763"), },
                 {}
             })),
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("657"), },
+        { "name", QLIT_QSTR("654"), },
         {}
     })),
-    /* "658" = InputEventKind */
+    /* "655" = InputEventKind */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -26811,7 +26726,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("658"), },
+        { "name", QLIT_QSTR("655"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("key"),
             QLIT_QSTR("btn"),
@@ -26822,12 +26737,54 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "659" = InputKeyEventWrapper */
+    /* "656" = InputKeyEventWrapper */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("data"), },
-                { "type", QLIT_QSTR("768"), },
+                { "type", QLIT_QSTR("764"), },
+                {}
+            })),
+            {}
+        })), },
+        { "meta-type", QLIT_QSTR("object"), },
+        { "name", QLIT_QSTR("656"), },
+        {}
+    })),
+    /* "657" = InputBtnEventWrapper */
+    QLIT_QDICT(((QLitDictEntry[]) {
+        { "members", QLIT_QLIST(((QLitObject[]) {
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "name", QLIT_QSTR("data"), },
+                { "type", QLIT_QSTR("765"), },
+                {}
+            })),
+            {}
+        })), },
+        { "meta-type", QLIT_QSTR("object"), },
+        { "name", QLIT_QSTR("657"), },
+        {}
+    })),
+    /* "658" = InputMoveEventWrapper */
+    QLIT_QDICT(((QLitDictEntry[]) {
+        { "members", QLIT_QLIST(((QLitObject[]) {
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "name", QLIT_QSTR("data"), },
+                { "type", QLIT_QSTR("766"), },
+                {}
+            })),
+            {}
+        })), },
+        { "meta-type", QLIT_QSTR("object"), },
+        { "name", QLIT_QSTR("658"), },
+        {}
+    })),
+    /* "659" = InputMultiTouchEventWrapper */
+    QLIT_QDICT(((QLitDictEntry[]) {
+        { "members", QLIT_QLIST(((QLitObject[]) {
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "name", QLIT_QSTR("data"), },
+                { "type", QLIT_QSTR("767"), },
                 {}
             })),
             {}
@@ -26836,55 +26793,13 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         { "name", QLIT_QSTR("659"), },
         {}
     })),
-    /* "660" = InputBtnEventWrapper */
-    QLIT_QDICT(((QLitDictEntry[]) {
-        { "members", QLIT_QLIST(((QLitObject[]) {
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "name", QLIT_QSTR("data"), },
-                { "type", QLIT_QSTR("769"), },
-                {}
-            })),
-            {}
-        })), },
-        { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("660"), },
-        {}
-    })),
-    /* "661" = InputMoveEventWrapper */
-    QLIT_QDICT(((QLitDictEntry[]) {
-        { "members", QLIT_QLIST(((QLitObject[]) {
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "name", QLIT_QSTR("data"), },
-                { "type", QLIT_QSTR("770"), },
-                {}
-            })),
-            {}
-        })), },
-        { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("661"), },
-        {}
-    })),
-    /* "662" = InputMultiTouchEventWrapper */
-    QLIT_QDICT(((QLitDictEntry[]) {
-        { "members", QLIT_QLIST(((QLitObject[]) {
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "name", QLIT_QSTR("data"), },
-                { "type", QLIT_QSTR("771"), },
-                {}
-            })),
-            {}
-        })), },
-        { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("662"), },
-        {}
-    })),
     QLIT_QDICT(((QLitDictEntry[]) {
         { "json-type", QLIT_QSTR("number"), },
         { "meta-type", QLIT_QSTR("builtin"), },
         { "name", QLIT_QSTR("number"), },
         {}
     })),
-    /* "663" = HotKeyMod */
+    /* "660" = HotKeyMod */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -26902,7 +26817,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("663"), },
+        { "name", QLIT_QSTR("660"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("lctrl-lalt"),
             QLIT_QSTR("lshift-lctrl-lalt"),
@@ -26912,12 +26827,12 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         {}
     })),
     QLIT_QDICT(((QLitDictEntry[]) {
-        { "element-type", QLIT_QSTR("664"), },
+        { "element-type", QLIT_QSTR("661"), },
         { "meta-type", QLIT_QSTR("array"), },
-        { "name", QLIT_QSTR("[664]"), },
+        { "name", QLIT_QSTR("[661]"), },
         {}
     })),
-    /* "664" = BitmapMigrationBitmapAlias */
+    /* "661" = BitmapMigrationBitmapAlias */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -26933,16 +26848,16 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("transform"), },
-                { "type", QLIT_QSTR("772"), },
+                { "type", QLIT_QSTR("768"), },
                 {}
             })),
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("664"), },
+        { "name", QLIT_QSTR("661"), },
         {}
     })),
-    /* "665" = MigrationChannelType */
+    /* "662" = MigrationChannelType */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -26956,7 +26871,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("665"), },
+        { "name", QLIT_QSTR("662"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("main"),
             QLIT_QSTR("cpr"),
@@ -26964,45 +26879,45 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "666" = MigrationAddress */
+    /* "663" = MigrationAddress */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("transport"), },
-                { "type", QLIT_QSTR("773"), },
+                { "type", QLIT_QSTR("769"), },
                 {}
             })),
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("666"), },
+        { "name", QLIT_QSTR("663"), },
         { "tag", QLIT_QSTR("transport"), },
         { "variants", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("socket"), },
-                { "type", QLIT_QSTR("405"), },
+                { "type", QLIT_QSTR("404"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("exec"), },
-                { "type", QLIT_QSTR("774"), },
+                { "type", QLIT_QSTR("770"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("rdma"), },
-                { "type", QLIT_QSTR("608"), },
+                { "type", QLIT_QSTR("605"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("file"), },
-                { "type", QLIT_QSTR("775"), },
+                { "type", QLIT_QSTR("771"), },
                 {}
             })),
             {}
         })), },
         {}
     })),
-    /* "667" = TransactionActionKind */
+    /* "664" = TransactionActionKind */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -27060,7 +26975,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("667"), },
+        { "name", QLIT_QSTR("664"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("abort"),
             QLIT_QSTR("block-dirty-bitmap-add"),
@@ -27078,21 +26993,21 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "668" = AbortWrapper */
+    /* "665" = AbortWrapper */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("data"), },
-                { "type", QLIT_QSTR("776"), },
+                { "type", QLIT_QSTR("772"), },
                 {}
             })),
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("668"), },
+        { "name", QLIT_QSTR("665"), },
         {}
     })),
-    /* "669" = BlockDirtyBitmapAddWrapper */
+    /* "666" = BlockDirtyBitmapAddWrapper */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -27103,10 +27018,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("669"), },
+        { "name", QLIT_QSTR("666"), },
         {}
     })),
-    /* "670" = BlockDirtyBitmapWrapper */
+    /* "667" = BlockDirtyBitmapWrapper */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -27117,10 +27032,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("670"), },
+        { "name", QLIT_QSTR("667"), },
         {}
     })),
-    /* "671" = BlockDirtyBitmapMergeWrapper */
+    /* "668" = BlockDirtyBitmapMergeWrapper */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -27131,10 +27046,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("671"), },
+        { "name", QLIT_QSTR("668"), },
         {}
     })),
-    /* "672" = BlockdevBackupWrapper */
+    /* "669" = BlockdevBackupWrapper */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -27145,10 +27060,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("672"), },
+        { "name", QLIT_QSTR("669"), },
         {}
     })),
-    /* "673" = BlockdevSnapshotWrapper */
+    /* "670" = BlockdevSnapshotWrapper */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -27159,10 +27074,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("673"), },
+        { "name", QLIT_QSTR("670"), },
         {}
     })),
-    /* "674" = BlockdevSnapshotInternalWrapper */
+    /* "671" = BlockdevSnapshotInternalWrapper */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -27173,10 +27088,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("674"), },
+        { "name", QLIT_QSTR("671"), },
         {}
     })),
-    /* "675" = BlockdevSnapshotSyncWrapper */
+    /* "672" = BlockdevSnapshotSyncWrapper */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -27187,10 +27102,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("675"), },
+        { "name", QLIT_QSTR("672"), },
         {}
     })),
-    /* "676" = DriveBackupWrapper */
+    /* "673" = DriveBackupWrapper */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -27201,10 +27116,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("676"), },
+        { "name", QLIT_QSTR("673"), },
         {}
     })),
-    /* "677" = ActionCompletionMode */
+    /* "674" = ActionCompletionMode */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -27218,7 +27133,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("677"), },
+        { "name", QLIT_QSTR("674"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("individual"),
             QLIT_QSTR("grouped"),
@@ -27226,7 +27141,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "678" = JSONType */
+    /* "675" = JSONType */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -27264,7 +27179,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("678"), },
+        { "name", QLIT_QSTR("675"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("string"),
             QLIT_QSTR("number"),
@@ -27279,12 +27194,12 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         {}
     })),
     QLIT_QDICT(((QLitDictEntry[]) {
-        { "element-type", QLIT_QSTR("679"), },
+        { "element-type", QLIT_QSTR("676"), },
         { "meta-type", QLIT_QSTR("array"), },
-        { "name", QLIT_QSTR("[679]"), },
+        { "name", QLIT_QSTR("[676]"), },
         {}
     })),
-    /* "679" = SchemaInfoEnumMember */
+    /* "676" = SchemaInfoEnumMember */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -27301,16 +27216,16 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("679"), },
+        { "name", QLIT_QSTR("676"), },
         {}
     })),
     QLIT_QDICT(((QLitDictEntry[]) {
-        { "element-type", QLIT_QSTR("680"), },
+        { "element-type", QLIT_QSTR("677"), },
         { "meta-type", QLIT_QSTR("array"), },
-        { "name", QLIT_QSTR("[680]"), },
+        { "name", QLIT_QSTR("[677]"), },
         {}
     })),
-    /* "680" = SchemaInfoObjectMember */
+    /* "677" = SchemaInfoObjectMember */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -27338,16 +27253,16 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("680"), },
+        { "name", QLIT_QSTR("677"), },
         {}
     })),
     QLIT_QDICT(((QLitDictEntry[]) {
-        { "element-type", QLIT_QSTR("681"), },
+        { "element-type", QLIT_QSTR("678"), },
         { "meta-type", QLIT_QSTR("array"), },
-        { "name", QLIT_QSTR("[681]"), },
+        { "name", QLIT_QSTR("[678]"), },
         {}
     })),
-    /* "681" = SchemaInfoObjectVariant */
+    /* "678" = SchemaInfoObjectVariant */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -27363,16 +27278,16 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("681"), },
+        { "name", QLIT_QSTR("678"), },
         {}
     })),
     QLIT_QDICT(((QLitDictEntry[]) {
-        { "element-type", QLIT_QSTR("682"), },
+        { "element-type", QLIT_QSTR("679"), },
         { "meta-type", QLIT_QSTR("array"), },
-        { "name", QLIT_QSTR("[682]"), },
+        { "name", QLIT_QSTR("[679]"), },
         {}
     })),
-    /* "682" = SchemaInfoAlternateMember */
+    /* "679" = SchemaInfoAlternateMember */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -27383,10 +27298,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("682"), },
+        { "name", QLIT_QSTR("679"), },
         {}
     })),
-    /* "683" = QAuthZListPolicy */
+    /* "680" = QAuthZListPolicy */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -27400,7 +27315,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("683"), },
+        { "name", QLIT_QSTR("680"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("deny"),
             QLIT_QSTR("allow"),
@@ -27409,12 +27324,12 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         {}
     })),
     QLIT_QDICT(((QLitDictEntry[]) {
-        { "element-type", QLIT_QSTR("684"), },
+        { "element-type", QLIT_QSTR("681"), },
         { "meta-type", QLIT_QSTR("array"), },
-        { "name", QLIT_QSTR("[684]"), },
+        { "name", QLIT_QSTR("[681]"), },
         {}
     })),
-    /* "684" = QAuthZListRule */
+    /* "681" = QAuthZListRule */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -27424,22 +27339,22 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("policy"), },
-                { "type", QLIT_QSTR("683"), },
+                { "type", QLIT_QSTR("680"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("format"), },
-                { "type", QLIT_QSTR("777"), },
+                { "type", QLIT_QSTR("773"), },
                 {}
             })),
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("684"), },
+        { "name", QLIT_QSTR("681"), },
         {}
     })),
-    /* "685" = NetFilterDirection */
+    /* "682" = NetFilterDirection */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -27457,7 +27372,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("685"), },
+        { "name", QLIT_QSTR("682"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("all"),
             QLIT_QSTR("rx"),
@@ -27466,7 +27381,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "686" = NetfilterInsert */
+    /* "683" = NetfilterInsert */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -27480,7 +27395,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("686"), },
+        { "name", QLIT_QSTR("683"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("before"),
             QLIT_QSTR("behind"),
@@ -27488,7 +27403,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "687" = GrabToggleKeys */
+    /* "684" = GrabToggleKeys */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -27518,7 +27433,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("687"), },
+        { "name", QLIT_QSTR("684"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("ctrl-ctrl"),
             QLIT_QSTR("alt-alt"),
@@ -27530,7 +27445,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "688" = QCryptoSecretFormat */
+    /* "685" = QCryptoSecretFormat */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -27544,7 +27459,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("688"), },
+        { "name", QLIT_QSTR("685"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("raw"),
             QLIT_QSTR("base64"),
@@ -27552,7 +27467,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "689" = ThrottleLimits */
+    /* "686" = ThrottleLimits */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -27672,10 +27587,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("689"), },
+        { "name", QLIT_QSTR("686"), },
         {}
     })),
-    /* "690" = QCryptoTLSCredsEndpoint */
+    /* "687" = QCryptoTLSCredsEndpoint */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -27689,7 +27604,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("690"), },
+        { "name", QLIT_QSTR("687"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("client"),
             QLIT_QSTR("server"),
@@ -27697,7 +27612,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "691" = S390CpuState */
+    /* "688" = S390CpuState */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -27723,7 +27638,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("691"), },
+        { "name", QLIT_QSTR("688"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("uninitialized"),
             QLIT_QSTR("stopped"),
@@ -27734,7 +27649,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "692" = HmatLBMemoryHierarchy */
+    /* "689" = HmatLBMemoryHierarchy */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -27756,7 +27671,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("692"), },
+        { "name", QLIT_QSTR("689"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("memory"),
             QLIT_QSTR("first-level"),
@@ -27766,7 +27681,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "693" = HmatLBDataType */
+    /* "690" = HmatLBDataType */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -27796,7 +27711,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("693"), },
+        { "name", QLIT_QSTR("690"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("access-latency"),
             QLIT_QSTR("read-latency"),
@@ -27808,7 +27723,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "694" = HmatCacheAssociativity */
+    /* "691" = HmatCacheAssociativity */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -27826,7 +27741,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("694"), },
+        { "name", QLIT_QSTR("691"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("none"),
             QLIT_QSTR("direct"),
@@ -27835,7 +27750,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "695" = HmatCacheWritePolicy */
+    /* "692" = HmatCacheWritePolicy */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -27853,7 +27768,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("695"), },
+        { "name", QLIT_QSTR("692"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("none"),
             QLIT_QSTR("write-back"),
@@ -27862,7 +27777,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "696" = PCDIMMDeviceInfo */
+    /* "693" = PCDIMMDeviceInfo */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -27909,10 +27824,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("696"), },
+        { "name", QLIT_QSTR("693"), },
         {}
     })),
-    /* "697" = VirtioPMEMDeviceInfo */
+    /* "694" = VirtioPMEMDeviceInfo */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -27939,10 +27854,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("697"), },
+        { "name", QLIT_QSTR("694"), },
         {}
     })),
-    /* "698" = VirtioMEMDeviceInfo */
+    /* "695" = VirtioMEMDeviceInfo */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -27989,10 +27904,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("698"), },
+        { "name", QLIT_QSTR("695"), },
         {}
     })),
-    /* "699" = SgxEPCDeviceInfo */
+    /* "696" = SgxEPCDeviceInfo */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -28024,10 +27939,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("699"), },
+        { "name", QLIT_QSTR("696"), },
         {}
     })),
-    /* "700" = HvBalloonDeviceInfo */
+    /* "697" = HvBalloonDeviceInfo */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -28056,10 +27971,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("700"), },
+        { "name", QLIT_QSTR("697"), },
         {}
     })),
-    /* "701" = CommandLineParameterType */
+    /* "698" = CommandLineParameterType */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -28081,7 +27996,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("701"), },
+        { "name", QLIT_QSTR("698"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("string"),
             QLIT_QSTR("boolean"),
@@ -28091,58 +28006,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "702" = AudiodevPerDirectionOptions */
-    QLIT_QDICT(((QLitDictEntry[]) {
-        { "members", QLIT_QLIST(((QLitObject[]) {
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "default", QLIT_QNULL, },
-                { "name", QLIT_QSTR("mixing-engine"), },
-                { "type", QLIT_QSTR("bool"), },
-                {}
-            })),
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "default", QLIT_QNULL, },
-                { "name", QLIT_QSTR("fixed-settings"), },
-                { "type", QLIT_QSTR("bool"), },
-                {}
-            })),
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "default", QLIT_QNULL, },
-                { "name", QLIT_QSTR("frequency"), },
-                { "type", QLIT_QSTR("int"), },
-                {}
-            })),
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "default", QLIT_QNULL, },
-                { "name", QLIT_QSTR("channels"), },
-                { "type", QLIT_QSTR("int"), },
-                {}
-            })),
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "default", QLIT_QNULL, },
-                { "name", QLIT_QSTR("voices"), },
-                { "type", QLIT_QSTR("int"), },
-                {}
-            })),
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "default", QLIT_QNULL, },
-                { "name", QLIT_QSTR("format"), },
-                { "type", QLIT_QSTR("778"), },
-                {}
-            })),
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "default", QLIT_QNULL, },
-                { "name", QLIT_QSTR("buffer-length"), },
-                { "type", QLIT_QSTR("int"), },
-                {}
-            })),
-            {}
-        })), },
-        { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("702"), },
-        {}
-    })),
-    /* "703" = PciDeviceClass */
+    /* "699" = PciDeviceClass */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -28159,10 +28023,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("703"), },
+        { "name", QLIT_QSTR("699"), },
         {}
     })),
-    /* "704" = PciDeviceId */
+    /* "700" = PciDeviceId */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -28190,36 +28054,36 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("704"), },
+        { "name", QLIT_QSTR("700"), },
         {}
     })),
-    /* "705" = PciBridgeInfo */
+    /* "701" = PciBridgeInfo */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("bus"), },
-                { "type", QLIT_QSTR("779"), },
+                { "type", QLIT_QSTR("774"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("devices"), },
-                { "type", QLIT_QSTR("[557]"), },
+                { "type", QLIT_QSTR("[554]"), },
                 {}
             })),
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("705"), },
+        { "name", QLIT_QSTR("701"), },
         {}
     })),
     QLIT_QDICT(((QLitDictEntry[]) {
-        { "element-type", QLIT_QSTR("706"), },
+        { "element-type", QLIT_QSTR("702"), },
         { "meta-type", QLIT_QSTR("array"), },
-        { "name", QLIT_QSTR("[706]"), },
+        { "name", QLIT_QSTR("[702]"), },
         {}
     })),
-    /* "706" = PciMemoryRegion */
+    /* "702" = PciMemoryRegion */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -28257,10 +28121,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("706"), },
+        { "name", QLIT_QSTR("702"), },
         {}
     })),
-    /* "707" = StatsValue */
+    /* "703" = StatsValue */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -28278,10 +28142,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("alternate"), },
-        { "name", QLIT_QSTR("707"), },
+        { "name", QLIT_QSTR("703"), },
         {}
     })),
-    /* "708" = StatsType */
+    /* "704" = StatsType */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -28307,7 +28171,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("708"), },
+        { "name", QLIT_QSTR("704"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("cumulative"),
             QLIT_QSTR("instant"),
@@ -28318,7 +28182,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "709" = StatsUnit */
+    /* "705" = StatsUnit */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -28340,7 +28204,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("709"), },
+        { "name", QLIT_QSTR("705"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("bytes"),
             QLIT_QSTR("seconds"),
@@ -28350,7 +28214,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "710" = VhostDeviceProtocols */
+    /* "706" = VhostDeviceProtocols */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -28367,10 +28231,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("710"), },
+        { "name", QLIT_QSTR("706"), },
         {}
     })),
-    /* "711" = QCryptodevBackendType */
+    /* "707" = QCryptodevBackendType */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -28388,7 +28252,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("711"), },
+        { "name", QLIT_QSTR("707"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("builtin"),
             QLIT_QSTR("vhost-user"),
@@ -28397,7 +28261,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "712" = CxlUncorErrorType */
+    /* "708" = CxlUncorErrorType */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -28463,7 +28327,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("712"), },
+        { "name", QLIT_QSTR("708"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("cache-data-parity"),
             QLIT_QSTR("cache-address-parity"),
@@ -28484,7 +28348,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "713" = S390CrashReason */
+    /* "709" = S390CrashReason */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -28510,7 +28374,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("713"), },
+        { "name", QLIT_QSTR("709"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("unknown"),
             QLIT_QSTR("disabled-wait"),
@@ -28521,7 +28385,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "714" = ImageInfoSpecificKind */
+    /* "710" = ImageInfoSpecificKind */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -28547,7 +28411,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("714"), },
+        { "name", QLIT_QSTR("710"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("qcow2"),
             QLIT_QSTR("vmdk"),
@@ -28558,12 +28422,68 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "715" = ImageInfoSpecificQCow2Wrapper */
+    /* "711" = ImageInfoSpecificQCow2Wrapper */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("data"), },
-                { "type", QLIT_QSTR("780"), },
+                { "type", QLIT_QSTR("775"), },
+                {}
+            })),
+            {}
+        })), },
+        { "meta-type", QLIT_QSTR("object"), },
+        { "name", QLIT_QSTR("711"), },
+        {}
+    })),
+    /* "712" = ImageInfoSpecificVmdkWrapper */
+    QLIT_QDICT(((QLitDictEntry[]) {
+        { "members", QLIT_QLIST(((QLitObject[]) {
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "name", QLIT_QSTR("data"), },
+                { "type", QLIT_QSTR("776"), },
+                {}
+            })),
+            {}
+        })), },
+        { "meta-type", QLIT_QSTR("object"), },
+        { "name", QLIT_QSTR("712"), },
+        {}
+    })),
+    /* "713" = ImageInfoSpecificLUKSWrapper */
+    QLIT_QDICT(((QLitDictEntry[]) {
+        { "members", QLIT_QLIST(((QLitObject[]) {
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "name", QLIT_QSTR("data"), },
+                { "type", QLIT_QSTR("777"), },
+                {}
+            })),
+            {}
+        })), },
+        { "meta-type", QLIT_QSTR("object"), },
+        { "name", QLIT_QSTR("713"), },
+        {}
+    })),
+    /* "714" = ImageInfoSpecificRbdWrapper */
+    QLIT_QDICT(((QLitDictEntry[]) {
+        { "members", QLIT_QLIST(((QLitObject[]) {
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "name", QLIT_QSTR("data"), },
+                { "type", QLIT_QSTR("778"), },
+                {}
+            })),
+            {}
+        })), },
+        { "meta-type", QLIT_QSTR("object"), },
+        { "name", QLIT_QSTR("714"), },
+        {}
+    })),
+    /* "715" = ImageInfoSpecificFileWrapper */
+    QLIT_QDICT(((QLitDictEntry[]) {
+        { "members", QLIT_QLIST(((QLitObject[]) {
+            QLIT_QDICT(((QLitDictEntry[]) {
+                { "name", QLIT_QSTR("data"), },
+                { "type", QLIT_QSTR("779"), },
                 {}
             })),
             {}
@@ -28572,63 +28492,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         { "name", QLIT_QSTR("715"), },
         {}
     })),
-    /* "716" = ImageInfoSpecificVmdkWrapper */
-    QLIT_QDICT(((QLitDictEntry[]) {
-        { "members", QLIT_QLIST(((QLitObject[]) {
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "name", QLIT_QSTR("data"), },
-                { "type", QLIT_QSTR("781"), },
-                {}
-            })),
-            {}
-        })), },
-        { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("716"), },
-        {}
-    })),
-    /* "717" = ImageInfoSpecificLUKSWrapper */
-    QLIT_QDICT(((QLitDictEntry[]) {
-        { "members", QLIT_QLIST(((QLitObject[]) {
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "name", QLIT_QSTR("data"), },
-                { "type", QLIT_QSTR("782"), },
-                {}
-            })),
-            {}
-        })), },
-        { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("717"), },
-        {}
-    })),
-    /* "718" = ImageInfoSpecificRbdWrapper */
-    QLIT_QDICT(((QLitDictEntry[]) {
-        { "members", QLIT_QLIST(((QLitObject[]) {
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "name", QLIT_QSTR("data"), },
-                { "type", QLIT_QSTR("783"), },
-                {}
-            })),
-            {}
-        })), },
-        { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("718"), },
-        {}
-    })),
-    /* "719" = ImageInfoSpecificFileWrapper */
-    QLIT_QDICT(((QLitDictEntry[]) {
-        { "members", QLIT_QLIST(((QLitObject[]) {
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "name", QLIT_QSTR("data"), },
-                { "type", QLIT_QSTR("784"), },
-                {}
-            })),
-            {}
-        })), },
-        { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("719"), },
-        {}
-    })),
-    /* "720" = BlkdebugEvent */
+    /* "716" = BlkdebugEvent */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -28826,7 +28690,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("720"), },
+        { "name", QLIT_QSTR("716"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("l1_update"),
             QLIT_QSTR("l1_grow_alloc_table"),
@@ -28880,7 +28744,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "721" = BlkdebugIOType */
+    /* "717" = BlkdebugIOType */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -28910,7 +28774,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("721"), },
+        { "name", QLIT_QSTR("717"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("read"),
             QLIT_QSTR("write"),
@@ -28922,7 +28786,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "722" = NFSTransport */
+    /* "718" = NFSTransport */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -28932,20 +28796,20 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("722"), },
+        { "name", QLIT_QSTR("718"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("inet"),
             {}
         })), },
         {}
     })),
-    /* "723" = Qcow2OverlapCheckFlags */
+    /* "719" = Qcow2OverlapCheckFlags */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("template"), },
-                { "type", QLIT_QSTR("724"), },
+                { "type", QLIT_QSTR("720"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -29005,10 +28869,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("723"), },
+        { "name", QLIT_QSTR("719"), },
         {}
     })),
-    /* "724" = Qcow2OverlapCheckMode */
+    /* "720" = Qcow2OverlapCheckMode */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -29030,7 +28894,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("724"), },
+        { "name", QLIT_QSTR("720"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("none"),
             QLIT_QSTR("constant"),
@@ -29040,7 +28904,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "725" = BlockdevQcow2EncryptionFormat */
+    /* "721" = BlockdevQcow2EncryptionFormat */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -29054,7 +28918,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("725"), },
+        { "name", QLIT_QSTR("721"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("aes"),
             QLIT_QSTR("luks"),
@@ -29062,7 +28926,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "726" = QCryptoBlockOptionsQCow */
+    /* "722" = QCryptoBlockOptionsQCow */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -29074,10 +28938,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("726"), },
+        { "name", QLIT_QSTR("722"), },
         {}
     })),
-    /* "727" = QCryptoBlockOptionsLUKS */
+    /* "723" = QCryptoBlockOptionsLUKS */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -29089,10 +28953,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("727"), },
+        { "name", QLIT_QSTR("723"), },
         {}
     })),
-    /* "728" = BlockdevQcowEncryptionFormat */
+    /* "724" = BlockdevQcowEncryptionFormat */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -29102,14 +28966,14 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("728"), },
+        { "name", QLIT_QSTR("724"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("aes"),
             {}
         })), },
         {}
     })),
-    /* "729" = RbdImageEncryptionFormat */
+    /* "725" = RbdImageEncryptionFormat */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -29127,7 +28991,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("729"), },
+        { "name", QLIT_QSTR("725"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("luks"),
             QLIT_QSTR("luks2"),
@@ -29136,7 +29000,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "730" = RbdEncryptionOptionsLUKS */
+    /* "726" = RbdEncryptionOptionsLUKS */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -29147,10 +29011,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("730"), },
+        { "name", QLIT_QSTR("726"), },
         {}
     })),
-    /* "731" = RbdEncryptionOptionsLUKS2 */
+    /* "727" = RbdEncryptionOptionsLUKS2 */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -29161,10 +29025,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("731"), },
+        { "name", QLIT_QSTR("727"), },
         {}
     })),
-    /* "732" = RbdEncryptionOptionsLUKSAny */
+    /* "728" = RbdEncryptionOptionsLUKSAny */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -29175,10 +29039,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("732"), },
+        { "name", QLIT_QSTR("728"), },
         {}
     })),
-    /* "733" = SshHostKeyCheckMode */
+    /* "729" = SshHostKeyCheckMode */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -29196,7 +29060,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("733"), },
+        { "name", QLIT_QSTR("729"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("none"),
             QLIT_QSTR("hash"),
@@ -29205,12 +29069,12 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "734" = SshHostKeyHash */
+    /* "730" = SshHostKeyHash */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("type"), },
-                { "type", QLIT_QSTR("785"), },
+                { "type", QLIT_QSTR("780"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -29221,10 +29085,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("734"), },
+        { "name", QLIT_QSTR("730"), },
         {}
     })),
-    /* "735" = PreallocMode */
+    /* "731" = PreallocMode */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -29246,7 +29110,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("735"), },
+        { "name", QLIT_QSTR("731"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("off"),
             QLIT_QSTR("metadata"),
@@ -29256,7 +29120,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "736" = QCryptoCipherAlgo */
+    /* "732" = QCryptoCipherAlgo */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -29314,7 +29178,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("736"), },
+        { "name", QLIT_QSTR("732"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("aes-128"),
             QLIT_QSTR("aes-192"),
@@ -29333,7 +29197,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "737" = QCryptoCipherMode */
+    /* "733" = QCryptoCipherMode */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -29355,7 +29219,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("737"), },
+        { "name", QLIT_QSTR("733"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("ecb"),
             QLIT_QSTR("cbc"),
@@ -29365,7 +29229,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "738" = QCryptoIVGenAlgo */
+    /* "734" = QCryptoIVGenAlgo */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -29383,7 +29247,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("738"), },
+        { "name", QLIT_QSTR("734"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("plain"),
             QLIT_QSTR("plain64"),
@@ -29392,7 +29256,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "739" = QCryptoHashAlgo */
+    /* "735" = QCryptoHashAlgo */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -29430,7 +29294,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("739"), },
+        { "name", QLIT_QSTR("735"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("md5"),
             QLIT_QSTR("sha1"),
@@ -29444,35 +29308,35 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "740" = QCryptoBlockCreateOptions */
+    /* "736" = QCryptoBlockCreateOptions */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("format"), },
-                { "type", QLIT_QSTR("786"), },
+                { "type", QLIT_QSTR("781"), },
                 {}
             })),
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("740"), },
+        { "name", QLIT_QSTR("736"), },
         { "tag", QLIT_QSTR("format"), },
         { "variants", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("qcow"), },
-                { "type", QLIT_QSTR("726"), },
+                { "type", QLIT_QSTR("722"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("luks"), },
-                { "type", QLIT_QSTR("787"), },
+                { "type", QLIT_QSTR("782"), },
                 {}
             })),
             {}
         })), },
         {}
     })),
-    /* "741" = BlockdevQcow2Version */
+    /* "737" = BlockdevQcow2Version */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -29486,7 +29350,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("741"), },
+        { "name", QLIT_QSTR("737"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("v2"),
             QLIT_QSTR("v3"),
@@ -29494,7 +29358,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "742" = Qcow2CompressionType */
+    /* "738" = Qcow2CompressionType */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -29510,7 +29374,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("742"), },
+        { "name", QLIT_QSTR("738"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("zlib"),
 #if defined(CONFIG_ZSTD)
@@ -29520,28 +29384,28 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "743" = RbdEncryptionCreateOptions */
+    /* "739" = RbdEncryptionCreateOptions */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("format"), },
-                { "type", QLIT_QSTR("729"), },
+                { "type", QLIT_QSTR("725"), },
                 {}
             })),
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("743"), },
+        { "name", QLIT_QSTR("739"), },
         { "tag", QLIT_QSTR("format"), },
         { "variants", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("luks"), },
-                { "type", QLIT_QSTR("788"), },
+                { "type", QLIT_QSTR("783"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("luks2"), },
-                { "type", QLIT_QSTR("789"), },
+                { "type", QLIT_QSTR("784"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -29553,7 +29417,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "744" = BlockdevVhdxSubformat */
+    /* "740" = BlockdevVhdxSubformat */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -29567,7 +29431,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("744"), },
+        { "name", QLIT_QSTR("740"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("dynamic"),
             QLIT_QSTR("fixed"),
@@ -29575,7 +29439,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "745" = BlockdevVmdkSubformat */
+    /* "741" = BlockdevVmdkSubformat */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -29601,7 +29465,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("745"), },
+        { "name", QLIT_QSTR("741"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("monolithicSparse"),
             QLIT_QSTR("monolithicFlat"),
@@ -29612,7 +29476,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "746" = BlockdevVmdkAdapterType */
+    /* "742" = BlockdevVmdkAdapterType */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -29634,7 +29498,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("746"), },
+        { "name", QLIT_QSTR("742"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("ide"),
             QLIT_QSTR("buslogic"),
@@ -29644,7 +29508,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "747" = BlockdevVpcSubformat */
+    /* "743" = BlockdevVpcSubformat */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -29658,7 +29522,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("747"), },
+        { "name", QLIT_QSTR("743"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("dynamic"),
             QLIT_QSTR("fixed"),
@@ -29666,7 +29530,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "748" = QCryptoBlockLUKSKeyslotState */
+    /* "744" = QCryptoBlockLUKSKeyslotState */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -29680,7 +29544,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("748"), },
+        { "name", QLIT_QSTR("744"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("active"),
             QLIT_QSTR("inactive"),
@@ -29688,23 +29552,23 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "749" = QCryptoBlockAmendOptions */
+    /* "745" = QCryptoBlockAmendOptions */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("format"), },
-                { "type", QLIT_QSTR("786"), },
+                { "type", QLIT_QSTR("781"), },
                 {}
             })),
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("749"), },
+        { "name", QLIT_QSTR("745"), },
         { "tag", QLIT_QSTR("format"), },
         { "variants", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("luks"), },
-                { "type", QLIT_QSTR("790"), },
+                { "type", QLIT_QSTR("785"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -29716,7 +29580,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "750" = ChardevFile */
+    /* "746" = ChardevFile */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -29751,10 +29615,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("750"), },
+        { "name", QLIT_QSTR("746"), },
         {}
     })),
-    /* "751" = ChardevHostdev */
+    /* "747" = ChardevHostdev */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -29777,10 +29641,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("751"), },
+        { "name", QLIT_QSTR("747"), },
         {}
     })),
-    /* "752" = ChardevSocket */
+    /* "748" = ChardevSocket */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -29797,7 +29661,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("addr"), },
-                { "type", QLIT_QSTR("373"), },
+                { "type", QLIT_QSTR("372"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -29857,10 +29721,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("752"), },
+        { "name", QLIT_QSTR("748"), },
         {}
     })),
-    /* "753" = ChardevUdp */
+    /* "749" = ChardevUdp */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -29877,22 +29741,22 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("remote"), },
-                { "type", QLIT_QSTR("373"), },
+                { "type", QLIT_QSTR("372"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("local"), },
-                { "type", QLIT_QSTR("373"), },
+                { "type", QLIT_QSTR("372"), },
                 {}
             })),
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("753"), },
+        { "name", QLIT_QSTR("749"), },
         {}
     })),
-    /* "754" = ChardevPty */
+    /* "750" = ChardevPty */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -29916,10 +29780,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("754"), },
+        { "name", QLIT_QSTR("750"), },
         {}
     })),
-    /* "755" = ChardevCommon */
+    /* "751" = ChardevCommon */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -29937,10 +29801,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("755"), },
+        { "name", QLIT_QSTR("751"), },
         {}
     })),
-    /* "756" = ChardevMux */
+    /* "752" = ChardevMux */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -29963,10 +29827,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("756"), },
+        { "name", QLIT_QSTR("752"), },
         {}
     })),
-    /* "757" = ChardevHub */
+    /* "753" = ChardevHub */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -29989,10 +29853,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("757"), },
+        { "name", QLIT_QSTR("753"), },
         {}
     })),
-    /* "758" = ChardevStdio */
+    /* "754" = ChardevStdio */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -30016,10 +29880,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("758"), },
+        { "name", QLIT_QSTR("754"), },
         {}
     })),
-    /* "759" = ChardevSpiceChannel */
+    /* "755" = ChardevSpiceChannel */
 #if defined(CONFIG_SPICE)
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
@@ -30043,11 +29907,11 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("759"), },
+        { "name", QLIT_QSTR("755"), },
         {}
     })),
 #endif /* defined(CONFIG_SPICE) */
-    /* "760" = ChardevSpicePort */
+    /* "756" = ChardevSpicePort */
 #if defined(CONFIG_SPICE)
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
@@ -30071,11 +29935,11 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("760"), },
+        { "name", QLIT_QSTR("756"), },
         {}
     })),
 #endif /* defined(CONFIG_SPICE) */
-    /* "761" = ChardevQemuVDAgent */
+    /* "757" = ChardevQemuVDAgent */
 #if defined(CONFIG_SPICE_PROTOCOL)
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
@@ -30106,11 +29970,11 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("761"), },
+        { "name", QLIT_QSTR("757"), },
         {}
     })),
 #endif /* defined(CONFIG_SPICE_PROTOCOL) */
-    /* "762" = ChardevDBus */
+    /* "758" = ChardevDBus */
 #if defined(CONFIG_DBUS_DISPLAY)
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
@@ -30134,11 +29998,11 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("762"), },
+        { "name", QLIT_QSTR("758"), },
         {}
     })),
 #endif /* defined(CONFIG_DBUS_DISPLAY) */
-    /* "763" = ChardevVC */
+    /* "759" = ChardevVC */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -30180,10 +30044,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("763"), },
+        { "name", QLIT_QSTR("759"), },
         {}
     })),
-    /* "764" = ChardevRingbuf */
+    /* "760" = ChardevRingbuf */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -30207,10 +30071,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("764"), },
+        { "name", QLIT_QSTR("760"), },
         {}
     })),
-    /* "765" = TPMPassthroughOptions */
+    /* "761" = TPMPassthroughOptions */
 #if defined(CONFIG_TPM)
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
@@ -30229,11 +30093,11 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("765"), },
+        { "name", QLIT_QSTR("761"), },
         {}
     })),
 #endif /* defined(CONFIG_TPM) */
-    /* "766" = TPMEmulatorOptions */
+    /* "762" = TPMEmulatorOptions */
 #if defined(CONFIG_TPM)
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
@@ -30245,11 +30109,11 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("766"), },
+        { "name", QLIT_QSTR("762"), },
         {}
     })),
 #endif /* defined(CONFIG_TPM) */
-    /* "767" = QKeyCode */
+    /* "763" = QKeyCode */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -30903,7 +30767,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("767"), },
+        { "name", QLIT_QSTR("763"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("unmapped"),
             QLIT_QSTR("shift"),
@@ -31071,12 +30935,12 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "768" = InputKeyEvent */
+    /* "764" = InputKeyEvent */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("key"), },
-                { "type", QLIT_QSTR("429"), },
+                { "type", QLIT_QSTR("428"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -31087,15 +30951,15 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("768"), },
+        { "name", QLIT_QSTR("764"), },
         {}
     })),
-    /* "769" = InputBtnEvent */
+    /* "765" = InputBtnEvent */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("button"), },
-                { "type", QLIT_QSTR("791"), },
+                { "type", QLIT_QSTR("786"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -31106,15 +30970,15 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("769"), },
+        { "name", QLIT_QSTR("765"), },
         {}
     })),
-    /* "770" = InputMoveEvent */
+    /* "766" = InputMoveEvent */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("axis"), },
-                { "type", QLIT_QSTR("792"), },
+                { "type", QLIT_QSTR("787"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -31125,15 +30989,15 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("770"), },
+        { "name", QLIT_QSTR("766"), },
         {}
     })),
-    /* "771" = InputMultiTouchEvent */
+    /* "767" = InputMultiTouchEvent */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("type"), },
-                { "type", QLIT_QSTR("793"), },
+                { "type", QLIT_QSTR("788"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -31148,7 +31012,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("axis"), },
-                { "type", QLIT_QSTR("792"), },
+                { "type", QLIT_QSTR("787"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -31159,10 +31023,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("771"), },
+        { "name", QLIT_QSTR("767"), },
         {}
     })),
-    /* "772" = BitmapMigrationBitmapAliasTransform */
+    /* "768" = BitmapMigrationBitmapAliasTransform */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -31174,10 +31038,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("772"), },
+        { "name", QLIT_QSTR("768"), },
         {}
     })),
-    /* "773" = MigrationAddressType */
+    /* "769" = MigrationAddressType */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -31199,7 +31063,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("773"), },
+        { "name", QLIT_QSTR("769"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("socket"),
             QLIT_QSTR("exec"),
@@ -31209,7 +31073,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "774" = MigrationExecCommand */
+    /* "770" = MigrationExecCommand */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -31220,10 +31084,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("774"), },
+        { "name", QLIT_QSTR("770"), },
         {}
     })),
-    /* "775" = FileMigrationArgs */
+    /* "771" = FileMigrationArgs */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -31239,19 +31103,19 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("775"), },
+        { "name", QLIT_QSTR("771"), },
         {}
     })),
-    /* "776" = Abort */
+    /* "772" = Abort */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("776"), },
+        { "name", QLIT_QSTR("772"), },
         {}
     })),
-    /* "777" = QAuthZListFormat */
+    /* "773" = QAuthZListFormat */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -31265,7 +31129,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("777"), },
+        { "name", QLIT_QSTR("773"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("exact"),
             QLIT_QSTR("glob"),
@@ -31273,54 +31137,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "778" = AudioFormat */
-    QLIT_QDICT(((QLitDictEntry[]) {
-        { "members", QLIT_QLIST(((QLitObject[]) {
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "name", QLIT_QSTR("u8"), },
-                {}
-            })),
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "name", QLIT_QSTR("s8"), },
-                {}
-            })),
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "name", QLIT_QSTR("u16"), },
-                {}
-            })),
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "name", QLIT_QSTR("s16"), },
-                {}
-            })),
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "name", QLIT_QSTR("u32"), },
-                {}
-            })),
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "name", QLIT_QSTR("s32"), },
-                {}
-            })),
-            QLIT_QDICT(((QLitDictEntry[]) {
-                { "name", QLIT_QSTR("f32"), },
-                {}
-            })),
-            {}
-        })), },
-        { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("778"), },
-        { "values", QLIT_QLIST(((QLitObject[]) {
-            QLIT_QSTR("u8"),
-            QLIT_QSTR("s8"),
-            QLIT_QSTR("u16"),
-            QLIT_QSTR("s16"),
-            QLIT_QSTR("u32"),
-            QLIT_QSTR("s32"),
-            QLIT_QSTR("f32"),
-            {}
-        })), },
-        {}
-    })),
-    /* "779" = PciBusInfo */
+    /* "774" = PciBusInfo */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -31340,26 +31157,26 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("io_range"), },
-                { "type", QLIT_QSTR("794"), },
+                { "type", QLIT_QSTR("789"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("memory_range"), },
-                { "type", QLIT_QSTR("794"), },
+                { "type", QLIT_QSTR("789"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("prefetchable_range"), },
-                { "type", QLIT_QSTR("794"), },
+                { "type", QLIT_QSTR("789"), },
                 {}
             })),
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("779"), },
+        { "name", QLIT_QSTR("774"), },
         {}
     })),
-    /* "780" = ImageInfoSpecificQCow2 */
+    /* "775" = ImageInfoSpecificQCow2 */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -31405,27 +31222,27 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("encrypt"), },
-                { "type", QLIT_QSTR("795"), },
+                { "type", QLIT_QSTR("790"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("bitmaps"), },
-                { "type", QLIT_QSTR("[796]"), },
+                { "type", QLIT_QSTR("[791]"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("compression-type"), },
-                { "type", QLIT_QSTR("742"), },
+                { "type", QLIT_QSTR("738"), },
                 {}
             })),
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("780"), },
+        { "name", QLIT_QSTR("775"), },
         {}
     })),
-    /* "781" = ImageInfoSpecificVmdk */
+    /* "776" = ImageInfoSpecificVmdk */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -31445,42 +31262,42 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("extents"), },
-                { "type", QLIT_QSTR("[797]"), },
+                { "type", QLIT_QSTR("[792]"), },
                 {}
             })),
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("781"), },
+        { "name", QLIT_QSTR("776"), },
         {}
     })),
-    /* "782" = QCryptoBlockInfoLUKS */
+    /* "777" = QCryptoBlockInfoLUKS */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("cipher-alg"), },
-                { "type", QLIT_QSTR("736"), },
+                { "type", QLIT_QSTR("732"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("cipher-mode"), },
-                { "type", QLIT_QSTR("737"), },
+                { "type", QLIT_QSTR("733"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("ivgen-alg"), },
-                { "type", QLIT_QSTR("738"), },
+                { "type", QLIT_QSTR("734"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("ivgen-hash-alg"), },
-                { "type", QLIT_QSTR("739"), },
+                { "type", QLIT_QSTR("735"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("hash-alg"), },
-                { "type", QLIT_QSTR("739"), },
+                { "type", QLIT_QSTR("735"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -31505,31 +31322,31 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("slots"), },
-                { "type", QLIT_QSTR("[798]"), },
+                { "type", QLIT_QSTR("[793]"), },
                 {}
             })),
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("782"), },
+        { "name", QLIT_QSTR("777"), },
         {}
     })),
-    /* "783" = ImageInfoSpecificRbd */
+    /* "778" = ImageInfoSpecificRbd */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("encryption-format"), },
-                { "type", QLIT_QSTR("729"), },
+                { "type", QLIT_QSTR("725"), },
                 {}
             })),
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("783"), },
+        { "name", QLIT_QSTR("778"), },
         {}
     })),
-    /* "784" = ImageInfoSpecificFile */
+    /* "779" = ImageInfoSpecificFile */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -31541,10 +31358,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("784"), },
+        { "name", QLIT_QSTR("779"), },
         {}
     })),
-    /* "785" = SshHostKeyCheckHashType */
+    /* "780" = SshHostKeyCheckHashType */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -31562,7 +31379,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("785"), },
+        { "name", QLIT_QSTR("780"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("md5"),
             QLIT_QSTR("sha1"),
@@ -31571,7 +31388,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "786" = QCryptoBlockFormat */
+    /* "781" = QCryptoBlockFormat */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -31585,7 +31402,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("786"), },
+        { "name", QLIT_QSTR("781"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("qcow"),
             QLIT_QSTR("luks"),
@@ -31593,7 +31410,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "787" = QCryptoBlockCreateOptionsLUKS */
+    /* "782" = QCryptoBlockCreateOptionsLUKS */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -31605,31 +31422,31 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("cipher-alg"), },
-                { "type", QLIT_QSTR("736"), },
+                { "type", QLIT_QSTR("732"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("cipher-mode"), },
-                { "type", QLIT_QSTR("737"), },
+                { "type", QLIT_QSTR("733"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("ivgen-alg"), },
-                { "type", QLIT_QSTR("738"), },
+                { "type", QLIT_QSTR("734"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("ivgen-hash-alg"), },
-                { "type", QLIT_QSTR("739"), },
+                { "type", QLIT_QSTR("735"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("hash-alg"), },
-                { "type", QLIT_QSTR("739"), },
+                { "type", QLIT_QSTR("735"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -31641,10 +31458,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("787"), },
+        { "name", QLIT_QSTR("782"), },
         {}
     })),
-    /* "788" = RbdEncryptionCreateOptionsLUKS */
+    /* "783" = RbdEncryptionCreateOptionsLUKS */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -31655,16 +31472,16 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("cipher-alg"), },
-                { "type", QLIT_QSTR("736"), },
+                { "type", QLIT_QSTR("732"), },
                 {}
             })),
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("788"), },
+        { "name", QLIT_QSTR("783"), },
         {}
     })),
-    /* "789" = RbdEncryptionCreateOptionsLUKS2 */
+    /* "784" = RbdEncryptionCreateOptionsLUKS2 */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -31675,21 +31492,21 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "default", QLIT_QNULL, },
                 { "name", QLIT_QSTR("cipher-alg"), },
-                { "type", QLIT_QSTR("736"), },
+                { "type", QLIT_QSTR("732"), },
                 {}
             })),
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("789"), },
+        { "name", QLIT_QSTR("784"), },
         {}
     })),
-    /* "790" = QCryptoBlockAmendOptionsLUKS */
+    /* "785" = QCryptoBlockAmendOptionsLUKS */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("state"), },
-                { "type", QLIT_QSTR("748"), },
+                { "type", QLIT_QSTR("744"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -31725,10 +31542,10 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("790"), },
+        { "name", QLIT_QSTR("785"), },
         {}
     })),
-    /* "791" = InputButton */
+    /* "786" = InputButton */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -31774,7 +31591,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("791"), },
+        { "name", QLIT_QSTR("786"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("left"),
             QLIT_QSTR("middle"),
@@ -31790,7 +31607,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "792" = InputAxis */
+    /* "787" = InputAxis */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -31804,7 +31621,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("792"), },
+        { "name", QLIT_QSTR("787"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("x"),
             QLIT_QSTR("y"),
@@ -31812,7 +31629,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "793" = InputMultiTouchType */
+    /* "788" = InputMultiTouchType */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -31838,7 +31655,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("793"), },
+        { "name", QLIT_QSTR("788"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("begin"),
             QLIT_QSTR("update"),
@@ -31849,7 +31666,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         })), },
         {}
     })),
-    /* "794" = PciMemoryRange */
+    /* "789" = PciMemoryRange */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -31865,26 +31682,26 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("794"), },
+        { "name", QLIT_QSTR("789"), },
         {}
     })),
-    /* "795" = ImageInfoSpecificQCow2Encryption */
+    /* "790" = ImageInfoSpecificQCow2Encryption */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("format"), },
-                { "type", QLIT_QSTR("725"), },
+                { "type", QLIT_QSTR("721"), },
                 {}
             })),
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("795"), },
+        { "name", QLIT_QSTR("790"), },
         { "tag", QLIT_QSTR("format"), },
         { "variants", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "case", QLIT_QSTR("luks"), },
-                { "type", QLIT_QSTR("782"), },
+                { "type", QLIT_QSTR("777"), },
                 {}
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -31897,12 +31714,12 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         {}
     })),
     QLIT_QDICT(((QLitDictEntry[]) {
-        { "element-type", QLIT_QSTR("796"), },
+        { "element-type", QLIT_QSTR("791"), },
         { "meta-type", QLIT_QSTR("array"), },
-        { "name", QLIT_QSTR("[796]"), },
+        { "name", QLIT_QSTR("[791]"), },
         {}
     })),
-    /* "796" = Qcow2BitmapInfo */
+    /* "791" = Qcow2BitmapInfo */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -31917,22 +31734,22 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             })),
             QLIT_QDICT(((QLitDictEntry[]) {
                 { "name", QLIT_QSTR("flags"), },
-                { "type", QLIT_QSTR("[799]"), },
+                { "type", QLIT_QSTR("[794]"), },
                 {}
             })),
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("796"), },
+        { "name", QLIT_QSTR("791"), },
         {}
     })),
     QLIT_QDICT(((QLitDictEntry[]) {
-        { "element-type", QLIT_QSTR("797"), },
+        { "element-type", QLIT_QSTR("792"), },
         { "meta-type", QLIT_QSTR("array"), },
-        { "name", QLIT_QSTR("[797]"), },
+        { "name", QLIT_QSTR("[792]"), },
         {}
     })),
-    /* "797" = VmdkExtentInfo */
+    /* "792" = VmdkExtentInfo */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -31965,16 +31782,16 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("797"), },
+        { "name", QLIT_QSTR("792"), },
         {}
     })),
     QLIT_QDICT(((QLitDictEntry[]) {
-        { "element-type", QLIT_QSTR("798"), },
+        { "element-type", QLIT_QSTR("793"), },
         { "meta-type", QLIT_QSTR("array"), },
-        { "name", QLIT_QSTR("[798]"), },
+        { "name", QLIT_QSTR("[793]"), },
         {}
     })),
-    /* "798" = QCryptoBlockInfoLUKSSlot */
+    /* "793" = QCryptoBlockInfoLUKSSlot */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -32002,16 +31819,16 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("object"), },
-        { "name", QLIT_QSTR("798"), },
+        { "name", QLIT_QSTR("793"), },
         {}
     })),
     QLIT_QDICT(((QLitDictEntry[]) {
-        { "element-type", QLIT_QSTR("799"), },
+        { "element-type", QLIT_QSTR("794"), },
         { "meta-type", QLIT_QSTR("array"), },
-        { "name", QLIT_QSTR("[799]"), },
+        { "name", QLIT_QSTR("[794]"), },
         {}
     })),
-    /* "799" = Qcow2BitmapInfoFlags */
+    /* "794" = Qcow2BitmapInfoFlags */
     QLIT_QDICT(((QLitDictEntry[]) {
         { "members", QLIT_QLIST(((QLitObject[]) {
             QLIT_QDICT(((QLitDictEntry[]) {
@@ -32025,7 +31842,7 @@ const QLitObject qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
             {}
         })), },
         { "meta-type", QLIT_QSTR("enum"), },
-        { "name", QLIT_QSTR("799"), },
+        { "name", QLIT_QSTR("794"), },
         { "values", QLIT_QLIST(((QLitObject[]) {
             QLIT_QSTR("in-use"),
             QLIT_QSTR("auto"),

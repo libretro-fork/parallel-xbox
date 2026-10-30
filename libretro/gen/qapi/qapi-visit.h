@@ -50,7 +50,6 @@
 #include "qapi-visit-misc.h"
 #include "qapi-visit-misc-arm.h"
 #include "qapi-visit-misc-i386.h"
-#include "qapi-visit-audio.h"
 #include "qapi-visit-acpi.h"
 #include "qapi-visit-acpi-hest.h"
 #include "qapi-visit-pci.h"

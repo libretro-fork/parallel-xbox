@@ -177,7 +177,6 @@ config XBOX
     select PIIX
     select IDE_PIIX
     select DIMM
-    select AC97
     select USB_OHCI
     select USB_OHCI_PCI
     select USB_STORAGE_BOT

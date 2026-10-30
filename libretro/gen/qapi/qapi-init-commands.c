@@ -501,8 +501,6 @@ void qmp_init_marshal(QmpCommandList *cmds)
                          qmp_marshal_xen_event_list, 0, 0);
     qmp_register_command(cmds, "xen-event-inject",
                          qmp_marshal_xen_event_inject, 0, 0);
-    qmp_register_command(cmds, "query-audiodevs",
-                         qmp_marshal_query_audiodevs, 0, 0);
     qmp_register_command(cmds, "query-acpi-ospm-status",
                          qmp_marshal_query_acpi_ospm_status, 0, 0);
     qmp_register_command(cmds, "inject-ghes-v2-error",

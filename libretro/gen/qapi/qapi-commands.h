@@ -47,7 +47,6 @@
 #include "qapi-commands-misc.h"
 #include "qapi-commands-misc-arm.h"
 #include "qapi-commands-misc-i386.h"
-#include "qapi-commands-audio.h"
 #include "qapi-commands-acpi.h"
 #include "qapi-commands-acpi-hest.h"
 #include "qapi-commands-pci.h"

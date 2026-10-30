@@ -27,7 +27,6 @@
 #include "qemu/error-report.h"
 #include "qdev-prop-internal.h"
 
-#include "qemu/audio.h"
 #include "chardev/char-fe.h"
 #include "system/block-backend.h"
 #include "system/blockdev.h"
@@ -481,43 +480,6 @@ const PropertyInfo qdev_prop_netdev = {
     .set   = set_netdev,
 };
 
-
-/* --- audiodev --- */
-static void get_audiodev(Object *obj, Visitor *v, const char* name,
-                         void *opaque, Error **errp)
-{
-    const Property *prop = opaque;
-    AudioBackend **be = object_field_prop_ptr(obj, prop);
-    g_autofree char *id = g_strdup(audio_be_get_id(*be));
-
-    visit_type_str(v, name, (char **)&id, errp);
-}
-
-static void set_audiodev(Object *obj, Visitor *v, const char* name,
-                         void *opaque, Error **errp)
-{
-    const Property *prop = opaque;
-    AudioBackend **be = object_field_prop_ptr(obj, prop);
-    AudioBackend *state;
-    g_autofree char *str = NULL;
-
-    if (!visit_type_str(v, name, &str, errp)) {
-        return;
-    }
-
-    state = audio_be_by_name(str, errp);
-    if (state) {
-        *be = state;
-    }
-}
-
-const PropertyInfo qdev_prop_audiodev = {
-    .type = "str",
-    .description = "ID of an audiodev to use as a backend",
-    /* release done on shutdown */
-    .get = get_audiodev,
-    .set = set_audiodev,
-};
 
 bool qdev_prop_set_drive_err(DeviceState *dev, const char *name,
                              BlockBackend *value, Error **errp)
