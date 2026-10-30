@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Savestates now include the Xbox's AC97 sound controller. Before, loading a state left the controller wherever the running session had it, so its playback position no longer matched the game's (in the test, half a second ahead and stopped at the end of its buffers). States made by earlier versions still load, with the controller left as it is, as before.
+
 - Vulkan color upload/readback scratch images now use the native Xbox dimensions instead of reserving the scaled render-target size. A 640x480 RGBA scratch image at 8x needs about 1.17 MiB rather than 75 MiB. Packed depth/stencil conversion keeps its required scaled storage.
 
 - Offset framebuffer scanout no longer uploads the whole background or recomposes an unchanged picture every frame. GPU-only tile changes preserve its existing background. OpenGL allocates mailbox images only while earlier ones are held, rather than three at once. Recently used display modes retain their images within a bounded cache, avoiding repeated allocations and Vulkan drains on a warm mode switch. Incompatible byte layouts read back only their dependent views; independent compatible surfaces stay on GPU.

@@ -380,6 +380,24 @@ sr=$(( $(sed -n 's/^peek_0x300010=//p' "$work/aci.txt") ))
 [ $((sr & 8)) -ne 0 ] && [ $((sr & 1)) -eq 0 ] || {
     echo "FAIL: AC97 PCM out status $sr: no buffer completed, or halted"; exit 1; }
 
+# The same across a state saved and loaded while it runs (save at 30,
+# load at 60): the controller's position and pacing come back with the
+# state. They were not saved, and after the load the DMA was half a second
+# ahead of the guest: 143936 samples in its second, run off its last buffer.
+echo "== the AC97 controller's DMA across save and load"
+timeout 300 $h "$(path "$core")" "$(path "$work/sysa")" $vp --frames 200 --strict \
+  --save 30 --load 60 --verify-load --peek 0x300008 --peek 0x30000c \
+  --peek 0x300010 >"$work/aci-load.txt"
+grep -E "load at|peek_" "$work/aci-load.txt"
+grep -E "peek_0x300008=0x00000000$" "$work/aci-load.txt" >/dev/null || {
+    echo "FAIL: the AC97 test did not finish after the load"; exit 1; }
+n=$(( $(sed -n 's/^peek_0x30000c=//p' "$work/aci-load.txt") ))
+[ "$n" -ge 95040 ] && [ "$n" -le 96960 ] || {
+    echo "FAIL: AC97 took $n samples in a second across a load, not 96000"; exit 1; }
+sr=$(( $(sed -n 's/^peek_0x300010=//p' "$work/aci-load.txt") ))
+[ $((sr & 8)) -ne 0 ] && [ $((sr & 1)) -eq 0 ] || {
+    echo "FAIL: AC97 PCM out status $sr after the load: halted"; exit 1; }
+
 # A session killed with the game running (a crash, the frontend killed):
 # the HDD image's cache partitions may name data that never reached it,
 # and a game read its broken cache back at every boot after (Jet Set Radio

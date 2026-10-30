@@ -881,13 +881,47 @@ static void mcpx_aci_exit(PCIDevice *dev)
     d->po_timer = NULL;
 }
 
-static const VMStateDescription vmstate_mcpx_aci = {
-    .name = "mcpx-aci",
+static const VMStateDescription vmstate_aci_bm_regs = {
+    .name = "mcpx-aci-bm",
     .version_id = 1,
     .minimum_version_id = 1,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
+        VMSTATE_UINT32(bdbar, AC97BusMasterRegs),
+        VMSTATE_UINT8(civ, AC97BusMasterRegs),
+        VMSTATE_UINT8(lvi, AC97BusMasterRegs),
+        VMSTATE_UINT16(sr, AC97BusMasterRegs),
+        VMSTATE_UINT16(picb, AC97BusMasterRegs),
+        VMSTATE_UINT8(piv, AC97BusMasterRegs),
+        VMSTATE_UINT8(cr, AC97BusMasterRegs),
+        VMSTATE_UINT32(bd_valid, AC97BusMasterRegs),
+        VMSTATE_UINT32(bd.addr, AC97BusMasterRegs),
+        VMSTATE_UINT32(bd.ctl_len, AC97BusMasterRegs),
+        VMSTATE_END_OF_LIST()
+    },
+};
+
+/* Version 1 had the PCI device alone: a state from then loads with the
+ * AC97 link as the running session has it */
+static const VMStateDescription vmstate_mcpx_aci = {
+    .name = "mcpx-aci",
+    .version_id = 2,
+    .minimum_version_id = 1,
+    .fields = (const VMStateField[]) {
         VMSTATE_PCI_DEVICE(dev, MCPXACIState),
-        // FIXME
+        VMSTATE_UINT32_V(glob_cnt, MCPXACIState, 2),
+        VMSTATE_UINT32_V(glob_sta, MCPXACIState, 2),
+        VMSTATE_UINT32_V(cas, MCPXACIState, 2),
+        VMSTATE_STRUCT_ARRAY(bm_regs, MCPXACIState, LAST_INDEX, 2,
+                             vmstate_aci_bm_regs, AC97BusMasterRegs),
+        VMSTATE_BUFFER_V(mixer_data, MCPXACIState, 2),
+        VMSTATE_BOOL_V(po_open, MCPXACIState, 2),
+        VMSTATE_BOOL_V(po_active, MCPXACIState, 2),
+        VMSTATE_INT64_V(po_freq, MCPXACIState, 2),
+        VMSTATE_INT64_V(po_cap, MCPXACIState, 2),
+        VMSTATE_INT64_V(po_credit, MCPXACIState, 2),
+        VMSTATE_INT64_V(po_last_ns, MCPXACIState, 2),
+        VMSTATE_INT64_V(po_rem, MCPXACIState, 2),
+        VMSTATE_TIMER_PTR_V(po_timer, MCPXACIState, 2),
         VMSTATE_END_OF_LIST()
     },
 };
