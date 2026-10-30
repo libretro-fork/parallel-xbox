@@ -527,7 +527,6 @@ SOURCES_UTIL_LINUX := \
 	$(CORE_DIR)/util/filemonitor-inotify.c \
 	$(CORE_DIR)/util/userfaultfd.c \
 	$(CORE_DIR)/util/vfio-helpers.c \
-	$(CORE_DIR)/util/vhost-user-server.c \
 
 # macOS: QEMU never takes ucontext coroutines there (upstream's meson.build)
 SOURCES_UTIL_DARWIN := \

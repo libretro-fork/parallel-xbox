@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Linux and Android no longer compile the unused vhost-user server utility, whose dependency was removed with the meson subprojects. This fixes clean builds without restoring that dependency.
+
 - Every platform uses the bundled Vulkan headers, fixing macOS builds that could not find Homebrew's headers through the MacPorts dependency paths.
 
 - Apple Silicon JIT write protection uses libretro-common's `memjit_write_begin/end` helpers. A per-thread adapter preserves QEMU's absolute write/execute switches, including repeated requests across the CPU and DSP JITs. Intel macOS keeps no-op switches.
