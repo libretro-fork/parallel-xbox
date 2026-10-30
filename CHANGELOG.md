@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- The OpenGL compressed-volume regression oracle now verifies interpolated RGB, transparent BC1 colors, and BC2/BC3 alpha through actual RGBA8 fallback uploads, including odd dimensions and one-texel mip tails.
+
 - The test script (libretro/tests/run.sh) removes the temporary folder it makes, about 500 MB, when it ends, whether the tests passed or failed; each run used to leave one behind. A folder given as its second argument is still kept.
 
 - The code QEMU and xemu kept for builds other than the Xbox one is gone: every `#ifndef XBOX` branch, which this core never compiles, about 5,900 lines, most of them the PC CPU models (Skylake, EPYC and the rest) the core never offers. Nothing changes for someone using the core.

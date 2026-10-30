@@ -13,6 +13,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 #include "s3tc.h"
 #define MAX(a,b) ((a) > (b) ? (a) : (b))
 #define g_realloc realloc
@@ -37,8 +38,43 @@ static bool has_extension(const char *extension)
     return false;
 }
 
+/* Independent normalized-color oracle; preserve interpolation precision
+ * until the final RGBA8 quantization, as the decoder's DirectXTex oracle. */
+static void reference_pixel(const uint8_t *block, unsigned mode, unsigned p,
+                            uint8_t *pixel)
+{
+    const uint8_t *color = block + (mode ? 8 : 0);
+    unsigned a = color[0] | color[1] << 8, b = color[2] | color[3] << 8;
+    unsigned index = (color[4 + p / 4] >> (2 * (p % 4))) & 3;
+    bool transparent = !mode && a <= b;
+    for (unsigned ch = 0; ch < 3; ch++) {
+        unsigned shift = ch == 0 ? 11 : ch == 1 ? 5 : 0;
+        unsigned mask = ch == 1 ? 63 : 31;
+        double c0 = ((a >> shift) & mask) / (double)mask;
+        double c1 = ((b >> shift) & mask) / (double)mask;
+        double value = index == 0 ? c0 : index == 1 ? c1 :
+            transparent ? (index == 2 ? (c0 + c1) / 2 : 0) :
+            ((4 - index) * c0 + (index - 1) * c1) / 3;
+        pixel[ch] = (uint8_t)floor(value * 255 + 0.5001);
+    }
+    double alpha = transparent && index == 3 ? 0 : 1;
+    if (mode == 1) {
+        alpha = ((block[p / 2] >> (4 * (p % 2))) & 15) / 15.0;
+    } else if (mode == 2) {
+        uint64_t selectors = 0;
+        for (unsigned i = 0; i < 6; i++) selectors |= (uint64_t)block[2+i] << (8*i);
+        unsigned ai = (selectors >> (3*p)) & 7;
+        double c0 = block[0] / 255.0, c1 = block[1] / 255.0;
+        alpha = ai == 0 ? c0 : ai == 1 ? c1 : c0 > c1 ?
+            ((8-ai)*c0 + (ai-1)*c1)/7 : ai < 6 ?
+            ((6-ai)*c0 + (ai-1)*c1)/5 : ai == 6 ? 0 : 1;
+    }
+    pixel[3] = (uint8_t)floor(alpha * 255 + 0.5001);
+}
+
 static void check_level(PGRAPHGLState *r, unsigned level, unsigned w,
-                        unsigned h, unsigned depth, unsigned mode)
+                        unsigned h, unsigned depth, unsigned mode,
+                        bool precision)
 {
     unsigned bw = (w + 3) / 4, bh = (h + 3) / 4, bs = mode ? 16 : 8;
     size_t bytes = (size_t)bw * bh * depth * bs;
@@ -62,6 +98,24 @@ static void check_level(PGRAPHGLState *r, unsigned level, unsigned w,
         block[offset + 1] = rgb >> 8;
         if (mode == 1) memset(block, alpha, 8);
         if (mode == 2) block[0] = alpha;
+        if (precision) {
+            const uint16_t endpoints[] = {0x0841, 0x18e3, 0x39e7, 0x7bef,
+                                         0xa534, 0xdead, 0x1234, 0xffff};
+            uint16_t a = endpoints[code % 8];
+            uint16_t b = endpoints[(code / 8) % 8];
+            block[offset] = a; block[offset + 1] = a >> 8;
+            block[offset + 2] = b; block[offset + 3] = b >> 8;
+            memset(block + offset + 4, 0xe4, 4);
+            if (mode == 1) {
+                for (unsigned i = 0; i < 8; i++) block[i] = 2*i | ((2*i+1) << 4);
+            } else if (mode == 2) {
+                block[0] = code & 255;
+                block[1] = code % 3 == 0 ? block[0] : (255 - code) & 255;
+                uint64_t selectors = 0;
+                for (unsigned i = 0; i < 16; i++) selectors |= (uint64_t)(i%8) << (3*i);
+                for (unsigned i = 0; i < 6; i++) block[2+i] = selectors >> (8*i);
+            }
+        }
         for (unsigned y = by * 4; y < by * 4 + 4 && y < h; y++)
         for (unsigned x = bx * 4; x < bx * 4 + 4 && x < w; x++) {
             uint8_t *pixel = expected + (((z0 + z) * h + y) * w + x) * 4;
@@ -69,6 +123,7 @@ static void check_level(PGRAPHGLState *r, unsigned level, unsigned w,
             pixel[1] = (rgb & 0x07e0) ? 255 : 0;
             pixel[2] = (rgb & 31) ? 255 : 0;
             pixel[3] = alpha;
+            if (precision) reference_pixel(block, mode, (y%4)*4 + x%4, pixel);
         }
     }
     GLenum formats[] = { GL_COMPRESSED_RGBA_S3TC_DXT1_EXT,
@@ -137,12 +192,24 @@ int main(void)
         glBindTexture(GL_TEXTURE_3D, texture);
         for (unsigned mode = 0; mode < 3; mode++) {
             for (unsigned d = 1; d <= 8; d *= 2) {
-                check_level(&r, 0, 8, 8, d, mode); cases++;
+                check_level(&r, 0, 8, 8, d, mode, false); cases++;
             }
             for (unsigned level = 0; level < 4; level++) {
                 check_level(&r, level, 16 >> level, 8 >> level,
-                            MAX(8 >> level, 1u), mode); cases++;
+                            MAX(8 >> level, 1u), mode, false); cases++;
             }
+        }
+        if (!native) {
+            for (unsigned mode = 0; mode < 3; mode++) {
+                check_level(&r, 0, 32, 32, 8, mode, true); cases++;
+                check_level(&r, 0, 7, 5, 3, mode, true); cases++;
+                for (unsigned level = 0; level < 5; level++) {
+                    check_level(&r, level, MAX(16 >> level, 1u),
+                                MAX(8 >> level, 1u), MAX(8 >> level, 1u),
+                                mode, true); cases++;
+                }
+            }
+            puts("fallback: 21 interpolated RGB/alpha levels exact against normalized oracle");
         }
         printf("native=%u: 24 volume levels exact, alpha and block/slice order preserved\n",
                native);

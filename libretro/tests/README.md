@@ -453,3 +453,5 @@ the production OpenGL/Vulkan range-queue blocks and buffer-update functions
 for 2,005 cases. It covers padded and overlapping strides, zero counts,
 uniform-only ranges, final-page/VRAM endpoints, 64-bit products and the GL
 quick-cache sequence across an empty first attribute. UB traps are enabled.
+
+The compressed-volume oracle adds 21 strict fallback cases against independently computed normalized colors: nontrivial endpoint interpolation, both BC1 palette modes, every BC2 alpha nibble, all BC3 alpha selectors with both endpoint modes and equal endpoints, odd 7x5x3 dimensions and mip tails down to 1x1x1. These compare 113,616 additional RGBA components after actual GPU upload/readback. Strict interpolation comparisons apply to software fallback; native VTC retains its separate endpoint/block-order checks because driver interpolation precision can differ.

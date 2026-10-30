@@ -40,7 +40,7 @@ with tempfile.TemporaryDirectory(prefix="gl-volume-") as directory:
     args = [sys.argv[2] if len(sys.argv) > 2 else "gcc", "-O2", "-Wall",
             "-Wextra", "-Werror", "-Wno-sign-compare", "-Wno-return-type", "-I",
             str(repo / "hw/xbox/nv2a/pgraph"), str(folder / "test.c"),
-            str(folder / "decoder.c"), "-o", str(exe)]
+            str(folder / "decoder.c"), "-o", str(exe), "-lm"]
     if os.name == "nt":
         args += ["-I", str(repo / "deps/libepoxy/include"),
                  str(repo / "deps/libepoxy.a"), "-lopengl32", "-lgdi32", "-static"]
