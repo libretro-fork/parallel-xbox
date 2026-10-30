@@ -48,14 +48,14 @@
  * render-thread state; a DispRef keeps a surface's texture alive while
  * tickets naming it are in flight. */
 typedef struct DispRef {
-    int refs;    /* tickets in flight: an atomic count, either thread */
+    retro_atomic_int_t refs;    /* tickets in flight, either thread */
     bool orphan; /* the surface is gone: freed by the render thread once
                     no ticket is in flight (orphans list) */
     GLuint tex;
     /* UI-context fence after its last blit of tex: the render thread
      * waits for it on the GPU before writing the surface again. Swapped
      * atomically by both threads. */
-    GLsync presented;
+    retro_atomic_ptr_t presented; /* GLsync */
     QTAILQ_ENTRY(DispRef) entry; /* the orphans list, render thread */
 } DispRef;
 
@@ -271,7 +271,7 @@ typedef struct PGRAPHGLState {
      * owned by the render thread; walking it from the display thread
      * raced against insertions and evictions. have_surfaces is
      * maintained at every list mutation. */
-    bool have_surfaces;
+    retro_atomic_int_t have_surfaces;
     /* Display handoff, one DispPost per new front buffer, through a
      * three-slot mailbox with no lock (gl/display.c disp_post_ticket /
      * disp_take_post): the render thread writes its slot and swaps it in
@@ -281,16 +281,16 @@ typedef struct PGRAPHGLState {
     DispPost disp_posts[3];
     int disp_post_write; /* the render thread's slot */
     int disp_post_read;  /* the UI thread's slot */
-    int disp_post_middle; /* atomic: slot | DISP_POST_NEW when untaken */
+    retro_atomic_int_t disp_post_middle; /* slot | DISP_POST_NEW when untaken */
     /* References whose surface is gone while tickets were in flight:
      * freed by the render thread once the last ticket is put back */
     QTAILQ_HEAD(, DispRef) disp_orphans;
     /* The UI thread holds a front buffer: when the CRTC leaves the
      * surfaces, a ticket without one sends it back to the VGA path. */
-    bool disp_shown;
+    retro_atomic_int_t disp_shown;
     /* The UI thread asks for a scanout re-check (guest CPU writes into
      * the front buffer, video overlay) without waiting for it. */
-    bool disp_check_pending;
+    retro_atomic_int_t disp_check_pending;
     GLsync flip_fence;
     SurfaceBinding *disp_last_surface;
     unsigned int disp_last_draw_time;
@@ -409,7 +409,7 @@ typedef struct PGRAPHGLState {
     unsigned int last_surface_type;
     PGRAPHRtMemo rt_memo;
     retro_eventcount_t downloads_complete;
-    bool download_dirty_surfaces_pending;
+    retro_atomic_int_t download_dirty_surfaces_pending;
     retro_eventcount_t dirty_surfaces_download_complete; // common
 
     /* Texture bound per unit, to skip repeated binds between draws: reset
@@ -484,7 +484,7 @@ typedef struct PGRAPHGLState {
     bool gl_zpass_query_open;
     QSIMPLEQ_HEAD(, QueryReport) report_queue;
 
-    bool shader_cache_writeback_pending;
+    retro_atomic_int_t shader_cache_writeback_pending;
     retro_eventcount_t shader_cache_writeback_complete;
 
     struct s2t_rndr {

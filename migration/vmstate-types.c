@@ -20,6 +20,7 @@
 #include "qemu/queue.h"
 #include "trace.h"
 #include "qapi/error.h"
+#include <retro_atomic.h>
 
 /* bool */
 
@@ -314,6 +315,79 @@ const VMStateInfo vmstate_info_uint64 = {
     .name = "uint64",
     .get  = get_uint64,
     .put  = put_uint64,
+};
+
+/*
+ * libretro-common's atomics (retro_atomic.h), in the wire formats of the
+ * plain types they replaced: an int as a uint32 (big-endian, 4 bytes) or as
+ * a bool (1 byte), a 64-bit one as an int64. Loads and stores relaxed: a
+ * state is saved and loaded with the threads that change them stopped.
+ */
+
+static int get_retro_atomic_u32(QEMUFile *f, void *pv, size_t size,
+                                const VMStateField *field)
+{
+    retro_atomic_store_relaxed_int((retro_atomic_int_t *)pv,
+                                   (int)qemu_get_be32(f));
+    return 0;
+}
+
+static int put_retro_atomic_u32(QEMUFile *f, void *pv, size_t size,
+                                const VMStateField *field, JSONWriter *vmdesc)
+{
+    qemu_put_be32(f, (uint32_t)retro_atomic_load_relaxed_int(
+                         (retro_atomic_int_t *)pv));
+    return 0;
+}
+
+const VMStateInfo vmstate_info_retro_atomic_u32 = {
+    .name = "uint32",
+    .get  = get_retro_atomic_u32,
+    .put  = put_retro_atomic_u32,
+};
+
+static int get_retro_atomic_bool(QEMUFile *f, void *pv, size_t size,
+                                 const VMStateField *field)
+{
+    retro_atomic_store_relaxed_int((retro_atomic_int_t *)pv,
+                                   qemu_get_byte(f) != 0);
+    return 0;
+}
+
+static int put_retro_atomic_bool(QEMUFile *f, void *pv, size_t size,
+                                 const VMStateField *field, JSONWriter *vmdesc)
+{
+    qemu_put_byte(f, retro_atomic_load_relaxed_int(
+                         (retro_atomic_int_t *)pv) != 0);
+    return 0;
+}
+
+const VMStateInfo vmstate_info_retro_atomic_bool = {
+    .name = "bool",
+    .get  = get_retro_atomic_bool,
+    .put  = put_retro_atomic_bool,
+};
+
+static int get_retro_atomic_i64(QEMUFile *f, void *pv, size_t size,
+                                const VMStateField *field)
+{
+    retro_atomic_store_relaxed_64((retro_atomic_64_t *)pv,
+                                  (int64_t)qemu_get_be64(f));
+    return 0;
+}
+
+static int put_retro_atomic_i64(QEMUFile *f, void *pv, size_t size,
+                                const VMStateField *field, JSONWriter *vmdesc)
+{
+    qemu_put_be64(f, (uint64_t)retro_atomic_load_relaxed_64(
+                         (retro_atomic_64_t *)pv));
+    return 0;
+}
+
+const VMStateInfo vmstate_info_retro_atomic_i64 = {
+    .name = "int64",
+    .get  = get_retro_atomic_i64,
+    .put  = put_retro_atomic_i64,
 };
 
 /* File descriptor communicated via SCM_RIGHTS */

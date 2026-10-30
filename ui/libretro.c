@@ -732,7 +732,7 @@ static bool ra_vk_import_display(void *ext_handle, int width, int height)
 /* ========================================================================= */
 
 XemuLibretroVk xemu_libretro_vk;
-bool xemu_libretro_vk_context_ready;
+retro_atomic_int_t xemu_libretro_vk_context_ready;
 
 /* the instance's Vulkan version: the application info's, or what
  * create_instance (v2) made it */
@@ -1240,7 +1240,7 @@ static void context_reset(void)
             renderer_contexts_made = true;
         }
         /* the renderer may start now (pgraph_vk_init checks it) */
-        qatomic_set(&xemu_libretro_vk_context_ready, true);
+        retro_atomic_store_relaxed_int(&xemu_libretro_vk_context_ready, 1);
 
         /* After a context_destroy took the renderer off the old device:
          * back onto this one (no renderer yet at the first reset) */
@@ -1279,7 +1279,7 @@ static void context_destroy(void)
     if (use_vulkan) {
         vk_park_renderer();
         xemu_libretro_vk.active = false;
-        qatomic_set(&xemu_libretro_vk_context_ready, false);
+        retro_atomic_store_relaxed_int(&xemu_libretro_vk_context_ready, 0);
     }
 
     if (!use_vulkan) {
@@ -1325,8 +1325,8 @@ static int opt_aspect = 0; /* 0 auto, 1 4:3, 2 16:9 */
 /* The running title's ID and the dashboard's video settings, as the guest
  * has them now: read on the emulation thread, which holds the BQL the
  * guest's memory and the EEPROM device need (poll_guest_title) */
-static uint32_t guest_title_id;
-static uint32_t guest_video_flags;
+static retro_atomic_int_t guest_title_id;
+static retro_atomic_int_t guest_video_flags;
 
 /* The EEPROM's video settings (user section, 0x94), and their Widescreen
  * bit */
@@ -1388,10 +1388,9 @@ static void poll_guest_title(void)
     extern bool smbus_storage_peek(uint32_t offset, void *buf, uint32_t len);
     uint32_t flags = 0, title_id = 0;
 
-    qatomic_set(&guest_title_id,
-                xemu_get_xbe_title_id(&title_id) ? title_id : 0);
+    retro_atomic_store_relaxed_int(&guest_title_id, (int)(xemu_get_xbe_title_id(&title_id) ? title_id : 0));
     if (smbus_storage_peek(EEPROM_VIDEO_FLAGS, &flags, sizeof(flags))) {
-        qatomic_set(&guest_video_flags, le32_to_cpu(flags));
+        retro_atomic_store_relaxed_int(&guest_video_flags, (int)(le32_to_cpu(flags)));
     }
 }
 
@@ -1419,10 +1418,10 @@ static bool wants_widescreen(void)
         return opt_aspect == 2;
     }
     if (emu_started_chihiro ||
-        !(qatomic_read(&guest_video_flags) & EEPROM_VIDEO_WIDESCREEN)) {
+        !((uint32_t)retro_atomic_load_relaxed_int(&guest_video_flags) & EEPROM_VIDEO_WIDESCREEN)) {
         return false;
     }
-    return title_renders_widescreen(qatomic_read(&guest_title_id)) ||
+    return title_renders_widescreen((uint32_t)retro_atomic_load_relaxed_int(&guest_title_id)) ||
            xemu_get_widescreen();
 }
 
@@ -1435,8 +1434,8 @@ static void update_aspect(void)
 
     /* What Auto goes by, whenever the title or the settings change */
     static uint32_t last_title = UINT32_MAX, last_flags = UINT32_MAX;
-    const uint32_t title = qatomic_read(&guest_title_id);
-    const uint32_t flags = qatomic_read(&guest_video_flags);
+    const uint32_t title = (uint32_t)retro_atomic_load_relaxed_int(&guest_title_id);
+    const uint32_t flags = (uint32_t)retro_atomic_load_relaxed_int(&guest_video_flags);
     if (title != last_title || flags != last_flags) {
         last_title = title;
         last_flags = flags;
@@ -1450,7 +1449,7 @@ static void update_aspect(void)
     /* What the title writes to the aspect line, whenever it changes: 5 is
      * widescreen, and a log then says why a title stayed at 4:3 */
     static int last_gpio = -1;
-    const int gpio = qatomic_read(&xemu_aspect_gpio_value);
+    const int gpio = retro_atomic_load_relaxed_int(&xemu_aspect_gpio_value);
     if (gpio != last_gpio) {
         last_gpio = gpio;
         LRLOG_INFO("[xemu] Aspect line (PM GPIO 0x16) written: %d\n", gpio);
@@ -1920,7 +1919,7 @@ static bool lr_devices_busy(void)
 }
 /* set while the emulator thread looks and waits: the GPU's thread wakes it
  * when it parks (hw/xbox/nv2a/pfifo.c) */
-extern int nv2a_libretro_waiter;
+extern retro_atomic_int_t nv2a_libretro_waiter;
 
 /* The guest has run LR_QUIET_INSNS instructions that stored nothing and
  * touched no device but to read a register that had not changed
@@ -2065,7 +2064,10 @@ static void lr_run_frame(void)
         /* The guest idles: halted, or parked waiting on a device
          * (lr_quiet_exit), for this one wait */
         lr_quiet = false;
-        qatomic_set_mb(&nv2a_libretro_waiter, 1);
+        /* the flag, a full fence, then the look at the GPU's thread: a
+         * Dekker handshake with its park (pfifo.c pfifo_idle_wait) */
+        retro_atomic_store_relaxed_int(&nv2a_libretro_waiter, 1);
+        retro_atomic_thread_fence_seq_cst();
         if (lr_devices_busy()) {
             /* it waits until something happens: a bottom half (a disk read
              * done), the GPU going idle or raising an interrupt. No
@@ -2087,7 +2089,7 @@ static void lr_run_frame(void)
             /* nothing to wait for: on to the next deadline */
             cpu_clock_skip_to(now + until);
         }
-        qatomic_set(&nv2a_libretro_waiter, 0);
+        retro_atomic_store_relaxed_int(&nv2a_libretro_waiter, 0);
     }
 
     /* The guest ran on while the GPU's thread worked; the frame is handed
@@ -2103,13 +2105,14 @@ static void lr_run_frame(void)
          * it left */
         for (int pass = 0; pass < 2; pass++) {
             for (;;) {
-                qatomic_set_mb(&nv2a_libretro_waiter, 1);
+                retro_atomic_store_relaxed_int(&nv2a_libretro_waiter, 1);
+                retro_atomic_thread_fence_seq_cst();
                 if (!runstate_is_running() || !nv2a_libretro_busy()) {
                     break;
                 }
                 main_loop_wait(false);
             }
-            qatomic_set(&nv2a_libretro_waiter, 0);
+            retro_atomic_store_relaxed_int(&nv2a_libretro_waiter, 0);
             if (pass == 0 && runstate_is_running()) {
                 nv2a_libretro_display_check();
             }

@@ -35,14 +35,14 @@ static void pgraph_null_flush(NV2AState *d)
 static void pgraph_null_process_pending(NV2AState *d)
 {
     if (
-        qatomic_read(&d->pgraph.sync_pending) ||
-        qatomic_read(&d->pgraph.flush_pending)
+        retro_atomic_load_relaxed_int(&d->pgraph.sync_pending) ||
+        retro_atomic_load_relaxed_int(&d->pgraph.flush_pending)
         ) {
         qemu_mutex_unlock(&d->pfifo.lock);
-        if (qatomic_read(&d->pgraph.sync_pending)) {
+        if (retro_atomic_load_relaxed_int(&d->pgraph.sync_pending)) {
             pgraph_null_sync(d);
         }
-        if (qatomic_read(&d->pgraph.flush_pending)) {
+        if (retro_atomic_load_relaxed_int(&d->pgraph.flush_pending)) {
             pgraph_null_flush(d);
         }
         qemu_mutex_lock(&d->pfifo.lock);

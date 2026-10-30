@@ -602,8 +602,10 @@ static void __attribute__((noinline)) xemu_tbrate_tick(void)
                         "%.0f ms in the flip's shader service, %.0f ms "
                         "waiting on the previous frame's fence, both "
                         "under the pgraph lock\n",
-                        qatomic_xchg(&xemu_tbrate_flipsvc_ns, 0) / s / 1e6,
-                        qatomic_xchg(&xemu_tbrate_fence_ns, 0) / s / 1e6);
+                        retro_atomic_exchange_64(&xemu_tbrate_flipsvc_ns, 0) /
+                            s / 1e6,
+                        retro_atomic_exchange_64(&xemu_tbrate_fence_ns, 0) /
+                            s / 1e6);
                 xemu_tbrate_report_exits(s);
                 xemu_tbrate_report_irqs(s);
                 fflush(stderr);

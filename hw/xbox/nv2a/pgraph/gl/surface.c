@@ -53,7 +53,7 @@ static SettleResult parked_settle_for_create(NV2AState *d,
 
 /* Clear only while no surface or parked binding is ahead of RAM: a CPU read
  * of VRAM then leaves the access callback before taking the mutex. */
-static int surfaces_any_dirty = 1;
+static retro_atomic_int_t surfaces_any_dirty = RETRO_ATOMIC_INT_INITIALIZER(1);
 
 /* Retired surface textures (r->texpool), kept for the next binding with the
  * same storage: a buffer alternating between two views is recreated every
@@ -114,19 +114,19 @@ void pgraph_gl_set_surface_scale_factor(NV2AState *d, unsigned int scale)
 
     /* the pusher stops at its next batch; the downloads and the flush
      * run on the thread meanwhile */
-    qatomic_set(&d->pfifo.halt, true);
+    retro_atomic_store_relaxed_int(&d->pfifo.halt, 1);
 
-    qatomic_set(&r->download_dirty_surfaces_pending, true);
+    retro_atomic_store_relaxed_int(&r->download_dirty_surfaces_pending, 1);
     pfifo_kick(d);
     pgraph_wait_until_clear(&r->dirty_surfaces_download_complete,
                             &r->download_dirty_surfaces_pending);
 
-    qatomic_set(&d->pgraph.flush_pending, true);
+    retro_atomic_store_relaxed_int(&d->pgraph.flush_pending, 1);
     pfifo_kick(d);
     pgraph_wait_until_clear(&d->pgraph.flush_complete,
                             &d->pgraph.flush_pending);
 
-    qatomic_set(&d->pfifo.halt, false);
+    retro_atomic_store_relaxed_int(&d->pfifo.halt, 0);
     pfifo_kick(d);
 }
 
@@ -160,7 +160,7 @@ void pgraph_gl_surface_mark_ahead(SurfaceBinding *s)
     /* and for the CPU's accesses, before the method completes
      * (PGRAPHCpuAccess) */
     pgraph_cpu_ahead_mark(&g_nv2a->pgraph, s->vram_addr, s->size);
-    qatomic_set(&surfaces_any_dirty, 1);
+    retro_atomic_store_relaxed_int(&surfaces_any_dirty, 1);
     if (s->watch_read_off) {
         s->watch_read_off = false;
         mem_access_callback_set_flags(qemu_get_cpu(0), s->access_cb,
@@ -810,13 +810,14 @@ static void surface_access_callback(void *opaque, MemoryRegion *mr, hwaddr addr,
     NV2AState *d = (NV2AState *)opaque;
     PGRAPHGLState *r = d->pgraph.gl_renderer_state;
 
-    if (!write && !qatomic_read(&surfaces_any_dirty)) {
+    if (!write && !retro_atomic_load_relaxed_int(&surfaces_any_dirty)) {
         return;
     }
     if (!pgraph_cpu_access(&d->pgraph, addr, len, write)) {
         return;
     }
-    qatomic_set(&d->pgraph.cpu.dl_pending, true);
+    /* release: dl_addr and dl_len (pgraph_cpu_access) before it */
+    retro_atomic_store_release_int(&d->pgraph.cpu.dl_pending, 1);
     pfifo_kick(d);
     /* A DMA write from the main loop arrives here holding the BQL: let
      * go of it while waiting, as a reset does, so the main loop (the
@@ -922,7 +923,7 @@ static SurfaceBinding *surface_put(NV2AState *d, hwaddr addr,
     register_cpu_access_callback(d, surface_out);
 
     QTAILQ_INSERT_TAIL(&r->surfaces, surface_out, entry);
-    qatomic_set(&r->have_surfaces, true);
+    retro_atomic_store_relaxed_int(&r->have_surfaces, 1);
 
     return surface_out;
 }
@@ -1067,7 +1068,7 @@ static void surface_detach(NV2AState *d, SurfaceBinding *surface)
     fb_cache_drop_tex(r, surface->gl_buffer);
     fb_multi_drop_tex(r, surface->gl_buffer);
     QTAILQ_REMOVE(&r->surfaces, surface, entry);
-    qatomic_set(&r->have_surfaces, !QTAILQ_EMPTY(&r->surfaces));
+    retro_atomic_store_relaxed_int(&r->have_surfaces, !QTAILQ_EMPTY(&r->surfaces));
 }
 
 void pgraph_gl_surface_invalidate(NV2AState *d, SurfaceBinding *surface)
@@ -2073,7 +2074,7 @@ void pgraph_gl_surfaces_refresh_any_dirty(NV2AState *d)
             break;
         }
     }
-    qatomic_set(&surfaces_any_dirty, any);
+    retro_atomic_store_relaxed_int(&surfaces_any_dirty, any);
     cpu_ahead_rebuild(d);
 }
 
@@ -2155,7 +2156,8 @@ void pgraph_gl_cpu_access_service(NV2AState *d)
             }
         }
     }
-    if (qatomic_read(&pg->cpu.dl_pending)) {
+    /* acquire: the range the requester set before it */
+    if (retro_atomic_load_acquire_int(&pg->cpu.dl_pending)) {
         pgraph_gl_process_pending_downloads(d);
     }
 }
@@ -3196,7 +3198,7 @@ SurfaceBinding *pgraph_gl_compose_scanout(NV2AState *d)
     for (unsigned i = 0; i < ARRAY_SIZE(m->out); i++) {
         SurfaceBinding *candidate = &m->out[i];
         if (candidate->gl_buffer && (!candidate->disp_ref ||
-            !qatomic_load_acquire(&candidate->disp_ref->refs))) {
+            !retro_atomic_load_acquire_int(&candidate->disp_ref->refs))) {
             slot = i;
             break;
         }

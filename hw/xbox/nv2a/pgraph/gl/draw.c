@@ -167,7 +167,7 @@ void pgraph_gl_clear_surface(NV2AState *d, uint32_t parameter)
     NV2A_DPRINTF(
         "------------------CLEAR 0x%x %d,%d - %d,%d  %x---------------\n",
         parameter, xmin, ymin, xmax, ymax,
-        d->pgraph.regs_[NV_PGRAPH_COLORCLEARVALUE]);
+        pgraph_reg_r(&d->pgraph, NV_PGRAPH_COLORCLEARVALUE));
 
     unsigned int scissor_width = xmax - xmin + 1,
                  scissor_height = ymax - ymin + 1;

@@ -206,7 +206,7 @@ static void init_pipeline_cache(PGRAPHState *pg)
     vkGetPipelineCacheData(r->device, r->vk_pipeline_cache,
                            &r->pcache_saved_len, NULL);
     r->pcache_thread_spawned = false;
-    r->pcache_busy = false;
+    retro_atomic_int_init(&r->pcache_busy, 0);
 
     /* MEASURED: Crazy Taxi keeps more than 2048 pipelines live. */
     const size_t pipeline_cache_size = 8192;
@@ -252,7 +252,7 @@ static void *pcache_save_thread(void *arg)
 {
     PGRAPHVkState *r = arg;
     pcache_save_now(r);
-    qatomic_set(&r->pcache_busy, false);
+    retro_atomic_store_relaxed_int(&r->pcache_busy, 0);
     return NULL;
 }
 
@@ -261,7 +261,7 @@ void pgraph_vk_save_pipeline_cache(PGRAPHState *pg, bool sync)
     PGRAPHVkState *r = pg->vk_renderer_state;
 
     if (r->pcache_thread_spawned) {
-        if (!sync && qatomic_read(&r->pcache_busy)) {
+        if (!sync && retro_atomic_load_relaxed_int(&r->pcache_busy)) {
             return; /* previous save still writing: skip this mark */
         }
         qemu_thread_join(&r->pcache_thread);
@@ -271,7 +271,7 @@ void pgraph_vk_save_pipeline_cache(PGRAPHState *pg, bool sync)
         pcache_save_now(r);
         return;
     }
-    qatomic_set(&r->pcache_busy, true);
+    retro_atomic_store_relaxed_int(&r->pcache_busy, 1);
     qemu_thread_create(&r->pcache_thread, "vk-pcache", pcache_save_thread, r,
                        QEMU_THREAD_JOINABLE);
     r->pcache_thread_spawned = true;

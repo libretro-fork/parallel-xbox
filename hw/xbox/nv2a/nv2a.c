@@ -40,7 +40,8 @@ void nv2a_update_irq(NV2AState *d)
     }
 
     /* PGRAPH */
-    if (d->pgraph.pending_interrupts & d->pgraph.enabled_interrupts) {
+    if (retro_atomic_load_relaxed_int(&d->pgraph.pending_interrupts) &
+        retro_atomic_load_relaxed_int(&d->pgraph.enabled_interrupts)) {
         d->pmc.pending_interrupts |= NV_PMC_INTR_0_PGRAPH;
     } else {
         d->pmc.pending_interrupts &= ~NV_PMC_INTR_0_PGRAPH;
@@ -222,12 +223,12 @@ bool nv2a_libretro_busy(void)
 {
     NV2AState *d = g_nv2a;
 
-    if (!d || !qatomic_read(&d->pfifo.thread_running) ||
-        qatomic_read(&d->pfifo.halt)) {
+    if (!d || !retro_atomic_load_acquire_int(&d->pfifo.thread_running) ||
+        retro_atomic_load_relaxed_int(&d->pfifo.halt)) {
         return false;
     }
     return retro_atomic_load_acquire_int(&d->pfifo.fifo_kick) ||
-           !qatomic_read(&d->pfifo.parked);
+           !retro_atomic_load_relaxed_int(&d->pfifo.parked);
 }
 
 /* The emulator thread, at a frame's end with the GPU's thread caught up
@@ -239,10 +240,10 @@ void nv2a_libretro_display_check(void)
 {
     NV2AState *d = g_nv2a;
 
-    if (!d || !qatomic_read(&d->pfifo.thread_running)) {
+    if (!d || !retro_atomic_load_acquire_int(&d->pfifo.thread_running)) {
         return;
     }
-    qatomic_set(&d->pgraph.scanout_changed, true);
+    retro_atomic_store_relaxed_int(&d->pgraph.scanout_changed, 1);
     pfifo_kick(d);
 }
 
@@ -278,9 +279,9 @@ static void nv2a_vga_gfx_update(void *opaque)
     NV2AState *d = container_of(vga, NV2AState, vga);
     d->pcrtc.pending_interrupts |= NV_PCRTC_INTR_0_VBLANK;
     d->vblank_vt = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
-    qatomic_set(&d->vblank_deadline,
-                qemu_clock_get_ns(QEMU_CLOCK_REALTIME) +
-                NV2A_VBLANK_INTERVAL_NS);
+    retro_atomic_store_relaxed_64(&d->vblank_deadline,
+                                  qemu_clock_get_ns(QEMU_CLOCK_REALTIME) +
+                                  NV2A_VBLANK_INTERVAL_NS);
     nv2a_update_irq(d);
 }
 
@@ -372,16 +373,17 @@ static void nv2a_unlock_fifo(NV2AState *d)
 static void nv2a_reset(NV2AState *d)
 {
     /* Skip FIFO lock if PFIFO thread hasn't entered its main loop yet */
-    bool have_renderer = d->pfifo.thread_running;
+    bool have_renderer =
+        retro_atomic_load_acquire_int(&d->pfifo.thread_running);
 
     if (have_renderer) {
         nv2a_lock_fifo(d);
-        bool halted = qatomic_read(&d->pfifo.halt);
+        bool halted = retro_atomic_load_relaxed_int(&d->pfifo.halt);
         if (!halted) {
-            qatomic_set(&d->pfifo.halt, true);
+            retro_atomic_store_relaxed_int(&d->pfifo.halt, 1);
         }
 
-        qatomic_set(&d->pgraph.flush_pending, true);
+        retro_atomic_store_relaxed_int(&d->pgraph.flush_pending, 1);
         nv2a_unlock_fifo(d);
         bql_unlock();
         pgraph_wait_until_clear(&d->pgraph.flush_complete,
@@ -390,7 +392,7 @@ static void nv2a_reset(NV2AState *d)
         nv2a_lock_fifo(d);
 
         if (!halted) {
-            qatomic_set(&d->pfifo.halt, false);
+            retro_atomic_store_relaxed_int(&d->pfifo.halt, 0);
         }
     }
 
@@ -404,14 +406,16 @@ static void nv2a_reset(NV2AState *d)
     d->pramdac.memory_clock_coeff = 0;
     d->pramdac.video_clock_coeff = 0x0003C20D; /* 25182Khz...? */
 
-    d->pfifo.regs[NV_PFIFO_CACHE1_STATUS] |= NV_PFIFO_CACHE1_STATUS_LOW_MARK;
+    pfifo_reg_w(d, NV_PFIFO_CACHE1_STATUS,
+                pfifo_reg_r(d, NV_PFIFO_CACHE1_STATUS) |
+                NV_PFIFO_CACHE1_STATUS_LOW_MARK);
 
     vga_common_reset(&d->vga);
     /* seems to start in color mode */
     d->vga.msr = VGA_MIS_COLOR;
 
-    d->pgraph.waiting_for_flip = false;
-    d->pgraph.guest_wrote_regs = false;
+    retro_atomic_store_relaxed_int(&d->pgraph.waiting_for_flip, 0);
+    retro_atomic_store_relaxed_int(&d->pgraph.guest_wrote_regs, 0);
 
     d->pmc.pending_interrupts = 0;
     d->pfifo.pending_interrupts = 0;
@@ -463,7 +467,7 @@ static void nv2a_exitfn(PCIDevice *dev)
     NV2AState *d;
     d = NV2A_DEVICE(dev);
 
-    d->exiting = true;
+    retro_atomic_store_release_int(&d->exiting, 1);
 
     pfifo_kick(d);
     qemu_thread_join(&d->pfifo.thread);
@@ -494,7 +498,7 @@ static void nv2a_vm_state_change(void *opaque, bool running, RunState state)
      * boundary. */
     if (state == RUN_STATE_SAVE_VM) {
         nv2a_lock_fifo(d);
-        qatomic_set(&d->pfifo.halt, true);
+        retro_atomic_store_relaxed_int(&d->pfifo.halt, 1);
         pgraph_pre_savevm_trigger(d);
         nv2a_unlock_fifo(d);
         bql_unlock();
@@ -503,11 +507,11 @@ static void nv2a_vm_state_change(void *opaque, bool running, RunState state)
         nv2a_lock_fifo(d);
     } else if (state == RUN_STATE_RESTORE_VM) {
         nv2a_lock_fifo(d);
-        qatomic_set(&d->pfifo.halt, true);
+        retro_atomic_store_relaxed_int(&d->pfifo.halt, 1);
         nv2a_unlock_fifo(d);
     } else if (state == RUN_STATE_RUNNING) {
         nv2a_lock_fifo(d);
-        qatomic_set(&d->pfifo.halt, false);
+        retro_atomic_store_relaxed_int(&d->pfifo.halt, 0);
         nv2a_unlock_fifo(d);
     } else if (state == RUN_STATE_SHUTDOWN) {
         nv2a_lock_fifo(d);
@@ -541,7 +545,7 @@ static int nv2a_post_load(void *opaque, int version_id)
     /* The switch registers come back with the snapshot; the subchannel they
      * were loaded for does not. */
     d->pgraph.ctx_switch_subchannel = -1;
-    qatomic_set(&d->pgraph.flush_pending, true);
+    retro_atomic_store_relaxed_int(&d->pgraph.flush_pending, 1);
     /* The compression flag follows the restored PFB registers. */
     pfb_update_zcomp(d);
     nv2a_unlock_fifo(d);
@@ -642,8 +646,8 @@ static const VMStateDescription vmstate_nv2a = {
         // FIXME: Split this up into subsections
         VMSTATE_PCI_DEVICE(parent_obj, NV2AState),
         VMSTATE_STRUCT(vga, NV2AState, 0, vmstate_vga_common, VGACommonState),
-        VMSTATE_UINT32(pgraph.pending_interrupts, NV2AState),
-        VMSTATE_UINT32(pgraph.enabled_interrupts, NV2AState),
+        VMSTATE_RETRO_ATOMIC_UINT32(pgraph.pending_interrupts, NV2AState),
+        VMSTATE_RETRO_ATOMIC_UINT32(pgraph.enabled_interrupts, NV2AState),
         VMSTATE_UINT64(pgraph.context_surfaces_2d.object_instance, NV2AState),
         VMSTATE_UINT64(pgraph.context_surfaces_2d.dma_image_source, NV2AState),
         VMSTATE_UINT64(pgraph.context_surfaces_2d.dma_image_dest, NV2AState),
@@ -731,12 +735,12 @@ static const VMStateDescription vmstate_nv2a = {
         VMSTATE_UINT32(pgraph.draw_arrays_max_count, NV2AState),
         VMSTATE_INT32_ARRAY(pgraph.draw_arrays_start, NV2AState, 1250),
         VMSTATE_INT32_ARRAY(pgraph.draw_arrays_count, NV2AState, 1250),
-        VMSTATE_UINT32_ARRAY(pgraph.regs_, NV2AState, 0x2000),
+        VMSTATE_RETRO_ATOMIC_UINT32_ARRAY(pgraph.regs_, NV2AState, 0x2000),
         VMSTATE_UINT32(pmc.pending_interrupts, NV2AState),
         VMSTATE_UINT32(pmc.enabled_interrupts, NV2AState),
         VMSTATE_UINT32(pfifo.pending_interrupts, NV2AState),
         VMSTATE_UINT32(pfifo.enabled_interrupts, NV2AState),
-        VMSTATE_UINT32_ARRAY(pfifo.regs, NV2AState, 0x2000),
+        VMSTATE_RETRO_ATOMIC_UINT32_ARRAY(pfifo.regs, NV2AState, 0x2000),
         VMSTATE_UINT32_ARRAY(pvideo.regs, NV2AState, 0x1000),
         VMSTATE_UINT32(ptimer.pending_interrupts, NV2AState),
         VMSTATE_UINT32(ptimer.enabled_interrupts, NV2AState),
@@ -753,7 +757,7 @@ static const VMStateDescription vmstate_nv2a = {
         VMSTATE_UINT32(pramdac.video_clock_coeff, NV2AState),
         VMSTATE_UINT16(puserdac.write_mode_address, NV2AState),
         VMSTATE_UINT8_ARRAY(puserdac.palette, NV2AState, 256*3),
-        VMSTATE_BOOL(pgraph.waiting_for_flip, NV2AState),
+        VMSTATE_RETRO_ATOMIC_BOOL(pgraph.waiting_for_flip, NV2AState),
         VMSTATE_UNUSED(1), /* was waiting_for_nop: now INTR's ERROR bit */
         VMSTATE_UNUSED(1),
         VMSTATE_UNUSED(1), /* was waiting_for_context_switch: INTR's bit */

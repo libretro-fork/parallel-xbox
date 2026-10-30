@@ -34,23 +34,23 @@ uint64_t user_read(void *opaque, hwaddr addr, unsigned int size)
     unsigned int channel_id = addr >> 16;
     assert(channel_id < NV2A_NUM_CHANNELS);
 
-    uint32_t channel_modes = qatomic_read(&d->pfifo.regs[NV_PFIFO_MODE]);
+    uint32_t channel_modes = pfifo_reg_r(d, NV_PFIFO_MODE);
 
     uint64_t r = 0;
     if (channel_modes & (1 << channel_id)) {
         /* DMA Mode */
 
         unsigned int cur_channel_id =
-            GET_MASK(qatomic_read(&d->pfifo.regs[NV_PFIFO_CACHE1_PUSH1]),
+            GET_MASK(pfifo_reg_r(d, NV_PFIFO_CACHE1_PUSH1),
                      NV_PFIFO_CACHE1_PUSH1_CHID);
 
         if (channel_id == cur_channel_id) {
             switch (addr & 0xFFFF) {
             case NV_USER_DMA_PUT:
-                r = qatomic_read(&d->pfifo.regs[NV_PFIFO_CACHE1_DMA_PUT]);
+                r = pfifo_reg_r(d, NV_PFIFO_CACHE1_DMA_PUT);
                 break;
             case NV_USER_DMA_GET:
-                r = qatomic_read(&d->pfifo.regs[NV_PFIFO_CACHE1_DMA_GET]);
+                r = pfifo_reg_r(d, NV_PFIFO_CACHE1_DMA_GET);
                 /* A game waiting for room in its pushbuffer reads this
                  * again and again while the GPU works through it: it
                  * changes at every read, but the loop is a wait on the
@@ -58,12 +58,12 @@ uint64_t user_read(void *opaque, hwaddr addr, unsigned int size)
                  * do_ld_mmio_beN), so its turns stop taking a host core
                  * from the GPU's thread */
                 if (current_cpu &&
-                    r != qatomic_read(&d->pfifo.regs[NV_PFIFO_CACHE1_DMA_PUT])) {
+                    r != pfifo_reg_r(d, NV_PFIFO_CACHE1_DMA_PUT)) {
                     current_cpu->lr_poll_any = true;
                 }
                 break;
             case NV_USER_REF:
-                r = qatomic_read(&d->pfifo.regs[NV_PFIFO_CACHE1_REF]);
+                r = pfifo_reg_r(d, NV_PFIFO_CACHE1_REF);
                 break;
             default:
                 break;
@@ -90,11 +90,11 @@ void user_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
     unsigned int channel_id = addr >> 16;
     assert(channel_id < NV2A_NUM_CHANNELS);
 
-    uint32_t channel_modes = qatomic_read(&d->pfifo.regs[NV_PFIFO_MODE]);
+    uint32_t channel_modes = pfifo_reg_r(d, NV_PFIFO_MODE);
     if (channel_modes & (1 << channel_id)) {
         /* DMA Mode */
         unsigned int cur_channel_id =
-            GET_MASK(qatomic_read(&d->pfifo.regs[NV_PFIFO_CACHE1_PUSH1]),
+            GET_MASK(pfifo_reg_r(d, NV_PFIFO_CACHE1_PUSH1),
                      NV_PFIFO_CACHE1_PUSH1_CHID);
 
         if (channel_id == cur_channel_id) {
@@ -102,16 +102,14 @@ void user_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
             case NV_USER_DMA_PUT:
                 /* the words up to PUT were written before: the pusher
                  * takes PUT with an acquire load */
-                qatomic_store_release(&d->pfifo.regs[NV_PFIFO_CACHE1_DMA_PUT],
-                                      (uint32_t)val);
+                retro_atomic_store_release_int(
+                    &d->pfifo.regs[NV_PFIFO_CACHE1_DMA_PUT], (int)(uint32_t)val);
                 break;
             case NV_USER_DMA_GET:
-                qatomic_set(&d->pfifo.regs[NV_PFIFO_CACHE1_DMA_GET],
-                            (uint32_t)val);
+                pfifo_reg_w(d, NV_PFIFO_CACHE1_DMA_GET, (uint32_t)val);
                 break;
             case NV_USER_REF:
-                qatomic_set(&d->pfifo.regs[NV_PFIFO_CACHE1_REF],
-                            (uint32_t)val);
+                pfifo_reg_w(d, NV_PFIFO_CACHE1_REF, (uint32_t)val);
                 break;
             default:
                 NV2A_DPRINTF(true, "Unsupported NV_USER write: channel=%u offset=0x%04x\n", channel_id, (unsigned)(addr & 0xFFFF));

@@ -75,7 +75,7 @@ static float pvideo_calculate_scale(unsigned int din_dout,
 static void disp_ref_free(PGRAPHGLState *r, DispRef *ref)
 {
     glDeleteTextures(1, &ref->tex);
-    GLsync f = qatomic_xchg(&ref->presented, NULL);
+    GLsync f = retro_atomic_exchange_ptr(&ref->presented, NULL);
     if (f) {
         glDeleteSync(f);
     }
@@ -85,7 +85,9 @@ static void disp_ref_free(PGRAPHGLState *r, DispRef *ref)
 /* Either thread: a ticket naming the reference is done with. */
 static void disp_ref_put(DispRef *ref)
 {
-    qatomic_dec(&ref->refs);
+    /* release: the ticket's use before the count the render thread
+     * frees the texture by */
+    retro_atomic_dec_int(&ref->refs);
 }
 
 /* Render thread: the orphans whose last ticket has been put back. */
@@ -93,7 +95,7 @@ static void disp_reap_orphans(PGRAPHGLState *r)
 {
     DispRef *ref, *next;
     QTAILQ_FOREACH_SAFE(ref, &r->disp_orphans, entry, next) {
-        if (qatomic_load_acquire(&ref->refs) == 0) {
+        if (retro_atomic_load_acquire_int(&ref->refs) == 0) {
             QTAILQ_REMOVE(&r->disp_orphans, ref, entry);
             disp_ref_free(r, ref);
         }
@@ -115,7 +117,7 @@ void pgraph_gl_display_surface_gone(NV2AState *d, SurfaceBinding *surface)
     }
     surface->disp_ref = NULL;
     ref->orphan = true;
-    if (qatomic_load_acquire(&ref->refs) == 0) {
+    if (retro_atomic_load_acquire_int(&ref->refs) == 0) {
         disp_ref_free(r, ref);
     } else {
         QTAILQ_INSERT_TAIL(&r->disp_orphans, ref, entry);
@@ -128,10 +130,10 @@ void pgraph_gl_display_surface_reuse(NV2AState *d, SurfaceBinding *surface)
 {
     DispRef *ref = surface->disp_ref;
 
-    if (ref == NULL || qatomic_read(&ref->presented) == NULL) {
+    if (ref == NULL || retro_atomic_load_relaxed_ptr(&ref->presented) == NULL) {
         return;
     }
-    GLsync f = qatomic_xchg(&ref->presented, NULL);
+    GLsync f = retro_atomic_exchange_ptr(&ref->presented, NULL);
     if (f) {
         glWaitSync(f, 0, GL_TIMEOUT_IGNORED);
         glDeleteSync(f);
@@ -434,14 +436,14 @@ void pgraph_gl_init_display(NV2AState *d)
     struct PGRAPHState *pg = &d->pgraph;
     PGRAPHGLState *r = pg->gl_renderer_state;
 
-    r->disp_check_pending = false;
+    retro_atomic_int_init(&r->disp_check_pending, 0);
     r->disp_last_surface = NULL;
     r->disp_post_write = 0;
     r->disp_post_read = 1;
-    r->disp_post_middle = 2;
+    retro_atomic_int_init(&r->disp_post_middle, 2);
     memset(r->disp_posts, 0, sizeof(r->disp_posts));
     QTAILQ_INIT(&r->disp_orphans);
-    qatomic_set(&r->disp_shown, false);
+    retro_atomic_store_relaxed_int(&r->disp_shown, 0);
     /* A ticket per surface the display ever saw, few at a time */
     obj_pool_init(&r->disp_ref_pool, sizeof(DispRef), 64);
     scratch_init(&r->pvideo_scratch, 720 * 576 * 4);
@@ -466,8 +468,8 @@ static void disp_post_ticket(PGRAPHGLState *r, const DispPost *p)
 {
     disp_reap_orphans(r);
     r->disp_posts[r->disp_post_write] = *p;
-    int old = qatomic_xchg(&r->disp_post_middle,
-                           r->disp_post_write | DISP_POST_NEW);
+    int old = retro_atomic_exchange_int(&r->disp_post_middle,
+                                        r->disp_post_write | DISP_POST_NEW);
     if (old & DISP_POST_NEW) {
         disp_post_release(r, &r->disp_posts[old & 3]);
     }
@@ -479,7 +481,9 @@ void pgraph_gl_finalize_display(PGRAPHState *pg)
 {
     PGRAPHGLState *r = pg->gl_renderer_state;
 
-    int m = qatomic_xchg(&r->disp_post_middle, r->disp_post_middle & 3);
+    int m = retro_atomic_exchange_int(
+        &r->disp_post_middle,
+        retro_atomic_load_relaxed_int(&r->disp_post_middle) & 3);
     if (m & DISP_POST_NEW) {
         disp_post_release(r, &r->disp_posts[m & 3]);
     }
@@ -512,10 +516,10 @@ static bool post_scanout(NV2AState *d, bool *fresh)
     if (surface == NULL || !surface->color || !surface->width ||
         !surface->height) {
         r->disp_last_surface = NULL;
-        if (qatomic_read(&r->disp_shown)) {
+        if (retro_atomic_load_relaxed_int(&r->disp_shown)) {
             /* The CRTC left the surfaces (a CPU-drawn frame): an empty ticket
              * sends the UI thread back to the VGA path. */
-            qatomic_set(&r->disp_shown, false);
+            retro_atomic_store_relaxed_int(&r->disp_shown, 0);
             DispPost none = { 0 };
             disp_post_ticket(r, &none);
         }
@@ -590,10 +594,10 @@ static bool post_scanout(NV2AState *d, bool *fresh)
     p.rendered = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
     glFlush();
 
-    qatomic_inc(&p.ref->refs);
+    retro_atomic_inc_int(&p.ref->refs);
 
     disp_post_ticket(r, &p);
-    qatomic_set(&r->disp_shown, true);
+    retro_atomic_store_relaxed_int(&r->disp_shown, 1);
 
     r->disp_last_surface = surface;
     r->disp_last_draw_time = surface->draw_time;
@@ -626,10 +630,12 @@ void pgraph_gl_present_scanout(NV2AState *d)
  * in as the middle one, the new one comes out as this thread's. */
 static bool disp_take_post(PGRAPHGLState *r, DispPost *p)
 {
-    if (!(qatomic_read(&r->disp_post_middle) & DISP_POST_NEW)) {
+    if (!(retro_atomic_load_relaxed_int(&r->disp_post_middle) &
+          DISP_POST_NEW)) {
         return false;
     }
-    int old = qatomic_xchg(&r->disp_post_middle, r->disp_post_read);
+    int old = retro_atomic_exchange_int(&r->disp_post_middle,
+                                        r->disp_post_read);
     if (!(old & DISP_POST_NEW)) {
         /* nothing new after all: the slots were only traded */
         r->disp_post_read = old & 3;
@@ -651,7 +657,7 @@ int pgraph_gl_get_framebuffer_surface(NV2AState *d)
      * its own thread and posts it. No surfaces or published picture (early boot)
      * keeps the no-kick behaviour, so this never waits on a renderer with
      * nothing to say. */
-    if (!qatomic_read(&r->have_surfaces) && !qatomic_read(&r->disp_shown)) {
+    if (!retro_atomic_load_relaxed_int(&r->have_surfaces) && !retro_atomic_load_relaxed_int(&r->disp_shown)) {
         return 0;
     }
 
@@ -661,15 +667,15 @@ int pgraph_gl_get_framebuffer_surface(NV2AState *d)
         /* Nothing on screen yet (first frames, VGA text): ask the render
          * thread for a ticket; it is taken when it has been posted, at a
          * later run (this thread waits for nothing). */
-        if (!qatomic_read(&pg->sync_pending)) {
-            qatomic_set(&pg->sync_pending, true);
+        if (!retro_atomic_load_relaxed_int(&pg->sync_pending)) {
+            retro_atomic_store_relaxed_int(&pg->sync_pending, 1);
             pfifo_kick(d);
         }
         return 0;
     } else if (!got) {
         /* The front buffer may change without a scanout move (guest CPU
          * writes, video overlay): have the render thread look, later. */
-        qatomic_set(&r->disp_check_pending, true);
+        retro_atomic_store_relaxed_int(&r->disp_check_pending, 1);
         pfifo_kick(d);
     }
     if (got && p.ref == NULL) {
@@ -687,7 +693,8 @@ int pgraph_gl_get_framebuffer_surface(NV2AState *d)
          * again (pgraph_gl_display_surface_reuse). */
         GLsync presented = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
         glFlush();
-        GLsync old = qatomic_xchg(&p.ref->presented, presented);
+        GLsync old = retro_atomic_exchange_ptr(&p.ref->presented,
+                                               (void *)presented);
         if (old) {
             glDeleteSync(old);
         }
@@ -697,7 +704,7 @@ int pgraph_gl_get_framebuffer_surface(NV2AState *d)
         if (p.pvideo) {
             /* The overlay is read from guest RAM at each resolve: ask
              * for the next one now, not at the next scanout move. */
-            qatomic_set(&r->disp_check_pending, true);
+            retro_atomic_store_relaxed_int(&r->disp_check_pending, 1);
             pfifo_kick(d);
         }
     }

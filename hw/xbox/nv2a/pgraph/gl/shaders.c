@@ -2283,7 +2283,7 @@ void pgraph_gl_shaders_flip_service(NV2AState *d)
     /* Spend only the slack before the vblank deadline, less 2 ms for
      * submission and swap, so this service does not cost a vblank. */
     int64_t slack_us =
-        (qatomic_read(&d->vblank_deadline) -
+        (retro_atomic_load_relaxed_64(&d->vblank_deadline) -
          qemu_clock_get_ns(QEMU_CLOCK_REALTIME)) / 1000
         - 2000;
     if (slack_us > 8000) {

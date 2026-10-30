@@ -25,6 +25,7 @@
 #define XEMU_WIDESCREEN
 
 #include <stdbool.h>
+#include <retro_atomic.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -32,7 +33,7 @@ extern "C" {
 
 void xemu_set_widescreen(bool widescreen);
 bool xemu_get_widescreen(void);
-extern int xemu_aspect_gpio_value;
+extern retro_atomic_int_t xemu_aspect_gpio_value;
 
 #ifdef __cplusplus
 }

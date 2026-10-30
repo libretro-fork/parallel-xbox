@@ -58,10 +58,10 @@ uint64_t pgraph_read(void *opaque, hwaddr addr, unsigned int size)
     uint64_t r = 0;
     switch (addr) {
     case NV_PGRAPH_INTR:
-        r = qatomic_read(&pg->pending_interrupts);
+        r = (uint32_t)retro_atomic_load_relaxed_int(&pg->pending_interrupts);
         break;
     case NV_PGRAPH_INTR_EN:
-        r = qatomic_read(&pg->enabled_interrupts);
+        r = (uint32_t)retro_atomic_load_relaxed_int(&pg->enabled_interrupts);
         break;
     case NV_PGRAPH_RDI_DATA: {
         unsigned int select = PG_GET_MASK(NV_PGRAPH_RDI_INDEX,
@@ -98,11 +98,11 @@ void pgraph_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
     case NV_PGRAPH_INTR:
         /* The ack of ERROR or CONTEXT_SWITCH is what the pfifo thread
          * waits for (pgraph_pending_bit): the kick has it look */
-        qatomic_and(&pg->pending_interrupts, ~(uint32_t)val);
+        retro_atomic_fetch_and_int(&pg->pending_interrupts, (int)~(uint32_t)val);
         pfifo_kick(d);
         break;
     case NV_PGRAPH_INTR_EN:
-        qatomic_set(&pg->enabled_interrupts, (uint32_t)val);
+        retro_atomic_store_relaxed_int(&pg->enabled_interrupts, (int)(uint32_t)val);
         break;
     case NV_PGRAPH_INCREMENT:
         if (val & NV_PGRAPH_INCREMENT_READ_3D) {
@@ -212,7 +212,8 @@ void pgraph_context_switch(NV2AState *d, unsigned int channel_id)
         assert(!PG_GET_MASK(NV_PGRAPH_DEBUG_3,
                             NV_PGRAPH_DEBUG_3_HW_CONTEXT_SWITCH));
 
-        qatomic_or(&pg->pending_interrupts, NV_PGRAPH_INTR_CONTEXT_SWITCH);
+        retro_atomic_fetch_or_int(&pg->pending_interrupts,
+                                  (int)NV_PGRAPH_INTR_CONTEXT_SWITCH);
         pg->ctx_switch_subchannel = -1;
         pgraph_schedule_irq_update(d);
     }
@@ -242,41 +243,74 @@ static bool pgraph_cpu_pages(hwaddr addr, hwaddr size, unsigned long *first,
     return true;
 }
 
-/* bits set atomically, a word at a time, for the other thread's reads */
-static void pgraph_cpu_set_atomic(unsigned long *map, unsigned long first,
+/* The mask of bits [lo, lo + span) of a 32-bit word */
+static inline uint32_t pgraph_cpu_mask(unsigned long lo, unsigned long span)
+{
+    return (span == PGRAPH_CPU_WORD_BITS ? ~0u : ((1u << span) - 1)) << lo;
+}
+
+/* bits set atomically, a word at a time, for the other thread's reads;
+ * a word that has them all already is only read */
+static void pgraph_cpu_set_atomic(retro_atomic_int_t *map, unsigned long first,
                                   unsigned long count)
 {
     unsigned long n;
 
     for (n = first; n < first + count;) {
-        unsigned long w = BIT_WORD(n);
-        unsigned long lo = n % BITS_PER_LONG;
-        unsigned long span = MIN(count - (n - first), BITS_PER_LONG - lo);
-        unsigned long mask = (span == BITS_PER_LONG ? ~0UL :
-                              ((1UL << span) - 1)) << lo;
-        if ((qatomic_read(&map[w]) & mask) != mask) {
-            qatomic_or(&map[w], mask);
+        unsigned long w = n / PGRAPH_CPU_WORD_BITS;
+        unsigned long lo = n % PGRAPH_CPU_WORD_BITS;
+        unsigned long span = MIN(count - (n - first),
+                                 PGRAPH_CPU_WORD_BITS - lo);
+        uint32_t mask = pgraph_cpu_mask(lo, span);
+        if (((uint32_t)retro_atomic_load_relaxed_int(&map[w]) & mask) !=
+            mask) {
+            retro_atomic_fetch_or_int(&map[w], (int)mask);
         }
         n += span;
     }
 }
 
-static bool pgraph_cpu_any(const unsigned long *map, unsigned long first,
+/* the GPU thread's own bitmaps (build, taken_*) */
+static void pgraph_cpu_set(uint32_t *map, unsigned long first,
                            unsigned long count)
 {
-    return find_next_bit(map, first + count, first) < first + count;
+    for (unsigned long n = first; n < first + count;) {
+        unsigned long lo = n % PGRAPH_CPU_WORD_BITS;
+        unsigned long span = MIN(count - (n - first),
+                                 PGRAPH_CPU_WORD_BITS - lo);
+        map[n / PGRAPH_CPU_WORD_BITS] |= pgraph_cpu_mask(lo, span);
+        n += span;
+    }
 }
 
-/* The GPU thread: a surface over [addr, addr + size) is ahead of RAM now.
- * A full barrier after (qatomic_or's), before the method completes and the
- * guest can see it complete. */
+static bool pgraph_cpu_any(const uint32_t *map, unsigned long first,
+                           unsigned long count)
+{
+    for (unsigned long n = first; n < first + count;) {
+        unsigned long lo = n % PGRAPH_CPU_WORD_BITS;
+        unsigned long span = MIN(count - (n - first),
+                                 PGRAPH_CPU_WORD_BITS - lo);
+        if (map[n / PGRAPH_CPU_WORD_BITS] & pgraph_cpu_mask(lo, span)) {
+            return true;
+        }
+        n += span;
+    }
+    return false;
+}
+
+/* The GPU thread: a surface over [addr, addr + size) is ahead of RAM now,
+ * before the method completes and the guest can see it complete. The
+ * guest learns of that completion from a later store of this thread (a
+ * register, a notifier, the DMA get pointer): the release fence orders the
+ * bits before it, and the guest reads them after an acquire fence
+ * (pgraph_cpu_access). Free on x86, where this was a locked instruction. */
 void pgraph_cpu_ahead_mark(PGRAPHState *pg, hwaddr addr, hwaddr size)
 {
     unsigned long first, count;
 
     if (pgraph_cpu_pages(addr, size, &first, &count)) {
         pgraph_cpu_set_atomic(pg->cpu.ahead, first, count);
-        smp_mb();
+        retro_atomic_thread_fence_release();
     }
 }
 
@@ -286,7 +320,7 @@ void pgraph_cpu_ahead_mark(PGRAPHState *pg, hwaddr addr, hwaddr size)
  * does both). */
 void pgraph_cpu_ahead_begin(PGRAPHState *pg)
 {
-    bitmap_zero(pg->cpu.build, PGRAPH_CPU_PAGES);
+    memset(pg->cpu.build, 0, sizeof(pg->cpu.build));
 }
 
 void pgraph_cpu_ahead_add(PGRAPHState *pg, hwaddr addr, hwaddr size)
@@ -294,18 +328,22 @@ void pgraph_cpu_ahead_add(PGRAPHState *pg, hwaddr addr, hwaddr size)
     unsigned long first, count;
 
     if (pgraph_cpu_pages(addr, size, &first, &count)) {
-        bitmap_set(pg->cpu.build, first, count);
+        pgraph_cpu_set(pg->cpu.build, first, count);
     }
 }
 
 void pgraph_cpu_ahead_commit(PGRAPHState *pg)
 {
-    for (unsigned long w = 0; w < BITS_TO_LONGS(PGRAPH_CPU_PAGES); w++) {
-        if (qatomic_read(&pg->cpu.ahead[w]) != pg->cpu.build[w]) {
-            qatomic_set(&pg->cpu.ahead[w], pg->cpu.build[w]);
+    /* the downloads' data in RAM before the bits that stop the CPU
+     * waiting for it */
+    retro_atomic_thread_fence_release();
+    for (unsigned long w = 0; w < PGRAPH_CPU_WORDS; w++) {
+        if ((uint32_t)retro_atomic_load_relaxed_int(&pg->cpu.ahead[w]) !=
+            pg->cpu.build[w]) {
+            retro_atomic_store_relaxed_int(&pg->cpu.ahead[w],
+                                           (int)pg->cpu.build[w]);
         }
     }
-    smp_mb();
 }
 
 /* The GPU thread, at a method: whether the CPU wrote or read any surface
@@ -313,16 +351,20 @@ void pgraph_cpu_ahead_commit(PGRAPHState *pg)
  * taken_read) for pgraph_cpu_taken_* until the next take */
 bool pgraph_cpu_take_touched(PGRAPHState *pg)
 {
-    if (!qatomic_read(&pg->cpu.touched)) {
+    /* touched cleared before the bits are taken (the exchange orders it):
+     * an access that sets bits after the take sets touched again after
+     * them, and is seen at the next take */
+    if (!retro_atomic_load_relaxed_int(&pg->cpu.touched) ||
+        !retro_atomic_exchange_int(&pg->cpu.touched, 0)) {
         return false;
     }
-    qatomic_set(&pg->cpu.touched, 0);
-    smp_mb(); /* bits set after this are seen at the next take */
-    for (unsigned long w = 0; w < BITS_TO_LONGS(PGRAPH_CPU_PAGES); w++) {
-        pg->cpu.taken_written[w] = qatomic_read(&pg->cpu.written[w]) ?
-                                   qatomic_xchg(&pg->cpu.written[w], 0) : 0;
-        pg->cpu.taken_read[w] = qatomic_read(&pg->cpu.clean_read[w]) ?
-                                qatomic_xchg(&pg->cpu.clean_read[w], 0) : 0;
+    for (unsigned long w = 0; w < PGRAPH_CPU_WORDS; w++) {
+        pg->cpu.taken_written[w] =
+            retro_atomic_load_relaxed_int(&pg->cpu.written[w]) ?
+            (uint32_t)retro_atomic_exchange_int(&pg->cpu.written[w], 0) : 0;
+        pg->cpu.taken_read[w] =
+            retro_atomic_load_relaxed_int(&pg->cpu.clean_read[w]) ?
+            (uint32_t)retro_atomic_exchange_int(&pg->cpu.clean_read[w], 0) : 0;
     }
     return true;
 }
@@ -353,18 +395,26 @@ bool pgraph_cpu_access(PGRAPHState *pg, hwaddr addr, hwaddr len, bool write)
     if (!pgraph_cpu_pages(addr, len, &first, &count)) {
         return false;
     }
-    smp_mb(); /* the GPU's marks before what the guest saw complete */
-    for (unsigned long n = first; n < first + count; n++) {
-        if (qatomic_read(&pg->cpu.ahead[BIT_WORD(n)]) & BIT_MASK(n)) {
+    /* the GPU's marks before what the guest saw complete: the guest's
+     * earlier load of that completion, then these loads */
+    retro_atomic_thread_fence_acquire();
+    for (unsigned long n = first; n < first + count;) {
+        unsigned long lo = n % PGRAPH_CPU_WORD_BITS;
+        unsigned long span = MIN(first + count - n, PGRAPH_CPU_WORD_BITS - lo);
+        if ((uint32_t)retro_atomic_load_relaxed_int(
+                &pg->cpu.ahead[n / PGRAPH_CPU_WORD_BITS]) &
+            pgraph_cpu_mask(lo, span)) {
             pg->cpu.dl_addr = addr;
             pg->cpu.dl_len = len;
             return true;
         }
+        n += span;
     }
     pgraph_cpu_set_atomic(write ? pg->cpu.written : pg->cpu.clean_read,
                           first, count);
-    if (!qatomic_read(&pg->cpu.touched)) {
-        qatomic_set(&pg->cpu.touched, 1);
+    /* after the bits (release): a take that sees touched sees them */
+    if (!retro_atomic_load_relaxed_int(&pg->cpu.touched)) {
+        retro_atomic_store_release_int(&pg->cpu.touched, 1);
     }
     return false;
 }
@@ -473,12 +523,19 @@ void pgraph_init(NV2AState *d)
     PGRAPHState *pg = &d->pgraph;
     /* every page ahead until the first rebuild: an access before the
      * renderer has surfaces at most asks for a download of nothing */
-    bitmap_fill(pg->cpu.ahead, PGRAPH_CPU_PAGES);
+    for (unsigned long w = 0; w < PGRAPH_CPU_WORDS; w++) {
+        retro_atomic_int_init(&pg->cpu.ahead[w], -1);
+        retro_atomic_int_init(&pg->cpu.written[w], 0);
+        retro_atomic_int_init(&pg->cpu.clean_read[w], 0);
+    }
+    retro_atomic_int_init(&pg->cpu.touched, 0);
+    retro_atomic_int_init(&pg->cpu.dl_pending, 0);
     retro_eventcount_init(&pg->sync_complete);
     retro_eventcount_init(&pg->flush_complete);
     retro_eventcount_init(&pg->framebuffer_released);
     retro_eventcount_init(&pg->renderer_switch_complete);
-    pg->renderer_switch_phase = PGRAPH_RENDERER_SWITCH_PHASE_IDLE;
+    retro_atomic_int_init(&pg->renderer_switch_phase,
+                          PGRAPH_RENDERER_SWITCH_PHASE_IDLE);
     pg->irq_bh = qemu_bh_new(pgraph_update_irq_bh, d);
 
     pg->frame_time = 0;
@@ -555,15 +612,17 @@ static bool attempt_renderer_init(PGRAPHState *pg)
 {
     NV2AState *d = container_of(pg, NV2AState, pgraph);
 
-    qatomic_set(&pg->renderer, renderers[g_config.display.renderer]);
-    if (!pg->renderer) {
+    /* release: the frontend's thread reads it, with the renderer's state */
+    retro_atomic_store_release_ptr(&pg->renderer,
+                                   (void *)renderers[g_config.display.renderer]);
+    if (!pgraph_renderer(pg)) {
         xemu_queue_error_message("Configured renderer not available");
         return false;
     }
 
     Error *local_err = NULL;
-    if (pg->renderer->ops.init) {
-        pg->renderer->ops.init(d, &local_err);
+    if (pgraph_renderer(pg)->ops.init) {
+        pgraph_renderer(pg)->ops.init(d, &local_err);
     }
     if (local_err) {
         const char *msg = error_get_pretty(local_err);
@@ -587,7 +646,7 @@ static void init_renderer(PGRAPHState *pg)
         g_config.display.renderer = default_renderer;
         if (attempt_renderer_init(pg)) {
             g_autofree gchar *msg = g_strdup_printf(
-                "Switched to default renderer: %s", pg->renderer->name);
+                "Switched to default renderer: %s", pgraph_renderer(pg)->name);
             xemu_queue_notification(msg);
             return;
         }
@@ -608,8 +667,8 @@ void pgraph_destroy(PGRAPHState *pg)
 {
     NV2AState *d = container_of(pg, NV2AState, pgraph);
 
-    if (pg->renderer->ops.finalize) {
-       pg->renderer->ops.finalize(d);
+    if (pgraph_renderer(pg)->ops.finalize) {
+       pgraph_renderer(pg)->ops.finalize(d);
     }
     /* the pfifo thread, which schedules it, has been joined */
     qemu_bh_delete(pg->irq_bh);
@@ -644,9 +703,10 @@ int nv2a_get_framebuffer_surface(void)
     PGRAPHState *pg = &d->pgraph;
     int s = 0;
 
-    assert(!pg->framebuffer_in_use);
-    qatomic_store_release(&pg->framebuffer_in_use, true);
-    const PGRAPHRenderer *renderer = qatomic_read(&pg->renderer);
+    assert(!retro_atomic_load_relaxed_int(&pg->framebuffer_in_use));
+    retro_atomic_store_release_int(&pg->framebuffer_in_use, 1);
+    const PGRAPHRenderer *renderer =
+        retro_atomic_load_acquire_ptr(&pg->renderer);
     if (renderer && renderer->ops.get_framebuffer_surface) {
         s = renderer->ops.get_framebuffer_surface(d);
     }
@@ -662,7 +722,7 @@ void nv2a_release_framebuffer_surface(void)
     }
     NV2AState *d = g_nv2a;
     PGRAPHState *pg = &d->pgraph;
-    qatomic_store_release(&pg->framebuffer_in_use, false);
+    retro_atomic_store_release_int(&pg->framebuffer_in_use, 0);
     retro_eventcount_notify(&pg->framebuffer_released);
 }
 
@@ -683,22 +743,26 @@ void nv2a_release_framebuffer_surface(void)
  */
 bool nv2a_libretro_switch_renderer(int type)
 {
-    extern int nv2a_libretro_waiter;
+    extern retro_atomic_int_t nv2a_libretro_waiter;
     NV2AState *d = g_nv2a;
     CPUState *cpu = qemu_get_cpu(0);
     bool ok = false;
 
-    if (!d || !cpu || !qatomic_read(&d->pgraph.renderer)) {
+    if (!d || !cpu || !retro_atomic_load_acquire_ptr(&d->pgraph.renderer)) {
         return false;
     }
     g_config.display.renderer = type;
     pfifo_kick(d);
 
     for (;;) {
-        qatomic_set_mb(&nv2a_libretro_waiter, 1);
-        const PGRAPHRenderer *renderer = qatomic_read(&d->pgraph.renderer);
+        /* a Dekker handshake with the pfifo thread's park (pfifo.c
+         * pfifo_idle_wait): the flag stored, a full fence, then the look */
+        retro_atomic_store_relaxed_int(&nv2a_libretro_waiter, 1);
+        retro_atomic_thread_fence_seq_cst();
+        const PGRAPHRenderer *renderer =
+            retro_atomic_load_acquire_ptr(&d->pgraph.renderer);
         if (renderer && renderer->type == type &&
-            qatomic_read(&d->pgraph.renderer_switch_phase) ==
+            retro_atomic_load_acquire_int(&d->pgraph.renderer_switch_phase) ==
                 PGRAPH_RENDERER_SWITCH_PHASE_IDLE) {
             ok = true;
             break;
@@ -709,7 +773,7 @@ bool nv2a_libretro_switch_renderer(int type)
         }
         main_loop_wait(false);
     }
-    qatomic_set(&nv2a_libretro_waiter, 0);
+    retro_atomic_store_relaxed_int(&nv2a_libretro_waiter, 0);
     return ok;
 }
 
@@ -720,8 +784,8 @@ void nv2a_trigger_display_render(void)
     PGRAPHState *pg = &d->pgraph;
 
     /* Only trigger if not already pending */
-    if (!qatomic_read(&pg->sync_pending)) {
-        qatomic_set(&pg->sync_pending, true);
+    if (!retro_atomic_load_relaxed_int(&pg->sync_pending)) {
+        retro_atomic_store_relaxed_int(&pg->sync_pending, 1);
         pfifo_kick(d);
     }
 }
@@ -734,7 +798,8 @@ void nv2a_set_surface_scale_factor(unsigned int scale)
     }
     NV2AState *d = g_nv2a;
 
-    const PGRAPHRenderer *renderer = qatomic_read(&d->pgraph.renderer);
+    const PGRAPHRenderer *renderer =
+        retro_atomic_load_acquire_ptr(&d->pgraph.renderer);
     bql_unlock();
     if (renderer->ops.set_surface_scale_factor) {
         renderer->ops.set_surface_scale_factor(d, scale);
@@ -750,7 +815,8 @@ unsigned int nv2a_get_surface_scale_factor(void)
     NV2AState *d = g_nv2a;
     int s = 1;
 
-    const PGRAPHRenderer *renderer = qatomic_read(&d->pgraph.renderer);
+    const PGRAPHRenderer *renderer =
+        retro_atomic_load_acquire_ptr(&d->pgraph.renderer);
     bql_unlock();
     if (renderer->ops.get_surface_scale_factor) {
         s = renderer->ops.get_surface_scale_factor(d);
@@ -1011,8 +1077,10 @@ int pgraph_method(NV2AState *d, unsigned int subchannel,
     /* The guest wrote registers (a context restore, pgraph_write): the
      * switch registers are loaded again and every register counts as
      * changed, the dirty map being this thread's alone */
-    if (qatomic_load_acquire(&pg->guest_wrote_regs)) {
-        qatomic_set(&pg->guest_wrote_regs, false);
+    /* taken with an exchange: a write between a look and a clear is not
+     * lost */
+    if (retro_atomic_load_relaxed_int(&pg->guest_wrote_regs) &&
+        retro_atomic_exchange_int(&pg->guest_wrote_regs, 0)) {
         pg->ctx_switch_subchannel = -1;
         bitmap_fill(pg->regs_dirty, 0x2000 / sizeof(uint32_t));
     }
@@ -1131,7 +1199,7 @@ int pgraph_method(NV2AState *d, unsigned int subchannel,
             image_blit->height = parameter >> 16;
 
             if (image_blit->width && image_blit->height) {
-                d->pgraph.renderer->ops.image_blit(d);
+                pgraph_renderer(&d->pgraph)->ops.image_blit(d);
             }
             break;
         default:
@@ -1215,7 +1283,7 @@ DEF_METHOD(NV097, NO_OPERATION)
     pgraph_reg_w(pg, NV_PGRAPH_TRAPPED_DATA_LOW, parameter);
     pgraph_reg_w(pg, NV_PGRAPH_NSOURCE,
                  NV_PGRAPH_NSOURCE_NOTIFICATION); /* TODO: check this */
-    qatomic_or(&pg->pending_interrupts, NV_PGRAPH_INTR_ERROR);
+    retro_atomic_fetch_or_int(&pg->pending_interrupts, (int)NV_PGRAPH_INTR_ERROR);
 
     pgraph_schedule_irq_update(d);
 }
@@ -1268,13 +1336,13 @@ DEF_METHOD(NV097, FLIP_INCREMENT_WRITE)
 DEF_METHOD(NV097, FLIP_STALL)
 {
     trace_nv2a_pgraph_flip_stall();
-    d->pgraph.renderer->ops.surface_update(d, false, true, true);
-    d->pgraph.renderer->ops.flip_stall(d);
+    pgraph_renderer(&d->pgraph)->ops.surface_update(d, false, true, true);
+    pgraph_renderer(&d->pgraph)->ops.flip_stall(d);
 
     xemu_cost_flip_deadline(d);
 
     nv2a_profile_flip_stall();
-    pg->waiting_for_flip = true;
+    retro_atomic_store_relaxed_int(&pg->waiting_for_flip, 1);
 }
 
 int64_t xemu_flip_ready_ns;
@@ -1305,7 +1373,7 @@ DEF_METHOD(NV097, SET_CONTEXT_DMA_STATE)
 DEF_METHOD(NV097, SET_CONTEXT_DMA_COLOR)
 {
     /* try to get any straggling draws in before the surface's changed :/ */
-    d->pgraph.renderer->ops.surface_update(d, false, true, true);
+    pgraph_renderer(&d->pgraph)->ops.surface_update(d, false, true, true);
 
     pg->dma_color = parameter;
     pg->surface_color.buffer_dirty = true;
@@ -1334,14 +1402,14 @@ DEF_METHOD(NV097, SET_CONTEXT_DMA_SEMAPHORE)
 
 DEF_METHOD(NV097, SET_CONTEXT_DMA_REPORT)
 {
-    d->pgraph.renderer->ops.process_pending_reports(d);
+    pgraph_renderer(&d->pgraph)->ops.process_pending_reports(d);
 
     pg->dma_report = parameter;
 }
 
 DEF_METHOD(NV097, SET_SURFACE_CLIP_HORIZONTAL)
 {
-    d->pgraph.renderer->ops.surface_update(d, false, true, true);
+    pgraph_renderer(&d->pgraph)->ops.surface_update(d, false, true, true);
 
     pg->surface_shape.clip_x =
         GET_MASK(parameter, NV097_SET_SURFACE_CLIP_HORIZONTAL_X);
@@ -1351,7 +1419,7 @@ DEF_METHOD(NV097, SET_SURFACE_CLIP_HORIZONTAL)
 
 DEF_METHOD(NV097, SET_SURFACE_CLIP_VERTICAL)
 {
-    d->pgraph.renderer->ops.surface_update(d, false, true, true);
+    pgraph_renderer(&d->pgraph)->ops.surface_update(d, false, true, true);
 
     pg->surface_shape.clip_y =
         GET_MASK(parameter, NV097_SET_SURFACE_CLIP_VERTICAL_Y);
@@ -1361,7 +1429,7 @@ DEF_METHOD(NV097, SET_SURFACE_CLIP_VERTICAL)
 
 DEF_METHOD(NV097, SET_SURFACE_FORMAT)
 {
-    d->pgraph.renderer->ops.surface_update(d, false, true, true);
+    pgraph_renderer(&d->pgraph)->ops.surface_update(d, false, true, true);
 
     pg->surface_shape.color_format =
         GET_MASK(parameter, NV097_SET_SURFACE_FORMAT_COLOR);
@@ -1384,7 +1452,7 @@ DEF_METHOD(NV097, SET_SURFACE_FORMAT)
 
 DEF_METHOD(NV097, SET_SURFACE_PITCH)
 {
-    d->pgraph.renderer->ops.surface_update(d, false, true, true);
+    pgraph_renderer(&d->pgraph)->ops.surface_update(d, false, true, true);
     unsigned int color_pitch = GET_MASK(parameter, NV097_SET_SURFACE_PITCH_COLOR);
     unsigned int zeta_pitch  = GET_MASK(parameter, NV097_SET_SURFACE_PITCH_ZETA);
 
@@ -1397,14 +1465,14 @@ DEF_METHOD(NV097, SET_SURFACE_PITCH)
 
 DEF_METHOD(NV097, SET_SURFACE_COLOR_OFFSET)
 {
-    d->pgraph.renderer->ops.surface_update(d, false, true, true);
+    pgraph_renderer(&d->pgraph)->ops.surface_update(d, false, true, true);
     pg->surface_color.buffer_dirty |= (pg->surface_color.offset != parameter);
     pg->surface_color.offset = parameter;
 }
 
 DEF_METHOD(NV097, SET_SURFACE_ZETA_OFFSET)
 {
-    d->pgraph.renderer->ops.surface_update(d, false, true, true);
+    pgraph_renderer(&d->pgraph)->ops.surface_update(d, false, true, true);
     pg->surface_zeta.buffer_dirty |= (pg->surface_zeta.offset != parameter);
     pg->surface_zeta.offset = parameter;
 }
@@ -1438,7 +1506,7 @@ DEF_METHOD(NV097, SET_TEXTURE_ADDRESS)
 
 DEF_METHOD(NV097, SET_CONTROL0)
 {
-    d->pgraph.renderer->ops.surface_update(d, false, true, true);
+    pgraph_renderer(&d->pgraph)->ops.surface_update(d, false, true, true);
 
     bool stencil_write_enable =
         parameter & NV097_SET_CONTROL0_STENCIL_WRITE_ENABLE;
@@ -2891,7 +2959,7 @@ DEF_METHOD(NV097, SET_LOGIC_OP)
 
 DEF_METHOD(NV097, CLEAR_REPORT_VALUE)
 {
-    d->pgraph.renderer->ops.clear_report_value(d);
+    pgraph_renderer(&d->pgraph)->ops.clear_report_value(d);
 }
 
 DEF_METHOD(NV097, SET_TWO_SIDE_LIGHT_EN)
@@ -2916,7 +2984,7 @@ DEF_METHOD(NV097, GET_REPORT)
         xemu_cost_reports++;
     }
 
-    d->pgraph.renderer->ops.get_report(d, parameter);
+    pgraph_renderer(&d->pgraph)->ops.get_report(d, parameter);
 }
 
 DEF_METHOD_INC(NV097, SET_EYE_DIRECTION)
@@ -2935,7 +3003,7 @@ DEF_METHOD(NV097, SET_BEGIN_END)
             return;
         }
         nv2a_profile_inc_counter(NV2A_PROF_BEGIN_ENDS);
-        d->pgraph.renderer->ops.draw_end(d);
+        pgraph_renderer(&d->pgraph)->ops.draw_end(d);
         pgraph_reset_inline_buffers(pg);
         pg->primitive_mode = PRIM_TYPE_INVALID;
     } else {
@@ -2946,7 +3014,7 @@ DEF_METHOD(NV097, SET_BEGIN_END)
         assert(parameter <= NV097_SET_BEGIN_END_OP_POLYGON);
         pg->primitive_mode = parameter;
         pgraph_reset_inline_buffers(pg);
-        d->pgraph.renderer->ops.draw_begin(d);
+        pgraph_renderer(&d->pgraph)->ops.draw_begin(d);
     }
 }
 
@@ -3119,7 +3187,7 @@ static void pgraph_expand_draw_arrays(NV2AState *d)
      * triggered if a set of BEGIN+DA+END triplets is followed by the
      * BEGIN+DA+ARRAY_ELEMENT+... chain that caused this expansion. */
     if (pg->draw_arrays_length > 1) {
-        d->pgraph.renderer->ops.flush_draw(d);
+        pgraph_renderer(&d->pgraph)->ops.flush_draw(d);
         pgraph_reset_inline_buffers(pg);
     }
     assert((pg->inline_elements_length + count) < NV2A_MAX_BATCH_LENGTH);
@@ -3368,7 +3436,7 @@ DEF_METHOD(NV097, SET_COLOR_CLEAR_VALUE)
 
 DEF_METHOD(NV097, CLEAR_SURFACE)
 {
-    d->pgraph.renderer->ops.clear_surface(d, parameter);
+    pgraph_renderer(&d->pgraph)->ops.clear_surface(d, parameter);
 }
 
 DEF_METHOD(NV097, SET_CLEAR_RECT_HORIZONTAL)
@@ -3504,8 +3572,8 @@ DEF_METHOD(NV097, SET_TRANSFORM_PROGRAM_LOAD)
     {
         /* Build a changed program's shaders while the game is still
          * uploading, not when a draw needs them (a renderer option). */
-        if (!pg->program_data_dirty || !pg->renderer ||
-            !pg->renderer->ops.prewarm_vertex_program) {
+        if (!pg->program_data_dirty || !pgraph_renderer(pg) ||
+            !pgraph_renderer(pg)->ops.prewarm_vertex_program) {
             goto prewarm_done;
         }
         /* Only a complete program: its words arrive after this method. */
@@ -3523,7 +3591,7 @@ DEF_METHOD(NV097, SET_TRANSFORM_PROGRAM_LOAD)
                                    sizeof(pg->program_data));
             if (!vp_prewarmed_contains(h)) {
                 vp_prewarmed[vp_prewarmed_n++] = h;
-                pg->renderer->ops.prewarm_vertex_program(d);
+                pgraph_renderer(pg)->ops.prewarm_vertex_program(d);
             }
         }
     prewarm_done:;
@@ -3673,14 +3741,14 @@ static void do_wait_for_renderer_switch(CPUState *cpu, run_on_cpu_data data)
 {
     NV2AState *d = (NV2AState *)data.host_ptr;
 
-    qatomic_store_release(&d->pgraph.renderer_switch_phase,
-                          PGRAPH_RENDERER_SWITCH_PHASE_CPU_WAITING);
+    retro_atomic_store_release_int(&d->pgraph.renderer_switch_phase,
+                                   PGRAPH_RENDERER_SWITCH_PHASE_CPU_WAITING);
     pfifo_kick(d);
     /* until the pfifo thread has the new renderer up (phase IDLE) */
     for (;;) {
         int key =
             retro_eventcount_prepare_wait(&d->pgraph.renderer_switch_complete);
-        if (qatomic_load_acquire(&d->pgraph.renderer_switch_phase) ==
+        if (retro_atomic_load_acquire_int(&d->pgraph.renderer_switch_phase) ==
             PGRAPH_RENDERER_SWITCH_PHASE_IDLE) {
             retro_eventcount_cancel_wait(&d->pgraph.renderer_switch_complete);
             break;
@@ -3692,58 +3760,59 @@ static void do_wait_for_renderer_switch(CPUState *cpu, run_on_cpu_data data)
 void pgraph_process_pending(NV2AState *d)
 {
     PGRAPHState *pg = &d->pgraph;
-    if ((qatomic_read(&pg->cpu.touched) || qatomic_read(&pg->cpu.dl_pending)) &&
-        pg->renderer->ops.cpu_access_service) {
-        pg->renderer->ops.cpu_access_service(d);
+    if ((retro_atomic_load_relaxed_int(&pg->cpu.touched) ||
+         retro_atomic_load_relaxed_int(&pg->cpu.dl_pending)) &&
+        pgraph_renderer(pg)->ops.cpu_access_service) {
+        pgraph_renderer(pg)->ops.cpu_access_service(d);
     }
-    pg->renderer->ops.process_pending(d);
+    pgraph_renderer(pg)->ops.process_pending(d);
 
-    if (g_config.display.renderer != pg->renderer->type &&
-        qatomic_read(&pg->renderer_switch_phase) ==
+    if (g_config.display.renderer != pgraph_renderer(pg)->type &&
+        retro_atomic_load_relaxed_int(&pg->renderer_switch_phase) ==
             PGRAPH_RENDERER_SWITCH_PHASE_IDLE) {
-        qatomic_set(&pg->renderer_switch_phase,
-                    PGRAPH_RENDERER_SWITCH_PHASE_STARTED);
+        retro_atomic_store_relaxed_int(&pg->renderer_switch_phase,
+                                       PGRAPH_RENDERER_SWITCH_PHASE_STARTED);
         async_safe_run_on_cpu(qemu_get_cpu(0), do_wait_for_renderer_switch,
                               RUN_ON_CPU_HOST_PTR(d));
     }
 
-    if (qatomic_load_acquire(&pg->renderer_switch_phase) ==
+    if (retro_atomic_load_acquire_int(&pg->renderer_switch_phase) ==
         PGRAPH_RENDERER_SWITCH_PHASE_CPU_WAITING) {
-        if (pg->renderer) {
-            pg->flush_pending = true;
-            pg->renderer->ops.process_pending(d);
+        if (pgraph_renderer(pg)) {
+            retro_atomic_store_relaxed_int(&pg->flush_pending, 1);
+            pgraph_renderer(pg)->ops.process_pending(d);
         }
         qemu_mutex_unlock(&d->pfifo.lock);
 
-        if (pg->renderer) {
+        if (pgraph_renderer(pg)) {
             /* the frontend's thread done with the old renderer's
              * framebuffer */
             for (;;) {
                 int key =
                     retro_eventcount_prepare_wait(&pg->framebuffer_released);
-                if (!qatomic_load_acquire(&pg->framebuffer_in_use)) {
+                if (!retro_atomic_load_acquire_int(&pg->framebuffer_in_use)) {
                     retro_eventcount_cancel_wait(&pg->framebuffer_released);
                     break;
                 }
                 retro_eventcount_commit_wait(&pg->framebuffer_released, key);
             }
 
-            if (pg->renderer->ops.finalize) {
-                pg->renderer->ops.finalize(d);
+            if (pgraph_renderer(pg)->ops.finalize) {
+                pgraph_renderer(pg)->ops.finalize(d);
             }
         }
 
         init_renderer(pg);
         /* the new renderer's surfaces start from RAM: until it rebuilds
          * the ahead bitmap, an access asks it (the CPU waits meanwhile) */
-        for (unsigned long w = 0; w < BITS_TO_LONGS(PGRAPH_CPU_PAGES); w++) {
-            qatomic_set(&pg->cpu.ahead[w], ~0UL);
+        for (unsigned long w = 0; w < PGRAPH_CPU_WORDS; w++) {
+            retro_atomic_store_relaxed_int(&pg->cpu.ahead[w], -1);
         }
 
         qemu_mutex_lock(&d->pfifo.lock);
 
-        qatomic_store_release(&pg->renderer_switch_phase,
-                              PGRAPH_RENDERER_SWITCH_PHASE_IDLE);
+        retro_atomic_store_release_int(&pg->renderer_switch_phase,
+                                       PGRAPH_RENDERER_SWITCH_PHASE_IDLE);
         retro_eventcount_notify(&pg->renderer_switch_complete);
     }
 }
@@ -3751,29 +3820,29 @@ void pgraph_process_pending(NV2AState *d)
 void pgraph_process_pending_reports(NV2AState *d)
 {
     PGRAPHState *pg = &d->pgraph;
-    pg->renderer->ops.process_pending_reports(d);
+    pgraph_renderer(pg)->ops.process_pending_reports(d);
 }
 
 void pgraph_pre_savevm_trigger(NV2AState *d)
 {
     PGRAPHState *pg = &d->pgraph;
-    pg->renderer->ops.pre_savevm_trigger(d);
+    pgraph_renderer(pg)->ops.pre_savevm_trigger(d);
 }
 
 void pgraph_pre_savevm_wait(NV2AState *d)
 {
     PGRAPHState *pg = &d->pgraph;
-    pg->renderer->ops.pre_savevm_wait(d);
+    pgraph_renderer(pg)->ops.pre_savevm_wait(d);
 }
 
 void pgraph_pre_shutdown_trigger(NV2AState *d)
 {
     PGRAPHState *pg = &d->pgraph;
-    pg->renderer->ops.pre_shutdown_trigger(d);
+    pgraph_renderer(pg)->ops.pre_shutdown_trigger(d);
 }
 
 void pgraph_pre_shutdown_wait(NV2AState *d)
 {
     PGRAPHState *pg = &d->pgraph;
-    pg->renderer->ops.pre_shutdown_wait(d);
+    pgraph_renderer(pg)->ops.pre_shutdown_wait(d);
 }

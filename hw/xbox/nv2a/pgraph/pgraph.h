@@ -29,6 +29,7 @@
 #include "qemu/units.h"
 #include "qemu/thread.h"
 #include <rthreads/retro_eventcount.h>
+#include <retro_atomic.h>
 #include "cpu.h"
 
 #include "surface.h"
@@ -205,29 +206,38 @@ typedef struct PGRAPHRenderer {
  */
 #define PGRAPH_CPU_PAGE_BITS 12
 #define PGRAPH_CPU_PAGES ((128 * MiB) >> PGRAPH_CPU_PAGE_BITS)
+/* The bitmaps are 32-bit words: retro_atomic's bitwise RMWs are int-wide */
+#define PGRAPH_CPU_WORD_BITS 32
+#define PGRAPH_CPU_WORDS (PGRAPH_CPU_PAGES / PGRAPH_CPU_WORD_BITS)
 
 typedef struct PGRAPHCpuAccess {
-    unsigned long ahead[BITS_TO_LONGS(PGRAPH_CPU_PAGES)];
-    unsigned long written[BITS_TO_LONGS(PGRAPH_CPU_PAGES)];
-    unsigned long clean_read[BITS_TO_LONGS(PGRAPH_CPU_PAGES)];
-    int touched;
+    retro_atomic_int_t ahead[PGRAPH_CPU_WORDS];
+    retro_atomic_int_t written[PGRAPH_CPU_WORDS];
+    retro_atomic_int_t clean_read[PGRAPH_CPU_WORDS];
+    retro_atomic_int_t touched;
     /* the download asked for (the range set first); the renderer's
      * downloads_complete when it is done */
-    bool dl_pending;
+    retro_atomic_int_t dl_pending;
     hwaddr dl_addr;
     hwaddr dl_len;
     /* the GPU thread's: the next ahead bitmap while it is built, and the
      * written and clean_read bits taken */
-    unsigned long build[BITS_TO_LONGS(PGRAPH_CPU_PAGES)];
-    unsigned long taken_written[BITS_TO_LONGS(PGRAPH_CPU_PAGES)];
-    unsigned long taken_read[BITS_TO_LONGS(PGRAPH_CPU_PAGES)];
+    uint32_t build[PGRAPH_CPU_WORDS];
+    uint32_t taken_written[PGRAPH_CPU_WORDS];
+    uint32_t taken_read[PGRAPH_CPU_WORDS];
 } PGRAPHCpuAccess;
+
+typedef enum PGRAPHRendererSwitchPhase {
+    PGRAPH_RENDERER_SWITCH_PHASE_IDLE,
+    PGRAPH_RENDERER_SWITCH_PHASE_STARTED,
+    PGRAPH_RENDERER_SWITCH_PHASE_CPU_WAITING,
+} PGRAPHRendererSwitchPhase;
 
 typedef struct PGRAPHState {
     PGRAPHCpuAccess cpu;
 
-    uint32_t pending_interrupts;
-    uint32_t enabled_interrupts;
+    retro_atomic_int_t pending_interrupts;
+    retro_atomic_int_t enabled_interrupts;
 
     int frame_time;
     int draw_time;
@@ -349,45 +359,42 @@ typedef struct PGRAPHState {
     int32_t draw_arrays_count[1250];
     bool draw_arrays_prevent_connect;
 
-    uint32_t regs_[0x2000];
+    /* read by the vCPU (pgraph_read) and changed by both: word-atomic */
+    retro_atomic_int_t regs_[0x2000];
     DECLARE_BITMAP(regs_dirty, 0x2000 / sizeof(uint32_t));
     /* The shader-relevant fields of the registers the dirty map can only
      * flag whole, as they stood when the current shader state was built. */
     uint32_t shader_reg_snap[9];
 
     bool clearing; // FIXME: Internal
-    bool waiting_for_flip;
+    retro_atomic_int_t waiting_for_flip;
     /* A queued GET_REPORT awaits its GPU result: the pfifo idle wait is
      * bounded, so the report lands without waiting for a guest push. */
     bool reports_pending;
     /* The guest wrote registers through pgraph_write (a context restore):
      * the next method reloads the switch registers and takes every
      * register as changed. Set by the vCPU, taken by the pfifo thread. */
-    bool guest_wrote_regs;
+    retro_atomic_int_t guest_wrote_regs;
 
     /* Requests to the pfifo thread from another thread: the flag set, the
      * thread kicked, the requester waiting on the eventcount for the flag
      * to clear (pgraph_wait_until_clear / pgraph_clear_and_notify) */
-    bool flush_pending;
+    retro_atomic_int_t flush_pending;
     retro_eventcount_t flush_complete;
 
-    bool sync_pending;
+    retro_atomic_int_t sync_pending;
     retro_eventcount_t sync_complete;
     /* PCRTC_START was written: the CRTC scans another buffer. The
      * renderer resolves it for the display thread (GL). */
-    bool scanout_changed;
+    retro_atomic_int_t scanout_changed;
 
-    bool framebuffer_in_use;
+    retro_atomic_int_t framebuffer_in_use;
     /* The frontend's thread holds the renderer's framebuffer
      * (nv2a_get_framebuffer_surface): a renderer switch waits for it to
      * be released, on the eventcount */
     retro_eventcount_t framebuffer_released;
 
-    enum {
-        PGRAPH_RENDERER_SWITCH_PHASE_IDLE,
-        PGRAPH_RENDERER_SWITCH_PHASE_STARTED,
-        PGRAPH_RENDERER_SWITCH_PHASE_CPU_WAITING,
-    } renderer_switch_phase;
+    retro_atomic_int_t renderer_switch_phase; /* PGRAPHRendererSwitchPhase */
     retro_eventcount_t renderer_switch_complete;
 
     /* Raises the IRQ from the main loop (pgraph_schedule_irq_update);
@@ -399,7 +406,8 @@ typedef struct PGRAPHState {
 
     PGRAPHWritebackState writeback;
 
-    const PGRAPHRenderer *renderer;
+    /* the PGRAPHRenderer; read by the frontend's and the vCPU's threads */
+    retro_atomic_ptr_t renderer;
     union {
         PGRAPHNullState *null_renderer_state;
         PGRAPHGLState *gl_renderer_state;
@@ -465,18 +473,27 @@ static inline void pgraph_set_surface_binding_dim(PGRAPHState *pg,
 static inline uint32_t pgraph_reg_r(PGRAPHState *pg, unsigned int r)
 {
     assert(r % 4 == 0);
-    return qatomic_read(&pg->regs_[r]);
+    return (uint32_t)retro_atomic_load_relaxed_int(&pg->regs_[r]);
+}
+
+/* The renderer, on the GPU thread, which alone sets it (init_renderer,
+ * a renderer switch). Another thread reads it with
+ * retro_atomic_load_acquire_ptr, to see the renderer's state too. */
+static inline const PGRAPHRenderer *pgraph_renderer(PGRAPHState *pg)
+{
+    return retro_atomic_load_relaxed_ptr(&pg->renderer);
 }
 
 /* A request another thread made of the pfifo thread (a flush, a sync, a
  * download): the requester waits on the eventcount until the thread
  * clears the flag; no lock, no timeout. The wait is prepared before the
  * flag is looked at, so a clear between the look and the wait wakes it. */
-static inline void pgraph_wait_until_clear(retro_eventcount_t *ec, bool *flag)
+static inline void pgraph_wait_until_clear(retro_eventcount_t *ec,
+                                           retro_atomic_int_t *flag)
 {
     for (;;) {
         int key = retro_eventcount_prepare_wait(ec);
-        if (!qatomic_load_acquire(flag)) {
+        if (!retro_atomic_load_acquire_int(flag)) {
             retro_eventcount_cancel_wait(ec);
             return;
         }
@@ -485,9 +502,10 @@ static inline void pgraph_wait_until_clear(retro_eventcount_t *ec, bool *flag)
 }
 
 /* The pfifo thread's side: the request is done. */
-static inline void pgraph_clear_and_notify(retro_eventcount_t *ec, bool *flag)
+static inline void pgraph_clear_and_notify(retro_eventcount_t *ec,
+                                           retro_atomic_int_t *flag)
 {
-    qatomic_store_release(flag, false);
+    retro_atomic_store_release_int(flag, 0);
     retro_eventcount_notify(ec);
 }
 
@@ -495,7 +513,8 @@ static inline void pgraph_clear_and_notify(retro_eventcount_t *ec, bool *flag)
  * ERROR (a method the guest must NOP past), CONTEXT_SWITCH */
 static inline bool pgraph_pending_bit(PGRAPHState *pg, uint32_t bit)
 {
-    return qatomic_read(&pg->pending_interrupts) & bit;
+    return (uint32_t)retro_atomic_load_relaxed_int(&pg->pending_interrupts) &
+           bit;
 }
 
 /* A field of a register both the vCPU and the pfifo thread change
@@ -505,15 +524,13 @@ static inline void pgraph_reg_set_mask_atomic(PGRAPHState *pg, unsigned int r,
                                               uint32_t mask, uint32_t v)
 {
     assert(r % 4 == 0);
-    uint32_t old = qatomic_read(&pg->regs_[r]);
     for (;;) {
+        uint32_t old = (uint32_t)retro_atomic_load_relaxed_int(&pg->regs_[r]);
         uint32_t new = old;
         SET_MASK(new, mask, v);
-        uint32_t seen = qatomic_cmpxchg(&pg->regs_[r], old, new);
-        if (seen == old) {
+        if (retro_atomic_cas_int(&pg->regs_[r], (int)old, (int)new)) {
             break;
         }
-        old = seen;
     }
 }
 
@@ -524,17 +541,17 @@ static inline void pgraph_reg_w_guest(PGRAPHState *pg, unsigned int r,
                                       uint32_t v)
 {
     assert(r % 4 == 0);
-    qatomic_set(&pg->regs_[r], v);
-    qatomic_store_release(&pg->guest_wrote_regs, true);
+    retro_atomic_store_relaxed_int(&pg->regs_[r], (int)v);
+    retro_atomic_store_release_int(&pg->guest_wrote_regs, 1);
 }
 
 static inline void pgraph_reg_w(PGRAPHState *pg, unsigned int r, uint32_t v)
 {
     assert(r % 4 == 0);
-    if (pg->regs_[r] != v) {
+    if (pgraph_reg_r(pg, r) != v) {
         bitmap_set(pg->regs_dirty, r / sizeof(uint32_t), 1);
     }
-    qatomic_set(&pg->regs_[r], v);
+    retro_atomic_store_relaxed_int(&pg->regs_[r], (int)v);
 }
 
 void pgraph_glsl_snapshot_shader_regs(PGRAPHState *pg);

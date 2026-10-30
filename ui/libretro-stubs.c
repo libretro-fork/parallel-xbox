@@ -20,7 +20,7 @@ typedef struct QEMUFile QEMUFile;
 #include "qobject/qdict.h"
 #include "qemu/option.h"
 #include "qemu/config-file.h"
-#include "qemu/atomic.h"
+#include <retro_atomic.h>
 
 #include "xemu-input.h"
 #include "xemu-settings.h"
@@ -243,15 +243,15 @@ void libretro_input_stick(unsigned port, unsigned index, int16_t *x, int16_t *y)
  * (xid.c); retro_run hands them to RetroArch's rumble interface on its own
  * thread (libretro_input_apply_rumble). Left is the heavy motor, right the
  * light one. */
-static uint32_t libretro_rumble[4];
+static retro_atomic_int_t libretro_rumble[4];
 
 void xemu_input_update_rumble(ControllerState *state)
 {
     if (!state || state->bound < 0 || state->bound >= 4) {
         return;
     }
-    qatomic_set(&libretro_rumble[state->bound],
-                ((uint32_t)state->gp.rumble_l << 16) | state->gp.rumble_r);
+    retro_atomic_store_relaxed_int(&libretro_rumble[state->bound],
+                                   (int)(((uint32_t)state->gp.rumble_l << 16) | state->gp.rumble_r));
 }
 
 /* A Chihiro drive board's force feedback (libretro-chihiro.c), for a port
@@ -259,7 +259,8 @@ void xemu_input_update_rumble(ControllerState *state)
 void libretro_input_set_rumble(unsigned port, uint16_t strong, uint16_t weak)
 {
     if (port < 4) {
-        qatomic_set(&libretro_rumble[port], ((uint32_t)strong << 16) | weak);
+        retro_atomic_store_relaxed_int(&libretro_rumble[port],
+                                   (int)(((uint32_t)strong << 16) | weak));
     }
 }
 
@@ -273,7 +274,7 @@ void libretro_input_apply_rumble(retro_set_rumble_state_t set_rumble_state)
     for (unsigned port = 0; port < 4; port++) {
         /* Controls > Rumble off: none from the Xbox pad nor a Chihiro's
          * force feedback */
-        const uint32_t want = libretro_rumble_enabled[port] ? qatomic_read(&libretro_rumble[port]) : 0;
+        const uint32_t want = libretro_rumble_enabled[port] ? (uint32_t)retro_atomic_load_relaxed_int(&libretro_rumble[port]) : 0;
         if (want == applied[port]) {
             continue;
         }

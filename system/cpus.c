@@ -533,7 +533,7 @@ bool qemu_in_vcpu_thread(void)
 
 XemuVcpuWaits xemu_vcpu_waits;
 int xemu_tbrate_state = -1;
-int64_t xemu_tbrate_flipsvc_ns, xemu_tbrate_fence_ns;
+retro_atomic_64_t xemu_tbrate_flipsvc_ns, xemu_tbrate_fence_ns;
 
 void xemu_tbrate_lock_slow(QemuMutex *m)
 {

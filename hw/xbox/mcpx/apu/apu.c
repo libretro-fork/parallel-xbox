@@ -26,20 +26,20 @@ MCPXAPUState *g_state; // Used via debug handlers
 
 static void update_irq(MCPXAPUState *d)
 {
-    if (d->regs[NV_PAPU_FECTL] & NV_PAPU_FECTL_FEMETHMODE_TRAPPED) {
-        qatomic_or(&d->regs[NV_PAPU_ISTS], NV_PAPU_ISTS_FETINTSTS);
+    if (apu_reg_r(d, NV_PAPU_FECTL) & NV_PAPU_FECTL_FEMETHMODE_TRAPPED) {
+        retro_atomic_fetch_or_int(&d->regs[NV_PAPU_ISTS], (int)NV_PAPU_ISTS_FETINTSTS);
     }
-    if ((d->regs[NV_PAPU_IEN] & NV_PAPU_ISTS_GINTSTS) &&
-        ((d->regs[NV_PAPU_ISTS] & ~NV_PAPU_ISTS_GINTSTS) &
-         d->regs[NV_PAPU_IEN])) {
-        qatomic_or(&d->regs[NV_PAPU_ISTS], NV_PAPU_ISTS_GINTSTS);
+    if ((apu_reg_r(d, NV_PAPU_IEN) & NV_PAPU_ISTS_GINTSTS) &&
+        ((apu_reg_r(d, NV_PAPU_ISTS) & ~NV_PAPU_ISTS_GINTSTS) &
+         apu_reg_r(d, NV_PAPU_IEN))) {
+        retro_atomic_fetch_or_int(&d->regs[NV_PAPU_ISTS], (int)NV_PAPU_ISTS_GINTSTS);
         // fprintf(stderr, "mcpx irq raise ien=%08x ists=%08x\n",
-        //         d->regs[NV_PAPU_IEN], d->regs[NV_PAPU_ISTS]);
+        //         apu_reg_r(d, NV_PAPU_IEN), apu_reg_r(d, NV_PAPU_ISTS));
         pci_irq_assert(PCI_DEVICE(d));
     } else {
-        qatomic_and(&d->regs[NV_PAPU_ISTS], ~NV_PAPU_ISTS_GINTSTS);
+        retro_atomic_fetch_and_int(&d->regs[NV_PAPU_ISTS], (int)~NV_PAPU_ISTS_GINTSTS);
         // fprintf(stderr, "mcpx irq lower ien=%08x ists=%08x\n",
-        //         d->regs[NV_PAPU_IEN], d->regs[NV_PAPU_ISTS]);
+        //         apu_reg_r(d, NV_PAPU_IEN), apu_reg_r(d, NV_PAPU_ISTS));
         pci_irq_deassert(PCI_DEVICE(d));
     }
 }
@@ -58,7 +58,7 @@ static uint64_t mcpx_apu_read(void *opaque, hwaddr addr, unsigned int size)
         break;
     default:
         if (addr < 0x20000) {
-            r = qatomic_read(&d->regs[addr]);
+            r = apu_reg_r(d, addr);
         }
         break;
     }
@@ -80,23 +80,23 @@ static void mcpx_apu_write(void *opaque, hwaddr addr, uint64_t val,
     switch (addr) {
     case NV_PAPU_ISTS:
         /* the bits of the interrupts to clear are written */
-        qatomic_and(&d->regs[NV_PAPU_ISTS], ~val);
+        retro_atomic_fetch_and_int(&d->regs[NV_PAPU_ISTS], (int)~val);
         update_irq(d);
         break;
     case NV_PAPU_FECTL:
     case NV_PAPU_SECTL:
-        qatomic_set(&d->regs[addr], val);
+        apu_reg_w(d, addr, val);
         break;
     case NV_PAPU_FEMEMDATA:
         /* 'magic write'
          * This value is expected to be written to FEMEMADDR on completion of
          * something to do with notifies. Just do it now :/ */
-        stl_le_phys(&address_space_memory, d->regs[NV_PAPU_FEMEMADDR], val);
-        qatomic_set(&d->regs[addr], val);
+        stl_le_phys(&address_space_memory, apu_reg_r(d, NV_PAPU_FEMEMADDR), val);
+        apu_reg_w(d, addr, val);
         break;
     default:
         if (addr < 0x20000) {
-            qatomic_set(&d->regs[addr], val);
+            apu_reg_w(d, addr, val);
         }
         break;
     }
@@ -151,9 +151,9 @@ static void apu_tick_advance(MCPXAPUState *d)
 
 static void apu_step(MCPXAPUState *d)
 {
-    int xcntmode = GET_MASK(qatomic_read(&d->regs[NV_PAPU_SECTL]),
+    int xcntmode = GET_MASK(apu_reg_r(d, NV_PAPU_SECTL),
                             NV_PAPU_SECTL_XCNTMODE);
-    uint32_t fectl = qatomic_read(&d->regs[NV_PAPU_FECTL]);
+    uint32_t fectl = apu_reg_r(d, NV_PAPU_FECTL);
 
     if (xcntmode == NV_PAPU_SECTL_XCNTMODE_OFF ||
         (fectl & NV_PAPU_FECTL_FEMETHMODE_TRAPPED) ||
@@ -165,9 +165,9 @@ static void apu_step(MCPXAPUState *d)
         d->set_irq = false;
     }
 
-    xcntmode = GET_MASK(qatomic_read(&d->regs[NV_PAPU_SECTL]),
+    xcntmode = GET_MASK(apu_reg_r(d, NV_PAPU_SECTL),
                         NV_PAPU_SECTL_XCNTMODE);
-    fectl = qatomic_read(&d->regs[NV_PAPU_FECTL]);
+    fectl = apu_reg_r(d, NV_PAPU_FECTL);
     if (xcntmode == NV_PAPU_SECTL_XCNTMODE_OFF ||
         (fectl & NV_PAPU_FECTL_FEMETHMODE_TRAPPED) ||
         (fectl & NV_PAPU_FECTL_FEMETHMODE_HALTED)) {
@@ -567,7 +567,7 @@ static const VMStateDescription vmstate_mcpx_apu = {
         VMSTATE_STRUCT_POINTER(ep.dsp, MCPXAPUState, vmstate_vp_dsp_state,
                                DSPState),
         VMSTATE_UINT32_ARRAY(ep.regs, MCPXAPUState, 0x10000),
-        VMSTATE_UINT32_ARRAY(regs, MCPXAPUState, 0x20000),
+        VMSTATE_RETRO_ATOMIC_UINT32_ARRAY(regs, MCPXAPUState, 0x20000),
         VMSTATE_UINT32(vp.inbuf_sge_handle, MCPXAPUState),
         VMSTATE_UINT32(vp.outbuf_sge_handle, MCPXAPUState),
         VMSTATE_STRUCT_ARRAY(vp.ssl, MCPXAPUState, MCPX_HW_MAX_VOICES, 1,

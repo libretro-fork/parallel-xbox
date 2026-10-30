@@ -249,6 +249,10 @@ extern const VMStateInfo vmstate_info_uint8;
 extern const VMStateInfo vmstate_info_uint16;
 extern const VMStateInfo vmstate_info_uint32;
 extern const VMStateInfo vmstate_info_uint64;
+/* retro_atomic_int_t as uint32 or bool, retro_atomic_64_t as int64 */
+extern const VMStateInfo vmstate_info_retro_atomic_u32;
+extern const VMStateInfo vmstate_info_retro_atomic_bool;
+extern const VMStateInfo vmstate_info_retro_atomic_i64;
 extern const VMStateInfo vmstate_info_fd;
 
 /** Put this in the stream when migrating a null pointer.*/
@@ -1119,6 +1123,20 @@ extern const VMStateInfo vmstate_info_qlist;
 
 #define VMSTATE_UINT32_ARRAY(_f, _s, _n)                              \
     VMSTATE_UINT32_ARRAY_V(_f, _s, _n, 0)
+
+/* retro_atomic fields (retro_atomic.h), on the wire as the plain types */
+#define VMSTATE_RETRO_ATOMIC_UINT32_ARRAY(_f, _s, _n)                 \
+    VMSTATE_ARRAY(_f, _s, _n, 0, vmstate_info_retro_atomic_u32,       \
+                  retro_atomic_int_t)
+#define VMSTATE_RETRO_ATOMIC_UINT32(_f, _s)                           \
+    VMSTATE_SINGLE(_f, _s, 0, vmstate_info_retro_atomic_u32,          \
+                   retro_atomic_int_t)
+#define VMSTATE_RETRO_ATOMIC_BOOL(_f, _s)                             \
+    VMSTATE_SINGLE(_f, _s, 0, vmstate_info_retro_atomic_bool,         \
+                   retro_atomic_int_t)
+#define VMSTATE_RETRO_ATOMIC_INT64(_f, _s)                            \
+    VMSTATE_SINGLE(_f, _s, 0, vmstate_info_retro_atomic_i64,          \
+                   retro_atomic_64_t)
 
 #define VMSTATE_UINT32_SUB_ARRAY(_f, _s, _start, _num)                \
     VMSTATE_SUB_ARRAY(_f, _s, _start, _num, 0, vmstate_info_uint32, uint32_t)

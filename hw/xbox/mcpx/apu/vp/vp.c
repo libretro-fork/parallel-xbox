@@ -39,7 +39,7 @@ static const struct {
 static void set_notify_status(MCPXAPUState *d, uint32_t v, int notifier,
                               int status)
 {
-    hwaddr notify_offset = d->regs[NV_PAPU_FENADDR];
+    hwaddr notify_offset = apu_reg_r(d, NV_PAPU_FENADDR);
     notify_offset += 16 * (MCPX_HW_NOTIFIER_BASE_OFFSET +
                            v * MCPX_HW_NOTIFIER_COUNT + notifier);
     notify_offset += 15; // Final byte is status, same for all notifiers
@@ -52,8 +52,9 @@ static void set_notify_status(MCPXAPUState *d, uint32_t v, int notifier,
     // FIXME: Actually provied current envelope state
     stb_phys(&address_space_memory, notify_offset - 1, 1);
 
-    qatomic_or(&d->regs[NV_PAPU_ISTS],
-              NV_PAPU_ISTS_FEVINTSTS | NV_PAPU_ISTS_FENINTSTS);
+    retro_atomic_fetch_or_int(&d->regs[NV_PAPU_ISTS],
+                              (int)(NV_PAPU_ISTS_FEVINTSTS |
+                                    NV_PAPU_ISTS_FENINTSTS));
     d->set_irq = true;
 }
 
@@ -166,14 +167,14 @@ static inline uint8_t apu_ram_ldub(MCPXAPUState *d, hwaddr addr)
 static uint32_t voice_get_mask(MCPXAPUState *d, uint16_t voice_handle,
                                hwaddr offset, uint32_t mask)
 {
-    hwaddr voice = d->regs[NV_PAPU_VPVADDR] + voice_handle * NV_PAVS_SIZE;
+    hwaddr voice = apu_reg_r(d, NV_PAPU_VPVADDR) + voice_handle * NV_PAVS_SIZE;
     return (apu_ram_ldl(d, voice + offset) & mask) >> ctz32(mask);
 }
 
 static void voice_set_mask(MCPXAPUState *d, uint16_t voice_handle,
                            hwaddr offset, uint32_t mask, uint32_t val)
 {
-    hwaddr voice = d->regs[NV_PAPU_VPVADDR]
+    hwaddr voice = apu_reg_r(d, NV_PAPU_VPVADDR)
                     + voice_handle * NV_PAVS_SIZE;
     uint32_t v = apu_ram_ldl(d, voice + offset) & ~mask;
     stl_le_phys(&address_space_memory, voice + offset,
@@ -237,17 +238,17 @@ static void fe_method(MCPXAPUState *d, uint32_t method, uint32_t argument)
 
     trace_mcpx_apu_method(method, argument);
 
-    //assert((d->regs[NV_PAPU_FECTL] & NV_PAPU_FECTL_FEMETHMODE) == 0);
+    //assert((apu_reg_r(d, NV_PAPU_FECTL) & NV_PAPU_FECTL_FEMETHMODE) == 0);
 
-    d->regs[NV_PAPU_FEDECMETH] = method;
-    d->regs[NV_PAPU_FEDECPARAM] = argument;
+    apu_reg_w(d, NV_PAPU_FEDECMETH, method);
+    apu_reg_w(d, NV_PAPU_FEDECPARAM, argument);
     unsigned int selected_handle, list;
     switch (method) {
     case NV1BA0_PIO_VOICE_LOCK:
-        voice_lock(d, d->regs[NV_PAPU_FECV], argument & 1);
+        voice_lock(d, apu_reg_r(d, NV_PAPU_FECV), argument & 1);
         break;
     case NV1BA0_PIO_SET_ANTECEDENT_VOICE:
-        d->regs[NV_PAPU_FEAV] = argument;
+        apu_reg_w(d, NV_PAPU_FEAV, argument);
         break;
     case NV1BA0_PIO_VOICE_ON: {
         selected_handle = argument & NV1BA0_PIO_VOICE_ON_HANDLE;
@@ -258,17 +259,17 @@ static void fe_method(MCPXAPUState *d, uint32_t method, uint32_t argument)
             voice_lock(d, selected_handle, true);
         }
 
-        list = GET_MASK(d->regs[NV_PAPU_FEAV], NV_PAPU_FEAV_LST);
+        list = GET_MASK(apu_reg_r(d, NV_PAPU_FEAV), NV_PAPU_FEAV_LST);
         if (list != NV1BA0_PIO_SET_ANTECEDENT_VOICE_LIST_INHERIT) {
             /* voice is added to the top of the selected list */
             unsigned int top_reg = voice_list_regs[list - 1].top;
             voice_set_mask(d, selected_handle, NV_PAVS_VOICE_TAR_PITCH_LINK,
                            NV_PAVS_VOICE_TAR_PITCH_LINK_NEXT_VOICE_HANDLE,
-                           d->regs[top_reg]);
-            d->regs[top_reg] = selected_handle;
+                           apu_reg_r(d, top_reg));
+            apu_reg_w(d, top_reg, selected_handle);
         } else {
             unsigned int antecedent_voice =
-                GET_MASK(d->regs[NV_PAPU_FEAV], NV_PAPU_FEAV_VALUE);
+                GET_MASK(apu_reg_r(d, NV_PAPU_FEAV), NV_PAPU_FEAV_VALUE);
             /* voice is added after the antecedent voice */
             assert(antecedent_voice != 0xFFFF);
 
@@ -391,94 +392,94 @@ static void fe_method(MCPXAPUState *d, uint32_t method, uint32_t argument)
         break;
     }
     case NV1BA0_PIO_SET_CURRENT_VOICE:
-        d->regs[NV_PAPU_FECV] = argument;
+        apu_reg_w(d, NV_PAPU_FECV, argument);
         break;
     case NV1BA0_PIO_SET_VOICE_CFG_VBIN:
-        voice_set_mask(d, d->regs[NV_PAPU_FECV], NV_PAVS_VOICE_CFG_VBIN,
+        voice_set_mask(d, apu_reg_r(d, NV_PAPU_FECV), NV_PAVS_VOICE_CFG_VBIN,
                        0xFFFFFFFF, argument);
         break;
     case NV1BA0_PIO_SET_VOICE_CFG_FMT:
-        voice_set_mask(d, d->regs[NV_PAPU_FECV], NV_PAVS_VOICE_CFG_FMT,
+        voice_set_mask(d, apu_reg_r(d, NV_PAPU_FECV), NV_PAVS_VOICE_CFG_FMT,
                        0xFFFFFFFF, argument);
         break;
     case NV1BA0_PIO_SET_VOICE_CFG_ENV0:
-        voice_set_mask(d, d->regs[NV_PAPU_FECV], NV_PAVS_VOICE_CFG_ENV0,
+        voice_set_mask(d, apu_reg_r(d, NV_PAPU_FECV), NV_PAVS_VOICE_CFG_ENV0,
                        0xFFFFFFFF, argument);
         break;
     case NV1BA0_PIO_SET_VOICE_CFG_ENVA:
-        voice_set_mask(d, d->regs[NV_PAPU_FECV], NV_PAVS_VOICE_CFG_ENVA,
+        voice_set_mask(d, apu_reg_r(d, NV_PAPU_FECV), NV_PAVS_VOICE_CFG_ENVA,
                        0xFFFFFFFF, argument);
         break;
     case NV1BA0_PIO_SET_VOICE_CFG_ENV1:
-        voice_set_mask(d, d->regs[NV_PAPU_FECV], NV_PAVS_VOICE_CFG_ENV1,
+        voice_set_mask(d, apu_reg_r(d, NV_PAPU_FECV), NV_PAVS_VOICE_CFG_ENV1,
                        0xFFFFFFFF, argument);
         break;
     case NV1BA0_PIO_SET_VOICE_CFG_ENVF:
-        voice_set_mask(d, d->regs[NV_PAPU_FECV], NV_PAVS_VOICE_CFG_ENVF,
+        voice_set_mask(d, apu_reg_r(d, NV_PAPU_FECV), NV_PAVS_VOICE_CFG_ENVF,
                        0xFFFFFFFF, argument);
         break;
     case NV1BA0_PIO_SET_VOICE_CFG_MISC:
-        voice_set_mask(d, d->regs[NV_PAPU_FECV], NV_PAVS_VOICE_CFG_MISC,
+        voice_set_mask(d, apu_reg_r(d, NV_PAPU_FECV), NV_PAVS_VOICE_CFG_MISC,
                        0xFFFFFFFF, argument);
         break;
     case NV1BA0_PIO_SET_VOICE_TAR_HRTF: {
         int handle = GET_MASK(argument, NV1BA0_PIO_SET_VOICE_TAR_HRTF_HANDLE);
-        int current_voice = d->regs[NV_PAPU_FECV];
+        int current_voice = apu_reg_r(d, NV_PAPU_FECV);
         voice_set_mask(d, current_voice, NV_PAVS_VOICE_CFG_HRTF_TARGET,
                        NV_PAVS_VOICE_CFG_HRTF_TARGET_HANDLE, handle);
         break;
     }
     case NV1BA0_PIO_SET_VOICE_TAR_VOLA:
-        voice_set_mask(d, d->regs[NV_PAPU_FECV], NV_PAVS_VOICE_TAR_VOLA,
+        voice_set_mask(d, apu_reg_r(d, NV_PAPU_FECV), NV_PAVS_VOICE_TAR_VOLA,
                        0xFFFFFFFF, argument);
         break;
     case NV1BA0_PIO_SET_VOICE_TAR_VOLB:
-        voice_set_mask(d, d->regs[NV_PAPU_FECV], NV_PAVS_VOICE_TAR_VOLB,
+        voice_set_mask(d, apu_reg_r(d, NV_PAPU_FECV), NV_PAVS_VOICE_TAR_VOLB,
                        0xFFFFFFFF, argument);
         break;
     case NV1BA0_PIO_SET_VOICE_TAR_VOLC:
-        voice_set_mask(d, d->regs[NV_PAPU_FECV], NV_PAVS_VOICE_TAR_VOLC,
+        voice_set_mask(d, apu_reg_r(d, NV_PAPU_FECV), NV_PAVS_VOICE_TAR_VOLC,
                        0xFFFFFFFF, argument);
         break;
     case NV1BA0_PIO_SET_VOICE_LFO_DELAY:
-        voice_set_mask(d, d->regs[NV_PAPU_FECV], NV_PAVS_VOICE_PAR_LFO_DELAY,
+        voice_set_mask(d, apu_reg_r(d, NV_PAPU_FECV), NV_PAVS_VOICE_PAR_LFO_DELAY,
                        0xFFFFFFFF, argument);
         break;
     case NV1BA0_PIO_SET_VOICE_LFO_MOD:
-        voice_set_mask(d, d->regs[NV_PAPU_FECV], NV_PAVS_VOICE_TAR_LFO_MOD,
+        voice_set_mask(d, apu_reg_r(d, NV_PAPU_FECV), NV_PAVS_VOICE_TAR_LFO_MOD,
                        0xFFFFFFFF, argument);
         break;
     case NV1BA0_PIO_SET_VOICE_LFO_ENV:
-        voice_set_mask(d, d->regs[NV_PAPU_FECV], NV_PAVS_VOICE_TAR_LFO_ENV,
+        voice_set_mask(d, apu_reg_r(d, NV_PAPU_FECV), NV_PAVS_VOICE_TAR_LFO_ENV,
                        0xFFFFFFFF, argument);
         break;
     case NV1BA0_PIO_SET_VOICE_TAR_FCA:
-        voice_set_mask(d, d->regs[NV_PAPU_FECV], NV_PAVS_VOICE_TAR_FCA,
+        voice_set_mask(d, apu_reg_r(d, NV_PAPU_FECV), NV_PAVS_VOICE_TAR_FCA,
                        0xFFFFFFFF, argument);
         break;
     case NV1BA0_PIO_SET_VOICE_TAR_FCB:
-        voice_set_mask(d, d->regs[NV_PAPU_FECV], NV_PAVS_VOICE_TAR_FCB,
+        voice_set_mask(d, apu_reg_r(d, NV_PAPU_FECV), NV_PAVS_VOICE_TAR_FCB,
                        0xFFFFFFFF, argument);
         break;
     case NV1BA0_PIO_SET_VOICE_TAR_PITCH:
-        voice_set_mask(d, d->regs[NV_PAPU_FECV], NV_PAVS_VOICE_TAR_PITCH_LINK,
+        voice_set_mask(d, apu_reg_r(d, NV_PAPU_FECV), NV_PAVS_VOICE_TAR_PITCH_LINK,
                        NV_PAVS_VOICE_TAR_PITCH_LINK_PITCH,
                        (argument & NV1BA0_PIO_SET_VOICE_TAR_PITCH_STEP) >> 16);
         break;
     case NV1BA0_PIO_SET_VOICE_CFG_BUF_BASE:
-        voice_set_mask(d, d->regs[NV_PAPU_FECV], NV_PAVS_VOICE_CUR_PSL_START,
+        voice_set_mask(d, apu_reg_r(d, NV_PAPU_FECV), NV_PAVS_VOICE_CUR_PSL_START,
                        NV_PAVS_VOICE_CUR_PSL_START_BA, argument);
         break;
     case NV1BA0_PIO_SET_VOICE_CFG_BUF_LBO:
-        voice_set_mask(d, d->regs[NV_PAPU_FECV], NV_PAVS_VOICE_CUR_PSH_SAMPLE,
+        voice_set_mask(d, apu_reg_r(d, NV_PAPU_FECV), NV_PAVS_VOICE_CUR_PSH_SAMPLE,
                        NV_PAVS_VOICE_CUR_PSH_SAMPLE_LBO, argument);
         break;
     case NV1BA0_PIO_SET_VOICE_BUF_CBO:
-        voice_set_mask(d, d->regs[NV_PAPU_FECV], NV_PAVS_VOICE_PAR_OFFSET,
+        voice_set_mask(d, apu_reg_r(d, NV_PAPU_FECV), NV_PAVS_VOICE_PAR_OFFSET,
                        NV_PAVS_VOICE_PAR_OFFSET_CBO, argument);
         break;
     case NV1BA0_PIO_SET_VOICE_CFG_BUF_EBO:
-        voice_set_mask(d, d->regs[NV_PAPU_FECV], NV_PAVS_VOICE_PAR_NEXT,
+        voice_set_mask(d, apu_reg_r(d, NV_PAPU_FECV), NV_PAVS_VOICE_PAR_NEXT,
                        NV_PAVS_VOICE_PAR_NEXT_EBO, argument);
         break;
     case NV1BA0_PIO_SET_HRIR ... NV1BA0_PIO_SET_HRIR_X - 1: {
@@ -514,7 +515,7 @@ static void fe_method(MCPXAPUState *d, uint32_t method, uint32_t argument)
         // FIXME: NV_PAPU_VPSGEADDR is probably bad, as outbuf SGE use the same
         // handle range (or that is also wrong)
         hwaddr sge_address =
-            d->regs[NV_PAPU_VPSGEADDR] + d->vp.inbuf_sge_handle * 8;
+            apu_reg_r(d, NV_PAPU_VPSGEADDR) + d->vp.inbuf_sge_handle * 8;
         stl_le_phys(&address_space_memory, sge_address,
                     argument &
                         NV1BA0_PIO_SET_CURRENT_INBUF_SGE_OFFSET_PARAMETER);
@@ -554,7 +555,7 @@ static void fe_method(MCPXAPUState *d, uint32_t method, uint32_t argument)
     }
     case NV1BA0_PIO_SET_VOICE_SSL_A: {
         int ssl = 0;
-        int current_voice = d->regs[NV_PAPU_FECV];
+        int current_voice = apu_reg_r(d, NV_PAPU_FECV);
         assert(current_voice < MCPX_HW_MAX_VOICES);
         d->vp.ssl[current_voice].base[ssl] =
             GET_MASK(argument, NV1BA0_PIO_SET_VOICE_SSL_A_BASE);
@@ -569,7 +570,7 @@ static void fe_method(MCPXAPUState *d, uint32_t method, uint32_t argument)
     // FIXME: Refactor into above
     case NV1BA0_PIO_SET_VOICE_SSL_B: {
         int ssl = 1;
-        int current_voice = d->regs[NV_PAPU_FECV];
+        int current_voice = apu_reg_r(d, NV_PAPU_FECV);
         assert(current_voice < MCPX_HW_MAX_VOICES);
         d->vp.ssl[current_voice].base[ssl] =
             GET_MASK(argument, NV1BA0_PIO_SET_VOICE_SSL_A_BASE);
@@ -593,7 +594,7 @@ static void fe_method(MCPXAPUState *d, uint32_t method, uint32_t argument)
         // FIXME: Entries are 64b, assuming they are stored
         // like this <[offset,length],...>
         assert((method & 0x3) == 0);
-        hwaddr addr = d->regs[NV_PAPU_VPSSLADDR]
+        hwaddr addr = apu_reg_r(d, NV_PAPU_VPSSLADDR)
                       + (d->vp.ssl_base_page * 8)
                       + (method - NV1BA0_PIO_SET_SSL_SEGMENT_OFFSET);
         stl_le_phys(&address_space_memory, addr, argument);
@@ -621,11 +622,13 @@ static void fe_method(MCPXAPUState *d, uint32_t method, uint32_t argument)
             argument & NV1BA0_PIO_SET_SUBMIX_HEADROOM_AMOUNT;
         break;
     case SE2FE_IDLE_VOICE:
-        if (d->regs[NV_PAPU_FETFORCE1] & NV_PAPU_FETFORCE1_SE2FE_IDLE_VOICE) {
-            d->regs[NV_PAPU_FECTL] &= ~NV_PAPU_FECTL_FEMETHMODE;
-            d->regs[NV_PAPU_FECTL] |= NV_PAPU_FECTL_FEMETHMODE_TRAPPED;
-            d->regs[NV_PAPU_FECTL] &= ~NV_PAPU_FECTL_FETRAPREASON;
-            d->regs[NV_PAPU_FECTL] |= NV_PAPU_FECTL_FETRAPREASON_REQUESTED;
+        if (apu_reg_r(d, NV_PAPU_FETFORCE1) & NV_PAPU_FETFORCE1_SE2FE_IDLE_VOICE) {
+            uint32_t fectl = apu_reg_r(d, NV_PAPU_FECTL);
+            fectl &= ~NV_PAPU_FECTL_FEMETHMODE;
+            fectl |= NV_PAPU_FECTL_FEMETHMODE_TRAPPED;
+            fectl &= ~NV_PAPU_FECTL_FETRAPREASON;
+            fectl |= NV_PAPU_FECTL_FETRAPREASON_REQUESTED;
+            apu_reg_w(d, NV_PAPU_FECTL, fectl);
             DPRINTF("idle voice %d\n", argument);
             d->set_irq = true;
         }
@@ -1027,7 +1030,7 @@ static int voice_get_samples(MCPXAPUState *d, uint32_t v, float samples[][2],
             return -1;
         }
 
-        hwaddr addr = d->regs[NV_PAPU_VPSSLADDR] + page * 8;
+        hwaddr addr = apu_reg_r(d, NV_PAPU_VPSSLADDR) + page * 8;
         segment_offset = apu_ram_ldl(d, addr);
         segment_length = apu_ram_ldl(d, addr + 4);
         assert(segment_offset != 0);
@@ -1100,7 +1103,7 @@ static int voice_get_samples(MCPXAPUState *d, uint32_t v, float samples[][2],
         for (size_t off = 0; off < sizeof(head); off += 4) {
             uint32_t w = ldl_le_phys(
                 &address_space_memory,
-                get_data_ptr(d, d->regs[NV_PAPU_VPSGEADDR], 0xFFFFFFFF,
+                get_data_ptr(d, apu_reg_r(d, NV_PAPU_VPSGEADDR), 0xFFFFFFFF,
                              ba + off));
             memcpy(head + off, &w, 4);
         }
@@ -1131,7 +1134,7 @@ static int voice_get_samples(MCPXAPUState *d, uint32_t v, float samples[][2],
                     encoded = &d->ram_ptr[addr];
                 } else {
                     linear_addr += ba;
-                    hwaddr addr = get_data_ptr(d, d->regs[NV_PAPU_VPSGEADDR],
+                    hwaddr addr = get_data_ptr(d, apu_reg_r(d, NV_PAPU_VPSGEADDR),
                                                0xFFFFFFFF, linear_addr);
                     size_t available = TARGET_PAGE_SIZE -
                                        linear_addr % TARGET_PAGE_SIZE;
@@ -1149,7 +1152,7 @@ static int voice_get_samples(MCPXAPUState *d, uint32_t v, float samples[][2],
                                                      bytes);
                             copied += bytes;
                             if (copied < block_size) {
-                                addr = get_data_ptr(d, d->regs[NV_PAPU_VPSGEADDR],
+                                addr = get_data_ptr(d, apu_reg_r(d, NV_PAPU_VPSGEADDR),
                                                     0xFFFFFFFF,
                                                     linear_addr + copied);
                                 available = TARGET_PAGE_SIZE;
@@ -1179,7 +1182,7 @@ static int voice_get_samples(MCPXAPUState *d, uint32_t v, float samples[][2],
                 addr = segment_offset + cbo * block_size;
             } else {
                 uint32_t linear_addr = ba + cbo * block_size;
-                addr = get_data_ptr(d, d->regs[NV_PAPU_VPSGEADDR], 0xFFFFFFFF,
+                addr = get_data_ptr(d, apu_reg_r(d, NV_PAPU_VPSGEADDR), 0xFFFFFFFF,
                                     linear_addr);
             }
 
@@ -2202,19 +2205,19 @@ void mcpx_apu_vp_frame(MCPXAPUState *d, float mixbins[NUM_MIXBINS][NUM_SAMPLES_P
         current = voice_list_regs[list].current;
         next = voice_list_regs[list].next;
 
-        d->regs[current] = d->regs[top];
-        DPRINTF("list %d current voice %d\n", list, d->regs[current]);
+        apu_reg_w(d, current, apu_reg_r(d, top));
+        DPRINTF("list %d current voice %d\n", list, apu_reg_r(d, current));
 
-        for (int i = 0; d->regs[current] != 0xFFFF; i++) {
+        for (int i = 0; apu_reg_r(d, current) != 0xFFFF; i++) {
             /* Make sure not to get stuck... */
             if (i >= MCPX_HW_MAX_VOICES) {
                 DPRINTF("Voice list contains invalid entry!\n");
                 break;
             }
 
-            uint16_t v = d->regs[current];
-            d->regs[next] = voice_get_mask(d, v, NV_PAVS_VOICE_TAR_PITCH_LINK,
-                               NV_PAVS_VOICE_TAR_PITCH_LINK_NEXT_VOICE_HANDLE);
+            uint16_t v = apu_reg_r(d, current);
+            apu_reg_w(d, next, voice_get_mask(d, v, NV_PAVS_VOICE_TAR_PITCH_LINK,
+                               NV_PAVS_VOICE_TAR_PITCH_LINK_NEXT_VOICE_HANDLE));
             if (!voice_get_mask(d, v, NV_PAVS_VOICE_PAR_STATE,
                                 NV_PAVS_VOICE_PAR_STATE_ACTIVE_VOICE)) {
                 fe_method(d, SE2FE_IDLE_VOICE, v);
@@ -2223,7 +2226,7 @@ void mcpx_apu_vp_frame(MCPXAPUState *d, float mixbins[NUM_MIXBINS][NUM_SAMPLES_P
                  * this frame out rather than the frame waiting (apu.c) */
                 voice_work_enqueue(d, v, list);
             }
-            d->regs[current] = d->regs[next];
+            apu_reg_w(d, current, apu_reg_r(d, next));
         }
     }
     voice_work_dispatch(d, mixbins);

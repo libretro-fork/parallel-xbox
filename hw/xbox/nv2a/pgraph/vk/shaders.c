@@ -1153,7 +1153,7 @@ void pgraph_vk_init_shaders(PGRAPHState *pg)
          MAX_UNIFORM_ATTR_VALUES_SIZE);
     vk_spec_push_constants = r->use_push_constants_for_uniform_attrs;
     retro_eventcount_init(&r->seed_writeback_complete);
-    r->seed_writeback_pending = false;
+    retro_atomic_store_relaxed_int(&r->seed_writeback_pending, 0);
 }
 
 /* Per flip: once the boot has named the game (the seeds are keyed by the

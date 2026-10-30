@@ -1595,8 +1595,8 @@ static void render_display(PGRAPHState *pg, SurfaceBinding *surface)
         submit_frame(r, sync);
         f->ready = true;
         /* the frontend's thread takes it from here */
-        qatomic_store_release(&disp->published,
-                              ((uint64_t)disp->frame_count << 8) | slot);
+        retro_atomic_store_release_64(&disp->published,
+            (int64_t)(((uint64_t)disp->frame_count << 8) | slot));
     } else
     {
         pgraph_vk_transition_image_layout(pg, cmd, disp->image,

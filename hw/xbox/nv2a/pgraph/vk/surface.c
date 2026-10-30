@@ -41,21 +41,21 @@ void pgraph_vk_set_surface_scale_factor(NV2AState *d, unsigned int scale)
 
     /* the pusher stops at its next batch; the downloads and the flush
      * run on the thread meanwhile */
-    qatomic_set(&d->pfifo.halt, true);
+    retro_atomic_store_relaxed_int(&d->pfifo.halt, 1);
 
     // FIXME: It's just flush
     PGRAPHVkState *r = d->pgraph.vk_renderer_state;
-    qatomic_set(&r->download_dirty_surfaces_pending, true);
+    retro_atomic_store_relaxed_int(&r->download_dirty_surfaces_pending, 1);
     pfifo_kick(d);
     pgraph_wait_until_clear(&r->dirty_surfaces_download_complete,
                             &r->download_dirty_surfaces_pending);
 
-    qatomic_set(&d->pgraph.flush_pending, true);
+    retro_atomic_store_relaxed_int(&d->pgraph.flush_pending, 1);
     pfifo_kick(d);
     pgraph_wait_until_clear(&d->pgraph.flush_complete,
                             &d->pgraph.flush_pending);
 
-    qatomic_set(&d->pfifo.halt, false);
+    retro_atomic_store_relaxed_int(&d->pfifo.halt, 0);
     pfifo_kick(d);
 }
 
@@ -746,19 +746,18 @@ static void download_surface(NV2AState *d, SurfaceBinding *surface, bool force)
     }
 }
 
-void pgraph_vk_wait_for_surface_download(SurfaceBinding *surface)
+/* Another thread: the GPU thread asked to download [addr, addr + len) and
+ * waited for */
+void pgraph_vk_wait_for_download(NV2AState *d, hwaddr addr, hwaddr len)
 {
-    NV2AState *d = g_nv2a;
+    PGRAPHVkState *r = d->pgraph.vk_renderer_state;
 
-    if (qatomic_read(&surface->draw_dirty)) {
-        PGRAPHVkState *r = d->pgraph.vk_renderer_state;
-        d->pgraph.cpu.dl_addr = surface->vram_addr;
-        d->pgraph.cpu.dl_len = surface->size;
-        qatomic_set(&d->pgraph.cpu.dl_pending, true);
-        pfifo_kick(d);
-        pgraph_wait_until_clear(&r->downloads_complete,
-                                &d->pgraph.cpu.dl_pending);
-    }
+    d->pgraph.cpu.dl_addr = addr;
+    d->pgraph.cpu.dl_len = len;
+    /* release: the range before the request */
+    retro_atomic_store_release_int(&d->pgraph.cpu.dl_pending, 1);
+    pfifo_kick(d);
+    pgraph_wait_until_clear(&r->downloads_complete, &d->pgraph.cpu.dl_pending);
 }
 
 /* PGRAPHCpuAccess's ahead bitmap from the surfaces as they are */
@@ -842,7 +841,8 @@ void pgraph_vk_cpu_access_service(NV2AState *d)
             }
         }
     }
-    if (qatomic_read(&pg->cpu.dl_pending)) {
+    /* acquire: the range the requester set before it */
+    if (retro_atomic_load_acquire_int(&pg->cpu.dl_pending)) {
         pgraph_vk_process_pending_downloads(d);
     }
 }
@@ -888,7 +888,8 @@ static void surface_access_callback(void *opaque, MemoryRegion *mr, hwaddr addr,
     if (!pgraph_cpu_access(&d->pgraph, addr, len, write)) {
         return;
     }
-    qatomic_set(&d->pgraph.cpu.dl_pending, true);
+    /* release: dl_addr and dl_len (pgraph_cpu_access) before it */
+    retro_atomic_store_release_int(&d->pgraph.cpu.dl_pending, 1);
     pfifo_kick(d);
     /* A DMA write from the main loop arrives here holding the BQL, which
      * the pfifo thread may need before it can download (NO_OPERATION
@@ -2980,7 +2981,8 @@ void pgraph_vk_surface_flush(NV2AState *d)
      * writeback goes without being written, and what was learnt of the old
      * RAM is forgotten. A scale change has settled them all beforehand; at
      * a renderer switch RAM is live, and the prune below writes them back. */
-    if (pg->renderer_switch_phase != PGRAPH_RENDERER_SWITCH_PHASE_CPU_WAITING) {
+    if (retro_atomic_load_relaxed_int(&pg->renderer_switch_phase) !=
+        PGRAPH_RENDERER_SWITCH_PHASE_CPU_WAITING) {
         QTAILQ_FOREACH(s, &r->invalid_surfaces, entry) {
             if (s->writeback_owed) {
                 parked_owed_settled(d, s);

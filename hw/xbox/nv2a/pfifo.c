@@ -53,7 +53,7 @@ uint64_t pfifo_read(void *opaque, hwaddr addr, unsigned int size)
         r = NV_PFIFO_RUNOUT_STATUS_LOW_MARK; /* low mark empty */
         break;
     default:
-        r = qatomic_read(&d->pfifo.regs[addr]);
+        r = pfifo_reg_r(d, addr);
         break;
     }
 
@@ -77,7 +77,7 @@ void pfifo_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
         nv2a_update_irq(d);
         break;
     default:
-        qatomic_set(&d->pfifo.regs[addr], (uint32_t)val);
+        pfifo_reg_w(d, addr, (uint32_t)val);
         break;
     }
 
@@ -92,7 +92,7 @@ void pfifo_kick(NV2AState *d)
 }
 
 static bool can_fifo_access(NV2AState *d) {
-    return qatomic_read(&d->pgraph.regs_[NV_PGRAPH_FIFO]) &
+    return pgraph_reg_r(&d->pgraph, NV_PGRAPH_FIFO) &
            NV_PGRAPH_FIFO_ACCESS;
 }
 
@@ -130,11 +130,11 @@ static bool pfifo_stall_for_flip(NV2AState *d)
 {
     bool should_stall = false;
 
-    if (qatomic_read(&d->pgraph.waiting_for_flip)) {
+    if (retro_atomic_load_relaxed_int(&d->pgraph.waiting_for_flip)) {
         if (!is_flip_stall_complete(d)) {
             should_stall = true;
         } else {
-            d->pgraph.waiting_for_flip = false;
+            retro_atomic_store_relaxed_int(&d->pgraph.waiting_for_flip, 0);
             /* The guest resumes submitting: the modelled GPU queue starts. */
             xemu_flip_completed_ns =
                 qemu_clock_get_ns(QEMU_CLOCK_REALTIME);
@@ -154,14 +154,14 @@ static bool pfifo_puller_should_stall(NV2AState *d)
 
 /* The core's emulator thread waits with the guest's time stopped while the
  * GPU works (ui/libretro.c), and is woken when this thread parks */
-int nv2a_libretro_waiter;
+retro_atomic_int_t nv2a_libretro_waiter;
 
 /* Nothing to do. A pending report is written when the host GPU reaches it,
  * not when the guest next pushes: with one pending, wait for the GPU's own
  * completion of it, then serve it. */
 static inline void pfifo_idle_wait(NV2AState *d)
 {
-    const PGRAPHRenderer *renderer = d->pgraph.renderer;
+    const PGRAPHRenderer *renderer = pgraph_renderer(&d->pgraph);
 
     if (d->pgraph.reports_pending && renderer &&
         renderer->ops.wait_pending_report) {
@@ -183,19 +183,23 @@ static inline void pfifo_idle_wait(NV2AState *d)
         int key = retro_eventcount_prepare_wait(&d->pfifo.fifo_ec);
         if (retro_atomic_load_acquire_int(&d->pfifo.fifo_kick) ||
             retro_atomic_load_acquire_int(&d->pfifo.park_requests) ||
-            qatomic_read(&d->exiting)) {
+            retro_atomic_load_acquire_int(&d->exiting)) {
             retro_eventcount_cancel_wait(&d->pfifo.fifo_ec);
             return;
         }
-        qatomic_set_mb(&d->pfifo.parked, true);
-        /* pairs with the waiter's mb before it looks at parked */
-        if (qatomic_read(&nv2a_libretro_waiter)) {
+        /* a Dekker handshake with the emulator thread's wait (ui/libretro.c
+         * lr_run_frame, nv2a_libretro_switch_renderer): parked stored, a
+         * full fence, then the look at the waiter flag, which that thread
+         * stores and fences before it looks at parked */
+        retro_atomic_store_relaxed_int(&d->pfifo.parked, 1);
+        retro_atomic_thread_fence_seq_cst();
+        if (retro_atomic_load_relaxed_int(&nv2a_libretro_waiter)) {
             qemu_notify_event();
         }
         qemu_mutex_unlock(&d->pfifo.lock);
         retro_eventcount_commit_wait(&d->pfifo.fifo_ec, key);
         qemu_mutex_lock(&d->pfifo.lock);
-        qatomic_set(&d->pfifo.parked, false);
+        retro_atomic_store_relaxed_int(&d->pfifo.parked, 0);
     }
 }
 
@@ -210,17 +214,12 @@ static ssize_t pfifo_run_puller(NV2AState *d, uint32_t method_entry,
     if (pfifo_puller_should_stall(d)) {
         return -1;
     }
-
-    uint32_t *pull0 = &d->pfifo.regs[NV_PFIFO_CACHE1_PULL0];
-    uint32_t *pull1 = &d->pfifo.regs[NV_PFIFO_CACHE1_PULL1];
-    uint32_t *engine_reg = &d->pfifo.regs[NV_PFIFO_CACHE1_ENGINE];
-    uint32_t *status = &d->pfifo.regs[NV_PFIFO_CACHE1_STATUS];
     ssize_t num_proc = -1;
 
     // TODO think more about locking
 
-    if (!GET_MASK(*pull0, NV_PFIFO_CACHE1_PULL0_ACCESS) ||
-        (*status & NV_PFIFO_CACHE1_STATUS_LOW_MARK)) {
+    if (!GET_MASK(pfifo_reg_r(d, NV_PFIFO_CACHE1_PULL0), NV_PFIFO_CACHE1_PULL0_ACCESS) ||
+        (pfifo_reg_r(d, NV_PFIFO_CACHE1_STATUS) & NV_PFIFO_CACHE1_STATUS_LOW_MARK)) {
         return -1;
     }
 
@@ -237,8 +236,8 @@ static ssize_t pfifo_run_puller(NV2AState *d, uint32_t method_entry,
 
         /* the engine is bound to the subchannel */
         assert(subchannel < 8);
-        SET_MASK(*engine_reg, 3 << (4*subchannel), entry.engine);
-        SET_MASK(*pull1, NV_PFIFO_CACHE1_PULL1_ENGINE, entry.engine);
+        PFIFO_REG_SET_MASK(d, NV_PFIFO_CACHE1_ENGINE, 3 << (4*subchannel), entry.engine);
+        PFIFO_REG_SET_MASK(d, NV_PFIFO_CACHE1_PULL1, NV_PFIFO_CACHE1_PULL1_ENGINE, entry.engine);
 
         // Switch contexts if necessary
         if (can_fifo_access(d)) {
@@ -265,9 +264,9 @@ static ssize_t pfifo_run_puller(NV2AState *d, uint32_t method_entry,
             //bql_unlock();
         }
 
-        enum FIFOEngine engine = GET_MASK(*engine_reg, 3 << (4*subchannel));
+        enum FIFOEngine engine = GET_MASK(pfifo_reg_r(d, NV_PFIFO_CACHE1_ENGINE), 3 << (4*subchannel));
         assert(engine == ENGINE_GRAPHICS);
-        SET_MASK(*pull1, NV_PFIFO_CACHE1_PULL1_ENGINE, engine);
+        PFIFO_REG_SET_MASK(d, NV_PFIFO_CACHE1_PULL1, NV_PFIFO_CACHE1_PULL1_ENGINE, engine);
 
         if (can_fifo_access(d)) {
             num_proc =
@@ -279,7 +278,7 @@ static ssize_t pfifo_run_puller(NV2AState *d, uint32_t method_entry,
     }
 
     if (num_proc > 0) {
-        *status |= NV_PFIFO_CACHE1_STATUS_LOW_MARK;
+        pfifo_reg_w(d, NV_PFIFO_CACHE1_STATUS, pfifo_reg_r(d, NV_PFIFO_CACHE1_STATUS) | NV_PFIFO_CACHE1_STATUS_LOW_MARK);
     }
 
     return num_proc;
@@ -304,39 +303,30 @@ static bool pfifo_pusher_should_stall(NV2AState *d)
 
 static void pfifo_run_pusher(NV2AState *d)
 {
-    uint32_t *push0 = &d->pfifo.regs[NV_PFIFO_CACHE1_PUSH0];
-    uint32_t *push1 = &d->pfifo.regs[NV_PFIFO_CACHE1_PUSH1];
-    uint32_t *dma_subroutine = &d->pfifo.regs[NV_PFIFO_CACHE1_DMA_SUBROUTINE];
-    uint32_t *dma_state = &d->pfifo.regs[NV_PFIFO_CACHE1_DMA_STATE];
-    uint32_t *dma_push = &d->pfifo.regs[NV_PFIFO_CACHE1_DMA_PUSH];
-    uint32_t *dma_get = &d->pfifo.regs[NV_PFIFO_CACHE1_DMA_GET];
-    uint32_t *dma_put = &d->pfifo.regs[NV_PFIFO_CACHE1_DMA_PUT];
-    uint32_t *dma_dcount = &d->pfifo.regs[NV_PFIFO_CACHE1_DMA_DCOUNT];
-    uint32_t *status = &d->pfifo.regs[NV_PFIFO_CACHE1_STATUS];
 
-    if (!GET_MASK(*push0, NV_PFIFO_CACHE1_PUSH0_ACCESS) ||
-        !GET_MASK(*dma_push, NV_PFIFO_CACHE1_DMA_PUSH_ACCESS) ||
-        GET_MASK(*dma_push, NV_PFIFO_CACHE1_DMA_PUSH_STATUS)) {
+    if (!GET_MASK(pfifo_reg_r(d, NV_PFIFO_CACHE1_PUSH0), NV_PFIFO_CACHE1_PUSH0_ACCESS) ||
+        !GET_MASK(pfifo_reg_r(d, NV_PFIFO_CACHE1_DMA_PUSH), NV_PFIFO_CACHE1_DMA_PUSH_ACCESS) ||
+        GET_MASK(pfifo_reg_r(d, NV_PFIFO_CACHE1_DMA_PUSH), NV_PFIFO_CACHE1_DMA_PUSH_STATUS)) {
         return;
     }
 
-    unsigned int channel_id = GET_MASK(*push1,
+    unsigned int channel_id = GET_MASK(pfifo_reg_r(d, NV_PFIFO_CACHE1_PUSH1),
                                        NV_PFIFO_CACHE1_PUSH1_CHID);
 
 
     /* Channel running DMA mode */
-    uint32_t channel_modes = d->pfifo.regs[NV_PFIFO_MODE];
+    uint32_t channel_modes = pfifo_reg_r(d, NV_PFIFO_MODE);
     assert(channel_modes & (1 << channel_id));
 
-    assert(GET_MASK(*push1, NV_PFIFO_CACHE1_PUSH1_MODE)
+    assert(GET_MASK(pfifo_reg_r(d, NV_PFIFO_CACHE1_PUSH1), NV_PFIFO_CACHE1_PUSH1_MODE)
             == NV_PFIFO_CACHE1_PUSH1_MODE_DMA);
 
     /* We're running so there should be no pending errors... */
-    assert(GET_MASK(*dma_state, NV_PFIFO_CACHE1_DMA_STATE_ERROR)
+    assert(GET_MASK(pfifo_reg_r(d, NV_PFIFO_CACHE1_DMA_STATE), NV_PFIFO_CACHE1_DMA_STATE_ERROR)
             == NV_PFIFO_CACHE1_DMA_STATE_ERROR_NONE);
 
     hwaddr dma_instance =
-        GET_MASK(d->pfifo.regs[NV_PFIFO_CACHE1_DMA_INSTANCE],
+        GET_MASK(pfifo_reg_r(d, NV_PFIFO_CACHE1_DMA_INSTANCE),
                  NV_PFIFO_CACHE1_DMA_INSTANCE_ADDRESS) << 4;
 
     hwaddr dma_len;
@@ -355,19 +345,20 @@ static void pfifo_run_pusher(NV2AState *d)
             qemu_mutex_lock(&d->pfifo.lock);
             /* nv_dma_map's mapping holds; the registers may have moved */
         }
-        if ((qatomic_read(&pg->cpu.touched) ||
-             qatomic_read(&pg->cpu.dl_pending)) &&
-            pg->renderer->ops.cpu_access_service) {
-            pg->renderer->ops.cpu_access_service(d);
+        if ((retro_atomic_load_relaxed_int(&pg->cpu.touched) ||
+             retro_atomic_load_relaxed_int(&pg->cpu.dl_pending)) &&
+            pgraph_renderer(pg)->ops.cpu_access_service) {
+            pgraph_renderer(pg)->ops.cpu_access_service(d);
         }
-        uint32_t dma_get_v = *dma_get;
+        uint32_t dma_get_v = pfifo_reg_r(d, NV_PFIFO_CACHE1_DMA_GET);
         /* the guest's, written without the lock (user_write) */
-        uint32_t dma_put_v = qatomic_load_acquire(dma_put);
+        uint32_t dma_put_v = (uint32_t)retro_atomic_load_acquire_int(
+            &d->pfifo.regs[NV_PFIFO_CACHE1_DMA_PUT]);
 
         if (dma_get_v == dma_put_v) break;
         if (dma_get_v >= dma_len) {
             assert(!"Dma value is out of range in PFIFO pusher");
-            SET_MASK(*dma_state, NV_PFIFO_CACHE1_DMA_STATE_ERROR,
+            PFIFO_REG_SET_MASK(d, NV_PFIFO_CACHE1_DMA_STATE, NV_PFIFO_CACHE1_DMA_STATE_ERROR,
                      NV_PFIFO_CACHE1_DMA_STATE_ERROR_PROTECTION);
             break;
         }
@@ -390,20 +381,20 @@ static void pfifo_run_pusher(NV2AState *d)
         dma_get_v += 4;
 
         uint32_t method_type =
-            GET_MASK(*dma_state, NV_PFIFO_CACHE1_DMA_STATE_METHOD_TYPE);
+            GET_MASK(pfifo_reg_r(d, NV_PFIFO_CACHE1_DMA_STATE), NV_PFIFO_CACHE1_DMA_STATE_METHOD_TYPE);
         uint32_t method_subchannel =
-            GET_MASK(*dma_state, NV_PFIFO_CACHE1_DMA_STATE_SUBCHANNEL);
+            GET_MASK(pfifo_reg_r(d, NV_PFIFO_CACHE1_DMA_STATE), NV_PFIFO_CACHE1_DMA_STATE_SUBCHANNEL);
         uint32_t method =
-            GET_MASK(*dma_state, NV_PFIFO_CACHE1_DMA_STATE_METHOD) << 2;
+            GET_MASK(pfifo_reg_r(d, NV_PFIFO_CACHE1_DMA_STATE), NV_PFIFO_CACHE1_DMA_STATE_METHOD) << 2;
         uint32_t method_count =
-            GET_MASK(*dma_state, NV_PFIFO_CACHE1_DMA_STATE_METHOD_COUNT);
+            GET_MASK(pfifo_reg_r(d, NV_PFIFO_CACHE1_DMA_STATE), NV_PFIFO_CACHE1_DMA_STATE_METHOD_COUNT);
 
         uint32_t subroutine_state =
-            GET_MASK(*dma_subroutine, NV_PFIFO_CACHE1_DMA_SUBROUTINE_STATE);
+            GET_MASK(pfifo_reg_r(d, NV_PFIFO_CACHE1_DMA_SUBROUTINE), NV_PFIFO_CACHE1_DMA_SUBROUTINE_STATE);
 
         if (method_count) {
             /* data word of methods command */
-            d->pfifo.regs[NV_PFIFO_CACHE1_DMA_DATA_SHADOW] = word;
+            pfifo_reg_w(d, NV_PFIFO_CACHE1_DMA_DATA_SHADOW, word);
 
             assert((method & 3) == 0);
             uint32_t method_entry = 0;
@@ -412,7 +403,7 @@ static void pfifo_run_pusher(NV2AState *d)
             SET_MASK(method_entry, NV_PFIFO_CACHE1_METHOD_SUBCHANNEL,
                      method_subchannel);
 
-            *status &= ~NV_PFIFO_CACHE1_STATUS_LOW_MARK;
+            pfifo_reg_w(d, NV_PFIFO_CACHE1_STATUS, pfifo_reg_r(d, NV_PFIFO_CACHE1_STATUS) & ~NV_PFIFO_CACHE1_STATUS_LOW_MARK);
 
             ssize_t num_words_processed =
                 pfifo_run_puller(d, method_entry, word, word_ptr,
@@ -425,39 +416,37 @@ static void pfifo_run_pusher(NV2AState *d)
             dma_get_v += (num_words_processed-1)*4;
 
             if (method_type == NV_PFIFO_CACHE1_DMA_STATE_METHOD_TYPE_INC) {
-                SET_MASK(*dma_state, NV_PFIFO_CACHE1_DMA_STATE_METHOD,
+                PFIFO_REG_SET_MASK(d, NV_PFIFO_CACHE1_DMA_STATE, NV_PFIFO_CACHE1_DMA_STATE_METHOD,
                          (method + 4*num_words_processed) >> 2);
             }
-            SET_MASK(*dma_state, NV_PFIFO_CACHE1_DMA_STATE_METHOD_COUNT,
+            PFIFO_REG_SET_MASK(d, NV_PFIFO_CACHE1_DMA_STATE, NV_PFIFO_CACHE1_DMA_STATE_METHOD_COUNT,
                      method_count - MIN(method_count, num_words_processed));
 
-            (*dma_dcount) += num_words_processed;
+            pfifo_reg_w(d, NV_PFIFO_CACHE1_DMA_DCOUNT, pfifo_reg_r(d, NV_PFIFO_CACHE1_DMA_DCOUNT) + num_words_processed);
         } else {
             /* no command active - this is the first word of a new one */
-            d->pfifo.regs[NV_PFIFO_CACHE1_DMA_RSVD_SHADOW] = word;
+            pfifo_reg_w(d, NV_PFIFO_CACHE1_DMA_RSVD_SHADOW, word);
 
             /* match all forms */
             if ((word & 0xe0000003) == 0x20000000) {
                 /* old jump */
-                d->pfifo.regs[NV_PFIFO_CACHE1_DMA_GET_JMP_SHADOW] =
-                    dma_get_v;
+                pfifo_reg_w(d, NV_PFIFO_CACHE1_DMA_GET_JMP_SHADOW, dma_get_v);
                 dma_get_v = word & 0x1fffffff;
                 NV2A_DPRINTF("pb OLD_JMP 0x%x\n", dma_get_v);
             } else if ((word & 3) == 1) {
                 /* jump */
-                d->pfifo.regs[NV_PFIFO_CACHE1_DMA_GET_JMP_SHADOW] =
-                    dma_get_v;
+                pfifo_reg_w(d, NV_PFIFO_CACHE1_DMA_GET_JMP_SHADOW, dma_get_v);
                 dma_get_v = word & 0xfffffffc;
                 NV2A_DPRINTF("pb JMP 0x%x\n", dma_get_v);
             } else if ((word & 3) == 2) {
                 /* call */
                 if (subroutine_state) {
-                    SET_MASK(*dma_state, NV_PFIFO_CACHE1_DMA_STATE_ERROR,
+                    PFIFO_REG_SET_MASK(d, NV_PFIFO_CACHE1_DMA_STATE, NV_PFIFO_CACHE1_DMA_STATE_ERROR,
                              NV_PFIFO_CACHE1_DMA_STATE_ERROR_CALL);
                     break;
                 } else {
-                    *dma_subroutine = dma_get_v;
-                    SET_MASK(*dma_subroutine,
+                    pfifo_reg_w(d, NV_PFIFO_CACHE1_DMA_SUBROUTINE, dma_get_v);
+                    PFIFO_REG_SET_MASK(d, NV_PFIFO_CACHE1_DMA_SUBROUTINE,
                              NV_PFIFO_CACHE1_DMA_SUBROUTINE_STATE, 1);
                     dma_get_v = word & 0xfffffffc;
                     NV2A_DPRINTF("pb CALL 0x%x\n", dma_get_v);
@@ -465,50 +454,51 @@ static void pfifo_run_pusher(NV2AState *d)
             } else if (word == 0x00020000) {
                 /* return */
                 if (!subroutine_state) {
-                    SET_MASK(*dma_state, NV_PFIFO_CACHE1_DMA_STATE_ERROR,
+                    PFIFO_REG_SET_MASK(d, NV_PFIFO_CACHE1_DMA_STATE, NV_PFIFO_CACHE1_DMA_STATE_ERROR,
                              NV_PFIFO_CACHE1_DMA_STATE_ERROR_RETURN);
                     // break;
                 } else {
-                    dma_get_v = *dma_subroutine & 0xfffffffc;
-                    SET_MASK(*dma_subroutine,
+                    dma_get_v = pfifo_reg_r(d, NV_PFIFO_CACHE1_DMA_SUBROUTINE) & 0xfffffffc;
+                    PFIFO_REG_SET_MASK(d, NV_PFIFO_CACHE1_DMA_SUBROUTINE,
                              NV_PFIFO_CACHE1_DMA_SUBROUTINE_STATE, 0);
                     NV2A_DPRINTF("pb RET 0x%x\n", dma_get_v);
                 }
             } else if ((word & 0xe0030003) == 0) {
                 /* increasing methods */
-                SET_MASK(*dma_state, NV_PFIFO_CACHE1_DMA_STATE_METHOD,
+                PFIFO_REG_SET_MASK(d, NV_PFIFO_CACHE1_DMA_STATE, NV_PFIFO_CACHE1_DMA_STATE_METHOD,
                          (word & 0x1fff) >> 2 );
-                SET_MASK(*dma_state, NV_PFIFO_CACHE1_DMA_STATE_SUBCHANNEL,
+                PFIFO_REG_SET_MASK(d, NV_PFIFO_CACHE1_DMA_STATE, NV_PFIFO_CACHE1_DMA_STATE_SUBCHANNEL,
                          (word >> 13) & 7);
-                SET_MASK(*dma_state, NV_PFIFO_CACHE1_DMA_STATE_METHOD_COUNT,
+                PFIFO_REG_SET_MASK(d, NV_PFIFO_CACHE1_DMA_STATE, NV_PFIFO_CACHE1_DMA_STATE_METHOD_COUNT,
                          (word >> 18) & 0x7ff);
-                SET_MASK(*dma_state, NV_PFIFO_CACHE1_DMA_STATE_METHOD_TYPE,
+                PFIFO_REG_SET_MASK(d, NV_PFIFO_CACHE1_DMA_STATE, NV_PFIFO_CACHE1_DMA_STATE_METHOD_TYPE,
                          NV_PFIFO_CACHE1_DMA_STATE_METHOD_TYPE_INC);
-                *dma_dcount = 0;
+                pfifo_reg_w(d, NV_PFIFO_CACHE1_DMA_DCOUNT, 0);
             } else if ((word & 0xe0030003) == 0x40000000) {
                 /* non-increasing methods */
-                SET_MASK(*dma_state, NV_PFIFO_CACHE1_DMA_STATE_METHOD,
+                PFIFO_REG_SET_MASK(d, NV_PFIFO_CACHE1_DMA_STATE, NV_PFIFO_CACHE1_DMA_STATE_METHOD,
                          (word & 0x1fff) >> 2 );
-                SET_MASK(*dma_state, NV_PFIFO_CACHE1_DMA_STATE_SUBCHANNEL,
+                PFIFO_REG_SET_MASK(d, NV_PFIFO_CACHE1_DMA_STATE, NV_PFIFO_CACHE1_DMA_STATE_SUBCHANNEL,
                          (word >> 13) & 7);
-                SET_MASK(*dma_state, NV_PFIFO_CACHE1_DMA_STATE_METHOD_COUNT,
+                PFIFO_REG_SET_MASK(d, NV_PFIFO_CACHE1_DMA_STATE, NV_PFIFO_CACHE1_DMA_STATE_METHOD_COUNT,
                          (word >> 18) & 0x7ff);
-                SET_MASK(*dma_state, NV_PFIFO_CACHE1_DMA_STATE_METHOD_TYPE,
+                PFIFO_REG_SET_MASK(d, NV_PFIFO_CACHE1_DMA_STATE, NV_PFIFO_CACHE1_DMA_STATE_METHOD_TYPE,
                          NV_PFIFO_CACHE1_DMA_STATE_METHOD_TYPE_NON_INC);
-                *dma_dcount = 0;
+                pfifo_reg_w(d, NV_PFIFO_CACHE1_DMA_DCOUNT, 0);
             } else {
                 NV2A_DPRINTF("pb reserved cmd 0x%x - 0x%x\n",
                              dma_get_v, word);
-                SET_MASK(*dma_state, NV_PFIFO_CACHE1_DMA_STATE_ERROR,
+                PFIFO_REG_SET_MASK(d, NV_PFIFO_CACHE1_DMA_STATE, NV_PFIFO_CACHE1_DMA_STATE_ERROR,
                          NV_PFIFO_CACHE1_DMA_STATE_ERROR_RESERVED_CMD);
                 // break;
                 assert(!"Reserved pb command - invalid GPU command. Check logs for more info");
             }
         }
 
-        qatomic_set(dma_get, dma_get_v); /* read by the guest, no lock */
+        /* read by the guest, no lock */
+        pfifo_reg_w(d, NV_PFIFO_CACHE1_DMA_GET, dma_get_v);
 
-        if (GET_MASK(*dma_state, NV_PFIFO_CACHE1_DMA_STATE_ERROR)) {
+        if (GET_MASK(pfifo_reg_r(d, NV_PFIFO_CACHE1_DMA_STATE), NV_PFIFO_CACHE1_DMA_STATE_ERROR)) {
             break;
         }
     }
@@ -516,12 +506,12 @@ static void pfifo_run_pusher(NV2AState *d)
     // NV2A_DPRINTF("DMA pusher done: max 0x%" HWADDR_PRIx ", 0x%" HWADDR_PRIx " - 0x%" HWADDR_PRIx "\n",
     //      dma_len, control->dma_get, control->dma_put);
 
-    uint32_t error = GET_MASK(*dma_state, NV_PFIFO_CACHE1_DMA_STATE_ERROR);
+    uint32_t error = GET_MASK(pfifo_reg_r(d, NV_PFIFO_CACHE1_DMA_STATE), NV_PFIFO_CACHE1_DMA_STATE_ERROR);
     if (error) {
         NV2A_DPRINTF("pb error: %d\n", error);
         assert(!"Error reported in PFIFO dma state - check logs for more info");
 
-        SET_MASK(*dma_push, NV_PFIFO_CACHE1_DMA_PUSH_STATUS, 1); /* suspended */
+        PFIFO_REG_SET_MASK(d, NV_PFIFO_CACHE1_DMA_PUSH, NV_PFIFO_CACHE1_DMA_PUSH_STATUS, 1); /* suspended */
 
         // d->pfifo.pending_interrupts |= NV_PFIFO_INTR_0_DMA_PUSHER;
         // nv2a_update_irq(d);
@@ -540,7 +530,7 @@ static void pfifo_park_for_guest(NV2AState *d)
     for (;;) {
         int key = retro_eventcount_prepare_wait(&d->pfifo.fifo_ec);
         if (!retro_atomic_load_acquire_int(&d->pfifo.park_requests) ||
-            qatomic_read(&d->exiting)) {
+            retro_atomic_load_acquire_int(&d->exiting)) {
             retro_eventcount_cancel_wait(&d->pfifo.fifo_ec);
             break;
         }
@@ -559,11 +549,11 @@ void *pfifo_thread(void *arg)
     rcu_register_thread();
 
     qemu_mutex_lock(&d->pfifo.lock);
-    d->pfifo.thread_running = true;
+    retro_atomic_store_release_int(&d->pfifo.thread_running, 1);
     while (true) {
         if (retro_atomic_load_acquire_int(&d->pfifo.park_requests)) {
             pfifo_park_for_guest(d);
-            if (d->exiting) {
+            if (retro_atomic_load_acquire_int(&d->exiting)) {
                 break;
             }
             continue;
@@ -572,7 +562,7 @@ void *pfifo_thread(void *arg)
 
         pgraph_process_pending(d);
 
-        if (!d->pfifo.halt) {
+        if (!retro_atomic_load_acquire_int(&d->pfifo.halt)) {
             pfifo_run_pusher(d);
         }
 
@@ -583,7 +573,7 @@ void *pfifo_thread(void *arg)
             pfifo_idle_wait(d);
         }
 
-        if (d->exiting) {
+        if (retro_atomic_load_acquire_int(&d->exiting)) {
             break;
         }
     }
@@ -597,7 +587,7 @@ void *pfifo_thread(void *arg)
 static uint32_t ramht_hash(NV2AState *d, uint32_t handle)
 {
     unsigned int ramht_size =
-        1 << (GET_MASK(d->pfifo.regs[NV_PFIFO_RAMHT], NV_PFIFO_RAMHT_SIZE)+12);
+        1 << (GET_MASK(pfifo_reg_r(d, NV_PFIFO_RAMHT), NV_PFIFO_RAMHT_SIZE)+12);
 
     /* XXX: Think this is different to what nouveau calculates... */
     unsigned int bits = ctz32(ramht_size)-1;
@@ -608,7 +598,7 @@ static uint32_t ramht_hash(NV2AState *d, uint32_t handle)
         handle >>= bits;
     }
 
-    unsigned int channel_id = GET_MASK(d->pfifo.regs[NV_PFIFO_CACHE1_PUSH1],
+    unsigned int channel_id = GET_MASK(pfifo_reg_r(d, NV_PFIFO_CACHE1_PUSH1),
                                        NV_PFIFO_CACHE1_PUSH1_CHID);
     hash ^= channel_id << (bits - 4);
 
@@ -619,13 +609,13 @@ static uint32_t ramht_hash(NV2AState *d, uint32_t handle)
 static RAMHTEntry ramht_lookup(NV2AState *d, uint32_t handle)
 {
     hwaddr ramht_size =
-        1 << (GET_MASK(d->pfifo.regs[NV_PFIFO_RAMHT], NV_PFIFO_RAMHT_SIZE)+12);
+        1 << (GET_MASK(pfifo_reg_r(d, NV_PFIFO_RAMHT), NV_PFIFO_RAMHT_SIZE)+12);
 
     uint32_t hash = ramht_hash(d, handle);
     assert(hash * 8 < ramht_size);
 
     hwaddr ramht_address =
-        GET_MASK(d->pfifo.regs[NV_PFIFO_RAMHT],
+        GET_MASK(pfifo_reg_r(d, NV_PFIFO_RAMHT),
                  NV_PFIFO_RAMHT_BASE_ADDRESS) << 12;
 
     assert(ramht_address + hash * 8 < memory_region_size(&d->ramin));

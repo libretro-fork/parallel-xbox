@@ -229,10 +229,9 @@ void pgraph_vk_process_pending_reports(NV2AState *d)
     PGRAPHState *pg = &d->pgraph;
     PGRAPHVkState *r = pg->vk_renderer_state;
 
-    uint32_t *dma_get = &d->pfifo.regs[NV_PFIFO_CACHE1_DMA_GET];
-    uint32_t *dma_put = &d->pfifo.regs[NV_PFIFO_CACHE1_DMA_PUT];
-
-    if (*dma_get == *dma_put && r->in_command_buffer &&
+    if (pfifo_reg_r(d, NV_PFIFO_CACHE1_DMA_GET) ==
+            pfifo_reg_r(d, NV_PFIFO_CACHE1_DMA_PUT) &&
+        r->in_command_buffer &&
         !QSIMPLEQ_EMPTY(&r->report_queue)) {
         pgraph_vk_finish(pg, VK_FINISH_REASON_STALLED);
         return; /* the finish served what was available */

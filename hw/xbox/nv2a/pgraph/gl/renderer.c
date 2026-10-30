@@ -118,7 +118,7 @@ static void pgraph_gl_flip_stall(NV2AState *d)
     int64_t probe_t0 = unlikely(xemu_tbrate_enabled()) ? get_clock() : 0;
     pgraph_gl_shaders_flip_service(d);
     if (probe_t0) {
-        qatomic_add(&xemu_tbrate_flipsvc_ns, get_clock() - probe_t0);
+        xemu_tbrate_add(&xemu_tbrate_flipsvc_ns, get_clock() - probe_t0);
     }
 
     /* Close this frame's open fragment-query segment (one segment per run
@@ -138,7 +138,8 @@ static void pgraph_gl_flip_stall(NV2AState *d)
             glClientWaitSync(r->flip_fence, GL_SYNC_FLUSH_COMMANDS_BIT,
                              (GLuint64)5000000000);
             if (fence_t0) {
-                qatomic_add(&xemu_tbrate_fence_ns, get_clock() - fence_t0);
+                xemu_tbrate_add(&xemu_tbrate_fence_ns,
+                                get_clock() - fence_t0);
             }
             glDeleteSync(r->flip_fence);
         }
@@ -184,14 +185,14 @@ static void pgraph_gl_process_pending(NV2AState *d)
     PGRAPHState *pg = &d->pgraph;
     PGRAPHGLState *r = pg->gl_renderer_state;
 
-    bool scanout = qatomic_read(&d->pgraph.scanout_changed) ||
-                   qatomic_read(&r->disp_check_pending);
-    if (qatomic_read(&r->download_dirty_surfaces_pending) ||
-        qatomic_read(&d->pgraph.sync_pending) || scanout ||
-        qatomic_read(&d->pgraph.flush_pending) ||
-        qatomic_read(&r->shader_cache_writeback_pending)) {
+    bool scanout = retro_atomic_load_relaxed_int(&d->pgraph.scanout_changed) ||
+                   retro_atomic_load_relaxed_int(&r->disp_check_pending);
+    if (retro_atomic_load_relaxed_int(&r->download_dirty_surfaces_pending) ||
+        retro_atomic_load_relaxed_int(&d->pgraph.sync_pending) || scanout ||
+        retro_atomic_load_relaxed_int(&d->pgraph.flush_pending) ||
+        retro_atomic_load_relaxed_int(&r->shader_cache_writeback_pending)) {
         qemu_mutex_unlock(&d->pfifo.lock);
-        if (qatomic_read(&r->download_dirty_surfaces_pending)) {
+        if (retro_atomic_load_relaxed_int(&r->download_dirty_surfaces_pending)) {
             /* pre-savevm: close the open visibility-test interval and serve
              * every queued report, so each GET_REPORT result is in guest
              * RAM before it is serialized. */
@@ -202,19 +203,19 @@ static void pgraph_gl_process_pending(NV2AState *d)
             pgraph_gl_drain_pending_reports(d);
             pgraph_gl_download_dirty_surfaces(d);
         }
-        if (qatomic_read(&d->pgraph.sync_pending)) {
-            qatomic_set(&d->pgraph.scanout_changed, false);
-            qatomic_set(&r->disp_check_pending, false);
+        if (retro_atomic_load_relaxed_int(&d->pgraph.sync_pending)) {
+            retro_atomic_store_relaxed_int(&d->pgraph.scanout_changed, 0);
+            retro_atomic_store_relaxed_int(&r->disp_check_pending, 0);
             pgraph_gl_sync(d);
         } else if (scanout) {
-            qatomic_set(&d->pgraph.scanout_changed, false);
-            qatomic_set(&r->disp_check_pending, false);
+            retro_atomic_store_relaxed_int(&d->pgraph.scanout_changed, 0);
+            retro_atomic_store_relaxed_int(&r->disp_check_pending, 0);
             pgraph_gl_present_scanout(d);
         }
-        if (qatomic_read(&d->pgraph.flush_pending)) {
+        if (retro_atomic_load_relaxed_int(&d->pgraph.flush_pending)) {
             pgraph_gl_flush(d);
         }
-        if (qatomic_read(&r->shader_cache_writeback_pending)) {
+        if (retro_atomic_load_relaxed_int(&r->shader_cache_writeback_pending)) {
             pgraph_gl_shader_write_cache_reload_list(&d->pgraph);
         }
         qemu_mutex_lock(&d->pfifo.lock);
@@ -226,7 +227,7 @@ static void pgraph_gl_pre_savevm_trigger(NV2AState *d)
     PGRAPHState *pg = &d->pgraph;
     PGRAPHGLState *r = pg->gl_renderer_state;
 
-    qatomic_set(&r->download_dirty_surfaces_pending, true);
+    retro_atomic_store_relaxed_int(&r->download_dirty_surfaces_pending, 1);
 }
 
 static void pgraph_gl_pre_savevm_wait(NV2AState *d)
@@ -243,7 +244,7 @@ static void pgraph_gl_pre_shutdown_trigger(NV2AState *d)
     PGRAPHState *pg = &d->pgraph;
     PGRAPHGLState *r = pg->gl_renderer_state;
 
-    qatomic_set(&r->shader_cache_writeback_pending, true);
+    retro_atomic_store_relaxed_int(&r->shader_cache_writeback_pending, 1);
 }
 
 static void pgraph_gl_pre_shutdown_wait(NV2AState *d)

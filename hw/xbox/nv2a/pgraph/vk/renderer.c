@@ -47,7 +47,7 @@ static void pgraph_vk_init(NV2AState *d, Error **errp)
     /* The frontend's Vulkan context, and with it the device this renderer
      * may be sharing (libretro_shared.h), is there: the machine starts, and
      * the renderer goes back onto a device, only after context_reset */
-    if (!qatomic_read(&xemu_libretro_vk_context_ready)) {
+    if (!retro_atomic_load_relaxed_int(&xemu_libretro_vk_context_ready)) {
         error_setg(errp, "no Vulkan context from the frontend");
         return;
     }
@@ -140,31 +140,31 @@ static void pgraph_vk_process_pending(NV2AState *d)
 {
     PGRAPHVkState *r = d->pgraph.vk_renderer_state;
 
-    bool scanout = qatomic_read(&d->pgraph.scanout_changed) ||
-                   qatomic_read(&r->display.check_pending);
-    if (qatomic_read(&r->download_dirty_surfaces_pending) ||
-        qatomic_read(&d->pgraph.sync_pending) || scanout ||
-        qatomic_read(&d->pgraph.flush_pending) ||
-        qatomic_read(&r->seed_writeback_pending)
+    bool scanout = retro_atomic_load_relaxed_int(&d->pgraph.scanout_changed) ||
+                   retro_atomic_load_relaxed_int(&r->display.check_pending);
+    if (retro_atomic_load_relaxed_int(&r->download_dirty_surfaces_pending) ||
+        retro_atomic_load_relaxed_int(&d->pgraph.sync_pending) || scanout ||
+        retro_atomic_load_relaxed_int(&d->pgraph.flush_pending) ||
+        retro_atomic_load_relaxed_int(&r->seed_writeback_pending)
     ) {
         qemu_mutex_unlock(&d->pfifo.lock);
-        if (qatomic_read(&r->download_dirty_surfaces_pending)) {
+        if (retro_atomic_load_relaxed_int(&r->download_dirty_surfaces_pending)) {
             pgraph_vk_settle_reports(&d->pgraph);
             pgraph_vk_download_dirty_surfaces(d);
         }
-        if (qatomic_read(&d->pgraph.sync_pending)) {
-            qatomic_set(&d->pgraph.scanout_changed, false);
-            qatomic_set(&r->display.check_pending, false);
+        if (retro_atomic_load_relaxed_int(&d->pgraph.sync_pending)) {
+            retro_atomic_store_relaxed_int(&d->pgraph.scanout_changed, 0);
+            retro_atomic_store_relaxed_int(&r->display.check_pending, 0);
             pgraph_vk_sync(d);
         } else if (scanout) {
-            qatomic_set(&d->pgraph.scanout_changed, false);
-            qatomic_set(&r->display.check_pending, false);
+            retro_atomic_store_relaxed_int(&d->pgraph.scanout_changed, 0);
+            retro_atomic_store_relaxed_int(&r->display.check_pending, 0);
             pgraph_vk_present_scanout(d);
         }
-        if (qatomic_read(&d->pgraph.flush_pending)) {
+        if (retro_atomic_load_relaxed_int(&d->pgraph.flush_pending)) {
             pgraph_vk_flush(d);
         }
-        if (qatomic_read(&r->seed_writeback_pending)) {
+        if (retro_atomic_load_relaxed_int(&r->seed_writeback_pending)) {
             pgraph_vk_shader_seed_writeback(&d->pgraph);
         }
         qemu_mutex_lock(&d->pfifo.lock);
@@ -202,7 +202,7 @@ static void pgraph_vk_flip_stall(NV2AState *d)
 
 static void pgraph_vk_pre_savevm_trigger(NV2AState *d)
 {
-    qatomic_set(&d->pgraph.vk_renderer_state->download_dirty_surfaces_pending, true);
+    retro_atomic_store_relaxed_int(&d->pgraph.vk_renderer_state->download_dirty_surfaces_pending, 1);
 }
 
 static void pgraph_vk_pre_savevm_wait(NV2AState *d)
@@ -215,7 +215,7 @@ static void pgraph_vk_pre_savevm_wait(NV2AState *d)
 static void pgraph_vk_pre_shutdown_trigger(NV2AState *d)
 {
     PGRAPHVkState *r = d->pgraph.vk_renderer_state;
-    qatomic_set(&r->seed_writeback_pending, true);
+    retro_atomic_store_relaxed_int(&r->seed_writeback_pending, 1);
 }
 
 static void pgraph_vk_pre_shutdown_wait(NV2AState *d)
@@ -251,15 +251,20 @@ static int pgraph_vk_get_framebuffer_surface(NV2AState *d)
     surface->frame_time = pg->frame_time;
 
 #if HAVE_EXTERNAL_MEMORY
-    qatomic_set(&pg->sync_pending, true);
+    retro_atomic_store_relaxed_int(&pg->sync_pending, 1);
     pfifo_kick(d);
     qemu_mutex_unlock(&d->pfifo.lock);
     pgraph_wait_until_clear(&d->pgraph.sync_complete, &pg->sync_pending);
     g_nv2a_stats.presented_frame_id = r->display.draw_time;
     return r->display.gl_texture_id;
 #else
+    /* the surface is the GPU thread's: looked at under the lock */
+    bool dirty = surface->draw_dirty;
+    hwaddr addr = surface->vram_addr, len = surface->size;
     qemu_mutex_unlock(&d->pfifo.lock);
-    pgraph_vk_wait_for_surface_download(surface);
+    if (dirty) {
+        pgraph_vk_wait_for_download(d, addr, len);
+    }
     return 0;
 #endif
 }
@@ -295,13 +300,14 @@ bool nv2a_vk_libretro_get_frame(VkImage *image, VkImageView *view,
     /* The last frame the renderer's thread drew and published: its slot
      * and number in one word (display.c render_display); the slot's image
      * stays as it is until every other slot has been drawn */
-    uint64_t published = qatomic_load_acquire(&r->display.published);
+    uint64_t published =
+        (uint64_t)retro_atomic_load_acquire_64(&r->display.published);
     const struct PGRAPHVkFrameImage *f =
         &r->display.frames[published & 0xff];
     if (published >> 8 == *count) {
         /* nothing new: have the renderer look at the scanout again (a
          * front buffer drawn to in place, the video overlay) */
-        qatomic_set(&r->display.check_pending, true);
+        retro_atomic_store_relaxed_int(&r->display.check_pending, 1);
         pfifo_kick(d);
         return false;
     }

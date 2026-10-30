@@ -79,12 +79,14 @@ typedef struct NV2AState {
     /*< public >*/
 
     qemu_irq irq;
-    bool exiting;
+    retro_atomic_int_t exiting;
 
     VGACommonState vga;
     GraphicHwOps hw_ops;
     QEMUTimer *vblank_timer;
-    int64_t vblank_deadline;
+    /* QEMU_CLOCK_REALTIME of the next vblank, for the renderers' slack
+     * estimates on the GPU thread */
+    retro_atomic_64_t vblank_deadline;
     /* QEMU_CLOCK_VIRTUAL time of the last vblank (the core's raster) */
     int64_t vblank_vt;
     QEMUTimer *flip_timer;
@@ -106,7 +108,9 @@ typedef struct NV2AState {
     struct {
         uint32_t pending_interrupts;
         uint32_t enabled_interrupts;
-        uint32_t regs[0x2000];
+        /* the pusher's, and the guest's from the vCPU without the lock
+         * (pfifo_read/write, user.c): word-atomic, pfifo_reg_r/w */
+        retro_atomic_int_t regs[0x2000];
         QemuMutex lock;
         QemuThread thread;
         /* The thread's sleep, with nothing to do: an eventcount, so a kick
@@ -125,11 +129,12 @@ typedef struct NV2AState {
         retro_eventcount_t parked_ec;
         retro_atomic_int_t fifo_kick;
         retro_atomic_int_t guest_waiting; /* threads about to take lock */
-        bool halt;
-        bool thread_running; /* set after PFIFO thread enters main loop */
+        retro_atomic_int_t halt;
+        /* set after PFIFO thread enters main loop */
+        retro_atomic_int_t thread_running;
         /* the thread waits for a kick with nothing to do (nv2a_libretro_
          * busy); written by the thread under the lock, read by any */
-        bool parked;
+        retro_atomic_int_t parked;
     } pfifo;
 
     struct {
@@ -189,6 +194,25 @@ typedef struct NV2ABlockInfo {
 extern const NV2ABlockInfo blocktable[NV_NUM_BLOCKS];
 
 void nv2a_update_irq(NV2AState *d);
+
+/* A PFIFO register: relaxed, a plain load or store; the pusher's and the
+ * guest's accesses are each one word */
+static inline uint32_t pfifo_reg_r(NV2AState *d, unsigned int r)
+{
+    return (uint32_t)retro_atomic_load_relaxed_int(&d->pfifo.regs[r]);
+}
+
+static inline void pfifo_reg_w(NV2AState *d, unsigned int r, uint32_t v)
+{
+    retro_atomic_store_relaxed_int(&d->pfifo.regs[r], (int)v);
+}
+
+#define PFIFO_REG_SET_MASK(d, r, mask, v)  \
+    do {                                    \
+        uint32_t pfifo_v_ = pfifo_reg_r((d), (r)); \
+        SET_MASK(pfifo_v_, (mask), (v));    \
+        pfifo_reg_w((d), (r), pfifo_v_);    \
+    } while (0)
 
 static inline
 void nv2a_reg_log_read(int block, hwaddr addr, unsigned int size, uint64_t val)

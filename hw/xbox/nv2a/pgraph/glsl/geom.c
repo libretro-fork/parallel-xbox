@@ -50,8 +50,8 @@ void pgraph_glsl_set_geom_state(PGRAPHState *pg, GeomState *state)
     state->z_perspective = pgraph_reg_r(pg, NV_PGRAPH_CONTROL_0) &
                            NV_PGRAPH_CONTROL_0_Z_PERSPECTIVE_ENABLE;
 
-    if (pg->renderer->ops.get_gpu_properties) {
-        GPUProperties *gpu_props = pg->renderer->ops.get_gpu_properties();
+    if (pgraph_renderer(pg)->ops.get_gpu_properties) {
+        GPUProperties *gpu_props = pgraph_renderer(pg)->ops.get_gpu_properties();
 
         switch (state->primitive_mode) {
         case PRIM_TYPE_TRIANGLES:

@@ -402,7 +402,7 @@ typedef struct PGRAPHVkDisplayState {
      * byte, the count above it. The slots are this thread's ring, filled
      * in turn, so a slot the frontend holds is not drawn again until every
      * other has been. */
-    uint64_t published;
+    retro_atomic_64_t published;
     unsigned next_slot;
     /* The display mode the last frame was drawn in (present_scanout) */
     uint32_t last_line_offset;
@@ -410,7 +410,7 @@ typedef struct PGRAPHVkDisplayState {
     bool last_interlaced;
     /* The frontend found nothing new: look at the scanout again (a front
      * buffer drawn to in place, the video overlay) */
-    bool check_pending;
+    retro_atomic_int_t check_pending;
 } PGRAPHVkDisplayState;
 
 typedef struct ComputePipelineKey {
@@ -691,7 +691,7 @@ typedef struct PGRAPHVkState {
     /* Pipeline cache persistence helper (pgraph_vk_save_pipeline_cache) */
     QemuThread pcache_thread;
     bool pcache_thread_spawned;
-    bool pcache_busy;
+    retro_atomic_int_t pcache_busy;
     size_t pcache_saved_len;
     PipelineBinding *pipeline_cache_entries;
     PipelineBinding *pipeline_binding;
@@ -768,7 +768,7 @@ typedef struct PGRAPHVkState {
     bool scanout_active;
     SurfaceBinding *color_binding, *zeta_binding;
     retro_eventcount_t downloads_complete;
-    bool download_dirty_surfaces_pending;
+    retro_atomic_int_t download_dirty_surfaces_pending;
     retro_eventcount_t dirty_surfaces_download_complete; // common
 
     Lru texture_cache;
@@ -870,7 +870,7 @@ typedef struct PGRAPHVkState {
 
     /* Seed learning: the learnt shader seed is written back at
      * shutdown, on the pfifo thread. */
-    bool seed_writeback_pending;
+    retro_atomic_int_t seed_writeback_pending;
     retro_eventcount_t seed_writeback_complete;
 
     PGRAPHVkDisplayState display;
@@ -1025,7 +1025,7 @@ void pgraph_vk_cpu_access_service(NV2AState *d);
 void pgraph_vk_cpu_ahead_refresh(NV2AState *d);
 void pgraph_vk_surface_download_if_dirty(NV2AState *d, SurfaceBinding *surface);
 SurfaceBinding *pgraph_vk_surface_get_within(NV2AState *d, hwaddr addr);
-void pgraph_vk_wait_for_surface_download(SurfaceBinding *e);
+void pgraph_vk_wait_for_download(NV2AState *d, hwaddr addr, hwaddr len);
 void pgraph_vk_download_dirty_surfaces(NV2AState *d);
 void pgraph_vk_download_surfaces_in_range_if_dirty(PGRAPHState *pg, hwaddr start, hwaddr size);
 void pgraph_vk_upload_surface_data(NV2AState *d, SurfaceBinding *surface,

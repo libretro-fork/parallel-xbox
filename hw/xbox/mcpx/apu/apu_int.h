@@ -31,6 +31,7 @@
 #include "migration/vmstate.h"
 #include "qemu/main-loop.h"
 #include "qemu/thread.h"
+#include <retro_atomic.h>
 #include "system/runstate.h"
 #include "ui/xemu-settings.h"
 
@@ -95,7 +96,9 @@ typedef struct MCPXAPUState {
     MCPXAPUEPState ep;
     MCPXAPUDSPThread dsp_thread;
 
-    uint32_t regs[0x20000];
+    /* the guest's from the vCPU, the DSP thread's and the voice workers':
+     * word-atomic, apu_reg_r/w */
+    retro_atomic_int_t regs[0x20000];
 
     int ep_frame_div;
     struct {
@@ -115,6 +118,24 @@ typedef struct MCPXAPUState {
         int16_t samples[MCPX_APU_MONITOR_STATE_FRAMES * 2];
     } saved_output;
 } MCPXAPUState;
+
+/* An APU register: relaxed, a plain load or store */
+static inline uint32_t apu_reg_r(MCPXAPUState *d, unsigned int r)
+{
+    return (uint32_t)retro_atomic_load_relaxed_int(&d->regs[r]);
+}
+
+static inline void apu_reg_w(MCPXAPUState *d, unsigned int r, uint32_t v)
+{
+    retro_atomic_store_relaxed_int(&d->regs[r], (int)v);
+}
+
+#define APU_REG_SET_MASK(d, r, mask, v)    \
+    do {                                    \
+        uint32_t apu_v_ = apu_reg_r((d), (r)); \
+        SET_MASK(apu_v_, (mask), (v));      \
+        apu_reg_w((d), (r), apu_v_);        \
+    } while (0)
 
 extern MCPXAPUState *g_state; // Used via debug handlers
 extern struct McpxApuDebug g_dbg, g_dbg_cache;

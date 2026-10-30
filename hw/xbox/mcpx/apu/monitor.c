@@ -50,7 +50,7 @@ static retro_spsc_t apu_queue;
 static bool apu_queue_ready;
 /* Audio > Audio Volume, as standalone's curve: the gain the samples are
  * scaled by, in 1/65536 */
-static int32_t apu_gain_q16 = 65536;
+static retro_atomic_int_t apu_gain_q16 = RETRO_ATOMIC_INT_INITIALIZER(65536);
 /* Engine frames already in the queue ahead of the engine: the EP's eight
  * go in at once (mcpx_apu_monitor_end_ahead), and the next seven frames'
  * output is skipped, whichever producer it comes from. The producer
@@ -72,7 +72,7 @@ static void apu_queue_reset(void)
 void libretro_audio_set_volume(float volume)
 {
     float vu = pow(fmax(0.0, fmin(volume, 1.0)), M_E);
-    qatomic_set(&apu_gain_q16, (int32_t)(vu * 65536.0f + 0.5f));
+    retro_atomic_store_relaxed_int(&apu_gain_q16, (int)(vu * 65536.0f + 0.5f));
 }
 
 /* The queue for a state: the frontend's thread parked in the command, the
@@ -208,7 +208,7 @@ int16_t *mcpx_apu_monitor_begin_ahead(size_t frames)
  * this engine frame's output, the rest the next frames' */
 void mcpx_apu_monitor_end_ahead(int16_t *out, size_t frames)
 {
-    const int32_t gain = qatomic_read(&apu_gain_q16);
+    const int32_t gain = retro_atomic_load_relaxed_int(&apu_gain_q16);
 
     if (gain != 65536) {
         for (size_t i = 0; i < 2 * frames; i++) {
@@ -221,7 +221,7 @@ void mcpx_apu_monitor_end_ahead(int16_t *out, size_t frames)
 
 int32_t mcpx_apu_monitor_gain_q16(void)
 {
-    return qatomic_read(&apu_gain_q16);
+    return retro_atomic_load_relaxed_int(&apu_gain_q16);
 }
 
 void mcpx_apu_monitor_end(size_t frames)
@@ -232,7 +232,7 @@ void mcpx_apu_monitor_end(size_t frames)
 /* Producer: stereo float frames, as the VP makes them */
 void mcpx_apu_monitor_push_f32(const float (*samples)[2], size_t frames)
 {
-    const float gain = (float)qatomic_read(&apu_gain_q16) * (32767.0f / 65536.0f);
+    const float gain = (float)retro_atomic_load_relaxed_int(&apu_gain_q16) * (32767.0f / 65536.0f);
     int16_t *out = mcpx_apu_monitor_begin(frames);
 
     if (!out) {

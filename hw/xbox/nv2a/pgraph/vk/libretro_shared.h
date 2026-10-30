@@ -19,6 +19,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <retro_atomic.h>
 
 /* A frame's image for each of the frontend's sync indices at most */
 #define XEMU_LIBRETRO_VK_FRAMES 8
@@ -58,7 +59,7 @@ typedef struct XemuLibretroVk {
 /* The frontend's context is set up (context_reset has run): the renderer
  * starts only then, as the emulation thread is started before the frontend
  * has made its device. Not part of the struct, which create_device clears. */
-extern bool xemu_libretro_vk_context_ready;
+extern retro_atomic_int_t xemu_libretro_vk_context_ready;
 
 extern XemuLibretroVk xemu_libretro_vk;
 

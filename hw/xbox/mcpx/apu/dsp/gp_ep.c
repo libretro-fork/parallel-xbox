@@ -103,7 +103,7 @@ static void gp_scratch_walk(void *opaque, uint32_t addr, size_t len, bool dir,
 {
     MCPXAPUState *d = opaque;
     // fprintf(stderr, "GP %s scratch 0x%x bytes (0x%x words) at %x (0x%x words)\n", dir ? "writing to" : "reading from", len, len/4, addr, addr/4);
-    scatter_gather_walk(d, d->regs[NV_PAPU_GPSADDR], d->regs[NV_PAPU_GPSMAXSGE],
+    scatter_gather_walk(d, apu_reg_r(d, NV_PAPU_GPSADDR), apu_reg_r(d, NV_PAPU_GPSMAXSGE),
                         addr, len, dir, fn, user);
 }
 
@@ -112,7 +112,7 @@ static void ep_scratch_walk(void *opaque, uint32_t addr, size_t len, bool dir,
 {
     MCPXAPUState *d = opaque;
     // fprintf(stderr, "EP %s scratch 0x%x bytes (0x%x words) at %x (0x%x words)\n", dir ? "writing to" : "reading from", len, len/4, addr, addr/4);
-    scatter_gather_walk(d, d->regs[NV_PAPU_EPSADDR], d->regs[NV_PAPU_EPSMAXSGE],
+    scatter_gather_walk(d, apu_reg_r(d, NV_PAPU_EPSADDR), apu_reg_r(d, NV_PAPU_EPSMAXSGE),
                         addr, len, dir, fn, user);
 }
 
@@ -158,21 +158,21 @@ static void gp_fifo_walk(void *opaque, unsigned int index, size_t len, bool dir,
     hwaddr cur_reg;
     if (dir) {
         assert(index < GP_OUTPUT_FIFO_COUNT);
-        base = GET_MASK(d->regs[NV_PAPU_GPOFBASE0 + 0x10 * index],
+        base = GET_MASK(apu_reg_r(d, NV_PAPU_GPOFBASE0 + 0x10 * index),
                         NV_PAPU_GPOFBASE0_VALUE);
-        end = GET_MASK(d->regs[NV_PAPU_GPOFEND0 + 0x10 * index],
+        end = GET_MASK(apu_reg_r(d, NV_PAPU_GPOFEND0 + 0x10 * index),
                        NV_PAPU_GPOFEND0_VALUE);
         cur_reg = NV_PAPU_GPOFCUR0 + 0x10 * index;
     } else {
         assert(index < GP_INPUT_FIFO_COUNT);
-        base = GET_MASK(d->regs[NV_PAPU_GPIFBASE0 + 0x10 * index],
+        base = GET_MASK(apu_reg_r(d, NV_PAPU_GPIFBASE0 + 0x10 * index),
                         NV_PAPU_GPOFBASE0_VALUE);
-        end = GET_MASK(d->regs[NV_PAPU_GPIFEND0 + 0x10 * index],
+        end = GET_MASK(apu_reg_r(d, NV_PAPU_GPIFEND0 + 0x10 * index),
                        NV_PAPU_GPOFEND0_VALUE);
         cur_reg = NV_PAPU_GPIFCUR0 + 0x10 * index;
     }
 
-    uint32_t cur = GET_MASK(d->regs[cur_reg], NV_PAPU_GPOFCUR0_VALUE);
+    uint32_t cur = GET_MASK(apu_reg_r(d, cur_reg), NV_PAPU_GPOFCUR0_VALUE);
 
     // fprintf(stderr, "GP %s fifo #%d, base = %x, end = %x, cur = %x, len = %x\n",
     //     dir ? "writing to" : "reading from", index,
@@ -185,10 +185,10 @@ static void gp_fifo_walk(void *opaque, unsigned int index, size_t len, bool dir,
     }
 
     cur = circular_scatter_gather_walk(d,
-        d->regs[NV_PAPU_GPFADDR], d->regs[NV_PAPU_GPFMAXSGE],
+        apu_reg_r(d, NV_PAPU_GPFADDR), apu_reg_r(d, NV_PAPU_GPFMAXSGE),
         base, end, cur, len, dir, fn, user);
 
-    SET_MASK(d->regs[cur_reg], NV_PAPU_GPOFCUR0_VALUE, cur);
+    APU_REG_SET_MASK(d, cur_reg, NV_PAPU_GPOFCUR0_VALUE, cur);
 }
 
 /* the EP's output FIFO 0 sinks to the frontend: a run of the guest's
@@ -207,21 +207,21 @@ static void ep_fifo_walk(void *opaque, unsigned int index, size_t len, bool dir,
     hwaddr cur_reg;
     if (dir) {
         assert(index < EP_OUTPUT_FIFO_COUNT);
-        base = GET_MASK(d->regs[NV_PAPU_EPOFBASE0 + 0x10 * index],
+        base = GET_MASK(apu_reg_r(d, NV_PAPU_EPOFBASE0 + 0x10 * index),
                         NV_PAPU_GPOFBASE0_VALUE);
-        end = GET_MASK(d->regs[NV_PAPU_EPOFEND0 + 0x10 * index],
+        end = GET_MASK(apu_reg_r(d, NV_PAPU_EPOFEND0 + 0x10 * index),
                        NV_PAPU_GPOFEND0_VALUE);
         cur_reg = NV_PAPU_EPOFCUR0 + 0x10 * index;
     } else {
         assert(index < EP_INPUT_FIFO_COUNT);
-        base = GET_MASK(d->regs[NV_PAPU_EPIFBASE0 + 0x10 * index],
+        base = GET_MASK(apu_reg_r(d, NV_PAPU_EPIFBASE0 + 0x10 * index),
                         NV_PAPU_GPOFBASE0_VALUE);
-        end = GET_MASK(d->regs[NV_PAPU_EPIFEND0 + 0x10 * index],
+        end = GET_MASK(apu_reg_r(d, NV_PAPU_EPIFEND0 + 0x10 * index),
                        NV_PAPU_GPOFEND0_VALUE);
         cur_reg = NV_PAPU_EPIFCUR0 + 0x10 * index;
     }
 
-    uint32_t cur = GET_MASK(d->regs[cur_reg], NV_PAPU_GPOFCUR0_VALUE);
+    uint32_t cur = GET_MASK(apu_reg_r(d, cur_reg), NV_PAPU_GPOFCUR0_VALUE);
 
     // fprintf(stderr, "EP %s fifo #%d, base = %x, end = %x, cur = %x, len = %x\n",
     //     dir ? "writing to" : "reading from", index,
@@ -249,10 +249,10 @@ static void ep_fifo_walk(void *opaque, unsigned int index, size_t len, bool dir,
     }
 
     cur = circular_scatter_gather_walk(d,
-        d->regs[NV_PAPU_EPFADDR], d->regs[NV_PAPU_EPFMAXSGE],
+        apu_reg_r(d, NV_PAPU_EPFADDR), apu_reg_r(d, NV_PAPU_EPFMAXSGE),
         base, end, cur, len, dir, fn, user);
 
-    SET_MASK(d->regs[cur_reg], NV_PAPU_GPOFCUR0_VALUE, cur);
+    APU_REG_SET_MASK(d, cur_reg, NV_PAPU_GPOFCUR0_VALUE, cur);
 }
 
 static void proc_rst_write(DSPState *dsp, uint32_t oldval, uint32_t val)

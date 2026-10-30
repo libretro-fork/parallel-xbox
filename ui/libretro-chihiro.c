@@ -10,7 +10,7 @@
  */
 
 #include "qemu/osdep.h"
-#include "qemu/atomic.h"
+#include <retro_atomic.h>
 #include <math.h>
 
 #include "hw/xbox/chihiro/chihiro-jvs.h"
@@ -30,8 +30,8 @@ void libretro_chihiro_apply_pending(void);
 
 /* Queued for the emulation thread: coins per player, Card In presses
  * (bit 0/1: HW210 slot of player 1/2, bit 2: the CRP-1231 reader) */
-static int pending_coins[2];
-static int pending_cards;
+static retro_atomic_int_t pending_coins[2];
+static retro_atomic_int_t pending_cards;
 
 static bool pad(unsigned port, unsigned id)
 {
@@ -442,10 +442,10 @@ void libretro_chihiro_update_input(void)
 
     for (int p = 0; p < 2; p++) {
         if (pressed(pad(p, RETRO_DEVICE_ID_JOYPAD_SELECT), &coin_before[p]))
-            qatomic_inc(&pending_coins[p]);
+            retro_atomic_inc_int(&pending_coins[p]);
     }
     if (cards) {
-        qatomic_or(&pending_cards, cards);
+        retro_atomic_fetch_or_int(&pending_cards, cards);
     }
     ffb_rumble();
 }
@@ -460,9 +460,9 @@ void libretro_chihiro_apply_pending(void)
     }
     chihiro_card_ui_sync();
     for (int p = 0; p < 2; p++) {
-        jvs->coin_count[p] += qatomic_xchg(&pending_coins[p], 0);
+        jvs->coin_count[p] += retro_atomic_exchange_int(&pending_coins[p], 0);
     }
-    int cards = qatomic_xchg(&pending_cards, 0);
+    int cards = retro_atomic_exchange_int(&pending_cards, 0);
     if (cards & 1)
         chihiro_hw210_card_key(0);
     if (cards & 2)

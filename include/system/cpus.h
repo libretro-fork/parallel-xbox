@@ -3,6 +3,7 @@
 
 #include "qemu/thread.h"
 #include "qemu/cpu-pace.h"
+#include <retro_atomic.h>
 
 /* register accel-specific operations */
 void cpus_register_accel(const AccelOpsClass *i);
@@ -43,7 +44,17 @@ extern XemuVcpuWaits xemu_vcpu_waits;
 extern int xemu_tbrate_state;   /* -1 until the environment is read */
 bool xemu_tbrate_init(void);
 /* The GPU thread's own account, added atomically, read by the report. */
-extern int64_t xemu_tbrate_flipsvc_ns, xemu_tbrate_fence_ns;
+extern retro_atomic_64_t xemu_tbrate_flipsvc_ns, xemu_tbrate_fence_ns;
+
+/* a 64-bit add (retro_atomic has none): a compare-and-swap loop, on the
+ * measuring path only */
+static inline void xemu_tbrate_add(retro_atomic_64_t *p, int64_t v)
+{
+    int64_t old;
+    do {
+        old = retro_atomic_load_relaxed_64(p);
+    } while (!retro_atomic_cas_64(p, old, old + v));
+}
 void xemu_tbrate_lock_slow(QemuMutex *m);
 
 static inline bool xemu_tbrate_enabled(void)
