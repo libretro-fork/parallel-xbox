@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- OpenGL texture uploads now use byte-aligned rows and restore the prior unpack alignment, fixing corrupted narrow mip levels, small volume slices and tightly packed RGB conversion output. Linear guest pitches remain explicit row lengths. Bordered palette/RGB cubemaps also crop using the expanded host pixel stride.
+
 - Every platform uses the bundled Vulkan headers, fixing macOS builds that could not find Homebrew's headers through the MacPorts dependency paths.
 
 - Apple Silicon JIT write protection uses libretro-common's `memjit_write_begin/end` helpers. A per-thread adapter preserves QEMU's absolute write/execute switches, including repeated requests across the CPU and DSP JITs. Intel macOS keeps no-op switches.
