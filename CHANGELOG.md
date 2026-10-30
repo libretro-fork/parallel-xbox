@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- RCU startup is initialized once and its callback queue admits only one worker. This prevents the duplicate-consumer queue abort observed during startup fast-forward; fork children can still replace their inherited worker.
+
 - The PC machine code the Xbox is built on loses what the Xbox never has: memory hotplug (DIMMs, NVDIMMs, virtio memory), the fw_cfg firmware interface (and the -fw_cfg option) and the ACPI table builder the PC BIOS reads. The Xbox's own ACPI power management (acpi_xbox.c) stays. Nothing changes for someone using the core.
 
 - Devices and services the Xbox machine never creates are removed: the TLS channel, credentials and sessions, the command, DNS-resolver and network-listener channels, the qtest server (and its -qtest options), and the IOAPIC (the Xbox's interrupts go through the MCPX's i8259 pair). Nothing changes for someone using the core.
