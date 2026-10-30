@@ -250,6 +250,20 @@ static void decode_level_3d(PGRAPHState *pg, TextureLevel *level,
     s3tc_decompress_3d_into(fmt, data, width, height, depth, dst);
 }
 
+/* Three-channel SNORM optimal images are not generally supported. Preserve
+ * the existing RGB conversion bytes and expand backward in the same range;
+ * signed 127 supplies the implicit alpha-one component of the RGB format. */
+static void expand_rgb_snorm_alpha(uint8_t *pixels, size_t count)
+{
+    while (count) {
+        size_t i = --count;
+        pixels[4 * i + 2] = pixels[3 * i + 2];
+        pixels[4 * i + 1] = pixels[3 * i + 1];
+        pixels[4 * i] = pixels[3 * i];
+        pixels[4 * i + 3] = 127;
+    }
+}
+
 /* A swizzled level: unswizzled into the ring, and converted there where
  * the host cannot sample the format (palette, YUV, R6G5B5): through a
  * scratch range of the ring, the conversion's source, which the copy does
@@ -306,9 +320,15 @@ static void stage_swizzled(PGRAPHState *pg, VkCommandBuffer cmd,
         unswizzle_box(data, width, height, depth, scratch, row_pitch,
                       slice_pitch, bpp);
     }
-    uint8_t *dst = stage_level(pg, level, width, height, depth, converted);
+    bool expand_rgb = s->color_format == NV097_SET_TEXTURE_FORMAT_COLOR_SZ_R6G5B5;
+    size_t texels = (size_t)width * height * depth;
+    uint8_t *dst = stage_level(pg, level, width, height, depth,
+                               expand_rgb ? texels * 4 : converted);
     pgraph_convert_texture_data_into(*s, scratch, palette, width, height,
                                      depth, row_pitch, slice_pitch, dst);
+    if (expand_rgb) {
+        expand_rgb_snorm_alpha(dst, texels);
+    }
 }
 
 /* The texture's levels, from the guest's memory into the staging ring, in
@@ -1342,7 +1362,7 @@ static unsigned int vk_format_texel_size(VkFormat format)
     case VK_FORMAT_R5G6B5_UNORM_PACK16:     return 2;
     case VK_FORMAT_A4R4G4B4_UNORM_PACK16:   return 2;
     case VK_FORMAT_R16_UNORM:               return 2;
-    case VK_FORMAT_R8G8B8_SNORM:            return 3;
+    case VK_FORMAT_R8G8B8A8_SNORM:          return 4;
     case VK_FORMAT_B8G8R8A8_UNORM:          return 4;
     case VK_FORMAT_R8G8B8A8_UNORM:          return 4;
     case VK_FORMAT_R32_UINT:                return 4;
@@ -1353,6 +1373,11 @@ static unsigned int vk_format_texel_size(VkFormat format)
 static bool check_surface_to_texture_compatiblity(const SurfaceBinding *surface,
                                                   const TextureShape *shape)
 {
+    /* The expanded host format does not make the guest's packed RGB655
+     * bytes compatible with a four-byte render target. */
+    if (shape->color_format == NV097_SET_TEXTURE_FORMAT_COLOR_SZ_R6G5B5) {
+        return false;
+    }
     if ((!surface->swizzle && surface->pitch != shape->pitch) ||
         surface->width != shape->width ||
         surface->height != shape->height ||

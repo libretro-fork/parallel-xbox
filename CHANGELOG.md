@@ -4,6 +4,7 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Vulkan stores converted R6G5B5 textures as RGBA8 SNORM with opaque alpha, preserving the existing RGB bytes while avoiding unsupported three-channel optimal images and misaligned three-byte copy offsets. This uses one additional host byte per texel; guest storage and conversion arithmetic stay unchanged.
 - The Windows shader-dictionary test builds its helper with the Windows compiler and runs it under Wine when cross-testing. Helper failures now propagate instead of being hidden by the summary pipeline.
 
 - macOS links the system resolver library required by the bundled libslirp DNS backend, fixing the final core link.

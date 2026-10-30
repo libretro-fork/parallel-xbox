@@ -351,3 +351,11 @@ hashing against byte-fetch oracles with the portable XXH3 implementation.
 It covers page ends, nonadjacent/aliased mappings, device-read side effects,
 sub-page fallback, mutations and executable-page faults, including 200,000
 randomized comparisons under undefined-behavior traps.
+
+`python3 libretro/tests/test-vulkan-rgb-snorm.py CHECKOUT [CC]` requires Linux
+Vulkan and Khronos validation layers. It runs the production RGB655 conversion,
+staging and in-place RGBA expansion, checks every packed 16-bit input, verifies
+that expanded host storage cannot alias a guest render target directly, and
+compares actual GPU upload/readback bytes with synchronization validation on.
+RGB bytes must remain identical; signed alpha 127 supplies the RGB format's
+implicit alpha of one. Guest unswizzle output is provided linearly by the fixture.
