@@ -538,8 +538,10 @@ Focused transfer counters showed a readback/upload at the sampler change before
 the fix; afterward the readback waits for the explicit CPU read, with no upload.
 
 The GPU cubemap fixture clears six 16x16 swizzled ARGB faces at guest frame 1800,
-samples +X through 1880, changes filtering at 1840 and reads all six faces on
-the CPU at 1900. Captures 1810/1850/1910 stay red; guest words 0x00300048 through
+samples through 1880, changes filtering at 1840 and reads all six faces on
+the CPU at 1900. The +X face is redrawn cyan at 1820 and red at 1860;
+captures 1810/1830/1850/1870/1910 follow red/cyan/cyan/red/red. A -X capture
+at 1842 stays blue, verifying an unchanged face; guest words 0x00300048 through
 0x0030005c contain one red and five blue pixels. A fixture-only deferred-draw
 flag lets the caller finish cube state before sampling any source.
 Vulkan records the six source draw timestamps when copying the cube; its expiry
@@ -687,3 +689,5 @@ Focused counters showed uploads at 2719/2744/2759 before the change and only
 RAM faces. Native mixed-path scope and scaled fallback behavior are unchanged.
 
 `test-two-page-exit.py` compiles the production x86 relative-branch generator and page guard: 5,120 mode, PC-relative, page, segment, carry-class and exit-slot cases check the two-page cache fallback and retained ordinary direct-link exits. The cache generator is mocked in this oracle. The real guest ROM `two-page.asm`, with Boost on and off, repeatedly calls an instruction straddling two pages, then remaps its second page, modifies both physical code pages, unmaps the second page and verifies a page fault, and remaps it again with a full CR3 flush. Every phase must see the current immediate value. Existing REP/debug/interrupt/active-work tests continue to cover the original exit restrictions. Two-page targets are never permanently linked; single-page targets and misses return the original source/slot to the dispatcher.
+
+Vulkan cube refreshes reuse unchanged GPU layers when the destination image is preserved. A fresh replacement image or missing GPU-face provenance still copies all required faces. Temporary transfer counters in the one-face redraw fixture measured six initial copies and one per redraw (eight total), compared with six on every update (eighteen total).

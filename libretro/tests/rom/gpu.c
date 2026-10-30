@@ -1246,6 +1246,25 @@ void gpu_main(void)
             method(0x1a00u + 9 * 16 + 12, 0x3f800000u);
             triangle(); kick();
         }
+        /* Redraw only +X while the other five GPU cube faces stay live. */
+        if (frame == 1820 || frame == 1860) {
+            method(NV097_SET_SURFACE_CLIP_H, 16u << 16);
+            method(NV097_SET_SURFACE_CLIP_V, 16u << 16);
+            method(NV097_SET_SURFACE_FORMAT, 0x04040228u);
+            method(NV097_SET_SURFACE_PITCH, 64u | (64u << 16));
+            method(NV097_SET_SURFACE_COLOR_OFFSET, 0x03600000u);
+            method(NV097_SET_COLOR_CLEAR_VALUE,
+                   frame == 1820 ? 0xff00ffffu : 0xffff0000u);
+            method(NV097_SET_CLEAR_RECT_H, 15u << 16);
+            method(NV097_SET_CLEAR_RECT_V, 15u << 16);
+            method(NV097_CLEAR_SURFACE, 0xf0);
+            method(NV097_SET_SURFACE_CLIP_H, WIDTH << 16);
+            method(NV097_SET_SURFACE_CLIP_V, HEIGHT << 16);
+            method(NV097_SET_SURFACE_FORMAT, 0x128u);
+            method(NV097_SET_SURFACE_PITCH, PITCH | (PITCH << 16));
+        }
+        if (frame == 1835) method(0x1a00u + 9 * 16, 0xbf800000u); /* -X */
+        if (frame == 1845) method(0x1a00u + 9 * 16, 0x3f800000u); /* +X */
         if (frame == 1840) method(NV097_SET_TEXTURE_FILTER, 0x02020000u);
         if (frame >= 1801 && frame <= 1880) {
             method(NV097_SET_SURFACE_COLOR_OFFSET, SURF_D);
