@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- OpenGL permits clears after rebinding an exactly matching swizzled color view, avoiding the old assertion while preserving channel masks and rectangles. Layout changes, larger cached views and depth targets retain their guards.
+
 - Vulkan permits partial-channel and partial-rectangle clears after rebinding an exactly matching swizzled color view. Format, size, layout, anti-aliasing, scaling mode and clip bounds must still match; depth views and layout migration remain guarded.
 
 - The coroutine plumbing the core never ran is removed (scheduling coroutines on the event loop, channels yielding in one, the waits for one in incoming migration), as are 47 pregenerated QEMU sources no build compiled: the QMP command handlers and the block layer's generated wrappers. Nothing changes for someone using the core.

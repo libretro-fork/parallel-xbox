@@ -2751,7 +2751,17 @@ static void update_surface_part(NV2AState *d, bool upload, bool color)
             }
 #undef TRACE_ARGS
 
-            assert(!(entry.swizzle && pg->clearing));
+            /* Re-clearing the exact swizzled color view uses the same
+             * GL attachment and mask/scissor path as a fresh view. */
+            assert(!(entry.swizzle && pg->clearing) ||
+                   (color && found->swizzle &&
+                    check_surface_compatibility(found, &entry, true) &&
+                    found->shape.color_format == entry.shape.color_format &&
+                    found->shape.anti_aliasing == entry.shape.anti_aliasing &&
+                    found->shape.clip_x == entry.shape.clip_x &&
+                    found->shape.clip_y == entry.shape.clip_y &&
+                    found->shape.clip_width == entry.shape.clip_width &&
+                    found->shape.clip_height == entry.shape.clip_height));
 
             if (found->swizzle != entry.swizzle) {
                 /* Clears should only be done on linear surfaces. Avoid

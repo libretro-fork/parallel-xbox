@@ -644,3 +644,13 @@ before clearing red on its left half. This avoids the render-target memo fast
 path. Before expanding the exact-view exception it triggers the clear assertion;
 afterward all 256 swizzled pixels retain the expected blue/alpha channels. The
 comparison linear case and following blue textured draws remain unchanged.
+
+OpenGL now permits the same exact swizzled color-view clear reuse as Vulkan:
+matching host/guest format, strict dimensions/pitch, anti-aliasing and complete
+clip bounds. Depth and layout-migration assertions remain guarded. The standard
+partial-clear regression now runs through both renderers, covering retained
+cubemap face re-clears, a forced swizzled rebind, 256-pixel channel preservation
+for each layout and correct following textured draws. A focused GL oracle also
+checked all 15 nonempty channel masks with 16 color patterns in both layouts:
+480 cases / 122,880 byte-exact ARGB pixels at each of 1x, 2x and 4x, zero errors.
+No GL clear arithmetic, color-mask implementation or transfer policy changed.
