@@ -90,6 +90,10 @@ ${cc} -O2 -std=c99 -Wall -o "$work/bin/audiomargin" "$here/test-audio-margin.c"
 ${cc} -O2 -std=c99 -Wall -fsanitize=undefined -fsanitize-undefined-trap-on-error \
     -I"$here/../.." -o "$work/bin/audiovolume" "$here/test-audio-volume.c" -lm
 "$work/bin/audiovolume"
+${cc} -O2 -std=c11 -Wall -Wextra -Werror -fsanitize=undefined \
+    -fsanitize-undefined-trap-on-error -I"$here/../.." \
+    -o "$work/bin/svfcheck" "$here/test-svf.c"
+"$work/bin/svfcheck"
 ${cc} -O2 -std=c99 -Wall -I"$here/../.." -o "$work/bin/surfaceclear" "$here/test-surface-clear.c"
 "$work/bin/surfaceclear"
 ${cc} -O2 -std=c99 -Wall -I"$here/../.." -o "$work/bin/vramranges" "$here/test-vram-ranges.c"

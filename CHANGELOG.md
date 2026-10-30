@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Audio filter feedback uses defined signed scaling instead of shifting negative values. Existing fixed-point rounding and clipping are unchanged; a wide-integer regression checks boundary values and filter histories without signed-wrap compiler assumptions.
+
 - The Run-Ahead audio regression now covers the EP DSP burst-output queue, checking an unbroken ramp and byte-identical output after repeated save/load cycles. Runtime audio behavior is unchanged.
 
 - CPU Boost lowers all legacy register SHUFPS selectors directly, extending the existing broadcast optimization. Identity shuffles avoid the helper and self-copy; other selectors read every input before writing any result. Memory operands and other encodings keep their existing paths.

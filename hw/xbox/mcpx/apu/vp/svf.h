@@ -76,8 +76,11 @@ static inline void setup_svf(sv_filter *sv, int32_t fc, int32_t q, int t) {
 static inline int32_t run_svf(sv_filter *sv, int32_t in, int64_t f21) {
     sv->h = svf_round(((int64_t)in - sv->l) * 32768 - (int64_t)sv->q * sv->b,
                       15);
-    sv->b = svf_round(((int64_t)sv->b << 21) + f21 * sv->h, 21);
-    sv->l = svf_round(((int64_t)sv->l << 21) + f21 * sv->b, 21);
+    /* Feedback can be negative: multiply instead of signed left shift.
+     * Saturated filter states scaled by 2^21 fit exactly in int64_t. */
+    const int64_t scale = (int64_t)1 << 21;
+    sv->b = svf_round((int64_t)sv->b * scale + f21 * sv->h, 21);
+    sv->l = svf_round((int64_t)sv->l * scale + f21 * sv->b, 21);
     sv->n = sv->l + sv->h;
     sv->p = sv->l - sv->h;
     return *(sv->op);
