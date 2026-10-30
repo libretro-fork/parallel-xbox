@@ -1662,6 +1662,7 @@ static void voice_process(MCPXAPUState *d,
         unsigned int q = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_MISC,
                                         NV_PAVS_VOICE_CFG_MISC_PARAEQ_Q);
         /* damping 2^-q; the gain, in 1/8192, times it: 1/2^(13 + q) */
+        const int64_t input_scale = (int64_t)1 << (13 + q);
         int32_t fc = 0, gain = 0;
         unsigned int filter_channels = three_d ? 1 : 2;
         for (unsigned int ch = 0; ch < filter_channels; ch++) {
@@ -1681,7 +1682,7 @@ static void voice_process(MCPXAPUState *d,
                 int64_t f21 = (int64_t)from * NUM_SAMPLES_PER_FRAME +
                               (int64_t)(fc - from) * i;
                 int64_t band = run_svf(filter, x, f21);
-                samples[i][ch] = svf_round(((int64_t)x << (13 + q)) +
+                samples[i][ch] = svf_round((int64_t)x * input_scale +
                                            gain * band, 13 + q);
             }
         }
@@ -1699,8 +1700,8 @@ static void voice_process(MCPXAPUState *d,
         int32_t *state = d->vp.filters[v].i3dl2;
         for (int i = 0; i < NUM_SAMPLES_PER_FRAME; i++) {
             int64_t x = samples[i][0];
-            state[0] = svf_round((x << 16) + (state[0] - x) * a_direct, 16);
-            state[1] = svf_round((x << 16) + (state[1] - x) * a_room, 16);
+            state[0] = svf_round(x * 65536 + (state[0] - x) * a_direct, 16);
+            state[1] = svf_round(x * 65536 + (state[1] - x) * a_room, 16);
             samples[i][0] = state[0];
             samples[i][1] = state[1];
         }

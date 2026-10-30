@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- ParaEQ and spatial direct/room filters scale negative samples with defined multiplication, and voice register masks reaching bit 31 are unsigned. Existing filtered output and rounding are preserved; the voice regression now checks signed filter histories without signed-wrap assumptions.
+
 - Audio filter feedback uses defined signed scaling instead of shifting negative values. Existing fixed-point rounding and clipping are unchanged; a wide-integer regression checks boundary values and filter histories without signed-wrap compiler assumptions.
 
 - The Run-Ahead audio regression now covers the EP DSP burst-output queue, checking an unbroken ramp and byte-identical output after repeated save/load cycles. Runtime audio behavior is unchanged.

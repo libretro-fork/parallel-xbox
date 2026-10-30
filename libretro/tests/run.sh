@@ -102,7 +102,8 @@ python3 "$here/test-texture-dirty.py" "$here/../.." "$cc"
 python3 "$here/test-vulkan-surface-age.py" "$here/../.." "$cc"
 # The voice processor's own functions, lifted from vp.c: decoding, the
 # resampler, filters, gains, voice ends and the frame's voice list
-python3 "$here/test-voice-tail.py" "$here/../.." "$cc"
+TAIL_TEST_CFLAGS="-fno-wrapv -fsanitize=undefined -fsanitize-undefined-trap-on-error" \
+    python3 "$here/test-voice-tail.py" "$here/../.." "$cc"
 # The voice processor's frame on four threads the same as on one
 python3 "$here/test-vp-threads.py" "$here/../.." "$cc"
 # The VP's integer pitch, cutoff and envelope curves and kernel table

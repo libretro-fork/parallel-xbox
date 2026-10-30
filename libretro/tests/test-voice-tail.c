@@ -182,7 +182,7 @@ static int64_t reference(unsigned n,unsigned format,bool stereo,uint64_t pos,uns
             k==3?(int64_t)1<<24:0;
         sum+=w*pcm_value(at,stereo?channel:0,format);
     }
-    return ((sum+(1<<23))>>24)<<VP_MIX_SHIFT;
+    return ((sum+(1<<23))>>24) * ((int64_t)1 << VP_MIX_SHIFT);
 }
 static void tails(void)
 {
@@ -409,8 +409,82 @@ static void rejected_adpcm(void)
     }
     puts("PASS: rejected ADPCM headers play silence");
 }
+static uint64_t filter_hash(uint64_t hash, int64_t sample)
+{
+    uint64_t bits = sample;
+    for (unsigned i = 0; i < 8; i++) {
+        hash = (hash ^ (bits & 255)) * 1099511628211ULL;
+        bits >>= 8;
+    }
+    return hash;
+}
+static void signed_filters(void)
+{
+    uint64_t hash = 14695981039346656037ULL;
+    for (unsigned cutoff = 0; cutoff < 2; cutoff++)
+    for (unsigned q = 0; q < 8; q++) {
+        MCPXAPUState *d = setup(1024, 1, true, 0);
+        put(d, NV_PAVS_VOICE_CFG_MISC, NV_PAVS_VOICE_CFG_MISC_FMODE, 2);
+        put(d, NV_PAVS_VOICE_CFG_MISC, NV_PAVS_VOICE_CFG_MISC_PARAEQ_Q, q);
+        uint32_t fc = (uint16_t)(int16_t)(cutoff ? -4096 : 0);
+        put(d, NV_PAVS_VOICE_TAR_FCA, UINT32_MAX, fc | (8192u << 16));
+        put(d, NV_PAVS_VOICE_TAR_FCB, UINT32_MAX, fc | (57344u << 16));
+        for (unsigned pass = 0; pass < 2; pass++) {
+            int64_t mix[32][32];
+            frame(d, mix);
+            assert(d->vp.filters[64].peq_set);
+            for (unsigned b = 0; b < 32; b++)
+            for (unsigned i = 0; i < 32; i++) hash = filter_hash(hash, mix[b][i]);
+            for (unsigned ch = 0; ch < 2; ch++) {
+                const sv_filter *s = &d->vp.filters[64].peq[ch];
+                hash = filter_hash(hash, s->h);
+                hash = filter_hash(hash, s->b);
+                hash = filter_hash(hash, s->l);
+            }
+        }
+        dispose(d);
+    }
+    const unsigned coefficients[] = { 0, 1, 32768, 65535 };
+    for (unsigned c = 0; c < 4; c++) {
+        MCPXAPUState *d = setup(1024, 1, false, 0);
+        /* Move the configured voice to the 3D range and use negative PCM. */
+        memcpy(d->ram_ptr + 0x1000,
+               d->ram_ptr + 0x1000 + 64 * NV_PAVS_SIZE, NV_PAVS_SIZE);
+        for (unsigned i = 0; i < 1024; i++) {
+            uint16_t sample = (uint16_t)(int16_t)(-8192 - (int)(i % 13) * 37);
+            d->ram_ptr[0x20000 + i * 2] = sample;
+            d->ram_ptr[0x20001 + i * 2] = sample >> 8;
+        }
+        voice_reset_filters(d, 0);
+        voice_set_mask(d, 0, NV_PAVS_VOICE_CFG_HRTF_TARGET,
+                       NV_PAVS_VOICE_CFG_HRTF_TARGET_HANDLE, 0);
+        voice_set_mask(d, 0, NV_PAVS_VOICE_CFG_MISC,
+                       NV_PAVS_VOICE_CFG_MISC_FMODE, 3);
+        voice_set_mask(d, 0, NV_PAVS_VOICE_TAR_FCB, UINT32_MAX,
+                       coefficients[c] | (coefficients[3-c] << 16));
+        for (unsigned pass = 0; pass < 2; pass++) {
+            int64_t mix[32][32] = {{0}}, monitor[32][2] = {{0}};
+            voice_process(d, mix, monitor, 0, 0);
+            assert(d->vp.filters[0].i3dl2[0] <= 0 &&
+                   d->vp.filters[0].i3dl2[1] <= 0);
+            assert(d->vp.filters[0].i3dl2[0] || d->vp.filters[0].i3dl2[1]);
+            for (unsigned b = 0; b < 32; b++)
+            for (unsigned i = 0; i < 32; i++) hash = filter_hash(hash, mix[b][i]);
+            hash = filter_hash(hash, d->vp.filters[0].i3dl2[0]);
+            hash = filter_hash(hash, d->vp.filters[0].i3dl2[1]);
+        }
+        dispose(d);
+    }
+    /* Captured before the scaling change with production signed-wrap flags.
+     * Canonical little-endian integer hashing makes this host-independent. */
+    assert(hash == UINT64_C(0x2482e118ff7aabf8));
+    printf("PASS: ParaEQ/spatial signed filter histories, hash=%016llx\n",
+           (unsigned long long)hash);
+}
 int main(int argc,char**argv)
 {
     if(argc>1&&strcmp(argv[1],"tail")==0){tails();return 0;}
+    if(argc>1&&strcmp(argv[1],"filters")==0){signed_filters();return 0;}
+    signed_filters();
     inclusive_boundary();tails();loops();streams();control_paths();adpcm_pages();rejected_adpcm();pitch_cache();return 0;
 }
