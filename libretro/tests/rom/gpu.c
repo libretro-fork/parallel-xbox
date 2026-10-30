@@ -1252,6 +1252,36 @@ void gpu_main(void)
             for (u32 face = 0; face < 6; face++)
                 ram32(0x00300048u + face * 4, rd32(0x03600000u + face * 1024));
         }
+        if (frame == 1960 || frame == 2120) {
+            u32 depth16 = frame == 1960;
+            u32 source = depth16 ? 0x03700000u : 0x03900000u;
+            method(NV097_SET_SURFACE_CLIP_H, 32u << 16);
+            method(NV097_SET_SURFACE_CLIP_V, 16u << 16);
+            method(NV097_SET_SURFACE_FORMAT, depth16 ? 0x118u : 0x128u);
+            method(NV097_SET_SURFACE_PITCH, 128u | ((depth16 ? 64u : 128u) << 16));
+            method(NV097_SET_SURFACE_COLOR_OFFSET, 0x03800000u);
+            method(NV097_SET_SURFACE_ZETA_OFFSET, source);
+            method(NV097_SET_ZSTENCIL_CLEAR_VALUE, depth16 ? 0x00008000u : 0x80000000u);
+            method(NV097_SET_CLEAR_RECT_H, 31u << 16);
+            method(NV097_SET_CLEAR_RECT_V, 15u << 16);
+            method(NV097_SET_DEPTH_MASK, 1);
+            method(NV097_CLEAR_SURFACE, 3);
+            method(NV097_SET_DEPTH_MASK, 0);
+            texture_alias_at(depth16 ? 0xc0000030u : 0xc000002eu,
+                             32, 0x3f000000u, 0, source);
+            method(0x1e6cu, 4); /* Shadow comparison: depth > zero. */
+            method(NV097_SET_TEXTURE_CONTROL1, (depth16 ? 64u : 128u) << 16);
+            method(NV097_SET_SURFACE_FORMAT, 0x128u);
+            method(NV097_SET_SURFACE_ZETA_OFFSET, ZETA_B);
+            triangle(); kick();
+        }
+        if (frame == 2000 || frame == 2160) method(NV097_SET_TEXTURE_FILTER, 0x02020000u);
+        if ((frame >= 1961 && frame <= 2040) ||
+            (frame >= 2121 && frame <= 2200)) {
+            triangle(); if (frame == 2040 || frame == 2200) disable_texture(); kick();
+        }
+        if (frame == 2060) ram32(0x00300060u, rd32(0x03700000u));
+        if (frame == 2220) ram32(0x00300064u, rd32(0x03900000u));
         method(NV097_FLIP_INCREMENT_WRITE, 0);
         kick();
         if (frame >= 100 && frame < 125) {

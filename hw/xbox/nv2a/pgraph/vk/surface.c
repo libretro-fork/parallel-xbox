@@ -1438,15 +1438,15 @@ static void expire_old_surfaces(NV2AState *d)
     QTAILQ_FOREACH_SAFE(s, &r->surfaces, entry, next) {
         int last_used = d->pgraph.frame_time - s->frame_time;
         if (last_used >= max_surface_frame_time_delta) {
-            /* Sampling borrows an image or consumes a byte-reinterpreted
-             * or cubemap snapshot. Keep the matching source available for later sampler
-             * changes, using the independent clock of actual bind use. */
+            /* Sampling borrows an image or consumes a GPU snapshot. Keep
+             * matching sources available for later sampler changes, using
+             * the independent clock of actual bind use. */
             for (unsigned i = 0; i < NV2A_MAX_TEXTURES; i++) {
                 TextureBinding *binding = r->texture_bindings[i];
                 if (!binding) continue;
                 bool source_matches =
                     (binding->s2t_borrowed && binding->image == s->image) ||
-                    (binding->key.byte_reinterpret &&
+                    ((binding->key.byte_reinterpret || binding->depth_source_copy) &&
                      binding->key.texture_vram_offset == s->vram_addr &&
                      binding->draw_time == s->draw_time);
                 if (binding->cube_source_count == 6 &&

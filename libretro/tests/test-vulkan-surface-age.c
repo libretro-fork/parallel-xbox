@@ -7,7 +7,7 @@
 typedef uint64_t hwaddr;
 #define NV2A_MAX_TEXTURES 4
 #define ARRAY_SIZE(a) (sizeof(a)/sizeof((a)[0]))
-typedef struct TextureBinding { bool s2t_borrowed; uintptr_t image;
+typedef struct TextureBinding { bool s2t_borrowed,depth_source_copy; uintptr_t image;
     struct { bool byte_reinterpret; uint64_t texture_vram_offset;
         size_t texture_length; struct { bool cubemap; } state; } key;
     unsigned cube_source_count, cube_source_draw_time[6];
@@ -47,13 +47,15 @@ int main(void) {
         assert(s.evicted==!(source_recent || sample_recent));
         cases++;
     }
+    for(unsigned kind=0;kind<2;kind++)
     for(unsigned address_match=0;address_match<2;address_match++)
     for(unsigned draw_match=0;draw_match<2;draw_match++)
     for(unsigned copied=0;copied<2;copied++)
     for(unsigned recent=0;recent<2;recent++) {
         SurfaceBinding s={.frame_time=0,.image=1,.vram_addr=100,.draw_time=12};
         TextureBinding t={.sampled_frame=recent?9:0,.image=2,.draw_time=draw_match?12:11,
-            .key={.byte_reinterpret=copied,.texture_vram_offset=address_match?100:101}};
+            .depth_source_copy=copied && kind==1,
+            .key={.byte_reinterpret=copied && kind==0,.texture_vram_offset=address_match?100:101}};
         PGRAPHVkState r={.surfaces={&s},.texture_bindings={&t}};
         NV2AState d={.pgraph={10,&r}};
         expire_old_surfaces(&d);
