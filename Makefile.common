@@ -802,8 +802,6 @@ SOURCES_SYSTEM := \
 	$(CORE_DIR)/accel/tcg/tb-maint.c \
 	$(CORE_DIR)/accel/tcg/tcg-accel-ops-icount.c \
 	$(CORE_DIR)/accel/tcg/tcg-accel-ops-libretro.c \
-	$(CORE_DIR)/accel/tcg/tcg-accel-ops-mttcg.c \
-	$(CORE_DIR)/accel/tcg/tcg-accel-ops-rr.c \
 	$(CORE_DIR)/accel/tcg/tcg-accel-ops.c \
 	$(CORE_DIR)/accel/tcg/tcg-all.c \
 	$(CORE_DIR)/accel/tcg/tcg-runtime-gvec.c \

@@ -1,7 +1,8 @@
 /*
  * QEMU TCG vCPU common functionality
  *
- * Functionality common to all TCG vCPU variants: mttcg, rr and icount.
+ * Functionality common to the TCG vCPU: the core's (tcg-accel-ops-libretro.c)
+ * with icount.
  *
  * Copyright (c) 2003-2008 Fabrice Bellard
  * Copyright (c) 2014 Red Hat Inc.
@@ -44,8 +45,6 @@
 #include "hw/core/cpu.h"
 
 #include "tcg-accel-ops.h"
-#include "tcg-accel-ops-mttcg.h"
-#include "tcg-accel-ops-rr.h"
 #include "tcg-accel-ops-icount.h"
 #include "tcg-accel-ops-libretro.h"
 
