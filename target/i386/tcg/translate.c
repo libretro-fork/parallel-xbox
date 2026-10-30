@@ -341,6 +341,7 @@ typedef struct DisasContext {
 static void gen_jmp_rel(DisasContext *s, MemOp ot, int diff, int tb_num);
 static void gen_jmp_rel_csize(DisasContext *s, int diff, int tb_num);
 static void gen_exception_gpf(DisasContext *s);
+static void gen_flush_fp(DisasContext *s);
 
 /* i386 shift ops */
 enum {
@@ -1140,6 +1141,20 @@ static CCPrepare gen_prepare_eflags_c(DisasContext *s, TCGv reg)
 /* compute eflags.P, trying to store it in reg if not NULL */
 static CCPrepare gen_prepare_eflags_p(DisasContext *s, TCGv reg)
 {
+    if (xemu_cpu_boost && s->cc_op >= CC_OP_LOGICB &&
+        s->cc_op <= CC_OP_LOGICQ) {
+        if (!reg) {
+            reg = tcg_temp_new();
+        }
+        /* Preserve the old helper boundary's FP conversion/FIP publication. */
+        gen_flush_fp(s);
+        /* PF is even parity of the low result byte at every operand size.
+         * Keep the other lazy flags: Jcc/SETcc only need this predicate. */
+        tcg_gen_andi_tl(reg, cpu_cc_dst, 0xff);
+        tcg_gen_ctpop_tl(reg, reg);
+        return (CCPrepare) { .cond = TCG_COND_TSTEQ, .reg = reg, .imm = 1 };
+    }
+
     gen_compute_eflags(s);
     return (CCPrepare) { .cond = TCG_COND_TSTNE, .reg = cpu_cc_src,
                          .imm = CC_P };

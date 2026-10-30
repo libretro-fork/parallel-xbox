@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- CPU Boost computes parity-only conditions after logical operations directly from the low result byte, avoiding a full flag helper while retaining other lazy flags and existing floating-point flush boundaries.
+
 - Native scattered reads stop issuing host reads once EOF is confirmed, zero-filling remaining destinations directly while preserving gaps. Short reads before EOF still retry, and read errors still propagate.
 
 - Release GLib main-context pending-source references when a readiness check is replaced or a context is destroyed before dispatch. This fixes leaked sources and skipped finalizers during cleanup.

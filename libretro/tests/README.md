@@ -791,3 +791,8 @@ run exactly once in each case, matching system GLib. Repeated checks must releas
 the previous pending references rather than silently dropping their pointers.
 
 The file-I/O fixture checks 128-span native vectors and 1,300-span fallback requests with EOF inside a destination span, exactly at EOF and beyond it. Empty NULL spans and destination gaps are preserved; bytes after EOF must be zero. Native EOF now pads the remaining destinations after a confirmed end instead of issuing a read for each gap.
+
+`logic-parity.asm` tests every low byte after TEST/AND/OR/XOR at 8/16/32
+bits, including dirty high bits, SETP/SETNP, CMOVP, JP/JNP and full flag
+readback after each consumer or branch. Both CPU Boost settings must pass
+3,072 cases against a fixed parity table and independent full-flag oracle.

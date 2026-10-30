@@ -305,6 +305,9 @@ nasm -f bin -I"$here/rom/" -o "$work/sysft0/xemu/Complex_4627v1.03.bin" "$here/r
 mkdir -p "$work/sysfsw/xemu"
 cp "$work/sys/xemu/mcpx_1.0.bin" "$work/sysfsw/xemu/"
 nasm -f bin -I"$here/rom/" -o "$work/sysfsw/xemu/Complex_4627v1.03.bin" "$here/rom/x87-status.asm"
+mkdir -p "$work/syspf/xemu"
+cp "$work/sys/xemu/mcpx_1.0.bin" "$work/syspf/xemu/"
+nasm -f bin -I"$here/rom/" -o "$work/syspf/xemu/Complex_4627v1.03.bin" "$here/rom/logic-parity.asm"
 
 cp "$work/sys/xemu/mcpx_1.0.bin" "$work/sysf/xemu/"
 nasm -f bin -I"$here/rom/" -o "$work/sysf/xemu/Complex_4627v1.03.bin" "$here/rom/rep-stos.asm"
@@ -445,6 +448,19 @@ for hard in enabled disabled; do
         echo "FAIL: x87 status/control ($hard/$boost)"; exit 1;
       }
     done
+  done
+done
+
+# Parity-only consumers retain every other flag through shared branch targets.
+for boost in enabled disabled; do
+  t "logical parity, CPU Boost $boost" $h "$(path "$core")" "$(path "$work/syspf")" \
+    $vp --opt "xemu_cpu_boost=$boost" --frames 60 --strict \
+    --peek 0x300000 --peek 0x300004 >"$work/logic-parity-$boost.txt"
+  for want in "peek_0x300000=0x4b4f4650" "peek_0x300004=0x00000000"; do
+    grep -q "^$want$" "$work/logic-parity-$boost.txt" || {
+      cat "$work/logic-parity-$boost.txt"
+      echo "FAIL: logical parity ($boost)"; exit 1;
+    }
   done
 done
 
