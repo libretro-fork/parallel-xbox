@@ -434,6 +434,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 - Audio: the voice processor works in integers from the decoded source to the DSPs, as the hardware does, instead of converting every sample to float and back to 24 bits at the mix bins. Each stage keeps the integer steps measured on hardware (the resampler's weights in 1/65536, the filters' 1/16-sample grid, gains in 1/16384), with nothing rounded that the hardware does not round, and the mix bins add up exactly, so the sound is the same whatever the number of Voice Processor Threads. The test ROMs' sound is bit for bit what it was; filtered voices differ from before by at most 48 steps of a 24-bit sample, where float rounding used to flip a filter step, and a filter driven unstable now clips instead of going silent. Savestates from earlier versions still load.
 
+- Audio: an ADPCM block with a header the decoder rejects plays silence. It used to play whatever was left in memory, which could differ from run to run (and between Run-Ahead's runs of the same frame).
+
 ## Test build 4 - 2026-10-25
 
 - The core info file names the core "Microsoft - Xbox / Sega Chihiro (xemu)" (NNshi).

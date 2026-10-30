@@ -1128,8 +1128,14 @@ static int voice_get_samples(MCPXAPUState *d, uint32_t v, int32_t samples[][2],
                 }
                 /* The decoder reads bytes synchronously; no guest pointer
                  * survives this call or the worker join. */
-                adpcm_decode_block(adpcm_decoded, encoded,
-                                   block_size, channels);
+                /* A block whose header the decoder rejects (step index
+                 * above 88, reserved byte set) plays silence: the decoder
+                 * stops before writing the block, and the rest of the
+                 * buffer is whatever the stack held. */
+                if (!adpcm_decode_block(adpcm_decoded, encoded,
+                                        block_size, channels)) {
+                    memset(adpcm_decoded, 0, sizeof(adpcm_decoded));
+                }
                 adpcm_block_index = block_index;
             }
 

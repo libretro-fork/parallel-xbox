@@ -388,9 +388,27 @@ static void pitch_cache(void)
     dispose(d);
     puts("PASS: steady/changing fractional and extreme pitch steps, multipass-to-source transition and reset cache invalidation");
 }
+/* An ADPCM block whose header the decoder rejects plays silence, the same
+ * every run, whatever the stack held */
+static void rejected_adpcm(void)
+{
+    for(unsigned stereo=0;stereo<2;stereo++)for(unsigned bad=0;bad<2;bad++){
+        MCPXAPUState*d=setup(64,4,stereo,0);
+        /* step index 89, or the reserved byte, of the last channel's header */
+        unsigned at=0x20000+(stereo?4:0);
+        if(bad)d->ram_ptr[at+3]=1;else d->ram_ptr[at+2]=89;
+        int64_t mix[32][32];
+        for(unsigned f=0;f<3;f++){
+            memset(mix,0x5a,sizeof(mix));frame(d,mix);
+            for(unsigned b=0;b<2;b++)for(unsigned i=0;i<32;i++)assert(mix[b][i]==0);
+        }
+        dispose(d);
+    }
+    puts("PASS: rejected ADPCM headers play silence");
+}
 int main(int argc,char**argv)
 {
     lagrange_init();
     if(argc>1&&strcmp(argv[1],"tail")==0){tails();return 0;}
-    inclusive_boundary();tails();loops();streams();control_paths();adpcm_pages();pitch_cache();return 0;
+    inclusive_boundary();tails();loops();streams();control_paths();adpcm_pages();rejected_adpcm();pitch_cache();return 0;
 }
