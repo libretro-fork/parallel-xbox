@@ -2935,6 +2935,7 @@ gen_eob(DisasContext *s, int mode)
 static void gen_jmp_rel(DisasContext *s, MemOp ot, int diff, int tb_num)
 {
     bool use_goto_tb = s->jmp_opt;
+    uint32_t next_flags;
     target_ulong mask = -1;
     target_ulong new_pc = s->pc + diff;
     target_ulong new_eip = new_pc - s->cs_base;
@@ -2970,8 +2971,6 @@ static void gen_jmp_rel(DisasContext *s, MemOp ot, int diff, int tb_num)
     }
 
     {
-        uint32_t next_flags;
-
         /* the next block is chosen by the CF class too (CPU boost) */
         if (!gen_exit_tb_flags(s, &next_flags)) {
             use_goto_tb = false;
@@ -2983,7 +2982,24 @@ static void gen_jmp_rel(DisasContext *s, MemOp ot, int diff, int tb_num)
         if (!(tb_cflags(s->base.tb) & CF_PCREL)) {
             tcg_gen_movi_tl(cpu_eip, new_eip);
         }
-        tcg_gen_exit_tb(s->base.tb, tb_num);
+        /* Only an instruction in the final 14 bytes can span two pages.
+         * Keep other direct-link fallbacks as small as before. */
+        if (xemu_cpu_boost &&
+            (new_pc & ~TARGET_PAGE_MASK) >
+                TARGET_PAGE_SIZE - X86_MAX_INSN_LENGTH) {
+            TCGv_i64 pc = tcg_temp_new_i64();
+            tcg_gen_extu_tl_i64(pc, cpu_eip);
+            if (!CODE64(s)) {
+                if (s->cs_base) {
+                    tcg_gen_addi_i64(pc, pc, s->cs_base);
+                }
+                tcg_gen_ext32u_i64(pc, pc);
+            }
+            tcg_gen_lookup_and_goto_ptr_2page(pc, s->cs_base,
+                                              next_flags, tb_num);
+        } else {
+            tcg_gen_exit_tb(s->base.tb, tb_num);
+        }
         s->base.is_jmp = DISAS_NORETURN;
     } else {
         if (!(tb_cflags(s->base.tb) & CF_PCREL)) {

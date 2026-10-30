@@ -684,3 +684,5 @@ verify yellow RAM data, cyan GPU data and preserved yellow RAM data afterward.
 Focused counters showed uploads at 2719/2744/2759 before the change and only
 2719/2744 afterward: the GPU-only redraw at 2760 no longer uploads five unchanged
 RAM faces. Native mixed-path scope and scaled fallback behavior are unchanged.
+
+`test-two-page-exit.py` compiles the production x86 relative-branch generator and page guard: 5,120 mode, PC-relative, page, segment, carry-class and exit-slot cases check the two-page cache fallback and retained ordinary direct-link exits. The cache generator is mocked in this oracle. The real guest ROM `two-page.asm`, with Boost on and off, repeatedly calls an instruction straddling two pages, then remaps its second page, modifies both physical code pages, unmaps the second page and verifies a page fault, and remaps it again with a full CR3 flush. Every phase must see the current immediate value. Existing REP/debug/interrupt/active-work tests continue to cover the original exit restrictions. Two-page targets are never permanently linked; single-page targets and misses return the original source/slot to the dispatcher.

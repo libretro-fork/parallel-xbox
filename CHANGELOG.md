@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- CPU Boost reuses checked jump-cache entries for same-page branches into instructions spanning two code pages, avoiding repeated dispatcher trips without installing unsafe permanent links. Cache misses, remapping, code writes, debugger restrictions and instruction budgets retain their existing handling. Only targets in the final 14 bytes of a page gain the extra fallback code.
+
 - Vulkan mixed cubemaps no longer re-upload unchanged RAM faces for an in-place GPU-only face update. RAM layers are still restored when an update needs a replacement image.
 
 - RCU's readers (dirty-memory tracking, device and DMA accesses through an address space, the event loop's handler lists) no longer run a full memory barrier on entering and leaving a read section on Linux and Windows: the rarely run writer makes every thread of the process take one instead, with Linux's membarrier or Windows' FlushProcessWriteBuffers. On macOS, Android, or a Linux kernel older than 4.14, readers keep their barriers.

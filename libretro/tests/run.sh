@@ -61,6 +61,7 @@ esac
 python3 "$here/test-kernel-idle.py" "$here/../.." "$cc"
 python3 "$here/test-interrupt-shadow.py" "$here/../.." "$cc"
 python3 "$here/test-idle-interrupts.py" "$here/../.." "$cc"
+python3 "$here/test-two-page-exit.py" "$here/../.." "$cc"
 python3 "$here/test-frame-completion.py" "$here/../.." "$cc"
 python3 "$here/test-vk-cow-tail.py" "$here/../.." "$cc"
 python3 "$here/test-inline-index-bounds.py" "$here/../.." "$cc"
@@ -199,6 +200,9 @@ nasm -f bin -I"$here/rom/" -o "$work/sysc/xemu/Complex_4627v1.03.bin" "$here/rom
 mkdir -p "$work/syscs/xemu"
 cp "$work/sys/xemu/mcpx_1.0.bin" "$work/syscs/xemu/"
 nasm -f bin -DSTI_BOUNDARY -I"$here/rom/" -o "$work/syscs/xemu/Complex_4627v1.03.bin" "$here/rom/cf.asm"
+mkdir -p "$work/systwo/xemu"
+cp "$work/sys/xemu/mcpx_1.0.bin" "$work/systwo/xemu/"
+nasm -f bin -I"$here/rom/" -o "$work/systwo/xemu/Complex_4627v1.03.bin" "$here/rom/two-page.asm"
 
 cp "$work/sys/xemu/mcpx_1.0.bin" "$work/sysf/xemu/"
 nasm -f bin -I"$here/rom/" -o "$work/sysf/xemu/Complex_4627v1.03.bin" "$here/rom/rep-stos.asm"
@@ -284,6 +288,19 @@ for boost in enabled disabled; do
     cat "$work/cf-sti-$boost.txt"
     echo "FAIL: CF after STI ($boost)"; exit 1
   fi
+done
+
+# Cached two-page entries must honor both page invalidations and remapping.
+for boost in enabled disabled; do
+  t "two-page remap/SMC/fault, CPU Boost $boost" $h "$(path "$core")" "$(path "$work/systwo")" \
+    $vp --opt "xemu_cpu_boost=$boost" --frames 60 --strict \
+    --peek 0x300000 --peek 0x300004 --peek 0x300028 >"$work/two-page-$boost.txt"
+  for want in "peek_0x300000=0x4b4f5054" "peek_0x300004=0x00000000" "peek_0x300028=0x00000001"; do
+    grep -q "^$want$" "$work/two-page-$boost.txt" || {
+      cat "$work/two-page-$boost.txt"
+      echo "FAIL: two-page invalidation ($boost)"; exit 1;
+    }
+  done
 done
 
 # Active register-only work crossing STI/CLI exits must not be parked.

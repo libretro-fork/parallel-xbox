@@ -30,8 +30,8 @@
 #include "qemu/cpu-pace.h"
 #include "qemu/cpu-boost.h"
 
-void tcg_gen_lookup_and_goto_ptr_fast(TCGv_i64 pc, uint64_t cs_base,
-                                      uint32_t flags)
+static void gen_lookup_and_goto_ptr(TCGv_i64 pc, uint64_t cs_base,
+                                    uint32_t flags, int direct_slot)
 {
 #ifdef CONFIG_SOFTMMU
     uint32_t cflags = tb_cflags(tcg_ctx->gen_tb);
@@ -49,7 +49,11 @@ void tcg_gen_lookup_and_goto_ptr_fast(TCGv_i64 pc, uint64_t cs_base,
      * check before each block, which that countdown makes redundant. */
     if (cflags & (CF_NO_GOTO_PTR | CF_COUNT_MASK | CF_SINGLE_STEP |
                   CF_MEMI_ONLY | CF_BP_PAGE | CF_NOIRQ)) {
-        tcg_gen_lookup_and_goto_ptr();
+        if (direct_slot >= 0) {
+            tcg_gen_exit_tb(tcg_ctx->gen_tb, direct_slot);
+        } else {
+            tcg_gen_lookup_and_goto_ptr();
+        }
         return;
     }
 
@@ -80,9 +84,19 @@ void tcg_gen_lookup_and_goto_ptr_fast(TCGv_i64 pc, uint64_t cs_base,
     tcg_gen_trunc_i64_ptr(hoff, hash);
     tcg_gen_add_ptr(ent, ent, hoff);
 
-    /* same tests, same order as tb_lookup() */
+    /* The same identity tests as tb_lookup(), with an optional page guard. */
     tcg_gen_ld_ptr(tb, ent, offsetof(CPUJumpCache, array[0].tb));
     tcg_gen_brcondi_ptr(TCG_COND_EQ, tb, 0, slow);
+    if (direct_slot >= 0) {
+        /* Single-page targets still return once to install a direct link.
+         * Two-page targets use only the TLB-invalidated jump cache. */
+        if (sizeof(tb_page_addr_t) == 8) {
+            tcg_gen_ld_i64(t, tb, offsetof(TranslationBlock, page_addr[1]));
+        } else {
+            tcg_gen_ld32u_i64(t, tb, offsetof(TranslationBlock, page_addr[1]));
+        }
+        tcg_gen_brcondi_i64(TCG_COND_EQ, t, (tb_page_addr_t)-1, slow);
+    }
     tcg_gen_ld_i64(t, ent, offsetof(CPUJumpCache, array[0].pc));
     tcg_gen_brcond_i64(TCG_COND_NE, t, pc, slow);
     tcg_gen_ld_i64(t, tb, offsetof(TranslationBlock, cs_base));
@@ -106,10 +120,27 @@ void tcg_gen_lookup_and_goto_ptr_fast(TCGv_i64 pc, uint64_t cs_base,
     tcg_gen_goto_ptr(code);
 
     gen_set_label(slow);
-    tcg_gen_lookup_and_goto_ptr();
+    if (direct_slot >= 0) {
+        tcg_gen_exit_tb(tcg_ctx->gen_tb, direct_slot);
+    } else {
+        tcg_gen_lookup_and_goto_ptr();
+    }
 #else
     tcg_gen_lookup_and_goto_ptr();
 #endif
+}
+
+void tcg_gen_lookup_and_goto_ptr_fast(TCGv_i64 pc, uint64_t cs_base,
+                                      uint32_t flags)
+{
+    gen_lookup_and_goto_ptr(pc, cs_base, flags, -1);
+}
+
+void tcg_gen_lookup_and_goto_ptr_2page(TCGv_i64 pc, uint64_t cs_base,
+                                       uint32_t flags, unsigned direct_slot)
+{
+    tcg_debug_assert(direct_slot < 2);
+    gen_lookup_and_goto_ptr(pc, cs_base, flags, direct_slot);
 }
 
 XemuTbRate xemu_tbrate;

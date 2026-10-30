@@ -84,6 +84,10 @@ void tcg_gen_goto_ptr(TCGv_ptr ptr);
  */
 void tcg_gen_lookup_and_goto_ptr_fast(TCGv_i64 pc, uint64_t cs_base,
                                       uint32_t flags);
+/* Probe only two-page targets; misses return the caller's direct-link slot
+ * so one-page targets can still be linked by the dispatcher. */
+void tcg_gen_lookup_and_goto_ptr_2page(TCGv_i64 pc, uint64_t cs_base,
+                                       uint32_t flags, unsigned direct_slot);
 
 /* 32 bit ops */
 
