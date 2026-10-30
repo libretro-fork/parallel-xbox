@@ -39,7 +39,7 @@ with tempfile.TemporaryDirectory(prefix="gl-volume-") as directory:
     # handler noreturn. The decoder also has existing signed loop indices.
     args = [sys.argv[2] if len(sys.argv) > 2 else "gcc", "-O2", "-Wall",
             "-Wextra", "-Werror", "-Wno-sign-compare", "-Wno-return-type", "-I",
-            str(repo / "hw/xbox/nv2a/pgraph"), str(folder / "test.c"),
+            str(repo / "hw/xbox/nv2a/pgraph"), "-I", str(repo / "libretro/tests"), str(folder / "test.c"),
             str(folder / "decoder.c"), "-o", str(exe), "-lm"]
     if os.name == "nt":
         args += ["-I", str(repo / "deps/libepoxy/include"),

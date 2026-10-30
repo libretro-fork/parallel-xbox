@@ -13,6 +13,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "s3tc.h"
+#include "bc-reference.h"
 #define MAX(a,b) ((a) > (b) ? (a) : (b))
 #define g_realloc realloc
 typedef struct {
@@ -33,6 +35,9 @@ static const ColorFormatInfo kelvin_color_format_gl_map[] = {
     {4, false, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE},
     {1, true, GL_R8, GL_RED, GL_UNSIGNED_BYTE},
     {1, false, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE}, /* converted palette */
+    {4, false, GL_COMPRESSED_RGBA_S3TC_DXT1_EXT, 0, 0},
+    {4, false, GL_COMPRESSED_RGBA_S3TC_DXT3_EXT, 0, 0},
+    {4, false, GL_COMPRESSED_RGBA_S3TC_DXT5_EXT, 0, 0},
 };
 typedef struct {
     bool s3tc_native;
@@ -58,7 +63,6 @@ static size_t pgraph_converted_texture_size(TextureShape s, unsigned w,
            s.color_format == 6 ? (size_t)w * h * d * 4 : 0;
 }
 #define pgraph_convert_texture_data_into(...) abort()
-#define s3tc_decompress_2d_into(...) abort()
 #define upload_compressed_volume(...) abort()
 /* PRODUCTION */
 
@@ -150,6 +154,70 @@ static void check_converted_cube(unsigned format)
     free(r.tex_scratch[0]); free(r.tex_scratch[1]);
 }
 
+static void check_compressed(unsigned mode, unsigned width, unsigned height,
+                             unsigned levels, unsigned alignment)
+{
+    uint8_t data[4096] = {0}, expected[4096], actual[4096];
+    unsigned offsets[8], offset = 0, w = width, h = height;
+    unsigned bs = mode ? 16 : 8;
+    for (unsigned level = 0; level < levels; level++) {
+        offsets[level] = offset;
+        for (unsigned by = 0; by < (h+3)/4; by++)
+        for (unsigned bx = 0; bx < (w+3)/4; bx++) {
+            uint8_t *block = data + offset;
+            unsigned code = level + bx + 3*by, color = mode ? 8 : 0;
+            uint16_t a = code%2 ? 0x0841 : 0xdead;
+            uint16_t b = code%3 ? 0xa534 : a;
+            block[color] = a; block[color+1] = a >> 8;
+            block[color+2] = b; block[color+3] = b >> 8;
+            memset(block + color + 4, 0xe4, 4);
+            if (mode == 1) {
+                for (unsigned i=0;i<8;i++) block[i] = 2*i | ((2*i+1)<<4);
+            } else if (mode == 2) {
+                block[0] = code%2 ? 31 : 217;
+                block[1] = code%3 ? 173 : block[0];
+                uint64_t alpha = 0;
+                for (unsigned i=0;i<16;i++) alpha |= (uint64_t)(i%8) << (3*i);
+                for (unsigned i=0;i<6;i++) block[2+i] = alpha >> (8*i);
+            }
+            offset += bs;
+        }
+        w = MAX(w/2,1u); h = MAX(h/2,1u);
+    }
+    PGRAPHGLState r = {0}; /* Force software fallback regardless of S3TC support. */
+    state.pgraph.gl_renderer_state = &r;
+    GLuint texture;
+    glGenTextures(1, &texture); glBindTexture(GL_TEXTURE_2D, texture);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, alignment);
+    TextureShape shape = { .color_format = 7+mode, .width = width,
+        .height = height, .depth = 1, .levels = levels };
+    upload_gl_texture(GL_TEXTURE_2D, shape, data, NULL);
+    assert(glGetError() == GL_NO_ERROR);
+    GLint restored;
+    glGetIntegerv(GL_UNPACK_ALIGNMENT, &restored);
+    assert((unsigned)restored == alignment);
+    w = width; h = height;
+    for (unsigned level=0;level<levels;level++) {
+        for (unsigned y=0;y<h;y++)
+        for (unsigned x=0;x<w;x++) {
+            unsigned index = (y/4)*((w+3)/4) + x/4;
+            reference_pixel(data + offsets[level] + index*bs, mode,
+                            (y%4)*4+x%4, expected + (y*w+x)*4);
+        }
+        GLint internal, actual_w, actual_h;
+        glGetTexLevelParameteriv(GL_TEXTURE_2D, level, GL_TEXTURE_INTERNAL_FORMAT, &internal);
+        glGetTexLevelParameteriv(GL_TEXTURE_2D, level, GL_TEXTURE_WIDTH, &actual_w);
+        glGetTexLevelParameteriv(GL_TEXTURE_2D, level, GL_TEXTURE_HEIGHT, &actual_h);
+        assert(internal == GL_RGBA8 && actual_w == (GLint)w && actual_h == (GLint)h);
+        glGetTexImage(GL_TEXTURE_2D, level, GL_RGBA, GL_UNSIGNED_BYTE, actual);
+        assert(glGetError() == GL_NO_ERROR);
+        assert(!memcmp(actual, expected, (size_t)w*h*4));
+        w = MAX(w/2,1u); h = MAX(h/2,1u);
+    }
+    glDeleteTextures(1, &texture);
+    free(r.tex_scratch[0]); free(r.tex_scratch[1]);
+}
+
 int main(void)
 {
 #ifdef _WIN32
@@ -189,6 +257,12 @@ int main(void)
                 check_upload(format, 2, 4, 4, format == 3 ? 1 : 3, alignment); cases++;
             }
         }
+    }
+    for (unsigned mode=0;mode<3;mode++)
+    for (unsigned alignment=1;alignment<=8;alignment*=2) {
+        check_compressed(mode, 7, 5, 3, alignment); cases++;
+        check_compressed(mode, 1, 8, 4, alignment); cases++;
+        check_compressed(mode, 16, 8, 5, alignment); cases++;
     }
     check_converted_cube(3); check_converted_cube(6); cases += 2;
     printf("upload cases passed=%u: row/slice/mip bytes exact; unpack alignment restored\n", cases);

@@ -15,24 +15,31 @@ import tempfile
 repo = Path(sys.argv[1]).resolve()
 source = (repo / "hw/xbox/nv2a/pgraph/gl/texture.c").read_text()
 functions = []
-for name in ("tex_scratch", "upload_gl_texture"):
+for name in ("tex_scratch", "gl_internal_format_to_s3tc_enum", "upload_gl_texture"):
     # upload_gl_texture has no forward declaration; extract its definition.
-    position = source.index("static " + ("uint8_t *" if name == "tex_scratch"
-                                      else "void ") + name + "(")
+    position = source.index(name + "(")
+    position = source.rfind("\nstatic ", 0, position) + 1
     end = source.index("{", position) + 1
     depth = 1
     while depth:
         depth += (source[end] == "{") - (source[end] == "}")
         end += 1
     functions.append(source[position:end])
+decoder = (repo / "hw/xbox/nv2a/pgraph/s3tc.c").read_text().replace(
+    '#include "qemu/osdep.h"',
+    '#include <stdbool.h>\n#include <stdlib.h>\n#include <assert.h>\n'
+    '#define MIN(a,b) ((a)<(b)?(a):(b))\n#define g_malloc malloc')
 code = Path(__file__).with_suffix(".c").read_text().replace(
     "/* PRODUCTION */", "\n".join(functions))
 with tempfile.TemporaryDirectory(prefix="gl-upload-") as directory:
     folder = Path(directory)
     (folder / "test.c").write_text(code)
+    (folder / "decoder.c").write_text(decoder)
     exe = folder / ("test.exe" if os.name == "nt" else "test")
     args = [sys.argv[2] if len(sys.argv) > 2 else "gcc", "-O2", "-Wall",
-            "-Wextra", "-Werror", "-Wno-sign-compare", str(folder / "test.c"), "-o", str(exe)]
+            "-Wextra", "-Werror", "-Wno-sign-compare", "-Wno-return-type",
+            "-I", str(repo / "hw/xbox/nv2a/pgraph"), "-I", str(repo / "libretro/tests"),
+            str(folder / "test.c"), str(folder / "decoder.c"), "-o", str(exe), "-lm"]
     if os.name == "nt":
         args += ["-I", str(repo / "deps/libepoxy/include"),
                  str(repo / "deps/libepoxy.a"), "-lopengl32", "-lgdi32", "-static"]

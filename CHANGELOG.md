@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- OpenGL fallback upload tests now cover BC1/BC2/BC3 partial blocks, one-pixel rows, and mip tails at all unpack alignments, checking exact RGBA8 pixels and restoration of the caller's unpack alignment.
+
 - The OpenGL compressed-volume regression oracle now verifies interpolated RGB, transparent BC1 colors, and BC2/BC3 alpha through actual RGBA8 fallback uploads, including odd dimensions and one-texel mip tails.
 
 - The test script (libretro/tests/run.sh) removes the temporary folder it makes, about 500 MB, when it ends, whether the tests passed or failed; each run used to leave one behind. A folder given as its second argument is still kept.
