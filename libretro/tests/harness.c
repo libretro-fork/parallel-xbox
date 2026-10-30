@@ -965,6 +965,95 @@ static void vk_teardown(void)
    vk_device = VK_NULL_HANDLE;
 }
 
+/* Read-only URI provider for exercising the core's frontend-VFS path with
+ * the same files as native I/O. Seek follows the VFS status-code contract. */
+struct retro_vfs_file_handle { FILE *fp; int64_t size; };
+static uint64_t vfs_read_limit;
+
+static int vfs_seek_file(FILE *fp, int64_t offset, int whence)
+{
+#ifdef _WIN32
+   return _fseeki64(fp, offset, whence);
+#else
+   return fseeko(fp, (off_t)offset, whence);
+#endif
+}
+
+static struct retro_vfs_file_handle *RETRO_CALLCONV vfs_open_file(
+      const char *path, unsigned mode, unsigned hints)
+{
+   struct retro_vfs_file_handle *h;
+   FILE *fp;
+   int64_t size;
+   (void)hints;
+   if (mode != RETRO_VFS_FILE_ACCESS_READ)
+      return NULL;
+   if (!strncmp(path, "content://", 10))
+      path += 10;
+   else if (!strncmp(path, "saf://", 6))
+      path += 6;
+   else
+      return NULL;
+   fp = fopen(path, "rb");
+   if (!fp)
+      return NULL;
+   if (vfs_seek_file(fp, 0, SEEK_END))
+      goto fail;
+#ifdef _WIN32
+   size = _ftelli64(fp);
+#else
+   size = ftello(fp);
+#endif
+   if (size < 0 || vfs_seek_file(fp, 0, SEEK_SET))
+      goto fail;
+   h = malloc(sizeof(*h));
+   if (!h)
+      goto fail;
+   h->fp = fp;
+   h->size = size;
+   return h;
+fail:
+   fclose(fp);
+   return NULL;
+}
+
+static int RETRO_CALLCONV vfs_close_file(struct retro_vfs_file_handle *h)
+{
+   int ret = fclose(h->fp);
+   free(h);
+   return ret;
+}
+
+static int64_t RETRO_CALLCONV vfs_size_file(struct retro_vfs_file_handle *h)
+{
+   return h->size;
+}
+
+static int64_t RETRO_CALLCONV vfs_seek(
+      struct retro_vfs_file_handle *h, int64_t offset, int where)
+{
+   int whence = where == RETRO_VFS_SEEK_POSITION_START ? SEEK_SET :
+      where == RETRO_VFS_SEEK_POSITION_CURRENT ? SEEK_CUR : SEEK_END;
+   return vfs_seek_file(h->fp, offset, whence);
+}
+
+static int64_t RETRO_CALLCONV vfs_read_file(
+      struct retro_vfs_file_handle *h, void *data, uint64_t len)
+{
+   size_t got;
+   if (len > SIZE_MAX)
+      return -1;
+   if (vfs_read_limit && len > vfs_read_limit)
+      len = vfs_read_limit;
+   got = fread(data, 1, (size_t)len, h->fp);
+   return ferror(h->fp) ? -1 : (int64_t)got;
+}
+
+static struct retro_vfs_interface test_vfs = {
+   .open = vfs_open_file, .close = vfs_close_file, .size = vfs_size_file,
+   .seek = vfs_seek, .read = vfs_read_file
+};
+
 static bool env_cb(unsigned cmd, void *data)
 {
    switch (cmd & ~RETRO_ENVIRONMENT_EXPERIMENTAL)
@@ -972,6 +1061,14 @@ static bool env_cb(unsigned cmd, void *data)
       case RETRO_ENVIRONMENT_GET_LOG_INTERFACE:
          ((struct retro_log_callback *)data)->log = log_cb;
          return true;
+      case RETRO_ENVIRONMENT_GET_VFS_INTERFACE & ~RETRO_ENVIRONMENT_EXPERIMENTAL:
+      {
+         struct retro_vfs_interface_info *info = data;
+         if (info->required_interface_version > 3)
+            return false;
+         info->iface = &test_vfs;
+         return true;
+      }
       case RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY:
       case RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY:
          *(const char **)data = sysdir;
@@ -1563,6 +1660,8 @@ int main(int argc, char **argv)
       return 2;
    }
    sysdir = argv[2];
+   if (getenv("HARNESS_VFS_READ_LIMIT"))
+      vfs_read_limit = strtoull(getenv("HARNESS_VFS_READ_LIMIT"), NULL, 10);
    for (i = 3; i < argc; i++)
    {
       if (!strcmp(argv[i], "--frames") && i + 1 < argc)

@@ -2312,6 +2312,7 @@ static char *strdup_double_commas(const char *input) {
 }
 
 #include <libretro.h>
+#include "block/libretro-vfs-read.h"
 
 /*
  * Where the game partition starts in a disc image. An XISO is the game
@@ -2325,18 +2326,20 @@ static char *strdup_double_commas(const char *input) {
  * path (Android's Play Store RetroArch) can only be read through it */
 extern struct retro_vfs_interface *xemu_libretro_vfs;
 
-static bool xbox_read_at(FILE *f, struct retro_vfs_file_handle *h,
-                         uint64_t offset, void *buf, size_t len)
+static const void *xbox_read_at(LRFile *f, struct retro_vfs_file_handle *h,
+                                uint64_t offset, void *buf, size_t len)
 {
-    if (h) {
-        /* RetroArch's seek returns 0 rather than the position: only a
-         * negative value is an error */
-        return xemu_libretro_vfs->seek(h, (int64_t)offset,
-                                       RETRO_VFS_SEEK_POSITION_START) >= 0 &&
-               xemu_libretro_vfs->read(h, buf, len) == (int64_t)len;
+    if (offset > INT64_MAX) {
+        return NULL;
     }
-    return fseeko(f, (off_t)offset, SEEK_SET) == 0 &&
-           fread(buf, 1, len, f) == len;
+    if (h) {
+        int64_t cursor = -1;
+        LRFileIOV iov = { buf, len };
+        return lr_vfs_readv(xemu_libretro_vfs, h, &cursor, offset, &iov, 1) == 0
+               ? buf : NULL;
+    }
+    const uint8_t *view = lr_file_view(f, offset, len);
+    return view ? view : (lr_file_pread(f, offset, buf, len) == 0 ? buf : NULL);
 }
 
 static uint64_t xbox_game_partition_offset(const char *path)
@@ -2346,7 +2349,7 @@ static uint64_t xbox_game_partition_offset(const char *path)
     };
     static const char magic[] = "MICROSOFT*XBOX*MEDIA";
     uint64_t found = 0;
-    FILE *f = NULL;
+    LRFile *f = NULL;
     struct retro_vfs_file_handle *h = NULL;
 
     if (!path || !path[0]) {
@@ -2362,15 +2365,16 @@ static uint64_t xbox_game_partition_offset(const char *path)
             return 0;
         }
     } else {
-        f = fopen(path, "rb");
+        f = lr_file_open(path, false, false);
         if (!f) {
             return 0;
         }
     }
     for (size_t i = 0; i < ARRAY_SIZE(offsets); i++) {
         char buf[sizeof(magic) - 1];
-        if (xbox_read_at(f, h, offsets[i] + 32 * 2048, buf, sizeof(buf)) &&
-            memcmp(buf, magic, sizeof(buf)) == 0) {
+        const void *view = xbox_read_at(f, h, offsets[i] + 32 * 2048,
+                                        buf, sizeof(buf));
+        if (view && memcmp(view, magic, sizeof(buf)) == 0) {
             found = offsets[i];
             break;
         }
@@ -2378,7 +2382,7 @@ static uint64_t xbox_game_partition_offset(const char *path)
     if (h) {
         xemu_libretro_vfs->close(h);
     } else {
-        fclose(f);
+        lr_file_close(f);
     }
     return found;
 }

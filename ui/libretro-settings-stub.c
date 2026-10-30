@@ -13,6 +13,9 @@
 
 #include "xemu-config.h"
 #include "xemu-settings.h"
+#include "block/libretro-vfs-read.h"
+
+extern struct retro_vfs_interface *xemu_libretro_vfs;
 
 struct config g_config;
 
@@ -101,18 +104,42 @@ bool xemu_media_is_xbox_disc(const char *path)
     if (!path || !path[0] || g_file_test(path, G_FILE_TEST_IS_DIR)) {
         return false;
     }
-    FILE *f = fopen(path, "rb");
-    if (!f) {
+    bool uri = g_str_has_prefix(path, "saf://") ||
+               g_str_has_prefix(path, "content://");
+    struct retro_vfs_file_handle *h = NULL;
+    LRFile *f = NULL;
+    if (uri) {
+        if (xemu_libretro_vfs) {
+            h = xemu_libretro_vfs->open(path, RETRO_VFS_FILE_ACCESS_READ,
+                                      RETRO_VFS_FILE_ACCESS_HINT_NONE);
+        }
+    } else {
+        f = lr_file_open(path, false, false);
+    }
+    if (!h && !f) {
         return false;
     }
     bool disc = false;
+    int64_t cursor = -1;
     for (int i = 0; i < 2 && !disc; i++) {
         char buf[sizeof(magic) - 1];
-        disc = fseek(f, partitions[i] + 0x10000, SEEK_SET) == 0 &&
-               fread(buf, 1, sizeof(buf), f) == sizeof(buf) &&
-               memcmp(buf, magic, sizeof(buf)) == 0;
+        int64_t offset = partitions[i] + 0x10000;
+        const uint8_t *view = f ? lr_file_view(f, offset, sizeof(buf)) : NULL;
+        if (view) {
+            disc = memcmp(view, magic, sizeof(buf)) == 0;
+        } else {
+            LRFileIOV iov = { buf, sizeof(buf) };
+            int ret = h ? lr_vfs_readv(xemu_libretro_vfs, h, &cursor,
+                                      offset, &iov, 1)
+                        : lr_file_pread(f, offset, buf, sizeof(buf));
+            disc = ret == 0 && memcmp(buf, magic, sizeof(buf)) == 0;
+        }
     }
-    fclose(f);
+    if (h) {
+        xemu_libretro_vfs->close(h);
+    } else {
+        lr_file_close(f);
+    }
     return disc;
 }
 

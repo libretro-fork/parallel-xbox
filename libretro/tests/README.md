@@ -1,5 +1,12 @@
 # The core's tests
 
+DVD DMA checks run the same word-pattern image through native I/O and the
+harness's read-only `content://` and `saf://` VFS providers. The provider uses
+the API's zero-on-success seek result and deliberately returns at most seven
+bytes per read. Disc classification, partition probing and guest scatter-DMA
+must still deliver every expected word. The standalone VFS test additionally
+checks coalesced callback counts, untouched gaps, EOF and seek-error recovery.
+
 Shader-dictionary tests reuse the core's object files and compiler platform.
 For a Windows core tested from Linux, the helper is a static MinGW executable
 run through Wine. Its exit status is checked before printing its summary.

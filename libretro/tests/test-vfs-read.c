@@ -7,6 +7,7 @@ struct retro_vfs_file_handle {
     size_t position;
     unsigned seeks, reads;
     size_t max_read;
+    int seek_error;
     int error;
 };
 
@@ -14,8 +15,11 @@ static int64_t seek_file(struct retro_vfs_file_handle *f, int64_t off, int where
 {
     assert(where == RETRO_VFS_SEEK_POSITION_START);
     f->seeks++;
+    if (f->seek_error) {
+        return -1;
+    }
     f->position = off;
-    return off;
+    return 0; /* libretro VFS contract: success status, not file position */
 }
 
 static int64_t read_file(struct retro_vfs_file_handle *f, void *data, uint64_t len)
@@ -97,5 +101,12 @@ int main(void)
     reads = f.reads;
     assert(lr_vfs_readv(&vfs, &f, &cursor, INT64_MAX - 3, adjacent, 3) == -EINVAL);
     assert(f.reads == reads && cursor == INT64_MAX - 3);
+    f.seek_error = 1;
+    assert(lr_vfs_readv(&vfs, &f, &cursor, 0, adjacent, 3) == -EIO);
+    assert(f.reads == reads && cursor == -1);
+    f.seek_error = 0;
+    seeks = f.seeks;
+    assert(lr_vfs_readv(&vfs, &f, &cursor, 0, adjacent, 3) == 0);
+    assert(f.seeks == seeks + 1 && cursor == 32);
     puts("VFS bulk spans, short reads, sequential seeks, gaps, EOF and recovery: PASS");
 }

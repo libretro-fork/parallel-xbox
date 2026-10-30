@@ -4,7 +4,7 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
-- Frontend VFS disc reads combine adjacent destination spans into bulk provider requests without staging buffers. Gapped spans stay separate, partial reads are retried, and EOF zero-fill is preserved.
+- Frontend VFS disc reads combine adjacent destination spans into bulk provider requests without staging buffers. Seeks honor the API's zero-on-success result, URI-backed Xbox discs are classified correctly, and short reads during partition probing are retried. Local disc probes borrow libretro-common mapped views; gapped spans and EOF zero-fill are preserved.
 
 - CPU Boost checks native SSE arithmetic eligibility once per add, subtract or multiply instruction rather than once per lane. Rounding, flushing and software fallback behavior retain the existing policy.
 

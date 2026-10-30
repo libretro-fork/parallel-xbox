@@ -17,12 +17,12 @@ static inline int lr_vfs_readv(const struct retro_vfs_interface *vfs,
         return -EINVAL;
     }
     if (*cursor != offset) {
-        int64_t position = vfs->seek(file, offset, RETRO_VFS_SEEK_POSITION_START);
-        if (position != offset) {
+        if (vfs->seek(file, offset, RETRO_VFS_SEEK_POSITION_START) < 0) {
             *cursor = -1;
             return -EIO;
         }
-        *cursor = position;
+        /* The VFS API returns zero on success, not the resulting position. */
+        *cursor = offset;
     }
     for (int i = 0; i < count;) {
         uint8_t *data = iov[i].base;
