@@ -654,3 +654,18 @@ for each layout and correct following textured draws. A focused GL oracle also
 checked all 15 nonempty channel masks with 16 color patterns in both layouts:
 480 cases / 122,880 byte-exact ARGB pixels at each of 1x, 2x and 4x, zero errors.
 No GL clear arithmetic, color-mask implementation or transfer policy changed.
+
+OpenGL speculative readback freshness: the fixture explicitly issues FLIP_STALL,
+which runs the prediction hook (FLIP_INCREMENT_WRITE alone does not). Frames
+3120..3135 CPU-read a red 32x16 source then redraw it blue and call FLIP_STALL.
+After source eviction, the CPU checks all 512 blue pixels at 3220. A second
+prediction at 3280 is made stale by a green redraw at 3300; all 512 green pixels
+must be correct at 3380. A counter requires all 17 red reads to complete, with
+zero red-read mismatches. Distinct final color markers prevent incomplete runs
+from passing with zero-initialized error counts.
+The issue path retains an existing PBO/fence when its draw timestamp matches,
+using the same freshness criterion as harvest. A changed timestamp still deletes
+and reissues the snapshot. Focused instrumentation showed 16 predictions plus a
+duplicate age-eviction issue before the fix; afterward the duplicate disappears.
+The stale second prediction is still replaced correctly. No waits, ownership
+fields, readback conversion arithmetic or eviction policy were added or changed.

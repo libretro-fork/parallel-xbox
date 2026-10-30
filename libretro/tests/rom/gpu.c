@@ -1488,6 +1488,69 @@ void gpu_main(void)
             ram32(result + 4, rd32(address));
             ram32(result + 8, rd32(address + 1020));
         }
+        if ((frame >= 3120 && frame <= 3135) || frame == 3280) {
+            for (u32 update = 0; update < 2; update++) {
+                method(NV097_SET_SURFACE_CLIP_H, 32u << 16);
+                method(NV097_SET_SURFACE_CLIP_V, 16u << 16);
+                method(NV097_SET_SURFACE_FORMAT, 0x128u);
+                method(NV097_SET_SURFACE_PITCH, 128u | (128u << 16));
+                method(NV097_SET_SURFACE_COLOR_OFFSET, 0x03d80000u);
+                method(NV097_SET_COLOR_CLEAR_VALUE,
+                       update ? 0xff0000ffu : 0xffff0000u);
+                method(NV097_SET_CLEAR_RECT_H, 31u << 16);
+                method(NV097_SET_CLEAR_RECT_V, 15u << 16);
+                method(NV097_CLEAR_SURFACE, 0xf0);
+                kick();
+                if (!update) {
+                    texture_cpu_barrier();
+                    u32 seen = rd32(0x03d80000u);
+                    if (frame == 3120) ram32(0x003000c8u, 0);
+                    ram32(0x003000c8u, rd32(0x003000c8u) + (seen != 0xffff0000u));
+                    ram32(0x003000b0u, seen);
+                    if (frame == 3120) ram32(0x003000bcu, 0);
+                    ram32(0x003000bcu, rd32(0x003000bcu) + 1);
+                }
+            }
+            method(NV097_SET_SURFACE_CLIP_H, WIDTH << 16);
+            method(NV097_SET_SURFACE_CLIP_V, HEIGHT << 16);
+            method(NV097_SET_SURFACE_PITCH, PITCH | (PITCH << 16));
+            method(NV097_SET_SURFACE_COLOR_OFFSET, SURF_D);
+            triangle();
+            method(NV097_SET_FLIP_READ, 0);
+            method(NV097_SET_FLIP_WRITE, 1);
+            method(0x0130u, 0); /* FLIP_STALL services speculative readback. */
+            kick();
+        }
+        if (frame == 3220) {
+            u32 bad = 0;
+            for (u32 offset = 0; offset < 32 * 16 * 4; offset += 4)
+                bad += rd32(0x03d80000u + offset) != 0xff0000ffu;
+            ram32(0x003000b4u, bad);
+            ram32(0x003000b8u, rd32(0x03d80000u));
+        }
+        if (frame == 3300) {
+            method(NV097_SET_SURFACE_CLIP_H, 32u << 16);
+            method(NV097_SET_SURFACE_CLIP_V, 16u << 16);
+            method(NV097_SET_SURFACE_FORMAT, 0x128u);
+            method(NV097_SET_SURFACE_PITCH, 128u | (128u << 16));
+            method(NV097_SET_SURFACE_COLOR_OFFSET, 0x03d80000u);
+            method(NV097_SET_COLOR_CLEAR_VALUE, 0xff00ff00u);
+            method(NV097_SET_CLEAR_RECT_H, 31u << 16);
+            method(NV097_SET_CLEAR_RECT_V, 15u << 16);
+            method(NV097_CLEAR_SURFACE, 0xf0);
+            method(NV097_SET_SURFACE_CLIP_H, WIDTH << 16);
+            method(NV097_SET_SURFACE_CLIP_V, HEIGHT << 16);
+            method(NV097_SET_SURFACE_PITCH, PITCH | (PITCH << 16));
+            method(NV097_SET_SURFACE_COLOR_OFFSET, SURF_D);
+            kick();
+        }
+        if (frame == 3380) {
+            u32 bad = 0;
+            for (u32 offset = 0; offset < 32 * 16 * 4; offset += 4)
+                bad += rd32(0x03d80000u + offset) != 0xff00ff00u;
+            ram32(0x003000c0u, bad);
+            ram32(0x003000c4u, rd32(0x03d80000u));
+        }
         method(NV097_FLIP_INCREMENT_WRITE, 0);
         kick();
         if (frame >= 100 && frame < 125) {

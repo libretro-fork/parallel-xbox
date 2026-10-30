@@ -745,6 +745,27 @@ for clear_api in gl vk; do
   fi
 done
 
+# Explicit FLIP_STALL exercises speculative PBO freshness across eviction/redraw.
+set +e
+timeout 300 $h "$core" "$work/sysg" $vp --opt xemu_renderer=opengl \
+  --opt xemu_memory=64 --opt xemu_surface_scale=1 --frames 3400 --strict \
+  --peek 0x3000b0 --peek 0x3000b4 --peek 0x3000b8 --peek 0x3000bc \
+  --peek 0x3000c0 --peek 0x3000c4 --peek 0x3000c8 >"$work/gpu_predownload.txt"
+r=$?
+set -e
+if [ "$r" = 0 ]; then
+  for want in "peek_0x3000b0=0xffff0000" "peek_0x3000b4=0x00000000" \
+              "peek_0x3000b8=0xff0000ff" "peek_0x3000bc=0x00000011" \
+              "peek_0x3000c0=0x00000000" "peek_0x3000c4=0xff00ff00" \
+              "peek_0x3000c8=0x00000000"; do
+    grep -q "^$want$" "$work/gpu_predownload.txt" || {
+      echo "FAIL: speculative readback: $want"; exit 1;
+    }
+  done
+elif [ "$r" != 3 ]; then
+  echo "FAIL: speculative readback exited $r"; exit 1
+fi
+
 # A savestate taken while surfaces live only on the GPU (rom/gpu.c: before
 # run 64, B drawn and its depth cleared at frame 62, nothing read back), then
 # loaded in a new process, which has no GPU surfaces: the depth the guest

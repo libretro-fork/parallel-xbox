@@ -1931,7 +1931,11 @@ static void surface_download_issue(NV2AState *d, SurfaceBinding *surface)
     PGRAPHState *pg = &d->pgraph;
     PGRAPHGLState *r = pg->gl_renderer_state;
     if (surface->dl_fence) {
-        /* Never harvested: nothing read it, the new one replaces it. */
+        /* Eviction can consume the flip's still-current speculative copy. */
+        if (surface->dl_draw_time == surface->draw_time) {
+            return;
+        }
+        /* A subsequent draw made the unharvested snapshot stale. */
         glDeleteSync(surface->dl_fence);
         surface->dl_fence = NULL;
     }

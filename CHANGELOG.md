@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- OpenGL reuses a still-current speculative surface readback when eviction requests the same data, avoiding a duplicate GPU download and fence replacement. Redraws still invalidate and replace stale snapshots.
+
 - OpenGL permits clears after rebinding an exactly matching swizzled color view, avoiding the old assertion while preserving channel masks and rectangles. Layout changes, larger cached views and depth targets retain their guards.
 
 - Vulkan permits partial-channel and partial-rectangle clears after rebinding an exactly matching swizzled color view. Format, size, layout, anti-aliasing, scaling mode and clip bounds must still match; depth views and layout migration remain guarded.
