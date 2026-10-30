@@ -1060,6 +1060,15 @@ void gpu_main(void)
             wr(PCRTC_START, SURF_D);
         }
         if (frame == 1140) wr(PCRTC_START, SURF_ORDER);
+        if (frame == 1160) {
+            ram32(VRAM_END - 128, 0x000000ffu);
+            texture_alias_at(0x13, 1, 0x3f000000u, 0, VRAM_END - 128);
+        }
+        if (frame == 1180) {
+            /* Only padding after the last row changes; the texel stays white. */
+            ram32(VRAM_END - 4, 0x12345678u);
+            texture_alias_at(0x13, 1, 0x3f000000u, 0, VRAM_END - 128);
+        }
         method(NV097_FLIP_INCREMENT_WRITE, 0);
         kick();
         if (frame >= 100 && frame < 125) {

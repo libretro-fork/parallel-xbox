@@ -79,6 +79,7 @@ TextureShape pgraph_get_texture_shape(PGRAPHState *pg, int texture_idx);
 /* Aligned guest mip-chain span of one cubemap face, including border data. */
 size_t pgraph_get_cubemap_face_length(PGRAPHState *pg, TextureShape shape);
 size_t pgraph_get_texture_length(PGRAPHState *pg, TextureShape *shape);
+size_t pgraph_texture_hash_length(TextureShape shape, size_t length);
 
 static inline float pgraph_convert_lod_bias_to_float(uint32_t lod_bias)
 {

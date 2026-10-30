@@ -31,7 +31,8 @@ start = source.index("const BasicColorFormatInfo kelvin_color_format_info_map")
 parts.append(source[start:source.index("\n};", start) + 3])
 parts.append(function(pgraph, "pgraph_is_texture_format_compressed"))
 parts += [function(source, name) for name in ("texture_mip_chain_size",
-          "pgraph_get_cubemap_face_length", "pgraph_get_texture_length")]
+          "pgraph_get_cubemap_face_length", "pgraph_get_texture_length",
+          "pgraph_converted_texture_size", "pgraph_texture_hash_length")]
 code = Path(__file__).with_suffix(".c").read_text().replace("/* PRODUCTION */", "\n".join(parts))
 with tempfile.TemporaryDirectory(prefix="texture-layout-") as directory:
     folder = Path(directory)

@@ -491,7 +491,8 @@ void pgraph_gl_bind_textures(NV2AState *d)
 
         uint64_t tex_data_hash = 0;
         if (!surf_to_tex && !surf_to_tex_cube && possibly_dirty) {
-            tex_data_hash = fast_hash(texture_data, length);
+            tex_data_hash = fast_hash(texture_data,
+                pgraph_texture_hash_length(state, length));
             if (is_indexed) {
                 tex_data_hash ^= fast_hash(palette_data, palette_length);
             }
