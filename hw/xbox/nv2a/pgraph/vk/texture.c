@@ -2395,8 +2395,9 @@ static void create_texture(PGRAPHState *pg, int texture_idx)
     NV2A_VK_DGROUP_END();
 }
 
-static bool check_textures_dirty(PGRAPHState *pg)
+static bool check_textures_dirty(NV2AState *d)
 {
+    PGRAPHState *pg = &d->pgraph;
     PGRAPHVkState *r = pg->vk_renderer_state;
 
     for (int i = 0; i < NV2A_MAX_TEXTURES; i++) {
@@ -2408,6 +2409,17 @@ static bool check_textures_dirty(PGRAPHState *pg)
         if (r->texture_bindings[i]->possibly_dirty &&
             r->texture_bindings[i]->validation_frame != pg->frame_time) {
             return true;
+        }
+        /* CPU writes can change texels without any texture method being
+         * resent. Checking pages also marks other cached views sharing them
+         * before their dirty flags are cleared. Clean pages need no hash. */
+        if (pgraph_is_texture_enabled(pg, i)) {
+            const TextureKey *key = &r->texture_bindings[i]->key;
+            if (check_texture_possibly_dirty(d, key->texture_vram_offset,
+                    key->texture_length, key->palette_vram_offset,
+                    key->palette_length)) {
+                return true;
+            }
         }
     }
     return false;
@@ -2429,12 +2441,11 @@ void pgraph_vk_bind_textures(NV2AState *d)
     PGRAPHState *pg = &d->pgraph;
     PGRAPHVkState *r = pg->vk_renderer_state;
 
-    // FIXME: Check for modifications on bind fastpath (CPU hook)
     // FIXME: Mark textures that are sourced from surfaces so we can track them
 
     r->texture_bindings_changed = false;
 
-    if (!check_textures_dirty(pg)) {
+    if (!check_textures_dirty(d)) {
         NV2A_VK_DPRINTF("Not dirty");
         NV2A_VK_DGROUP_END();
         update_timestamps(r);

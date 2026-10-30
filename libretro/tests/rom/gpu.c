@@ -368,6 +368,14 @@ static void triangle(void)
     method(NV097_SET_BEGIN_END, 0);
 }
 
+static void disable_texture(void)
+{
+    method(NV097_SET_TEXTURE_CONTROL0, 0);
+    method(NV097_SET_SHADER_STAGE_PROGRAM, 0);
+    method(NV097_SET_COMBINER_SPECULAR_FOG_CW0, 0);
+    method(NV097_SET_COMBINER_SPECULAR_FOG_CW1, 0);
+}
+
 /* A 32x16 ARGB surface viewed as either matching ARGB pixels or a 64x16
  * RGB565 texture with the same byte pitch. Red's bytes are 00 00 FF FF:
  * the narrow view must alternate black and white, not stale CPU blue.
@@ -377,6 +385,8 @@ static __attribute__((noinline)) void texture_alias_target(u32 format, u32 width
                                                           u32 texture_address,
                                                           u32 target)
 {
+    u32 retain = format >> 31; /* Fixture-only: leave sampling state bound. */
+    format &= 0x7fffffffu;
     if (redraw) {
         method(NV097_SET_SURFACE_CLIP_H, 32u << 16);
         method(NV097_SET_SURFACE_CLIP_V, 16u << 16);
@@ -424,10 +434,7 @@ static __attribute__((noinline)) void texture_alias_target(u32 format, u32 width
     method(NV097_SET_VERTEX_DATA2F_M + 9 * 8, u);   /* constant texture coordinates */
     method(NV097_SET_VERTEX_DATA2F_M + 9 * 8 + 4, 0x3f000000u);
     triangle();
-    method(NV097_SET_TEXTURE_CONTROL0, 0);
-    method(NV097_SET_SHADER_STAGE_PROGRAM, 0);
-    method(NV097_SET_COMBINER_SPECULAR_FOG_CW0, 0);
-    method(NV097_SET_COMBINER_SPECULAR_FOG_CW1, 0);
+    if (!retain) disable_texture();
     kick();
     cr(0x28, 3);
     cr(0x13, (PITCH / 8) & 0xff);
@@ -1098,20 +1105,24 @@ void gpu_main(void)
             texture_alias_at(0x25, 1, 0x3f000000u, 0, TEX_YUV);
         }
         if (frame == 1280) {
-            /* Two CPU texture versions consumed before the next flip. */
+            /* No texture state is resent before the second draw. */
             ram32(TEX_YUV, 0);
-            texture_alias_at(0x13, 1, 0x3f000000u, 0, TEX_YUV);
+            texture_alias_at(0x80000013u, 1, 0x3f000000u, 0, TEX_YUV);
             texture_cpu_barrier();
             ram32(TEX_YUV, 0x000000ffu);
-            texture_alias_at(0x13, 1, 0x3f000000u, 0, TEX_YUV);
+            triangle();
+            disable_texture();
+            kick();
         }
         if (frame == 1300) {
             ram32(TEX_YUV, 0);
             ram32(VRAM_END - 1024, 0xffff0000u);
-            texture_alias_at(0x0b, 1, 0x3f000000u, 0, TEX_YUV);
+            texture_alias_at(0x8000000bu, 1, 0x3f000000u, 0, TEX_YUV);
             texture_cpu_barrier();
             ram32(VRAM_END - 1024, 0xff00ff00u);
-            texture_alias_at(0x0b, 1, 0x3f000000u, 0, TEX_YUV);
+            triangle();
+            disable_texture();
+            kick();
         }
         method(NV097_FLIP_INCREMENT_WRITE, 0);
         kick();
