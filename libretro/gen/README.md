@@ -52,8 +52,8 @@ Then, by hand:
   x86-64 host.
 - `xemu-version-macro.h` is not here: the version and commit the core logs
   change with every commit, so the Makefile writes it at each build
-  (`libretro/version.sh`, as `scripts/xemu-version.py` does for meson).
-- `data/*.h`: the declarations meson's `scripts/pack-file.py` writes next to
+  (`libretro/version.sh`, as upstream's `scripts/xemu-version.py` does for meson).
+- `data/*.h`: the declarations upstream's `scripts/pack-file.py` writes next to
   the data files' C arrays; the Makefile assembles the data files
   themselves (`libretro/data.S`) instead of compiling those arrays.
 
