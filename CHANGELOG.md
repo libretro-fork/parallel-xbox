@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- The synthetic GPU suite now checks two same-frame updates to GPU-produced texture bytes and indexed texture indices, extending the palette-only coverage of immediate cache invalidation across both renderers and all tested scales.
+
 - Vulkan now revalidates cached texture and palette views immediately when GPU surface writeback changes their RAM, even if they were already sampled in the same frame. This fixes stale indexed colors after multiple GPU palette updates before a flip while retaining the RAM-only validation throttle.
 
 - The synthetic GPU suite now repeatedly rebinds an unchanged GPU-produced palette for 40 draws and checks that its final blue color remains stable on both renderers at 1x, 2x and 4x.

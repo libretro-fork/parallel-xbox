@@ -1010,6 +1010,20 @@ void gpu_main(void)
                 texture_alias(0x0b, 1, 0x3f000000u, 0);
             }
         }
+        if (frame == 1040) {
+            /* The first blue byte of GPU ARGB pixels is also a one-byte
+             * Y8 texture. Red -> blue must sample black -> white without
+             * waiting for a flip between the two updates. */
+            texture_alias(0x00, 1, 0x3f000000u, 0xffff0000u);
+            texture_alias(0x00, 1, 0x3f000000u, 0xff0000ffu);
+        }
+        if (frame == 1060) {
+            /* GPU writes index zero, then index 255. Palette zero remains
+             * green from frame 1020; palette 255 is CPU-written white. */
+            ram32(VRAM_END - 4, 0xffffffffu);
+            texture_alias(0x0b, 1, 0x3f000000u, 0xffff0000u);
+            texture_alias(0x0b, 1, 0x3f000000u, 0xff0000ffu);
+        }
         method(NV097_FLIP_INCREMENT_WRITE, 0);
         kick();
         if (frame >= 100 && frame < 125) {
