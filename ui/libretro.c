@@ -13,6 +13,7 @@
 #include "qemu/main-loop.h"
 #include "qemu/thread.h"
 #include "qemu/rcu.h"
+#include "hw/boards.h"
 #include "system/system.h"
 #include "system/runstate.h"
 #include "system/memory.h"
@@ -2165,6 +2166,9 @@ static bool lr_start_machine(void)
     static char machine_image[4096]; /* the content the machine holds */
     if (!machine_built) {
         qemu_init(argc, (char **)argv);
+        /* no JSON description of every field at the end of each state:
+         * nothing reads it, and Run-Ahead saves a state every frame */
+        MACHINE(qdev_get_machine())->suppress_vmdesc = true;
         vmstate_register(NULL, 0, &vmstate_lr_frame, &lr_frame_state);
 
         /* Create XID USB gamepad devices for all 4 ports (BQL is held) */

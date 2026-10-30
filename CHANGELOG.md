@@ -561,6 +561,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 - Run-Ahead, and loading states, are faster. A state load wrote all of the guest's 64 MB of RAM back, threw away every piece of translated CPU code, and had the GPU renderer copy the whole RAM again, twice (OpenGL and Vulkan alike). Now it writes back only the pages that differ, drops only the translated code from those pages, and the renderer takes RAM again only where its draws read it. On the test ROM Run-Ahead 1 runs at 0.69x real time where it ran at 0.39x on OpenGL, 0.64x where it ran at 0.39x on Vulkan; games keep their translated code across the load as well, which the test ROM barely has.
 
+- Saving and loading states takes less work again (a sixth less CPU time with Run-Ahead 1 on the test ROM): a state no longer ends with a description of every field in it that nothing reads, the guest's RAM goes into it without being checked for empty pages first and without a copy on the way, and the devices' numbers are written and read four or eight bytes at a time instead of one. What is left is copying the 64 MB of RAM into the state and comparing it back on load. States from earlier builds still load.
+
 ## Test build 4 - 2026-10-25
 
 - The core info file names the core "Microsoft - Xbox / Sega Chihiro (xemu)" (NNshi).
