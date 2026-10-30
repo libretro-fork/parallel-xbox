@@ -446,6 +446,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 - Audio: the voice processor's control math is integer too: the pitch steps, the filter cutoff curve, the envelopes' decay and release curves, and the LFOs, from exact tables instead of the C library's exp2, exp and floor in double precision. The results are the same as before: checked over every input of the cutoff curve and every envelope count and rate, every steady pitch and 400 million pitch ramps, 1.1 billion values with no difference. Nothing in the voice processor or in its hand-off to the DSPs uses floating point any more.
 
+- The guest's time no longer depends on how busy the host is. When the guest waited and the GPU's thread was busy with work of the core's own (setting itself up at boot, after a reset), the guest's time moved on by the host time that took, so the same frames could hold different amounts of the guest's work from run to run; the test suite's "same work flat out and paced" check failed now and then for it. The guest now waits only for work it gave the GPU.
+
 ## Test build 4 - 2026-10-25
 
 - The core info file names the core "Microsoft - Xbox / Sega Chihiro (xemu)" (NNshi).

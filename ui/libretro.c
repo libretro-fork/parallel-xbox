@@ -1916,10 +1916,11 @@ static void lr_main_notify(void)
  * taking 1 ms (all its time skipped). */
 static bool lr_devices_busy(void)
 {
-    extern bool nv2a_libretro_busy(void);
+    extern bool nv2a_libretro_guest_busy(void);
     /* a disk request's completion due (block/libretro-disk.c): it runs at
-     * the frame loop's next pass, before the guest's time moves on */
-    return lr_disk_pending > 0 || nv2a_libretro_busy();
+     * the frame loop's next pass, before the guest's time moves on; the
+     * GPU with work the guest gave it */
+    return lr_disk_pending > 0 || nv2a_libretro_guest_busy();
 }
 /* set while the emulator thread looks and waits: the GPU's thread wakes it
  * when it parks (hw/xbox/nv2a/pfifo.c) */
@@ -2081,8 +2082,8 @@ static void lr_run_frame(void)
              * time the GPU took, up to the next deadline, unless the
              * emulation is deterministic: the Xbox's CPU waits on its GPU
              * as long as the GPU draws, never longer */
-            extern bool nv2a_libretro_busy(void);
-            bool gpu = !opt_deterministic && nv2a_libretro_busy();
+            extern bool nv2a_libretro_guest_busy(void);
+            bool gpu = !opt_deterministic && nv2a_libretro_guest_busy();
             int64_t waited = gpu ? get_clock() : 0;
             main_loop_wait(false);
             if (gpu) {

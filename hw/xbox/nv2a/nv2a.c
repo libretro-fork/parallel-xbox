@@ -220,6 +220,23 @@ bool nv2a_libretro_busy(void)
            !retro_atomic_load_relaxed_int(&d->pfifo.parked);
 }
 
+/* Work the guest gave the GPU outstanding (pfifo_kick_guest): what a
+ * waiting guest may be waiting for. The core's own kicks (a reset's
+ * unlock, a frame's redraw) are not the guest's to wait for: counting
+ * them let the GPU's host time, at boot or after a reset, move the guest's
+ * time on by different amounts from run to run. */
+bool nv2a_libretro_guest_busy(void)
+{
+    NV2AState *d = g_nv2a;
+
+    if (!d || !retro_atomic_load_acquire_int(&d->pfifo.thread_running) ||
+        retro_atomic_load_relaxed_int(&d->pfifo.halt)) {
+        return false;
+    }
+    return retro_atomic_load_acquire_int(&d->pfifo.guest_kicks) !=
+           retro_atomic_load_acquire_int(&d->pfifo.guest_done);
+}
+
 /* The emulator thread, at a frame's end with the GPU's thread caught up
  * (ui/libretro.c): the display looked at again, so the picture handed over
  * is the front buffer as the frame's last draws left it - the guest may

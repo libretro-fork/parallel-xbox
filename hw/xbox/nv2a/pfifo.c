@@ -81,6 +81,14 @@ void pfifo_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
         break;
     }
 
+    pfifo_kick_guest(d);
+}
+
+/* Work the guest gave the GPU: counted first, then the kick that has the
+ * thread take the count (pfifo_thread) */
+void pfifo_kick_guest(NV2AState *d)
+{
+    retro_atomic_fetch_add_seq_cst_int(&d->pfifo.guest_kicks, 1);
     pfifo_kick(d);
 }
 
@@ -191,6 +199,10 @@ static inline void pfifo_idle_wait(NV2AState *d)
          * lr_run_frame, nv2a_libretro_switch_renderer): parked stored, a
          * full fence, then the look at the waiter flag, which that thread
          * stores and fences before it looks at parked */
+        /* the guest's work this pass took is done (before parked and the
+         * fence: the waiter sees both) */
+        retro_atomic_store_release_int(&d->pfifo.guest_done,
+                                       d->pfifo.guest_seen);
         retro_atomic_store_relaxed_int(&d->pfifo.parked, 1);
         retro_atomic_thread_fence_seq_cst();
         if (retro_atomic_load_relaxed_int(&nv2a_libretro_waiter)) {
@@ -558,7 +570,13 @@ void *pfifo_thread(void *arg)
             }
             continue;
         }
-        retro_atomic_store_release_int(&d->pfifo.fifo_kick, 0);
+        /* the kick taken, and with it the guest's count: a kick that
+         * read-modify-write reads carries the count its guest kick
+         * stored first (pfifo_kick_guest); one it misses is seen before
+         * the thread parks */
+        retro_atomic_exchange_int(&d->pfifo.fifo_kick, 0);
+        d->pfifo.guest_seen =
+            retro_atomic_load_acquire_int(&d->pfifo.guest_kicks);
 
         pgraph_process_pending(d);
 

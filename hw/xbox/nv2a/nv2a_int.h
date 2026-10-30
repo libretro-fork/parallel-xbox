@@ -135,6 +135,15 @@ typedef struct NV2AState {
         /* the thread waits for a kick with nothing to do (nv2a_libretro_
          * busy); written by the thread under the lock, read by any */
         retro_atomic_int_t parked;
+        /* Kicks for work the guest gave the GPU (its pushbuffer and PFIFO
+         * registers: pfifo_kick_guest), and the count the thread had taken
+         * when it last parked with that work done: the guest can only be
+         * waiting for these (nv2a_libretro_guest_busy), not for the core's
+         * own kicks (a reset's, a frame's redraw). guest_seen is the
+         * thread's own: the count its pass took. */
+        retro_atomic_int_t guest_kicks;
+        retro_atomic_int_t guest_done;
+        int guest_seen;
     } pfifo;
 
     struct {

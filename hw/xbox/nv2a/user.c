@@ -117,7 +117,7 @@ void user_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
                 break;
             }
 
-            pfifo_kick(d);
+            pfifo_kick_guest(d);
 
         } else {
             /* ramfc */
