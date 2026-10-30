@@ -758,28 +758,32 @@ static int write_new(LRQcow2 *q, uint64_t gc, uint64_t in, uint64_t len,
     uint32_t i = (uint32_t)(gc / q->l2e);
     bool reuse = (e & F_COPIED) && (e & OFFSET_MASK) &&
                  !(e & F_COMPRESSED);   /* an allocated zero cluster */
+    bool direct = !zero && in == 0 && len == q->cs;
     int ret;
 
-    /* what the rest of the cluster holds now */
-    if (e & F_COMPRESSED) {
-        ret = read_compressed(q, gc, e);
-        if (ret < 0) {
-            return ret;
+    /* A complete replacement has no old bytes to preserve or decompress.
+     * Partial writes still assemble the unchanged bytes in scratch. */
+    if (!direct) {
+        if (e & F_COMPRESSED) {
+            ret = read_compressed(q, gc, e);
+            if (ret < 0) {
+                return ret;
+            }
+            memcpy(q->cluster, q->dcache, (size_t)q->cs);
+        } else if (reads_zero(q, e)) {
+            memset(q->cluster, 0, (size_t)q->cs);
+        } else {
+            ret = lr_file_pread(q->f, (int64_t)(e & OFFSET_MASK), q->cluster,
+                                (size_t)q->cs);
+            if (ret < 0) {
+                return ret;
+            }
         }
-        memcpy(q->cluster, q->dcache, (size_t)q->cs);
-    } else if (reads_zero(q, e)) {
-        memset(q->cluster, 0, (size_t)q->cs);
-    } else {
-        ret = lr_file_pread(q->f, (int64_t)(e & OFFSET_MASK), q->cluster,
-                            (size_t)q->cs);
-        if (ret < 0) {
-            return ret;
+        if (zero) {
+            memset(q->cluster + in, 0, (size_t)len);
+        } else {
+            cursor_copy_in(c, q->cluster + in, (size_t)len);
         }
-    }
-    if (zero) {
-        memset(q->cluster + in, 0, (size_t)len);
-    } else {
-        cursor_copy_in(c, q->cluster + in, (size_t)len);
     }
     if (q->cached == gc) {
         q->cached = ~0ull;
@@ -796,7 +800,9 @@ static int write_new(LRQcow2 *q, uint64_t gc, uint64_t in, uint64_t len,
             return ret;
         }
     }
-    ret = lr_file_pwrite(q->f, (int64_t)host, q->cluster, (size_t)q->cs);
+    ret = direct ? cursor_io(q, c, host, (size_t)len, true)
+                 : lr_file_pwrite(q->f, (int64_t)host, q->cluster,
+                                   (size_t)q->cs);
     if (ret < 0) {
         return ret;
     }

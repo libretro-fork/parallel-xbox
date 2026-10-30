@@ -752,3 +752,5 @@ Native SSE arithmetic tests cover 128/256/512-bit helpers against the prior
 scalar-lane reference, including destination/source aliases, NaN payloads,
 signed zeros, subnormals, host MXCSR and software exception status. Packed
 CPU Boost arithmetic uses 16-byte host SIMD groups without temporary buffers.
+
+The qcow2 span fixture also replaces complete clusters directly from 256 source spans. Instrumented production file calls require no old-data reads and the original source pointer for full replacements, while partial replacements preserve both sides. Optional qemu-img fixtures cover compressed, v2 and snapshot-shared clusters, including a primed decompression cache and unchanged snapshot contents.

@@ -158,7 +158,7 @@ ${cc} -O2 -std=gnu99 -Wall -DLR_FILE_FILESTREAM=0 -I"$lrc/include" -o "$work/bin
 "$work/bin/qcow2test" "$here/../../data/xbox_hdd.qcow2" "$work"
 # Count the production qcow2 layer's file calls without replacing its backend.
 ${cc} -O2 -std=gnu99 -Wall -DLR_FILE_FILESTREAM=0 -I"$here/../.." -I"$lrc/include" \
-    -Dlr_file_preadv=counted_preadv -Dlr_file_pwritev=counted_pwritev \
+    -Dlr_file_pread=counted_pread -Dlr_file_preadv=counted_preadv -Dlr_file_pwritev=counted_pwritev \
     -c "$here/../../block/libretro-qcow2.c" -o "$work/bin/qcow2-spans.o"
 ${cc} -O2 -std=gnu99 -Wall -DLR_FILE_FILESTREAM=0 -I"$here/../.." -I"$lrc/include" \
     -o "$work/bin/qcow2spans" "$here/test-qcow2-spans.c" "$work/bin/qcow2-spans.o" \
@@ -189,6 +189,24 @@ case $core in
 esac
 if command -v qemu-img >/dev/null 2>&1; then
     qemu-img check "$work/qcow2-spans.qcow2"
+    "$work/bin/qcow2spans" "$work/replacement.raw" --make-raw
+    for kind in compressed v2 snapshot v2-snapshot; do
+        image="$work/replacement-$kind.qcow2"
+        case $kind in
+        compressed) qemu-img convert -f raw -O qcow2 -c "$work/replacement.raw" "$image" ;;
+        v2*) qemu-img convert -f raw -O qcow2 -o compat=0.10 "$work/replacement.raw" "$image" ;;
+        snapshot) qemu-img convert -f raw -O qcow2 "$work/replacement.raw" "$image" ;;
+        esac
+        if [ "$kind" = snapshot ] || [ "$kind" = v2-snapshot ]; then
+            qemu-img snapshot -c original "$image"
+        fi
+        "$work/bin/qcow2spans" "$image" --replace
+        qemu-img check "$image"
+        if [ "$kind" = snapshot ] || [ "$kind" = v2-snapshot ]; then
+            qemu-img convert -l snapshot.name=original -O raw "$image" "$work/replacement-snapshot.raw"
+            cmp "$work/replacement.raw" "$work/replacement-snapshot.raw"
+        fi
+    done
     q="$work/qcow2"
     mkdir -p "$q"
     head -c 40000000 /dev/urandom > "$q/base.raw"

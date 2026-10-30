@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Full-cluster qcow2 replacement writes bypass scratch copies and old-data reads/decompression. Partial writes still preserve unchanged bytes, and snapshot copy-on-write remains intact.
+
 - Adjacent native disk-write spans now share bulk writes on Windows and other platforms without vectored writes, avoiding one host call per span without staging copies.
 - CPU Boost processes eligible packed SSE add/subtract/multiply operations four floats or two doubles at a time, reducing per-lane loads and stores while retaining the existing rounding, flushing and software-fallback rules.
 
