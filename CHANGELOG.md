@@ -356,6 +356,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 - The source tree holds the core and nothing else: every file no platform's build compiles or includes is gone (about 7,900 files): QEMU's other targets and their machines, user-mode emulation, the standalone's tools (qemu-img, qemu-io, the guest agent and the like), its tests, documentation, scripts, Python and Rust code, translations, firmware blobs and ROM sources, and the unused devices, accelerators and backends. They are listed in `.upstream-excluded`, so a merge of upstream does not bring them back.
 
+- The core info file says the core takes savestates (basic: Run-Ahead and netplay need System > Deterministic Emulation on), so RetroArch offers Save State and Load State for it, and names the core "ParaLLEl Xbox", as libretro-super's copy does.
+
 ## Test build 4 - 2026-10-25
 
 - The core info file names the core "Microsoft - Xbox / Sega Chihiro (xemu)" (NNshi).
