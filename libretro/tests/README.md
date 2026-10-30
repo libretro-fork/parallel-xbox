@@ -327,13 +327,11 @@ python3 libretro/tests/test-gl-texture-reinterpret.py .
 `test-texture-reinterpret.py` also checks both renderers' production eligibility
 predicates, including format/layout rejection and overlapping dirty surfaces.
 
-`test-audio-volume.c` also checks the VP host float-to-S16 output against a
-long-double rounding oracle: all 65536 normalized PCM samples at unity,
-attenuation consistency with the integer output path, every Q16 gain on
-boundary values, adjacent floats around half steps, one million arbitrary
-float encodings, clipping, mute and nonfinite inputs. The old conversion
-loses one step on 65535 of 65536 normalized PCM round trips; the new one
-preserves every value. The test runs as part of `run.sh`.
+`test-audio-volume.c` also checks the VP monitor's integer mix-to-S16 output
+(DSPs off) against a 128-bit rounding oracle: all 65536 PCM samples round-trip
+at unity and match the integer volume path at 257 gains, every Q16 gain on
+boundary mixes up to the int64 limits, four million arbitrary mixes, and both
+sides of every half step. The test runs as part of `run.sh`.
 
 `python libretro/tests/test-gl-volume-compression.py CHECKOUT [CC]` runs the
 production DXT volume uploader and decoder on real OpenGL. It checks DXT1,

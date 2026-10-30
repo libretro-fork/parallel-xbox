@@ -430,9 +430,9 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 - The CPU emulation no longer clears its 1 MB block lookup cache when the guest flushes a TLB that holds nothing. The GPU test ROM does that about once a frame, and 95% of the flushes found nothing to drop.
 
-- Audio: handing the mix bins to the GP DSP each audio frame (1,500 times a second, 1,024 samples each) takes a tenth of the time. The conversion to the DSP's 24-bit samples now works in single precision, four samples at a time, and gives the same value as before for every possible input; the sound is the same, bit for bit.
-
 - Audio: the voice processor no longer fills in the standalone's audio debug window (voice by voice, 1,500 times a second, then copied whole), which the core never shows. Its voice mute and solo controls, reachable only from that window, are gone with it.
+
+- Audio: the voice processor works in integers from the decoded source to the DSPs, as the hardware does, instead of converting every sample to float and back to 24 bits at the mix bins. Each stage keeps the integer steps measured on hardware (the resampler's weights in 1/65536, the filters' 1/16-sample grid, gains in 1/16384), with nothing rounded that the hardware does not round, and the mix bins add up exactly, so the sound is the same whatever the number of Voice Processor Threads. The test ROMs' sound is bit for bit what it was; filtered voices differ from before by at most 48 steps of a 24-bit sample, where float rounding used to flip a filter step, and a filter driven unstable now clips instead of going silent. Savestates from earlier versions still load.
 
 ## Test build 4 - 2026-10-25
 

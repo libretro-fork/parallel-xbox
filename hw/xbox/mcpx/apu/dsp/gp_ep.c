@@ -454,14 +454,16 @@ const MemoryRegionOps ep_ops = {
  * 256 go in at its run, for its eight frames): one frame's worth each
  * frame, so a video frame's samples are all there whatever the DSPs'
  * programs did */
-static void dsp_thread_frame(MCPXAPUState *d, float mixbins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME],
+static void dsp_thread_frame(MCPXAPUState *d, int64_t mixbins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME],
                              int frame_div)
 {
     /* Write VP results to the GP DSP MIXBUF, in place */
     uint32_t *mixbuf = dsp_memory_ptr(d->gp.dsp, 'X', GP_DSP_MIXBUF_BASE,
                                       NUM_MIXBINS * NUM_SAMPLES_PER_FRAME);
-    QEMU_BUILD_BUG_ON((NUM_MIXBINS * NUM_SAMPLES_PER_FRAME) % 4);
-    float_to_24b_n(mixbuf, &mixbins[0][0], NUM_MIXBINS * NUM_SAMPLES_PER_FRAME);
+    const int64_t *in = &mixbins[0][0];
+    for (int i = 0; i < NUM_MIXBINS * NUM_SAMPLES_PER_FRAME; i++) {
+        mixbuf[i] = (uint32_t)vp_mix_to_24(in[i]) & 0xffffff;
+    }
 
     bool ep_enabled = (d->ep.regs[NV_PAPU_EPRST] & NV_PAPU_GPRST_GPRST) &&
                       (d->ep.regs[NV_PAPU_EPRST] & NV_PAPU_GPRST_GPDSPRST);
@@ -581,7 +583,7 @@ void mcpx_apu_dsp_quiesce(MCPXAPUState *d)
     }
 }
 
-float (*mcpx_apu_dsp_mixbins(MCPXAPUState *d))[NUM_SAMPLES_PER_FRAME]
+int64_t (*mcpx_apu_dsp_mixbins(MCPXAPUState *d))[NUM_SAMPLES_PER_FRAME]
 {
     MCPXAPUDSPThread *t = &d->dsp_thread;
 
@@ -591,7 +593,7 @@ float (*mcpx_apu_dsp_mixbins(MCPXAPUState *d))[NUM_SAMPLES_PER_FRAME]
     return t->mixbins[(retro_atomic_load_acquire_int(&t->posted) + 1) & 1];
 }
 
-void mcpx_apu_dsp_post(MCPXAPUState *d, float mixbins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME])
+void mcpx_apu_dsp_post(MCPXAPUState *d, int64_t mixbins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME])
 {
     MCPXAPUDSPThread *t = &d->dsp_thread;
     int n;

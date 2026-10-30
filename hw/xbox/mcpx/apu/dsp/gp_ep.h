@@ -72,7 +72,7 @@ typedef struct MCPXAPUDSPThread {
     int seen;                       /* the thread's own count */
     /* The frames' mixbins, the VP's output: the one the thread may be
      * on and the one the engine builds (mcpx_apu_dsp_mixbins) */
-    float mixbins[2][NUM_MIXBINS][NUM_SAMPLES_PER_FRAME];
+    int64_t mixbins[2][NUM_MIXBINS][NUM_SAMPLES_PER_FRAME];
     int frame_div[2];               /* the frames' engine count (EP 1 in 8) */
     /* Where the EP's 256 samples (8 engine frames) go when it runs: the
      * frontend's queue, straight (dsp_thread_frame), or ep_spare when
@@ -89,8 +89,8 @@ void mcpx_apu_update_dsp_preference(MCPXAPUState *d);
  * thread is on the other one at most), then that handed to the thread.
  * The thread puts the DSPs' output straight into the frontend's queue
  * (monitor.c). */
-float (*mcpx_apu_dsp_mixbins(MCPXAPUState *d))[NUM_SAMPLES_PER_FRAME];
-void mcpx_apu_dsp_post(MCPXAPUState *d, float mixbins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME]);
+int64_t (*mcpx_apu_dsp_mixbins(MCPXAPUState *d))[NUM_SAMPLES_PER_FRAME];
+void mcpx_apu_dsp_post(MCPXAPUState *d, int64_t mixbins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME]);
 /* The posted frame done, before anything else touches the DSPs */
 void mcpx_apu_dsp_quiesce(MCPXAPUState *d);
 /* Whether a GP/EP register the DSPs' frame uses is at this APU offset */

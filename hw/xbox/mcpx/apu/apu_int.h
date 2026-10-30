@@ -39,7 +39,7 @@
 #include "apu.h"
 #include "apu_regs.h"
 #include "apu_debug.h"
-#include "fpconv.h"
+#include "sample.h"
 #include "vp/vp.h"
 #include "dsp/gp_ep.h"
 
@@ -156,7 +156,7 @@ int16_t *mcpx_apu_monitor_begin_ahead(size_t frames);
 void mcpx_apu_monitor_end_ahead(int16_t *out, size_t frames);
 int32_t mcpx_apu_monitor_gain_q16(void);
 void mcpx_apu_monitor_end(size_t frames);
-void mcpx_apu_monitor_push_f32(const float (*samples)[2], size_t frames);
+void mcpx_apu_monitor_push_mix(const int64_t (*samples)[2], size_t frames);
 void mcpx_apu_monitor_push_silence(void);
 void mcpx_apu_monitor_silence(MCPXAPUState *d);
 

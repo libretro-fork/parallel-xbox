@@ -10,7 +10,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "hw/xbox/mcpx/apu/apu_regs.h"
-#include "hw/xbox/mcpx/apu/fpconv.h"
+#include "hw/xbox/mcpx/apu/sample.h"
 #include "hw/xbox/mcpx/apu/vp/adpcm.h"
 #include "hw/xbox/mcpx/apu/vp/svf.h"
 #include "hw/xbox/mcpx/apu/vp/hrtf.h"
@@ -39,8 +39,8 @@ struct MCPXAPUState {
         int ssl_base_page;
         uint8_t hrtf_headroom;
         uint64_t voice_locked[4];
-        float sample_buf[32][2];
-        struct {struct {float hrir[2][31];float itd;}entries[HRTF_ENTRY_COUNT];}hrtf;
+        int64_t sample_buf[32][2];
+        struct {struct {int32_t hrir[2][31];int32_t itd;}entries[HRTF_ENTRY_COUNT];}hrtf;
     }vp;
     struct {int point;}monitor;
     unsigned notices[2],queued,idle;
@@ -83,8 +83,8 @@ static const uint8_t segaboot_jingle_data[2]={0};
 static const size_t segaboot_jingle_size=0;
 static int peek_ahead_multipass_bin(MCPXAPUState*d,uint16_t v,uint16_t*dest){*dest=0xffff;return -1;}
 static bool allow_multipass;
-static void get_multipass_samples(MCPXAPUState*d,float mix[][32],uint16_t v,float out[][2])
-{assert(allow_multipass);memset(out,0,sizeof(float[32][2]));}
+static void get_multipass_samples(MCPXAPUState*d,int64_t mix[][32],uint16_t v,int32_t out[][2])
+{assert(allow_multipass);memset(out,0,sizeof(int32_t[32][2]));}
 /* INSERT PRODUCTION FUNCTIONS */
 
 static const struct {hwaddr top,current,next;}voice_list_regs[]={
@@ -95,21 +95,22 @@ static const struct {hwaddr top,current,next;}voice_list_regs[]={
 static bool is_voice_locked(MCPXAPUState*d,uint16_t v){return false;}
 static void fe_method(MCPXAPUState*d,uint32_t method,uint32_t arg){assert(method==SE2FE_IDLE_VOICE);d->idle++;}
 static void voice_work_enqueue(MCPXAPUState*d,int v,int list){assert(d->queued<256);d->queue[d->queued++]=v;}
-static void voice_work_dispatch(MCPXAPUState*d,float mix[][32])
+static void voice_work_dispatch(MCPXAPUState*d,int64_t mix[][32])
 {for(unsigned i=0;i<d->queued;i++)voice_process(d,mix,d->vp.sample_buf,d->queue[i],0);d->queued=0;}
-static float monitor_output[32][2];
-static void mcpx_apu_monitor_push_f32(const float in[][2],int n){assert(n==32);memcpy(monitor_output,in,sizeof(monitor_output));}
+static int64_t monitor_output[32][2];
+static void mcpx_apu_monitor_push_mix(const int64_t in[][2],int n){assert(n==32);memcpy(monitor_output,in,sizeof(monitor_output));}
 /* VOICE FRAME */
 
 static void put(MCPXAPUState*d,uint32_t reg,uint32_t mask,uint32_t value){voice_set_mask(d,64,reg,mask,value);}
 static bool active(MCPXAPUState*d){return voice_get_mask(d,64,NV_PAVS_VOICE_PAR_STATE,NV_PAVS_VOICE_PAR_STATE_ACTIVE_VOICE);}
-static float pcm_value(unsigned i,unsigned ch,unsigned format)
+/* The test source's samples, in the VP's sample steps (2^23 full scale) */
+static int32_t pcm_value(unsigned i,unsigned ch,unsigned format)
 {
-    if(format==0)return ((int)(i%33)-16+(ch?8:0))/128.0f;
-    if(format==1)return (8192+(int)(i%13)*37-(ch?16384:0))/32768.0f;
-    if(format==2)return (2097152+(int)(i%13)*9472-(ch?4194304:0))/8388608.0f;
-    if(format==3)return (536870912+(int)(i%13)*2424832-(ch?1073741824:0))/2147483648.0f;
-    return i<64?(ch?-0.25f:0.25f):(ch?-0.5f:0.5f);
+    if(format==0)return ((int)(i%33)-16+(ch?8:0))*65536;
+    if(format==1)return (8192+(int)(i%13)*37-(ch?16384:0))*256;
+    if(format==2)return 2097152+(int)(i%13)*9472-(ch?4194304:0);
+    if(format==3)return (536870912+(int)(i%13)*2424832-(ch?1073741824:0))/256;
+    return i<64?(ch?-2097152:2097152):(ch?-4194304:4194304);
 }
 static void fill(MCPXAPUState*d,unsigned address,unsigned n,unsigned format,bool stereo)
 {
@@ -119,9 +120,9 @@ static void fill(MCPXAPUState*d,unsigned address,unsigned n,unsigned format,bool
             store(d,address+block*36*channels+ch*4,(uint16_t)(int16_t)((block?16384:8192)*(ch?-1:1)));
     }else for(unsigned i=0;i<n;i++)for(unsigned ch=0;ch<channels;ch++){
         unsigned size=format==0?1:format==1?2:4;
-        float x=pcm_value(i,ch,format);
-        uint32_t value=format==0?(int)(x*128)+128:format==1?(uint16_t)(int16_t)(x*32768):
-            format==2?(uint32_t)(int32_t)(x*8388608):(uint32_t)(int32_t)(x*2147483648.0);
+        int32_t x=pcm_value(i,ch,format);
+        uint32_t value=format==0?x/65536+128:format==1?(uint16_t)(int16_t)(x/256):
+            format==2?(uint32_t)x:(uint32_t)x*256u;
         hwaddr a=address+(i*channels+ch)*size;
         for(unsigned b=0;b<size;b++)d->ram_ptr[a+b]=value>>(8*b);
     }
@@ -152,10 +153,10 @@ static MCPXAPUState *setup(unsigned n,unsigned format,bool stereo,int pitch)
     return d;
 }
 static void dispose(MCPXAPUState*d){free(d->ram_ptr);free(d);}
-static void frame(MCPXAPUState*d,float mix[32][32]){memset(mix,0,sizeof(float[32][32]));mcpx_apu_vp_frame(d,mix);}
+static void frame(MCPXAPUState*d,int64_t mix[32][32]){memset(mix,0,sizeof(int64_t[32][32]));mcpx_apu_vp_frame(d,mix);}
 static void inclusive_boundary(void)
 {
-    MCPXAPUState*d=setup(33,1,false,0);float out[32][2];
+    MCPXAPUState*d=setup(33,1,false,0);int32_t out[32][2];
     assert(voice_get_samples(d,64,out,32)==32);
     /* Reading 0..31 must not complete a buffer whose inclusive end is 32. */
     assert(active(d));assert(d->notices[0]==0);
@@ -163,18 +164,23 @@ static void inclusive_boundary(void)
     assert(out[0][0]==pcm_value(32,0,1));
     dispose(d);puts("PASS: inclusive EBO=32 retains the 33rd sample");
 }
-static double reference(unsigned n,unsigned format,bool stereo,uint64_t pos,unsigned channel,bool loop,unsigned lbo)
+/* The resampled sample in a mix bin at unity gain and headroom 0: the
+ * kernel's weights in 1/2^24, the sum rounded half up to a sample step,
+ * then 2^21 mix steps a sample step (sample.h). Integer positions are the
+ * source sample itself. */
+static int64_t reference(unsigned n,unsigned format,bool stereo,uint64_t pos,unsigned channel,bool loop,unsigned lbo)
 {
     unsigned fraction=pos&0xffff,row=fraction>>8,a=fraction&255;
-    long double sum=0;
+    int64_t sum=0;
     for(int k=0;k<8;k++){
         int64_t at=(int64_t)(pos>>16)-3+k;
         if(at<0)continue;
         if((uint64_t)at>=n){if(!loop)continue;at=lbo+(at-n)%(n-lbo);}
-        double w=lagrange_rows[row][k]+(lagrange_rows[row+1][k]-lagrange_rows[row][k])*(a/256.0);
+        int64_t w=fraction?lagrange_rows[row][k]*256+(lagrange_rows[row+1][k]-lagrange_rows[row][k])*(int64_t)a:
+            k==3?(int64_t)1<<24:0;
         sum+=w*pcm_value(at,stereo?channel:0,format);
     }
-    return sum;
+    return ((sum+(1<<23))>>24)<<VP_MIX_SHIFT;
 }
 static void tails(void)
 {
@@ -188,12 +194,12 @@ static void tails(void)
         uint64_t pos=0;uint32_t step=exp2(pitches[pi]/4096.0)*65536;
         unsigned frames=0;bool ended=false;
         while(!ended){
-            assert(frames++<100);float mix[32][32];frame(d,mix);
+            assert(frames++<100);int64_t mix[32][32];frame(d,mix);
             for(unsigned i=0;i<32;i++){
                 for(unsigned ch=0;ch<2;ch++){
-                    double expected=reference(n,format,stereo,pos,ch,false,0);
-                    float got=mon?monitor_output[i][ch]:mix[ch][i];
-                    if(fabs(got-expected)>0.000001){fprintf(stderr,"tail lost: format=%u n=%u pitch=%d stereo=%u mon=%u frame=%u sample=%u got=%g expected=%g\n",format,n,pitches[pi],stereo,mon,frames,i,got,expected);abort();}
+                    int64_t expected=reference(n,format,stereo,pos,ch,false,0);
+                    int64_t got=mon?monitor_output[i][ch]:mix[ch][i];
+                    if(got!=expected){fprintf(stderr,"tail lost: format=%u n=%u pitch=%d stereo=%u mon=%u frame=%u sample=%u got=%lld expected=%lld\n",format,n,pitches[pi],stereo,mon,frames,i,(long long)got,(long long)expected);abort();}
                 }
                 if((pos>>16)>=n+3)ended=true;
                 pos+=step;
@@ -201,7 +207,7 @@ static void tails(void)
             assert(active(d)==!ended);
             assert(d->notices[0]==(unsigned)ended);
         }
-        float mix[32][32];frame(d,mix);assert(d->notices[0]==1);
+        int64_t mix[32][32];frame(d,mix);assert(d->notices[0]==1);
         for(unsigned i=0;i<32;i++)assert((mon?monitor_output[i][0]:mix[0][i])==0);
         dispose(d);cases++;
     }
@@ -216,9 +222,9 @@ static void loops(void)
         put(d,NV_PAVS_VOICE_CUR_PSH_SAMPLE,NV_PAVS_VOICE_CUR_PSH_SAMPLE_LBO,lbo);
         uint64_t pos=0;
         for(unsigned f=0;f<16;f++){
-            float mix[32][32];frame(d,mix);
+            int64_t mix[32][32];frame(d,mix);
             for(unsigned i=0;i<32;i++){
-                assert(fabs(mix[0][i]-reference(n,1,true,pos,0,true,lbo))<0.000001);
+                assert(mix[0][i]==reference(n,1,true,pos,0,true,lbo));
                 pos+=32768;
             }
             assert(active(d)&&d->notices[0]==0);
@@ -258,7 +264,7 @@ static void streams(void)
 }
 static void control_paths(void)
 {
-    MCPXAPUState*d=setup(33,1,false,-8192);float mix[32][32];
+    MCPXAPUState*d=setup(33,1,false,-8192);int64_t mix[32][32];
     frame(d,mix);assert(active(d)&&d->notices[0]==0);
     uint32_t phase=d->vp.filters[64].resample_phase;
     put(d,NV_PAVS_VOICE_PAR_STATE,NV_PAVS_VOICE_PAR_STATE_PAUSED,1);
@@ -339,12 +345,12 @@ static void adpcm_pages(void)
         }
         for(unsigned block=0;block<2;block++){
             assert(adpcm_decode_block(expected,encoded+block*bytes,bytes,channels)==65);
-            float out[64][2];sge_reads=0;
+            int32_t out[64][2];sge_reads=0;
             assert(voice_get_samples(d,64,out,64)==64);
             unsigned at=offset+block*bytes;
             assert(sge_reads==(stream?0:1+(at%4096+bytes>4096)));
             for(unsigned i=0;i<64;i++)for(unsigned ch=0;ch<2;ch++)
-                assert(out[i][ch]==int16_to_float(expected[i*channels+(stereo?ch:0)]));
+                assert(out[i][ch]==vp_sample_s16(expected[i*channels+(stereo?ch:0)]));
         }
         dispose(d);cases++;
     }
@@ -372,7 +378,7 @@ static void pitch_cache(void)
     allow_multipass=true;
     put(d,NV_PAVS_VOICE_CFG_FMT,NV_PAVS_VOICE_CFG_FMT_MULTIPASS,1);
     put(d,NV_PAVS_VOICE_TAR_PITCH_LINK,NV_PAVS_VOICE_TAR_PITCH_LINK_PITCH,4096);
-    float mix[32][32]={0};voice_process(d,mix,d->vp.sample_buf,64,0);
+    int64_t mix[32][32]={0};voice_process(d,mix,d->vp.sample_buf,64,0);
     VoicePitchRamp ramp=voice_pitch_ramp(f,4096);
     assert(ramp.from==4096&&ramp.fixed_step==131072);
     allow_multipass=false;

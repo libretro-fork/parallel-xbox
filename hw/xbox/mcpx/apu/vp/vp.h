@@ -44,8 +44,9 @@ typedef struct MCPXAPUVoiceFilter {
     uint16_t voice;
     /* Decoded source frames are retained across calls. The eight-point
      * interpolation history is a ring; head is its oldest/next-write slot.
-     * Phase and source advance use 16.16 fixed point. */
-    float resample_buf[NUM_SAMPLES_PER_FRAME][2];
+     * Phase and source advance use 16.16 fixed point. Samples, here and
+     * in the filters, are in steps of a 24-bit sample (sample.h). */
+    int32_t resample_buf[NUM_SAMPLES_PER_FRAME][2];
     int resample_len;
     int resample_pos;
     /* Decoded payload length excludes zero padding. Natural EOF leaves the
@@ -53,12 +54,12 @@ typedef struct MCPXAPUVoiceFilter {
     int resample_valid;
     unsigned int resample_zeros;
     bool source_ended;
-    float resample_hist[8][2];
+    int32_t resample_hist[8][2];
     unsigned int resample_head;
     uint32_t resample_phase;
     sv_filter svf[2];
     sv_filter peq[2];
-    float i3dl2[2];
+    int32_t i3dl2[2];
     uint16_t route_gain[8];
     bool gains;
     uint32_t pitch_step;
@@ -91,8 +92,8 @@ typedef struct VoiceWorker {
     retro_atomic_int_t generation; /* moved on by the dispatcher */
     int seen_generation;           /* the worker's own */
     retro_eventcount_t wake;
-    float mixbins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME];
-    float sample_buf[NUM_SAMPLES_PER_FRAME][2];
+    int64_t mixbins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME];
+    int64_t sample_buf[NUM_SAMPLES_PER_FRAME][2];
     VoiceWorkItem queue[MCPX_HW_MAX_VOICES];
     int queue_len;
 } VoiceWorker;
@@ -119,15 +120,17 @@ typedef struct {
     uint8_t hrtf_headroom;
     uint8_t hrtf_submix[4];
     uint8_t submix_headroom[NUM_MIXBINS];
-    float sample_buf[NUM_SAMPLES_PER_FRAME][2];
+    /* the VP monitor's mix (all voices, for the frontend with the DSPs
+     * off), in mix steps as a bin */
+    int64_t sample_buf[NUM_SAMPLES_PER_FRAME][2];
     uint64_t voice_locked[4];
 
     struct {
         int current_entry;
         // FIXME: Stored in RAM
         struct {
-            float hrir[2][HRTF_NUM_TAPS];
-            float itd;
+            int32_t hrir[2][HRTF_NUM_TAPS]; /* 1/2048 */
+            int32_t itd;                    /* 1/512 sample */
         } entries[HRTF_ENTRY_COUNT];
     } hrtf;
 
@@ -139,7 +142,7 @@ extern const MemoryRegionOps vp_ops;
 
 void mcpx_apu_vp_init(MCPXAPUState *d);
 void mcpx_apu_vp_finalize(MCPXAPUState *d);
-void mcpx_apu_vp_frame(MCPXAPUState *d, float mixbins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME]);
+void mcpx_apu_vp_frame(MCPXAPUState *d, int64_t mixbins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME]);
 void mcpx_apu_vp_reset(MCPXAPUState *d);
 
 #endif

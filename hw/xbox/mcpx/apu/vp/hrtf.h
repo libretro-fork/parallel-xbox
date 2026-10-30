@@ -21,9 +21,9 @@
 #define HW_XBOX_MCPX_HRTF_H
 
 #include <stdbool.h>
+#include <stdint.h>
 #include <string.h>
 #include <stddef.h>
-#include <math.h>
 
 #include "hw/xbox/mcpx/apu/apu_regs.h"
 
@@ -32,11 +32,13 @@
 #define HRTF_MAX_DELAY_SAMPLES  42
 #define HRTF_BUFLEN             (HRTF_NUM_TAPS + HRTF_MAX_DELAY_SAMPLES)
 
+/* Taps in 1/2048 (the HRIR minifloats' own steps), the delay (ITD) in
+ * 1/512 of a sample (its register's s6.9), samples in sample steps */
 typedef struct {
     int buf_pos;
-    float buf[HRTF_BUFLEN];
-    float hrir_coeff_cur[2][HRTF_NUM_TAPS];
-    float itd_cur;
+    int32_t buf[HRTF_BUFLEN];
+    int32_t hrir_coeff_cur[2][HRTF_NUM_TAPS];
+    int32_t itd_cur;
     bool params_set;
 } HrtfFilter;
 
@@ -52,55 +54,69 @@ static inline void hrtf_filter_clear_history(HrtfFilter *f)
 }
 
 static inline void hrtf_filter_process(HrtfFilter *f,
-                                       const float in[HRTF_SAMPLES_PER_FRAME][2],
-                                       float out[HRTF_SAMPLES_PER_FRAME][2],
-                                       const float target[2][HRTF_NUM_TAPS],
-                                       float itd_target)
+                                       const int32_t in[HRTF_SAMPLES_PER_FRAME][2],
+                                       int32_t out[HRTF_SAMPLES_PER_FRAME][2],
+                                       const int32_t target[2][HRTF_NUM_TAPS],
+                                       int32_t itd_target)
 {
-    itd_target = fmaxf(-HRTF_MAX_DELAY_SAMPLES,
-                       fminf(itd_target, HRTF_MAX_DELAY_SAMPLES));
+    const int32_t itd_max = HRTF_MAX_DELAY_SAMPLES * 512;
+
+    itd_target = itd_target > itd_max ? itd_max :
+                 itd_target < -itd_max ? -itd_max : itd_target;
     /* The target is borrowed only for this call. Retain the last completed
      * frame's parameters so later entry edits cannot alter the ramp start. */
     /* Taps and delay move from the last frame's to the target across one
      * frame; a voice's first frame starts at the target. The tap curve is
-     * measured on hardware; applying it to delay is an assumption. */
-    const float (*previous)[HRTF_NUM_TAPS] =
-        f->params_set ? f->hrir_coeff_cur : target;
-    float itd_from = f->params_set ? f->itd_cur : itd_target;
+     * measured on hardware; applying it to delay is an assumption. Both
+     * ramps are exact: n/32 of the way is (from * (32 - n) + to * n) / 32,
+     * so taps are in 1/65536 and the delay in 1/16384 of a sample. */
+    const int32_t (*previous)[HRTF_NUM_TAPS] =
+        f->params_set ? (const int32_t (*)[HRTF_NUM_TAPS])f->hrir_coeff_cur :
+                        target;
+    int32_t itd_from = f->params_set ? f->itd_cur : itd_target;
     for (int n = 0; n < HRTF_SAMPLES_PER_FRAME; n++) {
-        float w = n / (float)HRTF_SAMPLES_PER_FRAME;
         /* One mono history serves both ears. No stereo duplication. */
-        float *buf = f->buf;
+        int32_t *buf = f->buf;
         buf[f->buf_pos] = in[n][0];
-        float itd = itd_from + (itd_target - itd_from) * w;
+        int32_t itd = itd_from * (HRTF_SAMPLES_PER_FRAME - n) + itd_target * n;
 
         for (int ch = 0; ch < 2; ch++) {
-            const float *coeff_cur = previous[ch];
-            const float *coeff_tar = target[ch];
+            const int32_t *coeff_cur = previous[ch];
+            const int32_t *coeff_tar = target[ch];
 
             // Interaural time difference (channel delay)
-            float d = itd * (ch == 0 ? +1.0f : -1.0f);
-            if (d < 0.0f) {
-                d = 0.0f;
+            int32_t d = ch == 0 ? itd : -itd;
+            if (d < 0) {
+                d = 0;
             }
-            int di = d;
-            float dfrac = d - di;
+            int di = d >> 14;
+            int32_t dfrac = d & 0x3fff;
 
-            // HRIR Convolution
-            float acc = 0.0f;
+            /* HRIR Convolution, exact: taps in 1/65536, samples in
+             * 1/16384, each product (at most 2^61) split at bit 14 so the
+             * sum of 31 cannot overflow */
+            int64_t acc = 0, acc_lo = 0;
             for (int k = 0; k < HRTF_NUM_TAPS; k++) {
                 int idx1 = (f->buf_pos - di - k + HRTF_BUFLEN) % HRTF_BUFLEN;
-                float s = buf[idx1];
+                int64_t s = (int64_t)buf[idx1] * 16384;
 
                 // Linear interpolation for fractional part
-                if (dfrac > 0.0f) {
+                if (dfrac > 0) {
                     int idx2 = (idx1 - 1 + HRTF_BUFLEN) % HRTF_BUFLEN;
-                    s = s * (1 - dfrac) + buf[idx2] * dfrac;
+                    s = (int64_t)buf[idx1] * (16384 - dfrac) +
+                        (int64_t)buf[idx2] * dfrac;
                 }
-                acc += (coeff_cur[k] + (coeff_tar[k] - coeff_cur[k]) * w) * s;
+                int32_t c = coeff_cur[k] * (HRTF_SAMPLES_PER_FRAME - n) +
+                            coeff_tar[k] * n;
+                int64_t p = c * s;
+                acc += p >> 14;
+                acc_lo += p & 0x3fff;
             }
 
-            out[n][ch] = acc;
+            /* acc: the sum in 1/2^16 of a sample step, exactly floored;
+             * rounded half up to a sample step */
+            acc += acc_lo >> 14;
+            out[n][ch] = (int32_t)((acc + (1 << 15)) >> 16);
         }
 
         f->buf_pos = (f->buf_pos + 1) % HRTF_BUFLEN;

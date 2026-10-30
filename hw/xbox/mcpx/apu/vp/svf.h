@@ -10,16 +10,20 @@
 #ifndef SVF_H
 #define SVF_H
 
-#include <math.h>
-
-#define flush_to_zero(x) x
+#include <stdint.h>
 
 /* Hardware keeps filter values to 1/16 of a 24-bit sample, rounding halves
- * up (measured). */
-static inline float svf_round(float x)
+ * up (measured): here a value of 16 sample steps. svf_round takes a value
+ * scaled up by 2^shift and gives it on that grid, in sample steps,
+ * saturated at 128 times full scale, so an unstable filter (a resonance
+ * the coefficients drive past unity) clips instead of wrapping. */
+#define SVF_LIMIT (1 << 30)
+static inline int32_t svf_round(int64_t x, int shift)
 {
-    /* A float +0.5 can change large odd grid values before floor. */
-    return floor((double)x * 524288.0 + 0.5) / 524288.0;
+    int64_t y = ((x + ((int64_t)1 << (shift + 3))) >> (shift + 4)) * 16;
+
+    return (int32_t)(y > SVF_LIMIT - 16 ? SVF_LIMIT - 16 :
+                     y < -SVF_LIMIT ? -SVF_LIMIT : y);
 }
 
 // Constants to match filter types
@@ -29,30 +33,22 @@ static inline float svf_round(float x)
 #define F_BR 4
 #define F_AP 5
 
-// Number of filter oversamples
-#define F_R 1
-
-/* Structure to hold parameters for SV filter */
-
+/* Structure to hold parameters for SV filter: the cutoff coefficient in
+ * 1/65536 (the measured grid, 0..65535), the damping in 1/32768, the
+ * outputs in sample steps. The cutoff moves from frame to frame in a ramp
+ * the caller runs, at 1/2^21: run_svf takes the sample's own. */
 typedef struct {
-    float f;     // quantized frequency coefficient
-    float q;     // damping coefficient
-    float h;     // high pass output
-    float b;     // band pass output
-    float l;     // low pass output
-    float p;     // peaking output (allpass with resonance)
-    float n;     // notch output
-    float *op;   // pointer to output value
+    int32_t f;   // cutoff coefficient, 1/65536
+    int32_t q;   // damping coefficient, 1/32768
+    int32_t h;   // high pass output
+    int32_t b;   // band pass output
+    int32_t l;   // low pass output
+    int32_t p;   // peaking output (allpass with resonance)
+    int32_t n;   // notch output
+    int32_t *op; // pointer to output value
 } sv_filter;
 
-/* Store data in SVF struct, takes the sampling frequency, cutoff frequency
-   and Q, and fills in the structure passed */
-/*
-static inline void setup_svf(sv_filter *sv, float fs, float fc, float q, int t) {
-    sv->f = 2.0f * sin(M_PI * fc / (float)(fs * F_R));
-    sv->q = 2.0f * cos(pow(q, 0.1f) * M_PI * 0.5f);
-*/
-static inline void setup_svf(sv_filter *sv, float fc, float q, int t) {
+static inline void setup_svf(sv_filter *sv, int32_t fc, int32_t q, int t) {
     sv->f = fc;
     sv->q = q;
     switch(t) {
@@ -73,24 +69,18 @@ static inline void setup_svf(sv_filter *sv, float fc, float q, int t) {
     }
 }
 
-/* Run one sample through the SV filter. Filter is by andy@vellocet */
-/* No input scaling or waveshaping: on hardware the filter is linear with unity
- * passband gain at any resonance. */
-static inline float run_svf(sv_filter *sv, float in) {
-    float out;
-    int i;
-    for (i=0; i < F_R; i++) {
-        // regular state variable code here
-        // the notch and peaking outputs are optional
-        sv->h = svf_round(in - sv->l - sv->q * sv->b);
-        sv->b = svf_round(sv->b + sv->f * sv->h);
-        sv->l = svf_round(sv->l + sv->f * sv->b);
-        sv->n = sv->l + sv->h;
-        sv->p = sv->l - sv->h;
-        out = *(sv->op);
-        in = out;
-    }
-    return out;
+/* Run one sample through the SV filter (by andy@vellocet), with the cutoff
+ * f21 in 1/2^21. No input scaling or waveshaping: on hardware the filter is
+ * linear with unity passband gain at any resonance. Each step is exact
+ * before its rounding to the grid. */
+static inline int32_t run_svf(sv_filter *sv, int32_t in, int64_t f21) {
+    sv->h = svf_round(((int64_t)in - sv->l) * 32768 - (int64_t)sv->q * sv->b,
+                      15);
+    sv->b = svf_round(((int64_t)sv->b << 21) + f21 * sv->h, 21);
+    sv->l = svf_round(((int64_t)sv->l << 21) + f21 * sv->b, 21);
+    sv->n = sv->l + sv->h;
+    sv->p = sv->l - sv->h;
+    return *(sv->op);
 }
 
 #endif

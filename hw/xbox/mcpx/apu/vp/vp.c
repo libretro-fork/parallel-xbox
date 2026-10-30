@@ -80,12 +80,12 @@ static void voice_reset_filters(MCPXAPUState *d, uint16_t v)
 
 /* Measured coefficient grid: 1/1024 octave, rounded to 1/65536.
  * D97Eh gives 3043h and unity is limited to FFFFh/65536. */
-static float filter_coefficient(double x)
+static int32_t filter_coefficient(double x)
 {
     int k = floor(x / 4.0);
     int octave = floor(k / 1024.0);
     double c = ldexp(exp2((k - octave * 1024) / 1024.0) * 65536.0, octave);
-    return fmin(round(c), 65535.0) / 65536.0;
+    return (int32_t)fmin(round(c), 65535.0);
 }
 
 /* Measured gain nodes: round(4095 * 10^(-k/20)) through 48 dB,
@@ -197,12 +197,13 @@ static bool is_voice_locked(MCPXAPUState *d, uint16_t v)
     return (d->vp.voice_locked[v / 64] & mask) != 0;
 }
 
-/* HRIR taps are sign-magnitude minifloats, not signed PCM bytes. */
-static float hrir_tap_to_float(uint8_t tap)
+/* HRIR taps are sign-magnitude minifloats, not signed PCM bytes: in
+ * 1/2048 they are integers. */
+static int32_t hrir_tap(uint8_t tap)
 {
     int e = (tap >> 4) & 7;
     int m = tap & 15;
-    float value = (e ? (16 + m) << (e - 1) : m) / 2048.0f;
+    int32_t value = e ? (16 + m) << (e - 1) : m;
     return (tap & 0x80) ? -value : value;
 }
 
@@ -210,7 +211,7 @@ static void set_hrir_coeff_tar(MCPXAPUState *d, int channel, int coeff_idx,
                                uint8_t value)
 {
     int entry = d->vp.hrtf.current_entry;
-    d->vp.hrtf.entries[entry].hrir[channel][coeff_idx] = hrir_tap_to_float(value);
+    d->vp.hrtf.entries[entry].hrir[channel][coeff_idx] = hrir_tap(value);
 }
 
 static void fe_method(MCPXAPUState *d, uint32_t method, uint32_t argument)
@@ -485,7 +486,7 @@ static void fe_method(MCPXAPUState *d, uint32_t method, uint32_t argument)
         int16_t itd = GET_MASK(argument, NV1BA0_PIO_SET_HRIR_X_ITD);
         set_hrir_coeff_tar(d, 0, 30, left30);
         set_hrir_coeff_tar(d, 1, 30, right30);
-        d->vp.hrtf.entries[d->vp.hrtf.current_entry].itd = s6p9_to_float(itd);
+        d->vp.hrtf.entries[d->vp.hrtf.current_entry].itd = itd; /* s6.9 */
         break;
     }
     case NV1BA0_PIO_SET_CURRENT_INBUF_SGE:
@@ -889,7 +890,7 @@ static void voice_step_lfos(MCPXAPUState *d, uint16_t v, float *attenuation,
     *cutoff = a_cutoff * 256.0f * value[0];
 }
 
-static int voice_get_samples(MCPXAPUState *d, uint32_t v, float samples[][2],
+static int voice_get_samples(MCPXAPUState *d, uint32_t v, int32_t samples[][2],
                        int num_samples_requested)
 {
     assert(v < MCPX_HW_MAX_VOICES);
@@ -1133,9 +1134,9 @@ static int voice_get_samples(MCPXAPUState *d, uint32_t v, float samples[][2],
             }
 
             samples[sample_count][0] =
-                int16_to_float(adpcm_decoded[block_position * channels]);
+                vp_sample_s16(adpcm_decoded[block_position * channels]);
             if (stereo) {
-                samples[sample_count][1] = int16_to_float(
+                samples[sample_count][1] = vp_sample_s16(
                     adpcm_decoded[block_position * channels + 1]);
             }
         } else {
@@ -1152,29 +1153,30 @@ static int voice_get_samples(MCPXAPUState *d, uint32_t v, float samples[][2],
 
             for (unsigned int channel = 0; channel < channels; channel++) {
                 uint32_t ival;
-                float fval;
+                int32_t sval;
                 switch (sample_size) {
                 case NV_PAVS_VOICE_CFG_FMT_SAMPLE_SIZE_U8:
                     ival = apu_ram_ldub(d, addr);
-                    fval = uint8_to_float(ival & 0xff);
+                    sval = vp_sample_u8(ival & 0xff);
                     break;
                 case NV_PAVS_VOICE_CFG_FMT_SAMPLE_SIZE_S16:
                     ival = apu_ram_lduw(d, addr);
-                    fval = int16_to_float(ival & 0xffff);
+                    sval = vp_sample_s16(ival & 0xffff);
                     break;
                 case NV_PAVS_VOICE_CFG_FMT_SAMPLE_SIZE_S24:
                     ival = apu_ram_ldl(d, addr);
-                    fval = int24_to_float(ival);
+                    sval = vp_sample_s24(ival);
                     break;
                 case NV_PAVS_VOICE_CFG_FMT_SAMPLE_SIZE_S32:
                     ival = apu_ram_ldl(d, addr);
-                    fval = int32_to_float(ival);
+                    sval = vp_sample_s32(ival);
                     break;
                 default:
                     assert(!"Invalid sample size for NV_PAYS_VOICE_CFG_FMT");
+                    sval = 0;
                     break;
                 }
-                samples[sample_count][channel] = fval;
+                samples[sample_count][channel] = sval;
                 addr += container_size;
             }
         }
@@ -1188,8 +1190,8 @@ static int voice_get_samples(MCPXAPUState *d, uint32_t v, float samples[][2],
         for (int i = 0; i < sample_count; i++) {
             size_t k = ((size_t)cbo_start + i) * 2;
             if (k + 1 < segaboot_jingle_size) {
-                samples[i][0] = uint8_to_float(segaboot_jingle_data[k]);
-                samples[i][1] = uint8_to_float(segaboot_jingle_data[k + 1]);
+                samples[i][0] = vp_sample_u8(segaboot_jingle_data[k]);
+                samples[i][1] = vp_sample_u8(segaboot_jingle_data[k + 1]);
             }
         }
     }
@@ -1273,10 +1275,11 @@ static void voice_resample_reset(MCPXAPUVoiceFilter *filter)
     filter->resample_phase = 5u << 16;
 }
 
-/* Measured eight-point Lagrange kernel, weights rounded to 1/65536.
- * Half-sample pairs are 1225,-245,49,-5 / 2048. Interpolating between
- * 1/256-sample rows is an assumption inherited from the source PR. */
-static float lagrange_rows[257][8];
+/* Measured eight-point Lagrange kernel, weights rounded to 1/65536 (the
+ * table holds them in 1/65536). Half-sample pairs are 1225,-245,49,-5 /
+ * 2048. Interpolating between 1/256-sample rows is an assumption inherited
+ * from the source PR. */
+static int32_t lagrange_rows[257][8];
 
 static void lagrange_init(void)
 {
@@ -1288,7 +1291,7 @@ static void lagrange_init(void)
                     weight *= (row / 256.0 - j) / (k - j);
                 }
             }
-            lagrange_rows[row][k + 3] = round(weight * 65536.0) / 65536.0;
+            lagrange_rows[row][k + 3] = (int32_t)round(weight * 65536.0);
         }
     }
 }
@@ -1329,13 +1332,13 @@ static uint32_t voice_pitch_step(const VoicePitchRamp *ramp, unsigned int sample
     return exp2((ramp->from + ramp->slope * sample) / 4096.0) * 65536.0;
 }
 
-static int voice_resample(MCPXAPUState *d, uint16_t v, float samples[][2],
+static int voice_resample(MCPXAPUState *d, uint16_t v, int32_t samples[][2],
                           int requested_num, const VoicePitchRamp *pitch,
                           unsigned int sample_offset)
 {
     assert(v < MCPX_HW_MAX_VOICES);
     MCPXAPUVoiceFilter *filter = &d->vp.filters[v];
-    float (*history)[2] = filter->resample_hist;
+    int32_t (*history)[2] = filter->resample_hist;
     unsigned int head = filter->resample_head;
     filter->voice = v;
 
@@ -1372,23 +1375,25 @@ static int voice_resample(MCPXAPUState *d, uint16_t v, float samples[][2],
             samples[n][0] = history[(head + 3) & 7][0];
             samples[n][1] = history[(head + 3) & 7][1];
         } else {
-            const float *lo = lagrange_rows[fraction >> 8];
-            const float *hi = lagrange_rows[(fraction >> 8) + 1];
-            float alpha = (fraction & 0xFF) / 256.0f;
-            float left = 0.0f, right = 0.0f;
-            /* Fixed tap offsets expose the circular loads without changing
-             * accumulation order or duplicating the history window. */
+            const int32_t *lo = lagrange_rows[fraction >> 8];
+            const int32_t *hi = lagrange_rows[(fraction >> 8) + 1];
+            int32_t alpha = fraction & 0xFF;
+            int64_t left = 0, right = 0;
+            /* Exact: the weight between the two rows in 1/2^24, the sum
+             * in 1/2^24 of a sample step, rounded half up once. Fixed tap
+             * offsets expose the circular loads without duplicating the
+             * history window. */
 #if defined(__GNUC__) && !defined(__clang__) && __GNUC__ >= 8
 #pragma GCC unroll 8
 #endif
             for (int k = 0; k < 8; k++) {
-                float weight = lo[k] + (hi[k] - lo[k]) * alpha;
+                int64_t weight = lo[k] * 256 + (hi[k] - lo[k]) * alpha;
                 unsigned int slot = (head + k) & 7;
                 left += weight * history[slot][0];
                 right += weight * history[slot][1];
             }
-            samples[n][0] = left;
-            samples[n][1] = right;
+            samples[n][0] = (int32_t)((left + (1 << 23)) >> 24);
+            samples[n][1] = (int32_t)((right + (1 << 23)) >> 24);
         }
         filter->resample_phase += voice_pitch_step(pitch, sample_offset + n);
     }
@@ -1425,8 +1430,8 @@ static int peek_ahead_multipass_bin(MCPXAPUState *d, uint16_t v,
 }
 
 static void get_multipass_samples(MCPXAPUState *d,
-                                  float mixbins[][NUM_SAMPLES_PER_FRAME],
-                                  uint16_t v, float samples[][2])
+                                  int64_t mixbins[][NUM_SAMPLES_PER_FRAME],
+                                  uint16_t v, int32_t samples[][2])
 {
     // DirectSound sets bin to 31, but hardware would allow other bins
     int mp_bin = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_FMT,
@@ -1436,13 +1441,8 @@ static void get_multipass_samples(MCPXAPUState *d,
      * undoing the bin headroom its voices were mixed with (measured). */
     int headroom = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_FMT,
                                   NV_PAVS_VOICE_CFG_FMT_HEADROOM);
-    const float scale = ldexpf(1.0f, headroom - 23);
     for (int i = 0; i < NUM_SAMPLES_PER_FRAME; i++) {
-        /* Add the half in double precision: in float, odd integer samples
-         * above 2^22 would round to an adjacent even integer before floor. */
-        float x = floor((double)mixbins[mp_bin][i] * 8388608.0 + 0.5);
-        x = fminf(fmaxf(x, -8388608.0f), 8388607.0f);
-        samples[i][0] = x * scale;
+        samples[i][0] = vp_mix_to_24(mixbins[mp_bin][i]) * (1 << headroom);
         samples[i][1] = samples[i][0];
     }
 
@@ -1455,8 +1455,8 @@ static void get_multipass_samples(MCPXAPUState *d,
 }
 
 static void voice_process(MCPXAPUState *d,
-                          float mixbins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME],
-                          float sample_buf[NUM_SAMPLES_PER_FRAME][2],
+                          int64_t mixbins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME],
+                          int64_t sample_buf[NUM_SAMPLES_PER_FRAME][2],
                           uint16_t v, int voice_list)
 {
     assert(v < MCPX_HW_MAX_VOICES);
@@ -1496,7 +1496,7 @@ static void voice_process(MCPXAPUState *d,
     assert(ea_value >= 0.0f);
     assert(ea_value <= 1.0f);
 
-    float samples[NUM_SAMPLES_PER_FRAME][2] = { 0 };
+    int32_t samples[NUM_SAMPLES_PER_FRAME][2] = { 0 };
 
     bool multipass = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_FMT,
                                     NV_PAVS_VOICE_CFG_FMT_MULTIPASS);
@@ -1626,26 +1626,26 @@ static void voice_process(MCPXAPUState *d,
         /* Keep both 2D filter histories warm for stereo format changes;
          * a 3D voice can only consume channel zero. */
         unsigned int filter_channels = three_d ? 1 : 2;
-        float fc_f = 0.0f, q_f = 0.0f;
+        int32_t fc = 0, q = 0;
         for (unsigned int ch = 0; ch < filter_channels; ch++) {
             /* Mono 2D histories share parameters, not state. Avoid fetching
              * and exponentiating their identical coefficients twice. */
             if (ch < channels) {
                 uint32_t c = voice_get_mask(d, v,
                     NV_PAVS_VOICE_TAR_FCA + ch * 4, 0xFFFFFFFF);
-                fc_f = filter_coefficient((int16_t)c + fc_bend);
-                q_f = (c >> 16) / 32768.0f;
+                fc = filter_coefficient((int16_t)c + fc_bend);
+                q = c >> 16; /* 1/32768 */
             }
             sv_filter *filter = &d->vp.filters[v].svf[ch];
-            float from = d->vp.filters[v].dls2_set ? filter->f : fc_f;
-            float step = (fc_f - from) / NUM_SAMPLES_PER_FRAME;
-            setup_svf(filter, fc_f, q_f, F_LP);
+            int32_t from = d->vp.filters[v].dls2_set ? filter->f : fc;
+            setup_svf(filter, fc, q, F_LP);
+            /* The cutoff ramps from the last frame's: i/32 of the way is
+             * exact in 1/2^21. The frame's target is the next start. */
             for (int i = 0; i < NUM_SAMPLES_PER_FRAME; i++) {
-                filter->f = from + step * i;
-                samples[i][ch] = run_svf(filter, samples[i][ch]);
+                int64_t f21 = (int64_t)from * NUM_SAMPLES_PER_FRAME +
+                              (int64_t)(fc - from) * i;
+                samples[i][ch] = run_svf(filter, samples[i][ch], f21);
             }
-            /* Retain the frame target, not sample 31, as the next start. */
-            filter->f = fc_f;
         }
     }
     d->vp.filters[v].dls2_set = lpf;
@@ -1656,8 +1656,8 @@ static void voice_process(MCPXAPUState *d,
     if (peq) {
         unsigned int q = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_MISC,
                                         NV_PAVS_VOICE_CFG_MISC_PARAEQ_Q);
-        float q_f = ldexpf(1.0f, -(int)q);
-        float fc_f = 0.0f, gain = 0.0f;
+        /* damping 2^-q; the gain, in 1/8192, times it: 1/2^(13 + q) */
+        int32_t fc = 0, gain = 0;
         unsigned int filter_channels = three_d ? 1 : 2;
         for (unsigned int ch = 0; ch < filter_channels; ch++) {
             if (ch < channels) {
@@ -1665,19 +1665,20 @@ static void voice_process(MCPXAPUState *d,
                     channels == 2 ? NV_PAVS_VOICE_TAR_FCA + ch * 4 :
                                     NV_PAVS_VOICE_TAR_FCB;
                 uint32_t c = voice_get_mask(d, v, reg, 0xFFFFFFFF);
-                fc_f = filter_coefficient((int16_t)c + fc_bend);
-                gain = (int16_t)(c >> 16) / 8192.0f * q_f;
+                fc = filter_coefficient((int16_t)c + fc_bend);
+                gain = (int16_t)(c >> 16);
             }
             sv_filter *filter = &d->vp.filters[v].peq[ch];
-            float from = d->vp.filters[v].peq_set ? filter->f : fc_f;
-            float step = (fc_f - from) / NUM_SAMPLES_PER_FRAME;
-            setup_svf(filter, fc_f, q_f, F_BP);
+            int32_t from = d->vp.filters[v].peq_set ? filter->f : fc;
+            setup_svf(filter, fc, 32768 >> q, F_BP);
             for (int i = 0; i < NUM_SAMPLES_PER_FRAME; i++) {
-                float x = samples[i][ch];
-                filter->f = from + step * i;
-                samples[i][ch] = svf_round(x + gain * run_svf(filter, x));
+                int32_t x = samples[i][ch];
+                int64_t f21 = (int64_t)from * NUM_SAMPLES_PER_FRAME +
+                              (int64_t)(fc - from) * i;
+                int64_t band = run_svf(filter, x, f21);
+                samples[i][ch] = svf_round(((int64_t)x << (13 + q)) +
+                                           gain * band, 13 + q);
             }
-            filter->f = fc_f;
         }
     }
     d->vp.filters[v].peq_set = peq;
@@ -1688,13 +1689,13 @@ static void voice_process(MCPXAPUState *d,
     bool i3dl2 = spatial && fmode != 0;
     if (i3dl2) {
         uint32_t fcb = voice_get_mask(d, v, NV_PAVS_VOICE_TAR_FCB, 0xFFFFFFFF);
-        float a_direct = (fcb & 0xFFFF) / 65536.0f;
-        float a_room = (fcb >> 16) / 65536.0f;
-        float *state = d->vp.filters[v].i3dl2;
+        int64_t a_direct = fcb & 0xFFFF; /* 1/65536 */
+        int64_t a_room = fcb >> 16;
+        int32_t *state = d->vp.filters[v].i3dl2;
         for (int i = 0; i < NUM_SAMPLES_PER_FRAME; i++) {
-            float x = samples[i][0];
-            state[0] = svf_round(x + (state[0] - x) * a_direct);
-            state[1] = svf_round(x + (state[1] - x) * a_room);
+            int64_t x = samples[i][0];
+            state[0] = svf_round((x << 16) + (state[0] - x) * a_direct, 16);
+            state[1] = svf_round((x << 16) + (state[1] - x) * a_room, 16);
             samples[i][0] = state[0];
             samples[i][1] = state[1];
         }
@@ -1702,8 +1703,8 @@ static void voice_process(MCPXAPUState *d,
 
     /* Keep the dry frame intact for routes 4-7. The bypass borrows that
      * frame directly; only convolution needs separate left/right output. */
-    float ears[NUM_SAMPLES_PER_FRAME][2];
-    const float (*ear_samples)[2] = samples;
+    int32_t ears[NUM_SAMPLES_PER_FRAME][2];
+    const int32_t (*ear_samples)[2] = (const int32_t (*)[2])samples;
     bool filtered = spatial && g_config.audio.hrtf;
     if (filtered) {
         /* Read every frame so entry edits and handle changes take effect
@@ -1711,10 +1712,12 @@ static void voice_process(MCPXAPUState *d,
         assert(hrtf_handle < HRTF_ENTRY_COUNT);
         /* Guest execution resumes only after the VP workers join. Borrow
          * this entry for the call; the filter owns only its previous frame. */
-        hrtf_filter_process(&d->vp.filters[v].hrtf, samples, ears,
-                            d->vp.hrtf.entries[hrtf_handle].hrir,
+        hrtf_filter_process(&d->vp.filters[v].hrtf,
+                            (const int32_t (*)[2])samples, ears,
+                            (const int32_t (*)[HRTF_NUM_TAPS])
+                                d->vp.hrtf.entries[hrtf_handle].hrir,
                             d->vp.hrtf.entries[hrtf_handle].itd);
-        ear_samples = ears;
+        ear_samples = (const int32_t (*)[2])ears;
     }
 
     /* Gains are integer 1/16384 units. Keep only 16 bytes of previous
@@ -1742,17 +1745,19 @@ static void voice_process(MCPXAPUState *d,
         if (from == 0 && to == 0) {
             continue;
         }
-        float scale = 1.0f / (16384u << d->vp.submix_headroom[bin[b]]);
+        /* gain / (16384 << headroom), in mix steps (sample.h): exact */
+        int scale = 7 - d->vp.submix_headroom[bin[b]];
         int32_t ramp = from * NUM_SAMPLES_PER_FRAME;
         int32_t delta = (int32_t)to - (int32_t)from;
-        const float (*source)[2] = three_d && b < 4 ? ear_samples : samples;
+        const int32_t (*source)[2] = three_d && b < 4 ?
+            ear_samples : (const int32_t (*)[2])samples;
         unsigned int channel = three_d && b < 4 ?
             (filtered ? b / 2u : 0u) :
             i3dl2 && (b == 5 || b == 7) ? 1u : b % channels;
         for (int i = 0; i < NUM_SAMPLES_PER_FRAME; i++) {
             /* The numerator remains nonnegative between nonnegative
              * endpoints. Its shift gives exact floor rounding, both ways. */
-            float g = (ramp >> 5) * scale;
+            int64_t g = (int64_t)(ramp >> 5) << scale;
             mixbins[bin[b]][i] += g * source[i][channel];
             ramp += delta;
         }
@@ -1782,7 +1787,7 @@ static void voice_process(MCPXAPUState *d,
         }
 
         /* DSP-off audio uses this monitor: ramp it too. Compare gains at
-         * a common headroom of seven without per-sample float divisions. */
+         * a common headroom of seven. */
         for (int i = 0; i < NUM_SAMPLES_PER_FRAME; i++) {
             uint32_t best = 0;
             for (int b = 0; b < 8; b++) {
@@ -1795,9 +1800,10 @@ static void voice_process(MCPXAPUState *d,
                 gain <<= 7 - d->vp.submix_headroom[bin[b]];
                 best = MAX(best, gain);
             }
-            float g = best / 2097152.0f;
-            sample_buf[i][0] += g * ear_samples[i][0];
-            sample_buf[i][1] += g * ear_samples[i][filtered ? 1 : channels - 1];
+            /* best / 2^21 of a sample: the mix's own steps (sample.h) */
+            sample_buf[i][0] += (int64_t)best * ear_samples[i][0];
+            sample_buf[i][1] += (int64_t)best *
+                                ear_samples[i][filtered ? 1 : channels - 1];
         }
     }
     if (source_finished) {
@@ -1867,8 +1873,8 @@ static void get_voice_bin_src_dst(MCPXAPUState *d, int v,
 
 /* Process a worker's queue into the buffers owned by its executing thread. */
 static void voice_worker_process(MCPXAPUState *d, VoiceWorker *self,
-                                 float mixbins[][NUM_SAMPLES_PER_FRAME],
-                                 float sample_buf[][2])
+                                 int64_t mixbins[][NUM_SAMPLES_PER_FRAME],
+                                 int64_t sample_buf[][2])
 {
     for (int i = 0; i < self->queue_len; i++) {
         voice_process(d, mixbins, sample_buf,
@@ -1971,7 +1977,7 @@ static bool voice_work_schedule(MCPXAPUState *d)
 
 static void
 voice_work_dispatch(MCPXAPUState *d,
-                    float mixbins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME])
+                    int64_t mixbins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME])
 {
     VoiceWorkDispatch *vwd = &d->vp.voice_work_dispatch;
     int started = 0;
@@ -2086,7 +2092,7 @@ static void voice_work_finalize(MCPXAPUState *d)
     vwd->workers = NULL;
 }
 
-void mcpx_apu_vp_frame(MCPXAPUState *d, float mixbins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME])
+void mcpx_apu_vp_frame(MCPXAPUState *d, int64_t mixbins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME])
 {
     memset(d->vp.sample_buf, 0, sizeof(d->vp.sample_buf));
 
@@ -2126,10 +2132,10 @@ void mcpx_apu_vp_frame(MCPXAPUState *d, float mixbins[NUM_MIXBINS][NUM_SAMPLES_P
     if (d->monitor.point == MCPX_APU_DEBUG_MON_VP) {
         /* All voices together, to the frontend: the DSPs are not run for
          * their output (APU DSP Emulation off) */
-        mcpx_apu_monitor_push_f32((const float (*)[2])d->vp.sample_buf,
+        mcpx_apu_monitor_push_mix((const int64_t (*)[2])d->vp.sample_buf,
                                   NUM_SAMPLES_PER_FRAME);
         memset(d->vp.sample_buf, 0, sizeof(d->vp.sample_buf));
-        memset(mixbins, 0, sizeof(float[32][32]));
+        memset(mixbins, 0, sizeof(int64_t[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME]));
     }
 }
 

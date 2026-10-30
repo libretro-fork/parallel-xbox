@@ -229,8 +229,8 @@ void mcpx_apu_monitor_end(size_t frames)
     retro_spsc_write_end(&apu_queue, frames * FRAME_BYTES);
 }
 
-/* Producer: stereo float frames, as the VP makes them */
-void mcpx_apu_monitor_push_f32(const float (*samples)[2], size_t frames)
+/* Producer: stereo frames of the VP monitor's mix (mix steps, sample.h) */
+void mcpx_apu_monitor_push_mix(const int64_t (*samples)[2], size_t frames)
 {
     const int32_t gain = retro_atomic_load_relaxed_int(&apu_gain_q16);
     int16_t *out = mcpx_apu_monitor_begin(frames);
@@ -239,7 +239,7 @@ void mcpx_apu_monitor_push_f32(const float (*samples)[2], size_t frames)
         return;
     }
     for (size_t i = 0; i < 2 * frames; i++) {
-        out[i] = mcpx_apu_monitor_convert_f32(((const float *)samples)[i], gain);
+        out[i] = mcpx_apu_monitor_convert_mix(((const int64_t *)samples)[i], gain);
     }
     retro_spsc_write_end(&apu_queue, frames * FRAME_BYTES);
 }

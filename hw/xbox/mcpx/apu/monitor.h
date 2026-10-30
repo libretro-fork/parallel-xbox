@@ -32,26 +32,28 @@ static inline int16_t mcpx_apu_monitor_scale_s16(int16_t sample, int32_t gain)
     return (int16_t)((product + (product < 0 ? -32768 : 32768)) / 65536);
 }
 
-/* The VP's normalized host floats use the same 32768 scale as PCM input.
- * Quantize once, after host gain, with symmetric nearest rounding. Double
- * holds the float-by-Q16 product exactly and avoids premature float rounding
- * around half steps. Nonfinite filter output cannot be cast to an integer. */
-static inline int16_t mcpx_apu_monitor_convert_f32(float sample, int32_t gain)
+/* The VP monitor's mix (mix steps, sample.h: full scale is 2^44) to a
+ * 16-bit sample after the host gain in 1/65536: value = mix * gain / 2^45,
+ * quantized once, rounded half away from zero, saturated. Exact in 64-bit
+ * integers: the mix's magnitude is split at bit 29 so no product can
+ * overflow. */
+static inline int16_t mcpx_apu_monitor_convert_mix(int64_t mix, int32_t gain)
 {
-    if (!gain) {
+    uint64_t a, q;
+
+    if (!gain || !mix) {
         return 0;
     }
-    double value = (double)sample * gain * 0.5;
-    if (value != value) {
-        return 0;
+    a = mix < 0 ? 0 - (uint64_t)mix : (uint64_t)mix;
+    /* round(a * gain / 2^45) = (hi * gain + (lo * gain + 2^44) / 2^29)
+     * / 2^16, both divisions floors */
+    q = ((a >> 29) * (uint64_t)gain +
+         (((a & ((1u << 29) - 1)) * (uint64_t)gain + ((uint64_t)1 << 44)) >> 29))
+        >> 16;
+    if (mix > 0) {
+        return q >= 32767 ? 32767 : (int16_t)q;
     }
-    if (value >= 32767.0) {
-        return 32767;
-    }
-    if (value <= -32768.0) {
-        return -32768;
-    }
-    return (int16_t)(value + (value < 0 ? -0.5 : 0.5));
+    return q >= 32768 ? -32768 : (int16_t)-(int32_t)q;
 }
 
 void libretro_audio_set_volume(float volume);
