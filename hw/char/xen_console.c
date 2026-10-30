@@ -574,7 +574,7 @@ static void xen_console_device_create(XenBackendInstance *backend,
          * FIXME: sure we want to support implicit
          * muxed monitors here?
          */
-        cd = qemu_chr_new_mux_mon(label, output, NULL);
+        cd = qemu_chr_new(label, output, NULL);
         if (!cd) {
             error_setg(errp, "console: No valid chardev found at '%s': ",
                        output);

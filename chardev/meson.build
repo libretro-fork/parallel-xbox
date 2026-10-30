@@ -3,7 +3,6 @@ chardev_ss.add(files(
   'char-io.c',
   'char-mux.c',
   'char-null.c',
-  'char-ringbuf.c',
   'char.c',
 ))
 if host_os == 'windows'
@@ -19,8 +18,6 @@ endif
 
 chardev_ss = chardev_ss.apply({})
 
-system_ss.add(files(
-    'char-hmp-cmds.c'))
 
 chardev_modules = {}
 

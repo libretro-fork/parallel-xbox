@@ -99,7 +99,6 @@ SOURCES_UTIL := \
 	$(CORE_DIR)/crypto/sm4.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-builtin-types.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-builtin-visit.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-commands.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-emit-events.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-events-accelerator.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-events-acpi-hest.c \
@@ -248,7 +247,6 @@ SOURCES_UTIL := \
 	$(CORE_DIR)/libretro/gen/trace/trace-chardev.c \
 	$(CORE_DIR)/libretro/gen/trace/trace-crypto.c \
 	$(CORE_DIR)/libretro/gen/trace/trace-ebpf.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-gdbstub.c \
 	$(CORE_DIR)/libretro/gen/trace/trace-hw_9pfs.c \
 	$(CORE_DIR)/libretro/gen/trace/trace-hw_acpi.c \
 	$(CORE_DIR)/libretro/gen/trace/trace-hw_adc.c \
@@ -311,7 +309,6 @@ SOURCES_UTIL := \
 	$(CORE_DIR)/libretro/gen/trace/trace-hw_xen.c \
 	$(CORE_DIR)/libretro/gen/trace/trace-io.c \
 	$(CORE_DIR)/libretro/gen/trace/trace-migration.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-monitor.c \
 	$(CORE_DIR)/libretro/gen/trace/trace-nbd.c \
 	$(CORE_DIR)/libretro/gen/trace/trace-net.c \
 	$(CORE_DIR)/libretro/gen/trace/trace-qapi.c \
@@ -360,7 +357,6 @@ SOURCES_UTIL := \
 	$(CORE_DIR)/libretro/gen/trace/trace-qapi_commands_virtio_trace_events.c \
 	$(CORE_DIR)/libretro/gen/trace/trace-qapi_commands_yank_trace_events.c \
 	$(CORE_DIR)/libretro/gen/trace/trace-qom.c \
-	$(CORE_DIR)/libretro/gen/trace/trace-replay.c \
 	$(CORE_DIR)/libretro/gen/trace/trace-root.c \
 	$(CORE_DIR)/libretro/gen/trace/trace-scsi.c \
 	$(CORE_DIR)/libretro/gen/trace/trace-system.c \
@@ -414,11 +410,9 @@ SOURCES_UTIL := \
 	$(CORE_DIR)/stubs/cmos.c \
 	$(CORE_DIR)/stubs/cpu-get-clock.c \
 	$(CORE_DIR)/stubs/cpus-virtual-clock.c \
-	$(CORE_DIR)/stubs/dump.c \
 	$(CORE_DIR)/stubs/error-printf.c \
 	$(CORE_DIR)/stubs/fdset.c \
 	$(CORE_DIR)/stubs/fw_cfg.c \
-	$(CORE_DIR)/stubs/gdbstub.c \
 	$(CORE_DIR)/stubs/get-vm-name.c \
 	$(CORE_DIR)/stubs/graph-lock.c \
 	$(CORE_DIR)/stubs/hotplug-stubs.c \
@@ -428,30 +422,16 @@ SOURCES_UTIL := \
 	$(CORE_DIR)/stubs/iothread-lock.c \
 	$(CORE_DIR)/stubs/is-daemonized.c \
 	$(CORE_DIR)/stubs/migr-blocker.c \
-	$(CORE_DIR)/stubs/monitor-arm-gic.c \
 	$(CORE_DIR)/stubs/monitor-core.c \
-	$(CORE_DIR)/stubs/monitor-cpu-s390x-kvm.c \
-	$(CORE_DIR)/stubs/monitor-cpu-s390x.c \
-	$(CORE_DIR)/stubs/monitor-cpu.c \
-	$(CORE_DIR)/stubs/monitor-i386-rtc.c \
-	$(CORE_DIR)/stubs/monitor-i386-sev.c \
-	$(CORE_DIR)/stubs/monitor-i386-sgx.c \
-	$(CORE_DIR)/stubs/monitor-i386-xen.c \
 	$(CORE_DIR)/stubs/monitor-internal.c \
-	$(CORE_DIR)/stubs/monitor-none.c \
 	$(CORE_DIR)/stubs/physmem.c \
 	$(CORE_DIR)/stubs/qemu-timer-notify-cb.c \
 	$(CORE_DIR)/stubs/qmp-command-available.c \
 	$(CORE_DIR)/stubs/qmp-quit.c \
 	$(CORE_DIR)/stubs/qtest.c \
 	$(CORE_DIR)/stubs/ram-block.c \
-	$(CORE_DIR)/stubs/replay-mode.c \
-	$(CORE_DIR)/stubs/replay-tools.c \
-	$(CORE_DIR)/stubs/replay.c \
 	$(CORE_DIR)/stubs/runstate-check.c \
 	$(CORE_DIR)/stubs/sysbus.c \
-	$(CORE_DIR)/stubs/target-get-monitor-def.c \
-	$(CORE_DIR)/stubs/target-monitor-defs.c \
 	$(CORE_DIR)/stubs/trace-control.c \
 	$(CORE_DIR)/stubs/uuid.c \
 	$(CORE_DIR)/stubs/vm-stop.c \
@@ -459,7 +439,6 @@ SOURCES_UTIL := \
 	$(CORE_DIR)/stubs/win32-kbd-hook.c \
 	$(CORE_DIR)/stubs/xen-hw-stub.c \
 	$(CORE_DIR)/trace/control.c \
-	$(CORE_DIR)/trace/qmp.c \
 	$(CORE_DIR)/util/aio-wait.c \
 	$(CORE_DIR)/util/aiocb.c \
 	$(CORE_DIR)/util/async.c \
@@ -611,7 +590,6 @@ SOURCES_COMMON := \
 	$(CORE_DIR)/chardev/char-io.c \
 	$(CORE_DIR)/chardev/char-mux.c \
 	$(CORE_DIR)/chardev/char-null.c \
-	$(CORE_DIR)/chardev/char-ringbuf.c \
 	$(CORE_DIR)/chardev/char.c \
 	$(CORE_DIR)/cpu-common.c \
 	$(CORE_DIR)/crypto/afsplit.c \
@@ -701,13 +679,11 @@ SOURCES_COMMON_WIN32 := \
 
 # The system emulator: devices, accelerator, monitor, the libretro frontend
 SOURCES_SYSTEM := \
-	$(CORE_DIR)/accel/accel-qmp.c \
 	$(CORE_DIR)/accel/accel-system.c \
 	$(CORE_DIR)/accel/tcg/cpu-exec-common.c \
 	$(CORE_DIR)/accel/tcg/cpu-exec.c \
 	$(CORE_DIR)/accel/tcg/cputlb.c \
 	$(CORE_DIR)/accel/tcg/icount-common.c \
-	$(CORE_DIR)/accel/tcg/monitor.c \
 	$(CORE_DIR)/accel/tcg/tb-maint.c \
 	$(CORE_DIR)/accel/tcg/tcg-accel-ops-icount.c \
 	$(CORE_DIR)/accel/tcg/tcg-accel-ops-libretro.c \
@@ -715,7 +691,6 @@ SOURCES_SYSTEM := \
 	$(CORE_DIR)/accel/tcg/tcg-all.c \
 	$(CORE_DIR)/accel/tcg/tcg-runtime-gvec.c \
 	$(CORE_DIR)/accel/tcg/tcg-runtime.c \
-	$(CORE_DIR)/accel/tcg/tcg-stats.c \
 	$(CORE_DIR)/accel/tcg/translate-all.c \
 	$(CORE_DIR)/accel/tcg/translator.c \
 	$(CORE_DIR)/accel/tcg/watchpoint.c \
@@ -723,9 +698,6 @@ SOURCES_SYSTEM := \
 	$(CORE_DIR)/block/blkmemory.c \
 	$(CORE_DIR)/block/qapi-system.c \
 	$(CORE_DIR)/cpu-target.c \
-	$(CORE_DIR)/gdbstub/gdbstub.c \
-	$(CORE_DIR)/gdbstub/syscalls.c \
-	$(CORE_DIR)/gdbstub/system.c \
 	$(CORE_DIR)/hw/acpi/acpi_interface.c \
 	$(CORE_DIR)/hw/acpi/aml-build.c \
 	$(CORE_DIR)/hw/acpi/bios-linker-loader.c \
@@ -833,7 +805,6 @@ SOURCES_SYSTEM := \
 	$(CORE_DIR)/net/announce.c \
 	$(CORE_DIR)/net/checksum.c \
 	$(CORE_DIR)/net/colo-stubs.c \
-	$(CORE_DIR)/net/dgram.c \
 	$(CORE_DIR)/net/eth.c \
 	$(CORE_DIR)/net/filter.c \
 	$(CORE_DIR)/net/hub.c \
@@ -842,19 +813,7 @@ SOURCES_SYSTEM := \
 	$(CORE_DIR)/net/queue.c \
 	$(CORE_DIR)/net/slirp.c \
 	$(CORE_DIR)/net/socket.c \
-	$(CORE_DIR)/net/stream.c \
-	$(CORE_DIR)/net/stream_data.c \
 	$(CORE_DIR)/net/util.c \
-	$(CORE_DIR)/replay/replay-char.c \
-	$(CORE_DIR)/replay/replay-debugging.c \
-	$(CORE_DIR)/replay/replay-events.c \
-	$(CORE_DIR)/replay/replay-input.c \
-	$(CORE_DIR)/replay/replay-internal.c \
-	$(CORE_DIR)/replay/replay-net.c \
-	$(CORE_DIR)/replay/replay-random.c \
-	$(CORE_DIR)/replay/replay-snapshot.c \
-	$(CORE_DIR)/replay/replay-time.c \
-	$(CORE_DIR)/replay/replay.c \
 	$(CORE_DIR)/semihosting/stubs-system.c \
 	$(CORE_DIR)/system/bootdevice.c \
 	$(CORE_DIR)/system/cpu-timers.c \
@@ -903,19 +862,15 @@ SOURCES_SYSTEM := \
 	$(CORE_DIR)/ui/xemu-widescreen.c \
 
 SOURCES_SYSTEM_POSIX := \
-	$(CORE_DIR)/net/tap.c \
 
 SOURCES_SYSTEM_LINUX := \
-	$(CORE_DIR)/net/tap-linux.c \
 	$(CORE_DIR)/system/async-teardown.c \
 	$(CORE_DIR)/tcg/perf.c \
 
 SOURCES_SYSTEM_DARWIN := \
-	$(CORE_DIR)/net/tap-bsd.c \
 
 SOURCES_SYSTEM_WIN32 := \
 	$(CORE_DIR)/net/capture_win_ifnames.c \
-	$(CORE_DIR)/net/tap-win32.c \
 
 # Built for the i386 target: the CPU, the Xbox and Chihiro hardware, nv2a
 SOURCES_TARGET := \

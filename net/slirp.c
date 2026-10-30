@@ -708,105 +708,26 @@ error:
     return -1;
 }
 
-static SlirpState *slirp_lookup(Monitor *mon, const char *id)
+static SlirpState *slirp_lookup(const char *id)
 {
     if (id) {
         NetClientState *nc = qemu_find_netdev(id);
-        if (!nc) {
-            monitor_printf(mon, "unrecognized netdev id '%s'\n", id);
-            return NULL;
-        }
-        if (strcmp(nc->model, "user")) {
-            monitor_printf(mon, "invalid device specified\n");
+        if (!nc || strcmp(nc->model, "user")) {
             return NULL;
         }
         return DO_UPCAST(SlirpState, nc, nc);
-    } else {
-        if (QTAILQ_EMPTY(&slirp_stacks)) {
-            monitor_printf(mon, "user mode network stack not in use\n");
-            return NULL;
-        }
-        return QTAILQ_FIRST(&slirp_stacks);
     }
+    return QTAILQ_FIRST(&slirp_stacks);
 }
 
 #ifdef XBOX
 void *slirp_get_state_from_netdev(const char *id)
 {
-    SlirpState *s = slirp_lookup(NULL, id);
+    SlirpState *s = slirp_lookup(id);
     if (!s) return NULL;
     return s->slirp;
 }
 #endif
-
-void hmp_hostfwd_remove(Monitor *mon, const QDict *qdict)
-{
-    /* TODO: support removing unix fwd */
-    struct sockaddr_in host_addr = {
-        .sin_family = AF_INET,
-        .sin_addr = {
-            .s_addr = INADDR_ANY,
-        },
-    };
-    int host_port;
-    char buf[256];
-    const char *src_str, *p;
-    SlirpState *s;
-    int is_udp = 0;
-    int err;
-    const char *arg1 = qdict_get_str(qdict, "arg1");
-    const char *arg2 = qdict_get_try_str(qdict, "arg2");
-
-    if (arg2) {
-        s = slirp_lookup(mon, arg1);
-        src_str = arg2;
-    } else {
-        s = slirp_lookup(mon, NULL);
-        src_str = arg1;
-    }
-    if (!s) {
-        return;
-    }
-
-    p = src_str;
-    if (!p || get_str_sep(buf, sizeof(buf), &p, ':') < 0) {
-        goto fail_syntax;
-    }
-
-    if (!strcmp(buf, "tcp") || buf[0] == '\0') {
-        is_udp = 0;
-    } else if (!strcmp(buf, "udp")) {
-        is_udp = 1;
-    } else {
-        goto fail_syntax;
-    }
-
-    if (get_str_sep(buf, sizeof(buf), &p, ':') < 0) {
-        goto fail_syntax;
-    }
-    if (buf[0] != '\0' && !inet_aton(buf, &host_addr.sin_addr)) {
-        goto fail_syntax;
-    }
-
-    if (qemu_strtoi(p, NULL, 10, &host_port)) {
-        goto fail_syntax;
-    }
-    host_addr.sin_port = htons(host_port);
-
-#if SLIRP_CHECK_VERSION(4, 5, 0)
-    err = slirp_remove_hostxfwd(s->slirp, (struct sockaddr *) &host_addr,
-            sizeof(host_addr), is_udp ? SLIRP_HOSTFWD_UDP : 0);
-#else
-    err = slirp_remove_hostfwd(s->slirp, is_udp, host_addr.sin_addr, host_port);
-#endif
-
-    monitor_printf(mon, "host forwarding rule for %s %s\n", src_str,
-                   err ? "not found" : "removed");
-    return;
-
- fail_syntax:
-    monitor_printf(mon, "invalid format\n");
-}
 
 static int slirp_hostfwd(SlirpState *s, const char *redir_str, Error **errp)
 {
@@ -961,29 +882,6 @@ static int slirp_hostfwd(SlirpState *s, const char *redir_str, Error **errp)
     error_setg(errp, "Invalid host forwarding rule '%s' (%s)", redir_str,
                fail_reason);
     return -1;
-}
-
-void hmp_hostfwd_add(Monitor *mon, const QDict *qdict)
-{
-    const char *redir_str;
-    SlirpState *s;
-    const char *arg1 = qdict_get_str(qdict, "arg1");
-    const char *arg2 = qdict_get_try_str(qdict, "arg2");
-
-    if (arg2) {
-        s = slirp_lookup(mon, arg1);
-        redir_str = arg2;
-    } else {
-        s = slirp_lookup(mon, NULL);
-        redir_str = arg1;
-    }
-    if (s) {
-        Error *err = NULL;
-        if (slirp_hostfwd(s, redir_str, &err) < 0) {
-            error_report_err(err);
-        }
-    }
-
 }
 
 #if defined(CONFIG_SMBD_COMMAND)
@@ -1165,7 +1063,7 @@ static int slirp_guestfwd(SlirpState *s, const char *config_str, Error **errp)
          * FIXME: sure we want to support implicit
          * muxed monitors here?
          */
-        Chardev *chr = qemu_chr_new_mux_mon(buf, p, NULL);
+        Chardev *chr = qemu_chr_new(buf, p, NULL);
 
         if (!chr) {
             error_setg(errp, "Could not open guest forwarding device '%s'",
@@ -1203,21 +1101,6 @@ static int slirp_guestfwd(SlirpState *s, const char *config_str, Error **errp)
  fail_syntax:
     error_setg(errp, "Invalid guest forwarding rule '%s'", config_str);
     return -1;
-}
-
-void hmp_info_usernet(Monitor *mon, const QDict *qdict)
-{
-    SlirpState *s;
-
-    QTAILQ_FOREACH(s, &slirp_stacks, entry) {
-        int id;
-        bool got_hub_id = net_hub_id_for_client(&s->nc, &id) == 0;
-        char *info = slirp_connection_info(s->slirp);
-        monitor_printf(mon, "Hub %d (%s):\n%s",
-                       got_hub_id ? id : -1,
-                       s->nc.name, info);
-        g_free(info);
-    }
 }
 
 static void

@@ -2,7 +2,6 @@ i386_ss = ss.source_set()
 i386_ss.add(files(
   'fw_cfg.c',
   'e820_memory_layout.c',
-  'monitor.c',
   'multiboot.c',
   'x86.c',
   'x86-cpu.c',

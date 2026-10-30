@@ -60,7 +60,6 @@
 #include "qemu/cutils.h"
 #include "io/channel-buffer.h"
 #include "io/channel-file.h"
-#include "system/replay.h"
 #include "system/runstate.h"
 #include "system/system.h"
 #include "system/xen.h"
@@ -3228,12 +3227,6 @@ bool save_snapshot(const char *name, bool overwrite, const char *vmstate,
         return false;
     }
 
-    if (!replay_can_snapshot()) {
-        error_setg(errp, "Record/replay does not allow making snapshot "
-                   "right now. Try once more later.");
-        return false;
-    }
-
     if (!bdrv_all_can_snapshot(has_devices, devices, errp)) {
         return false;
     }
@@ -3275,11 +3268,7 @@ bool save_snapshot(const char *name, bool overwrite, const char *vmstate,
     sn->date_sec = g_date_time_to_unix(now);
     sn->date_nsec = g_date_time_get_microsecond(now) * 1000;
     sn->vm_clock_nsec = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
-    if (replay_mode != REPLAY_MODE_NONE) {
-        sn->icount = replay_get_current_icount();
-    } else {
-        sn->icount = -1ULL;
-    }
+    sn->icount = -1ULL;
 
     if (name) {
         pstrcpy(sn->name, sizeof(sn->name), name);
@@ -3441,12 +3430,6 @@ bool load_snapshot(const char *name, const char *vmstate,
                    " offline using qemu-img");
         return false;
     }
-
-    /*
-     * Flush the record/replay queue. Now the VM state is going
-     * to change. Therefore we don't need to preserve its consistency
-     */
-    replay_flush_events();
 
     /* Flush all IO requests so they don't interfere with the new state.  */
     bdrv_drain_all_begin();

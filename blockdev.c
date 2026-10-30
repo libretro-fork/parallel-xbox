@@ -58,7 +58,6 @@
 #include "block/block_int.h"
 #include "block/trace.h"
 #include "system/runstate.h"
-#include "system/replay.h"
 #include "qemu/cutils.h"
 #include "qemu/help_option.h"
 #include "qemu/main-loop.h"
@@ -1300,11 +1299,7 @@ static void internal_snapshot_action(BlockdevSnapshotInternal *internal,
     sn->date_sec = rt / G_USEC_PER_SEC;
     sn->date_nsec = (rt % G_USEC_PER_SEC) * 1000;
     sn->vm_clock_nsec = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
-    if (replay_mode != REPLAY_MODE_NONE) {
-        sn->icount = replay_get_current_icount();
-    } else {
-        sn->icount = -1ULL;
-    }
+    sn->icount = -1ULL;
 
     ret1 = bdrv_snapshot_create(bs, sn);
     if (ret1 < 0) {

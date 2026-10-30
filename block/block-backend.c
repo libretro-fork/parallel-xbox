@@ -19,7 +19,6 @@
 #include "hw/qdev-core.h"
 #include "system/blockdev.h"
 #include "system/runstate.h"
-#include "system/replay.h"
 #include "qapi/error.h"
 #include "qapi/qapi-events-block.h"
 #include "qemu/id.h"
@@ -1544,8 +1543,8 @@ BlockAIOCB *blk_abort_aio_request(BlockBackend *blk,
     acb->blk = blk;
     acb->ret = ret;
 
-    replay_bh_schedule_oneshot_event(qemu_get_current_aio_context(),
-                                     error_callback_bh, acb);
+    aio_bh_schedule_oneshot(qemu_get_current_aio_context(),
+                            error_callback_bh, acb);
     return &acb->common;
 }
 
@@ -1602,8 +1601,8 @@ static BlockAIOCB *blk_aio_prwv(BlockBackend *blk, int64_t offset,
 
     acb->has_returned = true;
     if (acb->rwco.ret != NOT_DONE) {
-        replay_bh_schedule_oneshot_event(qemu_get_current_aio_context(),
-                                         blk_aio_complete_bh, acb);
+        aio_bh_schedule_oneshot(qemu_get_current_aio_context(),
+                                blk_aio_complete_bh, acb);
     }
 
     return &acb->common;
@@ -1908,8 +1907,8 @@ BlockAIOCB *blk_aio_zone_report(BlockBackend *blk, int64_t offset,
 
     acb->has_returned = true;
     if (acb->rwco.ret != NOT_DONE) {
-        replay_bh_schedule_oneshot_event(qemu_get_current_aio_context(),
-                                         blk_aio_complete_bh, acb);
+        aio_bh_schedule_oneshot(qemu_get_current_aio_context(),
+                                blk_aio_complete_bh, acb);
     }
 
     return &acb->common;
@@ -1949,8 +1948,8 @@ BlockAIOCB *blk_aio_zone_mgmt(BlockBackend *blk, BlockZoneOp op,
 
     acb->has_returned = true;
     if (acb->rwco.ret != NOT_DONE) {
-        replay_bh_schedule_oneshot_event(qemu_get_current_aio_context(),
-                                         blk_aio_complete_bh, acb);
+        aio_bh_schedule_oneshot(qemu_get_current_aio_context(),
+                                blk_aio_complete_bh, acb);
     }
 
     return &acb->common;
@@ -1988,8 +1987,8 @@ BlockAIOCB *blk_aio_zone_append(BlockBackend *blk, int64_t *offset,
     aio_co_enter(qemu_get_current_aio_context(), co);
     acb->has_returned = true;
     if (acb->rwco.ret != NOT_DONE) {
-        replay_bh_schedule_oneshot_event(qemu_get_current_aio_context(),
-                                         blk_aio_complete_bh, acb);
+        aio_bh_schedule_oneshot(qemu_get_current_aio_context(),
+                                blk_aio_complete_bh, acb);
     }
 
     return &acb->common;

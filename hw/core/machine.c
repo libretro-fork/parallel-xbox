@@ -13,7 +13,6 @@
 #include "qemu/osdep.h"
 #include "qemu/units.h"
 #include "qemu/accel.h"
-#include "system/replay.h"
 #include "hw/boards.h"
 #include "hw/loader.h"
 #include "qemu/error-report.h"
@@ -1627,11 +1626,6 @@ void machine_run_board_init(MachineState *machine, const char *mem_path, Error *
     ERRP_GUARD();
     MachineClass *machine_class = MACHINE_GET_CLASS(machine);
 
-    /* This checkpoint is required by replay to separate prior clock
-       reading from the other reads, because timer polling functions query
-       clock values from the log. */
-    replay_checkpoint(CHECKPOINT_INIT);
-
     if (!xen_enabled()) {
         /* On 32-bit hosts, QEMU is limited by virtual address space */
         if (machine->ram_size > (2047 << 20) && HOST_LONG_BITS == 32) {
@@ -1783,12 +1777,6 @@ void qdev_machine_creation_done(void)
         exit(1);
     }
 
-    replay_start();
-
-    /* This checkpoint is required by replay to separate prior clock
-       reading from the other reads, because timer polling functions query
-       clock values from the log. */
-    replay_checkpoint(CHECKPOINT_RESET);
     qemu_system_reset(SHUTDOWN_CAUSE_NONE);
     register_global_state();
 }

@@ -30,7 +30,6 @@
 #include "qemu/lockable.h"
 #include "system/cpu-timers.h"
 #include "exec/icount.h"
-#include "system/replay.h"
 #include "system/cpus.h"
 
 #ifdef CONFIG_POSIX
@@ -576,53 +575,13 @@ bool timerlist_run_timers(QEMUTimerList *timer_list)
         goto out;
     }
 
-    switch (timer_list->clock->type) {
-    case QEMU_CLOCK_REALTIME:
-        break;
-    default:
-    case QEMU_CLOCK_VIRTUAL:
-        break;
-    case QEMU_CLOCK_HOST:
-        if (!replay_checkpoint(CHECKPOINT_CLOCK_HOST)) {
-            goto out;
-        }
-        break;
-    case QEMU_CLOCK_VIRTUAL_RT:
-        if (!replay_checkpoint(CHECKPOINT_CLOCK_VIRTUAL_RT)) {
-            goto out;
-        }
-        break;
-    }
-
-    /*
-     * Extract expired timers from active timers list and process them.
-     *
-     * In rr mode we need "filtered" checkpointing for virtual clock.  The
-     * checkpoint must be recorded/replayed before processing any non-EXTERNAL timer,
-     * and that must only be done once since the clock value stays the same. Because
-     * non-EXTERNAL timers may appear in the timers list while it being processed,
-     * the checkpoint can be issued at a time until no timers are left and we are
-     * done".
-     */
+    /* Extract expired timers from active timers list and process them. */
     current_time = qemu_clock_get_ns(timer_list->clock->type);
     qemu_mutex_lock(&timer_list->active_timers_lock);
     while ((ts = timer_list->active_timers)) {
         if (!timer_expired_ns(ts, current_time)) {
-            /* No expired timers left.  The checkpoint can be skipped
-             * if no timers fired or they were all external.
-             */
+            /* No expired timers left. */
             break;
-        }
-        /* Checkpoint for virtual clock is redundant in cases where
-         * it's being triggered with only non-EXTERNAL timers, because
-         * these timers don't change guest state directly.
-         */
-        if (replay_mode != REPLAY_MODE_NONE
-            && timer_list->clock->type == QEMU_CLOCK_VIRTUAL
-            && !(ts->attributes & QEMU_TIMER_ATTR_EXTERNAL)
-            && !replay_checkpoint(CHECKPOINT_CLOCK_VIRTUAL)) {
-            qemu_mutex_unlock(&timer_list->active_timers_lock);
-            goto out;
         }
 
         /* remove timer from the list before calling the callback */
@@ -700,9 +659,9 @@ int64_t qemu_clock_get_ns(QEMUClockType type)
     case QEMU_CLOCK_VIRTUAL:
         return cpus_get_virtual_clock();
     case QEMU_CLOCK_HOST:
-        return REPLAY_CLOCK(REPLAY_CLOCK_HOST, get_clock_realtime());
+        return get_clock_realtime();
     case QEMU_CLOCK_VIRTUAL_RT:
-        return REPLAY_CLOCK(REPLAY_CLOCK_VIRTUAL_RT, cpu_get_clock());
+        return cpu_get_clock();
     }
 }
 

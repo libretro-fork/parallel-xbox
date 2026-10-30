@@ -28,7 +28,6 @@
 #include "qemu/timer.h"
 #include "system/cpu-timers.h"
 #include "exec/icount.h"
-#include "system/replay.h"
 #include "qemu/main-loop.h"
 #include "block/aio.h"
 #include "block/thread-pool.h"
@@ -387,7 +386,6 @@ static int os_host_main_loop_wait(int64_t timeout)
     glib_pollfds_fill(&timeout);
 
     bql_unlock();
-    replay_mutex_unlock();
 
 #ifdef XBOX
     qemu_mutex_unlock_main_loop();
@@ -397,7 +395,6 @@ static int os_host_main_loop_wait(int64_t timeout)
     qemu_mutex_lock_main_loop();
 #endif
 
-    replay_mutex_lock();
     bql_lock();
 
     glib_pollfds_poll();
@@ -603,8 +600,6 @@ static int os_host_main_loop_wait(int64_t timeout)
 
     bql_unlock();
 
-    replay_mutex_unlock();
-
 #ifdef XBOX
     qemu_mutex_unlock_main_loop();
 #endif
@@ -612,8 +607,6 @@ static int os_host_main_loop_wait(int64_t timeout)
 #ifdef XBOX
     qemu_mutex_lock_main_loop();
 #endif
-
-    replay_mutex_lock();
 
     bql_lock();
     if (g_poll_ret > 0) {
@@ -775,11 +768,9 @@ void main_loop_wait(int nonblocking)
         } else {
             /* other threads take the locks meanwhile, as around poll */
             bql_unlock();
-            replay_mutex_unlock();
             qemu_mutex_unlock_main_loop();
             retro_eventcount_commit_wait(&main_loop_ec, key);
             qemu_mutex_lock_main_loop();
-            replay_mutex_lock();
             bql_lock();
         }
         main_loop_dispatch(io);

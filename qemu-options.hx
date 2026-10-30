@@ -602,36 +602,6 @@ SRST
         -numa hmat-cache,node-id=1,size=10K,level=1,associativity=direct,policy=write-back,line=8
 ERST
 
-DEF("add-fd", HAS_ARG, QEMU_OPTION_add_fd,
-    "-add-fd fd=fd,set=set[,opaque=opaque]\n"
-    "                Add 'fd' to fd 'set'\n", QEMU_ARCH_ALL)
-SRST
-``-add-fd fd=fd,set=set[,opaque=opaque]``
-    Add a file descriptor to an fd set. Valid options are:
-
-    ``fd=fd``
-        This option defines the file descriptor of which a duplicate is
-        added to fd set. The file descriptor cannot be stdin, stdout, or
-        stderr.
-
-    ``set=set``
-        This option defines the ID of the fd set to add the file
-        descriptor to.
-
-    ``opaque=opaque``
-        This option defines a free-form string that can be used to
-        describe fd.
-
-    You can open an image using pre-opened file descriptors from an fd
-    set:
-
-    .. parsed-literal::
-
-        |qemu_system| \\
-         -add-fd fd=3,set=2,opaque="rdwr:/path/to/file" \\
-         -add-fd fd=4,set=2,opaque="rdonly:/path/to/file" \\
-         -drive file=/dev/fdset/2,index=0,media=disk
-ERST
 
 DEF("set", HAS_ARG, QEMU_OPTION_set,
     "-set group.id.arg=value\n"
@@ -4481,58 +4451,7 @@ SRST
     Use ``-parallel none`` to disable all parallel ports.
 ERST
 
-DEF("monitor", HAS_ARG, QEMU_OPTION_monitor, \
-    "-monitor dev    redirect the monitor to char device 'dev'\n",
-    QEMU_ARCH_ALL)
-SRST
-``-monitor dev``
-    Redirect the monitor to host device dev (same devices as the serial
-    port). The default device is ``vc`` in graphical mode and ``stdio``
-    in non graphical mode. Use ``-monitor none`` to disable the default
-    monitor.
-ERST
-DEF("qmp", HAS_ARG, QEMU_OPTION_qmp, \
-    "-qmp dev        like -monitor but opens in 'control' mode\n",
-    QEMU_ARCH_ALL)
-SRST
-``-qmp dev``
-    Like ``-monitor`` but opens in 'control' mode. For example, to make
-    QMP available on localhost port 4444::
 
-        -qmp tcp:localhost:4444,server=on,wait=off
-
-    Not all options are configurable via this syntax; for maximum
-    flexibility use the ``-mon`` option and an accompanying ``-chardev``.
-
-ERST
-DEF("qmp-pretty", HAS_ARG, QEMU_OPTION_qmp_pretty, \
-    "-qmp-pretty dev like -qmp but uses pretty JSON formatting\n",
-    QEMU_ARCH_ALL)
-SRST
-``-qmp-pretty dev``
-    Like ``-qmp`` but uses pretty JSON formatting.
-ERST
-
-DEF("mon", HAS_ARG, QEMU_OPTION_mon, \
-    "-mon [chardev=]name[,mode=readline|control][,pretty[=on|off]]\n", QEMU_ARCH_ALL)
-SRST
-``-mon [chardev=]name[,mode=readline|control][,pretty[=on|off]]``
-    Set up a monitor connected to the chardev ``name``.
-    QEMU supports two monitors: the Human Monitor Protocol
-    (HMP; for human interaction), and the QEMU Monitor Protocol
-    (QMP; a JSON RPC-style protocol).
-    The default is HMP; ``mode=control`` selects QMP instead.
-    ``pretty`` is only valid when ``mode=control``,
-    turning on JSON pretty printing to ease
-    human reading and debugging.
-
-    For example::
-
-      -chardev socket,id=mon1,host=localhost,port=4444,server=on,wait=off \
-      -mon chardev=mon1,mode=control,pretty=on
-
-    enables the QMP monitor on localhost port 4444 with pretty-printing.
-ERST
 
 DEF("debugcon", HAS_ARG, QEMU_OPTION_debugcon, \
     "-debugcon dev   redirect the debug console to char device 'dev'\n",
@@ -4554,18 +4473,6 @@ SRST
     from a script.
 ERST
 
-DEF("preconfig", 0, QEMU_OPTION_preconfig, \
-    "--preconfig     pause QEMU before machine is initialized (experimental)\n",
-    QEMU_ARCH_ALL)
-SRST
-``--preconfig``
-    Pause QEMU for interactive configuration before the machine is
-    created, which allows querying and configuring properties that will
-    affect machine initialization. Use QMP command 'x-exit-preconfig' to
-    exit the preconfig state and move to the next state (i.e. run guest
-    if -S isn't used or pause the second time if -S is used). This
-    option is experimental.
-ERST
 
 DEF("S", 0, QEMU_OPTION_S, \
     "-S              freeze CPU at startup (use 'c' to start execution)\n",
@@ -4604,41 +4511,7 @@ SRST
     taking into account guest idle time.
 ERST
 
-DEF("gdb", HAS_ARG, QEMU_OPTION_gdb, \
-    "-gdb dev        accept gdb connection on 'dev'. (QEMU defaults to starting\n"
-    "                the guest without waiting for gdb to connect; use -S too\n"
-    "                if you want it to not start execution.)\n",
-    QEMU_ARCH_ALL)
-SRST
-``-gdb dev``
-    Accept a gdb connection on device dev (see the :ref:`GDB usage` chapter
-    in the System Emulation Users Guide). Note that this option does not pause QEMU
-    execution -- if you want QEMU to not start the guest until you
-    connect with gdb and issue a ``continue`` command, you will need to
-    also pass the ``-S`` option to QEMU.
 
-    The most usual configuration is to listen on a local TCP socket::
-
-        -gdb tcp::3117
-
-    but you can specify other backends; UDP, pseudo TTY, or even stdio
-    are all reasonable use cases. For example, a stdio connection
-    allows you to start QEMU from within gdb and establish the
-    connection via a pipe:
-
-    .. parsed-literal::
-
-        (gdb) target remote | exec |qemu_system| -gdb stdio ...
-ERST
-
-DEF("s", 0, QEMU_OPTION_s, \
-    "-s              shorthand for -gdb tcp::" DEFAULT_GDBSTUB_PORT "\n",
-    QEMU_ARCH_ALL)
-SRST
-``-s``
-    Shorthand for -gdb tcp::1234, i.e. open a gdbserver on TCP port 1234
-    (see the :ref:`GDB usage` chapter in the System Emulation Users Guide).
-ERST
 
 DEF("d", HAS_ARG, QEMU_OPTION_d, \
     "-d item1,...    enable logging of specified items (use '-d help' for a list of log items)\n",

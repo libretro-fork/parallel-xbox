@@ -58,11 +58,6 @@
 #include "qapi/qobject-input-visitor.h"
 #include "standard-headers/linux/virtio_net.h"
 
-/* Net bridge is currently not supported for W32. */
-#if !defined(_WIN32)
-# define CONFIG_NET_BRIDGE
-#endif
-
 static VMChangeStateEntry *net_change_state_entry;
 NetClientStateList net_clients;
 
@@ -1282,10 +1277,6 @@ static int (* const net_client_init_fun[NET_CLIENT_DRIVER__MAX])(
 #ifdef CONFIG_SLIRP
         [NET_CLIENT_DRIVER_USER]      = net_init_slirp,
 #endif
-        [NET_CLIENT_DRIVER_TAP]       = net_init_tap,
-        [NET_CLIENT_DRIVER_SOCKET]    = net_init_socket,
-        [NET_CLIENT_DRIVER_STREAM]    = net_init_stream,
-        [NET_CLIENT_DRIVER_DGRAM]     = net_init_dgram,
 #ifdef CONFIG_VDE
         [NET_CLIENT_DRIVER_VDE]       = net_init_vde,
 #endif
@@ -1295,9 +1286,7 @@ static int (* const net_client_init_fun[NET_CLIENT_DRIVER__MAX])(
 #ifdef CONFIG_AF_XDP
         [NET_CLIENT_DRIVER_AF_XDP]    = net_init_af_xdp,
 #endif
-#ifdef CONFIG_NET_BRIDGE
-        [NET_CLIENT_DRIVER_BRIDGE]    = net_init_bridge,
-#endif
+        [NET_CLIENT_DRIVER_SOCKET]    = net_init_socket,
         [NET_CLIENT_DRIVER_HUBPORT]   = net_init_hubport,
 #ifdef CONFIG_VHOST_NET_USER
         [NET_CLIENT_DRIVER_VHOST_USER] = net_init_vhost_user,
@@ -1381,11 +1370,7 @@ void show_netdevs(void)
     int idx;
     const char *available_netdevs[] = {
         "socket",
-        "stream",
-        "dgram",
         "hubport",
-        "tap",
-        "passt",
 #ifdef CONFIG_SLIRP
         "user",
 #endif
@@ -1394,9 +1379,6 @@ void show_netdevs(void)
 #endif
 #ifdef CONFIG_VDE
         "vde",
-#endif
-#ifdef CONFIG_NET_BRIDGE
-        "bridge",
 #endif
 #ifdef CONFIG_NETMAP
         "netmap",
@@ -1520,48 +1502,6 @@ void qmp_netdev_del(const char *id, Error **errp)
     opts = qemu_opts_find(qemu_find_opts("netdev"), id);
     if (opts) {
         qemu_opts_del(opts);
-    }
-}
-
-static void netfilter_print_info(Monitor *mon, NetFilterState *nf)
-{
-    char *str;
-    ObjectProperty *prop;
-    ObjectPropertyIterator iter;
-    Visitor *v;
-
-    /* generate info str */
-    object_property_iter_init(&iter, OBJECT(nf));
-    while ((prop = object_property_iter_next(&iter))) {
-        if (!strcmp(prop->name, "type")) {
-            continue;
-        }
-        v = string_output_visitor_new(false, &str);
-        object_property_get(OBJECT(nf), prop->name, v, NULL);
-        visit_complete(v, &str);
-        visit_free(v);
-        monitor_printf(mon, ",%s=%s", prop->name, str);
-        g_free(str);
-    }
-    monitor_printf(mon, "\n");
-}
-
-void print_net_client(Monitor *mon, NetClientState *nc)
-{
-    NetFilterState *nf;
-
-    monitor_printf(mon, "%s: index=%d,type=%s,%s\n", nc->name,
-                   nc->queue_index,
-                   NetClientDriver_str(nc->info->type),
-                   nc->info_str);
-    if (!QTAILQ_EMPTY(&nc->filters)) {
-        monitor_printf(mon, "filters:\n");
-    }
-    QTAILQ_FOREACH(nf, &nc->filters, next) {
-        monitor_printf(mon, "  - %s: type=%s",
-                       object_get_canonical_path_component(OBJECT(nf)),
-                       object_get_typename(OBJECT(nf)));
-        netfilter_print_info(mon, nf);
     }
 }
 

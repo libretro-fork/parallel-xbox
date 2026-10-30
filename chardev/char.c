@@ -33,7 +33,6 @@
 #include "qapi/error.h"
 #include "qapi/qapi-commands-char.h"
 #include "qapi/qmp/qerror.h"
-#include "system/replay.h"
 #include "qemu/help_option.h"
 #include "qemu/module.h"
 #include "qemu/option.h"
@@ -168,30 +167,7 @@ int qemu_chr_write(Chardev *s, const uint8_t *buf, int len, bool write_all)
     int offset = 0;
     int res;
 
-    if (qemu_chr_replay(s) && replay_mode == REPLAY_MODE_PLAY) {
-        replay_char_write_event_load(&res, &offset);
-        assert(offset <= len);
-        qemu_chr_write_buffer(s, buf, offset, &offset, true);
-        return res;
-    }
-
-    if (replay_mode == REPLAY_MODE_RECORD) {
-        /*
-         * When recording we don't want temporary conditions to
-         * perturb the result. By ensuring we write everything we can
-         * while recording we avoid playback being out of sync if it
-         * doesn't encounter the same temporary conditions (usually
-         * triggered by external programs not reading the chardev fast
-         * enough and pipes filling up).
-         */
-        write_all = true;
-    }
-
     res = qemu_chr_write_buffer(s, buf, len, &offset, write_all);
-
-    if (qemu_chr_replay(s) && replay_mode == REPLAY_MODE_RECORD) {
-        replay_char_write_event_save(res, offset);
-    }
 
     if (res < 0) {
         return res;
@@ -221,14 +197,7 @@ void qemu_chr_be_write_impl(Chardev *s, const uint8_t *buf, int len)
 
 void qemu_chr_be_write(Chardev *s, const uint8_t *buf, int len)
 {
-    if (qemu_chr_replay(s)) {
-        if (replay_mode == REPLAY_MODE_PLAY) {
-            return;
-        }
-        replay_chr_be_write(s, buf, len);
-    } else {
-        qemu_chr_be_write_impl(s, buf, len);
-    }
+    qemu_chr_be_write_impl(s, buf, len);
 }
 
 void qemu_chr_be_update_read_handlers(Chardev *s,
@@ -370,8 +339,7 @@ int qemu_chr_wait_connected(Chardev *chr, Error **errp)
     return 0;
 }
 
-QemuOpts *qemu_chr_parse_compat(const char *label, const char *filename,
-                                bool permit_mux_mon)
+QemuOpts *qemu_chr_parse_compat(const char *label, const char *filename)
 {
     char host[65], port[33], width[8], height[8];
     int pos;
@@ -383,23 +351,6 @@ QemuOpts *qemu_chr_parse_compat(const char *label, const char *filename,
     if (local_err) {
         error_report_err(local_err);
         return NULL;
-    }
-
-    if (strstart(filename, "mon:", &p)) {
-        if (!permit_mux_mon) {
-            error_report("mon: isn't supported in this context");
-            return NULL;
-        }
-        filename = p;
-        qemu_opt_set(opts, "mux", "on", &error_abort);
-        if (strcmp(filename, "stdio") == 0) {
-            /* Monitor is muxed to stdio: do not exit on Ctrl+C by default
-             * but pass it to the guest.  Handle this only for compat syntax,
-             * for -chardev syntax we have special option for this.
-             * This is what -nographic did, redirecting+muxing serial+monitor
-             * to stdio causing Ctrl+C to be passed to guest. */
-            qemu_opt_set(opts, "signal", "off", &error_abort);
-        }
     }
 
     if (strcmp(filename, "null")    == 0 ||
@@ -640,24 +591,11 @@ ChardevBackend *qemu_chr_parse_opts(QemuOpts *opts, Error **errp)
     return backend;
 }
 
-static void qemu_chardev_set_replay(Chardev *chr, Error **errp)
-{
-    if (replay_mode != REPLAY_MODE_NONE) {
-        if (CHARDEV_GET_CLASS(chr)->chr_ioctl) {
-            error_setg(errp, "Replay: ioctl is not supported "
-                             "for serial devices yet");
-            return;
-        }
-        qemu_chr_set_feature(chr, QEMU_CHAR_FEATURE_REPLAY);
-        replay_register_char_driver(chr);
-    }
-}
-
-static Chardev *do_qemu_chr_new_from_opts(QemuOpts *opts, GMainContext *context,
-                                          bool replay, Error **errp)
+Chardev *qemu_chr_new_from_opts(QemuOpts *opts, GMainContext *context,
+                                Error **errp)
 {
     const ChardevClass *cc;
-    Chardev *base = NULL, *chr = NULL;
+    Chardev *chr = NULL;
     ChardevBackend *backend = NULL;
     const char *name = qemu_opt_get(opts, "backend");
     const char *id = qemu_opts_id(opts);
@@ -699,7 +637,6 @@ static Chardev *do_qemu_chr_new_from_opts(QemuOpts *opts, GMainContext *context,
         goto out;
     }
 
-    base = chr;
     if (bid) {
         Chardev *mux;
         qapi_free_ChardevBackend(backend);
@@ -720,24 +657,11 @@ out:
     qapi_free_ChardevBackend(backend);
     g_free(bid);
 
-    if (replay && base) {
-        /* RR should be set on the base device, not the mux */
-        qemu_chardev_set_replay(base, errp);
-    }
-
     return chr;
 }
 
-Chardev *qemu_chr_new_from_opts(QemuOpts *opts, GMainContext *context,
-                                Error **errp)
-{
-    /* XXX: should this really not record/replay? */
-    return do_qemu_chr_new_from_opts(opts, context, false, errp);
-}
-
-static Chardev *qemu_chr_new_from_name(const char *label, const char *filename,
-                                       bool permit_mux_mon,
-                                       GMainContext *context, bool replay)
+Chardev *qemu_chr_new(const char *label, const char *filename,
+                      GMainContext *context)
 {
     const char *p;
     Chardev *chr;
@@ -745,69 +669,20 @@ static Chardev *qemu_chr_new_from_name(const char *label, const char *filename,
     Error *err = NULL;
 
     if (strstart(filename, "chardev:", &p)) {
-        chr = qemu_chr_find(p);
-        if (replay && chr) {
-            qemu_chardev_set_replay(chr, &err);
-            if (err) {
-                error_report_err(err);
-                return NULL;
-            }
-        }
-        return chr;
+        return qemu_chr_find(p);
     }
 
-    opts = qemu_chr_parse_compat(label, filename, permit_mux_mon);
+    opts = qemu_chr_parse_compat(label, filename);
     if (!opts)
         return NULL;
 
-    chr = do_qemu_chr_new_from_opts(opts, context, replay, &err);
+    chr = qemu_chr_new_from_opts(opts, context, &err);
     if (!chr) {
         error_report_err(err);
-        goto out;
     }
 
-    if (qemu_opt_get_bool(opts, "mux", 0)) {
-        assert(permit_mux_mon);
-        monitor_init_hmp(chr, true, &err);
-        if (err) {
-            error_report_err(err);
-            object_unparent(OBJECT(chr));
-            chr = NULL;
-            goto out;
-        }
-    }
-
-out:
     qemu_opts_del(opts);
     return chr;
-}
-
-Chardev *qemu_chr_new_noreplay(const char *label, const char *filename,
-                               bool permit_mux_mon, GMainContext *context)
-{
-    return qemu_chr_new_from_name(label, filename, permit_mux_mon, context,
-                                  false);
-}
-
-static Chardev *qemu_chr_new_permit_mux_mon(const char *label,
-                                          const char *filename,
-                                          bool permit_mux_mon,
-                                          GMainContext *context)
-{
-    return qemu_chr_new_from_name(label, filename, permit_mux_mon, context,
-                                  true);
-}
-
-Chardev *qemu_chr_new(const char *label, const char *filename,
-                      GMainContext *context)
-{
-    return qemu_chr_new_permit_mux_mon(label, filename, false, context);
-}
-
-Chardev *qemu_chr_new_mux_mon(const char *label, const char *filename,
-                              GMainContext *context)
-{
-    return qemu_chr_new_permit_mux_mon(label, filename, true, context);
 }
 
 static int qmp_query_chardev_foreach(Object *obj, void *data)
@@ -1156,12 +1031,6 @@ ChardevReturn *qmp_chardev_change(const char *id, ChardevBackend *backend,
         return NULL;
     }
 
-    if (qemu_chr_replay(chr)) {
-        error_setg(errp,
-            "Chardev '%s' cannot be changed in record/replay mode", id);
-        return NULL;
-    }
-
     fe = chr->fe;
     if (!fe) {
         /* easy case */
@@ -1244,11 +1113,6 @@ void qmp_chardev_remove(const char *id, Error **errp)
     }
     if (qemu_chr_is_busy(chr)) {
         error_setg(errp, "Chardev '%s' is busy", id);
-        return;
-    }
-    if (qemu_chr_replay(chr)) {
-        error_setg(errp,
-            "Chardev '%s' cannot be unplugged in record/replay mode", id);
         return;
     }
     object_unparent(OBJECT(chr));

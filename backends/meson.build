@@ -1,22 +1,11 @@
 system_ss.add([files(
-  'cryptodev-hmp-cmds.c',
-  'cryptodev.c',
   'hostmem.c',
 ), numa])
 
 if host_os != 'windows'
-  system_ss.add(files())
   if host_os != 'emscripten'
-    system_ss.add(files())
     system_ss.add([files(), rt])
   endif
-endif
-if host_os == 'linux'
-  system_ss.add(files())
-  system_ss.add(files())
-endif
-if keyutils.found()
-    system_ss.add(keyutils, files('cryptodev-lkcf.c'))
 endif
 if have_vhost_user
   system_ss.add(when: 'CONFIG_VIRTIO', if_true: files('vhost-user.c'))

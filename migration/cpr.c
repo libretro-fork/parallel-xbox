@@ -16,7 +16,7 @@
 #include "migration/qemu-file.h"
 #include "migration/savevm.h"
 #include "migration/vmstate.h"
-#include "monitor/monitor.h"
+#include "qemu/cutils.h"
 #include "system/runstate.h"
 #include "trace.h"
 
@@ -323,11 +323,11 @@ int cpr_get_fd_param(const char *name, const char *fdname, int index,
             error_setg(errp, "cannot find saved value for fd %s", fdname);
         }
     } else {
-        fd = monitor_fd_param(monitor_cur(), fdname, errp);
+        fd = qemu_parse_fd(fdname);
         if (fd >= 0) {
             cpr_save_fd(name, index, fd);
         } else {
-            error_prepend(errp, "Could not parse object fd %s:", fdname);
+            error_setg(errp, "Could not parse object fd %s", fdname);
         }
     }
     return fd;

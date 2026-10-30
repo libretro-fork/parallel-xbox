@@ -32,8 +32,6 @@ system_ss.add(files(
   'gpio.c',
   'hotplug.c',
   'loader.c',
-  'machine-hmp-cmds.c',
-  'machine-qmp-cmds.c',
   'machine.c',
   'nmi.c',
   'numa.c',

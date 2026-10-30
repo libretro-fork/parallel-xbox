@@ -37,7 +37,6 @@
 #include "qapi/error.h"
 #include "qemu/error-report.h"
 #include "qemu/main-loop.h"
-#include "system/replay.h"
 #include "qemu/units.h"
 
 /* Maximum bounce buffer for copy-on-read and write zeroes, in bytes */
@@ -336,8 +335,8 @@ static void coroutine_fn bdrv_co_yield_to_drain(BlockDriverState *bs,
         bdrv_inc_in_flight(bs);
     }
 
-    replay_bh_schedule_oneshot_event(qemu_get_aio_context(),
-                                     bdrv_co_drain_bh_cb, &data);
+    aio_bh_schedule_oneshot(qemu_get_aio_context(),
+                            bdrv_co_drain_bh_cb, &data);
 
     qemu_coroutine_yield();
     /* If we are resumed from some other event (such as an aio completion or a
@@ -482,15 +481,6 @@ void bdrv_drain_all_begin_nopoll(void)
     BlockDriverState *bs = NULL;
     GLOBAL_STATE_CODE();
 
-    /*
-     * bdrv queue is managed by record/replay,
-     * waiting for finishing the I/O requests may
-     * be infinite
-     */
-    if (replay_events_enabled()) {
-        return;
-    }
-
     /* AIO_WAIT_WHILE() with a NULL context can only be called from the main
      * loop AioContext, so make sure we're in the main context. */
     assert(qemu_get_current_aio_context() == qemu_get_aio_context());
@@ -510,15 +500,6 @@ void coroutine_mixed_fn bdrv_drain_all_begin(void)
 
     if (qemu_in_coroutine()) {
         bdrv_co_yield_to_drain(NULL, true, NULL, true);
-        return;
-    }
-
-    /*
-     * bdrv queue is managed by record/replay,
-     * waiting for finishing the I/O requests may
-     * be infinite
-     */
-    if (replay_events_enabled()) {
         return;
     }
 
@@ -548,15 +529,6 @@ void bdrv_drain_all_end(void)
 {
     BlockDriverState *bs = NULL;
     GLOBAL_STATE_CODE();
-
-    /*
-     * bdrv queue is managed by record/replay,
-     * waiting for finishing the I/O requests may
-     * be endless
-     */
-    if (replay_events_enabled()) {
-        return;
-    }
 
     while ((bs = bdrv_next_all_states(bs))) {
         bdrv_do_drained_end(bs, NULL);
@@ -2339,15 +2311,6 @@ int bdrv_flush_all(void)
 
     GLOBAL_STATE_CODE();
     GRAPH_RDLOCK_GUARD_MAINLOOP();
-
-    /*
-     * bdrv queue is managed by record/replay,
-     * creating new flush request for stopping
-     * the VM may break the determinism
-     */
-    if (replay_events_enabled()) {
-        return result;
-    }
 
     for (bs = bdrv_first(&it); bs; bs = bdrv_next(&it)) {
         int ret = bdrv_flush(bs);

@@ -91,10 +91,6 @@ DEF("numa", HAS_ARG, QEMU_OPTION_numa,
 "-numa hmat-cache,node-id=node,size=size,level=level[,associativity=none|direct|complex][,policy=none|write-back|write-through][,line=size]\n",
 QEMU_ARCH_ALL)
 
-DEF("add-fd", HAS_ARG, QEMU_OPTION_add_fd,
-"-add-fd fd=fd,set=set[,opaque=opaque]\n"
-"                Add 'fd' to fd 'set'\n", QEMU_ARCH_ALL)
-
 DEF("set", HAS_ARG, QEMU_OPTION_set,
 "-set group.id.arg=value\n"
 "                set <arg> parameter for item <id> of type <group>\n"
@@ -752,29 +748,12 @@ DEF("parallel", HAS_ARG, QEMU_OPTION_parallel, \
 "-parallel dev   redirect the parallel port to char device 'dev'\n",
 QEMU_ARCH_ALL)
 
-DEF("monitor", HAS_ARG, QEMU_OPTION_monitor, \
-"-monitor dev    redirect the monitor to char device 'dev'\n",
-QEMU_ARCH_ALL)
-DEF("qmp", HAS_ARG, QEMU_OPTION_qmp, \
-"-qmp dev        like -monitor but opens in 'control' mode\n",
-QEMU_ARCH_ALL)
-DEF("qmp-pretty", HAS_ARG, QEMU_OPTION_qmp_pretty, \
-"-qmp-pretty dev like -qmp but uses pretty JSON formatting\n",
-QEMU_ARCH_ALL)
-
-DEF("mon", HAS_ARG, QEMU_OPTION_mon, \
-"-mon [chardev=]name[,mode=readline|control][,pretty[=on|off]]\n", QEMU_ARCH_ALL)
-
 DEF("debugcon", HAS_ARG, QEMU_OPTION_debugcon, \
 "-debugcon dev   redirect the debug console to char device 'dev'\n",
 QEMU_ARCH_ALL)
 
 DEF("pidfile", HAS_ARG, QEMU_OPTION_pidfile, \
 "-pidfile file   write PID to 'file'\n", QEMU_ARCH_ALL)
-
-DEF("preconfig", 0, QEMU_OPTION_preconfig, \
-"--preconfig     pause QEMU before machine is initialized (experimental)\n",
-QEMU_ARCH_ALL)
 
 DEF("S", 0, QEMU_OPTION_S, \
 "-S              freeze CPU at startup (use 'c' to start execution)\n",
@@ -785,16 +764,6 @@ DEF("overcommit", HAS_ARG, QEMU_OPTION_overcommit,
 "                run qemu with overcommit hints\n"
 "                mem-lock=on|off|on-fault controls memory lock support (default: off)\n"
 "                cpu-pm=on|off controls cpu power management (default: off)\n",
-QEMU_ARCH_ALL)
-
-DEF("gdb", HAS_ARG, QEMU_OPTION_gdb, \
-"-gdb dev        accept gdb connection on 'dev'. (QEMU defaults to starting\n"
-"                the guest without waiting for gdb to connect; use -S too\n"
-"                if you want it to not start execution.)\n",
-QEMU_ARCH_ALL)
-
-DEF("s", 0, QEMU_OPTION_s, \
-"-s              shorthand for -gdb tcp::" DEFAULT_GDBSTUB_PORT "\n",
 QEMU_ARCH_ALL)
 
 DEF("d", HAS_ARG, QEMU_OPTION_d, \

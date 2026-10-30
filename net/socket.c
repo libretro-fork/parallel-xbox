@@ -25,9 +25,9 @@
 
 #include "net/net.h"
 #include "clients.h"
-#include "monitor/monitor.h"
 #include "qapi/error.h"
 #include "qemu/error-report.h"
+#include "qemu/cutils.h"
 #include "qemu/option.h"
 #include "qemu/sockets.h"
 #include "qemu/iov.h"
@@ -720,8 +720,9 @@ int net_init_socket(const Netdev *netdev, const char *name,
     if (sock->fd) {
         int fd, so_type;
 
-        fd = monitor_fd_param(monitor_cur(), sock->fd, errp);
+        fd = qemu_parse_fd(sock->fd);
         if (fd == -1) {
+            error_setg(errp, "Invalid file descriptor number '%s'", sock->fd);
             return -1;
         }
         so_type = net_socket_fd_check(fd, errp);

@@ -2,14 +2,12 @@ block_ss.add(genh)
 block_ss.add(files(
   'accounting.c',
   'aio_task.c',
-  'amend.c',
   'backup.c',
   'block-backend.c',
   'block-copy.c',
   'commit.c',
   'copy-before-write.c',
   'copy-on-read.c',
-  'create.c',
   'crypto.c',
   'dirty-bitmap.c',
   'graph-lock.c',
@@ -34,7 +32,6 @@ block_ss.add(files(
 ), zstd, zlib)
 
 system_ss.add(when: 'CONFIG_TCG', if_true: files())
-system_ss.add(files())
 system_ss.add(files('blkmemory.c'))
 
 if get_option('qcow1').allowed()
@@ -88,7 +85,6 @@ else
 endif
 block_ss.add(when: libiscsi, if_true: files('iscsi-opts.c'))
 if host_os == 'linux'
-  block_ss.add(files())
 endif
 if get_option('replication').allowed()
   block_ss.add(files('replication.c'))

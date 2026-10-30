@@ -1,4 +1,4 @@
-system_ss.add(files('control-target.c', 'trace-hmp-cmds.c'))
+system_ss.add(files('control-target.c'))
 trace_rs_targets = []
 trace_events_files = []
 foreach item : [ '.' ] + trace_events_subdirs + qapi_trace_events
@@ -95,5 +95,4 @@ if 'ftrace' in get_option('trace_backends')
 endif
 trace_ss.add(files('control.c'))
 if have_system or have_tools or have_ga
-  trace_ss.add(files('qmp.c'))
 endif

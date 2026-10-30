@@ -12,8 +12,6 @@
 #include "trace.h"
 #include "qemu/cutils.h"
 
-static void usb_bus_dev_print(Monitor *mon, DeviceState *qdev, int indent);
-
 static char *usb_get_dev_path(DeviceState *dev);
 static char *usb_get_fw_dev_path(DeviceState *qdev);
 static void usb_qdev_unrealize(DeviceState *qdev);
@@ -31,7 +29,6 @@ static void usb_bus_class_init(ObjectClass *klass, const void *data)
     BusClass *k = BUS_CLASS(klass);
     HotplugHandlerClass *hc = HOTPLUG_HANDLER_CLASS(klass);
 
-    k->print_dev = usb_bus_dev_print;
     k->get_dev_path = usb_get_dev_path;
     k->get_fw_dev_path = usb_get_fw_dev_path;
     hc->unplug = qdev_simple_device_unplug_cb;
@@ -541,18 +538,6 @@ static const char *usb_speed(unsigned int speed)
     if (speed >= ARRAY_SIZE(txt))
         return "?";
     return txt[speed];
-}
-
-static void usb_bus_dev_print(Monitor *mon, DeviceState *qdev, int indent)
-{
-    USBDevice *dev = USB_DEVICE(qdev);
-    USBBus *bus = usb_bus_from_device(dev);
-
-    monitor_printf(mon, "%*saddr %d.%d, port %s, speed %s, name %s%s\n",
-                   indent, "", bus->busnr, dev->addr,
-                   dev->port ? dev->port->path : "-",
-                   usb_speed(dev->speed), dev->product_desc,
-                   dev->attached ? ", attached" : "");
 }
 
 static char *usb_get_dev_path(DeviceState *qdev)

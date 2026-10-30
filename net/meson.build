@@ -1,16 +1,12 @@
 system_ss.add(files(
   'announce.c',
   'checksum.c',
-  'dgram.c',
   'eth.c',
   'filter.c',
   'hub.c',
-  'net-hmp-cmds.c',
   'net.c',
   'queue.c',
   'socket.c',
-  'stream.c',
-  'stream_data.c',
   'util.c',
 ))
 
@@ -47,16 +43,7 @@ if have_vhost_net_user
 endif
 
 if host_os == 'windows'
-  system_ss.add(files('tap-win32.c'))
   system_ss.add(files('capture_win_ifnames.c'))
-elif host_os == 'linux'
-  system_ss.add(files('tap.c', 'tap-linux.c'))
-elif host_os in bsd_oses
-  system_ss.add(files('tap.c', 'tap-bsd.c'))
-elif host_os == 'sunos'
-  system_ss.add(files('tap.c', 'tap-solaris.c'))
-else
-  system_ss.add(files('tap.c', 'tap-stub.c'))
 endif
 
 system_ss.add(when: libpcap, if_true: files('pcap.c'), if_false: files('pcap-stub.c'))

@@ -23,7 +23,6 @@
 #include "monitor/monitor.h"
 #include "system/address-spaces.h"
 
-static void sysbus_dev_print(Monitor *mon, DeviceState *dev, int indent);
 static char *sysbus_get_fw_dev_path(DeviceState *dev);
 
 typedef struct SysBusFind {
@@ -75,7 +74,6 @@ static void system_bus_class_init(ObjectClass *klass, const void *data)
 {
     BusClass *k = BUS_CLASS(klass);
 
-    k->print_dev = sysbus_dev_print;
     k->get_fw_dev_path = sysbus_get_fw_dev_path;
 }
 
@@ -252,19 +250,6 @@ bool sysbus_realize(SysBusDevice *dev, Error **errp)
 bool sysbus_realize_and_unref(SysBusDevice *dev, Error **errp)
 {
     return qdev_realize_and_unref(DEVICE(dev), sysbus_get_default(), errp);
-}
-
-static void sysbus_dev_print(Monitor *mon, DeviceState *dev, int indent)
-{
-    SysBusDevice *s = SYS_BUS_DEVICE(dev);
-    hwaddr size;
-    int i;
-
-    for (i = 0; i < s->num_mmio; i++) {
-        size = memory_region_size(s->mmio[i].memory);
-        monitor_printf(mon, "%*smmio " HWADDR_FMT_plx "/" HWADDR_FMT_plx "\n",
-                       indent, "", s->mmio[i].addr, size);
-    }
 }
 
 static char *sysbus_get_fw_dev_path(DeviceState *dev)

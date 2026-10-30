@@ -2,8 +2,8 @@
 
 QEMU's build generates part of the code it compiles: the QAPI types,
 visitors, commands and events (from `qapi/*.json`), the trace points (from
-the `trace-events` files), the configuration headers, the monitor's command
-tables (from the `*.hx` files), the keymaps, `block/block-gen.c` and the
+the `trace-events` files), the configuration headers, the command line's
+option table (from `qemu-options.hx`), the keymaps, `block/block-gen.c` and the
 i386 GDB XML. The core's Makefile has no meson, ninja or python, so they
 are here, made once by meson and committed: the files the core's objects
 compile or include, under the paths meson gives them in its build

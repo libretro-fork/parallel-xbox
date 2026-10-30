@@ -33,7 +33,6 @@
 #include "hw/qdev-properties-system.h"
 #include "qemu/timer.h"
 #include "system/system.h"
-#include "system/replay.h"
 #include "system/reset.h"
 #include "system/runstate.h"
 #include "system/rtc.h"
@@ -789,11 +788,7 @@ static int rtc_post_load(void *opaque, int version_id)
     }
     s->period = rtc_periodic_clock_ticks(s);
 
-    /* The periodic timer is deterministic in record/replay mode,
-     * so there is no need to update it after loading the vmstate.
-     * Reading RTC here would misalign record and replay.
-     */
-    if (replay_mode == REPLAY_MODE_NONE) {
+    {
         uint64_t now = qemu_clock_get_ns(rtc_clock);
         if (now < s->next_periodic_time ||
             now > (s->next_periodic_time + get_max_clock_jump())) {

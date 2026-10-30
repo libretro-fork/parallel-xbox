@@ -20,6 +20,8 @@
 #include "file.h"
 #include "migration.h"
 #include "monitor/monitor.h"
+#include "qapi/error.h"
+#include "qemu/cutils.h"
 #include "qemu/error-report.h"
 #include "qemu/sockets.h"
 #include "io/channel-util.h"
@@ -86,8 +88,9 @@ static gboolean fd_accept_incoming_migration(QIOChannel *ioc,
 void fd_start_incoming_migration(const char *fdname, Error **errp)
 {
     QIOChannel *ioc;
-    int fd = monitor_fd_param(monitor_cur(), fdname, errp);
+    int fd = qemu_parse_fd(fdname);
     if (fd == -1) {
+        error_setg(errp, "Invalid file descriptor number '%s'", fdname);
         return;
     }
 

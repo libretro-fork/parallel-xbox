@@ -8,7 +8,6 @@ system_ss.add(files(
 ), sdl, libpmem, libdaxctl)
 
 system_ss.add(files(
-  'balloon.c',
   'bootdevice.c',
   'cpus.c',
   'cpu-timers.c',
@@ -26,9 +25,7 @@ system_ss.add(files(
   'qtest.c',
   'rtc.c',
   'runstate-action.c',
-  'runstate-hmp-cmds.c',
   'runstate.c',
-  'tpm-hmp-cmds.c',
   'watchpoint.c',
 ))
 

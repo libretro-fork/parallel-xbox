@@ -46,7 +46,6 @@
 } while (0)
 
 
-static void aux_slave_dev_print(Monitor *mon, DeviceState *dev, int indent);
 static inline I2CBus *aux_bridge_get_i2c_bus(AUXTOI2CState *bridge);
 
 /* aux-bus implementation (internal not public) */
@@ -57,7 +56,6 @@ static void aux_bus_class_init(ObjectClass *klass, const void *data)
     /* AUXSlave has an MMIO so we need to change the way we print information
      * in monitor.
      */
-    k->print_dev = aux_slave_dev_print;
 }
 
 AUXBus *aux_bus_init(DeviceState *parent, const char *name)
@@ -285,25 +283,6 @@ static const TypeInfo aux_to_i2c_type_info = {
     .instance_size = sizeof(AUXTOI2CState),
     .instance_init = aux_bridge_init
 };
-
-/* aux-slave implementation */
-static void aux_slave_dev_print(Monitor *mon, DeviceState *dev, int indent)
-{
-    AUXBus *bus = AUX_BUS(qdev_get_parent_bus(dev));
-    AUXSlave *s;
-
-    /* Don't print anything if the device is I2C "bridge". */
-    if (aux_bus_is_bridge(bus, dev)) {
-        return;
-    }
-
-    s = AUX_SLAVE(dev);
-
-    monitor_printf(mon, "%*smemory " HWADDR_FMT_plx "/" HWADDR_FMT_plx "\n",
-                   indent, "",
-                   object_property_get_uint(OBJECT(s->mmio), "addr", NULL),
-                   memory_region_size(s->mmio));
-}
 
 void aux_init_mmio(AUXSlave *aux_slave, MemoryRegion *mmio)
 {

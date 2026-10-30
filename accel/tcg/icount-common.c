@@ -32,7 +32,6 @@
 #include "qemu/main-loop.h"
 #include "qemu/option.h"
 #include "qemu/seqlock.h"
-#include "system/replay.h"
 #include "system/runstate.h"
 #include "hw/core/cpu.h"
 #include "exec/icount.h"
@@ -210,8 +209,7 @@ static void icount_adjust(void)
 
     seqlock_write_lock(&timers_state.vm_clock_seqlock,
                        &timers_state.vm_clock_lock);
-    cur_time = REPLAY_CLOCK_LOCKED(REPLAY_CLOCK_VIRTUAL_RT,
-                                   cpu_get_clock_locked());
+    cur_time = cpu_get_clock_locked();
     cur_icount = icount_get_locked();
 
     delta = cur_icount - cur_time;
@@ -283,8 +281,7 @@ static void icount_warp_rt(void)
     seqlock_write_lock(&timers_state.vm_clock_seqlock,
                        &timers_state.vm_clock_lock);
     if (runstate_is_running()) {
-        int64_t clock = REPLAY_CLOCK_LOCKED(REPLAY_CLOCK_VIRTUAL_RT,
-                                            cpu_get_clock_locked());
+        int64_t clock = cpu_get_clock_locked();
         int64_t warp_delta;
 
         warp_delta = clock - timers_state.vm_clock_warp_start;
@@ -338,31 +335,13 @@ void icount_start_warp_timer(void)
         return;
     }
 
-    if (replay_mode != REPLAY_MODE_PLAY) {
-        if (!all_cpu_threads_idle()) {
-            return;
-        }
+    if (!all_cpu_threads_idle()) {
+        return;
+    }
 
-        if (qtest_enabled()) {
-            /* When testing, qtest commands advance icount.  */
-            return;
-        }
-
-        replay_checkpoint(CHECKPOINT_CLOCK_WARP_START);
-    } else {
-        /* warp clock deterministically in record/replay mode */
-        if (!replay_checkpoint(CHECKPOINT_CLOCK_WARP_START)) {
-            /*
-             * vCPU is sleeping and warp can't be started.
-             * It is probably a race condition: notification sent
-             * to vCPU was processed in advance and vCPU went to sleep.
-             * Therefore we have to wake it up for doing something.
-             */
-            if (replay_has_event()) {
-                qemu_clock_notify(QEMU_CLOCK_VIRTUAL);
-            }
-            return;
-        }
+    if (qtest_enabled()) {
+        /* When testing, qtest commands advance icount.  */
+        return;
     }
 
     /* We want to use the earliest deadline from ALL vm_clocks */
@@ -435,13 +414,6 @@ void icount_account_warp_timer(void)
      * do not fire, so computing the deadline does not make sense.
      */
     if (!runstate_is_running()) {
-        return;
-    }
-
-    replay_async_events();
-
-    /* warp clock deterministically in record/replay mode */
-    if (!replay_checkpoint(CHECKPOINT_CLOCK_WARP_ACCOUNT)) {
         return;
     }
 

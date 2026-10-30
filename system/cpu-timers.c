@@ -31,7 +31,6 @@
 #include "qemu/main-loop.h"
 #include "qemu/option.h"
 #include "qemu/seqlock.h"
-#include "system/replay.h"
 #include "system/runstate.h"
 #include "hw/core/cpu.h"
 #include "system/cpu-timers.h"

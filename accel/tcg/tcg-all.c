@@ -25,7 +25,6 @@
 
 #include "qemu/osdep.h"
 #include "system/tcg.h"
-#include "exec/replay-core.h"
 #include "exec/icount.h"
 #include "tcg/startup.h"
 #include "qapi/error.h"
@@ -247,17 +246,7 @@ static void tcg_set_one_insn_per_tb(Object *obj, bool value, Error **errp)
 
 static int tcg_gdbstub_supported_sstep_flags(AccelState *as)
 {
-    /*
-     * In replay mode all events will come from the log and can't be
-     * suppressed otherwise we would break determinism. However as those
-     * events are tied to the number of executed instructions we won't see
-     * them occurring every time we single step.
-     */
-    if (replay_mode != REPLAY_MODE_NONE) {
-        return SSTEP_ENABLE;
-    } else {
-        return SSTEP_ENABLE | SSTEP_NOIRQ | SSTEP_NOTIMER;
-    }
+    return SSTEP_ENABLE | SSTEP_NOIRQ | SSTEP_NOTIMER;
 }
 
 static void tcg_accel_class_init(ObjectClass *oc, const void *data)
@@ -267,7 +256,6 @@ static void tcg_accel_class_init(ObjectClass *oc, const void *data)
     ac->init_machine = tcg_init_machine;
     ac->cpu_common_realize = tcg_exec_realizefn;
     ac->cpu_common_unrealize = tcg_exec_unrealizefn;
-    ac->get_stats = tcg_get_stats;
     ac->allowed = &tcg_allowed;
     ac->gdbstub_supported_sstep_flags = tcg_gdbstub_supported_sstep_flags;
 

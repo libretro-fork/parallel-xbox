@@ -45,16 +45,12 @@ typedef enum {
     /* Whether it is possible to send/recv file descriptors
      * over the data channel */
     QEMU_CHAR_FEATURE_FD_PASS,
-    /* Whether replay or record mode is enabled */
-    QEMU_CHAR_FEATURE_REPLAY,
     /* Whether the gcontext can be changed after calling
      * qemu_chr_be_update_read_handlers() */
     QEMU_CHAR_FEATURE_GCONTEXT,
 
     QEMU_CHAR_FEATURE_LAST,
 } ChardevFeature;
-
-#define qemu_chr_replay(chr) qemu_chr_has_feature(chr, QEMU_CHAR_FEATURE_REPLAY)
 
 struct Chardev {
     Object parent_obj;
@@ -113,26 +109,11 @@ ChardevBackend *qemu_chr_parse_opts(QemuOpts *opts,
  * @context: the #GMainContext to be used at initialization time
  *
  * Create a new character backend from a URI.
- * Do not implicitly initialize a monitor if the chardev is muxed.
  *
  * Returns: a new character backend
  */
 Chardev *qemu_chr_new(const char *label, const char *filename,
                       GMainContext *context);
-
-/**
- * qemu_chr_new_mux_mon:
- * @label: the name of the backend
- * @filename: the URI
- * @context: the #GMainContext to be used at initialization time
- *
- * Create a new character backend from a URI.
- * Implicitly initialize a monitor if the chardev is muxed.
- *
- * Returns: a new character backend
- */
-Chardev *qemu_chr_new_mux_mon(const char *label, const char *filename,
-                              GMainContext *context);
 
 /**
 * qemu_chr_change:
@@ -148,22 +129,6 @@ void qemu_chr_change(QemuOpts *opts, Error **errp);
  * Delete all chardevs (when leaving qemu)
  */
 void qemu_chr_cleanup(void);
-
-/**
- * qemu_chr_new_noreplay:
- * @label: the name of the backend
- * @filename: the URI
- * @permit_mux_mon: if chardev is muxed, initialize a monitor
- * @context: the #GMainContext to be used at initialization time
- *
- * Create a new character backend from a URI.
- * Character device communications are not written
- * into the replay log.
- *
- * Returns: a new character backend
- */
-Chardev *qemu_chr_new_noreplay(const char *label, const char *filename,
-                               bool permit_mux_mon, GMainContext *context);
 
 /**
  * qemu_chr_be_can_write:
@@ -193,7 +158,7 @@ void qemu_chr_be_write(Chardev *s, const uint8_t *buf, int len);
  * @buf: a buffer to receive data from the front end
  * @len: the number of bytes to receive from the front end
  *
- * Implementation of back end writing. Used by replay module.
+ * Implementation of back end writing.
  */
 void qemu_chr_be_write_impl(Chardev *s, const uint8_t *buf, int len);
 
@@ -221,8 +186,7 @@ bool qemu_chr_has_feature(Chardev *chr,
                           ChardevFeature feature);
 void qemu_chr_set_feature(Chardev *chr,
                           ChardevFeature feature);
-QemuOpts *qemu_chr_parse_compat(const char *label, const char *filename,
-                                bool permit_mux_mon);
+QemuOpts *qemu_chr_parse_compat(const char *label, const char *filename);
 int qemu_chr_write(Chardev *s, const uint8_t *buf, int len, bool write_all);
 #define qemu_chr_write_all(s, buf, len) qemu_chr_write(s, buf, len, true)
 int qemu_chr_wait_connected(Chardev *chr, Error **errp);

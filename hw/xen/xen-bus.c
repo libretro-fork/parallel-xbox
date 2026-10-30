@@ -100,14 +100,6 @@ abort:
     qemu_xen_xs_transaction_end(xenbus->xsh, tid, true);
 }
 
-static void xen_bus_print_dev(Monitor *mon, DeviceState *dev, int indent)
-{
-    XenDevice *xendev = XEN_DEVICE(dev);
-
-    monitor_printf(mon, "%*sname = '%s' frontend_id = %u\n",
-                   indent, "", xendev->name, xendev->frontend_id);
-}
-
 static char *xen_bus_get_dev_path(DeviceState *dev)
 {
     return xen_device_get_backend_path(XEN_DEVICE(dev));
@@ -385,7 +377,6 @@ static void xen_bus_class_init(ObjectClass *class, const void *data)
     BusClass *bus_class = BUS_CLASS(class);
     HotplugHandlerClass *hotplug_class = HOTPLUG_HANDLER_CLASS(class);
 
-    bus_class->print_dev = xen_bus_print_dev;
     bus_class->get_dev_path = xen_bus_get_dev_path;
     bus_class->realize = xen_bus_realize;
     bus_class->unrealize = xen_bus_unrealize;

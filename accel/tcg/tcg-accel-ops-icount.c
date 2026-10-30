@@ -24,7 +24,6 @@
  */
 
 #include "qemu/osdep.h"
-#include "system/replay.h"
 #include "exec/icount.h"
 #include "qemu/main-loop.h"
 #include "qemu/guest-random.h"
@@ -37,32 +36,28 @@ static int64_t icount_get_limit(void)
 {
     int64_t deadline;
 
-    if (replay_mode != REPLAY_MODE_PLAY) {
-        /*
-         * Include all the timers, because they may need an attention.
-         * Too long CPU execution may create unnecessary delay in UI.
-         */
-        deadline = qemu_clock_deadline_ns_all(QEMU_CLOCK_VIRTUAL,
-                                              QEMU_TIMER_ATTR_ALL);
-        /* Check realtime timers, because they help with input processing */
-        deadline = qemu_soonest_timeout(deadline,
-                qemu_clock_deadline_ns_all(QEMU_CLOCK_REALTIME,
-                                           QEMU_TIMER_ATTR_ALL));
+    /*
+     * Include all the timers, because they may need an attention.
+     * Too long CPU execution may create unnecessary delay in UI.
+     */
+    deadline = qemu_clock_deadline_ns_all(QEMU_CLOCK_VIRTUAL,
+                                          QEMU_TIMER_ATTR_ALL);
+    /* Check realtime timers, because they help with input processing */
+    deadline = qemu_soonest_timeout(deadline,
+            qemu_clock_deadline_ns_all(QEMU_CLOCK_REALTIME,
+                                       QEMU_TIMER_ATTR_ALL));
 
-        /*
-         * Maintain prior (possibly buggy) behaviour where if no deadline
-         * was set (as there is no QEMU_CLOCK_VIRTUAL timer) or it is more than
-         * INT32_MAX nanoseconds ahead, we still use INT32_MAX
-         * nanoseconds.
-         */
-        if ((deadline < 0) || (deadline > INT32_MAX)) {
-            deadline = INT32_MAX;
-        }
-
-        return icount_round(deadline);
-    } else {
-        return replay_get_instructions();
+    /*
+     * Maintain prior (possibly buggy) behaviour where if no deadline
+     * was set (as there is no QEMU_CLOCK_VIRTUAL timer) or it is more than
+     * INT32_MAX nanoseconds ahead, we still use INT32_MAX
+     * nanoseconds.
+     */
+    if ((deadline < 0) || (deadline > INT32_MAX)) {
+        deadline = INT32_MAX;
     }
+
+    return icount_round(deadline);
 }
 
 static void icount_notify_aio_contexts(void)
@@ -113,8 +108,6 @@ void icount_prepare_for_run(CPUState *cpu, int64_t cpu_budget)
     g_assert(cpu->neg.icount_decr.u16.low == 0);
     g_assert(cpu->icount_extra == 0);
 
-    replay_mutex_lock();
-
     cpu->icount_budget = MIN(icount_get_limit(), cpu_budget);
     insns_left = MIN(0xffff, cpu->icount_budget);
     cpu->neg.icount_decr.u16.low = insns_left;
@@ -140,10 +133,6 @@ void icount_process_data(CPUState *cpu)
     cpu->neg.icount_decr.u16.low = 0;
     cpu->icount_extra = 0;
     cpu->icount_budget = 0;
-
-    replay_account_executed_instructions();
-
-    replay_mutex_unlock();
 }
 
 void icount_handle_interrupt(CPUState *cpu, int mask)

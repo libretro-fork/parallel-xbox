@@ -3692,12 +3692,6 @@ hx_headers = [
   ['qemu-options.hx', 'qemu-options.def'],
   ['qemu-img-cmds.hx', 'qemu-img-cmds.h'],
 ]
-if have_system
-  hx_headers += [
-    ['hmp-commands.hx', 'hmp-commands.h'],
-    ['hmp-commands-info.hx', 'hmp-commands-info.h'],
-  ]
-endif
 foreach d : hx_headers
   hxdep += custom_target(d[1],
                 input: files(d[0]),
@@ -3717,9 +3711,7 @@ trace_events_subdirs = [
   'crypto',
   'qapi',
   'qom',
-  'monitor',
   'util',
-  'gdbstub',
 ]
 if have_linux_user
   trace_events_subdirs += [ 'linux-user' ]
@@ -3801,7 +3793,6 @@ if have_system
     'hw/gpio',
     'migration',
     'net',
-    'replay',
     'system',
     'ui',
     'hw/remote',
@@ -3882,7 +3873,6 @@ subdir('qom')
 subdir('authz')
 subdir('crypto')
 subdir('ui')
-subdir('gdbstub')
 subdir('data')
 subdir('winpcap-loader')
 
@@ -3934,7 +3924,6 @@ endif
 subdir('io')
 subdir('chardev')
 subdir('fsdev')
-subdir('dump')
 
 if have_block
   block_ss.add(files(
@@ -3955,7 +3944,6 @@ if have_block
     'blockdev.c',
     'blockdev-nbd.c',
     'iothread.c',
-    'job-qmp.c',
   ))
 
   # The core's process setup: none, it runs in the frontend's process
@@ -3993,17 +3981,13 @@ common_ss.add(pagevary)
 specific_ss.add(files('page-vary-target.c'))
 
 common_ss.add(files('target-info.c'))
-system_ss.add(files())
 
 subdir('backends')
 subdir('configs/targets')
 subdir('disas')
 subdir('migration')
-subdir('monitor')
 subdir('net')
-subdir('replay')
 subdir('semihosting')
-subdir('stats')
 subdir('tcg')
 subdir('fpu')
 subdir('accel')

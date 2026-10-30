@@ -5,7 +5,6 @@
 #include "trace.h"
 #include "ui/input.h"
 #include "ui/console.h"
-#include "system/replay.h"
 #include "system/runstate.h"
 
 struct QemuInputHandlerState {
@@ -303,7 +302,7 @@ static void qemu_input_queue_sync(QemuInputEventQueueHead *queue)
     queue_count++;
 }
 
-void qemu_input_event_send_impl(QemuConsole *src, InputEvent *evt)
+static void qemu_input_event_send_impl(QemuConsole *src, InputEvent *evt)
 {
     QemuInputHandlerState *s;
 
@@ -343,10 +342,10 @@ void qemu_input_event_send(QemuConsole *src, InputEvent *evt)
         return;
     }
 
-    replay_input_event(src, evt);
+    qemu_input_event_send_impl(src, evt);
 }
 
-void qemu_input_event_sync_impl(void)
+static void qemu_input_event_sync_impl(void)
 {
     QemuInputHandlerState *s;
 
@@ -369,7 +368,7 @@ void qemu_input_event_sync(void)
         return;
     }
 
-    replay_input_sync_event();
+    qemu_input_event_sync_impl();
 }
 
 static InputEvent *qemu_input_event_new_key(KeyValue *key, bool down)

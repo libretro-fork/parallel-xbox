@@ -233,8 +233,6 @@ bool cpu_exec_realizefn(CPUState *cpu, Error **errp)
         return false;
     }
 
-    gdb_init_cpu(cpu);
-
     /* Wait until cpu initialization complete before exposing cpu. */
     cpu_list_add(cpu);
 

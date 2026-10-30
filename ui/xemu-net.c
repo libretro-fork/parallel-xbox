@@ -58,15 +58,9 @@ void xemu_net_enable(void)
         qdict = qdict_new();
         qdict_put_str(qdict, "id",   id);
         qdict_put_str(qdict, "type", "user");
-    } else if (g_config.net.backend == CONFIG_NET_BACKEND_UDP) {
-        qdict = qdict_new();
-        qdict_put_str(qdict, "id",        id);
-        qdict_put_str(qdict, "type",      "socket");
-        qdict_put_str(qdict, "udp",       g_config.net.udp.remote_addr);
-        qdict_put_str(qdict, "localaddr", g_config.net.udp.bind_addr);
     } else {
-        /* Unsupported backend type; the core sets NAT or none
-         * (Network Backend), and has no pcap bridge */
+        /* The core sets NAT or none (Network Backend); it has no UDP
+         * tunnel and no pcap bridge */
         return;
     }
 

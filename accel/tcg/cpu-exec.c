@@ -38,7 +38,6 @@
 #include "exec/log.h"
 #include "qemu/main-loop.h"
 #include "exec/icount.h"
-#include "exec/replay-core.h"
 #include "system/tcg.h"
 #include "exec/helper-proto-common.h"
 #include "tcg-accel-ops.h"
@@ -909,14 +908,6 @@ static inline void cpu_handle_debug_exception(CPUState *cpu)
 static inline bool cpu_handle_exception(CPUState *cpu, int *ret)
 {
     if (cpu->exception_index < 0) {
-#ifndef CONFIG_USER_ONLY
-        if (replay_has_exception()
-            && cpu->neg.icount_decr.u16.low + cpu->icount_extra == 0) {
-            /* Execute just one insn to trigger exception pending in the log */
-            cpu->cflags_next_tb = (curr_cflags(cpu) & ~CF_USE_ICOUNT)
-                | CF_NOIRQ | 1;
-        }
-#endif
         return false;
     }
 
@@ -943,27 +934,21 @@ static inline bool cpu_handle_exception(CPUState *cpu, int *ret)
     cpu->exception_index = -1;
     return true;
 #else
-    if (replay_exception()) {
-        const TCGCPUOps *tcg_ops = cpu->cc->tcg_ops;
+    const TCGCPUOps *tcg_ops = cpu->cc->tcg_ops;
 
-        bql_lock();
-        tcg_ops->do_interrupt(cpu);
-        bql_unlock();
-        cpu->exception_index = -1;
+    bql_lock();
+    tcg_ops->do_interrupt(cpu);
+    bql_unlock();
+    cpu->exception_index = -1;
 
-        if (unlikely(cpu->singlestep_enabled)) {
-            /*
-             * After processing the exception, ensure an EXCP_DEBUG is
-             * raised when single-stepping so that GDB doesn't miss the
-             * next instruction.
-             */
-            *ret = EXCP_DEBUG;
-            cpu_handle_debug_exception(cpu);
-            return true;
-        }
-    } else if (!replay_has_interrupt()) {
-        /* give a chance to iothread in replay mode */
-        *ret = EXCP_INTERRUPT;
+    if (unlikely(cpu->singlestep_enabled)) {
+        /*
+         * After processing the exception, ensure an EXCP_DEBUG is
+         * raised when single-stepping so that GDB doesn't miss the
+         * next instruction.
+         */
+        *ret = EXCP_DEBUG;
+        cpu_handle_debug_exception(cpu);
         return true;
     }
 #endif
@@ -1029,10 +1014,7 @@ static inline bool cpu_handle_interrupt(CPUState *cpu,
             bql_unlock();
             return true;
         }
-        if (replay_mode == REPLAY_MODE_PLAY && !replay_has_interrupt()) {
-            /* Do nothing */
-        } else if (cpu_test_interrupt(cpu, CPU_INTERRUPT_HALT)) {
-            replay_interrupt();
+        if (cpu_test_interrupt(cpu, CPU_INTERRUPT_HALT)) {
             cpu_reset_interrupt(cpu, CPU_INTERRUPT_HALT);
             cpu->halted = 1;
             cpu->exception_index = EXCP_HLT;
@@ -1043,7 +1025,6 @@ static inline bool cpu_handle_interrupt(CPUState *cpu,
             int interrupt_request = cpu->interrupt_request;
 
             if (cpu_test_interrupt(cpu, CPU_INTERRUPT_RESET)) {
-                replay_interrupt();
                 tcg_ops->cpu_exec_reset(cpu);
                 bql_unlock();
                 return true;
@@ -1064,10 +1045,6 @@ static inline bool cpu_handle_interrupt(CPUState *cpu,
                 /* something happened: a wait ends here */
                 cpu->neg.lr_quiet = LR_QUIET_INSNS;
                 cpu->lr_poll_runs = 0;
-                if (!tcg_ops->need_replay_interrupt ||
-                    tcg_ops->need_replay_interrupt(interrupt_request)) {
-                    replay_interrupt();
-                }
                 /*
                  * After processing the interrupt, ensure an EXCP_DEBUG is
                  * raised when single-stepping so that GDB doesn't miss the
@@ -1396,7 +1373,6 @@ int cpu_exec(CPUState *cpu)
     int ret;
     SyncClocks sc = { 0 };
 
-    /* replay_interrupt may need current_cpu */
     SET_current_cpu(cpu);
 
     if (cpu_handle_halt(cpu)) {

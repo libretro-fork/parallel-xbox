@@ -19,12 +19,10 @@ i386_system_ss.add(files(
   'arch_dump.c',
   'arch_memory_mapping.c',
   'machine.c',
-  'monitor.c',
   'cpu-apic.c',
   'cpu-system.c',
 ))
-i386_system_ss.add(when: 'CONFIG_SEV', if_true: files('sev.c'),
-                                       if_false: files('sev-system-stub.c'))
+i386_system_ss.add(when: 'CONFIG_SEV', if_true: files('sev.c'))
 if igvm.found()
   i386_system_ss.add(files('igvm.c'))
 endif

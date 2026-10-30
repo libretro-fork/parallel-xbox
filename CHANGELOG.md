@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- More of QEMU that the core never used is gone, from the code and not only from the build: record/replay, the GDB debugger stub, the last of the monitor (the "info" printers, device and network commands, the -monitor, -qmp, -mon, -gdb, -add-fd and --preconfig options), the TAP, stream and datagram network backends (networking is NAT, and the Chihiro cabinet link uses the socket backend, which stays), the accelerator statistics and the ring-buffer character device. Record/replay sat on the emulator's paths even when off: the main loop, the timers, the CPU's interrupt and exception handling and every input event went through it, and they no longer do. The Android and macOS builds drop the same pieces.
+
 - Vulkan draws that reuse vertex data first check four recently used immutable snapshots before searching the full 512-entry cache. Repeated draws avoid those searches without another RAM copy or more VRAM; invalidated snapshots and recycled arena generations still miss. This reduces CPU bookkeeping for repeated vertex draws; the guest instruction count and the work sent to the GPU stay the same.
 
 - Software DXT decoding now keeps the original endpoint precision through color interpolation and rounds once to RGBA8; DXT5 alpha interpolation also rounds to nearest. This removes the fallback decoder's downward bias, verified against Microsoft's DirectXTex decoder. Native compressed texture uploads are unchanged.

@@ -29,7 +29,6 @@
 #include "crypto/cipher.h"
 #include "crypto/init.h"
 #include "exec/cpu-common.h"
-#include "gdbstub/syscalls.h"
 #include "hw/boards.h"
 #include "hw/resettable.h"
 #include "migration/misc.h"
@@ -52,7 +51,6 @@
 #include "qom/object_interfaces.h"
 #include "system/cpus.h"
 #include "system/qtest.h"
-#include "system/replay.h"
 #include "system/reset.h"
 #include "system/runstate.h"
 #include "system/runstate-action.h"
@@ -179,12 +177,6 @@ static const RunStateTransition runstate_transitions_def[] = {
     { RUN_STATE__MAX, RUN_STATE__MAX },
 };
 
-static const RunStateTransition replay_play_runstate_transitions_def[] = {
-    { RUN_STATE_SHUTDOWN, RUN_STATE_RUNNING},
-
-    { RUN_STATE__MAX, RUN_STATE__MAX },
-};
-
 static bool runstate_valid_transitions[RUN_STATE__MAX][RUN_STATE__MAX];
 
 bool runstate_check(RunState state)
@@ -198,19 +190,6 @@ static void transitions_set_valid(const RunStateTransition *rst)
 
     for (p = rst; p->from != RUN_STATE__MAX; p++) {
         runstate_valid_transitions[p->from][p->to] = true;
-    }
-}
-
-void runstate_replay_enable(void)
-{
-    assert(replay_mode != REPLAY_MODE_NONE);
-
-    if (replay_mode == REPLAY_MODE_PLAY) {
-        /*
-         * When reverse-debugging, it is possible to move state from
-         * shutdown to running.
-         */
-        transitions_set_valid(&replay_play_runstate_transitions_def[0]);
     }
 }
 
@@ -478,7 +457,7 @@ static ShutdownCause qemu_reset_requested(void)
 {
     ShutdownCause r = reset_requested;
 
-    if (r && replay_checkpoint(CHECKPOINT_RESET_REQUESTED)) {
+    if (r) {
         reset_requested = SHUTDOWN_CAUSE_NONE;
         return r;
     }
@@ -488,7 +467,7 @@ static ShutdownCause qemu_reset_requested(void)
 static int qemu_suspend_requested(void)
 {
     int r = suspend_requested;
-    if (r && replay_checkpoint(CHECKPOINT_SUSPEND_REQUESTED)) {
+    if (r) {
         suspend_requested = 0;
         return r;
     }
@@ -806,7 +785,6 @@ void qemu_system_shutdown_request_with_code(ShutdownCause reason,
 void qemu_system_shutdown_request(ShutdownCause reason)
 {
     trace_qemu_system_shutdown_request(reason);
-    replay_shutdown_request(reason);
     shutdown_requested = reason;
     if (reason == SHUTDOWN_CAUSE_HOST_QMP_QUIT) {
         force_shutdown = true;
@@ -1014,7 +992,6 @@ void qemu_init_subsystems(void)
     runstate_init();
     precopy_infrastructure_init();
     postcopy_infrastructure_init();
-    monitor_init_globals();
 
 #ifndef XBOX
     if (qcrypto_init(&err) < 0) {
@@ -1032,8 +1009,6 @@ void qemu_init_subsystems(void)
 
 void qemu_cleanup(int status)
 {
-    gdb_exit(status);
-
     /*
      * cleaning up the migration object cancels any existing migration
      * try to do this early so that it also stops using devices.
@@ -1051,7 +1026,6 @@ void qemu_cleanup(int status)
 
     /* No more vcpu or device emulation activity beyond this point */
     vm_shutdown();
-    replay_finish();
 
     /*
      * We must cancel all block jobs while the block layer is drained,
@@ -1069,7 +1043,6 @@ void qemu_cleanup(int status)
     /* vhost-user must be cleaned up before chardevs.  */
     tpm_cleanup();
     net_cleanup();
-    monitor_cleanup();
     qemu_chr_cleanup();
     user_creatable_cleanup();
     /* TODO: unref root container, check all devices are ok */

@@ -285,12 +285,7 @@ static DeviceClass *qdev_get_device_class(const char **driver, Error **errp)
 
 int qdev_device_help(QemuOpts *opts)
 {
-    Error *local_err = NULL;
     const char *driver;
-    ObjectPropertyInfoList *prop_list;
-    ObjectPropertyInfoList *prop;
-    GPtrArray *array;
-    int i;
 
     driver = qemu_opt_get(opts, "driver");
     if (driver && is_help_option(driver)) {
@@ -302,43 +297,8 @@ int qdev_device_help(QemuOpts *opts)
         return 0;
     }
 
-    if (!object_class_by_name(driver)) {
-        const char *typename = find_typename_by_alias(driver);
-
-        if (typename) {
-            driver = typename;
-        }
-    }
-
-    prop_list = qmp_device_list_properties(driver, &local_err);
-    if (local_err) {
-        goto error;
-    }
-
-    if (prop_list) {
-        qemu_printf("%s options:\n", driver);
-    } else {
-        qemu_printf("There are no options for %s.\n", driver);
-    }
-    array = g_ptr_array_new();
-    for (prop = prop_list; prop; prop = prop->next) {
-        g_ptr_array_add(array,
-                        object_property_help(prop->value->name,
-                                             prop->value->type,
-                                             prop->value->default_value,
-                                             prop->value->description));
-    }
-    g_ptr_array_sort(array, (GCompareFunc)qemu_pstrcmp0);
-    for (i = 0; i < array->len; i++) {
-        qemu_printf("%s\n", (char *)array->pdata[i]);
-    }
-    g_ptr_array_set_free_func(array, g_free);
-    g_ptr_array_free(array, true);
-    qapi_free_ObjectPropertyInfoList(prop_list);
-    return 1;
-
-error:
-    error_report_err(local_err);
+    /* the core has no QMP to list a device's properties with */
+    qemu_printf("%s: no option help in the libretro core\n", driver);
     return 1;
 }
 
@@ -754,109 +714,6 @@ DeviceState *qdev_device_add(QemuOpts *opts, Error **errp)
     return ret;
 }
 
-#define qdev_printf(fmt, ...) monitor_printf(mon, "%*s" fmt, indent, "", ## __VA_ARGS__)
-
-static void qdev_print_props(Monitor *mon, DeviceState *dev, DeviceClass *dc,
-                             int indent)
-{
-    for (int i = 0, n = dc->props_count_; i < n; ++i) {
-        const Property *prop = &dc->props_[i];
-        char *value;
-        char *legacy_name = g_strdup_printf("legacy-%s", prop->name);
-
-        if (object_property_get_type(OBJECT(dev), legacy_name, NULL)) {
-            value = object_property_get_str(OBJECT(dev), legacy_name, NULL);
-        } else {
-            value = object_property_print(OBJECT(dev), prop->name, true,
-                                          NULL);
-        }
-        g_free(legacy_name);
-
-        if (!value) {
-            continue;
-        }
-        qdev_printf("%s = %s\n", prop->name,
-                    *value ? value : "<null>");
-        g_free(value);
-    }
-}
-
-static void bus_print_dev(BusState *bus, Monitor *mon, DeviceState *dev, int indent)
-{
-    BusClass *bc = BUS_GET_CLASS(bus);
-
-    if (bc->print_dev) {
-        bc->print_dev(mon, dev, indent);
-    }
-}
-
-static void qdev_print(Monitor *mon, DeviceState *dev, int indent)
-{
-    ObjectClass *class;
-    NamedGPIOList *ngl;
-    NamedClockList *ncl;
-
-    QLIST_FOREACH(ngl, &dev->gpios, node) {
-        if (ngl->num_in) {
-            qdev_printf("gpio-in \"%s\" %d\n", ngl->name ? ngl->name : "",
-                        ngl->num_in);
-        }
-        if (ngl->num_out) {
-            qdev_printf("gpio-out \"%s\" %d\n", ngl->name ? ngl->name : "",
-                        ngl->num_out);
-        }
-    }
-    QLIST_FOREACH(ncl, &dev->clocks, node) {
-        g_autofree char *freq_str = clock_display_freq(ncl->clock);
-        qdev_printf("clock-%s%s \"%s\" freq_hz=%s\n",
-                    ncl->output ? "out" : "in",
-                    ncl->alias ? " (alias)" : "",
-                    ncl->name, freq_str);
-    }
-    class = object_get_class(OBJECT(dev));
-    do {
-        qdev_print_props(mon, dev, DEVICE_CLASS(class), indent);
-        class = object_class_get_parent(class);
-    } while (class != object_class_by_name(TYPE_DEVICE));
-    bus_print_dev(dev->parent_bus, mon, dev, indent);
-}
-
-static void qbus_print(Monitor *mon, BusState *bus, int indent, bool details)
-{
-    BusChild *kid;
-
-    qdev_printf("bus: %s\n", bus->name);
-    indent += 2;
-    qdev_printf("type %s\n", object_get_typename(OBJECT(bus)));
-    QTAILQ_FOREACH(kid, &bus->children, sibling) {
-        BusState *child_bus;
-        DeviceState *dev = kid->child;
-        qdev_printf("dev: %s, id \"%s\"\n", object_get_typename(OBJECT(dev)),
-                    dev->id ? dev->id : "");
-        if (details) {
-            qdev_print(mon, dev, indent + 2);
-        }
-        QLIST_FOREACH(child_bus, &dev->child_bus, sibling) {
-            qbus_print(mon, child_bus, indent + 2, details);
-        }
-    }
-}
-#undef qdev_printf
-
-void hmp_info_qtree(Monitor *mon, const QDict *qdict)
-{
-    bool details = !qdict_get_try_bool(qdict, "brief", false);
-
-    if (sysbus_get_default()) {
-        qbus_print(mon, sysbus_get_default(), 0, details);
-    }
-}
-
-void hmp_info_qdm(Monitor *mon, const QDict *qdict)
-{
-    qdev_print_devinfos(true);
-}
-
 void qmp_device_add(QDict *qdict, QObject **ret_data, Error **errp)
 {
     DeviceState *dev;
@@ -991,131 +848,6 @@ void qmp_device_sync_config(const char *id, Error **errp)
     }
 
     qdev_sync_config(dev, errp);
-}
-
-void hmp_device_add(Monitor *mon, const QDict *qdict)
-{
-    Error *err = NULL;
-    QemuOpts *opts;
-    DeviceState *dev;
-
-    opts = qemu_opts_from_qdict(qemu_find_opts("device"), qdict, &err);
-    if (!opts) {
-        goto out;
-    }
-    if (qdev_device_help(opts)) {
-        qemu_opts_del(opts);
-        return;
-    }
-    dev = qdev_device_add(opts, &err);
-    if (!dev) {
-        /*
-         * Drain all pending RCU callbacks. This is done because
-         * some bus related operations can delay a device removal
-         * (in this case this can happen if device is added and then
-         * removed due to a configuration error)
-         * to a RCU callback, but user might expect that this interface
-         * will finish its job completely once qmp command returns result
-         * to the user
-         */
-        drain_call_rcu();
-
-        qemu_opts_del(opts);
-    }
-    object_unref(dev);
-out:
-    hmp_handle_error(mon, err);
-}
-
-void hmp_device_del(Monitor *mon, const QDict *qdict)
-{
-    const char *id = qdict_get_str(qdict, "id");
-    Error *err = NULL;
-
-    qmp_device_del(id, &err);
-    hmp_handle_error(mon, err);
-}
-
-void device_add_completion(ReadLineState *rs, int nb_args, const char *str)
-{
-    GSList *list, *elt;
-    size_t len;
-
-    if (nb_args != 2) {
-        return;
-    }
-
-    len = strlen(str);
-    readline_set_completion_index(rs, len);
-    list = elt = object_class_get_list(TYPE_DEVICE, false);
-    while (elt) {
-        DeviceClass *dc = OBJECT_CLASS_CHECK(DeviceClass, elt->data,
-                                             TYPE_DEVICE);
-
-        if (dc->user_creatable) {
-            readline_add_completion_of(rs, str,
-                                object_class_get_name(OBJECT_CLASS(dc)));
-        }
-        elt = elt->next;
-    }
-    g_slist_free(list);
-}
-
-static int qdev_add_hotpluggable_device(Object *obj, void *opaque)
-{
-    GSList **list = opaque;
-    DeviceState *dev = (DeviceState *)object_dynamic_cast(obj, TYPE_DEVICE);
-
-    if (dev == NULL) {
-        return 0;
-    }
-
-    if (dev->realized && object_property_get_bool(obj, "hotpluggable", NULL)) {
-        *list = g_slist_append(*list, dev);
-    }
-
-    return 0;
-}
-
-static GSList *qdev_build_hotpluggable_device_list(Object *peripheral)
-{
-    GSList *list = NULL;
-
-    object_child_foreach(peripheral, qdev_add_hotpluggable_device, &list);
-
-    return list;
-}
-
-static void peripheral_device_del_completion(ReadLineState *rs,
-                                             const char *str)
-{
-    Object *peripheral = machine_get_container("peripheral");
-    GSList *list, *item;
-
-    list = qdev_build_hotpluggable_device_list(peripheral);
-    if (!list) {
-        return;
-    }
-
-    for (item = list; item; item = g_slist_next(item)) {
-        DeviceState *dev = item->data;
-
-        if (dev->id) {
-            readline_add_completion_of(rs, str, dev->id);
-        }
-    }
-
-    g_slist_free(list);
-}
-
-void device_del_completion(ReadLineState *rs, int nb_args, const char *str)
-{
-    if (nb_args != 2) {
-        return;
-    }
-
-    readline_set_completion_index(rs, strlen(str));
-    peripheral_device_del_completion(rs, str);
 }
 
 BlockBackend *blk_by_qdev_id(const char *id, Error **errp)

@@ -200,28 +200,6 @@ NetClientState *net_hub_add_port(int hub_id, const char *name,
 }
 
 /**
- * Print hub configuration
- */
-void net_hub_info(Monitor *mon)
-{
-    NetHub *hub;
-    NetHubPort *port;
-
-    QLIST_FOREACH(hub, &hubs, next) {
-        monitor_printf(mon, "hub %d\n", hub->id);
-        QLIST_FOREACH(port, &hub->ports, next) {
-            monitor_printf(mon, " \\ %s", port->nc.name);
-            if (port->nc.peer) {
-                monitor_printf(mon, ": ");
-                print_net_client(mon, port->nc.peer);
-            } else {
-                monitor_printf(mon, "\n");
-            }
-        }
-    }
-}
-
-/**
  * Get the hub id that a client is connected to
  *
  * @id: Pointer for hub id output, may be NULL
