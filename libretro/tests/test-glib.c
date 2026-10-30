@@ -539,7 +539,6 @@ static void test_misc(void)
     GRand *r = g_rand_new_with_seed(42), *r2 = g_rand_new_with_seed(42);
     GOnce once = G_ONCE_INIT;
     static gsize init;
-    GMutex m;
 
     for (int i = 0; i < 100; i++) {
         gint32 v = g_rand_int_range(r, 10, 20);
@@ -558,13 +557,6 @@ static void test_misc(void)
     }
     CHECK(init == 1 && !g_once_init_enter(&init));
 
-    g_mutex_init(&m);
-    /* a second lock from the same thread is undefined in GLib: not tried */
-    CHECK(g_mutex_trylock(&m));
-    g_mutex_unlock(&m);
-    g_mutex_lock(&m);
-    g_mutex_unlock(&m);
-    g_mutex_clear(&m);
 
     {
         GQuark q = g_quark_from_string("quark-test");

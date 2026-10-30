@@ -1,12 +1,12 @@
 /*
  * The in-tree GLib (libretro/glib/glib.h): memory, messages, errors,
- * strings, GString, the system, time, random numbers, once and mutexes.
+ * strings, GString, the system, time, random numbers and once.
  *
  * On libretro-common: strlcpy/strlcat (compat_strl), UTF-8 and UTF-16
  * (encoding_utf), base64 (encoding_base64), SHA-1 (lrc_hash), the clock and
  * the processor count (features_cpu), sleeping (retro_timers), atomics
- * (retro_atomic), mutexes (rthreads). What is left (GLib's own semantics
- * on top of libc) is written here.
+ * (retro_atomic). What is left (GLib's own semantics on top of libc) is
+ * written here. There is no GMutex: nothing in the core takes one.
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
@@ -28,7 +28,6 @@
 #include <lrc_hash.h>
 #include <retro_atomic.h>
 #include <retro_timers.h>
-#include <rthreads/rthreads.h>
 
 /* ---- memory --------------------------------------------------------------- */
 
@@ -1581,57 +1580,7 @@ gint32 g_random_int_range(gint32 begin, gint32 end)
     return g_rand_int_range(g_global_rand, begin, end);
 }
 
-/* ---- mutexes (rthreads) and once (retro_atomic) --------------------------- */
-
-/*
- * A GMutex is an rthreads lock, made when first needed: GLib's may be a
- * zeroed static with no init, as the GL shader generator's is.
- */
-static slock_t *g_mutex_get(GMutex *mutex)
-{
-    slock_t *l = __atomic_load_n((slock_t **)&mutex->p, __ATOMIC_ACQUIRE);
-
-    if (!l) {
-        slock_t *mine = slock_new(), *expected = NULL;
-        if (__atomic_compare_exchange_n((slock_t **)&mutex->p, &expected,
-                                        mine, FALSE, __ATOMIC_ACQ_REL,
-                                        __ATOMIC_ACQUIRE)) {
-            l = mine;
-        } else {
-            slock_free(mine);
-            l = expected;
-        }
-    }
-    return l;
-}
-
-void g_mutex_init(GMutex *mutex)
-{
-    mutex->p = NULL;
-}
-
-void g_mutex_clear(GMutex *mutex)
-{
-    if (mutex->p) {
-        slock_free(mutex->p);
-        mutex->p = NULL;
-    }
-}
-
-gboolean g_mutex_trylock(GMutex *mutex)
-{
-    return slock_try_lock(g_mutex_get(mutex));
-}
-
-void g_mutex_lock(GMutex *mutex)
-{
-    slock_lock(g_mutex_get(mutex));
-}
-
-void g_mutex_unlock(GMutex *mutex)
-{
-    slock_unlock(g_mutex_get(mutex));
-}
+/* ---- once, on retro_atomic ------------------------------------------------ */
 
 gpointer g_once_impl(GOnce *once, GThreadFunc func, gpointer arg)
 {

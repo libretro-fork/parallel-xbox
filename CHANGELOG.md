@@ -360,6 +360,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 - The core info file says the core takes savestates (basic: Run-Ahead and netplay need System > Deterministic Emulation on), so RetroArch offers Save State and Load State for it, and names the core "ParaLLEl Xbox", as libretro-super's copy does.
 
+- OpenGL: the render thread no longer waits on the shader generation worker. Both took one lock around generating GLSL, so a draw that needed a shader generated on the spot, or adopted one the worker made, could wait for the whole of another shader's generation. The generators read only the state they are given, as the Vulkan renderer already relied on, so the lock is gone.
+
 ## Test build 4 - 2026-10-25
 
 - The core info file names the core "Microsoft - Xbox / Sega Chihiro (xemu)" (NNshi).

@@ -1023,16 +1023,6 @@ void g_datalist_clear(GData **datalist);
 
 /* ---- threads -------------------------------------------------------------- */
 
-typedef union _GMutex {
-    gpointer p;
-    guint i[2];
-} GMutex;
-void g_mutex_init(GMutex *mutex);
-void g_mutex_clear(GMutex *mutex);
-void g_mutex_lock(GMutex *mutex);
-gboolean g_mutex_trylock(GMutex *mutex);
-void g_mutex_unlock(GMutex *mutex);
-
 typedef enum {
     G_ONCE_STATUS_NOTCALLED,
     G_ONCE_STATUS_PROGRESS,

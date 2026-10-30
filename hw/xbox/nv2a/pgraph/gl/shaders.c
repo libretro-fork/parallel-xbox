@@ -42,9 +42,13 @@ static void delete_program(PGRAPHGLState *r, GLuint prog)
     uniform_cache_forget(&r->uni_cache, prog);
     glDeleteProgram(prog);
 }
-/* The GLSL generators keep mutable static state (family tables, pending
- * queues): serialize the two callers (render thread + gen worker). */
-static GMutex glsl_gen_mutex;
+/*
+ * The GLSL generators (pgraph_glsl_gen_*) are pure: they read only the state
+ * they are handed, so the gen worker runs them with no lock, as the Vulkan
+ * renderer's worker does. The generators' family tables and dynamic queues
+ * (glsl/psh.c, glsl/vsh.c) are only ever touched on the render thread: by
+ * the state setters, the queue pump and adoption.
+ */
 
 static GLenum get_gl_primitive_mode(enum ShaderPolygonMode polygon_mode, enum ShaderPrimitiveMode primitive_mode)
 {
@@ -544,7 +548,6 @@ static void shader_module_cache_entry_init(Lru *lru, LruNode *node,
     /* Separable stages match by explicit interface locations, a process-wide
      * choice left out of the cache key. */
     bool locs = gl_sso_enabled();
-    g_mutex_lock(&glsl_gen_mutex);
     switch (module->key.kind) {
     case GL_VERTEX_SHADER: {
         kind_str = "vertex shader";
@@ -572,7 +575,6 @@ static void shader_module_cache_entry_init(Lru *lru, LruNode *node,
         kind_str = "unknown";
         code = NULL;
     }
-    g_mutex_unlock(&glsl_gen_mutex);
 
     if (!code) {
         /* A geometry key whose state needs no geometry stage (a stale key
@@ -1647,14 +1649,12 @@ static void *shader_gen_worker(void *arg)
                 GenGeomGlslOptions go = key.geom.glsl_opts;
                 GenPshGlslOptions po = key.psh.glsl_opts;
                 vo.locations = go.locations = po.locations = locs;
-                g_mutex_lock(&glsl_gen_mutex);
                 MString *code =
                     key.kind == GL_VERTEX_SHADER ?
                         pgraph_glsl_gen_vsh(&key.vsh.state, vo) :
                     key.kind == GL_GEOMETRY_SHADER ?
                         pgraph_glsl_gen_geom(&key.geom.state, go) :
                         pgraph_glsl_gen_psh(&key.psh.state, po);
-                g_mutex_unlock(&glsl_gen_mutex);
                 if (!code) {
                     /* Declined (a stale seed key's needless geom): the
                      * submitter drops the empty source. */
@@ -1969,9 +1969,7 @@ static void comb_async_service(PGRAPHGLState *r, int64_t budget_us)
     bool fed = false;
     PshState st;
     bool gate;
-    bool gen_tbl_ok = g_mutex_trylock(&glsl_gen_mutex);
-    while (gen_tbl_ok && gen_jobs_have_free_locked() &&
-           comb_async_take(r, &st, &gate)) {
+    while (gen_jobs_have_free_locked() && comb_async_take(r, &st, &gate)) {
         ShaderModuleCacheKey key;
         memset(&key, 0, sizeof(key));
         key.kind = GL_FRAGMENT_SHADER;
@@ -1984,10 +1982,6 @@ static void comb_async_service(PGRAPHGLState *r, int64_t budget_us)
             continue;
         }
         fed |= gen_job_push_locked(&key, gate, false);
-    }
-
-    if (gen_tbl_ok) {
-        g_mutex_unlock(&glsl_gen_mutex);
     }
 
     /* ...vertex modules of queued specialised states (both variants)... */
@@ -2009,12 +2003,7 @@ static void comb_async_service(PGRAPHGLState *r, int64_t budget_us)
     /* ...and dynamic vertex families (both variants). */
     while (gen_jobs_have_free_locked()) {
         VshState vst;
-        if (!g_mutex_trylock(&glsl_gen_mutex)) {
-            break;
-        }
-        bool got_vst = pgraph_glsl_vsh_dynamic_pending_take(&vst);
-        g_mutex_unlock(&glsl_gen_mutex);
-        if (!got_vst) {
+        if (!pgraph_glsl_vsh_dynamic_pending_take(&vst)) {
             break;
         }
         for (int prefix = 0; prefix < 2; prefix++) {
@@ -2076,16 +2065,12 @@ static void comb_async_service(PGRAPHGLState *r, int64_t budget_us)
                  * and a dynamic_gen bump would defeat the bind fast path. */
             } else if (comb_async[i].key.kind == GL_FRAGMENT_SHADER) {
                 if (comb_async[i].gate) {
-                    g_mutex_lock(&glsl_gen_mutex);
                     pgraph_glsl_psh_dynamic_ready(&comb_async[i].key.psh.state);
-                    g_mutex_unlock(&glsl_gen_mutex);
                 } else {
                     spec_track_adopted(r, &comb_async[i].key.psh.state);
                 }
             } else if (comb_async[i].key.kind == GL_VERTEX_SHADER) {
-                g_mutex_lock(&glsl_gen_mutex);
                 pgraph_glsl_vsh_dynamic_ready(&comb_async[i].key.vsh.state);
-                g_mutex_unlock(&glsl_gen_mutex);
             }
         } else {
             GLchar log[1024];

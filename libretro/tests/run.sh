@@ -92,8 +92,7 @@ glibsrc="$here/test-glib.c $here/../glib/gcontainers.c $here/../glib/gcore.c \
     $lrc/features/features_cpu.c $lrc/file/file_path.c \
     $lrc/file/file_path_io.c $lrc/file/retro_dirent.c \
     $lrc/streams/file_stream.c $lrc/string/stdstring.c \
-    $lrc/string/rstrtod.c $lrc/time/rtime.c $lrc/vfs/vfs_implementation.c \
-    $lrc/rthreads/rthreads.c"
+    $lrc/string/rstrtod.c $lrc/time/rtime.c $lrc/vfs/vfs_implementation.c"
 glibflags="-O2 -std=gnu11 -w -I$here/../glib -I$lrc/include -Dpath_is_absolute=lrc_path_is_absolute"
 mkdir -p "$work/glib"
 # shellcheck disable=SC2086
