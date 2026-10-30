@@ -673,3 +673,14 @@ fields, readback conversion arithmetic or eviction policy were added or changed.
 `test-interrupt-shadow.py` compiles the production x86 exit generator, carry-class selection, generic page/link guard and pointer-lookup fallback. Its 2,688 cases cover CPU Boost, existing shadow, TF/RF, same/cross page, debugger restrictions and known/unknown carry class. STI probes only carry-independent destinations and retains the runtime fallback for other classes; it does not create direct links or require extra entry-class variants. The `STI_BOUNDARY` variant of `rom/cf.asm` repeats carry consumers immediately after STI, including shared destinations reached from different flag-setting instructions, with both CPU Boost modes. Existing REP MOVS/STOS tests still require pending IRQ delivery after the first REP iteration; EXITWORK protects active STI/CLI code from idle misclassification.
 
 `test-idle-interrupts.py` compiles the production idle-wait ordering helper against the existing interrupt-handler interface. Its 64 cases require posted interrupts/stops to be serviced before the opcode proof, allow masked interrupts to retain idle handling, preserve stop exceptions and block-link invalidation, and reject active handler code as idle.
+
+Mixed-cube GPU-only updates distinguish face-mask changes from GPU draw-timestamp
+changes. An in-place GPU-only update leaves RAM layers intact, so it no longer
+forces an auxiliary RAM upload or treats the open recording as an upload hazard.
+The copy-on-write helper reports whether it allocated a replacement image; if
+so, the RAM layers are restored before the GPU face copies. RAM edits and mask
+changes retain their uploads. Existing mixed-case captures at 2750/2770/2790
+verify yellow RAM data, cyan GPU data and preserved yellow RAM data afterward.
+Focused counters showed uploads at 2719/2744/2759 before the change and only
+2719/2744 afterward: the GPU-only redraw at 2760 no longer uploads five unchanged
+RAM faces. Native mixed-path scope and scaled fallback behavior are unchanged.

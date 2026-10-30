@@ -1640,14 +1640,15 @@ static void create_texture_view(PGRAPHVkState *r, TextureBinding *snode,
  * image to the trash, where recorded descriptors keep their content, and
  * goes on in a fresh one. open_recording_counts: an aux upload runs ahead
  * of the open recording, so a reference there counts; a surface copy,
- * recorded behind those draws and ordered by its barrier, refills in place. */
-static void texture_cow_if_referenced(PGRAPHState *pg, TextureBinding *snode,
+ * recorded behind those draws and ordered by its barrier, refills in place.
+ * Returns true when a replacement image was allocated. */
+static bool texture_cow_if_referenced(PGRAPHState *pg, TextureBinding *snode,
                                       bool open_recording_counts)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
 
     if (snode->image == VK_NULL_HANDLE) {
-        return;
+        return false;
     }
     bool in_open_recording =
         r->in_command_buffer && snode->submit_time == r->submit_count;
@@ -1655,7 +1656,7 @@ static void texture_cow_if_referenced(PGRAPHState *pg, TextureBinding *snode,
         (snode->submit_time > r->settled_submit && !in_open_recording) ||
         (open_recording_counts && in_open_recording);
     if (!referenced) {
-        return;
+        return false;
     }
 
     struct XemuVkTrashEntry e = { .image_view = snode->image_view,
@@ -1686,6 +1687,7 @@ static void texture_cow_if_referenced(PGRAPHState *pg, TextureBinding *snode,
 
     snode->current_layout = VK_IMAGE_LAYOUT_UNDEFINED;
     snode->seq = ++r->texture_binding_seq;
+    return true;
 }
 
 static void create_dummy_texture(PGRAPHState *pg)
@@ -2316,14 +2318,18 @@ static void create_texture(PGRAPHState *pg, int texture_idx)
             }
             bool ram_changed = mixed_cube && possibly_dirty &&
                 snode->validation_frame != pg->frame_time && content_hash != snode->hash;
-            bool faces_changed = cube_mask != snode->cube_source_mask;
+            bool mask_changed = cube_mask != snode->cube_source_mask;
+            bool faces_changed = mask_changed;
             for (unsigned f = 0; f < 6; f++) {
                 if (cube_faces[f] && cube_faces[f]->draw_time !=
                     snode->cube_source_draw_time[f]) faces_changed = true;
             }
             if (maxdt != snode->draw_time || faces_changed || ram_changed) {
-                bool upload_ram = mixed_cube && (faces_changed || ram_changed);
-                texture_cow_if_referenced(pg, snode, upload_ram);
+                bool upload_ram = mixed_cube && (mask_changed || ram_changed);
+                bool replaced = texture_cow_if_referenced(pg, snode, upload_ram);
+                /* A GPU-only in-place update preserves RAM layers. A fresh
+                 * image must have those layers restored before GPU copies. */
+                upload_ram |= mixed_cube && replaced;
                 if (upload_ram) {
                     upload_texture_image(pg, texture_idx, snode, cube_mask);
                     snode->hash = content_hash;
