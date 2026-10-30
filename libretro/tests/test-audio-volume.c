@@ -23,7 +23,7 @@ static int reference_mix(int64_t mix, int gain)
 static void check_mix_output(void)
 {
     for (int sample = -32768; sample <= 32767; sample++) {
-        int64_t mix = (int64_t)sample << 29;
+        int64_t mix = (int64_t)sample * ((int64_t)1 << 29);
         assert(mcpx_apu_monitor_convert_mix(mix, 65536) == sample);
         for (int gain = 0; gain <= 65536; gain += 256) {
             int actual = mcpx_apu_monitor_convert_mix(mix, gain);
@@ -31,7 +31,7 @@ static void check_mix_output(void)
             assert(actual == mcpx_apu_monitor_scale_s16(sample, gain));
         }
     }
-    const int64_t edges[] = { INT64_MIN + 1, -((int64_t)1 << 62),
+    const int64_t edges[] = { INT64_MIN, INT64_MIN + 1, -((int64_t)1 << 62),
         -((int64_t)1 << 44), -((int64_t)1 << 28), -1, 0, 1,
         (int64_t)1 << 28, (int64_t)1 << 44, (int64_t)1 << 62, INT64_MAX };
     for (int gain = 0; gain <= 65536; gain++) {
@@ -50,7 +50,7 @@ static void check_mix_output(void)
         assert(mcpx_apu_monitor_convert_mix(mix, gain) == reference_mix(mix, gain));
     }
     for (int n = -32768; n < 32767; n++) {
-        int64_t tie = ((int64_t)n << 29) + ((int64_t)1 << 28);
+        int64_t tie = (int64_t)n * ((int64_t)1 << 29) + ((int64_t)1 << 28);
         for (int64_t k = -1; k <= 1; k++) {
             assert(mcpx_apu_monitor_convert_mix(tie + k, 65536) ==
                    reference_mix(tie + k, 65536));

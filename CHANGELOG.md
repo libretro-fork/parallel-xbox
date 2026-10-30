@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- The host-audio precision regression avoids undefined signed shifts and now runs with undefined-behavior sanitizer traps. Audio output is unchanged.
+
 - Vulkan cubemap redraws copy only changed GPU faces when updating the existing texture image. Replacement images and RAM uploads still restore every required GPU face.
 
 - Another round of the code no build of the core calls is removed now that QEMU's user-mode, coroutine and atomics code is gone (about 6,900 lines): among it QEMU's ELF, a.out and multiboot loaders (the Xbox boots its own BIOS), most of its socket address handling, the block layer's dictionary helpers and the task objects channels ran in a thread. Nothing changes for someone using the core.

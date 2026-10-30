@@ -347,7 +347,10 @@ python3 libretro/tests/test-gl-texture-reinterpret.py .
 `test-texture-reinterpret.py` also checks both renderers' production eligibility
 predicates, including format/layout rejection and overlapping dirty surfaces.
 
-`test-audio-volume.c` also checks the VP monitor's integer mix-to-S16 output
+`test-audio-volume.c` runs with undefined-behavior sanitizer traps in the standard
+driver. Its signed sample and half-step fixtures use exact multiplication,
+including an `INT64_MIN` saturation case, so the C99 oracle does not rely on
+left-shifting negative values. It also checks the VP monitor's integer mix-to-S16 output
 (DSPs off) against a 128-bit rounding oracle: all 65536 PCM samples round-trip
 at unity and match the integer volume path at 257 gains, every Q16 gain on
 boundary mixes up to the int64 limits, four million arbitrary mixes, and both
