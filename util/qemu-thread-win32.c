@@ -12,6 +12,9 @@
  */
 
 #include "qemu/osdep.h"
+#ifdef _WIN32
+#include "qemu/win32-tls.h"
+#endif
 #include "qemu/thread.h"
 #include "qemu/notify.h"
 #include "qemu-thread-common.h"
@@ -247,16 +250,12 @@ struct QemuThreadData {
 static bool atexit_registered;
 static NotifierList main_thread_exit;
 
-static DWORD tls_key_qemu_thread_data = TLS_OUT_OF_INDEXES;
+static QemuWin32TLS tls_key_qemu_thread_data = QEMU_WIN32_TLS_INITIALIZER;
 static inline QemuThreadData *get_qemu_thread_data(void) {
-    if (tls_key_qemu_thread_data == TLS_OUT_OF_INDEXES)
-        tls_key_qemu_thread_data = TlsAlloc();
-    return (QemuThreadData *)TlsGetValue(tls_key_qemu_thread_data);
+    return (QemuThreadData *)qemu_win32_tls_get(&tls_key_qemu_thread_data);
 }
 static inline void set_qemu_thread_data(QemuThreadData *v) {
-    if (tls_key_qemu_thread_data == TLS_OUT_OF_INDEXES)
-        tls_key_qemu_thread_data = TlsAlloc();
-    TlsSetValue(tls_key_qemu_thread_data, (LPVOID)v);
+    qemu_win32_tls_set(&tls_key_qemu_thread_data, (LPVOID)v);
 }
 #define qemu_thread_data (get_qemu_thread_data())
 #define SET_qemu_thread_data(v) set_qemu_thread_data(v)

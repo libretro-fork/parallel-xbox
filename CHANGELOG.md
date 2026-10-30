@@ -5,6 +5,7 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 ## Unreleased
 
 - Partial zeroing of exclusive qcow2 clusters uses the native sparse range-zero operation, avoiding zero-buffer writes where supported. Tiny ranges retain a single bulk write; shared clusters retain copy-on-write, and unsupported filesystems retain bulk zero-write fallback.
+- Fix Windows thread-local key publication races in RCU readers and QEMU helpers, GLib global string/random state races, non-atomic shared-object references, shared-array use-after-free, nested one-time initialization deadlocks, and duplicate default-context initialization. These are confirmed defects; the intermittent heap-corruption report is not yet conclusively attributed.
 
 - Full-cluster qcow2 replacement writes bypass scratch copies and old-data reads/decompression. Partial writes still preserve unchanged bytes, and snapshot copy-on-write remains intact.
 

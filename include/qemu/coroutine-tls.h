@@ -47,6 +47,10 @@
 #ifndef QEMU_COROUTINE_TLS_H
 #define QEMU_COROUTINE_TLS_H
 
+#ifdef _WIN32
+#include "qemu/win32-tls.h"
+#endif
+
 /*
  * To stop the compiler from caching TLS values we define accessor functions
  * with __attribute__((noinline)) plus asm volatile("") to prevent
@@ -117,15 +121,13 @@
  */
 #if defined(_WIN32)
 #define QEMU_DEFINE_CO_TLS(type, var)                                        \
-    static DWORD co_tls_key_##var = TLS_OUT_OF_INDEXES;                      \
-    static inline void co_tls_init_##var(void) {                             \
-        if (co_tls_key_##var == TLS_OUT_OF_INDEXES)                          \
-            co_tls_key_##var = TlsAlloc();                                   \
-    }                                                                        \
+    static QemuWin32TLS co_tls_key_##var = QEMU_WIN32_TLS_INITIALIZER;                      \
     static inline type *co_tls_getptr_##var(void) {                          \
-        co_tls_init_##var();                                                 \
-        type *p = (type *)TlsGetValue(co_tls_key_##var);                     \
-        if (!p) { p = g_malloc0(sizeof(type)); TlsSetValue(co_tls_key_##var, p); } \
+        type *p = (type *)qemu_win32_tls_get(&co_tls_key_##var);                     \
+        if (!p) {                                                           \
+            p = g_malloc0(sizeof(type));                                    \
+            qemu_win32_tls_set(&co_tls_key_##var, p);                       \
+        }                                                                   \
         return p;                                                            \
     }                                                                        \
     type get_##var(void) { return *co_tls_getptr_##var(); }                  \
@@ -170,15 +172,13 @@
  */
 #if defined(_WIN32)
 #define QEMU_DEFINE_STATIC_CO_TLS(type, var)                                 \
-    static DWORD co_tls_key_s_##var = TLS_OUT_OF_INDEXES;                    \
-    static inline void co_tls_init_s_##var(void) {                           \
-        if (co_tls_key_s_##var == TLS_OUT_OF_INDEXES)                        \
-            co_tls_key_s_##var = TlsAlloc();                                 \
-    }                                                                        \
+    static QemuWin32TLS co_tls_key_s_##var = QEMU_WIN32_TLS_INITIALIZER;                    \
     static inline type *co_tls_getptr_s_##var(void) {                        \
-        co_tls_init_s_##var();                                               \
-        type *p = (type *)TlsGetValue(co_tls_key_s_##var);                   \
-        if (!p) { p = (type *)g_malloc0(sizeof(type)); TlsSetValue(co_tls_key_s_##var, p); } \
+        type *p = (type *)qemu_win32_tls_get(&co_tls_key_s_##var);                   \
+        if (!p) {                                                           \
+            p = g_malloc0(sizeof(type));                                    \
+            qemu_win32_tls_set(&co_tls_key_s_##var, p);                     \
+        }                                                                   \
         return p;                                                            \
     }                                                                        \
     static __attribute__((unused))                                           \

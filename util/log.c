@@ -18,6 +18,9 @@
  */
 
 #include "qemu/osdep.h"
+#ifdef _WIN32
+#include "qemu/win32-tls.h"
+#endif
 #include "qemu/log.h"
 #include "qemu/range.h"
 #include "qemu/error-report.h"
@@ -42,22 +45,15 @@ static QemuMutex global_mutex;
 static char *global_filename;
 static retro_atomic_ptr_t global_file;  /* FILE *, published under RCU */
 #if defined(_WIN32)
-static DWORD tls_key_thread_file = TLS_OUT_OF_INDEXES;
-static DWORD tls_key_qemu_log_thread_cleanup_notifier = TLS_OUT_OF_INDEXES;
-static inline void log_tls_init(void) {
-    if (tls_key_thread_file == TLS_OUT_OF_INDEXES) {
-        tls_key_thread_file = TlsAlloc();
-        tls_key_qemu_log_thread_cleanup_notifier = TlsAlloc();
-    }
-}
-#define thread_file ((FILE *)(log_tls_init(), TlsGetValue(tls_key_thread_file)))
-#define SET_thread_file(v) (log_tls_init(), TlsSetValue(tls_key_thread_file, (LPVOID)(v)))
+static QemuWin32TLS tls_key_thread_file = QEMU_WIN32_TLS_INITIALIZER;
+static QemuWin32TLS tls_key_qemu_log_thread_cleanup_notifier = QEMU_WIN32_TLS_INITIALIZER;
+#define thread_file ((FILE *)qemu_win32_tls_get(&tls_key_thread_file))
+#define SET_thread_file(v) qemu_win32_tls_set(&tls_key_thread_file, (LPVOID)(v))
 static inline Notifier *get_qemu_log_thread_cleanup_notifier_ptr(void) {
-    log_tls_init();
-    Notifier *p = (Notifier *)TlsGetValue(tls_key_qemu_log_thread_cleanup_notifier);
+    Notifier *p = (Notifier *)qemu_win32_tls_get(&tls_key_qemu_log_thread_cleanup_notifier);
     if (!p) {
         p = g_malloc0(sizeof(Notifier));
-        TlsSetValue(tls_key_qemu_log_thread_cleanup_notifier, p);
+        qemu_win32_tls_set(&tls_key_qemu_log_thread_cleanup_notifier, p);
     }
     return p;
 }

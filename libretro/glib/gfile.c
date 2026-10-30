@@ -26,6 +26,7 @@
 #include <compat/strl.h>
 #include <file/file_path.h>
 #include <retro_dirent.h>
+#include <retro_atomic.h>
 #include <retro_miscellaneous.h>
 #include <streams/file_stream.h>
 
@@ -373,14 +374,16 @@ gchar *g_get_current_dir(void)
 const gchar *const *g_get_system_data_dirs(void)
 {
     static const gchar *dirs[2];
+    static gsize initialized;
 
-    if (!dirs[0]) {
+    if (g_once_init_enter(&initialized)) {
 #ifdef _WIN32
         const gchar *d = g_getenv("ProgramData");
         dirs[0] = d && *d ? d : g_get_tmp_dir();
 #else
         dirs[0] = "/usr/share";
 #endif
+        g_once_init_leave(&initialized, 1);
     }
     return dirs;
 }
@@ -458,7 +461,7 @@ void g_dir_close(GDir *dir)
 struct _GMappedFile {
     gchar *contents;
     gsize length;
-    gint ref_count;
+    retro_atomic_int_t ref_count;
 };
 
 static GMappedFile *g_mapped_file_take(gchar *contents, gsize length)
@@ -467,7 +470,7 @@ static GMappedFile *g_mapped_file_take(gchar *contents, gsize length)
 
     m->contents = contents;
     m->length = length;
-    m->ref_count = 1;
+    retro_atomic_int_init(&m->ref_count, 1);
     return m;
 }
 
@@ -527,13 +530,13 @@ gchar *g_mapped_file_get_contents(GMappedFile *file)
 
 GMappedFile *g_mapped_file_ref(GMappedFile *file)
 {
-    file->ref_count++;
+    retro_atomic_fetch_add_int(&file->ref_count, 1);
     return file;
 }
 
 void g_mapped_file_unref(GMappedFile *file)
 {
-    if (file && --file->ref_count == 0) {
+    if (file && retro_atomic_fetch_sub_int(&file->ref_count, 1) == 1) {
         g_free(file->contents);
         g_free(file);
     }

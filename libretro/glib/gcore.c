@@ -29,6 +29,19 @@
 #include <retro_atomic.h>
 #include <retro_timers.h>
 
+/* Protect process-wide compatibility state, including on hosts without GLib. */
+static void g_compat_lock(retro_atomic_int_t *lock)
+{
+    while (!retro_atomic_cas_int(lock, 0, 1)) {
+        retro_sleep(0);
+    }
+}
+
+static void g_compat_unlock(retro_atomic_int_t *lock)
+{
+    retro_atomic_store_release_int(lock, 0);
+}
+
 /* ---- memory --------------------------------------------------------------- */
 
 static G_NORETURN void g_oom(gsize n)
@@ -230,8 +243,9 @@ void g_warn_message(const char *domain, const char *file, int line,
 /* interned strings: a quark is its index + 1, for as long as the process */
 static gchar **g_quarks;
 static guint g_n_quarks, g_quarks_alloc;
+static retro_atomic_int_t g_quarks_lock;
 
-GQuark g_quark_try_string(const gchar *string)
+static GQuark g_quark_find_unlocked(const gchar *string)
 {
     if (!string) {
         return 0;
@@ -244,11 +258,23 @@ GQuark g_quark_try_string(const gchar *string)
     return 0;
 }
 
+GQuark g_quark_try_string(const gchar *string)
+{
+    GQuark q;
+    g_compat_lock(&g_quarks_lock);
+    q = g_quark_find_unlocked(string);
+    g_compat_unlock(&g_quarks_lock);
+    return q;
+}
+
 GQuark g_quark_from_string(const gchar *string)
 {
-    GQuark q = g_quark_try_string(string);
+    GQuark q;
 
+    g_compat_lock(&g_quarks_lock);
+    q = g_quark_find_unlocked(string);
     if (q || !string) {
+        g_compat_unlock(&g_quarks_lock);
         return q;
     }
     if (g_n_quarks == g_quarks_alloc) {
@@ -256,7 +282,9 @@ GQuark g_quark_from_string(const gchar *string)
         g_quarks = g_renew(gchar *, g_quarks, g_quarks_alloc);
     }
     g_quarks[g_n_quarks++] = g_strdup(string);
-    return g_n_quarks;
+    q = g_n_quarks;
+    g_compat_unlock(&g_quarks_lock);
+    return q;
 }
 
 GQuark g_quark_from_static_string(const gchar *string)
@@ -266,7 +294,11 @@ GQuark g_quark_from_static_string(const gchar *string)
 
 const gchar *g_quark_to_string(GQuark quark)
 {
-    return quark && quark <= g_n_quarks ? g_quarks[quark - 1] : NULL;
+    const gchar *string;
+    g_compat_lock(&g_quarks_lock);
+    string = quark && quark <= g_n_quarks ? g_quarks[quark - 1] : NULL;
+    g_compat_unlock(&g_quarks_lock);
+    return string;
 }
 
 GError *g_error_new(GQuark domain, gint code, const gchar *format, ...)
@@ -1376,7 +1408,7 @@ gdouble g_timer_elapsed(GTimer *timer, gulong *microseconds)
 struct _GDateTime {
     gint64 usec;        /* since the epoch, UTC */
     gboolean local;
-    gint ref_count;
+    retro_atomic_int_t ref_count;
 };
 
 static GDateTime *g_date_time_at(gint64 usec, gboolean local)
@@ -1385,7 +1417,7 @@ static GDateTime *g_date_time_at(gint64 usec, gboolean local)
 
     d->usec = usec;
     d->local = local;
-    d->ref_count = 1;
+    retro_atomic_int_init(&d->ref_count, 1);
     return d;
 }
 
@@ -1411,13 +1443,13 @@ GDateTime *g_date_time_new_from_unix_local(gint64 t)
 
 GDateTime *g_date_time_ref(GDateTime *datetime)
 {
-    datetime->ref_count++;
+    retro_atomic_fetch_add_int(&datetime->ref_count, 1);
     return datetime;
 }
 
 void g_date_time_unref(GDateTime *datetime)
 {
-    if (datetime && --datetime->ref_count == 0) {
+    if (datetime && retro_atomic_fetch_sub_int(&datetime->ref_count, 1) == 1) {
         g_free(datetime);
     }
 }
@@ -1563,21 +1595,30 @@ gdouble g_rand_double(GRand *r)
 }
 
 static GRand *g_global_rand;
+static retro_atomic_int_t g_random_lock;
 
 guint32 g_random_int(void)
 {
+    guint32 value;
+    g_compat_lock(&g_random_lock);
     if (!g_global_rand) {
         g_global_rand = g_rand_new();
     }
-    return g_rand_int(g_global_rand);
+    value = g_rand_int(g_global_rand);
+    g_compat_unlock(&g_random_lock);
+    return value;
 }
 
 gint32 g_random_int_range(gint32 begin, gint32 end)
 {
+    gint32 value;
+    g_compat_lock(&g_random_lock);
     if (!g_global_rand) {
         g_global_rand = g_rand_new();
     }
-    return g_rand_int_range(g_global_rand, begin, end);
+    value = g_rand_int_range(g_global_rand, begin, end);
+    g_compat_unlock(&g_random_lock);
+    return value;
 }
 
 /* ---- once, on retro_atomic ------------------------------------------------ */
@@ -1598,51 +1639,60 @@ gpointer g_once_impl(GOnce *once, GThreadFunc func, gpointer arg)
     return once->retval;
 }
 
-/*
- * location: a gsize, 0 until initialized, then the (nonzero) result. The
- * one initializing it claims it in a small table of locations in progress,
- * by compare-and-swap, as GLib keeps its list of them; any other thread
- * that comes meanwhile waits for the result.
+/* Once location registry. A hashed single-owner slot deadlocks when an
+ * initializer enters a different location that happens to share its slot.
+ * Track the actual addresses; never hold the registry lock in an initializer.
  */
-#define G_ONCE_SLOTS 64
-static void *volatile g_once_in_progress[G_ONCE_SLOTS];
-
-static void *volatile *g_once_slot(volatile void *location)
-{
-    return &g_once_in_progress[((guintptr)location >> 3) % G_ONCE_SLOTS];
-}
+typedef struct GOncePending {
+    volatile void *location;
+    struct GOncePending *next;
+} GOncePending;
+static GOncePending *g_once_pending;
+static retro_atomic_int_t g_once_lock;
 
 gboolean g_once_init_enter(volatile void *location)
 {
-    volatile gsize *loc = (volatile gsize *)location;
-    void *volatile *slot = g_once_slot(location);
+    volatile gsize *loc = location;
 
     for (;;) {
-        void *expected = NULL;
-
+        GOncePending *p;
         if (__atomic_load_n(loc, __ATOMIC_ACQUIRE)) {
             return FALSE;
         }
-        if (__atomic_compare_exchange_n(slot, &expected, (void *)location,
-                                        FALSE, __ATOMIC_ACQ_REL,
-                                        __ATOMIC_ACQUIRE)) {
-            /* it may have been done between the load and the claim */
-            if (__atomic_load_n(loc, __ATOMIC_ACQUIRE)) {
-                __atomic_store_n(slot, NULL, __ATOMIC_RELEASE);
-                return FALSE;
-            }
+        g_compat_lock(&g_once_lock);
+        if (__atomic_load_n(loc, __ATOMIC_ACQUIRE)) {
+            g_compat_unlock(&g_once_lock);
+            return FALSE;
+        }
+        for (p = g_once_pending; p && p->location != location; p = p->next) {
+        }
+        if (!p) {
+            p = g_new(GOncePending, 1);
+            p->location = location;
+            p->next = g_once_pending;
+            g_once_pending = p;
+            g_compat_unlock(&g_once_lock);
             return TRUE;
         }
-        /* this location in progress elsewhere, or another sharing its slot */
+        g_compat_unlock(&g_once_lock);
         retro_sleep(0);
     }
 }
 
 void g_once_init_leave(volatile void *location, gsize result)
 {
+    GOncePending **link, *p;
     g_assert(result != 0);
+    g_compat_lock(&g_once_lock);
+    for (link = &g_once_pending; *link && (*link)->location != location;
+         link = &(*link)->next) {
+    }
+    g_assert(*link != NULL);
+    p = *link;
+    *link = p->next;
     __atomic_store_n((volatile gsize *)location, result, __ATOMIC_RELEASE);
-    __atomic_store_n(g_once_slot(location), NULL, __ATOMIC_RELEASE);
+    g_compat_unlock(&g_once_lock);
+    g_free(p);
 }
 
 /* ---- processes: the core starts none ------------------------------------- */

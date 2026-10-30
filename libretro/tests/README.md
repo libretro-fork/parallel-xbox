@@ -758,3 +758,15 @@ The qcow2 span fixture also replaces complete clusters directly from 256 source 
 Large partial qcow2 zeroing uses one counted range-zero operation for an exclusive cluster, including an unaligned range in a 2-MiB cluster. Tests preserve both edges and cover cluster crossings, compressed originals and v2/v3 snapshots on independent disposable images. Shared entries retain COW; native range-zero fallback remains in the file backend.
 
 Tiny partial zero ranges (up to 4 KiB) retain one bulk buffer write, avoiding a file-size query and sparse-operation overhead. The crossing fixture checks both paths in one request.
+The GLib compatibility regressions include 16 simultaneous callers interning
+strings and sharing pointer arrays, hash tables, trees and date/time references
+(800,000 reference/unreference pairs per type), shared-array free/empty/reuse,
+and concurrent default-context publication. The same tests run against system
+GLib as an independent behavior oracle. Container mutations still require an
+owner; atomic references do not make mutation thread-safe.
+
+`test-win32-tls.c` exercises the production coroutine TLS macros with 32 native
+Windows threads and delayed key allocation. Exactly two keys must be allocated;
+all threads must retain their own cell and value across concurrent first access.
+The RCU startup test also enters two independent nested once locations that
+collided in the old 64-slot table; the nested initializer must complete.

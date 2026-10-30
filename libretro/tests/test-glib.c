@@ -267,6 +267,24 @@ static void test_arrays(void)
     CHECK(b->data == taken && b->len == 5);
     g_byte_array_append(b, (const guint8 *)" world", 6);
     CHECK(b->len == 11 && !memcmp(b->data, "hello world", 11));
+    /* free() releases one reference and empties any remaining wrapper. */
+    GArray *shared = g_array_new(FALSE, FALSE, sizeof(int));
+    g_array_append_val(shared, v);
+    g_array_ref(shared);
+    g_array_free(shared, TRUE);
+    CHECK(shared->len == 0);
+    g_array_append_val(shared, v);
+    CHECK(shared->len == 1);
+    g_array_unref(shared);
+    GPtrArray *shared_ptrs = g_ptr_array_new();
+    g_ptr_array_add(shared_ptrs, GINT_TO_POINTER(1));
+    g_ptr_array_ref(shared_ptrs);
+    gpointer *segment = g_ptr_array_free(shared_ptrs, FALSE);
+    CHECK(shared_ptrs->len == 0 && segment[0] == GINT_TO_POINTER(1));
+    g_free(segment);
+    g_ptr_array_add(shared_ptrs, GINT_TO_POINTER(2));
+    CHECK(shared_ptrs->len == 1);
+    g_ptr_array_unref(shared_ptrs);
     GByteArray *held = g_byte_array_ref(b);
     g_byte_array_unref(b);
     CHECK(held->len == 11 && !memcmp(held->data, "hello world", 11));
@@ -586,10 +604,13 @@ static void test_misc(void)
     CHECK(g_get_num_processors() >= 1);
 }
 
+#include "test-glib-threading.h"
+
 int main(int argc, char **argv)
 {
     const char *dir = argc > 1 ? argv[1] : g_get_tmp_dir();
 
+    test_threading();
     test_hash();
     test_tree();
     test_lists();

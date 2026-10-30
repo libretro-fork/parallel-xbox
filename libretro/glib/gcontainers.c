@@ -95,7 +95,12 @@ gchar *g_array_free(GArray *array, gboolean free_segment)
         g_free(seg);
         seg = NULL;
     }
-    g_free(r);
+    if (retro_atomic_fetch_sub_int(&r->ref_count, 1) == 1) {
+        g_free(r);
+    } else {
+        r->a.data = NULL;
+        r->a.len = r->alloc = 0;
+    }
     return seg;
 }
 
@@ -109,7 +114,10 @@ GArray *g_array_ref(GArray *array)
 void g_array_unref(GArray *array)
 {
     if (retro_atomic_fetch_sub_int(&((GRealArray *)array)->ref_count, 1) == 1) {
-        g_array_free(array, TRUE);
+        GRealArray *r = (GRealArray *)array;
+        g_array_clear_range(r, 0, r->a.len);
+        g_free(r->a.data);
+        g_free(r);
     }
 }
 
@@ -266,7 +274,7 @@ GByteArray *g_byte_array_remove_range(GByteArray *array, guint index,
 typedef struct {
     GPtrArray a;
     guint alloc;
-    gint ref_count;
+    retro_atomic_int_t ref_count;
     GDestroyNotify free_func;
 } GRealPtrArray;
 
@@ -289,7 +297,7 @@ GPtrArray *g_ptr_array_new_full(guint reserved_size,
 {
     GRealPtrArray *r = g_new0(GRealPtrArray, 1);
 
-    r->ref_count = 1;
+    retro_atomic_int_init(&r->ref_count, 1);
     r->free_func = element_free_func;
     if (reserved_size) {
         g_ptr_array_grow(r, reserved_size);
@@ -332,20 +340,32 @@ gpointer *g_ptr_array_free(GPtrArray *array, gboolean free_segment)
         g_free(seg);
         seg = NULL;
     }
-    g_free(r);
+    if (retro_atomic_fetch_sub_int(&r->ref_count, 1) == 1) {
+        g_free(r);
+    } else {
+        r->a.pdata = NULL;
+        r->a.len = r->alloc = 0;
+    }
     return seg;
 }
 
 GPtrArray *g_ptr_array_ref(GPtrArray *array)
 {
-    ((GRealPtrArray *)array)->ref_count++;
+    retro_atomic_fetch_add_int(&((GRealPtrArray *)array)->ref_count, 1);
     return array;
 }
 
 void g_ptr_array_unref(GPtrArray *array)
 {
-    if (--((GRealPtrArray *)array)->ref_count == 0) {
-        g_ptr_array_free(array, TRUE);
+    if (retro_atomic_fetch_sub_int(&((GRealPtrArray *)array)->ref_count, 1) == 1) {
+        GRealPtrArray *r = (GRealPtrArray *)array;
+        if (r->free_func) {
+            for (guint i = 0; i < r->a.len; i++) {
+                r->free_func(r->a.pdata[i]);
+            }
+        }
+        g_free(r->a.pdata);
+        g_free(r);
     }
 }
 
@@ -1114,7 +1134,7 @@ struct _GHashTable {
     GEqualFunc key_equal_func;
     GDestroyNotify key_destroy_func;
     GDestroyNotify value_destroy_func;
-    gint ref_count;
+    retro_atomic_int_t ref_count;
     gint version;               /* bumped on every change, for iterators */
 };
 
@@ -1211,7 +1231,7 @@ GHashTable *g_hash_table_new_full(GHashFunc hash_func,
     t->key_equal_func = key_equal_func;
     t->key_destroy_func = key_destroy_func;
     t->value_destroy_func = value_destroy_func;
-    t->ref_count = 1;
+    retro_atomic_int_init(&t->ref_count, 1);
     g_hash_alloc(t, 8);
     return t;
 }
@@ -1251,13 +1271,13 @@ void g_hash_table_remove_all(GHashTable *t)
 
 GHashTable *g_hash_table_ref(GHashTable *t)
 {
-    t->ref_count++;
+    retro_atomic_fetch_add_int(&t->ref_count, 1);
     return t;
 }
 
 void g_hash_table_unref(GHashTable *t)
 {
-    if (--t->ref_count == 0) {
+    if (retro_atomic_fetch_sub_int(&t->ref_count, 1) == 1) {
         g_hash_table_remove_all(t);
         g_free(t->hashes);
         g_free(t->keys);
@@ -1596,7 +1616,7 @@ struct _GTree {
     GDestroyNotify key_destroy_func;
     GDestroyNotify value_destroy_func;
     gint nnodes;
-    gint ref_count;
+    retro_atomic_int_t ref_count;
     guint32 seed;
 };
 
@@ -1611,7 +1631,7 @@ GTree *g_tree_new_full(GCompareDataFunc key_compare_func,
     t->key_compare_data = key_compare_data;
     t->key_destroy_func = key_destroy_func;
     t->value_destroy_func = value_destroy_func;
-    t->ref_count = 1;
+    retro_atomic_int_init(&t->ref_count, 1);
     t->seed = 0x2545f491u;
     return t;
 }
@@ -1666,13 +1686,13 @@ void g_tree_destroy(GTree *tree)
 
 GTree *g_tree_ref(GTree *tree)
 {
-    tree->ref_count++;
+    retro_atomic_fetch_add_int(&tree->ref_count, 1);
     return tree;
 }
 
 void g_tree_unref(GTree *tree)
 {
-    if (--tree->ref_count == 0) {
+    if (retro_atomic_fetch_sub_int(&tree->ref_count, 1) == 1) {
         g_tree_free_all(tree, tree->root);
         g_free(tree);
     }

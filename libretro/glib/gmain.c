@@ -80,8 +80,10 @@ static GMainContext *g_default_context;
 
 GMainContext *g_main_context_default(void)
 {
-    if (!g_default_context) {
+    static gsize initialized;
+    if (g_once_init_enter(&initialized)) {
         g_default_context = g_main_context_new();
+        g_once_init_leave(&initialized, 1);
     }
     return g_default_context;
 }

@@ -10,6 +10,9 @@
  */
 
 #include "qemu/osdep.h"
+#ifdef _WIN32
+#include "qemu/win32-tls.h"
+#endif
 #include "qemu/cutils.h"
 #include "qapi/error.h"
 #include "qemu/guest-random.h"
@@ -17,13 +20,9 @@
 
 
 #if defined(_WIN32)
-static DWORD tls_key_thread_rand = TLS_OUT_OF_INDEXES;
-static inline void thread_rand_tls_init(void) {
-    if (tls_key_thread_rand == TLS_OUT_OF_INDEXES)
-        tls_key_thread_rand = TlsAlloc();
-}
-#define thread_rand ((GRand *)(thread_rand_tls_init(), TlsGetValue(tls_key_thread_rand)))
-#define SET_thread_rand(v) TlsSetValue(tls_key_thread_rand, (LPVOID)(v))
+static QemuWin32TLS tls_key_thread_rand = QEMU_WIN32_TLS_INITIALIZER;
+#define thread_rand ((GRand *)qemu_win32_tls_get(&tls_key_thread_rand))
+#define SET_thread_rand(v) qemu_win32_tls_set(&tls_key_thread_rand, (LPVOID)(v))
 #else
 static __thread GRand *thread_rand;
 #define SET_thread_rand(v) do { thread_rand = (v); } while(0)

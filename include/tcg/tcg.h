@@ -493,8 +493,7 @@ static inline bool temp_readonly(TCGTemp *ts)
 
 #if defined(_WIN32)
 extern unsigned long tls_key_tcg_ctx;
-void *__stdcall TlsGetValue(unsigned long);
-int __stdcall TlsSetValue(unsigned long, void *);
+#include <windows.h>
 static inline TCGContext *tcg_ctx_get(void) {
     return (TCGContext *)TlsGetValue(tls_key_tcg_ctx);
 }

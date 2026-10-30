@@ -31,6 +31,8 @@ typedef int gboolean;
 #define TRUE 1
 #define FALSE 0
 #define g_assert assert
+#define g_new(type, count) ((type *)malloc(sizeof(type) * (count)))
+#define g_free free
 static unsigned init_calls,barrier_calls,init_entered,init_release,init_done;
 static unsigned first_read,queue_release,callbacks,blocked,returned;
 static bool concurrent;
@@ -76,6 +78,16 @@ int main(int argc,char **argv) {
  SetErrorMode(SEM_FAILCRITICALERRORS|SEM_NOGPFAULTERRORBOX);
 #endif
  assert(argc==2);
+ if(!strcmp(argv[1],"nested")) {
+  static gsize locations[65]; /* The old 64-slot table aliases these. */
+  assert(g_once_init_enter(&locations[0]));
+  assert(g_once_init_enter(&locations[64]));
+  g_once_init_leave(&locations[64],2);
+  g_once_init_leave(&locations[0],1);
+  assert(!g_once_init_enter(&locations[0]));
+  assert(!g_once_init_enter(&locations[64]));
+  puts("PASS: nested independent once locations cannot deadlock on a hash collision");return 0;
+ }
  if(!strcmp(argv[1],"worker")) {
   Thread racers[16];callback_node.func=callback;enqueue(&callback_node);
   for(unsigned i=0;i<16;i++)racers[i]=spawn(consume,(void *)(uintptr_t)1);

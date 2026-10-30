@@ -684,8 +684,7 @@ extern CPUTailQ cpus_queue;
 
 #if defined(_WIN32)
 extern unsigned long tls_key_current_cpu;
-void *__stdcall TlsGetValue(unsigned long);
-int __stdcall TlsSetValue(unsigned long, void *);
+#include <windows.h>
 static inline CPUState *current_cpu_get(void) {
     return (CPUState *)TlsGetValue(tls_key_current_cpu);
 }

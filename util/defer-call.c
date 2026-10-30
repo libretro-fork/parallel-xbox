@@ -19,6 +19,9 @@
  */
 
 #include "qemu/osdep.h"
+#ifdef _WIN32
+#include "qemu/win32-tls.h"
+#endif
 #include "qemu/coroutine-tls.h"
 #include "qemu/notify.h"
 #include "qemu/thread.h"
@@ -47,14 +50,12 @@ static void defer_call_atexit(Notifier *n, void *value)
 }
 
 #if defined(_WIN32)
-static DWORD tls_key_defer_call_atexit_notifier = TLS_OUT_OF_INDEXES;
+static QemuWin32TLS tls_key_defer_call_atexit_notifier = QEMU_WIN32_TLS_INITIALIZER;
 static inline Notifier *get_defer_call_atexit_notifier(void) {
-    if (tls_key_defer_call_atexit_notifier == TLS_OUT_OF_INDEXES)
-        tls_key_defer_call_atexit_notifier = TlsAlloc();
-    Notifier *p = (Notifier *)TlsGetValue(tls_key_defer_call_atexit_notifier);
+    Notifier *p = (Notifier *)qemu_win32_tls_get(&tls_key_defer_call_atexit_notifier);
     if (!p) {
         p = g_malloc0(sizeof(Notifier));
-        TlsSetValue(tls_key_defer_call_atexit_notifier, p);
+        qemu_win32_tls_set(&tls_key_defer_call_atexit_notifier, p);
     }
     return p;
 }

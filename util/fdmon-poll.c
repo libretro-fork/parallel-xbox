@@ -6,6 +6,9 @@
  */
 
 #include "qemu/osdep.h"
+#ifdef _WIN32
+#include "qemu/win32-tls.h"
+#endif
 #include "aio-posix.h"
 #include "qemu/rcu_queue.h"
 
@@ -22,43 +25,32 @@
  * has none of the disadvantages of these three options.
  */
 #if defined(_WIN32)
-static DWORD tls_key_pollfds = TLS_OUT_OF_INDEXES;
-static DWORD tls_key_nodes = TLS_OUT_OF_INDEXES;
-static DWORD tls_key_npfd = TLS_OUT_OF_INDEXES;
-static DWORD tls_key_nalloc = TLS_OUT_OF_INDEXES;
-static DWORD tls_key_pollfds_cleanup_notifier = TLS_OUT_OF_INDEXES;
+static QemuWin32TLS tls_key_pollfds = QEMU_WIN32_TLS_INITIALIZER;
+static QemuWin32TLS tls_key_nodes = QEMU_WIN32_TLS_INITIALIZER;
+static QemuWin32TLS tls_key_npfd = QEMU_WIN32_TLS_INITIALIZER;
+static QemuWin32TLS tls_key_nalloc = QEMU_WIN32_TLS_INITIALIZER;
+static QemuWin32TLS tls_key_pollfds_cleanup_notifier = QEMU_WIN32_TLS_INITIALIZER;
 
-static inline void fdmon_tls_init(void) {
-    if (tls_key_pollfds == TLS_OUT_OF_INDEXES) {
-        tls_key_pollfds = TlsAlloc();
-        tls_key_nodes = TlsAlloc();
-        tls_key_npfd = TlsAlloc();
-        tls_key_nalloc = TlsAlloc();
-        tls_key_pollfds_cleanup_notifier = TlsAlloc();
-    }
-}
-
-#define pollfds      ((GPollFD *)(fdmon_tls_init(), TlsGetValue(tls_key_pollfds)))
-#define nodes        ((AioHandler **)(fdmon_tls_init(), TlsGetValue(tls_key_nodes)))
-#define npfd         ((unsigned)(uintptr_t)(fdmon_tls_init(), TlsGetValue(tls_key_npfd)))
-#define nalloc       ((unsigned)(uintptr_t)(fdmon_tls_init(), TlsGetValue(tls_key_nalloc)))
+#define pollfds      ((GPollFD *)qemu_win32_tls_get(&tls_key_pollfds))
+#define nodes        ((AioHandler **)qemu_win32_tls_get(&tls_key_nodes))
+#define npfd         ((unsigned)(uintptr_t)qemu_win32_tls_get(&tls_key_npfd))
+#define nalloc       ((unsigned)(uintptr_t)qemu_win32_tls_get(&tls_key_nalloc))
 
 static inline Notifier *get_pollfds_cleanup_notifier_ptr(void) {
-    fdmon_tls_init();
-    Notifier *p = (Notifier *)TlsGetValue(tls_key_pollfds_cleanup_notifier);
+    Notifier *p = (Notifier *)qemu_win32_tls_get(&tls_key_pollfds_cleanup_notifier);
     if (!p) {
         p = g_malloc0(sizeof(Notifier));
-        TlsSetValue(tls_key_pollfds_cleanup_notifier, p);
+        qemu_win32_tls_set(&tls_key_pollfds_cleanup_notifier, p);
     }
     return p;
 }
 #define pollfds_cleanup_notifier (*get_pollfds_cleanup_notifier_ptr())
 
 /* Helper macros to set TLS values */
-#define SET_pollfds(v)  TlsSetValue(tls_key_pollfds, (LPVOID)(v))
-#define SET_nodes(v)    TlsSetValue(tls_key_nodes, (LPVOID)(v))
-#define SET_npfd(v)     TlsSetValue(tls_key_npfd, (LPVOID)(uintptr_t)(v))
-#define SET_nalloc(v)   TlsSetValue(tls_key_nalloc, (LPVOID)(uintptr_t)(v))
+#define SET_pollfds(v)  qemu_win32_tls_set(&tls_key_pollfds, (LPVOID)(v))
+#define SET_nodes(v)    qemu_win32_tls_set(&tls_key_nodes, (LPVOID)(v))
+#define SET_npfd(v)     qemu_win32_tls_set(&tls_key_npfd, (LPVOID)(uintptr_t)(v))
+#define SET_nalloc(v)   qemu_win32_tls_set(&tls_key_nalloc, (LPVOID)(uintptr_t)(v))
 #else
 static __thread GPollFD *pollfds;
 static __thread AioHandler **nodes;

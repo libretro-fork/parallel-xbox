@@ -59,6 +59,22 @@ case $core in
 *.so) python3 "$here/test-libretro-jit.py" "$here/../.." "$cc" ;;
 esac
 python3 "$here/test-rcu-startup.py" "$here/../.." "$cc"
+case $core in
+*.dll)
+    case $h in
+    wine*)
+        ${HARNESS_CC:-x86_64-w64-mingw32-gcc} -O2 -std=gnu11 -Wall -static \
+            -I"$here/../../include" "$here/test-win32-tls.c" -o "$work/bin/tlstest.exe"
+        wine "$work/bin/tlstest.exe"
+        ;;
+    *)
+        ${cc} -O2 -std=gnu11 -Wall -static -I"$here/../../include" \
+            "$here/test-win32-tls.c" -o "$work/bin/tlstest.exe"
+        "$work/bin/tlstest.exe"
+        ;;
+    esac
+    ;;
+esac
 python3 "$here/test-kernel-idle.py" "$here/../.." "$cc"
 python3 "$here/test-interrupt-shadow.py" "$here/../.." "$cc"
 python3 "$here/test-idle-interrupts.py" "$here/../.." "$cc"
