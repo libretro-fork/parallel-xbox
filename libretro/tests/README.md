@@ -606,10 +606,20 @@ Lifetime tracking consults only the selected face bits. Scaling above 1x and
 other layouts retain the existing all-GPU or RAM behavior.
 The mixed fixture creates -X magenta on the GPU at 2720 with other faces in RAM,
 selects +X green at 2740, edits it yellow on the CPU at 2745, redraws -X cyan on
-the GPU at 2760, then checks +X yellow again at 2780. The GPU redraw uses an
-ordinary triangle rather than the existing unsupported clear-of-live-swizzled-
-surface path. Six captures plus cyan/yellow/untouched-blue CPU words verify
+the GPU at 2760, then checks +X yellow again at 2780. The GPU redraw uses a full-surface, all-channel clear of the same live
+swizzled view. Six captures plus cyan/yellow/untouched-blue CPU words verify
 layer selection, updates, copy-on-write preservation and delayed CPU reads.
 Focused native-resolution counters removed the bind-time 1 KiB GPU-face readback;
 only five RAM faces are uploaded, with the GPU face copied directly. Later
 idle expiry or CPU reads still settle owed GPU content normally.
+
+Vulkan swizzled clear reuse is restricted to an exactly matching color view
+(format, dimensions, pitch, native-resolution mode, anti-aliasing and clip
+origin), all color channels and a full-surface rectangle. It reuses the same
+attachment-clear path already used for a fresh swizzled image. Partial clears,
+depth views and layout migration remain guarded. The mixed cube fixture now
+re-clears its retained GPU face cyan at 2760; a separate case clears a 16x16
+face blue then rebinds and clears it magenta at 2860. CPU verification at 2880
+checks all 256 swizzled pixels, both endpoint words and an untouched adjacent
+blue face. This validates storage/reuse behavior without changing clear color
+arithmetic or asserting new hardware-accuracy results.

@@ -2243,7 +2243,27 @@ static void update_surface_part(NV2AState *d, bool upload, bool color)
                      surface->shape.clip_y, surface->shape.clip_height,
                      surface->pitch);
 
-            assert(!(target.swizzle && pg->clearing));
+            /* A clear can reuse the exact swizzled color view just as it
+             * clears a freshly created one. Do not infer layout migration
+             * or permit a larger cached view here. */
+            assert(!(target.swizzle && pg->clearing) ||
+                   (color && surface->swizzle &&
+                    check_surface_compatibility(surface, &target, true) &&
+                    surface->native_resolution == target.native_resolution &&
+                    surface->shape.color_format == target.shape.color_format &&
+                    surface->shape.anti_aliasing == target.shape.anti_aliasing &&
+                    surface->shape.clip_x == target.shape.clip_x &&
+                    surface->shape.clip_y == target.shape.clip_y &&
+                    pgraph_full_color_clear(r->clear_parameter,
+                        GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_CLEARRECTX),
+                                 NV_PGRAPH_CLEARRECTX_XMIN),
+                        GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_CLEARRECTX),
+                                 NV_PGRAPH_CLEARRECTX_XMAX),
+                        GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_CLEARRECTY),
+                                 NV_PGRAPH_CLEARRECTY_YMIN),
+                        GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_CLEARRECTY),
+                                 NV_PGRAPH_CLEARRECTY_YMAX),
+                        target.width, target.height)));
 
 #if 0
             if (surface->swizzle != target.swizzle) {

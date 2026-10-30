@@ -1387,23 +1387,10 @@ void gpu_main(void)
             method(NV097_SET_SURFACE_FORMAT, 0x04040228u);
             method(NV097_SET_SURFACE_PITCH, 64u | (64u << 16));
             method(NV097_SET_SURFACE_COLOR_OFFSET, 0x03600400u);
-            disable_texture();
-            method(NV097_SET_COMBINER_SPECULAR_FOG_CW0, 4); /* V0 */
-            method(NV097_SET_COMBINER_SPECULAR_FOG_CW1, 0x00001400u); /* V0.a */
-            method(0x1a00u + 3 * 16, 0);
-            method(0x1a00u + 3 * 16 + 4, 0x3f800000u);
-            method(0x1a00u + 3 * 16 + 8, 0x3f800000u);
-            method(0x1a00u + 3 * 16 + 12, 0x3f800000u);
-            method(NV097_SET_BEGIN_END, 5);
-            push(0x40000000u | (12u << 18) | NV097_INLINE_ARRAY);
-            const u32 positions[12] = {0,0,0,0x3f800000u,
-                0x42000000u,0,0,0x3f800000u,0,0x42000000u,0,0x3f800000u};
-            for (u32 vertex = 0; vertex < 12; vertex++) push(positions[vertex]);
-            method(NV097_SET_BEGIN_END, 0);
-            method(NV097_SET_TEXTURE_CONTROL0, 1u << 30);
-            method(NV097_SET_SHADER_STAGE_PROGRAM, 3);
-            method(NV097_SET_COMBINER_SPECULAR_FOG_CW0, 8);
-            method(NV097_SET_COMBINER_SPECULAR_FOG_CW1, 0x00001800u);
+            method(NV097_SET_COLOR_CLEAR_VALUE, 0xff00ffffu);
+            method(NV097_SET_CLEAR_RECT_H, 15u << 16);
+            method(NV097_SET_CLEAR_RECT_V, 15u << 16);
+            method(NV097_CLEAR_SURFACE, 0xf0);
             method(NV097_SET_SURFACE_CLIP_H, WIDTH << 16);
             method(NV097_SET_SURFACE_CLIP_V, HEIGHT << 16);
             method(NV097_SET_SURFACE_FORMAT, 0x128u);
@@ -1420,6 +1407,39 @@ void gpu_main(void)
             ram32(0x0030007cu, rd32(0x03600400u));
             ram32(0x00300080u, rd32(0x03600000u));
             ram32(0x00300084u, rd32(0x03600800u));
+        }
+        /* Rebind the exact swizzled view for a second full clear. */
+        if (frame == 2860) {
+            method(NV097_SET_SURFACE_CLIP_H, 16u << 16);
+            method(NV097_SET_SURFACE_CLIP_V, 16u << 16);
+            method(NV097_SET_SURFACE_FORMAT, 0x04040228u);
+            method(NV097_SET_SURFACE_PITCH, 64u | (64u << 16));
+            method(NV097_SET_SURFACE_COLOR_OFFSET, 0x03600400u);
+            method(NV097_SET_COLOR_CLEAR_VALUE, 0xff0000ffu);
+            method(NV097_SET_CLEAR_RECT_H, 15u << 16);
+            method(NV097_SET_CLEAR_RECT_V, 15u << 16);
+            method(NV097_CLEAR_SURFACE, 0xf0);
+            method(NV097_SET_SURFACE_COLOR_OFFSET, SURF_D);
+            method(NV097_SET_SURFACE_COLOR_OFFSET, 0x03600400u);
+            method(NV097_SET_COLOR_CLEAR_VALUE, 0xffff00ffu);
+            method(NV097_SET_CLEAR_RECT_H, 15u << 16);
+            method(NV097_CLEAR_SURFACE, 0xf0);
+            method(NV097_SET_SURFACE_CLIP_H, WIDTH << 16);
+            method(NV097_SET_SURFACE_CLIP_V, HEIGHT << 16);
+            method(NV097_SET_SURFACE_FORMAT, 0x128u);
+            method(NV097_SET_SURFACE_PITCH, PITCH | (PITCH << 16));
+            method(NV097_SET_SURFACE_COLOR_OFFSET, SURF_D);
+            kick();
+        }
+        if (frame == 2880) {
+            u32 bad = 0;
+            for (u32 y = 0; y < 16; y++) for (u32 x = 0; x < 16; x++)
+                bad += rd32(0x03600400u + swizzled(x, y) * 4) !=
+                       0xffff00ffu;
+            ram32(0x00300088u, bad);
+            ram32(0x0030008cu, rd32(0x03600400u));
+            ram32(0x00300090u, rd32(0x03600400u + swizzled(15, 15) * 4));
+            ram32(0x00300094u, rd32(0x03600800u));
         }
         method(NV097_FLIP_INCREMENT_WRITE, 0);
         kick();

@@ -699,6 +699,25 @@ elif [ "$r" != 3 ]; then
   echo "FAIL: mixed cube exited $r"; exit 1
 fi
 
+# Rebinding an exact live swizzled color view permits a full all-channel clear.
+set +e
+timeout 300 $h "$core" "$work/sysg" $vp --vulkan --opt xemu_renderer=vulkan \
+  --opt xemu_memory=64 --opt xemu_surface_scale=1 --frames 2900 --strict \
+  --peek 0x300088 --peek 0x30008c --peek 0x300090 --peek 0x300094 \
+  >"$work/gpu_swizzled_reclear.txt"
+r=$?
+set -e
+if [ "$r" = 0 ]; then
+  for want in "peek_0x300088=0x00000000" "peek_0x30008c=0xffff00ff" \
+              "peek_0x300090=0xffff00ff" "peek_0x300094=0xff0000ff"; do
+    grep -q "^$want$" "$work/gpu_swizzled_reclear.txt" || {
+      echo "FAIL: swizzled reclear: $want"; exit 1;
+    }
+  done
+elif [ "$r" != 3 ]; then
+  echo "FAIL: swizzled reclear exited $r"; exit 1
+fi
+
 # A savestate taken while surfaces live only on the GPU (rom/gpu.c: before
 # run 64, B drawn and its depth cleared at frame 62, nothing read back), then
 # loaded in a new process, which has no GPU surfaces: the depth the guest
