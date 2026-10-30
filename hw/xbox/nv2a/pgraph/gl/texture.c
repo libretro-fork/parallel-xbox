@@ -279,6 +279,19 @@ static bool can_reinterpret_argb_as_rgb565(PGRAPHState *pg,
     return true;
 }
 
+/* Texture sampling is source use even when the GPU copy is unchanged. */
+static void touch_texture_sources(PGRAPHState *pg, SurfaceBinding *surface,
+                                   SurfaceBinding *const cube_faces[6], bool cube)
+{
+    if (cube) {
+        for (unsigned face = 0; face < 6; face++) {
+            cube_faces[face]->frame_time = pg->frame_time;
+        }
+    } else if (surface) {
+        surface->frame_time = pg->frame_time;
+    }
+}
+
 void pgraph_gl_bind_textures(NV2AState *d)
 {
     int i;
@@ -403,6 +416,7 @@ void pgraph_gl_bind_textures(NV2AState *d)
             }
 
             if (reusable) {
+                touch_texture_sources(pg, surface, cube_faces, surf_to_tex_cube);
                 TextureBinding *tb = r->texture_binding[i];
                 if (!(r->tex_shadow_valid &&
                       r->tex_shadow_name[i] == tb->gl_texture &&
@@ -586,6 +600,8 @@ void pgraph_gl_bind_textures(NV2AState *d)
                     ? 1 : pg->surface_scale_factor;
         }
 
+        touch_texture_sources(pg, surf_to_tex ? surface : NULL, cube_faces,
+                               surf_to_tex_cube);
         apply_texture_parameters(r,
                                  binding,
                                  &kelvin_color_format_info_map[state.color_format],

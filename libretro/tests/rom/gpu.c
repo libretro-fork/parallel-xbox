@@ -1200,12 +1200,12 @@ void gpu_main(void)
                 }
             }
         }
-        if (frame >= 1361 && frame <= 1380) {
+        if (frame >= 1361 && frame <= 1440) {
             triangle();
-            if (frame == 1380) disable_texture();
+            if (frame == 1440) disable_texture();
             kick();
         }
-        if (frame == 1390) {
+        if (frame == 1460) {
             /* A later CPU reader must still get the retired GPU content. */
             ram32(GPU_READ0, rd32(TEX_RETIRED));
         }

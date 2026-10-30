@@ -55,5 +55,19 @@ int main(void) {
     s=(SurfaceBinding){.frame_time=UINT32_MAX-8,.image=1}; r.surfaces.first=&s;
     t.sampled_frame=UINT32_MAX; d.pgraph.frame_time=2;
     expire_old_surfaces(&d); assert(!s.evicted && s.frame_time==UINT32_MAX);
+    SurfaceBinding faces[6]={0},flat={.frame_time=5};
+    SurfaceBinding *face_ptrs[6];
+    for(unsigned i=0;i<6;i++) face_ptrs[i]=&faces[i];
+    d.pgraph.frame_time=0;
+    touch_texture_sources(&d.pgraph,&flat,face_ptrs,false);
+    assert(flat.frame_time==0);
+    for(unsigned i=0;i<6;i++) assert(faces[i].frame_time==0);
+    d.pgraph.frame_time=20;
+    touch_texture_sources(&d.pgraph,NULL,face_ptrs,true);
+    for(unsigned i=0;i<6;i++) assert(faces[i].frame_time==20);
+    d.pgraph.frame_time=30;
+    touch_texture_sources(&d.pgraph,NULL,face_ptrs,false);
+    for(unsigned i=0;i<6;i++) assert(faces[i].frame_time==20);
+    puts("OpenGL flat/cube source-use stamps passed");
     printf("surface sampling age: %u selection cases, timestamp, idle expiry and wrap passed\n",cases);
 }

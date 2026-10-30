@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""Compile the production surface expiry and texture-use clock. No GPU required."""
+"""Verify Vulkan surface expiry/use clocks and OpenGL source-use stamps. No GPU required."""
 from pathlib import Path
 import os
 import subprocess
@@ -7,8 +7,10 @@ import sys
 import tempfile
 repo=Path(sys.argv[1]).resolve()
 parts=[]
-for file,name in [('surface.c','expire_old_surfaces'),('texture.c','update_timestamps')]:
-    source=(repo/'hw/xbox/nv2a/pgraph/vk'/file).read_text()
+for api,file,name in [('vk','surface.c','expire_old_surfaces'),
+                      ('vk','texture.c','update_timestamps'),
+                      ('gl','texture.c','touch_texture_sources')]:
+    source=(repo/'hw/xbox/nv2a/pgraph'/api/file).read_text()
     if file=='surface.c':
         parts.append(next(line for line in source.splitlines() if line.startswith('const int max_surface_frame_time_delta =')))
     start=source.index('static void '+name+'(')

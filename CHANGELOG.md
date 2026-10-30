@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- OpenGL refreshes render-target surface age when its GPU texture copy is sampled, including unchanged-state reuse and cubemap sources. Actively sampled sources no longer expire into a readback and native texture re-upload after 60 frames.
+
 - Vulkan keeps compatible surface images alive while bound texture views are still sampled, including unchanged-state draws. This avoids expiry-triggered readback and private texture upload during continued GPU sampling. Surfaces still expire after sampling stops.
 
 - Vulkan surface expiry now uses the existing lazy/eager eviction policy instead of forcing every dirty surface back to RAM after five frames. GPU-only content remains owed to a later reader, avoiding a premature CPU readback while preserving CPU reads and savestates.
