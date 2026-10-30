@@ -535,6 +535,23 @@ t "Run-Ahead 1, GP DSP" $h "$(path "$core")" "$(path "$work/sysd")" $dsp --opt x
 cmp "$work/rad0.wav" "$work/rad1.wav" || {
   echo "FAIL: the GP DSP's sound with Run-Ahead is not the sound without it"; exit 1; }
 
+# The main loop's step (util/main-loop.c, XBOX) runs the bottom halves and
+# timers straight: no GLib main context and no poll. Before, every pass of
+# the frame loop polled, about 30 ppoll a frame (8651 in 300 frames of the
+# busy ROM). Over 300 frames of the busy and the display ROM the core polls
+# at its start only. Linux: with strace.
+if command -v strace >/dev/null 2>&1 && [ "$(uname -s)" = Linux ]; then
+  for rom in sysb sysg; do
+    echo "== the main loop, $rom: no poll a frame"
+    timeout 300 strace -f -c -e trace=poll,ppoll,select,pselect6,epoll_wait,epoll_pwait \
+      -o "$work/polls-$rom.txt" $h "$(path "$core")" "$(path "$work/$rom")" $vp --frames 300 \
+      >/dev/null
+    n=$(awk '$NF ~ /^(poll|ppoll|select|pselect6|epoll_wait|epoll_pwait)$/ {s += $4} END {print s+0}' "$work/polls-$rom.txt")
+    echo "polls: $n"
+    [ "$n" -le 30 ] || { echo "FAIL: the core polled $n times in 300 frames"; exit 1; }
+  done
+fi
+
 # Savestates are the whole machine in the frontend's buffer: right after a
 # load the guest's RAM is byte for byte what it was at the save, in the same
 # process and in another one (the busy ROM's RAM changes every frame).

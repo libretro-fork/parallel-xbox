@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Less work between the game's instructions: the emulator's main loop no longer goes through GLib's main loop and a poll() system call on every pass of the frame loop (about 30 times a frame). Deferred device work and timers now run directly, and when the emulator has to wait for the GPU or a disk read, it sleeps until that work signals it is done. In the test ROMs this cut the core's system calls by 38 to 62%. The core also no longer sets up signal handling of its own (SIGBUS, SIGALRM, SIGIO): those signals belong to the frontend. With NAT networking on, the network sockets are still polled as before.
+
 - About 150 pieces of QEMU that nothing in the core ever reaches are no longer built into it (unused USB, SCSI, ACPI, chardev, block filter and network filter devices, TLS and auth backends, and stubs nothing calls): the core is about 0.8 MB smaller and registers fewer device types at load.
 
 - Two of QEMU's ways of running the emulated CPU that the core never uses (one thread per CPU, and round-robin) are no longer built into it.

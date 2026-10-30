@@ -486,6 +486,9 @@ void aio_notify(AioContext *ctx)
     if (aio_main_notify_hook && ctx == qemu_get_aio_context()) {
         aio_main_notify_hook();
     }
+#ifdef XBOX
+    qemu_main_loop_wake();
+#endif
 }
 
 void aio_notify_accept(AioContext *ctx)

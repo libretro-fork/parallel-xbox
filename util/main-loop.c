@@ -35,6 +35,9 @@
 #include "qemu/error-report.h"
 #include "qemu/queue.h"
 #include "qom/object.h"
+#ifdef XBOX
+#include <rthreads/retro_eventcount.h>
+#endif
 
 #ifdef XBOX
 /* FIXME: This is a slightly incomplete implementation of moving
@@ -109,6 +112,15 @@ static void sigfd_handler(void *opaque)
 
 static int qemu_signal_init(Error **errp)
 {
+#ifdef XBOX
+    /*
+     * The libretro core takes no signals: they are the frontend's process'
+     * (SIGBUS from memory preallocation, SIGIO, SIGALRM are not used, and
+     * the vCPU is kicked without SIG_IPI). Their signalfd was a descriptor
+     * the main loop had to poll on every pass.
+     */
+    return 0;
+#else
     int sigfd;
     sigset_t set;
 
@@ -144,6 +156,7 @@ static int qemu_signal_init(Error **errp)
     qemu_set_fd_handler(sigfd, sigfd_handler, NULL, (void *)(intptr_t)sigfd);
 
     return 0;
+#endif
 }
 
 #else /* _WIN32 */
@@ -178,6 +191,10 @@ void qemu_notify_event(void)
 }
 
 static GArray *gpollfds;
+#ifdef XBOX
+/* the libretro main loop's wait (main_loop_wait) */
+static retro_eventcount_t main_loop_ec;
+#endif
 
 #ifdef XBOX
 void qemu_init_main_loop_lock(void)
@@ -202,6 +219,7 @@ int qemu_init_main_loop(Error **errp)
     GSource *src;
 
 #ifdef XBOX
+    retro_eventcount_init(&main_loop_ec);
     qemu_main_context = g_main_context_new();
     assert(qemu_main_context != NULL);
     g_main_context_push_thread_default(qemu_main_context);
@@ -642,7 +660,12 @@ void main_loop_poll_remove_notifier(Notifier *notify)
     notifier_remove(notify);
 }
 
+#ifdef XBOX
+/* the loop that polls: NAT networking's sockets, and descriptors */
+static void main_loop_wait_poll(int nonblocking)
+#else
 void main_loop_wait(int nonblocking)
+#endif
 {
     MainLoopPoll mlpoll = {
         .state = MAIN_LOOP_POLL_FILL,
@@ -684,6 +707,94 @@ void main_loop_wait(int nonblocking)
     }
     qemu_clock_run_all_timers();
 }
+
+#ifdef XBOX
+/*
+ * The libretro core's main loop step: the frame loop (ui/libretro.c) calls
+ * it on every pass, so it does no more than the work that is there. The
+ * main context's and the I/O handlers' bottom halves and timers run
+ * straight, with no GLib main context, no poll and no system call. When
+ * it has to wait (nonblocking false, nothing done) the thread sleeps on an
+ * eventcount that aio_notify wakes - a bottom half scheduled from another
+ * thread (a disk read done, the GPU's thread parking, qemu_notify_event),
+ * lock-free and without a descriptor.
+ *
+ * The wait has no timeout: the core waits only while work it started is
+ * under way on another thread (the GPU, a disk read: lr_devices_busy),
+ * whose end wakes it. A timer on a host clock due meanwhile (the RTC, the
+ * qcow2 cache's cleaning) runs on the pass after the wake.
+ *
+ * What does need poll goes the polling way (main_loop_wait_poll), as it
+ * is: NAT networking's sockets (slirp's poll notifier) and a descriptor
+ * handler on either context. GLib sources other than the two contexts are
+ * not run: none is attached in the core (QMP, NBD, chardev sockets and
+ * iothreads are not used).
+ */
+void qemu_main_loop_wake(void)
+{
+    retro_eventcount_notify(&main_loop_ec);
+}
+
+/* Something to do was signalled: aio_notify sets notified before it wakes */
+static bool main_loop_notified(AioContext *io)
+{
+    return qatomic_read(&qemu_aio_context->notified) ||
+           qatomic_read(&io->notified);
+}
+
+static bool main_loop_dispatch(AioContext *io)
+{
+    bool progress = false;
+
+    /* the notifications taken first: one that comes after is seen by the
+     * next look (aio_notify_accept's barrier) */
+    aio_notify_accept(qemu_aio_context);
+    aio_notify_accept(io);
+    progress |= aio_bh_poll(qemu_aio_context) != 0;
+    progress |= aio_bh_poll(io) != 0;
+    progress |= timerlistgroup_run_timers(&qemu_aio_context->tlg);
+    progress |= timerlistgroup_run_timers(&io->tlg);
+    return progress;
+}
+
+void main_loop_wait(int nonblocking)
+{
+    AioContext *io = iohandler_get_aio_context();
+
+    if (!QLIST_EMPTY(&main_loop_poll_notifiers.notifiers) ||
+        aio_has_fd_handlers(qemu_aio_context) || aio_has_fd_handlers(io)) {
+        main_loop_wait_poll(nonblocking);
+        return;
+    }
+
+    if (!main_loop_dispatch(io) && !nonblocking) {
+        int key = retro_eventcount_prepare_wait(&main_loop_ec);
+
+        if (main_loop_notified(io)) {
+            retro_eventcount_cancel_wait(&main_loop_ec);
+        } else {
+            /* other threads take the locks meanwhile, as around poll */
+            bql_unlock();
+            replay_mutex_unlock();
+            qemu_mutex_unlock_main_loop();
+            retro_eventcount_commit_wait(&main_loop_ec, key);
+            qemu_mutex_lock_main_loop();
+            replay_mutex_lock();
+            bql_lock();
+        }
+        main_loop_dispatch(io);
+    }
+
+    if (icount_enabled()) {
+        /*
+         * CPU thread can infinitely wait for event after
+         * missing the warp
+         */
+        icount_start_warp_timer();
+    }
+    qemu_clock_run_all_timers();
+}
+#endif
 
 /* Functions to operate on the main QEMU AioContext.  */
 

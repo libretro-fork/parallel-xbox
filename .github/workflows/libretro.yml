@@ -95,7 +95,7 @@ jobs:
           sudo apt-get -qy install pkg-config libglib2.0-dev libslirp-dev \
             libepoxy-dev libvulkan-dev patchelf \
             nasm libegl-dev libgl-dev libegl-mesa0 libgl1-mesa-dri \
-            mesa-vulkan-drivers
+            mesa-vulkan-drivers strace
 
       # The static Makefile; -g for the symbols artifact (dist/ is stripped)
       - name: Build

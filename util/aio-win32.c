@@ -439,3 +439,19 @@ void aio_context_set_poll_params(AioContext *ctx, int64_t max_ns,
 void aio_context_set_aio_params(AioContext *ctx, int64_t max_batch)
 {
 }
+
+#ifdef XBOX
+/* Whether anything but the context's own notifier waits on a handle or
+ * socket: the libretro main loop (main-loop.c) polls only then */
+bool aio_has_fd_handlers(AioContext *ctx)
+{
+    AioHandler *node;
+
+    QLIST_FOREACH_RCU(node, &ctx->aio_handlers, node) {
+        if (!node->deleted && node->e != &ctx->notifier) {
+            return true;
+        }
+    }
+    return false;
+}
+#endif

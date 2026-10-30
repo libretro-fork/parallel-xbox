@@ -815,3 +815,20 @@ void aio_add_sqe(void (*prep_sqe)(struct io_uring_sqe *sqe, void *opaque),
     ctx->fdmon_ops->add_sqe(ctx, prep_sqe, opaque, cqe_handler);
 }
 #endif /* CONFIG_LINUX_IO_URING */
+
+#ifdef XBOX
+/* Whether anything but the context's own notifier waits on a descriptor:
+ * the libretro main loop (main-loop.c) polls only then */
+bool aio_has_fd_handlers(AioContext *ctx)
+{
+    AioHandler *node;
+
+    QLIST_FOREACH_RCU(node, &ctx->aio_handlers, node) {
+        if (!QLIST_IS_INSERTED(node, node_deleted) &&
+            node->opaque != &ctx->notifier) {
+            return true;
+        }
+    }
+    return false;
+}
+#endif
