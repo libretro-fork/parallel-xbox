@@ -6,9 +6,11 @@
 #define NV2A_MAX_TEXTURES 4
 #define ARRAY_SIZE(a) (sizeof(a)/sizeof((a)[0]))
 typedef struct TextureBinding { bool s2t_borrowed; uintptr_t image;
+    struct { bool byte_reinterpret; uint64_t texture_vram_offset; } key;
+    unsigned draw_time;
     unsigned sampled_frame,submit_time; } TextureBinding;
 typedef struct SurfaceBinding { unsigned frame_time; uintptr_t image;
-    uint64_t vram_addr; struct SurfaceBinding *next; bool evicted; } SurfaceBinding;
+    uint64_t vram_addr; unsigned draw_time; struct SurfaceBinding *next; bool evicted; } SurfaceBinding;
 typedef struct { SurfaceBinding *first; } Surfaces;
 typedef struct { TextureBinding *texture_bindings[4]; unsigned submit_count;
     Surfaces surfaces; } PGRAPHVkState;
@@ -39,6 +41,23 @@ int main(void) {
         bool sample_recent=bound && borrowed && matches && 10-sample_frames[tf]<5;
         expire_old_surfaces(&d);
         assert(s.evicted==!(source_recent || sample_recent));
+        cases++;
+    }
+    for(unsigned address_match=0;address_match<2;address_match++)
+    for(unsigned draw_match=0;draw_match<2;draw_match++)
+    for(unsigned copied=0;copied<2;copied++)
+    for(unsigned recent=0;recent<2;recent++) {
+        SurfaceBinding s={.frame_time=0,.image=1,.vram_addr=100,.draw_time=12};
+        TextureBinding t={.sampled_frame=recent?9:0,.image=2,.draw_time=draw_match?12:11,
+            .key={copied,address_match?100:101}};
+        PGRAPHVkState r={.surfaces={&s},.texture_bindings={&t}};
+        NV2AState d={.pgraph={10,&r}};
+        expire_old_surfaces(&d);
+        assert(s.evicted==!(copied && address_match && draw_match && recent));
+        if(!s.evicted) {
+            d.pgraph.frame_time=15;
+            expire_old_surfaces(&d); assert(s.evicted);
+        }
         cases++;
     }
     /* Both normal and fast binds stamp usage through this production helper. */

@@ -165,6 +165,7 @@ typedef unsigned int u32;
 #define VIDEO_DATA   0x02C00000u
 #define VRAM_END     0x04000000u   /* boundary tests require xemu_memory=64 */
 #define SURF_ORDER   0x03000000u   /* retained second draw for ordering checks */
+#define TEX_COPIED   0x03500000u   /* RGB565 GPU copy with later sampler change */
 #define TEX_RETIRED  0x03400000u   /* GPU-only source, later CPU read */
 #define TEX_YUV      0x03200000u   /* odd-width packed YUV pair tests */
 #define TEX_SOURCE   0x02E00000u   /* GPU-produced pixels, sampled through aliases */
@@ -1175,20 +1176,23 @@ void gpu_main(void)
                 }
             }
         }
-        if (frame == 1360) {
+        if (frame == 1360 || frame == 1660) {
+            u32 source = frame == 1360 ? TEX_RETIRED : TEX_COPIED;
             for (u32 update = 0; update < 2; update++) {
                 method(NV097_SET_SURFACE_CLIP_H, 32u << 16);
                 method(NV097_SET_SURFACE_CLIP_V, 16u << 16);
                 method(NV097_SET_SURFACE_FORMAT, 0x128u);
                 method(NV097_SET_SURFACE_PITCH, 128u | (128u << 16));
-                method(NV097_SET_SURFACE_COLOR_OFFSET, TEX_RETIRED);
+                method(NV097_SET_SURFACE_COLOR_OFFSET, source);
                 method(NV097_SET_COLOR_CLEAR_VALUE,
                        update ? 0xff0000ffu : 0xffff0000u);
                 method(NV097_SET_CLEAR_RECT_H, 31u << 16);
                 method(NV097_SET_CLEAR_RECT_V, 15u << 16);
                 method(NV097_CLEAR_SURFACE, 0xf0);
                 if (!update) {
-                    texture_alias_at(0x80000012u, 32, 0x3f000000u, 0, TEX_RETIRED);
+                    texture_alias_at(frame == 1360 ? 0x80000012u : 0x80000011u,
+                                     frame == 1360 ? 32 : 64,
+                                     0x3f000000u, 0, source);
                     texture_cpu_barrier();
                 } else {
                     method(NV097_SET_SURFACE_CLIP_H, WIDTH << 16);
@@ -1209,6 +1213,14 @@ void gpu_main(void)
             /* A later CPU reader must still get the retired GPU content. */
             ram32(GPU_READ0, rd32(TEX_RETIRED));
         }
+        /* A sampler-only change must retain the GPU-produced RGB565 copy. */
+        if (frame == 1700) method(NV097_SET_TEXTURE_FILTER, 0x02020000u);
+        if (frame >= 1661 && frame <= 1740) {
+            triangle();
+            if (frame == 1740) disable_texture();
+            kick();
+        }
+        if (frame == 1760) ram32(0x00300044u, rd32(TEX_COPIED));
         method(NV097_FLIP_INCREMENT_WRITE, 0);
         kick();
         if (frame >= 100 && frame < 125) {

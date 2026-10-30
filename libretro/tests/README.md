@@ -520,8 +520,17 @@ At guest frame 1340 a retained indexed texture samples a red GPU palette. After 
 
 At guest frame 1360 a fresh ARGB GPU source is sampled directly, changed red to blue, and sampled again without texture-state changes. It then ages out before the CPU reads it at frame 1460. Captures 1370/1410 must stay blue and GPU_READ0 must contain ff0000ff. A Vulkan snapshot at frontend 1447, load at 1470, and later CPU read verify that deferred retired content survives state handling. Temporary readback counters measured expiry-time readback moving from guest frame counter 1364 to the real CPU reader at 1389; context destruction still materializes owed content.
 
-The compatible source created at guest frame 1360 is now sampled on every frame through 1440 without texture-state changes, before the later CPU read. A separate per-binding sample clock keeps its borrowed surface from aging out during use. `test-vulkan-surface-age.py CHECKOUT [CC]` compiles production expiry/timestamp functions and checks 160 combinations plus idle expiry and unsigned frame wrap without a graphics driver. Temporary GPU counters showed an expiry-triggered readback/upload before the change; afterward no texture upload occurs and the source readback waits for the real CPU reader.
+The compatible source created at guest frame 1360 is now sampled on every frame through 1440 without texture-state changes, before the later CPU read. A separate per-binding sample clock keeps its borrowed surface from aging out during use. `test-vulkan-surface-age.py CHECKOUT [CC]` compiles production expiry/timestamp functions and checks 176 combinations, including copied-source address/draw mismatches, plus idle expiry and unsigned frame wrap without a graphics driver. Temporary GPU counters showed an expiry-triggered readback/upload before the change; afterward no texture upload occurs and the source readback waits for the real CPU reader.
 
 The shared compatible-source fixture now samples through frame 1440 to exceed OpenGL's 60-frame age limit, with additional blue captures at 1430/1470. OpenGL marks already-resolved flat or cubemap GPU source surfaces used on successful texture-copy reuse. Temporary counters measured readback and RAM upload at counter 1419 before the fix; afterward the sole readback waits for the CPU reader at 1459, with no RAM texture upload. Conversion arithmetic, copied pixel data and the 60-frame idle limit are unchanged.
 
 The source-age unit oracle also extracts the OpenGL touch helper and verifies flat-source, all-six-cube-face and null-source stamp updates.
+
+The copied-source case creates a fresh ARGB surface at frame 1660, samples its
+RGB565 GPU copy through 1740, changes filtering at 1700 and reads the source on
+the CPU at 1760. Captures at 1670/1710/1770 stay `0x001cff`; guest word
+`0x00300044` becomes `0xff0000ff`. The Vulkan expiry scan recognizes a bound
+byte-reinterpreted copy only when its source address and draw timestamp match.
+It uses the existing sample clock, so an unused binding cannot pin the source.
+Focused transfer counters showed a readback/upload at the sampler change before
+the fix; afterward the readback waits for the explicit CPU read, with no upload.

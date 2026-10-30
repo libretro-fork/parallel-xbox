@@ -562,6 +562,24 @@ elif [ "$r" != 3 ]; then
   echo "FAIL: Vulkan 4x capture exited $r"; exit 1
 fi
 
+# A copied RGB565 texture outlives five-frame source expiry, then changes sampler.
+set +e
+timeout 300 $h "$core" "$work/sysg" $vp --vulkan --opt xemu_renderer=vulkan \
+  --opt xemu_memory=64 --opt xemu_surface_scale=1 --frames 1780 --strict \
+  --pixel 1670 --pixel 1710 --pixel 1770 --peek 0x300044 >"$work/gpu_copied_source.txt"
+r=$?
+set -e
+if [ "$r" = 0 ]; then
+  for want in "pixel_1670=0x001cff" "pixel_1710=0x001cff" \
+              "pixel_1770=0x001cff" "peek_0x300044=0xff0000ff"; do
+    grep -q "^$want$" "$work/gpu_copied_source.txt" || {
+      echo "FAIL: copied source: $want"; exit 1;
+    }
+  done
+elif [ "$r" != 3 ]; then
+  echo "FAIL: copied source exited $r"; exit 1
+fi
+
 # A savestate taken while surfaces live only on the GPU (rom/gpu.c: before
 # run 64, B drawn and its depth cleared at frame 62, nothing read back), then
 # loaded in a new process, which has no GPU surfaces: the depth the guest
