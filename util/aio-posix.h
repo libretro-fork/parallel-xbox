@@ -44,14 +44,14 @@ void aio_add_ready_handler(AioHandlerList *ready_list, AioHandler *node,
 
 extern const FDMonOps fdmon_poll_ops;
 
-/* Switch back to poll(2). list_lock must be held. */
+/* Switch back to poll(2). frontend thread only. */
 void fdmon_poll_downgrade(AioContext *ctx);
 
 #ifdef CONFIG_EPOLL_CREATE1
 bool fdmon_epoll_try_upgrade(AioContext *ctx, unsigned npfd);
 void fdmon_epoll_setup(AioContext *ctx);
 
-/* list_lock must be held */
+/* frontend thread only */
 void fdmon_epoll_disable(AioContext *ctx);
 #else
 static inline bool fdmon_epoll_try_upgrade(AioContext *ctx, unsigned npfd)

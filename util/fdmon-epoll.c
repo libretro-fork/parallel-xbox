@@ -5,7 +5,6 @@
 
 #include "qemu/osdep.h"
 #include <sys/epoll.h>
-#include "qemu/lockcnt.h"
 #include "qemu/rcu_queue.h"
 #include "aio-posix.h"
 
@@ -159,7 +158,7 @@ bool fdmon_epoll_try_upgrade(AioContext *ctx, unsigned npfd)
     }
 
     /* The list must not change while we add fds to epoll */
-    if (!qemu_lockcnt_dec_if_lock(&ctx->list_lock)) {
+    if (!aio_handlers_can_reclaim(ctx)) {
         return false;
     }
 
@@ -168,7 +167,6 @@ bool fdmon_epoll_try_upgrade(AioContext *ctx, unsigned npfd)
         fdmon_epoll_disable(ctx);
     }
 
-    qemu_lockcnt_inc_and_unlock(&ctx->list_lock);
     return ok;
 }
 

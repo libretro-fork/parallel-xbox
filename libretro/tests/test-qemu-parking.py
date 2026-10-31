@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""Production event/counter-gate tests; optional pre-change revision benchmark."""
+"""Production manual-reset event tests; optional pre-change revision benchmark."""
 from pathlib import Path
 import os,re,shlex,subprocess,sys,tempfile
 r=Path(sys.argv[1]).resolve();cc=shlex.split(sys.argv[2] if len(sys.argv)>2 else 'cc')
@@ -11,9 +11,8 @@ def read(name):
 def struct(name,source):
  a=source.index(name);z=source.index('\n}',a)+2
  return source[a:z]+(' QemuEvent;' if name.startswith('typedef') else ';')
-event=read('util/event.c');gate=read('util/lockcnt.c')
+event=read('util/event.c')
 event='\n'.join(line for line in event.splitlines() if not line.startswith('#include'))
-gate='\n'.join(line for line in gate.splitlines() if not line.startswith('#include'))
 event=event.replace('        int key = retro_eventcount_prepare_wait(&ev->waiters);',
  '        test_park_hook(ev, 1);\n        int key = retro_eventcount_prepare_wait(&ev->waiters);\n        test_park_hook(ev, 2);')
 event=event.replace('            retro_eventcount_commit_wait(&ev->waiters, key);',
@@ -25,18 +24,10 @@ event=event.replace('        int key = retro_eventcount_prepare_wait(waiters);',
  '        test_park_hook(ev, 1);\n        int key = retro_eventcount_prepare_wait(waiters);\n        test_park_hook(ev, 2);')
 event=event.replace('            retro_eventcount_commit_wait(waiters, key);',
  '            test_park_hook(ev, 3);\n            retro_eventcount_commit_wait(waiters, key);')
-gate=gate.replace('            int key = retro_eventcount_prepare_wait(&lockcnt->waiters);',
- '            test_park_hook(lockcnt, 4);\n            int key = retro_eventcount_prepare_wait(&lockcnt->waiters);')
-gate=gate.replace('            qemu_futex_wait(&lockcnt->count, *val);',
- '            test_park_hook(lockcnt, 4);\n            qemu_futex_wait(&lockcnt->count, *val);')
-gate=gate.replace('            int key = retro_eventcount_prepare_wait(*waiters);',
- '            test_park_hook(lockcnt, 4);\n            int key = retro_eventcount_prepare_wait(*waiters);')
-traces='\n'.join('#define '+name+'(...) ((void)0)' for name in sorted(set(re.findall(r'\btrace_\w+',gate))))
 code=Path(__file__).with_suffix('.c').read_text()
 futex=read('include/qemu/futex.h') if baseline else ''
 code=code.replace('/* FUTEX */',futex).replace('/* EVENT TYPE */',struct('typedef struct QemuEvent {',read('include/qemu/thread.h')))
-code=code.replace('/* GATE TYPE */',struct('struct QemuLockCnt {',read('include/qemu/lockcnt.h')))
-code=code.replace('/* EVENT */',event).replace('/* GATE */',traces+'\n'+gate)
+code=code.replace('/* EVENT */',event)
 with tempfile.TemporaryDirectory(prefix='qemu-parking-') as t:
  p=Path(t);(p/'test.c').write_text(code)
  binary=Path(os.environ.get('QEMU_PARKING_BINARY',str(p/'test')))

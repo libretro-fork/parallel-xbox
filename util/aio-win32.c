@@ -18,7 +18,6 @@
 #include "qemu/osdep.h"
 #include "block/block.h"
 #include "qemu/main-loop.h"
-#include "qemu/lockcnt.h"
 #include "qemu/queue.h"
 #include "qemu/sockets.h"
 #include "qapi/error.h"
@@ -49,13 +48,13 @@ static void aio_remove_fd_handler(AioContext *ctx, AioHandler *node)
     }
 
     /* If aio_poll is in progress, just mark the node as deleted */
-    if (qemu_lockcnt_count(&ctx->list_lock)) {
+    if (ctx->handler_walk_depth) {
         node->deleted = 1;
         node->pfd.revents = 0;
     } else {
         /* Otherwise, delete it for real.  We can't just mark it as
          * deleted because deleted nodes are only cleaned up after
-         * releasing the list_lock.
+         * leaving the outer handler walk.
          */
         QLIST_SAFE_REMOVE_RCU(node, node);
         g_free(node);
@@ -100,6 +99,7 @@ void aio_set_fd_handler(AioContext *ctx,
     SOCKET s;
     bool is_socket = fd_is_socket(fd);
 
+    aio_assert_handler_owner(ctx);
     s = is_socket ? (SOCKET)_get_osfhandle(fd) :
                     (SOCKET)(uintptr_t)(unsigned int)fd;
     /* External backends can pass a raw Winsock handle rather than a QEMU
@@ -109,7 +109,7 @@ void aio_set_fd_handler(AioContext *ctx,
         return;
     }
 
-    qemu_lockcnt_lock(&ctx->list_lock);
+    aio_assert_handler_owner(ctx);
     QLIST_FOREACH_RCU(old_node, &ctx->aio_handlers, node) {
         if (old_node->pfd.fd == s && !old_node->deleted) {
             break;
@@ -153,7 +153,6 @@ void aio_set_fd_handler(AioContext *ctx,
         aio_remove_fd_handler(ctx, old_node);
     }
 
-    qemu_lockcnt_unlock(&ctx->list_lock);
     aio_notify(ctx);
 }
 
@@ -165,7 +164,7 @@ void aio_set_event_notifier(AioContext *ctx,
 {
     AioHandler *node;
 
-    qemu_lockcnt_lock(&ctx->list_lock);
+    aio_assert_handler_owner(ctx);
     QLIST_FOREACH_RCU(node, &ctx->aio_handlers, node) {
         if (node->e == e && !node->deleted) {
             break;
@@ -192,7 +191,6 @@ void aio_set_event_notifier(AioContext *ctx,
         node->io_notify = io_notify;
     }
 
-    qemu_lockcnt_unlock(&ctx->list_lock);
     aio_notify(ctx);
 }
 
@@ -215,7 +213,7 @@ bool aio_prepare(AioContext *ctx)
      * We have to walk very carefully in case aio_set_fd_handler is
      * called while we're walking.
      */
-    qemu_lockcnt_inc(&ctx->list_lock);
+    aio_handler_walk_begin(ctx);
 
     /* fill fd sets */
     FD_ZERO(&rfds);
@@ -244,7 +242,7 @@ bool aio_prepare(AioContext *ctx)
         }
     }
 
-    qemu_lockcnt_dec(&ctx->list_lock);
+    aio_handler_walk_end(ctx);
     return have_select_revents;
 }
 
@@ -257,7 +255,7 @@ bool aio_pending(AioContext *ctx)
      * We have to walk very carefully in case aio_set_fd_handler is
      * called while we're walking.
      */
-    qemu_lockcnt_inc(&ctx->list_lock);
+    aio_handler_walk_begin(ctx);
     QLIST_FOREACH_RCU(node, &ctx->aio_handlers, node) {
         if (node->pfd.revents && node->io_notify) {
             result = true;
@@ -274,7 +272,7 @@ bool aio_pending(AioContext *ctx)
         }
     }
 
-    qemu_lockcnt_dec(&ctx->list_lock);
+    aio_handler_walk_end(ctx);
     return result;
 }
 
@@ -326,10 +324,9 @@ static bool aio_dispatch_handlers(AioContext *ctx, HANDLE event)
         }
 
         if (node->deleted) {
-            if (qemu_lockcnt_dec_if_lock(&ctx->list_lock)) {
+            if (aio_handlers_can_reclaim(ctx)) {
                 QLIST_SAFE_REMOVE_RCU(node, node);
                 g_free(node);
-                qemu_lockcnt_inc_and_unlock(&ctx->list_lock);
             }
         }
     }
@@ -339,10 +336,10 @@ static bool aio_dispatch_handlers(AioContext *ctx, HANDLE event)
 
 void aio_dispatch(AioContext *ctx)
 {
-    qemu_lockcnt_inc(&ctx->list_lock);
+    aio_handler_walk_begin(ctx);
     aio_bh_poll(ctx);
     aio_dispatch_handlers(ctx, INVALID_HANDLE_VALUE);
-    qemu_lockcnt_dec(&ctx->list_lock);
+    aio_handler_walk_end(ctx);
 }
 
 bool aio_poll(AioContext *ctx, bool blocking)
@@ -356,7 +353,7 @@ bool aio_poll(AioContext *ctx, bool blocking)
     /*
      * There cannot be two concurrent aio_poll calls for the same AioContext (or
      * an aio_poll concurrent with a GSource prepare/check/dispatch callback).
-     * We rely on this below to avoid slow locked accesses to ctx->notify_me.
+     * We rely on this below to avoid slow concurrent accesses to ctx->notify_me.
      *
      * aio_poll() may only be called in the AioContext's thread. iohandler_ctx
      * is special in that it runs in the main thread, but that thread's context
@@ -384,11 +381,12 @@ bool aio_poll(AioContext *ctx, bool blocking)
         retro_atomic_thread_fence_seq_cst();
     }
 
-    qemu_lockcnt_inc(&ctx->list_lock);
+    aio_handler_walk_begin(ctx);
     have_select_revents = aio_prepare(ctx);
 
     /* fill fd sets */
     count = 0;
+    aio_assert_handler_owner(ctx);
     QLIST_FOREACH_RCU(node, &ctx->aio_handlers, node) {
         if (!node->deleted && node->io_notify) {
             assert(count < MAXIMUM_WAIT_OBJECTS);
@@ -439,7 +437,7 @@ bool aio_poll(AioContext *ctx, bool blocking)
         progress |= aio_dispatch_handlers(ctx, event);
     } while (count > 0);
 
-    qemu_lockcnt_dec(&ctx->list_lock);
+    aio_handler_walk_end(ctx);
 
     return progress;
 }
@@ -471,6 +469,7 @@ bool aio_has_fd_handlers(AioContext *ctx)
 {
     AioHandler *node;
 
+    aio_assert_handler_owner(ctx);
     QLIST_FOREACH_RCU(node, &ctx->aio_handlers, node) {
         if (!node->deleted && node->e != &ctx->notifier) {
             return true;

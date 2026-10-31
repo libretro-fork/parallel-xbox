@@ -20,7 +20,9 @@ for name in ('aio_select_raw_socket','aio_set_fd_handler','aio_prepare','aio_pen
         depth+=(source[end]=='{')-(source[end]=='}');end+=1
     body=source[m.start():end]
     parts.append(body if name in ('aio_select_raw_socket','aio_set_fd_handler') else '#ifdef _WIN32\n'+body+'\n#endif')
-code=Path(__file__).with_suffix('.c').read_text().replace('/* HANDLER */',parts[0]).replace('/* PRODUCTION */','\n'.join(parts[1:]))
+h=(repo/'include/block/aio.h').read_text()
+helpers=h[h.index('static inline void aio_assert_handler_owner'):h.index('/**\n * aio_context_new:')]
+code=Path(__file__).with_suffix('.c').read_text().replace('/* OWNER HELPERS */',helpers).replace('/* HANDLER */',parts[0]).replace('/* PRODUCTION */','\n'.join(parts[1:]))
 macros=subprocess.run([args.cc,'-dM','-E','-'],input='',text=True,capture_output=True,check=True).stdout
 windows='#define _WIN32 ' in macros
 with tempfile.TemporaryDirectory(prefix='win32-raw-socket-') as directory:

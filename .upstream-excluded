@@ -3209,3 +3209,7 @@ include/qemu/coroutine-tls.h
 
 # Obsolete AIO graph-registration no-ops
 stubs/graph-lock.c
+
+# AIO handler exclusion gate replaced by frontend-owned traversal depth
+util/lockcnt.c
+include/qemu/lockcnt.h

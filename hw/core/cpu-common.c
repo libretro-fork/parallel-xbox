@@ -24,7 +24,6 @@
 #include "system/hw_accel.h"
 #include "qemu/log.h"
 #include "qemu/main-loop.h"
-#include "qemu/lockcnt.h"
 #include "qemu/error-report.h"
 #include "qemu/qemu-print.h"
 #include "qemu/target-info.h"

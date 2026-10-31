@@ -21,6 +21,8 @@ typedef uintptr_t HANDLE;
 #include <stdlib.h>
 #include <string.h>
 #include "qemu/queue.h"
+#include <limits.h>
+static uintptr_t sthread_get_current_thread_id(void){return 1;}
 #define QLIST_RCU_ENTRY QLIST_ENTRY
 #define QLIST_FOREACH_RCU QLIST_FOREACH
 #define QLIST_FOREACH_SAFE_RCU QLIST_FOREACH_SAFE
@@ -35,7 +37,7 @@ typedef void EventNotifierHandler(EventNotifier *);
 typedef struct {SOCKET fd;int events,revents;} GPollFD;
 typedef struct AioHandler AioHandler;
 /* HANDLER */
-typedef struct {unsigned list_lock;EventNotifier notifier;QLIST_HEAD(,AioHandler) aio_handlers;} AioContext;
+typedef struct {uintptr_t handler_owner_id;unsigned handler_walk_depth;EventNotifier notifier;QLIST_HEAD(,AioHandler) aio_handlers;} AioContext;
 static unsigned allocations,removals,notifications,errors,wrapped_selects,selects;
 static long selected_mask;
 static SOCKET selected_socket,raw_socket,wrapped_socket;
@@ -45,12 +47,7 @@ static void *allocate(size_t size) {void *p=calloc(1,size);assert(p);allocations
 #define g_new0(t,n) ((t *)allocate(sizeof(t)*(n)))
 #define g_free free
 #define error_report(...) (errors++)
-static void qemu_lockcnt_lock(unsigned *lock) {assert(!*lock);(*lock)++;}
-static void qemu_lockcnt_unlock(unsigned *lock) {assert(*lock==1);(*lock)--;}
-static void qemu_lockcnt_inc(unsigned *lock) {(*lock)++;}
-static void qemu_lockcnt_dec(unsigned *lock) {assert(*lock);(*lock)--;}
-static bool qemu_lockcnt_dec_if_lock(unsigned *lock) {assert(false);return false;}
-static void qemu_lockcnt_inc_and_unlock(unsigned *lock) {assert(false);}
+/* OWNER HELPERS */
 static HANDLE event_notifier_get_handle(EventNotifier *event) {return event->handle;}
 static void aio_notify(AioContext *ctx) {notifications++;}
 static void aio_remove_fd_handler(AioContext *ctx,AioHandler *node) {QLIST_REMOVE(node,node);free(node);removals++;}
@@ -94,12 +91,12 @@ static void transfer(AioContext *ctx,SOCKET socket,struct sockaddr_in *address) 
     /* Only the standalone fixture waits, with a one-second deadline. */
     assert(WSAWaitForMultipleEvents(1,&ctx->notifier.handle,FALSE,1000,FALSE)==WSA_WAIT_EVENT_0);
     assert(aio_prepare(ctx) && aio_pending(ctx));unsigned before=callbacks;
-    qemu_lockcnt_inc(&ctx->list_lock);assert(aio_dispatch_handlers(ctx,NULL));qemu_lockcnt_dec(&ctx->list_lock);
+    aio_handler_walk_begin(ctx);assert(aio_dispatch_handlers(ctx,NULL));aio_handler_walk_end(ctx);
     assert(callbacks>before);assert(recv(socket,&byte,1,0)==1 && byte=='X');closesocket(sender);
 }
 #endif
 int main(void) {
-    AioContext ctx={0};
+    AioContext ctx={0};ctx.handler_owner_id=sthread_get_current_thread_id();
 #ifdef _WIN32
     WSADATA data;assert(!WSAStartup(MAKEWORD(2,2),&data));ctx.notifier.handle=WSACreateEvent();assert(ctx.notifier.handle!=WSA_INVALID_EVENT);
     struct sockaddr_in addresses[2];raw_socket=bound_socket(&addresses[0]);wrapped_socket=bound_socket(&addresses[1]);
@@ -116,7 +113,7 @@ int main(void) {
         int fd=wrapped?wrapped_fd:raw_fd;unsigned old_wrapped=wrapped_selects,old_removals=removals;
         aio_set_fd_handler(&ctx,fd,(mode&1)?callback:NULL,(mode&2)?callback:NULL,NULL,NULL,&callbacks);
         AioHandler *node=QLIST_FIRST(&ctx.aio_handlers);assert(node && !QLIST_NEXT(node,node));
-        assert(node->pfd.fd==(wrapped?wrapped_socket:raw_socket) && !ctx.list_lock);
+        assert(node->pfd.fd==(wrapped?wrapped_socket:raw_socket) && !ctx.handler_walk_depth);
         assert(node->pfd.events==((mode&1?G_IO_IN:0)|(mode&2?G_IO_OUT:0)));
         assert(selected_socket==node->pfd.fd && selected_mask==((mode&1?FD_READ|FD_ACCEPT|FD_CLOSE:0)|(mode&2?FD_WRITE|FD_CONNECT:0)));
         assert(wrapped_selects==old_wrapped+wrapped);
@@ -131,18 +128,18 @@ int main(void) {
             unsigned old_allocations=allocations,old_notifications=notifications;AioHandler *old=node;
             force_failure=true;aio_set_fd_handler(&ctx,fd,NULL,callback,NULL,NULL,&callbacks);force_failure=false;
             assert(QLIST_FIRST(&ctx.aio_handlers)==old && old->io_read==callback && !old->io_write);
-            assert(allocations==old_allocations && notifications==old_notifications && !ctx.list_lock);
+            assert(allocations==old_allocations && notifications==old_notifications && !ctx.handler_walk_depth);
         }
         unsigned old_selects=selects;aio_set_fd_handler(&ctx,fd,NULL,NULL,NULL,NULL,NULL);
-        assert(QLIST_EMPTY(&ctx.aio_handlers) && selects==old_selects && !ctx.list_lock);cases++;
+        assert(QLIST_EMPTY(&ctx.aio_handlers) && selects==old_selects && !ctx.handler_walk_depth);cases++;
     }
     force_failure=true;unsigned old_allocations=allocations,old_notifications=notifications;
     aio_set_fd_handler(&ctx,raw_fd,callback,NULL,NULL,NULL,&callbacks);
-    assert(QLIST_EMPTY(&ctx.aio_handlers) && allocations==old_allocations && notifications==old_notifications && errors==4 && !ctx.list_lock);
+    assert(QLIST_EMPTY(&ctx.aio_handlers) && allocations==old_allocations && notifications==old_notifications && errors==4 && !ctx.handler_walk_depth);
 #ifdef _WIN32
     force_failure=false;
     aio_set_fd_handler(&ctx,-1,callback,NULL,NULL,NULL,&callbacks);
-    assert(QLIST_EMPTY(&ctx.aio_handlers) && allocations==old_allocations && notifications==old_notifications && errors==5 && !ctx.list_lock);
+    assert(QLIST_EMPTY(&ctx.aio_handlers) && allocations==old_allocations && notifications==old_notifications && errors==5 && !ctx.handler_walk_depth);
     closesocket(raw_socket);closesocket(wrapped_socket);WSACloseEvent(ctx.notifier.handle);WSACleanup();
     printf("Windows AIO: %u raw/wrapped registration/replacement/removal cases, real nonblocking UDP readiness/dispatch and failure preservation passed\n",cases);
 #else
