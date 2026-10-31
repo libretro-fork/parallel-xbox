@@ -19,6 +19,8 @@ with tempfile.TemporaryDirectory(prefix='core-timers-') as t:
  cmd=[cc,'-O2','-g','-std=gnu11','-Wall','-Wextra','-Werror','-Wno-unused-parameter',*flags,'-I'+str(r/'include'),'-I'+str(r/'libretro-common/include'),str(p/'test.c'),'-o',str(binary)]
  if legacy:cmd+=['-DTIMER_BASELINE']
  cmd+=['-DEXPECTED_TIMER_EVENTS='+('4' if 'timers_done_ev' in production else '0')]
+ cmd+=['-DEXPECTED_TIMER_MUTEXES='+('4' if 'active_timers_lock' in production else '0')]
+ if 'active_timers_lock' in production:cmd+=['-DTIMER_QUEUE_LOCKS']
  subprocess.run(cmd,check=True)
  if not os.environ.get('CORE_TIMERS_SKIP_RUN'):
   subprocess.run([str(binary)],check=True,timeout=30)

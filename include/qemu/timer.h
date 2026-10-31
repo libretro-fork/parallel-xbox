@@ -187,7 +187,7 @@ void qemu_clock_notify(QEMUClockType type);
  *
  * Enable or disable a clock on the emulation thread, which also owns
  * timer callback dispatch. No other thread may dispatch or enable clocks.
- * Cross-thread timer producers are serialized separately by the queue lock.
+ * Queue nodes, timer mutations and lifetime also belong to this thread.
  */
 void qemu_clock_enable(QEMUClockType type, bool enabled);
 
@@ -245,7 +245,7 @@ void timer_init_full(QEMUTimer *ts,
  * @opaque: the opaque pointer to pass to the callback
  *
  * Initialize a timer with nanosecond scale on the default timer list
- * associated with the clock.
+ * associated with the clock. Emulation-thread only.
  * See timer_init_full for details.
  */
 static inline void timer_init_ns(QEMUTimer *ts, QEMUClockType type,
@@ -326,10 +326,9 @@ static inline QEMUTimer *timer_new_ms(QEMUClockType type, QEMUTimerCB *cb,
  * timer_del:
  * @ts: the timer
  *
- * Delete a timer from the active list.
+ * Delete a timer from the active list on the emulation thread.
  *
- * This function is thread-safe but the timer and its timer list must not be
- * freed while this function is running.
+ * Emulation-thread only. The same owner controls timer lifetime and dispatch.
  */
 void timer_del(QEMUTimer *ts);
 
@@ -355,8 +354,7 @@ static inline void timer_free(QEMUTimer *ts)
  *
  * Modify a timer to expire at @expire_time
  *
- * This function is thread-safe but the timer and its timer list must not be
- * freed while this function is running.
+ * Emulation-thread only. The same owner controls timer lifetime and dispatch.
  */
 void timer_mod_ns(QEMUTimer *ts, int64_t expire_time);
 
@@ -368,8 +366,7 @@ void timer_mod_ns(QEMUTimer *ts, int64_t expire_time);
  * Modify a timer to expire at @expire_time or the current time,
  * whichever comes earlier.
  *
- * This function is thread-safe but the timer and its timer list must not be
- * freed while this function is running.
+ * Emulation-thread only. The same owner controls timer lifetime and dispatch.
  */
 void timer_mod_anticipate_ns(QEMUTimer *ts, int64_t expire_time);
 
@@ -381,8 +378,7 @@ void timer_mod_anticipate_ns(QEMUTimer *ts, int64_t expire_time);
  * Modify a timer to expiry at @expire_time, taking into
  * account the scale associated with the timer.
  *
- * This function is thread-safe but the timer and its timer list must not be
- * freed while this function is running.
+ * Emulation-thread only. The same owner controls timer lifetime and dispatch.
  */
 void timer_mod(QEMUTimer *ts, int64_t expire_timer);
 
@@ -394,8 +390,7 @@ void timer_mod(QEMUTimer *ts, int64_t expire_timer);
  * Modify a timer to expire at @expire_time or the current time, whichever
  * comes earlier, taking into account the scale associated with the timer.
  *
- * This function is thread-safe but the timer and its timer list must not be
- * freed while this function is running.
+ * Emulation-thread only. The same owner controls timer lifetime and dispatch.
  */
 void timer_mod_anticipate(QEMUTimer *ts, int64_t expire_time);
 
@@ -405,6 +400,8 @@ void timer_mod_anticipate(QEMUTimer *ts, int64_t expire_time);
  *
  * Determines whether a timer is pending (i.e. is on the
  * active list of timers, whether or not it has not yet expired).
+ *
+ * Emulation-thread only.
  *
  * Returns: true if the timer is pending
  */

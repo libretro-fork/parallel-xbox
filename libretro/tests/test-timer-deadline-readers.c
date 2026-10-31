@@ -25,16 +25,16 @@ typedef void QEMUTimerListNotifyCB(void *,QEMUClockType);
 typedef struct { slock_t *lock; } QemuMutex;
 typedef struct { bool set; } QemuEvent;
 static _Thread_local bool reader;
-static void qemu_mutex_init(QemuMutex*m){m->lock=slock_new();assert(m->lock);}
-static void qemu_mutex_lock(QemuMutex*m){
+static __attribute__((unused)) void qemu_mutex_init(QemuMutex*m){m->lock=slock_new();assert(m->lock);}
+static __attribute__((unused)) void qemu_mutex_lock(QemuMutex*m){
 #if !defined(TIMER_READ_BASELINE) && !defined(TIMER_READ_BENCHMARK)
  assert(!reader); /* Fast deadline reads must never acquire a queue lock. */
 #endif
  slock_lock(m->lock);
 }
-static void qemu_mutex_unlock(QemuMutex*m){slock_unlock(m->lock);}
-static QemuMutex *guard_enter(QemuMutex*m){qemu_mutex_lock(m);return m;}
-static void guard_exit(QemuMutex**m){if(*m)qemu_mutex_unlock(*m);}
+static __attribute__((unused)) void qemu_mutex_unlock(QemuMutex*m){slock_unlock(m->lock);}
+static __attribute__((unused)) QemuMutex *guard_enter(QemuMutex*m){qemu_mutex_lock(m);return m;}
+static __attribute__((unused)) void guard_exit(QemuMutex**m){if(*m)qemu_mutex_unlock(*m);}
 #define WITH_QEMU_LOCK_GUARD(m) for(QemuMutex *guard __attribute__((cleanup(guard_exit)))=guard_enter(m);guard;qemu_mutex_unlock(guard),guard=NULL)
 #define g_free free
 static __attribute__((unused)) void qemu_event_init(QemuEvent*e,bool set){e->set=set;}
@@ -89,9 +89,12 @@ static void stalled_writer(void)
 #ifndef TIMER_READ_BASELINE
  QEMUTimer t;initialize(&t,0,0);timer_mod_ns(&t,A);
  QEMUTimerList *clock=qemu_clock_ptr(0);
+
+#ifdef TIMER_QUEUE_LOCKS
  qemu_mutex_lock(&clock->active_timers_lock);
+#endif
  QEMUTimer *saved=clock->active_timers;
- /* A reader must neither wait for the held lock nor touch a timer pointer.
+ /* A reader must neither wait for the paused owner nor touch a timer pointer.
   * This canary also detects attempts to use an atomic list head as a cache. */
  clock->active_timers=(QEMUTimer *)(uintptr_t)1;
  reader=true;
@@ -100,7 +103,11 @@ static void stalled_writer(void)
  assert(!qemu_clock_expired(0));
  reader=false;
  clock->active_timers=saved;
- qemu_mutex_unlock(&clock->active_timers_lock);timer_del(&t);
+
+#ifdef TIMER_QUEUE_LOCKS
+ qemu_mutex_unlock(&clock->active_timers_lock);
+#endif
+ timer_del(&t);
 #endif
 }
 static void benchmark(void)
@@ -164,7 +171,10 @@ int main(int argc,char **argv)
  for(unsigned i=0;i<6;i++)sthread_join(threads[i]);
  for(unsigned type=0;type<QEMU_CLOCK_MAX;type++){
   assert(qemu_clock_deadline_ns_all(type,QEMU_TIMER_ATTR_ALL)==-1);
+
+#ifdef TIMER_QUEUE_LOCKS
   slock_free(qemu_clock_ptr(type)->active_timers_lock.lock);
+#endif
  }
- puts("Timer deadlines: held-lock/invalid-head reads, six concurrent readers, 100000 modify/cancel/free cycles and pause/resume PASS");return 0;
+ puts("Timer deadlines: paused-owner/invalid-head reads, six concurrent readers, 100000 modify/cancel/free cycles and pause/resume PASS");return 0;
 }

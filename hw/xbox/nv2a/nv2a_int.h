@@ -89,7 +89,6 @@ typedef struct NV2AState {
     retro_atomic_64_t vblank_deadline;
     /* QEMU_CLOCK_VIRTUAL time of the last vblank (the core's raster) */
     int64_t vblank_vt;
-    QEMUTimer *flip_timer;
 
     MemoryRegion *vram;
     MemoryRegion vram_pci;

@@ -667,83 +667,8 @@ void xemu_cost_frag_profile(PGRAPHState *pg, long *compute_milli,
     *fb_out = fb_milli;
 }
 
-/* Real hardware speed (perf.real_hw_speed), at each FLIP_STALL: estimate how
- * long the NV2A would take to render this frame and set the deadline before
- * which the flip may not complete. With the model on, flip_stall drained the
- * host GPU (glFinish on GL), so the deadline is a floor over the host cost. */
+/* The core runs guest frames as fast as the frontend requests them.
+ * Host-time flip throttling is intentionally disabled. */
 void xemu_cost_flip_deadline(NV2AState *d)
 {
-    /* a host clock's deadline: the libretro core's frames are the guest's
-     * work, done as fast as the host can (ui/libretro.c) */
-    return;
-    /* live UI toggle: perf.real_hw_speed */
-    if (!g_config.perf.real_hw_speed) {
-        return;
-    }
-    static unsigned long long pvt, pft, pby, prep;
-    /* constants in MILLI-ns */
-    const long nsdraw = 1000 * 1000, nsreport = 2000 * 1000,
-               baseus = 500;
-    int *c = g_nv2a_stats.frame_working.counters;
-    long long vt = xemu_cost_vtime_milli - pvt;
-    long long ft = xemu_cost_ftime_milli - pft;
-    long long bp = (long long)(xemu_cost_bytes_milli - pby) *
-                   xemu_cost_bp_num() / 100000;
-    long long rep = xemu_cost_reports - prep;
-    pvt = xemu_cost_vtime_milli;
-    pft = xemu_cost_ftime_milli;
-    pby = xemu_cost_bytes_milli;
-    prep = xemu_cost_reports;
-    int64_t cost;
-    {
-        /* Roofline: the stages overlap, the frame lasts as long as
-         * its bottleneck (PROVEN mechanism). IDE DMA in the frame
-         * shares the bus, 4.62 instead of 4.97 GB/s [HEURISTIC;
-         * judge: footage of streaming-heavy scenes]. */
-        {
-            static unsigned long pidec;
-            if (xemu_ide_cmds != pidec) {
-                pidec = xemu_ide_cmds;
-                bp = bp * 497 / 462;
-            }
-        }
-        long long roof = vt > ft ? vt : ft;
-        if (bp > roof) {
-            roof = bp;
-        }
-        long long gpu_milli =
-            roof + (long long)c[NV2A_PROF_BEGIN_ENDS] * nsdraw
-            + rep * nsreport;
-        cost = baseus * 1000ll + gpu_milli / 1000;
-    }
-    {
-        /* EMA, weight 1/16 [HEURISTIC]: the real pipeline smears a
-         * frame's cost forward (triple-buffer queue, DRC latency). */
-        static int64_t cost_ema;
-        if (!cost_ema) {
-            cost_ema = cost;
-        }
-        cost_ema += (cost - cost_ema) / 16;
-        cost = cost_ema;
-    }
-    /* No vblank grid: the NV2A frame rate is continuous; the game
-     * loop waits for at least one vblank, a cap at 60, not a grid. */
-    {
-        /* Modelled GPU backlog, carried across frames: a frame
-         * starts when the previous one's modelled work is done. */
-        int64_t now = qemu_clock_get_ns(QEMU_CLOCK_REALTIME);
-        int64_t start = xemu_gpu_free_ns > xemu_flip_completed_ns ?
-                        xemu_gpu_free_ns : xemu_flip_completed_ns;
-        if (start < now - 50000000ll) {
-            /* A pipeline restart, or the first frame: a backlog
-             * older than 50 ms is dropped. */
-            start = now - 50000000ll;
-        }
-        xemu_gpu_free_ns = start + cost;
-        if (xemu_gpu_free_ns > now + 100000000ll) {
-            xemu_gpu_free_ns = now + 100000000ll;
-        }
-        xemu_flip_ready_ns = xemu_gpu_free_ns;
-        timer_mod_ns(d->flip_timer, xemu_flip_ready_ns);
-    }
 }
