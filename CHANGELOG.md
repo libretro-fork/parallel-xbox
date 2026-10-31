@@ -4,6 +4,9 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Frontend VFS reads validate the full scatter/gather range before any provider I/O. Empty reads no longer seek, and invalid or overflowing requests leave the provider cursor and destination unchanged.
+
+
 - Vulkan surface conversion no longer hangs on GPUs with compute workgroup limits below 1024. Workgroup selection respects both invocation and dimension limits.
 - Network reception resumes after the guest returns RX buffers, including descriptors returned without a register write. Recovery polling stops when reception is disabled or ready, and is rebuilt after loading a savestate.
 - The GPU's PBUS PCI configuration mirror handles both hardware aliases and byte/word accesses through the normal PCI write masks.

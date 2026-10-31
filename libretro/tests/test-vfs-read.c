@@ -101,7 +101,7 @@ int main(void)
     assert(f.reads == reads + 5 && !memcmp(out, f.bytes, 32));
     reads = f.reads;
     assert(lr_vfs_readv(&vfs, &f, &cursor, INT64_MAX - 3, adjacent, 3) == -EINVAL);
-    assert(f.reads == reads && cursor == INT64_MAX - 3);
+    assert(f.reads == reads && cursor == 32);
     f.seek_error = 1;
     assert(lr_vfs_readv(&vfs, &f, &cursor, 0, adjacent, 3) == -EIO);
     assert(f.reads == reads && cursor == -1);
@@ -109,5 +109,27 @@ int main(void)
     seeks = f.seeks;
     assert(lr_vfs_readv(&vfs, &f, &cursor, 0, adjacent, 3) == 0);
     assert(f.seeks == seeks + 1 && cursor == 32);
+    /* Invalid and empty requests must not contact or reposition a provider. */
+    seeks = f.seeks;
+    reads = f.reads;
+    int64_t saved_cursor = cursor;
+    size_t saved_position = f.position;
+    memset(out, 0xcc, sizeof(out));
+    LRFileIOV empty[] = {{NULL, 0}, {out, 0}};
+    assert(lr_vfs_readv(&vfs, &f, &cursor, INT64_MAX, NULL, 0) == 0);
+    assert(lr_vfs_readv(&vfs, &f, &cursor, 123, empty, 2) == 0);
+    assert(lr_vfs_readv(&vfs, &f, &cursor, 0, iov, -1) == -EINVAL);
+    assert(lr_vfs_readv(&vfs, &f, &cursor, 0, NULL, 1) == -EINVAL);
+    assert(lr_vfs_readv(&vfs, &f, &cursor, -1, NULL, 0) == -EINVAL);
+    LRFileIOV overflow[] = {{out, 1}, {out + 24, (size_t)INT64_MAX}};
+    if (SIZE_MAX >= INT64_MAX) {
+        /* Both an in-file prefix and an EOF prefix used to escape preflight. */
+        assert(lr_vfs_readv(&vfs, &f, &cursor, 0, overflow, 2) == -EINVAL);
+        assert(lr_vfs_readv(&vfs, &f, &cursor, 64, overflow, 2) == -EINVAL);
+    }
+    assert(lr_vfs_readv(&vfs, &f, &cursor, INT64_MAX - 16, iov, 2) == -EINVAL);
+    assert(f.seeks == seeks && f.reads == reads && cursor == saved_cursor);
+    assert(f.position == saved_position);
+    for (unsigned i = 0; i < sizeof(out); i++) { assert(out[i] == 0xcc); }
     puts("VFS bulk spans, short reads, sequential seeks, gaps, EOF, empty spans and recovery: PASS");
 }

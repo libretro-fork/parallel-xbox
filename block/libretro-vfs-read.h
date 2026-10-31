@@ -13,8 +13,21 @@ static inline int lr_vfs_readv(const struct retro_vfs_interface *vfs,
                                int64_t *cursor, int64_t offset,
                                const LRFileIOV *iov, int count)
 {
-    if (offset < 0) {
+    uint64_t bytes = 0;
+
+    if (offset < 0 || count < 0 || (count && !iov)) {
         return -EINVAL;
+    }
+    /* Validate the entire range before a seek/read can change provider or
+     * destination state, including spans after EOF and nonadjacent spans. */
+    for (int i = 0; i < count; i++) {
+        if (iov[i].len > (uint64_t)(INT64_MAX - offset) - bytes) {
+            return -EINVAL;
+        }
+        bytes += iov[i].len;
+    }
+    if (!bytes) {
+        return 0;
     }
     if (*cursor != offset) {
         if (vfs->seek(file, offset, RETRO_VFS_SEEK_POSITION_START) < 0) {
