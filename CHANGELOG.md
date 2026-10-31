@@ -4,6 +4,10 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Vulkan surface conversion no longer hangs on GPUs with compute workgroup limits below 1024. Workgroup selection respects both invocation and dimension limits.
+- Network reception resumes after the guest returns RX buffers, including descriptors returned without a register write. Recovery polling stops when reception is disabled or ready, and is rebuilt after loading a savestate.
+- The GPU's PBUS PCI configuration mirror handles both hardware aliases and byte/word accesses through the normal PCI write masks.
+- Vulkan uses standard border-color samplers where their values are exact, reducing custom-sampler consumption without adding shader variants or changing integer depth-texture border values.
 - Memory-backed Chihiro media reports failed address-space transactions as I/O errors and stops subsequent transfers, rather than reporting successful reads, writes or zeroing.
 
 - Reject negative-length block discards before dispatch, including memory-backed media, instead of silently accepting an invalid range.

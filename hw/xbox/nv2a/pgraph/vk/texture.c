@@ -2040,7 +2040,24 @@ static VkSampler create_sampler_for_state(PGRAPHState *pg,
 
     bool is_integer_type = vkf.vk_format == VK_FORMAT_R32_UINT;
 
-    if (r->custom_border_color_extension_enabled) {
+    /* Integer custom colors use UINT32_MAX for a packed channel of 255;
+     * Vulkan's integer opaque white uses 1, so it is not equivalent.
+     * Transparent black is exact for both types; opaque enums are exact
+     * for normalized/float textures only. Keep image and PSO keys unchanged. */
+    bool standard_border_color = true;
+    if (border_color_pack32 == 0) {
+        vk_border_color = is_integer_type ?
+            VK_BORDER_COLOR_INT_TRANSPARENT_BLACK :
+            VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK;
+    } else if (!is_integer_type && border_color_pack32 == 0xff000000) {
+        vk_border_color = VK_BORDER_COLOR_FLOAT_OPAQUE_BLACK;
+    } else if (!is_integer_type && border_color_pack32 == 0xffffffff) {
+        vk_border_color = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
+    } else {
+        standard_border_color = false;
+    }
+
+    if (!standard_border_color && r->custom_border_color_extension_enabled) {
         vk_border_color = is_integer_type ? VK_BORDER_COLOR_INT_CUSTOM_EXT :
                                             VK_BORDER_COLOR_FLOAT_CUSTOM_EXT;
         custom_border_color_create_info =
@@ -2063,17 +2080,11 @@ static VkSampler create_sampler_for_state(PGRAPHState *pg,
                 custom_border_color_create_info.customBorderColor.float32);
         }
         sampler_next_struct = &custom_border_color_create_info;
-    } else {
+    } else if (!standard_border_color) {
         // FIXME: Handle custom color in shader
-        if (is_integer_type) {
-            vk_border_color = VK_BORDER_COLOR_INT_TRANSPARENT_BLACK;
-        } else if (border_color_pack32 == 0x00000000) {
-            vk_border_color = VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK;
-        } else if (border_color_pack32 == 0xff000000) {
-            vk_border_color = VK_BORDER_COLOR_FLOAT_OPAQUE_BLACK;
-        } else {
-            vk_border_color = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
-        }
+        vk_border_color = is_integer_type ?
+            VK_BORDER_COLOR_INT_TRANSPARENT_BLACK :
+            VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
     }
 
     if (filter & NV_PGRAPH_TEXFILTER0_ASIGNED)

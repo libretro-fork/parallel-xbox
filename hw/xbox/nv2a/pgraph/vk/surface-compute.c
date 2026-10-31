@@ -344,13 +344,11 @@ static int get_workgroup_size_for_output_units(PGRAPHVkState *r, int output_unit
     //        submissions. For now we will just pick the highest number that
     //        evenly divides output_units.
 
-    while (group_size > 1) {
-        if (group_size > r->device_props.limits.maxComputeWorkGroupSize[0]) {
-            continue;
-        }
-        if (output_units % group_size == 0) {
-            break;
-        }
+    const uint32_t limit =
+        MIN(r->device_props.limits.maxComputeWorkGroupSize[0],
+            r->device_props.limits.maxComputeWorkGroupInvocations);
+    while (group_size > 1 &&
+           (group_size > limit || output_units % group_size != 0)) {
         group_size /= 2;
     }
 
