@@ -2486,6 +2486,12 @@ bool address_space_is_io(AddressSpace *as, hwaddr addr);
 void *address_space_map(AddressSpace *as, hwaddr addr,
                         hwaddr *plen, bool is_write, MemTxAttrs attrs);
 
+/* Borrow the entire requested span directly or return NULL with *plen=0.
+ * Never allocate a bounce buffer or read MMIO. Successful mappings settle
+ * GPU ownership exactly as address_space_map() and require address_space_unmap(). */
+void *address_space_map_direct(AddressSpace *as, hwaddr addr, hwaddr *plen,
+                              bool is_write, MemTxAttrs attrs);
+
 /* address_space_unmap: Unmaps a memory region previously mapped by address_space_map()
  *
  * Will also mark the memory as dirty if @is_write == %true.  @access_len gives

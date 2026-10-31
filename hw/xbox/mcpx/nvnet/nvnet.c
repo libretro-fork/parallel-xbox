@@ -521,6 +521,23 @@ static void advance_next_tx_ring_desc_addr(NvNetState *s)
     set_reg(s, NVNET_TX_RING_NEXT_DESC_PHYS_ADDR, next_desc_addr);
 }
 
+static bool send_packet_direct(NvNetState *s, uint32_t address, size_t length)
+{
+    AddressSpace *as = pci_get_address_space(PCI_DEVICE(s));
+    hwaddr mapped = length;
+    void *packet = address_space_map_direct(as, address, &mapped, false,
+                                           MEMTXATTRS_UNSPECIFIED);
+    if (!packet) {
+        return false;
+    }
+
+    /* qemu_send_packet consumes the bytes synchronously or copies them into
+     * its queue before returning. Never retain guest RAM after this call. */
+    send_packet(s, packet, length);
+    address_space_unmap(as, packet, mapped, false, length);
+    return true;
+}
+
 static void dma_packet_from_guest(NvNetState *s)
 {
     PCIDevice *d = PCI_DEVICE(s);
@@ -552,15 +569,21 @@ static void dma_packet_from_guest(NvNetState *s)
         assert((s->tx_dma_buf_offset + length) <= sizeof(s->tx_dma_buf));
 
         trace_nvnet_tx_dma(desc.buffer_addr, length);
-        pci_dma_read(d, desc.buffer_addr, &s->tx_dma_buf[s->tx_dma_buf_offset],
-                     length);
-        s->tx_dma_buf_offset += length;
-
         bool is_last_packet = desc.flags & NV_TX_LASTPACKET;
-        if (is_last_packet) {
-            send_packet(s, s->tx_dma_buf, s->tx_dma_buf_offset);
-            s->tx_dma_buf_offset = 0;
+        if (is_last_packet && !s->tx_dma_buf_offset &&
+            send_packet_direct(s, desc.buffer_addr, length)) {
             packet_sent = true;
+        } else {
+            /* Fragments retain their snapshot across calls; MMIO/short
+             * mappings use the original DMA read without a speculative read. */
+            pci_dma_read(d, desc.buffer_addr,
+                         &s->tx_dma_buf[s->tx_dma_buf_offset], length);
+            s->tx_dma_buf_offset += length;
+            if (is_last_packet) {
+                send_packet(s, s->tx_dma_buf, s->tx_dma_buf_offset);
+                s->tx_dma_buf_offset = 0;
+                packet_sent = true;
+            }
         }
 
         desc.flags &= ~(NV_TX_VALID | NV_TX_RETRYERROR | NV_TX_DEFERRED |

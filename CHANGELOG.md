@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- NVNet transmits complete single-descriptor RAM packets directly from a borrowed guest mapping, removing the intermediate TX-buffer copy. Fragmented packets keep their existing snapshots, and MMIO or incomplete mappings retain the DMA-read fallback without speculative MMIO reads. Direct mappings preserve GPU ownership synchronization; failed RAM mappings now release their region reference.
+
 - Remove the standalone QEMU debug-file logger, which the core always configured with no file and a zero mask. Eliminate its configuration mutex, stream locking, per-thread file/TLS state and deferred RCU closures; compile disabled translation logging out. Frontend logs, error/warning reports and fatal CPU diagnostics retain their existing output.
 
 - Vulkan submits staging copies and draws as one ordered command-buffer list, removing two internal binary semaphores and their signal/wait operations. Submissions with no staged data skip the staging-sync recording entirely. Host writes are flushed before queue submission, replacing redundant recorded HOST barriers; transfer barriers now cover both vertex and fragment uniform reads. Non-coherent staging allocations are explicitly flushed before their copies, with memory properties refreshed on allocation/recreation. Frontend queue handoff and slot-fence ownership remain unchanged.
