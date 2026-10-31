@@ -12,6 +12,7 @@
  */
 
 #include "glib.h"
+#include "gwinpoll.h"
 
 #ifdef _WIN32
 #include <windows.h>
@@ -448,9 +449,11 @@ void g_main_context_dispatch(GMainContext *context)
     }
 }
 
-gint g_poll(GPollFD *fds, guint nfds, gint timeout)
-{
 #ifdef _WIN32
+/* Poll caller-owned descriptors directly, with an optional extra wake handle.
+ * The extra handle wakes the wait but is excluded from the ready-fd count. */
+gint g_poll_with_handle(GPollFD *fds, guint nfds, gint timeout, gintptr handle)
+{
     /* GLib's on Windows: the fds are event handles to wait on */
     HANDLE h[MAXIMUM_WAIT_OBJECTS];
     guint idx[MAXIMUM_WAIT_OBJECTS], n = 0;
@@ -463,6 +466,12 @@ gint g_poll(GPollFD *fds, guint nfds, gint timeout)
             h[n] = (HANDLE)(gintptr)fds[i].fd;
             idx[n++] = i;
         }
+    }
+    /* Keep every descriptor admitted by ordinary g_poll. At the handle
+     * limit the caller's millisecond timeout remains the timer's backup. */
+    if (handle > 0 && n < MAXIMUM_WAIT_OBJECTS) {
+        h[n] = (HANDLE)handle;
+        idx[n++] = nfds; /* no corresponding GPollFD and no ready-count entry */
     }
     if (!n) {
         if (timeout > 0) {
@@ -481,11 +490,20 @@ gint g_poll(GPollFD *fds, guint nfds, gint timeout)
         if ((r >= WAIT_OBJECT_0 && r < WAIT_OBJECT_0 + n &&
              k == r - WAIT_OBJECT_0) ||
             WaitForSingleObject(h[k], 0) == WAIT_OBJECT_0) {
-            fds[idx[k]].revents = fds[idx[k]].events;
-            ready++;
+            if (idx[k] < nfds) {
+                fds[idx[k]].revents = fds[idx[k]].events;
+                ready++;
+            }
         }
     }
     return ready;
+}
+#endif
+
+gint g_poll(GPollFD *fds, guint nfds, gint timeout)
+{
+#ifdef _WIN32
+    return g_poll_with_handle(fds, nfds, timeout, 0);
 #else
     G_STATIC_ASSERT(sizeof(GPollFD) == sizeof(struct pollfd));
     G_STATIC_ASSERT(G_IO_IN == POLLIN && G_IO_OUT == POLLOUT &&

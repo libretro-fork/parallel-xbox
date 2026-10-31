@@ -27,6 +27,7 @@
 #include "qemu/main-loop.h"
 #include "qemu/timer.h"
 #include "qemu/cpu-boost.h"
+#include "gwinpoll.h"
 #include "qemu/lockable.h"
 #include "system/cpu-timers.h"
 #include "exec/icount.h"
@@ -196,7 +197,7 @@ int qemu_timeout_ns_to_ms(int64_t ns)
     /* Always round up, because it's better to wait too long than to wait too
      * little and effectively busy-wait
      */
-    ms = DIV_ROUND_UP(ns, SCALE_MS);
+    ms = ns / SCALE_MS + (ns % SCALE_MS != 0);
 
     /* To avoid overflow problems, limit this to 2^31, i.e. approx 25 days */
     return MIN(ms, INT32_MAX);
@@ -236,18 +237,13 @@ static int xbox_win_poll_hr(GPollFD *fds, guint nfds, int64_t timeout)
     if (!SetWaitableTimer(hr_timer, &due, 0, NULL, NULL, FALSE)) {
         return XBOX_NO_HR_TIMER;
     }
-    GPollFD *all = g_newa(GPollFD, nfds + 1);
-    memcpy(all, fds, nfds * sizeof(GPollFD));
-    all[nfds].fd = (gintptr)hr_timer;
-    all[nfds].events = G_IO_IN;
-    all[nfds].revents = 0;
-    /* The millisecond timeout only backs the timer up. */
-    int ret = g_poll(all, nfds + 1, qemu_timeout_ns_to_ms(timeout) + 1);
-    memcpy(fds, all, nfds * sizeof(GPollFD));
-    if (ret > 0 && all[nfds].revents) {
-        ret--; /* the timer's own wake is not an fd event */
+    /* Append only the native handle inside the Windows poll backend. The
+     * caller's GPollFD array needs no spare slot or intermediate copy. */
+    int backup_ms = qemu_timeout_ns_to_ms(timeout);
+    if (backup_ms < INT32_MAX) {
+        backup_ms++;
     }
-    return ret;
+    return g_poll_with_handle(fds, nfds, backup_ms, (gintptr)hr_timer);
 }
 #endif
 
