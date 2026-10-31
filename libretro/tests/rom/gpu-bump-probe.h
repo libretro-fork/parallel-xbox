@@ -165,7 +165,8 @@ static void bump_filter_probe(void)
         method(NV097_SET_TEXTURE_FORMAT,
                1u | (2u << 4) | (1u << 3) | (format << 8) |
                (3u << 16) | (2u << 20) | (2u << 24));
-        method(NV097_SET_TEXTURE_CONTROL0, (1u << 30) | ((linear ? 1u : 2u) << 6));
+        method(NV097_SET_TEXTURE_CONTROL0, (1u << 30) | (BUMP_MIN_LOD << 18) |
+               ((linear ? 1u : 2u) << 6));
 #endif
         method(NV097_SET_TEXTURE_FILTER,
 #ifdef BUMP_FILTER_MIP_PROBE

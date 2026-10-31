@@ -29,7 +29,9 @@ def expected_mip(case, force_lod0):
         linear = linear if computed_lod > 0 else int(case["mag_filter"]) == 2
     maximum = int(case["max_lod"]) if case.get("max_lod") else (
         1 if (int(case["id"]) // 3) % 2 else 2)
-    lod = 0 if force_lod0 else min(maximum, max(0, lod + float(case["lod_bias"])))
+    minimum = int(case.get("min_lod") or 0)
+    minimum = min(minimum, maximum)
+    lod = 0 if force_lod0 else min(maximum, max(minimum, lod + float(case["lod_bias"])))
     if mode in (3, 4):
         lod = math.floor(lod + 0.5)
 

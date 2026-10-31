@@ -323,6 +323,7 @@ void pgraph_glsl_set_psh_state(PGRAPHState *pg, PshState *state)
         bool mip_clamp_v = false;
         bool mip_mirror_u = false;
         bool mip_mirror_v = false;
+        unsigned mip_min_lod = 0;
         if (gb && !f.linear && !cubemap && state->dim_tex[i] == 2 &&
             GET_MASK(tex_fmt, NV_PGRAPH_TEXFMT0_MIPMAP_LEVELS) > 1 &&
             (linear_filter || point_filter || mixed_mip_filter)) {
@@ -331,15 +332,19 @@ void pgraph_glsl_set_psh_state(PGRAPHState *pg, PshState *state)
             unsigned addrv = GET_MASK(address, NV_PGRAPH_TEXADDRESS0_ADDRV);
             TextureShape shape = pgraph_get_texture_shape(pg, i);
             mip_lod0 = shape.max_mipmap_level == 0;
+            mip_min_lod = shape.min_mipmap_level;
             mip_clamp_u = addru == NV_PGRAPH_TEXADDRESS0_ADDRU_CLAMP_TO_EDGE;
             mip_clamp_v = addrv == NV_PGRAPH_TEXADDRESS0_ADDRU_CLAMP_TO_EDGE;
             mip_clamp = mip_clamp_u && mip_clamp_v;
             mip_mirror_u = addru == NV_PGRAPH_TEXADDRESS0_ADDRU_MIRROR;
             mip_mirror_v = addrv == NV_PGRAPH_TEXADDRESS0_ADDRU_MIRROR;
-            /* GL uses BASE_LEVEL for the lower clamp, while Vulkan uses
-             * minLod. Leave nonzero lower clamps and other address modes on
-             * the existing path until their backend differences are covered. */
-            mip_filter = shape.min_mipmap_level == 0 &&
+            /* GL queries/fetches are relative to BASE_LEVEL; Vulkan needs
+             * an explicit lower bound. Cover levels one/two with matching
+             * filters while retaining the existing path for higher clamps.
+             * Mixed filters still require a zero lower clamp because GL's
+             * base level also changes the min/mag footprint decision. */
+            mip_filter = (mip_min_lod == 0 ||
+                          (mip_min_lod <= 2 && !mixed_mip_filter)) &&
                 (addru == NV_PGRAPH_TEXADDRESS0_ADDRU_WRAP || mip_clamp_u || mip_mirror_u) &&
                 (addrv == NV_PGRAPH_TEXADDRESS0_ADDRU_WRAP || mip_clamp_v || mip_mirror_v) &&
                 min_filter >= NV_PGRAPH_TEXFILTER0_MIN_BOX_NEARESTLOD &&
@@ -389,6 +394,10 @@ void pgraph_glsl_set_psh_state(PGRAPHState *pg, PshState *state)
                      min_filter == NV_PGRAPH_TEXFILTER0_MIN_BOX_TENT_LOD)) {
                     state->g8b8_mip_mirror |= (mip_mirror_u ? 1u : 0u) << i;
                     state->g8b8_mip_mirror |= (mip_mirror_v ? 1u : 0u) << (i + 4);
+                    /* Upper nibbles store two lower-mip bitplanes. Zero
+                     * keeps every previously supported shader key intact. */
+                    state->g8b8_mip_clamp_u |= (mip_min_lod & 1u) << (i + 4);
+                    state->g8b8_mip_clamp_v |= ((mip_min_lod >> 1) & 1u) << (i + 4);
                 }
             }
         }
@@ -1180,6 +1189,8 @@ static void psh_append_signed_g8b8_mips(const struct PixelShader *ps, MString *v
     bool clamp_v = clamp || (ps->state->g8b8_mip_clamp_v & (1u << source));
     bool mirror_u = ps->state->g8b8_mip_mirror & (1u << source);
     bool mirror_v = ps->state->g8b8_mip_mirror & (1u << (source + 4));
+    unsigned min_lod = ((ps->state->g8b8_mip_clamp_u >> (source + 4)) & 1u) |
+                      (((ps->state->g8b8_mip_clamp_v >> (source + 4)) & 1u) << 1);
     bool linear = (signs & 16) || mixed;
     bool trilinear = signs & 64;
     mstring_append_fmt(vars,
@@ -1200,6 +1211,12 @@ static void psh_append_signed_g8b8_mips(const struct PixelShader *ps, MString *v
         /* Some drivers' LOD queries ignore a zero maximum even when their
          * sampling honors it. Also avoid querying an overridden footprint. */
         mstring_append_fmt(vars, "float gbLod%d = 0.0;\n", source);
+    } else if (ps->opts.vulkan && min_lod) {
+        /* Image LOD queries do not reliably apply the sampler's lower
+         * clamp. Explicit fetches must not read below the guest minimum. */
+        mstring_append_fmt(vars,
+            "float gbLod%d = max(textureQueryLod(texSamp%d, gbCoord%d).x, %u.0);\n",
+            source, source, source, min_lod);
     } else {
         mstring_append_fmt(vars,
             "float gbLod%d = max(textureQueryLod(texSamp%d, gbCoord%d).x, 0.0);\n",

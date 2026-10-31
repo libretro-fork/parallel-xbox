@@ -84,6 +84,8 @@ typedef struct PshState {
      * seed size stay intact; old supported address modes keep their keys. */
     uint8_t g8b8_mip_clamp_u;
     uint8_t g8b8_mip_clamp_v;
+    /* Their low nibbles are edge masks; upper nibbles hold respectively
+     * bit zero and bit one of each stage's supported lower mip clamp. */
     uint8_t g8b8_mip_mirror; /* U stages in low nibble, V in high nibble. */
 
     unsigned int surface_zeta_format;
