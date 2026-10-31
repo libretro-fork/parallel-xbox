@@ -3766,6 +3766,22 @@ static void gen_SAHF(DisasContext *s, X86DecodedInsn *decode)
         return gen_illegal_opcode(s);
     }
     tcg_gen_shri_tl(s->T0, cpu_regs[R_EAX], 8);
+    bool entry_of_zero = s->cc_op == CC_OP_DYNAMIC && s->cc_op_entry &&
+                         s->cf_entry_class == TB_CF_ZERO;
+    if (xemu_cpu_boost && ((s->cc_op >= CC_OP_LOGICB &&
+                           s->cc_op <= CC_OP_LOGICQ) || entry_of_zero)) {
+        if (entry_of_zero) {
+            /* ZERO groups LOGIC/POPCNT, whose OF is also zero. Keep this
+             * block class-specific even though it does not consume CF. */
+            s->cf_entry_used = true;
+        }
+        /* SAHF replaces S/Z/A/P/C and only preserves OF, already zero
+         * after a logical operation. Retain the old helper's FP boundary. */
+        gen_flush_fp(s);
+        tcg_gen_andi_tl(cpu_cc_src, s->T0, CC_S | CC_Z | CC_A | CC_P | CC_C);
+        set_cc_op(s, CC_OP_EFLAGS);
+        return;
+    }
     gen_compute_eflags(s);
     tcg_gen_andi_tl(cpu_cc_src, cpu_cc_src, CC_O);
     tcg_gen_andi_tl(s->T0, s->T0, CC_S | CC_Z | CC_A | CC_P | CC_C);

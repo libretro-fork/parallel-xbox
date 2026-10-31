@@ -871,3 +871,15 @@ The qcow2 vector fixture rejects negative counts, missing descriptor arrays and,
 The IDE cancellation test extracts the actual cancellation and buffered-completion functions, using the production QLIST implementation and a modeled callback/drain boundary. Eight scenarios cover recursion, draining/freeing requests from a callback, a newly submitted request, existing orphans, unbuffered draining and the accepted request limit. Callbacks must run once, canceled data must not be copied and request/buffer frees must balance. Linux runs use ASan/UBSan; the same cases can run as a native Windows executable. This models callback lifetime behavior, not a full device or block backend.
 
 The IDE callback model also completes a read successfully or with EIO before canceling the remaining reads from its callback, and submits a fresh read from a success callback. Completed requests must receive only their original status, success data must be available inside the callback, and the completing request/buffer must remain owned until the callback returns. All eleven scenarios retain balanced cleanup.
+`entry-compare.asm` checks 396,288 same-block versus entry relations across
+byte operand pairs, 32-bit boundaries and addition fallback classes, plus two
+live x87 cases. SETcc,
+CMOVcc, Jcc and shared entries must agree and preserve full flags. `sahf.asm`
+checks all AH bytes across 15,104 logical/arithmetic/shared-entry scenarios,
+OF/DF and GPR preservation, plus two live x87 cases. Both run under all four
+hard-FPU/CPU-Boost combinations; shared entries guard against unsafe ANY aliases.
+
+`entry-invalidate.asm` checks variable-count shifts after SUBB/SUBL/ZERO
+entries, including zero counts, carry reads, signed predicates and SAHF overflow.
+The old Boost core fails the SHL carry case; Boost-off passes. Dynamic-to-dynamic
+flag updates must invalidate the entry proof before the class-equality shortcut.

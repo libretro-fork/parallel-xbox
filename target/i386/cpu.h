@@ -209,7 +209,7 @@ typedef enum X86Seg {
  */
 #define TB_CF_UNKNOWN 0 /* any other CC_OP: the helper */
 #define TB_CF_SRC_NZ  1 /* INC, DEC, MUL: CC_SRC != 0 */
-#define TB_CF_ZERO    2 /* LOGIC, POPCNT: 0 */
+#define TB_CF_ZERO    2 /* LOGIC, POPCNT: CF and OF are both 0 */
 #define TB_CF_SRC_LSB 3 /* EFLAGS, SAR: CC_SRC & 1 */
 #define TB_CF_ADDL    4 /* (uint32_t)CC_DST < (uint32_t)CC_SRC */
 #define TB_CF_SUBL    5 /* (uint32_t)(CC_DST + CC_SRC) < (uint32_t)CC_SRC */

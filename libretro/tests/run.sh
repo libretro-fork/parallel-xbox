@@ -377,6 +377,15 @@ nasm -f bin -I"$here/rom/" -o "$work/sysap/xemu/Complex_4627v1.03.bin" "$here/ro
 mkdir -p "$work/syssb/xemu"
 cp "$work/sys/xemu/mcpx_1.0.bin" "$work/syssb/xemu/"
 nasm -f bin -I"$here/rom/" -o "$work/syssb/xemu/Complex_4627v1.03.bin" "$here/rom/sub-byte-carry.asm"
+mkdir -p "$work/sysec/xemu"
+cp "$work/sys/xemu/mcpx_1.0.bin" "$work/sysec/xemu/"
+nasm -f bin -I"$here/rom/" -o "$work/sysec/xemu/Complex_4627v1.03.bin" "$here/rom/entry-compare.asm"
+mkdir -p "$work/sysei/xemu"
+cp "$work/sys/xemu/mcpx_1.0.bin" "$work/sysei/xemu/"
+nasm -f bin -I"$here/rom/" -o "$work/sysei/xemu/Complex_4627v1.03.bin" "$here/rom/entry-invalidate.asm"
+mkdir -p "$work/sysahf/xemu"
+cp "$work/sys/xemu/mcpx_1.0.bin" "$work/sysahf/xemu/"
+nasm -f bin -I"$here/rom/" -o "$work/sysahf/xemu/Complex_4627v1.03.bin" "$here/rom/sahf.asm"
 
 cp "$work/sys/xemu/mcpx_1.0.bin" "$work/sysf/xemu/"
 nasm -f bin -I"$here/rom/" -o "$work/sysf/xemu/Complex_4627v1.03.bin" "$here/rom/rep-stos.asm"
@@ -515,6 +524,51 @@ for hard in enabled disabled; do
       grep -q "^$want$" "$work/arithmetic-parity-$hard-$boost.txt" || {
         cat "$work/arithmetic-parity-$hard-$boost.txt"
         echo "FAIL: arithmetic parity ($hard/$boost)"; exit 1;
+      }
+    done
+  done
+done
+
+# SAHF overflow and shared classes.
+for hard in enabled disabled; do
+  for boost in enabled disabled; do
+    t "SAHF overflow and shared classes, hard FPU $hard, CPU Boost $boost" $h "$(path "$core")" "$(path "$work/sysahf")" \
+      $vp --opt "xemu_hard_fpu=$hard" --opt "xemu_cpu_boost=$boost" --frames 60 --strict \
+      --peek 0x300000 --peek 0x300004 >"$work/sahf-$hard-$boost.txt"
+    for want in "peek_0x300000=0x4b4f4853" "peek_0x300004=0x00000000"; do
+      grep -q "^$want$" "$work/sahf-$hard-$boost.txt" || {
+        cat "$work/sahf-$hard-$boost.txt"
+        echo "FAIL: SAHF overflow and shared classes ($hard/$boost)"; exit 1;
+      }
+    done
+  done
+done
+
+# entry relational predicates.
+for hard in enabled disabled; do
+  for boost in enabled disabled; do
+    t "entry relational predicates, hard FPU $hard, CPU Boost $boost" $h "$(path "$core")" "$(path "$work/sysec")" \
+      $vp --opt "xemu_hard_fpu=$hard" --opt "xemu_cpu_boost=$boost" --frames 180 --strict \
+      --peek 0x300000 --peek 0x300004 >"$work/entry-compare-$hard-$boost.txt"
+    for want in "peek_0x300000=0x4b4f4345" "peek_0x300004=0x00000000"; do
+      grep -q "^$want$" "$work/entry-compare-$hard-$boost.txt" || {
+        cat "$work/entry-compare-$hard-$boost.txt"
+        echo "FAIL: entry relational predicates ($hard/$boost)"; exit 1;
+      }
+    done
+  done
+done
+
+# A dynamic flag update invalidates a previously specialized entry class.
+for hard in enabled disabled; do
+  for boost in enabled disabled; do
+    t "dynamic entry invalidation, hard FPU $hard, CPU Boost $boost" $h "$(path "$core")" "$(path "$work/sysei")" \
+      $vp --opt "xemu_hard_fpu=$hard" --opt "xemu_cpu_boost=$boost" --frames 60 --strict \
+      --peek 0x300000 --peek 0x300004 >"$work/entry-invalidate-$hard-$boost.txt"
+    for want in "peek_0x300000=0x4b4f4945" "peek_0x300004=0x00000000"; do
+      grep -q "^$want$" "$work/entry-invalidate-$hard-$boost.txt" || {
+        cat "$work/entry-invalidate-$hard-$boost.txt"
+        echo "FAIL: dynamic entry invalidation ($hard/$boost)"; exit 1;
       }
     done
   done

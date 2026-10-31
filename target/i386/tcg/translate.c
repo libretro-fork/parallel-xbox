@@ -414,6 +414,9 @@ static void set_cc_op_1(DisasContext *s, CCOp op, bool dirty)
 {
     int dead;
 
+    /* A flag-setting instruction invalidates the entry proof even when
+     * a variable-count operation keeps the translator class DYNAMIC. */
+    s->cc_op_entry = false;
     if (s->cc_op == op) {
         return;
     }
@@ -438,7 +441,6 @@ static void set_cc_op_1(DisasContext *s, CCOp op, bool dirty)
     }
     s->cc_op_dirty = dirty;
     s->cc_op = op;
-    s->cc_op_entry = false;
 }
 
 static void set_cc_op(DisasContext *s, CCOp op)
@@ -1254,6 +1256,35 @@ static CCPrepare gen_prepare_cc(DisasContext *s, int b, TCGv reg)
     jcc_op = (b >> 1) & 7;
 
     switch (s->cc_op) {
+    case CC_OP_DYNAMIC:
+        if (xemu_cpu_boost && s->cc_op_entry &&
+            (s->cf_entry_class == TB_CF_SUBB ||
+             s->cf_entry_class == TB_CF_SUBL)) {
+            switch (jcc_op) {
+            case JCC_BE: cond = TCG_COND_LEU; break;
+            case JCC_L:  cond = TCG_COND_LT; break;
+            case JCC_LE: cond = TCG_COND_LE; break;
+            default: goto slow_jcc;
+            }
+            /* Reconstruct the original minuend, not just CF. Preserve
+             * the removed helper's FP conversion/FIP publication. */
+            gen_flush_fp(s);
+            s->cf_entry_used = true;
+            size = s->cf_entry_class == TB_CF_SUBB ? MO_8 : MO_32;
+            if (jcc_op != JCC_BE) {
+                size |= MO_SIGN;
+            }
+            TCGv lhs = tcg_temp_new();
+            TCGv rhs = tcg_temp_new();
+            tcg_gen_add_tl(lhs, cpu_cc_dst, cpu_cc_src);
+            tcg_gen_ext_tl(lhs, lhs, size);
+            tcg_gen_ext_tl(rhs, cpu_cc_src, size);
+            cc = (CCPrepare) { .cond = cond, .reg = lhs, .reg2 = rhs,
+                               .use_reg2 = true };
+            break;
+        }
+        goto slow_jcc;
+
     case CC_OP_SUBB ... CC_OP_SUBQ:
         /* We optimize relational operators for the cmp/jcc case.  */
         size = cc_op_size(s->cc_op);
