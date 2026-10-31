@@ -733,6 +733,8 @@ typedef struct PGRAPHVkState {
     size_t bitmap_size;
     StorageBuffer vertex_arena[2];
     bool vertex_arena_coherent[2];
+    /* First unflushed non-coherent write; UINT64_MAX means clean. */
+    VkDeviceSize vertex_arena_dirty_start[2];
     bool vertex_arena_pending; /* cow staged, bind not recorded yet */
     bool vertex_arena_used;    /* current recording binds arena content */
     MemorySyncRequirement vertex_attr_span[NV2A_VERTEXSHADER_ATTRIBUTES];

@@ -1216,3 +1216,11 @@ unswizzle exhaustion and full wrapped spans whose endpoints are equal. Across
 overwrite a current or unretired recording. A private run against the previous
 allocator reproduced the equal-endpoint overwrite; these are ownership and
 driver-call checks, not whole-game latency measurements.
+
+`test-vk-arena-flush.py` extracts production host flushing and verifies exact
+non-coherent dirty-tail ranges, zero allocator calls for coherent/unchanged
+arenas, clean state after a flush, reset/reuse and the unchanged mirror/arena
+HOST_WRITE-to-vertex-fetch barriers. The COW-tail fixture checks dirty marking
+for fresh snapshots and tail growth, plus isolated snapshot starts with
+non-coherent atoms from 512 through 8,192 bytes. Payload and immutable-reader
+checks continue to cover cache reuse, slot rotation and settled arena recycling.

@@ -2403,10 +2403,16 @@ static void flush_memory_buffer(PGRAPHState *pg, VkCommandBuffer cmd)
         r->allocator, r->storage_buffers[BUFFER_VERTEX_RAM].allocation, 0,
         VK_WHOLE_SIZE));
     for (int i = 0; i < 2; i++) {
-        if (r->vertex_arena[i].buffer_offset) {
-            VK_CHECK(vmaFlushAllocation(r->allocator,
-                                        r->vertex_arena[i].allocation, 0,
-                                        r->vertex_arena[i].buffer_offset));
+        VkDeviceSize start = r->vertex_arena_dirty_start[i];
+        if (start != UINT64_MAX) {
+            VkDeviceSize end = r->vertex_arena[i].buffer_offset;
+            assert(start < end);
+            if (!r->vertex_arena_coherent[i]) {
+                VK_CHECK(vmaFlushAllocation(r->allocator,
+                                            r->vertex_arena[i].allocation,
+                                            start, end - start));
+            }
+            r->vertex_arena_dirty_start[i] = UINT64_MAX;
         }
     }
 
@@ -3817,7 +3823,8 @@ static void vertex_cow_snapshot(PGRAPHState *pg, hwaddr addr,
     /* Snapshots persist across frames: the arena is append-only, so
      * appending needs no fence wait; it is reset at 3/4 full with
      * everything settled. */
-    StorageBuffer *arena = &r->vertex_arena[r->slot & 1];
+    unsigned arena_slot = r->slot & 1;
+    StorageBuffer *arena = &r->vertex_arena[arena_slot];
     VertexCowCacheEntry *extend = dirty ? NULL :
                                   vertex_cow_extendable(r, lo, copy_size);
     if (extend && lo + extend->size > addr &&
@@ -3835,6 +3842,10 @@ static void vertex_cow_snapshot(PGRAPHState *pg, hwaddr addr,
          * select it only afterwards. Never overwrite the old allocation. */
         VkDeviceSize tail = copy_size - extend->size;
         nv2a_profile_inc_counter(NV2A_PROF_GEOM_BUFFER_UPDATE_1);
+        if (!r->vertex_arena_coherent[arena_slot]) {
+            r->vertex_arena_dirty_start[arena_slot] =
+                MIN(r->vertex_arena_dirty_start[arena_slot], arena->buffer_offset);
+        }
         memcpy(arena->mapped + arena->buffer_offset,
                d->vram_ptr + lo + extend->size, tail);
         arena->buffer_offset += tail;
@@ -3849,13 +3860,18 @@ static void vertex_cow_snapshot(PGRAPHState *pg, hwaddr addr,
         r->vertex_arena_pending = true;
         return;
     }
-    VkDeviceSize dst = ROUND_UP(arena->buffer_offset, 256);
+    /* A new non-coherent snapshot starts in its own flush atom, so making
+     * it visible cannot flush an older in-flight reader's atom again. */
+    VkDeviceSize alignment = r->vertex_arena_coherent[arena_slot] ? 256 :
+        MAX((VkDeviceSize)256, r->device_props.limits.nonCoherentAtomSize);
+    VkDeviceSize dst = ROUND_UP(arena->buffer_offset, alignment);
     if (dst + copy_size > (arena->buffer_size / 4) * 3 &&
         !r->vertex_arena_pending && !r->vertex_arena_used) {
         pgraph_vk_finish(pg, VK_FINISH_REASON_NEED_BUFFER_SPACE);
         pgraph_vk_settle_all_slots(pg);
         for (int s = 0; s < 2; s++) {
             r->vertex_arena[s].buffer_offset = 0;
+            r->vertex_arena_dirty_start[s] = UINT64_MAX;
             r->vertex_arena_epoch[s]++;
             r->vertex_cow_tail[s] = 0;
         }
@@ -3872,6 +3888,10 @@ static void vertex_cow_snapshot(PGRAPHState *pg, hwaddr addr,
     }
 
     nv2a_profile_inc_counter(NV2A_PROF_GEOM_BUFFER_UPDATE_1);
+    if (!r->vertex_arena_coherent[arena_slot]) {
+        r->vertex_arena_dirty_start[arena_slot] =
+            MIN(r->vertex_arena_dirty_start[arena_slot], dst);
+    }
     memcpy(arena->mapped + dst, d->vram_ptr + lo, copy_size);
     arena->buffer_offset = dst + copy_size;
     out->cow = true;

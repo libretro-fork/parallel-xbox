@@ -134,6 +134,7 @@ ${cc} -O2 -std=c11 -Wall -Wextra -Werror -I"$here/../.." -I"$here/../../libretro
     -o "$work/bin/vfsreadcheck" "$here/test-vfs-read.c"
 "$work/bin/vfsreadcheck"
 python3 "$here/test-vk-cow-tail.py" "$here/../.." "$cc"
+python3 "$here/test-vk-arena-flush.py" "$here/../.." "$cc"
 python3 "$here/test-inline-index-bounds.py" "$here/../.." "$cc"
 ${cc} -O2 -std=c11 -Wall -o "$work/bin/scanoutcheck" "$here/test-scanout.c"
 ${cc} -O2 -std=c11 -Wall -I"$here/../.." -o "$work/bin/mcpxcheck" "$here/test-mcpx-boot.c"

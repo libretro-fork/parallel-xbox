@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Vulkan vertex copy-on-write arenas flush only new host-written tails on non-coherent memory and skip allocator flush calls for coherent or unchanged arenas. New snapshots respect the device flush-atom alignment, including atoms larger than 256 bytes. Existing GPU visibility barriers remain; no vertex payload buffers or copies are added.
+
 - Fix Vulkan ring ownership when a recording wraps and fills a ring exactly: equal start/end positions no longer make occupied bytes look unused.
 - Vulkan staging and unswizzle rings check their available space before polling auxiliary GPU fences. Uploads that already fit avoid those driver calls; under pressure, completed ranges retire before any required wait. Remove redundant per-submission ring endpoints and their repeated writes. Existing ring capacity, growth and submission limits are unchanged.
 

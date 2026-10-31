@@ -354,6 +354,7 @@ void pgraph_vk_init_buffers(NV2AState *d)
 
     for (int i = 0; i < 2; i++) {
         create_buffer(pg, &r->vertex_arena[i]);
+        r->vertex_arena_dirty_start[i] = UINT64_MAX;
         VkMemoryPropertyFlags props;
         vmaGetAllocationMemoryProperties(r->allocator,
                                          r->vertex_arena[i].allocation, &props);

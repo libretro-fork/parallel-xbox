@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <string.h>
 #define ARRAY_SIZE(a) (sizeof(a)/sizeof((a)[0]))
+#define MAX(a,b) ((a)>(b)?(a):(b))
 #define MIN(a,b) ((a)<(b)?(a):(b))
 #define ROUND_UP(x,a) (((x)+(a)-1)&~((uint64_t)(a)-1))
 #define TARGET_PAGE_SIZE 4096u
@@ -22,7 +23,7 @@ typedef uint64_t hwaddr,VkDeviceSize;
 typedef struct {uint8_t *mapped;VkDeviceSize buffer_offset,buffer_size;} StorageBuffer;
 typedef struct {hwaddr addr,size;} Span;
 typedef struct {
- StorageBuffer vertex_arena[2];bool vertex_arena_coherent[2],vertex_arena_pending,vertex_arena_used;
+ StorageBuffer vertex_arena[2];bool vertex_arena_coherent[2],vertex_arena_pending,vertex_arena_used;VkDeviceSize vertex_arena_dirty_start[2];
  Span vertex_attr_span[16];int vertex_attribute_to_description_location[16];hwaddr vertex_attribute_offsets[16];
  VertexCowCacheEntry vertex_cow_cache[512];unsigned vertex_cow_recent[4],vertex_cow_tail[2],vertex_cow_cache_rr;uint32_t vertex_arena_epoch[2];unsigned slot;
  struct{struct{uint64_t nonCoherentAtomSize;} limits;} device_props;
@@ -55,7 +56,7 @@ static void *counted_copy(void *out,const void *in,size_t len){copies++;copied+=
 #undef memcpy
 static void reset(void){
  check_readers();nreaders=0;memset(&r,0,sizeof(r));memset(arena,0xcd,sizeof(arena));memset(mirror,0xcc,sizeof(mirror));
- r.device_props.limits.nonCoherentAtomSize=256;for(unsigned s=0;s<2;s++){r.vertex_arena[s]=(StorageBuffer){arena[s],0,ARENASIZE};r.vertex_arena_coherent[s]=true;}
+ r.device_props.limits.nonCoherentAtomSize=256;for(unsigned s=0;s<2;s++){r.vertex_arena[s]=(StorageBuffer){arena[s],0,ARENASIZE};r.vertex_arena_coherent[s]=true;r.vertex_arena_dirty_start[s]=UINT64_MAX;}
  for(unsigned a=0;a<16;a++)r.vertex_attribute_to_description_location[a]=-1;
  for(size_t i=0;i<RAMSIZE;i++)ram[i]=(uint8_t)rnd();
  d.vram_ptr=ram;copies=copied=finishes=settles=downloads=0;rotate_download=writeback_download=cpu_write_download=late_dirty=false;
@@ -72,17 +73,21 @@ static void hold(VertexCowDispatch out,hwaddr end){
  assert(nreaders<ARRAY_SIZE(readers));size_t size=end-out.lo;readers[nreaders].data=r.vertex_arena[out.slot].mapped+out.arena_offset;readers[nreaders].size=size;memcpy(readers[nreaders].expected,readers[nreaders].data,size);nreaders++;r.vertex_arena_pending=false;r.vertex_arena_used=true;
 }
 int main(void){
- reset();VertexCowDispatch a=snapshot(4096,4096,0,true);hold(a,8192);size_t before=copied;uint64_t stale=*r.vertex_stale_bitmap;
- VertexCowDispatch b=snapshot(4096,8192,0,false);assert(b.arena_offset==a.arena_offset&&b.slot==a.slot&&copied-before==4096&&*r.vertex_stale_bitmap==stale);hold(b,12288);
+ reset();r.vertex_arena_coherent[0]=false;VertexCowDispatch a=snapshot(4096,4096,0,true);assert(r.vertex_arena_dirty_start[0]==0);hold(a,8192);r.vertex_arena_dirty_start[0]=UINT64_MAX;size_t before=copied;uint64_t stale=*r.vertex_stale_bitmap;
+ VertexCowDispatch b=snapshot(4096,8192,0,false);assert(r.vertex_arena_dirty_start[0]==8192);assert(b.arena_offset==a.arena_offset&&b.slot==a.slot&&copied-before==4096&&*r.vertex_stale_bitmap==stale);hold(b,12288);
  before=copied;VertexCowDispatch c=snapshot(4096,16384,0,false);assert(c.arena_offset==a.arena_offset&&copied-before==8192);hold(c,20480);
  before=copied;(void)snapshot(8192,4096,0,false);assert(copied==before); /* contained reuse */
  ram[4096]^=0x19;before=copied;VertexCowDispatch changed=snapshot(4096,16384,0,true);assert(changed.arena_offset!=a.arena_offset&&copied-before==20480);hold(changed,20480);
+ reset();(void)snapshot(4096,4096,0,true);assert(r.vertex_arena_dirty_start[0]==UINT64_MAX);
  /* Dirt in an artificial binding prefix outside this draw's fetches
   * must stay pending, not force a read or be cleared by revalidation. */
  reset();a=snapshot(4096,4096,0,true);hold(a,8192);ram[100]^=0x61;late_dirty=true;before=copied;b=snapshot(8192,4096,0,false);assert(b.arena_offset==a.arena_offset&&copied-before==4096&&late_dirty);hold(b,12288);
  /* The non-coherent boundary is enforced even when the entry otherwise fits. */
  reset();r.vertex_arena_coherent[0]=false;a=snapshot(4096,4096,13,true);hold(a,8192);before=copied;b=snapshot(4096,8192,13,false);assert(b.arena_offset!=a.arena_offset&&copied-before==12288-13);
  reset();r.vertex_arena_coherent[0]=false;a=snapshot(4096,4096,0,true);hold(a,8192);before=copied;b=snapshot(4096,8192,0,false);assert(b.arena_offset==a.arena_offset&&copied-before==4096);
+ /* Atoms larger than the old 256-byte alignment must not share a fresh
+  * snapshot's flush atom with an existing immutable reader. */
+ for(unsigned atom=512;atom<=8192;atom*=2){reset();r.vertex_arena_coherent[0]=false;r.device_props.limits.nonCoherentAtomSize=atom;a=snapshot(4096,4096,300,true);hold(a,8192);r.vertex_arena_dirty_start[0]=UINT64_MAX;b=snapshot(16384,4096,16384,true);assert(b.arena_offset%atom==0&&r.vertex_arena_dirty_start[0]==b.arena_offset);hold(b,20480);}
  /* Download callbacks may invalidate the prefix or rotate to another slot. */
  reset();a=snapshot(4096,4096,0,true);hold(a,8192);writeback_download=true;before=copied;b=snapshot(4096,8192,0,false);assert(b.arena_offset!=a.arena_offset&&copied-before==12288);
  reset();a=snapshot(4096,4096,0,true);hold(a,8192);cpu_write_download=true;before=copied;b=snapshot(4096,8192,0,false);assert(b.arena_offset!=a.arena_offset&&copied-before==12288&&(*r.vertex_stale_bitmap&(UINT64_C(1)<<2)));
