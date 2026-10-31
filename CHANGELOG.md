@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- CPU Boost computes parity-only conditions after addition, subtraction, increment/decrement and shifts directly from the low result byte. Other flags remain available lazily, and zero-count shifts preserve their incoming flags.
+
 - Preserve the caller's file position when the GLib descriptor-mapping wrapper reads a file. A temporary native mapping replaces the seek/read loop, while the returned storage remains a private copy independent of the caller's descriptor.
 
 - Native POSIX disk sync retries interrupted system calls, including the final sync when a writable image closes. Genuine sync errors still propagate instead of being retried indefinitely.

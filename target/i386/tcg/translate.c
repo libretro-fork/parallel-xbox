@@ -1141,8 +1141,11 @@ static CCPrepare gen_prepare_eflags_c(DisasContext *s, TCGv reg)
 /* compute eflags.P, trying to store it in reg if not NULL */
 static CCPrepare gen_prepare_eflags_p(DisasContext *s, TCGv reg)
 {
-    if (xemu_cpu_boost && s->cc_op >= CC_OP_LOGICB &&
-        s->cc_op <= CC_OP_LOGICQ) {
+    /* These classes keep the arithmetic result in CC_DST. Zero-count
+     * shifts retain their previous class; dynamic/explicit flags, multiply
+     * and BMI flag conventions must still use the general path. */
+    if (xemu_cpu_boost && s->cc_op >= CC_OP_ADDB &&
+        s->cc_op <= CC_OP_SARQ) {
         if (!reg) {
             reg = tcg_temp_new();
         }

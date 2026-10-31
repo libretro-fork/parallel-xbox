@@ -845,3 +845,9 @@ Descriptor-mapping regressions start at a nonzero position, map the whole file,
 and verify the next caller read, descriptor ownership and retained contents after
 close. Writable copies must not alter the file; empty-file and mapping-error
 paths must preserve position too. These cases also run against system GLib.
+`arithmetic-parity.asm` exercises 73,728 cases of ADD/ADC/SUB/SBB, INC/DEC,
+NEG and SHL/SHR/SAR at 8/16/32 bits, both input flag seeds, all low bytes,
+and three high-bit patterns. SETP/SETNP, CMOVP/CMOVNP, JP and JNP must match
+a fixed parity table (incoming PF for zero shifts), while full flag snapshots
+must match the same operation before a predicate. Two extra cases keep native
+x87 arithmetic live before an arithmetic PF consumer. Both FPU/Boost settings run.

@@ -360,6 +360,9 @@ nasm -f bin -I"$here/rom/" -o "$work/sysfsw/xemu/Complex_4627v1.03.bin" "$here/r
 mkdir -p "$work/syspf/xemu"
 cp "$work/sys/xemu/mcpx_1.0.bin" "$work/syspf/xemu/"
 nasm -f bin -I"$here/rom/" -o "$work/syspf/xemu/Complex_4627v1.03.bin" "$here/rom/logic-parity.asm"
+mkdir -p "$work/sysap/xemu"
+cp "$work/sys/xemu/mcpx_1.0.bin" "$work/sysap/xemu/"
+nasm -f bin -I"$here/rom/" -o "$work/sysap/xemu/Complex_4627v1.03.bin" "$here/rom/arithmetic-parity.asm"
 
 cp "$work/sys/xemu/mcpx_1.0.bin" "$work/sysf/xemu/"
 nasm -f bin -I"$here/rom/" -o "$work/sysf/xemu/Complex_4627v1.03.bin" "$here/rom/rep-stos.asm"
@@ -483,6 +486,21 @@ for hard in enabled disabled; do
       grep -q "^$want$" "$work/x87-scratch-$hard-$boost.txt" || {
         cat "$work/x87-scratch-$hard-$boost.txt"
         echo "FAIL: x87 scratch ($hard/$boost)"; exit 1;
+      }
+    done
+  done
+done
+
+# Arithmetic PF consumers must preserve the rest of the lazy flag state.
+for hard in enabled disabled; do
+  for boost in enabled disabled; do
+    t "arithmetic parity, hard FPU $hard, CPU Boost $boost" $h "$(path "$core")" "$(path "$work/sysap")" \
+      $vp --opt "xemu_hard_fpu=$hard" --opt "xemu_cpu_boost=$boost" --frames 60 --strict \
+      --peek 0x300000 --peek 0x300004 >"$work/arithmetic-parity-$hard-$boost.txt"
+    for want in "peek_0x300000=0x4b4f5041" "peek_0x300004=0x00000000"; do
+      grep -q "^$want$" "$work/arithmetic-parity-$hard-$boost.txt" || {
+        cat "$work/arithmetic-parity-$hard-$boost.txt"
+        echo "FAIL: arithmetic parity ($hard/$boost)"; exit 1;
       }
     done
   done
