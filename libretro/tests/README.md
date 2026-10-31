@@ -1534,3 +1534,10 @@ The original handler fails the shared-payload integrity assertion. Blocked TDs
 must leave controller state and payload unchanged without any DMA read/copy or
 device lookup; the original TD and following TD then proceed normally. This
 does not implement per-endpoint asynchronous slots or model USB device timing.
+
+`flash.asm -DSTREAM [-DPCM=0]` plays 255 SSL segments from the same physical
+source address. `run.sh` compares 60 frames at address zero against the normal
+address through `check-stream-address.py`: exactly 48,048 stereo samples,
+bit-identical PCM, a non-silent 1 kHz tone and strict frame/audio cadence.
+This tests valid zero-address segments; it does not validate incomplete or
+malformed SSL descriptors or claim to resolve every crash reported in #3072.

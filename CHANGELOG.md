@@ -20,6 +20,7 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- APU streaming segments may start at physical RAM address zero without terminating the core. The source bytes are played normally, with no skipped audio cycle, extra buffering or new synchronization. The rare jingle signature probe is kept out of the ordinary voice-processing stack.
 - Pack fallback Vulkan depth/stencil readbacks directly into mapped readback
   storage when the device range permits, removing the intermediate packed-buffer
   GPU copy. Keep CPU completion/visibility and oversized/direct-RAM fallbacks.

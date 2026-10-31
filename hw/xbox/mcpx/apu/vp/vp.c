@@ -898,6 +898,21 @@ static void voice_step_lfos(MCPXAPUState *d, uint16_t v, int32_t *attenuation,
     *cutoff64 = a_cutoff * value[0];
 }
 
+/* Keep the rare 4 KiB signature probe out of the ordinary voice stack. */
+static uint64_t __attribute__((noinline))
+voice_jingle_hash(MCPXAPUState *d, uint32_t ba)
+{
+    uint8_t head[4096];
+    for (size_t off = 0; off < sizeof(head); off += 4) {
+        uint32_t w = ldl_le_phys(
+            &address_space_memory,
+            get_data_ptr(d, apu_reg_r(d, NV_PAPU_VPSGEADDR), 0xFFFFFFFF,
+                         ba + off));
+        memcpy(head + off, &w, 4);
+    }
+    return fast_hash(head, sizeof(head));
+}
+
 static int voice_get_samples(MCPXAPUState *d, uint32_t v, int32_t samples[][2],
                        int num_samples_requested)
 {
@@ -1006,7 +1021,7 @@ static int voice_get_samples(MCPXAPUState *d, uint32_t v, int32_t samples[][2],
         hwaddr addr = apu_reg_r(d, NV_PAPU_VPSSLADDR) + page * 8;
         segment_offset = apu_ram_ldl(d, addr);
         segment_length = apu_ram_ldl(d, addr + 4);
-        assert(segment_offset != 0);
+        /* SSL offsets are physical RAM addresses, including address zero. */
         assert(segment_length != 0);
         seg_len = (segment_length >> 0) & 0xffff;
         seg_cs = (segment_length >> 16) & 3;
@@ -1072,16 +1087,8 @@ static int voice_get_samples(MCPXAPUState *d, uint32_t v, int32_t samples[][2],
                   sample_size == NV_PAVS_VOICE_CFG_FMT_SAMPLE_SIZE_U8 &&
                   container_size == 1;
     if (jingle && cbo == 0) {
-        uint8_t head[4096];
-        for (size_t off = 0; off < sizeof(head); off += 4) {
-            uint32_t w = ldl_le_phys(
-                &address_space_memory,
-                get_data_ptr(d, apu_reg_r(d, NV_PAPU_VPSGEADDR), 0xFFFFFFFF,
-                             ba + off));
-            memcpy(head + off, &w, 4);
-        }
         jingle_voice[v].match =
-            fast_hash(head, sizeof(head)) == 0x2bb1bd72102025aaULL;
+            voice_jingle_hash(d, ba) == 0x2bb1bd72102025aaULL;
         jingle_voice[v].ba = ba;
         if (jingle_voice[v].match) {
             fprintf(stderr, "apu: SEGABOOT jingle replaced\n");
