@@ -22,9 +22,22 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 - OpenGL: upload representable pitched surfaces directly and expand pitched CPU fallbacks without repacking; remove the dedicated 4 MiB pitch scratch buffer.
 
+- Reuse fence-retired Vulkan video-overlay image allocations through the existing
+  budget-aware image pool, and keep the dimension-independent sampler across
+  mode changes. Repeated modes avoid fresh VRAM allocations when a compatible
+  image has retired; new modes and replacement image views can still allocate.
+
+- Signed G8B8 textures with matching min/mag filters now decode before mip filtering when the lower mip clamp selects level one or two. Vulkan explicit fetches enforce that lower bound even on drivers whose LOD query omits it. Existing zero-lower-clamp shader keys and programs remain unchanged; mixed filters and higher lower clamps retain their previous path.
+
+- Retire resized Vulkan video-overlay images after their upload and display
+  fences complete instead of synchronously draining rendering and submitting
+  an empty auxiliary command. Give each auxiliary slot its own conversion
+  descriptors, and reserve normal deferred-destruction storage before gameplay.
+
 - OpenGL: fuse CPU downscale/swizzle fallback readbacks, avoiding a native-size scratch image and an extra pixel pass.
 
 - Vulkan: convert packed video overlays directly into the GPU image, avoiding CPU RGBA staging and its buffer-to-image copy; roughly halve CPU-written overlay bytes while preserving native filtering.
+
 
 - Signed G8B8 mip filtering now supports mirrored repeat on either or both axes, paired with wrap or clamp-to-edge. Texels reflect at each edge before signed interpolation, including mixed min/mag filters and Force LOD0. Existing supported address modes retain their shader keys and generated programs.
 

@@ -25,9 +25,13 @@ def main():
                         help="clamp only this axis and wrap the other with --mip-filter")
     parser.add_argument("--mip-address-u", choices=("wrap", "edge", "mirror"))
     parser.add_argument("--mip-address-v", choices=("wrap", "edge", "mirror"))
+    parser.add_argument("--min-lod", type=int, choices=(0, 1, 2), default=0,
+                        help="guest lower mip clamp with --mip-filter")
     parser.add_argument("--lod-bias", type=float, choices=(-4, 0, 0.25, 4), default=0,
                         help="sampler LOD bias for the mixed/mip-filter matrix")
     args = parser.parse_args()
+    if args.min_lod and not args.mip_filter:
+        parser.error("--min-lod requires --mip-filter")
     if args.mixed and args.mip_filter:
         parser.error("--mixed and --mip-filter are mutually exclusive")
     if args.mip_mixed and not args.mip_filter:
@@ -66,6 +70,7 @@ def main():
         if args.mip_filter:
             mag = (2 if args.mip_filter % 2 else 1) if args.mip_mixed else (1 if args.mip_filter % 2 else 2)
             defines += ["-DBUMP_FILTER_MIP_PROBE", f"-DBUMP_MIP_FILTER={args.mip_filter}",
+                        f"-DBUMP_MIN_LOD={args.min_lod}",
                         f"-DBUMP_MIP_MAG={mag}",
                         f"-DBUMP_MIXED_BIAS={int(args.lod_bias * 256) & 0x1fff}"]
             if axis_data:
@@ -107,7 +112,7 @@ def main():
         writer.writerow(["id", "layout", "mode", "axis", "signed_channels", "filter",
                          "coordinate", "result_address", "lod_bias", "mip_filter",
                          "max_lod", "wrap_period", "mag_filter", "address_mode",
-                         "sample_u", "sample_v"])
+                         "sample_u", "sample_v", "min_lod"])
         for i in range(192):
             if args.color or args.mixed or args.mip_filter:
                 flags = (i // 6) % 16
@@ -128,7 +133,7 @@ def main():
                                      ("magnified", "near_magnified", "minified")[i % 3],
                                      f"0x{0x300204 + i * 8:08x}", args.lod_bias,
                                      args.mip_filter, maximum, 0 if axis_data else -(i // 96), mag,
-                                     address_mode, u, v])
+                                     address_mode, u, v, args.min_lod])
                     continue
                 writer.writerow([i, ("linear", "swizzled")[i // 96],
                                  "mixed_color" if args.mixed else "color", "BG", channels,

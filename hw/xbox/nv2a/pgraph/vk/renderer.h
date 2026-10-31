@@ -323,6 +323,9 @@ typedef struct PvideoState {
     uint32_t color_key;
 } PvideoState;
 
+/* Single-time command buffers in flight at most (renderer.h aux). */
+#define PGRAPH_VK_AUX_SLOTS 8
+
 typedef struct PGRAPHVkDisplayState {
     ShaderModuleInfo *display_frag, *native_frag;
 
@@ -363,14 +366,15 @@ typedef struct PGRAPHVkDisplayState {
         VmaAllocation allocation;
         VkSampler sampler;
         bool storage;
+        VkImageCreateInfo image_ci; /* exact key for retired allocation reuse */
         struct {
             VkDescriptorPool pool;
             VkDescriptorSetLayout set_layout;
-            VkDescriptorSet set;
+            VkDescriptorSet sets[PGRAPH_VK_AUX_SLOTS];
             VkPipelineLayout layout;
             VkPipeline pipeline;
-            VkBuffer source;
-            VkImageView output; /* immutable until drained buffer/image replacement */
+            VkBuffer source[PGRAPH_VK_AUX_SLOTS];
+            VkImageView output[PGRAPH_VK_AUX_SLOTS];
         } convert;
     } pvideo;
 
@@ -455,8 +459,6 @@ typedef struct PGRAPHVkComputeState {
 /* Main command buffers in the ring: a slot is recorded again two submissions
  * after its own, once its fence has settled. */
 #define PGRAPH_VK_SLOTS 2
-/* single-time command buffers in flight at most (renderer.h aux) */
-#define PGRAPH_VK_AUX_SLOTS 8
 /* the rings they allocate from: staging, the unswizzle's output */
 #define PGRAPH_VK_RING_STAGING 0
 #define PGRAPH_VK_RING_UNSWIZZLE 1
@@ -560,6 +562,7 @@ typedef struct PGRAPHVkState {
     struct PGRAPHVkAuxSlot {
         VkCommandBuffer cmd;
         VkFence fence;
+        uint64_t serial;
         bool pending;
         /* A full wrapped recording has the same head as its start; track
          * use explicitly instead of treating equal positions as empty. */
@@ -571,6 +574,7 @@ typedef struct PGRAPHVkState {
     int aux_slot;           /* the slot recording, or the next to record */
     int aux_oldest;         /* the oldest pending slot */
     int aux_npending;
+    uint64_t aux_submitted, aux_settled;
     bool in_aux_command_buffer;
     /* The rings the single-time command buffers use (command.c
      * pgraph_vk_ring_alloc): the staging ring in BUFFER_STAGING_SRC
@@ -639,6 +643,7 @@ typedef struct PGRAPHVkState {
          * retired (pgraph_vk_slot_retired) */
         uint32_t retire_after;
         uint64_t display_after;
+        uint64_t aux_after;
     } *trash;                       /* grown as needed: it never overflows */
     int trash_n, trash_cap;
     /* Retired texture and surface images kept for reuse
@@ -1200,6 +1205,7 @@ void pgraph_vk_settle_all_slots(PGRAPHState *pg);
 void pgraph_vk_trash_push(PGRAPHVkState *r,
                           const struct XemuVkTrashEntry *e);
 void pgraph_vk_trash_drain(PGRAPHVkState *r);
+void pgraph_vk_poll_aux_retired(PGRAPHVkState *r);
 /* A slot's submission has retired (its fence signalled): what it alone
  * held is released; everything up to it has run */
 void pgraph_vk_slot_retired(PGRAPHState *pg, int slot);

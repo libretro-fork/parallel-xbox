@@ -160,9 +160,17 @@ static bool aux_retire_oldest(PGRAPHVkState *r, bool poll)
     }
     VK_CHECK(vkResetFences(r->device, 1, &a->fence));
     a->pending = false;
+    r->aux_settled = a->serial;
     r->aux_oldest = (r->aux_oldest + 1) % PGRAPH_VK_AUX_SLOTS;
     r->aux_npending--;
     return true;
+}
+
+/* Garbage collection only observes fences; slot/ring exhaustion may wait. */
+void pgraph_vk_poll_aux_retired(PGRAPHVkState *r)
+{
+    while (r->aux_npending && aux_retire_oldest(r, true)) {
+    }
 }
 
 /* Wait for every aux submission: the command buffers and the staging ring
@@ -385,6 +393,7 @@ void pgraph_vk_end_single_time_commands_async(PGRAPHState *pg,
     /* through the core's wrapper: the queue is RetroArch's, shared */
     pgraph_vk_queue_submit(r, 1, &submit_info, a->fence);
     nv2a_profile_inc_counter(NV2A_PROF_QUEUE_SUBMIT_AUX);
+    a->serial = ++r->aux_submitted;
     a->pending = true;
     if (!r->aux_npending) {
         r->aux_oldest = r->aux_slot;
@@ -426,6 +435,9 @@ void pgraph_vk_init_command_buffers(PGRAPHState *pg)
 
     create_command_pool(pg);
     create_command_buffers(pg);
+    /* Reserve the normal retirement working set before guest rendering. */
+    r->trash_cap = 512;
+    r->trash = g_new(struct XemuVkTrashEntry, r->trash_cap);
 
     /* Frame GPU timestamps (draw.c pgraph_vk_frame_gpu_*), host-reset. */
     r->frame_gpu.pool = VK_NULL_HANDLE;

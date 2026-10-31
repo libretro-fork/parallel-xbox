@@ -60,7 +60,7 @@ static void destroy_pvideo_image(PGRAPHState *pg)
         d->pvideo.sampler = VK_NULL_HANDLE;
     }
 
-    d->pvideo.convert.output = VK_NULL_HANDLE; /* handles may be recycled */
+    memset(d->pvideo.convert.output, 0, sizeof(d->pvideo.convert.output));
     if (d->pvideo.image_view != VK_NULL_HANDLE) {
         vkDestroyImageView(r->device, d->pvideo.image_view, NULL);
         d->pvideo.image_view = VK_NULL_HANDLE;
@@ -70,6 +70,45 @@ static void destroy_pvideo_image(PGRAPHState *pg)
         vmaDestroyImage(r->allocator, d->pvideo.image, d->pvideo.allocation);
         d->pvideo.image = VK_NULL_HANDLE;
         d->pvideo.allocation = VK_NULL_HANDLE;
+    }
+}
+
+/* Transfer ownership to fence-based retirement; the replacement can be
+ * allocated and uploaded while the old image is still being consumed. */
+static void retire_pvideo_image(PGRAPHVkState *r)
+{
+    PGRAPHVkDisplayState *d = &r->display;
+    /* Uploads and display reads may still refer to the old image.
+     * Retire it without draining GPU work on the CPU. */
+    struct XemuVkTrashEntry old = {
+        .image_view = d->pvideo.image_view,
+        .image = d->pvideo.image,
+        .allocation = d->pvideo.allocation,
+        .image_ci = d->pvideo.image_ci,
+        .pool_ok = true,
+        .aux_after = r->aux_submitted,
+    };
+    pgraph_vk_trash_push(r, &old);
+    d->pvideo.image_view = VK_NULL_HANDLE;
+    d->pvideo.image = VK_NULL_HANDLE;
+    d->pvideo.allocation = VK_NULL_HANDLE;
+    memset(d->pvideo.convert.output, 0, sizeof(d->pvideo.convert.output));
+}
+
+/* Reused allocations have fresh-image semantics: upload every pixel and
+ * transition from UNDEFINED, never preserve a previous video's contents. */
+static void acquire_pvideo_image(PGRAPHVkState *r, const VkImageCreateInfo *ci)
+{
+    PGRAPHVkDisplayState *d = &r->display;
+    d->pvideo.image_ci = *ci;
+    if (!pgraph_vk_image_pool_get(r, ci, &d->pvideo.image,
+                                &d->pvideo.allocation)) {
+        VmaAllocationCreateInfo alloc_create_info = {
+            .usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE,
+        };
+        VK_CHECK(vmaCreateImage(r->allocator, ci,
+                               &alloc_create_info, &d->pvideo.image,
+                               &d->pvideo.allocation, NULL));
     }
 }
 
@@ -83,12 +122,7 @@ static bool create_pvideo_image(PGRAPHState *pg, int width, int height)
         return false;
     }
     if (d->pvideo.image != VK_NULL_HANDLE) {
-        /* Only a size change: cover prior display reads before retiring
-         * their input image and sampler. Ordinary updates reuse both. */
-        pgraph_vk_finish(pg, VK_FINISH_REASON_FLUSH);
-        VkCommandBuffer drain = pgraph_vk_begin_single_time_commands(pg);
-        pgraph_vk_end_single_time_commands(pg, drain);
-        destroy_pvideo_image(pg);
+        retire_pvideo_image(r);
     }
 
     VkFormatProperties props;
@@ -111,12 +145,7 @@ static bool create_pvideo_image(PGRAPHState *pg, int width, int height)
         .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
         .flags = 0,
     };
-    VmaAllocationCreateInfo alloc_create_info = {
-        .usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE,
-    };
-    VK_CHECK(vmaCreateImage(r->allocator, &image_create_info,
-                            &alloc_create_info, &d->pvideo.image,
-                            &d->pvideo.allocation, NULL));
+    acquire_pvideo_image(r, &image_create_info);
 
     VkImageViewCreateInfo image_view_create_info = {
         .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
@@ -132,18 +161,21 @@ static bool create_pvideo_image(PGRAPHState *pg, int width, int height)
     VK_CHECK(vkCreateImageView(r->device, &image_view_create_info, NULL,
                                &d->pvideo.image_view));
 
-    VkSamplerCreateInfo sampler_create_info = {
-        .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
-        .magFilter = VK_FILTER_LINEAR,
-        .minFilter = VK_FILTER_NEAREST,
-        .addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT,
-        .addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT,
-        .addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT,
-        .borderColor = VK_BORDER_COLOR_INT_OPAQUE_WHITE,
-        .mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST,
-    };
-    VK_CHECK(vkCreateSampler(r->device, &sampler_create_info, NULL,
-                             &d->pvideo.sampler));
+    /* Sampling state is independent of image dimensions. */
+    if (d->pvideo.sampler == VK_NULL_HANDLE) {
+        VkSamplerCreateInfo sampler_create_info = {
+            .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
+            .magFilter = VK_FILTER_LINEAR,
+            .minFilter = VK_FILTER_NEAREST,
+            .addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT,
+            .addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT,
+            .addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT,
+            .borderColor = VK_BORDER_COLOR_INT_OPAQUE_WHITE,
+            .mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST,
+        };
+        VK_CHECK(vkCreateSampler(r->device, &sampler_create_info, NULL,
+                                 &d->pvideo.sampler));
+    }
     d->pvideo.seq = ++r->texture_binding_seq;
     d->pvideo.width = width;
     d->pvideo.height = height;

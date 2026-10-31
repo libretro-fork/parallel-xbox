@@ -55,14 +55,14 @@ static uint32_t pgraph_reg_r(PGRAPHState *pg, unsigned reg) {
 static PshState encode_signed_g8b8(unsigned signs, unsigned min_filter,
                                  unsigned mag_filter, bool mip_filter,
                                  unsigned address_u, unsigned address_v,
-                                 bool mip_lod0, bool others, int i) {
+                                 bool mip_lod0, bool others, int i, unsigned mip_min_lod) {
     PshState result;
     memset(&result, 0, sizeof(result));
     PshState *state = &result;
     if (others) {
         state->g8b8_mip_flags = 0xffu ^ ((1u << i) | (1u << (i + 4)));
-        state->g8b8_mip_clamp_u = 0x5u & ~(1u << i);
-        state->g8b8_mip_clamp_v = 0xau & ~(1u << i);
+        state->g8b8_mip_clamp_u = 0x55u & ~((1u << i) | (1u << (i + 4)));
+        state->g8b8_mip_clamp_v = 0xaau & ~((1u << i) | (1u << (i + 4)));
         state->g8b8_mip_mirror = 0x96u & ~((1u << i) | (1u << (i + 4)));
     }
     bool mip_clamp_u = address_u == 1, mip_clamp_v = address_v == 1;
@@ -116,9 +116,9 @@ int main(void) {
     for (unsigned others = 0; others < 2; others++) {
         unsigned base_filter = filter % 2 ? 1 : 2;
         PshState mip = encode_signed_g8b8(signs, filter, base_filter,
-                                        true, address_u, address_v, true, others, stage);
+                                        true, address_u, address_v, true, others, stage, 0);
         PshState base = encode_signed_g8b8(signs, base_filter, base_filter,
-                                         false, address_u, address_v, true, others, stage);
+                                         false, address_u, address_v, true, others, stage, 0);
         assert(!memcmp(&mip, &base, sizeof(mip)));
         canonical++;
     }
@@ -131,14 +131,14 @@ int main(void) {
     for (unsigned u = 0; u < 3; u++)
     for (unsigned v = 0; v < 3; v++) {
         PshState key = encode_signed_g8b8(signs, filter, mag, true,
-                                         u, v, zero, true, stage);
+                                         u, v, zero, true, stage, 0);
         bool mixed = mag != (filter % 2 ? 1u : 2u);
         bool explicit_fetch = signs && !(zero && !mixed) &&
                               (!(filter % 2) || mixed || filter == 5);
         unsigned bit = 1u << stage;
-        assert(key.g8b8_mip_clamp_u == ((0x5u & ~bit) |
+        assert(key.g8b8_mip_clamp_u == ((0x55u & ~(bit | (bit << 4))) |
                (explicit_fetch && u == 1 && v != 1 ? bit : 0)));
-        assert(key.g8b8_mip_clamp_v == ((0xau & ~bit) |
+        assert(key.g8b8_mip_clamp_v == ((0xaau & ~(bit | (bit << 4))) |
                (explicit_fetch && v == 1 && u != 1 ? bit : 0)));
         assert(!!(key.g8b8_mip_flags & (bit << 4)) ==
                (explicit_fetch && u == 1 && v == 1));
@@ -147,6 +147,25 @@ int main(void) {
                (explicit_fetch && v == 2 ? bit << 4 : 0)));
         addressed++;
     }
+    unsigned lower = 0;
+    for (unsigned stage = 0; stage < 4; stage++)
+    for (unsigned signs = 0; signs < 16; signs++)
+    for (unsigned filter = 3; filter <= 6; filter++)
+    for (unsigned level = 1; level <= 2; level++)
+    for (unsigned others = 0; others < 2; others++) {
+        unsigned mag = filter % 2 ? 1 : 2;
+        PshState key = encode_signed_g8b8(signs, filter, mag, true,
+                                         0, 0, false, others, stage, level);
+        PshState base = encode_signed_g8b8(signs, filter, mag, true,
+                                          0, 0, false, others, stage, 0);
+        unsigned bit = 1u << (stage + 4);
+        bool fetch = signs && filter != 3;
+        base.g8b8_mip_clamp_u |= fetch && (level & 1) ? bit : 0;
+        base.g8b8_mip_clamp_v |= fetch && (level & 2) ? bit : 0;
+        assert(!memcmp(&key, &base, sizeof(key)));
+        lower++;
+    }
+    printf("PASS: %u lower-mip state encodings\n", lower);
     printf("PASS: %u independent-axis state encodings\n", addressed);
     printf("PASS: %u signed-G8B8 address invalidation cases and shader field coverage\n", cases);
     printf("PASS: %u base-only shader cache canonicalization cases\n", canonical);
