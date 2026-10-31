@@ -531,6 +531,16 @@ unsupported indices raise #GP(0), matching the P6 index rules in Intel's
 [Optimization Reference Manual, B-14](https://download.intel.com/design/PentiumII/manuals/24512701.pdf).
 This does not emulate event counting or test the FastCPU sample end to end.
 
+`test-win32-raw-socket.py CHECKOUT [CC] [--build-only EXE]` exercises production
+Windows AIO registration for raw Winsock handles and CRT-wrapped descriptors,
+callback readiness masks, replacement/removal and failed-registration rollback.
+Non-Windows builds use a single-thread model. Native Windows builds also run
+real nonblocking loopback UDP through the production prepare/pending/dispatch
+functions, and reject a real invalid socket handle. Descriptor classification
+and CRT-handle translation are modelled in this fixture. The standard runner
+also builds/runs the Windows probe under Wine for Windows-core tests; the
+one-second event wait belongs only to the standalone probe.
+
 `test-surface-blend.py CHECKOUT [CC] [--gl]` checks 32,768 target/factor/enable
 combinations through production blend mapping, Vulkan pipeline keys/dirty
 checks and dynamic state, and the OpenGL state-cache/blend block. It covers

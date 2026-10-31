@@ -62,6 +62,31 @@ static void aio_remove_fd_handler(AioContext *ctx, AioHandler *node)
     }
 }
 
+/* Keep the external-handle setup off the normal CRT-descriptor path; inlining
+ * its error handling increases register spills in aio_set_fd_handler. */
+static __attribute__((noinline)) bool aio_select_raw_socket(AioContext *ctx,
+                                                           int fd,
+                                                           IOHandler *io_read,
+                                                           IOHandler *io_write)
+{
+    long bitmask = 0;
+    if (io_read) {
+        bitmask |= FD_READ | FD_ACCEPT | FD_CLOSE;
+    }
+    if (io_write) {
+        bitmask |= FD_WRITE | FD_CONNECT;
+    }
+    /* WSAEventSelect also makes the socket nonblocking. Validate before
+     * publishing a node or replacing an old handler. */
+    if (WSAEventSelect((SOCKET)(uintptr_t)(unsigned int)fd,
+                       event_notifier_get_handle(&ctx->notifier), bitmask)) {
+        error_report("WSAEventSelect failed for socket=%d: %d", fd,
+                     WSAGetLastError());
+        return false;
+    }
+    return true;
+}
+
 void aio_set_fd_handler(AioContext *ctx,
                         int fd,
                         IOHandler *io_read,
@@ -73,13 +98,16 @@ void aio_set_fd_handler(AioContext *ctx,
     AioHandler *old_node;
     AioHandler *node = NULL;
     SOCKET s;
+    bool is_socket = fd_is_socket(fd);
 
-    if (!fd_is_socket(fd)) {
-        error_report("fd=%d is not a socket, AIO implementation is missing", fd);
+    s = is_socket ? (SOCKET)_get_osfhandle(fd) :
+                    (SOCKET)(uintptr_t)(unsigned int)fd;
+    /* External backends can pass a raw Winsock handle rather than a QEMU
+     * CRT descriptor. */
+    if (!is_socket && (io_read || io_write) &&
+        !aio_select_raw_socket(ctx, fd, io_read, io_write)) {
         return;
     }
-
-    s = _get_osfhandle(fd);
 
     qemu_lockcnt_lock(&ctx->list_lock);
     QLIST_FOREACH_RCU(old_node, &ctx->aio_handlers, node) {
@@ -89,18 +117,15 @@ void aio_set_fd_handler(AioContext *ctx,
     }
 
     if (io_read || io_write) {
-        HANDLE event;
-        long bitmask = 0;
-
         /* Alloc and insert if it's not already there */
         node = g_new0(AioHandler, 1);
         node->pfd.fd = s;
 
         node->pfd.events = 0;
-        if (node->io_read) {
+        if (io_read) {
             node->pfd.events |= G_IO_IN;
         }
-        if (node->io_write) {
+        if (io_write) {
             node->pfd.events |= G_IO_OUT;
         }
 
@@ -111,17 +136,18 @@ void aio_set_fd_handler(AioContext *ctx,
         node->io_read = io_read;
         node->io_write = io_write;
 
-        if (io_read) {
-            bitmask |= FD_READ | FD_ACCEPT | FD_CLOSE;
-        }
-
-        if (io_write) {
-            bitmask |= FD_WRITE | FD_CONNECT;
-        }
-
         QLIST_INSERT_HEAD_RCU(&ctx->aio_handlers, node, node);
-        event = event_notifier_get_handle(&ctx->notifier);
-        qemu_socket_select_nofail(fd, event, bitmask);
+        if (is_socket) {
+            HANDLE event = event_notifier_get_handle(&ctx->notifier);
+            long bitmask = 0;
+            if (io_read) {
+                bitmask |= FD_READ | FD_ACCEPT | FD_CLOSE;
+            }
+            if (io_write) {
+                bitmask |= FD_WRITE | FD_CONNECT;
+            }
+            qemu_socket_select_nofail(fd, event, bitmask);
+        }
     }
     if (old_node) {
         aio_remove_fd_handler(ctx, old_node);

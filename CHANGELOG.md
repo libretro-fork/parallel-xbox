@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Windows asynchronous network handlers now accept raw Winsock handles as well as CRT-wrapped sockets. Failed raw-handle event registration leaves an existing handler intact, and readiness masks follow the supplied read/write callbacks. Winsock event registration makes raw sockets nonblocking; no new waits or synchronization primitives are added.
+
 - RDPMC reads of the Xbox CPU's two unmodelled performance counters now return zero instead of an illegal-instruction fault. Privilege checks and virtualization intercepts remain active, unsupported indices raise a general-protection fault, and repeated reads do not produce diagnostic logging. Performance event counting itself is not emulated.
 
 - OpenGL and Vulkan retry overflowing barycentric depth calculations in a shared power-of-two coordinate frame. Ordinary calculations retain their previous arithmetic path; very large projected coordinates can now produce finite interpolation weights instead of NaNs without additional shader variants or GPU/CPU synchronization. GL binaries from older generator revisions are rebuilt; existing seed states remain usable.

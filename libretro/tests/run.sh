@@ -64,6 +64,7 @@ python3 "$here/test-ide-cancel.py" "$here/../.." "$cc"
 python3 "$here/test-block-completion.py" "$here/../.." "$cc"
 python3 "$here/test-block-discard.py" "$here/../.." "$cc"
 python3 "$here/test-backport-compat.py" "$here/../.." "$cc"
+python3 "$here/test-win32-raw-socket.py" "$here/../.." "$cc"
 python3 "$here/test-conexant-counter.py" "$here/../.." "$cc"
 python3 "$here/test-gl-shader-version.py" "$here/../.." "$cc"
 python3 "$here/test-frame-audio-pull.py" "$here/../.." "$cc"
@@ -80,6 +81,9 @@ case $core in
         ${HARNESS_CC:-x86_64-w64-mingw32-gcc} -O2 -std=gnu11 -Wall -static \
             -I"$here/../../include" "$here/test-win32-tls.c" -o "$work/bin/tlstest.exe"
         wine "$work/bin/tlstest.exe"
+        python3 "$here/test-win32-raw-socket.py" "$here/../.." \
+            "${HARNESS_CC:-x86_64-w64-mingw32-gcc}" --build-only "$work/bin/rawsocket.exe"
+        wine "$work/bin/rawsocket.exe"
         ;;
     *)
         ${cc} -O2 -std=gnu11 -Wall -static -I"$here/../../include" \
