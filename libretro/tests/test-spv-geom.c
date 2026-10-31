@@ -87,7 +87,7 @@ static void quiet_test_errors(void)
  assert(signal(SIGABRT, quiet_test_abort) == quiet_test_abort);
 #endif
 }
-int main(int argc,char **argv){
+int line_tests(int argc,char **argv){
  quiet_test_errors();
  assert(argc==2);unsigned cases=0;unsigned stages[]={1,8,16,32};
  for(unsigned primitive=0;primitive<=PRIM_TYPE_POLYGON;primitive++)for(unsigned front=0;front<3;front++)for(unsigned back=0;back<3;back++)
@@ -118,4 +118,8 @@ int main(int argc,char **argv){
  finish_gpu();
 #endif
  puts("Direct geometry: deterministic binary emission, one payload allocation, production reference generation passed");
+ return 0;
 }
+
+#include "spv-triangle-tests.h"
+int main(int argc,char **argv){int result=line_tests(argc,argv);triangle_tests(argv[1]);return result;}

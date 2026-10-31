@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Vulkan emits filled-triangle geometry directly as SPIR-V for triangle lists, strips, fans and filled polygons. It preserves winding, flat colours, strip parity and depth-slope precision while bypassing GLSL strings and compiler scratch buffers. The module cache takes the one final word allocation without copying.
+
 - Thread cleanup for frontend-owned threads now runs during core deinit, before TLS is destroyed. Windows keeps separate per-thread notifier lists instead of retaining TLS pointers in a process-exit list, preventing a shutdown crash; cached AIO objects can register cleanup again on reload.
 
 - RCU deferred callbacks now use fully published libretro-common MPSC batches, each detached before its grace period. This replaces the legacy dummy/tail queue and separate callback count implicated by an intermittent Windows startup abort.

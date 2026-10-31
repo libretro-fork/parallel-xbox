@@ -519,6 +519,19 @@ after eviction/clear, queue drops, adoption and per-state completion markers,
 plus 10,000 FIFO/slot-reuse cases and 800,000 concurrent ref/unref pairs
 with no leaked arrays (UB traps).
 
+`python libretro/tests/test-spv-geom.py . gcc --gpu` compares the direct
+line and filled-triangle emitters with the production GLSL generator/compiler.
+It checks both selectors, deterministic words and one payload allocation;
+SPIR-V 1.5/1.6, flat/smooth colours, both depth modes, all winding pairs and
+first/last/strip/fan provoking rules cover 8 line and 288 triangle variants.
+The optional GPU run captures every geometry output before EmitVertex and
+compares old/new values bit for bit (NaN payloads may differ), then checks an
+independent CPU oracle. Only the CPU slope oracle tolerates GPU division
+rounding. Test-only capture writes/readbacks never enter the renderer.
+Installed spirv-val checks original, direct and instrumented modules. The
+Vulkan test uses bundled Volk and reports whether validation layers exist.
+Compile microbenchmarks exclude GLSL generation and driver PSO compilation.
+
 `python libretro/tests/test-spv-reflection-borrow.py . gcc` uses the real
 GLSL compiler and SPIRV-Reflect to compare copy/borrowed metadata for vertex,
 geometry, fragment and compute shaders under SPIR-V 1.5/1.6. Uniform layouts,
