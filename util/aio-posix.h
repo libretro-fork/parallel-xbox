@@ -24,49 +24,10 @@ struct AioHandler {
     GPollFD pfd;
     IOHandler *io_read;
     IOHandler *io_write;
-    AioPollFn *io_poll;
-    IOHandler *io_poll_ready;
-    IOHandler *io_poll_begin;
-    IOHandler *io_poll_end;
     void *opaque;
     QLIST_RCU_ENTRY(AioHandler) node;
-    QLIST_RCU_ENTRY(AioHandler) node_ready; /* only used during aio_poll() */
+    QLIST_RCU_ENTRY(AioHandler) node_ready; /* nested dispatch readiness */
     QLIST_RCU_ENTRY(AioHandler) node_deleted;
-    QLIST_RCU_ENTRY(AioHandler) node_poll;
-    int64_t poll_idle_timeout; /* when to stop userspace polling */
-    bool poll_ready; /* has polling detected an event? */
-    AioPolledEvent poll;
 };
-
-/* Add a handler to a ready list */
-void aio_add_ready_handler(AioHandlerList *ready_list, AioHandler *node,
-                           int revents);
-
-extern const FDMonOps fdmon_poll_ops;
-
-/* Switch back to poll(2). frontend thread only. */
-void fdmon_poll_downgrade(AioContext *ctx);
-
-#ifdef CONFIG_EPOLL_CREATE1
-bool fdmon_epoll_try_upgrade(AioContext *ctx, unsigned npfd);
-void fdmon_epoll_setup(AioContext *ctx);
-
-/* frontend thread only */
-void fdmon_epoll_disable(AioContext *ctx);
-#else
-static inline bool fdmon_epoll_try_upgrade(AioContext *ctx, unsigned npfd)
-{
-    return false;
-}
-
-static inline void fdmon_epoll_setup(AioContext *ctx)
-{
-}
-
-static inline void fdmon_epoll_disable(AioContext *ctx)
-{
-}
-#endif /* !CONFIG_EPOLL_CREATE1 */
-
 
 #endif /* AIO_POSIX_H */

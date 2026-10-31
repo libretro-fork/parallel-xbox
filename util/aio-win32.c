@@ -194,13 +194,6 @@ void aio_set_event_notifier(AioContext *ctx,
     aio_notify(ctx);
 }
 
-void aio_set_event_notifier_poll(AioContext *ctx,
-                                 EventNotifier *notifier,
-                                 EventNotifierHandler *io_poll_begin,
-                                 EventNotifierHandler *io_poll_end)
-{
-    /* Not implemented */
-}
 
 bool aio_prepare(AioContext *ctx)
 {
@@ -451,13 +444,6 @@ void aio_context_destroy(AioContext *ctx)
 {
 }
 
-void aio_context_set_poll_params(AioContext *ctx, int64_t max_ns,
-                                 int64_t grow, int64_t shrink, Error **errp)
-{
-    if (max_ns) {
-        error_setg(errp, "AioContext polling is not implemented on Windows");
-    }
-}
 
 void aio_context_set_aio_params(AioContext *ctx, int64_t max_batch)
 {

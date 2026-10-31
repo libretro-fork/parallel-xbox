@@ -518,10 +518,6 @@ AioContext *aio_context_new(Error **errp)
                            aio_context_notifier_poll,
                            aio_context_notifier_poll_ready);
 
-    ctx->poll_max_ns = 0;
-    ctx->poll_grow = 0;
-    ctx->poll_shrink = 0;
-
     ctx->aio_max_batch = 0;
 
     ctx->initialized = true;
