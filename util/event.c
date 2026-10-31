@@ -4,40 +4,56 @@
 #include "qemu/thread.h"
 #include "qemu/barrier.h"
 
+/* Manual-reset predicate with SET -> FREE -> BUSY transitions. Reset never
+ * changes BUSY to FREE, so a concurrent reset cannot erase waiter presence.
+ * Eventcount registration and the predicate recheck close the sleep race. */
+/* A signal may publish SET and then be descheduled while its waiter retires
+ * the event. Wake operations therefore must not touch the event afterward.
+ * Bounded, process-lifetime channels preserve futex-style address-key lifetime;
+ * hash collisions merely cause spurious wakes and predicates are rechecked. */
+#define QEMU_PARK_BUCKETS 64
+static retro_atomic_ptr_t qemu_park_channels[QEMU_PARK_BUCKETS];
 
-/*
- * Valid transitions:
- * - FREE -> SET (qemu_event_set)
- * - BUSY -> SET (qemu_event_set)
- * - SET -> FREE (qemu_event_reset)
- * - FREE -> BUSY (qemu_event_wait)
- *
- * With futex, the waking and blocking operations follow
- * BUSY -> SET and FREE -> BUSY, respectively.
- *
- * Without futex, BUSY -> SET and FREE -> BUSY never happen. Instead, the waking
- * operation follows FREE -> SET and the blocking operation will happen in
- * qemu_event_wait() if the event is not SET.
- *
- * SET->BUSY does not happen (it can be observed from the outside but
- * it really is SET->FREE->BUSY).
- *
- * busy->free provably cannot happen; to enforce it, the set->free transition
- * is done with an OR, which becomes a no-op if the event has concurrently
- * transitioned to free or busy.
- */
+static inline retro_atomic_ptr_t *qemu_park_slot(const void *address)
+{
+    uintptr_t key = (uintptr_t)address;
+    return &qemu_park_channels[((key >> 3) ^ (key >> 11) ^ (key >> 19)) &
+                              (QEMU_PARK_BUCKETS - 1)];
+}
 
-#define EV_SET         0
-#define EV_FREE        1
-#define EV_BUSY       -1
+static inline retro_eventcount_t *qemu_park_channel(const void *address)
+{
+    retro_atomic_ptr_t *slot = qemu_park_slot(address);
+    retro_eventcount_t *channel = retro_atomic_load_acquire_ptr(slot);
+    if (!channel) {
+        retro_eventcount_t *candidate = calloc(1, sizeof(*candidate));
+        if (!candidate || !retro_eventcount_init(candidate)) {
+            retro_eventcount_free(candidate);
+            free(candidate);
+            abort();
+        }
+        if (retro_atomic_cas_ptr(slot, NULL, candidate)) {
+            channel = candidate;
+        } else {
+            retro_eventcount_free(candidate);
+            free(candidate);
+            channel = retro_atomic_load_acquire_ptr(slot);
+        }
+    }
+    return channel;
+}
+
+retro_eventcount_t *qemu_eventcount_for_address(const void *address)
+{
+    return qemu_park_channel(address);
+}
+
+#define EV_SET   0
+#define EV_FREE  1
+#define EV_BUSY -1
 
 void qemu_event_init(QemuEvent *ev, bool init)
 {
-#ifndef HAVE_FUTEX
-    pthread_mutex_init(&ev->lock, NULL);
-    pthread_cond_init(&ev->cond, NULL);
-#endif
-
     retro_atomic_int_init(&ev->value, init ? EV_SET : EV_FREE);
     ev->initialized = true;
 }
@@ -46,130 +62,53 @@ void qemu_event_destroy(QemuEvent *ev)
 {
     assert(ev->initialized);
     ev->initialized = false;
-#ifndef HAVE_FUTEX
-    pthread_mutex_destroy(&ev->lock);
-    pthread_cond_destroy(&ev->cond);
-#endif
 }
 
 void qemu_event_set(QemuEvent *ev)
 {
     assert(ev->initialized);
-
-#ifdef HAVE_FUTEX
-    /*
-     * Pairs with both qemu_event_reset() and qemu_event_wait().
-     *
-     * qemu_event_set has release semantics, but because it *loads*
-     * ev->value we need a full memory barrier here.
-     */
+    /* Preserve the full ordering paired with reset's external predicate
+     * check, including when the event was already SET. */
     retro_atomic_thread_fence_seq_cst();
     if (retro_atomic_load_relaxed_int(&ev->value) != EV_SET) {
+        retro_eventcount_t *waiters = qemu_park_channel(ev);
         int old = retro_atomic_exchange_int(&ev->value, EV_SET);
-
-        /* Pairs with memory barrier in kernel futex_wait system call.  */
         qemu_mb_after_rmw();
         if (old == EV_BUSY) {
-            /* There were waiters, wake them up.  */
-            qemu_futex_wake_all(ev);
+            retro_eventcount_notify(waiters);
         }
     }
-#else
-    pthread_mutex_lock(&ev->lock);
-    /* Pairs with qemu_event_reset()'s load acquire.  */
-    retro_atomic_store_release_int(&ev->value, EV_SET);
-    pthread_cond_broadcast(&ev->cond);
-    pthread_mutex_unlock(&ev->lock);
-#endif
 }
 
 void qemu_event_reset(QemuEvent *ev)
 {
     assert(ev->initialized);
-
-#ifdef HAVE_FUTEX
-    /*
-     * If there was a concurrent reset (or even reset+wait),
-     * do nothing.  Otherwise change EV_SET->EV_FREE.
-     */
     retro_atomic_fetch_or_int(&ev->value, EV_FREE);
-
-    /*
-     * Order reset before checking the condition in the caller.
-     * Pairs with the first memory barrier in qemu_event_set().
-     */
     qemu_mb_after_rmw();
-#else
-    /*
-     * If futexes are not available, there are no EV_FREE->EV_BUSY
-     * transitions because wakeups are done entirely through the
-     * condition variable.  Since the store only writes EV_FREE,
-     * the load seems useless but in reality, the acquire synchronizes
-     * with qemu_event_set()'s store release: if qemu_event_reset()
-     * sees EV_SET here, then the caller will certainly see a
-     * successful condition and skip qemu_event_wait():
-     *
-     * done = 1;                 if (done == 0)
-     * qemu_event_set() {          qemu_event_reset() {
-     *   lock();
-     *   ev->value = EV_SET ----->     load ev->value
-     *                                 ev->value = old value | EV_FREE
-     *   cond_broadcast()
-     *   unlock();                 }
-     * }                           if (done == 0)
-     *                               // qemu_event_wait() not called
-     */
-    retro_atomic_store_relaxed_int(&ev->value,
-        retro_atomic_load_acquire_int(&ev->value) | EV_FREE);
-#endif
 }
 
 void qemu_event_wait(QemuEvent *ev)
 {
     assert(ev->initialized);
-
-#ifdef HAVE_FUTEX
-    while (true) {
-        /*
-         * qemu_event_wait must synchronize with qemu_event_set even if it does
-         * not go down the slow path, so this load-acquire is needed that
-         * synchronizes with the first memory barrier in qemu_event_set().
-         */
+    if (retro_atomic_load_acquire_int(&ev->value) == EV_SET) {
+        return;
+    }
+    retro_eventcount_t *waiters = qemu_park_channel(ev);
+    for (;;) {
         int value = retro_atomic_load_acquire_int(&ev->value);
         if (value == EV_SET) {
-            break;
+            return;
         }
-
-        if (value == EV_FREE) {
-            /*
-             * Leave the event reset and tell qemu_event_set that there are
-             * waiters.  No need to retry, because there cannot be a concurrent
-             * busy->free transition.  After the CAS, the event will be either
-             * set or busy.
-             *
-             * This cmpxchg doesn't have particular ordering requirements if it
-             * succeeds (moving the store earlier can only cause
-             * qemu_event_set() to issue _more_ wakeups), the failing case needs
-             * acquire semantics like the load above.
-             */
-            if (!retro_atomic_cas_int(&ev->value, EV_FREE, EV_BUSY) &&
-                retro_atomic_load_acquire_int(&ev->value) == EV_SET) {
-                break;
-            }
+        if (value == EV_FREE &&
+            !retro_atomic_cas_int(&ev->value, EV_FREE, EV_BUSY) &&
+            retro_atomic_load_acquire_int(&ev->value) == EV_SET) {
+            return;
         }
-
-        /*
-         * This is the final check for a concurrent set, so it does need
-         * a full barrier pairing with the second barrier of qemu_event_set().
-         * The barrier is inside the FUTEX_WAIT system call.
-         */
-        qemu_futex_wait(ev, EV_BUSY);
+        int key = retro_eventcount_prepare_wait(waiters);
+        if (retro_atomic_load_acquire_int(&ev->value) != EV_BUSY) {
+            retro_eventcount_cancel_wait(waiters);
+        } else {
+            retro_eventcount_commit_wait(waiters, key);
+        }
     }
-#else
-    pthread_mutex_lock(&ev->lock);
-    while (retro_atomic_load_relaxed_int(&ev->value) != EV_SET) {
-        pthread_cond_wait(&ev->cond, &ev->lock);
-    }
-    pthread_mutex_unlock(&ev->lock);
-#endif
 }

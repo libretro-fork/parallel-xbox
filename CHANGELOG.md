@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- QEMU manual-reset events and AIO counter-lock waits now park through libretro-common eventcounts. Remove the duplicate pthread fallback and QEMU futex wrapper, including its direct Windows 8 address-wait imports and synchronization library dependency. Bounded shared parking channels preserve event retirement after signaling without enlarging each event. The AIO exclusion gate remains; it is not made lock-free by changing its parking backend.
+
 - Vulkan reuses the completed occlusion value fetched by an idle-report wait when the following poll has exactly that one unread query. The poll borrows the saved value directly, avoiding a second query-result readback call; multi-query ranges still use the existing nonblocking path, and the required guest wait is unchanged.
 
 - Vulkan reserves 1,024 report queue nodes at renderer initialization and recycles them as reports complete, replacing per-request allocation/free for queues within that reserve. Larger queues retain the existing heap fallback, without new GPU waits or request limits.
@@ -15,6 +17,7 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 - Vulkan startup skips unused shader reflection and uniform metadata for the fixed swizzle kernels and GPU capability probes. Their compiler output is borrowed directly during native module creation, then released; shader code, layouts and GPU transfers are unchanged.
 
 - Vulkan depth/stencil conversion now prepares four pipelines at initialization from immutable SPIR-V, replacing the 100-entry, per-workgroup-size LRU. Conversion no longer compiles shaders or creates pipelines on first use or size changes. Bounds-checked 128/256-thread kernels support balanced 2D dispatch; descriptors and conversion buffers keep their existing ownership. Four pipelines remain resident until shutdown.
+
 - TCG helper-call layouts now publish immutable candidates through libretro-common atomics instead of entering the GLib once registry. A stalled initializer cannot block another translator; one layout per used helper stays for the core lifetime. Windows thread-name API lookup likewise publishes a function or cached absence without once locking or an extra kernel32 reference.
 
 - Chihiro DIMM states stream changed pages directly into the frontend state buffer and borrow the input blob during restore. Replace the full intermediate blob with a page-number list; preserve the v1 wire format and game-image identity checks.

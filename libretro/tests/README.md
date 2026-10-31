@@ -1,5 +1,16 @@
 # The core's tests
 
+`test-qemu-parking.py CHECKOUT [CC]` compiles production manual-reset events
+and AIO counter gates against libretro-common parking. It forces notifications
+at the prepare/commit boundaries, checks wake-all and predicate visibility,
+checks event retirement before the signaler returns and shared-channel
+collisions, and stresses mixed AIO gate users. It also reports uncontended and round-trip
+timings. `QEMU_PARKING_CFLAGS`, `QEMU_PARKING_BINARY` and
+`QEMU_PARKING_SKIP_RUN` select sanitizers or cross-built binaries.
+`QEMU_PARKING_BASELINE=REV` compares the old Linux/Windows futex code; its
+Windows test executable requires the old synchronization import library.
+Changing parking does not remove the counter gate's exclusion semantics.
+
 `test-init-publication.py CHECKOUT [CC]` compiles production TCG layout and
 Windows thread-name API publication. It pauses one initializer while another
 finishes, stresses canonical layout publication and losing-candidate cleanup,

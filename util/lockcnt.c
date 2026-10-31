@@ -12,7 +12,7 @@
 #include "trace.h"
 
 /*
- * When futex is available, bits 0-1 are a futex-based lock, bits 2-31 are the
+ * Bits 0-1 retain the AIO exclusion gate, bits 2-31 are the
  * counter.
  * For the mutex algorithm see Ulrich Drepper's "Futexes Are Tricky" (ok,
  * this is not the most relaxing citation I could make...).  It is similar
@@ -44,7 +44,6 @@ static inline int lockcnt_cmpxchg(QemuLockCnt *lockcnt, int expected, int new)
     return cur;
 }
 
-#ifdef HAVE_FUTEX
 
 void qemu_lockcnt_init(QemuLockCnt *lockcnt)
 {
@@ -69,10 +68,11 @@ void qemu_lockcnt_destroy(QemuLockCnt *lockcnt)
  * be QEMU_LOCKCNT_STATE_LOCKED on subsequent calls, because the caller
  * does not know if there are other waiters.  Furthermore, after *waited
  * is set the caller has effectively acquired the lock.  If it returns
- * with the lock not taken, it must wake another futex waiter.
+ * with the lock not taken, it must wake other eventcount waiters.
  */
 static bool qemu_lockcnt_cmpxchg_or_wait(QemuLockCnt *lockcnt, int *val,
-                                         int new_if_free, bool *waited)
+                                         int new_if_free, bool *waited,
+                                         retro_eventcount_t **waiters)
 {
     /* Fast path for when the lock is free.  */
     if ((*val & QEMU_LOCKCNT_STATE_MASK) == QEMU_LOCKCNT_STATE_FREE) {
@@ -88,7 +88,7 @@ static bool qemu_lockcnt_cmpxchg_or_wait(QemuLockCnt *lockcnt, int *val,
     }
 
     /* The slow path moves from locked to waiting if necessary, then
-     * does a futex wait.  Both steps can be repeated ad nauseam,
+     * does an eventcount wait.  Both steps can be repeated ad nauseam,
      * only getting out of the loop if we can have another shot at the
      * fast path.  Once we can, get out to compute the new destination
      * value for the fast path.
@@ -109,7 +109,15 @@ static bool qemu_lockcnt_cmpxchg_or_wait(QemuLockCnt *lockcnt, int *val,
         if ((*val & QEMU_LOCKCNT_STATE_MASK) == QEMU_LOCKCNT_STATE_WAITING) {
             *waited = true;
             trace_lockcnt_futex_wait(lockcnt, *val);
-            qemu_futex_wait(&lockcnt->count, *val);
+            if (!*waiters) {
+                *waiters = qemu_eventcount_for_address(lockcnt);
+            }
+            int key = retro_eventcount_prepare_wait(*waiters);
+            if (retro_atomic_load_acquire_int(&lockcnt->count) != *val) {
+                retro_eventcount_cancel_wait(*waiters);
+            } else {
+                retro_eventcount_commit_wait(*waiters, key);
+            }
             *val = retro_atomic_load_relaxed_int(&lockcnt->count);
             trace_lockcnt_futex_wait_resume(lockcnt, *val);
             continue;
@@ -120,16 +128,17 @@ static bool qemu_lockcnt_cmpxchg_or_wait(QemuLockCnt *lockcnt, int *val,
     return false;
 }
 
-static void lockcnt_wake(QemuLockCnt *lockcnt)
+static void lockcnt_wake(retro_eventcount_t *waiters)
 {
-    trace_lockcnt_futex_wake(lockcnt);
-    qemu_futex_wake_single(&lockcnt->count);
+    trace_lockcnt_futex_wake(waiters);
+    retro_eventcount_notify(waiters);
 }
 
 void qemu_lockcnt_inc(QemuLockCnt *lockcnt)
 {
     int val = retro_atomic_load_relaxed_int(&lockcnt->count);
     bool waited = false;
+    retro_eventcount_t *waiters = NULL;
 
     for (;;) {
         if (val >= QEMU_LOCKCNT_COUNT_STEP) {
@@ -142,7 +151,7 @@ void qemu_lockcnt_inc(QemuLockCnt *lockcnt)
         } else {
             /* The fast path is (0, unlocked)->(1, unlocked).  */
             if (qemu_lockcnt_cmpxchg_or_wait(lockcnt, &val, QEMU_LOCKCNT_COUNT_STEP,
-                                             &waited)) {
+                                             &waited, &waiters)) {
                 break;
             }
         }
@@ -155,7 +164,7 @@ void qemu_lockcnt_inc(QemuLockCnt *lockcnt)
      * wake someone.
      */
     if (waited) {
-        lockcnt_wake(lockcnt);
+        lockcnt_wake(waiters);
     }
 }
 
@@ -175,12 +184,13 @@ bool qemu_lockcnt_dec_if_lock(QemuLockCnt *lockcnt)
     int val = retro_atomic_load_relaxed_int(&lockcnt->count);
     int locked_state = QEMU_LOCKCNT_STATE_LOCKED;
     bool waited = false;
+    retro_eventcount_t *waiters = NULL;
 
     while (val < 2 * QEMU_LOCKCNT_COUNT_STEP) {
         /* If count is going 1->0, take the lock. The fast path is
          * (1, unlocked)->(0, locked) or (1, unlocked)->(0, waiting).
          */
-        if (qemu_lockcnt_cmpxchg_or_wait(lockcnt, &val, locked_state, &waited)) {
+        if (qemu_lockcnt_cmpxchg_or_wait(lockcnt, &val, locked_state, &waited, &waiters)) {
             return true;
         }
 
@@ -199,7 +209,7 @@ bool qemu_lockcnt_dec_if_lock(QemuLockCnt *lockcnt)
      * bits, and qemu_lockcnt_inc_and_unlock would find it and wake someone.
      */
     if (waited) {
-        lockcnt_wake(lockcnt);
+        lockcnt_wake(waiters);
     }
     return false;
 }
@@ -209,12 +219,13 @@ void qemu_lockcnt_lock(QemuLockCnt *lockcnt)
     int val = retro_atomic_load_relaxed_int(&lockcnt->count);
     int step = QEMU_LOCKCNT_STATE_LOCKED;
     bool waited = false;
+    retro_eventcount_t *waiters = NULL;
 
     /* The third argument is only used if the low bits of val are 0
      * (QEMU_LOCKCNT_STATE_FREE), so just blindly mix in the desired
      * state.
      */
-    while (!qemu_lockcnt_cmpxchg_or_wait(lockcnt, &val, val + step, &waited)) {
+    while (!qemu_lockcnt_cmpxchg_or_wait(lockcnt, &val, val + step, &waited, &waiters)) {
         if (waited) {
             /* At this point we do not know if there are more waiters.  Assume
              * there are.
@@ -227,10 +238,14 @@ void qemu_lockcnt_lock(QemuLockCnt *lockcnt)
 void qemu_lockcnt_inc_and_unlock(QemuLockCnt *lockcnt)
 {
     int expected, new, val;
+    retro_eventcount_t *waiters = NULL;
 
     val = retro_atomic_load_relaxed_int(&lockcnt->count);
     do {
         expected = val;
+        if (val & QEMU_LOCKCNT_STATE_WAITING) {
+            waiters = qemu_eventcount_for_address(lockcnt);
+        }
         new = (val + QEMU_LOCKCNT_COUNT_STEP) & ~QEMU_LOCKCNT_STATE_MASK;
         trace_lockcnt_unlock_attempt(lockcnt, val, new);
         val = lockcnt_cmpxchg(lockcnt, val, new);
@@ -238,17 +253,21 @@ void qemu_lockcnt_inc_and_unlock(QemuLockCnt *lockcnt)
 
     trace_lockcnt_unlock_success(lockcnt, val, new);
     if (val & QEMU_LOCKCNT_STATE_WAITING) {
-        lockcnt_wake(lockcnt);
+        lockcnt_wake(waiters);
     }
 }
 
 void qemu_lockcnt_unlock(QemuLockCnt *lockcnt)
 {
     int expected, new, val;
+    retro_eventcount_t *waiters = NULL;
 
     val = retro_atomic_load_relaxed_int(&lockcnt->count);
     do {
         expected = val;
+        if (val & QEMU_LOCKCNT_STATE_WAITING) {
+            waiters = qemu_eventcount_for_address(lockcnt);
+        }
         new = val & ~QEMU_LOCKCNT_STATE_MASK;
         trace_lockcnt_unlock_attempt(lockcnt, val, new);
         val = lockcnt_cmpxchg(lockcnt, val, new);
@@ -256,7 +275,7 @@ void qemu_lockcnt_unlock(QemuLockCnt *lockcnt)
 
     trace_lockcnt_unlock_success(lockcnt, val, new);
     if (val & QEMU_LOCKCNT_STATE_WAITING) {
-        lockcnt_wake(lockcnt);
+        lockcnt_wake(waiters);
     }
 }
 
@@ -264,107 +283,3 @@ unsigned qemu_lockcnt_count(QemuLockCnt *lockcnt)
 {
     return retro_atomic_load_relaxed_int(&lockcnt->count) >> QEMU_LOCKCNT_COUNT_SHIFT;
 }
-#else
-void qemu_lockcnt_init(QemuLockCnt *lockcnt)
-{
-    qemu_mutex_init(&lockcnt->mutex);
-    retro_atomic_int_init(&lockcnt->count, 0);
-}
-
-void qemu_lockcnt_destroy(QemuLockCnt *lockcnt)
-{
-    qemu_mutex_destroy(&lockcnt->mutex);
-}
-
-void qemu_lockcnt_inc(QemuLockCnt *lockcnt)
-{
-    int old;
-    for (;;) {
-        old = retro_atomic_load_relaxed_int(&lockcnt->count);
-        if (old == 0) {
-            qemu_lockcnt_lock(lockcnt);
-            qemu_lockcnt_inc_and_unlock(lockcnt);
-            return;
-        } else {
-            if (lockcnt_cmpxchg(lockcnt, old, old + 1) == old) {
-                return;
-            }
-        }
-    }
-}
-
-void qemu_lockcnt_dec(QemuLockCnt *lockcnt)
-{
-    retro_atomic_dec_int(&lockcnt->count);
-}
-
-/* Decrement a counter, and return locked if it is decremented to zero.
- * It is impossible for the counter to become nonzero while the mutex
- * is taken.
- */
-bool qemu_lockcnt_dec_and_lock(QemuLockCnt *lockcnt)
-{
-    int val = retro_atomic_load_relaxed_int(&lockcnt->count);
-    while (val > 1) {
-        int old = lockcnt_cmpxchg(lockcnt, val, val - 1);
-        if (old != val) {
-            val = old;
-            continue;
-        }
-
-        return false;
-    }
-
-    qemu_lockcnt_lock(lockcnt);
-    if (retro_atomic_fetch_sub_int(&lockcnt->count, 1) == 1) {
-        return true;
-    }
-
-    qemu_lockcnt_unlock(lockcnt);
-    return false;
-}
-
-/* Decrement a counter and return locked if it is decremented to zero.
- * Otherwise do nothing.
- *
- * It is impossible for the counter to become nonzero while the mutex
- * is taken.
- */
-bool qemu_lockcnt_dec_if_lock(QemuLockCnt *lockcnt)
-{
-    /* No need for acquire semantics if we return false.  */
-    int val = retro_atomic_load_relaxed_int(&lockcnt->count);
-    if (val > 1) {
-        return false;
-    }
-
-    qemu_lockcnt_lock(lockcnt);
-    if (retro_atomic_fetch_sub_int(&lockcnt->count, 1) == 1) {
-        return true;
-    }
-
-    qemu_lockcnt_inc_and_unlock(lockcnt);
-    return false;
-}
-
-void qemu_lockcnt_lock(QemuLockCnt *lockcnt)
-{
-    qemu_mutex_lock(&lockcnt->mutex);
-}
-
-void qemu_lockcnt_inc_and_unlock(QemuLockCnt *lockcnt)
-{
-    retro_atomic_inc_int(&lockcnt->count);
-    qemu_mutex_unlock(&lockcnt->mutex);
-}
-
-void qemu_lockcnt_unlock(QemuLockCnt *lockcnt)
-{
-    qemu_mutex_unlock(&lockcnt->mutex);
-}
-
-unsigned qemu_lockcnt_count(QemuLockCnt *lockcnt)
-{
-    return retro_atomic_load_relaxed_int(&lockcnt->count);
-}
-#endif

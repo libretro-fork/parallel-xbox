@@ -17,9 +17,6 @@
 typedef struct QemuLockCnt QemuLockCnt;
 
 struct QemuLockCnt {
-#ifndef HAVE_FUTEX
-    QemuMutex mutex;
-#endif
     retro_atomic_int_t count;
 };
 
@@ -27,8 +24,7 @@ struct QemuLockCnt {
  * qemu_lockcnt_init: initialize a QemuLockcnt
  * @lockcnt: the lockcnt to initialize
  *
- * Initialize lockcnt's counter to zero and prepare its mutex
- * for usage.
+ * Initialize lockcnt's counter to zero. Parking channels are shared by address.
  */
 void qemu_lockcnt_init(QemuLockCnt *lockcnt);
 
@@ -67,16 +63,6 @@ void qemu_lockcnt_inc(QemuLockCnt *lockcnt);
  * @lockcnt: the lockcnt to operate on
  */
 void qemu_lockcnt_dec(QemuLockCnt *lockcnt);
-
-/**
- * qemu_lockcnt_dec_and_lock: decrement a QemuLockCnt's counter and
- * possibly lock it.
- * @lockcnt: the lockcnt to operate on
- *
- * Decrement lockcnt's count.  If the new count is zero, lock
- * the mutex and return true.  Otherwise, return false.
- */
-bool qemu_lockcnt_dec_and_lock(QemuLockCnt *lockcnt);
 
 /**
  * qemu_lockcnt_dec_if_lock: possibly decrement a QemuLockCnt's counter and

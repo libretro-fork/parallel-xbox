@@ -133,11 +133,9 @@ else ifeq ($(platform),win)
    # a section per function overflows COFF's 32767 sections in the larger
    # files (libepoxy's generated dispatch): the big object format has room
    OS_SECTION_FLAGS := -Wa,-mbig-obj
-   # -lsynchronization: WaitOnAddress/WakeByAddress, which QEMU's own
-   # QemuEvent and QemuLockCnt (util/event.c, util/lockcnt.c) are built on
    OS_LIBS     := -lws2_32 -liphlpapi -lwinmm -lole32 -loleaut32 -lshlwapi \
                   -lshell32 -luuid -ladvapi32 -luser32 -lgdi32 -lcomdlg32 \
-                  -lwinspool -lopengl32 -lpathcch -lsynchronization
+                  -lwinspool -lopengl32 -lpathcch
    VENDORED_DEPS := 1
 else ifeq ($(platform),osx)
    HOST_OS     := darwin

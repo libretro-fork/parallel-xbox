@@ -3188,3 +3188,4 @@ libretro/gen/qapi/qapi-types-yank.c
 libretro/gen/qapi/qapi-types-yank.h
 libretro/gen/qapi/qapi-visit-yank.c
 libretro/gen/qapi/qapi-visit-yank.h
+include/qemu/futex.h

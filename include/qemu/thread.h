@@ -3,7 +3,7 @@
 
 #include "qemu/processor.h"
 #include <retro_atomic.h>
-#include "qemu/futex.h"
+#include <rthreads/retro_eventcount.h>
 
 typedef struct QemuCond QemuCond;
 typedef struct QemuSemaphore QemuSemaphore;
@@ -18,16 +18,17 @@ typedef struct QemuThread QemuThread;
  * For details, refer to:
  * https://learn.microsoft.com/en-us/windows/win32/sync/using-event-objects
  *
- * QemuEvent is more lightweight than QemuSemaphore when HAVE_FUTEX is defined.
+ * Predicate publication uses retro_atomic; parking uses retro_eventcount.
  */
 typedef struct QemuEvent {
-#ifndef HAVE_FUTEX
-    pthread_mutex_t lock;
-    pthread_cond_t cond;
-#endif
-    retro_atomic_int_t value;   /* the futex word */
+    retro_atomic_int_t value;
     bool initialized;
 } QemuEvent;
+
+/* Stable address-keyed parking channel. It outlives every individual event
+ * or counter gate, including a signaler finishing after its waiter returns. */
+retro_eventcount_t *qemu_eventcount_for_address(const void *address);
+
 
 #ifdef _WIN32
 #include "qemu/thread-win32.h"
