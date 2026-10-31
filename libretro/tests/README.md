@@ -1279,3 +1279,12 @@ The ring ownership model additionally owns whole non-coherent flush atoms,
 including 64-512-byte atoms during randomized submissions, 128-byte adjacent
 uploads and a growth that changes memory type. Staging alignment is selected
 after growth so the replacement allocation's properties control it.
+
+`test-vk-crosshair.py` uses the bundled Volk loader to execute the production
+crosshair attachment clears on a Vulkan GPU. It compares 384 full images with
+an independent pixel reference using the former transfer path's byte colors.
+Cases cover hidden players, overlaps, clipping at every edge, tiny and tall
+render areas, and a restricted dynamic scissor. Crosshairs remain inside the
+display render pass; rasterization order preserves outline and player ordering
+without staging buffers, buffer-to-image copies or transfer-layout transitions.
+The test reports whether the validation layer is available.

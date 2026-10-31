@@ -1054,11 +1054,9 @@ static void create_frame_image(PGRAPHState *pg, struct PGRAPHVkFrameImage *f,
         .format = VK_FORMAT_R8G8B8A8_UNORM,
         .tiling = VK_IMAGE_TILING_OPTIMAL,
         .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-        /* the display's render target, the crosshairs' copy destination,
-         * the frontend's texture */
+        /* Display/crosshair render target, frontend texture and capture source. */
         .usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
-                 VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT |
-                 VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
+                 VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
         .samples = VK_SAMPLE_COUNT_1_BIT,
         .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
     };
@@ -1229,113 +1227,51 @@ static void frame_image_barrier(VkCommandBuffer cmd, VkImage image,
                          &barrier);
 }
 
-/* The crosshairs' pixels, copied into the frame: a black outline, then
- * player 1's red and player 2's blue (R8G8B8A8 as little-endian words) */
-#define CROSSHAIR_PIXELS 1024
-static const uint32_t crosshair_colors[3] = {
-    0xFF000000u, 0xFF2828FFu, 0xFFFF8C28u,
+/* Solid crosshair rectangles are attachment clears inside the display
+ * pass. Rasterization order preserves outline/player overlap without a
+ * staging allocation, buffer copies or transfer-layout transitions. */
+static const VkClearColorValue crosshair_colors[3] = {
+    { .float32 = { 0, 0, 0, 1 } },
+    { .float32 = { 1, 40.0f / 255, 40.0f / 255, 1 } },
+    { .float32 = { 40.0f / 255, 140.0f / 255, 1, 1 } },
 };
-static VkBuffer crosshair_buffer;
-static VmaAllocation crosshair_allocation;
 
-static bool create_crosshair_buffer(PGRAPHVkState *r)
-{
-    if (crosshair_buffer != VK_NULL_HANDLE) {
-        return true;
-    }
-    VkBufferCreateInfo buffer_info = {
-        .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-        .size = sizeof(crosshair_colors) * CROSSHAIR_PIXELS,
-        .usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-        .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
-    };
-    VmaAllocationCreateInfo alloc_info = {
-        .usage = VMA_MEMORY_USAGE_AUTO_PREFER_HOST,
-        .flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
-                 VMA_ALLOCATION_CREATE_MAPPED_BIT,
-    };
-    VmaAllocationInfo info;
-    if (vmaCreateBuffer(r->allocator, &buffer_info, &alloc_info,
-                        &crosshair_buffer, &crosshair_allocation,
-                        &info) != VK_SUCCESS) {
-        crosshair_buffer = VK_NULL_HANDLE;
-        return false;
-    }
-    uint32_t *pixels = info.pMappedData;
-    for (int c = 0; c < ARRAY_SIZE(crosshair_colors); c++) {
-        for (int i = 0; i < CROSSHAIR_PIXELS; i++) {
-            pixels[c * CROSSHAIR_PIXELS + i] = crosshair_colors[c];
-        }
-    }
-    vmaFlushAllocation(r->allocator, crosshair_allocation, 0, VK_WHOLE_SIZE);
-    return true;
-}
-
-static void destroy_crosshair_buffer(PGRAPHVkState *r)
-{
-    if (crosshair_buffer != VK_NULL_HANDLE) {
-        vmaDestroyBuffer(r->allocator, crosshair_buffer, crosshair_allocation);
-        crosshair_buffer = VK_NULL_HANDLE;
-    }
-}
-
-/* One bar of a crosshair, clipped to the frame, from the color's pixels */
-static void crosshair_bar(VkCommandBuffer cmd, VkImage image, int width,
-                          int height, int x, int y, int w, int h, int color)
+/* One bar, clipped to the render area. Clear rectangles ignore the
+ * pipeline's scissor, which may still cover only the last scanout tile. */
+static void crosshair_bar(VkCommandBuffer cmd, int width, int height,
+                          int x, int y, int w, int h, int color)
 {
     int x0 = MAX(x, 0), y0 = MAX(y, 0);
     int x1 = MIN(x + w, width), y1 = MIN(y + h, height);
-    if (x1 <= x0 || y1 <= y0 || (x1 - x0) * (y1 - y0) > CROSSHAIR_PIXELS) {
-        return;
-    }
-    VkBufferImageCopy region = {
-        .bufferOffset = (VkDeviceSize)color * CROSSHAIR_PIXELS * sizeof(uint32_t),
-        .bufferRowLength = (uint32_t)(x1 - x0),
-        .imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-        .imageSubresource.layerCount = 1,
-        .imageOffset = { x0, y0, 0 },
-        .imageExtent = { (uint32_t)(x1 - x0), (uint32_t)(y1 - y0), 1 },
+    if (x1 <= x0 || y1 <= y0) return;
+    VkClearAttachment attachment = {
+        .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+        .colorAttachment = 0,
+        .clearValue.color = crosshair_colors[color],
     };
-    vkCmdCopyBufferToImage(cmd, crosshair_buffer, image,
-                           VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+    VkClearRect rect = {
+        .rect = { { x0, y0 }, { x1 - x0, y1 - y0 } },
+        .layerCount = 1,
+    };
+    vkCmdClearAttachments(cmd, 1, &attachment, 1, &rect);
 }
 
-/* The gun games' crosshairs (ui/libretro-crosshair.h) over the frame, in
- * TRANSFER_DST_OPTIMAL: a plus sign a little larger than the picture's
- * fortieth, outlined in black so it shows on any background */
-static void draw_crosshairs(PGRAPHVkState *r, VkCommandBuffer cmd,
-                            VkImage image, int width, int height)
+/* Black outlines first, then player 1's red and player 2's blue. */
+static void draw_crosshairs(VkCommandBuffer cmd, int width, int height)
 {
-    if (!xemu_libretro_crosshairs[0].shown &&
-        !xemu_libretro_crosshairs[1].shown) {
-        return;
-    }
-    if (!create_crosshair_buffer(r)) {
-        return;
-    }
     const int arm = MIN(MAX(height / 40, 6), 40);
     const int thick = MIN(MAX(height / 240, 2), 6);
-
     for (int pass = 0; pass < 2; pass++) {
-        /* the colored bars overwrite the outline's: ordered after it */
-        frame_image_barrier(cmd, image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                            VK_ACCESS_TRANSFER_WRITE_BIT,
-                            VK_ACCESS_TRANSFER_WRITE_BIT,
-                            VK_PIPELINE_STAGE_TRANSFER_BIT,
-                            VK_PIPELINE_STAGE_TRANSFER_BIT);
         for (int p = 0; p < 2; p++) {
             const XemuLibretroCrosshair *c = &xemu_libretro_crosshairs[p];
-            if (!c->shown) {
-                continue;
-            }
+            if (!c->shown) continue;
             const int cx = (int)(c->x * width), cy = (int)(c->y * height);
             const int edge = pass ? 0 : 1;
             const int color = pass ? 1 + p : 0;
             const int len = 2 * arm + 1 + 2 * edge, t = thick + 2 * edge;
-            crosshair_bar(cmd, image, width, height, cx - arm - edge,
+            crosshair_bar(cmd, width, height, cx - arm - edge,
                           cy - t / 2, len, t, color);
-            crosshair_bar(cmd, image, width, height, cx - t / 2,
+            crosshair_bar(cmd, width, height, cx - t / 2,
                           cy - arm - edge, t, len, color);
         }
     }
@@ -1398,40 +1334,17 @@ static struct PGRAPHVkFrameImage *frame_image_for_slot(PGRAPHState *pg,
     return f;
 }
 
-/* After the display's render pass: the crosshairs, then the layout the
- * frontend samples in, ordered before any fragment shader that follows in
- * submission order */
-static void frame_image_finish(PGRAPHVkState *r, VkCommandBuffer cmd,
+/* After the display pass (including crosshairs), publish shader reads. */
+static void frame_image_finish(VkCommandBuffer cmd,
                                struct PGRAPHVkFrameImage *f)
 {
-    PGRAPHVkDisplayState *disp = &r->display;
-
-    if (xemu_libretro_crosshairs[0].shown ||
-        xemu_libretro_crosshairs[1].shown) {
-        frame_image_barrier(cmd, f->image,
-                            VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-                            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                            VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-                            VK_ACCESS_TRANSFER_WRITE_BIT,
-                            VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-                            VK_PIPELINE_STAGE_TRANSFER_BIT);
-        draw_crosshairs(r, cmd, f->image, disp->width, disp->height);
-        frame_image_barrier(cmd, f->image,
-                            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-                            VK_ACCESS_TRANSFER_WRITE_BIT,
-                            VK_ACCESS_SHADER_READ_BIT,
-                            VK_PIPELINE_STAGE_TRANSFER_BIT,
-                            VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
-    } else {
-        frame_image_barrier(cmd, f->image,
-                            VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-                            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-                            VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-                            VK_ACCESS_SHADER_READ_BIT,
-                            VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-                            VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
-    }
+    frame_image_barrier(cmd, f->image,
+                        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                        VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+                        VK_ACCESS_SHADER_READ_BIT,
+                        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                        VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
 }
 
 /* The frame's command buffer, submitted: on the shared queue as any other
@@ -1691,6 +1604,7 @@ static void render_display(PGRAPHState *pg, SurfaceBinding *surface)
         }
     }
 
+    if (f) draw_crosshairs(cmd, disp->width, disp->height);
     vkCmdEndRenderPass(cmd);
 
     if (!sampled_in_place) {
@@ -1711,7 +1625,7 @@ static void render_display(PGRAPHState *pg, SurfaceBinding *surface)
         }
     }
     if (f) {
-        frame_image_finish(r, cmd, f);
+        frame_image_finish(cmd, f);
         pgraph_vk_end_debug_marker(r, cmd);
         VK_CHECK(vkEndCommandBuffer(cmd));
         submit_frame(r, sync);
@@ -1786,7 +1700,6 @@ void pgraph_vk_finalize_display(PGRAPHState *pg)
         destroy_current_display_image(pg);
     }
     destroy_frame_images(pg);
-    destroy_crosshair_buffer(pg->vk_renderer_state);
 
     destroy_surface_sampler(pg);
     destroy_display_pipeline(pg);

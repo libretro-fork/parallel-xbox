@@ -791,6 +791,7 @@ if [ -z "$novk" ]; then
     python3 "$here/test-spv-clear.py" "$here/../.." "$cc" --gpu
     python3 "$here/test-spv-depth.py" "$here/../.." "$cc" --gpu
     python3 "$here/test-spv-swizzle.py" "$here/../.." "$cc" --gpu
+    python3 "$here/test-vk-crosshair.py" "$here/../.." "$cc"
 fi
 # Production Vulkan copies on that device, under the validation layer
 case $core in
