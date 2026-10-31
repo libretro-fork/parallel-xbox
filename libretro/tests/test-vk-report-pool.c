@@ -31,6 +31,7 @@ typedef struct {
  VkDevice device;VkQueryPool query_pool,cost_stats_pool,cost_occl_pool;
  int max_queries_in_flight,num_queries_in_flight,queries_read,queries_submitted,cost_pending_slot;
  bool new_query_needed,query_in_flight,query_in_render_pass,in_command_buffer;
+ uint64_t waited_query_result[2];int waited_query_slot;bool waited_query_valid;
  struct {bool pipelineStatisticsQuery;} enabled_physical_device_features;
  uint32_t zpass_pixel_count_result;
  uint64_t query_results[2*PGRAPH_VK_MAX_QUERIES];
@@ -67,7 +68,7 @@ int main(void){
   /* Finalize with both reserve and overflow nodes still queued. */
   queue_batch(&d,PGRAPH_VK_MAX_QUERIES+37);pgraph_vk_finalize_reports(&d.pgraph);assert(!live&&QSIMPLEQ_EMPTY(&state.report_queue)&&!state.report_pool.block&&!state.report_pool.free&&!state.report_pool.nfree&&destroyed==created);requests+=PGRAPH_VK_MAX_QUERIES+37;
   /* Reinitialization must rebuild the pool rather than retain stale nodes. */
-  created=destroyed=0;pgraph_vk_init_reports(&d.pgraph);assert(live==2&&state.report_pool.nfree==PGRAPH_VK_MAX_QUERIES);queue_batch(&d,19);ready=1;pgraph_vk_process_pending_reports_internal(&d);pgraph_vk_finalize_reports(&d.pgraph);assert(!live&&created==destroyed);requests+=19;
+  created=destroyed=0;state.waited_query_valid=true;pgraph_vk_init_reports(&d.pgraph);assert(!state.waited_query_valid&&live==2&&state.report_pool.nfree==PGRAPH_VK_MAX_QUERIES);queue_batch(&d,19);ready=1;pgraph_vk_process_pending_reports_internal(&d);pgraph_vk_finalize_reports(&d.pgraph);assert(!live&&created==destroyed);requests+=19;
  }
  printf("Vulkan report pool: %u clear/get requests, allocation-free reserve reuse, FIFO, overflow retirement, pending teardown and reinit passed\n",requests);
  return 0;

@@ -1159,6 +1159,10 @@ out-of-order availability, repeated unavailable polls, scales 1-9, 32-bit
 accumulator wraparound, full 1,024-slot batches, queue drain/reset and storage
 guards against a separate CPU model. Allocation wrappers verify the poller
 makes no heap allocations. Completed nodes return to the Vulkan report pool.
+The fixture also executes the idle-wait path: 10,000 one-slot completions skip
+the duplicate query-result poll. Multi-slot ranges, intervening submissions,
+wrong-slot caches, driver errors, no-work waits and pool reset/reinit guards
+retain ordinary polling or invalidate the saved pair as appropriate.
 
 `test-vk-report-pool.py` executes production report initialization, clear/get
 requests, polling and finalization with the actual shared `ObjPool`. Allocator

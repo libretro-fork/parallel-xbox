@@ -31,6 +31,7 @@ void pgraph_vk_init_reports(PGRAPHState *pg)
     r->num_queries_in_flight = 0;
     r->queries_submitted = 0;
     r->queries_read = 0;
+    r->waited_query_valid = false;
     r->max_queries_in_flight = PGRAPH_VK_MAX_QUERIES;
     r->new_query_needed = false;
     r->query_in_flight = false;
@@ -152,12 +153,21 @@ void pgraph_vk_process_pending_reports_internal(NV2AState *d)
     int avail = 0;
     if (unread > 0) {
         assert(unread <= ARRAY_SIZE(r->query_results) / 2);
-        VkResult result = vkGetQueryPoolResults(
-            r->device, r->query_pool, base, unread,
-            (size_t)unread * 2 * sizeof(uint64_t), results,
-            2 * sizeof(uint64_t),
-            VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WITH_AVAILABILITY_BIT);
-        assert(result == VK_SUCCESS || result == VK_NOT_READY);
+        if (r->waited_query_valid && unread == 1 &&
+            r->waited_query_slot == base) {
+            /* The idle wait already fetched this exact slot. Borrow its
+             * value/availability pair instead of reading it from the driver
+             * again. Other ranges retain the ordinary nonblocking poll. */
+            results = r->waited_query_result;
+        } else {
+            VkResult result = vkGetQueryPoolResults(
+                r->device, r->query_pool, base, unread,
+                (size_t)unread * 2 * sizeof(uint64_t), results,
+                2 * sizeof(uint64_t),
+                VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WITH_AVAILABILITY_BIT);
+            assert(result == VK_SUCCESS || result == VK_NOT_READY);
+        }
+        r->waited_query_valid = false;
         while (avail < unread && results[2 * avail + 1] != 0) {
             avail++;
         }
@@ -199,6 +209,7 @@ void pgraph_vk_process_pending_reports_internal(NV2AState *d)
      * (a slot is reset before its reuse, begin_query). */
     if (!pg->reports_pending && !r->query_in_flight &&
         r->queries_read == r->num_queries_in_flight) {
+        r->waited_query_valid = false;
         r->num_queries_in_flight = 0;
         r->queries_submitted = 0;
         r->queries_read = 0;
@@ -214,7 +225,6 @@ bool pgraph_vk_wait_pending_report(NV2AState *d)
 {
     PGRAPHVkState *r = d->pgraph.vk_renderer_state;
     QueryReport *head = QSIMPLEQ_FIRST(&r->report_queue);
-    uint64_t result;
     int end;
 
     if (!head || head->query_count <= r->queries_read) {
@@ -224,9 +234,16 @@ bool pgraph_vk_wait_pending_report(NV2AState *d)
     if (end <= r->queries_read) {
         return false; /* not submitted yet */
     }
-    vkGetQueryPoolResults(r->device, r->query_pool, end - 1, 1,
-                          sizeof(result), &result, sizeof(result),
-                          VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WAIT_BIT);
+    r->waited_query_valid = false;
+    VkResult result = vkGetQueryPoolResults(
+        r->device, r->query_pool, end - 1, 1,
+        sizeof(uint64_t), r->waited_query_result, sizeof(uint64_t),
+        VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WAIT_BIT);
+    if (result == VK_SUCCESS) {
+        r->waited_query_result[1] = 1;
+        r->waited_query_slot = end - 1;
+        r->waited_query_valid = true;
+    }
     return true;
 }
 

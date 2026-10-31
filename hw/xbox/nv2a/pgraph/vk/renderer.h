@@ -853,6 +853,10 @@ typedef struct PGRAPHVkState {
     /* Value/availability pairs, written directly by vkGetQueryPoolResults.
      * Report processing is serialized with the renderer; no per-poll copy. */
     uint64_t query_results[2 * PGRAPH_VK_MAX_QUERIES];
+    /* The idle wait writes directly here; a one-slot poll borrows the pair. */
+    uint64_t waited_query_result[2];
+    int waited_query_slot;
+    bool waited_query_valid;
     bool new_query_needed;
     bool query_in_flight;
     bool query_in_render_pass;

@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Vulkan reuses the completed occlusion value fetched by an idle-report wait when the following poll has exactly that one unread query. The poll borrows the saved value directly, avoiding a second query-result readback call; multi-query ranges still use the existing nonblocking path, and the required guest wait is unchanged.
+
 - Vulkan reserves 1,024 report queue nodes at renderer initialization and recycles them as reports complete, replacing per-request allocation/free for queues within that reserve. Larger queues retain the existing heap fallback, without new GPU waits or request limits.
 
 - Vulkan occlusion-report polling reuses a fixed 16 KiB value/availability array in renderer state instead of allocating and freeing a results buffer on every poll. Vulkan writes directly into it; query availability, report windows and synchronization stay unchanged.
