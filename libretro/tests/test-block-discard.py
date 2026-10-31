@@ -23,6 +23,7 @@ code = r'''
 #endif
 #define MIN(a,b) ((a)<(b)?(a):(b))
 #define MEMTXATTRS_UNSPECIFIED 0
+#define MEMTX_OK 0
 enum { LR_MEDIUM_NONE, LR_MEDIUM_FILE, LR_MEDIUM_QCOW2, LR_MEDIUM_MEMORY };
 typedef struct { int kind; int64_t length, base; bool writable; void *file, *qcow2, *as; } LRMedium;
 typedef struct { LRMedium m; } BlockBackend;
@@ -33,8 +34,8 @@ static int zero(void *p, int64_t off, int64_t len) {
 }
 #define lr_file_zero zero
 #define lr_qcow2_zero zero
-static void address_space_write(void *p, int64_t off, int attr, const void *buf, int64_t len) {
-    (void)attr; (void)buf; zero(p, off, len);
+static int address_space_write(void *p, int64_t off, int attr, const void *buf, int64_t len) {
+    (void)attr; (void)buf; return zero(p, off, len);
 }
 /* PRODUCTION */
 int main(void) {

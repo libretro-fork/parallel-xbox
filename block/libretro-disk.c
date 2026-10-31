@@ -271,14 +271,20 @@ static int lr_disk_rw(BlockBackend *blk, int64_t offset, QEMUIOVector *qiov,
         break;
     case LR_MEDIUM_MEMORY:
         for (int i = 0; i < qiov->niov; i++) {
+            MemTxResult result;
             if (write) {
-                address_space_write(m->as, offset, MEMTXATTRS_UNSPECIFIED,
-                                    qiov->iov[i].iov_base,
-                                    qiov->iov[i].iov_len);
+                result = address_space_write(m->as, offset,
+                                             MEMTXATTRS_UNSPECIFIED,
+                                             qiov->iov[i].iov_base,
+                                             qiov->iov[i].iov_len);
             } else {
-                address_space_read(m->as, offset, MEMTXATTRS_UNSPECIFIED,
-                                   qiov->iov[i].iov_base,
-                                   qiov->iov[i].iov_len);
+                result = address_space_read(m->as, offset,
+                                            MEMTXATTRS_UNSPECIFIED,
+                                            qiov->iov[i].iov_base,
+                                            qiov->iov[i].iov_len);
+            }
+            if (result != MEMTX_OK) {
+                return -EIO;
             }
             offset += qiov->iov[i].iov_len;
         }
@@ -312,7 +318,10 @@ int lr_disk_zero(BlockBackend *blk, int64_t offset, int64_t bytes)
     while (bytes > 0) {
         static const uint8_t zero[4096];
         int64_t n = MIN(bytes, (int64_t)sizeof(zero));
-        address_space_write(m->as, offset, MEMTXATTRS_UNSPECIFIED, zero, n);
+        if (address_space_write(m->as, offset, MEMTXATTRS_UNSPECIFIED,
+                                zero, n) != MEMTX_OK) {
+            return -EIO;
+        }
         offset += n;
         bytes -= n;
     }

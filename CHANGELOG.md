@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Memory-backed Chihiro media reports failed address-space transactions as I/O errors and stops subsequent transfers, rather than reporting successful reads, writes or zeroing.
+
 - Reject negative-length block discards before dispatch, including memory-backed media, instead of silently accepting an invalid range.
 
 
