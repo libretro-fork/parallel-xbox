@@ -752,6 +752,12 @@ static void tb_jmp_cache_inval_tb(TranslationBlock *tb)
             if (retro_atomic_load_relaxed_ptr(&jc->array[h].tb) == tb) {
                 retro_atomic_store_relaxed_ptr(&jc->array[h].tb, NULL);
             }
+            if (xemu_cpu_boost) {
+                unsigned secondary = tb_jmp_cache_class_hash(tb->pc, tb->flags);
+                if (retro_atomic_load_relaxed_ptr(&jc->classes[secondary].tb) == tb) {
+                    retro_atomic_store_relaxed_ptr(&jc->classes[secondary].tb, NULL);
+                }
+            }
         }
     }
 }

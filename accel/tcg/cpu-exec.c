@@ -434,13 +434,25 @@ static inline TranslationBlock *tb_lookup(CPUState *cpu, TCGTBCPUState s)
         goto hit;
     }
 
+    if (xemu_cpu_boost && tb && jc->array[hash].pc == s.pc) {
+        unsigned secondary = tb_jmp_cache_class_hash(s.pc, s.flags);
+        tb = retro_atomic_load_relaxed_ptr(&jc->classes[secondary].tb);
+        if (tb && jc->classes[secondary].pc == s.pc &&
+            tb->cs_base == s.cs_base && tb->flags == s.flags &&
+            tb_cflags(tb) == s.cflags) {
+            /* Promote without touching the class entry or the global table. */
+            jc->array[hash].pc = s.pc;
+            retro_atomic_store_relaxed_ptr(&jc->array[hash].tb, tb);
+            goto hit;
+        }
+    }
+
     tb = tb_htable_lookup(cpu, s);
     if (tb == NULL) {
         return NULL;
     }
 
-    jc->array[hash].pc = s.pc;
-    retro_atomic_store_relaxed_ptr(&jc->array[hash].tb, tb);
+    tb_jmp_cache_store(jc, s.pc, s.flags, tb);
 
 hit:
     /*
@@ -1253,7 +1265,6 @@ cpu_exec_loop(CPUState *cpu, SyncClocks *sc)
             tb = tb_lookup(cpu, s);
             if (tb == NULL) {
                 CPUJumpCache *jc;
-                uint32_t h;
 
                 mmap_lock();
                 if (unlikely(xemu_tbrate_enabled() ||
@@ -1272,10 +1283,8 @@ cpu_exec_loop(CPUState *cpu, SyncClocks *sc)
                  * We add the TB in the virtual pc hash table
                  * for the fast lookup
                  */
-                h = tb_jmp_cache_hash_func(s.pc);
                 jc = cpu->tb_jmp_cache;
-                jc->array[h].pc = s.pc;
-                retro_atomic_store_relaxed_ptr(&jc->array[h].tb, tb);
+                tb_jmp_cache_store(jc, s.pc, s.flags, tb);
             }
 
             /*

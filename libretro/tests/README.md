@@ -1003,3 +1003,13 @@ and flag-overwriting targets to exercise both cache rejection and safe ANY hits.
 
 ANY means code independent of the incoming flag class, not independent of guest
 flag values; such code may still read flags through the normal runtime helpers.
+
+`test-tb-secondary.py` executes the production primary and secondary cache
+stores, lookup, promotion and invalidation paths with Boost on and off.
+Population starts only after a same-address class conflict; empty and address-
+collision misses keep the original path. It checks class-dependent entries,
+independent primary entries, identity
+mismatches, code invalidation and page/full flushes across two CPU caches.
+The two-page ROM alternates carry classes into an ADC-dependent crossing
+instruction block before second-page remaps, writes to both code pages and
+an instruction-fetch fault.

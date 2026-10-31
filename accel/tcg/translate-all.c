@@ -691,5 +691,6 @@ void tcg_flush_jmp_cache(CPUState *cpu)
 
     for (int i = 0; i < TB_JMP_CACHE_SIZE; i++) {
         retro_atomic_store_relaxed_ptr(&jc->array[i].tb, NULL);
+        retro_atomic_store_relaxed_ptr(&jc->classes[i].tb, NULL);
     }
 }

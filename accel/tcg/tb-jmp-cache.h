@@ -30,7 +30,9 @@ typedef struct CPUJumpCache {
     struct {
         retro_atomic_ptr_t tb;      /* TranslationBlock * */
         vaddr pc;
-    } array[TB_JMP_CACHE_SIZE_MAX];
+    } array[TB_JMP_CACHE_SIZE_MAX], classes[TB_JMP_CACHE_SIZE_MAX];
+    /* classes is consulted only after a primary miss; preallocated so class
+     * conflicts cannot allocate during emulation. */
 } CPUJumpCache;
 
 #endif /* ACCEL_TCG_TB_JMP_CACHE_H */

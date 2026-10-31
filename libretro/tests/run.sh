@@ -97,6 +97,7 @@ esac
 python3 "$here/test-kernel-idle.py" "$here/../.." "$cc"
 python3 "$here/test-interrupt-shadow.py" "$here/../.." "$cc"
 python3 "$here/test-tb-cache-flags.py" "$here/../.." "$cc"
+python3 "$here/test-tb-secondary.py" "$here/../.." "$cc"
 python3 "$here/test-byte-carry.py" "$here/../.." "$cc"
 python3 "$here/test-shift-class.py" "$here/../.." "$cc"
 python3 "$here/test-idle-interrupts.py" "$here/../.." "$cc"

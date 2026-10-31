@@ -83,6 +83,17 @@ page_fault:
 sender:
     mov ecx,256
 .again:
+    ; Alternate incoming classes through the shared call site. ADC in the
+    ; crossing target makes each translation depend on its incoming carry.
+    test ecx,1
+    jz .logic
+    mov ebx,0
+    add ebx,1
+    jmp .call
+.logic:
+    or ebx,0
+.call:
+    mov eax,0
     call .cross
     cmp eax,edx
     jne .bad
@@ -93,7 +104,7 @@ sender:
     ret
     times 0xffe-($-sender) db 0x90
 .cross:
-    mov eax,0x11111111
+    adc eax,strict dword 0x11111111
     ret
 sender_end:
     rep_test_handlers

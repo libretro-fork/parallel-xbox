@@ -162,6 +162,7 @@ static void tb_jmp_cache_clear_page(CPUState *cpu, vaddr page_addr)
     i0 = tb_jmp_cache_hash_page(page_addr);
     for (i = 0; i < TB_JMP_PAGE_SIZE; i++) {
         retro_atomic_store_relaxed_ptr(&jc->array[i0 + i].tb, NULL);
+        retro_atomic_store_relaxed_ptr(&jc->classes[i0 + i].tb, NULL);
     }
 }
 
