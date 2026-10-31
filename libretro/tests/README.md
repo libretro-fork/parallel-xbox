@@ -1487,3 +1487,11 @@ checks discard-on-growth allocation, retained capacity across 10000 alternating
 requests, empty requests, finalization and reuse after finalization. GL pitched
 upload and fallback readback tests exercise the renderer-owned scale scratch.
 SCALE_SCRATCH_BINARY / SCALE_SCRATCH_SKIP_RUN support native cross builds.
+
+`test-palette-unswizzle.py` compiles the real Morton palette helper and GL/Vulkan
+CPU fallback callers. An independent 3D address oracle covers rectangular
+power-of-two levels, volume slices, palette/source/output misalignment, guards,
+source immutability, one final Vulkan range and no GL index scratch. The GPU
+unswizzle success branch is preserved. PALETTE_CFLAGS, PALETTE_BINARY and
+PALETTE_SKIP_RUN support optimized or native cross builds; --bench after the
+compiler compares the old unswizzle+convert functions with the fused helper.

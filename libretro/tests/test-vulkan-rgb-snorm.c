@@ -57,6 +57,7 @@ static void unswizzle_box(const uint8_t *src, unsigned w, unsigned h, unsigned d
 static void pgraph_yuv422_to_rgba(uint8_t *out, const uint8_t *in,
                                   unsigned width, bool uyvy)
 { (void)out; (void)in; (void)width; (void)uyvy; abort(); }
+void unswizzle_box_palette(const uint8_t *,const uint8_t *,unsigned,unsigned,unsigned,uint8_t *);
 /* PRODUCTION */
 
 static VkDevice device;

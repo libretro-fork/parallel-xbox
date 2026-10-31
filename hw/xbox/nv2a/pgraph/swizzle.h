@@ -30,6 +30,12 @@ void generate_swizzle_masks(unsigned int width, unsigned int height,
                             unsigned int depth, uint32_t *mask_x,
                             uint32_t *mask_y, uint32_t *mask_z);
 
+/* Expand Morton-ordered 8-bit indices directly into tightly packed palette
+ * entries (256 entries of four bytes each), without a linear index buffer. */
+void unswizzle_box_palette(const uint8_t *indices, const uint8_t *palette,
+                           unsigned int width, unsigned int height,
+                           unsigned int depth, uint8_t *dst);
+
 void swizzle_box(
     const uint8_t *src_buf,
     unsigned int width,

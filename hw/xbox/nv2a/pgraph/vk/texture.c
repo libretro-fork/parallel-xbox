@@ -290,10 +290,9 @@ static void expand_rgb_snorm_alpha(uint8_t *pixels, size_t count)
     }
 }
 
-/* A swizzled level: unswizzled into the ring, and converted there where
- * the host cannot sample the format (palette, YUV, R6G5B5): through a
- * scratch range of the ring, the conversion's source, which the copy does
- * not read */
+/* A swizzled level, preferably converted on the GPU. CPU palette fallback
+ * expands directly into its final staging range; other conversions may need
+ * a linear scratch range that the GPU copy does not read. */
 static void stage_swizzled(PGRAPHState *pg, VkCommandBuffer cmd,
                            TextureLevel *level, const TextureShape *s,
                            const uint8_t *data, const uint8_t *palette,
@@ -337,6 +336,11 @@ static void stage_swizzled(PGRAPHState *pg, VkCommandBuffer cmd,
             unswizzle_box(data, width, height, depth, dst, row_pitch,
                           slice_pitch, bpp);
         }
+        return;
+    }
+    if (palette_format) {
+        uint8_t *dst = stage_level(pg, level, width, height, depth, converted);
+        unswizzle_box_palette(data, palette, width, height, depth, dst);
         return;
     }
     uint8_t *scratch;

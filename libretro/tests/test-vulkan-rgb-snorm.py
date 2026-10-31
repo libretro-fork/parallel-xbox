@@ -40,5 +40,5 @@ with tempfile.TemporaryDirectory(prefix="vk-rgb-snorm-") as directory:
     subprocess.run([sys.argv[2] if len(sys.argv) > 2 else "gcc", "-O2", "-std=gnu11",
                     "-Wall", "-Wextra", "-Werror", "-Wno-sign-compare",
                     "-fsanitize=undefined", "-fno-sanitize-recover=all", "-I", str(repo),
-                    str(folder / "test.c"), "-lvulkan", "-o", str(folder / "test")], check=True)
+                    str(folder / "test.c"), str(repo / "hw/xbox/nv2a/pgraph/swizzle.c"), "-lvulkan", "-o", str(folder / "test")], check=True)
     subprocess.run([str(folder / "test")], env=os.environ, check=True)

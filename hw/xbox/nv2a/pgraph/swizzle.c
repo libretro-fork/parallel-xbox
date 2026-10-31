@@ -69,6 +69,32 @@ void generate_swizzle_masks(unsigned int width,
     *mask_z = z;
 }
 
+void unswizzle_box_palette(const uint8_t *indices, const uint8_t *palette,
+                           unsigned int width, unsigned int height,
+                           unsigned int depth, uint8_t *dst)
+{
+    uint32_t mask_x, mask_y, mask_z;
+    generate_swizzle_masks(width, height, depth, &mask_x, &mask_y, &mask_z);
+
+    uint32_t off_z = 0;
+    for (unsigned int z = 0; z < depth; z++) {
+        uint32_t off_y = 0;
+        for (unsigned int y = 0; y < height; y++) {
+            uint32_t off_x = 0;
+            const uint8_t *row = indices + (off_y | off_z);
+            for (unsigned int x = 0; x < width; x++) {
+                /* Byte copies preserve palette channel order and allow
+                 * unaligned guest palettes and caller-owned output. */
+                memcpy(dst, palette + (size_t)row[off_x] * 4, 4);
+                dst += 4;
+                off_x = (off_x - mask_x) & mask_x;
+            }
+            off_y = (off_y - mask_y) & mask_y;
+        }
+        off_z = (off_z - mask_z) & mask_z;
+    }
+}
+
 static inline void swizzle_box_internal(
     const uint8_t *src_buf,
     unsigned int width,
