@@ -3538,11 +3538,13 @@ DEF_METHOD(NV097, LAUNCH_TRANSFORM_PROGRAM)
     unsigned int program_start = parameter;
     assert(program_start < NV2A_MAX_TRANSFORM_PROGRAM_LENGTH);
     Nv2aVshProgram program;
-    Nv2aVshParseResult result = nv2a_vsh_parse_program(
-            &program,
-            pg->program_data[program_start],
-            NV2A_MAX_TRANSFORM_PROGRAM_LENGTH - program_start);
-    assert(result == NV2AVPR_SUCCESS);
+    Nv2aVshParseResult result = pgraph_vsh_state_program(
+        &pg->vertex_state_program_cache, pg->program_data, program_start,
+        &program);
+    if (result != NV2AVPR_SUCCESS) {
+        assert(!"Invalid vertex state program");
+        return;
+    }
 
     Nv2aVshCPUXVSSExecutionState state_linkage;
     Nv2aVshExecutionState state = nv2a_vsh_emu_initialize_xss_execution_state(
@@ -3550,8 +3552,6 @@ DEF_METHOD(NV097, LAUNCH_TRANSFORM_PROGRAM)
     memcpy(state_linkage.input_regs, pg->vertex_state_shader_v0, sizeof(pg->vertex_state_shader_v0));
 
     nv2a_vsh_emu_execute_track_context_writes(&state, &program, pg->vsh_constants_dirty);
-
-    nv2a_vsh_program_destroy(&program);
 }
 
 DEF_METHOD(NV097, SET_TRANSFORM_EXECUTION_MODE)

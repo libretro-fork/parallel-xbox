@@ -36,6 +36,7 @@
 #include "texture.h"
 #include "util.h"
 #include "vsh_regs.h"
+#include "vsh-state.h"
 #include "writeback.h"
 
 typedef struct NV2AState NV2AState;
@@ -294,6 +295,7 @@ typedef struct PGRAPHState {
     uint32_t vertex_state_shader_v0[4];
     uint32_t program_data[NV2A_MAX_TRANSFORM_PROGRAM_LENGTH][VSH_TOKEN_SIZE];
     bool program_data_dirty;
+    PGRAPHVshStateCache vertex_state_program_cache;
 
     uint32_t vsh_constants[NV2A_VERTEXSHADER_CONSTANTS][4];
     bool vsh_constants_dirty[NV2A_VERTEXSHADER_CONSTANTS];

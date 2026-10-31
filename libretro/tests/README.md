@@ -1561,3 +1561,10 @@ address through `check-stream-address.py`: exactly 48,048 stereo samples,
 bit-identical PCM, a non-silent 1 kHz tone and strict frame/audio cadence.
 This tests valid zero-address segments; it does not validate incomplete or
 malformed SSL descriptors or claim to resolve every crash reported in #3072.
+
+`python libretro/tests/test-vsh-state-cache.py . gcc` compares cached state-program
+execution with the existing interpreter for 52001 programs and 1000 production
+method launches. It checks exact constants/dirty flags, overlapping starts,
+partial uploads, restored source words, early/missing end markers, invalid
+programs and zero launch allocations. An unchanged instruction is decoded once;
+changing input constants or v0 still executes the program every time.

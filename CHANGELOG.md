@@ -20,6 +20,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Vertex state programs: stop decoding at their end marker and reuse unchanged decoded instructions without per-launch allocation. Exact source checks preserve partial uploads and restored programs; constant updates still execute on every launch.
+
 - Vulkan: remove runtime SPIR-V reflection. The shader compiler supplies uniform and push constant layouts, shared without copying names or descriptors across cached modules. Fixed shaders pass compiler-owned words directly to Vulkan without a byte-array wrapper. Fix a compiler read past the end of shader sources without a trailing newline.
 
 - R6G5B5 textures: decode Morton texels directly into GL RGB or Vulkan RGBA, eliminating raw scratch and the Vulkan alpha-expansion pass. Small exact channel tables preserve signed endpoints and integer rounding.
