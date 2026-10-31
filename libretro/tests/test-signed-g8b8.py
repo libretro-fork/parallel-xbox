@@ -16,6 +16,8 @@ def main():
     parser.add_argument("harness", type=Path)
     parser.add_argument("scratch", type=Path)
     parser.add_argument("--assembler", default="nasm")
+    parser.add_argument("--extended-address-biases", action="store_true",
+                        help="repeat new mixed-axis matrices at -4/0/+0.25/+4 instead of +0.25")
     args = parser.parse_args()
     here = args.checkout.resolve() / "libretro/tests"
     args.scratch.mkdir(parents=True, exist_ok=True)
@@ -29,6 +31,10 @@ def main():
               for bias in ("-4", "0", "0.25", "4")]
     modes += [f"{family}_{filter}_{bias}" for family in ("mipclamp", "mipclampmixed")
               for filter in (3, 4, 5, 6) for bias in ("-4", "0", "0.25", "4")]
+    modes += [f"{family}_{filter}_{bias}" for family in
+              ("mipclampu", "mipclampv", "mipclampumixed", "mipclampvmixed")
+              for filter in (3, 4, 5, 6) for bias in
+              (("-4", "0", "0.25", "4") if args.extended_address_biases else ("0.25",))]
     for mode in modes:
         output = root / mode
         build = [sys.executable, str(here / "build-bump-probe.py"), str(output),
@@ -38,12 +44,16 @@ def main():
         elif mode.startswith("mixed"):
             bias = 4 if mode.endswith("plus4") else -4 if mode.endswith("minus4") else 0
             build += ["--mixed", "--lod-bias", str(bias)]
-        elif mode.startswith(("mip_", "mipmixed_", "mipclamp_", "mipclampmixed_")):
-            _, filter, bias = mode.split("_")
+        elif mode.startswith(("mip_", "mipmixed_", "mipclamp")):
+            family, filter, bias = mode.split("_")
             build += ["--mip-filter", filter, "--lod-bias", bias]
-            if mode.startswith(("mipmixed_", "mipclampmixed_")):
+            if "mixed" in family:
                 build.append("--mip-mixed")
-            if mode.startswith("mipclamp"):
+            if family.startswith("mipclampu"):
+                build += ["--mip-clamp-axis", "u"]
+            elif family.startswith("mipclampv"):
+                build += ["--mip-clamp-axis", "v"]
+            elif family.startswith("mipclamp"):
                 build.append("--mip-clamp")
         subprocess.run(build, check=True)
         with (output / "cases.csv").open() as file:

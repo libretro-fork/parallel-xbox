@@ -35,8 +35,10 @@ def expected_mip(case, force_lod0):
 
     def sample(level, channel):
         size = 4 >> level
-        clamp = case.get("address_mode") == "clamp_edge"
-        coordinate = "sample_v" if clamp and channel in "GA" else "sample_u"
+        address = case.get("address_mode", "wrap")
+        axis_v = address in ("clamp_edge", "clamp_u", "clamp_v") and channel in "GA"
+        clamp = address == "clamp_edge" or (address == "clamp_v" if axis_v else address == "clamp_u")
+        coordinate = "sample_v" if axis_v else "sample_u"
         u = float(case.get(coordinate) or "1.25") * size / 4
         pair = ((192, 64), (224, 32), (16, 16))[level] if channel in "RB" else ((64, 192), (96, 160), (112, 112))[level]
         position = u - 0.5 if linear else u

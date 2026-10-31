@@ -227,6 +227,8 @@ void pgraph_glsl_set_psh_state(PGRAPHState *pg, PshState *state)
     }
 
     state->g8b8_mip_flags = 0;
+    state->g8b8_mip_clamp_u = 0;
+    state->g8b8_mip_clamp_v = 0;
     for (int i = 0; i < 4; i++) {
         state->g8b8_signed[i] = 0;
         for (int j = 0; j < 4; j++) {
@@ -316,6 +318,8 @@ void pgraph_glsl_set_psh_state(PGRAPHState *pg, PshState *state)
         bool mip_filter = false;
         bool mip_lod0 = false;
         bool mip_clamp = false;
+        bool mip_clamp_u = false;
+        bool mip_clamp_v = false;
         if (gb && !f.linear && !cubemap && state->dim_tex[i] == 2 &&
             GET_MASK(tex_fmt, NV_PGRAPH_TEXFMT0_MIPMAP_LEVELS) > 1 &&
             (linear_filter || point_filter || mixed_mip_filter)) {
@@ -324,14 +328,15 @@ void pgraph_glsl_set_psh_state(PGRAPHState *pg, PshState *state)
             unsigned addrv = GET_MASK(address, NV_PGRAPH_TEXADDRESS0_ADDRV);
             TextureShape shape = pgraph_get_texture_shape(pg, i);
             mip_lod0 = shape.max_mipmap_level == 0;
-            mip_clamp = addru == NV_PGRAPH_TEXADDRESS0_ADDRU_CLAMP_TO_EDGE &&
-                        addrv == NV_PGRAPH_TEXADDRESS0_ADDRU_CLAMP_TO_EDGE;
+            mip_clamp_u = addru == NV_PGRAPH_TEXADDRESS0_ADDRU_CLAMP_TO_EDGE;
+            mip_clamp_v = addrv == NV_PGRAPH_TEXADDRESS0_ADDRU_CLAMP_TO_EDGE;
+            mip_clamp = mip_clamp_u && mip_clamp_v;
             /* GL uses BASE_LEVEL for the lower clamp, while Vulkan uses
              * minLod. Leave nonzero lower clamps and other address modes on
              * the existing path until their backend differences are covered. */
             mip_filter = shape.min_mipmap_level == 0 &&
-                ((addru == NV_PGRAPH_TEXADDRESS0_ADDRU_WRAP &&
-                  addrv == NV_PGRAPH_TEXADDRESS0_ADDRU_WRAP) || mip_clamp) &&
+                (addru == NV_PGRAPH_TEXADDRESS0_ADDRU_WRAP || mip_clamp_u) &&
+                (addrv == NV_PGRAPH_TEXADDRESS0_ADDRU_WRAP || mip_clamp_v) &&
                 min_filter >= NV_PGRAPH_TEXFILTER0_MIN_BOX_NEARESTLOD &&
                 min_filter <= NV_PGRAPH_TEXFILTER0_MIN_TENT_TENT_LOD;
         }
@@ -367,6 +372,12 @@ void pgraph_glsl_set_psh_state(PGRAPHState *pg, PshState *state)
                     (mip_min_linear || mixed_mip_filter ||
                      min_filter == NV_PGRAPH_TEXFILTER0_MIN_BOX_TENT_LOD)) {
                     state->g8b8_mip_flags |= 1u << (i + 4);
+                }
+                if (mip_filter && (mip_clamp_u != mip_clamp_v) &&
+                    (mip_min_linear || mixed_mip_filter ||
+                     min_filter == NV_PGRAPH_TEXFILTER0_MIN_BOX_TENT_LOD)) {
+                    state->g8b8_mip_clamp_u |= (mip_clamp_u ? 1u : 0u) << i;
+                    state->g8b8_mip_clamp_v |= (mip_clamp_v ? 1u : 0u) << i;
                 }
             }
         }
@@ -1154,6 +1165,8 @@ static void psh_append_signed_g8b8_mips(const struct PixelShader *ps, MString *v
 {
     bool mixed = ps->state->g8b8_mip_flags & (1u << source);
     bool clamp = ps->state->g8b8_mip_flags & (1u << (source + 4));
+    bool clamp_u = clamp || (ps->state->g8b8_mip_clamp_u & (1u << source));
+    bool clamp_v = clamp || (ps->state->g8b8_mip_clamp_v & (1u << source));
     bool linear = (signs & 16) || mixed;
     bool trilinear = signs & 64;
     mstring_append_fmt(vars,
@@ -1198,15 +1211,29 @@ static void psh_append_signed_g8b8_mips(const struct PixelShader *ps, MString *v
                     "vec2 gbMip%d_%d = gbTap%d_%d_0;\nif (gbLinear%d) {\n",
                     source, mip, source, mip, source);
             }
+            if (clamp_u == clamp_v) {
+                mstring_append_fmt(vars,
+                    "vec2 gbTap%d_%d_%d = texelFetch(texSamp%d, "
+                    "ivec2(%s(gbBase%d_%d + vec2(%d.0, %d.0), %sgbSize%d_%d%s)), "
+                    "gbLevel%d_%d).bg;\n",
+                    source, mip, tap, source, clamp_u ? "clamp" : "mod",
+                    source, mip, tap & 1, tap >> 1, clamp_u ? "vec2(0.0), " : "",
+                    source, mip, clamp_u ? " - 1.0" : "", source, mip);
+            } else {
+                mstring_append_fmt(vars,
+                    "vec2 gbTap%d_%d_%d = texelFetch(texSamp%d, "
+                    "ivec2(%s(gbBase%d_%d.x + %d.0, %sgbSize%d_%d.x%s), "
+                    "%s(gbBase%d_%d.y + %d.0, %sgbSize%d_%d.y%s)), gbLevel%d_%d).bg;\n",
+                    source, mip, tap, source,
+                    clamp_u ? "clamp" : "mod", source, mip, tap & 1,
+                    clamp_u ? "0.0, " : "", source, mip, clamp_u ? " - 1.0" : "",
+                    clamp_v ? "clamp" : "mod", source, mip, tap >> 1,
+                    clamp_v ? "0.0, " : "", source, mip, clamp_v ? " - 1.0" : "",
+                    source, mip);
+            }
             mstring_append_fmt(vars,
-                "vec2 gbTap%d_%d_%d = texelFetch(texSamp%d, "
-                "ivec2(%s(gbBase%d_%d + vec2(%d.0, %d.0), %sgbSize%d_%d%s)), "
-                "gbLevel%d_%d).bg;\n"
                 "gbTap%d_%d_%d = vec2(sign3(gbTap%d_%d_%d.x), "
                 "sign3(gbTap%d_%d_%d.y));\n",
-                source, mip, tap, source, clamp ? "clamp" : "mod",
-                source, mip, tap & 1, tap >> 1, clamp ? "vec2(0.0), " : "",
-                source, mip, clamp ? " - 1.0" : "", source, mip,
                 source, mip, tap, source, mip, tap, source, mip, tap);
         }
         if (linear) {

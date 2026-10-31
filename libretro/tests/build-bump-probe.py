@@ -21,6 +21,8 @@ def main():
                         help="use the opposite magnification filter with --mip-filter")
     parser.add_argument("--mip-clamp", action="store_true",
                         help="test clamp-to-edge on both axes with --mip-filter")
+    parser.add_argument("--mip-clamp-axis", choices=("u", "v"),
+                        help="clamp only this axis and wrap the other with --mip-filter")
     parser.add_argument("--lod-bias", type=float, choices=(-4, 0, 0.25, 4), default=0,
                         help="sampler LOD bias for the mixed/mip-filter matrix")
     args = parser.parse_args()
@@ -28,8 +30,13 @@ def main():
         parser.error("--mixed and --mip-filter are mutually exclusive")
     if args.mip_mixed and not args.mip_filter:
         parser.error("--mip-mixed requires --mip-filter")
-    if args.mip_clamp and not args.mip_filter:
-        parser.error("--mip-clamp requires --mip-filter")
+    clamp_data = args.mip_clamp or args.mip_clamp_axis is not None
+    if clamp_data and not args.mip_filter:
+        parser.error("mip clamp options require --mip-filter")
+    if args.mip_clamp and args.mip_clamp_axis:
+        parser.error("choose --mip-clamp or --mip-clamp-axis")
+    address_mode = "clamp_edge" if args.mip_clamp else (
+        "clamp_" + args.mip_clamp_axis if args.mip_clamp_axis else "wrap")
     output = args.output.resolve()
     if output.exists() and any(output.iterdir()):
         parser.error("output directory must be empty")
@@ -53,8 +60,9 @@ def main():
             defines += ["-DBUMP_FILTER_MIP_PROBE", f"-DBUMP_MIP_FILTER={args.mip_filter}",
                         f"-DBUMP_MIP_MAG={mag}",
                         f"-DBUMP_MIXED_BIAS={int(args.lod_bias * 256) & 0x1fff}"]
-            if args.mip_clamp:
-                defines.append("-DBUMP_FILTER_CLAMP_PROBE")
+            if clamp_data:
+                address = {"clamp_edge": 0x30303, "clamp_u": 0x10103, "clamp_v": 0x10301}[address_mode]
+                defines += ["-DBUMP_FILTER_CLAMP_PROBE", f"-DBUMP_CLAMP_ADDRESS={address}"]
         subprocess.run(["gcc", "-m32", "-ffreestanding", "-fno-pic", "-fno-pie",
                         "-fno-stack-protector", "-fno-asynchronous-unwind-tables",
                         "-mno-sse", "-mno-mmx", "-O2", "-Wall", "-Wextra", "-Werror",
@@ -93,11 +101,11 @@ def main():
         for i in range(192):
             if args.color or args.mixed or args.mip_filter:
                 flags = (i // 6) % 16
-                if args.mip_clamp:
+                if clamp_data:
                     flags = (i // 3) % 16
                 channels = "".join(ch for bit, ch in ((1, "B"), (2, "G"), (4, "R"), (8, "A")) if flags & bit) or "none"
                 if args.mip_filter:
-                    if args.mip_clamp:
+                    if clamp_data:
                         u, v = ((1.25, 1.25), (-0.25, -0.25),
                                 (4.25, 4.25), (-0.25, 4.25))[i // 48]
                         maximum = 1 if flags & 1 else 2
@@ -109,8 +117,8 @@ def main():
                                       5: "point_linear_mip", 6: "linear_linear_mip"}[args.mip_filter],
                                      ("magnified", "near_magnified", "minified")[i % 3],
                                      f"0x{0x300204 + i * 8:08x}", args.lod_bias,
-                                     args.mip_filter, maximum, 0 if args.mip_clamp else -(i // 96), mag,
-                                     "clamp_edge" if args.mip_clamp else "wrap", u, v])
+                                     args.mip_filter, maximum, 0 if clamp_data else -(i // 96), mag,
+                                     address_mode, u, v])
                     continue
                 writer.writerow([i, ("linear", "swizzled")[i // 96],
                                  "mixed_color" if args.mixed else "color", "BG", channels,

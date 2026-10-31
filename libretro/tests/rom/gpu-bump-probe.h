@@ -156,7 +156,7 @@ static void bump_filter_probe(void)
                (1u << 16) | (1u << 20) | (1u << 24));
         method(NV097_SET_TEXTURE_CONTROL1, 4u << 16);
 #ifdef BUMP_FILTER_CLAMP_PROBE
-        method(NV097_SET_TEXTURE_ADDRESS, 0x00030303u);
+        method(NV097_SET_TEXTURE_ADDRESS, BUMP_CLAMP_ADDRESS);
 #else
         method(NV097_SET_TEXTURE_ADDRESS, 0x00010101u); /* wrap: AF-eligible */
 #endif

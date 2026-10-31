@@ -20,7 +20,9 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Signed G8B8 mip filtering now handles wrapping on one texture axis and clamp-to-edge on the other, including mixed min/mag filters and Force LOD0. Each axis addresses texels independently before signed interpolation. Existing equal-address shaders and serialized shader-state layout are preserved.
 - Windows: replace libepoxy with libretro-common GL dispatch; keep shared worker contexts and Vulkan/GL interop.
+
 
 - Base-only wrapping signed G8B8 textures with matching filters now reuse the existing point/gather shader keys, extending the same specialization already used for clamp-to-edge. Mixed filters and real mip selection retain their existing programs; no runtime diagnostic logging is added.
 

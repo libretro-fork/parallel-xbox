@@ -80,6 +80,11 @@ typedef struct PshState {
     bool depth_clipping;
     bool z_perspective;
 
+    /* Mixed wrap/edge axes, one bit per stage. These occupy formerly zeroed
+     * padding; existing fields, seed size and equal-address keys stay intact. */
+    uint8_t g8b8_mip_clamp_u;
+    uint8_t g8b8_mip_clamp_v;
+
     unsigned int surface_zeta_format;
     enum PshDepthFormat depth_format;
 } PshState;
