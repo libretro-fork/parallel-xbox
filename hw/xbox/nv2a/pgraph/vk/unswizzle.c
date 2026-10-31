@@ -237,7 +237,7 @@ void pgraph_vk_init_unswizzle(PGRAPHState *pg)
     VK_CHECK(vkCreatePipelineLayout(r->device, &pipeline_layout_info, NULL,
                                     &r->unswizzle.layout));
 
-    ShaderModuleInfo *module = pgraph_vk_create_shader_module_from_glsl(
+    VkShaderModule module = pgraph_vk_create_fixed_shader_module_from_glsl(
         r, VK_SHADER_STAGE_COMPUTE_BIT, unswizzle_glsl);
     VkComputePipelineCreateInfo pipeline_info = {
         .sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
@@ -246,21 +246,21 @@ void pgraph_vk_init_unswizzle(PGRAPHState *pg)
             .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
             .stage = VK_SHADER_STAGE_COMPUTE_BIT,
             .pName = "main",
-            .module = module->module,
+            .module = module,
         },
     };
     VK_CHECK(vkCreateComputePipelines(r->device, r->vk_pipeline_cache, 1,
                                       &pipeline_info, NULL,
                                       &r->unswizzle.pipeline));
-    pgraph_vk_destroy_shader_module(r, module);
+    vkDestroyShaderModule(r->device, module, NULL);
 
-    module = pgraph_vk_create_shader_module_from_glsl(
+    module = pgraph_vk_create_fixed_shader_module_from_glsl(
         r, VK_SHADER_STAGE_COMPUTE_BIT, swizzle_glsl);
-    pipeline_info.stage.module = module->module;
+    pipeline_info.stage.module = module;
     VK_CHECK(vkCreateComputePipelines(r->device, r->vk_pipeline_cache, 1,
                                       &pipeline_info, NULL,
                                       &r->unswizzle.swizzle_pipeline));
-    pgraph_vk_destroy_shader_module(r, module);
+    vkDestroyShaderModule(r->device, module, NULL);
     r->unswizzle.ready = true;
 }
 

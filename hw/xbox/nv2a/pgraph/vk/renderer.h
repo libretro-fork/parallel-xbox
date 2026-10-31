@@ -932,6 +932,9 @@ VkShaderModule pgraph_vk_create_shader_module_from_spv(PGRAPHVkState *r,
 /* Words are borrowed for the synchronous Vulkan call, never retained. */
 VkShaderModule pgraph_vk_create_shader_module_from_words(
     PGRAPHVkState *r, const uint32_t *words, size_t num_words);
+/* Only for fixed programs whose descriptor/push layout is defined by the host. */
+VkShaderModule pgraph_vk_create_fixed_shader_module_from_glsl(
+    PGRAPHVkState *r, VkShaderStageFlagBits stage, const char *glsl);
 ShaderModuleInfo *pgraph_vk_create_shader_module_from_spirv(PGRAPHVkState *r,
                                                              GByteArray *spirv);
 ShaderModuleInfo *pgraph_vk_create_shader_module_from_glsl(

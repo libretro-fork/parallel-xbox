@@ -92,6 +92,18 @@ VkShaderModule pgraph_vk_create_shader_module_from_spv(PGRAPHVkState *r, GByteAr
                                       spv->len / sizeof(uint32_t));
 }
 
+/* Fixed programs have a host-defined layout. Borrow the compiler's words
+ * through vkCreateShaderModule, then release them without reflecting or
+ * allocating ShaderModuleInfo and unused uniform metadata. */
+VkShaderModule pgraph_vk_create_fixed_shader_module_from_glsl(
+    PGRAPHVkState *r, VkShaderStageFlagBits stage, const char *glsl)
+{
+    GByteArray *spirv = pgraph_vk_compile_glsl_to_spv(stage, glsl);
+    VkShaderModule module = pgraph_vk_create_shader_module_from_spv(r, spirv);
+    g_byte_array_unref(spirv);
+    return module;
+}
+
 static void block_to_uniforms(const SpvReflectBlockVariable *block, ShaderUniformLayout *layout)
 {
     assert(!layout->uniforms);

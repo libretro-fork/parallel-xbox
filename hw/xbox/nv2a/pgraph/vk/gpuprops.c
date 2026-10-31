@@ -347,16 +347,12 @@ static void render_geom_shader_triangles(NV2AState *d, int width, int height,
     VkFramebuffer framebuffer;
     VK_CHECK(vkCreateFramebuffer(r->device, &fb_info, NULL, &framebuffer));
 
-    ShaderModuleInfo *vsh_info = pgraph_vk_create_shader_module_from_glsl(
+    VkShaderModule vert_shader_module = pgraph_vk_create_fixed_shader_module_from_glsl(
         r, VK_SHADER_STAGE_VERTEX_BIT, vertex_shader_source);
-    ShaderModuleInfo *geom_info = pgraph_vk_create_shader_module_from_glsl(
+    VkShaderModule geom_shader_module = pgraph_vk_create_fixed_shader_module_from_glsl(
         r, VK_SHADER_STAGE_GEOMETRY_BIT, geometry_shader_source);
-    ShaderModuleInfo *psh_info = pgraph_vk_create_shader_module_from_glsl(
+    VkShaderModule frag_shader_module = pgraph_vk_create_fixed_shader_module_from_glsl(
         r, VK_SHADER_STAGE_FRAGMENT_BIT, fragment_shader_source);
-
-    VkShaderModule vert_shader_module = vsh_info->module;
-    VkShaderModule geom_shader_module = geom_info->module;
-    VkShaderModule frag_shader_module = psh_info->module;
 
     VkPipelineLayoutCreateInfo pipeline_layout_info = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
@@ -383,9 +379,9 @@ static void render_geom_shader_triangles(NV2AState *d, int width, int height,
         geom_shader_module, frag_shader_module, pipeline_layout, render_pass,
         width, height);
 
-    pgraph_vk_destroy_shader_module(r, psh_info);
-    pgraph_vk_destroy_shader_module(r, geom_info);
-    pgraph_vk_destroy_shader_module(r, vsh_info);
+    vkDestroyShaderModule(r->device, frag_shader_module, NULL);
+    vkDestroyShaderModule(r->device, geom_shader_module, NULL);
+    vkDestroyShaderModule(r->device, vert_shader_module, NULL);
 
     VkCommandBufferBeginInfo begin_info = {
         .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,

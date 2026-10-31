@@ -1131,3 +1131,10 @@ mismatches, code invalidation and page/full flushes across two CPU caches.
 The two-page ROM alternates carry classes into an ADC-dependent crossing
 instruction block before second-page remaps, writes to both code pages and
 an instruction-fetch fault.
+
+The `test-fixed-shader-ownership.py` fixture extracts the production fixed-module
+creation path. Across 10,000 calls it checks that native creation receives the
+compiler payload pointer and exact byte length, that the words remain unchanged,
+and that the owning byte array is released exactly once after native creation.
+The swizzle and GPU-probe callers use this path because their layouts are defined
+by the host; guest shader reflection remains enabled.
