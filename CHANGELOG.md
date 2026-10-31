@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Vulkan occlusion-report polling reuses a fixed 16 KiB value/availability array in renderer state instead of allocating and freeing a results buffer on every poll. Vulkan writes directly into it; query availability, report windows and synchronization stay unchanged.
+
 - Vulkan swizzle and unswizzle pipelines now load immutable SPIR-V at initialization, removing their runtime source compilation and temporary compiler payloads. Palette lookup, 3D texture conversion and GPU-only ring/image transfers retain their existing behavior; no extra pipelines or VRAM are reserved.
 
 - Vulkan startup skips unused shader reflection and uniform metadata for the fixed swizzle kernels and GPU capability probes. Their compiler output is borrowed directly during native module creation, then released; shader code, layouts and GPU transfers are unchanged.

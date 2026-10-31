@@ -1150,3 +1150,12 @@ alignment, partial output words and complete input/output guards. It also report
 and reference compilation belong to the fixture only. Runtime compilation is
 removed from the production swizzle kernels; GPU-probe GLSL still uses the
 reflection-free fixed-module path.
+
+`test-vk-report-storage.py` extracts the production asynchronous report poller,
+its report type, capacity and result-storage declaration. A delayed GPU model
+checks the exact destination pointer, range, stride and nonblocking flags.
+Across 27,000 polls it checks clear/report ordering, partial submissions,
+out-of-order availability, repeated unavailable polls, scales 1-9, 32-bit
+accumulator wraparound, full 1,024-slot batches, queue drain/reset and storage
+guards against a separate CPU model. Allocation wrappers verify the poller
+makes no heap allocations; queued report nodes retain their existing lifetime.

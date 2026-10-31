@@ -28,7 +28,7 @@ void pgraph_vk_init_reports(PGRAPHState *pg)
     r->num_queries_in_flight = 0;
     r->queries_submitted = 0;
     r->queries_read = 0;
-    r->max_queries_in_flight = 1024;
+    r->max_queries_in_flight = PGRAPH_VK_MAX_QUERIES;
     r->new_query_needed = false;
     r->query_in_flight = false;
     r->query_in_render_pass = false;
@@ -143,10 +143,10 @@ void pgraph_vk_process_pending_reports_internal(NV2AState *d)
 
     const int base = r->queries_read;
     int unread = r->queries_submitted - base;
-    g_autofree uint64_t *results = NULL;
+    uint64_t *results = r->query_results;
     int avail = 0;
     if (unread > 0) {
-        results = g_malloc_n(unread, 2 * sizeof(uint64_t));
+        assert(unread <= ARRAY_SIZE(r->query_results) / 2);
         VkResult result = vkGetQueryPoolResults(
             r->device, r->query_pool, base, unread,
             (size_t)unread * 2 * sizeof(uint64_t), results,

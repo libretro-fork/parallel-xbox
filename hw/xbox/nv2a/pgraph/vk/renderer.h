@@ -288,6 +288,8 @@ typedef struct TextureBinding {
     VkImageCreateInfo image_ci; /* creation parameters (image pool key) */
 } TextureBinding;
 
+#define PGRAPH_VK_MAX_QUERIES 1024
+
 typedef struct QueryReport {
     QSIMPLEQ_ENTRY(QueryReport) entry;
     bool clear;
@@ -842,12 +844,15 @@ typedef struct PGRAPHVkState {
     const ShaderModuleInfo *uni_last_pushed[2];
 
     VkQueryPool query_pool;
-    int max_queries_in_flight; // FIXME: Move out to constant
+    int max_queries_in_flight;
     int num_queries_in_flight;
     /* Query slots ended in a submitted command buffer, and slots counted into
      * zpass_pixel_count_result (reports read at availability, no WAIT). */
     int queries_submitted;
     int queries_read;
+    /* Value/availability pairs, written directly by vkGetQueryPoolResults.
+     * Report processing is serialized with the renderer; no per-poll copy. */
+    uint64_t query_results[2 * PGRAPH_VK_MAX_QUERIES];
     bool new_query_needed;
     bool query_in_flight;
     bool query_in_render_pass;
