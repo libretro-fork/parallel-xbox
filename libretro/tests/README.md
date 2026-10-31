@@ -117,7 +117,7 @@ invalidation predicate over 262144 register combinations and verifies that
 signed-channel, min/mag, mip-count and mip-size changes invalidate shader state.
 It also checks that reuse of the reserved universal byte preserves the
 serialized pixel-shader state size and field offsets.
-Another 512 cases verify that matching, base-only clamped filters reuse the
+Another 1024 cases verify that matching, base-only wrap/clamp filters reuse the
 single-level point/gather shader keys without clearing other stages' flags.
 
 `run.sh` runs every test script here. The extracted-code tests (`test-*.py`, which

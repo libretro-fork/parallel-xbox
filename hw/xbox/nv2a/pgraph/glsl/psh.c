@@ -347,7 +347,7 @@ void pgraph_glsl_set_psh_state(PGRAPHState *pg, PshState *state)
                 ((filter & NV_PGRAPH_TEXFILTER0_GSIGNED) ? 2 : 0) |
                 ((filter & NV_PGRAPH_TEXFILTER0_RSIGNED) ? 4 : 0) |
                 ((filter & NV_PGRAPH_TEXFILTER0_ASIGNED) ? 8 : 0);
-            if (signs && mip_filter && mip_clamp && mip_lod0 &&
+            if (signs && mip_filter && mip_lod0 &&
                 !mixed_mip_filter) {
                 /* Matching filters restricted to mip zero can reuse the
                  * single-level point/gather programs. Canonicalizing the
