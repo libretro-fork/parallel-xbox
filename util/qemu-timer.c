@@ -366,6 +366,9 @@ static unsigned timer_del_locked(QEMUTimerList *timer_list, QEMUTimer *ts)
     QEMUTimer **pt, *t;
     unsigned changed = 0;
 
+    if (ts->expire_time < 0) {
+        return 0;
+    }
     ts->expire_time = -1;
     pt = &timer_list->active_timers;
     for (;;) {
@@ -439,10 +442,22 @@ void timer_mod_ns(QEMUTimer *ts, int64_t expire_time)
     unsigned removed, inserted;
 
     qemu_mutex_lock(&timer_list->active_timers_lock);
-    removed = timer_del_locked(timer_list, ts);
-    inserted = timer_mod_ns_locked(timer_list, ts, expire_time);
-    if (removed | inserted) {
-        timer_publish_deadlines(timer_list);
+    /* Moving a pending timer later within the same gap leaves the list
+     * unchanged. Strictly precede the successor: equality must reinsert
+     * behind existing peers to preserve equal-deadline callback ordering. */
+    if (ts->expire_time >= 0 && expire_time >= ts->expire_time &&
+        (!ts->next || expire_time < ts->next->expire_time)) {
+        ts->expire_time = expire_time;
+        inserted = timer_list->active_timers == ts ? TIMER_MIN_ALL : 0;
+        if (inserted || timer_list->non_external_timers == ts) {
+            timer_publish_deadlines(timer_list);
+        }
+    } else {
+        removed = timer_del_locked(timer_list, ts);
+        inserted = timer_mod_ns_locked(timer_list, ts, expire_time);
+        if (removed | inserted) {
+            timer_publish_deadlines(timer_list);
+        }
     }
     qemu_mutex_unlock(&timer_list->active_timers_lock);
 

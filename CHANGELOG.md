@@ -4,6 +4,10 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Rearm pending timers in place when the new deadline leaves their queue
+  position unchanged. Avoid redundant unlink/reinsert scans and inactive
+  timer removal scans while preserving atomic deadline reads and tie order.
+
 - Publish all-timer and non-external timer deadlines through libretro-common
   atomics. Core deadline and expired checks avoid queue locks and timer-node
   reads, preserving cancellation, callbacks, clock pause and filtered timing.
