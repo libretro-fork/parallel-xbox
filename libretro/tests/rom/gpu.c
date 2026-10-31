@@ -552,10 +552,6 @@ static void wait_vblank(void)
     (*(volatile u32 *)GPU_FRAMES)++;
 }
 
-#ifdef BUMP_FILTER_PROBE
-#include "gpu-bump-probe.h"
-#endif
-
 void gpu_main(void)
 {
     ram32(GPU_STATUS, 1);
@@ -681,9 +677,6 @@ void gpu_main(void)
     ram32(GPU_STATUS, 0);
     ram32(GPU_SCANOUT, 0);
 
-#ifdef BUMP_FILTER_PROBE
-    bump_filter_probe();
-#endif
     for (u32 frame = 1;; frame++) {
         wait_vblank();
         if (frame == 20) {
