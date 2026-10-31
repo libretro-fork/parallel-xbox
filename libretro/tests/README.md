@@ -1349,7 +1349,8 @@ the same test also runs in the regular suite.
 
 `test-pvideo-image-pool.py CHECKOUT [CC]` compiles production overlay acquisition
 and the shared Vulkan image pool. Twenty thousand alternating modes must use
-two image allocations. Exact image keys, heap pressure, per-image and total
+two image allocations and two views. Generic texture/surface acquisitions
+discard retained overlay views. Exact image keys, heap pressure, per-image and total
 byte limits, fixed pool capacity, eviction and final cleanup are checked.
 It runs without game assets or a GPU in CI, alongside the retirement test.
 

@@ -2912,13 +2912,18 @@ static void trash_drain_retired(PGRAPHVkState *r)
         if (e->framebuffer) {
             vkDestroyFramebuffer(r->device, e->framebuffer, NULL);
         }
-        if (e->image_view) {
+        if (e->image_view && !e->pool_view) {
             vkDestroyImageView(r->device, e->image_view, NULL);
         }
         if (e->image) {
-            if (!(e->pool_ok && pgraph_vk_image_pool_put(r, e->image,
-                                                         e->allocation,
-                                                         &e->image_ci))) {
+            bool pooled = e->pool_ok && (e->pool_view ?
+                pgraph_vk_image_pool_put_with_view(r, e->image, e->allocation,
+                    &e->image_ci, e->image_view) :
+                pgraph_vk_image_pool_put(r, e->image, e->allocation, &e->image_ci));
+            if (!pooled) {
+                if (e->pool_view && e->image_view) {
+                    vkDestroyImageView(r->device, e->image_view, NULL);
+                }
                 vmaDestroyImage(r->allocator, e->image, e->allocation);
             }
         }
