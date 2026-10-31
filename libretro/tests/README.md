@@ -1347,6 +1347,12 @@ redraw/reset kicks remain uncounted. No-op/IRQ-enable writes do
 not invent work. The dedicated GitHub Actions job needs no game assets or GPU;
 the same test also runs in the regular suite.
 
+`test-pvideo-image-pool.py CHECKOUT [CC]` compiles production overlay acquisition
+and the shared Vulkan image pool. Twenty thousand alternating modes must use
+two image allocations. Exact image keys, heap pressure, per-image and total
+byte limits, fixed pool capacity, eviction and final cleanup are checked.
+It runs without game assets or a GPU in CI, alongside the retirement test.
+
 `test-pvideo-retirement.py CHECKOUT [CC]` runs production auxiliary submission,
 fence retirement, deferred destruction, overlay ownership transfer and
 conversion descriptor updates against independently delayed upload/display

@@ -13,6 +13,7 @@ parts=[function(base+'command.c',n) for n in ['aux_retire_oldest','pgraph_vk_pol
 parts += [function(base+'draw.c',n) for n in ['trash_drain_retired','pgraph_vk_trash_push']]
 parts += [function(base+'display.c','retire_pvideo_image'),function(base+'pvideo.c','pvideo_convert_bind_source')]
 create=function(base+'display.c','create_pvideo_image')
+assert 'acquire_pvideo_image(r, &image_create_info)' in create
 assert 'retire_pvideo_image(r)' in create and 'pgraph_vk_finish' not in create and 'single_time_commands' not in create
 h=(r/(base+'renderer.h')).read_text();a=h.index('    struct XemuVkTrashEntry {');b=h.index('} *trash;',a)
 trash=h[a:b+1]+';'

@@ -26,7 +26,7 @@ typedef struct {VkBuffer buffer;uint64_t range;} VkDescriptorBufferInfo;
 typedef struct {VkImageView imageView;int imageLayout;} VkDescriptorImageInfo;
 typedef struct {int sType;unsigned dstSet,dstBinding,descriptorCount;int descriptorType;const VkDescriptorBufferInfo *pBufferInfo;const VkDescriptorImageInfo *pImageInfo;} VkWriteDescriptorSet;
 /* TRASH TYPE */
-typedef struct {unsigned sampler,image_view,image,allocation;struct {unsigned sets[8],source[8],output[8];} convert;} Video;
+typedef struct {unsigned sampler,image_view,image,allocation;VkImageCreateInfo image_ci;struct {unsigned sets[8],source[8],output[8];} convert;} Video;
 typedef struct {Video pvideo;uint64_t submitted,settled;} PGRAPHVkDisplayState;
 typedef struct {
  unsigned device,allocator;
@@ -60,7 +60,7 @@ static void vkUpdateDescriptorSets(unsigned device,unsigned count,const VkWriteD
  sources[slot]=w[0].pBufferInfo->buffer;descriptors[slot]=w[1].pImageInfo->imageView;updates++;
 }
 static void pgraph_vk_poll_display_retired(PGRAPHVkState *r){r->display.settled=gpu_display;}
-static bool pgraph_vk_image_pool_put(PGRAPHVkState *r,VkImage im,VmaAllocation a,const VkImageCreateInfo *ci){(void)r;(void)im;(void)a;(void)ci;assert(false);return false;}
+static bool pgraph_vk_image_pool_put(PGRAPHVkState *r,VkImage im,VmaAllocation a,const VkImageCreateInfo *ci){(void)r;assert(im==a&&ci);assert(last_aux[im]<=gpu_aux&&last_display[im]<=gpu_display);return false;}
 static void check_destroy(unsigned h){assert(h&&!destroyed[h]&&last_aux[h]<=gpu_aux&&last_display[h]<=gpu_display);}
 static void vkDestroySampler(unsigned d,unsigned h,void *p){assert(d==7&&!p);check_destroy(h);}
 static void vkDestroyImageView(unsigned d,unsigned h,void *p){assert(d==7&&!p);check_destroy(h);}

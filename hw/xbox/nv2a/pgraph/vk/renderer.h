@@ -366,6 +366,7 @@ typedef struct PGRAPHVkDisplayState {
         VmaAllocation allocation;
         VkSampler sampler;
         bool storage;
+        VkImageCreateInfo image_ci; /* exact key for retired allocation reuse */
         struct {
             VkDescriptorPool pool;
             VkDescriptorSetLayout set_layout;
