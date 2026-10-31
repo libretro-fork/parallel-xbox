@@ -22,6 +22,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 - Paletted textures: expand Morton indices directly to final RGBA pixels for OpenGL and Vulkan CPU fallback uploads, eliminating the intermediate index buffer and second traversal. Keep Vulkan GPU unswizzle preferred.
 
+- GPU fence polling now acquires the host-side effects published by preceding FIFO methods, using libretro-common release/acquire atomics. Polling remains lock-free; ordinary register accesses keep their existing ordering, and no GPU completion wait or frame delay is added.
+
 - OpenGL: reuse lazy fallback-transfer scratch capacity instead of reallocating on every scaled/irregular upload or readback; discard obsolete contents on growth and release the buffer with the renderer.
 
 - Signed G8B8 lower mip clamps one/two now support mixed min/mag filters. OpenGL applies a sampler minimum without rebasing the image, matching Vulkan filter selection for unsigned channels too. Positive lower clamps reuse minification-only reconstruction; Force LOD0 retains mixed filtering. Separate cached views preserve existing nonmipmap sampler behavior. Existing zero-lower-clamp keys/programs and serialized state layout remain unchanged.

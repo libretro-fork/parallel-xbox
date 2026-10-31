@@ -57,6 +57,11 @@ uint64_t pgraph_read(void *opaque, hwaddr addr, unsigned int size)
 
     uint64_t r = 0;
     switch (addr) {
+    case NV_PGRAPH_PATT_COLOR0:
+        /* Pairs with pgraph_fence_publish: preceding host-side method
+         * effects are visible when the guest observes the new fence. */
+        r = (uint32_t)retro_atomic_load_acquire_int(&pg->regs_[addr]);
+        break;
     case NV_PGRAPH_INTR:
         r = (uint32_t)retro_atomic_load_relaxed_int(&pg->pending_interrupts);
         break;
@@ -1113,7 +1118,7 @@ int pgraph_method(NV2AState *d, unsigned int subchannel,
     case NV_CONTEXT_PATTERN: {
         switch (method) {
         case NV044_SET_MONOCHROME_COLOR0:
-            pgraph_reg_w(pg, NV_PGRAPH_PATT_COLOR0, parameter);
+            pgraph_fence_publish(pg, parameter);
             break;
         default:
             goto unhandled;
