@@ -60,6 +60,7 @@ case $core in
 *.so) python3 "$here/test-libretro-jit.py" "$here/../.." "$cc" ;;
 esac
 python3 "$here/test-rcu-startup.py" "$here/../.." "$cc"
+python3 "$here/test-rcu-owner.py" "$here/../.." "$cc"
 python3 "$here/test-signed-g8b8-state.py" "$here/../.." "$cc"
 python3 "$here/test-ide-cancel.py" "$here/../.." "$cc"
 python3 "$here/test-block-completion.py" "$here/../.." "$cc"

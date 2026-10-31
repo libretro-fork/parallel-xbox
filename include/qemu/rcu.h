@@ -27,6 +27,7 @@
 #include "qemu/thread.h"
 #include "qemu/queue.h"
 #include <retro_atomic.h>
+#include <rthreads/retro_eventcount.h>
 #include "qemu/notify.h"
 #include "qemu/sys_membarrier.h"
 #include "qemu/coroutine-tls.h"
@@ -52,7 +53,7 @@
  */
 extern retro_atomic_size_t rcu_gp_ctr;
 
-extern QemuEvent rcu_gp_event;
+extern retro_eventcount_t rcu_gp_event;
 
 struct rcu_reader_data {
     /* Data used by both reader and synchronize_rcu() */
@@ -62,13 +63,16 @@ struct rcu_reader_data {
     /* Data used by reader only */
     unsigned depth;
 
-    /* Data used for registry, protected by rcu_registry_lock */
+    /* Set by this thread only, after registry request acknowledgement. */
+    bool registered;
+
+    /* Links used only by the grace-period worker. */
     QLIST_ENTRY(rcu_reader_data) node;
 
     /*
-     * NotifierList used to force an RCU grace period.  Accessed under
-     * rcu_registry_lock.  Note that the notifier is called _outside_
-     * the thread!
+     * Force-RCU notifiers are added and called by the grace-period worker.
+     * Their storage remains live until unregister is acknowledged.
+     * Callbacks must not synchronously call back into RCU.
      */
     NotifierList force_rcu;
 };
@@ -84,8 +88,10 @@ static inline void rcu_read_lock(void)
         return;
     }
 
-    ctr = retro_atomic_load_relaxed_size(&rcu_gp_ctr);
-    retro_atomic_store_relaxed_size(&p_rcu_reader->ctr, ctr);
+    /* Acquire the owner's published epoch and release the reader's new
+     * epoch, including all accesses from its previous critical section. */
+    ctr = retro_atomic_load_acquire_size(&rcu_gp_ctr);
+    retro_atomic_store_release_size(&p_rcu_reader->ctr, ctr);
 
     /*
      * Read rcu_gp_ptr and write p_rcu_reader->ctr before reading
@@ -114,7 +120,7 @@ static inline void rcu_read_unlock(void)
     smp_mb_placeholder();
     if (unlikely(retro_atomic_load_relaxed_int(&p_rcu_reader->waiting))) {
         retro_atomic_store_relaxed_int(&p_rcu_reader->waiting, 0);
-        qemu_event_set(&rcu_gp_event);
+        retro_eventcount_notify(&rcu_gp_event);
     }
 }
 

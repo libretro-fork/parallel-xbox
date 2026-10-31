@@ -1,5 +1,15 @@
 # The core's tests
 
+`test-rcu-owner.py CHECKOUT [CC]` runs production RCU reader, request,
+registry, grace-period and initialization code against deterministic
+overlapping periods, nested readers, lifecycle requests during a blocked
+period, concurrent reclamation, TLS churn and POSIX fork reinitialization.
+`RCU_OWNER_CFLAGS`, `RCU_OWNER_BINARY` and `RCU_OWNER_SKIP_RUN` select
+sanitizers or retain cross-built executables. GCC TSan needs
+`-fsanitize=thread -Wno-error=tsan` because it does not instrument fences;
+the release/acquire publication remains instrumented. The TSan run skips
+fork-child thread creation, which its runtime does not support.
+
 `test-cpu-work.py CHECKOUT [CC]` exercises production CPU work dispatch:
 eight publishers, stack-backed synchronous requests, asynchronous reclamation,
 exclusive callbacks, nested dispatch, and FIFO ordering. `CPU_WORK_CFLAGS`

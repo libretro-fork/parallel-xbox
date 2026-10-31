@@ -30,7 +30,8 @@
 #include "qemu/rcu.h"
 #include "qemu/thread.h"
 #include "qemu/main-loop.h"
-#include "qemu/lockable.h"
+#include <retro_mpsc.h>
+#include <rthreads/rthreads.h>
 
 /*
  * Global grace period counter.  Bit 0 is always one in rcu_gp_ctr.
@@ -40,170 +41,200 @@
 #define RCU_GP_CTR              (1UL << 1)
 
 
-#define RCU_CALL_MIN_SIZE        30
-
 retro_atomic_size_t rcu_gp_ctr = RCU_GP_LOCKED;
 
-QemuEvent rcu_gp_event;
-static retro_atomic_int_t rcu_call_count;
-static QemuMutex rcu_registry_lock;
-static QemuMutex rcu_sync_lock;
+/* A single owner edits the registry and advances grace periods. Requests
+ * carry stack storage until acknowledged; neither request nor reader TLS
+ * may be touched after its acknowledgement is published. */
+retro_eventcount_t rcu_gp_event;
+static retro_eventcount_t rcu_request_complete;
+static retro_mpsc_t rcu_requests;
 
-/*
- * Check whether a quiescent state was crossed between the beginning of
- * update_counter_and_wait and now.
- */
-static inline int rcu_gp_ongoing(retro_atomic_size_t *ctr)
-{
-    size_t v;
-
-    v = retro_atomic_load_relaxed_size(ctr);
-    return v && (v != retro_atomic_load_relaxed_size(&rcu_gp_ctr));
-}
-
-/* Written to only by each individual reader. Read by both the reader and the
- * writers.
- */
 QEMU_DEFINE_CO_TLS(struct rcu_reader_data, rcu_reader)
+QEMU_DEFINE_STATIC_CO_TLS(bool, rcu_gp_owner)
 
-/* Protected by rcu_registry_lock.  */
 typedef QLIST_HEAD(, rcu_reader_data) ThreadList;
 static ThreadList registry = QLIST_HEAD_INITIALIZER(registry);
 
-/* Wait for previous parity/grace period to be empty of readers.  */
+typedef enum RcuRequestKind {
+    RCU_REGISTER, RCU_UNREGISTER, RCU_ADD_NOTIFIER, RCU_SYNCHRONIZE
+} RcuRequestKind;
+
+typedef struct RcuRequest {
+    retro_mpsc_node_t node;
+    struct RcuRequest *next_sync;
+    RcuRequestKind kind;
+    struct rcu_reader_data *reader;
+    Notifier *notifier;
+    retro_atomic_int_t done;
+} RcuRequest;
+
+static RcuRequest *rcu_sync_pending;
+static RcuRequest **rcu_sync_tail = &rcu_sync_pending;
+
+static void rcu_complete_request(RcuRequest *request)
+{
+    retro_atomic_store_release_int(&request->done, 1);
+    /* The caller may have destroyed request already. Notify only globals. */
+    retro_eventcount_notify(&rcu_request_complete);
+}
+
+static void rcu_submit_request(RcuRequestKind kind,
+                               struct rcu_reader_data *reader, Notifier *notifier)
+{
+    RcuRequest request = { .kind = kind, .reader = reader, .notifier = notifier };
+
+    /* Force-RCU callbacks execute on the owner and may kick readers, but
+     * must not synchronously submit work back to their own executor. */
+    assert(!get_rcu_gp_owner());
+    retro_atomic_int_init(&request.done, 0);
+    retro_mpsc_push(&rcu_requests, &request.node);
+    retro_eventcount_notify(&rcu_gp_event);
+    while (!retro_atomic_load_acquire_int(&request.done)) {
+        int key = retro_eventcount_prepare_wait(&rcu_request_complete);
+        if (retro_atomic_load_acquire_int(&request.done)) {
+            retro_eventcount_cancel_wait(&rcu_request_complete);
+        } else {
+            retro_eventcount_commit_wait(&rcu_request_complete, key);
+        }
+    }
+}
+
+/* Service lifecycle requests even while a reader holds up a grace period.
+ * Otherwise a reader waiting for unregister/notifier acknowledgement could
+ * prevent the owner from making progress. New synchronize requests belong
+ * to the NEXT period: the current epoch may predate their pointer updates. */
+static void rcu_service_requests(void)
+{
+    retro_mpsc_node_t *node = retro_mpsc_take_all(&rcu_requests);
+
+    while (node) {
+        RcuRequest *request = container_of(node, RcuRequest, node);
+        struct rcu_reader_data *reader = request->reader;
+        node = node->next;
+        switch (request->kind) {
+        case RCU_REGISTER:
+            assert(retro_atomic_load_relaxed_size(&reader->ctr) == 0);
+            QLIST_INSERT_HEAD(&registry, reader, node);
+            break;
+        case RCU_UNREGISTER:
+            assert(retro_atomic_load_relaxed_size(&reader->ctr) == 0);
+            QLIST_REMOVE(reader, node);
+            reader->node.le_prev = NULL;
+            retro_atomic_store_relaxed_int(&reader->waiting, 0);
+            notifier_list_init(&reader->force_rcu);
+            break;
+        case RCU_ADD_NOTIFIER:
+            notifier_list_add(&reader->force_rcu, request->notifier);
+            if (retro_atomic_load_relaxed_int(&reader->waiting)) {
+                request->notifier->notify(request->notifier, NULL);
+            }
+            break;
+        case RCU_SYNCHRONIZE:
+            request->next_sync = NULL;
+            *rcu_sync_tail = request;
+            rcu_sync_tail = &request->next_sync;
+            continue;
+        }
+        rcu_complete_request(request);
+    }
+}
+
+static bool rcu_gp_ongoing(struct rcu_reader_data *reader)
+{
+    size_t ctr = retro_atomic_load_acquire_size(&reader->ctr);
+    return ctr && ctr != retro_atomic_load_relaxed_size(&rcu_gp_ctr);
+}
+
+/* The owner alone reads registry links and invokes force-RCU notifiers.
+ * It never retains a TLS pointer across servicing unregister requests. */
 static void wait_for_readers(void)
 {
-    ThreadList qsreaders = QLIST_HEAD_INITIALIZER(qsreaders);
-    struct rcu_reader_data *index, *tmp;
-    int sleeps = 0;
     bool forced = false;
 
     for (;;) {
-        /*
-         * Force the grace period to end and wait for it if any of the
-         * following heuristical conditions are satisfied:
-         * - A decent number of callbacks piled up.
-         * - It timed out.
-         * - It is in a drain_call_rcu() call.
-         *
-         * Otherwise, periodically poll the grace period, hoping it ends
-         * promptly.
-         */
-        /* The core never polls: the grace period is forced from the start,
-         * and the wait below is the readers' event, not a sleep */
+        bool ongoing = false;
+        struct rcu_reader_data *reader;
+        int key = retro_eventcount_prepare_wait(&rcu_gp_event);
+
+        rcu_service_requests();
         if (!forced) {
             forced = true;
-
-            QLIST_FOREACH(index, &registry, node) {
-                notifier_list_notify(&index->force_rcu, NULL);
-                retro_atomic_store_relaxed_int(&index->waiting, 1);
+            QLIST_FOREACH(reader, &registry, node) {
+                retro_atomic_store_relaxed_int(&reader->waiting, 1);
+                notifier_list_notify(&reader->force_rcu, NULL);
             }
         }
-
-        /* Here, order the stores to index->waiting before the loads of
-         * index->ctr.  Pairs with smp_mb_placeholder() in rcu_read_unlock(),
-         * ensuring that the loads of index->ctr are sequentially consistent.
-         *
-         * If this is the last iteration, this barrier also prevents
-         * frees from seeping upwards, and orders the two wait phases
-         * on architectures with a 32-bit size_t; see synchronize_rcu().
-         */
+        /* Pairs with read-side placeholders: waiting publication precedes
+         * the reader counter checks, which precede reclamation. */
         smp_mb_global();
-
-        QLIST_FOREACH_SAFE(index, &registry, node, tmp) {
-            if (!rcu_gp_ongoing(&index->ctr)) {
-                QLIST_REMOVE(index, node);
-                QLIST_INSERT_HEAD(&qsreaders, index, node);
-
-                /* No need for memory barriers here, worst of all we
-                 * get some extra futex wakeups.
-                 */
-                retro_atomic_store_relaxed_int(&index->waiting, 0);
+        QLIST_FOREACH(reader, &registry, node) {
+            if (rcu_gp_ongoing(reader)) {
+                ongoing = true;
+            } else {
+                retro_atomic_store_relaxed_int(&reader->waiting, 0);
             }
         }
-
-        if (QLIST_EMPTY(&registry)) {
-            break;
+        if (!ongoing) {
+            retro_eventcount_cancel_wait(&rcu_gp_event);
+            return;
         }
-
-        /*
-         * Sleep for a while and try again.
-         * Release rcu_registry_lock, so rcu_(un)register_thread() doesn't
-         * wait too much time.
-         *
-         * rcu_register_thread() may add nodes to &registry; it will not
-         * wake up synchronize_rcu, but that is okay because at least another
-         * thread must exit its RCU read-side critical section before
-         * synchronize_rcu is done.  The next iteration of the loop will
-         * move the new thread's rcu_reader from &registry to &qsreaders,
-         * because rcu_gp_ongoing() will return false.
-         *
-         * rcu_unregister_thread() may remove nodes from &qsreaders instead
-         * of &registry if it runs during qemu_event_wait.  That's okay;
-         * the node then will not be added back to &registry by QLIST_SWAP
-         * below.  The invariant is that the node is part of one list when
-         * rcu_registry_lock is released.
-         */
-        qemu_mutex_unlock(&rcu_registry_lock);
-
-        if (forced) {
-            qemu_event_wait(&rcu_gp_event);
-
-            /*
-             * We want to be notified of changes made to rcu_gp_ongoing
-             * while we walk the list.
-             */
-            qemu_event_reset(&rcu_gp_event);
-        } else {
-            g_usleep(10000);
-            sleeps++;
-        }
-
-        qemu_mutex_lock(&rcu_registry_lock);
+        retro_eventcount_commit_wait(&rcu_gp_event, key);
     }
+}
 
-    /* put back the reader list in the registry */
-    QLIST_SWAP(&registry, &qsreaders, node);
+static void synchronize_rcu_owned(void)
+{
+    smp_mb_global();
+    if (!QLIST_EMPTY(&registry)) {
+        size_t gp = retro_atomic_load_relaxed_size(&rcu_gp_ctr);
+
+        if (sizeof(size_t) < 8) {
+            /* Preserve the two-phase parity scheme on 32-bit targets. */
+            retro_atomic_store_release_size(&rcu_gp_ctr, gp ^ RCU_GP_CTR);
+            wait_for_readers();
+            retro_atomic_store_release_size(&rcu_gp_ctr, gp);
+        } else {
+            retro_atomic_store_release_size(&rcu_gp_ctr, gp + RCU_GP_CTR);
+        }
+        wait_for_readers();
+    }
+}
+
+static void rcu_gp_worker(void *opaque)
+{
+    sthread_setname("rcu-grace");
+    set_rcu_gp_owner(true);
+    for (;;) {
+        int key = retro_eventcount_prepare_wait(&rcu_gp_event);
+        rcu_service_requests();
+        if (rcu_sync_pending) {
+            RcuRequest *batch = rcu_sync_pending;
+            rcu_sync_pending = NULL;
+            rcu_sync_tail = &rcu_sync_pending;
+            retro_eventcount_cancel_wait(&rcu_gp_event);
+            synchronize_rcu_owned();
+            while (batch) {
+                RcuRequest *next = batch->next_sync;
+                rcu_complete_request(batch);
+                batch = next;
+            }
+        } else {
+            retro_eventcount_commit_wait(&rcu_gp_event, key);
+        }
+    }
 }
 
 void synchronize_rcu(void)
 {
-    QEMU_LOCK_GUARD(&rcu_sync_lock);
-
-    /* Write RCU-protected pointers before reading p_rcu_reader->ctr.
-     * Pairs with smp_mb_placeholder() in rcu_read_lock().
-     *
-     * Also orders write to RCU-protected pointers before
-     * write to rcu_gp_ctr.
-     */
-    smp_mb_global();
-
-    QEMU_LOCK_GUARD(&rcu_registry_lock);
-    if (!QLIST_EMPTY(&registry)) {
-        /* only this thread, under rcu_sync_lock, writes rcu_gp_ctr */
-        size_t gp = retro_atomic_load_relaxed_size(&rcu_gp_ctr);
-
-        if (sizeof(size_t) < 8) {
-            /* For architectures with 32-bit size_t, a two-subphases
-             * algorithm ensures we do not encounter overflow bugs.
-             *
-             * Switch parity: 0 -> 1, 1 -> 0.
-             */
-            retro_atomic_store_relaxed_size(&rcu_gp_ctr, gp ^ RCU_GP_CTR);
-            wait_for_readers();
-            retro_atomic_store_relaxed_size(&rcu_gp_ctr, gp);
-        } else {
-            /* Increment current grace period.  */
-            retro_atomic_store_relaxed_size(&rcu_gp_ctr, gp + RCU_GP_CTR);
-        }
-
-        wait_for_readers();
-    }
+    assert(get_ptr_rcu_reader()->depth == 0);
+    rcu_submit_request(RCU_SYNCHRONIZE, NULL, NULL);
 }
 
 /* Multi-producer, single-consumer queue based on urcu/static/wfqueue.h
  * from liburcu.  Note that head is only used by the consumer.
  */
+static retro_atomic_int_t rcu_call_count;
 static struct rcu_head dummy;
 static struct rcu_head *head = &dummy;
 static retro_atomic_ptr_t tail = &dummy.next;    /* retro_atomic_ptr_t * */
@@ -286,13 +317,15 @@ static bool rcu_claim_callback_worker(void)
     return retro_atomic_cas_int(&rcu_callback_worker_claimed, 0, 1);
 }
 
-static void *call_rcu_thread(void *opaque)
+static void call_rcu_thread(void *opaque)
 {
     struct rcu_head *node;
 
+    sthread_setname("call_rcu");
+
     if (!rcu_claim_callback_worker()) {
         fprintf(stderr, "xemu: duplicate RCU callback worker ignored\n");
-        return NULL;
+        return;
     }
     rcu_register_thread();
 
@@ -402,56 +435,64 @@ void drain_call_rcu(void)
 
 void rcu_register_thread(void)
 {
-    assert(retro_atomic_load_relaxed_size(&get_ptr_rcu_reader()->ctr) == 0);
-    qemu_mutex_lock(&rcu_registry_lock);
-    QLIST_INSERT_HEAD(&registry, get_ptr_rcu_reader(), node);
-    qemu_mutex_unlock(&rcu_registry_lock);
+    struct rcu_reader_data *reader = get_ptr_rcu_reader();
+    assert(!reader->registered && reader->depth == 0);
+    rcu_submit_request(RCU_REGISTER, reader, NULL);
+    reader->registered = true;
 }
 
-/* Whether this thread is in the registry: the libretro core's machine runs
- * on the frontend's thread, which may be the one that loaded the core and
- * was registered by rcu_init */
 bool rcu_thread_registered(void)
 {
-    bool registered;
-
-    qemu_mutex_lock(&rcu_registry_lock);
-    registered = get_ptr_rcu_reader()->node.le_prev != NULL;
-    qemu_mutex_unlock(&rcu_registry_lock);
-    return registered;
+    return get_ptr_rcu_reader()->registered;
 }
 
 void rcu_unregister_thread(void)
 {
-    qemu_mutex_lock(&rcu_registry_lock);
-    QLIST_REMOVE(get_ptr_rcu_reader(), node);
-    qemu_mutex_unlock(&rcu_registry_lock);
+    struct rcu_reader_data *reader = get_ptr_rcu_reader();
+    assert(reader->registered && reader->depth == 0);
+    rcu_submit_request(RCU_UNREGISTER, reader, NULL);
+    reader->registered = false;
 }
 
 void rcu_add_force_rcu_notifier(Notifier *n)
 {
-    qemu_mutex_lock(&rcu_registry_lock);
-    notifier_list_add(&get_ptr_rcu_reader()->force_rcu, n);
-    qemu_mutex_unlock(&rcu_registry_lock);
+    struct rcu_reader_data *reader = get_ptr_rcu_reader();
+    assert(reader->registered);
+    rcu_submit_request(RCU_ADD_NOTIFIER, reader, n);
 }
 
-static void rcu_init_complete(void)
+static void rcu_init_complete(bool register_self)
 {
-    QemuThread thread;
+    sthread_t *owner, *callbacks;
 
-    qemu_mutex_init(&rcu_registry_lock);
-    qemu_mutex_init(&rcu_sync_lock);
-    qemu_event_init(&rcu_gp_event, true);
-
+    retro_mpsc_init(&rcu_requests);
+    rcu_sync_pending = NULL;
+    rcu_sync_tail = &rcu_sync_pending;
+    if (!retro_eventcount_init(&rcu_gp_event) ||
+        !retro_eventcount_init(&rcu_request_complete)) {
+        abort();
+    }
     qemu_event_init(&rcu_call_ready_event, false);
 
-    /* The caller is assumed to have BQL, so the call_rcu thread
-     * must have been quiescent even after forking, just recreate it.
-     */
-    qemu_thread_create(&thread, "call_rcu", call_rcu_thread,
-                       NULL, QEMU_THREAD_DETACHED);
+    /* Only a registered fork caller needs its TLS restored here. The
+     * library-loading thread need not be a reader and may exit immediately.
+     * Restore before creating workers: waiting for a new thread from a
+     * Windows DLL constructor would deadlock on the loader lock. */
+    if (register_self) {
+        struct rcu_reader_data *reader = get_ptr_rcu_reader();
+        assert(!reader->registered && reader->depth == 0);
+        QLIST_INSERT_HEAD(&registry, reader, node);
+        reader->registered = true;
+    }
 
-    rcu_register_thread();
+    owner = sthread_create(rcu_gp_worker, NULL);
+    if (!owner || sthread_detach(owner)) {
+        abort();
+    }
+    callbacks = sthread_create(call_rcu_thread, NULL);
+    if (!callbacks || sthread_detach(callbacks)) {
+        abort();
+    }
 }
 
 static int atfork_depth = 1;
@@ -462,26 +503,6 @@ void rcu_disable_atfork(void)
 }
 
 #ifdef CONFIG_POSIX
-static void rcu_init_lock(void)
-{
-    if (atfork_depth < 1) {
-        return;
-    }
-
-    qemu_mutex_lock(&rcu_sync_lock);
-    qemu_mutex_lock(&rcu_registry_lock);
-}
-
-static void rcu_init_unlock(void)
-{
-    if (atfork_depth < 1) {
-        return;
-    }
-
-    qemu_mutex_unlock(&rcu_registry_lock);
-    qemu_mutex_unlock(&rcu_sync_lock);
-}
-
 static void rcu_init_child(void)
 {
     if (atfork_depth < 1) {
@@ -489,9 +510,12 @@ static void rcu_init_child(void)
     }
 
     memset(&registry, 0, sizeof(registry));
-    /* The parent's consumer does not survive fork. */
+    /* Parent workers do not survive fork. Discard their private registry
+     * and request state; only this thread's TLS is live in the child. */
+    bool registered = get_ptr_rcu_reader()->registered;
+    get_ptr_rcu_reader()->registered = false;
     retro_atomic_store_relaxed_int(&rcu_callback_worker_claimed, 0);
-    rcu_init_complete();
+    rcu_init_complete(registered);
 }
 #endif
 
@@ -500,7 +524,7 @@ static void __attribute__((__constructor__)) rcu_init(void)
     static gsize initialized;
 
     /* Initialize once per loaded core image. This queue has one consumer:
-     * never reset its locks/events or launch a second callback worker.
+     * never reset its queues/events or launch duplicate workers.
      * The fork child calls rcu_init_complete() directly to replace its
      * worker. */
     if (!g_once_init_enter(&initialized)) {
@@ -508,8 +532,8 @@ static void __attribute__((__constructor__)) rcu_init(void)
     }
     smp_mb_global_init();
 #ifdef CONFIG_POSIX
-    pthread_atfork(rcu_init_lock, rcu_init_unlock, rcu_init_child);
+    pthread_atfork(NULL, NULL, rcu_init_child);
 #endif
-    rcu_init_complete();
+    rcu_init_complete(false);
     g_once_init_leave(&initialized, 1);
 }

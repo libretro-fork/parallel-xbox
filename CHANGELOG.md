@@ -4,6 +4,10 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Loading the core no longer leaves the host loader thread registered as an RCU reader. Only threads that actually run emulator work register, so a short-lived loading thread cannot leave a stale TLS record behind.
+
+- RCU registry updates and grace periods now run on a dedicated owner through libretro-common MPSC requests and eventcounts, removing both RCU mutexes. Reader unregistration acknowledges TLS lifetime before a thread exits; overlapping grace periods keep their own completion boundaries.
+
 - OpenGL disk-cache loading now publishes binaries for the render thread to adopt, removing the shader-cache mutex and preventing cache eviction on the disk thread. Save workers own immutable binary snapshots; cache shutdown joins loaders and releases entries even when caching is disabled.
 
 - Background OpenGL shader-source generation now hands jobs and completed sources between the render thread and its worker through atomic slot publication, without a job mutex or condition variable.

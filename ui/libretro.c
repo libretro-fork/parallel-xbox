@@ -2261,10 +2261,11 @@ static bool lr_command(int cmd)
 
     /* QEMU's main loop and the vCPU read under RCU (the translation
      * blocks' hash table, the memory map): registered, as upstream's main
-     * thread (rcu_init) and vCPU threads (rr_cpu_thread_fn) are, so a grace
+     * thread and vCPU threads (rr_cpu_thread_fn) are, so a grace
      * period waits for this thread and the vCPU is kicked out of the
      * translated code for it (lr_start_vcpu's force-RCU notifier). The
-     * thread that loaded the core is registered already. */
+     * loader thread is not registered: a host may load the core on a
+     * short-lived thread that never runs the emulator. */
     if (cmd == LR_CMD_START && !rcu_thread_registered()) {
         rcu_register_thread();
     }

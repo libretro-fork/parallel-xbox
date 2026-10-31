@@ -63,13 +63,15 @@ static THREAD_FN consume(void *arg) {
  struct rcu_head *n=try_dequeue();assert(n);n->func(n);return 0;
 }
 static void smp_mb_global_init(void) {INC(&barrier_calls);}
-static void rcu_init_complete(void) {
+static void rcu_init_complete(bool register_self) {
  unsigned n=INC(&init_calls);
  if(concurrent){STORE(&init_entered,1);await(&init_release,1);STORE(&init_done,1);}
  else {assert(n<=2);consumers[n-1]=spawn(consume,(void *)(uintptr_t)n);}
 }
 static int atfork_depth=1;
 static uintptr_t registry[4];
+static struct { bool registered; } child_reader;
+static inline typeof(child_reader) *get_ptr_rcu_reader(void) { return &child_reader; }
 /* INIT */
 /* CHILD */
 static THREAD_FN initialize(void *arg) {rcu_init();assert(LOAD(&init_done));INC(&returned);return 0;}
