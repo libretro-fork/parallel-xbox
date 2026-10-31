@@ -547,9 +547,12 @@ typedef struct PGRAPHVkState {
         VkCommandBuffer cmd;
         VkFence fence;
         bool pending;
-        /* each ring's bytes this submission uses: [start, end), wrapping
-         * through the ring's end when end < start */
-        size_t ring_start[PGRAPH_VK_RINGS], ring_end[PGRAPH_VK_RINGS];
+        /* A full wrapped recording has the same head as its start; track
+         * use explicitly instead of treating equal positions as empty. */
+        bool ring_used[PGRAPH_VK_RINGS];
+        /* First reserved byte in each ring. Only the oldest live start is
+         * needed to bound free space; per-submission ends are redundant. */
+        size_t ring_start[PGRAPH_VK_RINGS];
     } aux[PGRAPH_VK_AUX_SLOTS];
     int aux_slot;           /* the slot recording, or the next to record */
     int aux_oldest;         /* the oldest pending slot */

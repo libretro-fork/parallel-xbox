@@ -1204,3 +1204,15 @@ one with identical transfers. `test-vk-indexed-inputs.py` exercises 128
 production eligibility decisions and exact range order: compatible single-level
 surfaces and possible GPU cube paths keep palette-only handling; known RAM
 fallbacks combine both inputs. Palette hashing still waits for RAM visibility.
+
+`test-vk-ring-pressure.py` executes production aux submission, fence retirement,
+ring-tail selection and allocation with byte-level ownership and payload guards.
+An unfinished earlier submission must cause zero fence-status calls across
+1,000 fitting allocations (the old eager loop made 1,000 calls). Under pressure,
+retiring one completed slot must not poll another slot when the gap now fits.
+Deterministic cases cover wrapping, delayed completion, staging growth,
+unswizzle exhaustion and full wrapped spans whose endpoints are equal. Across
+20,000 delayed submissions and more than 108,000 allocations, neither ring may
+overwrite a current or unretired recording. A private run against the previous
+allocator reproduced the equal-endpoint overwrite; these are ownership and
+driver-call checks, not whole-game latency measurements.

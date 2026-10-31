@@ -196,7 +196,7 @@ VkCommandBuffer pgraph_vk_begin_single_time_commands(PGRAPHState *pg)
     r->in_aux_command_buffer = true;
     for (int i = 0; i < PGRAPH_VK_RINGS; i++) {
         a->ring_start[i] = r->ring_head[i];
-        a->ring_end[i] = r->ring_head[i];
+        a->ring_used[i] = false;
     }
 
     VkCommandBufferBeginInfo begin_info = {
@@ -221,13 +221,13 @@ static bool ring_tail(PGRAPHVkState *r, int ring, size_t *tail)
     for (int i = 0; i < r->aux_npending; i++) {
         struct PGRAPHVkAuxSlot *a =
             &r->aux[(r->aux_oldest + i) % PGRAPH_VK_AUX_SLOTS];
-        if (a->ring_end[ring] != a->ring_start[ring]) {
+        if (a->ring_used[ring]) {
             *tail = a->ring_start[ring];
             return true;
         }
     }
     struct PGRAPHVkAuxSlot *a = &r->aux[r->aux_slot];
-    if (a->ring_end[ring] != a->ring_start[ring]) {
+    if (a->ring_used[ring]) {
         *tail = a->ring_start[ring];
         return true;
     }
@@ -250,16 +250,15 @@ bool pgraph_vk_ring_alloc(PGRAPHState *pg, int ring, size_t size,
         /* Grown for it, once everything has settled: the recording so far
          * reads nothing of the ring, or the caller would not need more
          * than all of it */
-        assert(a->ring_start[ring] == a->ring_end[ring]);
+        assert(!a->ring_used[ring]);
         pgraph_vk_buffer_ensure_capacity(pg, BUFFER_STAGING_SRC, 2 * size);
         b = &r->storage_buffers[BUFFER_STAGING_SRC];
-        a->ring_start[ring] = a->ring_end[ring] = r->ring_head[ring] = 0;
+        a->ring_start[ring] = r->ring_head[ring] = 0;
     }
 
     for (;;) {
-        /* pending submissions retired as their fences signal, no waiting */
-        while (r->aux_npending && aux_retire_oldest(r, true)) {
-        }
+        /* Retain completed ranges conservatively until space is needed.
+         * Most uploads fit without asking the driver about any fence. */
         size_t head = ROUND_UP(r->ring_head[ring], alignment);
         size_t tail;
         bool in_use = ring_tail(r, ring, &tail);
@@ -285,14 +284,17 @@ bool pgraph_vk_ring_alloc(PGRAPHState *pg, int ring, size_t size,
         }
         if (head != (size_t)-1) {
             r->ring_head[ring] = head + size;
-            a->ring_end[ring] = r->ring_head[ring];
+            a->ring_used[ring] = true;
             *offset = head;
             return true;
         }
         if (r->aux_npending) {
-            /* full: the oldest submission's bytes come back once it has
-             * run - the one wait on this path */
-            aux_retire_oldest(r, false);
+            /* Pressure: reclaim one completed submission, then check the
+             * gap before querying another fence. Keep the existing oldest-
+             * first wait when that submission is still running. */
+            if (!aux_retire_oldest(r, true)) {
+                aux_retire_oldest(r, false);
+            }
             continue;
         }
         /* the open recording alone holds more than the ring */

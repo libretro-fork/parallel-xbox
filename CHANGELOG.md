@@ -4,6 +4,9 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Fix Vulkan ring ownership when a recording wraps and fills a ring exactly: equal start/end positions no longer make occupied bytes look unused.
+- Vulkan staging and unswizzle rings check their available space before polling auxiliary GPU fences. Uploads that already fit avoid those driver calls; under pressure, completed ranges retire before any required wait. Remove redundant per-submission ring endpoints and their repeated writes. Existing ring capacity, growth and submission limits are unchanged.
+
 - Reset shared parking channels before RCU restarts workers in a POSIX fork child, discarding inherited waiter links while retaining the bounded allocations. Add fork isolation and worker-start ordering regression tests.
 
 - Vulkan indexed textures that require RAM now materialize their palette and index producers in one ordered readback batch instead of waiting separately. Possible surface-to-texture and cube paths preserve palette-first handling; hashing and conversion still see fully settled bytes. No new buffers, transfers or allocations are added.
