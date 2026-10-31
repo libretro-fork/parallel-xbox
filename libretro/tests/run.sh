@@ -66,6 +66,7 @@ python3 "$here/test-block-discard.py" "$here/../.." "$cc"
 python3 "$here/test-backport-compat.py" "$here/../.." "$cc"
 python3 "$here/test-frame-audio-pull.py" "$here/../.." "$cc"
 python3 "$here/test-vk-recording-epoch.py" "$here/../.." "$cc"
+python3 "$here/test-vk-depth-reuse.py" "$here/../.." "$cc"
 python3 "$here/test-lru-visit.py" "$here/../.." "$cc"
 python3 "$here/test-block-memory.py" "$here/../.." "$cc"
 case $core in
@@ -712,6 +713,7 @@ case $core in
     if [ -z "$novk" ]; then
         python3 "$here/test-vulkan-cube-crop.py" "$here/../.." "$cc"
         python3 "$here/test-vulkan-linear-span.py" "$here/../.." "$cc"
+        python3 "$here/test-vulkan-depth-clear.py" "$here/../.." "$cc"
         python3 "$here/test-vulkan-rgb-snorm.py" "$here/../.." "$cc"
         python3 "$here/test-vulkan-volume-blocks.py" "$here/../.." "$cc"
     fi
