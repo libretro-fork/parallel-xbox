@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Remove the unused host RAM preallocation service and thread-context QOM object, including their POSIX mutexes, condition variable and temporary SIGBUS handler. Xbox and Chihiro keep their existing RAM allocation and sizes; the core never enabled these host preallocation options.
+
 - Fix Vulkan ring ownership when a recording wraps and fills a ring exactly: equal start/end positions no longer make occupied bytes look unused.
 - Vulkan staging and unswizzle rings check their available space before polling auxiliary GPU fences. Uploads that already fit avoid those driver calls; under pressure, completed ranges retire before any required wait. Remove redundant per-submission ring endpoints and their repeated writes. Existing ring capacity, growth and submission limits are unchanged.
 

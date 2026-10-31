@@ -3189,3 +3189,7 @@ libretro/gen/qapi/qapi-types-yank.h
 libretro/gen/qapi/qapi-visit-yank.c
 libretro/gen/qapi/qapi-visit-yank.h
 include/qemu/futex.h
+
+# Unused host RAM preallocation thread service
+util/thread-context.c
+include/qemu/thread-context.h

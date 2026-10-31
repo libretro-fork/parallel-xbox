@@ -176,65 +176,6 @@ static void host_memory_backend_set_dump(Object *obj, bool value, Error **errp)
     backend->dump = value;
 }
 
-static bool host_memory_backend_get_prealloc(Object *obj, Error **errp)
-{
-    HostMemoryBackend *backend = MEMORY_BACKEND(obj);
-
-    return backend->prealloc;
-}
-
-static void host_memory_backend_set_prealloc(Object *obj, bool value,
-                                             Error **errp)
-{
-    HostMemoryBackend *backend = MEMORY_BACKEND(obj);
-
-    if (!backend->reserve && value) {
-        error_setg(errp, "'prealloc=on' and 'reserve=off' are incompatible");
-        return;
-    }
-
-    if (!host_memory_backend_mr_inited(backend)) {
-        backend->prealloc = value;
-        return;
-    }
-
-    if (value && !backend->prealloc) {
-        int fd = memory_region_get_fd(&backend->mr);
-        void *ptr = memory_region_get_ram_ptr(&backend->mr);
-        uint64_t sz = memory_region_size(&backend->mr);
-
-        if (!qemu_prealloc_mem(fd, ptr, sz, backend->prealloc_threads,
-                               backend->prealloc_context, false, errp)) {
-            return;
-        }
-        backend->prealloc = true;
-    }
-}
-
-static void host_memory_backend_get_prealloc_threads(Object *obj, Visitor *v,
-    const char *name, void *opaque, Error **errp)
-{
-    HostMemoryBackend *backend = MEMORY_BACKEND(obj);
-    visit_type_uint32(v, name, &backend->prealloc_threads, errp);
-}
-
-static void host_memory_backend_set_prealloc_threads(Object *obj, Visitor *v,
-    const char *name, void *opaque, Error **errp)
-{
-    HostMemoryBackend *backend = MEMORY_BACKEND(obj);
-    uint32_t value;
-
-    if (!visit_type_uint32(v, name, &value, errp)) {
-        return;
-    }
-    if (value <= 0) {
-        error_setg(errp, "property '%s' of %s doesn't take value '%d'", name,
-                   object_get_typename(obj), value);
-        return;
-    }
-    backend->prealloc_threads = value;
-}
-
 static void host_memory_backend_init(Object *obj)
 {
     HostMemoryBackend *backend = MEMORY_BACKEND(obj);
@@ -245,7 +186,6 @@ static void host_memory_backend_init(Object *obj)
     backend->dump = machine_dump_guest_core(machine);
     backend->guest_memfd = machine_require_guest_memfd(machine);
     backend->reserve = true;
-    backend->prealloc_threads = machine->smp.cpus;
 }
 
 static void host_memory_backend_post_init(Object *obj)
@@ -285,7 +225,6 @@ host_memory_backend_memory_complete(UserCreatable *uc, Error **errp)
     void *ptr;
     uint64_t sz;
     size_t pagesize;
-    bool async = !phase_check(PHASE_LATE_BACKENDS_CREATED);
 
     if (!bc->alloc) {
         return;
@@ -310,18 +249,6 @@ host_memory_backend_memory_complete(UserCreatable *uc, Error **errp)
     }
     if (!backend->dump) {
         qemu_madvise(ptr, sz, QEMU_MADV_DONTDUMP);
-    }
-    /*
-     * Preallocate memory after the NUMA policy has been instantiated.
-     * This is necessary to guarantee memory is allocated with
-     * specified NUMA policy in place.
-     */
-    if (backend->prealloc && !qemu_prealloc_mem(memory_region_get_fd(&backend->mr),
-                                                ptr, sz,
-                                                backend->prealloc_threads,
-                                                backend->prealloc_context,
-                                                async, errp)) {
-        return;
     }
 }
 
@@ -369,10 +296,6 @@ static void host_memory_backend_set_reserve(Object *o, bool value, Error **errp)
         error_setg(errp, "cannot change property value");
         return;
     }
-    if (backend->prealloc && !value) {
-        error_setg(errp, "'prealloc=on' and 'reserve=off' are incompatible");
-        return;
-    }
     backend->reserve = value;
 }
 #endif /* CONFIG_LINUX */
@@ -412,22 +335,6 @@ host_memory_backend_class_init(ObjectClass *oc, const void *data)
         host_memory_backend_set_dump);
     object_class_property_set_description(oc, "dump",
         "Set to 'off' to exclude from core dump");
-    object_class_property_add_bool(oc, "prealloc",
-        host_memory_backend_get_prealloc,
-        host_memory_backend_set_prealloc);
-    object_class_property_set_description(oc, "prealloc",
-        "Preallocate memory");
-    object_class_property_add(oc, "prealloc-threads", "int",
-        host_memory_backend_get_prealloc_threads,
-        host_memory_backend_set_prealloc_threads,
-        NULL, NULL);
-    object_class_property_set_description(oc, "prealloc-threads",
-        "Number of CPU threads to use for prealloc");
-    object_class_property_add_link(oc, "prealloc-context",
-        TYPE_THREAD_CONTEXT, offsetof(HostMemoryBackend, prealloc_context),
-        object_property_allow_set_link, OBJ_PROP_LINK_STRONG);
-    object_class_property_set_description(oc, "prealloc-context",
-        "Context to use for creating CPU threads for preallocation");
     object_class_property_add(oc, "size", "int",
         host_memory_backend_get_size,
         host_memory_backend_set_size,

@@ -87,7 +87,6 @@ const QEnumLookup ObjectType_lookup = {
 #endif /* defined(CONFIG_SECRET_KEYRING) */
         [OBJECT_TYPE_SEV_GUEST] = "sev-guest",
         [OBJECT_TYPE_SEV_SNP_GUEST] = "sev-snp-guest",
-        [OBJECT_TYPE_THREAD_CONTEXT] = "thread-context",
         [OBJECT_TYPE_S390_PV_GUEST] = "s390-pv-guest",
         [OBJECT_TYPE_TDX_GUEST] = "tdx-guest",
         [OBJECT_TYPE_THROTTLE_GROUP] = "throttle-group",

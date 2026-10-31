@@ -148,8 +148,6 @@ typedef struct SevSnpGuestProperties SevSnpGuestProperties;
 
 typedef struct TdxGuestProperties TdxGuestProperties;
 
-typedef struct ThreadContextProperties ThreadContextProperties;
-
 typedef enum ObjectType {
     OBJECT_TYPE_ACPI_GENERIC_INITIATOR,
     OBJECT_TYPE_ACPI_GENERIC_PORT,
@@ -212,7 +210,6 @@ typedef enum ObjectType {
 #endif /* defined(CONFIG_SECRET_KEYRING) */
     OBJECT_TYPE_SEV_GUEST,
     OBJECT_TYPE_SEV_SNP_GUEST,
-    OBJECT_TYPE_THREAD_CONTEXT,
     OBJECT_TYPE_S390_PV_GUEST,
     OBJECT_TYPE_TDX_GUEST,
     OBJECT_TYPE_THROTTLE_GROUP,
@@ -554,11 +551,6 @@ struct MemoryBackendProperties {
     bool merge;
     bool has_policy;
     HostMemPolicy policy;
-    bool has_prealloc;
-    bool prealloc;
-    bool has_prealloc_threads;
-    uint32_t prealloc_threads;
-    char *prealloc_context;
     bool has_share;
     bool share;
     bool has_reserve;
@@ -578,11 +570,6 @@ struct MemoryBackendFileProperties {
     bool merge;
     bool has_policy;
     HostMemPolicy policy;
-    bool has_prealloc;
-    bool prealloc;
-    bool has_prealloc_threads;
-    uint32_t prealloc_threads;
-    char *prealloc_context;
     bool has_share;
     bool share;
     bool has_reserve;
@@ -624,11 +611,6 @@ struct MemoryBackendMemfdProperties {
     bool merge;
     bool has_policy;
     HostMemPolicy policy;
-    bool has_prealloc;
-    bool prealloc;
-    bool has_prealloc_threads;
-    uint32_t prealloc_threads;
-    char *prealloc_context;
     bool has_share;
     bool share;
     bool has_reserve;
@@ -665,11 +647,6 @@ struct MemoryBackendShmProperties {
     bool merge;
     bool has_policy;
     HostMemPolicy policy;
-    bool has_prealloc;
-    bool prealloc;
-    bool has_prealloc_threads;
-    uint32_t prealloc_threads;
-    char *prealloc_context;
     bool has_share;
     bool share;
     bool has_reserve;
@@ -700,11 +677,6 @@ struct MemoryBackendEpcProperties {
     bool merge;
     bool has_policy;
     HostMemPolicy policy;
-    bool has_prealloc;
-    bool prealloc;
-    bool has_prealloc_threads;
-    uint32_t prealloc_threads;
-    char *prealloc_context;
     bool has_share;
     bool share;
     bool has_reserve;
@@ -871,13 +843,6 @@ struct TdxGuestProperties {
     SocketAddress *quote_generation_socket;
 };
 
-struct ThreadContextProperties {
-    bool has_cpu_affinity;
-    uint16List *cpu_affinity;
-    bool has_node_affinity;
-    uint16List *node_affinity;
-};
-
 struct q_obj_ObjectOptions_base {
     ObjectType qom_type;
     char *id;
@@ -947,7 +912,6 @@ struct ObjectOptions {
         SevGuestProperties sev_guest;
         SevSnpGuestProperties sev_snp_guest;
         TdxGuestProperties tdx_guest;
-        ThreadContextProperties thread_context;
         ThrottleGroupProperties throttle_group;
         TlsCredsAnonProperties tls_creds_anon;
         TlsCredsPskProperties tls_creds_psk;

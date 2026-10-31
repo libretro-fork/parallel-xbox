@@ -123,8 +123,6 @@ bool visit_type_SevSnpGuestProperties_members(Visitor *v, SevSnpGuestProperties 
 
 bool visit_type_TdxGuestProperties_members(Visitor *v, TdxGuestProperties *obj, Error **errp);
 
-bool visit_type_ThreadContextProperties_members(Visitor *v, ThreadContextProperties *obj, Error **errp);
-
 bool visit_type_ObjectType(Visitor *v, const char *name,
                  ObjectType *obj, Error **errp);
 
