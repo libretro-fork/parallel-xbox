@@ -26,8 +26,6 @@
 #include "qemu/osdep.h"
 #include "qapi/error.h"
 #include "block/aio.h"
-#include "block/thread-pool.h"
-#include "block/graph-lock.h"
 #include "qemu/main-loop.h"
 #include "qemu/lockcnt.h"
 #include "qemu/rcu_queue.h"
@@ -370,9 +368,6 @@ aio_ctx_finalize(GSource *source)
         return;
     }
 
-    thread_pool_free_aio(ctx->thread_pool);
-
-
     /* There must be no aio_bh_poll() calls going on */
     assert(QSIMPLEQ_EMPTY(&ctx->bh_slice_list));
 
@@ -397,10 +392,7 @@ aio_ctx_finalize(GSource *source)
 
     aio_set_event_notifier(ctx, &ctx->notifier, NULL, NULL, NULL);
     event_notifier_cleanup(&ctx->notifier);
-    qemu_rec_mutex_destroy(&ctx->lock);
-    unregister_aiocontext(ctx);
     aio_context_destroy(ctx);
-    /* aio_context_destroy() still needs the lock */
     qemu_lockcnt_destroy(&ctx->list_lock);
 }
 
@@ -416,7 +408,6 @@ GSource *aio_get_g_source(AioContext *ctx)
     g_source_ref(&ctx->source);
     return &ctx->source;
 }
-
 
 /* The libretro core runs the guest on the main loop's own thread
  * (ui/libretro.c): what wakes the main loop has to make the guest leave the
@@ -529,19 +520,11 @@ AioContext *aio_context_new(Error **errp)
                            aio_context_notifier_poll,
                            aio_context_notifier_poll_ready);
 
-    ctx->thread_pool = NULL;
-    qemu_rec_mutex_init(&ctx->lock);
-
     ctx->poll_max_ns = 0;
     ctx->poll_grow = 0;
     ctx->poll_shrink = 0;
 
     ctx->aio_max_batch = 0;
-
-    ctx->thread_pool_min = 0;
-    ctx->thread_pool_max = THREAD_POOL_MAX_THREADS_DEFAULT;
-
-    register_aiocontext(ctx);
 
     ctx->initialized = true;
 
@@ -570,21 +553,4 @@ void qemu_set_current_aio_context(AioContext *ctx)
 {
     assert(!get_my_aiocontext());
     set_my_aiocontext(ctx);
-}
-
-void aio_context_set_thread_pool_params(AioContext *ctx, int64_t min,
-                                        int64_t max, Error **errp)
-{
-
-    if (min > max || max <= 0 || min < 0 || min > INT_MAX || max > INT_MAX) {
-        error_setg(errp, "bad thread-pool-min/thread-pool-max values");
-        return;
-    }
-
-    ctx->thread_pool_min = min;
-    ctx->thread_pool_max = max;
-
-    if (ctx->thread_pool) {
-        thread_pool_update_params(ctx->thread_pool, ctx);
-    }
 }

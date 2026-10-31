@@ -51,7 +51,6 @@
  * reader count. In that case we transfer the count to a global shared counter
  * so that the writer is always aware of all readers.
  */
-typedef struct BdrvGraphRWlock BdrvGraphRWlock;
 
 /* Dummy lock object to use for Thread Safety Analysis (TSA) */
 typedef struct TSA_CAPABILITY("mutex") BdrvGraphLock {
@@ -83,20 +82,6 @@ extern BdrvGraphLock graph_lock;
 #define GRAPH_RDLOCK_PTR TSA_GUARDED_BY(graph_lock)
 #define GRAPH_WRLOCK_PTR TSA_GUARDED_BY(graph_lock)
 #define GRAPH_UNLOCKED_PTR
-
-/*
- * register_aiocontext:
- * Add AioContext @ctx to the list of AioContext.
- * This list is used to obtain the total number of readers
- * currently running the graph.
- */
-void register_aiocontext(AioContext *ctx);
-
-/*
- * unregister_aiocontext:
- * Removes AioContext @ctx to the list of AioContext.
- */
-void unregister_aiocontext(AioContext *ctx);
 
 /*
  * bdrv_graph_wrlock:

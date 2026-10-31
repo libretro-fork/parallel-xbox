@@ -180,17 +180,6 @@ typedef struct AioPolledEvent {
 struct AioContext {
     GSource source;
 
-    /* Used by AioContext users to protect from multi-threaded access.  */
-    QemuRecMutex lock;
-
-    /*
-     * Keep track of readers and writers of the block layer graph.
-     * This is essential to avoid performing additions and removal
-     * of nodes and edges from block graph while some
-     * other thread is traversing it.
-     */
-    BdrvGraphRWlock *bdrv_graph;
-
     /* The list of registered AIO handlers.  Protected by ctx->list_lock. */
     AioHandlerList aio_handlers;
 
@@ -252,14 +241,6 @@ struct AioContext {
      */
     retro_atomic_int_t notified;
     EventNotifier notifier;
-
-    int thread_pool_min;
-    int thread_pool_max;
-    /* Thread pool for performing work and receiving completion callbacks.
-     * Has its own locking.
-     */
-    struct ThreadPoolAio *thread_pool;
-
 
     /* Number of AioHandlers without .io_poll() */
     retro_atomic_int_t poll_disable_cnt;
@@ -606,14 +587,6 @@ void aio_context_set_poll_params(AioContext *ctx, int64_t max_ns,
  */
 void aio_context_set_aio_params(AioContext *ctx, int64_t max_batch);
 
-/**
- * aio_context_set_thread_pool_params:
- * @ctx: the aio context
- * @min: min number of threads to have readily available in the thread pool
- * @min: max number of threads the thread pool can contain
- */
-void aio_context_set_thread_pool_params(AioContext *ctx, int64_t min,
-                                        int64_t max, Error **errp);
 
 
 #endif
