@@ -7,7 +7,7 @@ if os.name=='nt':
  k=ctypes.WinDLL('kernel32');k.GetErrorMode.restype=ctypes.c_uint;k.SetErrorMode(k.GetErrorMode()|0x8003)
 env=os.environ.copy();env['PATH']=str(Path(cc).resolve().parent)+os.pathsep+env.get('PATH','')
 parts=[]
-for path,names in [('buffer.c',['create_buffer','destroy_buffer','recreate_buffer']),('draw.c',['sync_staging_buffer']),('command.c',['pgraph_vk_staging_flush','pgraph_vk_upload_source_barrier'])]:
+for path,names in [('buffer.c',['create_buffer','destroy_buffer','recreate_buffer']),('draw.c',['sync_staging_buffer']),('command.c',['pgraph_vk_staging_flush','pgraph_vk_upload_source_barrier']),('surface.c',['invalidate_readback'])]:
  s=(r/'hw/xbox/nv2a/pgraph/vk'/path).read_text()
  for name in names:
   m=re.search(r'^(?:static )?void '+name+r'\([^;{]*\)\s*\{',s,re.M);assert m,name;a=m.start();b=s.index('{',a)+1;depth=1

@@ -320,6 +320,17 @@ static void readback_batch_end(NV2AState *d)
 /* The surface read back into pixels (its place in the RAM). True when it
  * is there on return; false when it joined the open batch, which settles
  * it. */
+/* Called only after the readback fence has settled. Coherent mappings
+ * already expose GPU writes; other memory types need cache invalidation. */
+static void invalidate_readback(PGRAPHVkState *r, VkDeviceSize size)
+{
+    StorageBuffer *dst = &r->storage_buffers[BUFFER_STAGING_DST];
+    if (size && !(dst->properties & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT)) {
+        VK_CHECK(vmaInvalidateAllocation(r->allocator, dst->allocation, 0,
+                                         size));
+    }
+}
+
 static bool download_surface_to_buffer(NV2AState *d, SurfaceBinding *surface,
                                        uint8_t *pixels)
 {
@@ -737,7 +748,7 @@ static bool download_surface_to_buffer(NV2AState *d, SurfaceBinding *surface,
     const VkDeviceSize read_size = (VkDeviceSize)surface->width *
                                    surface->fmt.bytes_per_pixel *
                                    surface->height;
-    vmaInvalidateAllocation(r->allocator, dst->allocation, 0, read_size);
+    invalidate_readback(r, read_size);
 
     /* Its rows are packed: swizzled straight out of it, or copied at
      * the pitch */
