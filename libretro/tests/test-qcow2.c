@@ -539,6 +539,10 @@ static int workload(const char *qpath, const char *rpath, uint64_t seed,
     lr_qcow2_close(q);
     lr_file_close(qf);
     lr_file_close(rf);
+    free(a);
+    free(b);
+    free(touched_lo);
+    free(touched_hi);
     printf("qcow2 workload, %ld operations on %s: %s\n", ops, qpath,
            bad ? "WRONG" : "every read as the reference");
     return bad ? 1 : 0;

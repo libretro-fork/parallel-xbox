@@ -319,6 +319,10 @@ Linux*)
     "$work/bin/fileshorttest" "$work/file-short.img"
     ;;
 esac
+if command -v qemu-img >/dev/null 2>&1; then
+    python3 "$here/test-qcow2-workspace.py" "$here/../.." "$cc"
+fi
+
 # Count the production qcow2 layer's file calls without replacing its backend.
 ${cc} -O2 -std=gnu99 -Wall -DLR_FILE_FILESTREAM=0 -I"$here/../.." -I"$lrc/include" \
     -Dlr_file_sync=counted_sync -Dlr_file_zero=counted_zero -Dlr_file_pwrite=counted_pwrite \
