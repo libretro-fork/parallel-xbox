@@ -1411,3 +1411,11 @@ format/scale and stale-PBO cleanup, and verifies that scaled swizzled paths
 allocate no native-size scratch image. Sanitizers run by default; native cross
 execution uses FUSED_READBACK_BINARY, FUSED_READBACK_SKIP_RUN and
 FUSED_READBACK_CFLAGS. These are CPU fallback/interface tests, not GL-driver tests.
+
+`test-gl-pitched-surface.py` executes the actual upload transfer segment,
+pixel-store layout selection, CPU expansion and GPU-grow code on EGL/GL or
+native Windows WGL via libretro-common. It checks pitched/irregular byte rows,
+colour/integer/depth formats, fresh/reused grow textures, scale 1/2/3, swizzled
+input, source guards and unpack-state restoration. GPU depth blits compare
+against the former compact native-upload/blit reference (which may quantize
+a depth bit). PITCHED_GL_BINARY / PITCHED_GL_SKIP_RUN support cross builds.

@@ -20,6 +20,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- OpenGL: upload representable pitched surfaces directly and expand pitched CPU fallbacks without repacking; remove the dedicated 4 MiB pitch scratch buffer.
+
 - OpenGL: fuse CPU downscale/swizzle fallback readbacks, avoiding a native-size scratch image and an extra pixel pass.
 
 - Vulkan: convert packed video overlays directly into the GPU image, avoiding CPU RGBA staging and its buffer-to-image copy; roughly halve CPU-written overlay bytes while preserving native filtering.

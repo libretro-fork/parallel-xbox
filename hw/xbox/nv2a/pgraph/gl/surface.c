@@ -2251,16 +2251,20 @@ static void surface_copy_expand_row(uint8_t *out, uint8_t *in,
 {
     if (bytes_per_pixel == 4) {
         for (unsigned int x = 0; x < width; x++) {
+            uint32_t pixel;
+            memcpy(&pixel, in, sizeof(pixel));
             for (unsigned int i = 0; i < factor; i++) {
-                *(uint32_t *)out = *(uint32_t *)in;
+                memcpy(out, &pixel, sizeof(pixel));
                 out += bytes_per_pixel;
             }
             in += bytes_per_pixel;
         }
     } else if (bytes_per_pixel == 2) {
         for (unsigned int x = 0; x < width; x++) {
+            uint16_t pixel;
+            memcpy(&pixel, in, sizeof(pixel));
             for (unsigned int i = 0; i < factor; i++) {
-                *(uint16_t *)out = *(uint16_t *)in;
+                memcpy(out, &pixel, sizeof(pixel));
                 out += bytes_per_pixel;
             }
             in += bytes_per_pixel;
@@ -2279,7 +2283,7 @@ static void surface_copy_expand_row(uint8_t *out, uint8_t *in,
 static void surface_copy_expand(uint8_t *out, uint8_t *in, unsigned int width,
                                 unsigned int height,
                                 unsigned int bytes_per_pixel,
-                                unsigned int factor)
+                                unsigned int factor, unsigned int in_pitch)
 {
     size_t out_pitch = width * bytes_per_pixel * factor;
 
@@ -2290,9 +2294,28 @@ static void surface_copy_expand(uint8_t *out, uint8_t *in, unsigned int width,
             out += out_pitch;
             memcpy(out, row_in, out_pitch);
         }
-        in += width * bytes_per_pixel;
+        in += in_pitch;
         out += out_pitch;
     }
+}
+
+/* GL counts row length in pixels and rounds byte strides to unpack
+ * alignment. Return false for byte pitches that cannot describe whole pixels. */
+static bool surface_unpack_layout(unsigned width, unsigned bpp, unsigned pitch,
+                                  GLint *row_length, GLint *alignment)
+{
+    if (!bpp || (size_t)width * bpp > pitch || pitch / bpp > INT_MAX) {
+        return false;
+    }
+    unsigned pixels = pitch / bpp;
+    for (unsigned align = 1; align <= 8; align *= 2) {
+        if (ROUND_UP((size_t)pixels * bpp, align) == pitch) {
+            *row_length = pixels == width ? 0 : pixels;
+            *alignment = align;
+            return true;
+        }
+    }
+    return false;
 }
 
 /* Grow a native-size image into a scaled surface on the GPU: only the
@@ -2303,7 +2326,7 @@ static void surface_copy_expand(uint8_t *out, uint8_t *in, unsigned int width,
  * stored. The surface keeps the scaled storage it was created with;
  * anything else stays on the CPU path. gl_fb_util is bound on entry. */
 static bool surface_grow_on_gpu(PGRAPHState *pg, SurfaceBinding *surface,
-                                const uint8_t *pixels)
+                                const uint8_t *pixels, GLint row_length, GLint alignment)
 {
     PGRAPHGLState *r = pg->gl_renderer_state;
     bool zeta = !surface->color;
@@ -2336,11 +2359,12 @@ static bool surface_grow_on_gpu(PGRAPHState *pg, SurfaceBinding *surface,
         glGenFramebuffers(1, fbo);
         glGenTextures(1, tex);
     }
-    GLint prev_tex, prev_alignment;
+    GLint prev_tex, prev_alignment, prev_row_length;
     glGetIntegerv(GL_TEXTURE_BINDING_2D, &prev_tex);
     glGetIntegerv(GL_UNPACK_ALIGNMENT, &prev_alignment);
-    glPixelStorei(GL_UNPACK_ALIGNMENT,
-                  (w * surface->fmt.bytes_per_pixel) % 4 ? 1 : 4);
+    glGetIntegerv(GL_UNPACK_ROW_LENGTH, &prev_row_length);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, alignment);
+    glPixelStorei(GL_UNPACK_ROW_LENGTH, row_length);
     glBindTexture(GL_TEXTURE_2D, *tex);
     bool fresh = *tw != w || *th != h ||
                  *tf != (GLint)surface->fmt.gl_internal_format;
@@ -2355,6 +2379,7 @@ static bool surface_grow_on_gpu(PGRAPHState *pg, SurfaceBinding *surface,
                         surface->fmt.gl_type, pixels);
     }
     glPixelStorei(GL_UNPACK_ALIGNMENT, prev_alignment);
+    glPixelStorei(GL_UNPACK_ROW_LENGTH, prev_row_length);
     glBindTexture(GL_TEXTURE_2D, prev_tex);
 
     glBindFramebuffer(GL_READ_FRAMEBUFFER, *fbo);
@@ -2468,59 +2493,63 @@ static void upload_surface_data_impl(NV2AState *d, SurfaceBinding *surface,
                        surface->fmt.bytes_per_pixel);
     }
 
-    /* FIXME: Replace this scaling */
+    /* Read pitched input directly: the driver handles representable layouts,
+     * and CPU expansion skips padding without a native-size repacking pass. */
+    GLint row_length = 0, alignment = 1;
+    bool pitched = surface_unpack_layout(surface->width,
+        surface->fmt.bytes_per_pixel, surface->pitch, &row_length, &alignment);
 
-    // This is VRAM so we can't do this inplace!
-    uint8_t *optimal_buf = buf;
-    unsigned int optimal_pitch = surface->width * surface->fmt.bytes_per_pixel;
-
-    if (surface->pitch != optimal_pitch) {
-        optimal_buf = scratch_reserve(&pg->gl_renderer_state->pitch_scratch,
-                                      (size_t)surface->height * optimal_pitch);
-
-        uint8_t *src = buf;
-        uint8_t *dst = optimal_buf;
-        unsigned int irow;
-        for (irow = 0; irow < surface->height; irow++) {
-            memcpy(dst, src, optimal_pitch);
-            src += surface->pitch;
-            dst += optimal_pitch;
-        }
-    }
-
-    uint8_t *gl_read_buf = optimal_buf;
+    uint8_t *gl_read_buf = buf;
     unsigned int width = surface->width, height = surface->height;
 
-    if (surface_grow_on_gpu(pg, surface, optimal_buf)) {
+    const uint8_t *grow_buf = buf;
+    GLint grow_row_length = row_length, grow_alignment = alignment;
+    unsigned sf = pg->surface_scale_factor;
+    bool pack_for_grow = !pitched && sf > 1 &&
+        surface->tex_w == width * sf && surface->tex_h == height * sf &&
+        surface->tex_fmt == (GLint)surface->fmt.gl_internal_format &&
+        (!surface->color || surface->fmt.gl_attachment == GL_COLOR_ATTACHMENT0);
+    if (pack_for_grow) {
+        /* Preserve the existing GPU-grow route even for an inexpressible
+         * byte stride (notably its depth conversion). Reuse scale_buf for
+         * this rare native packing; keep buf intact if GPU grow declines. */
+        size_t bytes = (size_t)width * height * surface->fmt.bytes_per_pixel;
+        pg->scale_buf = g_realloc(pg->scale_buf, bytes);
+        surface_copy_expand(pg->scale_buf, buf, width, height,
+            surface->fmt.bytes_per_pixel, 1, surface->pitch);
+        grow_buf = pg->scale_buf;
+        grow_row_length = 0;
+        grow_alignment = ((size_t)width * surface->fmt.bytes_per_pixel) % 4 ? 1 : 4;
+    }
+    if (surface_grow_on_gpu(pg, surface, grow_buf, grow_row_length, grow_alignment)) {
         glBindTexture(GL_TEXTURE_2D, last_texture_binding);
         bind_current_surface(d);
         return;
     }
 
-    if (pg->surface_scale_factor > 1) {
+    if (pg->surface_scale_factor > 1 || !pitched) {
         pgraph_apply_scaling_factor(pg, &width, &height);
         pg->scale_buf = (uint8_t *)g_realloc(
-            pg->scale_buf, width * height * surface->fmt.bytes_per_pixel);
+            pg->scale_buf, (size_t)width * height * surface->fmt.bytes_per_pixel);
         gl_read_buf = pg->scale_buf;
-        uint8_t *out = gl_read_buf, *in = optimal_buf;
-        surface_copy_expand(out, in, surface->width, surface->height,
-                            surface->fmt.bytes_per_pixel,
-                            d->pgraph.surface_scale_factor);
+        surface_copy_expand(gl_read_buf, buf, surface->width, surface->height,
+            surface->fmt.bytes_per_pixel, pg->surface_scale_factor, surface->pitch);
+        row_length = 0;
+        alignment = ((size_t)width * surface->fmt.bytes_per_pixel) % 4 ? 1 : 4;
     }
 
-    int prev_unpack_alignment;
+    GLint prev_unpack_alignment, prev_row_length;
     glGetIntegerv(GL_UNPACK_ALIGNMENT, &prev_unpack_alignment);
-    if (unlikely((width * surface->fmt.bytes_per_pixel) % 4 != 0)) {
-        glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-    } else {
-        glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
-    }
+    glGetIntegerv(GL_UNPACK_ROW_LENGTH, &prev_row_length);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, alignment);
+    glPixelStorei(GL_UNPACK_ROW_LENGTH, row_length);
 
     glBindTexture(GL_TEXTURE_2D, surface->gl_buffer);
     glTexImage2D(GL_TEXTURE_2D, 0, surface->fmt.gl_internal_format, width,
                  height, 0, surface->fmt.gl_format, surface->fmt.gl_type,
                  gl_read_buf);
     glPixelStorei(GL_UNPACK_ALIGNMENT, prev_unpack_alignment);
+    glPixelStorei(GL_UNPACK_ROW_LENGTH, prev_row_length);
 
     // Rebind previous framebuffer binding
     glBindTexture(GL_TEXTURE_2D, last_texture_binding);
@@ -3491,7 +3520,6 @@ void pgraph_gl_init_surfaces(PGRAPHState *pg)
      * copies of a 1024x1024 32-bit surface */
     obj_pool_init(&r->surface_pool, sizeof(SurfaceBinding), 1024);
     scratch_init(&r->surf_scratch, 1024 * 1024 * 4);
-    scratch_init(&r->pitch_scratch, 1024 * 1024 * 4);
     scratch_init(&r->s2t_scratch, 1024 * 1024 * 4);
     retro_eventcount_init(&r->downloads_complete);
     retro_eventcount_init(&r->dirty_surfaces_download_complete);
@@ -3580,7 +3608,6 @@ void pgraph_gl_finalize_surfaces(PGRAPHState *pg)
     finalize_render_to_texture(pg);
     obj_pool_finalize(&r->surface_pool);
     scratch_finalize(&r->surf_scratch);
-    scratch_finalize(&r->pitch_scratch);
     glDeleteBuffers(1, &r->s2t_byte_pbo);
     r->s2t_byte_pbo = 0;
     scratch_finalize(&r->s2t_scratch);
