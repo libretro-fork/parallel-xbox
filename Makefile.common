@@ -241,7 +241,6 @@ SOURCES_UTIL_POSIX := \
 
 SOURCES_UTIL_LINUX := \
 	$(CORE_DIR)/util/fdmon-epoll.c \
-	$(CORE_DIR)/util/vfio-helpers.c \
 
 # macOS: QEMU never takes ucontext coroutines there (upstream's meson.build)
 SOURCES_UTIL_DARWIN := \

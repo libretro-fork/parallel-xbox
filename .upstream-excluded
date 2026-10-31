@@ -3193,3 +3193,7 @@ include/qemu/futex.h
 # Unused host RAM preallocation thread service
 util/thread-context.c
 include/qemu/thread-context.h
+
+# Unused host VFIO passthrough service
+util/vfio-helpers.c
+include/qemu/vfio-helpers.h
