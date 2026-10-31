@@ -1136,5 +1136,17 @@ The `test-fixed-shader-ownership.py` fixture extracts the production fixed-modul
 creation path. Across 10,000 calls it checks that native creation receives the
 compiler payload pointer and exact byte length, that the words remain unchanged,
 and that the owning byte array is released exactly once after native creation.
-The swizzle and GPU-probe callers use this path because their layouts are defined
-by the host; guest shader reflection remains enabled.
+The GPU-probe callers use this path because their layouts are defined by the
+host; guest shader reflection remains enabled. Swizzle kernels now use immutable
+SPIR-V directly.
+
+`test-spv-swizzle.py` validates the immutable swizzle/unswizzle SPIR-V with
+`spirv-val` when available, checks stable borrowed word pointers and the two
+storage buffers plus 44-byte push layout. With `--gpu`, it compares the original
+GLSL and direct modules against an independent CPU Morton-coordinate interleaver
+for 1/2/4-byte textures, palettes, 3D levels, narrow and large dimensions, source
+alignment, partial output words and complete input/output guards. It also reports optional GPU timestamps for
+512K-texel conversion batches; these measure kernel time, not core latency. GPU readback
+and reference compilation belong to the fixture only. Runtime compilation is
+removed from the production swizzle kernels; GPU-probe GLSL still uses the
+reflection-free fixed-module path.

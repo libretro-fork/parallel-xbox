@@ -34,124 +34,15 @@
 #include "hw/xbox/nv2a/nv2a_int.h"
 #include "hw/xbox/nv2a/pgraph/swizzle.h"
 #include "renderer.h"
+#include "hw/xbox/nv2a/pgraph/spv/swizzle.h"
 
-#define UNSWIZZLE_WORKGROUP 256
-
-/* One invocation writes one 32-bit word of the output: the texels it
- * holds (4, 2 or 1 of 1, 2 or 4 bytes; one through the palette), each
- * read at its swizzled offset: x, y and z spread over the offset's bits
- * by the masks (swizzle.c generate_swizzle_masks). */
-static const char *unswizzle_glsl =
-    "#version 450\n"
-    "layout(local_size_x = 256) in;\n"
-    "layout(push_constant) uniform PC {\n"
-    "    uint src;      /* the level's byte offset in the RAM */\n"
-    "    uint dst;      /* the output's byte offset in the ring, 4-aligned */\n"
-    "    uint width;\n"
-    "    uint height;\n"
-    "    uint depth;\n"
-    "    uint bpp;      /* bytes a texel, in the RAM: 1, 2 or 4 */\n"
-    "    uint mask_x;\n"
-    "    uint mask_y;\n"
-    "    uint mask_z;\n"
-    "    uint n_words;  /* words of output */\n"
-    "    uint palette;  /* byte offset of 256 words, or 0: none */\n"
-    "} pc;\n"
-    "layout(std430, set = 0, binding = 0) readonly buffer Vram { uint w[]; } vram;\n"
-    "layout(std430, set = 0, binding = 1) writeonly buffer Out { uint w[]; } outb;\n"
-    "uint spread(uint v, uint mask) {\n"
-    "    uint r = 0u, bit = 1u;\n"
-    "    while (mask != 0u) {\n"
-    "        uint low = mask & (0u - mask);\n"
-    "        if ((v & bit) != 0u) r |= low;\n"
-    "        mask &= ~low;\n"
-    "        bit <<= 1u;\n"
-    "    }\n"
-    "    return r;\n"
-    "}\n"
-    "uint texel(uint t) {\n"
-    "    uint x = t % pc.width;\n"
-    "    uint y = (t / pc.width) % pc.height;\n"
-    "    uint z = t / (pc.width * pc.height);\n"
-    "    uint sw = spread(x, pc.mask_x) | spread(y, pc.mask_y) | spread(z, pc.mask_z);\n"
-    "    uint off = pc.src + sw * pc.bpp;\n"
-    "    uint word = vram.w[off >> 2u];\n"
-    "    if (pc.bpp == 4u) return word;\n"
-    "    if (pc.bpp == 2u) return (word >> ((off & 2u) * 8u)) & 0xffffu;\n"
-    "    uint v = (word >> ((off & 3u) * 8u)) & 0xffu;\n"
-    "    if (pc.palette != 0u) return vram.w[(pc.palette >> 2u) + v];\n"
-    "    return v;\n"
-    "}\n"
-    "void main() {\n"
-    "    uint i = gl_GlobalInvocationID.x;\n"
-    "    if (i >= pc.n_words) return;\n"
-    "    uint out_bpp = pc.palette != 0u ? 4u : pc.bpp;\n"
-    "    uint per_word = 4u / out_bpp;\n"
-    "    uint first = i * per_word;\n"
-    "    uint r = 0u;\n"
-    "    for (uint k = 0u; k < per_word; k++) {\n"
-    "        uint t = first + k;\n"
-    "        if (t < pc.width * pc.height * pc.depth) {\n"
-    "            r |= texel(t) << (k * out_bpp * 8u);\n"
-    "        }\n"
-    "    }\n"
-    "    outb.w[(pc.dst >> 2u) + i] = r;\n"
-    "}\n";
-
-/* One invocation writes one 32-bit word of the surface in the RAM: the
- * texels at the swizzled offsets it covers, each read from the linear copy
- * in the ring at its x and y, taken out of the offset by the masks. A
- * swizzled surface's sides are powers of two, so the words cover it
- * exactly. */
-static const char *swizzle_glsl =
-    "#version 450\n"
-    "layout(local_size_x = 256) in;\n"
-    "layout(push_constant) uniform PC {\n"
-    "    uint src;      /* the linear copy's byte offset in the ring, 4-aligned */\n"
-    "    uint dst;      /* the surface's byte offset in the RAM, 4-aligned */\n"
-    "    uint width;\n"
-    "    uint height;\n"
-    "    uint depth;\n"
-    "    uint bpp;      /* bytes a texel: 2 or 4 */\n"
-    "    uint mask_x;\n"
-    "    uint mask_y;\n"
-    "    uint mask_z;\n"
-    "    uint n_words;  /* words of output */\n"
-    "    uint palette;\n"
-    "} pc;\n"
-    "layout(std430, set = 0, binding = 0) writeonly buffer Vram { uint w[]; } vram;\n"
-    "layout(std430, set = 0, binding = 1) readonly buffer Lin { uint w[]; } lin;\n"
-    "uint compact(uint s, uint mask) {\n"
-    "    uint r = 0u, bit = 1u;\n"
-    "    while (mask != 0u) {\n"
-    "        uint low = mask & (0u - mask);\n"
-    "        if ((s & low) != 0u) r |= bit;\n"
-    "        mask &= ~low;\n"
-    "        bit <<= 1u;\n"
-    "    }\n"
-    "    return r;\n"
-    "}\n"
-    "void main() {\n"
-    "    uint i = gl_GlobalInvocationID.x;\n"
-    "    if (i >= pc.n_words) return;\n"
-    "    uint per_word = 4u / pc.bpp;\n"
-    "    uint r = 0u;\n"
-    "    for (uint k = 0u; k < per_word; k++) {\n"
-    "        uint s = i * per_word + k;\n"
-    "        uint x = compact(s, pc.mask_x);\n"
-    "        uint y = compact(s, pc.mask_y);\n"
-    "        uint off = pc.src + (y * pc.width + x) * pc.bpp;\n"
-    "        uint word = lin.w[off >> 2u];\n"
-    "        uint v = pc.bpp == 4u ? word : (word >> ((off & 2u) * 8u)) & 0xffffu;\n"
-    "        r |= v << (k * pc.bpp * 8u);\n"
-    "    }\n"
-    "    vram.w[(pc.dst >> 2u) + i] = r;\n"
-    "}\n";
+#define UNSWIZZLE_WORKGROUP PGRAPH_SPV_SWIZZLE_WORKGROUP
 
 struct UnswizzlePush {
     uint32_t src, dst, width, height, depth, bpp;
     uint32_t mask_x, mask_y, mask_z, n_words, palette;
 };
+_Static_assert(sizeof(struct UnswizzlePush) == 44, "swizzle SPIR-V push layout");
 
 void pgraph_vk_init_unswizzle(PGRAPHState *pg)
 {
@@ -237,8 +128,9 @@ void pgraph_vk_init_unswizzle(PGRAPHState *pg)
     VK_CHECK(vkCreatePipelineLayout(r->device, &pipeline_layout_info, NULL,
                                     &r->unswizzle.layout));
 
-    VkShaderModule module = pgraph_vk_create_fixed_shader_module_from_glsl(
-        r, VK_SHADER_STAGE_COMPUTE_BIT, unswizzle_glsl);
+    SpvStaticModule words = pgraph_spv_swizzle(false);
+    VkShaderModule module = pgraph_vk_create_shader_module_from_words(
+        r, words.words, words.num_words);
     VkComputePipelineCreateInfo pipeline_info = {
         .sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
         .layout = r->unswizzle.layout,
@@ -254,8 +146,9 @@ void pgraph_vk_init_unswizzle(PGRAPHState *pg)
                                       &r->unswizzle.pipeline));
     vkDestroyShaderModule(r->device, module, NULL);
 
-    module = pgraph_vk_create_fixed_shader_module_from_glsl(
-        r, VK_SHADER_STAGE_COMPUTE_BIT, swizzle_glsl);
+    words = pgraph_spv_swizzle(true);
+    module = pgraph_vk_create_shader_module_from_words(
+        r, words.words, words.num_words);
     pipeline_info.stage.module = module;
     VK_CHECK(vkCreateComputePipelines(r->device, r->vk_pipeline_cache, 1,
                                       &pipeline_info, NULL,

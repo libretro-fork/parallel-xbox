@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Vulkan swizzle and unswizzle pipelines now load immutable SPIR-V at initialization, removing their runtime source compilation and temporary compiler payloads. Palette lookup, 3D texture conversion and GPU-only ring/image transfers retain their existing behavior; no extra pipelines or VRAM are reserved.
+
 - Vulkan startup skips unused shader reflection and uniform metadata for the fixed swizzle kernels and GPU capability probes. Their compiler output is borrowed directly during native module creation, then released; shader code, layouts and GPU transfers are unchanged.
 
 - Vulkan depth/stencil conversion now prepares four pipelines at initialization from immutable SPIR-V, replacing the 100-entry, per-workgroup-size LRU. Conversion no longer compiles shaders or creates pipelines on first use or size changes. Bounds-checked 128/256-thread kernels support balanced 2D dispatch; descriptors and conversion buffers keep their existing ownership. Four pipelines remain resident until shutdown.

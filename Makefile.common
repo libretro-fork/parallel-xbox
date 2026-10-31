@@ -679,6 +679,7 @@ SOURCES_GLSLC := \
 	$(CORE_DIR)/hw/xbox/nv2a/pgraph/spv/geom.c \
 	$(CORE_DIR)/hw/xbox/nv2a/pgraph/spv/clear.c \
 	$(CORE_DIR)/hw/xbox/nv2a/pgraph/spv/depth.c \
+	$(CORE_DIR)/hw/xbox/nv2a/pgraph/spv/swizzle.c \
 	$(CORE_DIR)/hw/xbox/nv2a/pgraph/spv/glslc_lex.c \
 
 SOURCES_VSH := \
