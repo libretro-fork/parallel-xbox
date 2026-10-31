@@ -209,6 +209,32 @@ static void bump_filter_probe(void)
         method(NV097_SET_COMBINER_SPECULAR_FOG_CW1, 0x00001800u);
 #endif
 #ifdef BUMP_FILTER_MIP_PROBE
+#ifdef BUMP_SAMPLER_TRANSITION
+        u32 mip_sampler = (BUMP_MIP_FILTER << 16) | (BUMP_MIP_MAG << 24) |
+            BUMP_MIXED_BIAS | ((flags & 1) ? 0x80000000u : 0) |
+            ((flags & 2) ? 0x40000000u : 0) | ((flags & 4) ? 0x20000000u : 0) |
+            ((flags & 8) ? 0x10000000u : 0);
+        u32 lod0_sampler = (mip_sampler & ~0x000f0000u) |
+            ((BUMP_MIP_FILTER & 1 ? 1u : 2u) << 16);
+#ifdef BUMP_PRIME_LOD0
+        method(NV097_SET_TEXTURE_FILTER, lod0_sampler);
+#endif
+        /* Bind the other view with an invisible degenerate primitive. The
+         * final draw must select the correct cached view of the same image. */
+        method(NV097_SET_VERTEX_DATA_ARRAY_FORMAT + 9 * 4, 2u | (2u << 4));
+        method(NV097_SET_BEGIN_END, 5);
+        push(0x40000000u | (18u << 18) | NV097_INLINE_ARRAY);
+        for (u32 vertex = 0; vertex < 3; vertex++) {
+            push(0); push(0); push(0); push(0x3f800000u); push(0); push(0);
+        }
+        method(NV097_SET_BEGIN_END, 0);
+        method(NV097_SET_TEXTURE_FILTER,
+#ifdef BUMP_PRIME_LOD0
+               mip_sampler);
+#else
+               lod0_sampler);
+#endif
+#endif
         bump_mixed_triangle(id /
 #ifdef BUMP_FILTER_CLAMP_PROBE
                             48,

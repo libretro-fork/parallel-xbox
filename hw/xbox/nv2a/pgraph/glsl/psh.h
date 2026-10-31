@@ -56,6 +56,7 @@ typedef struct PshState {
     /* B/G/R/A signs in bits 0..3, min linear in bit 4. Mixed LOD0 filters
      * use bit 6 and mag linear in bit 5. Bit 7 selects mipmapped 2D sampling,
      * with bit 6 selecting interpolation between mips and bit 5 forcing LOD0.
+     * With a nonzero lower clamp, bit 5 tags absolute GL LOD reconstruction.
      * Reuses the unused
      * snorm_tex bytes so unsigned shader seeds keep their layout and keys. */
     uint8_t g8b8_signed[4];

@@ -20,6 +20,7 @@ legacy = legacy.replace("uint8_t g8b8_mip_clamp_u;", "").replace("uint8_t g8b8_m
 legacy = legacy.replace("uint8_t g8b8_mip_mirror;", "")
 pixel_source = (repo / "hw/xbox/nv2a/pgraph/glsl/psh.c").read_text()
 encoding = re.search(r"^            if \(signs.*?^            \}$", pixel_source, re.S | re.M).group()
+lower_selection = re.search(r"^            if \(mip_filter && mip_min_lod\) \{.*?^            \}", pixel_source, re.S | re.M).group()
 code = r'''
 #include <assert.h>
 #include <stdbool.h>
@@ -70,10 +71,13 @@ static PshState encode_signed_g8b8(unsigned signs, unsigned min_filter,
     bool mip_clamp = mip_clamp_u && mip_clamp_v;
     bool min_linear = min_filter == 2 || min_filter == 4 || min_filter == 6;
     bool linear_filter = min_linear && mag_filter == 2;
+    bool point_filter = !min_linear && mag_filter == 1;
     bool mip_min_linear = min_filter == 4 || min_filter == 6;
     bool mixed_filter = !mip_filter && ((min_filter == 1 && mag_filter == 2) ||
                                        (min_filter == 2 && mag_filter == 1));
     bool mixed_mip_filter = mip_filter && (mag_filter != (min_linear ? 2u : 1u));
+    /* LOWER_SELECTION */
+    if (mip_filter && mip_min_lod) assert(point_filter != linear_filter);
     /* ENCODING */
     return result;
 }
@@ -152,14 +156,16 @@ int main(void) {
     for (unsigned signs = 0; signs < 16; signs++)
     for (unsigned filter = 3; filter <= 6; filter++)
     for (unsigned level = 1; level <= 2; level++)
+    for (unsigned opposite = 0; opposite < 2; opposite++)
     for (unsigned others = 0; others < 2; others++) {
         unsigned mag = filter % 2 ? 1 : 2;
-        PshState key = encode_signed_g8b8(signs, filter, mag, true,
+        PshState key = encode_signed_g8b8(signs, filter, opposite ? 3 - mag : mag, true,
                                          0, 0, false, others, stage, level);
         PshState base = encode_signed_g8b8(signs, filter, mag, true,
                                           0, 0, false, others, stage, 0);
         unsigned bit = 1u << (stage + 4);
         bool fetch = signs && filter != 3;
+        if (fetch) base.g8b8_signed[stage] |= 32;
         base.g8b8_mip_clamp_u |= fetch && (level & 1) ? bit : 0;
         base.g8b8_mip_clamp_v |= fetch && (level & 2) ? bit : 0;
         assert(!memcmp(&key, &base, sizeof(key)));
@@ -170,7 +176,7 @@ int main(void) {
     printf("PASS: %u signed-G8B8 address invalidation cases and shader field coverage\n", cases);
     printf("PASS: %u base-only shader cache canonicalization cases\n", canonical);
 }
-'''.replace("/* PRODUCTION */", function).replace("/* MASKS */", masks).replace("/* STATE */", state + "\n" + legacy).replace("/* ENCODING */", encoding)
+'''.replace("/* PRODUCTION */", function).replace("/* MASKS */", masks).replace("/* STATE */", state + "\n" + legacy).replace("/* ENCODING */", encoding).replace("/* LOWER_SELECTION */", lower_selection)
 with tempfile.TemporaryDirectory(prefix="g8b8-state-") as folder:
     source = Path(folder) / "test.c"
     binary = Path(folder) / "test"
