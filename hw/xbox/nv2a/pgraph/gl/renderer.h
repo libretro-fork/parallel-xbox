@@ -28,6 +28,7 @@
 #include "qemu/thread.h"
 #include "qemu/queue.h"
 #include "qemu/lru.h"
+#include "shader-binary.h"
 
 #include "hw/hw.h"
 
@@ -200,6 +201,7 @@ typedef struct ShaderBinding {
 
     bool cached;
     void *program;
+    ShaderBinaryOwner program_owner;
     size_t program_size;
     GLenum program_format;
     ShaderState state;
@@ -446,6 +448,7 @@ typedef struct PGRAPHGLState {
     ShaderBinding *shader_binding;
     /* Disk worker publishes immutable binaries; only render owns the LRU. */
     retro_mpsc_t shader_disk_results;
+    retro_atomic_int_t shader_disk_mappings;
     retro_mpsc_node_t *shader_disk_pending;
     struct sthread *shader_disk_thread;
 

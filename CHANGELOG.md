@@ -5,6 +5,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 ## Unreleased
 
 - Vulkan clear shaders and the shared fullscreen display vertex shader now use immutable SPIR-V directly. Creating them no longer allocates compiler payloads, array wrappers or uniform metadata, and Vulkan borrows their static words without an intermediate copy. Pipeline creation and driver compilation remain.
+- OpenGL shader-cache loading transfers file ownership with the binary view instead of copying every payload. Release mappings after GL consumption, duplicate rejection or eviction; retain at most 64 mapped files, using the existing copy path beyond that limit. Cache formats and emulation behavior are unchanged.
+
 - Remove the two remaining unused migration mutex objects and their initialization/destruction. Saved states retain their existing frontend/BQL ownership.
 
 - Vulkan startup checks now inspect the five required pixels directly in mapped readback memory, avoiding a 1,228,800-byte heap allocation and image copy. GPU synchronization and winding detection are unchanged.

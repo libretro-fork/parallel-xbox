@@ -10,6 +10,15 @@
 #include <rthreads/rthreads.h>
 #include <retro_timers.h>
 #include "qemu/lru.h"
+#include "../../hw/xbox/nv2a/pgraph/gl/shader-binary.h"
+
+static retro_atomic_int_t mapping_closes;
+void xemu_file_unmap(XemuFileMap *file)
+{
+    if (file->file) retro_atomic_fetch_add_int(&mapping_closes, 1);
+    free(file->owned);
+    *file = (XemuFileMap){0};
+}
 
 typedef unsigned GLenum;
 typedef struct { unsigned id; } ShaderState;
@@ -18,12 +27,14 @@ typedef struct {
     ShaderState state;
     bool initialized, cached;
     void *program;
+    ShaderBinaryOwner program_owner;
     size_t program_size;
     GLenum program_format;
     sthread_t *save_thread;
 } ShaderBinding;
 typedef struct {
     retro_mpsc_t shader_disk_results;
+    retro_atomic_int_t shader_disk_mappings;
     retro_mpsc_node_t *shader_disk_pending;
     Lru shader_cache;
     sthread_t *shader_disk_thread;
@@ -82,7 +93,7 @@ static void evict(Lru *lru, LruNode *node)
 {
     ShaderBinding *binding = container_of(node, ShaderBinding, node);
     assert(owner);
-    free(binding->program);
+    shader_binary_release(binding->program, &binding->program_owner);
     binding->program = NULL;
 }
 static void publish(void *arg)
@@ -95,18 +106,66 @@ static void publish(void *arg)
         result->hash = id % 4; /* exercise hash collisions */
         result->program_format = 19;
         result->program_size = sizeof(unsigned);
-        result->program = malloc(sizeof(unsigned));
-        assert(result->program);
-        *(unsigned *)result->program = id ^ 0x12345678U;
+        unsigned *allocation = malloc(2 * sizeof(unsigned));
+        assert(allocation);
+        allocation[1] = id ^ 0x12345678U;
+        XemuFileMap map = { (const uint8_t *)allocation,
+                           2 * sizeof(unsigned), allocation, allocation };
+        result->program = shader_binary_take_file(&result->program_owner,
+            &map, allocation + 1, sizeof(unsigned), &renderer.shader_disk_mappings);
+        assert(!map.data);
         retro_mpsc_push(&renderer.shader_disk_results, &result->node);
     }
     retro_atomic_fetch_add_int(&done, 1);
+}
+
+static void test_binary_owners(void)
+{
+    ShaderBinaryOwner owners[SHADER_BINARY_MAX_MAPPINGS + 1];
+    void *views[SHADER_BINARY_MAX_MAPPINGS + 1];
+    retro_atomic_int_t count = {0};
+    for (unsigned i = 0; i <= SHADER_BINARY_MAX_MAPPINGS; i++) {
+        unsigned char *allocation = malloc(32);
+        memset(allocation, 0x5a, 32);
+        XemuFileMap file = {allocation, 32, allocation, allocation};
+        views[i] = shader_binary_take_file(&owners[i], &file, allocation + 8,
+                                          16, &count);
+        assert(!file.data && !file.file && !file.owned);
+        if (i < SHADER_BINARY_MAX_MAPPINGS) {
+            assert(views[i] == allocation + 8 && owners[i].file.file);
+        } else {
+            assert(!owners[i].file.data && !owners[i].mapping_count);
+        }
+        assert(retro_atomic_load_acquire_int(&count) <= SHADER_BINARY_MAX_MAPPINGS);
+        for (unsigned j = 0; j < 16; j++)
+            assert(((unsigned char *)views[i])[j] == 0x5a);
+    }
+    for (unsigned i = 0; i <= SHADER_BINARY_MAX_MAPPINGS; i++)
+        shader_binary_release(views[i], &owners[i]);
+    assert(retro_atomic_load_acquire_int(&count) == 0);
+
+    /* Non-mapping VFS fallback transfers its allocation and interior view. */
+    unsigned char *allocation = malloc(32);
+    XemuFileMap file = {allocation, 32, NULL, allocation};
+    void *view = shader_binary_take_file(&owners[0], &file, allocation + 8, 16, &count);
+    assert(view == allocation + 8 && owners[0].file.owned == allocation);
+    assert(!owners[0].mapping_count && !file.data);
+    shader_binary_release(view, &owners[0]);
+    /* A released slot is available again. */
+    allocation = malloc(32);
+    file = (XemuFileMap){allocation, 32, allocation, allocation};
+    view = shader_binary_take_file(&owners[0], &file, allocation + 8, 16, &count);
+    assert(view == allocation + 8 && owners[0].mapping_count == &count);
+    shader_binary_release(view, &owners[0]);
+    assert(retro_atomic_load_acquire_int(&count) == 0);
+    retro_atomic_store_relaxed_int(&mapping_closes, 0);
 }
 int main(int argc, char **argv)
 {
     sthread_t *threads[8];
     assert(argc == 2);
     directory = argv[1];
+    test_binary_owners();
     owner = true;
     retro_mpsc_init(&renderer.shader_disk_results);
     lru_init(&renderer.shader_cache);
@@ -150,6 +209,8 @@ int main(int argc, char **argv)
     pgraph_gl_shader_write_cache_reload_list(&pg);
     assert(renderer.shader_cache_writeback_complete == 2);
     lru_flush(&renderer.shader_cache);
+    assert(retro_atomic_load_acquire_int(&renderer.shader_disk_mappings) == 0);
+    assert(retro_atomic_load_acquire_int(&mapping_closes) == 18000);
 
     /* The writer must retain only its snapshot when the live binding changes. */
     ShaderBinding live = {0};
@@ -157,13 +218,18 @@ int main(int argc, char **argv)
     live.state.id = 42;
     live.program_format = 77;
     live.program_size = 16;
-    live.program = malloc(16);
+    void *allocation = malloc(32);
+    XemuFileMap file_owner = {allocation, 32, allocation, allocation};
+    live.program = shader_binary_take_file(&live.program_owner, &file_owner,
+        (char *)allocation + 16, 16, &renderer.shader_disk_mappings);
     memset(live.program, 0xab, 16);
     shader_start_disk_save(&live);
     assert(live.save_thread && !live.program);
     live.state.id = 99;
     live.program_size = 0;
     sthread_join(live.save_thread);
+    assert(!live.program_owner.file.data);
+    assert(retro_atomic_load_acquire_int(&renderer.shader_disk_mappings) == 0);
     char *name = shader_get_binary_path(directory, 123);
     FILE *file = fopen(name, "rb");
     assert(file);

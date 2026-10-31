@@ -30,6 +30,9 @@ or retain a cross-compiled executable for native Windows testing.
 adoption into the real LRU: 18000 concurrent publications, hash collisions,
 duplicate/live-binding protection, limited draining, and immutable disk-save
 snapshots, including repeated disabled-cache shutdown joins.
+File-owner checks cover borrowed interior views, the 64-mapping cap and copy
+fallback, non-mapping VFS buffers, slot reuse, duplicate disposal and writer
+ownership. Concurrent publication verifies that all 18000 file owners close.
 `SHADER_CACHE_CFLAGS`, `SHADER_CACHE_BINARY` and
 `SHADER_CACHE_SKIP_RUN` select sanitizers or retain cross-built binaries.
 

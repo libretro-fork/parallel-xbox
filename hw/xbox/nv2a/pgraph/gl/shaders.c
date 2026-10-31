@@ -881,6 +881,7 @@ typedef struct ShaderDiskResult {
     GLenum program_format;
     size_t program_size;
     void *program;
+    ShaderBinaryOwner program_owner;
 } ShaderDiskResult;
 
 /* Limit live-frame adoption; a joined worker can be drained with limit=0. */
@@ -902,9 +903,10 @@ static void shader_adopt_disk_results(PGRAPHGLState *r, unsigned limit)
             binding->program_format = result->program_format;
             binding->program_size = result->program_size;
             binding->program = result->program;
+            binding->program_owner = result->program_owner;
             binding->cached = true;
         } else {
-            g_free(result->program);
+            shader_binary_release(result->program, &result->program_owner);
         }
         g_free(result);
     }
@@ -972,6 +974,8 @@ bool pgraph_gl_shader_load_from_memory(ShaderBinding *binding)
     GLuint gl_program = glCreateProgram();
     glProgramBinary(gl_program, binding->program_format, binding->program,
                     binding->program_size);
+    shader_binary_release(binding->program, &binding->program_owner);
+    binding->program = NULL;
     GLint gl_error = glGetError();
     if (gl_error != GL_NO_ERROR) {
         NV2A_DPRINTF(
@@ -992,9 +996,6 @@ bool pgraph_gl_shader_load_from_memory(ShaderBinding *binding)
 
     glUseProgram(gl_program);
 
-    g_free(binding->program);
-
-    binding->program = NULL;
     binding->gl_program = gl_program;
     binding->gl_primitive_mode =
         get_gl_primitive_mode(binding->state.geom.polygon_front_mode,
@@ -1051,8 +1052,8 @@ static void shader_load_from_disk(PGRAPHState *pg, uint64_t hash)
 
     g_free(shader_bin_dir);
 
-    /* The file as it lies; only the program binary, which the binding
-     * keeps until the render thread links it, is copied out */
+    /* Transfer the file owner with its binary view. A bounded fallback
+     * copies only when retaining another mapped file would exceed the cap. */
     if (!xemu_file_map(&m, shader_path)) {
         goto error;
     }
@@ -1086,15 +1087,13 @@ static void shader_load_from_disk(PGRAPHState *pg, uint64_t hash)
     }
     memcpy(&shader_size, p, sizeof(shader_size));
     p = cursor_take(&c, shader_size);
-    if (!p) {
+    if (!p || !shader_size || shader_size > INT_MAX) {
         goto error;
     }
-    program_buffer = g_memdup2(p, shader_size);
-
-    xemu_file_unmap(&m);
+    ShaderDiskResult *result = g_new0(ShaderDiskResult, 1);
+    program_buffer = shader_binary_take_file(&result->program_owner, &m, p,
+                                             shader_size, &r->shader_disk_mappings);
     g_free(shader_path);
-
-    ShaderDiskResult *result = g_new(ShaderDiskResult, 1);
     result->hash = hash;
     result->state = state;
     result->program_format = program_binary_format;
@@ -1141,6 +1140,7 @@ static void shader_cache_entry_init(Lru *lru, LruNode *node, const void *state)
     binding->initialized = false;
     binding->cached = false;
     binding->program = NULL;
+    binding->program_owner = (ShaderBinaryOwner){0};
     binding->save_thread = NULL;
     binding->uses = 0;
     binding->gl_program = 0;
@@ -1177,7 +1177,7 @@ static void shader_cache_entry_post_evict(Lru *lru, LruNode *node)
         binding->gl_pipeline = 0;
     }
     if (binding->program) {
-        g_free(binding->program);
+        shader_binary_release(binding->program, &binding->program_owner);
     }
 
     binding->cached = false;
@@ -1197,6 +1197,7 @@ void pgraph_gl_init_shaders(PGRAPHState *pg)
     PGRAPHGLState *r = pg->gl_renderer_state;
 
     retro_mpsc_init(&r->shader_disk_results);
+    retro_atomic_store_relaxed_int(&r->shader_disk_mappings, 0);
     r->shader_disk_pending = NULL;
     retro_eventcount_init(&r->shader_cache_writeback_complete);
 
@@ -1325,7 +1326,7 @@ static void shader_write_to_disk(void *arg)
     fclose(shader_file);
 
     g_free(shader_path);
-    g_free(binding->program);
+    shader_binary_release(binding->program, &binding->program_owner);
     g_free(binding);
 
     return;
@@ -1334,7 +1335,7 @@ error:
     fprintf(stderr, "nv2a: Failed to write shader binary file to %s\n", shader_path);
     qemu_unlink(shader_path);
     g_free(shader_path);
-    g_free(binding->program);
+    shader_binary_release(binding->program, &binding->program_owner);
     g_free(binding);
     return;
 }
@@ -1349,11 +1350,13 @@ static void shader_start_disk_save(ShaderBinding *binding)
     save->program_format = binding->program_format;
     save->program_size = binding->program_size;
     save->program = binding->program;
+    save->program_owner = binding->program_owner;
     binding->program = NULL;
+    binding->program_owner = (ShaderBinaryOwner){0};
     binding->save_thread = sthread_create(shader_write_to_disk, save);
     if (!binding->save_thread) {
         /* A disk-cache failure must not stop emulation. */
-        g_free(save->program);
+        shader_binary_release(save->program, &save->program_owner);
         g_free(save);
         binding->cached = false;
     }
@@ -1369,7 +1372,7 @@ void pgraph_gl_shader_cache_to_disk(ShaderBinding *binding)
     glGetProgramiv(binding->gl_program, GL_PROGRAM_BINARY_LENGTH, &program_size);
 
     if (binding->program) {
-        g_free(binding->program);
+        shader_binary_release(binding->program, &binding->program_owner);
         binding->program = NULL;
     }
 
