@@ -1542,3 +1542,10 @@ with alpha 127. RGB655_CFLAGS/BINARY/SKIP_RUN support native cross builds.
 `--bench` after the compiler compares the frozen c07b7f1065 converter plus
 unswizzle/alpha expansion with the fused production helper; buffers are
 preallocated and measurements cover CPU conversion only, not game FPS.
+
+`flash.asm -DSTREAM [-DPCM=0]` plays 255 SSL segments from the same physical
+source address. `run.sh` compares 60 frames at address zero against the normal
+address through `check-stream-address.py`: exactly 48,048 stereo samples,
+bit-identical PCM, a non-silent 1 kHz tone and strict frame/audio cadence.
+This tests valid zero-address segments; it does not validate incomplete or
+malformed SSL descriptors or claim to resolve every crash reported in #3072.

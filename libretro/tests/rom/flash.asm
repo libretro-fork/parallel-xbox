@@ -9,7 +9,9 @@
 %define VP           (APU + 0x20000)
 %define VOICES       0x00100000
 %define SGE          0x00110000
+%ifndef PCM
 %define PCM          0x00200000
+%endif
 %define GP           (APU + 0x30000)
 %define GPPROG       0x00120000     ; the GP's program, 2 pages
 %define GPSGE        0x00118000
@@ -76,6 +78,17 @@ entry:
         apu 0x202C, VOICES      ; VPVADDR
         apu 0x2030, SGE         ; VPSGEADDR
         apu 0x2034, 0           ; VPSSLADDR
+%ifdef STREAM
+        ; A long SSL of repeated tone segments, with the same physical
+        ; source address in each entry. STREAM + PCM=0 tests RAM address 0.
+        mov edi, 0x00150000
+        mov ecx, 255
+.ssl:   mov dword [edi], PCM
+        mov dword [edi + 4], (1 << 16) | 1920 ; B16, mono, one sample/block
+        add edi, 8
+        loop .ssl
+        apu 0x2034, 0x00150000
+%endif
         apu 0x1100, 0           ; FECTL free running
 
         ; submix headroom of bins 0 and 1
@@ -84,7 +97,12 @@ entry:
 
         pio 0x2F8, VOICE                 ; SET_CURRENT_VOICE
         pio 0x300, (1 << 5)              ; VBIN: v0 -> bin 0, v1 -> bin 1
+%ifdef STREAM
+        pio 0x304, (1 << 30) | (1 << 28) | (1 << 24) | (1 << 23) ; persistent stream
+        pio 0x320, 255                   ; SSL A, entries 0..254
+%else
         pio 0x304, (1 << 30) | (1 << 28) | (1 << 25) ; B16, S16, loop, mono
+%endif
         pio 0x308, 0                     ; ENV0
         pio 0x30C, 0                     ; ENVA
         pio 0x310, 0                     ; ENV1

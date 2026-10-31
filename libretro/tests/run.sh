@@ -509,6 +509,13 @@ nasm -f bin -I"$here/rom/" -o "$work/sysahf/xemu/Complex_4627v1.03.bin" "$here/r
 cp "$work/sys/xemu/mcpx_1.0.bin" "$work/sysf/xemu/"
 nasm -f bin -I"$here/rom/" -o "$work/sysf/xemu/Complex_4627v1.03.bin" "$here/rom/rep-stos.asm"
 nasm -f bin -I"$here/rom/" -o "$work/sys/xemu/Complex_4627v1.03.bin" "$here/rom/flash.asm"
+for source_address in zero normal; do
+  mkdir -p "$work/stream-$source_address/xemu"
+  cp "$work/sys/xemu/mcpx_1.0.bin" "$work/stream-$source_address/xemu/"
+  case $source_address in zero) pcm_define=-DPCM=0;; normal) pcm_define=;; esac
+  nasm -f bin -DSTREAM $pcm_define -I"$here/rom/" \
+    -o "$work/stream-$source_address/xemu/Complex_4627v1.03.bin" "$here/rom/flash.asm"
+done
 cp "$work/sys/xemu/mcpx_1.0.bin" "$work/sysb/xemu/"
 nasm -f bin -DBUSY -I"$here/rom/" -o "$work/sysb/xemu/Complex_4627v1.03.bin" "$here/rom/flash.asm"
 cp "$work/sys/xemu/mcpx_1.0.bin" "$work/syss/xemu/"
@@ -539,6 +546,14 @@ t() { echo "== $1"; shift; timeout 300 "$@"; }
 # start the DSPs: their tests run without APU DSP Emulation, which is on by
 # default where the core has the JIT (a game's DSP programs make its sound).
 vp="--opt xemu_use_dsp=disabled"
+
+# SSL offsets are physical addresses; zero must play the same source bytes.
+for source_address in normal zero; do
+  t "SSL source address $source_address" $h "$(path "$core")" "$(path "$work/stream-$source_address")" \
+    $vp --frames 60 --strict --wav "$(path "$work/stream-$source_address.wav")" \
+    >"$work/stream-$source_address.txt"
+done
+python3 "$here/check-stream-address.py" "$work/stream-normal.wav" "$work/stream-zero.wav"
 
 # REP MOVS/STOS: per-element memory semantics, debug/RF behavior, pending IRQ
 # after STI, a fault/restart and self-modifying/two-page code. The same
