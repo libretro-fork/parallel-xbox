@@ -406,10 +406,6 @@ const QEMULogItem qemu_log_items[] = {
       "show micro ops after optimization" },
     { CPU_LOG_TB_OP_IND, "op_ind",
       "show micro ops before indirect lowering" },
-#ifdef CONFIG_PLUGIN
-    { LOG_TB_OP_PLUGIN, "op_plugin",
-      "show micro ops before plugin injection" },
-#endif
     { CPU_LOG_INT, "int",
       "show interrupts/exceptions in short format" },
     { CPU_LOG_EXEC, "exec",
@@ -434,9 +430,6 @@ const QEMULogItem qemu_log_items[] = {
     { CPU_LOG_TB_NOCHAIN, "nochain",
       "do not chain compiled TBs so that \"exec\" and \"cpu\" show\n"
       "complete traces" },
-#ifdef CONFIG_PLUGIN
-    { CPU_LOG_PLUGIN, "plugin", "output from TCG plugins"},
-#endif
     { LOG_STRACE, "strace",
       "log every user-mode syscall, its input, and its result" },
     { LOG_PER_THREAD, "tid",
@@ -448,14 +441,3 @@ const QEMULogItem qemu_log_items[] = {
     { 0, NULL, NULL },
 };
 
-#ifdef CONFIG_HAVE_RUST
-ssize_t rust_fwrite(const void *ptr, size_t size, size_t nmemb, FILE *stream)
-{
-    /*
-     * Same as fwrite, but return -errno because Rust libc does not provide
-     * portable access to errno. :(
-     */
-    int ret = fwrite(ptr, size, nmemb, stream);
-    return ret < 0 ? -errno : 0;
-}
-#endif

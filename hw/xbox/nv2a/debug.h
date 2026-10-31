@@ -166,14 +166,6 @@ static inline void nv2a_profile_inc_counter(enum NV2A_PROF_COUNTERS_ENUM cnt)
     g_nv2a_stats.frame_working.counters[cnt] += 1;
 }
 
-#ifdef CONFIG_RENDERDOC
-void nv2a_dbg_renderdoc_init(void);
-void *nv2a_dbg_renderdoc_get_api(void);
-bool nv2a_dbg_renderdoc_available(void);
-void nv2a_dbg_renderdoc_capture_frames(int num_frames, bool trace);
-extern int renderdoc_capture_frames;
-extern bool renderdoc_trace_frames;
-#endif
 
 #ifdef __cplusplus
 }

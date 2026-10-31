@@ -52,39 +52,15 @@
 
 
 /* linux-aio.c - Linux native implementation */
-#ifdef CONFIG_LINUX_AIO
-typedef struct LinuxAioState LinuxAioState;
-LinuxAioState *laio_init(Error **errp);
-void laio_cleanup(LinuxAioState *s);
-
-/* laio_co_submit: submit I/O requests in the thread's current AioContext. */
-int coroutine_fn laio_co_submit(int fd, uint64_t offset, QEMUIOVector *qiov,
-                                int type, BdrvRequestFlags flags,
-                                uint64_t dev_max_batch);
-
-bool laio_has_fdsync(int);
-bool laio_has_fua(void);
-void laio_detach_aio_context(LinuxAioState *s, AioContext *old_context);
-void laio_attach_aio_context(LinuxAioState *s, AioContext *new_context);
-#else
 static inline bool laio_has_fua(void)
 {
     return false;
 }
-#endif
 /* io_uring.c - Linux io_uring implementation */
-#ifdef CONFIG_LINUX_IO_URING
-/* luring_co_submit: submit I/O requests in the thread's current AioContext. */
-int coroutine_fn luring_co_submit(BlockDriverState *bs, int fd, uint64_t offset,
-                                  QEMUIOVector *qiov, int type,
-                                  BdrvRequestFlags flags);
-bool luring_has_fua(void);
-#else
 static inline bool luring_has_fua(void)
 {
     return false;
 }
-#endif
 
 #ifdef _WIN32
 typedef struct QEMUWin32AIOState QEMUWin32AIOState;

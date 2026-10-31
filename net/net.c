@@ -1014,38 +1014,12 @@ static int (* const net_client_init_fun[NET_CLIENT_DRIVER__MAX])(
     const char *name,
     NetClientState *peer, Error **errp) = {
         [NET_CLIENT_DRIVER_NIC]       = net_init_nic,
-#ifdef CONFIG_PASST
-        [NET_CLIENT_DRIVER_PASST]     = net_init_passt,
-#endif
 #ifdef CONFIG_SLIRP
         [NET_CLIENT_DRIVER_USER]      = net_init_slirp,
 #endif
-#ifdef CONFIG_VDE
-        [NET_CLIENT_DRIVER_VDE]       = net_init_vde,
-#endif
-#ifdef CONFIG_NETMAP
-        [NET_CLIENT_DRIVER_NETMAP]    = net_init_netmap,
-#endif
-#ifdef CONFIG_AF_XDP
-        [NET_CLIENT_DRIVER_AF_XDP]    = net_init_af_xdp,
-#endif
         [NET_CLIENT_DRIVER_SOCKET]    = net_init_socket,
         [NET_CLIENT_DRIVER_HUBPORT]   = net_init_hubport,
-#ifdef CONFIG_VHOST_NET_USER
-        [NET_CLIENT_DRIVER_VHOST_USER] = net_init_vhost_user,
-#endif
-#ifdef CONFIG_VHOST_NET_VDPA
-        [NET_CLIENT_DRIVER_VHOST_VDPA] = net_init_vhost_vdpa,
-#endif
-#ifdef CONFIG_L2TPV3
-        [NET_CLIENT_DRIVER_L2TPV3]    = net_init_l2tpv3,
-#endif
         [NET_CLIENT_DRIVER_PCAP]      = net_init_pcap,
-#ifdef CONFIG_VMNET
-        [NET_CLIENT_DRIVER_VMNET_HOST] = net_init_vmnet_host,
-        [NET_CLIENT_DRIVER_VMNET_SHARED] = net_init_vmnet_shared,
-        [NET_CLIENT_DRIVER_VMNET_BRIDGED] = net_init_vmnet_bridged,
-#endif /* CONFIG_VMNET */
 };
 
 
@@ -1117,28 +1091,8 @@ void show_netdevs(void)
 #ifdef CONFIG_SLIRP
         "user",
 #endif
-#ifdef CONFIG_L2TPV3
-        "l2tpv3",
-#endif
-#ifdef CONFIG_VDE
-        "vde",
-#endif
-#ifdef CONFIG_NETMAP
-        "netmap",
-#endif
-#ifdef CONFIG_AF_XDP
-        "af-xdp",
-#endif
 #ifdef CONFIG_POSIX
         "vhost-user",
-#endif
-#ifdef CONFIG_VHOST_VDPA
-        "vhost-vdpa",
-#endif
-#ifdef CONFIG_VMNET
-        "vmnet-host",
-        "vmnet-shared",
-        "vmnet-bridged",
 #endif
     };
 

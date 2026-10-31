@@ -74,11 +74,6 @@ void hmp_x_colo_lost_heartbeat(Monitor *mon, const QDict *qdict);
 void hmp_set_password(Monitor *mon, const QDict *qdict);
 void hmp_expire_password(Monitor *mon, const QDict *qdict);
 void hmp_change(Monitor *mon, const QDict *qdict);
-#ifdef CONFIG_VNC
-void hmp_change_vnc(Monitor *mon, const char *device, const char *target,
-                    const char *arg, const char *read_only, bool force,
-                    Error **errp);
-#endif
 void hmp_change_medium(Monitor *mon, const char *device, const char *target,
                        const char *arg, const char *read_only, bool force,
                        Error **errp);

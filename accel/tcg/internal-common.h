@@ -48,11 +48,7 @@ extern XemuTbRate xemu_tbrate;
  */
 static inline bool cpu_plugin_mem_cbs_enabled(const CPUState *cpu)
 {
-#ifdef CONFIG_PLUGIN
-    return !!cpu->neg.plugin_mem_cbs;
-#else
     return false;
-#endif
 }
 
 TranslationBlock *tb_gen_code(CPUState *cpu, TCGTBCPUState s);

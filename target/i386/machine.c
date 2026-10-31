@@ -248,29 +248,6 @@ static int cpu_pre_save(void *opaque)
         env->segs[R_SS].flags &= ~(env->segs[R_SS].flags & DESC_DPL_MASK);
     }
 
-#ifdef CONFIG_KVM
-    /*
-     * In case vCPU may have enabled VMX, we need to make sure kernel have
-     * required capabilities in order to perform migration correctly:
-     *
-     * 1) We must be able to extract vCPU nested-state from KVM.
-     *
-     * 2) In case vCPU is running in guest-mode and it has a pending exception,
-     * we must be able to determine if it's in a pending or injected state.
-     * Note that in case KVM don't have required capability to do so,
-     * a pending/injected exception will always appear as an
-     * injected exception.
-     */
-    if (kvm_enabled() && cpu_vmx_maybe_enabled(env) &&
-        (!env->nested_state ||
-         (!kvm_has_exception_payload() && (env->hflags & HF_GUEST_MASK) &&
-          env->exception_injected))) {
-        error_report("Guest maybe enabled nested virtualization but kernel "
-                "does not support required capabilities to save vCPU "
-                "nested state");
-        return -EINVAL;
-    }
-#endif
 
     /*
      * When vCPU is running L2 and exception is still pending,
@@ -354,15 +331,6 @@ static int cpu_post_load(void *opaque, int version_id)
     env->hflags &= ~HF_CPL_MASK;
     env->hflags |= (env->segs[R_SS].flags >> DESC_DPL_SHIFT) & HF_CPL_MASK;
 
-#ifdef CONFIG_KVM
-    if ((env->hflags & HF_GUEST_MASK) &&
-        (!env->nested_state ||
-        !(env->nested_state->flags & KVM_STATE_NESTED_GUEST_MODE))) {
-        error_report("vCPU set in guest-mode inconsistent with "
-                     "migrated kernel nested state");
-        return -EINVAL;
-    }
-#endif
 
     /*
      * There are cases that we can get valid exception_nr with both
@@ -1093,212 +1061,6 @@ static const VMStateDescription vmstate_tsc_khz = {
     }
 };
 
-#ifdef CONFIG_KVM
-
-static bool vmx_vmcs12_needed(void *opaque)
-{
-    struct kvm_nested_state *nested_state = opaque;
-    return (nested_state->size >
-            offsetof(struct kvm_nested_state, data.vmx[0].vmcs12));
-}
-
-static const VMStateDescription vmstate_vmx_vmcs12 = {
-    .name = "cpu/kvm_nested_state/vmx/vmcs12",
-    .version_id = 1,
-    .minimum_version_id = 1,
-    .needed = vmx_vmcs12_needed,
-    .fields = (const VMStateField[]) {
-        VMSTATE_UINT8_ARRAY(data.vmx[0].vmcs12,
-                            struct kvm_nested_state,
-                            KVM_STATE_NESTED_VMX_VMCS_SIZE),
-        VMSTATE_END_OF_LIST()
-    }
-};
-
-static bool vmx_shadow_vmcs12_needed(void *opaque)
-{
-    struct kvm_nested_state *nested_state = opaque;
-    return (nested_state->size >
-            offsetof(struct kvm_nested_state, data.vmx[0].shadow_vmcs12));
-}
-
-static const VMStateDescription vmstate_vmx_shadow_vmcs12 = {
-    .name = "cpu/kvm_nested_state/vmx/shadow_vmcs12",
-    .version_id = 1,
-    .minimum_version_id = 1,
-    .needed = vmx_shadow_vmcs12_needed,
-    .fields = (const VMStateField[]) {
-        VMSTATE_UINT8_ARRAY(data.vmx[0].shadow_vmcs12,
-                            struct kvm_nested_state,
-                            KVM_STATE_NESTED_VMX_VMCS_SIZE),
-        VMSTATE_END_OF_LIST()
-    }
-};
-
-static bool vmx_nested_state_needed(void *opaque)
-{
-    struct kvm_nested_state *nested_state = opaque;
-
-    return (nested_state->format == KVM_STATE_NESTED_FORMAT_VMX &&
-            nested_state->hdr.vmx.vmxon_pa != -1ull);
-}
-
-static const VMStateDescription vmstate_vmx_nested_state = {
-    .name = "cpu/kvm_nested_state/vmx",
-    .version_id = 1,
-    .minimum_version_id = 1,
-    .needed = vmx_nested_state_needed,
-    .fields = (const VMStateField[]) {
-        VMSTATE_U64(hdr.vmx.vmxon_pa, struct kvm_nested_state),
-        VMSTATE_U64(hdr.vmx.vmcs12_pa, struct kvm_nested_state),
-        VMSTATE_U16(hdr.vmx.smm.flags, struct kvm_nested_state),
-        VMSTATE_END_OF_LIST()
-    },
-    .subsections = (const VMStateDescription * const []) {
-        &vmstate_vmx_vmcs12,
-        &vmstate_vmx_shadow_vmcs12,
-        NULL,
-    }
-};
-
-static bool svm_nested_state_needed(void *opaque)
-{
-    struct kvm_nested_state *nested_state = opaque;
-
-    /*
-     * HF_GUEST_MASK and HF2_GIF_MASK are already serialized
-     * via hflags and hflags2, all that's left is the opaque
-     * nested state blob.
-     */
-    return (nested_state->format == KVM_STATE_NESTED_FORMAT_SVM &&
-            nested_state->size > offsetof(struct kvm_nested_state, data));
-}
-
-static const VMStateDescription vmstate_svm_nested_state = {
-    .name = "cpu/kvm_nested_state/svm",
-    .version_id = 1,
-    .minimum_version_id = 1,
-    .needed = svm_nested_state_needed,
-    .fields = (const VMStateField[]) {
-        VMSTATE_U64(hdr.svm.vmcb_pa, struct kvm_nested_state),
-        VMSTATE_UINT8_ARRAY(data.svm[0].vmcb12,
-                            struct kvm_nested_state,
-                            KVM_STATE_NESTED_SVM_VMCB_SIZE),
-        VMSTATE_END_OF_LIST()
-    }
-};
-
-static bool nested_state_needed(void *opaque)
-{
-    X86CPU *cpu = opaque;
-    CPUX86State *env = &cpu->env;
-
-    return (env->nested_state &&
-            (vmx_nested_state_needed(env->nested_state) ||
-             svm_nested_state_needed(env->nested_state)));
-}
-
-static int nested_state_post_load(void *opaque, int version_id)
-{
-    X86CPU *cpu = opaque;
-    CPUX86State *env = &cpu->env;
-    struct kvm_nested_state *nested_state = env->nested_state;
-    int min_nested_state_len = offsetof(struct kvm_nested_state, data);
-    int max_nested_state_len = kvm_max_nested_state_length();
-
-    /*
-     * If our kernel don't support setting nested state
-     * and we have received nested state from migration stream,
-     * we need to fail migration
-     */
-    if (max_nested_state_len <= 0) {
-        error_report("Received nested state when kernel cannot restore it");
-        return -EINVAL;
-    }
-
-    /*
-     * Verify that the size of received nested_state struct
-     * at least cover required header and is not larger
-     * than the max size that our kernel support
-     */
-    if (nested_state->size < min_nested_state_len) {
-        error_report("Received nested state size less than min: "
-                     "len=%d, min=%d",
-                     nested_state->size, min_nested_state_len);
-        return -EINVAL;
-    }
-    if (nested_state->size > max_nested_state_len) {
-        error_report("Received unsupported nested state size: "
-                     "nested_state->size=%d, max=%d",
-                     nested_state->size, max_nested_state_len);
-        return -EINVAL;
-    }
-
-    /* Verify format is valid */
-    if ((nested_state->format != KVM_STATE_NESTED_FORMAT_VMX) &&
-        (nested_state->format != KVM_STATE_NESTED_FORMAT_SVM)) {
-        error_report("Received invalid nested state format: %d",
-                     nested_state->format);
-        return -EINVAL;
-    }
-
-    return 0;
-}
-
-static const VMStateDescription vmstate_kvm_nested_state = {
-    .name = "cpu/kvm_nested_state",
-    .version_id = 1,
-    .minimum_version_id = 1,
-    .fields = (const VMStateField[]) {
-        VMSTATE_U16(flags, struct kvm_nested_state),
-        VMSTATE_U16(format, struct kvm_nested_state),
-        VMSTATE_U32(size, struct kvm_nested_state),
-        VMSTATE_END_OF_LIST()
-    },
-    .subsections = (const VMStateDescription * const []) {
-        &vmstate_vmx_nested_state,
-        &vmstate_svm_nested_state,
-        NULL
-    }
-};
-
-static const VMStateDescription vmstate_nested_state = {
-    .name = "cpu/nested_state",
-    .version_id = 1,
-    .minimum_version_id = 1,
-    .needed = nested_state_needed,
-    .post_load = nested_state_post_load,
-    .fields = (const VMStateField[]) {
-        VMSTATE_STRUCT_POINTER(env.nested_state, X86CPU,
-                vmstate_kvm_nested_state,
-                struct kvm_nested_state),
-        VMSTATE_END_OF_LIST()
-    }
-};
-
-static bool xen_vcpu_needed(void *opaque)
-{
-    return (xen_mode == XEN_EMULATE);
-}
-
-static const VMStateDescription vmstate_xen_vcpu = {
-    .name = "cpu/xen_vcpu",
-    .version_id = 1,
-    .minimum_version_id = 1,
-    .needed = xen_vcpu_needed,
-    .fields = (const VMStateField[]) {
-        VMSTATE_UINT64(env.xen_vcpu_info_gpa, X86CPU),
-        VMSTATE_UINT64(env.xen_vcpu_info_default_gpa, X86CPU),
-        VMSTATE_UINT64(env.xen_vcpu_time_info_gpa, X86CPU),
-        VMSTATE_UINT64(env.xen_vcpu_runstate_gpa, X86CPU),
-        VMSTATE_UINT8(env.xen_vcpu_callback_vector, X86CPU),
-        VMSTATE_UINT16_ARRAY(env.xen_virq, X86CPU, XEN_NR_VIRQS),
-        VMSTATE_UINT64(env.xen_singleshot_timer_ns, X86CPU),
-        VMSTATE_UINT64(env.xen_periodic_timer_period, X86CPU),
-        VMSTATE_END_OF_LIST()
-    }
-};
-#endif
 
 static bool mcg_ext_ctl_needed(void *opaque)
 {
@@ -1801,10 +1563,6 @@ const VMStateDescription vmstate_x86_cpu = {
         &vmstate_svm_guest,
 #ifndef TARGET_X86_64
         &vmstate_efer32,
-#endif
-#ifdef CONFIG_KVM
-        &vmstate_nested_state,
-        &vmstate_xen_vcpu,
 #endif
         &vmstate_msr_tsx_ctrl,
         &vmstate_msr_intel_sgx,

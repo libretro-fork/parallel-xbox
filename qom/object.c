@@ -203,17 +203,6 @@ static TypeImpl *type_get_or_load_by_name(const char *name, Error **errp)
 {
     TypeImpl *type = type_get_by_name_noload(name);
 
-#ifdef CONFIG_MODULES
-    if (!type) {
-        int rv = module_load_qom(name, errp);
-        if (rv > 0) {
-            type = type_get_by_name_noload(name);
-        } else {
-            error_prepend(errp, "could not load a module for type '%s'", name);
-            return NULL;
-        }
-    }
-#endif
     if (!type) {
         error_setg(errp, "unknown type '%s'", name);
     }

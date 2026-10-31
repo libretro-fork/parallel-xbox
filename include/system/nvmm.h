@@ -13,9 +13,6 @@
 #define QEMU_NVMM_H
 
 #ifdef COMPILING_PER_TARGET
-# ifdef CONFIG_NVMM
-#  define CONFIG_NVMM_IS_POSSIBLE
-# endif /* !CONFIG_NVMM */
 #else
 # define CONFIG_NVMM_IS_POSSIBLE
 #endif /* COMPILING_PER_TARGET */

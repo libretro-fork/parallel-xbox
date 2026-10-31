@@ -110,7 +110,6 @@ bool in_code_gen_buffer(const void *p)
     return (size_t)(p - region.start_aligned) <= region.total_size;
 }
 
-#ifndef CONFIG_TCG_INTERPRETER
 static int host_prot_read_exec(void)
 {
 #if defined(CONFIG_LINUX) && defined(HOST_AARCH64) && defined(PROT_BTI)
@@ -120,7 +119,6 @@ static int host_prot_read_exec(void)
 #endif
     return PROT_READ | PROT_EXEC;
 }
-#endif
 
 
 static void tb_destroy(TranslationBlock *tb)
@@ -538,7 +536,6 @@ static int alloc_code_gen_buffer_anon(size_t size, int prot,
     return prot;
 }
 
-#ifndef CONFIG_TCG_INTERPRETER
 #ifdef CONFIG_POSIX
 #include "qemu/memfd.h"
 
@@ -636,18 +633,15 @@ static int alloc_code_gen_buffer_splitwx_vmremap(size_t size, Error **errp)
     return PROT_READ | PROT_WRITE;
 }
 #endif /* CONFIG_DARWIN */
-#endif /* CONFIG_TCG_INTERPRETER */
 
 static int alloc_code_gen_buffer_splitwx(size_t size, Error **errp)
 {
-#ifndef CONFIG_TCG_INTERPRETER
 # ifdef CONFIG_DARWIN
     return alloc_code_gen_buffer_splitwx_vmremap(size, errp);
 # endif
 # ifdef CONFIG_POSIX
     return alloc_code_gen_buffer_splitwx_memfd(size, errp);
 # endif
-#endif
     error_setg(errp, "jit split-wx not supported");
     return -1;
 }
@@ -782,11 +776,9 @@ void tcg_region_init(size_t tb_size, int splitwx, unsigned max_threads)
      * Work with the page protections set up with the initial mapping.
      */
     need_prot = PROT_READ | PROT_WRITE;
-#ifndef CONFIG_TCG_INTERPRETER
     if (tcg_splitwx_diff == 0) {
         need_prot |= host_prot_read_exec();
     }
-#endif
     for (size_t i = 0, n = region.n; i < n; i++) {
         void *start, *end;
 

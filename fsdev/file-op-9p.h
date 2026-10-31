@@ -23,9 +23,6 @@
 # include <sys/vfs.h>
 #elif defined(CONFIG_DARWIN) || defined(CONFIG_FREEBSD)
 # include <sys/param.h>
-# ifdef CONFIG_FREEBSD
-#  undef MACHINE /* work around some unfortunate namespace pollution */
-# endif
 # include <sys/mount.h>
 #endif
 

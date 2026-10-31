@@ -23,13 +23,8 @@
  *   https://gcc.gnu.org/wiki/Visibility
  */
 #if defined _WIN32 || defined __CYGWIN__
-  #ifdef CONFIG_PLUGIN
-    #define QEMU_PLUGIN_EXPORT __declspec(dllimport)
-    #define QEMU_PLUGIN_API __declspec(dllexport)
-  #else
     #define QEMU_PLUGIN_EXPORT __declspec(dllexport)
     #define QEMU_PLUGIN_API __declspec(dllimport)
-  #endif
   #define QEMU_PLUGIN_LOCAL
 #else
   #define QEMU_PLUGIN_EXPORT __attribute__((visibility("default")))

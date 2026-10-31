@@ -2183,30 +2183,6 @@ typedef struct CPUArchState {
     int64_t user_tsc_khz; /* for sanity check only */
     uint64_t apic_bus_freq;
     uint64_t tsc;
-#if defined(CONFIG_KVM) || defined(CONFIG_HVF)
-    void *xsave_buf;
-    uint32_t xsave_buf_len;
-#endif
-#if defined(CONFIG_KVM)
-    struct kvm_nested_state *nested_state;
-    MemoryRegion *xen_vcpu_info_mr;
-    void *xen_vcpu_info_hva;
-    uint64_t xen_vcpu_info_gpa;
-    uint64_t xen_vcpu_info_default_gpa;
-    uint64_t xen_vcpu_time_info_gpa;
-    uint64_t xen_vcpu_runstate_gpa;
-    uint8_t xen_vcpu_callback_vector;
-    bool xen_callback_asserted;
-    uint16_t xen_virq[XEN_NR_VIRQS];
-    uint64_t xen_singleshot_timer_ns;
-    QEMUTimer *xen_singleshot_timer;
-    uint64_t xen_periodic_timer_period;
-    QEMUTimer *xen_periodic_timer;
-    QemuMutex xen_timers_lock;
-#endif
-#if defined(CONFIG_HVF) || defined(CONFIG_MSHV)
-    void *emu_mmio_buf;
-#endif
 
     uint64_t mcg_cap;
     uint64_t mcg_ctl;

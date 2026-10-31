@@ -53,9 +53,6 @@
 #include "tlb-bounds.h"
 #include "internal-common.h"
 #include "qemu/cpu-boost.h"
-#ifdef CONFIG_PLUGIN
-#include "qemu/plugin-memory.h"
-#endif
 #include "tcg/tcg-ldst.h"
 #include "backend-ldst.h"
 
@@ -1371,48 +1368,6 @@ static uint64_t store_bytes_leN(void *pv, int size, uint64_t val_le)
     return val_le;
 }
 
-#ifdef CONFIG_PLUGIN
-/*
- * Perform a TLB lookup and populate the qemu_plugin_hwaddr structure.
- * This should be a hot path as we will have just looked this path up
- * in the softmmu lookup code (or helper). We don't handle re-fills or
- * checking the victim table. This is purely informational.
- *
- * The one corner case is i/o write, which can cause changes to the
- * address space.  Those changes, and the corresponding tlb flush,
- * should be delayed until the next TB, so even then this ought not fail.
- * But check, Just in Case.
- */
-bool tlb_plugin_lookup(CPUState *cpu, vaddr addr, int mmu_idx,
-                       bool is_store, struct qemu_plugin_hwaddr *data)
-{
-    CPUTLBEntry *tlbe = tlb_entry(cpu, mmu_idx, addr);
-    uintptr_t index = tlb_index(cpu, mmu_idx, addr);
-    MMUAccessType access_type = is_store ? MMU_DATA_STORE : MMU_DATA_LOAD;
-    uint64_t tlb_addr = tlb_read_idx(tlbe, access_type);
-    CPUTLBEntryFull *full;
-
-    if (unlikely(!tlb_hit(tlb_addr, addr))) {
-        return false;
-    }
-
-    full = &cpu->neg.tlb.d[mmu_idx].fulltlb[index];
-    data->phys_addr = full->phys_addr | (addr & ~TARGET_PAGE_MASK);
-
-    /* We must have an iotlb entry for MMIO */
-    if (tlb_addr & TLB_MMIO) {
-        MemoryRegionSection *section =
-            iotlb_to_section(cpu, full->xlat_section & ~TARGET_PAGE_MASK,
-                             full->attrs);
-        data->is_io = true;
-        data->mr = section->mr;
-    } else {
-        data->is_io = false;
-        data->mr = NULL;
-    }
-    return true;
-}
-#endif
 
 /*
  * Probe for a load/store operation.

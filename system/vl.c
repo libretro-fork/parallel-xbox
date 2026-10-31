@@ -94,9 +94,6 @@
 #include "qemu/option.h"
 #include "qemu/config-file.h"
 #include "qemu/main-loop.h"
-#ifdef CONFIG_VIRTFS
-#include "fsdev/qemu-fsdev.h"
-#endif
 #include "system/qtest.h"
 #ifdef CONFIG_TCG
 #include "tcg/perf.h"
@@ -497,12 +494,6 @@ static const VGAInterfaceInfo vga_interfaces[VGA_TYPE_MAX] = {
         .name = "CG3 framebuffer",
         .class_names = { "cgthree" },
     },
-#ifdef CONFIG_XEN_BACKEND
-    [VGA_XENFB] = {
-        .opt_name = "xenfb",
-        .name = "Xen paravirtualized framebuffer",
-    },
-#endif
 };
 
 static bool vga_interface_available(VGAInterfaceType t)
@@ -632,12 +623,6 @@ static int chardev_init_func(void *opaque, QemuOpts *opts, Error **errp)
     return 0;
 }
 
-#ifdef CONFIG_VIRTFS
-static int fsdev_init_func(void *opaque, QemuOpts *opts, Error **errp)
-{
-    return qemu_fsdev_add(opts, errp);
-}
-#endif
 
 struct device_config {
     enum {
@@ -1017,12 +1002,6 @@ static bool object_create_early(const char *type)
         return false;
     }
 
-#if defined(CONFIG_VHOST_USER) && defined(CONFIG_LINUX)
-    /* Reason: cryptodev-vhost-user property "chardev" */
-    if (g_str_equal(type, "cryptodev-vhost-user")) {
-        return false;
-    }
-#endif
 
     /* Reason: vhost-user-blk-server property "node-name" */
     if (g_str_equal(type, "vhost-user-blk-server")) {
@@ -1082,16 +1061,8 @@ static void qemu_create_early_backends(void)
 {
     chihiro_snapshot_store_setup();
     MachineClass *machine_class = MACHINE_GET_CLASS(current_machine);
-#if defined(CONFIG_SDL)
-    const bool use_sdl = (dpy.type == DISPLAY_TYPE_SDL);
-#else
     const bool use_sdl = false;
-#endif
-#if defined(CONFIG_GTK)
-    const bool use_gtk = (dpy.type == DISPLAY_TYPE_GTK);
-#else
     const bool use_gtk = false;
-#endif
 
     if (dpy.has_window_close && !use_gtk && !use_sdl) {
         error_report("window-close is only valid for GTK and SDL, "
@@ -1561,12 +1532,6 @@ static void qemu_validate_options(const QDict *machine_opts)
         }
     }
 
-#ifdef CONFIG_CURSES
-    if (is_daemonized() && dpy.type == DISPLAY_TYPE_CURSES) {
-        error_report("curses display cannot be used with -daemonize");
-        exit(1);
-    }
-#endif
 }
 
 static void qemu_process_early_options(void)
@@ -2000,10 +1965,6 @@ void qemu_init(void)
 
     os_setup_limits();
 
-#ifdef CONFIG_MODULES
-    module_init_info(qemu_modinfo);
-    module_allow_arch(target_name());
-#endif
 
     qemu_init_subsystems();
 

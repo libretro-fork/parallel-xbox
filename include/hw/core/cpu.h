@@ -372,15 +372,6 @@ typedef struct MemAccessCallback {
  */
 typedef struct CPUNegativeOffsetState {
     CPUTLB tlb;
-#ifdef CONFIG_PLUGIN
-    /*
-     * The callback pointer are accessed via TCG (see gen_empty_mem_helper).
-     */
-    GArray *plugin_mem_cbs;
-    uint64_t plugin_mem_value_low;
-    uint64_t plugin_mem_value_high;
-    int32_t plugin_cb_flags;
-#endif
     IcountDecr icount_decr;
     bool can_do_io;
     /* The libretro core's idle detection (ui/libretro.c, lr_quiet_exit):
@@ -586,9 +577,6 @@ struct CPUState {
     /* Use by accel-block: CPU is executing an ioctl() */
     QemuLockCnt in_ioctl_lock;
 
-#ifdef CONFIG_PLUGIN
-    CPUPluginState *plugin_state;
-#endif
 
     /* TODO Move common fields from CPUArchState here. */
     int cpu_index;

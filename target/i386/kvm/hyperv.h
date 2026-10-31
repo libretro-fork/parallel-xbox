@@ -18,9 +18,6 @@
 #include "system/kvm.h"
 #include "hw/hyperv/hyperv.h"
 
-#ifdef CONFIG_KVM
-int kvm_hv_handle_exit(X86CPU *cpu, struct kvm_hyperv_exit *exit);
-#endif
 
 void hyperv_x86_synic_update(X86CPU *cpu);
 

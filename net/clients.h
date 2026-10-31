@@ -29,10 +29,6 @@
 int net_init_dump(const Netdev *netdev, const char *name,
                   NetClientState *peer, Error **errp);
 
-#ifdef CONFIG_PASST
-int net_init_passt(const Netdev *netdev, const char *name,
-                   NetClientState *peer, Error **errp);
-#endif
 #ifdef CONFIG_SLIRP
 int net_init_slirp(const Netdev *netdev, const char *name,
                    NetClientState *peer, Error **errp);
@@ -58,20 +54,8 @@ int net_init_bridge(const Netdev *netdev, const char *name,
 
 int net_init_l2tpv3(const Netdev *netdev, const char *name,
                     NetClientState *peer, Error **errp);
-#ifdef CONFIG_VDE
-int net_init_vde(const Netdev *netdev, const char *name,
-                 NetClientState *peer, Error **errp);
-#endif
 
-#ifdef CONFIG_NETMAP
-int net_init_netmap(const Netdev *netdev, const char *name,
-                    NetClientState *peer, Error **errp);
-#endif
 
-#ifdef CONFIG_AF_XDP
-int net_init_af_xdp(const Netdev *netdev, const char *name,
-                    NetClientState *peer, Error **errp);
-#endif
 
 int net_init_vhost_user(const Netdev *netdev, const char *name,
                         NetClientState *peer, Error **errp);
@@ -82,15 +66,5 @@ int net_init_vhost_vdpa(const Netdev *netdev, const char *name,
 int net_init_pcap(const Netdev *netdev, const char *name,
                   NetClientState *peer, Error **errp);
 
-#ifdef CONFIG_VMNET
-int net_init_vmnet_host(const Netdev *netdev, const char *name,
-                          NetClientState *peer, Error **errp);
-
-int net_init_vmnet_shared(const Netdev *netdev, const char *name,
-                          NetClientState *peer, Error **errp);
-
-int net_init_vmnet_bridged(const Netdev *netdev, const char *name,
-                          NetClientState *peer, Error **errp);
-#endif /* CONFIG_VMNET */
 
 #endif /* QEMU_NET_CLIENTS_H */

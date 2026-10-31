@@ -426,29 +426,6 @@ bool aio_context_setup(AioContext *ctx, Error **errp)
     ctx->epollfd = -1;
     ctx->epollfd_tag = NULL;
 
-#ifdef CONFIG_LINUX_IO_URING
-    {
-        static bool need_io_uring;
-        Error *local_err = NULL; /* ERRP_GUARD() doesn't handle error_abort */
-
-        /* io_uring takes precedence because it provides aio_add_sqe() support */
-        if (fdmon_io_uring_setup(ctx, &local_err)) {
-            /*
-             * If one AioContext gets io_uring, then all AioContexts need io_uring
-             * so that aio_add_sqe() support is available across all threads.
-             */
-            need_io_uring = true;
-            return true;
-        }
-        if (need_io_uring) {
-            error_propagate(errp, local_err);
-            return false;
-        }
-
-        /* Silently fall back on systems where io_uring is unavailable */
-        error_free(local_err);
-    }
-#endif /* CONFIG_LINUX_IO_URING */
 
     fdmon_epoll_setup(ctx);
     return true;
@@ -456,9 +433,6 @@ bool aio_context_setup(AioContext *ctx, Error **errp)
 
 void aio_context_destroy(AioContext *ctx)
 {
-#ifdef CONFIG_LINUX_IO_URING
-    fdmon_io_uring_destroy(ctx);
-#endif
 
     qemu_lockcnt_lock(&ctx->list_lock);
     fdmon_epoll_disable(ctx);
@@ -478,14 +452,6 @@ void aio_context_set_aio_params(AioContext *ctx, int64_t max_batch)
     aio_notify(ctx);
 }
 
-#ifdef CONFIG_LINUX_IO_URING
-void aio_add_sqe(void (*prep_sqe)(struct io_uring_sqe *sqe, void *opaque),
-                 void *opaque, CqeHandler *cqe_handler)
-{
-    AioContext *ctx = qemu_get_current_aio_context();
-    ctx->fdmon_ops->add_sqe(ctx, prep_sqe, opaque, cqe_handler);
-}
-#endif /* CONFIG_LINUX_IO_URING */
 
 /* Whether anything but the context's own notifier waits on a descriptor:
  * the libretro main loop (main-loop.c) polls only then */

@@ -34,9 +34,6 @@
 #include "hw/boards.h"
 #include "hw/qdev-properties.h"
 #include "trace.h"
-#ifdef CONFIG_PLUGIN
-#include "qemu/plugin.h"
-#endif
 
 void cpu_reset_interrupt(CPUState *cpu, int mask)
 {
@@ -198,11 +195,6 @@ static void cpu_common_unrealizefn(DeviceState *dev)
     CPUState *cpu = CPU(dev);
 
     /* Call the plugin hook before clearing the cpu is fully unrealized */
-#ifdef CONFIG_PLUGIN
-    if (tcg_enabled()) {
-        qemu_plugin_vcpu_exit_hook(cpu);
-    }
-#endif
 
     /* NOTE: latest generic point before the cpu is fully unrealized */
     cpu_exec_unrealizefn(cpu);
@@ -257,23 +249,12 @@ static void cpu_common_initfn(Object *obj)
      * code, but we must queue this work before the threads are
      * created to ensure we don't race.
      */
-#ifdef CONFIG_PLUGIN
-    if (tcg_enabled()) {
-        cpu->plugin_state = qemu_plugin_create_vcpu_state();
-        qemu_plugin_vcpu_init_hook(cpu);
-    }
-#endif
 }
 
 static void cpu_common_finalize(Object *obj)
 {
     CPUState *cpu = CPU(obj);
 
-#ifdef CONFIG_PLUGIN
-    if (tcg_enabled()) {
-        g_free(cpu->plugin_state);
-    }
-#endif
     free_queued_cpu_work(cpu);
     /* If cleanup didn't happen in context to gdb_unregister_coprocessor_all */
     if (cpu->gdb_regs) {

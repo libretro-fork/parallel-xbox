@@ -138,18 +138,6 @@ static void tcg_gen_req_mo(TCGBar type)
 
 static TCGTemp *tci_extend_addr(TCGTemp *addr)
 {
-#ifdef CONFIG_TCG_INTERPRETER
-    /*
-     * 64-bit interpreter requires 64-bit addresses.
-     * Compare to the extension performed by tcg_out_{ld,st}_helper_args
-     * for native code generation.
-     */
-    if (TCG_TARGET_REG_BITS == 64 && tcg_ctx->addr_type == TCG_TYPE_I32) {
-        TCGv_i64 temp = tcg_temp_ebb_new_i64();
-        tcg_gen_extu_i32_i64(temp, temp_tcgv_i32(addr));
-        return tcgv_i64_temp(temp);
-    }
-#endif
     return addr;
 }
 
@@ -163,59 +151,15 @@ static void maybe_free_addr(TCGTemp *addr, TCGTemp *copy)
 /* Only required for loads, where value might overlap addr. */
 static TCGv_i64 plugin_maybe_preserve_addr(TCGTemp *addr)
 {
-#ifdef CONFIG_PLUGIN
-    if (tcg_ctx->plugin_insn != NULL) {
-        /* Save a copy of the vaddr for use after a load.  */
-        TCGv_i64 temp = tcg_temp_ebb_new_i64();
-        if (tcg_ctx->addr_type == TCG_TYPE_I32) {
-            tcg_gen_extu_i32_i64(temp, temp_tcgv_i32(addr));
-        } else {
-            tcg_gen_mov_i64(temp, temp_tcgv_i64(addr));
-        }
-        return temp;
-    }
-#endif
     return NULL;
 }
 
-#ifdef CONFIG_PLUGIN
-static void
-plugin_gen_mem_callbacks(TCGv_i64 copy_addr, TCGTemp *orig_addr, MemOpIdx oi,
-                         enum qemu_plugin_mem_rw rw)
-{
-    qemu_plugin_meminfo_t info = make_plugin_meminfo(oi, rw);
-
-    if (tcg_ctx->addr_type == TCG_TYPE_I32) {
-        if (!copy_addr) {
-            copy_addr = tcg_temp_ebb_new_i64();
-            tcg_gen_extu_i32_i64(copy_addr, temp_tcgv_i32(orig_addr));
-        }
-        tcg_gen_plugin_mem_cb(copy_addr, info);
-        tcg_temp_free_i64(copy_addr);
-    } else {
-        if (copy_addr) {
-            tcg_gen_plugin_mem_cb(copy_addr, info);
-            tcg_temp_free_i64(copy_addr);
-        } else {
-            tcg_gen_plugin_mem_cb(temp_tcgv_i64(orig_addr), info);
-        }
-    }
-}
-#endif
 
 static void
 plugin_gen_mem_callbacks_i32(TCGv_i32 val,
                              TCGv_i64 copy_addr, TCGTemp *orig_addr,
                              MemOpIdx oi, enum qemu_plugin_mem_rw rw)
 {
-#ifdef CONFIG_PLUGIN
-    if (tcg_ctx->plugin_insn != NULL) {
-        tcg_gen_st_i32(val, tcg_env,
-                       offsetof(CPUState, neg.plugin_mem_value_low) -
-                       sizeof(CPUState) + (HOST_BIG_ENDIAN * 4));
-        plugin_gen_mem_callbacks(copy_addr, orig_addr, oi, rw);
-    }
-#endif
 }
 
 static void
@@ -223,14 +167,6 @@ plugin_gen_mem_callbacks_i64(TCGv_i64 val,
                              TCGv_i64 copy_addr, TCGTemp *orig_addr,
                              MemOpIdx oi, enum qemu_plugin_mem_rw rw)
 {
-#ifdef CONFIG_PLUGIN
-    if (tcg_ctx->plugin_insn != NULL) {
-        tcg_gen_st_i64(val, tcg_env,
-                       offsetof(CPUState, neg.plugin_mem_value_low) -
-                       sizeof(CPUState));
-        plugin_gen_mem_callbacks(copy_addr, orig_addr, oi, rw);
-    }
-#endif
 }
 
 static void
@@ -238,17 +174,6 @@ plugin_gen_mem_callbacks_i128(TCGv_i128 val,
                              TCGv_i64 copy_addr, TCGTemp *orig_addr,
                              MemOpIdx oi, enum qemu_plugin_mem_rw rw)
 {
-#ifdef CONFIG_PLUGIN
-    if (tcg_ctx->plugin_insn != NULL) {
-        tcg_gen_st_i64(TCGV128_LOW(val), tcg_env,
-                       offsetof(CPUState, neg.plugin_mem_value_low) -
-                       sizeof(CPUState));
-        tcg_gen_st_i64(TCGV128_HIGH(val), tcg_env,
-                       offsetof(CPUState, neg.plugin_mem_value_high) -
-                       sizeof(CPUState));
-        plugin_gen_mem_callbacks(copy_addr, orig_addr, oi, rw);
-    }
-#endif
 }
 
 static void tcg_gen_qemu_ld_i32_int(TCGv_i32 val, TCGTemp *addr,

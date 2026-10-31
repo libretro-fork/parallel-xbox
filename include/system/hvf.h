@@ -16,9 +16,6 @@
 #include "qemu/accel.h"
 
 #ifdef COMPILING_PER_TARGET
-# ifdef CONFIG_HVF
-#  define CONFIG_HVF_IS_POSSIBLE
-# endif /* !CONFIG_HVF */
 #else
 # define CONFIG_HVF_IS_POSSIBLE
 #endif /* COMPILING_PER_TARGET */

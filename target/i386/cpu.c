@@ -523,11 +523,7 @@ void x86_cpu_vendor_words2str(char *dst, uint32_t vendor1,
  * and therefore using the 32-bit ABI; the CPU itself might be 64-bit
  * but again the difference is only visible in kernel mode.
  */
-#if defined CONFIG_LINUX_USER
-#define CPUID_EXT2_KERNEL_FEATURES (CPUID_EXT2_LM | CPUID_EXT2_FFXSR)
-#else
 #define CPUID_EXT2_KERNEL_FEATURES 0
-#endif
 
 #define TCG_EXT2_FEATURES ((TCG_FEATURES & CPUID_EXT2_AMD_ALIASES) | \
           CPUID_EXT2_NX | CPUID_EXT2_MMXEXT | CPUID_EXT2_RDTSCP | \
@@ -3063,11 +3059,6 @@ static void x86_cpu_reset_hold(Object *obj, ResetType type)
 
     cs->halted = !cpu_is_bsp(cpu);
 
-#if defined(CONFIG_IGVM)
-    if (cpu_is_bsp(cpu)) {
-        qigvm_x86_bsp_reset(env);
-    }
-#endif
 
     if (kvm_enabled()) {
         kvm_arch_reset_vcpu(cpu);
@@ -4198,10 +4189,6 @@ static const Property x86_cpu_properties[] = {
                       HYPERV_FEAT_TLBFLUSH_DIRECT, 0),
     DEFINE_PROP_ON_OFF_AUTO("hv-no-nonarch-coresharing", X86CPU,
                             hyperv_no_nonarch_cs, ON_OFF_AUTO_OFF),
-#ifdef CONFIG_SYNDBG
-    DEFINE_PROP_BIT64("hv-syndbg", X86CPU, hyperv_features,
-                      HYPERV_FEAT_SYNDBG, 0),
-#endif
     DEFINE_PROP_BOOL("hv-passthrough", X86CPU, hyperv_passthrough, false),
     DEFINE_PROP_BOOL("hv-enforce-cpuid", X86CPU, hyperv_enforce_cpuid, false),
 

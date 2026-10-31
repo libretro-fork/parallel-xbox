@@ -253,9 +253,7 @@ TCGv_env tcg_env;
 const void *tcg_code_gen_epilogue;
 uintptr_t tcg_splitwx_diff;
 
-#ifndef CONFIG_TCG_INTERPRETER
 tcg_prologue_fn *tcg_qemu_tb_exec;
-#endif
 
 static TCGRegSet tcg_target_available_regs[TCG_TYPE_COUNT];
 static TCGRegSet tcg_target_call_clobber_regs;
@@ -1118,12 +1116,10 @@ typedef struct TCGOutOpSubtract {
 
 #include "tcg-target.c.inc"
 
-#ifndef CONFIG_TCG_INTERPRETER
 /* Validate CPUTLBDescFast placement. */
 QEMU_BUILD_BUG_ON((int)(offsetof(CPUNegativeOffsetState, tlb.f[0]) -
                         sizeof(CPUNegativeOffsetState))
                   < MIN_TLB_MASK_TABLE_OFS);
-#endif
 
 #if TCG_TARGET_REG_BITS == 64
 /*
@@ -1435,84 +1431,8 @@ static TCGHelperInfo info_helper_st128_mmu = {
               | dh_typemask(ptr, 5)  /* uintptr_t ra */
 };
 
-#ifdef CONFIG_TCG_INTERPRETER
-static ffi_type *typecode_to_ffi(int argmask)
-{
-    /*
-     * libffi does not support __int128_t, so we have forced Int128
-     * to use the structure definition instead of the builtin type.
-     */
-    static ffi_type *ffi_type_i128_elements[3] = {
-        &ffi_type_uint64,
-        &ffi_type_uint64,
-        NULL
-    };
-    static ffi_type ffi_type_i128 = {
-        .size = 16,
-        .alignment = __alignof__(Int128),
-        .type = FFI_TYPE_STRUCT,
-        .elements = ffi_type_i128_elements,
-    };
-
-    switch (argmask) {
-    case dh_typecode_void:
-        return &ffi_type_void;
-    case dh_typecode_i32:
-        return &ffi_type_uint32;
-    case dh_typecode_s32:
-        return &ffi_type_sint32;
-    case dh_typecode_i64:
-        return &ffi_type_uint64;
-    case dh_typecode_s64:
-        return &ffi_type_sint64;
-    case dh_typecode_ptr:
-        return &ffi_type_pointer;
-    case dh_typecode_i128:
-        return &ffi_type_i128;
-    }
-    g_assert_not_reached();
-}
-
-static ffi_cif *init_ffi_layout(TCGHelperInfo *info)
-{
-    unsigned typemask = info->typemask;
-    struct {
-        ffi_cif cif;
-        ffi_type *args[];
-    } *ca;
-    ffi_status status;
-    int nargs;
-
-    /* Ignoring the return type, find the last non-zero field. */
-    nargs = 32 - clz32(typemask >> 3);
-    nargs = DIV_ROUND_UP(nargs, 3);
-    assert(nargs <= MAX_CALL_IARGS);
-
-    ca = g_malloc0(sizeof(*ca) + nargs * sizeof(ffi_type *));
-    ca->cif.rtype = typecode_to_ffi(typemask & 7);
-    ca->cif.nargs = nargs;
-
-    if (nargs != 0) {
-        ca->cif.arg_types = ca->args;
-        for (int j = 0; j < nargs; ++j) {
-            int typecode = extract32(typemask, (j + 1) * 3, 3);
-            ca->args[j] = typecode_to_ffi(typecode);
-        }
-    }
-
-    status = ffi_prep_cif(&ca->cif, FFI_DEFAULT_ABI, nargs,
-                          ca->cif.rtype, ca->cif.arg_types);
-    assert(status == FFI_OK);
-
-    return &ca->cif;
-}
-
-#define HELPER_INFO_INIT(I)      (&(I)->cif)
-#define HELPER_INFO_INIT_VAL(I)  init_ffi_layout(I)
-#else
 #define HELPER_INFO_INIT(I)      (&(I)->init)
 #define HELPER_INFO_INIT_VAL(I)  1
-#endif /* CONFIG_TCG_INTERPRETER */
 
 static inline bool arg_slot_reg_p(unsigned arg_slot)
 {
@@ -1883,9 +1803,7 @@ void tcg_prologue_init(void)
     s->code_buf = s->code_gen_ptr;
     s->data_gen_ptr = NULL;
 
-#ifndef CONFIG_TCG_INTERPRETER
     tcg_qemu_tb_exec = (tcg_prologue_fn *)tcg_splitwx_to_rx(s->code_ptr);
-#endif
 
     s->pool_labels = NULL;
 
@@ -1902,10 +1820,8 @@ void tcg_prologue_init(void)
     prologue_size = tcg_current_code_size(s);
     perf_report_prologue(s->code_gen_ptr, prologue_size);
 
-#ifndef CONFIG_TCG_INTERPRETER
     flush_idcache_range((uintptr_t)tcg_splitwx_to_rx(s->code_buf),
                         (uintptr_t)s->code_buf, prologue_size);
-#endif
 
     if (qemu_loglevel_mask(CPU_LOG_TB_OUT_ASM)) {
         FILE *logfile = qemu_log_trylock();
@@ -1939,14 +1855,12 @@ void tcg_prologue_init(void)
         }
     }
 
-#ifndef CONFIG_TCG_INTERPRETER
     /*
      * Assert that goto_ptr is implemented completely, setting an epilogue.
      * For tci, we use NULL as the signal to return from the interpreter,
      * so skip this check.
      */
     tcg_debug_assert(tcg_code_gen_epilogue != NULL);
-#endif
 
     tcg_region_prologue_set(s);
 }
@@ -2645,12 +2559,6 @@ static void tcg_gen_callN(void *func, TCGHelperInfo *info,
     total_args = info->nr_out + info->nr_in + 2;
     op = tcg_op_alloc(INDEX_op_call, total_args);
 
-#ifdef CONFIG_PLUGIN
-    /* Flag helpers that may affect guest state */
-    if (tcg_ctx->plugin_insn && !(info->flags & TCG_CALL_NO_SIDE_EFFECTS)) {
-        tcg_ctx->plugin_insn->calls_helpers = true;
-    }
-#endif
 
     TCGOP_CALLO(op) = n = info->nr_out;
     switch (n) {
@@ -2924,14 +2832,6 @@ static const char bswap_flag_name[][6] = {
     [TCG_BSWAP_IZ | TCG_BSWAP_OS] = "iz,os",
 };
 
-#ifdef CONFIG_PLUGIN
-static const char * const plugin_from_name[] = {
-    "from-tb",
-    "from-insn",
-    "after-insn",
-    "after-tb",
-};
-#endif
 
 static inline bool tcg_regset_single(TCGRegSet d)
 {
@@ -3099,24 +2999,6 @@ void tcg_dump_ops(TCGContext *s, FILE *f, bool have_prefs)
                     i = k = 1;
                 }
                 break;
-#ifdef CONFIG_PLUGIN
-            case INDEX_op_plugin_cb:
-                {
-                    TCGArg from = op->args[k++];
-                    const char *name = NULL;
-
-                    if (from < ARRAY_SIZE(plugin_from_name)) {
-                        name = plugin_from_name[from];
-                    }
-                    if (name) {
-                        col += ne_fprintf(f, "%s", name);
-                    } else {
-                        col += ne_fprintf(f, "$0x%" TCG_PRIlx, from);
-                    }
-                    i = 1;
-                }
-                break;
-#endif
             default:
                 i = 0;
                 break;
@@ -7063,12 +6945,10 @@ int tcg_gen_code(TCGContext *s, TranslationBlock *tb, uint64_t pc_start)
         return -2;
     }
 
-#ifndef CONFIG_TCG_INTERPRETER
     /* flush instruction cache */
     flush_idcache_range((uintptr_t)tcg_splitwx_to_rx(s->code_buf),
                         (uintptr_t)s->code_buf,
                         tcg_ptr_byte_diff(s->code_ptr, s->code_buf));
-#endif
 
     return tcg_current_code_size(s);
 }

@@ -70,16 +70,3 @@ struct QemuSpiceOps qemu_spice = {
     .display_add_client = qemu_spice_display_add_client_stub,
 };
 
-#ifdef CONFIG_SPICE
-
-SpiceInfo *qmp_query_spice(Error **errp)
-{
-    if (!qemu_spice.qmp_query) {
-        SpiceInfo *info = g_new0(SpiceInfo, 1);
-        info->enabled = false;
-        return info;
-    }
-    return qemu_spice.qmp_query(errp);
-}
-
-#endif

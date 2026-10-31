@@ -70,11 +70,7 @@ typedef struct TdxGuest {
     uint32_t event_notify_apicid;
 } TdxGuest;
 
-#ifdef CONFIG_TDX
-bool is_tdx_vm(void);
-#else
 #define is_tdx_vm() 0
-#endif /* CONFIG_TDX */
 
 int tdx_pre_create_vcpu(CPUState *cpu, Error **errp);
 void tdx_set_tdvf_region(MemoryRegion *tdvf_mr);

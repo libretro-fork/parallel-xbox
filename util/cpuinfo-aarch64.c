@@ -17,9 +17,6 @@
 #  define HWCAP2_BTI 0  /* added in glibc 2.32 */
 # endif
 #endif
-#ifdef CONFIG_ELF_AUX_INFO
-#include <sys/auxv.h>
-#endif
 #ifdef CONFIG_DARWIN
 # include <sys/sysctl.h>
 #endif

@@ -16,15 +16,9 @@
 
 #include CONFIG_DEVICES /* CONFIG_SEV */
 
-#if !defined(CONFIG_SEV)
 #define sev_enabled() 0
 #define sev_es_enabled() 0
 #define sev_snp_enabled() 0
-#else
-bool sev_enabled(void);
-bool sev_es_enabled(void);
-bool sev_snp_enabled(void);
-#endif
 
 
 #define TYPE_SEV_COMMON "sev-common"

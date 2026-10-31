@@ -175,16 +175,8 @@
 # define QEMU_FALLTHROUGH do {} while (0) /* fallthrough */
 #endif
 
-#ifdef CONFIG_CFI
-/*
- * If CFI is enabled, use an attribute to disable cfi-icall on the following
- * function
- */
-#define QEMU_DISABLE_CFI __attribute__((no_sanitize("cfi-icall")))
-#else
 /* If CFI is not enabled, use an empty define to not change the behavior */
 #define QEMU_DISABLE_CFI
-#endif
 
 #if __has_attribute(annotate)
 #define QEMU_ANNOTATE(x) __attribute__((annotate(x)))

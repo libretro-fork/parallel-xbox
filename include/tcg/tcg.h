@@ -424,20 +424,6 @@ struct TCGContext {
     TCGOp *lr_quiet_insn;
     bool lr_quiet_store;    /* the block's first store resets the count */
 
-#ifdef CONFIG_PLUGIN
-    /*
-     * We keep one plugin_tb struct per TCGContext. Note that on every TB
-     * translation we clear but do not free its contents; this way we
-     * avoid a lot of malloc/free churn, since after a few TB's it's
-     * unlikely that we'll need to allocate either more instructions or more
-     * space for instructions (for variable-instruction-length ISAs).
-     */
-    struct qemu_plugin_tb *plugin_tb;
-    const struct DisasContextBase *plugin_db;
-
-    /* descriptor of the instruction being translated */
-    struct qemu_plugin_insn *plugin_insn;
-#endif
 
     /* For host-specific values. */
 #ifdef __riscv
@@ -1007,12 +993,8 @@ static inline size_t tcg_current_code_size(TCGContext *s)
 #define TB_EXIT_IDXMAX    1
 #define TB_EXIT_REQUESTED 3
 
-#ifdef CONFIG_TCG_INTERPRETER
-uintptr_t tcg_qemu_tb_exec(CPUArchState *env, const void *tb_ptr);
-#else
 typedef uintptr_t tcg_prologue_fn(CPUArchState *env, const void *tb_ptr);
 extern tcg_prologue_fn *tcg_qemu_tb_exec;
-#endif
 
 void tcg_register_jit(const void *buf, size_t buf_size);
 

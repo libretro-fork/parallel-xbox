@@ -42,9 +42,7 @@ static void initialize_debug_host(CPUDebug *s)
 #else
     s->info.endian = BFD_ENDIAN_LITTLE;
 #endif
-#if defined(CONFIG_TCG_INTERPRETER)
-    s->info.print_insn = print_insn_tci;
-#elif defined(__i386__)
+#if defined(__i386__)
     s->info.mach = bfd_mach_i386_i386;
     s->info.cap_arch = CS_ARCH_X86;
     s->info.cap_mode = CS_MODE_32;

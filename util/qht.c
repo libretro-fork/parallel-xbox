@@ -184,9 +184,6 @@ struct qht_map {
     size_t n_buckets;
     retro_atomic_size_t n_added_buckets;
     size_t n_added_buckets_threshold;
-#ifdef CONFIG_TSAN
-    struct qht_tsan_lock tsan_bucket_locks[QHT_TSAN_BUCKET_LOCKS];
-#endif
 };
 
 /* trigger a resize when n_added_buckets > n_buckets / div */
@@ -256,29 +253,14 @@ static inline void qht_do_if_first_in_stripe(struct qht_map *map,
                                              struct qht_bucket *b,
                                              void (*func)(QemuSpin *spin))
 {
-#ifdef CONFIG_TSAN
-    unsigned long bucket_idx = b - map->buckets;
-    bool is_first_in_stripe = (bucket_idx >> QHT_TSAN_BUCKET_LOCKS_BITS) == 0;
-    if (is_first_in_stripe) {
-        unsigned long lock_idx = bucket_idx & (QHT_TSAN_BUCKET_LOCKS - 1);
-        func(&map->tsan_bucket_locks[lock_idx].lock);
-    }
-#else
     func(&b->lock);
-#endif
 }
 
 static inline void qht_bucket_lock_do(struct qht_map *map,
                                       struct qht_bucket *b,
                                       void (*func)(QemuSpin *lock))
 {
-#ifdef CONFIG_TSAN
-    unsigned long bucket_idx = b - map->buckets;
-    unsigned long lock_idx = bucket_idx & (QHT_TSAN_BUCKET_LOCKS - 1);
-    func(&map->tsan_bucket_locks[lock_idx].lock);
-#else
     func(&b->lock);
-#endif
 }
 
 static inline void qht_bucket_lock(struct qht_map *map,

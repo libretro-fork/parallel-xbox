@@ -180,9 +180,6 @@ void qemu_thread_atexit_add(struct Notifier *notifier);
  */
 void qemu_thread_atexit_remove(struct Notifier *notifier);
 
-#ifdef CONFIG_TSAN
-#include <sanitizer/tsan_interface.h>
-#endif
 
 struct QemuSpin {
     retro_atomic_int_t value;
@@ -191,44 +188,24 @@ struct QemuSpin {
 static inline void qemu_spin_init(QemuSpin *spin)
 {
     retro_atomic_store_relaxed_int(&spin->value, 0);
-#ifdef CONFIG_TSAN
-    __tsan_mutex_create(spin, __tsan_mutex_not_static);
-#endif
 }
 
 static inline void qemu_spin_destroy(QemuSpin *spin)
 {
-#ifdef CONFIG_TSAN
-    __tsan_mutex_destroy(spin, __tsan_mutex_not_static);
-#endif
 }
 
 static inline void qemu_spin_lock(QemuSpin *spin)
 {
-#ifdef CONFIG_TSAN
-    __tsan_mutex_pre_lock(spin, 0);
-#endif
     while (unlikely(retro_atomic_exchange_int(&spin->value, 1))) {
         while (retro_atomic_load_relaxed_int(&spin->value)) {
             cpu_relax();
         }
     }
-#ifdef CONFIG_TSAN
-    __tsan_mutex_post_lock(spin, 0, 0);
-#endif
 }
 
 static inline bool qemu_spin_trylock(QemuSpin *spin)
 {
-#ifdef CONFIG_TSAN
-    __tsan_mutex_pre_lock(spin, __tsan_mutex_try_lock);
-#endif
     bool busy = retro_atomic_exchange_int(&spin->value, 1);
-#ifdef CONFIG_TSAN
-    unsigned flags = __tsan_mutex_try_lock;
-    flags |= busy ? __tsan_mutex_try_lock_failed : 0;
-    __tsan_mutex_post_lock(spin, flags, 0);
-#endif
     return busy;
 }
 
@@ -239,13 +216,7 @@ static inline bool qemu_spin_locked(QemuSpin *spin)
 
 static inline void qemu_spin_unlock(QemuSpin *spin)
 {
-#ifdef CONFIG_TSAN
-    __tsan_mutex_pre_unlock(spin, 0);
-#endif
     retro_atomic_store_release_int(&spin->value, 0);
-#ifdef CONFIG_TSAN
-    __tsan_mutex_post_unlock(spin, 0);
-#endif
 }
 
 #endif

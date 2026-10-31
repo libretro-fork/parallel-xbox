@@ -14,11 +14,7 @@
 #else
 # define HAVE_AES_ACCEL  likely(cpuinfo & CPUINFO_AES)
 #endif
-#if !defined(__ARM_FEATURE_AES) && defined(CONFIG_ARM_AES_BUILTIN)
-# define ATTR_AES_ACCEL  __attribute__((target("+crypto")))
-#else
 # define ATTR_AES_ACCEL
-#endif
 
 static inline uint8x16_t aes_accel_bswap(uint8x16_t x)
 {
@@ -26,14 +22,6 @@ static inline uint8x16_t aes_accel_bswap(uint8x16_t x)
                                         7,  6,  5,  4,  3,  2, 1, 0, });
 }
 
-#ifdef CONFIG_ARM_AES_BUILTIN
-# define aes_accel_aesd            vaesdq_u8
-# define aes_accel_aese            vaeseq_u8
-# define aes_accel_aesmc           vaesmcq_u8
-# define aes_accel_aesimc          vaesimcq_u8
-# define aes_accel_aesd_imc(S, K)  vaesimcq_u8(vaesdq_u8(S, K))
-# define aes_accel_aese_mc(S, K)   vaesmcq_u8(vaeseq_u8(S, K))
-#else
 static inline uint8x16_t aes_accel_aesd(uint8x16_t d, uint8x16_t k)
 {
     asm(".arch_extension aes\n\t"
@@ -79,7 +67,6 @@ static inline uint8x16_t aes_accel_aese_mc(uint8x16_t d, uint8x16_t k)
         "aesmc %0.16b, %0.16b" : "+w"(d) : "w"(k));
     return d;
 }
-#endif /* CONFIG_ARM_AES_BUILTIN */
 
 static inline void ATTR_AES_ACCEL
 aesenc_MC_accel(AESState *ret, const AESState *st, bool be)

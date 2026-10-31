@@ -65,10 +65,6 @@
 #include "sev.h"
 #include CONFIG_DEVICES
 
-#ifdef CONFIG_XEN_EMU
-#include "hw/xen/xen-legacy-backend.h"
-#include "hw/xen/xen-bus.h"
-#endif
 
 /*
  * Helper for setting model-id for CPU models that changed model-id
@@ -614,11 +610,7 @@ static void pc_machine_initfn(Object *obj)
     PCMachineState *pcms = PC_MACHINE(obj);
     PCMachineClass *pcmc = PC_MACHINE_GET_CLASS(pcms);
 
-#ifdef CONFIG_VMPORT
-    pcms->vmport = ON_OFF_AUTO_AUTO;
-#else
     pcms->vmport = ON_OFF_AUTO_OFF;
-#endif /* CONFIG_VMPORT */
     pcms->max_ram_below_4g = 0; /* use default */
     pcms->smbios_entry_point_type = pcmc->default_smbios_ep_type;
     pcms->south_bridge = pcmc->default_south_bridge;
@@ -629,9 +621,6 @@ static void pc_machine_initfn(Object *obj)
     pcms->sata_enabled = true;
     pcms->i8042_enabled = true;
     pcms->max_fw_size = 8 * MiB;
-#if defined(CONFIG_HPET)
-    pcms->hpet_enabled = true;
-#endif
     pcms->fd_bootchk = true;
     pcms->default_bus_bypass_iommu = false;
 
@@ -759,15 +748,6 @@ static void pc_machine_class_init(ObjectClass *oc, const void *data)
         pc_machine_get_fd_bootchk,
         pc_machine_set_fd_bootchk);
 
-#if defined(CONFIG_IGVM)
-    object_class_property_add_link(oc, "igvm-cfg",
-                                   TYPE_IGVM_CFG,
-                                   offsetof(X86MachineState, igvm),
-                                   object_property_allow_set_link,
-                                   OBJ_PROP_LINK_STRONG);
-    object_class_property_set_description(oc, "igvm-cfg",
-                                          "Set IGVM configuration");
-#endif
 
 
 }

@@ -99,19 +99,6 @@ unsigned long qemu_getauxval(unsigned long type)
     return 0;
 }
 
-#elif defined(CONFIG_ELF_AUX_INFO)
-#include <sys/auxv.h>
-
-unsigned long qemu_getauxval(unsigned long type)
-{
-    unsigned long aux = 0;
-    int ret = elf_aux_info(type, &aux, sizeof(aux));
-    if (ret != 0) {
-        errno = ret;
-    }
-    return aux;
-}
-
 #else
 
 unsigned long qemu_getauxval(unsigned long type)

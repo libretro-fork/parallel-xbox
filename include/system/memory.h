@@ -47,18 +47,12 @@ typedef struct RamDiscardManager RamDiscardManager;
 DECLARE_OBJ_CHECKERS(RamDiscardManager, RamDiscardManagerClass,
                      RAM_DISCARD_MANAGER, TYPE_RAM_DISCARD_MANAGER);
 
-#ifdef CONFIG_FUZZ
-void fuzz_dma_read_cb(size_t addr,
-                      size_t len,
-                      MemoryRegion *mr);
-#else
 static inline void fuzz_dma_read_cb(size_t addr,
                                     size_t len,
                                     MemoryRegion *mr)
 {
     /* Do Nothing */
 }
-#endif
 
 /* Possible bits for global_dirty_log_{start|stop} */
 

@@ -27,10 +27,6 @@
 #include "net/slirp.h"
 
 
-#if defined(CONFIG_SMBD_COMMAND)
-#include <pwd.h>
-#include <sys/wait.h>
-#endif
 #include "net/eth.h"
 #include "net/net.h"
 #include "clients.h"
@@ -92,9 +88,6 @@ typedef struct SlirpState {
     Slirp *slirp;
     Notifier poll_notifier;
     Notifier exit_notifier;
-#if defined(CONFIG_SMBD_COMMAND)
-    gchar *smb_dir;
-#endif
     GSList *fwd;
 } SlirpState;
 
@@ -105,13 +98,7 @@ static QTAILQ_HEAD(, SlirpState) slirp_stacks =
 static int slirp_hostfwd(SlirpState *s, const char *redir_str, Error **errp);
 static int slirp_guestfwd(SlirpState *s, const char *config_str, Error **errp);
 
-#if defined(CONFIG_SMBD_COMMAND)
-static int slirp_smb(SlirpState *s, const char *exported_dir,
-                     struct in_addr vserver_addr, Error **errp);
-static void slirp_smb_cleanup(SlirpState *s);
-#else
 static inline void slirp_smb_cleanup(SlirpState *s) { }
-#endif
 
 static ssize_t net_slirp_send_packet(const void *pkt, size_t pkt_len,
                                      void *opaque)
@@ -450,9 +437,6 @@ static int net_slirp_init(NetClientState *peer, const char *model,
     struct in6_addr ip6_prefix;
     struct in6_addr ip6_host;
     struct in6_addr ip6_dns;
-#if defined(CONFIG_SMBD_COMMAND)
-    struct in_addr smbsrv = { .s_addr = 0 };
-#endif
     SlirpConfig cfg = { 0 };
     NetClientState *nc;
     SlirpState *s;
@@ -561,12 +545,6 @@ static int net_slirp_init(NetClientState *peer, const char *model,
         return -1;
     }
 
-#if defined(CONFIG_SMBD_COMMAND)
-    if (vsmbserver && !inet_aton(vsmbserver, &smbsrv)) {
-        error_setg(errp, "Failed to parse SMB address");
-        return -1;
-    }
-#endif
 
     if (!vprefix6) {
         vprefix6 = "fec0::";
@@ -691,13 +669,6 @@ static int net_slirp_init(NetClientState *peer, const char *model,
             }
         }
     }
-#if defined(CONFIG_SMBD_COMMAND)
-    if (smb_export) {
-        if (slirp_smb(s, smb_export, smbsrv, errp) < 0) {
-            goto error;
-        }
-    }
-#endif
 
     s->exit_notifier.notify = slirp_smb_exit;
     qemu_add_exit_notifier(&s->exit_notifier);
@@ -882,122 +853,6 @@ static int slirp_hostfwd(SlirpState *s, const char *redir_str, Error **errp)
     return -1;
 }
 
-#if defined(CONFIG_SMBD_COMMAND)
-
-/* automatic user mode samba server configuration */
-static void slirp_smb_cleanup(SlirpState *s)
-{
-    int ret;
-
-    if (s->smb_dir) {
-        gchar *cmd = g_strdup_printf("rm -rf %s", s->smb_dir);
-        ret = system(cmd);
-        if (ret == -1 || !WIFEXITED(ret)) {
-            error_report("'%s' failed.", cmd);
-        } else if (WEXITSTATUS(ret)) {
-            error_report("'%s' failed. Error code: %d",
-                         cmd, WEXITSTATUS(ret));
-        }
-        g_free(cmd);
-        g_free(s->smb_dir);
-        s->smb_dir = NULL;
-    }
-}
-
-static int slirp_smb(SlirpState* s, const char *exported_dir,
-                     struct in_addr vserver_addr, Error **errp)
-{
-    char *smb_conf;
-    char *smb_cmdline;
-    struct passwd *passwd;
-    FILE *f;
-
-    passwd = getpwuid(geteuid());
-    if (!passwd) {
-        error_setg(errp, "Failed to retrieve user name");
-        return -1;
-    }
-
-    if (access(CONFIG_SMBD_COMMAND, F_OK)) {
-        error_setg(errp, "Could not find '%s', please install it",
-                   CONFIG_SMBD_COMMAND);
-        return -1;
-    }
-
-    if (access(exported_dir, R_OK | X_OK)) {
-        error_setg(errp, "Error accessing shared directory '%s': %s",
-                   exported_dir, strerror(errno));
-        return -1;
-    }
-
-    s->smb_dir = g_dir_make_tmp("qemu-smb.XXXXXX", NULL);
-    if (!s->smb_dir) {
-        error_setg(errp, "Could not create samba server dir");
-        return -1;
-    }
-    smb_conf = g_strdup_printf("%s/%s", s->smb_dir, "smb.conf");
-
-    f = fopen(smb_conf, "w");
-    if (!f) {
-        slirp_smb_cleanup(s);
-        error_setg(errp,
-                   "Could not create samba server configuration file '%s'",
-                    smb_conf);
-        g_free(smb_conf);
-        return -1;
-    }
-    fprintf(f,
-            "[global]\n"
-            "private dir=%s\n"
-            "interfaces=127.0.0.1\n"
-            "bind interfaces only=yes\n"
-            "pid directory=%s\n"
-            "lock directory=%s\n"
-            "state directory=%s\n"
-            "cache directory=%s\n"
-            "ncalrpc dir=%s/ncalrpc\n"
-            "log file=%s/log.smbd\n"
-            "smb passwd file=%s/smbpasswd\n"
-            "security = user\n"
-            "map to guest = Bad User\n"
-            "load printers = no\n"
-            "printing = bsd\n"
-            "disable spoolss = yes\n"
-            "usershare max shares = 0\n"
-            "[qemu]\n"
-            "path=%s\n"
-            "read only=no\n"
-            "guest ok=yes\n"
-            "force user=%s\n",
-            s->smb_dir,
-            s->smb_dir,
-            s->smb_dir,
-            s->smb_dir,
-            s->smb_dir,
-            s->smb_dir,
-            s->smb_dir,
-            s->smb_dir,
-            exported_dir,
-            passwd->pw_name
-            );
-    fclose(f);
-
-    smb_cmdline = g_strdup_printf("%s -l %s -s %s",
-             CONFIG_SMBD_COMMAND, s->smb_dir, smb_conf);
-    g_free(smb_conf);
-
-    if (slirp_add_exec(s->slirp, smb_cmdline, &vserver_addr, 139) < 0 ||
-        slirp_add_exec(s->slirp, smb_cmdline, &vserver_addr, 445) < 0) {
-        slirp_smb_cleanup(s);
-        g_free(smb_cmdline);
-        error_setg(errp, "Conflicting/invalid smbserver address");
-        return -1;
-    }
-    g_free(smb_cmdline);
-    return 0;
-}
-
-#endif /* defined(CONFIG_SMBD_COMMAND) */
 
 static int guestfwd_can_read(void *opaque)
 {

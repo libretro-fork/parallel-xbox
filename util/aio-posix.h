@@ -33,11 +33,6 @@ struct AioHandler {
     QLIST_RCU_ENTRY(AioHandler) node_ready; /* only used during aio_poll() */
     QLIST_RCU_ENTRY(AioHandler) node_deleted;
     QLIST_RCU_ENTRY(AioHandler) node_poll;
-#ifdef CONFIG_LINUX_IO_URING
-    QSLIST_ENTRY(AioHandler) node_submitted;
-    unsigned flags; /* see fdmon-io_uring.c */
-    CqeHandler internal_cqe_handler; /* used for POLL_ADD/POLL_REMOVE */
-#endif
     int64_t poll_idle_timeout; /* when to stop userspace polling */
     bool poll_ready; /* has polling detected an event? */
     AioPolledEvent poll;
@@ -73,9 +68,5 @@ static inline void fdmon_epoll_disable(AioContext *ctx)
 }
 #endif /* !CONFIG_EPOLL_CREATE1 */
 
-#ifdef CONFIG_LINUX_IO_URING
-bool fdmon_io_uring_setup(AioContext *ctx, Error **errp);
-void fdmon_io_uring_destroy(AioContext *ctx);
-#endif /* !CONFIG_LINUX_IO_URING */
 
 #endif /* AIO_POSIX_H */

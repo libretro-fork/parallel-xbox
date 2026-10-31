@@ -21,10 +21,6 @@
 #include "qom/object.h"
 
 #ifdef COMPILING_PER_TARGET
-# ifdef CONFIG_KVM
-#  include <linux/kvm.h>
-#  define CONFIG_KVM_IS_POSSIBLE
-# endif
 #else
 # define CONFIG_KVM_IS_POSSIBLE
 #endif

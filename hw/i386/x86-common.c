@@ -45,10 +45,6 @@
 #include "kvm/kvm_i386.h"
 #include "kvm/tdx.h"
 
-#ifdef CONFIG_XEN_EMU
-#include "hw/xen/xen.h"
-#include "hw/i386/kvm/xen_evtchn.h"
-#endif
 
 /* Physical Address of PVH entry point read from kernel ELF NOTE */
 
@@ -442,22 +438,6 @@ void gsi_handler(void *opaque, int n, int level)
 
     trace_x86_gsi_interrupt(n, level);
 
-#ifdef CONFIG_XEN_EMU
-    /*
-     * Xen delivers the GSI to the Legacy PIC (not that Legacy PIC
-     * routing actually works properly under Xen). And then to
-     * *either* the PIRQ handling or the I/OAPIC depending on whether
-     * the former wants it.
-     *
-     * Additionally, this hook allows the Xen event channel GSI to
-     * work around QEMU's lack of support for shared level interrupts,
-     * by keeping track of the externally driven state of the pin and
-     * implementing a logical OR with the state of the evtchn GSI.
-     */
-    if (xen_mode == XEN_EMULATE) {
-        bypass_ioapic = xen_evtchn_set_gsi(n, &level);
-    }
-#endif
 
     switch (n) {
     case 0 ... ISA_NUM_IRQS - 1:

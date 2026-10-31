@@ -17,9 +17,6 @@
 #include "qemu/tsan.h"
 #include "qemu/bitmap.h"
 
-#ifdef CONFIG_PTHREAD_SET_NAME_NP
-#include <pthread_np.h>
-#endif
 
 static bool name_threads;
 
@@ -31,11 +28,7 @@ static void error_exit(int err, const char *msg)
 
 static inline clockid_t qemu_timedwait_clockid(void)
 {
-#ifdef CONFIG_PTHREAD_CONDATTR_SETCLOCK
-    return CLOCK_MONOTONIC;
-#else
     return CLOCK_REALTIME;
-#endif
 }
 
 void qemu_mutex_init(QemuMutex *mutex)
@@ -127,12 +120,6 @@ void qemu_cond_init(QemuCond *cond)
     if (err) {
         error_exit(err, __func__);
     }
-#ifdef CONFIG_PTHREAD_CONDATTR_SETCLOCK
-    err = pthread_condattr_setclock(&attr, qemu_timedwait_clockid());
-    if (err) {
-        error_exit(err, __func__);
-    }
-#endif
     err = pthread_cond_init(&cond->cond, &attr);
     if (err) {
         error_exit(err, __func__);
@@ -270,8 +257,6 @@ static void *qemu_thread_start(void *args)
         pthread_setname_np(pthread_self(), qemu_thread_args->name);
 # elif defined(CONFIG_PTHREAD_SETNAME_NP_WO_TID)
         pthread_setname_np(qemu_thread_args->name);
-# elif defined(CONFIG_PTHREAD_SET_NAME_NP)
-        pthread_set_name_np(pthread_self(), qemu_thread_args->name);
 # endif
     }
     QEMU_TSAN_ANNOTATE_THREAD_NAME(qemu_thread_args->name);

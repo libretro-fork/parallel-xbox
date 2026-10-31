@@ -6,11 +6,7 @@
 #ifndef QEMU_PIXMAN_H
 #define QEMU_PIXMAN_H
 
-#ifdef CONFIG_PIXMAN
-#include <pixman.h>
-#else
 #include "pixman-minimal.h"
-#endif
 
 #include "qapi/error.h"
 
@@ -73,23 +69,6 @@ typedef struct PixelFormat {
 
 pixman_format_code_t qemu_default_pixman_format(int bpp, bool native_endian);
 
-#ifdef CONFIG_PIXMAN
-pixman_format_code_t qemu_pixman_get_format(PixelFormat *pf, int endian);
-pixman_image_t *qemu_pixman_linebuf_create(pixman_format_code_t format,
-                                           int width);
-void qemu_pixman_linebuf_fill(pixman_image_t *linebuf, pixman_image_t *fb,
-                              int width, int x, int y);
-pixman_image_t *qemu_pixman_mirror_create(pixman_format_code_t format,
-                                          pixman_image_t *image);
-
-pixman_image_t *qemu_pixman_glyph_from_vgafont(int height, const uint8_t *font,
-                                               unsigned int ch);
-void qemu_pixman_glyph_render(pixman_image_t *glyph,
-                              pixman_image_t *surface,
-                              pixman_color_t *fgcol,
-                              pixman_color_t *bgcol,
-                              int x, int y, int cw, int ch);
-#endif
 
 void qemu_pixman_image_unref(pixman_image_t *image);
 

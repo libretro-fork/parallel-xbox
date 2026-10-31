@@ -16,9 +16,6 @@
 #define QEMU_WHPX_H
 
 #ifdef COMPILING_PER_TARGET
-# ifdef CONFIG_WHPX
-#  define CONFIG_WHPX_IS_POSSIBLE
-# endif /* !CONFIG_WHPX */
 #else
 # define CONFIG_WHPX_IS_POSSIBLE
 #endif /* COMPILING_PER_TARGET */

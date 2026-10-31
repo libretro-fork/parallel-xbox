@@ -555,9 +555,6 @@ bool qemu_prealloc_mem(int fd, char *area, size_t sz, int max_threads,
 }
 
 
-#ifdef CONFIG_DEBUG_STACK_USAGE
-static __thread unsigned int max_stack_usage;
-#endif
 
 size_t qemu_get_host_physmem(void)
 {

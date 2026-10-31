@@ -24,10 +24,6 @@
 #include "accel/accel-ops.h"
 
 #ifdef COMPILING_PER_TARGET
-#ifdef CONFIG_MSHV
-#include <linux/mshv.h>
-#define CONFIG_MSHV_IS_POSSIBLE
-#endif
 #else
 #define CONFIG_MSHV_IS_POSSIBLE
 #endif
