@@ -1956,10 +1956,10 @@ static void gen_enter_mmx(DisasContext *s)
 
     tcg_gen_movi_i32(fpstt, 0);
 
-    TCGv_i32 v = tcg_constant_i32(0);
-    for (int i = 0; i < 8; i++) {
-        tcg_gen_st8_i32(v, tcg_env, offsetof(CPUX86State, fptags[0]) + i);
-    }
+    /* All eight byte tags have the same value. Let 32-bit hosts split
+     * this store rather than issuing one store for every stack slot. */
+    tcg_gen_st_i64(tcg_constant_i64(0), tcg_env,
+                   offsetof(CPUX86State, fptags));
 }
 
 static void gen_flds_FT0(DisasContext *s, TCGv_i32 arg)

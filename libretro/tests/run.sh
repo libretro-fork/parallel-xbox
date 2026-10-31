@@ -339,6 +339,9 @@ nasm -f bin -I"$here/rom/" -o "$work/sysshuf/xemu/Complex_4627v1.03.bin" "$here/
 mkdir -p "$work/sysft0/xemu"
 cp "$work/sys/xemu/mcpx_1.0.bin" "$work/sysft0/xemu/"
 nasm -f bin -I"$here/rom/" -o "$work/sysft0/xemu/Complex_4627v1.03.bin" "$here/rom/x87-scratch.asm"
+mkdir -p "$work/sysmmx/xemu"
+cp "$work/sys/xemu/mcpx_1.0.bin" "$work/sysmmx/xemu/"
+nasm -f bin -I"$here/rom/" -o "$work/sysmmx/xemu/Complex_4627v1.03.bin" "$here/rom/mmx-tags.asm"
 mkdir -p "$work/sysfsw/xemu"
 cp "$work/sys/xemu/mcpx_1.0.bin" "$work/sysfsw/xemu/"
 nasm -f bin -I"$here/rom/" -o "$work/sysfsw/xemu/Complex_4627v1.03.bin" "$here/rom/x87-status.asm"
@@ -468,6 +471,21 @@ for hard in enabled disabled; do
       grep -q "^$want$" "$work/x87-scratch-$hard-$boost.txt" || {
         cat "$work/x87-scratch-$hard-$boost.txt"
         echo "FAIL: x87 scratch ($hard/$boost)"; exit 1;
+      }
+    done
+  done
+done
+
+# MMX entry/EMMS preserve payloads, TOP, control and EFLAGS across tag changes.
+for hard in enabled disabled; do
+  for boost in enabled disabled; do
+    t "MMX tags, hard FPU $hard, CPU Boost $boost" $h "$(path "$core")" "$(path "$work/sysmmx")" \
+      $vp --opt "xemu_hard_fpu=$hard" --opt "xemu_cpu_boost=$boost" --frames 60 --strict \
+      --peek 0x300000 --peek 0x300004 >"$work/mmx-tags-$hard-$boost.txt"
+    for want in "peek_0x300000=0x4b4f4d4d" "peek_0x300004=0x00000000"; do
+      grep -q "^$want$" "$work/mmx-tags-$hard-$boost.txt" || {
+        cat "$work/mmx-tags-$hard-$boost.txt"
+        echo "FAIL: MMX tags ($hard/$boost)"; exit 1;
       }
     done
   done

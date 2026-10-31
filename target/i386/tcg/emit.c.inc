@@ -1998,7 +1998,15 @@ static void gen_DIV(DisasContext *s, X86DecodedInsn *decode)
 
 static void gen_EMMS(DisasContext *s, X86DecodedInsn *decode)
 {
-    gen_helper_emms(tcg_env);
+    if (!xemu_cpu_boost) {
+        gen_helper_emms(tcg_env);
+        return;
+    }
+    /* Keep the helper boundary's pending x87 conversion and FIP updates.
+     * EMMS only empties the tags; TOP and register payloads are unchanged. */
+    gen_flush_fp(s);
+    tcg_gen_st_i64(tcg_constant_i64(0x0101010101010101ULL), tcg_env,
+                   offsetof(CPUX86State, fptags));
 }
 
 static void gen_ENTER(DisasContext *s, X86DecodedInsn *decode)

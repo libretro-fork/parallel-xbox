@@ -833,3 +833,7 @@ Windows UTF conversion tests cover bounded ASCII/non-BMP prefixes, explicit
 lengths on non-terminated buffers, empty input, consumed/written counts and the
 normal NUL-terminated path. The same vectors run against system GLib on Linux;
 the Windows-only shim wrappers are exercised natively on Windows.
+`mmx-tags.asm` checks all eight TOP positions at 24/64-bit precision,
+compares full FXSAVE snapshots across EMMS except for the emptied tag byte,
+and checks EFLAGS, repeated exits, new x87 pushes, pending arithmetic and
+MMX entry. It runs with both hard-FPU and CPU Boost settings.
