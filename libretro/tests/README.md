@@ -522,6 +522,15 @@ with Xbox direct dispatch and generic target dispatch. It checks boost on/off,
 lookup hits/misses, logging and breakpoint exits against independent results.
 The Xbox path must bypass the target function pointer in both boost modes.
 
+`test-rdpmc.py CHECKOUT [CC]` executes the production RDPMC helper and
+translator against privilege, counter-index and intercept-order oracles over
+100,144 cases. It checks that only EAX/EDX change on success, fault/intercept
+paths preserve registers, no diagnostic is logged, and TCG models a returning
+helper that writes guest state. The Xbox's unmodelled counters 0/1 read zero;
+unsupported indices raise #GP(0), matching the P6 index rules in Intel's
+[Optimization Reference Manual, B-14](https://download.intel.com/design/PentiumII/manuals/24512701.pdf).
+This does not emulate event counting or test the FastCPU sample end to end.
+
 `test-surface-blend.py CHECKOUT [CC] [--gl]` checks 32,768 target/factor/enable
 combinations through production blend mapping, Vulkan pipeline keys/dirty
 checks and dynamic state, and the OpenGL state-cache/blend block. It covers
