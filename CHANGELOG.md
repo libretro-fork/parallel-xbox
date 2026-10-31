@@ -22,6 +22,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Fix OutRun 2's DSP scatter/gather assertion when its audio scratch area grows. Finish each DSP tick before the Xbox CPU can update the live scratch pages and page tables it uses.
+
 - Vertex state programs: stop decoding at their end marker and reuse unchanged decoded instructions without per-launch allocation. Exact source checks preserve partial uploads and restored programs; constant updates still execute on every launch.
 
 - Vulkan: remove runtime SPIR-V reflection. The shader compiler supplies uniform and push constant layouts, shared without copying names or descriptors across cached modules. Fixed shaders pass compiler-owned words directly to Vulkan without a byte-array wrapper. Fix a compiler read past the end of shader sources without a trailing newline.

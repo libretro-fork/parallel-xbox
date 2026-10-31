@@ -19,6 +19,14 @@ on:
 # platforms input (workflow_dispatch) lists them. Pushes and "all" build
 # everything.
 jobs:
+  dsp-guest-ram:
+    name: DSP guest RAM ordering regression
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: DSP ticks must finish before the guest changes scratch RAM
+        run: python3 libretro/tests/test-dsp-guest-ram.py . cc
+
   guest-gpu-progress:
     name: DOAX guest GPU progress regression
     runs-on: ubuntu-24.04

@@ -1,5 +1,14 @@
 # The core's tests
 
+## DSP and guest RAM ordering
+
+`test-dsp-guest-ram.py CHECKOUT [CC]` compiles the production APU tick and
+DSP scatter/gather walker against a deterministic delayed-worker scheduler.
+It reproduces OutRun 2's scratch growth from maximum page `0xc` to `0x6c`,
+with a new 64-byte transfer at `0x12520` published before the register write.
+It checks reads, writes, dirty tracking, frame cadence, and scratch-page reuse.
+The uncorrected tick fails at the production `page_entry <= max_sge` assertion.
+
 `test-core-timers.py CHECKOUT [CC]` compiles the production clock queues and
 checks 20,000 operations against an independent ordered-array oracle:
 four clocks, filtered deadlines, equal-expiry ordering, pause/resume,

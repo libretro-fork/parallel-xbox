@@ -121,6 +121,11 @@ static void se_frame(MCPXAPUState *d)
     mcpx_apu_vp_frame(d, mixbins);
     mcpx_apu_dsp_post(d, mixbins);
 
+    /* DMA reads the guest's live scratch pages and scatter/gather tables.
+     * Finish this tick before the vCPU can change them. Queuing MMIO
+     * writes alone cannot order the RAM updates that precede them. */
+    mcpx_apu_dsp_quiesce(d);
+
     d->ep_frame_div++;
 }
 
