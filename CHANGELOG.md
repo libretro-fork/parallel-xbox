@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Vulkan texture readbacks now batch live and parked surface producers together, avoiding separate waits for each compatible parked image. Ownership callbacks retire only after the existing batch fence; incompatible conversions and explicit no-copy retirement keep their synchronous fallback. CPU palette hashing still requires materialized RAM.
+
 - QEMU manual-reset events and AIO counter-lock waits now park through libretro-common eventcounts. Remove the duplicate pthread fallback and QEMU futex wrapper, including its direct Windows 8 address-wait imports and synchronization library dependency. Bounded shared parking channels preserve event retirement after signaling without enlarging each event. The AIO exclusion gate remains; it is not made lock-free by changing its parking backend.
 
 - Vulkan reuses the completed occlusion value fetched by an idle-report wait when the following poll has exactly that one unread query. The poll borrows the saved value directly, avoiding a second query-result readback call; multi-query ranges still use the existing nonblocking path, and the required guest wait is unchanged.

@@ -146,10 +146,12 @@ void pgraph_vk_download_surfaces_in_range_if_dirty(PGRAPHState *pg,
                 container_of(pg, NV2AState, pgraph), surface);
         }
     }
-    readback_batch_end(container_of(pg, NV2AState, pgraph));
-    /* A texture is built from this RAM: settle its owed lazy writebacks. */
+    /* The texture also needs parked producers. Record them in the same
+     * ordered batch before waiting; their CPU callbacks stay armed until
+     * download_settled runs after the fence. */
     parked_materialize_range(container_of(pg, NV2AState, pgraph), start,
                              size);
+    readback_batch_end(container_of(pg, NV2AState, pgraph));
 }
 
 /* The packed read-back at the start of src (rows of width texels) written
@@ -1045,10 +1047,29 @@ static void parked_materialize_range(NV2AState *d, hwaddr start,
 {
     PGRAPHVkState *r = d->pgraph.vk_renderer_state;
     SurfaceBinding *s, *next;
+    assert(r->readback_batch.open);
     QTAILQ_FOREACH_SAFE(s, &r->invalid_surfaces, entry, next) {
         if (s->writeback_owed && check_surface_overlaps_range(s, start, size)) {
-            parked_materialize(d, s);
-            /* a texture read this RAM: proven live, stay eager */
+            /* A live or earlier parked producer may already have queued this
+             * older view. The previous per-image waits retired it before this
+             * iteration. Skip it here to preserve live-range learning. */
+            bool queued = false;
+            for (unsigned i = 0; i < r->readback_batch.n; i++) {
+                if (r->readback_batch.surfaces[i] == s) {
+                    queued = true;
+                    break;
+                }
+            }
+            if (queued) continue;
+            if (s->draw_dirty && s->width && s->height) {
+                pgraph_vk_surface_download_if_dirty(d, s);
+            } else {
+                /* Preserve explicit retirement when no copy is needed.
+                 * Any older queued copies must settle before disarming. */
+                parked_materialize(d, s);
+            }
+            /* A texture read this RAM: proven live, stay eager. Learning
+             * does not release the callback or expose pending bytes. */
             pgraph_writeback_learn_live(&d->pgraph, s->vram_addr, s->size);
         }
     }

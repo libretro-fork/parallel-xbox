@@ -1181,3 +1181,13 @@ spies check 72,186 requests, allocation-free reuse within the reserve, FIFO
 fields and writes, delayed completion, overflow allocation/retirement, teardown
 with pending reserve and overflow nodes, and reinitialization with cost queries
 both enabled and disabled. No queue limit or synchronization is added by pooling.
+
+`test-vk-parked-readback-batch.py` runs production range selection, older-writer
+ordering, batching, settlement and callback retirement against the previous
+per-image behavior. Across 2,000 generated range workloads it checks exact RAM,
+copy order, live-range learning, final dirty/owed state and callbacks; synchronous conversion
+fallbacks must not increase waits. The all-direct 25-producer fixture reduces
+25 modeled waits to one; 130 producers split at the real 64-entry batch capacity
+into three waits. Four no-copy retirement cases verify pending copies settle
+before callbacks are disarmed. These are scheduling-model counts, not measured
+whole-game latency improvements; no image transfer or hashing bytes are omitted.
