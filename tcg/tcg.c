@@ -1431,9 +1431,6 @@ static TCGHelperInfo info_helper_st128_mmu = {
               | dh_typemask(ptr, 5)  /* uintptr_t ra */
 };
 
-#define HELPER_INFO_INIT(I)      (&(I)->init)
-#define HELPER_INFO_INIT_VAL(I)  1
-
 static inline bool arg_slot_reg_p(unsigned arg_slot)
 {
     /*
@@ -1708,6 +1705,30 @@ static void init_call_layout(TCGHelperInfo *info)
             }
         }
     }
+}
+
+/* A stalled initializer must not hold up translation on another thread.
+ * Candidates use only immutable helper metadata; only the published winner
+ * lives for the helper/core lifetime. No operation mutates its layout. */
+static TCGHelperInfo *tcg_resolve_call_layout(TCGHelperInfo *info)
+{
+    TCGHelperInfo *layout = retro_atomic_load_acquire_ptr(&info->layout);
+    if (!layout) {
+        TCGHelperInfo *candidate = g_new0(TCGHelperInfo, 1);
+        candidate->func = info->func;
+        candidate->name = info->name;
+        candidate->typemask = info->typemask;
+        candidate->flags = info->flags;
+        init_call_layout(candidate);
+        retro_atomic_store_relaxed_ptr(&candidate->layout, candidate);
+        if (retro_atomic_cas_ptr(&info->layout, NULL, candidate)) {
+            layout = candidate;
+        } else {
+            g_free(candidate);
+            layout = retro_atomic_load_acquire_ptr(&info->layout);
+        }
+    }
+    return layout;
 }
 
 static int indirect_reg_alloc_order[ARRAY_SIZE(tcg_target_reg_alloc_order)];
@@ -2549,10 +2570,7 @@ static void tcg_gen_callN(void *func, TCGHelperInfo *info,
     TCGOp *op;
     int i, n, pi = 0, total_args;
 
-    if (unlikely(g_once_init_enter(HELPER_INFO_INIT(info)))) {
-        init_call_layout(info);
-        g_once_init_leave(HELPER_INFO_INIT(info), HELPER_INFO_INIT_VAL(info));
-    }
+    info = tcg_resolve_call_layout(info);
 
     gen_bb_epilogue();
 

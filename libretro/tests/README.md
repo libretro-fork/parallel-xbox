@@ -1,5 +1,13 @@
 # The core's tests
 
+`test-init-publication.py CHECKOUT [CC]` compiles production TCG layout and
+Windows thread-name API publication. It pauses one initializer while another
+finishes, stresses canonical layout publication and losing-candidate cleanup,
+and checks cached API presence/absence. `INIT_PUBLICATION_CFLAGS`,
+`INIT_PUBLICATION_BINARY` and `INIT_PUBLICATION_SKIP_RUN` select sanitizers or
+retain a cross-built executable. The layout test stubs ABI computation; full
+core instruction tests cover the actual backend layout computation.
+
 `test-chihiro-dimm-stream.py CHECKOUT [CC]` compiles the production DIMM
 serializer and bounded memory cursor. It checks legacy v1 byte encoding,
 image tails, 64-bit image sizes, one-copy output, borrowed input, round trips,

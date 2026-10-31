@@ -24,27 +24,29 @@ static bool name_threads;
 
 typedef HRESULT (WINAPI *pSetThreadDescription) (HANDLE hThread,
                                                  PCWSTR lpThreadDescription);
-static pSetThreadDescription SetThreadDescriptionFunc;
-static HMODULE kernel32_module;
+static retro_atomic_ptr_t thread_description_func;
+static char thread_description_unavailable;
 
-static bool load_set_thread_description(void)
+static pSetThreadDescription load_set_thread_description(void)
 {
-    static gsize _init_once = 0;
-
-    if (g_once_init_enter(&_init_once)) {
-        kernel32_module = LoadLibrary("kernel32.dll");
-        if (kernel32_module) {
-            SetThreadDescriptionFunc =
-                (pSetThreadDescription)GetProcAddress(kernel32_module,
-                                                      "SetThreadDescription");
-            if (!SetThreadDescriptionFunc) {
-                FreeLibrary(kernel32_module);
-            }
+    void *cached = retro_atomic_load_acquire_ptr(&thread_description_func);
+    if (!cached) {
+        /* kernel32 is already process-owned. Cache absence too, without
+         * retaining a library reference or waiting for another resolver. */
+        HMODULE module = GetModuleHandleA("kernel32.dll");
+        void *resolved = module ? (void *)GetProcAddress(module,
+                                                    "SetThreadDescription") : NULL;
+        if (!resolved) {
+            resolved = &thread_description_unavailable;
         }
-        g_once_init_leave(&_init_once, 1);
+        if (retro_atomic_cas_ptr(&thread_description_func, NULL, resolved)) {
+            cached = resolved;
+        } else {
+            cached = retro_atomic_load_acquire_ptr(&thread_description_func);
+        }
     }
-
-    return !!SetThreadDescriptionFunc;
+    return cached == &thread_description_unavailable ? NULL :
+           (pSetThreadDescription)cached;
 }
 
 void qemu_thread_naming(bool enable)
@@ -362,8 +364,9 @@ static bool set_thread_description(HANDLE h, const char *name)
 {
     HRESULT hr;
     g_autofree wchar_t *namew = NULL;
+    pSetThreadDescription describe = load_set_thread_description();
 
-    if (!load_set_thread_description()) {
+    if (!describe) {
         return false;
     }
 
@@ -372,7 +375,7 @@ static bool set_thread_description(HANDLE h, const char *name)
         return false;
     }
 
-    hr = SetThreadDescriptionFunc(h, namew);
+    hr = describe(h, namew);
 
     return SUCCEEDED(hr);
 }

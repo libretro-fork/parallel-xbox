@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- TCG helper-call layouts now publish immutable candidates through libretro-common atomics instead of entering the GLib once registry. A stalled initializer cannot block another translator; one layout per used helper stays for the core lifetime. Windows thread-name API lookup likewise publishes a function or cached absence without once locking or an extra kernel32 reference.
+
 - Chihiro DIMM states stream changed pages directly into the frontend state buffer and borrow the input blob during restore. Replace the full intermediate blob with a page-number list; preserve the v1 wire format and game-image identity checks.
 
 - Remove the unused QEMU yank registry, its startup mutex, QAPI definitions and chardev handover fields. Remove unreachable KVM private-memory setup and its discard-counter mutex; unsupported private-memory requests still fail explicitly. Xbox and Chihiro emulation features are unchanged.

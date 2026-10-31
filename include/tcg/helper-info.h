@@ -10,6 +10,7 @@
 #define TCG_HELPER_INFO_H
 
 #include "tcg-target-reg-bits.h"
+#include <retro_atomic.h>
 
 #define MAX_CALL_IARGS  7
 
@@ -44,8 +45,8 @@ struct TCGHelperInfo {
     void *func;
     const char *name;
 
-    /* Used with g_once_init_enter. */
-    uintptr_t init;
+    /* Immutable computed layout, published without an initializer lock. */
+    retro_atomic_ptr_t layout;
 
     unsigned typemask           : 32;
     unsigned flags              : 8;
