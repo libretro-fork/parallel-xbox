@@ -1,5 +1,9 @@
 # Changelog of the libretro core
 
+- Trim unused Windows linker libraries and replace the Win8-era PathCch resource-root dependency with allocation-free compatible parsing.
+
+- Remove the DMA map-retry list mutex; frontend-owned callbacks handle cross-thread releases through a lazily created atomic bottom-half notification.
+
 - Eliminate a full-cluster scratch copy on compressed QCOW2 partial writes and zeroing by reusing the invalidated decompression cache as the patch buffer.
 
 - Replace the POSIX FD monitor framework with direct descriptor readiness handling; remove unused TLS poll-array copies, epoll descriptors and busy-poll machinery.

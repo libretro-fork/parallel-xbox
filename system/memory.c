@@ -21,6 +21,7 @@
 #include "qemu/bitops.h"
 #include "qemu/error-report.h"
 #include "qemu/main-loop.h"
+#include <rthreads/rthreads.h>
 #include "qemu/qemu-print.h"
 #include "qemu/target-info.h"
 #include "qom/object.h"
@@ -2635,7 +2636,8 @@ void address_space_init(AddressSpace *as, MemoryRegion *root, const char *name)
     QTAILQ_INSERT_TAIL(&address_spaces, as, address_spaces_link);
     as->max_bounce_buffer_size = DEFAULT_MAX_BOUNCE_BUFFER_SIZE;
     retro_atomic_64_init(&as->bounce_buffer_size, 0);
-    qemu_mutex_init(&as->map_client_list_lock);
+    as->map_client_owner = sthread_get_current_thread_id();
+    retro_atomic_ptr_init(&as->map_client_bh, NULL);
     QLIST_INIT(&as->map_client_list);
     as->name = g_strdup(name ? name : "anonymous");
     address_space_update_topology(as);
@@ -2646,7 +2648,7 @@ static void do_address_space_destroy(AddressSpace *as)
 {
     assert(retro_atomic_load_relaxed_64(&as->bounce_buffer_size) == 0);
     assert(QLIST_EMPTY(&as->map_client_list));
-    qemu_mutex_destroy(&as->map_client_list_lock);
+    assert(!retro_atomic_load_relaxed_ptr(&as->map_client_bh));
 
     assert(QTAILQ_EMPTY(&as->listeners));
 
@@ -2662,10 +2664,26 @@ static void do_address_space_destroy_free(AddressSpace *as)
     g_free(as);
 }
 
+/* All map/unmap users must finish before AddressSpace destruction, as for
+ * the original retry list. Retire queued notifications on the owner before
+ * RCU can reclaim their opaque AddressSpace. Deleted BHs skip the callback. */
+static void address_space_cancel_map_client_bh(AddressSpace *as)
+{
+    QEMUBH *notify;
+
+    assert(as->map_client_owner == sthread_get_current_thread_id());
+    notify = retro_atomic_exchange_ptr(&as->map_client_bh, NULL);
+    if (notify) {
+        qemu_bh_delete(notify);
+    }
+}
+
 /* Detach address space from global view, notify all listeners */
 static void address_space_detach(AddressSpace *as)
 {
     MemoryRegion *root = as->root;
+
+    address_space_cancel_map_client_bh(as);
 
     /* Flush out anything from MemoryListeners listening in on this */
     memory_region_transaction_begin();

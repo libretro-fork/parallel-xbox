@@ -44,7 +44,6 @@
 #endif
 
 #ifdef G_OS_WIN32
-#include <pathcch.h>
 #include <wchar.h>
 #endif
 
@@ -1026,6 +1025,74 @@ void qemu_init_exec_dir(const char *argv0)
 #endif
 }
 
+#ifdef G_OS_WIN32
+/* Match the root prefixes accepted by PathCchSkipRoot without its Win8
+ * import or a locale-dependent multibyte/wide conversion and heap copy. */
+static const char *win_skip_path_root(const char *path)
+{
+    const char *p = path;
+    if (p[0] == '\\') {
+        if (p[1] != '\\') {
+            return p + 1;
+        }
+        p += 2;
+        if (p[0] == '?') {
+            if (p[1] != '\\') {
+                return NULL;
+            }
+            p += 2;
+            size_t len = strlen(p);
+            if (((p[0] >= 'A' && p[0] <= 'Z') ||
+                 (p[0] >= 'a' && p[0] <= 'z')) && p[1] == ':') {
+                return p + 2 + (p[2] == '\\');
+            }
+            if (len >= 4 && (p[0] | 32) == 'u' &&
+                (p[1] | 32) == 'n' && (p[2] | 32) == 'c' && p[3] == '\\') {
+                p += 4;
+            } else if (len >= 44 && (p[0] | 32) == 'v' &&
+                       (p[1] | 32) == 'o' && (p[2] | 32) == 'l' &&
+                       (p[3] | 32) == 'u' && (p[4] | 32) == 'm' &&
+                       (p[5] | 32) == 'e' && p[6] == '{') {
+                p += 7;
+                for (unsigned i = 0; i < 36; i++) {
+                    unsigned char c = p[i];
+                    if (i == 8 || i == 13 || i == 18 || i == 23) {
+                        if (c != '-') {
+                            return NULL;
+                        }
+                    } else if (!((c >= '0' && c <= '9') ||
+                                 (c >= 'a' && c <= 'f') ||
+                                 (c >= 'A' && c <= 'F'))) {
+                        return NULL;
+                    }
+                }
+                if (p[36] != '}') {
+                    return NULL;
+                }
+                return p + 37 + (p[37] == '\\');
+            } else {
+                return NULL;
+            }
+        }
+        /* UNC server/share, also permitting a partial root as Windows does. */
+        for (unsigned i = 0; i < 2; i++) {
+            while (*p && *p != '\\') {
+                p++;
+            }
+            if (*p == '\\') {
+                p++;
+            }
+        }
+        return p;
+    }
+    if (((p[0] >= 'A' && p[0] <= 'Z') ||
+         (p[0] >= 'a' && p[0] <= 'z')) && p[1] == ':') {
+        return p + 2 + (p[2] == '\\');
+    }
+    return NULL;
+}
+#endif
+
 char *get_relocated_path(const char *dir)
 {
     size_t prefix_len = strlen(CONFIG_PREFIX);
@@ -1040,22 +1107,8 @@ char *get_relocated_path(const char *dir)
     g_string_append(result, "/qemu-bundle");
     if (access(result->str, R_OK) == 0) {
 #ifdef G_OS_WIN32
-        const char *src = dir;
-        size_t size = mbsrtowcs(NULL, &src, 0, &(mbstate_t){0}) + 1;
-        PWSTR wdir = g_new(WCHAR, size);
-        mbsrtowcs(wdir, &src, size, &(mbstate_t){0});
-
-        PCWSTR wdir_skipped_root;
-        if (PathCchSkipRoot(wdir, &wdir_skipped_root) == S_OK) {
-            size = wcsrtombs(NULL, &wdir_skipped_root, 0, &(mbstate_t){0});
-            char *cursor = result->str + result->len;
-            g_string_set_size(result, result->len + size);
-            wcsrtombs(cursor, &wdir_skipped_root, size + 1, &(mbstate_t){0});
-        } else {
-            g_string_append(result, dir);
-        }
-
-        g_free(wdir);
+        const char *suffix = win_skip_path_root(dir);
+        g_string_append(result, suffix ? suffix : dir);
 #else
         g_string_append(result, dir);
 #endif

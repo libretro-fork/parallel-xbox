@@ -133,9 +133,7 @@ else ifeq ($(platform),win)
    # a section per function overflows COFF's 32767 sections in the larger
    # files (libepoxy's generated dispatch): the big object format has room
    OS_SECTION_FLAGS := -Wa,-mbig-obj
-   OS_LIBS     := -lws2_32 -liphlpapi -lwinmm -lole32 -loleaut32 -lshlwapi \
-                  -lshell32 -luuid -ladvapi32 -luser32 -lgdi32 -lcomdlg32 \
-                  -lwinspool -lopengl32 -lpathcch
+   OS_LIBS     := -lws2_32 -liphlpapi -ladvapi32 -luser32 -lgdi32 -lopengl32
    VENDORED_DEPS := 1
 else ifeq ($(platform),osx)
    HOST_OS     := darwin
