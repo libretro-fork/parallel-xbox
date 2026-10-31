@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Native POSIX disk sync retries interrupted system calls, including the final sync when a writable image closes. Genuine sync errors still propagate instead of being retried indefinitely.
+
 - CPU Boost emits the MMX exit tag update directly instead of calling a helper; native MMX entry updates all eight tags with one wide store. Floating-point publication, TOP and register contents are preserved.
 
 - Honor bounded UTF-8/UTF-16 input and report actual consumed lengths in the Windows GLib conversion wrappers. Empty conversions now succeed, and UTF-16 conversion no longer includes text beyond the requested prefix.

@@ -462,11 +462,16 @@ int lr_file_sync(LRFile *f)
     if (f->mapped) {
         return 0;
     }
+    int ret;
+
+    do {
 #if defined(__linux__)
-    return fdatasync(f->fd) < 0 ? -errno : 0;
+        ret = fdatasync(f->fd);
 #else
-    return fsync(f->fd) < 0 ? -errno : 0;
+        ret = fsync(f->fd);
 #endif
+    } while (ret < 0 && errno == EINTR);
+    return ret < 0 ? -errno : 0;
 }
 
 int64_t lr_file_allocated(LRFile *f)

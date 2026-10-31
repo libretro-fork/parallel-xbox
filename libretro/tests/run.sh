@@ -202,6 +202,18 @@ ${cc} -O2 -std=gnu99 -Wall -DLR_FILE_FILESTREAM=0 -I"$lrc/include" -o "$work/bin
     "$lrc/encodings/encoding_deflate.c" "$lrc/encodings/encoding_crc32.c" \
     "$lrc/features/features_cpu.c" "$lrc/time/rtime.c" "$lrc/compat/compat_strl.c" -lpthread
 "$work/bin/qcow2test" "$here/../../data/xbox_hdd.qcow2" "$work"
+# The POSIX backend retries interrupted syncs, including during close.
+case $(uname -s) in
+MINGW*|MSYS*) ;;
+*)
+    ${cc} -O2 -std=gnu99 -Wall -DLR_FILE_FILESTREAM=0 -I"$here/../.." \
+        -Dfdatasync=test_sync -Dfsync=test_sync \
+        -c "$here/../../block/libretro-file.c" -o "$work/bin/file-sync.o"
+    ${cc} -O2 -std=gnu99 -Wall -DLR_FILE_FILESTREAM=0 -I"$here/../.." \
+        "$here/test-file-sync.c" "$work/bin/file-sync.o" -o "$work/bin/filesynctest"
+    "$work/bin/filesynctest" "$work/file-sync.img"
+    ;;
+esac
 # Count the production qcow2 layer's file calls without replacing its backend.
 ${cc} -O2 -std=gnu99 -Wall -DLR_FILE_FILESTREAM=0 -I"$here/../.." -I"$lrc/include" \
     -Dlr_file_sync=counted_sync -Dlr_file_zero=counted_zero -Dlr_file_pwrite=counted_pwrite \
