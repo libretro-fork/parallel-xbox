@@ -292,6 +292,9 @@ static int load_program(const char *path, uint32_t *p, uint32_t *x, uint32_t *y,
 
 static int compare(const char *what, const void *a, const void *b, size_t n, size_t width)
 {
+    if (memcmp(a, b, n) == 0) {
+        return 0;
+    }
     const uint8_t *pa = a, *pb = b;
 
     for (size_t i = 0; i < n; i++) {

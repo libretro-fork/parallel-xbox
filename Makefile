@@ -291,7 +291,7 @@ ALL_OBJECTS := $(OBJECTS) $(OBJS_UTIL) $(DEP_OBJECTS)
 
 clean:
 	rm -f $(TARGET) $(LIBQEMUUTIL) $(VERSION_H) $(filter %.a,$(DEPS_LIBS))
-	rm -f $(ALL_OBJECTS) $(ALL_OBJECTS:.o=.d) $(DSPDIFF) $(SEEDSHADERS) $(S3TCTEST) $(S3TCTEST).exe $(FILEIOTEST)
+	rm -f $(ALL_OBJECTS) $(ALL_OBJECTS:.o=.d) $(DSPDIFF) $(DSPDIFF).exe $(DSPNATIVE) $(SEEDSHADERS) $(S3TCTEST) $(S3TCTEST).exe $(FILEIOTEST)
 
 # The DSP JIT against the interpreter (libretro/tests/dspdiff.c), built
 # from the DSP's own sources, nothing else of the core: a plain program,
@@ -307,6 +307,18 @@ $(DSPDIFF): $(DSPDIFF_SRC)
 	$(CC) -O2 $(QEMU_CFLAGS) $(ARCH_CFLAGS) -I$(CORE_DIR)/hw/xbox/mcpx/apu/dsp \
 		-I$(CORE_DIR)/hw/xbox/mcpx/apu/dsp/interp -o $@ $(DSPDIFF_SRC)
 dspdiff: $(DSPDIFF)
+
+# One-instruction blocks let the coverage test compare every architectural
+# boundary, and count real interpreter calls rather than translation claims.
+DSPNATIVE := $(CORE_DIR)/libretro/tests/dspnative$(if $(filter win,$(platform)),.exe,)
+DSPNATIVE_SRC := $(filter-out $(CORE_DIR)/libretro/tests/dspdiff.c,$(DSPDIFF_SRC)) \
+	$(CORE_DIR)/libretro/tests/test-dsp-native.c
+$(DSPNATIVE): $(DSPNATIVE_SRC) $(CORE_DIR)/libretro/tests/dspdiff.c
+	$(CC) -O2 $(QEMU_CFLAGS) $(ARCH_CFLAGS) -DDSPJIT_TEST -DDSPJIT_BLOCK_MAX_INSNS=1 \
+		-I$(CORE_DIR)/hw/xbox/mcpx/apu/dsp -I$(CORE_DIR)/hw/xbox/mcpx/apu/dsp/interp \
+		-o $@ $(DSPNATIVE_SRC)
+dspnative: $(DSPNATIVE)
+	$(DSPNATIVE)
 
 # Every seed-dictionary shader through the GLSL to SPIR-V compiler
 # (libretro/tests/seedshaders.c), linked with the core's own generators and
@@ -343,6 +355,6 @@ $(FILEIOTEST): $(CORE_DIR)/libretro/tests/test-file-io.c \
 		$(DEPS_LIBS) $(OS_LIBS)
 fileiotest: $(FILEIOTEST)
 
-.PHONY: all clean dspdiff seedshaders s3tctest fileiotest FORCE
+.PHONY: all clean dspdiff dspnative seedshaders s3tctest fileiotest FORCE
 
 -include $(ALL_OBJECTS:.o=.d)

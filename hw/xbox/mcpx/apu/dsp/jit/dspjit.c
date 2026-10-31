@@ -52,7 +52,29 @@
 #endif
 
 #define DSPJIT_CACHE_BYTES (4u << 20)
+#define DSPJIT_COMMIT_BYTES (64u << 10)
+#ifndef DSPJIT_BLOCK_MAX_INSNS
 #define DSPJIT_BLOCK_MAX_INSNS 64
+#endif
+
+#ifdef DSPJIT_TEST
+static uint64_t test_fallback_count;
+uint64_t dspjit_test_fallback_count(void) { return test_fallback_count; }
+void dspjit_test_reset_fallback_count(void) { test_fallback_count = 0; }
+static void test_note_fallback(dsp_core_t *core)
+{
+    (void)core;
+    test_fallback_count++;
+}
+#endif
+
+static void interpret_one(dsp_core_t *core)
+{
+#ifdef DSPJIT_TEST
+    test_note_fallback(core);
+#endif
+    dsp56k_execute_instruction(core);
+}
 
 typedef void (*dspjit_block_fn)(dsp_core_t *core);
 typedef struct Tr Tr;
@@ -65,6 +87,7 @@ struct DspJit {
     dsp_core_t *core;
     uint8_t *cache;
     size_t cache_len;
+    size_t cache_committed;
     size_t cache_used;
     size_t cache_base;      /* after the trampolines */
     dspjit_enter_fn enter;
@@ -72,11 +95,23 @@ struct DspJit {
     /* the blocks by scaling mode (SR's S1 S0) and P address, and the
      * P address each ends before (their instruction words, for a write
      * to P); the rep_blocks are the instruction at the address repeated */
-    dspjit_block_fn blocks[4][DSP_PRAM_SIZE];
-    uint16_t block_end[4][DSP_PRAM_SIZE];
-    dspjit_block_fn rep_blocks[4][DSP_PRAM_SIZE];
+    dspjit_block_fn *blocks[4];
+    uint16_t *block_end[4];
+    dspjit_block_fn *rep_blocks[4];
     struct Tr *tr;      /* the translator's state, made once */
 };
+
+#ifdef DSPJIT_TEST
+uint64_t dspjit_test_committed_bytes(DspJit *jit) { return jit->cache_committed; }
+unsigned dspjit_test_mode_count(DspJit *jit)
+{
+    unsigned count = 0;
+    for (int mode = 0; mode < 4; mode++) {
+        count += jit->blocks[mode] != NULL;
+    }
+    return count;
+}
+#endif
 
 /* a block's longest span in P words: its instructions, two words each */
 #define DSPJIT_BLOCK_MAX_WORDS (DSPJIT_BLOCK_MAX_INSNS * 2)
@@ -87,11 +122,18 @@ struct DspJit {
  * A MAP_JIT page is either writable or executable to a thread at a time:
  * the translator switches the thread to writing for a block and back
  * (qemu_thread_jit_write/execute, as TCG does; nothing elsewhere). */
-static void *dspjit_map_exec(size_t len)
+static void *dspjit_map_exec(size_t len, size_t *committed)
 {
 #ifdef _WIN32
-    return VirtualAlloc(NULL, len, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+    void *p = VirtualAlloc(NULL, len, MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+    *committed = MIN(len, DSPJIT_COMMIT_BYTES);
+    if (p && !VirtualAlloc(p, *committed, MEM_COMMIT, PAGE_EXECUTE_READWRITE)) {
+        VirtualFree(p, 0, MEM_RELEASE);
+        return NULL;
+    }
+    return p;
 #else
+    *committed = len;
     int flags = MAP_PRIVATE | MAP_ANONYMOUS;
 #ifdef __APPLE__
     flags |= MAP_JIT;
@@ -99,6 +141,34 @@ static void *dspjit_map_exec(size_t len)
     void *p = mmap(NULL, len, PROT_READ | PROT_WRITE | PROT_EXEC, flags, -1, 0);
     return p == MAP_FAILED ? NULL : p;
 #endif
+}
+
+static bool dspjit_commit_exec(DspJit *jit, size_t end)
+{
+    if (end <= jit->cache_committed) {
+        return true;
+    }
+#ifdef _WIN32
+    end = MIN(jit->cache_len,
+              (end + DSPJIT_COMMIT_BYTES - 1) & ~(size_t)(DSPJIT_COMMIT_BYTES - 1));
+    if (!VirtualAlloc(jit->cache + jit->cache_committed,
+                      end - jit->cache_committed, MEM_COMMIT, PAGE_EXECUTE_READWRITE)) {
+        return false;
+    }
+    jit->cache_committed = end;
+    return true;
+#else
+    return false;
+#endif
+}
+
+static void dspjit_prepare_mode(DspJit *jit, int mode)
+{
+    if (!jit->blocks[mode]) {
+        jit->blocks[mode] = g_new0(dspjit_block_fn, DSP_PRAM_SIZE);
+        jit->rep_blocks[mode] = g_new0(dspjit_block_fn, DSP_PRAM_SIZE);
+        jit->block_end[mode] = g_new0(uint16_t, DSP_PRAM_SIZE);
+    }
 }
 
 static void dspjit_unmap_exec(void *p, size_t len)
@@ -1717,6 +1787,8 @@ enum {
     NP_LUA_REL,
     NP_ALU_IMM,         /* add/cmp/and #, asl/asr #ii: an AluOp (np_alu) */
     NP_MOVEP_EA,        /* movep [X or Y]:ea <-> [X or Y]:pp */
+    NP_MOVEP_REG,
+    NP_CMPU,
 };
 
 /* the AluOp of an NP_ALU_IMM instruction; whether it is one */
@@ -1787,6 +1859,13 @@ static int np_kind(const Insn *in)
     if (!strcmp(name, "movep [X or Y]:ea <-> [X or Y]:pp")) {
         return NP_MOVEP_EA;
     }
+    if (!strcmp(name, "movep [X or Y]:pp <-> R")) {
+        return reg_supported((in->inst >> 8) & 0x3F) ? NP_MOVEP_REG : NP_NONE;
+    }
+    if (!strcmp(name, "cmpu S1, S2")) {
+        int g = (in->inst >> 1) & 7;
+        return g == 0 || g >= 4 ? NP_CMPU : NP_NONE;
+    }
     {
         AluOp a;
         if (np_alu(in, &a)) {
@@ -1802,6 +1881,47 @@ static void emit_nonparallel(Tr *t, const Insn *in, int kind)
     uint32_t inst = in->inst;
 
     switch (kind) {
+    case NP_CMPU: {
+        static const int srcs[8] = {
+            -1, -1, -1, -1, DSP_REG_X0, DSP_REG_Y0, DSP_REG_X1, DSP_REG_Y1
+        };
+        int d = inst & 1, g = (inst >> 1) & 7;
+        /* CMPU uses the limited 24-bit source, but keeps E, U and L.
+         * Its subtraction supplies C, N and Z; V is cleared. */
+        emit_flags_flush(t);
+        acc_load(t, d);
+        emit_read_reg(t, g ? srcs[g] : DSP_REG_A + (d ^ 1), V1);
+        h_shl_ri(e, 1, V1, 40);
+        h_sar_ri(e, 1, V1, 16);
+        emit_addsub56(e, acc_reg(d), V1, true);
+        h_and_ri(e, 0, T4, SR_C);
+        h_mov_rr(e, 1, T0, T3);
+        h_shr_ri(e, 1, T0, 55 - DSP_SR_N);
+        h_and_ri(e, 0, T0, SR_N);
+        h_or_rr(e, 0, T4, T0);
+        h_test_rr(e, 1, T3, T3);
+        h_setcc(e, HC_EQ, T0);
+        h_shl_ri(e, 0, T0, DSP_SR_Z);
+        h_or_rr(e, 0, T4, T0);
+        emit_sr_result(t, SR_C | SR_N | SR_Z | SR_V, T4, -1, -1);
+        break;
+    }
+
+    case NP_MOVEP_REG: {
+        int reg = (inst >> 8) & 0x3F;
+        int space = (inst >> 16) & 1;
+        h_mov_ri(e, EA1, 0xFFFFC0 + (inst & 0x3F));
+        if (inst & (1 << 15)) {
+            emit_read_reg(t, reg, V1);
+            emit_write_mem(t, space, EA1, V1);
+        } else {
+            emit_read_mem(t, space, EA1, V1);
+            emit_write_reg(t, reg, V1);
+        }
+        t->cyc += 2;
+        break;
+    }
+
     case NP_NOP:
         break;
 
@@ -1934,6 +2054,10 @@ static void emit_fallback_body(Emitter *e, const Insn *in, uint32_t cyc_before)
     h_st32_imm(e, REG_CORE, OFF(cur_inst_len), 1);
     h_st16_imm(e, REG_CORE, OFF(instr_cycle), 2);
     h_mov_rr(e, 1, H_ARG0, REG_CORE);
+#ifdef DSPJIT_TEST
+    h_call(e, (const void *)test_note_fallback);
+    h_mov_rr(e, 1, H_ARG0, REG_CORE);
+#endif
     h_call(e, (const void *)in->d.emu);
     h_mov_rr(e, 1, H_ARG0, REG_CORE);
     h_call(e, (const void *)dsp56k_post);
@@ -2050,6 +2174,88 @@ static bool emit_control(Tr *t, const Insn *in)
 
     if (!name) {
         return false;
+    }
+
+    if (!strcmp(name, "jsr ea") || !strcmp(name, "jsr xxx")) {
+        uint32_t before = t->cyc;
+        size_t long_irq, pushed;
+        acc_spill_all(t, false);
+        if (!strcmp(name, "jsr xxx")) {
+            h_mov_ri(e, EA1, inst & 0xFFF);
+        } else {
+            Ea ea;
+            emit_calc_ea(t, (inst >> 8) & 0x3F, in->ext, EA1, &ea);
+            if (ea.kind == EA_IMM) {
+                h_mov_ri(e, EA1, ea.imm);
+            } else {
+                ea_addr_reg(t, &ea);
+            }
+        }
+        h_st32(e, REG_CORE, OFF(pc), EA1);
+        /* Interrupt entry has already saved PC/SR for a long interrupt.
+         * The vector's JSR enters its handler without pushing twice. */
+        h_cmp_mem16_imm(e, REG_CORE, OFF(interrupt_state), DSP_INTERRUPT_LONG);
+        long_irq = h_jcc(e, HC_EQ);
+        h_mov_rr(e, 1, H_ARG0, REG_CORE);
+        h_mov_ri(e, H_ARG1, in->next);
+        h_ld32(e, H_ARG2, REG_CORE, REGOFF(DSP_REG_SR));
+        h_call(e, (const void *)dsp56k_stack_push);
+        pushed = h_jmp(e);
+        h_patch(e, long_irq, e->len);
+        h_st16_imm(e, REG_CORE, OFF(interrupt_state), DSP_INTERRUPT_DISABLED);
+        h_patch(e, pushed, e->len);
+        h_st32_imm(e, REG_CORE, OFF(cur_inst_len), 0);
+        h_st16_imm(e, REG_CORE, OFF(instr_cycle), 4 + t->cyc - before);
+        h_mov_rr(e, 1, H_ARG0, REG_CORE);
+        h_call(e, (const void *)dsp56k_post);
+        emit_charge(e, before);
+        emit_jump_to_epilogue(t);
+        return true;
+    }
+
+    if (!strncmp(name, "jclr #n, ", 9) || !strncmp(name, "jset #n, ", 9)) {
+        bool clear = name[1] == 'c';
+        int space = (inst >> 6) & 1;
+        int reg = (inst >> 8) & 0x3F;
+        uint32_t next = in->next;
+        size_t taken;
+        if (!strcmp(name + 9, "S, xxxx")) {
+            if (!reg_supported(reg)) {
+                return false;
+            }
+            emit_read_reg(t, reg, V1);
+            acc_spill_all(t, false);
+        } else {
+            acc_spill_all(t, false);
+            if (strstr(name, ":pp")) {
+                h_mov_ri(e, EA1, 0xFFFFC0 + reg);
+            } else if (strstr(name, ":aa")) {
+                h_mov_ri(e, EA1, reg);
+            } else if (strstr(name, ":ea")) {
+                Ea ea;
+                emit_calc_ea(t, reg, in->ext, EA1, &ea);
+                if (ea.kind == EA_IMM) {
+                    h_mov_ri(e, EA1, ea.imm);
+                    next = at + 3;
+                } else {
+                    ea_addr_reg(t, &ea);
+                    if (ea.kind == EA_ABS) {
+                        next = at + 3;
+                    }
+                }
+            } else {
+                return false;
+            }
+            emit_read_mem(t, space, EA1, V1);
+        }
+        h_test_ri(e, 0, V1, 1u << (inst & 0x1F));
+        taken = h_jcc(e, clear ? HC_EQ : HC_NE);
+        /* The operand has already been read; post-processing must not
+         * repeat a peripheral read when the target ends a DO loop. */
+        emit_exit_to(t, in, next, 6, true);
+        h_patch(e, taken, e->len);
+        emit_exit_to(t, in, in->ext, 6, true);
+        return true;
     }
 
     if (!strcmp(name, "bcc xxxx") || !strcmp(name, "bcc xxx") || !strcmp(name, "bra xxxx")) {
@@ -2457,7 +2663,7 @@ static void emit_trampolines(DspJit *jit)
     Emitter e;
 
     qemu_thread_jit_write();
-    emit_init(&e, jit->cache, jit->cache_len);
+    emit_init(&e, jit->cache, jit->cache_committed);
     jit->enter = (dspjit_enter_fn)e.buf;
     h_enter(&e);
     jit->leave = e.buf + e.len;
@@ -2483,7 +2689,9 @@ static void translate_begin(DspJit *jit, int mode)
     t->table = jit->blocks[mode];
     /* the cache writable to this thread until translate_end (macOS) */
     qemu_thread_jit_write();
-    emit_init(e, jit->cache + jit->cache_used, jit->cache_len - jit->cache_used);
+    /* The emitter cannot write past committed pages. An overflowing
+     * translation commits another chunk and retries before publication. */
+    emit_init(e, jit->cache + jit->cache_used, jit->cache_committed - jit->cache_used);
 }
 
 /* the stubs; the block's function, or NULL when it did not fit (the
@@ -2510,8 +2718,10 @@ static dspjit_block_fn dspjit_translate(DspJit *jit, int mode, uint32_t pc)
 {
     dsp_core_t *core = jit->core;
     Tr *t = jit->tr;
-    uint32_t at = pc;
+    uint32_t at;
 
+retry:
+    at = pc;
     translate_begin(jit, mode);
 
     for (int n = 0; n < DSPJIT_BLOCK_MAX_INSNS; n++) {
@@ -2554,7 +2764,12 @@ static dspjit_block_fn dspjit_translate(DspJit *jit, int mode, uint32_t pc)
         emit_chain_to(t, at & (DSP_PRAM_SIZE - 1), t->cyc);
     }
 
-    return translate_end(jit);
+    dspjit_block_fn fn = translate_end(jit);
+    if (!fn && t->e.overflow && jit->cache_committed < jit->cache_len &&
+        dspjit_commit_exec(jit, jit->cache_committed + DSPJIT_COMMIT_BYTES)) {
+        goto retry;
+    }
+    return fn;
 }
 
 /* a REP's repeats done so far (the count at the start less the count
@@ -2596,6 +2811,7 @@ static dspjit_block_fn dspjit_translate_rep(DspJit *jit, int mode, uint32_t pc)
         return NULL;
     }
 
+retry:
     translate_begin(jit, mode);
     /* both accumulators in their registers for the whole loop, and LC;
      * its count at the start, for the cycles of the repeats done */
@@ -2653,7 +2869,12 @@ static dspjit_block_fn dspjit_translate_rep(DspJit *jit, int mode, uint32_t pc)
     h_call(e, (const void *)dsp56k_post);
     emit_jump_to_epilogue(t);
 
-    return translate_end(jit);
+    dspjit_block_fn fn = translate_end(jit);
+    if (!fn && e->overflow && jit->cache_committed < jit->cache_len &&
+        dspjit_commit_exec(jit, jit->cache_committed + DSPJIT_COMMIT_BYTES)) {
+        goto retry;
+    }
+    return fn;
 }
 #endif
 
@@ -2667,7 +2888,7 @@ DspJit *dspjit_create(dsp_core_t *core)
     jit = g_new0(DspJit, 1);
     jit->core = core;
     jit->cache_len = DSPJIT_CACHE_BYTES;
-    jit->cache = dspjit_map_exec(jit->cache_len);
+    jit->cache = dspjit_map_exec(jit->cache_len, &jit->cache_committed);
     if (!jit->cache) {
         g_free(jit);
         return NULL;
@@ -2685,6 +2906,11 @@ void dspjit_destroy(DspJit *jit)
         return;
     }
     dspjit_unmap_exec(jit->cache, jit->cache_len);
+    for (int mode = 0; mode < 4; mode++) {
+        g_free(jit->blocks[mode]);
+        g_free(jit->rep_blocks[mode]);
+        g_free(jit->block_end[mode]);
+    }
     g_free(jit->tr);
     g_free(jit);
 }
@@ -2692,8 +2918,12 @@ void dspjit_destroy(DspJit *jit)
 void dspjit_flush(DspJit *jit)
 {
     jit->cache_used = jit->cache_base;
-    memset(jit->blocks, 0, sizeof(jit->blocks));
-    memset(jit->rep_blocks, 0, sizeof(jit->rep_blocks));
+    for (int mode = 0; mode < 4; mode++) {
+        if (jit->blocks[mode]) {
+            memset(jit->blocks[mode], 0, DSP_PRAM_SIZE * sizeof(*jit->blocks[mode]));
+            memset(jit->rep_blocks[mode], 0, DSP_PRAM_SIZE * sizeof(*jit->rep_blocks[mode]));
+        }
+    }
 }
 
 void dspjit_invalidate(DspJit *jit, uint32_t address)
@@ -2704,6 +2934,9 @@ void dspjit_invalidate(DspJit *jit, uint32_t address)
         return;
     }
     for (int m = 0; m < 4; m++) {
+        if (!jit->blocks[m]) {
+            continue;
+        }
         /* the blocks that start before the word and reach it */
         for (uint32_t pc = from; pc <= address; pc++) {
             if (jit->blocks[m][pc] && jit->block_end[m][pc] > address) {
@@ -2720,7 +2953,7 @@ void dspjit_invalidate(DspJit *jit, uint32_t address)
 /* a repeat of an instruction the translator has no code for */
 static void rep_step(dsp_core_t *core)
 {
-    dsp56k_execute_instruction(core);
+    interpret_one(core);
     core->cycle_count += core->instr_cycle;
     core->jit_cycles -= core->instr_cycle;
 }
@@ -2735,12 +2968,13 @@ void dspjit_run(DspJit *jit, int cycles)
         dspjit_block_fn fn;
 
         int mode = (core->registers[DSP_REG_SR] >> DSP_SR_S0) & 3;
+        dspjit_prepare_mode(jit, mode);
 
         /* what the blocks' code is not made for: an interrupt in its
          * pipeline, a REP's own instruction: the interpreter's step */
-        if (core->interrupt_state != DSP_INTERRUPT_NONE ||
+        if (core->interrupt_state == DSP_INTERRUPT_DISABLED ||
             core->interrupt_counter != 0 || core->pc_on_rep) {
-            dsp56k_execute_instruction(core);
+            interpret_one(core);
             core->cycle_count += core->instr_cycle;
             core->jit_cycles -= core->instr_cycle;
             continue;
@@ -2782,7 +3016,7 @@ void dspjit_run(DspJit *jit, int cycles)
             if (!fn) {
                 /* a block too big for an empty cache cannot happen; the
                  * interpreter's step keeps the DSP going if it does */
-                dsp56k_execute_instruction(core);
+                interpret_one(core);
                 core->cycle_count += core->instr_cycle;
                 core->jit_cycles -= core->instr_cycle;
                 continue;

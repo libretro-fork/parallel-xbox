@@ -1164,23 +1164,23 @@ static inline void cpu_loop_exec_tb(CPUState *cpu, TranslationBlock *tb,
     }
 
     *last_tb = NULL;
-    if (cpu->lr_poll_wait) {
+    bool poll_wait = cpu->lr_poll_wait;
+    if (poll_wait) {
         /* a tight poll loop (cputlb.c lr_poll_read) asked for this exit:
          * the same wait as a quiet run */
         cpu->lr_poll_wait = false;
         cpu->neg.lr_quiet = -1;
     }
     if (cpu->neg.lr_quiet < 0) {
-        /* The libretro core's idle detection (translator.c): LR_QUIET_INSNS
-         * instructions that stored nothing and touched no device (but to
-         * poll an unchanged register), a wait.
-         * The core moves the guest's time on to the next event and ends
-         * the slice, unless something the guest may be waiting for is
-         * under way on another thread. */
+        /* A store-free stretch is only a candidate: register-only work
+         * and read-only scans still make progress. Skip time only for a
+         * verified kernel idle loop or the device-poll detector's wait. */
         extern void lr_quiet_exit(CPUState *cpu);
         cpu->neg.lr_quiet = LR_QUIET_INSNS;
         cpu->lr_quiet_at_exit = LR_QUIET_INSNS;
-        lr_quiet_exit(cpu);
+        if (poll_wait || cpu_kernel_idle_wait(cpu, last_tb)) {
+            lr_quiet_exit(cpu);
+        }
         if (!tb || cpu_loop_exit_requested(cpu)) {
             /* a plain block-end exit (tb NULL) has no budget to refill */
             return;

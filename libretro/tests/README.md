@@ -1,5 +1,9 @@
 # The core's tests
 
+`make dspnative` compares 91,648 DSP instruction boundaries against the interpreter and asserts zero interpreter calls, including generated fallback stubs and dispatcher/repeat fallback. It covers subroutine addressing, long-interrupt vectors, unsigned compares across scaling modes, peripheral moves, and bit-test jumps at loop boundaries. It also checks lazy scaling-mode allocation, code-cache growth and bounds. Test instrumentation is compiled out of the normal core.
+
+`test-quiet-progress.py CHECKOUT [CC]` runs the production TB-exit path against useful store-free work, verified kernel waits, device polling, interrupt release and null-TB exits. It prevents computation from acquiring synthetic timer waits.
+
 ## DSP and guest RAM ordering
 
 `test-dsp-guest-ram.py CHECKOUT [CC]` compiles the production APU tick and

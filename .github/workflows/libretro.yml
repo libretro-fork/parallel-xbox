@@ -26,6 +26,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: DSP ticks must finish before the guest changes scratch RAM
         run: python3 libretro/tests/test-dsp-guest-ram.py . cc
+      - name: Store-free work must not be mistaken for an idle wait
+        run: python3 libretro/tests/test-quiet-progress.py . cc
 
   guest-gpu-progress:
     name: DOAX guest GPU progress regression
@@ -140,6 +142,9 @@ jobs:
       # (libretro/tests/run.sh)
       - name: Frame and audio tests
         run: libretro/tests/run.sh parallel_xbox_libretro.so
+
+      - name: Native DSP coverage and interpreter equivalence
+        run: make dspnative
 
       # GLib is the core's own and libslirp is linked in: the core is the
       # one file

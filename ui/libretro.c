@@ -1938,11 +1938,9 @@ static bool lr_devices_busy(void)
  * when it parks (hw/xbox/nv2a/pfifo.c) */
 extern retro_atomic_int_t nv2a_libretro_waiter;
 
-/* The guest has run LR_QUIET_INSNS instructions that stored nothing and
- * touched no device but to read a register that had not changed
- * (accel/tcg/translator.c, cputlb.c): it is waiting, as the
- * kernel's idle thread does, spinning, and so does a game between its
- * frame's work and the next vblank. Its time moves on to the next event
+/* cpu-exec.c has verified a kernel idle loop or repeated device poll.
+ * A store-free instruction run alone is not proof of waiting: it may be
+ * useful computation. A proven wait moves time on to the next event
  * (a timer: the APU's frame, the frame's end) rather than being spent
  * instruction by instruction, and the slice ends so the event runs.
  * Unless something it may be waiting for is under way on another thread:

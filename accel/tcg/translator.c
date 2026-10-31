@@ -267,8 +267,8 @@ static TCGOp *gen_tb_start(DisasContextBase *db, uint32_t cflags)
 
     /* The libretro core's idle detection: the block's instructions come
      * off neg.lr_quiet, and a block that would take it below zero leaves
-     * for lr_quiet_exit instead (a run of guest code that stored nothing
-     * and touched no device: a wait, whose time moves on). A store
+     * for cpu-exec.c to check whether the candidate is a proven wait.
+     * Register-only computation must retain its instruction budget. A store
      * (lr_quiet_store_emitted) resets the count; so do device accesses
      * (but polls of a register that has not changed, cputlb.c), the TSC
      * and interrupts, in C. Not in a block that may not be
