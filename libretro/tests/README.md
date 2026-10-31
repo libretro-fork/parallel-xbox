@@ -98,7 +98,7 @@ while an unlinker owns the list. It includes the production implementation.
 `run.sh` runs it through the alert, keyed-event and event tiers with Wine.
 
 `test-signed-g8b8.py CHECKOUT CORE HARNESS SCRATCH` builds isolated guest bump
-and color probes and checks 32640 cases on each of OpenGL and Vulkan, including
+and color probes and checks 48000 cases on each of OpenGL and Vulkan, including
 all channel-sign combinations for the color probe, with quality overrides off
 and on. Mixed LOD0 filters additionally cover magnification/minification and
 sampler LOD biases of -4, 0 and +4. Three-level mipmapped probes cover all four
@@ -106,10 +106,14 @@ nearest/linear mip-filter modes, signed channels, positive/negative wrap
 coordinates, upper clamps, biases -4/0/+0.25/+4 and Force LOD0, with matching
 and mixed min/mag reconstruction.
 Clamp-to-edge matrices add independent X/Y data and samples inside, below,
-above and at opposite U/V edges, with matching and mixed filters. Mixed
-wrap/clamp axes are covered at bias +0.25; `--extended-address-biases` repeats
-these at -4/0/+0.25/+4 (51072 total cases per renderer). The probe builder
+above and at opposite U/V edges, with matching and mixed filters. New
+independent-axis matrices are covered at bias +0.25; `--extended-address-biases` repeats
+these at -4/0/+0.25/+4 (112512 total cases per renderer). The probe builder
 accepts `--mip-clamp-axis u` or `v` for these independent-axis cases.
+Mirrored U/V addressing is covered against wrap, edge and mirror partners,
+with matching/mixed filters and bias +0.25 (all four biases in extended mode).
+Use `--mip-address-u mirror --mip-address-v wrap` for an isolated matrix;
+each explicit address accepts `wrap`, `edge` or `mirror`.
 Cross-mip comparisons allow two color LSBs for native LOD precision; original
 single-level cases still require exact backend agreement. `run.sh` runs it on Linux
 when Vulkan is available. See `docs/bump-filter-probe.md` for the model and
@@ -120,9 +124,9 @@ invalidation predicate over 262144 register combinations and verifies that
 signed-channel, min/mag, mip-count and mip-size changes invalidate shader state.
 It also checks that reuse of the reserved universal byte preserves the
 serialized pixel-shader state size and field offsets.
-Another 2048 cases verify that matching, base-only wrap/clamp filters reuse the
+Another 4608 cases verify that matching, base-only wrap/edge/mirror filters reuse the
 single-level point/gather shader keys without clearing other stages' flags.
-An additional 4096 cases verify independent-axis flags and preserve other stages.
+An additional 9216 cases verify independent-axis flags and preserve other stages.
 
 `run.sh` runs every test script here. The extracted-code tests (`test-*.py`, which
 compile production functions into a fixture) run for either core; the ones

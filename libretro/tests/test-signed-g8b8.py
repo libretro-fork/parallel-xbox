@@ -35,6 +35,11 @@ def main():
               ("mipclampu", "mipclampv", "mipclampumixed", "mipclampvmixed")
               for filter in (3, 4, 5, 6) for bias in
               (("-4", "0", "0.25", "4") if args.extended_address_biases else ("0.25",))]
+    modes += [f"mipaddr{'mixed' if mixed else ''}-{u}-{v}_{filter}_{bias}"
+              for u, v in (("mirror", "wrap"), ("wrap", "mirror"),
+                           ("mirror", "mirror"), ("mirror", "edge"), ("edge", "mirror"))
+              for mixed in (False, True) for filter in (3, 4, 5, 6)
+              for bias in (("-4", "0", "0.25", "4") if args.extended_address_biases else ("0.25",))]
     for mode in modes:
         output = root / mode
         build = [sys.executable, str(here / "build-bump-probe.py"), str(output),
@@ -44,12 +49,15 @@ def main():
         elif mode.startswith("mixed"):
             bias = 4 if mode.endswith("plus4") else -4 if mode.endswith("minus4") else 0
             build += ["--mixed", "--lod-bias", str(bias)]
-        elif mode.startswith(("mip_", "mipmixed_", "mipclamp")):
+        elif mode.startswith(("mip_", "mipmixed_", "mipclamp", "mipaddr")):
             family, filter, bias = mode.split("_")
             build += ["--mip-filter", filter, "--lod-bias", bias]
             if "mixed" in family:
                 build.append("--mip-mixed")
-            if family.startswith("mipclampu"):
+            if family.startswith("mipaddr"):
+                _, u, v = family.split("-")
+                build += ["--mip-address-u", u, "--mip-address-v", v]
+            elif family.startswith("mipclampu"):
                 build += ["--mip-clamp-axis", "u"]
             elif family.startswith("mipclampv"):
                 build += ["--mip-clamp-axis", "v"]
