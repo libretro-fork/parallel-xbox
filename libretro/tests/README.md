@@ -1,5 +1,12 @@
 # The core's tests
 
+`test-vmstop-mailbox.py CHECKOUT [CC]` compiles production VM-stop request
+publication/consumption with real libretro-common threads and atomics. It
+checks every stop reason (including enum value zero), latest-value coalescing,
+publication before notification, exactly one consuming reader, payload
+visibility and 80,000 concurrent publications. `VMSTOP_CFLAGS`, `VMSTOP_BINARY`
+and `VMSTOP_SKIP_RUN` select sanitizers or cross-built binaries.
+
 `test-nvnet-tx-borrow.py CHECKOUT [CC]` compiles the production NVNet TX loop
 and network queue. It checks borrowed pointers and zero staging bytes for
 complete RAM packets, queue-owned copies under backpressure/reentrancy,

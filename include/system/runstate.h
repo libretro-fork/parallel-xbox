@@ -128,7 +128,6 @@ void qemu_register_wakeup_support(void);
 void qemu_system_shutdown_request(ShutdownCause reason);
 void qemu_system_debug_request(void);
 void qemu_system_vmstop_request(RunState reason);
-void qemu_system_vmstop_request_prepare(void);
 bool qemu_vmstop_requested(RunState *r);
 void qemu_system_killed(int signal, pid_t pid);
 void qemu_system_reset(ShutdownCause reason);

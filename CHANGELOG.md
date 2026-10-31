@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Replace the VM-stop request mutex and split prepare/publish API with a libretro-common atomic mailbox. Taking a pending reason also clears it atomically, retaining latest-request coalescing, enum-zero reasons and publication before notification without a request lock.
+
 - Vulkan fallback surface readbacks skip allocator cache-invalidation calls for coherent memory. Non-coherent readbacks invalidate only the bytes consumed and check errors, using refreshed allocation properties after recreation. GPU-to-host barriers and fence completion remain unchanged.
 
 - Vulkan upload and readback staging buffers grow independently. An oversized upload no longer reallocates the unrelated readback buffer, reducing peak memory and allocation work during growth; compute and rotating draw-buffer families remain paired.
