@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Reject negative-length block discards before dispatch, including memory-backed media, instead of silently accepting an invalid range.
+
 
 - Block I/O completion excludes the active callback from nested drains and cancellation, preventing duplicate callbacks and pending-counter underflow while retaining its request slot until return.
 

@@ -296,7 +296,8 @@ int lr_disk_zero(BlockBackend *blk, int64_t offset, int64_t bytes)
     if (m->kind == LR_MEDIUM_NONE) {
         return -ENOMEDIUM;
     }
-    if (offset < 0 || offset > m->length || bytes > m->length - offset) {
+    if (offset < 0 || bytes < 0 || offset > m->length ||
+        bytes > m->length - offset) {
         return -EIO;
     }
     if (!m->writable) {
