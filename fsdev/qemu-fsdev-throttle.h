@@ -16,14 +16,12 @@
 #define QEMU_FSDEV_THROTTLE_H
 
 #include "block/aio.h"
-#include "qemu/coroutine.h"
 #include "qemu/throttle.h"
 
 typedef struct FsThrottle {
     ThrottleState ts;
     ThrottleTimers tt;
     ThrottleConfig cfg;
-    CoQueue      throttled_reqs[THROTTLE_MAX];
 } FsThrottle;
 
 

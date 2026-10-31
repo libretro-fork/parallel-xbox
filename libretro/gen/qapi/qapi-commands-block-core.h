@@ -25,8 +25,8 @@ BlockStatsList *qmp_query_blockstats(bool has_query_nodes, bool query_nodes, Err
 void qmp_marshal_query_blockstats(QDict *args, QObject **ret, Error **errp);
 BlockJobInfoList *qmp_query_block_jobs(Error **errp);
 void qmp_marshal_query_block_jobs(QDict *args, QObject **ret, Error **errp);
-void coroutine_fn qmp_block_resize(const char *device, const char *node_name, int64_t size, Error **errp);
-void coroutine_fn qmp_marshal_block_resize(QDict *args, QObject **ret, Error **errp);
+void qmp_block_resize(const char *device, const char *node_name, int64_t size, Error **errp);
+void qmp_marshal_block_resize(QDict *args, QObject **ret, Error **errp);
 void qmp_blockdev_snapshot_sync(const char *device, const char *node_name, const char *snapshot_file, const char *snapshot_node_name, const char *format, bool has_mode, NewImageMode mode, Error **errp);
 void qmp_marshal_blockdev_snapshot_sync(QDict *args, QObject **ret, Error **errp);
 void qmp_blockdev_snapshot(const char *node, const char *overlay, Error **errp);

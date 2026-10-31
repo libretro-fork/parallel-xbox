@@ -107,38 +107,6 @@ static inline void trace_qemu_file_monitor_dispatch(void *mon, const char *dirpa
 {
 }
 
-static inline void trace_qemu_aio_coroutine_enter(void *ctx, void *from, void *to, void *opaque)
-{
-}
-
-static inline void trace_qemu_coroutine_yield(void *from, void *to)
-{
-}
-
-static inline void trace_qemu_coroutine_terminate(void *co)
-{
-}
-
-static inline void trace_qemu_co_mutex_lock_uncontended(void *mutex, void *self)
-{
-}
-
-static inline void trace_qemu_co_mutex_lock_entry(void *mutex, void *self)
-{
-}
-
-static inline void trace_qemu_co_mutex_lock_return(void *mutex, void *self)
-{
-}
-
-static inline void trace_qemu_co_mutex_unlock_entry(void *mutex, void *self)
-{
-}
-
-static inline void trace_qemu_co_mutex_unlock_return(void *mutex, void *self)
-{
-}
-
 static inline void trace_qemu_memalign(size_t alignment, size_t size, void *ptr)
 {
 }

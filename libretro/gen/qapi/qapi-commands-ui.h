@@ -22,8 +22,8 @@ void qmp_marshal_set_password(QDict *args, QObject **ret, Error **errp);
 void qmp_expire_password(ExpirePasswordOptions *arg, Error **errp);
 void qmp_marshal_expire_password(QDict *args, QObject **ret, Error **errp);
 #if defined(CONFIG_PIXMAN)
-void coroutine_fn qmp_screendump(const char *filename, const char *device, bool has_head, int64_t head, bool has_format, ImageFormat format, Error **errp);
-void coroutine_fn qmp_marshal_screendump(QDict *args, QObject **ret, Error **errp);
+void qmp_screendump(const char *filename, const char *device, bool has_head, int64_t head, bool has_format, ImageFormat format, Error **errp);
+void qmp_marshal_screendump(QDict *args, QObject **ret, Error **errp);
 #endif /* defined(CONFIG_PIXMAN) */
 #if defined(CONFIG_SPICE)
 SpiceInfo *qmp_query_spice(Error **errp);

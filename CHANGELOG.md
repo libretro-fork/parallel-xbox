@@ -4,6 +4,12 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Remove the unused coroutine compatibility engine, queues, annotations and
+  unreachable coroutine branches. Use ordinary TLS accessors without yield
+  barriers, preserving module-lifetime Windows keys and RCU reader addresses.
+
+- Reduce the timer subsystem to one static queue per clock. Remove unused per-AIO timer groups, their allocations/mutexes/events and repeated empty-list scans, plus unused timer helper APIs. Device timers, RTC/host clocks, callback ordering, filtered guest deadlines and libretro frame pacing retain their existing behavior.
+
 - Vulkan display command buffers, fences and cross-queue semaphores are created during renderer initialization rather than the first presented frame. Resource counts and teardown remain unchanged; mode-dependent frame images still allocate separately.
 
 - Vulkan display retirement probes newest submissions first. One completed fence retires earlier display work on the same queue, avoiding redundant status queries and waits at older slot reuse. Busy submissions retain nonblocking fallback probes; every reused fence is still reset and unfinished work still waits. No GPU ordering dependencies are removed.

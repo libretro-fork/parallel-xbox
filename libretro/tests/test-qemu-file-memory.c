@@ -7,7 +7,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#define coroutine_fn
 #define coroutine_mixed_fn
 #define MIN(a,b) ((a)<(b)?(a):(b))
 typedef struct Error { int tag; } Error;

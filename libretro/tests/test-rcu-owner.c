@@ -24,13 +24,15 @@ typedef struct Error Error;
 #define unlikely(x) (x)
 #define smp_mb_global() retro_atomic_thread_fence_seq_cst()
 #define smp_mb_placeholder() retro_atomic_thread_fence_seq_cst()
+/* Shared QEMU parking channels are outside this extracted RCU fixture. */
+static void qemu_eventcount_after_fork(void) {}
 #define RCU_GP_LOCKED 1UL
 #define RCU_GP_CTR 2UL
-#define QEMU_DECLARE_CO_TLS(type, name) static type *get_ptr_##name(void);
-#define QEMU_DEFINE_CO_TLS(type, name) \
+#define QEMU_DECLARE_THREAD_LOCAL(type, name) static type *get_ptr_##name(void);
+#define QEMU_DEFINE_THREAD_LOCAL(type, name) \
     static _Thread_local type name; \
     static type *get_ptr_##name(void) { return &name; }
-#define QEMU_DEFINE_STATIC_CO_TLS(type, name) \
+#define QEMU_DEFINE_STATIC_THREAD_LOCAL(type, name) \
     static _Thread_local type name; \
     static type get_##name(void) { return name; } \
     static void set_##name(type value) { name = value; }

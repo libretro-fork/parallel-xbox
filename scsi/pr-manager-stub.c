@@ -21,7 +21,7 @@ bool pr_manager_is_connected(PRManager *pr_mgr)
     return false;
 }
 
-int coroutine_fn pr_manager_execute(PRManager *pr_mgr, AioContext *ctx, int fd,
+int pr_manager_execute(PRManager *pr_mgr, AioContext *ctx, int fd,
                                     struct sg_io_hdr *hdr)
 {
     return -ENOTSUP;

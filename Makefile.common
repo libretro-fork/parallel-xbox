@@ -164,7 +164,6 @@ SOURCES_UTIL := \
 	$(CORE_DIR)/stubs/blk-commit-all.c \
 	$(CORE_DIR)/stubs/change-state-handler.c \
 	$(CORE_DIR)/stubs/cpu-get-clock.c \
-	$(CORE_DIR)/stubs/coroutine-none.c \
 	$(CORE_DIR)/stubs/cpus-virtual-clock.c \
 	$(CORE_DIR)/stubs/error-printf.c \
 	$(CORE_DIR)/stubs/fdset.c \
@@ -241,7 +240,6 @@ SOURCES_UTIL_POSIX := \
 SOURCES_UTIL_LINUX := \
 	$(CORE_DIR)/util/fdmon-epoll.c \
 
-# macOS: QEMU never takes ucontext coroutines there (upstream's meson.build)
 SOURCES_UTIL_DARWIN := \
 
 SOURCES_UTIL_WIN32 := \

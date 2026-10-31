@@ -7,11 +7,6 @@ Monitor *monitor_cur(void)
     return NULL;
 }
 
-Monitor *monitor_set_cur(Coroutine *co, Monitor *mon)
-{
-    return NULL;
-}
-
 void qapi_event_emit(QAPIEvent event, QDict *qdict)
 {
 }

@@ -1,5 +1,14 @@
 # The core's tests
 
+`test-core-timers.py CHECKOUT [CC]` compiles the production clock queues and
+checks 20,000 operations against an independent ordered-array oracle:
+four clocks, filtered deadlines, equal-expiry ordering, pause/resume,
+icount deadline selection, rearm/cancel inside callbacks and self-free.
+`CORE_TIMERS_BASELINE=REV` runs the same checks on the prior timer hierarchy,
+including two unused AIO timer groups. `CORE_TIMERS_CFLAGS`,
+`CORE_TIMERS_BINARY` and `CORE_TIMERS_SKIP_RUN` select sanitizers or native
+cross-builds.
+
 `test-vmstop-mailbox.py CHECKOUT [CC]` compiles production VM-stop request
 publication/consumption with real libretro-common threads and atomics. It
 checks every stop reason (including enum value zero), latest-value coalescing,
@@ -1027,7 +1036,7 @@ and concurrent default-context publication. The same tests run against system
 GLib as an independent behavior oracle. Container mutations still require an
 owner; atomic references do not make mutation thread-safe.
 
-`test-win32-tls.c` exercises the production coroutine TLS macros with 32 native
+`test-win32-tls.c` exercises the production ordinary TLS macros with 32 native
 Windows threads and delayed key allocation. Exactly two keys must be allocated;
 all threads must retain their own cell and value across concurrent first access.
 The RCU startup test also enters two independent nested once locations that
@@ -1296,3 +1305,6 @@ Eight completed submissions require one status query; older slots already
 covered by that completion skip waits, while unfinished slots still wait.
 [Vulkan fence ordering](https://docs.vulkan.org/spec/latest/chapters/synchronization.html#synchronization-fences-signaling)
 covers earlier commands and fence signal operations on the same queue.
+
+`test-thread-local.py CHECKOUT [CC]` checks production ordinary TLS accessors with 16 libretro-common threads, independent zero-initialized values and stable per-thread reader addresses. The Windows key-publication race remains covered by `test-win32-tls.c`.
+

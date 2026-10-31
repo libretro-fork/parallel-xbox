@@ -19,7 +19,6 @@
 #include "qapi/qapi-types-migration.h"
 #include "qobject/json-writer.h"
 #include "qemu/thread.h"
-#include "qemu/coroutine.h"
 #include "net/announce.h"
 #include "qom/object.h"
 #include "postcopy-ram.h"
@@ -145,16 +144,6 @@ struct MigrationIncomingState {
     GArray   *postcopy_remote_fds;
 
     MigrationStatus state;
-
-    /*
-     * The incoming migration coroutine, non-NULL during qemu_loadvm_state().
-     * Used to wake the migration incoming coroutine from rdma code. How much is
-     * it safe - it's a question.
-     */
-    Coroutine *loadvm_co;
-
-    /* The coroutine we should enter (back) after failover */
-    Coroutine *colo_incoming_co;
 
     /* Optional load threads pool and its thread exit request flag */
     ThreadPool *load_threads;

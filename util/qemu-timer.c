@@ -47,35 +47,19 @@
 /***********************************************************/
 /* timers */
 
-typedef struct QEMUClock {
-    /* We rely on BQL to protect the timerlists */
-    QLIST_HEAD(, QEMUTimerList) timerlists;
-
+/* All core timers belong to one queue per clock. AIO contexts never
+ * attach timers, so they do not need independent clock/list hierarchies. */
+struct QEMUTimerList {
     QEMUClockType type;
     bool enabled;
-} QEMUClock;
-
-QEMUTimerListGroup main_loop_tlg;
-static QEMUClock qemu_clocks[QEMU_CLOCK_MAX];
-
-/* A QEMUTimerList is a list of timers attached to a clock. More
- * than one QEMUTimerList can be attached to each clock, for instance
- * used by different AioContexts / threads. Each clock also has
- * a list of the QEMUTimerLists associated with it, in order that
- * reenabling the clock can call all the notifiers.
- */
-
-struct QEMUTimerList {
-    QEMUClock *clock;
+    bool initialized;
     QemuMutex active_timers_lock;
-    QEMUTimer *active_timers;   /* links change under active_timers_lock */
-    QLIST_ENTRY(QEMUTimerList) list;
+    QEMUTimer *active_timers;
     QEMUTimerListNotifyCB *notify_cb;
-    void *notify_opaque;
-
-    /* lightweight method to mark the end of timerlist's running */
     QemuEvent timers_done_ev;
 };
+
+static QEMUTimerList qemu_clocks[QEMU_CLOCK_MAX];
 
 /*
  * Whether a timer list is empty is read without its lock, so every store
@@ -90,11 +74,11 @@ struct QEMUTimerList {
  * qemu_clock_ptr:
  * @type: type of clock
  *
- * Translate a clock type into a pointer to QEMUClock object.
+ * Translate a clock type into a pointer to its core timer queue.
  *
- * Returns: a pointer to the QEMUClock object
+ * Returns: a pointer to the core timer queue
  */
-static inline QEMUClock *qemu_clock_ptr(QEMUClockType type)
+static inline QEMUTimerList *qemu_clock_ptr(QEMUClockType type)
 {
     return &qemu_clocks[type];
 }
@@ -104,44 +88,16 @@ static bool timer_expired_ns(const QEMUTimer *timer_head, int64_t current_time)
     return timer_head && (timer_head->expire_time <= current_time);
 }
 
-QEMUTimerList *timerlist_new(QEMUClockType type,
-                             QEMUTimerListNotifyCB *cb,
-                             void *opaque)
-{
-    QEMUTimerList *timer_list;
-    QEMUClock *clock = qemu_clock_ptr(type);
-
-    timer_list = g_new0(QEMUTimerList, 1);
-    qemu_event_init(&timer_list->timers_done_ev, true);
-    timer_list->clock = clock;
-    timer_list->notify_cb = cb;
-    timer_list->notify_opaque = opaque;
-    qemu_mutex_init(&timer_list->active_timers_lock);
-    QLIST_INSERT_HEAD(&clock->timerlists, timer_list, list);
-    return timer_list;
-}
-
-void timerlist_free(QEMUTimerList *timer_list)
-{
-    assert(!timerlist_has_timers(timer_list));
-    if (timer_list->clock) {
-        QLIST_REMOVE(timer_list, list);
-    }
-    qemu_mutex_destroy(&timer_list->active_timers_lock);
-    g_free(timer_list);
-}
-
 static void qemu_clock_init(QEMUClockType type, QEMUTimerListNotifyCB *notify_cb)
 {
-    QEMUClock *clock = qemu_clock_ptr(type);
-
-    /* Assert that the clock of type TYPE has not been initialized yet. */
-    assert(main_loop_tlg.tl[type] == NULL);
-
+    QEMUTimerList *clock = qemu_clock_ptr(type);
+    assert(!clock->initialized);
     clock->type = type;
-    clock->enabled = (type == QEMU_CLOCK_VIRTUAL ? false : true);
-    QLIST_INIT(&clock->timerlists);
-    main_loop_tlg.tl[type] = timerlist_new(type, notify_cb, NULL);
+    clock->enabled = type != QEMU_CLOCK_VIRTUAL;
+    clock->notify_cb = notify_cb;
+    qemu_event_init(&clock->timers_done_ev, true);
+    qemu_mutex_init(&clock->active_timers_lock);
+    clock->initialized = true;
 }
 
 bool qemu_clock_use_for_deadline(QEMUClockType type)
@@ -151,14 +107,15 @@ bool qemu_clock_use_for_deadline(QEMUClockType type)
 
 void qemu_clock_notify(QEMUClockType type)
 {
-    QEMUTimerList *timer_list;
-    QEMUClock *clock = qemu_clock_ptr(type);
-    QLIST_FOREACH(timer_list, &clock->timerlists, list) {
-        timerlist_notify(timer_list);
+    QEMUTimerList *clock = qemu_clock_ptr(type);
+    if (clock->notify_cb) {
+        clock->notify_cb(NULL, type);
+    } else {
+        qemu_notify_event();
     }
 }
 
-/* Disabling the clock will wait for related timerlists to stop
+/* Disabling the clock waits for its callback dispatch to stop
  * executing qemu_run_timers.  Thus, this functions should not
  * be used from the callback of a timer that is based on @clock.
  * Doing so would cause a deadlock.
@@ -167,26 +124,19 @@ void qemu_clock_notify(QEMUClockType type)
  */
 void qemu_clock_enable(QEMUClockType type, bool enabled)
 {
-    QEMUClock *clock = qemu_clock_ptr(type);
-    QEMUTimerList *tl;
+    QEMUTimerList *clock = qemu_clock_ptr(type);
     bool old = clock->enabled;
     clock->enabled = enabled;
     if (enabled && !old) {
         qemu_clock_notify(type);
     } else if (!enabled && old) {
-        QLIST_FOREACH(tl, &clock->timerlists, list) {
-            qemu_event_wait(&tl->timers_done_ev);
-        }
+        qemu_event_wait(&clock->timers_done_ev);
     }
 }
 
-bool timerlist_has_timers(QEMUTimerList *timer_list)
+bool qemu_clock_expired(QEMUClockType type)
 {
-    return !!timer_list_head(timer_list);
-}
-
-bool timerlist_expired(QEMUTimerList *timer_list)
-{
+    QEMUTimerList *timer_list = qemu_clock_ptr(type);
     int64_t expire_time = 0;
 
     if (!timer_list_head(timer_list)) {
@@ -200,104 +150,33 @@ bool timerlist_expired(QEMUTimerList *timer_list)
         expire_time = timer_list->active_timers->expire_time;
     }
 
-    return expire_time <= qemu_clock_get_ns(timer_list->clock->type);
+    return expire_time <= qemu_clock_get_ns(timer_list->type);
 }
 
-bool qemu_clock_expired(QEMUClockType type)
-{
-    return timerlist_expired(
-        main_loop_tlg.tl[type]);
-}
-
-/*
- * As above, but return -1 for no deadline, and do not cap to 2^32
- * as we know the result is always positive.
- */
-
-int64_t timerlist_deadline_ns(QEMUTimerList *timer_list)
-{
-    int64_t delta;
-    int64_t expire_time = 0;
-
-    if (!timer_list_head(timer_list)) {
-        return -1;
-    }
-
-    if (!timer_list->clock->enabled) {
-        return -1;
-    }
-
-    /* The active timers list may be modified before the caller uses our return
-     * value but ->notify_cb() is called when the deadline changes.  Therefore
-     * the caller should notice the change and there is no race condition.
-     */
-    WITH_QEMU_LOCK_GUARD(&timer_list->active_timers_lock) {
-        if (!timer_list->active_timers) {
-            return -1;
-        }
-        expire_time = timer_list->active_timers->expire_time;
-    }
-
-    delta = expire_time - qemu_clock_get_ns(timer_list->clock->type);
-
-    if (delta <= 0) {
-        return 0;
-    }
-
-    return delta;
-}
-
-/* Calculate the soonest deadline across all timerlists attached
- * to the clock. This is used for the icount timeout so we
- * ignore whether or not the clock should be used in deadline
+/* Calculate the soonest matching deadline on this clock. For icount timeouts
+ * we ignore whether the clock is used in host deadline
  * calculations.
  */
 int64_t qemu_clock_deadline_ns_all(QEMUClockType type, int attr_mask)
 {
-    int64_t deadline = -1;
-    int64_t delta;
-    int64_t expire_time;
+    QEMUTimerList *clock = qemu_clock_ptr(type);
     QEMUTimer *ts;
-    QEMUTimerList *timer_list;
-    QEMUClock *clock = qemu_clock_ptr(type);
+    int64_t expire_time;
 
-    if (!clock->enabled) {
+    if (!clock->enabled || !timer_list_head(clock)) {
         return -1;
     }
-
-    QLIST_FOREACH(timer_list, &clock->timerlists, list) {
-        if (!timer_list_head(timer_list)) {
-            continue;
-        }
-        qemu_mutex_lock(&timer_list->active_timers_lock);
-        ts = timer_list->active_timers;
-        /* Skip all external timers */
+    WITH_QEMU_LOCK_GUARD(&clock->active_timers_lock) {
+        ts = clock->active_timers;
         while (ts && (ts->attributes & ~attr_mask)) {
             ts = ts->next;
         }
         if (!ts) {
-            qemu_mutex_unlock(&timer_list->active_timers_lock);
-            continue;
+            return -1;
         }
         expire_time = ts->expire_time;
-        qemu_mutex_unlock(&timer_list->active_timers_lock);
-
-        delta = expire_time - qemu_clock_get_ns(type);
-        if (delta <= 0) {
-            delta = 0;
-        }
-        deadline = qemu_soonest_timeout(deadline, delta);
     }
-    return deadline;
-}
-
-void timerlist_notify(QEMUTimerList *timer_list)
-{
-    if (timer_list->notify_cb) {
-        timer_list->notify_cb(timer_list->notify_opaque, timer_list->clock->type);
-    } else {
-        qemu_notify_event();
-    }
+    return MAX(0, expire_time - qemu_clock_get_ns(type));
 }
 
 /* Transition function to convert a nanosecond timeout to ms
@@ -422,14 +301,11 @@ int qemu_poll_ns(GPollFD *fds, guint nfds, int64_t timeout)
 
 
 void timer_init_full(QEMUTimer *ts,
-                     QEMUTimerListGroup *timer_list_group, QEMUClockType type,
+                     QEMUClockType type,
                      int scale, int attributes,
                      QEMUTimerCB *cb, void *opaque)
 {
-    if (!timer_list_group) {
-        timer_list_group = &main_loop_tlg;
-    }
-    ts->timer_list = timer_list_group->tl[type];
+    ts->timer_list = qemu_clock_ptr(type);
     ts->cb = cb;
     ts->opaque = opaque;
     ts->scale = scale;
@@ -476,11 +352,6 @@ static bool timer_mod_ns_locked(QEMUTimerList *timer_list,
     return pt == &timer_list->active_timers;
 }
 
-static void timerlist_rearm(QEMUTimerList *timer_list)
-{
-    timerlist_notify(timer_list);
-}
-
 /* stop a timer, but do not dealloc it */
 void timer_del(QEMUTimer *ts)
 {
@@ -506,7 +377,7 @@ void timer_mod_ns(QEMUTimer *ts, int64_t expire_time)
     qemu_mutex_unlock(&timer_list->active_timers_lock);
 
     if (rearm) {
-        timerlist_rearm(timer_list);
+        qemu_clock_notify(timer_list->type);
     }
 }
 
@@ -529,7 +400,7 @@ void timer_mod_anticipate_ns(QEMUTimer *ts, int64_t expire_time)
         }
     }
     if (rearm) {
-        timerlist_rearm(timer_list);
+        qemu_clock_notify(timer_list->type);
     }
 }
 
@@ -548,8 +419,9 @@ bool timer_pending(const QEMUTimer *ts)
     return ts->expire_time >= 0;
 }
 
-bool timerlist_run_timers(QEMUTimerList *timer_list)
+bool qemu_clock_run_timers(QEMUClockType type)
 {
+    QEMUTimerList *timer_list = qemu_clock_ptr(type);
     QEMUTimer *ts;
     int64_t current_time;
     bool progress = false;
@@ -561,12 +433,12 @@ bool timerlist_run_timers(QEMUTimerList *timer_list)
     }
 
     qemu_event_reset(&timer_list->timers_done_ev);
-    if (!timer_list->clock->enabled) {
+    if (!timer_list->enabled) {
         goto out;
     }
 
     /* Extract expired timers from active timers list and process them. */
-    current_time = qemu_clock_get_ns(timer_list->clock->type);
+    current_time = qemu_clock_get_ns(timer_list->type);
     qemu_mutex_lock(&timer_list->active_timers_lock);
     while ((ts = timer_list->active_timers)) {
         if (!timer_expired_ns(ts, current_time)) {
@@ -595,46 +467,13 @@ out:
     return progress;
 }
 
-bool qemu_clock_run_timers(QEMUClockType type)
-{
-    return timerlist_run_timers(main_loop_tlg.tl[type]);
-}
-
-void timerlistgroup_init(QEMUTimerListGroup *tlg,
-                         QEMUTimerListNotifyCB *cb, void *opaque)
-{
-    QEMUClockType type;
-    for (type = 0; type < QEMU_CLOCK_MAX; type++) {
-        tlg->tl[type] = timerlist_new(type, cb, opaque);
-    }
-}
-
-void timerlistgroup_deinit(QEMUTimerListGroup *tlg)
-{
-    QEMUClockType type;
-    for (type = 0; type < QEMU_CLOCK_MAX; type++) {
-        timerlist_free(tlg->tl[type]);
-    }
-}
-
-bool timerlistgroup_run_timers(QEMUTimerListGroup *tlg)
-{
-    QEMUClockType type;
-    bool progress = false;
-    for (type = 0; type < QEMU_CLOCK_MAX; type++) {
-        progress |= timerlist_run_timers(tlg->tl[type]);
-    }
-    return progress;
-}
-
-int64_t timerlistgroup_deadline_ns(QEMUTimerListGroup *tlg)
+int64_t qemu_clock_deadline_ns(void)
 {
     int64_t deadline = -1;
-    QEMUClockType type;
-    for (type = 0; type < QEMU_CLOCK_MAX; type++) {
+    for (QEMUClockType type = 0; type < QEMU_CLOCK_MAX; type++) {
         if (qemu_clock_use_for_deadline(type)) {
             deadline = qemu_soonest_timeout(deadline,
-                                            timerlist_deadline_ns(tlg->tl[type]));
+                qemu_clock_deadline_ns_all(type, QEMU_TIMER_ATTR_ALL));
         }
     }
     return deadline;

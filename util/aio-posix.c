@@ -377,7 +377,6 @@ void aio_dispatch(AioContext *ctx)
     aio_free_deleted_handlers(ctx);
     qemu_lockcnt_dec(&ctx->list_lock);
 
-    timerlistgroup_run_timers(&ctx->tlg);
 }
 
 static void adjust_polling_time(AioContext *ctx, AioPolledEvent *poll,

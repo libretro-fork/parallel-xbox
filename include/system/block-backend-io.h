@@ -51,14 +51,14 @@ void blk_aio_cancel_async(BlockAIOCB *acb);
 void blk_inc_in_flight(BlockBackend *blk);
 void blk_dec_in_flight(BlockBackend *blk);
 
-bool co_wrapper_mixed_bdrv_rdlock blk_is_inserted(BlockBackend *blk);
+bool blk_is_inserted(BlockBackend *blk);
 
 
-void co_wrapper blk_lock_medium(BlockBackend *blk, bool locked);
+void blk_lock_medium(BlockBackend *blk, bool locked);
 
-void co_wrapper blk_eject(BlockBackend *blk, bool eject_flag);
+void blk_eject(BlockBackend *blk, bool eject_flag);
 
-int64_t co_wrapper_mixed blk_getlength(BlockBackend *blk);
+int64_t blk_getlength(BlockBackend *blk);
 
 void blk_get_geometry(BlockBackend *blk, uint64_t *nb_sectors_ptr);
 
@@ -92,26 +92,26 @@ uint64_t blk_get_max_hw_transfer(BlockBackend *blk);
  * the "I/O or GS" API.
  */
 
-int co_wrapper_mixed blk_pread(BlockBackend *blk, int64_t offset,
+int blk_pread(BlockBackend *blk, int64_t offset,
                                int64_t bytes, void *buf,
                                BdrvRequestFlags flags);
 
 
 
-int co_wrapper_mixed blk_pwrite(BlockBackend *blk, int64_t offset,
+int blk_pwrite(BlockBackend *blk, int64_t offset,
                                 int64_t bytes, const void *buf,
                                 BdrvRequestFlags flags);
 
 
 
 
-int co_wrapper_mixed blk_pwrite_zeroes(BlockBackend *blk, int64_t offset,
+int blk_pwrite_zeroes(BlockBackend *blk, int64_t offset,
                                        int64_t bytes,
                                        BdrvRequestFlags flags);
 
 
 
-int co_wrapper_mixed blk_flush(BlockBackend *blk);
+int blk_flush(BlockBackend *blk);
 
 
 

@@ -25,7 +25,6 @@
 #define BLOCK_GLOBAL_STATE_H
 
 #include "block/block-common.h"
-#include "qemu/coroutine.h"
 #include "qemu/transactions.h"
 
 /*
@@ -53,11 +52,11 @@
 
 BlockDriver *bdrv_find_format(const char *format_name);
 
-int coroutine_fn GRAPH_UNLOCKED
+int GRAPH_UNLOCKED
 bdrv_co_create(BlockDriver *drv, const char *filename, QemuOpts *opts,
                Error **errp);
 
-int coroutine_fn GRAPH_UNLOCKED
+int GRAPH_UNLOCKED
 bdrv_co_create_file(const char *filename, QemuOpts *opts,
                     bool allow_protocol_prefix, Error **errp);
 
@@ -71,12 +70,12 @@ BlockDriverState * GRAPH_UNLOCKED
 bdrv_insert_node(BlockDriverState *bs, QDict *node_options, int flags,
                  Error **errp);
 
-BdrvChild * no_coroutine_fn GRAPH_UNLOCKED
+BdrvChild * GRAPH_UNLOCKED
 bdrv_open_child(const char *filename, QDict *options, const char *bdref_key,
                 BlockDriverState *parent, const BdrvChildClass *child_class,
                 BdrvChildRole child_role, bool allow_none, Error **errp);
 
-BdrvChild * coroutine_fn no_co_wrapper
+BdrvChild *
 bdrv_co_open_child(const char *filename, QDict *options, const char *bdref_key,
                 BlockDriverState *parent, const BdrvChildClass *child_class,
                 BdrvChildRole child_role, bool allow_none, Error **errp);
@@ -86,21 +85,19 @@ bdrv_open_file_child(const char *filename, QDict *options,
                      const char *bdref_key, BlockDriverState *parent,
                      Error **errp);
 
-BlockDriverState * no_coroutine_fn
-bdrv_open_blockdev_ref(BlockdevRef *ref, Error **errp);
+BlockDriverState * bdrv_open_blockdev_ref(BlockdevRef *ref, Error **errp);
 
-BlockDriverState * coroutine_fn no_co_wrapper
+BlockDriverState *
 bdrv_co_open_blockdev_ref(BlockdevRef *ref, Error **errp);
 
 int GRAPH_WRLOCK
 bdrv_set_backing_hd(BlockDriverState *bs, BlockDriverState *backing_hd,
                     Error **errp);
 
-BlockDriverState * no_coroutine_fn
-bdrv_open(const char *filename, const char *reference, QDict *options,
+BlockDriverState * bdrv_open(const char *filename, const char *reference, QDict *options,
           int flags, Error **errp);
 
-BlockDriverState * coroutine_fn no_co_wrapper
+BlockDriverState *
 bdrv_co_open(const char *filename, const char *reference,
              QDict *options, int flags, Error **errp);
 
@@ -148,13 +145,13 @@ check_to_replace_node(BlockDriverState *parent_bs, const char *node_name,
                       Error **errp);
 
 
-int no_coroutine_fn GRAPH_RDLOCK
+int GRAPH_RDLOCK
 bdrv_activate(BlockDriverState *bs, Error **errp);
 
-int coroutine_fn no_co_wrapper_bdrv_rdlock
+int
 bdrv_co_activate(BlockDriverState *bs, Error **errp);
 
-int no_coroutine_fn GRAPH_RDLOCK
+int GRAPH_RDLOCK
 bdrv_inactivate(BlockDriverState *bs, Error **errp);
 
 void bdrv_activate_all(Error **errp);
@@ -165,7 +162,7 @@ void GRAPH_UNLOCKED bdrv_drain_all_begin(void);
 void bdrv_drain_all_end(void);
 void GRAPH_UNLOCKED bdrv_drain_all(void);
 
-int coroutine_mixed_fn GRAPH_RDLOCK bdrv_has_zero_init(BlockDriverState *bs);
+int GRAPH_RDLOCK bdrv_has_zero_init(BlockDriverState *bs);
 BlockDriverState *bdrv_lookup_bs(const char *device,
                                  const char *node_name,
                                  Error **errp);
@@ -194,7 +191,7 @@ char * GRAPH_RDLOCK bdrv_dirname(BlockDriverState *bs, Error **errp);
 void GRAPH_WRLOCK
 bdrv_unref_child(BlockDriverState *parent, BdrvChild *child);
 
-void coroutine_fn no_co_wrapper_bdrv_wrlock
+void
 bdrv_co_unref_child(BlockDriverState *parent, BdrvChild *child);
 
 BdrvChild * GRAPH_WRLOCK

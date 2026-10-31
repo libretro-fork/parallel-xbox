@@ -3200,3 +3200,9 @@ include/qemu/vfio-helpers.h
 
 # Standalone debug-file logger, permanently disabled in the core
 util/log.c
+
+# Coroutine engine compatibility and migration-safe TLS (core has no coroutines)
+stubs/coroutine-none.c
+include/qemu/coroutine.h
+include/qemu/coroutine-core.h
+include/qemu/coroutine-tls.h

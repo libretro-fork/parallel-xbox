@@ -26,7 +26,6 @@
 
 #include "block/aio-wait.h"
 #include "block/block-common.h"
-#include "qemu/coroutine.h"
 #include "qemu/iov.h"
 
 /*
@@ -41,23 +40,23 @@
  * to catch when they are accidentally called by the wrong API.
  */
 
-int co_wrapper_mixed_bdrv_rdlock
+int
 bdrv_pwrite_zeroes(BdrvChild *child, int64_t offset, int64_t bytes,
                    BdrvRequestFlags flags);
 
-int co_wrapper_mixed_bdrv_rdlock
+int
 bdrv_pread(BdrvChild *child, int64_t offset, int64_t bytes, void *buf,
            BdrvRequestFlags flags);
 
-int co_wrapper_mixed_bdrv_rdlock
+int
 bdrv_pwrite(BdrvChild *child, int64_t offset,int64_t bytes,
             const void *buf, BdrvRequestFlags flags);
 
-int co_wrapper_mixed_bdrv_rdlock
+int
 bdrv_pwrite_sync(BdrvChild *child, int64_t offset, int64_t bytes,
                  const void *buf, BdrvRequestFlags flags);
 
-int coroutine_fn GRAPH_RDLOCK
+int GRAPH_RDLOCK
 bdrv_co_pwrite_sync(BdrvChild *child, int64_t offset, int64_t bytes,
                     const void *buf, BdrvRequestFlags flags);
 
@@ -67,94 +66,94 @@ bdrv_co_pwrite_sync(BdrvChild *child, int64_t offset, int64_t bytes,
  * function is not suitable for zeroing the entire image in a single request
  * because it may allocate memory for the entire region.
  */
-int coroutine_fn GRAPH_RDLOCK
+int GRAPH_RDLOCK
 bdrv_co_pwrite_zeroes(BdrvChild *child, int64_t offset, int64_t bytes,
                       BdrvRequestFlags flags);
 
-int coroutine_fn GRAPH_RDLOCK
+int GRAPH_RDLOCK
 bdrv_co_truncate(BdrvChild *child, int64_t offset, bool exact,
                  PreallocMode prealloc, BdrvRequestFlags flags, Error **errp);
 
 
-int64_t coroutine_fn GRAPH_RDLOCK bdrv_co_getlength(BlockDriverState *bs);
-int64_t co_wrapper_mixed_bdrv_rdlock bdrv_getlength(BlockDriverState *bs);
+int64_t GRAPH_RDLOCK bdrv_co_getlength(BlockDriverState *bs);
+int64_t bdrv_getlength(BlockDriverState *bs);
 
-int64_t coroutine_fn GRAPH_RDLOCK
+int64_t GRAPH_RDLOCK
 bdrv_co_get_allocated_file_size(BlockDriverState *bs);
 
-int64_t co_wrapper_bdrv_rdlock
+int64_t
 bdrv_get_allocated_file_size(BlockDriverState *bs);
 
 BlockMeasureInfo *bdrv_measure(BlockDriver *drv, QemuOpts *opts,
                                BlockDriverState *in_bs, Error **errp);
 
-int coroutine_fn GRAPH_RDLOCK
+int GRAPH_RDLOCK
 bdrv_co_delete_file(BlockDriverState *bs, Error **errp);
 
-void coroutine_fn GRAPH_RDLOCK
+void GRAPH_RDLOCK
 bdrv_co_delete_file_noerr(BlockDriverState *bs);
 
 
 /* async block I/O */
 
 /* sg packet commands */
-int coroutine_fn GRAPH_RDLOCK
+int GRAPH_RDLOCK
 bdrv_co_ioctl(BlockDriverState *bs, int req, void *buf);
 
 /* Ensure contents are flushed to disk.  */
-int coroutine_fn GRAPH_RDLOCK bdrv_co_flush(BlockDriverState *bs);
+int GRAPH_RDLOCK bdrv_co_flush(BlockDriverState *bs);
 
-int coroutine_fn GRAPH_RDLOCK bdrv_co_pdiscard(BdrvChild *child, int64_t offset,
+int GRAPH_RDLOCK bdrv_co_pdiscard(BdrvChild *child, int64_t offset,
                                                int64_t bytes);
 
 /* Report zone information of zone block device. */
-int coroutine_fn GRAPH_RDLOCK bdrv_co_zone_report(BlockDriverState *bs,
+int GRAPH_RDLOCK bdrv_co_zone_report(BlockDriverState *bs,
                                                   int64_t offset,
                                                   unsigned int *nr_zones,
                                                   BlockZoneDescriptor *zones);
-int coroutine_fn GRAPH_RDLOCK bdrv_co_zone_mgmt(BlockDriverState *bs,
+int GRAPH_RDLOCK bdrv_co_zone_mgmt(BlockDriverState *bs,
                                                 BlockZoneOp op,
                                                 int64_t offset, int64_t len);
-int coroutine_fn GRAPH_RDLOCK bdrv_co_zone_append(BlockDriverState *bs,
+int GRAPH_RDLOCK bdrv_co_zone_append(BlockDriverState *bs,
                                                   int64_t *offset,
                                                   QEMUIOVector *qiov,
                                                   BdrvRequestFlags flags);
 
-int coroutine_fn GRAPH_RDLOCK
+int GRAPH_RDLOCK
 bdrv_co_block_status(BlockDriverState *bs, int64_t offset, int64_t bytes,
                      int64_t *pnum, int64_t *map, BlockDriverState **file);
-int co_wrapper_mixed_bdrv_rdlock
+int
 bdrv_block_status(BlockDriverState *bs, int64_t offset, int64_t bytes,
                   int64_t *pnum, int64_t *map, BlockDriverState **file);
 
-int coroutine_fn GRAPH_RDLOCK
+int GRAPH_RDLOCK
 bdrv_co_block_status_above(BlockDriverState *bs, BlockDriverState *base,
                            int64_t offset, int64_t bytes, int64_t *pnum,
                            int64_t *map, BlockDriverState **file);
-int co_wrapper_mixed_bdrv_rdlock
+int
 bdrv_block_status_above(BlockDriverState *bs, BlockDriverState *base,
                         int64_t offset, int64_t bytes, int64_t *pnum,
                         int64_t *map, BlockDriverState **file);
 
-int coroutine_fn GRAPH_RDLOCK
+int GRAPH_RDLOCK
 bdrv_co_is_allocated(BlockDriverState *bs, int64_t offset, int64_t bytes,
                      int64_t *pnum);
-int co_wrapper_mixed_bdrv_rdlock
+int
 bdrv_is_allocated(BlockDriverState *bs, int64_t offset,
                   int64_t bytes, int64_t *pnum);
 
-int coroutine_fn GRAPH_RDLOCK
+int GRAPH_RDLOCK
 bdrv_co_is_allocated_above(BlockDriverState *top, BlockDriverState *base,
                            bool include_base, int64_t offset, int64_t bytes,
                            int64_t *pnum);
-int co_wrapper_mixed_bdrv_rdlock
+int
 bdrv_is_allocated_above(BlockDriverState *bs, BlockDriverState *base,
                         bool include_base, int64_t offset,
                         int64_t bytes, int64_t *pnum);
 
-int coroutine_fn GRAPH_RDLOCK
+int GRAPH_RDLOCK
 bdrv_co_is_zero_fast(BlockDriverState *bs, int64_t offset, int64_t bytes);
-int coroutine_fn GRAPH_RDLOCK
+int GRAPH_RDLOCK
 bdrv_co_is_all_zeroes(BlockDriverState *bs);
 
 int GRAPH_RDLOCK
@@ -162,12 +161,12 @@ bdrv_apply_auto_read_only(BlockDriverState *bs, const char *errmsg,
                           Error **errp);
 
 
-bool coroutine_fn GRAPH_RDLOCK bdrv_co_is_inserted(BlockDriverState *bs);
+bool GRAPH_RDLOCK bdrv_co_is_inserted(BlockDriverState *bs);
 
-void coroutine_fn GRAPH_RDLOCK
+void GRAPH_RDLOCK
 bdrv_co_lock_medium(BlockDriverState *bs, bool locked);
 
-void coroutine_fn GRAPH_RDLOCK
+void GRAPH_RDLOCK
 bdrv_co_eject(BlockDriverState *bs, bool eject_flag);
 
 const char *bdrv_get_node_name(const BlockDriverState *bs);
@@ -178,10 +177,10 @@ bdrv_get_device_name(const BlockDriverState *bs);
 const char * GRAPH_RDLOCK
 bdrv_get_device_or_node_name(const BlockDriverState *bs);
 
-int coroutine_fn GRAPH_RDLOCK
+int GRAPH_RDLOCK
 bdrv_co_get_info(BlockDriverState *bs, BlockDriverInfo *bdi);
 
-int co_wrapper_mixed_bdrv_rdlock
+int
 bdrv_get_info(BlockDriverState *bs, BlockDriverInfo *bdi);
 
 ImageInfoSpecific * GRAPH_RDLOCK
@@ -189,11 +188,11 @@ bdrv_get_specific_info(BlockDriverState *bs, Error **errp);
 
 BlockStatsSpecific *bdrv_get_specific_stats(BlockDriverState *bs);
 
-int coroutine_fn GRAPH_RDLOCK
+int GRAPH_RDLOCK
 bdrv_co_change_backing_file(BlockDriverState *bs, const char *backing_file,
                             const char *backing_fmt, bool warn);
 
-int co_wrapper_bdrv_rdlock
+int
 bdrv_change_backing_file(BlockDriverState *bs, const char *backing_file,
                          const char *backing_fmt, bool warn);
 
@@ -204,10 +203,10 @@ bdrv_change_backing_file(BlockDriverState *bs, const char *backing_file,
 /* Returns optimal alignment in bytes for bounce buffer */
 
 
-void coroutine_fn GRAPH_RDLOCK
+void GRAPH_RDLOCK
 bdrv_co_debug_event(BlockDriverState *bs, BlkdebugEvent event);
 
-void co_wrapper_mixed_bdrv_rdlock
+void
 bdrv_debug_event(BlockDriverState *bs, BlkdebugEvent event);
 
 #define BLKDBG_CO_EVENT(child, evt) \
@@ -237,10 +236,10 @@ AioContext *bdrv_get_aio_context(BlockDriverState *bs);
  * to old_ctx and decrease bs->in_flight again.
  */
 
-bool coroutine_fn GRAPH_RDLOCK
+bool GRAPH_RDLOCK
 bdrv_co_can_store_new_dirty_bitmap(BlockDriverState *bs, const char *name,
                                    uint32_t granularity, Error **errp);
-bool co_wrapper_bdrv_rdlock
+bool
 bdrv_can_store_new_dirty_bitmap(BlockDriverState *bs, const char *name,
                                 uint32_t granularity, Error **errp);
 
@@ -273,7 +272,7 @@ bdrv_can_store_new_dirty_bitmap(BlockDriverState *bs, const char *name,
  *
  * Returns: 0 if succeeded; negative error code if failed.
  **/
-int coroutine_fn GRAPH_RDLOCK
+int GRAPH_RDLOCK
 bdrv_co_copy_range(BdrvChild *src, int64_t src_offset,
                    BdrvChild *dst, int64_t dst_offset,
                    int64_t bytes, BdrvRequestFlags read_flags,
@@ -305,24 +304,24 @@ bdrv_co_copy_range(BdrvChild *src, int64_t src_offset,
     AIO_WAIT_WHILE(bdrv_get_aio_context(bs_),              \
                    cond); })
 
-int co_wrapper_mixed_bdrv_rdlock
+int
 bdrv_truncate(BdrvChild *child, int64_t offset, bool exact,
               PreallocMode prealloc, BdrvRequestFlags flags, Error **errp);
 
-int co_wrapper_mixed_bdrv_rdlock
+int
 bdrv_check(BlockDriverState *bs, BdrvCheckResult *res, BdrvCheckMode fix);
 
 /* Invalidate any cached metadata used by image formats */
-int co_wrapper_mixed_bdrv_rdlock
+int
 bdrv_invalidate_cache(BlockDriverState *bs, Error **errp);
 
-int co_wrapper_mixed_bdrv_rdlock
+int
 bdrv_pdiscard(BdrvChild *child, int64_t offset, int64_t bytes);
 
-int co_wrapper_mixed_bdrv_rdlock
+int
 bdrv_readv_vmstate(BlockDriverState *bs, QEMUIOVector *qiov, int64_t pos);
 
-int co_wrapper_mixed_bdrv_rdlock
+int
 bdrv_writev_vmstate(BlockDriverState *bs, QEMUIOVector *qiov, int64_t pos);
 
 

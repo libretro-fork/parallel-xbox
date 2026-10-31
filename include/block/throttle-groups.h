@@ -25,7 +25,6 @@
 #ifndef THROTTLE_GROUPS_H
 #define THROTTLE_GROUPS_H
 
-#include "qemu/coroutine.h"
 #include "qemu/throttle.h"
 #include "qom/object.h"
 
@@ -35,9 +34,6 @@
 
 typedef struct ThrottleGroupMember {
     AioContext   *aio_context;
-    /* throttled_reqs_lock protects the CoQueues for throttled requests.  */
-    CoMutex      throttled_reqs_lock;
-    CoQueue      throttled_reqs[THROTTLE_MAX];
 
     /* Nonzero if the I/O limits are currently being ignored; generally
      * it is zero.  Accessed with atomic operations.

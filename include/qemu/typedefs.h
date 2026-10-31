@@ -100,7 +100,6 @@ typedef struct QemuOptsList QemuOptsList;
 typedef struct QEMUSGList QEMUSGList;
 typedef struct QemuSpin QemuSpin;
 typedef struct QEMUTimer QEMUTimer;
-typedef struct QEMUTimerListGroup QEMUTimerListGroup;
 typedef struct QList QList;
 typedef struct QNull QNull;
 typedef struct QNum QNum;

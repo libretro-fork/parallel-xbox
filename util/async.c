@@ -32,7 +32,7 @@
 #include "qemu/lockcnt.h"
 #include "qemu/rcu_queue.h"
 #include "block/raw-aio.h"
-#include "qemu/coroutine-tls.h"
+#include "qemu/thread-local.h"
 #include "exec/icount.h"
 #include "trace.h"
 
@@ -275,7 +275,6 @@ int64_t
 aio_compute_timeout(AioContext *ctx)
 {
     BHListSlice *s;
-    int64_t deadline;
     int timeout = -1;
 
     timeout = aio_compute_bh_timeout(&ctx->bh_list, timeout);
@@ -290,12 +289,7 @@ aio_compute_timeout(AioContext *ctx)
         }
     }
 
-    deadline = timerlistgroup_deadline_ns(&ctx->tlg);
-    if (deadline == 0) {
-        return 0;
-    } else {
-        return qemu_soonest_timeout(timeout, deadline);
-    }
+    return timeout;
 }
 
 static gboolean
@@ -350,7 +344,7 @@ aio_ctx_check(GSource *source)
             }
         }
     }
-    return aio_pending(ctx) || (timerlistgroup_deadline_ns(&ctx->tlg) == 0);
+    return aio_pending(ctx);
 }
 
 static gboolean
@@ -404,7 +398,6 @@ aio_ctx_finalize(GSource *source)
     aio_set_event_notifier(ctx, &ctx->notifier, NULL, NULL, NULL);
     event_notifier_cleanup(&ctx->notifier);
     qemu_rec_mutex_destroy(&ctx->lock);
-    timerlistgroup_deinit(&ctx->tlg);
     unregister_aiocontext(ctx);
     aio_context_destroy(ctx);
     /* aio_context_destroy() still needs the lock */
@@ -462,11 +455,6 @@ void aio_notify_accept(AioContext *ctx)
      * with the release store in aio_notify.
      */
     retro_atomic_thread_fence_seq_cst();
-}
-
-static void aio_timerlist_notify(void *opaque, QEMUClockType type)
-{
-    aio_notify(opaque);
 }
 
 static void aio_context_notifier_cb(EventNotifier *e)
@@ -543,7 +531,6 @@ AioContext *aio_context_new(Error **errp)
 
     ctx->thread_pool = NULL;
     qemu_rec_mutex_init(&ctx->lock);
-    timerlistgroup_init(&ctx->tlg, aio_timerlist_notify, ctx);
 
     ctx->poll_max_ns = 0;
     ctx->poll_grow = 0;
@@ -564,7 +551,7 @@ fail:
     return NULL;
 }
 
-QEMU_DEFINE_STATIC_CO_TLS(AioContext *, my_aiocontext)
+QEMU_DEFINE_STATIC_THREAD_LOCAL(AioContext *, my_aiocontext)
 
 AioContext *qemu_get_current_aio_context(void)
 {
