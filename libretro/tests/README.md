@@ -839,3 +839,9 @@ and checks EFLAGS, repeated exits, new x87 pushes, pending arithmetic and
 MMX entry. It runs with both hard-FPU and CPU Boost settings.
 
 The POSIX file-sync fixture redirects only the production backend sync syscall. Two EINTR results must be followed by a real successful sync for both explicit flush and writable close; EIO must propagate after one attempt. Real file readback is checked, and read-only close must issue no sync. The runner skips this POSIX-only fixture on native MinGW/MSYS.
+
+
+Descriptor-mapping regressions start at a nonzero position, map the whole file,
+and verify the next caller read, descriptor ownership and retained contents after
+close. Writable copies must not alter the file; empty-file and mapping-error
+paths must preserve position too. These cases also run against system GLib.

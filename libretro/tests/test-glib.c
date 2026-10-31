@@ -8,6 +8,12 @@
 
 #include <glib.h>
 #include <glib/gstdio.h>
+#include <fcntl.h>
+#ifdef _WIN32
+#include <io.h>
+#else
+#include <unistd.h>
+#endif
 
 static int failures;
 
@@ -580,6 +586,65 @@ static void test_paths(const char *dir)
         CHECK(m && g_mapped_file_get_length(m) == 8 &&
               !memcmp(g_mapped_file_get_contents(m), "contents", 8));
         g_mapped_file_unref(m);
+    }
+    {
+        gint fd = g_open(f, O_RDONLY, 0);
+        CHECK(fd >= 0);
+        if (fd >= 0) {
+            CHECK(lseek(fd, 3, SEEK_SET) == 3);
+            GMappedFile *m = g_mapped_file_new_from_fd(fd, FALSE, NULL);
+            CHECK(m && g_mapped_file_get_length(m) == 8 &&
+                  !memcmp(g_mapped_file_get_contents(m), "contents", 8));
+            CHECK(lseek(fd, 0, SEEK_CUR) == 3);
+            gchar next = 0;
+            CHECK(read(fd, &next, 1) == 1 && next == 't');
+            CHECK(g_close(fd, NULL));
+            if (m) {
+                CHECK(!memcmp(g_mapped_file_get_contents(m), "contents", 8));
+                g_mapped_file_unref(m);
+            }
+        }
+        fd = g_open(f, O_RDONLY, 0);
+        CHECK(fd >= 0);
+        if (fd >= 0) {
+            GMappedFile *m = g_mapped_file_new_from_fd(fd, TRUE, NULL);
+            CHECK(m != NULL);
+            if (m) {
+                g_mapped_file_get_contents(m)[0] = 'C';
+                g_mapped_file_unref(m);
+            }
+            CHECK(g_close(fd, NULL));
+            gchar *original = NULL;
+            CHECK(g_file_get_contents(f, &original, NULL, NULL));
+            CHECK(original && !strcmp(original, "contents"));
+            g_free(original);
+        }
+        fd = g_open(f, O_WRONLY, 0);
+        CHECK(fd >= 0);
+        if (fd >= 0) {
+            GError *error = NULL;
+            CHECK(lseek(fd, 3, SEEK_SET) == 3);
+            GMappedFile *m = g_mapped_file_new_from_fd(fd, FALSE, &error);
+            CHECK(!m && error && lseek(fd, 0, SEEK_CUR) == 3);
+            if (m) {
+                g_mapped_file_unref(m);
+            }
+            g_clear_error(&error);
+            CHECK(g_close(fd, NULL));
+        }
+        CHECK(g_file_set_contents(f, "", 0, NULL));
+        fd = g_open(f, O_RDONLY, 0);
+        CHECK(fd >= 0);
+        if (fd >= 0) {
+            CHECK(lseek(fd, 5, SEEK_SET) == 5);
+            GMappedFile *m = g_mapped_file_new_from_fd(fd, FALSE, NULL);
+            CHECK(m && g_mapped_file_get_length(m) == 0);
+            CHECK(lseek(fd, 0, SEEK_CUR) == 5);
+            if (m) {
+                g_mapped_file_unref(m);
+            }
+            CHECK(g_close(fd, NULL));
+        }
     }
     {
         gchar *tmp = NULL;

@@ -21,6 +21,7 @@
 #include <io.h>
 #else
 #include <unistd.h>
+#include <sys/mman.h>
 #endif
 
 #include <compat/strl.h>
@@ -486,35 +487,78 @@ GMappedFile *g_mapped_file_new(const gchar *filename, gboolean writable,
     return g_mapped_file_take(contents, length);
 }
 
-/* the file the descriptor is open on, from its start, read in full */
+/* Copy from a temporary mapping so the caller's descriptor position is never
+ * changed, including while other code uses that descriptor. The returned
+ * storage keeps this shim's existing private-copy lifetime and writability.
+ */
 GMappedFile *g_mapped_file_new_from_fd(gint fd, gboolean writable,
                                        GError **error)
 {
-    GString *s = g_string_new(NULL);
-    gchar buf[65536];
+    gpointer contents;
     gsize length;
 #ifdef _WIN32
-    int n;
-#else
-    ssize_t n;
-#endif
+    HANDLE file = (HANDLE)_get_osfhandle(fd);
+    HANDLE mapping;
+    LARGE_INTEGER size;
+    const void *view;
 
-    if (lseek(fd, 0, SEEK_SET) < 0) {
+    if (file == INVALID_HANDLE_VALUE || !GetFileSizeEx(file, &size)) {
+        errno = EBADF;
         goto fail;
     }
-    while ((n = read(fd, buf, sizeof(buf))) > 0) {
-        g_string_append_len(s, buf, n);
-    }
-    if (n < 0) {
+    if (size.QuadPart < 0 || (guint64)size.QuadPart > G_MAXSIZE) {
+        errno = EFBIG;
         goto fail;
     }
-    length = s->len;
-    return g_mapped_file_take(g_string_free(s, FALSE), length);
+    length = (gsize)size.QuadPart;
+    if (!length) {
+        return g_mapped_file_take(NULL, 0);
+    }
+    mapping = CreateFileMappingW(file, NULL, PAGE_READONLY, 0, 0, NULL);
+    if (!mapping) {
+        errno = EIO;
+        goto fail;
+    }
+    view = MapViewOfFile(mapping, FILE_MAP_READ, 0, 0, length);
+    if (!view) {
+        CloseHandle(mapping);
+        errno = EIO;
+        goto fail;
+    }
+    contents = g_memdup2(view, length);
+    UnmapViewOfFile(view);
+    CloseHandle(mapping);
+#else
+    struct stat st;
+    void *view;
+
+    if (fstat(fd, &st) < 0) {
+        goto fail;
+    }
+    if (!S_ISREG(st.st_mode)) {
+        errno = EINVAL;
+        goto fail;
+    }
+    if (st.st_size < 0 || (guint64)st.st_size > G_MAXSIZE) {
+        errno = EFBIG;
+        goto fail;
+    }
+    length = (gsize)st.st_size;
+    if (!length) {
+        return g_mapped_file_take(NULL, 0);
+    }
+    view = mmap(NULL, length, PROT_READ, MAP_PRIVATE, fd, 0);
+    if (view == MAP_FAILED) {
+        goto fail;
+    }
+    contents = g_memdup2(view, length);
+    munmap(view, length);
+#endif
+    return g_mapped_file_take(contents, length);
 
 fail:
     g_set_error(error, G_FILE_ERROR, g_file_error_from_errno(errno),
                 "Failed to read the file: %s", strerror(errno));
-    g_string_free(s, TRUE);
     return NULL;
 }
 
