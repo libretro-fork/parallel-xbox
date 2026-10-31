@@ -683,7 +683,7 @@ static void upload_texture_image(PGRAPHState *pg, int texture_idx,
     nv2a_profile_inc_counter(NV2A_PROF_TEX_UPLOAD);
 
     /* The recording first: the levels are staged in its range of the ring,
-     * which it reads after the host barrier below */
+     * which it reads after flushing and auxiliary queue submission */
     VkCommandBuffer cmd = pgraph_vk_begin_single_time_commands(pg);
     pgraph_vk_begin_debug_marker(r, cmd, RGBA_GREEN, __func__);
 
@@ -733,31 +733,7 @@ static void upload_texture_image(PGRAPHState *pg, int texture_idx,
         pgraph_vk_staging_flush(pg, flush_lo, flush_hi - flush_lo);
     }
 
-    /* the host's writes - the ring's, and the guest's to its RAM - before
-     * the copies */
-    VkBufferMemoryBarrier host_barriers[2] = {
-        {
-            .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
-            .srcAccessMask = VK_ACCESS_HOST_WRITE_BIT,
-            .dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT,
-            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-            .buffer = r->storage_buffers[BUFFER_STAGING_SRC].buffer,
-            .size = VK_WHOLE_SIZE
-        },
-        {
-            .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
-            .srcAccessMask = VK_ACCESS_HOST_WRITE_BIT,
-            .dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT,
-            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-            .buffer = r->vram_buffer,
-            .size = VK_WHOLE_SIZE
-        },
-    };
-    vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_HOST_BIT,
-                         VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL,
-                         num_vram_regions ? 2 : 1, host_barriers, 0, NULL);
+    pgraph_vk_upload_source_barrier(pg, cmd, num_vram_regions != 0);
     if (num_unswizzled_regions) {
         pgraph_vk_unswizzle_done(pg, cmd);
     }
@@ -1873,18 +1849,7 @@ static void create_dummy_texture(PGRAPHState *pg)
     memset(staged, 0xff, texture_data_size);
     pgraph_vk_staging_flush(pg, staged_offset, texture_data_size);
 
-    VkBufferMemoryBarrier host_barrier = {
-        .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
-        .srcAccessMask = VK_ACCESS_HOST_WRITE_BIT,
-        .dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT,
-        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        .buffer = r->storage_buffers[BUFFER_STAGING_SRC].buffer,
-        .size = VK_WHOLE_SIZE
-    };
-    vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_HOST_BIT,
-                         VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 1,
-                         &host_barrier, 0, NULL);
+    /* Host staging writes become visible at the auxiliary queue submission. */
 
     pgraph_vk_transition_image_layout(
         pg, cmd, texture_image, VK_FORMAT_R8_UNORM, VK_IMAGE_LAYOUT_UNDEFINED,

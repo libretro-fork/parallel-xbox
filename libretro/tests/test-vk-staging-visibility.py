@@ -7,10 +7,10 @@ if os.name=='nt':
  k=ctypes.WinDLL('kernel32');k.GetErrorMode.restype=ctypes.c_uint;k.SetErrorMode(k.GetErrorMode()|0x8003)
 env=os.environ.copy();env['PATH']=str(Path(cc).resolve().parent)+os.pathsep+env.get('PATH','')
 parts=[]
-for path,names in [('buffer.c',['create_buffer','destroy_buffer','recreate_buffer']),('draw.c',['sync_staging_buffer'])]:
+for path,names in [('buffer.c',['create_buffer','destroy_buffer','recreate_buffer']),('draw.c',['sync_staging_buffer']),('command.c',['pgraph_vk_staging_flush','pgraph_vk_upload_source_barrier'])]:
  s=(r/'hw/xbox/nv2a/pgraph/vk'/path).read_text()
  for name in names:
-  m=re.search(r'^static void '+name+r'\([^;{]*\)\s*\{',s,re.M);assert m,name;a=m.start();b=s.index('{',a)+1;depth=1
+  m=re.search(r'^(?:static )?void '+name+r'\([^;{]*\)\s*\{',s,re.M);assert m,name;a=m.start();b=s.index('{',a)+1;depth=1
   while depth:depth+=(s[b]=='{')-(s[b]=='}');b+=1
   parts.append(s[a:b])
 code=Path(__file__).with_suffix('.c').read_text().replace('/* PRODUCTION */','\n'.join(parts));q=(r/'libretro/tests/test-spv-geom.c').read_text();a=q.index('#ifdef _WIN32\nstatic void quiet_test_abort');b=q.index('int line_tests(',a);code=code.replace('/* QUIET ERRORS */',q[a:b])

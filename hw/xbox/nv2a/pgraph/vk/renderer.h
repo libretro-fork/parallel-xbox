@@ -989,6 +989,8 @@ VkDeviceSize pgraph_vk_staging_alloc(PGRAPHState *pg, size_t size,
                                      size_t alignment, uint8_t **ptr);
 void pgraph_vk_staging_flush(PGRAPHState *pg, VkDeviceSize offset,
                              size_t size);
+void pgraph_vk_upload_source_barrier(PGRAPHState *pg, VkCommandBuffer cmd,
+                                     bool from_vram);
 /* A range of one of the rings for the open single-time command buffer;
  * false when the range does not fit the ring at all (only the staging ring
  * grows) */

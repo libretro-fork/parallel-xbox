@@ -12,12 +12,13 @@
 #endif
 /* QUIET ERRORS */
 #define ARRAY_SIZE(a) (sizeof(a)/sizeof((a)[0]))
+#define MAX(a,b) ((a)>(b)?(a):(b))
 #define ROUND_UP(v,a) (((v)+(a)-1)&~((a)-1))
 #define VK_CHECK(x) assert((x)==VK_SUCCESS)
 #define NV2A_PROF_QUEUE_SUBMIT_AUX 0
 /* CONSTANTS */
 enum {BUFFER_STAGING_SRC,BUFFER_UNSWIZZLE_OUT};
-typedef struct {size_t buffer_size;} StorageBuffer;
+typedef struct {size_t buffer_size;VkMemoryPropertyFlags properties;} StorageBuffer;
 typedef struct {
  VkDevice device;
  /* AUX TYPE */
@@ -25,6 +26,7 @@ typedef struct {
  bool in_aux_command_buffer;
  size_t ring_head[PGRAPH_VK_RINGS];
  StorageBuffer storage_buffers[2];
+ struct {struct {VkDeviceSize nonCoherentAtomSize;} limits;} device_props;
 } PGRAPHVkState;
 typedef struct {PGRAPHVkState *vk_renderer_state;} PGRAPHState;
 static PGRAPHVkState state;
@@ -35,6 +37,7 @@ static uint32_t bytes[2][CAPACITY],expected[2][CAPACITY];
 static bool signaled[PGRAPH_VK_AUX_SLOTS];
 static unsigned serial[PGRAPH_VK_AUX_SLOTS],submit_serial;
 static unsigned polls,waits,resets,growths,allocations;
+static bool grow_noncoherent;
 void pgraph_vk_wait_for_aux(PGRAPHState *pg);
 static unsigned fence_slot(VkFence f){unsigned i=(unsigned)(uintptr_t)f-1;assert(i<PGRAPH_VK_AUX_SLOTS);return i;}
 static void nv2a_profile_inc_counter(unsigned n){assert(n==NV2A_PROF_QUEUE_SUBMIT_AUX);}
@@ -44,17 +47,18 @@ VKAPI_ATTR VkResult VKAPI_CALL vkResetFences(VkDevice device,uint32_t count,cons
 VKAPI_ATTR VkResult VKAPI_CALL vkBeginCommandBuffer(VkCommandBuffer cmd,const VkCommandBufferBeginInfo *info){assert(state.in_aux_command_buffer&&cmd==state.aux[state.aux_slot].cmd&&!state.aux[state.aux_slot].pending&&info->flags==VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);return VK_SUCCESS;}
 VKAPI_ATTR VkResult VKAPI_CALL vkEndCommandBuffer(VkCommandBuffer cmd){assert(state.in_aux_command_buffer&&cmd==state.aux[state.aux_slot].cmd);return VK_SUCCESS;}
 static void pgraph_vk_queue_submit(PGRAPHVkState *r,uint32_t count,const VkSubmitInfo *info,VkFence fence){assert(r==&state&&count==1&&info->commandBufferCount==1&&info->pCommandBuffers[0]==r->aux[r->aux_slot].cmd&&fence==r->aux[r->aux_slot].fence);unsigned s=fence_slot(fence);assert(!state.aux[s].pending&&!signaled[s]);serial[s]=++submit_serial;}
-static void pgraph_vk_buffer_ensure_capacity(PGRAPHState *p,unsigned buffer,size_t size){assert(p==&pg&&buffer==BUFFER_STAGING_SRC&&size<=CAPACITY);pgraph_vk_wait_for_aux(p);state.storage_buffers[buffer].buffer_size=size;growths++;}
+static void pgraph_vk_buffer_ensure_capacity(PGRAPHState *p,unsigned buffer,size_t size){assert(p==&pg&&buffer==BUFFER_STAGING_SRC&&size<=CAPACITY);pgraph_vk_wait_for_aux(p);state.storage_buffers[buffer].buffer_size=size;if(grow_noncoherent)state.storage_buffers[buffer].properties=VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;growths++;}
 /* PRODUCTION */
 static void setup(size_t staging,size_t unswizzle){
- memset(&state,0,sizeof(state));memset(owner,0xff,sizeof(owner));memset(bytes,0,sizeof(bytes));memset(expected,0,sizeof(expected));memset(signaled,0,sizeof(signaled));memset(serial,0,sizeof(serial));submit_serial=polls=waits=resets=growths=allocations=0;state.device=(VkDevice)(uintptr_t)3;
+ memset(&state,0,sizeof(state));memset(owner,0xff,sizeof(owner));memset(bytes,0,sizeof(bytes));memset(expected,0,sizeof(expected));memset(signaled,0,sizeof(signaled));memset(serial,0,sizeof(serial));submit_serial=polls=waits=resets=growths=allocations=0;state.device=(VkDevice)(uintptr_t)3;grow_noncoherent=false;state.device_props.limits.nonCoherentAtomSize=128;for(unsigned i=0;i<2;i++)state.storage_buffers[i].properties=VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT|VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
  state.storage_buffers[0].buffer_size=staging;state.storage_buffers[1].buffer_size=unswizzle;
  for(unsigned i=0;i<PGRAPH_VK_AUX_SLOTS;i++){state.aux[i].cmd=(VkCommandBuffer)(uintptr_t)(0x100+i);state.aux[i].fence=(VkFence)(uintptr_t)(1+i);}
 }
 static VkDeviceSize allocate(unsigned ring,size_t size,size_t alignment){
  VkDeviceSize offset=UINT64_MAX;bool ok=pgraph_vk_ring_alloc(&pg,ring,size,alignment,&offset);if(!ok){assert(ring==PGRAPH_VK_RING_UNSWIZZLE&&offset==UINT64_MAX);return offset;}
  assert(offset%alignment==0&&offset+size<=state.storage_buffers[ring].buffer_size);unsigned s=state.aux_slot;uint32_t value=++allocations;
- for(size_t i=offset;i<offset+size;i++){if(owner[ring][i]!=-1){fprintf(stderr,"Ring overlap ring=%u offset=%llu size=%zu byte=%zu owner=%d active=%u head=%zu pending=%d oldest=%d\n",ring,(unsigned long long)offset,size,i,owner[ring][i],s,state.ring_head[ring],state.aux_npending,state.aux_oldest);for(unsigned k=0;k<PGRAPH_VK_AUX_SLOTS;k++)fprintf(stderr,"slot %u pending=%u ready=%u start=%zu used=%u\n",k,state.aux[k].pending,signaled[k],state.aux[k].ring_start[ring],state.aux[k].ring_used[ring]);abort();}owner[ring][i]=s;bytes[ring][i]=expected[ring][i]=value;}
+ size_t owned_end=offset+size;if(ring==PGRAPH_VK_RING_STAGING&&!(state.storage_buffers[ring].properties&VK_MEMORY_PROPERTY_HOST_COHERENT_BIT))owned_end=ROUND_UP(owned_end,state.device_props.limits.nonCoherentAtomSize);assert(owned_end<=CAPACITY);
+ for(size_t i=offset;i<owned_end;i++){if(owner[ring][i]!=-1){fprintf(stderr,"Ring overlap ring=%u offset=%llu size=%zu byte=%zu owner=%d active=%u head=%zu pending=%d oldest=%d\n",ring,(unsigned long long)offset,size,i,owner[ring][i],s,state.ring_head[ring],state.aux_npending,state.aux_oldest);for(unsigned k=0;k<PGRAPH_VK_AUX_SLOTS;k++)fprintf(stderr,"slot %u pending=%u ready=%u start=%zu used=%u\n",k,state.aux[k].pending,signaled[k],state.aux[k].ring_start[ring],state.aux[k].ring_used[ring]);abort();}owner[ring][i]=s;bytes[ring][i]=expected[ring][i]=value;}
  return offset;
 }
 static void submit(VkCommandBuffer cmd){pgraph_vk_end_single_time_commands_async(&pg,cmd);assert(state.aux_npending<=PGRAPH_VK_AUX_SLOTS);}
@@ -83,9 +87,16 @@ int main(void){
   * It must remain owned both before and after submitting the recording. */
  setup(64,64);state.ring_head[1]=16;cmd=pgraph_vk_begin_single_time_commands(&pg);assert(allocate(1,32,1)==16&&allocate(1,16,1)==48&&allocate(1,16,1)==0);assert(state.aux[0].ring_start[1]==state.ring_head[1]&&state.aux[0].ring_used[1]);assert(allocate(1,1,1)==UINT64_MAX&&!polls&&!waits);submit(cmd);cmd=pgraph_vk_begin_single_time_commands(&pg);assert(allocate(1,1,1)==16&&polls==1&&waits==1);submit(cmd);finish();
  puts("Ring regression: exact-full wrapped recording and submitted ranges retain ownership");
+ /* Non-coherent staging allocations reserve distinct flush atoms, including
+  * after a growth that changes the allocation's memory type. */
+ setup(512,64);state.storage_buffers[0].properties=VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
+ for(unsigned i=0;i<4;i++){cmd=pgraph_vk_begin_single_time_commands(&pg);assert(allocate(0,1,16)==i*128);submit(cmd);}assert(!polls&&!waits);cmd=pgraph_vk_begin_single_time_commands(&pg);assert(allocate(0,1,16)==0&&polls==1&&waits==1);submit(cmd);finish();
+ setup(32,64);grow_noncoherent=true;cmd=pgraph_vk_begin_single_time_commands(&pg);assert(allocate(0,64,16)==0&&growths==1&&!(state.storage_buffers[0].properties&VK_MEMORY_PROPERTY_HOST_COHERENT_BIT));submit(cmd);finish();
+ puts("Staging ring: distinct non-coherent flush atoms and post-growth memory-type alignment passed");
  unsigned total_allocations=0,total_polls=0,total_waits=0;
  for(unsigned run=0;run<100;run++){
-  setup(256,128);
+  setup(run&1?4096:256,128);
+  if(run&1){state.storage_buffers[0].properties=VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;state.device_props.limits.nonCoherentAtomSize=64u<<(run%4);}
   for(unsigned frame=0;frame<200;frame++){
    for(unsigned i=0;i<PGRAPH_VK_AUX_SLOTS;i++)if(state.aux[i].pending&&random_word()%4==0)signaled[i]=true;
    cmd=pgraph_vk_begin_single_time_commands(&pg);

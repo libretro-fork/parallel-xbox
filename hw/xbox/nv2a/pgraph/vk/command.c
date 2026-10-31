@@ -256,6 +256,14 @@ bool pgraph_vk_ring_alloc(PGRAPHState *pg, int ring, size_t size,
         a->ring_start[ring] = r->ring_head[ring] = 0;
     }
 
+    /* Recheck properties after growth: a replacement can use a different
+     * memory type. Non-coherent CPU writes must not share a flush atom with
+     * any earlier in-flight allocation in the staging ring. */
+    if (ring == PGRAPH_VK_RING_STAGING &&
+        !(b->properties & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT)) {
+        alignment = MAX(alignment, r->device_props.limits.nonCoherentAtomSize);
+    }
+
     for (;;) {
         /* Retain completed ranges conservatively until space is needed.
          * Most uploads fit without asking the driver about any fence. */
@@ -325,9 +333,35 @@ void pgraph_vk_staging_flush(PGRAPHState *pg, VkDeviceSize offset,
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
 
-    vmaFlushAllocation(r->allocator,
-                       r->storage_buffers[BUFFER_STAGING_SRC].allocation,
-                       offset, size);
+    StorageBuffer *staging = &r->storage_buffers[BUFFER_STAGING_SRC];
+    if (size && !(staging->properties & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT)) {
+        VK_CHECK(vmaFlushAllocation(r->allocator, staging->allocation,
+                                    offset, size));
+    }
+}
+
+/* CPU staging writes are flushed before queue submission, which supplies
+ * host-to-device visibility. Imported guest RAM retains its existing barrier. */
+void pgraph_vk_upload_source_barrier(PGRAPHState *pg, VkCommandBuffer cmd,
+                                     bool from_vram)
+{
+    if (!from_vram) {
+        return;
+    }
+    PGRAPHVkState *r = pg->vk_renderer_state;
+    assert(r->vram_buffer != VK_NULL_HANDLE);
+    VkBufferMemoryBarrier barrier = {
+        .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
+        .srcAccessMask = VK_ACCESS_HOST_WRITE_BIT,
+        .dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT,
+        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .buffer = r->vram_buffer,
+        .size = VK_WHOLE_SIZE,
+    };
+    vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_HOST_BIT,
+                         VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 1,
+                         &barrier, 0, NULL);
 }
 
 /* Submit without blocking: the work runs ahead of the open recording, and

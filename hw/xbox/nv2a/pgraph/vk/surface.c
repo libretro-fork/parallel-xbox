@@ -1654,7 +1654,7 @@ void pgraph_vk_upload_surface_data(NV2AState *d, SurfaceBinding *surface,
     }
 
     /* The recording first: the surface's bytes go into its range of the
-     * ring, which it reads after the host barrier below */
+     * ring, which it reads after flushing and auxiliary queue submission */
     VkCommandBuffer cmd = pgraph_vk_begin_single_time_commands(pg);
     pgraph_vk_begin_debug_marker(r, cmd, RGBA_RED, __func__);
 
@@ -1708,18 +1708,7 @@ void pgraph_vk_upload_surface_data(NV2AState *d, SurfaceBinding *surface,
     if (gpu_unswizzled) {
         pgraph_vk_unswizzle_done(pg, cmd);
     } else {
-        VkBufferMemoryBarrier host_barrier = {
-            .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
-            .srcAccessMask = VK_ACCESS_HOST_WRITE_BIT,
-            .dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT,
-            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-            .buffer = source_buffer,
-            .size = VK_WHOLE_SIZE
-        };
-        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_HOST_BIT,
-                             VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 1,
-                             &host_barrier, 0, NULL);
+        pgraph_vk_upload_source_barrier(pg, cmd, from_vram);
     }
 
     // Set up image copy regions (which may be modified by compute unpack)
@@ -2734,16 +2723,7 @@ static void upload_scanout_background(NV2AState *d, SurfaceBinding *out,
     VkImage target = via_scratch ? out->image_scratch : out->image;
     VkBuffer source = from_vram ? r->vram_buffer :
                       r->storage_buffers[BUFFER_STAGING_SRC].buffer;
-    VkBufferMemoryBarrier host = {
-        .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
-        .srcAccessMask = VK_ACCESS_HOST_WRITE_BIT,
-        .dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT,
-        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        .buffer = source, .size = VK_WHOLE_SIZE,
-    };
-    vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_HOST_BIT,
-        VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 1, &host, 0, NULL);
+    pgraph_vk_upload_source_barrier(pg, cmd, from_vram);
     for (;;) {
         if (via_scratch && out->image_scratch_current_layout !=
                            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) {
@@ -2811,9 +2791,15 @@ static void upload_scanout_background(NV2AState *d, SurfaceBinding *out,
     if (!from_vram) pgraph_vk_staging_flush(pg, staged_offset, staged_used);
     /* Same dependency as the full upload: subsequent GPU RAM/ring
      * writes cannot overtake these source reads. */
-    VkBufferMemoryBarrier consumed = host;
-    consumed.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-    consumed.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+    VkBufferMemoryBarrier consumed = {
+        .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
+        .srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT,
+        .dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .buffer = source,
+        .size = VK_WHOLE_SIZE,
+    };
     vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
         VK_PIPELINE_STAGE_TRANSFER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
         0, 0, NULL, 1, &consumed, 0, NULL);

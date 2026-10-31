@@ -175,18 +175,7 @@ static void upload_pvideo_image(PGRAPHState *pg, PvideoState state)
         state.in_width, state.in_height, state.pitch);
     pgraph_vk_staging_flush(pg, staged_offset, staged_size);
 
-    VkBufferMemoryBarrier host_barrier = {
-        .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
-        .srcAccessMask = VK_ACCESS_HOST_WRITE_BIT,
-        .dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT,
-        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        .buffer = r->storage_buffers[BUFFER_STAGING_SRC].buffer,
-        .size = VK_WHOLE_SIZE
-    };
-    vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_HOST_BIT,
-                         VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 1,
-                         &host_barrier, 0, NULL);
+    /* Host staging writes become visible at the auxiliary queue submission. */
 
     pgraph_vk_transition_image_layout(
         pg, cmd, disp->pvideo.image, VK_FORMAT_R8G8B8A8_UNORM,

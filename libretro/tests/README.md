@@ -1212,7 +1212,7 @@ An unfinished earlier submission must cause zero fence-status calls across
 retiring one completed slot must not poll another slot when the gap now fits.
 Deterministic cases cover wrapping, delayed completion, staging growth,
 unswizzle exhaustion and full wrapped spans whose endpoints are equal. Across
-20,000 delayed submissions and more than 108,000 allocations, neither ring may
+20,000 delayed submissions and more than 100,000 allocations, neither ring may
 overwrite a current or unretired recording. A private run against the previous
 allocator reproduced the equal-endpoint overwrite; these are ownership and
 driver-call checks, not whole-game latency measurements.
@@ -1252,3 +1252,12 @@ Queue submission provides the host-write visibility guarantee described in the
 while [pipeline barriers](https://docs.vulkan.org/refpages/latest/refpages/source/vkCmdPipelineBarrier.html)
 cover later command buffers on the same queue. These guarantees do not remove
 non-coherent cache flushing or transfer-to-consumer dependencies.
+
+Auxiliary staging uploads now use the same pre-submission host-write guarantee.
+The visibility fixture covers coherent/empty staging-flush skips, exact
+non-coherent ranges, a missing imported buffer and the imported-RAM-only upload
+barrier. Image transitions and GPU compute/transfer dependencies are retained.
+The ring ownership model additionally owns whole non-coherent flush atoms,
+including 64-512-byte atoms during randomized submissions, 128-byte adjacent
+uploads and a growth that changes memory type. Staging alignment is selected
+after growth so the replacement allocation's properties control it.
