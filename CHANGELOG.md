@@ -32,6 +32,7 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 
 - CPU Boost invalidates stale entry flag assumptions after variable-count shifts, fixing incorrect carry/overflow reads. It compares reconstructed byte/32-bit subtraction operands at block entry instead of materializing all flags for relational conditions. SAHF also skips discarded flag calculations when overflow is already known clear. Both retain pending floating-point publication and safe block-class handling.
+- Added an opt-in bump-filter observation probe covering 192 G8B8 sampling cases. Rendering behavior is unchanged.
 
 - Completed IDE buffered reads leave the pending list before their callbacks run. A callback that cancels pending work no longer receives a second completion for the request already being completed; buffer cleanup still happens after the callback returns.
 
