@@ -147,6 +147,18 @@ matrices separately cover both upper clamps for every sign mask. This checks
 each axis, both edges and edge-adjacent interpolation independently of wrap
 periodicity. The manifest records address mode, sample coordinates and clamp.
 
+When clamp-to-edge min and mag reconstruction match and the upper mip clamp is
+zero, the state now reuses the existing single-level point/gather programs.
+This covers both Force LOD0 and a guest-set zero upper clamp. Point sampling
+uses the original hardware sample; linear sampling gathers only the signed
+byte components instead of emitting four/eight explicit mip texel fetches and
+integer edge clamps. The driver may already fold duplicate base-mip fetches;
+this specializes the generated program before compilation. It also reuses
+existing base-level cache keys and seeds, so no cache-version bump is needed.
+Mixed-filter, wrap and genuinely mipmapped reconstruction retain their states
+and shader text. The state test checks 512 canonical key configurations,
+including active flags on other texture stages.
+
 192 cases cover linear/swizzled G8B8, BUMPENVMAP/BUMPENVMAP_LUM, B/G displacement,
 signed flags none/B/G/BG, point/linear sampling, and left/midpoint/right texel
 coordinates. The bump texture contains bytes 255 and 1 along one axis and zero

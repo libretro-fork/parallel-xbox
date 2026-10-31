@@ -347,7 +347,13 @@ void pgraph_glsl_set_psh_state(PGRAPHState *pg, PshState *state)
                 ((filter & NV_PGRAPH_TEXFILTER0_GSIGNED) ? 2 : 0) |
                 ((filter & NV_PGRAPH_TEXFILTER0_RSIGNED) ? 4 : 0) |
                 ((filter & NV_PGRAPH_TEXFILTER0_ASIGNED) ? 8 : 0);
-            if (signs) {
+            if (signs && mip_filter && mip_clamp && mip_lod0 &&
+                !mixed_mip_filter) {
+                /* Matching filters restricted to mip zero can reuse the
+                 * single-level point/gather programs. Canonicalizing the
+                 * state also reuses their existing cache keys and seeds. */
+                state->g8b8_signed[i] = signs | (mip_min_linear ? 16 : 0);
+            } else if (signs) {
                 state->g8b8_signed[i] = signs |
                     ((linear_filter || (mip_filter && mip_min_linear)) ? 16 : 0) |
                     (mixed_filter ? 64 | (mag_filter == 2 ? 32 : 16) : 0) |

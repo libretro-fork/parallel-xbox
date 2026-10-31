@@ -16,6 +16,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Base-only clamped signed G8B8 textures with matching min/mag filters now reuse the existing point/gather shaders and cache keys, avoiding explicit mip texel fetching and edge-clamp work. Mixed filters, wrap addressing and real mip selection are unchanged; no runtime diagnostic logging is added.
+
 - Signed G8B8 mip filtering now supports clamp-to-edge on both texture axes, including mixed min/mag filters and Force LOD0. Each texel is clamped and decoded before interpolation. Existing wrap shaders and shader-seed layout remain unchanged; no runtime diagnostic logging is added.
 
 - Bound non-deterministic GPU waits by the next guest timer deadline so CPU

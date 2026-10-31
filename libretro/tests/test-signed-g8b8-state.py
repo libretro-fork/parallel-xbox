@@ -16,12 +16,15 @@ masks = "\n".join(re.search(r"#define " + name + r" .*?(?<!\\)\n", header, re.S)
 state_header = (repo / "hw/xbox/nv2a/pgraph/glsl/psh.h").read_text()
 state = re.search(r"typedef struct PshState \{.*?\} PshState;", state_header, re.S).group()
 legacy = state.replace("uint8_t g8b8_mip_flags;", "bool universal;").replace("PshState", "LegacyPshState")
+pixel_source = (repo / "hw/xbox/nv2a/pgraph/glsl/psh.c").read_text()
+encoding = re.search(r"^            if \(signs.*?^            \}$", pixel_source, re.S | re.M).group()
 code = r'''
 #include <assert.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stddef.h>
+#include <string.h>
 enum ConvolutionFilter { CONV_DISABLED };
 enum PshDepthFormat { DEPTH_DISABLED };
 enum PshShadowDepthFunc { SHADOW_DISABLED };
@@ -45,6 +48,23 @@ static uint32_t pgraph_reg_r(PGRAPHState *pg, unsigned reg) {
 }
 /* MASKS */
 /* PRODUCTION */
+static PshState encode_signed_g8b8(unsigned signs, unsigned min_filter,
+                                 unsigned mag_filter, bool mip_filter,
+                                 bool mip_clamp, bool mip_lod0, bool others, int i) {
+    PshState result;
+    memset(&result, 0, sizeof(result));
+    PshState *state = &result;
+    if (others)
+        state->g8b8_mip_flags = 0xffu ^ ((1u << i) | (1u << (i + 4)));
+    bool min_linear = min_filter == 2 || min_filter == 4 || min_filter == 6;
+    bool linear_filter = min_linear && mag_filter == 2;
+    bool mip_min_linear = min_filter == 4 || min_filter == 6;
+    bool mixed_filter = !mip_filter && ((min_filter == 1 && mag_filter == 2) ||
+                                       (min_filter == 2 && mag_filter == 1));
+    bool mixed_mip_filter = mip_filter && (mag_filter != (min_linear ? 2u : 1u));
+    /* ENCODING */
+    return result;
+}
 int main(void) {
     unsigned cases = 0;
     for (unsigned slot = 0; slot < 4; slot++)
@@ -75,9 +95,23 @@ int main(void) {
     for (unsigned i = 0; i < sizeof(format_fields) / sizeof(*format_fields); i++)
         assert((format_fields[i] & NV_PGRAPH_TEXFMT0_SHADER_FIELDS) == format_fields[i]);
     assert(!(NV_PGRAPH_TEXFILTER0_SHADER_FIELDS & NV_PGRAPH_TEXFILTER0_MIPMAP_LOD_BIAS));
+    unsigned canonical = 0;
+    for (unsigned stage = 0; stage < 4; stage++)
+    for (unsigned signs = 0; signs < 16; signs++)
+    for (unsigned filter = 3; filter <= 6; filter++)
+    for (unsigned others = 0; others < 2; others++) {
+        unsigned base_filter = filter % 2 ? 1 : 2;
+        PshState mip = encode_signed_g8b8(signs, filter, base_filter,
+                                        true, true, true, others, stage);
+        PshState base = encode_signed_g8b8(signs, base_filter, base_filter,
+                                         false, true, true, others, stage);
+        assert(!memcmp(&mip, &base, sizeof(mip)));
+        canonical++;
+    }
     printf("PASS: %u signed-G8B8 address invalidation cases and shader field coverage\n", cases);
+    printf("PASS: %u base-only clamped shader cache canonicalization cases\n", canonical);
 }
-'''.replace("/* PRODUCTION */", function).replace("/* MASKS */", masks).replace("/* STATE */", state + "\n" + legacy)
+'''.replace("/* PRODUCTION */", function).replace("/* MASKS */", masks).replace("/* STATE */", state + "\n" + legacy).replace("/* ENCODING */", encoding)
 with tempfile.TemporaryDirectory(prefix="g8b8-state-") as folder:
     source = Path(folder) / "test.c"
     binary = Path(folder) / "test"
