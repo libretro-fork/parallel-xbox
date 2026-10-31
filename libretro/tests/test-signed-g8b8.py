@@ -25,6 +25,7 @@ def main():
     env = dict(os.environ)
     env.setdefault("EGL_PLATFORM", "surfaceless")
     modes = ["bump", "color", "mixed", "mixed_plus4", "mixed_minus4"]
+    modes += [f"luminance_{profile}" for profile in ("scale_bias", "negative_scale", "overbright")]
     modes += [f"mip_{filter}_{bias}" for filter in (3, 4, 5, 6)
               for bias in ("-4", "0", "0.25", "4")]
     modes += [f"mipmixed_{filter}_{bias}" for filter in (3, 4, 5, 6)
@@ -54,6 +55,8 @@ def main():
                  "--assembler", args.assembler]
         if mode == "color":
             build.append("--color")
+        elif mode.startswith("luminance_"):
+            build += ["--luminance-profile", mode.split("_", 1)[1]]
         elif mode.startswith("mixed"):
             bias = 4 if mode.endswith("plus4") else -4 if mode.endswith("minus4") else 0
             build += ["--mixed", "--lod-bias", str(bias)]

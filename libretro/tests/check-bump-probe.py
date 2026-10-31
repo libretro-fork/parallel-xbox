@@ -101,6 +101,16 @@ def expected(case, force_lod0=False):
     v = 8 + (8 * displacement if case["axis"] == "G" else 0)
     red = min(248, max(0, (u - 0.5) * 8))
     green = min(240, max(0, (v - 0.5) * 16))
+    profiles = {"bump_luminance_scale_bias": (0.5, 0.25),
+                "bump_luminance_negative_scale": (-0.5, 0.75),
+                "bump_luminance_overbright": (3.0, -0.5)}
+    if case["mode"] in profiles:
+        scale, offset = profiles[case["mode"]]
+        # Dependent luminance uses the original unsigned R sample, even if
+        # R is signed later when it becomes a combiner input.
+        factor = mix(255, 1, weight) / 255 * scale + offset
+        return [min(255, max(0, math.floor(value * factor + 0.5)))
+                for value in (255, red, green, 0)]
     return [255, math.floor(red + 0.5), math.floor(green + 0.5), 0]
 
 

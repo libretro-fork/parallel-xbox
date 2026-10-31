@@ -20,9 +20,12 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Renderer regression tests now exercise non-neutral bump luminance, negative scale and saturation across all channel-sign masks. The audited single-level paths already match the reference model, so emulator behavior is unchanged.
+
 - GPU fence polling now acquires the host-side effects published by preceding FIFO methods, using libretro-common release/acquire atomics. Polling remains lock-free; ordinary register accesses keep their existing ordering, and no GPU completion wait or frame delay is added.
 
 - OpenGL: reuse lazy fallback-transfer scratch capacity instead of reallocating on every scaled/irregular upload or readback; discard obsolete contents on growth and release the buffer with the renderer.
+
 
 - Signed G8B8 lower mip clamps one/two now support mixed min/mag filters. OpenGL applies a sampler minimum without rebasing the image, matching Vulkan filter selection for unsigned channels too. Positive lower clamps reuse minification-only reconstruction; Force LOD0 retains mixed filtering. Separate cached views preserve existing nonmipmap sampler behavior. Existing zero-lower-clamp keys/programs and serialized state layout remain unchanged.
 - Pack only visible texels when linear Vulkan textures need staging, avoiding

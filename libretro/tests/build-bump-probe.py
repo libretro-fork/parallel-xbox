@@ -15,6 +15,8 @@ def main():
     parser.add_argument("--assembler", default="nasm", help="nasm or yasm")
     parser.add_argument("--color", action="store_true", help="test all signed color-channel combinations")
     parser.add_argument("--mixed", action="store_true", help="test mixed filters at varying footprints")
+    parser.add_argument("--luminance-profile", choices=("scale_bias", "negative_scale", "overbright"),
+                        help="test non-neutral bump luminance with every channel-sign mask")
     parser.add_argument("--mip-filter", type=int, choices=(3, 4, 5, 6),
                         help="test a three-level swizzled G8B8 mip chain")
     parser.add_argument("--mip-mixed", action="store_true",
@@ -32,6 +34,8 @@ def main():
     parser.add_argument("--lod-bias", type=float, choices=(-4, 0, 0.25, 4), default=0,
                         help="sampler LOD bias for the mixed/mip-filter matrix")
     args = parser.parse_args()
+    if args.luminance_profile and (args.color or args.mixed or args.mip_filter):
+        parser.error("--luminance-profile is a separate bump fixture")
     if args.min_lod and not args.mip_filter:
         parser.error("--min-lod requires --mip-filter")
     if args.sampler_transition and not args.mip_filter:
@@ -66,6 +70,12 @@ def main():
         folder = Path(folder)
         obj, elf, binary = [folder / name for name in ("gpu.o", "gpu.elf", "gpu.bin")]
         defines = ["-DBUMP_FILTER_PROBE"]
+        if args.luminance_profile:
+            scale, offset = {"scale_bias": (0x3f000000, 0x3e800000),
+                             "negative_scale": (0xbf000000, 0x3f400000),
+                             "overbright": (0x40400000, 0xbf000000)}[args.luminance_profile]
+            defines += ["-DBUMP_FILTER_LUMINANCE_PROBE", f"-DBUMP_LUM_SCALE={scale}",
+                        f"-DBUMP_LUM_OFFSET={offset}"]
         if args.color or args.mixed or args.mip_filter:
             defines.append("-DBUMP_FILTER_COLOR_PROBE")
         if args.mixed:
@@ -122,6 +132,15 @@ def main():
                          "max_lod", "wrap_period", "mag_filter", "address_mode",
                          "sample_u", "sample_v", "min_lod", "sampler_transition"])
         for i in range(192):
+            if args.luminance_profile:
+                flags = (i // 6) % 16
+                channels = "".join(ch for bit, ch in ((1, "B"), (2, "G"), (4, "R"), (8, "A")) if flags & bit) or "none"
+                writer.writerow([i, ("linear", "swizzled")[i // 96],
+                                 "bump_luminance_" + args.luminance_profile, "B", channels,
+                                 ("point", "linear")[(i // 3) % 2],
+                                 ("left_center", "midpoint", "right_center")[i % 3],
+                                 f"0x{0x300204 + i * 8:08x}", 0])
+                continue
             if args.color or args.mixed or args.mip_filter:
                 flags = (i // 6) % 16
                 if axis_data:
