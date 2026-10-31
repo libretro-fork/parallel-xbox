@@ -857,7 +857,8 @@ typedef struct PGRAPHVkState {
     bool query_in_flight;
     bool query_in_render_pass;
     uint32_t zpass_pixel_count_result;
-    QSIMPLEQ_HEAD(, QueryReport) report_queue; // FIXME: Statically allocate
+    QSIMPLEQ_HEAD(, QueryReport) report_queue;
+    ObjPool report_pool;
 
     /* Cost-model fragment counting (pgraph/cost.c): per cost segment, a
      * pipeline-statistics query (fragment shader invocations) and a precise

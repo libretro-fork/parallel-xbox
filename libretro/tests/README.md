@@ -1158,4 +1158,11 @@ Across 27,000 polls it checks clear/report ordering, partial submissions,
 out-of-order availability, repeated unavailable polls, scales 1-9, 32-bit
 accumulator wraparound, full 1,024-slot batches, queue drain/reset and storage
 guards against a separate CPU model. Allocation wrappers verify the poller
-makes no heap allocations; queued report nodes retain their existing lifetime.
+makes no heap allocations. Completed nodes return to the Vulkan report pool.
+
+`test-vk-report-pool.py` executes production report initialization, clear/get
+requests, polling and finalization with the actual shared `ObjPool`. Allocator
+spies check 72,186 requests, allocation-free reuse within the reserve, FIFO
+fields and writes, delayed completion, overflow allocation/retirement, teardown
+with pending reserve and overflow nodes, and reinitialization with cost queries
+both enabled and disabled. No queue limit or synchronization is added by pooling.

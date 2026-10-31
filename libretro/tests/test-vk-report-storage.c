@@ -26,6 +26,7 @@ typedef struct {
  uint64_t guard_before;
  /* RESULT STORAGE */
  uint64_t guard_after;
+ int report_pool;
  QSIMPLEQ_HEAD(, QueryReport) report_queue;
 } PGRAPHVkState;
 typedef struct {PGRAPHVkState *vk_renderer_state;unsigned surface_scale_factor;bool reports_pending;} PGRAPHState;
@@ -34,7 +35,7 @@ static PGRAPHVkState state;
 static uint64_t query_values[PGRAPH_VK_MAX_QUERIES];
 static unsigned ready,query_calls,retired,writes;
 static uint32_t params[32],values[32];
-static void g_free(void *p){assert(p);retired++;}
+static void obj_pool_give(int *pool,void *p){assert(pool==&state.report_pool&&p);retired++;}
 static void pgraph_write_zpass_pixel_cnt_report(NV2AState *d,uint32_t parameter,uint32_t value){(void)d;assert(writes<32);params[writes]=parameter;values[writes++]=value;}
 VKAPI_ATTR VkResult VKAPI_CALL vkGetQueryPoolResults(VkDevice device,VkQueryPool pool,uint32_t first,uint32_t count,size_t bytes,void *data,VkDeviceSize stride,VkQueryResultFlags flags){
  assert(device==state.device&&pool==state.query_pool);

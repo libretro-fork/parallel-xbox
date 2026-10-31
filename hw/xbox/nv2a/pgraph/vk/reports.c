@@ -25,6 +25,9 @@ void pgraph_vk_init_reports(PGRAPHState *pg)
     PGRAPHVkState *r = pg->vk_renderer_state;
 
     QSIMPLEQ_INIT(&r->report_queue);
+    /* A report is not a query slot: a guest may queue several for one slot.
+     * Reserve the usual backlog without bounding the queue or forcing a wait. */
+    obj_pool_init(&r->report_pool, sizeof(QueryReport), PGRAPH_VK_MAX_QUERIES);
     r->num_queries_in_flight = 0;
     r->queries_submitted = 0;
     r->queries_read = 0;
@@ -76,8 +79,10 @@ void pgraph_vk_finalize_reports(PGRAPHState *pg)
     QueryReport *report;
     while ((report = QSIMPLEQ_FIRST(&r->report_queue)) != NULL) {
         QSIMPLEQ_REMOVE_HEAD(&r->report_queue, entry);
-        g_free(report);
+        obj_pool_give(&r->report_pool, report);
     }
+
+    obj_pool_finalize(&r->report_pool);
 
     vkDestroyQueryPool(r->device, r->query_pool, NULL);
     if (r->cost_stats_pool != VK_NULL_HANDLE) {
@@ -91,7 +96,7 @@ void pgraph_vk_clear_report_value(NV2AState *d)
     PGRAPHState *pg = &d->pgraph;
     PGRAPHVkState *r = pg->vk_renderer_state;
 
-    QueryReport *report = g_malloc(sizeof(QueryReport)); // FIXME: Pre-allocate
+    QueryReport *report = obj_pool_take(&r->report_pool);
     report->clear = true;
     report->parameter = 0;
     report->query_count = r->num_queries_in_flight;
@@ -108,7 +113,7 @@ void pgraph_vk_get_report(NV2AState *d, uint32_t parameter)
     uint8_t type = GET_MASK(parameter, NV097_GET_REPORT_TYPE);
     assert(type == NV097_GET_REPORT_TYPE_ZPASS_PIXEL_CNT);
 
-    QueryReport *report = g_malloc(sizeof(QueryReport)); // FIXME: Pre-allocate
+    QueryReport *report = obj_pool_take(&r->report_pool);
     report->clear = false;
     report->parameter = parameter;
     report->query_count = r->num_queries_in_flight;
@@ -178,7 +183,7 @@ void pgraph_vk_process_pending_reports_internal(NV2AState *d)
                 r->zpass_pixel_count_result / result_divisor);
         }
         QSIMPLEQ_REMOVE_HEAD(&r->report_queue, entry);
-        g_free(report);
+        obj_pool_give(&r->report_pool, report);
     }
     if (QSIMPLEQ_EMPTY(&r->report_queue)) {
         /* No report waits: every counted slot belongs to the next window. */

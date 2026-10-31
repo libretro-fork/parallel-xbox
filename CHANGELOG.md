@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Vulkan reserves 1,024 report queue nodes at renderer initialization and recycles them as reports complete, replacing per-request allocation/free for queues within that reserve. Larger queues retain the existing heap fallback, without new GPU waits or request limits.
+
 - Vulkan occlusion-report polling reuses a fixed 16 KiB value/availability array in renderer state instead of allocating and freeing a results buffer on every poll. Vulkan writes directly into it; query availability, report windows and synchronization stay unchanged.
 
 - Vulkan swizzle and unswizzle pipelines now load immutable SPIR-V at initialization, removing their runtime source compilation and temporary compiler payloads. Palette lookup, 3D texture conversion and GPU-only ring/image transfers retain their existing behavior; no extra pipelines or VRAM are reserved.
