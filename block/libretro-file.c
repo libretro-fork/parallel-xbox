@@ -535,6 +535,9 @@ const uint8_t *lr_file_view(LRFile *f, int64_t off, size_t len)
 
 int lr_file_pread(LRFile *f, int64_t off, void *buf, size_t len)
 {
+    if (off < 0 || len > (uint64_t)(INT64_MAX - off)) {
+        return -EINVAL;
+    }
     size_t done;
     int ret;
     if (f->mapped) {
@@ -564,6 +567,9 @@ int lr_file_pwrite(LRFile *f, int64_t off, const void *buf, size_t len)
     size_t done;
     if (f->mapped) {
         return -EPERM;
+    }
+    if (off < 0 || len > (uint64_t)(INT64_MAX - off)) {
+        return -EINVAL;
     }
 
     return lr_file_rw(f, off, (void *)buf, len, true, &done);

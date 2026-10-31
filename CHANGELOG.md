@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Scalar file reads and writes now reject negative or overflowing signed-offset ranges before transferring data or padding EOF, matching vector-request range checks.
+
 - Native and mapped file-vector operations reject malformed or overflowing requests before touching files or destinations. Empty native requests skip system calls; vectored native I/O reuses the validated total.
 
 - Frontend VFS reads validate the full scatter/gather range before any provider I/O. Empty reads no longer seek, and invalid or overflowing requests leave the provider cursor and destination unchanged.

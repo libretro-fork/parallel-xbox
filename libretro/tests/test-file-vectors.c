@@ -5,6 +5,31 @@
 #include <assert.h>
 #include <stdio.h>
 
+static void rejected_scalars(LRFile *f, bool writable)
+{
+    uint8_t out[32];
+    memset(out, 0xcc, sizeof(out));
+    assert(lr_file_pread(f, -1, out, 0) == -EINVAL);
+    assert(lr_file_pread(f, INT64_MAX, out, 1) == -EINVAL);
+    assert(lr_file_pread(f, INT64_MAX - 15, out, 16) == -EINVAL);
+    if (SIZE_MAX > INT64_MAX) {
+        assert(lr_file_pread(f, 0, out, SIZE_MAX) == -EINVAL);
+    }
+    assert(lr_file_pread(f, INT64_MAX, NULL, 0) == 0);
+    for (unsigned i = 0; i < sizeof(out); i++) { assert(out[i] == 0xcc); }
+    if (writable) {
+        assert(lr_file_pwrite(f, -1, out, 0) == -EINVAL);
+        assert(lr_file_pwrite(f, INT64_MAX, out, 1) == -EINVAL);
+        assert(lr_file_pwrite(f, INT64_MAX - 15, out, 16) == -EINVAL);
+        if (SIZE_MAX > INT64_MAX) {
+            assert(lr_file_pwrite(f, 0, out, SIZE_MAX) == -EINVAL);
+        }
+        assert(lr_file_pwrite(f, INT64_MAX, NULL, 0) == 0);
+    } else {
+        assert(lr_file_pwrite(f, INT64_MAX, out, 1) == -EPERM);
+    }
+}
+
 static void rejected_reads(LRFile *f)
 {
     uint8_t out[32];
@@ -31,6 +56,7 @@ int main(int argc, char **argv)
     memset(source, 0xa5, sizeof(source));
     LRFile mapped = {.mapped = bytes, .mapped_size = sizeof(bytes)};
     rejected_reads(&mapped);
+    rejected_scalars(&mapped, false);
     LRFileIOV v[] = {{out, 8}, {out + 16, 8}};
     assert(lr_file_preadv(&mapped, 0, v, 2) == 0);
     assert(!memcmp(out, bytes, 8) && !memcmp(out + 16, bytes + 8, 8));
@@ -40,6 +66,7 @@ int main(int argc, char **argv)
     assert(f && lr_file_set_size(f, sizeof(bytes)) == 0);
     assert(lr_file_pwrite(f, 0, bytes, sizeof(bytes)) == 0);
     rejected_reads(f);
+    rejected_scalars(f, true);
     /* Force the non-preadv fallback as well as the native vectored lane. */
     LRFileIOV invalid[1300] = {{source, 1}, {source + 16, SIZE_MAX}};
     for (int count = 2; count <= 1300; count += 1298) {
@@ -68,5 +95,5 @@ int main(int argc, char **argv)
     assert(!memcmp(out + 16, (uint8_t[8]){0}, 8));
     assert(out[8] == 0xcc);
     lr_file_close(f);
-    puts("file vectors: preflight preserves mapped/native destinations and native files: PASS");
+    puts("file scalar/vector ranges: preflight preserves mapped/native destinations and native files: PASS");
 }
