@@ -55,6 +55,10 @@ typedef struct TimersState {
     /* Only written by TCG thread */
     int64_t qemu_icount;
 
+    /* Runtime-only coherent virtual time for observing threads. The
+     * emulation thread owns count/bias updates; this field is not migrated. */
+    retro_atomic_64_t published_icount_ns;
+
     /* for adjusting icount */
     QEMUTimer *icount_rt_timer;
     QEMUTimer *icount_vm_timer;
@@ -67,5 +71,8 @@ extern TimersState timers_state;
  * icount needs this internal from cpu-timers when adjusting the icount shift.
  */
 int64_t cpu_get_clock_locked(void);
+
+/* Publish after an owner-thread count/bias update or state restoration. */
+void icount_publish_time(void);
 
 #endif /* TIMERS_STATE_H */

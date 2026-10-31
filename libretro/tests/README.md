@@ -1327,3 +1327,6 @@ Resumed GPU work must prevent idle clock skips; after completion, core-only
 redraw/reset kicks remain uncounted. No-op/IRQ-enable writes do
 not invent work. The dedicated GitHub Actions job needs no game assets or GPU;
 the same test also runs in the regular suite.
+
+`test-icount-publication.py CHECKOUT [CC]` compiles production instruction accounting, clock publication, skip and restore callbacks. It compares owner arithmetic/I/O boundaries and fractional conversion with the prior implementation; six observers must see complete snapshots across 100,000 count/bias updates. A paused writer holds an odd sequence halfway through an update, while observers must return the previous committed timestamp. Successful loads and resume after partial state changes must rebuild publication. `ICOUNT_TEST_CFLAGS`, `ICOUNT_TEST_BINARY` and `ICOUNT_TEST_SKIP_RUN` support sanitizers/native cross-builds; `ICOUNT_TEST_BASELINE=REV` selects prior production code; `ICOUNT_TEST_ARGS=bench` compares out-of-line observer/idle-owner/update paths with identical common TLS access and no role-check assertion in either getter. Writer serialization is modeled, so microbenchmarks do not measure full clock-lock or game costs.
+

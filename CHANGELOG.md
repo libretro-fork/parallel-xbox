@@ -4,6 +4,10 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Publish coherent instruction-clock timestamps through libretro-common
+  atomics. Virtual clock observers avoid seqlock retries and raw count/bias
+  reads; state loads rebuild the runtime timestamp without changing its format.
+
 - Fix DOAX gameplay cadence regressing while frontend FPS stays full speed. PGRAPH flip-release, interrupt-acknowledgement and FIFO-enable writes, plus PCRTC scanout changes, now publish guest GPU work before waking the FIFO. An idle CPU waits for that work instead of advancing guest time past it. The kernel idle shortcut, lock-free handoffs and uncounted core-only redraws remain.
 
 - Rearm pending timers in place when the new deadline leaves their queue

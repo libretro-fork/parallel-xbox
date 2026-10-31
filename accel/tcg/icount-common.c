@@ -49,6 +49,23 @@
 #define TS_STORE16(f, v) \
     retro_atomic_store_relaxed_u16((retro_atomic_u16_t *)&timers_state.f, (v))
 
+#if !defined(RETRO_ATOMIC_LOCK_FREE) || !defined(RETRO_ATOMIC_HAS_64)
+#error "Virtual clock publication requires lock-free 64-bit atomics"
+#endif
+#if defined(__GNUC__)
+_Static_assert(__atomic_always_lock_free(sizeof(retro_atomic_64_t), 0),
+               "Virtual clock timestamps must be lock-free");
+#endif
+
+/* Count and bias have one owner in the libretro accelerator. Observers
+ * consume one complete timestamp, never the raw multi-field state. */
+void icount_publish_time(void)
+{
+    int64_t ns = TS_LOAD64(qemu_icount_bias) +
+                 icount_to_ns(TS_LOAD64(qemu_icount));
+    retro_atomic_store_release_64(&timers_state.published_icount_ns, ns);
+}
+
 /*
  * ICOUNT: Instruction Counter
  *
@@ -96,10 +113,15 @@ static int64_t icount_get_executed(CPUState *cpu)
 static void icount_update_locked(CPUState *cpu)
 {
     int64_t executed = icount_get_executed(cpu);
+
+    if (!executed) {
+        return;
+    }
     cpu->icount_budget -= executed;
 
     TS_STORE64(qemu_icount,
                     timers_state.qemu_icount + executed);
+    icount_publish_time();
 }
 
 /*
@@ -143,15 +165,16 @@ static int64_t icount_get_locked(void)
 /* Return the virtual CPU time, based on the instruction counter.  */
 int64_t icount_get(void)
 {
-    int64_t icount;
-    unsigned start;
+    CPUState *cpu = current_cpu;
 
-    do {
-        start = seqlock_read_begin(&timers_state.vm_clock_seqlock);
-        icount = icount_get_locked();
-    } while (seqlock_read_retry(&timers_state.vm_clock_seqlock, start));
-
-    return icount;
+    /* The emulation thread can account for the current slice. Outside an
+     * I/O-safe boundary retain the last committed instruction count, as
+     * before. Observers never inspect owner-only count/bias/budget fields. */
+    if (cpu && retro_atomic_load_relaxed_int(&cpu->running) &&
+        cpu->neg.can_do_io) {
+        icount_update_locked(cpu);
+    }
+    return retro_atomic_load_acquire_64(&timers_state.published_icount_ns);
 }
 
 /* The libretro core counts the guest's time in its instructions alone: no
@@ -181,6 +204,7 @@ void icount_skip_to(int64_t vt)
         if (vt > now) {
             TS_STORE64(qemu_icount_bias,
                             timers_state.qemu_icount_bias + vt - now);
+            icount_publish_time();
         }
     }
     seqlock_write_unlock(&timers_state.vm_clock_seqlock,
@@ -231,6 +255,7 @@ static void icount_adjust(void)
     TS_STORE64(qemu_icount_bias,
                     cur_icount - (timers_state.qemu_icount
                                   << timers_state.icount_time_shift));
+    icount_publish_time();
     seqlock_write_unlock(&timers_state.vm_clock_seqlock,
                          &timers_state.vm_clock_lock);
 }
@@ -300,6 +325,7 @@ static void icount_warp_rt(void)
         }
         TS_STORE64(qemu_icount_bias,
                         timers_state.qemu_icount_bias + warp_delta);
+        icount_publish_time();
     }
     timers_state.vm_clock_warp_start = -1;
     seqlock_write_unlock(&timers_state.vm_clock_seqlock,
@@ -374,6 +400,7 @@ void icount_start_warp_timer(void)
                                &timers_state.vm_clock_lock);
             TS_STORE64(qemu_icount_bias,
                             timers_state.qemu_icount_bias + deadline);
+            icount_publish_time();
             seqlock_write_unlock(&timers_state.vm_clock_seqlock,
                                  &timers_state.vm_clock_lock);
             qemu_clock_notify(QEMU_CLOCK_VIRTUAL);

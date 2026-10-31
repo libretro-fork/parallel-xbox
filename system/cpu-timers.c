@@ -82,6 +82,8 @@ void cpu_enable_ticks(void)
     }
     seqlock_write_unlock(&timers_state.vm_clock_seqlock,
                        &timers_state.vm_clock_lock);
+    /* Also refresh after a failed load before execution resumes. */
+    icount_publish_time();
 }
 
 /*
@@ -215,8 +217,17 @@ static const VMStateDescription icount_vmstate_timers = {
     }
 };
 
+/* Fields and subsections are fully restored before this owner callback.
+ * Runtime publication is rebuilt, not added to the savestate wire format. */
+static int cpu_timers_post_load(void *opaque, int version_id)
+{
+    icount_publish_time();
+    return 0;
+}
+
 static const VMStateDescription vmstate_timers = {
     .name = "timer",
+    .post_load = cpu_timers_post_load,
     .version_id = 2,
     .minimum_version_id = 1,
     .fields = (const VMStateField[]) {
