@@ -61,6 +61,7 @@ case $core in
 esac
 python3 "$here/test-rcu-startup.py" "$here/../.." "$cc"
 python3 "$here/test-ide-cancel.py" "$here/../.." "$cc"
+python3 "$here/test-block-completion.py" "$here/../.." "$cc"
 case $core in
 *.dll)
     case $h in

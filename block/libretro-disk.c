@@ -96,7 +96,8 @@ typedef struct LRDiskReq {
     BlockBackend *blk;
     QEMUBH *bh;
     int ret;
-    bool busy;
+    bool busy;          /* reserve the slot until its callback returns */
+    bool completing;    /* no longer queued for cancellation/draining */
 } LRDiskReq;
 
 struct BlockBackend {
@@ -432,8 +433,11 @@ static void lr_disk_req_done(void *opaque)
     LRDiskReq *r = opaque;
     BlockBackend *blk = r->blk;
 
+    assert(r->busy && !r->completing);
+    r->completing = true;
     lr_disk_pending--;
     r->common.cb(r->common.opaque, r->ret);
+    r->completing = false;
     r->busy = false;
     blk->in_flight--;
 }
@@ -469,7 +473,7 @@ static bool lr_disk_run_pending(void)
 
     QTAILQ_FOREACH(blk, &lr_disks, link) {
         for (int i = 0; i < LR_DISK_REQS; i++) {
-            if (blk->req[i].busy) {
+            if (blk->req[i].busy && !blk->req[i].completing) {
                 qemu_bh_cancel(blk->req[i].bh);
                 lr_disk_req_done(&blk->req[i]);
                 ran = true;
@@ -546,7 +550,7 @@ void blk_aio_cancel(BlockAIOCB *acb)
 {
     if (acb->aiocb_info == &lr_disk_aiocb_info) {
         LRDiskReq *r = container_of(acb, LRDiskReq, common);
-        if (r->busy) {
+        if (r->busy && !r->completing) {
             qemu_bh_cancel(r->bh);
             lr_disk_req_done(r);
         }

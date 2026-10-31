@@ -128,3 +128,8 @@ make -j$(nproc) platform=android NDK=/path/to/android-ndk ANDROID_ABI=arm64-v8a
 ## License
 
 GPL-2.0, as xemu and QEMU. See [LICENSE](LICENSE).
+
+Block completion regression tests (`libretro/tests/test-block-completion.py`) exercise
+production request and drain functions with a modeled bottom-half scheduler. They
+cover nested drain/cancel callbacks, callback-submitted work, slot retention and
+balanced counters; backend destruction and media I/O are outside this model.
