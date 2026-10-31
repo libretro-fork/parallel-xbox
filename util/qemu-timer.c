@@ -68,7 +68,6 @@ struct QEMUTimerList {
     QEMUTimer *active_timers;
     QEMUTimer *non_external_timers; /* first matching node, under list lock */
     QEMUTimerListNotifyCB *notify_cb;
-    QemuEvent timers_done_ev;
 };
 
 /* Empty snapshots also preserve pre-initialization empty-clock queries. */
@@ -143,7 +142,6 @@ static void qemu_clock_init(QEMUClockType type, QEMUTimerListNotifyCB *notify_cb
     retro_atomic_store_release_int(&clock->enabled, type != QEMU_CLOCK_VIRTUAL);
     timer_publish_deadlines(clock);
     clock->notify_cb = notify_cb;
-    qemu_event_init(&clock->timers_done_ev, true);
     qemu_mutex_init(&clock->active_timers_lock);
     clock->initialized = true;
 }
@@ -163,21 +161,15 @@ void qemu_clock_notify(QEMUClockType type)
     }
 }
 
-/* Disabling the clock waits for its callback dispatch to stop
- * executing qemu_run_timers.  Thus, this functions should not
- * be used from the callback of a timer that is based on @clock.
- * Doing so would cause a deadlock.
- *
- * Caller should hold BQL.
- */
+/* Clock enablement and callback dispatch run on the emulation thread.
+ * There is no concurrent dispatcher to join when pausing a clock. Timer
+ * producers may still run on other threads and retain their queue lock. */
 void qemu_clock_enable(QEMUClockType type, bool enabled)
 {
     QEMUTimerList *clock = qemu_clock_ptr(type);
     bool old = retro_atomic_exchange_int(&clock->enabled, enabled);
     if (enabled && !old) {
         qemu_clock_notify(type);
-    } else if (!enabled && old) {
-        qemu_event_wait(&clock->timers_done_ev);
     }
 }
 
@@ -518,9 +510,8 @@ bool qemu_clock_run_timers(QEMUClockType type)
         return false;
     }
 
-    qemu_event_reset(&timer_list->timers_done_ev);
     if (!retro_atomic_load_acquire_int(&timer_list->enabled)) {
-        goto out;
+        return false;
     }
 
     /* Extract expired timers from active timers list and process them. */
@@ -552,8 +543,6 @@ bool qemu_clock_run_timers(QEMUClockType type)
     }
     qemu_mutex_unlock(&timer_list->active_timers_lock);
 
-out:
-    qemu_event_set(&timer_list->timers_done_ev);
     return progress;
 }
 

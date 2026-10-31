@@ -37,10 +37,10 @@ static QemuMutex *guard_enter(QemuMutex*m){qemu_mutex_lock(m);return m;}
 static void guard_exit(QemuMutex**m){if(*m)qemu_mutex_unlock(*m);}
 #define WITH_QEMU_LOCK_GUARD(m) for(QemuMutex *guard __attribute__((cleanup(guard_exit)))=guard_enter(m);guard;qemu_mutex_unlock(guard),guard=NULL)
 #define g_free free
-static void qemu_event_init(QemuEvent*e,bool set){e->set=set;}
-static void qemu_event_reset(QemuEvent*e){e->set=false;}
-static void qemu_event_set(QemuEvent*e){e->set=true;}
-static void qemu_event_wait(QemuEvent*e){assert(e->set);}
+static __attribute__((unused)) void qemu_event_init(QemuEvent*e,bool set){e->set=set;}
+static __attribute__((unused)) void qemu_event_reset(QemuEvent*e){e->set=false;}
+static __attribute__((unused)) void qemu_event_set(QemuEvent*e){e->set=true;}
+static __attribute__((unused)) void qemu_event_wait(QemuEvent*e){assert(e->set);}
 static bool icount_enabled(void){return false;}
 static int64_t get_clock(void){return 0;}
 static int64_t get_clock_realtime(void){return 0;}
