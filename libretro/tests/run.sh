@@ -67,6 +67,7 @@ python3 "$here/test-chihiro-dimm-stream.py" "$here/../.." "$cc"
 python3 "$here/test-init-publication.py" "$here/../.." "$cc"
 python3 "$here/test-qemu-parking.py" "$here/../.." "$cc"
 python3 "$here/test-vmstop-mailbox.py" "$here/../.." "$cc"
+python3 "$here/test-tls-publication.py" "$here/../.." "$cc"
 python3 "$here/test-thread-local.py" "$here/../.." "$cc"
 python3 "$here/test-core-timers.py" "$here/../.." "$cc"
 ${cc} -O2 -std=gnu11 -Wall -Wextra -Werror -I"$here/../../include" \
@@ -100,8 +101,8 @@ case $core in
 *.dll)
     case $h in
     wine*)
-        ${HARNESS_CC:-x86_64-w64-mingw32-gcc} -O2 -std=gnu11 -Wall -static \
-            -I"$here/../../include" "$here/test-win32-tls.c" -o "$work/bin/tlstest.exe"
+        TLS_PUBLICATION_SOURCE=test-win32-tls.c TLS_PUBLICATION_BINARY="$work/bin/tlstest.exe" TLS_PUBLICATION_SKIP_RUN=1 \
+            python3 "$here/test-tls-publication.py" "$here/../.." "${HARNESS_CC:-x86_64-w64-mingw32-gcc}"
         wine "$work/bin/tlstest.exe"
         WIN32_EXIT_BINARY="$work/bin/threadexit.exe" WIN32_EXIT_SKIP_RUN=1 \
             python3 "$here/test-win32-thread-exit.py" "$here/../.." \
@@ -112,9 +113,8 @@ case $core in
         wine "$work/bin/rawsocket.exe"
         ;;
     *)
-        ${cc} -O2 -std=gnu11 -Wall -static -I"$here/../../include" \
-            "$here/test-win32-tls.c" -o "$work/bin/tlstest.exe"
-        "$work/bin/tlstest.exe"
+        TLS_PUBLICATION_SOURCE=test-win32-tls.c \
+            python3 "$here/test-tls-publication.py" "$here/../.." "$cc"
         python3 "$here/test-win32-thread-exit.py" "$here/../.." "$cc"
         ;;
     esac

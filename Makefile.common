@@ -18,7 +18,7 @@ QEMU_INCFLAGS := \
 	-iquote $(CORE_DIR)/host/include/generic \
 	-iquote $(CORE_DIR)/tcg/$(TCG_ARCH)
 
-QEMU_DEFINES := -DXBOX=1 -D_GNU_SOURCE -D_FILE_OFFSET_BITS=64 \
+QEMU_DEFINES := -DXBOX=1 -DHAVE_THREAD_STORAGE -D_GNU_SOURCE -D_FILE_OFFSET_BITS=64 \
 	-D_LARGEFILE_SOURCE -DLIBSLIRP_STATIC -DEPOXY_PUBLIC=extern
 
 QEMU_WARNINGS := -Wall -Wempty-body -Wendif-labels -Wexpansion-to-defined \
@@ -57,7 +57,7 @@ CFLAGS_DSP := $(QEMU_CFLAGS) -I$(CORE_DIR)/hw/xbox/mcpx/apu/dsp \
 CFLAGS_GLOFF := $(QEMU_CFLAGS) -I$(CORE_DIR)/hw/xbox/nv2a/pgraph/thirdparty
 # HAVE_MMAP: the VFS maps files through mmap; on Windows through its own
 # file mappings, which need no define.
-CFLAGS_LRCOMMON := -I$(CORE_DIR)/libretro-common/include -w
+CFLAGS_LRCOMMON := -DHAVE_THREAD_STORAGE -I$(CORE_DIR)/libretro-common/include -w
 ifneq ($(HOST_OS),win32)
 CFLAGS_LRCOMMON += -DHAVE_MMAP
 endif

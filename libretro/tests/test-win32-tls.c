@@ -8,22 +8,31 @@
 static LONG allocations, failures, arrived;
 static HANDLE start, finish;
 
-static DWORD delayed_tls_alloc(void)
+#include <rthreads/rthreads.h>
+static LONG deleted;
+static bool delayed_tls_alloc(sthread_tls_t *key)
 {
-    InterlockedIncrement(&allocations);
-    /* Widen simultaneous first access: an unsynchronized key is replaced. */
-    Sleep(20);
-    return TlsAlloc();
+    bool ok = sthread_tls_create(key);
+    if (ok) InterlockedIncrement(&allocations);
+    Sleep(20); /* Force competing private allocations before publication. */
+    return ok;
 }
-
-#define TlsAlloc delayed_tls_alloc
+static bool counted_tls_delete(sthread_tls_t *key)
+{
+    bool ok = sthread_tls_delete(key);
+    if (ok) InterlockedIncrement(&deleted);
+    return ok;
+}
+#define sthread_tls_create delayed_tls_alloc
+#define sthread_tls_delete counted_tls_delete
 #define g_malloc0(n) calloc(1, (n))
 #include "qemu/thread-local.h"
 
 QEMU_DECLARE_THREAD_LOCAL(unsigned, shared_reader)
 QEMU_DEFINE_THREAD_LOCAL(unsigned, shared_reader)
 QEMU_DEFINE_STATIC_THREAD_LOCAL(unsigned, private_reader)
-#undef TlsAlloc
+#undef sthread_tls_create
+#undef sthread_tls_delete
 
 #define THREADS 32
 
@@ -73,7 +82,7 @@ int main(void)
     }
     CloseHandle(start);
     CloseHandle(finish);
-    printf("TLS: %ld keys (expected 2), %ld unstable readers\n",
-           allocations, failures);
-    return allocations != 2 || failures != 0;
+    printf("TLS: %ld candidates, %ld discarded, %ld permanent keys, %ld unstable readers\n",
+           allocations, deleted, allocations - deleted, failures);
+    return allocations < 2 || allocations - deleted != 2 || failures != 0;
 }
