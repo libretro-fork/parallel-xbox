@@ -24,6 +24,9 @@ def expected_mip(case, force_lod0):
     mode = int(case["mip_filter"])
     linear = mode in (4, 6)
     lod = (-2, 0, 1)[("magnified", "near_magnified", "minified").index(case["coordinate"])]
+    computed_lod = lod + float(case["lod_bias"])
+    if case["mode"] == "mixed_mip_color":
+        linear = linear if computed_lod > 0 else int(case["mag_filter"]) == 2
     maximum = 1 if (int(case["id"]) // 3) % 2 else 2
     lod = 0 if force_lod0 else min(maximum, max(0, lod + float(case["lod_bias"])))
     if mode in (3, 4):
@@ -47,7 +50,7 @@ def expected_mip(case, force_lod0):
 
 
 def expected(case, force_lod0=False):
-    if case["mode"] == "mip_color":
+    if case["mode"] in ("mip_color", "mixed_mip_color"):
         return expected_mip(case, force_lod0)
     mixed = case["mode"] == "mixed_color"
     if mixed:
@@ -108,7 +111,8 @@ def main():
         address = int(case["result_address"], 16)
         reference = expected(case, args.force_lod0)
         # Native LOD approximation can move a cross-mip color by two LSBs.
-        tolerance = 2 if case["mode"] == "mip_color" and int(case["mip_filter"]) in (5, 6) else 1
+        mip = case["mode"] in ("mip_color", "mixed_mip_color")
+        tolerance = 2 if mip and int(case["mip_filter"]) in (5, 6) else 1
         pixels = []
         for api, values in logs.items():
             pixel = values[address]
@@ -117,7 +121,7 @@ def main():
             # Native sampler interpolation precision can move a color by one LSB.
             if any(abs(a - b) > tolerance for a, b in zip(actual, reference)):
                 raise AssertionError(f"{api} case {case['id']}: {actual}, expected {reference}")
-        backend_tolerance = tolerance if case["mode"] == "mip_color" else 0
+        backend_tolerance = tolerance if mip else 0
         if any(abs((pixels[0] >> shift & 255) - (pixels[1] >> shift & 255)) > backend_tolerance
                for shift in (24, 16, 8, 0)):
             raise AssertionError(f"backend mismatch in case {case['id']}: {pixels}")

@@ -17,11 +17,15 @@ def main():
     parser.add_argument("--mixed", action="store_true", help="test mixed filters at varying footprints")
     parser.add_argument("--mip-filter", type=int, choices=(3, 4, 5, 6),
                         help="test a three-level swizzled G8B8 mip chain")
+    parser.add_argument("--mip-mixed", action="store_true",
+                        help="use the opposite magnification filter with --mip-filter")
     parser.add_argument("--lod-bias", type=float, choices=(-4, 0, 0.25, 4), default=0,
                         help="sampler LOD bias for the mixed/mip-filter matrix")
     args = parser.parse_args()
     if args.mixed and args.mip_filter:
         parser.error("--mixed and --mip-filter are mutually exclusive")
+    if args.mip_mixed and not args.mip_filter:
+        parser.error("--mip-mixed requires --mip-filter")
     output = args.output.resolve()
     if output.exists() and any(output.iterdir()):
         parser.error("output directory must be empty")
@@ -41,7 +45,9 @@ def main():
             defines.append("-DBUMP_FILTER_MIXED_PROBE")
             defines.append(f"-DBUMP_MIXED_BIAS={int(args.lod_bias * 256) & 0x1fff}")
         if args.mip_filter:
+            mag = (2 if args.mip_filter % 2 else 1) if args.mip_mixed else (1 if args.mip_filter % 2 else 2)
             defines += ["-DBUMP_FILTER_MIP_PROBE", f"-DBUMP_MIP_FILTER={args.mip_filter}",
+                        f"-DBUMP_MIP_MAG={mag}",
                         f"-DBUMP_MIXED_BIAS={int(args.lod_bias * 256) & 0x1fff}"]
         subprocess.run(["gcc", "-m32", "-ffreestanding", "-fno-pic", "-fno-pie",
                         "-fno-stack-protector", "-fno-asynchronous-unwind-tables",
@@ -76,18 +82,18 @@ def main():
         writer = csv.writer(file)
         writer.writerow(["id", "layout", "mode", "axis", "signed_channels", "filter",
                          "coordinate", "result_address", "lod_bias", "mip_filter",
-                         "max_lod", "wrap_period"])
+                         "max_lod", "wrap_period", "mag_filter"])
         for i in range(192):
             if args.color or args.mixed or args.mip_filter:
                 flags = (i // 6) % 16
                 channels = "".join(ch for bit, ch in ((1, "B"), (2, "G"), (4, "R"), (8, "A")) if flags & bit) or "none"
                 if args.mip_filter:
-                    writer.writerow([i, "swizzled", "mip_color", "BG", channels,
+                    writer.writerow([i, "swizzled", "mixed_mip_color" if args.mip_mixed else "mip_color", "BG", channels,
                                      {3: "point_nearest_mip", 4: "linear_nearest_mip",
                                       5: "point_linear_mip", 6: "linear_linear_mip"}[args.mip_filter],
                                      ("magnified", "near_magnified", "minified")[i % 3],
                                      f"0x{0x300204 + i * 8:08x}", args.lod_bias,
-                                     args.mip_filter, 1 if (i // 3) % 2 else 2, -(i // 96)])
+                                     args.mip_filter, 1 if (i // 3) % 2 else 2, -(i // 96), mag])
                     continue
                 writer.writerow([i, ("linear", "swizzled")[i // 96],
                                  "mixed_color" if args.mixed else "color", "BG", channels,

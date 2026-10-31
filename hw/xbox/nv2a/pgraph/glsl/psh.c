@@ -226,6 +226,7 @@ void pgraph_glsl_set_psh_state(PGRAPHState *pg, PshState *state)
             pgraph_reg_r(pg, NV_PGRAPH_COMBINEALPHAO0 + i * 4);
     }
 
+    state->g8b8_mip_mixed = 0;
     for (int i = 0; i < 4; i++) {
         state->g8b8_signed[i] = 0;
         for (int j = 0; j < 4; j++) {
@@ -304,11 +305,19 @@ void pgraph_glsl_set_psh_state(PGRAPHState *pg, PshState *state)
         bool mixed_filter =
             (mag_filter == 1 && min_filter == NV_PGRAPH_TEXFILTER0_MIN_TENT_LOD0) ||
             (mag_filter == 2 && min_filter == NV_PGRAPH_TEXFILTER0_MIN_BOX_LOD0);
+        bool mip_min_linear =
+            min_filter == NV_PGRAPH_TEXFILTER0_MIN_TENT_NEARESTLOD ||
+            min_filter == NV_PGRAPH_TEXFILTER0_MIN_TENT_TENT_LOD;
+        bool mixed_mip_filter =
+            (mag_filter == 1 && mip_min_linear) ||
+            (mag_filter == 2 &&
+             (min_filter == NV_PGRAPH_TEXFILTER0_MIN_BOX_NEARESTLOD ||
+              min_filter == NV_PGRAPH_TEXFILTER0_MIN_BOX_TENT_LOD));
         bool mip_filter = false;
         bool mip_lod0 = false;
         if (gb && !f.linear && !cubemap && state->dim_tex[i] == 2 &&
             GET_MASK(tex_fmt, NV_PGRAPH_TEXFMT0_MIPMAP_LEVELS) > 1 &&
-            (linear_filter || point_filter)) {
+            (linear_filter || point_filter || mixed_mip_filter)) {
             uint32_t address = pgraph_reg_r(pg, NV_PGRAPH_TEXADDRESS0 + i * 4);
             TextureShape shape = pgraph_get_texture_shape(pg, i);
             mip_lod0 = shape.max_mipmap_level == 0;
@@ -328,18 +337,23 @@ void pgraph_glsl_set_psh_state(PGRAPHState *pg, PshState *state)
             (GET_MASK(tex_fmt, NV_PGRAPH_TEXFMT0_MIPMAP_LEVELS) == 1 || mip_filter) &&
             state->colorkey_mode[i] == COLOR_KEY_NONE &&
             !(state->alphakill[i] && (filter & NV_PGRAPH_TEXFILTER0_ASIGNED)) &&
-            (linear_filter || point_filter || mixed_filter)) {
+            (linear_filter || point_filter || mixed_filter ||
+             (mip_filter && mixed_mip_filter))) {
             unsigned signs =
                 ((filter & NV_PGRAPH_TEXFILTER0_BSIGNED) ? 1 : 0) |
                 ((filter & NV_PGRAPH_TEXFILTER0_GSIGNED) ? 2 : 0) |
                 ((filter & NV_PGRAPH_TEXFILTER0_RSIGNED) ? 4 : 0) |
                 ((filter & NV_PGRAPH_TEXFILTER0_ASIGNED) ? 8 : 0);
             if (signs) {
-                state->g8b8_signed[i] = signs | (linear_filter ? 16 : 0) |
+                state->g8b8_signed[i] = signs |
+                    ((linear_filter || (mip_filter && mip_min_linear)) ? 16 : 0) |
                     (mixed_filter ? 64 | (mag_filter == 2 ? 32 : 16) : 0) |
                     (mip_filter ? 128 | (min_filter >=
                         NV_PGRAPH_TEXFILTER0_MIN_BOX_TENT_LOD ? 64 : 0) |
                         (mip_lod0 ? 32 : 0) : 0);
+                if (mip_filter && mixed_mip_filter) {
+                    state->g8b8_mip_mixed |= 1u << i;
+                }
             }
         }
     }
@@ -1124,13 +1138,24 @@ static void emit_dynamic_combiner(struct PixelShader *ps, MString *preflight)
 static void psh_append_signed_g8b8_mips(const struct PixelShader *ps, MString *vars,
                                         int source, unsigned signs)
 {
-    bool linear = signs & 16;
+    bool mixed = ps->state->g8b8_mip_mixed & (1u << source);
+    bool linear = (signs & 16) || mixed;
     bool trilinear = signs & 64;
     mstring_append_fmt(vars,
         "vec2 gbCoord%d = pT%d.xy / %spT%d.w%s;\n",
         source, source, ps->opts.vulkan ? "max(" : "(", source,
         ps->opts.vulkan ? ", 1e-15)" : ")");
-    if (signs & 32) {
+    if (mixed) {
+        g_autofree gchar *lod = signs & 32 ? g_strdup("0.0") :
+            g_strdup_printf("max(gbQuery%d.x, 0.0)", source);
+        mstring_append_fmt(vars,
+            "vec2 gbQuery%d = textureQueryLod(texSamp%d, gbCoord%d);\n"
+            "float gbLod%d = %s;\n"
+            "bool gbLinear%d = gbQuery%d.y %s 0.0;\n",
+            source, source, source, source,
+            lod,
+            source, source, signs & 16 ? ">" : "<=");
+    } else if (signs & 32) {
         /* Some drivers' LOD queries ignore a zero maximum even when their
          * sampling honors it. Also avoid querying an overridden footprint. */
         mstring_append_fmt(vars, "float gbLod%d = 0.0;\n", source);
@@ -1139,6 +1164,8 @@ static void psh_append_signed_g8b8_mips(const struct PixelShader *ps, MString *v
             "float gbLod%d = max(textureQueryLod(texSamp%d, gbCoord%d).x, 0.0);\n",
             source, source, source);
     }
+    g_autofree gchar *offset = mixed ?
+        g_strdup_printf(" - (gbLinear%d ? 0.5 : 0.0)", source) : NULL;
     for (int mip = 0; mip < (trilinear ? 2 : 1); mip++) {
         mstring_append_fmt(vars,
             "int gbLevel%d_%d = int(%s(gbLod%d));\n"
@@ -1147,9 +1174,15 @@ static void psh_append_signed_g8b8_mips(const struct PixelShader *ps, MString *v
             "vec2 gbBase%d_%d = floor(gbPos%d_%d);\n",
             source, mip, mip ? "ceil" : "floor", source,
             source, mip, source, source, mip,
-            source, mip, source, source, mip, linear ? " - 0.5" : "",
+            source, mip, source, source, mip,
+            mixed ? offset : linear ? " - 0.5" : "",
             source, mip, source, mip);
         for (int tap = 0; tap < (linear ? 4 : 1); tap++) {
+            if (mixed && tap == 1) {
+                mstring_append_fmt(vars,
+                    "vec2 gbMip%d_%d = gbTap%d_%d_0;\nif (gbLinear%d) {\n",
+                    source, mip, source, mip, source);
+            }
             mstring_append_fmt(vars,
                 "vec2 gbTap%d_%d_%d = texelFetch(texSamp%d, "
                 "ivec2(mod(gbBase%d_%d + vec2(%d.0, %d.0), gbSize%d_%d)), "
@@ -1163,11 +1196,14 @@ static void psh_append_signed_g8b8_mips(const struct PixelShader *ps, MString *v
         if (linear) {
             mstring_append_fmt(vars,
                 "vec2 gbWeight%d_%d = fract(gbPos%d_%d);\n"
-                "vec2 gbMip%d_%d = mix(mix(gbTap%d_%d_0, gbTap%d_%d_1, gbWeight%d_%d.x), "
+                "%sgbMip%d_%d = mix(mix(gbTap%d_%d_0, gbTap%d_%d_1, gbWeight%d_%d.x), "
                 "mix(gbTap%d_%d_2, gbTap%d_%d_3, gbWeight%d_%d.x), gbWeight%d_%d.y);\n",
-                source, mip, source, mip, source, mip,
+                source, mip, source, mip, mixed ? "" : "vec2 ", source, mip,
                 source, mip, source, mip, source, mip,
                 source, mip, source, mip, source, mip, source, mip);
+            if (mixed) {
+                mstring_append(vars, "}\n");
+            }
         }
     }
     const char *value = linear ? "gbMip" : "gbTap";
@@ -1193,7 +1229,8 @@ static void psh_append_signed_g8b8(const struct PixelShader *ps, MString *vars,
     if (!signs) {
         return;
     }
-    if ((signs & 128) && (signs & (16 | 64))) {
+    if ((signs & 128) && ((signs & (16 | 64)) ||
+                        (ps->state->g8b8_mip_mixed & (1u << source)))) {
         psh_append_signed_g8b8_mips(ps, vars, source, signs);
         return;
     }

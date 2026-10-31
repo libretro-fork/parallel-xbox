@@ -46,8 +46,9 @@ typedef struct PshState {
 
     bool combiner_dynamic;
     bool alpha_dynamic;
-    /* Never set; kept because the shader seeds store PshState as it is. */
-    bool universal;
+    /* One bit per stage for mixed mip reconstruction. Reuses the never-set
+     * universal byte so shader seeds retain their layout and unsigned keys. */
+    uint8_t g8b8_mip_mixed;
 
     bool point_sprite;
     bool rect_tex[4];

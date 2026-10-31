@@ -66,7 +66,7 @@ The complete regression repeats all three mixed matrices at biases -4, 0 and
 +4, plus the original bump/color matrices, with quality overrides off and on:
 1920 cases per renderer. `textureQueryLod(...).y` selects reconstruction from
 the sampler's computed LOD, including its bias. Matching-filter shaders do not
-emit the query. Mixed mipmapped min/mag pairs remain outside this extension.
+emit the query. Mixed mipmapped pairs use the mip reconstruction below.
 
 For the single-level Vulkan G8B8 LOD0 sampler, maxLod=0.25 permits a positive
 LOD to select minification while nearest mip selection still uses level zero.
@@ -76,13 +76,13 @@ and [GLSL LOD query](https://github.khronos.org/Vulkan-Site/glsl/latest/chapters
 
 ## Mipmapped signed G8B8
 
-Swizzled, projective 2D G8B8 with wrap U/V, a zero lower mip clamp and matching
-point/linear min and mag reconstruction now decodes texels before filtering
+Swizzled, projective 2D G8B8 with wrap U/V and a zero lower mip clamp now decodes
+texels before filtering with matching or mixed point/linear min/mag reconstruction
 within and between mip levels. All four nearest/linear mip modes are supported.
 The accessed-mip component of `textureQueryLod` supplies sampler bias, nearest
 mip selection and the upper clamp. Explicit `texelFetch` reads wrapped integer
 coordinates, so the backing unsigned sampler cannot interpolate encoded bytes.
-Point sampling with nearest mip selection retains its existing hardware sample.
+Matching point min/mag with nearest mip selection retains the hardware sample.
 Shader dirty-state tracking covers channel signs, mag filtering, mip count/size,
 and address changes for signed mipmapped G8B8, so cached shaders can switch paths.
 Force LOD0 emits a zero level directly: Mesa Vulkan can otherwise report a
@@ -93,15 +93,35 @@ builds a 4x4/2x2/1x1 mip chain with distinct byte patterns. Its 192 cases combin
 16 channel-sign masks, three exact footprints (1/4, 1 and 2 texels/pixel), upper
 clamps 1/2 and positive/negative wrap periods. Fractional bias 0.25 exercises
 interpolation between levels without using an approximate fractional footprint.
-The full runner checks 8064 cases per renderer with both quality overrides off
+The full runner checks 14208 cases per renderer with both quality overrides off
 and on. Original cases retain a one-LSB scalar tolerance and exact GL/Vulkan
 agreement. Mip cases allow one LSB, or two for cross-mip interpolation, in the
 scalar and backend comparison because native LOD approximation can shift a
 high-contrast signed color. This is not a physical-console precision oracle.
 
-Mixed mipmapped min/mag reconstruction, nonzero lower clamps, other address
+Nonzero lower clamps, other address
 modes, cubemaps, embedded borders, color keys and signed alpha-kill remain on
 their previous paths. Linear-layout textures do not support mip chains.
+
+Add `--mip-mixed` to the mip fixture command to choose the opposite magnification
+filter. The 6144 extra cases cover both directions for every mip mode and bias,
+including a zero computed LOD and a fractional positive LOD. A single LOD query
+selects point/bilinear reconstruction from its computed component and mip levels
+from its accessed component; bias is applied once. Only the bilinear branch
+fetches the additional three taps. Matching-filter shader text is unchanged.
+
+For base-clamped mixed Vulkan G8B8 samplers, maxLod=0.25 and nearest mip selection
+retain minification without accessing mip one. This applies to the unsigned
+channels too. A zero ceiling would force magnification. The shader independently
+forces the accessed mip to zero while retaining the query for filter selection.
+The stage mask reuses the never-set universal byte, preserving shader seed layout
+and existing matching-filter keys. The layout test checks size and field offsets.
+
+The selection threshold is zero on both tested renderers, consistent with the
+[OpenGL 4.6 specification, section 8.14.1](https://registry.khronos.org/OpenGL/specs/gl/glspec46.core.pdf)
+and the [Vulkan sampling rules](https://docs.vulkan.org/spec/latest/chapters/textures.html).
+Historical GL rules are not used as an Xbox oracle. Physical NV2A transition and
+rounding behavior still requires console measurements.
 
 192 cases cover linear/swizzled G8B8, BUMPENVMAP/BUMPENVMAP_LUM, B/G displacement,
 signed flags none/B/G/BG, point/linear sampling, and left/midpoint/right texel

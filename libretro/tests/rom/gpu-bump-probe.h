@@ -116,7 +116,7 @@ static void bump_filter_probe(void)
 #endif
         method(NV097_SET_TEXTURE_FILTER,
 #ifdef BUMP_FILTER_MIP_PROBE
-               (BUMP_MIP_FILTER << 16) | ((BUMP_MIP_FILTER & 1 ? 1u : 2u) << 24) | BUMP_MIXED_BIAS |
+               (BUMP_MIP_FILTER << 16) | (BUMP_MIP_MAG << 24) | BUMP_MIXED_BIAS |
 #elif defined(BUMP_FILTER_MIXED_PROBE)
                (linear ? 0x01020000u : 0x02010000u) | BUMP_MIXED_BIAS |
 #else

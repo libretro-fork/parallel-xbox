@@ -25,6 +25,8 @@ def main():
     modes = ["bump", "color", "mixed", "mixed_plus4", "mixed_minus4"]
     modes += [f"mip_{filter}_{bias}" for filter in (3, 4, 5, 6)
               for bias in ("-4", "0", "0.25", "4")]
+    modes += [f"mipmixed_{filter}_{bias}" for filter in (3, 4, 5, 6)
+              for bias in ("-4", "0", "0.25", "4")]
     for mode in modes:
         output = root / mode
         build = [sys.executable, str(here / "build-bump-probe.py"), str(output),
@@ -34,9 +36,11 @@ def main():
         elif mode.startswith("mixed"):
             bias = 4 if mode.endswith("plus4") else -4 if mode.endswith("minus4") else 0
             build += ["--mixed", "--lod-bias", str(bias)]
-        elif mode.startswith("mip_"):
+        elif mode.startswith(("mip_", "mipmixed_")):
             _, filter, bias = mode.split("_")
             build += ["--mip-filter", filter, "--lod-bias", bias]
+            if mode.startswith("mipmixed_"):
+                build.append("--mip-mixed")
         subprocess.run(build, check=True)
         with (output / "cases.csv").open() as file:
             # The manifest is checked in full by check-bump-probe.py.

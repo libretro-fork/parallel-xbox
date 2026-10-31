@@ -13,11 +13,23 @@ function = re.search(r"^static bool signed_g8b8_address_dirty\(.*?^\}", source, 
 header = (repo / "hw/xbox/nv2a/pgraph/glsl/shaders.h").read_text()
 masks = "\n".join(re.search(r"#define " + name + r" .*?(?<!\\)\n", header, re.S).group()
                   for name in ("NV_PGRAPH_TEXFMT0_SHADER_FIELDS", "NV_PGRAPH_TEXFILTER0_SHADER_FIELDS"))
+state_header = (repo / "hw/xbox/nv2a/pgraph/glsl/psh.h").read_text()
+state = re.search(r"typedef struct PshState \{.*?\} PshState;", state_header, re.S).group()
+legacy = state.replace("uint8_t g8b8_mip_mixed;", "bool universal;").replace("PshState", "LegacyPshState")
 code = r'''
 #include <assert.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stddef.h>
+enum ConvolutionFilter { CONV_DISABLED };
+enum PshDepthFormat { DEPTH_DISABLED };
+enum PshShadowDepthFunc { SHADOW_DISABLED };
+/* STATE */
+_Static_assert(sizeof(PshState) == sizeof(LegacyPshState), "seed state size changed");
+_Static_assert(offsetof(PshState, g8b8_mip_mixed) == offsetof(LegacyPshState, universal), "reserved byte moved");
+_Static_assert(offsetof(PshState, g8b8_signed) == offsetof(LegacyPshState, g8b8_signed), "signed byte layout changed");
+_Static_assert(offsetof(PshState, depth_format) == offsetof(LegacyPshState, depth_format), "seed tail moved");
 static unsigned ctz32(uint32_t x) { return __builtin_ctz(x); }
 #include "hw/xbox/nv2a/nv2a_regs.h"
 typedef struct { uint32_t fmt[4], filter[4]; bool dirty[4]; } PGRAPHState;
@@ -65,7 +77,7 @@ int main(void) {
     assert(!(NV_PGRAPH_TEXFILTER0_SHADER_FIELDS & NV_PGRAPH_TEXFILTER0_MIPMAP_LOD_BIAS));
     printf("PASS: %u signed-G8B8 address invalidation cases and shader field coverage\n", cases);
 }
-'''.replace("/* PRODUCTION */", function).replace("/* MASKS */", masks)
+'''.replace("/* PRODUCTION */", function).replace("/* MASKS */", masks).replace("/* STATE */", state + "\n" + legacy)
 with tempfile.TemporaryDirectory(prefix="g8b8-state-") as folder:
     source = Path(folder) / "test.c"
     binary = Path(folder) / "test"
