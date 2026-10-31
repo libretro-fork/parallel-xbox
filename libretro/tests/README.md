@@ -530,6 +530,15 @@ draws through the GL state block with stored destination alpha 0, 64 and 255,
 comparing RGB against an independent blend equation. The GL probe needs EGL
 and OpenGL development packages and a surfaceless EGL driver.
 
+`test-conexant-counter.py CHECKOUT [CC]` executes production encoder access,
+device callbacks, VMState fields, NV2A vblank and the frame-loop dispatch block.
+It checks all 256 register values, nibble wrap, upper-bit preservation, pending
+interrupts, paused/before-vblank/duplicate dispatches and SMBus read cursors.
+The descriptor-based state round trips cover the parent SMBus state, all encoder
+registers and the command cursor; detach/recreate checks cover the cached device
+pointer. This fixture does not run a commercial game's startup or the full QEMU
+migration stream.
+
 At guest frame 1020, two GPU palette clears (red then green) are each followed by an indexed draw before the next flip. Frontend frame 1030 must show green; the former Vulkan per-frame validation throttle left it red. The extracted dirty-page test also checks that GPU writeback invalidates all overlapping texture/palette validation stamps even when they are already marked dirty, leaving unrelated and empty views unchanged.
 
 Guest frame 1040 clears a GPU ARGB source red then blue, sampling each update through a one-byte Y8 view before the flip. Frame 1060 repeats this using the GPU-produced byte as index 0 then 255, with green and white palette entries. Frontend captures 1050/1070 must both be white. The Vulkan build predating GPU-writeback validation-stamp invalidation instead produced black and green.

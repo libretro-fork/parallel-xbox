@@ -29,6 +29,7 @@
 #include "hw/i2c/smbus_slave.h"
 #include "smbus.h"
 #include "qapi/error.h"
+#include "migration/vmstate.h"
 
 #define TYPE_SMBUS_CX25871 "smbus-cx25871"
 #define SMBUS_CX25871(obj) OBJECT_CHECK(SMBusCX25871Device, (obj), TYPE_SMBUS_CX25871)
@@ -45,6 +46,10 @@ typedef struct SMBusCX25871Device {
     uint8_t registers[256];
     uint8_t cmd;
 } SMBusCX25871Device;
+
+/* The Xbox has one encoder. Realize/unrealize, SMBus access and guest
+ * vblank all run on the emulator thread; no cross-thread handoff is needed. */
+static SMBusCX25871Device *conexant_device;
 
 static void smbus_cx25871_quick_cmd(SMBusDevice *dev, uint8_t read)
 {
@@ -83,7 +88,36 @@ static void smbus_cx25871_realize(DeviceState *dev, Error **errp)
     SMBusCX25871Device *cx = SMBUS_CX25871(dev);
     memset(cx->registers, 0, 256);
     cx->cmd = 0;
+    conexant_device = cx;
 }
+
+static void smbus_cx25871_unrealize(DeviceState *dev)
+{
+    if (conexant_device == SMBUS_CX25871(dev)) {
+        conexant_device = NULL;
+    }
+}
+
+void smbus_cx25871_notify_vblank(void)
+{
+    if (conexant_device) {
+        uint8_t value = conexant_device->registers[0x06];
+        conexant_device->registers[0x06] =
+            (value & 0xf0) | ((value + 1) & 0x0f);
+    }
+}
+
+static const VMStateDescription vmstate_smbus_cx25871 = {
+    .name = TYPE_SMBUS_CX25871,
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .fields = (const VMStateField[]) {
+        VMSTATE_SMBUS_DEVICE(smbusdev, SMBusCX25871Device),
+        VMSTATE_UINT8_ARRAY(registers, SMBusCX25871Device, 256),
+        VMSTATE_UINT8(cmd, SMBusCX25871Device),
+        VMSTATE_END_OF_LIST()
+    }
+};
 
 static void smbus_cx25871_class_init(ObjectClass *klass, const void *data)
 {
@@ -91,6 +125,8 @@ static void smbus_cx25871_class_init(ObjectClass *klass, const void *data)
     SMBusDeviceClass *sc = SMBUS_DEVICE_CLASS(klass);
 
     dc->realize = smbus_cx25871_realize;
+    dc->unrealize = smbus_cx25871_unrealize;
+    dc->vmsd = &vmstate_smbus_cx25871;
     sc->quick_cmd = smbus_cx25871_quick_cmd;
     sc->receive_byte = smbus_cx25871_receive_byte;
     sc->write_data = smbus_cx25871_write_data;

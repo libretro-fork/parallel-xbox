@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- The Conexant TV encoder now advances its field counter with each guest vblank, including while the previous interrupt is still pending. Encoder registers, the SMBus transaction and its read cursor are preserved in savestates, so the counter can stay aligned with guest frame/flip tracking after a load.
+
 - OpenGL and Vulkan use the Xbox forced destination-alpha value when blending on XRGB-style targets, fixing colors that depended on unused host alpha bits. Vulkan applies the correction to both static pipeline keys and dynamic blend state, including guest format changes sharing the same host attachment format.
 
 - Guest indirect branches use the x86 state hook directly with CPU boost both enabled and disabled, and avoid the debug-flag helper call during normal execution. Single-step, one-instruction and no-chain debug modes keep their existing flag policy.

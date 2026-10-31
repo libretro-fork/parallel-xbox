@@ -27,6 +27,8 @@
 
 void smbus_xbox_smc_init(I2CBus *smbus, int address);
 void smbus_cx25871_init(I2CBus *smbus, int address);
+/* Called by the emulator thread at guest vblank, not host presentation. */
+void smbus_cx25871_notify_vblank(void);
 void smbus_fs454_init(I2CBus *smbus, int address);
 void smbus_xcalibur_init(I2CBus *smbus, int address);
 void smbus_adm1032_init(I2CBus *smbus, int address);

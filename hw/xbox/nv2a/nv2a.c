@@ -21,6 +21,7 @@
  */
 
 #include "hw/xbox/nv2a/nv2a_int.h"
+#include "hw/xbox/smbus.h"
 #include "qemu/main-loop.h"
 
 void nv2a_update_irq(NV2AState *d)
@@ -287,6 +288,9 @@ static void nv2a_vga_gfx_update(void *opaque)
      * time from it; the renderer's own slack estimates (vblank_deadline)
      * are wall-clock. */
     NV2AState *d = container_of(vga, NV2AState, vga);
+    /* The encoder ticks with guest vblank, even if the previous interrupt
+     * remains pending. Publish it before the guest can handle this one. */
+    smbus_cx25871_notify_vblank();
     d->pcrtc.pending_interrupts |= NV_PCRTC_INTR_0_VBLANK;
     d->vblank_vt = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
     retro_atomic_store_relaxed_64(&d->vblank_deadline,
