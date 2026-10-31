@@ -686,6 +686,29 @@ static bool vk_module_triangle_options(const ShaderModuleCacheKey *key,
     return true;
 }
 
+static bool vk_module_quad_options(const ShaderModuleCacheKey *key,
+                                    SpvQuadGeomOptions *opts)
+{
+    if (key->kind != VK_SHADER_STAGE_GEOMETRY_BIT ||
+        !key->geom.glsl_opts.vulkan) {
+        return false;
+    }
+    const GeomState *state = &key->geom.state;
+    if ((state->primitive_mode != PRIM_TYPE_QUADS &&
+         state->primitive_mode != PRIM_TYPE_QUAD_STRIP) || state->wide_lines ||
+        state->polygon_front_mode != POLY_MODE_FILL ||
+        state->polygon_back_mode != POLY_MODE_FILL) {
+        return false;
+    }
+    *opts = (SpvQuadGeomOptions) {
+        .smooth_shading = state->smooth_shading,
+        .spirv_1_6 = pgraph_vk_spirv_1_6,
+        .z_perspective = state->z_perspective,
+        .strip = state->primitive_mode == PRIM_TYPE_QUAD_STRIP,
+    };
+    return true;
+}
+
 static GByteArray *vk_module_spirv(const ShaderModuleCacheKey *key)
 {
     SpvLineGeomOptions opts;
@@ -701,6 +724,15 @@ static GByteArray *vk_module_spirv(const ShaderModuleCacheKey *key)
     if (vk_module_triangle_options(key, &triangle)) {
         SpvDirectModule module;
         if (!pgraph_spv_triangle_geom(triangle, &module)) {
+            abort();
+        }
+        return g_byte_array_new_take((guint8 *)module.words,
+                                     module.num_words * sizeof(uint32_t));
+    }
+    SpvQuadGeomOptions quad;
+    if (vk_module_quad_options(key, &quad)) {
+        SpvDirectModule module;
+        if (!pgraph_spv_quad_geom(quad, &module)) {
             abort();
         }
         return g_byte_array_new_take((guint8 *)module.words,

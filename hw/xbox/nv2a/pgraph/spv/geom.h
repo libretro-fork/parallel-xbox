@@ -18,6 +18,10 @@ typedef struct SpvTriangleGeomOptions {
     unsigned provoking_even, provoking_odd; /* logical vertex 0, 1 or 2 */
 } SpvTriangleGeomOptions;
 
+typedef struct SpvQuadGeomOptions {
+    bool smooth_shading, spirv_1_6, z_perspective, strip;
+} SpvQuadGeomOptions;
+
 typedef struct SpvDirectModule {
     uint32_t *words; /* one owned allocation; release with free() */
     size_t num_words;
@@ -30,5 +34,9 @@ bool pgraph_spv_line_geom(SpvLineGeomOptions opts, SpvDirectModule *out);
 /* Filled triangles: list/strip/fan winding and provoking vertex are resolved
  * by the selector, with strip parity resolved from PrimitiveId in the shader. */
 bool pgraph_spv_triangle_geom(SpvTriangleGeomOptions opts, SpvDirectModule *out);
+
+/* Filled quads use two independent depth planes. Quad strips discard odd
+ * adjacency invocations, as the established generator does. */
+bool pgraph_spv_quad_geom(SpvQuadGeomOptions opts, SpvDirectModule *out);
 
 #endif

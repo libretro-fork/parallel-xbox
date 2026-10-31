@@ -23,7 +23,7 @@ static void triangle_selector_tests(void)
 #ifdef TEST_VULKAN
 static float cpu_det(float a,float b,float c,float d){volatile float cd=c*d;float err=fmaf(-c,d,cd);return fmaf(a,b,-cd)+err;}
 static void triangle_data(void){
- if(!gd)init_gpu();geometry_vertices=3;
+ if(!gd)init_gpu();geometry_vertices=geometry_outputs=3;
  for(unsigned i=0;i<GEOM_CASES*3;i++){
   uint32_t h=(i+1)*747796405u+2891336453u;
   for(unsigned c=0;c<4;c++){h=h*1664525u+1013904223u;vertices[i].attr[9][c]=(float)((int)(h>>24)-128)*0.0625f;}

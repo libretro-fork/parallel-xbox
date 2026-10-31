@@ -19,7 +19,7 @@ def test_source(r):
  source=Path(__file__).with_suffix('.c').read_text().replace('/* TYPES */',types)
  source=source.replace('/* GENERATORS */',function(c,'MString *pgraph_glsl_get_vtx_header(')+'\n'+function(g,'static const char *get_vertex_order(')+'\n'+function(g,'MString *pgraph_glsl_gen_geom('))
  s=(r/'hw/xbox/nv2a/pgraph/vk/shaders.c').read_text()
- return source.replace('/* SELECTOR */',function(s,'static bool vk_module_line_options(')+'\n'+function(s,'static bool vk_module_triangle_options('))
+ return source.replace('/* SELECTOR */',function(s,'static bool vk_module_line_options(')+'\n'+function(s,'static bool vk_module_triangle_options(')+'\n'+function(s,'static bool vk_module_quad_options('))
 
 def run(r,cc,folder,gpu):
  if os.name=='nt':

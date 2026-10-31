@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Vulkan emits filled quads and quad strips directly as SPIR-V, retaining their separate triangle depth planes and quad-strip parity rule. One final word allocation transfers into the cache without copying; repeated quad vertices reuse input values on first use, and flat-colour inputs and output-member pointers are shared across emissions.
+
 - Vulkan emits filled-triangle geometry directly as SPIR-V for triangle lists, strips, fans and filled polygons. It preserves winding, flat colours, strip parity and depth-slope precision while bypassing GLSL strings and compiler scratch buffers. The module cache takes the one final word allocation without copying.
 
 - Thread cleanup for frontend-owned threads now runs during core deinit, before TLS is destroyed. Windows keeps separate per-thread notifier lists instead of retaining TLS pointers in a process-exit list, preventing a shutdown crash; cached AIO objects can register cleanup again on reload.

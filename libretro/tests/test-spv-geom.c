@@ -122,4 +122,5 @@ int line_tests(int argc,char **argv){
 }
 
 #include "spv-triangle-tests.h"
-int main(int argc,char **argv){int result=line_tests(argc,argv);triangle_tests(argv[1]);return result;}
+#include "spv-quad-tests.h"
+int main(int argc,char **argv){int result=line_tests(argc,argv);triangle_tests(argv[1]);quad_tests(argv[1]);return result;}

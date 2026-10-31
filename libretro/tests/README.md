@@ -520,10 +520,12 @@ plus 10,000 FIFO/slot-reuse cases and 800,000 concurrent ref/unref pairs
 with no leaked arrays (UB traps).
 
 `python libretro/tests/test-spv-geom.py . gcc --gpu` compares the direct
-line and filled-triangle emitters with the production GLSL generator/compiler.
+line, filled-triangle and filled-quad emitters with the production GLSL generator/compiler.
 It checks both selectors, deterministic words and one payload allocation;
 SPIR-V 1.5/1.6, flat/smooth colours, both depth modes, all winding pairs and
-first/last/strip/fan provoking rules cover 8 line and 288 triangle variants.
+first/last/strip/fan provoking rules cover 8 line, 288 triangle and 16 quad variants. Quad checks cover both independent
+depth planes, the fourth-input provoking colour, and untouched capture records
+for skipped odd quad-strip invocations.
 The optional GPU run captures every geometry output before EmitVertex and
 compares old/new values bit for bit (NaN payloads may differ), then checks an
 independent CPU oracle. Only the CPU slope oracle tolerates GPU division
