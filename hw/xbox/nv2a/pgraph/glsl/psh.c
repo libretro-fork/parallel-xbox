@@ -226,7 +226,7 @@ void pgraph_glsl_set_psh_state(PGRAPHState *pg, PshState *state)
             pgraph_reg_r(pg, NV_PGRAPH_COMBINEALPHAO0 + i * 4);
     }
 
-    state->g8b8_mip_mixed = 0;
+    state->g8b8_mip_flags = 0;
     for (int i = 0; i < 4; i++) {
         state->g8b8_signed[i] = 0;
         for (int j = 0; j < 4; j++) {
@@ -315,20 +315,23 @@ void pgraph_glsl_set_psh_state(PGRAPHState *pg, PshState *state)
               min_filter == NV_PGRAPH_TEXFILTER0_MIN_BOX_TENT_LOD));
         bool mip_filter = false;
         bool mip_lod0 = false;
+        bool mip_clamp = false;
         if (gb && !f.linear && !cubemap && state->dim_tex[i] == 2 &&
             GET_MASK(tex_fmt, NV_PGRAPH_TEXFMT0_MIPMAP_LEVELS) > 1 &&
             (linear_filter || point_filter || mixed_mip_filter)) {
             uint32_t address = pgraph_reg_r(pg, NV_PGRAPH_TEXADDRESS0 + i * 4);
+            unsigned addru = GET_MASK(address, NV_PGRAPH_TEXADDRESS0_ADDRU);
+            unsigned addrv = GET_MASK(address, NV_PGRAPH_TEXADDRESS0_ADDRV);
             TextureShape shape = pgraph_get_texture_shape(pg, i);
             mip_lod0 = shape.max_mipmap_level == 0;
+            mip_clamp = addru == NV_PGRAPH_TEXADDRESS0_ADDRU_CLAMP_TO_EDGE &&
+                        addrv == NV_PGRAPH_TEXADDRESS0_ADDRU_CLAMP_TO_EDGE;
             /* GL uses BASE_LEVEL for the lower clamp, while Vulkan uses
              * minLod. Leave nonzero lower clamps and other address modes on
              * the existing path until their backend differences are covered. */
             mip_filter = shape.min_mipmap_level == 0 &&
-                GET_MASK(address, NV_PGRAPH_TEXADDRESS0_ADDRU) ==
-                    NV_PGRAPH_TEXADDRESS0_ADDRU_WRAP &&
-                GET_MASK(address, NV_PGRAPH_TEXADDRESS0_ADDRV) ==
-                    NV_PGRAPH_TEXADDRESS0_ADDRU_WRAP &&
+                ((addru == NV_PGRAPH_TEXADDRESS0_ADDRU_WRAP &&
+                  addrv == NV_PGRAPH_TEXADDRESS0_ADDRU_WRAP) || mip_clamp) &&
                 min_filter >= NV_PGRAPH_TEXFILTER0_MIN_BOX_NEARESTLOD &&
                 min_filter <= NV_PGRAPH_TEXFILTER0_MIN_TENT_TENT_LOD;
         }
@@ -352,7 +355,12 @@ void pgraph_glsl_set_psh_state(PGRAPHState *pg, PshState *state)
                         NV_PGRAPH_TEXFILTER0_MIN_BOX_TENT_LOD ? 64 : 0) |
                         (mip_lod0 ? 32 : 0) : 0);
                 if (mip_filter && mixed_mip_filter) {
-                    state->g8b8_mip_mixed |= 1u << i;
+                    state->g8b8_mip_flags |= 1u << i;
+                }
+                if (mip_filter && mip_clamp &&
+                    (mip_min_linear || mixed_mip_filter ||
+                     min_filter == NV_PGRAPH_TEXFILTER0_MIN_BOX_TENT_LOD)) {
+                    state->g8b8_mip_flags |= 1u << (i + 4);
                 }
             }
         }
@@ -1134,11 +1142,12 @@ static void emit_dynamic_combiner(struct PixelShader *ps, MString *preflight)
 
 /* Decode before filtering within a mip and between mips. The sampler query
  * supplies bias, mip selection and upper clamping. texelFetch needs explicit
- * wrap addressing. No implicit derivatives are used after the query. */
+ * address handling. No implicit derivatives are used after the query. */
 static void psh_append_signed_g8b8_mips(const struct PixelShader *ps, MString *vars,
                                         int source, unsigned signs)
 {
-    bool mixed = ps->state->g8b8_mip_mixed & (1u << source);
+    bool mixed = ps->state->g8b8_mip_flags & (1u << source);
+    bool clamp = ps->state->g8b8_mip_flags & (1u << (source + 4));
     bool linear = (signs & 16) || mixed;
     bool trilinear = signs & 64;
     mstring_append_fmt(vars,
@@ -1185,12 +1194,13 @@ static void psh_append_signed_g8b8_mips(const struct PixelShader *ps, MString *v
             }
             mstring_append_fmt(vars,
                 "vec2 gbTap%d_%d_%d = texelFetch(texSamp%d, "
-                "ivec2(mod(gbBase%d_%d + vec2(%d.0, %d.0), gbSize%d_%d)), "
+                "ivec2(%s(gbBase%d_%d + vec2(%d.0, %d.0), %sgbSize%d_%d%s)), "
                 "gbLevel%d_%d).bg;\n"
                 "gbTap%d_%d_%d = vec2(sign3(gbTap%d_%d_%d.x), "
                 "sign3(gbTap%d_%d_%d.y));\n",
-                source, mip, tap, source, source, mip, tap & 1, tap >> 1,
-                source, mip, source, mip,
+                source, mip, tap, source, clamp ? "clamp" : "mod",
+                source, mip, tap & 1, tap >> 1, clamp ? "vec2(0.0), " : "",
+                source, mip, clamp ? " - 1.0" : "", source, mip,
                 source, mip, tap, source, mip, tap, source, mip, tap);
         }
         if (linear) {
@@ -1230,7 +1240,7 @@ static void psh_append_signed_g8b8(const struct PixelShader *ps, MString *vars,
         return;
     }
     if ((signs & 128) && ((signs & (16 | 64)) ||
-                        (ps->state->g8b8_mip_mixed & (1u << source)))) {
+                        (ps->state->g8b8_mip_flags & (1u << source)))) {
         psh_append_signed_g8b8_mips(ps, vars, source, signs);
         return;
     }

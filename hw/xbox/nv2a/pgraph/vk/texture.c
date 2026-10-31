@@ -2164,8 +2164,10 @@ static VkSampler create_sampler_for_state(PGRAPHState *pg,
         min_filter >= NV_PGRAPH_TEXFILTER0_MIN_BOX_NEARESTLOD &&
         min_filter <= NV_PGRAPH_TEXFILTER0_MIN_TENT_TENT_LOD &&
         state.color_format == NV097_SET_TEXTURE_FORMAT_COLOR_SZ_G8B8 &&
-        GET_MASK(address, NV_PGRAPH_TEXADDRESS0_ADDRU) == NV_PGRAPH_TEXADDRESS0_ADDRU_WRAP &&
-        GET_MASK(address, NV_PGRAPH_TEXADDRESS0_ADDRV) == NV_PGRAPH_TEXADDRESS0_ADDRU_WRAP;
+        ((GET_MASK(address, NV_PGRAPH_TEXADDRESS0_ADDRU) == NV_PGRAPH_TEXADDRESS0_ADDRU_WRAP &&
+          GET_MASK(address, NV_PGRAPH_TEXADDRESS0_ADDRV) == NV_PGRAPH_TEXADDRESS0_ADDRU_WRAP) ||
+         (GET_MASK(address, NV_PGRAPH_TEXADDRESS0_ADDRU) == NV_PGRAPH_TEXADDRESS0_ADDRU_CLAMP_TO_EDGE &&
+          GET_MASK(address, NV_PGRAPH_TEXADDRESS0_ADDRV) == NV_PGRAPH_TEXADDRESS0_ADDRU_CLAMP_TO_EDGE));
     /* With an intact mip chain, nearest selection is also required: a
      * positive ceiling must not interpolate encoded bytes from mip one. */
     if (mixed_g8b8_clamped) {

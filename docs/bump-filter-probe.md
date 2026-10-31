@@ -76,11 +76,12 @@ and [GLSL LOD query](https://github.khronos.org/Vulkan-Site/glsl/latest/chapters
 
 ## Mipmapped signed G8B8
 
-Swizzled, projective 2D G8B8 with wrap U/V and a zero lower mip clamp now decodes
+Swizzled, projective 2D G8B8 with wrap or clamp-to-edge on both axes and a zero
+lower mip clamp now decodes
 texels before filtering with matching or mixed point/linear min/mag reconstruction
 within and between mip levels. All four nearest/linear mip modes are supported.
 The accessed-mip component of `textureQueryLod` supplies sampler bias, nearest
-mip selection and the upper clamp. Explicit `texelFetch` reads wrapped integer
+mip selection and the upper clamp. Explicit `texelFetch` reads addressed integer
 coordinates, so the backing unsigned sampler cannot interpolate encoded bytes.
 Matching point min/mag with nearest mip selection retains the hardware sample.
 Shader dirty-state tracking covers channel signs, mag filtering, mip count/size,
@@ -93,14 +94,14 @@ builds a 4x4/2x2/1x1 mip chain with distinct byte patterns. Its 192 cases combin
 16 channel-sign masks, three exact footprints (1/4, 1 and 2 texels/pixel), upper
 clamps 1/2 and positive/negative wrap periods. Fractional bias 0.25 exercises
 interpolation between levels without using an approximate fractional footprint.
-The full runner checks 14208 cases per renderer with both quality overrides off
+The full runner checks 26496 cases per renderer with both quality overrides off
 and on. Original cases retain a one-LSB scalar tolerance and exact GL/Vulkan
 agreement. Mip cases allow one LSB, or two for cross-mip interpolation, in the
 scalar and backend comparison because native LOD approximation can shift a
 high-contrast signed color. This is not a physical-console precision oracle.
 
-Nonzero lower clamps, other address
-modes, cubemaps, embedded borders, color keys and signed alpha-kill remain on
+Nonzero lower clamps, mixed U/V address modes, mirror/border addressing,
+cubemaps, embedded borders, color keys and signed alpha-kill remain on
 their previous paths. Linear-layout textures do not support mip chains.
 
 Add `--mip-mixed` to the mip fixture command to choose the opposite magnification
@@ -122,6 +123,29 @@ The selection threshold is zero on both tested renderers, consistent with the
 and the [Vulkan sampling rules](https://docs.vulkan.org/spec/latest/chapters/textures.html).
 Historical GL rules are not used as an Xbox oracle. Physical NV2A transition and
 rounding behavior still requires console measurements.
+
+### Clamp-to-edge
+
+Add `--mip-clamp` to the mip command, optionally with `--mip-mixed`, to test
+clamp-to-edge on both axes. The shader clamps each integer tap to `[0, size-1]`
+after selecting the mip and before reading/decoding the texel. It leaves the
+projected coordinates intact for LOD and interpolation weights. Sampler-based
+addressing is not applied to [`texelFetch`](https://docs.vulkan.org/spec/latest/chapters/textures.html).
+Existing wrap shader text remains unchanged. The clamp stage mask occupies the
+upper four bits of the same reserved byte; mixed reconstruction retains its low
+four bits. Point/nearest matching filters keep hardware sampling and need no
+new clamp shader variant. Base-clamped mixed Vulkan samplers use the same
+nearest-mip/positive-ceiling correction as the wrap path.
+
+The 12288 added cases combine all four mip modes, matching/mixed min and mag,
+16 independent sign masks, biases -4/0/+0.25/+4 and both quality profiles. Each
+192-case matrix uses orthogonal U/X and V/Y derivatives with exact footprints
+0.25, 1 and 2. B/R vary along X; G/A vary along Y. Sample centers in base-level
+texels are `(1.25,1.25)`, `(-0.25,-0.25)`, `(4.25,4.25)` and `(-0.25,4.25)`.
+The upper mip clamp is 1 when B is signed and 2 otherwise; the existing wrap
+matrices separately cover both upper clamps for every sign mask. This checks
+each axis, both edges and edge-adjacent interpolation independently of wrap
+periodicity. The manifest records address mode, sample coordinates and clamp.
 
 192 cases cover linear/swizzled G8B8, BUMPENVMAP/BUMPENVMAP_LUM, B/G displacement,
 signed flags none/B/G/BG, point/linear sampling, and left/midpoint/right texel

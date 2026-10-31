@@ -14,6 +14,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Signed G8B8 mip filtering now supports clamp-to-edge on both texture axes, including mixed min/mag filters and Force LOD0. Each texel is clamped and decoded before interpolation. Existing wrap shaders and shader-seed layout remain unchanged; no runtime diagnostic logging is added.
+
 - Remove the clock-state spin lock, seqlock and elapsed-clock retry loop.
   The libretro emulation thread owns raw clock updates and host elapsed-time
   reads; other threads retain the published instruction-clock timestamp.

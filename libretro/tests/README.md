@@ -98,15 +98,17 @@ while an unlinker owns the list. It includes the production implementation.
 `run.sh` runs it through the alert, keyed-event and event tiers with Wine.
 
 `test-signed-g8b8.py CHECKOUT CORE HARNESS SCRATCH` builds isolated guest bump
-and color probes and checks 14208 cases on each of OpenGL and Vulkan, including
+and color probes and checks 26496 cases on each of OpenGL and Vulkan, including
 all channel-sign combinations for the color probe, with quality overrides off
 and on. Mixed LOD0 filters additionally cover magnification/minification and
 sampler LOD biases of -4, 0 and +4. Three-level mipmapped probes cover all four
 nearest/linear mip-filter modes, signed channels, positive/negative wrap
 coordinates, upper clamps, biases -4/0/+0.25/+4 and Force LOD0, with matching
-and mixed min/mag reconstruction. Cross-mip
-comparisons allow two color LSBs for native LOD precision; original single-level
-cases still require exact backend agreement. `run.sh` runs it on Linux
+and mixed min/mag reconstruction.
+Clamp-to-edge matrices add independent X/Y data and samples inside, below,
+above and at opposite U/V edges, with matching and mixed filters.
+Cross-mip comparisons allow two color LSBs for native LOD precision; original
+single-level cases still require exact backend agreement. `run.sh` runs it on Linux
 when Vulkan is available. See `docs/bump-filter-probe.md` for the model and
 hardware-validation limits. The test code is absent from normal emulation.
 

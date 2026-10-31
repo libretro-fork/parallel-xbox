@@ -15,7 +15,7 @@ masks = "\n".join(re.search(r"#define " + name + r" .*?(?<!\\)\n", header, re.S)
                   for name in ("NV_PGRAPH_TEXFMT0_SHADER_FIELDS", "NV_PGRAPH_TEXFILTER0_SHADER_FIELDS"))
 state_header = (repo / "hw/xbox/nv2a/pgraph/glsl/psh.h").read_text()
 state = re.search(r"typedef struct PshState \{.*?\} PshState;", state_header, re.S).group()
-legacy = state.replace("uint8_t g8b8_mip_mixed;", "bool universal;").replace("PshState", "LegacyPshState")
+legacy = state.replace("uint8_t g8b8_mip_flags;", "bool universal;").replace("PshState", "LegacyPshState")
 code = r'''
 #include <assert.h>
 #include <stdbool.h>
@@ -27,7 +27,7 @@ enum PshDepthFormat { DEPTH_DISABLED };
 enum PshShadowDepthFunc { SHADOW_DISABLED };
 /* STATE */
 _Static_assert(sizeof(PshState) == sizeof(LegacyPshState), "seed state size changed");
-_Static_assert(offsetof(PshState, g8b8_mip_mixed) == offsetof(LegacyPshState, universal), "reserved byte moved");
+_Static_assert(offsetof(PshState, g8b8_mip_flags) == offsetof(LegacyPshState, universal), "reserved byte moved");
 _Static_assert(offsetof(PshState, g8b8_signed) == offsetof(LegacyPshState, g8b8_signed), "signed byte layout changed");
 _Static_assert(offsetof(PshState, depth_format) == offsetof(LegacyPshState, depth_format), "seed tail moved");
 static unsigned ctz32(uint32_t x) { return __builtin_ctz(x); }

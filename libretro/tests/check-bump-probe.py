@@ -27,19 +27,24 @@ def expected_mip(case, force_lod0):
     computed_lod = lod + float(case["lod_bias"])
     if case["mode"] == "mixed_mip_color":
         linear = linear if computed_lod > 0 else int(case["mag_filter"]) == 2
-    maximum = 1 if (int(case["id"]) // 3) % 2 else 2
+    maximum = int(case["max_lod"]) if case.get("max_lod") else (
+        1 if (int(case["id"]) // 3) % 2 else 2)
     lod = 0 if force_lod0 else min(maximum, max(0, lod + float(case["lod_bias"])))
     if mode in (3, 4):
         lod = math.floor(lod + 0.5)
 
     def sample(level, channel):
         size = 4 >> level
-        u = 1.25 * size / 4
+        clamp = case.get("address_mode") == "clamp_edge"
+        coordinate = "sample_v" if clamp and channel in "GA" else "sample_u"
+        u = float(case.get(coordinate) or "1.25") * size / 4
         pair = ((192, 64), (224, 32), (16, 16))[level] if channel in "RB" else ((64, 192), (96, 160), (112, 112))[level]
         position = u - 0.5 if linear else u
         index = math.floor(position)
         weight = position - index if linear else 0
-        values = [pair[(index + offset) % size % 2] for offset in (0, 1)]
+        indices = [min(size - 1, max(0, index + offset)) if clamp else (index + offset) % size
+                   for offset in (0, 1)]
+        values = [pair[i % 2] for i in indices]
         if channel in case["signed_channels"]:
             values = [signed_byte(v) * 255 for v in values]
         return mix(*values, weight)

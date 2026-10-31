@@ -46,14 +46,15 @@ typedef struct PshState {
 
     bool combiner_dynamic;
     bool alpha_dynamic;
-    /* One bit per stage for mixed mip reconstruction. Reuses the never-set
-     * universal byte so shader seeds retain their layout and unsigned keys. */
-    uint8_t g8b8_mip_mixed;
+    /* Low four bits select mixed mip reconstruction per stage; high four
+     * select clamp-to-edge on both axes. Reuses the never-set universal byte
+     * so shader seeds retain their layout and existing wrap keys. */
+    uint8_t g8b8_mip_flags;
 
     bool point_sprite;
     bool rect_tex[4];
     /* B/G/R/A signs in bits 0..3, min linear in bit 4. Mixed LOD0 filters
-     * use bit 6 and mag linear in bit 5. Bit 7 selects mipmapped wrap sampling,
+     * use bit 6 and mag linear in bit 5. Bit 7 selects mipmapped 2D sampling,
      * with bit 6 selecting interpolation between mips and bit 5 forcing LOD0.
      * Reuses the unused
      * snorm_tex bytes so unsigned shader seeds keep their layout and keys. */
