@@ -45,13 +45,16 @@ static bool all_zero(const uint8_t *p, size_t len)
 {
     const uint64_t *w = (const uint64_t *)p;
 
-    /* clusters are 512 bytes to 2 MB, malloc'd: aligned, a multiple of 8 */
+    /* The cluster buffer is malloc-aligned; the final logical range may
+     * finish inside a word. Check its remaining bytes with one bounded copy. */
     for (size_t i = 0; i < len / 8; i++) {
         if (w[i]) {
             return false;
         }
     }
-    return true;
+    uint64_t tail = 0;
+    memcpy(&tail, p + len / 8 * 8, len % 8);
+    return tail == 0;
 }
 
 bool lr_qcow2_is_image(const void *head, size_t len)
@@ -211,12 +214,12 @@ int lr_qcow2_to_raw(LRQcow2ReadFunc read, void *opaque, LRFile *dst,
                 continue;
             } else {
                 ret = read_full(read, opaque, e & QCOW2_OFFSET_MASK, data,
-                                (size_t)cluster);
+                                len);
                 if (ret < 0) {
                     FAIL(ret, "cannot read a cluster");
                 }
             }
-            if (all_zero(data, (size_t)cluster)) {
+            if (all_zero(data, len)) {
                 continue;
             }
             ret = lr_file_pwrite(dst, (int64_t)guest, data, len);

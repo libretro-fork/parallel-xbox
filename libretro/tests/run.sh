@@ -202,6 +202,15 @@ ${cc} -O2 -std=gnu99 -Wall -DLR_FILE_FILESTREAM=0 -I"$lrc/include" -o "$work/bin
     "$lrc/encodings/encoding_deflate.c" "$lrc/encodings/encoding_crc32.c" \
     "$lrc/features/features_cpu.c" "$lrc/time/rtime.c" "$lrc/compat/compat_strl.c" -lpthread
 "$work/bin/qcow2test" "$here/../../data/xbox_hdd.qcow2" "$work"
+${cc} -O2 -std=gnu99 -Wall -DLR_FILE_FILESTREAM=0 -I"$here/../.." -I"$lrc/include" \
+    -Dlr_file_pwrite=counted_convert_write -c "$here/../../block/qcow2-raw.c" \
+    -o "$work/bin/qcow2-tail.o"
+${cc} -O2 -std=gnu99 -Wall -DLR_FILE_FILESTREAM=0 -I"$here/../.." -I"$lrc/include" \
+    "$here/test-qcow2-tail.c" "$work/bin/qcow2-tail.o" "$here/../../block/libretro-file.c" \
+    "$lrc/encodings/encoding_deflate.c" "$lrc/encodings/encoding_crc32.c" \
+    "$lrc/features/features_cpu.c" "$lrc/time/rtime.c" "$lrc/compat/compat_strl.c" \
+    -lpthread -o "$work/bin/qcow2tailtest"
+"$work/bin/qcow2tailtest" "$work/qcow2-tail.img"
 # The POSIX backend retries interrupted syncs, including during close.
 case $(uname -s) in
 MINGW*|MSYS*) ;;

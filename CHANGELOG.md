@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- qcow2-to-raw conversion reads only the valid bytes of an uncompressed final cluster and skips zero-only logical tails even when unused cluster padding is nonzero. Partial-word tails retain their last valid byte.
+
 - Retain GLib callback data until active dispatches finish. Replacing a callback or destroying its source from inside a callback no longer runs its data destructor while the callback still uses that data, including nested dispatch.
 
 - CPU Boost computes parity-only conditions after addition, subtraction, increment/decrement and shifts directly from the low result byte. Other flags remain available lazily, and zero-count shifts preserve their incoming flags.

@@ -857,3 +857,5 @@ Callback-data lifetime tests replace a callback, destroy its source, or replace
 it from recursive dispatch. The old payload must remain alive until all active
 calls finish and its destructor must run once. The same vectors run against
 system GLib. Callback state allocates on registration, not on each dispatch.
+
+The qcow2 tail-conversion fixture covers 336 v2/v3, 512-byte/64-KiB cluster, compressed/uncompressed and logical-length cases. Nonzero padding beyond virtual EOF must not force a zero-data write; a nonzero last valid byte must survive. Instrumented production conversion counts payload read bytes and output writes, and real-file readback checks exact size/content. Compressed clusters still decompress completely. Fixtures are minimal read-only conversion inputs, not refcounted writable images.
