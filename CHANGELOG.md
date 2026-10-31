@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Chihiro DIMM states stream changed pages directly into the frontend state buffer and borrow the input blob during restore. Replace the full intermediate blob with a page-number list; preserve the v1 wire format and game-image identity checks.
+
 - Remove the unused QEMU yank registry, its startup mutex, QAPI definitions and chardev handover fields. Remove unreachable KVM private-memory setup and its discard-counter mutex; unsupported private-memory requests still fail explicitly. Xbox and Chihiro emulation features are unchanged.
 
 - Vulkan clear shaders and the shared fullscreen display vertex shader now use immutable SPIR-V directly. Creating them no longer allocates compiler payloads, array wrappers or uniform metadata, and Vulkan borrows their static words without an intermediate copy. Pipeline creation and driver compilation remain.

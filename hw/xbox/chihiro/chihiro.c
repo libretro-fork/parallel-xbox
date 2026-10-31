@@ -39,6 +39,7 @@
 #include "system/system.h"
 #include "block/libretro-disk.h"
 #include "migration/vmstate.h"
+#include "migration/qemu-file.h"
 #include <encodings/crc32.h>
 #include "qemu/file-map.h"
 #include "qemu/main-loop.h"
@@ -3611,7 +3612,12 @@ static bool chihiro_interface_ready = false;
 
 typedef struct ChihiroDimmMig {
     uint32_t blob_size;
-    uint8_t *blob;
+    const uint8_t *blob; /* borrowed input, valid until post_load returns */
+    uint32_t *changed_pages;
+    uint32_t npages;
+    uint64_t file_size;
+    uint32_t image_crc;
+    const uint8_t *fs; /* guest is stopped until post_save */
 } ChihiroDimmMig;
 
 static ChihiroDimmMig chihiro_dimm_mig;
@@ -3731,44 +3737,91 @@ static int chihiro_dimm_pre_save(void *opaque)
         return -EINVAL;
     }
 
-    uint32_t hdr[7] = { DIMM_MIG_MAGIC, DIMM_MIG_VERSION,
-                        (uint32_t)file_size, (uint32_t)(file_size >> 32),
-                        crc, DIMM_PAGE_SIZE, 0 /* npages */ };
-    GByteArray *blob = g_byte_array_new();
-    g_byte_array_append(blob, (uint8_t *)hdr, sizeof(hdr));
-
-    uint32_t npages = 0;
+    g_free(m->changed_pages);
+    m->changed_pages = g_new(uint32_t, fs_size / DIMM_PAGE_SIZE);
+    m->npages = 0;
     for (uint32_t pg = 0; pg < fs_size / DIMM_PAGE_SIZE; pg++) {
         const uint8_t *cur = fs + (size_t)pg * DIMM_PAGE_SIZE;
-        if (chihiro_dimm_page_as_image(cur, ref, file_size,
-                                       (uint64_t)pg * DIMM_PAGE_SIZE)) {
-            continue;
+        if (!chihiro_dimm_page_as_image(cur, ref, file_size,
+                                        (uint64_t)pg * DIMM_PAGE_SIZE)) {
+            m->changed_pages[m->npages++] = pg;
         }
-        g_byte_array_append(blob, (uint8_t *)&pg, 4);
-        g_byte_array_append(blob, cur, DIMM_PAGE_SIZE);
-        npages++;
     }
-    memcpy(blob->data + 24, &npages, 4);
     g_free(owned);
+    uint64_t size = 7 * sizeof(uint32_t) +
+                    (uint64_t)m->npages * (sizeof(uint32_t) + DIMM_PAGE_SIZE);
+    if (size > INT_MAX) {
+        g_free(m->changed_pages);
+        m->changed_pages = NULL;
+        return -EOVERFLOW;
+    }
+    m->blob_size = size;
+    m->blob = NULL;
+    m->fs = fs;
+    m->file_size = file_size;
+    m->image_crc = crc;
     chihiro_dimm_error[0] = 0;
-
-    m->blob_size = blob->len;
-    g_free(m->blob);
-    m->blob = g_byte_array_free(blob, FALSE);
-
     printf("Chihiro DIMM migration: %u changed pages, %u byte blob\n",
-           npages, m->blob_size);
+           m->npages, m->blob_size);
     return 0;
 }
 
 static int chihiro_dimm_post_save(void *opaque)
 {
     ChihiroDimmMig *m = opaque;
-    g_free(m->blob);
+    g_free(m->changed_pages);
+    m->changed_pages = NULL;
+    m->fs = NULL;
     m->blob = NULL;
     m->blob_size = 0;
+    m->npages = 0;
     return 0;
 }
+
+/* Keep the v1 buffer field's bytes and description unchanged. Only the
+ * pointer plumbing differs: write guest pages directly, borrow input bytes. */
+static int chihiro_dimm_put_blob(QEMUFile *f, void *opaque, size_t size,
+                                 const VMStateField *field, JSONWriter *vmdesc)
+{
+    ChihiroDimmMig *m = opaque;
+    uint32_t hdr[7] = { DIMM_MIG_MAGIC, DIMM_MIG_VERSION,
+                        (uint32_t)m->file_size, (uint32_t)(m->file_size >> 32),
+                        m->image_crc, DIMM_PAGE_SIZE, m->npages };
+    if (!m->fs || size != m->blob_size) {
+        return -EINVAL;
+    }
+    qemu_put_buffer(f, (const uint8_t *)hdr, sizeof(hdr));
+    for (uint32_t i = 0; i < m->npages; i++) {
+        uint32_t pg = m->changed_pages[i];
+        qemu_put_buffer(f, (const uint8_t *)&pg, sizeof(pg));
+        qemu_put_buffer(f, m->fs + (size_t)pg * DIMM_PAGE_SIZE, DIMM_PAGE_SIZE);
+    }
+    return qemu_file_get_error(f);
+}
+
+static int chihiro_dimm_get_blob(QEMUFile *f, void *opaque, size_t size,
+                                 const VMStateField *field)
+{
+    ChihiroDimmMig *m = opaque;
+    uint8_t *blob;
+    g_free(m->changed_pages);
+    m->changed_pages = NULL;
+    m->fs = NULL;
+    m->npages = 0;
+    m->blob = NULL;
+    if (size > INT_MAX || qemu_peek_buffer(f, &blob, size, 0) != size) {
+        return -EINVAL;
+    }
+    m->blob = blob;
+    qemu_file_skip(f, size);
+    return qemu_file_get_error(f);
+}
+
+static const VMStateInfo chihiro_dimm_blob_info = {
+    .name = "buffer",
+    .get = chihiro_dimm_get_blob,
+    .put = chihiro_dimm_put_blob,
+};
 
 static int chihiro_dimm_post_load(void *opaque, int version_id)
 {
@@ -3832,7 +3885,6 @@ static int chihiro_dimm_post_load(void *opaque, int version_id)
 
 out:
     g_free(owned);
-    g_free(m->blob);
     m->blob = NULL;
     m->blob_size = 0;
     return ret;
@@ -3847,8 +3899,14 @@ static const VMStateDescription vmstate_chihiro_dimm = {
     .post_load = chihiro_dimm_post_load,
     .fields = (const VMStateField[]) {
         VMSTATE_UINT32(blob_size, ChihiroDimmMig),
-        VMSTATE_VBUFFER_ALLOC_UINT32(blob, ChihiroDimmMig, 1, NULL,
-                                     blob_size),
+        {
+            .name = "blob",
+            .version_id = 1,
+            .size_offset = offsetof(ChihiroDimmMig, blob_size),
+            .info = &chihiro_dimm_blob_info,
+            .flags = VMS_VBUFFER,
+            .offset = 0,
+        },
         VMSTATE_END_OF_LIST()
     }
 };

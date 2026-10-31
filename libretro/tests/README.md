@@ -1,5 +1,12 @@
 # The core's tests
 
+`test-chihiro-dimm-stream.py CHECKOUT [CC]` compiles the production DIMM
+serializer and bounded memory cursor. It checks legacy v1 byte encoding,
+image tails, 64-bit image sizes, one-copy output, borrowed input, round trips,
+truncation, malformed headers/pages and image-identity mismatches using
+synthetic data. `DIMM_STREAM_CFLAGS`, `DIMM_STREAM_BINARY` and
+`DIMM_STREAM_SKIP_RUN` select sanitizers or retain a cross-built executable.
+
 `test-rcu-owner.py CHECKOUT [CC]` runs production RCU reader, request,
 registry, grace-period and initialization code against deterministic
 overlapping periods, new-epoch publication before the scan barrier,
