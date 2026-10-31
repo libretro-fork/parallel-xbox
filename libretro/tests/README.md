@@ -14,6 +14,13 @@ all shader stages, declined sources, slot reuse, flags and idle wakeups.
 `GLSLGEN_CFLAGS`, `GLSLGEN_BINARY` and `GLSLGEN_SKIP_RUN` select sanitizers
 or retain a cross-compiled executable for native Windows testing.
 
+`test-shader-cache-handoff.py CHECKOUT [CC]` checks production disk-result
+adoption into the real LRU: 18000 concurrent publications, hash collisions,
+duplicate/live-binding protection, limited draining, and immutable disk-save
+snapshots, including repeated disabled-cache shutdown joins.
+`SHADER_CACHE_CFLAGS`, `SHADER_CACHE_BINARY` and
+`SHADER_CACHE_SKIP_RUN` select sanitizers or retain cross-built binaries.
+
 `test-eventcount-spin.c` checks Windows eventcount notifications before waiter
 publication, concurrent publication during list detachment, and detachment
 while an unlinker owns the list. It includes the production implementation.

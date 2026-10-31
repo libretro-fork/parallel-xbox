@@ -23,6 +23,7 @@
 #ifndef HW_XBOX_NV2A_PGRAPH_GL_RENDERER_H
 #define HW_XBOX_NV2A_PGRAPH_GL_RENDERER_H
 
+#include <retro_mpsc.h>
 #include "qemu/osdep.h"
 #include "qemu/thread.h"
 #include "qemu/queue.h"
@@ -202,7 +203,7 @@ typedef struct ShaderBinding {
     size_t program_size;
     GLenum program_format;
     ShaderState state;
-    QemuThread *save_thread;
+    struct sthread *save_thread;
 
     GLuint gl_program;
     GLuint gl_pipeline;
@@ -443,8 +444,10 @@ typedef struct PGRAPHGLState {
     Lru shader_cache;
     ShaderBinding *shader_cache_entries;
     ShaderBinding *shader_binding;
-    QemuMutex shader_cache_lock;
-    QemuThread shader_disk_thread;
+    /* Disk worker publishes immutable binaries; only render owns the LRU. */
+    retro_mpsc_t shader_disk_results;
+    retro_mpsc_node_t *shader_disk_pending;
+    struct sthread *shader_disk_thread;
 
     Lru shader_module_cache;
     ShaderModuleCacheEntry *shader_module_cache_entries;

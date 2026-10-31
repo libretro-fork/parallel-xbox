@@ -873,6 +873,43 @@ static void seed_write_files(PGRAPHGLState *r)
     g_array_free(c.mods, TRUE);
 }
 
+/* Disk parsing never touches GL objects or the render-owned LRU. */
+typedef struct ShaderDiskResult {
+    retro_mpsc_node_t node;
+    uint64_t hash;
+    ShaderState state;
+    GLenum program_format;
+    size_t program_size;
+    void *program;
+} ShaderDiskResult;
+
+/* Limit live-frame adoption; a joined worker can be drained with limit=0. */
+static void shader_adopt_disk_results(PGRAPHGLState *r, unsigned limit)
+{
+    for (unsigned n = 0; !limit || n < limit; n++) {
+        if (!r->shader_disk_pending) {
+            r->shader_disk_pending = retro_mpsc_take_all(&r->shader_disk_results);
+        }
+        retro_mpsc_node_t *node = r->shader_disk_pending;
+        if (!node) {
+            break;
+        }
+        ShaderDiskResult *result = container_of(node, ShaderDiskResult, node);
+        r->shader_disk_pending = node->next;
+        LruNode *entry = lru_lookup(&r->shader_cache, result->hash, &result->state);
+        ShaderBinding *binding = container_of(entry, ShaderBinding, node);
+        if (!binding->initialized && !binding->program) {
+            binding->program_format = result->program_format;
+            binding->program_size = result->program_size;
+            binding->program = result->program;
+            binding->cached = true;
+        } else {
+            g_free(result->program);
+        }
+        g_free(result);
+    }
+}
+
 static void shader_write_lru_list_entry_to_disk(Lru *lru, LruNode *node, void *opaque)
 {
     FILE *lru_list_file = (FILE*) opaque;
@@ -887,6 +924,14 @@ void pgraph_gl_shader_write_cache_reload_list(PGRAPHState *pg)
 {
     PGRAPHGLState *r = pg->gl_renderer_state;
 
+    /* Join before draining, including when caching was disabled mid-session.
+     * A later writeback/finalize must not join an already-consumed handle. */
+    if (r->shader_disk_thread) {
+        sthread_join(r->shader_disk_thread);
+        r->shader_disk_thread = NULL;
+    }
+    shader_adopt_disk_results(r, 0);
+
     if (!g_config.perf.cache_shaders) {
         pgraph_clear_and_notify(&r->shader_cache_writeback_complete,
                                 &r->shader_cache_writeback_pending);
@@ -894,7 +939,6 @@ void pgraph_gl_shader_write_cache_reload_list(PGRAPHState *pg)
     }
 
     char *shader_lru_path = shader_get_lru_cache_path();
-    qemu_thread_join(&r->shader_disk_thread);
 
     FILE *lru_list = qemu_fopen(shader_lru_path, "wb");
     g_free(shader_lru_path);
@@ -1007,13 +1051,6 @@ static void shader_load_from_disk(PGRAPHState *pg, uint64_t hash)
 
     g_free(shader_bin_dir);
 
-    qemu_mutex_lock(&r->shader_cache_lock);
-    if (lru_contains_hash(&r->shader_cache, hash)) {
-        qemu_mutex_unlock(&r->shader_cache_lock);
-        return;
-    }
-    qemu_mutex_unlock(&r->shader_cache_lock);
-
     /* The file as it lies; only the program binary, which the binding
      * keeps until the render thread links it, is copied out */
     if (!xemu_file_map(&m, shader_path)) {
@@ -1057,22 +1094,13 @@ static void shader_load_from_disk(PGRAPHState *pg, uint64_t hash)
     xemu_file_unmap(&m);
     g_free(shader_path);
 
-    qemu_mutex_lock(&r->shader_cache_lock);
-    LruNode *node = lru_lookup(&r->shader_cache, hash, &state);
-    ShaderBinding *binding = container_of(node, ShaderBinding, node);
-
-    /* If we happened to regenerate this shader already, then we may as well use the new one */
-    if (binding->initialized) {
-        qemu_mutex_unlock(&r->shader_cache_lock);
-        g_free(program_buffer);
-        return;
-    }
-
-    binding->program_format = program_binary_format;
-    binding->program_size = shader_size;
-    binding->program = program_buffer;
-    binding->cached = true;
-    qemu_mutex_unlock(&r->shader_cache_lock);
+    ShaderDiskResult *result = g_new(ShaderDiskResult, 1);
+    result->hash = hash;
+    result->state = state;
+    result->program_format = program_binary_format;
+    result->program_size = shader_size;
+    result->program = program_buffer;
+    retro_mpsc_push(&r->shader_disk_results, &result->node);
     return;
 
 error:
@@ -1083,10 +1111,10 @@ error:
     g_free(program_buffer);
 }
 
-static void *shader_reload_lru_from_disk(void *arg)
+static void shader_reload_lru_from_disk(void *arg)
 {
     if (!g_config.perf.cache_shaders) {
-        return NULL;
+        return;
     }
 
     PGRAPHState *pg = (PGRAPHState*) arg;
@@ -1095,7 +1123,7 @@ static void *shader_reload_lru_from_disk(void *arg)
     FILE *lru_shaders_list = qemu_fopen(shader_lru_path, "rb");
     g_free(shader_lru_path);
     if (!lru_shaders_list) {
-        return NULL;
+        return;
     }
 
     uint64_t hash;
@@ -1103,7 +1131,7 @@ static void *shader_reload_lru_from_disk(void *arg)
         shader_load_from_disk(pg, hash);
     }
 
-    return NULL;
+    fclose(lru_shaders_list);
 }
 
 static void shader_cache_entry_init(Lru *lru, LruNode *node, const void *state)
@@ -1140,8 +1168,7 @@ static void shader_cache_entry_post_evict(Lru *lru, LruNode *node)
     binding->initialized = false;
 
     if (binding->save_thread) {
-        qemu_thread_join(binding->save_thread);
-        g_free(binding->save_thread);
+        sthread_join(binding->save_thread);
     }
 
     glDeleteProgram(binding->gl_program);
@@ -1169,7 +1196,8 @@ void pgraph_gl_init_shaders(PGRAPHState *pg)
 {
     PGRAPHGLState *r = pg->gl_renderer_state;
 
-    qemu_mutex_init(&r->shader_cache_lock);
+    retro_mpsc_init(&r->shader_disk_results);
+    r->shader_disk_pending = NULL;
     retro_eventcount_init(&r->shader_cache_writeback_complete);
 
     if (!shader_gl_vendor) {
@@ -1194,8 +1222,10 @@ void pgraph_gl_init_shaders(PGRAPHState *pg)
     r->shader_cache.compare_nodes = shader_cache_entry_compare;
     r->shader_cache.post_node_evict = shader_cache_entry_post_evict;
 
-    qemu_thread_create(&r->shader_disk_thread, "nv2a.shdcache",
-                       shader_reload_lru_from_disk, pg, QEMU_THREAD_JOINABLE);
+    r->shader_disk_thread = sthread_create(shader_reload_lru_from_disk, pg);
+    if (!r->shader_disk_thread) {
+        abort();
+    }
 
     /* FIXME: Make this configurable */
     const size_t shader_module_cache_size = 50*1024;
@@ -1232,32 +1262,24 @@ void pgraph_gl_finalize_shaders(PGRAPHState *pg)
 
     // Clear out shader cache
     pgraph_gl_shader_write_cache_reload_list(pg); // FIXME: also flushes, rename for clarity
+    lru_flush(&r->shader_cache);
     free(r->shader_cache_entries);
     r->shader_cache_entries = NULL;
 
     lru_flush(&r->shader_module_cache);
     g_free(r->shader_module_cache_entries);
     r->shader_module_cache_entries = NULL;
-
-    qemu_mutex_destroy(&r->shader_cache_lock);
 }
 
-static void *shader_write_to_disk(void *arg)
+static void shader_write_to_disk(void *arg)
 {
-    ShaderBinding *binding = (ShaderBinding*) arg;
+    ShaderDiskResult *binding = arg;
 
-    char *shader_bin = shader_get_bin_directory(binding->node.hash);
-    char *shader_path = shader_get_binary_path(shader_bin, binding->node.hash);
+    char *shader_bin = shader_get_bin_directory(binding->hash);
+    char *shader_path = shader_get_binary_path(shader_bin, binding->hash);
 
-    static uint64_t gl_vendor_len;
-    if (gl_vendor_len == 0) {
-        gl_vendor_len = (uint64_t) (strlen(shader_gl_vendor) + 1);
-    }
-
-    static uint64_t gl_version_len;
-    if (gl_version_len == 0) {
-        gl_version_len = (uint64_t) (strlen(shader_gl_version) + 1);
-    }
+    const uint64_t gl_vendor_len = strlen(shader_gl_vendor) + 1;
+    const uint64_t gl_version_len = strlen(shader_gl_version) + 1;
 
     qemu_mkdir(shader_bin);
     g_free(shader_bin);
@@ -1304,17 +1326,37 @@ static void *shader_write_to_disk(void *arg)
 
     g_free(shader_path);
     g_free(binding->program);
-    binding->program = NULL;
+    g_free(binding);
 
-    return NULL;
+    return;
 
 error:
     fprintf(stderr, "nv2a: Failed to write shader binary file to %s\n", shader_path);
     qemu_unlink(shader_path);
     g_free(shader_path);
     g_free(binding->program);
+    g_free(binding);
+    return;
+}
+
+/* Transfer the binary snapshot before the writer can run. It never reads or
+ * modifies the live binding, and eviction joins the worker before reuse. */
+static void shader_start_disk_save(ShaderBinding *binding)
+{
+    ShaderDiskResult *save = g_new(ShaderDiskResult, 1);
+    save->hash = binding->node.hash;
+    save->state = binding->state;
+    save->program_format = binding->program_format;
+    save->program_size = binding->program_size;
+    save->program = binding->program;
     binding->program = NULL;
-    return NULL;
+    binding->save_thread = sthread_create(shader_write_to_disk, save);
+    if (!binding->save_thread) {
+        /* A disk-cache failure must not stop emulation. */
+        g_free(save->program);
+        g_free(save);
+        binding->cached = false;
+    }
 }
 
 void pgraph_gl_shader_cache_to_disk(ShaderBinding *binding)
@@ -1345,12 +1387,7 @@ void pgraph_gl_shader_cache_to_disk(ShaderBinding *binding)
     binding->program_size = program_size_copied;
     binding->cached = true;
 
-    /* Fifteen characters is all a thread name may be; the low half of the
-     * hash tells the workers apart well enough. */
-    char name[16];
-    snprintf(name, sizeof(name), "scache-%08x", (unsigned) binding->node.hash);
-    binding->save_thread = g_malloc0(sizeof(QemuThread));
-    qemu_thread_create(binding->save_thread, name, shader_write_to_disk, binding, QEMU_THREAD_JOINABLE);
+    shader_start_disk_save(binding);
 }
 
 /* With GPU boost, refill only the uniform sections written since, and skip
@@ -1893,7 +1930,6 @@ static void seed_pipe_pump(PGRAPHGLState *r, int64_t budget_us)
             i++;
             continue;
         }
-        qemu_mutex_lock(&r->shader_cache_lock);
         uint64_t h = fast_hash((const uint8_t *)st, sizeof(*st));
         LruNode *node = lru_lookup(&r->shader_cache, h, st);
         ShaderBinding *b = container_of(node, ShaderBinding, node);
@@ -1902,7 +1938,6 @@ static void seed_pipe_pump(PGRAPHGLState *r, int64_t budget_us)
              * state this session never draws adds nothing to the seed. */
             generate_shaders(r, b);
         }
-        qemu_mutex_unlock(&r->shader_cache_lock);
         r->seed.pipe_states[i] = r->seed.pipe_states[--r->seed.pipe_n];
         r->seed.pipes_built++;
         progress = true;
@@ -2082,7 +2117,6 @@ static void comb_async_service(PGRAPHGLState *r, int64_t budget_us)
         glDetachShader(comb_async[i].gl_program, comb_async[i].gl_shader);
         glDeleteShader(comb_async[i].gl_shader);
         if (ok) {
-            qemu_mutex_lock(&r->shader_cache_lock);
             r->comb_adopt_hash = fast_hash((void *)&comb_async[i].key,
                                            sizeof(ShaderModuleCacheKey));
             r->comb_adopt_program = comb_async[i].gl_program;
@@ -2091,7 +2125,6 @@ static void comb_async_service(PGRAPHGLState *r, int64_t budget_us)
                 delete_program(r, r->comb_adopt_program);
                 r->comb_adopt_program = 0;
             }
-            qemu_mutex_unlock(&r->shader_cache_lock);
             if (comb_async[i].seed) {
                 /* Seed keys only fill the module cache: no family waits,
                  * and a dynamic_gen bump would defeat the bind fast path. */
@@ -2295,6 +2328,7 @@ static void touch_fresh_textures(PGRAPHGLState *r, int64_t budget_us)
 void pgraph_gl_shaders_flip_service(NV2AState *d)
 {
     PGRAPHGLState *r = d->pgraph.gl_renderer_state;
+    shader_adopt_disk_results(r, 64);
     int64_t t0 = g_get_monotonic_time();
     pgraph_gl_tex_shadow_reset(r);
     /* Spend only the slack before the vblank deadline, less 2 ms for
@@ -2331,6 +2365,8 @@ void pgraph_gl_bind_shaders(PGRAPHState *pg)
 {
     PGRAPHGLState *r = pg->gl_renderer_state;
 
+    shader_adopt_disk_results(r, 64);
+
     bool binding_changed = false;
     if (r->shader_binding &&
         r->shader_binding->dyn_gen == pgraph_glsl_dynamic_gen &&
@@ -2346,8 +2382,6 @@ void pgraph_gl_bind_shaders(PGRAPHState *pg)
 
     NV2A_GL_DGROUP_BEGIN("%s (%s)", __func__,
                          state.vsh.is_fixed_function ? "FF" : "PROG");
-
-    qemu_mutex_lock(&r->shader_cache_lock);
 
     uint64_t shader_state_hash =
         fast_hash((uint8_t *)&state, sizeof(ShaderState));
@@ -2409,8 +2443,6 @@ void pgraph_gl_bind_shaders(PGRAPHState *pg)
     /* Dirty now means written since this build, as the map's only reader,
      * check_shader_state_dirty, expects (VK clears the map on its own). */
     pgraph_clear_dirty_reg_map(pg);
-
-    qemu_mutex_unlock(&r->shader_cache_lock);
 
     binding_changed = (r->shader_binding != old_binding);
     if (binding_changed) {
