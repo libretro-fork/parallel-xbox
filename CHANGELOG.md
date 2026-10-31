@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- IDE buffered-read cancellation marks pending reads orphaned before invoking their callbacks and captures callback arguments before the list can change. Re-entrant cancellation no longer repeats callbacks, and a callback that drains completions no longer leaves the cancellation loop using freed requests.
+
 - qcow2 checks scatter/gather counts and total lengths before I/O, rejecting integer-overflowing requests instead of accepting wrapped totals as empty transfers. Valid empty requests remain supported.
 
 - CPU Boost carries byte-subtraction borrow across translated blocks directly instead of calling the carry helper. It uses the remaining carry-class encoding without widening the block key and preserves pending floating-point state.

@@ -738,17 +738,28 @@ BlockAIOCB *ide_buffered_readv(IDEState *s, int64_t sector_num,
 void ide_cancel_dma_sync(IDEState *s)
 {
     IDEBufferedRequest *req;
+    /* Submission accepts MAX_BUFFERED_REQS existing entries plus the new one. */
+    struct {
+        BlockCompletionFunc *cb;
+        void *opaque;
+    } cancelled[MAX_BUFFERED_REQS + 1];
+    unsigned count = 0;
 
-    /* First invoke the callbacks of all buffered requests
-     * and flag those requests as orphaned. Ideally there
+    /* Mark and capture the existing requests before callbacks can re-enter
+     * cancellation or drain completions and free list members. Ideally there
      * are no unbuffered (Scatter Gather DMA Requests or
      * write requests) pending and we can avoid to drain. */
     QLIST_FOREACH(req, &s->buffered_requests, list) {
         if (!req->orphaned) {
+            assert(count < ARRAY_SIZE(cancelled));
+            req->orphaned = true;
             trace_ide_cancel_dma_sync_buffered(req->original_cb, req);
-            req->original_cb(req->original_opaque, -ECANCELED);
+            cancelled[count].cb = req->original_cb;
+            cancelled[count++].opaque = req->original_opaque;
         }
-        req->orphaned = true;
+    }
+    for (unsigned i = 0; i < count; i++) {
+        cancelled[i].cb(cancelled[i].opaque, -ECANCELED);
     }
 
     /*
