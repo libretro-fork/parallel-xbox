@@ -14,6 +14,9 @@ def main():
     parser.add_argument("output", type=Path, help="new or empty scratch directory")
     parser.add_argument("--assembler", default="nasm", help="nasm or yasm")
     parser.add_argument("--color", action="store_true", help="test all signed color-channel combinations")
+    parser.add_argument("--mixed", action="store_true", help="test mixed filters at varying footprints")
+    parser.add_argument("--lod-bias", type=int, choices=(-4, 0, 4), default=0,
+                        help="sampler LOD bias for the mixed-filter matrix")
     args = parser.parse_args()
     output = args.output.resolve()
     if output.exists() and any(output.iterdir()):
@@ -28,8 +31,11 @@ def main():
         folder = Path(folder)
         obj, elf, binary = [folder / name for name in ("gpu.o", "gpu.elf", "gpu.bin")]
         defines = ["-DBUMP_FILTER_PROBE"]
-        if args.color:
+        if args.color or args.mixed:
             defines.append("-DBUMP_FILTER_COLOR_PROBE")
+        if args.mixed:
+            defines.append("-DBUMP_FILTER_MIXED_PROBE")
+            defines.append(f"-DBUMP_MIXED_BIAS={args.lod_bias * 256 & 0x1fff}")
         subprocess.run(["gcc", "-m32", "-ffreestanding", "-fno-pic", "-fno-pie",
                         "-fno-stack-protector", "-fno-asynchronous-unwind-tables",
                         "-mno-sse", "-mno-mmx", "-O2", "-Wall", "-Wextra", "-Werror",
@@ -62,15 +68,18 @@ def main():
     with (output / "cases.csv").open("w", newline="") as file:
         writer = csv.writer(file)
         writer.writerow(["id", "layout", "mode", "axis", "signed_channels", "filter",
-                         "coordinate", "result_address"])
+                         "coordinate", "result_address", "lod_bias"])
         for i in range(192):
-            if args.color:
+            if args.color or args.mixed:
                 flags = (i // 6) % 16
                 channels = "".join(ch for bit, ch in ((1, "B"), (2, "G"), (4, "R"), (8, "A")) if flags & bit) or "none"
-                writer.writerow([i, ("linear", "swizzled")[i // 96], "color", "BG",
-                                 channels, ("point", "linear")[(i // 3) % 2],
-                                 ("left_center", "midpoint", "right_center")[i % 3],
-                                 f"0x{0x300204 + i * 8:08x}"])
+                writer.writerow([i, ("linear", "swizzled")[i // 96],
+                                 "mixed_color" if args.mixed else "color", "BG", channels,
+                                 (("min_point_mag_linear", "min_linear_mag_point") if args.mixed
+                                  else ("point", "linear"))[(i // 3) % 2],
+                                 (("magnified", "near_magnified", "minified") if args.mixed
+                                  else ("left_center", "midpoint", "right_center"))[i % 3],
+                                 f"0x{0x300204 + i * 8:08x}", args.lod_bias if args.mixed else 0])
                 continue
             writer.writerow([i, ("linear", "swizzled")[i // 96],
                              ("bump", "bump_luminance")[(i // 48) % 2],
@@ -78,7 +87,7 @@ def main():
                              ("none", "B", "G", "BG")[(i // 6) % 4],
                              ("point", "linear")[(i // 3) % 2],
                              ("left_center", "midpoint", "right_center")[i % 3],
-                             f"0x{0x300204 + i * 8:08x}"])
+                             f"0x{0x300204 + i * 8:08x}", 0])
     (output / "peek-args.txt").write_text("\n".join(
         ["--peek", "0x300100"] +
         [arg for i in range(192) for arg in ("--peek", f"0x{0x300204 + i * 8:x}")]) + "\n")

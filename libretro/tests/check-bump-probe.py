@@ -21,14 +21,21 @@ def mix(a, b, weight):
 
 
 def expected(case):
-    coordinate = ("left_center", "midpoint", "right_center").index(case["coordinate"])
-    linear = case["filter"] == "linear"
-    weight = coordinate / 2 if linear else int(coordinate != 0)
+    mixed = case["mode"] == "mixed_color"
+    if mixed:
+        lod = {"magnified": -3, "near_magnified": -1, "minified": 2}[case["coordinate"]]
+        minified = lod + int(case.get("lod_bias", 0)) > 0
+        linear = case["filter"] == ("min_linear_mag_point" if minified else "min_point_mag_linear")
+        weight = 0.75 if linear else 1
+    else:
+        coordinate = ("left_center", "midpoint", "right_center").index(case["coordinate"])
+        linear = case["filter"] == "linear"
+        weight = coordinate / 2 if linear else int(coordinate != 0)
     signs = case["signed_channels"]
-    if case["mode"] == "color":
+    if case["mode"] in ("color", "mixed_color"):
         result = []
         for channel in "ARGB":
-            pair = (255, 1) if channel in "RB" else (64, 192)
+            pair = ((192, 64) if mixed else (255, 1)) if channel in "RB" else (64, 192)
             if channel in signs:
                 value = mix(*(signed_byte(v) for v in pair), weight) * 255
             else:

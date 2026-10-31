@@ -4,11 +4,15 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Single-level signed G8B8 textures now honor mixed point/linear LOD0 minification and magnification filters, including sampler LOD bias, in both renderers. Vulkan preserves minification selection without sampling another mip level. Matching-filter shader paths are unchanged; no runtime diagnostic logging is added.
 - The Conexant TV encoder now advances its field counter with each guest vblank, including while the previous interrupt is still pending. Encoder registers, the SMBus transaction and its read cursor are preserved in savestates, so the counter can stay aligned with guest frame/flip tracking after a load.
+
 
 - OpenGL and Vulkan use the Xbox forced destination-alpha value when blending on XRGB-style targets, fixing colors that depended on unused host alpha bits. Vulkan applies the correction to both static pipeline keys and dynamic blend state, including guest format changes sharing the same host attachment format.
 
+
 - Guest indirect branches use the x86 state hook directly with CPU boost both enabled and disabled, and avoid the debug-flag helper call during normal execution. Single-step, one-instruction and no-chain debug modes keep their existing flag policy.
+
 
 - Vulkan devices with host query reset keep render passes open across visibility-report boundaries, avoiding repeated pass setup and pipeline binds. Query scopes still close at real pass boundaries, and game visibility queries do not overlap cost-model occlusion queries. Devices requiring command-buffer query resets retain their existing path.
 

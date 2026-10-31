@@ -2904,6 +2904,18 @@ static Val call_builtin(C *c, const char *name, Val *a, int n, bool *handled)
         }
         return r;
     }
+    if (!strcmp(name, "textureQueryLod")) {
+        if (n != 2 || a[0].t->kind != TY_SAMPLED_IMAGE ||
+            a[0].t->elem->dim != SpvDim2D || a[0].t->elem->arrayed ||
+            comp_count(a[1].t) != 2 || c->stage != GLSLC_STAGE_FRAGMENT) {
+            fail(c, "textureQueryLod() needs a 2D sampler and vec2 in a fragment shader");
+        }
+        a[1] = convert(c, a[1], TY_FLOAT);
+        r.t = vec_type(c, TY_FLOAT, 2);
+        r.id = ins(c, SpvOpImageQueryLod, r.t->id, 2, a[0].id, a[1].id);
+        c->cap_image_query = true;
+        return r;
+    }
     if (!strcmp(name, "textureGather")) {
         if (n != 3 || a[0].t->kind != TY_SAMPLED_IMAGE ||
             a[0].t->elem->dim != SpvDim2D || a[0].t->elem->arrayed ||

@@ -47,10 +47,32 @@ requires exact agreement between GL and Vulkan. No test logging is compiled
 into normal emulator execution.
 
 The automated run repeats both matrices with Force LOD0 and Force Quality
-Filtering off and on (768 cases per renderer). The probe wraps its bump/data
+Filtering off and on. The probe wraps its bump/data
 texture so it exercises the anisotropy eligibility rule. G8B8 data keeps
 the game's sampling footprint even when quality filtering is requested; forcing
 AF on its unsigned backing sampler can corrupt dependent and color results.
+
+## Mixed LOD0 filters
+
+`build-bump-probe.py OUTPUT --mixed [--lod-bias -4|0|4]` builds a direct-color
+matrix with point-min/linear-mag and linear-min/point-mag filtering. An inline
+texture-coordinate stream produces footprints of 1/8, 1/2 and 4 texels per
+screen pixel. The sampled pixel stays at u=1.25 texels; slopes and sample
+positions are binary-exact. The cases avoid the precise LOD transition, whose
+console rounding has not been established. B/R contain bytes 192 and 64;
+G/A contain 64 and 192, so point and linear sampling give distinct signed results.
+
+The complete regression repeats all three mixed matrices at biases -4, 0 and
++4, plus the original bump/color matrices, with quality overrides off and on:
+1920 cases per renderer. `textureQueryLod(...).y` selects reconstruction from
+the sampler's computed LOD, including its bias. Matching-filter shaders do not
+emit the query. Mixed mipmapped min-filter modes remain outside this extension.
+
+For the single-level Vulkan G8B8 LOD0 sampler, maxLod=0.25 permits a positive
+LOD to select minification while nearest mip selection still uses level zero.
+maxLod=0 would always select magnification, making the two filters ineffective.
+See the [Khronos sampler mapping](https://docs.vulkan.org/spec/latest/chapters/samplers.html)
+and [GLSL LOD query](https://github.khronos.org/Vulkan-Site/glsl/latest/chapters/builtinfunctions.html#texture-query-lod).
 
 192 cases cover linear/swizzled G8B8, BUMPENVMAP/BUMPENVMAP_LUM, B/G displacement,
 signed flags none/B/G/BG, point/linear sampling, and left/midpoint/right texel
