@@ -31,6 +31,7 @@ void pgraph_vk_init_reports(PGRAPHState *pg)
     r->max_queries_in_flight = 1024;
     r->new_query_needed = false;
     r->query_in_flight = false;
+    r->query_in_render_pass = false;
     r->zpass_pixel_count_result = 0;
 
     VkQueryPoolCreateInfo pool_create_info = (VkQueryPoolCreateInfo){

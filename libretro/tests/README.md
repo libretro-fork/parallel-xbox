@@ -506,6 +506,15 @@ real vertex/indexed draws under synchronization validation, checking signed,
 normalized and default components. Its probe shader is embedded; no external
 shader compiler is needed to run the test.
 
+`test-vk-query-scope.py CHECKOUT [CC]` executes production query/pass control
+against a delayed GPU model, including recycled available slots, report
+boundaries, clears, disabled counting, pass breaks and cost-model queries.
+`test-vulkan-query-scope.py` runs the same workloads with real Vulkan draws
+and synchronization validation. Host-reset devices keep 237 consecutive query
+windows in one render pass with one pipeline bind; device-reset behavior is
+also checked. Embedded shaders need no external compiler. Test fence waits
+are confined to the standalone fixture; no wait is added to the core.
+
 At guest frame 1020, two GPU palette clears (red then green) are each followed by an indexed draw before the next flip. Frontend frame 1030 must show green; the former Vulkan per-frame validation throttle left it red. The extracted dirty-page test also checks that GPU writeback invalidates all overlapping texture/palette validation stamps even when they are already marked dirty, leaving unrelated and empty views unchanged.
 
 Guest frame 1040 clears a GPU ARGB source red then blue, sampling each update through a one-byte Y8 view before the flip. Frame 1060 repeats this using the GPU-produced byte as index 0 then 255, with green and white palette entries. Frontend captures 1050/1070 must both be white. The Vulkan build predating GPU-writeback validation-stamp invalidation instead produced black and green.

@@ -2307,7 +2307,7 @@ static void bind_descriptor_sets(PGRAPHState *pg)
 static void begin_query(PGRAPHVkState *r)
 {
     assert(r->in_command_buffer);
-    assert(!r->in_render_pass);
+    assert(r->host_query_reset ? r->in_render_pass : !r->in_render_pass);
     assert(!r->query_in_flight);
 
     // FIXME: We should handle this. Make the query buffer bigger, but at least
@@ -2328,6 +2328,7 @@ static void begin_query(PGRAPHVkState *r)
                     VK_QUERY_CONTROL_PRECISE_BIT);
 
     r->query_in_flight = true;
+    r->query_in_render_pass = r->in_render_pass;
     r->new_query_needed = false;
     r->num_queries_in_flight++;
 }
@@ -2335,12 +2336,13 @@ static void begin_query(PGRAPHVkState *r)
 static void end_query(PGRAPHVkState *r)
 {
     assert(r->in_command_buffer);
-    assert(!r->in_render_pass);
     assert(r->query_in_flight);
+    assert(r->query_in_render_pass == r->in_render_pass);
 
     vkCmdEndQuery(r->command_buffer, r->query_pool,
                   r->num_queries_in_flight - 1);
     r->query_in_flight = false;
+    r->query_in_render_pass = false;
 }
 
 static void sync_staging_buffer(PGRAPHState *pg, VkCommandBuffer cmd,
@@ -2482,6 +2484,11 @@ static void vk_cost_close_recorded_queries(PGRAPHVkState *r)
 static void end_render_pass(PGRAPHVkState *r)
 {
     if (r->in_render_pass) {
+        /* A query begun here cannot span the next pass. Outside-pass
+         * queries on devices without host reset retain their old scope. */
+        if (r->query_in_flight && r->query_in_render_pass) {
+            end_query(r);
+        }
         /* Cost queries cannot outlive the render pass: close them with the
          * segment; the next draw opens a new one. */
         if (r->cost_recording) {
@@ -3419,8 +3426,38 @@ static void begin_draw(PGRAPHState *pg)
 
     assert(r->in_command_buffer);
 
-    // Visibility testing
-    if (!pg->clearing && pg->zpass_pixel_count_enable) {
+    bool must_bind_pipeline = r->pipeline_binding_changed;
+
+    if (pg->clearing) {
+        end_render_pass(r);
+    }
+
+    if (r->host_query_reset) {
+        /* Host reset already makes a free slot unavailable before the CPU
+         * can poll it. No reset command or pass split is needed here. */
+        bool want_query = !pg->clearing && pg->zpass_pixel_count_enable;
+        if (r->query_in_flight && (r->new_query_needed || !want_query)) {
+            if (r->cost_recording) {
+                vk_cost_close_recorded_queries(r);
+                xemu_cost_backend_interrupt();
+            }
+            end_query(r);
+        }
+        if (want_query && !r->query_in_flight) {
+            if (!r->in_render_pass) {
+                begin_render_pass(pg);
+                must_bind_pipeline = true;
+            }
+            /* Cost-model occlusion and game occlusion cannot overlap, even
+             * though their pools differ. Close the segment, not the pass. */
+            if (r->cost_recording) {
+                vk_cost_close_recorded_queries(r);
+                xemu_cost_backend_interrupt();
+            }
+            begin_query(r);
+        }
+    } else if (!pg->clearing && pg->zpass_pixel_count_enable) {
+        /* A recorded reset must remain outside the pass on these devices. */
         if (r->new_query_needed && r->query_in_flight) {
             end_render_pass(r);
             end_query(r);
@@ -3435,12 +3472,6 @@ static void begin_draw(PGRAPHState *pg)
         end_render_pass(r);
         end_query(r);
     }
-
-    if (pg->clearing) {
-        end_render_pass(r);
-    }
-
-    bool must_bind_pipeline = r->pipeline_binding_changed;
 
     if (!r->in_render_pass) {
         begin_render_pass(pg);

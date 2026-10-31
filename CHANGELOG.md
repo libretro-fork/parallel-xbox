@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Vulkan devices with host query reset keep render passes open across visibility-report boundaries, avoiding repeated pass setup and pipeline binds. Query scopes still close at real pass boundaries, and game visibility queries do not overlap cost-model occlusion queries. Devices requiring command-buffer query resets retain their existing path.
+
 - Signed G8B8 textures now decode each texel before bilinear filtering and supply signed color values to the combiner in both renderers, fixing the speckled water in the tested Ninja Gaiden Black scene. This covers single-level, projective 2D textures with matching point or linear filters; mixed filters, mip chains, texture-border layouts, color keys and signed alpha-kill retain their previous paths. Force Quality Filtering preserves the sampling footprint of G8B8 data. No runtime diagnostic logging is added.
 - Vulkan converts unsupported three-component byte/short and signed-scaled short vertex formats directly into mapped staging memory, including inline arrays. Device capabilities are checked once at renderer startup; guest dword padding and provoking values remain intact, and GPUs supporting the native formats keep their existing upload path.
 
