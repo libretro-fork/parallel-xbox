@@ -104,6 +104,7 @@ python3 "$here/test-idle-interrupts.py" "$here/../.." "$cc"
 python3 "$here/test-two-page-exit.py" "$here/../.." "$cc"
 python3 "$here/test-sse-broadcast.py" "$here/../.." "$cc"
 python3 "$here/test-sse-native-gate.py" "$here/../.." "$cc"
+python3 "$here/test-x87-load-precision.py" "$here/../.." "$cc"
 python3 "$here/test-fp-flags.py" "$here/../.." "$cc"
 python3 "$here/test-frame-completion.py" "$here/../.." "$cc"
 ${cc} -O2 -std=c11 -Wall -Wextra -Werror -I"$here/../.." \
@@ -408,6 +409,9 @@ nasm -f bin -I"$here/rom/" -o "$work/sysmmx/xemu/Complex_4627v1.03.bin" "$here/r
 mkdir -p "$work/sysfsw/xemu"
 cp "$work/sys/xemu/mcpx_1.0.bin" "$work/sysfsw/xemu/"
 nasm -f bin -I"$here/rom/" -o "$work/sysfsw/xemu/Complex_4627v1.03.bin" "$here/rom/x87-status.asm"
+mkdir -p "$work/sysfpload/xemu"
+cp "$work/sys/xemu/mcpx_1.0.bin" "$work/sysfpload/xemu/"
+nasm -f bin -I"$here/rom/" -o "$work/sysfpload/xemu/Complex_4627v1.03.bin" "$here/rom/x87-load-precision.asm"
 mkdir -p "$work/syspf/xemu"
 cp "$work/sys/xemu/mcpx_1.0.bin" "$work/syspf/xemu/"
 nasm -f bin -I"$here/rom/" -o "$work/syspf/xemu/Complex_4627v1.03.bin" "$here/rom/logic-parity.asm"
@@ -639,6 +643,21 @@ for hard in enabled disabled; do
       grep -q "^$want$" "$work/mmx-tags-$hard-$boost.txt" || {
         cat "$work/mmx-tags-$hard-$boost.txt"
         echo "FAIL: MMX tags ($hard/$boost)"; exit 1;
+      }
+    done
+  done
+done
+
+# Loads/moves preserve precision while arithmetic observes PC and RC.
+for hard in enabled disabled; do
+  for boost in enabled disabled; do
+    t "x87 load precision, hard FPU $hard, CPU Boost $boost" $h "$(path "$core")" "$(path "$work/sysfpload")" \
+      $vp --opt "xemu_hard_fpu=$hard" --opt "xemu_cpu_boost=$boost" --frames 60 --strict \
+      --peek 0x300000 --peek 0x300004 >"$work/x87-load-$hard-$boost.txt"
+    for want in "peek_0x300000=0x4b4f4c50" "peek_0x300004=0x00000000"; do
+      grep -q "^$want$" "$work/x87-load-$hard-$boost.txt" || {
+        cat "$work/x87-load-$hard-$boost.txt"
+        echo "FAIL: x87 load precision ($hard/$boost)"; exit 1;
       }
     done
   done

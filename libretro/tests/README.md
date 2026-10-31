@@ -542,6 +542,21 @@ unsupported indices raise #GP(0), matching the P6 index rules in Intel's
 [Optimization Reference Manual, B-14](https://download.intel.com/design/PentiumII/manuals/24512701.pdf).
 This does not emulate event counting or test the FastCPU sample end to end.
 
+`test-x87-load-precision.py CHECKOUT [CC]` checks real SoftFloat load helpers
+and executes the production hard-FPU TCG generators with a native arithmetic
+evaluator. It compares loads against exact native widening and arithmetic
+against SoftFloat across defined PC modes, all four rounding directions and
+boost on/off. It covers 36,060 soft-load cases, 136,000 hard-cache cases,
+integer conversion, moves/exchanges, comparisons, square root, flushes and
+the boost scratch-load bypass. It checks exception/precision restoration and
+special soft inputs too. The evaluator does not execute a translated guest
+block; `rom/x87-load-precision.asm` executes the load/move/conversion and
+arithmetic checks in translated guest code, including a helper boundary, under
+all four hard-FPU/CPU-boost combinations in `run.sh`. The Windows core also
+passes the existing x87 scratch and status ROMs in all four combinations with
+strict frame/audio cadence. Hard-FPU retains its existing binary64
+range/precision approximation.
+
 `test-win32-raw-socket.py CHECKOUT [CC] [--build-only EXE]` exercises production
 Windows AIO registration for raw Winsock handles and CRT-wrapped descriptors,
 callback readiness masks, replacement/removal and failed-registration rollback.
