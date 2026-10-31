@@ -50,6 +50,12 @@ void unswizzle_box(
     unsigned int slice_pitch,
     unsigned int bytes_per_pixel);
 
+/* Select the top-left sample of each factor x factor block directly into
+ * Morton order. pitch is the native linear pitch, before scaling. */
+void swizzle_rect_from_scaled(const uint8_t *src, unsigned width,
+    unsigned height, uint8_t *dst, unsigned pitch, unsigned bytes_per_pixel,
+    unsigned factor);
+
 static inline void unswizzle_rect(
     const uint8_t *src_buf,
     unsigned int width,

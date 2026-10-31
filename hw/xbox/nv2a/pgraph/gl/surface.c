@@ -1870,19 +1870,18 @@ static void surface_download_to_buffer(NV2AState *d, SurfaceBinding *surface,
         return;
     }
 
-    /* Read surface into memory */
+    bool gpu_shrink = downscale && surface_shrink_on_gpu(pg, surface);
+    bool cpu_shrink = downscale && !gpu_shrink;
     uint8_t *gl_read_buf = pixels;
-
     uint8_t *swizzle_buf = pixels;
     if (swizzle) {
-        /* a depth surface: the CPU swizzles it */
         assert(pg->surface_scale_factor == 1 || downscale);
-        swizzle_buf = scratch_reserve(&r->surf_scratch, surface->size);
-        gl_read_buf = swizzle_buf;
+        if (!cpu_shrink) {
+            swizzle_buf = scratch_reserve(&r->surf_scratch, surface->size);
+            gl_read_buf = swizzle_buf;
+        }
     }
-
-    bool gpu_shrink = downscale && surface_shrink_on_gpu(pg, surface);
-    if (downscale && !gpu_shrink) {
+    if (cpu_shrink) {
         pg->scale_buf = (uint8_t *)g_realloc(
             pg->scale_buf, pg->surface_scale_factor * pg->surface_scale_factor *
                                surface->size);
@@ -1896,7 +1895,12 @@ static void surface_download_to_buffer(NV2AState *d, SurfaceBinding *surface,
         rd_scale * surface->width,
         rd_scale * surface->height, flip, gl_read_buf);
 
-    if (downscale && !gpu_shrink) {
+    if (cpu_shrink && swizzle) {
+        swizzle_rect_from_scaled(pg->scale_buf, surface->width, surface->height,
+            pixels, surface->pitch, surface->fmt.bytes_per_pixel,
+            pg->surface_scale_factor);
+        swizzle = false; /* Already placed directly in guest Morton order. */
+    } else if (cpu_shrink) {
         assert(surface->pitch >= (surface->width * surface->fmt.bytes_per_pixel));
         uint8_t *out = swizzle_buf, *in = pg->scale_buf;
         for (unsigned int y = 0; y < surface->height; y++) {
@@ -2022,16 +2026,14 @@ static bool surface_download_harvest(NV2AState *d, SurfaceBinding *surface)
         glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
         return true;
     }
-    uint8_t *dst = pixels;
-    uint8_t *swizzle_buf = NULL;
     if (surface->swizzle) {
-        swizzle_buf = scratch_reserve(&pg->gl_renderer_state->surf_scratch,
-                                      surface->size);
-        dst = swizzle_buf;
-    }
-    if (shrink) {
+        /* The remaining swizzled case also shrinks: no native-size scratch
+         * image between the mapped readback and guest RAM. */
+        swizzle_rect_from_scaled(raw, surface->width, surface->height, pixels,
+            surface->pitch, surface->fmt.bytes_per_pixel, sf);
+    } else if (shrink) {
         assert(surface->pitch >= (surface->width * surface->fmt.bytes_per_pixel));
-        uint8_t *out = dst, *in = raw;
+        uint8_t *out = pixels, *in = raw;
         for (unsigned int y = 0; y < surface->height; y++) {
             surface_copy_shrink_row(out, in, surface->width,
                                     surface->fmt.bytes_per_pixel, sf);
@@ -2039,11 +2041,7 @@ static bool surface_download_harvest(NV2AState *d, SurfaceBinding *surface)
             out += surface->pitch;
         }
     } else {
-        memcpy(dst, raw, (size_t)surface->pitch * surface->height);
-    }
-    if (surface->swizzle) {
-        swizzle_rect(swizzle_buf, surface->width, surface->height, pixels,
-                     surface->pitch, surface->fmt.bytes_per_pixel);
+        memcpy(pixels, raw, (size_t)surface->pitch * surface->height);
     }
     glUnmapBuffer(GL_PIXEL_PACK_BUFFER);
     glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);

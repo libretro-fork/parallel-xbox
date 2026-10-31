@@ -182,3 +182,35 @@ MULTIVERSION(unswizzle_box)
 
 #undef C
 #undef MULTIVERSION
+
+static inline void swizzle_scaled_internal(const uint8_t *src, unsigned width,
+    unsigned height, uint8_t *dst, unsigned pitch, unsigned bpp, unsigned factor)
+{
+    uint32_t mx, my, mz, oy = 0;
+    generate_swizzle_masks(width, height, 1, &mx, &my, &mz);
+    size_t row_stride = (size_t)pitch * factor * factor;
+    size_t pixel_stride = (size_t)bpp * factor;
+    for (unsigned y = 0; y < height; y++) {
+        uint32_t ox = 0;
+        const uint8_t *row = src + y * row_stride;
+        for (unsigned x = 0; x < width; x++) {
+            memcpy(dst + (size_t)(ox | oy) * bpp, row + x * pixel_stride, bpp);
+            ox = (ox - mx) & mx;
+        }
+        oy = (oy - my) & my;
+    }
+}
+
+void swizzle_rect_from_scaled(const uint8_t *src, unsigned width,
+    unsigned height, uint8_t *dst, unsigned pitch, unsigned bpp, unsigned factor)
+{
+    assert(factor && pitch >= (size_t)width * bpp);
+    /* Keep common texel sizes constant so their copies inline, as in swizzle_box. */
+    switch (bpp) {
+    case 1: swizzle_scaled_internal(src, width, height, dst, pitch, 1, factor); break;
+    case 2: swizzle_scaled_internal(src, width, height, dst, pitch, 2, factor); break;
+    case 3: swizzle_scaled_internal(src, width, height, dst, pitch, 3, factor); break;
+    case 4: swizzle_scaled_internal(src, width, height, dst, pitch, 4, factor); break;
+    default: swizzle_scaled_internal(src, width, height, dst, pitch, bpp, factor); break;
+    }
+}

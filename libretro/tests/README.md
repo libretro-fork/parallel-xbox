@@ -1403,3 +1403,11 @@ converter, internal GLSL compiler, descriptor handling and barriers on Vulkan
 with synchronization validation, including drained source-buffer replacement
 and fallback preflight. Compute writes the existing RGBA image directly,
 removing the conversion-buffer-to-image copy; native filtering is unchanged.
+
+`test-gl-readback-fused.py` compiles the actual synchronous/pending GL
+readback functions and swizzler against mocked GL transfers and an independent
+Morton/sample oracle. It forces GPU-conversion fallbacks, checks flip/stride/
+format/scale and stale-PBO cleanup, and verifies that scaled swizzled paths
+allocate no native-size scratch image. Sanitizers run by default; native cross
+execution uses FUSED_READBACK_BINARY, FUSED_READBACK_SKIP_RUN and
+FUSED_READBACK_CFLAGS. These are CPU fallback/interface tests, not GL-driver tests.

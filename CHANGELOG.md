@@ -20,6 +20,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- OpenGL: fuse CPU downscale/swizzle fallback readbacks, avoiding a native-size scratch image and an extra pixel pass.
+
 - Vulkan: convert packed video overlays directly into the GPU image, avoiding CPU RGBA staging and its buffer-to-image copy; roughly halve CPU-written overlay bytes while preserving native filtering.
 
 - Signed G8B8 mip filtering now supports mirrored repeat on either or both axes, paired with wrap or clamp-to-edge. Texels reflect at each edge before signed interpolation, including mixed min/mag filters and Force LOD0. Existing supported address modes retain their shader keys and generated programs.
