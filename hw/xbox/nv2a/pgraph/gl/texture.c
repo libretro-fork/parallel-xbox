@@ -33,8 +33,19 @@
 
 static TextureBinding *generate_texture(const TextureShape s,
                                         const uint8_t *texture_data,
-                                        const uint8_t *palette_data, bool empty);
+                                        const uint8_t *palette_data, bool empty,
+                                        bool g8b8_lod_clamp);
 static void texture_binding_destroy(gpointer data);
+
+static bool g8b8_sampler_lod_clamp(const TextureShape *s, unsigned filter)
+{
+    unsigned min_filter = GET_MASK(filter, NV_PGRAPH_TEXFILTER0_MIN);
+    return s->color_format == NV097_SET_TEXTURE_FORMAT_COLOR_SZ_G8B8 &&
+           s->dimensionality == 2 && !s->cubemap && !s->border &&
+           s->min_mipmap_level > 0 && s->min_mipmap_level <= 2 &&
+           min_filter >= NV_PGRAPH_TEXFILTER0_MIN_BOX_NEARESTLOD &&
+           min_filter <= NV_PGRAPH_TEXFILTER0_MIN_TENT_TENT_LOD;
+}
 
 struct pgraph_texture_possibly_dirty_struct {
     hwaddr addr, size;
@@ -334,6 +345,7 @@ void pgraph_gl_bind_textures(NV2AState *d)
         if (filter & NV_PGRAPH_TEXFILTER0_BSIGNED) NV2A_UNIMPLEMENTED("NV_PGRAPH_TEXFILTER0_BSIGNED");
 
         TextureShape state = pgraph_get_texture_shape(pg, i);
+        bool g8b8_lod_clamp = g8b8_sampler_lod_clamp(&state, filter);
         bool force_anisotropy = pgraph_texture_force_anisotropy(&state, filter, address) &&
             r->supported_extensions.texture_filter_anisotropic &&
             r->supported_extensions.max_texture_anisotropy > 1.0f;
@@ -404,6 +416,7 @@ void pgraph_gl_bind_textures(NV2AState *d)
             can_reinterpret_argb_as_rgb565(pg, surface, &state);
         TextureBinding *tbind = r->texture_binding[i];
         if (!pg->texture_dirty[i] && tbind &&
+            tbind->g8b8_lod_clamp == g8b8_lod_clamp &&
             tbind->byte_reinterpret == surf_to_tex_bytes &&
             !(surf_to_tex_bytes && surface->upload_pending)) {
             bool reusable = false;
@@ -484,6 +497,7 @@ void pgraph_gl_bind_textures(NV2AState *d)
         key.state = state;
         key.byte_reinterpret = surf_to_tex_bytes;
         key.force_anisotropy = force_anisotropy;
+        key.g8b8_lod_clamp = g8b8_lod_clamp;
         key.texture_vram_offset = texture_vram_offset;
         key.texture_length = length;
         if (is_indexed) {
@@ -532,7 +546,7 @@ void pgraph_gl_bind_textures(NV2AState *d)
         if (key_out->binding == NULL) {
             // Must create the texture
             key_out->binding = generate_texture(state, texture_data, palette_data,
-                                               surf_to_tex_bytes);
+                                               surf_to_tex_bytes, g8b8_lod_clamp);
             if (key_out->binding->gl_target == GL_TEXTURE_2D) {
                 r->fresh_tex[r->fresh_tex_w++ % ARRAY_SIZE(r->fresh_tex)] =
                     key_out->binding->gl_texture;
@@ -933,7 +947,8 @@ static void upload_gl_texture(GLenum gl_target,
 
 static TextureBinding* generate_texture(const TextureShape s,
                                         const uint8_t *texture_data,
-                                        const uint8_t *palette_data, bool empty)
+                                        const uint8_t *palette_data, bool empty,
+                                        bool g8b8_lod_clamp)
 {
     ColorFormatInfo f = kelvin_color_format_gl_map[s.color_format];
 
@@ -1001,8 +1016,13 @@ static TextureBinding* generate_texture(const TextureShape s,
 
     /* Linear textures don't support mipmapping */
     if (!f.linear) {
+        /* Keep the original footprint for G8B8 lower clamps. Rebasing the
+         * image changes min/mag selection instead of clamping that LOD. */
         glTexParameteri(gl_target, GL_TEXTURE_BASE_LEVEL,
-            s.min_mipmap_level);
+            g8b8_lod_clamp ? 0 : s.min_mipmap_level);
+        if (g8b8_lod_clamp) {
+            glTexParameterf(gl_target, GL_TEXTURE_MIN_LOD, s.min_mipmap_level);
+        }
         glTexParameteri(gl_target, GL_TEXTURE_MAX_LEVEL,
             s.max_mipmap_level);
     }
@@ -1021,6 +1041,7 @@ static TextureBinding* generate_texture(const TextureShape s,
     ret->draw_time = empty ? -1 : 0;
     ret->data_hash = 0;
     ret->byte_reinterpret = empty;
+    ret->g8b8_lod_clamp = g8b8_lod_clamp;
     ret->min_filter = 0xFFFFFFFF;
     ret->mag_filter = 0xFFFFFFFF;
     ret->lod_bias = 0xFFFFFFFF;

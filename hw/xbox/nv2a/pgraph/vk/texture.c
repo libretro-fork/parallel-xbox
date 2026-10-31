@@ -181,23 +181,27 @@ static bool level_from_vram(PGRAPHState *pg, TextureLevel *level,
     return true;
 }
 
-/* Linear rows retain guest pitch, but the copy never reads padding after
- * the last row. Keep the full guest span for direct VRAM eligibility. */
+/* Direct VRAM reads retain guest pitch. Staged fallback rows only contain
+ * texels: padding is neither copied nor reserved in the staging ring. */
 static void stage_linear_2d(PGRAPHState *pg, TextureLevel *level,
                             const uint8_t *data, unsigned width,
                             unsigned height, unsigned pitch, unsigned bpp)
 {
     size_t guest_size = (size_t)pitch * height;
-    if (!level_from_vram(pg, level, data, width, height, 1, guest_size, bpp)) {
-        size_t row_size = (size_t)width * bpp;
-        size_t copy_size = guest_size;
-        if (height && row_size <= pitch) {
-            copy_size -= pitch - row_size;
-        }
-        uint8_t *dst = stage_level(pg, level, width, height, 1, copy_size);
-        memcpy(dst, data, copy_size);
+    if (level_from_vram(pg, level, data, width, height, 1, guest_size, bpp)) {
+        level->row_length = pitch / bpp;
+        return;
     }
-    level->row_length = pitch / bpp;
+    size_t row_size = (size_t)width * bpp;
+    uint8_t *dst = stage_level(pg, level, width, height, 1, row_size * height);
+    if (row_size == pitch) {
+        memcpy(dst, data, row_size * height);
+    } else {
+        for (unsigned y = 0; y < height; y++) {
+            memcpy(dst + (size_t)y * row_size, data + (size_t)y * pitch,
+                   row_size);
+        }
+    }
 }
 
 /* S3TC blocks of a level, as they are, into the ring: the Xbox's 2D block

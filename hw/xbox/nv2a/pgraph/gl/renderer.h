@@ -134,6 +134,7 @@ typedef struct TextureBinding {
     int draw_time;
     uint64_t data_hash;
     bool byte_reinterpret;
+    bool g8b8_lod_clamp;
     unsigned int scale;
     unsigned int min_filter;
     unsigned int mag_filter;
@@ -243,6 +244,9 @@ typedef struct TextureKey {
     /* GL stores sampler parameters on the image. Keep forced AF separate
      * from point/data bindings of the same guest texture. */
     bool force_anisotropy;
+    /* Base-relative nonmip views must not share sampler parameters with
+     * G8B8 views using an absolute sampler minimum. */
+    bool g8b8_lod_clamp;
     hwaddr texture_vram_offset;
     hwaddr texture_length;
     hwaddr palette_vram_offset;

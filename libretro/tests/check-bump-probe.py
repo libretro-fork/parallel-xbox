@@ -21,16 +21,19 @@ def mix(a, b, weight):
 
 
 def expected_mip(case, force_lod0):
+    if case.get("sampler_transition") == "mip-to-lod0":
+        raise ValueError("nonmip transition controls require per-backend parent comparison")
     mode = int(case["mip_filter"])
     linear = mode in (4, 6)
     lod = (-2, 0, 1)[("magnified", "near_magnified", "minified").index(case["coordinate"])]
     computed_lod = lod + float(case["lod_bias"])
-    if case["mode"] == "mixed_mip_color":
-        linear = linear if computed_lod > 0 else int(case["mag_filter"]) == 2
     maximum = int(case["max_lod"]) if case.get("max_lod") else (
         1 if (int(case["id"]) // 3) % 2 else 2)
     minimum = int(case.get("min_lod") or 0)
     minimum = min(minimum, maximum)
+    if case["mode"] == "mixed_mip_color":
+        minifying = (minimum > 0 and not force_lod0) or computed_lod > 0
+        linear = linear if minifying else int(case["mag_filter"]) == 2
     lod = 0 if force_lod0 else min(maximum, max(minimum, lod + float(case["lod_bias"])))
     if mode in (3, 4):
         lod = math.floor(lod + 0.5)

@@ -338,17 +338,18 @@ void pgraph_glsl_set_psh_state(PGRAPHState *pg, PshState *state)
             mip_clamp = mip_clamp_u && mip_clamp_v;
             mip_mirror_u = addru == NV_PGRAPH_TEXADDRESS0_ADDRU_MIRROR;
             mip_mirror_v = addrv == NV_PGRAPH_TEXADDRESS0_ADDRU_MIRROR;
-            /* GL queries/fetches are relative to BASE_LEVEL; Vulkan needs
-             * an explicit lower bound. Cover levels one/two with matching
-             * filters while retaining the existing path for higher clamps.
-             * Mixed filters still require a zero lower clamp because GL's
-             * base level also changes the min/mag footprint decision. */
-            mip_filter = (mip_min_lod == 0 ||
-                          (mip_min_lod <= 2 && !mixed_mip_filter)) &&
+            /* Both renderers keep the original footprint for these lower
+             * clamps. A positive sampler minimum always selects minification. */
+            mip_filter = mip_min_lod <= 2 &&
                 (addru == NV_PGRAPH_TEXADDRESS0_ADDRU_WRAP || mip_clamp_u || mip_mirror_u) &&
                 (addrv == NV_PGRAPH_TEXADDRESS0_ADDRU_WRAP || mip_clamp_v || mip_mirror_v) &&
                 min_filter >= NV_PGRAPH_TEXFILTER0_MIN_BOX_NEARESTLOD &&
                 min_filter <= NV_PGRAPH_TEXFILTER0_MIN_TENT_TENT_LOD;
+            if (mip_filter && mip_min_lod) {
+                mixed_mip_filter = false;
+                linear_filter = mip_min_linear;
+                point_filter = !mip_min_linear;
+            }
         }
         if (gb && mode == PS_TEXTUREMODES_PROJECT2D && !cubemap &&
             state->dim_tex[i] == 2 && !state->border_adjust[i] &&
@@ -374,7 +375,9 @@ void pgraph_glsl_set_psh_state(PGRAPHState *pg, PshState *state)
                     (mixed_filter ? 64 | (mag_filter == 2 ? 32 : 16) : 0) |
                     (mip_filter ? 128 | (min_filter >=
                         NV_PGRAPH_TEXFILTER0_MIN_BOX_TENT_LOD ? 64 : 0) |
-                        (mip_lod0 ? 32 : 0) : 0);
+                        ((mip_lod0 || (mip_min_lod &&
+                          (mip_min_linear || min_filter ==
+                           NV_PGRAPH_TEXFILTER0_MIN_BOX_TENT_LOD))) ? 32 : 0) : 0);
                 if (mip_filter && mixed_mip_filter) {
                     state->g8b8_mip_flags |= 1u << i;
                 }
@@ -1207,13 +1210,14 @@ static void psh_append_signed_g8b8_mips(const struct PixelShader *ps, MString *v
             source, source, source, source,
             lod,
             source, source, signs & 16 ? ">" : "<=");
-    } else if (signs & 32) {
+    } else if ((signs & 32) && !min_lod) {
         /* Some drivers' LOD queries ignore a zero maximum even when their
          * sampling honors it. Also avoid querying an overridden footprint. */
         mstring_append_fmt(vars, "float gbLod%d = 0.0;\n", source);
-    } else if (ps->opts.vulkan && min_lod) {
+    } else if (min_lod && (ps->opts.vulkan || (signs & 32))) {
         /* Image LOD queries do not reliably apply the sampler's lower
-         * clamp. Explicit fetches must not read below the guest minimum. */
+         * clamp. New GL lower-clamp programs also use absolute mip levels;
+         * their bit-five tag keeps old base-relative shader seeds distinct. */
         mstring_append_fmt(vars,
             "float gbLod%d = max(textureQueryLod(texSamp%d, gbCoord%d).x, %u.0);\n",
             source, source, source, min_lod);

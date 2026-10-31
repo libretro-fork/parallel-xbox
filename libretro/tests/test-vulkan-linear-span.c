@@ -135,7 +135,7 @@ int main(void)
         unsigned w=widths[wi],h=heights[hi],bpp=pixel_bytes[f];
         unsigned pitch=padding==2?128:w*bpp+padding*4;
         unsigned depth=1;
-        size_t guest_bytes=(size_t)pitch*h, active=(size_t)pitch*(h-1)+w*bpp;
+        size_t guest_bytes=(size_t)pitch*h;
         size_t bytes=(size_t)w*h*bpp,offset=kind==2?33:32;
         Buffer upload=buffer(guest_bytes+64),staging=buffer(guest_bytes+16),output=buffer(bytes);
         memset(upload.mapped,0xab,guest_bytes+64); memset(staging.mapped,0x9b,guest_bytes+16);
@@ -154,15 +154,15 @@ int main(void)
         bool eligible=kind==0;
         assert((level.source==LEVEL_VRAM)==eligible);
         assert(level.width==w && level.height==h && level.depth==1 && !level.crop_offset);
-        assert(level.row_length==pitch/bpp);
+        assert(level.row_length==(eligible?pitch/bpp:0));
         if(eligible) {
             assert(!copy_calls && !state.pgraph.head && level.offset==offset && level.size==guest_bytes);
             direct++;
         } else {
-            assert(copy_calls==1 && state.pgraph.head==active && level.offset==0 && level.size==active);
-            assert(!memcmp(staging.mapped,upload.mapped+offset,active));
-            for(size_t i=active;i<guest_bytes+16;i++) assert(staging.mapped[i]==0x9b);
-            omitted+=guest_bytes-active;
+            assert(copy_calls==(pitch==w*bpp?1:h) && state.pgraph.head==bytes && level.offset==0 && level.size==bytes);
+            assert(!memcmp(staging.mapped,expected,bytes));
+            for(size_t i=bytes;i<guest_bytes+16;i++) assert(staging.mapped[i]==0x9b);
+            omitted+=guest_bytes-bytes;
         }
         VkBufferImageCopy copy=texture_level_copy(&level,0,0);
         VkImageCreateInfo ii = { .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,

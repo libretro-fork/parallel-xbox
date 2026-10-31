@@ -22,6 +22,13 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 - OpenGL: reuse lazy fallback-transfer scratch capacity instead of reallocating on every scaled/irregular upload or readback; discard obsolete contents on growth and release the buffer with the renderer.
 
+- Signed G8B8 lower mip clamps one/two now support mixed min/mag filters. OpenGL applies a sampler minimum without rebasing the image, matching Vulkan filter selection for unsigned channels too. Positive lower clamps reuse minification-only reconstruction; Force LOD0 retains mixed filtering. Separate cached views preserve existing nonmipmap sampler behavior. Existing zero-lower-clamp keys/programs and serialized state layout remain unchanged.
+- Pack only visible texels when linear Vulkan textures need staging, avoiding
+  guest row-padding copies and staging-ring reservations. Retain direct VRAM
+  reads and the single-copy fast path for tightly packed rows. Sparse pitches
+  save substantial bytes; tiny padded rows can have extra row-copy overhead.
+
+
 - OpenGL: swap flipped readback rows in place on AVX2 CPUs without a heap row temporary; keep the tuned portable copy path and handle empty/single-row images safely.
 
 - Keep a retired Vulkan overlay's image view with its pooled image, avoiding
@@ -34,12 +41,14 @@ What changed in the libretro core of this fork, newest first. Changes that come 
   support once at initialization; keep CPU conversion on unsupported devices
   and defer image-dependent descriptor bindings to a retired upload slot.
 
+
 - OpenGL: upload representable pitched surfaces directly and expand pitched CPU fallbacks without repacking; remove the dedicated 4 MiB pitch scratch buffer.
 
 - Reuse fence-retired Vulkan video-overlay image allocations through the existing
   budget-aware image pool, and keep the dimension-independent sampler across
   mode changes. Repeated modes avoid fresh VRAM allocations when a compatible
   image has retired; new modes and replacement image views can still allocate.
+
 
 - Signed G8B8 textures with matching min/mag filters now decode before mip filtering when the lower mip clamp selects level one or two. Vulkan explicit fetches enforce that lower bound even on drivers whose LOD query omits it. Existing zero-lower-clamp shader keys and programs remain unchanged; mixed filters and higher lower clamps retain their previous path.
 

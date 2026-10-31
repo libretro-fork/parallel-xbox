@@ -98,7 +98,7 @@ while an unlinker owns the list. It includes the production implementation.
 `run.sh` runs it through the alert, keyed-event and event tiers with Wine.
 
 `test-signed-g8b8.py CHECKOUT CORE HARNESS SCRATCH` builds isolated guest bump
-and color probes and checks 54144 cases on each of OpenGL and Vulkan, including
+and color probes and checks 60288 cases on each of OpenGL and Vulkan, including
 all channel-sign combinations for the color probe, with quality overrides off
 and on. Mixed LOD0 filters additionally cover magnification/minification and
 sampler LOD biases of -4, 0 and +4. Three-level mipmapped probes cover all four
@@ -108,22 +108,44 @@ and mixed min/mag reconstruction.
 Clamp-to-edge matrices add independent X/Y data and samples inside, below,
 above and at opposite U/V edges, with matching and mixed filters. New
 independent-axis matrices are covered at bias +0.25; `--extended-address-biases` repeats
-these at -4/0/+0.25/+4 (118656 total cases per renderer). The probe builder
+these at -4/0/+0.25/+4 (143232 total cases per renderer). The probe builder
 accepts `--mip-clamp-axis u` or `v` for these independent-axis cases.
 Mirrored U/V addressing is covered against wrap, edge and mirror partners,
 with matching/mixed filters and bias +0.25 (all four biases in extended mode).
 Use `--mip-address-u mirror --mip-address-v wrap` for an isolated matrix;
 each explicit address accepts `wrap`, `edge` or `mirror`.
-Lower-clamp matrices add 6144 cases per renderer at bias +0.25: level one
+Lower-clamp matrices add 12288 cases per renderer at bias +0.25: level one
 across all nine address pairs with trilinear filtering, other mip filters
 with wrap addressing, and level two with all four mip filters. These cover
-matching min/mag filters only; nonzero lower clamps with mixed filters and
-clamps above level two retain their previous path. Use `--min-lod 1` or `2`
-with the probe builder. Force LOD0 overrides the guest lower clamp.
+matching and mixed min/mag filters. Positive lower clamps select the
+minification filter; the GL sampler retains the original base image and
+applies a minimum LOD instead of rebasing it. Mixed-filter matrices repeat
+all four biases in extended mode. Clamps above level two retain their
+previous path. Use `--min-lod 1` or `2`
+with the probe builder. Force LOD0 overrides the guest lower clamp and
+retains mixed min/mag selection. Nonzero lower-clamp reconstruction uses a
+new absolute-LOD tag in the existing stage byte, keeping legacy GL seed
+programs distinct. Zero-lower-clamp shader keys remain unchanged.
 Cross-mip comparisons allow two color LSBs for native LOD precision; original
 single-level cases still require exact backend agreement. `run.sh` runs it on Linux
 when Vulkan is available. See `docs/bump-filter-probe.md` for the model and
 hardware-validation limits. The test code is absent from normal emulation.
+
+`test-g8b8-sampler-views.py CHECKOUT [CC]` checks production GL sampler-view
+classification, 512 filter-mode transitions, 64 reuse gates, GL parameter
+selection and unchanged cache-key/binding layouts. Mip and nonmip views of
+the same image must remain separate when their base/minimum settings differ.
+
+`test-g8b8-nonmip-transitions.py CHECKOUT PARENT CANDIDATE HARNESS SCRATCH`
+compares 1536 nonmip pixels per renderer against the parent after priming the
+same image with mip filtering. It checks each backend's existing behavior;
+it does not require unsupported nonmip-chain sampling to agree across APIs.
+Use `--assembler yasm` when nasm is unavailable.
+
+Lower-clamp scalar matrices first prime a nonmip view, then draw with mip
+filtering. The builder's `--sampler-transition lod0-to-mip` selects this
+sequence. The reverse `mip-to-lod0` sequence needs the parent-comparison
+runner above rather than `check-bump-probe.py`.
 
 `test-signed-g8b8-state.py CHECKOUT [CC]` checks the production shader address
 invalidation predicate over 262144 register combinations and verifies that
@@ -133,7 +155,8 @@ serialized pixel-shader state size and field offsets.
 Another 4608 cases verify that matching, base-only wrap/edge/mirror filters reuse the
 single-level point/gather shader keys without clearing other stages' flags.
 An additional 9216 cases verify independent-axis flags and preserve other stages;
-1024 more check lower-mip bitplanes without altering the serialized layout.
+2048 more check lower-mip bitplanes, matching/mixed canonicalization and
+other-stage preservation without altering the serialized layout.
 
 `run.sh` runs every test script here. The extracted-code tests (`test-*.py`, which
 compile production functions into a fixture) run for either core; the ones
@@ -1346,6 +1369,14 @@ Resumed GPU work must prevent idle clock skips; after completion, core-only
 redraw/reset kicks remain uncounted. No-op/IRQ-enable writes do
 not invent work. The dedicated GitHub Actions job needs no game assets or GPU;
 the same test also runs in the regular suite.
+
+`test-linear-texture-staging.py CHECKOUT [CC]` runs production linear staging
+and copy-region construction without a GPU. Thirty thousand width/height/pitch,
+alignment and direct-buffer cases verify sampled texels, zero-copy eligibility,
+exact staging bytes and no padding fetches. The sparse-pitch case reserves and
+copies 1 KiB instead of 256 KiB. It also runs in the native CI regression job.
+The Vulkan `test-vulkan-linear-span.py` oracle checks the corresponding real
+GPU copy regions when Vulkan and validation layers are available.
 
 `test-pvideo-image-pool.py CHECKOUT [CC]` compiles production overlay acquisition
 and the shared Vulkan image pool. Twenty thousand alternating modes must use
