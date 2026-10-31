@@ -22,6 +22,11 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 - OpenGL: swap flipped readback rows in place on AVX2 CPUs without a heap row temporary; keep the tuned portable copy path and handle empty/single-row images safely.
 
+- Keep a retired Vulkan overlay's image view with its pooled image, avoiding
+  view creation when returning to a compatible mode. Fence retirement and
+  existing image-pool budgets protect reuse; texture/surface acquisitions
+  discard the overlay view so their own component mappings remain correct.
+
 - Prepare the fixed Vulkan overlay conversion pipeline, descriptor pool/sets
   and sampler before gameplay instead of on first use. Query storage-image
   support once at initialization; keep CPU conversion on unsupported devices

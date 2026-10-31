@@ -86,6 +86,7 @@ static void retire_pvideo_image(PGRAPHVkState *r)
         .allocation = d->pvideo.allocation,
         .image_ci = d->pvideo.image_ci,
         .pool_ok = true,
+        .pool_view = true,
         .aux_after = r->aux_submitted,
     };
     pgraph_vk_trash_push(r, &old);
@@ -101,8 +102,8 @@ static void acquire_pvideo_image(PGRAPHVkState *r, const VkImageCreateInfo *ci)
 {
     PGRAPHVkDisplayState *d = &r->display;
     d->pvideo.image_ci = *ci;
-    if (!pgraph_vk_image_pool_get(r, ci, &d->pvideo.image,
-                                &d->pvideo.allocation)) {
+    if (!pgraph_vk_image_pool_get_with_view(r, ci, &d->pvideo.image,
+                                &d->pvideo.allocation, &d->pvideo.image_view)) {
         VmaAllocationCreateInfo alloc_create_info = {
             .usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE,
         };
@@ -165,20 +166,21 @@ static bool create_pvideo_image(PGRAPHState *pg, int width, int height)
     };
     acquire_pvideo_image(r, &image_create_info);
 
-    VkImageViewCreateInfo image_view_create_info = {
-        .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-        .image = d->pvideo.image,
-        .viewType = VK_IMAGE_VIEW_TYPE_2D,
-        .format = VK_FORMAT_R8G8B8A8_UNORM,
-        .subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-        .subresourceRange.baseMipLevel = 0,
-        .subresourceRange.levelCount = image_create_info.mipLevels,
-        .subresourceRange.baseArrayLayer = 0,
-        .subresourceRange.layerCount = image_create_info.arrayLayers,
-    };
-    VK_CHECK(vkCreateImageView(r->device, &image_view_create_info, NULL,
-                               &d->pvideo.image_view));
-
+    if (d->pvideo.image_view == VK_NULL_HANDLE) {
+        VkImageViewCreateInfo image_view_create_info = {
+            .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+            .image = d->pvideo.image,
+            .viewType = VK_IMAGE_VIEW_TYPE_2D,
+            .format = VK_FORMAT_R8G8B8A8_UNORM,
+            .subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+            .subresourceRange.baseMipLevel = 0,
+            .subresourceRange.levelCount = image_create_info.mipLevels,
+            .subresourceRange.baseArrayLayer = 0,
+            .subresourceRange.layerCount = image_create_info.arrayLayers,
+        };
+        VK_CHECK(vkCreateImageView(r->device, &image_view_create_info, NULL,
+                                   &d->pvideo.image_view));
+    }
     d->pvideo.seq = ++r->texture_binding_seq;
     d->pvideo.width = width;
     d->pvideo.height = height;

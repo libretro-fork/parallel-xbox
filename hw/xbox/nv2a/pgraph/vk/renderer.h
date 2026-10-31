@@ -637,8 +637,9 @@ typedef struct PGRAPHVkState {
         VkImageView image_view;
         VkImage image;
         VmaAllocation allocation;
-        VkImageCreateInfo image_ci; /* texture images: pool key */
+        VkImageCreateInfo image_ci; /* pooled image creation key */
         bool pool_ok;
+        bool pool_view; /* retain the overlay's canonical 2D view with its image */
         /* the submission that may last use it: destroyed once it has
          * retired (pgraph_vk_slot_retired) */
         uint32_t retire_after;
@@ -646,10 +647,11 @@ typedef struct PGRAPHVkState {
         uint64_t aux_after;
     } *trash;                       /* grown as needed: it never overflows */
     int trash_n, trash_cap;
-    /* Retired texture and surface images kept for reuse
+    /* Retired texture, surface and overlay images kept for reuse
      * (pgraph_vk_image_pool_put). */
     struct XemuVkPooledImage {
         VkImage image;
+        VkImageView view; /* optional canonical overlay view; never a texture view */
         VmaAllocation allocation;
         VkImageCreateInfo ci;
         size_t bytes;
@@ -932,6 +934,11 @@ bool pgraph_vk_image_pool_put(PGRAPHVkState *r, VkImage image,
                               const VkImageCreateInfo *ci);
 bool pgraph_vk_image_pool_get(PGRAPHVkState *r, const VkImageCreateInfo *ci,
                               VkImage *image, VmaAllocation *allocation);
+bool pgraph_vk_image_pool_put_with_view(PGRAPHVkState *r, VkImage image,
+    VmaAllocation allocation, const VkImageCreateInfo *ci, VkImageView view);
+bool pgraph_vk_image_pool_get_with_view(PGRAPHVkState *r,
+    const VkImageCreateInfo *ci, VkImage *image, VmaAllocation *allocation,
+    VkImageView *view);
 void pgraph_vk_image_pool_flush(PGRAPHVkState *r);
 void pgraph_vk_check_memory_budget(PGRAPHState *pg);
 

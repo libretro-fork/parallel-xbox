@@ -9,7 +9,7 @@ def function(path,name):
  while depth:depth+=(s[b]=='{')-(s[b]=='}');b+=1
  return s[a:b]
 base='hw/xbox/nv2a/pgraph/vk/'
-parts=[function(base+'texture.c',n) for n in ['image_ci_equal','image_pool_drop','image_pool_heap_over_budget','pgraph_vk_image_pool_put','pgraph_vk_image_pool_get','pgraph_vk_image_pool_flush']]
+parts=[function(base+'texture.c',n) for n in ['image_ci_equal','image_pool_drop','image_pool_heap_over_budget','pgraph_vk_image_pool_put_with_view','pgraph_vk_image_pool_get_with_view','pgraph_vk_image_pool_put','pgraph_vk_image_pool_get','pgraph_vk_image_pool_flush']]
 parts.append(function(base+'display.c','acquire_pvideo_image'))
 src=(r/(base+'texture.c')).read_text();limit=re.search(r'^#define IMAGE_POOL_MAX_BYTES .+$',src,re.M)[0]
 code=Path(__file__).with_suffix('.c').read_text().replace('/* LIMIT */',limit).replace('/* PRODUCTION */','\n'.join(parts))

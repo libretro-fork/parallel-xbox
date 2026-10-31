@@ -61,6 +61,7 @@ static void vkUpdateDescriptorSets(unsigned device,unsigned count,const VkWriteD
 }
 static void pgraph_vk_poll_display_retired(PGRAPHVkState *r){r->display.settled=gpu_display;}
 static bool pgraph_vk_image_pool_put(PGRAPHVkState *r,VkImage im,VmaAllocation a,const VkImageCreateInfo *ci){(void)r;assert(im==a&&ci);assert(last_aux[im]<=gpu_aux&&last_display[im]<=gpu_display);return false;}
+static bool pgraph_vk_image_pool_put_with_view(PGRAPHVkState *r,VkImage im,VmaAllocation a,const VkImageCreateInfo *ci,VkImageView view){assert(view==im);return pgraph_vk_image_pool_put(r,im,a,ci);}
 static void check_destroy(unsigned h){assert(h&&!destroyed[h]&&last_aux[h]<=gpu_aux&&last_display[h]<=gpu_display);}
 static void vkDestroySampler(unsigned d,unsigned h,void *p){assert(d==7&&!p);check_destroy(h);}
 static void vkDestroyImageView(unsigned d,unsigned h,void *p){assert(d==7&&!p);check_destroy(h);}

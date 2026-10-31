@@ -1621,6 +1621,9 @@ static bool image_ci_equal(const VkImageCreateInfo *a,
 static void image_pool_drop(PGRAPHVkState *r, int i)
 {
     struct XemuVkPooledImage *p = &r->image_pool[i];
+    if (p->view) {
+        vkDestroyImageView(r->device, p->view, NULL);
+    }
     vmaDestroyImage(r->allocator, p->image, p->allocation);
     r->image_pool_bytes -= p->bytes;
     r->image_pool[i] = r->image_pool[--r->image_pool_n];
@@ -1634,9 +1637,8 @@ static bool image_pool_heap_over_budget(PGRAPHVkState *r, uint32_t heap)
     return budgets[heap].usage > budgets[heap].budget;
 }
 
-bool pgraph_vk_image_pool_put(PGRAPHVkState *r, VkImage image,
-                              VmaAllocation allocation,
-                              const VkImageCreateInfo *ci)
+bool pgraph_vk_image_pool_put_with_view(PGRAPHVkState *r, VkImage image,
+    VmaAllocation allocation, const VkImageCreateInfo *ci, VkImageView view)
 {
     if (allocation == VK_NULL_HANDLE) {
         return false;
@@ -1676,6 +1678,7 @@ bool pgraph_vk_image_pool_put(PGRAPHVkState *r, VkImage image,
     }
     struct XemuVkPooledImage *p = &r->image_pool[r->image_pool_n++];
     p->image = image;
+    p->view = view;
     p->allocation = allocation;
     p->ci = *ci;
     p->bytes = ai.size;
@@ -1685,12 +1688,14 @@ bool pgraph_vk_image_pool_put(PGRAPHVkState *r, VkImage image,
     return true;
 }
 
-bool pgraph_vk_image_pool_get(PGRAPHVkState *r, const VkImageCreateInfo *ci,
-                              VkImage *image, VmaAllocation *allocation)
+bool pgraph_vk_image_pool_get_with_view(PGRAPHVkState *r,
+    const VkImageCreateInfo *ci, VkImage *image, VmaAllocation *allocation,
+    VkImageView *view)
 {
     for (int i = 0; i < r->image_pool_n; i++) {
         if (image_ci_equal(&r->image_pool[i].ci, ci)) {
             *image = r->image_pool[i].image;
+            *view = r->image_pool[i].view;
             *allocation = r->image_pool[i].allocation;
             r->image_pool_bytes -= r->image_pool[i].bytes;
             r->image_pool[i] = r->image_pool[--r->image_pool_n];
@@ -1698,6 +1703,28 @@ bool pgraph_vk_image_pool_get(PGRAPHVkState *r, const VkImageCreateInfo *ci,
         }
     }
     return false;
+}
+
+/* Texture/surface callers create views with their own component mapping and
+ * shape. Only overlay callers may reuse the pool's canonical overlay view. */
+bool pgraph_vk_image_pool_put(PGRAPHVkState *r, VkImage image,
+    VmaAllocation allocation, const VkImageCreateInfo *ci)
+{
+    return pgraph_vk_image_pool_put_with_view(r, image, allocation, ci,
+                                             VK_NULL_HANDLE);
+}
+
+bool pgraph_vk_image_pool_get(PGRAPHVkState *r, const VkImageCreateInfo *ci,
+    VkImage *image, VmaAllocation *allocation)
+{
+    VkImageView view;
+    if (!pgraph_vk_image_pool_get_with_view(r, ci, image, allocation, &view)) {
+        return false;
+    }
+    if (view) {
+        vkDestroyImageView(r->device, view, NULL);
+    }
+    return true;
 }
 
 void pgraph_vk_image_pool_flush(PGRAPHVkState *r)
