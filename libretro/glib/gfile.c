@@ -24,6 +24,7 @@
 #include <sys/mman.h>
 #endif
 
+#include <retro_atomic.h>
 #include <compat/strl.h>
 #include <file/file_path.h>
 #include <retro_dirent.h>
@@ -374,17 +375,23 @@ gchar *g_get_current_dir(void)
 /* the system's shared data directories: GLib's own defaults */
 const gchar *const *g_get_system_data_dirs(void)
 {
-    static const gchar *dirs[2];
-    static gsize initialized;
+    static retro_atomic_ptr_t published;
+    const gchar **dirs = retro_atomic_load_acquire_ptr(&published);
 
-    if (g_once_init_enter(&initialized)) {
+    if (!dirs) {
+        const gchar **candidate = g_new0(const gchar *, 2);
 #ifdef _WIN32
         const gchar *d = g_getenv("ProgramData");
-        dirs[0] = d && *d ? d : g_get_tmp_dir();
+        candidate[0] = d && *d ? d : g_get_tmp_dir();
 #else
-        dirs[0] = "/usr/share";
+        candidate[0] = "/usr/share";
 #endif
-        g_once_init_leave(&initialized, 1);
+        if (retro_atomic_cas_ptr(&published, NULL, candidate)) {
+            dirs = candidate;
+        } else {
+            g_free(candidate);
+            dirs = retro_atomic_load_acquire_ptr(&published);
+        }
     }
     return dirs;
 }

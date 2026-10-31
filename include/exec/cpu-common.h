@@ -24,8 +24,6 @@ void cpu_exec_init_all(void);
 
 #define REAL_HOST_PAGE_ALIGN(addr) ROUND_UP((addr), qemu_real_host_page_size())
 
-/* The CPU list lock nests outside page_(un)lock or mmap_(un)lock */
-extern QemuMutex qemu_cpu_list_lock;
 void qemu_init_cpu_list(void);
 
 int cpu_get_free_index(void);

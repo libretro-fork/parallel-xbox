@@ -24,6 +24,7 @@ static GHashTable *threaded_hash;
 static GTree *threaded_tree;
 static GDateTime *threaded_date;
 static void *threaded_default;
+static void *threaded_dirs;
 static GData *threaded_data;
 
 static GLIB_TEST_FN glib_test_thread(void *opaque)
@@ -38,6 +39,14 @@ static GLIB_TEST_FN glib_test_thread(void *opaque)
     __atomic_compare_exchange_n(&threaded_default, &expected_context, context,
                                 FALSE, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE);
     if (context != __atomic_load_n(&threaded_default, __ATOMIC_ACQUIRE)) {
+        __atomic_add_fetch(&threading_failures, 1, __ATOMIC_RELAXED);
+    }
+    const gchar *const *dirs = g_get_system_data_dirs();
+    void *expected_dirs = NULL;
+    __atomic_compare_exchange_n(&threaded_dirs, &expected_dirs, (void *)dirs,
+                                FALSE, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE);
+    if (dirs != __atomic_load_n(&threaded_dirs, __ATOMIC_ACQUIRE) ||
+        !dirs[0]) {
         __atomic_add_fetch(&threading_failures, 1, __ATOMIC_RELAXED);
     }
     for (unsigned i = 0; i < 128; i++) {
@@ -70,6 +79,12 @@ static GLIB_TEST_FN glib_test_thread(void *opaque)
         g_ptr_array_unref(threaded_array);
         g_date_time_unref(threaded_date);
         (void)g_random_int();
+        gint32 sample = g_random_int_range(INT32_MIN, INT32_MAX);
+        gint32 narrow = g_random_int_range(-7, 11);
+        if (sample == INT32_MAX || narrow < -7 || narrow >= 11 ||
+            g_random_int_range(9, 10) != 9) {
+            __atomic_add_fetch(&threading_failures, 1, __ATOMIC_RELAXED);
+        }
     }
     return 0;
 }

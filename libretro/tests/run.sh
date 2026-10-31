@@ -216,6 +216,10 @@ mkdir -p "$work/glib"
 # shellcheck disable=SC2086
 ${cc} $glibflags -o "$work/bin/glibtest" $glibsrc -lpthread
 "$work/bin/glibtest" "$work/glib"
+${cc} -O2 -std=gnu11 -Wall -DHAVE_THREADS -I"$lrc/include" \
+    -o "$work/bin/mpsctest" "$here/test-mpsc.c" "$lrc/rthreads/rthreads.c" -lpthread
+"$work/bin/mpsctest"
+python3 "$here/test-cpu-work.py" "$here/../.." "$cc"
 case $h in
 wine*)
     # shellcheck disable=SC2086

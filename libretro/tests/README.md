@@ -1,5 +1,13 @@
 # The core's tests
 
+`test-cpu-work.py CHECKOUT [CC]` exercises production CPU work dispatch:
+eight publishers, stack-backed synchronous requests, asynchronous reclamation,
+exclusive callbacks, nested dispatch, and FIFO ordering. `CPU_WORK_CFLAGS`
+adds sanitizer flags. A MinGW cross-build can set `CPU_WORK_BINARY` and
+`CPU_WORK_SKIP_RUN=1` to retain an executable for native Windows testing.
+`test-mpsc.c` stresses eight producers and immediate node reclamation over
+800000 items; link it with libretro-common's rthreads implementation.
+
 `test-eventcount-spin.c` checks Windows eventcount notifications before waiter
 publication, concurrent publication during list detachment, and detachment
 while an unlinker owns the list. It includes the production implementation.

@@ -33,8 +33,8 @@
 #include "qemu/bitmap.h"
 #include "qemu/rcu_queue.h"
 #include <retro_atomic.h>
+#include <retro_mpsc.h>
 #include "qemu/queue.h"
-#include "qemu/lockcnt.h"
 #include "qemu/thread.h"
 #include "qom/object.h"
 
@@ -441,10 +441,7 @@ struct qemu_work_item;
  * @sem: WIN32 only semaphore used only for qtest
  * @thread_id: native thread id of vCPU, only live once @created is #true
  * @running: #true if CPU is currently running (lockless).
- * @has_waiter: #true if a CPU is currently waiting for the cpu_exec_end;
- * valid under cpu_list_lock.
  * @created: Indicates whether the CPU thread has been successfully created.
- * @halt_cond: condition variable sleeping threads can wait on.
  * @exit_request: Another thread requests the CPU to call qemu_process_cpu_events().
  *   Should be read only by CPU thread with load-acquire, to synchronize with
  *   other threads' store-release operation.
@@ -477,8 +474,9 @@ struct qemu_work_item;
  * @accel: Pointer to accelerator specific state.
  * @vcpu_dirty: Hardware accelerator is not synchronized with QEMU state
  * @kvm_fd: vCPU file descriptor for KVM.
- * @work_mutex: Lock to prevent multiple access to @work_list.
- * @work_list: List of pending asynchronous work.
+ * @work_queue: Multiple publishers, drained only by this CPU's thread.
+ * @work_pending: Detached FIFO batch, owned only by the consumer.
+ * @work_count: Pending callbacks, including detached batches and publishers.
  * @plugin_state: per-CPU plugin state
  * @ignore_memory_transaction_failures: Cached copy of the MachineState
  *    flag of the same name: allows the board to suppress calling of the
@@ -513,8 +511,6 @@ struct CPUState {
 #endif
     int thread_id;
     retro_atomic_int_t running;
-    bool has_waiter;
-    struct QemuCond *halt_cond;
     retro_atomic_int_t thread_kicked;
     bool created;
     bool stop;
@@ -535,8 +531,9 @@ struct CPUState {
     uint64_t random_seed;
     sigjmp_buf jmp_env;
 
-    QemuMutex work_mutex;
-    QSIMPLEQ_HEAD(, qemu_work_item) work_list;
+    retro_mpsc_t work_queue;
+    retro_mpsc_node_t *work_pending;
+    retro_atomic_int_t work_count;
 
     struct CPUAddressSpace *cpu_ases;
     int num_ases;
@@ -573,9 +570,6 @@ struct CPUState {
     uint32_t kvm_fetch_index;
     uint64_t dirty_pages;
     int kvm_vcpu_stats_fd;
-
-    /* Use by accel-block: CPU is executing an ioctl() */
-    QemuLockCnt in_ioctl_lock;
 
 
     /* TODO Move common fields from CPUArchState here. */
@@ -850,12 +844,11 @@ bool cpu_is_stopped(CPUState *cpu);
  * @cpu: The vCPU to run on.
  * @func: The function to be executed.
  * @data: Data to pass to the function.
- * @mutex: Mutex to release while waiting for @func to run.
  *
- * Used internally in the implementation of run_on_cpu.
+ * Used internally in the implementation of run_on_cpu. The caller holds
+ * the BQL, which is released while waiting for completion.
  */
-void do_run_on_cpu(CPUState *cpu, run_on_cpu_func func, run_on_cpu_data data,
-                   QemuMutex *mutex);
+void do_run_on_cpu(CPUState *cpu, run_on_cpu_func func, run_on_cpu_data data);
 
 /**
  * run_on_cpu:
@@ -1031,12 +1024,9 @@ void cpu_exec_end(CPUState *cpu);
 /**
  * start_exclusive:
  *
- * Wait for a concurrent exclusive section to end, and then start
- * a section of work that is run while other CPUs are not running
- * between cpu_exec_start and cpu_exec_end.  CPUs that are running
- * cpu_exec are exited immediately.  CPUs that call cpu_exec_start
- * during the exclusive section go to sleep until this CPU calls
- * end_exclusive.
+ * Enter a nested exclusive scope on the sole guest CPU's owning thread.
+ * Guest execution must have ended before entering; it may resume after
+ * the outermost end_exclusive. Xbox does not support additional guest CPUs.
  */
 void start_exclusive(void);
 

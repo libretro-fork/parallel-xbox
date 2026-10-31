@@ -230,14 +230,11 @@ static void cpu_common_initfn(Object *obj)
     /* the default value is changed by qemu_init_vcpu() for system-mode */
     cpu->nr_threads = 1;
 
-    /* allocate storage for thread info, initialise condition variables */
+    /* The libretro accelerator runs on the emulator thread. */
     cpu->thread = g_new0(QemuThread, 1);
-    cpu->halt_cond = g_new0(QemuCond, 1);
-    qemu_cond_init(cpu->halt_cond);
-
-    qemu_mutex_init(&cpu->work_mutex);
-    qemu_lockcnt_init(&cpu->in_ioctl_lock);
-    QSIMPLEQ_INIT(&cpu->work_list);
+    retro_mpsc_init(&cpu->work_queue);
+    cpu->work_pending = NULL;
+    retro_atomic_int_init(&cpu->work_count, 0);
     QTAILQ_INIT(&cpu->breakpoints);
     QTAILQ_INIT(&cpu->watchpoints);
     QTAILQ_INIT(&cpu->mem_access_callbacks);
@@ -260,10 +257,6 @@ static void cpu_common_finalize(Object *obj)
     if (cpu->gdb_regs) {
         g_array_free(cpu->gdb_regs, TRUE);
     }
-    qemu_lockcnt_destroy(&cpu->in_ioctl_lock);
-    qemu_mutex_destroy(&cpu->work_mutex);
-    qemu_cond_destroy(cpu->halt_cond);
-    g_free(cpu->halt_cond);
     g_free(cpu->thread);
 }
 

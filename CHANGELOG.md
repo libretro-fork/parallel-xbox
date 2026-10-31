@@ -4,6 +4,9 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- CPU callback dispatch uses a libretro-common MPSC queue and eventcount completion. The single guest CPU no longer needs SMP exclusion locks or unused halt/ioctl synchronization objects. GLib interned strings and default context use immutable atomic publication; global random draws use an atomic counter. Other emulator locks remain.
+
+
 - Reduced worker wakeup overhead, especially short Windows handoffs, while preserving support for older Windows versions and existing high-resolution timeout handling.
 
 - x87 double loads and register moves now retain their precision when single-precision arithmetic is selected. The hard-FPU cache keeps binary64 values and rounds affected arithmetic results explicitly; soft-FPU double loads widen at extended precision before restoring the control state. This corrects integer conversions that previously saw an already-truncated input. Hard-FPU remains a binary64 approximation of x87.

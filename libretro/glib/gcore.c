@@ -240,19 +240,23 @@ void g_warn_message(const char *domain, const char *file, int line,
 
 /* ---- quarks and errors ---------------------------------------------------- */
 
-/* interned strings: a quark is its index + 1, for as long as the process */
-static gchar **g_quarks;
-static guint g_n_quarks, g_quarks_alloc;
-static retro_atomic_int_t g_quarks_lock;
+/* Interned strings live for the process lifetime. Published nodes are
+ * immutable, so readers need neither a lock nor a reclamation protocol. */
+typedef struct GQuarkEntry {
+    struct GQuarkEntry *next;
+    gchar *string;
+    GQuark id;
+} GQuarkEntry;
+static retro_atomic_ptr_t g_quarks;
 
-static GQuark g_quark_find_unlocked(const gchar *string)
+static GQuark g_quark_find(GQuarkEntry *entry, const gchar *string)
 {
     if (!string) {
         return 0;
     }
-    for (guint i = 0; i < g_n_quarks; i++) {
-        if (!strcmp(g_quarks[i], string)) {
-            return i + 1;
+    for (; entry; entry = entry->next) {
+        if (!strcmp(entry->string, string)) {
+            return entry->id;
         }
     }
     return 0;
@@ -260,31 +264,43 @@ static GQuark g_quark_find_unlocked(const gchar *string)
 
 GQuark g_quark_try_string(const gchar *string)
 {
-    GQuark q;
-    g_compat_lock(&g_quarks_lock);
-    q = g_quark_find_unlocked(string);
-    g_compat_unlock(&g_quarks_lock);
-    return q;
+    return g_quark_find(retro_atomic_load_acquire_ptr(&g_quarks), string);
 }
 
 GQuark g_quark_from_string(const gchar *string)
 {
-    GQuark q;
+    GQuarkEntry *candidate = NULL;
 
-    g_compat_lock(&g_quarks_lock);
-    q = g_quark_find_unlocked(string);
-    if (q || !string) {
-        g_compat_unlock(&g_quarks_lock);
-        return q;
+    if (!string) {
+        return 0;
     }
-    if (g_n_quarks == g_quarks_alloc) {
-        g_quarks_alloc = g_quarks_alloc ? g_quarks_alloc * 2 : 64;
-        g_quarks = g_renew(gchar *, g_quarks, g_quarks_alloc);
+    for (;;) {
+        GQuarkEntry *head = retro_atomic_load_acquire_ptr(&g_quarks);
+        GQuark q = g_quark_find(head, string);
+        if (q) {
+            if (candidate) {
+                g_free(candidate->string);
+                g_free(candidate);
+            }
+            return q;
+        }
+        if (!candidate) {
+            candidate = g_new(GQuarkEntry, 1);
+            candidate->string = g_strdup(string);
+        }
+        candidate->next = head;
+        candidate->id = head ? head->id + 1 : 1;
+        if (!candidate->id) {
+            abort();
+        }
+        /* Save the result before publication; never modify the entry
+         * once another thread can see it. A failed CAS rescans for a
+         * concurrent insertion of the same string. */
+        q = candidate->id;
+        if (retro_atomic_cas_ptr(&g_quarks, head, candidate)) {
+            return q;
+        }
     }
-    g_quarks[g_n_quarks++] = g_strdup(string);
-    q = g_n_quarks;
-    g_compat_unlock(&g_quarks_lock);
-    return q;
 }
 
 GQuark g_quark_from_static_string(const gchar *string)
@@ -294,11 +310,14 @@ GQuark g_quark_from_static_string(const gchar *string)
 
 const gchar *g_quark_to_string(GQuark quark)
 {
-    const gchar *string;
-    g_compat_lock(&g_quarks_lock);
-    string = quark && quark <= g_n_quarks ? g_quarks[quark - 1] : NULL;
-    g_compat_unlock(&g_quarks_lock);
-    return string;
+    GQuarkEntry *entry = retro_atomic_load_acquire_ptr(&g_quarks);
+
+    for (; entry && entry->id >= quark; entry = entry->next) {
+        if (entry->id == quark) {
+            return entry->string;
+        }
+    }
+    return NULL;
 }
 
 GError *g_error_new(GQuark domain, gint code, const gchar *format, ...)
@@ -1650,31 +1669,50 @@ gdouble g_rand_double(GRand *r)
     return g_rand_int(r) / 4294967296.0;
 }
 
-static GRand *g_global_rand;
-static retro_atomic_int_t g_random_lock;
+/* Global draws use a seeded counter and the SplitMix64 output permutation.
+ * Fetch-add reserves a unique counter without serializing a mutable GRand.
+ * Seed publication is speculative: a stopped initializer cannot hold up a
+ * caller, and losing seed candidates have no side effects to undo.
+ */
+#if !defined(RETRO_ATOMIC_LOCK_FREE) || !defined(RETRO_ATOMIC_HAS_64)
+#error The global random generator requires lock-free 64-bit atomics
+#endif
+static retro_atomic_64_t g_random_seed;
+static retro_atomic_64_t g_random_counter;
 
 guint32 g_random_int(void)
 {
-    guint32 value;
-    g_compat_lock(&g_random_lock);
-    if (!g_global_rand) {
-        g_global_rand = g_rand_new();
+    guint64 seed = (guint64)retro_atomic_load_acquire_64(&g_random_seed);
+    guint64 value;
+
+    if (!seed) {
+        seed = (guint64)g_get_real_time() ^
+               ((guint64)g_get_monotonic_time() << 32);
+        if (!seed) {
+            seed = 1;
+        }
+        if (!retro_atomic_cas_64(&g_random_seed, 0, (gint64)seed)) {
+            seed = (guint64)retro_atomic_load_acquire_64(&g_random_seed);
+        }
     }
-    value = g_rand_int(g_global_rand);
-    g_compat_unlock(&g_random_lock);
-    return value;
+    value = seed + ((guint64)retro_atomic_fetch_add_64(&g_random_counter, 1) + 1)
+                   * UINT64_C(0x9e3779b97f4a7c15);
+    value = (value ^ (value >> 30)) * UINT64_C(0xbf58476d1ce4e5b9);
+    value = (value ^ (value >> 27)) * UINT64_C(0x94d049bb133111eb);
+    return (guint32)((value ^ (value >> 31)) >> 32);
 }
 
 gint32 g_random_int_range(gint32 begin, gint32 end)
 {
-    gint32 value;
-    g_compat_lock(&g_random_lock);
-    if (!g_global_rand) {
-        g_global_rand = g_rand_new();
-    }
-    value = g_rand_int_range(g_global_rand, begin, end);
-    g_compat_unlock(&g_random_lock);
-    return value;
+    guint32 span, threshold, value;
+
+    g_return_val_if_fail(end > begin, begin);
+    span = (guint32)((gint64)end - begin);
+    threshold = (guint32)(0u - span) % span;
+    do {
+        value = g_random_int();
+    } while (value < threshold);
+    return (gint32)((gint64)begin + value % span);
 }
 
 /* ---- once, on retro_atomic ------------------------------------------------ */

@@ -20,6 +20,7 @@
 #endif
 
 #include <retro_timers.h>
+#include <retro_atomic.h>
 
 /* A dispatch retains the callback separately from the source. Replacing or
  * destroying the source must not destroy data still used by that dispatch.
@@ -155,16 +156,22 @@ void g_main_context_unref(GMainContext *context)
     g_free(context);
 }
 
-static GMainContext *g_default_context;
+static retro_atomic_ptr_t g_default_context;
 
 GMainContext *g_main_context_default(void)
 {
-    static gsize initialized;
-    if (g_once_init_enter(&initialized)) {
-        g_default_context = g_main_context_new();
-        g_once_init_leave(&initialized, 1);
+    GMainContext *context = retro_atomic_load_acquire_ptr(&g_default_context);
+
+    if (!context) {
+        GMainContext *candidate = g_main_context_new();
+        if (retro_atomic_cas_ptr(&g_default_context, NULL, candidate)) {
+            context = candidate;
+        } else {
+            g_main_context_unref(candidate);
+            context = retro_atomic_load_acquire_ptr(&g_default_context);
+        }
     }
-    return g_default_context;
+    return context;
 }
 
 /* each thread's stack of pushed contexts */

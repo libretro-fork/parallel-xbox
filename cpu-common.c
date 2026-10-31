@@ -21,32 +21,16 @@
 #include "qemu/main-loop.h"
 #include "exec/cpu-common.h"
 #include "hw/core/cpu.h"
-#include "qemu/lockable.h"
 #include "trace/trace-root.h"
+#include <rthreads/retro_eventcount.h>
 
-QemuMutex qemu_cpu_list_lock;
-static QemuCond exclusive_cond;
-static QemuCond exclusive_resume;
-static QemuCond qemu_work_cond;
-
-/* >= 1 if a thread is inside start_exclusive/end_exclusive.  Written
- * under qemu_cpu_list_lock, read with atomic operations.
- */
-/* Written under qemu_cpu_list_lock, read without it by the vCPUs */
-static retro_atomic_int_t pending_cpus_v;
-#define pending_cpus retro_atomic_load_relaxed_int(&pending_cpus_v)
-#define set_pending_cpus(v) retro_atomic_store_relaxed_int(&pending_cpus_v, (v))
+static retro_eventcount_t qemu_work_done;
 
 void qemu_init_cpu_list(void)
 {
-    /* This is needed because qemu_init_cpu_list is also called by the
-     * child process in a fork.  */
-    set_pending_cpus(0);
-
-    qemu_mutex_init(&qemu_cpu_list_lock);
-    qemu_cond_init(&exclusive_cond);
-    qemu_cond_init(&exclusive_resume);
-    qemu_cond_init(&qemu_work_cond);
+    if (!retro_eventcount_init(&qemu_work_done)) {
+        abort();
+    }
 }
 
 
@@ -64,13 +48,14 @@ int cpu_get_free_index(void)
 }
 
 CPUTailQ cpus_queue = QTAILQ_RCU_HEAD_INITIALIZER(cpus_queue);
-static unsigned int cpu_list_generation_id;
 
 void cpu_list_add(CPUState *cpu)
 {
     static bool cpu_index_auto_assigned;
 
-    QEMU_LOCK_GUARD(&qemu_cpu_list_lock);
+    g_assert(bql_locked());
+    /* Xbox has one guest CPU; lifecycle changes belong to the machine owner. */
+    g_assert(QTAILQ_EMPTY(&cpus_queue));
     if (cpu->cpu_index == UNASSIGNED_CPU_INDEX) {
         cpu_index_auto_assigned = true;
         cpu->cpu_index = cpu_get_free_index();
@@ -79,12 +64,11 @@ void cpu_list_add(CPUState *cpu)
         assert(!cpu_index_auto_assigned);
     }
     QTAILQ_INSERT_TAIL_RCU(&cpus_queue, cpu, node);
-    cpu_list_generation_id++;
 }
 
 void cpu_list_remove(CPUState *cpu)
 {
-    QEMU_LOCK_GUARD(&qemu_cpu_list_lock);
+    g_assert(bql_locked());
     if (!QTAILQ_IN_USE(cpu, node)) {
         /* there is nothing to undo since cpu_exec_init() hasn't been called */
         return;
@@ -92,7 +76,6 @@ void cpu_list_remove(CPUState *cpu)
 
     QTAILQ_REMOVE_RCU(&cpus_queue, cpu, node);
     cpu->cpu_index = UNASSIGNED_CPU_INDEX;
-    cpu_list_generation_id++;
 }
 
 CPUState *qemu_get_cpu(int index)
@@ -116,26 +99,24 @@ __thread CPUState *current_cpu;
 #endif
 
 struct qemu_work_item {
-    QSIMPLEQ_ENTRY(qemu_work_item) node;
+    retro_mpsc_node_t node;
     run_on_cpu_func func;
     run_on_cpu_data data;
     bool free, exclusive;
-    retro_atomic_int_t done;   /* read without work_mutex */
+    retro_atomic_int_t done;
 };
 
 static void queue_work_on_cpu(CPUState *cpu, struct qemu_work_item *wi)
 {
-    qemu_mutex_lock(&cpu->work_mutex);
-    QSIMPLEQ_INSERT_TAIL(&cpu->work_list, wi, node);
-    retro_atomic_store_relaxed_int(&wi->done, false);
-    qemu_mutex_unlock(&cpu->work_mutex);
+    retro_atomic_int_init(&wi->done, false);
+    retro_atomic_fetch_add_int(&cpu->work_count, 1);
+    retro_mpsc_push(&cpu->work_queue, &wi->node);
 
     /* exit the inner loop and reach qemu_process_cpu_events_common().  */
     cpu_exit(cpu);
 }
 
-void do_run_on_cpu(CPUState *cpu, run_on_cpu_func func, run_on_cpu_data data,
-                   QemuMutex *mutex)
+void do_run_on_cpu(CPUState *cpu, run_on_cpu_func func, run_on_cpu_data data)
 {
     struct qemu_work_item wi;
 
@@ -146,15 +127,22 @@ void do_run_on_cpu(CPUState *cpu, run_on_cpu_func func, run_on_cpu_data data,
 
     wi.func = func;
     wi.data = data;
-    retro_atomic_int_init(&wi.done, false);
     wi.free = false;
     wi.exclusive = false;
 
     queue_work_on_cpu(cpu, &wi);
     while (!retro_atomic_load_acquire_int(&wi.done)) {
         CPUState *self_cpu = current_cpu;
+        int key;
 
-        qemu_cond_wait(&qemu_work_cond, mutex);
+        bql_unlock();
+        key = retro_eventcount_prepare_wait(&qemu_work_done);
+        if (retro_atomic_load_acquire_int(&wi.done)) {
+            retro_eventcount_cancel_wait(&qemu_work_done);
+        } else {
+            retro_eventcount_commit_wait(&qemu_work_done, key);
+        }
+        bql_lock();
         SET_current_cpu(self_cpu);
     }
 }
@@ -171,149 +159,33 @@ void async_run_on_cpu(CPUState *cpu, run_on_cpu_func func, run_on_cpu_data data)
     queue_work_on_cpu(cpu, wi);
 }
 
-/* Wait for pending exclusive operations to complete.  The CPU list lock
-   must be held.  */
-static inline void exclusive_idle(void)
-{
-    while (pending_cpus) {
-        qemu_cond_wait(&exclusive_resume, &qemu_cpu_list_lock);
-    }
-}
-
-/* Start an exclusive operation.
-   Must only be called from outside cpu_exec.  */
+/* The sole guest CPU owns exclusive scopes, outside guest execution. */
 void start_exclusive(void)
 {
-    CPUState *other_cpu;
-    int running_cpus;
-
-    /* Ensure we are not running, or start_exclusive will be blocked. */
+    g_assert(current_cpu && qemu_cpu_is_self(current_cpu));
     g_assert(!retro_atomic_load_relaxed_int(&current_cpu->running));
-
-    if (current_cpu->exclusive_context_count) {
-        current_cpu->exclusive_context_count++;
-        return;
-    }
-
-    qemu_mutex_lock(&qemu_cpu_list_lock);
-    exclusive_idle();
-
-    /* Make all other cpus stop executing.  */
-    set_pending_cpus(1);
-
-    /* Write pending_cpus before reading other_cpu->running.  */
-    retro_atomic_thread_fence_seq_cst();
-    running_cpus = 0;
-    CPU_FOREACH(other_cpu) {
-        if (retro_atomic_load_relaxed_int(&other_cpu->running)) {
-            other_cpu->has_waiter = true;
-            running_cpus++;
-            qemu_cpu_kick(other_cpu);
-        }
-    }
-
-    set_pending_cpus(running_cpus + 1);
-    while (pending_cpus > 1) {
-        qemu_cond_wait(&exclusive_cond, &qemu_cpu_list_lock);
-    }
-
-    /* Can release mutex, no one will enter another exclusive
-     * section until end_exclusive resets pending_cpus to 0.
-     */
-    qemu_mutex_unlock(&qemu_cpu_list_lock);
-
-    current_cpu->exclusive_context_count = 1;
+    current_cpu->exclusive_context_count++;
 }
 
-/* Finish an exclusive operation.  */
 void end_exclusive(void)
 {
+    g_assert(current_cpu && qemu_cpu_is_self(current_cpu));
+    g_assert(current_cpu->exclusive_context_count > 0);
     current_cpu->exclusive_context_count--;
-    if (current_cpu->exclusive_context_count) {
-        return;
-    }
-
-    qemu_mutex_lock(&qemu_cpu_list_lock);
-    set_pending_cpus(0);
-    qemu_cond_broadcast(&exclusive_resume);
-    qemu_mutex_unlock(&qemu_cpu_list_lock);
 }
 
-/* Wait for exclusive ops to finish, and begin cpu execution.  */
 void cpu_exec_start(CPUState *cpu)
 {
+    g_assert(qemu_cpu_is_self(cpu));
+    g_assert(cpu->exclusive_context_count == 0);
     trace_cpu_exec_start(cpu->cpu_index);
-
-    retro_atomic_store_relaxed_int(&cpu->running, 1);
-
-    /* Write cpu->running before reading pending_cpus.  */
-    retro_atomic_thread_fence_seq_cst();
-
-    /* 1. start_exclusive saw cpu->running == true and pending_cpus >= 1.
-     * After taking the lock we'll see cpu->has_waiter == true and run---not
-     * for long because start_exclusive kicked us.  cpu_exec_end will
-     * decrement pending_cpus and signal the waiter.
-     *
-     * 2. start_exclusive saw cpu->running == false but pending_cpus >= 1.
-     * This includes the case when an exclusive item is running now.
-     * Then we'll see cpu->has_waiter == false and wait for the item to
-     * complete.
-     *
-     * 3. pending_cpus == 0.  Then start_exclusive is definitely going to
-     * see cpu->running == true, and it will kick the CPU.
-     */
-    if (unlikely(pending_cpus)) {
-        QEMU_LOCK_GUARD(&qemu_cpu_list_lock);
-        if (!cpu->has_waiter) {
-            /* Not counted in pending_cpus, let the exclusive item
-             * run.  Since we have the lock, just set cpu->running to true
-             * while holding it; no need to check pending_cpus again.
-             */
-            retro_atomic_store_relaxed_int(&cpu->running, 0);
-            exclusive_idle();
-            /* Now pending_cpus is zero.  */
-            retro_atomic_store_relaxed_int(&cpu->running, 1);
-        } else {
-            /* Counted in pending_cpus, go ahead and release the
-             * waiter at cpu_exec_end.
-             */
-        }
-    }
+    retro_atomic_store_release_int(&cpu->running, 1);
 }
 
-/* Mark cpu as not executing, and release pending exclusive ops.  */
 void cpu_exec_end(CPUState *cpu)
 {
-    retro_atomic_store_relaxed_int(&cpu->running, 0);
-
-    /* Write cpu->running before reading pending_cpus.  */
-    retro_atomic_thread_fence_seq_cst();
-
-    /* 1. start_exclusive saw cpu->running == true.  Then it will increment
-     * pending_cpus and wait for exclusive_cond.  After taking the lock
-     * we'll see cpu->has_waiter == true.
-     *
-     * 2. start_exclusive saw cpu->running == false but here pending_cpus >= 1.
-     * This includes the case when an exclusive item started after setting
-     * cpu->running to false and before we read pending_cpus.  Then we'll see
-     * cpu->has_waiter == false and not touch pending_cpus.  The next call to
-     * cpu_exec_start will run exclusive_idle if still necessary, thus waiting
-     * for the item to complete.
-     *
-     * 3. pending_cpus == 0.  Then start_exclusive is definitely going to
-     * see cpu->running == false, and it can ignore this CPU until the
-     * next cpu_exec_start.
-     */
-    if (unlikely(pending_cpus)) {
-        QEMU_LOCK_GUARD(&qemu_cpu_list_lock);
-        if (cpu->has_waiter) {
-            cpu->has_waiter = false;
-            set_pending_cpus(pending_cpus - 1);
-            if (pending_cpus == 1) {
-                qemu_cond_signal(&exclusive_cond);
-            }
-        }
-    }
+    g_assert(qemu_cpu_is_self(cpu));
+    retro_atomic_store_release_int(&cpu->running, 0);
     trace_cpu_exec_end(cpu->cpu_index);
 }
 
@@ -331,11 +203,29 @@ void async_safe_run_on_cpu(CPUState *cpu, run_on_cpu_func func,
     queue_work_on_cpu(cpu, wi);
 }
 
+/* The CPU thread owns the detached batch. Keep it in CPUState so a
+ * callback that re-enters work processing still observes FIFO order. */
+static struct qemu_work_item *take_cpu_work(CPUState *cpu)
+{
+    retro_mpsc_node_t *node = cpu->work_pending;
+
+    if (!node) {
+        node = retro_mpsc_take_all(&cpu->work_queue);
+    }
+    if (!node) {
+        return NULL;
+    }
+    cpu->work_pending = node->next;
+    retro_atomic_fetch_sub_int(&cpu->work_count, 1);
+    return container_of(node, struct qemu_work_item, node);
+}
+
 void free_queued_cpu_work(CPUState *cpu)
 {
-    while (!QSIMPLEQ_EMPTY(&cpu->work_list)) {
-        struct qemu_work_item *wi = QSIMPLEQ_FIRST(&cpu->work_list);
-        QSIMPLEQ_REMOVE_HEAD(&cpu->work_list, node);
+    /* CPU finalization runs after publishers and the consumer stop. */
+    struct qemu_work_item *wi;
+
+    while ((wi = take_cpu_work(cpu))) {
         if (wi->free) {
             g_free(wi);
         }
@@ -346,22 +236,10 @@ void process_queued_cpu_work(CPUState *cpu)
 {
     struct qemu_work_item *wi;
 
-    qemu_mutex_lock(&cpu->work_mutex);
-    if (QSIMPLEQ_EMPTY(&cpu->work_list)) {
-        qemu_mutex_unlock(&cpu->work_mutex);
-        return;
-    }
-    while (!QSIMPLEQ_EMPTY(&cpu->work_list)) {
-        wi = QSIMPLEQ_FIRST(&cpu->work_list);
-        QSIMPLEQ_REMOVE_HEAD(&cpu->work_list, node);
-        qemu_mutex_unlock(&cpu->work_mutex);
+    while ((wi = take_cpu_work(cpu))) {
         if (wi->exclusive) {
-            /* Running work items outside the BQL avoids the following deadlock:
-             * 1) start_exclusive() is called with the BQL taken while another
-             * CPU is running; 2) cpu_exec in the other CPU tries to takes the
-             * BQL, so it goes to sleep; start_exclusive() is sleeping too, so
-             * neither CPU can proceed.
-             */
+            /* Preserve the callback's outside-BQL contract. The sole CPU
+             * enters its exclusive scope only after leaving guest execution. */
             bql_unlock();
             start_exclusive();
             wi->func(cpu, wi->data);
@@ -370,15 +248,15 @@ void process_queued_cpu_work(CPUState *cpu)
         } else {
             wi->func(cpu, wi->data);
         }
-        qemu_mutex_lock(&cpu->work_mutex);
         if (wi->free) {
             g_free(wi);
         } else {
             retro_atomic_store_release_int(&wi->done, true);
+            /* The waiter can now destroy its stack item. Only touch the
+             * global eventcount after publishing completion. */
+            retro_eventcount_notify(&qemu_work_done);
         }
     }
-    qemu_mutex_unlock(&cpu->work_mutex);
-    qemu_cond_broadcast(&qemu_work_cond);
 }
 
 /* Add a breakpoint.  */

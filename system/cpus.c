@@ -82,7 +82,7 @@ bool cpu_is_stopped(CPUState *cpu)
 
 bool cpu_work_list_empty(CPUState *cpu)
 {
-    return QSIMPLEQ_EMPTY_ATOMIC(&cpu->work_list);
+    return retro_atomic_load_acquire_int(&cpu->work_count) == 0;
 }
 
 bool cpu_thread_is_idle(CPUState *cpu)
@@ -390,7 +390,7 @@ void qemu_init_cpu_loop(void)
 
 void run_on_cpu(CPUState *cpu, run_on_cpu_func func, run_on_cpu_data data)
 {
-    do_run_on_cpu(cpu, func, data, &bql);
+    do_run_on_cpu(cpu, func, data);
 }
 
 static void qemu_cpu_stop(CPUState *cpu, bool exit)
@@ -424,7 +424,6 @@ void cpus_kick_thread(CPUState *cpu)
 
 void qemu_cpu_kick(CPUState *cpu)
 {
-    qemu_cond_broadcast(cpu->halt_cond);
     if (cpus_accel->kick_vcpu_thread) {
         cpus_accel->kick_vcpu_thread(cpu);
     } else { /* default */
