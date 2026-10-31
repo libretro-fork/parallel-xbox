@@ -1965,60 +1965,9 @@ static void ram_block_add(RAMBlock *new_block, Error **errp)
     }
 
     if (new_block->flags & RAM_GUEST_MEMFD) {
-        int ret;
-
-        if (!kvm_enabled()) {
-            error_setg(errp, "cannot set up private guest memory for %s: KVM required",
-                       object_get_typename(OBJECT(current_machine->cgs)));
-            goto out_free;
-        }
-        assert(new_block->guest_memfd < 0);
-
-        ret = ram_block_coordinated_discard_require(true);
-        if (ret < 0) {
-            error_setg_errno(errp, -ret,
-                             "cannot set up private guest memory: discard currently blocked");
-            error_append_hint(errp, "Are you using assigned devices?\n");
-            goto out_free;
-        }
-
-        new_block->guest_memfd = kvm_create_guest_memfd(new_block->max_length,
-                                                        0, errp);
-        if (new_block->guest_memfd < 0) {
-            qemu_mutex_unlock_ramlist();
-            goto out_free;
-        }
-
-        /*
-         * The attribute bitmap of the RamBlockAttributes is default to
-         * discarded, which mimics the behavior of kvm_set_phys_mem() when it
-         * calls kvm_set_memory_attributes_private(). This leads to a brief
-         * period of inconsistency between the creation of the RAMBlock and its
-         * mapping into the physical address space. However, this is not
-         * problematic, as no users rely on the attribute status to perform
-         * any actions during this interval.
-         */
-        new_block->attributes = ram_block_attributes_create(new_block);
-        if (!new_block->attributes) {
-            error_setg(errp, "Failed to create ram block attribute");
-            close(new_block->guest_memfd);
-            ram_block_coordinated_discard_require(false);
-            qemu_mutex_unlock_ramlist();
-            goto out_free;
-        }
-
-        /*
-         * Add a specific guest_memfd blocker if a generic one would not be
-         * added by ram_block_add_cpr_blocker.
-         */
-        if (ram_is_cpr_compatible(new_block)) {
-            error_setg(&new_block->cpr_blocker,
-                       "Memory region %s uses guest_memfd, "
-                       "which is not supported with CPR.",
-                       memory_region_name(new_block->mr));
-            migrate_add_blocker_modes(&new_block->cpr_blocker,
-                                      BIT(MIG_MODE_CPR_TRANSFER), errp);
-        }
+        /* This core uses TCG and has no private-memory/KVM backend. */
+        error_setg(errp, "private guest memory is unsupported by the Xbox core");
+        goto out_free;
     }
 
     ram_size = (new_block->offset + new_block->max_length) >> TARGET_PAGE_BITS;
@@ -2303,7 +2252,6 @@ static void reclaim_ramblock(RAMBlock *block)
     if (block->guest_memfd >= 0) {
         ram_block_attributes_destroy(block->attributes);
         close(block->guest_memfd);
-        ram_block_coordinated_discard_require(false);
     }
 
     g_free(block);
@@ -3708,46 +3656,6 @@ err:
 
 #define MR_SIZE(size) (int128_nz(size) ? (hwaddr)int128_get64( \
                            int128_sub((size), int128_one())) : 0)
-
-/* Require any discards to work. */
-/* Require only coordinated discards to work. */
-static unsigned int ram_block_coordinated_discard_required_cnt;
-/* Disable any discards. */
-static unsigned int ram_block_discard_disabled_cnt;
-/* Disable only uncoordinated discards. */
-static QemuMutex ram_block_discard_disable_mutex;
-
-static void ram_block_discard_disable_mutex_lock(void)
-{
-    static gsize initialized;
-
-    if (g_once_init_enter(&initialized)) {
-        qemu_mutex_init(&ram_block_discard_disable_mutex);
-        g_once_init_leave(&initialized, 1);
-    }
-    qemu_mutex_lock(&ram_block_discard_disable_mutex);
-}
-
-static void ram_block_discard_disable_mutex_unlock(void)
-{
-    qemu_mutex_unlock(&ram_block_discard_disable_mutex);
-}
-
-int ram_block_coordinated_discard_require(bool state)
-{
-    int ret = 0;
-
-    ram_block_discard_disable_mutex_lock();
-    if (!state) {
-        ram_block_coordinated_discard_required_cnt--;
-    } else if (ram_block_discard_disabled_cnt) {
-        ret = -EBUSY;
-    } else {
-        ram_block_coordinated_discard_required_cnt++;
-    }
-    ram_block_discard_disable_mutex_unlock();
-    return ret;
-}
 
 /*
  * Return true if ram is compatible with CPR.  Do not exclude rom,

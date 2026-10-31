@@ -38,7 +38,6 @@
 #include "qemu/option.h"
 #include "qemu/id.h"
 #include "qemu/coroutine.h"
-#include "qemu/yank.h"
 
 #include "chardev-internal.h"
 
@@ -247,7 +246,6 @@ static void char_init(Object *obj)
 {
     Chardev *chr = CHARDEV(obj);
 
-    chr->handover_yank_instance = false;
     chr->logfd = -1;
 
     /* Explicitly default to qemu_main_context, not the global context via NULL. */
@@ -818,7 +816,6 @@ void qemu_chr_set_feature(Chardev *chr,
 static Chardev *chardev_new(const char *id, const char *typename,
                             ChardevBackend *backend,
                             GMainContext *gcontext,
-                            bool handover_yank_instance,
                             Error **errp)
 {
     Object *obj;
@@ -831,7 +828,6 @@ static Chardev *chardev_new(const char *id, const char *typename,
 
     obj = object_new(typename);
     chr = CHARDEV(obj);
-    chr->handover_yank_instance = handover_yank_instance;
     chr->label = g_strdup(id);
 
     if (gcontext != NULL) {
@@ -870,7 +866,7 @@ Chardev *qemu_chardev_new(const char *id, const char *typename,
         id = genid;
     }
 
-    chr = chardev_new(id, typename, backend, gcontext, false, errp);
+    chr = chardev_new(id, typename, backend, gcontext, errp);
     if (!chr) {
         return NULL;
     }

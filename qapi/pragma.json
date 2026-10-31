@@ -74,7 +74,6 @@
         'VncVencryptSubAuth',
         'X86CPURegister32',
         'XDbgBlockGraph',
-        'YankInstanceType',
         'blockdev-reopen' ],
     # Externally visible types whose member names may use uppercase
     'member-name-exceptions': [     # visible in:

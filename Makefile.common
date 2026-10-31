@@ -117,7 +117,6 @@ SOURCES_UTIL := \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-types-sockets.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-types-ui.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-types-virtio.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-types-yank.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-visit-acpi.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-visit-authz.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-visit-block-core.c \
@@ -135,7 +134,6 @@ SOURCES_UTIL := \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-visit-sockets.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-visit-ui.c \
 	$(CORE_DIR)/libretro/gen/qapi/qapi-visit-virtio.c \
-	$(CORE_DIR)/libretro/gen/qapi/qapi-visit-yank.c \
 	$(CORE_DIR)/qapi/opts-visitor.c \
 	$(CORE_DIR)/qapi/qapi-clone-visitor.c \
 	$(CORE_DIR)/qapi/qapi-dealloc-visitor.c \
@@ -232,7 +230,6 @@ SOURCES_UTIL := \
 	$(CORE_DIR)/util/timed-average.c \
 	$(CORE_DIR)/util/unicode.c \
 	$(CORE_DIR)/util/uuid.c \
-	$(CORE_DIR)/util/yank.c \
 
 SOURCES_UTIL_POSIX := \
 	$(CORE_DIR)/util/aio-posix.c \

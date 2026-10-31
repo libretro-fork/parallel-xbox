@@ -3180,3 +3180,11 @@ io/trace-events
 io/trace.h
 migration/channel-block.h
 target/i386/kvm/tdx-quote-generator.h
+include/qemu/yank.h
+util/yank.c
+qapi/yank.json
+libretro/gen/qapi/qapi-commands-yank.h
+libretro/gen/qapi/qapi-types-yank.c
+libretro/gen/qapi/qapi-types-yank.h
+libretro/gen/qapi/qapi-visit-yank.c
+libretro/gen/qapi/qapi-visit-yank.h

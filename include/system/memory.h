@@ -2699,14 +2699,6 @@ MemTxResult address_space_set(AddressSpace *as, hwaddr addr,
  */
 int ram_block_discard_disable(bool state);
 
-/*
- * See ram_block_discard_require(): only inhibit technologies that disable
- * uncoordinated discarding of pages in RAM blocks, allowing co-existence with
- * technologies that only inhibit uncoordinated discards (via the
- * RamDiscardManager).
- */
-int ram_block_coordinated_discard_require(bool state);
-
 void ram_block_add_cpr_blocker(RAMBlock *rb, Error **errp);
 void ram_block_del_cpr_blocker(RAMBlock *rb);
 
