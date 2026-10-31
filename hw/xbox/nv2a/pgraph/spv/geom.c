@@ -148,11 +148,35 @@ static uint32_t triangle_slope(Writer *w, uint32_t float_t, uint32_t bool_t,
     return dz;
 }
 
+static void line_positions(Writer *w, uint32_t float_t, uint32_t vec4_t,
+                             uint32_t a, uint32_t b, uint32_t positions[3])
+{
+    uint32_t x0 = component(w, a, float_t, 0);
+    uint32_t y0 = component(w, a, float_t, 1);
+    uint32_t x1 = component(w, b, float_t, 0);
+    uint32_t y1 = component(w, b, float_t, 1);
+    uint32_t z0 = component(w, a, float_t, 2);
+    uint32_t w0 = component(w, a, float_t, 3);
+    uint32_t dx = value(w, SpvOpFSub, float_t, 2, x1, x0);
+    uint32_t dy = value(w, SpvOpFSub, float_t, 2, y1, y0);
+    uint32_t neg_dy = value(w, SpvOpFNegate, float_t, 1, dy);
+    uint32_t x2 = value(w, SpvOpFAdd, float_t, 2, neg_dy, x0);
+    uint32_t y2 = value(w, SpvOpFAdd, float_t, 2, dx, y0);
+    positions[0] = a; positions[1] = b;
+    positions[2] = value(w, SpvOpCompositeConstruct, vec4_t, 4, x2, y2, z0, w0);
+}
+
 static void emit_geom(Writer *w, SpvLineGeomOptions opts,
                        const SpvTriangleGeomOptions *tri,
                        const SpvQuadGeomOptions *quad)
 {
     bool planar = tri || quad;
+    SpvGeomPolygonMode polygon_mode = tri ? tri->polygon_mode :
+                                      quad ? quad->polygon_mode : SPV_GEOM_FILL;
+    bool wire = planar && polygon_mode == SPV_GEOM_LINE;
+    bool points = planar && polygon_mode == SPV_GEOM_POINT;
+    unsigned output_count = quad ? (wire ? 8 : points ? 4 : 6) :
+                            tri ? (wire ? 6 : 3) : 2;
     bool parity_needed = (quad && quad->strip) ||
                          (tri && (tri->rotation_even != tri->rotation_odd ||
                          (!opts.smooth_shading && tri->provoking_even != tri->provoking_odd)));
@@ -209,8 +233,8 @@ static void emit_geom(Writer *w, SpvLineGeomOptions opts,
     word(w, gl_out);
     if (parity_needed) { word(w, primitive); }
     op(w, SpvOpExecutionMode, 2, main_id, quad ? SpvExecutionModeInputLinesAdjacency : tri ? SpvExecutionModeTriangles : SpvExecutionModeInputLines);
-    op(w, SpvOpExecutionMode, 2, main_id, planar ? SpvExecutionModeOutputTriangleStrip : SpvExecutionModeOutputLineStrip);
-    op(w, SpvOpExecutionMode, 3, main_id, SpvExecutionModeOutputVertices, quad ? 6u : tri ? 3u : 2u);
+    op(w, SpvOpExecutionMode, 2, main_id, points ? SpvExecutionModeOutputPoints : wire || !planar ? SpvExecutionModeOutputLineStrip : SpvExecutionModeOutputTriangleStrip);
+    op(w, SpvOpExecutionMode, 3, main_id, SpvExecutionModeOutputVertices, output_count);
     op(w, SpvOpExecutionMode, 3, main_id, SpvExecutionModeInvocations, 1u);
 
     op(w, SpvOpDecorate, 2, pervertex_t, SpvDecorationBlock);
@@ -279,7 +303,7 @@ static void emit_geom(Writer *w, SpvLineGeomOptions opts,
     uint32_t indices[3] = {zero, one, two};
     uint32_t p0 = 0, p1 = 0, p2 = 0, dz = fzero;
     uint32_t flat_index = opts.provoking_vertex ? one : zero;
-    uint32_t quad_planes[2][3], quad_slopes[2], quad_merge = 0;
+    uint32_t quad_planes[2][3], quad_positions[4], quad_slopes[2], quad_merge = 0;
     if (quad) {
         if (quad->strip) {
             uint32_t pid = value(w, SpvOpLoad, uint_t, 1, primitive);
@@ -295,13 +319,12 @@ static void emit_geom(Writer *w, SpvLineGeomOptions opts,
         const unsigned plane_order[2][2][3] = {
             {{0,1,2}, {0,2,3}}, {{2,0,1}, {2,1,3}},
         };
-        uint32_t positions[4];
         for (unsigned i = 0; i < 4; i++) {
-            positions[i] = load_at(w, inputs[9], constants[i], in_vec4_ptr, vec4_t);
+            quad_positions[i] = load_at(w, inputs[9], constants[i], in_vec4_ptr, vec4_t);
         }
         for (unsigned plane = 0; plane < 2; plane++) {
             for (unsigned i = 0; i < 3; i++) {
-                quad_planes[plane][i] = positions[plane_order[quad->strip][plane][i]];
+                quad_planes[plane][i] = quad_positions[plane_order[quad->strip][plane][i]];
             }
             quad_slopes[plane] = triangle_slope(w, float_t, bool_t, ext, fzero,
                 quad->z_perspective, quad_planes[plane][0],
@@ -337,18 +360,9 @@ static void emit_geom(Writer *w, SpvLineGeomOptions opts,
     } else {
         p0 = load_at(w, inputs[9], zero, in_vec4_ptr, vec4_t);
         p1 = load_at(w, inputs[9], one, in_vec4_ptr, vec4_t);
-        uint32_t x0 = component(w, p0, float_t, 0);
-        uint32_t y0 = component(w, p0, float_t, 1);
-        uint32_t x1 = component(w, p1, float_t, 0);
-        uint32_t y1 = component(w, p1, float_t, 1);
-        uint32_t z0 = component(w, p0, float_t, 2);
-        uint32_t w0 = component(w, p0, float_t, 3);
-        uint32_t dx = value(w, SpvOpFSub, float_t, 2, x1, x0);
-        uint32_t dy = value(w, SpvOpFSub, float_t, 2, y1, y0);
-        uint32_t neg_dy = value(w, SpvOpFNegate, float_t, 1, dy);
-        uint32_t x2 = value(w, SpvOpFAdd, float_t, 2, neg_dy, x0);
-        uint32_t y2 = value(w, SpvOpFAdd, float_t, 2, dx, y0);
-        p2 = value(w, SpvOpCompositeConstruct, vec4_t, 4, x2, y2, z0, w0);
+        uint32_t positions[3];
+        line_positions(w, float_t, vec4_t, p0, p1, positions);
+        p2 = positions[2];
     }
     uint32_t flat_colours[4];
     if (!opts.smooth_shading) {
@@ -362,67 +376,95 @@ static void emit_geom(Writer *w, SpvLineGeomOptions opts,
         out_members[member] = value(w, SpvOpAccessChain,
             member ? out_float_ptr : out_vec4_ptr, 2, gl_out, member ? one : zero);
     }
-    uint32_t quad_values[4][11];
-    unsigned quad_loaded = 0;
-    for (unsigned plane = 0; plane < (quad ? 2u : 1u); plane++) {
+    const uint32_t triangle_positions[3] = {p0, p1, p2};
+    const uint32_t triangle_dz = dz;
+    uint32_t vertex_values[4][11];
+    unsigned vertex_loaded = 0;
+    const unsigned quad_fill[2][6] = {{1,2,0,2,3,0}, {0,1,2,2,1,3}};
+    const unsigned quad_edges[2][8] = {{0,1,1,2,2,3,3,0}, {0,1,1,3,3,2,2,0}};
+    const unsigned strip_edge_planes[4] = {0,1,1,0};
+    for (unsigned emission = 0; emission < output_count; emission++) {
+        unsigned input_slot = emission;
         if (quad) {
-            p0 = quad_planes[plane][0]; p1 = quad_planes[plane][1];
-            p2 = quad_planes[plane][2]; dz = quad_slopes[plane];
+            input_slot = wire ? quad_edges[quad->strip][emission] :
+                         points ? emission : quad_fill[quad->strip][emission];
+            unsigned plane = wire ? (quad->strip ? strip_edge_planes[emission / 2] : emission / 4) :
+                             points ? (emission == 3 ? 1 : 0) : emission / 3;
+            dz = quad_slopes[plane];
+            if (points) {
+                p0 = p1 = p2 = quad_positions[input_slot];
+            } else if (wire) {
+                if (!(emission & 1)) {
+                    unsigned edge = emission / 2;
+                    uint32_t positions[3];
+                    line_positions(w, float_t, vec4_t,
+                        quad_positions[quad_edges[quad->strip][edge * 2]],
+                        quad_positions[quad_edges[quad->strip][edge * 2 + 1]], positions);
+                    p0 = positions[0]; p1 = positions[1]; p2 = positions[2];
+                }
+            } else {
+                p0 = quad_planes[plane][0]; p1 = quad_planes[plane][1];
+                p2 = quad_planes[plane][2];
+            }
+        } else if (tri) {
+            input_slot = wire ? (emission / 2 + (emission & 1)) % 3 : emission;
+            dz = triangle_dz;
+            if (points) {
+                p0 = p1 = p2 = triangle_positions[input_slot];
+            } else if (wire && !(emission & 1)) {
+                unsigned edge = emission / 2;
+                uint32_t positions[3];
+                line_positions(w, float_t, vec4_t, triangle_positions[edge],
+                               triangle_positions[(edge + 1) % 3], positions);
+                p0 = positions[0]; p1 = positions[1]; p2 = positions[2];
+            }
         }
-        for (unsigned vertex = 0; vertex < (planar ? 3u : 2u); vertex++) {
-            uint32_t index = indices[vertex];
-            unsigned quad_index = 0;
-            if (quad) {
-                const unsigned emit_order[2][6] = {{1,2,0,2,3,0}, {0,1,2,2,1,3}};
-                const uint32_t constants[4] = {zero, one, two, three};
-                quad_index = emit_order[quad->strip][plane * 3 + vertex];
-                index = constants[quad_index];
-                if (!(quad_loaded & (1u << quad_index))) {
-                    /* Load on first emission, keeping future vertices out of
-                     * the live set until needed. Repeated vertices reuse SSA
-                     * values; EmitVertex only invalidates the outputs. */
-                    for (unsigned i = 0; i < 9; i++) {
-                        quad_values[quad_index][i] = i < 4 && !opts.smooth_shading ? flat_colours[i] :
-                            load_at(w, inputs[i], index,
-                                    i == 4 ? in_float_ptr : in_vec4_ptr,
-                                    i == 4 ? float_t : vec4_t);
-                    }
-                    for (unsigned member = 0; member < 2; member++) {
-                        uint32_t src = value(w, SpvOpAccessChain,
-                            member ? in_float_ptr : in_vec4_ptr, 3,
-                            gl_in, index, member ? one : zero);
-                        quad_values[quad_index][9 + member] = value(w, SpvOpLoad,
-                            member ? float_t : vec4_t, 1, src);
-                    }
-                    quad_loaded |= 1u << quad_index;
-                }
-            }
-            for (unsigned member = 0; member < 2; member++) {
-                uint32_t data;
-                if (quad) {
-                    data = quad_values[quad_index][9 + member];
-                } else {
-                    uint32_t src = value(w, SpvOpAccessChain,
-                        member ? in_float_ptr : in_vec4_ptr, 3,
-                        gl_in, index, member ? one : zero);
-                    data = value(w, SpvOpLoad, member ? float_t : vec4_t, 1, src);
-                }
-                op(w, SpvOpStore, 2, out_members[member], data);
-            }
+        const uint32_t constants[4] = {zero, one, two, three};
+        uint32_t index = quad ? constants[input_slot] : indices[input_slot];
+        if (planar && !(vertex_loaded & (1u << input_slot))) {
+            /* Load on first emission; repeated edges/vertices reuse immutable
+             * input SSA values without preloading future vertices. */
             for (unsigned i = 0; i < 9; i++) {
-                uint32_t data = quad ? quad_values[quad_index][i] :
-                    i < 4 && !opts.smooth_shading ? flat_colours[i] :
+                vertex_values[input_slot][i] = i < 4 && !opts.smooth_shading ? flat_colours[i] :
                     load_at(w, inputs[i], index, i == 4 ? in_float_ptr : in_vec4_ptr,
                             i == 4 ? float_t : vec4_t);
-                op(w, SpvOpStore, 2, outputs[i], data);
             }
-            op(w, SpvOpStore, 2, outputs[9], p0);
-            op(w, SpvOpStore, 2, outputs[10], p1);
-            op(w, SpvOpStore, 2, outputs[11], p2);
-            op(w, SpvOpStore, 2, outputs[12], dz);
-            op(w, SpvOpEmitVertex, 0);
+            for (unsigned member = 0; member < 2; member++) {
+                uint32_t src = value(w, SpvOpAccessChain,
+                    member ? in_float_ptr : in_vec4_ptr, 3,
+                    gl_in, index, member ? one : zero);
+                vertex_values[input_slot][9 + member] = value(w, SpvOpLoad,
+                    member ? float_t : vec4_t, 1, src);
+            }
+            vertex_loaded |= 1u << input_slot;
         }
-        op(w, SpvOpEndPrimitive, 0);
+        for (unsigned member = 0; member < 2; member++) {
+            uint32_t data;
+            if (planar) {
+                data = vertex_values[input_slot][9 + member];
+            } else {
+                uint32_t src = value(w, SpvOpAccessChain,
+                    member ? in_float_ptr : in_vec4_ptr, 3,
+                    gl_in, index, member ? one : zero);
+                data = value(w, SpvOpLoad, member ? float_t : vec4_t, 1, src);
+            }
+            op(w, SpvOpStore, 2, out_members[member], data);
+        }
+        for (unsigned i = 0; i < 9; i++) {
+            uint32_t data = planar ? vertex_values[input_slot][i] :
+                i < 4 && !opts.smooth_shading ? flat_colours[i] :
+                load_at(w, inputs[i], index, i == 4 ? in_float_ptr : in_vec4_ptr,
+                        i == 4 ? float_t : vec4_t);
+            op(w, SpvOpStore, 2, outputs[i], data);
+        }
+        op(w, SpvOpStore, 2, outputs[9], p0);
+        op(w, SpvOpStore, 2, outputs[10], p1);
+        op(w, SpvOpStore, 2, outputs[11], p2);
+        op(w, SpvOpStore, 2, outputs[12], dz);
+        op(w, SpvOpEmitVertex, 0);
+        if (points || (wire || !planar ? (emission & 1) : emission % 3 == 2)) {
+            op(w, SpvOpEndPrimitive, 0);
+        }
     }
     if (quad && quad->strip) {
         op(w, SpvOpBranch, 1, quad_merge);
@@ -461,7 +503,8 @@ bool pgraph_spv_triangle_geom(SpvTriangleGeomOptions opts, SpvDirectModule *out)
 {
     memset(out, 0, sizeof(*out));
     if (opts.rotation_even > 2 || opts.rotation_odd > 2 ||
-        opts.provoking_even > 2 || opts.provoking_odd > 2) {
+        opts.provoking_even > 2 || opts.provoking_odd > 2 ||
+        (unsigned)opts.polygon_mode > SPV_GEOM_POINT) {
         return false;
     }
     SpvLineGeomOptions common = {
@@ -485,6 +528,7 @@ bool pgraph_spv_triangle_geom(SpvTriangleGeomOptions opts, SpvDirectModule *out)
 bool pgraph_spv_quad_geom(SpvQuadGeomOptions opts, SpvDirectModule *out)
 {
     memset(out, 0, sizeof(*out));
+    if ((unsigned)opts.polygon_mode > SPV_GEOM_POINT) { return false; }
     SpvLineGeomOptions common = {
         .smooth_shading = opts.smooth_shading, .spirv_1_6 = opts.spirv_1_6,
     };

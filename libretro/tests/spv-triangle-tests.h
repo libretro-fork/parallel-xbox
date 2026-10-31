@@ -9,15 +9,16 @@ static void triangle_selector_tests(void)
  for(unsigned stage=0;stage<4;stage++)for(unsigned z=0;z<2;z++){
   unsigned stages[]={1,8,16,32};
   ShaderModuleCacheKey key={.kind=stages[stage],.geom={.state={.primitive_mode=primitive,.polygon_front_mode=front,.polygon_back_mode=back,.smooth_shading=smooth,.first_vertex_is_provoking=first,.wide_lines=wide,.z_perspective=z,.tri_rot0=1,.tri_rot1=2},.glsl_opts={.vulkan=vk}}};
-  bool expected=stages[stage]==8&&vk&&!wide&&front==POLY_MODE_FILL&&back==POLY_MODE_FILL&&((primitive>=PRIM_TYPE_TRIANGLES&&primitive<=PRIM_TYPE_TRIANGLE_FAN)||primitive==PRIM_TYPE_POLYGON);
+  bool expected=stages[stage]==8&&vk&&!wide&&front==back&&((primitive>=PRIM_TYPE_TRIANGLES&&primitive<=PRIM_TYPE_TRIANGLE_FAN)||(primitive==PRIM_TYPE_POLYGON&&front==POLY_MODE_FILL));
   pgraph_vk_spirv_1_6=true;SpvTriangleGeomOptions o={0};assert(vk_module_triangle_options(&key,&o)==expected);
-  if(expected){unsigned even=primitive==PRIM_TYPE_POLYGON?2:first?0:primitive==PRIM_TYPE_TRIANGLE_FAN?1:2;assert(o.smooth_shading==smooth&&o.z_perspective==z&&o.spirv_1_6&&o.rotation_even==1&&o.rotation_odd==2);assert(o.provoking_even==even&&o.provoking_odd==((primitive==PRIM_TYPE_TRIANGLE_STRIP&&!first)?1:even));}count++;
+  if(expected){unsigned even=primitive==PRIM_TYPE_POLYGON?2:first?0:primitive==PRIM_TYPE_TRIANGLE_FAN?1:2;assert(o.smooth_shading==smooth&&o.z_perspective==z&&o.spirv_1_6&&o.rotation_even==1&&o.rotation_odd==2);assert(o.polygon_mode==(front==POLY_MODE_LINE?SPV_GEOM_LINE:front==POLY_MODE_POINT?SPV_GEOM_POINT:SPV_GEOM_FILL));assert(o.provoking_even==even&&o.provoking_odd==((primitive==PRIM_TYPE_TRIANGLE_STRIP&&!first)?1:even));}count++;
  }
  for(int rotation=-1;rotation<5;rotation++){
   ShaderModuleCacheKey key={.kind=8,.geom={.state={.primitive_mode=PRIM_TYPE_TRIANGLES,.polygon_front_mode=POLY_MODE_FILL,.polygon_back_mode=POLY_MODE_FILL,.tri_rot0=rotation,.tri_rot1=rotation},.glsl_opts={.vulkan=true}}};SpvTriangleGeomOptions o;assert(vk_module_triangle_options(&key,&o));assert(o.rotation_even==(rotation==0?0u:rotation==1?1u:2u)&&o.rotation_odd==o.rotation_even);
  }
  SpvDirectModule invalid;allocations=0;assert(!pgraph_spv_triangle_geom((SpvTriangleGeomOptions){.rotation_even=3},&invalid));assert(!allocations&&!invalid.words&&!invalid.num_words);
  assert(!pgraph_spv_triangle_geom((SpvTriangleGeomOptions){.provoking_odd=3},&invalid));
+ assert(!pgraph_spv_triangle_geom((SpvTriangleGeomOptions){.polygon_mode=3},&invalid));assert(!invalid.words&&!invalid.num_words);
  printf("Triangle selector: %u cases passed\n",count);
 }
 #ifdef TEST_VULKAN

@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Vulkan emits triangle and quad wireframe/point geometry directly as SPIR-V. Edge slopes, point depth varyings, flat colours, winding and quad-strip parity keep their existing behavior. Repeated endpoints share lazily loaded input values; the final shader word allocation transfers to the cache without copying.
+
 - Vulkan emits filled quads and quad strips directly as SPIR-V, retaining their separate triangle depth planes and quad-strip parity rule. One final word allocation transfers into the cache without copying; repeated quad vertices reuse input values on first use, and flat-colour inputs and output-member pointers are shared across emissions.
 
 - Vulkan emits filled-triangle geometry directly as SPIR-V for triangle lists, strips, fans and filled polygons. It preserves winding, flat colours, strip parity and depth-slope precision while bypassing GLSL strings and compiler scratch buffers. The module cache takes the one final word allocation without copying.

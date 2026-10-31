@@ -9,10 +9,11 @@ static void quad_selector_tests(void)
  for(unsigned stage=0;stage<4;stage++)for(unsigned z=0;z<2;z++){
   unsigned stages[]={1,8,16,32};
   ShaderModuleCacheKey key={.kind=stages[stage],.geom={.state={.primitive_mode=primitive,.polygon_front_mode=front,.polygon_back_mode=back,.smooth_shading=smooth,.first_vertex_is_provoking=first,.wide_lines=wide,.z_perspective=z,.tri_rot0=1,.tri_rot1=2},.glsl_opts={.vulkan=vk}}};
-  bool expected=stages[stage]==8&&vk&&!wide&&front==POLY_MODE_FILL&&back==POLY_MODE_FILL&&(primitive==PRIM_TYPE_QUADS||primitive==PRIM_TYPE_QUAD_STRIP);
+  bool expected=stages[stage]==8&&vk&&!wide&&front==back&&(primitive==PRIM_TYPE_QUADS||primitive==PRIM_TYPE_QUAD_STRIP);
   pgraph_vk_spirv_1_6=true;SpvQuadGeomOptions o={0};assert(vk_module_quad_options(&key,&o)==expected);
-  if(expected){assert(o.smooth_shading==smooth&&o.z_perspective==z&&o.spirv_1_6&&o.strip==(primitive==PRIM_TYPE_QUAD_STRIP));}count++;
+  if(expected){assert(o.smooth_shading==smooth&&o.z_perspective==z&&o.spirv_1_6&&o.strip==(primitive==PRIM_TYPE_QUAD_STRIP));assert(o.polygon_mode==(front==POLY_MODE_LINE?SPV_GEOM_LINE:front==POLY_MODE_POINT?SPV_GEOM_POINT:SPV_GEOM_FILL));}count++;
  }
+ SpvDirectModule invalid;assert(!pgraph_spv_quad_geom((SpvQuadGeomOptions){.polygon_mode=3},&invalid));assert(!invalid.words&&!invalid.num_words);
  printf("Quad selector: %u cases passed\n",count);
 }
 #ifdef TEST_VULKAN

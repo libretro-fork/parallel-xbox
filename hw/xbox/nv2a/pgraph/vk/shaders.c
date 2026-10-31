@@ -665,8 +665,10 @@ static bool vk_module_triangle_options(const ShaderModuleCacheKey *key,
     unsigned mode = state->primitive_mode;
     if ((mode != PRIM_TYPE_TRIANGLES && mode != PRIM_TYPE_TRIANGLE_STRIP &&
          mode != PRIM_TYPE_TRIANGLE_FAN && mode != PRIM_TYPE_POLYGON) ||
-        state->wide_lines || state->polygon_front_mode != POLY_MODE_FILL ||
-        state->polygon_back_mode != POLY_MODE_FILL) {
+        state->wide_lines || state->polygon_front_mode != state->polygon_back_mode ||
+        (state->polygon_front_mode != POLY_MODE_FILL &&
+         state->polygon_front_mode != POLY_MODE_LINE && state->polygon_front_mode != POLY_MODE_POINT) ||
+        (mode == PRIM_TYPE_POLYGON && state->polygon_front_mode != POLY_MODE_FILL)) {
         return false;
     }
     unsigned provoking = mode == PRIM_TYPE_POLYGON ? 2 :
@@ -676,6 +678,8 @@ static bool vk_module_triangle_options(const ShaderModuleCacheKey *key,
         .smooth_shading = state->smooth_shading,
         .spirv_1_6 = pgraph_vk_spirv_1_6,
         .z_perspective = state->z_perspective,
+        .polygon_mode = state->polygon_front_mode == POLY_MODE_LINE ? SPV_GEOM_LINE :
+                        state->polygon_front_mode == POLY_MODE_POINT ? SPV_GEOM_POINT : SPV_GEOM_FILL,
         /* Match get_vertex_order(), including its else case. */
         .rotation_even = state->tri_rot0 == 0 ? 0 : state->tri_rot0 == 1 ? 1 : 2,
         .rotation_odd = state->tri_rot1 == 0 ? 0 : state->tri_rot1 == 1 ? 1 : 2,
@@ -696,14 +700,17 @@ static bool vk_module_quad_options(const ShaderModuleCacheKey *key,
     const GeomState *state = &key->geom.state;
     if ((state->primitive_mode != PRIM_TYPE_QUADS &&
          state->primitive_mode != PRIM_TYPE_QUAD_STRIP) || state->wide_lines ||
-        state->polygon_front_mode != POLY_MODE_FILL ||
-        state->polygon_back_mode != POLY_MODE_FILL) {
+        state->polygon_front_mode != state->polygon_back_mode ||
+        (state->polygon_front_mode != POLY_MODE_FILL &&
+         state->polygon_front_mode != POLY_MODE_LINE && state->polygon_front_mode != POLY_MODE_POINT)) {
         return false;
     }
     *opts = (SpvQuadGeomOptions) {
         .smooth_shading = state->smooth_shading,
         .spirv_1_6 = pgraph_vk_spirv_1_6,
         .z_perspective = state->z_perspective,
+        .polygon_mode = state->polygon_front_mode == POLY_MODE_LINE ? SPV_GEOM_LINE :
+                        state->polygon_front_mode == POLY_MODE_POINT ? SPV_GEOM_POINT : SPV_GEOM_FILL,
         .strip = state->primitive_mode == PRIM_TYPE_QUAD_STRIP,
     };
     return true;
