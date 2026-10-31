@@ -371,14 +371,31 @@ TranslationBlock *inv_tb_htable_lookup(CPUState *cpu, TCGTBCPUState s,
     return tb;
 }
 
-/* HACK (CPU boost): xemu builds only x86, so this hottest hook is called
- * directly, not through two pointers. */
+/* The Xbox target always uses the x86 hook, including without CPU boost.
+ * Boost still controls the guest flag specialization inside that hook. */
+#ifdef XBOX
 TCGTBCPUState x86_get_tb_cpu_state(CPUState *cs);
+#endif
 
 static inline TCGTBCPUState xemu_get_tb_cpu_state(CPUState *cpu)
 {
-    return xemu_cpu_boost ? x86_get_tb_cpu_state(cpu) :
-                            cpu->cc->tcg_ops->get_tb_cpu_state(cpu);
+#ifdef XBOX
+    return x86_get_tb_cpu_state(cpu);
+#else
+    return cpu->cc->tcg_ops->get_tb_cpu_state(cpu);
+#endif
+}
+
+/* Most indirect branches need only the already configured flags. Keep the
+ * single-step and debug policy in curr_cflags, off the usual call path. */
+static inline uint32_t xemu_lookup_cflags(CPUState *cpu)
+{
+    if (unlikely(cpu->singlestep_enabled ||
+                 retro_atomic_load_relaxed_int(&one_insn_per_tb) ||
+                 qemu_loglevel_mask(CPU_LOG_TB_NOCHAIN))) {
+        return curr_cflags(cpu);
+    }
+    return cpu->tcg_cflags;
 }
 
 /**
@@ -554,7 +571,7 @@ const void *HELPER(lookup_tb_ptr)(CPUArchState *env)
     cpu->neg.can_do_io = true;
 
     TCGTBCPUState s = xemu_get_tb_cpu_state(cpu);
-    s.cflags = curr_cflags(cpu);
+    s.cflags = xemu_lookup_cflags(cpu);
 
     if (check_for_breakpoints(cpu, s.pc, &s.cflags)) {
         cpu_loop_exit(cpu);

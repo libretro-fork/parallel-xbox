@@ -515,6 +515,12 @@ windows in one render pass with one pipeline bind; device-reset behavior is
 also checked. Embedded shaders need no external compiler. Test fence waits
 are confined to the standalone fixture; no wait is added to the core.
 
+`test-tb-lookup-state.py CHECKOUT [CC]` runs production indirect-branch lookup
+with Xbox direct dispatch and generic target dispatch. It checks boost on/off,
+32/64-bit PCs, flag combinations, single-step/one-instruction/no-chain modes,
+lookup hits/misses, logging and breakpoint exits against independent results.
+The Xbox path must bypass the target function pointer in both boost modes.
+
 At guest frame 1020, two GPU palette clears (red then green) are each followed by an indexed draw before the next flip. Frontend frame 1030 must show green; the former Vulkan per-frame validation throttle left it red. The extracted dirty-page test also checks that GPU writeback invalidates all overlapping texture/palette validation stamps even when they are already marked dirty, leaving unrelated and empty views unchanged.
 
 Guest frame 1040 clears a GPU ARGB source red then blue, sampling each update through a one-byte Y8 view before the flip. Frame 1060 repeats this using the GPU-produced byte as index 0 then 255, with green and white palette entries. Frontend captures 1050/1070 must both be white. The Vulkan build predating GPU-writeback validation-stamp invalidation instead produced black and green.
