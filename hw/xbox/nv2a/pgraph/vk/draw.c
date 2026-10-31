@@ -4403,51 +4403,77 @@ static VertexBufferRemap remap_unaligned_attributes(PGRAPHState *pg,
 }
 
 static void copy_remapped_attributes_to_inline_buffer(PGRAPHState *pg,
-                                                      VertexBufferRemap remap,
+                                                      const VertexBufferRemap *remap,
                                                       uint32_t start_vertex,
-                                                      uint32_t num_vertices)
+                                                      uint32_t end_vertex)
 {
     NV2AState *d = container_of(pg, NV2AState, pgraph);
     PGRAPHVkState *r = pg->vk_renderer_state;
     StorageBuffer *buffer = &r->storage_buffers[BUFFER_VERTEX_INLINE_STAGING];
 
-    if (!remap.attributes) {
+    if (!remap->attributes) {
         return;
     }
 
     assert(pgraph_vk_buffer_has_space_for(pg, BUFFER_VERTEX_INLINE_STAGING,
-                                          remap.buffer_space_required, 256));
+                                          remap->buffer_space_required, 256));
 
     // FIXME: Caching
-    // FIXME: Account for only what is drawn
-    assert(start_vertex == 0);
+    /* [start_vertex, end_vertex), with the original indices preserved:
+     * reserve the prefix, but do not read or fill vertices the draw skips. */
+    assert(start_vertex <= end_vertex);
     assert(buffer->mapped);
+    const uint32_t copy_count = end_vertex - start_vertex;
+    /* Do not form a source pointer beyond the last element for an empty
+     * range: its trailing stride need not lie within guest RAM. */
+    const uint32_t first_vertex = copy_count ? start_vertex : 0;
+
+    /* Dispatch once per attribute, so each small gather copy has a constant
+     * width and the compiler can emit unaligned loads/stores directly. */
+#define COPY_REMAPPED_WIDTH(n)                                         \
+    do {                                                              \
+        for (uint32_t vertex_id = 0; vertex_id < copy_count; vertex_id++) { \
+            memcpy(out_ptr, in_ptr, (n));                              \
+            out_ptr += (n);                                          \
+            in_ptr += stride;                                        \
+        }                                                             \
+    } while (0)
 
     // Copy vertex data
     for (int attr_id = 0; attr_id < NV2A_VERTEXSHADER_ATTRIBUTES; attr_id++) {
-        if (!(remap.attributes & (1 << attr_id))) {
+        if (!(remap->attributes & (1 << attr_id))) {
             continue;
         }
 
         VkDeviceSize attr_buffer_offset =
-            buffer->buffer_offset + remap.map[attr_id].offset;
+            buffer->buffer_offset + remap->map[attr_id].offset;
 
-        uint8_t *out_ptr = buffer->mapped + attr_buffer_offset;
-        uint8_t *in_ptr = d->vram_ptr + r->vertex_attribute_offsets[attr_id];
+        size_t width = remap->map[attr_id].new_stride;
+        size_t stride = remap->map[attr_id].old_stride;
+        uint8_t *out_ptr = buffer->mapped + attr_buffer_offset +
+                           (size_t)first_vertex * width;
+        uint8_t *in_ptr = d->vram_ptr + r->vertex_attribute_offsets[attr_id] +
+                          (size_t)first_vertex * stride;
 
-        size_t width = remap.map[attr_id].new_stride;
-        size_t stride = remap.map[attr_id].old_stride;
         if (stride == width) {
             /* An unaligned base can require remapping even when the vertex
              * elements are packed. Copy that span once, without gathering. */
-            if (num_vertices) {
-                memcpy(out_ptr, in_ptr, width * num_vertices);
+            if (copy_count) {
+                memcpy(out_ptr, in_ptr, width * copy_count);
             }
         } else {
-            for (uint32_t vertex_id = 0; vertex_id < num_vertices; vertex_id++) {
-                memcpy(out_ptr, in_ptr, width);
-                out_ptr += width;
-                in_ptr += stride;
+            switch (width) {
+            case 1: COPY_REMAPPED_WIDTH(1); break;
+            case 2: COPY_REMAPPED_WIDTH(2); break;
+            case 3: COPY_REMAPPED_WIDTH(3); break;
+            case 4: COPY_REMAPPED_WIDTH(4); break;
+            case 6: COPY_REMAPPED_WIDTH(6); break;
+            case 8: COPY_REMAPPED_WIDTH(8); break;
+            case 12: COPY_REMAPPED_WIDTH(12); break;
+            case 16: COPY_REMAPPED_WIDTH(16); break;
+            default:
+                COPY_REMAPPED_WIDTH(width);
+                break;
             }
         }
 
@@ -4455,7 +4481,8 @@ static void copy_remapped_attributes_to_inline_buffer(PGRAPHState *pg,
     }
 
 
-    buffer->buffer_offset += remap.buffer_space_required;
+    buffer->buffer_offset += remap->buffer_space_required;
+#undef COPY_REMAPPED_WIDTH
 }
 
 void pgraph_vk_flush_draw(NV2AState *d)
@@ -4494,7 +4521,8 @@ void pgraph_vk_flush_draw(NV2AState *d)
         VertexBufferRemap remap = remap_unaligned_attributes(pg, max_element);
 
         begin_pre_draw(pg);
-        copy_remapped_attributes_to_inline_buffer(pg, remap, 0, max_element);
+        copy_remapped_attributes_to_inline_buffer(
+            pg, &remap, pg->draw_arrays_min_start, max_element);
         pgraph_vk_begin_debug_marker(r, r->command_buffer, RGBA_BLUE,
                                      "Draw Arrays");
         begin_draw(pg);
@@ -4531,7 +4559,8 @@ void pgraph_vk_flush_draw(NV2AState *d)
         VertexBufferRemap remap = remap_unaligned_attributes(pg, max_element + 1);
 
         begin_pre_draw(pg);
-        copy_remapped_attributes_to_inline_buffer(pg, remap, 0, max_element + 1);
+        copy_remapped_attributes_to_inline_buffer(pg, &remap, min_element,
+                                                  max_element + 1);
         VkDeviceSize buffer_offset = pgraph_vk_update_index_buffer(
             pg, pg->inline_elements, index_data_size);
         pgraph_vk_begin_debug_marker(r, r->command_buffer, RGBA_BLUE,

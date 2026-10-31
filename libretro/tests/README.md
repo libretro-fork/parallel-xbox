@@ -482,9 +482,11 @@ After the GPU palette updates, guest frames 960 through 999 rebind the same inde
 production vertex range merge, dirty/COW dispatch and remap copy against
 independent page-union and byte-fetch oracles. It covers 100,000 interval
 sets, 10,000 zero/nonzero sync-queue cases and 20,000 multi-attribute copies
-with output guard bytes, packed/strided sources and zero vertex counts. It
-checks that merged ranges stay in the input array and packed attributes use
-one copy; undefined-behavior traps are enabled. No graphics driver is needed.
+with output guard bytes, packed/strided sources, nonzero first vertices and
+empty ranges. Skipped prefixes remain untouched; remap metadata and binding
+indices stay intact. It checks that merged ranges stay in the input array
+and packed attributes use one copy; undefined-behavior traps are enabled.
+No graphics driver is needed.
 
 At guest frame 1020, two GPU palette clears (red then green) are each followed by an indexed draw before the next flip. Frontend frame 1030 must show green; the former Vulkan per-frame validation throttle left it red. The extracted dirty-page test also checks that GPU writeback invalidates all overlapping texture/palette validation stamps even when they are already marked dirty, leaving unrelated and empty views unchanged.
 

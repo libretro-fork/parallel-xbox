@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Vulkan vertex remapping skips leading vertices that the draw does not use, keeps packed copies contiguous, and specializes small strided copies. Remap metadata is passed by reference rather than copied; existing indices, staging capacity and in-flight snapshot protection are preserved.
+
 - Vulkan retains a compatible larger linear depth buffer when a game switches to a smaller color target, avoiding depth downloads and reuploads. Cached target switches keep the color-sized render area and clip, and partial clears preserve the rest of the depth/stencil image.
 - Extend native file-I/O regression coverage to partial vectored/scalar transfers, interrupted calls, EOF, zero-progress transfers and terminal errors using real files with fault injection at the syscall boundary.
 

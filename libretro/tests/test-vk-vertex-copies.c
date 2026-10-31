@@ -94,20 +94,25 @@ int main(void){
   for(unsigned p=0;p<256;p++){assert(bit(r.vertex_consumed_bitmap,p)==(touch[p]||bit(initial_consumed,p)));assert(dirty[p]==(touch[p]?false:initial_dirty[p]));}
   assert(r.guard1==UINT64_C(0x182fe0ac19387e)&&r.guard2==r.guard1);
  }
- static const unsigned widths[]={1,2,3,4,6,8,12,16};uint64_t old_calls=0,new_calls=0,total_bytes=0;
+ static const unsigned widths[]={1,2,3,4,6,8,12,16,20};uint64_t old_calls=0,new_calls=0,total_bytes=0,old_bytes=0;
  for(unsigned trial=0;trial<20000;trial++){
-  memset(&r,0,sizeof(r));memset(staging,0xcc,sizeof(staging));memset(gold,0xcc,sizeof(gold));unsigned count=trial%129,nattrs=1+rnd()%16;
+  memset(&r,0,sizeof(r));memset(staging,0xcc,sizeof(staging));memset(gold,0xcc,sizeof(gold));unsigned count=trial%129,nattrs=trial%17;
+  unsigned start=trial%4==0?0:rnd()%(count+1),drawn=count-start;
   size_t begin=rnd()%64,out=0;r.storage_buffers[0]=(StorageBuffer){staging,begin,sizeof(staging)};VertexBufferRemap remap={0};unsigned want_calls=0;size_t want_bytes=0;
   for(unsigned a=0;a<nattrs;a++){
-   size_t width=widths[rnd()%8],stride=(rnd()&1)?width:rnd()%65,base=a*16384+1+rnd()%63;
+   size_t width=widths[rnd()%ARRAY_SIZE(widths)],stride=(rnd()&1)?width:rnd()%65,base=a*16384+1+rnd()%63;
    r.vertex_attribute_offsets[a]=base;remap.attributes|=1u<<a;remap.map[a].offset=out;remap.map[a].new_stride=width;remap.map[a].old_stride=stride;
-   for(unsigned v=0;v<count;v++)for(size_t b=0;b<width;b++)gold[begin+out+v*width+b]=ram[base+v*stride+b];
-   old_calls+=count;want_calls+=stride==width?(count?1:0):count;want_bytes+=width*count;out+=width*count+rnd()%8;
+   for(unsigned v=start;v<count;v++)for(size_t b=0;b<width;b++)gold[begin+out+v*width+b]=ram[base+v*stride+b];
+   old_calls+=stride==width?(count?1:0):count;old_bytes+=width*count;
+   want_calls+=stride==width?(drawn?1:0):drawn;want_bytes+=width*drawn;out+=width*count+rnd()%8;
   }
-  remap.buffer_space_required=out;calls=copied=0;copy_remapped_attributes_to_inline_buffer(&d.pgraph,remap,0,count);
+  remap.buffer_space_required=out;uint8_t saved[sizeof(remap)];memcpy(saved,&remap,sizeof(remap));
+  calls=copied=0;copy_remapped_attributes_to_inline_buffer(&d.pgraph,&remap,start,count);
+  assert(!memcmp(&remap,saved,sizeof(remap)));
   assert(!memcmp(staging,gold,sizeof(staging))&&r.storage_buffers[0].buffer_offset==begin+out&&calls==want_calls&&copied==want_bytes);
   for(unsigned a=0;a<nattrs;a++)assert(r.vertex_attribute_offsets[a]==begin+remap.map[a].offset);
+  for(unsigned a=nattrs;a<16;a++)assert(r.vertex_attribute_offsets[a]==0);
   new_calls+=calls;total_bytes+=copied;
  }
- printf("PASS: 10000 zero/nonzero sync-queue cases; 100000 independent page-union/dirty/COW cases; 20000 full-byte remap/redzone cases; copy calls %llu -> %llu, %llu bytes preserved; UB traps enabled\n",(unsigned long long)old_calls,(unsigned long long)new_calls,(unsigned long long)total_bytes);
+ printf("PASS: 10000 zero/nonzero sync-queue cases; 100000 independent page-union/dirty/COW cases; 20000 range/remap/redzone cases; copy calls %llu -> %llu, copied bytes %llu -> %llu; UB traps enabled\n",(unsigned long long)old_calls,(unsigned long long)new_calls,(unsigned long long)old_bytes,(unsigned long long)total_bytes);
 }
