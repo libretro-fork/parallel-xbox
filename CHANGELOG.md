@@ -1,5 +1,7 @@
 # Changelog of the libretro core
 
+- Remove unused AIO recursive mutexes, worker-pool settings and graph-registration stubs; keep the socket/eventcount wake paths.
+
 - Remove all four timer-queue mutexes; enforce frontend ownership and retain atomic deadline snapshots for observing threads. Remove unreachable GPU host-time timer code.
 
 - Remove four unused timer-dispatch completion events: clock enablement and callback dispatch share the emulation thread.

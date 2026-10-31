@@ -17,19 +17,6 @@
 /* never dereferenced: what thread_pool_new hands back */
 static int lr_thread_pool;
 
-ThreadPoolAio *thread_pool_new_aio(struct AioContext *ctx)
-{
-    abort();
-}
-
-void thread_pool_free_aio(ThreadPoolAio *pool)
-{
-}
-
-void thread_pool_update_params(ThreadPoolAio *pool, struct AioContext *ctx)
-{
-}
-
 ThreadPool *thread_pool_new(void)
 {
     return (ThreadPool *)&lr_thread_pool;

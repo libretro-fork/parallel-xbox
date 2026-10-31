@@ -167,7 +167,6 @@ SOURCES_UTIL := \
 	$(CORE_DIR)/stubs/cpus-virtual-clock.c \
 	$(CORE_DIR)/stubs/error-printf.c \
 	$(CORE_DIR)/stubs/fdset.c \
-	$(CORE_DIR)/stubs/graph-lock.c \
 	$(CORE_DIR)/stubs/hotplug-stubs.c \
 	$(CORE_DIR)/stubs/icount.c \
 	$(CORE_DIR)/stubs/iothread-lock.c \

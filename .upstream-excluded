@@ -3206,3 +3206,6 @@ stubs/coroutine-none.c
 include/qemu/coroutine.h
 include/qemu/coroutine-core.h
 include/qemu/coroutine-tls.h
+
+# Obsolete AIO graph-registration no-ops
+stubs/graph-lock.c

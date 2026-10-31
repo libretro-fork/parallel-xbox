@@ -20,20 +20,7 @@
 
 #include "block/aio.h"
 
-#define THREAD_POOL_MAX_THREADS_DEFAULT         64
-
 typedef int ThreadPoolFunc(void *opaque);
-
-typedef struct ThreadPoolAio ThreadPoolAio;
-
-ThreadPoolAio *thread_pool_new_aio(struct AioContext *ctx);
-void thread_pool_free_aio(ThreadPoolAio *pool);
-
-/*
- * thread_pool_submit_{aio,co} API: submit I/O requests in the thread's
- * current AioContext.
- */
-void thread_pool_update_params(ThreadPoolAio *pool, struct AioContext *ctx);
 
 /* ------------------------------------------- */
 /* Generic thread pool types and methods below */
