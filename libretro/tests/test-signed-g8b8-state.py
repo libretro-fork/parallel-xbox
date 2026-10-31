@@ -99,17 +99,18 @@ int main(void) {
     for (unsigned stage = 0; stage < 4; stage++)
     for (unsigned signs = 0; signs < 16; signs++)
     for (unsigned filter = 3; filter <= 6; filter++)
+    for (unsigned clamp = 0; clamp < 2; clamp++)
     for (unsigned others = 0; others < 2; others++) {
         unsigned base_filter = filter % 2 ? 1 : 2;
         PshState mip = encode_signed_g8b8(signs, filter, base_filter,
-                                        true, true, true, others, stage);
+                                        true, clamp, true, others, stage);
         PshState base = encode_signed_g8b8(signs, base_filter, base_filter,
-                                         false, true, true, others, stage);
+                                         false, clamp, true, others, stage);
         assert(!memcmp(&mip, &base, sizeof(mip)));
         canonical++;
     }
     printf("PASS: %u signed-G8B8 address invalidation cases and shader field coverage\n", cases);
-    printf("PASS: %u base-only clamped shader cache canonicalization cases\n", canonical);
+    printf("PASS: %u base-only shader cache canonicalization cases\n", canonical);
 }
 '''.replace("/* PRODUCTION */", function).replace("/* MASKS */", masks).replace("/* STATE */", state + "\n" + legacy).replace("/* ENCODING */", encoding)
 with tempfile.TemporaryDirectory(prefix="g8b8-state-") as folder:
