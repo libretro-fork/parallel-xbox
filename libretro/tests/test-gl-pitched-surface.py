@@ -10,7 +10,7 @@ for name in ('surface_copy_expand_row','surface_copy_expand','surface_unpack_lay
  parts.append(s[a:b])
 a=s.index('    uint8_t *data = d->vram_ptr;',s.index('static void upload_surface_data_impl'))
 b=s.index('\nstatic void compare_surfaces',a)
-parts.append('static void upload_pixels(NV2AState *d,SurfaceBinding *surface){ PGRAPHState *pg=&d->pgraph;GLint last_texture_binding;glGetIntegerv(GL_TEXTURE_BINDING_2D,&last_texture_binding);glBindFramebuffer(GL_FRAMEBUFFER,pg->gl_renderer_state->gl_fb_util);\n'+s[a:b])
+parts.append('static void upload_pixels(NV2AState *d,SurfaceBinding *surface){ PGRAPHState *pg=&d->pgraph;PGRAPHGLState *r=pg->gl_renderer_state;GLint last_texture_binding;glGetIntegerv(GL_TEXTURE_BINDING_2D,&last_texture_binding);glBindFramebuffer(GL_FRAMEBUFFER,pg->gl_renderer_state->gl_fb_util);\n'+s[a:b])
 code=Path(__file__).with_suffix('.c').read_text().replace('/* PRODUCTION */','\n'.join(parts))
 with tempfile.TemporaryDirectory(prefix='gl-pitched-') as tmp:
  p=Path(tmp);(p/'test.c').write_text(code);binary=os.environ.get('PITCHED_GL_BINARY',str(p/'test'))

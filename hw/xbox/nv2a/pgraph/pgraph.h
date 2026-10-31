@@ -399,7 +399,6 @@ typedef struct PGRAPHState {
     QEMUBH *irq_bh;
 
     unsigned int surface_scale_factor;
-    uint8_t *scale_buf;
 
     PGRAPHWritebackState writeback;
 

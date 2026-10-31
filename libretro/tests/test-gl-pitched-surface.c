@@ -20,8 +20,8 @@ extern void libretro_gl_set_standalone_mode(void);
 #define ROUND_UP(n,a) (((n)+(a)-1)&~((a)-1))
 #define g_realloc realloc
 typedef struct {uint8_t *data;size_t size;} Scratch;
-typedef struct {GLuint gl_fb_util,fb_bound,ul_zgrow_fbo,ul_zgrow_tex,ul_grow_fbo,ul_grow_tex;unsigned ul_zgrow_w,ul_zgrow_h,ul_grow_w,ul_grow_h;GLint ul_zgrow_fmt,ul_grow_fmt;Scratch surf_scratch;} PGRAPHGLState;
-typedef struct {unsigned surface_scale_factor;uint8_t *scale_buf;PGRAPHGLState *gl_renderer_state;} PGRAPHState;
+typedef struct {GLuint gl_fb_util,fb_bound,ul_zgrow_fbo,ul_zgrow_tex,ul_grow_fbo,ul_grow_tex;unsigned ul_zgrow_w,ul_zgrow_h,ul_grow_w,ul_grow_h;GLint ul_zgrow_fmt,ul_grow_fmt;Scratch surf_scratch,scale_scratch;} PGRAPHGLState;
+typedef struct {unsigned surface_scale_factor;PGRAPHGLState *gl_renderer_state;} PGRAPHState;
 typedef struct {PGRAPHState pgraph;uint8_t *vram_ptr;} NV2AState;
 typedef struct {unsigned width,height,pitch,vram_addr,size,tex_w,tex_h;GLint tex_fmt;GLuint gl_buffer;bool color,swizzle;struct {unsigned bytes_per_pixel;GLenum gl_format,gl_type,gl_internal_format,gl_attachment;} fmt;} SurfaceBinding;
 static unsigned restores,invalidations,reservations;
@@ -72,7 +72,7 @@ static void run_case(NV2AState*d,unsigned w,unsigned h,unsigned bpp,unsigned pad
  GLint row,align;bool representable=surface_unpack_layout(w,bpp,pitch,&row,&align);
  if(invalidations!=previous_gpu){assert(sf>1&&allow_gpu);gpu++;}
  else if(sf>1)expanded++;else if(!representable)packed++;else direct++;
- assert(reservations==(swizzle?1u:0u));
+ assert(reservations==(swizzle?1u:0u)+(!representable||(sf>1&&invalidations==previous_gpu)?1u:0u));
  glBindTexture(GL_TEXTURE_2D,target);glGetTexImage(GL_TEXTURE_2D,0,format,type,actual);
  if(invalidations!=previous_gpu)reference_gpu(&surface,linear,sf,expected);
  if(memcmp(actual,expected,bytes)){for(size_t i=0;i<bytes;i++)if(actual[i]!=expected[i]){fprintf(stderr,"w=%u bpp=%u pad=%u sf=%u GPU=%u format=%x byte=%zu old=%u new=%u\n",w,bpp,pad,sf,allow_gpu,internal,i,expected[i],actual[i]);break;}abort();}
@@ -106,7 +106,7 @@ int main(void)
  }
  for(unsigned sf=1;sf<=3;sf++)for(unsigned mode=0;mode<2;mode++)run_case(&d,16,8,4,0,sf,GL_RGBA8,GL_RGBA,GL_UNSIGNED_BYTE,GL_COLOR_ATTACHMENT0,mode,true);
  printf("%u driver cases byte-exact; direct=%u GPU-grow=%u CPU-expand=%u rare-byte-pitch-pack=%u; unpack state and guards PASS\n",cases,direct,gpu,expanded,packed);
- free(d.pgraph.scale_buf);free(renderer.surf_scratch.data);
+ free(renderer.scale_scratch.data);free(renderer.surf_scratch.data);
  GLuint textures[]={renderer.ul_grow_tex,renderer.ul_zgrow_tex};glDeleteTextures(2,textures);GLuint fbos[]={renderer.gl_fb_util,renderer.ul_grow_fbo,renderer.ul_zgrow_fbo};glDeleteFramebuffers(3,fbos);
 #ifdef _WIN32
  glo_context_destroy(context);

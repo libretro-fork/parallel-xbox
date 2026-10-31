@@ -277,6 +277,7 @@ typedef struct PGRAPHGLState {
     uint32_t clear_parameter;
     GLuint s2t_byte_pbo;
     Scratch surf_scratch, s2t_scratch, pvideo_scratch;
+    Scratch scale_scratch; /* Render-thread fallback transfers; no live contents. */
     /* Display-thread coordination for the scanout. The surface list is
      * owned by the render thread; walking it from the display thread
      * raced against insertions and evictions. have_surfaces is

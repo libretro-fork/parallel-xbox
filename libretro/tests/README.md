@@ -1450,3 +1450,9 @@ dimensions, state restoration and unflipped PBO handoff). CPU flags are a fixtur
 adapter; the core uses libretro-common detection. GL_FLIP_BENCH=1 with
 GL_FLIP_CFLAGS="" runs an isolated swap benchmark; it is not a readback/FPS
 benchmark. GL_FLIP_BINARY / GL_FLIP_SKIP_RUN support cross builds.
+
+`test-gl-scale-scratch.py` compiles the production scratch implementation and
+checks discard-on-growth allocation, retained capacity across 10000 alternating
+requests, empty requests, finalization and reuse after finalization. GL pitched
+upload and fallback readback tests exercise the renderer-owned scale scratch.
+SCALE_SCRATCH_BINARY / SCALE_SCRATCH_SKIP_RUN support native cross builds.

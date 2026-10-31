@@ -20,6 +20,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- OpenGL: reuse lazy fallback-transfer scratch capacity instead of reallocating on every scaled/irregular upload or readback; discard obsolete contents on growth and release the buffer with the renderer.
+
 - OpenGL: swap flipped readback rows in place on AVX2 CPUs without a heap row temporary; keep the tuned portable copy path and handle empty/single-row images safely.
 
 - Keep a retired Vulkan overlay's image view with its pooled image, avoiding

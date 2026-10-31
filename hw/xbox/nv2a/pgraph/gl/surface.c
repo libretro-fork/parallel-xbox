@@ -1882,10 +1882,11 @@ static void surface_download_to_buffer(NV2AState *d, SurfaceBinding *surface,
         }
     }
     if (cpu_shrink) {
-        pg->scale_buf = (uint8_t *)g_realloc(
-            pg->scale_buf, pg->surface_scale_factor * pg->surface_scale_factor *
-                               surface->size);
-        gl_read_buf = pg->scale_buf;
+        /* Temporary pixels are fully overwritten; retain capacity rather
+         * than reallocating (and preserving obsolete data) for each surface. */
+        gl_read_buf = scratch_reserve(&r->scale_scratch,
+            (size_t)pg->surface_scale_factor * pg->surface_scale_factor *
+                surface->size);
     }
 
     unsigned int rd_scale = gpu_shrink ? 1 : pg->surface_scale_factor;
@@ -1896,13 +1897,13 @@ static void surface_download_to_buffer(NV2AState *d, SurfaceBinding *surface,
         rd_scale * surface->height, flip, gl_read_buf);
 
     if (cpu_shrink && swizzle) {
-        swizzle_rect_from_scaled(pg->scale_buf, surface->width, surface->height,
+        swizzle_rect_from_scaled(gl_read_buf, surface->width, surface->height,
             pixels, surface->pitch, surface->fmt.bytes_per_pixel,
             pg->surface_scale_factor);
         swizzle = false; /* Already placed directly in guest Morton order. */
     } else if (cpu_shrink) {
         assert(surface->pitch >= (surface->width * surface->fmt.bytes_per_pixel));
-        uint8_t *out = swizzle_buf, *in = pg->scale_buf;
+        uint8_t *out = swizzle_buf, *in = gl_read_buf;
         for (unsigned int y = 0; y < surface->height; y++) {
             surface_copy_shrink_row(out, in, surface->width,
                                     surface->fmt.bytes_per_pixel,
@@ -2511,13 +2512,13 @@ static void upload_surface_data_impl(NV2AState *d, SurfaceBinding *surface,
         (!surface->color || surface->fmt.gl_attachment == GL_COLOR_ATTACHMENT0);
     if (pack_for_grow) {
         /* Preserve the existing GPU-grow route even for an inexpressible
-         * byte stride (notably its depth conversion). Reuse scale_buf for
+         * byte stride (notably its depth conversion). Reuse scale_scratch for
          * this rare native packing; keep buf intact if GPU grow declines. */
         size_t bytes = (size_t)width * height * surface->fmt.bytes_per_pixel;
-        pg->scale_buf = g_realloc(pg->scale_buf, bytes);
-        surface_copy_expand(pg->scale_buf, buf, width, height,
+        uint8_t *packed = scratch_reserve(&r->scale_scratch, bytes);
+        surface_copy_expand(packed, buf, width, height,
             surface->fmt.bytes_per_pixel, 1, surface->pitch);
-        grow_buf = pg->scale_buf;
+        grow_buf = packed;
         grow_row_length = 0;
         grow_alignment = ((size_t)width * surface->fmt.bytes_per_pixel) % 4 ? 1 : 4;
     }
@@ -2529,9 +2530,8 @@ static void upload_surface_data_impl(NV2AState *d, SurfaceBinding *surface,
 
     if (pg->surface_scale_factor > 1 || !pitched) {
         pgraph_apply_scaling_factor(pg, &width, &height);
-        pg->scale_buf = (uint8_t *)g_realloc(
-            pg->scale_buf, (size_t)width * height * surface->fmt.bytes_per_pixel);
-        gl_read_buf = pg->scale_buf;
+        gl_read_buf = scratch_reserve(&r->scale_scratch,
+            (size_t)width * height * surface->fmt.bytes_per_pixel);
         surface_copy_expand(gl_read_buf, buf, surface->width, surface->height,
             surface->fmt.bytes_per_pixel, pg->surface_scale_factor, surface->pitch);
         row_length = 0;
@@ -3519,6 +3519,7 @@ void pgraph_gl_init_surfaces(PGRAPHState *pg)
     /* More bindings than the surface and parked lists ever hold, and the
      * copies of a 1024x1024 32-bit surface */
     obj_pool_init(&r->surface_pool, sizeof(SurfaceBinding), 1024);
+    r->scale_scratch = (Scratch){0}; /* Allocate only for a fallback transfer. */
     scratch_init(&r->surf_scratch, 1024 * 1024 * 4);
     scratch_init(&r->s2t_scratch, 1024 * 1024 * 4);
     retro_eventcount_init(&r->downloads_complete);
@@ -3607,6 +3608,7 @@ void pgraph_gl_finalize_surfaces(PGRAPHState *pg)
 
     finalize_render_to_texture(pg);
     obj_pool_finalize(&r->surface_pool);
+    scratch_finalize(&r->scale_scratch);
     scratch_finalize(&r->surf_scratch);
     glDeleteBuffers(1, &r->s2t_byte_pbo);
     r->s2t_byte_pbo = 0;

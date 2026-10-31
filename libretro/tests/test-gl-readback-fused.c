@@ -16,8 +16,8 @@ typedef void *GLsync;typedef uint64_t GLuint64;
 #define trace_nv2a_pgraph_surface_download(...) ((void)0)
 #define g_realloc realloc
 typedef struct {void *data;} Scratch;
-typedef struct {Scratch surf_scratch;unsigned gl_fb_util,fb_bound;} PGRAPHGLState;
-typedef struct {unsigned surface_scale_factor;uint8_t *scale_buf;PGRAPHGLState *gl_renderer_state;} PGRAPHState;
+typedef struct {Scratch surf_scratch,scale_scratch;unsigned gl_fb_util,fb_bound;} PGRAPHGLState;
+typedef struct {unsigned surface_scale_factor;PGRAPHGLState *gl_renderer_state;} PGRAPHState;
 typedef struct {PGRAPHState pgraph;uint8_t *vram_ptr;} NV2AState;
 typedef struct {unsigned width,height,pitch,size,vram_addr,gl_buffer,dl_pbo;size_t dl_pbo_size;GLsync dl_fence;unsigned dl_draw_time,draw_time;bool color,swizzle,dl_swz,dl_native;struct {unsigned bytes_per_pixel,gl_attachment,gl_format,gl_type;} fmt;} SurfaceBinding;
 static uint8_t *raw;static size_t raw_size;static unsigned scratches,unmaps,deletes,restores;
@@ -62,13 +62,13 @@ int main(void){unsigned cases=0;size_t pixels=0;unsigned sizes[]={1,2,4,8,32,64}
    memset(actual,0xAB,bytes+32);memset(expected,0xAB,bytes+32);scratches=restores=0;
    reference(expected,raw,w,h,pitch,bpp,sf,true,flip);
    surface_download_to_buffer(&d,&surface,true,flip,true,actual);
-   assert(!memcmp(actual,expected,bytes+32));assert(restores==1);assert(scratches==(sf==1?1u:0u));
+   assert(!memcmp(actual,expected,bytes+32));assert(restores==1);assert(scratches==1);
   }
   memset(actual,0xAB,bytes+32);memset(expected,0xAB,bytes+32);scratches=unmaps=deletes=0;
   reference(expected,raw,w,h,pitch,bpp,sf,true,false);surface.dl_fence=(void*)1;
   assert(surface_download_harvest(&d,&surface));assert(!memcmp(actual,expected,bytes+32));assert(!scratches&&unmaps==1&&deletes==1&&!surface.dl_fence);
   surface.dl_fence=(void*)1;surface.dl_draw_time=6;assert(!surface_download_harvest(&d,&surface));assert(unmaps==1&&deletes==2);
-  free(renderer.surf_scratch.data);free(d.pgraph.scale_buf);free(raw);free(actual);free(expected);cases++;pixels+=(size_t)w*h;
+  free(renderer.surf_scratch.data);free(renderer.scale_scratch.data);free(raw);free(actual);free(expected);cases++;pixels+=(size_t)w*h;
  }
  printf("%u synchronous/flip/pending/stale cases, %zu pixels: byte-exact Morton samples, scratch allocations eliminated for scaled swizzled fallback, guards/lifecycle PASS\n",cases,pixels);return 0;
 }
