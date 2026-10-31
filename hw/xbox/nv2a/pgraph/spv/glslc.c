@@ -49,23 +49,60 @@ typedef struct Buf {
     size_t n, cap;
 } Buf;
 
-static void buf_put(Buf *b, uint32_t w)
+static void buf_reserve(Buf *b, size_t needed)
 {
-    if (b->n == b->cap) {
-        b->cap = b->cap ? b->cap * 2 : 1024;
-        b->w = realloc(b->w, b->cap * sizeof(uint32_t));
-        if (!b->w) {
-            abort();
-        }
+    const size_t limit = SIZE_MAX / sizeof(uint32_t);
+    if (needed > limit) {
+        abort();
     }
-    b->w[b->n++] = w;
+    if (needed <= b->cap) {
+        return;
+    }
+    size_t cap = b->cap ? b->cap : 1024;
+    while (cap < needed) {
+        cap = cap > limit / 2 ? needed : cap * 2;
+    }
+    uint32_t *words = realloc(b->w, cap * sizeof(*words));
+    if (!words) {
+        abort();
+    }
+    b->w = words;
+    b->cap = cap;
 }
 
-static void buf_append(Buf *b, const Buf *o)
+static void buf_put(Buf *b, uint32_t word)
 {
-    for (size_t i = 0; i < o->n; i++) {
-        buf_put(b, o->w[i]);
+    if (b->n == SIZE_MAX / sizeof(uint32_t)) {
+        abort();
     }
+    buf_reserve(b, b->n + 1);
+    b->w[b->n++] = word;
+}
+
+static void buf_append(Buf *b, const Buf *source)
+{
+    if (!source->n) {
+        return;
+    }
+    if (source->n > SIZE_MAX / sizeof(uint32_t) - b->n) {
+        abort();
+    }
+    buf_reserve(b, b->n + source->n);
+    memcpy(b->w + b->n, source->w, source->n * sizeof(uint32_t));
+    b->n += source->n;
+}
+
+/* A consumed stream can donate its allocation when the destination is empty. */
+static void buf_append_take(Buf *b, Buf *source)
+{
+    if (!b->n && source->n) {
+        free(b->w);
+        *b = *source;
+    } else {
+        buf_append(b, source);
+        free(source->w);
+    }
+    memset(source, 0, sizeof(*source));
 }
 
 /* ---- types ---- */
@@ -1722,18 +1759,18 @@ static void splice_end(C *c, Buf *saved, size_t at)
 {
     Buf made = c->fbody;
     c->fbody = *saved;
-    if (made.n) {
-        Buf merged;
-        memset(&merged, 0, sizeof(merged));
-        for (size_t i = 0; i < at; i++) {
-            buf_put(&merged, c->fbody.w[i]);
-        }
-        buf_append(&merged, &made);
-        for (size_t i = at; i < c->fbody.n; i++) {
-            buf_put(&merged, c->fbody.w[i]);
-        }
-        free(c->fbody.w);
-        c->fbody = merged;
+    if (at > c->fbody.n || made.n > SIZE_MAX / sizeof(uint32_t) - c->fbody.n) {
+        abort();
+    }
+    if (!c->fbody.n) {
+        buf_append_take(&c->fbody, &made);
+    } else if (made.n) {
+        /* Insert into the owned body, not a second prefix/body/suffix buffer. */
+        buf_reserve(&c->fbody, c->fbody.n + made.n);
+        memmove(c->fbody.w + at + made.n, c->fbody.w + at,
+                (c->fbody.n - at) * sizeof(uint32_t));
+        memcpy(c->fbody.w + at, made.w, made.n * sizeof(uint32_t));
+        c->fbody.n += made.n;
     }
     free(made.w);
 }
@@ -4696,8 +4733,8 @@ static void parse_function(C *c, Type *ret, const char *name)
     }
     if (is_main) {
         /* the globals' initializers first */
-        buf_append(&c->fvars, &c->ginit_vars);
-        buf_append(&c->fbody, &c->global_inits);
+        buf_append_take(&c->fvars, &c->ginit_vars);
+        buf_append_take(&c->fbody, &c->global_inits);
     }
     parse_block_statement(c);
     scope_pop(c);
@@ -4709,17 +4746,12 @@ static void parse_function(C *c, Type *ret, const char *name)
         }
         c->terminated = true;
     }
-    buf_append(&c->funcs, &head);
+    buf_append_take(&c->funcs, &head);
     op(&c->funcs, SpvOpLabel, 1);
     buf_put(&c->funcs, entry);
-    buf_append(&c->funcs, &c->fvars);
-    buf_append(&c->funcs, &c->fbody);
+    buf_append_take(&c->funcs, &c->fvars);
+    buf_append_take(&c->funcs, &c->fbody);
     op(&c->funcs, SpvOpFunctionEnd, 0);
-    free(head.w);
-    free(c->fvars.w);
-    free(c->fbody.w);
-    memset(&c->fvars, 0, sizeof(c->fvars));
-    memset(&c->fbody, 0, sizeof(c->fbody));
     c->in_function = false;
     c->cur_fn = NULL;
 }
@@ -4813,82 +4845,131 @@ static void init_types(C *c)
     buf_put(&c->types, 32);
 }
 
-static void assemble(C *c, GlslcResult *result)
+/* Count the module header, then write it directly into its final location. */
+typedef struct Header {
+    uint32_t *words;
+    size_t n, capacity;
+} Header;
+
+static void header_put(Header *h, uint32_t word)
 {
-    Buf m;
-    memset(&m, 0, sizeof(m));
+    if (h->n == SIZE_MAX / sizeof(uint32_t)) {
+        abort();
+    }
+    if (h->words) {
+        if (h->n >= h->capacity) {
+            abort();
+        }
+        h->words[h->n] = word;
+    }
+    h->n++;
+}
+
+static void header_op(Header *h, SpvOp opcode, unsigned operands)
+{
+    header_put(h, ((operands + 1) << 16) | opcode);
+}
+
+static void header_string(Header *h, const char *string)
+{
+    size_t length = strlen(string) + 1;
+    for (size_t i = 0; i < length; i += 4) {
+        uint32_t word = 0;
+        for (unsigned j = 0; j < 4 && i + j < length; j++) {
+            word |= (uint32_t)(uint8_t)string[i + j] << (j * 8);
+        }
+        header_put(h, word);
+    }
+}
+
+static void header_append(Header *h, const Buf *source)
+{
+    if (source->n > SIZE_MAX / sizeof(uint32_t) - h->n) {
+        abort();
+    }
+    if (h->words && source->n) {
+        if (source->n > h->capacity - h->n) {
+            abort();
+        }
+        memcpy(h->words + h->n, source->w, source->n * sizeof(uint32_t));
+    }
+    h->n += source->n;
+}
+
+static void emit_header(C *c, Header *m)
+{
     if (!c->have_main) {
         fail(c, "no main()");
     }
-    buf_put(&m, SpvMagicNumber);
-    buf_put(&m, c->opts.spirv_1_6 ? 0x00010600 : 0x00010500);
-    buf_put(&m, 0);
-    buf_put(&m, c->next_id);
-    buf_put(&m, 0);
+    header_put(m, SpvMagicNumber);
+    header_put(m, c->opts.spirv_1_6 ? 0x00010600 : 0x00010500);
+    header_put(m, 0);
+    header_put(m, c->next_id);
+    header_put(m, 0);
     /* capabilities */
-    op(&m, SpvOpCapability, 1);
-    buf_put(&m, SpvCapabilityShader);
+    header_op(m, SpvOpCapability, 1);
+    header_put(m, SpvCapabilityShader);
     if (c->stage == GLSLC_STAGE_GEOMETRY) {
-        op(&m, SpvOpCapability, 1);
-        buf_put(&m, SpvCapabilityGeometry);
+        header_op(m, SpvOpCapability, 1);
+        header_put(m, SpvCapabilityGeometry);
     }
     if (c->cap_image_query) {
-        op(&m, SpvOpCapability, 1);
-        buf_put(&m, SpvCapabilityImageQuery);
+        header_op(m, SpvOpCapability, 1);
+        header_put(m, SpvCapabilityImageQuery);
     }
     if (c->cap_demote) {
-        op(&m, SpvOpCapability, 1);
-        buf_put(&m, SpvCapabilityDemoteToHelperInvocation);
+        header_op(m, SpvOpCapability, 1);
+        header_put(m, SpvCapabilityDemoteToHelperInvocation);
     }
     if (c->cap_image_read_without_format) {
-        op(&m, SpvOpCapability, 1);
-        buf_put(&m, SpvCapabilityStorageImageReadWithoutFormat);
+        header_op(m, SpvOpCapability, 1);
+        header_put(m, SpvCapabilityStorageImageReadWithoutFormat);
     }
     if (c->cap_image_write_without_format) {
-        op(&m, SpvOpCapability, 1);
-        buf_put(&m, SpvCapabilityStorageImageWriteWithoutFormat);
+        header_op(m, SpvOpCapability, 1);
+        header_put(m, SpvCapabilityStorageImageWriteWithoutFormat);
     }
     /* the extended instruction set */
-    op(&m, SpvOpExtInstImport, 1 + string_words("GLSL.std.450"));
-    buf_put(&m, c->glsl_ext_id);
-    op_string(&m, "GLSL.std.450");
-    op(&m, SpvOpMemoryModel, 2);
-    buf_put(&m, SpvAddressingModelLogical);
-    buf_put(&m, SpvMemoryModelGLSL450);
+    header_op(m, SpvOpExtInstImport, 1 + string_words("GLSL.std.450"));
+    header_put(m, c->glsl_ext_id);
+    header_string(m, "GLSL.std.450");
+    header_op(m, SpvOpMemoryModel, 2);
+    header_put(m, SpvAddressingModelLogical);
+    header_put(m, SpvMemoryModelGLSL450);
     /* entry point */
     {
         int model = c->stage == GLSLC_STAGE_VERTEX ? SpvExecutionModelVertex :
                     c->stage == GLSLC_STAGE_GEOMETRY ? SpvExecutionModelGeometry :
                     c->stage == GLSLC_STAGE_FRAGMENT ? SpvExecutionModelFragment :
                                                        SpvExecutionModelGLCompute;
-        op(&m, SpvOpEntryPoint, 2 + string_words("main") + (int)c->entry_iface.n);
-        buf_put(&m, model);
-        buf_put(&m, c->main_id);
-        op_string(&m, "main");
-        buf_append(&m, &c->entry_iface);
+        header_op(m, SpvOpEntryPoint, 2 + string_words("main") + (int)c->entry_iface.n);
+        header_put(m, model);
+        header_put(m, c->main_id);
+        header_string(m, "main");
+        header_append(m, &c->entry_iface);
     }
     /* execution modes */
     switch (c->stage) {
     case GLSLC_STAGE_FRAGMENT:
-        op(&m, SpvOpExecutionMode, 2);
-        buf_put(&m, c->main_id);
-        buf_put(&m, SpvExecutionModeOriginUpperLeft);
+        header_op(m, SpvOpExecutionMode, 2);
+        header_put(m, c->main_id);
+        header_put(m, SpvExecutionModeOriginUpperLeft);
         if (c->depth_replacing) {
-            op(&m, SpvOpExecutionMode, 2);
-            buf_put(&m, c->main_id);
-            buf_put(&m, SpvExecutionModeDepthReplacing);
+            header_op(m, SpvOpExecutionMode, 2);
+            header_put(m, c->main_id);
+            header_put(m, SpvExecutionModeDepthReplacing);
         }
         break;
     case GLSLC_STAGE_COMPUTE:
         if (!c->have_local_size) {
             fail(c, "a compute shader needs layout(local_size_x = ...)");
         }
-        op(&m, SpvOpExecutionMode, 5);
-        buf_put(&m, c->main_id);
-        buf_put(&m, SpvExecutionModeLocalSize);
-        buf_put(&m, c->local_size[0] ? c->local_size[0] : 1);
-        buf_put(&m, c->local_size[1] ? c->local_size[1] : 1);
-        buf_put(&m, c->local_size[2] ? c->local_size[2] : 1);
+        header_op(m, SpvOpExecutionMode, 5);
+        header_put(m, c->main_id);
+        header_put(m, SpvExecutionModeLocalSize);
+        header_put(m, c->local_size[0] ? c->local_size[0] : 1);
+        header_put(m, c->local_size[1] ? c->local_size[1] : 1);
+        header_put(m, c->local_size[2] ? c->local_size[2] : 1);
         break;
     case GLSLC_STAGE_GEOMETRY:
         if (!c->geom_in_set || !c->geom_out_set) {
@@ -4906,32 +4987,70 @@ static void assemble(C *c, GlslcResult *result)
                 i += len;
             }
             if (!have_inv) {
-                op(&m, SpvOpExecutionMode, 3);
-                buf_put(&m, c->main_id);
-                buf_put(&m, SpvExecutionModeInvocations);
-                buf_put(&m, 1);
+                header_op(m, SpvOpExecutionMode, 3);
+                header_put(m, c->main_id);
+                header_put(m, SpvExecutionModeInvocations);
+                header_put(m, 1);
             }
         }
         break;
     default:
         break;
     }
-    {
-        /* the modes gathered while parsing, with main's id filled in */
-        size_t i = 0;
-        while (i < c->exec_modes.n) {
-            uint32_t len = c->exec_modes.w[i] >> 16;
-            c->exec_modes.w[i + 1] = c->main_id;
-            i += len;
-        }
-        buf_append(&m, &c->exec_modes);
+    header_append(m, &c->exec_modes);
+}
+
+static void assemble(C *c, GlslcResult *result)
+{
+    /* Fill mode placeholders before either header pass. */
+    for (size_t i = 0; i < c->exec_modes.n;) {
+        uint32_t length = c->exec_modes.w[i] >> 16;
+        c->exec_modes.w[i + 1] = c->main_id;
+        i += length;
     }
-    buf_append(&m, &c->names);
-    buf_append(&m, &c->decor);
-    buf_append(&m, &c->types);
-    buf_append(&m, &c->funcs);
-    result->words = m.w;
-    result->num_words = m.n;
+    Header count = {0};
+    emit_header(c, &count);
+    const Buf *sections[] = { &c->names, &c->decor, &c->types };
+    size_t prefix = count.n;
+    const size_t limit = SIZE_MAX / sizeof(uint32_t);
+    for (unsigned i = 0; i < sizeof(sections) / sizeof(sections[0]); i++) {
+        if (sections[i]->n > limit - prefix) {
+            abort();
+        }
+        prefix += sections[i]->n;
+    }
+    if (c->funcs.n > limit - prefix) {
+        abort();
+    }
+    size_t total = prefix + c->funcs.n;
+    /* The function stream becomes the result allocation. Reserve once at
+     * its known final size; no separate assembled-module buffer is made. */
+    if (c->funcs.cap < total) {
+        uint32_t *words = realloc(c->funcs.w, total * sizeof(uint32_t));
+        if (!words) {
+            abort();
+        }
+        c->funcs.w = words;
+        c->funcs.cap = total;
+    }
+    memmove(c->funcs.w + prefix, c->funcs.w,
+            c->funcs.n * sizeof(uint32_t));
+    Header output = { .words = c->funcs.w, .capacity = count.n };
+    emit_header(c, &output);
+    if (output.n != count.n) {
+        abort();
+    }
+    size_t at = output.n;
+    for (unsigned i = 0; i < sizeof(sections) / sizeof(sections[0]); i++) {
+        const Buf *source = sections[i];
+        if (source->n) {
+            memcpy(c->funcs.w + at, source->w, source->n * sizeof(uint32_t));
+            at += source->n;
+        }
+    }
+    result->words = c->funcs.w;
+    result->num_words = total;
+    memset(&c->funcs, 0, sizeof(c->funcs)); /* ownership moved to caller */
 }
 
 static void ctx_free(C *c)

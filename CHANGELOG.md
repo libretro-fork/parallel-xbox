@@ -9,6 +9,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 - RCU deferred callbacks now use fully published libretro-common MPSC batches, each detached before its grace period. This replaces the legacy dummy/tail queue and separate callback count implicated by an intermittent Windows startup abort.
 
 - Trim unused GLib compatibility services (trees, datalists, mapped files, date objects, timers and helper-process plumbing), including the unused datalist spinlock and migration page-request lock objects. Xbox and Chihiro emulation features remain available. Logging formats timestamps on the stack, and Windows UTF conversions transfer their result buffers without an intermediate copy.
+- Vulkan emits narrow-line geometry shaders directly as SPIR-V, on both render-thread misses and background prewarming. The final word allocation is transferred into the module cache without copying; other stages and geometry variants retain the GLSL compiler.
+- The fallback SPIR-V compiler appends word streams in bulk, inserts into its existing function buffer, consumes initializer buffers and reuses the function allocation for the final module instead of assembling another complete copy.
 
 - RCU epoch publication now uses its existing release/acquire ordering instead of an extra process-wide flush before each period; old-reader scans retain their global memory barrier.
 

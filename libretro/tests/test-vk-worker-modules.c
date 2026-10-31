@@ -39,6 +39,8 @@ static GByteArray *pgraph_vk_compile_glsl_to_spv(unsigned kind,const char *str)
  const ShaderModuleCacheKey *key=(const void *)str;assert(kind==key->kind);compiles++;
  guint8 *data=malloc(key->len);assert(data);retro_atomic_fetch_add_int(&live_arrays,1);memset(data,payload_byte(key),key->len);return g_byte_array_new_take(data,key->len);
 }
+static GByteArray *vk_module_spirv(const ShaderModuleCacheKey *key)
+{MString *code=vk_module_glsl(key);GByteArray *spv=pgraph_vk_compile_glsl_to_spv(key->kind,mstring_get_str(code));mstring_unref(code);return spv;}
 static int vk_state_module_keys(const ShaderState *st,bool push,ShaderModuleCacheKey *keys)
 {keys[0]=(ShaderModuleCacheKey){.kind=1,.id=1,.len=64,.opts={push}};keys[1]=(ShaderModuleCacheKey){.kind=2,.id=2,.len=128};keys[2]=(ShaderModuleCacheKey){.kind=3,.id=st->id+100,.len=256};return 3;}
 /* RECORD */

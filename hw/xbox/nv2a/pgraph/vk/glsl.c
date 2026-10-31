@@ -29,10 +29,10 @@
 /* Chosen at device creation (instance.c); SPIR-V 1.5 until then. */
 bool pgraph_vk_spirv_1_6;
 
-/* The GLSL the generators wrote, to SPIR-V: the core's own compiler
- * (pgraph/spv), tens of microseconds a shader, safe on any thread. A
- * shader it cannot compile is a bug in it or in a generator; the message
- * says which line. */
+/* Fallback for stages not yet emitted directly as SPIR-V. Compiler state
+ * is local to this call; it creates no Vulkan objects. Cache misses may run
+ * here synchronously when the worker has not prepared a module. Compilation
+ * cost depends on the shader and is not a bounded draw-time guarantee. */
 GByteArray *pgraph_vk_compile_glsl_to_spv(VkShaderStageFlagBits stage,
                                           const char *glsl_source)
 {

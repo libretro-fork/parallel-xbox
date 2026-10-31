@@ -3,9 +3,9 @@
  *
  * A compiler for the GLSL these generators write (pgraph/glsl, the
  * renderer's own compute and display shaders): GLSL 4.50 as they use it,
- * for Vulkan, to SPIR-V 1.5 or 1.6. One pass, in C, no dependency; it is
- * what makes a shader in microseconds where glslang took milliseconds and
- * a C++ toolchain. What the generators do not write is not supported, and
+ * for Vulkan, to SPIR-V 1.5 or 1.6. Retained for generator paths not yet
+ * emitted directly as SPIR-V. Compile cost depends on source complexity.
+ * What the generators do not write is not supported, and
  * is reported as an error rather than guessed at.
  *
  * SPDX-License-Identifier: GPL-2.0-or-later

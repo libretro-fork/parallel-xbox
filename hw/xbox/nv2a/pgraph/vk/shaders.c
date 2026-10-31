@@ -24,6 +24,7 @@
 #include "renderer.h"
 #include "ui/xemu-settings.h"
 #include "hw/xbox/nv2a/pgraph/seed.h"
+#include "hw/xbox/nv2a/pgraph/spv/geom.h"
 #include "hw/xbox/nv2a/pgraph/glsl/uniform-cache.h"
 #include <retro_spsc.h>
 #include <retro_atomic.h>
@@ -32,6 +33,7 @@
 static int vk_state_module_keys(const ShaderState *st, bool push_constants,
                                 ShaderModuleCacheKey *keys);
 static MString *vk_module_glsl(const ShaderModuleCacheKey *key);
+static GByteArray *vk_module_spirv(const ShaderModuleCacheKey *key);
 static GByteArray *vk_spec_take_ready(const ShaderModuleCacheKey *key);
 
 const size_t MAX_UNIFORM_ATTR_VALUES_SIZE = NV2A_VERTEXSHADER_ATTRIBUTES * 4 * sizeof(float);
@@ -407,10 +409,7 @@ static void shader_module_cache_entry_init(Lru *lru, LruNode *node,
     /* the worker's SPIR-V when it made this module, else compiled here */
     GByteArray *spv = vk_spec_take_ready(&module->key);
     if (!spv) {
-        MString *code = vk_module_glsl(&module->key);
-        spv = pgraph_vk_compile_glsl_to_spv(module->key.kind,
-                                            mstring_get_str(code));
-        mstring_unref(code);
+        spv = vk_module_spirv(&module->key);
     }
     module->module_info = pgraph_vk_create_shader_module_from_spirv(r, spv);
     pgraph_vk_ref_shader_module(module->module_info);
@@ -628,6 +627,51 @@ static MString *vk_module_glsl(const ShaderModuleCacheKey *key)
     }
 }
 
+/* Both render-thread misses and worker prewarming use the same emitter.
+ * Unsupported stages/states retain the established GLSL compiler. */
+static bool vk_module_line_options(const ShaderModuleCacheKey *key,
+                                    SpvLineGeomOptions *opts)
+{
+    if (key->kind != VK_SHADER_STAGE_GEOMETRY_BIT ||
+        !key->geom.glsl_opts.vulkan) {
+        return false;
+    }
+    const GeomState *state = &key->geom.state;
+    bool line = state->primitive_mode == PRIM_TYPE_LINES ||
+                state->primitive_mode == PRIM_TYPE_LINE_LOOP ||
+                state->primitive_mode == PRIM_TYPE_LINE_STRIP;
+    bool polygon_line = state->primitive_mode == PRIM_TYPE_POLYGON &&
+                        state->polygon_front_mode == POLY_MODE_LINE;
+    if (!(line || polygon_line) || state->wide_lines ||
+        state->polygon_front_mode != state->polygon_back_mode) {
+        return false;
+    }
+    *opts = (SpvLineGeomOptions) {
+        .smooth_shading = state->smooth_shading,
+        .provoking_vertex = polygon_line || state->first_vertex_is_provoking ? 0 : 1,
+        .spirv_1_6 = pgraph_vk_spirv_1_6,
+    };
+    return true;
+}
+
+static GByteArray *vk_module_spirv(const ShaderModuleCacheKey *key)
+{
+    SpvLineGeomOptions opts;
+    if (vk_module_line_options(key, &opts)) {
+        SpvDirectModule module;
+        if (!pgraph_spv_line_geom(opts, &module)) {
+            abort(); /* selector and emitter disagree */
+        }
+        return g_byte_array_new_take((guint8 *)module.words,
+                                     module.num_words * sizeof(uint32_t));
+    }
+    MString *code = vk_module_glsl(key);
+    GByteArray *spirv = pgraph_vk_compile_glsl_to_spv(key->kind,
+                                                    mstring_get_str(code));
+    mstring_unref(code);
+    return spirv;
+}
+
 /* Worker-owned memo of immutable module words, not Vulkan objects. Keys
  * include all generator options; device changes clear it at quiescence.
  * Repeated states share a module without recompiling or copying its words.
@@ -673,10 +717,7 @@ static GByteArray *vk_spec_compile_module(const ShaderModuleCacheKey *key)
         !memcmp(&vk_spec_modules[slot].key, key, sizeof(*key))) {
         return g_byte_array_ref(vk_spec_modules[slot].spirv);
     }
-    MString *code = vk_module_glsl(key);
-    GByteArray *spirv =
-        pgraph_vk_compile_glsl_to_spv(key->kind, mstring_get_str(code));
-    mstring_unref(code);
+    GByteArray *spirv = vk_module_spirv(key);
     if (spirv->len > VK_SPEC_MODULE_BYTES) {
         return spirv; /* do not retain unusually large programs */
     }
