@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <retro_atomic.h>
+#include <retro_mpsc.h>
 #ifdef _WIN32
 #include <windows.h>
 typedef HANDLE Thread;
@@ -44,14 +45,17 @@ static _Thread_local bool paused,waited;
 static void await(unsigned *p,unsigned n) {uint64_t end=now_ms()+5000;while(LOAD(p)<n){assert(now_ms()<end);YIELD();}}
 static void retro_sleep(unsigned ms) {if(concurrent&&!waited){waited=true;INC(&blocked);}YIELD();}
 /* ONCE */
-struct rcu_head {retro_atomic_ptr_t next;void (*func)(struct rcu_head *);};
+struct rcu_head {retro_mpsc_node_t node;void (*func)(struct rcu_head *);};
 static void queue_read_hook(struct rcu_head *next) {
  if(consumer_id==1 && next && !paused){paused=true;STORE(&first_read,1);await(&queue_release,1);}
 }
-static void queue_abort(void) { fprintf(stderr,"RCU queue empty-state abort (reported crash)\n");abort(); }
-#define abort queue_abort
 /* QUEUE */
-#undef abort
+static struct rcu_head *try_dequeue(void) {
+ retro_mpsc_node_t *batch=rcu_callback_take_batch();
+ queue_read_hook((struct rcu_head *)batch);
+ assert(!batch || !batch->next);
+ return (struct rcu_head *)batch;
+}
 static struct rcu_head callback_node;
 static Thread consumers[2];
 static void callback(struct rcu_head *node) {assert(node==&callback_node);INC(&callbacks);}
@@ -118,7 +122,7 @@ int main(int argc,char **argv) {
   rcu_init();await(&first_read,1);
   rcu_init();
   if(LOAD(&init_calls)>1){join(consumers[1]);assert(LOAD(&callbacks)==1);}
-  /* With two consumers the first now hits the reported empty-state abort. */
+  /* The blocked sole consumer owns the detached batch throughout replay. */
   STORE(&queue_release,1);join(consumers[0]);
   assert(LOAD(&init_calls)==1 && LOAD(&callbacks)==1 && !try_dequeue());
  }

@@ -13,7 +13,7 @@ compiler = shlex.split(sys.argv[2] if len(sys.argv) > 2 else "cc")
 source = (root / "util/rcu.c").read_text()
 header = (root / "include/qemu/rcu.h").read_text()
 readers = header[header.index("struct rcu_reader_data {"):header.index("void synchronize_rcu(void);")]
-control = source[source.index("retro_atomic_size_t rcu_gp_ctr ="):source.index("/* Multi-producer, single-consumer queue based")]
+control = source[source.index("retro_atomic_size_t rcu_gp_ctr ="):source.index("/* Complete callback batches")]
 control = control.replace("    for (;;) {\n        int key = retro_eventcount_prepare_wait(&rcu_gp_event);",
                           "    test_before_gp_prepare();\n    for (;;) {\n        int key = retro_eventcount_prepare_wait(&rcu_gp_event);", 1)
 for publication in ["retro_atomic_store_release_size(&rcu_gp_ctr, gp ^ RCU_GP_CTR);",

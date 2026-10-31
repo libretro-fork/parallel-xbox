@@ -247,8 +247,7 @@ struct QemuThreadData {
     CRITICAL_SECTION  cs;
 };
 
-static bool atexit_registered;
-static NotifierList main_thread_exit;
+static QemuWin32TLS tls_key_host_thread_exit = QEMU_WIN32_TLS_INITIALIZER;
 
 static QemuWin32TLS tls_key_qemu_thread_data = QEMU_WIN32_TLS_INITIALIZER;
 static inline QemuThreadData *get_qemu_thread_data(void) {
@@ -260,21 +259,41 @@ static inline void set_qemu_thread_data(QemuThreadData *v) {
 #define qemu_thread_data (get_qemu_thread_data())
 #define SET_qemu_thread_data(v) set_qemu_thread_data(v)
 
-static void run_main_thread_exit(void)
-{
-    notifier_list_notify(&main_thread_exit, NULL);
-}
-
 void qemu_thread_atexit_add(Notifier *notifier)
 {
-    if (!qemu_thread_data) {
-        if (!atexit_registered) {
-            atexit_registered = true;
-            atexit(run_main_thread_exit);
+    QemuThreadData *data = qemu_thread_data;
+    NotifierList *list;
+
+    if (!data) {
+        list = qemu_win32_tls_get(&tls_key_host_thread_exit);
+        if (!list) {
+            list = g_new0(NotifierList, 1);
+            qemu_win32_tls_set(&tls_key_host_thread_exit, list);
         }
-        notifier_list_add(&main_thread_exit, notifier);
     } else {
-        notifier_list_add(&qemu_thread_data->exit, notifier);
+        list = &data->exit;
+    }
+    notifier_list_add(list, notifier);
+}
+
+void qemu_thread_run_atexit(void)
+{
+    QemuThreadData *data = qemu_thread_data;
+    NotifierList *list = data ? &data->exit :
+        qemu_win32_tls_get(&tls_key_host_thread_exit);
+    Notifier *notifier;
+
+    if (!list) {
+        return;
+    }
+    /* Detach before invoking: callbacks may release their own storage. */
+    while ((notifier = QLIST_FIRST(&list->notifiers))) {
+        notifier_remove(notifier);
+        notifier->notify(notifier, NULL);
+    }
+    if (!data) {
+        qemu_win32_tls_set(&tls_key_host_thread_exit, NULL);
+        g_free(list);
     }
 }
 
@@ -298,7 +317,7 @@ void qemu_thread_exit(void *arg)
 {
     QemuThreadData *data = qemu_thread_data;
 
-    notifier_list_notify(&data->exit, NULL);
+    qemu_thread_run_atexit();
     if (data->mode == QEMU_THREAD_JOINABLE) {
         data->ret = arg;
         EnterCriticalSection(&data->cs);

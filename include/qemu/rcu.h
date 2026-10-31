@@ -27,6 +27,7 @@
 #include "qemu/thread.h"
 #include "qemu/queue.h"
 #include <retro_atomic.h>
+#include <retro_mpsc.h>
 #include <rthreads/retro_eventcount.h>
 #include "qemu/notify.h"
 #include "qemu/sys_membarrier.h"
@@ -139,7 +140,7 @@ struct rcu_head;
 typedef void RCUCBFunc(struct rcu_head *head);
 
 struct rcu_head {
-    retro_atomic_ptr_t next;    /* struct rcu_head * */
+    retro_mpsc_node_t node;
     RCUCBFunc *func;
 };
 

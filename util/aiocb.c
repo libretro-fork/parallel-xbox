@@ -51,6 +51,7 @@ static __thread Notifier aiocb_cache_exit;
 
 static void aiocb_cache_free(Notifier *n, void *unused)
 {
+    aiocb_cache_registered = false;
     for (int i = 0; i < AIOCB_CACHE_KINDS; i++) {
         AIOCBCache *c = &aiocb_cache[i];
 

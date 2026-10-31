@@ -263,81 +263,20 @@ void synchronize_rcu(void)
     rcu_submit_request(RCU_SYNCHRONIZE, NULL, NULL);
 }
 
-/* Multi-producer, single-consumer queue based on urcu/static/wfqueue.h
- * from liburcu.  Note that head is only used by the consumer.
- */
-static retro_atomic_int_t rcu_call_count;
-static struct rcu_head dummy;
-static struct rcu_head *head = &dummy;
-static retro_atomic_ptr_t tail = &dummy.next;    /* retro_atomic_ptr_t * */
+/* Complete callback batches are detached before starting their grace period.
+ * Producers publish a fully initialized intrusive node with one MPSC push;
+ * there is no separate count or partially linked tail for the consumer. */
+static retro_mpsc_t rcu_callbacks;
 static QemuEvent rcu_call_ready_event;
 
 static void enqueue(struct rcu_head *node)
 {
-    retro_atomic_ptr_t *old_tail;
-
-    retro_atomic_store_relaxed_ptr(&node->next, NULL);
-
-    /*
-     * Make this node the tail of the list.  The node will be
-     * used by further enqueue operations, but it will not
-     * be dequeued yet...
-     */
-    old_tail = retro_atomic_exchange_ptr(&tail, &node->next);
-
-    /*
-     * ... until it is pointed to from another item in the list.
-     * In the meantime, try_dequeue() will find a NULL next pointer
-     * and loop.
-     *
-     * Synchronizes with the acquire load in try_dequeue().
-     */
-    retro_atomic_store_release_ptr(old_tail, node);
+    retro_mpsc_push(&rcu_callbacks, &node->node);
 }
 
-static struct rcu_head *try_dequeue(void)
+static retro_mpsc_node_t *rcu_callback_take_batch(void)
 {
-    struct rcu_head *node, *next;
-
-retry:
-    /* Head is only written by this thread, so no need for barriers.  */
-    node = head;
-
-    /*
-     * If the head node has NULL in its next pointer, the value is
-     * wrong and we need to wait until its enqueuer finishes the update.
-     */
-    next = retro_atomic_load_acquire_ptr(&node->next);
-    if (!next) {
-        return NULL;
-    }
-
-    /*
-     * Test for an empty list, which we do not expect.  Note that for
-     * the consumer head and tail are always consistent.  The head
-     * is consistent because only the consumer reads/writes it.
-     * The tail, because it is the first step in the enqueuing.
-     * It is only the next pointers that might be inconsistent.
-     */
-    if (head == &dummy && retro_atomic_load_relaxed_ptr(&tail) == &dummy.next) {
-        abort();
-    }
-
-    /*
-     * Since we are the sole consumer, and we excluded the empty case
-     * above, the queue will always have at least two nodes: the
-     * dummy node, and the one being removed.  So we do not need to update
-     * the tail pointer.
-     */
-    head = next;
-
-    /* If we dequeued the dummy node, add it back at the end and retry.  */
-    if (node == &dummy) {
-        enqueue(node);
-        goto retry;
-    }
-
-    return node;
+    return retro_mpsc_take_all(&rcu_callbacks);
 }
 
 /* The callback queue is MPSC, including while startup is racing. Claim
@@ -362,51 +301,35 @@ static void call_rcu_thread(void *opaque)
     rcu_register_thread();
 
     for (;;) {
-        int n;
+        retro_mpsc_node_t *batch;
 
-        /*
-         * Fetch rcu_call_count now, we only must process elements that were
-         * added before synchronize_rcu() starts.
-         */
-        for (;;) {
-            qemu_event_reset(&rcu_call_ready_event);
-            n = retro_atomic_load_relaxed_int(&rcu_call_count);
-            if (n) {
-                break;
-            }
-
+        /* Reset before inspecting the predicate to retain a racing wake. */
+        qemu_event_reset(&rcu_call_ready_event);
+        batch = rcu_callback_take_batch();
+        if (!batch) {
             qemu_event_wait(&rcu_call_ready_event);
+            continue;
         }
 
+        /* take_all acquires every producer publication in this batch.
+         * Later publications stay queued for a later grace period. */
         synchronize_rcu();
-        retro_atomic_fetch_sub_int(&rcu_call_count, n);
         bql_lock();
-        while (n > 0) {
-            node = try_dequeue();
-            while (!node) {
-                bql_unlock();
-                qemu_event_reset(&rcu_call_ready_event);
-                node = try_dequeue();
-                if (!node) {
-                    qemu_event_wait(&rcu_call_ready_event);
-                    node = try_dequeue();
-                }
-                bql_lock();
-            }
-
-            n--;
+        while (batch) {
+            node = container_of(batch, struct rcu_head, node);
+            batch = batch->next;
+            /* Save the link before the callback can reclaim its node. */
             node->func(node);
         }
         bql_unlock();
     }
-    abort();
 }
+
 
 void call_rcu1(struct rcu_head *node, void (*func)(struct rcu_head *node))
 {
     node->func = func;
     enqueue(node);
-    retro_atomic_inc_int(&rcu_call_count);
     qemu_event_set(&rcu_call_ready_event);
 }
 

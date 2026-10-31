@@ -2721,6 +2721,9 @@ RETRO_API void retro_init(void)
 RETRO_API void retro_deinit(void)
 {
     LRLOG_INFO("[xemu] retro_deinit\n");
+    /* The frontend owns this thread. Drain TLS-backed cleanup while its
+     * storage is live, rather than retaining pointers until DLL detach. */
+    qemu_thread_run_atexit();
     game_loaded = false;
     emu_initialized = false;
     context_ready = false;

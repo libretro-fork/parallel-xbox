@@ -4,6 +4,10 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Thread cleanup for frontend-owned threads now runs during core deinit, before TLS is destroyed. Windows keeps separate per-thread notifier lists instead of retaining TLS pointers in a process-exit list, preventing a shutdown crash; cached AIO objects can register cleanup again on reload.
+
+- RCU deferred callbacks now use fully published libretro-common MPSC batches, each detached before its grace period. This replaces the legacy dummy/tail queue and separate callback count implicated by an intermittent Windows startup abort.
+
 - Trim unused GLib compatibility services (trees, datalists, mapped files, date objects, timers and helper-process plumbing), including the unused datalist spinlock and migration page-request lock objects. Xbox and Chihiro emulation features remain available. Logging formats timestamps on the stack, and Windows UTF conversions transfer their result buffers without an intermediate copy.
 
 - RCU epoch publication now uses its existing release/acquire ordering instead of an extra process-wide flush before each period; old-reader scans retain their global memory barrier.

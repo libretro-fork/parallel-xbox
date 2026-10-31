@@ -233,7 +233,17 @@ static void qemu_thread_atexit_notify(void *arg)
      * Called when non-main thread exits (via qemu_thread_exit()
      * or by returning from its start routine.)
      */
-    notifier_list_notify(&thread_exit, NULL);
+    qemu_thread_run_atexit();
+}
+
+void qemu_thread_run_atexit(void)
+{
+    Notifier *notifier;
+
+    while ((notifier = QLIST_FIRST(&thread_exit.notifiers))) {
+        notifier_remove(notifier);
+        notifier->notify(notifier, NULL);
+    }
 }
 
 typedef struct {

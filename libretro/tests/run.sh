@@ -61,6 +61,7 @@ case $core in
 esac
 python3 "$here/test-rcu-startup.py" "$here/../.." "$cc"
 python3 "$here/test-rcu-owner.py" "$here/../.." "$cc"
+python3 "$here/test-rcu-callbacks.py" "$here/../.." "$cc"
 ${cc} -O2 -std=gnu11 -Wall -Wextra -Werror -I"$here/../../include" \
     "$here/test-log-timestamp.c" -o "$work/bin/logtimestamp"
 "$work/bin/logtimestamp"
@@ -86,6 +87,10 @@ case $core in
         ${HARNESS_CC:-x86_64-w64-mingw32-gcc} -O2 -std=gnu11 -Wall -static \
             -I"$here/../../include" "$here/test-win32-tls.c" -o "$work/bin/tlstest.exe"
         wine "$work/bin/tlstest.exe"
+        WIN32_EXIT_BINARY="$work/bin/threadexit.exe" WIN32_EXIT_SKIP_RUN=1 \
+            python3 "$here/test-win32-thread-exit.py" "$here/../.." \
+            "${HARNESS_CC:-x86_64-w64-mingw32-gcc}"
+        wine "$work/bin/threadexit.exe"
         python3 "$here/test-win32-raw-socket.py" "$here/../.." \
             "${HARNESS_CC:-x86_64-w64-mingw32-gcc}" --build-only "$work/bin/rawsocket.exe"
         wine "$work/bin/rawsocket.exe"
@@ -94,6 +99,7 @@ case $core in
         ${cc} -O2 -std=gnu11 -Wall -static -I"$here/../../include" \
             "$here/test-win32-tls.c" -o "$work/bin/tlstest.exe"
         "$work/bin/tlstest.exe"
+        python3 "$here/test-win32-thread-exit.py" "$here/../.." "$cc"
         ;;
     esac
     ;;

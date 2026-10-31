@@ -180,6 +180,10 @@ void qemu_thread_atexit_add(struct Notifier *notifier);
  */
 void qemu_thread_atexit_remove(struct Notifier *notifier);
 
+/* Drain the current thread's cleanup callbacks before a host-owned thread
+ * leaves the emulator. Safe to call again when its list is empty. */
+void qemu_thread_run_atexit(void);
+
 
 struct QemuSpin {
     retro_atomic_int_t value;
