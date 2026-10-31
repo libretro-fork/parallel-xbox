@@ -20,6 +20,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Vulkan: convert packed video overlays directly into the GPU image, avoiding CPU RGBA staging and its buffer-to-image copy; roughly halve CPU-written overlay bytes while preserving native filtering.
+
 - Reuse Vulkan PVIDEO pixels while their guest RAM source is unchanged:
   skip CPU conversion, staging writes/flushes, GPU copies and auxiliary
   submissions. Track writes independently of texture/VGA consumers, including

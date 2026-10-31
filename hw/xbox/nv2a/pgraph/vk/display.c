@@ -60,6 +60,7 @@ static void destroy_pvideo_image(PGRAPHState *pg)
         d->pvideo.sampler = VK_NULL_HANDLE;
     }
 
+    d->pvideo.convert.output = VK_NULL_HANDLE; /* handles may be recycled */
     if (d->pvideo.image_view != VK_NULL_HANDLE) {
         vkDestroyImageView(r->device, d->pvideo.image_view, NULL);
         d->pvideo.image_view = VK_NULL_HANDLE;
@@ -90,6 +91,9 @@ static bool create_pvideo_image(PGRAPHState *pg, int width, int height)
         destroy_pvideo_image(pg);
     }
 
+    VkFormatProperties props;
+    vkGetPhysicalDeviceFormatProperties(r->physical_device, VK_FORMAT_R8G8B8A8_UNORM, &props);
+    d->pvideo.storage = (props.optimalTilingFeatures & VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT) != 0;
     VkImageCreateInfo image_create_info = {
         .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
         .imageType = VK_IMAGE_TYPE_2D,
@@ -101,7 +105,8 @@ static bool create_pvideo_image(PGRAPHState *pg, int width, int height)
         .format = VK_FORMAT_R8G8B8A8_UNORM,
         .tiling = VK_IMAGE_TILING_OPTIMAL,
         .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-        .usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+        .usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT |
+                 (d->pvideo.storage ? VK_IMAGE_USAGE_STORAGE_BIT : 0),
         .samples = VK_SAMPLE_COUNT_1_BIT,
         .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
         .flags = 0,
@@ -211,13 +216,20 @@ static void upload_pvideo_image(PGRAPHState *pg, PvideoState state)
 
     VkCommandBuffer cmd = pgraph_vk_begin_single_time_commands(pg);
 
-    /* the picture, converted straight into the staging ring */
+    if (pgraph_vk_pvideo_convert(pg, cmd,
+        d->vram_ptr + state.base + state.offset, state.in_width,
+        state.in_height, state.pitch, created)) {
+        /* Compute wrote the existing image directly; no conversion buffer
+         * or buffer-to-image copy. Preserve the original native sampler. */
+        pgraph_vk_end_single_time_commands_async(pg, cmd);
+        goto uploaded;
+    }
+    /* Storage-image/range limits retain the original CPU upload path. */
     uint8_t *staged;
     size_t staged_size = (size_t)state.in_width * state.in_height * 4;
-    VkDeviceSize staged_offset =
-        pgraph_vk_staging_alloc(pg, staged_size, 16, &staged);
-    convert_texture_data__CR8YB8CB8YA8(
-        staged, d->vram_ptr + state.base + state.offset,
+    VkDeviceSize staged_offset = pgraph_vk_staging_alloc(pg, staged_size, 16, &staged);
+    convert_texture_data__CR8YB8CB8YA8(staged,
+        d->vram_ptr + state.base + state.offset,
         state.in_width, state.in_height, state.pitch);
     pgraph_vk_staging_flush(pg, staged_offset, staged_size);
 
@@ -250,6 +262,7 @@ static void upload_pvideo_image(PGRAPHState *pg, PvideoState state)
     /* Upload only: the following display submission consumes it in queue
      * order; the aux fence protects staging reuse without a CPU drain. */
     pgraph_vk_end_single_time_commands_async(pg, cmd);
+uploaded:
     disp->pvideo.upload_addr = state.base + state.offset;
     disp->pvideo.upload_pitch = state.pitch;
     disp->pvideo.upload_format = state.format;
@@ -1761,6 +1774,7 @@ void pgraph_vk_finalize_display(PGRAPHState *pg)
 
     /* Retire display reads before destroying any of their input images. */
     destroy_frame_sync(pg);
+    pgraph_vk_pvideo_finalize(pg);
     destroy_pvideo_image(pg);
 
     if (r->display.image != VK_NULL_HANDLE) {

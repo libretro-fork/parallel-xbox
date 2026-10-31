@@ -362,6 +362,16 @@ typedef struct PGRAPHVkDisplayState {
         VkImageView image_view;
         VmaAllocation allocation;
         VkSampler sampler;
+        bool storage;
+        struct {
+            VkDescriptorPool pool;
+            VkDescriptorSetLayout set_layout;
+            VkDescriptorSet set;
+            VkPipelineLayout layout;
+            VkPipeline pipeline;
+            VkBuffer source;
+            VkImageView output; /* immutable until drained buffer/image replacement */
+        } convert;
     } pvideo;
 
     int width, height;
@@ -1239,5 +1249,12 @@ void pgraph_vk_image_blit(NV2AState *d);
 // gpuprops.c
 void pgraph_vk_determine_gpu_properties(NV2AState *d);
 GPUProperties *pgraph_vk_get_gpu_properties(void);
+
+/* Snapshot packed YUY2 into the staging ring and convert into the existing
+ * overlay image directly. False leaves the original CPU conversion available. */
+bool pgraph_vk_pvideo_convert(PGRAPHState *pg, VkCommandBuffer cmd,
+    const uint8_t *source, unsigned width, unsigned height, unsigned pitch,
+    bool created);
+void pgraph_vk_pvideo_finalize(PGRAPHState *pg);
 
 #endif

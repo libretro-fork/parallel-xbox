@@ -1391,3 +1391,11 @@ resolution, native-only setup with no frontend GL context, shared buffer
 visibility, context restore, exact extension matching and no table rewrite
 after worker publication. `GL_DISPATCH_BINARY` and `GL_DISPATCH_SKIP_RUN`
 allow cross-compiling and executing the fixture on Windows.
+
+`test-packed-overlay.py` checks production packed-row copying and GPU YUY2
+conversion against the previous CPU RGBA converter (3.2 million pixels,
+byte-exact). `test-packed-overlay-vulkan.py` additionally executes the actual
+converter, internal GLSL compiler, descriptor handling and barriers on Vulkan
+with synchronization validation, including drained source-buffer replacement
+and fallback preflight. Compute writes the existing RGBA image directly,
+removing the conversion-buffer-to-image copy; native filtering is unchanged.

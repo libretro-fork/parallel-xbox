@@ -213,6 +213,7 @@ case $core in
     python3 "$here/test-gl-texture-reinterpret.py" "$here/../.." "$cc"
     python3 "$here/test-gl-upload-alignment.py" "$here/../.." "$cc"
     python3 "$here/test-gl-volume-compression.py" "$here/../.." "$cc"
+    python3 "$here/test-packed-overlay.py" "$here/../.." "$cc"
     python3 "$here/test-surface-blend.py" "$here/../.." "$cc" --gl
     python3 "$here/test-barycentric-overflow.py" "$here/../.." "$cc"
     # The MCPX HLE boot with synthetic flash images, in the Linux harness
@@ -823,6 +824,7 @@ case $core in
         python3 "$here/test-vulkan-vertex-formats.py" "$here/../.." "$cc"
         python3 "$here/test-vulkan-query-scope.py" "$here/../.." "$cc"
         python3 "$here/test-vulkan-rgb-snorm.py" "$here/../.." "$cc"
+        python3 "$here/test-packed-overlay-vulkan.py" "$here/../.." "$cc"
         python3 "$here/test-vulkan-volume-blocks.py" "$here/../.." "$cc"
     fi
     ;;

@@ -73,6 +73,13 @@ static void vkCmdCopyBufferToImage(VkCommandBuffer cmd,uintptr_t buffer,VkImage 
  assert(!region->bufferOffset&&!region->bufferRowLength&&!region->bufferImageHeight&&region->imageExtent.depth==1&&region->imageSubresource.layerCount==1);
  size_t size=(size_t)region->imageExtent.width*region->imageExtent.height*4;assert(size<=sizeof(gpu_image));memcpy(gpu_image,staged,size);copies++;
 }
+static bool gpu_mode;
+static bool pgraph_vk_pvideo_convert(PGRAPHState *pg,VkCommandBuffer cmd,const uint8_t *src,unsigned w,unsigned h,unsigned pitch,bool created){
+ if(!gpu_mode)return false;
+ assert(pg==&active->pgraph&&cmd==3&&src>=active->vram_ptr&&w&&h&&pitch);
+ assert(layout==(created?VK_IMAGE_LAYOUT_UNDEFINED:VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL));
+ layout=VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;copies++;return true;
+}
 static void pgraph_vk_end_single_time_commands_async(PGRAPHState *pg,VkCommandBuffer cmd){
  assert(in_aux&&pg==&active->pgraph&&cmd==3&&layout==VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);in_aux=false;ends++;
  if(late_write){active->vram_ptr[late_addr]++;physical_memory_set_dirty_range(late_addr,1,(1u<<DIRTY_MEMORY_NUM)-1);}
@@ -84,7 +91,8 @@ static uint32_t random32(void){rng^=rng<<13;rng^=rng>>17;rng^=rng<<5;return rng;
 static void reset(void){memset(bits,0,sizeof(bits));for(unsigned c=0;c<DIRTY_MEMORY_NUM;c++){ram_list.dirty_memory[c]=&clients[c];for(unsigned i=0;i<4;i++)clients[c].blocks[i]=&bits[c][i];}}
 
 static unsigned char ram[RAM_SIZE],image[1024];
-int main(void){
+int main(int argc,char **argv){
+ (void)argv;gpu_mode=argc>1;
  assert(DIRTY_MEMORY_NV2A_PVIDEO!=DIRTY_MEMORY_NV2A_TEX && DIRTY_MEMORY_NUM<=8);
  unsigned cases=0;unsigned all=(1u<<DIRTY_MEMORY_NUM)-1;
  for(unsigned flags=0;flags<=all;flags++)for(unsigned mask=0;mask<=all;mask++){
@@ -146,11 +154,11 @@ int main(void){
 
  }
  assert(skips && uploads && uploads+skips==20000);
- assert(begins==uploads&&allocs==uploads&&flushes==uploads&&copies==uploads&&ends==uploads&&transitions==uploads*2&&!in_aux);
+ assert(begins==uploads&&allocs==(gpu_mode?0:uploads)&&flushes==(gpu_mode?0:uploads)&&copies==uploads&&ends==uploads&&transitions==(gpu_mode?0:uploads*2)&&!in_aux);
  renderer.display.pvideo.upload_valid=false;late_write=false;unsigned old_copies=copies;
  for(unsigned i=0;i<50;i++){s.in_s++;s.out_x++;upload_pvideo_image(&d.pgraph,s);}
  assert(copies==old_copies+1); /* 49 clean/crop-only redraws do no transfer. */
  unsigned before=queries;PvideoState invalid=s;invalid.base=RAM_SIZE+1;assert(pvideo_upload_required(&d,&invalid,false)&&queries==before);invalid=s;invalid.offset=RAM_SIZE;assert(pvideo_upload_required(&d,&invalid,false)&&queries==before);invalid=s;invalid.pitch=INT_MAX;assert(pvideo_upload_required(&d,&invalid,false)&&queries==before);invalid=s;invalid.in_width=0;assert(pvideo_upload_required(&d,&invalid,false)&&queries==before);
- printf("PVIDEO dirty clients: %u mask/range/clear cases; 20000 metadata/write-during-copy/reset schedules; %u uploads, %u full conversions/transfers omitted; producer dirtiness and independent consumers passed\n",cases,uploads,skips);
+ printf(gpu_mode?"GPU cache: PVIDEO dirty clients: %u mask/range/clear cases; 20000 metadata/write-during-copy/reset schedules; %u uploads, %u full conversions/transfers omitted; producer dirtiness and independent consumers passed\n":"PVIDEO dirty clients: %u mask/range/clear cases; 20000 metadata/write-during-copy/reset schedules; %u uploads, %u full conversions/transfers omitted; producer dirtiness and independent consumers passed\n",cases,uploads,skips);
  return 0;
 }

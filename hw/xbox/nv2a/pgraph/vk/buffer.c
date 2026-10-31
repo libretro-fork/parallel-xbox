@@ -232,7 +232,8 @@ void pgraph_vk_init_buffers(NV2AState *d)
      * mapped for good */
     r->storage_buffers[BUFFER_STAGING_SRC] = (StorageBuffer){
         .alloc_info = host_alloc_create_info,
-        .usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+        .usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
+                 VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
         .buffer_size = r->storage_buffers[BUFFER_STAGING_DST].buffer_size,
     };
 
@@ -474,6 +475,12 @@ void pgraph_vk_buffer_ensure_capacity(PGRAPHState *pg, int index,
     }
     pgraph_vk_wait_for_aux(pg);
     pgraph_vk_settle_all_slots(pg);
+
+    /* A driver may recycle the numeric VkBuffer handle. Invalidate the
+     * overlay set explicitly after draining, before replacing the buffer. */
+    if (index == BUFFER_STAGING_SRC) {
+        r->display.pvideo.convert.source = VK_NULL_HANDLE;
+    }
 
     VkDeviceSize size = MAX(needed, 2 * r->storage_buffers[index].buffer_size);
     size = ROUND_UP(size, 1024 * 1024);

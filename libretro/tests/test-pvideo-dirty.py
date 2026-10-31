@@ -31,3 +31,4 @@ with tempfile.TemporaryDirectory(prefix='pvideo-dirty-') as tmp:
  p=Path(tmp);(p/'test.c').write_text(code);exe=p/('test.exe' if os.name=='nt' else 'test')
  subprocess.run([cc,'-O2','-std=gnu11','-Wall','-Wextra','-Werror','-fsanitize=undefined','-fsanitize-undefined-trap-on-error',str(p/'test.c'),'-o',str(exe)],check=True,env=env)
  subprocess.run([str(exe)],check=True,env=env,timeout=60)
+ subprocess.run([str(exe),"gpu"],check=True,env=env,timeout=60)
