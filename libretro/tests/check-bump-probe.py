@@ -20,11 +20,39 @@ def mix(a, b, weight):
     return a * (1 - weight) + b * weight
 
 
-def expected(case):
+def expected_mip(case, force_lod0):
+    mode = int(case["mip_filter"])
+    linear = mode in (4, 6)
+    lod = (-2, 0, 1)[("magnified", "near_magnified", "minified").index(case["coordinate"])]
+    maximum = 1 if (int(case["id"]) // 3) % 2 else 2
+    lod = 0 if force_lod0 else min(maximum, max(0, lod + float(case["lod_bias"])))
+    if mode in (3, 4):
+        lod = math.floor(lod + 0.5)
+
+    def sample(level, channel):
+        size = 4 >> level
+        u = 1.25 * size / 4
+        pair = ((192, 64), (224, 32), (16, 16))[level] if channel in "RB" else ((64, 192), (96, 160), (112, 112))[level]
+        position = u - 0.5 if linear else u
+        index = math.floor(position)
+        weight = position - index if linear else 0
+        values = [pair[(index + offset) % size % 2] for offset in (0, 1)]
+        if channel in case["signed_channels"]:
+            values = [signed_byte(v) * 255 for v in values]
+        return mix(*values, weight)
+
+    return [min(255, max(0, math.floor(mix(sample(math.floor(lod), channel),
+                                         sample(math.ceil(lod), channel), lod % 1) + 0.5)))
+            for channel in "ARGB"]
+
+
+def expected(case, force_lod0=False):
+    if case["mode"] == "mip_color":
+        return expected_mip(case, force_lod0)
     mixed = case["mode"] == "mixed_color"
     if mixed:
         lod = {"magnified": -3, "near_magnified": -1, "minified": 2}[case["coordinate"]]
-        minified = lod + int(case.get("lod_bias", 0)) > 0
+        minified = lod + float(case.get("lod_bias", 0)) > 0
         linear = case["filter"] == ("min_linear_mag_point" if minified else "min_point_mag_linear")
         weight = 0.75 if linear else 1
     else:
@@ -69,6 +97,7 @@ def read_log(path):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("directory", type=Path)
+    parser.add_argument("--force-lod0", action="store_true")
     args = parser.parse_args()
     with (args.directory / "cases.csv").open(newline="") as file:
         cases = list(csv.DictReader(file))
@@ -77,18 +106,22 @@ def main():
     logs = {api: read_log(args.directory / f"{api}.log") for api in ("gl", "vk")}
     for case in cases:
         address = int(case["result_address"], 16)
-        reference = expected(case)
+        reference = expected(case, args.force_lod0)
+        # Native LOD approximation can move a cross-mip color by two LSBs.
+        tolerance = 2 if case["mode"] == "mip_color" and int(case["mip_filter"]) in (5, 6) else 1
         pixels = []
         for api, values in logs.items():
             pixel = values[address]
             pixels.append(pixel)
             actual = [(pixel >> shift) & 255 for shift in (24, 16, 8, 0)]
             # Native sampler interpolation precision can move a color by one LSB.
-            if any(abs(a - b) > 1 for a, b in zip(actual, reference)):
+            if any(abs(a - b) > tolerance for a, b in zip(actual, reference)):
                 raise AssertionError(f"{api} case {case['id']}: {actual}, expected {reference}")
-        if pixels[0] != pixels[1]:
+        backend_tolerance = tolerance if case["mode"] == "mip_color" else 0
+        if any(abs((pixels[0] >> shift & 255) - (pixels[1] >> shift & 255)) > backend_tolerance
+               for shift in (24, 16, 8, 0)):
             raise AssertionError(f"backend mismatch in case {case['id']}: {pixels}")
-    print(f"PASS: {len(cases)} cases match the scalar model and both backends agree")
+    print(f"PASS: {len(cases)} cases match the scalar model and both backends agree within tolerance")
 
 
 if __name__ == "__main__":

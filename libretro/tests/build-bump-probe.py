@@ -15,9 +15,13 @@ def main():
     parser.add_argument("--assembler", default="nasm", help="nasm or yasm")
     parser.add_argument("--color", action="store_true", help="test all signed color-channel combinations")
     parser.add_argument("--mixed", action="store_true", help="test mixed filters at varying footprints")
-    parser.add_argument("--lod-bias", type=int, choices=(-4, 0, 4), default=0,
-                        help="sampler LOD bias for the mixed-filter matrix")
+    parser.add_argument("--mip-filter", type=int, choices=(3, 4, 5, 6),
+                        help="test a three-level swizzled G8B8 mip chain")
+    parser.add_argument("--lod-bias", type=float, choices=(-4, 0, 0.25, 4), default=0,
+                        help="sampler LOD bias for the mixed/mip-filter matrix")
     args = parser.parse_args()
+    if args.mixed and args.mip_filter:
+        parser.error("--mixed and --mip-filter are mutually exclusive")
     output = args.output.resolve()
     if output.exists() and any(output.iterdir()):
         parser.error("output directory must be empty")
@@ -31,11 +35,14 @@ def main():
         folder = Path(folder)
         obj, elf, binary = [folder / name for name in ("gpu.o", "gpu.elf", "gpu.bin")]
         defines = ["-DBUMP_FILTER_PROBE"]
-        if args.color or args.mixed:
+        if args.color or args.mixed or args.mip_filter:
             defines.append("-DBUMP_FILTER_COLOR_PROBE")
         if args.mixed:
             defines.append("-DBUMP_FILTER_MIXED_PROBE")
-            defines.append(f"-DBUMP_MIXED_BIAS={args.lod_bias * 256 & 0x1fff}")
+            defines.append(f"-DBUMP_MIXED_BIAS={int(args.lod_bias * 256) & 0x1fff}")
+        if args.mip_filter:
+            defines += ["-DBUMP_FILTER_MIP_PROBE", f"-DBUMP_MIP_FILTER={args.mip_filter}",
+                        f"-DBUMP_MIXED_BIAS={int(args.lod_bias * 256) & 0x1fff}"]
         subprocess.run(["gcc", "-m32", "-ffreestanding", "-fno-pic", "-fno-pie",
                         "-fno-stack-protector", "-fno-asynchronous-unwind-tables",
                         "-mno-sse", "-mno-mmx", "-O2", "-Wall", "-Wextra", "-Werror",
@@ -68,18 +75,27 @@ def main():
     with (output / "cases.csv").open("w", newline="") as file:
         writer = csv.writer(file)
         writer.writerow(["id", "layout", "mode", "axis", "signed_channels", "filter",
-                         "coordinate", "result_address", "lod_bias"])
+                         "coordinate", "result_address", "lod_bias", "mip_filter",
+                         "max_lod", "wrap_period"])
         for i in range(192):
-            if args.color or args.mixed:
+            if args.color or args.mixed or args.mip_filter:
                 flags = (i // 6) % 16
                 channels = "".join(ch for bit, ch in ((1, "B"), (2, "G"), (4, "R"), (8, "A")) if flags & bit) or "none"
+                if args.mip_filter:
+                    writer.writerow([i, "swizzled", "mip_color", "BG", channels,
+                                     {3: "point_nearest_mip", 4: "linear_nearest_mip",
+                                      5: "point_linear_mip", 6: "linear_linear_mip"}[args.mip_filter],
+                                     ("magnified", "near_magnified", "minified")[i % 3],
+                                     f"0x{0x300204 + i * 8:08x}", args.lod_bias,
+                                     args.mip_filter, 1 if (i // 3) % 2 else 2, -(i // 96)])
+                    continue
                 writer.writerow([i, ("linear", "swizzled")[i // 96],
                                  "mixed_color" if args.mixed else "color", "BG", channels,
                                  (("min_point_mag_linear", "min_linear_mag_point") if args.mixed
                                   else ("point", "linear"))[(i // 3) % 2],
                                  (("magnified", "near_magnified", "minified") if args.mixed
                                   else ("left_center", "midpoint", "right_center"))[i % 3],
-                                 f"0x{0x300204 + i * 8:08x}", args.lod_bias if args.mixed else 0])
+                                 f"0x{0x300204 + i * 8:08x}", args.lod_bias if args.mixed else 0, 0])
                 continue
             writer.writerow([i, ("linear", "swizzled")[i // 96],
                              ("bump", "bump_luminance")[(i // 48) % 2],

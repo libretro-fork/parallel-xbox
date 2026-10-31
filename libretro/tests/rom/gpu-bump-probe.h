@@ -6,7 +6,7 @@
 #define BUMP_DATA  0x03500000u
 #define BUMP_RAMP  0x03501000u
 
-#ifdef BUMP_FILTER_MIXED_PROBE
+#if defined(BUMP_FILTER_MIXED_PROBE) || defined(BUMP_FILTER_MIP_PROBE)
 static void bump_mixed_triangle(u32 layout, u32 footprint)
 {
     static const u32 pos[3][4] = {
@@ -18,12 +18,23 @@ static void bump_mixed_triangle(u32 layout, u32 footprint)
      * Slopes: 1/8, 1/2 and 4 texels/pixel.
      * Both magnification cases lie away from the LOD transition. */
     static const u32 tex_u[2][3][3] = {
+#ifdef BUMP_FILTER_MIP_PROBE
+        /* 4x4 base: u=1.25 texels, or one wrap period below it, at
+         * x=320.5. Exact footprints 1/4, 1 and 2; bias tests mip blending. */
+        {{0xc11b8000u, 0x41248000u, 0x3e900000u},
+         {0xc21f4000u, 0x4220c000u, 0x3e400000u},
+         {0xc29fe000u, 0x42a02000u, 0x3d800000u}},
+        {{0xc12b8000u, 0x41148000u, 0xbf380000u},
+         {0xc2234000u, 0x421cc000u, 0xbf500000u},
+         {0xc2a1e000u, 0x429e2000u, 0xbf700000u}},
+#else
         {{0xc1968000u, 0x41a98000u, 0x3f980000u},
          {0xc29e0000u, 0x42a20000u, 0x3f800000u},
          {0xc4203000u, 0x441fd000u, 0xbf400000u}},
         {{0xc1168000u, 0x41298000u, 0x3f180000u},
          {0xc21e0000u, 0x42220000u, 0x3f000000u},
          {0xc3a03000u, 0x439fd000u, 0xbec00000u}},
+#endif
     };
     method(NV097_SET_VERTEX_DATA_ARRAY_FORMAT + 9 * 4, 2u | (2u << 4));
     method(NV097_SET_BEGIN_END, 5);
@@ -62,6 +73,11 @@ static void bump_filter_probe(void)
 #endif
         u32 format = swizzled_layout ? 0x28 : 0x17;
         u32 bump_address = BUMP_DATA + id * 16;
+#ifdef BUMP_FILTER_MIP_PROBE
+        swizzled_layout = 1;
+        format = 0x28;
+        bump_address = BUMP_DATA + id * 64;
+#endif
         static const u32 rect_u[] = {0x3f000000, 0x3f800000, 0x3fc00000};
         static const u32 norm_u[] = {0x3e800000, 0x3f000000, 0x3f400000};
         wait_vblank();
@@ -76,6 +92,12 @@ static void bump_filter_probe(void)
 #endif
         ram32(bump_address, pair);
         ram32(bump_address + 4, pair);
+#ifdef BUMP_FILTER_MIP_PROBE
+        for (u32 word = 0; word < 8; word++) ram32(bump_address + word * 4, 0xc04040c0u);
+        ram32(bump_address + 32, 0xa02060e0u);
+        ram32(bump_address + 36, 0xa02060e0u);
+        ram32(bump_address + 40, 0x7010u);
+#endif
         /* Reuse the established surface/transform setup, but defer its draw. */
         texture_alias_target(0xc0000000u | format, 1,
                              swizzled_layout ? norm_u[coord] : rect_u[coord],
@@ -86,8 +108,16 @@ static void bump_filter_probe(void)
         method(NV097_SET_TEXTURE_CONTROL1, 4u << 16);
         method(NV097_SET_TEXTURE_ADDRESS, 0x00010101u); /* wrap: AF-eligible */
         method(NV097_SET_TEXTURE_IMAGE_RECT, (2u << 16) | 2u);
+#ifdef BUMP_FILTER_MIP_PROBE
+        method(NV097_SET_TEXTURE_FORMAT,
+               1u | (2u << 4) | (1u << 3) | (format << 8) |
+               (3u << 16) | (2u << 20) | (2u << 24));
+        method(NV097_SET_TEXTURE_CONTROL0, (1u << 30) | ((linear ? 1u : 2u) << 6));
+#endif
         method(NV097_SET_TEXTURE_FILTER,
-#ifdef BUMP_FILTER_MIXED_PROBE
+#ifdef BUMP_FILTER_MIP_PROBE
+               (BUMP_MIP_FILTER << 16) | ((BUMP_MIP_FILTER & 1 ? 1u : 2u) << 24) | BUMP_MIXED_BIAS |
+#elif defined(BUMP_FILTER_MIXED_PROBE)
                (linear ? 0x01020000u : 0x02010000u) | BUMP_MIXED_BIAS |
 #else
                (linear ? 0x02020000u : 0x01010000u) |
@@ -124,7 +154,9 @@ static void bump_filter_probe(void)
         method(NV097_SET_COMBINER_SPECULAR_FOG_CW0, 8);
         method(NV097_SET_COMBINER_SPECULAR_FOG_CW1, 0x00001800u);
 #endif
-#ifdef BUMP_FILTER_MIXED_PROBE
+#ifdef BUMP_FILTER_MIP_PROBE
+        bump_mixed_triangle(id / 96, coord);
+#elif defined(BUMP_FILTER_MIXED_PROBE)
         bump_mixed_triangle(swizzled_layout, coord);
 #else
         triangle();

@@ -66,13 +66,42 @@ The complete regression repeats all three mixed matrices at biases -4, 0 and
 +4, plus the original bump/color matrices, with quality overrides off and on:
 1920 cases per renderer. `textureQueryLod(...).y` selects reconstruction from
 the sampler's computed LOD, including its bias. Matching-filter shaders do not
-emit the query. Mixed mipmapped min-filter modes remain outside this extension.
+emit the query. Mixed mipmapped min/mag pairs remain outside this extension.
 
 For the single-level Vulkan G8B8 LOD0 sampler, maxLod=0.25 permits a positive
 LOD to select minification while nearest mip selection still uses level zero.
 maxLod=0 would always select magnification, making the two filters ineffective.
 See the [Khronos sampler mapping](https://docs.vulkan.org/spec/latest/chapters/samplers.html)
 and [GLSL LOD query](https://github.khronos.org/Vulkan-Site/glsl/latest/chapters/builtinfunctions.html#texture-query-lod).
+
+## Mipmapped signed G8B8
+
+Swizzled, projective 2D G8B8 with wrap U/V, a zero lower mip clamp and matching
+point/linear min and mag reconstruction now decodes texels before filtering
+within and between mip levels. All four nearest/linear mip modes are supported.
+The accessed-mip component of `textureQueryLod` supplies sampler bias, nearest
+mip selection and the upper clamp. Explicit `texelFetch` reads wrapped integer
+coordinates, so the backing unsigned sampler cannot interpolate encoded bytes.
+Point sampling with nearest mip selection retains its existing hardware sample.
+Shader dirty-state tracking covers channel signs, mag filtering, mip count/size,
+and address changes for signed mipmapped G8B8, so cached shaders can switch paths.
+Force LOD0 emits a zero level directly: Mesa Vulkan can otherwise report a
+nonzero accessed mip despite its texture sample honoring a zero maximum.
+
+`build-bump-probe.py OUTPUT --mip-filter 3|4|5|6 [--lod-bias -4|0|0.25|4]`
+builds a 4x4/2x2/1x1 mip chain with distinct byte patterns. Its 192 cases combine
+16 channel-sign masks, three exact footprints (1/4, 1 and 2 texels/pixel), upper
+clamps 1/2 and positive/negative wrap periods. Fractional bias 0.25 exercises
+interpolation between levels without using an approximate fractional footprint.
+The full runner checks 8064 cases per renderer with both quality overrides off
+and on. Original cases retain a one-LSB scalar tolerance and exact GL/Vulkan
+agreement. Mip cases allow one LSB, or two for cross-mip interpolation, in the
+scalar and backend comparison because native LOD approximation can shift a
+high-contrast signed color. This is not a physical-console precision oracle.
+
+Mixed mipmapped min/mag reconstruction, nonzero lower clamps, other address
+modes, cubemaps, embedded borders, color keys and signed alpha-kill remain on
+their previous paths. Linear-layout textures do not support mip chains.
 
 192 cases cover linear/swizzled G8B8, BUMPENVMAP/BUMPENVMAP_LUM, B/G displacement,
 signed flags none/B/G/BG, point/linear sampling, and left/midpoint/right texel
@@ -87,7 +116,8 @@ Signed-before-filter predicts cancellation at the linear midpoint; the previous
 unsigned-filter-then-`sign3` model maps the average byte 128 to -128/127. These
 are competing models, not asserted console results. Point samples and both axes
 help expose coordinate/channel errors before interpreting the midpoint. Mips,
-border rules, anisotropy, other formats and ordinary-combiner use are not covered.
+border rules, anisotropy and other formats are not covered by this bump matrix;
+the color and mip matrices above cover ordinary-combiner sampling separately.
 
 ## Hardware comparison still required
 
