@@ -26,10 +26,83 @@
  */
 #include <string.h>
 #include <assert.h>
+#include <stdint.h>
 #include <stdlib.h>
+#include <features/features_cpu.h>
+#if (defined(__i386__) || defined(__x86_64__)) && (defined(__GNUC__) || defined(__clang__))
+#include <immintrin.h>
+#define GLO_HAVE_AVX2_SWAP
+#endif
 
 #include "gloffscreen.h"
 
+
+/* Keep the tuned libc copy path on CPUs without AVX2: a scalar swap
+ * regresses large rows on some targets. The AVX2 path needs no row buffer. */
+static void glo_flip_rows_portable(uint8_t *data, unsigned stride, size_t row_bytes,
+                                   unsigned height)
+{
+    if (height < 2 || !row_bytes) {
+        return;
+    }
+    uint8_t *tmp = malloc(row_bytes);
+    for (unsigned y = 0; y < height / 2; y++) {
+        uint8_t *top = data + (size_t)y * stride;
+        uint8_t *bottom = data + (size_t)(height - 1 - y) * stride;
+        memcpy(tmp, top, row_bytes);
+        memcpy(top, bottom, row_bytes);
+        memcpy(bottom, tmp, row_bytes);
+    }
+    free(tmp);
+}
+
+#ifdef GLO_HAVE_AVX2_SWAP
+__attribute__((target("avx2")))
+static void glo_flip_rows_avx2(uint8_t *data, unsigned stride, size_t row_bytes,
+                              unsigned height)
+{
+    if (height < 2 || !row_bytes) {
+        return;
+    }
+    for (unsigned y = 0; y < height / 2; y++) {
+        uint8_t *top = data + (size_t)y * stride;
+        uint8_t *bottom = data + (size_t)(height - 1 - y) * stride;
+        size_t x = 0;
+        for (; row_bytes - x >= 64; x += 64) {
+            __m256i a = _mm256_loadu_si256((const __m256i *)(top + x));
+            __m256i b = _mm256_loadu_si256((const __m256i *)(bottom + x));
+            __m256i c = _mm256_loadu_si256((const __m256i *)(top + x + 32));
+            __m256i d = _mm256_loadu_si256((const __m256i *)(bottom + x + 32));
+            _mm256_storeu_si256((__m256i *)(top + x), b);
+            _mm256_storeu_si256((__m256i *)(bottom + x), a);
+            _mm256_storeu_si256((__m256i *)(top + x + 32), d);
+            _mm256_storeu_si256((__m256i *)(bottom + x + 32), c);
+        }
+        for (; x < row_bytes; x++) {
+            uint8_t a = top[x];
+            top[x] = bottom[x];
+            bottom[x] = a;
+        }
+    }
+}
+#endif
+
+static void glo_flip_rows(uint8_t *data, unsigned stride, size_t row_bytes,
+                          unsigned height)
+{
+    /* Avoid both pointer underflow and needless allocation/probing for empty
+     * or single-row images. Padding and the odd centre row stay untouched. */
+    if (height < 2 || !row_bytes) {
+        return;
+    }
+#ifdef GLO_HAVE_AVX2_SWAP
+    if (cpu_features_get() & RETRO_SIMD_AVX2) {
+        glo_flip_rows_avx2(data, stride, row_bytes, height);
+        return;
+    }
+#endif
+    glo_flip_rows_portable(data, stride, row_bytes, height);
+}
 
 void glo_readpixels(GLenum gl_format, GLenum gl_type,
                     unsigned int bytes_per_pixel, unsigned int stride,
@@ -49,17 +122,7 @@ void glo_readpixels(GLenum gl_format, GLenum gl_type,
     glReadPixels(0, 0, width, height, gl_format, gl_type, data);
 
     if (vflip) {
-        GLubyte *b = (GLubyte *) data;
-        GLubyte *c = &((GLubyte *) data)[stride * (height - 1)];
-        GLubyte *tmp = (GLubyte *) malloc(width * bytes_per_pixel);
-            for (int irow = 0; irow < height / 2; irow++) {
-            memcpy(tmp, b, width * bytes_per_pixel);
-            memcpy(b, c, width * bytes_per_pixel);
-            memcpy(c, tmp, width * bytes_per_pixel);
-            b += stride;
-            c -= stride;
-        }
-        free(tmp);
+        glo_flip_rows(data, stride, (size_t)width * bytes_per_pixel, height);
     }
 
     /* Restore GL state */

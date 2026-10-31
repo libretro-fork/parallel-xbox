@@ -1441,3 +1441,11 @@ colour/integer/depth formats, fresh/reused grow textures, scale 1/2/3, swizzled
 input, source guards and unpack-state restoration. GPU depth blits compare
 against the former compact native-upload/blit reference (which may quantize
 a depth bit). PITCHED_GL_BINARY / PITCHED_GL_SKIP_RUN support cross builds.
+
+`test-gl-readpixels-flip.py` compiles the actual flip/pack-state wrapper with
+mock GL writes against an independent pixel oracle. Both detected and forced
+portable routes cover 14,400 cases each (padding, unaligned/tail rows, odd/zero
+dimensions, state restoration and unflipped PBO handoff). CPU flags are a fixture
+adapter; the core uses libretro-common detection. GL_FLIP_BENCH=1 with
+GL_FLIP_CFLAGS="" runs an isolated swap benchmark; it is not a readback/FPS
+benchmark. GL_FLIP_BINARY / GL_FLIP_SKIP_RUN support cross builds.

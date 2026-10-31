@@ -182,6 +182,7 @@ ${cc} -O2 -std=c99 -Wall -I"$here/../.." -o "$work/bin/vramranges" "$here/test-v
 "$work/bin/vramranges"
 python3 "$here/test-texture-dirty.py" "$here/../.." "$cc"
 python3 "$here/test-vulkan-surface-age.py" "$here/../.." "$cc"
+python3 "$here/test-gl-readpixels-flip.py" "$here/../.." "$cc"
 python3 "$here/test-gl-readback-fused.py" "$here/../.." "$cc"
 python3 "$here/test-dma-map.py" "$here/../.." "$cc"
 python3 "$here/test-dma-retry.py" "$here/../.." "$cc"
