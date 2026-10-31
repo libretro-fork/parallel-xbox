@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Fix DOAX gameplay cadence regressing while frontend FPS stays full speed. PGRAPH flip-release, interrupt-acknowledgement and FIFO-enable writes, plus PCRTC scanout changes, now publish guest GPU work before waking the FIFO. An idle CPU waits for that work instead of advancing guest time past it. The kernel idle shortcut, lock-free handoffs and uncounted core-only redraws remain.
+
 - Rearm pending timers in place when the new deadline leaves their queue
   position unchanged. Avoid redundant unlink/reinsert scans and inactive
   timer removal scans while preserving atomic deadline reads and tie order.

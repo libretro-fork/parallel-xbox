@@ -1316,3 +1316,14 @@ covers earlier commands and fence signal operations on the same queue.
 `test-timer-deadline-readers.py CHECKOUT [CC]` compiles the production queues with real libretro-common mutex/thread primitives. Six readers query both cached deadline views and expired state while 100,000 writer cycles modify, anticipate, cancel and free timers and toggle clock enablement. Cached reads assert they never acquire a mutex; a held-lock test supplies an invalid head pointer to prove they neither wait nor dereference nodes. `TIMER_READ_CFLAGS`, `TIMER_READ_BINARY` and `TIMER_READ_SKIP_RUN` support sanitizers/native cross-builds. `TIMER_READ_BASELINE=REV TIMER_READ_ARGS=bench` compares the same out-of-line APIs on a 32-timer list (16 leading external timers); `TIMER_READ_ARGS=bench` tests current code. Generic attribute-mask queries and queue mutations still use the queue mutex.
 
 Timer benchmark comparisons must exclude the reader-role TLS assertion from **both** builds. The runner now selects `TIMER_READ_BENCHMARK` automatically for `TIMER_READ_ARGS=bench` or `matrix`; cross-built binaries need `TIMER_READ_BENCHMARK=1` when compiling. Benchmark execution refuses a build with assertion instrumentation enabled. Normal oracle/concurrency tests keep their assertions. Earlier modification-time comparisons with the assertion enabled only on the current build were biased and should not be used. `TIMER_READ_ARGS=matrix` measures 1/8/32/128-timer queues with stable head/middle/tail rearms, crossing moves, equal-deadline peers and delete/rearm pairs.
+
+`test-nv2a-guest-wakes.py` covers the DOAX gameplay-cadence regression with
+production PGRAPH/PCRTC MMIO handlers, `pfifo_kick_guest`, `pfifo_kick` and
+`nv2a_libretro_guest_busy`, and the production idle-time decision. Across 10,000 schedules it verifies that flip
+release, interrupt acknowledgement, FIFO enable and scanout changes publish
+guest work before notifying the worker. A consumed/coalesced wake does not
+retire unfinished work; acknowledging an older kick cannot retire a newer one.
+Resumed GPU work must prevent idle clock skips; after completion, core-only
+redraw/reset kicks remain uncounted. No-op/IRQ-enable writes do
+not invent work. The dedicated GitHub Actions job needs no game assets or GPU;
+the same test also runs in the regular suite.

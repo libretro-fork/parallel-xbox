@@ -97,9 +97,10 @@ void pgraph_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
     switch (addr) {
     case NV_PGRAPH_INTR:
         /* The ack of ERROR or CONTEXT_SWITCH is what the pfifo thread
-         * waits for (pgraph_pending_bit): the kick has it look */
+         * waits for (pgraph_pending_bit). This resumes guest work, so the
+         * idle CPU must wait for it rather than skip to another deadline. */
         retro_atomic_fetch_and_int(&pg->pending_interrupts, (int)~(uint32_t)val);
-        pfifo_kick(d);
+        pfifo_kick_guest(d);
         break;
     case NV_PGRAPH_INTR_EN:
         retro_atomic_store_relaxed_int(&pg->enabled_interrupts, (int)(uint32_t)val);
@@ -113,7 +114,7 @@ void pgraph_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
                 (PG_GET_MASK(NV_PGRAPH_SURFACE, NV_PGRAPH_SURFACE_READ_3D) +
                  1) % modulo);
             nv2a_profile_increment();
-            pfifo_kick(d);
+            pfifo_kick_guest(d);
         }
         break;
     case NV_PGRAPH_RDI_DATA: {
@@ -170,7 +171,7 @@ void pgraph_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
     // events
     switch (addr) {
     case NV_PGRAPH_FIFO:
-        pfifo_kick(d);
+        pfifo_kick_guest(d);
         break;
     }
 }

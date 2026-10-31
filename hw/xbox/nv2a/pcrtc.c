@@ -78,10 +78,10 @@ void pcrtc_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
         val &= 0x07FFFFFF;
         // assert(val < memory_region_size(d->vram));
         d->pcrtc.start = val;
-        /* The scanout moved: the render thread resolves the new front buffer
-         * (GL); kick it under the fifo lock, as the pgraph MMIO path does. */
+        /* Guest work: resolve the new scanout before the idle CPU advances
+         * time. Core-only redraw requests retain their uncounted kicks. */
         retro_atomic_store_relaxed_int(&d->pgraph.scanout_changed, 1);
-        pfifo_kick(d);
+        pfifo_kick_guest(d);
 
         NV2A_DPRINTF("PCRTC_START - %x %x %x %x\n",
                 d->vram_ptr[val+64], d->vram_ptr[val+64+1],

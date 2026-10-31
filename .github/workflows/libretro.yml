@@ -19,6 +19,15 @@ on:
 # platforms input (workflow_dispatch) lists them. Pushes and "all" build
 # everything.
 jobs:
+  guest-gpu-progress:
+    name: DOAX guest GPU progress regression
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      # Production MMIO handlers and wake accounting; no game, BIOS or GPU.
+      - name: Guest flip releases must prevent premature idle time skips
+        run: python3 libretro/tests/test-nv2a-guest-wakes.py . cc
+
   # The static Makefile with MinGW-w64, as in MSYS2's MINGW64 shell: every
   # library the core links is built from source (Makefile.deps), and the
   # DLL needs only Windows' own DLLs. The tests run it under Wine.
