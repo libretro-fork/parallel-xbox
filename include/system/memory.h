@@ -1113,7 +1113,8 @@ struct AddressSpace {
     /* Total size of bounce buffers currently allocated, atomically accessed */
     retro_atomic_64_t bounce_buffer_size;
     /* List of callbacks to invoke when buffers free up */
-    QemuMutex map_client_list_lock;
+    uintptr_t map_client_owner;
+    retro_atomic_ptr_t map_client_bh; /* lazy owner-thread retry notification */
     QLIST_HEAD(, AddressSpaceMapClient) map_client_list;
 };
 
@@ -2516,6 +2517,9 @@ void address_space_unmap(AddressSpace *as, void *buffer, hwaddr len,
  * gets automatically removed after firing.
  *
  * @as: #AddressSpace to be accessed
+ * Registration/cancellation belong to the AddressSpace frontend owner.
+ * Buffer release may notify from any thread; it never walks this list.
+ *
  * @bh: callback to invoke when address_space_map() retry is appropriate
  */
 void address_space_register_map_client(AddressSpace *as, QEMUBH *bh);

@@ -67,6 +67,7 @@
 
 #include "qemu/rcu_queue.h"
 #include "qemu/main-loop.h"
+#include <rthreads/rthreads.h>
 
 #include "system/ram_addr.h"
 
@@ -3194,9 +3195,12 @@ address_space_unregister_map_client_do(AddressSpaceMapClient *client)
     g_free(client);
 }
 
-static void address_space_notify_map_clients_locked(AddressSpace *as)
+static void address_space_notify_map_clients_owner(void *opaque)
 {
+    AddressSpace *as = opaque;
     AddressSpaceMapClient *client;
+
+    assert(as->map_client_owner == sthread_get_current_thread_id());
 
     while (!QLIST_EMPTY(&as->map_client_list)) {
         client = QLIST_FIRST(&as->map_client_list);
@@ -3207,16 +3211,23 @@ static void address_space_notify_map_clients_locked(AddressSpace *as)
 
 void address_space_register_map_client(AddressSpace *as, QEMUBH *bh)
 {
-    AddressSpaceMapClient *client = g_malloc(sizeof(*client));
+    AddressSpaceMapClient *client;
 
-    QEMU_LOCK_GUARD(&as->map_client_list_lock);
+    assert(as->map_client_owner == sthread_get_current_thread_id());
+    if (!retro_atomic_load_relaxed_ptr(&as->map_client_bh)) {
+        QEMUBH *notify = qemu_bh_new(address_space_notify_map_clients_owner, as);
+        retro_atomic_store_release_ptr(&as->map_client_bh, notify);
+    }
+    client = g_malloc(sizeof(*client));
     client->bh = bh;
     QLIST_INSERT_HEAD(&as->map_client_list, client, link);
-    /* Write map_client_list before reading bounce_buffer_size. */
+    /* Publish the notifier before checking resource availability. Paired
+     * with the release-side fence: either registration sees the free space
+     * or the releasing thread sees this notifier and queues the owner. */
     retro_atomic_thread_fence_seq_cst();
     if ((size_t)retro_atomic_load_relaxed_64(&as->bounce_buffer_size) <
         as->max_bounce_buffer_size) {
-        address_space_notify_map_clients_locked(as);
+        address_space_notify_map_clients_owner(as);
     }
 }
 
@@ -3239,7 +3250,7 @@ void address_space_unregister_map_client(AddressSpace *as, QEMUBH *bh)
 {
     AddressSpaceMapClient *client;
 
-    QEMU_LOCK_GUARD(&as->map_client_list_lock);
+    assert(as->map_client_owner == sthread_get_current_thread_id());
     QLIST_FOREACH(client, &as->map_client_list, link) {
         if (client->bh == bh) {
             address_space_unregister_map_client_do(client);
@@ -3250,8 +3261,14 @@ void address_space_unregister_map_client(AddressSpace *as, QEMUBH *bh)
 
 static void address_space_notify_map_clients(AddressSpace *as)
 {
-    QEMU_LOCK_GUARD(&as->map_client_list_lock);
-    address_space_notify_map_clients_locked(as);
+    if (as->map_client_owner == sthread_get_current_thread_id()) {
+        address_space_notify_map_clients_owner(as);
+    } else {
+        QEMUBH *notify = retro_atomic_load_acquire_ptr(&as->map_client_bh);
+        if (notify) {
+            qemu_bh_schedule(notify);
+        }
+    }
 }
 
 static bool flatview_access_valid(FlatView *fv, hwaddr addr, hwaddr len,
@@ -3453,7 +3470,7 @@ void address_space_unmap(AddressSpace *as, void *buffer, hwaddr len,
     bounce->magic = ~BOUNCE_BUFFER_MAGIC;
     memory_region_unref(bounce->mr);
     g_free(bounce);
-    /* Write bounce_buffer_size before reading map_client_list. */
+    /* Publish released resources before observing the owner notifier. */
     retro_atomic_thread_fence_seq_cst();
     address_space_notify_map_clients(as);
 }

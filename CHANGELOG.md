@@ -1,5 +1,7 @@
 # Changelog of the libretro core
 
+- Remove the DMA map-retry list mutex; frontend-owned callbacks handle cross-thread releases through a lazily created atomic bottom-half notification.
+
 - Eliminate a full-cluster scratch copy on compressed QCOW2 partial writes and zeroing by reusing the invalidated decompression cache as the patch buffer.
 
 - Replace the POSIX FD monitor framework with direct descriptor readiness handling; remove unused TLS poll-array copies, epoll descriptors and busy-poll machinery.
