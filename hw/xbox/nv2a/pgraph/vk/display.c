@@ -1697,6 +1697,10 @@ void pgraph_vk_init_display(PGRAPHState *pg)
     create_render_pass(pg);
     create_display_pipeline(pg);
     create_surface_sampler(pg);
+    /* Fixed-size sync resources do not depend on the first frame's mode. */
+    if (on_frontend_device()) {
+        create_frame_sync(pg);
+    }
 }
 
 void pgraph_vk_finalize_display(PGRAPHState *pg)
@@ -1817,9 +1821,7 @@ void pgraph_vk_render_display(PGRAPHState *pg, SurfaceBinding *surface)
         /* no display image: the frame images are the render targets */
         disp->width = width;
         disp->height = height;
-        if (disp->frame_pool == VK_NULL_HANDLE) {
-            create_frame_sync(pg);
-        }
+        assert(disp->frame_pool != VK_NULL_HANDLE);
     } else
     if (!disp->image || disp->width != width || disp->height != height) {
         create_display_image(pg, width, height);
