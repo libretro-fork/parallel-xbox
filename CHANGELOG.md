@@ -20,6 +20,11 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Pack only visible texels when linear Vulkan textures need staging, avoiding
+  guest row-padding copies and staging-ring reservations. Retain direct VRAM
+  reads and the single-copy fast path for tightly packed rows. Sparse pitches
+  save substantial bytes; tiny padded rows can have extra row-copy overhead.
+
 - OpenGL: swap flipped readback rows in place on AVX2 CPUs without a heap row temporary; keep the tuned portable copy path and handle empty/single-row images safely.
 
 - Keep a retired Vulkan overlay's image view with its pooled image, avoiding

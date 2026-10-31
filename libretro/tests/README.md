@@ -1347,6 +1347,14 @@ redraw/reset kicks remain uncounted. No-op/IRQ-enable writes do
 not invent work. The dedicated GitHub Actions job needs no game assets or GPU;
 the same test also runs in the regular suite.
 
+`test-linear-texture-staging.py CHECKOUT [CC]` runs production linear staging
+and copy-region construction without a GPU. Thirty thousand width/height/pitch,
+alignment and direct-buffer cases verify sampled texels, zero-copy eligibility,
+exact staging bytes and no padding fetches. The sparse-pitch case reserves and
+copies 1 KiB instead of 256 KiB. It also runs in the native CI regression job.
+The Vulkan `test-vulkan-linear-span.py` oracle checks the corresponding real
+GPU copy regions when Vulkan and validation layers are available.
+
 `test-pvideo-image-pool.py CHECKOUT [CC]` compiles production overlay acquisition
 and the shared Vulkan image pool. Twenty thousand alternating modes must use
 two image allocations and two views. Generic texture/surface acquisitions
