@@ -224,7 +224,7 @@ void pgraph_vk_init_buffers(NV2AState *d)
 
     r->storage_buffers[BUFFER_STAGING_DST] = (StorageBuffer){
         .alloc_info = host_alloc_create_info,
-        .usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+        .usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
         .buffer_size = 4096 * 4096 * 4,
     };
 
@@ -503,6 +503,9 @@ void pgraph_vk_buffer_ensure_capacity(PGRAPHState *pg, int index,
         return;
     }
     recreate_buffer(pg, &r->storage_buffers[index], size);
+    if (index == BUFFER_STAGING_DST) {
+        pgraph_vk_compute_buffers_changed(pg);
+    }
 }
 
 VkDeviceSize pgraph_vk_append_to_buffer(PGRAPHState *pg, int index, void **data,

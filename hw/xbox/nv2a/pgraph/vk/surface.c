@@ -333,6 +333,146 @@ static void invalidate_readback(PGRAPHVkState *r, VkDeviceSize size)
     }
 }
 
+static void packed_readback_to_host_barrier(VkCommandBuffer cmd, VkBuffer buffer,
+                                            bool packed_to_host)
+{
+    VkBufferMemoryBarrier post_copy_dst_barrier = {
+        .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
+        .srcAccessMask = packed_to_host ? VK_ACCESS_SHADER_WRITE_BIT :
+                                        VK_ACCESS_TRANSFER_WRITE_BIT,
+        .dstAccessMask = VK_ACCESS_HOST_READ_BIT,
+        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .buffer = buffer,
+        .size = VK_WHOLE_SIZE
+    };
+    vkCmdPipelineBarrier(cmd, packed_to_host ? VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT :
+                                            VK_PIPELINE_STAGE_TRANSFER_BIT,
+                         VK_PIPELINE_STAGE_HOST_BIT, 0, 0, NULL, 1,
+                         &post_copy_dst_barrier, 0, NULL);
+
+}
+
+/* Pack directly into mapped readback storage when its descriptor can cover
+ * the output. Other consumers retain the device-buffer/transfer path. */
+static VkBuffer pack_depth_readback(PGRAPHState *pg, SurfaceBinding *surface,
+    VkCommandBuffer cmd, VkBuffer copy_buffer, size_t packed_size, bool direct,
+    bool downscale, VkDeviceSize ring_offset, bool *host_output)
+{
+    PGRAPHVkState *r = pg->vk_renderer_state;
+    VkBufferMemoryBarrier pre_compute_src_barrier = {
+        .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
+        .srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
+        .dstAccessMask = VK_ACCESS_SHADER_READ_BIT,
+        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .buffer = copy_buffer,
+        .size = VK_WHOLE_SIZE
+    };
+    vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                         VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, NULL,
+                         1, &pre_compute_src_barrier, 0, NULL);
+
+    bool packed_to_host = !direct &&
+        packed_size <= r->device_props.limits.maxStorageBufferRange;
+    VkBuffer pack_buffer = r->storage_buffers[packed_to_host ?
+        BUFFER_STAGING_DST : BUFFER_COMPUTE_SRC].buffer;
+
+    VkBufferMemoryBarrier pre_compute_dst_barrier = {
+        .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
+        .srcAccessMask = packed_to_host ?
+            VK_ACCESS_HOST_READ_BIT | VK_ACCESS_TRANSFER_WRITE_BIT :
+            VK_ACCESS_TRANSFER_READ_BIT,
+        .dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT,
+        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .buffer = pack_buffer,
+        .size = VK_WHOLE_SIZE
+    };
+    vkCmdPipelineBarrier(cmd, packed_to_host ?
+                         VK_PIPELINE_STAGE_HOST_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT :
+                         VK_PIPELINE_STAGE_TRANSFER_BIT,
+                         VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, NULL,
+                         1, &pre_compute_dst_barrier, 0, NULL);
+
+    pgraph_vk_pack_depth_stencil(pg, surface, cmd, copy_buffer, pack_buffer,
+                                 downscale);
+
+    VkBufferMemoryBarrier post_compute_src_barrier = {
+        .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
+        .srcAccessMask = VK_ACCESS_SHADER_READ_BIT,
+        .dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
+        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .buffer = copy_buffer,
+        .size = VK_WHOLE_SIZE
+    };
+    vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                         VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 1,
+                         &post_compute_src_barrier, 0, NULL);
+
+    if (packed_to_host) {
+        /* Compute produced the CPU's final packed representation. */
+        copy_buffer = pack_buffer;
+    } else {
+        VkBufferMemoryBarrier post_compute_dst_barrier = {
+            .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
+            .srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT,
+            .dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT,
+            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .buffer = pack_buffer,
+            .size = packed_size
+        };
+        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                             VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 1,
+                             &post_compute_dst_barrier, 0, NULL);
+
+        if (direct) {
+            store_packed_to_ram(pg, cmd, surface, pack_buffer, ring_offset);
+        } else {
+            //
+            // Copy packed image over to staging buffer for host download
+            //
+
+            copy_buffer = r->storage_buffers[BUFFER_STAGING_DST].buffer;
+
+            VkBufferMemoryBarrier pre_copy_dst_barrier = {
+                .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
+                .srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT,
+                .dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
+                .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                .buffer = copy_buffer,
+                .size = VK_WHOLE_SIZE
+            };
+            vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                 VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 1,
+                                 &pre_copy_dst_barrier, 0, NULL);
+
+            VkBufferCopy buffer_copy_region = {
+                .size = packed_size,
+            };
+            vkCmdCopyBuffer(cmd, pack_buffer, copy_buffer, 1, &buffer_copy_region);
+
+            VkBufferMemoryBarrier post_copy_src_barrier = {
+                .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
+                .srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT,
+                .dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
+                .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                .buffer = pack_buffer,
+                .size = VK_WHOLE_SIZE
+            };
+            vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                 VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 1,
+                                 &post_copy_src_barrier, 0, NULL);
+        }
+    }
+    *host_output = packed_to_host;
+    return copy_buffer;
+}
+
 static bool download_surface_to_buffer(NV2AState *d, SurfaceBinding *surface,
                                        uint8_t *pixels)
 {
@@ -597,6 +737,7 @@ static bool download_surface_to_buffer(NV2AState *d, SurfaceBinding *surface,
     // FIXME: Verify output of depth stencil conversion
     // FIXME: Track current layout and only transition when required
 
+    bool packed_to_host = false;
     if (use_compute_to_convert_depth_stencil_format) {
         size_t bytes_per_pixel = 4;
         size_t packed_size =
@@ -607,103 +748,8 @@ static bool download_surface_to_buffer(NV2AState *d, SurfaceBinding *surface,
         // Pack the depth-stencil image into compute_src buffer
         //
 
-        VkBufferMemoryBarrier pre_compute_src_barrier = {
-            .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
-            .srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
-            .dstAccessMask = VK_ACCESS_SHADER_READ_BIT,
-            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-            .buffer = copy_buffer,
-            .size = VK_WHOLE_SIZE
-        };
-        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
-                             VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, NULL,
-                             1, &pre_compute_src_barrier, 0, NULL);
-
-        VkBuffer pack_buffer = r->storage_buffers[BUFFER_COMPUTE_SRC].buffer;
-
-        VkBufferMemoryBarrier pre_compute_dst_barrier = {
-            .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
-            .srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT,
-            .dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT,
-            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-            .buffer = pack_buffer,
-            .size = VK_WHOLE_SIZE
-        };
-        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
-                             VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, NULL,
-                             1, &pre_compute_dst_barrier, 0, NULL);
-
-        pgraph_vk_pack_depth_stencil(pg, surface, cmd, copy_buffer, pack_buffer,
-                                     downscale);
-
-        VkBufferMemoryBarrier post_compute_src_barrier = {
-            .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
-            .srcAccessMask = VK_ACCESS_SHADER_READ_BIT,
-            .dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
-            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-            .buffer = copy_buffer,
-            .size = VK_WHOLE_SIZE
-        };
-        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                             VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 1,
-                             &post_compute_src_barrier, 0, NULL);
-
-        VkBufferMemoryBarrier post_compute_dst_barrier = {
-            .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
-            .srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT,
-            .dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT,
-            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-            .buffer = pack_buffer,
-            .size = packed_size
-        };
-        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                             VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 1,
-                             &post_compute_dst_barrier, 0, NULL);
-
-        if (direct) {
-            store_packed_to_ram(pg, cmd, surface, pack_buffer, ring_offset);
-        } else {
-        //
-        // Copy packed image over to staging buffer for host download
-        //
-
-        copy_buffer = r->storage_buffers[BUFFER_STAGING_DST].buffer;
-
-        VkBufferMemoryBarrier pre_copy_dst_barrier = {
-            .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
-            .srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT,
-            .dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
-            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-            .buffer = copy_buffer,
-            .size = VK_WHOLE_SIZE
-        };
-        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
-                             VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 1,
-                             &pre_copy_dst_barrier, 0, NULL);
-
-        VkBufferCopy buffer_copy_region = {
-            .size = packed_size,
-        };
-        vkCmdCopyBuffer(cmd, pack_buffer, copy_buffer, 1, &buffer_copy_region);
-
-        VkBufferMemoryBarrier post_copy_src_barrier = {
-            .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
-            .srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT,
-            .dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
-            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-            .buffer = pack_buffer,
-            .size = VK_WHOLE_SIZE
-        };
-        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
-                             VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 1,
-                             &post_copy_src_barrier, 0, NULL);
-        }
+        copy_buffer = pack_depth_readback(pg, surface, cmd, copy_buffer,
+            packed_size, direct, downscale, ring_offset, &packed_to_host);
     } else if (direct && surface->swizzle) {
         pgraph_vk_swizzle_to_ram(pg, cmd, ring_offset, surface->vram_addr,
                                  surface->width, surface->height, bpp);
@@ -726,18 +772,7 @@ static bool download_surface_to_buffer(NV2AState *d, SurfaceBinding *surface,
     // Download image data to host
     //
 
-    VkBufferMemoryBarrier post_copy_dst_barrier = {
-        .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
-        .srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
-        .dstAccessMask = VK_ACCESS_HOST_READ_BIT,
-        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        .buffer = copy_buffer,
-        .size = VK_WHOLE_SIZE
-    };
-    vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
-                         VK_PIPELINE_STAGE_HOST_BIT, 0, 0, NULL, 1,
-                         &post_copy_dst_barrier, 0, NULL);
+    packed_readback_to_host_barrier(cmd, copy_buffer, packed_to_host);
 
     nv2a_profile_inc_counter(NV2A_PROF_QUEUE_SUBMIT_1);
     pgraph_vk_end_debug_marker(r, cmd);

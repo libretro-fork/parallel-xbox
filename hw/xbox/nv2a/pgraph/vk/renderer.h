@@ -447,9 +447,9 @@ typedef struct PGRAPHVkDisplayState {
 typedef struct PGRAPHVkComputeState {
     VkDescriptorPool descriptor_pool;
     VkDescriptorSetLayout descriptor_set_layout;
-    /* one set each, written at init and when the compute buffers are
-     * recreated (surface-compute.c write_descriptor_sets) */
-    VkDescriptorSet set_pack, set_unpack;
+    /* Fixed device-pack, host-pack and unpack sets; refreshed after their
+     * buffers are recreated (surface-compute.c write_descriptor_sets). */
+    VkDescriptorSet set_pack, set_unpack, set_pack_readback;
     VkPipelineLayout pipeline_layout;
     /* Two formats, pack/unpack: prepared before gameplay, no LRU misses. */
     VkPipeline pipelines[2][2];

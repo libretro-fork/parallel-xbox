@@ -22,6 +22,12 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 - R6G5B5 textures: decode Morton texels directly into GL RGB or Vulkan RGBA, eliminating raw scratch and the Vulkan alpha-expansion pass. Small exact channel tables preserve signed endpoints and integer rounding.
 
+- Pack fallback Vulkan depth/stencil readbacks directly into mapped readback
+  storage when the device range permits, removing the intermediate packed-buffer
+  GPU copy. Keep CPU completion/visibility and oversized/direct-RAM fallbacks.
+  Allocate one fixed host-pack descriptor set at startup and refresh it after
+  readback-buffer growth; no extra pixel buffer or per-download allocation.
+
 - Paletted textures: expand Morton indices directly to final RGBA pixels for OpenGL and Vulkan CPU fallback uploads, eliminating the intermediate index buffer and second traversal. Keep Vulkan GPU unswizzle preferred.
 
 
