@@ -18,6 +18,7 @@ with tempfile.TemporaryDirectory(prefix='core-timers-') as t:
  flags=shlex.split(os.environ.get('CORE_TIMERS_CFLAGS','-fsanitize=undefined -fsanitize-undefined-trap-on-error'))
  cmd=[cc,'-O2','-g','-std=gnu11','-Wall','-Wextra','-Werror','-Wno-unused-parameter',*flags,'-I'+str(r/'include'),'-I'+str(r/'libretro-common/include'),str(p/'test.c'),'-o',str(binary)]
  if legacy:cmd+=['-DTIMER_BASELINE']
+ cmd+=['-DEXPECTED_TIMER_EVENTS='+('4' if 'timers_done_ev' in production else '0')]
  subprocess.run(cmd,check=True)
  if not os.environ.get('CORE_TIMERS_SKIP_RUN'):
   subprocess.run([str(binary)],check=True,timeout=30)

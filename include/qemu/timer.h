@@ -185,13 +185,9 @@ void qemu_clock_notify(QEMUClockType type);
  * @type: the clock type
  * @enabled: true to enable, false to disable
  *
- * Enable or disable a clock
- * Disabling the clock will wait for related timerlists to stop
- * executing qemu_run_timers.  Thus, this functions should not
- * be used from the callback of a timer that is based on @clock.
- * Doing so would cause a deadlock.
- *
- * Caller should hold BQL.
+ * Enable or disable a clock on the emulation thread, which also owns
+ * timer callback dispatch. No other thread may dispatch or enable clocks.
+ * Cross-thread timer producers are serialized separately by the queue lock.
  */
 void qemu_clock_enable(QEMUClockType type, bool enabled);
 
@@ -200,7 +196,7 @@ void qemu_clock_enable(QEMUClockType type, bool enabled);
  * @type: clock on which to operate
  *
  * Run all the timers associated with the default timer list
- * of a clock.
+ * of a clock, on the emulation thread.
  *
  * Returns: true if any timer ran.
  */
@@ -210,7 +206,7 @@ bool qemu_clock_run_timers(QEMUClockType type);
  * qemu_clock_run_all_timers:
  *
  * Run all the timers associated with the default timer list
- * of every clock.
+ * of every clock, on the emulation thread.
  *
  * Returns: true if any timer ran.
  */

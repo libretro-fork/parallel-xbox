@@ -1333,3 +1333,5 @@ the same test also runs in the regular suite.
 
 
 `test-owner-elapsed-clock.py CHECKOUT [CC]` compares the production elapsed-clock implementation with an independent 50,000-step lifecycle model: run, pause, resume, forward-only skip, saved/restored offsets and icount forwarding. The elapsed clock is an emulation-thread API; observing threads use the published instruction clock. `OWNER_CLOCK_BASELINE=REV` selects the previous implementation; `OWNER_CLOCK_CFLAGS`, `OWNER_CLOCK_BINARY` and `OWNER_CLOCK_SKIP_RUN` support sanitizers/native cross-builds, and `OWNER_CLOCK_ARGS=bench` times out-of-line paused/running reads with a controlled host clock. Real-core hardware-watch ownership checks are recorded with delivery verification.
+
+Timer dispatch and clock enablement belong to the emulation thread. Timer queues no longer allocate completion events or reset/set them around callback dispatch; cross-thread producers retain the queue mutex. The queue oracle checks that clock initialization creates zero completion events.

@@ -35,10 +35,10 @@ static void qemu_mutex_unlock(QemuMutex*m){assert(m->depth==1);m->depth=0;}
 static QemuMutex *guard_enter(QemuMutex*m){qemu_mutex_lock(m);return m;}
 static void guard_exit(QemuMutex**m){if(*m)qemu_mutex_unlock(*m);}
 #define WITH_QEMU_LOCK_GUARD(m) for(QemuMutex *guard __attribute__((cleanup(guard_exit)))=guard_enter(m);guard;qemu_mutex_unlock(guard),guard=NULL)
-static void qemu_event_init(QemuEvent*e,bool set){e->set=set;events++;}
-static void qemu_event_reset(QemuEvent*e){e->set=false;}
-static void qemu_event_set(QemuEvent*e){e->set=true;}
-static void qemu_event_wait(QemuEvent*e){assert(e->set);}
+static __attribute__((unused)) void qemu_event_init(QemuEvent*e,bool set){e->set=set;events++;}
+static __attribute__((unused)) void qemu_event_reset(QemuEvent*e){e->set=false;}
+static __attribute__((unused)) void qemu_event_set(QemuEvent*e){e->set=true;}
+static __attribute__((unused)) void qemu_event_wait(QemuEvent*e){assert(e->set);}
 static bool icount_enabled(void){return counted;}
 static int64_t get_clock(void){return now[QEMU_CLOCK_REALTIME];}
 static int64_t get_clock_realtime(void){return now[QEMU_CLOCK_HOST];}
@@ -119,7 +119,7 @@ int main(void){
  QEMUTimerListGroup unused[2];for(unsigned i=0;i<2;i++)timerlistgroup_init(&unused[i],unused_notify,NULL);
  assert(allocations==12&&mutexes==12&&events==12);
 #else
- assert(!allocations&&mutexes==4&&events==4);
+ assert(!allocations&&mutexes==4&&events==EXPECTED_TIMER_EVENTS);
 #endif
  printf("Clock setup with two AIO contexts: queue allocations=%u mutexes=%u events=%u\n",allocations,mutexes,events);
  for(unsigned type=0;type<QEMU_CLOCK_MAX;type++){now[type]=1000;qemu_clock_enable(type,true);enabled[type]=true;}
