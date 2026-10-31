@@ -868,9 +868,33 @@ gint g_unichar_to_utf8(gunichar c, gchar *outbuf)
 gunichar2 *g_utf8_to_utf16(const gchar *str, glong len, glong *items_read,
                            glong *items_written, GError **error)
 {
-    gchar *tmp = len < 0 ? NULL : g_strndup(str, (gsize)len);
-    wchar_t *w = utf8_to_utf16_string_alloc(tmp ? tmp : str);
+    gsize input_len = 0;
+    gchar *tmp = NULL;
+    wchar_t *w;
     gunichar2 *out;
+
+    if (!str) {
+        g_set_error(error, 0, 0, "invalid UTF-8");
+        return NULL;
+    }
+    while ((len < 0 || input_len < (gsize)len) && str[input_len]) {
+        input_len++;
+    }
+    if (!input_len) {
+        if (items_read) {
+            *items_read = 0;
+        }
+        if (items_written) {
+            *items_written = 0;
+        }
+        return g_new0(gunichar2, 1);
+    }
+    if (len >= 0) {
+        tmp = g_new(gchar, input_len + 1);
+        memcpy(tmp, str, input_len);
+        tmp[input_len] = 0;
+    }
+    w = utf8_to_utf16_string_alloc(tmp ? tmp : str);
 
     g_free(tmp);
     if (!w) {
@@ -882,7 +906,7 @@ gunichar2 *g_utf8_to_utf16(const gchar *str, glong len, glong *items_read,
         *items_written = (glong)wcslen(w);
     }
     if (items_read) {
-        *items_read = (glong)strlen(str);
+        *items_read = (glong)input_len;
     }
     free(w);
     return out;
@@ -891,14 +915,46 @@ gunichar2 *g_utf8_to_utf16(const gchar *str, glong len, glong *items_read,
 gchar *g_utf16_to_utf8(const gunichar2 *str, glong len, glong *items_read,
                        glong *items_written, GError **error)
 {
-    char *u = utf16_to_utf8_string_alloc((const wchar_t *)str);
-    gchar *out = g_strdup(u);
+    gsize input_len = 0;
+    wchar_t *tmp = NULL;
+    char *u;
+    gchar *out;
+
+    if (!str) {
+        g_set_error(error, 0, 0, "invalid UTF-16");
+        return NULL;
+    }
+    while ((len < 0 || input_len < (gsize)len) && str[input_len]) {
+        input_len++;
+    }
+    if (!input_len) {
+        if (items_read) {
+            *items_read = 0;
+        }
+        if (items_written) {
+            *items_written = 0;
+        }
+        return g_strdup("");
+    }
+    if (len >= 0) {
+        tmp = g_new(wchar_t, input_len + 1);
+        memcpy(tmp, str, input_len * sizeof(*tmp));
+        tmp[input_len] = 0;
+    }
+    u = utf16_to_utf8_string_alloc(tmp ? tmp : (const wchar_t *)str);
+    g_free(tmp);
+    out = g_strdup(u);
 
     free(u);
     if (!out) {
         g_set_error(error, 0, 0, "invalid UTF-16");
-    } else if (items_written) {
-        *items_written = (glong)strlen(out);
+    } else {
+        if (items_written) {
+            *items_written = (glong)strlen(out);
+        }
+        if (items_read) {
+            *items_read = (glong)input_len;
+        }
     }
     return out;
 }

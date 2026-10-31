@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Honor bounded UTF-8/UTF-16 input and report actual consumed lengths in the Windows GLib conversion wrappers. Empty conversions now succeed, and UTF-16 conversion no longer includes text beyond the requested prefix.
+
 - Successful native sparse zero operations on Windows and Linux skip the preceding file-size query. Fallback writes still query and clip to EOF, and large/invalid ranges are checked without overflowing offsets.
 
 - The test suite runs every test script: 25 test scripts were never run by run.sh, and four of them no longer compiled against the code they check (DMA mapping, vertex fetch spans, the vertex snapshot cache, the Vulkan shader-module cache). They are fixed and run now, the GL and MCPX boot ones with the Linux core and the Vulkan copy ones where there is a Vulkan device.

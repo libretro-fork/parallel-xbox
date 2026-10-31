@@ -482,6 +482,53 @@ static void test_strings(void)
     }
 }
 
+static void test_bounded_utf_conversion(void)
+{
+#if defined(_WIN32) || !defined(LR_GLIB_H)
+    const gunichar2 wide[] = { 'h', 'i', 'X', 'Y', 0 };
+    const gunichar2 emoji[] = { 0xd83d, 0xde00, 'X', 0 };
+    glong read = -1, written = -1;
+    GError *error = NULL;
+    gchar *text = g_utf16_to_utf8(wide, 2, &read, &written, &error);
+    CHECK(text && !strcmp(text, "hi") && read == 2 && written == 2 && !error);
+    g_free(text);
+    text = g_utf16_to_utf8(emoji, 2, &read, &written, &error);
+    CHECK(text && !strcmp(text, "\xf0\x9f\x98\x80") && read == 2 && written == 4);
+    g_free(text);
+    text = g_utf16_to_utf8(wide, 0, &read, &written, &error);
+    CHECK(text && !*text && read == 0 && written == 0 && !error);
+    g_free(text);
+    gunichar2 *converted = g_utf8_to_utf16("hiXY", 2, &read, &written, &error);
+    CHECK(converted && converted[0] == 'h' && converted[1] == 'i' &&
+          !converted[2] && read == 2 && written == 2 && !error);
+    g_free(converted);
+    converted = g_utf8_to_utf16("\xf0\x9f\x98\x80X", 4, &read, &written, &error);
+    CHECK(converted && converted[0] == 0xd83d && converted[1] == 0xde00 &&
+          !converted[2] && read == 4 && written == 2 && !error);
+    g_free(converted);
+    converted = g_utf8_to_utf16("hiXY", 0, &read, &written, &error);
+    CHECK(converted && !converted[0] && read == 0 && written == 0 && !error);
+    g_free(converted);
+    const gchar raw_bytes[2] = { 'h', 'i' };
+    const gunichar2 raw_units[2] = { 'h', 'i' };
+    converted = g_utf8_to_utf16(raw_bytes, 2, &read, &written, &error);
+    CHECK(converted && converted[0] == 'h' && converted[1] == 'i' &&
+          !converted[2] && read == 2 && written == 2 && !error);
+    g_free(converted);
+    text = g_utf16_to_utf8(raw_units, 2, &read, &written, &error);
+    CHECK(text && !strcmp(text, "hi") && read == 2 && written == 2 && !error);
+    g_free(text);
+    text = g_utf16_to_utf8(emoji, -1, &read, &written, &error);
+    CHECK(text && !strcmp(text, "\xf0\x9f\x98\x80X") && read == 3 && written == 5);
+    g_free(text);
+    converted = g_utf8_to_utf16("\xf0\x9f\x98\x80X", -1, &read, &written, &error);
+    CHECK(converted && converted[0] == 0xd83d && converted[1] == 0xde00 &&
+          converted[2] == 'X' && !converted[3] && read == 5 && written == 3);
+    g_free(converted);
+    g_clear_error(&error);
+#endif
+}
+
 static void test_paths(const char *dir)
 {
     gchar *t, *f, *c;
@@ -877,6 +924,7 @@ int main(int argc, char **argv)
     test_lists();
     test_arrays();
     test_strings();
+    test_bounded_utf_conversion();
     test_paths(dir);
     test_main();
     test_pending_source_lifetime();

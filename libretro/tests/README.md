@@ -827,3 +827,9 @@ ROM also keeps six memory-loaded guest GPRs live across ordered/unordered
 comparisons in both precision modes. No fixed RAX allocation is imposed.
 
 Writable file-I/O checks zero an unaligned range across EOF, a range entirely beyond EOF and an INT64_MAX-length range, confirming unchanged size and preserved bytes before the range. Empty, negative-offset and maximum-offset requests cover the no-op/validation paths. Sparse operations enforce non-extension natively; fallback writes still clip using the current file size.
+
+
+Windows UTF conversion tests cover bounded ASCII/non-BMP prefixes, explicit
+lengths on non-terminated buffers, empty input, consumed/written counts and the
+normal NUL-terminated path. The same vectors run against system GLib on Linux;
+the Windows-only shim wrappers are exercised natively on Windows.
