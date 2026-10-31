@@ -586,8 +586,32 @@ static int lr_file_zero_tail(const LRFileIOV *iov, int n, int64_t off, size_t sk
     return 0;
 }
 
+/* Validate the complete request before changing any destination or file. */
+static int64_t lr_file_vector_length(int64_t off, const LRFileIOV *iov, int n)
+{
+    int64_t total = 0;
+
+    if (off < 0 || n < 0 || (n && !iov)) {
+        return -1;
+    }
+    for (int i = 0; i < n; i++) {
+        if (iov[i].len > (uint64_t)(INT64_MAX - off - total)) {
+            return -1;
+        }
+        total += (int64_t)iov[i].len;
+    }
+    return total;
+}
+
 int lr_file_preadv(LRFile *f, int64_t off, const LRFileIOV *iov, int n)
 {
+    int64_t total = lr_file_vector_length(off, iov, n);
+    if (total < 0) {
+        return -EINVAL;
+    }
+    if (!total) {
+        return 0;
+    }
     if (f->mapped) {
         for (int i = 0; i < n;) {
             void *base = iov[i].base;
@@ -613,17 +637,13 @@ int lr_file_preadv(LRFile *f, int64_t off, const LRFileIOV *iov, int n)
      * to the piece by piece path for what a short read left */
     if (n > 1 && n <= 1024 && sizeof(LRFileIOV) == sizeof(struct iovec)) {
         ssize_t got;
-        size_t total = 0;
         do {
             got = preadv(f->fd, (const struct iovec *)iov, n, (off_t)off);
         } while (got < 0 && errno == EINTR);
         if (got < 0) {
             return -errno;
         }
-        for (int i = 0; i < n; i++) {
-            total += iov[i].len;
-        }
-        if ((size_t)got == total) {
+        if ((uint64_t)got == (uint64_t)total) {
             return 0;
         }
         if (!got) {
@@ -681,20 +701,23 @@ int lr_file_pwritev(LRFile *f, int64_t off, const LRFileIOV *iov, int n)
     if (f->mapped) {
         return -EPERM;
     }
+    int64_t total = lr_file_vector_length(off, iov, n);
+    if (total < 0) {
+        return -EINVAL;
+    }
+    if (!total) {
+        return 0;
+    }
 #ifdef LR_FILE_HAVE_PREADV
     if (n > 1 && n <= 1024 && sizeof(LRFileIOV) == sizeof(struct iovec)) {
         ssize_t put;
-        size_t total = 0;
         do {
             put = pwritev(f->fd, (const struct iovec *)iov, n, (off_t)off);
         } while (put < 0 && errno == EINTR);
         if (put < 0) {
             return -errno;
         }
-        for (int i = 0; i < n; i++) {
-            total += iov[i].len;
-        }
-        if ((size_t)put == total) {
+        if ((uint64_t)put == (uint64_t)total) {
             return 0;
         }
         while (n && (size_t)put >= iov->len) {
