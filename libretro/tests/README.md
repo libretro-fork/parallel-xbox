@@ -888,3 +888,8 @@ flag updates must invalidate the entry proof before the class-equality shortcut.
 256 masked count outcomes and every incoming flag operation in both target-width
 models. ANY and invalid proofs are rejected. The entry invalidation ROM includes
 both unchanged-class paths (with a post-shift jump) and class-changing negatives.
+
+The Linux native-file short-transfer test uses GNU linker wrapping around actual
+POSIX file calls. It checks 3,388 combinations of partial vector/scalar transfers,
+EINTR, EOF, zero progress and terminal errors, including resumed offsets, gaps
+and complete write readback. It does not model the Windows file API.

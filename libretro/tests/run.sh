@@ -237,6 +237,17 @@ MINGW*|MSYS*) ;;
     "$work/bin/filesynctest" "$work/file-sync.img"
     ;;
 esac
+# GNU linker wrapping intercepts optimized POSIX calls without header renaming.
+case $(uname -s) in
+Linux*)
+    ${cc} -O2 -std=gnu99 -Wall -Wextra -Werror -DLR_FILE_FILESTREAM=0 \
+        -I"$here/../.." "$here/test-file-short.c" \
+        "$here/../../block/libretro-file.c" \
+        -Wl,--wrap=pread,--wrap=pwrite,--wrap=preadv,--wrap=pwritev \
+        -o "$work/bin/fileshorttest"
+    "$work/bin/fileshorttest" "$work/file-short.img"
+    ;;
+esac
 # Count the production qcow2 layer's file calls without replacing its backend.
 ${cc} -O2 -std=gnu99 -Wall -DLR_FILE_FILESTREAM=0 -I"$here/../.." -I"$lrc/include" \
     -Dlr_file_sync=counted_sync -Dlr_file_zero=counted_zero -Dlr_file_pwrite=counted_pwrite \
