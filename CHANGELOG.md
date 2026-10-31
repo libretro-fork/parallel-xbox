@@ -1,5 +1,7 @@
 # Changelog of the libretro core
 
+- Remove all four timer-queue mutexes; enforce frontend ownership and retain atomic deadline snapshots for observing threads. Remove unreachable GPU host-time timer code.
+
 - Remove four unused timer-dispatch completion events: clock enablement and callback dispatch share the emulation thread.
 
 What changed in the libretro core of this fork, newest first. Changes that come with a merge of upstream xemu are in upstream's own history; a merge is noted here with the upstream version it brought in.

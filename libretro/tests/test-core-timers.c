@@ -24,16 +24,17 @@ typedef struct {unsigned depth;} QemuMutex;
 typedef struct {bool set;} QemuEvent;
 static unsigned allocations,mutexes,events,notifies[QEMU_CLOCK_MAX];
 static bool counted;
+static __attribute__((unused)) uintptr_t sthread_get_current_thread_id(void){return 1;}
 static int64_t now[QEMU_CLOCK_MAX];
 static __attribute__((unused)) void *allocate(size_t n,size_t size){allocations++;void*p=calloc(n,size);assert(p);return p;}
 #define g_new0(type,n) ((type*)allocate(n,sizeof(type)))
 #define g_free free
-static void qemu_mutex_init(QemuMutex*m){m->depth=0;mutexes++;}
+static __attribute__((unused)) void qemu_mutex_init(QemuMutex*m){m->depth=0;mutexes++;}
 static __attribute__((unused)) void qemu_mutex_destroy(QemuMutex*m){assert(!m->depth);}
-static void qemu_mutex_lock(QemuMutex*m){assert(!m->depth);m->depth=1;}
-static void qemu_mutex_unlock(QemuMutex*m){assert(m->depth==1);m->depth=0;}
-static QemuMutex *guard_enter(QemuMutex*m){qemu_mutex_lock(m);return m;}
-static void guard_exit(QemuMutex**m){if(*m)qemu_mutex_unlock(*m);}
+static __attribute__((unused)) void qemu_mutex_lock(QemuMutex*m){assert(!m->depth);m->depth=1;}
+static __attribute__((unused)) void qemu_mutex_unlock(QemuMutex*m){assert(m->depth==1);m->depth=0;}
+static __attribute__((unused)) QemuMutex *guard_enter(QemuMutex*m){qemu_mutex_lock(m);return m;}
+static __attribute__((unused)) void guard_exit(QemuMutex**m){if(*m)qemu_mutex_unlock(*m);}
 #define WITH_QEMU_LOCK_GUARD(m) for(QemuMutex *guard __attribute__((cleanup(guard_exit)))=guard_enter(m);guard;qemu_mutex_unlock(guard),guard=NULL)
 static __attribute__((unused)) void qemu_event_init(QemuEvent*e,bool set){e->set=set;events++;}
 static __attribute__((unused)) void qemu_event_reset(QemuEvent*e){e->set=false;}
@@ -78,7 +79,11 @@ static struct {int64_t expiry;uint64_t order;unsigned type,attrs;} ref[N];
 static uint64_t serial;
 static bool enabled[QEMU_CLOCK_MAX];
 static unsigned actual[256],expected[256],actual_n,expected_n;
-static void record(void*opaque){unsigned id=(unsigned)(uintptr_t)opaque;assert(!timer_pending(&timers[id]));assert(!timers[id].timer_list->active_timers_lock.depth);assert(actual_n<256);actual[actual_n++]=id;}
+static void record(void*opaque){unsigned id=(unsigned)(uintptr_t)opaque;assert(!timer_pending(&timers[id]));
+#ifdef TIMER_QUEUE_LOCKS
+ assert(!timers[id].timer_list->active_timers_lock.depth);
+#endif
+assert(actual_n<256);actual[actual_n++]=id;}
 static void ref_mod(unsigned id,int64_t expiry){ref[id].expiry=MAX(expiry,0);ref[id].order=++serial;}
 static int next(unsigned type,int mask){int best=-1;for(unsigned i=0;i<N;i++)if(ref[i].type==type&&ref[i].expiry>=0&&!(ref[i].attrs&~mask)&&(best<0||ref[i].expiry<ref[best].expiry||(ref[i].expiry==ref[best].expiry&&ref[i].order<ref[best].order)))best=i;return best;}
 static int64_t deadline(unsigned type,int mask){int id=next(type,mask);return !enabled[type]||id<0?-1:MAX(0,ref[id].expiry-now[type]);}
@@ -119,7 +124,7 @@ int main(void){
  QEMUTimerListGroup unused[2];for(unsigned i=0;i<2;i++)timerlistgroup_init(&unused[i],unused_notify,NULL);
  assert(allocations==12&&mutexes==12&&events==12);
 #else
- assert(!allocations&&mutexes==4&&events==EXPECTED_TIMER_EVENTS);
+ assert(!allocations&&mutexes==EXPECTED_TIMER_MUTEXES&&events==EXPECTED_TIMER_EVENTS);
 #endif
  printf("Clock setup with two AIO contexts: queue allocations=%u mutexes=%u events=%u\n",allocations,mutexes,events);
  for(unsigned type=0;type<QEMU_CLOCK_MAX;type++){now[type]=1000;qemu_clock_enable(type,true);enabled[type]=true;}
