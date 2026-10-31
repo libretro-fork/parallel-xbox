@@ -36,7 +36,7 @@ typedef struct {
 } PGRAPHState;
 typedef struct { PGRAPHState pgraph; void *vram; } NV2AState;
 static bool tcg=true,dirty;
-static unsigned evictions,creates,uploads,gets,downloads,settles,stales;
+static unsigned evictions,creates,uploads,surface_gets,downloads,settles,stales;
 static bool tcg_enabled(void) { return tcg; }
 static void eager_submit_at_switch(PGRAPHState *pg) { (void)pg; }
 static void pgraph_vk_ensure_not_in_render_pass(PGRAPHState *pg) { (void)pg; }
@@ -58,7 +58,7 @@ static bool memory_region_test_and_clear_dirty(void *vram,hwaddr addr,hwaddr siz
 }
 static void pgraph_vk_vertex_mark_stale(PGRAPHState *pg,hwaddr addr,hwaddr size) { stales++; }
 static SurfaceBinding *pgraph_vk_surface_get(NV2AState *d,hwaddr addr) {
-    gets++;SurfaceBinding *s=d->pgraph.vk_renderer_state->cached;
+    surface_gets++;SurfaceBinding *s=d->pgraph.vk_renderer_state->cached;
     return s && s->vram_addr==addr?s:NULL;
 }
 static void trace_stub(uint32_t addr,uint32_t w,uint32_t h,const char *layout,uint32_t aa,
@@ -119,7 +119,7 @@ int main(void) {
         /* A memo entry only exists after its DMA/offset/pitch resolved. */
         if(memo && z.pitch==2560) pgraph_rt_memo_store(&r.rt_memo,false,
             pg->dma_zeta,pg->surface_zeta.offset,pg->surface_zeta.pitch,&z);
-        evictions=creates=uploads=gets=downloads=settles=stales=0;
+        evictions=creates=uploads=surface_gets=downloads=settles=stales=0;
         update_surface_part(&d,true,false);
         assert(r.zeta_binding && !pg->surface_zeta.buffer_dirty);
         assert(pg->surface_binding_dim.width==c.width && pg->surface_binding_dim.height==c.height);
@@ -127,7 +127,7 @@ int main(void) {
         assert(pg->surface_binding_dim.clip_width==7 && pg->surface_binding_dim.clip_height==9);
         if(reusable) {
             assert(r.zeta_binding==&z && !creates && !evictions && !downloads && !settles);
-            if(memo && tcg) assert(!gets);
+            if(memo && tcg) assert(!surface_gets);
             if(mode==2) assert(z.upload_pending && stales==1);
         } else {
             assert(r.zeta_binding==&r.created && creates==1 && evictions==1 && downloads==1);

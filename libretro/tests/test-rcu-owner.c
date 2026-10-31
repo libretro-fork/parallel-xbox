@@ -25,7 +25,9 @@ typedef struct Error Error;
 #define smp_mb_global() retro_atomic_thread_fence_seq_cst()
 #define smp_mb_placeholder() retro_atomic_thread_fence_seq_cst()
 /* Shared QEMU parking channels are outside this extracted RCU fixture. */
+#ifndef _WIN32
 static void qemu_eventcount_after_fork(void) {}
+#endif
 #define RCU_GP_LOCKED 1UL
 #define RCU_GP_CTR 2UL
 #define QEMU_DECLARE_THREAD_LOCAL(type, name) static type *get_ptr_##name(void);

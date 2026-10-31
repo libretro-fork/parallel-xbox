@@ -3,6 +3,7 @@
 #define GL_GLEXT_PROTOTYPES
 #include <vulkan/vulkan.h>
 #include <GL/gl.h>
+#include <GL/glext.h>
 #include <assert.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -123,7 +124,7 @@ int main(void) {
     pg.surface_shape.color_format=4;r.dyn_blend=false;pg.regs[NV_PGRAPH_BLEND]=0x168;
     PipelineKey first,second;init_pipeline_key(&pg,&first);
     pg.regs[NV_PGRAPH_BLEND]=0x118;init_pipeline_key(&pg,&second);assert(!memcmp(&first,&second,sizeof(first)));
-    puts("surface blend: 32768 mapping/key/format-transition cases, canonical PSO reuse and dynamic-state caching passed");
+    printf("surface blend: %u mapping/key/format-transition cases, canonical PSO reuse and dynamic-state caching passed\n",cases);
 }
 #else
 #include "surface-blend-gl.h"

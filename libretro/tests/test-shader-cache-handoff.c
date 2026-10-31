@@ -146,6 +146,7 @@ static void test_binary_owners(void)
 
     /* Non-mapping VFS fallback transfers its allocation and interior view. */
     unsigned char *allocation = malloc(32);
+    if (!allocation) _Exit(1);
     XemuFileMap file = {allocation, 32, NULL, allocation};
     void *view = shader_binary_take_file(&owners[0], &file, allocation + 8, 16, &count);
     assert(view == allocation + 8 && owners[0].file.owned == allocation);
@@ -153,6 +154,7 @@ static void test_binary_owners(void)
     shader_binary_release(view, &owners[0]);
     /* A released slot is available again. */
     allocation = malloc(32);
+    if (!allocation) _Exit(1);
     file = (XemuFileMap){allocation, 32, allocation, allocation};
     view = shader_binary_take_file(&owners[0], &file, allocation + 8, 16, &count);
     assert(view == allocation + 8 && owners[0].mapping_count == &count);

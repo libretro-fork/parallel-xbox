@@ -27,6 +27,8 @@ jobs:
       # Production MMIO handlers and wake accounting; no game, BIOS or GPU.
       - name: Guest flip releases must prevent premature idle time skips
         run: python3 libretro/tests/test-nv2a-guest-wakes.py . cc
+      - name: GPU waits must respect guest timer deadlines
+        run: python3 libretro/tests/test-gpu-wait-deadline.py . cc
 
   # The static Makefile with MinGW-w64, as in MSYS2's MINGW64 shell: every
   # library the core links is built from source (Makefile.deps), and the

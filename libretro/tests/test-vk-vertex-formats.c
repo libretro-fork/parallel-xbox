@@ -9,6 +9,10 @@
 #define VK_NO_PROTOTYPES
 #include "hw/xbox/nv2a/pgraph/vk/vertex-format.h"
 #include "hw/xbox/nv2a/nv2a_regs.h"
+/* Test failures exit normally, with an explicit nonreturning path even on
+ * Windows CRTs whose assertion declaration lacks that compiler annotation. */
+#undef assert
+#define assert(x) do { if (!(x)) { fprintf(stderr,"FAIL line %d: %s\n",__LINE__,#x); _Exit(1); } } while(0)
 #define ARRAY_SIZE(a) (sizeof(a)/sizeof((a)[0]))
 #define MAX(a,b) ((a)>(b)?(a):(b))
 #define ROUND_UP(x,a) (((x)+(a)-1)&~((uint64_t)(a)-1))

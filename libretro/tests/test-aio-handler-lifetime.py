@@ -20,6 +20,7 @@ for backend in ['win32','posix']:
   p=Path(tmp);(p/'test.c').write_text(code)
   prefix=os.environ.get('AIO_HANDLER_BINARY_PREFIX');binary=prefix+'-'+backend+('.exe' if 'mingw' in cc else '') if prefix else str(p/'test')
   cmd=[cc,'-O2','-g','-std=gnu11','-Wall','-Wextra','-Werror','-Wno-unused-parameter','-Wno-unused-function','-DCASE_'+backend.upper(),'-I'+str(r/'include'),'-I'+str(r/'libretro-common/include')]
-  cmd+=shlex.split(os.environ.get('AIO_HANDLER_CFLAGS','-fsanitize=address,undefined'))
+  default_checks='-fsanitize=undefined -fsanitize-undefined-trap-on-error' if os.name=='nt' or 'mingw' in cc else '-fsanitize=address,undefined'
+  cmd+=shlex.split(os.environ.get('AIO_HANDLER_CFLAGS',default_checks))
   subprocess.run(cmd+[str(p/'test.c'),'-o',binary],check=True)
   if not os.environ.get('AIO_HANDLER_SKIP_RUN'):subprocess.run([binary],check=True,timeout=30)

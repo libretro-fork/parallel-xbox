@@ -94,10 +94,13 @@ static retro_eventcount_t main_loop_ec;
 
 int qemu_init_main_loop(Error **errp)
 {
-    int ret;
+    int ret, key;
     GSource *src;
 
     retro_eventcount_init(&main_loop_ec);
+    /* Create this owner's reusable timed-wait resources before guest boot. */
+    key = retro_eventcount_prepare_wait(&main_loop_ec);
+    retro_eventcount_commit_wait_timeout(&main_loop_ec, key, 1);
     qemu_main_context = g_main_context_new();
     assert(qemu_main_context != NULL);
     g_main_context_push_thread_default(qemu_main_context);
@@ -494,7 +497,7 @@ void main_loop_poll_remove_notifier(Notifier *notify)
 }
 
 /* the loop that polls: NAT networking's sockets, and descriptors */
-static void main_loop_wait_poll(int nonblocking)
+static void main_loop_wait_poll(int nonblocking, int64_t max_wait_ns)
 {
     MainLoopPoll mlpoll = {
         .state = MAIN_LOOP_POLL_FILL,
@@ -522,6 +525,7 @@ static void main_loop_wait_poll(int nonblocking)
     timeout_ns = qemu_soonest_timeout(timeout_ns,
                                       qemu_clock_deadline_ns());
 
+    timeout_ns = qemu_soonest_timeout(timeout_ns, max_wait_ns);
     ret = os_host_main_loop_wait(timeout_ns);
     mlpoll.state = ret < 0 ? MAIN_LOOP_POLL_ERR : MAIN_LOOP_POLL_OK;
     notifier_list_notify(&main_loop_poll_notifiers, &mlpoll);
@@ -546,11 +550,10 @@ static void main_loop_wait_poll(int nonblocking)
  * thread (the GPU's thread parking, qemu_notify_event),
  * lock-free and without a descriptor.
  *
- * The wait has no timeout: the core waits only while work it started is
- * under way on another thread (the GPU: lr_devices_busy), whose end wakes
- * it; a disk request is done when it is made, and its completion is a
- * bottom half already due (block/libretro-disk.c). A timer on a host clock
- * due meanwhile (the RTC) runs on the pass after the wake.
+ * Device-completion barriers wait for notification. Non-deterministic GPU
+ * waits can also end at the guest's next timer deadline: the frame loop
+ * advances guest time by the elapsed host wait, then services that timer
+ * while GPU work continues. Disk completions are bottom halves already due.
  *
  * What does need poll goes the polling way (main_loop_wait_poll), as it
  * is: NAT networking's sockets (slirp's poll notifier) and a descriptor
@@ -586,13 +589,13 @@ static bool main_loop_dispatch(AioContext *io)
 /* The libretro emulation thread owns main-loop dispatch, including nested
  * frame completion and renderer-switch waits. Other threads publish work
  * and notify it; no second main-loop owner needs a separate UI mutex. */
-void main_loop_wait(int nonblocking)
+static void main_loop_wait_internal(int nonblocking, int64_t max_wait_ns)
 {
     AioContext *io = iohandler_get_aio_context();
 
     if (!QLIST_EMPTY(&main_loop_poll_notifiers.notifiers) ||
         aio_has_fd_handlers(qemu_aio_context) || aio_has_fd_handlers(io)) {
-        main_loop_wait_poll(nonblocking);
+        main_loop_wait_poll(nonblocking, max_wait_ns);
         return;
     }
 
@@ -604,7 +607,13 @@ void main_loop_wait(int nonblocking)
         } else {
             /* Other threads can take the BQL meanwhile, as around poll. */
             bql_unlock();
-            retro_eventcount_commit_wait(&main_loop_ec, key);
+            if (max_wait_ns < 0) {
+                retro_eventcount_commit_wait(&main_loop_ec, key);
+            } else {
+                /* Round up to the eventcount's microsecond resolution. */
+                int64_t us = max_wait_ns / 1000 + (max_wait_ns % 1000 != 0);
+                retro_eventcount_commit_wait_timeout(&main_loop_ec, key, us);
+            }
             bql_lock();
         }
         main_loop_dispatch(io);
@@ -618,6 +627,16 @@ void main_loop_wait(int nonblocking)
         icount_start_warp_timer();
     }
     qemu_clock_run_all_timers();
+}
+
+void main_loop_wait(int nonblocking)
+{
+    main_loop_wait_internal(nonblocking, -1);
+}
+
+void main_loop_wait_timeout(int64_t max_wait_ns)
+{
+    main_loop_wait_internal(false, max_wait_ns);
 }
 
 /* Functions to operate on the main QEMU AioContext.  */

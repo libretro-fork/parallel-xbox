@@ -18,6 +18,14 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 - Signed G8B8 mip filtering now supports clamp-to-edge on both texture axes, including mixed min/mag filters and Force LOD0. Each texel is clamped and decoded before interpolation. Existing wrap shaders and shader-seed layout remain unchanged; no runtime diagnostic logging is added.
 
+- Bound non-deterministic GPU waits by the next guest timer deadline so CPU
+  timers can run while rendering continues. Preserve DOAX guest-work tracking,
+  deterministic timing and the frontend image-completion barrier. Reuse the
+  eventcount's timed-wait resources, initialized before guest boot.
+
+- Repair Windows regression-test compilation and leave fixed depth-dispatch
+  coverage with its current SPIR-V test instead of the removed selector.
+
 - Remove the clock-state spin lock, seqlock and elapsed-clock retry loop.
   The libretro emulation thread owns raw clock updates and host elapsed-time
   reads; other threads retain the published instruction-clock timestamp.

@@ -1981,6 +1981,24 @@ void lr_quiet_exit(CPUState *cpu)
     lr_vcpu_exit(cpu);
 }
 
+/* Run due guest timers while non-deterministic GPU work continues. Only
+ * actual elapsed host time advances an idle guest, capped at its deadline. */
+static void lr_wait_for_device(int64_t now, int64_t until)
+{
+    extern bool nv2a_libretro_guest_busy(void);
+    bool gpu = !opt_deterministic && nv2a_libretro_guest_busy();
+    int64_t waited = gpu ? get_clock() : 0;
+    if (gpu) {
+        main_loop_wait_timeout(until);
+    } else {
+        main_loop_wait(false);
+    }
+    if (gpu) {
+        waited = get_clock() - waited;
+        cpu_clock_skip_to(now + MIN(waited, until));
+    }
+}
+
 static void lr_finish_frame(void)
 {
     /* Finish submitted GPU work and the resulting display composition
@@ -2113,21 +2131,15 @@ static void lr_run_frame(void)
         retro_atomic_thread_fence_seq_cst();
         if (lr_devices_busy()) {
             /* it waits until something happens: a bottom half (a disk read
-             * done), the GPU going idle or raising an interrupt. No
-             * timeout: QEMU leaves the guest's timers out of the main
-             * loop's with icount, and the core has no host timer. Its time
+             * done), the GPU going idle or raising an interrupt. Use an
+             * unbounded wait for disk-only or deterministic completion.
+             * A GPU wait also ends at the next guest deadline so its timer can
+             * run while rendering continues. The guest's time
              * stands still for a disk read; for the GPU it moves on by the
              * time the GPU took, up to the next deadline, unless the
              * emulation is deterministic: the Xbox's CPU waits on its GPU
              * as long as the GPU draws, never longer */
-            extern bool nv2a_libretro_guest_busy(void);
-            bool gpu = !opt_deterministic && nv2a_libretro_guest_busy();
-            int64_t waited = gpu ? get_clock() : 0;
-            main_loop_wait(false);
-            if (gpu) {
-                waited = get_clock() - waited;
-                cpu_clock_skip_to(now + MIN(waited, until));
-            }
+            lr_wait_for_device(now, until);
         } else {
             /* nothing to wait for: on to the next deadline */
             cpu_clock_skip_to(now + until);

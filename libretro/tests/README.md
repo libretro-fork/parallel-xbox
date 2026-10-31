@@ -707,7 +707,7 @@ and CRT-handle translation are modelled in this fixture. The standard runner
 also builds/runs the Windows probe under Wine for Windows-core tests; the
 one-second event wait belongs only to the standalone probe.
 
-`test-surface-blend.py CHECKOUT [CC] [--gl]` checks 32,768 target/factor/enable
+`test-surface-blend.py CHECKOUT [CC] [--gl]` checks 16,384 target/factor/enable
 combinations through production blend mapping, Vulkan pipeline keys/dirty
 checks and dynamic state, and the OpenGL state-cache/blend block. It covers
 format-only changes between XRGB and ARGB sharing a host image format, and
@@ -1329,6 +1329,17 @@ Resumed GPU work must prevent idle clock skips; after completion, core-only
 redraw/reset kicks remain uncounted. No-op/IRQ-enable writes do
 not invent work. The dedicated GitHub Actions job needs no game assets or GPU;
 the same test also runs in the regular suite.
+
+`test-gpu-wait-deadline.py CHECKOUT [CC]` compiles the production main-loop
+waits, descriptor-poll path and guest idle-time accounting against a scheduler
+model. Its 314 cases cover bounded/unbounded/nonblocking waits, zero and
+sub-microsecond bounds, overflow-safe rounding, notification during wait
+preparation, due bottom halves, socket/host timer deadline clamping, BQL
+release/reacquisition and balanced eventcount wait bookkeeping. Deterministic
+waits and waits without GPU work do not advance guest time; non-deterministic
+GPU waits advance only by actual elapsed host time, capped at the next guest
+deadline. This
+runs in the regular suite and the DOAX GPU-progress CI job without game assets.
 
 `test-icount-publication.py CHECKOUT [CC]` compiles production instruction accounting, clock publication, skip and restore callbacks. It compares owner arithmetic/I/O boundaries and fractional conversion with the prior implementation; six observers must see complete snapshots across 100,000 count/bias updates. A paused writer stops between a raw-field update and publication, while observers must return the previous committed timestamp. Successful loads and resume after partial state changes must rebuild publication. `ICOUNT_TEST_CFLAGS`, `ICOUNT_TEST_BINARY` and `ICOUNT_TEST_SKIP_RUN` support sanitizers/native cross-builds; `ICOUNT_TEST_BASELINE=REV` selects prior production code; `ICOUNT_TEST_ARGS=bench` compares out-of-line observer/idle-owner/update paths with identical common TLS access and no role-check assertion in either getter. Writer serialization is modeled, so microbenchmarks do not measure full clock-lock or game costs.
 

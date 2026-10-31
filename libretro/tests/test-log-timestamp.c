@@ -6,6 +6,9 @@
 int main(void)
 {
     char buffer[40];
+    /* Intentionally short at runtime: GCC must not reject the negative test
+     * as a compile-time truncation error after inlining the formatter. */
+    volatile size_t short_size = 1;
     const struct {
         int64_t usec;
         const char *expected;
@@ -24,7 +27,7 @@ int main(void)
     assert(qemu_format_log_timestamp(buffer, sizeof(buffer), -1));
     assert(!strcmp(buffer, "1969-12-31T23:59:59.999999Z"));
 #endif
-    assert(!qemu_format_log_timestamp(buffer, 1, 0));
+    assert(!qemu_format_log_timestamp(buffer, short_size, 0));
     assert(!buffer[0]);
     buffer[0] = 'x';
     assert(!qemu_format_log_timestamp(buffer, 0, 0));

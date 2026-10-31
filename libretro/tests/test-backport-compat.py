@@ -19,7 +19,6 @@ def function(source, name):
     return source[start:end]
 
 
-compute = (repo / 'hw/xbox/nv2a/pgraph/vk/surface-compute.c').read_text()
 texture = (repo / 'hw/xbox/nv2a/pgraph/vk/texture.c').read_text()
 pbus = (repo / 'hw/xbox/nv2a/pbus.c').read_text()
 nvnet = (repo / 'hw/xbox/mcpx/nvnet/nvnet.c').read_text()
@@ -35,7 +34,6 @@ code = r'''
 #define MIN(a,b) ((a)<(b)?(a):(b))
 typedef struct { VkPhysicalDeviceProperties device_props;
     bool custom_border_color_extension_enabled; } PGRAPHVkState;
-/* COMPUTE */
 static void pgraph_argb_pack32_to_rgba_float(uint32_t c, float *rgba) {
     rgba[0]=((c>>16)&255)/255.0f; rgba[1]=((c>>8)&255)/255.0f;
     rgba[2]=(c&255)/255.0f; rgba[3]=(c>>24)/255.0f;
@@ -141,18 +139,8 @@ static void qemu_flush_queued_packets(NetClientState *nc) {
 /* NVNET */
 int main(void) {
     unsigned cases=0;
-    const unsigned limits[]={1,32,64,128,192,256,512,1024,2048};
-    for(unsigned x=0;x<9;x++) for(unsigned y=0;y<9;y++) {
-        PGRAPHVkState r={0};
-        r.device_props.limits.maxComputeWorkGroupSize[0]=limits[x];
-        r.device_props.limits.maxComputeWorkGroupInvocations=limits[y];
-        for(int units=1;units<=4096;units++) {
-            unsigned g=get_workgroup_size_for_output_units(&r,units);
-            assert(g && g<=1024 && g<=limits[x] && g<=limits[y] && units%g==0);
-            assert(g==1024 || g*2>limits[x] || g*2>limits[y] || units%(g*2)!=0);
-            cases++;
-        }
-    }
+    /* Fixed depth dispatch is covered by test-spv-depth.py. The old
+     * per-output workgroup selector no longer exists in production. */
     uint32_t colors[]={0,0xff000000,0xffffffff,0x12345678,0x00ffffff};
     for(unsigned i=0;i<2;i++) for(unsigned e=0;e<2;e++) for(unsigned c=0;c<5;c++) {
         check_border(i,e,colors[c]); cases++;
@@ -212,11 +200,10 @@ int main(void) {
         if(timer.pending) assert(timer.deadline==102);
         cases++;
     }
-    puts("compatibility backports: workgroup, border, PBUS and RX recovery passed");
+    puts("compatibility backports: border, PBUS and RX recovery passed");
     printf("%u matrix cases plus descriptor-only recovery\n",cases);
 }
 '''
-code = code.replace('/* COMPUTE */', function(compute, 'get_workgroup_size_for_output_units'))
 code = code.replace('/* BORDER */', border)
 code = code.replace('/* PBUS */', pbus[pbus.index('#define NV_PBUS_PCI_NV_MIRROR_SIZE'):])
 code = code.replace('/* NVNET */', '\n'.join(function(nvnet, f) for f in
