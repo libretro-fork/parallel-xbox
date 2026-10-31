@@ -4,6 +4,14 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Remove both descriptor-array copies from Windows high-resolution polling.
+  Append its timer directly to the native wait set, preserve exact-size caller
+  arrays and descriptor readiness, and saturate the backup timeout safely.
+
+- Replace Windows TLS key once-lock initialization with libretro-common atomic
+  publication and TLS primitives. Keep one permanent module key, discard losing
+  candidates and preserve RCU reader addresses after the first thread exits.
+
 - Remove the unused coroutine compatibility engine, queues, annotations and
   unreachable coroutine branches. Use ordinary TLS accessors without yield
   barriers, preserving module-lifetime Windows keys and RCU reader addresses.

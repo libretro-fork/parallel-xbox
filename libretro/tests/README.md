@@ -1037,7 +1037,7 @@ GLib as an independent behavior oracle. Container mutations still require an
 owner; atomic references do not make mutation thread-safe.
 
 `test-win32-tls.c` exercises the production ordinary TLS macros with 32 native
-Windows threads and delayed key allocation. Exactly two keys must be allocated;
+Windows threads and delayed key allocation. Exactly two canonical keys remain; losing private candidates must be freed;
 all threads must retain their own cell and value across concurrent first access.
 The RCU startup test also enters two independent nested once locations that
 collided in the old 64-slot table; the nested initializer must complete.
@@ -1308,3 +1308,7 @@ covers earlier commands and fence signal operations on the same queue.
 
 `test-thread-local.py CHECKOUT [CC]` checks production ordinary TLS accessors with 16 libretro-common threads, independent zero-initialized values and stable per-thread reader addresses. The Windows key-publication race remains covered by `test-win32-tls.c`.
 
+
+`test-tls-publication.py CHECKOUT [CC]` tests the production key publisher with real libretro-common TLS and thread providers. A deliberately paused first allocator cannot prevent another thread from publishing and exiting; subsequent readers retain the canonical key and isolated values. It checks losing-key cleanup, retained reader storage and 33 permanent keys across 16 threads. Environment variables `TLS_PUBLICATION_CFLAGS`, `TLS_PUBLICATION_BINARY` and `TLS_PUBLICATION_SKIP_RUN` support sanitizer and native cross-build checks.
+
+`test-win-poll.py CHECKOUT [CC]` compiles production Windows polling and the high-resolution timer path. On POSIX, a Windows wait-API model compares 20,000 cases with the previous production backend, checking canaries, readiness, auto-reset events, APCs/errors, the 64-handle limit, timer-only wakes, unavailable/failed timers and saturated timeouts. Descriptor-copy instrumentation must remain zero. On Windows it uses actual event/timer handles, exact-size arrays and all 64 descriptor slots. `WIN_POLL_CFLAGS`, `WIN_POLL_BINARY` and `WIN_POLL_SKIP_RUN` support sanitizers and cross-builds.

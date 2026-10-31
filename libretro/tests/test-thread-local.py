@@ -5,7 +5,7 @@ from pathlib import Path
 r=Path(sys.argv[1]).resolve(); cc=shlex.split(sys.argv[2] if len(sys.argv)>2 else 'cc')
 with tempfile.TemporaryDirectory(prefix='thread-local-') as t:
  out=os.environ.get('THREAD_LOCAL_BINARY',str(Path(t)/'test'))
- cmd=cc+['-O2','-g','-std=gnu11','-Wall','-Wextra','-Werror','-Wno-unused-parameter','-DHAVE_THREADS','-I'+str(r/'include'),'-I'+str(r/'libretro-common/include')]+shlex.split(os.environ.get('THREAD_LOCAL_CFLAGS',''))
+ cmd=cc+['-O2','-g','-std=gnu11','-Wall','-Wextra','-Werror','-Wno-unused-parameter','-DHAVE_THREADS','-DHAVE_THREAD_STORAGE','-I'+str(r/'include'),'-I'+str(r/'libretro-common/include')]+shlex.split(os.environ.get('THREAD_LOCAL_CFLAGS',''))
  cmd += [str(r/p) for p in ['libretro/tests/test-thread-local.c','libretro-common/rthreads/rthreads.c']]
  if 'mingw' in cc[0]:
   cmd+=['-Wno-cast-function-type']+[str(r/p) for p in ['libretro-common/features/features_cpu.c','libretro-common/time/rtime.c']]
