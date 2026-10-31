@@ -325,7 +325,6 @@ typedef struct GraphicHwOps {
     int (*get_flags)(void *opaque); /* optional, default 0 */
     void (*invalidate)(void *opaque);
     void (*gfx_update)(void *opaque);
-    bool gfx_update_async; /* if true, calls graphic_hw_update_done() */
     void (*text_update)(void *opaque, console_ch_t *text);
     void (*ui_info)(void *opaque, uint32_t head, QemuUIInfo *info);
     void (*gl_block)(void *opaque, bool block);
@@ -339,7 +338,6 @@ void graphic_console_set_hwops(QemuConsole *con,
                                void *opaque);
 
 void graphic_hw_update(QemuConsole *con);
-void graphic_hw_update_done(QemuConsole *con);
 void graphic_hw_gl_block(QemuConsole *con, bool block);
 
 void qemu_console_early_init(void);

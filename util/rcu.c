@@ -52,8 +52,8 @@ static retro_eventcount_t rcu_request_complete;
 static retro_mpsc_t rcu_requests;
 static unsigned rcu_poll_iters;
 
-QEMU_DEFINE_CO_TLS(struct rcu_reader_data, rcu_reader)
-QEMU_DEFINE_STATIC_CO_TLS(bool, rcu_gp_owner)
+QEMU_DEFINE_THREAD_LOCAL(struct rcu_reader_data, rcu_reader)
+QEMU_DEFINE_STATIC_THREAD_LOCAL(bool, rcu_gp_owner)
 
 typedef QLIST_HEAD(, rcu_reader_data) ThreadList;
 static ThreadList registry = QLIST_HEAD_INITIALIZER(registry);

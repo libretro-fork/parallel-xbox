@@ -25,7 +25,7 @@
 
 #include "qemu/osdep.h"
 #include "monitor/monitor.h"
-#include "qemu/coroutine-tls.h"
+#include "qemu/thread-local.h"
 #include "qapi/error.h"
 #include "qapi/qapi-commands-machine.h"
 #include "qapi/qapi-commands-misc.h"
@@ -463,7 +463,7 @@ bool xemu_tbrate_init(void)
     return xemu_tbrate_state;
 }
 
-QEMU_DEFINE_STATIC_CO_TLS(bool, bql_locked)
+QEMU_DEFINE_STATIC_THREAD_LOCAL(bool, bql_locked)
 
 bool mutex_is_bql(QemuMutex *mutex)
 {
@@ -706,4 +706,3 @@ void vm_resume(RunState state)
         runstate_set(state);
     }
 }
-

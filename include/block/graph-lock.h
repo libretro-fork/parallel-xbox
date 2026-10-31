@@ -109,7 +109,7 @@ void unregister_aiocontext(AioContext *ctx);
  * The wrlock can only be taken from the main loop, with BQL held, as only the
  * main loop is allowed to modify the graph.
  */
-void no_coroutine_fn TSA_ACQUIRE(graph_lock) TSA_NO_TSA
+void TSA_ACQUIRE(graph_lock) TSA_NO_TSA
 bdrv_graph_wrlock(void);
 
 /*
@@ -117,7 +117,7 @@ bdrv_graph_wrlock(void);
  * Similar to bdrv_graph_wrlock, but will begin a drained section before
  * locking.
  */
-void no_coroutine_fn TSA_ACQUIRE(graph_lock) TSA_NO_TSA
+void TSA_ACQUIRE(graph_lock) TSA_NO_TSA
 bdrv_graph_wrlock_drained(void);
 
 /*
@@ -128,7 +128,7 @@ bdrv_graph_wrlock_drained(void);
  * Also ends the drained section if bdrv_graph_wrlock_drained() was used to lock
  * the graph.
  */
-void no_coroutine_fn TSA_RELEASE(graph_lock) TSA_NO_TSA
+void TSA_RELEASE(graph_lock) TSA_NO_TSA
 bdrv_graph_wrunlock(void);
 
 /*
@@ -153,7 +153,7 @@ bdrv_graph_wrunlock(void);
  * loop) to take it and wait that the coroutine ends, so that
  * we always signal that a reader is running.
  */
-void coroutine_fn TSA_ACQUIRE_SHARED(graph_lock) TSA_NO_TSA
+void TSA_ACQUIRE_SHARED(graph_lock) TSA_NO_TSA
 bdrv_graph_co_rdlock(void);
 
 /*
@@ -162,7 +162,7 @@ bdrv_graph_co_rdlock(void);
  * If the writer is waiting for reads to finish (has_writer == 1), signal
  * the writer that we are done via aio_wait_kick() to let it continue.
  */
-void coroutine_fn TSA_RELEASE_SHARED(graph_lock) TSA_NO_TSA
+void TSA_RELEASE_SHARED(graph_lock) TSA_NO_TSA
 bdrv_graph_co_rdunlock(void);
 
 /*
@@ -211,15 +211,13 @@ typedef struct GraphLockable { } GraphLockable;
  * unlocked. TSA_ASSERT_SHARED() makes sure that the following calls know that
  * we hold the lock while unlocking is left unchecked.
  */
-static inline GraphLockable * TSA_ACQUIRE_SHARED(graph_lock) coroutine_fn
-graph_lockable_auto_lock(GraphLockable *x)
+static inline GraphLockable * TSA_ACQUIRE_SHARED(graph_lock) graph_lockable_auto_lock(GraphLockable *x)
 {
     bdrv_graph_co_rdlock();
     return x;
 }
 
-static inline void TSA_RELEASE_SHARED(graph_lock) coroutine_fn
-graph_lockable_auto_unlock(GraphLockable **x)
+static inline void TSA_RELEASE_SHARED(graph_lock) graph_lockable_auto_unlock(GraphLockable **x)
 {
     bdrv_graph_co_rdunlock();
 }
@@ -284,4 +282,3 @@ G_DEFINE_AUTOPTR_CLEANUP_FUNC(GraphLockableMainloop,
             graph_lockable_auto_lock_mainloop(GMLML_OBJ_())
 
 #endif /* GRAPH_LOCK_H */
-

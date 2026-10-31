@@ -32,7 +32,7 @@
 #include "qemu/lockcnt.h"
 #include "qemu/rcu_queue.h"
 #include "block/raw-aio.h"
-#include "qemu/coroutine-tls.h"
+#include "qemu/thread-local.h"
 #include "exec/icount.h"
 #include "trace.h"
 
@@ -551,7 +551,7 @@ fail:
     return NULL;
 }
 
-QEMU_DEFINE_STATIC_CO_TLS(AioContext *, my_aiocontext)
+QEMU_DEFINE_STATIC_THREAD_LOCAL(AioContext *, my_aiocontext)
 
 AioContext *qemu_get_current_aio_context(void)
 {

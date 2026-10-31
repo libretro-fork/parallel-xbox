@@ -18,11 +18,11 @@ static DWORD delayed_tls_alloc(void)
 
 #define TlsAlloc delayed_tls_alloc
 #define g_malloc0(n) calloc(1, (n))
-#include "qemu/coroutine-tls.h"
+#include "qemu/thread-local.h"
 
-QEMU_DECLARE_CO_TLS(unsigned, shared_reader)
-QEMU_DEFINE_CO_TLS(unsigned, shared_reader)
-QEMU_DEFINE_STATIC_CO_TLS(unsigned, private_reader)
+QEMU_DECLARE_THREAD_LOCAL(unsigned, shared_reader)
+QEMU_DEFINE_THREAD_LOCAL(unsigned, shared_reader)
+QEMU_DEFINE_STATIC_THREAD_LOCAL(unsigned, private_reader)
 #undef TlsAlloc
 
 #define THREADS 32

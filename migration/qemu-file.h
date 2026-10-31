@@ -47,10 +47,10 @@ uint64_t qemu_file_transferred(QEMUFile *f);
 
 #include "migration/qemu-file-types.h"
 
-size_t coroutine_mixed_fn qemu_peek_buffer(QEMUFile *f, uint8_t **buf, size_t size, size_t offset);
+size_t qemu_peek_buffer(QEMUFile *f, uint8_t **buf, size_t size, size_t offset);
 
 /* Borrow a view at an offset from the cursor without advancing it. */
-int coroutine_mixed_fn qemu_peek_byte(QEMUFile *f, int offset);
+int qemu_peek_byte(QEMUFile *f, int offset);
 void qemu_file_skip(QEMUFile *f, int size);
 int qemu_file_get_error_obj_any(QEMUFile *f1, QEMUFile *f2, Error **errp);
 void qemu_file_set_error_obj(QEMUFile *f, int ret, Error *err);

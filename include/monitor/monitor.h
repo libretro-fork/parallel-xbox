@@ -14,7 +14,6 @@ typedef struct MonitorOptions MonitorOptions;
 extern QemuOptsList qemu_mon_opts;
 
 Monitor *monitor_cur(void);
-Monitor *monitor_set_cur(Coroutine *co, Monitor *mon);
 
 
 

@@ -37,7 +37,6 @@
 #include "qemu/module.h"
 #include "qemu/option.h"
 #include "qemu/id.h"
-#include "qemu/coroutine.h"
 
 #include "chardev-internal.h"
 
@@ -121,11 +120,7 @@ static int qemu_chr_write_buffer(Chardev *s,
     retry:
         res = cc->chr_write(s, buf + *offset, len - *offset);
         if (res < 0 && errno == EAGAIN && write_all) {
-            if (qemu_in_coroutine()) {
-                qemu_co_sleep_ns(QEMU_CLOCK_REALTIME, 100000);
-            } else {
-                g_usleep(100);
-            }
+            g_usleep(100);
             goto retry;
         }
 

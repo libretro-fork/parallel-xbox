@@ -13,7 +13,6 @@
 #ifndef QEMU_LOCKABLE_H
 #define QEMU_LOCKABLE_H
 
-#include "qemu/coroutine-core.h"
 #include "qemu/thread.h"
 
 typedef void QemuLockUnlockFunc(void *);
@@ -55,7 +54,6 @@ qemu_null_lockable(void *x)
 
 QML_FUNC_(mutex)
 QML_FUNC_(rec_mutex)
-QML_FUNC_(co_mutex)
 QML_FUNC_(spin)
 
 /*
@@ -73,7 +71,7 @@ QML_FUNC_(spin)
  * QEMU_MAKE_LOCKABLE - Make a polymorphic QemuLockable
  *
  * @x: a lock object (currently one of QemuMutex, QemuRecMutex,
- *     CoMutex, QemuSpin).
+ *     QemuSpin).
  *
  * Returns a QemuLockable object that can be passed around
  * to a function that can operate with locks of any kind, or
@@ -86,14 +84,13 @@ QML_FUNC_(spin)
              void *: qemu_null_lockable(x),                             \
              QemuMutex *: qemu_make_lockable(x, QML_OBJ_(x, mutex)),    \
              QemuRecMutex *: qemu_make_lockable(x, QML_OBJ_(x, rec_mutex)), \
-             CoMutex *: qemu_make_lockable(x, QML_OBJ_(x, co_mutex)),   \
              QemuSpin *: qemu_make_lockable(x, QML_OBJ_(x, spin)))
 
 /**
  * QEMU_MAKE_LOCKABLE_NONNULL - Make a polymorphic QemuLockable
  *
  * @x: a lock object (currently one of QemuMutex, QemuRecMutex,
- *     CoMutex, QemuSpin).
+ *     QemuSpin).
  *
  * Returns a QemuLockable object that can be passed around
  * to a function that can operate with locks of any kind.
@@ -102,7 +99,6 @@ QML_FUNC_(spin)
     _Generic((x), QemuLockable *: (x),                          \
                   QemuMutex *: QML_OBJ_(x, mutex),              \
                   QemuRecMutex *: QML_OBJ_(x, rec_mutex),       \
-                  CoMutex *: QML_OBJ_(x, co_mutex),             \
                   QemuSpin *: QML_OBJ_(x, spin))
 
 static inline void qemu_lockable_lock(QemuLockable *x)
@@ -139,7 +135,7 @@ G_DEFINE_AUTOPTR_CLEANUP_FUNC(QemuLockable, qemu_lockable_auto_unlock)
 /**
  * WITH_QEMU_LOCK_GUARD - Lock a lock object for scope
  *
- * @x: a lock object (currently one of QemuMutex, CoMutex, QemuSpin).
+ * @x: a lock object (currently one of QemuMutex, QemuSpin).
  *
  * This macro defines a lock scope such that entering the scope takes the lock
  * and leaving the scope releases the lock.  Return statements are allowed
@@ -164,7 +160,7 @@ G_DEFINE_AUTOPTR_CLEANUP_FUNC(QemuLockable, qemu_lockable_auto_unlock)
 /**
  * QEMU_LOCK_GUARD - Lock an object until the end of the scope
  *
- * @x: a lock object (currently one of QemuMutex, CoMutex, QemuSpin).
+ * @x: a lock object (currently one of QemuMutex, QemuSpin).
  *
  * This macro takes a lock until the end of the scope.  Return statements
  * release the lock.

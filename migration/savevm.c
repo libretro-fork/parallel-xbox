@@ -51,7 +51,6 @@
 #include "exec/page-vary.h"
 #include "trace.h"
 #include "qemu/iov.h"
-#include "qemu/job.h"
 #include "qemu/main-loop.h"
 #include "block/snapshot.h"
 #include "block/thread-pool.h"
@@ -1846,17 +1845,3 @@ bool vmstate_check_only_migratable(const VMStateDescription *vmsd)
 
     return !(vmsd && vmsd->unmigratable);
 }
-
-typedef struct SnapshotJob {
-    Job common;
-    char *tag;
-    char *vmstate;
-    strList *devices;
-    Coroutine *co;
-    Error **errp;
-    bool ret;
-} SnapshotJob;
-
-
-
-

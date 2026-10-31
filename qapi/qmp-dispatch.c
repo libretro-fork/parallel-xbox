@@ -22,7 +22,6 @@
 #include "qapi/qobject-input-visitor.h"
 #include "qapi/qobject-output-visitor.h"
 #include "qobject/qbool.h"
-#include "qemu/coroutine.h"
 #include "qemu/main-loop.h"
 
 Visitor *qobject_output_visitor_new_qmp(QObject **result)
@@ -32,13 +31,3 @@ Visitor *qobject_output_visitor_new_qmp(QObject **result)
     visit_set_policy(v, &compat_policy);
     return v;
 }
-
-typedef struct QmpDispatchBH {
-    const QmpCommand *cmd;
-    Monitor *cur_mon;
-    QDict *args;
-    QObject **ret;
-    Error **errp;
-    Coroutine *co;
-} QmpDispatchBH;
-

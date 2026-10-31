@@ -84,8 +84,6 @@ typedef struct BdrvTrackedRequest {
     int64_t overlap_bytes;
 
     QLIST_ENTRY(BdrvTrackedRequest) list;
-    Coroutine *co; /* owner, used for deadlock detection */
-    CoQueue wait_queue; /* coroutines blocked on this request */
 
     struct BdrvTrackedRequest *waiting_for;
 } BdrvTrackedRequest;
@@ -256,10 +254,10 @@ struct BlockDriver {
 
     void GRAPH_UNLOCKED_PTR (*bdrv_close)(BlockDriverState *bs);
 
-    int coroutine_fn GRAPH_UNLOCKED_PTR (*bdrv_co_create)(
+    int GRAPH_UNLOCKED_PTR (*bdrv_co_create)(
         BlockdevCreateOptions *opts, Error **errp);
 
-    int coroutine_fn GRAPH_UNLOCKED_PTR (*bdrv_co_create_opts)(
+    int GRAPH_UNLOCKED_PTR (*bdrv_co_create_opts)(
         BlockDriver *drv, const char *filename, QemuOpts *opts, Error **errp);
 
     int GRAPH_RDLOCK_PTR (*bdrv_amend_options)(
@@ -334,7 +332,7 @@ struct BlockDriver {
         BlockDriverState *bs, const char *snapshot_id, const char *name,
         Error **errp);
 
-    int coroutine_fn GRAPH_RDLOCK_PTR (*bdrv_co_change_backing_file)(
+    int GRAPH_RDLOCK_PTR (*bdrv_co_change_backing_file)(
         BlockDriverState *bs, const char *backing_file,
         const char *backing_fmt);
 
@@ -510,7 +508,7 @@ struct BlockDriver {
 
     int (*bdrv_probe)(const uint8_t *buf, int buf_size, const char *filename);
 
-    int coroutine_fn GRAPH_RDLOCK_PTR (*bdrv_co_amend)(
+    int GRAPH_RDLOCK_PTR (*bdrv_co_amend)(
         BlockDriverState *bs, BlockdevAmendOptions *opts, bool force,
         Error **errp);
 
@@ -531,7 +529,7 @@ struct BlockDriver {
     BlockAIOCB * GRAPH_RDLOCK_PTR (*bdrv_aio_flush)(
         BlockDriverState *bs, BlockCompletionFunc *cb, void *opaque);
 
-    int coroutine_fn GRAPH_RDLOCK_PTR (*bdrv_co_readv)(BlockDriverState *bs,
+    int GRAPH_RDLOCK_PTR (*bdrv_co_readv)(BlockDriverState *bs,
         int64_t sector_num, int nb_sectors, QEMUIOVector *qiov);
 
     /**
@@ -549,16 +547,16 @@ struct BlockDriver {
      *
      * The buffer in @qiov may point directly to guest memory.
      */
-    int coroutine_fn GRAPH_RDLOCK_PTR (*bdrv_co_preadv)(BlockDriverState *bs,
+    int GRAPH_RDLOCK_PTR (*bdrv_co_preadv)(BlockDriverState *bs,
         int64_t offset, int64_t bytes, QEMUIOVector *qiov,
         BdrvRequestFlags flags);
 
-    int coroutine_fn GRAPH_RDLOCK_PTR (*bdrv_co_preadv_part)(
+    int GRAPH_RDLOCK_PTR (*bdrv_co_preadv_part)(
         BlockDriverState *bs, int64_t offset, int64_t bytes,
         QEMUIOVector *qiov, size_t qiov_offset,
         BdrvRequestFlags flags);
 
-    int coroutine_fn GRAPH_RDLOCK_PTR (*bdrv_co_writev)(BlockDriverState *bs,
+    int GRAPH_RDLOCK_PTR (*bdrv_co_writev)(BlockDriverState *bs,
         int64_t sector_num, int nb_sectors, QEMUIOVector *qiov,
         int flags);
     /**
@@ -576,10 +574,10 @@ struct BlockDriver {
      *
      * The buffer in @qiov may point directly to guest memory.
      */
-    int coroutine_fn GRAPH_RDLOCK_PTR (*bdrv_co_pwritev)(
+    int GRAPH_RDLOCK_PTR (*bdrv_co_pwritev)(
         BlockDriverState *bs, int64_t offset, int64_t bytes, QEMUIOVector *qiov,
         BdrvRequestFlags flags);
-    int coroutine_fn GRAPH_RDLOCK_PTR (*bdrv_co_pwritev_part)(
+    int GRAPH_RDLOCK_PTR (*bdrv_co_pwritev_part)(
         BlockDriverState *bs, int64_t offset, int64_t bytes, QEMUIOVector *qiov,
         size_t qiov_offset, BdrvRequestFlags flags);
 
@@ -589,11 +587,11 @@ struct BlockDriver {
      * function pointer may be NULL or return -ENOSUP and .bdrv_co_writev()
      * will be called instead.
      */
-    int coroutine_fn GRAPH_RDLOCK_PTR (*bdrv_co_pwrite_zeroes)(
+    int GRAPH_RDLOCK_PTR (*bdrv_co_pwrite_zeroes)(
         BlockDriverState *bs, int64_t offset, int64_t bytes,
         BdrvRequestFlags flags);
 
-    int coroutine_fn GRAPH_RDLOCK_PTR (*bdrv_co_pdiscard)(
+    int GRAPH_RDLOCK_PTR (*bdrv_co_pdiscard)(
         BlockDriverState *bs, int64_t offset, int64_t bytes);
 
     /*
@@ -604,7 +602,7 @@ struct BlockDriver {
      * See the comment of bdrv_co_copy_range for the parameter and return value
      * semantics.
      */
-    int coroutine_fn GRAPH_RDLOCK_PTR (*bdrv_co_copy_range_from)(
+    int GRAPH_RDLOCK_PTR (*bdrv_co_copy_range_from)(
         BlockDriverState *bs, BdrvChild *src, int64_t offset,
         BdrvChild *dst, int64_t dst_offset, int64_t bytes,
         BdrvRequestFlags read_flags, BdrvRequestFlags write_flags);
@@ -618,7 +616,7 @@ struct BlockDriver {
      * See the comment of bdrv_co_copy_range for the parameter and return value
      * semantics.
      */
-    int coroutine_fn GRAPH_RDLOCK_PTR (*bdrv_co_copy_range_to)(
+    int GRAPH_RDLOCK_PTR (*bdrv_co_copy_range_to)(
         BlockDriverState *bs, BdrvChild *src, int64_t src_offset,
         BdrvChild *dst, int64_t dst_offset, int64_t bytes,
         BdrvRequestFlags read_flags, BdrvRequestFlags write_flags);
@@ -649,7 +647,7 @@ struct BlockDriver {
      * *pnum value for the block-status cache on protocol nodes, prior
      * to clamping *pnum for return to its caller.
      */
-    int coroutine_fn GRAPH_RDLOCK_PTR (*bdrv_co_block_status)(
+    int GRAPH_RDLOCK_PTR (*bdrv_co_block_status)(
         BlockDriverState *bs, unsigned int mode,
         int64_t offset, int64_t bytes, int64_t *pnum,
         int64_t *map, BlockDriverState **file);
@@ -670,21 +668,21 @@ struct BlockDriver {
      * - receive the snapshot's actual length (which may differ from bs's
      *   length)
      */
-    int coroutine_fn GRAPH_RDLOCK_PTR (*bdrv_co_preadv_snapshot)(
+    int GRAPH_RDLOCK_PTR (*bdrv_co_preadv_snapshot)(
         BlockDriverState *bs, int64_t offset, int64_t bytes,
         QEMUIOVector *qiov, size_t qiov_offset);
 
-    int coroutine_fn GRAPH_RDLOCK_PTR (*bdrv_co_snapshot_block_status)(
+    int GRAPH_RDLOCK_PTR (*bdrv_co_snapshot_block_status)(
         BlockDriverState *bs, unsigned int mode, int64_t offset,
         int64_t bytes, int64_t *pnum, int64_t *map, BlockDriverState **file);
 
-    int coroutine_fn GRAPH_RDLOCK_PTR (*bdrv_co_pdiscard_snapshot)(
+    int GRAPH_RDLOCK_PTR (*bdrv_co_pdiscard_snapshot)(
         BlockDriverState *bs, int64_t offset, int64_t bytes);
 
     /*
      * Invalidate any cached meta-data.
      */
-    void coroutine_fn GRAPH_RDLOCK_PTR (*bdrv_co_invalidate_cache)(
+    void GRAPH_RDLOCK_PTR (*bdrv_co_invalidate_cache)(
         BlockDriverState *bs, Error **errp);
 
     /*
@@ -692,17 +690,17 @@ struct BlockDriver {
      * layers, if needed. This function is needed for deterministic
      * synchronization of the flush finishing callback.
      */
-    int coroutine_fn GRAPH_RDLOCK_PTR (*bdrv_co_flush)(BlockDriverState *bs);
+    int GRAPH_RDLOCK_PTR (*bdrv_co_flush)(BlockDriverState *bs);
 
     /* Delete a created file. */
-    int coroutine_fn GRAPH_RDLOCK_PTR (*bdrv_co_delete_file)(
+    int GRAPH_RDLOCK_PTR (*bdrv_co_delete_file)(
         BlockDriverState *bs, Error **errp);
 
     /*
      * Flushes all data that was already written to the OS all the way down to
      * the disk (for example file-posix.c calls fsync()).
      */
-    int coroutine_fn GRAPH_RDLOCK_PTR (*bdrv_co_flush_to_disk)(
+    int GRAPH_RDLOCK_PTR (*bdrv_co_flush_to_disk)(
         BlockDriverState *bs);
 
     /*
@@ -710,7 +708,7 @@ struct BlockDriver {
      * writeback cache of the host OS, but it will survive a crash of the qemu
      * process.
      */
-    int coroutine_fn GRAPH_RDLOCK_PTR (*bdrv_co_flush_to_os)(
+    int GRAPH_RDLOCK_PTR (*bdrv_co_flush_to_os)(
         BlockDriverState *bs);
 
     /*
@@ -726,82 +724,82 @@ struct BlockDriver {
      * If @exact is true and this function fails but would succeed
      * with @exact = false, it should return -ENOTSUP.
      */
-    int coroutine_fn GRAPH_RDLOCK_PTR (*bdrv_co_truncate)(
+    int GRAPH_RDLOCK_PTR (*bdrv_co_truncate)(
         BlockDriverState *bs, int64_t offset, bool exact,
         PreallocMode prealloc, BdrvRequestFlags flags, Error **errp);
 
-    int64_t coroutine_fn GRAPH_RDLOCK_PTR (*bdrv_co_getlength)(
+    int64_t GRAPH_RDLOCK_PTR (*bdrv_co_getlength)(
         BlockDriverState *bs);
 
-    int64_t coroutine_fn GRAPH_RDLOCK_PTR (*bdrv_co_get_allocated_file_size)(
+    int64_t GRAPH_RDLOCK_PTR (*bdrv_co_get_allocated_file_size)(
         BlockDriverState *bs);
 
     BlockMeasureInfo *(*bdrv_measure)(QemuOpts *opts, BlockDriverState *in_bs,
                                       Error **errp);
 
-    int coroutine_fn GRAPH_RDLOCK_PTR (*bdrv_co_pwritev_compressed)(
+    int GRAPH_RDLOCK_PTR (*bdrv_co_pwritev_compressed)(
         BlockDriverState *bs, int64_t offset, int64_t bytes,
         QEMUIOVector *qiov);
 
-    int coroutine_fn GRAPH_RDLOCK_PTR (*bdrv_co_pwritev_compressed_part)(
+    int GRAPH_RDLOCK_PTR (*bdrv_co_pwritev_compressed_part)(
         BlockDriverState *bs, int64_t offset, int64_t bytes,
         QEMUIOVector *qiov, size_t qiov_offset);
 
-    int coroutine_fn GRAPH_RDLOCK_PTR (*bdrv_co_get_info)(
+    int GRAPH_RDLOCK_PTR (*bdrv_co_get_info)(
         BlockDriverState *bs, BlockDriverInfo *bdi);
 
     ImageInfoSpecific * GRAPH_RDLOCK_PTR (*bdrv_get_specific_info)(
         BlockDriverState *bs, Error **errp);
     BlockStatsSpecific *(*bdrv_get_specific_stats)(BlockDriverState *bs);
 
-    int coroutine_fn GRAPH_RDLOCK_PTR (*bdrv_co_save_vmstate)(
+    int GRAPH_RDLOCK_PTR (*bdrv_co_save_vmstate)(
         BlockDriverState *bs, QEMUIOVector *qiov, int64_t pos);
 
-    int coroutine_fn GRAPH_RDLOCK_PTR (*bdrv_co_load_vmstate)(
+    int GRAPH_RDLOCK_PTR (*bdrv_co_load_vmstate)(
         BlockDriverState *bs, QEMUIOVector *qiov, int64_t pos);
 
-    int coroutine_fn (*bdrv_co_zone_report)(BlockDriverState *bs,
+    int (*bdrv_co_zone_report)(BlockDriverState *bs,
             int64_t offset, unsigned int *nr_zones,
             BlockZoneDescriptor *zones);
-    int coroutine_fn (*bdrv_co_zone_mgmt)(BlockDriverState *bs, BlockZoneOp op,
+    int (*bdrv_co_zone_mgmt)(BlockDriverState *bs, BlockZoneOp op,
             int64_t offset, int64_t len);
-    int coroutine_fn (*bdrv_co_zone_append)(BlockDriverState *bs,
+    int (*bdrv_co_zone_append)(BlockDriverState *bs,
             int64_t *offset, QEMUIOVector *qiov,
             BdrvRequestFlags flags);
 
     /* removable device specific */
-    bool coroutine_fn GRAPH_RDLOCK_PTR (*bdrv_co_is_inserted)(
+    bool GRAPH_RDLOCK_PTR (*bdrv_co_is_inserted)(
         BlockDriverState *bs);
-    void coroutine_fn GRAPH_RDLOCK_PTR (*bdrv_co_eject)(
+    void GRAPH_RDLOCK_PTR (*bdrv_co_eject)(
         BlockDriverState *bs, bool eject_flag);
-    void coroutine_fn GRAPH_RDLOCK_PTR (*bdrv_co_lock_medium)(
+    void GRAPH_RDLOCK_PTR (*bdrv_co_lock_medium)(
         BlockDriverState *bs, bool locked);
 
     /* to control generic scsi devices */
-    BlockAIOCB *coroutine_fn GRAPH_RDLOCK_PTR (*bdrv_aio_ioctl)(
+    BlockAIOCB *GRAPH_RDLOCK_PTR (*bdrv_aio_ioctl)(
         BlockDriverState *bs, unsigned long int req, void *buf,
         BlockCompletionFunc *cb, void *opaque);
 
-    int coroutine_fn GRAPH_RDLOCK_PTR (*bdrv_co_ioctl)(
+    int GRAPH_RDLOCK_PTR (*bdrv_co_ioctl)(
         BlockDriverState *bs, unsigned long int req, void *buf);
 
     /*
      * Returns 0 for completed check, -errno for internal errors.
      * The check results are stored in result.
      */
-    int coroutine_fn GRAPH_RDLOCK_PTR (*bdrv_co_check)(
+    int GRAPH_RDLOCK_PTR (*bdrv_co_check)(
         BlockDriverState *bs, BdrvCheckResult *result, BdrvCheckMode fix);
 
-    void coroutine_fn GRAPH_RDLOCK_PTR (*bdrv_co_debug_event)(
+    void GRAPH_RDLOCK_PTR (*bdrv_co_debug_event)(
         BlockDriverState *bs, BlkdebugEvent event);
 
     bool (*bdrv_supports_persistent_dirty_bitmap)(BlockDriverState *bs);
 
-    bool coroutine_fn GRAPH_RDLOCK_PTR (*bdrv_co_can_store_new_dirty_bitmap)(
+    bool GRAPH_RDLOCK_PTR (*bdrv_co_can_store_new_dirty_bitmap)(
         BlockDriverState *bs, const char *name, uint32_t granularity,
         Error **errp);
 
-    int coroutine_fn GRAPH_RDLOCK_PTR (*bdrv_co_remove_persistent_dirty_bitmap)(
+    int GRAPH_RDLOCK_PTR (*bdrv_co_remove_persistent_dirty_bitmap)(
         BlockDriverState *bs, const char *name, Error **errp);
 };
 
@@ -1279,7 +1277,6 @@ struct BlockDriverState {
     /* Protected by reqs_lock.  */
     QemuMutex reqs_lock;
     QLIST_HEAD(, BdrvTrackedRequest) tracked_requests;
-    CoQueue flush_queue;                  /* Serializing flush queue */
     bool active_flush_req;                /* Flush request in flight? */
 
     /* Only read/written by whoever has set active_flush_req to true.  */
@@ -1288,13 +1285,9 @@ struct BlockDriverState {
     /* BdrvChild links to this node may never be frozen */
     bool never_freeze;
 
-    /* Lock for block-status cache RCU writers */
-    CoMutex bsc_modify_lock;
     /* Always non-NULL, but must only be dereferenced under an RCU read guard */
     BdrvBlockStatusCache *block_status_cache;
 
-    /* array of write pointers' location of each zone in the zoned device. */
-    BlockZoneWps *wps;
 };
 
 struct BlockBackendRootState {

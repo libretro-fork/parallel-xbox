@@ -14,7 +14,6 @@
 #ifndef QEMU_AIO_H
 #define QEMU_AIO_H
 
-#include "qemu/coroutine-core.h"
 #include "qemu/queue.h"
 #include "qemu/rcu_queue.h"
 #include "qemu/event_notifier.h"
@@ -490,7 +489,7 @@ void aio_dispatch(AioContext *ctx);
  * or more AIO events have completed, to ensure something has moved
  * before returning.
  */
-bool no_coroutine_fn aio_poll(AioContext *ctx, bool blocking);
+bool aio_poll(AioContext *ctx, bool blocking);
 
 /* Register a file descriptor and associated callbacks.  Behaves very similarly
  * to qemu_set_fd_handler.  Unlike qemu_set_fd_handler, these callbacks will

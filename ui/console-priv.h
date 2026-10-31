@@ -6,7 +6,6 @@
 #define CONSOLE_PRIV_H
 
 #include "ui/console.h"
-#include "qemu/coroutine.h"
 #include "qemu/timer.h"
 
 #include "vgafont.h"
@@ -30,7 +29,6 @@ struct QemuConsole {
     QEMUTimer *ui_timer;
     const GraphicHwOps *hw_ops;
     void *hw;
-    CoQueue dump_queue;
 
     QTAILQ_ENTRY(QemuConsole) next;
 };

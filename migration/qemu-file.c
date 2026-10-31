@@ -210,7 +210,7 @@ void qemu_file_skip(QEMUFile *f, int size)
     f->buf_index += size;
 }
 
-size_t coroutine_mixed_fn qemu_peek_buffer(QEMUFile *f, uint8_t **buf,
+size_t qemu_peek_buffer(QEMUFile *f, uint8_t **buf,
                                            size_t size, size_t offset)
 {
     size_t available, result;
@@ -238,7 +238,7 @@ size_t coroutine_mixed_fn qemu_peek_buffer(QEMUFile *f, uint8_t **buf,
     return result;
 }
 
-size_t coroutine_mixed_fn qemu_get_buffer(QEMUFile *f, uint8_t *buf, size_t size)
+size_t qemu_get_buffer(QEMUFile *f, uint8_t *buf, size_t size)
 {
     uint8_t *source;
     size_t result = qemu_peek_buffer(f, &source, size, 0);
@@ -250,7 +250,7 @@ size_t coroutine_mixed_fn qemu_get_buffer(QEMUFile *f, uint8_t *buf, size_t size
     return result;
 }
 
-int coroutine_mixed_fn qemu_peek_byte(QEMUFile *f, int offset)
+int qemu_peek_byte(QEMUFile *f, int offset)
 {
     uint8_t *byte;
 
@@ -261,7 +261,7 @@ int coroutine_mixed_fn qemu_peek_byte(QEMUFile *f, int offset)
     return qemu_peek_buffer(f, &byte, 1, offset) == 1 ? *byte : 0;
 }
 
-int coroutine_mixed_fn qemu_get_byte(QEMUFile *f)
+int qemu_get_byte(QEMUFile *f)
 {
     uint8_t *byte;
 
@@ -358,7 +358,7 @@ uint64_t qemu_get_be64(QEMUFile *f)
  *          else 0
  *          (Note a 0 length string will return 0 either way)
  */
-size_t coroutine_fn qemu_get_counted_string(QEMUFile *f, char buf[256])
+size_t qemu_get_counted_string(QEMUFile *f, char buf[256])
 {
     size_t len = qemu_get_byte(f);
     size_t res = qemu_get_buffer(f, (uint8_t *)buf, len);
@@ -367,4 +367,3 @@ size_t coroutine_fn qemu_get_counted_string(QEMUFile *f, char buf[256])
 
     return res == len ? res : 0;
 }
-

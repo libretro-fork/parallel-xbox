@@ -29,7 +29,6 @@
 #include "qapi/qapi-types-job.h"
 #include "qemu/queue.h"
 #include "qemu/progress_meter.h"
-#include "qemu/coroutine.h"
 #include "block/aio.h"
 
 typedef struct JobDriver JobDriver;
@@ -51,13 +50,6 @@ typedef struct Job {
      * All callbacks are called with job_mutex *not* held.
      */
     const JobDriver *driver;
-
-    /**
-     * The coroutine that executes the job.  If not NULL, it is reentered when
-     * busy is false and the job is cancelled.
-     * Initialized in job_start()
-     */
-    Coroutine *co;
 
     /** True if this job should automatically finalize itself */
     bool auto_finalize;
@@ -213,7 +205,7 @@ struct JobDriver {
      *
      * This callback must be run in the job's context.
      */
-    int coroutine_fn (*run)(Job *job, Error **errp);
+    int (*run)(Job *job, Error **errp);
 
     /*
      * Functions run without regard to the BQL that may run in any
@@ -227,14 +219,14 @@ struct JobDriver {
      * into the paused state.  Paused jobs must not perform any asynchronous
      * I/O or event loop activity.  This callback is used to quiesce jobs.
      */
-    void coroutine_fn (*pause)(Job *job);
+    void (*pause)(Job *job);
 
     /**
      * If the callback is not NULL, it will be invoked when the job transitions
      * out of the paused state.  Any asynchronous I/O or event loop activity
      * should be restarted from this callback.
      */
-    void coroutine_fn (*resume)(Job *job);
+    void (*resume)(Job *job);
 
     /*
      * Global state (GS) API. These functions run under the BQL.

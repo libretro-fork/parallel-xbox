@@ -41,9 +41,9 @@ typedef struct VMStateField VMStateField;
  */
 struct VMStateInfo {
     const char *name;
-    int coroutine_mixed_fn (*get)(QEMUFile *f, void *pv, size_t size,
+    int (*get)(QEMUFile *f, void *pv, size_t size,
                                   const VMStateField *field);
-    int coroutine_mixed_fn (*put)(QEMUFile *f, void *pv, size_t size,
+    int (*put)(QEMUFile *f, void *pv, size_t size,
                                   const VMStateField *field,
                                   JSONWriter *vmdesc);
 };

@@ -35,29 +35,29 @@
  * the I/O API.
  */
 
-int coroutine_fn GRAPH_RDLOCK bdrv_co_preadv_snapshot(BdrvChild *child,
+int GRAPH_RDLOCK bdrv_co_preadv_snapshot(BdrvChild *child,
     int64_t offset, int64_t bytes, QEMUIOVector *qiov, size_t qiov_offset);
-int coroutine_fn GRAPH_RDLOCK bdrv_co_snapshot_block_status(
+int GRAPH_RDLOCK bdrv_co_snapshot_block_status(
     BlockDriverState *bs, unsigned int mode, int64_t offset,
     int64_t bytes, int64_t *pnum, int64_t *map, BlockDriverState **file);
-int coroutine_fn GRAPH_RDLOCK bdrv_co_pdiscard_snapshot(BlockDriverState *bs,
+int GRAPH_RDLOCK bdrv_co_pdiscard_snapshot(BlockDriverState *bs,
     int64_t offset, int64_t bytes);
 
 
-int coroutine_fn GRAPH_RDLOCK bdrv_co_preadv(BdrvChild *child,
+int GRAPH_RDLOCK bdrv_co_preadv(BdrvChild *child,
     int64_t offset, int64_t bytes, QEMUIOVector *qiov,
     BdrvRequestFlags flags);
-int coroutine_fn GRAPH_RDLOCK bdrv_co_preadv_part(BdrvChild *child,
+int GRAPH_RDLOCK bdrv_co_preadv_part(BdrvChild *child,
     int64_t offset, int64_t bytes,
     QEMUIOVector *qiov, size_t qiov_offset, BdrvRequestFlags flags);
-int coroutine_fn GRAPH_RDLOCK bdrv_co_pwritev(BdrvChild *child,
+int GRAPH_RDLOCK bdrv_co_pwritev(BdrvChild *child,
     int64_t offset, int64_t bytes, QEMUIOVector *qiov,
     BdrvRequestFlags flags);
-int coroutine_fn GRAPH_RDLOCK bdrv_co_pwritev_part(BdrvChild *child,
+int GRAPH_RDLOCK bdrv_co_pwritev_part(BdrvChild *child,
     int64_t offset, int64_t bytes,
     QEMUIOVector *qiov, size_t qiov_offset, BdrvRequestFlags flags);
 
-static inline int coroutine_fn GRAPH_RDLOCK bdrv_co_pread(BdrvChild *child,
+static inline int GRAPH_RDLOCK bdrv_co_pread(BdrvChild *child,
     int64_t offset, int64_t bytes, void *buf, BdrvRequestFlags flags)
 {
     QEMUIOVector qiov = QEMU_IOVEC_INIT_BUF(qiov, buf, bytes);
@@ -67,7 +67,7 @@ static inline int coroutine_fn GRAPH_RDLOCK bdrv_co_pread(BdrvChild *child,
     return bdrv_co_preadv(child, offset, bytes, &qiov, flags);
 }
 
-static inline int coroutine_fn GRAPH_RDLOCK bdrv_co_pwrite(BdrvChild *child,
+static inline int GRAPH_RDLOCK bdrv_co_pwrite(BdrvChild *child,
     int64_t offset, int64_t bytes, const void *buf, BdrvRequestFlags flags)
 {
     QEMUIOVector qiov = QEMU_IOVEC_INIT_BUF(qiov, buf, bytes);
@@ -83,21 +83,21 @@ bool blk_dev_is_tray_open(BlockBackend *blk);
 
 
 
-int coroutine_fn GRAPH_RDLOCK
+int GRAPH_RDLOCK
 bdrv_co_copy_range_from(BdrvChild *src, int64_t src_offset,
                         BdrvChild *dst, int64_t dst_offset,
                         int64_t bytes, BdrvRequestFlags read_flags,
                         BdrvRequestFlags write_flags);
-int coroutine_fn GRAPH_RDLOCK
+int GRAPH_RDLOCK
 bdrv_co_copy_range_to(BdrvChild *src, int64_t src_offset,
                       BdrvChild *dst, int64_t dst_offset,
                       int64_t bytes, BdrvRequestFlags read_flags,
                       BdrvRequestFlags write_flags);
 
-int coroutine_fn GRAPH_RDLOCK
+int GRAPH_RDLOCK
 bdrv_co_refresh_total_sectors(BlockDriverState *bs, int64_t hint);
 
-int co_wrapper_mixed_bdrv_rdlock
+int
 bdrv_refresh_total_sectors(BlockDriverState *bs, int64_t hint);
 
 BdrvChild * GRAPH_RDLOCK bdrv_cow_child(BlockDriverState *bs);
@@ -158,7 +158,7 @@ bdrv_primary_bs(BlockDriverState *bs)
 /*
  * Notify all parents that the size of the child changed.
  */
-void coroutine_fn GRAPH_RDLOCK
+void GRAPH_RDLOCK
 bdrv_co_parent_cb_resize(BlockDriverState *bs);
 
 #endif /* BLOCK_INT_IO_H */

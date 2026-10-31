@@ -28,7 +28,6 @@
 #include "qapi/error.h"
 #include "qapi/qapi-commands-ui.h"
 #include "qapi/visitor.h"
-#include "qemu/coroutine.h"
 #include "qemu/error-report.h"
 #include "qemu/main-loop.h"
 #include "qemu/module.h"
@@ -75,25 +74,13 @@ static DisplayState *get_alloc_displaystate(void);
 static QemuConsole *qemu_graphic_console_lookup_unused(void);
 static void dpy_set_ui_info_timer(void *opaque);
 
-void graphic_hw_update_done(QemuConsole *con)
-{
-    if (con) {
-        qemu_co_enter_all(&con->dump_queue, NULL);
-    }
-}
-
 void graphic_hw_update(QemuConsole *con)
 {
-    bool async = false;
     if (!con) {
         return;
     }
     if (con->hw_ops->gfx_update) {
         con->hw_ops->gfx_update(con->hw);
-        async = con->hw_ops->gfx_update_async;
-    }
-    if (!async) {
-        graphic_hw_update_done(con);
     }
 }
 
@@ -228,7 +215,6 @@ qemu_console_init(Object *obj)
     QemuConsole *c = QEMU_CONSOLE(obj);
     DisplayState *ds = get_alloc_displaystate();
 
-    qemu_co_queue_init(&c->dump_queue);
     c->ds = ds;
     c->window_id = -1;
     c->ui_timer = timer_new_ms(QEMU_CLOCK_REALTIME,
@@ -909,4 +895,3 @@ const char *qemu_display_get_vc(DisplayOptions *opts)
     }
     return vc;
 }
-

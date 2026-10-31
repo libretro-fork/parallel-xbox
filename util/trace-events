@@ -37,18 +37,6 @@ qemu_file_monitor_disable_watch(void *mon, const char *dirpath, int id) "File mo
 qemu_file_monitor_event(void *mon, const char *dirpath, const char *filename, int mask, unsigned int id) "File monitor %p event dir='%s' file='%s' mask=0x%x id=%u"
 qemu_file_monitor_dispatch(void *mon, const char *dirpath, const char *filename, int ev, void *cb, void *opaque, int64_t id) "File monitor %p dispatch dir='%s' file='%s' ev=%d cb=%p opaque=%p id=%" PRId64
 
-# qemu-coroutine.c
-qemu_aio_coroutine_enter(void *ctx, void *from, void *to, void *opaque) "ctx %p from %p to %p opaque %p"
-qemu_coroutine_yield(void *from, void *to) "from %p to %p"
-qemu_coroutine_terminate(void *co) "self %p"
-
-# qemu-coroutine-lock.c
-qemu_co_mutex_lock_uncontended(void *mutex, void *self) "mutex %p self %p"
-qemu_co_mutex_lock_entry(void *mutex, void *self) "mutex %p self %p"
-qemu_co_mutex_lock_return(void *mutex, void *self) "mutex %p self %p"
-qemu_co_mutex_unlock_entry(void *mutex, void *self) "mutex %p self %p"
-qemu_co_mutex_unlock_return(void *mutex, void *self) "mutex %p self %p"
-
 # oslib-posix.c
 # oslib-win32.c
 qemu_memalign(size_t alignment, size_t size, void *ptr) "alignment %zu size %zu ptr %p"

@@ -31,7 +31,7 @@
 #include <rthreads/retro_eventcount.h>
 #include "qemu/notify.h"
 #include "qemu/sys_membarrier.h"
-#include "qemu/coroutine-tls.h"
+#include "qemu/thread-local.h"
 
 /*
  * Important !
@@ -78,7 +78,7 @@ struct rcu_reader_data {
     NotifierList force_rcu;
 };
 
-QEMU_DECLARE_CO_TLS(struct rcu_reader_data, rcu_reader)
+QEMU_DECLARE_THREAD_LOCAL(struct rcu_reader_data, rcu_reader)
 
 static inline void rcu_read_lock(void)
 {

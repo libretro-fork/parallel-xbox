@@ -1036,7 +1036,7 @@ and concurrent default-context publication. The same tests run against system
 GLib as an independent behavior oracle. Container mutations still require an
 owner; atomic references do not make mutation thread-safe.
 
-`test-win32-tls.c` exercises the production coroutine TLS macros with 32 native
+`test-win32-tls.c` exercises the production ordinary TLS macros with 32 native
 Windows threads and delayed key allocation. Exactly two keys must be allocated;
 all threads must retain their own cell and value across concurrent first access.
 The RCU startup test also enters two independent nested once locations that
@@ -1288,3 +1288,5 @@ The ring ownership model additionally owns whole non-coherent flush atoms,
 including 64-512-byte atoms during randomized submissions, 128-byte adjacent
 uploads and a growth that changes memory type. Staging alignment is selected
 after growth so the replacement allocation's properties control it.
+
+`test-thread-local.py CHECKOUT [CC]` checks production ordinary TLS accessors with 16 libretro-common threads, independent zero-initialized values and stable per-thread reader addresses. The Windows key-publication race remains covered by `test-win32-tls.c`.
