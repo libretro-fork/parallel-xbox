@@ -209,8 +209,11 @@ static VkPipeline create_test_pipeline(
     return pipeline;
 }
 
-static uint8_t *render_geom_shader_triangles(NV2AState *d, int width,
-                                             int height)
+static void determine_triangle_winding_order(const uint8_t *pixels, int width,
+                                             int height, GPUProperties *props);
+
+static void render_geom_shader_triangles(NV2AState *d, int width, int height,
+                                         GPUProperties *props)
 {
     PGRAPHState *pg = &d->pgraph;
     PGRAPHVkState *r = pg->vk_renderer_state;
@@ -456,9 +459,9 @@ static uint8_t *render_geom_shader_triangles(NV2AState *d, int width,
     void *data;
     VK_CHECK(
         vkMapMemory(r->device, cpu_buffer_memory, 0, VK_WHOLE_SIZE, 0, &data));
-    void *pixels = g_malloc(width * height * 4);
-    assert(pixels != NULL);
-    memcpy(pixels, data, width * height * 4);
+    /* Only five pixels are inspected. Borrow the coherent mapping while it
+     * remains live instead of allocating and copying the whole image. */
+    determine_triangle_winding_order(data, width, height, props);
     vkUnmapMemory(r->device, cpu_buffer_memory);
 
     vkDestroyPipeline(r->device, strip_pipeline, NULL);
@@ -473,7 +476,6 @@ static uint8_t *render_geom_shader_triangles(NV2AState *d, int width,
     vkDestroyImage(r->device, offscreen_image, NULL);
     vkFreeMemory(r->device, image_memory, NULL);
 
-    return (uint8_t *)pixels;
 }
 
 static bool colors_match(int r1, int g1, int b1, int r2, int g2, int b2)
@@ -485,7 +487,7 @@ static bool colors_match(int r1, int g1, int b1, int r2, int g2, int b2)
     return (dr * dr + dg * dg + db * db) <= 16;
 }
 
-static int get_color_index(uint8_t *pixel)
+static int get_color_index(const uint8_t *pixel)
 {
     int r = pixel[0];
     int g = pixel[1];
@@ -517,18 +519,18 @@ static int calc_offset_from_ndc(float x, float y, int width, int height)
     return y0 * width + x0;
 }
 
-static void determine_triangle_winding_order(uint8_t *pixels, int width,
+static void determine_triangle_winding_order(const uint8_t *pixels, int width,
                                              int height, GPUProperties *props)
 {
-    uint8_t *tri_pix =
+    const uint8_t *tri_pix =
         pixels + calc_offset_from_ndc(-0.5f, -0.5f, width, height) * 4;
-    uint8_t *strip0_pix =
+    const uint8_t *strip0_pix =
         pixels + calc_offset_from_ndc(0.417f, -0.417f, width, height) * 4;
-    uint8_t *strip1_pix =
+    const uint8_t *strip1_pix =
         pixels + calc_offset_from_ndc(0.583f, -0.583f, width, height) * 4;
-    uint8_t *fan_pix =
+    const uint8_t *fan_pix =
         pixels + calc_offset_from_ndc(-0.583f, 0.417f, width, height) * 4;
-    uint8_t *fan2_pix =
+    const uint8_t *fan2_pix =
         pixels + calc_offset_from_ndc(-0.417f, 0.583f, width, height) * 4;
 
     int tri_rot = get_color_index(tri_pix);
@@ -598,10 +600,7 @@ void pgraph_vk_determine_gpu_properties(NV2AState *d)
     const int width = 640;
     const int height = 480;
 
-    uint8_t *pixels = render_geom_shader_triangles(d, width, height);
-    determine_triangle_winding_order(pixels, width, height,
-                                     &pgraph_vk_gpu_properties);
-    g_free(pixels);
+    render_geom_shader_triangles(d, width, height, &pgraph_vk_gpu_properties);
 
     fprintf(stderr, "VK geometry shader winding: %d, %d, %d, %d\n",
             pgraph_vk_gpu_properties.geom_shader_winding.tri,

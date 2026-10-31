@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Vulkan startup checks now inspect the five required pixels directly in mapped readback memory, avoiding a 1,228,800-byte heap allocation and image copy. GPU synchronization and winding detection are unchanged.
+
 - Remove unused QEMU I/O channel classes, socket/file transport and GLib watch adapters after saved states moved to direct memory. Remove dead block-channel abort plumbing and unused TDX guest/quote structures, including their unused mutex. Xbox and Chihiro behavior is unchanged.
 
 - Remove 19 unused migration/postcopy synchronization objects and an unreachable recovery loop, including ten unused semaphores and two mutexes. Saved-state behavior is unchanged.
