@@ -851,3 +851,9 @@ and three high-bit patterns. SETP/SETNP, CMOVP/CMOVNP, JP and JNP must match
 a fixed parity table (incoming PF for zero shifts), while full flag snapshots
 must match the same operation before a predicate. Two extra cases keep native
 x87 arithmetic live before an arithmetic PF consumer. Both FPU/Boost settings run.
+
+
+Callback-data lifetime tests replace a callback, destroy its source, or replace
+it from recursive dispatch. The old payload must remain alive until all active
+calls finish and its destructor must run once. The same vectors run against
+system GLib. Callback state allocates on registration, not on each dispatch.

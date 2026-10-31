@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Retain GLib callback data until active dispatches finish. Replacing a callback or destroying its source from inside a callback no longer runs its data destructor while the callback still uses that data, including nested dispatch.
+
 - CPU Boost computes parity-only conditions after addition, subtraction, increment/decrement and shifts directly from the low result byte. Other flags remain available lazily, and zero-count shifts preserve their incoming flags.
 
 - Preserve the caller's file position when the GLib descriptor-mapping wrapper reads a file. A temporary native mapping replaces the seek/read loop, while the returned storage remains a private copy independent of the caller's descriptor.

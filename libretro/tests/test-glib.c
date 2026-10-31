@@ -881,6 +881,58 @@ static void test_child_source_parent_lifetime(void)
     g_main_context_unref(c);
 }
 
+static GSource *callback_lifetime_source;
+static gboolean callback_active;
+static int callback_depth;
+static GMainContext *callback_lifetime_context;
+static int callback_mode, callback_destroyed;
+static gboolean replacement_callback(gpointer data)
+{
+    return G_SOURCE_REMOVE;
+}
+static void callback_payload_destroy(gpointer data)
+{
+    CHECK(!callback_active);
+    callback_destroyed++;
+    g_free(data);
+}
+static gboolean callback_lifetime_run(gpointer data)
+{
+    callback_depth++;
+    callback_active = TRUE;
+    if (callback_mode == 2 && callback_depth == 1) {
+        CHECK(g_main_context_iteration(callback_lifetime_context, FALSE));
+    } else if (callback_mode != 1) {
+        g_source_set_callback(callback_lifetime_source, replacement_callback,
+                              NULL, NULL);
+    } else {
+        g_source_destroy(callback_lifetime_source);
+    }
+    CHECK(*(int *)data == 123 && callback_destroyed == callback_mode);
+    callback_depth--;
+    callback_active = callback_depth != 0;
+    return callback_mode == 1 ? G_SOURCE_REMOVE : G_SOURCE_CONTINUE;
+}
+static void test_dispatch_callback_lifetime(void)
+{
+    for (callback_mode = 0; callback_mode < 3; callback_mode++) {
+        GMainContext *c = g_main_context_new();
+        int *data = g_new(int, 1);
+        *data = 123;
+        callback_lifetime_context = c;
+        callback_lifetime_source = g_idle_source_new();
+        g_source_set_can_recurse(callback_lifetime_source, callback_mode == 2);
+        g_source_set_callback(callback_lifetime_source, callback_lifetime_run,
+                              data, callback_payload_destroy);
+        g_source_attach(callback_lifetime_source, c);
+        CHECK(g_main_context_iteration(c, FALSE));
+        CHECK(callback_destroyed == callback_mode + 1);
+        g_source_destroy(callback_lifetime_source);
+        g_source_unref(callback_lifetime_source);
+        g_main_context_unref(c);
+    }
+}
+
 static void test_main(void)
 {
     GMainContext *c = g_main_context_new();
@@ -996,6 +1048,7 @@ int main(int argc, char **argv)
     test_source_self_removal();
     test_source_removes_next();
     test_child_source_parent_lifetime();
+    test_dispatch_callback_lifetime();
     test_misc();
     if (failures) {
         fprintf(stderr, "glib: %d checks failed\n", failures);

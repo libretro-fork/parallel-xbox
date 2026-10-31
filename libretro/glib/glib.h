@@ -1105,6 +1105,7 @@ struct _GSource {
     GSource *parent;
     GSource *next;          /* in its context's list */
     gchar *name;
+    gpointer callback_owner; /* private reference-counted callback state */
 };
 
 GMainContext *g_main_context_new(void);

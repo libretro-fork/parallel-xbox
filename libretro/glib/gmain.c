@@ -21,6 +21,46 @@
 
 #include <retro_timers.h>
 
+/* A dispatch retains the callback separately from the source. Replacing or
+ * destroying the source must not destroy data still used by that dispatch.
+ */
+typedef struct {
+    gint ref_count;
+    GSourceFunc function;
+    gpointer data;
+    GDestroyNotify notify;
+} GSourceCallback;
+
+static GSourceCallback *g_source_callback_ref(GSourceCallback *callback)
+{
+    if (callback) {
+        __atomic_add_fetch(&callback->ref_count, 1, __ATOMIC_RELAXED);
+    }
+    return callback;
+}
+
+static void g_source_callback_unref(GSourceCallback *callback)
+{
+    if (callback && !__atomic_sub_fetch(&callback->ref_count, 1, __ATOMIC_ACQ_REL)) {
+        GDestroyNotify notify = callback->notify;
+        gpointer data = callback->data;
+        g_free(callback);
+        if (notify) {
+            notify(data);
+        }
+    }
+}
+
+static void g_source_clear_callback(GSource *source)
+{
+    GSourceCallback *callback = source->callback_owner;
+    source->callback_owner = NULL;
+    source->callback = NULL;
+    source->callback_data = NULL;
+    source->callback_notify = NULL;
+    g_source_callback_unref(callback);
+}
+
 /* source->flags */
 #define G_SRC_ATTACHED 1
 #define G_SRC_DESTROYED 2
@@ -380,10 +420,13 @@ void g_main_context_dispatch(GMainContext *context)
         if (!(s->flags & G_SRC_DESTROYED)) {
             gboolean was_in = s->in_dispatch, keep;
 
+            GSourceCallback *callback = g_source_callback_ref(s->callback_owner);
             s->in_dispatch = TRUE;
-            keep = s->source_funcs->dispatch(s, s->callback,
-                                             s->callback_data);
+            keep = s->source_funcs->dispatch(s,
+                        callback ? callback->function : NULL,
+                        callback ? callback->data : NULL);
             s->in_dispatch = was_in;
+            g_source_callback_unref(callback);
             if (!keep && !(s->flags & G_SRC_DESTROYED)) {
                 g_source_destroy(s);
             }
@@ -582,11 +625,7 @@ void g_source_unref(GSource *source)
         __atomic_sub_fetch(&source->ref_count, 1, __ATOMIC_ACQ_REL)) {
         return;
     }
-    if (source->callback_notify) {
-        GDestroyNotify notify = source->callback_notify;
-        source->callback_notify = NULL;
-        notify(source->callback_data);
-    }
+    g_source_clear_callback(source);
     if (source->source_funcs->finalize) {
         source->source_funcs->finalize(source);
     }
@@ -635,11 +674,7 @@ void g_source_destroy(GSource *source)
     }
     source->flags |= G_SRC_DESTROYED;
     source->flags &= ~(G_SRC_ATTACHED | G_SRC_READY);
-    if (source->callback_notify) {
-        GDestroyNotify notify = source->callback_notify;
-        source->callback_notify = NULL;
-        notify(source->callback_data);
-    }
+    g_source_clear_callback(source);
     source->callback = NULL;
     for (GSList *l = source->child_sources; l; l = l->next) {
         g_source_destroy(l->data);
@@ -675,15 +710,17 @@ gboolean g_source_remove(guint tag)
 void g_source_set_callback(GSource *source, GSourceFunc func, gpointer data,
                            GDestroyNotify notify)
 {
-    GDestroyNotify old_notify = source->callback_notify;
-    gpointer old_data = source->callback_data;
-
+    GSourceCallback *old = source->callback_owner;
+    GSourceCallback *callback = g_new(GSourceCallback, 1);
+    callback->ref_count = 1;
+    callback->function = func;
+    callback->data = data;
+    callback->notify = notify;
+    source->callback_owner = callback;
     source->callback = func;
     source->callback_data = data;
     source->callback_notify = notify;
-    if (old_notify) {
-        old_notify(old_data);
-    }
+    g_source_callback_unref(old);
 }
 
 void g_source_set_priority(GSource *source, gint priority)
