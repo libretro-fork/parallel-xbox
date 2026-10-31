@@ -229,14 +229,12 @@ SOURCES_UTIL := \
 SOURCES_UTIL_POSIX := \
 	$(CORE_DIR)/util/aio-posix.c \
 	$(CORE_DIR)/util/event_notifier-posix.c \
-	$(CORE_DIR)/util/fdmon-poll.c \
 	$(CORE_DIR)/util/memfd.c \
 	$(CORE_DIR)/util/mmap-alloc.c \
 	$(CORE_DIR)/util/oslib-posix.c \
 	$(CORE_DIR)/util/qemu-thread-posix.c \
 
 SOURCES_UTIL_LINUX := \
-	$(CORE_DIR)/util/fdmon-epoll.c \
 
 SOURCES_UTIL_DARWIN := \
 

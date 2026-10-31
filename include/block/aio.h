@@ -23,7 +23,6 @@
 #include "block/graph-lock.h"
 #include "hw/qdev-core.h"
 
-
 typedef struct BlockAIOCB BlockAIOCB;
 typedef void BlockCompletionFunc(void *opaque, int ret);
 
@@ -51,113 +50,6 @@ typedef void QEMUBHFunc(void *opaque);
 typedef bool AioPollFn(void *opaque);
 typedef void IOHandler(void *opaque);
 
-struct ThreadPoolAio;
-struct LinuxAioState;
-typedef struct LuringState LuringState;
-
-/* Is polling disabled? */
-bool aio_poll_disabled(AioContext *ctx);
-
-
-/* Callbacks for file descriptor monitoring implementations */
-typedef struct {
-    /*
-     * update:
-     * @ctx: the AioContext
-     * @old_node: the existing handler or NULL if this file descriptor is being
-     *            monitored for the first time
-     * @new_node: the new handler or NULL if this file descriptor is being
-     *            removed
-     *
-     * Add/remove/modify a monitored file descriptor.
-     *
-     * Called on the frontend thread.
-     */
-    void (*update)(AioContext *ctx, AioHandler *old_node, AioHandler *new_node);
-
-    /*
-     * wait:
-     * @ctx: the AioContext
-     * @ready_list: list for handlers that become ready
-     * @timeout: maximum duration to wait, in nanoseconds
-     *
-     * Wait for file descriptors to become ready and place them on ready_list.
-     *
-     * Called with handler_walk_depth incremented.
-     *
-     * Returns: number of ready file descriptors.
-     */
-    int (*wait)(AioContext *ctx, AioHandlerList *ready_list, int64_t timeout);
-
-    /*
-     * need_wait:
-     * @ctx: the AioContext
-     *
-     * Tell aio_poll() when to stop userspace polling early because ->wait()
-     * has fds ready.
-     *
-     * File descriptor monitoring implementations that cannot poll fd readiness
-     * from userspace should use aio_poll_disabled() here.  This ensures that
-     * file descriptors are not starved by handlers that frequently make
-     * progress via userspace polling.
-     *
-     * Returns: true if ->wait() should be called, false otherwise.
-     */
-    bool (*need_wait)(AioContext *ctx);
-
-    /*
-     * dispatch:
-     * @ctx: the AioContext
-     *
-     * Dispatch any work that is specific to this file descriptor monitoring
-     * implementation. Usually the event loop's generic file descriptor
-     * monitoring, BH, and timer dispatching code is sufficient, but file
-     * descriptor monitoring implementations offering additional functionality
-     * may need to implement this function for custom behavior. Called at a
-     * point in the event loop when it is safe to invoke user-defined
-     * callbacks.
-     *
-     * This function is optional and may be NULL.
-     *
-     * Returns: true if progress was made (see aio_poll()'s return value),
-     * false otherwise.
-     */
-    bool (*dispatch)(AioContext *ctx);
-
-    /*
-     * gsource_prepare:
-     * @ctx: the AioContext
-     *
-     * Prepare for the glib event loop to wait for events instead of the usual
-     * ->wait() call. See glib's GSourceFuncs->prepare().
-     */
-    void (*gsource_prepare)(AioContext *ctx);
-
-    /*
-     * gsource_check:
-     * @ctx: the AioContext
-     *
-     * Called by the glib event loop from glib's GSourceFuncs->check() after
-     * waiting for events.
-     *
-     * Returns: true when ready to be dispatched.
-     */
-    bool (*gsource_check)(AioContext *ctx);
-
-    /*
-     * gsource_dispatch:
-     * @ctx: the AioContext
-     * @ready_list: list for handlers that become ready
-     *
-     * Place ready AioHandlers on ready_list. Called as part of the glib event
-     * loop from glib's GSourceFuncs->dispatch().
-     *
-     * Called with handler_walk_depth incremented.
-     */
-    void (*gsource_dispatch)(AioContext *ctx, AioHandlerList *ready_list);
-
-} FDMonOps;
-
 /*
  * Each aio_bh_poll() call carves off a slice of the BH list, so that newly
  * scheduled BHs are not processed until the next aio_bh_poll() call.  All
@@ -172,10 +64,6 @@ struct BHListSlice {
 };
 
 typedef QSLIST_HEAD(, AioHandler) AioHandlerSList;
-
-typedef struct AioPolledEvent {
-    int64_t ns;        /* current polling time in nanoseconds */
-} AioPolledEvent;
 
 struct AioContext {
     GSource source;
@@ -241,35 +129,8 @@ struct AioContext {
     retro_atomic_int_t notified;
     EventNotifier notifier;
 
-    /* Number of AioHandlers without .io_poll() */
-    retro_atomic_int_t poll_disable_cnt;
-
-    /* Polling mode parameters */
-    int64_t poll_max_ns;    /* maximum polling time in nanoseconds */
-    int64_t poll_grow;      /* polling time growth factor */
-    int64_t poll_shrink;    /* polling time shrink factor */
-
     /* AIO engine parameters */
     int64_t aio_max_batch;  /* maximum number of requests in a batch */
-
-    /*
-     * List of handlers participating in userspace polling. Owned, iterated
-     * and modified by the frontend thread
-     * from aio_poll() with handler_walk_depth incremented.  aio_set_fd_handler()
-     * only touches the list to delete nodes if handler_walk_depth is zero.
-     */
-    AioHandlerList poll_aio_handlers;
-
-    /* Are we in polling mode or monitoring file descriptors? */
-    bool poll_started;
-
-    /* epoll(7) state used when built with CONFIG_EPOLL */
-    int epollfd;
-
-    /* The GSource unix fd tag for epollfd */
-    void *epollfd_tag;
-
-    const FDMonOps *fdmon_ops;
 
     /* Was aio_context_new() successful? */
     bool initialized;
@@ -527,30 +388,10 @@ void aio_set_event_notifier(AioContext *ctx,
                             AioPollFn *io_poll,
                             EventNotifierHandler *io_poll_ready);
 
-/*
- * Set polling begin/end callbacks for an event notifier that has already been
- * registered with aio_set_event_notifier.  Do nothing if the event notifier is
- * not registered.
- *
- * Note that if the io_poll_end() callback (or the entire notifier) is removed
- * during polling, it will not be called, so an io_poll_begin() is not
- * necessarily always followed by an io_poll_end().
- */
-void aio_set_event_notifier_poll(AioContext *ctx,
-                                 EventNotifier *notifier,
-                                 EventNotifierHandler *io_poll_begin,
-                                 EventNotifierHandler *io_poll_end);
-
 /* Return a GSource that lets the main loop poll the file descriptors attached
  * to this AioContext.
  */
 GSource *aio_get_g_source(AioContext *ctx);
-
-/* Return the ThreadPoolAio bound to this AioContext */
-
-/* Setup the LinuxAioState bound to this AioContext */
-
-/* Return the LinuxAioState bound to this AioContext */
 
 /**
  * aio_compute_timeout:
@@ -594,26 +435,11 @@ bool aio_context_setup(AioContext *ctx, Error **errp);
 void aio_context_destroy(AioContext *ctx);
 
 /**
- * aio_context_set_poll_params:
- * @ctx: the aio context
- * @max_ns: how long to busy poll for, in nanoseconds
- * @grow: polling time growth factor
- * @shrink: polling time shrink factor
- *
- * Poll mode can be disabled by setting poll_max_ns to 0.
- */
-void aio_context_set_poll_params(AioContext *ctx, int64_t max_ns,
-                                 int64_t grow, int64_t shrink,
-                                 Error **errp);
-
-/**
  * aio_context_set_aio_params:
  * @ctx: the aio context
  * @max_batch: maximum number of requests in a batch, 0 means that the
  *             engine will use its default
  */
 void aio_context_set_aio_params(AioContext *ctx, int64_t max_batch);
-
-
 
 #endif

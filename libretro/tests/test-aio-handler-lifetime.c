@@ -17,14 +17,13 @@ typedef bool AioPollFn(void *);
 typedef struct {HANDLE handle;} EventNotifier;
 typedef void EventNotifierHandler(EventNotifier *);
 typedef struct {uintptr_t fd;int events,revents;} GPollFD;
-typedef struct {int64_t ns;} AioPolledEvent;
 typedef struct AioHandler AioHandler;
 /* HANDLER */
 typedef QLIST_RCU_HEAD(,AioHandler) AioHandlerList;
 typedef struct {
  uintptr_t handler_owner_id;unsigned handler_walk_depth;
- EventNotifier notifier;int source;bool poll_started;
- AioHandlerList aio_handlers,deleted_aio_handlers,poll_aio_handlers;
+ EventNotifier notifier;int source;
+ AioHandlerList aio_handlers,deleted_aio_handlers;
 } AioContext;
 static uintptr_t sthread_get_current_thread_id(void){return 1;}
 /* OWNER HELPERS */
@@ -36,7 +35,6 @@ static void g_source_remove_poll(int *source,GPollFD *pfd){}
 static HANDLE event_notifier_get_handle(EventNotifier *e){return e->handle;}
 typedef struct {long lNetworkEvents;} WSANETWORKEVENTS;
 static void WSAEnumNetworkEvents(uintptr_t fd,HANDLE event,WSANETWORKEVENTS *ev){ev->lNetworkEvents=0;}
-#define trace_poll_add(...) ((void)0)
 /* PRODUCTION */
 static AioContext ctx;
 static AioHandler *nodes[4];

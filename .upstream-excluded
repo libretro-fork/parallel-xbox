@@ -3213,3 +3213,7 @@ stubs/graph-lock.c
 # AIO handler exclusion gate replaced by frontend-owned traversal depth
 util/lockcnt.c
 include/qemu/lockcnt.h
+
+# Unused synchronous POSIX AIO monitor backends
+util/fdmon-poll.c
+util/fdmon-epoll.c

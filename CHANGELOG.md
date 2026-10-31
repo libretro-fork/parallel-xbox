@@ -1,5 +1,7 @@
 # Changelog of the libretro core
 
+- Replace the POSIX FD monitor framework with direct descriptor readiness handling; remove unused TLS poll-array copies, epoll descriptors and busy-poll machinery.
+
 - Remove the AIO handler exclusion gate (QemuLockCnt); enforce frontend-owned registration/dispatch and retain nesting-based deferred reclamation.
 
 - Remove unused AIO recursive mutexes, worker-pool settings and graph-registration stubs; keep the socket/eventcount wake paths.
