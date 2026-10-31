@@ -4,6 +4,10 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Remove the clock-state spin lock, seqlock and elapsed-clock retry loop.
+  The libretro emulation thread owns raw clock updates and host elapsed-time
+  reads; other threads retain the published instruction-clock timestamp.
+
 - Extend the DOAX guest-GPU-progress CI regression to PFIFO register writes and NV_USER DMA PUT, GET and REF updates across channels. Verify that these wakes keep unfinished GPU work pending and preserve the requested register values. Emulation behavior is unchanged.
 
 - Publish coherent instruction-clock timestamps through libretro-common

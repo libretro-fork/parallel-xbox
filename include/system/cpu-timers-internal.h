@@ -29,16 +29,10 @@
 
 typedef struct TimersState {
     /* Protected by BQL.  */
-    int64_t cpu_ticks_prev;
     int64_t cpu_ticks_offset;
 
-    /*
-     * Protect fields that can be respectively read outside the
-     * BQL, and written from multiple threads.
-     */
-    QemuSeqLock vm_clock_seqlock;
-    QemuSpin vm_clock_lock;
-
+    /* Raw clock state has one emulation-thread owner in the core.
+     * Off-thread virtual-time readers use published_icount_ns below. */
     retro_atomic_int_t cpu_ticks_enabled;
 
     /* Conversion factor from emulated instructions to virtual clock ticks.  */
@@ -66,11 +60,6 @@ typedef struct TimersState {
 } TimersState;
 
 extern TimersState timers_state;
-
-/*
- * icount needs this internal from cpu-timers when adjusting the icount shift.
- */
-int64_t cpu_get_clock_locked(void);
 
 /* Publish after an owner-thread count/bias update or state restoration. */
 void icount_publish_time(void);
