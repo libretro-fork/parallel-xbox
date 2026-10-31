@@ -166,6 +166,7 @@ python3 "$here/test-retail-seed-name.py" "$here/../.." "$cc"
 python3 "$here/test-spv-reflection-borrow.py" "$here/../.." "$cc"
 python3 "$here/test-spv-geom.py" "$here/../.." "$cc"
 python3 "$here/test-spv-clear.py" "$here/../.." "$cc"
+python3 "$here/test-spv-depth.py" "$here/../.." "$cc"
 python3 "$here/test-tb-code-hash.py" "$here/../.." "$cc"
 python3 "$here/test-texture-layout.py" "$here/../.." "$cc"
 python3 "$here/test-texture-reinterpret.py" "$here/../.." "$cc"
@@ -774,6 +775,7 @@ done
 if [ -z "$novk" ]; then
     python3 "$here/test-spv-geom.py" "$here/../.." "$cc" --gpu
     python3 "$here/test-spv-clear.py" "$here/../.." "$cc" --gpu
+    python3 "$here/test-spv-depth.py" "$here/../.." "$cc" --gpu
 fi
 # Production Vulkan copies on that device, under the validation layer
 case $core in

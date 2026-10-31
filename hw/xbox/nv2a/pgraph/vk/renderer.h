@@ -424,18 +424,6 @@ typedef struct PGRAPHVkDisplayState {
     retro_atomic_int_t check_pending;
 } PGRAPHVkDisplayState;
 
-typedef struct ComputePipelineKey {
-    VkFormat host_fmt;
-    bool pack;
-    int workgroup_size;
-} ComputePipelineKey;
-
-typedef struct ComputePipeline {
-    LruNode node;
-    ComputePipelineKey key;
-    VkPipeline pipeline;
-} ComputePipeline;
-
 typedef struct PGRAPHVkComputeState {
     VkDescriptorPool descriptor_pool;
     VkDescriptorSetLayout descriptor_set_layout;
@@ -443,8 +431,9 @@ typedef struct PGRAPHVkComputeState {
      * recreated (surface-compute.c write_descriptor_sets) */
     VkDescriptorSet set_pack, set_unpack;
     VkPipelineLayout pipeline_layout;
-    Lru pipeline_cache;
-    ComputePipeline *pipeline_cache_entries;
+    /* Two formats, pack/unpack: prepared before gameplay, no LRU misses. */
+    VkPipeline pipelines[2][2];
+    uint32_t workgroup_size;
 } PGRAPHVkComputeState;
 
 /* Main command buffers in the ring: a slot is recorded again two submissions

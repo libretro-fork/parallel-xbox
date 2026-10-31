@@ -4,6 +4,7 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Vulkan depth/stencil conversion now prepares four pipelines at initialization from immutable SPIR-V, replacing the 100-entry, per-workgroup-size LRU. Conversion no longer compiles shaders or creates pipelines on first use or size changes. Bounds-checked 128/256-thread kernels support balanced 2D dispatch; descriptors and conversion buffers keep their existing ownership. Four pipelines remain resident until shutdown.
 - TCG helper-call layouts now publish immutable candidates through libretro-common atomics instead of entering the GLib once registry. A stalled initializer cannot block another translator; one layout per used helper stays for the core lifetime. Windows thread-name API lookup likewise publishes a function or cached absence without once locking or an extra kernel32 reference.
 
 - Chihiro DIMM states stream changed pages directly into the frontend state buffer and borrow the input blob during restore. Replace the full intermediate blob with a page-number list; preserve the v1 wire format and game-image identity checks.

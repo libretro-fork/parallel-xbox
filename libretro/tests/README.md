@@ -537,6 +537,19 @@ after eviction/clear, queue drops, adoption and per-state completion markers,
 plus 10,000 FIFO/slot-reuse cases and 800,000 concurrent ref/unref pairs
 with no leaked arrays (UB traps).
 
+`python libretro/tests/test-spv-depth.py . gcc --gpu` validates the immutable
+depth/stencil kernels, three-buffer/16-byte push layout and allocation-free
+four-pipeline setup/teardown. It exercises 400,000 lookups without driver calls,
+100,000 bounded grids and exhaustive small-grid coverage. GPU checks compare
+802 original/direct/CPU cases, including 128/256 workgroups, integer/float depth,
+pack/unpack, 1/2/3/9x scaling, partial workgroups and guarded source/output
+padding. A 5760x4320 case caps the X count at Vulkan's minimum limit to exercise
+2D dispatch on hardware with higher limits too. The oracle uses a CPU snapshot,
+not scalar reads from uncached mapped VRAM. Alternating timestamp batches
+report one-million-pixel conversion cost without asserting a performance
+threshold; these do not measure whole-core latency. Static modules pass
+spirv-val for Vulkan 1.0; GPU readbacks and reference compilation are test-only.
+
 `python libretro/tests/test-spv-clear.py . gcc --gpu` checks the immutable
 fullscreen vertex and solid-clear fragment modules against the pre-port GLSL
 reference. The production initialization/finalization functions pass the exact
