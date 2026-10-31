@@ -110,11 +110,6 @@ int ram_block_discard_range(RAMBlock *rb, uint64_t offset, size_t length);
 RamBlockAttributes *ram_block_attributes_create(RAMBlock *ram_block);
 void ram_block_attributes_destroy(RamBlockAttributes *attr);
 
-/**
- * ram_block_is_pmem: Whether the RAM block is of persistent memory
- */
-bool ram_block_is_pmem(RAMBlock *rb);
-
 static inline bool offset_in_ramblock(RAMBlock *b, ram_addr_t offset)
 {
     return b && b->host && (offset < b->used_length);

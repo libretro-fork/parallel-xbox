@@ -43,24 +43,8 @@ typedef struct ReadLineState {
     void *opaque;
 } ReadLineState;
 
-void readline_add_completion(ReadLineState *rs, const char *str);
-void readline_add_completion_of(ReadLineState *rs,
-                                const char *pfx, const char *str);
-void readline_set_completion_index(ReadLineState *rs, int completion_index);
 
-const char *readline_get_history(ReadLineState *rs, unsigned int index);
 
-void readline_handle_byte(ReadLineState *rs, int ch);
 
-void readline_start(ReadLineState *rs, const char *prompt, int read_password,
-                    ReadLineFunc *readline_func, void *readline_opaque);
-void readline_restart(ReadLineState *rs);
-void readline_show_prompt(ReadLineState *rs);
-
-ReadLineState *readline_init(ReadLinePrintfFunc *printf_func,
-                             ReadLineFlushFunc *flush_func,
-                             void *opaque,
-                             ReadLineCompletionFunc *completion_finder);
-void readline_free(ReadLineState *rs);
 
 #endif /* READLINE_H */

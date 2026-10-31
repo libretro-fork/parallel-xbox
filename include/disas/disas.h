@@ -7,9 +7,6 @@ void disas(FILE *out, const void *code, size_t size);
 void target_disas(FILE *out, CPUState *cpu, const DisasContextBase *db);
 #endif
 
-void monitor_disas(Monitor *mon, CPUState *cpu, uint64_t pc,
-                   int nb_insn, bool is_physical);
-
 
 /* Look up symbol for debugging purpose.  Returns "" if unknown. */
 const char *lookup_symbol(uint64_t orig_addr);

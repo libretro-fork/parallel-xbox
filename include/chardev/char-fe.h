@@ -116,24 +116,6 @@ void qemu_chr_fe_take_focus(CharFrontend *c);
  */
 void qemu_chr_fe_accept_input(CharFrontend *c);
 
-/**
- * qemu_chr_fe_disconnect:
- *
- * Close a fd accepted by character backend.
- * Without associated Chardev, do nothing.
- */
-void qemu_chr_fe_disconnect(CharFrontend *c);
-
-/**
- * qemu_chr_fe_set_echo:
- * @echo: true to enable echo, false to disable echo
- *
- * Ask the backend to override its normal echo setting.  This only really
- * applies to the stdio backend and is used by the QMP server such that you
- * can see what you type if you try to type QMP commands.
- * Without associated Chardev, do nothing.
- */
-void qemu_chr_fe_set_echo(CharFrontend *c, bool echo);
 
 /**
  * qemu_chr_fe_set_open:

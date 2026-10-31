@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Headers no longer declare 1,776 functions that no longer exist anywhere in the tree (about 4,400 lines): left behind by QEMU subsystems the core never had (the HMP monitor, virtio, KVM, block jobs) and by earlier removals. Nothing changes for someone using the core.
+
 - Code for QEMU features the core is never built with is gone from the source (about 2,500 lines in 88 files): KVM, Xen, HVF and the other hypervisors, TCG plugins and the TCG interpreter, VNC, SPICE, curses, io_uring and Linux AIO, and the like. None of it was compiled; nothing changes for someone using the core.
 
 - QEMU's command-line parser is gone: the core always started the machine with the same seven options, which QEMU parsed through its full table of about a hundred. The core now hands each one to what it sets directly, and the option table, its 5,850-line source and the code only other options reached (about 10,000 lines) are gone. QEMU no longer looks for a host qemu.conf at start either. Nothing else changes for someone using the core.

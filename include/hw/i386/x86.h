@@ -124,7 +124,6 @@ void x86_cpu_unplug_cb(HotplugHandler *hotplug_dev,
                        DeviceState *dev, Error **errp);
 
 bool x86_machine_is_smm_enabled(const X86MachineState *x86ms);
-bool x86_machine_is_acpi_enabled(const X86MachineState *x86ms);
 
 /* Global System Interrupts */
 

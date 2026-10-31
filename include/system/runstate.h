@@ -61,13 +61,6 @@ qemu_add_vm_change_state_handler_prio_full(VMChangeStateHandler *cb,
                                            VMChangeStateHandler *prepare_cb,
                                            VMChangeStateHandlerWithRet *cb_ret,
                                            void *opaque, int priority);
-VMChangeStateEntry *qdev_add_vm_change_state_handler(DeviceState *dev,
-                                                     VMChangeStateHandler *cb,
-                                                     VMChangeStateHandlerWithRet *cb_ret,
-                                                     void *opaque);
-VMChangeStateEntry *qdev_add_vm_change_state_handler_full(
-    DeviceState *dev, VMChangeStateHandler *cb, VMChangeStateHandler *prepare_cb,
-    VMChangeStateHandlerWithRet *cb_ret, void *opaque);
 void qemu_del_vm_change_state_handler(VMChangeStateEntry *e);
 /**
  * vm_state_notify: Notify the state of the VM
@@ -139,7 +132,6 @@ void qemu_system_vmstop_request_prepare(void);
 bool qemu_vmstop_requested(RunState *r);
 void qemu_system_killed(int signal, pid_t pid);
 void qemu_system_reset(ShutdownCause reason);
-bool qemu_system_dump_in_progress(void);
 
 #endif
 

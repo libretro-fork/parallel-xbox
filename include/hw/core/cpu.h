@@ -803,18 +803,6 @@ void cpu_list_remove(CPUState *cpu);
 void cpu_reset(CPUState *cpu);
 
 /**
- * cpu_class_by_name:
- * @typename: The CPU base type.
- * @cpu_model: The model string without any parameters.
- *
- * Looks up a concrete CPU #ObjectClass matching name @cpu_model.
- *
- * Returns: A concrete #CPUClass or %NULL if no matching class is found
- *          or if the matching class is abstract.
- */
-ObjectClass *cpu_class_by_name(const char *typename, const char *cpu_model);
-
-/**
  * cpu_model_from_type:
  * @typename: The CPU type name
  *
@@ -826,17 +814,6 @@ ObjectClass *cpu_class_by_name(const char *typename, const char *cpu_model);
  *          The user should g_free() the string once no longer needed.
  */
 char *cpu_model_from_type(const char *typename);
-
-/**
- * parse_cpu_option:
- * @cpu_option: The -cpu option including optional parameters.
- *
- * processes optional parameters and registers them as global properties
- *
- * Returns: type of CPU to create or prints error and terminates process
- *          if an error occurred.
- */
-const char *parse_cpu_option(const char *cpu_option);
 
 /**
  * qemu_cpu_is_self:

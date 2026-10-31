@@ -213,7 +213,6 @@ void qdev_prop_set_macaddr(DeviceState *dev, const char *name,
                            const uint8_t *value);
 
 /* Takes ownership of @values */
-void qdev_prop_set_array(DeviceState *dev, const char *name, QList *values);
 
 void *object_field_prop_ptr(Object *obj, const Property *prop);
 

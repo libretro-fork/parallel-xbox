@@ -90,24 +90,5 @@ typedef struct AcpiGhesState {
     bool use_hest_addr; /* True if HEST address is present */
 } AcpiGhesState;
 
-void acpi_build_hest(AcpiGhesState *ags, GArray *table_data,
-                     GArray *hardware_errors,
-                     BIOSLinker *linker,
-                     const AcpiNotificationSourceId * const notif_source,
-                     int num_sources,
-                     const char *oem_id, const char *oem_table_id);
-void acpi_ghes_add_fw_cfg(AcpiGhesState *vms, FWCfgState *s,
-                          GArray *hardware_errors);
-int acpi_ghes_memory_errors(AcpiGhesState *ags, uint16_t source_id,
-                            uint64_t error_physical_addr);
-void ghes_record_cper_errors(AcpiGhesState *ags, const void *cper, size_t len,
-                             uint16_t source_id, Error **errp);
 
-/**
- * acpi_ghes_get_state: Get a pointer for ACPI ghes state
- *
- * Returns: a pointer to ghes state if the system has an ACPI GHES table,
- * NULL, otherwise.
- */
-AcpiGhesState *acpi_ghes_get_state(void);
 #endif

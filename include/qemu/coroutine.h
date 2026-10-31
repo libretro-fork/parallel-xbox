@@ -111,14 +111,12 @@ void coroutine_fn qemu_co_queue_wait_impl(CoQueue *queue, QemuLockable *lock,
  * Returns true if a coroutine was removed, false if the queue is empty.
  * Used from coroutine context, use qemu_co_enter_next outside.
  */
-bool coroutine_fn qemu_co_queue_next(CoQueue *queue);
 
 /**
  * Empties the CoQueue and queues the coroutine to run after
  * the currently-running coroutine yields.
  * Used from coroutine context, use qemu_co_enter_all outside.
  */
-void coroutine_fn qemu_co_queue_restart_all(CoQueue *queue);
 
 /**
  * Removes the next coroutine from the CoQueue, and wake it up.  Unlike
@@ -167,44 +165,23 @@ typedef struct CoRwlock {
  * Initialises a CoRwlock. This must be called before any other operation
  * is used on the CoRwlock
  */
-void qemu_co_rwlock_init(CoRwlock *lock);
 
 /**
  * Read locks the CoRwlock. If the lock cannot be taken immediately because
  * of a parallel writer, control is transferred to the caller of the current
  * coroutine.
  */
-void coroutine_fn qemu_co_rwlock_rdlock(CoRwlock *lock);
-
-/**
- * Write Locks the CoRwlock from a reader.  This is a bit more efficient than
- * @qemu_co_rwlock_unlock followed by a separate @qemu_co_rwlock_wrlock.
- * Note that if the lock cannot be upgraded immediately, control is transferred
- * to the caller of the current coroutine; another writer might run while
- * @qemu_co_rwlock_upgrade blocks.
- */
-void coroutine_fn qemu_co_rwlock_upgrade(CoRwlock *lock);
-
-/**
- * Downgrades a write-side critical section to a reader.  Downgrading with
- * @qemu_co_rwlock_downgrade never blocks, unlike @qemu_co_rwlock_unlock
- * followed by @qemu_co_rwlock_rdlock.  This makes it more efficient, but
- * may also sometimes be necessary for correctness.
- */
-void coroutine_fn qemu_co_rwlock_downgrade(CoRwlock *lock);
 
 /**
  * Write Locks the mutex. If the lock cannot be taken immediately because
  * of a parallel reader, control is transferred to the caller of the current
  * coroutine.
  */
-void coroutine_fn qemu_co_rwlock_wrlock(CoRwlock *lock);
 
 /**
  * Unlocks the read/write lock and schedules the next coroutine that was
  * waiting for this lock to be run.
  */
-void coroutine_fn qemu_co_rwlock_unlock(CoRwlock *lock);
 
 typedef struct QemuCoSleep {
     Coroutine *to_wake;
@@ -221,7 +198,6 @@ void coroutine_fn qemu_co_sleep_ns_wakeable(QemuCoSleep *w,
 /**
  * Yield the coroutine until the next call to qemu_co_sleep_wake.
  */
-void coroutine_fn qemu_co_sleep(QemuCoSleep *w);
 
 static inline void coroutine_fn qemu_co_sleep_ns(QEMUClockType type, int64_t ns)
 {
@@ -239,33 +215,20 @@ typedef void CleanupFunc(void *opaque);
  * If @clean is provided, it's called after coroutine finish if timeout
  * happened.
  */
-int coroutine_fn qemu_co_timeout(CoroutineEntry *entry, void *opaque,
-                                 uint64_t timeout_ns, CleanupFunc clean);
-
-/**
- * Wake a coroutine if it is sleeping in qemu_co_sleep_ns. The timer will be
- * deleted. @sleep_state must be the variable whose address was given to
- * qemu_co_sleep_ns() and should be checked to be non-NULL before calling
- * qemu_co_sleep_wake().
- */
-void qemu_co_sleep_wake(QemuCoSleep *w);
 
 /**
  * Yield until a file descriptor becomes readable
  *
  * Note that this function clobbers the handlers for the file descriptor.
  */
-void coroutine_fn yield_until_fd_readable(int fd);
 
 /**
  * Increase coroutine pool size
  */
-void qemu_coroutine_inc_pool_size(unsigned int additional_pool_size);
 
 /**
  * Decrease coroutine pool size
  */
-void qemu_coroutine_dec_pool_size(unsigned int additional_pool_size);
 
 /**
  * Sends a (part of) iovec down a socket, yielding when the socket is full, or

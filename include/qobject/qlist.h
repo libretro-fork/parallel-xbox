@@ -33,8 +33,6 @@ G_DEFINE_AUTOPTR_CLEANUP_FUNC(QList, qlist_unref)
 #define qlist_append(qlist, obj) \
         qlist_append_obj(qlist, QOBJECT(obj))
 
-void qlist_append_str(QList *qlist, const char *value);
-
 #define QLIST_FOREACH_ENTRY(qlist, var)                 \
         for ((var) = QTAILQ_FIRST(&(qlist)->head);      \
              (var);                                     \

@@ -61,11 +61,7 @@ bool migrate_caps_check(bool *old_caps, bool *new_caps, Error **errp);
 /* parameters */
 
 
-uint64_t migrate_downtime_limit(void);
-uint64_t migrate_avail_switchover_bandwidth(void);
 MultiFDCompression migrate_multifd_compression(void);
-uint8_t migrate_throttle_trigger_threshold(void);
-ZeroPageDetection migrate_zero_page_detection(void);
 
 /* parameters helpers */
 

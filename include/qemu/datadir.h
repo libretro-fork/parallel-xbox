@@ -28,6 +28,5 @@ typedef enum {
 char *qemu_find_file(QemuFileType type, const char *name);
 void qemu_add_default_firmwarepath(void);
 void qemu_add_data_dir(char *path);
-void qemu_list_data_dirs(void);
 
 #endif

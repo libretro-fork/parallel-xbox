@@ -250,31 +250,9 @@ typedef struct cxl_component {
     CDATObject cdat;
 } CXLComponentState;
 
-void cxl_component_register_block_init(Object *obj,
-                                       CXLComponentState *cxl_cstate,
-                                       const char *type);
-void cxl_component_register_init_common(uint32_t *reg_state,
-                                        uint32_t *write_msk,
-                                        enum reg_type type);
 
-void cxl_component_create_dvsec(CXLComponentState *cxl_cstate,
-                                enum reg_type cxl_dev_type, uint16_t length,
-                                uint16_t type, uint8_t rev, uint8_t *body);
 
-int cxl_decoder_count_enc(int count);
-int cxl_decoder_count_dec(int enc_cnt);
 
-uint8_t cxl_interleave_ways_enc(int iw, Error **errp);
-int cxl_interleave_ways_dec(uint8_t iw_enc, Error **errp);
-uint8_t cxl_interleave_granularity_enc(uint64_t gran, Error **errp);
 
-hwaddr cxl_decode_ig(int ig);
-
-CXLComponentState *cxl_get_hb_cstate(PCIHostState *hb);
-bool cxl_get_hb_passthrough(PCIHostState *hb);
-
-bool cxl_doe_cdat_init(CXLComponentState *cxl_cstate, Error **errp);
-void cxl_doe_cdat_release(CXLComponentState *cxl_cstate);
-void cxl_doe_cdat_update(CXLComponentState *cxl_cstate, Error **errp);
 
 #endif

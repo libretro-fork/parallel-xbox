@@ -81,16 +81,11 @@ typedef struct QEMULogItem {
 
 extern const QEMULogItem qemu_log_items[];
 
-ssize_t rust_fwrite(const void *ptr, size_t size, size_t nmemb, FILE *stream);
-
 bool qemu_set_log_filename_flags(const char *name, int flags, Error **errp);
-void qemu_set_dfilter_ranges(const char *ranges, Error **errp);
 bool qemu_log_in_addr_range(uint64_t addr);
-int qemu_str_to_log_mask(const char *str);
 
 /* Print a usage message listing all the valid logging categories
  * to the specified FILE*.
  */
-void qemu_print_log_usage(FILE *f);
 
 #endif

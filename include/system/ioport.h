@@ -41,12 +41,6 @@ typedef struct MemoryRegionPortio {
 
 extern const MemoryRegionOps unassigned_io_ops;
 
-void cpu_outb(uint32_t addr, uint8_t val);
-void cpu_outw(uint32_t addr, uint16_t val);
-void cpu_outl(uint32_t addr, uint32_t val);
-uint8_t cpu_inb(uint32_t addr);
-uint16_t cpu_inw(uint32_t addr);
-uint32_t cpu_inl(uint32_t addr);
 
 typedef struct PortioList {
     const struct MemoryRegionPortio *ports;

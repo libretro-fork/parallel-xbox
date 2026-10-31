@@ -159,19 +159,6 @@ struct SDBusClass {
 /* Functions to be used by qdevified callers (working via
  * an SDBus rather than directly with SDState)
  */
-void sdbus_set_voltage(SDBus *sdbus, uint16_t millivolts);
-uint8_t sdbus_get_dat_lines(SDBus *sdbus);
-bool sdbus_get_cmd_line(SDBus *sdbus);
-/**
- * sdbus_do_command: Process a SD command request
- * @sd: card
- * @req: command request
- * @resp: buffer to receive the command response
- * @respsz: size of @resp buffer
- *
- * Return: size of the response
- */
-size_t sdbus_do_command(SDBus *sd, SDRequest *req, uint8_t *resp, size_t respsz);
 /**
  * Write a byte to a SD bus.
  * @sd: bus
@@ -179,7 +166,6 @@ size_t sdbus_do_command(SDBus *sd, SDRequest *req, uint8_t *resp, size_t respsz)
  *
  * Write a byte on the data lines of a SD bus.
  */
-void sdbus_write_byte(SDBus *sd, uint8_t value);
 /**
  * Read a byte from a SD bus.
  * @sd: bus
@@ -188,7 +174,6 @@ void sdbus_write_byte(SDBus *sd, uint8_t value);
  *
  * Return: byte value read
  */
-uint8_t sdbus_read_byte(SDBus *sd);
 /**
  * Write data to a SD bus.
  * @sdbus: bus
@@ -197,7 +182,6 @@ uint8_t sdbus_read_byte(SDBus *sd);
  *
  * Write multiple bytes of data on the data lines of a SD bus.
  */
-void sdbus_write_data(SDBus *sdbus, const void *buf, size_t length);
 /**
  * Read data from a SD bus.
  * @sdbus: bus
@@ -206,25 +190,7 @@ void sdbus_write_data(SDBus *sdbus, const void *buf, size_t length);
  *
  * Read multiple bytes of data on the data lines of a SD bus.
  */
-void sdbus_read_data(SDBus *sdbus, void *buf, size_t length);
-bool sdbus_receive_ready(SDBus *sd);
-bool sdbus_data_ready(SDBus *sd);
-bool sdbus_get_inserted(SDBus *sd);
-bool sdbus_get_readonly(SDBus *sd);
-/**
- * sdbus_reparent_card: Reparent an SD card from one controller to another
- * @from: controller bus to remove card from
- * @to: controller bus to move card to
- *
- * Reparent an SD card, effectively unplugging it from one controller
- * and inserting it into another. This is useful for SoCs like the
- * bcm2835 which have two SD controllers and connect a single SD card
- * to them, selected by the guest reprogramming GPIO line routing.
- */
-void sdbus_reparent_card(SDBus *from, SDBus *to);
 
 /* Functions to be used by SD devices to report back to qdevified controllers */
-void sdbus_set_inserted(SDBus *sd, bool inserted);
-void sdbus_set_readonly(SDBus *sd, bool inserted);
 
 #endif /* HW_SD_H */

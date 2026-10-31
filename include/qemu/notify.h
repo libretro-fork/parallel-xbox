@@ -63,9 +63,5 @@ typedef struct NotifierWithReturnList {
 #define NOTIFIER_WITH_RETURN_LIST_INITIALIZER(head) \
     { QLIST_HEAD_INITIALIZER((head).notifiers) }
 
-void notifier_with_return_list_init(NotifierWithReturnList *list);
-
-int notifier_with_return_list_notify(NotifierWithReturnList *list,
-                                     void *data, Error **errp);
 
 #endif

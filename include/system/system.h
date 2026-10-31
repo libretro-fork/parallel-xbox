@@ -13,8 +13,6 @@ extern const char *qemu_name;
 extern QemuUUID qemu_uuid;
 extern bool qemu_uuid_set;
 
-const char *qemu_get_vm_name(void);
-
 /* Exit notifiers will run with BQL held. */
 void qemu_add_exit_notifier(Notifier *notify);
 void qemu_remove_exit_notifier(Notifier *notify);
@@ -82,7 +80,6 @@ extern Chardev *parallel_hds[MAX_PARALLEL_PORTS];
 
 void add_boot_device_path(int32_t bootindex, DeviceState *dev,
                           const char *suffix);
-char *get_boot_devices_list(size_t *size);
 
 void check_boot_index(int32_t bootindex, Error **errp);
 void del_boot_device_path(DeviceState *dev, const char *suffix);
@@ -90,7 +87,6 @@ void restore_boot_order(void *opaque);
 void validate_bootdevices(const char *devices, Error **errp);
 void add_boot_device_lchs(DeviceState *dev, const char *suffix,
                           uint32_t lcyls, uint32_t lheads, uint32_t lsecs);
-char *get_boot_devices_lchs_list(size_t *size);
 
 /* handler to set the boot_device order for a specific type of MachineClass */
 typedef void QEMUBootSetHandler(void *opaque, const char *boot_order,

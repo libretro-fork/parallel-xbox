@@ -23,32 +23,6 @@
 #ifndef SPDM_REQUESTER_H
 #define SPDM_REQUESTER_H
 
-/**
- * spdm_socket_connect: connect to an external SPDM socket
- * @port: port to connect to
- * @errp: error object handle
- *
- * This will connect to an external SPDM socket server. On error
- * it will return -1 and errp will be set. On success this function
- * will return the socket number.
- */
-int spdm_socket_connect(uint16_t port, Error **errp);
-
-/**
- * spdm_socket_rsp: send and receive a message to a SPDM server
- * @socket: socket returned from spdm_socket_connect()
- * @transport_type: SPDM_SOCKET_TRANSPORT_TYPE_* macro
- * @req: request buffer
- * @req_len: request buffer length
- * @rsp: response buffer
- * @rsp_len: response buffer length
- *
- * Send platform data to a SPDM server on socket and then receive
- * a response.
- */
-uint32_t spdm_socket_rsp(const int socket, uint32_t transport_type,
-                         void *req, uint32_t req_len,
-                         void *rsp, uint32_t rsp_len);
 
 /**
  * spdm_socket_rsp: Receive a message from an SPDM server
@@ -61,8 +35,6 @@ uint32_t spdm_socket_rsp(const int socket, uint32_t transport_type,
  * received or 0 on failure. This can be used to receive a message from the SPDM
  * server without sending anything first.
  */
-uint32_t spdm_socket_receive(const int socket, uint32_t transport_type,
-                             void *rsp, uint32_t rsp_len);
 
 /**
  * spdm_socket_rsp: Sends a message to an SPDM server
@@ -76,17 +48,6 @@ uint32_t spdm_socket_receive(const int socket, uint32_t transport_type,
  * The response from the server must then be fetched by using
  * spdm_socket_receive().
  */
-bool spdm_socket_send(const int socket, uint32_t socket_cmd,
-                      uint32_t transport_type, void *req, uint32_t req_len);
-
-/**
- * spdm_socket_close: send a shutdown command to the server
- * @socket: socket returned from spdm_socket_connect()
- * @transport_type: SPDM_SOCKET_TRANSPORT_TYPE_* macro
- *
- * This will issue a shutdown command to the server.
- */
-void spdm_socket_close(const int socket, uint32_t transport_type);
 
 /*
  * Defines the transport encoding for SPDM, this information shall be passed

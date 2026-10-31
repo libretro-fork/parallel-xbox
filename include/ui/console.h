@@ -70,16 +70,7 @@ typedef struct QEMUPutMouseEntry QEMUPutMouseEntry;
 typedef struct QEMUPutKbdEntry QEMUPutKbdEntry;
 typedef struct QEMUPutLEDEntry QEMUPutLEDEntry;
 
-QEMUPutMouseEntry *qemu_add_mouse_event_handler(QEMUPutMouseEvent *func,
-                                                void *opaque, int absolute,
-                                                const char *name);
-void qemu_remove_mouse_event_handler(QEMUPutMouseEntry *entry);
-void qemu_activate_mouse_event_handler(QEMUPutMouseEntry *entry);
 
-QEMUPutLEDEntry *qemu_add_led_event_handler(QEMUPutLEDEvent *func, void *opaque);
-void qemu_remove_led_event_handler(QEMUPutLEDEntry *entry);
-
-void kbd_put_ledstate(int ledstate);
 
 /* keysym is a unicode code except for special keys (see QEMU_KEY_xxx
    constants) */
@@ -365,23 +356,6 @@ DisplaySurface *qemu_console_surface(QemuConsole *con);
 
 /* console-gl.c */
 #ifdef CONFIG_OPENGL
-bool console_gl_check_format(DisplayChangeListener *dcl,
-                             pixman_format_code_t format);
-void surface_gl_create_texture(QemuGLShader *gls,
-                               DisplaySurface *surface);
-bool surface_gl_create_texture_from_fd(DisplaySurface *surface,
-                                       int fd, GLuint *texture,
-                                       GLuint *mem_obj);
-void surface_gl_update_texture(QemuGLShader *gls,
-                               DisplaySurface *surface,
-                               int x, int y, int w, int h);
-void surface_gl_render_texture(QemuGLShader *gls,
-                               DisplaySurface *surface);
-void surface_gl_destroy_texture(QemuGLShader *gls,
-                               DisplaySurface *surface);
-void surface_gl_setup_viewport(QemuGLShader *gls,
-                               DisplaySurface *surface,
-                               int ww, int wh);
 #endif
 
 typedef struct QemuDisplay QemuDisplay;
@@ -393,35 +367,18 @@ struct QemuDisplay {
     const char *vc;
 };
 
-bool qemu_display_find_default(DisplayOptions *opts);
 void qemu_display_early_init(DisplayOptions *opts);
 void qemu_display_init(DisplayState *ds, DisplayOptions *opts);
 const char *qemu_display_get_vc(DisplayOptions *opts);
-void qemu_display_help(void);
 
 /* vnc.c */
-void vnc_display_init(const char *id, Error **errp);
-void vnc_display_open(const char *id, Error **errp);
-void vnc_display_add_client(const char *id, int csock, bool skipauth);
-int vnc_display_password(const char *id, const char *password);
-int vnc_display_pw_expire(const char *id, time_t expires);
-void vnc_parse(const char *str);
-int vnc_init_func(void *opaque, QemuOpts *opts, Error **errp);
-bool vnc_display_reload_certs(const char *id,  Error **errp);
-bool vnc_display_update(DisplayUpdateOptionsVNC *arg, Error **errp);
 
 /* input.c */
-int index_from_key(const char *key, size_t key_length);
 
 #ifdef CONFIG_LINUX
 /* udmabuf.c */
-int udmabuf_fd(void);
 #endif
 
 /* util.c */
-bool qemu_console_fill_device_address(QemuConsole *con,
-                                      char *device_address,
-                                      size_t size,
-                                      Error **errp);
 
 #endif

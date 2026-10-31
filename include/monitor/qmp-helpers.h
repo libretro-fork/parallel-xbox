@@ -12,7 +12,4 @@
 
 #ifndef MONITOR_QMP_HELPERS_H
 
-bool qmp_add_client_spice(int fd, bool has_skipauth, bool skipauth,
-                        bool has_tls, bool tls, Error **errp);
-
 #endif

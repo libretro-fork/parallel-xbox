@@ -118,9 +118,6 @@ struct RegisterInfoArray {
  * @debug: Should the write operation debug information be printed?
  */
 
-void register_write(RegisterInfo *reg, uint64_t val, uint64_t we,
-                    const char *prefix, bool debug);
-
 /**
  * read a value from a register, subject to its restrictions
  * @reg: register to read from
@@ -130,22 +127,15 @@ void register_write(RegisterInfo *reg, uint64_t val, uint64_t we,
  * returns: value read
  */
 
-uint64_t register_read(RegisterInfo *reg, uint64_t re, const char* prefix,
-                       bool debug);
-
 /**
  * Resets a register. This will also call the post_write hook if it exists.
  * @reg: The register to reset.
  */
 
-void register_reset(RegisterInfo *reg);
-
 /**
  * Initialize a register.
  * @reg: Register to initialize
  */
-
-void register_init(RegisterInfo *reg);
 
 /**
  * Memory API MMIO write handler that will write to a Register API register.
@@ -155,9 +145,6 @@ void register_init(RegisterInfo *reg);
  * @size: Number of bytes to write
  */
 
-void register_write_memory(void *opaque, hwaddr addr, uint64_t value,
-                           unsigned size);
-
 /**
  * Memory API MMIO read handler that will read from a Register API register.
  * @opaque: RegisterInfo to read from
@@ -165,8 +152,6 @@ void register_write_memory(void *opaque, hwaddr addr, uint64_t value,
  * @size: Number of bytes to read
  * returns: Value read from register
  */
-
-uint64_t register_read_memory(void *opaque, hwaddr addr, unsigned size);
 
 /**
  * Init a block of registers into a container MemoryRegion. A
@@ -185,28 +170,5 @@ uint64_t register_read_memory(void *opaque, hwaddr addr, unsigned size);
  *          memory region (r_array->mem) the caller should add to a container.
  */
 
-RegisterInfoArray *register_init_block8(DeviceState *owner,
-                                        const RegisterAccessInfo *rae,
-                                        int num, RegisterInfo *ri,
-                                        uint8_t *data,
-                                        const MemoryRegionOps *ops,
-                                        bool debug_enabled,
-                                        uint64_t memory_size);
-
-RegisterInfoArray *register_init_block32(DeviceState *owner,
-                                         const RegisterAccessInfo *rae,
-                                         int num, RegisterInfo *ri,
-                                         uint32_t *data,
-                                         const MemoryRegionOps *ops,
-                                         bool debug_enabled,
-                                         uint64_t memory_size);
-
-RegisterInfoArray *register_init_block64(DeviceState *owner,
-                                         const RegisterAccessInfo *rae,
-                                         int num, RegisterInfo *ri,
-                                         uint64_t *data,
-                                         const MemoryRegionOps *ops,
-                                         bool debug_enabled,
-                                         uint64_t memory_size);
 
 #endif

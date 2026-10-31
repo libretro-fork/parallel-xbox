@@ -419,8 +419,6 @@ void usb_packet_setup(USBPacket *p, int pid,
                       USBEndpoint *ep, unsigned int stream,
                       uint64_t id, bool short_not_ok, bool int_req);
 void usb_packet_addbuf(USBPacket *p, void *ptr, size_t len);
-int usb_packet_map(USBPacket *p, QEMUSGList *sgl);
-void usb_packet_unmap(USBPacket *p, QEMUSGList *sgl);
 void usb_packet_copy(USBPacket *p, void *ptr, size_t bytes);
 
 static inline bool usb_packet_is_inflight(USBPacket *p)
@@ -443,9 +441,6 @@ void usb_ep_set_max_packet_size(USBDevice *dev, int pid, int ep,
                                 uint16_t raw);
 void usb_ep_set_max_streams(USBDevice *dev, int pid, int ep, uint8_t raw);
 
-void usb_ep_combine_input_packets(USBEndpoint *ep);
-void usb_combined_input_packet_complete(USBDevice *dev, USBPacket *p);
-void usb_combined_packet_cancel(USBDevice *dev, USBPacket *p);
 
 void usb_pick_speed(USBPort *port);
 void usb_attach(USBPort *port);
@@ -455,7 +450,6 @@ void usb_device_reset(USBDevice *dev);
 void usb_wakeup(USBEndpoint *ep, unsigned int stream);
 
 /* usb-linux.c */
-void hmp_info_usbhost(Monitor *mon, const QDict *qdict);
 
 /* usb ports of the VM */
 
@@ -552,10 +546,6 @@ static inline bool usb_device_is_scsi_storage(USBDevice *dev)
 #define USB_QUIRK_BUFFER_BULK_IN        0x01
 /* Bulk pkts in FTDI format, need special handling when combining packets */
 #define USB_QUIRK_IS_FTDI               0x02
-
-int usb_get_quirks(uint16_t vendor_id, uint16_t product_id,
-                   uint8_t interface_class, uint8_t interface_subclass,
-                   uint8_t interface_protocol);
 
 /* pcap.c */
 void usb_pcap_init(FILE *fp);

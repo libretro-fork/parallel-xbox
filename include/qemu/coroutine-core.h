@@ -85,7 +85,6 @@ void qemu_coroutine_enter(Coroutine *coroutine);
  * Transfer control to a coroutine if it's not active (i.e. part of the call
  * stack of the running coroutine). Otherwise, do nothing.
  */
-void qemu_coroutine_enter_if_inactive(Coroutine *co);
 
 /**
  * Transfer control back to a coroutine's caller
@@ -126,13 +125,11 @@ bool qemu_in_coroutine(void);
  * ones have already been entered.  In such situations this function can be
  * used to avoid recursively entering coroutines.
  */
-bool qemu_coroutine_entered(Coroutine *co);
 
 /**
  * Initialises a CoMutex. This must be called before any other operation is used
  * on the CoMutex.
  */
-void qemu_co_mutex_init(CoMutex *mutex);
 
 /**
  * Locks the mutex. If the lock cannot be taken immediately, control is

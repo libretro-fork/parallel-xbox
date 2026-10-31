@@ -115,51 +115,14 @@ typedef struct ThrottleTimers {
 } ThrottleTimers;
 
 /* operations on single leaky buckets */
-void throttle_leak_bucket(LeakyBucket *bkt, int64_t delta);
-
-int64_t throttle_compute_wait(LeakyBucket *bkt);
 
 /* init/destroy cycle */
-void throttle_init(ThrottleState *ts);
 
-void throttle_timers_init(ThrottleTimers *tt,
-                          AioContext *aio_context,
-                          QEMUClockType clock_type,
-                          QEMUTimerCB *read_timer_cb,
-                          QEMUTimerCB *write_timer_cb,
-                          void *timer_opaque);
-
-void throttle_timers_destroy(ThrottleTimers *tt);
-
-void throttle_timers_detach_aio_context(ThrottleTimers *tt);
-
-void throttle_timers_attach_aio_context(ThrottleTimers *tt,
-                                        AioContext *new_context);
-
-bool throttle_timers_are_initialized(ThrottleTimers *tt);
 
 /* configuration */
-bool throttle_enabled(ThrottleConfig *cfg);
 
-bool throttle_is_valid(ThrottleConfig *cfg, Error **errp);
-
-void throttle_config(ThrottleState *ts,
-                     QEMUClockType clock_type,
-                     ThrottleConfig *cfg);
-
-void throttle_get_config(ThrottleState *ts, ThrottleConfig *cfg);
-
-void throttle_config_init(ThrottleConfig *cfg);
 
 /* usage */
-bool throttle_schedule_timer(ThrottleState *ts,
-                             ThrottleTimers *tt,
-                             ThrottleDirection direction);
 
-void throttle_account(ThrottleState *ts, ThrottleDirection direction,
-                      uint64_t size);
-void throttle_limits_to_config(ThrottleLimits *arg, ThrottleConfig *cfg,
-                               Error **errp);
-void throttle_config_to_limits(ThrottleConfig *cfg, ThrottleLimits *var);
 
 #endif

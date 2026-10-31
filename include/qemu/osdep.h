@@ -523,7 +523,6 @@ void QEMU_ERROR("code path is reachable")
                        QEMU_BUILD_BUG_ON_ZERO(!QEMU_IS_ARRAY(x)))
 #endif
 
-int qemu_daemon(int nochdir, int noclose);
 void *qemu_anon_ram_alloc(size_t size, uint64_t *align, bool shared,
                           bool noreserve);
 void qemu_anon_ram_free(void *ptr, size_t size);
@@ -612,7 +611,6 @@ struct qemu_signalfd_siginfo {
                              additional fields in the future) */
 };
 
-int qemu_signalfd(const sigset_t *mask);
 #endif
 
 /*
@@ -693,9 +691,6 @@ static inline void qemu_timersub(const struct timeval *val1,
 #else
 #define qemu_timersub timersub
 #endif
-
-ssize_t qemu_write_full(int fd, const void *buf, size_t count)
-    G_GNUC_WARN_UNUSED_RESULT;
 
 void qemu_set_cloexec(int fd);
 bool qemu_set_blocking(int fd, bool block, Error **errp);
@@ -803,17 +798,6 @@ static inline void qemu_reset_optind(void)
 }
 
 int qemu_fdatasync(int fd);
-
-/**
- * qemu_close_all_open_fd:
- *
- * Close all open file descriptors except the ones supplied in the @skip array
- *
- * @skip: ordered array of distinct file descriptors that should not be closed
- *        if any, or NULL.
- * @nskip: number of entries in the @skip array or 0 if @skip is NULL.
- */
-void qemu_close_all_open_fd(const int *skip, unsigned int nskip);
 
 /**
  * Sync changes made to the memory mapped file back to the backing

@@ -271,7 +271,4 @@ static inline unsigned long *bitmap_zero_extend(unsigned long *old,
     return ptr;
 }
 
-void bitmap_to_le(unsigned long *dst, const unsigned long *src,
-                  long nbits);
-
 #endif /* BITMAP_H */

@@ -42,22 +42,12 @@ typedef struct XemuSnapshotData {
 } XemuSnapshotData;
 
 // Implemented in xemu-snapshots.c
-char *xemu_get_currently_loaded_disc_path(void);
-bool xemu_snapshots_chihiro_image_matches(const char *vm_name);
-int xemu_snapshots_list(QEMUSnapshotInfo **info, XemuSnapshotData **extra_data,
-                        Error **err);
-void xemu_snapshots_load(const char *vm_name, Error **err);
-void xemu_snapshots_save(const char *vm_name, Error **err);
-void xemu_snapshots_delete(const char *vm_name, Error **err);
 
 void xemu_snapshots_save_extra_data(QEMUFile *f);
 bool xemu_snapshots_offset_extra_data(QEMUFile *f);
 void xemu_snapshots_mark_dirty(void);
 
 // Implemented in xemu-thumbnail.cc
-void xemu_snapshots_set_framebuffer_texture(GLuint tex, bool flip);
-bool xemu_snapshots_load_png_to_texture(GLuint tex, void *buf, size_t size);
-void *xemu_snapshots_create_framebuffer_thumbnail_png(size_t *size);
 
 #ifdef __cplusplus
 }

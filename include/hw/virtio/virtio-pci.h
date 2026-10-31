@@ -187,8 +187,6 @@ static inline void virtio_pci_disable_modern(VirtIOPCIProxy *proxy)
     proxy->disable_modern = true;
 }
 
-uint16_t virtio_pci_get_trans_devid(uint16_t device_id);
-uint16_t virtio_pci_get_class_id(uint16_t device_id);
 
 /*
  * virtio-input-pci: This extends VirtioPCIProxy.
@@ -253,21 +251,6 @@ typedef struct VirtioPCIDeviceTypeInfo {
 } VirtioPCIDeviceTypeInfo;
 
 /* Register virtio-pci type(s).  @t must be static. */
-void virtio_pci_types_register(const VirtioPCIDeviceTypeInfo *t);
 
-/**
- * virtio_pci_optimal_num_queues:
- * @fixed_queues: number of queues that are always present
- *
- * Returns: The optimal number of queues for a multi-queue device, excluding
- * @fixed_queues.
- */
-unsigned virtio_pci_optimal_num_queues(unsigned fixed_queues);
-void virtio_pci_set_guest_notifier_fd_handler(VirtIODevice *vdev, VirtQueue *vq,
-                                              int n, bool assign,
-                                              bool with_irqfd);
-
-int virtio_pci_add_shm_cap(VirtIOPCIProxy *proxy, uint8_t bar, uint64_t offset,
-                           uint64_t length, uint8_t id);
 
 #endif

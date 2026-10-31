@@ -75,33 +75,7 @@ typedef struct VFIORamDiscardListener {
     QLIST_ENTRY(VFIORamDiscardListener) next;
 } VFIORamDiscardListener;
 
-VFIOAddressSpace *vfio_address_space_get(AddressSpace *as);
-void vfio_address_space_put(VFIOAddressSpace *space);
-void vfio_address_space_insert(VFIOAddressSpace *space,
-                               VFIOContainer *bcontainer);
 
-int vfio_container_dma_map(VFIOContainer *bcontainer,
-                           hwaddr iova, uint64_t size,
-                           void *vaddr, bool readonly, MemoryRegion *mr);
-int vfio_container_dma_unmap(VFIOContainer *bcontainer,
-                             hwaddr iova, uint64_t size,
-                             IOMMUTLBEntry *iotlb, bool unmap_all);
-bool vfio_container_add_section_window(VFIOContainer *bcontainer,
-                                       MemoryRegionSection *section,
-                                       Error **errp);
-void vfio_container_del_section_window(VFIOContainer *bcontainer,
-                                       MemoryRegionSection *section);
-int vfio_container_set_dirty_page_tracking(VFIOContainer *bcontainer,
-                                           bool start, Error **errp);
-bool vfio_container_dirty_tracking_is_started(
-    const VFIOContainer *bcontainer);
-bool vfio_container_devices_dirty_tracking_is_supported(
-    const VFIOContainer *bcontainer);
-int vfio_container_query_dirty_bitmap(const VFIOContainer *bcontainer,
-                                      uint64_t iova, uint64_t size,
-                                      hwaddr translated_addr, Error **errp);
-
-GList *vfio_container_get_iova_ranges(const VFIOContainer *bcontainer);
 
 static inline uint64_t
 vfio_container_get_page_size_mask(const VFIOContainer *bcontainer)
@@ -270,11 +244,5 @@ struct VFIOIOMMUClass {
                        MemoryRegionSection *section);
     void (*release)(VFIOContainer *bcontainer);
 };
-
-VFIORamDiscardListener *vfio_find_ram_discard_listener(
-    VFIOContainer *bcontainer, MemoryRegionSection *section);
-
-void vfio_container_region_add(VFIOContainer *bcontainer,
-                               MemoryRegionSection *section, bool cpr_remap);
 
 #endif /* HW_VFIO_VFIO_CONTAINER_H */

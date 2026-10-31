@@ -117,19 +117,6 @@ extern AioWait global_aio_wait;
 void aio_wait_kick(void);
 
 /**
- * aio_wait_bh_oneshot:
- * @ctx: the aio context
- * @cb: the BH callback function
- * @opaque: user data for the BH callback function
- *
- * Run a BH in @ctx and wait for it to complete.
- *
- * Must be called from the main loop thread without @ctx acquired.
- * Note that main loop event processing may occur.
- */
-void aio_wait_bh_oneshot(AioContext *ctx, QEMUBHFunc *cb, void *opaque);
-
-/**
  * in_aio_context_home_thread:
  * @ctx: the aio context
  *

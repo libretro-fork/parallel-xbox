@@ -547,10 +547,8 @@ GSource *aio_get_g_source(AioContext *ctx);
 /* Return the ThreadPoolAio bound to this AioContext */
 
 /* Setup the LinuxAioState bound to this AioContext */
-struct LinuxAioState *aio_setup_linux_aio(AioContext *ctx, Error **errp);
 
 /* Return the LinuxAioState bound to this AioContext */
-struct LinuxAioState *aio_get_linux_aio(AioContext *ctx);
 
 /**
  * aio_timer_new_with_attrs:

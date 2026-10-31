@@ -817,15 +817,6 @@ static void do_qemu_init_ ## type_array(void)                               \
 type_init(do_qemu_init_ ## type_array)
 
 /**
- * type_print_class_properties:
- * @type: a QOM class name
- *
- * Print the object's class properties to stdout or the monitor.
- * Return whether an object was found.
- */
-bool type_print_class_properties(const char *type);
-
-/**
  * object_set_properties_from_keyval:
  * @obj: a QOM object
  * @qdict: a dictionary with the properties to be set
@@ -1576,23 +1567,6 @@ ObjectProperty *object_class_property_add_link(ObjectClass *oc,
                                             Object *val, Error **errp),
                               ObjectPropertyLinkFlags flags);
 
-/**
- * object_property_add_str:
- * @obj: the object to add a property to
- * @name: the name of the property
- * @get: the getter or NULL if the property is write-only.  This function must
- *   return a string to be freed by g_free().
- * @set: the setter or NULL if the property is read-only
- *
- * Add a string property using getters/setters.  This function will add a
- * property of type 'string'.
- *
- * Returns: The newly added property on success, or %NULL on failure.
- */
-ObjectProperty *object_property_add_str(Object *obj, const char *name,
-                             char *(*get)(Object *, Error **),
-                             void (*set)(Object *, const char *, Error **));
-
 ObjectProperty *object_class_property_add_str(ObjectClass *klass,
                                    const char *name,
                                    char *(*get)(Object *, Error **),
@@ -1687,25 +1661,6 @@ ObjectProperty *object_property_add_alias(Object *obj, const char *name,
                                Object *target_obj, const char *target_name);
 
 /**
- * object_property_add_const_link:
- * @obj: the object to add a property to
- * @name: the name of the property
- * @target: the object to be referred by the link
- *
- * Add an unmodifiable link for a property on an object.  This function will
- * add a property of type link<TYPE> where TYPE is the type of @target.
- *
- * The caller must ensure that @target stays alive as long as
- * this property exists.  In the case @target is a child of @obj,
- * this will be the case.  Otherwise, the caller is responsible for
- * taking a reference.
- *
- * Returns: The newly added property on success, or %NULL on failure.
- */
-ObjectProperty *object_property_add_const_link(Object *obj, const char *name,
-                                               Object *target);
-
-/**
  * object_property_set_description:
  * @obj: the object owning the property
  * @name: the name of the property
@@ -1767,19 +1722,6 @@ int object_child_foreach_recursive(Object *obj,
  * and the reference is owned by the parent object.
  */
 Object *object_property_add_new_container(Object *obj, const char *name);
-
-/**
- * object_property_help:
- * @name: the name of the property
- * @type: the type of the property
- * @defval: the default value
- * @description: description of the property
- *
- * Returns: a user-friendly formatted string describing the property
- * for help purposes.
- */
-char *object_property_help(const char *name, const char *type,
-                           QObject *defval, const char *description);
 
 G_DEFINE_AUTOPTR_CLEANUP_FUNC(Object, object_unref)
 

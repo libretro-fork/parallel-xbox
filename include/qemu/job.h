@@ -331,23 +331,6 @@ extern QemuMutex job_mutex;
 
 #define WITH_JOB_LOCK_GUARD() WITH_QEMU_LOCK_GUARD(&job_mutex)
 
-/**
- * job_lock:
- *
- * Take the mutex protecting the list of jobs and their status.
- * Most functions called by the monitor need to call job_lock
- * and job_unlock manually.  On the other hand, function called
- * by the block jobs themselves and by the block layer will take the
- * lock for you.
- */
-void job_lock(void);
-
-/**
- * job_unlock:
- *
- * Release the mutex protecting the list of jobs and their status.
- */
-void job_unlock(void);
 
 /**
  * Allocate and return a new job transaction. Jobs can be added to the
@@ -360,7 +343,6 @@ void job_unlock(void);
  * group.  Jobs wait for each other before completing.  Cancelling one job
  * cancels all jobs in the transaction.
  */
-JobTxn *job_txn_new(void);
 
 /**
  * Release a reference that was previously acquired with job_txn_add_job or
@@ -368,13 +350,11 @@ JobTxn *job_txn_new(void);
  *
  * Called with job lock *not* held.
  */
-void job_txn_unref(JobTxn *txn);
 
 /*
  * Same as job_txn_unref(), but called with job lock held.
  * Might release the lock temporarily.
  */
-void job_txn_unref_locked(JobTxn *txn);
 
 /**
  * Create a new long-running job and return it.
@@ -399,7 +379,6 @@ void *job_create(const char *job_id, const JobDriver *driver, JobTxn *txn,
  *
  * Called with job lock held.
  */
-void job_ref_locked(Job *job);
 
 /**
  * Release a reference that was previously acquired with job_ref_locked() or
@@ -407,7 +386,6 @@ void job_ref_locked(Job *job);
  *
  * Called with job lock held.
  */
-void job_unref_locked(Job *job);
 
 /**
  * @job: The job that has made progress
@@ -446,7 +424,6 @@ void job_progress_set_remaining(Job *job, uint64_t remaining);
  *
  * May be called with mutex held or not held.
  */
-void job_progress_increase_remaining(Job *job, uint64_t delta);
 
 /**
  * Conditionally enter the job coroutine if the job is ready to run, not
@@ -455,7 +432,6 @@ void job_progress_increase_remaining(Job *job, uint64_t delta);
  *
  * Called with job lock held, but might release it temporarily.
  */
-void job_enter_cond_locked(Job *job, bool(*fn)(Job *job));
 
 /**
  * @job: A job that has not yet been started.
@@ -473,7 +449,6 @@ void job_start(Job *job);
  * Continue the specified job by entering the coroutine.
  * Called with job_mutex *not* held.
  */
-void job_enter(Job *job);
 
 /**
  * @job: The job that is ready to pause.
@@ -483,7 +458,6 @@ void job_enter(Job *job);
  *
  * Called with job_mutex *not* held.
  */
-void coroutine_fn GRAPH_UNLOCKED job_pause_point(Job *job);
 
 /**
  * @job: The job that calls the function.
@@ -491,7 +465,6 @@ void coroutine_fn GRAPH_UNLOCKED job_pause_point(Job *job);
  * Yield the job coroutine.
  * Called with job_mutex *not* held.
  */
-void coroutine_fn job_yield(Job *job);
 
 /**
  * @job: The job that calls the function.
@@ -503,50 +476,40 @@ void coroutine_fn job_yield(Job *job);
  *
  * Called with job_mutex *not* held.
  */
-void coroutine_fn job_sleep_ns(Job *job, int64_t ns);
 
 /** Returns the JobType of a given Job. */
 JobType job_type(const Job *job);
 
 /** Returns the enum string for the JobType of a given Job. */
-const char *job_type_str(const Job *job);
 
 /** Returns true if the job should not be visible to the management layer. */
-bool job_is_internal(Job *job);
 
 /**
  * Returns whether the job is being cancelled.
  * Called with job_mutex *not* held.
  */
-bool job_is_cancelled(Job *job);
 
 /* Same as job_is_cancelled(), but called with job lock held. */
-bool job_is_cancelled_locked(Job *job);
 
 /**
  * Returns whether the job is scheduled for cancellation (at an
  * indefinite point).
  * Called with job_mutex *not* held.
  */
-bool job_cancel_requested(Job *job);
 
 /**
  * Returns whether the job is in a completed state.
  * Called with job lock held.
  */
-bool job_is_completed_locked(Job *job);
 
 /**
  * Returns whether the job is ready to be completed.
  * Called with job_mutex *not* held.
  */
-bool job_is_ready(Job *job);
 
 /* Same as job_is_ready(), but called with job lock held. */
-bool job_is_ready_locked(Job *job);
 
 /** Returns whether the job is paused. Called with job_mutex *not* held. */
-bool job_is_paused(Job *job);
 
 /**
  * Request @job to pause at the next pause point. Must be paired with
@@ -555,39 +518,32 @@ bool job_is_paused(Job *job);
  *
  * Called with job lock *not* held.
  */
-void job_pause(Job *job);
 
 /* Same as job_pause(), but called with job lock held. */
-void job_pause_locked(Job *job);
 
 /** Resumes a @job paused with job_pause. Called with job lock *not* held. */
-void job_resume(Job *job);
 
 /*
  * Same as job_resume(), but called with job lock held.
  * Might release the lock temporarily.
  */
-void job_resume_locked(Job *job);
 
 /**
  * Asynchronously pause the specified @job.
  * Do not allow a resume until a matching call to job_user_resume.
  * Called with job lock held.
  */
-void job_user_pause_locked(Job *job, Error **errp);
 
 /**
  * Returns true if the job is user-paused.
  * Called with job lock held.
  */
-bool job_user_paused_locked(Job *job);
 
 /**
  * Resume the specified @job.
  * Must be paired with a preceding job_user_pause_locked.
  * Called with job lock held, but might release it temporarily.
  */
-void job_user_resume_locked(Job *job, Error **errp);
 
 /**
  * Get the next element from the list of block jobs after @job, or the
@@ -596,10 +552,8 @@ void job_user_resume_locked(Job *job, Error **errp);
  * Returns the requested job, or %NULL if there are no more jobs left.
  * Called with job lock *not* held.
  */
-Job *job_next(Job *job);
 
 /* Same as job_next(), but called with job lock held. */
-Job *job_next_locked(Job *job);
 
 /**
  * Get the job identified by @id (which must not be %NULL).
@@ -607,7 +561,6 @@ Job *job_next_locked(Job *job);
  * Returns the requested job, or %NULL if it doesn't exist.
  * Called with job lock held.
  */
-Job *job_get_locked(const char *id);
 
 /**
  * Check whether the verb @verb can be applied to @job in its current state.
@@ -616,39 +569,33 @@ Job *job_get_locked(const char *id);
  *
  * Called with job lock held.
  */
-int job_apply_verb_locked(Job *job, JobVerb verb, Error **errp);
 
 /**
  * The @job could not be started, free it.
  * Called with job_mutex *not* held.
  */
-void job_early_fail(Job *job);
 
 /**
  * Moves the @job from RUNNING to READY.
  * Called with job_mutex *not* held.
  */
-void job_transition_to_ready(Job *job);
 
 /**
  * Asynchronously complete the specified @job.
  * Called with job lock held, but might release it temporarily.
  */
-void job_complete_locked(Job *job, Error **errp);
 
 /**
  * Asynchronously cancel the specified @job. If @force is true, the job should
  * be cancelled immediately without waiting for a consistent state.
  * Called with job lock held.
  */
-void job_cancel_locked(Job *job, bool force);
 
 /**
  * Cancels the specified job like job_cancel_locked(), but may refuse
  * to do so if the operation isn't meaningful in the current state of the job.
  * Called with job lock held.
  */
-void job_user_cancel_locked(Job *job, bool force, Error **errp);
 
 /**
  * Synchronously cancel the @job.  The completion callback is called
@@ -661,10 +608,8 @@ void job_user_cancel_locked(Job *job, bool force, Error **errp);
  *
  * Called with job_lock *not* held.
  */
-int job_cancel_sync(Job *job, bool force);
 
 /* Same as job_cancel_sync, but called with job lock held. */
-int job_cancel_sync_locked(Job *job, bool force);
 
 /**
  * Synchronously force-cancels all jobs using job_cancel_sync_locked().
@@ -686,7 +631,6 @@ void job_cancel_sync_all(void);
  * Returns the return value from the job.
  * Called with job_lock held.
  */
-int job_complete_sync_locked(Job *job, Error **errp);
 
 /**
  * For a @job that has finished its work and is pending awaiting explicit
@@ -698,7 +642,6 @@ int job_complete_sync_locked(Job *job, Error **errp);
  *
  * Called with job lock held.
  */
-void job_finalize_locked(Job *job, Error **errp);
 
 /**
  * Remove the concluded @job from the query list and resets the passed pointer
@@ -706,7 +649,6 @@ void job_finalize_locked(Job *job, Error **errp);
  *
  * Called with job lock held.
  */
-void job_dismiss_locked(Job **job, Error **errp);
 
 /**
  * Synchronously finishes the given @job. If @finish is given, it is called to
@@ -717,8 +659,6 @@ void job_dismiss_locked(Job **job, Error **errp);
  *
  * Called with job_lock held, but might release it temporarily.
  */
-int job_finish_sync_locked(Job *job, void (*finish)(Job *, Error **errp),
-                           Error **errp);
 
 /**
  * Sets the @job->aio_context.
@@ -729,6 +669,5 @@ int job_finish_sync_locked(Job *job, void (*finish)(Job *, Error **errp),
  * lock to protect against the read in job_do_yield_locked(), and must
  * be called when the job is quiescent.
  */
-void job_set_aio_context(Job *job, AioContext *ctx);
 
 #endif

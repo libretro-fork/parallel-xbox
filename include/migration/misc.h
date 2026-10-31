@@ -41,8 +41,6 @@ bool migrate_ram_is_ignored(RAMBlock *block);
 
 /* migration/savevm.c */
 
-void dump_vmstate_json_to_file(FILE *out_fp);
-
 /* migration/migration.c */
 void migration_object_init(void);
 

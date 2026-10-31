@@ -176,7 +176,6 @@ NICState *qemu_get_nic(NetClientState *nc);
 void *qemu_get_nic_opaque(NetClientState *nc);
 void qemu_del_net_client(NetClientState *nc);
 typedef void (*qemu_nic_foreach)(NICState *nic, void *opaque);
-void qemu_foreach_nic(qemu_nic_foreach func, void *opaque);
 int qemu_can_receive_packet(NetClientState *nc);
 int qemu_can_send_packet(NetClientState *nc);
 ssize_t qemu_sendv_packet(NetClientState *nc, const struct iovec *iov,
@@ -184,7 +183,6 @@ ssize_t qemu_sendv_packet(NetClientState *nc, const struct iovec *iov,
 ssize_t qemu_sendv_packet_async(NetClientState *nc, const struct iovec *iov,
                                 int iovcnt, NetPacketSent *sent_cb);
 ssize_t qemu_send_packet(NetClientState *nc, const uint8_t *buf, int size);
-ssize_t qemu_send_packet_raw(NetClientState *nc, const uint8_t *buf, int size);
 ssize_t qemu_send_packet_async(NetClientState *nc, const uint8_t *buf,
                                int size, NetPacketSent *sent_cb);
 void qemu_purge_queued_packets(NetClientState *nc);
@@ -260,15 +258,10 @@ struct NICInfo {
 
 /* from net.c */
 extern NetClientStateList net_clients;
-bool netdev_is_modern(const char *optstr);
-void netdev_parse_modern(const char *optstr);
-void net_client_parse(QemuOptsList *opts_list, const char *optstr);
 void show_netdevs(void);
 void net_init_clients(void);
 void net_check_clients(void);
 void net_client_set_link(NetClientState **ncs, int queues, bool up);
-void hmp_host_net_add(Monitor *mon, const QDict *qdict);
-void hmp_host_net_remove(Monitor *mon, const QDict *qdict);
 void netdev_add(QemuOpts *opts, Error **errp);
 
 #define DEFAULT_NETWORK_SCRIPT CONFIG_SYSCONFDIR "/qemu-ifup"

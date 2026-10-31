@@ -28,11 +28,4 @@
 #define QEMU_TSAN_ANNOTATE_IGNORE_WRITES_BEGIN()
 #define QEMU_TSAN_ANNOTATE_IGNORE_WRITES_END()
 
-void AnnotateHappensBefore(const char *f, int l, void *addr);
-void AnnotateHappensAfter(const char *f, int l, void *addr);
-void AnnotateThreadName(const char *f, int l, char *name);
-void AnnotateIgnoreReadsBegin(const char *f, int l);
-void AnnotateIgnoreReadsEnd(const char *f, int l);
-void AnnotateIgnoreWritesBegin(const char *f, int l);
-void AnnotateIgnoreWritesEnd(const char *f, int l);
 #endif

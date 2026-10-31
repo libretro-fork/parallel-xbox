@@ -226,14 +226,10 @@ extern int *g_chihiro_p2_hotd3_map[2];
 extern int *g_chihiro_p2_vc3_map[4];
 extern int *g_chihiro_p2_gs_map[4];
 
-bool xemu_input_chihiro_key_bound(int scancode);
-
 void xemu_input_init(void);
 void xemu_input_update_controllers(void);
 void xemu_input_update_controller(ControllerState *state);
 void xemu_input_update_sdl_kbd_controller_state(ControllerState *state);
-void xemu_input_update_light_gun(ControllerState *state); /* LIGHTGUN (not upstream) */
-void xemu_input_update_sdl_controller_state(ControllerState *state);
 void xemu_input_update_rumble(ControllerState *state);
 ControllerState *xemu_input_get_bound(int index);
 void xemu_input_bind(int index, ControllerState *state, int save);
@@ -250,9 +246,7 @@ void xemu_save_peripheral_settings(int player_index, int peripheral_index,
 void xemu_input_set_test_mode(int enabled);
 int xemu_input_get_test_mode(void);
 void xemu_input_reset_input_mapping(ControllerState *state);
-int xemu_input_lightgun_active(void);
 /* Buttons of the player's pointer device (0 when it aims otherwise). */
-uint32_t xemu_input_pointer_device_buttons(int player);
 
 #ifdef __cplusplus
 }

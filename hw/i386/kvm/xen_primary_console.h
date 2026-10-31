@@ -12,10 +12,5 @@
 #ifndef QEMU_XEN_PRIMARY_CONSOLE_H
 #define QEMU_XEN_PRIMARY_CONSOLE_H
 
-int xen_primary_console_reset(void);
-
-uint16_t xen_primary_console_get_port(void);
-uint64_t xen_primary_console_get_pfn(void);
-void *xen_primary_console_get_map(void);
 
 #endif /* QEMU_XEN_PRIMARY_CONSOLE_H */

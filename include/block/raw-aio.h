@@ -64,17 +64,6 @@ static inline bool luring_has_fua(void)
 
 #ifdef _WIN32
 typedef struct QEMUWin32AIOState QEMUWin32AIOState;
-QEMUWin32AIOState *win32_aio_init(void);
-void win32_aio_cleanup(QEMUWin32AIOState *aio);
-int win32_aio_attach(QEMUWin32AIOState *aio, HANDLE hfile);
-BlockAIOCB *win32_aio_submit(BlockDriverState *bs,
-        QEMUWin32AIOState *aio, HANDLE hfile,
-        uint64_t offset, uint64_t bytes, QEMUIOVector *qiov,
-        BlockCompletionFunc *cb, void *opaque, int type);
-void win32_aio_detach_aio_context(QEMUWin32AIOState *aio,
-                                  AioContext *old_context);
-void win32_aio_attach_aio_context(QEMUWin32AIOState *aio,
-                                  AioContext *new_context);
 #endif
 
 #endif /* QEMU_RAW_AIO_H */

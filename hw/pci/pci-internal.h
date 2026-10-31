@@ -16,7 +16,4 @@ extern PCIHostStateList pci_host_bridges;
 
 PCIBus *pci_find_bus_nr(PCIBus *bus, int bus_num);
 
-int pcie_aer_parse_error_string(const char *error_name,
-                                uint32_t *status, bool *correctable);
-
 #endif

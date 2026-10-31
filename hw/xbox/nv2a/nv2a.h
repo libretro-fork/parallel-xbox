@@ -49,7 +49,6 @@ void nv2a_profile_present(void);
 
 /* The tuned GPU's own, of no use to the stock one. */
 /* Driver self-test for the GL optimization pack; why = short reason. */
-bool nv2a_gl_probe_optimizations(char *why, size_t why_len);
 /* GL 4.1 and a passing self-test, set at GL context creation (ui/xemu.c). */
 extern int xemu_gl_opt_capable;
 void nv2a_fifo_kick_safety(void);

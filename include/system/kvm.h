@@ -185,19 +185,11 @@ typedef struct KVMRouteChange {
 
 /* external API */
 
-unsigned int kvm_get_max_memslots(void);
-unsigned int kvm_get_free_memslots(void);
 bool kvm_has_sync_mmu(void);
-int kvm_has_vcpu_events(void);
-int kvm_max_nested_state_length(void);
-int kvm_has_gsi_routing(void);
-void kvm_close(void);
 
 
 int kvm_on_sigbus_vcpu(CPUState *cpu, int code, void *addr);
 int kvm_on_sigbus(int code, void *addr);
-
-int kvm_check_extension(KVMState *s, unsigned int extension);
 
 int kvm_vm_ioctl(KVMState *s, unsigned long type, ...);
 
@@ -226,59 +218,8 @@ static inline int kvm_update_guest_debug(CPUState *cpu, unsigned long reinject_t
 
 /* internal API */
 
-int kvm_ioctl(KVMState *s, unsigned long type, ...);
-
 int kvm_vcpu_ioctl(CPUState *cpu, unsigned long type, ...);
 
-/**
- * kvm_device_ioctl - call an ioctl on a kvm device
- * @fd: The KVM device file descriptor as returned from KVM_CREATE_DEVICE
- * @type: The device-ctrl ioctl number
- *
- * Returns: -errno on error, nonnegative on success
- */
-int kvm_device_ioctl(int fd, unsigned long type, ...);
-
-/**
- * kvm_vm_check_attr - check for existence of a specific vm attribute
- * @s: The KVMState pointer
- * @group: the group
- * @attr: the attribute of that group to query for
- *
- * Returns: 1 if the attribute exists
- *          0 if the attribute either does not exist or if the vm device
- *            interface is unavailable
- */
-int kvm_vm_check_attr(KVMState *s, uint32_t group, uint64_t attr);
-
-/**
- * kvm_device_check_attr - check for existence of a specific device attribute
- * @fd: The device file descriptor
- * @group: the group
- * @attr: the attribute of that group to query for
- *
- * Returns: 1 if the attribute exists
- *          0 if the attribute either does not exist or if the vm device
- *            interface is unavailable
- */
-int kvm_device_check_attr(int fd, uint32_t group, uint64_t attr);
-
-/**
- * kvm_device_access - set or get value of a specific device attribute
- * @fd: The device file descriptor
- * @group: the group
- * @attr: the attribute of that group to set or get
- * @val: pointer to a storage area for the value
- * @write: true for set and false for get operation
- * @errp: error object handle
- *
- * Returns: 0 on success
- *          < 0 on error
- * Use kvm_device_check_attr() in order to check for the availability
- * of optional attributes.
- */
-int kvm_device_access(int fd, int group, uint64_t attr,
-                      void *val, bool write, Error **errp);
 
 /**
  * kvm_create_device - create a KVM device for the device control API
@@ -292,38 +233,12 @@ int kvm_device_access(int fd, int group, uint64_t attr,
  */
 int kvm_create_device(KVMState *s, uint64_t type, bool test);
 
-/**
- * kvm_device_supported - probe whether KVM supports specific device
- *
- * @vmfd: The fd handler for VM
- * @type: type of device
- *
- * @return: true if supported, otherwise false.
- */
-bool kvm_device_supported(int vmfd, uint64_t type);
-
-/**
- * kvm_create_and_park_vcpu - Create and park a KVM vCPU
- * @cpu: QOM CPUState object for which KVM vCPU has to be created and parked.
- *
- * @returns: 0 when success, errno (<0) when failed.
- */
-int kvm_create_and_park_vcpu(CPUState *cpu);
-
 /* Arch specific hooks */
 
 extern const KVMCapabilityInfo kvm_arch_required_capabilities[];
 
-void kvm_arch_accel_class_init(ObjectClass *oc);
-
 void kvm_arch_pre_run(CPUState *cpu, struct kvm_run *run);
-MemTxAttrs kvm_arch_post_run(CPUState *cpu, struct kvm_run *run);
 
-int kvm_arch_handle_exit(CPUState *cpu, struct kvm_run *run);
-
-int kvm_arch_process_async_events(CPUState *cpu);
-
-int kvm_arch_get_registers(CPUState *cpu, Error **errp);
 
 typedef enum kvm_put_state {
     /* state subset only touched by the VCPU itself during runtime */
@@ -334,15 +249,7 @@ typedef enum kvm_put_state {
     KVM_PUT_FULL_STATE = 3,
 } KvmPutState;
 
-int kvm_arch_put_registers(CPUState *cpu, KvmPutState level, Error **errp);
 
-int kvm_arch_get_default_type(MachineState *ms);
-
-int kvm_arch_init(MachineState *ms, KVMState *s);
-
-int kvm_arch_pre_create_vcpu(CPUState *cpu, Error **errp);
-int kvm_arch_init_vcpu(CPUState *cpu);
-int kvm_arch_destroy_vcpu(CPUState *cpu);
 
 #ifdef TARGET_KVM_HAVE_RESET_PARKED_VCPU
 void kvm_arch_reset_parked_vcpu(unsigned long vcpu_id, int kvm_fd);
@@ -352,30 +259,11 @@ static inline void kvm_arch_reset_parked_vcpu(unsigned long vcpu_id, int kvm_fd)
 }
 #endif
 
-bool kvm_vcpu_id_is_valid(int vcpu_id);
-
 /* Returns VCPU ID to be used on KVM_CREATE_VCPU ioctl() */
-unsigned long kvm_arch_vcpu_id(CPUState *cpu);
-
-void kvm_arch_on_sigbus_vcpu(CPUState *cpu, int code, void *addr);
-
-void kvm_arch_init_irq_routing(KVMState *s);
-
-int kvm_arch_fixup_msi_route(struct kvm_irq_routing_entry *route,
-                             uint64_t address, uint32_t data, PCIDevice *dev);
 
 /* Notify arch about newly added MSI routes */
-int kvm_arch_add_msi_route_post(struct kvm_irq_routing_entry *route,
-                                int vector, PCIDevice *dev);
 /* Notify arch about released MSI routes */
-int kvm_arch_release_virq_post(int virq);
 
-int kvm_arch_msi_data_to_gsi(uint32_t data);
-
-int kvm_set_irq(KVMState *s, int irq, int level);
-int kvm_irqchip_send_msi(KVMState *s, MSIMessage msg);
-
-void kvm_irqchip_add_irq_route(KVMState *s, int gsi, int irqchip, int pin);
 
 struct kvm_guest_debug;
 struct kvm_debug_exit_arch;
@@ -387,24 +275,8 @@ struct kvm_sw_breakpoint {
     QTAILQ_ENTRY(kvm_sw_breakpoint) entry;
 };
 
-struct kvm_sw_breakpoint *kvm_find_sw_breakpoint(CPUState *cpu,
-                                                 vaddr pc);
 
-int kvm_sw_breakpoints_active(CPUState *cpu);
 
-int kvm_arch_insert_sw_breakpoint(CPUState *cpu,
-                                  struct kvm_sw_breakpoint *bp);
-int kvm_arch_remove_sw_breakpoint(CPUState *cpu,
-                                  struct kvm_sw_breakpoint *bp);
-int kvm_arch_insert_hw_breakpoint(vaddr addr, vaddr len, int type);
-int kvm_arch_remove_hw_breakpoint(vaddr addr, vaddr len, int type);
-void kvm_arch_remove_all_hw_breakpoints(void);
-
-void kvm_arch_update_guest_debug(CPUState *cpu, struct kvm_guest_debug *dbg);
-
-bool kvm_arch_stop_on_emulation_error(CPUState *cpu);
-
-int kvm_vm_check_extension(KVMState *s, unsigned int extension);
 
 #define kvm_vm_enable_cap(s, capability, cap_flags, ...)             \
     ({                                                               \
@@ -430,29 +302,9 @@ int kvm_vm_check_extension(KVMState *s, unsigned int extension);
         kvm_vcpu_ioctl(cpu, KVM_ENABLE_CAP, &cap);                   \
     })
 
-void kvm_set_sigmask_len(KVMState *s, unsigned int sigmask_len);
-
-int kvm_physical_memory_addr_from_host(KVMState *s, void *ram_addr,
-                                       hwaddr *phys_addr);
-
 #endif /* COMPILING_PER_TARGET */
 
-void kvm_cpu_synchronize_state(CPUState *cpu);
 
-void kvm_init_cpu_signals(CPUState *cpu);
-
-/**
- * kvm_irqchip_add_msi_route - Add MSI route for specific vector
- * @c:      KVMRouteChange instance.
- * @vector: which vector to add. This can be either MSI/MSIX
- *          vector. The function will automatically detect whether
- *          MSI/MSIX is enabled, and fetch corresponding MSI
- *          message.
- * @dev:    Owner PCI device to add the route. If @dev is specified
- *          as @NULL, an empty MSI message will be inited.
- * @return: virq (>=0) when success, errno (<0) when failed.
- */
-int kvm_irqchip_add_msi_route(KVMRouteChange *c, int vector, PCIDevice *dev);
 void kvm_irqchip_commit_routes(KVMState *s);
 
 static inline KVMRouteChange kvm_irqchip_begin_route_changes(KVMState *s)
@@ -468,65 +320,15 @@ static inline void kvm_irqchip_commit_route_changes(KVMRouteChange *c)
     }
 }
 
-int kvm_irqchip_get_virq(KVMState *s);
 
-void kvm_add_routing_entry(KVMState *s,
-                           struct kvm_irq_routing_entry *entry);
 
-int kvm_irqchip_add_irqfd_notifier(KVMState *s, EventNotifier *n,
-                                   EventNotifier *rn, qemu_irq irq);
-int kvm_irqchip_remove_irqfd_notifier(KVMState *s, EventNotifier *n,
-                                      qemu_irq irq);
-void kvm_irqchip_set_qemuirq_gsi(KVMState *s, qemu_irq irq, int gsi);
-
-bool kvm_kernel_irqchip_allowed(void);
-bool kvm_kernel_irqchip_required(void);
-bool kvm_kernel_irqchip_split(void);
-
-/**
- * kvm_arch_irqchip_create:
- * @KVMState: The KVMState pointer
- *
- * Allow architectures to create an in-kernel irq chip themselves.
- *
- * Returns: < 0: error
- *            0: irq chip was not created
- *          > 0: irq chip was created
- */
-int kvm_arch_irqchip_create(KVMState *s);
-
-/**
- * kvm_set_one_reg - set a register value in KVM via KVM_SET_ONE_REG ioctl
- * @id: The register ID
- * @source: The pointer to the value to be set. It must point to a variable
- *          of the correct type/size for the register being accessed.
- *
- * Returns: 0 on success, or a negative errno on failure.
- */
-int kvm_set_one_reg(CPUState *cs, uint64_t id, void *source);
-
-/**
- * kvm_get_one_reg - get a register value from KVM via KVM_GET_ONE_REG ioctl
- * @id: The register ID
- * @target: The pointer where the value is to be stored. It must point to a
- *          variable of the correct type/size for the register being accessed.
- *
- * Returns: 0 on success, or a negative errno on failure.
- */
-int kvm_get_one_reg(CPUState *cs, uint64_t id, void *target);
 
 /* Notify resamplefd for EOI of specific interrupts. */
-void kvm_resample_fd_notify(int gsi);
 
 bool kvm_dirty_ring_enabled(void);
-
-void kvm_mark_guest_state_protected(void);
 
 int kvm_create_guest_memfd(uint64_t size, uint64_t flags, Error **errp);
 
 int kvm_set_memory_attributes_private(hwaddr start, uint64_t size);
-int kvm_set_memory_attributes_shared(hwaddr start, uint64_t size);
-
-int kvm_convert_memory(hwaddr start, hwaddr size, bool to_private);
 
 #endif

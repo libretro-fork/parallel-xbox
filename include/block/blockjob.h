@@ -101,31 +101,7 @@ typedef struct BlockJob {
  * the GS API.
  */
 
-/**
- * block_job_next_locked:
- * @job: A block job, or %NULL.
- *
- * Get the next element from the list of block jobs after @job, or the
- * first one if @job is %NULL.
- *
- * Returns the requested job, or %NULL if there are no more jobs left.
- * Called with job lock held.
- */
-BlockJob *block_job_next_locked(BlockJob *job);
-
-/**
- * block_job_get:
- * @id: The id of the block job.
- *
- * Get the block job identified by @id (which must not be %NULL).
- *
- * Returns the requested job, or %NULL if it doesn't exist.
- * Called with job lock *not* held.
- */
-BlockJob *block_job_get(const char *id);
-
 /* Same as block_job_get(), but called with job lock held. */
-BlockJob *block_job_get_locked(const char *id);
 
 /**
  * block_job_add_bdrv:
@@ -144,75 +120,7 @@ int GRAPH_WRLOCK
 block_job_add_bdrv(BlockJob *job, const char *name, BlockDriverState *bs,
                    uint64_t perm, uint64_t shared_perm, Error **errp);
 
-/**
- * block_job_remove_all_bdrv:
- * @job: The block job
- *
- * Remove all BlockDriverStates from the list of nodes that are involved in the
- * job. This removes the blockers added with block_job_add_bdrv().
- */
-void GRAPH_UNLOCKED block_job_remove_all_bdrv(BlockJob *job);
 
-/**
- * block_job_has_bdrv:
- * @job: The block job
- *
- * Searches for @bs in the list of nodes that are involved in the
- * job.
- */
-bool block_job_has_bdrv(BlockJob *job, BlockDriverState *bs);
-
-/**
- * block_job_set_speed_locked:
- * @job: The job to set the speed for.
- * @speed: The new value
- * @errp: Error object.
- *
- * Set a rate-limiting parameter for the job; the actual meaning may
- * vary depending on the job type.
- *
- * Called with job lock held, but might release it temporarily.
- */
-bool block_job_set_speed_locked(BlockJob *job, int64_t speed, Error **errp);
-
-/**
- * block_job_change_locked:
- * @job: The job to change.
- * @opts: The new options.
- * @errp: Error object.
- *
- * Change the job according to opts.
- */
-void block_job_change_locked(BlockJob *job, BlockJobChangeOptions *opts,
-                             Error **errp);
-
-/**
- * block_job_query_locked:
- * @job: The job to get information about.
- *
- * Return information about a job.
- *
- * Called with job lock held.
- */
-BlockJobInfo *block_job_query_locked(BlockJob *job, Error **errp);
-
-/**
- * block_job_iostatus_reset_locked:
- * @job: The job whose I/O status should be reset.
- *
- * Reset I/O status on @job and on BlockDriverState objects it uses,
- * other than job->blk.
- *
- * Called with job lock held.
- */
-void block_job_iostatus_reset_locked(BlockJob *job);
-
-/*
- * block_job_get_aio_context:
- *
- * Returns aio context associated with a block job.
- */
-AioContext *block_job_get_aio_context(BlockJob *job);
 
 
 /*
@@ -221,20 +129,5 @@ AioContext *block_job_get_aio_context(BlockJob *job);
  * See include/block/block-common.h for more information about
  * the Common API.
  */
-
-/**
- * block_job_is_internal:
- * @job: The job to determine if it is user-visible or not.
- *
- * Returns true if the job should not be visible to the management layer.
- */
-bool block_job_is_internal(BlockJob *job);
-
-/**
- * block_job_driver:
- *
- * Returns the driver associated with a block job.
- */
-const BlockJobDriver *block_job_driver(BlockJob *job);
 
 #endif

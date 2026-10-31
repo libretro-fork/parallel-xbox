@@ -62,9 +62,6 @@ typedef struct AcpiPciHpState {
     bool use_acpi_root_pci_hotplug;
 } AcpiPciHpState;
 
-void build_append_pci_bus_devices(Aml *parent_scope, PCIBus *bus);
-
-void build_append_pcihp_slots(Aml *parent_scope, PCIBus *bus);
 
 extern const VMStateDescription vmstate_acpi_pcihp_pci_status;
 

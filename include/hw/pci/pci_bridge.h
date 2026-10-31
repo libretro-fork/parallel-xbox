@@ -135,12 +135,6 @@ void pci_bridge_reset(DeviceState *qdev);
 void pci_bridge_initfn(PCIDevice *pci_dev, const char *typename);
 void pci_bridge_exitfn(PCIDevice *pci_dev);
 
-void pci_bridge_dev_plug_cb(HotplugHandler *hotplug_dev, DeviceState *dev,
-                            Error **errp);
-void pci_bridge_dev_unplug_cb(HotplugHandler *hotplug_dev, DeviceState *dev,
-                              Error **errp);
-void pci_bridge_dev_unplug_request_cb(HotplugHandler *hotplug_dev,
-                                      DeviceState *dev, Error **errp);
 
 /* TODO: add this define to pci_regs.h in linux and then in qemu. */
 #define  PCI_BRIDGE_CTL_VGA_16BIT       0x10    /* VGA 16-bit decode */

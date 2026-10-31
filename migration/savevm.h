@@ -39,7 +39,6 @@ int qemu_savevm_state_iterate(QEMUFile *f, bool postcopy);
 void qemu_savevm_state_cleanup(void);
 int qemu_savevm_state_complete_precopy(QEMUFile *f, bool iterable_only);
 int qemu_savevm_state_complete_precopy_iterable(QEMUFile *f, bool in_postcopy);
-void qemu_savevm_send_recv_bitmap(QEMUFile *f, char *block_name);
 void qemu_savevm_maybe_send_switchover_start(QEMUFile *f);
 
 

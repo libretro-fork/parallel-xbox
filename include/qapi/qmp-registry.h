@@ -41,12 +41,6 @@ typedef struct QmpCommand
 
 typedef QTAILQ_HEAD(QmpCommandList, QmpCommand) QmpCommandList;
 
-void qmp_register_command(QmpCommandList *cmds, const char *name,
-                          QmpCommandFunc *fn, QmpCommandOptions options,
-                          uint64_t features);
-
-bool qmp_command_available(const QmpCommand *cmd, Error **errp);
-
 typedef void (*qmp_cmd_callback_fn)(const QmpCommand *cmd, void *opaque);
 
 #endif

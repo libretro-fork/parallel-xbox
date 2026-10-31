@@ -33,9 +33,6 @@ void thread_pool_free_aio(ThreadPoolAio *pool);
  * thread_pool_submit_{aio,co} API: submit I/O requests in the thread's
  * current AioContext.
  */
-BlockAIOCB *thread_pool_submit_aio(ThreadPoolFunc *func, void *arg,
-                                   BlockCompletionFunc *cb, void *opaque);
-int coroutine_fn thread_pool_submit_co(ThreadPoolFunc *func, void *arg);
 void thread_pool_update_params(ThreadPoolAio *pool, struct AioContext *ctx);
 
 /* ------------------------------------------- */
@@ -58,8 +55,6 @@ void thread_pool_free(ThreadPool *pool);
  * @opaque_destroy is an optional GDestroyNotify for the @opaque argument
  * to the work function at @func.
  */
-void thread_pool_submit(ThreadPool *pool, ThreadPoolFunc *func,
-                        void *opaque, GDestroyNotify opaque_destroy);
 
 /*
  * Submit a new work (task) for the pool, making sure it starts getting
@@ -82,12 +77,10 @@ void thread_pool_submit_immediate(ThreadPool *pool, ThreadPoolFunc *func,
 void thread_pool_wait(ThreadPool *pool);
 
 /* Set the maximum number of threads in the pool. */
-bool thread_pool_set_max_threads(ThreadPool *pool, int max_threads);
 
 /*
  * Adjust the maximum number of threads in the pool to give each task its
  * own thread (exactly one thread per task).
  */
-bool thread_pool_adjust_max_threads_to_work(ThreadPool *pool);
 
 #endif

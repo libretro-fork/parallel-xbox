@@ -33,26 +33,10 @@ typedef struct MemHotplugState {
     MemStatus *devs;
 } MemHotplugState;
 
-void acpi_memory_hotplug_init(MemoryRegion *as, Object *owner,
-                              MemHotplugState *state, hwaddr io_base);
-
-void acpi_memory_plug_cb(HotplugHandler *hotplug_dev, MemHotplugState *mem_st,
-                         DeviceState *dev, Error **errp);
-void acpi_memory_unplug_request_cb(HotplugHandler *hotplug_dev,
-                                   MemHotplugState *mem_st,
-                                   DeviceState *dev, Error **errp);
-void acpi_memory_unplug_cb(MemHotplugState *mem_st,
-                           DeviceState *dev, Error **errp);
 
 extern const VMStateDescription vmstate_memory_hotplug;
 #define VMSTATE_MEMORY_HOTPLUG(memhp, state) \
     VMSTATE_STRUCT(memhp, state, 1, \
                    vmstate_memory_hotplug, MemHotplugState)
 
-void acpi_memory_ospm_status(MemHotplugState *mem_st, ACPIOSTInfoList ***list);
-
-void build_memory_hotplug_aml(Aml *table, uint32_t nr_mem,
-                              const char *res_root,
-                              const char *event_handler_method,
-                              AmlRegionSpace rs, hwaddr memhp_io_base);
 #endif

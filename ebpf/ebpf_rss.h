@@ -39,20 +39,7 @@ struct EBPFRSSConfig {
     uint16_t default_queue;
 } __attribute__((packed));
 
-void ebpf_rss_init(struct EBPFRSSContext *ctx);
 
-bool ebpf_rss_is_loaded(struct EBPFRSSContext *ctx);
 
-bool ebpf_rss_load(struct EBPFRSSContext *ctx, Error **errp);
-
-bool ebpf_rss_load_fds(struct EBPFRSSContext *ctx, int program_fd,
-                       int config_fd, int toeplitz_fd, int table_fd,
-                       Error **errp);
-
-bool ebpf_rss_set_all(struct EBPFRSSContext *ctx, struct EBPFRSSConfig *config,
-                      uint16_t *indirections_table, uint8_t *toeplitz_key,
-                      Error **errp);
-
-void ebpf_rss_unload(struct EBPFRSSContext *ctx);
 
 #endif /* QEMU_EBPF_RSS_H */

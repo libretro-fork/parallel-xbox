@@ -172,6 +172,5 @@ struct QemuModinfo {
     const char **opts;
 };
 extern const QemuModinfo qemu_modinfo[];
-void module_init_info(const QemuModinfo *info);
 
 #endif

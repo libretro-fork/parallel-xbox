@@ -88,18 +88,4 @@ Object *user_creatable_add_type(const char *type, const char *id,
  */
 void user_creatable_add_qapi(ObjectOptions *options, Error **errp);
 
-/**
- * user_creatable_print_help:
- * @type: the QOM type to be added
- * @opts: options to create
- *
- * Prints help if requested in @type or @opts. Note that if @type is neither
- * "help"/"?" nor a valid user creatable type, no help will be printed
- * regardless of @opts.
- *
- * Returns: true if a help option was found and help was printed, false
- * otherwise.
- */
-bool user_creatable_print_help(const char *type, QemuOpts *opts);
-
 #endif

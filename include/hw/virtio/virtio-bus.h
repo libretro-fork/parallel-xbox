@@ -115,19 +115,12 @@ struct VirtioBusState {
     int ioeventfd_grabbed;
 };
 
-void virtio_bus_device_plugged(VirtIODevice *vdev, Error **errp);
-void virtio_bus_reset(VirtioBusState *bus);
-void virtio_bus_device_unplugged(VirtIODevice *bus);
 /* Get the device id of the plugged device. */
 uint16_t virtio_bus_get_vdev_id(VirtioBusState *bus);
 /* Get the config_len field of the plugged device. */
-size_t virtio_bus_get_vdev_config_len(VirtioBusState *bus);
 /* Get bad features of the plugged device. */
-uint32_t virtio_bus_get_vdev_bad_features(VirtioBusState *bus);
 /* Get config of the plugged device. */
-void virtio_bus_get_vdev_config(VirtioBusState *bus, uint8_t *config);
 /* Set config of the plugged device. */
-void virtio_bus_set_vdev_config(VirtioBusState *bus, uint8_t *config);
 
 static inline VirtIODevice *virtio_bus_get_device(VirtioBusState *bus)
 {
@@ -142,19 +135,11 @@ static inline VirtIODevice *virtio_bus_get_device(VirtioBusState *bus)
 }
 
 /* Return whether the proxy allows ioeventfd.  */
-bool virtio_bus_ioeventfd_enabled(VirtioBusState *bus);
 /* Start the ioeventfd. */
-int virtio_bus_start_ioeventfd(VirtioBusState *bus);
 /* Stop the ioeventfd. */
-void virtio_bus_stop_ioeventfd(VirtioBusState *bus);
 /* Tell the bus that vhost is grabbing the ioeventfd. */
-int virtio_bus_grab_ioeventfd(VirtioBusState *bus);
 /* bus that vhost is not using the ioeventfd anymore. */
-void virtio_bus_release_ioeventfd(VirtioBusState *bus);
 /* Switch from/to the generic ioeventfd handler */
-int virtio_bus_set_host_notifier(VirtioBusState *bus, int n, bool assign);
 /* Tell the bus that the ioeventfd handler is no longer required. */
-void virtio_bus_cleanup_host_notifier(VirtioBusState *bus, int n);
 /* Whether the IOMMU is enabled for this device */
-bool virtio_bus_device_iommu_enabled(VirtIODevice *vdev);
 #endif /* VIRTIO_BUS_H */

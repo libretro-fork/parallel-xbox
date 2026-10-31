@@ -86,13 +86,10 @@ char *qemu_opt_get_del(QemuOpts *opts, const char *name);
 bool qemu_opt_has_help_opt(QemuOpts *opts);
 QemuOpt *qemu_opt_find(QemuOpts *opts, const char *name);
 bool qemu_opt_get_bool(QemuOpts *opts, const char *name, bool defval);
-uint64_t qemu_opt_get_number(QemuOpts *opts, const char *name, uint64_t defval);
 uint64_t qemu_opt_get_size(QemuOpts *opts, const char *name, uint64_t defval);
 int qemu_opt_unset(QemuOpts *opts, const char *name);
 bool qemu_opt_set(QemuOpts *opts, const char *name, const char *value,
                   Error **errp);
-bool qemu_opt_set_bool(QemuOpts *opts, const char *name, bool val,
-                       Error **errp);
 bool qemu_opt_set_number(QemuOpts *opts, const char *name, int64_t val,
                          Error **errp);
 typedef int (*qemu_opt_loopfunc)(void *opaque,
@@ -110,7 +107,6 @@ typedef struct {
 QemuOpts *qemu_opts_find(QemuOptsList *list, const char *id);
 QemuOpts *qemu_opts_create(QemuOptsList *list, const char *id,
                            int fail_if_exists, Error **errp);
-void qemu_opts_reset(QemuOptsList *list);
 void qemu_opts_loc_restore(QemuOpts *opts);
 const char *qemu_opts_id(QemuOpts *opts);
 void qemu_opts_set_id(QemuOpts *opts, char *id);

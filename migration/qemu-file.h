@@ -55,7 +55,6 @@ void qemu_put_buffer_async(QEMUFile *f, const uint8_t *buf, size_t size,
 #include "migration/qemu-file-types.h"
 
 size_t coroutine_mixed_fn qemu_peek_buffer(QEMUFile *f, uint8_t **buf, size_t size, size_t offset);
-size_t coroutine_mixed_fn qemu_get_buffer_in_place(QEMUFile *f, uint8_t **buf, size_t size);
 
 /*
  * Note that you can only peek continuous bytes from where the current pointer

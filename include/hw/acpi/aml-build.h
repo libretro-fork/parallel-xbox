@@ -262,51 +262,9 @@ struct CrsRangeSet {
  * AML elements for a table.
  */
 
-/**
- * aml_append:
- * @parent_ctx: context to which @child element is added
- * @child: element that is copied into @parent_ctx context
- *
- * Joins Aml elements together and helps to construct AML tables
- * Example of usage:
- *   Aml *table = aml_def_block("SSDT", ...);
- *   Aml *sb = aml_scope("\\_SB");
- *   Aml *dev = aml_device("PCI0");
- *
- *   aml_append(dev, aml_name_decl("HID", aml_eisaid("PNP0A03")));
- *   aml_append(sb, dev);
- *   aml_append(table, sb);
- */
-void aml_append(Aml *parent_ctx, Aml *child);
-
 /* non block AML object primitives */
-Aml *aml_name(const char *name_format, ...) G_GNUC_PRINTF(1, 2);
-Aml *aml_name_decl(const char *name, Aml *val);
-Aml *aml_return(Aml *val);
-Aml *aml_int(const uint64_t val);
-Aml *aml_arg(int pos);
-Aml *aml_store(Aml *val, Aml *target);
-Aml *aml_and(Aml *arg1, Aml *arg2, Aml *dst);
-Aml *aml_index(Aml *arg1, Aml *idx);
-Aml *aml_notify(Aml *arg1, Aml *arg2);
-Aml *aml_call2(const char *method, Aml *arg1, Aml *arg2);
-Aml *aml_call5(const char *method, Aml *arg1, Aml *arg2, Aml *arg3, Aml *arg4,
-               Aml *arg5);
-Aml *aml_io(AmlIODecode dec, uint16_t min_base, uint16_t max_base,
-            uint8_t aln, uint8_t len);
-Aml *aml_irq_no_flags(uint8_t irq);
-Aml *aml_local(int num);
-Aml *aml_eisaid(const char *str);
 
 /* Block AML object primitives */
-Aml *aml_scope(const char *name_format, ...) G_GNUC_PRINTF(1, 2);
-Aml *aml_device(const char *name_format, ...) G_GNUC_PRINTF(1, 2);
-Aml *aml_method(const char *name, int arg_count, AmlSerializeFlag sflag);
-Aml *aml_if(Aml *predicate);
-Aml *aml_package(uint8_t num_elements);
-Aml *aml_resource_template(void);
-
-void build_append_int_noprefix(GArray *table, uint64_t value, int size);
 
 typedef struct AcpiTable {
     const char *sig;
@@ -318,8 +276,6 @@ typedef struct AcpiTable {
     unsigned table_offset;
 } AcpiTable;
 
-void *acpi_data_push(GArray *table_data, unsigned size);
-
 void build_append_gas(GArray *table, AmlAddressSpace as,
                       uint8_t bit_width, uint8_t bit_offset,
                       uint8_t access_width, uint64_t address);
@@ -330,8 +286,5 @@ build_append_gas_from_struct(GArray *table, const struct AcpiGenericAddress *s)
     build_append_gas(table, s->space_id, s->bit_width, s->bit_offset,
                      s->access_width, s->address);
 }
-
-void build_tpm2(GArray *table_data, BIOSLinker *linker, GArray *tcpalog,
-                const char *oem_id, const char *oem_table_id);
 
 #endif

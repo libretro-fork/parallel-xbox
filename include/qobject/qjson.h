@@ -14,8 +14,6 @@
 #ifndef QJSON_H
 #define QJSON_H
 
-QObject *qobject_from_json(const char *string, Error **errp);
-
 QObject *qobject_from_vjsonf_nofail(const char *string, va_list ap)
     G_GNUC_PRINTF(1, 0);
 QDict *qdict_from_vjsonf_nofail(const char *string, va_list ap)
@@ -23,7 +21,5 @@ QDict *qdict_from_vjsonf_nofail(const char *string, va_list ap)
 QDict *qdict_from_jsonf_nofail(const char *string, ...)
     G_GNUC_PRINTF(1, 2);
 
-GString *qobject_to_json(const QObject *obj);
-GString *qobject_to_json_pretty(const QObject *obj, bool pretty);
 
 #endif /* QJSON_H */

@@ -197,48 +197,8 @@ static inline SCSIBus *scsi_bus_from_device(SCSIDevice *d)
     return DO_UPCAST(SCSIBus, qbus, d->qdev.parent_bus);
 }
 
-SCSIDevice *scsi_bus_legacy_add_drive(SCSIBus *bus, BlockBackend *blk,
-                                      int unit, bool removable, BlockConf *conf,
-                                      const char *serial, Error **errp);
-void scsi_bus_set_ua(SCSIBus *bus, SCSISense sense);
-void scsi_bus_legacy_handle_cmdline(SCSIBus *bus);
 
-SCSIRequest *scsi_req_alloc(const SCSIReqOps *reqops, SCSIDevice *d,
-                            uint32_t tag, uint32_t lun, void *hba_private);
-SCSIRequest *scsi_req_new(SCSIDevice *d, uint32_t tag, uint32_t lun,
-                          uint8_t *buf, size_t buf_len, void *hba_private);
-int32_t scsi_req_enqueue(SCSIRequest *req);
-SCSIRequest *scsi_req_ref(SCSIRequest *req);
-void scsi_req_unref(SCSIRequest *req);
 
-int scsi_bus_parse_cdb(SCSIDevice *dev, SCSICommand *cmd, uint8_t *buf,
-                       size_t buf_len, void *hba_private);
-int scsi_req_parse_cdb(SCSIDevice *dev, SCSICommand *cmd, uint8_t *buf,
-                       size_t buf_len);
-void scsi_req_build_sense(SCSIRequest *req, SCSISense sense);
-void scsi_req_print(SCSIRequest *req);
-void scsi_req_continue(SCSIRequest *req);
-void scsi_req_data(SCSIRequest *req, int len);
-void scsi_req_complete(SCSIRequest *req, int status);
-void scsi_req_complete_failed(SCSIRequest *req, int host_status);
-uint8_t *scsi_req_get_buf(SCSIRequest *req);
-int scsi_req_get_sense(SCSIRequest *req, uint8_t *buf, int len);
-void scsi_req_cancel_complete(SCSIRequest *req);
-void scsi_req_cancel(SCSIRequest *req);
-void scsi_req_cancel_async(SCSIRequest *req, Notifier *notifier);
-void scsi_req_retry(SCSIRequest *req);
-void scsi_device_drained_begin(SCSIDevice *sdev);
-void scsi_device_drained_end(SCSIDevice *sdev);
-void scsi_device_purge_requests(SCSIDevice *sdev, SCSISense sense);
-void scsi_device_set_ua(SCSIDevice *sdev, SCSISense sense);
-void scsi_device_report_change(SCSIDevice *dev, SCSISense sense);
-void scsi_device_unit_attention_reported(SCSIDevice *dev);
-void scsi_generic_read_device_inquiry(SCSIDevice *dev);
-int scsi_device_get_sense(SCSIDevice *dev, uint8_t *buf, int len, bool fixed);
-int scsi_SG_IO_FROM_DEV(BlockBackend *blk, uint8_t *cmd, uint8_t cmd_size,
-                        uint8_t *buf, uint8_t buf_size, uint32_t timeout);
-SCSIDevice *scsi_device_find(SCSIBus *bus, int channel, int target, int lun);
-SCSIDevice *scsi_device_get(SCSIBus *bus, int channel, int target, int lun);
 
 /* scsi-generic.c. */
 extern const SCSIReqOps scsi_generic_req_ops;

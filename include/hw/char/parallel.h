@@ -23,8 +23,4 @@ typedef struct ParallelState {
     int it_shift;
 } ParallelState;
 
-bool parallel_mm_init(MemoryRegion *address_space,
-                      hwaddr base, int it_shift, qemu_irq irq,
-                      Chardev *chr);
-
 #endif

@@ -742,24 +742,6 @@ struct RamDiscardManagerClass {
                                 RamDiscardListener *rdl);
 };
 
-/**
- * ram_discard_manager_replay_discarded:
- *
- * A wrapper to call the #RamDiscardManagerClass.replay_discarded callback
- * of the #RamDiscardManager.
- *
- * @rdm: the #RamDiscardManager
- * @section: the #MemoryRegionSection
- * @replay_fn: the #ReplayRamDiscardState callback
- * @opaque: pointer to forward to the callback
- *
- * Returns 0 on success, or a negative error if any notification failed.
- */
-int ram_discard_manager_replay_discarded(const RamDiscardManager *rdm,
-                                         MemoryRegionSection *section,
-                                         ReplayRamDiscardState replay_fn,
-                                         void *opaque);
-
 typedef struct CoalescedMemoryRange CoalescedMemoryRange;
 typedef struct MemoryRegionIoeventfd MemoryRegionIoeventfd;
 
@@ -1356,38 +1338,6 @@ bool memory_region_init_ram_flags_nomigrate(MemoryRegion *mr,
                                             uint32_t ram_flags,
                                             Error **errp);
 
-/**
- * memory_region_init_resizeable_ram:  Initialize memory region with resizable
- *                                     RAM.  Accesses into the region will
- *                                     modify memory directly.  Only an initial
- *                                     portion of this RAM is actually used.
- *                                     Changing the size while migrating
- *                                     can result in the migration being
- *                                     canceled.
- *
- * @mr: the #MemoryRegion to be initialized.
- * @owner: the object that tracks the region's reference count
- * @name: Region name, becomes part of RAMBlock name used in migration stream
- *        must be unique within any device
- * @size: used size of the region.
- * @max_size: max size of the region.
- * @resized: callback to notify owner about used size change.
- * @errp: pointer to Error*, to store an error if it happens.
- *
- * Note that this function does not do anything to cause the data in the
- * RAM memory region to be migrated; that is the responsibility of the caller.
- *
- * Return: true on success, else false setting @errp with error.
- */
-bool memory_region_init_resizeable_ram(MemoryRegion *mr,
-                                       Object *owner,
-                                       const char *name,
-                                       uint64_t size,
-                                       uint64_t max_size,
-                                       void (*resized)(const char*,
-                                                       uint64_t length,
-                                                       void *host),
-                                       Error **errp);
 #ifdef CONFIG_POSIX
 
 #endif
@@ -1770,18 +1720,6 @@ MemoryRegion *memory_region_from_host(void *ptr, ram_addr_t *offset);
  */
 void *memory_region_get_ram_ptr(MemoryRegion *mr);
 
-/* memory_region_ram_resize: Resize a RAM region.
- *
- * Resizing RAM while migrating can result in the migration being canceled.
- * Care has to be taken if the guest might have already detected the memory.
- *
- * @mr: a memory region created with @memory_region_init_resizeable_ram.
- * @newsize: the new size the region
- * @errp: pointer to Error*, to store an error if it happens.
- */
-void memory_region_ram_resize(MemoryRegion *mr, ram_addr_t newsize,
-                              Error **errp);
-
 /**
  * memory_region_set_log: Turn dirty logging on or off for a region.
  *
@@ -2057,7 +1995,6 @@ void memory_region_add_subregion_overlap(MemoryRegion *mr,
  */
 ram_addr_t memory_region_get_ram_addr(MemoryRegion *mr);
 
-uint64_t memory_region_get_alignment(const MemoryRegion *mr);
 /**
  * memory_region_del_subregion: Remove a subregion.
  *
@@ -2170,15 +2107,6 @@ MemoryRegionSection memory_region_find(MemoryRegion *mr,
                                        hwaddr addr, uint64_t size);
 
 /**
- * memory_global_dirty_log_sync: synchronize the dirty log for all memory
- *
- * Synchronizes the dirty page log for all address spaces.
- *
- * @last_stage: whether this is the last stage of live migration
- */
-void memory_global_dirty_log_sync(bool last_stage);
-
-/**
  * memory_global_after_dirty_log_sync: synchronize the dirty log for all memory
  *
  * Synchronizes the vCPUs with a thread that is reading the dirty bitmap.
@@ -2220,22 +2148,6 @@ void memory_listener_register(MemoryListener *listener, AddressSpace *filter);
  */
 void memory_listener_unregister(MemoryListener *listener);
 
-/**
- * memory_global_dirty_log_start: begin dirty logging for all regions
- *
- * @flags: purpose of starting dirty log, migration or dirty rate
- * @errp: pointer to Error*, to store an error if it happens.
- *
- * Return: true on success, else false setting @errp with error.
- */
-bool memory_global_dirty_log_start(unsigned int flags, Error **errp);
-
-/**
- * memory_global_dirty_log_stop: end dirty logging for all regions
- *
- * @flags: purpose of stopping dirty log, migration or dirty rate
- */
-void memory_global_dirty_log_stop(unsigned int flags);
 
 bool memory_region_access_valid(MemoryRegion *mr, hwaddr addr,
                                 unsigned size, bool is_write,

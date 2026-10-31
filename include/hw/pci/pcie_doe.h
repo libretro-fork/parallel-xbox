@@ -113,15 +113,4 @@ struct DOECap {
     int spdm_socket;
 };
 
-void pcie_doe_init(PCIDevice *pdev, DOECap *doe_cap, uint16_t offset,
-                   DOEProtocol *protocols, bool intr, uint16_t vec);
-void pcie_doe_fini(DOECap *doe_cap);
-bool pcie_doe_read_config(DOECap *doe_cap, uint32_t addr, int size,
-                          uint32_t *buf);
-void pcie_doe_write_config(DOECap *doe_cap, uint32_t addr,
-                           uint32_t val, int size);
-uint32_t pcie_doe_build_protocol(DOEProtocol *p);
-void *pcie_doe_get_write_mbox_ptr(DOECap *doe_cap);
-void pcie_doe_set_rsp(DOECap *doe_cap, void *rsp);
-uint32_t pcie_doe_get_obj_len(void *obj);
 #endif /* PCIE_DOE_H */

@@ -212,17 +212,6 @@ static inline int test_bit(long nr, const unsigned long *addr)
 }
 
 /**
- * find_last_bit - find the last set bit in a memory region
- * @addr: The address to start the search at
- * @size: The maximum size to search
- *
- * Returns the bit number of the last set bit,
- * or @size if there is no set bit in the bitmap.
- */
-unsigned long find_last_bit(const unsigned long *addr,
-                            unsigned long size);
-
-/**
  * find_next_bit - find the next set bit in a memory region
  * @addr: The address to base the search on
  * @offset: The bitnumber to start searching at

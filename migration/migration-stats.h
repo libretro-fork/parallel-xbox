@@ -113,13 +113,6 @@ extern MigrationAtomicStats mig_stats;
 uint64_t migration_rate_get(void);
 
 /**
- * migration_rate_reset: Reset the rate limit counter.
- *
- * This is called when we know we start a new transfer cycle.
- */
-void migration_rate_reset(void);
-
-/**
  * migration_transferred_bytes: Return number of bytes transferred
  *
  * Returns how many bytes have we transferred since the beginning of

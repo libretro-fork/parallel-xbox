@@ -140,23 +140,7 @@ struct VFIODeviceOps {
 #define strwriteerror(ret) \
     (ret < 0 ? strerror(-ret) : "short write")
 
-void vfio_device_irq_disable(VFIODevice *vbasedev, int index);
-void vfio_device_irq_unmask(VFIODevice *vbasedev, int index);
-void vfio_device_irq_mask(VFIODevice *vbasedev, int index);
-bool vfio_device_irq_set_signaling(VFIODevice *vbasedev, int index, int subindex,
-                                   int action, int fd, Error **errp);
 
-void vfio_device_reset_handler(void *opaque);
-bool vfio_device_is_mdev(VFIODevice *vbasedev);
-bool vfio_device_hiod_create_and_realize(VFIODevice *vbasedev,
-                                         const char *typename, Error **errp);
-bool vfio_device_attach(char *name, VFIODevice *vbasedev,
-                        AddressSpace *as, Error **errp);
-bool vfio_device_attach_by_iommu_type(const char *iommu_type, char *name,
-                                      VFIODevice *vbasedev, AddressSpace *as,
-                                      Error **errp);
-void vfio_device_detach(VFIODevice *vbasedev);
-VFIODevice *vfio_get_vfio_device(Object *obj);
 
 typedef QLIST_HEAD(VFIODeviceList, VFIODevice) VFIODeviceList;
 extern VFIODeviceList vfio_device_list;
@@ -252,15 +236,7 @@ struct VFIODeviceIOOps {
                         void *data, bool post);
 };
 
-void vfio_device_prepare(VFIODevice *vbasedev, VFIOContainer *bcontainer,
-                         struct vfio_device_info *info);
 
-void vfio_device_unprepare(VFIODevice *vbasedev);
-
-int vfio_device_get_region_info(VFIODevice *vbasedev, int index,
-                                struct vfio_region_info **info);
-int vfio_device_get_region_info_type(VFIODevice *vbasedev, uint32_t type,
-                                     uint32_t subtype, struct vfio_region_info **info);
 
 /**
  * Return the fd for mapping this region. This is either the device's fd (for
@@ -271,21 +247,9 @@ int vfio_device_get_region_info_type(VFIODevice *vbasedev, uint32_t type,
  *
  * Returns the fd.
  */
-int vfio_device_get_region_fd(VFIODevice *vbasedev, int index);
 
-bool vfio_device_has_region_cap(VFIODevice *vbasedev, int region, uint16_t cap_type);
-
-int vfio_device_get_irq_info(VFIODevice *vbasedev, int index,
-                                struct vfio_irq_info *info);
 #endif
 
 /* Returns 0 on success, or a negative errno. */
-bool vfio_device_get_name(VFIODevice *vbasedev, Error **errp);
-void vfio_device_free_name(VFIODevice *vbasedev);
-void vfio_device_set_fd(VFIODevice *vbasedev, const char *str, Error **errp);
-void vfio_device_init(VFIODevice *vbasedev, int type, VFIODeviceOps *ops,
-                      DeviceState *dev, bool ram_discard);
-int vfio_device_get_aw_bits(VFIODevice *vdev);
 
-void vfio_kvm_device_close(void);
 #endif /* HW_VFIO_VFIO_DEVICE_H */

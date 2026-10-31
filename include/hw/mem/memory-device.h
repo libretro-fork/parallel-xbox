@@ -164,11 +164,5 @@ struct MemoryDeviceClass {
 #define MEMORY_DEVICES_SOFT_MEMSLOT_LIMIT 256
 #define MEMORY_DEVICES_SAFE_MAX_MEMSLOTS 509
 
-void memory_device_pre_plug(MemoryDeviceState *md, MachineState *ms,
-                            Error **errp);
-void memory_device_plug(MemoryDeviceState *md, MachineState *ms);
-void memory_device_unplug(MemoryDeviceState *md, MachineState *ms);
-uint64_t memory_device_get_region_size(const MemoryDeviceState *md,
-                                       Error **errp);
 
 #endif

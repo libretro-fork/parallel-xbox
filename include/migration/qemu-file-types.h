@@ -50,8 +50,6 @@ unsigned int qemu_get_be16(QEMUFile *f);
 unsigned int qemu_get_be32(QEMUFile *f);
 uint64_t qemu_get_be64(QEMUFile *f);
 
-bool qemu_file_is_seekable(QEMUFile *f);
-
 static inline void qemu_put_be64s(QEMUFile *f, const uint64_t *pv)
 {
     qemu_put_be64(f, *pv);
@@ -164,8 +162,6 @@ static inline void qemu_get_sbe64s(QEMUFile *f, int64_t *pv)
 }
 
 size_t coroutine_mixed_fn qemu_get_counted_string(QEMUFile *f, char buf[256]);
-
-void qemu_put_counted_string(QEMUFile *f, const char *name);
 
 /**
  * migration_rate_exceeded: Check if we have exceeded rate for this interval

@@ -166,8 +166,6 @@ static inline bool buffer_is_zero(const void *buf, size_t len)
  * Input is limited to 14-bit numbers
  */
 
-int uleb128_encode_small(uint8_t *out, uint32_t n);
-int uleb128_decode_small(const uint8_t *in, uint32_t *n);
 
 /**
  * qemu_pstrcmp0:

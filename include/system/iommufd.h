@@ -38,40 +38,8 @@ struct IOMMUFDBackend {
     /*< public >*/
 };
 
-bool iommufd_backend_connect(IOMMUFDBackend *be, Error **errp);
-void iommufd_backend_disconnect(IOMMUFDBackend *be);
 
-bool iommufd_backend_alloc_ioas(IOMMUFDBackend *be, uint32_t *ioas_id,
-                                Error **errp);
-void iommufd_backend_free_id(IOMMUFDBackend *be, uint32_t id);
-int iommufd_backend_map_file_dma(IOMMUFDBackend *be, uint32_t ioas_id,
-                                 hwaddr iova, uint64_t size, int fd,
-                                 unsigned long start, bool readonly);
-int iommufd_backend_map_dma(IOMMUFDBackend *be, uint32_t ioas_id, hwaddr iova,
-                            uint64_t size, void *vaddr, bool readonly);
-int iommufd_backend_unmap_dma(IOMMUFDBackend *be, uint32_t ioas_id,
-                              hwaddr iova, uint64_t size);
-bool iommufd_backend_get_device_info(IOMMUFDBackend *be, uint32_t devid,
-                                     uint32_t *type, void *data, uint32_t len,
-                                     uint64_t *caps, Error **errp);
-bool iommufd_backend_alloc_hwpt(IOMMUFDBackend *be, uint32_t dev_id,
-                                uint32_t pt_id, uint32_t flags,
-                                uint32_t data_type, uint32_t data_len,
-                                void *data_ptr, uint32_t *out_hwpt,
-                                Error **errp);
-bool iommufd_backend_set_dirty_tracking(IOMMUFDBackend *be, uint32_t hwpt_id,
-                                        bool start, Error **errp);
-bool iommufd_backend_get_dirty_bitmap(IOMMUFDBackend *be, uint32_t hwpt_id,
-                                      uint64_t iova, ram_addr_t size,
-                                      uint64_t page_size, uint64_t *data,
-                                      Error **errp);
-bool iommufd_backend_invalidate_cache(IOMMUFDBackend *be, uint32_t id,
-                                      uint32_t data_type, uint32_t entry_len,
-                                      uint32_t *entry_num, void *data,
-                                      Error **errp);
 
-bool iommufd_change_process_capable(IOMMUFDBackend *be);
-bool iommufd_change_process(IOMMUFDBackend *be, Error **errp);
 
 #define TYPE_HOST_IOMMU_DEVICE_IOMMUFD TYPE_HOST_IOMMU_DEVICE "-iommufd"
 OBJECT_DECLARE_TYPE(HostIOMMUDeviceIOMMUFD, HostIOMMUDeviceIOMMUFDClass,
@@ -120,8 +88,4 @@ struct HostIOMMUDeviceIOMMUFDClass {
     bool (*detach_hwpt)(HostIOMMUDeviceIOMMUFD *idev, Error **errp);
 };
 
-bool host_iommu_device_iommufd_attach_hwpt(HostIOMMUDeviceIOMMUFD *idev,
-                                           uint32_t hwpt_id, Error **errp);
-bool host_iommu_device_iommufd_detach_hwpt(HostIOMMUDeviceIOMMUFD *idev,
-                                           Error **errp);
 #endif

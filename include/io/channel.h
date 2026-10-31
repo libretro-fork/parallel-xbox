@@ -189,18 +189,6 @@ bool qio_channel_has_feature(QIOChannel *ioc,
                              QIOChannelFeature feature);
 
 /**
- * qio_channel_set_name:
- * @ioc: the channel object
- * @name: the name of the channel
- *
- * Sets the name of the channel, which serves as an aid
- * to debugging. The name is used when creating GSource
- * watches for this channel.
- */
-void qio_channel_set_name(QIOChannel *ioc,
-                          const char *name);
-
-/**
  * qio_channel_readv_full:
  * @ioc: the channel object
  * @iov: the array of memory regions to read data into
@@ -298,33 +286,6 @@ ssize_t qio_channel_writev_full(QIOChannel *ioc,
                                 int flags,
                                 Error **errp);
 
-/**
- * qio_channel_readv_all:
- * @ioc: the channel object
- * @iov: the array of memory regions to read data into
- * @niov: the length of the @iov array
- * @errp: pointer to a NULL-initialized error object
- *
- * Read data from the IO channel, storing it in the
- * memory regions referenced by @iov. Each element
- * in the @iov will be fully populated with data
- * before the next one is used. The @niov parameter
- * specifies the total number of elements in @iov.
- *
- * The function will wait for all requested data
- * to be read, yielding from the current coroutine
- * if required.
- *
- * If end-of-file occurs before all requested data
- * has been read, an error will be reported.
- *
- * Returns: 0 if all bytes were read, or -1 on error
- */
-int coroutine_mixed_fn qio_channel_readv_all(QIOChannel *ioc,
-                                             const struct iovec *iov,
-                                             size_t niov,
-                                             Error **errp);
-
 
 /**
  * qio_channel_writev_all:
@@ -350,25 +311,6 @@ int coroutine_mixed_fn qio_channel_writev_all(QIOChannel *ioc,
                                               size_t niov,
                                               Error **errp);
 
-
-/**
- * qio_channel_write_all:
- * @ioc: the channel object
- * @buf: the memory region to write data into
- * @buflen: the number of bytes to @buf
- * @errp: pointer to a NULL-initialized error object
- *
- * Writes @buflen bytes from @buf, possibly blocking or (if the
- * channel is non-blocking) yielding from the current coroutine
- * multiple times until the entire content is written.  Otherwise
- * behaves as qio_channel_write().
- *
- * Returns: 0 if all bytes were written, or -1 on error
- */
-int coroutine_mixed_fn qio_channel_write_all(QIOChannel *ioc,
-                                             const void *buf,
-                                             size_t buflen,
-                                             Error **errp);
 
 /**
  * qio_channel_close:
@@ -404,59 +346,6 @@ int qio_channel_close(QIOChannel *ioc,
 int qio_channel_shutdown(QIOChannel *ioc,
                          QIOChannelShutdown how,
                          Error **errp);
-
-/**
- * qio_channel_set_delay:
- * @ioc: the channel object
- * @enabled: the new flag state
- *
- * Controls whether the underlying transport is
- * permitted to delay writes in order to merge
- * small packets. If @enabled is true, then the
- * writes may be delayed in order to opportunistically
- * merge small packets into larger ones. If @enabled
- * is false, writes are dispatched immediately with
- * no delay.
- *
- * When @enabled is false, applications may wish to
- * use the qio_channel_set_cork() method to explicitly
- * control write merging.
- *
- * On channels which are backed by a socket, this
- * API corresponds to the inverse of TCP_NODELAY flag,
- * controlling whether the Nagle algorithm is active.
- *
- * This setting is merely a hint, so implementations are
- * free to ignore this without it being considered an
- * error.
- */
-void qio_channel_set_delay(QIOChannel *ioc,
-                           bool enabled);
-
-/**
- * qio_channel_set_cork:
- * @ioc: the channel object
- * @enabled: the new flag state
- *
- * Controls whether the underlying transport is
- * permitted to dispatch data that is written.
- * If @enabled is true, then any data written will
- * be queued in local buffers until @enabled is
- * set to false once again.
- *
- * This feature is typically used when the automatic
- * write coalescing facility is disabled via the
- * qio_channel_set_delay() method.
- *
- * On channels which are backed by a socket, this
- * API corresponds to the TCP_CORK flag.
- *
- * This setting is merely a hint, so implementations are
- * free to ignore this without it being considered an
- * error.
- */
-void qio_channel_set_cork(QIOChannel *ioc,
-                          bool enabled);
 
 
 
@@ -507,32 +396,6 @@ void qio_channel_wait_cond(QIOChannel *ioc,
                            GIOCondition condition);
 
 /**
- * qio_channel_set_aio_fd_handler:
- * @ioc: the channel object
- * @read_ctx: the AioContext to set the read handler on or NULL
- * @io_read: the read handler
- * @write_ctx: the AioContext to set the write handler on or NULL
- * @io_write: the write handler
- * @opaque: the opaque value passed to the handler
- *
- * It can be used by channel implementations to forward the handlers
- * to another channel (e.g. from #QIOChannelTLS to the
- * underlying socket).
- *
- * When @read_ctx is NULL, don't touch the read handler. When @write_ctx is
- * NULL, don't touch the write handler. Note that setting the read handler
- * clears the write handler, and vice versa, if they share the same AioContext.
- * Therefore the caller must pass both handlers together when sharing the same
- * AioContext.
- */
-void qio_channel_set_aio_fd_handler(QIOChannel *ioc,
-                                    AioContext *read_ctx,
-                                    IOHandler *io_read,
-                                    AioContext *write_ctx,
-                                    IOHandler *io_write,
-                                    void *opaque);
-
-/**
  * qio_channel_readv_full_all_eof:
  * @ioc: the channel object
  * @iov: the array of memory regions to read data to
@@ -554,13 +417,6 @@ void qio_channel_set_aio_fd_handler(QIOChannel *ioc,
  *          occurs without data, or -1 on error
  */
 
-int coroutine_mixed_fn qio_channel_readv_full_all_eof(QIOChannel *ioc,
-                                                      const struct iovec *iov,
-                                                      size_t niov,
-                                                      int **fds, size_t *nfds,
-                                                      int flags,
-                                                      Error **errp);
-
 /**
  * qio_channel_readv_full_all:
  * @ioc: the channel object
@@ -580,12 +436,6 @@ int coroutine_mixed_fn qio_channel_readv_full_all_eof(QIOChannel *ioc,
  *
  * Returns: 0 if all bytes were read, or -1 on error
  */
-
-int coroutine_mixed_fn qio_channel_readv_full_all(QIOChannel *ioc,
-                                                  const struct iovec *iov,
-                                                  size_t niov,
-                                                  int **fds, size_t *nfds,
-                                                  Error **errp);
 
 /**
  * qio_channel_writev_full_all:

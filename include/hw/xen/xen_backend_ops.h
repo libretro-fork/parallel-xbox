@@ -393,6 +393,4 @@ static inline bool qemu_xen_xs_transaction_end(struct qemu_xs_handle *h,
     return xen_xenstore_ops->transaction_end(h, t, abort);
 }
 
-void setup_xen_backend_ops(void);
-
 #endif /* QEMU_XEN_BACKEND_OPS_H */

@@ -270,14 +270,10 @@ typedef struct cxl_device_state {
 } CXLDeviceState;
 
 /* Initialize the register block for a device */
-void cxl_device_register_block_init(Object *obj, CXLDeviceState *dev,
-                                    CXLCCI *cci);
 
 typedef struct CXLType3Dev CXLType3Dev;
 typedef struct CSWMBCCIDev CSWMBCCIDev;
 /* Set up default values for the register block */
-void cxl_device_register_init_t3(CXLType3Dev *ct3d, int msi_n);
-void cxl_device_register_init_swcci(CSWMBCCIDev *sw, int msi_n);
 
 /*
  * CXL r3.1 Section 8.2.8.1: CXL Device Capabilities Array Register
@@ -288,9 +284,6 @@ REG64(CXL_DEV_CAP_ARRAY, 0)
     FIELD(CXL_DEV_CAP_ARRAY, CAP_ID, 0, 16)
     FIELD(CXL_DEV_CAP_ARRAY, CAP_VERSION, 16, 8)
     FIELD(CXL_DEV_CAP_ARRAY, CAP_COUNT, 32, 16)
-
-void cxl_event_set_status(CXLDeviceState *cxl_dstate, CXLEventLogType log_type,
-                          bool available);
 
 /*
  * Helper macro to initialize capability headers for CXL devices.
@@ -324,23 +317,6 @@ CXL_DEVICE_CAPABILITY_HEADER_REGISTER(MEMORY_DEVICE,
                                       CXL_DEVICE_CAP_HDR1_OFFSET +
                                           CXL_DEVICE_CAP_REG_SIZE * 2)
 
-void cxl_initialize_mailbox_t3(CXLCCI *cci, DeviceState *d, size_t payload_max);
-void cxl_initialize_mailbox_swcci(CXLCCI *cci, DeviceState *intf,
-                                  DeviceState *d, size_t payload_max);
-void cxl_init_cci(CXLCCI *cci, size_t payload_max);
-void cxl_destroy_cci(CXLCCI *cci);
-void cxl_add_cci_commands(CXLCCI *cci, const struct cxl_cmd (*cxl_cmd_set)[256],
-                          size_t payload_max);
-int cxl_process_cci_message(CXLCCI *cci, uint8_t set, uint8_t cmd,
-                            size_t len_in, uint8_t *pl_in,
-                            size_t *len_out, uint8_t *pl_out,
-                            bool *bg_started);
-void cxl_initialize_t3_fm_owned_ld_mctpcci(CXLCCI *cci, DeviceState *d,
-                                           DeviceState *intf,
-                                           size_t payload_max);
-
-void cxl_initialize_t3_ld_cci(CXLCCI *cci, DeviceState *d,
-                              DeviceState *intf, size_t payload_max);
 
 #define cxl_device_cap_init(dstate, reg, cap_id, ver)                      \
     do {                                                                   \
@@ -674,62 +650,7 @@ struct CSWMBCCIDev {
 #define TYPE_CXL_SWITCH_MAILBOX_CCI "cxl-switch-mailbox-cci"
 OBJECT_DECLARE_TYPE(CSWMBCCIDev, CSWMBCCIClass, CXL_SWITCH_MAILBOX_CCI)
 
-MemTxResult cxl_type3_read(PCIDevice *d, hwaddr host_addr, uint64_t *data,
-                           unsigned size, MemTxAttrs attrs);
-MemTxResult cxl_type3_write(PCIDevice *d, hwaddr host_addr, uint64_t data,
-                            unsigned size, MemTxAttrs attrs);
 
-uint64_t cxl_device_get_timestamp(CXLDeviceState *cxlds);
 
-void cxl_event_init(CXLDeviceState *cxlds, int start_msg_num);
-bool cxl_event_insert(CXLDeviceState *cxlds, CXLEventLogType log_type,
-                      CXLEventRecordRaw *event);
-CXLRetCode cxl_event_get_records(CXLDeviceState *cxlds, CXLGetEventPayload *pl,
-                                 uint8_t log_type, int max_recs,
-                                 size_t *len);
-CXLRetCode cxl_event_clear_records(CXLDeviceState *cxlds,
-                                   CXLClearEventPayload *pl);
-void cxl_discard_all_event_records(CXLDeviceState *cxlds);
 
-void cxl_event_irq_assert(CXLType3Dev *ct3d);
-
-void cxl_set_poison_list_overflowed(CXLType3Dev *ct3d);
-void cxl_clear_poison_list_overflowed(CXLType3Dev *ct3d);
-
-CXLDCRegion *cxl_find_dc_region(CXLType3Dev *ct3d, uint64_t dpa, uint64_t len);
-
-void cxl_remove_extent_from_extent_list(CXLDCExtentList *list,
-                                        CXLDCExtent *extent);
-void cxl_insert_extent_to_extent_list(CXLDCExtentList *list, uint64_t dpa,
-                                      uint64_t len, uint8_t *tag,
-                                      uint16_t shared_seq);
-bool test_any_bits_set(const unsigned long *addr, unsigned long nr,
-                       unsigned long size);
-bool cxl_extents_contains_dpa_range(CXLDCExtentList *list,
-                                    uint64_t dpa, uint64_t len);
-CXLDCExtentGroup *cxl_insert_extent_to_extent_group(CXLDCExtentGroup *group,
-                                                    uint64_t dpa,
-                                                    uint64_t len,
-                                                    uint8_t *tag,
-                                                    uint16_t shared_seq);
-void cxl_extent_group_list_insert_tail(CXLDCExtentGroupList *list,
-                                       CXLDCExtentGroup *group);
-uint32_t cxl_extent_group_list_delete_front(CXLDCExtentGroupList *list);
-void ct3_set_region_block_backed(CXLType3Dev *ct3d, uint64_t dpa,
-                                 uint64_t len);
-void ct3_clear_region_block_backed(CXLType3Dev *ct3d, uint64_t dpa,
-                                   uint64_t len);
-bool ct3_test_region_block_backed(CXLType3Dev *ct3d, uint64_t dpa,
-                                  uint64_t len);
-void cxl_assign_event_header(CXLEventRecordHdr *hdr,
-                             const QemuUUID *uuid, uint32_t flags,
-                             uint8_t length, uint64_t timestamp);
-void cxl_create_dc_event_records_for_extents(CXLType3Dev *ct3d,
-                                             CXLDCEventType type,
-                                             CXLDCExtentRaw extents[],
-                                             uint32_t ext_count);
-bool cxl_extents_overlaps_dpa_range(CXLDCExtentList *list,
-                                    uint64_t dpa, uint64_t len);
-bool cxl_extent_groups_overlaps_dpa_range(CXLDCExtentGroupList *list,
-                                          uint64_t dpa, uint64_t len);
 #endif

@@ -186,13 +186,6 @@ bdrv_graph_rdunlock_main_loop(void);
 void GRAPH_RDLOCK assert_bdrv_graph_readable(void);
 
 /*
- * assert_bdrv_graph_writable:
- * Make sure that the writer is the main loop and has set @has_writer,
- * so that incoming readers will pause.
- */
-void GRAPH_WRLOCK assert_bdrv_graph_writable(void);
-
-/*
  * Calling this function tells TSA that we know that the lock is effectively
  * taken even though we cannot prove it (yet) with GRAPH_RDLOCK. This can be
  * useful in intermediate stages of a conversion to using the GRAPH_RDLOCK

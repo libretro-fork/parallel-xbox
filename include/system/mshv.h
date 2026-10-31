@@ -45,16 +45,6 @@ typedef struct MshvState MshvState;
 extern MshvState *mshv_state;
 
 /* interrupt */
-int mshv_request_interrupt(MshvState *mshv_state, uint32_t interrupt_type, uint32_t vector,
-                           uint32_t vp_index, bool logical_destination_mode,
-                           bool level_triggered);
 
-int mshv_irqchip_add_msi_route(int vector, PCIDevice *dev);
-int mshv_irqchip_update_msi_route(int virq, MSIMessage msg, PCIDevice *dev);
-void mshv_irqchip_commit_routes(void);
-void mshv_irqchip_release_virq(int virq);
-int mshv_irqchip_add_irqfd_notifier_gsi(const EventNotifier *n,
-                                        const EventNotifier *rn, int virq);
-int mshv_irqchip_remove_irqfd_notifier_gsi(const EventNotifier *n, int virq);
 
 #endif

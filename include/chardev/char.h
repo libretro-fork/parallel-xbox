@@ -116,14 +116,6 @@ Chardev *qemu_chr_new(const char *label, const char *filename,
                       GMainContext *context);
 
 /**
-* qemu_chr_change:
-* @opts: the new backend options
- *
- * Change an existing character backend
- */
-void qemu_chr_change(QemuOpts *opts, Error **errp);
-
-/**
  * qemu_chr_be_can_write:
  *
  * Determine how much data the front end can currently accept.  This function

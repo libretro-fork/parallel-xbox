@@ -88,8 +88,6 @@ struct MMIOKBDState {
 #define I8042_A20_LINE "a20"
 
 
-void i8042_isa_mouse_fake_event(ISAKBDState *isa);
-
 static inline bool i8042_present(void)
 {
     bool amb = false;

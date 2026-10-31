@@ -21,11 +21,6 @@
 
 #include "system/memory.h"
 
-void rdma_start_outgoing_migration(void *opaque, InetSocketAddress *host_port,
-                                   Error **errp);
-
-void rdma_start_incoming_migration(InetSocketAddress *host_port, Error **errp);
-
 /*
  * Constants used by rdma return codes
  */

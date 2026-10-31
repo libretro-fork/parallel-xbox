@@ -98,16 +98,5 @@ struct PS2MouseState {
 OBJECT_DECLARE_SIMPLE_TYPE(PS2MouseState, PS2_MOUSE_DEVICE)
 
 /* ps2.c */
-void ps2_write_mouse(PS2MouseState *s, int val);
-void ps2_write_keyboard(PS2KbdState *s, int val);
-uint32_t ps2_read_data(PS2State *s);
-void ps2_queue_noirq(PS2State *s, int b);
-void ps2_queue(PS2State *s, int b);
-void ps2_queue_2(PS2State *s, int b1, int b2);
-void ps2_queue_3(PS2State *s, int b1, int b2, int b3);
-void ps2_queue_4(PS2State *s, int b1, int b2, int b3, int b4);
-void ps2_keyboard_set_translation(PS2KbdState *s, int mode);
-void ps2_mouse_fake_event(PS2MouseState *s);
-int ps2_queue_empty(PS2State *s);
 
 #endif /* HW_PS2_H */

@@ -9,7 +9,6 @@ typedef enum {
 } QemuFsType;
 
 size_t qemu_fd_getpagesize(int fd);
-QemuFsType qemu_fd_getfs(int fd);
 
 /**
  * qemu_ram_mmap: mmap anonymous memory, the specified file or device.

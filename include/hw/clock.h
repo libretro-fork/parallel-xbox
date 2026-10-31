@@ -129,18 +129,6 @@ void clock_set_callback(Clock *clk, ClockCallback *cb,
                         void *opaque, unsigned int events);
 
 /**
- * clock_set_source:
- * @clk: the clock.
- * @src: the source clock
- *
- * Setup @src as the clock source of @clk. The current @src period
- * value is also copied to @clk and its subtree but no callback is
- * called.
- * Further @src update will be propagated to @clk and its subtree.
- */
-void clock_set_source(Clock *clk, Clock *src);
-
-/**
  * clock_has_source:
  * @clk: the clock
  *
@@ -317,32 +305,5 @@ static inline bool clock_is_enabled(const Clock *clk)
 {
     return clock_get(clk) != 0;
 }
-
-/**
- * clock_set_mul_div: set multiplier/divider for child clocks
- * @clk: clock
- * @multiplier: multiplier value
- * @divider: divider value
- *
- * @return: true if the clock is changed.
- *
- * By default, a Clock's children will all run with the same period
- * as their parent. This function allows you to adjust the multiplier
- * and divider used to derive the child clock frequency.
- * For example, setting a multiplier of 2 and a divider of 3
- * will run child clocks with a period 2/3 of the parent clock,
- * so if the parent clock is an 8MHz clock the children will
- * be 12MHz.
- *
- * Setting the multiplier to 0 will stop the child clocks.
- * Setting the divider to 0 is a programming error (diagnosed with
- * an assertion failure).
- * Setting a multiplier value that results in the child period
- * overflowing is not diagnosed.
- *
- * Note that this function does not call clock_propagate(); the
- * caller should do that if necessary.
- */
-bool clock_set_mul_div(Clock *clk, uint32_t multiplier, uint32_t divider);
 
 #endif /* QEMU_HW_CLOCK_H */

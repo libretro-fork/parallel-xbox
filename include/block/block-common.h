@@ -558,23 +558,10 @@ typedef struct HDGeometry {
  * all of them.
  */
 
-char *bdrv_perm_names(uint64_t perm);
-uint64_t bdrv_qapi_perm_to_blk_perm(BlockPermission qapi_perm);
 
 void bdrv_init_with_whitelist(void);
-bool bdrv_uses_whitelist(void);
-int bdrv_is_whitelisted(BlockDriver *drv, bool read_only);
 
-int bdrv_parse_aio(const char *mode, int *flags);
-int bdrv_parse_cache_mode(const char *mode, int *flags, bool *writethrough);
-int bdrv_parse_discard_flags(const char *mode, int *flags);
 
-int path_has_protocol(const char *path);
 int path_is_absolute(const char *path);
-char *path_combine(const char *base_path, const char *filename);
-
-char *bdrv_get_full_backing_filename_from_filename(const char *backed,
-                                                   const char *backing,
-                                                   Error **errp);
 
 #endif /* BLOCK_COMMON_H */

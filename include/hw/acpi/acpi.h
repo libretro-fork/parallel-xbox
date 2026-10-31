@@ -185,8 +185,6 @@ void acpi_update_sci(ACPIREGS *acpi_regs, qemu_irq irq);
 extern char unsigned *acpi_tables;
 extern size_t acpi_tables_len;
 
-void acpi_table_add(const QemuOpts *opts, Error **errp);
-
 typedef struct AcpiSlicOem AcpiSlicOem;
 struct AcpiSlicOem {
   char *id;

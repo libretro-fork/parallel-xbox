@@ -68,8 +68,6 @@ struct X86IOMMUState {
     QLIST_HEAD(, IEC_Notifier) iec_notifiers; /* IEC notify list */
 };
 
-bool x86_iommu_ir_supported(X86IOMMUState *s);
-
 /* Generic IRQ entry information when interrupt remapping is enabled */
 struct X86IOMMUIrq {
     /* Used by both IOAPIC/MSI interrupt remapping */
@@ -129,32 +127,6 @@ struct X86IOMMU_MSIMessage {
     };
 };
 
-/**
- * x86_iommu_get_default - get default IOMMU device
- * @return: pointer to default IOMMU device
- */
-X86IOMMUState *x86_iommu_get_default(void);
-
-/**
- * x86_iommu_iec_register_notifier - register IEC (Interrupt Entry
- *                                   Cache) notifiers
- * @iommu: IOMMU device to register
- * @fn: IEC notifier hook function
- * @data: notifier private data
- */
-void x86_iommu_iec_register_notifier(X86IOMMUState *iommu,
-                                     iec_notify_fn fn, void *data);
-
-/**
- * x86_iommu_iec_notify_all - Notify IEC invalidations
- * @iommu: IOMMU device that sends the notification
- * @global: whether this is a global invalidation. If true, @index
- *          and @mask are undefined.
- * @index: starting index of interrupt entry to invalidate
- * @mask: index mask for the invalidation
- */
-void x86_iommu_iec_notify_all(X86IOMMUState *iommu, bool global,
-                              uint32_t index, uint32_t mask);
 
 /**
  * x86_iommu_irq_to_msi_message - Populate one MSIMessage from X86IOMMUIrq

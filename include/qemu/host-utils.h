@@ -761,33 +761,6 @@ static inline uint32_t pow2roundup32(uint32_t x)
     return x + 1;
 }
 
-/**
- * urshift - 128-bit Unsigned Right Shift.
- * @plow: in/out - lower 64-bit integer.
- * @phigh: in/out - higher 64-bit integer.
- * @shift: in - bytes to shift, between 0 and 127.
- *
- * Result is zero-extended and stored in plow/phigh, which are
- * input/output variables. Shift values outside the range will
- * be mod to 128. In other words, the caller is responsible to
- * verify/assert both the shift range and plow/phigh pointers.
- */
-void urshift(uint64_t *plow, uint64_t *phigh, int32_t shift);
-
-/**
- * ulshift - 128-bit Unsigned Left Shift.
- * @plow: in/out - lower 64-bit integer.
- * @phigh: in/out - higher 64-bit integer.
- * @shift: in - bytes to shift, between 0 and 127.
- * @overflow: out - true if any 1-bit is shifted out.
- *
- * Result is zero-extended and stored in plow/phigh, which are
- * input/output variables. Shift values outside the range will
- * be mod to 128. In other words, the caller is responsible to
- * verify/assert both the shift range and plow/phigh pointers.
- */
-void ulshift(uint64_t *plow, uint64_t *phigh, int32_t shift, bool *overflow);
-
 /* From the GNU Multi Precision Library - longlong.h __udiv_qrnnd
  * (https://gmplib.org/repo/gmp/file/tip/longlong.h)
  *
@@ -865,6 +838,4 @@ static inline uint64_t udiv_qrnnd(uint64_t *r, uint64_t n1,
 #endif
 }
 
-Int128 divu256(Int128 *plow, Int128 *phigh, Int128 divisor);
-Int128 divs256(Int128 *plow, Int128 *phigh, Int128 divisor);
 #endif

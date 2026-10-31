@@ -12,15 +12,6 @@
 #ifndef QEMU_XEN_OVERLAY_H
 #define QEMU_XEN_OVERLAY_H
 
-void xen_overlay_create(void);
 
-int xen_overlay_map_shinfo_page(uint64_t gpa);
-void *xen_overlay_get_shinfo_ptr(void);
-
-int xen_sync_long_mode(void);
-int xen_set_long_mode(bool long_mode);
-bool xen_is_long_mode(void);
-
-void xen_overlay_do_map_page(MemoryRegion *page, uint64_t gpa);
 
 #endif /* QEMU_XEN_OVERLAY_H */

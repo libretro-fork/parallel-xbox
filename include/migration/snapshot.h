@@ -19,22 +19,6 @@
 #include "qapi/qapi-types-run-state.h"
 
 /**
- * save_snapshot: Save an internal snapshot.
- * @name: name of internal snapshot
- * @overwrite: replace existing snapshot with @name
- * @vmstate: blockdev node name to store VM state in
- * @has_devices: whether to use explicit device list
- * @devices: explicit device list to snapshot
- * @errp: pointer to error object
- * On success, return %true.
- * On failure, store an error through @errp and return %false.
- */
-bool save_snapshot(const char *name, bool overwrite,
-                   const char *vmstate,
-                   bool has_devices, strList *devices,
-                   Error **errp);
-
-/**
  * load_snapshot: Load an internal snapshot.
  * @name: name of internal snapshot
  * @vmstate: blockdev node name to load VM state from
@@ -49,23 +33,5 @@ bool load_snapshot(const char *name,
                    bool has_devices, strList *devices,
                    Error **errp);
 
-/**
- * delete_snapshot: Delete a snapshot.
- * @name: path to snapshot
- * @has_devices: whether to use explicit device list
- * @devices: explicit device list to snapshot
- * @errp: pointer to error object
- * On success, return %true.
- * On failure, store an error through @errp and return %false.
- */
-bool delete_snapshot(const char *name,
-                    bool has_devices, strList *devices,
-                    Error **errp);
-
-/**
- * load_snapshot_resume: Restore runstate after loading snapshot.
- * @state: state to restore
- */
-void load_snapshot_resume(RunState state);
 
 #endif

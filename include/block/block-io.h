@@ -45,8 +45,6 @@ int co_wrapper_mixed_bdrv_rdlock
 bdrv_pwrite_zeroes(BdrvChild *child, int64_t offset, int64_t bytes,
                    BdrvRequestFlags flags);
 
-int bdrv_make_zero(BdrvChild *child, BdrvRequestFlags flags);
-
 int co_wrapper_mixed_bdrv_rdlock
 bdrv_pread(BdrvChild *child, int64_t offset, int64_t bytes, void *buf,
            BdrvRequestFlags flags);
@@ -77,8 +75,6 @@ int coroutine_fn GRAPH_RDLOCK
 bdrv_co_truncate(BdrvChild *child, int64_t offset, bool exact,
                  PreallocMode prealloc, BdrvRequestFlags flags, Error **errp);
 
-int64_t coroutine_fn GRAPH_RDLOCK bdrv_co_nb_sectors(BlockDriverState *bs);
-int64_t coroutine_mixed_fn bdrv_nb_sectors(BlockDriverState *bs);
 
 int64_t coroutine_fn GRAPH_RDLOCK bdrv_co_getlength(BlockDriverState *bs);
 int64_t co_wrapper_mixed_bdrv_rdlock bdrv_getlength(BlockDriverState *bs);
@@ -100,7 +96,6 @@ bdrv_co_delete_file_noerr(BlockDriverState *bs);
 
 
 /* async block I/O */
-void bdrv_aio_cancel_async(BlockAIOCB *acb);
 
 /* sg packet commands */
 int coroutine_fn GRAPH_RDLOCK
@@ -124,8 +119,6 @@ int coroutine_fn GRAPH_RDLOCK bdrv_co_zone_append(BlockDriverState *bs,
                                                   int64_t *offset,
                                                   QEMUIOVector *qiov,
                                                   BdrvRequestFlags flags);
-
-bool bdrv_can_write_zeroes_with_unmap(BlockDriverState *bs);
 
 int coroutine_fn GRAPH_RDLOCK
 bdrv_co_block_status(BlockDriverState *bs, int64_t offset, int64_t bytes,
@@ -168,13 +161,8 @@ int GRAPH_RDLOCK
 bdrv_apply_auto_read_only(BlockDriverState *bs, const char *errmsg,
                           Error **errp);
 
-bool bdrv_is_read_only(BlockDriverState *bs);
-bool bdrv_is_writable(BlockDriverState *bs);
-bool bdrv_is_sg(BlockDriverState *bs);
-int bdrv_get_flags(BlockDriverState *bs);
 
 bool coroutine_fn GRAPH_RDLOCK bdrv_co_is_inserted(BlockDriverState *bs);
-bool co_wrapper_bdrv_rdlock bdrv_is_inserted(BlockDriverState *bs);
 
 void coroutine_fn GRAPH_RDLOCK
 bdrv_co_lock_medium(BlockDriverState *bs, bool locked);
@@ -182,9 +170,6 @@ bdrv_co_lock_medium(BlockDriverState *bs, bool locked);
 void coroutine_fn GRAPH_RDLOCK
 bdrv_co_eject(BlockDriverState *bs, bool eject_flag);
 
-const char *bdrv_get_format_name(BlockDriverState *bs);
-
-bool GRAPH_RDLOCK bdrv_supports_compressed_writes(BlockDriverState *bs);
 const char *bdrv_get_node_name(const BlockDriverState *bs);
 
 const char * GRAPH_RDLOCK
@@ -203,13 +188,6 @@ ImageInfoSpecific * GRAPH_RDLOCK
 bdrv_get_specific_info(BlockDriverState *bs, Error **errp);
 
 BlockStatsSpecific *bdrv_get_specific_stats(BlockDriverState *bs);
-void bdrv_round_to_subclusters(BlockDriverState *bs,
-                               int64_t offset, int64_t bytes,
-                               int64_t *cluster_offset,
-                               int64_t *cluster_bytes);
-
-void bdrv_get_backing_filename(BlockDriverState *bs,
-                               char *filename, int filename_size);
 
 int coroutine_fn GRAPH_RDLOCK
 bdrv_co_change_backing_file(BlockDriverState *bs, const char *backing_file,
@@ -219,26 +197,12 @@ int co_wrapper_bdrv_rdlock
 bdrv_change_backing_file(BlockDriverState *bs, const char *backing_file,
                          const char *backing_fmt, bool warn);
 
-int bdrv_save_vmstate(BlockDriverState *bs, const uint8_t *buf,
-                      int64_t pos, int size);
-
-int bdrv_load_vmstate(BlockDriverState *bs, uint8_t *buf,
-                      int64_t pos, int size);
-
 /*
  * Returns the alignment in bytes that is required so that no bounce buffer
  * is required throughout the stack
  */
-size_t bdrv_min_mem_align(BlockDriverState *bs);
 /* Returns optimal alignment in bytes for bounce buffer */
-size_t bdrv_opt_mem_align(BlockDriverState *bs);
-void *qemu_blockalign(BlockDriverState *bs, size_t size);
-void *qemu_blockalign0(BlockDriverState *bs, size_t size);
-void *qemu_try_blockalign(BlockDriverState *bs, size_t size);
-void *qemu_try_blockalign0(BlockDriverState *bs, size_t size);
 
-void bdrv_enable_copy_on_read(BlockDriverState *bs);
-void bdrv_disable_copy_on_read(BlockDriverState *bs);
 
 void coroutine_fn GRAPH_RDLOCK
 bdrv_co_debug_event(BlockDriverState *bs, BlkdebugEvent event);
@@ -267,26 +231,11 @@ bdrv_debug_event(BlockDriverState *bs, BlkdebugEvent event);
  */
 AioContext *bdrv_get_aio_context(BlockDriverState *bs);
 
-AioContext *bdrv_child_get_parent_aio_context(BdrvChild *c);
-
-/**
- * Move the current coroutine to the AioContext of @bs and return the old
- * AioContext of the coroutine. Increase bs->in_flight so that draining @bs
- * will wait for the operation to proceed until the corresponding
- * bdrv_co_leave().
- *
- * Consequently, you can't call drain inside a bdrv_co_enter/leave() section as
- * this will deadlock.
- */
-AioContext *coroutine_fn bdrv_co_enter(BlockDriverState *bs);
 
 /**
  * Ends a section started by bdrv_co_enter(). Move the current coroutine back
  * to old_ctx and decrease bs->in_flight again.
  */
-void coroutine_fn bdrv_co_leave(BlockDriverState *bs, AioContext *old_ctx);
-
-AioContext *child_of_bds_get_parent_aio_context(BdrvChild *c);
 
 bool coroutine_fn GRAPH_RDLOCK
 bdrv_co_can_store_new_dirty_bitmap(BlockDriverState *bs, const char *name,
@@ -356,8 +305,6 @@ bdrv_co_copy_range(BdrvChild *src, int64_t src_offset,
     AIO_WAIT_WHILE(bdrv_get_aio_context(bs_),              \
                    cond); })
 
-void bdrv_drain(BlockDriverState *bs);
-
 int co_wrapper_mixed_bdrv_rdlock
 bdrv_truncate(BdrvChild *child, int64_t offset, bool exact,
               PreallocMode prealloc, BdrvRequestFlags flags, Error **errp);
@@ -369,8 +316,6 @@ bdrv_check(BlockDriverState *bs, BdrvCheckResult *res, BdrvCheckMode fix);
 int co_wrapper_mixed_bdrv_rdlock
 bdrv_invalidate_cache(BlockDriverState *bs, Error **errp);
 
-int co_wrapper_mixed_bdrv_rdlock bdrv_flush(BlockDriverState *bs);
-
 int co_wrapper_mixed_bdrv_rdlock
 bdrv_pdiscard(BdrvChild *child, int64_t offset, int64_t bytes);
 
@@ -380,27 +325,6 @@ bdrv_readv_vmstate(BlockDriverState *bs, QEMUIOVector *qiov, int64_t pos);
 int co_wrapper_mixed_bdrv_rdlock
 bdrv_writev_vmstate(BlockDriverState *bs, QEMUIOVector *qiov, int64_t pos);
 
-/**
- * bdrv_parent_drained_begin_single:
- *
- * Begin a quiesced section for the parent of @c.
- */
-void GRAPH_RDLOCK bdrv_parent_drained_begin_single(BdrvChild *c);
-
-/**
- * bdrv_parent_drained_poll_single:
- *
- * Returns true if there is any pending activity to cease before @c can be
- * called quiesced, false otherwise.
- */
-bool GRAPH_RDLOCK bdrv_parent_drained_poll_single(BdrvChild *c);
-
-/**
- * bdrv_parent_drained_end_single:
- *
- * End a quiesced section for the parent of @c.
- */
-void GRAPH_RDLOCK bdrv_parent_drained_end_single(BdrvChild *c);
 
 /**
  * bdrv_drain_poll:
@@ -417,41 +341,5 @@ bool GRAPH_RDLOCK
 bdrv_drain_poll(BlockDriverState *bs, BdrvChild *ignore_parent,
                 bool ignore_bds_parents);
 
-/**
- * bdrv_drained_begin:
- *
- * Begin a quiesced section for exclusive access to the BDS, by disabling
- * external request sources including NBD server, block jobs, and device model.
- *
- * This function can only be invoked by the main loop or a coroutine
- * (regardless of the AioContext where it is running).
- * If the coroutine is running in an Iothread AioContext, this function will
- * just schedule a BH to run in the main loop.
- * However, it cannot be directly called by an Iothread.
- *
- * This function can be recursive.
- */
-void GRAPH_UNLOCKED bdrv_drained_begin(BlockDriverState *bs);
-
-/**
- * bdrv_do_drained_begin_quiesce:
- *
- * Quiesces a BDS like bdrv_drained_begin(), but does not wait for already
- * running requests to complete.
- */
-void bdrv_do_drained_begin_quiesce(BlockDriverState *bs, BdrvChild *parent);
-
-/**
- * bdrv_drained_end:
- *
- * End a quiescent section started by bdrv_drained_begin().
- *
- * This function can only be invoked by the main loop or a coroutine
- * (regardless of the AioContext where it is running).
- * If the coroutine is running in an Iothread AioContext, this function will
- * just schedule a BH to run in the main loop.
- * However, it cannot be directly called by an Iothread.
- */
-void bdrv_drained_end(BlockDriverState *bs);
 
 #endif /* BLOCK_IO_H */

@@ -49,8 +49,6 @@ typedef struct TransactionActionDrv {
 
 typedef struct Transaction Transaction;
 
-Transaction *tran_new(void);
-void tran_add(Transaction *tran, TransactionActionDrv *drv, void *opaque);
 void tran_abort(Transaction *tran);
 void tran_commit(Transaction *tran);
 

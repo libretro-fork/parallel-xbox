@@ -60,24 +60,7 @@ struct XenLegacyDevice {
 /* ------------------------------------------------------------- */
 
 /* xenstore helper functions */
-int xenstore_write_str(const char *base, const char *node, const char *val);
-int xenstore_write_int(const char *base, const char *node, int ival);
-int xenstore_write_int64(const char *base, const char *node, int64_t ival);
-char *xenstore_read_str(const char *base, const char *node);
-int xenstore_read_int(const char *base, const char *node, int *ival);
-int xenstore_read_uint64(const char *base, const char *node, uint64_t *uval);
 
-const char *xenbus_strstate(enum xenbus_state state);
 
-void xen_pv_evtchn_event(void *opaque);
-void xen_pv_insert_xendev(struct XenLegacyDevice *xendev);
-void xen_pv_del_xendev(struct XenLegacyDevice *xendev);
-struct XenLegacyDevice *xen_pv_find_xendev(const char *type, int dom, int dev);
-
-void xen_pv_unbind_evtchn(struct XenLegacyDevice *xendev);
-int xen_pv_send_notify(struct XenLegacyDevice *xendev);
-
-void xen_pv_printf(struct XenLegacyDevice *xendev, int msg_level,
-                   const char *fmt, ...)  G_GNUC_PRINTF(3, 4);
 
 #endif /* QEMU_HW_XEN_PVDEV_H */

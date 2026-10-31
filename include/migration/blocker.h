@@ -32,26 +32,6 @@
 int migrate_add_blocker(Error **reasonp, Error **errp);
 
 /**
- * @migrate_add_blocker_internal - prevent all modes of migration from
- *                                 proceeding, but ignore -only-migratable
- *
- * @reasonp - address of an error to be returned whenever migration is attempted
- *
- * @errp - [out] The reason (if any) we cannot block migration right now.
- *
- * @returns - 0 on success, -EBUSY on failure, with errp set.
- *
- * Some of the migration blockers can be temporary (e.g., for a few seconds),
- * so it shouldn't need to conflict with "-only-migratable".  For those cases,
- * we can call this function rather than @migrate_add_blocker().
- *
- * *@reasonp is freed and set to NULL if failure is returned.
- * On success, the caller must not free @reasonp, except by
- *   calling migrate_del_blocker.
- */
-int migrate_add_blocker_internal(Error **reasonp, Error **errp);
-
-/**
  * @migrate_del_blocker - remove a migration blocker from all modes and free it.
  *
  * @reasonp - address of the error blocking migration

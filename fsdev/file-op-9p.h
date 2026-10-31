@@ -116,8 +116,6 @@ P9ARRAY_DECLARE_TYPE(V9fsPath);
 
 typedef union V9fsFidOpenState V9fsFidOpenState;
 
-void cred_init(FsCred *);
-
 struct FileOperations {
     int (*parse_opts)(QemuOpts *, FsDriverEntry *, Error **errp);
     int (*init)(FsContext *, Error **errp);

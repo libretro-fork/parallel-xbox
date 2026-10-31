@@ -141,14 +141,6 @@ floatx80 int64_to_floatx80(int64_t, float_status *status);
 float16 float32_to_float16(float32, bool ieee, float_status *status);
 float32 float16_to_float32(float16, bool ieee, float_status *status);
 
-float16 float16_min(float16, float16, float_status *status);
-float16 float16_max(float16, float16, float_status *status);
-float16 float16_minnum(float16, float16, float_status *status);
-float16 float16_maxnum(float16, float16, float_status *status);
-float16 float16_minnummag(float16, float16, float_status *status);
-float16 float16_maxnummag(float16, float16, float_status *status);
-float16 float16_minimum_number(float16, float16, float_status *status);
-float16 float16_maximum_number(float16, float16, float_status *status);
 
 bool float16_is_quiet_nan(float16, float_status *status);
 bool float16_is_signaling_nan(float16, float_status *status);
@@ -212,14 +204,6 @@ static inline float16 float16_set_sign(float16 a, int sign)
 #define float16_three make_float16(0x4200)
 #define float16_infinity make_float16(0x7c00)
 
-bfloat16 bfloat16_min(bfloat16, bfloat16, float_status *status);
-bfloat16 bfloat16_max(bfloat16, bfloat16, float_status *status);
-bfloat16 bfloat16_minnum(bfloat16, bfloat16, float_status *status);
-bfloat16 bfloat16_maxnum(bfloat16, bfloat16, float_status *status);
-bfloat16 bfloat16_minnummag(bfloat16, bfloat16, float_status *status);
-bfloat16 bfloat16_maxnummag(bfloat16, bfloat16, float_status *status);
-bfloat16 bfloat16_minimum_number(bfloat16, bfloat16, float_status *status);
-bfloat16 bfloat16_maximum_number(bfloat16, bfloat16, float_status *status);
 
 bool bfloat16_is_quiet_nan(bfloat16, float_status *status);
 bool bfloat16_is_signaling_nan(bfloat16, float_status *status);
@@ -309,14 +293,6 @@ float32 float32_muladd_scalbn(float32, float32, float32,
 float32 float32_sqrt(float32, float_status *status);
 FloatRelation float32_compare(float32, float32, float_status *status);
 FloatRelation float32_compare_quiet(float32, float32, float_status *status);
-float32 float32_min(float32, float32, float_status *status);
-float32 float32_max(float32, float32, float_status *status);
-float32 float32_minnum(float32, float32, float_status *status);
-float32 float32_maxnum(float32, float32, float_status *status);
-float32 float32_minnummag(float32, float32, float_status *status);
-float32 float32_maxnummag(float32, float32, float_status *status);
-float32 float32_minimum_number(float32, float32, float_status *status);
-float32 float32_maximum_number(float32, float32, float_status *status);
 bool float32_is_quiet_nan(float32, float_status *status);
 bool float32_is_signaling_nan(float32, float_status *status);
 
@@ -473,14 +449,6 @@ float64 float64_muladd_scalbn(float64, float64, float64,
 float64 float64_sqrt(float64, float_status *status);
 FloatRelation float64_compare(float64, float64, float_status *status);
 FloatRelation float64_compare_quiet(float64, float64, float_status *status);
-float64 float64_min(float64, float64, float_status *status);
-float64 float64_max(float64, float64, float_status *status);
-float64 float64_minnum(float64, float64, float_status *status);
-float64 float64_maxnum(float64, float64, float_status *status);
-float64 float64_minnummag(float64, float64, float_status *status);
-float64 float64_maxnummag(float64, float64, float_status *status);
-float64 float64_minimum_number(float64, float64, float_status *status);
-float64 float64_maximum_number(float64, float64, float_status *status);
 bool float64_is_quiet_nan(float64 a, float_status *status);
 bool float64_is_signaling_nan(float64, float_status *status);
 
@@ -866,14 +834,6 @@ floatx80 normalizeRoundAndPackFloatx80(FloatX80RoundPrec roundingPrecision,
 *----------------------------------------------------------------------------*/
 floatx80 floatx80_default_nan(float_status *status);
 
-float128 float128_min(float128, float128, float_status *status);
-float128 float128_max(float128, float128, float_status *status);
-float128 float128_minnum(float128, float128, float_status *status);
-float128 float128_maxnum(float128, float128, float_status *status);
-float128 float128_minnummag(float128, float128, float_status *status);
-float128 float128_maxnummag(float128, float128, float_status *status);
-float128 float128_minimum_number(float128, float128, float_status *status);
-float128 float128_maximum_number(float128, float128, float_status *status);
 bool float128_is_quiet_nan(float128, float_status *status);
 bool float128_is_signaling_nan(float128, float_status *status);
 

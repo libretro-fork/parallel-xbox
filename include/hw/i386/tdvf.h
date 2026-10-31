@@ -40,6 +40,4 @@ typedef struct TdxFirmware {
 #define for_each_tdx_fw_entry(fw, e)    \
     for (e = (fw)->entries; e != (fw)->entries + (fw)->nr_entries; e++)
 
-int tdvf_parse_metadata(TdxFirmware *fw, void *flash_ptr, int size);
-
 #endif /* HW_I386_TDVF_H */

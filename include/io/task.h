@@ -194,40 +194,7 @@ typedef void (*QIOTaskWorker)(QIOTask *task,
  * actual operation being performed in a different thread.
  */
 
-/**
- * qio_task_new:
- * @source: the object on which the operation is invoked
- * @func: the callback to invoke when the task completes
- * @opaque: opaque data to pass to @func when invoked
- * @destroy: optional callback to free @opaque
- *
- * Creates a new task struct to track completion of a
- * background operation running on the object @source.
- * When the operation completes or fails, the callback
- * @func will be invoked. The callback can access the
- * 'err' attribute in the task object to determine if
- * the operation was successful or not.
- *
- * The returned task will be released when qio_task_complete()
- * is invoked.
- *
- * Returns: the task struct
- */
-QIOTask *qio_task_new(Object *source,
-                      QIOTaskFunc func,
-                      gpointer opaque,
-                      GDestroyNotify destroy);
 
-
-
-/**
- * qio_task_complete:
- * @task: the task struct
- *
- * Invoke the completion callback for @task and
- * then free its memory.
- */
-void qio_task_complete(QIOTask *task);
 
 
 /**

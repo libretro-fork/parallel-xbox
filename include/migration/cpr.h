@@ -37,8 +37,6 @@ bool cpr_walk_fd(cpr_walk_fd_cb cb);
 void cpr_set_incoming_mode(MigMode mode);
 bool cpr_is_incoming(void);
 
-void cpr_state_close(void);
-
 
 
 void cpr_exec_init(void);

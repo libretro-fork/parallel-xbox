@@ -38,11 +38,6 @@ struct PCIEPort {
     uint8_t     port;
 };
 
-void pcie_port_init_reg(PCIDevice *d);
-
-PCIDevice *pcie_find_port_by_pn(PCIBus *bus, uint8_t pn);
-PCIDevice *pcie_find_port_first(PCIBus *bus);
-int pcie_count_ds_ports(PCIBus *bus);
 
 #define TYPE_PCIE_SLOT "pcie-slot"
 OBJECT_DECLARE_SIMPLE_TYPE(PCIESlot, PCIE_SLOT)
@@ -71,9 +66,6 @@ struct PCIESlot {
     QLIST_ENTRY(PCIESlot) next;
 };
 
-void pcie_chassis_create(uint8_t chassis_number);
-int pcie_chassis_add_slot(struct PCIESlot *slot);
-void pcie_chassis_del_slot(PCIESlot *s);
 
 #define TYPE_PCIE_ROOT_PORT         "pcie-root-port-base"
 typedef struct PCIERootPortClass PCIERootPortClass;

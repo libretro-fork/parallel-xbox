@@ -173,8 +173,6 @@ typedef struct __attribute__((__packed__)) OvmfSevMetadata {
     OvmfSevMetadataDesc descs[];
 } OvmfSevMetadata;
 
-OvmfSevMetadata *pc_system_get_ovmf_sev_metadata_ptr(void);
-
 void pc_i8259_create(ISABus *isa_bus, qemu_irq *i8259_irqs);
 
 /* port92.c */

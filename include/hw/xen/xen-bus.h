@@ -76,31 +76,9 @@ struct XenBusClass {
 OBJECT_DECLARE_TYPE(XenBus, XenBusClass,
                     XEN_BUS)
 
-void xen_bus_init(void);
 
-void xen_device_backend_set_state(XenDevice *xendev,
-                                  enum xenbus_state state);
-enum xenbus_state xen_device_backend_get_state(XenDevice *xendev);
 
-void xen_device_backend_printf(XenDevice *xendev, const char *key,
-                               const char *fmt, ...)
-    G_GNUC_PRINTF(3, 4);
-void xen_device_frontend_printf(XenDevice *xendev, const char *key,
-                                const char *fmt, ...)
-    G_GNUC_PRINTF(3, 4);
 
-int xen_device_frontend_scanf(XenDevice *xendev, const char *key,
-                              const char *fmt, ...)
-    G_GNUC_SCANF(3, 4);
-char *xen_device_frontend_read(XenDevice *xendev, const char *key);
-
-void xen_device_set_max_grant_refs(XenDevice *xendev, unsigned int nr_refs,
-                                   Error **errp);
-void *xen_device_map_grant_refs(XenDevice *xendev, uint32_t *refs,
-                                unsigned int nr_refs, int prot,
-                                Error **errp);
-void xen_device_unmap_grant_refs(XenDevice *xendev, void *map, uint32_t *refs,
-                                 unsigned int nr_refs, Error **errp);
 
 typedef struct XenDeviceGrantCopySegment {
     union {
@@ -113,26 +91,7 @@ typedef struct XenDeviceGrantCopySegment {
     size_t len;
 } XenDeviceGrantCopySegment;
 
-void xen_device_copy_grant_refs(XenDevice *xendev, bool to_domain,
-                                XenDeviceGrantCopySegment segs[],
-                                unsigned int nr_segs, Error **errp);
-
 typedef bool (*XenEventHandler)(void *opaque);
 
-XenEventChannel *xen_device_bind_event_channel(XenDevice *xendev,
-                                               unsigned int port,
-                                               XenEventHandler handler,
-                                               void *opaque, Error **errp);
-void xen_device_set_event_channel_context(XenDevice *xendev,
-                                          XenEventChannel *channel,
-                                          AioContext *ctx,
-                                          Error **errp);
-void xen_device_notify_event_channel(XenDevice *xendev,
-                                     XenEventChannel *channel,
-                                     Error **errp);
-void xen_device_unbind_event_channel(XenDevice *xendev,
-                                     XenEventChannel *channel,
-                                     Error **errp);
-unsigned int xen_event_channel_get_local_port(XenEventChannel *channel);
 
 #endif /* HW_XEN_BUS_H */

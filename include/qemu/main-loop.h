@@ -397,11 +397,6 @@ G_DEFINE_AUTOPTR_CLEANUP_FUNC(BQLLockAuto, bql_auto_unlock)
     g_autoptr(BQLLockAuto) _bql_lock_auto __attribute__((unused)) \
         = bql_auto_lock(__FILE__, __LINE__)
 
-/*
- * qemu_cond_timedwait_bql: like the previous, but with timeout
- */
-void qemu_cond_timedwait_bql(QemuCond *cond, int ms);
-
 /* internal interfaces */
 
 #define qemu_bh_new_guarded(cb, opaque, guard) \

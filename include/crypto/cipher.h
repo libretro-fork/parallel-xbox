@@ -83,48 +83,8 @@ struct QCryptoCipher {
     const QCryptoCipherDriver *driver;
 };
 
-/**
- * qcrypto_cipher_supports:
- * @alg: the cipher algorithm
- * @mode: the cipher mode
- *
- * Determine if @alg cipher algorithm in @mode is supported by the
- * current configured build
- *
- * Returns: true if the algorithm is supported, false otherwise
- */
-bool qcrypto_cipher_supports(QCryptoCipherAlgo alg,
-                             QCryptoCipherMode mode);
 
 
-
-
-/**
- * qcrypto_cipher_new:
- * @alg: the cipher algorithm
- * @mode: the cipher usage mode
- * @key: the private key bytes
- * @nkey: the length of @key
- * @errp: pointer to a NULL-initialized error object
- *
- * Creates a new cipher object for encrypting/decrypting
- * data with the algorithm @alg in the usage mode @mode.
- *
- * The @key parameter provides the bytes representing
- * the encryption/decryption key to use. The @nkey parameter
- * specifies the length of @key in bytes. Each algorithm has
- * one or more valid key lengths, and it is an error to provide
- * a key of the incorrect length.
- *
- * The returned cipher object must be released with
- * qcrypto_cipher_free() when no longer required
- *
- * Returns: a new cipher object, or NULL on error
- */
-QCryptoCipher *qcrypto_cipher_new(QCryptoCipherAlgo alg,
-                                  QCryptoCipherMode mode,
-                                  const uint8_t *key, size_t nkey,
-                                  Error **errp);
 
 /**
  * qcrypto_cipher_free:
@@ -138,45 +98,5 @@ void qcrypto_cipher_free(QCryptoCipher *cipher);
 G_DEFINE_AUTOPTR_CLEANUP_FUNC(QCryptoCipher, qcrypto_cipher_free)
 
 
-/**
- * qcrypto_cipher_decrypt:
- * @cipher: the cipher object
- * @in: buffer holding the cipher text input data
- * @out: buffer to fill with the plain text output data
- * @len: the length of @in and @out buffers
- * @errp: pointer to a NULL-initialized error object
- *
- * Decrypts the cipher text stored in @in, filling
- * @out with the resulting plain text. Both the
- * @in and @out buffers must have the same size,
- * given by @len.
- *
- * Returns: 0 on success, or -1 on error
- */
-int qcrypto_cipher_decrypt(QCryptoCipher *cipher,
-                           const void *in,
-                           void *out,
-                           size_t len,
-                           Error **errp);
-
-/**
- * qcrypto_cipher_setiv:
- * @cipher: the cipher object
- * @iv: the initialization vector or counter (CTR mode) bytes
- * @niv: the length of @iv
- * @errpr: pointer to a NULL-initialized error object
- *
- * If the @cipher object is setup to use a mode that requires
- * initialization vectors or counter, this sets the @niv
- * bytes. The @iv data should have the same length as the
- * cipher key used when originally constructing the cipher
- * object. It is an error to set an initialization vector
- * or counter if the cipher mode does not require one.
- *
- * Returns: 0 on success, -1 on error
- */
-int qcrypto_cipher_setiv(QCryptoCipher *cipher,
-                         const uint8_t *iv, size_t niv,
-                         Error **errp);
 
 #endif /* QCRYPTO_CIPHER_H */

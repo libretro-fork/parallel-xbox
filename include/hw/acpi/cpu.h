@@ -39,18 +39,7 @@ typedef struct CPUHotplugState {
     AcpiCpuStatus *devs;
 } CPUHotplugState;
 
-void acpi_cpu_plug_cb(HotplugHandler *hotplug_dev,
-                      CPUHotplugState *cpu_st, DeviceState *dev, Error **errp);
 
-void acpi_cpu_unplug_request_cb(HotplugHandler *hotplug_dev,
-                                CPUHotplugState *cpu_st,
-                                DeviceState *dev, Error **errp);
-
-void acpi_cpu_unplug_cb(CPUHotplugState *cpu_st,
-                        DeviceState *dev, Error **errp);
-
-void cpu_hotplug_hw_init(MemoryRegion *as, Object *owner,
-                         CPUHotplugState *state, hwaddr base_addr);
 
 typedef struct CPUHotplugFeatures {
     bool acpi_1_compatible;
@@ -61,14 +50,6 @@ typedef struct CPUHotplugFeatures {
 
 typedef void (*build_madt_cpu_fn)(int uid, const CPUArchIdList *apic_ids,
                                   GArray *entry, bool force_enabled);
-
-void build_cpus_aml(Aml *table, MachineState *machine, CPUHotplugFeatures opts,
-                    build_madt_cpu_fn build_madt_cpu, hwaddr base_addr,
-                    const char *res_root,
-                    const char *event_handler_method,
-                    AmlRegionSpace rs);
-
-void acpi_cpu_ospm_status(CPUHotplugState *cpu_st, ACPIOSTInfoList ***list);
 
 extern const VMStateDescription vmstate_cpu_hotplug;
 #define VMSTATE_CPU_HOTPLUG(cpuhp, state) \

@@ -411,47 +411,14 @@ typedef struct disassemble_info {
    target address.  Return number of bytes processed.  */
 typedef int (*disassembler_ftype) (bfd_vma, disassemble_info *);
 
-int print_insn_tci(bfd_vma, disassemble_info*);
 int print_insn_big_mips         (bfd_vma, disassemble_info*);
 int print_insn_little_mips      (bfd_vma, disassemble_info*);
-int print_insn_nanomips         (bfd_vma, disassemble_info*);
 int print_insn_m68k             (bfd_vma, disassemble_info*);
-int print_insn_z8001            (bfd_vma, disassemble_info*);
-int print_insn_z8002            (bfd_vma, disassemble_info*);
-int print_insn_h8300            (bfd_vma, disassemble_info*);
-int print_insn_h8300h           (bfd_vma, disassemble_info*);
-int print_insn_h8300s           (bfd_vma, disassemble_info*);
-int print_insn_h8500            (bfd_vma, disassemble_info*);
-int print_insn_arm_a64          (bfd_vma, disassemble_info*);
 int print_insn_alpha            (bfd_vma, disassemble_info*);
-disassembler_ftype arc_get_disassembler (int, int);
 int print_insn_sparc            (bfd_vma, disassemble_info*);
-int print_insn_big_a29k         (bfd_vma, disassemble_info*);
-int print_insn_little_a29k      (bfd_vma, disassemble_info*);
-int print_insn_i960             (bfd_vma, disassemble_info*);
-int print_insn_sh               (bfd_vma, disassemble_info*);
-int print_insn_shl              (bfd_vma, disassemble_info*);
 int print_insn_hppa             (bfd_vma, disassemble_info*);
-int print_insn_m32r             (bfd_vma, disassemble_info*);
-int print_insn_m88k             (bfd_vma, disassemble_info*);
-int print_insn_mn10200          (bfd_vma, disassemble_info*);
-int print_insn_mn10300          (bfd_vma, disassemble_info*);
-int print_insn_ns32k            (bfd_vma, disassemble_info*);
-int print_insn_big_powerpc      (bfd_vma, disassemble_info*);
-int print_insn_little_powerpc   (bfd_vma, disassemble_info*);
-int print_insn_rs6000           (bfd_vma, disassemble_info*);
-int print_insn_w65              (bfd_vma, disassemble_info*);
-int print_insn_d10v             (bfd_vma, disassemble_info*);
-int print_insn_v850             (bfd_vma, disassemble_info*);
-int print_insn_tic30            (bfd_vma, disassemble_info*);
-int print_insn_microblaze       (bfd_vma, disassemble_info*);
-int print_insn_ia64             (bfd_vma, disassemble_info*);
-int print_insn_xtensa           (bfd_vma, disassemble_info*);
 int print_insn_riscv32          (bfd_vma, disassemble_info*);
 int print_insn_riscv64          (bfd_vma, disassemble_info*);
-int print_insn_riscv128         (bfd_vma, disassemble_info*);
-int print_insn_rx(bfd_vma, disassemble_info *);
-int print_insn_hexagon(bfd_vma, disassemble_info *);
 int print_insn_loongarch(bfd_vma, disassemble_info *);
 
 # define cap_disas_target(i, p, s)  false

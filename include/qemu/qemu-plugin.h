@@ -103,27 +103,6 @@ typedef struct qemu_info_t {
 } qemu_info_t;
 
 /**
- * qemu_plugin_install() - Install a plugin
- * @id: this plugin's opaque ID
- * @info: a block describing some details about the guest
- * @argc: number of arguments
- * @argv: array of arguments (@argc elements)
- *
- * All plugins must export this symbol which is called when the plugin
- * is first loaded. Calling qemu_plugin_uninstall() from this function
- * is a bug.
- *
- * Note: @info is only live during the call. Copy any information we
- * want to keep. @argv remains valid throughout the lifetime of the
- * loaded plugin.
- *
- * Return: 0 on successful loading, !0 for an error.
- */
-QEMU_PLUGIN_EXPORT int qemu_plugin_install(qemu_plugin_id_t id,
-                                           const qemu_info_t *info,
-                                           int argc, char **argv);
-
-/**
  * typedef qemu_plugin_simple_cb_t - simple callback
  * @id: the unique qemu_plugin_id_t
  *
@@ -212,7 +191,6 @@ typedef void (*qemu_plugin_vcpu_discon_cb_t)(qemu_plugin_id_t id,
  * Note: Calling this function from qemu_plugin_install() is a bug.
  */
 QEMU_PLUGIN_API
-void qemu_plugin_uninstall(qemu_plugin_id_t id, qemu_plugin_simple_cb_t cb);
 
 /**
  * qemu_plugin_reset() - Reset a plugin
@@ -226,7 +204,6 @@ void qemu_plugin_uninstall(qemu_plugin_id_t id, qemu_plugin_simple_cb_t cb);
  * callbacks until @cb is called.
  */
 QEMU_PLUGIN_API
-void qemu_plugin_reset(qemu_plugin_id_t id, qemu_plugin_simple_cb_t cb);
 
 /**
  * qemu_plugin_register_vcpu_init_cb() - register a vCPU initialization callback
@@ -238,8 +215,6 @@ void qemu_plugin_reset(qemu_plugin_id_t id, qemu_plugin_simple_cb_t cb);
  * See also: qemu_plugin_register_vcpu_exit_cb()
  */
 QEMU_PLUGIN_API
-void qemu_plugin_register_vcpu_init_cb(qemu_plugin_id_t id,
-                                       qemu_plugin_vcpu_simple_cb_t cb);
 
 /**
  * qemu_plugin_register_vcpu_exit_cb() - register a vCPU exit callback
@@ -251,8 +226,6 @@ void qemu_plugin_register_vcpu_init_cb(qemu_plugin_id_t id,
  * See also: qemu_plugin_register_vcpu_init_cb()
  */
 QEMU_PLUGIN_API
-void qemu_plugin_register_vcpu_exit_cb(qemu_plugin_id_t id,
-                                       qemu_plugin_vcpu_simple_cb_t cb);
 
 /**
  * qemu_plugin_register_vcpu_idle_cb() - register a vCPU idle callback
@@ -262,8 +235,6 @@ void qemu_plugin_register_vcpu_exit_cb(qemu_plugin_id_t id,
  * The @cb function is called every time a vCPU idles.
  */
 QEMU_PLUGIN_API
-void qemu_plugin_register_vcpu_idle_cb(qemu_plugin_id_t id,
-                                       qemu_plugin_vcpu_simple_cb_t cb);
 
 /**
  * qemu_plugin_register_vcpu_resume_cb() - register a vCPU resume callback
@@ -273,8 +244,6 @@ void qemu_plugin_register_vcpu_idle_cb(qemu_plugin_id_t id,
  * The @cb function is called every time a vCPU resumes execution.
  */
 QEMU_PLUGIN_API
-void qemu_plugin_register_vcpu_resume_cb(qemu_plugin_id_t id,
-                                         qemu_plugin_vcpu_simple_cb_t cb);
 
 /**
  * qemu_plugin_register_vcpu_discon_cb() - register a discontinuity callback
@@ -288,9 +257,6 @@ void qemu_plugin_register_vcpu_resume_cb(qemu_plugin_id_t id,
  * trap vector entry.
  */
 QEMU_PLUGIN_API
-void qemu_plugin_register_vcpu_discon_cb(qemu_plugin_id_t id,
-                                         enum qemu_plugin_discon_type type,
-                                         qemu_plugin_vcpu_discon_cb_t cb);
 
 /** struct qemu_plugin_tb - Opaque handle for a translation block */
 struct qemu_plugin_tb;
@@ -396,8 +362,6 @@ typedef void (*qemu_plugin_vcpu_tb_trans_cb_t)(qemu_plugin_id_t id,
  * executes.
  */
 QEMU_PLUGIN_API
-void qemu_plugin_register_vcpu_tb_trans_cb(qemu_plugin_id_t id,
-                                           qemu_plugin_vcpu_tb_trans_cb_t cb);
 
 /**
  * qemu_plugin_register_vcpu_tb_exec_cb() - register execution callback
@@ -409,10 +373,6 @@ void qemu_plugin_register_vcpu_tb_trans_cb(qemu_plugin_id_t id,
  * The @cb function is called every time a translated unit executes.
  */
 QEMU_PLUGIN_API
-void qemu_plugin_register_vcpu_tb_exec_cb(struct qemu_plugin_tb *tb,
-                                          qemu_plugin_vcpu_udata_cb_t cb,
-                                          enum qemu_plugin_cb_flags flags,
-                                          void *userdata);
 
 /**
  * qemu_plugin_register_vcpu_tb_exec_cond_cb() - register conditional callback
@@ -432,13 +392,6 @@ void qemu_plugin_register_vcpu_tb_exec_cb(struct qemu_plugin_tb *tb,
  * callback is never installed.
  */
 QEMU_PLUGIN_API
-void qemu_plugin_register_vcpu_tb_exec_cond_cb(struct qemu_plugin_tb *tb,
-                                               qemu_plugin_vcpu_udata_cb_t cb,
-                                               enum qemu_plugin_cb_flags flags,
-                                               enum qemu_plugin_cond cond,
-                                               qemu_plugin_u64 entry,
-                                               uint64_t imm,
-                                               void *userdata);
 
 /**
  * enum qemu_plugin_op - describes an inline op
@@ -462,11 +415,6 @@ enum qemu_plugin_op {
  * Insert an inline op on a given scoreboard entry.
  */
 QEMU_PLUGIN_API
-void qemu_plugin_register_vcpu_tb_exec_inline_per_vcpu(
-    struct qemu_plugin_tb *tb,
-    enum qemu_plugin_op op,
-    qemu_plugin_u64 entry,
-    uint64_t imm);
 
 /**
  * qemu_plugin_register_vcpu_insn_exec_cb() - register insn execution cb
@@ -478,10 +426,6 @@ void qemu_plugin_register_vcpu_tb_exec_inline_per_vcpu(
  * The @cb function is called every time an instruction is executed
  */
 QEMU_PLUGIN_API
-void qemu_plugin_register_vcpu_insn_exec_cb(struct qemu_plugin_insn *insn,
-                                            qemu_plugin_vcpu_udata_cb_t cb,
-                                            enum qemu_plugin_cb_flags flags,
-                                            void *userdata);
 
 /**
  * qemu_plugin_register_vcpu_insn_exec_cond_cb() - conditional insn execution cb
@@ -501,14 +445,6 @@ void qemu_plugin_register_vcpu_insn_exec_cb(struct qemu_plugin_insn *insn,
  * callback is never installed.
  */
 QEMU_PLUGIN_API
-void qemu_plugin_register_vcpu_insn_exec_cond_cb(
-    struct qemu_plugin_insn *insn,
-    qemu_plugin_vcpu_udata_cb_t cb,
-    enum qemu_plugin_cb_flags flags,
-    enum qemu_plugin_cond cond,
-    qemu_plugin_u64 entry,
-    uint64_t imm,
-    void *userdata);
 
 /**
  * qemu_plugin_register_vcpu_insn_exec_inline_per_vcpu() - insn exec inline op
@@ -520,11 +456,6 @@ void qemu_plugin_register_vcpu_insn_exec_cond_cb(
  * Insert an inline op to every time an instruction executes.
  */
 QEMU_PLUGIN_API
-void qemu_plugin_register_vcpu_insn_exec_inline_per_vcpu(
-    struct qemu_plugin_insn *insn,
-    enum qemu_plugin_op op,
-    qemu_plugin_u64 entry,
-    uint64_t imm);
 
 /**
  * qemu_plugin_tb_n_insns() - query helper for number of insns in TB
@@ -533,7 +464,6 @@ void qemu_plugin_register_vcpu_insn_exec_inline_per_vcpu(
  * Returns: number of instructions in this block
  */
 QEMU_PLUGIN_API
-size_t qemu_plugin_tb_n_insns(const struct qemu_plugin_tb *tb);
 
 /**
  * qemu_plugin_tb_vaddr() - query helper for vaddr of TB start
@@ -542,7 +472,6 @@ size_t qemu_plugin_tb_n_insns(const struct qemu_plugin_tb *tb);
  * Returns: virtual address of block start
  */
 QEMU_PLUGIN_API
-uint64_t qemu_plugin_tb_vaddr(const struct qemu_plugin_tb *tb);
 
 /**
  * qemu_plugin_tb_get_insn() - retrieve handle for instruction
@@ -568,8 +497,6 @@ qemu_plugin_tb_get_insn(const struct qemu_plugin_tb *tb, size_t idx);
  * Returns the number of bytes copied, minimum of @len and insn size.
  */
 QEMU_PLUGIN_API
-size_t qemu_plugin_insn_data(const struct qemu_plugin_insn *insn,
-                             void *dest, size_t len);
 
 /**
  * qemu_plugin_insn_size() - return size of instruction
@@ -578,7 +505,6 @@ size_t qemu_plugin_insn_data(const struct qemu_plugin_insn *insn,
  * Returns: size of instruction in bytes
  */
 QEMU_PLUGIN_API
-size_t qemu_plugin_insn_size(const struct qemu_plugin_insn *insn);
 
 /**
  * qemu_plugin_insn_vaddr() - return vaddr of instruction
@@ -587,7 +513,6 @@ size_t qemu_plugin_insn_size(const struct qemu_plugin_insn *insn);
  * Returns: virtual address of instruction
  */
 QEMU_PLUGIN_API
-uint64_t qemu_plugin_insn_vaddr(const struct qemu_plugin_insn *insn);
 
 /**
  * qemu_plugin_insn_haddr() - return hardware addr of instruction
@@ -596,7 +521,6 @@ uint64_t qemu_plugin_insn_vaddr(const struct qemu_plugin_insn *insn);
  * Returns: hardware (physical) target address of instruction
  */
 QEMU_PLUGIN_API
-void *qemu_plugin_insn_haddr(const struct qemu_plugin_insn *insn);
 
 /**
  * typedef qemu_plugin_meminfo_t - opaque memory transaction handle
@@ -615,7 +539,6 @@ struct qemu_plugin_hwaddr;
  * Returns: size of access in ^2 (0=byte, 1=16bit, 2=32bit etc...)
  */
 QEMU_PLUGIN_API
-unsigned int qemu_plugin_mem_size_shift(qemu_plugin_meminfo_t info);
 /**
  * qemu_plugin_mem_is_sign_extended() - was the access sign extended
  * @info: opaque memory transaction handle
@@ -623,7 +546,6 @@ unsigned int qemu_plugin_mem_size_shift(qemu_plugin_meminfo_t info);
  * Returns: true if it was, otherwise false
  */
 QEMU_PLUGIN_API
-bool qemu_plugin_mem_is_sign_extended(qemu_plugin_meminfo_t info);
 /**
  * qemu_plugin_mem_is_big_endian() - was the access big endian
  * @info: opaque memory transaction handle
@@ -631,7 +553,6 @@ bool qemu_plugin_mem_is_sign_extended(qemu_plugin_meminfo_t info);
  * Returns: true if it was, otherwise false
  */
 QEMU_PLUGIN_API
-bool qemu_plugin_mem_is_big_endian(qemu_plugin_meminfo_t info);
 /**
  * qemu_plugin_mem_is_store() - was the access a store
  * @info: opaque memory transaction handle
@@ -639,7 +560,6 @@ bool qemu_plugin_mem_is_big_endian(qemu_plugin_meminfo_t info);
  * Returns: true if it was, otherwise false
  */
 QEMU_PLUGIN_API
-bool qemu_plugin_mem_is_store(qemu_plugin_meminfo_t info);
 
 /**
  * qemu_plugin_mem_get_value() - return last value loaded/stored
@@ -648,7 +568,6 @@ bool qemu_plugin_mem_is_store(qemu_plugin_meminfo_t info);
  * Returns: memory value
  */
 QEMU_PLUGIN_API
-qemu_plugin_mem_value qemu_plugin_mem_get_value(qemu_plugin_meminfo_t info);
 
 /**
  * qemu_plugin_get_hwaddr() - return handle for memory operation
@@ -664,8 +583,6 @@ qemu_plugin_mem_value qemu_plugin_mem_get_value(qemu_plugin_meminfo_t info);
  * callback returns.
  */
 QEMU_PLUGIN_API
-struct qemu_plugin_hwaddr *qemu_plugin_get_hwaddr(qemu_plugin_meminfo_t info,
-                                                  uint64_t vaddr);
 
 /*
  * The following additional queries can be run on the hwaddr structure to
@@ -681,7 +598,6 @@ struct qemu_plugin_hwaddr *qemu_plugin_get_hwaddr(qemu_plugin_meminfo_t info,
  * false if it is to RAM
  */
 QEMU_PLUGIN_API
-bool qemu_plugin_hwaddr_is_io(const struct qemu_plugin_hwaddr *haddr);
 
 /**
  * qemu_plugin_hwaddr_phys_addr() - query physical address for memory operation
@@ -693,14 +609,12 @@ bool qemu_plugin_hwaddr_is_io(const struct qemu_plugin_hwaddr *haddr);
  * with multiple address spaces.
  */
 QEMU_PLUGIN_API
-uint64_t qemu_plugin_hwaddr_phys_addr(const struct qemu_plugin_hwaddr *haddr);
 
 /*
  * Returns a string representing the device. The string is valid for
  * the lifetime of the plugin.
  */
 QEMU_PLUGIN_API
-const char *qemu_plugin_hwaddr_device_name(const struct qemu_plugin_hwaddr *h);
 
 /**
  * typedef qemu_plugin_vcpu_mem_cb_t - memory callback function type
@@ -735,11 +649,6 @@ typedef void (*qemu_plugin_vcpu_mem_cb_t) (unsigned int vcpu_index,
  * confused by making appropriate use of locking if required.
  */
 QEMU_PLUGIN_API
-void qemu_plugin_register_vcpu_mem_cb(struct qemu_plugin_insn *insn,
-                                      qemu_plugin_vcpu_mem_cb_t cb,
-                                      enum qemu_plugin_cb_flags flags,
-                                      enum qemu_plugin_mem_rw rw,
-                                      void *userdata);
 
 /**
  * qemu_plugin_register_vcpu_mem_inline_per_vcpu() - inline op for mem access
@@ -753,12 +662,6 @@ void qemu_plugin_register_vcpu_mem_cb(struct qemu_plugin_insn *insn,
  * instruction.
  */
 QEMU_PLUGIN_API
-void qemu_plugin_register_vcpu_mem_inline_per_vcpu(
-    struct qemu_plugin_insn *insn,
-    enum qemu_plugin_mem_rw rw,
-    enum qemu_plugin_op op,
-    qemu_plugin_u64 entry,
-    uint64_t imm);
 
 /**
  * qemu_plugin_request_time_control() - request the ability to control time
@@ -770,7 +673,6 @@ void qemu_plugin_register_vcpu_mem_inline_per_vcpu(
  * Returns an opaque handle or NULL if fails
  */
 QEMU_PLUGIN_API
-const void *qemu_plugin_request_time_control(void);
 
 /**
  * qemu_plugin_update_ns() - update system emulation time
@@ -785,7 +687,6 @@ const void *qemu_plugin_request_time_control(void);
  * Start time is 0.
  */
 QEMU_PLUGIN_API
-void qemu_plugin_update_ns(const void *handle, int64_t time);
 
 typedef void
 (*qemu_plugin_vcpu_syscall_cb_t)(qemu_plugin_id_t id, unsigned int vcpu_index,
@@ -794,8 +695,6 @@ typedef void
                                  uint64_t a6, uint64_t a7, uint64_t a8);
 
 QEMU_PLUGIN_API
-void qemu_plugin_register_vcpu_syscall_cb(qemu_plugin_id_t id,
-                                          qemu_plugin_vcpu_syscall_cb_t cb);
 
 typedef void
 (*qemu_plugin_vcpu_syscall_ret_cb_t)(qemu_plugin_id_t id, unsigned int vcpu_idx,
@@ -815,7 +714,6 @@ qemu_plugin_register_vcpu_syscall_ret_cb(qemu_plugin_id_t id,
  */
 
 QEMU_PLUGIN_API
-char *qemu_plugin_insn_disas(const struct qemu_plugin_insn *insn);
 
 /**
  * qemu_plugin_insn_symbol() - best effort symbol lookup
@@ -825,7 +723,6 @@ char *qemu_plugin_insn_disas(const struct qemu_plugin_insn *insn);
  * on the binary QEMU is running having provided a symbol table.
  */
 QEMU_PLUGIN_API
-const char *qemu_plugin_insn_symbol(const struct qemu_plugin_insn *insn);
 
 /**
  * qemu_plugin_vcpu_for_each() - iterate over the existing vCPU
@@ -837,12 +734,8 @@ const char *qemu_plugin_insn_symbol(const struct qemu_plugin_insn *insn);
  * See also: qemu_plugin_register_vcpu_init_cb()
  */
 QEMU_PLUGIN_API
-void qemu_plugin_vcpu_for_each(qemu_plugin_id_t id,
-                               qemu_plugin_vcpu_simple_cb_t cb);
 
 QEMU_PLUGIN_API
-void qemu_plugin_register_flush_cb(qemu_plugin_id_t id,
-                                   qemu_plugin_simple_cb_t cb);
 
 /**
  * qemu_plugin_register_atexit_cb() - register exit callback
@@ -858,19 +751,15 @@ void qemu_plugin_register_flush_cb(qemu_plugin_id_t id,
  * child threads may run before the host kernel reaps the threads.
  */
 QEMU_PLUGIN_API
-void qemu_plugin_register_atexit_cb(qemu_plugin_id_t id,
-                                    qemu_plugin_udata_cb_t cb, void *userdata);
 
 /* returns how many vcpus were started at this point */
 QEMU_PLUGIN_API
-int qemu_plugin_num_vcpus(void);
 
 /**
  * qemu_plugin_outs() - output string via QEMU's logging system
  * @string: a string
  */
 QEMU_PLUGIN_API
-void qemu_plugin_outs(const char *string);
 
 /**
  * qemu_plugin_bool_parse() - parses a boolean argument in the form of
@@ -884,7 +773,6 @@ void qemu_plugin_outs(const char *string);
  * argument, and false otherwise
  */
 QEMU_PLUGIN_API
-bool qemu_plugin_bool_parse(const char *name, const char *val, bool *ret);
 
 /**
  * qemu_plugin_path_to_binary() - path to binary file being executed
@@ -895,7 +783,6 @@ bool qemu_plugin_bool_parse(const char *name, const char *val, bool *ret);
  * needed.
  */
 QEMU_PLUGIN_API
-const char *qemu_plugin_path_to_binary(void);
 
 /**
  * qemu_plugin_start_code() - returns start of text segment
@@ -904,7 +791,6 @@ const char *qemu_plugin_path_to_binary(void);
  * user-mode. Currently returns 0 for system emulation.
  */
 QEMU_PLUGIN_API
-uint64_t qemu_plugin_start_code(void);
 
 /**
  * qemu_plugin_end_code() - returns end of text segment
@@ -913,7 +799,6 @@ uint64_t qemu_plugin_start_code(void);
  * user-mode. Currently returns 0 for system emulation.
  */
 QEMU_PLUGIN_API
-uint64_t qemu_plugin_end_code(void);
 
 /**
  * qemu_plugin_entry_code() - returns start address for module
@@ -922,7 +807,6 @@ uint64_t qemu_plugin_end_code(void);
  * user-mode. Currently returns 0 for system emulation.
  */
 QEMU_PLUGIN_API
-uint64_t qemu_plugin_entry_code(void);
 
 /** struct qemu_plugin_register - Opaque handle for register access */
 struct qemu_plugin_register;
@@ -951,7 +835,6 @@ typedef struct {
  * after the vCPU is initialised, i.e. in the vCPU context.
  */
 QEMU_PLUGIN_API
-GArray *qemu_plugin_get_registers(void);
 
 /**
  * qemu_plugin_read_register() - read register for current vCPU
@@ -971,8 +854,6 @@ GArray *qemu_plugin_get_registers(void);
  * order. On failure returns -1.
  */
 QEMU_PLUGIN_API
-int qemu_plugin_read_register(struct qemu_plugin_register *handle,
-                              GByteArray *buf);
 
 /**
  * qemu_plugin_write_register() - write register for current vCPU
@@ -995,8 +876,6 @@ int qemu_plugin_read_register(struct qemu_plugin_register *handle,
  * Returns the number of bytes written. On failure returns 0.
  */
 QEMU_PLUGIN_API
-int qemu_plugin_write_register(struct qemu_plugin_register *handle,
-                              GByteArray *buf);
 
 /**
  * qemu_plugin_read_memory_vaddr() - read from memory using a virtual address
@@ -1017,8 +896,6 @@ int qemu_plugin_write_register(struct qemu_plugin_register *handle,
  * Returns true on success and false on failure.
  */
 QEMU_PLUGIN_API
-bool qemu_plugin_read_memory_vaddr(uint64_t addr,
-                                   GByteArray *data, size_t len);
 
 /**
  * qemu_plugin_write_memory_vaddr() - write to memory using a virtual address
@@ -1038,8 +915,6 @@ bool qemu_plugin_read_memory_vaddr(uint64_t addr,
  * Returns true on success and false on failure.
  */
 QEMU_PLUGIN_API
-bool qemu_plugin_write_memory_vaddr(uint64_t addr,
-                                   GByteArray *data);
 
 /**
  * enum qemu_plugin_hwaddr_operation_result - result of a memory operation
@@ -1132,7 +1007,6 @@ qemu_plugin_write_memory_hwaddr(uint64_t addr, GByteArray *data);
  * Returns true on success and false on failure.
  */
 QEMU_PLUGIN_API
-bool qemu_plugin_translate_vaddr(uint64_t vaddr, uint64_t *hwaddr);
 
 /**
  * qemu_plugin_scoreboard_new() - alloc a new scoreboard
@@ -1143,14 +1017,12 @@ bool qemu_plugin_translate_vaddr(uint64_t vaddr, uint64_t *hwaddr);
  * qemu_plugin_scoreboard_free.
  */
 QEMU_PLUGIN_API
-struct qemu_plugin_scoreboard *qemu_plugin_scoreboard_new(size_t element_size);
 
 /**
  * qemu_plugin_scoreboard_free() - free a scoreboard
  * @score: scoreboard to free
  */
 QEMU_PLUGIN_API
-void qemu_plugin_scoreboard_free(struct qemu_plugin_scoreboard *score);
 
 /**
  * qemu_plugin_scoreboard_find() - get pointer to an entry of a scoreboard
@@ -1161,8 +1033,6 @@ void qemu_plugin_scoreboard_free(struct qemu_plugin_scoreboard *score);
  * address can be modified later if scoreboard is resized.
  */
 QEMU_PLUGIN_API
-void *qemu_plugin_scoreboard_find(struct qemu_plugin_scoreboard *score,
-                                  unsigned int vcpu_index);
 
 /* Macros to define a qemu_plugin_u64 */
 #define qemu_plugin_scoreboard_u64(score) \
@@ -1177,8 +1047,6 @@ void *qemu_plugin_scoreboard_find(struct qemu_plugin_scoreboard *score,
  * @added: value to add
  */
 QEMU_PLUGIN_API
-void qemu_plugin_u64_add(qemu_plugin_u64 entry, unsigned int vcpu_index,
-                         uint64_t added);
 
 /**
  * qemu_plugin_u64_get() - get value of a qemu_plugin_u64 for a given vcpu
@@ -1186,7 +1054,6 @@ void qemu_plugin_u64_add(qemu_plugin_u64 entry, unsigned int vcpu_index,
  * @vcpu_index: entry index
  */
 QEMU_PLUGIN_API
-uint64_t qemu_plugin_u64_get(qemu_plugin_u64 entry, unsigned int vcpu_index);
 
 /**
  * qemu_plugin_u64_set() - set value of a qemu_plugin_u64 for a given vcpu
@@ -1195,14 +1062,11 @@ uint64_t qemu_plugin_u64_get(qemu_plugin_u64 entry, unsigned int vcpu_index);
  * @val: new value
  */
 QEMU_PLUGIN_API
-void qemu_plugin_u64_set(qemu_plugin_u64 entry, unsigned int vcpu_index,
-                         uint64_t val);
 
 /**
  * qemu_plugin_u64_sum() - return sum of all vcpu entries in a scoreboard
  * @entry: entry to sum
  */
 QEMU_PLUGIN_API
-uint64_t qemu_plugin_u64_sum(qemu_plugin_u64 entry);
 
 #endif /* QEMU_QEMU_PLUGIN_H */

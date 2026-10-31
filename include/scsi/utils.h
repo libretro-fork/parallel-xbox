@@ -46,10 +46,6 @@ typedef struct SCSISense {
     uint8_t ascq;
 } SCSISense;
 
-int scsi_build_sense(uint8_t *buf, SCSISense sense);
-SCSISense scsi_parse_sense_buf(const uint8_t *in_buf, int in_len);
-int scsi_build_sense_buf(uint8_t *buf, size_t max_size, SCSISense sense,
-                         bool fixed_sense);
 
 /*
  * Predefined sense codes
@@ -122,18 +118,8 @@ extern const struct SCSISense sense_code_SPACE_ALLOC_FAILED;
 
 #define SENSE_CODE(x) sense_code_ ## x
 
-int scsi_sense_to_errno(int key, int asc, int ascq);
-int scsi_sense_buf_to_errno(const uint8_t *sense, size_t sense_size);
-bool scsi_sense_buf_is_guest_recoverable(const uint8_t *sense, size_t sense_size);
 
-int scsi_convert_sense(uint8_t *in_buf, int in_len,
-                       uint8_t *buf, int len, bool fixed);
-const char *scsi_command_name(uint8_t cmd);
 
-uint64_t scsi_cmd_lba(SCSICommand *cmd);
-uint32_t scsi_data_cdb_xfer(uint8_t *buf);
-uint32_t scsi_cdb_xfer(uint8_t *buf);
-int scsi_cdb_length(uint8_t *buf);
 
 /* Linux SG_IO interface.  */
 #ifdef CONFIG_LINUX
@@ -141,7 +127,5 @@ int scsi_cdb_length(uint8_t *buf);
 #define SG_ERR_DRIVER_SENSE    0x08
 #endif
 
-int scsi_sense_from_errno(int errno_value, SCSISense *sense);
-int scsi_sense_from_host_status(uint8_t host_status, SCSISense *sense);
 
 #endif

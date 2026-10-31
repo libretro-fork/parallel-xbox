@@ -29,8 +29,6 @@ struct QemuInputHandler {
     QemuInputHandlerSync   sync;
 };
 
-void qemu_input_check_mode_change(void);
-
 extern const guint qemu_input_map_atset1_to_qcode_len;
 extern const guint16 qemu_input_map_atset1_to_qcode[];
 

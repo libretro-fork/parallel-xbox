@@ -672,28 +672,6 @@ void qdev_connect_gpio_out(DeviceState *dev, int n, qemu_irq pin);
 void qdev_connect_gpio_out_named(DeviceState *dev, const char *name, int n,
                                  qemu_irq input_pin);
 
-/**
- * qdev_intercept_gpio_out: Intercept an existing GPIO connection
- * @dev: Device to intercept the outbound GPIO line from
- * @icpt: New qemu_irq to connect instead
- * @name: Name of the output GPIO array
- * @n: Number of the GPIO line in the array
- *
- * .. note::
- *   This function is provided only for use by the qtest testing framework
- *   and is not suitable for use in non-testing parts of QEMU.
- *
- * This function breaks an existing connection of an outbound GPIO
- * line from @dev, and replaces it with the new qemu_irq @icpt, as if
- * ``qdev_connect_gpio_out_named(dev, icpt, name, n)`` had been called.
- * The previously connected qemu_irq is returned, so it can be restored
- * by a second call to qdev_intercept_gpio_out() if desired.
- *
- * Return: old disconnected qemu_irq if one existed
- */
-qemu_irq qdev_intercept_gpio_out(DeviceState *dev, qemu_irq icpt,
-                                 const char *name, int n);
-
 BusState *qdev_get_child_bus(DeviceState *dev, const char *name);
 
 /*** Device API.  ***/
@@ -827,8 +805,6 @@ void bus_cold_reset(BusState *bus);
 /* This should go away once we get rid of the NULL bus hack */
 BusState *sysbus_get_default(void);
 
-char *qdev_get_fw_dev_path(DeviceState *dev);
-char *qdev_get_own_fw_dev_path_from_handler(BusState *bus, DeviceState *dev);
 
 /**
  * device_class_set_props(): add a set of properties to an device
@@ -918,16 +894,6 @@ const char *qdev_fw_name(DeviceState *dev);
 
 void qdev_assert_realized_properly(void);
 Object *qdev_get_machine(void);
-
-/**
- * qdev_create_fake_machine(): Create a fake machine container.
- *
- * .. note::
- *    This function is a kludge for user emulation (USER_ONLY)
- *    because when thread (TYPE_CPU) are realized, qdev_realize()
- *    access a machine container.
- */
-void qdev_create_fake_machine(void);
 
 /**
  * machine_get_container:

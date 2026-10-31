@@ -77,6 +77,4 @@ typedef struct TdxGenerateQuoteTask {
     void *opaque;
 } TdxGenerateQuoteTask;
 
-void tdx_generate_quote(TdxGenerateQuoteTask *task, SocketAddress *qg_sock_addr);
-
 #endif /* QEMU_I386_TDX_QUOTE_GENERATOR_H */

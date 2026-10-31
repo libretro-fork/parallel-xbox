@@ -533,8 +533,6 @@ static inline bool migration_in_postcopy(void)
 }
 MigrationState *migrate_get_current(void);
 
-uint64_t ram_get_total_transferred_pages(void);
-
 /* Sending on the return path - generic and then for each message type */
 void migrate_send_rp_shut(MigrationIncomingState *mis,
                           uint32_t value);
@@ -550,9 +548,6 @@ int foreach_not_ignored_block(RAMBlockIterFunc func, void *opaque);
 #define qemu_ram_foreach_block \
   #warning "Use foreach_not_ignored_block in migration code"
 
-void migration_consume_urgent_request(void);
-bool migration_rate_limit(void);
-void migration_cancel(void);
 
 void migration_reset_vfio_bytes_transferred(void);
 void postcopy_temp_page_reset(PostcopyTmpPage *tmp_page);
@@ -561,7 +556,6 @@ void postcopy_temp_page_reset(PostcopyTmpPage *tmp_page);
  * Migration thread waiting for return path thread.  Return non-zero if an
  * error is detected.
  */
-int migration_rp_wait(MigrationState *s);
 /*
  * Kick the migration thread waiting for return path messages.  NOTE: the
  * name can be slightly confusing (when read as "kick the rp thread"), just

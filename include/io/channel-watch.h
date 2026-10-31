@@ -65,26 +65,4 @@ GSource *qio_channel_create_socket_watch(QIOChannel *ioc,
                                          int fd,
                                          GIOCondition condition);
 
-/**
- * qio_channel_create_fd_pair_watch:
- * @ioc: the channel object
- * @fdread: the file descriptor for reading
- * @fdwrite: the file descriptor for writing
- * @condition: the I/O condition
- *
- * Create a new main loop source that is able to
- * monitor the pair of file descriptors @fdread
- * and @fdwrite for the I/O conditions in @condition.
- * This is intended for monitoring unidirectional
- * file descriptors such as pipes, where a pair
- * of descriptors is required for bidirectional
- * I/O
- *
- * Returns: the new main loop source
- */
-GSource *qio_channel_create_fd_pair_watch(QIOChannel *ioc,
-                                          int fdread,
-                                          int fdwrite,
-                                          GIOCondition condition);
-
 #endif /* QIO_CHANNEL_WATCH_H */
