@@ -695,9 +695,6 @@ void qemu_init_subsystems(void)
     qemu_init_cpu_list();
     qemu_init_cpu_loop();
 
-    qemu_init_main_loop_lock();
-    qemu_mutex_lock_main_loop();
-
     bql_lock();
 
     atexit(qemu_run_exit_notifiers);

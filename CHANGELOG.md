@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Remove the standalone UI main-loop mutex: only the libretro emulation thread acquired it, including nested frame/renderer waits. Keep BQL release/reacquire and event notifications unchanged. Delete the unused host VFIO passthrough helper, its DMA-map mutex and trace declarations; emulated Xbox/Chihiro PCI devices retain their existing DMA paths.
+
 - Remove the unused host RAM preallocation service and thread-context QOM object, including their POSIX mutexes, condition variable and temporary SIGBUS handler. Xbox and Chihiro keep their existing RAM allocation and sizes; the core never enabled these host preallocation options.
 
 - Vulkan vertex copy-on-write arenas flush only new host-written tails on non-coherent memory and skip allocator flush calls for coherent or unchanged arenas. New snapshots respect the device flush-atom alignment, including atoms larger than 256 bytes. Existing GPU visibility barriers remain; no vertex payload buffers or copies are added.

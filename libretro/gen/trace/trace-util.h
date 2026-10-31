@@ -223,62 +223,6 @@ static inline void trace_qemu_mutex_unlock(void *mutex, const char *file, const 
 {
 }
 
-static inline void trace_qemu_vfio_dma_reset_temporary(void *s)
-{
-}
-
-static inline void trace_qemu_vfio_ram_block_added(void *s, void *p, size_t size)
-{
-}
-
-static inline void trace_qemu_vfio_ram_block_removed(void *s, void *p, size_t size)
-{
-}
-
-static inline void trace_qemu_vfio_dump_mapping(void *host, uint64_t iova, size_t size)
-{
-}
-
-static inline void trace_qemu_vfio_find_mapping(void *s, void *p)
-{
-}
-
-static inline void trace_qemu_vfio_new_mapping(void *s, void *host, size_t size, int index, uint64_t iova)
-{
-}
-
-static inline void trace_qemu_vfio_do_mapping(void *s, void *host, uint64_t iova, size_t size)
-{
-}
-
-static inline void trace_qemu_vfio_dma_map(void *s, void *host, size_t size, bool temporary, uint64_t *iova)
-{
-}
-
-static inline void trace_qemu_vfio_dma_mapped(void *s, void *host, uint64_t iova, size_t size)
-{
-}
-
-static inline void trace_qemu_vfio_dma_unmap(void *s, void *host)
-{
-}
-
-static inline void trace_qemu_vfio_pci_read_config(void *buf, int ofs, int size, uint64_t region_ofs, uint64_t region_size)
-{
-}
-
-static inline void trace_qemu_vfio_pci_write_config(void *buf, int ofs, int size, uint64_t region_ofs, uint64_t region_size)
-{
-}
-
-static inline void trace_qemu_vfio_region_info(const char *desc, uint64_t region_ofs, uint64_t region_size, uint32_t cap_offset)
-{
-}
-
-static inline void trace_qemu_vfio_pci_map_bar(int index, uint64_t region_ofs, uint64_t region_size, int ofs, void *host)
-{
-}
-
 static inline void trace_uffd_detect_open_mode(int mode)
 {
 }

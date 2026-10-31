@@ -50,12 +50,6 @@
 GMainContext *qemu_main_context = NULL;
 GMainLoop *qemu_main_loop_obj = NULL;
 
-/* *Another* main loop lock. Used for ensuring the main loop does not get a
- * chance to continue when some action is being handled on the UI interaction
- * thread that gives up the BQL but expects the main loop to not be running.
- */
-QemuMutex qemu_main_loop_lock;
-
 #ifndef _WIN32
 #include <sys/wait.h>
 #endif
@@ -97,21 +91,6 @@ void qemu_notify_event(void)
 static GArray *gpollfds;
 /* the libretro main loop's wait (main_loop_wait) */
 static retro_eventcount_t main_loop_ec;
-
-void qemu_init_main_loop_lock(void)
-{
-    qemu_mutex_init(&qemu_main_loop_lock);
-}
-
-void qemu_mutex_lock_main_loop(void)
-{
-    qemu_mutex_lock(&qemu_main_loop_lock);
-}
-
-void qemu_mutex_unlock_main_loop(void)
-{
-    qemu_mutex_unlock(&qemu_main_loop_lock);
-}
 
 int qemu_init_main_loop(Error **errp)
 {
@@ -266,9 +245,7 @@ static int os_host_main_loop_wait(int64_t timeout)
 
     bql_unlock();
 
-    qemu_mutex_unlock_main_loop();
     ret = qemu_poll_ns((GPollFD *)gpollfds->data, gpollfds->len, timeout);
-    qemu_mutex_lock_main_loop();
 
     bql_lock();
 
@@ -471,9 +448,7 @@ static int os_host_main_loop_wait(int64_t timeout)
 
     bql_unlock();
 
-    qemu_mutex_unlock_main_loop();
     g_poll_ret = qemu_poll_ns(poll_fds, n_poll_fds + w->num, poll_timeout_ns);
-    qemu_mutex_lock_main_loop();
 
     bql_lock();
     if (g_poll_ret > 0) {
@@ -613,6 +588,9 @@ static bool main_loop_dispatch(AioContext *io)
     return progress;
 }
 
+/* The libretro emulation thread owns main-loop dispatch, including nested
+ * frame completion and renderer-switch waits. Other threads publish work
+ * and notify it; no second main-loop owner needs a separate UI mutex. */
 void main_loop_wait(int nonblocking)
 {
     AioContext *io = iohandler_get_aio_context();
@@ -629,11 +607,9 @@ void main_loop_wait(int nonblocking)
         if (main_loop_notified(io)) {
             retro_eventcount_cancel_wait(&main_loop_ec);
         } else {
-            /* other threads take the locks meanwhile, as around poll */
+            /* Other threads can take the BQL meanwhile, as around poll. */
             bql_unlock();
-            qemu_mutex_unlock_main_loop();
             retro_eventcount_commit_wait(&main_loop_ec, key);
-            qemu_mutex_lock_main_loop();
             bql_lock();
         }
         main_loop_dispatch(io);
