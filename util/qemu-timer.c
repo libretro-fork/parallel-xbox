@@ -50,17 +50,34 @@
 
 /* All core timers belong to one queue per clock. AIO contexts never
  * attach timers, so they do not need independent clock/list hierarchies. */
+#if !defined(RETRO_ATOMIC_LOCK_FREE) || !defined(RETRO_ATOMIC_HAS_64)
+#error "Timer deadlines require lock-free 64-bit retro_atomic operations"
+#endif
+#if defined(__GNUC__)
+_Static_assert(__atomic_always_lock_free(sizeof(retro_atomic_64_t), 0),
+               "Timer deadline atomics must be lock-free");
+#endif
+
 struct QEMUTimerList {
     QEMUClockType type;
-    bool enabled;
+    retro_atomic_int_t enabled;
+    retro_atomic_64_t deadline;
+    retro_atomic_64_t non_external_deadline;
     bool initialized;
     QemuMutex active_timers_lock;
     QEMUTimer *active_timers;
+    QEMUTimer *non_external_timers; /* first matching node, under list lock */
     QEMUTimerListNotifyCB *notify_cb;
     QemuEvent timers_done_ev;
 };
 
-static QEMUTimerList qemu_clocks[QEMU_CLOCK_MAX];
+/* Empty snapshots also preserve pre-initialization empty-clock queries. */
+static QEMUTimerList qemu_clocks[QEMU_CLOCK_MAX] = {
+    [QEMU_CLOCK_REALTIME] = { .deadline = -1, .non_external_deadline = -1 },
+    [QEMU_CLOCK_VIRTUAL] = { .deadline = -1, .non_external_deadline = -1 },
+    [QEMU_CLOCK_HOST] = { .deadline = -1, .non_external_deadline = -1 },
+    [QEMU_CLOCK_VIRTUAL_RT] = { .deadline = -1, .non_external_deadline = -1 },
+};
 
 /*
  * Whether a timer list is empty is read without its lock, so every store
@@ -84,6 +101,35 @@ static inline QEMUTimerList *qemu_clock_ptr(QEMUClockType type)
     return &qemu_clocks[type];
 }
 
+/* Publish only scalar timestamps, never reader-visible timer pointers. The
+ * list lock is held; callbacks and deadline readers can outlive a removed
+ * timer without retaining or dereferencing it. The two views are read
+ * independently, so no retry/seqlock or multiword snapshot is necessary. */
+static QEMUTimer *timer_next_non_external(QEMUTimer *timer)
+{
+    while (timer && (timer->attributes & QEMU_TIMER_ATTR_EXTERNAL)) {
+        timer = timer->next;
+    }
+    return timer;
+}
+
+static void timer_publish_deadlines(QEMUTimerList *clock)
+{
+    QEMUTimer *head = clock->active_timers;
+    QEMUTimer *internal = clock->non_external_timers;
+
+    int64_t deadline = head ? head->expire_time : -1;
+    int64_t non_external = internal ? internal->expire_time : -1;
+
+    /* Mutating a later timer need not invalidate readers' cached minima. */
+    if (retro_atomic_load_relaxed_64(&clock->deadline) != deadline) {
+        retro_atomic_store_release_64(&clock->deadline, deadline);
+    }
+    if (retro_atomic_load_relaxed_64(&clock->non_external_deadline) != non_external) {
+        retro_atomic_store_release_64(&clock->non_external_deadline, non_external);
+    }
+}
+
 static bool timer_expired_ns(const QEMUTimer *timer_head, int64_t current_time)
 {
     return timer_head && (timer_head->expire_time <= current_time);
@@ -94,7 +140,8 @@ static void qemu_clock_init(QEMUClockType type, QEMUTimerListNotifyCB *notify_cb
     QEMUTimerList *clock = qemu_clock_ptr(type);
     assert(!clock->initialized);
     clock->type = type;
-    clock->enabled = type != QEMU_CLOCK_VIRTUAL;
+    retro_atomic_store_release_int(&clock->enabled, type != QEMU_CLOCK_VIRTUAL);
+    timer_publish_deadlines(clock);
     clock->notify_cb = notify_cb;
     qemu_event_init(&clock->timers_done_ev, true);
     qemu_mutex_init(&clock->active_timers_lock);
@@ -126,8 +173,7 @@ void qemu_clock_notify(QEMUClockType type)
 void qemu_clock_enable(QEMUClockType type, bool enabled)
 {
     QEMUTimerList *clock = qemu_clock_ptr(type);
-    bool old = clock->enabled;
-    clock->enabled = enabled;
+    bool old = retro_atomic_exchange_int(&clock->enabled, enabled);
     if (enabled && !old) {
         qemu_clock_notify(type);
     } else if (!enabled && old) {
@@ -137,21 +183,10 @@ void qemu_clock_enable(QEMUClockType type, bool enabled)
 
 bool qemu_clock_expired(QEMUClockType type)
 {
-    QEMUTimerList *timer_list = qemu_clock_ptr(type);
-    int64_t expire_time = 0;
+    QEMUTimerList *clock = qemu_clock_ptr(type);
+    int64_t expire_time = retro_atomic_load_acquire_64(&clock->deadline);
 
-    if (!timer_list_head(timer_list)) {
-        return false;
-    }
-
-    WITH_QEMU_LOCK_GUARD(&timer_list->active_timers_lock) {
-        if (!timer_list->active_timers) {
-            return false;
-        }
-        expire_time = timer_list->active_timers->expire_time;
-    }
-
-    return expire_time <= qemu_clock_get_ns(timer_list->type);
+    return expire_time >= 0 && expire_time <= qemu_clock_get_ns(type);
 }
 
 /* Calculate the soonest matching deadline on this clock. For icount timeouts
@@ -164,9 +199,19 @@ int64_t qemu_clock_deadline_ns_all(QEMUClockType type, int attr_mask)
     QEMUTimer *ts;
     int64_t expire_time;
 
-    if (!clock->enabled || !timer_list_head(clock)) {
+    if (!retro_atomic_load_acquire_int(&clock->enabled)) {
         return -1;
     }
+    if (attr_mask == QEMU_TIMER_ATTR_ALL ||
+        attr_mask == ~QEMU_TIMER_ATTR_EXTERNAL) {
+        expire_time = retro_atomic_load_acquire_64(
+            attr_mask == QEMU_TIMER_ATTR_ALL ? &clock->deadline :
+                                             &clock->non_external_deadline);
+        return expire_time < 0 ? -1 :
+            MAX(0, expire_time - qemu_clock_get_ns(type));
+    }
+    /* Preserve arbitrary attribute masks for retained callers; the actual
+     * core deadline paths above never traverse the list or acquire a lock. */
     WITH_QEMU_LOCK_GUARD(&clock->active_timers_lock) {
         ts = clock->active_timers;
         while (ts && (ts->attributes & ~attr_mask)) {
@@ -309,30 +354,46 @@ void timer_init_full(QEMUTimer *ts,
     ts->expire_time = -1;
 }
 
-static void timer_del_locked(QEMUTimerList *timer_list, QEMUTimer *ts)
+enum {
+    TIMER_MIN_ALL = 1,
+    TIMER_MIN_NON_EXTERNAL = 2,
+};
+
+/* Return which published minima may have changed. Later-node mutations
+ * need no cache publication or additional reader-visible stores. */
+static unsigned timer_del_locked(QEMUTimerList *timer_list, QEMUTimer *ts)
 {
     QEMUTimer **pt, *t;
+    unsigned changed = 0;
 
     ts->expire_time = -1;
     pt = &timer_list->active_timers;
-    for(;;) {
+    for (;;) {
         t = *pt;
-        if (!t)
-            break;
+        if (!t) {
+            return 0;
+        }
         if (t == ts) {
+            if (pt == &timer_list->active_timers) {
+                changed |= TIMER_MIN_ALL;
+            }
             timer_link_set(pt, t->next);
-            break;
+            if (timer_list->non_external_timers == t) {
+                timer_list->non_external_timers = timer_next_non_external(t->next);
+                changed |= TIMER_MIN_NON_EXTERNAL;
+            }
+            return changed;
         }
         pt = &t->next;
     }
 }
 
-static bool timer_mod_ns_locked(QEMUTimerList *timer_list,
-                                QEMUTimer *ts, int64_t expire_time)
+static unsigned timer_mod_ns_locked(QEMUTimerList *timer_list,
+                                    QEMUTimer *ts, int64_t expire_time)
 {
     QEMUTimer **pt, *t;
+    unsigned changed = 0;
 
-    /* add the timer in the sorted list */
     pt = &timer_list->active_timers;
     for (;;) {
         t = *pt;
@@ -341,11 +402,19 @@ static bool timer_mod_ns_locked(QEMUTimerList *timer_list,
         }
         pt = &t->next;
     }
+    if (!(ts->attributes & QEMU_TIMER_ATTR_EXTERNAL) &&
+        (!timer_list->non_external_timers ||
+         expire_time < timer_list->non_external_timers->expire_time)) {
+        timer_list->non_external_timers = ts;
+        changed |= TIMER_MIN_NON_EXTERNAL;
+    }
     ts->expire_time = MAX(expire_time, 0);
     ts->next = *pt;
     timer_link_set(pt, ts);
-
-    return pt == &timer_list->active_timers;
+    if (pt == &timer_list->active_timers) {
+        changed |= TIMER_MIN_ALL;
+    }
+    return changed;
 }
 
 /* stop a timer, but do not dealloc it */
@@ -355,7 +424,9 @@ void timer_del(QEMUTimer *ts)
 
     if (timer_list) {
         qemu_mutex_lock(&timer_list->active_timers_lock);
-        timer_del_locked(timer_list, ts);
+        if (timer_del_locked(timer_list, ts)) {
+            timer_publish_deadlines(timer_list);
+        }
         qemu_mutex_unlock(&timer_list->active_timers_lock);
     }
 }
@@ -365,14 +436,17 @@ void timer_del(QEMUTimer *ts)
 void timer_mod_ns(QEMUTimer *ts, int64_t expire_time)
 {
     QEMUTimerList *timer_list = ts->timer_list;
-    bool rearm;
+    unsigned removed, inserted;
 
     qemu_mutex_lock(&timer_list->active_timers_lock);
-    timer_del_locked(timer_list, ts);
-    rearm = timer_mod_ns_locked(timer_list, ts, expire_time);
+    removed = timer_del_locked(timer_list, ts);
+    inserted = timer_mod_ns_locked(timer_list, ts, expire_time);
+    if (removed | inserted) {
+        timer_publish_deadlines(timer_list);
+    }
     qemu_mutex_unlock(&timer_list->active_timers_lock);
 
-    if (rearm) {
+    if (inserted & TIMER_MIN_ALL) {
         qemu_clock_notify(timer_list->type);
     }
 }
@@ -383,19 +457,20 @@ void timer_mod_ns(QEMUTimer *ts, int64_t expire_time)
 void timer_mod_anticipate_ns(QEMUTimer *ts, int64_t expire_time)
 {
     QEMUTimerList *timer_list = ts->timer_list;
-    bool rearm = false;
+    unsigned removed = 0, inserted = 0;
 
     WITH_QEMU_LOCK_GUARD(&timer_list->active_timers_lock) {
         if (ts->expire_time == -1 || ts->expire_time > expire_time) {
             if (ts->expire_time != -1) {
-                timer_del_locked(timer_list, ts);
+                removed = timer_del_locked(timer_list, ts);
             }
-            rearm = timer_mod_ns_locked(timer_list, ts, expire_time);
-        } else {
-            rearm = false;
+            inserted = timer_mod_ns_locked(timer_list, ts, expire_time);
+            if (removed | inserted) {
+                timer_publish_deadlines(timer_list);
+            }
         }
     }
-    if (rearm) {
+    if (inserted & TIMER_MIN_ALL) {
         qemu_clock_notify(timer_list->type);
     }
 }
@@ -429,7 +504,7 @@ bool qemu_clock_run_timers(QEMUClockType type)
     }
 
     qemu_event_reset(&timer_list->timers_done_ev);
-    if (!timer_list->enabled) {
+    if (!retro_atomic_load_acquire_int(&timer_list->enabled)) {
         goto out;
     }
 
@@ -444,8 +519,12 @@ bool qemu_clock_run_timers(QEMUClockType type)
 
         /* remove timer from the list before calling the callback */
         timer_link_set(&timer_list->active_timers, ts->next);
+        if (timer_list->non_external_timers == ts) {
+            timer_list->non_external_timers = timer_next_non_external(ts->next);
+        }
         ts->next = NULL;
         ts->expire_time = -1;
+        timer_publish_deadlines(timer_list);
         cb = ts->cb;
         opaque = ts->opaque;
 

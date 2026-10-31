@@ -4,6 +4,10 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Publish all-timer and non-external timer deadlines through libretro-common
+  atomics. Core deadline and expired checks avoid queue locks and timer-node
+  reads, preserving cancellation, callbacks, clock pause and filtered timing.
+
 - Remove both descriptor-array copies from Windows high-resolution polling.
   Append its timer directly to the native wait set, preserve exact-size caller
   arrays and descriptor readiness, and saturate the backup timeout safely.
