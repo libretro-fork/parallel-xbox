@@ -11,6 +11,9 @@ code=r'''#include <assert.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
+#undef assert
+#define assert(x) do {if(!(x)){fprintf(stderr,"FAIL %d: %s\n",__LINE__,#x);_Exit(1);}}while(0)
 typedef uint64_t VkDeviceSize;
 #define MAX(a,b) ((a)>(b)?(a):(b))
 #define ROUND_UP(a,b) (((a)+(b)-1)&~((b)-1))
@@ -22,7 +25,7 @@ typedef struct { VkDeviceSize buffer_size; unsigned handle; } StorageBuffer;
 typedef struct { int staging, device; } StagedBuffer;
 static const StagedBuffer pgraph_vk_staged_buffers[]={{STAGED,DEVICE}};
 typedef struct { StorageBuffer storage_buffers[NBUF],alt_staging[1],alt_device[1];
-                 int in_command_buffer; } PGRAPHVkState;
+                 int in_command_buffer; struct {struct {struct {unsigned source[8];} convert;} pvideo;} display; } PGRAPHVkState;
 typedef struct { PGRAPHVkState *vk_renderer_state; } PGRAPHState;
 static unsigned step, finished, waited, settled, recreated, changed, generation;
 static void pgraph_vk_finish(PGRAPHState *pg,int reason)
@@ -34,7 +37,7 @@ static void pgraph_vk_settle_all_slots(PGRAPHState *pg)
 static void recreate_buffer(PGRAPHState *pg,StorageBuffer *b,VkDeviceSize size)
 { (void)pg; assert(step==3); b->buffer_size=size; b->handle=++generation; recreated++; }
 static void pgraph_vk_compute_buffers_changed(PGRAPHState *pg)
-{ (void)pg; assert(recreated==2); changed++; }
+{ (void)pg; assert(recreated==1||recreated==2); changed++; }
 /* PRODUCTION */
 int main(void) {
  const VkDeviceSize mb=1024*1024;
@@ -58,7 +61,7 @@ int main(void) {
   }
   assert(recreated==((index==STAGED||index==DEVICE)?4:
     (index==BUFFER_COMPUTE_SRC||index==BUFFER_COMPUTE_DST)?2:1));
-  assert(changed==((index==BUFFER_COMPUTE_SRC||index==BUFFER_COMPUTE_DST)?1u:0u));
+  assert(changed==((index==BUFFER_COMPUTE_SRC||index==BUFFER_COMPUTE_DST||index==BUFFER_STAGING_DST)?1u:0u));
   if(index==STAGED||index==DEVICE) {
    assert(r.alt_staging[0].buffer_size==128*mb && r.alt_device[0].buffer_size==128*mb);
   } else assert(r.alt_staging[0].handle==200 && r.alt_device[0].handle==201);

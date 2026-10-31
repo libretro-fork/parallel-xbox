@@ -36,7 +36,7 @@ static void create_descriptor_pool(PGRAPHState *pg)
     VkDescriptorPoolSize pool_sizes[] = {
         {
             .type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-            .descriptorCount = 3 * 2,
+            .descriptorCount = 3 * 3,
         },
     };
 
@@ -44,7 +44,7 @@ static void create_descriptor_pool(PGRAPHState *pg)
         .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
         .poolSizeCount = ARRAY_SIZE(pool_sizes),
         .pPoolSizes = pool_sizes,
-        .maxSets = 2,
+        .maxSets = 3,
         .flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT,
     };
     VK_CHECK(vkCreateDescriptorPool(r->device, &pool_info, NULL,
@@ -92,10 +92,11 @@ static void destroy_descriptor_set_layout(PGRAPHState *pg)
     r->compute.descriptor_set_layout = VK_NULL_HANDLE;
 }
 
-/* The pack and the unpack always use the same two buffers, whole: the
+/* Fixed pack/unpack sets use the conversion buffers; a third pack set
+ * writes the mapped readback buffer directly. The ordinary
  * pack reads the depth and stencil planes from BUFFER_COMPUTE_DST and
  * writes the packed surface into BUFFER_COMPUTE_SRC, the unpack the other
- * way. So one descriptor set each, written at init and again when the two
+ * way. So fixed descriptor sets, written at init and again when their
  * buffers are recreated (pgraph_vk_compute_buffers_changed, with nothing
  * in flight); the stencil plane's place is a push constant. No set is
  * used up per dispatch, so none ever runs out and nothing has to wait for
@@ -115,18 +116,25 @@ static void write_descriptor_sets(PGRAPHState *pg)
         { .buffer = packed_pack, .range = VK_WHOLE_SIZE },
         { .buffer = planes_pack, .range = VK_WHOLE_SIZE },
     };
-    VkWriteDescriptorSet writes[6];
-    for (int i = 0; i < 6; i++) {
+    VkDescriptorBufferInfo pack_readback[3] = { pack[0], pack[1], {
+        .buffer = r->storage_buffers[BUFFER_STAGING_DST].buffer,
+        .range = MIN(r->storage_buffers[BUFFER_STAGING_DST].buffer_size,
+                     r->device_props.limits.maxStorageBufferRange),
+    } };
+    VkWriteDescriptorSet writes[9];
+    for (int i = 0; i < 9; i++) {
         writes[i] = (VkWriteDescriptorSet){
             .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-            .dstSet = i < 3 ? r->compute.set_pack : r->compute.set_unpack,
+            .dstSet = i < 3 ? r->compute.set_pack :
+                      i < 6 ? r->compute.set_unpack : r->compute.set_pack_readback,
             .dstBinding = i % 3,
             .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
             .descriptorCount = 1,
-            .pBufferInfo = i < 3 ? &pack[i] : &unpack[i - 3],
+            .pBufferInfo = i < 3 ? &pack[i] :
+                           i < 6 ? &unpack[i - 3] : &pack_readback[i - 6],
         };
     }
-    vkUpdateDescriptorSets(r->device, 6, writes, 0, NULL);
+    vkUpdateDescriptorSets(r->device, 9, writes, 0, NULL);
 }
 
 void pgraph_vk_compute_buffers_changed(PGRAPHState *pg)
@@ -140,31 +148,35 @@ static void create_descriptor_sets(PGRAPHState *pg)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
 
-    VkDescriptorSetLayout layouts[2] = {
+    VkDescriptorSetLayout layouts[3] = {
+        r->compute.descriptor_set_layout,
         r->compute.descriptor_set_layout,
         r->compute.descriptor_set_layout,
     };
-    VkDescriptorSet sets[2];
+    VkDescriptorSet sets[3];
     VkDescriptorSetAllocateInfo alloc_info = {
         .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
         .descriptorPool = r->compute.descriptor_pool,
-        .descriptorSetCount = 2,
+        .descriptorSetCount = 3,
         .pSetLayouts = layouts,
     };
     VK_CHECK(vkAllocateDescriptorSets(r->device, &alloc_info, sets));
     r->compute.set_pack = sets[0];
     r->compute.set_unpack = sets[1];
+    r->compute.set_pack_readback = sets[2];
     write_descriptor_sets(pg);
 }
 
 static void destroy_descriptor_sets(PGRAPHState *pg)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
-    VkDescriptorSet sets[2] = { r->compute.set_pack, r->compute.set_unpack };
+    VkDescriptorSet sets[3] = { r->compute.set_pack, r->compute.set_unpack,
+                               r->compute.set_pack_readback };
 
-    vkFreeDescriptorSets(r->device, r->compute.descriptor_pool, 2, sets);
+    vkFreeDescriptorSets(r->device, r->compute.descriptor_pool, 3, sets);
     r->compute.set_pack = VK_NULL_HANDLE;
     r->compute.set_unpack = VK_NULL_HANDLE;
+    r->compute.set_pack_readback = VK_NULL_HANDLE;
 }
 
 static void create_compute_pipeline_layout(PGRAPHState *pg)
@@ -271,14 +283,17 @@ void pgraph_vk_pack_depth_stencil_dims(PGRAPHState *pg,
     size_t output_bytes_per_pixel = 4;
     size_t output_size = output_width * output_height * output_bytes_per_pixel;
 
-    /* the fixed set's buffers (write_descriptor_sets) */
+    /* Fixed sets: ordinary GPU pack or direct mapped-readback output. */
+    bool to_host = dst == r->storage_buffers[BUFFER_STAGING_DST].buffer;
     assert(src == r->storage_buffers[BUFFER_COMPUTE_DST].buffer &&
-           dst == r->storage_buffers[BUFFER_COMPUTE_SRC].buffer);
+           (to_host || dst == r->storage_buffers[BUFFER_COMPUTE_SRC].buffer));
     assert(ROUND_UP(depth_size,
                     r->device_props.limits.minStorageBufferOffsetAlignment) +
                stencil_size <=
            r->storage_buffers[BUFFER_COMPUTE_DST].buffer_size);
-    assert(output_size <= r->storage_buffers[BUFFER_COMPUTE_SRC].buffer_size);
+    assert(output_size <= r->storage_buffers[to_host ? BUFFER_STAGING_DST :
+                                                     BUFFER_COMPUTE_SRC].buffer_size);
+    assert(!to_host || output_size <= r->device_props.limits.maxStorageBufferRange);
     /* the stencil plane follows the depth one, aligned as the copy put it */
     uint32_t stencil_base =
         ROUND_UP(depth_size,
@@ -291,9 +306,10 @@ void pgraph_vk_pack_depth_stencil_dims(PGRAPHState *pg,
 
     pgraph_vk_begin_debug_marker(r, cmd, RGBA_PINK, __func__);
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
+    VkDescriptorSet set = to_host ? r->compute.set_pack_readback : r->compute.set_pack;
     vkCmdBindDescriptorSets(
         cmd, VK_PIPELINE_BIND_POINT_COMPUTE, r->compute.pipeline_layout, 0, 1,
-        &r->compute.set_pack, 0, NULL);
+        &set, 0, NULL);
 
     uint32_t push_constants[4] = { input_width, output_width, stencil_base, output_size_in_units };
     vkCmdPushConstants(cmd, r->compute.pipeline_layout,

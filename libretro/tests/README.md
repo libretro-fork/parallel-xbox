@@ -1378,6 +1378,19 @@ redraw/reset kicks remain uncounted. No-op/IRQ-enable writes do
 not invent work. The dedicated GitHub Actions job needs no game assets or GPU;
 the same test also runs in the regular suite.
 
+`test-depth-host-pack.py CHECKOUT [CC]` compiles production descriptor writes,
+pack dispatch, readback routing and host barriers against a buffer/queue model.
+Six thousand schedules check exact packed output, direct host writes with no
+GPU buffer copy, oversized transfer fallback, unchanged direct-RAM routing,
+capped descriptor ranges and compute-versus-transfer host visibility. It also
+requires the synchronous readback wait to remain before CPU invalidation.
+The native CI job runs this and the buffer-growth ownership oracle.
+Optional `--gpu` builds the real Vulkan production descriptor/pack helpers
+and compares direct host output with the old device-buffer/copy route across
+D24S8/D32S8, native/2x scale and three sizes. It requires Vulkan headers/loader
+and queue timestamps; it runs without validation layers and prints scoped GPU
+timings from alternating batches, not whole-core latency.
+
 `test-linear-texture-staging.py CHECKOUT [CC]` runs production linear staging
 and copy-region construction without a GPU. Thirty thousand width/height/pitch,
 alignment and direct-buffer cases verify sampled texels, zero-copy eligibility,
