@@ -155,7 +155,7 @@ int main(void) {
     for (unsigned stage = 0; stage < 4; stage++)
     for (unsigned signs = 0; signs < 16; signs++)
     for (unsigned filter = 3; filter <= 6; filter++)
-    for (unsigned level = 1; level <= 2; level++)
+    for (unsigned level = 1; level <= 3; level++)
     for (unsigned opposite = 0; opposite < 2; opposite++)
     for (unsigned others = 0; others < 2; others++) {
         unsigned mag = filter % 2 ? 1 : 2;

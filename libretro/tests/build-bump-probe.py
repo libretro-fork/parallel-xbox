@@ -27,8 +27,10 @@ def main():
                         help="clamp only this axis and wrap the other with --mip-filter")
     parser.add_argument("--mip-address-u", choices=("wrap", "edge", "mirror"))
     parser.add_argument("--mip-address-v", choices=("wrap", "edge", "mirror"))
-    parser.add_argument("--min-lod", type=int, choices=(0, 1, 2), default=0,
+    parser.add_argument("--min-lod", type=int, choices=(0, 1, 2, 3), default=0,
                         help="guest lower mip clamp with --mip-filter")
+    parser.add_argument("--mip-base-size", type=int, choices=(4, 16), default=4,
+                        help="4x4/three-level or 16x16/five-level mip fixture")
     parser.add_argument("--sampler-transition", choices=("lod0-to-mip", "mip-to-lod0"),
                         help="prime the same image with the other filter class before drawing")
     parser.add_argument("--lod-bias", type=float, choices=(-4, 0, 0.25, 4), default=0,
@@ -38,6 +40,10 @@ def main():
         parser.error("--luminance-profile is a separate bump fixture")
     if args.min_lod and not args.mip_filter:
         parser.error("--min-lod requires --mip-filter")
+    if args.mip_base_size != 4 and not args.mip_filter:
+        parser.error("--mip-base-size requires --mip-filter")
+    if args.min_lod == 3 and args.mip_base_size != 16:
+        parser.error("--min-lod 3 requires --mip-base-size 16")
     if args.sampler_transition and not args.mip_filter:
         parser.error("--sampler-transition requires --mip-filter")
     if args.mixed and args.mip_filter:
@@ -47,6 +53,8 @@ def main():
     explicit_address = args.mip_address_u is not None or args.mip_address_v is not None
     if explicit_address and (args.mip_clamp or args.mip_clamp_axis):
         parser.error("explicit addresses cannot be combined with mip clamp options")
+    if args.mip_base_size == 16 and not (args.mip_clamp or args.mip_clamp_axis):
+        explicit_address = True
     axis_data = args.mip_clamp or args.mip_clamp_axis is not None or explicit_address
     if axis_data and not args.mip_filter:
         parser.error("mip address options require --mip-filter")
@@ -82,6 +90,8 @@ def main():
             defines.append("-DBUMP_FILTER_MIXED_PROBE")
             defines.append(f"-DBUMP_MIXED_BIAS={int(args.lod_bias * 256) & 0x1fff}")
         if args.mip_filter:
+            if args.mip_base_size == 16:
+                defines.append("-DBUMP_FILTER_WIDE_MIP_PROBE")
             if args.sampler_transition:
                 defines.append("-DBUMP_SAMPLER_TRANSITION")
                 if args.sampler_transition == "lod0-to-mip":
@@ -130,7 +140,7 @@ def main():
         writer.writerow(["id", "layout", "mode", "axis", "signed_channels", "filter",
                          "coordinate", "result_address", "lod_bias", "mip_filter",
                          "max_lod", "wrap_period", "mag_filter", "address_mode",
-                         "sample_u", "sample_v", "min_lod", "sampler_transition"])
+                         "sample_u", "sample_v", "min_lod", "sampler_transition", "base_size"])
         for i in range(192):
             if args.luminance_profile:
                 flags = (i // 6) % 16
@@ -151,6 +161,10 @@ def main():
                         u, v = ((1.25, 1.25), (-0.25, -0.25),
                                 (4.25, 4.25), (-0.25, 4.25))[i // 48]
                         maximum = 1 if flags & 1 else 2
+                        if args.mip_base_size == 16:
+                            maximum = 3 if flags & 1 else 4
+                            u += 0.0625
+                            v += 0.0625
                     else:
                         u, v = 1.25 - 4 * (i // 96), 0
                         maximum = 1 if (i // 3) % 2 else 2
@@ -160,7 +174,8 @@ def main():
                                      ("magnified", "near_magnified", "minified")[i % 3],
                                      f"0x{0x300204 + i * 8:08x}", args.lod_bias,
                                      args.mip_filter, maximum, 0 if axis_data else -(i // 96), mag,
-                                     address_mode, u, v, args.min_lod, args.sampler_transition or ""])
+                                     address_mode, u, v, args.min_lod, args.sampler_transition or "",
+                                     args.mip_base_size])
                     continue
                 writer.writerow([i, ("linear", "swizzled")[i // 96],
                                  "mixed_color" if args.mixed else "color", "BG", channels,

@@ -340,7 +340,7 @@ void pgraph_glsl_set_psh_state(PGRAPHState *pg, PshState *state)
             mip_mirror_v = addrv == NV_PGRAPH_TEXADDRESS0_ADDRU_MIRROR;
             /* Both renderers keep the original footprint for these lower
              * clamps. A positive sampler minimum always selects minification. */
-            mip_filter = mip_min_lod <= 2 &&
+            mip_filter = mip_min_lod <= 3 &&
                 (addru == NV_PGRAPH_TEXADDRESS0_ADDRU_WRAP || mip_clamp_u || mip_mirror_u) &&
                 (addrv == NV_PGRAPH_TEXADDRESS0_ADDRU_WRAP || mip_clamp_v || mip_mirror_v) &&
                 min_filter >= NV_PGRAPH_TEXFILTER0_MIN_BOX_NEARESTLOD &&

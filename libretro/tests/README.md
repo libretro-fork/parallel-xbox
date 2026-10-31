@@ -98,7 +98,7 @@ while an unlinker owns the list. It includes the production implementation.
 `run.sh` runs it through the alert, keyed-event and event tiers with Wine.
 
 `test-signed-g8b8.py CHECKOUT CORE HARNESS SCRATCH` builds isolated guest bump
-and color probes and checks 61440 cases on each of OpenGL and Vulkan, including
+and color probes and checks 68352 cases on each of OpenGL and Vulkan, including
 all channel-sign combinations for the color probe, with quality overrides off
 and on. Mixed LOD0 filters additionally cover magnification/minification and
 sampler LOD biases of -4, 0 and +4. Three-level mipmapped probes cover all four
@@ -108,7 +108,7 @@ and mixed min/mag reconstruction.
 Clamp-to-edge matrices add independent X/Y data and samples inside, below,
 above and at opposite U/V edges, with matching and mixed filters. New
 independent-axis matrices are covered at bias +0.25; `--extended-address-biases` repeats
-these at -4/0/+0.25/+4 (144384 total cases per renderer). The probe builder
+these at -4/0/+0.25/+4 (168960 total cases per renderer). The probe builder
 accepts `--mip-clamp-axis u` or `v` for these independent-axis cases.
 Mirrored U/V addressing is covered against wrap, edge and mirror partners,
 with matching/mixed filters and bias +0.25 (all four biases in extended mode).
@@ -120,9 +120,14 @@ with wrap addressing, and level two with all four mip filters. These cover
 matching and mixed min/mag filters. Positive lower clamps select the
 minification filter; the GL sampler retains the original base image and
 applies a minimum LOD instead of rebasing it. Mixed-filter matrices repeat
-all four biases in extended mode. Clamps above level two retain their
-previous path. Use `--min-lod 1` or `2`
-with the probe builder. Force LOD0 overrides the guest lower clamp and
+all four biases in extended mode. Level-three matrices add 6912 cases per
+renderer, including all nine address pairs, matching/mixed filters, and
+negative-bias mixed point/trilinear controls. These use a 16x16 five-level
+chain so level three remains 2x2 and level four exercises cross-mip blending.
+Wide-fixture coordinates move 1/64 in normalized space to avoid exact mip-zero
+point-sampling boundaries; their footprint LOD increases by two. Clamps above
+level three retain their previous path. Use `--min-lod 1` or `2` with the
+probe builder, or `--min-lod 3 --mip-base-size 16` for level three. Force LOD0 overrides the guest lower clamp and
 retains mixed min/mag selection. Nonzero lower-clamp reconstruction uses a
 new absolute-LOD tag in the existing stage byte, keeping legacy GL seed
 programs distinct. Zero-lower-clamp shader keys remain unchanged.
@@ -140,12 +145,12 @@ when Vulkan is available. See `docs/bump-filter-probe.md` for the model and
 hardware-validation limits. The test code is absent from normal emulation.
 
 `test-g8b8-sampler-views.py CHECKOUT [CC]` checks production GL sampler-view
-classification, 512 filter-mode transitions, 64 reuse gates, GL parameter
+classification, 768 filter-mode transitions, 64 reuse gates, GL parameter
 selection and unchanged cache-key/binding layouts. Mip and nonmip views of
 the same image must remain separate when their base/minimum settings differ.
 
 `test-g8b8-nonmip-transitions.py CHECKOUT PARENT CANDIDATE HARNESS SCRATCH`
-compares 1536 nonmip pixels per renderer against the parent after priming the
+compares 2304 nonmip pixels per renderer against the parent after priming the
 same image with mip filtering. It checks each backend's existing behavior;
 it does not require unsupported nonmip-chain sampling to agree across APIs.
 Use `--assembler yasm` when nasm is unavailable.
@@ -163,7 +168,7 @@ serialized pixel-shader state size and field offsets.
 Another 4608 cases verify that matching, base-only wrap/edge/mirror filters reuse the
 single-level point/gather shader keys without clearing other stages' flags.
 An additional 9216 cases verify independent-axis flags and preserve other stages;
-2048 more check lower-mip bitplanes, matching/mixed canonicalization and
+3072 more check lower-mip bitplanes, matching/mixed canonicalization and
 other-stage preservation without altering the serialized layout.
 
 `run.sh` runs every test script here. The extracted-code tests (`test-*.py`, which

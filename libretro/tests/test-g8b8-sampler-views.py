@@ -70,11 +70,11 @@ int main(void) {
     TextureShape shape;
     memset(&shape, 0, sizeof(shape));
     shape.color_format = NV097_SET_TEXTURE_FORMAT_COLOR_SZ_G8B8;
-    shape.dimensionality = 2; shape.levels = 3;
-    shape.width = shape.height = 4; shape.depth = 1;
-    shape.max_mipmap_level = 2;
+    shape.dimensionality = 2; shape.levels = 5;
+    shape.width = shape.height = 16; shape.depth = 1;
+    shape.max_mipmap_level = 4;
     unsigned transitions = 0, gates = 0;
-    for (unsigned level = 1; level <= 2; level++) {
+    for (unsigned level = 1; level <= 3; level++) {
         shape.min_mipmap_level = level;
         for (unsigned a = 0; a < 16; a++) for (unsigned b = 0; b < 16; b++) {
             TextureKey ka, kb;
@@ -98,7 +98,7 @@ int main(void) {
             calls = 0; sampler_parameters(shape, false, clamp);
             assert(calls == (clamp ? 3u : 2u));
             assert(names[0] == GL_TEXTURE_BASE_LEVEL && values[0] == (clamp ? 0 : level));
-            assert(names[calls - 1] == GL_TEXTURE_MAX_LEVEL && values[calls - 1] == 2);
+            assert(names[calls - 1] == GL_TEXTURE_MAX_LEVEL && values[calls - 1] == 4);
             if (clamp) assert(names[1] == GL_TEXTURE_MIN_LOD && values[1] == level);
         }
     }
@@ -112,7 +112,7 @@ int main(void) {
     }
     assert(!reuse_gate(NULL, false, false, false, false));
     shape.min_mipmap_level = 0; assert(!g8b8_sampler_lod_clamp(&shape, 3u << 16));
-    shape.min_mipmap_level = 3; assert(!g8b8_sampler_lod_clamp(&shape, 3u << 16));
+    shape.min_mipmap_level = 4; assert(!g8b8_sampler_lod_clamp(&shape, 3u << 16));
     shape.min_mipmap_level = 1;
     for (unsigned format = 0; format < 66; format++) {
         shape.color_format = format;

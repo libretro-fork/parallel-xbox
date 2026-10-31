@@ -76,8 +76,8 @@ and [GLSL LOD query](https://github.khronos.org/Vulkan-Site/glsl/latest/chapters
 
 ## Mipmapped signed G8B8
 
-Swizzled, projective 2D G8B8 with wrap or clamp-to-edge on both axes and a zero
-lower mip clamp now decodes
+Swizzled, projective 2D G8B8 with independent wrap, clamp-to-edge or mirror
+addressing and a lower mip clamp from zero through three now decodes
 texels before filtering with matching or mixed point/linear min/mag reconstruction
 within and between mip levels. All four nearest/linear mip modes are supported.
 The accessed-mip component of `textureQueryLod` supplies sampler bias, nearest
@@ -94,15 +94,24 @@ builds a 4x4/2x2/1x1 mip chain with distinct byte patterns. Its 192 cases combin
 16 channel-sign masks, three exact footprints (1/4, 1 and 2 texels/pixel), upper
 clamps 1/2 and positive/negative wrap periods. Fractional bias 0.25 exercises
 interpolation between levels without using an approximate fractional footprint.
-The full runner checks 26496 cases per renderer with both quality overrides off
+The full runner checks 68352 cases per renderer with both quality overrides off
 and on. Original cases retain a one-LSB scalar tolerance and exact GL/Vulkan
 agreement. Mip cases allow one LSB, or two for cross-mip interpolation, in the
 scalar and backend comparison because native LOD approximation can shift a
 high-contrast signed color. This is not a physical-console precision oracle.
 
-Nonzero lower clamps, mixed U/V address modes, mirror/border addressing,
-cubemaps, embedded borders, color keys and signed alpha-kill remain on
-their previous paths. Linear-layout textures do not support mip chains.
+Lower clamps above three, border addressing, cubemaps, embedded borders, color
+keys and signed alpha-kill remain on their previous paths. Linear-layout
+textures do not support mip chains.
+
+Use `--min-lod 3 --mip-base-size 16` for a five-level chain with a 2x2 level
+three and 1x1 level four. Wide-fixture coordinates sit 1/64 normalized units
+away from the original coordinates, avoiding exact mip-zero point boundaries;
+its texture footprint adds two to the original LOD. The default runner adds
+6912 level-three cases, including Force LOD0 off/on, independent addressing,
+matching/mixed filters and negative-bias override controls. Force LOD0 resets
+both effective clamps to zero before shader selection, overriding guest lower
+clamps in both renderers. It requires restarting content.
 
 Add `--mip-mixed` to the mip fixture command to choose the opposite magnification
 filter. The 6144 extra cases cover both directions for every mip mode and bias,

@@ -1,5 +1,7 @@
 # Changelog of the libretro core
 
+- Correct signed G8B8 bump-map filtering with a minimum mip level of three in OpenGL and Vulkan. Force Texture LOD0 still overrides the clamp; existing shader encodings and state layouts remain unchanged. Add guest and sampler-transition regression coverage without runtime diagnostics.
+
 - Trim unused Windows linker libraries and replace the Win8-era PathCch resource-root dependency with allocation-free compatible parsing.
 
 - Remove the DMA map-retry list mutex; frontend-owned callbacks handle cross-thread releases through a lazily created atomic bottom-half notification.

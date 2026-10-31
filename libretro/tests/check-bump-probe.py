@@ -25,7 +25,9 @@ def expected_mip(case, force_lod0):
         raise ValueError("nonmip transition controls require per-backend parent comparison")
     mode = int(case["mip_filter"])
     linear = mode in (4, 6)
+    base_size = int(case.get("base_size") or 4)
     lod = (-2, 0, 1)[("magnified", "near_magnified", "minified").index(case["coordinate"])]
+    lod += math.log2(base_size / 4)
     computed_lod = lod + float(case["lod_bias"])
     maximum = int(case["max_lod"]) if case.get("max_lod") else (
         1 if (int(case["id"]) // 3) % 2 else 2)
@@ -39,7 +41,7 @@ def expected_mip(case, force_lod0):
         lod = math.floor(lod + 0.5)
 
     def sample(level, channel):
-        size = 4 >> level
+        size = base_size >> level
         address = case.get("address_mode", "wrap")
         axis_v = (address in ("clamp_edge", "clamp_u", "clamp_v") or address.startswith("axes_")) and channel in "GA"
         clamp = address == "clamp_edge" or (address == "clamp_v" if axis_v else address == "clamp_u")
@@ -47,7 +49,11 @@ def expected_mip(case, force_lod0):
             "edge" if clamp else "wrap")
         coordinate = "sample_v" if axis_v else "sample_u"
         u = float(case.get(coordinate) or "1.25") * size / 4
-        pair = ((192, 64), (224, 32), (16, 16))[level] if channel in "RB" else ((64, 192), (96, 160), (112, 112))[level]
+        if base_size == 16:
+            pair = ((192, 64), (224, 32), (16, 240), (208, 48), (16, 16))[level] if channel in "RB" else (
+                (64, 192), (96, 160), (112, 144), (80, 176), (112, 112))[level]
+        else:
+            pair = ((192, 64), (224, 32), (16, 16))[level] if channel in "RB" else ((64, 192), (96, 160), (112, 112))[level]
         position = u - 0.5 if linear else u
         index = math.floor(position)
         weight = position - index if linear else 0
