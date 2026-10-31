@@ -3161,3 +3161,5 @@ include/qemu/path.h
 qemu-options.hx
 qemu-img-cmds.hx
 libretro/gen/qemu-options.def
+migration/yank_functions.c
+migration/yank_functions.h

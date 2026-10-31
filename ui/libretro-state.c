@@ -15,19 +15,15 @@
  */
 
 #include "qemu/osdep.h"
-#include "qemu/iov.h"
 #include "qemu/cutils.h"
 #include "qemu/timer.h"
 #include "qapi/error.h"
-#include "qom/object.h"
-#include "io/channel.h"
 #include "exec/cpu-common.h"
 #include "exec/target_page.h"
 #include "migration/qemu-file.h"
 #include "migration/savevm.h"
 #include "migration/migration.h"
 #include "migration/global_state.h"
-#include "qemu/yank.h"
 #include "system/runstate.h"
 #include "system/block-backend.h"
 #include "system/blockdev.h"
@@ -35,84 +31,6 @@
 #include "block/block.h"
 #include "block/snapshot.h"
 #include "libretro-state.h"
-
-/*
- * A channel over a buffer of fixed size the caller owns: writes past its end
- * fail instead of growing it (QIOChannelBuffer reallocates its own). Loading
- * reads the state in place (qemu_file_new_input_mapped), so nothing is read
- * through the channel: it is only what the input file is closed through.
- */
-#define TYPE_LR_STATE_CHANNEL "lr-state-channel"
-OBJECT_DECLARE_SIMPLE_TYPE(LRStateChannel, LR_STATE_CHANNEL)
-
-struct LRStateChannel {
-    QIOChannel parent;
-    uint8_t *wbuf; /* saving: the frontend's buffer */
-    size_t cap;
-    size_t off;
-};
-
-static ssize_t lr_state_channel_readv(QIOChannel *ioc, const struct iovec *iov,
-                                      size_t niov, int **fds, size_t *nfds,
-                                      int flags, Error **errp)
-{
-    return 0; /* never read: the state is mapped */
-}
-
-static ssize_t lr_state_channel_writev(QIOChannel *ioc,
-                                       const struct iovec *iov, size_t niov,
-                                       int *fds, size_t nfds, int flags,
-                                       Error **errp)
-{
-    LRStateChannel *c = LR_STATE_CHANNEL(ioc);
-    size_t total = iov_size(iov, niov);
-
-    if (total > c->cap - c->off) {
-        error_setg(errp, "the state does not fit in %zu bytes", c->cap);
-        return -1;
-    }
-    for (size_t i = 0; i < niov; i++) {
-        memcpy(c->wbuf + c->off, iov[i].iov_base, iov[i].iov_len);
-        c->off += iov[i].iov_len;
-    }
-    return total;
-}
-
-static int lr_state_channel_set_blocking(QIOChannel *ioc, bool enabled,
-                                         Error **errp)
-{
-    return 0;
-}
-
-static int lr_state_channel_close(QIOChannel *ioc, Error **errp)
-{
-    return 0;
-}
-
-static void lr_state_channel_class_init(ObjectClass *klass,
-                                        const void *class_data)
-{
-    QIOChannelClass *ioc_klass = QIO_CHANNEL_CLASS(klass);
-
-    ioc_klass->io_writev = lr_state_channel_writev;
-    ioc_klass->io_readv = lr_state_channel_readv;
-    ioc_klass->io_set_blocking = lr_state_channel_set_blocking;
-    ioc_klass->io_close = lr_state_channel_close;
-}
-
-static const TypeInfo lr_state_channel_info = {
-    .parent = TYPE_QIO_CHANNEL,
-    .name = TYPE_LR_STATE_CHANNEL,
-    .instance_size = sizeof(LRStateChannel),
-    .class_init = lr_state_channel_class_init,
-};
-
-static void lr_state_register_types(void)
-{
-    type_register_static(&lr_state_channel_info);
-}
-
-type_init(lr_state_register_types);
 
 /*
  * The state: a header, then the migration stream. Little-endian.
@@ -167,12 +85,13 @@ static uint64_t lr_state_hdd_writes(void)
     return blk ? blk_get_stats(blk)->nr_ops[BLOCK_ACCT_WRITE] : 0;
 }
 
-/* The emulator thread, under the BQL, the guest between frames */
+/* The frontend thread, under the BQL, the guest between frames */
 bool lr_state_save(void *data, size_t size, Error **errp)
 {
     LRStateHeader hdr;
-    LRStateChannel *c;
-    QEMUFile *f;
+    QEMUFile file;
+    QEMUFile *f = &file;
+    size_t stream_len;
     RunState saved_state = runstate_get();
     int ret, ret2;
 
@@ -184,17 +103,15 @@ bool lr_state_save(void *data, size_t size, Error **errp)
         lr_session = ((uint64_t)getpid() << 32) ^ get_clock_realtime();
     }
 
-    c = LR_STATE_CHANNEL(object_new(TYPE_LR_STATE_CHANNEL));
-    c->wbuf = (uint8_t *)data + sizeof(hdr);
-    c->cap = size - sizeof(hdr);
-
     global_state_store();
     /* the GPU halts and puts what it drew back in the guest's RAM */
     vm_stop(RUN_STATE_SAVE_VM);
     bdrv_drain_all_begin();
 
-    f = qemu_file_new_output(QIO_CHANNEL(c));
+    qemu_file_init_output(f, (uint8_t *)data + sizeof(hdr),
+                          size - sizeof(hdr));
     ret = qemu_savevm_state_libretro(f, errp);
+    stream_len = qemu_file_transferred(f);
     ret2 = qemu_fclose(f);
     if (ret == 0 && ret2 < 0) {
         error_setg_errno(errp, -ret2, "writing the state failed");
@@ -208,7 +125,7 @@ bool lr_state_save(void *data, size_t size, Error **errp)
         memcpy(hdr.magic, LR_STATE_MAGIC, sizeof(hdr.magic));
         hdr.version = cpu_to_le32(LR_STATE_VERSION);
         hdr.reserved = 0;
-        hdr.stream_len = cpu_to_le64(c->off);
+        hdr.stream_len = cpu_to_le64(stream_len);
         hdr.session = cpu_to_le64(lr_session);
         hdr.hdd_writes = cpu_to_le64(lr_state_hdd_writes());
         memcpy(data, &hdr, sizeof(hdr));
@@ -218,8 +135,8 @@ bool lr_state_save(void *data, size_t size, Error **errp)
          * zeroes over them had the kernel clear each one first (half of
          * the buffer and most of the save's time: a state of 66 MB in a
          * buffer of 146 MB). Reading them maps the shared zero page. */
-        uint8_t *tail = (uint8_t *)data + sizeof(hdr) + c->off;
-        size_t left = size - sizeof(hdr) - c->off;
+        uint8_t *tail = (uint8_t *)data + sizeof(hdr) + stream_len;
+        size_t left = size - sizeof(hdr) - stream_len;
         while (left) {
             size_t n = MIN(left, (size_t)64 * 1024);
             if (!buffer_is_zero(tail, n)) {
@@ -229,11 +146,10 @@ bool lr_state_save(void *data, size_t size, Error **errp)
             left -= n;
         }
     }
-    object_unref(OBJECT(c));
     return ret == 0;
 }
 
-/* The emulator thread, under the BQL, the guest between frames. *disk_newer:
+/* The frontend thread, under the BQL, the guest between frames. *disk_newer:
  * whether the game has written to the HDD since the state was saved, as far
  * as this process knows (states from an earlier one cannot tell). */
 bool lr_state_load(const void *data, size_t size, bool *disk_newer,
@@ -241,8 +157,8 @@ bool lr_state_load(const void *data, size_t size, bool *disk_newer,
 {
     MigrationIncomingState *mis = migration_incoming_get_current();
     LRStateHeader hdr;
-    LRStateChannel *c;
-    QEMUFile *f;
+    QEMUFile file;
+    QEMUFile *f = &file;
     bool was_running = runstate_is_running();
     uint64_t len;
     int ret;
@@ -268,29 +184,19 @@ bool lr_state_load(const void *data, size_t size, bool *disk_newer,
                   le64_to_cpu(hdr.session) == lr_session &&
                   le64_to_cpu(hdr.hdd_writes) != lr_state_hdd_writes();
 
-    c = LR_STATE_CHANNEL(object_new(TYPE_LR_STATE_CHANNEL));
-
     vm_stop(RUN_STATE_RESTORE_VM);
     bdrv_drain_all_begin();
     qemu_system_reset(SHUTDOWN_CAUSE_SNAPSHOT_LOAD);
 
     /* read where it lies: the page copied into the guest's RAM is the one
      * copy of a page, and what the loaders take in place is not copied */
-    f = qemu_file_new_input_mapped(QIO_CHANNEL(c),
-                                   (const uint8_t *)data + sizeof(hdr), len);
+    qemu_file_init_input(f, (const uint8_t *)data + sizeof(hdr), len);
     mis->from_src_file = f;
-    if (!yank_register_instance(MIGRATION_YANK_INSTANCE, errp)) {
-        qemu_fclose(f);
-        mis->from_src_file = NULL;
-        ret = -EINVAL;
-    } else {
-        ret = qemu_loadvm_state(f, errp);
-        /* closes f */
-        migration_incoming_state_destroy();
-    }
+    ret = qemu_loadvm_state(f, errp);
+    /* Finish f while the caller-owned cursor and memory remain live. */
+    migration_incoming_state_destroy();
 
     bdrv_drain_all_end();
-    object_unref(OBJECT(c));
     if (was_running) {
         vm_start();
     }

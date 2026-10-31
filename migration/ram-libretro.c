@@ -126,8 +126,8 @@ static int ram_save_complete(QEMUFile *f, void *opaque)
                  * it), and finding the zero pages read all of RAM once
                  * more; loads still take the zero pages of older states */
                 save_page_header(f, block, offset | RAM_SAVE_FLAG_PAGE);
-                qemu_put_buffer_async(f, block->host + offset,
-                                      TARGET_PAGE_SIZE, false);
+                qemu_put_buffer(f, block->host + offset,
+                                      TARGET_PAGE_SIZE);
             }
         }
     }
@@ -215,22 +215,17 @@ static void ram_load_changed(RAMBlock *block, ram_addr_t offset)
                                     DIRTY_CLIENTS_NOCODE);
 }
 
-/* The page from the stream, where it lies when it can (a mapped state),
- * into the guest's RAM if it differs */
+/* Borrow the page from the bounded state buffer, and restore guest RAM only
+ * if it differs. No stream refill or intermediate page buffer is needed. */
 static void ram_load_page(QEMUFile *f, RAMBlock *block, ram_addr_t offset,
                           uint8_t *host)
 {
-    uint8_t copy[TARGET_PAGE_SIZE];
-    uint8_t *src = NULL;
+    uint8_t *src;
 
-    if (qemu_peek_buffer(f, &src, TARGET_PAGE_SIZE, 0) == TARGET_PAGE_SIZE) {
-        qemu_file_skip(f, TARGET_PAGE_SIZE);
-    } else {
-        src = copy;
-        if (qemu_get_buffer(f, copy, TARGET_PAGE_SIZE) != TARGET_PAGE_SIZE) {
-            return; /* the stream's error, which the caller sees */
-        }
+    if (qemu_peek_buffer(f, &src, TARGET_PAGE_SIZE, 0) != TARGET_PAGE_SIZE) {
+        return; /* the stream's error, which the caller sees */
     }
+    qemu_file_skip(f, TARGET_PAGE_SIZE);
     if (memcmp(host, src, TARGET_PAGE_SIZE)) {
         memcpy(host, src, TARGET_PAGE_SIZE);
         ram_load_changed(block, offset);

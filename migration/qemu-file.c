@@ -21,88 +21,34 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
+
 #include "qemu/osdep.h"
-#include "qemu/madvise.h"
-#include "qemu/error-report.h"
-#include "qemu/iov.h"
-#include "migration.h"
-#include "migration-stats.h"
-#include "qemu-file.h"
-#include "trace.h"
-#include "options.h"
 #include "qapi/error.h"
-#include "rdma.h"
-#include "io/channel-file.h"
+#include "qemu/error-report.h"
+#include "qemu/bswap.h"
+#include "qemu-file.h"
 
-#define IO_BUF_SIZE 32768
-#define MAX_IOV_SIZE MIN_CONST(IOV_MAX, 64)
-
-typedef struct FdEntry {
-    QTAILQ_ENTRY(FdEntry) entry;
-    int fd;
-} FdEntry;
-
-struct QEMUFile {
-    QIOChannel *ioc;
-    bool is_writable;
-
-    int buf_index;
-    int buf_size; /* 0 when writing */
-    uint8_t *buf; /* buf_storage, or a window of the mapped input */
-    uint8_t buf_storage[IO_BUF_SIZE];
-
-    /* libretro: an input file over a buffer in memory (a savestate the
-     * frontend hands over) reads it in place, buf a window of it, rather
-     * than copying it IO_BUF_SIZE at a time into buf_storage first */
-    const uint8_t *map;
-    size_t map_len;
-    size_t map_pos; /* where buf's window starts in map */
-
-    DECLARE_BITMAP(may_free, MAX_IOV_SIZE);
-    struct iovec iov[MAX_IOV_SIZE];
-    unsigned int iovcnt;
-
-    int last_error;
-    Error *last_error_obj;
-
-    bool can_pass_fd;
-    QTAILQ_HEAD(, FdEntry) fds;
-};
-
-static QEMUFile *qemu_file_new_impl(QIOChannel *ioc, bool is_writable)
+/* Saved-state cursors read and write bounded frontend-owned memory.
+ * The caller owns this small cursor and the backing buffer until finish. */
+static void qemu_file_init(QEMUFile *f, const void *data, size_t size,
+                           bool writable)
 {
-    QEMUFile *f;
-
-    f = g_new0(QEMUFile, 1);
-
-    object_ref(ioc);
-    f->ioc = ioc;
-    f->is_writable = is_writable;
-    f->buf = f->buf_storage;
-    f->can_pass_fd = qio_channel_has_feature(ioc, QIO_CHANNEL_FEATURE_FD_PASS);
-    QTAILQ_INIT(&f->fds);
-
-    return f;
+    assert(data || !size);
+    *f = (QEMUFile) {
+        .buf = (uint8_t *)data,
+        .buf_size = size,
+        .is_writable = writable,
+    };
 }
 
-QEMUFile *qemu_file_new_output(QIOChannel *ioc)
+void qemu_file_init_input(QEMUFile *f, const void *data, size_t size)
 {
-    return qemu_file_new_impl(ioc, true);
+    qemu_file_init(f, data, size, false);
 }
 
-/*
- * An input file that reads data, len bytes the caller keeps alive until
- * the file is closed, in place: nothing is read from ioc, which is only
- * the channel the file is closed and shut down through.
- */
-QEMUFile *qemu_file_new_input_mapped(QIOChannel *ioc, const void *data,
-                                     size_t len)
+void qemu_file_init_output(QEMUFile *f, void *data, size_t size)
 {
-    QEMUFile *f = qemu_file_new_impl(ioc, false);
-
-    f->map = data;
-    f->map_len = len;
-    return f;
+    qemu_file_init(f, data, size, true);
 }
 
 /*
@@ -124,7 +70,7 @@ int qemu_file_get_error_obj(QEMUFile *f, Error **errp)
         if (f->last_error_obj) {
             *errp = error_copy(f->last_error_obj);
         } else {
-            error_setg_errno(errp, -f->last_error, "Channel error");
+            error_setg_errno(errp, -f->last_error, "State buffer error");
         }
     }
 
@@ -191,424 +137,146 @@ void qemu_file_set_error(QEMUFile *f, int ret)
     qemu_file_set_error_obj(f, ret, NULL);
 }
 
-static bool qemu_file_is_writable(QEMUFile *f)
+
+static size_t qemu_file_remaining(QEMUFile *f)
 {
-    return f->is_writable;
+    return f->buf_size - f->buf_index;
 }
 
-static void qemu_iovec_release_ram(QEMUFile *f)
+static bool put_fast(QEMUFile *f, size_t size)
 {
-    struct iovec iov;
-    unsigned long idx;
-
-    /* Find and release all the contiguous memory ranges marked as may_free. */
-    idx = find_next_bit(f->may_free, f->iovcnt, 0);
-    if (idx >= f->iovcnt) {
-        return;
+    if (f->last_error) {
+        return false;
     }
-    iov = f->iov[idx];
-
-    /* The madvise() in the loop is called for iov within a continuous range and
-     * then reinitialize the iov. And in the end, madvise() is called for the
-     * last iov.
-     */
-    while ((idx = find_next_bit(f->may_free, f->iovcnt, idx + 1)) < f->iovcnt) {
-        /* check for adjacent buffer and coalesce them */
-        if (iov.iov_base + iov.iov_len == f->iov[idx].iov_base) {
-            iov.iov_len += f->iov[idx].iov_len;
-            continue;
-        }
-        if (qemu_madvise(iov.iov_base, iov.iov_len, QEMU_MADV_DONTNEED) < 0) {
-            error_report("migrate: madvise DONTNEED failed %p %zd: %s",
-                         iov.iov_base, iov.iov_len, strerror(errno));
-        }
-        iov = f->iov[idx];
+    if (!f->is_writable) {
+        qemu_file_set_error(f, -EBADF);
+        return false;
     }
-    if (qemu_madvise(iov.iov_base, iov.iov_len, QEMU_MADV_DONTNEED) < 0) {
-            error_report("migrate: madvise DONTNEED failed %p %zd: %s",
-                         iov.iov_base, iov.iov_len, strerror(errno));
+    if (size > qemu_file_remaining(f)) {
+        qemu_file_set_error(f, -ENOSPC);
+        return false;
     }
-    memset(f->may_free, 0, sizeof(f->may_free));
+    return true;
 }
 
-/**
- * Flushes QEMUFile buffer
- *
- * This will flush all pending data. If data was only partially flushed, it
- * will set an error state.
- */
+static bool get_fast(QEMUFile *f, size_t size)
+{
+    return !f->last_error && !f->is_writable &&
+           size <= qemu_file_remaining(f);
+}
+
 int qemu_fflush(QEMUFile *f)
 {
-    if (!qemu_file_is_writable(f)) {
-        return f->last_error;
-    }
-
-    if (f->last_error) {
-        return f->last_error;
-    }
-    if (f->iovcnt > 0) {
-        Error *local_error = NULL;
-        if (qio_channel_writev_all(f->ioc,
-                                   f->iov, f->iovcnt,
-                                   &local_error) < 0) {
-            qemu_file_set_error_obj(f, -EIO, local_error);
-        } else {
-            uint64_t size = iov_size(f->iov, f->iovcnt);
-            stat64_add(&mig_stats.qemu_file_transferred, size);
-        }
-
-        qemu_iovec_release_ram(f);
-    }
-
-    f->buf_index = 0;
-    f->iovcnt = 0;
+    /* Writes are already in their final destination. */
     return f->last_error;
 }
 
-/*
- * Attempt to fill the buffer from the underlying file
- * Returns the number of bytes read, or negative value for an error.
- *
- * Note that it can return a partially full buffer even in a not error/not EOF
- * case if the underlying file descriptor gives a short read, and that can
- * happen even on a blocking fd.
- */
-static ssize_t coroutine_mixed_fn qemu_fill_buffer(QEMUFile *f)
-{
-    int len;
-    int pending;
-    Error *local_error = NULL;
-    g_autofree int *fds = NULL;
-    size_t nfd = 0;
-    int **pfds = f->can_pass_fd ? &fds : NULL;
-    size_t *pnfd = f->can_pass_fd ? &nfd : NULL;
-
-    assert(!qemu_file_is_writable(f));
-
-    if (f->map) {
-        /* The window moves on to the first unread byte, and reaches as
-         * far as a buffer would: no byte is copied */
-        pending = f->buf_size - f->buf_index;
-        f->map_pos += f->buf_index;
-        f->buf = (uint8_t *)f->map + f->map_pos;
-        f->buf_index = 0;
-        f->buf_size = MIN(f->map_len - f->map_pos, IO_BUF_SIZE);
-        len = f->buf_size - pending;
-        if (len <= 0) {
-            qemu_file_set_error(f, -EIO); /* the end, as a channel's */
-        }
-        return len;
-    }
-
-    pending = f->buf_size - f->buf_index;
-    if (pending > 0) {
-        memmove(f->buf, f->buf + f->buf_index, pending);
-    }
-    f->buf_index = 0;
-    f->buf_size = pending;
-
-    if (qemu_file_get_error(f)) {
-        return 0;
-    }
-
-    do {
-        struct iovec iov = { f->buf + pending, IO_BUF_SIZE - pending };
-        len = qio_channel_readv_full(f->ioc, &iov, 1, pfds, pnfd,
-                                     QIO_CHANNEL_READ_FLAG_FD_PRESERVE_BLOCKING,
-                                     &local_error);
-        if (len == QIO_CHANNEL_ERR_BLOCK) {
-            qio_channel_wait_cond(f->ioc, G_IO_IN);
-        }
-    } while (len == QIO_CHANNEL_ERR_BLOCK);
-
-    if (len > 0) {
-        f->buf_size += len;
-    } else {
-        qemu_file_set_error_obj(f, -EIO, local_error);
-    }
-
-    for (int i = 0; i < nfd; i++) {
-        FdEntry *fde = g_new0(FdEntry, 1);
-        fde->fd = fds[i];
-        QTAILQ_INSERT_TAIL(&f->fds, fde, entry);
-    }
-
-    return len;
-}
-
-/** Closes the file
- *
- * Returns negative error value if any error happened on previous operations or
- * while closing the file. Returns 0 or positive number on success.
- *
- * The meaning of return value on success depends on the specific backend
- * being used.
- */
 int qemu_fclose(QEMUFile *f)
 {
-    FdEntry *fde, *next;
-    int ret = qemu_fflush(f);
-    int ret2 = qio_channel_close(f->ioc, NULL);
-    if (ret >= 0) {
-        ret = ret2;
-    }
-    QTAILQ_FOREACH_SAFE(fde, &f->fds, entry, next) {
-        warn_report("qemu_fclose: received fd %d was never claimed", fde->fd);
-        close(fde->fd);
-        g_free(fde);
-    }
-    g_clear_pointer(&f->ioc, object_unref);
+    /* Cursor and backing storage remain owned by the caller. */
     error_free(f->last_error_obj);
-    g_free(f);
-    trace_qemu_file_fclose();
-    return ret;
-}
-
-/*
- * Add buf to iovec. Do flush if iovec is full.
- *
- * Return values:
- * 1 iovec is full and flushed
- * 0 iovec is not flushed
- *
- */
-static int add_to_iovec(QEMUFile *f, const uint8_t *buf, size_t size,
-                        bool may_free)
-{
-    /* check for adjacent buffer and coalesce them */
-    if (f->iovcnt > 0 && buf == f->iov[f->iovcnt - 1].iov_base +
-        f->iov[f->iovcnt - 1].iov_len &&
-        may_free == test_bit(f->iovcnt - 1, f->may_free))
-    {
-        f->iov[f->iovcnt - 1].iov_len += size;
-    } else {
-        if (f->iovcnt >= MAX_IOV_SIZE) {
-            /* Should only happen if a previous fflush failed */
-            assert(qemu_file_get_error(f) || !qemu_file_is_writable(f));
-            return 1;
-        }
-        if (may_free) {
-            set_bit(f->iovcnt, f->may_free);
-        }
-        f->iov[f->iovcnt].iov_base = (uint8_t *)buf;
-        f->iov[f->iovcnt++].iov_len = size;
-    }
-
-    if (f->iovcnt >= MAX_IOV_SIZE) {
-        qemu_fflush(f);
-        return 1;
-    }
-
-    return 0;
-}
-
-static void add_buf_to_iovec(QEMUFile *f, size_t len)
-{
-    if (!add_to_iovec(f, f->buf + f->buf_index, len, false)) {
-        f->buf_index += len;
-        if (f->buf_index == IO_BUF_SIZE) {
-            qemu_fflush(f);
-        }
-    }
-}
-
-void qemu_put_buffer(QEMUFile *f, const uint8_t *buf, size_t size)
-{
-    size_t l;
-
-    if (f->last_error) {
-        return;
-    }
-
-    while (size > 0) {
-        l = IO_BUF_SIZE - f->buf_index;
-        if (l > size) {
-            l = size;
-        }
-        memcpy(f->buf + f->buf_index, buf, l);
-        add_buf_to_iovec(f, l);
-        if (qemu_file_get_error(f)) {
-            break;
-        }
-        buf += l;
-        size -= l;
-    }
-}
-
-
-
-/* A page of guest RAM or the like, referenced where it lies until the
- * flush writes it out, not copied into buf first */
-void qemu_put_buffer_async(QEMUFile *f, const uint8_t *buf, size_t size,
-                           bool may_free)
-{
-    if (f->last_error) {
-        return;
-    }
-    add_to_iovec(f, buf, size, may_free);
-}
-
-void qemu_put_byte(QEMUFile *f, int v)
-{
-    if (f->last_error) {
-        return;
-    }
-
-    f->buf[f->buf_index] = v;
-    add_buf_to_iovec(f, 1);
-}
-
-/* n bytes of a big-endian number at once, where buf has the room (it
- * flushes when full, so all but its last few bytes): vmstate's fields are
- * mostly these, and a byte at a time each was a coalescing check */
-static inline bool put_fast(QEMUFile *f, size_t n)
-{
-    return !f->last_error && f->buf_index + n <= IO_BUF_SIZE;
-}
-
-void qemu_file_skip(QEMUFile *f, int size)
-{
-    if (f->buf_index + size <= f->buf_size) {
-        f->buf_index += size;
-    }
-}
-
-/*
- * Read 'size' bytes from file (at 'offset') without moving the
- * pointer and set 'buf' to point to that data.
- *
- * It will return size bytes unless there was an error, in which case it will
- * return as many as it managed to read (assuming blocking fd's which
- * all current QEMUFile are)
- */
-size_t coroutine_mixed_fn qemu_peek_buffer(QEMUFile *f, uint8_t **buf, size_t size, size_t offset)
-{
-    ssize_t pending;
-    size_t index;
-
-    assert(!qemu_file_is_writable(f));
-    assert(offset < IO_BUF_SIZE);
-    assert(size <= IO_BUF_SIZE - offset);
-
-    /* The 1st byte to read from */
-    index = f->buf_index + offset;
-    /* The number of available bytes starting at index */
-    pending = f->buf_size - index;
-
-    /*
-     * qemu_fill_buffer might return just a few bytes, even when there isn't
-     * an error, so loop collecting them until we get enough.
-     */
-    while (pending < size) {
-        int received = qemu_fill_buffer(f);
-
-        if (received <= 0) {
-            break;
-        }
-
-        index = f->buf_index + offset;
-        pending = f->buf_size - index;
-    }
-
-    if (pending <= 0) {
-        return 0;
-    }
-    if (size > pending) {
-        size = pending;
-    }
-
-    *buf = f->buf + index;
-    return size;
-}
-
-/*
- * Read 'size' bytes of data from the file into buf.
- * 'size' can be larger than the internal buffer.
- *
- * It will return size bytes unless there was an error, in which case it will
- * return as many as it managed to read (assuming blocking fd's which
- * all current QEMUFile are)
- */
-size_t coroutine_mixed_fn qemu_get_buffer(QEMUFile *f, uint8_t *buf, size_t size)
-{
-    size_t pending = size;
-    size_t done = 0;
-
-    while (pending > 0) {
-        size_t res;
-        uint8_t *src;
-
-        res = qemu_peek_buffer(f, &src, MIN(pending, IO_BUF_SIZE), 0);
-        if (res == 0) {
-            return done;
-        }
-        memcpy(buf, src, res);
-        qemu_file_skip(f, res);
-        buf += res;
-        pending -= res;
-        done += res;
-    }
-    return done;
-}
-
-/*
- * Peeks a single byte from the buffer; this isn't guaranteed to work if
- * offset leaves a gap after the previous read/peeked data.
- */
-int coroutine_mixed_fn qemu_peek_byte(QEMUFile *f, int offset)
-{
-    int index = f->buf_index + offset;
-
-    assert(!qemu_file_is_writable(f));
-    assert(offset < IO_BUF_SIZE);
-
-    if (index >= f->buf_size) {
-        qemu_fill_buffer(f);
-        index = f->buf_index + offset;
-        if (index >= f->buf_size) {
-            return 0;
-        }
-    }
-    return f->buf[index];
-}
-
-int coroutine_mixed_fn qemu_get_byte(QEMUFile *f)
-{
-    int result;
-
-    if (f->buf_index < f->buf_size) {
-        return f->buf[f->buf_index++];
-    }
-    result = qemu_peek_byte(f, 0);
-    qemu_file_skip(f, 1);
-    return result;
-}
-
-/* n bytes in the window already, as get_byte reads them */
-static inline bool get_fast(QEMUFile *f, size_t n)
-{
-    return f->buf_index + n <= f->buf_size;
+    f->last_error_obj = NULL;
+    return f->last_error;
 }
 
 uint64_t qemu_file_transferred(QEMUFile *f)
 {
-    uint64_t ret = stat64_get(&mig_stats.qemu_file_transferred);
-    int i;
+    return f->buf_index;
+}
 
-    g_assert(qemu_file_is_writable(f));
-
-    for (i = 0; i < f->iovcnt; i++) {
-        ret += f->iov[i].iov_len;
+void qemu_put_buffer(QEMUFile *f, const uint8_t *buf, size_t size)
+{
+    if (put_fast(f, size)) {
+        if (size) {
+            memcpy(f->buf + f->buf_index, buf, size);
+        }
+        f->buf_index += size;
     }
+}
 
-    return ret;
+void qemu_put_byte(QEMUFile *f, int value)
+{
+    if (put_fast(f, 1)) {
+        f->buf[f->buf_index++] = value;
+    }
+}
+
+void qemu_file_skip(QEMUFile *f, int size)
+{
+    if (size < 0 || (size_t)size > qemu_file_remaining(f)) {
+        qemu_file_set_error(f, -EIO);
+        return;
+    }
+    f->buf_index += size;
+}
+
+size_t coroutine_mixed_fn qemu_peek_buffer(QEMUFile *f, uint8_t **buf,
+                                           size_t size, size_t offset)
+{
+    size_t available, result;
+
+    *buf = NULL;
+    if (f->last_error) {
+        return 0;
+    }
+    if (f->is_writable) {
+        qemu_file_set_error(f, -EBADF);
+        return 0;
+    }
+    available = qemu_file_remaining(f);
+    if (offset > available) {
+        qemu_file_set_error(f, -EIO);
+        return 0;
+    }
+    result = MIN(size, available - offset);
+    if (result) {
+        *buf = f->buf + f->buf_index + offset;
+    }
+    if (result < size) {
+        qemu_file_set_error(f, -EIO);
+    }
+    return result;
+}
+
+size_t coroutine_mixed_fn qemu_get_buffer(QEMUFile *f, uint8_t *buf, size_t size)
+{
+    uint8_t *source;
+    size_t result = qemu_peek_buffer(f, &source, size, 0);
+
+    if (result) {
+        memcpy(buf, source, result);
+        f->buf_index += result;
+    }
+    return result;
+}
+
+int coroutine_mixed_fn qemu_peek_byte(QEMUFile *f, int offset)
+{
+    uint8_t *byte;
+
+    if (offset < 0) {
+        qemu_file_set_error(f, -EIO);
+        return 0;
+    }
+    return qemu_peek_buffer(f, &byte, 1, offset) == 1 ? *byte : 0;
+}
+
+int coroutine_mixed_fn qemu_get_byte(QEMUFile *f)
+{
+    uint8_t *byte;
+
+    if (qemu_peek_buffer(f, &byte, 1, 0) != 1) {
+        return 0;
+    }
+    f->buf_index++;
+    return *byte;
 }
 
 void qemu_put_be16(QEMUFile *f, unsigned int v)
 {
     if (put_fast(f, 2)) {
         stw_be_p(f->buf + f->buf_index, v);
-        add_buf_to_iovec(f, 2);
+        f->buf_index += 2;
         return;
     }
     qemu_put_byte(f, v >> 8);
@@ -619,7 +287,7 @@ void qemu_put_be32(QEMUFile *f, unsigned int v)
 {
     if (put_fast(f, 4)) {
         stl_be_p(f->buf + f->buf_index, v);
-        add_buf_to_iovec(f, 4);
+        f->buf_index += 4;
         return;
     }
     qemu_put_byte(f, v >> 24);
@@ -632,7 +300,7 @@ void qemu_put_be64(QEMUFile *f, uint64_t v)
 {
     if (put_fast(f, 8)) {
         stq_be_p(f->buf + f->buf_index, v);
-        add_buf_to_iovec(f, 8);
+        f->buf_index += 8;
         return;
     }
     qemu_put_be32(f, v >> 32);
@@ -698,18 +366,5 @@ size_t coroutine_fn qemu_get_counted_string(QEMUFile *f, char buf[256])
     buf[res] = 0;
 
     return res == len ? res : 0;
-}
-
-/*
- * qemu_file_get_ioc:
- *
- * Get the ioc object for the file, without incrementing
- * the reference count.
- *
- * Returns: the ioc object
- */
-QIOChannel *qemu_file_get_ioc(QEMUFile *file)
-{
-    return file->ioc;
 }
 

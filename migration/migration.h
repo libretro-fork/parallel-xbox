@@ -96,16 +96,6 @@ struct MigrationIncomingState {
     /* A hook to allow cleanup at the end of incoming migration */
     void *transport_data;
     void (*transport_cleanup)(void *data);
-    /*
-     * Used to sync thread creations.  Note that we can't create threads in
-     * parallel with this event.
-     */
-    QemuEvent  thread_sync_event;
-    /*
-     * Free at the start of the main state load, set as the main thread finishes
-     * loading state.
-     */
-    QemuEvent main_thread_load_event;
 
     /* For network announces */
     AnnounceTimer  announce_timer;
@@ -139,12 +129,6 @@ struct MigrationIncomingState {
     unsigned int postcopy_channels;
     /* QEMUFile for postcopy only; it'll be handled by a separate thread */
     QEMUFile *postcopy_qemufile_dst;
-    /*
-     * When postcopy_qemufile_dst is properly setup, this sem is posted.
-     * One can wait on this semaphore to wait until the preempt channel is
-     * properly setup.
-     */
-    QemuSemaphore postcopy_qemufile_dst_done;
     /* Postcopy priority thread is used to receive postcopy requested pages */
     QemuThread postcopy_prio_thread;
     /*
@@ -153,18 +137,6 @@ struct MigrationIncomingState {
      * up-to-date across cores.
      */
     volatile PreemptThreadStatus preempt_thread_status;
-    /*
-     * Used to sync between the ram load main thread and the fast ram load
-     * thread.  It protects postcopy_qemufile_dst, which is the postcopy
-     * fast channel.
-     *
-     * The ram fast load thread will take it mostly for the whole lifecycle
-     * because it needs to continuously read data from the channel, and
-     * it'll only release this mutex if postcopy is interrupted, so that
-     * the ram load main thread will take this mutex over and properly
-     * release the broken channel.
-     */
-    QemuMutex postcopy_prio_thread_mutex;
     /*
      * An array of temp host huge pages to be used, one for each postcopy
      * channel.
@@ -186,7 +158,6 @@ struct MigrationIncomingState {
 
     /* The coroutine we should enter (back) after failover */
     Coroutine *colo_incoming_co;
-    QemuEvent colo_incoming_event;
 
     /* Optional load threads pool and its thread exit request flag */
     ThreadPool *load_threads;
@@ -197,17 +168,6 @@ struct MigrationIncomingState {
      * live migration, to calculate vCPU block time
      * */
     struct PostcopyBlocktimeContext *blocktime_ctx;
-
-    /* notify PAUSED postcopy incoming migrations to try to continue */
-    QemuSemaphore postcopy_pause_sem_dst;
-    QemuSemaphore postcopy_pause_sem_fault;
-    /*
-     * This semaphore is used to allow the ram fast load thread (only when
-     * postcopy preempt is enabled) fall into sleep when there's network
-     * interruption detected.  When the recovery is done, the main load
-     * thread will kick the fast ram load thread using this semaphore.
-     */
-    QemuSemaphore postcopy_pause_sem_fast_load;
 
     /* List of listening socket addresses  */
     SocketAddressList *socket_address_list;
@@ -247,29 +207,10 @@ struct MigrationState {
 
     /*< public >*/
     QemuThread thread;
-    /* Protected by qemu_file_lock */
     QEMUFile *to_dst_file;
     /* Postcopy specific transfer channel */
     QEMUFile *postcopy_qemufile_src;
-    /*
-     * It is posted when the preempt channel is established.  Note: this is
-     * used for both the start or recover of a postcopy migration.  We'll
-     * post to this sem every time a new preempt channel is created in the
-     * main thread, and we keep post() and wait() in pair.
-     */
-    QemuSemaphore postcopy_qemufile_src_sem;
     QIOChannelBuffer *bioc;
-    /*
-     * Protects to_dst_file/from_dst_file pointers.  We need to make sure we
-     * won't yield or hang during the critical section, since this lock will be
-     * used in OOB command handler.
-     */
-    QemuMutex qemu_file_lock;
-
-    /*
-     * Used to allow urgent requests to override rate limiting.
-     */
-    QemuSemaphore rate_limit_sem;
 
     /* pages already send at the beginning of current iteration */
     uint64_t iteration_initial_pages;
@@ -295,7 +236,6 @@ struct MigrationState {
 
     /* State related to return path */
     struct {
-        /* Protected by qemu_file_lock */
         QEMUFile     *from_dst_file;
         QemuThread    rp_thread;
         /*
@@ -305,19 +245,6 @@ struct MigrationState {
          * be cleared in the rp_thread!
          */
         bool          rp_thread_created;
-        /*
-         * Used to synchronize between migration main thread and return
-         * path thread.  The migration thread can wait() on this sem, while
-         * other threads (e.g., return path thread) can kick it using a
-         * post().
-         */
-        QemuSemaphore rp_sem;
-        /*
-         * We post to this when we got one PONG from dest. So far it's an
-         * easy way to know the main channel has successfully established
-         * on dest QEMU.
-         */
-        QemuSemaphore rp_pong_acks;
     } rp_state;
 
     double mbps;
@@ -346,17 +273,6 @@ struct MigrationState {
     /* Flag set once the migration thread is running (and needs joining) */
     bool migration_thread_running;
 
-    /* Migration is waiting for guest to unplug device */
-    QemuSemaphore wait_unplug_sem;
-
-    /* Migration is paused due to pause-before-switchover */
-    QemuEvent pause_event;
-
-    /* The event is used to notify COLO thread that failover is finished */
-    QemuEvent colo_exit_event;
-
-    /* The event is used to notify COLO thread to do checkpoint */
-    QemuEvent colo_checkpoint_event;
     int64_t colo_checkpoint_time;
     QEMUTimer *colo_delay_timer;
 
@@ -379,8 +295,6 @@ struct MigrationState {
     /* Whether we send switchover start notification during migration */
     bool send_switchover_start;
 
-    /* Needed by postcopy-pause state */
-    QemuSemaphore postcopy_pause_sem;
     /*
      * This variable only affects behavior when postcopy preempt mode is
      * enabled.
@@ -481,14 +395,12 @@ struct MigrationState {
     bool rdma_migration;
 
     bool postcopy_package_loaded;
-    QemuEvent postcopy_package_loaded_event;
 
     GSource *hup_source;
 };
 
 void migrate_set_state(MigrationStatus *state, MigrationStatus old_state,
                        MigrationStatus new_state);
-
 
 void migrate_set_error(MigrationState *s, const Error *error);
 bool migrate_has_error(MigrationState *s);
@@ -519,7 +431,6 @@ int foreach_not_ignored_block(RAMBlockIterFunc func, void *opaque);
 
 #define qemu_ram_foreach_block \
   #warning "Use foreach_not_ignored_block in migration code"
-
 
 void migration_reset_vfio_bytes_transferred(void);
 void postcopy_temp_page_reset(PostcopyTmpPage *tmp_page);

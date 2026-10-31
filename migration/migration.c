@@ -51,9 +51,7 @@
 #include "monitor/monitor.h"
 #include "net/announce.h"
 #include "qemu/queue.h"
-#include "qemu/yank.h"
 #include "system/cpus.h"
-#include "yank_functions.h"
 #include "system/qtest.h"
 #include "options.h"
 #include "qemu/sockets.h"
@@ -111,12 +109,6 @@ void migration_object_init(void)
     current_incoming->postcopy_remote_fds =
         g_array_new(FALSE, TRUE, sizeof(struct PostCopyFD));
     qemu_mutex_init(&current_incoming->rp_mutex);
-    qemu_mutex_init(&current_incoming->postcopy_prio_thread_mutex);
-    qemu_event_init(&current_incoming->main_thread_load_event, false);
-    qemu_sem_init(&current_incoming->postcopy_pause_sem_dst, 0);
-    qemu_sem_init(&current_incoming->postcopy_pause_sem_fault, 0);
-    qemu_sem_init(&current_incoming->postcopy_pause_sem_fast_load, 0);
-    qemu_sem_init(&current_incoming->postcopy_qemufile_dst_done, 0);
 
     current_incoming->exit_on_error = INMIGRATE_DEFAULT_EXIT_ON_ERROR;
 
@@ -190,7 +182,6 @@ void migration_incoming_state_destroy(void)
     }
 
     if (mis->from_src_file) {
-        migration_ioc_unregister_yank_from_file(mis->from_src_file);
         qemu_fclose(mis->from_src_file);
         mis->from_src_file = NULL;
     }
@@ -200,16 +191,13 @@ void migration_incoming_state_destroy(void)
     }
 
     migration_incoming_transport_cleanup(mis);
-    qemu_event_reset(&mis->main_thread_load_event);
 
     if (mis->postcopy_qemufile_dst) {
-        migration_ioc_unregister_yank_from_file(mis->postcopy_qemufile_dst);
         qemu_fclose(mis->postcopy_qemufile_dst);
         mis->postcopy_qemufile_dst = NULL;
     }
 
     cpr_set_incoming_mode(MIG_MODE_NONE);
-    yank_unregister_instance(MIGRATION_YANK_INSTANCE);
 }
 
 static void migrate_generate_event(MigrationStatus new_state)
@@ -409,7 +397,6 @@ int migrate_init(MigrationState *s, Error **errp)
     migration_reset_vfio_bytes_transferred();
 
     s->postcopy_package_loaded = false;
-    qemu_event_reset(&s->postcopy_package_loaded_event);
 
     return 0;
 }
@@ -477,29 +464,6 @@ void migrate_del_blocker(Error **reasonp)
 }
 
 
-static inline void
-migration_wait_main_channel(MigrationState *ms)
-{
-    /* Wait until one PONG message received */
-    qemu_sem_wait(&ms->rp_state.rp_pong_acks);
-}
-
-typedef enum MigThrError {
-    /* No error detected */
-    MIG_THR_ERR_NONE = 0,
-    /* Detected error, but resumed successfully */
-    MIG_THR_ERR_RECOVERED = 1,
-    /* Detected fatal error, need to exit */
-    MIG_THR_ERR_FATAL = 2,
-} MigThrError;
-
-/* Migration thread iteration status */
-typedef enum {
-    MIG_ITERATE_RESUME,         /* Resume current iteration */
-    MIG_ITERATE_SKIP,           /* Skip current iteration */
-    MIG_ITERATE_BREAK,          /* Break the loop */
-} MigIterateState;
-
 static void migration_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
@@ -514,16 +478,7 @@ static void migration_instance_finalize(Object *obj)
     MigrationState *ms = MIGRATION_OBJ(obj);
 
     qemu_mutex_destroy(&ms->error_mutex);
-    qemu_mutex_destroy(&ms->qemu_file_lock);
-    qemu_sem_destroy(&ms->wait_unplug_sem);
-    qemu_sem_destroy(&ms->rate_limit_sem);
-    qemu_event_destroy(&ms->pause_event);
-    qemu_sem_destroy(&ms->postcopy_pause_sem);
-    qemu_sem_destroy(&ms->rp_state.rp_sem);
-    qemu_sem_destroy(&ms->rp_state.rp_pong_acks);
-    qemu_sem_destroy(&ms->postcopy_qemufile_src_sem);
     error_free(ms->error);
-    qemu_event_destroy(&ms->postcopy_package_loaded_event);
 }
 
 static void migration_instance_init(Object *obj)
@@ -533,19 +488,9 @@ static void migration_instance_init(Object *obj)
     ms->state = MIGRATION_STATUS_NONE;
     ms->mbps = -1;
     ms->pages_per_second = -1;
-    qemu_event_init(&ms->pause_event, false);
     qemu_mutex_init(&ms->error_mutex);
 
     migrate_params_init(&ms->parameters);
-
-    qemu_sem_init(&ms->postcopy_pause_sem, 0);
-    qemu_sem_init(&ms->rp_state.rp_sem, 0);
-    qemu_sem_init(&ms->rp_state.rp_pong_acks, 0);
-    qemu_sem_init(&ms->rate_limit_sem, 0);
-    qemu_sem_init(&ms->wait_unplug_sem, 0);
-    qemu_sem_init(&ms->postcopy_qemufile_src_sem, 0);
-    qemu_mutex_init(&ms->qemu_file_lock);
-    qemu_event_init(&ms->postcopy_package_loaded_event, 0);
 }
 
 /*

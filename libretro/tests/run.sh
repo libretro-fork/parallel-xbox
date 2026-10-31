@@ -62,6 +62,7 @@ esac
 python3 "$here/test-rcu-startup.py" "$here/../.." "$cc"
 python3 "$here/test-rcu-owner.py" "$here/../.." "$cc"
 python3 "$here/test-rcu-callbacks.py" "$here/../.." "$cc"
+python3 "$here/test-qemu-file-memory.py" "$here/../.." "$cc"
 ${cc} -O2 -std=gnu11 -Wall -Wextra -Werror -I"$here/../../include" \
     "$here/test-log-timestamp.c" -o "$work/bin/logtimestamp"
 "$work/bin/logtimestamp"

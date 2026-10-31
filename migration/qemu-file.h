@@ -26,50 +26,36 @@
 #define MIGRATION_QEMU_FILE_H
 
 #include "exec/cpu-common.h"
-#include "io/channel.h"
 
-QEMUFile *qemu_file_new_input_mapped(QIOChannel *ioc, const void *data,
-                                     size_t len);
-QEMUFile *qemu_file_new_output(QIOChannel *ioc);
+/* A saved-state cursor borrows frontend memory. It owns no channel, staging
+ * allocation or backing data. Finish only releases a captured Error object. */
+struct QEMUFile {
+    uint8_t *buf;
+    size_t buf_size;
+    size_t buf_index;
+    bool is_writable;
+    int last_error;
+    Error *last_error_obj;
+};
+
+void qemu_file_init_input(QEMUFile *f, const void *data, size_t size);
+void qemu_file_init_output(QEMUFile *f, void *data, size_t size);
 int qemu_fclose(QEMUFile *f);
 
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(QEMUFile, qemu_fclose)
-
-/*
- * qemu_file_transferred:
- *
- * No flush is performed and the reported amount will include the size
- * of any queued buffers, on top of the amount actually transferred.
- *
- * Returns: the total bytes transferred and queued
- */
+/* Current byte position in the bounded state stream. */
 uint64_t qemu_file_transferred(QEMUFile *f);
-
-/*
- * put_buffer without copying the buffer.
- * The buffer should be available till it is sent asynchronously.
- */
-void qemu_put_buffer_async(QEMUFile *f, const uint8_t *buf, size_t size,
-                           bool may_free);
 
 #include "migration/qemu-file-types.h"
 
 size_t coroutine_mixed_fn qemu_peek_buffer(QEMUFile *f, uint8_t **buf, size_t size, size_t offset);
 
-/*
- * Note that you can only peek continuous bytes from where the current pointer
- * is; you aren't guaranteed to be able to peak to +n bytes unless you've
- * previously peeked +n-1.
- */
+/* Borrow a view at an offset from the cursor without advancing it. */
 int coroutine_mixed_fn qemu_peek_byte(QEMUFile *f, int offset);
 void qemu_file_skip(QEMUFile *f, int size);
 int qemu_file_get_error_obj_any(QEMUFile *f1, QEMUFile *f2, Error **errp);
 void qemu_file_set_error_obj(QEMUFile *f, int ret, Error *err);
 int qemu_file_get_error_obj(QEMUFile *f, Error **errp);
 void qemu_file_set_error(QEMUFile *f, int ret);
-int qemu_file_shutdown(QEMUFile *f);
 int qemu_fflush(QEMUFile *f);
-
-QIOChannel *qemu_file_get_ioc(QEMUFile *file);
 
 #endif

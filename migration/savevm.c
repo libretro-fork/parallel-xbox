@@ -65,8 +65,6 @@
 #include "migration/colo.h"
 #include "qemu/bitmap.h"
 #include "net/announce.h"
-#include "qemu/yank.h"
-#include "yank_functions.h"
 #include "system/qtest.h"
 #include "options.h"
 
@@ -1659,77 +1657,6 @@ void qemu_loadvm_state_cleanup(MigrationIncomingState *mis)
     qemu_loadvm_thread_pool_destroy(mis);
 }
 
-/* Return true if we should continue the migration, or false. */
-static bool postcopy_pause_incoming(MigrationIncomingState *mis)
-{
-    int i;
-
-    trace_postcopy_pause_incoming();
-
-    assert(false);
-
-    /*
-     * Unregister yank with either from/to src would work, since ioc behind it
-     * is the same
-     */
-    migration_ioc_unregister_yank_from_file(mis->from_src_file);
-
-    assert(mis->from_src_file);
-    qemu_file_shutdown(mis->from_src_file);
-    qemu_fclose(mis->from_src_file);
-    mis->from_src_file = NULL;
-
-    assert(mis->to_src_file);
-    qemu_file_shutdown(mis->to_src_file);
-    qemu_mutex_lock(&mis->rp_mutex);
-    qemu_fclose(mis->to_src_file);
-    mis->to_src_file = NULL;
-    qemu_mutex_unlock(&mis->rp_mutex);
-
-    /*
-     * NOTE: this must happen before reset the PostcopyTmpPages below,
-     * otherwise it's racy to reset those fields when the fast load thread
-     * can be accessing it in parallel.
-     */
-    if (mis->postcopy_qemufile_dst) {
-        qemu_file_shutdown(mis->postcopy_qemufile_dst);
-        /* Take the mutex to make sure the fast ram load thread halted */
-        qemu_mutex_lock(&mis->postcopy_prio_thread_mutex);
-        migration_ioc_unregister_yank_from_file(mis->postcopy_qemufile_dst);
-        qemu_fclose(mis->postcopy_qemufile_dst);
-        mis->postcopy_qemufile_dst = NULL;
-        qemu_mutex_unlock(&mis->postcopy_prio_thread_mutex);
-    }
-
-    /* Current state can be either ACTIVE or RECOVER */
-    migrate_set_state(&mis->state, mis->state,
-                      MIGRATION_STATUS_POSTCOPY_PAUSED);
-
-    /* Notify the fault thread for the invalidated file handle */
-    postcopy_fault_thread_notify(mis);
-
-    /*
-     * If network is interrupted, any temp page we received will be useless
-     * because we didn't mark them as "received" in receivedmap.  After a
-     * proper recovery later (which will sync src dirty bitmap with receivedmap
-     * on dest) these cached small pages will be resent again.
-     */
-    for (i = 0; i < mis->postcopy_channels; i++) {
-        postcopy_temp_page_reset(&mis->postcopy_tmp_pages[i]);
-    }
-
-    error_report("Detected IO failure for postcopy. "
-                 "Migration paused.");
-
-    do {
-        qemu_sem_wait(&mis->postcopy_pause_sem_dst);
-    } while (postcopy_is_paused(mis->state));
-
-    trace_postcopy_pause_incoming_continued();
-
-    return true;
-}
-
 int qemu_loadvm_state_main(QEMUFile *f, MigrationIncomingState *mis,
                            Error **errp)
 {
@@ -1737,7 +1664,6 @@ int qemu_loadvm_state_main(QEMUFile *f, MigrationIncomingState *mis,
     uint8_t section_type;
     int ret = 0;
 
-retry:
     while (true) {
         section_type = qemu_get_byte(f);
 
@@ -1789,24 +1715,6 @@ out:
         /* Cancel bitmaps incoming regardless of recovery */
         dirty_bitmap_mig_cancel_incoming();
 
-        /*
-         * If we are during an active postcopy, then we pause instead
-         * of bail out to at least keep the VM's dirty data.  Note
-         * that POSTCOPY_INCOMING_LISTENING stage is still not enough,
-         * during which we're still receiving device states and we
-         * still haven't yet started the VM on destination.
-         *
-         * Only RAM postcopy supports recovery. Still, if RAM postcopy is
-         * enabled, canceled bitmaps postcopy will not affect RAM postcopy
-         * recovering.
-         */
-        if (postcopy_state_get() == POSTCOPY_INCOMING_RUNNING &&
-            false && postcopy_pause_incoming(mis)) {
-            /* Reset f to point to the newly created channel */
-            f = mis->from_src_file;
-            error_free_or_abort(errp);
-            goto retry;
-        }
     }
     return ret;
 }
@@ -1839,7 +1747,6 @@ int qemu_loadvm_state(QEMUFile *f, Error **errp)
     cpu_synchronize_all_pre_loadvm();
 
     ret = qemu_loadvm_state_main(f, mis, errp);
-    qemu_event_set(&mis->main_thread_load_event);
 
     trace_qemu_loadvm_state_post_main(ret);
 
