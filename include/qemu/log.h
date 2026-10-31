@@ -8,9 +8,6 @@
  * The new API:
  */
 
-/* Returns true if qemu_log() will write somewhere other than stderr. */
-bool qemu_log_separate(void);
-
 #define CPU_LOG_TB_OUT_ASM (1u << 0)
 #define CPU_LOG_TB_IN_ASM  (1u << 1)
 #define CPU_LOG_TB_OP      (1u << 2)
@@ -36,10 +33,24 @@ bool qemu_log_separate(void);
 #define LOG_TB_OP_PLUGIN   (1u << 22)
 #define LOG_INVALID_MEM    (1u << 23)
 
-/* Lock/unlock output. */
+/* The standalone debug-file logger is disabled in this core. Preserve
+ * the shared translation helpers' empty-output contract without a FILE,
+ * mutex, TLS state or stream lock. Frontend/error logging is separate. */
+static inline FILE *qemu_log_trylock(void)
+{
+    return NULL;
+}
 
-FILE *qemu_log_trylock(void) G_GNUC_WARN_UNUSED_RESULT;
-void qemu_log_unlock(FILE *fd);
+static inline void qemu_log_unlock(FILE *fd)
+{
+    (void)fd;
+}
+
+static inline bool qemu_log_in_addr_range(uint64_t addr)
+{
+    (void)addr;
+    return true;
+}
 
 /* Logging functions: */
 
@@ -69,23 +80,5 @@ void qemu_log_unlock(FILE *fd);
             qemu_log(FMT, ## __VA_ARGS__);              \
         }                                               \
     } while (0)
-
-/* Maintenance: */
-
-/* define log items */
-typedef struct QEMULogItem {
-    int mask;
-    const char *name;
-    const char *help;
-} QEMULogItem;
-
-extern const QEMULogItem qemu_log_items[];
-
-bool qemu_set_log_filename_flags(const char *name, int flags, Error **errp);
-bool qemu_log_in_addr_range(uint64_t addr);
-
-/* Print a usage message listing all the valid logging categories
- * to the specified FILE*.
- */
 
 #endif
