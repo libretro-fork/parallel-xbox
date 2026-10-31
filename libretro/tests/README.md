@@ -1504,3 +1504,12 @@ checks discard-on-growth allocation, retained capacity across 10000 alternating
 requests, empty requests, finalization and reuse after finalization. GL pitched
 upload and fallback readback tests exercise the renderer-owned scale scratch.
 SCALE_SCRATCH_BINARY / SCALE_SCRATCH_SKIP_RUN support native cross builds.
+
+`test-ohci-pending.py CHECKOUT [CC]` extracts the production OHCI TD service
+with controlled USB completion and guest-DMA callbacks. Its 784 scenarios cover
+pending/completed IN and OUT ownership, blocked SETUP/IN/OUT transfers, both
+direction encodings, zero-length/partial transfers and normal/error completion.
+The original handler fails the shared-payload integrity assertion. Blocked TDs
+must leave controller state and payload unchanged without any DMA read/copy or
+device lookup; the original TD and following TD then proceed normally. This
+does not implement per-endpoint asynchronous slots or model USB device timing.

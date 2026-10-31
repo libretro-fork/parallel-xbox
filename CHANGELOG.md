@@ -20,6 +20,7 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- OHCI preserves in-flight USB payloads when another transfer is blocked, including completed packets awaiting writeback. Blocked descriptors now skip guest-memory reads, payload copies and device lookup.
 - Renderer regression tests now exercise non-neutral bump luminance, negative scale and saturation across all channel-sign masks. The audited single-level paths already match the reference model, so emulator behavior is unchanged.
 
 - GPU fence polling now acquires the host-side effects published by preceding FIFO methods, using libretro-common release/acquire atomics. Polling remains lock-free; ordinary register accesses keep their existing ordering, and no GPU completion wait or frame delay is added.
