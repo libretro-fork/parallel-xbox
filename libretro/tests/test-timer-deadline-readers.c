@@ -27,7 +27,7 @@ typedef struct { bool set; } QemuEvent;
 static _Thread_local bool reader;
 static void qemu_mutex_init(QemuMutex*m){m->lock=slock_new();assert(m->lock);}
 static void qemu_mutex_lock(QemuMutex*m){
-#ifndef TIMER_READ_BASELINE
+#if !defined(TIMER_READ_BASELINE) && !defined(TIMER_READ_BENCHMARK)
  assert(!reader); /* Fast deadline reads must never acquire a queue lock. */
 #endif
  slock_lock(m->lock);
@@ -64,8 +64,8 @@ static void check_readers(void *unused)
   for(unsigned type=0;type<QEMU_CLOCK_MAX;type++){
    int64_t all=qemu_clock_deadline_ns_all(type,QEMU_TIMER_ATTR_ALL);
    int64_t internal=qemu_clock_deadline_ns_all(type,~QEMU_TIMER_ATTR_EXTERNAL);
-   assert(all==-1||all==A||all==B);
-   assert(internal==-1||internal==A||internal==B);
+   assert(all==-1||all==A||all==A+1||all==B||all==B+1);
+   assert(internal==-1||internal==A||internal==A+1||internal==B||internal==B+1);
    assert(!qemu_clock_expired(type));
   }
  }
@@ -78,6 +78,7 @@ static void publish_free(void)
   initialize(t,type,(n&1)?QEMU_TIMER_ATTR_EXTERNAL:0);
   initialize(u,type,0);
   timer_mod_ns(t,A); timer_mod_ns(u,B);
+  timer_mod_ns(t,A+1); timer_mod_ns(u,B+1);
   timer_mod_ns(t,B); timer_mod_anticipate_ns(t,A);
   if((n&127)==0){qemu_clock_enable(type,false);qemu_clock_enable(type,true);}
   timer_del(t);free(t);timer_del(u);free(u);
@@ -120,11 +121,42 @@ static void benchmark(void)
  }
  for(unsigned i=0;i<32;i++)timer_del(&t[i]);
 }
+static void benchmark_matrix(void)
+{
+ const unsigned sizes[]={1,8,32,128},count=100000;
+ const char*names[]={"tail","middle","head","cross","ties","delete_arm"};
+ for(unsigned size_i=0;size_i<4;size_i++)for(unsigned pattern=0;pattern<6;pattern++){
+  unsigned size=sizes[size_i];QEMUTimer t[128];
+  for(unsigned i=0;i<size;i++){initialize(&t[i],0,i<size/2?1:0);timer_mod_ns(&t[i],pattern==4?A:A+i*1000000ll);}
+  unsigned index=pattern==0||pattern==5?size-1:pattern==1?size/2:0;
+  for(unsigned sample=0;sample<3;sample++){
+   uint64_t start=cpu_features_get_time_usec();
+   for(unsigned i=0;i<count;i++){
+    QEMUTimer *timer=&t[pattern==4?i%size:index];
+    int64_t expiry=pattern==0||pattern==5?B+i:
+                   pattern==1?A+index*1000000ll+(i&65535):
+                   pattern==2?A+(i&65535):
+                   pattern==3?(i&1?A-1:B+i):A;
+    if(pattern==5)timer_del(timer);
+    timer_mod_ns(timer,expiry);
+   }
+   uint64_t end=cpu_features_get_time_usec();
+   printf("size=%u pattern=%s sample=%u ns=%.3f\n",size,names[pattern],sample,(end-start)*1000.0/count);
+  }
+  for(unsigned i=0;i<size;i++)timer_del(&t[i]);
+ }
+}
 int main(int argc,char **argv)
 {
- (void)argv;qemu_init_clocks(NULL);
+ qemu_init_clocks(NULL);
  for(unsigned type=0;type<QEMU_CLOCK_MAX;type++)qemu_clock_enable(type,true);
- if(argc>1){benchmark();return 0;}
+ if(argc>1){
+#ifndef TIMER_READ_BENCHMARK
+  fputs("Build benchmarks with TIMER_READ_BENCHMARK=1 (or TIMER_READ_ARGS=bench/matrix).\n",stderr);return 2;
+#endif
+  puts("benchmark instrumentation=off");
+  if(!strcmp(argv[1],"matrix"))benchmark_matrix();else benchmark();return 0;
+ }
  stalled_writer();sthread_t*threads[6];
  for(unsigned i=0;i<6;i++){threads[i]=sthread_create(check_readers,NULL);assert(threads[i]);}
  while(retro_atomic_load_acquire_int(&started)<6){}

@@ -18,6 +18,7 @@ with tempfile.TemporaryDirectory(prefix='timer-readers-') as tmp:
  cmd=cc+['-O2','-g','-std=gnu11','-Wall','-Wextra','-Werror','-Wno-unused-parameter','-DHAVE_THREADS','-I'+str(r/'include'),'-I'+str(r/'libretro-common/include')]
  cmd+=shlex.split(os.environ.get('TIMER_READ_CFLAGS',''))
  if baseline:cmd+=['-DTIMER_READ_BASELINE']
+ if os.environ.get('TIMER_READ_BENCHMARK') or os.environ.get('TIMER_READ_ARGS') in ('bench','matrix'):cmd+=['-DTIMER_READ_BENCHMARK']
  if windows:cmd+=['-Wno-cast-function-type']
  cmd+=[str(p/'test.c')]+[str(r/x) for x in ['libretro-common/rthreads/rthreads.c','libretro-common/features/features_cpu.c','libretro-common/time/rtime.c']]+['-pthread','-o',binary]
  subprocess.run(cmd,check=True)

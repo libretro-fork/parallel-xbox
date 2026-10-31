@@ -143,6 +143,25 @@ int main(void){
 #endif
  }
  for(unsigned i=0;i<N;i++)timer_del(&timers[i]);
+ qemu_clock_enable(0,true);now[0]=0;
+ for(unsigned i=0;i<4;i++)initialize(&timers[i],0,i==0||i==3?QEMU_TIMER_ATTR_EXTERNAL:0,record,(void*)(uintptr_t)i);
+ timer_mod_ns(&timers[0],10);timer_mod_ns(&timers[1],20);timer_mod_ns(&timers[2],20);timer_mod_ns(&timers[3],30);
+ unsigned notifications=notifies[0];
+ timer_mod_ns(&timers[0],15);assert(notifies[0]==notifications+1);
+ assert(qemu_clock_deadline_ns_all(0,QEMU_TIMER_ATTR_ALL)==15);
+ assert(qemu_clock_deadline_ns_all(0,~QEMU_TIMER_ATTR_EXTERNAL)==20);
+ timer_mod_ns(&timers[1],20);timer_mod_ns(&timers[3],40);
+ now[0]=100;actual_n=0;assert(qemu_clock_run_timers(0));
+ assert(actual_n==4&&actual[0]==0&&actual[1]==2&&actual[2]==1&&actual[3]==3);
+ for(unsigned i=0;i<4;i++){timer_del(&timers[i]);timer_del(&timers[i]);}
+ now[0]=0;initialize(&timers[0],0,0,record,NULL);
+ timer_mod_ns(&timers[0],10);timer_mod_ns(&timers[0],15);
+ assert(qemu_clock_deadline_ns_all(0,QEMU_TIMER_ATTR_ALL)==15);
+ assert(qemu_clock_deadline_ns_all(0,~QEMU_TIMER_ATTR_EXTERNAL)==15);
+ timer_mod_ns(&timers[0],INT64_MAX);
+ assert(qemu_clock_deadline_ns_all(0,QEMU_TIMER_ATTR_ALL)==INT64_MAX);
+ timer_mod_ns(&timers[0],-1);assert(qemu_clock_deadline_ns_all(0,QEMU_TIMER_ATTR_ALL)==0);
+ timer_del(&timers[0]);
  qemu_clock_enable(0,true);now[0]=10000;
  initialize(&a,0,0,special_a,NULL);initialize(&b,0,0,special_b,NULL);
  timer_mod_ns(&a,0);timer_mod_ns(&b,-1);timer_del(&b);
