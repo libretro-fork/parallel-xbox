@@ -551,6 +551,17 @@ static inline void pgraph_reg_w(PGRAPHState *pg, unsigned int r, uint32_t v)
     retro_atomic_store_relaxed_int(&pg->regs_[r], (int)v);
 }
 
+/* This is a host-memory publication, not a GPU completion wait. Keep the
+ * dirty map owned by the pfifo thread, as with ordinary register writes. */
+static inline void pgraph_fence_publish(PGRAPHState *pg, uint32_t value)
+{
+    const unsigned int r = NV_PGRAPH_PATT_COLOR0;
+    if (pgraph_reg_r(pg, r) != value) {
+        bitmap_set(pg->regs_dirty, r / sizeof(uint32_t), 1);
+    }
+    retro_atomic_store_release_int(&pg->regs_[r], (int)value);
+}
+
 void pgraph_glsl_snapshot_shader_regs(PGRAPHState *pg);
 void pgraph_clear_dirty_reg_map(PGRAPHState *pg);
 

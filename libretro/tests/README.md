@@ -1482,6 +1482,15 @@ adapter; the core uses libretro-common detection. GL_FLIP_BENCH=1 with
 GL_FLIP_CFLAGS="" runs an isolated swap benchmark; it is not a readback/FPS
 benchmark. GL_FLIP_BINARY / GL_FLIP_SKIP_RUN support cross builds.
 
+`test-pgraph-fence.py CHECKOUT [CC]` runs the production fence publisher and
+MMIO read path with libretro-common threads and atomics. It checks 524,288
+publications against immutable payload slots, full-width register values and
+dirty-bit behavior. With an AArch64 cross compiler installed it also checks
+that the actual portable atomics emit LDAR/STLR without full barriers or
+exclusive retry loops; on x86-64 it rejects locked instructions, fences and
+helper calls in the publisher. This is host-memory publication coverage, not
+a GPU completion or title-performance test.
+
 `test-gl-scale-scratch.py` compiles the production scratch implementation and
 checks discard-on-growth allocation, retained capacity across 10000 alternating
 requests, empty requests, finalization and reuse after finalization. GL pitched
