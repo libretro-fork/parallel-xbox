@@ -4,6 +4,10 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Publish coherent instruction-clock timestamps through libretro-common
+  atomics. Virtual clock observers avoid seqlock retries and raw count/bias
+  reads; state loads rebuild the runtime timestamp without changing its format.
+
 - Rearm pending timers in place when the new deadline leaves their queue
   position unchanged. Avoid redundant unlink/reinsert scans and inactive
   timer removal scans while preserving atomic deadline reads and tie order.
