@@ -20,6 +20,11 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Prepare the fixed Vulkan overlay conversion pipeline, descriptor pool/sets
+  and sampler before gameplay instead of on first use. Query storage-image
+  support once at initialization; keep CPU conversion on unsupported devices
+  and defer image-dependent descriptor bindings to a retired upload slot.
+
 - OpenGL: upload representable pitched surfaces directly and expand pitched CPU fallbacks without repacking; remove the dedicated 4 MiB pitch scratch buffer.
 
 - Reuse fence-retired Vulkan video-overlay image allocations through the existing

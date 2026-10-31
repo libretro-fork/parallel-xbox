@@ -1358,7 +1358,9 @@ fence retirement, deferred destruction, overlay ownership transfer and
 conversion descriptor updates against independently delayed upload/display
 completion. It checks 20,000 resize/upload/display schedules, unconsumed
 uploads, slot-safe descriptor updates, exactly-once destruction, and zero
-waits during retirement. It runs without a GPU or game assets in CI.
+waits during retirement. Initialization routing also keeps fixed pipeline,
+descriptor allocation and sampler creation out of the upload/resize path.
+It runs without a GPU or game assets in CI.
 
 `test-pvideo-dirty.py CHECKOUT [CC]` compiles the production RAM dirty-client
 handlers and Vulkan PVIDEO upload path against independent consumer bitmaps

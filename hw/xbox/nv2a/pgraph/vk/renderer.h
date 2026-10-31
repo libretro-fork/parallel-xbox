@@ -1261,6 +1261,7 @@ GPUProperties *pgraph_vk_get_gpu_properties(void);
 bool pgraph_vk_pvideo_convert(PGRAPHState *pg, VkCommandBuffer cmd,
     const uint8_t *source, unsigned width, unsigned height, unsigned pitch,
     bool created);
+void pgraph_vk_pvideo_init(PGRAPHState *pg);
 void pgraph_vk_pvideo_finalize(PGRAPHState *pg);
 
 #endif

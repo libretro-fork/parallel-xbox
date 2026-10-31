@@ -63,8 +63,17 @@ static void pvideo_convert_bind_source(PGRAPHVkState *r)
     }
 }
 
-static void pvideo_convert_prepare(PGRAPHVkState *r)
+void pgraph_vk_pvideo_init(PGRAPHState *pg)
 {
+    PGRAPHVkState *r = pg->vk_renderer_state;
+    VkFormatProperties props;
+    vkGetPhysicalDeviceFormatProperties(r->physical_device,
+        VK_FORMAT_R8G8B8A8_UNORM, &props);
+    r->display.pvideo.storage =
+        (props.optimalTilingFeatures & VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT) != 0;
+    if (!r->display.pvideo.storage) {
+        return;
+    }
     typeof(r->display.pvideo.convert) *c = &r->display.pvideo.convert;
     if (!c->pipeline) {
         VkDescriptorSetLayoutBinding bindings[2];
@@ -116,7 +125,6 @@ static void pvideo_convert_prepare(PGRAPHVkState *r)
                                            &pipeline, NULL, &c->pipeline));
         vkDestroyShaderModule(r->device, module, NULL);
     }
-    pvideo_convert_bind_source(r);
 }
 
 bool pgraph_vk_pvideo_convert(PGRAPHState *pg, VkCommandBuffer cmd,
@@ -137,7 +145,7 @@ bool pgraph_vk_pvideo_convert(PGRAPHState *pg, VkCommandBuffer cmd,
     VkDeviceSize src = pgraph_vk_staging_alloc(pg, packed_size, 16, &staged);
     pvideo_pack_rows(staged, source, width, height, pitch);
     pgraph_vk_staging_flush(pg, src, packed_size);
-    pvideo_convert_prepare(r);
+    pvideo_convert_bind_source(r);
 
     VkBufferMemoryBarrier before = {
         .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,

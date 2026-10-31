@@ -112,6 +112,27 @@ static void acquire_pvideo_image(PGRAPHVkState *r, const VkImageCreateInfo *ci)
     }
 }
 
+static void create_pvideo_sampler(PGRAPHState *pg)
+{
+    PGRAPHVkState *r = pg->vk_renderer_state;
+    PGRAPHVkDisplayState *d = &r->display;
+    /* Sampling state is independent of image dimensions. */
+    if (d->pvideo.sampler == VK_NULL_HANDLE) {
+        VkSamplerCreateInfo sampler_create_info = {
+            .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
+            .magFilter = VK_FILTER_LINEAR,
+            .minFilter = VK_FILTER_NEAREST,
+            .addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT,
+            .addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT,
+            .addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT,
+            .borderColor = VK_BORDER_COLOR_INT_OPAQUE_WHITE,
+            .mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST,
+        };
+        VK_CHECK(vkCreateSampler(r->device, &sampler_create_info, NULL,
+                                 &d->pvideo.sampler));
+    }
+}
+
 static bool create_pvideo_image(PGRAPHState *pg, int width, int height)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
@@ -125,9 +146,6 @@ static bool create_pvideo_image(PGRAPHState *pg, int width, int height)
         retire_pvideo_image(r);
     }
 
-    VkFormatProperties props;
-    vkGetPhysicalDeviceFormatProperties(r->physical_device, VK_FORMAT_R8G8B8A8_UNORM, &props);
-    d->pvideo.storage = (props.optimalTilingFeatures & VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT) != 0;
     VkImageCreateInfo image_create_info = {
         .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
         .imageType = VK_IMAGE_TYPE_2D,
@@ -161,21 +179,6 @@ static bool create_pvideo_image(PGRAPHState *pg, int width, int height)
     VK_CHECK(vkCreateImageView(r->device, &image_view_create_info, NULL,
                                &d->pvideo.image_view));
 
-    /* Sampling state is independent of image dimensions. */
-    if (d->pvideo.sampler == VK_NULL_HANDLE) {
-        VkSamplerCreateInfo sampler_create_info = {
-            .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
-            .magFilter = VK_FILTER_LINEAR,
-            .minFilter = VK_FILTER_NEAREST,
-            .addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT,
-            .addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT,
-            .addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT,
-            .borderColor = VK_BORDER_COLOR_INT_OPAQUE_WHITE,
-            .mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST,
-        };
-        VK_CHECK(vkCreateSampler(r->device, &sampler_create_info, NULL,
-                                 &d->pvideo.sampler));
-    }
     d->pvideo.seq = ++r->texture_binding_seq;
     d->pvideo.width = width;
     d->pvideo.height = height;
@@ -1794,6 +1797,10 @@ void pgraph_vk_init_display(PGRAPHState *pg)
     create_render_pass(pg);
     create_display_pipeline(pg);
     create_surface_sampler(pg);
+    /* Compile fixed overlay work and allocate descriptors before gameplay;
+     * source/image bindings remain deferred until the first upload. */
+    pgraph_vk_pvideo_init(pg);
+    create_pvideo_sampler(pg);
     /* Fixed-size sync resources do not depend on the first frame's mode. */
     if (on_frontend_device()) {
         create_frame_sync(pg);

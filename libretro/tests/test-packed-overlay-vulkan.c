@@ -58,7 +58,7 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL validation(VkDebugUtilsMessageSeverityFlag
 
 typedef struct { VkBuffer buffer; VkDeviceSize buffer_size; uint8_t *mapped; } StorageBuffer;
 typedef struct {
- VkDevice device; VkPhysicalDeviceProperties device_props; VkPipelineCache vk_pipeline_cache;
+ VkDevice device; VkPhysicalDevice physical_device; VkPhysicalDeviceProperties device_props; VkPipelineCache vk_pipeline_cache;
  StorageBuffer storage_buffers[2];
  unsigned aux_slot; bool in_aux_command_buffer; struct {bool pending;} aux[PGRAPH_VK_AUX_SLOTS];
  struct { struct { VkImage image; VkImageView image_view; bool storage; struct { VkDescriptorPool pool; VkDescriptorSetLayout set_layout;
@@ -118,7 +118,8 @@ int main(void)
         .commandPool = pool, .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY, .commandBufferCount = 1 };
     VkCommandBuffer cmd; CHECK(vkAllocateCommandBuffers(device, &ca, &cmd));
 
- PGRAPHVkState r={.in_aux_command_buffer=true,.device=device,.device_props=properties};PGRAPHState pg={.vk_renderer_state=&r};
+ PGRAPHVkState r={.in_aux_command_buffer=true,.physical_device=gpu,.device=device,.device_props=properties};PGRAPHState pg={.vk_renderer_state=&r};
+ pgraph_vk_pvideo_init(&pg);assert(r.display.pvideo.convert.pipeline);
  Buffer src=buffer(16*1024*1024),dst=buffer(16*1024*1024);
  r.storage_buffers[0]=(StorageBuffer){src.handle,16*1024*1024,src.mapped};
  r.storage_buffers[1]=(StorageBuffer){dst.handle,16*1024*1024,dst.mapped};
