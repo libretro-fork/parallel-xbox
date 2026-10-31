@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Background OpenGL shader-source generation now hands jobs and completed sources between the render thread and its worker through atomic slot publication, without a job mutex or condition variable.
+
 - CPU callback dispatch uses a libretro-common MPSC queue and eventcount completion. The single guest CPU no longer needs SMP exclusion locks or unused halt/ioctl synchronization objects. GLib interned strings and default context use immutable atomic publication; global random draws use an atomic counter. Other emulator locks remain.
 
 

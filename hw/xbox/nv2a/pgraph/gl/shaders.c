@@ -24,6 +24,8 @@
 #include "qemu/fast-hash.h"
 #include "qemu/file-map.h"
 #include "qemu/mstring.h"
+#include <rthreads/rthreads.h>
+#include <rthreads/retro_eventcount.h>
 
 #include "xemu-version.h"
 #include "ui/xemu-settings.h"
@@ -1637,60 +1639,76 @@ static bool comb_async_take(PGRAPHGLState *r, PshState *out, bool *gate)
 #define GEN_JOBS 16
 static struct {
     ShaderModuleCacheKey key;
-    MString *code; /* NULL until generated */
+    MString *code; /* worker writes before publishing GEN_COMPLETE */
+    retro_atomic_int_t state;
     bool used;
     bool gate;
     bool seed;
 } gen_jobs[GEN_JOBS];
-static QemuMutex gen_lock;
-static QemuCond gen_cond;
-static QemuThread gen_thr;
+enum { GEN_IDLE, GEN_QUEUED, GEN_COMPLETE };
+static retro_eventcount_t gen_ready;
+static sthread_t *gen_thr;
 static bool gen_thr_up;
 
-static void *shader_gen_worker(void *arg)
+/* The render thread owns keys and bookkeeping. The worker reads a slot
+ * only after QUEUED publication and returns its source with COMPLETE.
+ * No slot is recycled until the render thread acquires COMPLETE. */
+static bool gen_job_generate(int i)
 {
-    qemu_mutex_lock(&gen_lock);
+    if (retro_atomic_load_acquire_int(&gen_jobs[i].state) != GEN_QUEUED) {
+        return false;
+    }
+    ShaderModuleCacheKey key = gen_jobs[i].key;
+    bool locs = gl_sso_enabled();
+    GenVshGlslOptions vo = key.vsh.glsl_opts;
+    GenGeomGlslOptions go = key.geom.glsl_opts;
+    GenPshGlslOptions po = key.psh.glsl_opts;
+    vo.locations = go.locations = po.locations = locs;
+    MString *code =
+        key.kind == GL_VERTEX_SHADER ?
+            pgraph_glsl_gen_vsh(&key.vsh.state, vo) :
+        key.kind == GL_GEOMETRY_SHADER ?
+            pgraph_glsl_gen_geom(&key.geom.state, go) :
+            pgraph_glsl_gen_psh(&key.psh.state, po);
+    if (!code) {
+        /* A stale seed key may request an unnecessary geometry shader. */
+        code = mstring_from_str("");
+    }
+    gen_jobs[i].code = code;
+    retro_atomic_store_release_int(&gen_jobs[i].state, GEN_COMPLETE);
+    return true;
+}
+
+static bool gen_jobs_pending(void)
+{
+    for (int i = 0; i < GEN_JOBS; i++) {
+        if (retro_atomic_load_acquire_int(&gen_jobs[i].state) == GEN_QUEUED) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static void shader_gen_worker(void *arg)
+{
     for (;;) {
         bool did = false;
         for (int i = 0; i < GEN_JOBS; i++) {
-            if (gen_jobs[i].used && !gen_jobs[i].code) {
-                ShaderModuleCacheKey key = gen_jobs[i].key;
-                qemu_mutex_unlock(&gen_lock);
-                /* Locations as on the sync path, but out of the key: a
-                 * module adopted under a key the bind path never looks up
-                 * leaves the first-meet cover standing forever. */
-                bool locs = gl_sso_enabled();
-                GenVshGlslOptions vo = key.vsh.glsl_opts;
-                GenGeomGlslOptions go = key.geom.glsl_opts;
-                GenPshGlslOptions po = key.psh.glsl_opts;
-                vo.locations = go.locations = po.locations = locs;
-                MString *code =
-                    key.kind == GL_VERTEX_SHADER ?
-                        pgraph_glsl_gen_vsh(&key.vsh.state, vo) :
-                    key.kind == GL_GEOMETRY_SHADER ?
-                        pgraph_glsl_gen_geom(&key.geom.state, go) :
-                        pgraph_glsl_gen_psh(&key.psh.state, po);
-                if (!code) {
-                    /* Declined (a stale seed key's needless geom): the
-                     * submitter drops the empty source. */
-                    code = mstring_from_str("");
-                }
-                qemu_mutex_lock(&gen_lock);
-                /* A used slot with code==NULL is never recycled, so the
-                 * key cannot have changed under us. */
-                gen_jobs[i].code = code;
-                did = true;
-            }
+            did |= gen_job_generate(i);
         }
         if (!did) {
-            qemu_cond_wait(&gen_cond, &gen_lock);
+            int key = retro_eventcount_prepare_wait(&gen_ready);
+            if (gen_jobs_pending()) {
+                retro_eventcount_cancel_wait(&gen_ready);
+            } else {
+                retro_eventcount_commit_wait(&gen_ready, key);
+            }
         }
     }
-    return NULL;
 }
 
-/* Under gen_lock. True if queued (or already present). */
-static bool gen_job_push_locked(const ShaderModuleCacheKey *key, bool gate,
+/* Render thread only. True if queued (or already present). */
+static bool gen_job_push(const ShaderModuleCacheKey *key, bool gate,
                                 bool seed)
 {
     for (int i = 0; i < GEN_JOBS; i++) {
@@ -1706,13 +1724,14 @@ static bool gen_job_push_locked(const ShaderModuleCacheKey *key, bool gate,
             gen_jobs[i].seed = seed;
             gen_jobs[i].code = NULL;
             gen_jobs[i].used = true;
+            retro_atomic_store_release_int(&gen_jobs[i].state, GEN_QUEUED);
             return true;
         }
     }
     return false;
 }
 
-static bool gen_jobs_have_free_locked(void)
+static bool gen_jobs_have_free(void)
 {
     for (int i = 0; i < GEN_JOBS; i++) {
         if (!gen_jobs[i].used) {
@@ -1925,19 +1944,21 @@ static void comb_async_service(PGRAPHGLState *r, int64_t budget_us)
     }
 
     if (!gen_thr_up) {
-        qemu_mutex_init(&gen_lock);
-        qemu_cond_init(&gen_cond);
-        qemu_thread_create(&gen_thr, "nv2a-glslgen", shader_gen_worker,
-                           NULL, QEMU_THREAD_JOINABLE);
+        if (!retro_eventcount_init(&gen_ready)) {
+            abort();
+        }
+        gen_thr = sthread_create(shader_gen_worker, NULL);
+        if (!gen_thr) {
+            abort();
+        }
         gen_thr_up = true;
     }
-
-    qemu_mutex_lock(&gen_lock);
 
     /* 1) Submit finished sources to GL: cheap per module, the driver's
      * compiler threads take it from there. */
     for (int i = 0; i < GEN_JOBS; i++) {
-        if (!(gen_jobs[i].used && gen_jobs[i].code)) {
+        if (!gen_jobs[i].used ||
+            retro_atomic_load_acquire_int(&gen_jobs[i].state) != GEN_COMPLETE) {
             continue;
         }
         if (budget_us && g_get_monotonic_time() - svc_t0 > budget_us) {
@@ -1959,12 +1980,11 @@ static void comb_async_service(PGRAPHGLState *r, int64_t budget_us)
         bool seed = gen_jobs[i].seed;
         gen_jobs[i].used = false;
         gen_jobs[i].code = NULL;
-        qemu_mutex_unlock(&gen_lock);
+        retro_atomic_store_relaxed_int(&gen_jobs[i].state, GEN_IDLE);
 
         const char *src = mstring_get_str(code);
         if (!src[0]) {
             mstring_unref(code);
-            qemu_mutex_lock(&gen_lock);
             continue;
         }
         GLuint sh;
@@ -1976,15 +1996,13 @@ static void comb_async_service(PGRAPHGLState *r, int64_t budget_us)
         comb_async[slot].gl_shader = sh;
         comb_async[slot].gl_program = prog;
         comb_async[slot].used = true;
-
-        qemu_mutex_lock(&gen_lock);
     }
 
     /* 2) Feed the worker: PSH combiners from the dynamic queue... */
     bool fed = false;
     PshState st;
     bool gate;
-    while (gen_jobs_have_free_locked() && comb_async_take(r, &st, &gate)) {
+    while (gen_jobs_have_free() && comb_async_take(r, &st, &gate)) {
         ShaderModuleCacheKey key;
         memset(&key, 0, sizeof(key));
         key.kind = GL_FRAGMENT_SHADER;
@@ -1996,12 +2014,12 @@ static void comb_async_service(PGRAPHGLState *r, int64_t budget_us)
             spec_track_adopted(r, &st);
             continue;
         }
-        fed |= gen_job_push_locked(&key, gate, false);
+        fed |= gen_job_push(&key, gate, false);
     }
 
     /* ...vertex modules of queued specialised states (both variants)... */
     for (unsigned qi = r->spec_pending_r;
-         qi != r->spec_pending_w && gen_jobs_have_free_locked(); qi++) {
+         qi != r->spec_pending_w && gen_jobs_have_free(); qi++) {
         ShaderState *qs = &r->spec_pending[qi % ARRAY_SIZE(r->spec_pending)];
         for (int prefix = 0; prefix < 2; prefix++) {
             ShaderModuleCacheKey key;
@@ -2010,13 +2028,13 @@ static void comb_async_service(PGRAPHGLState *r, int64_t budget_us)
             key.vsh.state = qs->vsh;
             key.vsh.glsl_opts.prefix_outputs = prefix;
             if (!module_known(r, &key)) {
-                fed |= gen_job_push_locked(&key, false, false);
+                fed |= gen_job_push(&key, false, false);
             }
         }
     }
 
     /* ...and dynamic vertex families (both variants). */
-    while (gen_jobs_have_free_locked()) {
+    while (gen_jobs_have_free()) {
         VshState vst;
         if (!pgraph_glsl_vsh_dynamic_pending_take(&vst)) {
             break;
@@ -2027,25 +2045,24 @@ static void comb_async_service(PGRAPHGLState *r, int64_t budget_us)
             key.kind = GL_VERTEX_SHADER;
             key.vsh.state = vst;
             key.vsh.glsl_opts.prefix_outputs = prefix;
-            fed |= gen_job_push_locked(&key, false, false);
+            fed |= gen_job_push(&key, false, false);
         }
     }
 
     /* ...and cold-boot seed keys, lowest priority: only leftover slots,
      * so live compile demand always wins. */
     while (r->seed.state == 1 && r->seed.mod_idx < r->seed.mod_n &&
-           gen_jobs_have_free_locked()) {
+           gen_jobs_have_free()) {
         ShaderModuleCacheKey *sk = &r->seed.mod_keys[r->seed.mod_idx++];
         if (module_known(r, sk)) {
             continue;
         }
-        fed |= gen_job_push_locked(sk, false, true);
+        fed |= gen_job_push(sk, false, true);
     }
 
     if (fed) {
-        qemu_cond_signal(&gen_cond);
+        retro_eventcount_notify(&gen_ready);
     }
-    qemu_mutex_unlock(&gen_lock);
 
     bool has_completion = gl_has_parallel_compile();
     for (unsigned i = 0; i < ARRAY_SIZE(comb_async); i++) {

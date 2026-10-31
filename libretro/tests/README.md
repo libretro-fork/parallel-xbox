@@ -8,6 +8,12 @@ adds sanitizer flags. A MinGW cross-build can set `CPU_WORK_BINARY` and
 `test-mpsc.c` stresses eight producers and immediate node reclamation over
 800000 items; link it with libretro-common's rthreads implementation.
 
+`test-glslgen-queue.py CHECKOUT [CC]` runs the production GLSL generation
+worker and submitter over 100000 jobs, checking duplicate suppression,
+all shader stages, declined sources, slot reuse, flags and idle wakeups.
+`GLSLGEN_CFLAGS`, `GLSLGEN_BINARY` and `GLSLGEN_SKIP_RUN` select sanitizers
+or retain a cross-compiled executable for native Windows testing.
+
 `test-eventcount-spin.c` checks Windows eventcount notifications before waiter
 publication, concurrent publication during list detachment, and detachment
 while an unlinker owns the list. It includes the production implementation.
