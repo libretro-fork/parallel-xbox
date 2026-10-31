@@ -865,3 +865,5 @@ checks that lazy operands remain unchanged and the FP flush occurs, and checks
 all eight metadata encodings. `sub-byte-carry.asm` tests all 65,536 operand pairs
 through direct/shared entries, ADC, INC, SETC and JC, full flag readback and two
 live x87 cases. The mixed-class CF/STI ROM also covers byte SUB/CMP/NEG.
+
+The qcow2 vector fixture rejects negative counts, missing descriptor arrays and, on 64-bit size_t hosts, oversized lengths and signed-overflowing totals. Counted file calls must remain zero. Valid empty requests, including at virtual EOF, remain accepted. The same checks run with pending autoclear flags and must leave them untouched. Synthetic huge spans use no allocated payload because they must be rejected before access.

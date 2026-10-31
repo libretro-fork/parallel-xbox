@@ -688,7 +688,14 @@ int lr_qcow2_flush(LRQcow2 *q)
 static int64_t request_len(const LRFileIOV *iov, int n)
 {
     int64_t len = 0;
+
+    if (n < 0 || (n && !iov)) {
+        return -1;
+    }
     for (int i = 0; i < n; i++) {
+        if (iov[i].len > (uint64_t)(INT64_MAX - len)) {
+            return -1;
+        }
         len += (int64_t)iov[i].len;
     }
     return len;
@@ -698,9 +705,10 @@ int lr_qcow2_preadv(LRQcow2 *q, int64_t off, const LRFileIOV *iov, int n)
 {
     Cursor c = { iov, n, 0, 0 };
     uint64_t pos = (uint64_t)off;
-    uint64_t left = (uint64_t)request_len(iov, n);
+    int64_t bytes = request_len(iov, n);
+    uint64_t left = (uint64_t)bytes;
 
-    if (off < 0 || pos > q->size || left > q->size - pos) {
+    if (bytes < 0 || off < 0 || pos > q->size || left > q->size - pos) {
         return -EIO;
     }
     while (left) {
@@ -829,13 +837,14 @@ int lr_qcow2_pwritev(LRQcow2 *q, int64_t off, const LRFileIOV *iov, int n)
 {
     Cursor c = { iov, n, 0, 0 };
     uint64_t pos = (uint64_t)off;
-    uint64_t left = (uint64_t)request_len(iov, n);
+    int64_t bytes = request_len(iov, n);
+    uint64_t left = (uint64_t)bytes;
     int ret;
 
     if (!q->writable) {
         return -EPERM;
     }
-    if (off < 0 || pos > q->size || left > q->size - pos) {
+    if (bytes < 0 || off < 0 || pos > q->size || left > q->size - pos) {
         return -EIO;
     }
     if (!left) {

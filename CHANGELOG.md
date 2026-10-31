@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- qcow2 checks scatter/gather counts and total lengths before I/O, rejecting integer-overflowing requests instead of accepting wrapped totals as empty transfers. Valid empty requests remain supported.
+
 - CPU Boost carries byte-subtraction borrow across translated blocks directly instead of calling the carry helper. It uses the remaining carry-class encoding without widening the block key and preserves pending floating-point state.
 
 - qcow2-to-raw conversion reads only the valid bytes of an uncompressed final cluster and skips zero-only logical tails even when unused cluster padding is nonzero. Partial-word tails retain their last valid byte.

@@ -98,6 +98,35 @@ int counted_pwritev(LRFile *f, int64_t off, const LRFileIOV *iov, int n)
     return lr_file_pwritev(f, off, iov, n);
 }
 
+static void invalid_requests(LRQcow2 *q)
+{
+    reads = writes = scalar_reads = scalar_writes = zero_calls = sync_calls = 0;
+#if SIZE_MAX > INT64_MAX
+    const LRFileIOV bad[][3] = {
+        {{NULL, SIZE_MAX}, {NULL, 1}, {NULL, 0}},
+        {{NULL, (size_t)INT64_MAX}, {NULL, 1}, {NULL, 0}},
+        {{NULL, (size_t)INT64_MAX}, {NULL, (size_t)INT64_MAX}, {NULL, 2}},
+        {{NULL, SIZE_MAX}, {NULL, 0}, {NULL, 0}}
+    };
+    for (unsigned i = 0; i < sizeof(bad) / sizeof(bad[0]); i++) {
+        assert(lr_qcow2_preadv(q, 0, bad[i], 3) == -EIO);
+        assert(lr_qcow2_pwritev(q, 0, bad[i], 3) == -EIO);
+    }
+#endif
+    assert(lr_qcow2_preadv(q, 0, NULL, -1) == -EIO);
+    assert(lr_qcow2_pwritev(q, 0, NULL, -1) == -EIO);
+    assert(lr_qcow2_preadv(q, 0, NULL, 1) == -EIO);
+    assert(lr_qcow2_pwritev(q, 0, NULL, 1) == -EIO);
+    LRFileIOV empty = {NULL, 0};
+    assert(lr_qcow2_preadv(q, 0, NULL, 0) == 0);
+    assert(lr_qcow2_pwritev(q, 0, NULL, 0) == 0);
+    assert(lr_qcow2_preadv(q, lr_qcow2_size(q), &empty, 1) == 0);
+    assert(lr_qcow2_pwritev(q, lr_qcow2_size(q), &empty, 1) == 0);
+    assert(reads == 0 && writes == 0 && scalar_reads == 0 &&
+           scalar_writes == 0 && zero_calls == 0 && sync_calls == 0);
+    puts("invalid/overflowing vectors rejected without I/O; empty requests preserved: PASS");
+}
+
 static uint64_t disk_be64(const uint8_t *p)
 {
     uint64_t v = 0;
@@ -185,6 +214,8 @@ static void autoclear_retry(LRFile *f)
         header_failures = 2;
         partial_header = mode == 2;
         watch_header = true;
+        invalid_requests(q);
+        assert(header_attempts == 0);
         LRFileIOV empty = {NULL, 0}, input = {block, 16}, result = {after, 16};
         assert(lr_qcow2_pwritev(q, offset, &empty, 1) == 0);
         assert(lr_qcow2_zero(q, offset, 0) == 0 && header_attempts == 0);
@@ -339,6 +370,7 @@ int main(int argc, char **argv)
         return 0;
     }
     assert(q && lr_qcow2_size(q) >= offset + 65536 + BYTES);
+    invalid_requests(q);
     replacements(q, 32 * 1024 * 1024);
     for (unsigned i = 0; i < BYTES; i++) {
         input[i] = (uint8_t)(i * 13 + i / 251);
