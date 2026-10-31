@@ -1376,7 +1376,31 @@ static MString* psh_convert(struct PixelShader *ps)
         "vec2 unscaled_xy = gl_FragCoord.xy / surfaceScale;\n"
         "precise float bc0 = area(unscaled_xy, vtxPos1.xy, vtxPos2.xy);\n"
         "precise float bc1 = area(unscaled_xy, vtxPos2.xy, vtxPos0.xy);\n"
-        "precise float bc2 = area(unscaled_xy, vtxPos0.xy, vtxPos1.xy);\n");
+        "precise float bc2 = area(unscaled_xy, vtxPos0.xy, vtxPos1.xy);\n"
+        // Keep ordinary coordinates on the original arithmetic path. Retry
+        // overflowing determinants in a common power-of-two coordinate frame;
+        // the scale cancels when normalizing the barycentric weights.
+        "precise float bc_probe = bc0 + bc1 + bc2;\n"
+        "if (isnan(bc_probe) || isinf(bc_probe)) {\n"
+        "  float pos_max = max(max(abs(vtxPos0.x), abs(vtxPos0.y)),\n"
+        "                      max(abs(vtxPos1.x), abs(vtxPos1.y)));\n"
+        "  pos_max = max(pos_max, max(abs(vtxPos2.x), abs(vtxPos2.y)));\n"
+        "  pos_max = max(pos_max, max(abs(unscaled_xy.x), abs(unscaled_xy.y)));\n"
+        "  if (pos_max > 0.0 && !isinf(pos_max) && !isnan(pos_max)) {\n"
+        // For finite positive float32, frexp's exponent is raw_exp - 126.
+        // Build 2^min(60 - exponent, 0) directly (313 = 127 + 126 + 60).
+        // This also stays within the built-in SPIR-V compiler's vocabulary.
+        "    uint pos_exp = floatBitsToUint(pos_max) >> 23;\n"
+        "    float pos_scale = uintBitsToFloat(min(127u, 313u - pos_exp) << 23);\n"
+        "    precise vec2 sample_xy = unscaled_xy * pos_scale;\n"
+        "    precise vec2 pos0_xy = vtxPos0.xy * pos_scale;\n"
+        "    precise vec2 pos1_xy = vtxPos1.xy * pos_scale;\n"
+        "    precise vec2 pos2_xy = vtxPos2.xy * pos_scale;\n"
+        "    bc0 = area(sample_xy, pos1_xy, pos2_xy);\n"
+        "    bc1 = area(sample_xy, pos2_xy, pos0_xy);\n"
+        "    bc2 = area(sample_xy, pos0_xy, pos1_xy);\n"
+        "  }\n"
+        "}\n");
     if (ps->state->z_perspective) {
         mstring_append(clip, "bc0 /= vtxPos0.w;\n"
                              "bc1 /= vtxPos1.w;\n"

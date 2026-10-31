@@ -35,6 +35,10 @@
 
 static const char *shader_gl_vendor = NULL;
 
+/* xemu_version follows upstream, so fork-only generator changes need their
+ * own binary-cache revision. Bump this when generated shader semantics change. */
+static const char shader_codegen_version[] = "depth-overflow-retry-1";
+
 /* Deleting a program frees its GL name for reuse: drop any uniform cache
  * held against that name so a future program cannot inherit it. */
 static void delete_program(PGRAPHGLState *r, GLuint prog)
@@ -238,15 +242,33 @@ static bool cursor_take_string_eq(FileCursor *c, const char *expect)
            memcmp(str, expect, len - 1) == 0;
 }
 
-/* The header of a cached module file: the xemu build and GL vendor that
- * wrote it, then its key. False when another build or driver wrote it, or
- * the file is cut short. */
+static bool shader_read_cache_version(FileCursor *c)
+{
+    return cursor_take_string_eq(c, xemu_version) &&
+           cursor_take_string_eq(c, shader_codegen_version);
+}
+
+static bool shader_write_cache_version(FILE *f)
+{
+    const char *versions[] = { xemu_version, shader_codegen_version };
+    for (size_t i = 0; i < ARRAY_SIZE(versions); i++) {
+        uint64_t len = strlen(versions[i]) + 1;
+        if (fwrite(&len, sizeof(len), 1, f) != 1 ||
+            fwrite(versions[i], len, 1, f) != 1) {
+            return false;
+        }
+    }
+    return true;
+}
+
+/* The header of a cached module file: upstream/generator versions and GL
+ * vendor, then its key. Reject a different revision/driver or truncated file. */
 static bool module_read_header(FileCursor *c, ShaderModuleCacheKey *key)
 {
     uint64_t len;
     const void *k;
 
-    if (!cursor_take_string_eq(c, xemu_version) ||
+    if (!shader_read_cache_version(c) ||
         !cursor_take_string_eq(c, shader_gl_vendor) ||
         !cursor_take_u64(c, &len) || len != sizeof(*key)) {
         return false;
@@ -349,14 +371,10 @@ static void module_save_to_disk(ShaderModuleCacheEntry *module, uint64_t hash)
         return;
     }
 
-    bool ok = true;
+    bool ok = shader_write_cache_version(f);
 #define WR(p, n) ok = ok && fwrite(p, n, 1, f) == 1
 
-    uint64_t len = strlen(xemu_version) + 1;
-    WR(&len, sizeof(len));
-    WR(xemu_version, len);
-
-    len = strlen(shader_gl_vendor) + 1;
+    uint64_t len = strlen(shader_gl_vendor) + 1;
     WR(&len, sizeof(len));
     WR(shader_gl_vendor, len);
 
@@ -1002,7 +1020,7 @@ static void shader_load_from_disk(PGRAPHState *pg, uint64_t hash)
     c.p = m.data;
     c.left = m.len;
 
-    if (!cursor_take_string_eq(&c, xemu_version) ||
+    if (!shader_read_cache_version(&c) ||
         !cursor_take_string_eq(&c, shader_gl_vendor) ||
         !cursor_take_string_eq(&c, shader_gl_version)) {
         goto error;
@@ -1239,11 +1257,6 @@ static void *shader_write_to_disk(void *arg)
         gl_version_len = (uint64_t) (strlen(shader_gl_version) + 1);
     }
 
-    static uint64_t xemu_version_len = 0;
-    if (xemu_version_len == 0) {
-        xemu_version_len = (uint64_t) (strlen(xemu_version) + 1);
-    }
-
     qemu_mkdir(shader_bin);
     g_free(shader_bin);
 
@@ -1262,8 +1275,10 @@ static void *shader_write_to_disk(void *arg)
             } \
         } while (0)
 
-    WRITE_OR_ERR(&xemu_version_len, sizeof(xemu_version_len));
-    WRITE_OR_ERR(xemu_version, xemu_version_len);
+    if (!shader_write_cache_version(shader_file)) {
+        fclose(shader_file);
+        goto error;
+    }
 
     WRITE_OR_ERR(&gl_vendor_len, sizeof(gl_vendor_len));
     WRITE_OR_ERR(shader_gl_vendor, gl_vendor_len);

@@ -540,6 +540,24 @@ registers and the command cursor; detach/recreate checks cover the cached device
 pointer. This fixture does not run a commercial game's startup or the full QEMU
 migration stream.
 
+`test-barycentric-overflow.py CHECKOUT [CC]` executes the production depth
+GLSL on a surfaceless OpenGL compute context against a double-precision oracle
+and the original arithmetic path. It checks 4,096 cases through float32's
+largest finite exponents, perspective/linear interpolation, 1x/2x/4x scale,
+ordinary fragment positions and degenerates. Non-overflowing results must be
+bit-identical to the old path. It also compiles the relevant fragment code as
+GLSL 4.00, and runs the core's compiler for SPIR-V 1.5 and 1.6. Installed
+`spirv-val` and `glslc` additionally validate those modules and the probe source.
+This requires EGL/OpenGL development files and an OpenGL 4.5 context. It tests
+depth arithmetic rather than rasterization of extreme coordinates on real GPUs.
+
+`test-gl-shader-version.py CHECKOUT [CC]` exercises the production GL cache
+version writer/reader and module-key header parser. Current files round-trip;
+legacy or changed generator/upstream versions and truncated prefixes fail.
+Both stage-module and monolithic GL caches use the generator revision, so a
+fork-only shader fix cannot silently load an old binary at the same upstream
+version. Existing seed dictionaries remain usable for rebuilding the binaries.
+
 At guest frame 1020, two GPU palette clears (red then green) are each followed by an indexed draw before the next flip. Frontend frame 1030 must show green; the former Vulkan per-frame validation throttle left it red. The extracted dirty-page test also checks that GPU writeback invalidates all overlapping texture/palette validation stamps even when they are already marked dirty, leaving unrelated and empty views unchanged.
 
 Guest frame 1040 clears a GPU ARGB source red then blue, sampling each update through a one-byte Y8 view before the flip. Frame 1060 repeats this using the GPU-produced byte as index 0 then 255, with green and white palette entries. Frontend captures 1050/1070 must both be white. The Vulkan build predating GPU-writeback validation-stamp invalidation instead produced black and green.
