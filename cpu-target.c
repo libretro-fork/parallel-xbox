@@ -28,25 +28,12 @@
 void cpu_abort(CPUState *cpu, const char *fmt, ...)
 {
     va_list ap;
-    va_list ap2;
 
     va_start(ap, fmt);
-    va_copy(ap2, ap);
     fprintf(stderr, "qemu: fatal: ");
     vfprintf(stderr, fmt, ap);
     fprintf(stderr, "\n");
     cpu_dump_state(cpu, stderr, CPU_DUMP_FPU | CPU_DUMP_CCOP);
-    if (qemu_log_separate()) {
-        FILE *logfile = qemu_log_trylock();
-        if (logfile) {
-            fprintf(logfile, "qemu: fatal: ");
-            vfprintf(logfile, fmt, ap2);
-            fprintf(logfile, "\n");
-            cpu_dump_state(cpu, logfile, CPU_DUMP_FPU | CPU_DUMP_CCOP);
-            qemu_log_unlock(logfile);
-        }
-    }
-    va_end(ap2);
     va_end(ap);
     abort();
 }

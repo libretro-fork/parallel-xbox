@@ -1502,9 +1502,6 @@ static void qemu_validate_options(const QDict *machine_opts)
 
 static void qemu_process_early_options(void)
 {
-    /* No log file and no log mask */
-    qemu_set_log_filename_flags(NULL, 0, &error_fatal);
-
     qemu_add_default_firmwarepath();
 }
 

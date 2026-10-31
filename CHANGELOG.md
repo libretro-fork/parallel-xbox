@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Remove the standalone QEMU debug-file logger, which the core always configured with no file and a zero mask. Eliminate its configuration mutex, stream locking, per-thread file/TLS state and deferred RCU closures; compile disabled translation logging out. Frontend logs, error/warning reports and fatal CPU diagnostics retain their existing output.
+
 - Remove the standalone UI main-loop mutex: only the libretro emulation thread acquired it, including nested frame/renderer waits. Keep BQL release/reacquire and event notifications unchanged. Delete the unused host VFIO passthrough helper, its DMA-map mutex and trace declarations; emulated Xbox/Chihiro PCI devices retain their existing DMA paths.
 
 - Vulkan vertex RAM mirrors skip allocator flushes when coherent or unchanged. Non-coherent mirrors flush the envelope of newly copied bytes instead of the whole allocation; initial full-mirror uploads still flush their full range. Dirty tracking is updated after any download/settlement that can submit older writes, and GPU visibility barriers remain unchanged.

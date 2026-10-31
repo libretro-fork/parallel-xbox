@@ -3197,3 +3197,6 @@ include/qemu/thread-context.h
 # Unused host VFIO passthrough service
 util/vfio-helpers.c
 include/qemu/vfio-helpers.h
+
+# Standalone debug-file logger, permanently disabled in the core
+util/log.c

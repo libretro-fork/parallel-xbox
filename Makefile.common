@@ -208,7 +208,6 @@ SOURCES_UTIL := \
 	$(CORE_DIR)/util/iov.c \
 	$(CORE_DIR)/util/keyval.c \
 	$(CORE_DIR)/util/lockcnt.c \
-	$(CORE_DIR)/util/log.c \
 	$(CORE_DIR)/util/main-loop.c \
 	$(CORE_DIR)/util/memalign.c \
 	$(CORE_DIR)/util/module.c \
