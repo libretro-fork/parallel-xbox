@@ -17,6 +17,7 @@ state_header = (repo / "hw/xbox/nv2a/pgraph/glsl/psh.h").read_text()
 state = re.search(r"typedef struct PshState \{.*?\} PshState;", state_header, re.S).group()
 legacy = state.replace("uint8_t g8b8_mip_flags;", "bool universal;").replace("PshState", "LegacyPshState")
 legacy = legacy.replace("uint8_t g8b8_mip_clamp_u;", "").replace("uint8_t g8b8_mip_clamp_v;", "")
+legacy = legacy.replace("uint8_t g8b8_mip_mirror;", "")
 pixel_source = (repo / "hw/xbox/nv2a/pgraph/glsl/psh.c").read_text()
 encoding = re.search(r"^            if \(signs.*?^            \}$", pixel_source, re.S | re.M).group()
 code = r'''
@@ -35,7 +36,7 @@ _Static_assert(offsetof(PshState, g8b8_mip_flags) == offsetof(LegacyPshState, un
 _Static_assert(offsetof(PshState, g8b8_signed) == offsetof(LegacyPshState, g8b8_signed), "signed byte layout changed");
 _Static_assert(offsetof(PshState, depth_format) == offsetof(LegacyPshState, depth_format), "seed tail moved");
 _Static_assert(offsetof(PshState, surface_zeta_format) == offsetof(LegacyPshState, surface_zeta_format), "seed surface offset moved");
-_Static_assert(offsetof(PshState, g8b8_mip_clamp_v) < offsetof(LegacyPshState, surface_zeta_format), "address flags exceed old padding");
+_Static_assert(offsetof(PshState, g8b8_mip_mirror) < offsetof(LegacyPshState, surface_zeta_format), "address flags exceed old padding");
 static unsigned ctz32(uint32_t x) { return __builtin_ctz(x); }
 #include "hw/xbox/nv2a/nv2a_regs.h"
 typedef struct { uint32_t fmt[4], filter[4]; bool dirty[4]; } PGRAPHState;
@@ -53,7 +54,7 @@ static uint32_t pgraph_reg_r(PGRAPHState *pg, unsigned reg) {
 /* PRODUCTION */
 static PshState encode_signed_g8b8(unsigned signs, unsigned min_filter,
                                  unsigned mag_filter, bool mip_filter,
-                                 bool mip_clamp_u, bool mip_clamp_v,
+                                 unsigned address_u, unsigned address_v,
                                  bool mip_lod0, bool others, int i) {
     PshState result;
     memset(&result, 0, sizeof(result));
@@ -62,7 +63,10 @@ static PshState encode_signed_g8b8(unsigned signs, unsigned min_filter,
         state->g8b8_mip_flags = 0xffu ^ ((1u << i) | (1u << (i + 4)));
         state->g8b8_mip_clamp_u = 0x5u & ~(1u << i);
         state->g8b8_mip_clamp_v = 0xau & ~(1u << i);
+        state->g8b8_mip_mirror = 0x96u & ~((1u << i) | (1u << (i + 4)));
     }
+    bool mip_clamp_u = address_u == 1, mip_clamp_v = address_v == 1;
+    bool mip_mirror_u = address_u == 2, mip_mirror_v = address_v == 2;
     bool mip_clamp = mip_clamp_u && mip_clamp_v;
     bool min_linear = min_filter == 2 || min_filter == 4 || min_filter == 6;
     bool linear_filter = min_linear && mag_filter == 2;
@@ -107,14 +111,14 @@ int main(void) {
     for (unsigned stage = 0; stage < 4; stage++)
     for (unsigned signs = 0; signs < 16; signs++)
     for (unsigned filter = 3; filter <= 6; filter++)
-    for (unsigned clamp_u = 0; clamp_u < 2; clamp_u++)
-    for (unsigned clamp_v = 0; clamp_v < 2; clamp_v++)
+    for (unsigned address_u = 0; address_u < 3; address_u++)
+    for (unsigned address_v = 0; address_v < 3; address_v++)
     for (unsigned others = 0; others < 2; others++) {
         unsigned base_filter = filter % 2 ? 1 : 2;
         PshState mip = encode_signed_g8b8(signs, filter, base_filter,
-                                        true, clamp_u, clamp_v, true, others, stage);
+                                        true, address_u, address_v, true, others, stage);
         PshState base = encode_signed_g8b8(signs, base_filter, base_filter,
-                                         false, clamp_u, clamp_v, true, others, stage);
+                                         false, address_u, address_v, true, others, stage);
         assert(!memcmp(&mip, &base, sizeof(mip)));
         canonical++;
     }
@@ -124,8 +128,8 @@ int main(void) {
     for (unsigned filter = 3; filter <= 6; filter++)
     for (unsigned mag = 1; mag <= 2; mag++)
     for (unsigned zero = 0; zero < 2; zero++)
-    for (unsigned u = 0; u < 2; u++)
-    for (unsigned v = 0; v < 2; v++) {
+    for (unsigned u = 0; u < 3; u++)
+    for (unsigned v = 0; v < 3; v++) {
         PshState key = encode_signed_g8b8(signs, filter, mag, true,
                                          u, v, zero, true, stage);
         bool mixed = mag != (filter % 2 ? 1u : 2u);
@@ -133,11 +137,14 @@ int main(void) {
                               (!(filter % 2) || mixed || filter == 5);
         unsigned bit = 1u << stage;
         assert(key.g8b8_mip_clamp_u == ((0x5u & ~bit) |
-               (explicit_fetch && u && !v ? bit : 0)));
+               (explicit_fetch && u == 1 && v != 1 ? bit : 0)));
         assert(key.g8b8_mip_clamp_v == ((0xau & ~bit) |
-               (explicit_fetch && v && !u ? bit : 0)));
+               (explicit_fetch && v == 1 && u != 1 ? bit : 0)));
         assert(!!(key.g8b8_mip_flags & (bit << 4)) ==
-               (explicit_fetch && u && v));
+               (explicit_fetch && u == 1 && v == 1));
+        assert(key.g8b8_mip_mirror == ((0x96u & ~(bit | (bit << 4))) |
+               (explicit_fetch && u == 2 ? bit : 0) |
+               (explicit_fetch && v == 2 ? bit << 4 : 0)));
         addressed++;
     }
     printf("PASS: %u independent-axis state encodings\n", addressed);

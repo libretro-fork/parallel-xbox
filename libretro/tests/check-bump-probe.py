@@ -36,16 +36,24 @@ def expected_mip(case, force_lod0):
     def sample(level, channel):
         size = 4 >> level
         address = case.get("address_mode", "wrap")
-        axis_v = address in ("clamp_edge", "clamp_u", "clamp_v") and channel in "GA"
+        axis_v = (address in ("clamp_edge", "clamp_u", "clamp_v") or address.startswith("axes_")) and channel in "GA"
         clamp = address == "clamp_edge" or (address == "clamp_v" if axis_v else address == "clamp_u")
+        mode = address.split("_")[2 if axis_v else 1] if address.startswith("axes_") else (
+            "edge" if clamp else "wrap")
         coordinate = "sample_v" if axis_v else "sample_u"
         u = float(case.get(coordinate) or "1.25") * size / 4
         pair = ((192, 64), (224, 32), (16, 16))[level] if channel in "RB" else ((64, 192), (96, 160), (112, 112))[level]
         position = u - 0.5 if linear else u
         index = math.floor(position)
         weight = position - index if linear else 0
-        indices = [min(size - 1, max(0, index + offset)) if clamp else (index + offset) % size
-                   for offset in (0, 1)]
+        def addressed(i):
+            if mode == "edge":
+                return min(size - 1, max(0, i))
+            if mode == "mirror":
+                i %= 2 * size
+                return min(i, 2 * size - 1 - i)
+            return i % size
+        indices = [addressed(index + offset) for offset in (0, 1)]
         values = [pair[i % 2] for i in indices]
         if channel in case["signed_channels"]:
             values = [signed_byte(v) * 255 for v in values]
