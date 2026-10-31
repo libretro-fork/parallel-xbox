@@ -24,6 +24,10 @@ static void bump_filter_probe(void)
         u32 axis = (id / 24) % 2;
         u32 lum = (id / 48) % 2;
         u32 swizzled_layout = id / 96;
+#ifdef BUMP_FILTER_COLOR_PROBE
+        flags = (id / 6) % 16;
+        axis = lum = 0;
+#endif
         u32 format = swizzled_layout ? 0x28 : 0x17;
         u32 bump_address = BUMP_DATA + id * 16;
         static const u32 rect_u[] = {0x3f000000, 0x3f800000, 0x3fc00000};
@@ -32,6 +36,9 @@ static void bump_filter_probe(void)
         /* Unique addresses keep texture rewrite/invalidation behavior out
          * of the observation. 2x2 Morton order equals row-major here. */
         u32 pair = axis ? 0x0100ff00u : 0x000100ffu;
+#ifdef BUMP_FILTER_COLOR_PROBE
+        pair = 0xc00140ffu; /* B: -1/+1, G: +64/-64 when signed. */
+#endif
         ram32(bump_address, pair);
         ram32(bump_address + 4, pair);
         /* Reuse the established surface/transform setup, but defer its draw. */
@@ -42,11 +49,14 @@ static void bump_filter_probe(void)
                1u | (2u << 4) | (1u << 3) | (format << 8) |
                (1u << 16) | (1u << 20) | (1u << 24));
         method(NV097_SET_TEXTURE_CONTROL1, 4u << 16);
+        method(NV097_SET_TEXTURE_ADDRESS, 0x00010101u); /* wrap: AF-eligible */
         method(NV097_SET_TEXTURE_IMAGE_RECT, (2u << 16) | 2u);
         method(NV097_SET_TEXTURE_FILTER,
                (linear ? 0x02020000u : 0x01010000u) |
                ((flags & 1) ? 0x80000000u : 0) |
-               ((flags & 2) ? 0x40000000u : 0));
+               ((flags & 2) ? 0x40000000u : 0) |
+               ((flags & 4) ? 0x20000000u : 0) |
+               ((flags & 8) ? 0x10000000u : 0));
         /* Stage 1 samples the ramp with the displacement supplied by T0. */
         method(NV097_SET_TEXTURE_OFFSET + 64, BUMP_RAMP);
         method(NV097_SET_TEXTURE_FORMAT + 64,
@@ -70,6 +80,11 @@ static void bump_filter_probe(void)
         method(NV097_SET_SHADER_STAGE_PROGRAM, 1u | ((lum ? 7u : 6u) << 5));
         method(NV097_SET_COMBINER_SPECULAR_FOG_CW0, 9); /* final RGB T1 */
         method(NV097_SET_COMBINER_SPECULAR_FOG_CW1, 0x00001900u);
+#ifdef BUMP_FILTER_COLOR_PROBE
+        method(NV097_SET_SHADER_STAGE_PROGRAM, 1);
+        method(NV097_SET_COMBINER_SPECULAR_FOG_CW0, 8);
+        method(NV097_SET_COMBINER_SPECULAR_FOG_CW1, 0x00001800u);
+#endif
         triangle();
         texture_cpu_barrier();
         ram32(BUMP_ROWS + id * 8, id);

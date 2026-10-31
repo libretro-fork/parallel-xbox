@@ -13,6 +13,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("output", type=Path, help="new or empty scratch directory")
     parser.add_argument("--assembler", default="nasm", help="nasm or yasm")
+    parser.add_argument("--color", action="store_true", help="test all signed color-channel combinations")
     args = parser.parse_args()
     output = args.output.resolve()
     if output.exists() and any(output.iterdir()):
@@ -26,10 +27,13 @@ def main():
     with tempfile.TemporaryDirectory(prefix="bump-probe-") as folder:
         folder = Path(folder)
         obj, elf, binary = [folder / name for name in ("gpu.o", "gpu.elf", "gpu.bin")]
+        defines = ["-DBUMP_FILTER_PROBE"]
+        if args.color:
+            defines.append("-DBUMP_FILTER_COLOR_PROBE")
         subprocess.run(["gcc", "-m32", "-ffreestanding", "-fno-pic", "-fno-pie",
                         "-fno-stack-protector", "-fno-asynchronous-unwind-tables",
                         "-mno-sse", "-mno-mmx", "-O2", "-Wall", "-Wextra", "-Werror",
-                        "-DBUMP_FILTER_PROBE", "-c", str(rom / "gpu.c"),
+                        *defines, "-c", str(rom / "gpu.c"),
                         "-o", str(obj)], check=True)
         subprocess.run(["ld", "-m", "elf_i386", "-Ttext=0xFFF10000", "-e", "gpu_main",
                         "-o", str(elf), str(obj)], check=True)
@@ -60,6 +64,14 @@ def main():
         writer.writerow(["id", "layout", "mode", "axis", "signed_channels", "filter",
                          "coordinate", "result_address"])
         for i in range(192):
+            if args.color:
+                flags = (i // 6) % 16
+                channels = "".join(ch for bit, ch in ((1, "B"), (2, "G"), (4, "R"), (8, "A")) if flags & bit) or "none"
+                writer.writerow([i, ("linear", "swizzled")[i // 96], "color", "BG",
+                                 channels, ("point", "linear")[(i // 3) % 2],
+                                 ("left_center", "midpoint", "right_center")[i % 3],
+                                 f"0x{0x300204 + i * 8:08x}"])
+                continue
             writer.writerow([i, ("linear", "swizzled")[i // 96],
                              ("bump", "bump_luminance")[(i // 48) % 2],
                              ("B", "G")[(i // 24) % 2],

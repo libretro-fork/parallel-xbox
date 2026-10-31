@@ -1,5 +1,12 @@
 # The core's tests
 
+`test-signed-g8b8.py CHECKOUT CORE HARNESS SCRATCH` builds isolated guest bump
+and color probes and checks 768 cases on each of OpenGL and Vulkan, including
+all channel-sign combinations for the color probe, with quality overrides off
+and on. `run.sh` runs it on Linux
+when Vulkan is available. See `docs/bump-filter-probe.md` for the model and
+hardware-validation limits. The test code is absent from normal emulation.
+
 `run.sh` runs every test script here. The extracted-code tests (`test-*.py`, which
 compile production functions into a fixture) run for either core; the ones
 that need Mesa's GL on EGL, and `test-mcpx-hle.py`, run with the Linux core;

@@ -54,6 +54,11 @@ bool pgraph_texture_force_anisotropy(const TextureShape *state, uint32_t filter,
     unsigned v = GET_MASK(address, NV_PGRAPH_TEXADDRESS0_ADDRV);
     return force_quality_filtering && state->dimensionality == 2 &&
         !state->cubemap && !state->border &&
+        /* G8B8 can carry displacement data even without signed flags. Keep
+         * the game's footprint: AF on its unsigned representation can cross
+         * the signed-byte discontinuity used by dependent texture stages. */
+        state->color_format != NV097_SET_TEXTURE_FORMAT_COLOR_SZ_G8B8 &&
+        state->color_format != NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_G8B8 &&
         u >= NV_PGRAPH_TEXADDRESS0_ADDRU_WRAP &&
         u <= NV_PGRAPH_TEXADDRESS0_ADDRU_MIRROR &&
         v >= NV_PGRAPH_TEXADDRESS0_ADDRU_WRAP &&

@@ -1,6 +1,6 @@
 # Bump filtering observation probe
 
-This opt-in diagnostic is not a renderer fix or a hardware oracle. It uses the
+This isolated test is not a hardware oracle. It uses the
 synthetic flash test environment. **Never flash these ROMs onto a physical Xbox.**
 They are emulator fixtures, not a console application.
 
@@ -26,9 +26,31 @@ timeout 120 ./harness /absolute/path/parallel_xbox_libretro.so \
 
 Check completion at `0x00300100`: it must be 192. Incomplete runs are failures,
 not sample results. `cases.csv` describes each pixel's RAM address. Record core
-commit, renderer, driver and warnings. This probe is not included in `run.sh`:
-hardware results have not been established, and signed-channel cases exercise
-unsupported state.
+commit, renderer, driver and warnings. `run.sh` runs the scalar-model regression
+on Linux where Vulkan is available. The implemented model does not claim to
+establish every NV2A rounding rule or register combination.
+
+For an automated run of both the bump and color matrices:
+
+```
+python3 libretro/tests/test-signed-g8b8.py . /absolute/path/parallel_xbox_libretro.so \
+  /absolute/path/harness /tmp/g8b8-regression
+```
+
+The color matrix adds 192 cases covering all 16 combinations of channel signs,
+point/linear sampling, both layouts and three coordinates. It reads T0 directly
+through the final combiner. B/R use bytes 255 and 1; G/A use 64 and 192. Thus
+unsigned and signed channels can be checked independently even though G8B8
+duplicates the underlying bytes. `check-bump-probe.py` requires complete logs,
+compares each pixel with an independent scalar model within one color LSB, and
+requires exact agreement between GL and Vulkan. No test logging is compiled
+into normal emulator execution.
+
+The automated run repeats both matrices with Force LOD0 and Force Quality
+Filtering off and on (768 cases per renderer). The probe wraps its bump/data
+texture so it exercises the anisotropy eligibility rule. G8B8 data keeps
+the game's sampling footprint even when quality filtering is requested; forcing
+AF on its unsigned backing sampler can corrupt dependent and color results.
 
 192 cases cover linear/swizzled G8B8, BUMPENVMAP/BUMPENVMAP_LUM, B/G displacement,
 signed flags none/B/G/BG, point/linear sampling, and left/midpoint/right texel
@@ -39,7 +61,7 @@ Luminance scale 0 and offset 1 isolate displacement. A GPU semaphore completes
 each draw before CPU readback. Each case has a unique bump texture address to
 keep texture rewrite/invalidation behavior out of the observation.
 
-Signed-before-filter predicts cancellation at the linear midpoint; the current
+Signed-before-filter predicts cancellation at the linear midpoint; the previous
 unsigned-filter-then-`sign3` model maps the average byte 128 to -128/127. These
 are competing models, not asserted console results. Point samples and both axes
 help expose coordinate/channel errors before interpreting the midpoint. Mips,
@@ -67,4 +89,4 @@ B-displacement samples were `ff7c7800` (left), `ff3c7800` (midpoint), and
 `ff7d7800` (right). G-displacement samples were `ff7c7700`, `ff7c0000`, and
 `ff7c7900`. Both layouts and bump modes reproduced the large midpoint offset.
 All four signedness combinations produced the same observations. These results
-characterize current emulation; they do not establish the correct console output.
+characterize the old emulation; they do not establish the correct console output.

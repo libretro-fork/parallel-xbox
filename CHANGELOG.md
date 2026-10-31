@@ -4,11 +4,14 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Signed G8B8 textures now decode each texel before bilinear filtering and supply signed color values to the combiner in both renderers, fixing the speckled water in the tested Ninja Gaiden Black scene. This covers single-level, projective 2D textures with matching point or linear filters; mixed filters, mip chains, texture-border layouts, color keys and signed alpha-kill retain their previous paths. Force Quality Filtering preserves the sampling footprint of G8B8 data. No runtime diagnostic logging is added.
 - Vulkan converts unsupported three-component byte/short and signed-scaled short vertex formats directly into mapped staging memory, including inline arrays. Device capabilities are checked once at renderer startup; guest dword padding and provoking values remain intact, and GPUs supporting the native formats keep their existing upload path.
+
 
 - Vulkan vertex remapping skips leading vertices that the draw does not use, keeps packed copies contiguous, and specializes small strided copies. Remap metadata is passed by reference rather than copied; existing indices, staging capacity and in-flight snapshot protection are preserved.
 
 - Vulkan retains a compatible larger linear depth buffer when a game switches to a smaller color target, avoiding depth downloads and reuploads. Cached target switches keep the color-sized render area and clip, and partial clears preserve the rest of the depth/stencil image.
+
 - Extend native file-I/O regression coverage to partial vectored/scalar transfers, interrupted calls, EOF, zero-progress transfers and terminal errors using real files with fault injection at the syscall boundary.
 
 - CPU Boost retains safe direct chaining after variable-count shifts when zero and nonzero counts have the same carry class. Class-changing shifts still invalidate the proof, preserving the recent flag correctness fix.

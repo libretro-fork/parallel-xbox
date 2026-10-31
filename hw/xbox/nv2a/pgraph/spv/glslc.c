@@ -2904,6 +2904,20 @@ static Val call_builtin(C *c, const char *name, Val *a, int n, bool *handled)
         }
         return r;
     }
+    if (!strcmp(name, "textureGather")) {
+        if (n != 3 || a[0].t->kind != TY_SAMPLED_IMAGE ||
+            a[0].t->elem->dim != SpvDim2D || a[0].t->elem->arrayed ||
+            comp_count(a[1].t) != 2 || comp_count(a[2].t) != 1) {
+            fail(c, "textureGather() needs a 2D sampler, vec2 coordinate and component");
+        }
+        Type *img = a[0].t->elem;
+        a[1] = convert(c, a[1], TY_FLOAT);
+        a[2] = convert(c, a[2], TY_INT);
+        r.t = vec_type(c, img->elem->kind, 4);
+        r.id = ins(c, SpvOpImageGather, r.t->id, 3,
+                   a[0].id, a[1].id, a[2].id);
+        return r;
+    }
     if (!strcmp(name, "texelFetch")) {
         if (n != 3 || a[0].t->kind != TY_SAMPLED_IMAGE) {
             fail(c, "texelFetch() needs a sampler, a coordinate and a level");

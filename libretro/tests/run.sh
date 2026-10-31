@@ -712,6 +712,7 @@ done
 case $core in
 *.so)
     if [ -z "$novk" ]; then
+        python3 "$here/test-signed-g8b8.py" "$here/../.." "$core" "$h" "$work/signed-g8b8"
         python3 "$here/test-vulkan-cube-crop.py" "$here/../.." "$cc"
         python3 "$here/test-vulkan-linear-span.py" "$here/../.." "$cc"
         python3 "$here/test-vulkan-depth-clear.py" "$here/../.." "$cc"
