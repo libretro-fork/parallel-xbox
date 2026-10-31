@@ -98,7 +98,7 @@ while an unlinker owns the list. It includes the production implementation.
 `run.sh` runs it through the alert, keyed-event and event tiers with Wine.
 
 `test-signed-g8b8.py CHECKOUT CORE HARNESS SCRATCH` builds isolated guest bump
-and color probes and checks 60288 cases on each of OpenGL and Vulkan, including
+and color probes and checks 61440 cases on each of OpenGL and Vulkan, including
 all channel-sign combinations for the color probe, with quality overrides off
 and on. Mixed LOD0 filters additionally cover magnification/minification and
 sampler LOD biases of -4, 0 and +4. Three-level mipmapped probes cover all four
@@ -108,7 +108,7 @@ and mixed min/mag reconstruction.
 Clamp-to-edge matrices add independent X/Y data and samples inside, below,
 above and at opposite U/V edges, with matching and mixed filters. New
 independent-axis matrices are covered at bias +0.25; `--extended-address-biases` repeats
-these at -4/0/+0.25/+4 (143232 total cases per renderer). The probe builder
+these at -4/0/+0.25/+4 (144384 total cases per renderer). The probe builder
 accepts `--mip-clamp-axis u` or `v` for these independent-axis cases.
 Mirrored U/V addressing is covered against wrap, edge and mirror partners,
 with matching/mixed filters and bias +0.25 (all four biases in extended mode).
@@ -126,6 +126,14 @@ with the probe builder. Force LOD0 overrides the guest lower clamp and
 retains mixed min/mag selection. Nonzero lower-clamp reconstruction uses a
 new absolute-LOD tag in the existing stage byte, keeping legacy GL seed
 programs distinct. Zero-lower-clamp shader keys remain unchanged.
+Non-neutral bump-luminance profiles add scale/bias (0.5, 0.25), negative
+scale (-0.5, 0.75) and saturation (3, -0.5). Each profile covers all 16 channel
+sign masks, point/linear filtering, three coordinates and linear/swizzled
+single-level G8B8 layouts. Luminance uses the original unsigned R sample while
+displacement uses the selected signed B/G components. Use the builder's
+`--luminance-profile scale_bias`, `negative_scale` or `overbright` to isolate
+a matrix. The three profiles add 1152 cases per renderer including override
+off/on runs; they leave normal emulator execution unchanged.
 Cross-mip comparisons allow two color LSBs for native LOD precision; original
 single-level cases still require exact backend agreement. `run.sh` runs it on Linux
 when Vulkan is available. See `docs/bump-filter-probe.md` for the model and

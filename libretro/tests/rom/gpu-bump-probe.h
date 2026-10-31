@@ -103,6 +103,11 @@ static void bump_filter_probe(void)
         u32 axis = (id / 24) % 2;
         u32 lum = (id / 48) % 2;
         u32 swizzled_layout = id / 96;
+#ifdef BUMP_FILTER_LUMINANCE_PROBE
+        flags = (id / 6) % 16;
+        axis = 0;
+        lum = 1;
+#endif
 #ifdef BUMP_FILTER_COLOR_PROBE
         flags = (id / 6) % 16;
         axis = lum = 0;
@@ -197,8 +202,13 @@ static void bump_filter_probe(void)
         /* NV097 order is 00, 01, 11, 10 (not row-major). */
         method(0x1b30u + 64, 0x41000000u);
         method(0x1b34u + 64, 0);
+#ifdef BUMP_FILTER_LUMINANCE_PROBE
+        method(0x1b38u + 64, BUMP_LUM_SCALE);
+        method(0x1b3cu + 64, BUMP_LUM_OFFSET);
+#else
         method(0x1b38u + 64, 0);           /* luminance scale 0 */
         method(0x1b3cu + 64, 0x3f800000u); /* luminance offset 1 */
+#endif
         method(0x1e78u, 0); /* stage 1 always consumes stage 0 */
         method(NV097_SET_SHADER_STAGE_PROGRAM, 1u | ((lum ? 7u : 6u) << 5));
         method(NV097_SET_COMBINER_SPECULAR_FOG_CW0, 9); /* final RGB T1 */
