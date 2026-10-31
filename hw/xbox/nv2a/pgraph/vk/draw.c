@@ -2399,9 +2399,14 @@ static void flush_memory_buffer(PGRAPHState *pg, VkCommandBuffer cmd)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
 
-    VK_CHECK(vmaFlushAllocation(
-        r->allocator, r->storage_buffers[BUFFER_VERTEX_RAM].allocation, 0,
-        VK_WHOLE_SIZE));
+    if (r->vertex_ram_dirty.size) {
+        if (!r->vertex_ram_coherent) {
+            VK_CHECK(vmaFlushAllocation(
+                r->allocator, r->storage_buffers[BUFFER_VERTEX_RAM].allocation,
+                r->vertex_ram_dirty.addr, r->vertex_ram_dirty.size));
+        }
+        r->vertex_ram_dirty.size = 0;
+    }
     for (int i = 0; i < 2; i++) {
         VkDeviceSize start = r->vertex_arena_dirty_start[i];
         if (start != UINT64_MAX) {

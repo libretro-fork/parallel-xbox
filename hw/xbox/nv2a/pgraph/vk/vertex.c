@@ -66,6 +66,19 @@ void pgraph_vk_update_vertex_ram_buffer(PGRAPHState *pg, hwaddr offset,
 
     nv2a_profile_inc_counter(NV2A_PROF_GEOM_BUFFER_UPDATE_1);
     memcpy(r->storage_buffers[BUFFER_VERTEX_RAM].mapped + offset, data, size);
+    if (!r->vertex_ram_coherent && size) {
+        /* Downloads/settlement above can submit and flush older writes.
+         * Add this write only after they finish and the bytes are copied. */
+        MemorySyncRequirement *dirty = &r->vertex_ram_dirty;
+        hwaddr end = offset + size;
+        if (dirty->size) {
+            end = MAX(end, dirty->addr + dirty->size);
+            dirty->addr = MIN(dirty->addr, offset);
+        } else {
+            dirty->addr = offset;
+        }
+        dirty->size = end - dirty->addr;
+    }
 
     bitmap_clear(r->vertex_stale_bitmap, start_bit, nbits);
     /* Mirror is now newer than any cached snapshot of these bytes. */

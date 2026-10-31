@@ -1224,3 +1224,10 @@ HOST_WRITE-to-vertex-fetch barriers. The COW-tail fixture checks dirty marking
 for fresh snapshots and tail growth, plus isolated snapshot starts with
 non-coherent atoms from 512 through 8,192 bytes. Payload and immutable-reader
 checks continue to cover cache reuse, slot rotation and settled arena recycling.
+
+The vertex-flush fixture also executes production mirror updates. It verifies
+merged disjoint/overlapping write envelopes, clean/coherent flush skips, exact
+initial full-upload bounds and copied payload bytes. A download-triggered flush
+and an occupied-page finish/settle must consume only earlier dirty writes; the
+following copy must remain tracked for its own submission. Zero-size writes
+create no dirty range. Mirror and arena GPU visibility barriers are unchanged.

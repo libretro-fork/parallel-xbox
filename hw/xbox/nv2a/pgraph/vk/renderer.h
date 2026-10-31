@@ -721,6 +721,9 @@ typedef struct PGRAPHVkState {
     int descriptor_set_index;
 
     StorageBuffer storage_buffers[BUFFER_COUNT];
+    bool vertex_ram_coherent;
+    /* Non-coherent mirror writes awaiting visibility at submission. */
+    MemorySyncRequirement vertex_ram_dirty;
 
     MemorySyncRequirement vertex_ram_buffer_syncs[NV2A_VERTEXSHADER_ATTRIBUTES];
     size_t num_vertex_ram_buffer_syncs;

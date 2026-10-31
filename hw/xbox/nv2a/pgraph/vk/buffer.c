@@ -368,6 +368,14 @@ void pgraph_vk_init_buffers(NV2AState *d)
 
     /* the surface downloads' buffer too: mapped once, not at each
      * download (vk/surface.c) */
+    VkMemoryPropertyFlags mirror_props;
+    vmaGetAllocationMemoryProperties(
+        r->allocator, r->storage_buffers[BUFFER_VERTEX_RAM].allocation,
+        &mirror_props);
+    r->vertex_ram_coherent =
+        (mirror_props & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) != 0;
+    r->vertex_ram_dirty = (MemorySyncRequirement){ 0 };
+
     int buffers_to_map[] = { BUFFER_VERTEX_RAM,
                              BUFFER_INDEX_STAGING,
                              BUFFER_VERTEX_INLINE_STAGING,
