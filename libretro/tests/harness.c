@@ -106,7 +106,7 @@
 
 #define MAX_OPTS 64
 #define MAX_EVENTS 64
-#define MAX_PEEK 16
+#define MAX_PEEK 256 /* Bump probe: completion count and 192 recorded pixels. */
 
 static struct { char key[128]; char val[128]; } opts[MAX_OPTS];
 static int nopts;
