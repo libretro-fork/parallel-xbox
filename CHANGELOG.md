@@ -4,6 +4,10 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- RCU epoch publication now uses its existing release/acquire ordering instead of an extra process-wide flush before each period; old-reader scans retain their global memory barrier.
+
+- Short RCU handoffs poll their queue and completion predicate briefly before registering sleepers, and idle-reader grace periods avoid unnecessary waiter bookkeeping. Polling uses the existing calibrated eventcount budget and is disabled by a zero spin override.
+
 - Loading the core no longer leaves the host loader thread registered as an RCU reader. Only threads that actually run emulator work register, so a short-lived loading thread cannot leave a stale TLS record behind.
 
 - RCU registry updates and grace periods now run on a dedicated owner through libretro-common MPSC requests and eventcounts, removing both RCU mutexes. Reader unregistration acknowledges TLS lifetime before a thread exits; overlapping grace periods keep their own completion boundaries.

@@ -14,6 +14,11 @@ source = (root / "util/rcu.c").read_text()
 header = (root / "include/qemu/rcu.h").read_text()
 readers = header[header.index("struct rcu_reader_data {"):header.index("void synchronize_rcu(void);")]
 control = source[source.index("retro_atomic_size_t rcu_gp_ctr ="):source.index("/* Multi-producer, single-consumer queue based")]
+control = control.replace("    for (;;) {\n        int key = retro_eventcount_prepare_wait(&rcu_gp_event);",
+                          "    test_before_gp_prepare();\n    for (;;) {\n        int key = retro_eventcount_prepare_wait(&rcu_gp_event);", 1)
+for publication in ["retro_atomic_store_release_size(&rcu_gp_ctr, gp ^ RCU_GP_CTR);",
+                    "retro_atomic_store_release_size(&rcu_gp_ctr, gp + RCU_GP_CTR);"]:
+    control = control.replace(publication, publication + " test_after_epoch_publish();")
 # Production publication points expose a deterministic overlapping-period schedule.
 control = control.replace("retro_mpsc_push(&rcu_requests, &request.node);",
                           "retro_mpsc_push(&rcu_requests, &request.node); test_published(kind);")
@@ -24,6 +29,8 @@ worker = worker.replace("} else {\n            retro_eventcount_commit_wait",
                         "} else if (retro_atomic_load_acquire_int(&stop)) {\n"
                         "            retro_eventcount_cancel_wait(&rcu_gp_event);\n"
                         "        } else {\n            retro_eventcount_commit_wait")
+worker = worker.replace("retro_mpsc_empty(&rcu_requests)",
+                        "(!retro_atomic_load_acquire_int(&stop) && retro_mpsc_empty(&rcu_requests))")
 control = control[:begin] + worker + control[end:]
 lifecycle = source[source.index("void rcu_register_thread(void)"):source.index("static void rcu_init_complete(")]
 initialization = source[source.index("static void rcu_init_complete("):source.index("static int atfork_depth")]

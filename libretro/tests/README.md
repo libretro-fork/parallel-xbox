@@ -2,7 +2,9 @@
 
 `test-rcu-owner.py CHECKOUT [CC]` runs production RCU reader, request,
 registry, grace-period and initialization code against deterministic
-overlapping periods, nested readers, lifecycle requests during a blocked
+overlapping periods, new-epoch publication before the scan barrier,
+notifications before waiter registration, nested
+readers, lifecycle requests during a blocked
 period, concurrent reclamation, TLS churn and POSIX fork reinitialization.
 `RCU_OWNER_CFLAGS`, `RCU_OWNER_BINARY` and `RCU_OWNER_SKIP_RUN` select
 sanitizers or retain cross-built executables. GCC TSan needs

@@ -60,6 +60,8 @@ static unsigned rcu_call_ready_event;
 static int atfork_depth = 1;
 static retro_atomic_int_t rcu_callback_worker_claimed;
 #endif
+static void test_before_gp_prepare(void);
+static void test_after_epoch_publish(void);
 #include "rcu-owner-production.h"
 static void call_rcu_thread(void *opaque)
 {
@@ -74,12 +76,34 @@ static void assert_only_startup_reader(void)
 
 
 static retro_atomic_int_t ready[2], release[2], writer_done[2], forced, churn_done;
+static retro_atomic_int_t pause_before_prepare, before_prepare, resume_prepare, read_exited[2];
+static retro_atomic_ptr_t held_record[2];
+static retro_atomic_int_t epoch_pause, epoch_published, epoch_resume, epoch_ready, epoch_read;
+static size_t epoch_old;
+static unsigned epoch_payload;
 static void await(retro_atomic_int_t *value, int target)
 {
     unsigned count = 0;
     while (retro_atomic_load_acquire_int(value) < target) {
         assert(++count < 10000000);
         retro_sleep(0);
+    }
+}
+static void test_before_gp_prepare(void)
+{
+    if (retro_atomic_exchange_int(&pause_before_prepare, 0)) {
+        assert(get_rcu_gp_owner());
+        assert(!retro_atomic_load_acquire_int(&rcu_gp_event.waiters));
+        retro_atomic_store_release_int(&before_prepare, 1);
+        await(&resume_prepare, 1);
+    }
+}
+static void test_after_epoch_publish(void)
+{
+    if (retro_atomic_exchange_int(&epoch_pause, 0)) {
+        assert(get_rcu_gp_owner());
+        retro_atomic_store_release_int(&epoch_published, 1);
+        await(&epoch_resume, 1);
     }
 }
 static void force(Notifier *notifier, void *unused)
@@ -96,12 +120,14 @@ static void held_reader(void *arg)
     rcu_add_force_rcu_notifier(&notifier);
     rcu_read_lock();
     rcu_read_lock();
+    retro_atomic_store_release_ptr(&held_record[id], get_ptr_rcu_reader());
     retro_atomic_store_release_int(&ready[id], 1);
     await(&release[id], 1);
     rcu_read_unlock();
     assert(get_ptr_rcu_reader()->depth == 1);
     await(&release[id], 2);
     rcu_read_unlock();
+    retro_atomic_store_release_int(&read_exited[id], 1);
     rcu_unregister_thread();
     assert(!rcu_thread_registered());
 }
@@ -122,6 +148,88 @@ static void churn(void *arg)
     }
     retro_atomic_store_release_int(&churn_done, 1);
 }
+/* Force the last old reader to exit before the owner registers a waiter.
+ * The second scan must see quiescence rather than sleep on the new key. */
+static void notify_before_registration(void)
+{
+    retro_atomic_store_release_int(&pause_before_prepare, 1);
+    sthread_t *reader = sthread_create(held_reader, (void *)0);
+    assert(reader);
+    await(&ready[0], 1);
+    sthread_t *sync = sthread_create(writer, (void *)0);
+    assert(sync);
+    await(&before_prepare, 1);
+    struct rcu_reader_data *record = retro_atomic_load_acquire_ptr(&held_record[0]);
+    retro_atomic_store_release_int(&release[0], 2);
+    await(&read_exited[0], 1);
+    assert(!retro_atomic_load_acquire_size(&record->ctr));
+    assert(!retro_atomic_load_acquire_int(&writer_done[0]));
+    retro_atomic_store_release_int(&resume_prepare, 1);
+    sthread_join(reader);
+    sthread_join(sync);
+    assert_only_startup_reader();
+    for (unsigned i = 0; i < 2; i++) {
+        retro_atomic_store_relaxed_int(&ready[i], 0);
+        retro_atomic_store_relaxed_int(&read_exited[i], 0);
+        retro_atomic_store_relaxed_int(&release[i], 0);
+        retro_atomic_store_relaxed_int(&writer_done[i], 0);
+        retro_atomic_store_relaxed_int(&sync_published[i], 0);
+    }
+    retro_atomic_store_relaxed_int(&forced, 0);
+}
+
+static void epoch_reader(void *arg)
+{
+    rcu_register_thread();
+    retro_atomic_store_release_int(&epoch_ready, 1);
+    /* Relaxed polling intentionally supplies no publication acquire. The
+     * production read_lock must acquire it before this non-atomic read. */
+    while (retro_atomic_load_relaxed_size(&rcu_gp_ctr) == epoch_old)
+        retro_cpu_relax();
+    rcu_read_lock();
+    assert(epoch_payload == 0x12345678U);
+    retro_atomic_store_release_int(&epoch_read, 1);
+    rcu_read_unlock();
+    rcu_unregister_thread();
+}
+static void epoch_writer(void *arg)
+{
+    epoch_payload = 0x12345678U;
+    writer((void *)0);
+}
+static void new_epoch_publication(void)
+{
+    epoch_old = retro_atomic_load_acquire_size(&rcu_gp_ctr);
+    sthread_t *old = sthread_create(held_reader, (void *)0);
+    assert(old);
+    await(&ready[0], 1);
+    sthread_t *fresh = sthread_create(epoch_reader, NULL);
+    assert(fresh);
+    await(&epoch_ready, 1);
+    retro_atomic_store_release_int(&epoch_pause, 1);
+    sthread_t *sync = sthread_create(epoch_writer, NULL);
+    assert(sync);
+    await(&epoch_published, 1);
+    await(&epoch_read, 1);
+    /* The owner is held after epoch publication, BEFORE the first scan's
+     * process-wide barrier. New-epoch acquire already exposed the data. */
+    assert(!retro_atomic_load_acquire_int(&writer_done[0]));
+    retro_atomic_store_release_int(&epoch_resume, 1);
+    retro_atomic_store_release_int(&release[0], 2);
+    sthread_join(old);
+    sthread_join(fresh);
+    sthread_join(sync);
+    assert_only_startup_reader();
+    for (unsigned i = 0; i < 2; i++) {
+        retro_atomic_store_relaxed_int(&ready[i], 0);
+        retro_atomic_store_relaxed_int(&read_exited[i], 0);
+        retro_atomic_store_relaxed_int(&release[i], 0);
+        retro_atomic_store_relaxed_int(&writer_done[i], 0);
+        retro_atomic_store_relaxed_int(&sync_published[i], 0);
+    }
+    retro_atomic_store_relaxed_int(&forced, 0);
+}
+
 static void overlapping_periods(void)
 {
     sthread_t *readers[2], *writers[2], *lifecycle;
@@ -278,6 +386,8 @@ int main(void)
     worker_handles[1] = NULL;
     assert(QLIST_EMPTY(&registry));
     rcu_register_thread();
+    notify_before_registration();
+    new_epoch_publication();
     overlapping_periods();
     stress();
 #if !defined(_WIN32) && !defined(RCU_OWNER_NO_FORK)

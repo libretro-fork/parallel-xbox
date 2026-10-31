@@ -49,6 +49,7 @@ retro_atomic_size_t rcu_gp_ctr = RCU_GP_LOCKED;
 retro_eventcount_t rcu_gp_event;
 static retro_eventcount_t rcu_request_complete;
 static retro_mpsc_t rcu_requests;
+static unsigned rcu_poll_iters;
 
 QEMU_DEFINE_CO_TLS(struct rcu_reader_data, rcu_reader)
 QEMU_DEFINE_STATIC_CO_TLS(bool, rcu_gp_owner)
@@ -90,6 +91,14 @@ static void rcu_submit_request(RcuRequestKind kind,
     retro_atomic_int_init(&request.done, 0);
     retro_mpsc_push(&rcu_requests, &request.node);
     retro_eventcount_notify(&rcu_gp_event);
+    /* Inspect our own predicate before registering a sleeper. Short RPCs
+     * then need neither completion wake syscalls nor waiter-count RMWs. */
+    for (unsigned i = 0; i < rcu_poll_iters; i++) {
+        if (retro_atomic_load_acquire_int(&request.done)) {
+            return;
+        }
+        retro_cpu_relax();
+    }
     while (!retro_atomic_load_acquire_int(&request.done)) {
         int key = retro_eventcount_prepare_wait(&rcu_request_complete);
         if (retro_atomic_load_acquire_int(&request.done)) {
@@ -148,34 +157,43 @@ static bool rcu_gp_ongoing(struct rcu_reader_data *reader)
 
 /* The owner alone reads registry links and invokes force-RCU notifiers.
  * It never retains a TLS pointer across servicing unregister requests. */
+static bool rcu_readers_quiescent(bool force)
+{
+    bool quiescent = true;
+    struct rcu_reader_data *reader;
+
+    rcu_service_requests();
+    if (force) {
+        QLIST_FOREACH(reader, &registry, node) {
+            retro_atomic_store_relaxed_int(&reader->waiting, 1);
+            notifier_list_notify(&reader->force_rcu, NULL);
+        }
+    }
+    /* Pairs with read-side placeholders: waiting publication precedes
+     * the reader counter checks, which precede reclamation. */
+    smp_mb_global();
+    QLIST_FOREACH(reader, &registry, node) {
+        if (rcu_gp_ongoing(reader)) {
+            quiescent = false;
+        } else {
+            retro_atomic_store_relaxed_int(&reader->waiting, 0);
+        }
+    }
+    return quiescent;
+}
+
 static void wait_for_readers(void)
 {
-    bool forced = false;
-
+    /* Most periods find every reader idle. Do not register a sleeper or
+     * bounce the work event's cache line on that path. */
+    if (rcu_readers_quiescent(true)) {
+        return;
+    }
     for (;;) {
-        bool ongoing = false;
-        struct rcu_reader_data *reader;
         int key = retro_eventcount_prepare_wait(&rcu_gp_event);
-
-        rcu_service_requests();
-        if (!forced) {
-            forced = true;
-            QLIST_FOREACH(reader, &registry, node) {
-                retro_atomic_store_relaxed_int(&reader->waiting, 1);
-                notifier_list_notify(&reader->force_rcu, NULL);
-            }
-        }
-        /* Pairs with read-side placeholders: waiting publication precedes
-         * the reader counter checks, which precede reclamation. */
-        smp_mb_global();
-        QLIST_FOREACH(reader, &registry, node) {
-            if (rcu_gp_ongoing(reader)) {
-                ongoing = true;
-            } else {
-                retro_atomic_store_relaxed_int(&reader->waiting, 0);
-            }
-        }
-        if (!ongoing) {
+        /* Re-scan after registration, including lifecycle work. A reader
+         * or publisher may have notified before prepare_wait. */
+        if (rcu_readers_quiescent(false)) {
             retro_eventcount_cancel_wait(&rcu_gp_event);
             return;
         }
@@ -185,7 +203,11 @@ static void wait_for_readers(void)
 
 static void synchronize_rcu_owned(void)
 {
-    smp_mb_global();
+    /* Request publication acquires each writer's preceding pointer stores.
+     * Release-publishing the new epoch below pairs with readers' acquire
+     * epoch loads, so readers joining that epoch see those stores without
+     * an additional process-wide barrier here. The scan still executes
+     * smp_mb_global() to order old-epoch readers' counter publication. */
     if (!QLIST_EMPTY(&registry)) {
         size_t gp = retro_atomic_load_relaxed_size(&rcu_gp_ctr);
 
@@ -206,13 +228,18 @@ static void rcu_gp_worker(void *opaque)
     sthread_setname("rcu-grace");
     set_rcu_gp_owner(true);
     for (;;) {
-        int key = retro_eventcount_prepare_wait(&rcu_gp_event);
+        /* Stay available briefly after a completion without announcing a
+         * sleep. A returning caller can publish its next request directly.
+         * This is bounded idle polling, never ownership exclusion. */
+        for (unsigned i = 0; i < rcu_poll_iters && !rcu_sync_pending &&
+                             retro_mpsc_empty(&rcu_requests); i++) {
+            retro_cpu_relax();
+        }
         rcu_service_requests();
         if (rcu_sync_pending) {
             RcuRequest *batch = rcu_sync_pending;
             rcu_sync_pending = NULL;
             rcu_sync_tail = &rcu_sync_pending;
-            retro_eventcount_cancel_wait(&rcu_gp_event);
             synchronize_rcu_owned();
             while (batch) {
                 RcuRequest *next = batch->next_sync;
@@ -220,7 +247,12 @@ static void rcu_gp_worker(void *opaque)
                 batch = next;
             }
         } else {
-            retro_eventcount_commit_wait(&rcu_gp_event, key);
+            int key = retro_eventcount_prepare_wait(&rcu_gp_event);
+            if (!retro_mpsc_empty(&rcu_requests)) {
+                retro_eventcount_cancel_wait(&rcu_gp_event);
+            } else {
+                retro_eventcount_commit_wait(&rcu_gp_event, key);
+            }
         }
     }
 }
@@ -473,6 +505,7 @@ static void rcu_init_complete(bool register_self)
         abort();
     }
     qemu_event_init(&rcu_call_ready_event, false);
+    rcu_poll_iters = retro_eventcount_spin_iters();
 
     /* Only a registered fork caller needs its TLS restored here. The
      * library-loading thread need not be a reader and may exit immediately.
