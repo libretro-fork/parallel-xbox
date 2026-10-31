@@ -15,11 +15,17 @@
 #ifdef _WIN32
 #define CONFIG_WIN32
 #else
+#define CONFIG_POSIX
 #include <unistd.h>
 #include <pthread.h>
+#include <sys/wait.h>
 #ifdef __linux__
 #define CONFIG_LINUX
 #endif
+#endif
+/* ThreadSanitizer cannot create threads after a multithreaded fork. */
+#ifndef __has_feature
+#define __has_feature(x) 0
 #endif
 /* FUTEX */
 /* EVENT TYPE */
@@ -94,6 +100,33 @@ static void test_shared_channels(void)
     assert(retro_atomic_load_acquire_int(&finished)==2);
     for(unsigned i=0;i<QEMU_PARK_BUCKETS*2;i++)qemu_event_destroy(&events[i]);
 }
+#if defined(CONFIG_POSIX) && !defined(__SANITIZE_THREAD__) && !__has_feature(thread_sanitizer)
+static void test_fork_channels(void)
+{
+    QemuEvent event;qemu_event_init(&event,false);
+    retro_eventcount_t *channel=qemu_eventcount_for_address(&event);
+    payload=0x12345678;
+    sthread_t *parent_waiter=sthread_create(wait_event,&event);assert(parent_waiter);
+    while(!retro_atomic_load_acquire_int(&channel->waiters))retro_sleep(0);
+    pid_t child=fork();assert(child>=0);
+    if(!child) {
+        qemu_eventcount_after_fork();
+        assert(!retro_atomic_load_acquire_int(&channel->waiters));
+        assert(qemu_eventcount_for_address(&event)==channel);
+        qemu_event_init(&event,false);retro_atomic_store_relaxed_int(&finished,0);
+        sthread_t *waiter=sthread_create(wait_event,&event);assert(waiter);
+        while(retro_atomic_load_acquire_int(&event.value)!=EV_BUSY)retro_sleep(0);
+        qemu_event_set(&event);sthread_join(waiter);
+        assert(retro_atomic_load_acquire_int(&finished)==1);
+        assert(!retro_atomic_load_acquire_int(&channel->waiters));
+        qemu_event_destroy(&event);_exit(0);
+    }
+    int status;assert(waitpid(child,&status,0)==child&&WIFEXITED(status)&&!WEXITSTATUS(status));
+    assert(retro_atomic_load_acquire_int(&channel->waiters)>0);
+    qemu_event_set(&event);sthread_join(parent_waiter);
+    assert(!retro_atomic_load_acquire_int(&channel->waiters));qemu_event_destroy(&event);
+}
+#endif
 #endif
 static QemuEvent request,reply;
 static int request_payload,reply_payload;
@@ -128,6 +161,9 @@ int main(void)
     retro_eventcount_t probe;assert(retro_eventcount_init(&probe));retro_eventcount_free(&probe);
 #ifndef PARKING_BASELINE
     test_shared_channels();
+#if defined(CONFIG_POSIX) && !defined(__SANITIZE_THREAD__) && !__has_feature(thread_sanitizer)
+    test_fork_channels();
+#endif
 #endif
     QemuEvent event;qemu_event_init(&event,true);qemu_event_wait(&event);qemu_event_set(&event);
     qemu_event_destroy(&event);

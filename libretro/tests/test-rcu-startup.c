@@ -36,12 +36,14 @@ typedef int gboolean;
 #define g_free free
 static unsigned init_calls,barrier_calls,init_entered,init_release,init_done;
 static unsigned first_read,queue_release,callbacks,blocked,returned;
+static unsigned parking_resets;
 static bool concurrent;
 static _Thread_local unsigned consumer_id;
 static _Thread_local bool paused,waited;
 #define LOAD(p) __atomic_load_n((p),__ATOMIC_ACQUIRE)
 #define STORE(p,v) __atomic_store_n((p),(v),__ATOMIC_RELEASE)
 #define INC(p) (__atomic_add_fetch((p),1,__ATOMIC_ACQ_REL))
+static void qemu_eventcount_after_fork(void) {assert(!LOAD(&init_calls));INC(&parking_resets);}
 static void await(unsigned *p,unsigned n) {uint64_t end=now_ms()+5000;while(LOAD(p)<n){assert(now_ms()<end);YIELD();}}
 static void retro_sleep(unsigned ms) {if(concurrent&&!waited){waited=true;INC(&blocked);}YIELD();}
 /* ONCE */
@@ -100,10 +102,11 @@ int main(int argc,char **argv) {
   await(&first_read,1);STORE(&queue_release,1);
   for(unsigned i=0;i<16;i++)join(racers[i]);
   assert(LOAD(&callbacks)==1 && !try_dequeue());
-  atfork_depth=0;rcu_init_child();assert(LOAD(&init_calls)==0);
+  atfork_depth=0;rcu_init_child();assert(LOAD(&init_calls)==0 && !LOAD(&parking_resets));
   atfork_depth=1;memset(registry,0xff,sizeof(registry));enqueue(&callback_node);
   rcu_init_child();join(consumers[0]);
   assert(LOAD(&init_calls)==1 && LOAD(&callbacks)==2 && !try_dequeue());
+  assert(LOAD(&parking_resets)==1);
   for(unsigned i=0;i<4;i++)assert(!registry[i]);
   puts("PASS: 16 competing workers have one queue consumer; fork child replaces its owner");return 0;
  }

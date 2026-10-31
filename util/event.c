@@ -3,6 +3,7 @@
 #include "qemu/osdep.h"
 #include "qemu/thread.h"
 #include "qemu/barrier.h"
+#include "qemu-event-internal.h"
 
 /* Manual-reset predicate with SET -> FREE -> BUSY transitions. Reset never
  * changes BUSY to FREE, so a concurrent reset cannot erase waiter presence.
@@ -47,6 +48,23 @@ retro_eventcount_t *qemu_eventcount_for_address(const void *address)
 {
     return qemu_park_channel(address);
 }
+
+#ifdef CONFIG_POSIX
+void qemu_eventcount_after_fork(void)
+{
+    /* Parent waiters and their stack links do not survive in this process.
+     * Do not destroy inherited parking primitives: a vanished worker may
+     * have held one. Reinitialize them before starting child workers, as for
+     * RCU's own eventcounts, retaining the bounded channel allocations. */
+    for (unsigned i = 0; i < QEMU_PARK_BUCKETS; i++) {
+        retro_eventcount_t *channel =
+            retro_atomic_load_acquire_ptr(&qemu_park_channels[i]);
+        if (channel && !retro_eventcount_init(channel)) {
+            abort();
+        }
+    }
+}
+#endif
 
 #define EV_SET   0
 #define EV_FREE  1

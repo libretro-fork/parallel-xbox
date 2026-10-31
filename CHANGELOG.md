@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Reset shared parking channels before RCU restarts workers in a POSIX fork child, discarding inherited waiter links while retaining the bounded allocations. Add fork isolation and worker-start ordering regression tests.
+
 - Vulkan indexed textures that require RAM now materialize their palette and index producers in one ordered readback batch instead of waiting separately. Possible surface-to-texture and cube paths preserve palette-first handling; hashing and conversion still see fully settled bytes. No new buffers, transfers or allocations are added.
 
 - Vulkan texture readbacks now batch live and parked surface producers together, avoiding separate waits for each compatible parked image. Ownership callbacks retire only after the existing batch fence; incompatible conversions and explicit no-copy retirement keep their synchronous fallback. CPU palette hashing still requires materialized RAM.

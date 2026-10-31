@@ -10,6 +10,10 @@ timings. `QEMU_PARKING_CFLAGS`, `QEMU_PARKING_BINARY` and
 `QEMU_PARKING_BASELINE=REV` compares the old Linux/Windows futex code; its
 Windows test executable requires the old synchronization import library.
 Changing parking does not remove the counter gate's exclusion semantics.
+On POSIX, a multithreaded fork test resets inherited channel waiters, starts
+a child waiter, and verifies that the parent's parked waiter remains intact.
+ThreadSanitizer skips that fork case because it cannot start child threads
+after a multithreaded fork; the RCU startup test also checks reset ordering.
 
 `test-init-publication.py CHECKOUT [CC]` compiles production TCG layout and
 Windows thread-name API publication. It pauses one initializer while another

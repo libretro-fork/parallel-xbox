@@ -29,6 +29,7 @@
 #include "qemu/osdep.h"
 #include "qemu/rcu.h"
 #include "qemu/thread.h"
+#include "qemu-event-internal.h"
 #include "qemu/main-loop.h"
 #include <retro_mpsc.h>
 #include <rthreads/rthreads.h>
@@ -465,6 +466,7 @@ static void rcu_init_child(void)
         return;
     }
 
+    qemu_eventcount_after_fork();
     memset(&registry, 0, sizeof(registry));
     /* Parent workers do not survive fork. Discard their private registry
      * and request state; only this thread's TLS is live in the child. */
