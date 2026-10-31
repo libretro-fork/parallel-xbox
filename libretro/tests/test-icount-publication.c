@@ -24,8 +24,8 @@ typedef struct CPUState {
 static sthread_tls_t cpu_key;
 #define current_cpu ((CPUState *)sthread_tls_get(&cpu_key))
 static void set_cpu(CPUState *cpu){assert(sthread_tls_set(&cpu_key,cpu));}
-static void seqlock_write_lock(QemuSeqLock *s,QemuSpin *lock){assert(!lock->depth++);retro_atomic_fetch_add_int(&s->sequence,1);}
-static void seqlock_write_unlock(QemuSeqLock *s,QemuSpin *lock){retro_atomic_fetch_add_int(&s->sequence,1);assert(lock->depth--==1);}
+static __attribute__((unused)) void seqlock_write_lock(QemuSeqLock *s,QemuSpin *lock){assert(!lock->depth++);retro_atomic_fetch_add_int(&s->sequence,1);}
+static __attribute__((unused)) void seqlock_write_unlock(QemuSeqLock *s,QemuSpin *lock){retro_atomic_fetch_add_int(&s->sequence,1);assert(lock->depth--==1);}
 static __attribute__((unused)) unsigned seqlock_read_begin(QemuSeqLock *s){return (unsigned)retro_atomic_load_acquire_int(&s->sequence)&~1u;}
 static __attribute__((unused)) bool seqlock_read_retry(QemuSeqLock*s,unsigned start){retro_atomic_thread_fence_acquire();return (unsigned)retro_atomic_load_relaxed_int(&s->sequence)!=start;}
 #define TS_LOAD64(f) retro_atomic_load_relaxed_64((retro_atomic_64_t *)&timers_state.f)
@@ -76,12 +76,20 @@ static retro_atomic_int_t pause_ready,release_writer,stop_readers,started;
 #define B ((1ll<<35)+9)
 static void paused_writer(void *unused)
 {
- (void)unused;seqlock_write_lock(&timers_state.vm_clock_seqlock,&timers_state.vm_clock_lock);
+ (void)unused;
+#ifdef ICOUNT_HAS_STATELOCK
+ seqlock_write_lock(&timers_state.vm_clock_seqlock,&timers_state.vm_clock_lock);
+#endif
+
  TS_STORE64(qemu_icount,9000); /* Deliberately inconsistent raw fields. */
  retro_atomic_store_release_int(&pause_ready,1);
  while(!retro_atomic_load_acquire_int(&release_writer)){}
  TS_STORE64(qemu_icount_bias,B-icount_to_ns(9000));icount_publish_time();
+
+#ifdef ICOUNT_HAS_STATELOCK
  seqlock_write_unlock(&timers_state.vm_clock_seqlock,&timers_state.vm_clock_lock);
+#endif
+
 }
 static void reader(void *unused)
 {
@@ -101,9 +109,17 @@ static void concurrency(void)
  while(retro_atomic_load_acquire_int(&started)<6){}
  for(unsigned i=0;i<100000;i++){
   int64_t count=(i&1)?1000:9000,value=(i&1)?A:B;
-  seqlock_write_lock(&timers_state.vm_clock_seqlock,&timers_state.vm_clock_lock);
+
+#ifdef ICOUNT_HAS_STATELOCK
+ seqlock_write_lock(&timers_state.vm_clock_seqlock,&timers_state.vm_clock_lock);
+#endif
+
   TS_STORE64(qemu_icount,count);TS_STORE64(qemu_icount_bias,value-icount_to_ns(count));icount_publish_time();
-  seqlock_write_unlock(&timers_state.vm_clock_seqlock,&timers_state.vm_clock_lock);
+
+#ifdef ICOUNT_HAS_STATELOCK
+ seqlock_write_unlock(&timers_state.vm_clock_seqlock,&timers_state.vm_clock_lock);
+#endif
+
  }
  retro_atomic_store_release_int(&stop_readers,1);for(unsigned i=0;i<6;i++)sthread_join(readers[i]);
 }

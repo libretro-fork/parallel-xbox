@@ -28,24 +28,23 @@
 #include "qapi/error.h"
 #include "qemu/error-report.h"
 #include "system/cpus.h"
+#include "system/cpu-timers.h"
 #include "system/qtest.h"
 #include "qemu/main-loop.h"
 #include "qemu/option.h"
-#include "qemu/seqlock.h"
 #include "system/runstate.h"
 #include "hw/core/cpu.h"
 #include "exec/icount.h"
 #include "system/cpu-timers-internal.h"
 #include "system/libretro-vcpu.h"
 
-/* The savestate keeps these fields plain (vmstate checks their types);
- * other threads read them, so they are accessed as retro_atomic. */
+/* Migration fields stay plain for VMState's type checks. Keep whole-width
+ * atomic accessors; only the owner combines raw fields, and observers read
+ * the separately published timestamp. */
 #define TS_LOAD64(f) \
     retro_atomic_load_relaxed_64((retro_atomic_64_t *)&timers_state.f)
 #define TS_STORE64(f, v) \
     retro_atomic_store_relaxed_64((retro_atomic_64_t *)&timers_state.f, (v))
-#define TS_LOAD16(f) \
-    ((int16_t)retro_atomic_load_relaxed_u16((retro_atomic_u16_t *)&timers_state.f))
 #define TS_STORE16(f, v) \
     retro_atomic_store_relaxed_u16((retro_atomic_u16_t *)&timers_state.f, (v))
 
@@ -110,7 +109,7 @@ static int64_t icount_get_executed(CPUState *cpu)
  * account executed instructions. This is done by the TCG vCPU
  * thread so the main-loop can see time has moved forward.
  */
-static void icount_update_locked(CPUState *cpu)
+static void icount_update_owner(CPUState *cpu)
 {
     int64_t executed = icount_get_executed(cpu);
 
@@ -131,14 +130,10 @@ static void icount_update_locked(CPUState *cpu)
  */
 void icount_update(CPUState *cpu)
 {
-    seqlock_write_lock(&timers_state.vm_clock_seqlock,
-                       &timers_state.vm_clock_lock);
-    icount_update_locked(cpu);
-    seqlock_write_unlock(&timers_state.vm_clock_seqlock,
-                         &timers_state.vm_clock_lock);
+    icount_update_owner(cpu);
 }
 
-static int64_t icount_get_raw_locked(void)
+static int64_t icount_get_raw_owner(void)
 {
     CPUState *cpu = current_cpu;
 
@@ -149,15 +144,15 @@ static int64_t icount_get_raw_locked(void)
             return TS_LOAD64(qemu_icount);
         }
         /* Take into account what has run */
-        icount_update_locked(cpu);
+        icount_update_owner(cpu);
     }
-    /* The read is protected by the seqlock, but needs atomic64 to avoid UB */
+    /* The emulation thread owns the raw fields. Other threads use publication. */
     return TS_LOAD64(qemu_icount);
 }
 
-static int64_t icount_get_locked(void)
+static int64_t icount_get_owner(void)
 {
-    int64_t icount = icount_get_raw_locked();
+    int64_t icount = icount_get_raw_owner();
     return TS_LOAD64(qemu_icount_bias) +
         icount_to_ns(icount);
 }
@@ -172,7 +167,7 @@ int64_t icount_get(void)
      * before. Observers never inspect owner-only count/bias/budget fields. */
     if (cpu && retro_atomic_load_relaxed_int(&cpu->running) &&
         cpu->neg.can_do_io) {
-        icount_update_locked(cpu);
+        icount_update_owner(cpu);
     }
     return retro_atomic_load_acquire_64(&timers_state.published_icount_ns);
 }
@@ -197,18 +192,13 @@ int64_t icount_to_ns(int64_t icount)
  * as with sleep=off at a timer deadline (icount_start_warp_timer) */
 void icount_skip_to(int64_t vt)
 {
-    seqlock_write_lock(&timers_state.vm_clock_seqlock,
-                       &timers_state.vm_clock_lock);
-    {
-        int64_t now = icount_get_locked();
-        if (vt > now) {
-            TS_STORE64(qemu_icount_bias,
-                            timers_state.qemu_icount_bias + vt - now);
-            icount_publish_time();
-        }
+    int64_t now = icount_get_owner();
+
+    if (vt > now) {
+        TS_STORE64(qemu_icount_bias,
+                   timers_state.qemu_icount_bias + vt - now);
+        icount_publish_time();
     }
-    seqlock_write_unlock(&timers_state.vm_clock_seqlock,
-                         &timers_state.vm_clock_lock);
 }
 
 /*
@@ -230,10 +220,8 @@ static void icount_adjust(void)
         return;
     }
 
-    seqlock_write_lock(&timers_state.vm_clock_seqlock,
-                       &timers_state.vm_clock_lock);
-    cur_time = cpu_get_clock_locked();
-    cur_icount = icount_get_locked();
+    cur_time = cpu_get_clock();
+    cur_icount = icount_get_owner();
 
     delta = cur_icount - cur_time;
     /* FIXME: This is a very crude algorithm, somewhat prone to oscillation.  */
@@ -256,8 +244,6 @@ static void icount_adjust(void)
                     cur_icount - (timers_state.qemu_icount
                                   << timers_state.icount_time_shift));
     icount_publish_time();
-    seqlock_write_unlock(&timers_state.vm_clock_seqlock,
-                         &timers_state.vm_clock_lock);
 }
 
 static void icount_adjust_rt(void *opaque)
@@ -280,32 +266,24 @@ int64_t icount_round(int64_t count)
     /* the instructions that take at least count ns */
     return (count * LR_ICOUNT_NS_DEN + LR_ICOUNT_NS_NUM - 1) /
            LR_ICOUNT_NS_NUM;
-    int shift = TS_LOAD16(icount_time_shift);
-    return (count + (1 << shift) - 1) >> shift;
 }
 
 static void icount_warp_rt(void)
 {
-    unsigned seq;
     int64_t warp_start;
 
     /*
      * The icount_warp_timer is rescheduled soon after vm_clock_warp_start
      * changes from -1 to another value, so the race here is okay.
      */
-    do {
-        seq = seqlock_read_begin(&timers_state.vm_clock_seqlock);
-        warp_start = timers_state.vm_clock_warp_start;
-    } while (seqlock_read_retry(&timers_state.vm_clock_seqlock, seq));
+    warp_start = timers_state.vm_clock_warp_start;
 
     if (warp_start == -1) {
         return;
     }
 
-    seqlock_write_lock(&timers_state.vm_clock_seqlock,
-                       &timers_state.vm_clock_lock);
     if (runstate_is_running()) {
-        int64_t clock = cpu_get_clock_locked();
+        int64_t clock = cpu_get_clock();
         int64_t warp_delta;
 
         warp_delta = clock - timers_state.vm_clock_warp_start;
@@ -315,7 +293,7 @@ static void icount_warp_rt(void)
              * ahead of real time (it might already be ahead so careful not
              * to go backwards).
              */
-            int64_t cur_icount = icount_get_locked();
+            int64_t cur_icount = icount_get_owner();
             int64_t delta = clock - cur_icount;
 
             if (delta < 0) {
@@ -328,8 +306,7 @@ static void icount_warp_rt(void)
         icount_publish_time();
     }
     timers_state.vm_clock_warp_start = -1;
-    seqlock_write_unlock(&timers_state.vm_clock_seqlock,
-                       &timers_state.vm_clock_lock);
+
 
     if (qemu_clock_expired(QEMU_CLOCK_VIRTUAL)) {
         qemu_clock_notify(QEMU_CLOCK_VIRTUAL);
@@ -396,13 +373,11 @@ void icount_start_warp_timer(void)
              * It is useful when we want a deterministic execution time,
              * isolated from host latencies.
              */
-            seqlock_write_lock(&timers_state.vm_clock_seqlock,
-                               &timers_state.vm_clock_lock);
+
             TS_STORE64(qemu_icount_bias,
                             timers_state.qemu_icount_bias + deadline);
             icount_publish_time();
-            seqlock_write_unlock(&timers_state.vm_clock_seqlock,
-                                 &timers_state.vm_clock_lock);
+
             qemu_clock_notify(QEMU_CLOCK_VIRTUAL);
         } else {
             /*
@@ -413,14 +388,12 @@ void icount_start_warp_timer(void)
              * you will not be sending network packets continuously instead of
              * every 100ms.
              */
-            seqlock_write_lock(&timers_state.vm_clock_seqlock,
-                               &timers_state.vm_clock_lock);
+
             if (timers_state.vm_clock_warp_start == -1
                 || timers_state.vm_clock_warp_start > clock) {
                 timers_state.vm_clock_warp_start = clock;
             }
-            seqlock_write_unlock(&timers_state.vm_clock_seqlock,
-                                 &timers_state.vm_clock_lock);
+
             timer_mod_anticipate(timers_state.icount_warp_timer,
                                  clock + deadline);
         }

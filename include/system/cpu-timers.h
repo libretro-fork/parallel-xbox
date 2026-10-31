@@ -30,8 +30,8 @@ void cpu_clock_skip_to(int64_t vt);
 bool cpu_ticks_enabled(void);
 
 /*
- * Returns the monotonic time elapsed in VM, i.e.,
- * the time between vm_start and vm_stop
+ * Emulation-thread-only host elapsed clock: time between vm_start and vm_stop.
+ * Off-thread guest-time readers use the published instruction clock.
  */
 int64_t cpu_get_clock(void);
 

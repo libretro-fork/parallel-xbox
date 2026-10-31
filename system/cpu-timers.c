@@ -30,7 +30,6 @@
 #include "system/cpus.h"
 #include "qemu/main-loop.h"
 #include "qemu/option.h"
-#include "qemu/seqlock.h"
 #include "system/runstate.h"
 #include "hw/core/cpu.h"
 #include "system/cpu-timers.h"
@@ -38,50 +37,31 @@
 #include "exec/icount.h"
 #include "system/libretro-vcpu.h"
 
-int64_t cpu_get_clock_locked(void)
+/* Host elapsed time is read and updated on the emulation thread, which
+ * also runs the vCPU and main-loop callbacks. Cross-thread guest-time
+ * observers use icount_get()'s published timestamp instead. */
+int64_t cpu_get_clock(void)
 {
-    int64_t time;
+    int64_t time = timers_state.cpu_clock_offset;
 
-    time = timers_state.cpu_clock_offset;
     if (retro_atomic_load_relaxed_int(&timers_state.cpu_ticks_enabled)) {
         time += get_clock();
     }
-
     return time;
 }
 
 /*
- * Return the monotonic time elapsed in VM, i.e.,
- * the time between vm_start and vm_stop
- */
-int64_t cpu_get_clock(void)
-{
-    int64_t ti;
-    unsigned start;
-
-    do {
-        start = seqlock_read_begin(&timers_state.vm_clock_seqlock);
-        ti = cpu_get_clock_locked();
-    } while (seqlock_read_retry(&timers_state.vm_clock_seqlock, start));
-
-    return ti;
-}
-
-/*
  * enable cpu_get_ticks()
- * Caller must hold BQL which serves as mutex for vm_clock_seqlock.
+ * Emulation-thread lifecycle operation; caller holds BQL.
  */
 void cpu_enable_ticks(void)
 {
-    seqlock_write_lock(&timers_state.vm_clock_seqlock,
-                       &timers_state.vm_clock_lock);
     if (!retro_atomic_load_relaxed_int(&timers_state.cpu_ticks_enabled)) {
         timers_state.cpu_ticks_offset -= cpu_get_host_ticks();
         timers_state.cpu_clock_offset -= get_clock();
         retro_atomic_store_relaxed_int(&timers_state.cpu_ticks_enabled, 1);
     }
-    seqlock_write_unlock(&timers_state.vm_clock_seqlock,
-                       &timers_state.vm_clock_lock);
+
     /* Also refresh after a failed load before execution resumes. */
     icount_publish_time();
 }
@@ -89,19 +69,15 @@ void cpu_enable_ticks(void)
 /*
  * disable cpu_get_ticks() : the clock is stopped. You must not call
  * cpu_get_ticks() after that.
- * Caller must hold BQL which serves as mutex for vm_clock_seqlock.
+ * Emulation-thread lifecycle operation; caller holds BQL.
  */
 void cpu_disable_ticks(void)
 {
-    seqlock_write_lock(&timers_state.vm_clock_seqlock,
-                       &timers_state.vm_clock_lock);
     if (retro_atomic_load_relaxed_int(&timers_state.cpu_ticks_enabled)) {
         timers_state.cpu_ticks_offset += cpu_get_host_ticks();
-        timers_state.cpu_clock_offset = cpu_get_clock_locked();
+        timers_state.cpu_clock_offset = cpu_get_clock();
         retro_atomic_store_relaxed_int(&timers_state.cpu_ticks_enabled, 0);
     }
-    seqlock_write_unlock(&timers_state.vm_clock_seqlock,
-                         &timers_state.vm_clock_lock);
 }
 
 /*
@@ -113,21 +89,17 @@ void cpu_disable_ticks(void)
  */
 void cpu_clock_skip_to(int64_t vt)
 {
+    int64_t now;
+
     if (icount_enabled()) {
         icount_skip_to(vt);
         return;
     }
-    seqlock_write_lock(&timers_state.vm_clock_seqlock,
-                       &timers_state.vm_clock_lock);
-    {
-        int64_t now = cpu_get_clock_locked();
-        if (vt > now) {
-            /* the guest's TSC (cpu_get_tsc) follows this clock too */
-            timers_state.cpu_clock_offset += vt - now;
-        }
+    now = cpu_get_clock();
+    if (vt > now) {
+        /* The guest's TSC follows this clock when icount is disabled. */
+        timers_state.cpu_clock_offset += vt - now;
     }
-    seqlock_write_unlock(&timers_state.vm_clock_seqlock,
-                         &timers_state.vm_clock_lock);
 }
 
 bool cpu_ticks_enabled(void)
@@ -289,10 +261,8 @@ void qemu_timer_notify_cb(void *opaque, QEMUClockType type)
 
 TimersState timers_state;
 
-/* initialize timers state and the cpu throttle for convenience */
+/* Register migrated fields; the owner-thread runtime state starts at zero. */
 void cpu_timers_init(void)
 {
-    seqlock_init(&timers_state.vm_clock_seqlock);
-    qemu_spin_init(&timers_state.vm_clock_lock);
     vmstate_register(NULL, 0, &vmstate_timers, &timers_state);
 }
