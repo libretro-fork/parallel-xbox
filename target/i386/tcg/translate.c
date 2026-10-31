@@ -1020,6 +1020,17 @@ static CCPrepare gen_prepare_eflags_c_entry(DisasContext *s)
         tcg_gen_ext32u_tl(t, cpu_cc_src);
         return (CCPrepare) { .cond = TCG_COND_LTU, .reg = c, .reg2 = t,
                              .use_reg2 = true };
+    case TB_CF_SUBB:
+        /* This class previously called the helper even at block entry.
+         * Retain its FP conversion/FIP publication boundary. */
+        gen_flush_fp(s);
+        c = tcg_temp_new();
+        t = tcg_temp_new();
+        tcg_gen_add_tl(c, cpu_cc_dst, cpu_cc_src);
+        tcg_gen_ext8u_tl(c, c);
+        tcg_gen_ext8u_tl(t, cpu_cc_src);
+        return (CCPrepare) { .cond = TCG_COND_LTU, .reg = c, .reg2 = t,
+                             .use_reg2 = true };
     case TB_CF_SUBL:
         c = tcg_temp_new();
         t = tcg_temp_new();

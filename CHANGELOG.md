@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- CPU Boost carries byte-subtraction borrow across translated blocks directly instead of calling the carry helper. It uses the remaining carry-class encoding without widening the block key and preserves pending floating-point state.
+
 - qcow2-to-raw conversion reads only the valid bytes of an uncompressed final cluster and skips zero-only logical tails even when unused cluster padding is nonzero. Partial-word tails retain their last valid byte.
 
 - Retain GLib callback data until active dispatches finish. Replacing a callback or destroying its source from inside a callback no longer runs its data destructor while the callback still uses that data, including nested dispatch.

@@ -859,3 +859,9 @@ calls finish and its destructor must run once. The same vectors run against
 system GLib. Callback state allocates on registration, not on each dispatch.
 
 The qcow2 tail-conversion fixture covers 336 v2/v3, 512-byte/64-KiB cluster, compressed/uncompressed and logical-length cases. Nonzero padding beyond virtual EOF must not force a zero-data write; a nonzero last valid byte must survive. Instrumented production conversion counts payload read bytes and output writes, and real-file readback checks exact size/content. Compressed clusters still decompress completely. Fixtures are minimal read-only conversion inputs, not refcounted writable images.
+`test-byte-carry.py` evaluates production entry-carry IR against all unsigned
+byte operand pairs with eight dirty upper-bit combinations per target width,
+checks that lazy operands remain unchanged and the FP flush occurs, and checks
+all eight metadata encodings. `sub-byte-carry.asm` tests all 65,536 operand pairs
+through direct/shared entries, ADC, INC, SETC and JC, full flag readback and two
+live x87 cases. The mixed-class CF/STI ROM also covers byte SUB/CMP/NEG.

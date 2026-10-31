@@ -213,6 +213,7 @@ typedef enum X86Seg {
 #define TB_CF_SRC_LSB 3 /* EFLAGS, SAR: CC_SRC & 1 */
 #define TB_CF_ADDL    4 /* (uint32_t)CC_DST < (uint32_t)CC_SRC */
 #define TB_CF_SUBL    5 /* (uint32_t)(CC_DST + CC_SRC) < (uint32_t)CC_SRC */
+#define TB_CF_SUBB    6 /* (uint8_t)(CC_DST + CC_SRC) < (uint8_t)CC_SRC */
 /*
  * Never a CPU state's: the class of a block that reads neither CF nor the
  * CC_OP it starts with before setting the flags, so its code is the same for
@@ -1577,6 +1578,8 @@ static inline int x86_cc_op_cf_class(int op)
         return TB_CF_ADDL;
     case CC_OP_SUBL:
         return TB_CF_SUBL;
+    case CC_OP_SUBB:
+        return TB_CF_SUBB;
     default:
         return TB_CF_UNKNOWN;
     }

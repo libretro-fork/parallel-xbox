@@ -135,6 +135,9 @@ start:
     cfprod {mul ecx}
     cfprod {imul eax,ecx}
     cfprod {add al,cl}
+    cfprod {sub al,cl}
+    cfprod {cmp al,cl}
+    cfprod {neg al}
     cfprod {sub ax,cx}
     cfprod {bt eax,ecx}
     cfprod {popf_cf1}

@@ -78,6 +78,7 @@ case $core in
 esac
 python3 "$here/test-kernel-idle.py" "$here/../.." "$cc"
 python3 "$here/test-interrupt-shadow.py" "$here/../.." "$cc"
+python3 "$here/test-byte-carry.py" "$here/../.." "$cc"
 python3 "$here/test-idle-interrupts.py" "$here/../.." "$cc"
 python3 "$here/test-two-page-exit.py" "$here/../.." "$cc"
 python3 "$here/test-sse-broadcast.py" "$here/../.." "$cc"
@@ -372,6 +373,9 @@ nasm -f bin -I"$here/rom/" -o "$work/syspf/xemu/Complex_4627v1.03.bin" "$here/ro
 mkdir -p "$work/sysap/xemu"
 cp "$work/sys/xemu/mcpx_1.0.bin" "$work/sysap/xemu/"
 nasm -f bin -I"$here/rom/" -o "$work/sysap/xemu/Complex_4627v1.03.bin" "$here/rom/arithmetic-parity.asm"
+mkdir -p "$work/syssb/xemu"
+cp "$work/sys/xemu/mcpx_1.0.bin" "$work/syssb/xemu/"
+nasm -f bin -I"$here/rom/" -o "$work/syssb/xemu/Complex_4627v1.03.bin" "$here/rom/sub-byte-carry.asm"
 
 cp "$work/sys/xemu/mcpx_1.0.bin" "$work/sysf/xemu/"
 nasm -f bin -I"$here/rom/" -o "$work/sysf/xemu/Complex_4627v1.03.bin" "$here/rom/rep-stos.asm"
@@ -510,6 +514,21 @@ for hard in enabled disabled; do
       grep -q "^$want$" "$work/arithmetic-parity-$hard-$boost.txt" || {
         cat "$work/arithmetic-parity-$hard-$boost.txt"
         echo "FAIL: arithmetic parity ($hard/$boost)"; exit 1;
+      }
+    done
+  done
+done
+
+# Byte borrow must survive carry-sensitive entries and dirty upper bits.
+for hard in enabled disabled; do
+  for boost in enabled disabled; do
+    t "byte subtraction carry, hard FPU $hard, CPU Boost $boost" $h "$(path "$core")" "$(path "$work/syssb")" \
+      $vp --opt "xemu_hard_fpu=$hard" --opt "xemu_cpu_boost=$boost" --frames 60 --strict \
+      --peek 0x300000 --peek 0x300004 >"$work/sub-byte-carry-$hard-$boost.txt"
+    for want in "peek_0x300000=0x4b4f4253" "peek_0x300004=0x00000000"; do
+      grep -q "^$want$" "$work/sub-byte-carry-$hard-$boost.txt" || {
+        cat "$work/sub-byte-carry-$hard-$boost.txt"
+        echo "FAIL: byte subtraction carry ($hard/$boost)"; exit 1;
       }
     done
   done
