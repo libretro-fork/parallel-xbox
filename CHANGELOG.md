@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Reduce the timer subsystem to one static queue per clock. Remove unused per-AIO timer groups, their allocations/mutexes/events and repeated empty-list scans, plus unused timer helper APIs. Device timers, RTC/host clocks, callback ordering, filtered guest deadlines and libretro frame pacing retain their existing behavior.
+
 - Replace the VM-stop request mutex and split prepare/publish API with a libretro-common atomic mailbox. Taking a pending reason also clears it atomically, retaining latest-request coalescing, enum-zero reasons and publication before notification without a request lock.
 
 - Vulkan fallback surface readbacks skip allocator cache-invalidation calls for coherent memory. Non-coherent readbacks invalidate only the bytes consumed and check errors, using refreshed allocation properties after recreation. GPU-to-host barriers and fence completion remain unchanged.

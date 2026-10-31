@@ -343,7 +343,6 @@ void aio_dispatch(AioContext *ctx)
     aio_bh_poll(ctx);
     aio_dispatch_handlers(ctx, INVALID_HANDLE_VALUE);
     qemu_lockcnt_dec(&ctx->list_lock);
-    timerlistgroup_run_timers(&ctx->tlg);
 }
 
 bool aio_poll(AioContext *ctx, bool blocking)
@@ -442,7 +441,6 @@ bool aio_poll(AioContext *ctx, bool blocking)
 
     qemu_lockcnt_dec(&ctx->list_lock);
 
-    progress |= timerlistgroup_run_timers(&ctx->tlg);
     return progress;
 }
 

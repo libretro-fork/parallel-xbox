@@ -1,5 +1,14 @@
 # The core's tests
 
+`test-core-timers.py CHECKOUT [CC]` compiles the production clock queues and
+checks 20,000 operations against an independent ordered-array oracle:
+four clocks, filtered deadlines, equal-expiry ordering, pause/resume,
+icount deadline selection, rearm/cancel inside callbacks and self-free.
+`CORE_TIMERS_BASELINE=REV` runs the same checks on the prior timer hierarchy,
+including two unused AIO timer groups. `CORE_TIMERS_CFLAGS`,
+`CORE_TIMERS_BINARY` and `CORE_TIMERS_SKIP_RUN` select sanitizers or native
+cross-builds.
+
 `test-vmstop-mailbox.py CHECKOUT [CC]` compiles production VM-stop request
 publication/consumption with real libretro-common threads and atomics. It
 checks every stop reason (including enum value zero), latest-value coalescing,

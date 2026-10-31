@@ -522,8 +522,7 @@ static void main_loop_wait_poll(int nonblocking)
     }
 
     timeout_ns = qemu_soonest_timeout(timeout_ns,
-                                      timerlistgroup_deadline_ns(
-                                          &main_loop_tlg));
+                                      qemu_clock_deadline_ns());
 
     ret = os_host_main_loop_wait(timeout_ns);
     mlpoll.state = ret < 0 ? MAIN_LOOP_POLL_ERR : MAIN_LOOP_POLL_OK;
@@ -583,8 +582,6 @@ static bool main_loop_dispatch(AioContext *io)
     aio_notify_accept(io);
     progress |= aio_bh_poll(qemu_aio_context) != 0;
     progress |= aio_bh_poll(io) != 0;
-    progress |= timerlistgroup_run_timers(&qemu_aio_context->tlg);
-    progress |= timerlistgroup_run_timers(&io->tlg);
     return progress;
 }
 
