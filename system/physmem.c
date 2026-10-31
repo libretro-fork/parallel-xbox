@@ -3321,11 +3321,11 @@ flatview_extend_translation(FlatView *fv, hwaddr addr,
  * Use address_space_register_map_client() to know when retrying the map
  * operation is likely to succeed.
  */
-void *address_space_map(AddressSpace *as,
+static void *address_space_map_internal(AddressSpace *as,
                         hwaddr addr,
                         hwaddr *plen,
                         bool is_write,
-                        MemTxAttrs attrs)
+                        MemTxAttrs attrs, bool direct_only)
 {
     hwaddr len = *plen;
     hwaddr l, xlat;
@@ -3344,6 +3344,10 @@ void *address_space_map(AddressSpace *as,
     mr = flatview_translate(fv, addr, &xlat, &l, is_write, attrs);
 
     if (!memory_access_is_direct(mr, is_write, attrs)) {
+        if (direct_only) {
+            *plen = 0;
+            return NULL;
+        }
         size_t used = (size_t)retro_atomic_load_relaxed_64(&as->bounce_buffer_size);
         for (;;) {
             hwaddr alloc = MIN(as->max_bounce_buffer_size - used, l);
@@ -3377,11 +3381,20 @@ void *address_space_map(AddressSpace *as,
         return bounce->buffer;
     }
 
-    memory_region_ref(mr);
     *plen = flatview_extend_translation(fv, addr, len, mr, xlat,
                                         l, is_write, attrs);
-    fuzz_dma_read_cb(addr, *plen, mr);
+    if (direct_only && *plen != len) {
+        *plen = 0;
+        return NULL;
+    }
+    memory_region_ref(mr);
     void *ptr = qemu_ram_ptr_length(mr->ram_block, xlat, plen, true, is_write);
+    if (!ptr || (direct_only && *plen != len)) {
+        memory_region_unref(mr);
+        *plen = 0;
+        return NULL;
+    }
+    fuzz_dma_read_cb(addr, *plen, mr);
     /* Direct DMA must observe the same GPU/CPU ownership transitions as
      * flatview_read/write before the caller accesses the borrowed RAM.
      * Unmap's dirty tracking is too late to settle an old GPU writeback. */
@@ -3391,6 +3404,18 @@ void *address_space_map(AddressSpace *as,
             is_write ? BP_MEM_WRITE : BP_MEM_READ);
     }
     return ptr;
+}
+
+void *address_space_map(AddressSpace *as, hwaddr addr, hwaddr *plen,
+                        bool is_write, MemTxAttrs attrs)
+{
+    return address_space_map_internal(as, addr, plen, is_write, attrs, false);
+}
+
+void *address_space_map_direct(AddressSpace *as, hwaddr addr, hwaddr *plen,
+                              bool is_write, MemTxAttrs attrs)
+{
+    return address_space_map_internal(as, addr, plen, is_write, attrs, true);
 }
 
 /* Unmaps a memory region previously mapped by address_space_map().

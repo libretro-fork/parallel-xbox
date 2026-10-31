@@ -1,5 +1,16 @@
 # The core's tests
 
+`test-nvnet-tx-borrow.py CHECKOUT [CC]` compiles the production NVNet TX loop
+and network queue. It checks borrowed pointers and zero staging bytes for
+complete RAM packets, queue-owned copies under backpressure/reentrancy,
+queue drops, descriptor/payload aliasing, DMA fallback and fragmented
+snapshots across calls. `NVNET_BORROW_CFLAGS`, `NVNET_BORROW_BINARY` and
+`NVNET_BORROW_SKIP_RUN` select sanitizers or cross-built binaries.
+`test-dma-map.py` also checks direct-only mapping, MMIO rejection without
+reads or allocation, complete-span requirements and failed-map references;
+its equivalent overrides are `DMA_MAP_CFLAGS`, `DMA_MAP_BINARY` and
+`DMA_MAP_SKIP_RUN`.
+
 `test-qemu-parking.py CHECKOUT [CC]` compiles production manual-reset events
 and AIO counter gates against libretro-common parking. It forces notifications
 at the prepare/commit boundaries, checks wake-all and predicate visibility,

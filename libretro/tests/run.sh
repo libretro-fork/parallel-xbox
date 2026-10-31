@@ -165,6 +165,7 @@ ${cc} -O2 -std=c99 -Wall -I"$here/../.." -o "$work/bin/vramranges" "$here/test-v
 python3 "$here/test-texture-dirty.py" "$here/../.." "$cc"
 python3 "$here/test-vulkan-surface-age.py" "$here/../.." "$cc"
 python3 "$here/test-dma-map.py" "$here/../.." "$cc"
+python3 "$here/test-nvnet-tx-borrow.py" "$here/../.." "$cc"
 python3 "$here/test-io-recompile.py" "$here/../.." "$cc"
 python3 "$here/test-tb-lookup-state.py" "$here/../.." "$cc"
 python3 "$here/test-rdpmc.py" "$here/../.." "$cc"

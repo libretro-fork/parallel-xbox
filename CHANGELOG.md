@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- NVNet transmits complete single-descriptor RAM packets directly from a borrowed guest mapping, removing the intermediate TX-buffer copy. Fragmented packets keep their existing snapshots, and MMIO or incomplete mappings retain the DMA-read fallback without speculative MMIO reads. Direct mappings preserve GPU ownership synchronization; failed RAM mappings now release their region reference.
+
 - Vulkan texture uploads flush wrapped CPU staging data as separate tail/head spans, avoiding untouched ring memory that may still be read by earlier GPU submissions. No extra buffers, copies or allocations are added.
 
 - Vulkan texture, surface, background and PVIDEO uploads omit redundant HOST barriers for CPU staging data written/flushed before auxiliary queue submission. Imported guest-RAM barriers, image transitions and compute/transfer dependencies remain. Coherent staging memory and empty ranges skip allocator flush calls; non-coherent staging still flushes before submission and separates allocations by the device flush atom, rechecking memory properties after growth. No copies, buffers or allocations are added.
