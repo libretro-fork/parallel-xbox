@@ -29,8 +29,6 @@
 #endif
 /* FUTEX */
 /* EVENT TYPE */
-typedef struct QemuLockCnt QemuLockCnt;
-/* GATE TYPE */
 static void *hook_target;
 static int hook_mode;
 static retro_atomic_int_t hook_hit,hook_release;
@@ -42,7 +40,6 @@ static void test_park_hook(void *object,int phase)
        !retro_atomic_exchange_int(&hook_hit,1))await(&hook_release);
 }
 /* EVENT */
-/* GATE */
 
 static int64_t micros(void)
 {
@@ -130,7 +127,7 @@ static void test_fork_channels(void)
 #endif
 static QemuEvent request,reply;
 static int request_payload,reply_payload;
-enum { HANDOFFS=20000, SPACED_HANDOFFS=256, GATE_LOOPS=5000 };
+enum { HANDOFFS=20000, SPACED_HANDOFFS=256 };
 static void respond(void *unused)
 {
     for(int i=1;i<=HANDOFFS+SPACED_HANDOFFS;i++) {
@@ -139,21 +136,6 @@ static void respond(void *unused)
         qemu_event_set(&reply);
     }
 }
-static QemuLockCnt gate;
-static unsigned protected_count;
-static void gate_writer(void *unused)
-{
-    for(unsigned i=0;i<GATE_LOOPS;i++) {
-        qemu_lockcnt_lock(&gate);protected_count++;qemu_lockcnt_unlock(&gate);
-    }
-}
-static void gate_reader(void *unused)
-{
-    for(unsigned i=0;i<GATE_LOOPS;i++) {
-        qemu_lockcnt_inc(&gate);assert(qemu_lockcnt_count(&gate)>=1);qemu_lockcnt_dec(&gate);
-    }
-}
-static void increment_once(void *unused) {qemu_lockcnt_inc(&gate);}
 static int compare_latency(const void *a,const void *b)
 {int64_t x=*(const int64_t *)a,y=*(const int64_t *)b;return (x>y)-(x<y);}
 int main(void)
@@ -169,8 +151,8 @@ int main(void)
     qemu_event_destroy(&event);
     int64_t start=micros();qemu_event_init(&event,false);
     for(unsigned i=0;i<1000000;i++){qemu_event_reset(&event);qemu_event_set(&event);qemu_event_wait(&event);}
-    printf("event_uncontended_ns=%.2f event_bytes=%zu gate_bytes=%zu backend=%s\n",
-           (micros()-start)*1000.0/1000000,sizeof(event),sizeof(gate),retro_eventcount_backend_name());
+    printf("event_uncontended_ns=%.2f event_bytes=%zu backend=%s\n",
+           (micros()-start)*1000.0/1000000,sizeof(event),retro_eventcount_backend_name());
     qemu_event_destroy(&event);
     /* Notifications before registration, after registration and just before sleep. */
 #ifdef PARKING_BASELINE
@@ -220,18 +202,6 @@ int main(void)
            hot_elapsed/(double)HANDOFFS,HANDOFFS,(long long)latencies[SPACED_HANDOFFS/2],
            (long long)latencies[SPACED_HANDOFFS*95/100]);
     qemu_event_destroy(&request);qemu_event_destroy(&reply);
-    qemu_lockcnt_init(&gate);qemu_lockcnt_inc(&gate);qemu_lockcnt_inc(&gate);
-    assert(!qemu_lockcnt_dec_if_lock(&gate)&&qemu_lockcnt_count(&gate)==2);
-    qemu_lockcnt_dec(&gate);assert(qemu_lockcnt_dec_if_lock(&gate));
-    reset_hooks(&gate,4);thread=sthread_create(increment_once,NULL);assert(thread);await(&hook_hit);
-    qemu_lockcnt_unlock(&gate);retro_atomic_store_release_int(&hook_release,1);sthread_join(thread);
-    assert(qemu_lockcnt_count(&gate)==1);reset_hooks(NULL,0);
-    assert(qemu_lockcnt_dec_if_lock(&gate));qemu_lockcnt_inc_and_unlock(&gate);
-    assert(qemu_lockcnt_count(&gate)==1);qemu_lockcnt_dec(&gate);
-    sthread_t *threads[16];
-    for(unsigned i=0;i<16;i++){threads[i]=sthread_create(i<8?gate_writer:gate_reader,NULL);assert(threads[i]);}
-    for(unsigned i=0;i<16;i++)sthread_join(threads[i]);
-    assert(protected_count==8*GATE_LOOPS&&!qemu_lockcnt_count(&gate));qemu_lockcnt_destroy(&gate);
-    puts("QEMU parking: manual reset, wake-all, predicate visibility, forced sleep races, handoffs and mixed AIO gate contention PASS");
+    puts("QEMU parking: manual reset, wake-all, predicate visibility, forced sleep races, and handoffs PASS");
     return 0;
 }

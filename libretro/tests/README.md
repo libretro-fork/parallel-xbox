@@ -28,15 +28,14 @@ its equivalent overrides are `DMA_MAP_CFLAGS`, `DMA_MAP_BINARY` and
 `DMA_MAP_SKIP_RUN`.
 
 `test-qemu-parking.py CHECKOUT [CC]` compiles production manual-reset events
-and AIO counter gates against libretro-common parking. It forces notifications
+against libretro-common parking. It forces notifications
 at the prepare/commit boundaries, checks wake-all and predicate visibility,
 checks event retirement before the signaler returns and shared-channel
-collisions, and stresses mixed AIO gate users. It also reports uncontended and round-trip
+collisions. It also reports uncontended and round-trip
 timings. `QEMU_PARKING_CFLAGS`, `QEMU_PARKING_BINARY` and
 `QEMU_PARKING_SKIP_RUN` select sanitizers or cross-built binaries.
 `QEMU_PARKING_BASELINE=REV` compares the old Linux/Windows futex code; its
 Windows test executable requires the old synchronization import library.
-Changing parking does not remove the counter gate's exclusion semantics.
 On POSIX, a multithreaded fork test resets inherited channel waiters, starts
 a child waiter, and verifies that the parent's parked waiter remains intact.
 ThreadSanitizer skips that fork case because it cannot start child threads
@@ -1337,3 +1336,5 @@ the same test also runs in the regular suite.
 Timer dispatch and clock enablement belong to the emulation thread. Timer queues no longer allocate completion events or reset/set them around callback dispatch; timer mutations belong to the same owner. The queue oracle checks that clock initialization creates zero completion events.
 
 Timer queues have one frontend/emulation-thread owner, enforced using the libretro-common thread ID. Mutation, pending/expiry queries and arbitrary attribute-mask traversal are owner-only. Cross-thread deadline observers retain the two atomic scalar views, without node access or reclamation waits. The queue oracle expects zero mutexes and completion events; old revision comparisons detect the former queue locks.
+
+`test-aio-handler-lifetime.py CHECKOUT [CC]` compiles production Windows/POSIX handler removal, dispatch and deferred-free paths with the production frontend ownership/nesting helpers. In 10,000 schedules per backend, callbacks delete themselves and the next handler, recurse to a second dispatcher and delete another handler there. No node may be freed until the outer walk resumes; deleted callbacks must not run. Idle removal and zero-depth reclamation are checked too. `AIO_HANDLER_CFLAGS`, `AIO_HANDLER_BINARY_PREFIX` and `AIO_HANDLER_SKIP_RUN` support sanitizers/native builds. The AIO exclusion gate implementation/API has been removed; background BH scheduling and notifier publication remain atomic.

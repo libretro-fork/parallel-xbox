@@ -143,38 +143,6 @@ static inline void trace_hbitmap_set(void *hb, uint64_t start, uint64_t count, u
 {
 }
 
-static inline void trace_lockcnt_fast_path_attempt(const void *lockcnt, int expected, int new)
-{
-}
-
-static inline void trace_lockcnt_fast_path_success(const void *lockcnt, int expected, int new)
-{
-}
-
-static inline void trace_lockcnt_unlock_attempt(const void *lockcnt, int expected, int new)
-{
-}
-
-static inline void trace_lockcnt_unlock_success(const void *lockcnt, int expected, int new)
-{
-}
-
-static inline void trace_lockcnt_futex_wait_prepare(const void *lockcnt, int expected, int new)
-{
-}
-
-static inline void trace_lockcnt_futex_wait(const void *lockcnt, int val)
-{
-}
-
-static inline void trace_lockcnt_futex_wait_resume(const void *lockcnt, int new)
-{
-}
-
-static inline void trace_lockcnt_futex_wake(const void *lockcnt)
-{
-}
-
 static inline void trace_socket_listen(int num)
 {
 }

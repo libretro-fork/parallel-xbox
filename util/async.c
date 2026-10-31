@@ -27,7 +27,6 @@
 #include "qapi/error.h"
 #include "block/aio.h"
 #include "qemu/main-loop.h"
-#include "qemu/lockcnt.h"
 #include "qemu/rcu_queue.h"
 #include "block/raw-aio.h"
 #include "qemu/thread-local.h"
@@ -393,7 +392,6 @@ aio_ctx_finalize(GSource *source)
     aio_set_event_notifier(ctx, &ctx->notifier, NULL, NULL, NULL);
     event_notifier_cleanup(&ctx->notifier);
     aio_context_destroy(ctx);
-    qemu_lockcnt_destroy(&ctx->list_lock);
 }
 
 static GSourceFuncs aio_source_funcs = {
@@ -493,6 +491,7 @@ AioContext *aio_context_new(Error **errp)
      * Be careful to free resources in both cases!
      */
     ctx = (AioContext *) g_source_new(&aio_source_funcs, sizeof(AioContext));
+    ctx->handler_owner_id = sthread_get_current_thread_id();
     QSLIST_INIT_RCU(&ctx->bh_list);
     QSIMPLEQ_INIT(&ctx->bh_slice_list);
 
@@ -513,7 +512,6 @@ AioContext *aio_context_new(Error **errp)
     }
 
     g_source_set_can_recurse(&ctx->source, true);
-    qemu_lockcnt_init(&ctx->list_lock);
 
     aio_set_event_notifier(ctx, &ctx->notifier,
                            aio_context_notifier_cb,

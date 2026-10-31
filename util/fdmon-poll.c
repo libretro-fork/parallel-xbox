@@ -171,7 +171,7 @@ static bool fdmon_poll_gsource_check(AioContext *ctx)
      * We have to walk very carefully in case aio_set_fd_handler is
      * called while we're walking.
      */
-    qemu_lockcnt_inc(&ctx->list_lock);
+    aio_handler_walk_begin(ctx);
 
     QLIST_FOREACH_RCU(node, &ctx->aio_handlers, node) {
         int revents = node->pfd.revents & node->pfd.events;
@@ -186,7 +186,7 @@ static bool fdmon_poll_gsource_check(AioContext *ctx)
         }
     }
 
-    qemu_lockcnt_dec(&ctx->list_lock);
+    aio_handler_walk_end(ctx);
 
     return result;
 }

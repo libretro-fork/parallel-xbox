@@ -7,7 +7,6 @@
 
 typedef struct QemuCond QemuCond;
 typedef struct QemuSemaphore QemuSemaphore;
-typedef struct QemuLockCnt QemuLockCnt;
 typedef struct QemuThread QemuThread;
 
 /*
