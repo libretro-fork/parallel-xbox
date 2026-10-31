@@ -354,10 +354,6 @@ static void qemu_init_sigbus(void)
 {
     struct sigaction action;
 
-    /*
-     * ALERT: when modifying this, take care that SIGBUS forwarding in
-     * qemu_prealloc_mem() will continue working as expected.
-     */
     memset(&action, 0, sizeof(action));
     action.sa_flags = SA_SIGINFO;
     action.sa_sigaction = sigbus_handler;

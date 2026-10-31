@@ -368,8 +368,6 @@ bool visit_type_MainLoopProperties_members(Visitor *v, MainLoopProperties *obj, 
 
 bool visit_type_MemoryBackendProperties_members(Visitor *v, MemoryBackendProperties *obj, Error **errp)
 {
-    bool has_prealloc_context = !!obj->prealloc_context;
-
     if (visit_optional(v, "dump", &obj->has_dump)) {
         if (!visit_type_bool(v, "dump", &obj->dump, errp)) {
             return false;
@@ -387,21 +385,6 @@ bool visit_type_MemoryBackendProperties_members(Visitor *v, MemoryBackendPropert
     }
     if (visit_optional(v, "policy", &obj->has_policy)) {
         if (!visit_type_HostMemPolicy(v, "policy", &obj->policy, errp)) {
-            return false;
-        }
-    }
-    if (visit_optional(v, "prealloc", &obj->has_prealloc)) {
-        if (!visit_type_bool(v, "prealloc", &obj->prealloc, errp)) {
-            return false;
-        }
-    }
-    if (visit_optional(v, "prealloc-threads", &obj->has_prealloc_threads)) {
-        if (!visit_type_uint32(v, "prealloc-threads", &obj->prealloc_threads, errp)) {
-            return false;
-        }
-    }
-    if (visit_optional(v, "prealloc-context", &has_prealloc_context)) {
-        if (!visit_type_str(v, "prealloc-context", &obj->prealloc_context, errp)) {
             return false;
         }
     }
@@ -803,21 +786,6 @@ bool visit_type_TdxGuestProperties_members(Visitor *v, TdxGuestProperties *obj, 
     return true;
 }
 
-bool visit_type_ThreadContextProperties_members(Visitor *v, ThreadContextProperties *obj, Error **errp)
-{
-    if (visit_optional(v, "cpu-affinity", &obj->has_cpu_affinity)) {
-        if (!visit_type_uint16List(v, "cpu-affinity", &obj->cpu_affinity, errp)) {
-            return false;
-        }
-    }
-    if (visit_optional(v, "node-affinity", &obj->has_node_affinity)) {
-        if (!visit_type_uint16List(v, "node-affinity", &obj->node_affinity, errp)) {
-            return false;
-        }
-    }
-    return true;
-}
-
 bool visit_type_ObjectType(Visitor *v, const char *name,
                  ObjectType *obj, Error **errp)
 {
@@ -944,8 +912,6 @@ bool visit_type_ObjectOptions_members(Visitor *v, ObjectOptions *obj, Error **er
         return visit_type_SevSnpGuestProperties_members(v, &obj->u.sev_snp_guest, errp);
     case OBJECT_TYPE_TDX_GUEST:
         return visit_type_TdxGuestProperties_members(v, &obj->u.tdx_guest, errp);
-    case OBJECT_TYPE_THREAD_CONTEXT:
-        return visit_type_ThreadContextProperties_members(v, &obj->u.thread_context, errp);
     case OBJECT_TYPE_THROTTLE_GROUP:
         return visit_type_ThrottleGroupProperties_members(v, &obj->u.throttle_group, errp);
     case OBJECT_TYPE_TLS_CREDS_ANON:

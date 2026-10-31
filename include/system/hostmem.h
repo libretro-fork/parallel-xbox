@@ -18,7 +18,6 @@
 #include "qom/object.h"
 #include "system/memory.h"
 #include "qemu/bitmap.h"
-#include "qemu/thread-context.h"
 
 #define TYPE_MEMORY_BACKEND "memory-backend"
 OBJECT_DECLARE_TYPE(HostMemoryBackend, HostMemoryBackendClass,
@@ -66,7 +65,6 @@ struct HostMemoryBackendClass {
  * @parent: opaque parent object container
  * @size: amount of memory backend provides
  * @mr: MemoryRegion representing host memory belonging to backend
- * @prealloc_threads: number of threads to be used for preallocatining RAM
  */
 struct HostMemoryBackend {
     /* private */
@@ -75,10 +73,8 @@ struct HostMemoryBackend {
     /* protected */
     uint64_t size;
     bool merge, dump, use_canonical_path;
-    bool prealloc, is_mapped, share, reserve;
+    bool is_mapped, share, reserve;
     bool guest_memfd, aligned;
-    uint32_t prealloc_threads;
-    ThreadContext *prealloc_context;
     DECLARE_BITMAP(host_nodes, MAX_NODES + 1);
     HostMemPolicy policy;
 

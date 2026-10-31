@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Remove the unused host RAM preallocation service and thread-context QOM object, including their POSIX mutexes, condition variable and temporary SIGBUS handler. Xbox and Chihiro keep their existing RAM allocation and sizes; the core never enabled these host preallocation options.
+
 - Vulkan vertex copy-on-write arenas flush only new host-written tails on non-coherent memory and skip allocator flush calls for coherent or unchanged arenas. New snapshots respect the device flush-atom alignment, including atoms larger than 256 bytes. Existing GPU visibility barriers remain; no vertex payload buffers or copies are added.
 
 - Fix Vulkan ring ownership when a recording wraps and fills a ring exactly: equal start/end positions no longer make occupied bytes look unused.

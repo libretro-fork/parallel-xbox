@@ -642,14 +642,6 @@
 #
 # @policy: the NUMA policy (default: 'default')
 #
-# @prealloc: if true, preallocate memory (default: false)
-#
-# @prealloc-threads: number of CPU threads to use for prealloc
-#     (default: 1)
-#
-# @prealloc-context: thread context to use for creation of
-#     preallocation threads (default: none) (since 7.2)
-#
 # @share: if false, the memory is private to QEMU; if true, it is
 #     shared (default false for backends memory-backend-file and
 #     memory-backend-ram, true for backends memory-backend-epc,
@@ -665,12 +657,6 @@
 #     older to allow migration with newer QEMU versions.
 #     (default: false generally, but true for machine types <= 4.0)
 #
-# .. note:: prealloc=true and reserve=false cannot be set at the same
-#    time.  With reserve=true, the behavior depends on the operating
-#    system: for example, Linux will not reserve swap space for shared
-#    file mappings -- "not applicable".  In contrast, reserve=false
-#    will bail out if it cannot be configured accordingly.
-#
 # Since: 2.1
 ##
 { 'struct': 'MemoryBackendProperties',
@@ -678,9 +664,6 @@
             '*host-nodes': ['uint16'],
             '*merge': 'bool',
             '*policy': 'HostMemPolicy',
-            '*prealloc': 'bool',
-            '*prealloc-threads': 'uint32',
-            '*prealloc-context': 'str',
             '*share': 'bool',
             '*reserve': 'bool',
             'size': 'size',
@@ -1147,27 +1130,6 @@
             '*quote-generation-socket': 'SocketAddress' } }
 
 ##
-# @ThreadContextProperties:
-#
-# Properties for thread context objects.
-#
-# @cpu-affinity: the list of host CPU numbers used as CPU affinity for
-#     all threads created in the thread context (default: QEMU main
-#     thread CPU affinity)
-#
-# @node-affinity: the list of host node numbers that will be resolved
-#     to a list of host CPU numbers used as CPU affinity.  This is a
-#     shortcut for specifying the list of host CPU numbers belonging
-#     to the host nodes manually by setting @cpu-affinity.
-#     (default: QEMU main thread affinity)
-#
-# Since: 7.2
-##
-{ 'struct': 'ThreadContextProperties',
-  'data': { '*cpu-affinity': ['uint16'],
-            '*node-affinity': ['uint16'] } }
-
-##
 # @ObjectType:
 #
 # Features:
@@ -1230,7 +1192,6 @@
       'if': 'CONFIG_SECRET_KEYRING' },
     'sev-guest',
     'sev-snp-guest',
-    'thread-context',
     's390-pv-guest',
     'tdx-guest',
     'throttle-group',
@@ -1308,7 +1269,6 @@
       'sev-guest':                  'SevGuestProperties',
       'sev-snp-guest':              'SevSnpGuestProperties',
       'tdx-guest':                  'TdxGuestProperties',
-      'thread-context':             'ThreadContextProperties',
       'throttle-group':             'ThrottleGroupProperties',
       'tls-creds-anon':             'TlsCredsAnonProperties',
       'tls-creds-psk':              'TlsCredsPskProperties',

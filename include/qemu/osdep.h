@@ -723,42 +723,6 @@ unsigned long qemu_getauxval(unsigned long type);
 
 void qemu_set_tty_echo(int fd, bool echo);
 
-typedef struct ThreadContext ThreadContext;
-
-/**
- * qemu_prealloc_mem:
- * @fd: the fd mapped into the area, -1 for anonymous memory
- * @area: start address of the are to preallocate
- * @sz: the size of the area to preallocate
- * @max_threads: maximum number of threads to use
- * @tc: prealloc context threads pointer, NULL if not in use
- * @async: request asynchronous preallocation, requires @tc
- * @errp: returns an error if this function fails
- *
- * Preallocate memory (populate/prefault page tables writable) for the virtual
- * memory area starting at @area with the size of @sz. After a successful call,
- * each page in the area was faulted in writable at least once, for example,
- * after allocating file blocks for mapped files.
- *
- * When setting @async, allocation might be performed asynchronously.
- * qemu_finish_async_prealloc_mem() must be called to finish any asynchronous
- * preallocation.
- *
- * Return: true on success, else false setting @errp with error.
- */
-bool qemu_prealloc_mem(int fd, char *area, size_t sz, int max_threads,
-                       ThreadContext *tc, bool async, Error **errp);
-
-/**
- * qemu_finish_async_prealloc_mem:
- * @errp: returns an error if this function fails
- *
- * Finish all outstanding asynchronous memory preallocation.
- *
- * Return: true on success, else false setting @errp with error.
- */
-bool qemu_finish_async_prealloc_mem(Error **errp);
-
 /**
  * qemu_get_pid_name:
  * @pid: pid of a process

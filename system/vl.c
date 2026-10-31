@@ -958,27 +958,6 @@ static void object_option_foreach_add(bool (*type_opt_predicate)(const char *))
 }
 
 /*
- * Very early object creation, before the sandbox options have been activated.
- */
-static bool object_create_pre_sandbox(const char *type)
-{
-    /*
-     * Objects should in general not get initialized "too early" without
-     * a reason. If you add one, state the reason in a comment!
-     */
-
-    /*
-     * Reason: -sandbox on,resourcecontrol=deny disallows setting CPU
-     * affinity of threads.
-     */
-    if (g_str_equal(type, "thread-context")) {
-        return true;
-    }
-
-    return false;
-}
-
-/*
  * Initial object creation happens before all other
  * QEMU data types are created. The majority of objects
  * can be created at this point. The rng-egd object
@@ -991,11 +970,6 @@ static bool object_create_early(const char *type)
      * Objects should not be made "delayed" without a reason.  If you
      * add one, state the reason in a comment!
      */
-
-    /* Reason: already created. */
-    if (object_create_pre_sandbox(type)) {
-        return false;
-    }
 
     /* Reason: property "chardev" */
     if (g_str_equal(type, "rng-egd")) {
@@ -1104,7 +1078,7 @@ static void qemu_create_early_backends(void)
  */
 static bool object_create_late(const char *type)
 {
-    return !object_create_early(type) && !object_create_pre_sandbox(type);
+    return !object_create_early(type);
 }
 
 static void qemu_create_late_backends(void)
@@ -1112,14 +1086,6 @@ static void qemu_create_late_backends(void)
     net_init_clients();
 
     object_option_foreach_add(object_create_late);
-
-    /*
-     * Wait for any outstanding memory prealloc from created memory
-     * backends to complete.
-     */
-    if (!qemu_finish_async_prealloc_mem(&error_fatal)) {
-        exit(1);
-    }
 
     if (tpm_init() < 0) {
         exit(1);
