@@ -95,13 +95,6 @@ static GSList *migration_blockers[MIG_MODE__MAX];
 
 static bool migration_object_check(MigrationState *ms, Error **errp);
 
-static gint page_request_addr_cmp(gconstpointer ap, gconstpointer bp)
-{
-    uintptr_t a = (uintptr_t) ap, b = (uintptr_t) bp;
-
-    return (a > b) - (a < b);
-}
-
 void migration_object_init(void)
 {
     /* This can only be called once. */
@@ -124,10 +117,6 @@ void migration_object_init(void)
     qemu_sem_init(&current_incoming->postcopy_pause_sem_fault, 0);
     qemu_sem_init(&current_incoming->postcopy_pause_sem_fast_load, 0);
     qemu_sem_init(&current_incoming->postcopy_qemufile_dst_done, 0);
-
-    qemu_mutex_init(&current_incoming->page_request_mutex);
-    qemu_cond_init(&current_incoming->page_request_cond);
-    current_incoming->page_requested = g_tree_new(page_request_addr_cmp);
 
     current_incoming->exit_on_error = INMIGRATE_DEFAULT_EXIT_ON_ERROR;
 
@@ -212,11 +201,6 @@ void migration_incoming_state_destroy(void)
 
     migration_incoming_transport_cleanup(mis);
     qemu_event_reset(&mis->main_thread_load_event);
-
-    if (mis->page_requested) {
-        g_tree_destroy(mis->page_requested);
-        mis->page_requested = NULL;
-    }
 
     if (mis->postcopy_qemufile_dst) {
         migration_ioc_unregister_yank_from_file(mis->postcopy_qemufile_dst);

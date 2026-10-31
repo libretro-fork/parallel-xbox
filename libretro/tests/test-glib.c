@@ -136,32 +136,6 @@ static void test_hash_same_reference(void)
     CHECK(replacement_unref_count == 6);
 }
 
-static GData *reentrant_data;
-static gboolean clear_from_data_destroy;
-static int data_destroyed;
-static void reentrant_data_destroy(gpointer data)
-{
-    data_destroyed++;
-    if (clear_from_data_destroy) {
-        clear_from_data_destroy = FALSE;
-        CHECK(GPOINTER_TO_INT(g_datalist_get_data(&reentrant_data, "slot")) == 2);
-        g_datalist_clear(&reentrant_data);
-    }
-}
-
-static void test_datalist_reentrant_replace(void)
-{
-    g_datalist_init(&reentrant_data);
-    g_datalist_set_data_full(&reentrant_data, "slot", GINT_TO_POINTER(1),
-                             reentrant_data_destroy);
-    clear_from_data_destroy = TRUE;
-    g_datalist_set_data_full(&reentrant_data, "slot", GINT_TO_POINTER(2),
-                             reentrant_data_destroy);
-    CHECK(g_datalist_get_data(&reentrant_data, "slot") == NULL);
-    CHECK(data_destroyed == 2);
-    g_datalist_clear(&reentrant_data);
-}
-
 static void test_hash(void)
 {
     GHashTable *h = g_hash_table_new_full(g_str_hash, g_str_equal,
@@ -219,52 +193,6 @@ static void test_hash(void)
           GPOINTER_TO_INT(v) == 1);
     CHECK(g_hash_table_lookup(h, GINT_TO_POINTER(5)) == GINT_TO_POINTER(5));
     g_hash_table_destroy(h);
-}
-
-static gboolean tree_sum(gpointer k, gpointer v, gpointer d)
-{
-    int *sum = d;
-
-    /* in order: each key above the last */
-    CHECK(GPOINTER_TO_INT(k) > sum[1]);
-    sum[1] = GPOINTER_TO_INT(k);
-    sum[0] += GPOINTER_TO_INT(v);
-    return FALSE;
-}
-
-static void test_tree(void)
-{
-    GTree *t = g_tree_new(cmp_int);
-    int sum[2] = { 0, -1 }, expect = 0;
-    GTreeNode *n;
-
-    for (int i = 0; i < 2000; i++) {
-        int k = (i * 7919) % 2000;
-        g_tree_insert(t, GINT_TO_POINTER(k), GINT_TO_POINTER(k * 2));
-    }
-    CHECK(g_tree_nnodes(t) == 2000);
-    CHECK(g_tree_height(t) < 40);
-    for (int i = 0; i < 2000; i += 2) {
-        CHECK(g_tree_remove(t, GINT_TO_POINTER(i)));
-    }
-    CHECK(!g_tree_remove(t, GINT_TO_POINTER(0)));
-    CHECK(g_tree_nnodes(t) == 1000);
-    CHECK(g_tree_lookup(t, GINT_TO_POINTER(1001)) == GINT_TO_POINTER(2002));
-    CHECK(!g_tree_lookup(t, GINT_TO_POINTER(1000)));
-    g_tree_foreach(t, tree_sum, sum);
-    for (int i = 1; i < 2000; i += 2) {
-        expect += i * 2;
-    }
-    CHECK(sum[0] == expect);
-    n = g_tree_lower_bound(t, GINT_TO_POINTER(1000));
-    CHECK(n && g_tree_node_key(n) == GINT_TO_POINTER(1001));
-    n = g_tree_upper_bound(t, GINT_TO_POINTER(1001));
-    CHECK(n && g_tree_node_key(n) == GINT_TO_POINTER(1003));
-    CHECK(g_tree_node_previous(n) &&
-          g_tree_node_key(g_tree_node_previous(n)) == GINT_TO_POINTER(1001));
-    CHECK(g_tree_node_key(g_tree_node_first(t)) == GINT_TO_POINTER(1));
-    CHECK(g_tree_node_key(g_tree_node_last(t)) == GINT_TO_POINTER(1999));
-    g_tree_destroy(t);
 }
 
 static void test_lists(void)
@@ -581,82 +509,6 @@ static void test_paths(const char *dir)
     g_dir_close(d);
     CHECK(seen == 1);
 
-    {
-        GMappedFile *m = g_mapped_file_new(f, FALSE, NULL);
-        CHECK(m && g_mapped_file_get_length(m) == 8 &&
-              !memcmp(g_mapped_file_get_contents(m), "contents", 8));
-        g_mapped_file_unref(m);
-    }
-    {
-        gint fd = g_open(f, O_RDONLY, 0);
-        CHECK(fd >= 0);
-        if (fd >= 0) {
-            CHECK(lseek(fd, 3, SEEK_SET) == 3);
-            GMappedFile *m = g_mapped_file_new_from_fd(fd, FALSE, NULL);
-            CHECK(m && g_mapped_file_get_length(m) == 8 &&
-                  !memcmp(g_mapped_file_get_contents(m), "contents", 8));
-            CHECK(lseek(fd, 0, SEEK_CUR) == 3);
-            gchar next = 0;
-            CHECK(read(fd, &next, 1) == 1 && next == 't');
-            CHECK(g_close(fd, NULL));
-            if (m) {
-                CHECK(!memcmp(g_mapped_file_get_contents(m), "contents", 8));
-                g_mapped_file_unref(m);
-            }
-        }
-        fd = g_open(f, O_RDONLY, 0);
-        CHECK(fd >= 0);
-        if (fd >= 0) {
-            GMappedFile *m = g_mapped_file_new_from_fd(fd, TRUE, NULL);
-            CHECK(m != NULL);
-            if (m) {
-                g_mapped_file_get_contents(m)[0] = 'C';
-                g_mapped_file_unref(m);
-            }
-            CHECK(g_close(fd, NULL));
-            gchar *original = NULL;
-            CHECK(g_file_get_contents(f, &original, NULL, NULL));
-            CHECK(original && !strcmp(original, "contents"));
-            g_free(original);
-        }
-        fd = g_open(f, O_WRONLY, 0);
-        CHECK(fd >= 0);
-        if (fd >= 0) {
-            GError *error = NULL;
-            CHECK(lseek(fd, 3, SEEK_SET) == 3);
-            GMappedFile *m = g_mapped_file_new_from_fd(fd, FALSE, &error);
-            CHECK(!m && error && lseek(fd, 0, SEEK_CUR) == 3);
-            if (m) {
-                g_mapped_file_unref(m);
-            }
-            g_clear_error(&error);
-            CHECK(g_close(fd, NULL));
-        }
-        CHECK(g_file_set_contents(f, "", 0, NULL));
-        fd = g_open(f, O_RDONLY, 0);
-        CHECK(fd >= 0);
-        if (fd >= 0) {
-            CHECK(lseek(fd, 5, SEEK_SET) == 5);
-            GMappedFile *m = g_mapped_file_new_from_fd(fd, FALSE, NULL);
-            CHECK(m && g_mapped_file_get_length(m) == 0);
-            CHECK(lseek(fd, 0, SEEK_CUR) == 5);
-            if (m) {
-                g_mapped_file_unref(m);
-            }
-            CHECK(g_close(fd, NULL));
-        }
-    }
-    {
-        gchar *tmp = NULL;
-        gint fd = g_file_open_tmp("glibtest-XXXXXX", &tmp, NULL);
-        CHECK(fd >= 0 && tmp && g_file_test(tmp, G_FILE_TEST_IS_REGULAR));
-        if (fd >= 0) {
-            CHECK(g_close(fd, NULL));
-        }
-        CHECK(tmp && g_unlink(tmp) == 0);
-        g_free(tmp);
-    }
-    CHECK(g_get_system_data_dirs()[0] != NULL);
     CHECK(g_unlink(f) == 0);
     CHECK(!g_file_test(f, G_FILE_TEST_EXISTS));
     CHECK(g_rmdir(t) == 0);
@@ -989,7 +841,6 @@ static void test_main(void)
 static void test_misc(void)
 {
     GRand *r = g_rand_new_with_seed(42), *r2 = g_rand_new_with_seed(42);
-    GOnce once = G_ONCE_INIT;
     static gsize init;
 
     for (int i = 0; i < 100; i++) {
@@ -1000,9 +851,6 @@ static void test_misc(void)
     g_rand_free(r);
     g_rand_free(r2);
 
-    CHECK(g_once(&once, (GThreadFunc)g_strdup, "x") ==
-          g_once(&once, (GThreadFunc)g_strdup, "y"));
-    g_free(once.retval);
     /* 1 is a result like any other (QEMU's TCG helpers leave 1) */
     if (g_once_init_enter(&init)) {
         g_once_init_leave(&init, 1);
@@ -1014,13 +862,6 @@ static void test_misc(void)
         GQuark q = g_quark_from_string("quark-test");
         CHECK(q && q == g_quark_try_string("quark-test") &&
               !strcmp(g_quark_to_string(q), "quark-test"));
-    }
-    {
-        GDateTime *dt = g_date_time_new_from_unix_utc(86400);
-        gchar *t = g_date_time_format(dt, "%Y-%m-%d %H:%M:%S.%f");
-        CHECK(!strcmp(t, "1970-01-02 00:00:00.000000"));
-        g_free(t);
-        g_date_time_unref(dt);
     }
     CHECK(g_get_num_processors() >= 1);
 }
@@ -1036,8 +877,6 @@ int main(int argc, char **argv)
     test_hash_reentrant_replace();
     test_hash_reentrant_clear();
     test_hash_same_reference();
-    test_datalist_reentrant_replace();
-    test_tree();
     test_lists();
     test_arrays();
     test_strings();

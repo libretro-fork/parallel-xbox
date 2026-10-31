@@ -85,9 +85,6 @@ ssize_t rom_add_file(const char *file, const char *fw_dir,
                      bool has_option_rom, MemoryRegion *mr, AddressSpace *as);
 void rom_add_blob(const char *name, const void *blob, size_t len,
                   size_t max_len, hwaddr addr, AddressSpace *as);
-int rom_add_elf_program(const char *name, GMappedFile *mapped_file, void *data,
-                        size_t datasize, size_t romsize, hwaddr addr,
-                        AddressSpace *as);
 int rom_check_and_register_reset(void);
 
 void *rom_ptr(hwaddr addr, size_t size);

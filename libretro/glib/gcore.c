@@ -890,7 +890,6 @@ gunichar2 *g_utf8_to_utf16(const gchar *str, glong len, glong *items_read,
     gsize input_len = 0;
     gchar *tmp = NULL;
     wchar_t *w;
-    gunichar2 *out;
 
     if (!str) {
         g_set_error(error, 0, 0, "invalid UTF-8");
@@ -920,15 +919,15 @@ gunichar2 *g_utf8_to_utf16(const gchar *str, glong len, glong *items_read,
         g_set_error(error, 0, 0, "invalid UTF-8");
         return NULL;
     }
-    out = g_memdup2(w, (wcslen(w) + 1) * sizeof(wchar_t));
     if (items_written) {
         *items_written = (glong)wcslen(w);
     }
     if (items_read) {
         *items_read = (glong)input_len;
     }
-    free(w);
-    return out;
+    /* wchar_t is UTF-16 on Windows; transfer the converter allocation. */
+    _Static_assert(sizeof(wchar_t) == sizeof(gunichar2), "UTF-16 unit size");
+    return (gunichar2 *)w;
 }
 
 gchar *g_utf16_to_utf8(const gunichar2 *str, glong len, glong *items_read,
@@ -936,7 +935,6 @@ gchar *g_utf16_to_utf8(const gunichar2 *str, glong len, glong *items_read,
 {
     gsize input_len = 0;
     wchar_t *tmp = NULL;
-    char *u;
     gchar *out;
 
     if (!str) {
@@ -960,11 +958,8 @@ gchar *g_utf16_to_utf8(const gunichar2 *str, glong len, glong *items_read,
         memcpy(tmp, str, input_len * sizeof(*tmp));
         tmp[input_len] = 0;
     }
-    u = utf16_to_utf8_string_alloc(tmp ? tmp : (const wchar_t *)str);
+    out = utf16_to_utf8_string_alloc(tmp ? tmp : (const wchar_t *)str);
     g_free(tmp);
-    out = g_strdup(u);
-
-    free(u);
     if (!out) {
         g_set_error(error, 0, 0, "invalid UTF-16");
     } else {
@@ -1434,167 +1429,6 @@ void g_usleep(gulong microseconds)
     retro_sleep_us((unsigned)microseconds);
 }
 
-struct _GTimer {
-    gint64 start, end;
-    gboolean active;
-};
-
-GTimer *g_timer_new(void)
-{
-    GTimer *t = g_new0(GTimer, 1);
-
-    g_timer_start(t);
-    return t;
-}
-
-void g_timer_destroy(GTimer *timer)
-{
-    g_free(timer);
-}
-
-void g_timer_start(GTimer *timer)
-{
-    timer->active = TRUE;
-    timer->start = g_get_monotonic_time();
-}
-
-void g_timer_stop(GTimer *timer)
-{
-    timer->active = FALSE;
-    timer->end = g_get_monotonic_time();
-}
-
-void g_timer_reset(GTimer *timer)
-{
-    timer->start = g_get_monotonic_time();
-}
-
-gdouble g_timer_elapsed(GTimer *timer, gulong *microseconds)
-{
-    gint64 e = (timer->active ? g_get_monotonic_time() : timer->end) -
-               timer->start;
-
-    if (microseconds) {
-        *microseconds = (gulong)(e % G_USEC_PER_SEC);
-    }
-    return (gdouble)e / G_USEC_PER_SEC;
-}
-
-struct _GDateTime {
-    gint64 usec;        /* since the epoch, UTC */
-    gboolean local;
-    retro_atomic_int_t ref_count;
-};
-
-static GDateTime *g_date_time_at(gint64 usec, gboolean local)
-{
-    GDateTime *d = g_new0(GDateTime, 1);
-
-    d->usec = usec;
-    d->local = local;
-    retro_atomic_int_init(&d->ref_count, 1);
-    return d;
-}
-
-GDateTime *g_date_time_new_now_local(void)
-{
-    return g_date_time_at(g_get_real_time(), TRUE);
-}
-
-GDateTime *g_date_time_new_now_utc(void)
-{
-    return g_date_time_at(g_get_real_time(), FALSE);
-}
-
-GDateTime *g_date_time_new_from_unix_utc(gint64 t)
-{
-    return g_date_time_at(t * G_USEC_PER_SEC, FALSE);
-}
-
-GDateTime *g_date_time_new_from_unix_local(gint64 t)
-{
-    return g_date_time_at(t * G_USEC_PER_SEC, TRUE);
-}
-
-GDateTime *g_date_time_ref(GDateTime *datetime)
-{
-    retro_atomic_fetch_add_int(&datetime->ref_count, 1);
-    return datetime;
-}
-
-void g_date_time_unref(GDateTime *datetime)
-{
-    if (datetime && retro_atomic_fetch_sub_int(&datetime->ref_count, 1) == 1) {
-        g_free(datetime);
-    }
-}
-
-gint64 g_date_time_to_unix(GDateTime *datetime)
-{
-    return datetime->usec / G_USEC_PER_SEC;
-}
-
-gint g_date_time_get_microsecond(GDateTime *datetime)
-{
-    return (gint)(datetime->usec % G_USEC_PER_SEC);
-}
-
-static void g_date_time_tm(GDateTime *d, struct tm *tm)
-{
-    time_t t = (time_t)(d->usec / G_USEC_PER_SEC);
-
-#ifdef _WIN32
-    if (d->local) {
-        localtime_s(tm, &t);
-    } else {
-        gmtime_s(tm, &t);
-    }
-#else
-    if (d->local) {
-        localtime_r(&t, tm);
-    } else {
-        gmtime_r(&t, tm);
-    }
-#endif
-}
-
-/* strftime's conversions, and %f (microseconds) of GLib's own */
-gchar *g_date_time_format(GDateTime *datetime, const gchar *format)
-{
-    GString *out = g_string_new("");
-    struct tm tm;
-    char buf[128];
-
-    g_date_time_tm(datetime, &tm);
-    for (const gchar *p = format; *p; p++) {
-        if (*p == '%' && p[1] == 'f') {
-            g_string_append_printf(out, "%06d",
-                                   g_date_time_get_microsecond(datetime));
-            p++;
-        } else if (*p == '%' && p[1]) {
-            char f[3] = { '%', p[1], 0 };
-            size_t n = strftime(buf, sizeof(buf), f, &tm);
-            g_string_append_len(out, buf, (gssize)n);
-            p++;
-        } else {
-            g_string_append_c(out, *p);
-        }
-    }
-    return g_string_free(out, FALSE);
-}
-
-gchar *g_date_time_format_iso8601(GDateTime *datetime)
-{
-    struct tm tm;
-    char buf[64];
-
-    g_date_time_tm(datetime, &tm);
-    strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%S", &tm);
-    return g_strdup_printf("%s.%06d%s", buf,
-                           g_date_time_get_microsecond(datetime),
-                           datetime->local ? "" : "Z");
-}
-
 /* ---- random numbers (xoshiro128**, seeded as asked) ----------------------- */
 
 struct _GRand {
@@ -1717,22 +1551,6 @@ gint32 g_random_int_range(gint32 begin, gint32 end)
 
 /* ---- once, on retro_atomic ------------------------------------------------ */
 
-gpointer g_once_impl(GOnce *once, GThreadFunc func, gpointer arg)
-{
-    retro_atomic_int_t *status = (retro_atomic_int_t *)&once->status;
-
-    if (retro_atomic_cas_int(status, G_ONCE_STATUS_NOTCALLED,
-                             G_ONCE_STATUS_PROGRESS)) {
-        once->retval = func(arg);
-        retro_atomic_store_release_int(status, G_ONCE_STATUS_READY);
-    } else {
-        while (retro_atomic_load_acquire_int(status) != G_ONCE_STATUS_READY) {
-            retro_sleep(0);
-        }
-    }
-    return once->retval;
-}
-
 /* Once location registry. A hashed single-owner slot deadlocks when an
  * initializer enters a different location that happens to share its slot.
  * Track the actual addresses; never hold the registry lock in an initializer.
@@ -1787,46 +1605,4 @@ void g_once_init_leave(volatile void *location, gsize result)
     __atomic_store_n((volatile gsize *)location, result, __ATOMIC_RELEASE);
     g_compat_unlock(&g_once_lock);
     g_free(p);
-}
-
-/* ---- processes: the core starts none ------------------------------------- */
-
-static gboolean g_spawn_refused(GError **error)
-{
-    g_set_error(error, G_SPAWN_ERROR, 0,
-                "the libretro core does not start processes");
-    return FALSE;
-}
-
-gboolean g_spawn_async(const gchar *working_directory, gchar **argv,
-                       gchar **envp, GSpawnFlags flags,
-                       GSpawnChildSetupFunc child_setup, gpointer user_data,
-                       GPid *child_pid, GError **error)
-{
-    return g_spawn_refused(error);
-}
-
-gboolean g_spawn_async_with_fds(const gchar *working_directory, gchar **argv,
-                                gchar **envp, GSpawnFlags flags,
-                                GSpawnChildSetupFunc child_setup,
-                                gpointer user_data, GPid *child_pid,
-                                gint stdin_fd, gint stdout_fd, gint stderr_fd,
-                                GError **error)
-{
-    return g_spawn_refused(error);
-}
-
-gboolean g_spawn_async_with_pipes(const gchar *working_directory,
-                                  gchar **argv, gchar **envp,
-                                  GSpawnFlags flags,
-                                  GSpawnChildSetupFunc child_setup,
-                                  gpointer user_data, GPid *child_pid,
-                                  gint *standard_input, gint *standard_output,
-                                  gint *standard_error, GError **error)
-{
-    return g_spawn_refused(error);
-}
-
-void g_spawn_close_pid(GPid pid)
-{
 }

@@ -47,7 +47,6 @@ struct X86MachineState {
     FWCfgState *fw_cfg;
     qemu_irq *gsi;
     DeviceState *ioapic2;
-    GMappedFile *initrd_mapped_file;
     HotplugHandler *acpi_dev;
 
     /*

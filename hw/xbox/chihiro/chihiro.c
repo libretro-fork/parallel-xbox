@@ -20,6 +20,7 @@
  */
 
 #include "qemu/osdep.h"
+#include <time/rtime.h>
 #include <glib/gstdio.h>
 #include "hw/hw.h"
 #include "hw/irq.h"
@@ -2912,8 +2913,9 @@ bool chihiro_card_issue(ChihiroCardSlot slot, char *out, size_t out_len)
     const ChihiroCabinet *c = chihiro_cabinet();
     const char **cfg;
     char dir[1024], who[8] = "";
-    char *day;
-    GDateTime *now;
+    char day[32];
+    time_t now;
+    struct tm local = { 0 };
     bool ok = false;
 
     if (!c || !c->cards || !chihiro_data_dir("cards", dir, sizeof(dir)))
@@ -2924,9 +2926,11 @@ bool chihiro_card_issue(ChihiroCardSlot slot, char *out, size_t out_len)
     else if (slot == CHIHIRO_CARD_SLOT_HW210_P2)
         snprintf(who, sizeof(who), "_p2");
 
-    now = g_date_time_new_now_local();
-    day = g_date_time_format(now, "%Y-%m-%d");
-    g_date_time_unref(now);
+    now = time(NULL);
+    if (!rtime_localtime(&now, &local) ||
+        !strftime(day, sizeof(day), "%Y-%m-%d", &local)) {
+        return false;
+    }
     for (int n = 1; n < 1000 && !ok; n++) {
         char name[128], more[16] = "";
         char *path;
@@ -2949,7 +2953,6 @@ bool chihiro_card_issue(ChihiroCardSlot slot, char *out, size_t out_len)
         }
         g_free(path);
     }
-    g_free(day);
     if (!ok)
         return false;
 

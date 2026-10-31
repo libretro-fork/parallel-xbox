@@ -113,7 +113,8 @@ there.
 
 What QEMU's build generates is pregenerated in `libretro/gen` (its README).
 GLib is not linked: QEMU and libslirp are built on the core's own
-`libretro/glib`, the part of GLib's API they use, on libretro-common.
+`libretro/glib` compatibility subset on libretro-common. Unused tree, datalist,
+mapped-file, date-object, timer and process-launch services are omitted.
 
 **Android** (arm64-v8a, x86_64), with the Android NDK and nothing else
 (every library the core links is built from `deps/`):

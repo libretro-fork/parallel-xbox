@@ -1,12 +1,10 @@
 /*
  * The in-tree GLib (libretro/glib/glib.h): files, paths, directories and
- * mapped files.
+ * file streams.
  *
  * On libretro-common: files are read and written through its file stream
  * (and so its VFS), paths are taken apart and joined by file_path, and
- * directories are listed by retro_dirent. A mapped file is read into
- * memory: what QEMU maps is firmware read once at start, and GLib's
- * writable mappings are private copies anyway.
+ * directories are listed by retro_dirent.
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
@@ -21,14 +19,12 @@
 #include <io.h>
 #else
 #include <unistd.h>
-#include <sys/mman.h>
 #endif
 
 #include <retro_atomic.h>
 #include <compat/strl.h>
 #include <file/file_path.h>
 #include <retro_dirent.h>
-#include <retro_atomic.h>
 #include <retro_miscellaneous.h>
 #include <streams/file_stream.h>
 
@@ -461,134 +457,5 @@ void g_dir_close(GDir *dir)
     if (dir) {
         retro_closedir(dir->dir);
         g_free(dir);
-    }
-}
-
-/* ---- mapped files --------------------------------------------------------- */
-
-struct _GMappedFile {
-    gchar *contents;
-    gsize length;
-    retro_atomic_int_t ref_count;
-};
-
-static GMappedFile *g_mapped_file_take(gchar *contents, gsize length)
-{
-    GMappedFile *m = g_new(GMappedFile, 1);
-
-    m->contents = contents;
-    m->length = length;
-    retro_atomic_int_init(&m->ref_count, 1);
-    return m;
-}
-
-GMappedFile *g_mapped_file_new(const gchar *filename, gboolean writable,
-                               GError **error)
-{
-    gchar *contents;
-    gsize length;
-
-    if (!g_file_get_contents(filename, &contents, &length, error)) {
-        return NULL;
-    }
-    return g_mapped_file_take(contents, length);
-}
-
-/* Copy from a temporary mapping so the caller's descriptor position is never
- * changed, including while other code uses that descriptor. The returned
- * storage keeps this shim's existing private-copy lifetime and writability.
- */
-GMappedFile *g_mapped_file_new_from_fd(gint fd, gboolean writable,
-                                       GError **error)
-{
-    gpointer contents;
-    gsize length;
-#ifdef _WIN32
-    HANDLE file = (HANDLE)_get_osfhandle(fd);
-    HANDLE mapping;
-    LARGE_INTEGER size;
-    const void *view;
-
-    if (file == INVALID_HANDLE_VALUE || !GetFileSizeEx(file, &size)) {
-        errno = EBADF;
-        goto fail;
-    }
-    if (size.QuadPart < 0 || (guint64)size.QuadPart > G_MAXSIZE) {
-        errno = EFBIG;
-        goto fail;
-    }
-    length = (gsize)size.QuadPart;
-    if (!length) {
-        return g_mapped_file_take(NULL, 0);
-    }
-    mapping = CreateFileMappingW(file, NULL, PAGE_READONLY, 0, 0, NULL);
-    if (!mapping) {
-        errno = EIO;
-        goto fail;
-    }
-    view = MapViewOfFile(mapping, FILE_MAP_READ, 0, 0, length);
-    if (!view) {
-        CloseHandle(mapping);
-        errno = EIO;
-        goto fail;
-    }
-    contents = g_memdup2(view, length);
-    UnmapViewOfFile(view);
-    CloseHandle(mapping);
-#else
-    struct stat st;
-    void *view;
-
-    if (fstat(fd, &st) < 0) {
-        goto fail;
-    }
-    if (!S_ISREG(st.st_mode)) {
-        errno = EINVAL;
-        goto fail;
-    }
-    if (st.st_size < 0 || (guint64)st.st_size > G_MAXSIZE) {
-        errno = EFBIG;
-        goto fail;
-    }
-    length = (gsize)st.st_size;
-    if (!length) {
-        return g_mapped_file_take(NULL, 0);
-    }
-    view = mmap(NULL, length, PROT_READ, MAP_PRIVATE, fd, 0);
-    if (view == MAP_FAILED) {
-        goto fail;
-    }
-    contents = g_memdup2(view, length);
-    munmap(view, length);
-#endif
-    return g_mapped_file_take(contents, length);
-
-fail:
-    g_set_error(error, G_FILE_ERROR, g_file_error_from_errno(errno),
-                "Failed to read the file: %s", strerror(errno));
-    return NULL;
-}
-
-gsize g_mapped_file_get_length(GMappedFile *file)
-{
-    return file->length;
-}
-
-gchar *g_mapped_file_get_contents(GMappedFile *file)
-{
-    return file->contents;
-}
-
-GMappedFile *g_mapped_file_ref(GMappedFile *file)
-{
-    retro_atomic_fetch_add_int(&file->ref_count, 1);
-    return file;
-}
-
-void g_mapped_file_unref(GMappedFile *file)
-{
-    if (file && retro_atomic_fetch_sub_int(&file->ref_count, 1) == 1) {
-        g_free(file->contents);
-        g_free(file);
     }
 }

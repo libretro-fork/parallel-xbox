@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Trim unused GLib compatibility services (trees, datalists, mapped files, date objects, timers and helper-process plumbing), including the unused datalist spinlock and migration page-request lock objects. Xbox and Chihiro emulation features remain available. Logging formats timestamps on the stack, and Windows UTF conversions transfer their result buffers without an intermediate copy.
+
 - RCU epoch publication now uses its existing release/acquire ordering instead of an extra process-wide flush before each period; old-reader scans retain their global memory barrier.
 
 - Short RCU handoffs poll their queue and completion predicate briefly before registering sleepers, and idle-reader grace periods avoid unnecessary waiter bookkeeping. Polling uses the existing calibrated eventcount budget and is disabled by a zero spin override.

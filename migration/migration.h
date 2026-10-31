@@ -212,34 +212,6 @@ struct MigrationIncomingState {
     /* List of listening socket addresses  */
     SocketAddressList *socket_address_list;
 
-    /* A tree of pages that we requested to the source VM */
-    GTree *page_requested;
-    /*
-     * For postcopy only, count the number of requested page faults that
-     * still haven't been resolved.
-     */
-    retro_atomic_int_t page_requested_count;
-    /*
-     * The mutex helps to maintain the requested pages that we sent to the
-     * source, IOW, to guarantee coherent between the page_requests tree and
-     * the per-ramblock receivedmap.  Note! This does not guarantee consistency
-     * of the real page copy procedures (using UFFDIO_[ZERO]COPY).  E.g., even
-     * if one bit in receivedmap is cleared, UFFDIO_COPY could have happened
-     * for that page already.  This is intended so that the mutex won't
-     * serialize and blocked by slow operations like UFFDIO_* ioctls.  However
-     * this should be enough to make sure the page_requested tree always
-     * contains valid information.
-     */
-    QemuMutex page_request_mutex;
-    /*
-     * If postcopy preempt is enabled, there is a chance that the main
-     * thread finished loading its data before the preempt channel has
-     * finished loading the urgent pages.  If that happens, the two threads
-     * will use this condvar to synchronize, so the main thread will always
-     * wait until all pages received.
-     */
-    QemuCond page_request_cond;
-
     /*
      * Number of devices that have yet to approve switchover. When this reaches
      * zero an ACK that it's OK to do switchover is sent to the source. No lock

@@ -957,42 +957,8 @@ gboolean g_int64_equal(gconstpointer v1, gconstpointer v2);
 
 /* ---- balanced trees and sequences ----------------------------------------- */
 
+/* Opaque only: generic device headers retain pointers to unused tree fields. */
 typedef struct _GTree GTree;
-typedef struct _GTreeNode GTreeNode;
-GTree *g_tree_new(GCompareFunc key_compare_func);
-GTree *g_tree_new_with_data(GCompareDataFunc key_compare_func,
-                            gpointer key_compare_data);
-GTree *g_tree_new_full(GCompareDataFunc key_compare_func,
-                       gpointer key_compare_data,
-                       GDestroyNotify key_destroy_func,
-                       GDestroyNotify value_destroy_func);
-GTree *g_tree_ref(GTree *tree);
-void g_tree_unref(GTree *tree);
-void g_tree_destroy(GTree *tree);
-void g_tree_insert(GTree *tree, gpointer key, gpointer value);
-void g_tree_replace(GTree *tree, gpointer key, gpointer value);
-gboolean g_tree_remove(GTree *tree, gconstpointer key);
-gboolean g_tree_steal(GTree *tree, gconstpointer key);
-gpointer g_tree_lookup(GTree *tree, gconstpointer key);
-gboolean g_tree_lookup_extended(GTree *tree, gconstpointer lookup_key,
-                                gpointer *orig_key, gpointer *value);
-void g_tree_foreach(GTree *tree, GTraverseFunc func, gpointer user_data);
-gpointer g_tree_search(GTree *tree, GCompareFunc search_func,
-                       gconstpointer user_data);
-gint g_tree_nnodes(GTree *tree);
-gint g_tree_height(GTree *tree);
-GTreeNode *g_tree_node_first(GTree *tree);
-GTreeNode *g_tree_node_last(GTree *tree);
-GTreeNode *g_tree_node_next(GTreeNode *node);
-GTreeNode *g_tree_node_previous(GTreeNode *node);
-gpointer g_tree_node_key(GTreeNode *node);
-gpointer g_tree_node_value(GTreeNode *node);
-GTreeNode *g_tree_lookup_node(GTree *tree, gconstpointer key);
-GTreeNode *g_tree_insert_node(GTree *tree, gpointer key, gpointer value);
-GTreeNode *g_tree_lower_bound(GTree *tree, gconstpointer key);
-GTreeNode *g_tree_upper_bound(GTree *tree, gconstpointer key);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(GTree, g_tree_unref)
-
 typedef struct _GSequence GSequence;
 typedef struct _GSequenceNode GSequenceIter;
 GSequence *g_sequence_new(GDestroyNotify data_destroy);
@@ -1007,35 +973,7 @@ void g_sequence_remove(GSequenceIter *iter);
 gint g_sequence_get_length(GSequence *seq);
 gpointer g_sequence_get(GSequenceIter *iter);
 
-/* keyed data on an object (GData) */
-typedef struct _GData GData;
-gpointer g_datalist_get_data(GData **datalist, const gchar *key);
-void g_datalist_id_set_data_full(GData **datalist, GQuark key_id,
-                                 gpointer data, GDestroyNotify destroy_func);
-void g_datalist_clear(GData **datalist);
-#define g_datalist_init(dl) (*(dl) = NULL)
-#define g_datalist_set_data(dl, k, d) \
-    g_datalist_id_set_data_full((dl), g_quark_from_string(k), (d), NULL)
-#define g_datalist_set_data_full(dl, k, d, f) \
-    g_datalist_id_set_data_full((dl), g_quark_from_string(k), (d), (f))
-#define g_datalist_remove_data(dl, k) \
-    g_datalist_id_set_data_full((dl), g_quark_try_string(k), NULL, NULL)
-
-/* ---- threads -------------------------------------------------------------- */
-
-typedef enum {
-    G_ONCE_STATUS_NOTCALLED,
-    G_ONCE_STATUS_PROGRESS,
-    G_ONCE_STATUS_READY
-} GOnceStatus;
-typedef struct _GOnce {
-    volatile GOnceStatus status;
-    volatile gpointer retval;
-} GOnce;
-#define G_ONCE_INIT { G_ONCE_STATUS_NOTCALLED, NULL }
-typedef gpointer (*GThreadFunc)(gpointer data);
-gpointer g_once_impl(GOnce *once, GThreadFunc func, gpointer arg);
-#define g_once(once, func, arg) g_once_impl((once), (func), (arg))
+/* One-time initialization used by remaining QEMU startup sites. */
 gboolean g_once_init_enter(volatile void *location);
 void g_once_init_leave(volatile void *location, gsize result);
 
@@ -1203,28 +1141,6 @@ gint64 g_get_monotonic_time(void);
 gint64 g_get_real_time(void);
 void g_usleep(gulong microseconds);
 
-typedef struct _GTimer GTimer;
-GTimer *g_timer_new(void);
-void g_timer_destroy(GTimer *timer);
-void g_timer_start(GTimer *timer);
-void g_timer_stop(GTimer *timer);
-void g_timer_reset(GTimer *timer);
-gdouble g_timer_elapsed(GTimer *timer, gulong *microseconds);
-
-typedef struct _GDateTime GDateTime;
-typedef gint64 GTimeSpan;
-GDateTime *g_date_time_new_now_local(void);
-GDateTime *g_date_time_new_now_utc(void);
-GDateTime *g_date_time_new_from_unix_utc(gint64 t);
-GDateTime *g_date_time_new_from_unix_local(gint64 t);
-void g_date_time_unref(GDateTime *datetime);
-GDateTime *g_date_time_ref(GDateTime *datetime);
-gint64 g_date_time_to_unix(GDateTime *datetime);
-gint g_date_time_get_microsecond(GDateTime *datetime);
-gchar *g_date_time_format(GDateTime *datetime, const gchar *format);
-gchar *g_date_time_format_iso8601(GDateTime *datetime);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(GDateTime, g_date_time_unref)
-
 /* ---- random numbers ------------------------------------------------------- */
 
 typedef struct _GRand GRand;
@@ -1301,51 +1217,6 @@ GDir *g_dir_open(const gchar *path, guint flags, GError **error);
 const gchar *g_dir_read_name(GDir *dir);
 void g_dir_close(GDir *dir);
 G_DEFINE_AUTOPTR_CLEANUP_FUNC(GDir, g_dir_close)
-
-typedef struct _GMappedFile GMappedFile;
-GMappedFile *g_mapped_file_new(const gchar *filename, gboolean writable,
-                               GError **error);
-GMappedFile *g_mapped_file_new_from_fd(gint fd, gboolean writable,
-                                       GError **error);
-gsize g_mapped_file_get_length(GMappedFile *file);
-gchar *g_mapped_file_get_contents(GMappedFile *file);
-GMappedFile *g_mapped_file_ref(GMappedFile *file);
-void g_mapped_file_unref(GMappedFile *file);
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(GMappedFile, g_mapped_file_unref)
-
-/* ---- processes (none are started in the core) ----------------------------- */
-
-typedef enum {
-    G_SPAWN_DEFAULT = 0,
-    G_SPAWN_LEAVE_DESCRIPTORS_OPEN = 1 << 0,
-    G_SPAWN_DO_NOT_REAP_CHILD = 1 << 1,
-    G_SPAWN_SEARCH_PATH = 1 << 2,
-    G_SPAWN_STDOUT_TO_DEV_NULL = 1 << 3,
-    G_SPAWN_STDERR_TO_DEV_NULL = 1 << 4,
-    G_SPAWN_CHILD_INHERITS_STDIN = 1 << 5,
-    G_SPAWN_FILE_AND_ARGV_ZERO = 1 << 6,
-    G_SPAWN_SEARCH_PATH_FROM_ENVP = 1 << 7,
-    G_SPAWN_CLOEXEC_PIPES = 1 << 8
-} GSpawnFlags;
-typedef void (*GSpawnChildSetupFunc)(gpointer user_data);
-gboolean g_spawn_async(const gchar *working_directory, gchar **argv,
-                       gchar **envp, GSpawnFlags flags,
-                       GSpawnChildSetupFunc child_setup, gpointer user_data,
-                       GPid *child_pid, GError **error);
-gboolean g_spawn_async_with_fds(const gchar *working_directory, gchar **argv,
-                                gchar **envp, GSpawnFlags flags,
-                                GSpawnChildSetupFunc child_setup,
-                                gpointer user_data, GPid *child_pid,
-                                gint stdin_fd, gint stdout_fd, gint stderr_fd,
-                                GError **error);
-gboolean g_spawn_async_with_pipes(const gchar *working_directory,
-                                  gchar **argv, gchar **envp,
-                                  GSpawnFlags flags,
-                                  GSpawnChildSetupFunc child_setup,
-                                  gpointer user_data, GPid *child_pid,
-                                  gint *standard_input, gint *standard_output,
-                                  gint *standard_error, GError **error);
-void g_spawn_close_pid(GPid pid);
 
 #ifdef __cplusplus
 }

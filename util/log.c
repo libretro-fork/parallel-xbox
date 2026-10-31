@@ -22,6 +22,7 @@
 #include "qemu/win32-tls.h"
 #endif
 #include "qemu/log.h"
+#include "qemu/log-timestamp.h"
 #include "qemu/range.h"
 #include "qemu/error-report.h"
 #include "qapi/error.h"
@@ -153,7 +154,8 @@ void qemu_log_unlock(FILE *logfile)
 void qemu_log(const char *fmt, ...)
 {
     FILE *f;
-    g_autofree const char *timestr = NULL;
+    char timestr[40];
+    bool have_timestamp = false;
 
     /*
      * Prepare the timestamp *outside* the logging
@@ -162,15 +164,15 @@ void qemu_log(const char *fmt, ...)
      * mutex
      */
     if (message_with_timestamp) {
-        g_autoptr(GDateTime) dt = g_date_time_new_now_utc();
-        timestr = g_date_time_format_iso8601(dt);
+        have_timestamp = qemu_format_log_timestamp(timestr, sizeof(timestr),
+                                                   g_get_real_time());
     }
 
     f = qemu_log_trylock();
     if (f) {
         va_list ap;
 
-        if (timestr) {
+        if (have_timestamp) {
             fprintf(f, "%s ", timestr);
         }
 

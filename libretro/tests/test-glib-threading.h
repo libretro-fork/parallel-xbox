@@ -21,16 +21,11 @@ static unsigned threading_ready, threading_start, threading_failures;
 static GQuark threaded_quarks[128];
 static GPtrArray *threaded_array;
 static GHashTable *threaded_hash;
-static GTree *threaded_tree;
-static GDateTime *threaded_date;
 static void *threaded_default;
 static void *threaded_dirs;
-static GData *threaded_data;
 
 static GLIB_TEST_FN glib_test_thread(void *opaque)
 {
-    gchar data_key[40];
-    snprintf(data_key, sizeof(data_key), "worker-%u", (unsigned)(uintptr_t)opaque);
     __atomic_add_fetch(&threading_ready, 1, __ATOMIC_RELEASE);
     while (!__atomic_load_n(&threading_start, __ATOMIC_ACQUIRE)) {
         GLIB_TEST_YIELD();
@@ -62,22 +57,11 @@ static GLIB_TEST_FN glib_test_thread(void *opaque)
             __atomic_add_fetch(&threading_failures, 1, __ATOMIC_RELAXED);
         }
     }
-    for (unsigned i = 1; i <= 512; i++) {
-        g_datalist_set_data(&threaded_data, data_key, GUINT_TO_POINTER(i));
-        if (g_datalist_get_data(&threaded_data, data_key) != GUINT_TO_POINTER(i)) {
-            __atomic_add_fetch(&threading_failures, 1, __ATOMIC_RELAXED);
-        }
-        g_datalist_remove_data(&threaded_data, data_key);
-    }
     for (unsigned i = 0; i < 50000; i++) {
-        g_date_time_ref(threaded_date);
         g_ptr_array_ref(threaded_array);
         g_hash_table_ref(threaded_hash);
-        g_tree_ref(threaded_tree);
-        g_tree_unref(threaded_tree);
         g_hash_table_unref(threaded_hash);
         g_ptr_array_unref(threaded_array);
-        g_date_time_unref(threaded_date);
         (void)g_random_int();
         gint32 sample = g_random_int_range(INT32_MIN, INT32_MAX);
         gint32 narrow = g_random_int_range(-7, 11);
@@ -97,9 +81,6 @@ static void test_threading(void)
     threaded_hash = g_hash_table_new_full(g_str_hash, g_str_equal,
                                           count_destroy, NULL);
     g_hash_table_insert(threaded_hash, g_strdup("hash"), NULL);
-    threaded_tree = g_tree_new_full(cmp_int_data, NULL, NULL, count_destroy);
-    g_tree_insert(threaded_tree, GINT_TO_POINTER(1), g_strdup("tree"));
-    threaded_date = g_date_time_new_from_unix_utc(86400);
     destroyed = 0;
     for (unsigned i = 0; i < GLIB_TEST_THREADS; i++) {
 #ifdef _WIN32
@@ -123,11 +104,7 @@ static void test_threading(void)
 #endif
     }
     CHECK(threading_failures == 0 && destroyed == 0);
-    g_datalist_clear(&threaded_data);
     g_ptr_array_unref(threaded_array);
     g_hash_table_unref(threaded_hash);
-    g_tree_unref(threaded_tree);
-    CHECK(destroyed == 3);
-    CHECK(g_date_time_to_unix(threaded_date) == 86400);
-    g_date_time_unref(threaded_date);
+    CHECK(destroyed == 2);
 }
