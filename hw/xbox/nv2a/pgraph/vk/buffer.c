@@ -46,6 +46,8 @@ static void create_buffer(PGRAPHState *pg, StorageBuffer *buffer)
                 (unsigned long long)buffer->buffer_size, buffer->usage, result);
     }
     VK_CHECK(result);
+    vmaGetAllocationMemoryProperties(r->allocator, buffer->allocation,
+                                     &buffer->properties);
 }
 
 static void destroy_buffer(PGRAPHState *pg, StorageBuffer *buffer)

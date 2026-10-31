@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """Exercise real Vulkan finish/begin code with delayed fence retirement."""
 from pathlib import Path
+import ctypes
 import os
 import re
 import subprocess
@@ -12,7 +13,7 @@ source = (repo / 'hw/xbox/nv2a/pgraph/vk/draw.c').read_text()
 header = (repo / 'hw/xbox/nv2a/pgraph/vk/renderer.h').read_text()
 
 
-def function(name):
+def function(name, source=source):
     match = re.search(r'^(?:static )?(?:void|bool) ' + name + r'\(', source, re.M)
     assert match, name
     end = source.index('{', match.start()) + 1
@@ -25,7 +26,13 @@ def function(name):
 
 enum = re.search(r'typedef enum FinishReason \{.*?\} FinishReason;', header, re.S)[0]
 code = Path(__file__).with_suffix('.c').read_text()
-code = code.replace('/* ENUM */', enum).replace('/* PRODUCTION */', '\n'.join(
+q=(repo/'libretro/tests/test-spv-geom.c').read_text();qa=q.index('#ifdef _WIN32\nstatic void quiet_test_abort');qb=q.index('int line_tests(',qa);code=code.replace('/* QUIET ERRORS */',q[qa:qb])
+if os.name=='nt':
+    k=ctypes.WinDLL('kernel32');k.GetErrorMode.restype=ctypes.c_uint;k.SetErrorMode(k.GetErrorMode()|0x8003)
+cc=sys.argv[2] if len(sys.argv)>2 else 'gcc'
+env=os.environ.copy();env['PATH']=str(Path(cc).resolve().parent)+os.pathsep+env.get('PATH','')
+command_source=(repo/'hw/xbox/nv2a/pgraph/vk/command.c').read_text()
+code = code.replace('/* ENUM */', enum).replace('/* PRODUCTION */', function('pgraph_vk_queue_submit',command_source)+'\n'+'\n'.join(
     function(name) for name in ('pgraph_vk_trash_push', 'pipeline_cache_entry_post_evict',
                                'finish_is_async', 'pgraph_vk_finish',
                                'pgraph_vk_begin_command_buffer')))
@@ -37,5 +44,5 @@ with tempfile.TemporaryDirectory(prefix='vk-recording-epoch-') as directory:
                     '-Wall', '-Wextra', '-Werror', '-Wno-sign-compare',
                     '-fsanitize=undefined', '-fsanitize-undefined-trap-on-error',
                     '-I' + str(repo / 'deps/vulkan-headers'), str(folder / 'test.c'),
-                    '-o', str(exe)], check=True)
-    subprocess.run([str(exe)], check=True, timeout=15)
+                    '-o', str(exe)], check=True,env=env)
+    subprocess.run([str(exe)], check=True, timeout=15,env=env)

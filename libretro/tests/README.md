@@ -1219,8 +1219,7 @@ driver-call checks, not whole-game latency measurements.
 
 `test-vk-arena-flush.py` extracts production host flushing and verifies exact
 non-coherent dirty-tail ranges, zero allocator calls for coherent/unchanged
-arenas, clean state after a flush, reset/reuse and the unchanged mirror/arena
-HOST_WRITE-to-vertex-fetch barriers. The COW-tail fixture checks dirty marking
+arenas, clean state after a flush, reset/reuse and host flushing before queue submission. The COW-tail fixture checks dirty marking
 for fresh snapshots and tail growth, plus isolated snapshot starts with
 non-coherent atoms from 512 through 8,192 bytes. Payload and immutable-reader
 checks continue to cover cache reuse, slot rotation and settled arena recycling.
@@ -1230,4 +1229,26 @@ merged disjoint/overlapping write envelopes, clean/coherent flush skips, exact
 initial full-upload bounds and copied payload bytes. A download-triggered flush
 and an occupied-page finish/settle must consume only earlier dirty writes; the
 following copy must remain tracked for its own submission. Zero-size writes
-create no dirty range. Mirror and arena GPU visibility barriers are unchanged.
+create no dirty range. Queue submission now supplies the host-write visibility operation; non-coherent
+cache flushes still occur before that submission.
+
+Direct main submissions: the recording-epoch fixture covers all eight staging
+combinations, both cost-model modes and every finish reason over 192,000 cases.
+Each queue call contains one submit info: main alone with no staging, or sync
+then main in one command-buffer list. No internal semaphore operations remain;
+slot fences, rotation and retired-resource lifetimes retain their existing
+checks. The production queue wrapper is included: frontend semaphore handoff
+and balanced queue locking must survive both command-buffer-list shapes. Host flushing must occur before the queue call, and empty sync command
+buffers must not be begun or ended. The vertex-flush fixture now rejects
+recorded HOST barriers while retaining its coherent/non-coherent range tests.
+
+`test-vk-staging-visibility.py` executes production buffer creation/recreation
+and staging copies against a byte-visibility model. Across all eight coherency
+combinations it checks flush-before-copy, exact payloads, empty skips, refreshed
+memory properties after recreation and TRANSFER-to-index/vertex/uniform
+barriers; uniform reads must include both vertex and fragment shader stages.
+Queue submission provides the host-write visibility guarantee described in the
+[Vulkan specification](https://docs.vulkan.org/spec/latest/chapters/synchronization.html#synchronization-submission-host-writes),
+while [pipeline barriers](https://docs.vulkan.org/refpages/latest/refpages/source/vkCmdPipelineBarrier.html)
+cover later command buffers on the same queue. These guarantees do not remove
+non-coherent cache flushing or transfer-to-consumer dependencies.

@@ -600,9 +600,6 @@ typedef struct PGRAPHVkState {
     bool slot_fence_pending[PGRAPH_VK_SLOTS];
     /* EMA of the vkBeginCommandBuffer cost in us (varies by driver). */
     double cb_begin_us;
-    /* One sync->main semaphore per slot: re-signalling a binary semaphore
-     * whose previous wait is still pending is undefined in Vulkan. */
-    VkSemaphore slot_sem[PGRAPH_VK_SLOTS];
     /* Second set of the staged buffers and of their device destinations,
      * swapped in at rotation after a submission that staged data: Vulkan
      * orders no memory between submissions, so the next sync copy must not

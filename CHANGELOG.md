@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Vulkan submits staging copies and draws as one ordered command-buffer list, removing two internal binary semaphores and their signal/wait operations. Submissions with no staged data skip the staging-sync recording entirely. Host writes are flushed before queue submission, replacing redundant recorded HOST barriers; transfer barriers now cover both vertex and fragment uniform reads. Non-coherent staging allocations are explicitly flushed before their copies, with memory properties refreshed on allocation/recreation. Frontend queue handoff and slot-fence ownership remain unchanged.
+
 - Remove the standalone UI main-loop mutex: only the libretro emulation thread acquired it, including nested frame/renderer waits. Keep BQL release/reacquire and event notifications unchanged. Delete the unused host VFIO passthrough helper, its DMA-map mutex and trace declarations; emulated Xbox/Chihiro PCI devices retain their existing DMA paths.
 
 - Vulkan vertex RAM mirrors skip allocator flushes when coherent or unchanged. Non-coherent mirrors flush the envelope of newly copied bytes instead of the whole allocation; initial full-mirror uploads still flush their full range. Dirty tracking is updated after any download/settlement that can submit older writes, and GPU visibility barriers remain unchanged.

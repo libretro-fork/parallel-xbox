@@ -41,32 +41,32 @@ static VkResult vmaFlushAllocation(void *allocator,uintptr_t allocation,VkDevice
 VKAPI_ATTR void VKAPI_CALL vkCmdPipelineBarrier(VkCommandBuffer cmd,VkPipelineStageFlags src,VkPipelineStageFlags dst,VkDependencyFlags flags,uint32_t memory_count,const VkMemoryBarrier *memory,uint32_t buffer_count,const VkBufferMemoryBarrier *buffers,uint32_t image_count,const VkImageMemoryBarrier *images){assert(cmd==(VkCommandBuffer)(uintptr_t)4&&src==VK_PIPELINE_STAGE_HOST_BIT&&dst==VK_PIPELINE_STAGE_VERTEX_INPUT_BIT&&!flags&&!memory_count&&!memory&&buffer_count==3&&!image_count&&!images);for(unsigned i=0;i<3;i++){assert(buffers[i].sType==VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER&&buffers[i].srcAccessMask==VK_ACCESS_HOST_WRITE_BIT&&buffers[i].dstAccessMask==VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT&&buffers[i].buffer==(VkBuffer)(uintptr_t)(10+i)&&buffers[i].srcQueueFamilyIndex==VK_QUEUE_FAMILY_IGNORED&&buffers[i].dstQueueFamilyIndex==VK_QUEUE_FAMILY_IGNORED&&!buffers[i].offset&&buffers[i].size==VK_WHOLE_SIZE);}barriers++;}
 static bool download_flush;
 static unsigned finishes,settles,invalidations;
-static void flush_memory_buffer(PGRAPHState *,VkCommandBuffer);
-static void pgraph_vk_download_surfaces_in_range_if_dirty(PGRAPHState *pg,hwaddr offset,VkDeviceSize size){assert(offset+size<=16384);if(download_flush){download_flush=false;flush_memory_buffer(pg,(VkCommandBuffer)(uintptr_t)4);}}
+static void flush_memory_buffer(PGRAPHState *);
+static void pgraph_vk_download_surfaces_in_range_if_dirty(PGRAPHState *pg,hwaddr offset,VkDeviceSize size){assert(offset+size<=16384);if(download_flush){download_flush=false;flush_memory_buffer(pg);}}
 static size_t find_next_bit(const uint64_t *bits,size_t end,size_t start){for(size_t i=start;i<end;i++)if(*bits&(UINT64_C(1)<<i))return i;return end;}
 static void bitmap_clear(uint64_t *bits,size_t start,size_t count){assert(start+count<=4);for(size_t i=start;i<start+count;i++)*bits&=~(UINT64_C(1)<<i);}
-static void pgraph_vk_finish(PGRAPHState *pg,unsigned reason){assert(reason==VK_FINISH_REASON_VERTEX_BUFFER_DIRTY);flush_memory_buffer(pg,(VkCommandBuffer)(uintptr_t)4);finishes++;}
+static void pgraph_vk_finish(PGRAPHState *pg,unsigned reason){assert(reason==VK_FINISH_REASON_VERTEX_BUFFER_DIRTY);flush_memory_buffer(pg);finishes++;}
 static void pgraph_vk_settle_all_slots(PGRAPHState *pg){*pg->vk_renderer_state->vertex_consumed_bitmap=0;settles++;}
 static void nv2a_profile_inc_counter(unsigned counter){assert(counter==NV2A_PROF_GEOM_BUFFER_UPDATE_1);}
 static void pgraph_vk_vertex_cow_cache_invalidate(PGRAPHVkState *r,hwaddr offset,VkDeviceSize size){(void)r;assert(offset+size<=16384);invalidations++;}
 '''
 suffix=r'''
-int main(void){quiet_test_errors();PGRAPHVkState r={.allocator=(void*)(uintptr_t)7,.storage_buffers={{(VkBuffer)(uintptr_t)10,1,0,NULL}},.vertex_arena={{(VkBuffer)(uintptr_t)11,2,4096,NULL},{(VkBuffer)(uintptr_t)12,3,6000,NULL}},.vertex_arena_coherent={false,true},.vertex_arena_dirty_start={UINT64_MAX,UINT64_MAX}};PGRAPHState pg={&r};VkCommandBuffer cmd=(VkCommandBuffer)(uintptr_t)4;
- flush_memory_buffer(&pg,cmd);assert(!calls[0]&&!calls[1]&&!calls[2]&&barriers==1);
- r.vertex_arena_dirty_start[0]=1024;r.vertex_arena_dirty_start[1]=0;flush_memory_buffer(&pg,cmd);assert(calls[1]==1&&offsets[1]==1024&&sizes[1]==3072&&!calls[2]&&r.vertex_arena_dirty_start[0]==UINT64_MAX&&r.vertex_arena_dirty_start[1]==UINT64_MAX);
- flush_memory_buffer(&pg,cmd);assert(calls[1]==1&&!calls[2]);
- r.vertex_arena[0].buffer_offset=5000;r.vertex_arena_dirty_start[0]=4096;flush_memory_buffer(&pg,cmd);assert(calls[1]==2&&offsets[1]==4096&&sizes[1]==904);
- r.vertex_arena[1].buffer_offset=0;r.vertex_arena_dirty_start[1]=UINT64_MAX;r.vertex_arena_coherent[1]=false;flush_memory_buffer(&pg,cmd);assert(!calls[2]);
- r.vertex_arena[1].buffer_offset=100;r.vertex_arena_dirty_start[1]=0;flush_memory_buffer(&pg,cmd);assert(calls[2]==1&&offsets[2]==0&&sizes[2]==100);
- assert(!calls[0]&&barriers==6);puts("Vertex flush: clean/coherent arenas skip allocator calls; non-coherent dirty tails and recycled arenas use exact byte ranges; all mirror/arena visibility barriers preserved");
+int main(void){quiet_test_errors();PGRAPHVkState r={.allocator=(void*)(uintptr_t)7,.storage_buffers={{(VkBuffer)(uintptr_t)10,1,0,NULL}},.vertex_arena={{(VkBuffer)(uintptr_t)11,2,4096,NULL},{(VkBuffer)(uintptr_t)12,3,6000,NULL}},.vertex_arena_coherent={false,true},.vertex_arena_dirty_start={UINT64_MAX,UINT64_MAX}};PGRAPHState pg={&r};
+ flush_memory_buffer(&pg);assert(!calls[0]&&!calls[1]&&!calls[2]&&barriers==0);
+ r.vertex_arena_dirty_start[0]=1024;r.vertex_arena_dirty_start[1]=0;flush_memory_buffer(&pg);assert(calls[1]==1&&offsets[1]==1024&&sizes[1]==3072&&!calls[2]&&r.vertex_arena_dirty_start[0]==UINT64_MAX&&r.vertex_arena_dirty_start[1]==UINT64_MAX);
+ flush_memory_buffer(&pg);assert(calls[1]==1&&!calls[2]);
+ r.vertex_arena[0].buffer_offset=5000;r.vertex_arena_dirty_start[0]=4096;flush_memory_buffer(&pg);assert(calls[1]==2&&offsets[1]==4096&&sizes[1]==904);
+ r.vertex_arena[1].buffer_offset=0;r.vertex_arena_dirty_start[1]=UINT64_MAX;r.vertex_arena_coherent[1]=false;flush_memory_buffer(&pg);assert(!calls[2]);
+ r.vertex_arena[1].buffer_offset=100;r.vertex_arena_dirty_start[1]=0;flush_memory_buffer(&pg);assert(calls[2]==1&&offsets[2]==0&&sizes[2]==100);
+ assert(!calls[0]&&barriers==0);puts("Vertex flush: clean/coherent arenas skip allocator calls; non-coherent dirty tails and recycled arenas use exact byte ranges; no recorded HOST barriers");
  unsigned char mirror[16384]={0},source[16384];for(unsigned i=0;i<sizeof(source);i++)source[i]=(unsigned char)(i*37+11);
  uint64_t consumed=0,stale=15;r.storage_buffers[0].mapped=mirror;r.vertex_consumed_bitmap=&consumed;r.vertex_stale_bitmap=&stale;
  pgraph_vk_update_vertex_ram_buffer(&pg,1024,source+1024,128);pgraph_vk_update_vertex_ram_buffer(&pg,4096,source+4096,64);pgraph_vk_update_vertex_ram_buffer(&pg,800,source+800,32);
- assert(r.vertex_ram_dirty.addr==800&&r.vertex_ram_dirty.size==3360&&!calls[0]);assert(!memcmp(mirror+1024,source+1024,128)&&!memcmp(mirror+4096,source+4096,64)&&!memcmp(mirror+800,source+800,32));flush_memory_buffer(&pg,cmd);assert(calls[0]==1&&offsets[0]==800&&sizes[0]==3360&&!r.vertex_ram_dirty.size);flush_memory_buffer(&pg,cmd);assert(calls[0]==1);
- pgraph_vk_update_vertex_ram_buffer(&pg,200,source+200,32);download_flush=true;pgraph_vk_update_vertex_ram_buffer(&pg,8000,source+8000,100);assert(calls[0]==2&&offsets[0]==200&&sizes[0]==32&&r.vertex_ram_dirty.addr==8000&&r.vertex_ram_dirty.size==100);flush_memory_buffer(&pg,cmd);assert(calls[0]==3&&offsets[0]==8000&&sizes[0]==100);
- consumed=4;pgraph_vk_update_vertex_ram_buffer(&pg,8200,source+8200,16);assert(finishes==1&&settles==1&&!consumed&&r.vertex_ram_dirty.addr==8200&&r.vertex_ram_dirty.size==16);flush_memory_buffer(&pg,cmd);assert(calls[0]==4&&offsets[0]==8200&&sizes[0]==16);
- r.vertex_ram_coherent=true;pgraph_vk_update_vertex_ram_buffer(&pg,100,source+100,16);assert(!r.vertex_ram_dirty.size);flush_memory_buffer(&pg,cmd);assert(calls[0]==4&&!memcmp(mirror+100,source+100,16));r.vertex_ram_coherent=false;pgraph_vk_update_vertex_ram_buffer(&pg,0,source,0);flush_memory_buffer(&pg,cmd);assert(calls[0]==4);
- pgraph_vk_update_vertex_ram_buffer(&pg,0,source,sizeof(source));flush_memory_buffer(&pg,cmd);assert(calls[0]==5&&!offsets[0]&&sizes[0]==sizeof(source)&&!memcmp(mirror,source,sizeof(source))&&invalidations==9);
+ assert(r.vertex_ram_dirty.addr==800&&r.vertex_ram_dirty.size==3360&&!calls[0]);assert(!memcmp(mirror+1024,source+1024,128)&&!memcmp(mirror+4096,source+4096,64)&&!memcmp(mirror+800,source+800,32));flush_memory_buffer(&pg);assert(calls[0]==1&&offsets[0]==800&&sizes[0]==3360&&!r.vertex_ram_dirty.size);flush_memory_buffer(&pg);assert(calls[0]==1);
+ pgraph_vk_update_vertex_ram_buffer(&pg,200,source+200,32);download_flush=true;pgraph_vk_update_vertex_ram_buffer(&pg,8000,source+8000,100);assert(calls[0]==2&&offsets[0]==200&&sizes[0]==32&&r.vertex_ram_dirty.addr==8000&&r.vertex_ram_dirty.size==100);flush_memory_buffer(&pg);assert(calls[0]==3&&offsets[0]==8000&&sizes[0]==100);
+ consumed=4;pgraph_vk_update_vertex_ram_buffer(&pg,8200,source+8200,16);assert(finishes==1&&settles==1&&!consumed&&r.vertex_ram_dirty.addr==8200&&r.vertex_ram_dirty.size==16);flush_memory_buffer(&pg);assert(calls[0]==4&&offsets[0]==8200&&sizes[0]==16);
+ r.vertex_ram_coherent=true;pgraph_vk_update_vertex_ram_buffer(&pg,100,source+100,16);assert(!r.vertex_ram_dirty.size);flush_memory_buffer(&pg);assert(calls[0]==4&&!memcmp(mirror+100,source+100,16));r.vertex_ram_coherent=false;pgraph_vk_update_vertex_ram_buffer(&pg,0,source,0);flush_memory_buffer(&pg);assert(calls[0]==4);
+ pgraph_vk_update_vertex_ram_buffer(&pg,0,source,sizeof(source));flush_memory_buffer(&pg);assert(calls[0]==5&&!offsets[0]&&sizes[0]==sizeof(source)&&!memcmp(mirror,source,sizeof(source))&&invalidations==9&&!barriers);
  puts("Vertex mirror: merged dirty envelope, clean/coherent skips, initial full upload, post-download/settle marking and payload bytes passed");return 0;}
 '''
 q=(r/'libretro/tests/test-spv-geom.c').read_text();qa=q.index('#ifdef _WIN32\nstatic void quiet_test_abort');qb=q.index('int line_tests(',qa);prefix=prefix.replace('/* QUIET ERRORS */',q[qa:qb]).replace('/* RANGE TYPE */',range_type)

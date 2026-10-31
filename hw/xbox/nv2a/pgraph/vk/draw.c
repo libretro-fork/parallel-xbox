@@ -2356,6 +2356,10 @@ static void sync_staging_buffer(PGRAPHState *pg, VkCommandBuffer cmd,
         return;
     }
 
+    if (!(b_src->properties & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT)) {
+        VK_CHECK(vmaFlushAllocation(r->allocator, b_src->allocation, 0,
+                                    b_src->buffer_offset));
+    }
     VkBufferCopy copy_region = { .size = b_src->buffer_offset };
     vkCmdCopyBuffer(cmd, b_src->buffer, b_dst->buffer, 1, &copy_region);
 
@@ -2373,7 +2377,8 @@ static void sync_staging_buffer(PGRAPHState *pg, VkCommandBuffer cmd,
         break;
     case BUFFER_UNIFORM:
         dst_access_mask = VK_ACCESS_UNIFORM_READ_BIT;
-        dst_stage_mask = VK_PIPELINE_STAGE_VERTEX_SHADER_BIT;
+        dst_stage_mask = VK_PIPELINE_STAGE_VERTEX_SHADER_BIT |
+                         VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
         break;
     default:
         assert(0);
@@ -2395,7 +2400,10 @@ static void sync_staging_buffer(PGRAPHState *pg, VkCommandBuffer cmd,
     b_src->buffer_offset = 0;
 }
 
-static void flush_memory_buffer(PGRAPHState *pg, VkCommandBuffer cmd)
+/* Host writes and non-coherent flushes finish before vkQueueSubmit, whose
+ * host-write domain operation supplies their device visibility:
+ * https://docs.vulkan.org/spec/latest/chapters/synchronization.html#synchronization-submission-host-writes */
+static void flush_memory_buffer(PGRAPHState *pg)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
 
@@ -2420,27 +2428,6 @@ static void flush_memory_buffer(PGRAPHState *pg, VkCommandBuffer cmd)
             r->vertex_arena_dirty_start[i] = UINT64_MAX;
         }
     }
-
-    /* Mirror and both COW arenas: host writes -> vertex fetch. */
-    VkBufferMemoryBarrier barriers[3];
-    for (int i = 0; i < 3; i++) {
-        barriers[i] = (VkBufferMemoryBarrier){
-            .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
-            .srcAccessMask = VK_ACCESS_HOST_WRITE_BIT,
-            .dstAccessMask = VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT,
-            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-            .offset = 0,
-            .size = VK_WHOLE_SIZE,
-        };
-    }
-    barriers[0].buffer = r->storage_buffers[BUFFER_VERTEX_RAM].buffer;
-    barriers[1].buffer = r->vertex_arena[0].buffer;
-    barriers[2].buffer = r->vertex_arena[1].buffer;
-
-    vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_HOST_BIT,
-                         VK_PIPELINE_STAGE_VERTEX_INPUT_BIT, 0, 0, NULL, 3,
-                         barriers, 0, NULL);
 }
 
 static void begin_render_pass(PGRAPHState *pg)
@@ -2729,41 +2716,31 @@ void pgraph_vk_finish(PGRAPHState *pg, FinishReason finish_reason)
                     .buffer_offset != 0;
         }
 
-        VK_CHECK(vkBeginCommandBuffer(sync_cmd, &sync_begin_info));
-        sync_staging_buffer(pg, sync_cmd, BUFFER_INDEX_STAGING, BUFFER_INDEX);
-        sync_staging_buffer(pg, sync_cmd, BUFFER_VERTEX_INLINE_STAGING,
-                                BUFFER_VERTEX_INLINE);
-        sync_staging_buffer(pg, sync_cmd, BUFFER_UNIFORM_STAGING,
-                            BUFFER_UNIFORM);
-        flush_memory_buffer(pg, sync_cmd);
-        VK_CHECK(vkEndCommandBuffer(sync_cmd));
+        if (staged_this_submit) {
+            VK_CHECK(vkBeginCommandBuffer(sync_cmd, &sync_begin_info));
+            sync_staging_buffer(pg, sync_cmd, BUFFER_INDEX_STAGING, BUFFER_INDEX);
+            sync_staging_buffer(pg, sync_cmd, BUFFER_VERTEX_INLINE_STAGING,
+                                    BUFFER_VERTEX_INLINE);
+            sync_staging_buffer(pg, sync_cmd, BUFFER_UNIFORM_STAGING,
+                                    BUFFER_UNIFORM);
+            VK_CHECK(vkEndCommandBuffer(sync_cmd));
+        }
+        flush_memory_buffer(pg);
 
-        VkPipelineStageFlags wait_stage = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
-        /* Per-slot semaphore (renderer.h slot_sem). */
-        VkSubmitInfo submit_infos[] = {
-            {
-                .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
-                .commandBufferCount = 1,
-                .pCommandBuffers = &sync_cmd,
-                .signalSemaphoreCount = 1,
-                .pSignalSemaphores = &r->slot_sem[r->slot],
-            },
-            {
-
-                .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
-                .commandBufferCount = 1,
-                .pCommandBuffers = &r->command_buffer,
-                .waitSemaphoreCount = 1,
-                .pWaitSemaphores = &r->slot_sem[r->slot],
-                .pWaitDstStageMask = &wait_stage,
-            }
+        /* The sync copies' transfer barriers cover later command buffers on
+         * this queue, including both uniform consumers. One submission needs
+         * no internal binary semaphore. Without copies, omit sync entirely. */
+        VkCommandBuffer commands[] = { sync_cmd, r->command_buffer };
+        VkSubmitInfo submit_info = {
+            .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+            .commandBufferCount = staged_this_submit ? 2 : 1,
+            .pCommandBuffers = commands + (staged_this_submit ? 0 : 1),
         };
         nv2a_profile_inc_counter(NV2A_PROF_QUEUE_SUBMIT);
         vkResetFences(r->device, 1, &r->slot_fence[r->slot]);
         int64_t sub_t0 = g_get_monotonic_time();
         /* through the core's wrapper: the queue is RetroArch's, shared */
-        pgraph_vk_queue_submit(r, ARRAY_SIZE(submit_infos), submit_infos,
-                               r->slot_fence[r->slot]);
+        pgraph_vk_queue_submit(r, 1, &submit_info, r->slot_fence[r->slot]);
         ema16(&r->submit_us, g_get_monotonic_time() - sub_t0);
         r->submit_count += 1;
         r->slot_submit[r->slot] = r->submit_count;

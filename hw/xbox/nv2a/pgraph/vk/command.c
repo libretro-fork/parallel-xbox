@@ -422,16 +422,11 @@ void pgraph_vk_init_command_buffers(PGRAPHState *pg)
         r->aux[s].pending = false;
     }
 
-    VkSemaphoreCreateInfo sem_info = {
-        .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
-    };
     for (int s = 0; s < PGRAPH_VK_SLOTS; s++) {
         VK_CHECK(vkCreateFence(r->device, &fence_info, NULL,
                                &r->slot_fence[s]));
         r->slot_fence_pending[s] = false;
         r->slot_submit[s] = 0;
-        VK_CHECK(vkCreateSemaphore(r->device, &sem_info, NULL,
-                                   &r->slot_sem[s]));
     }
 }
 
@@ -450,7 +445,6 @@ void pgraph_vk_finalize_command_buffers(PGRAPHState *pg)
     }
     for (int s = 0; s < PGRAPH_VK_SLOTS; s++) {
         vkDestroyFence(r->device, r->slot_fence[s], NULL);
-        vkDestroySemaphore(r->device, r->slot_sem[s], NULL);
     }
     destroy_command_buffers(pg);
     if (r->frame_gpu.pool != VK_NULL_HANDLE) {

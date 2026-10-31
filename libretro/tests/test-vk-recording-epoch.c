@@ -6,6 +6,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#ifdef _WIN32
+#include <windows.h>
+#include <signal.h>
+#endif
+/* QUIET ERRORS */
 #define VK_NO_PROTOTYPES
 #include <vulkan/vulkan.h>
 #define ARRAY_SIZE(a) (sizeof(a)/sizeof((a)[0]))
@@ -27,7 +32,8 @@ typedef struct {
     PipelineBinding *pipeline_binding;
     struct XemuVkTrashEntry *trash;
     unsigned trash_n,trash_cap;
-    struct { unsigned submitted; } display;
+    struct { unsigned submitted;VkSemaphore shown_pending; } display;
+    VkQueue queue;
     VkDevice device;
     bool in_draw,in_command_buffer,in_render_pass,query_in_flight;
     int debug_depth,slot;
@@ -35,7 +41,6 @@ typedef struct {
     struct { unsigned w,w_end[2]; } frame_gpu;
     struct { bool valid; } dyn_last,vi_last;
     VkCommandBuffer command_buffer,slot_main[2],slot_sync[2];
-    VkSemaphore slot_sem[2];
     VkFence slot_fence[2];
     bool slot_fence_pending[2],vertex_arena_used,budget_check_pending,cost_pools_reset;
     unsigned submit_count,slot_submit[2],allocator_last_submit_index;
@@ -49,7 +54,10 @@ typedef struct {
 typedef struct { PGRAPHVkState *vk_renderer_state; int draw_time; } PGRAPHState;
 typedef struct { PGRAPHState pgraph; } NV2AState;
 static const struct { int staging; } pgraph_vk_staged_buffers[]={{0},{2},{4}};
-static unsigned submits,waits,reclaims,reports,teardowns;
+static unsigned submits,waits,reclaims,reports,teardowns,sync_begins,sync_ends;
+static bool expect_staged,host_flushed,queue_locked;
+static PGRAPHVkState *recording_state;
+static VkSemaphore expected_frontend_wait;
 static unsigned xemu_cost_segn;
 static bool cost_model;
 static int pgraph_vk_cost_ops;
@@ -60,9 +68,10 @@ static void end_query(PGRAPHVkState *r) { r->query_in_flight=false; }
 static void xemu_cost_frame_close(NV2AState *d,int *ops) { (void)d;(void)ops; }
 static void pgraph_vk_frame_gpu_cb_end(PGRAPHVkState *r,VkCommandBuffer cmd) { (void)r;(void)cmd; }
 static void pgraph_vk_frame_gpu_cb_begin(PGRAPHVkState *r,VkCommandBuffer cmd) { (void)r;(void)cmd; }
-static VkResult vkEndCommandBuffer(VkCommandBuffer cmd) { (void)cmd;return VK_SUCCESS; }
+static VkResult vkEndCommandBuffer(VkCommandBuffer cmd) { if((uintptr_t)cmd>=20&&(uintptr_t)cmd<22)sync_ends++;return VK_SUCCESS; }
 static VkResult vkBeginCommandBuffer(VkCommandBuffer cmd,const VkCommandBufferBeginInfo *info) {
-    (void)cmd;assert(info->flags==VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);return VK_SUCCESS;
+    if((uintptr_t)cmd>=20&&(uintptr_t)cmd<22){sync_begins++;}
+    assert(info->flags==VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);return VK_SUCCESS;
 }
 static VkResult vkResetFences(VkDevice dev,uint32_t n,const VkFence *fences) {
     (void)dev;(void)fences;assert(n==1);return VK_SUCCESS;
@@ -70,15 +79,21 @@ static VkResult vkResetFences(VkDevice dev,uint32_t n,const VkFence *fences) {
 static void sync_staging_buffer(PGRAPHState *pg,VkCommandBuffer cmd,int src,int dst) {
     (void)cmd;assert(dst==src+1);pg->vk_renderer_state->storage_buffers[src].buffer_offset=0;
 }
-static void flush_memory_buffer(PGRAPHState *pg,VkCommandBuffer cmd) { (void)pg;(void)cmd; }
+static void flush_memory_buffer(PGRAPHState *pg) { (void)pg;host_flushed=true; }
 static int64_t g_get_monotonic_time(void) { static int64_t n;return ++n; }
 static void ema16(double *v,int64_t us) { *v=us; }
-static void pgraph_vk_queue_submit(PGRAPHVkState *r,uint32_t n,const VkSubmitInfo *info,VkFence fence) {
-    assert(r->in_command_buffer && n==2 && fence==r->slot_fence[r->slot]);
-    assert(info[0].commandBufferCount==1 && *info[0].pCommandBuffers==r->slot_sync[r->slot]);
-    assert(info[1].commandBufferCount==1 && *info[1].pCommandBuffers==r->command_buffer);
-    assert(info[0].signalSemaphoreCount==1 && info[1].waitSemaphoreCount==1);
-    assert(*info[0].pSignalSemaphores==*info[1].pWaitSemaphores);submits++;
+static void xemu_libretro_vk_lock_queue(void){assert(!queue_locked);queue_locked=true;}
+static void xemu_libretro_vk_unlock_queue(void){assert(queue_locked);queue_locked=false;}
+static VkResult vkQueueSubmit(VkQueue queue,uint32_t n,const VkSubmitInfo *info,VkFence fence) {
+    PGRAPHVkState *r=recording_state;assert(queue==r->queue&&queue_locked);
+    assert(r->in_command_buffer && n==1 && fence==r->slot_fence[r->slot]&&host_flushed);
+    assert(info[0].commandBufferCount==(expect_staged?2u:1u));
+    if(expect_staged)assert(info[0].pCommandBuffers[0]==r->slot_sync[r->slot]);
+    assert(info[0].pCommandBuffers[expect_staged?1:0]==r->command_buffer);
+    assert(!info[0].signalSemaphoreCount&&!info[0].pSignalSemaphores);
+    assert(info[0].waitSemaphoreCount==(expected_frontend_wait?1u:0u));
+    if(expected_frontend_wait){assert(info[0].pWaitSemaphores[0]==expected_frontend_wait&&info[0].pWaitDstStageMask[0]==VK_PIPELINE_STAGE_ALL_COMMANDS_BIT);}
+    host_flushed=false;submits++;return VK_SUCCESS;
 }
 static void vmaSetCurrentFrameIndex(void *allocator,unsigned frame) { (void)allocator;(void)frame; }
 static void rotate_slot(PGRAPHVkState *r,bool staged) {
@@ -105,17 +120,16 @@ static void vkCmdResetQueryPool(VkCommandBuffer cmd,VkQueryPool pool,unsigned fi
 static const int finish_reason_to_counter_enum[VK_FINISH_REASON_EAGER+1]={0};
 /* PRODUCTION */
 int main(void) {
-    unsigned cases=0;
+    quiet_test_errors();unsigned cases=0;
     for(unsigned model=0;model<2;model++)
     for(unsigned why=0;why<=VK_FINISH_REASON_EAGER;why++)
-    for(unsigned staged=0;staged<2;staged++) {
+    for(unsigned staged=0;staged<8;staged++) {
         PGRAPHVkState r={0};NV2AState d={.pgraph={&r,1}};PGRAPHState *pg=&d.pgraph;
         cost_model=model;
         for(unsigned s=0;s<2;s++) {
             r.slot_main[s]=(VkCommandBuffer)(uintptr_t)(10+s);
             r.slot_sync[s]=(VkCommandBuffer)(uintptr_t)(20+s);
             r.slot_fence[s]=(VkFence)(uintptr_t)(30+s);
-            r.slot_sem[s]=(VkSemaphore)(uintptr_t)(40+s);
         }
         for(unsigned frame=0;frame<1000;frame++) {
             pgraph_vk_begin_command_buffer(pg);
@@ -124,11 +138,18 @@ int main(void) {
             unsigned stamp=++pg->draw_time;
             r.in_render_pass=r.query_in_flight=true;r.vertex_arena_used=true;
             r.num_queries_in_flight=3;
-            r.storage_buffers[BUFFER_UNIFORM_STAGING].buffer_offset=staged?64:0;
+            r.storage_buffers[BUFFER_INDEX_STAGING].buffer_offset=staged&1?48:0;
+            r.storage_buffers[BUFFER_VERTEX_INLINE_STAGING].buffer_offset=staged&2?96:0;
+            r.storage_buffers[BUFFER_UNIFORM_STAGING].buffer_offset=staged&4?64:0;
+            expect_staged=staged!=0;recording_state=&r;
+            expected_frontend_wait=frame&1?(VkSemaphore)(uintptr_t)(100+r.slot):VK_NULL_HANDLE;
+            r.display.shown_pending=expected_frontend_wait;
+            unsigned old_sync_begins=sync_begins,old_sync_ends=sync_ends;
             unsigned old_submits=submits,old_waits=waits,old_slot=r.slot;
             unsigned serial=r.submit_count;
             pgraph_vk_finish(pg,why);
-            assert(!r.in_command_buffer && !r.in_render_pass && !r.query_in_flight);
+            assert(!r.in_command_buffer && !r.in_render_pass && !r.query_in_flight&&!queue_locked&&!r.display.shown_pending);
+            assert(sync_begins==old_sync_begins+expect_staged&&sync_ends==old_sync_ends+expect_staged);
             assert(submits==old_submits+1 && r.submit_count==serial+1);
             assert(r.queries_submitted==3 && !r.vertex_arena_used);
             assert(pg->draw_time>(int)stamp);
@@ -165,6 +186,7 @@ int main(void) {
             assert(current>=r.command_buffer_start_time);
             ++pg->draw_time;
             assert((unsigned)pg->draw_time>=r.command_buffer_start_time);
+            expect_staged=false;expected_frontend_wait=VK_NULL_HANDLE;
             pgraph_vk_finish(pg,VK_FINISH_REASON_FLUSH);
             cases++;
         }
