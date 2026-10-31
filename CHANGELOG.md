@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Vulkan texture uploads flush wrapped CPU staging data as separate tail/head spans, avoiding untouched ring memory that may still be read by earlier GPU submissions. No extra buffers, copies or allocations are added.
+
 - Vulkan texture, surface, background and PVIDEO uploads omit redundant HOST barriers for CPU staging data written/flushed before auxiliary queue submission. Imported guest-RAM barriers, image transitions and compute/transfer dependencies remain. Coherent staging memory and empty ranges skip allocator flush calls; non-coherent staging still flushes before submission and separates allocations by the device flush atom, rechecking memory properties after growth. No copies, buffers or allocations are added.
 
 - Remove the standalone QEMU debug-file logger, which the core always configured with no file and a zero mask. Eliminate its configuration mutex, stream locking, per-thread file/TLS state and deferred RCU closures; compile disabled translation logging out. Frontend logs, error/warning reports and fatal CPU diagnostics retain their existing output.

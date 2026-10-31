@@ -78,6 +78,30 @@ typedef struct TextureLayout {
     TextureLayer layers[6];
 } TextureLayout;
 
+/* Staging allocations follow layer/level order. Keep a wrapped upload's
+ * tail and head separate: the gap can still belong to an in-flight upload.
+ * Cropping changes copy offsets, not the allocation that must be flushed. */
+static void flush_texture_staging(PGRAPHState *pg, const TextureLayout *layout,
+                                  int num_layers, int num_levels,
+                                  unsigned skip_layers)
+{
+    VkDeviceSize lo = 0, hi = 0;
+    for (int layer = 0; layer < num_layers; layer++) {
+        if (skip_layers & (1u << layer)) continue;
+        for (int mip = 0; mip < num_levels; mip++) {
+            const TextureLevel *level = &layout->layers[layer].levels[mip];
+            if (level->source != LEVEL_STAGING || !level->size) continue;
+            if (hi && level->offset < lo) {
+                pgraph_vk_staging_flush(pg, lo, hi - lo);
+                hi = 0;
+            }
+            if (!hi) lo = level->offset;
+            hi = MAX(hi, level->offset + level->size);
+        }
+    }
+    if (hi) pgraph_vk_staging_flush(pg, lo, hi - lo);
+}
+
 /* The host format of a guest texture format: the map's, except the S3TC
  * formats, which stay compressed where the device samples BC */
 static VkColorFormatInfo texture_vkf(PGRAPHVkState *r, int color_format)
@@ -704,7 +728,6 @@ static void upload_texture_image(PGRAPHState *pg, int texture_idx,
     VkBufferImageCopy regions[6 * 16], vram_regions[6 * 16],
         unswizzled_regions[6 * 16];
     int num_regions = 0, num_vram_regions = 0, num_unswizzled_regions = 0;
-    VkDeviceSize flush_lo = (VkDeviceSize)-1, flush_hi = 0;
 
     for (int layer_idx = 0; layer_idx < num_layers; layer_idx++) {
         if (skip_layers & (1u << layer_idx)) continue;
@@ -722,15 +745,11 @@ static void upload_texture_image(PGRAPHState *pg, int texture_idx,
                     &unswizzled_regions[num_unswizzled_regions++] :
                     &regions[num_regions++];
             *region = texture_level_copy(level, layer_idx, level_idx);
-            if (level->source == LEVEL_STAGING) {
-                flush_lo = MIN(flush_lo, level->offset);
-                flush_hi = MAX(flush_hi, level->offset + level->size);
-            }
         }
     }
-    /* the levels are one run of the ring, or one that rounded its end */
-    if (flush_hi > flush_lo) {
-        pgraph_vk_staging_flush(pg, flush_lo, flush_hi - flush_lo);
+    if (!(r->storage_buffers[BUFFER_STAGING_SRC].properties &
+          VK_MEMORY_PROPERTY_HOST_COHERENT_BIT)) {
+        flush_texture_staging(pg, &layout, num_layers, num_levels, skip_layers);
     }
 
     pgraph_vk_upload_source_barrier(pg, cmd, num_vram_regions != 0);
