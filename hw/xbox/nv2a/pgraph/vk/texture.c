@@ -1528,6 +1528,35 @@ static bool check_surface_to_texture_compatiblity(const SurfaceBinding *surface,
            surface->host_fmt.host_bytes_per_pixel == vk_format_texel_size(tex_vkf.vk_format);
 }
 
+/* Return whether index bytes were materialized too. Only combine the reads
+ * when the indexed texture cannot take the existing surface-to-texture path.
+ * Palette materialization can change dirty/owed state used by cube selection,
+ * so possible GPU-only cases retain the original palette-first ordering. */
+static bool download_indexed_texture_inputs(
+    PGRAPHState *pg, const TextureShape *shape, hwaddr texture_addr,
+    size_t texture_size, hwaddr palette_addr, size_t palette_size)
+{
+    assert(shape->color_format == NV097_SET_TEXTURE_FORMAT_COLOR_SZ_I8_A8R8G8B8);
+    bool needs_ram = shape->levels > 1;
+    if (!needs_ram && !shape->cubemap) {
+        SurfaceBinding *surface = pgraph_vk_surface_get(
+            container_of(pg, NV2AState, pgraph), texture_addr);
+        needs_ram = !surface ||
+            !check_surface_to_texture_compatiblity(surface, shape);
+    }
+    if (needs_ram) {
+        const MemorySyncRequirement ranges[] = {
+            { palette_addr, palette_size }, { texture_addr, texture_size },
+        };
+        pgraph_vk_download_surface_ranges_if_dirty(pg, ranges,
+                                                   ARRAY_SIZE(ranges));
+    } else {
+        pgraph_vk_download_surfaces_in_range_if_dirty(pg, palette_addr,
+                                                     palette_size);
+    }
+    return needs_ram;
+}
+
 static bool can_reinterpret_argb_as_rgb565(PGRAPHState *pg,
                                            const SurfaceBinding *surface,
                                            const TextureShape *shape)
@@ -2221,16 +2250,18 @@ static void create_texture(PGRAPHState *pg, int texture_idx)
     key.state = state;
     key.texture_vram_offset = texture_vram_offset;
     key.texture_length = texture_length;
+    bool texture_ram_materialized = false;
     if (is_indexed) {
         texture_palette_vram_offset =
             pgraph_get_texture_palette_phys_addr_length(
                 pg, texture_idx, &texture_palette_data_size);
         key.palette_vram_offset = texture_palette_vram_offset;
         key.palette_length = texture_palette_data_size;
-        /* Indexed expansion consumes CPU palette bytes. Synchronize GPU
-         * palette producers before hashing or accepting a cached texture. */
-        pgraph_vk_download_surfaces_in_range_if_dirty(
-            pg, texture_palette_vram_offset, texture_palette_data_size);
+        /* CPU hashing and conversion fallbacks require materialized palette
+         * bytes, even when the GPU performs expansion from imported RAM. */
+        texture_ram_materialized = download_indexed_texture_inputs(
+            pg, &state, texture_vram_offset, texture_length,
+            texture_palette_vram_offset, texture_palette_data_size);
     }
     key.scale = 1;
     /* Split samplers: the sampler fields stay zero in the key; the
@@ -2326,7 +2357,8 @@ static void create_texture(PGRAPHState *pg, int texture_idx)
         }
     }
 
-    if (!surface_to_texture && !surface_to_texture_cube) {
+    if (!surface_to_texture && !surface_to_texture_cube &&
+        !texture_ram_materialized) {
         // FIXME: Restructure to support rendering surfaces to cubemap faces
 
         // Writeback any surfaces which this texture may index

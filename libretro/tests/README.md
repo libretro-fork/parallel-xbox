@@ -1191,3 +1191,12 @@ fallbacks must not increase waits. The all-direct 25-producer fixture reduces
 into three waits. Four no-copy retirement cases verify pending copies settle
 before callbacks are disarmed. These are scheduling-model counts, not measured
 whole-game latency improvements; no image transfer or hashing bytes are omitted.
+
+Indexed input batching extends the producer model with 2,000 ordered pairs of
+ranges, including overlap and shared producers. Final RAM, copy order, callback
+state and live-range learning must equal two sequential materializations,
+without increasing modeled waits. A palette/index fixture reduces two waits to
+one with identical transfers. `test-vk-indexed-inputs.py` exercises 128
+production eligibility decisions and exact range order: compatible single-level
+surfaces and possible GPU cube paths keep palette-only handling; known RAM
+fallbacks combine both inputs. Palette hashing still waits for RAM visibility.

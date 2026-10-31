@@ -133,24 +133,38 @@ static void ensure_surface_scratch(PGRAPHVkState *r, SurfaceBinding *surface);
 static void readback_batch_end(NV2AState *d);
 static void parked_owed_settled(NV2AState *d, SurfaceBinding *s);
 
-void pgraph_vk_download_surfaces_in_range_if_dirty(PGRAPHState *pg,
-                                                   hwaddr start, hwaddr size)
+static void queue_surface_readback_range(PGRAPHState *pg,
+                                          hwaddr start, hwaddr size)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
     SurfaceBinding *surface;
+    NV2AState *d = container_of(pg, NV2AState, pgraph);
 
-    readback_batch_begin(r);
     QTAILQ_FOREACH(surface, &r->surfaces, entry) {
         if (check_surface_overlaps_range(surface, start, size)) {
-            pgraph_vk_surface_download_if_dirty(
-                container_of(pg, NV2AState, pgraph), surface);
+            pgraph_vk_surface_download_if_dirty(d, surface);
         }
     }
-    /* The texture also needs parked producers. Record them in the same
-     * ordered batch before waiting; their CPU callbacks stay armed until
-     * download_settled runs after the fence. */
-    parked_materialize_range(container_of(pg, NV2AState, pgraph), start,
-                             size);
+    /* Keep range order, including parked producers and older writers.
+     * Callbacks retire only when this batch's copies reach RAM. */
+    parked_materialize_range(d, start, size);
+}
+
+void pgraph_vk_download_surface_ranges_if_dirty(
+    PGRAPHState *pg, const MemorySyncRequirement *ranges, unsigned int count)
+{
+    readback_batch_begin(pg->vk_renderer_state);
+    for (unsigned int i = 0; i < count; i++) {
+        queue_surface_readback_range(pg, ranges[i].addr, ranges[i].size);
+    }
+    readback_batch_end(container_of(pg, NV2AState, pgraph));
+}
+
+void pgraph_vk_download_surfaces_in_range_if_dirty(PGRAPHState *pg,
+                                                   hwaddr start, hwaddr size)
+{
+    readback_batch_begin(pg->vk_renderer_state);
+    queue_surface_readback_range(pg, start, size);
     readback_batch_end(container_of(pg, NV2AState, pgraph));
 }
 

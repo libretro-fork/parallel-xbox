@@ -20,6 +20,7 @@
 #define DIRTY_MEMORY_NV2A_TEX 0
 #define DIRTY_MEMORY_VGA 1
 typedef uint64_t hwaddr;
+/* RANGE TYPE */
 typedef struct SurfaceBinding {QTAILQ_ENTRY(SurfaceBinding) entry;hwaddr vram_addr,size;unsigned width,height,pitch,draw_time,id;bool draw_dirty,writeback_owed,download_pending,armed,direct;unsigned char value;} SurfaceBinding;
 typedef struct {QTAILQ_HEAD(,SurfaceBinding) surfaces,invalid_surfaces;/* BATCH TYPE */} PGRAPHVkState;
 typedef struct {PGRAPHVkState *vk_renderer_state;} PGRAPHState;
@@ -84,10 +85,20 @@ int main(void){
   assert(!state.readback_batch.open&&!state.readback_batch.recording&&!state.readback_batch.n&&!command_count);assert(waits<=old_waits&&retirements==old_retirements&&copies==old_copies);assert(!memcmp(expected_ram,ram,sizeof(ram))&&!memcmp(expected_order,copy_order,copies*sizeof(*copy_order))&&!memcmp(expected_learned,learned,sizeof(learned)));
   for(unsigned i=0;i<count;i++){assert(!pending[i]);assert(surfaces[i].draw_dirty==expected[i].draw_dirty&&surfaces[i].writeback_owed==expected[i].writeback_owed&&surfaces[i].armed==expected[i].armed&&surfaces[i].download_pending==expected[i].download_pending);}
   if(trial==0){assert(old_waits==25&&waits==1);puts("Texture producer batch: 25 producer waits -> 1 in the all-direct fixture");}
+  const MemorySyncRequirement ranges[2]={{start,size},{random_word()%4096,random_word()%4097}};
+  setup(description,live,count);reference_range(&d,ranges[0].addr,ranges[0].size);reference_range(&d,ranges[1].addr,ranges[1].size);old_waits=waits;old_retirements=retirements;old_copies=copies;memcpy(expected_ram,ram,sizeof(ram));memcpy(expected,surfaces,count*sizeof(*surfaces));memcpy(expected_order,copy_order,copies*sizeof(*copy_order));memcpy(expected_learned,learned,sizeof(learned));
+  setup(description,live,count);pgraph_vk_download_surface_ranges_if_dirty(&d.pgraph,ranges,2);assert(waits<=old_waits&&retirements==old_retirements&&copies==old_copies&&!command_count&&!state.readback_batch.open&&!state.readback_batch.recording&&!state.readback_batch.n);assert(!memcmp(expected_ram,ram,sizeof(ram))&&!memcmp(expected_order,copy_order,copies*sizeof(*copy_order))&&!memcmp(expected_learned,learned,sizeof(learned)));
+  for(unsigned i=0;i<count;i++)assert(!pending[i]&&surfaces[i].draw_dirty==expected[i].draw_dirty&&surfaces[i].writeback_owed==expected[i].writeback_owed&&surfaces[i].armed==expected[i].armed);
  }
  /* A capacity split must retire each callback after its own completed fence. */
  memset(description,0,sizeof(description));for(unsigned i=0;i<130;i++)description[i]=(SurfaceBinding){.vram_addr=i*24,.size=16,.width=4,.height=1,.pitch=16,.draw_time=i+1,.id=i,.draw_dirty=true,.writeback_owed=i!=0,.armed=i!=0,.direct=true,.value=(unsigned char)(i+1)};
  setup(description,1,130);NV2AState d={.pgraph={.vk_renderer_state=&state}};reference_range(&d,0,4096);assert(waits==130);memcpy(expected_ram,ram,sizeof(ram));setup(description,1,130);pgraph_vk_download_surfaces_in_range_if_dirty(&d.pgraph,0,4096);assert(waits==3&&retirements==129&&!memcmp(expected_ram,ram,sizeof(ram)));
+ /* Two disjoint indexed inputs retain palette-before-index writes but share
+  * the direct batch instead of introducing a host wait between the inputs. */
+ description[0]=(SurfaceBinding){.vram_addr=16,.size=16,.width=4,.height=1,.pitch=16,.id=0,.draw_dirty=true,.direct=true,.value=11};description[1]=(SurfaceBinding){.vram_addr=128,.size=16,.width=4,.height=1,.pitch=16,.id=1,.draw_dirty=true,.writeback_owed=true,.armed=true,.direct=true,.value=22};
+ setup(description,1,2);reference_range(&d,16,16);reference_range(&d,128,16);assert(waits==2);memcpy(expected_ram,ram,sizeof(ram));
+ const MemorySyncRequirement indexed_ranges[2]={{16,16},{128,16}};setup(description,1,2);pgraph_vk_download_surface_ranges_if_dirty(&d.pgraph,indexed_ranges,2);assert(waits==1&&!memcmp(expected_ram,ram,sizeof(ram))&&copy_order[0]==0&&copy_order[1]==1);
+ puts("Indexed palette/index producers: two modeled waits -> one, same copies and bytes");
  for(unsigned edge=0;edge<4;edge++){
   description[0]=(SurfaceBinding){.vram_addr=16,.size=16,.width=4,.height=1,.pitch=16,.id=0,.draw_dirty=true,.direct=true,.value=11};
   description[1]=(SurfaceBinding){.vram_addr=128,.size=16,.width=edge==0?0:4,.height=edge==1?0:1,.pitch=16,.id=1,.writeback_owed=true,.armed=true,.draw_dirty=edge<2,.direct=true,.value=22};
@@ -95,6 +106,6 @@ int main(void){
   setup(description,1,2);pgraph_vk_download_surfaces_in_range_if_dirty(&d.pgraph,0,4096);assert(waits==expected_waits&&waits==1&&retirements==1&&!surfaces[1].writeback_owed&&!surfaces[1].armed&&!state.readback_batch.open&&!command_count&&!memcmp(expected_ram,ram,sizeof(ram)));
  }
  puts("Texture producer batch: 130 direct producers split into 3 waits; four explicit no-copy retirement cases passed");
- printf("Texture producer batch: 2000 original/new range workloads passed, exact RAM and copy order, overlap/older dependencies, capacity splits, synchronous fallbacks and callback retirement; modeled waits %u -> %u\n",total_before,total_after);
+ printf("Texture producer batch: 2000 single-range and 2000 ordered-pair workloads passed, exact RAM and copy order, overlap/older dependencies, capacity splits, synchronous fallbacks and callback retirement; modeled waits %u -> %u\n",total_before,total_after);
  return 0;
 }

@@ -1059,6 +1059,9 @@ SurfaceBinding *pgraph_vk_surface_get_within(NV2AState *d, hwaddr addr);
 void pgraph_vk_wait_for_download(NV2AState *d, hwaddr addr, hwaddr len);
 void pgraph_vk_download_dirty_surfaces(NV2AState *d);
 void pgraph_vk_download_surfaces_in_range_if_dirty(PGRAPHState *pg, hwaddr start, hwaddr size);
+/* Ordered producer ranges share the existing bounded readback batch. */
+void pgraph_vk_download_surface_ranges_if_dirty(
+    PGRAPHState *pg, const MemorySyncRequirement *ranges, unsigned int count);
 void pgraph_vk_upload_surface_data(NV2AState *d, SurfaceBinding *surface,
                                    bool force);
 void pgraph_vk_surface_update(NV2AState *d, bool upload, bool color_write,
