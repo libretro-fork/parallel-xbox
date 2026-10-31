@@ -895,6 +895,12 @@ static int ohci_service_td(OHCIState *ohci, struct ohci_ed *ed)
 
     /* See if this TD has already been submitted to the device. */
     completion = (addr == ohci->async_td);
+    if (ohci->async_td && !completion) {
+        /* This controller currently has one async slot. Its packet owns
+         * usb_buf until completion/cancellation, so check before any copy. */
+        trace_usb_ohci_td_too_many_pending(OHCI_BM(ed->flags, ED_EN));
+        return 1;
+    }
     if (completion && !ohci->async_complete) {
         trace_usb_ohci_td_skip_async();
         return 1;
@@ -984,16 +990,6 @@ static int ohci_service_td(OHCIState *ohci, struct ohci_ed *ed)
             return 1;
         }
         ep = usb_ep_get(dev, pid, OHCI_BM(ed->flags, ED_EN));
-        if (ohci->async_td) {
-            /*
-             * ??? The hardware should allow one active packet per
-             * endpoint.  We only allow one active packet per controller.
-             * This should be sufficient as long as devices respond in a
-             * timely manner.
-             */
-            trace_usb_ohci_td_too_many_pending(ep->nr);
-            return 1;
-        }
         usb_packet_setup(&ohci->usb_packet, pid, ep, 0, addr, !flag_r,
                          OHCI_BM(td.flags, TD_DI) == 0);
         usb_packet_addbuf(&ohci->usb_packet, ohci->usb_buf, pktlen);

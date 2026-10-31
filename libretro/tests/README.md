@@ -1512,3 +1512,12 @@ source immutability, one final Vulkan range and no GL index scratch. The GPU
 unswizzle success branch is preserved. PALETTE_CFLAGS, PALETTE_BINARY and
 PALETTE_SKIP_RUN support optimized or native cross builds; --bench after the
 compiler compares the old unswizzle+convert functions with the fused helper.
+
+`test-ohci-pending.py CHECKOUT [CC]` extracts the production OHCI TD service
+with controlled USB completion and guest-DMA callbacks. Its 784 scenarios cover
+pending/completed IN and OUT ownership, blocked SETUP/IN/OUT transfers, both
+direction encodings, zero-length/partial transfers and normal/error completion.
+The original handler fails the shared-payload integrity assertion. Blocked TDs
+must leave controller state and payload unchanged without any DMA read/copy or
+device lookup; the original TD and following TD then proceed normally. This
+does not implement per-endpoint asynchronous slots or model USB device timing.
