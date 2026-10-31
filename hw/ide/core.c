@@ -685,6 +685,9 @@ static void ide_rw_error(IDEState *s) {
 static void ide_buffered_readv_cb(void *opaque, int ret)
 {
     IDEBufferedRequest *req = opaque;
+
+    /* This read is complete. A callback may cancel or submit pending reads. */
+    QLIST_REMOVE(req, list);
     if (!req->orphaned) {
         if (!ret) {
             assert(req->qiov.size == req->original_qiov->size);
@@ -694,7 +697,6 @@ static void ide_buffered_readv_cb(void *opaque, int ret)
         }
         req->original_cb(req->original_opaque, ret);
     }
-    QLIST_REMOVE(req, list);
     qemu_vfree(qemu_iovec_buf(&req->qiov));
     g_free(req);
 }

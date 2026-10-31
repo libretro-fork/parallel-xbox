@@ -101,13 +101,22 @@ static void completion(void *opaque, int ret)
     Payload *p = opaque;
     p->calls++;
     p->ret = ret;
+    bool completed = !strcmp(mode, "complete-cancel") || !strcmp(mode, "error-cancel") ||
+                     !strcmp(mode, "complete-submit");
+    if (completed && p->id == 0 && p->calls == 1) {
+        assert(frees == 0); /* the completing request still owns its buffer */
+        for (unsigned j = 0; j < 8; j++) {
+            assert(p->out[j] == (ret == 0 ? 0x55 : 0xcc));
+        }
+    }
     if (p->id == 0 && !acted) {
         acted = true;
-        if (!strcmp(mode, "recursive") || !strcmp(mode, "recursive-unbuffered")) {
+        if (!strcmp(mode, "recursive") || !strcmp(mode, "recursive-unbuffered") ||
+            !strcmp(mode, "complete-cancel") || !strcmp(mode, "error-cancel")) {
             ide_cancel_dma_sync(active);
         } else if (!strcmp(mode, "callback-drain")) {
             blk_drain(active);
-        } else if (!strcmp(mode, "new-request")) {
+        } else if (!strcmp(mode, "new-request") || !strcmp(mode, "complete-submit")) {
             add_request(original_count);
         }
     }
@@ -118,7 +127,11 @@ int main(int argc, char **argv)
     assert(argc == 2);
     mode = argv[1];
     bool orphan = !strcmp(mode, "orphan");
-    bool extra = !strcmp(mode, "new-request");
+    bool extra = !strcmp(mode, "new-request") || !strcmp(mode, "complete-submit");
+    bool completed = !strcmp(mode, "complete-cancel") || !strcmp(mode, "error-cancel") ||
+                     !strcmp(mode, "complete-submit");
+    bool failed = !strcmp(mode, "error-cancel");
+    bool submitted = !strcmp(mode, "complete-submit");
     bool drain = !strcmp(mode, "unbuffered") || !strcmp(mode, "callback-drain") ||
                  !strcmp(mode, "recursive-unbuffered");
     original_count = !strcmp(mode, "limit") ? MAX_BUFFERED_REQS + 1 : 3;
@@ -136,14 +149,23 @@ int main(int argc, char **argv)
     if (!strcmp(mode, "unbuffered") || !strcmp(mode, "recursive-unbuffered")) {
         dma.aiocb = &state;
     }
-    ide_cancel_dma_sync(&state);
+    if (completed) {
+        ide_buffered_readv_cb(QLIST_FIRST(&state.buffered_requests), failed ? -EIO : 0);
+    } else {
+        ide_cancel_dma_sync(&state);
+    }
     for (unsigned i = 0; i < original_count; i++) {
+        if (submitted && i != 0) {
+            assert(payload[i].calls == 0);
+            continue;
+        }
         assert(payload[i].calls == (orphan && i == 1 ? 0u : 1u));
         if (payload[i].calls) {
-            assert(payload[i].ret == -ECANCELED);
+            int expected = completed && i == 0 ? (failed ? -EIO : 0) : -ECANCELED;
+            assert(payload[i].ret == expected);
         }
         for (unsigned j = 0; j < 8; j++) {
-            assert(payload[i].out[j] == 0xcc);
+            assert(payload[i].out[j] == (completed && i == 0 && !failed ? 0x55 : 0xcc));
         }
     }
     if (extra) {
@@ -151,13 +173,23 @@ int main(int argc, char **argv)
     }
     complete_all();
     assert(QLIST_EMPTY(&state.buffered_requests));
-    assert(copies == (extra ? 1u : 0u));
+    unsigned expected_copies = submitted ? original_count + 1 :
+                               completed ? (failed ? 0 : 1) : (extra ? 1 : 0);
+    assert(copies == expected_copies);
     assert(frees == 2 * (original_count + (extra ? 1 : 0)));
     assert(drains == (drain ? 1u : 0u));
     if (extra) {
         assert(payload[original_count].calls == 1 && payload[original_count].ret == 0);
         for (unsigned j = 0; j < 8; j++) {
             assert(payload[original_count].out[j] == 0x55);
+        }
+    }
+    if (submitted) {
+        for (unsigned i = 0; i < original_count; i++) {
+            assert(payload[i].calls == 1 && payload[i].ret == 0);
+            for (unsigned j = 0; j < 8; j++) {
+                assert(payload[i].out[j] == 0x55);
+            }
         }
     }
     printf("IDE cancellation %s: callbacks once, no stale copy, resources released: PASS\n", mode);

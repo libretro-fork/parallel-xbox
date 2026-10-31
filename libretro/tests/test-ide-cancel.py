@@ -33,6 +33,6 @@ with tempfile.TemporaryDirectory(prefix="ide-cancel-") as tmp:
         flags += ["-static"]
     subprocess.run([cc, *flags, str(unit), "-o", str(exe)], check=True)
     if not os.environ.get("IDE_CANCEL_TEST_NO_RUN"):
-        modes = sys.argv[3:] or ["normal", "recursive", "callback-drain", "new-request", "orphan", "unbuffered", "recursive-unbuffered", "limit"]
+        modes = sys.argv[3:] or ["normal", "recursive", "callback-drain", "new-request", "orphan", "unbuffered", "recursive-unbuffered", "limit", "complete-cancel", "error-cancel", "complete-submit"]
         for mode in modes:
             subprocess.run([str(exe), mode], check=True, timeout=15)
