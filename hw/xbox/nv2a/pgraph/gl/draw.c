@@ -23,6 +23,7 @@
 #include "qemu/fast-hash.h"
 #include "hw/xbox/nv2a/nv2a_int.h"
 #include "hw/xbox/nv2a/pgraph/cost.h"
+#include "hw/xbox/nv2a/pgraph/blend.h"
 #include "debug.h"
 #include "renderer.h"
 
@@ -320,12 +321,14 @@ void pgraph_gl_draw_begin(NV2AState *d)
         pgraph_gl_bind_shaders(pg);
     }
 
+    uint32_t blend = pgraph_surface_blend(pgraph_reg_r(pg, NV_PGRAPH_BLEND),
+                                         pg->surface_shape.color_format);
     {
         uint32_t key[13] = {
             pgraph_reg_r(pg, NV_PGRAPH_CONTROL_0) & GLST_CONTROL_0_FIELDS,
             pgraph_reg_r(pg, NV_PGRAPH_CONTROL_1) & GLST_CONTROL_1_FIELDS,
             pgraph_reg_r(pg, NV_PGRAPH_CONTROL_2) & GLST_CONTROL_2_FIELDS,
-            pgraph_reg_r(pg, NV_PGRAPH_BLEND) & GLST_BLEND_FIELDS,
+            blend & GLST_BLEND_FIELDS,
             pgraph_reg_r(pg, NV_PGRAPH_BLENDCOLOR),
             pgraph_reg_r(pg, NV_PGRAPH_SETUPRASTER) & GLST_SETUPRASTER_FIELDS,
             pgraph_reg_r(pg, NV_PGRAPH_ANTIALIASING),
@@ -350,12 +353,10 @@ void pgraph_gl_draw_begin(NV2AState *d)
     glStencilMask(GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_CONTROL_1),
                            NV_PGRAPH_CONTROL_1_STENCIL_MASK_WRITE));
 
-    if (pgraph_reg_r(pg, NV_PGRAPH_BLEND) & NV_PGRAPH_BLEND_EN) {
+    if (blend & NV_PGRAPH_BLEND_EN) {
         glEnable(GL_BLEND);
-        uint32_t sfactor = GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_BLEND),
-                                    NV_PGRAPH_BLEND_SFACTOR);
-        uint32_t dfactor = GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_BLEND),
-                                    NV_PGRAPH_BLEND_DFACTOR);
+        uint32_t sfactor = GET_MASK(blend, NV_PGRAPH_BLEND_SFACTOR);
+        uint32_t dfactor = GET_MASK(blend, NV_PGRAPH_BLEND_DFACTOR);
         assert(sfactor < ARRAY_SIZE(pgraph_blend_factor_gl_map));
         assert(dfactor < ARRAY_SIZE(pgraph_blend_factor_gl_map));
         glBlendFunc(pgraph_blend_factor_gl_map[sfactor],

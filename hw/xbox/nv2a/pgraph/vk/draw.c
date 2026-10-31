@@ -23,6 +23,7 @@
 #include "qemu/file-map.h"
 #include "ui/xemu-settings.h"
 #include "renderer.h"
+#include "hw/xbox/nv2a/pgraph/blend.h"
 #include <math.h>
 #include <retro_atomic.h>
 #include <rthreads/retro_eventcount.h>
@@ -828,6 +829,15 @@ static bool check_pipeline_dirty(PGRAPHState *pg)
         NV_PGRAPH_SETUPRASTER, NV_PGRAPH_ZOFFSETBIAS, NV_PGRAPH_ZOFFSETFACTOR,
     };
 
+    /* XRGB and ARGB can share a host attachment format. A guest format
+     * switch can change static blend factors without a BLEND write. */
+    if (!r->dyn_blend && r->pipeline_binding->key.regs[0] !=
+        (pgraph_surface_blend(pgraph_reg_r(pg, NV_PGRAPH_BLEND),
+                               pg->surface_shape.color_format) &
+         PGRAPH_BLEND_STATE_MASK)) {
+        return true;
+    }
+
     for (int i = 0; i < ARRAY_SIZE(regs); i++) {
         if (pgraph_is_reg_dirty(pg, regs[i])) {
             return true;
@@ -883,7 +893,7 @@ static void init_pipeline_key(PGRAPHState *pg, PipelineKey *key)
      * (e.g. animated ZOFFSET* floats) would make duplicate pipelines. */
     static const uint32_t reg_masks[] = {
         /* BLEND: EQN | EN | SFACTOR | DFACTOR */
-        0x00000FFF,
+        PGRAPH_BLEND_STATE_MASK,
         /* BLENDCOLOR: constants, consumed whole */
         0xFFFFFFFF,
         /* CONTROL_0: ZENABLE | ZFUNC | Z/STENCIL/RGBA WRITE_ENABLE */
@@ -913,6 +923,9 @@ static void init_pipeline_key(PGRAPHState *pg, PipelineKey *key)
                           NV_PGRAPH_CONTROL_0_RED_WRITE_ENABLE |
                           NV_PGRAPH_CONTROL_0_GREEN_WRITE_ENABLE |
                           NV_PGRAPH_CONTROL_0_BLUE_WRITE_ENABLE);
+    } else {
+        key->regs[0] = pgraph_surface_blend(key->regs[0],
+                                           pg->surface_shape.color_format);
     }
     if (r->dyn_cull_front) {
         key->regs[6] = 0;
@@ -2047,13 +2060,13 @@ static void pipeline_job_fill(PGRAPHState *pg, const ShaderState *st,
 
     float blend_constant[4] = { 0, 0, 0, 0 };
 
-    if (pgraph_reg_r(pg, NV_PGRAPH_BLEND) & NV_PGRAPH_BLEND_EN) {
+    uint32_t blend = pgraph_surface_blend(pgraph_reg_r(pg, NV_PGRAPH_BLEND),
+                                         pg->surface_shape.color_format);
+    if (blend & NV_PGRAPH_BLEND_EN) {
         color_blend_attachment.blendEnable = VK_TRUE;
 
-        uint32_t sfactor =
-            GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_BLEND), NV_PGRAPH_BLEND_SFACTOR);
-        uint32_t dfactor =
-            GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_BLEND), NV_PGRAPH_BLEND_DFACTOR);
+        uint32_t sfactor = GET_MASK(blend, NV_PGRAPH_BLEND_SFACTOR);
+        uint32_t dfactor = GET_MASK(blend, NV_PGRAPH_BLEND_DFACTOR);
         assert(sfactor < ARRAY_SIZE(pgraph_blend_factor_vk_map));
         assert(dfactor < ARRAY_SIZE(pgraph_blend_factor_vk_map));
         color_blend_attachment.srcColorBlendFactor =
@@ -3133,7 +3146,8 @@ static void emit_dynamic_state(PGRAPHState *pg, bool force)
     }
     VkCommandBuffer cmd = r->command_buffer;
 
-    uint32_t blend = pgraph_reg_r(pg, NV_PGRAPH_BLEND);
+    uint32_t blend = pgraph_surface_blend(pgraph_reg_r(pg, NV_PGRAPH_BLEND),
+                                         pg->surface_shape.color_format);
     uint32_t blendcolor = pgraph_reg_r(pg, NV_PGRAPH_BLENDCOLOR);
     uint32_t control_0 = pgraph_reg_r(pg, NV_PGRAPH_CONTROL_0);
     uint32_t setupraster = pgraph_reg_r(pg, NV_PGRAPH_SETUPRASTER);

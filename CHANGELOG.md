@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- OpenGL and Vulkan use the Xbox forced destination-alpha value when blending on XRGB-style targets, fixing colors that depended on unused host alpha bits. Vulkan applies the correction to both static pipeline keys and dynamic blend state, including guest format changes sharing the same host attachment format.
+
 - Guest indirect branches use the x86 state hook directly with CPU boost both enabled and disabled, and avoid the debug-flag helper call during normal execution. Single-step, one-instruction and no-chain debug modes keep their existing flag policy.
 
 - Vulkan devices with host query reset keep render passes open across visibility-report boundaries, avoiding repeated pass setup and pipeline binds. Query scopes still close at real pass boundaries, and game visibility queries do not overlap cost-model occlusion queries. Devices requiring command-buffer query resets retain their existing path.

@@ -67,6 +67,7 @@ python3 "$here/test-backport-compat.py" "$here/../.." "$cc"
 python3 "$here/test-frame-audio-pull.py" "$here/../.." "$cc"
 python3 "$here/test-vk-recording-epoch.py" "$here/../.." "$cc"
 python3 "$here/test-vk-query-scope.py" "$here/../.." "$cc"
+python3 "$here/test-surface-blend.py" "$here/../.." "$cc"
 python3 "$here/test-vk-depth-reuse.py" "$here/../.." "$cc"
 python3 "$here/test-lru-visit.py" "$here/../.." "$cc"
 python3 "$here/test-block-memory.py" "$here/../.." "$cc"
@@ -157,6 +158,7 @@ case $core in
     python3 "$here/test-gl-texture-reinterpret.py" "$here/../.." "$cc"
     python3 "$here/test-gl-upload-alignment.py" "$here/../.." "$cc"
     python3 "$here/test-gl-volume-compression.py" "$here/../.." "$cc"
+    python3 "$here/test-surface-blend.py" "$here/../.." "$cc" --gl
     # The MCPX HLE boot with synthetic flash images, in the Linux harness
     rm -rf "$work/mcpxhle"
     python3 "$here/test-mcpx-hle.py" "$core" "$h" "$work/mcpxhle"
