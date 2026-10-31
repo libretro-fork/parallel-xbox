@@ -36,7 +36,7 @@ static GHashTable *seen;
 static void compile(const char *game, GlslcStage stage, MString *code,
                     const char *what)
 {
-    GlslcOptions opts = { .spirv_1_6 = true };
+    GlslcOptions opts = { .spirv_1_6 = true, .emit_layout = true };
     GlslcResult r;
     const char *src = mstring_get_str(code);
     total++;
@@ -79,6 +79,8 @@ static void compile(const char *game, GlslcStage stage, MString *code,
             }
         }
         free(r.words);
+        free(r.uniforms.members);
+        free(r.push_constants.members);
     }
     mstring_unref(code);
 }

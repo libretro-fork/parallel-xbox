@@ -12,7 +12,7 @@
 #include "hw/xbox/nv2a/pgraph/spv/swizzle.h"
 #include "hw/xbox/nv2a/pgraph/spv/glslc.h"
 #include "hw/xbox/nv2a/pgraph/swizzle.h"
-#include "spirv_reflect.h"
+#include "spv-test-layout.h"
 #include "swizzle-reference-glsl.h"
 /* QUIET ERRORS */
 static void save(const char *folder,const char *name,const uint32_t *words,size_t count){char path[1024];snprintf(path,sizeof(path),"%s/%s.spv",folder,name);FILE *f=fopen(path,"wb");assert(f);assert(fwrite(words,4,count,f)==count);assert(!fclose(f));}
@@ -74,7 +74,7 @@ int main(int argc,char **argv){
  for(unsigned ram=0;ram<2;ram++){
   SpvStaticModule m=pgraph_spv_swizzle(ram);assert(m.num_words&&m.words[0]==0x07230203);for(unsigned i=0;i<10000;i++){SpvStaticModule again=pgraph_spv_swizzle(ram);assert(m.words==again.words&&m.num_words==again.num_words);}
   char name[40];snprintf(name,sizeof(name),"static-%u",ram);save(argv[1],name,m.words,m.num_words);
-  SpvReflectShaderModule reflect;assert(spvReflectCreateShaderModule2(SPV_REFLECT_MODULE_FLAG_NO_COPY,m.num_words*4,m.words,&reflect)==SPV_REFLECT_RESULT_SUCCESS);assert(reflect.entry_point_count==1&&reflect.entry_points[0].local_size.x==PGRAPH_SPV_SWIZZLE_WORKGROUP&&reflect.entry_points[0].local_size.y==1&&reflect.entry_points[0].local_size.z==1);assert(reflect.descriptor_binding_count==2&&reflect.push_constant_block_count==1);for(unsigned i=0;i<2;i++){assert(reflect.descriptor_bindings[i].set==0&&reflect.descriptor_bindings[i].binding==i&&reflect.descriptor_bindings[i].descriptor_type==SPV_REFLECT_DESCRIPTOR_TYPE_STORAGE_BUFFER);}assert(reflect.push_constant_blocks[0].member_count==11&&reflect.push_constant_blocks[0].size==44);for(unsigned i=0;i<11;i++)assert(reflect.push_constant_blocks[0].members[i].offset==i*4);spvReflectDestroyShaderModule(&reflect);
+  spv_test_layout(m.words,m.num_words,2,11,PGRAPH_SPV_SWIZZLE_WORKGROUP);
  }
  puts("Swizzle static modules: immutable identity and 2-buffer/44-byte layout passed");
 #ifdef TEST_VULKAN

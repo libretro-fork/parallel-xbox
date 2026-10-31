@@ -17,7 +17,7 @@
 #include "hw/xbox/nv2a/pgraph/spv/depth.h"
 #include "hw/xbox/nv2a/pgraph/spv/glslc.h"
 #include "hw/xbox/nv2a/pgraph/vk/compute-dispatch.h"
-#include "deps/SPIRV-Reflect/spirv_reflect.h"
+#include "spv-test-layout.h"
 #include "depth-reference-glsl.h"
 #define MIN(a,b) ((a)<(b)?(a):(b))
 static unsigned allocations;
@@ -61,7 +61,7 @@ static void host_tests(void){
 #include "gpu-common.h"
 #include "spv-depth-vulkan.h"
 #endif
-int main(int argc,char**argv){quiet_test_errors();setvbuf(stdout,NULL,_IONBF,0);assert(argc==2);grid_tests();host_tests();for(unsigned group=128;group<=256;group*=2)for(unsigned f=0;f<2;f++)for(unsigned pack=0;pack<2;pack++){SpvStaticModule s=pgraph_spv_depth_compute(f,pack,group);allocations=0;for(unsigned i=0;i<1000;i++){SpvStaticModule t=pgraph_spv_depth_compute(f,pack,group);assert(t.words==s.words&&t.num_words==s.num_words);}assert(!allocations);char name[64];snprintf(name,sizeof(name),"static-%u-%u-%u",group,f,pack);save(argv[1],name,s.words,s.num_words);SpvReflectShaderModule m;assert(spvReflectCreateShaderModule2(SPV_REFLECT_MODULE_FLAG_NO_COPY,s.num_words*4,s.words,&m)==SPV_REFLECT_RESULT_SUCCESS);assert(m.descriptor_binding_count==3&&m.push_constant_block_count==1&&m.push_constant_blocks[0].member_count==4&&m.push_constant_blocks[0].size==16);for(unsigned b=0;b<3;b++)assert(m.descriptor_bindings[b].binding==b&&m.descriptor_bindings[b].descriptor_type==SPV_REFLECT_DESCRIPTOR_TYPE_STORAGE_BUFFER);spvReflectDestroyShaderModule(&m);GlslcResult ref=reference(f,pack,group);snprintf(name,sizeof(name),"reference-%u-%u-%u",group,f,pack);save(argv[1],name,ref.words,ref.num_words);free(ref.words);}
+int main(int argc,char**argv){quiet_test_errors();setvbuf(stdout,NULL,_IONBF,0);assert(argc==2);grid_tests();host_tests();for(unsigned group=128;group<=256;group*=2)for(unsigned f=0;f<2;f++)for(unsigned pack=0;pack<2;pack++){SpvStaticModule s=pgraph_spv_depth_compute(f,pack,group);allocations=0;for(unsigned i=0;i<1000;i++){SpvStaticModule t=pgraph_spv_depth_compute(f,pack,group);assert(t.words==s.words&&t.num_words==s.num_words);}assert(!allocations);char name[64];snprintf(name,sizeof(name),"static-%u-%u-%u",group,f,pack);save(argv[1],name,s.words,s.num_words);spv_test_layout(s.words,s.num_words,3,4,group);GlslcResult ref=reference(f,pack,group);snprintf(name,sizeof(name),"reference-%u-%u-%u",group,f,pack);save(argv[1],name,ref.words,ref.num_words);free(ref.words);}
  assert(!pgraph_spv_depth_compute(false,false,64).words);
 #ifdef TEST_VULKAN
  depth_gpu_tests(argv[1]);

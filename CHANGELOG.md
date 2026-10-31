@@ -20,7 +20,10 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Vulkan: remove runtime SPIR-V reflection. The shader compiler supplies uniform and push constant layouts, shared without copying names or descriptors across cached modules. Fixed shaders pass compiler-owned words directly to Vulkan without a byte-array wrapper. Fix a compiler read past the end of shader sources without a trailing newline.
+
 - R6G5B5 textures: decode Morton texels directly into GL RGB or Vulkan RGBA, eliminating raw scratch and the Vulkan alpha-expansion pass. Small exact channel tables preserve signed endpoints and integer rounding.
+
 
 
 - APU streaming segments may start at physical RAM address zero without terminating the core. The source bytes are played normally, with no skipped audio cycle, extra buffering or new synchronization. The rare jingle signature probe is kept out of the ordinary voice-processing stack.
@@ -29,6 +32,7 @@ What changed in the libretro core of this fork, newest first. Changes that come 
   GPU copy. Keep CPU completion/visibility and oversized/direct-RAM fallbacks.
   Allocate one fixed host-pack descriptor set at startup and refresh it after
   readback-buffer growth; no extra pixel buffer or per-download allocation.
+
 
 - Paletted textures: expand Morton indices directly to final RGBA pixels for OpenGL and Vulkan CPU fallback uploads, eliminating the intermediate index buffer and second traversal. Keep Vulkan GPU unswizzle preferred.
 

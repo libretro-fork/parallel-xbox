@@ -24,82 +24,35 @@
 #include <stdint.h>
 #include <assert.h>
 #include <string.h>
+#include <retro_atomic.h>
+#include "hw/xbox/nv2a/pgraph/spv/glslc.h"
 
-typedef struct ShaderUniform {
-	const char *name;
-	size_t dim_v;
-	size_t dim_a;
-	size_t align;
-	size_t stride;
-	size_t offset;
-} ShaderUniform;
+/* Immutable words and compiler layouts travel together across the worker
+ * queue. References are atomic; mutable upload buffers belong to modules. */
+typedef struct ShaderLayouts {
+    retro_atomic_int_t refs;
+    GlslcLayout uniforms, push_constants;
+} ShaderLayouts;
+
+typedef struct ShaderSource {
+    retro_atomic_int_t refs;
+    uint32_t *words;
+    size_t num_words, len; /* len includes retained layout allocations */
+    ShaderLayouts *layouts; /* independent lifetime from the shader words */
+} ShaderSource;
+
+/* Takes ownership of malloc-allocated words. */
+ShaderSource *pgraph_vk_shader_source_new(uint32_t *words, size_t num_words);
+ShaderSource *pgraph_vk_shader_source_ref(ShaderSource *source);
+void pgraph_vk_shader_source_unref(ShaderSource *source);
+void pgraph_vk_shader_layouts_unref(ShaderLayouts *layouts);
 
 typedef struct ShaderUniformLayout {
-	ShaderUniform *uniforms;
+	const ShaderUniform *uniforms;
 	size_t num_uniforms;
 	size_t total_size;
 	void *allocation;
 } ShaderUniformLayout;
-
-static inline void uniform_std140(ShaderUniformLayout *layout)
-{
-	size_t offset = 0;
-
-	for (int i = 0; i < layout->num_uniforms; i++) {
-		ShaderUniform *u = &layout->uniforms[i];
-		size_t size = sizeof(float); // float or int
-		size_t align = size;
-		size_t stride = 0;
-
-		size *= u->dim_v;
-		align *= u->dim_v == 3 ? 4 : u->dim_v;
-
-		// If an array, each element is padded to vec4.
-		if (u->dim_a > 1) {
-			align = 4 * sizeof(float);
-			stride = align;
-			size = u->dim_a * align;
-		} else {
-			align = size;
-			stride = 0;
-		}
-
-		offset = ROUND_UP(offset, align);
-
-		u->align = align;
-		u->offset = offset;
-		u->stride = stride;
-
-		offset += size;
-	}
-
-	layout->total_size = offset;
-	assert(layout->total_size);
-}
-
-static inline void uniform_std430(ShaderUniformLayout *layout)
-{
-	size_t offset = 0;
-
-	for (int i = 0; i < layout->num_uniforms; i++) {
-		ShaderUniform *u = &layout->uniforms[i];
-		size_t size = sizeof(float); // float or int
-		size *= u->dim_v;
-		size_t align = size;
-		size *= u->dim_a;
-
-		offset = ROUND_UP(offset, align);
-
-		u->align = align;
-		u->offset = offset;
-		u->stride = u->dim_a > 1 ? (size * u->dim_v) : 0;
-
-		offset += size;
-	}
-
-	layout->total_size = offset;
-	assert(layout->total_size);
-}
 
 static inline int uniform_index(ShaderUniformLayout *layout, const char *name)
 {
@@ -186,7 +139,7 @@ static inline void uniform_copy(ShaderUniformLayout *layout, int idx,
 {
     assert(idx > 0 && "invalid uniform index");
 
-    ShaderUniform *u = &layout->uniforms[idx - 1];
+    const ShaderUniform *u = &layout->uniforms[idx - 1];
     const size_t element_size = value_size * u->dim_v;
 
     size_t bytes_remaining = value_size * count;

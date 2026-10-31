@@ -7,5 +7,5 @@ reference=(r/'libretro/tests/test-packed-overlay.c').read_text();a2=reference.in
 code=Path(__file__).with_suffix('.c').read_text().replace('/* PRODUCTION */',s).replace('/* REFERENCE */',reference[a2:b2])
 with tempfile.TemporaryDirectory(prefix='vk-packed-overlay-') as tmp:
  p=Path(tmp);(p/'test.c').write_text(code)
- command=[sys.argv[2] if len(sys.argv)>2 else 'gcc','-O2','-std=gnu11','-Wall','-Wextra','-Werror','-Wno-sign-compare','-Wno-unused-function','-Wno-missing-field-initializers','-Wno-misleading-indentation','-fsanitize=undefined','-fno-sanitize-recover=all','-I'+str(r),'-I'+str(r/'deps/SPIRV-Reflect/include'),str(p/'test.c'),str(r/'hw/xbox/nv2a/pgraph/spv/glslc.c'),str(r/'hw/xbox/nv2a/pgraph/spv/glslc_lex.c'),'-lvulkan','-lm','-o',str(p/'test')]
+ command=[sys.argv[2] if len(sys.argv)>2 else 'gcc','-O2','-std=gnu11','-Wall','-Wextra','-Werror','-Wno-sign-compare','-Wno-unused-function','-Wno-missing-field-initializers','-Wno-misleading-indentation','-fsanitize=undefined','-fno-sanitize-recover=all','-I'+str(r),'-I'+str(r/'deps/spirv-headers/include'),str(p/'test.c'),str(r/'hw/xbox/nv2a/pgraph/spv/glslc.c'),str(r/'hw/xbox/nv2a/pgraph/spv/glslc_lex.c'),'-lvulkan','-lm','-o',str(p/'test')]
  subprocess.run(command,check=True);subprocess.run([str(p/'test')],check=True,timeout=60)

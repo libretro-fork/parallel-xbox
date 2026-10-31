@@ -66,7 +66,7 @@ int main(int argc,char **argv){
 }
 ''')
     compiler=folder/'compiler'
-    subprocess.run([cc,'-O2','-std=gnu11','-I'+str(repo),'-I'+str(repo/'deps/SPIRV-Reflect/include'),
+    subprocess.run([cc,'-O2','-std=gnu11','-I'+str(repo),'-I'+str(repo/'deps/spirv-headers/include'),
                     str(driver),str(repo/'hw/xbox/nv2a/pgraph/spv/glslc.c'),
                     str(repo/'hw/xbox/nv2a/pgraph/spv/glslc_lex.c'),'-lm','-o',str(compiler)],check=True)
     for name,body in (('current',barycentric),('original',old)):

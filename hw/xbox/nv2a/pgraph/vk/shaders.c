@@ -33,8 +33,8 @@
 static int vk_state_module_keys(const ShaderState *st, bool push_constants,
                                 ShaderModuleCacheKey *keys);
 static MString *vk_module_glsl(const ShaderModuleCacheKey *key);
-static GByteArray *vk_module_spirv(const ShaderModuleCacheKey *key);
-static GByteArray *vk_spec_take_ready(const ShaderModuleCacheKey *key);
+static ShaderSource *vk_module_spirv(const ShaderModuleCacheKey *key);
+static ShaderSource *vk_spec_take_ready(const ShaderModuleCacheKey *key);
 
 const size_t MAX_UNIFORM_ATTR_VALUES_SIZE = NV2A_VERTEXSHADER_ATTRIBUTES * 4 * sizeof(float);
 
@@ -407,7 +407,7 @@ static void shader_module_cache_entry_init(Lru *lru, LruNode *node,
     memcpy(&module->key, key, sizeof(ShaderModuleCacheKey));
 
     /* the worker's SPIR-V when it made this module, else compiled here */
-    GByteArray *spv = vk_spec_take_ready(&module->key);
+    ShaderSource *spv = vk_spec_take_ready(&module->key);
     if (!spv) {
         spv = vk_module_spirv(&module->key);
     }
@@ -541,7 +541,7 @@ static struct { uint64_t hash; int phase; } vk_spec_track[1024];
 typedef struct VkSpecDone {
     uint64_t key_hash;
     ShaderModuleCacheKey key;
-    GByteArray *spirv; /* immutable; this record owns one reference */
+    ShaderSource *spirv; /* immutable; this record owns one reference */
     uint64_t state_hash; /* set on the record that ends a state */
 } VkSpecDone;
 
@@ -716,7 +716,7 @@ static bool vk_module_quad_options(const ShaderModuleCacheKey *key,
     return true;
 }
 
-static GByteArray *vk_module_spirv(const ShaderModuleCacheKey *key)
+static ShaderSource *vk_module_spirv(const ShaderModuleCacheKey *key)
 {
     SpvLineGeomOptions opts;
     if (vk_module_line_options(key, &opts)) {
@@ -724,8 +724,7 @@ static GByteArray *vk_module_spirv(const ShaderModuleCacheKey *key)
         if (!pgraph_spv_line_geom(opts, &module)) {
             abort(); /* selector and emitter disagree */
         }
-        return g_byte_array_new_take((guint8 *)module.words,
-                                     module.num_words * sizeof(uint32_t));
+        return pgraph_vk_shader_source_new(module.words, module.num_words);
     }
     SpvTriangleGeomOptions triangle;
     if (vk_module_triangle_options(key, &triangle)) {
@@ -733,8 +732,7 @@ static GByteArray *vk_module_spirv(const ShaderModuleCacheKey *key)
         if (!pgraph_spv_triangle_geom(triangle, &module)) {
             abort();
         }
-        return g_byte_array_new_take((guint8 *)module.words,
-                                     module.num_words * sizeof(uint32_t));
+        return pgraph_vk_shader_source_new(module.words, module.num_words);
     }
     SpvQuadGeomOptions quad;
     if (vk_module_quad_options(key, &quad)) {
@@ -742,18 +740,17 @@ static GByteArray *vk_module_spirv(const ShaderModuleCacheKey *key)
         if (!pgraph_spv_quad_geom(quad, &module)) {
             abort();
         }
-        return g_byte_array_new_take((guint8 *)module.words,
-                                     module.num_words * sizeof(uint32_t));
+        return pgraph_vk_shader_source_new(module.words, module.num_words);
     }
     MString *code = vk_module_glsl(key);
-    GByteArray *spirv = pgraph_vk_compile_glsl_to_spv(key->kind,
-                                                    mstring_get_str(code));
+    ShaderSource *spirv = pgraph_vk_compile_shader(key->kind,
+                                                  mstring_get_str(code));
     mstring_unref(code);
     return spirv;
 }
 
-/* Worker-owned memo of immutable module words, not Vulkan objects. Keys
- * include all generator options; device changes clear it at quiescence.
+/* Worker-owned memo of immutable module words and layouts, not Vulkan objects.
+ * Keys include all generator options; device changes clear it at quiescence.
  * Repeated states share a module without recompiling or copying its words.
  * Direct mapping bounds lookup work; the byte cap bounds retained payload. */
 #define VK_SPEC_MODULE_SLOTS 64
@@ -762,7 +759,7 @@ static struct {
     uint64_t hash;
     ShaderModuleCacheKey key;
     bool spirv_1_6;
-    GByteArray *spirv;
+    ShaderSource *spirv;
 } vk_spec_modules[VK_SPEC_MODULE_SLOTS];
 static size_t vk_spec_module_bytes;
 static unsigned vk_spec_module_victim;
@@ -771,7 +768,7 @@ static void vk_spec_module_evict(unsigned slot)
 {
     if (vk_spec_modules[slot].spirv) {
         vk_spec_module_bytes -= vk_spec_modules[slot].spirv->len;
-        g_byte_array_unref(vk_spec_modules[slot].spirv);
+        pgraph_vk_shader_source_unref(vk_spec_modules[slot].spirv);
         vk_spec_modules[slot].spirv = NULL;
     }
 }
@@ -787,7 +784,7 @@ static void vk_spec_modules_clear(void)
     assert(vk_spec_module_bytes == 0);
 }
 
-static GByteArray *vk_spec_compile_module(const ShaderModuleCacheKey *key)
+static ShaderSource *vk_spec_compile_module(const ShaderModuleCacheKey *key)
 {
     uint64_t hash = fast_hash((const uint8_t *)key, sizeof(*key));
     unsigned slot = hash % ARRAY_SIZE(vk_spec_modules);
@@ -795,9 +792,9 @@ static GByteArray *vk_spec_compile_module(const ShaderModuleCacheKey *key)
         vk_spec_modules[slot].hash == hash &&
         vk_spec_modules[slot].spirv_1_6 == pgraph_vk_spirv_1_6 &&
         !memcmp(&vk_spec_modules[slot].key, key, sizeof(*key))) {
-        return g_byte_array_ref(vk_spec_modules[slot].spirv);
+        return pgraph_vk_shader_source_ref(vk_spec_modules[slot].spirv);
     }
-    GByteArray *spirv = vk_module_spirv(key);
+    ShaderSource *spirv = vk_module_spirv(key);
     if (spirv->len > VK_SPEC_MODULE_BYTES) {
         return spirv; /* do not retain unusually large programs */
     }
@@ -810,21 +807,21 @@ static GByteArray *vk_spec_compile_module(const ShaderModuleCacheKey *key)
     vk_spec_modules[slot].hash = hash;
     vk_spec_modules[slot].key = *key;
     vk_spec_modules[slot].spirv_1_6 = pgraph_vk_spirv_1_6;
-    vk_spec_modules[slot].spirv = g_byte_array_ref(spirv);
+    vk_spec_modules[slot].spirv = pgraph_vk_shader_source_ref(spirv);
     vk_spec_module_bytes += spirv->len;
     return spirv;
 }
 
 /* Obtain each state's immutable module words and hand a reference over.
  * Only the worker accesses the memo while active; compilation touches no
- * Vulkan object and the render thread receives words through the SPSC. */
+ * Vulkan object; the render thread receives words and layouts through the SPSC. */
 static void vk_spec_compile_state(const ShaderState *st)
 {
     ShaderModuleCacheKey keys[3];
     int n = vk_state_module_keys(st, vk_spec_push_constants, keys);
     uint64_t state_hash = fast_hash((const uint8_t *)st, sizeof(*st));
     for (int i = 0; i < n; i++) {
-        GByteArray *spv = vk_spec_compile_module(&keys[i]);
+        ShaderSource *spv = vk_spec_compile_module(&keys[i]);
         VkSpecDone d;
         memset(&d, 0, sizeof(d));
         d.key = keys[i];
@@ -836,7 +833,7 @@ static void vk_spec_compile_state(const ShaderState *st)
          * that), so it has room; were it ever short, the record is dropped
          * and the state stays drawn as its sibling. */
         if (retro_spsc_write(&vk_spec_out, &d, sizeof(d)) != sizeof(d)) {
-            g_byte_array_unref(d.spirv);
+            pgraph_vk_shader_source_unref(d.spirv);
         }
     }
 }
@@ -870,7 +867,7 @@ static void vk_spec_ready_push(const VkSpecDone *done)
         slot = vk_spec_ready_order[vk_spec_ready_n++];
     } else {
         slot = vk_spec_ready_order[0];
-        g_byte_array_unref(vk_spec_ready[slot].spirv);
+        pgraph_vk_shader_source_unref(vk_spec_ready[slot].spirv);
         memmove(vk_spec_ready_order, vk_spec_ready_order + 1,
                 (VK_SPEC_READY - 1) * sizeof(vk_spec_ready_order[0]));
         vk_spec_ready_order[VK_SPEC_READY - 1] = slot;
@@ -900,14 +897,14 @@ static void vk_spec_drain(void)
 
 /* The worker's SPIR-V for a module key, taken out of the ready table,
  * or NULL: the caller then compiles it itself */
-static GByteArray *vk_spec_take_ready(const ShaderModuleCacheKey *key)
+static ShaderSource *vk_spec_take_ready(const ShaderModuleCacheKey *key)
 {
     uint64_t h = fast_hash((const uint8_t *)key, sizeof(*key));
     for (unsigned i = 0; i < vk_spec_ready_n; i++) {
         unsigned slot = vk_spec_ready_order[i];
         VkSpecDone *d = &vk_spec_ready[slot];
         if (d->key_hash == h && memcmp(&d->key, key, sizeof(*key)) == 0) {
-            GByteArray *spv = d->spirv;
+            ShaderSource *spv = d->spirv;
             vk_spec_ready_n--;
             memmove(vk_spec_ready_order + i, vk_spec_ready_order + i + 1,
                     (vk_spec_ready_n - i) * sizeof(vk_spec_ready_order[0]));
@@ -981,7 +978,7 @@ static void vk_spec_quiesce(void)
     vk_spec_drain();
     for (unsigned i = 0; i < vk_spec_ready_n; i++) {
         VkSpecDone *d = &vk_spec_ready[vk_spec_ready_order[i]];
-        g_byte_array_unref(d->spirv);
+        pgraph_vk_shader_source_unref(d->spirv);
         d->spirv = NULL;
     }
     vk_spec_ready_n = 0;

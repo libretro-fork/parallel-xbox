@@ -25,6 +25,7 @@
 #include <assert.h>
 #include <inttypes.h>
 #include <stdio.h>
+#include <retro_atomic.h>
 
 /* Chosen at device creation (instance.c); SPIR-V 1.5 until then. */
 bool pgraph_vk_spirv_1_6;
@@ -33,8 +34,8 @@ bool pgraph_vk_spirv_1_6;
  * is local to this call; it creates no Vulkan objects. Cache misses may run
  * here synchronously when the worker has not prepared a module. Compilation
  * cost depends on the shader and is not a bounded draw-time guarantee. */
-GByteArray *pgraph_vk_compile_glsl_to_spv(VkShaderStageFlagBits stage,
-                                          const char *glsl_source)
+static GlslcResult compile_glsl(VkShaderStageFlagBits stage,
+                                const char *glsl_source, bool emit_layout)
 {
     GlslcStage st;
     switch (stage) {
@@ -44,9 +45,10 @@ GByteArray *pgraph_vk_compile_glsl_to_spv(VkShaderStageFlagBits stage,
     case VK_SHADER_STAGE_COMPUTE_BIT: st = GLSLC_STAGE_COMPUTE; break;
     default:
         assert(!"shader stage");
-        return NULL;
+        abort();
     }
-    GlslcOptions opts = { .spirv_1_6 = pgraph_vk_spirv_1_6 };
+    GlslcOptions opts = { .spirv_1_6 = pgraph_vk_spirv_1_6,
+                          .emit_layout = emit_layout };
     GlslcResult result;
     if (!glslc_compile(st, glsl_source, &opts, &result)) {
         /* A bug in the compiler or a generator: the shader goes next to
@@ -63,12 +65,67 @@ GByteArray *pgraph_vk_compile_glsl_to_spv(VkShaderStageFlagBits stage,
                 "is in %s)\n",
                 result.error_line, result.error, path);
         g_free(path);
-        assert(!"shader compilation failed");
-        return NULL;
+        abort();
     }
-    /* the words were malloc'ed by the compiler: the array takes them */
-    return g_byte_array_new_take((guint8 *)result.words,
-                                 result.num_words * sizeof(uint32_t));
+    return result;
+}
+
+ShaderSource *pgraph_vk_shader_source_new(uint32_t *words, size_t num_words)
+{
+    ShaderSource *source = g_malloc0(sizeof(*source));
+    retro_atomic_int_init(&source->refs, 1);
+    source->words = words;
+    source->num_words = num_words;
+    source->len = sizeof(*source) + num_words * sizeof(*words);
+    return source;
+}
+
+ShaderSource *pgraph_vk_shader_source_ref(ShaderSource *source)
+{
+    retro_atomic_fetch_add_int(&source->refs, 1);
+    return source;
+}
+
+void pgraph_vk_shader_layouts_unref(ShaderLayouts *layouts)
+{
+    if (layouts && retro_atomic_fetch_sub_int(&layouts->refs, 1) == 1) {
+        free(layouts->uniforms.members);
+        free(layouts->push_constants.members);
+        g_free(layouts);
+    }
+}
+
+void pgraph_vk_shader_source_unref(ShaderSource *source)
+{
+    if (source && retro_atomic_fetch_sub_int(&source->refs, 1) == 1) {
+        free(source->words);
+        pgraph_vk_shader_layouts_unref(source->layouts);
+        g_free(source);
+    }
+}
+
+ShaderSource *pgraph_vk_compile_shader(VkShaderStageFlagBits stage,
+                                      const char *glsl_source)
+{
+    GlslcResult result = compile_glsl(stage, glsl_source, true);
+    ShaderSource *source = pgraph_vk_shader_source_new(result.words,
+                                                      result.num_words);
+    if (!result.uniforms.count && !result.push_constants.count) {
+        return source;
+    }
+    source->layouts = g_malloc0(sizeof(*source->layouts));
+    retro_atomic_int_init(&source->layouts->refs, 1);
+    source->layouts->uniforms = result.uniforms;
+    source->layouts->push_constants = result.push_constants;
+    source->len += sizeof(*source->layouts);
+    const GlslcLayout *layouts[] = { &result.uniforms, &result.push_constants };
+    for (unsigned i = 0; i < ARRAY_SIZE(layouts); i++) {
+        source->len += layouts[i]->count * sizeof(GlslcUniform);
+        for (size_t j = 0; j < layouts[i]->count; j++) {
+            source->len += strlen(layouts[i]->members[j].name) + 1;
+        }
+    }
+    return source;
 }
 
 VkShaderModule pgraph_vk_create_shader_module_from_words(PGRAPHVkState *r,
@@ -85,102 +142,48 @@ VkShaderModule pgraph_vk_create_shader_module_from_words(PGRAPHVkState *r,
     return module;
 }
 
-VkShaderModule pgraph_vk_create_shader_module_from_spv(PGRAPHVkState *r, GByteArray *spv)
-{
-    assert(spv->len % sizeof(uint32_t) == 0);
-    return pgraph_vk_create_shader_module_from_words(r, (const uint32_t *)spv->data,
-                                      spv->len / sizeof(uint32_t));
-}
-
 /* Fixed programs have a host-defined layout. Borrow the compiler's words
  * through vkCreateShaderModule, then release them without reflecting or
  * allocating ShaderModuleInfo and unused uniform metadata. */
 VkShaderModule pgraph_vk_create_fixed_shader_module_from_glsl(
     PGRAPHVkState *r, VkShaderStageFlagBits stage, const char *glsl)
 {
-    GByteArray *spirv = pgraph_vk_compile_glsl_to_spv(stage, glsl);
-    VkShaderModule module = pgraph_vk_create_shader_module_from_spv(r, spirv);
-    g_byte_array_unref(spirv);
+    GlslcResult result = compile_glsl(stage, glsl, false);
+    VkShaderModule module = pgraph_vk_create_shader_module_from_words(
+        r, result.words, result.num_words);
+    free(result.words);
     return module;
 }
 
-static void block_to_uniforms(const SpvReflectBlockVariable *block, ShaderUniformLayout *layout)
+/* Compiler metadata is immutable and may be shared with the worker memo.
+ * Vulkan modules share names/descriptors and own mutable parameter storage. */
+static void init_uniform_layout(ShaderUniformLayout *layout,
+                                const GlslcLayout *source)
 {
-    assert(!layout->uniforms);
-
-    layout->num_uniforms = block->member_count;
-    layout->uniforms = g_malloc0_n(block->member_count, sizeof(ShaderUniform));
-    layout->total_size = block->size;
-    layout->allocation = g_malloc0(block->size);
-
-    for (uint32_t k = 0; k < block->member_count; ++k) {
-        const SpvReflectBlockVariable *member = &block->members[k];
-
-        assert(member->array.dims_count < 2);
-
-        int dim = 1;
-        for (int i = 0; i < member->array.dims_count; i++) {
-            dim *= member->array.dims[i];
-        }
-        int stride = MAX(member->array.stride, member->numeric.matrix.stride);
-        if (member->numeric.matrix.column_count) {
-            dim *= member->numeric.matrix.column_count;
-            if (member->array.stride) {
-                stride =
-                    member->array.stride / member->numeric.matrix.column_count;
-            }
-        }
-        layout->uniforms[k] = (ShaderUniform){
-            .name = strdup(member->name),
-            .offset = member->offset,
-            .dim_v = MAX(1, member->numeric.vector.component_count),
-            .dim_a = dim,
-            .stride = stride,
-        };
-
-        // fprintf(stderr, "<%s offset=%zd dim_v=%zd dim_a=%zd stride=%zd>\n",
-        //     layout->uniforms[k].name,
-        //     layout->uniforms[k].offset,
-        //     layout->uniforms[k].dim_v,
-        //     layout->uniforms[k].dim_a,
-        //     layout->uniforms[k].stride
-        //     );
+    if (!source->count) {
+        return;
     }
-    // fprintf(stderr, "--\n");
-}
-
-static void init_layout_from_spv(ShaderModuleInfo *info, GByteArray *spirv)
-{
-    /* Borrow immutable words while extracting the layouts. Neither parser
-     * metadata nor source words are needed by the resulting Vulkan module. */
-    SpvReflectShaderModule reflect;
-    SpvReflectResult result = spvReflectCreateShaderModule2(
-        SPV_REFLECT_MODULE_FLAG_NO_COPY, spirv->len, spirv->data, &reflect);
-    assert(result == SPV_REFLECT_RESULT_SUCCESS &&
-           "Failed to create SPIR-V shader module");
-
-    for (uint32_t i = 0; i < reflect.descriptor_binding_count; i++) {
-        const SpvReflectDescriptorBinding *binding = &reflect.descriptor_bindings[i];
-        if (binding->descriptor_type == SPV_REFLECT_DESCRIPTOR_TYPE_UNIFORM_BUFFER) {
-            block_to_uniforms(&binding->block, &info->uniforms);
-        }
-    }
-    assert(reflect.push_constant_block_count < 2);
-    if (reflect.push_constant_block_count) {
-        block_to_uniforms(&reflect.push_constant_blocks[0], &info->push_constants);
-    }
-    spvReflectDestroyShaderModule(&reflect);
+    layout->num_uniforms = source->count;
+    layout->total_size = source->size;
+    layout->uniforms = source->members;
+    layout->allocation = g_malloc0(source->size);
 }
 
 /* A module from SPIR-V the caller hands over (a worker compiled it) */
 ShaderModuleInfo *pgraph_vk_create_shader_module_from_spirv(PGRAPHVkState *r,
-                                                             GByteArray *spirv)
+                                                             ShaderSource *spirv)
 {
     ShaderModuleInfo *info = g_malloc0(sizeof(*info));
     info->refcnt = 0;
-    info->module = pgraph_vk_create_shader_module_from_spv(r, spirv);
-    init_layout_from_spv(info, spirv);
-    g_byte_array_unref(spirv);
+    info->module = pgraph_vk_create_shader_module_from_words(
+        r, spirv->words, spirv->num_words);
+    info->layouts = spirv->layouts;
+    if (info->layouts) {
+        retro_atomic_fetch_add_int(&info->layouts->refs, 1);
+        init_uniform_layout(&info->uniforms, &info->layouts->uniforms);
+        init_uniform_layout(&info->push_constants, &info->layouts->push_constants);
+    }
+    pgraph_vk_shader_source_unref(spirv);
     return info;
 }
 
@@ -188,17 +191,11 @@ ShaderModuleInfo *pgraph_vk_create_shader_module_from_glsl(
     PGRAPHVkState *r, VkShaderStageFlagBits stage, const char *glsl)
 {
     return pgraph_vk_create_shader_module_from_spirv(
-        r, pgraph_vk_compile_glsl_to_spv(stage, glsl));
+        r, pgraph_vk_compile_shader(stage, glsl));
 }
 
 static void finalize_uniform_layout(ShaderUniformLayout *layout)
 {
-    for (int i = 0; i < layout->num_uniforms; i++) {
-        free((void*)layout->uniforms[i].name);
-    }
-    if (layout->uniforms) {
-        g_free(layout->uniforms);
-    }
     g_free(layout->allocation);
 }
 
@@ -222,6 +219,7 @@ void pgraph_vk_destroy_shader_module(PGRAPHVkState *r, ShaderModuleInfo *info)
     assert(info->refcnt == 0);
     finalize_uniform_layout(&info->uniforms);
     finalize_uniform_layout(&info->push_constants);
+    pgraph_vk_shader_layouts_unref(info->layouts);
     vkDestroyShaderModule(r->device, info->module, NULL);
     g_free(info);
 }

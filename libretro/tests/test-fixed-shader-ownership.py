@@ -9,28 +9,28 @@ m=module_from_spec(spec);spec.loader.exec_module(m)
 s=(r/"hw/xbox/nv2a/pgraph/vk/glsl.c").read_text()
 production="\n".join(m.function(s,n) for n in [
  "pgraph_vk_create_shader_module_from_words",
- "pgraph_vk_create_shader_module_from_spv",
  "pgraph_vk_create_fixed_shader_module_from_glsl"])
 prefix=r"""
 #include <assert.h>
 #include <stdint.h>
+#include <stdbool.h>
 #include <stddef.h>
 #include <string.h>
 #include <vulkan/vulkan.h>
 #define VK_CHECK(x) assert((x)==VK_SUCCESS)
 typedef struct { VkDevice device; } PGRAPHVkState;
-typedef struct { unsigned char *data; unsigned len; } GByteArray;
+typedef struct { uint32_t *words; size_t num_words; } GlslcResult;
 static uint32_t words[]={0x07230203,0x00010000,0,1,0};
-static GByteArray array={(unsigned char*)words,sizeof(words)};
 static unsigned live,created,released;
 static VkShaderStageFlagBits expected_stage;
 static const char *expected_source;
-static GByteArray *pgraph_vk_compile_glsl_to_spv(VkShaderStageFlagBits stage,const char *source){
- assert(!live && stage==expected_stage && source==expected_source);live=1;return &array;
+static GlslcResult compile_glsl(VkShaderStageFlagBits stage,const char *source,int emit_layout){
+ assert(!live && stage==expected_stage && source==expected_source && !emit_layout);live=1;return (GlslcResult){words,sizeof(words)/4};
 }
-static void g_byte_array_unref(GByteArray *a){
- assert(a==&array && live==2);live=0;released++;
+static void release_words(void *p){
+ assert(p==words && live==2);live=0;released++;
 }
+#define free release_words
 VKAPI_ATTR VkResult VKAPI_CALL vkCreateShaderModule(VkDevice device,const VkShaderModuleCreateInfo *info,const VkAllocationCallbacks *allocator,VkShaderModule *out){
  assert(device==(VkDevice)(uintptr_t)7 && !allocator && live==1);
  assert(info->sType==VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO);

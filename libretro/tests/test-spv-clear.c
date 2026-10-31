@@ -16,7 +16,7 @@
 #endif
 #include "hw/xbox/nv2a/pgraph/spv/clear.h"
 #include "hw/xbox/nv2a/pgraph/spv/glslc.h"
-#include "deps/SPIRV-Reflect/spirv_reflect.h"
+#include "spv-test-layout.h"
 #include "clear-reference-glsl.h"
 static unsigned allocations;
 void *__real_malloc(size_t);void *__real_calloc(size_t,size_t);void *__real_realloc(void*,size_t);
@@ -37,7 +37,7 @@ static void spy_destroy(VkDevice d,VkShaderModule m,const VkAllocationCallbacks*
 /* QUIET ERRORS */
 static void save(const char*folder,const char*name,const uint32_t*w,size_t n){char path[2048];snprintf(path,sizeof(path),"%s/%s.spv",folder,name);FILE*f=fopen(path,"wb");assert(f&&fwrite(w,4,n,f)==n);assert(!fclose(f));}
 static GlslcResult compile(GlslcStage stage,const char*s,bool version){GlslcOptions o={.spirv_1_6=version};GlslcResult r;if(!glslc_compile(stage,s,&o,&r)){fprintf(stderr,"Utility reference error line %d: %s\n",r.error_line,r.error);abort();}return r;}
-static void layout_empty(const uint32_t*w,size_t n){SpvReflectShaderModule m;assert(spvReflectCreateShaderModule2(SPV_REFLECT_MODULE_FLAG_NO_COPY,n*4,w,&m)==SPV_REFLECT_RESULT_SUCCESS);assert(!m.descriptor_binding_count&&!m.push_constant_block_count);assert(spvReflectGetCode(&m)==w);spvReflectDestroyShaderModule(&m);}
+static void layout_empty(const uint32_t*w,size_t n){spv_test_layout(w,n,0,0,0);}
 #ifdef TEST_VULKAN
 #include "spv-clear-vulkan.h"
 #endif

@@ -146,7 +146,7 @@ static const char *intern(Lexer *lx, Intern *in, const char *s, size_t len)
 /* The operator at p and its length, or 0 */
 static int match_punct(const char *p, int *len)
 {
-    char a = p[0], b = p[1], d = p[2];
+    char a = p[0], b = p[1], d = b ? p[2] : '\0';
     *len = 1;
     switch (a) {
     case '(': return P_LPAREN;

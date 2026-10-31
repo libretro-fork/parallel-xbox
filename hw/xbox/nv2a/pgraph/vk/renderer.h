@@ -38,7 +38,6 @@
 
 #include <vulkan/vulkan.h>
 #include <volk.h>
-#include <spirv_reflect.h>
 #include <vk_mem_alloc.h>
 
 #include "libretro_shared.h"
@@ -193,6 +192,7 @@ typedef struct SurfaceBinding {
 typedef struct ShaderModuleInfo {
     int refcnt;
     VkShaderModule module;
+    ShaderLayouts *layouts;
     ShaderUniformLayout uniforms;
     ShaderUniformLayout push_constants;
     /* Packed uniforms are the comparison cache; only generations remain. */
@@ -966,10 +966,8 @@ uint32_t pgraph_vk_get_memory_type(PGRAPHState *pg, uint32_t type_bits,
 
 // glsl.c
 extern bool pgraph_vk_spirv_1_6;
-GByteArray *pgraph_vk_compile_glsl_to_spv(VkShaderStageFlagBits stage,
-                                          const char *glsl_source);
-VkShaderModule pgraph_vk_create_shader_module_from_spv(PGRAPHVkState *r,
-                                                       GByteArray *spv);
+ShaderSource *pgraph_vk_compile_shader(VkShaderStageFlagBits stage,
+                                      const char *glsl_source);
 /* Words are borrowed for the synchronous Vulkan call, never retained. */
 VkShaderModule pgraph_vk_create_shader_module_from_words(
     PGRAPHVkState *r, const uint32_t *words, size_t num_words);
@@ -977,7 +975,7 @@ VkShaderModule pgraph_vk_create_shader_module_from_words(
 VkShaderModule pgraph_vk_create_fixed_shader_module_from_glsl(
     PGRAPHVkState *r, VkShaderStageFlagBits stage, const char *glsl);
 ShaderModuleInfo *pgraph_vk_create_shader_module_from_spirv(PGRAPHVkState *r,
-                                                             GByteArray *spirv);
+                                                             ShaderSource *spirv);
 ShaderModuleInfo *pgraph_vk_create_shader_module_from_glsl(
     PGRAPHVkState *r, VkShaderStageFlagBits stage, const char *glsl);
 void pgraph_vk_ref_shader_module(ShaderModuleInfo *info);

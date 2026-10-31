@@ -32,7 +32,7 @@ def run(r,cc,folder,gpu):
  env=os.environ.copy();env['PATH']=str(Path(cc).resolve().parent)+os.pathsep+env.get('PATH','')
  (folder/'test.c').write_text(test_source(r));exe=folder/('test.exe' if os.name=='nt' else 'test')
  sources=[str(folder/'test.c')]+[str(r/'hw/xbox/nv2a/pgraph/spv'/n) for n in ['geom.c','glslc.c','glslc_lex.c']]
- command=[cc,'-O2','-std=gnu11','-Wall','-Wextra','-Werror','-Wno-misleading-indentation','-Wno-sign-compare','-Wno-missing-field-initializers','-I'+str(r),'-I'+str(r/'libretro/tests'),'-I'+str(r/'deps/SPIRV-Reflect/include'),'-I'+str(r/'deps/vulkan-headers'),'-I'+str(r/'deps/volk'),'-fsanitize=undefined','-fsanitize-undefined-trap-on-error']
+ command=[cc,'-O2','-std=gnu11','-Wall','-Wextra','-Werror','-Wno-misleading-indentation','-Wno-sign-compare','-Wno-missing-field-initializers','-I'+str(r),'-I'+str(r/'libretro/tests'),'-I'+str(r/'deps/spirv-headers/include'),'-I'+str(r/'deps/vulkan-headers'),'-I'+str(r/'deps/volk'),'-fsanitize=undefined','-fsanitize-undefined-trap-on-error']
  if gpu:
   command+=['-DTEST_VULKAN'];sources.append(str(r/'deps/volk/volk.c'))
  command+=sources+['-Wl,--wrap=malloc,--wrap=calloc,--wrap=realloc','-lm']

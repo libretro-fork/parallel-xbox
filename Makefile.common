@@ -41,7 +41,7 @@ QEMU_CFLAGS := -std=gnu11 -fno-strict-aliasing -fno-common -fwrapv \
 
 VULKAN_INCFLAGS := -DVK_NO_PROTOTYPES -I$(CORE_DIR)/deps/volk \
 	-I$(CORE_DIR)/deps/VulkanMemoryAllocator/include \
-	-I$(CORE_DIR)/deps/SPIRV-Reflect -I$(CORE_DIR)/deps/nv2a_vsh_cpu/src
+	-I$(CORE_DIR)/deps/nv2a_vsh_cpu/src
 
 # By the sources' groups below
 CFLAGS_UTIL := $(QEMU_CFLAGS)
@@ -66,10 +66,9 @@ CFLAGS_GLIB := -std=gnu11 -Wall -I$(CORE_DIR)/libretro/glib \
 	-I$(CORE_DIR)/libretro-common/include $(OS_CFLAGS)
 CFLAGS_VOLK := -I$(CORE_DIR)/deps/volk -DVK_NO_PROTOTYPES $(OS_CFLAGS) \
 	$(DEPS_CFLAGS)
-CFLAGS_SPIRV_REFLECT := -I$(CORE_DIR)/deps/SPIRV-Reflect
 # The GLSL to SPIR-V compiler: plain C, nothing of QEMU; the SPIR-V header
-# comes with SPIRV-Reflect
-CFLAGS_GLSLC := -std=gnu11 -O2 -I$(CORE_DIR)/deps/SPIRV-Reflect/include \
+# comes from the standalone Khronos definitions header
+CFLAGS_GLSLC := -std=gnu11 -O2 -I$(CORE_DIR)/deps/spirv-headers/include \
 	$(OS_CFLAGS)
 CFLAGS_VSH := -I$(CORE_DIR)/deps/nv2a_vsh_cpu/src
 CXXFLAGS_VMA := -std=c++17 -I$(CORE_DIR)/thirdparty $(VULKAN_INCFLAGS) \
@@ -662,9 +661,6 @@ endif
 
 SOURCES_VOLK := \
 	$(CORE_DIR)/deps/volk/volk.c \
-
-SOURCES_SPIRV_REFLECT := \
-	$(CORE_DIR)/deps/SPIRV-Reflect/spirv_reflect.c \
 
 SOURCES_GLSLC := \
 	$(CORE_DIR)/hw/xbox/nv2a/pgraph/spv/glslc.c \

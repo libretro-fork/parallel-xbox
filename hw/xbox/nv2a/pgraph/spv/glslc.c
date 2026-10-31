@@ -235,6 +235,7 @@ struct GlslcCtx {
     int *error_line;
     GlslcStage stage;
     GlslcOptions opts;
+    GlslcLayout uniforms, push_constants; /* owned result allocations until transfer */
 
     TokList toks;
     size_t pos;
@@ -3883,8 +3884,56 @@ static Type *parse_block_members(C *c, bool std140, const char *block_name,
             member_decorate(c, t->id, i, SpvDecorationMatrixStride, 1, inner->align);
         }
     }
-    (void)for_push;
+    /* Uniform blocks retain trailing 16-byte padding; push constants end
+     * at their final member, matching the existing host layout contract. */
+    t->size = for_push ? offset : round_up(offset, 16);
     return t;
+}
+
+/* Record the layout while its types still describe this block. Matrix
+ * types can be reused with a different layout in a later declaration. */
+static void capture_layout(C *c, Type *block, GlslcLayout *layout)
+{
+    if (layout->members) {
+        fail(c, "host layout supports one block per storage class");
+    }
+    layout->count = block->nmembers;
+    layout->size = block->size;
+    size_t bytes = layout->count * sizeof(*layout->members);
+    for (int i = 0; i < block->nmembers; i++) {
+        bytes += strlen(block->member_names[i]) + 1;
+    }
+    layout->members = malloc(bytes);
+    if (!layout->members) {
+        abort();
+    }
+    char *name = (char *)(layout->members + layout->count);
+    for (int i = 0; i < block->nmembers; i++) {
+        Type *t = block->members[i];
+        size_t count = 1, stride = 0;
+        if (t->kind == TY_ARRAY) {
+            if (!t->n) {
+                fail(c, "host layout requires a fixed-size parameter array");
+            }
+            count = t->n;
+            stride = t->array_stride;
+            t = t->elem;
+        }
+        size_t width = t->kind == TY_VEC ? t->n : 1;
+        if (t->kind == TY_MAT) {
+            width = t->rows;
+            count *= t->n;
+            stride = stride ? stride / t->n : t->align;
+        }
+        size_t length = strlen(block->member_names[i]) + 1;
+        memcpy(name, block->member_names[i], length);
+        layout->members[i] = (GlslcUniform) {
+            .name = name,
+            .offset = block->member_offsets[i],
+            .dim_v = width, .dim_a = count, .stride = stride,
+        };
+        name += length;
+    }
 }
 
 /* An interface variable's decorations */
@@ -4103,6 +4152,13 @@ static void parse_block(C *c, const Quals *q)
         fail(c, "in/out blocks are not supported");
     }
     Type *st = parse_block_members(c, std140, bname, q->is_push);
+    if (c->opts.emit_layout) {
+        if (sc == SpvStorageClassUniform) {
+            capture_layout(c, st, &c->uniforms);
+        } else if (sc == SpvStorageClassPushConstant) {
+            capture_layout(c, st, &c->push_constants);
+        }
+    }
     const char *instance = NULL;
     Type *vt = st;
     if (peek(c)->kind == T_IDENT) {
@@ -5055,6 +5111,8 @@ static void assemble(C *c, GlslcResult *result)
 
 static void ctx_free(C *c)
 {
+    free(c->uniforms.members);
+    free(c->push_constants.members);
     free(c->caps.w);
     free(c->exts.w);
     free(c->entry_iface.w);
@@ -5104,6 +5162,10 @@ bool glslc_compile(GlslcStage stage, const char *source,
     init_types(c);
     parse_toplevel(c);
     assemble(c, result);
+    result->uniforms = c->uniforms;
+    result->push_constants = c->push_constants;
+    memset(&c->uniforms, 0, sizeof(c->uniforms));
+    memset(&c->push_constants, 0, sizeof(c->push_constants));
     ctx_free(c);
     free(c);
     return true;

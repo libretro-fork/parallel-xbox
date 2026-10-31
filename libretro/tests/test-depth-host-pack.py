@@ -28,5 +28,5 @@ if '--gpu' in sys.argv[3:]:
  with tempfile.TemporaryDirectory(prefix='depth-host-gpu-') as tmp:
   p=Path(tmp);(p/'test.c').write_text(code);exe=p/('test.exe' if os.name=='nt' else 'test')
   link=[str(Path(os.environ.get('WINDIR','C:/Windows'))/'System32/vulkan-1.dll')] if os.name=='nt' else ['-lvulkan']
-  subprocess.run([cc,'-O2','-std=gnu11','-Wall','-Wextra','-Werror','-Wno-unused-function','-Wno-misleading-indentation','-Wno-missing-field-initializers','-I'+str(r),'-I'+str(r/'deps/vulkan-headers'),'-I'+str(r/'deps/SPIRV-Reflect/include'),str(p/'test.c'),str(r/'hw/xbox/nv2a/pgraph/spv/depth.c'),*link,'-o',str(exe)],env=env,check=True)
+  subprocess.run([cc,'-O2','-std=gnu11','-Wall','-Wextra','-Werror','-Wno-unused-function','-Wno-misleading-indentation','-Wno-missing-field-initializers','-I'+str(r),'-I'+str(r/'deps/vulkan-headers'),'-I'+str(r/'deps/spirv-headers/include'),str(p/'test.c'),str(r/'hw/xbox/nv2a/pgraph/spv/depth.c'),*link,'-o',str(exe)],env=env,check=True)
   subprocess.run([str(exe)],env=env,check=True,timeout=120)

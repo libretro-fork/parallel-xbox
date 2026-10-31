@@ -669,14 +669,26 @@ Installed spirv-val checks original, direct and instrumented modules. The
 Vulkan test uses bundled Volk and reports whether validation layers exist.
 Compile microbenchmarks exclude GLSL generation and driver PSO compilation.
 
-`python libretro/tests/test-spv-reflection-borrow.py . gcc` uses the real
-GLSL compiler and SPIRV-Reflect to compare copy/borrowed metadata for vertex,
-geometry, fragment and compute shaders under SPIR-V 1.5/1.6. Uniform layouts,
-arrays, descriptors and push constants match; borrowed instances share the
-original immutable words and can be destroyed independently. Production
-layout construction/destruction is compared with a copy-mode control; layouts
-must survive freeing all parser/source data, and all packed uniform storage
-must be released.
+`python libretro/tests/test-shader-layout.py . gcc` checks compiler-provided
+uniform and push constant layouts against independent expected offsets, sizes,
+array and matrix strides under SPIR-V 1.5/1.6. It checks that requesting layouts
+leaves shader words unchanged and that modules share immutable descriptors
+while owning separate upload buffers. `--reflect-dir /path/to/SPIRV-Reflect`
+optionally compares every case with an external reference checkout; reflection
+is not needed to build the core or run the standard tests. `--shader-dir DIR`
+also checks every GLSL module exported by `seedshaders` under both SPIR-V
+versions. The seed tool itself requests and releases compiler layouts.
+
+`test-vk-worker-modules.py` exercises source/layout reference counts, cache
+collisions, byte limits (including metadata), queue drops and 800000 concurrent
+reference pairs. It also passes the exact original word pointer to module
+creation and verifies shared descriptors survive freeing words, eviction and
+independent module destruction. Fixed shader ownership tests verify direct
+compiler-buffer borrowing without a byte-array wrapper.
+
+The fixed clear/depth/swizzle tests inspect their known SPIR-V resource
+bindings and push offsets directly with `spv-test-layout.h`; installed
+`spirv-val` independently validates their saved modules.
 
 `test-texture-dirty.py CHECKOUT [CC]` compiles the actual OpenGL and Vulkan cache-invalidation functions against a page-dirty RAM oracle. It covers the final VRAM byte/page, palettes sharing cleared pages, writes crossing a page boundary, and empty spans. The standard runner executes it alongside the VRAM range test.
 

@@ -8,7 +8,7 @@ libretro/deps/src), which built them the same way.
 |---|---|---|---|---|
 | `volk` | Vulkan's function loader | 3ca312a | MIT | all |
 | `VulkanMemoryAllocator` | Vulkan memory allocation (header) | 3aa9212 | MIT | all |
-| `SPIRV-Reflect` | Shader reflection for the Vulkan renderer | 9137a7e | Apache-2.0 | all |
+| `spirv-headers` | SPIR-V enum definitions for the shader compiler and emitters | Header retained unchanged from SPIRV-Reflect 9137a7e | MIT | all |
 | `nv2a_vsh_cpu` | The NV2A's vertex shader on the CPU | 561fe80 | Unlicense (public domain) | all |
 | `libslirp` | The NAT network backend, on the core's GLib (`libretro/glib`) | 4.9.1 | BSD-3-Clause | all |
 | `libepoxy` | OpenGL function loading (WGL; EGL on Android) | 1.5.10 | MIT | Windows, Android |

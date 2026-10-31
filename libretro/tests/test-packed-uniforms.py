@@ -14,7 +14,8 @@ def function(source,name):
  a=source.index('{',m.start());b=a+1;depth=1
  while depth:depth+=(source[b]=='{')-(source[b]=='}');b+=1
  return source[m.start():b]
-structs='\n'.join(re.search(r'typedef struct '+name+r' \{.*?\} '+name+r';',h,re.S)[0] for name in ['ShaderUniform','ShaderUniformLayout'])
+structs='\n'.join(re.search(r'typedef struct '+name+r' \{.*?\} '+name+r';',h,re.S)[0] for name in ['ShaderUniformLayout'])
+structs=re.search(r'typedef struct ShaderUniform \{.*?\} ShaderUniform;', (repo/'hw/xbox/nv2a/pgraph/spv/glslc.h').read_text(),re.S)[0]+'\n'+structs
 info=re.search(r'typedef struct UniformInfo \{.*?\} UniformInfo;',c,re.S)[0]
 sections=u[u.index('enum {'):u.index('};',u.index('enum {'))+2]
 code=Path(__file__).with_suffix('.c').read_text().replace('/* TYPES */',structs+'\n'+info+'\n'+sections)

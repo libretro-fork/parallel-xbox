@@ -17,8 +17,8 @@ def run(r,cc,folder,gpu):
  code=Path(__file__).with_suffix('.c').read_text().replace('/* PRODUCTION */','\n'.join([function(s,n) for n in names]+[function(draw,n) for n in ['init_clear_shaders','finalize_clear_shaders']]))
  errors=(r/'libretro/tests/test-spv-geom.c').read_text();a=errors.index('#ifdef _WIN32\nstatic void quiet_test_abort');b=errors.index('int line_tests(',a);code=code.replace('/* QUIET ERRORS */',errors[a:b])
  (folder/'test.c').write_text(code);exe=folder/('test.exe' if os.name=='nt' else 'test')
- cmd=[cc,'-O2','-std=gnu11','-Wall','-Wextra','-Werror','-Wno-sign-compare','-Wno-missing-field-initializers','-Wno-misleading-indentation','-fsanitize=undefined','-fsanitize-undefined-trap-on-error','-I'+str(r),'-I'+str(r/'libretro/tests'),'-I'+str(r/'deps/SPIRV-Reflect/include'),'-I'+str(r/'deps/vulkan-headers'),'-I'+str(r/'deps/volk')]
- sources=[str(folder/'test.c')]+[str(r/'hw/xbox/nv2a/pgraph/spv'/n) for n in ['clear.c','glslc.c','glslc_lex.c']]+[str(r/'deps/SPIRV-Reflect/spirv_reflect.c')]
+ cmd=[cc,'-O2','-std=gnu11','-Wall','-Wextra','-Werror','-Wno-sign-compare','-Wno-missing-field-initializers','-Wno-misleading-indentation','-fsanitize=undefined','-fsanitize-undefined-trap-on-error','-I'+str(r),'-I'+str(r/'libretro/tests'),'-I'+str(r/'deps/spirv-headers/include'),'-I'+str(r/'deps/vulkan-headers'),'-I'+str(r/'deps/volk')]
+ sources=[str(folder/'test.c')]+[str(r/'hw/xbox/nv2a/pgraph/spv'/n) for n in ['clear.c','glslc.c','glslc_lex.c']]
  if gpu:cmd+=['-DTEST_VULKAN'];sources+=[str(r/'deps/volk/volk.c')]
  cmd+=sources+['-Wl,--wrap=malloc,--wrap=calloc,--wrap=realloc','-lm']
  if gpu and os.name!='nt':cmd+=['-ldl']

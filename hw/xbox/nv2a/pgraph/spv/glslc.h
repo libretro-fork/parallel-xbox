@@ -28,13 +28,30 @@ typedef struct GlslcOptions {
     /* SPIR-V 1.6 with discard as OpDemoteToHelperInvocation (the device
      * has the feature), else 1.5 with OpKill */
     bool spirv_1_6;
+    /* Export host parameter layouts; fixed shaders do not need them. */
+    bool emit_layout;
 } GlslcOptions;
+
+typedef struct ShaderUniform {
+    const char *name;
+    size_t dim_v, dim_a, stride, offset;
+} ShaderUniform;
+typedef ShaderUniform GlslcUniform;
+
+typedef struct GlslcLayout {
+    /* Members and names share one allocation, released with free(members). */
+    GlslcUniform *members;
+    size_t count, size;
+} GlslcLayout;
 
 typedef struct GlslcResult {
     uint32_t *words; /* the module, free() it; NULL on error */
     size_t num_words;
     char error[256]; /* why, with the line, on error */
     int error_line;
+    /* Present only with emit_layout. Release each members allocation with
+     * free(); names live in that allocation. Independent of words. */
+    GlslcLayout uniforms, push_constants;
 } GlslcResult;
 
 /* Compiles source for stage. Returns whether a module was made; on
