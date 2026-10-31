@@ -86,9 +86,9 @@ int main(void) {
   else {
    bool shadow=boost && mode==DISAS_EOB_STI && !inhibited && !(flags&HF_RF_MASK);
    bool jump=(mode==DISAS_JUMP || mode==DISAS_JUMP_FAR) && !inhibited;
-   bool use_fast=shadow || (jump && boost && mode!=DISAS_JUMP_FAR && !(flags&HF_RF_MASK) && known_flags);
+   bool use_fast=shadow || (jump && boost && mode!=DISAS_JUMP_FAR && !(flags&HF_RF_MASK));
    assert(!direct);
-   if(use_fast) { assert(fast==1 && !lookups && !gotos);assert(exits==(unsigned)debug);if(shadow) assert(last_fast_flags==(flags|HF_INHIBIT_IRQ_MASK|tb_cf_flags(TB_CF_ANY))); }
+   if(use_fast) { assert(fast==1 && !lookups && !gotos);assert(exits==(unsigned)debug);if(shadow) assert(last_fast_flags==(flags|HF_INHIBIT_IRQ_MASK|tb_cf_flags(TB_CF_ANY)));else if(!known_flags) assert(last_fast_flags==(flags|tb_cf_flags(TB_CF_ANY))); }
    else if(shadow || jump) {
     if(debug) assert(exits==1 && !lookups && !gotos);
     else assert(lookups==1 && gotos==1 && !exits);

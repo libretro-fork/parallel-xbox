@@ -913,3 +913,11 @@ The Linux native-file short-transfer test uses GNU linker wrapping around actual
 POSIX file calls. It checks 3,388 combinations of partial vector/scalar transfers,
 EINTR, EOF, zero progress and terminal errors, including resumed offsets, gaps
 and complete write readback. It does not model the Windows file API.
+
+`test-tb-cache-flags.py` executes production flag-check IR against an independent
+exact-or-ANY oracle across class and mode mismatches. ANY-only requests must reject
+every specific class. The entry invalidation ROM repeats mixed-class shared targets
+and flag-overwriting targets to exercise both cache rejection and safe ANY hits.
+
+ANY means code independent of the incoming flag class, not independent of guest
+flag values; such code may still read flags through the normal runtime helpers.

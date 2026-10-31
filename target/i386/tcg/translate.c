@@ -2989,9 +2989,15 @@ gen_eob(DisasContext *s, int mode)
         uint32_t next_flags;
 
         if (!xemu_cpu_boost || mode == DISAS_JUMP_FAR ||
-            (s->flags & HF_RF_MASK) || !gen_exit_tb_flags(s, &next_flags)) {
+            (s->flags & HF_RF_MASK)) {
             tcg_gen_lookup_and_goto_ptr();
         } else {
+            if (!gen_exit_tb_flags(s, &next_flags)) {
+                /* Without a carry-class proof, accept only code supporting
+                 * every carry class. The slow path recomputes flags for other
+                 * entries; never guess the class of a dynamic update. */
+                next_flags = s->flags | tb_cf_flags(TB_CF_ANY);
+            }
             TCGv_i64 pc = tcg_temp_new_i64();
 
             tcg_gen_extu_tl_i64(pc, cpu_eip);

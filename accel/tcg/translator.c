@@ -30,11 +30,30 @@
 #include "qemu/cpu-pace.h"
 #include "qemu/cpu-boost.h"
 
+#ifdef CONFIG_SOFTMMU
+static void gen_tb_flags_check(TCGv_ptr tb, TCGv_i32 t32, uint32_t flags,
+                               TCGLabel *slow)
+{
+    tcg_gen_ld_i32(t32, tb, offsetof(TranslationBlock, flags));
+    if ((flags & XEMU_TB_CF_ANY) == XEMU_TB_CF_ANY) {
+        /* An independent-only request must never accept a specific class. */
+        tcg_gen_brcondi_i32(TCG_COND_NE, t32, flags, slow);
+    } else {
+        tcg_gen_xori_i32(t32, t32, flags);
+        tcg_gen_movcond_i32(TCG_COND_EQ, t32, t32,
+                            tcg_constant_i32(XEMU_TB_CF_ANY & ~flags),
+                            tcg_constant_i32(0), t32);
+        tcg_gen_brcondi_i32(TCG_COND_NE, t32, 0, slow);
+    }
+}
+#endif
+
 static void gen_lookup_and_goto_ptr(TCGv_i64 pc, uint64_t cs_base,
                                     uint32_t flags, int direct_slot)
 {
 #ifdef CONFIG_SOFTMMU
     uint32_t cflags = tb_cflags(tcg_ctx->gen_tb);
+    bool any_only = (flags & XEMU_TB_CF_ANY) == XEMU_TB_CF_ANY;
     TCGLabel *slow;
     TCGv_i64 t, hash;
     TCGv_i32 t32;
@@ -97,19 +116,17 @@ static void gen_lookup_and_goto_ptr(TCGv_i64 pc, uint64_t cs_base,
         }
         tcg_gen_brcondi_i64(TCG_COND_EQ, t, (tb_page_addr_t)-1, slow);
     }
+    if (any_only) {
+        /* Reject a class-dependent entry before the PC/segment loads. */
+        gen_tb_flags_check(tb, t32, flags, slow);
+    }
     tcg_gen_ld_i64(t, ent, offsetof(CPUJumpCache, array[0].pc));
     tcg_gen_brcond_i64(TCG_COND_NE, t, pc, slow);
     tcg_gen_ld_i64(t, tb, offsetof(TranslationBlock, cs_base));
     tcg_gen_brcondi_i64(TCG_COND_NE, t, cs_base, slow);
-    /* the flags, or the block for any carry-flag class (XEMU_TB_CF_ANY):
-     * their difference is 0 or exactly those bits; no label, so the
-     * EBB temps live on */
-    tcg_gen_ld_i32(t32, tb, offsetof(TranslationBlock, flags));
-    tcg_gen_xori_i32(t32, t32, flags);
-    tcg_gen_movcond_i32(TCG_COND_EQ, t32, t32,
-                        tcg_constant_i32(XEMU_TB_CF_ANY & ~flags),
-                        tcg_constant_i32(0), t32);
-    tcg_gen_brcondi_i32(TCG_COND_NE, t32, 0, slow);
+    if (!any_only) {
+        gen_tb_flags_check(tb, t32, flags, slow);
+    }
     tcg_gen_ld_i32(t32, tb, offsetof(TranslationBlock, cflags));
     tcg_gen_brcondi_i32(TCG_COND_NE, t32, cflags, slow);
     tcg_gen_ld_i64(t, tcg_env,
