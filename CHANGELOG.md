@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Vulkan upload and readback staging buffers grow independently. An oversized upload no longer reallocates the unrelated readback buffer, reducing peak memory and allocation work during growth; compute and rotating draw-buffer families remain paired.
+
 - NVNet transmits complete single-descriptor RAM packets directly from a borrowed guest mapping, removing the intermediate TX-buffer copy. Fragmented packets keep their existing snapshots, and MMIO or incomplete mappings retain the DMA-read fallback without speculative MMIO reads. Direct mappings preserve GPU ownership synchronization; failed RAM mappings now release their region reference.
 
 - Vulkan texture uploads flush wrapped CPU staging data as separate tail/head spans, avoiding untouched ring memory that may still be read by earlier GPU submissions. No extra buffers, copies or allocations are added.

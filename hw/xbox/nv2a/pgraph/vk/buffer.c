@@ -458,7 +458,8 @@ static void recreate_buffer(PGRAPHState *pg, StorageBuffer *b,
 
 /* Grow a buffer to hold `needed` bytes, once everything in flight has
  * settled, with its family: a ring, its staging half and both rotation
- * sets, or the two conversion buffers, or the two staging buffers. */
+ * sets, or the two conversion buffers. Upload and readback staging have
+ * independent capacities and lifetimes. */
 void pgraph_vk_buffer_ensure_capacity(PGRAPHState *pg, int index,
                                       VkDeviceSize needed)
 {
@@ -491,11 +492,6 @@ void pgraph_vk_buffer_ensure_capacity(PGRAPHState *pg, int index,
         recreate_buffer(pg, &r->storage_buffers[BUFFER_COMPUTE_DST], size);
         recreate_buffer(pg, &r->storage_buffers[BUFFER_COMPUTE_SRC], size);
         pgraph_vk_compute_buffers_changed(pg);
-        return;
-    }
-    if (index == BUFFER_STAGING_DST || index == BUFFER_STAGING_SRC) {
-        recreate_buffer(pg, &r->storage_buffers[BUFFER_STAGING_DST], size);
-        recreate_buffer(pg, &r->storage_buffers[BUFFER_STAGING_SRC], size);
         return;
     }
     recreate_buffer(pg, &r->storage_buffers[index], size);
