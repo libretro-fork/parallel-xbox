@@ -23,6 +23,7 @@
 #include "qemu/file-map.h"
 #include "ui/xemu-settings.h"
 #include "renderer.h"
+#include "hw/xbox/nv2a/pgraph/spv/clear.h"
 #include "hw/xbox/nv2a/pgraph/blend.h"
 #include <math.h>
 #include <retro_atomic.h>
@@ -291,38 +292,24 @@ static void finalize_pipeline_cache(PGRAPHState *pg)
     vkDestroyPipelineCache(r->device, r->vk_pipeline_cache, NULL);
 }
 
-static char const *const quad_glsl =
-    "#version 450\n"
-    "void main()\n"
-    "{\n"
-    "    float x = -1.0 + float((gl_VertexIndex & 1) << 2);\n"
-    "    float y = -1.0 + float((gl_VertexIndex & 2) << 1);\n"
-    "    gl_Position = vec4(x, y, 0, 1);\n"
-    "}\n";
-
-static char const *const solid_frag_glsl =
-    "#version 450\n"
-    "layout(location = 0) out vec4 fragColor;\n"
-    "void main()\n"
-    "{\n"
-    "    fragColor = vec4(1.0);"
-    "}\n";
-
 static void init_clear_shaders(PGRAPHState *pg)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
-    r->quad_vert_module = pgraph_vk_create_shader_module_from_glsl(
-        r, VK_SHADER_STAGE_VERTEX_BIT, quad_glsl);
-    r->solid_frag_module = pgraph_vk_create_shader_module_from_glsl(
-        r, VK_SHADER_STAGE_FRAGMENT_BIT, solid_frag_glsl);
+    SpvStaticModule vertex = pgraph_spv_fullscreen_vertex();
+    SpvStaticModule fragment = pgraph_spv_solid_fragment();
+    r->quad_vert_module = pgraph_vk_create_shader_module_from_words(
+        r, vertex.words, vertex.num_words);
+    r->solid_frag_module = pgraph_vk_create_shader_module_from_words(
+        r, fragment.words, fragment.num_words);
 }
 
 static void finalize_clear_shaders(PGRAPHState *pg)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
 
-    pgraph_vk_destroy_shader_module(r, r->quad_vert_module);
-    pgraph_vk_destroy_shader_module(r, r->solid_frag_module);
+    vkDestroyShaderModule(r->device, r->quad_vert_module, NULL);
+    vkDestroyShaderModule(r->device, r->solid_frag_module, NULL);
+    r->quad_vert_module = r->solid_frag_module = VK_NULL_HANDLE;
 }
 
 static void init_render_passes(PGRAPHVkState *r)
@@ -652,7 +639,7 @@ static void create_clear_pipeline(PGRAPHState *pg)
         (VkPipelineShaderStageCreateInfo){
             .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
             .stage = VK_SHADER_STAGE_VERTEX_BIT,
-            .module = r->quad_vert_module->module,
+            .module = r->quad_vert_module,
             .pName = "main",
         };
     if (partial_color_clear) {
@@ -660,7 +647,7 @@ static void create_clear_pipeline(PGRAPHState *pg)
             (VkPipelineShaderStageCreateInfo){
                 .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
                 .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
-                .module = r->solid_frag_module->module,
+                .module = r->solid_frag_module,
                 .pName = "main",
             };
      }

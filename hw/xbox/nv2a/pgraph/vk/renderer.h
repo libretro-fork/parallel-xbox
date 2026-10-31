@@ -832,7 +832,7 @@ typedef struct PGRAPHVkState {
     Lru shader_cache;
     ShaderBinding *shader_cache_entries;
     ShaderBinding *shader_binding;
-    ShaderModuleInfo *quad_vert_module, *solid_frag_module;
+    VkShaderModule quad_vert_module, solid_frag_module;
     bool shader_bindings_changed;
     bool use_push_constants_for_uniform_attrs;
 
@@ -940,6 +940,9 @@ GByteArray *pgraph_vk_compile_glsl_to_spv(VkShaderStageFlagBits stage,
                                           const char *glsl_source);
 VkShaderModule pgraph_vk_create_shader_module_from_spv(PGRAPHVkState *r,
                                                        GByteArray *spv);
+/* Words are borrowed for the synchronous Vulkan call, never retained. */
+VkShaderModule pgraph_vk_create_shader_module_from_words(
+    PGRAPHVkState *r, const uint32_t *words, size_t num_words);
 ShaderModuleInfo *pgraph_vk_create_shader_module_from_spirv(PGRAPHVkState *r,
                                                              GByteArray *spirv);
 ShaderModuleInfo *pgraph_vk_create_shader_module_from_glsl(

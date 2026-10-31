@@ -71,17 +71,25 @@ GByteArray *pgraph_vk_compile_glsl_to_spv(VkShaderStageFlagBits stage,
                                  result.num_words * sizeof(uint32_t));
 }
 
-VkShaderModule pgraph_vk_create_shader_module_from_spv(PGRAPHVkState *r, GByteArray *spv)
+VkShaderModule pgraph_vk_create_shader_module_from_words(PGRAPHVkState *r,
+                                                  const uint32_t *words,
+                                                  size_t num_words)
 {
     VkShaderModuleCreateInfo create_info = {
         .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
-        .codeSize = spv->len,
-        .pCode = (uint32_t *)spv->data,
+        .codeSize = num_words * sizeof(*words),
+        .pCode = words,
     };
     VkShaderModule module;
-    VK_CHECK(
-        vkCreateShaderModule(r->device, &create_info, NULL, &module));
+    VK_CHECK(vkCreateShaderModule(r->device, &create_info, NULL, &module));
     return module;
+}
+
+VkShaderModule pgraph_vk_create_shader_module_from_spv(PGRAPHVkState *r, GByteArray *spv)
+{
+    assert(spv->len % sizeof(uint32_t) == 0);
+    return pgraph_vk_create_shader_module_from_words(r, (const uint32_t *)spv->data,
+                                      spv->len / sizeof(uint32_t));
 }
 
 static void block_to_uniforms(const SpvReflectBlockVariable *block, ShaderUniformLayout *layout)

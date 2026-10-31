@@ -519,6 +519,17 @@ after eviction/clear, queue drops, adoption and per-state completion markers,
 plus 10,000 FIFO/slot-reuse cases and 800,000 concurrent ref/unref pairs
 with no leaked arrays (UB traps).
 
+`python libretro/tests/test-spv-clear.py . gcc --gpu` checks the immutable
+fullscreen vertex and solid-clear fragment modules against the pre-port GLSL
+reference. The production initialization/finalization functions pass the exact
+static pointers to Vulkan, allocate no core-side objects and destroy each handle
+once. Reflection independently verifies that no descriptor or push-constant
+layouts are needed. The optional GPU test checks 88 combinations of RGBA8/float
+raster output, viewport/scissor cases and indexed/non-indexed vertex indices
+against a CPU oracle and the original shaders in both SPIR-V versions. The
+static modules additionally pass spirv-val under Vulkan 1.0. Tests use bundled
+Volk and report validation-layer availability; GPU readbacks are test-only.
+
 `python libretro/tests/test-spv-geom.py . gcc --gpu` compares the direct
 line, triangle and quad emitters with the production GLSL generator/compiler.
 It checks both selectors, deterministic words and one payload allocation;

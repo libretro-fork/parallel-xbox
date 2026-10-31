@@ -680,6 +680,7 @@ SOURCES_SPIRV_REFLECT := \
 SOURCES_GLSLC := \
 	$(CORE_DIR)/hw/xbox/nv2a/pgraph/spv/glslc.c \
 	$(CORE_DIR)/hw/xbox/nv2a/pgraph/spv/geom.c \
+	$(CORE_DIR)/hw/xbox/nv2a/pgraph/spv/clear.c \
 	$(CORE_DIR)/hw/xbox/nv2a/pgraph/spv/glslc_lex.c \
 
 SOURCES_VSH := \

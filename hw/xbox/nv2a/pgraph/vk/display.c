@@ -475,7 +475,7 @@ static void create_display_pipeline(PGRAPHState *pg)
         (VkPipelineShaderStageCreateInfo){
             .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
             .stage = VK_SHADER_STAGE_VERTEX_BIT,
-            .module = r->quad_vert_module->module,
+            .module = r->quad_vert_module,
             .pName = "main",
         },
         (VkPipelineShaderStageCreateInfo){

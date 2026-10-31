@@ -4,6 +4,7 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Vulkan clear shaders and the shared fullscreen display vertex shader now use immutable SPIR-V directly. Creating them no longer allocates compiler payloads, array wrappers or uniform metadata, and Vulkan borrows their static words without an intermediate copy. Pipeline creation and driver compilation remain.
 - Vulkan startup checks now inspect the five required pixels directly in mapped readback memory, avoiding a 1,228,800-byte heap allocation and image copy. GPU synchronization and winding detection are unchanged.
 
 - Remove unused QEMU I/O channel classes, socket/file transport and GLib watch adapters after saved states moved to direct memory. Remove dead block-channel abort plumbing and unused TDX guest/quote structures, including their unused mutex. Xbox and Chihiro behavior is unchanged.
