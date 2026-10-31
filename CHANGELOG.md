@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Vulkan display retirement probes newest submissions first. One completed fence retires earlier display work on the same queue, avoiding redundant status queries and waits at older slot reuse. Busy submissions retain nonblocking fallback probes; every reused fence is still reset and unfinished work still waits. No GPU ordering dependencies are removed.
+
 - Vulkan lightgun crosshairs draw as solid attachment rectangles in the existing display pass. Remove their 12 KiB staging buffer, first-use allocation/upload, buffer-to-image copies and transfer-layout detour while preserving colors, clipping and player overlap.
 
 - Replace the VM-stop request mutex and split prepare/publish API with a libretro-common atomic mailbox. Taking a pending reason also clears it atomically, retaining latest-request coalescing, enum-zero reasons and publication before notification without a request lock.

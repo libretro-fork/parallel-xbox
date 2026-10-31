@@ -1152,15 +1152,14 @@ static void create_frame_sync(PGRAPHState *pg)
 static void wait_frame_sync(PGRAPHVkState *r, struct PGRAPHVkFrameSync *s)
 {
     if (s->pending) {
-        /* Retirement polling already proved completion for this exact
-         * submission. Reset still belongs here, before command-buffer reuse. */
-        if (!s->signalled) {
+        /* A completed later fence on this same display queue also proves
+         * this submission complete. Reset still belongs to slot reuse. */
+        if (s->serial > r->display.settled) {
             VK_CHECK(vkWaitForFences(r->device, 1, &s->fence, VK_TRUE,
                                      UINT64_MAX));
         }
         VK_CHECK(vkResetFences(r->device, 1, &s->fence));
         s->pending = false;
-        s->signalled = false;
         r->display.settled = MAX(r->display.settled, s->serial);
     }
 }
@@ -1170,13 +1169,26 @@ static void wait_frame_sync(PGRAPHVkState *r, struct PGRAPHVkFrameSync *s)
 void pgraph_vk_poll_display_retired(PGRAPHVkState *r)
 {
     PGRAPHVkDisplayState *disp = &r->display;
-    for (unsigned i = 0; i < ARRAY_SIZE(disp->sync); i++) {
-        struct PGRAPHVkFrameSync *sync = &disp->sync[i];
-        if (sync->pending && sync->serial > disp->settled &&
-            vkGetFenceStatus(r->device, sync->fence) == VK_SUCCESS) {
-            sync->signalled = true;
-            disp->settled = sync->serial;
+    /* All display submissions use the same queue. A newer fence includes
+     * earlier fence signals, so probe newest first and stop on completion.
+     * If it is busy, older work can still release borrowed surface inputs. */
+    uint64_t upper = UINT64_MAX;
+    for (unsigned n = 0; n < ARRAY_SIZE(disp->sync); n++) {
+        struct PGRAPHVkFrameSync *newest = NULL;
+        for (unsigned i = 0; i < ARRAY_SIZE(disp->sync); i++) {
+            struct PGRAPHVkFrameSync *sync = &disp->sync[i];
+            if (sync->pending && sync->serial > disp->settled &&
+                sync->serial <= upper &&
+                (!newest || sync->serial > newest->serial)) {
+                newest = sync;
+            }
         }
+        if (!newest) return;
+        if (vkGetFenceStatus(r->device, newest->fence) == VK_SUCCESS) {
+            disp->settled = newest->serial;
+            return;
+        }
+        upper = newest->serial - 1;
     }
 }
 
@@ -1385,7 +1397,6 @@ static void submit_frame(PGRAPHVkState *r, struct PGRAPHVkFrameSync *s)
     }
     nv2a_profile_inc_counter(NV2A_PROF_QUEUE_SUBMIT_5);
     s->serial = ++r->display.submitted;
-    s->signalled = false;
     s->pending = true;
 }
 

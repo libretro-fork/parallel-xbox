@@ -1288,3 +1288,11 @@ render areas, and a restricted dynamic scissor. Crosshairs remain inside the
 display render pass; rasterization order preserves outline and player ordering
 without staging buffers, buffer-to-image copies or transfer-layout transitions.
 The test reports whether the validation layer is available.
+
+`test-vk-display-retirement.py` executes production display retirement and slot
+reuse against 20,000 delayed same-queue workloads. It checks newest-first probes,
+all completion frontiers, shuffled slot order, reuse and mandatory fence resets.
+Eight completed submissions require one status query; older slots already
+covered by that completion skip waits, while unfinished slots still wait.
+[Vulkan fence ordering](https://docs.vulkan.org/spec/latest/chapters/synchronization.html#synchronization-fences-signaling)
+covers earlier commands and fence signal operations on the same queue.
