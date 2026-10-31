@@ -43,6 +43,7 @@ static void parked_materialize(NV2AState *d,SurfaceBinding *s);
 static void parked_materialize_range(NV2AState *d,hwaddr start,hwaddr size);
 void pgraph_vk_surface_download_if_dirty(NV2AState *d,SurfaceBinding *s);
 static void memory_region_set_client_dirty(void *vram,hwaddr addr,hwaddr size,unsigned client){(void)vram;(void)client;assert(addr+size<=sizeof(ram));}
+static void pgraph_vk_mark_pvideo_source_dirty(NV2AState *d,hwaddr addr,hwaddr size){assert(d&&addr+size<=sizeof(ram));}
 static void pgraph_vk_invalidate_textures_from_gpu(NV2AState *d,hwaddr addr,hwaddr size){(void)d;assert(addr+size<=sizeof(ram));}
 static void pgraph_writeback_clear_discard(PGRAPHState *pg,hwaddr addr,hwaddr size){(void)pg;assert(addr+size<=sizeof(ram));}
 static void pgraph_writeback_learn_live(PGRAPHState *pg,hwaddr addr,hwaddr size){(void)pg;for(unsigned i=0;i<192;i++)if(surfaces[i].vram_addr==addr&&surfaces[i].size==size)learned[i]++;}

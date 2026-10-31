@@ -54,10 +54,9 @@ static void unswizzle_rect(const uint8_t *src, unsigned w, unsigned h,
 static void unswizzle_box(const uint8_t *src, unsigned w, unsigned h, unsigned d,
                           uint8_t *dst, size_t pitch, size_t slice, unsigned bpp)
 { (void)w; (void)h; (void)pitch; (void)bpp; memcpy(dst, src, slice * d); }
-static void convert_yuy2_to_rgb(const uint8_t *line, unsigned ix,
-                               uint8_t *r, uint8_t *g, uint8_t *b)
-{ (void)line; (void)ix; (void)r; (void)g; (void)b; abort(); }
-#define convert_uyvy_to_rgb convert_yuy2_to_rgb
+static void pgraph_yuv422_to_rgba(uint8_t *out, const uint8_t *in,
+                                  unsigned width, bool uyvy)
+{ (void)out; (void)in; (void)width; (void)uyvy; abort(); }
 /* PRODUCTION */
 
 static VkDevice device;

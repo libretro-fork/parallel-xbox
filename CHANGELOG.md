@@ -20,6 +20,15 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Reuse Vulkan PVIDEO pixels while their guest RAM source is unchanged:
+  skip CPU conversion, staging writes/flushes, GPU copies and auxiliary
+  submissions. Track writes independently of texture/VGA consumers, including
+  emulated GPU writebacks, and invalidate the cache on state loads.
+- Share packed YUV chroma calculations per pixel pair and convert directly
+  into existing RGBA destinations on both renderers. Preserve odd-width
+  chroma and byte-exact color rounding. Stop RAM dirty queries at the first
+  clean consumer instead of consulting every bitmap.
+
 - Signed G8B8 mip filtering now handles wrapping on one texture axis and clamp-to-edge on the other, including mixed min/mag filters and Force LOD0. Each axis addresses texels independently before signed interpolation. Existing equal-address shaders and serialized shader-state layout are preserved.
 - Windows: replace libepoxy with libretro-common GL dispatch; keep shared worker contexts and Vulkan/GL interop.
 

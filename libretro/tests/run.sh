@@ -135,6 +135,8 @@ python3 "$here/test-byte-carry.py" "$here/../.." "$cc"
 python3 "$here/test-shift-class.py" "$here/../.." "$cc"
 python3 "$here/test-idle-interrupts.py" "$here/../.." "$cc"
 python3 "$here/test-nv2a-guest-wakes.py" "$here/../.." "$cc"
+python3 "$here/test-pvideo-dirty.py" "$here/../.." "$cc"
+python3 "$here/test-yuv422.py" "$here/../.." "$cc"
 python3 "$here/test-gpu-wait-deadline.py" "$here/../.." "$cc"
 python3 "$here/test-two-page-exit.py" "$here/../.." "$cc"
 python3 "$here/test-sse-broadcast.py" "$here/../.." "$cc"
@@ -908,7 +910,7 @@ set -e
 case $r in
 0) grep -E "pixel_|peek_" "$work/gpu_vk.txt"; gpu_check "$work/gpu_vk.txt" "Vulkan"
    for want in "pixel_470_32_120=0xffffff" "pixel_470_10_120=0x800080" \
-               "pixel_480_10_120=0xffffff" "pixel_484_10_120=0xffffff"; do
+               "pixel_480_10_120=0x000000" "pixel_484_10_120=0xffffff"; do
      grep -q "^$want$" "$work/gpu_vk.txt" || { echo "FAIL: Vulkan overlay: $want"; exit 1; }
    done
    echo "== GPU byte reinterpretation, Vulkan"
@@ -958,7 +960,7 @@ for r in OpenGL Vulkan; do
     fi
     if [ "$r" = Vulkan ]; then
       for want in "pixel_470_64_240=0xffffff" "pixel_470_20_240=0x800080" \
-                  "pixel_480_20_240=0xffffff" "pixel_484_20_240=0xffffff"; do
+                  "pixel_480_20_240=0x000000" "pixel_484_20_240=0xffffff"; do
         grep -q "^$want$" "$work/gpu_2x.txt" || { echo "FAIL: Vulkan 2x overlay: $want"; exit 1; }
       done
     fi

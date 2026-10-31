@@ -111,6 +111,7 @@ static void pgraph_vk_finalize(NV2AState *d)
 static void pgraph_vk_flush(NV2AState *d)
 {
     PGRAPHState *pg = &d->pgraph;
+    pg->vk_renderer_state->display.pvideo.upload_valid = false;
 
     pgraph_vk_finish(pg, VK_FINISH_REASON_FLUSH);
     pgraph_vk_surface_flush(d);

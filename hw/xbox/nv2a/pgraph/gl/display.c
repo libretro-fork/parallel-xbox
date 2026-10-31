@@ -36,15 +36,9 @@ static uint8_t *convert_texture_data__CR8YB8CB8YA8(PGRAPHGLState *r,
 {
     uint8_t *converted_data =
         scratch_reserve(&r->pvideo_scratch, (size_t)width * height * 4);
-    int x, y;
-    for (y = 0; y < height; y++) {
-        const uint8_t *line = &data[y * pitch];
-        const uint32_t row_offset = y * width;
-        for (x = 0; x < width; x++) {
-            uint8_t *pixel = &converted_data[(row_offset + x) * 4];
-            convert_yuy2_to_rgb(line, x, &pixel[0], &pixel[1], &pixel[2]);
-            pixel[3] = 255;
-        }
+    for (unsigned y = 0; y < height; y++) {
+        pgraph_yuv422_to_rgba(converted_data + (size_t)y * width * 4,
+                             data + (size_t)y * pitch, width, false);
     }
     return converted_data;
 }

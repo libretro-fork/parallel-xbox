@@ -1030,13 +1030,14 @@ bool physical_memory_get_dirty_flag(ram_addr_t addr, unsigned client)
 
 bool physical_memory_is_clean(ram_addr_t addr)
 {
-    bool nv2a = physical_memory_get_dirty_flag(addr, DIRTY_MEMORY_NV2A);
-    bool nv2a_tex = physical_memory_get_dirty_flag(addr, DIRTY_MEMORY_NV2A_TEX);
-    bool vga = physical_memory_get_dirty_flag(addr, DIRTY_MEMORY_VGA);
-    bool code = physical_memory_get_dirty_flag(addr, DIRTY_MEMORY_CODE);
-    bool migration =
-        physical_memory_get_dirty_flag(addr, DIRTY_MEMORY_MIGRATION);
-    return !(nv2a && nv2a_tex && vga && code && migration);
+    /* One clean consumer already requires dirty handling. Avoid traversing
+     * the other bitmaps once that is known; no state is consumed here. */
+    return !(physical_memory_get_dirty_flag(addr, DIRTY_MEMORY_NV2A) &&
+             physical_memory_get_dirty_flag(addr, DIRTY_MEMORY_NV2A_TEX) &&
+             physical_memory_get_dirty_flag(addr, DIRTY_MEMORY_NV2A_PVIDEO) &&
+             physical_memory_get_dirty_flag(addr, DIRTY_MEMORY_VGA) &&
+             physical_memory_get_dirty_flag(addr, DIRTY_MEMORY_CODE) &&
+             physical_memory_get_dirty_flag(addr, DIRTY_MEMORY_MIGRATION));
 }
 
 static bool physical_memory_all_dirty(ram_addr_t start, ram_addr_t length,
@@ -1091,6 +1092,10 @@ uint8_t physical_memory_range_includes_clean(ram_addr_t start,
     if (mask & (1 << DIRTY_MEMORY_NV2A_TEX) &&
         !physical_memory_all_dirty(start, length, DIRTY_MEMORY_NV2A_TEX)) {
         ret |= (1 << DIRTY_MEMORY_NV2A_TEX);
+    }
+    if (mask & (1 << DIRTY_MEMORY_NV2A_PVIDEO) &&
+        !physical_memory_all_dirty(start, length, DIRTY_MEMORY_NV2A_PVIDEO)) {
+        ret |= (1 << DIRTY_MEMORY_NV2A_PVIDEO);
     }
     if (mask & (1 << DIRTY_MEMORY_VGA) &&
         !physical_memory_all_dirty(start, length, DIRTY_MEMORY_VGA)) {
@@ -1169,6 +1174,10 @@ void physical_memory_set_dirty_range(ram_addr_t start, ram_addr_t length,
             }
             if (unlikely(mask & (1 << DIRTY_MEMORY_NV2A_TEX))) {
                 bitmap_set_atomic(blocks[DIRTY_MEMORY_NV2A_TEX]->blocks[idx],
+                                  offset, next - page);
+            }
+            if (unlikely(mask & (1 << DIRTY_MEMORY_NV2A_PVIDEO))) {
+                bitmap_set_atomic(blocks[DIRTY_MEMORY_NV2A_PVIDEO]->blocks[idx],
                                   offset, next - page);
             }
 
@@ -1300,6 +1309,7 @@ static void physical_memory_clear_dirty_range(ram_addr_t addr, ram_addr_t length
     physical_memory_test_and_clear_dirty(addr, length, DIRTY_MEMORY_CODE);
     physical_memory_test_and_clear_dirty(addr, length, DIRTY_MEMORY_NV2A);
     physical_memory_test_and_clear_dirty(addr, length, DIRTY_MEMORY_NV2A_TEX);
+    physical_memory_test_and_clear_dirty(addr, length, DIRTY_MEMORY_NV2A_PVIDEO);
 }
 
 DirtyBitmapSnapshot *physical_memory_snapshot_and_clear_dirty

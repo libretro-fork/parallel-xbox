@@ -1336,6 +1336,23 @@ redraw/reset kicks remain uncounted. No-op/IRQ-enable writes do
 not invent work. The dedicated GitHub Actions job needs no game assets or GPU;
 the same test also runs in the regular suite.
 
+`test-pvideo-dirty.py CHECKOUT [CC]` compiles the production RAM dirty-client
+handlers and Vulkan PVIDEO upload path against independent consumer bitmaps
+and a driver model. It checks 24,096 mask/range/reset cases and 20,000 source
+write/metadata/reset/in-flight-write schedules. Cache hits must skip staging,
+flush, conversion, image-copy barriers and auxiliary submission. Fifty
+crop-only redraws must perform one upload. Explicit GPU writeback/blit marks,
+state-load invalidation, six-client propagation, early-return queries and
+range bounds are covered. No image comparison buffer is needed in the core.
+
+`test-yuv422.py CHECKOUT [CC] [--bench]` compares the production pair converter
+with the prior scalar helpers for all 24-bit Y/U/V combinations in both packed
+orders, complementary second luma, unaligned rows and odd-width guard pages.
+The default oracle run uses UB traps. The optional alternating benchmark
+removes instrumentation from both implementations and reports conversion-only
+timing; it does not measure whole-core latency. Both tests run without game
+assets or a GPU in the regular suite and GPU-progress CI job.
+
 `test-gpu-wait-deadline.py CHECKOUT [CC]` compiles the production main-loop
 waits, descriptor-poll path and guest idle-time accounting against a scheduler
 model. Its 314 cases cover bounded/unbounded/nonblocking waits, zero and

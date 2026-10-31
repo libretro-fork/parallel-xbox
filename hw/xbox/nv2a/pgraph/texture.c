@@ -469,20 +469,12 @@ void pgraph_convert_texture_data_into(const TextureShape s,
         assert(depth == 1); /* FIXME */
         // FIXME: only valid if control0 register allows for colorspace
         // conversion
-        uint8_t *pixel = converted_data;
+        bool uyvy = s.color_format ==
+                    NV097_SET_TEXTURE_FORMAT_COLOR_LC_IMAGE_YB8CR8YA8CB8;
         for (int y = 0; y < height; y++) {
-            const uint8_t *line = &data[y * row_pitch * depth];
-            for (int x = 0; x < width; x++, pixel += 4) {
-                if (s.color_format ==
-                    NV097_SET_TEXTURE_FORMAT_COLOR_LC_IMAGE_CR8YB8CB8YA8) {
-                    convert_yuy2_to_rgb(line, x, &pixel[0], &pixel[1],
-                                        &pixel[2]);
-                } else {
-                    convert_uyvy_to_rgb(line, x, &pixel[0], &pixel[1],
-                                        &pixel[2]);
-                }
-                pixel[3] = 255;
-            }
+            pgraph_yuv422_to_rgba(converted_data + (size_t)y * width * 4,
+                                 data + (size_t)y * row_pitch * depth,
+                                 width, uyvy);
         }
     } else if (s.color_format == NV097_SET_TEXTURE_FORMAT_COLOR_SZ_R6G5B5) {
         assert(depth == 1); /* FIXME */

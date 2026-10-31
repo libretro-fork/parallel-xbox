@@ -316,6 +316,7 @@ void pgraph_vk_image_blit(NV2AState *d)
     dest_addr += dest_offset;
     memory_region_set_client_dirty(d->vram, dest_addr, clipped_dest_size,
                                    DIRTY_MEMORY_NV2A_TEX);
+    pgraph_vk_mark_pvideo_source_dirty(d, dest_addr, clipped_dest_size);
     /* This CPU-executed GPU blit bypasses the CPU store dirty path. */
     memory_region_set_client_dirty(d->vram, dest_addr, clipped_dest_size,
                                    DIRTY_MEMORY_VGA);

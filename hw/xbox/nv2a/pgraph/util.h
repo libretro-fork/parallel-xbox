@@ -95,4 +95,40 @@ void convert_uyvy_to_rgb(const uint8_t *line, unsigned int ix,
     *b = cliptobyte((298 * c + 516 * d + 128) >> 8);
 }
 
+/* Write directly into the caller's final RGBA storage. Both packed formats
+ * share one U/V sample per pair; preserve the scalar converter's rounding. */
+static inline void pgraph_yuv422_store_rgba(uint8_t *out, int y,
+                                          int red, int green, int blue)
+{
+    int c = 298 * (y - 16);
+    out[0] = cliptobyte((c + red) >> 8);
+    out[1] = cliptobyte((c + green) >> 8);
+    out[2] = cliptobyte((c + blue) >> 8);
+    out[3] = 255;
+}
+
+static inline void pgraph_yuv422_to_rgba(uint8_t *out, const uint8_t *in,
+                                       unsigned width, bool uyvy)
+{
+    unsigned y = uyvy ? 1 : 0;
+    unsigned u = uyvy ? 0 : 1;
+    while (width) {
+        int d = (int)in[u] - 128;
+        int e = (int)in[u + 2] - 128;
+        int red = 409 * e + 128;
+        int green = -100 * d - 208 * e + 128;
+        int blue = 516 * d + 128;
+        pgraph_yuv422_store_rgba(out, in[y], red, green, blue);
+        if (width == 1) {
+            /* Odd rows still use the final pair's chroma, without reading
+             * its unused second luma or writing a second output pixel. */
+            break;
+        }
+        pgraph_yuv422_store_rgba(out + 4, in[y + 2], red, green, blue);
+        in += 4;
+        out += 8;
+        width -= 2;
+    }
+}
+
 #endif

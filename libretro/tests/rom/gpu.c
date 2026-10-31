@@ -921,7 +921,17 @@ void gpu_main(void)
         if (frame == 475) {
             wr(0x8958, 128u | (1u << 16)); /* unkeyed overlay */
         }
+        if (frame == 478) {
+            /* Update an already-cached overlay without changing its source
+             * address or format: the PVIDEO dirty client must notice. */
+            for (u32 i = 0; i < 64 * 64 * 2; i += 4) {
+                ram32(VIDEO_DATA + i, 0x80108010u); /* limited-range black */
+            }
+        }
         if (frame == 482) {
+            for (u32 i = 0; i < 64 * 64 * 2; i += 4) {
+                ram32(VIDEO_DATA + i, 0x80FF80FFu);
+            }
             wr(0x8928, 32u | (64u << 16)); /* resize overlay input */
             wr(0x8958, 64u | (1u << 16));
         }

@@ -35,15 +35,9 @@ static uint8_t *convert_texture_data__CR8YB8CB8YA8(uint8_t *data_out,
                                                    unsigned int height,
                                                    unsigned int pitch)
 {
-    int x, y;
-    for (y = 0; y < height; y++) {
-        const uint8_t *line = &data_in[y * pitch];
-        const uint32_t row_offset = y * width;
-        for (x = 0; x < width; x++) {
-            uint8_t *pixel = &data_out[(row_offset + x) * 4];
-            convert_yuy2_to_rgb(line, x, &pixel[0], &pixel[1], &pixel[2]);
-            pixel[3] = 255;
-        }
+    for (unsigned y = 0; y < height; y++) {
+        pgraph_yuv422_to_rgba(data_out + (size_t)y * width * 4,
+                             data_in + (size_t)y * pitch, width, false);
     }
     return data_out;
 }
@@ -151,6 +145,56 @@ static bool create_pvideo_image(PGRAPHState *pg, int width, int height)
     return true;
 }
 
+void pgraph_vk_mark_pvideo_source_dirty(NV2AState *d, hwaddr addr, hwaddr size)
+{
+    PGRAPHVkDisplayState *disp = &d->pgraph.vk_renderer_state->display;
+    if (!disp->pvideo.upload_valid || !size) {
+        return;
+    }
+    hwaddr begin = disp->pvideo.upload_addr;
+    hwaddr span = (hwaddr)(disp->pvideo.upload_height - 1) *
+                  disp->pvideo.upload_pitch +
+                  ((hwaddr)disp->pvideo.upload_width + 1) / 2 * 4;
+    hwaddr end = begin + span;
+    if (addr >= end) {
+        return;
+    }
+    hwaddr lo = MAX(addr, begin);
+    hwaddr prefix = lo - addr;
+    if (size > prefix) {
+        memory_region_set_client_dirty(d->vram, lo,
+            MIN(size - prefix, end - lo), DIRTY_MEMORY_NV2A_PVIDEO);
+    }
+}
+
+/* Independent of texture/VGA consumers: they must not consume our dirty bit.
+ * Clear before reading RAM so a write during conversion survives for next time. */
+static bool pvideo_upload_required(NV2AState *d, const PvideoState *state,
+                                   bool created)
+{
+    PGRAPHVkDisplayState *disp = &d->pgraph.vk_renderer_state->display;
+    hwaddr ram_size = memory_region_size(d->vram);
+    if (state->in_width <= 0 || state->in_height <= 0 || state->pitch <= 0 ||
+        state->base > ram_size || state->offset > ram_size - state->base) {
+        return true;
+    }
+    hwaddr addr = state->base + state->offset;
+    /* The last odd pixel still consumes both chroma bytes of its pair. */
+    hwaddr row_bytes = ((hwaddr)state->in_width + 1) / 2 * 4;
+    hwaddr span = (hwaddr)(state->in_height - 1) * state->pitch + row_bytes;
+    if (span > ram_size - addr) {
+        return true;
+    }
+    bool dirty = memory_region_test_and_clear_dirty(
+        d->vram, addr, span, DIRTY_MEMORY_NV2A_PVIDEO);
+    return created || !disp->pvideo.upload_valid ||
+           disp->pvideo.upload_addr != addr ||
+           disp->pvideo.upload_width != state->in_width ||
+           disp->pvideo.upload_height != state->in_height ||
+           disp->pvideo.upload_pitch != state->pitch ||
+           disp->pvideo.upload_format != state->format || dirty;
+}
+
 static void upload_pvideo_image(PGRAPHState *pg, PvideoState state)
 {
     NV2AState *d = container_of(pg, NV2AState, pgraph);
@@ -159,7 +203,9 @@ static void upload_pvideo_image(PGRAPHState *pg, PvideoState state)
 
     bool created = create_pvideo_image(pg, state.in_width, state.in_height);
 
-    // FIXME: Dirty tracking. We don't necessarily need to upload so much.
+    if (!pvideo_upload_required(d, &state, created)) {
+        return;
+    }
 
     // FIXME: Merge with display renderer command buffer
 
@@ -204,6 +250,12 @@ static void upload_pvideo_image(PGRAPHState *pg, PvideoState state)
     /* Upload only: the following display submission consumes it in queue
      * order; the aux fence protects staging reuse without a CPU drain. */
     pgraph_vk_end_single_time_commands_async(pg, cmd);
+    disp->pvideo.upload_addr = state.base + state.offset;
+    disp->pvideo.upload_pitch = state.pitch;
+    disp->pvideo.upload_format = state.format;
+    disp->pvideo.upload_width = state.in_width;
+    disp->pvideo.upload_height = state.in_height;
+    disp->pvideo.upload_valid = true;
 }
 
 static const char *display_frag_glsl =

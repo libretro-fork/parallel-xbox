@@ -225,6 +225,8 @@ static void download_settled(NV2AState *d, SurfaceBinding *surface)
     memory_region_set_client_dirty(d->vram, surface->vram_addr,
                                    surface->pitch * surface->height,
                                    DIRTY_MEMORY_NV2A_TEX);
+    pgraph_vk_mark_pvideo_source_dirty(d, surface->vram_addr,
+                                   surface->pitch * surface->height);
     memory_region_set_client_dirty(d->vram, surface->vram_addr,
                                    surface->pitch * surface->height,
                                    DIRTY_MEMORY_VGA);

@@ -9,9 +9,15 @@ work=$(mktemp -d)
 base=0xFFF10000
 gcc -m32 -ffreestanding -fno-pic -fno-pie -fno-stack-protector -fno-asynchronous-unwind-tables \
     -mno-sse -mno-mmx -O2 -Wall -c -o "$work/gpu.o" "$here/gpu.c"
-ld -m elf_i386 -Ttext=$base -e gpu_main -o "$work/gpu.elf" "$work/gpu.o"
-entry=$(nm "$work/gpu.elf" | awk '$3 == "gpu_main" { print $1 }')
-objcopy -O binary -j .text -j .rodata -j .data "$work/gpu.elf" "$work/gpu.bin"
+if ld -V 2>&1 | grep -q elf_i386; then
+    ld -m elf_i386 -Ttext=$base -e gpu_main -o "$work/gpu.elf" "$work/gpu.o"
+else
+    # Native MinGW emits COFF objects and has the PE linker emulation.
+    ld -m i386pe --image-base=0xFFF00000 -Ttext=$base -e _gpu_main \
+        -o "$work/gpu.elf" "$work/gpu.o"
+fi
+entry=$(nm "$work/gpu.elf" | awk '$3 ~ /^_?gpu_main$/ { print $1 }')
+objcopy -O binary -j .text -j .rodata -j .rdata -j .data "$work/gpu.elf" "$work/gpu.bin"
 {
     echo "; gpu.c built by gpu.sh: 32-bit code at $base, entered at gpu_main;"
     echo "; included at the top of flash.asm, which lays the bytes out with gpu_bytes"
@@ -21,5 +27,6 @@ objcopy -O binary -j .text -j .rodata -j .data "$work/gpu.elf" "$work/gpu.bin"
     od -An -v -tx1 "$work/gpu.bin" | sed 's/^ *//; s/ *$//; s/ /, 0x/g; s/^/        db 0x/'
     echo "%endmacro"
 } > "$here/gpu.inc"
-rm -rf "$work"
+rm -f "$work/gpu.o" "$work/gpu.elf" "$work/gpu.bin"
+rmdir "$work"
 echo "gpu.inc: $(wc -c < "$here/gpu.inc") bytes, entry 0x$entry"

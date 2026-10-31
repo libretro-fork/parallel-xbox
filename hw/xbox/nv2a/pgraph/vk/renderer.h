@@ -352,6 +352,10 @@ typedef struct PGRAPHVkDisplayState {
 
     struct {
         PvideoState state;
+        /* Last uploaded source; destination/crop changes reuse its pixels. */
+        bool upload_valid;
+        hwaddr upload_addr;
+        int upload_pitch, upload_format, upload_width, upload_height;
         uint64_t seq;
         int width, height;
         VkImage image;
@@ -1103,6 +1107,8 @@ void pgraph_vk_init_display(PGRAPHState *pg);
 void pgraph_vk_finalize_display(PGRAPHState *pg);
 void pgraph_vk_render_display(PGRAPHState *pg, SurfaceBinding *surface);
 void pgraph_vk_present_scanout(NV2AState *d);
+/* A CPU-executed GPU write only dirties the cached PVIDEO source it overlaps. */
+void pgraph_vk_mark_pvideo_source_dirty(NV2AState *d, hwaddr addr, hwaddr size);
 void pgraph_vk_poll_display_retired(PGRAPHVkState *r);
 
 // texture.c
