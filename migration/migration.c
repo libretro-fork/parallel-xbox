@@ -107,7 +107,6 @@ void migration_object_init(void)
     current_incoming->state = MIGRATION_STATUS_NONE;
     current_incoming->postcopy_remote_fds =
         g_array_new(FALSE, TRUE, sizeof(struct PostCopyFD));
-    qemu_mutex_init(&current_incoming->rp_mutex);
 
     current_incoming->exit_on_error = INMIGRATE_DEFAULT_EXIT_ON_ERROR;
 
@@ -214,7 +213,6 @@ static int migrate_send_rp_message(MigrationIncomingState *mis,
     int ret = 0;
 
     trace_migrate_send_rp_message((int)message_type, len);
-    QEMU_LOCK_GUARD(&mis->rp_mutex);
 
     /*
      * It's possible that the file handle got lost due to network
@@ -287,7 +285,6 @@ void migrate_set_state(MigrationStatus *state, MigrationStatus old_state,
 
 void migrate_set_error(MigrationState *s, const Error *error)
 {
-    QEMU_LOCK_GUARD(&s->error_mutex);
 
     trace_migrate_error(error_get_pretty(error));
 
@@ -298,7 +295,6 @@ void migrate_set_error(MigrationState *s, const Error *error)
 
 bool migrate_has_error(MigrationState *s)
 {
-    QEMU_LOCK_GUARD(&s->error_mutex);
     return s->error != NULL;
 }
 
@@ -476,7 +472,6 @@ static void migration_instance_finalize(Object *obj)
 {
     MigrationState *ms = MIGRATION_OBJ(obj);
 
-    qemu_mutex_destroy(&ms->error_mutex);
     error_free(ms->error);
 }
 
@@ -487,7 +482,6 @@ static void migration_instance_init(Object *obj)
     ms->state = MIGRATION_STATUS_NONE;
     ms->mbps = -1;
     ms->pages_per_second = -1;
-    qemu_mutex_init(&ms->error_mutex);
 
     migrate_params_init(&ms->parameters);
 }

@@ -112,7 +112,6 @@ struct MigrationIncomingState {
     /* To notify the fault_thread to wake, e.g., when need to quit */
     int       userfault_event_fd;
     QEMUFile *to_src_file;
-    QemuMutex rp_mutex;    /* We send replies from multiple threads */
     /* RAMBlock of last request sent to source */
     RAMBlock *last_rb;
     /*
@@ -277,7 +276,6 @@ struct MigrationState {
        We used the mutex to be able to return the 1st error message */
     Error *error;
     /* mutex to protect errp */
-    QemuMutex error_mutex;
 
     /*
      * Global switch on whether we need to store the global state
