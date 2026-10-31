@@ -46,6 +46,7 @@
 #include "debug.h"
 #include "constants.h"
 #include "glsl.h"
+#include "vertex-format.h"
 
 #define HAVE_EXTERNAL_MEMORY 1
 
@@ -761,6 +762,9 @@ typedef struct PGRAPHVkState {
     VkVertexInputBindingDescription vertex_binding_descriptions[NV2A_VERTEXSHADER_ATTRIBUTES];
     int num_active_vertex_binding_descriptions;
     hwaddr vertex_attribute_offsets[NV2A_VERTEXSHADER_ATTRIBUTES];
+    /* Immutable for this device, populated before rendering begins. */
+    bool vertex_conversion_required;
+    uint8_t vertex_format_conversion[VK_FORMAT_R32G32B32A32_SFLOAT + 1];
 
     QTAILQ_HEAD(, SurfaceBinding) surfaces;
     QTAILQ_HEAD(, SurfaceBinding) invalid_surfaces;
@@ -1017,6 +1021,7 @@ void pgraph_vk_transition_image_layout(PGRAPHState *pg, VkCommandBuffer cmd,
                                        VkImageLayout newLayout);
 
 // vertex.c
+void pgraph_vk_init_vertex_formats(PGRAPHState *pg, Error **errp);
 void pgraph_vk_bind_vertex_attributes(NV2AState *d, unsigned int min_element,
                                       unsigned int max_element,
                                       bool inline_data,

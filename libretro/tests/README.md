@@ -3,8 +3,9 @@
 `run.sh` runs every test script here. The extracted-code tests (`test-*.py`, which
 compile production functions into a fixture) run for either core; the ones
 that need Mesa's GL on EGL, and `test-mcpx-hle.py`, run with the Linux core;
-the Vulkan copy and depth-clear tests run with the Linux core where there is
-a Vulkan device. Each can also be run on its own, as below. Two more are built by
+the Vulkan copy, depth-clear and vertex-fetch tests run with the Linux core
+where there is a Vulkan device. Each can also be run on its own, as below.
+Two more are built by
 the Makefile and run on their own: `make s3tctest` (the S3TC decoder against
 its oracle) and `make fileiotest` (the disk file layer; it takes a scratch
 file's path).
@@ -487,6 +488,16 @@ empty ranges. Skipped prefixes remain untouched; remap metadata and binding
 indices stay intact. It checks that merged ranges stay in the input array
 and packed attributes use one copy; undefined-behavior traps are enabled.
 No graphics driver is needed.
+
+`python libretro/tests/test-vk-vertex-formats.py CHECKOUT [CC]` exercises
+production capability initialization, array remapping and inline conversion
+with forced unsupported formats. It checks startup-only device queries,
+guest dword padding, staging rotation, provoking values and all 65,536 signed
+short values. The renderer's remap descriptor remains 400 bytes.
+`test-vulkan-vertex-formats.py` additionally fetches converted attributes in
+real vertex/indexed draws under synchronization validation, checking signed,
+normalized and default components. Its probe shader is embedded; no external
+shader compiler is needed to run the test.
 
 At guest frame 1020, two GPU palette clears (red then green) are each followed by an indexed draw before the next flip. Frontend frame 1030 must show green; the former Vulkan per-frame validation throttle left it red. The extracted dirty-page test also checks that GPU writeback invalidates all overlapping texture/palette validation stamps even when they are already marked dirty, leaving unrelated and empty views unchanged.
 

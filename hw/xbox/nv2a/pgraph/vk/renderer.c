@@ -65,6 +65,11 @@ static void pgraph_vk_init(NV2AState *d, Error **errp)
         return;
     }
 
+    pgraph_vk_init_vertex_formats(pg, errp);
+    if (*errp) {
+        return;
+    }
+
     pgraph_vk_init_command_buffers(pg);
     pgraph_vk_init_buffers(d);
     pgraph_vk_init_surfaces(pg);

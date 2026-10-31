@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Vulkan converts unsupported three-component byte/short and signed-scaled short vertex formats directly into mapped staging memory, including inline arrays. Device capabilities are checked once at renderer startup; guest dword padding and provoking values remain intact, and GPUs supporting the native formats keep their existing upload path.
+
 - Vulkan vertex remapping skips leading vertices that the draw does not use, keeps packed copies contiguous, and specializes small strided copies. Remap metadata is passed by reference rather than copied; existing indices, staging capacity and in-flight snapshot protection are preserved.
 
 - Vulkan retains a compatible larger linear depth buffer when a game switches to a smaller color target, avoiding depth downloads and reuploads. Cached target switches keep the color-sized render area and clip, and partial clears preserve the rest of the depth/stencil image.

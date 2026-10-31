@@ -145,6 +145,7 @@ python3 "$here/test-uniform-stage-uploads.py" "$here/../.." "$cc"
 python3 "$here/test-vertex-fetch-span.py" "$here/../.." "$cc"
 python3 "$here/test-vertex-snapshot-cache.py" "$here/../.." "$cc"
 python3 "$here/test-vk-vertex-copies.py" "$here/../.." "$cc"
+python3 "$here/test-vk-vertex-formats.py" "$here/../.." "$cc"
 python3 "$here/test-vk-worker-modules.py" "$here/../.." "$cc"
 python3 "$here/test-prepare-xiso.py"
 # Production GL transfers against Mesa's GL on a surfaceless EGL display
@@ -714,6 +715,7 @@ case $core in
         python3 "$here/test-vulkan-cube-crop.py" "$here/../.." "$cc"
         python3 "$here/test-vulkan-linear-span.py" "$here/../.." "$cc"
         python3 "$here/test-vulkan-depth-clear.py" "$here/../.." "$cc"
+        python3 "$here/test-vulkan-vertex-formats.py" "$here/../.." "$cc"
         python3 "$here/test-vulkan-rgb-snorm.py" "$here/../.." "$cc"
         python3 "$here/test-vulkan-volume-blocks.py" "$here/../.." "$cc"
     fi

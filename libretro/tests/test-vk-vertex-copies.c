@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "hw/xbox/nv2a/pgraph/vk/vertex-format.h"
 #define NV2A_VERTEXSHADER_ATTRIBUTES 16
 #define TARGET_PAGE_SIZE 4096u
 #define TARGET_PAGE_MASK (~(uint64_t)4095)

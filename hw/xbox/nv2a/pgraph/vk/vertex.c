@@ -156,6 +156,39 @@ static char const * const vertex_data_array_format_to_str[] = {
     [NV097_SET_VERTEX_DATA_ARRAY_FORMAT_TYPE_CMP] = "CMP",
 };
 
+/* Query once per renderer/device, never on the draw path. The fallback's
+ * format must be supported too, rather than deferring failure to a PSO. */
+void pgraph_vk_init_vertex_formats(PGRAPHState *pg, Error **errp)
+{
+    PGRAPHVkState *r = pg->vk_renderer_state;
+    const VkFormat *tables[] = { float_to_count, ub_to_count,
+                                s1_to_count, s32k_to_count };
+    memset(r->vertex_format_conversion, 0, sizeof(r->vertex_format_conversion));
+    r->vertex_conversion_required = false;
+    for (unsigned t = 0; t <= ARRAY_SIZE(tables); t++) {
+        for (unsigned c = 0; c < (t == ARRAY_SIZE(tables) ? 1 : 4); c++) {
+            VkFormat format = t == ARRAY_SIZE(tables) ? VK_FORMAT_R32_SINT : tables[t][c];
+            VkFormatProperties props;
+            vkGetPhysicalDeviceFormatProperties(r->physical_device, format, &props);
+            if (props.bufferFeatures & VK_FORMAT_FEATURE_VERTEX_BUFFER_BIT) {
+                continue;
+            }
+            enum VertexConvert convert;
+            VkFormat fallback = pgraph_vk_vertex_substitute_format(format, &convert);
+            if (fallback != VK_FORMAT_UNDEFINED) {
+                vkGetPhysicalDeviceFormatProperties(r->physical_device, fallback, &props);
+            }
+            if (fallback == VK_FORMAT_UNDEFINED ||
+                !(props.bufferFeatures & VK_FORMAT_FEATURE_VERTEX_BUFFER_BIT)) {
+                error_setg(errp, "Vulkan vertex format %u has no supported fallback", format);
+                return;
+            }
+            r->vertex_format_conversion[format] = convert;
+            r->vertex_conversion_required = true;
+        }
+    }
+}
+
 void pgraph_vk_bind_vertex_attributes(NV2AState *d, unsigned int min_element,
                                       unsigned int max_element,
                                       bool inline_data,
