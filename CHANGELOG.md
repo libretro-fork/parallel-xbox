@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Extend the DOAX guest-GPU-progress CI regression to PFIFO register writes and NV_USER DMA PUT, GET and REF updates across channels. Verify that these wakes keep unfinished GPU work pending and preserve the requested register values. Emulation behavior is unchanged.
+
 - Publish coherent instruction-clock timestamps through libretro-common
   atomics. Virtual clock observers avoid seqlock retries and raw count/bias
   reads; state loads rebuild the runtime timestamp without changing its format.

@@ -8,12 +8,14 @@
 static unsigned ctz32(uint32_t v) { assert(v);return __builtin_ctz(v); }
 #include "hw/xbox/nv2a/nv2a_regs.h"
 #define NV2A_DPRINTF(...) ((void)0)
+#define NV2A_NUM_CHANNELS 32
 #define nv2a_reg_log_write(...) ((void)0)
 typedef uint64_t hwaddr;
 typedef struct { uint32_t regs[0x2000/4];int pending_interrupts,enabled_interrupts,scanout_changed; } PGRAPHState;
 typedef struct NV2AState {
  PGRAPHState pgraph;
- struct { int thread_running,halt,guest_kicks,guest_done,fifo_kick,fifo_ec; } pfifo;
+ struct { int thread_running,halt,guest_kicks,guest_done,fifo_kick,fifo_ec;
+          int regs[0x2000],pending_interrupts,enabled_interrupts; } pfifo;
  struct { uint32_t pending_interrupts,enabled_interrupts,start; } pcrtc;
  unsigned ramin;uint8_t ramin_ptr[4096],vram_ptr[256];
 } NV2AState;
@@ -31,6 +33,8 @@ static void retro_eventcount_notify(int *ec) {
  if(expect_guest>=0)assert(g_nv2a->pfifo.guest_kicks==expect_guest);
  wakes++;
 }
+static uint32_t pfifo_reg_r(NV2AState *d,unsigned addr) {return (uint32_t)d->pfifo.regs[addr];}
+static void pfifo_reg_w(NV2AState *d,unsigned addr,uint32_t v) {d->pfifo.regs[addr]=(int)v;}
 static uint32_t pgraph_reg_r(PGRAPHState *pg,unsigned addr) {return pg->regs[addr/4];}
 #define PG_GET_MASK(addr,mask) GET_MASK(pgraph_reg_r(pg,addr),mask)
 static void pgraph_reg_set_mask_atomic(PGRAPHState *pg,unsigned addr,uint32_t mask,uint32_t value) { SET_MASK(pg->regs[addr/4],mask,value); }
@@ -58,7 +62,23 @@ static void guest_write(NV2AState *d,unsigned kind) {
  case 0:pgraph_write(d,NV_PGRAPH_INCREMENT,NV_PGRAPH_INCREMENT_READ_3D,4);break;
  case 1:pgraph_write(d,NV_PGRAPH_INTR,NV_PGRAPH_INTR_ERROR,4);break;
  case 2:pgraph_write(d,NV_PGRAPH_FIFO,NV_PGRAPH_FIFO_ACCESS,4);break;
- default:pcrtc_write(d,NV_PCRTC_START,0x08000080,4);assert(d->pcrtc.start==0x80);break;
+ case 3:pcrtc_write(d,NV_PCRTC_START,0x08000080,4);assert(d->pcrtc.start==0x80);break;
+ case 4:pfifo_write(d,NV_PFIFO_INTR_0,1,4);break;
+ case 5:pfifo_write(d,NV_PFIFO_INTR_EN_0,1,4);break;
+ case 6:pfifo_write(d,NV_PFIFO_CACHE1_DMA_PUT,0x1234,4);assert(pfifo_reg_r(d,NV_PFIFO_CACHE1_DMA_PUT)==0x1234);break;
+ default: {
+  unsigned channel=(unsigned)d->pfifo.guest_kicks&15;
+  pfifo_reg_w(d,NV_PFIFO_MODE,1u<<channel);
+  uint32_t push=0;SET_MASK(push,NV_PFIFO_CACHE1_PUSH1_CHID,channel);
+  pfifo_reg_w(d,NV_PFIFO_CACHE1_PUSH1,push);
+  const unsigned user_regs[]={NV_USER_DMA_PUT,NV_USER_DMA_GET,NV_USER_REF};
+  const unsigned fifo_regs[]={NV_PFIFO_CACHE1_DMA_PUT,NV_PFIFO_CACHE1_DMA_GET,NV_PFIFO_CACHE1_REF};
+  unsigned index=kind-7;
+  user_write(d,((hwaddr)channel<<16)|user_regs[index],0x5678,4);
+  assert(pfifo_reg_r(d,fifo_regs[index])==0x5678);
+  break;
+ }
+
  }
  assert(wakes==old+1 && d->pfifo.guest_kicks==expect_guest);
  assert(nv2a_libretro_guest_busy());
@@ -77,10 +97,10 @@ int main(void) {
   assert(!nv2a_libretro_guest_busy());
   /* DOAX shape: an empty GPU queue resumes after a guest flip release.
    * It must stay busy during resumed work, including coalesced wakeups. */
-  guest_write(&d,order%4);
+  guest_write(&d,order%10);
   d.pfifo.fifo_kick=0;int seen=d.pfifo.guest_kicks;
   assert(nv2a_libretro_guest_busy());
-  guest_write(&d,(order+1)%4);
+  guest_write(&d,(order+3)%10);
   d.pfifo.guest_done=seen;assert(nv2a_libretro_guest_busy());
   seen=d.pfifo.guest_kicks;d.pfifo.fifo_kick=0;
   assert(nv2a_libretro_guest_busy());
@@ -101,6 +121,6 @@ int main(void) {
   cases++;
  }
  g_nv2a=NULL;assert(!nv2a_libretro_guest_busy());
- printf("DOAX GPU progress regression: %u guest flip/ack/FIFO/scanout schedules passed; publish-before-wake, unfinished work, coalesced kicks, idle clock-skip protection and core-only wake exclusion\n",cases);
+ printf("DOAX GPU progress regression: %u guest flip/ack/FIFO/scanout/DMA schedules passed; publish-before-wake, unfinished work, coalesced kicks, idle clock-skip protection and core-only wake exclusion\n",cases);
  return 0;
 }

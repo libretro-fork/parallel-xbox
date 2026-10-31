@@ -4,7 +4,7 @@ from pathlib import Path
 import ctypes,os,re,subprocess,sys,tempfile
 r=Path(sys.argv[1]).resolve();cc=sys.argv[2] if len(sys.argv)>2 else 'cc'
 parts=[]
-for path,names in [('hw/xbox/nv2a/pfifo.c',['pfifo_kick','pfifo_kick_guest']),('hw/xbox/nv2a/nv2a.c',['nv2a_libretro_guest_busy']),('hw/xbox/nv2a/pgraph/pgraph.c',['pgraph_write']),('hw/xbox/nv2a/pcrtc.c',['pcrtc_write']),('ui/libretro.c',['lr_devices_busy','lr_quiet_exit'])]:
+for path,names in [('hw/xbox/nv2a/pfifo.c',['pfifo_kick','pfifo_kick_guest','pfifo_write']),('hw/xbox/nv2a/user.c',['user_write']),('hw/xbox/nv2a/nv2a.c',['nv2a_libretro_guest_busy']),('hw/xbox/nv2a/pgraph/pgraph.c',['pgraph_write']),('hw/xbox/nv2a/pcrtc.c',['pcrtc_write']),('ui/libretro.c',['lr_devices_busy','lr_quiet_exit'])]:
  s=(r/path).read_text()
  for name in names:
   m=re.search(r'^(?:static )?(?:void|bool) '+name+r'\(',s,re.M);assert m,name
