@@ -90,7 +90,8 @@ static void run(unsigned type){
 static void check(void){
  int64_t soonest=-1;
  for(unsigned type=0;type<QEMU_CLOCK_MAX;type++){
-  for(unsigned ext=0;ext<2;ext++){int mask=ext?QEMU_TIMER_ATTR_ALL:~QEMU_TIMER_ATTR_EXTERNAL;assert(qemu_clock_deadline_ns_all(type,mask)==deadline(type,mask));}
+  int masks[]={QEMU_TIMER_ATTR_ALL,~QEMU_TIMER_ATTR_EXTERNAL,0,QEMU_TIMER_ATTR_EXTERNAL,4,~4};
+  for(unsigned m=0;m<sizeof(masks)/sizeof(masks[0]);m++){int mask=masks[m];assert(qemu_clock_deadline_ns_all(type,mask)==deadline(type,mask));}
   int id=next(type,QEMU_TIMER_ATTR_ALL);assert(qemu_clock_expired(type)==(id>=0&&ref[id].expiry<=now[type]));
   if(!(counted&&type==QEMU_CLOCK_VIRTUAL))soonest=qemu_soonest_timeout(soonest,deadline(type,QEMU_TIMER_ATTR_ALL));
  }
@@ -106,6 +107,13 @@ static void special_a(void*opaque){assert(!timer_pending(&a));special[special_n+
 static void special_b(void*opaque){special[special_n++]=2;}
 static void free_self(void*opaque){QEMUTimer*t=opaque;assert(!timer_pending(t));free(t);special[special_n++]=4;}
 int main(void){
+#ifndef TIMER_BASELINE
+ for(unsigned type=0;type<QEMU_CLOCK_MAX;type++){
+  assert(!qemu_clock_expired(type));
+  assert(qemu_clock_deadline_ns_all(type,QEMU_TIMER_ATTR_ALL)==-1);
+ }
+#endif
+
  qemu_init_clocks(notify);
 #ifdef TIMER_BASELINE
  QEMUTimerListGroup unused[2];for(unsigned i=0;i<2;i++)timerlistgroup_init(&unused[i],unused_notify,NULL);
@@ -115,7 +123,7 @@ int main(void){
 #endif
  printf("Clock setup with two AIO contexts: queue allocations=%u mutexes=%u events=%u\n",allocations,mutexes,events);
  for(unsigned type=0;type<QEMU_CLOCK_MAX;type++){now[type]=1000;qemu_clock_enable(type,true);enabled[type]=true;}
- for(unsigned i=0;i<N;i++){ref[i].type=i%QEMU_CLOCK_MAX;ref[i].attrs=i%3?0:QEMU_TIMER_ATTR_EXTERNAL;ref[i].expiry=-1;initialize(&timers[i],ref[i].type,ref[i].attrs,record,(void*)(uintptr_t)i);timers[i].scale=i%2?SCALE_US:SCALE_NS;}
+ for(unsigned i=0;i<N;i++){ref[i].type=i%QEMU_CLOCK_MAX;ref[i].attrs=(i%3?0:QEMU_TIMER_ATTR_EXTERNAL)|(i%7?0:4);ref[i].expiry=-1;initialize(&timers[i],ref[i].type,ref[i].attrs,record,(void*)(uintptr_t)i);timers[i].scale=i%2?SCALE_US:SCALE_NS;}
  for(unsigned step=0;step<20000;step++){
   unsigned id=random_value()%N,type=random_value()%QEMU_CLOCK_MAX,op=random_value()%8;
   int64_t expiry=(int64_t)(random_value()%7000)-20;
@@ -136,6 +144,12 @@ int main(void){
  }
  for(unsigned i=0;i<N;i++)timer_del(&timers[i]);
  qemu_clock_enable(0,true);now[0]=10000;
+ initialize(&a,0,0,special_a,NULL);initialize(&b,0,0,special_b,NULL);
+ timer_mod_ns(&a,0);timer_mod_ns(&b,-1);timer_del(&b);
+ assert(qemu_clock_deadline_ns_all(0,~QEMU_TIMER_ATTR_EXTERNAL)==0);timer_del(&a);
+ assert(qemu_clock_deadline_ns_all(0,~QEMU_TIMER_ATTR_EXTERNAL)==-1);
+ timer_mod_ns(&a,0);timer_mod_ns(&b,0);timer_del(&b);
+ assert(qemu_clock_deadline_ns_all(0,~QEMU_TIMER_ATTR_EXTERNAL)==0);timer_del(&a);
  initialize(&a,0,0,special_a,NULL);initialize(&b,0,0,special_b,NULL);initialize(&c,0,0,special_c,NULL);
  timer_mod_ns(&a,now[0]);timer_mod_ns(&b,now[0]);assert(qemu_clock_run_timers(0));assert(special_n==3&&special[0]==1&&special[1]==1&&special[2]==3);
  QEMUTimer*self=calloc(1,sizeof(*self));assert(self);initialize(self,0,0,free_self,self);timer_mod_ns(self,now[0]);assert(qemu_clock_run_timers(0));assert(special_n==4&&special[3]==4);
