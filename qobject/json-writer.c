@@ -200,44 +200,10 @@ void json_writer_end_array(JSONWriter *writer)
     g_string_append_c(writer->contents, ']');
 }
 
-void json_writer_bool(JSONWriter *writer, const char *name, bool val)
-{
-    maybe_comma_name(writer, name);
-    g_string_append(writer->contents, val ? "true" : "false");
-}
-
-void json_writer_null(JSONWriter *writer, const char *name)
-{
-    maybe_comma_name(writer, name);
-    g_string_append(writer->contents, "null");
-}
-
 void json_writer_int64(JSONWriter *writer, const char *name, int64_t val)
 {
     maybe_comma_name(writer, name);
     g_string_append_printf(writer->contents, "%" PRId64, val);
-}
-
-void json_writer_uint64(JSONWriter *writer, const char *name, uint64_t val)
-{
-    maybe_comma_name(writer, name);
-    g_string_append_printf(writer->contents, "%" PRIu64, val);
-}
-
-void json_writer_double(JSONWriter *writer, const char *name, double val)
-{
-    maybe_comma_name(writer, name);
-
-    /*
-     * FIXME: g_string_append_printf() is locale dependent; but JSON
-     * requires numbers to be formatted as if in the C locale.
-     * Dependence on C locale is a pervasive issue in QEMU.
-     */
-    /*
-     * FIXME: This risks printing Inf or NaN, which are not valid
-     * JSON values.
-     */
-    g_string_append_printf(writer->contents, "%.17g", val);
 }
 
 void json_writer_str(JSONWriter *writer, const char *name, const char *str)

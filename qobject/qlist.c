@@ -50,11 +50,6 @@ void qlist_append_obj(QList *qlist, QObject *value)
     QTAILQ_INSERT_TAIL(&qlist->head, entry, next);
 }
 
-int qlist_empty(const QList *qlist)
-{
-    return QTAILQ_EMPTY(&qlist->head);
-}
-
 /**
  * qlist_destroy_obj(): Free all the memory allocated by a QList
  */

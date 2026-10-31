@@ -338,38 +338,6 @@ bool qemu_opt_get_bool(QemuOpts *opts, const char *name, bool defval)
     return qemu_opt_get_bool_helper(opts, name, defval, false);
 }
 
-static uint64_t qemu_opt_get_number_helper(QemuOpts *opts, const char *name,
-                                           uint64_t defval, bool del)
-{
-    QemuOpt *opt;
-    const char *def_val;
-    uint64_t ret = defval;
-
-    if (opts == NULL) {
-        return ret;
-    }
-
-    opt = qemu_opt_find(opts, name);
-    if (opt == NULL) {
-        def_val = find_default_by_name(opts, name);
-        if (def_val) {
-            parse_option_number(name, def_val, &ret, &error_abort);
-        }
-        return ret;
-    }
-    assert(opt->desc && opt->desc->type == QEMU_OPT_NUMBER);
-    ret = opt->value.uint;
-    if (del) {
-        qemu_opt_del_all(opts, name);
-    }
-    return ret;
-}
-
-uint64_t qemu_opt_get_number(QemuOpts *opts, const char *name, uint64_t defval)
-{
-    return qemu_opt_get_number_helper(opts, name, defval, false);
-}
-
 static uint64_t qemu_opt_get_size_helper(QemuOpts *opts, const char *name,
                                          uint64_t defval, bool del)
 {
@@ -486,29 +454,6 @@ bool qemu_opt_set(QemuOpts *opts, const char *name, const char *value,
     return true;
 }
 
-bool qemu_opt_set_bool(QemuOpts *opts, const char *name, bool val,
-                       Error **errp)
-{
-    QemuOpt *opt;
-    const QemuOptDesc *desc;
-    const QemuOptsList *list = opts->list;
-
-    desc = find_desc_by_name(list->desc, name);
-    if (!desc && !opts_accepts_any(list)) {
-        error_setg(errp, "Invalid parameter '%s'", name);
-        return false;
-    }
-
-    opt = g_malloc0(sizeof(*opt));
-    opt->name = g_strdup(name);
-    opt->opts = opts;
-    opt->desc = desc;
-    opt->value.boolean = !!val;
-    opt->str = g_strdup(val ? "on" : "off");
-    QTAILQ_INSERT_TAIL(&opts->head, opt, next);
-    return true;
-}
-
 bool qemu_opt_set_number(QemuOpts *opts, const char *name, int64_t val,
                          Error **errp)
 {
@@ -605,15 +550,6 @@ QemuOpts *qemu_opts_create(QemuOptsList *list, const char *id,
     QTAILQ_INIT(&opts->head);
     QTAILQ_INSERT_TAIL(&list->head, opts, next);
     return opts;
-}
-
-void qemu_opts_reset(QemuOptsList *list)
-{
-    QemuOpts *opts, *next_opts;
-
-    QTAILQ_FOREACH_SAFE(opts, &list->head, next, next_opts) {
-        qemu_opts_del(opts);
-    }
 }
 
 void qemu_opts_loc_restore(QemuOpts *opts)

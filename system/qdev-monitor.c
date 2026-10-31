@@ -282,7 +282,6 @@ static DeviceClass *qdev_get_device_class(const char **driver, Error **errp)
     return dc;
 }
 
-
 int qdev_device_help(QemuOpts *opts)
 {
     const char *driver;
@@ -747,52 +746,4 @@ QemuOptsList qemu_device_opts = {
         { /* end of list */ }
     },
 };
-
-QemuOptsList qemu_global_opts = {
-    .name = "global",
-    .head = QTAILQ_HEAD_INITIALIZER(qemu_global_opts.head),
-    .desc = {
-        {
-            .name = "driver",
-            .type = QEMU_OPT_STRING,
-        },{
-            .name = "property",
-            .type = QEMU_OPT_STRING,
-        },{
-            .name = "value",
-            .type = QEMU_OPT_STRING,
-        },
-        { /* end of list */ }
-    },
-};
-
-int qemu_global_option(const char *str)
-{
-    char driver[64], property[64];
-    QemuOpts *opts;
-    int rc, offset;
-
-    rc = sscanf(str, "%63[^.=].%63[^=]%n", driver, property, &offset);
-    if (rc == 2 && str[offset] == '=') {
-        opts = qemu_opts_create(&qemu_global_opts, NULL, 0, &error_abort);
-        qemu_opt_set(opts, "driver", driver, &error_abort);
-        qemu_opt_set(opts, "property", property, &error_abort);
-        qemu_opt_set(opts, "value", str + offset + 1, &error_abort);
-        return 0;
-    }
-
-    opts = qemu_opts_parse_noisily(&qemu_global_opts, str, false);
-    if (!opts) {
-        return -1;
-    }
-    if (!qemu_opt_get(opts, "driver")
-        || !qemu_opt_get(opts, "property")
-        || !qemu_opt_get(opts, "value")) {
-        error_report("options 'driver', 'property', and 'value'"
-                     " are required");
-        return -1;
-    }
-
-    return 0;
-}
 

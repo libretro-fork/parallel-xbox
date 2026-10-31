@@ -746,31 +746,3 @@ Visitor *qobject_input_visitor_new_keyval(QObject *obj)
     return &v->visitor;
 }
 
-Visitor *qobject_input_visitor_new_str(const char *str,
-                                       const char *implied_key,
-                                       Error **errp)
-{
-    bool is_json = str[0] == '{';
-    QObject *obj;
-    QDict *args;
-    Visitor *v;
-
-    if (is_json) {
-        obj = qobject_from_json(str, errp);
-        if (!obj) {
-            return NULL;
-        }
-        args = qobject_to(QDict, obj);
-        assert(args);
-        v = qobject_input_visitor_new(QOBJECT(args));
-    } else {
-        args = keyval_parse(str, implied_key, NULL, errp);
-        if (!args) {
-            return NULL;
-        }
-        v = qobject_input_visitor_new_keyval(QOBJECT(args));
-    }
-    qobject_unref(args);
-
-    return v;
-}

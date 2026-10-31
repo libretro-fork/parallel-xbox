@@ -12,7 +12,6 @@ extern QemuOptsList *vm_config_groups[];
 extern QemuOptsList *drive_config_groups[];
 
 void qemu_add_opts(QemuOptsList *list);
-int qemu_global_option(const char *str);
 
 /* A default callback for qemu_read_config_file().  */
 void qemu_config_do_parse(const char *group, QDict *qdict, void *opaque, Error **errp);

@@ -2,9 +2,8 @@
 
 QEMU's build generates part of the code it compiles: the QAPI types,
 visitors, command declarations and events (from `qapi/*.json`), the trace
-point headers (from the `trace-events` files), the configuration headers, the
-command line's option table (from `qemu-options.hx`) and the i386 GDB
-XML. The core is built by its Makefile alone, and the tree has no
+point headers (from the `trace-events` files), the configuration headers and
+the i386 GDB XML. The core is built by its Makefile alone, and the tree has no
 meson build any more, so they are here, made once by meson and committed:
 the files the core's objects compile or include, under the paths meson gives
 them in its build directory (the Makefile puts this directory first on the
@@ -67,6 +66,5 @@ Then, by hand:
   themselves (`libretro/data.S`) instead of compiling those arrays.
 
 When a change touches what these come from (a `qapi/*.json` schema, a
-`trace-events` file, `config_spec.yml`, a `*.hx` file, the device
-configuration), make them again the same way and copy the changed ones
-here.
+`trace-events` file, `config_spec.yml`, the device configuration), make
+them again the same way and copy the changed ones here.

@@ -32,10 +32,3 @@
 #include "qemu/help_option.h"
 #include "trace.h"
 
-static WatchdogAction watchdog_action = WATCHDOG_ACTION_RESET;
-
-void qmp_watchdog_set_action(WatchdogAction action, Error **errp)
-{
-    watchdog_action = action;
-    trace_watchdog_set_action(watchdog_action);
-}

@@ -882,38 +882,6 @@ DisplaySurface *qemu_console_surface(QemuConsole *console)
 
 static QemuDisplay *dpys[DISPLAY_TYPE__MAX];
 
-bool qemu_display_find_default(DisplayOptions *opts)
-{
-    static DisplayType prio[] = {
-#if defined(CONFIG_GTK)
-        DISPLAY_TYPE_GTK,
-#endif
-#if defined(CONFIG_SDL)
-        DISPLAY_TYPE_SDL,
-#endif
-#if defined(CONFIG_COCOA)
-        DISPLAY_TYPE_COCOA
-#endif
-    };
-    int i;
-
-    for (i = 0; i < (int)ARRAY_SIZE(prio); i++) {
-        if (dpys[prio[i]] == NULL) {
-            Error *local_err = NULL;
-            int rv = ui_module_load(DisplayType_str(prio[i]), &local_err);
-            if (rv < 0) {
-                error_report_err(local_err);
-            }
-        }
-        if (dpys[prio[i]] == NULL) {
-            continue;
-        }
-        opts->type = prio[i];
-        return true;
-    }
-    return false;
-}
-
 void qemu_display_early_init(DisplayOptions *opts)
 {
     assert(opts->type < DISPLAY_TYPE__MAX);
@@ -962,27 +930,3 @@ const char *qemu_display_get_vc(DisplayOptions *opts)
     return vc;
 }
 
-void qemu_display_help(void)
-{
-    int idx;
-
-    printf("Available display backend types:\n");
-    printf("none\n");
-    for (idx = DISPLAY_TYPE_NONE; idx < DISPLAY_TYPE__MAX; idx++) {
-        if (!dpys[idx]) {
-            Error *local_err = NULL;
-            int rv = ui_module_load(DisplayType_str(idx), &local_err);
-            if (rv < 0) {
-                error_report_err(local_err);
-            }
-        }
-        if (dpys[idx]) {
-            printf("%s\n",  DisplayType_str(dpys[idx]->type));
-        }
-    }
-    printf("\n"
-           "Some display backends support suboptions, which can be set with\n"
-           "   -display backend,option=value,option=value...\n"
-           "For a short list of the suboptions for each display, see the "
-           "top-level -help output; more detail is in the documentation.\n");
-}

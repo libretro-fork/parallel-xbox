@@ -1454,66 +1454,6 @@ void net_init_clients(void)
                       &error_fatal);
 }
 
-/*
- * Does this -netdev argument use modern rather than traditional syntax?
- * Modern syntax is to be parsed with netdev_parse_modern().
- * Traditional syntax is to be parsed with net_client_parse().
- */
-bool netdev_is_modern(const char *optstr)
-{
-    QemuOpts *opts;
-    bool is_modern;
-    const char *type;
-    static QemuOptsList dummy_opts = {
-        .name = "netdev",
-        .implied_opt_name = "type",
-        .head = QTAILQ_HEAD_INITIALIZER(dummy_opts.head),
-        .desc = { { } },
-    };
-
-    if (optstr[0] == '{') {
-        /* This is JSON, which means it's modern syntax */
-        return true;
-    }
-
-    opts = qemu_opts_create(&dummy_opts, NULL, false, &error_abort);
-    qemu_opts_do_parse(opts, optstr, dummy_opts.implied_opt_name,
-                       &error_abort);
-    type = qemu_opt_get(opts, "type");
-    is_modern = !g_strcmp0(type, "stream") || !g_strcmp0(type, "dgram");
-
-    qemu_opts_reset(&dummy_opts);
-
-    return is_modern;
-}
-
-/*
- * netdev_parse_modern() uses modern, more expressive syntax than
- * net_client_parse(), but supports only the -netdev option.
- * netdev_parse_modern() appends to @nd_queue, whereas net_client_parse()
- * appends to @qemu_netdev_opts.
- */
-void netdev_parse_modern(const char *optstr)
-{
-    Visitor *v;
-    NetdevQueueEntry *nd;
-
-    v = qobject_input_visitor_new_str(optstr, "type", &error_fatal);
-    nd = g_new(NetdevQueueEntry, 1);
-    visit_type_Netdev(v, NULL, &nd->nd, &error_fatal);
-    visit_free(v);
-    loc_save(&nd->loc);
-
-    QSIMPLEQ_INSERT_TAIL(&nd_queue, nd, entry);
-}
-
-void net_client_parse(QemuOptsList *opts_list, const char *optstr)
-{
-    if (!qemu_opts_parse_noisily(opts_list, optstr, true)) {
-        exit(1);
-    }
-}
-
 /* From FreeBSD */
 /* XXX: optimize */
 

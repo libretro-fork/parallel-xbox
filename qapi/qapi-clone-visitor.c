@@ -174,9 +174,3 @@ Visitor *qapi_clone_visitor_new(void)
     return &v->visitor;
 }
 
-Visitor *qapi_clone_members_visitor_new(void)
-{
-    Visitor *v = qapi_clone_visitor_new();
-    to_qcv(v)->depth++;
-    return v;
-}

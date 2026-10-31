@@ -97,7 +97,7 @@ typedef void QEMUBootSetHandler(void *opaque, const char *boot_order,
                                 Error **errp);
 void qemu_boot_set(const char *boot_order, Error **errp);
 
-void qemu_init(int argc, char **argv);
+void qemu_init(void);
 
 extern QemuOptsList qemu_legacy_drive_opts;
 extern QemuOptsList qemu_common_drive_opts;
@@ -108,7 +108,5 @@ extern QemuOptsList qemu_device_opts;
 extern QemuOptsList qemu_netdev_opts;
 extern QemuOptsList qemu_nic_opts;
 extern QemuOptsList qemu_net_opts;
-extern QemuOptsList qemu_global_opts;
-extern QemuOptsList qemu_semihosting_config_opts;
 
 #endif

@@ -3158,3 +3158,6 @@ target/i386/trace.h
 ui/keymaps.h
 util/path.c
 include/qemu/path.h
+qemu-options.hx
+qemu-img-cmds.hx
+libretro/gen/qemu-options.def

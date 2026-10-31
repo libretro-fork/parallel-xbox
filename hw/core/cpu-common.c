@@ -107,24 +107,6 @@ static void cpu_common_reset_exit(Object *obj, ResetType type)
     }
 }
 
-ObjectClass *cpu_class_by_name(const char *typename, const char *cpu_model)
-{
-    ObjectClass *oc;
-    CPUClass *cc;
-
-    oc = object_class_by_name(typename);
-    cc = CPU_CLASS(oc);
-    assert(cc->class_by_name);
-    assert(cpu_model);
-    oc = cc->class_by_name(cpu_model);
-    if (object_class_dynamic_cast(oc, typename) &&
-        !object_class_is_abstract(oc)) {
-        return oc;
-    }
-
-    return NULL;
-}
-
 char *cpu_model_from_type(const char *typename)
 {
     g_autofree char *suffix = g_strdup_printf("-%s", target_cpu_type());
@@ -169,33 +151,6 @@ static void cpu_common_parse_features(const char *typename, char *features,
         }
         featurestr = strtok(NULL, ",");
     }
-}
-
-const char *parse_cpu_option(const char *cpu_option)
-{
-    ObjectClass *oc;
-    CPUClass *cc;
-    gchar **model_pieces;
-    const char *cpu_type;
-
-    model_pieces = g_strsplit(cpu_option, ",", 2);
-    if (!model_pieces[0]) {
-        error_report("-cpu option cannot be empty");
-        exit(1);
-    }
-
-    oc = cpu_class_by_name(target_cpu_type(), model_pieces[0]);
-    if (oc == NULL) {
-        error_report("unable to find CPU model '%s'", model_pieces[0]);
-        g_strfreev(model_pieces);
-        exit(EXIT_FAILURE);
-    }
-
-    cpu_type = object_class_get_name(oc);
-    cc = CPU_CLASS(oc);
-    cc->parse_features(cpu_type, model_pieces[1], &error_fatal);
-    g_strfreev(model_pieces);
-    return cpu_type;
 }
 
 bool cpu_exec_realizefn(CPUState *cpu, Error **errp)

@@ -104,10 +104,3 @@ void qemu_add_default_firmwarepath(void)
     qemu_add_data_dir(get_relocated_path(CONFIG_QEMU_DATADIR));
 }
 
-void qemu_list_data_dirs(void)
-{
-    int i;
-    for (i = 0; i < data_dir_idx; i++) {
-        printf("%s\n", data_dir[i]);
-    }
-}

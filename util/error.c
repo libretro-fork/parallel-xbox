@@ -116,14 +116,6 @@ void error_setg_errno_internal(Error **errp,
     errno = saved_errno;
 }
 
-void error_setg_file_open_internal(Error **errp,
-                                   const char *src, int line, const char *func,
-                                   int os_errno, const char *filename)
-{
-    error_setg_errno_internal(errp, src, line, func, os_errno,
-                              "Could not open '%s'", filename);
-}
-
 void error_vprepend(Error *const *errp, const char *fmt, va_list ap)
 {
     GString *newmsg;
@@ -235,16 +227,6 @@ void warn_report_err(Error *err)
         error_printf("%s", err->hint->str);
     }
     error_free(err);
-}
-
-void error_reportf_err(Error *err, const char *fmt, ...)
-{
-    va_list ap;
-
-    va_start(ap, fmt);
-    error_vprepend(&err, fmt, ap);
-    va_end(ap);
-    error_report_err(err);
 }
 
 

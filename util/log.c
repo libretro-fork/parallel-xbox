@@ -395,78 +395,6 @@ bool qemu_log_in_addr_range(uint64_t addr)
 }
 
 
-void qemu_set_dfilter_ranges(const char *filter_spec, Error **errp)
-{
-    gchar **ranges = g_strsplit(filter_spec, ",", 0);
-    int i;
-
-    if (debug_regions) {
-        g_array_unref(debug_regions);
-        debug_regions = NULL;
-    }
-
-    debug_regions = g_array_sized_new(FALSE, FALSE,
-                                      sizeof(Range), g_strv_length(ranges));
-    for (i = 0; ranges[i]; i++) {
-        const char *r = ranges[i];
-        const char *range_op, *r2, *e;
-        uint64_t r1val, r2val, lob, upb;
-        struct Range range;
-
-        range_op = strstr(r, "-");
-        r2 = range_op ? range_op + 1 : NULL;
-        if (!range_op) {
-            range_op = strstr(r, "+");
-            r2 = range_op ? range_op + 1 : NULL;
-        }
-        if (!range_op) {
-            range_op = strstr(r, "..");
-            r2 = range_op ? range_op + 2 : NULL;
-        }
-        if (!range_op) {
-            error_setg(errp, "Bad range specifier");
-            goto out;
-        }
-
-        if (qemu_strtou64(r, &e, 0, &r1val)
-            || e != range_op) {
-            error_setg(errp, "Invalid number to the left of %.*s",
-                       (int)(r2 - range_op), range_op);
-            goto out;
-        }
-        if (qemu_strtou64(r2, NULL, 0, &r2val)) {
-            error_setg(errp, "Invalid number to the right of %.*s",
-                       (int)(r2 - range_op), range_op);
-            goto out;
-        }
-
-        switch (*range_op) {
-        case '+':
-            lob = r1val;
-            upb = r1val + r2val - 1;
-            break;
-        case '-':
-            upb = r1val;
-            lob = r1val - (r2val - 1);
-            break;
-        case '.':
-            lob = r1val;
-            upb = r2val;
-            break;
-        default:
-            g_assert_not_reached();
-        }
-        if (lob > upb) {
-            error_setg(errp, "Invalid range");
-            goto out;
-        }
-        range_set_bounds(&range, lob, upb);
-        g_array_append_val(debug_regions, range);
-    }
-out:
-    g_strfreev(ranges);
-}
-
 const QEMULogItem qemu_log_items[] = {
     { CPU_LOG_TB_OUT_ASM, "out_asm",
       "show generated host assembly code for each compiled TB" },
@@ -519,48 +447,6 @@ const QEMULogItem qemu_log_items[] = {
       "log invalid memory accesses" },
     { 0, NULL, NULL },
 };
-
-/* takes a comma separated list of log masks. Return 0 if error. */
-int qemu_str_to_log_mask(const char *str)
-{
-    const QEMULogItem *item;
-    int mask = 0;
-    char **parts = g_strsplit(str, ",", 0);
-    char **tmp;
-
-    for (tmp = parts; tmp && *tmp; tmp++) {
-        if (g_str_equal(*tmp, "all")) {
-            for (item = qemu_log_items; item->mask != 0; item++) {
-                mask |= item->mask;
-            }
-        } else {
-            for (item = qemu_log_items; item->mask != 0; item++) {
-                if (g_str_equal(*tmp, item->name)) {
-                    goto found;
-                }
-            }
-            goto error;
-        found:
-            mask |= item->mask;
-        }
-    }
-
-    g_strfreev(parts);
-    return mask;
-
- error:
-    g_strfreev(parts);
-    return 0;
-}
-
-void qemu_print_log_usage(FILE *f)
-{
-    const QEMULogItem *item;
-    fprintf(f, "Log items (comma separated):\n");
-    for (item = qemu_log_items; item->mask != 0; item++) {
-        fprintf(f, "%-15s %s\n", item->name, item->help);
-    }
-}
 
 #ifdef CONFIG_HAVE_RUST
 ssize_t rust_fwrite(const void *ptr, size_t size, size_t nmemb, FILE *stream)

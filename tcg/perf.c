@@ -17,46 +17,7 @@
 #include "tcg/perf.h"
 #include "tcg/tcg.h"
 
-static FILE *safe_fopen_w(const char *path)
-{
-    int saved_errno;
-    FILE *f;
-    int fd;
-
-    /* Delete the old file, if any. */
-    unlink(path);
-
-    /* Avoid symlink attacks by using O_CREAT | O_EXCL. */
-    fd = open(path, O_RDWR | O_CREAT | O_EXCL, S_IRUSR | S_IWUSR);
-    if (fd == -1) {
-        return NULL;
-    }
-
-    /* Convert fd to FILE*. */
-    f = fdopen(fd, "w");
-    if (f == NULL) {
-        saved_errno = errno;
-        close(fd);
-        errno = saved_errno;
-        return NULL;
-    }
-
-    return f;
-}
-
 static FILE *perfmap;
-
-void perf_enable_perfmap(void)
-{
-    char map_file[32];
-
-    snprintf(map_file, sizeof(map_file), "/tmp/perf-%d.map", getpid());
-    perfmap = safe_fopen_w(map_file);
-    if (perfmap == NULL) {
-        warn_report("Could not open %s: %s, proceeding without perfmap",
-                    map_file, strerror(errno));
-    }
-}
 
 /* Get PC and size of code JITed for guest instruction #INSN. */
 static void get_host_pc_size(uintptr_t *host_pc, uint16_t *host_size,
@@ -111,8 +72,6 @@ static void write_perfmap_entry(const void *start, size_t insn,
 }
 
 static FILE *jitdump;
-static size_t perf_marker_size;
-static void *perf_marker = MAP_FAILED;
 
 #define JITHEADER_MAGIC 0x4A695444
 #define JITHEADER_VERSION 1
@@ -164,74 +123,6 @@ struct jr_code_debug_info {
     uint64_t nr_entry;
     struct debug_entry entries[];
 };
-
-static uint32_t get_e_machine(void)
-{
-    Elf64_Ehdr elf_header;
-    FILE *exe;
-    size_t n;
-
-    QEMU_BUILD_BUG_ON(offsetof(Elf32_Ehdr, e_machine) !=
-                      offsetof(Elf64_Ehdr, e_machine));
-
-    exe = fopen("/proc/self/exe", "r");
-    if (exe == NULL) {
-        return EM_NONE;
-    }
-
-    n = fread(&elf_header, sizeof(elf_header), 1, exe);
-    fclose(exe);
-    if (n != 1) {
-        return EM_NONE;
-    }
-
-    return elf_header.e_machine;
-}
-
-void perf_enable_jitdump(void)
-{
-    struct jitheader header;
-    char jitdump_file[32];
-
-    if (!use_rt_clock) {
-        warn_report("CLOCK_MONOTONIC is not available, proceeding without jitdump");
-        return;
-    }
-
-    snprintf(jitdump_file, sizeof(jitdump_file), "jit-%d.dump", getpid());
-    jitdump = safe_fopen_w(jitdump_file);
-    if (jitdump == NULL) {
-        warn_report("Could not open %s: %s, proceeding without jitdump",
-                    jitdump_file, strerror(errno));
-        return;
-    }
-
-    /*
-     * `perf inject` will see that the mapped file name in the corresponding
-     * PERF_RECORD_MMAP or PERF_RECORD_MMAP2 event is of the form jit-%d.dump
-     * and will process it as a jitdump file.
-     */
-    perf_marker_size = qemu_real_host_page_size();
-    perf_marker = mmap(NULL, perf_marker_size, PROT_READ | PROT_EXEC,
-                       MAP_PRIVATE, fileno(jitdump), 0);
-    if (perf_marker == MAP_FAILED) {
-        warn_report("Could not map %s: %s, proceeding without jitdump",
-                    jitdump_file, strerror(errno));
-        fclose(jitdump);
-        jitdump = NULL;
-        return;
-    }
-
-    header.magic = JITHEADER_MAGIC;
-    header.version = JITHEADER_VERSION;
-    header.total_size = sizeof(header);
-    header.elf_mach = get_e_machine();
-    header.pad1 = 0;
-    header.pid = getpid();
-    header.timestamp = get_clock();
-    header.flags = 0;
-    fwrite(&header, sizeof(header), 1, jitdump);
-}
 
 void perf_report_prologue(const void *start, size_t size)
 {

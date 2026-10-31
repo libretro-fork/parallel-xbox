@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- QEMU's command-line parser is gone: the core always started the machine with the same seven options, which QEMU parsed through its full table of about a hundred. The core now hands each one to what it sets directly, and the option table, its 5,850-line source and the code only other options reached (about 10,000 lines) are gone. QEMU no longer looks for a host qemu.conf at start either. Nothing else changes for someone using the core.
+
 - Signed G8B8 mipmapped textures now decode each texel before filtering within and between mip levels in both renderers. Matching point/linear reconstruction with wrap addressing and a zero lower mip clamp is covered; Force LOD0 remains effective. No runtime diagnostic logging is added.
 - Windows asynchronous network handlers now accept raw Winsock handles as well as CRT-wrapped sockets. Failed raw-handle event registration leaves an existing handler intact, and readiness masks follow the supplied read/write callbacks. Winsock event registration makes raw sockets nonblocking; no new waits or synchronization primitives are added.
 

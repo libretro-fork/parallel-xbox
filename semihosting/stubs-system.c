@@ -13,28 +13,6 @@
 #include "qemu/error-report.h"
 #include "semihosting/semihost.h"
 
-/* Empty config */
-QemuOptsList qemu_semihosting_config_opts = {
-    .name = "",
-    .head = QTAILQ_HEAD_INITIALIZER(qemu_semihosting_config_opts.head),
-    .desc = {
-        { /* end of list */ }
-    },
-};
-
-/*
- * All the rest are empty subs. We could g_assert_not_reached() but
- * that adds extra weight to the final binary. Waste not want not.
- */
-void qemu_semihosting_enable(void)
-{
-}
-
-int qemu_semihosting_config_options(const char *optstr)
-{
-    return 1;
-}
-
 int semihosting_get_argc(void)
 {
     return 0;

@@ -105,37 +105,6 @@ void loc_restore(Location *loc)
 }
 
 /*
- * Change the current location to "nowhere in particular".
- */
-void loc_set_none(void)
-{
-    cur_loc->kind = LOC_NONE;
-}
-
-/*
- * Change the current location to argument ARGV[IDX..IDX+CNT-1].
- */
-void loc_set_cmdline(char **argv, int idx, int cnt)
-{
-    cur_loc->kind = LOC_CMDLINE;
-    cur_loc->num = cnt;
-    cur_loc->ptr = argv + idx;
-}
-
-/*
- * Change the current location to file FNAME, line LNO.
- */
-void loc_set_file(const char *fname, int lno)
-{
-    assert (fname || cur_loc->kind == LOC_FILE);
-    cur_loc->kind = LOC_FILE;
-    cur_loc->num = lno;
-    if (fname) {
-        cur_loc->ptr = fname;
-    }
-}
-
-/*
  * Print current location to current monitor if we have one, else to stderr.
  */
 static void print_loc(void)

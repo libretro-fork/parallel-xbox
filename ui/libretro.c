@@ -2144,19 +2144,6 @@ static void lr_run_frame(void)
 
 static bool lr_start_machine(void)
 {
-    /* Build QEMU argv */
-    const char *argv[] = {
-        "xemu",
-        "-device", "lpc47m157",
-        "-serial", "null",
-        /* the guest's time is its instructions, never the host's: precise
-         * icount (at the Xbox CPU's pace, accel/tcg/icount-common.c),
-         * and sleep=off, so an idle guest's time moves on at once */
-        "-icount", "shift=0,sleep=off",
-        NULL,
-    };
-    int argc = 7;
-
     /* QEMU's machine is built once in a process and never taken down (see
      * retro_init). The first content builds it; each one after that gets
      * the machine the last one left stopped: its disc is put in the drive
@@ -2165,7 +2152,7 @@ static bool lr_start_machine(void)
     static bool machine_built = false;
     static char machine_image[4096]; /* the content the machine holds */
     if (!machine_built) {
-        qemu_init(argc, (char **)argv);
+        qemu_init();
         /* no JSON description of every field at the end of each state:
          * nothing reads it, and Run-Ahead saves a state every frame */
         MACHINE(qdev_get_machine())->suppress_vmdesc = true;
