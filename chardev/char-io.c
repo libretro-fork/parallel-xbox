@@ -24,35 +24,10 @@
 #include "qemu/osdep.h"
 #include "chardev/char-io.h"
 
-typedef struct IOWatchPoll {
-    GSource parent;
-
-    QIOChannel *ioc;
-    GSource *src;
-
-    IOCanReadHandler *fd_can_read;
-    GSourceFunc fd_read;
-    void *opaque;
-    GMainContext *context;
-} IOWatchPoll;
-
-static IOWatchPoll *io_watch_poll_from_source(GSource *source)
-{
-    return container_of(source, IOWatchPoll, parent);
-}
-
-static void io_remove_watch_poll(GSource *source)
-{
-    IOWatchPoll *iwp;
-
-    iwp = io_watch_poll_from_source(source);
-    g_source_destroy(&iwp->parent);
-}
-
 void remove_fd_in_watch(Chardev *chr)
 {
     if (chr->gsource) {
-        io_remove_watch_poll(chr->gsource);
+        g_source_destroy(chr->gsource);
         chr->gsource = NULL;
     }
 }

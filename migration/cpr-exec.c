@@ -10,8 +10,6 @@
 #include "qemu/memfd.h"
 #include "qapi/error.h"
 #include "qapi/type-helpers.h"
-#include "io/channel-file.h"
-#include "io/channel-socket.h"
 #include "block/block-global-state.h"
 #include "qemu/main-loop.h"
 #include "migration/cpr.h"

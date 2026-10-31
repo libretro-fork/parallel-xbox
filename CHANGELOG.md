@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Remove unused QEMU I/O channel classes, socket/file transport and GLib watch adapters after saved states moved to direct memory. Remove dead block-channel abort plumbing and unused TDX guest/quote structures, including their unused mutex. Xbox and Chihiro behavior is unchanged.
+
 - Remove 19 unused migration/postcopy synchronization objects and an unreachable recovery loop, including ten unused semaphores and two mutexes. Saved-state behavior is unchanged.
 
 - Saved-state streams now use small caller-owned cursors directly over frontend memory. Remove the channel/GObject wrapper, 32 KiB scratch allocations, iovec staging, descriptor-receive and live-migration RAM-discard machinery. Payloads copy once to their final destination; input views borrow the state buffer. The state format is unchanged.

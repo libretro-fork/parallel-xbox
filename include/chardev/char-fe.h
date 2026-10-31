@@ -131,8 +131,7 @@ void qemu_chr_fe_set_open(CharFrontend *c, bool is_open);
 /**
  * FEWatchFunc: a #GSourceFunc called when any conditions requested by
  *              qemu_chr_fe_add_watch() is satisfied.
- * @do_not_use: depending on the underlying chardev, a GIOChannel or a
- *              QIOChannel. DO NOT USE!
+ * @do_not_use: backend-private callback argument. DO NOT USE!
  * @cond: bitwise combination of conditions watched and satisfied
  *              before calling this callback.
  * @data: user data passed at creation to qemu_chr_fe_add_watch(). Can
@@ -158,8 +157,7 @@ typedef gboolean (*FEWatchFunc)(void *do_not_use, GIOCondition condition, void *
  * Note that you are responsible to update the front-end sources if
  * you are switching the main context with qemu_chr_fe_set_handlers().
  *
- * Warning: DO NOT use the first callback argument (it may be either
- * a GIOChannel or a QIOChannel, depending on the underlying chardev)
+ * Warning: DO NOT use the backend-private first callback argument.
  *
  * Returns: the source tag
  */

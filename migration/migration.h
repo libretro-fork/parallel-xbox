@@ -20,8 +20,6 @@
 #include "qobject/json-writer.h"
 #include "qemu/thread.h"
 #include "qemu/coroutine.h"
-#include "io/channel.h"
-#include "io/channel-buffer.h"
 #include "net/announce.h"
 #include "qom/object.h"
 #include "postcopy-ram.h"
@@ -210,7 +208,6 @@ struct MigrationState {
     QEMUFile *to_dst_file;
     /* Postcopy specific transfer channel */
     QEMUFile *postcopy_qemufile_src;
-    QIOChannelBuffer *bioc;
 
     /* pages already send at the beginning of current iteration */
     uint64_t iteration_initial_pages;

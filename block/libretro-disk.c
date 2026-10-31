@@ -60,7 +60,6 @@
 #include "system/memory.h"
 #include "migration/misc.h"
 #include "migration/migration.h"
-#include "migration/channel-block.h"
 
 #include <libretro.h>
 
@@ -1046,11 +1045,6 @@ int bdrv_snapshot_list(BlockDriverState *bs, QEMUSnapshotInfo **psn_info)
 {
     *psn_info = NULL;
     return 0;
-}
-
-QIOChannelBlock *qio_channel_block_new(BlockDriverState *bs)
-{
-    abort();
 }
 
 /* Migration: the images are never handed to another process */

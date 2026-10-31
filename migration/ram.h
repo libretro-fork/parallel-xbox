@@ -31,7 +31,6 @@
 
 #include "qapi/qapi-types-migration.h"
 #include "exec/cpu-common.h"
-#include "io/channel.h"
 
 /*
  * RAM_SAVE_FLAG_ZERO used to be named RAM_SAVE_FLAG_COMPRESS, it

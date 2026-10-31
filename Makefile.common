@@ -287,12 +287,6 @@ SOURCES_COMMON := \
 	$(CORE_DIR)/hw/core/resetcontainer.c \
 	$(CORE_DIR)/hw/core/resettable.c \
 	$(CORE_DIR)/hw/core/vmstate-if.c \
-	$(CORE_DIR)/io/channel-buffer.c \
-	$(CORE_DIR)/io/channel-file.c \
-	$(CORE_DIR)/io/channel-socket.c \
-	$(CORE_DIR)/io/channel-util.c \
-	$(CORE_DIR)/io/channel-watch.c \
-	$(CORE_DIR)/io/channel.c \
 	$(CORE_DIR)/migration/migration-stats.c \
 	$(CORE_DIR)/migration/qemu-file.c \
 	$(CORE_DIR)/migration/vmstate-types.c \
