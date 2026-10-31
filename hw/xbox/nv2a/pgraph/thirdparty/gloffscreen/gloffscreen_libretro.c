@@ -161,6 +161,18 @@ GloContext *glo_context_create(void)
         }
 
         if (!g_standalone_root_ctx) {
+            HGLRC previous = wglGetCurrentContext();
+            HDC previous_dc = wglGetCurrentDC();
+            bool resolved = wglMakeCurrent(context->hdc, context->hglrc) &&
+                            xemu_gl_load(NULL);
+            wglMakeCurrent(previous_dc, previous);
+            if (!resolved) {
+                wglDeleteContext(context->hglrc);
+                ReleaseDC(context->hwnd, context->hdc);
+                DestroyWindow(context->hwnd);
+                free(context);
+                return NULL;
+            }
             g_standalone_root_ctx = context;
         }
 

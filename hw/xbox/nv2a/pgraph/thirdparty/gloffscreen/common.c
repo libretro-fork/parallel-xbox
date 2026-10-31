@@ -69,5 +69,5 @@ void glo_readpixels(GLenum gl_format, GLenum gl_type,
 
 bool glo_check_extension(const char* ext_name)
 {
-    return epoxy_has_gl_extension(ext_name);
+    return xemu_gl_has_extension(ext_name);
 }

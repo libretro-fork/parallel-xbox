@@ -27,7 +27,7 @@ extern "C" {
 #endif
 
 #include "block/snapshot.h"
-#include <epoxy/gl.h>
+#include "ui/gl-dispatch.h"
 
 #define XEMU_SNAPSHOT_DATA_MAGIC 0x78656d75 // 'xemu'
 #define XEMU_SNAPSHOT_DATA_VERSION 1
