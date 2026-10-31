@@ -60,7 +60,7 @@ static void destroy_pvideo_image(PGRAPHState *pg)
         d->pvideo.sampler = VK_NULL_HANDLE;
     }
 
-    d->pvideo.convert.output = VK_NULL_HANDLE; /* handles may be recycled */
+    memset(d->pvideo.convert.output, 0, sizeof(d->pvideo.convert.output));
     if (d->pvideo.image_view != VK_NULL_HANDLE) {
         vkDestroyImageView(r->device, d->pvideo.image_view, NULL);
         d->pvideo.image_view = VK_NULL_HANDLE;
@@ -73,6 +73,28 @@ static void destroy_pvideo_image(PGRAPHState *pg)
     }
 }
 
+/* Transfer ownership to fence-based retirement; the replacement can be
+ * allocated and uploaded while the old image is still being consumed. */
+static void retire_pvideo_image(PGRAPHVkState *r)
+{
+    PGRAPHVkDisplayState *d = &r->display;
+    /* Uploads and display reads may still refer to the old image.
+     * Retire it without draining GPU work on the CPU. */
+    struct XemuVkTrashEntry old = {
+        .sampler = d->pvideo.sampler,
+        .image_view = d->pvideo.image_view,
+        .image = d->pvideo.image,
+        .allocation = d->pvideo.allocation,
+        .aux_after = r->aux_submitted,
+    };
+    pgraph_vk_trash_push(r, &old);
+    d->pvideo.sampler = VK_NULL_HANDLE;
+    d->pvideo.image_view = VK_NULL_HANDLE;
+    d->pvideo.image = VK_NULL_HANDLE;
+    d->pvideo.allocation = VK_NULL_HANDLE;
+    memset(d->pvideo.convert.output, 0, sizeof(d->pvideo.convert.output));
+}
+
 static bool create_pvideo_image(PGRAPHState *pg, int width, int height)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
@@ -83,12 +105,7 @@ static bool create_pvideo_image(PGRAPHState *pg, int width, int height)
         return false;
     }
     if (d->pvideo.image != VK_NULL_HANDLE) {
-        /* Only a size change: cover prior display reads before retiring
-         * their input image and sampler. Ordinary updates reuse both. */
-        pgraph_vk_finish(pg, VK_FINISH_REASON_FLUSH);
-        VkCommandBuffer drain = pgraph_vk_begin_single_time_commands(pg);
-        pgraph_vk_end_single_time_commands(pg, drain);
-        destroy_pvideo_image(pg);
+        retire_pvideo_image(r);
     }
 
     VkFormatProperties props;

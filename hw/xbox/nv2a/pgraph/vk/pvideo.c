@@ -37,6 +37,32 @@ static const char *pvideo_convert_glsl =
     "    imageStore(rgba, ivec2(x, i / width), vec4(r, g, b, 255) / 255.0);\n"
     "}\n";
 
+static void pvideo_convert_bind_source(PGRAPHVkState *r)
+{
+    typeof(r->display.pvideo.convert) *c = &r->display.pvideo.convert;
+    VkBuffer source = r->storage_buffers[BUFFER_STAGING_SRC].buffer;
+    VkImageView output = r->display.pvideo.image_view;
+    unsigned slot = r->aux_slot;
+    assert(r->in_aux_command_buffer && !r->aux[slot].pending);
+    if (c->source[slot] != source || c->output[slot] != output) {
+        /* begin_single_time_commands retired this slot before reuse. Other
+         * slots keep their old descriptors while a resize is in flight. */
+        VkDescriptorBufferInfo buffer = { .buffer = source, .range = VK_WHOLE_SIZE };
+        VkDescriptorImageInfo image = { .imageView = output,
+                                       .imageLayout = VK_IMAGE_LAYOUT_GENERAL };
+        VkWriteDescriptorSet writes[2] = {
+            { .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+              .dstSet = c->sets[slot], .dstBinding = 0, .descriptorCount = 1,
+              .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, .pBufferInfo = &buffer },
+            { .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+              .dstSet = c->sets[slot], .dstBinding = 1, .descriptorCount = 1,
+              .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, .pImageInfo = &image },
+        };
+        vkUpdateDescriptorSets(r->device, 2, writes, 0, NULL);
+        c->source[slot] = source; c->output[slot] = output;
+    }
+}
+
 static void pvideo_convert_prepare(PGRAPHVkState *r)
 {
     typeof(r->display.pvideo.convert) *c = &r->display.pvideo.convert;
@@ -55,20 +81,22 @@ static void pvideo_convert_prepare(PGRAPHVkState *r)
         };
         VK_CHECK(vkCreateDescriptorSetLayout(r->device, &sl, NULL, &c->set_layout));
         VkDescriptorPoolSize sizes[2] = {
-            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1},
-            {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1},
+            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, PGRAPH_VK_AUX_SLOTS},
+            {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, PGRAPH_VK_AUX_SLOTS},
         };
         VkDescriptorPoolCreateInfo pool = {
             .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
-            .maxSets = 1, .poolSizeCount = 2, .pPoolSizes = sizes,
+            .maxSets = PGRAPH_VK_AUX_SLOTS, .poolSizeCount = 2, .pPoolSizes = sizes,
         };
         VK_CHECK(vkCreateDescriptorPool(r->device, &pool, NULL, &c->pool));
+        VkDescriptorSetLayout layouts[PGRAPH_VK_AUX_SLOTS];
+        for (unsigned i = 0; i < PGRAPH_VK_AUX_SLOTS; i++) layouts[i] = c->set_layout;
         VkDescriptorSetAllocateInfo allocate = {
             .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-            .descriptorPool = c->pool, .descriptorSetCount = 1,
-            .pSetLayouts = &c->set_layout,
+            .descriptorPool = c->pool, .descriptorSetCount = PGRAPH_VK_AUX_SLOTS,
+            .pSetLayouts = layouts,
         };
-        VK_CHECK(vkAllocateDescriptorSets(r->device, &allocate, &c->set));
+        VK_CHECK(vkAllocateDescriptorSets(r->device, &allocate, c->sets));
         VkPushConstantRange push = {VK_SHADER_STAGE_COMPUTE_BIT, 0, 16};
         VkPipelineLayoutCreateInfo pl = {
             .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
@@ -88,25 +116,7 @@ static void pvideo_convert_prepare(PGRAPHVkState *r)
                                            &pipeline, NULL, &c->pipeline));
         vkDestroyShaderModule(r->device, module, NULL);
     }
-    VkBuffer source = r->storage_buffers[BUFFER_STAGING_SRC].buffer;
-    VkImageView output = r->display.pvideo.image_view;
-    if (c->source != source || c->output != output) {
-        /* Buffer growth and image resize drain their prior users before
-         * replacing objects. Never rewrite an in-flight descriptor set. */
-        VkDescriptorBufferInfo buffer = { .buffer = source, .range = VK_WHOLE_SIZE };
-        VkDescriptorImageInfo image = { .imageView = output,
-                                       .imageLayout = VK_IMAGE_LAYOUT_GENERAL };
-        VkWriteDescriptorSet writes[2] = {
-            { .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-              .dstSet = c->set, .dstBinding = 0, .descriptorCount = 1,
-              .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, .pBufferInfo = &buffer },
-            { .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-              .dstSet = c->set, .dstBinding = 1, .descriptorCount = 1,
-              .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, .pImageInfo = &image },
-        };
-        vkUpdateDescriptorSets(r->device, 2, writes, 0, NULL);
-        c->source = source; c->output = output;
-    }
+    pvideo_convert_bind_source(r);
 }
 
 bool pgraph_vk_pvideo_convert(PGRAPHState *pg, VkCommandBuffer cmd,
@@ -155,7 +165,7 @@ bool pgraph_vk_pvideo_convert(PGRAPHState *pg, VkCommandBuffer cmd,
     uint32_t push[4] = {src / 4, 0, width, height};
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, c->pipeline);
     vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, c->layout,
-                            0, 1, &c->set, 0, NULL);
+                            0, 1, &c->sets[r->aux_slot], 0, NULL);
     vkCmdPushConstants(cmd, c->layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(push), push);
     vkCmdDispatch(cmd, DIV_ROUND_UP(pixels, 64), 1, 1);
     image.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;

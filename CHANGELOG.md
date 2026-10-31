@@ -20,6 +20,11 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Retire resized Vulkan video-overlay images after their upload and display
+  fences complete instead of synchronously draining rendering and submitting
+  an empty auxiliary command. Give each auxiliary slot its own conversion
+  descriptors, and reserve normal deferred-destruction storage before gameplay.
+
 - OpenGL: fuse CPU downscale/swizzle fallback readbacks, avoiding a native-size scratch image and an extra pixel pass.
 
 - Vulkan: convert packed video overlays directly into the GPU image, avoiding CPU RGBA staging and its buffer-to-image copy; roughly halve CPU-written overlay bytes while preserving native filtering.

@@ -1340,6 +1340,13 @@ redraw/reset kicks remain uncounted. No-op/IRQ-enable writes do
 not invent work. The dedicated GitHub Actions job needs no game assets or GPU;
 the same test also runs in the regular suite.
 
+`test-pvideo-retirement.py CHECKOUT [CC]` runs production auxiliary submission,
+fence retirement, deferred destruction, overlay ownership transfer and
+conversion descriptor updates against independently delayed upload/display
+completion. It checks 20,000 resize/upload/display schedules, unconsumed
+uploads, slot-safe descriptor updates, exactly-once destruction, and zero
+waits during retirement. It runs without a GPU or game assets in CI.
+
 `test-pvideo-dirty.py CHECKOUT [CC]` compiles the production RAM dirty-client
 handlers and Vulkan PVIDEO upload path against independent consumer bitmaps
 and a driver model. It checks 24,096 mask/range/reset cases and 20,000 source

@@ -10,6 +10,7 @@
 #define VK_CHECK(x) assert((x)==VK_SUCCESS)
 #define CHECK VK_CHECK
 #define DIV_ROUND_UP(x,n) (((x)+(n)-1)/(n))
+#define PGRAPH_VK_AUX_SLOTS 8
 #define BUFFER_STAGING_SRC 0
 #define BUFFER_UNSWIZZLE_OUT 1
 #define PGRAPH_VK_RING_UNSWIZZLE 1
@@ -59,8 +60,9 @@ typedef struct { VkBuffer buffer; VkDeviceSize buffer_size; uint8_t *mapped; } S
 typedef struct {
  VkDevice device; VkPhysicalDeviceProperties device_props; VkPipelineCache vk_pipeline_cache;
  StorageBuffer storage_buffers[2];
+ unsigned aux_slot; bool in_aux_command_buffer; struct {bool pending;} aux[PGRAPH_VK_AUX_SLOTS];
  struct { struct { VkImage image; VkImageView image_view; bool storage; struct { VkDescriptorPool pool; VkDescriptorSetLayout set_layout;
- VkDescriptorSet set; VkPipelineLayout layout; VkPipeline pipeline; VkBuffer source; VkImageView output;
+ VkDescriptorSet sets[PGRAPH_VK_AUX_SLOTS]; VkPipelineLayout layout; VkPipeline pipeline; VkBuffer source[PGRAPH_VK_AUX_SLOTS]; VkImageView output[PGRAPH_VK_AUX_SLOTS];
  } convert; } pvideo; } display;
 } PGRAPHVkState;
 typedef struct {PGRAPHVkState *vk_renderer_state; size_t src,dst,written;bool reject_ring;} PGRAPHState;
@@ -116,7 +118,7 @@ int main(void)
         .commandPool = pool, .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY, .commandBufferCount = 1 };
     VkCommandBuffer cmd; CHECK(vkAllocateCommandBuffers(device, &ca, &cmd));
 
- PGRAPHVkState r={.device=device,.device_props=properties};PGRAPHState pg={.vk_renderer_state=&r};
+ PGRAPHVkState r={.in_aux_command_buffer=true,.device=device,.device_props=properties};PGRAPHState pg={.vk_renderer_state=&r};
  Buffer src=buffer(16*1024*1024),dst=buffer(16*1024*1024);
  r.storage_buffers[0]=(StorageBuffer){src.handle,16*1024*1024,src.mapped};
  r.storage_buffers[1]=(StorageBuffer){dst.handle,16*1024*1024,dst.mapped};
@@ -151,11 +153,11 @@ int main(void)
   CHECK(vkEndCommandBuffer(cmd));VkFenceCreateInfo fi={.sType=VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};VkFence fence;CHECK(vkCreateFence(device,&fi,NULL,&fence));
   VkSubmitInfo submit={.sType=VK_STRUCTURE_TYPE_SUBMIT_INFO,.commandBufferCount=1,.pCommandBuffers=&cmd};CHECK(vkQueueSubmit(queue,1,&submit,fence));CHECK(vkWaitForFences(device,1,&fence,VK_TRUE,10000000000ULL));
   assert(!memcmp(dst.mapped+result,expected,bytes));for(unsigned i=0;i<16;i++){assert(dst.mapped[result-16+i]==0xAB);assert(dst.mapped[result+bytes+i]==0xAB);}
-  r.display.pvideo.convert.output=VK_NULL_HANDLE;
+  memset(r.display.pvideo.convert.output,0,sizeof(r.display.pvideo.convert.output));
   vkDestroyImageView(device,r.display.pvideo.image_view,NULL);vkDestroyImage(device,r.display.pvideo.image,NULL);vkFreeMemory(device,image_memory,NULL);
   vkDestroyFence(device,fence,NULL);CHECK(vkResetCommandBuffer(cmd,0));free(guest);free(expected);checked+=(size_t)w*h;cases++;
   if(test==20){/* Drained buffer growth refreshes the immutable descriptor bindings. */
-   r.display.pvideo.convert.source=VK_NULL_HANDLE;drop_buffer(src);src=buffer(16*1024*1024);r.storage_buffers[0].buffer=src.handle;r.storage_buffers[0].mapped=src.mapped;
+   memset(r.display.pvideo.convert.source,0,sizeof(r.display.pvideo.convert.source));drop_buffer(src);src=buffer(16*1024*1024);r.storage_buffers[0].buffer=src.handle;r.storage_buffers[0].mapped=src.mapped;
   }
  }
  pg.written=0;r.display.pvideo.storage=false;assert(!pgraph_vk_pvideo_convert(&pg,cmd,NULL,64,64,128,true));assert(!pg.written);r.display.pvideo.storage=true;

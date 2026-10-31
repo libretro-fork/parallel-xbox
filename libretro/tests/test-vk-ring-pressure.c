@@ -23,6 +23,7 @@ typedef struct {
  VkDevice device;
  /* AUX TYPE */
  int aux_slot,aux_oldest,aux_npending;
+ uint64_t aux_submitted,aux_settled;
  bool in_aux_command_buffer;
  size_t ring_head[PGRAPH_VK_RINGS];
  StorageBuffer storage_buffers[2];

@@ -477,9 +477,10 @@ void pgraph_vk_buffer_ensure_capacity(PGRAPHState *pg, int index,
     pgraph_vk_settle_all_slots(pg);
 
     /* A driver may recycle the numeric VkBuffer handle. Invalidate the
-     * overlay set explicitly after draining, before replacing the buffer. */
+     * overlay sets explicitly after draining, before replacing the buffer. */
     if (index == BUFFER_STAGING_SRC) {
-        r->display.pvideo.convert.source = VK_NULL_HANDLE;
+        memset(r->display.pvideo.convert.source, 0,
+               sizeof(r->display.pvideo.convert.source));
     }
 
     VkDeviceSize size = MAX(needed, 2 * r->storage_buffers[index].buffer_size);

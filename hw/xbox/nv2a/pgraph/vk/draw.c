@@ -2873,6 +2873,7 @@ static void trash_drain_retired(PGRAPHVkState *r)
 {
     int kept = 0;
     bool display_polled = false;
+    bool aux_polled = false;
     for (int i = 0; i < r->trash_n; i++) {
         struct XemuVkTrashEntry *e = &r->trash[i];
         if ((int32_t)(e->retire_after - r->settled_submit) > 0) {
@@ -2885,6 +2886,16 @@ static void trash_drain_retired(PGRAPHVkState *r)
                 display_polled = true;
             }
             if (e->display_after > r->display.settled) {
+                r->trash[kept++] = *e;
+                continue;
+            }
+        }
+        if (e->aux_after > r->aux_settled) {
+            if (!aux_polled) {
+                pgraph_vk_poll_aux_retired(r);
+                aux_polled = true;
+            }
+            if (e->aux_after > r->aux_settled) {
                 r->trash[kept++] = *e;
                 continue;
             }
@@ -2922,7 +2933,8 @@ void pgraph_vk_trash_drain(PGRAPHVkState *r)
     }
     r->settled_submit = r->submit_count;
     trash_drain_retired(r);
-    assert(r->trash_n == 0 || r->display.settled < r->display.submitted);
+    assert(r->trash_n == 0 || r->display.settled < r->display.submitted ||
+           r->aux_settled < r->aux_submitted);
 }
 
 /* The open recording may still reference what is pushed here, so nothing is
