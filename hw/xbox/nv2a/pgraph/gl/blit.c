@@ -159,8 +159,8 @@ void pgraph_gl_image_blit(NV2AState *d)
     {
         static int blitgpu = -1;
         if (blitgpu < 0) {
-            blitgpu = (epoxy_gl_version() >= 43 ||
-                       epoxy_has_gl_extension("GL_ARB_copy_image")) ? 1 : 0;
+            blitgpu = (xemu_gl_version() >= 43 ||
+                       xemu_gl_has_extension("GL_ARB_copy_image")) ? 1 : 0;
         }
         SurfaceBinding *surf_dest;
         if (blitgpu &&

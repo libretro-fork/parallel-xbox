@@ -134,10 +134,10 @@ static bool gl_sso_enabled(void)
         if (pgraph_gpu_boost_gl()) {
             /* The stages are GLSL 4.10, which a 4.0 context may reject:
              * both GL 4.1 and the extension are required. */
-            if (epoxy_gl_version() < 41) {
+            if (xemu_gl_version() < 41) {
                 fprintf(stderr, "nv2a: GL %d.%d render context, using linked"
-                                " programs\n", epoxy_gl_version() / 10,
-                        epoxy_gl_version() % 10);
+                                " programs\n", xemu_gl_version() / 10,
+                        xemu_gl_version() % 10);
             } else if (glo_check_extension("GL_ARB_separate_shader_objects")) {
                 on = 1;
             } else {

@@ -85,7 +85,7 @@ static inline bool cost_probe_active(void)
     }
     if (xemu_cost_probe < 0) {
         xemu_cost_probe =
-            epoxy_has_gl_extension("GL_ARB_pipeline_statistics_query");
+            xemu_gl_has_extension("GL_ARB_pipeline_statistics_query");
         if (!xemu_cost_probe) {
             fprintf(stderr, "xemu: real-hw-speed: "
                     "GL_ARB_pipeline_statistics_query missing -- "

@@ -131,7 +131,7 @@ else ifeq ($(platform),win)
    OS_INCFLAGS :=
    OS_CFLAGS   := -DWIN32 -DVK_USE_PLATFORM_WIN32_KHR
    # a section per function overflows COFF's 32767 sections in the larger
-   # files (libepoxy's generated dispatch): the big object format has room
+   # files: the big object format has room
    OS_SECTION_FLAGS := -Wa,-mbig-obj
    OS_LIBS     := -lws2_32 -liphlpapi -ladvapi32 -luser32 -lgdi32 -lopengl32
    VENDORED_DEPS := 1

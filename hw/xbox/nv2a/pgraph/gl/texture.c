@@ -1094,9 +1094,9 @@ void pgraph_gl_init_textures(NV2AState *d)
         r->tex_scratch[i] = NULL;
         r->tex_scratch_size[i] = 0;
     }
-    r->s3tc_native = epoxy_has_gl_extension("GL_EXT_texture_compression_s3tc");
+    r->s3tc_native = xemu_gl_has_extension("GL_EXT_texture_compression_s3tc");
     r->s3tc_3d_native = r->s3tc_native &&
-        epoxy_has_gl_extension("GL_NV_texture_compression_vtc");
+        xemu_gl_has_extension("GL_NV_texture_compression_vtc");
 }
 
 void pgraph_gl_finalize_textures(PGRAPHState *pg)

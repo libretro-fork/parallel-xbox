@@ -708,3 +708,10 @@ SOURCES_COMMON += $(SOURCES_COMMON_LINUX)
 SOURCES_SYSTEM += $(SOURCES_SYSTEM_LINUX)
 endif
 endif
+
+# Windows GL dispatch is eager and provided by libretro-common.
+ifeq ($(platform),win)
+SOURCES_GLOFF += $(CORE_DIR)/ui/gl-dispatch.c
+SOURCES_LRCOMMON += $(CORE_DIR)/libretro-common/glsym/rglgen.c \
+	$(CORE_DIR)/libretro-common/glsym/glsym_gl.c
+endif

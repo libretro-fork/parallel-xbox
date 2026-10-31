@@ -30,7 +30,7 @@
 #define GLOFFSCREEN_H_
 
 #include <stdbool.h>
-#include <epoxy/gl.h>
+#include "ui/gl-dispatch.h"
 
 /* Used to hold data for the OpenGL context */
 struct _GloContext;

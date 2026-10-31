@@ -38,7 +38,7 @@
 #include "qemu/bswap.h"
 #include "data/xbox_hdd.qcow2.h"
 
-#include <epoxy/gl.h>
+#include "ui/gl-dispatch.h"
 #ifndef _WIN32
 #include <dlfcn.h>
 #endif
@@ -1206,6 +1206,12 @@ static struct retro_hw_render_context_negotiation_interface_vulkan xemu_vk_negot
 static void context_reset(void)
 {
     if (!use_vulkan) {
+#ifdef _WIN32
+        if (!xemu_gl_load((rglgen_proc_address_t)hw_render.get_proc_address)) {
+            LRLOG_ERROR("[xemu] Failed to resolve OpenGL entry points\n");
+            return;
+        }
+#endif
         LRLOG_INFO("[xemu] OpenGL context ready, creating blit resources\n");
         create_blit_resources();
 

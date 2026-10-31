@@ -1363,3 +1363,10 @@ The POSIX core now uses direct GSource descriptor registration/check/dispatch. T
 `test-dma-retry.py CHECKOUT [CC]` compiles production DMA retry registration/cancellation, release publication and teardown against a coalescing atomic BH scheduler model. Real libretro-common threads force four first-registration/release windows, cancel while a releasing thread is paused before enqueue, retire queued callbacks before freeing their opaque AddressSpace, and race 20,000 registrations/releases. Notification BH allocation must remain lazy; callbacks/list operations stay on the owner. `DMA_RETRY_CFLAGS`, `DMA_RETRY_BINARY` and `DMA_RETRY_SKIP_RUN` support sanitizers/native builds. Actual BH queue behavior remains covered by full-core integration.
 
 `test-win-path-root.py CHECKOUT [CC]` checks production Windows root parsing on portable cases under sanitizers. Native Windows also compares 20,044 ASCII/UTF-8, drive, UNC and extended-prefix cases with the former PathCchSkipRoot implementation, resolved dynamically by the test when available. The core itself no longer imports PathCch or allocates/converts a wide path for resource relocation. `WIN_ROOT_CFLAGS`, `WIN_ROOT_BINARY` and `WIN_ROOT_SKIP_RUN` support cross-builds.
+
+`test-gl-dispatch-win32.py` builds a real WGL fixture (OpenGL 4 required).
+Run its frontend and native modes as separate processes. It verifies common
+resolution, native-only setup with no frontend GL context, shared buffer
+visibility, context restore, exact extension matching and no table rewrite
+after worker publication. `GL_DISPATCH_BINARY` and `GL_DISPATCH_SKIP_RUN`
+allow cross-compiling and executing the fixture on Windows.

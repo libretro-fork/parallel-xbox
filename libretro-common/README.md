@@ -11,3 +11,9 @@ there.
 (`af622105435d776c1ce203c28387cbc27e0c7925`) and compiled on macOS for its
 `memjit_write_begin/end` implementation. QEMU's absolute write/execute
 switches are adapted to those nested scopes in `util/libretro-jit.c`.
+
+Windows GL dispatch uses the unmodified `glsym/rglgen.c`, `glsym/glsym_gl.c`
+and their five `include/glsym` headers from the local RetroArch checkout
+(commit a8650d1dfbcb62bec03213a4e87c420b08305b7b).
+They perform eager pointer resolution; context ownership and the few renderer
+extensions absent from their table belong to `ui/gl-dispatch.c`.
