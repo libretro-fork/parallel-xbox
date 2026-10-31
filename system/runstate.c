@@ -46,7 +46,7 @@
 #include "qemu/module.h"
 #include "qemu/sockets.h"
 #include "qemu/timer.h"
-#include "qemu/thread.h"
+#include <retro_atomic.h>
 #include "qom/object.h"
 #include "qom/object_interfaces.h"
 #include "system/cpus.h"
@@ -58,14 +58,23 @@
 #include "system/tpm.h"
 #include "trace.h"
 
+#ifndef RETRO_ATOMIC_LOCK_FREE
+#error "VM-stop publication requires a lock-free retro_atomic backend"
+#endif
+#if defined(RETRO_ATOMIC_BACKEND_C11)
+_Static_assert(ATOMIC_INT_LOCK_FREE == 2, "VM-stop int atomics must be lock-free");
+#elif defined(RETRO_ATOMIC_BACKEND_GCC_NEW)
+_Static_assert(__atomic_always_lock_free(sizeof(retro_atomic_int_t), 0),
+               "VM-stop int atomics must be lock-free");
+#endif
+
 static NotifierList exit_notifiers =
     NOTIFIER_LIST_INITIALIZER(exit_notifiers);
 
 static RunState current_run_state = RUN_STATE_PRELAUNCH;
 
-/* We use RUN_STATE__MAX but any invalid value will do */
-static RunState vmstop_requested = RUN_STATE__MAX;
-static QemuMutex vmstop_lock;
+/* Latest request wins. Taking a request also clears it in one atomic step. */
+static retro_atomic_int_t vmstop_requested = RUN_STATE__MAX;
 
 typedef struct {
     RunState from;
@@ -198,8 +207,6 @@ static void runstate_init(void)
     memset(&runstate_valid_transitions, 0, sizeof(runstate_valid_transitions));
 
     transitions_set_valid(&runstate_transitions_def[0]);
-
-    qemu_mutex_init(&vmstop_lock);
 }
 
 /* This function will abort() on invalid state transitions */
@@ -236,24 +243,16 @@ bool runstate_is_running(void)
 
 bool qemu_vmstop_requested(RunState *r)
 {
-    qemu_mutex_lock(&vmstop_lock);
-    *r = vmstop_requested;
-    vmstop_requested = RUN_STATE__MAX;
-    qemu_mutex_unlock(&vmstop_lock);
+    *r = (RunState)retro_atomic_exchange_int(&vmstop_requested, RUN_STATE__MAX);
     return *r < RUN_STATE__MAX;
-}
-
-void qemu_system_vmstop_request_prepare(void)
-{
-    qemu_mutex_lock(&vmstop_lock);
 }
 
 void qemu_system_vmstop_request(RunState state)
 {
-    vmstop_requested = state;
-    qemu_mutex_unlock(&vmstop_lock);
+    retro_atomic_store_release_int(&vmstop_requested, state);
     qemu_notify_event();
 }
+
 struct VMChangeStateEntry {
     VMChangeStateHandler *cb;
     VMChangeStateHandler *prepare_cb;
