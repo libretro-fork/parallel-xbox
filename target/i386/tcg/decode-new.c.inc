@@ -2890,6 +2890,10 @@ static void disas_insn(DisasContext *s, CPUState *cpu)
             tcg_gen_mov_i32(cpu_cc_op, decode.cc_op_dynamic);
         }
         set_cc_op(s, decode.cc_op);
+        if (decode.preserve_entry_cf_class) {
+            assert(decode.cc_op == CC_OP_DYNAMIC);
+            s->cc_op_entry = true;
+        }
         cc_live = cc_op_live(decode.cc_op);
     } else {
         cc_live = 0;

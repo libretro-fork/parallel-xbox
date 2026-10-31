@@ -339,6 +339,7 @@ struct X86DecodedInsn {
 
     TCGv cc_dst, cc_src, cc_src2;
     TCGv_i32 cc_op_dynamic;
+    bool preserve_entry_cf_class;
     int8_t cc_op;
 
     uint8_t b;

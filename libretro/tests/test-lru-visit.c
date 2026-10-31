@@ -7,6 +7,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#ifdef _WIN32
+#include <windows.h>
+#endif
 #include "qemu/lru.h"
 
 #define NODES 1024
@@ -36,8 +39,14 @@ static void touch(Lru *lru,LruNode *node,void *opaque) {
     (void)lru;(void)opaque;checksum+=node->hash;
 }
 static double now(void) {
+#ifdef _WIN32
+    LARGE_INTEGER t,frequency;
+    assert(QueryPerformanceCounter(&t) && QueryPerformanceFrequency(&frequency));
+    return (double)t.QuadPart/frequency.QuadPart;
+#else
     struct timespec t;assert(timespec_get(&t,TIME_UTC)==TIME_UTC);
     return t.tv_sec+t.tv_nsec*1e-9;
+#endif
 }
 int main(void) {
     Lru *lru=calloc(1,sizeof(*lru));Node *nodes=calloc(NODES,sizeof(*nodes));

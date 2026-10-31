@@ -3794,11 +3794,21 @@ static void gen_SALC(DisasContext *s, X86DecodedInsn *decode)
     tcg_gen_neg_tl(s->T0, s->T0);
 }
 
+/* A zero count keeps the old flags; a nonzero count selects cc_op. Only
+ * keep the incoming proof when both outcomes belong to the same class. */
+static bool can_preserve_shift_cf_class(DisasContext *s, CCOp cc_op)
+{
+    return xemu_cpu_boost && s->cc_op == CC_OP_DYNAMIC && s->cc_op_entry &&
+           s->cf_entry_class != TB_CF_ANY &&
+           s->cf_entry_class == x86_cc_op_cf_class(cc_op);
+}
+
 static void gen_shift_dynamic_flags(DisasContext *s, X86DecodedInsn *decode, TCGv count, CCOp cc_op)
 {
     TCGv_i32 count32 = tcg_temp_new_i32();
     TCGv_i32 old_cc_op;
 
+    decode->preserve_entry_cf_class = can_preserve_shift_cf_class(s, cc_op);
     decode->cc_op = CC_OP_DYNAMIC;
     decode->cc_op_dynamic = tcg_temp_new_i32();
 

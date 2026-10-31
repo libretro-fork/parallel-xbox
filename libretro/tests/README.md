@@ -883,3 +883,8 @@ hard-FPU/CPU-Boost combinations; shared entries guard against unsafe ANY aliases
 entries, including zero counts, carry reads, signed predicates and SAHF overflow.
 The old Boost core fails the SHL carry case; Boost-off passes. Dynamic-to-dynamic
 flag updates must invalidate the entry proof before the class-equality shortcut.
+
+`test-shift-class.py` checks the production retention predicate against all
+256 masked count outcomes and every incoming flag operation in both target-width
+models. ANY and invalid proofs are rejected. The entry invalidation ROM includes
+both unchanged-class paths (with a post-shift jump) and class-changing negatives.

@@ -210,7 +210,8 @@ typedef struct DisasContext {
     CCOp cc_op;  /* current CC operation */
     /*
      * CPU boost: the TB_CF_* class of the CC_OP the block starts with (its
-     * TB flags), valid while cc_op_entry: no instruction has set CC_OP yet
+     * TB flags), valid while cc_op_entry. Dynamic updates may retain it
+     * only when both zero/nonzero-count outcomes preserve this class.
      */
     int cf_entry_class;
     bool cc_op_entry;
@@ -414,8 +415,8 @@ static void set_cc_op_1(DisasContext *s, CCOp op, bool dirty)
 {
     int dead;
 
-    /* A flag-setting instruction invalidates the entry proof even when
-     * a variable-count operation keeps the translator class DYNAMIC. */
+    /* Invalidate even for dynamic-to-dynamic updates. The decoder may
+     * restore a class separately proved valid for every shift count. */
     s->cc_op_entry = false;
     if (s->cc_op == op) {
         return;

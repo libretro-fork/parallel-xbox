@@ -41,6 +41,35 @@ org 0xfff00000
     seto dl
     check dl,%2
 %endmacro
+; These classes remain valid for both zero and nonzero counts. A jump
+; after the shift exercises the direct-exit proof as well as flag consumers.
+%macro preserved_case 3
+    inc ebp
+%if %1 == 3
+    push dword 3
+    popfd
+%else
+    xor eax,eax
+    sub ax,1
+%endif
+    jmp %%entry
+%%entry:
+%if %1 == 3
+    mov eax,3
+%else
+    mov eax,0x80000000
+%endif
+    mov ecx,%2
+%if %1 == 3
+    shr eax,cl
+%else
+    shl eax,cl
+%endif
+    jmp %%read
+%%read:
+    setc dl
+    check dl,%3
+%endmacro
 start:
     rep_test_init
     carry_case 0,1
@@ -51,7 +80,15 @@ start:
     relation_case 1
     sahf_case 0,0
     sahf_case 1,1
-    check ebp,9
+    preserved_case 3,0,1
+    preserved_case 3,1,1
+    preserved_case 3,2,1
+    preserved_case 3,31,0
+    preserved_case 0,0,1
+    preserved_case 0,1,1
+    preserved_case 0,2,0
+    preserved_case 0,31,0
+    check ebp,17
     mov dword [R],0x4b4f4945 ; EIOK
 .halt:
     cli
