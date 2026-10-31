@@ -1,5 +1,7 @@
 # Changelog of the libretro core
 
+- Eliminate a full-cluster scratch copy on compressed QCOW2 partial writes and zeroing by reusing the invalidated decompression cache as the patch buffer.
+
 - Replace the POSIX FD monitor framework with direct descriptor readiness handling; remove unused TLS poll-array copies, epoll descriptors and busy-poll machinery.
 
 - Remove the AIO handler exclusion gate (QemuLockCnt); enforce frontend-owned registration/dispatch and retain nesting-based deferred reclamation.

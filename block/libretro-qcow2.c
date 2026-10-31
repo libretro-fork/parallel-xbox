@@ -779,6 +779,7 @@ static int write_new(LRQcow2 *q, uint64_t gc, uint64_t in, uint64_t len,
     bool reuse = (e & F_COPIED) && (e & OFFSET_MASK) &&
                  !(e & F_COMPRESSED);   /* an allocated zero cluster */
     bool direct = !zero && in == 0 && len == q->cs;
+    uint8_t *data = q->cluster;
     int ret;
 
     /* A complete replacement has no old bytes to preserve or decompress.
@@ -789,7 +790,12 @@ static int write_new(LRQcow2 *q, uint64_t gc, uint64_t in, uint64_t len,
             if (ret < 0) {
                 return ret;
             }
-            memcpy(q->cluster, q->dcache, (size_t)q->cs);
+            /* This cache entry is invalidated by the write anyway. Reuse
+             * it as the patch workspace instead of copying a full cluster.
+             * Invalidate before mutation so failed writes cannot expose
+             * modified bytes through the old compressed mapping. */
+            data = q->dcache;
+            q->cached = ~0ull;
         } else if (reads_zero(q, e)) {
             memset(q->cluster, 0, (size_t)q->cs);
         } else {
@@ -800,9 +806,9 @@ static int write_new(LRQcow2 *q, uint64_t gc, uint64_t in, uint64_t len,
             }
         }
         if (zero) {
-            memset(q->cluster + in, 0, (size_t)len);
+            memset(data + in, 0, (size_t)len);
         } else {
-            cursor_copy_in(c, q->cluster + in, (size_t)len);
+            cursor_copy_in(c, data + in, (size_t)len);
         }
     }
     if (q->cached == gc) {
@@ -821,7 +827,7 @@ static int write_new(LRQcow2 *q, uint64_t gc, uint64_t in, uint64_t len,
         }
     }
     ret = direct ? cursor_io(q, c, host, (size_t)len, true)
-                 : lr_file_pwrite(q->f, (int64_t)host, q->cluster,
+                 : lr_file_pwrite(q->f, (int64_t)host, data,
                                    (size_t)q->cs);
     if (ret < 0) {
         return ret;
