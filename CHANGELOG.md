@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Reduced worker wakeup overhead, especially short Windows handoffs, while preserving support for older Windows versions and existing high-resolution timeout handling.
+
 - x87 double loads and register moves now retain their precision when single-precision arithmetic is selected. The hard-FPU cache keeps binary64 values and rounds affected arithmetic results explicitly; soft-FPU double loads widen at extended precision before restoring the control state. This corrects integer conversions that previously saw an already-truncated input. Hard-FPU remains a binary64 approximation of x87.
 - Signed G8B8 mipmapped textures now honor mixed point/linear minification and magnification filters, including sampler bias. Base-clamped Vulkan G8B8 samplers retain the correct filter without reading another mip. Matching-filter shaders and shader-seed layout are preserved; no runtime diagnostic logging is added.
 - Headers no longer declare 1,776 functions that no longer exist anywhere in the tree (about 4,400 lines): left behind by QEMU subsystems the core never had (the HMP monitor, virtio, KVM, block jobs) and by earlier removals. Nothing changes for someone using the core.

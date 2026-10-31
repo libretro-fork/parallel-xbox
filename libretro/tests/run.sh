@@ -222,6 +222,13 @@ wine*)
     ${HARNESS_CC:-x86_64-w64-mingw32-gcc} $glibflags -o "$work/bin/glibtest.exe" \
         $glibsrc -static
     wine "$work/bin/glibtest.exe" "$(path "$work/glib")"
+    ${HARNESS_CC:-x86_64-w64-mingw32-gcc} -O2 -std=gnu99 -DHAVE_THREADS \
+        -I"$lrc/include" "$here/test-eventcount-spin.c" \
+        "$lrc/rthreads/rthreads.c" "$lrc/features/features_cpu.c" "$lrc/time/rtime.c" \
+        -static -o "$work/bin/eventcountspin.exe"
+    for tier in alert keyed event; do
+        RETRO_EVENTCOUNT_WIN32=$tier wine "$work/bin/eventcountspin.exe"
+    done
     ;;
 esac
 ${cc} -O2 -std=gnu99 -Wall -DLR_FILE_FILESTREAM=0 -I"$lrc/include" -o "$work/bin/qcow2test" "$here/test-qcow2.c" \

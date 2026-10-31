@@ -1,5 +1,10 @@
 # The core's tests
 
+`test-eventcount-spin.c` checks Windows eventcount notifications before waiter
+publication, concurrent publication during list detachment, and detachment
+while an unlinker owns the list. It includes the production implementation.
+`run.sh` runs it through the alert, keyed-event and event tiers with Wine.
+
 `test-signed-g8b8.py CHECKOUT CORE HARNESS SCRATCH` builds isolated guest bump
 and color probes and checks 14208 cases on each of OpenGL and Vulkan, including
 all channel-sign combinations for the color probe, with quality overrides off
