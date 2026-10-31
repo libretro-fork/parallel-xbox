@@ -825,3 +825,5 @@ preservation, high-byte encoding without REX, simulated CPUID leaf bounds
 and cached feature selection, plus 32-bit/old-host fallback. The x87 scratch
 ROM also keeps six memory-loaded guest GPRs live across ordered/unordered
 comparisons in both precision modes. No fixed RAX allocation is imposed.
+
+Writable file-I/O checks zero an unaligned range across EOF, a range entirely beyond EOF and an INT64_MAX-length range, confirming unchanged size and preserved bytes before the range. Empty, negative-offset and maximum-offset requests cover the no-op/validation paths. Sparse operations enforce non-extension natively; fallback writes still clip using the current file size.

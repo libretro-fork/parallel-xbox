@@ -216,23 +216,37 @@ int lr_file_zero(LRFile *f, int64_t off, int64_t len)
     }
     FILE_ZERO_DATA_INFORMATION z;
     DWORD got;
-    int64_t size = lr_file_size(f);
+    int64_t size;
 
+    if (len <= 0) {
+        return 0;
+    }
+    if (off < 0) {
+        return -EINVAL;
+    }
+    if (len > INT64_MAX - off) {
+        len = INT64_MAX - off;
+    }
+    if (!len) {
+        return 0;
+    }
+    z.FileOffset.QuadPart = off;
+    z.BeyondFinalZero.QuadPart = off + len;
+    /* This operation cannot extend EOF, so only the write fallback needs
+     * a size query to clip its range. */
+    if (DeviceIoControl(f->h, FSCTL_SET_ZERO_DATA, &z, sizeof(z), NULL, 0,
+                        &got, NULL)) {
+        return 0;
+    }
+    size = lr_file_size(f);
     if (size < 0) {
         return (int)size;
     }
-    if (off >= size || len <= 0) {
+    if (off >= size) {
         return 0;
     }
     if (len > size - off) {
         len = size - off;
-    }
-    z.FileOffset.QuadPart = off;
-    z.BeyondFinalZero.QuadPart = off + len;
-    /* frees the clusters of a sparse file, and writes zeroes in any other */
-    if (DeviceIoControl(f->h, FSCTL_SET_ZERO_DATA, &z, sizeof(z), NULL, 0,
-                        &got, NULL)) {
-        return 0;
     }
     while (len) {
         size_t n = len > (int64_t)sizeof(lr_file_zeroes) ?
@@ -391,23 +405,38 @@ int lr_file_zero(LRFile *f, int64_t off, int64_t len)
     if (f->mapped) {
         return -EPERM;
     }
-    int64_t size = lr_file_size(f);
+    int64_t size;
 
-    if (size < 0) {
-        return (int)size;
-    }
-    if (off >= size || len <= 0) {
+    if (len <= 0) {
         return 0;
     }
-    if (len > size - off) {
-        len = size - off;
+    if (off < 0) {
+        return -EINVAL;
+    }
+    if (len > INT64_MAX - off) {
+        len = INT64_MAX - off;
+    }
+    if (!len) {
+        return 0;
     }
 #if defined(__linux__) && defined(FALLOC_FL_PUNCH_HOLE)
     if (fallocate(f->fd, FALLOC_FL_PUNCH_HOLE | FALLOC_FL_KEEP_SIZE,
                   (off_t)off, (off_t)len) == 0) {
         return 0;
     }
-#elif defined(__APPLE__) && defined(F_PUNCHHOLE)
+#endif
+    /* KEEP_SIZE above handles EOF itself; other paths need a current size. */
+    size = lr_file_size(f);
+    if (size < 0) {
+        return (int)size;
+    }
+    if (off >= size) {
+        return 0;
+    }
+    if (len > size - off) {
+        len = size - off;
+    }
+#if defined(__APPLE__) && defined(F_PUNCHHOLE)
     {
         /* whole blocks of the file system only */
         struct stat st;

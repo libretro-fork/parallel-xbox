@@ -4,6 +4,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Successful native sparse zero operations on Windows and Linux skip the preceding file-size query. Fallback writes still query and clip to EOF, and large/invalid ranges are checked without overflowing offsets.
+
 - The test suite runs every test script: 25 test scripts were never run by run.sh, and four of them no longer compiled against the code they check (DMA mapping, vertex fetch spans, the vertex snapshot cache, the Vulkan shader-module cache). They are fixed and run now, the GL and MCPX boot ones with the Linux core and the Vulkan copy ones where there is a Vulkan device.
 
 - 47 source files the core compiled but never linked (QEMU utilities such as the dirty-bitmap, throttling, readline and keymap code, and stubs nothing calls) and 163 headers nothing includes are gone, about 29,000 lines. Nothing changes for someone using the core.

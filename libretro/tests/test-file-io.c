@@ -110,6 +110,24 @@ int main(int argc, char **argv)
     LRFileIOV invalid[] = {{out, 4}, {out + 16, SIZE_MAX}};
     assert(lr_file_preadv(f, large, invalid, 2) == -EINVAL);
     lr_file_close(f);
+    f = lr_file_open(argv[1], true, false);
+    assert(f);
+    /* Native range-zero operations and their fallback must never grow EOF. */
+    assert(lr_file_zero(f, large - 17, 128) == 0);
+    assert(lr_file_size(f) == large);
+    assert(lr_file_pread(f, large - 64, out, 64) == 0);
+    assert(!memcmp(out, block, 47));
+    assert(!memcmp(out + 47, (uint8_t[17]) {0}, 17));
+    assert(lr_file_zero(f, large + 4096, 128) == 0);
+    assert(lr_file_zero(f, large - 33, INT64_MAX) == 0);
+    assert(lr_file_zero(f, INT64_MAX, 1) == 0);
+    assert(lr_file_zero(f, 0, 0) == 0);
+    assert(lr_file_zero(f, -1, 16) == -EINVAL);
+    assert(lr_file_size(f) == large);
+    assert(lr_file_pread(f, large - 64, out, 64) == 0);
+    assert(!memcmp(out, block, 31));
+    assert(!memcmp(out + 31, (uint8_t[33]) {0}, 33));
+    lr_file_close(f);
     puts("positional/scatter reads, >4GiB offsets, EOF and write guards: PASS");
     if (argc > 2) {
         f = lr_file_open(argv[2], false, false);
