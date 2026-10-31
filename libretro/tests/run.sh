@@ -65,6 +65,8 @@ python3 "$here/test-block-completion.py" "$here/../.." "$cc"
 python3 "$here/test-block-discard.py" "$here/../.." "$cc"
 python3 "$here/test-backport-compat.py" "$here/../.." "$cc"
 python3 "$here/test-frame-audio-pull.py" "$here/../.." "$cc"
+python3 "$here/test-vk-recording-epoch.py" "$here/../.." "$cc"
+python3 "$here/test-lru-visit.py" "$here/../.." "$cc"
 python3 "$here/test-block-memory.py" "$here/../.." "$cc"
 case $core in
 *.dll)

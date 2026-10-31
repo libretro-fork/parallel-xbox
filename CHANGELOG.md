@@ -4,6 +4,9 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Texture and shader cache visits walk resident nodes instead of scanning all 65,536 hash bins, reducing empty-bin memory traffic without another cache, allocation or lock. Callback eviction remains supported.
+
+- Vulkan no longer mistakes the previous submission's final surface write for work in the next command buffer, avoiding redundant display/readback/upload submissions. Existing fences still protect GPU work in flight; no extra frame, copy or synchronization primitive is added.
 - Scalar file reads and writes now reject negative or overflowing signed-offset ranges before transferring data or padding EOF, matching vector-request range checks.
 
 - Native and mapped file-vector operations reject malformed or overflowing requests before touching files or destinations. Empty native requests skip system calls; vectored native I/O reuses the validated total.

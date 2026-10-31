@@ -2769,6 +2769,12 @@ void pgraph_vk_finish(PGRAPHState *pg, FinishReason finish_reason)
             r->budget_check_pending = true;
         }
 
+        /* Separate this recording's final draw stamp from the next one's
+         * start, even if no draw happens between the two. Otherwise that
+         * final surface still looks pending and display/readback/upload
+         * paths unnecessarily submit the new recording. This does not
+         * retire any work: slot fences and submit serials still own it. */
+        pg->draw_time++;
         r->in_command_buffer = false;
         r->slot_fence_pending[r->slot] = true;
 

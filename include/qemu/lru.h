@@ -232,8 +232,11 @@ void lru_visit_active(Lru *lru, LruNodeVisitorFunc visitor_func, void *opaque)
 {
 	LruNode *iter, *iter_next;
 
-	for (unsigned int bin = 0; bin < LRU_NUM_BINS; bin++) {
-		QTAILQ_FOREACH_SAFE(iter, &lru->bins[bin], next_bin, iter_next) {
+	/* Visit resident nodes in recency order instead of reading every empty
+	 * hash-bin head. Visitors may evict the current node; eviction leaves
+	 * the global chain intact. No caller relinks that chain while visiting. */
+	QTAILQ_FOREACH_SAFE(iter, &lru->global, next_global, iter_next) {
+		if (lru_is_node_in_use(lru, iter)) {
 			visitor_func(lru, iter, opaque);
 		}
 	}
