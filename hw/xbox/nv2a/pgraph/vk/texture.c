@@ -8,7 +8,7 @@
  * Copyright (c) 2012 espes
  * Copyright (c) 2015 Jannik Vogel
  * Copyright (c) 2018-2024 Matt Borgerson
- * Copyright (c) 2026 Réda Chérif-Touil
+ * Copyright (c) 2026 RÃ©da ChÃ©rif-Touil
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -276,21 +276,7 @@ static void decode_level_3d(PGRAPHState *pg, TextureLevel *level,
     s3tc_decompress_3d_into(fmt, data, width, height, depth, dst);
 }
 
-/* Three-channel SNORM optimal images are not generally supported. Preserve
- * the existing RGB conversion bytes and expand backward in the same range;
- * signed 127 supplies the implicit alpha-one component of the RGB format. */
-static void expand_rgb_snorm_alpha(uint8_t *pixels, size_t count)
-{
-    while (count) {
-        size_t i = --count;
-        pixels[4 * i + 2] = pixels[3 * i + 2];
-        pixels[4 * i + 1] = pixels[3 * i + 1];
-        pixels[4 * i] = pixels[3 * i];
-        pixels[4 * i + 3] = 127;
-    }
-}
-
-/* A swizzled level, preferably converted on the GPU. CPU palette fallback
+/* A swizzled level, preferably converted on the GPU. CPU palette/RGB655 fallback
  * expands directly into its final staging range; other conversions may need
  * a linear scratch range that the GPU copy does not read. */
 static void stage_swizzled(PGRAPHState *pg, VkCommandBuffer cmd,
@@ -343,6 +329,13 @@ static void stage_swizzled(PGRAPHState *pg, VkCommandBuffer cmd,
         unswizzle_box_palette(data, palette, width, height, depth, dst);
         return;
     }
+    if (s->color_format == NV097_SET_TEXTURE_FORMAT_COLOR_SZ_R6G5B5) {
+        assert(depth == 1); /* Same restriction as the linear converter. */
+        uint8_t *dst = stage_level(pg, level, width, height, depth,
+                                   (size_t)width * height * 4);
+        pgraph_convert_swizzled_rgb655_into(data, width, height, true, dst);
+        return;
+    }
     uint8_t *scratch;
     pgraph_vk_staging_alloc(pg, raw, 16, &scratch);
     if (depth == 1) {
@@ -351,15 +344,10 @@ static void stage_swizzled(PGRAPHState *pg, VkCommandBuffer cmd,
         unswizzle_box(data, width, height, depth, scratch, row_pitch,
                       slice_pitch, bpp);
     }
-    bool expand_rgb = s->color_format == NV097_SET_TEXTURE_FORMAT_COLOR_SZ_R6G5B5;
-    size_t texels = (size_t)width * height * depth;
     uint8_t *dst = stage_level(pg, level, width, height, depth,
-                               expand_rgb ? texels * 4 : converted);
+                               converted);
     pgraph_convert_texture_data_into(*s, scratch, palette, width, height,
                                      depth, row_pitch, slice_pitch, dst);
-    if (expand_rgb) {
-        expand_rgb_snorm_alpha(dst, texels);
-    }
 }
 
 /* Match the existing GL base-face crop. Higher mip border origins remain

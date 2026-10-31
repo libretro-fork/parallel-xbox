@@ -1521,3 +1521,11 @@ The original handler fails the shared-payload integrity assertion. Blocked TDs
 must leave controller state and payload unchanged without any DMA read/copy or
 device lookup; the original TD and following TD then proceed normally. This
 does not implement per-endpoint asynchronous slots or model USB device timing.
+
+`test-rgb655-unswizzle.py` checks all 65536 RGB655 words against independent
+channel equations, rectangular Morton levels and unaligned source/output.
+Actual GL/Vulkan callers must skip raw scratch and Vulkan must stage final RGBA
+with alpha 127. RGB655_CFLAGS/BINARY/SKIP_RUN support native cross builds.
+`--bench` after the compiler compares the frozen c07b7f1065 converter plus
+unswizzle/alpha expansion with the fused production helper; buffers are
+preallocated and measurements cover CPU conversion only, not game FPS.

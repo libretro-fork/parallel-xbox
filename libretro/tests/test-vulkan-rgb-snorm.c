@@ -47,7 +47,7 @@ static bool pgraph_vk_unswizzle(PGRAPHState *pg, VkCommandBuffer cmd,
     (void)pg; (void)cmd; (void)address; (void)w; (void)h; (void)d;
     (void)bpp; (void)palette; (void)out; return false;
 }
-/* Fixture inputs are already linear, isolating host conversion/staging. */
+/* Non-RGB fallback stubs are not reached by the RGB655 cases below. */
 static void unswizzle_rect(const uint8_t *src, unsigned w, unsigned h,
                            uint8_t *dst, size_t pitch, unsigned bpp)
 { (void)w; (void)bpp; memcpy(dst, src, pitch * h); }
@@ -57,6 +57,8 @@ static void unswizzle_box(const uint8_t *src, unsigned w, unsigned h, unsigned d
 static void pgraph_yuv422_to_rgba(uint8_t *out, const uint8_t *in,
                                   unsigned width, bool uyvy)
 { (void)out; (void)in; (void)width; (void)uyvy; abort(); }
+void generate_swizzle_masks(unsigned,unsigned,unsigned,uint32_t *,uint32_t *,uint32_t *);
+void swizzle_box(const uint8_t *,unsigned,unsigned,unsigned,uint8_t *,unsigned,unsigned,unsigned);
 void unswizzle_box_palette(const uint8_t *,const uint8_t *,unsigned,unsigned,unsigned,uint8_t *);
 /* PRODUCTION */
 
@@ -150,16 +152,16 @@ int main(void)
     surface.color = false;
     assert(!check_surface_to_texture_compatiblity(&surface, &shape));
     assert(vk_format_texel_size(ORACLE_FORMAT) == 4);
-    uint8_t guard[16]; memset(guard, 0xa5, sizeof(guard));
-    expand_rgb_snorm_alpha(guard, 0);
-    for (unsigned i = 0; i < sizeof(guard); i++) assert(guard[i] == 0xa5);
     const unsigned sizes[] = { 1, 2, 17, 65536 };
     for (unsigned test = 0; test < 4; test++) {
         unsigned count = sizes[test], width = count == 65536 ? 256 : count, height = count / width;
         uint16_t *guest = malloc(count * 2); uint8_t *rgb = malloc(count * 3);
         assert(guest && rgb);
-        for (unsigned i = 0; i < count; i++) guest[i] = i;
-        pgraph_convert_texture_data_into(shape, (uint8_t *)guest, NULL, width, height, 1, width * 2, count * 2, rgb);
+        uint16_t *linear = malloc(count * 2); assert(linear);
+        for (unsigned i = 0; i < count; i++) linear[i] = i;
+        pgraph_convert_texture_data_into(shape, (uint8_t *)linear, NULL, width, height, 1, width * 2, count * 2, rgb);
+        swizzle_box((uint8_t *)linear, width, height, 1, (uint8_t *)guest, width * 2, 0, 2);
+        free(linear);
         Buffer upload = buffer(count * 6 + 128), output = buffer(count * 4);
         memset(upload.mapped, 0xa5, count * 6 + 128);
         NV2AState d = { .vram_ptr = (uint8_t *)guest,

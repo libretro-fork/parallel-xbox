@@ -58,6 +58,11 @@ extern const BasicColorFormatInfo kelvin_color_format_info_map[66];
  * the rest */
 size_t pgraph_converted_texture_size(const TextureShape s, unsigned int width,
                                      unsigned int height, unsigned int depth);
+/* Power-of-two 2D Morton input, tightly packed RGB or RGBA SNORM output. */
+void pgraph_convert_swizzled_rgb655_into(const uint8_t *data,
+                                        unsigned int width,
+                                        unsigned int height, bool rgba,
+                                        uint8_t *out);
 void pgraph_convert_texture_data_into(const TextureShape s,
                                       const uint8_t *data,
                                       const uint8_t *palette_data,

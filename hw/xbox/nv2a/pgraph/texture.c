@@ -22,6 +22,7 @@
 #include "hw/xbox/nv2a/nv2a_int.h"
 #include "texture.h"
 #include "util.h"
+#include "swizzle.h"
 
 /* Core option, fixed for the lifetime of the running machine. */
 static bool force_texture_lod0;
@@ -437,6 +438,49 @@ uint8_t *pgraph_convert_texture_data(const TextureShape s, const uint8_t *data,
     return converted_data;
 }
 
+static void convert_r6g5b5_pixel(uint16_t rgb655, uint8_t *out)
+{
+    /* Exactly r*127/63 and ((v^16)*255/31)-128, respectively. The small
+     * tables preserve the old integer rounding, including signed endpoints. */
+    static const uint8_t red6[64] = {
+        0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30,
+        32, 34, 36, 38, 40, 42, 44, 46, 48, 50, 52, 54, 56, 58, 60, 62,
+        64, 66, 68, 70, 72, 74, 76, 78, 80, 82, 84, 86, 88, 90, 92, 94,
+        96, 98, 100, 102, 104, 106, 108, 110, 112, 114, 116, 118, 120, 122, 124, 127
+    };
+    static const uint8_t signed5[32] = {
+        3, 11, 20, 28, 36, 44, 52, 61, 69, 77, 85, 94, 102, 110, 118, 127,
+        128, 136, 144, 152, 160, 169, 177, 185, 193, 202, 210, 218, 226, 234, 243, 251
+    };
+    out[0] = red6[rgb655 >> 10];
+    out[1] = signed5[(rgb655 >> 5) & 31];
+    out[2] = signed5[rgb655 & 31];
+}
+
+void pgraph_convert_swizzled_rgb655_into(const uint8_t *data,
+                                        unsigned int width,
+                                        unsigned int height, bool rgba,
+                                        uint8_t *out)
+{
+    uint32_t mask_x, mask_y, mask_z;
+    generate_swizzle_masks(width, height, 1, &mask_x, &mask_y, &mask_z);
+    uint32_t off_y = 0;
+    for (unsigned int y = 0; y < height; y++) {
+        uint32_t off_x = 0;
+        for (unsigned int x = 0; x < width; x++) {
+            uint16_t pixel;
+            memcpy(&pixel, data + (size_t)(off_x | off_y) * 2, sizeof(pixel));
+            convert_r6g5b5_pixel(pixel, out);
+            if (rgba) {
+                out[3] = 127; /* SNORM alpha one, as for RGB host images. */
+            }
+            out += rgba ? 4 : 3;
+            off_x = (off_x - mask_x) & mask_x;
+        }
+        off_y = (off_y - mask_y) & mask_y;
+    }
+}
+
 void pgraph_convert_texture_data_into(const TextureShape s,
                                       const uint8_t *data,
                                       const uint8_t *palette_data,
@@ -480,15 +524,10 @@ void pgraph_convert_texture_data_into(const TextureShape s,
         assert(depth == 1); /* FIXME */
         for (int y = 0; y < height; y++) {
             for (int x = 0; x < width; x++) {
-                uint16_t rgb655 = *(uint16_t *)(data + y * row_pitch + x * 2);
-                int8_t *pixel = (int8_t *)&converted_data[(y * width + x) * 3];
-                /* Maps 5 bit G and B signed value range to 8 bit
-                 * signed values. R is probably unsigned.
-                 */
-                rgb655 ^= (1 << 9) | (1 << 4);
-                pixel[0] = ((rgb655 & 0xFC00) >> 10) * 0x7F / 0x3F;
-                pixel[1] = ((rgb655 & 0x03E0) >> 5) * 0xFF / 0x1F - 0x80;
-                pixel[2] = (rgb655 & 0x001F) * 0xFF / 0x1F - 0x80;
+                uint16_t rgb655;
+                memcpy(&rgb655, data + y * row_pitch + x * 2, sizeof(rgb655));
+                convert_r6g5b5_pixel(rgb655,
+                    &converted_data[(y * width + x) * 3]);
             }
         }
     } else {

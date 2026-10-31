@@ -18,7 +18,7 @@ def function(path, name):
 common = 'hw/xbox/nv2a/pgraph/texture.c'
 gl = 'hw/xbox/nv2a/pgraph/gl/texture.c'
 vk = 'hw/xbox/nv2a/pgraph/vk/texture.c'
-parts = [function(common, n) for n in ('pgraph_converted_texture_size', 'pgraph_convert_texture_data_into')]
+parts = [function(common, n) for n in ('convert_r6g5b5_pixel', 'pgraph_convert_swizzled_rgb655_into', 'pgraph_converted_texture_size', 'pgraph_convert_texture_data_into')]
 parts += [function(gl, n) for n in ('tex_scratch', 'unswizzle_level')]
 parts += [function(vk, 'stage_level')]
 # stage_swizzled returns void, but its declaration has the standard spacing.

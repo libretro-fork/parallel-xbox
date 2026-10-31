@@ -4,7 +4,7 @@
  * Copyright (c) 2012 espes
  * Copyright (c) 2015 Jannik Vogel
  * Copyright (c) 2018-2024 Matt Borgerson
- * Copyright (c) 2026 Réda Chérif-Touil
+ * Copyright (c) 2026 RÃ©da ChÃ©rif-Touil
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -695,8 +695,8 @@ static void upload_compressed_volume(PGRAPHGLState *r, GLenum target,
     }
 }
 
-/* A swizzled level in its host upload format. Palette expansion reads the
- * Morton indices directly; other conversions retain their linear scratch. */
+/* A swizzled level in its host upload format. Palette and RGB655 expansion
+ * read Morton input directly; other conversions retain their linear scratch. */
 static const uint8_t *unswizzle_level(PGRAPHGLState *r, const TextureShape *s,
                                       const uint8_t *data,
                                       const uint8_t *palette,
@@ -707,6 +707,12 @@ static const uint8_t *unswizzle_level(PGRAPHGLState *r, const TextureShape *s,
         uint8_t *converted = tex_scratch(r, 1,
             (size_t)width * height * depth * 4);
         unswizzle_box_palette(data, palette, width, height, depth, converted);
+        return converted;
+    }
+    if (s->color_format == NV097_SET_TEXTURE_FORMAT_COLOR_SZ_R6G5B5) {
+        assert(depth == 1); /* Same restriction as the linear converter. */
+        uint8_t *converted = tex_scratch(r, 1, (size_t)width * height * 3);
+        pgraph_convert_swizzled_rgb655_into(data, width, height, false, converted);
         return converted;
     }
     size_t row_pitch = (size_t)width * bpp, slice_pitch = row_pitch * height;

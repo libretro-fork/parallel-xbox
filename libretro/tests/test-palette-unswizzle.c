@@ -45,7 +45,6 @@ static bool pgraph_vk_unswizzle(PGRAPHState *p,VkCommandBuffer c,uintptr_t addr,
 static void pgraph_yuv422_to_rgba(uint8_t *out,const uint8_t *in,unsigned w,bool uyvy) {
     (void)out;(void)in;(void)w;(void)uyvy;abort();
 }
-static void expand_rgb_snorm_alpha(uint8_t *p,size_t n) {(void)p;(void)n;abort();}
 /* Instrument only the old linear intermediate paths in extracted callers. */
 static void counted_unswizzle(const uint8_t *src,unsigned w,unsigned h,unsigned d,
     uint8_t *dst,unsigned row,unsigned slice,unsigned bpp) {

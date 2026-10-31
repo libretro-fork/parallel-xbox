@@ -219,6 +219,7 @@ case $core in
 *.so)
     python3 "$here/test-gl-texture-reinterpret.py" "$here/../.." "$cc"
     python3 "$here/test-gl-upload-alignment.py" "$here/../.." "$cc"
+    python3 "$here/test-rgb655-unswizzle.py" "$here/../.." "$cc"
     python3 "$here/test-palette-unswizzle.py" "$here/../.." "$cc"
     python3 "$here/test-gl-scale-scratch.py" "$here/../.." "$cc"
     python3 "$here/test-gl-pitched-surface.py" "$here/../.." "$cc"

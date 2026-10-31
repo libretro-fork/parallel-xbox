@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """Production RGB655 staging oracle. Linux Vulkan + validation layers required.
 
-Usage: python3 SCRIPT CHECKOUT [CC]. Unswizzle output is supplied linearly;
-the real shared conversion, Vulkan staging and alpha expansion are executed.
+Usage: python3 SCRIPT CHECKOUT [CC]. Real Morton RGB655 input is decoded directly to final Vulkan staging;
+the real conversion and image upload/readback are executed.
 """
 from pathlib import Path
 import os
@@ -29,8 +29,8 @@ def function(source, name):
             return source[start:end]
     raise AssertionError(name)
 
-parts = [function(common, n) for n in ("pgraph_converted_texture_size", "pgraph_convert_texture_data_into")]
-parts += [function(vk, n) for n in ("stage_level", "expand_rgb_snorm_alpha", "stage_swizzled",
+parts = [function(common, n) for n in ("convert_r6g5b5_pixel", "pgraph_convert_swizzled_rgb655_into", "pgraph_converted_texture_size", "pgraph_convert_texture_data_into")]
+parts += [function(vk, n) for n in ("stage_level", "stage_swizzled",
                                    "vk_format_texel_size", "check_surface_to_texture_compatiblity")]
 code = Path(__file__).with_suffix(".c").read_text().replace("/* PRODUCTION */", "\n".join(parts))
 code = code.replace("ORACLE_FORMAT", fmt)
