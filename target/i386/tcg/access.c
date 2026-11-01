@@ -21,7 +21,9 @@ void access_prepare_mmu(X86Access *ret, CPUX86State *env,
     size1 = MIN(size, -(vaddr | TARGET_PAGE_MASK)),
     size2 = size - size1;
 
-    memset(ret, 0, sizeof(*ret));
+    /* All other fields are assigned below. Clear the optional mapping on
+     * every preparation, including when reusing a previous two-page access. */
+    ret->haddr2 = NULL;
     ret->vaddr = vaddr;
     ret->size = size;
     ret->size1 = size1;
@@ -34,7 +36,7 @@ void access_prepare_mmu(X86Access *ret, CPUX86State *env,
 
     if (unlikely(size2)) {
         haddr2 = probe_access(env, vaddr + size1, size2, type, mmu_idx, ra);
-        if (haddr2 == haddr1 + size1) {
+        if (haddr1 && haddr2 == haddr1 + size1) {
             ret->size1 = size;
         } else {
             ret->haddr2 = haddr2;

@@ -5,7 +5,7 @@ import os, re, shlex, subprocess, sys, tempfile
 
 r = Path(sys.argv[1]).resolve()
 s = Path(os.environ.get('X86_ACCESS_PTR_SOURCE', r / 'target/i386/tcg/access.c')).read_text()
-a = s.index('static void *access_ptr(')
+a = s.index('void access_prepare_mmu(')
 h = (r / 'target/i386/tcg/access.h').read_text()
 types = re.search(r'typedef struct X86Access \{.*?\} X86Access;', h, re.S).group()
 code = Path(__file__).with_suffix('.c').read_text().replace('/* TYPES */', types).replace('/* PRODUCTION */', s[a:])

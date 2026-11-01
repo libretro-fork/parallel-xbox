@@ -4,11 +4,30 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #define likely(c) (c)
+#define unlikely(c) (c)
+#define TARGET_PAGE_SIZE 4096
+#define TARGET_PAGE_MASK (~UINT64_C(4095))
+#define MIN(a, b) ((a) < (b) ? (a) : (b))
 typedef uint32_t target_ulong;
 typedef uint64_t vaddr;
+typedef int MMUAccessType;
 typedef struct { int unused; } CPUX86State;
 /* TYPES */
+static unsigned probes, index_queries, prepared_size, prepared_first;
+static vaddr prepared_addr;
+static MMUAccessType prepared_type;
+static void *prepared_host[2];
+static void *probe_access(CPUX86State *env, vaddr addr, int size, MMUAccessType type, int mmu, uintptr_t ra)
+{
+    assert(env && probes < 2 && type == prepared_type && mmu == 5 && ra == 0x12345678);
+    assert(addr == prepared_addr + (probes ? prepared_first : 0));
+    assert(size == (int)(probes ? prepared_size - prepared_first : prepared_first));
+    return prepared_host[probes++];
+}
+#define env_cpu(e) (e)
+static int cpu_mmu_index(CPUX86State *env, bool code) { assert(env && !code); index_queries++; return 5; }
 static uint8_t first[4096], second[4096];
 static X86Access *current;
 static unsigned slow_calls;
@@ -120,4 +139,37 @@ int main(void)
         return 1;
     }
     printf("x86 access pointer: %u split/width/offset/RAM-MMIO classifications and load/store routes PASS\n", cases);
+    static uint8_t contiguous[8192], separate[4096];
+    const unsigned sizes[] = {1, 2, 4, 8, 10, 14, 28, 108, 512, 4096};
+    unsigned setups = 0;
+    X86Access ac;
+    for (unsigned offset = 0; offset < 4096; offset++)
+    for (unsigned k = 0; k < sizeof(sizes) / sizeof(sizes[0]); k++)
+    for (unsigned mappings = 0; mappings < 4; mappings++)
+    for (unsigned adjacent = 0; adjacent < 2; adjacent++)
+    for (prepared_type = 0; prepared_type < 2; prepared_type++) {
+        prepared_addr = 0x100000 + offset;
+        prepared_size = sizes[k];
+        prepared_first = prepared_size < 4096 - offset ? prepared_size : 4096 - offset;
+        prepared_host[0] = mappings & 1 ? contiguous + offset : NULL;
+        prepared_host[1] = mappings & 2 ? (adjacent ? contiguous + 4096 : separate) : NULL;
+        memset(&ac, 0xa5, sizeof(ac));
+        probes = index_queries = 0;
+        if (setups & 1) access_prepare(&ac, &env, prepared_addr, prepared_size, prepared_type, 0x12345678);
+        else access_prepare_mmu(&ac, &env, prepared_addr, prepared_size, prepared_type, 5, 0x12345678);
+        bool two = prepared_size > prepared_first;
+        bool merged = two && mappings == 3 && adjacent;
+        assert(probes == 1U + two && index_queries == (setups & 1));
+        assert(ac.vaddr == prepared_addr && ac.size == prepared_size && ac.size1 == (merged ? prepared_size : prepared_first));
+        assert(ac.haddr1 == prepared_host[0]);
+        assert(ac.haddr2 == (two && !merged ? prepared_host[1] : NULL));
+        assert(ac.env == &env && ac.mmu_idx == 5 && ac.ra == 0x12345678);
+        /* Immediately reuse a two-page result for a one-byte preparation. */
+        prepared_size = prepared_first = 1;
+        probes = 0;
+        access_prepare_mmu(&ac, &env, prepared_addr, 1, prepared_type, 5, 0x12345678);
+        assert(probes == 1 && ac.haddr1 == prepared_host[0] && !ac.haddr2 && ac.size == 1 && ac.size1 == 1);
+        setups++;
+    }
+    printf("x86 access setup: %u poison/reuse/page-split/RAM-MMIO/adjacency cases PASS\n", setups);
 }
