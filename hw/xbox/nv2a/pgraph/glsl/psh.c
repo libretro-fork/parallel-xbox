@@ -1125,6 +1125,20 @@ static void apply_border_adjustment(const struct PixelShader *ps, MString *vars,
         var_name, var_name, i, i);
 }
 
+/* Only convolution programs need these immutable shader declarations. */
+static void psh_append_convolution_tables(MString *preflight)
+{
+    mstring_append(preflight,
+        "const float[9] gaussian3x3 = float[9](\n"
+        "    1.0/16.0, 2.0/16.0, 1.0/16.0,\n"
+        "    2.0/16.0, 4.0/16.0, 2.0/16.0,\n"
+        "    1.0/16.0, 2.0/16.0, 1.0/16.0);\n"
+        "const vec2[9] convolution3x3 = vec2[9](\n"
+        "    vec2(-1.0,-1.0),vec2(0.0,-1.0),vec2(1.0,-1.0),\n"
+        "    vec2(-1.0, 0.0),vec2(0.0, 0.0),vec2(1.0, 0.0),\n"
+        "    vec2(-1.0, 1.0),vec2(0.0, 1.0),vec2(1.0, 1.0));\n");
+}
+
 static void apply_convolution_filter(const struct PixelShader *ps, MString *vars, int tex)
 {
     assert(ps->state->dim_tex[tex] == 2);
@@ -1666,14 +1680,6 @@ static MString* psh_convert(struct PixelShader *ps)
         "float area(vec2 a, vec2 b, vec2 c) {\n"
         "    return kahan_det(b - a, c - a);\n"
         "}\n"
-        "const float[9] gaussian3x3 = float[9](\n"
-        "    1.0/16.0, 2.0/16.0, 1.0/16.0,\n"
-        "    2.0/16.0, 4.0/16.0, 2.0/16.0,\n"
-        "    1.0/16.0, 2.0/16.0, 1.0/16.0);\n"
-        "const vec2[9] convolution3x3 = vec2[9](\n"
-        "    vec2(-1.0,-1.0),vec2(0.0,-1.0),vec2(1.0,-1.0),\n"
-        "    vec2(-1.0, 0.0),vec2(0.0, 0.0),vec2(1.0, 0.0),\n"
-        "    vec2(-1.0, 1.0),vec2(0.0, 1.0),vec2(1.0, 1.0));\n"
         "vec2 remapCubeTo2D(vec3 texCoord) {\n"
         "    vec2 uv;\n"
         "    vec3 absTexCoord = abs(texCoord);\n"
@@ -1828,6 +1834,7 @@ static MString* psh_convert(struct PixelShader *ps)
     }
 
     MString *vars = mstring_new();
+    bool convolution_tables = false;
     mstring_append(vars, "vec4 pD0 = vtxD0;\n");
     mstring_append(vars, "vec4 pD1 = vtxD1;\n");
     mstring_append(vars, "vec4 pB0 = vtxB0;\n");
@@ -1886,6 +1893,10 @@ static MString* psh_convert(struct PixelShader *ps)
                 apply_border_adjustment(ps, vars, i, "pT%d");
                 if (((ps->state->conv_tex[i] == CONVOLUTION_FILTER_GAUSSIAN) ||
                      (ps->state->conv_tex[i] == CONVOLUTION_FILTER_QUINCUNX))) {
+                    if (!convolution_tables) {
+                        psh_append_convolution_tables(preflight);
+                        convolution_tables = true;
+                    }
                     apply_convolution_filter(ps, vars, i);
                 } else {
                     if (ps->state->dim_tex[i] == 2) {

@@ -2,6 +2,9 @@
 
 - Compare GL shader-module cache keys directly in their mapped files instead of copying each key to a temporary. Keep owned key copies for prewarming after unmapping, with unchanged cache format and validation.
 
+- Omit unused convolution tables from generated fragment shaders. Ordinary shaders have smaller source and SPIR-V modules; convolution stages share one table pair. Existing shader cache keys remain valid.
+
+
 - Keep the direct index shift for Vulkan ready queues of 32 entries or fewer; it copies less than amortized window compaction, including zero shifted indices for a single entry.
 
 - Adopt the oldest ready Vulkan shader module by advancing the existing index window, avoiding an active-index shift on each FIFO hit. Preserve remaining module order, free-slot uniqueness and reference ownership without extra storage.
