@@ -1486,7 +1486,11 @@ static void emit_alu(Tr *t, const AluOp *a)
             }
             break;
         case OP_OR:
-            h_or_r_mem32(e, T0, REG_CORE, REGOFF(a->src));
+            if (a->src == SRC_IMM) {
+                h_or_ri(e, 0, T0, a->imm & 0xFFFFFF);
+            } else {
+                h_or_r_mem32(e, T0, REG_CORE, REGOFF(a->src));
+            }
             break;
         case OP_EOR:
             h_xor_r_mem32(e, T0, REG_CORE, REGOFF(a->src));
@@ -1498,7 +1502,12 @@ static void emit_alu(Tr *t, const AluOp *a)
     case OP_LSL:
     case OP_LSR:
     case OP_ROL:
-    case OP_ROR:
+    case OP_ROR: {
+        unsigned shift = a->op == OP_LSL && a->src == SRC_IMM ? a->shift : 1;
+        if (!shift) {
+            /* LSL #0 is a no-op, including every status bit. */
+            break;
+        }
         emit_flags_flush(t);
         acc_load(t, a->d);
         h_mov_rr(e, 1, T0, acc);
@@ -1506,9 +1515,20 @@ static void emit_alu(Tr *t, const AluOp *a)
         h_and_ri(e, 0, T0, 0xFFFFFF);
         h_mov_rr(e, 0, T4, T0);
         if (a->op == OP_LSL || a->op == OP_ROL) {
-            h_shr_ri(e, 0, T4, 23);
-            h_shl_ri(e, 0, T0, 1);
-            h_and_ri(e, 0, T0, 0xFFFFFF);
+            if (shift <= 24) {
+                h_shr_ri(e, 0, T4, 24 - shift);
+                if (shift != 1) {
+                    h_and_ri(e, 0, T4, 1);
+                }
+            } else {
+                h_mov_ri(e, T4, 0);
+            }
+            if (shift < 24) {
+                h_shl_ri(e, 0, T0, shift);
+                h_and_ri(e, 0, T0, 0xFFFFFF);
+            } else {
+                h_mov_ri(e, T0, 0);
+            }
             if (a->op == OP_ROL) {
                 h_ld32(e, T2, REG_CORE, REGOFF(DSP_REG_SR));
                 h_and_ri(e, 0, T2, SR_C);
@@ -1526,6 +1546,7 @@ static void emit_alu(Tr *t, const AluOp *a)
         }
         emit_a1_result(t, a->d, SR_C | SR_N | SR_Z | SR_V, T4);
         break;
+    }
 
     default:
         g_assert_not_reached();
@@ -1898,9 +1919,20 @@ static bool np_alu(const Insn *in, AluOp *a)
         a->imm_unsigned = true;
         return true;
     }
-    if (!strcmp(name, "and #xxxx, D")) {
+    if (!strcmp(name, "and #xx, D") || !strcmp(name, "and #xxxx, D")) {
         a->op = OP_AND;
+        a->imm = !strcmp(name, "and #xx, D") ? (inst >> 8) & 0x3F : in->ext;
+        return true;
+    }
+    if (!strcmp(name, "or #xxxx, D")) {
+        a->op = OP_OR;
         a->imm = in->ext;
+        return true;
+    }
+    if (!strcmp(name, "lsl #ii, D")) {
+        a->op = OP_LSL;
+        a->d = inst & 1;
+        a->shift = (inst >> 1) & 31;
         return true;
     }
     if (!strcmp(name, "asl #ii, S2, D") || !strcmp(name, "asr #ii, S2, D")) {

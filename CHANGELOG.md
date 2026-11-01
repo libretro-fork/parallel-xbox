@@ -1,5 +1,7 @@
 # Changelog of the libretro core
 
+- Keep DSP immediate logical shifts, long immediate OR and short immediate AND in native code. Replace repeated one-bit interpreter shifts with one bounded native operation, preserving zero-count status, final carry and untouched accumulator fields. Add instruction-boundary and full-frame CI regressions.
+
 - Compile DSP conditional register transfers and ordinary register MOVECs directly, including status-register reads, instead of leaving native code for each instruction. Keep status writes, stack side effects, guest-RAM DMA ordering and audio cadence unchanged. Add native instruction-boundary and complete-frame regression coverage to CI.
 
 - Restore Ninja Gaiden Black timer-wait throughput by proving its complete ordinary-RAM polling loop before yielding. Preserve useful store-free computations, interrupt delivery, counter release and the existing device-wait timing rules; add native CI regression coverage. Run each DSP tick on the engine owner, preserving live guest-RAM DMA ordering while removing its immediately-waited worker handoff, frame ring and queued register writes.

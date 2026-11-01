@@ -323,6 +323,98 @@ static void check_movec(Machine *a, Machine *b)
     }
 }
 
+static void check_logical_immediates(Machine *a, Machine *b)
+{
+    static const uint32_t words[] = {
+        0, 1, 2, 0x800000, 0xFFFFFF, 0x7FFFFF, 0x123456, 0x800001
+    };
+    for (unsigned mode = 0; mode < 4; mode++) {
+        for (unsigned d = 0; d < 2; d++) {
+            for (unsigned shift = 0; shift < 32; shift++) {
+                for (unsigned carry = 0; carry < 2; carry++) {
+                    for (unsigned w = 0; w < ARRAY_SIZE(words); w++) {
+                        uint32_t word = words[w];
+                        uint32_t sr = 0xFE | (mode << DSP_SR_S0) | carry;
+                        uint32_t result = shift >= 24 ? 0 : (word << shift) & 0xFFFFFF;
+                        uint32_t expected_sr = sr;
+                        if (shift) {
+                            unsigned c = shift <= 24 ? (word >> (24 - shift)) & 1 : 0;
+                            expected_sr = (sr & ~0xF) | c |
+                                ((result >> 23) << DSP_SR_N) | ((result == 0) << DSP_SR_Z);
+                        }
+                        Machine *machines[] = { a, b };
+                        dspjit_test_reset_fallback_count();
+                        for (unsigned i = 0; i < ARRAY_SIZE(machines); i++) {
+                            Machine *m = machines[i];
+                            prepare(m, 0x0C1E80 | (shift << 1) | d, 0, 1, mode, false);
+                            dsp_core_t *c = m->dsp->backend;
+                            c->registers[DSP_REG_SR] = sr;
+                            c->registers[DSP_REG_A0 + d] = 0x123456;
+                            c->registers[DSP_REG_A1 + d] = word;
+                            c->registers[DSP_REG_A2 + d] = 0xAB;
+                            if (i == 0) {
+                                m->dsp->ops->step(m->dsp);
+                                c->cycle_count += c->instr_cycle;
+                            } else {
+                                m->dsp->ops->run(m->dsp, 1);
+                            }
+                            if (c->registers[DSP_REG_A1 + d] != result ||
+                                c->registers[DSP_REG_A0 + d] != 0x123456 ||
+                                c->registers[DSP_REG_A2 + d] != 0xAB ||
+                                c->registers[DSP_REG_SR] != expected_sr) {
+                                fprintf(stderr, "LSL immediate regression: engine=%u shift=%u d=%u word=%06x\n",
+                                        i, shift, d, word);
+                                exit(1);
+                            }
+                        }
+                        assert(dspjit_test_fallback_count() == 0);
+                        assert(compare_machines(a, b) == 0);
+                        cases++;
+                    }
+                }
+            }
+            for (unsigned seed = 0; seed < 64; seed++) {
+                check(a, b, 0x014086 | (seed << 8) | (d << 3), 0, seed, mode, false);
+                for (unsigned w = 0; w < ARRAY_SIZE(words); w++) {
+                    check(a, b, 0x0140C2 | (d << 3), words[w], seed, mode, false);
+                }
+            }
+        }
+    }
+}
+
+static void check_loop_address_reload(Machine *a, Machine *b)
+{
+    static const uint32_t ends[] = { 0x100, 0, 1, 0x123, 0, 0, 0, 0x100 };
+    Machine *machines[] = { a, b };
+    prepare(a, 0, 0, 1, 0, false);
+    prepare(b, 0, 0, 1, 0, false);
+    for (unsigned step = 0; step < ARRAY_SIZE(ends); step++) {
+        dspjit_test_reset_fallback_count();
+        for (unsigned i = 0; i < ARRAY_SIZE(machines); i++) {
+            Machine *m = machines[i];
+            dsp_core_t *c = m->dsp->backend;
+            c->pc = 0;
+            c->registers[DSP_REG_SR] = step == 5 ? 0 : 1 << DSP_SR_LF;
+            c->registers[DSP_REG_LA] = ends[step];
+            c->registers[DSP_REG_LC] = step == 6 ? 1 : 2;
+            c->registers[DSP_REG_SSH] = 0;
+            m->dsp->save_cycles = 0;
+            if (i == 0) {
+                m->dsp->ops->step(m->dsp);
+                c->cycle_count += c->instr_cycle;
+            } else {
+                m->dsp->ops->run(m->dsp, 1);
+            }
+        }
+        /* P is not rewritten: reuse the same compiled entry as LA and LF
+         * change, including a completed DO loop that restores the stack. */
+        assert(dspjit_test_fallback_count() == 0);
+        assert(compare_machines(a, b) == 0);
+        cases++;
+    }
+}
+
 int main(void)
 {
     Machine *a = machine_new(false), *b = machine_new(true);
@@ -341,6 +433,8 @@ int main(void)
     check_max_transfer(a, b);
     check_tcc(a, b);
     check_movec(a, b);
+    check_logical_immediates(a, b);
+    check_loop_address_reload(a, b);
     for (unsigned sr = 0; sr < 256; sr++) {
         for (unsigned cc = 0; cc < 16; cc++) {
             check(a, b, 0x0E0030 | (cc << 12), 0x30, 0x20000 | sr, 0, false);
