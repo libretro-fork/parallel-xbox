@@ -1157,7 +1157,34 @@ static bool store_changes_memory(ram_addr_t ram_addr, unsigned size,
     if (store_size != size || size > sizeof(cur)) {
         return true;
     }
-    memcpy(&cur, qemu_map_ram_ptr(NULL, ram_addr), size);
+    const void *host = qemu_map_ram_ptr(NULL, ram_addr);
+
+    /* Scalar stores need only an exact-width read and comparison. Keep
+     * memcpy's unaligned-access semantics without a variable-length copy
+     * or a runtime mask on these paths. Partial-page sizes use the fallback. */
+    switch (size) {
+    case 1: {
+        uint8_t value;
+        memcpy(&value, host, sizeof(value));
+        return value != (uint8_t)store_val;
+    }
+    case 2: {
+        uint16_t value;
+        memcpy(&value, host, sizeof(value));
+        return value != (uint16_t)store_val;
+    }
+    case 4: {
+        uint32_t value;
+        memcpy(&value, host, sizeof(value));
+        return value != (uint32_t)store_val;
+    }
+    case 8:
+        memcpy(&cur, host, sizeof(cur));
+        return cur != store_val;
+    default:
+        memcpy(&cur, host, size);
+        break;
+    }
     if (size < sizeof(cur)) {
         store_val &= MAKE_64BIT_MASK(0, size * 8);
     }
