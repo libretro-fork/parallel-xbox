@@ -154,6 +154,8 @@ typedef struct PGRAPHRenderer {
         void (*draw_begin)(NV2AState *d);
         void (*draw_end)(NV2AState *d);
         void (*flip_stall)(NV2AState *d);
+        /* Optional, owner dispatch only: poll a deferred host flip once. */
+        bool (*flip_stall_ready)(NV2AState *d);
         void (*flush_draw)(NV2AState *d);
         void (*get_report)(NV2AState *d, uint32_t parameter);
         void (*image_blit)(NV2AState *d);
@@ -371,6 +373,9 @@ typedef struct PGRAPHState {
     /* A queued GET_REPORT awaits its GPU result: the pfifo idle wait is
      * bounded, so the report lands without waiting for a guest push. */
     bool reports_pending;
+    /* Owner-only runtime state, not migrated: block new FIFO methods while
+     * the backend retires a flip, without stopping guest time or the frontend. */
+    bool host_flip_pending;
     /* The guest wrote registers through pgraph_write (a context restore):
      * the next method reloads the switch registers and takes every
      * register as changed. Set by the vCPU, taken by the pfifo thread. */
@@ -419,6 +424,7 @@ void pgraph_init_thread(NV2AState *d);
 void pgraph_destroy(PGRAPHState *pg);
 void pgraph_context_switch(NV2AState *d, unsigned int channel_id);
 void pgraph_process_pending(NV2AState *d);
+bool pgraph_process_pending_flip(NV2AState *d);
 void pgraph_process_pending_reports(NV2AState *d);
 void pgraph_pre_savevm_trigger(NV2AState *d);
 void pgraph_pre_savevm_wait(NV2AState *d);

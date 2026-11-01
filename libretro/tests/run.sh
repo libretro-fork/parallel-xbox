@@ -166,6 +166,7 @@ python3 "$here/test-sse-broadcast.py" "$here/../.." "$cc"
 python3 "$here/test-sse-native-gate.py" "$here/../.." "$cc"
 python3 "$here/test-x87-load-precision.py" "$here/../.." "$cc"
 python3 "$here/test-fp-flags.py" "$here/../.." "$cc"
+python3 "$here/test-gl-flip-retirement.py" "$here/../.." "$cc"
 python3 "$here/test-gl-display-mailbox.py" "$here/../.." "$cc"
 python3 "$here/test-frame-completion.py" "$here/../.." "$cc"
 ${cc} -O2 -std=c11 -Wall -Wextra -Werror -I"$here/../.." \

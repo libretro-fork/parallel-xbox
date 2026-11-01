@@ -2074,12 +2074,12 @@ context rather than relying on context-local object names from another context.
 Published tickets contain only a texture handle, frame stamp, overlay flag and
 fence. Each ticket shares the statically aligned 64-byte slot with its image
 metadata and frontend fence; full composition parameters remain owner-local.
-On Win64 the ticket shrinks from 120 to 24 bytes, SurfaceBinding from 216 to
+In the mailbox revision, the Win64 ticket shrank from 120 to 24 bytes, SurfaceBinding from 216 to
 208, and PGRAPHGLState from 7,440,896 to 7,440,424 bytes. Static display state
 grows from 128 to 320 bytes for the third slot and cache-line separation.
 The frontend getter stack falls from 336 to 96 bytes; owner post_scanout grows
 from 272 to 400 bytes because it now composes. No hardware cache counters were
-measured, and legacy flip/report/download waits remain separate work.
+measured. Demand report/download waits remain separate work.
 
 `test-opcode-byte.py CHECKOUT [CC]` checks the production byte fetch and general loader: 302,292 first/second-page reads, guarded edges, noncontiguous host mappings, existing/replaced page locks, MMIO recording and fault propagation. First-page reads must avoid the general loader. Linux defaults to ASan/UBSan; OPCODE_BYTE_CFLAGS, OPCODE_BYTE_BINARY and OPCODE_BYTE_SKIP_RUN support native Windows fixtures.
 
@@ -2100,3 +2100,49 @@ The x86 access fixture also extracts both preparation functions. Its 655,360 poi
 `test-jvs-frame.py CHECKOUT [CC]` extracts production JVS response framing and compares it with the original full-frame path. Its 544,840 payload/length/pattern/alias/canary cases cover 0..256 payload bytes and all 0..264 output capacities, including checksum/count wrap and zero-capacity NULL output. JVS_FRAME_CFLAGS, JVS_FRAME_BINARY and JVS_FRAME_SKIP_RUN support native fixtures. Parsing and command handling finish before output framing, preserving input/output aliasing.
 
 The packed-overlay GPU fixtures dispatch one invocation per YUY2 pair and check exact pair-based workgroup counts, including a matching preflight limit and zero-group fallback. Vulkan: 45 cases/2,251,544 exact pixels, snapshot mutations and synchronization validation; GL oracle: 222 cases/3,270,359 exact pixels. VULKAN_OVERLAY_CFLAGS, VULKAN_OVERLAY_LIBS, VULKAN_OVERLAY_BINARY and VULKAN_OVERLAY_SKIP_RUN retain native fixtures. Test-only OVERLAY_ALLOW_NO_VALIDATION permits a native device without validation layers; output explicitly reports validation_enabled=0. The default still requires validation. Direct imported-RAM overlay reads were rejected because they would lose the required pre-submission snapshot.
+
+### Deferred OpenGL flip retirement
+
+`test-gl-flip-retirement.py CHECKOUT [CC]` extracts the production flip start,
+readiness, completion and discard functions, owner-dispatch hook, FIFO gate and
+idle report-wait guard. It checks 615 controlled schedules and 5,000 mixed
+ordinary/cost frames: unavailable/ready markers, bounded one-shot polls,
+previous/current-frame selection, unchanged pending queries, latched scale,
+exactly-once completion/deadline billing, reset-independent backpressure and renderer teardown.
+Fence-allocation failure remains backpressured without repeated allocation or
+query reads. Linux defaults to ASan/UBSan; `GL_FLIP_BINARY`, `GL_FLIP_SKIP_RUN`
+and `GL_FLIP_CFLAGS` support native fixtures.
+
+A flip closes its query segment and submits one fence. Ordinary flips defer
+against the previous frame; frames containing cost queries defer against the
+current frame before reusing query slots. At most two markers are retained.
+The FIFO owner polls once per dispatch, including empty-FIFO dispatches; a busy
+result does not self-kick, replay the flip or consume new methods. The idle
+report-wait callback is skipped while a flip is pending. Existing frontend/frame requests provide wakeups. The runtime pending
+flag survives a guest reset until retirement. Neither it nor GPU handles are
+serialized. Renderer teardown discards pending private cost samples while keeping
+guest reports on their existing drain path. No guest query result is dropped.
+
+The core currently forces the cost model off; its asynchronous query path has
+controlled-model coverage rather than native-game coverage. Demand downloads,
+report waits and lifecycle drains remain separate blocking paths. The native
+GPU ROM's 3,120-3,135 and 3,280 FLIP_STALL sequence checks PBO freshness and
+subsequent FIFO progress through 3,400 frames.
+
+Fence readiness uses `glGetSynciv(..., GL_SYNC_STATUS, ...)` rather than a client
+wait. A signaled fence covers preceding GL work; see the [Khronos synchronization
+specification](https://registry.khronos.org/OpenGL/specs/gl/glspec45.core.pdf).
+
+Win64 code generation keeps PGRAPHState at 4,295,312 bytes, including the new
+owner flag in existing padding; the following guest_wrote_regs offset is
+unchanged. GL state grows by 16 bytes and the constant renderer interface by
+8 bytes. GL flip start and readiness each use 176 stack bytes, matching the
+old flip handler; the eager call compiles to a tail jump so those frames do
+not nest. These are layout/code-generation checks, not hardware cache counters
+or game-latency measurements.
+
+While blocked, one early display attempt may publish GPU-ordered imagery
+without awaiting physical completion. Later display requests stay latched; on
+retirement they are serviced before the FIFO resumes, without a second GPU
+poll or an extra queued video frame. A failed marker disables early display
+work. The model also checks this budget, coalescing and maintenance progress.

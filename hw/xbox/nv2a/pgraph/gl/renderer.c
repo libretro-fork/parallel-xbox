@@ -85,12 +85,30 @@ static void pgraph_gl_init(NV2AState *d, Error **errp)
     }
 }
 
+static void pgraph_gl_discard_flip(PGRAPHState *pg)
+{
+    if (pg->host_flip_pending) {
+        /* Closed private cost samples cannot follow a renderer switch. Guest
+         * reports retain their own normal drain/finalization path. */
+        xemu_cost_segn = 0;
+        xemu_cost_q_open = xemu_cost_q2_open = false;
+    }
+    pg->host_flip_pending = false;
+    pg->gl_renderer_state->flip_failed = false;
+    pg->gl_renderer_state->flip_display_queued = false;
+    glDeleteSync(pg->gl_renderer_state->flip_wait_fence);
+    pg->gl_renderer_state->flip_wait_fence = NULL;
+    glDeleteSync(pg->gl_renderer_state->flip_fence);
+    pg->gl_renderer_state->flip_fence = NULL;
+}
+
 static void pgraph_gl_finalize(NV2AState *d)
 {
     PGRAPHState *pg = &d->pgraph;
 
     glo_set_current(g_nv2a_context_render);
 
+    pgraph_gl_discard_flip(pg);
     pgraph_gl_finalize_surfaces(pg);
     pgraph_gl_finalize_shaders(pg);
     pgraph_gl_finalize_textures(pg);
@@ -98,51 +116,17 @@ static void pgraph_gl_finalize(NV2AState *d)
     pgraph_gl_finalize_buffers(pg);
     pgraph_gl_finalize_display(pg);
 
-    glDeleteSync(pg->gl_renderer_state->flip_fence); /* ignores 0 */
-
     glo_set_current(NULL);
 
     g_free(pg->gl_renderer_state);
     pg->gl_renderer_state = NULL;
 }
 
-static void pgraph_gl_flip_stall(NV2AState *d)
+/* Retire once, after the selected GPU fence is ready. Other surface/report
+ * paths retain their existing policies; none runs during an unsuccessful poll. */
+static void pgraph_gl_flip_complete(NV2AState *d)
 {
     PGRAPHGLState *r = d->pgraph.gl_renderer_state;
-
-    NV2A_GL_DFRAME_TERMINATOR();
-    int64_t probe_t0 = unlikely(xemu_tbrate_enabled()) ? get_clock() : 0;
-    pgraph_gl_shaders_flip_service(d);
-    if (probe_t0) {
-        xemu_tbrate_add(&xemu_tbrate_flipsvc_ns, get_clock() - probe_t0);
-    }
-
-    /* Close this frame's open fragment-query segment (one segment per run
-     * of draws sharing a cost profile); the model reads the segments after
-     * the drain below. */
-    xemu_cost_frame_close(d, &pgraph_gl_cost_ops);
-
-    /* The cost model reads its queries right after this and keeps the
-     * drain. Otherwise wait for the PREVIOUS frame's fence and post this
-     * frame's: the GPU stays at most one frame behind, and a driver slow to
-     * glFinish (AMD Windows, MEASURED) does not stall every frame. */
-    if (xemu_cost_segn) {
-        glFinish();
-    } else {
-        if (r->flip_fence) {
-            int64_t fence_t0 = probe_t0 ? get_clock() : 0;
-            glClientWaitSync(r->flip_fence, GL_SYNC_FLUSH_COMMANDS_BIT,
-                             (GLuint64)5000000000);
-            if (fence_t0) {
-                xemu_tbrate_add(&xemu_tbrate_fence_ns,
-                                get_clock() - fence_t0);
-            }
-            glDeleteSync(r->flip_fence);
-        }
-        r->flip_fence = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
-        glFlush();
-    }
-
     /* Surfaces the guest CPU read this frame (a blocking read that drains
      * the pipeline -- free on the real hardware's unified VRAM) are read
      * back here, at the flip, without waiting where the pack allows: the
@@ -157,7 +141,74 @@ static void pgraph_gl_flip_stall(NV2AState *d)
     }
     pgraph_gl_surfaces_refresh_any_dirty(d);
     xemu_cost_resolve_frame(d, &pgraph_gl_cost_ops,
-                            d->pgraph.surface_scale_factor);
+                            r->flip_scale);
+}
+
+static bool pgraph_gl_flip_stall_ready(NV2AState *d)
+{
+    PGRAPHGLState *r = d->pgraph.gl_renderer_state;
+    if (r->flip_failed) {
+        return false;
+    }
+    if (r->flip_wait_fence) {
+        GLint status = GL_UNSIGNALED;
+        int64_t start = unlikely(xemu_tbrate_enabled()) ? get_clock() : 0;
+        glGetSynciv(r->flip_wait_fence, GL_SYNC_STATUS, 1, NULL, &status);
+        if (start) {
+            xemu_tbrate_add(&xemu_tbrate_fence_ns, get_clock() - start);
+        }
+        if (status != GL_SIGNALED) {
+            return false;
+        }
+        glDeleteSync(r->flip_wait_fence);
+        r->flip_wait_fence = NULL;
+    }
+    pgraph_gl_flip_complete(d);
+    d->pgraph.host_flip_pending = false;
+    return true;
+}
+
+static void pgraph_gl_flip_stall(NV2AState *d)
+{
+    PGRAPHGLState *r = d->pgraph.gl_renderer_state;
+    assert(!d->pgraph.host_flip_pending && !r->flip_wait_fence);
+    r->flip_display_queued = false;
+
+    NV2A_GL_DFRAME_TERMINATOR();
+    int64_t start = unlikely(xemu_tbrate_enabled()) ? get_clock() : 0;
+    pgraph_gl_shaders_flip_service(d);
+    if (start) {
+        xemu_tbrate_add(&xemu_tbrate_flipsvc_ns, get_clock() - start);
+    }
+    xemu_cost_frame_close(d, &pgraph_gl_cost_ops);
+    r->flip_scale = d->pgraph.surface_scale_factor;
+
+    GLsync current = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
+    if (!current) {
+        /* Without a completion marker, neither query reuse nor further FIFO
+         * work is safe. Keep backpressure until renderer reinitialization. */
+        r->flip_failed = true;
+        d->pgraph.host_flip_pending = true;
+        glFlush();
+        fprintf(stderr, "nv2a: failed to create a GL flip completion fence\n");
+        return;
+    }
+    if (xemu_cost_segn) {
+        /* Query slots cannot be reused until this frame completes. Its
+         * fence also covers all preceding work, so the old one is redundant. */
+        glDeleteSync(r->flip_fence);
+        r->flip_fence = NULL;
+        r->flip_wait_fence = current;
+    } else {
+        /* Preserve the previous-frame bound without waiting on this thread. */
+        r->flip_wait_fence = r->flip_fence;
+        r->flip_fence = current;
+    }
+    glFlush();
+    d->pgraph.host_flip_pending = true;
+    /* The readiness callback clears pending on success. Keep this call last
+     * so eager retirement can tail-call instead of nesting both stack frames. */
+    pgraph_gl_flip_stall_ready(d);
 }
 
 static void pgraph_gl_flush(NV2AState *d)
@@ -181,10 +232,17 @@ static void pgraph_gl_process_pending(NV2AState *d)
     PGRAPHState *pg = &d->pgraph;
     PGRAPHGLState *r = pg->gl_renderer_state;
 
-    bool scanout = retro_atomic_load_relaxed_int(&d->pgraph.scanout_changed) ||
-                   retro_atomic_load_relaxed_int(&r->disp_check_pending);
+    /* Permit one GPU-ordered early display attempt, without waiting for the
+     * flip to complete. Coalesce further requests until retirement so repeated
+     * frontend callbacks cannot grow the GPU queue. Maintenance still runs. */
+    bool display_ready = !pg->host_flip_pending ||
+        (!r->flip_failed && !r->flip_display_queued);
+    bool scanout = display_ready &&
+        (retro_atomic_load_relaxed_int(&pg->scanout_changed) ||
+         retro_atomic_load_relaxed_int(&r->disp_check_pending));
     if (retro_atomic_load_relaxed_int(&r->download_dirty_surfaces_pending) ||
-        retro_atomic_load_relaxed_int(&d->pgraph.sync_pending) || scanout ||
+        (display_ready && retro_atomic_load_relaxed_int(&pg->sync_pending)) ||
+        scanout ||
         retro_atomic_load_relaxed_int(&d->pgraph.flush_pending) ||
         retro_atomic_load_relaxed_int(&r->shader_cache_writeback_pending)) {
         qemu_mutex_unlock(&d->pfifo.lock);
@@ -199,14 +257,20 @@ static void pgraph_gl_process_pending(NV2AState *d)
             pgraph_gl_drain_pending_reports(d);
             pgraph_gl_download_dirty_surfaces(d);
         }
-        if (retro_atomic_load_relaxed_int(&d->pgraph.sync_pending)) {
+        if (display_ready && retro_atomic_load_relaxed_int(&pg->sync_pending)) {
             retro_atomic_store_relaxed_int(&d->pgraph.scanout_changed, 0);
             retro_atomic_store_relaxed_int(&r->disp_check_pending, 0);
             pgraph_gl_sync(d);
+            if (pg->host_flip_pending) {
+                r->flip_display_queued = true;
+            }
         } else if (scanout) {
             retro_atomic_store_relaxed_int(&d->pgraph.scanout_changed, 0);
             retro_atomic_store_relaxed_int(&r->disp_check_pending, 0);
             pgraph_gl_present_scanout(d);
+            if (pg->host_flip_pending) {
+                r->flip_display_queued = true;
+            }
         }
         if (retro_atomic_load_relaxed_int(&d->pgraph.flush_pending)) {
             pgraph_gl_flush(d);
@@ -264,6 +328,7 @@ static PGRAPHRenderer pgraph_gl_renderer = {
         .draw_begin = pgraph_gl_draw_begin,
         .draw_end = pgraph_gl_draw_end,
         .flip_stall = pgraph_gl_flip_stall,
+        .flip_stall_ready = pgraph_gl_flip_stall_ready,
         .flush_draw = pgraph_gl_flush_draw,
         .get_report = pgraph_gl_get_report,
         .image_blit = pgraph_gl_image_blit,

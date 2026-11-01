@@ -154,7 +154,7 @@ static bool pfifo_stall_for_flip(NV2AState *d)
 
 static bool pfifo_puller_should_stall(NV2AState *d)
 {
-    return pfifo_stall_for_flip(d) ||
+    return d->pgraph.host_flip_pending || pfifo_stall_for_flip(d) ||
            pgraph_pending_bit(&d->pgraph, NV_PGRAPH_INTR_ERROR) ||
            pgraph_pending_bit(&d->pgraph, NV_PGRAPH_INTR_CONTEXT_SWITCH) ||
            !can_fifo_access(d);
@@ -171,7 +171,8 @@ static inline void pfifo_idle_wait(NV2AState *d)
 {
     const PGRAPHRenderer *renderer = pgraph_renderer(&d->pgraph);
 
-    if (d->pgraph.reports_pending && renderer &&
+    if (!d->pgraph.host_flip_pending &&
+        d->pgraph.reports_pending && renderer &&
         renderer->ops.wait_pending_report) {
         bool waited;
 

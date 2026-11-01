@@ -294,7 +294,11 @@ typedef struct PGRAPHGLState {
     /* The UI thread asks for a scanout re-check (guest CPU writes into
      * the front buffer, video overlay) without waiting for it. */
     retro_atomic_int_t disp_check_pending;
-    GLsync flip_fence;
+    GLsync flip_fence; /* current frame, retained for the next ordinary flip */
+    GLsync flip_wait_fence; /* previous frame, or current cost-query frame */
+    unsigned flip_scale;
+    bool flip_failed; /* failed fence creation: preserve backpressure */
+    bool flip_display_queued; /* at most one early display attempt per flip */
     SurfaceBinding *disp_last_surface;
     unsigned int disp_last_draw_time;
     int disp_last_line_offset;

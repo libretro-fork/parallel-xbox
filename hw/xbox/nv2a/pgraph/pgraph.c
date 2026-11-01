@@ -1323,7 +1323,9 @@ DEF_METHOD(NV097, FLIP_STALL)
     pgraph_renderer(&d->pgraph)->ops.surface_update(d, false, true, true);
     pgraph_renderer(&d->pgraph)->ops.flip_stall(d);
 
-    xemu_cost_flip_deadline(d);
+    if (!pg->host_flip_pending) {
+        xemu_cost_flip_deadline(d);
+    }
 
     nv2a_profile_flip_stall();
     retro_atomic_store_relaxed_int(&pg->waiting_for_flip, 1);
@@ -3780,6 +3782,23 @@ static void do_wait_for_renderer_switch(CPUState *cpu, run_on_cpu_data data)
     }
 }
 
+/* One attempt per owner dispatch, even with no FIFO words available.
+ * A busy GPU does not self-kick or prevent the owner from parking. */
+bool pgraph_process_pending_flip(NV2AState *d)
+{
+    PGRAPHState *pg = &d->pgraph;
+    if (!pg->host_flip_pending) {
+        return false;
+    }
+    const PGRAPHRenderer *renderer = pgraph_renderer(pg);
+    if (renderer->ops.flip_stall_ready && renderer->ops.flip_stall_ready(d)) {
+        pg->host_flip_pending = false;
+        xemu_cost_flip_deadline(d);
+        return true;
+    }
+    return false;
+}
+
 void pgraph_process_pending(NV2AState *d)
 {
     PGRAPHState *pg = &d->pgraph;
@@ -3789,6 +3808,12 @@ void pgraph_process_pending(NV2AState *d)
         pgraph_renderer(pg)->ops.cpu_access_service(d);
     }
     pgraph_renderer(pg)->ops.process_pending(d);
+
+    if (pgraph_process_pending_flip(d)) {
+        /* Publish coalesced display work before accepting the next methods,
+         * without another GPU poll or waiting until the next video frame. */
+        pgraph_renderer(pg)->ops.process_pending(d);
+    }
 
     if (g_config.display.renderer != pgraph_renderer(pg)->type &&
         retro_atomic_load_relaxed_int(&pg->renderer_switch_phase) ==
