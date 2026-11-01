@@ -1,5 +1,8 @@
 # Changelog of the libretro core
 
+- Vulkan color cubemaps now retain min/mag filtering at mip zero, including Force LOD0, while keeping lower mips unread and the cube layout intact.
+
+
 - Bypass generic chardev write locking for the default unlogged null UART sinks, which discard bytes without shared mutable state. Logged sinks and real backends retain their existing write/retry/error behavior.
 
 - Use the resolved OpenGL image dimensions directly during presentation, removing two texture-size driver queries and their temporary texture binding on every displayed frame.

@@ -2201,7 +2201,7 @@ static VkSampler create_sampler_for_state(PGRAPHState *pg,
         (MIN(state.min_mipmap_level, state.levels - 1) == 0 &&
          MIN(state.max_mipmap_level, state.levels - 1) == 0)) &&
         state.dimensionality == 2 &&
-        !state.cubemap && !state.border && !f_basic.depth &&
+        (!state.cubemap || !f_basic.linear) && !state.border && !f_basic.depth &&
         vk_min_filter != vk_mag_filter &&
         min_filter >= NV_PGRAPH_TEXFILTER0_MIN_BOX_LOD0 &&
         min_filter <= NV_PGRAPH_TEXFILTER0_MIN_TENT_TENT_LOD &&

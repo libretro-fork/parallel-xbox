@@ -72,7 +72,7 @@ int main(void) {
             bool different=supported&&pgraph_texture_min_filter_vk_map[min]!=
                                       pgraph_texture_min_filter_vk_map[mag];
             bool base_only=nonmip||(MIN(low,state.levels-1)==0&&MIN(high,state.levels-1)==0);
-            bool expected=base_only&&colors&&different&&min<=6&&dim==2&&!cube&&!border;
+            bool expected=base_only&&colors&&different&&min<=6&&dim==2&&(!cube||!f.linear)&&!border;
             bool nearest;float maximum;
             assert(policy(state,min,mag,supported,&nearest,&maximum)==expected);
             assert(nearest==(expected||f.linear||state.levels==1||min==3||min==4));
