@@ -1650,3 +1650,14 @@ that must omit the stale compute-to-transfer dependency. Linear, capped-range
 and host-readback routes retain their transfer dependencies. The optional
 packed-swizzle GPU fixture counts these dependencies across two successive
 readbacks, in addition to checking copies and final bytes.
+
+### Same-page translated code stores
+
+`python3 libretro/tests/test-tb-store-overlap.py .` runs 184,320 cases against
+production physical-page invalidation with controlled page lists. It checks
+nearby data stores, actual code modifications, single-instruction restarts,
+discontiguous second-page mappings, external/DMA writes and disabled precise
+SMC. The byte-by-byte physical-address oracle is independent of the production
+range calculation. REP MOVS/STOS guest tests additionally cover self-modifying
+code with CPU Boost enabled and disabled. No lock implementation is substituted
+or added to the emulator by this fixture.

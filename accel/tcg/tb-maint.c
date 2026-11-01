@@ -900,6 +900,7 @@ tb_invalidate_phys_page_range__locked(CPUState *cpu,
     PageForEachNext n;
     bool current_tb_modified = false;
     TranslationBlock *current_tb = NULL;
+    bool whole_page = true;
 
     /* Range may not cross a page. */
     tcg_debug_assert(((start ^ last) & TARGET_PAGE_MASK) == 0);
@@ -908,12 +909,35 @@ tb_invalidate_phys_page_range__locked(CPUState *cpu,
         current_tb = tcg_tb_lookup(retaddr);
     }
 
-    /*
-     * We remove all the TBs in the range [start, last].
-     * XXX: see if in some cases it could be faster to invalidate all the code
-     */
+    /* Keep bulk invalidation for writes from elsewhere: emptying the page
+     * lets subsequent data stores bypass code protection. A store from code
+     * on this page must instead test overlap, or each adjacent data write
+     * discards the executing TB and forces a single-instruction restart.
+     * Compare physical pages, including the second page of a spanning TB. */
+    if (current_tb) {
+        tb_page_addr_t page = start & TARGET_PAGE_MASK;
+        whole_page = (tb_page_addr0(current_tb) & TARGET_PAGE_MASK) != page &&
+                     (tb_page_addr1(current_tb) == -1 ||
+                      (tb_page_addr1(current_tb) & TARGET_PAGE_MASK) != page);
+    }
+
     PAGE_FOR_EACH_TB(start, last, p, tb, n) {
-        {
+        bool overlaps = whole_page;
+        if (!whole_page) {
+            tb_page_addr_t tb_start = tb_page_addr0(tb);
+            tb_page_addr_t tb_last = tb_start + tb->size - 1;
+
+            /* n identifies which physical page links this TB into the list;
+             * its second page need not be adjacent to its first page. */
+            if (n == 0) {
+                tb_last = MIN(tb_last, tb_start | ~TARGET_PAGE_MASK);
+            } else {
+                tb_start = tb_page_addr1(tb);
+                tb_last = tb_start + (tb_last & ~TARGET_PAGE_MASK);
+            }
+            overlaps = !(tb_last < start || tb_start > last);
+        }
+        if (overlaps) {
             if (unlikely(current_tb == tb) &&
                 (tb_cflags(current_tb) & CF_COUNT_MASK) != 1) {
                 /*
