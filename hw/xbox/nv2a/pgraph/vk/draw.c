@@ -3672,9 +3672,10 @@ static void eager_submit_after_draw(PGRAPHState *pg)
         int next = (r->slot + 1) % PGRAPH_VK_SLOTS;
         bool slot_free = !r->slot_fence_pending[next];
         if (!slot_free &&
-            vkGetFenceStatus(r->device, r->slot_fence[next]) == VK_SUCCESS) {
-            /* This probe proves retirement. Keep that result so the next
-             * draw does not wait again for the already completed slot. */
+            ((int32_t)(r->slot_submit[next] - r->settled_submit) <= 0 ||
+             vkGetFenceStatus(r->device, r->slot_fence[next]) == VK_SUCCESS)) {
+            /* Completion is proved by a serial or fence. The next
+             * draw must not wait again for the already completed slot. */
             r->slot_fence_pending[next] = false;
             pgraph_vk_slot_retired(pg, next);
             slot_free = true;

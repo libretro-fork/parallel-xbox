@@ -2775,3 +2775,20 @@ and the renderer interface remain 4,295,312, 5,845,344 and 232 bytes respectivel
 
 
 `test-sse-native-sqrt.py CHECKOUT [CC]` exercises the production scalar and packed sqrt helpers with actual SoftFloat, both with its normal host shortcuts and with those shortcuts disabled in the oracle. Each oracle runs 393,216 result/status/alias cases across XMM/YMM widths, eight rounding policies, guest flushing, sticky flags and exceptional/random inputs. x86-64 cases poison MXCSR rounding, flushing, masks and sticky flags and require exact restoration. Fallback calls are counted per lane. A negative control removes the rounding check from the sticky-state fast path and must fail. Only the four SSE rounding policies use native instructions; other policies retain software behavior.
+
+### Completion proofs at Vulkan readiness checks
+
+The eager-submit and deferred-flip fixtures each add 1,032 cases covering both
+slots, serial rollover, known completion 64 submissions before/after the target,
+and unavailable/ready fences. A serial proof bypasses the driver query while
+still retiring the slot exactly once. An unproved unavailable fence retains
+ownership and backpressure. Eager submission then uses the normal slot rotation;
+flip retirement resumes through the existing owner continuation. Both baseline
+sources fail the new no-redundant-query cases. `VK_FLIP_SOURCE` and the existing
+`VK_EAGER_SOURCE` allow baseline production-source overrides. No state, waits,
+locks, copies, PSOs or frame queues are added. Resource-pressure waits inside
+partially executed draw setup remain a separate resumable-method task.
+
+Win64 draw-end stack usage remains 96 bytes and flip-readiness stack usage
+64 bytes. PGRAPHState/PGRAPHVkState/renderer-interface sizes remain
+4,295,312/5,845,344/232 bytes. No hardware cache-miss reduction is established.
