@@ -54,7 +54,7 @@ bool glo_check_extension(const char* ext_name);
 /* Create an OpenGL context */
 GloContext *glo_context_create(void);
 
-/* GPU boost: an OpenGL 4.1 context, 4.0 where the driver has no 4.1 */
+/* GPU boost: prefer a modern core context, with a 4.0 fallback. */
 GloContext *glo_context_create_4_1(void);
 
 /* Destroy a previously created OpenGL context */

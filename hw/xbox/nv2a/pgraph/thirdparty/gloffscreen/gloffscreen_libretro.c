@@ -55,6 +55,27 @@ static bool g_wndclass_registered = false;
 static bool g_standalone_gl_mode = false;
 static GloContext *g_standalone_root_ctx = NULL;
 
+/* Internal contexts may expose newer features than the frontend's minimum.
+ * Keep a 4.0 fallback for drivers that cannot provide the tuned paths. */
+static HGLRC create_shared_core_context(HDC dc, HGLRC share)
+{
+    static const int minors[] = { 5, 3, 1, 0 };
+    int attribs[] = {
+        WGL_CONTEXT_MAJOR_VERSION_ARB, 4,
+        WGL_CONTEXT_MINOR_VERSION_ARB, 0,
+        WGL_CONTEXT_PROFILE_MASK_ARB, WGL_CONTEXT_CORE_PROFILE_BIT_ARB,
+        0
+    };
+    for (unsigned i = 0; i < sizeof(minors) / sizeof(minors[0]); i++) {
+        attribs[3] = minors[i];
+        HGLRC context = p_wglCreateContextAttribsARB(dc, share, attribs);
+        if (context) {
+            return context;
+        }
+    }
+    return NULL;
+}
+
 void libretro_gl_prepare(void)
 {
     g_retroarch_hglrc = wglGetCurrentContext();
@@ -144,15 +165,8 @@ GloContext *glo_context_create(void)
             return NULL;
         }
 
-        int attribs[] = {
-            WGL_CONTEXT_MAJOR_VERSION_ARB, 4,
-            WGL_CONTEXT_MINOR_VERSION_ARB, 0,
-            WGL_CONTEXT_PROFILE_MASK_ARB, WGL_CONTEXT_CORE_PROFILE_BIT_ARB,
-            0
-        };
-
         HGLRC share = g_standalone_root_ctx ? g_standalone_root_ctx->hglrc : NULL;
-        context->hglrc = p_wglCreateContextAttribsARB(context->hdc, share, attribs);
+        context->hglrc = create_shared_core_context(context->hdc, share);
         if (!context->hglrc) {
             ReleaseDC(context->hwnd, context->hdc);
             DestroyWindow(context->hwnd);
@@ -206,14 +220,7 @@ GloContext *glo_context_create(void)
         SetPixelFormat(context->hdc, pf, &pfd);
     }
 
-    int attribs[] = {
-        WGL_CONTEXT_MAJOR_VERSION_ARB, 4,
-        WGL_CONTEXT_MINOR_VERSION_ARB, 0,
-        WGL_CONTEXT_PROFILE_MASK_ARB, WGL_CONTEXT_CORE_PROFILE_BIT_ARB,
-        0
-    };
-
-    context->hglrc = p_wglCreateContextAttribsARB(context->hdc, g_retroarch_hglrc, attribs);
+    context->hglrc = create_shared_core_context(context->hdc, g_retroarch_hglrc);
     if (!context->hglrc) {
         ReleaseDC(context->hwnd, context->hdc);
         DestroyWindow(context->hwnd);
@@ -707,8 +714,8 @@ void glo_context_destroy(GloContext *context)
 
 #endif /* _WIN32 */
 
-/* The fork asks for a GL 4.1 context for its tuned renderer; in the core the
- * context is the frontend's, whatever version it is */
+/* Windows negotiates modern shared contexts above. Other backends use
+ * their platform creation path; capability checks use the resulting version. */
 GloContext *glo_context_create_4_1(void)
 {
     return glo_context_create();

@@ -61,6 +61,10 @@ int main(int argc, char **argv)
     assert(first);
     glo_set_current(first);
     assert(xemu_gl_version() >= 40);
+    if (xemu_gl_version() >= 43) {
+        assert(glDispatchCompute && glBindImageTexture && glMemoryBarrier);
+    }
+    printf("selected_gl=%d mode=%s\n",xemu_gl_version(),frontend?"frontend":"native");
     assert(xemu_gl_load(forbidden));
     assert(xemu_gl_has_extension("GL_ARB_vertex_array_object"));
     assert(!xemu_gl_has_extension("GL_ARB_vertex_array"));
