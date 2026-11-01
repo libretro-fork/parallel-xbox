@@ -420,12 +420,14 @@ static void stage_texture(PGRAPHState *pg, VkCommandBuffer cmd,
     const hwaddr texture_vram_offset = pgraph_get_texture_phys_addr(pg, texture_idx);
     const uint8_t *texture_data_ptr = (uint8_t *)d->vram_ptr + texture_vram_offset;
 
-    size_t texture_palette_data_size;
-    const hwaddr texture_palette_vram_offset =
-        pgraph_get_texture_palette_phys_addr_length(pg, texture_idx,
-                                                    &texture_palette_data_size);
-    const uint8_t *palette_data_ptr =
-        (uint8_t *)d->vram_ptr + texture_palette_vram_offset;
+    /* Only indexed texels consume palette memory. Other formats must not
+     * resolve or validate an otherwise unused palette DMA descriptor. */
+    const uint8_t *palette_data_ptr = NULL;
+    if (s.color_format == NV097_SET_TEXTURE_FORMAT_COLOR_SZ_I8_A8R8G8B8) {
+        hwaddr palette_offset = pgraph_get_texture_palette_phys_addr_length(
+            pg, texture_idx, NULL);
+        palette_data_ptr = (uint8_t *)d->vram_ptr + palette_offset;
+    }
 
     unsigned int adjusted_width = s.width, adjusted_height = s.height,
                  adjusted_pitch = s.pitch, adjusted_depth = s.depth;
