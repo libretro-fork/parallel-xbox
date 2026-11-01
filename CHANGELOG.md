@@ -1,5 +1,7 @@
 # Changelog of the libretro core
 
+- Experimental class 0x39 work: decode object, DMA, layout and notify methods while retaining command ownership across retries. Prevent duplicate launches and setup mutation during an in-flight copy. Guest method dispatch and renderer integration remain disabled on this feature branch.
+
 - Experimental class 0x39 work: add owner-thread transfer lifecycle state that preserves an in-flight command, gates completion publication on CPU copy or GPU retirement, and rejects stale reset tokens. This remains feature-branch infrastructure with no guest-visible class 0x39 support.
 
 - Experimental class 0x39 work: add a bounded, resumable CPU transfer engine with overflow-safe footprint checks and overlap-aware row copying. This feature-branch groundwork does not enable class 0x39 or change the running emulator; renderer retirement and command integration remain unfinished.

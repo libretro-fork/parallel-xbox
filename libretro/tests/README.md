@@ -1877,3 +1877,13 @@ invalid/empty transfers. Publication remains gated until data completion. The
 restored from guest save-state data. Tests simulate backend events and do not
 exercise real GPU fences, notifier writes, resource cancellation or migration.
 The lifecycle and CPU engine still have no method-dispatch caller.
+
+### Experimental M2MF command ownership
+
+`python3 libretro/tests/test-m2mf-command.py .` checks guest register encodings,
+all 65,536 stride-format pairs, raw reserved-bit preservation, and both CPU and
+controlled-GPU completion sequences. A BUFFER_NOTIFY retry must not relaunch the
+copy, overwrite setup, or consume another subchannel's pending word. Completion
+is consumed only after publication; failed validation remains pending until the
+owner acknowledges its fault policy. The decoder is not called by pgraph_method
+yet, and these tests do not establish host-GPU or guest save-state correctness.
