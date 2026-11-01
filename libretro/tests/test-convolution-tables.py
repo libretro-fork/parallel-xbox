@@ -7,6 +7,7 @@ production objects come from the candidate build; their interfaces are unchanged
 """
 import argparse
 from collections import Counter
+from shader_helpers_fixture import extract_common_helpers
 import json
 from pathlib import Path
 import re
@@ -71,7 +72,7 @@ for old in sorted((out/"parent").glob("*.frag")):
     needed=mode==1 and mask!=0
     assert len(tables.findall(x))==1
     assert len(tables.findall(y))==int(needed),(old.name,"table count")
-    assert dotmaps.sub("",tables.sub("",x))==dotmaps.sub("",tables.sub("",y)),(old.name,"shader body changed")
+    assert extract_common_helpers(dotmaps.sub("",tables.sub("",x)))[1]==extract_common_helpers(dotmaps.sub("",tables.sub("",y)))[1],(old.name,"shader body changed")
     if needed:
         assert tables.search(x).group()==tables.search(y).group()
     else:

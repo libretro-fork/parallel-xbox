@@ -2,6 +2,8 @@
 
 - Compact GL shader-seed sibling states in their existing owned array. Remove the second state-array allocation and per-input stack copy while preserving canonicalization, hash deduplication and output order; unchanged positions need no whole-state copy.
 
+- Emit signed-value and cube-coordinate shader helpers only when needed, including dot-mapping and bump dependencies. Remove an unused inverse helper while preserving depth arithmetic and existing shader cache keys.
+
 - Remove the extra scanout-rectangle size pass from Vulkan background uploads. Compute fallback staging offsets while copying each rectangle, and omit packed-staging accounting on the direct guest-RAM path. Transfer regions, byte ownership and synchronization are preserved.
 - Avoid clearing GL disk-result records before overwriting their state and metadata. Keep binary ownership initialization and libretro-common MPSC publication unchanged, removing redundant startup-cache memory writes.
 
