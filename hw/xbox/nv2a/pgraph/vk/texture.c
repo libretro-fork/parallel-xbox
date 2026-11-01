@@ -2196,14 +2196,18 @@ static VkSampler create_sampler_for_state(PGRAPHState *pg,
         GET_MASK(address, NV_PGRAPH_TEXADDRESS0_ADDRV) >= NV_PGRAPH_TEXADDRESS0_ADDRU_WRAP &&
         GET_MASK(address, NV_PGRAPH_TEXADDRESS0_ADDRV) <= NV_PGRAPH_TEXADDRESS0_ADDRU_BORDER;
     /* Nonmip filters and mip chains clamped to zero must retain the
-     * original footprint's min/mag choice while reading only level zero. */
+     * original footprint's min/mag choice while reading only level zero.
+     * Fixed D16 uses a filterable image before the shader depth comparison. */
     bool mixed_color_lod0 = (!mipmap_en ||
         (MIN(state.min_mipmap_level, state.levels - 1) == 0 &&
          MIN(state.max_mipmap_level, state.levels - 1) == 0)) &&
         (state.dimensionality == 2 ||
          (state.dimensionality == 3 &&
           !f_basic.linear && !state.cubemap)) &&
-        (!state.cubemap || !f_basic.linear) && !state.border && !f_basic.depth &&
+        (!state.cubemap || !f_basic.linear) && !state.border &&
+        (!f_basic.depth || (state.dimensionality == 2 && !state.cubemap &&
+         (state.color_format == NV097_SET_TEXTURE_FORMAT_COLOR_SZ_DEPTH_Y16_FIXED ||
+          state.color_format == NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_DEPTH_Y16_FIXED))) &&
         vk_min_filter != vk_mag_filter &&
         min_filter >= NV_PGRAPH_TEXFILTER0_MIN_BOX_LOD0 &&
         min_filter <= NV_PGRAPH_TEXFILTER0_MIN_TENT_TENT_LOD &&

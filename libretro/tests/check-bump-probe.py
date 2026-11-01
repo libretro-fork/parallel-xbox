@@ -121,6 +121,9 @@ def expected(case, force_lod0=False):
         coordinate = ("left_center", "midpoint", "right_center").index(case["coordinate"])
         linear = case["filter"] == "linear"
         weight = coordinate / 2 if linear else int(coordinate != 0)
+    if case.get("native_depth_reference"):
+        depth = mix(0x2000, 0xe000, weight)
+        return [255 if depth > int(case["native_depth_reference"]) else 0] * 4
     if case["mode"] in ("native_color", "native_mixed"):
         palette = int(case["native_palette"])
         first = (255, 16 + palette * 11, 32 + palette * 7, 240 - palette * 9)
@@ -200,6 +203,8 @@ def main():
         # Native LOD approximation can move a cross-mip color by two LSBs.
         mip = case["mode"] in ("mip_color", "mixed_mip_color")
         tolerance = 2 if mip and int(case["mip_filter"]) in (5, 6) else 1
+        if case.get("native_depth_reference"):
+            tolerance = 0 # Shadow comparisons are binary, not interpolated colors.
         pixels = []
         for api, values in logs.items():
             pixel = values[address]

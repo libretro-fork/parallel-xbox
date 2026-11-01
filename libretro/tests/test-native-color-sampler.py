@@ -67,7 +67,10 @@ int main(void) {
             state.dimensionality=dim;state.cubemap=cube;state.border=border;
             state.min_mipmap_level=low;state.max_mipmap_level=high;
             bool nonmip=(min==1||min==2||min==7||f.linear);
-            bool colors=!f.depth&&format!=NV097_SET_TEXTURE_FORMAT_COLOR_SZ_G8B8&&
+            bool fixed_depth=dim==2&&!cube&&
+                (format==NV097_SET_TEXTURE_FORMAT_COLOR_SZ_DEPTH_Y16_FIXED||
+                 format==NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_DEPTH_Y16_FIXED);
+            bool colors=(!f.depth||fixed_depth)&&format!=NV097_SET_TEXTURE_FORMAT_COLOR_SZ_G8B8&&
                         format!=NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_G8B8;
             bool different=supported&&pgraph_texture_min_filter_vk_map[min]!=
                                       pgraph_texture_min_filter_vk_map[mag];

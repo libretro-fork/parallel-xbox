@@ -8,6 +8,7 @@ import platform
 from pathlib import Path
 import shutil
 import subprocess
+import struct
 import tempfile
 
 
@@ -40,6 +41,10 @@ def main():
                         help="use a 4x4 linear G8B8 image with --single-level")
     parser.add_argument("--native-color", nargs="?", choices=("rgba8", "rgb565"), const="rgba8",
                         help="RGBA8 native sampler colors with --mixed or --color")
+    parser.add_argument("--native-depth", action="store_true",
+                        help="probe fixed D16 shadow comparison with native mixed geometry")
+    parser.add_argument("--native-depth-reference", type=lambda s: int(s,0), default=0xc000,
+                        help="fixed D16 shadow reference, default 0xc000")
     parser.add_argument("--native-volume-slice", type=int, choices=(0,1), default=0,
                         help="select one of the two distinct volume slices")
     parser.add_argument("--native-volume", action="store_true",
@@ -92,6 +97,10 @@ def main():
         parser.error("--linear-level requires --single-level, 4x4 and explicit addresses")
     if args.native_color and not ((args.mixed or args.color) and not args.mip_filter):
         parser.error("--native-color requires --mixed or --color without mip filters")
+    if args.native_depth and (args.native_color != "rgba8" or not args.mixed or args.native_volume or args.native_cube_face is not None):
+        parser.error("--native-depth requires --mixed --native-color rgba8 without volume/cube")
+    if not 0 <= args.native_depth_reference <= 65535:
+        parser.error("--native-depth-reference must fit D16")
     if args.native_volume:
         if (args.native_color != "rgba8" or not args.mixed or args.native_cube_face is not None):
             parser.error("--native-volume requires --mixed --native-color rgba8, without cube")
@@ -153,6 +162,8 @@ def main():
             defines.append("-DBUMP_FILTER_COLOR_PROBE")
         if args.native_color:
             defines.append("-DBUMP_NATIVE_COLOR")
+            if args.native_depth:
+                defines += ["-DBUMP_NATIVE_DEPTH", f"-DBUMP_NATIVE_DEPTH_REF_BITS={struct.unpack('<I',struct.pack('<f',args.native_depth_reference))[0]}"]
             if args.native_volume:
                 defines += ["-DBUMP_NATIVE_VOLUME", f"-DBUMP_NATIVE_VOLUME_SLICE={args.native_volume_slice}"]
             if args.native_cube_face is not None:
@@ -234,7 +245,7 @@ def main():
         writer.writerow(["id", "layout", "mode", "axis", "signed_channels", "filter",
                          "coordinate", "result_address", "lod_bias", "mip_filter",
                          "max_lod", "wrap_period", "mag_filter", "address_mode",
-                         "sample_u", "sample_v", "min_lod", "sampler_transition", "base_size", "border_color", "mip_count", "native_palette", "native_format", "native_chain", "native_min_filter", "native_mag_filter", "native_min_lod", "native_base_only", "native_cube_face", "native_cube_variant", "native_cube_lod", "native_volume", "native_volume_slice"])
+                         "sample_u", "sample_v", "min_lod", "sampler_transition", "base_size", "border_color", "mip_count", "native_palette", "native_format", "native_chain", "native_min_filter", "native_mag_filter", "native_min_lod", "native_base_only", "native_cube_face", "native_cube_variant", "native_cube_lod", "native_volume", "native_volume_slice", "native_depth_reference"])
         for i in range(192):
             if args.luminance_profile:
                 flags = (i // 6) % 16
@@ -283,13 +294,13 @@ def main():
                                   else ("left_center", "midpoint", "right_center"))[i % 3],
                                  f"0x{0x300204 + i * 8:08x}", args.lod_bias if args.mixed else 0, 0]
                 if args.native_color:
-                    row += [""] * 11 + [flags, args.native_color, int(args.native_mip_chain),
+                    row += [""] * 11 + [flags, "d16_fixed" if args.native_depth else args.native_color, int(args.native_mip_chain),
                                          args.native_mip_filter or ((i // 3) % 2 + 1 if args.native_matching else ""),
                                          ((i // 3) % 2) + 1 if args.native_mip_filter or args.native_matching else "",
                                          args.min_lod, int(args.native_base_only),
                                          args.native_cube_face if args.native_cube_face is not None else "",
                                          i // 96 if args.native_cube_face is not None else "",
-                                         (-3,-1,-2)[i % 3] if args.native_cube_face is not None else "", int(args.native_volume), args.native_volume_slice if args.native_volume else ""]
+                                         (-3,-1,-2)[i % 3] if args.native_cube_face is not None else "", int(args.native_volume), args.native_volume_slice if args.native_volume else "", args.native_depth_reference if args.native_depth else ""]
                     if args.native_volume:
                         row[1] = "volume"
                         row[6] = f"volume_lod_{(-3,-1,-2)[i % 3]}"
