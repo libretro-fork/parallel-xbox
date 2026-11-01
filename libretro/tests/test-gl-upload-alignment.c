@@ -16,7 +16,8 @@
 #include "s3tc.h"
 #include "bc-reference.h"
 #define MAX(a,b) ((a) > (b) ? (a) : (b))
-#define g_realloc realloc
+#define g_malloc malloc
+#define g_free free
 typedef struct {
     unsigned color_format, width, height, depth, pitch, levels;
     bool border, cubemap;

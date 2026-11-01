@@ -26,12 +26,13 @@ typedef struct {
     size_t size; VkDeviceSize offset;
     enum { LEVEL_STAGING, LEVEL_UNSWIZZLED } source;
 } TextureLevel;
-static unsigned raw_unswizzles, reallocations, gpu_calls;
+static unsigned raw_unswizzles, allocations, gpu_calls;
 static bool gpu_available;
-static void *checked_realloc(void *p,size_t n) {
-    reallocations++; p=realloc(p,n); assert(p); return p;
+static void *checked_malloc(size_t n) {
+    allocations++; void *p=malloc(n); assert(p); return p;
 }
-#define g_realloc checked_realloc
+#define g_malloc checked_malloc
+#define g_free free
 static VkDeviceSize pgraph_vk_staging_alloc(PGRAPHState *p,size_t n,size_t align,uint8_t **out) {
     size_t off=(p->head+align-1)&~(align-1);
     assert(off+n<=p->capacity); p->head=off+n; p->allocations++;
@@ -95,10 +96,10 @@ static void run_case(unsigned w,unsigned h,unsigned shift) {
     for(unsigned i=0;i<shift;i++)assert(rgb[i]==0xAB&&rgba[i]==0xAB);
     for(size_t i=shift+n*3;i<n*3+32;i++)assert(rgb[i]==0xAB);
     for(size_t i=shift+n*4;i<n*4+32;i++)assert(rgba[i]==0xAB);
-    PGRAPHGLState gl={0};raw_unswizzles=reallocations=gpu_calls=0;
+    PGRAPHGLState gl={0};raw_unswizzles=allocations=gpu_calls=0;
     const uint8_t *result=unswizzle_level(&gl,&shape,source+shift,NULL,w,h,1,2);
-    assert(!memcmp(result,rgb+shift,n*3)&&!gl.tex_scratch[0]&&reallocations==1);
-    assert(unswizzle_level(&gl,&shape,source+shift,NULL,w,h,1,2)==result&&reallocations==1);
+    assert(!memcmp(result,rgb+shift,n*3)&&!gl.tex_scratch[0]&&allocations==1);
+    assert(unswizzle_level(&gl,&shape,source+shift,NULL,w,h,1,2)==result&&allocations==1);
     NV2AState dev={.vram_ptr=source,.pgraph={.arena=arena,.head=3,.capacity=n*4+64}};
     TextureLevel level={0};memset(arena,0xAB,n*4+64);
     stage_swizzled(&dev.pgraph,NULL,&level,&shape,source+shift,NULL,w,h,1,2);

@@ -1586,3 +1586,9 @@ method launches. It checks exact constants/dirty flags, overlapping starts,
 partial uploads, restored source words, early/missing end markers, invalid
 programs and zero launch allocations. An unchanged instruction is decoded once;
 changing input constants or v0 still executes the program every time.
+
+`test-gl-texture-scratch.py` compiles the actual GL texture scratch helper
+with a poisoning allocator. It checks 14000 alternating requests, zero-size
+requests, geometric capacity growth, no allocation on reuse, discard-before-
+allocate and preservation of the other live scratch slot. TEX_SCRATCH_BINARY,
+TEX_SCRATCH_CFLAGS and TEX_SCRATCH_SKIP_RUN support native cross builds.
