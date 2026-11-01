@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""Exercise production linear texture shapes across raw mip fields and formats."""
+"""Check production linear shapes and Force LOD0 cube-chain invariants."""
 from pathlib import Path
 import re
 import subprocess
@@ -96,6 +96,25 @@ int main(void) {
         assert(s.max_mipmap_level==(force ? 0 : MIN(high,levels-1)));
         legacy++;
     }
+    unsigned cubes=0;
+    for (unsigned raw=1; raw<16; raw++)
+    for (unsigned low=0; low<16; low++)
+    for (unsigned high=0; high<16; high++) {
+        pg.ctl[0]=low<<18 | high<<6;
+        pg.fmt[0]=2u<<6 | NV097_SET_TEXTURE_FORMAT_COLOR_SZ_A8R8G8B8<<8 |
+                  raw<<16 | 4u<<20 | 4u<<24 | NV_PGRAPH_TEXFMT0_CUBEMAPENABLE |
+                  NV_PGRAPH_TEXFMT0_BORDER_SOURCE;
+        pg.program=3;
+        force_texture_lod0=false;
+        TextureShape expected=pgraph_get_texture_shape(&pg,0);
+        expected.min_mipmap_level=expected.max_mipmap_level=0;
+        force_texture_lod0=true;
+        TextureShape actual=pgraph_get_texture_shape(&pg,0);
+        assert(actual.cubemap && actual.width==16 && actual.height==16);
+        assert(!memcmp(&actual,&expected,sizeof(actual)));
+        cubes++;
+    }
+    printf("PASS: %u Force LOD0 cube-chain metadata invariants\n",cubes);
     printf("PASS: %u linear shapes and %u unchanged swizzled shapes\n",cases,legacy);
 }
 """.replace("/* TYPES */", shape+"\n"+info).replace("/* FORMATS */", formats).replace("/* FUNCTION */", function)

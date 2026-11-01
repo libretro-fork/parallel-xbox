@@ -40,6 +40,10 @@ def main():
                         help="use a 4x4 linear G8B8 image with --single-level")
     parser.add_argument("--native-color", nargs="?", choices=("rgba8", "rgb565"), const="rgba8",
                         help="RGBA8 native sampler colors with --mixed or --color")
+    parser.add_argument("--native-cube-face", type=int, choices=range(6),
+                        help="probe one swizzled native cube face with controlled derivatives")
+    parser.add_argument("--native-matching", action="store_true",
+                        help="matching native filters with the mixed-footprint geometry")
     parser.add_argument("--native-mip-filter", type=int, choices=(3,4,5,6),
                         help="use mip filters with the native-color mixed probe")
     parser.add_argument("--native-base-only", action="store_true",
@@ -84,6 +88,10 @@ def main():
         parser.error("--linear-level requires --single-level, 4x4 and explicit addresses")
     if args.native_color and not ((args.mixed or args.color) and not args.mip_filter):
         parser.error("--native-color requires --mixed or --color without mip filters")
+    if args.native_cube_face is not None and not (args.native_color and args.mixed):
+        parser.error("--native-cube-face requires --native-color and --mixed")
+    if args.native_matching and not (args.native_color and args.mixed and not args.native_mip_filter):
+        parser.error("--native-matching requires native mixed geometry without a mip filter")
     if args.native_mip_filter and not (args.native_color and args.mixed):
         parser.error("--native-mip-filter requires --native-color and --mixed")
     if args.native_base_only and not args.native_mip_filter:
@@ -138,6 +146,10 @@ def main():
             defines.append("-DBUMP_FILTER_COLOR_PROBE")
         if args.native_color:
             defines.append("-DBUMP_NATIVE_COLOR")
+            if args.native_cube_face is not None:
+                defines.append(f"-DBUMP_NATIVE_CUBE_FACE={args.native_cube_face}")
+            if args.native_matching:
+                defines.append("-DBUMP_NATIVE_MATCHING")
             if args.native_mip_chain:
                 defines.append("-DBUMP_NATIVE_CHAIN")
             if args.native_mip_filter:
@@ -213,7 +225,7 @@ def main():
         writer.writerow(["id", "layout", "mode", "axis", "signed_channels", "filter",
                          "coordinate", "result_address", "lod_bias", "mip_filter",
                          "max_lod", "wrap_period", "mag_filter", "address_mode",
-                         "sample_u", "sample_v", "min_lod", "sampler_transition", "base_size", "border_color", "mip_count", "native_palette", "native_format", "native_chain", "native_min_filter", "native_mag_filter", "native_min_lod", "native_base_only"])
+                         "sample_u", "sample_v", "min_lod", "sampler_transition", "base_size", "border_color", "mip_count", "native_palette", "native_format", "native_chain", "native_min_filter", "native_mag_filter", "native_min_lod", "native_base_only", "native_cube_face", "native_cube_variant", "native_cube_lod"])
         for i in range(192):
             if args.luminance_profile:
                 flags = (i // 6) % 16
@@ -263,8 +275,17 @@ def main():
                                  f"0x{0x300204 + i * 8:08x}", args.lod_bias if args.mixed else 0, 0]
                 if args.native_color:
                     row += [""] * 11 + [flags, args.native_color, int(args.native_mip_chain),
-                                         args.native_mip_filter or "", ((i // 3) % 2) + 1 if args.native_mip_filter else "",
-                                         args.min_lod, int(args.native_base_only)]
+                                         args.native_mip_filter or ((i // 3) % 2 + 1 if args.native_matching else ""),
+                                         ((i // 3) % 2) + 1 if args.native_mip_filter or args.native_matching else "",
+                                         args.min_lod, int(args.native_base_only),
+                                         args.native_cube_face if args.native_cube_face is not None else "",
+                                         i // 96 if args.native_cube_face is not None else "",
+                                         (-3,-1,-2)[i % 3] if args.native_cube_face is not None else ""]
+                    if args.native_cube_face is not None:
+                        row[1] = "cube"
+                        row[6] = f"cube_lod_{(-3,-1,-2)[i % 3]}"
+                    if args.native_matching:
+                        row[5] = f"min_{((i // 3) % 2) + 1}_mag_{((i // 3) % 2) + 1}"
                     if args.native_mip_filter:
                         row[5] = f"min_mip_{args.native_mip_filter}_mag_{((i // 3) % 2) + 1}"
                 writer.writerow(row)

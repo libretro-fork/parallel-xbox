@@ -1,6 +1,8 @@
 # Changelog of the libretro core
 
 - Remove redundant mutexes from TCG region allocation and host-code indexing under the core's serialized vCPU/safe-work ownership. Enforce one translator/region and retain existing block recycling, fault/unwind lookup and flush behavior; jump/page synchronization is unchanged.
+- Vulkan color cubemaps now retain min/mag filtering at mip zero, including Force LOD0, while keeping lower mips unread and the cube layout intact.
+
 
 - Bypass generic chardev write locking for the default unlogged null UART sinks, which discard bytes without shared mutable state. Logged sinks and real backends retain their existing write/retry/error behavior.
 

@@ -31,6 +31,12 @@ _Static_assert(BUMP_RAMP + 32u * 16u * 4u <= 0x04000000u,
 #define BUMP_RAMP 0x03502000u /* Beyond 192 independent 32-byte native slots. */
 #endif
 
+#ifdef BUMP_NATIVE_CUBE_FACE
+#undef BUMP_RAMP
+#define BUMP_RAMP 0x03540000u
+_Static_assert(BUMP_DATA + 192u * 1024u <= BUMP_RAMP, "cube slots overlap ramp");
+#endif
+
 #if defined(BUMP_FILTER_MIXED_PROBE) || defined(BUMP_FILTER_MIP_PROBE)
 static void bump_mixed_triangle(u32 layout, u32 footprint)
 {
@@ -215,11 +221,42 @@ static void bump_mixed_triangle(u32 layout, u32 footprint)
 #endif
     };
 #endif
+#ifdef BUMP_NATIVE_CUBE_FACE
+    (void)layout; (void)tex_u;
+    /* Fixed major coordinate one keeps the sampled quad within one face.
+     * Projected texel footprints are 1/8, 1/2 and 1/4, exactly. */
+    static const u32 cube_s[3][3] = {
+        {0xc19e8000u, 0x41a18000u, 0x3e400000u},
+        {0xc2a00000u, 0x42a00000u, 0x00000000u},
+        {0xc21f8000u, 0x42208000u, 0x3e000000u},
+    };
+    method(NV097_SET_VERTEX_DATA_ARRAY_FORMAT + 9 * 4, 2u | (3u << 4));
+    method(NV097_SET_BEGIN_END, 5);
+    push(0x40000000u | (21u << 18) | NV097_INLINE_ARRAY);
+#else
     method(NV097_SET_VERTEX_DATA_ARRAY_FORMAT + 9 * 4, 2u | (2u << 4));
     method(NV097_SET_BEGIN_END, 5);
     push(0x40000000u | (18u << 18) | NV097_INLINE_ARRAY);
+#endif
     for (u32 vertex = 0; vertex < 3; vertex++) {
         for (u32 component = 0; component < 4; component++) push(pos[vertex][component]);
+#ifdef BUMP_NATIVE_CUBE_FACE
+        u32 c = cube_s[footprint][vertex], neg = c ^ 0x80000000u;
+        (void)neg;
+#if BUMP_NATIVE_CUBE_FACE == 0
+        push(0x3f800000u); push(0x3f000000u); push(neg);
+#elif BUMP_NATIVE_CUBE_FACE == 1
+        push(0xbf800000u); push(0x3f000000u); push(c);
+#elif BUMP_NATIVE_CUBE_FACE == 2
+        push(c); push(0x3f800000u); push(0xbf000000u);
+#elif BUMP_NATIVE_CUBE_FACE == 3
+        push(c); push(0xbf800000u); push(0x3f000000u);
+#elif BUMP_NATIVE_CUBE_FACE == 4
+        push(c); push(0x3f000000u); push(0x3f800000u);
+#else
+        push(neg); push(0x3f000000u); push(0xbf800000u);
+#endif
+#else
 #ifdef BUMP_LINEAR_LEVEL
         /* Scale normalized 4x4 coordinates to texels exactly by increasing
          * the exponent by two; these fixture values are finite and nonzero. */
@@ -235,6 +272,7 @@ static void bump_mixed_triangle(u32 layout, u32 footprint)
 #endif
 #else
         push(layout ? 0x3e800000u : 0x3f000000u);
+#endif
 #endif
     }
     method(NV097_SET_BEGIN_END, 0);
@@ -277,6 +315,9 @@ static void bump_filter_probe(void)
         u32 bump_address = BUMP_DATA + id * 16;
 #ifdef BUMP_NATIVE_COLOR
         bump_address = BUMP_DATA + id * 32;
+#ifdef BUMP_NATIVE_CUBE_FACE
+        bump_address = BUMP_DATA + id * 1024;
+#endif
 #endif
 #ifdef BUMP_FILTER_MIP_PROBE
         swizzled_layout = 1;
@@ -358,6 +399,9 @@ static void bump_filter_probe(void)
                     ((32u + flags * 7u) << 8) | (240u - flags * 9u);
         u32 second = 0xff000000u | ((224u - flags * 9u) << 16) |
                      ((208u - flags * 7u) << 8) | (16u + flags * 11u);
+#ifdef BUMP_NATIVE_CUBE_FACE
+        u32 cube_first = first, cube_second = second;
+#endif
 #ifdef BUMP_NATIVE_RGB565
         format = swizzled_layout ? 0x05 : 0x11;
         first = ((first >> 8) & 0xf800u) | ((first >> 5) & 0x07e0u) | ((first >> 3) & 0x001fu);
@@ -376,6 +420,36 @@ static void bump_filter_probe(void)
 #else
               16, 0xff00ff00u);
 #endif
+#endif
+#ifdef BUMP_NATIVE_CUBE_FACE
+        swizzled_layout = 1;
+#ifdef BUMP_NATIVE_RGB565
+        format = 0x05;
+#else
+        format = 0x06;
+#endif
+        /* NV2A cube faces are individually aligned to 128 bytes. Distinct
+         * face colors and a second palette band expose face/address errors. */
+        for (u32 face = 0; face < 6; face++) {
+            u32 address = bump_address + face * 128;
+            u32 c0 = cube_first + ((face * 5 + (id / 96) * 16) << 8);
+            u32 c1 = cube_second + ((face * 5 + (id / 96) * 16) << 8);
+#ifdef BUMP_NATIVE_RGB565
+            c0 = ((c0 >> 8) & 0xf800u) | ((c0 >> 5) & 0x07e0u) | ((c0 >> 3) & 0x001fu);
+            c1 = ((c1 >> 8) & 0xf800u) | ((c1 >> 5) & 0x07e0u) | ((c1 >> 3) & 0x001fu);
+            ram32(address, c0 | (c1 << 16));
+            ram32(address + 4, c0 | (c1 << 16));
+#ifdef BUMP_NATIVE_CHAIN
+            ram32(address + 8, ((128u + face * 16u) >> 2) << 5);
+#endif
+#else
+            ram32(address, c0); ram32(address + 4, c1);
+            ram32(address + 8, c0); ram32(address + 12, c1);
+#ifdef BUMP_NATIVE_CHAIN
+            ram32(address + 16, 0xff000000u | ((128u + face * 16u) << 8));
+#endif
+#endif
+        }
 #endif
         flags = 0; /* Independent colors, without signed-channel conversion. */
 #endif
@@ -448,11 +522,23 @@ static void bump_filter_probe(void)
 #ifdef BUMP_NATIVE_BASE_ONLY
         method(NV097_SET_TEXTURE_CONTROL0, 1u << 30);
 #endif
+#ifdef BUMP_NATIVE_CUBE_FACE
+        method(NV097_SET_TEXTURE_FORMAT,
+               1u | (1u << 2) | (2u << 4) | (1u << 3) | (format << 8) |
+#ifdef BUMP_NATIVE_CHAIN
+               (2u << 16) |
+#else
+               (1u << 16) |
+#endif
+               (1u << 20) | (1u << 24));
+#endif
         method(NV097_SET_TEXTURE_FILTER,
 #ifdef BUMP_NATIVE_MIP_FILTER
                (BUMP_NATIVE_MIP_FILTER << 16) | ((linear ? 2u : 1u) << 24) | BUMP_MIXED_BIAS |
 #elif defined(BUMP_FILTER_MIP_PROBE)
                (BUMP_MIP_FILTER << 16) | (BUMP_MIP_MAG << 24) | BUMP_MIXED_BIAS |
+#elif defined(BUMP_NATIVE_MATCHING)
+               (linear ? 0x02020000u : 0x01010000u) | BUMP_MIXED_BIAS |
 #elif defined(BUMP_FILTER_MIXED_PROBE)
                (linear ? 0x01020000u : 0x02010000u) | BUMP_MIXED_BIAS |
 #else
@@ -494,6 +580,9 @@ static void bump_filter_probe(void)
         method(NV097_SET_SHADER_STAGE_PROGRAM, 1);
         method(NV097_SET_COMBINER_SPECULAR_FOG_CW0, 8);
         method(NV097_SET_COMBINER_SPECULAR_FOG_CW1, 0x00001800u);
+#endif
+#ifdef BUMP_NATIVE_CUBE_FACE
+        method(NV097_SET_SHADER_STAGE_PROGRAM, 3);
 #endif
 #ifdef BUMP_FILTER_MIP_PROBE
 #ifdef BUMP_PRIME_SINGLE_ADDRESS

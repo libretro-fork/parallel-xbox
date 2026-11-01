@@ -104,10 +104,12 @@ def expected(case, force_lod0=False):
         return expected_mip(case, force_lod0)
     mixed = case["mode"] in ("mixed_color", "native_mixed")
     if mixed:
-        lod = {"magnified": -3, "near_magnified": -1, "minified": 2}[case["coordinate"]]
+        lod = float(case["native_cube_lod"]) if case.get("native_cube_face") else {
+            "magnified": -3, "near_magnified": -1, "minified": 2}[case["coordinate"]]
         minified = lod + float(case.get("lod_bias", 0)) > 0
         if case.get("native_min_filter"):
-            if (case["layout"] == "swizzled" and case.get("native_chain") == "1" and
+            if (int(case["native_min_filter"]) >= 3 and case["layout"] in ("swizzled","cube") and
+                    case.get("native_chain") == "1" and
                     case.get("native_base_only") != "1" and not force_lod0):
                 raise ValueError("unclamped native mip controls require parent comparison")
             linear = int(case["native_min_filter"]) in (2,4,6) if minified else int(case["native_mag_filter"]) == 2
@@ -122,6 +124,10 @@ def expected(case, force_lod0=False):
         palette = int(case["native_palette"])
         first = (255, 16 + palette * 11, 32 + palette * 7, 240 - palette * 9)
         second = (255, 224 - palette * 9, 208 - palette * 7, 16 + palette * 11)
+        if case.get("native_cube_face"):
+            offset = int(case["native_cube_face"]) * 5 + int(case["native_cube_variant"]) * 16
+            first = (first[0], first[1], first[2] + offset, first[3])
+            second = (second[0], second[1], second[2] + offset, second[3])
         if case.get("native_format") == "rgb565":
             def quantized(color):
                 return (255, (color[1] >> 3) * 255 / 31,
@@ -197,7 +203,9 @@ def main():
             # Native sampler interpolation precision can move a color by one LSB.
             if any(abs(a - b) > tolerance for a, b in zip(actual, reference)):
                 raise AssertionError(f"{api} case {case['id']}: {actual}, expected {reference}")
-        backend_tolerance = tolerance if mip else 0
+        # Cube interpolation can round ties differently between APIs while
+        # both results remain within the one-LSB scalar bound.
+        backend_tolerance = tolerance if mip or case.get("native_cube_face") else 0
         if any(abs((pixels[0] >> shift & 255) - (pixels[1] >> shift & 255)) > backend_tolerance
                for shift in (24, 16, 8, 0)):
             raise AssertionError(f"backend mismatch in case {case['id']}: {pixels}")

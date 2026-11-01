@@ -202,7 +202,8 @@ Use `--assembler yasm` when nasm is unavailable.
 builder and format table: 403,200 linear cases cover every supported linear
 format, all raw mip counts, clamp extremes, dimensions, pitch, border source,
 texture stage and Force LOD0. Another 15,360 swizzled cases retain their mip
-counts and clamps.
+counts and clamps. Another 3,840 cube cases verify that Force LOD0 changes
+only sampling clamps, retaining the complete stored-chain metadata.
 `test-g8b8-linear-count.py CHECKOUT PARENT CANDIDATE HARNESS SCRATCH` checks
 7,296 scalar cases, 2,304 nonmip aliases against the parent's count-one images,
 and 1,920 unchanged count-one/swizzled pixels per backend. Raw counts 0, 2 and
@@ -214,6 +215,22 @@ ignore raw mip counts and clamps; signed G8B8 shader selection follows that rule
 `test-native-color-sampler.py CHECKOUT [CC]` checks 381,024 production Vulkan
 sampler policies across supported formats, image levels, min/mag modes, clamp
 values, dimensions, cubes, embedded borders and format filtering support.
+`test-native-color-cubes.py CHECKOUT PARENT CANDIDATE HARNESS SCRATCH`
+checks 10,368 scalar cases and 3,648 exact parent pixels per backend.
+RGBA8/RGB565 cubes have distinct face colors, two palette bands and contrasting
+lower mips. Controlled face-interior footprints cover all six directions,
+including Force LOD0 with intact chains. All four mip modes, guest clamps,
+zero/positive LOD boundaries and matching filters are included. Full chains,
+positive lower clamps, 2D color and G8B8 remain parent controls.
+`--native-cube-face 0..5` selects +X/-X/+Y/-Y/+Z/-Z with the native mixed
+geometry; `--native-matching` selects matching native min/mag filters.
+The cube reference carries explicit projected LODs and permits one color LSB
+of interpolation rounding between APIs; parent comparisons stay bit exact.
+The production sampler change covers swizzled color cubes, with no shader
+changes. Depth, linear-layout cubes, embedded borders, convolution, unsupported
+linear filtering and G8B8 keep their prior policies. Force LOD0 uses the same
+shared clamp as 2D textures and preserves the stored chain and cube-face layout.
+
 `test-native-color-base-clamps.py CHECKOUT PARENT CANDIDATE HARNESS SCRATCH`
 checks 7,680 scalar cases and 3,264 exact parent pixels per backend.
 RGBA8/RGB565 cover all four mip modes and both magnification filters, single
@@ -237,7 +254,7 @@ uses 16 independent palettes with `--mixed` or `--color`;
 `--native-mip-chain` retains nonmip filters with a contrasting second image level.
 The Vulkan policy follows the Khronos nonmip emulation rule: a 0.25 LOD ceiling
 preserves the min/mag choice, and nearest mip selection keeps reads at zero.
-Depth, cubes, embedded borders, convolution and existing G8B8 policies are unchanged.
+Depth, linear-layout cubes, embedded borders, convolution and existing G8B8 policies remain excluded.
 
 `test-g8b8-single-level.py CHECKOUT PARENT CANDIDATE HARNESS SCRATCH` checks
 one-level swizzled G8B8 images requesting mip-filter modes 3 through 6.
