@@ -6,18 +6,23 @@ import os
 import subprocess
 import sys
 import tempfile
+import shlex
 
 repo = Path(sys.argv[1]).resolve()
 cc = sys.argv[2] if len(sys.argv)>2 and sys.argv[2]!='--gl' else 'cc'
 source = (repo/'hw/xbox/nv2a/pgraph/vk/draw.c').read_text()
-parts = []
-for name in ('check_render_pass_dirty', 'check_pipeline_dirty', 'init_pipeline_key', 'color_write_mask', 'emit_dynamic_state'):
-    match = re.search(r'^static (?:bool|void|VkColorComponentFlags) '+name+r'\([^;{]*\)\s*\{', source, re.M)
+parts = [re.search(r'static const unsigned pipeline_registers\[\] = \{.*?\};',source,re.S)[0]]
+for name in ('pipeline_reg_values', 'check_render_pass_dirty', 'check_pipeline_dirty', 'init_pipeline_key', 'color_write_mask', 'emit_dynamic_state'):
+    match = re.search(r'^static (?:inline )?(?:bool|void|VkColorComponentFlags) '+name+r'\([^;{]*\)\s*\{', source, re.M)
     assert match, name
     end=source.index('{', match.start())+1;depth=1
     while depth:
         depth+=(source[end]=='{')-(source[end]=='}');end+=1
     parts.append(source[match.start():end])
+# The real fast-path prefix must return before key construction when clean.
+a=source.index('    NV2A_VK_DGROUP_BEGIN("Creating pipeline")',source.index('static void create_pipeline'))
+b=source.index('    PipelineKey key;',a)
+parts.append('static void pipeline_prefix(PGRAPHState *pg) {\n'+source[a:b]+'\n    key_rebuilds++;\n}')
 constants = (repo/'hw/xbox/nv2a/pgraph/vk/constants.h').read_text()
 maps = '\n'.join(re.search(r'static const [^;]+ '+name+r'\[\] = \{.*?\};', constants, re.S)[0]
                  for name in ('pgraph_blend_factor_vk_map','pgraph_blend_equation_vk_map'))
@@ -45,12 +50,12 @@ gl_function = ('static void apply_gl_draw_state(PGRAPHState *pg) {\n'
 code = code.replace('/* GL PRODUCTION */', gl_masks+'\n'+gl_maps+'\n'+gl_function)
 with tempfile.TemporaryDirectory(prefix='surface-blend-') as directory:
     folder=Path(directory);(folder/'test.c').write_text(code)
-    exe=folder/'test'
+    exe=Path(os.environ.get('SURFACE_BLEND_BINARY',str(folder/'test')))
     subprocess.run([cc,'-O2','-std=gnu11','-Wall','-Wextra','-Werror',
                     '-Wno-unused-parameter','-Wno-sign-compare','-Wno-unused-variable',
-                    '-fsanitize=undefined','-fsanitize-undefined-trap-on-error','-I'+str(repo),
+                    *shlex.split(os.environ.get('SURFACE_BLEND_CFLAGS','-fsanitize=undefined -fsanitize-undefined-trap-on-error')),'-I'+str(repo),
                     '-I'+str(repo/'deps/vulkan-headers'),str(folder/'test.c'),'-o',str(exe)],check=True)
-    subprocess.run([str(exe)],check=True,timeout=30)
+    if not os.environ.get('SURFACE_BLEND_SKIP_RUN'):subprocess.run([str(exe)],check=True,timeout=30)
     if '--gl' in sys.argv:
         subprocess.run([cc,
                         '-O2','-std=gnu11','-Wall','-Wextra','-Werror','-Wno-unused-parameter',

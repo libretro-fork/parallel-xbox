@@ -1,5 +1,6 @@
 # Changelog of the libretro core
 
+- Reuse the bound Vulkan pipeline when register writes change only dynamic or unused key bits. Share the key register projection with the dirty check, avoiding repeated key construction, hashing and cache lookup while preserving dynamic-state updates and existing PSO keys.
 - Compact GL shader-seed sibling states in their existing owned array. Remove the second state-array allocation and per-input stack copy while preserving canonicalization, hash deduplication and output order; unchanged positions need no whole-state copy.
 
 - Emit signed-value and cube-coordinate shader helpers only when needed, including dot-mapping and bump dependencies. Remove an unused inverse helper while preserving depth arithmetic and existing shader cache keys.

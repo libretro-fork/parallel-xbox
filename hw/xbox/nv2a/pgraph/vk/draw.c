@@ -812,6 +812,63 @@ static bool check_render_pass_dirty(PGRAPHState *pg)
                   sizeof(state)) != 0;
 }
 
+static const unsigned pipeline_registers[] = {
+    NV_PGRAPH_BLEND,       NV_PGRAPH_BLENDCOLOR,  NV_PGRAPH_CONTROL_0,
+    NV_PGRAPH_CONTROL_1,   NV_PGRAPH_CONTROL_2,   NV_PGRAPH_CONTROL_3,
+    NV_PGRAPH_SETUPRASTER, NV_PGRAPH_ZOFFSETBIAS, NV_PGRAPH_ZOFFSETFACTOR,
+};
+
+static inline void pipeline_reg_values(PGRAPHState *pg, uint32_t *out)
+{
+    PGRAPHVkState *r = pg->vk_renderer_state;
+    /* Only the bits create_pipeline() consumes enter the key: any other bit
+     * (e.g. animated ZOFFSET* floats) would make duplicate pipelines. */
+    static const uint32_t reg_masks[] = {
+        /* BLEND: EQN | EN | SFACTOR | DFACTOR */
+        PGRAPH_BLEND_STATE_MASK,
+        /* BLENDCOLOR: constants, consumed whole */
+        0xFFFFFFFF,
+        /* CONTROL_0: ZENABLE | ZFUNC | Z/STENCIL/RGBA WRITE_ENABLE */
+        0x3F0F4000,
+        /* CONTROL_1: STENCIL_TEST | FUNC | REF | MASK_READ | MASK_WRITE */
+        0xFFFFFFF1,
+        /* CONTROL_2: STENCIL_OP_FAIL | ZFAIL | ZPASS */
+        0x00000FFF,
+        /* CONTROL_3: not consumed */
+        0x00000000,
+        /* SETUPRASTER: FRONTFACE | CULLENABLE | CULLCTRL */
+        0x10E00000,
+        /* ZOFFSETBIAS/FACTOR: not consumed (depthBiasEnable hardcoded off) */
+        0x00000000,
+        0x00000000,
+    };
+    QEMU_BUILD_BUG_ON(ARRAY_SIZE(pipeline_registers) != ARRAY_SIZE(((PipelineKey *)0)->regs));
+    QEMU_BUILD_BUG_ON(ARRAY_SIZE(reg_masks) != ARRAY_SIZE(pipeline_registers));
+    for (int i = 0; i < ARRAY_SIZE(pipeline_registers); i++) {
+        out[i] = pgraph_reg_r(pg, pipeline_registers[i]) & reg_masks[i];
+    }
+    /* State set dynamically does not identify a pipeline. */
+    out[1] = 0; /* BLENDCOLOR: VK_DYNAMIC_STATE_BLEND_CONSTANTS */
+    if (r->dyn_blend) {
+        out[0] = 0;
+        out[2] &= ~(NV_PGRAPH_CONTROL_0_ALPHA_WRITE_ENABLE |
+                    NV_PGRAPH_CONTROL_0_RED_WRITE_ENABLE |
+                    NV_PGRAPH_CONTROL_0_GREEN_WRITE_ENABLE |
+                    NV_PGRAPH_CONTROL_0_BLUE_WRITE_ENABLE);
+    } else {
+        out[0] = pgraph_surface_blend(out[0],
+                                      pg->surface_shape.color_format);
+    }
+    if (r->dyn_cull_front) {
+        out[6] = 0;
+        out[2] &= ~(NV_PGRAPH_CONTROL_0_ZENABLE |
+                    NV_PGRAPH_CONTROL_0_ZFUNC |
+                    NV_PGRAPH_CONTROL_0_ZWRITEENABLE);
+        out[3] = 0;
+        out[4] = 0;
+    }
+}
+
 // Quickly check for any state changes that would require more analysis
 static bool check_pipeline_dirty(PGRAPHState *pg)
 {
@@ -825,12 +882,6 @@ static bool check_pipeline_dirty(PGRAPHState *pg)
         return true;
     }
 
-    const unsigned int regs[] = {
-        NV_PGRAPH_BLEND,       NV_PGRAPH_BLENDCOLOR,  NV_PGRAPH_CONTROL_0,
-        NV_PGRAPH_CONTROL_1,   NV_PGRAPH_CONTROL_2,   NV_PGRAPH_CONTROL_3,
-        NV_PGRAPH_SETUPRASTER, NV_PGRAPH_ZOFFSETBIAS, NV_PGRAPH_ZOFFSETFACTOR,
-    };
-
     /* XRGB and ARGB can share a host attachment format. A guest format
      * switch can change static blend factors without a BLEND write. */
     if (!r->dyn_blend && r->pipeline_binding->key.regs[0] !=
@@ -840,9 +891,16 @@ static bool check_pipeline_dirty(PGRAPHState *pg)
         return true;
     }
 
-    for (int i = 0; i < ARRAY_SIZE(regs); i++) {
-        if (pgraph_is_reg_dirty(pg, regs[i])) {
-            return true;
+    for (int i = 0; i < ARRAY_SIZE(pipeline_registers); i++) {
+        if (pgraph_is_reg_dirty(pg, pipeline_registers[i])) {
+            /* A register write may change only dynamic or unused bits. Use
+             * the same projection as the key before rebuilding/hashing it. */
+            uint32_t values[ARRAY_SIZE(pipeline_registers)];
+            pipeline_reg_values(pg, values);
+            if (memcmp(values, r->pipeline_binding->key.regs, sizeof(values))) {
+                return true;
+            }
+            break;
         }
     }
 
@@ -885,58 +943,7 @@ static void init_pipeline_key(PGRAPHState *pg, PipelineKey *key)
                    r->num_active_vertex_attribute_descriptions);
     }
 
-    // FIXME: Use more dynamic state updates
-    const int regs[] = {
-        NV_PGRAPH_BLEND,       NV_PGRAPH_BLENDCOLOR,  NV_PGRAPH_CONTROL_0,
-        NV_PGRAPH_CONTROL_1,   NV_PGRAPH_CONTROL_2,   NV_PGRAPH_CONTROL_3,
-        NV_PGRAPH_SETUPRASTER, NV_PGRAPH_ZOFFSETBIAS, NV_PGRAPH_ZOFFSETFACTOR,
-    };
-    /* Only the bits create_pipeline() consumes enter the key: any other bit
-     * (e.g. animated ZOFFSET* floats) would make duplicate pipelines. */
-    static const uint32_t reg_masks[] = {
-        /* BLEND: EQN | EN | SFACTOR | DFACTOR */
-        PGRAPH_BLEND_STATE_MASK,
-        /* BLENDCOLOR: constants, consumed whole */
-        0xFFFFFFFF,
-        /* CONTROL_0: ZENABLE | ZFUNC | Z/STENCIL/RGBA WRITE_ENABLE */
-        0x3F0F4000,
-        /* CONTROL_1: STENCIL_TEST | FUNC | REF | MASK_READ | MASK_WRITE */
-        0xFFFFFFF1,
-        /* CONTROL_2: STENCIL_OP_FAIL | ZFAIL | ZPASS */
-        0x00000FFF,
-        /* CONTROL_3: not consumed */
-        0x00000000,
-        /* SETUPRASTER: FRONTFACE | CULLENABLE | CULLCTRL */
-        0x10E00000,
-        /* ZOFFSETBIAS/FACTOR: not consumed (depthBiasEnable hardcoded off) */
-        0x00000000,
-        0x00000000,
-    };
-    assert(ARRAY_SIZE(regs) == ARRAY_SIZE(key->regs));
-    QEMU_BUILD_BUG_ON(ARRAY_SIZE(reg_masks) != ARRAY_SIZE(regs));
-    for (int i = 0; i < ARRAY_SIZE(regs); i++) {
-        key->regs[i] = pgraph_reg_r(pg, regs[i]) & reg_masks[i];
-    }
-    /* State set dynamically does not identify a pipeline. */
-    key->regs[1] = 0; /* BLENDCOLOR: VK_DYNAMIC_STATE_BLEND_CONSTANTS */
-    if (r->dyn_blend) {
-        key->regs[0] = 0;
-        key->regs[2] &= ~(NV_PGRAPH_CONTROL_0_ALPHA_WRITE_ENABLE |
-                          NV_PGRAPH_CONTROL_0_RED_WRITE_ENABLE |
-                          NV_PGRAPH_CONTROL_0_GREEN_WRITE_ENABLE |
-                          NV_PGRAPH_CONTROL_0_BLUE_WRITE_ENABLE);
-    } else {
-        key->regs[0] = pgraph_surface_blend(key->regs[0],
-                                           pg->surface_shape.color_format);
-    }
-    if (r->dyn_cull_front) {
-        key->regs[6] = 0;
-        key->regs[2] &= ~(NV_PGRAPH_CONTROL_0_ZENABLE |
-                          NV_PGRAPH_CONTROL_0_ZFUNC |
-                          NV_PGRAPH_CONTROL_0_ZWRITEENABLE);
-        key->regs[3] = 0;
-        key->regs[4] = 0;
-    }
+    pipeline_reg_values(pg, key->regs);
 }
 
 /* Line widths are set per draw where the device has wide lines. */

@@ -2548,3 +2548,27 @@ controlled-model coverage; native GPU regressions additionally exercise the
 renderer and mode-change lifecycle.
 
 `test-seed-inplace.py CHECKOUT [CC]` compares production sibling compaction with the original copy filter using the real ShaderState layout, canonicalizer/zeroing helpers, XXH3 and compatibility hash set. Its 128 cases cover 76,464 inputs across counts 0 through 4,096, disabled/enabled Boost, already-dynamic states, all-unique/all-duplicate/mixed families, forced hash collisions, exact output bytes/order, repeated filtering and boundary canaries. Linux defaults to ASan/UBSan; SEED_INPLACE_CFLAGS, SEED_INPLACE_BINARY and SEED_INPLACE_SKIP_RUN support native Win32/Win64 runs. The caller retains its original owned allocation and only the returned prefix is live.
+
+The surface-blend fixture adds 73,728 register-bit/format/feature schedules.
+The production dirty check and key builder share their canonical register
+projection; a retained copy of the previous projection verifies identical
+key values. Dynamic and unused bit writes must reuse the pipeline, while
+static key differences and shader/texture/render-pass/clear/vertex-input
+changes still invalidate it. An explicit dynamic-blend update after clearing
+the dirty map must still emit the changed host state. Existing 16,384 blend
+mapping, format-transition and dynamic-state cases remain covered.
+
+`SURFACE_BLEND_BINARY`, `SURFACE_BLEND_SKIP_RUN` and `SURFACE_BLEND_CFLAGS`
+support native fixtures, retaining UBSan with traps by default. Existing keys,
+PSO/shader variants, dynamic-state emission and pipeline lifetime are unchanged;
+no buffers, copies, locks, waits or video frame queue are introduced.
+
+The fixture also executes the production create_pipeline fast-path prefix:
+a dynamic-only write must return before key construction after clearing dirty
+markers; speculative-ahead work and real static/shader changes must still
+reach the key-building path.
+
+The register table is shared read-only data rather than duplicated local
+arrays, and the projection stays inline. Win64 create_pipeline stack usage
+falls from 3,552 to 3,536 bytes with unchanged renderer layouts. Hardware
+cache-miss, compilation-stutter and game-latency effects are unmeasured.
