@@ -1271,6 +1271,27 @@ bool physical_memory_test_and_clear_dirty_ranges(ram_addr_t start,
             if (bits) {
                 bits = bitmap_word_fetch_and(word, ~mask) & mask;
             }
+            /* Clean/full chunks need no per-page walk. Preserve a run that
+             * crosses full words, and finish it at the first clean chunk. */
+            if (!bits) {
+                if (in_run && notify) {
+                    hwaddr a = MAX((ram_addr_t)run << TARGET_PAGE_BITS, start);
+                    hwaddr b = MIN((ram_addr_t)page << TARGET_PAGE_BITS, start + length);
+                    notify(opaque, a - start, b - a);
+                }
+                in_run = false;
+                page += n;
+                continue;
+            }
+            if (bits == mask) {
+                if (!in_run) {
+                    run = page;
+                    in_run = true;
+                    dirty = true;
+                }
+                page += n;
+                continue;
+            }
             for (unsigned i = 0; i < n; i++) {
                 bool set = (bits >> (shift + i)) & 1;
                 if (set && !in_run) {
