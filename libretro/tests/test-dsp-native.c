@@ -137,6 +137,26 @@ static void prepare(Machine *m, uint32_t op, uint32_t ext, unsigned seed,
         c->registers[DSP_REG_SP] = 14;
         c->stack[0][14] = c->registers[DSP_REG_SSH];
     }
+    if (seed & 0x100000) {
+        /* Explicit loop-count edges; special registers retain the stack,
+         * status and loop fixtures above so aliases observe real setup. */
+        static const uint32_t values[] = {
+            0, 1, 2, 0xFFFF, 0x10000, 0xFFFFFF, 0x7FFFFF, 0x800000
+        };
+        unsigned reg = (op >> 8) & 63;
+        uint32_t value = values[(seed >> 8) & 7];
+        if (reg == DSP_REG_A || reg == DSP_REG_B) {
+            unsigned d = reg & 1;
+            c->registers[DSP_REG_A0 + d] = 0x800001;
+            c->registers[DSP_REG_A1 + d] = value;
+            c->registers[DSP_REG_A2 + d] = (seed & 0x800) ? 1 :
+                (value & 0x800000 ? 0xFF : 0);
+        } else if (reg >= DSP_REG_X0 && reg <= DSP_REG_M7) {
+            c->registers[reg] = value &
+                ((reg == DSP_REG_A2 || reg == DSP_REG_B2) ? 0xFF : 0xFFFFFF);
+        }
+    }
+
 }
 
 static void check(Machine *a, Machine *b, uint32_t op, uint32_t ext,
@@ -751,6 +771,31 @@ static void check_loop_setup(Machine *a, Machine *b, unsigned mode)
     }
 }
 
+static void check_register_loop_setup(Machine *a, Machine *b, unsigned mode)
+{
+    static const unsigned ends[] = { 0, 1, 2, 0xFFFF, 0x10001, 0xFFFFFF };
+    static const unsigned loops[] = { 0x20000000, 0x10000000, 0x40000 };
+    static const unsigned stacks[] = { 0, 0x80000, 0x40000000 };
+    for (unsigned reg = DSP_REG_X0; reg <= DSP_REG_LC; reg++) {
+        if (reg > DSP_REG_M7 && reg < DSP_REG_SR) continue;
+        for (unsigned n = 0; n < 16; n++) {
+            for (unsigned l = 0; l < ARRAY_SIZE(loops); l++) {
+                for (unsigned sp = 0; sp < ARRAY_SIZE(stacks); sp++) {
+                    for (unsigned irq = 0; irq < 2; irq++) {
+                        unsigned seed = 0x100000 | 0x20000 | (n << 8) |
+                            (n & 1 ? 0xFF : 0) | loops[l] | stacks[sp];
+                        check(a, b, 0x06C020 | (reg << 8), 0x30, seed, mode, irq);
+                        for (unsigned e = 0; e < ARRAY_SIZE(ends); e++) {
+                            check(a, b, 0x06C010 | (reg << 8), ends[e], seed, mode, irq);
+                            check(a, b, 0x06C000 | (reg << 8), ends[e], seed, mode, irq);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 static void check_program_transfers(Machine *a, Machine *b, unsigned mode)
 {
     for (unsigned reg = DSP_REG_X0; reg <= DSP_REG_M7; reg++) {
@@ -856,7 +901,10 @@ int main(int argc, char **argv)
     if (relative_only || loops_only || program_only) {
         for (unsigned mode = 0; mode < 4; mode++) {
             if (relative_only) check_relative_branches(a, b, mode);
-            if (loops_only) check_loop_setup(a, b, mode);
+            if (loops_only) {
+                check_loop_setup(a, b, mode);
+                check_register_loop_setup(a, b, mode);
+            }
             if (program_only) check_program_transfers(a, b, mode);
             if (program_only) check_program_write_sequences(a, b, mode);
         }
@@ -887,6 +935,7 @@ int main(int argc, char **argv)
         /* Sweep every legal parallel ALU encoding. */
         check_relative_branches(a, b, mode);
         check_loop_setup(a, b, mode);
+        check_register_loop_setup(a, b, mode);
         for (unsigned cc = 0; cc < 16; cc++) {
             for (unsigned sr = 0; sr <= 0xFF; sr += 0xFF) {
                 unsigned input = 0xE0000 | sr;
