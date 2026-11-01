@@ -1,5 +1,7 @@
 # Changelog of the libretro core
 
+- Skip CPU lookup and thread-identity checks when DSP guards are already retired. Use an atomic inactive flag so external borrowers keep the fast path without touching CPU-owned callback/TLB state.
+
 - Retire a completed Vulkan command slot when eager submission has already proved its fence ready. The following draw reuses that result instead of calling a fence wait again; existing GPU-RAM ownership, deferred destruction and timestamp retirement still run exactly once.
 - Run fixed-frame GPU regression oracles with deterministic guest time so slow software rendering cannot shift pixel checks or leave signed-texture probes unfinished. Preserve exact pixel expectations and normal-mode wait-accounting tests.
 
