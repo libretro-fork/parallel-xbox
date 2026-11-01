@@ -1,5 +1,7 @@
 # Changelog of the libretro core
 
+- Match each utility vertex shader’s builtin interface in the test-only geometry capture stage, retaining strict Vulkan validation for clear-shader comparisons.
+
 - Build signed-texture guest ROM fixtures with an x86 cross compiler on ARM CI hosts, independently of the native core compiler.
 
 - Preserve geometry input-array extents when parsing point output layouts in the core shader compiler; triangle and quad point modes retain all input vertices. Validate every generated reference module’s input extents independently of GPU behavior.

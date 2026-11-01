@@ -42,19 +42,39 @@ static void raster_tests(VkShaderModule*vs,VkShaderModule*fs){
  }
  vkDestroyPipelineLayout(device,layout,NULL);
 }
+/* This test probe reads only Position. The compiler's generic builtin
+ * block also declares PointSize; narrow that unused test-only input so it
+ * matches the immutable utility vertex shader's Position-only interface.
+ * Production modules and the values being tested remain untouched. */
+static void position_only_probe(GlslcResult *code)
+{
+ uint32_t block=0;
+ for(size_t at=5;at<code->num_words;){uint32_t *p=code->words+at;unsigned n=p[0]>>16,op=p[0]&65535;
+  if(op==SpvOpMemberDecorate&&n==5&&p[2]==1&&p[3]==SpvDecorationBuiltIn&&p[4]==SpvBuiltInPointSize){assert(!block);block=p[1];}
+  at+=n;
+ }
+ assert(block);size_t out=5;unsigned removed=0;
+ for(size_t at=5;at<code->num_words;){uint32_t *p=code->words+at;unsigned n=p[0]>>16,op=p[0]&65535;
+  if((op==SpvOpMemberDecorate||op==SpvOpMemberName)&&p[1]==block&&p[2]==1){removed++;}
+  else if(op==SpvOpTypeStruct&&p[1]==block){assert(n==4);code->words[out++]=(3u<<16)|op;code->words[out++]=p[1];code->words[out++]=p[2];removed++;}
+  else {memmove(code->words+out,p,n*4);out+=n;}
+  at+=n;
+ }
+ assert(removed==3);code->num_words=out;
+}
 static void vertex_tests(const char*folder,unsigned version,VkShaderModule*vs){
- const char*source="#version 450\nlayout(points) in;layout(points,max_vertices=1) out;layout(std430,binding=0) buffer Output {vec4 pos[];};void main(){pos[gl_PrimitiveIDIn]=gl_in[0].gl_Position;}\n";GlslcResult code=compile(GLSLC_STAGE_GEOMETRY,source,version);char name[64];snprintf(name,sizeof(name),"probe-geometry-%u",version);save(folder,name,code.words,code.num_words);VkShaderModule gs=gpu_module(code.words,code.num_words);free(code.words);
+ const char*source="#version 450\nlayout(points) in;layout(points,max_vertices=1) out;layout(std430,binding=0) buffer Output {vec4 pos[];};void main(){pos[gl_PrimitiveIDIn]=gl_in[0].gl_Position;}\n";GlslcResult code=compile(GLSLC_STAGE_GEOMETRY,source,version);char name[64];snprintf(name,sizeof(name),"probe-geometry-%u",version);save(folder,name,code.words,code.num_words);VkShaderModule gs[2];gs[0]=gpu_module(code.words,code.num_words);position_only_probe(&code);snprintf(name,sizeof(name),"probe-position-only-%u",version);save(folder,name,code.words,code.num_words);gs[1]=gpu_module(code.words,code.num_words);free(code.words);
  VkDescriptorSetLayoutBinding binding={.binding=0,.descriptorType=VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,.descriptorCount=1,.stageFlags=VK_SHADER_STAGE_GEOMETRY_BIT};VkDescriptorSetLayoutCreateInfo di={.sType=VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,.bindingCount=1,.pBindings=&binding};VkDescriptorSetLayout dsl;CHECK(vkCreateDescriptorSetLayout(device,&di,NULL,&dsl));VkPipelineLayoutCreateInfo li={.sType=VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,.setLayoutCount=1,.pSetLayouts=&dsl};VkPipelineLayout layout;CHECK(vkCreatePipelineLayout(device,&li,NULL,&layout));VkDescriptorPoolSize size={VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,1};VkDescriptorPoolCreateInfo pi={.sType=VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,.maxSets=1,.poolSizeCount=1,.pPoolSizes=&size};VkDescriptorPool dp;CHECK(vkCreateDescriptorPool(device,&pi,NULL,&dp));VkDescriptorSetAllocateInfo da={.sType=VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,.descriptorPool=dp,.descriptorSetCount=1,.pSetLayouts=&dsl};VkDescriptorSet set;CHECK(vkAllocateDescriptorSets(device,&da,&set));Buffer output=make_buffer(4096,VK_BUFFER_USAGE_STORAGE_BUFFER_BIT),indices=make_buffer(256,VK_BUFFER_USAGE_INDEX_BUFFER_BIT);const uint32_t idx[]={0,1,2,3,7,257,100000,9};memcpy(indices.mapped,idx,sizeof(idx));VkDescriptorBufferInfo buffer={output.buffer,0,VK_WHOLE_SIZE};VkWriteDescriptorSet write={.sType=VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,.dstSet=set,.dstBinding=0,.descriptorCount=1,.descriptorType=VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,.pBufferInfo=&buffer};vkUpdateDescriptorSets(device,1,&write,0,NULL);
  VkSubpassDescription sub={.pipelineBindPoint=VK_PIPELINE_BIND_POINT_GRAPHICS};VkRenderPassCreateInfo rp={.sType=VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,.subpassCount=1,.pSubpasses=&sub};VkRenderPass pass;CHECK(vkCreateRenderPass(device,&rp,NULL,&pass));VkFramebufferCreateInfo fc={.sType=VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,.renderPass=pass,.width=1,.height=1,.layers=1};VkFramebuffer fb;CHECK(vkCreateFramebuffer(device,&fc,NULL,&fb));
  const uint32_t first[]={0,1,2,3,16,65536,2147483640};const int offsets[]={-7,0,100};
  for(unsigned v=0;v<2;v++){
-  VkPipeline p=pipeline(vs[v],VK_NULL_HANDLE,gs,layout,pass,(VkViewport){0,0,1,1,0,1},(VkRect2D){{0,0},{1,1}});
+  VkPipeline p=pipeline(vs[v],VK_NULL_HANDLE,gs[v],layout,pass,(VkViewport){0,0,1,1,0,1},(VkRect2D){{0,0},{1,1}});
   for(unsigned test=0;test<10;test++){
    memset(output.mapped,0xcd,4096);begin();VkRenderPassBeginInfo bi={.sType=VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,.renderPass=pass,.framebuffer=fb,.renderArea={{0,0},{1,1}}};vkCmdBeginRenderPass(command,&bi,VK_SUBPASS_CONTENTS_INLINE);vkCmdBindPipeline(command,VK_PIPELINE_BIND_POINT_GRAPHICS,p);vkCmdBindDescriptorSets(command,VK_PIPELINE_BIND_POINT_GRAPHICS,layout,0,1,&set,0,NULL);if(test<7)vkCmdDraw(command,8,1,first[test],0);else{vkCmdBindIndexBuffer(command,indices.buffer,0,VK_INDEX_TYPE_UINT32);vkCmdDrawIndexed(command,8,1,0,offsets[test-7],0);}vkCmdEndRenderPass(command);host_barrier(output,VK_PIPELINE_STAGE_GEOMETRY_SHADER_BIT,VK_ACCESS_SHADER_WRITE_BIT);submit();
    for(unsigned i=0;i<8;i++){uint32_t index=test<7?first[test]+i:idx[i]+(uint32_t)offsets[test-7];float expected[4]={-1.0f+(float)((index&1)<<2),-1.0f+(float)((index&2)<<1),0,1};assert(!memcmp((float*)output.mapped+i*4,expected,sizeof(expected)));}for(unsigned i=8*16;i<4096;i++)assert(((unsigned char*)output.mapped)[i]==0xcd);gpu_cases++;
   }vkDestroyPipeline(device,p,NULL);
  }
- drop_buffer(indices);drop_buffer(output);vkDestroyFramebuffer(device,fb,NULL);vkDestroyRenderPass(device,pass,NULL);vkDestroyDescriptorPool(device,dp,NULL);vkDestroyPipelineLayout(device,layout,NULL);vkDestroyDescriptorSetLayout(device,dsl,NULL);vkDestroyShaderModule(device,gs,NULL);
+ drop_buffer(indices);drop_buffer(output);vkDestroyFramebuffer(device,fb,NULL);vkDestroyRenderPass(device,pass,NULL);vkDestroyDescriptorPool(device,dp,NULL);vkDestroyPipelineLayout(device,layout,NULL);vkDestroyDescriptorSetLayout(device,dsl,NULL);vkDestroyShaderModule(device,gs[0],NULL);vkDestroyShaderModule(device,gs[1],NULL);
 }
 static void gpu_test(const char*folder,unsigned version,GlslcResult*v,GlslcResult*f,SpvStaticModule sv,SpvStaticModule sf){if(!device)gpu_init();VkShaderModule vs[]={gpu_module(v->words,v->num_words),gpu_module(sv.words,sv.num_words)},fs[]={gpu_module(f->words,f->num_words),gpu_module(sf.words,sf.num_words)};raster_tests(vs,fs);vertex_tests(folder,version,vs);for(unsigned i=0;i<2;i++){vkDestroyShaderModule(device,vs[i],NULL);vkDestroyShaderModule(device,fs[i],NULL);}}
 static void gpu_finish(void){assert(gpu_cases==88&&!errors);printf("Utility GPU: %u raster/indexed/non-indexed comparisons passed, validation %s\n",gpu_cases,validation_enabled?"enabled":"unavailable; SPIR-V validated separately");vkDestroyFence(device,fence,NULL);vkDestroyCommandPool(device,pool,NULL);vkDestroyDevice(device,NULL);if(messenger){PFN_vkDestroyDebugUtilsMessengerEXT destroy=(void*)vkGetInstanceProcAddr(instance,"vkDestroyDebugUtilsMessengerEXT");destroy(instance,messenger,NULL);}vkDestroyInstance(instance,NULL);}
