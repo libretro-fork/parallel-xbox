@@ -38,6 +38,10 @@ def main():
                         help="declare one swizzled mip while retaining a mip-filter request")
     parser.add_argument("--linear-level", action="store_true",
                         help="use a 4x4 linear G8B8 image with --single-level")
+    parser.add_argument("--native-color", nargs="?", choices=("rgba8", "rgb565"), const="rgba8",
+                        help="RGBA8 native sampler colors with --mixed or --color")
+    parser.add_argument("--native-mip-chain", action="store_true",
+                        help="add a contrasting mip under nonmip native-color filters")
     parser.add_argument("--linear-mip-count", type=int, choices=range(16), default=1,
                         help="raw mip-count field for --linear-level; storage stays one level")
     parser.add_argument("--prime-address", action="store_true",
@@ -50,7 +54,7 @@ def main():
                         help="base size of the complete mip fixture")
     parser.add_argument("--sampler-transition", choices=("lod0-to-mip", "mip-to-lod0"),
                         help="prime the same image with the other filter class before drawing")
-    parser.add_argument("--lod-bias", type=float, choices=(-4, 0, 0.25, 4), default=0,
+    parser.add_argument("--lod-bias", type=float, choices=(-4, 0, 0.25, 1, 1.25, 4), default=0,
                         help="sampler LOD bias for the mixed/mip-filter matrix")
     args = parser.parse_args()
     if args.luminance_profile and (args.color or args.mixed or args.mip_filter):
@@ -74,6 +78,10 @@ def main():
     explicit_address = args.mip_address_u is not None or args.mip_address_v is not None
     if args.linear_level and (not args.single_level or args.mip_base_size != 4 or not explicit_address):
         parser.error("--linear-level requires --single-level, 4x4 and explicit addresses")
+    if args.native_color and not ((args.mixed or args.color) and not args.mip_filter):
+        parser.error("--native-color requires --mixed or --color without mip filters")
+    if args.native_mip_chain and not args.native_color:
+        parser.error("--native-mip-chain requires --native-color")
     if args.linear_mip_count != 1 and not args.linear_level:
         parser.error("--linear-mip-count requires --linear-level")
     if args.prime_address and not (args.single_level and args.mip_mixed and explicit_address):
@@ -118,6 +126,12 @@ def main():
                         f"-DBUMP_LUM_OFFSET={offset}"]
         if args.color or args.mixed or args.mip_filter:
             defines.append("-DBUMP_FILTER_COLOR_PROBE")
+        if args.native_color:
+            defines.append("-DBUMP_NATIVE_COLOR")
+            if args.native_mip_chain:
+                defines.append("-DBUMP_NATIVE_CHAIN")
+            if args.native_color == "rgb565":
+                defines.append("-DBUMP_NATIVE_RGB565")
         if args.mixed:
             defines.append("-DBUMP_FILTER_MIXED_PROBE")
             defines.append(f"-DBUMP_MIXED_BIAS={int(args.lod_bias * 256) & 0x1fff}")
@@ -184,7 +198,7 @@ def main():
         writer.writerow(["id", "layout", "mode", "axis", "signed_channels", "filter",
                          "coordinate", "result_address", "lod_bias", "mip_filter",
                          "max_lod", "wrap_period", "mag_filter", "address_mode",
-                         "sample_u", "sample_v", "min_lod", "sampler_transition", "base_size", "border_color", "mip_count"])
+                         "sample_u", "sample_v", "min_lod", "sampler_transition", "base_size", "border_color", "mip_count", "native_palette", "native_format", "native_chain"])
         for i in range(192):
             if args.luminance_profile:
                 flags = (i // 6) % 16
@@ -224,13 +238,17 @@ def main():
                                      args.mip_base_size, f"0x{args.border_color:08x}",
                                      args.linear_mip_count if args.linear_level else 1 if args.single_level else args.mip_base_size.bit_length()])
                     continue
-                writer.writerow([i, ("linear", "swizzled")[i // 96],
-                                 "mixed_color" if args.mixed else "color", "BG", channels,
+                row = [i, ("linear", "swizzled")[i // 96],
+                                 ("native_mixed" if args.mixed else "native_color") if args.native_color else
+                                 "mixed_color" if args.mixed else "color", "BG", "none" if args.native_color else channels,
                                  (("min_point_mag_linear", "min_linear_mag_point") if args.mixed
                                   else ("point", "linear"))[(i // 3) % 2],
                                  (("magnified", "near_magnified", "minified") if args.mixed
                                   else ("left_center", "midpoint", "right_center"))[i % 3],
-                                 f"0x{0x300204 + i * 8:08x}", args.lod_bias if args.mixed else 0, 0])
+                                 f"0x{0x300204 + i * 8:08x}", args.lod_bias if args.mixed else 0, 0]
+                if args.native_color:
+                    row += [""] * 11 + [flags, args.native_color, int(args.native_mip_chain)]
+                writer.writerow(row)
                 continue
             writer.writerow([i, ("linear", "swizzled")[i // 96],
                              ("bump", "bump_luminance")[(i // 48) % 2],

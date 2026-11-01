@@ -26,6 +26,11 @@ _Static_assert(BUMP_RAMP + 32u * 16u * 4u <= 0x04000000u,
                "the fixture must fit in 64 MiB");
 #endif
 
+#ifdef BUMP_NATIVE_COLOR
+#undef BUMP_RAMP
+#define BUMP_RAMP 0x03502000u /* Beyond 192 independent 32-byte native slots. */
+#endif
+
 #if defined(BUMP_FILTER_MIXED_PROBE) || defined(BUMP_FILTER_MIP_PROBE)
 static void bump_mixed_triangle(u32 layout, u32 footprint)
 {
@@ -270,6 +275,9 @@ static void bump_filter_probe(void)
 #endif
         u32 format = swizzled_layout ? 0x28 : 0x17;
         u32 bump_address = BUMP_DATA + id * 16;
+#ifdef BUMP_NATIVE_COLOR
+        bump_address = BUMP_DATA + id * 32;
+#endif
 #ifdef BUMP_FILTER_MIP_PROBE
         swizzled_layout = 1;
         format = 0x28;
@@ -344,6 +352,33 @@ static void bump_filter_probe(void)
                   (word / 2) & 1 ? 0xc040c0c0u : 0x404040c0u);
         }
 #endif
+#ifdef BUMP_NATIVE_COLOR
+        format = swizzled_layout ? 0x06 : 0x12; /* ARGB8 */
+        u32 first = 0xff000000u | ((16u + flags * 11u) << 16) |
+                    ((32u + flags * 7u) << 8) | (240u - flags * 9u);
+        u32 second = 0xff000000u | ((224u - flags * 9u) << 16) |
+                     ((208u - flags * 7u) << 8) | (16u + flags * 11u);
+#ifdef BUMP_NATIVE_RGB565
+        format = swizzled_layout ? 0x05 : 0x11;
+        first = ((first >> 8) & 0xf800u) | ((first >> 5) & 0x07e0u) | ((first >> 3) & 0x001fu);
+        second = ((second >> 8) & 0xf800u) | ((second >> 5) & 0x07e0u) | ((second >> 3) & 0x001fu);
+        ram32(bump_address, first | (second << 16));
+        ram32(bump_address + 4, first | (second << 16));
+#else
+        ram32(bump_address, first); ram32(bump_address + 4, second);
+        ram32(bump_address + 8, first); ram32(bump_address + 12, second);
+#endif
+#ifdef BUMP_NATIVE_CHAIN
+        /* A green lower level exposes accidental interpolation across mips. */
+        ram32(bump_address +
+#ifdef BUMP_NATIVE_RGB565
+              8, 0x07e0u);
+#else
+              16, 0xff00ff00u);
+#endif
+#endif
+        flags = 0; /* Independent colors, without signed-channel conversion. */
+#endif
         /* Reuse the established surface/transform setup, but defer its draw. */
         texture_alias_target(0xc0000000u | format, 1,
                              swizzled_layout ? norm_u[coord] : rect_u[coord],
@@ -351,7 +386,11 @@ static void bump_filter_probe(void)
         method(NV097_SET_TEXTURE_FORMAT,
                1u | (2u << 4) | (1u << 3) | (format << 8) |
                (1u << 16) | (1u << 20) | (1u << 24));
+#if defined(BUMP_NATIVE_COLOR) && !defined(BUMP_NATIVE_RGB565)
+        method(NV097_SET_TEXTURE_CONTROL1, 8u << 16);
+#else
         method(NV097_SET_TEXTURE_CONTROL1, 4u << 16);
+#endif
 #ifdef BUMP_PRIME_SINGLE_ADDRESS
         method(NV097_SET_TEXTURE_ADDRESS, 0x00050505u);
 #elif defined(BUMP_FILTER_CLAMP_PROBE)
@@ -391,6 +430,12 @@ static void bump_filter_probe(void)
                (BUMP_LINEAR_MIP_COUNT << 16) | (2u << 20) | (2u << 24));
         method(NV097_SET_TEXTURE_CONTROL1, 8u << 16);
         method(NV097_SET_TEXTURE_IMAGE_RECT, (4u << 16) | 4u);
+#endif
+#ifdef BUMP_NATIVE_CHAIN
+        method(NV097_SET_TEXTURE_FORMAT,
+               1u | (2u << 4) | (1u << 3) | (format << 8) |
+               (2u << 16) | (1u << 20) | (1u << 24));
+        method(NV097_SET_TEXTURE_CONTROL0, (1u << 30) | (1u << 6));
 #endif
         method(NV097_SET_TEXTURE_FILTER,
 #ifdef BUMP_FILTER_MIP_PROBE

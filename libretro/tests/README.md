@@ -211,6 +211,20 @@ and 1,920 unchanged count-one/swizzled pixels per backend. Raw counts 0, 2 and
 keeping `--linear-level` storage fixed at one image. Linear texture shapes
 ignore raw mip counts and clamps; signed G8B8 shader selection follows that rule.
 
+`test-native-color-sampler.py CHECKOUT [CC]` checks 381,024 production Vulkan
+sampler policies across supported formats, image levels, min/mag modes, clamp
+values, dimensions, cubes, embedded borders and format filtering support.
+`test-native-color-lod0.py CHECKOUT PARENT CANDIDATE HARNESS SCRATCH` checks
+5,376 native RGBA8/RGB565 scalar cases and 1,344 exact matching-filter/G8B8
+parent pixels per backend. Linear and swizzled layouts, six biases, Force
+LOD0 and contrasting lower mip data expose both filter-choice and accidental
+mip-blending failures. `build-bump-probe.py --native-color [rgba8|rgb565]`
+uses 16 independent palettes with `--mixed` or `--color`;
+`--native-mip-chain` retains nonmip filters with a contrasting second image level.
+The Vulkan policy follows the Khronos nonmip emulation rule: a 0.25 LOD ceiling
+preserves the min/mag choice, and nearest mip selection keeps reads at zero.
+Depth, cubes, embedded borders, convolution and existing G8B8 policies are unchanged.
+
 `test-g8b8-single-level.py CHECKOUT PARENT CANDIDATE HARNESS SCRATCH` checks
 one-level swizzled G8B8 images requesting mip-filter modes 3 through 6.
 It covers mixed min/mag, all wrap/edge/mirror/border pairs, LOD bias,
