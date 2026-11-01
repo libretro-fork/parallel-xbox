@@ -12,7 +12,7 @@
 #define VK_CHECK(s) assert((s)==VK_SUCCESS)
 typedef struct {unsigned slot,eager_draw_count;bool in_command_buffer,slot_fence_pending[2];unsigned slot_main[2],slot_sync[2],slot_fence[2],slot_submit[2],settled_submit,submit_count;int device,reuse_wait_us;struct{unsigned w,w_end[2];}frame_gpu;}PGRAPHVkState;
 typedef struct {PGRAPHVkState*vk_renderer_state;}PGRAPHState;
-static unsigned polls,waits,retirements,resolves,submits,clock_now,drops,pool_flushes;
+static unsigned polls,waits,retirements,resolves,submits,clock_now,drops,pool_flushes,teardowns;
 static void lr_gpu_ram_drop(uintptr_t cmd){(void)cmd;drops++;}
 static int status[2];static bool drain_expected,draining;static unsigned waited_fence;
 static int vkGetFenceStatus(int device,unsigned fence){assert(device==9&&fence<2);polls++;return status[fence];}
@@ -28,6 +28,7 @@ static void pgraph_vk_finish(PGRAPHState*pg,unsigned why){
  r->slot_fence_pending[r->slot]=true;r->slot_submit[r->slot]=++r->submit_count;
  r->slot=next;r->in_command_buffer=false;submits++;
 }
+static void teardown_after_settle(PGRAPHState *pg){PGRAPHVkState *r=pg->vk_renderer_state;assert(!r->in_command_buffer&&!r->slot_fence_pending[0]&&!r->slot_fence_pending[1]);teardowns++;}
 /* PRODUCTION */
 int main(void){
  unsigned cases=0;
@@ -102,5 +103,28 @@ int main(void){
   waits=drops=retirements=resolves=0;draining=true;pgraph_vk_wait_all_slots(&q);draining=false;
   assert(!waits&&!drops&&retirements==1&&resolves==1);drain_cases++;
  }
+ unsigned settle_cases=0;
+ for(unsigned newer=0;newer<2;newer++)for(unsigned mask=0;mask<4;mask++)
+ for(unsigned wrap=0;wrap<2;wrap++)for(int known=-2;known<=1;known++)
+ for(unsigned completed=0;completed<3;completed++)for(unsigned recording=0;recording<2;recording++){
+  PGRAPHVkState q={.device=9,.slot_fence={0,1},.frame_gpu={.w_end={101,202}},.in_command_buffer=recording};PGRAPHState p={.vk_renderer_state=&q};
+  uint32_t newest=wrap?0:100;q.slot_submit[newer]=newest;q.slot_submit[newer^1]=newest-1;q.settled_submit=newest+(uint32_t)known;
+  q.slot_fence_pending[0]=mask&1;q.slot_fence_pending[1]=mask&2;
+  status[newer]=completed==2?VK_SUCCESS:VK_NOT_READY;status[newer^1]=completed>=1?VK_SUCCESS:VK_NOT_READY;
+  bool model_pending[2]={q.slot_fence_pending[0],q.slot_fence_pending[1]};uint32_t model_settled=q.settled_submit;unsigned expected_polls=0,expected_retired=0;
+  for(unsigned slot=0;slot<2;slot++)if(model_pending[slot]){
+   bool proven=(int32_t)(q.slot_submit[slot]-model_settled)<=0;
+   if(!proven)expected_polls++;
+   if(proven||status[slot]==VK_SUCCESS){model_pending[slot]=false;expected_retired++;if((int32_t)(q.slot_submit[slot]-model_settled)>0)model_settled=q.slot_submit[slot];}
+  }
+  polls=waits=retirements=resolves=drops=teardowns=0;drain_expected=true;
+  pgraph_vk_settle_poll(&p);
+  assert(polls==expected_polls&&!waits&&retirements==expected_retired&&resolves==expected_retired&&drops==2*expected_retired);
+  assert(q.slot_fence_pending[0]==model_pending[0]&&q.slot_fence_pending[1]==model_pending[1]&&q.settled_submit==model_settled);
+  assert(teardowns==(unsigned)(!recording&&!model_pending[0]&&!model_pending[1]));
+  unsigned old_retired=retirements,old_drops=drops;polls=0;pgraph_vk_settle_poll(&p);assert(retirements==old_retired&&drops==old_drops&&!waits);
+  settle_cases++;
+ }
+ printf("PASS: %u settle-poll schedules, completion proofs, same-queue coverage, rollover, partial retirement and recording-safe teardown\n",settle_cases);
  printf("PASS: %u eager, %u serial-proof, %u allocation-retry and %u full-drain schedules\n",cases,serial_cases,retry_cases,drain_cases);
 }

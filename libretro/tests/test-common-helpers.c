@@ -2,10 +2,19 @@
 #include "qemu/osdep.h"
 #include "hw/xbox/nv2a/pgraph/glsl/psh.h"
 #include "hw/xbox/nv2a/pgraph/spv/glslc.h"
-static unsigned convolution_equivalence_checks, clip_equivalence_checks, shadow_equivalence_checks, shaderctl_equivalence_checks, shaderprog_equivalence_checks;
+static unsigned convolution_equivalence_checks, clip_equivalence_checks, shadow_equivalence_checks, shaderctl_equivalence_checks, shaderprog_equivalence_checks, combiner_equivalence_checks;
 static void emit(const char *directory,unsigned api,unsigned kind,unsigned id,const PshState *state) {
   GenPshGlslOptions opts={.vulkan=api,.ubo_binding=0,.tex_binding=1};
   MString *text=pgraph_glsl_gen_psh(state,opts);char path[4096];
+  for(unsigned bit=0;bit<=32;bit++) {
+    uint32_t ignored=~0x000111FFu;
+    uint32_t change=bit==32?ignored:((1u<<bit)&ignored);
+    if(!change)continue;
+    PshState variant;memcpy(&variant,state,sizeof(variant));variant.combiner_control^=change;
+    MString *other=pgraph_glsl_gen_psh(&variant,opts);
+    assert(!strcmp(mstring_get_str(text),mstring_get_str(other)));
+    mstring_unref(other);combiner_equivalence_checks++;
+  }
   for(unsigned bit=20;bit<=32;bit++) {
     uint32_t change=bit==32?0xFFF00000u:(1u<<bit);
     PshState variant;memcpy(&variant,state,sizeof(variant));variant.shader_stage_program^=change;
@@ -141,7 +150,44 @@ static void check_active_input_selectors(void) {
  }
  assert(count==20);printf("PASS: 20 active stage-input programs; 10 Vulkan variants compile\n");
 }
+static void check_active_combiners(void) {
+ unsigned count=0,equivalent=0;
+ for(unsigned api=0;api<2;api++)for(unsigned stages=0;stages<=8;stages++) {
+  PshState state={0};state.depth_format=DEPTH_FORMAT_D24;state.smooth_shading=true;
+  state.combiner_control=stages;state.final_inputs_0=PS_REGISTER_R0;
+  for(unsigned i=0;i<8;i++) {
+   state.rgb_inputs[i]=(PS_REGISTER_C0<<24)|((PS_REGISTER_ZERO|PS_INPUTMAPPING_UNSIGNED_INVERT)<<16)|(PS_REGISTER_C1<<8)|(PS_REGISTER_ZERO|PS_INPUTMAPPING_UNSIGNED_INVERT);
+   state.alpha_inputs[i]=state.rgb_inputs[i]|0x10101010u;
+   state.rgb_outputs[i]=state.alpha_outputs[i]=(PS_REGISTER_R0<<8)|(PS_COMBINEROUTPUT_AB_CD_MUX<<12);
+  }
+  GenPshGlslOptions opts={.vulkan=api,.ubo_binding=0,.tex_binding=1};
+  MString *baseline=pgraph_glsl_gen_psh(&state,opts);
+  for(unsigned flags=0;flags<8;flags++) {
+   state.combiner_control=stages|((flags&1)?0x100u:0)|((flags&2)?0x1000u:0)|((flags&4)?0x10000u:0);
+   MString *text=pgraph_glsl_gen_psh(&state,opts);
+   bool changes=(stages>=2&&flags)||(stages>=1&&(flags&1));
+   assert((strcmp(mstring_get_str(baseline),mstring_get_str(text))!=0)==changes);
+   for(unsigned bit=0;bit<=32;bit++) {
+    uint32_t ignored=~0x000111FFu,change=bit==32?ignored:((1u<<bit)&ignored);
+    if(!change)continue;
+    PshState variant;memcpy(&variant,&state,sizeof(variant));variant.combiner_control^=change;
+    MString *other=pgraph_glsl_gen_psh(&variant,opts);
+    assert(!strcmp(mstring_get_str(text),mstring_get_str(other)));
+    mstring_unref(other);equivalent++;
+   }
+   if(api) {
+    GlslcOptions options={0};GlslcResult result={0};
+    assert(glslc_compile(GLSLC_STAGE_FRAGMENT,mstring_get_str(text),&options,&result));free(result.words);
+   }
+   mstring_unref(text);count++;
+  }
+  mstring_unref(baseline);
+ }
+ assert(count==144&&equivalent==3168);
+ printf("PASS: 144 active combiner programs; 3168 ignored-bit comparisons; 72 Vulkan variants compile\n");
+}
 int main(int argc,char **argv) {
+ check_active_combiners();
  check_active_input_selectors();
  check_active_shadow();
  check_active_clip();
@@ -200,6 +246,8 @@ int main(int argc,char **argv) {
    state.final_inputs_0=PS_REGISTER_T0;emit(argv[1],api,3,count++,&state);
   }
  }
+ assert(combiner_equivalence_checks==16984);
+ printf("PASS: %u byte-identical ignored-COMBINECTL source comparisons\n",combiner_equivalence_checks);
  assert(shaderprog_equivalence_checks==10036);
  printf("PASS: %u byte-identical ignored-SHADERPROG source comparisons\n",shaderprog_equivalence_checks);
  assert(shaderctl_equivalence_checks==10036);
