@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Under Vulkan upload-ring pressure, wait directly for the first submission owning the full ring and retire covered earlier work in FIFO order. Avoid separate fence queries/waits for unrelated ring users and skip futile waits when only the open recording owns ring space.
+
 - Track draw references per Vulkan texture image so copy-on-write replacements do not inherit the retired image's upload-ordering requirement. Skip redundant recording submissions for unreferenced replacement images while preserving deferred retirement, descriptor sequence changes and ordering once the new image is drawn.
 
 - Use aligned depth/stencil plane footprints for Vulkan readback batching and buffer capacity instead of eight bytes per scaled pixel. Keep direct readbacks in the open batch when their actual storage fits, avoiding unnecessary batch flushes and paired-buffer growth while retaining host visibility and completion waits.

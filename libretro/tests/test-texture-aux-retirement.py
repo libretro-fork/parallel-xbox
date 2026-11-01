@@ -29,7 +29,7 @@ typedef struct {
  bool in_command_buffer;uint32_t submit_count,settled_submit;
  struct {uint64_t submitted,settled;} display;uint64_t aux_submitted,aux_settled;
 } PGRAPHVkState;
-typedef struct {unsigned cube_source_mask;bool depth_source_copy,s2t_borrowed;uint64_t allocation,sampler,image_view,image;ImageInfo image_ci;} TextureBinding;
+typedef struct {unsigned cube_source_mask;bool depth_source_copy,s2t_borrowed,image_referenced;uint64_t allocation,sampler,image_view,image;ImageInfo image_ci;} TextureBinding;
 static unsigned images,views,samplers;
 #define vkDestroyPipeline(d,h,a) ((void)(d),(void)(h),(void)(a))
 #define vkDestroyPipelineLayout(d,h,a) ((void)(d),(void)(h),(void)(a))

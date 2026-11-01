@@ -43,7 +43,7 @@ static bool grow_noncoherent;
 void pgraph_vk_wait_for_aux(PGRAPHState *pg);
 static unsigned fence_slot(VkFence f){unsigned i=(unsigned)(uintptr_t)f-1;assert(i<PGRAPH_VK_AUX_SLOTS);return i;}
 static void nv2a_profile_inc_counter(unsigned n){assert(n==NV2A_PROF_QUEUE_SUBMIT_AUX);}
-VKAPI_ATTR VkResult VKAPI_CALL vkGetFenceStatus(VkDevice device,VkFence fence){assert(device==state.device);unsigned s=fence_slot(fence);assert(state.aux[s].pending);polls++;return signaled[s]?VK_SUCCESS:VK_NOT_READY;}
+VKAPI_ATTR VkResult VKAPI_CALL vkGetFenceStatus(VkDevice device,VkFence fence){assert(device==state.device);unsigned s=fence_slot(fence);assert(state.aux[s].pending);polls++;if(signaled[s])for(unsigned i=0;i<PGRAPH_VK_AUX_SLOTS;i++)if(state.aux[i].pending&&serial[i]<=serial[s])signaled[i]=true;return signaled[s]?VK_SUCCESS:VK_NOT_READY;}
 VKAPI_ATTR VkResult VKAPI_CALL vkWaitForFences(VkDevice device,uint32_t count,const VkFence *fences,VkBool32 all,uint64_t timeout){assert(device==state.device&&count==1&&all&&timeout==UINT64_MAX);unsigned s=fence_slot(fences[0]);assert(state.aux[s].pending);last_waited=s;waits++;for(unsigned i=0;i<PGRAPH_VK_AUX_SLOTS;i++)if(state.aux[i].pending&&serial[i]<=serial[s])signaled[i]=true;return VK_SUCCESS;}
 VKAPI_ATTR VkResult VKAPI_CALL vkResetFences(VkDevice device,uint32_t count,const VkFence *fences){assert(device==state.device&&count==1);unsigned s=fence_slot(fences[0]);assert(state.aux[s].pending&&signaled[s]);for(unsigned r=0;r<2;r++)for(unsigned i=0;i<CAPACITY;i++)if(owner[r][i]==(int)s){assert(bytes[r][i]==expected[r][i]);owner[r][i]=-1;}signaled[s]=false;resets++;return VK_SUCCESS;}
 VKAPI_ATTR VkResult VKAPI_CALL vkBeginCommandBuffer(VkCommandBuffer cmd,const VkCommandBufferBeginInfo *info){assert(state.in_aux_command_buffer&&cmd==state.aux[state.aux_slot].cmd&&!state.aux[state.aux_slot].pending&&info->flags==VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);return VK_SUCCESS;}
@@ -121,6 +121,23 @@ int main(void){
  }
  /* One retired slot opens enough room: do not poll the next unfinished one. */
  setup(64,64);VkCommandBuffer cmd=pgraph_vk_begin_single_time_commands(&pg);allocate(0,16,1);submit(cmd);cmd=pgraph_vk_begin_single_time_commands(&pg);allocate(0,16,1);submit(cmd);signaled[0]=true;cmd=pgraph_vk_begin_single_time_commands(&pg);allocate(0,32,1);assert(allocate(0,8,1)==0&&polls==1&&!waits&&state.aux[1].pending);submit(cmd);finish();
+ /* Skip unrelated submissions, including across the FIFO wrap. */
+ for(unsigned start=0;start<PGRAPH_VK_AUX_SLOTS;start++)
+ for(unsigned complete=0;complete<2;complete++){
+  setup(64,64);state.aux_slot=state.aux_oldest=start;
+  cmd=pgraph_vk_begin_single_time_commands(&pg);allocate(0,16,1);submit(cmd);
+  cmd=pgraph_vk_begin_single_time_commands(&pg);allocate(1,48,1);submit(cmd);
+  unsigned target=(start+1)%PGRAPH_VK_AUX_SLOTS;signaled[target]=complete;
+  cmd=pgraph_vk_begin_single_time_commands(&pg);
+  assert(allocate(1,32,1)==0&&polls==1&&waits==!complete&&resets==2&&drops==2);
+  assert(state.aux_settled==2&&!state.aux_npending);submit(cmd);finish();
+  setup(64,64);state.aux_slot=state.aux_oldest=start;
+  cmd=pgraph_vk_begin_single_time_commands(&pg);allocate(0,16,1);submit(cmd);
+  cmd=pgraph_vk_begin_single_time_commands(&pg);allocate(1,48,1);
+  assert(allocate(1,32,1)==UINT64_MAX&&!polls&&!waits&&!resets&&state.aux_npending==1);
+  submit(cmd);finish();
+ }
+ puts("Ring pressure: one owner-fence query/wait across unrelated FIFO entries; no futile unrelated waits");
  /* Grow only an unused staging recording after pending readers retire. */
  setup(32,64);cmd=pgraph_vk_begin_single_time_commands(&pg);allocate(0,8,1);submit(cmd);cmd=pgraph_vk_begin_single_time_commands(&pg);assert(allocate(0,64,16)==0&&growths==1&&waits==1&&!polls&&state.storage_buffers[0].buffer_size==128);submit(cmd);finish();
  setup(64,64);cmd=pgraph_vk_begin_single_time_commands(&pg);assert(allocate(1,64,16)==UINT64_MAX&&!polls&&!waits&&!growths);allocate(1,48,16);assert(allocate(1,32,16)==UINT64_MAX&&!polls&&!waits);submit(cmd);finish();
@@ -148,6 +165,6 @@ int main(void){
   }
   finish();total_allocations+=allocations;total_polls+=polls;total_waits+=waits;
  }
- printf("Ring ownership: %u allocations over 20000 delayed submissions passed, two rings, wrap/alignment, pressure-only polling, oldest-first waits, growth, exhaustion and slot reuse (polls=%u waits=%u)\n",total_allocations,total_polls,total_waits);
+ printf("Ring ownership: %u allocations over 20000 delayed submissions passed, two rings, wrap/alignment, pressure-only polling, ring-owner waits, growth, exhaustion and slot reuse (polls=%u waits=%u)\n",total_allocations,total_polls,total_waits);
  return 0;
 }

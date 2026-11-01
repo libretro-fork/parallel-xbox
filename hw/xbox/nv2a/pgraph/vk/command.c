@@ -241,6 +241,28 @@ static const int ring_buffer[PGRAPH_VK_RINGS] = {
     [PGRAPH_VK_RING_UNSWIZZLE] = BUFFER_UNSWIZZLE_OUT,
 };
 
+/* All aux submissions use one queue. A ring owner's completed fence also
+ * covers earlier submissions, including those which do not use this ring. */
+static bool aux_retire_ring_owner(PGRAPHVkState *r, int ring)
+{
+    for (int i = 0; i < r->aux_npending; i++) {
+        struct PGRAPHVkAuxSlot *a =
+            &r->aux[(r->aux_oldest + i) % PGRAPH_VK_AUX_SLOTS];
+        if (!a->ring_used[ring]) {
+            continue;
+        }
+        if (vkGetFenceStatus(r->device, a->fence) != VK_SUCCESS) {
+            VK_CHECK(vkWaitForFences(r->device, 1, &a->fence, VK_TRUE,
+                                     UINT64_MAX));
+        }
+        for (int j = 0; j <= i; j++) {
+            aux_release_oldest(r);
+        }
+        return true;
+    }
+    return false;
+}
+
 /* The first byte of a ring still in use: by the oldest submission in
  * flight that uses any, else by the open recording. False when nothing of
  * the ring is in use. */
@@ -324,13 +346,8 @@ bool pgraph_vk_ring_alloc(PGRAPHState *pg, int ring, size_t size,
             *offset = head;
             return true;
         }
-        if (r->aux_npending) {
-            /* Pressure: reclaim one completed submission, then check the
-             * gap before querying another fence. Keep the existing oldest-
-             * first wait when that submission is still running. */
-            if (!aux_retire_oldest(r, true)) {
-                aux_retire_oldest(r, false);
-            }
+        if (aux_retire_ring_owner(r, ring)) {
+            /* Recheck the gap before waiting for another ring owner. */
             continue;
         }
         /* the open recording alone holds more than the ring */
