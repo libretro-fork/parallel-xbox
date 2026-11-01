@@ -247,17 +247,23 @@ typedef void (*LruNodeVisitorFunc)(Lru *lru, LruNode *node, void *opaque);
 static inline
 void lru_visit_active(Lru *lru, LruNodeVisitorFunc visitor_func, void *opaque)
 {
-	if (!lru->num_used) {
+	int remaining = lru->num_used;
+	if (!remaining) {
 		return;
 	}
 	LruNode *iter, *iter_next;
 
 	/* Visit resident nodes in recency order instead of reading every empty
 	 * hash-bin head. Visitors may evict the current node; eviction leaves
-	 * the global chain intact. No caller relinks that chain while visiting. */
+	 * the global chain intact. No caller relinks that chain while visiting.
+	 * Snapshot the active count so current-node eviction does not shorten
+	 * the visit; stop before walking an entirely inactive suffix. */
 	QTAILQ_FOREACH_SAFE(iter, &lru->global, next_global, iter_next) {
 		if (lru_is_node_in_use(lru, iter)) {
 			visitor_func(lru, iter, opaque);
+			if (!--remaining) {
+				break;
+			}
 		}
 	}
 }

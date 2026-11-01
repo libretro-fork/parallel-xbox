@@ -105,6 +105,11 @@ static void readonly_mru(void) {
 #endif
 }
 /* Protect unrelated nodes/metadata to prove these paths do not scan them. */
+typedef struct { unsigned calls; bool evict; } GuardVisit;
+static void guarded_visitor(Lru *lru,LruNode *node,void *opaque) {
+ GuardVisit *v=opaque;assert(lru_is_node_in_use(lru,node));v->calls++;
+ if(v->evict)lru_evict_node(lru,node);
+}
 static void guarded_counts(void) {
  size_t page,bytes;Lru *lru;unsigned char *pool;
 #ifdef _WIN32
@@ -139,6 +144,12 @@ static void guarded_counts(void) {
  assert(lru_get_one_free(lru)==&oldest->node);
  PROTECT(newest,page,WRITE);lru_flush(lru);
  assert(!lru->num_used && lru->num_free==3);
+ /* One active head with an inaccessible free-node suffix. */
+ key=3;assert(lru_lookup(lru,key,&key)==&newest->node);
+ PROTECT(pool+page,2*page,NONE);
+ GuardVisit visit={0};lru_visit_active(lru,guarded_visitor,&visit);assert(visit.calls==1);
+ visit=(GuardVisit){.evict=true};lru_visit_active(lru,guarded_visitor,&visit);assert(visit.calls==1);
+ PROTECT(pool+page,2*page,WRITE);assert(!lru->num_used && lru->num_free==3);
  PROTECT(lru,bytes,NONE);PROTECT(pool,3*page,NONE);
  PROTECT((unsigned char *)lru+offsetof(Lru,num_used)/page*page,page,READ);
  assert(!lru_try_evict_one(lru));lru_flush(lru);lru_visit_active(lru,visit_node,NULL);
@@ -180,7 +191,7 @@ int main(void) {
  readonly_mru();
  guarded_counts();
 #endif
- printf("LRU promotions: 30000 order/callback/collision/eviction cases; read-only MRU metadata and guarded count gates PASS\n");
+ printf("LRU promotions: 30000 order/callback/collision/eviction cases; read-only MRU metadata, guarded count gates and free-tail visits PASS\n");
 #else
  memset(blocked,0,sizeof(blocked));
  for(unsigned mode=0;mode<5;mode++) {

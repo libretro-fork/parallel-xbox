@@ -85,5 +85,13 @@ int main(void) {
     double list_ms=(now()-t)*1000;assert(checksum==expected);
     printf("LRU visit: %u membership cases, collisions, hits and callback eviction passed\n",cases);
     printf("5000 visits of 1024 nodes: bin scan %.3f ms; resident traversal %.3f ms (host-specific)\n",bin_ms,list_ms);
+    unsigned occupancies[]={1,16,128,512,1024};
+    for(unsigned mode=0;mode<5;mode++) {
+        lru_flush(lru);unsigned used=occupancies[mode];
+        for(unsigned key=0;key<used;key++)lru_lookup(lru,(uint64_t)key*619,&key);
+        unsigned loops=20000;checksum=0;t=now();
+        for(unsigned i=0;i<loops;i++)lru_visit_active(lru,touch,NULL);
+        printf("occupancy=%u ns=%.3f\n",used,(now()-t)*1e9/loops);
+    }
     free(nodes);free(lru);
 }

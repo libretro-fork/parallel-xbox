@@ -1,5 +1,7 @@
 # Changelog of the libretro core
 
+- Stop LRU active visits after the entry-time active count, avoiding inactive free-node suffix scans in texture dirty tracking and shader seed collection. Preserve recency/callback order and current-node eviction without extra storage or allocations.
+
 - Reuse fragment shader keys across unused shadow-comparison functions and skip the unused shadow-control register read. Preserve all comparisons for active PROJECT2D/PROJECT3D shadow stages.
 
 - Skip clearing the unused GL geometry-module key payload for states that need no geometry stage. Keep its zero kind tag and byte-identical vertex/fragment keys; geometry-stage states retain full key initialization.
