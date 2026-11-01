@@ -229,9 +229,7 @@ void pgraph_glsl_set_psh_state(PGRAPHState *pg, PshState *state)
     state->point_sprite = pgraph_reg_r(pg, NV_PGRAPH_SETUPRASTER) &
                           NV_PGRAPH_SETUPRASTER_POINTSMOOTHENABLE;
 
-    state->shadow_depth_func =
-        (enum PshShadowDepthFunc)GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_SHADOWCTL),
-                                          NV_PGRAPH_SHADOWCTL_SHADOW_ZFUNC);
+    state->shadow_depth_func = SHADOW_DEPTH_FUNC_NEVER;
     state->z_perspective = pgraph_reg_r(pg, NV_PGRAPH_CONTROL_0) &
                            NV_PGRAPH_CONTROL_0_Z_PERSPECTIVE_ENABLE;
 
@@ -256,6 +254,7 @@ void pgraph_glsl_set_psh_state(PGRAPHState *pg, PshState *state)
             pgraph_reg_r(pg, NV_PGRAPH_COMBINEALPHAO0 + i * 4);
     }
 
+    bool shadow_comparison = false;
     state->g8b8_mip_flags = 0;
     state->g8b8_mip_clamp_u = 0;
     state->g8b8_mip_clamp_v = 0;
@@ -307,6 +306,8 @@ void pgraph_glsl_set_psh_state(PGRAPHState *pg, PshState *state)
         }
 
         state->shadow_map[i] = f.depth;
+        shadow_comparison |= state->shadow_map[i] &&
+            (mode == PS_TEXTUREMODES_PROJECT2D || mode == PS_TEXTUREMODES_PROJECT3D);
 
         uint32_t filter = pgraph_reg_r(pg, NV_PGRAPH_TEXFILTER0 + i * 4);
         unsigned int min_filter = GET_MASK(filter, NV_PGRAPH_TEXFILTER0_MIN);
@@ -477,6 +478,13 @@ void pgraph_glsl_set_psh_state(PGRAPHState *pg, PshState *state)
                 state->g8b8_mip_flags |= 1u << (i + 4);
             }
         }
+    }
+
+    /* The comparison register is irrelevant without a shadow lookup. */
+    if (shadow_comparison) {
+        state->shadow_depth_func =
+            (enum PshShadowDepthFunc)GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_SHADOWCTL),
+                                              NV_PGRAPH_SHADOWCTL_SHADOW_ZFUNC);
     }
 
     state->surface_zeta_format = pg->surface_shape.zeta_format;
