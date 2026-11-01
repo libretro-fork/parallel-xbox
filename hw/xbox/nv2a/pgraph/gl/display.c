@@ -51,94 +51,29 @@ static float pvideo_calculate_scale(unsigned int din_dout,
     return (calculated_in + 1.0f) / output_size;
 }
 
-/* Display hand-off. The render thread owns the render context and the
- * surfaces; a front buffer reaches the UI thread as a ticket (DispPost:
- * texture, geometry, display parameters, the video overlay registers and a
- * fence after the frame's draws) through a three-slot mailbox. The UI
- * thread waits for that fence on the GPU and blits the texture into one
- * of its two display textures: neither thread switches GL context, takes
- * a lock, or waits for the other. A ticket keeps its surface texture
- * alive (DispRef): the UI thread counts its reference down when it is
- * done with the ticket, and the render thread frees the reference, with
- * the texture, once the surface is gone and no ticket is in flight. */
+/* The render context composes a finished display image before publishing
+ * its three-slot mailbox ticket. The frontend owns the read slot until its
+ * next take; the producer owns the write slot and can replace only the middle
+ * slot. GPU fences order sampling and reuse without CPU completion waits.
+ * Source surfaces are read and subsequently modified on the same context. */
 
 #define DISP_POST_NEW 4
 
-/* Render thread. The texture and the fence are shared objects: any
- * context of the share group may delete them. */
-static void disp_ref_free(PGRAPHGLState *r, DispRef *ref)
-{
-    glDeleteTextures(1, &ref->tex);
-    GLsync f = retro_atomic_exchange_ptr(&ref->presented, NULL);
-    if (f) {
-        glDeleteSync(f);
-    }
-    obj_pool_give(&r->disp_ref_pool, ref);
-}
-
-/* Either thread: a ticket naming the reference is done with. */
-static void disp_ref_put(DispRef *ref)
-{
-    /* release: the ticket's use before the count the render thread
-     * frees the texture by */
-    retro_atomic_dec_int(&ref->refs);
-}
-
-/* Render thread: the orphans whose last ticket has been put back. */
-static void disp_reap_orphans(PGRAPHGLState *r)
-{
-    DispRef *ref, *next;
-    QTAILQ_FOREACH_SAFE(ref, &r->disp_orphans, entry, next) {
-        if (retro_atomic_load_acquire_int(&ref->refs) == 0) {
-            QTAILQ_REMOVE(&r->disp_orphans, ref, entry);
-            disp_ref_free(r, ref);
-        }
-    }
-}
-
-/* Render thread: the surface's texture is being destroyed. */
+/* Source textures never leave this context. Invalidation only drops the
+ * cached scanout identity and lets GL retire its queued same-context reads. */
 void pgraph_gl_display_surface_gone(NV2AState *d, SurfaceBinding *surface)
 {
     PGRAPHGLState *r = d->pgraph.gl_renderer_state;
-    DispRef *ref = surface->disp_ref;
-
-    if (r->disp_last_surface == surface) {
-        r->disp_last_surface = NULL; /* the address may be reused */
+    if (surface == r->disp_last_surface) {
+        r->disp_last_surface = NULL;
     }
-    if (ref == NULL) {
-        glDeleteTextures(1, &surface->gl_buffer);
-        return;
-    }
-    surface->disp_ref = NULL;
-    ref->orphan = true;
-    if (retro_atomic_load_acquire_int(&ref->refs) == 0) {
-        disp_ref_free(r, ref);
-    } else {
-        QTAILQ_INSERT_TAIL(&r->disp_orphans, ref, entry);
-    }
+    glDeleteTextures(1, &surface->gl_buffer);
 }
 
-/* Render thread, before the surface is written again: its last display blit
- * may still be queued on the UI context, so the GPU waits for it first. */
-void pgraph_gl_display_surface_reuse(NV2AState *d, SurfaceBinding *surface)
-{
-    DispRef *ref = surface->disp_ref;
-
-    if (ref == NULL || retro_atomic_load_relaxed_ptr(&ref->presented) == NULL) {
-        return;
-    }
-    GLsync f = retro_atomic_exchange_ptr(&ref->presented, NULL);
-    if (f) {
-        glWaitSync(f, 0, GL_TIMEOUT_IGNORED);
-        glDeleteSync(f);
-    }
-}
-
-/* UI thread state: the display program and two display textures, created
- * in the UI context on first use and kept for the process. */
+/* Render-context composition resources. Mailbox role ownership protects each
+ * slot's metadata; separate cache lines keep writes off the frontend's slot. */
 static struct {
-    bool ready;
-    GLuint prog, vao, vbo, fbo, pvideo_tex;
+    GLuint prog, vao, fbo, pvideo_tex;
     unsigned pvideo_width, pvideo_height;
     GLint tex_loc, pvideo_enable_loc, pvideo_tex_loc, pvideo_in_pos_loc,
           pvideo_pos_loc, pvideo_scale_loc, pvideo_color_key_enable_loc,
@@ -148,10 +83,13 @@ static struct {
         GLint internal_format;
         GLsizei width, height;
         GLenum format, type;
-    } slot[2];
-    int cur; /* the texture on screen, -1 = none yet */
-    unsigned int cur_draw_time;
-} ui;
+        retro_atomic_ptr_t presented;
+        DispPost post;
+    } QEMU_ALIGNED(64) slot[3];
+    int cur; /* frontend-owned read slot, -1 before the first image */
+} ui = { .cur = -1 };
+
+_Static_assert(sizeof(ui.slot[0]) == 64, "display slot metadata fits one cache line");
 
 static void ui_init(void)
 {
@@ -159,7 +97,6 @@ static void ui_init(void)
         memset(&ui.slot[i], 0, sizeof(ui.slot[i]));
         glGenTextures(1, &ui.slot[i].tex);
     }
-    ui.cur = -1;
 
     const char *vs =
         "#version 330\n"
@@ -218,15 +155,11 @@ static void ui_init(void)
 
     glGenVertexArrays(1, &ui.vao);
     glBindVertexArray(ui.vao);
-    glGenBuffers(1, &ui.vbo);
-    glBindBuffer(GL_ARRAY_BUFFER, ui.vbo);
-    glBufferData(GL_ARRAY_BUFFER, 0, NULL, GL_STATIC_DRAW);
     glGenFramebuffers(1, &ui.fbo);
     glGenTextures(1, &ui.pvideo_tex);
-    ui.ready = true;
 }
 
-static void ui_pvideo_overlay(NV2AState *d, const DispPost *p,
+static void ui_pvideo_overlay(NV2AState *d, const DispCompose *p,
                               GLsizei disp_height)
 {
     const DispPvideo *pv = &p->pv;
@@ -336,11 +269,20 @@ static void ui_pvideo_overlay(NV2AState *d, const DispPost *p,
     glUniform3f(ui.pvideo_scale_loc, scale_x, scale_y, 1.0f / p->scale);
 }
 
-/* UI thread, its context current: blit a ticket into a display texture. */
-static void ui_resolve(NV2AState *d, const DispPost *p, int slot)
+static void display_slot_reuse(unsigned slot)
 {
-    g_nv2a_stats.presented_frame_id = p->draw_time;
+    /* A previous frontend read of this slot may still be queued. Its fence
+     * was installed before the frontend traded the slot back to the mailbox. */
+    GLsync presented = retro_atomic_exchange_ptr(&ui.slot[slot].presented, NULL);
+    if (presented) {
+        glWaitSync(presented, 0, GL_TIMEOUT_IGNORED);
+        glDeleteSync(presented);
+    }
+}
 
+/* Render context: compose into the producer-owned mailbox slot. */
+static void ui_resolve(NV2AState *d, const DispCompose *p, int slot)
+{
     unsigned int width = p->disp_width, height = p->disp_height;
     int line_offset = p->line_offset ? p->pitch / p->line_offset : 1;
 
@@ -359,9 +301,14 @@ static void ui_resolve(NV2AState *d, const DispPost *p, int slot)
     width *= p->scale;
     height *= p->scale;
 
-    /* GPU-side: the blit queues behind the frame's draws. */
-    glWaitSync(p->rendered, 0, GL_TIMEOUT_IGNORED);
-    glDeleteSync(p->rendered);
+    display_slot_reuse(slot);
+    bool cost_suspended = pgraph_gl_own_draw_suspend(d);
+    PGRAPHGLState *r = d->pgraph.gl_renderer_state;
+    pgraph_gl_draw_state_invalidate(r);
+    pgraph_gl_tex_shadow_invalidate(r);
+    glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+    glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
 
     GLint prev_fbo = 0;
     glGetIntegerv(GL_FRAMEBUFFER_BINDING, &prev_fbo);
@@ -406,7 +353,6 @@ static void ui_resolve(NV2AState *d, const DispPost *p, int slot)
 
     glBindTexture(GL_TEXTURE_2D, p->tex);
     glBindVertexArray(ui.vao);
-    glBindBuffer(GL_ARRAY_BUFFER, ui.vbo);
     glUseProgram(ui.prog);
     glProgramUniform1i(ui.prog, ui.tex_loc, 0);
     glUniform2f(ui.display_size_loc, width, height);
@@ -420,17 +366,23 @@ static void ui_resolve(NV2AState *d, const DispPost *p, int slot)
     glDisable(GL_STENCIL_TEST);
     glDisable(GL_CULL_FACE);
     glDisable(GL_DEPTH_TEST);
+    glDisable(GL_FRAMEBUFFER_SRGB);
+    glDisable(GL_DITHER);
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-    glClear(GL_COLOR_BUFFER_BIT);
+    /* The full-screen triangle writes every target pixel with blending,
+     * depth and scissor disabled, so no preceding clear is needed. */
     glDrawArrays(GL_TRIANGLES, 0, 3);
+
 
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
         GL_TEXTURE_2D, 0, 0);
     glBindFramebuffer(GL_FRAMEBUFFER, prev_fbo);
-    glBindVertexArray(0);
-    glUseProgram(0);
+    glBindVertexArray(r->gl_vertex_array);
+    glUseProgram(r->shader_binding ? r->shader_binding->gl_program : 0);
     glActiveTexture(GL_TEXTURE0);
+    if (cost_suspended) {
+        pgraph_gl_own_draw_resume(d);
+    }
 }
 
 void pgraph_gl_init_display(NV2AState *d)
@@ -443,22 +395,19 @@ void pgraph_gl_init_display(NV2AState *d)
     r->disp_post_write = 0;
     r->disp_post_read = 1;
     retro_atomic_int_init(&r->disp_post_middle, 2);
-    memset(r->disp_posts, 0, sizeof(r->disp_posts));
-    QTAILQ_INIT(&r->disp_orphans);
     retro_atomic_store_relaxed_int(&r->disp_shown, 0);
-    /* A ticket per surface the display ever saw, few at a time */
-    obj_pool_init(&r->disp_ref_pool, sizeof(DispRef), 64);
+    ui_init();
+    pgraph_gl_draw_state_invalidate(r);
+    pgraph_gl_tex_shadow_invalidate(r);
+    glBindVertexArray(r->gl_vertex_array);
     scratch_init(&r->pvideo_scratch, 720 * 576 * 4);
 }
 
 /* Render thread: a ticket the UI thread will never resolve. */
-static void disp_post_release(PGRAPHGLState *r, const DispPost *p)
+static void disp_post_release(const DispPost *p)
 {
     if (p->rendered) {
         glDeleteSync(p->rendered);
-    }
-    if (p->ref) {
-        disp_ref_put(p->ref);
     }
 }
 
@@ -468,12 +417,11 @@ static void disp_post_release(PGRAPHGLState *r, const DispPost *p)
  * superseded: that frame is never presented, and it is released here). */
 static void disp_post_ticket(PGRAPHGLState *r, const DispPost *p)
 {
-    disp_reap_orphans(r);
-    r->disp_posts[r->disp_post_write] = *p;
+    ui.slot[r->disp_post_write].post = *p;
     int old = retro_atomic_exchange_int(&r->disp_post_middle,
                                         r->disp_post_write | DISP_POST_NEW);
     if (old & DISP_POST_NEW) {
-        disp_post_release(r, &r->disp_posts[old & 3]);
+        disp_post_release(&ui.slot[old & 3].post);
     }
     r->disp_post_write = old & 3;
 }
@@ -487,16 +435,18 @@ void pgraph_gl_finalize_display(PGRAPHState *pg)
         &r->disp_post_middle,
         retro_atomic_load_relaxed_int(&r->disp_post_middle) & 3);
     if (m & DISP_POST_NEW) {
-        disp_post_release(r, &r->disp_posts[m & 3]);
+        disp_post_release(&ui.slot[m & 3].post);
     }
-    disp_reap_orphans(r);
-    /* the UI thread is done with its slot: what it holds is let go */
-    DispRef *ref, *next;
-    QTAILQ_FOREACH_SAFE(ref, &r->disp_orphans, entry, next) {
-        QTAILQ_REMOVE(&r->disp_orphans, ref, entry);
-        disp_ref_free(r, ref);
+    for (unsigned i = 0; i < ARRAY_SIZE(ui.slot); i++) {
+        glDeleteSync(retro_atomic_exchange_ptr(&ui.slot[i].presented, NULL));
+        glDeleteTextures(1, &ui.slot[i].tex);
     }
-    obj_pool_finalize(&r->disp_ref_pool);
+    glDeleteTextures(1, &ui.pvideo_tex);
+    glDeleteVertexArrays(1, &ui.vao);
+    glDeleteFramebuffers(1, &ui.fbo);
+    glDeleteProgram(ui.prog);
+    memset(&ui, 0, sizeof(ui));
+    ui.cur = -1;
     scratch_finalize(&r->pvideo_scratch);
 }
 
@@ -552,13 +502,7 @@ static bool post_scanout(NV2AState *d, bool *fresh)
 
     pgraph_gl_upload_surface_data(d, surface, !tcg_enabled());
 
-    if (surface->disp_ref == NULL) {
-        surface->disp_ref = obj_pool_take(&r->disp_ref_pool);
-        surface->disp_ref->tex = surface->gl_buffer;
-    }
-
-    DispPost p = {
-        .ref = surface->disp_ref,
+    DispCompose p = {
         .tex = surface->gl_buffer,
         .draw_time = surface->draw_time,
         .width = surface->width,
@@ -591,14 +535,19 @@ static bool post_scanout(NV2AState *d, bool *fresh)
             .color_key = regs[NV_PVIDEO_COLOR_KEY],
         };
     }
-    /* The frame's draws are queued on the render context: the UI thread's
-     * blit waits for this on the GPU, not this thread. */
-    p.rendered = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
+    /* Compose before publication. No source image crosses contexts, and
+     * the number of image passes is unchanged from frontend composition. */
+    unsigned slot = r->disp_post_write;
+    ui_resolve(d, &p, slot);
+    DispPost post = {
+        .tex = ui.slot[slot].tex,
+        .draw_time = surface->draw_time,
+        .pvideo = pvideo,
+        .rendered = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0),
+    };
     glFlush();
 
-    retro_atomic_inc_int(&p.ref->refs);
-
-    disp_post_ticket(r, &p);
+    disp_post_ticket(r, &post);
     retro_atomic_store_relaxed_int(&r->disp_shown, 1);
 
     r->disp_last_surface = surface;
@@ -628,6 +577,22 @@ void pgraph_gl_present_scanout(NV2AState *d)
     post_scanout(d, &fresh);
 }
 
+/* Queue this only when returning the old read slot. It covers every prior
+ * frontend blit, including duplicate runs, without a fence/flush per duplicate.
+ * Publish the fence before the exchange that returns the slot to the producer. */
+static void display_front_release(void)
+{
+    if (ui.cur < 0) {
+        return;
+    }
+    GLsync fence = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
+    glFlush();
+    GLsync old = retro_atomic_exchange_ptr(&ui.slot[ui.cur].presented, fence);
+    if (old) {
+        glDeleteSync(old);
+    }
+}
+
 /* UI thread: take the new ticket, if any: this thread's slot is swapped
  * in as the middle one, the new one comes out as this thread's. */
 static bool disp_take_post(PGRAPHGLState *r, DispPost *p)
@@ -636,6 +601,7 @@ static bool disp_take_post(PGRAPHGLState *r, DispPost *p)
           DISP_POST_NEW)) {
         return false;
     }
+    display_front_release();
     int old = retro_atomic_exchange_int(&r->disp_post_middle,
                                         r->disp_post_read);
     if (!(old & DISP_POST_NEW)) {
@@ -644,7 +610,7 @@ static bool disp_take_post(PGRAPHGLState *r, DispPost *p)
         return false;
     }
     r->disp_post_read = old & 3;
-    *p = r->disp_posts[r->disp_post_read];
+    *p = ui.slot[r->disp_post_read].post;
     return true;
 }
 
@@ -681,32 +647,16 @@ int pgraph_gl_get_framebuffer_surface(NV2AState *d,
         retro_atomic_store_relaxed_int(&r->disp_check_pending, 1);
         pfifo_kick(d);
     }
-    if (got && p.ref == NULL) {
-        /* No front buffer among the surfaces: back to the VGA path. */
+    if (got && p.tex == 0) {
         ui.cur = -1;
         got = false;
     }
     if (got) {
-        if (!ui.ready) {
-            ui_init();
-        }
-        int slot = ui.cur < 0 ? 0 : 1 - ui.cur;
-        ui_resolve(d, &p, slot);
-        /* The render thread waits for this before writing the surface
-         * again (pgraph_gl_display_surface_reuse). */
-        GLsync presented = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
-        glFlush();
-        GLsync old = retro_atomic_exchange_ptr(&p.ref->presented,
-                                               (void *)presented);
-        if (old) {
-            glDeleteSync(old);
-        }
-        disp_ref_put(p.ref);
-        ui.cur = slot;
-        ui.cur_draw_time = p.draw_time;
+        glWaitSync(p.rendered, 0, GL_TIMEOUT_IGNORED);
+        glDeleteSync(p.rendered);
+        ui.cur = r->disp_post_read;
+        g_nv2a_stats.presented_frame_id = p.draw_time;
         if (p.pvideo) {
-            /* The overlay is read from guest RAM at each resolve: ask
-             * for the next one now, not at the next scanout move. */
             retro_atomic_store_relaxed_int(&r->disp_check_pending, 1);
             pfifo_kick(d);
         }

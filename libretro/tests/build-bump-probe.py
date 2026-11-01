@@ -43,7 +43,7 @@ def main():
     parser.add_argument("--native-volume-slice", type=int, choices=(0,1), default=0,
                         help="select one of the two distinct volume slices")
     parser.add_argument("--native-volume", action="store_true",
-                        help="probe a single-level 2x2x2 RGBA8 volume with distinct slices")
+                        help="probe RGBA8 volumes: 2x2x2, or 8x8x8 with --native-mip-chain")
     parser.add_argument("--native-cube-face", type=int, choices=range(6),
                         help="probe one swizzled native cube face with controlled derivatives")
     parser.add_argument("--native-matching", action="store_true",
@@ -53,7 +53,7 @@ def main():
     parser.add_argument("--native-base-only", action="store_true",
                         help="set guest maximum mip zero for --native-mip-filter")
     parser.add_argument("--native-mip-chain", action="store_true",
-                        help="add a contrasting mip under nonmip native-color filters")
+                        help="add a contrasting lower mip to native-color probes")
     parser.add_argument("--linear-mip-count", type=int, choices=range(16), default=1,
                         help="raw mip-count field for --linear-level; storage stays one level")
     parser.add_argument("--prime-address", action="store_true",
@@ -93,8 +93,8 @@ def main():
     if args.native_color and not ((args.mixed or args.color) and not args.mip_filter):
         parser.error("--native-color requires --mixed or --color without mip filters")
     if args.native_volume:
-        if (args.native_color != "rgba8" or not args.mixed or args.native_cube_face is not None or args.native_mip_chain):
-            parser.error("--native-volume requires --mixed --native-color rgba8, without cube or mip chain")
+        if (args.native_color != "rgba8" or not args.mixed or args.native_cube_face is not None):
+            parser.error("--native-volume requires --mixed --native-color rgba8, without cube")
     if args.native_cube_face is not None and not (args.native_color and args.mixed):
         parser.error("--native-cube-face requires --native-color and --mixed")
     if args.native_matching and not (args.native_color and args.mixed and not args.native_mip_filter):

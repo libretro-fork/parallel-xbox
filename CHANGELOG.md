@@ -2,6 +2,10 @@
 
 - Reuse the TLB-resolved RAM address for CPU Boost unchanged-store checks instead of looking up the same RAM block again. Dirty tracking, watchpoints and invalidation decisions are preserved.
 
+- Compose OpenGL display images on the renderer context and hand them over through owned mailbox slots, removing the CPU frame-end acknowledgement wait without adding an image-copy pass. Restore the frontend GL context after renderer setup and order display-slot reuse with GPU fences.
+- Vulkan color volumes with stored mip chains now preserve min/mag filtering when sampling is restricted to mip zero, including Force LOD0; lower mip data and volume layout stay intact.
+
+
 - Reduce CPU Boost unchanged-store comparison work with exact-width scalar reads, preserving unaligned accesses, page boundaries and invalidation decisions. No additional host CPU instruction requirements.
 
 - Remove the unused multi-threaded TCG selector and configuration path that startup always overrode. Initialize one translator explicitly and retain the existing Xbox CPU limit; translation behavior and cache controls are unchanged.

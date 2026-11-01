@@ -897,7 +897,6 @@ static SurfaceBinding *surface_put(NV2AState *d, hwaddr addr,
     invalidate_overlapping_surfaces(d, surface_in);
     SurfaceBinding *surface_out = obj_pool_take(&r->surface_pool);
     *surface_out = *surface_in;
-    surface_out->disp_ref = NULL; /* the display never saw it */
     surface_out->cpu_reads = 0;
     surface_out->cpu_reads_last_flip = 0;
     surface_out->dl_pbo = 0;
@@ -1312,9 +1311,6 @@ static void bind_current_surface(NV2AState *d)
         fb_bind(r, r->gl_framebuffer);
         return;
     }
-    if (r->color_binding) {
-        pgraph_gl_display_surface_reuse(d, r->color_binding);
-    }
     GLuint fbo = 0;
     int idx = -1;
     if (r->color_binding && r->zeta_binding &&
@@ -1375,11 +1371,9 @@ static void parked_destroy(NV2AState *d, SurfaceBinding *surface)
 
     unregister_cpu_access_callback(d, surface);
     surface_drop_readback(surface);
-    if (surface->disp_ref == NULL) {
-        texpool_put(r, surface->gl_buffer, surface->vram_addr, surface->tex_w,
-                    surface->tex_h, surface->tex_fmt);
-        surface->gl_buffer = 0;
-    }
+    texpool_put(r, surface->gl_buffer, surface->vram_addr, surface->tex_w,
+                surface->tex_h, surface->tex_fmt);
+    surface->gl_buffer = 0;
     pgraph_gl_display_surface_gone(d, surface);
     QTAILQ_REMOVE(&r->parked, surface, entry);
     r->parked_n--;
@@ -2426,7 +2420,6 @@ static void upload_surface_data_impl(NV2AState *d, SurfaceBinding *surface,
 
     PGRAPHState *pg = &d->pgraph;
     PGRAPHGLState *r = pg->gl_renderer_state;
-    pgraph_gl_display_surface_reuse(d, surface);
 
     /* A complete color clear replaces the RAM data this upload would read.
      * The GL image already has storage; the pending clear supplies every
@@ -3341,12 +3334,11 @@ SurfaceBinding *pgraph_gl_compose_scanout(NV2AState *d)
         return &m->out[m->last];
     }
     int slot = -1;
-    /* Prefer an existing free image; allocate extra mailbox storage only
-     * when the UI actually still holds the preceding picture. */
+    /* Composition and source reuse share the render queue. Prefer an
+     * existing source image; the frontend never holds these textures. */
     for (unsigned i = 0; i < ARRAY_SIZE(m->out); i++) {
         SurfaceBinding *candidate = &m->out[i];
-        if (candidate->gl_buffer && (!candidate->disp_ref ||
-            !retro_atomic_load_acquire_int(&candidate->disp_ref->refs))) {
+        if (candidate->gl_buffer) {
             slot = i;
             break;
         }
@@ -3379,7 +3371,6 @@ SurfaceBinding *pgraph_gl_compose_scanout(NV2AState *d)
                              m->base_geometry != cache->geometry;
     bool restore_background = m->background[slot] != cache->background ||
                                m->geometry[slot] != cache->geometry;
-    pgraph_gl_display_surface_reuse(d, out);
     out->vram_addr = scan.start;
     out->pitch = scan.pitch;
     out->size = scan.size;

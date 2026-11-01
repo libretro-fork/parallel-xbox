@@ -45,29 +45,14 @@
 #include "gloffscreen.h"
 #include "constants.h"
 
-/* Display thread handoff (gl/display.c): a DispPost is one ticket, all the
- * display thread needs to resolve a front buffer with no pointer into
- * render-thread state; a DispRef keeps a surface's texture alive while
- * tickets naming it are in flight. */
-typedef struct DispRef {
-    retro_atomic_int_t refs;    /* tickets in flight, either thread */
-    bool orphan; /* the surface is gone: freed by the render thread once
-                    no ticket is in flight (orphans list) */
-    GLuint tex;
-    /* UI-context fence after its last blit of tex: the render thread
-     * waits for it on the GPU before writing the surface again. Swapped
-     * atomically by both threads. */
-    retro_atomic_ptr_t presented; /* GLsync */
-    QTAILQ_ENTRY(DispRef) entry; /* the orphans list, render thread */
-} DispRef;
-
+/* Composition parameters stay on the render thread. A published ticket
+ * identifies an already-composed display image rather than a live surface. */
 typedef struct DispPvideo {
     uint32_t buffer, size_in, base, limit, offset, point_in, ds_dx, dt_dy,
              point_out, size_out, format, color_key;
 } DispPvideo;
 
-typedef struct DispPost {
-    DispRef *ref;
+typedef struct DispCompose {
     GLuint tex;
     unsigned int draw_time;
     unsigned int width, height, pitch;
@@ -79,7 +64,13 @@ typedef struct DispPost {
     unsigned int scale;
     bool pvideo;
     DispPvideo pv;
-    GLsync rendered; /* render-context fence: the frame's draws are queued */
+} DispCompose;
+
+typedef struct DispPost {
+    GLuint tex;
+    unsigned draw_time;
+    bool pvideo;
+    GLsync rendered;
 } DispPost;
 
 typedef struct SurfaceBinding {
@@ -126,7 +117,6 @@ typedef struct SurfaceBinding {
     int dl_draw_time;
     bool dl_native; /* the PBO holds the guest's own pixel count */
     bool dl_swz;    /* and in the guest's swizzled order (swizzle pass) */
-    DispRef *disp_ref; /* display thread reference, or NULL */
 } SurfaceBinding;
 
 typedef struct TextureBinding {
@@ -278,8 +268,8 @@ typedef struct PGRAPHGLState {
      * overlay's conversion) go through kept buffers: nothing allocates
      * mid-game (pool.h). The report pool is shared with the pfifo thread
      * under the reports' own ordering, the display one is the render
-     * thread's alone (the UI thread only counts references down). */
-    ObjPool surface_pool, texture_pool, report_pool, disp_ref_pool;
+     * thread's alone. */
+    ObjPool surface_pool, texture_pool, report_pool;
     uint32_t clear_parameter;
     GLuint s2t_byte_pbo;
     Scratch surf_scratch, s2t_scratch, pvideo_scratch;
@@ -295,13 +285,9 @@ typedef struct PGRAPHGLState {
      * as the middle one, the UI thread swaps the middle one out for its
      * own; a ticket the UI thread never took comes back to the render
      * thread with the swap and is released there. */
-    DispPost disp_posts[3];
     int disp_post_write; /* the render thread's slot */
     int disp_post_read;  /* the UI thread's slot */
     retro_atomic_int_t disp_post_middle; /* slot | DISP_POST_NEW when untaken */
-    /* References whose surface is gone while tickets were in flight:
-     * freed by the render thread once the last ticket is put back */
-    QTAILQ_HEAD(, DispRef) disp_orphans;
     /* The UI thread holds a front buffer: when the CRTC leaves the
      * surfaces, a ticket without one sends it back to the VGA path. */
     retro_atomic_int_t disp_shown;
@@ -618,7 +604,6 @@ void pgraph_gl_present_scanout(NV2AState *d);
 /* Recounts surfaces_any_dirty at the flip (surface.c). */
 void pgraph_gl_surfaces_refresh_any_dirty(NV2AState *d);
 void pgraph_gl_display_surface_gone(NV2AState *d, SurfaceBinding *surface);
-void pgraph_gl_display_surface_reuse(NV2AState *d, SurfaceBinding *surface);
 void pgraph_gl_invalidate_memory_buffer(NV2AState *d);
 bool pgraph_gl_surface_test_and_clear_dirty(NV2AState *d, hwaddr addr,
                                              hwaddr size);

@@ -234,7 +234,8 @@ bool nv2a_libretro_guest_busy(void)
  * may have moved the scanout while they were still queued, and the display
  * was drawn before them. Requests replace the latest sequence, without a
  * frame queue. Shared-device Vulkan presents the latest safely published
- * image without waiting for acknowledgement; legacy paths wait for this
+ * image without waiting for acknowledgement, as does GL after composing
+ * into its owned mailbox. Legacy Vulkan interop waits for this
  * sequence. Return 0 with no GPU thread running. */
 int nv2a_libretro_frame_end(void)
 {

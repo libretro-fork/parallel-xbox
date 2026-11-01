@@ -4,7 +4,7 @@
  * production source against a model of the GPU's thread: one request,
  * then waits until the thread says the display is drawn, each wait after
  * the flag and a full fence; none with no GPU thread or the machine
- * stopped; a stop while waiting ends it. Shared-device Vulkan requests
+ * stopped; a stop while waiting ends it. GL and shared-device Vulkan request
  * work and returns immediately even when the owner remains busy. */
 #include <assert.h>
 #include <stdbool.h>
@@ -58,7 +58,7 @@ int main(void) {
         if(stop==2) { assert(!requests && !waits && !checks); cases++; continue; }
         assert(requests==1);
         if(!gpu) { assert(!waits && !checks && !fences); cases++; continue; }
-        if(use_vulkan && xemu_libretro_vk.active) {
+        if(!use_vulkan || xemu_libretro_vk.active) {
             assert(!waits && !checks && !fences);cases++;continue;
         }
         assert(fences==waits+1 && checks<=fences);
