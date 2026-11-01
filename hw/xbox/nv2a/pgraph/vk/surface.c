@@ -431,9 +431,17 @@ static VkBuffer pack_depth_readback(PGRAPHState *pg, SurfaceBinding *surface,
             .buffer = pack_buffer,
             .size = packed_size
         };
-        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                             VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 1,
-                             &post_compute_dst_barrier, 0, NULL);
+        /* A packed-depth swizzle consumes compute output directly. Its
+         * shader-read dependency is recorded by swizzle_to_ram_from; no
+         * transfer reads this output on that path. */
+        bool packed_swizzle = direct && surface->swizzle &&
+            pgraph_vk_swizzle_packed_possible(pg, surface->vram_addr,
+                surface->width, surface->height, surface->fmt.bytes_per_pixel);
+        if (!packed_swizzle) {
+            vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                                 VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 1,
+                                 &post_compute_dst_barrier, 0, NULL);
+        }
 
         if (direct) {
             store_packed_to_ram(pg, cmd, surface, pack_buffer, ring_offset);

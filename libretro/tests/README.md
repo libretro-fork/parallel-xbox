@@ -1624,3 +1624,9 @@ for D24S8/D32S8, native/2x scaling and three rectangular/square sizes. It checks
 identical guest bytes, two successive readbacks per command buffer and one
 removed copy per readback; timings describe this isolated GPU
 chain, not whole-core latency. The GPU fixture does not enable validation layers.
+
+The depth-host oracle also covers 514 eligible direct packed-swizzle routes
+that must omit the stale compute-to-transfer dependency. Linear, capped-range
+and host-readback routes retain their transfer dependencies. The optional
+packed-swizzle GPU fixture counts these dependencies across two successive
+readbacks, in addition to checking copies and final bytes.

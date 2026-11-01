@@ -20,7 +20,7 @@ enum {BUFFER_COMPUTE_DST,BUFFER_COMPUTE_SRC,BUFFER_STAGING_DST};
 typedef struct {VkBuffer buffer;VkDeviceMemory memory;VkDeviceSize buffer_size;uint8_t *mapped;} StorageBuffer;
 typedef struct {VkDevice device;VkPhysicalDeviceProperties device_props;VkPipelineCache vk_pipeline_cache;bool in_command_buffer;StorageBuffer storage_buffers[3];struct {VkDescriptorPool descriptor_pool;VkDescriptorSetLayout descriptor_set_layout;VkDescriptorSet set_pack,set_unpack,set_pack_readback;VkPipelineLayout pipeline_layout;VkPipeline pipelines[2][2];unsigned workgroup_size;} compute;} PGRAPHVkState;
 typedef struct {PGRAPHVkState *vk_renderer_state;unsigned scale;} PGRAPHState;
-typedef struct {unsigned width,height;struct {VkFormat vk_format;} host_fmt;} SurfaceBinding;
+typedef struct {unsigned width,height;bool swizzle;uint64_t vram_addr;struct {unsigned bytes_per_pixel;} fmt;struct {VkFormat vk_format;} host_fmt;} SurfaceBinding;
 static VkDevice device;static VkQueue queue;static VkCommandBuffer command;static VkFence fence;static VkQueryPool query;static unsigned copies;
 static VkPhysicalDeviceMemoryProperties memories;
 static void pgraph_apply_scaling_factor(PGRAPHState *p,unsigned *w,unsigned *h){*w*=p->scale;*h*=p->scale;}
@@ -28,6 +28,7 @@ static void pgraph_vk_begin_debug_marker(PGRAPHVkState *r,VkCommandBuffer cmd,in
 static void pgraph_vk_end_debug_marker(PGRAPHVkState *r,VkCommandBuffer cmd){(void)r;(void)cmd;}
 static VkShaderModule pgraph_vk_create_shader_module_from_words(PGRAPHVkState *r,const uint32_t *words,size_t n){VkShaderModule m;VkShaderModuleCreateInfo ci={.sType=VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,.codeSize=n*4,.pCode=words};VK_CHECK(vkCreateShaderModule(r->device,&ci,NULL,&m));return m;}
 void pgraph_vk_pack_depth_stencil_dims(PGRAPHState*,SurfaceBinding*,VkCommandBuffer,VkBuffer,VkBuffer,unsigned,unsigned,unsigned,unsigned);
+static bool pgraph_vk_swizzle_packed_possible(PGRAPHState *pg,uint64_t offset,unsigned w,unsigned h,unsigned bpp){(void)pg;(void)offset;(void)w;(void)h;(void)bpp;return false;}
 static void store_packed_to_ram(PGRAPHState *pg,VkCommandBuffer cmd,SurfaceBinding *s,VkBuffer buf,VkDeviceSize off){(void)pg;(void)cmd;(void)s;(void)buf;(void)off;assert(false);}
 static void counted_copy(VkCommandBuffer cmd,VkBuffer src,VkBuffer dst,unsigned n,const VkBufferCopy *copy){copies++;vkCmdCopyBuffer(cmd,src,dst,n,copy);}
 /* COMPUTE PRODUCTION */

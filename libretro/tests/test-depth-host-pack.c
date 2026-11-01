@@ -34,11 +34,11 @@ typedef struct {unsigned x,y;} ComputeGrid;
 enum {BUFFER_COMPUTE_DST,BUFFER_COMPUTE_SRC,BUFFER_STAGING_DST};
 typedef struct {unsigned device;struct {VkBuffer buffer;VkDeviceSize buffer_size;} storage_buffers[3];struct {struct {VkDeviceSize maxStorageBufferRange,minStorageBufferOffsetAlignment;} limits;} device_props;struct {VkDescriptorSet set_pack,set_unpack,set_pack_readback;unsigned pipeline_layout;} compute;} PGRAPHVkState;
 typedef struct {PGRAPHVkState *vk_renderer_state;unsigned scale;} PGRAPHState;
-typedef struct {unsigned width,height;struct {int vk_format;} host_fmt;} SurfaceBinding;
+typedef struct {unsigned width,height;bool swizzle;uint64_t vram_addr;struct {unsigned bytes_per_pixel;} fmt;struct {int vk_format;} host_fmt;} SurfaceBinding;
 static PGRAPHVkState state;
 static VkDescriptorBufferInfo descriptor[4][3];
 static uint32_t data[4][65536],ram[65536],push[4];
-static unsigned bound,copies,stores,dispatches,writes,host_barriers;
+static unsigned bound,copies,stores,dispatches,writes,host_barriers,omitted_dependencies;
 static unsigned latest[4];
 static bool transfer_read[4],shader_read[4],host_visible[4];
 static void vkUpdateDescriptorSets(unsigned d,unsigned n,const VkWriteDescriptorSet *w,unsigned count,void *p){assert(d==7&&n==9&&!count&&!p);for(unsigned i=0;i<n;i++){assert(w[i].dstSet>=1&&w[i].dstSet<=3&&w[i].dstBinding<3&&w[i].descriptorCount==1);descriptor[w[i].dstSet][w[i].dstBinding]=*w[i].pBufferInfo;}writes++;}
@@ -65,14 +65,15 @@ static void vkCmdPipelineBarrier(VkCommandBuffer cmd,unsigned src,unsigned dst,u
  if(b->dstAccessMask==VK_ACCESS_SHADER_WRITE_BIT&&id==3)assert((src&VK_PIPELINE_STAGE_HOST_BIT)&&(b->srcAccessMask&VK_ACCESS_HOST_READ_BIT));
 }
 static void vkCmdCopyBuffer(VkCommandBuffer cmd,VkBuffer src,VkBuffer dst,unsigned count,const VkBufferCopy *r){assert(cmd==8&&src==2&&dst==3&&count==1&&transfer_read[src]&&!r->srcOffset&&!r->dstOffset);memcpy(data[dst],data[src],r->size);latest[dst]=VK_ACCESS_TRANSFER_WRITE_BIT;host_visible[dst]=false;copies++;}
-static void store_packed_to_ram(PGRAPHState *pg,VkCommandBuffer cmd,SurfaceBinding *s,VkBuffer src,VkDeviceSize offset){assert(pg->vk_renderer_state==&state&&cmd==8&&src==2&&transfer_read[src]&&offset==16);memcpy(ram,data[src],(size_t)s->width*s->height*4);stores++;}
+static bool pgraph_vk_swizzle_packed_possible(PGRAPHState *pg,uint64_t offset,unsigned w,unsigned h,unsigned bpp){(void)offset;return (uint64_t)w*h*bpp<=pg->vk_renderer_state->device_props.limits.maxStorageBufferRange;}
+static void store_packed_to_ram(PGRAPHState *pg,VkCommandBuffer cmd,SurfaceBinding *s,VkBuffer src,VkDeviceSize offset){assert(pg->vk_renderer_state==&state&&cmd==8&&src==2&&offset==16&&transfer_read[src]==!(s->swizzle&&pgraph_vk_swizzle_packed_possible(pg,s->vram_addr,s->width,s->height,4)));omitted_dependencies+=!transfer_read[src];memcpy(ram,data[src],(size_t)s->width*s->height*4);stores++;}
 /* PRODUCTION */
 int main(void){
  state.device=7;state.compute.set_pack=1;state.compute.set_unpack=2;state.compute.set_pack_readback=3;state.compute.pipeline_layout=10;state.device_props.limits.minStorageBufferOffsetAlignment=256;
  for(unsigned i=0;i<3;i++){state.storage_buffers[i].buffer=i+1;state.storage_buffers[i].buffer_size=sizeof(data[0]);}
  PGRAPHState pg={&state,1};unsigned host_cases=0,fallback=0,direct_cases=0;
  for(unsigned i=0;i<6000;i++){
-  SurfaceBinding s={.width=1+i%47,.height=1+(i/47)%31,.host_fmt={1}};pg.scale=1+i%3;
+  SurfaceBinding s={.width=1+i%47,.height=1+(i/47)%31,.swizzle=i%2,.fmt={4},.host_fmt={1}};pg.scale=1+i%3;
   unsigned iw=s.width*pg.scale,ih=s.height*pg.scale;size_t n=(size_t)s.width*s.height,bytes=n*4;
   bool direct=i%5==0;state.device_props.limits.maxStorageBufferRange=(i%7==0)?bytes-1:sizeof(data[0]);
   write_descriptor_sets(&pg);assert(descriptor[3][2].buffer==3&&descriptor[3][2].range==MIN(state.storage_buffers[2].buffer_size,state.device_props.limits.maxStorageBufferRange));
@@ -85,6 +86,7 @@ int main(void){
   const uint32_t *actual=direct?ram:data[3];
   for(unsigned j=0;j<n;j++){unsigned si=((j/s.width)*pg.scale+pg.scale/2)*iw+(j%s.width)*pg.scale+pg.scale/2;uint32_t expected=(((si*97+i*31)&0xffffff)<<8)|(uint8_t)(si+i);assert(actual[j]==expected);}
  }
+ assert(omitted_dependencies==514);
  assert(dispatches==6000&&host_cases&&fallback&&direct_cases&&host_barriers==host_cases+fallback);
- printf("Depth host pack: 6000 production descriptor/dispatch/visibility schedules; %u host packs omit GPU copy, %u oversized fallbacks and %u direct-RAM routes preserved; refreshed capped descriptors and exact output passed\n",host_cases,fallback,direct_cases);return 0;
+ printf("Depth host pack: 6000 production descriptor/dispatch/visibility schedules; %u host packs omit GPU copy, %u oversized fallbacks and %u direct-RAM routes preserved; 514 stale transfer dependencies omitted; refreshed capped descriptors and exact output passed\n",host_cases,fallback,direct_cases);return 0;
 }
