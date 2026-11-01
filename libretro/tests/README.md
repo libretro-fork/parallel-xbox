@@ -1881,3 +1881,5 @@ For release timing, use `VK_S3TC_BENCH=1 VK_S3TC_NO_VALIDATION=1`; benchmark bui
 `test-gl-module-export.py CHECKOUT [CC]` exercises production OpenGL module export with 100 same-buffer saves, geometric growth, byte-exact headers and copied-length payloads, driver/open/write failures and release/reinitialization. `GL_MODULE_EXPORT_CFLAGS` enables sanitizers. Export storage belongs solely to the flip-time save queue.
 
 The Vulkan S3TC uploader publishes all source/image descriptors in one driver call after creating the retired slot views and before recording dispatches. The existing full-mip cube, queued-slot, pixel and synchronization-validation cases cover this batching path.
+
+`test-dirty-page-runs.py CHECKOUT [CC]` checks production dirty-run collection against an independent page oracle, including clipped callbacks, word/block boundaries, other clients, reprotection ordering and injected late writes. `--real-block-size` uses production bitmap block geometry. `DIRTY_RUN_CFLAGS` controls sanitizer flags; `DIRTY_RUN_BINARY` and `DIRTY_RUN_SKIP_RUN=1` retain native fixtures for noninteractive execution.
