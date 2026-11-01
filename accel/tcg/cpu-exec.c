@@ -34,6 +34,7 @@
 #include "exec/translation-block.h"
 #include "tcg/tcg.h"
 #include "qemu/rcu.h"
+#include "qemu/qht-lookup.h"
 #include "exec/log.h"
 #include "qemu/main-loop.h"
 #include "exec/icount.h"
@@ -209,7 +210,7 @@ static bool tb_lookup_cmp(const void *p, const void *d)
     return false;
 }
 
-static TranslationBlock *
+static inline QEMU_ALWAYS_INLINE TranslationBlock *
 tb_htable_lookup_common(CPUState *cpu, TCGTBCPUState s, const struct qht *ht,
                         qht_lookup_func_t func, tb_page_addr_t phys_pc,
                         const void *host_pc)
@@ -226,14 +227,16 @@ tb_htable_lookup_common(CPUState *cpu, TCGTBCPUState s, const struct qht *ht,
     desc.host_pc = host_pc;
     h = tb_hash_func(phys_pc, (s.cflags & CF_PCREL ? 0 : s.pc),
                      s.flags, s.cs_base, s.cflags);
-    return qht_lookup_custom(ht, &desc, h, func);
+    return qht_lookup_inline(ht, &desc, h, func);
 }
 
 /*
  * CPU boost: a miss falls back to the block translated for any class of the
- * carry flag it starts with (XEMU_TB_CF_ANY), in both tables.
+ * carry flag it starts with (XEMU_TB_CF_ANY), in both tables. Keep this
+ * miss scan out of the primary jump-cache hit path.
  */
-static TranslationBlock *tb_htable_lookup(CPUState *cpu, TCGTBCPUState s)
+static __attribute__((noinline))
+TranslationBlock *tb_htable_lookup(CPUState *cpu, TCGTBCPUState s)
 {
     tb_page_addr_t phys_pc = get_page_addr_code(cpu_env(cpu), s.pc);
     TranslationBlock *tb = tb_htable_lookup_common(cpu, s, &tb_ctx.htable,

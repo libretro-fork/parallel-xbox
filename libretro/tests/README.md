@@ -2620,3 +2620,6 @@ initialization; the temporary feature override is removed for delivery.
 Static list transitions additionally have exhaustive controlled-model coverage. Valid attributes use supported vertex formats as required by the
 [Vulkan attribute description rules](https://docs.vulkan.org/refpages/latest/refpages/source/VkVertexInputAttributeDescription.html).
 Hardware cache-miss and game-latency effects are unmeasured.
+
+
+`test-qht-inline.py CHECKOUT [CC]` exercises the production inline QHT reader and generic entry point with native retro atomics. It covers hash collisions, chained buckets, null pointers, absent keys, map replacement, forced sequence retries and 200,000 concurrent reads. Set `QHT_SANITIZE=1` for address/undefined behavior sanitizers. RCU object lifetime is modeled by retaining every map, bucket and item until readers finish.

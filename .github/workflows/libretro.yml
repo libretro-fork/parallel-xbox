@@ -36,6 +36,12 @@ jobs:
         run: python3 libretro/tests/test-frame-audio-pull.py . cc
       - name: Store-free work must not be mistaken for an idle wait
         run: python3 libretro/tests/test-quiet-progress.py . cc
+      - name: Inline TCG hash lookup preserves atomic readers and retries
+        run: python3 libretro/tests/test-qht-inline.py . cc
+      - name: Inline hash lookup with address and undefined behavior sanitizers
+        env:
+          QHT_SANITIZE: 1
+        run: python3 libretro/tests/test-qht-inline.py . cc
       - name: Secondary jump cache survives primary collisions
         run: python3 libretro/tests/test-secondary-cache.py . cc
       - name: Only dominating stores may remove quiet-budget checks
