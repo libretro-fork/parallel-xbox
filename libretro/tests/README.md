@@ -2754,6 +2754,21 @@ then a clear and an empty report. Offsets 0x300100 and 0x300120 retain timestamp
 counts and completion words for both renderer checks. GL GET_REPORT already
 flushes closed queries; idle polls add no repeated glFlush calls.
 
+`test-texture-program-dirty.py CHECKOUT [--cc CC]` extracts the complete shared
+shader dirty check and its helpers. Its 32,768 schedules cover each bit of
+SHADERCTL/SHADERPROG, dirty/clean flags, randomized bound fields, restored live
+writes, and static/dynamic siblings. Ignored writes and restored values must
+reuse the bound shader; live changes must invalidate it. The dirty map stays
+unchanged, clean flags cause no added register reads, and retained unconditional
+invalidators and program-data changes still force rebuilding. Old noncanonical
+seed states conservatively rebuild when those registers are dirty.
+
+Key construction and dirty checking share the same two field masks. No new
+snapshot slots, state fields, allocations, GPU queries, transfers or waits are
+introduced. Both backends use the shared check; dynamic combiner uniform reads
+remain unchanged. Shader source/cache formats and struct layouts are unchanged.
+Gameplay cache-hit and frame-time effects remain unmeasured.
+
 The guarded LRU fixture also flushes one early-bin entry with later bin pages inaccessible. It verifies list/count updates complete before returning; the parent faults on a later-bin read. Existing 30,000 exact order/callback operations include flushes and blocked evictions. BENCH modes 5-8 time refill+flush cycles for one early/late-bin entry and 512/16,384 distributed entries; these are synthetic cycles, not isolated flush or game FPS measurements.
 
 ### Completion proofs in Vulkan settle polling

@@ -67,6 +67,18 @@ static bool shader_reg_dirty(PGRAPHState *pg, unsigned int reg, uint32_t fields,
     return (pgraph_reg_r(pg, reg) & fields) != pg->shader_reg_snap[slot];
 }
 
+/* These fields survive dynamic siblings unchanged, so the bound state is
+ * also the snapshot. Ignore writes that cannot change its generated code. */
+static bool texture_program_dirty(PGRAPHState *pg, const PshState *state)
+{
+    return (pgraph_is_reg_dirty(pg, NV_PGRAPH_SHADERCTL) &&
+            (pgraph_reg_r(pg, NV_PGRAPH_SHADERCTL) &
+             NV_PGRAPH_SHADERCTL_SHADER_FIELDS) != state->other_stage_input) ||
+           (pgraph_is_reg_dirty(pg, NV_PGRAPH_SHADERPROG) &&
+            (pgraph_reg_r(pg, NV_PGRAPH_SHADERPROG) &
+             NV_PGRAPH_SHADERPROG_SHADER_FIELDS) != state->shader_stage_program);
+}
+
 static bool signed_g8b8_address_dirty(PGRAPHState *pg, int i)
 {
     if (!pgraph_is_reg_dirty(pg, NV_PGRAPH_TEXADDRESS0 + i * 4)) {
@@ -111,13 +123,16 @@ bool pgraph_glsl_check_shader_state_dirty(PGRAPHState *pg,
         NV_PGRAPH_CSV0_D,          NV_PGRAPH_CSV1_A,
         NV_PGRAPH_CSV1_B,          NV_PGRAPH_POINTSIZE,
         NV_PGRAPH_SHADERCLIPMODE,
-        NV_PGRAPH_SHADERCTL,       NV_PGRAPH_SHADERPROG,
         NV_PGRAPH_SHADOWCTL,       NV_PGRAPH_ZCOMPRESSOCCLUDE,
     };
     for (int i = 0; i < ARRAY_SIZE(regs); i++) {
         if (pgraph_is_reg_dirty(pg, regs[i])) {
             return true;
         }
+    }
+
+    if (texture_program_dirty(pg, &state->psh)) {
+        return true;
     }
 
     if (shader_reg_dirty(pg, NV_PGRAPH_SETUPRASTER,

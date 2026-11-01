@@ -222,9 +222,11 @@ void pgraph_glsl_set_psh_state(PGRAPHState *pg, PshState *state)
         (0xFFu | ((PS_COMBINERCOUNT_MUX_MSB | PS_COMBINERCOUNT_UNIQUE_C0 |
                    PS_COMBINERCOUNT_UNIQUE_C1) << 8));
     /* Four five-bit texture modes affect the fragment program. */
-    state->shader_stage_program = pgraph_reg_r(pg, NV_PGRAPH_SHADERPROG) & 0x000FFFFFu;
+    state->shader_stage_program = pgraph_reg_r(pg, NV_PGRAPH_SHADERPROG) &
+        NV_PGRAPH_SHADERPROG_SHADER_FIELDS;
     /* Three dot mappings and the stage 2/3 input selectors affect GLSL. */
-    state->other_stage_input = pgraph_reg_r(pg, NV_PGRAPH_SHADERCTL) & 0x00FF0FFFu;
+    state->other_stage_input = pgraph_reg_r(pg, NV_PGRAPH_SHADERCTL) &
+        NV_PGRAPH_SHADERCTL_SHADER_FIELDS;
     state->final_inputs_0 = pgraph_reg_r(pg, NV_PGRAPH_COMBINESPECFOG0);
     state->final_inputs_1 = pgraph_reg_r(pg, NV_PGRAPH_COMBINESPECFOG1);
 

@@ -1,5 +1,8 @@
 # Changelog of the libretro core
 
+- Keep the bound GL/Vulkan shader when SHADERCTL or SHADERPROG writes change only ignored bits, or restore the same live fields before drawing. Share key masks with the dirty check; preserve live-field invalidation and dynamic siblings without new snapshots or GPU work.
+
+
 - Reuse known Vulkan submission completion at eager-submit and deferred-flip readiness checks, avoiding redundant driver queries without postponing slot retirement or adding frame buffering.
 - Use native x86-64 SSE square root for positive normal inputs and signed zero under all four guest rounding modes, preserving inexact flags and the caller's MXCSR. Batch packed inputs in 128-bit groups; avoid state switching when matching rounding and sticky flags make it safe. Isolate the remaining SoftFloat square-root shortcuts from host rounding/flushing settings too.
 - Stop LRU flushes once the final active entry is evicted and its list updates are complete. Avoid scanning empty later hash bins while preserving eviction eligibility, callback order and free-node order.
