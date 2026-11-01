@@ -502,16 +502,33 @@ VkResult xemu_vk_create_image(XemuVkAllocator a, const VkImageCreateInfo *ci,
 {
     *image=VK_NULL_HANDLE; *allocation=NULL;
     VkResult result=vkCreateImage(a->device,ci,NULL,image);
-    if (result!=VK_SUCCESS) return result;
+    if ((result==VK_ERROR_OUT_OF_DEVICE_MEMORY || result==VK_ERROR_OUT_OF_HOST_MEMORY) &&
+        a->reclaim) {
+        /* Driver image objects can exhaust memory before requirements or
+         * suballocation are reached. Reclaim completed images here too. */
+        a->reclaim(a->reclaim_opaque);
+        *image=VK_NULL_HANDLE;
+        result=vkCreateImage(a->device,ci,NULL,image);
+    }
+    if (result!=VK_SUCCESS) {
+        fprintf(stderr,"nv2a: Vulkan image creation failed: %ux%ux%u format=%u usage=%x result=%d\n",
+            ci->extent.width,ci->extent.height,ci->extent.depth,ci->format,ci->usage,result);
+        *image=VK_NULL_HANDLE;
+        return result;
+    }
     VkMemoryDedicatedRequirements dedicated={.sType=VK_STRUCTURE_TYPE_MEMORY_DEDICATED_REQUIREMENTS};
     VkMemoryRequirements2 req={.sType=VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2,.pNext=&dedicated};
     VkImageMemoryRequirementsInfo2 info={.sType=VK_STRUCTURE_TYPE_IMAGE_MEMORY_REQUIREMENTS_INFO_2,.image=*image};
     vkGetImageMemoryRequirements2(a->device,&info,&req);
     result=allocate(a,&req.memoryRequirements,request,ci->tiling==VK_IMAGE_TILING_LINEAR,dedicated.requiresDedicatedAllocation,VK_NULL_HANDLE,*image,allocation);
-    if (result==VK_SUCCESS) result=vkBindImageMemory(a->device,*image,(*allocation)->block->memory,(*allocation)->offset);
+    const char *stage="allocate";
+    if (result==VK_SUCCESS) {
+        stage="bind";
+        result=vkBindImageMemory(a->device,*image,(*allocation)->block->memory,(*allocation)->offset);
+    }
     if (result!=VK_SUCCESS) {
-        fprintf(stderr,"nv2a: Vulkan image allocation failed: %ux%ux%u format=%u size=%llu alignment=%llu types=%x dedicated=%u result=%d\n",
-            ci->extent.width,ci->extent.height,ci->extent.depth,ci->format,
+        fprintf(stderr,"nv2a: Vulkan image allocation failed: stage=%s %ux%ux%u format=%u size=%llu alignment=%llu types=%x dedicated=%u result=%d\n",
+            stage,ci->extent.width,ci->extent.height,ci->extent.depth,ci->format,
             (unsigned long long)req.memoryRequirements.size,
             (unsigned long long)req.memoryRequirements.alignment,
             req.memoryRequirements.memoryTypeBits,(unsigned)(request->dedicated||dedicated.requiresDedicatedAllocation),result);

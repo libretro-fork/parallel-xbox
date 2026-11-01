@@ -96,6 +96,9 @@
 
 ## Unreleased
 
+- Vulkan image allocation pressure now reclaims deferred images whose draw, display and upload work has finished, instead of failing while reusable memory is waiting in the retirement list. Driver image-creation memory errors receive one reclamation retry, with allocation-stage diagnostics if recovery fails. Headless regression tests protect live and in-flight images.
+
+
 - Long-immediate DSP comparisons now run natively, removing OutRun 2's remaining hot interpreter fallback. Negative 24-bit compare immediates now sign-extend correctly in the interpreter, and native compares clear stale internal status bits. Independent arithmetic/flags tests and production-block loop/code-write regressions cover both engines.
 
 

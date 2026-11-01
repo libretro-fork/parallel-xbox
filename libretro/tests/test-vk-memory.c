@@ -30,6 +30,8 @@ static unsigned denied_types;
 static bool map_fail,bind_fail,require_dedicated;
 static VkDeviceSize allocation_limit=UINT64_MAX,alignment=256,last_offset,last_size;
 static uint32_t requirement_bits=7;
+static unsigned image_create_failures,image_create_attempts;
+static VkResult image_create_error=VK_ERROR_OUT_OF_DEVICE_MEMORY;
 static unsigned number(uintptr_t handle){assert(handle && handle<4096);return (unsigned)handle;}
 #define HANDLE(type,n) ((type)(uintptr_t)(n))
 static VKAPI_ATTR void VKAPI_CALL get_memory(VkPhysicalDevice p,VkPhysicalDeviceMemoryProperties *out)
@@ -70,7 +72,11 @@ static unsigned resource_create(Resource *array,VkDeviceSize size,bool linear)
 static VKAPI_ATTR VkResult VKAPI_CALL create_buffer(VkDevice d,const VkBufferCreateInfo *ci,const VkAllocationCallbacks *cb,VkBuffer *out)
 {(void)d;(void)cb;*out=HANDLE(VkBuffer,resource_create(buffers,ci->size,true));return VK_SUCCESS;}
 static VKAPI_ATTR VkResult VKAPI_CALL create_image(VkDevice d,const VkImageCreateInfo *ci,const VkAllocationCallbacks *cb,VkImage *out)
-{(void)d;(void)cb;*out=HANDLE(VkImage,resource_create(images,ci->extent.width,ci->tiling==VK_IMAGE_TILING_LINEAR));return VK_SUCCESS;}
+{
+    (void)d;(void)cb;image_create_attempts++;
+    if(image_create_failures){image_create_failures--;*out=VK_NULL_HANDLE;return image_create_error;}
+    *out=HANDLE(VkImage,resource_create(images,ci->extent.width,ci->tiling==VK_IMAGE_TILING_LINEAR));return VK_SUCCESS;
+}
 static VKAPI_ATTR void VKAPI_CALL destroy_buffer(VkDevice d,VkBuffer buffer,const VkAllocationCallbacks *cb)
 {(void)d;(void)cb;Resource *r=&buffers[number((uintptr_t)buffer)];assert(r->live);memset(r,0,sizeof(*r));live_resources--;}
 static VKAPI_ATTR void VKAPI_CALL destroy_image(VkDevice d,VkImage image,const VkAllocationCallbacks *cb)
@@ -308,4 +314,5 @@ int main(void)
     assert(creates==frees&&maps==unmaps);
     puts("PASS: complete NGB cold-boot image lifetimes: old pool reproduces OOM; corrected startup reservation fits with no driver growth");
     printf("PASS: 40000 fragmented allocation schedules, alignment/class separation, 1000 images per driver block, warm reuse, persistent maps, atom-isolated flush/invalidate, dedicated requirements, type/OOM fallback and bind/map rollback; no leaks\n");
+    return 0;
 }

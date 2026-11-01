@@ -2964,6 +2964,24 @@ static void trash_drain_retired(PGRAPHVkState *r)
     r->trash_n = kept;
 }
 
+/* An allocation retry can run midway through binding a texture or surface.
+ * Observe completed work and free only its deferred garbage; the normal
+ * settle path also tears down current bindings and must not run here. */
+void pgraph_vk_reclaim_retired_images(PGRAPHVkState *r)
+{
+    for (int s = 0; s < PGRAPH_VK_SLOTS; s++) {
+        if (r->slot_fence_pending[s] &&
+            (int32_t)(r->slot_submit[s] - r->settled_submit) > 0 &&
+            vkGetFenceStatus(r->device, r->slot_fence[s]) == VK_SUCCESS) {
+            r->settled_submit = r->slot_submit[s];
+        }
+    }
+    /* This also checks independent display and upload retirement. Leave
+     * slot flags/fences and timestamp resolution to normal slot reuse. */
+    trash_drain_retired(r);
+    pgraph_vk_image_pool_flush(r);
+}
+
 void pgraph_vk_trash_drain(PGRAPHVkState *r)
 {
     for (int s = 0; s < PGRAPH_VK_SLOTS; s++) {
