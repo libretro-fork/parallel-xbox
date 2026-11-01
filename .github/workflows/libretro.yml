@@ -158,6 +158,9 @@ jobs:
             libepoxy-dev libglib2.0-dev libvulkan-dev spirv-tools patchelf \
             nasm libegl-dev libgl-dev libegl-mesa0 libgl1-mesa-dri \
             mesa-vulkan-drivers strace qemu-utils
+          if [ "$(uname -m)" = aarch64 ]; then
+            sudo apt-get -qy install gcc-x86-64-linux-gnu binutils-x86-64-linux-gnu
+          fi
 
       # The static Makefile; -g for the symbols artifact (dist/ is stripped)
       - name: Build

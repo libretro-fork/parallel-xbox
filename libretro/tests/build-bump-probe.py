@@ -3,6 +3,8 @@
 """Build an emulator-only observation ROM; never flash it on a console."""
 import argparse
 import csv
+import os
+import platform
 from pathlib import Path
 import shutil
 import subprocess
@@ -13,6 +15,9 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("output", type=Path, help="new or empty scratch directory")
     parser.add_argument("--assembler", default="nasm", help="nasm or yasm")
+    parser.add_argument("--cross-prefix", default=os.environ.get("GUEST_CROSS_PREFIX",
+                        "x86_64-linux-gnu-" if platform.machine().lower() in ("aarch64", "arm64") else ""),
+                        help="x86 guest-ROM compiler/binutils prefix; independent of the host core compiler")
     parser.add_argument("--color", action="store_true", help="test all signed color-channel combinations")
     parser.add_argument("--mixed", action="store_true", help="test mixed filters at varying footprints")
     parser.add_argument("--luminance-profile", choices=("scale_bias", "negative_scale", "overbright"),
@@ -78,7 +83,8 @@ def main():
     output = args.output.resolve()
     if output.exists() and any(output.iterdir()):
         parser.error("output directory must be empty")
-    for tool in ("gcc", "ld", "nm", "objcopy", args.assembler):
+    tools = {name: args.cross_prefix + name for name in ("gcc", "ld", "nm", "objcopy")}
+    for tool in (*tools.values(), args.assembler):
         if not shutil.which(tool):
             parser.error(f"missing build tool: {tool}")
     rom = Path(__file__).resolve().parent / "rom"
@@ -122,17 +128,17 @@ def main():
                 address = (0x10000 | modes[address_v] << 8 | modes[address_u]) if explicit_address else {
                     "clamp_edge": 0x30303, "clamp_u": 0x10103, "clamp_v": 0x10301}[address_mode]
                 defines += ["-DBUMP_FILTER_CLAMP_PROBE", f"-DBUMP_CLAMP_ADDRESS={address}"]
-        subprocess.run(["gcc", "-m32", "-ffreestanding", "-fno-pic", "-fno-pie",
+        subprocess.run([tools["gcc"], "-m32", "-ffreestanding", "-fno-pic", "-fno-pie",
                         "-fno-stack-protector", "-fno-asynchronous-unwind-tables",
                         "-mno-sse", "-mno-mmx", "-O2", "-Wall", "-Wextra", "-Werror",
                         *defines, "-c", str(rom / "gpu.c"),
                         "-o", str(obj)], check=True)
-        subprocess.run(["ld", "-m", "elf_i386", "-Ttext=0xFFF10000", "-e", "gpu_main",
+        subprocess.run([tools["ld"], "-m", "elf_i386", "-Ttext=0xFFF10000", "-e", "gpu_main",
                         "-o", str(elf), str(obj)], check=True)
-        symbols = subprocess.check_output(["nm", str(elf)], text=True)
+        symbols = subprocess.check_output([tools["nm"], str(elf)], text=True)
         entry = next(line.split()[0] for line in symbols.splitlines()
                      if line.split()[-1] == "gpu_main")
-        subprocess.run(["objcopy", "-O", "binary", "-j", ".text", "-j", ".rodata",
+        subprocess.run([tools["objcopy"], "-O", "binary", "-j", ".text", "-j", ".rodata",
                         "-j", ".data", str(elf), str(binary)], check=True)
         data = binary.read_bytes()
         if len(data) >= 0xEFFF0:

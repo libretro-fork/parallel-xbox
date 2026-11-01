@@ -1,5 +1,7 @@
 # Changelog of the libretro core
 
+- Build signed-texture guest ROM fixtures with an x86 cross compiler on ARM CI hosts, independently of the native core compiler.
+
 - Preserve geometry input-array extents when parsing point output layouts in the core shader compiler; triangle and quad point modes retain all input vertices. Validate every generated reference module’s input extents independently of GPU behavior.
 
 - Separate the unproven RAM-spin cadence fixture from the exact supported wait-proof fixture, retaining the 4x fast-forward requirement for proven waits.
