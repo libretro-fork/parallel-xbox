@@ -1804,3 +1804,5 @@ Native test harness maintenance also includes the out-of-line voice-signature he
 The frame suite distinguishes an arbitrary RAM spin (`SPIN`, no idle proof) from the exact supported timer-counter loop (`PROVEN_WAIT`). Both retain strict audio cadence; only the proven wait is required to exceed 4x real time. The ROM pins the exact supported instruction encodings and masks PIC lines before enabling interrupts.
 
 Standalone shader-generation and POSIX AIO fixtures use `glib_fixture.py` to link the core’s compatibility implementation. They do not query `pkg-config glib-2.0` or link upstream GLib. The Windows/Wine CI job installs native graphics-test headers because these source-extraction fixtures run on the Linux host.
+
+`test-seed-merge-view.py CHECKOUT [CC]` exercises the production seed parser, borrowed section lookup and merge. Mapping storage is poisoned and released before the write callback. It checks deduplication, caps, missing/malformed/mismatched files, write failures, no intermediate section duplication and the independently owned public read API. `SEED_VIEW_CFLAGS` enables sanitizers.

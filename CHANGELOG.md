@@ -1,5 +1,7 @@
 # Changelog of the libretro core
 
+- Merge shader seeds directly from mapped records, removing the intermediate section allocation and copy while releasing the mapping before file replacement.
+
 - Remove temporary allocations and scratch copies when strings insert or append their own contents; preserve overlapping ranges and buffer growth.
 
 - Run the exact four-trip GPU-progress display oracle in deterministic mode so host scheduling delays cannot cause false failures; retain normal-mode deadline-accounting coverage.
