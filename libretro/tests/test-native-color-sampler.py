@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""Exercise the production Vulkan nonmip color sampler policy and exclusions."""
+"""Exercise the production Vulkan base-level color sampler policy and exclusions."""
 from pathlib import Path
 import re
 import subprocess
@@ -71,7 +71,8 @@ int main(void) {
                         format!=NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_G8B8;
             bool different=supported&&pgraph_texture_min_filter_vk_map[min]!=
                                       pgraph_texture_min_filter_vk_map[mag];
-            bool expected=nonmip&&colors&&different&&min<=6&&dim==2&&!cube&&!border;
+            bool base_only=nonmip||(MIN(low,state.levels-1)==0&&MIN(high,state.levels-1)==0);
+            bool expected=base_only&&colors&&different&&min<=6&&dim==2&&!cube&&!border;
             bool nearest;float maximum;
             assert(policy(state,min,mag,supported,&nearest,&maximum)==expected);
             assert(nearest==(expected||f.linear||state.levels==1||min==3||min==4));
@@ -79,7 +80,7 @@ int main(void) {
             cases++;
         }
     }
-    printf("PASS: %u nonmip color sampler policies, nearest base reads and exclusions\n",cases);
+    printf("PASS: %u base-only color sampler policies, nearest base reads and exclusions\n",cases);
 }
 """.replace("/* TYPES */",types).replace("/* FORMATS */",formats).replace("/* FILTERS */",filters).replace(
     "/* MIPMAP */",mipmap).replace("/* NEAREST */",nearest).replace("/* PREDICATE */",predicate).replace(

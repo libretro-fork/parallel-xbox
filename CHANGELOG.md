@@ -1,5 +1,8 @@
 # Changelog of the libretro core
 
+- Vulkan mip-filtered 2D color textures now preserve min/mag selection at LOD0, including single-level images, guest clamps and Force LOD0, without reading lower mips.
+
+
 - Load both OpenGL shader-seed sections from one local mapping and one embedded-dictionary inflation, copying local/embedded records directly into their final arrays instead of temporary duplicated arrays and reallocations. Seed ordering and file format are unchanged.
 
 - Upload eligible linear depth/stencil surfaces from imported guest RAM directly into the GPU unpack input, avoiding the CPU staging reservation/copy. Padded rows use bounded GPU-copy batches; swizzled/unimported/misaligned inputs retain staging.

@@ -40,6 +40,10 @@ def main():
                         help="use a 4x4 linear G8B8 image with --single-level")
     parser.add_argument("--native-color", nargs="?", choices=("rgba8", "rgb565"), const="rgba8",
                         help="RGBA8 native sampler colors with --mixed or --color")
+    parser.add_argument("--native-mip-filter", type=int, choices=(3,4,5,6),
+                        help="use mip filters with the native-color mixed probe")
+    parser.add_argument("--native-base-only", action="store_true",
+                        help="set guest maximum mip zero for --native-mip-filter")
     parser.add_argument("--native-mip-chain", action="store_true",
                         help="add a contrasting mip under nonmip native-color filters")
     parser.add_argument("--linear-mip-count", type=int, choices=range(16), default=1,
@@ -59,7 +63,7 @@ def main():
     args = parser.parse_args()
     if args.luminance_profile and (args.color or args.mixed or args.mip_filter):
         parser.error("--luminance-profile is a separate bump fixture")
-    if args.min_lod and not args.mip_filter:
+    if args.min_lod and not (args.mip_filter or args.native_mip_filter):
         parser.error("--min-lod requires --mip-filter")
     if args.base_only and not args.mip_filter:
         parser.error("--base-only requires --mip-filter")
@@ -80,6 +84,12 @@ def main():
         parser.error("--linear-level requires --single-level, 4x4 and explicit addresses")
     if args.native_color and not ((args.mixed or args.color) and not args.mip_filter):
         parser.error("--native-color requires --mixed or --color without mip filters")
+    if args.native_mip_filter and not (args.native_color and args.mixed):
+        parser.error("--native-mip-filter requires --native-color and --mixed")
+    if args.native_base_only and not args.native_mip_filter:
+        parser.error("--native-base-only requires --native-mip-filter")
+    if args.native_mip_filter and args.min_lod and (args.min_lod != 1 or not args.native_mip_chain or args.native_base_only):
+        parser.error("native minimum one requires the intact two-level chain")
     if args.native_mip_chain and not args.native_color:
         parser.error("--native-mip-chain requires --native-color")
     if args.linear_mip_count != 1 and not args.linear_level:
@@ -130,6 +140,11 @@ def main():
             defines.append("-DBUMP_NATIVE_COLOR")
             if args.native_mip_chain:
                 defines.append("-DBUMP_NATIVE_CHAIN")
+            if args.native_mip_filter:
+                defines += [f"-DBUMP_NATIVE_MIP_FILTER={args.native_mip_filter}",
+                            f"-DBUMP_NATIVE_MIN_LOD={args.min_lod}"]
+            if args.native_base_only:
+                defines.append("-DBUMP_NATIVE_BASE_ONLY")
             if args.native_color == "rgb565":
                 defines.append("-DBUMP_NATIVE_RGB565")
         if args.mixed:
@@ -198,7 +213,7 @@ def main():
         writer.writerow(["id", "layout", "mode", "axis", "signed_channels", "filter",
                          "coordinate", "result_address", "lod_bias", "mip_filter",
                          "max_lod", "wrap_period", "mag_filter", "address_mode",
-                         "sample_u", "sample_v", "min_lod", "sampler_transition", "base_size", "border_color", "mip_count", "native_palette", "native_format", "native_chain"])
+                         "sample_u", "sample_v", "min_lod", "sampler_transition", "base_size", "border_color", "mip_count", "native_palette", "native_format", "native_chain", "native_min_filter", "native_mag_filter", "native_min_lod", "native_base_only"])
         for i in range(192):
             if args.luminance_profile:
                 flags = (i // 6) % 16
@@ -247,7 +262,11 @@ def main():
                                   else ("left_center", "midpoint", "right_center"))[i % 3],
                                  f"0x{0x300204 + i * 8:08x}", args.lod_bias if args.mixed else 0, 0]
                 if args.native_color:
-                    row += [""] * 11 + [flags, args.native_color, int(args.native_mip_chain)]
+                    row += [""] * 11 + [flags, args.native_color, int(args.native_mip_chain),
+                                         args.native_mip_filter or "", ((i // 3) % 2) + 1 if args.native_mip_filter else "",
+                                         args.min_lod, int(args.native_base_only)]
+                    if args.native_mip_filter:
+                        row[5] = f"min_mip_{args.native_mip_filter}_mag_{((i // 3) % 2) + 1}"
                 writer.writerow(row)
                 continue
             writer.writerow([i, ("linear", "swizzled")[i // 96],

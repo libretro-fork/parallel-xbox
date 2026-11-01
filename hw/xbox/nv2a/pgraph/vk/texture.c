@@ -2193,9 +2193,12 @@ static VkSampler create_sampler_for_state(PGRAPHState *pg,
         GET_MASK(address, NV_PGRAPH_TEXADDRESS0_ADDRU) <= NV_PGRAPH_TEXADDRESS0_ADDRU_BORDER &&
         GET_MASK(address, NV_PGRAPH_TEXADDRESS0_ADDRV) >= NV_PGRAPH_TEXADDRESS0_ADDRU_WRAP &&
         GET_MASK(address, NV_PGRAPH_TEXADDRESS0_ADDRV) <= NV_PGRAPH_TEXADDRESS0_ADDRU_BORDER;
-    /* Nonmip color filters need the same min/mag choice even when the
-     * image contains a mip chain. Linear storage also ignores mip requests. */
-    bool mixed_color_lod0 = !mipmap_en && state.dimensionality == 2 &&
+    /* Nonmip filters and mip chains clamped to zero must retain the
+     * original footprint's min/mag choice while reading only level zero. */
+    bool mixed_color_lod0 = (!mipmap_en ||
+        (MIN(state.min_mipmap_level, state.levels - 1) == 0 &&
+         MIN(state.max_mipmap_level, state.levels - 1) == 0)) &&
+        state.dimensionality == 2 &&
         !state.cubemap && !state.border && !f_basic.depth &&
         vk_min_filter != vk_mag_filter &&
         min_filter >= NV_PGRAPH_TEXFILTER0_MIN_BOX_LOD0 &&

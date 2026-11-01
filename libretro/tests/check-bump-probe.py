@@ -106,7 +106,13 @@ def expected(case, force_lod0=False):
     if mixed:
         lod = {"magnified": -3, "near_magnified": -1, "minified": 2}[case["coordinate"]]
         minified = lod + float(case.get("lod_bias", 0)) > 0
-        linear = case["filter"] == ("min_linear_mag_point" if minified else "min_point_mag_linear")
+        if case.get("native_min_filter"):
+            if (case["layout"] == "swizzled" and case.get("native_chain") == "1" and
+                    case.get("native_base_only") != "1" and not force_lod0):
+                raise ValueError("unclamped native mip controls require parent comparison")
+            linear = int(case["native_min_filter"]) in (2,4,6) if minified else int(case["native_mag_filter"]) == 2
+        else:
+            linear = case["filter"] == ("min_linear_mag_point" if minified else "min_point_mag_linear")
         weight = 0.75 if linear else 1
     else:
         coordinate = ("left_center", "midpoint", "right_center").index(case["coordinate"])

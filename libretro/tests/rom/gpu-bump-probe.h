@@ -437,8 +437,21 @@ static void bump_filter_probe(void)
                (2u << 16) | (1u << 20) | (1u << 24));
         method(NV097_SET_TEXTURE_CONTROL0, (1u << 30) | (1u << 6));
 #endif
+#ifdef BUMP_NATIVE_MIP_FILTER
+        method(NV097_SET_TEXTURE_CONTROL0, (1u << 30) | (BUMP_NATIVE_MIN_LOD << 18) |
+#ifdef BUMP_NATIVE_CHAIN
+               (1u << 6));
+#else
+               0);
+#endif
+#endif
+#ifdef BUMP_NATIVE_BASE_ONLY
+        method(NV097_SET_TEXTURE_CONTROL0, 1u << 30);
+#endif
         method(NV097_SET_TEXTURE_FILTER,
-#ifdef BUMP_FILTER_MIP_PROBE
+#ifdef BUMP_NATIVE_MIP_FILTER
+               (BUMP_NATIVE_MIP_FILTER << 16) | ((linear ? 2u : 1u) << 24) | BUMP_MIXED_BIAS |
+#elif defined(BUMP_FILTER_MIP_PROBE)
                (BUMP_MIP_FILTER << 16) | (BUMP_MIP_MAG << 24) | BUMP_MIXED_BIAS |
 #elif defined(BUMP_FILTER_MIXED_PROBE)
                (linear ? 0x01020000u : 0x02010000u) | BUMP_MIXED_BIAS |

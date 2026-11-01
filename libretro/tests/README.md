@@ -214,6 +214,20 @@ ignore raw mip counts and clamps; signed G8B8 shader selection follows that rule
 `test-native-color-sampler.py CHECKOUT [CC]` checks 381,024 production Vulkan
 sampler policies across supported formats, image levels, min/mag modes, clamp
 values, dimensions, cubes, embedded borders and format filtering support.
+`test-native-color-base-clamps.py CHECKOUT PARENT CANDIDATE HARNESS SCRATCH`
+checks 7,680 scalar cases and 3,264 exact parent pixels per backend.
+RGBA8/RGB565 cover all four mip modes and both magnification filters, single
+images, guest maximum zero, Force LOD0 with an intact chain, LOD boundaries
+and extreme biases. Full mip chains, positive lower clamps, existing nonmip
+sampling and G8B8 are parent controls. Quality filtering is disabled to isolate
+the clamp from anisotropic filtering of matching linear filters.
+`--native-mip-filter 3|4|5|6` programs the native probe's min mode and alternates
+matching/mixed mag modes; `--native-base-only` programs guest maximum zero.
+Native minimum one (`--min-lod 1`) requires an intact native mip chain.
+Unclamped native mip controls use per-backend parent comparison rather than
+the base-level scalar oracle. Both effective sampler clamps must be zero
+for the new mip-filtered color path; positive lower clamps retain their policy.
+
 `test-native-color-lod0.py CHECKOUT PARENT CANDIDATE HARNESS SCRATCH` checks
 5,376 native RGBA8/RGB565 scalar cases and 1,344 exact matching-filter/G8B8
 parent pixels per backend. Linear and swizzled layouts, six biases, Force
