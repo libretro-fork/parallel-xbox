@@ -25,7 +25,7 @@ with tempfile.TemporaryDirectory(prefix="g8b8-boundary-") as temporary:
         source = (subprocess.check_output(["git", "show", a.parent + ":hw/xbox/nv2a/pgraph/glsl/psh.c"], cwd=r, text=True)
                   if version == "parent" else (r / "hw/xbox/nv2a/pgraph/glsl/psh.c").read_text())
         fn = re.search(r"^static void psh_append_signed_g8b8\(.*?^\}", source, re.M | re.S).group()
-        decoder = source[source.index('"float sign3(float x)'):source.index('"float sign3_to_0_to_1')]
+        decoder = re.search(r'"float sign3\(float x\).*?^        "}\\n"', source, re.M | re.S).group()
         decoder = "".join(ast.literal_eval(x) for x in re.findall(r'"(?:[^"\\]|\\.)*"', decoder))
         fixture = r"""
 #include <stdbool.h>

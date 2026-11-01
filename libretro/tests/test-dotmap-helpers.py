@@ -7,6 +7,7 @@ production objects come from the candidate build; their interfaces are unchanged
 """
 import argparse
 from collections import Counter
+from shader_helpers_fixture import extract_common_helpers
 import json
 from pathlib import Path
 import re
@@ -78,7 +79,7 @@ for old in sorted((out/"parent").glob("*.frag")):
     assert len(before)==8
     assert len(matches)==len(after) and set(after)==needed,(old.name,set(after),needed)
     assert all(after[name]==before[name] for name in needed),(old.name,"function changed")
-    assert function.sub("",x)==function.sub("",y),(old.name,"shader body changed")
+    assert extract_common_helpers(function.sub("",x))[1]==extract_common_helpers(function.sub("",y))[1],(old.name,"shader body changed")
     source_saved+=len(x)-len(y)
     if mode==0:ordinary_source=len(x)-len(y)
     if api:

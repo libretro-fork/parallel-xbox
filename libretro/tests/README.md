@@ -2384,7 +2384,7 @@ The matrix covers 384 complete GL/Vulkan shader sources: disabled/ordinary/shado
 stages, normalized/rectangle coordinates, both convolution kernels and every
 convolution-stage mask. Programs needing convolution get one unchanged table
 pair even with multiple stages; 264 unused pairs disappear. Removing those
-declarations and separately unused dot-mapping definitions must leave the
+declarations and separately unused common/dot-mapping definitions must leave the
 remaining parent/candidate shader text byte-identical. All 192
 Vulkan variants per side compile with the core compiler, and image-operation
 counts remain equal. The table pair occupies 336 GLSL bytes. Reported SPIR-V deltas include
@@ -2421,10 +2421,10 @@ specular fallback behavior is preserved. One case combines convolution and dot
 mapping to check their independent lazy declarations.
 
 Only referenced mapping definitions may remain, once each and byte-identical to
-the parent. Removing all mapping definitions must leave the remaining complete
-shader text byte-identical. All 224 Vulkan variants per side compile with the
-core compiler; image-operation counts remain equal. Ordinary programs omit 882
-GLSL bytes and 2,360 SPIR-V bytes in the checked builds. Keys and persistent state
+the parent. Removing mapping definitions and independently unused common helpers must leave
+the remaining complete shader text byte-identical. All 224 Vulkan variants per side compile with the
+core compiler; image-operation counts remain equal. The eight mapping definitions occupy 882 GLSL bytes. Whole-module deltas may
+include other omitted common helpers in the compared builds. Keys and persistent state
 are unchanged. Cache hits remain valid; no FPS or compile-latency gain is claimed.
 
 GL shader-cache version coverage checks both borrowed mapped-key views and owned key copies. It verifies exact borrowed byte addresses and contents at 32 input alignments, every truncated prefix of a 2 KiB-key header, legacy/changed versions and the owned round trip. Linux defaults to ASan/UBSan; GL_SHADER_VERSION_CFLAGS, GL_SHADER_VERSION_BINARY and GL_SHADER_VERSION_SKIP_RUN support native Win32/Win64 fixtures. Windows temporary files use the user temporary directory and delete-on-close. No mapped key pointer escapes unmapping.
@@ -2502,6 +2502,24 @@ grows from 91,856 to 91,872 bytes; the mode-miss planner uses a 72-byte frame.
 Hardware cache-miss and game-latency effects are unmeasured. Scratch-image
 lifetime and budget paths have controlled-model coverage; native GPU testing
 uses NVIDIA shared-device presentation.
+
+`test-common-helpers.py CHECKOUT BUILD PARENT_PSH_OBJECT SCRATCH` uses the same
+configured-build driver/link options as the table/dot-mapping tests. Save the
+parent `glsl/psh.o` before building the candidate. It checks 772 complete fragment
+variants per side on GL/Vulkan generation: the dot/reflection matrix plus all
+fifteen G8B8 sign masks, point/linear/mixed/mip paths, valid rectangle layouts,
+bump/luminance with 2D/3D destinations and native/fallback cube coordinates.
+
+Only referenced common definitions may remain, once each and byte-identical to
+the parent. Dot-mapping dependencies must precede their callers. Removing common
+definitions leaves all remaining shader text byte-identical, including the
+Kahan/barycentric depth code. The unused inverse sign helper is never emitted.
+All 386 Vulkan variants per side compile with the core compiler; image-operation
+counts remain unchanged. The ordinary 2D cases omit 1,554 GLSL bytes and 4,008
+SPIR-V bytes in the checked builds. Keys and persistent state are unchanged.
+The scalar GPU G8B8 boundary/mip fixtures continue to test actual sign decoding;
+`shader_helpers_fixture.py` provides only test-side extraction/canonicalization.
+These results measure source/module size, not FPS or shader compile latency.
 
 Disk-result allocation now uses the non-clearing allocator. The handoff fixture poisons non-clearing allocations with 0xa5 and asserts that every valid disk-reader round trip takes that path, then checks parsed state, binary owner/format/size, MPSC adoption and release for retained/capped mappings. This verifies that allocator zeros are not required by any published field or the queue link.
 

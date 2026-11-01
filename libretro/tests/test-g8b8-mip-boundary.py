@@ -20,7 +20,7 @@ r = a.checkout.resolve()
 source = (r / "hw/xbox/nv2a/pgraph/glsl/psh.c").read_text()
 state = re.search(r"typedef struct PshState \{.*?\} PshState;", (r / "hw/xbox/nv2a/pgraph/glsl/psh.h").read_text(), re.S).group()
 helper = re.search(r"^static void psh_append_signed_g8b8_mips\(.*?^\}", source, re.M | re.S).group()
-decoder = source[source.index('"float sign3(float x)'):source.index('"float sign3_to_0_to_1')]
+decoder = re.search(r'"float sign3\(float x\).*?^        "}\\n"', source, re.M | re.S).group()
 decoder = "".join(ast.literal_eval(x) for x in re.findall(r'"(?:[^"\\]|\\.)*"', decoder))
 fixture = r"""
 #include <assert.h>

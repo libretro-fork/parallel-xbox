@@ -1560,6 +1560,78 @@ static void psh_append_signed_bump(const struct PixelShader *ps, MString *vars,
     }
 }
 
+enum PshCommonHelper {
+    PSH_SIGN1, PSH_SIGN2, PSH_SIGN3, PSH_CUBE_TO_2D, PSH_2D_TO_CUBE,
+};
+
+static void psh_append_common_helper(MString *preflight,
+                                      enum PshCommonHelper helper,
+                                      unsigned *emitted)
+{
+    static const char *const functions[] = {
+        "float sign1(float x) {\n"
+        "    x *= 255.0;\n"
+        "    return (x-128.0)/127.0;\n"
+        "}\n",
+        "float sign2(float x) {\n"
+        "    x *= 255.0;\n"
+        "    if (x >= 128.0) return (x-255.5)/127.5;\n"
+        "               else return (x+0.5)/127.5;\n"
+        "}\n",
+        "float sign3(float x) {\n"
+        "    x *= 255.0;\n"
+        "    if (x >= 128.0) return (x-256.0)/127.0;\n"
+        "               else return (x)/127.0;\n"
+        "}\n",
+        "vec2 remapCubeTo2D(vec3 texCoord) {\n"
+        "    vec2 uv;\n"
+        "    vec3 absTexCoord = abs(texCoord);\n"
+        "    if (absTexCoord.x > absTexCoord.y && absTexCoord.x > absTexCoord.z) {\n"
+        "        if (texCoord.x > 0.0) {\n"
+        "            // +X: Right\n"
+        "            uv = vec2(-texCoord.z, texCoord.y);\n"
+        "        } else {\n"
+        "            // -X: Left\n"
+        "            uv = vec2(texCoord.z, texCoord.y);\n"
+        "        }\n"
+        "        uv /= absTexCoord.x;\n"
+        "    }\n"
+        "    else if (absTexCoord.y > absTexCoord.x && absTexCoord.y > absTexCoord.z) {\n"
+        "        if (texCoord.y > 0.0) {\n"
+        "            // +Y: Top\n"
+        "            uv = vec2(texCoord.x, -texCoord.z);\n"
+        "        } else {\n"
+        "            // -Y: Bottom\n"
+        "            uv = vec2(texCoord.x, texCoord.z);\n"
+        "        }\n"
+        "        uv /= absTexCoord.y;\n"
+        "    }\n"
+        "    else {\n"
+        "        if (texCoord.z > 0.0) {\n"
+        "            // +Z: Front\n"
+        "            uv = vec2(texCoord.x, texCoord.y);\n"
+        "        } else {\n"
+        "            // -Z: Back\n"
+        "            uv = vec2(-texCoord.x, texCoord.y);\n"
+        "        }\n"
+        "        uv /= absTexCoord.z;\n"
+        "    }\n"
+        "    return uv;\n"
+        "}\n",
+        "vec3 remap2DToCube(vec3 texCoord2DProjective) {\n"
+        "    vec2 st = (texCoord2DProjective.xy / texCoord2DProjective.z);"
+        "    return normalize(vec3(1.0, st.y, -st.x));"
+        "}\n"
+    };
+    assert((unsigned)helper < ARRAY_SIZE(functions));
+    /* Low eight bits track dot mappings; common dependencies follow them. */
+    unsigned bit = 1u << (8 + helper);
+    if (!(*emitted & bit)) {
+        mstring_append(preflight, functions[helper]);
+        *emitted |= bit;
+    }
+}
+
 /* Definitions are shared by every stage that actually references a mapping. */
 static void psh_append_dotmap(MString *preflight, unsigned mapping,
                               unsigned *emitted)
@@ -1598,6 +1670,9 @@ static void psh_append_dotmap(MString *preflight, unsigned mapping,
     };
     assert(mapping < ARRAY_SIZE(functions));
     if (!(*emitted & (1u << mapping))) {
+        if (mapping >= 1 && mapping <= 3) {
+            psh_append_common_helper(preflight, PSH_SIGN1 + mapping - 1, emitted);
+        }
         mstring_append(preflight, functions[mapping]);
         *emitted |= 1u << mapping;
     }
@@ -1657,25 +1732,10 @@ static MString* psh_convert(struct PixelShader *ps)
         "dotmap_hilo_hemisphere",
     };
 
-    mstring_append_fmt(preflight,
-        "float sign1(float x) {\n"
-        "    x *= 255.0;\n"
-        "    return (x-128.0)/127.0;\n"
-        "}\n"
-        "float sign2(float x) {\n"
-        "    x *= 255.0;\n"
-        "    if (x >= 128.0) return (x-255.5)/127.5;\n"
-        "               else return (x+0.5)/127.5;\n"
-        "}\n"
-        "float sign3(float x) {\n"
-        "    x *= 255.0;\n"
-        "    if (x >= 128.0) return (x-256.0)/127.0;\n"
-        "               else return (x)/127.0;\n"
-        "}\n"
-        "float sign3_to_0_to_1(float x) {\n"
-        "    if (x >= 0) return x/2;\n"
-        "           else return 1+x/2;\n"
-        "}\n"
+    mstring_append(preflight,
+
+
+
         // Kahan's algorithm for computing determinant using FMA for higher
         // precision. See e.g.:
         // Muller et al, "Handbook of Floating-Point Arithmetic", 2nd ed.
@@ -1693,47 +1753,7 @@ static MString* psh_convert(struct PixelShader *ps)
         "float area(vec2 a, vec2 b, vec2 c) {\n"
         "    return kahan_det(b - a, c - a);\n"
         "}\n"
-        "vec2 remapCubeTo2D(vec3 texCoord) {\n"
-        "    vec2 uv;\n"
-        "    vec3 absTexCoord = abs(texCoord);\n"
-        "    if (absTexCoord.x > absTexCoord.y && absTexCoord.x > absTexCoord.z) {\n"
-        "        if (texCoord.x > 0.0) {\n"
-        "            // +X: Right\n"
-        "            uv = vec2(-texCoord.z, texCoord.y);\n"
-        "        } else {\n"
-        "            // -X: Left\n"
-        "            uv = vec2(texCoord.z, texCoord.y);\n"
-        "        }\n"
-        "        uv /= absTexCoord.x;\n"
-        "    }\n"
-        "    else if (absTexCoord.y > absTexCoord.x && absTexCoord.y > absTexCoord.z) {\n"
-        "        if (texCoord.y > 0.0) {\n"
-        "            // +Y: Top\n"
-        "            uv = vec2(texCoord.x, -texCoord.z);\n"
-        "        } else {\n"
-        "            // -Y: Bottom\n"
-        "            uv = vec2(texCoord.x, texCoord.z);\n"
-        "        }\n"
-        "        uv /= absTexCoord.y;\n"
-        "    }\n"
-        "    else {\n"
-        "        if (texCoord.z > 0.0) {\n"
-        "            // +Z: Front\n"
-        "            uv = vec2(texCoord.x, texCoord.y);\n"
-        "        } else {\n"
-        "            // -Z: Back\n"
-        "            uv = vec2(-texCoord.x, texCoord.y);\n"
-        "        }\n"
-        "        uv /= absTexCoord.z;\n"
-        "    }\n"
-        "    return uv;\n"
-        "}\n"
-        "\n"
-        "vec3 remap2DToCube(vec3 texCoord2DProjective) {\n"
-        "    vec2 st = (texCoord2DProjective.xy / texCoord2DProjective.z);"
-        "    return normalize(vec3(1.0, st.y, -st.x));"
-        "}\n"
-        );
+        "\n");
 
     MString *clip = mstring_new();
     mstring_append_fmt(clip, "/*  Window-clip (%slusive) */\n",
@@ -1848,7 +1868,7 @@ static MString* psh_convert(struct PixelShader *ps)
 
     MString *vars = mstring_new();
     bool convolution_tables = false;
-    unsigned dotmaps_emitted = 0;
+    unsigned helpers_emitted = 0;
     mstring_append(vars, "vec4 pD0 = vtxD0;\n");
     mstring_append(vars, "vec4 pD1 = vtxD1;\n");
     mstring_append(vars, "vec4 pB0 = vtxB0;\n");
@@ -1915,6 +1935,7 @@ static MString* psh_convert(struct PixelShader *ps)
                 } else {
                     if (ps->state->dim_tex[i] == 2) {
                         if (ps->state->tex_cubemap[i]) {
+                            psh_append_common_helper(preflight, PSH_2D_TO_CUBE, &helpers_emitted);
                             mstring_append_fmt(
                                 vars,
                                 "vec4 t%d = texture(texSamp%d, remap2DToCube(%s(pT%d.xyw)));\n",
@@ -1960,6 +1981,7 @@ static MString* psh_convert(struct PixelShader *ps)
             break;
         case PS_TEXTUREMODES_CUBEMAP:
             if (!ps->state->tex_cubemap[i]) {
+                psh_append_common_helper(preflight, PSH_CUBE_TO_2D, &helpers_emitted);
                 mstring_append_fmt(vars,
                     "pT%d.xy = remapCubeTo2D(pT%d.xyz);\n",
                     i, i);
@@ -1985,6 +2007,7 @@ static MString* psh_convert(struct PixelShader *ps)
         }
         case PS_TEXTUREMODES_BUMPENVMAP:
             assert(i >= 1);
+            psh_append_common_helper(preflight, PSH_SIGN3, &helpers_emitted);
 
             mstring_append_fmt(vars, "vec2 dsdt%d = vec2(sign3(t%d.b), sign3(t%d.g));\n",
                                i, ps->input_tex[i], ps->input_tex[i]);
@@ -2007,6 +2030,7 @@ static MString* psh_convert(struct PixelShader *ps)
             break;
         case PS_TEXTUREMODES_BUMPENVMAP_LUM:
             assert(i >= 1);
+            psh_append_common_helper(preflight, PSH_SIGN3, &helpers_emitted);
 
             mstring_append_fmt(vars, "vec3 dsdtl%d = vec3(sign3(t%d.b), sign3(t%d.g), t%d.r);\n",
                                i, ps->input_tex[i], ps->input_tex[i], ps->input_tex[i]);
@@ -2039,7 +2063,7 @@ static MString* psh_convert(struct PixelShader *ps)
             break;
         case PS_TEXTUREMODES_DOT_ST:
             assert(i >= 2);
-            psh_append_dotmap(preflight, ps->dot_map[i], &dotmaps_emitted);
+            psh_append_dotmap(preflight, ps->dot_map[i], &helpers_emitted);
             mstring_append_fmt(vars, "/* PS_TEXTUREMODES_DOT_ST */\n");
             mstring_append_fmt(vars,
                "float dot%d = dot(pT%d.xyz, %s(t%d));\n"
@@ -2052,7 +2076,7 @@ static MString* psh_convert(struct PixelShader *ps)
             break;
         case PS_TEXTUREMODES_DOT_ZW:
             assert(i >= 2);
-            psh_append_dotmap(preflight, ps->dot_map[i], &dotmaps_emitted);
+            psh_append_dotmap(preflight, ps->dot_map[i], &helpers_emitted);
             mstring_append_fmt(vars, "/* PS_TEXTUREMODES_DOT_ZW */\n");
             mstring_append_fmt(vars, "float dot%d = dot(pT%d.xyz, %s(t%d));\n",
                 i, i, dotmap_func, ps->input_tex[i]);
@@ -2069,18 +2093,19 @@ static MString* psh_convert(struct PixelShader *ps)
             break;
         case PS_TEXTUREMODES_DOT_RFLCT_DIFF:
             assert(i == 2);
-            psh_append_dotmap(preflight, ps->dot_map[i], &dotmaps_emitted);
+            psh_append_dotmap(preflight, ps->dot_map[i], &helpers_emitted);
             mstring_append_fmt(vars, "/* PS_TEXTUREMODES_DOT_RFLCT_DIFF */\n");
             mstring_append_fmt(vars, "float dot%d = dot(pT%d.xyz, %s(t%d));\n",
                 i, i, dotmap_func, ps->input_tex[i]);
             assert(ps->dot_map[i+1] < 8);
-            psh_append_dotmap(preflight, ps->dot_map[i+1], &dotmaps_emitted);
+            psh_append_dotmap(preflight, ps->dot_map[i+1], &helpers_emitted);
             mstring_append_fmt(vars, "float dot%d_n = dot(pT%d.xyz, %s(t%d));\n",
                 i, i+1, dotmap_funcs[ps->dot_map[i+1]], ps->input_tex[i+1]);
             mstring_append_fmt(vars, "vec3 n_%d = vec3(dot%d, dot%d, dot%d_n);\n",
                 i, i-1, i, i);
             apply_border_adjustment(ps, vars, i, "n_%d");
             if (!ps->state->tex_cubemap[i]) {
+                psh_append_common_helper(preflight, PSH_CUBE_TO_2D, &helpers_emitted);
                 mstring_append_fmt(vars,
                     "n_%d.xy = remapCubeTo2D(n_%d);\n", i, i);
             }
@@ -2090,7 +2115,7 @@ static MString* psh_convert(struct PixelShader *ps)
             break;
         case PS_TEXTUREMODES_DOT_RFLCT_SPEC:
             assert(i == 3);
-            psh_append_dotmap(preflight, ps->dot_map[i], &dotmaps_emitted);
+            psh_append_dotmap(preflight, ps->dot_map[i], &helpers_emitted);
             mstring_append_fmt(vars, "/* PS_TEXTUREMODES_DOT_RFLCT_SPEC */\n");
             mstring_append_fmt(vars, "float dot%d = dot(pT%d.xyz, %s(t%d));\n",
                 i, i, dotmap_func, ps->input_tex[i]);
@@ -2102,6 +2127,7 @@ static MString* psh_convert(struct PixelShader *ps)
                 i, i, i, i, i, i, i);
             apply_border_adjustment(ps, vars, i, "rv_%d");
             if (!ps->state->tex_cubemap[i]) {
+                psh_append_common_helper(preflight, PSH_CUBE_TO_2D, &helpers_emitted);
                 mstring_append_fmt(vars,
                     "rv_%d.xy = remapCubeTo2D(rv_%d);\n", i, i);
             }
@@ -2111,7 +2137,7 @@ static MString* psh_convert(struct PixelShader *ps)
             break;
         case PS_TEXTUREMODES_DOT_STR_3D:
             assert(i == 3);
-            psh_append_dotmap(preflight, ps->dot_map[i], &dotmaps_emitted);
+            psh_append_dotmap(preflight, ps->dot_map[i], &helpers_emitted);
             mstring_append_fmt(vars, "/* PS_TEXTUREMODES_DOT_STR_3D */\n");
             mstring_append_fmt(vars,
                "float dot%d = dot(pT%d.xyz, %s(t%d));\n"
@@ -2126,7 +2152,7 @@ static MString* psh_convert(struct PixelShader *ps)
             break;
         case PS_TEXTUREMODES_DOT_STR_CUBE:
             assert(i == 3);
-            psh_append_dotmap(preflight, ps->dot_map[i], &dotmaps_emitted);
+            psh_append_dotmap(preflight, ps->dot_map[i], &helpers_emitted);
             mstring_append_fmt(vars, "/* PS_TEXTUREMODES_DOT_STR_CUBE */\n");
             mstring_append_fmt(vars, "float dot%d = dot(pT%d.xyz, %s(t%d));\n",
                 i, i, dotmap_func, ps->input_tex[i]);
@@ -2134,6 +2160,7 @@ static MString* psh_convert(struct PixelShader *ps)
                                i, i-2, i-1, i);
             apply_border_adjustment(ps, vars, i, "dotSTR%dCube");
             if (!ps->state->tex_cubemap[i]) {
+                psh_append_common_helper(preflight, PSH_CUBE_TO_2D, &helpers_emitted);
                 mstring_append_fmt(vars,
                     "dotSTR%dCube.xy = remapCubeTo2D(dotSTR%dCube);\n",
                     i, i);
@@ -2160,7 +2187,7 @@ static MString* psh_convert(struct PixelShader *ps)
             break;
         case PS_TEXTUREMODES_DOTPRODUCT:
             assert(i == 1 || i == 2);
-            psh_append_dotmap(preflight, ps->dot_map[i], &dotmaps_emitted);
+            psh_append_dotmap(preflight, ps->dot_map[i], &helpers_emitted);
             mstring_append_fmt(vars, "/* PS_TEXTUREMODES_DOTPRODUCT */\n");
             mstring_append_fmt(vars, "float dot%d = dot(pT%d.xyz, %s(t%d));\n",
                 i, i, dotmap_func, ps->input_tex[i]);
@@ -2252,6 +2279,9 @@ static MString* psh_convert(struct PixelShader *ps)
                 "    return vec4(norm%d(coord.xy), 0, coord.w);\n"
                 "}\n",
                 i, i);
+            }
+            if (ps->state->g8b8_signed[i]) {
+                psh_append_common_helper(preflight, PSH_SIGN3, &helpers_emitted);
             }
             psh_append_signed_g8b8(ps, vars, i);
         }
