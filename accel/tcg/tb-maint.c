@@ -400,18 +400,27 @@ static bool page_trylock_add(struct page_collection *set, tb_page_addr_t addr)
     unsigned lo = 0, hi = set->n;
     PageDesc *pd;
 
-    /* the first entry with an index not below this one's */
-    while (lo < hi) {
-        unsigned mid = (lo + hi) / 2;
-
-        if (set->entries[mid].index < index) {
-            lo = mid + 1;
-        } else {
-            hi = mid;
+    /* Range pages arrive in ascending order. Repeated references to the
+     * current tail need neither a search nor a second lock attempt. */
+    if (set->n && set->entries[set->n - 1].index <= index) {
+        if (set->entries[set->n - 1].index == index) {
+            return false;
         }
-    }
-    if (lo < set->n && set->entries[lo].index == index) {
-        return false;
+        lo = set->n;
+    } else {
+        /* the first entry with an index not below this one's */
+        while (lo < hi) {
+            unsigned mid = (lo + hi) / 2;
+
+            if (set->entries[mid].index < index) {
+                lo = mid + 1;
+            } else {
+                hi = mid;
+            }
+        }
+        if (lo < set->n && set->entries[lo].index == index) {
+            return false;
+        }
     }
 
     pd = page_find(index);
@@ -431,7 +440,9 @@ static bool page_trylock_add(struct page_collection *set, tb_page_addr_t addr)
         }
     }
     pe = &set->entries[lo];
-    memmove(pe + 1, pe, (set->n - lo) * sizeof(*pe));
+    if (lo != set->n) {
+        memmove(pe + 1, pe, (set->n - lo) * sizeof(*pe));
+    }
     set->n++;
     pe->index = index;
     pe->pd = pd;

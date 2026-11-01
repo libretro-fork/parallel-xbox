@@ -1,5 +1,7 @@
 # Changelog of the libretro core
 
+- Avoid binary search for appended/repeated-tail invalidation pages and skip zero-length array moves. Out-of-order insertion and existing sorted page-lock retries are preserved.
+
 - Fetch 16/32-bit instruction operands directly from the mapped first translation page, preserving aligned atomic reads, byte swapping and existing page-crossing/MMIO handling.
 - Fixed 16-bit depth textures now retain min/mag filtering at mip zero in Vulkan, correcting affected shadow comparisons, including Force LOD0, without shader readbacks or waits.
 

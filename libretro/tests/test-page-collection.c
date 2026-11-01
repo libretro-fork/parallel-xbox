@@ -87,6 +87,14 @@ static tb_page_addr_t tb_page_addr1(const TranslationBlock *tb)
     return tb->page_addr[1];
 }
 
+static unsigned moves;
+static void *tracked_move(void *dest, const void *src, size_t size)
+{
+    assert(size != 0);
+    moves++;
+    return memmove(dest, src, size);
+}
+#define memmove tracked_move
 /* PRODUCTION */
 
 /* pages and TBs at random: a TB on one page or two, its pages present */
@@ -173,6 +181,29 @@ static void check(tb_page_addr_t first, tb_page_addr_t last)
 int main(void)
 {
     unsigned cases = 0;
+
+    /* Ascending range pages and repeated tail references never shift data.
+     * Descending inserts still move entries and retain sorted lock order. */
+    memset(present, 1, sizeof(present));
+    for (unsigned reverse = 0; reverse < 2; reverse++) {
+        struct page_collection set = {0};
+        set.entries = set.inl;
+        set.cap = PAGE_COLLECTION_INLINE;
+        moves = 0;
+        for (unsigned i = 0; i < NPAGES; i++) {
+            unsigned page = reverse ? NPAGES - i - 1 : i;
+            assert(!page_trylock_add(&set, (tb_page_addr_t)page << TARGET_PAGE_BITS));
+            unsigned before = moves;
+            assert(!page_trylock_add(&set, (tb_page_addr_t)page << TARGET_PAGE_BITS));
+            assert(moves == before && set.n == i + 1);
+            for (unsigned k = 1; k < set.n; k++) assert(set.entries[k - 1].index < set.entries[k].index);
+        }
+        assert(moves == (reverse ? NPAGES - 1 : 0));
+        assert(!page_trylock_add(&set, (tb_page_addr_t)NPAGES << TARGET_PAGE_BITS));
+        assert(set.n == NPAGES);
+        page_collection_unlock(&set);
+        assert_no_pages_locked();
+    }
 
     for (unsigned trial = 0; trial < 20000; trial++) {
         build();
