@@ -60,16 +60,18 @@ static void *access_ptr(X86Access *ac, vaddr addr, unsigned len)
         return NULL;
     }
 
-    if (likely(offset <= ac->size1 - len)) {
+    /* Check the span length before unsigned subtraction. */
+    if (likely(len <= ac->size1 && offset <= ac->size1 - len)) {
         return ac->haddr1 + offset;
     }
-    assert(offset <= ac->size - len);
+    assert(len <= ac->size && offset <= ac->size - len);
     /*
      * If the address is not naturally aligned, it might span both pages.
      * Only return ac->haddr2 if the area is entirely within the second page,
-     * otherwise fall back to slow accesses.
+     * otherwise fall back to slow accesses. A missing second-page mapping
+     * also requires the slow path, even when its offset is nonzero.
      */
-    if (likely(offset >= ac->size1)) {
+    if (likely(ac->haddr2 && offset >= ac->size1)) {
         return ac->haddr2 + (offset - ac->size1);
     }
     return NULL;

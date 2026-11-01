@@ -1,5 +1,7 @@
 # Changelog of the libretro core
 
+- Correct x86 block-access direct-pointer checks at page splits: prevent unsigned width underflow and require a real second-page host mapping. Crossing or MMIO accesses retain the MMU slow path instead of using an invalid direct pointer.
+
 - Reuse the page descriptor already resolved by small CPU-store invalidation during collection, avoiding its immediate repeat lookup while preserving precise-SMC return addresses and additional page locks.
 
 - Walk already-collected page descriptors during physical-range invalidation, avoiding a second page-table scan while keeping additional TB pages locked and outside the invalidation targets.
