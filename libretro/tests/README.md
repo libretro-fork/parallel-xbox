@@ -2370,6 +2370,27 @@ instead of a 48-byte caller nested with the old 96-byte retirement function.
 Renderer structure sizes are unchanged. No hardware cache-miss or game-latency
 gain is established by this code-generation check.
 
+`test-convolution-tables.py CHECKOUT BUILD PARENT_PSH_OBJECT SCRATCH` links the
+full production fragment generator and core SPIR-V compiler from a configured
+core build. Save the parent's `hw/xbox/nv2a/pgraph/glsl/psh.o` before building the
+candidate; use matching build settings and unchanged public interfaces. The
+script gets compiler flags from `make -n -W`. `--make`, repeated `--make-arg`,
+`--bash` and `--objcopy` select host tools. Native Windows normally passes
+`--make-arg platform=win` with MinGW/MSYS tools on PATH. Only standalone test
+object copies lose PE unwind metadata to let section GC discard unrelated code;
+the emulator build objects remain intact.
+
+The matrix covers 384 complete GL/Vulkan shader sources: disabled/ordinary/shadow
+stages, normalized/rectangle coordinates, both convolution kernels and every
+convolution-stage mask. Programs needing convolution get one unchanged table
+pair even with multiple stages; 264 unused pairs disappear. Removing just those
+declarations must leave parent/candidate shader text byte-identical. All 192
+Vulkan variants per side compile with the core compiler, and image-operation
+counts remain equal. Current builds save 336 GLSL bytes per unused program and
+560 SPIR-V bytes per unused Vulkan module. This is module/source-size evidence,
+not an FPS or shader-compilation latency benchmark. Cache hits remain valid;
+the smaller declarations apply to newly generated programs.
+
 The ring-pressure fixture additionally exercises the production synchronous
 readback submission helper in 64 schedules covering every ring start and zero
 through seven prior submissions. Each readback waits exactly once on its own

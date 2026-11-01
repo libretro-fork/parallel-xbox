@@ -46,7 +46,9 @@ int main(int argc,char **argv) {
         exe = out / (version + ("-emit.exe" if os.name == "nt" else "-emit"))
         c.write_text(fixture)
         subprocess.run([a.cc,"-std=gnu11","-O2",*compat_glib_flags(r,a.cc),str(c),"-o",str(exe)],check=True)
-        table = source[source.index('"const float[9] gaussian3x3'):source.index('"vec2 remapCubeTo2D')]
+        tables = re.search(r"^static void psh_append_convolution_tables\(.*?^\}", source, re.M | re.S)
+        table = (tables.group() if tables else
+                 source[source.index('"const float[9] gaussian3x3'):source.index('"vec2 remapCubeTo2D')])
         table = "".join(ast.literal_eval(x) for x in re.findall(r'"(?:[^"\\]|\\.)*"', table))
         for rect in range(2):
             body = subprocess.check_output([str(exe),*(["rect"] if rect else [])],text=True)
