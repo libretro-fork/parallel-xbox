@@ -1,5 +1,8 @@
 # Changelog of the libretro core
 
+- Add a standalone paired fragment-compiler benchmark with uninstrumented timing, separate allocation profiling and uniform-layout checks. It measures compiler work without adding emulator diagnostics or runtime overhead.
+
+
 - Reject stale Vulkan static vertex-input pipelines when the active attribute list shrinks. Check the existing zeroed key tail before accepting a matching prefix, including transitions to no attributes. Dynamic vertex-input devices retain their current reuse path; no key or pipeline-cache format changes.
 - Preserve complete seed state/key representations with explicit byte copies when compacting or collecting them, including padding used by byte-hashed keys.
 

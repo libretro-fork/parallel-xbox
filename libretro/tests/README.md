@@ -2425,7 +2425,8 @@ the parent. Removing mapping definitions and independently unused common helpers
 the remaining complete shader text byte-identical. All 224 Vulkan variants per side compile with the
 core compiler; image-operation counts remain equal. The eight mapping definitions occupy 882 GLSL bytes. Whole-module deltas may
 include other omitted common helpers in the compared builds. Keys and persistent state
-are unchanged. Cache hits remain valid; no FPS or compile-latency gain is claimed.
+are unchanged. Cache hits remain valid; the generator checks establish code size. See the
+compiler benchmark below for CPU timing.
 
 GL shader-cache version coverage checks both borrowed mapped-key views and owned key copies. It verifies exact borrowed byte addresses and contents at 32 input alignments, every truncated prefix of a 2 KiB-key header, legacy/changed versions and the owned round trip. Linux defaults to ASan/UBSan; GL_SHADER_VERSION_CFLAGS, GL_SHADER_VERSION_BINARY and GL_SHADER_VERSION_SKIP_RUN support native Win32/Win64 fixtures. Windows temporary files use the user temporary directory and delete-on-close. No mapped key pointer escapes unmapping.
 
@@ -2546,6 +2547,31 @@ structure sizes remain unchanged. Hardware cache-miss and game-latency effects
 are unmeasured. Both direct-RAM and fallback copy paths have byte-exact
 controlled-model coverage; native GPU regressions additionally exercise the
 renderer and mode-change lifecycle.
+
+`bench-fragment-compiler.py CHECKOUT PARENT_SOURCES CANDIDATE_SOURCES OUTPUT`
+measures the production GLSL-to-SPIR-V compiler on paired generated `1-*.frag`
+files (the Vulkan variants exported by the full-generator fixtures). Use `--cc`
+for a compiler path and optional `--cpu INDEX` to pin only each benchmark child
+thread to an available logical CPU. Preserve before/after source directories
+when running the generator comparisons; no emulator is loaded by the benchmark.
+
+The script permits only omitted helper/table declarations with identical
+remaining code and used definitions, deduplicates paired sources, writes
+canonical LF bytes, and preloads the corpus before timing. Both SPIR-V 1.5/1.6
+run with exported layouts enabled, matching fragment compilation; uniform
+metadata must stay equal. Eight paired rounds alternate execution order after
+warm-up and baseline calibration of at least 0.4 process-CPU seconds per batch.
+The timed binary has no allocation wrappers. A separately built binary records
+direct malloc/calloc/realloc calls and requested capacities, excluding allocator
+internals; these are not peak/live/RSS memory measurements.
+
+Output includes corpus hashes, compiler identity, raw JSONL samples and paired
+median/min/max timing ratios. CPU clocks can be quantized and host scheduling or
+frequency can vary; use the paired samples rather than a single absolute time.
+There is no timing pass/fail threshold and no automatic CI benchmark. This is
+compile/result-disposal work on a synthetic corpus, excluding shader generation,
+I/O, cache lookup, driver/pipeline creation and gameplay. It does not measure
+game FPS or stutter. All instrumentation stays in the standalone executable.
 
 `test-seed-inplace.py CHECKOUT [CC]` compares production sibling compaction with the original copy filter using the real ShaderState layout, canonicalizer/zeroing helpers, XXH3 and compatibility hash set. Its 128 cases cover 76,464 inputs across counts 0 through 4,096, disabled/enabled Boost, already-dynamic states, all-unique/all-duplicate/mixed families, forced hash collisions, exact output bytes/order, repeated filtering and boundary canaries. Linux defaults to ASan/UBSan; SEED_INPLACE_CFLAGS, SEED_INPLACE_BINARY and SEED_INPLACE_SKIP_RUN support native Win32/Win64 runs. The caller retains its original owned allocation and only the returned prefix is live.
 
