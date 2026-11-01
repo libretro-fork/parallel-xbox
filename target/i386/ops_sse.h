@@ -657,19 +657,39 @@ SSE_HELPER_S(div, FPU_DIV, )
 SSE_HELPER_S(min, FPU_MIN, )
 SSE_HELPER_S(max, FPU_MAX, )
 
+#include "target/i386/tcg/sse-native.h"
+
 void glue(helper_sqrtps, SUFFIX)(CPUX86State *env, Reg *d, Reg *s)
 {
     int i;
-    for (i = 0; i < 2 << SHIFT; i++) {
-        d->ZMM_S(i) = float32_sqrt(s->ZMM_S(i), &env->sse_status);
+    for (i = 0; i < 2 << SHIFT; i += 4) {
+#if defined(XBOX) && defined(__x86_64__)
+        if (xemu_sse_sqrt32_group(&d->ZMM_S(i), &s->ZMM_S(i),
+                                  &env->sse_status)) {
+            continue;
+        }
+#endif
+        for (unsigned lane = i; lane < i + 4; lane++) {
+            d->ZMM_S(lane) = xemu_sse_sqrt32(s->ZMM_S(lane),
+                                            &env->sse_status);
+        }
     }
 }
 
 void glue(helper_sqrtpd, SUFFIX)(CPUX86State *env, Reg *d, Reg *s)
 {
     int i;
-    for (i = 0; i < 1 << SHIFT; i++) {
-        d->ZMM_D(i) = float64_sqrt(s->ZMM_D(i), &env->sse_status);
+    for (i = 0; i < 1 << SHIFT; i += 2) {
+#if defined(XBOX) && defined(__x86_64__)
+        if (xemu_sse_sqrt64_group(&d->ZMM_D(i), &s->ZMM_D(i),
+                                  &env->sse_status)) {
+            continue;
+        }
+#endif
+        for (unsigned lane = i; lane < i + 2; lane++) {
+            d->ZMM_D(lane) = xemu_sse_sqrt64(s->ZMM_D(lane),
+                                            &env->sse_status);
+        }
     }
 }
 
@@ -677,7 +697,7 @@ void glue(helper_sqrtpd, SUFFIX)(CPUX86State *env, Reg *d, Reg *s)
 void helper_sqrtss(CPUX86State *env, Reg *d, Reg *v, Reg *s)
 {
     int i;
-    d->ZMM_S(0) = float32_sqrt(s->ZMM_S(0), &env->sse_status);
+    d->ZMM_S(0) = xemu_sse_sqrt32(s->ZMM_S(0), &env->sse_status);
     for (i = 1; i < 2 << SHIFT; i++) {
         d->ZMM_L(i) = v->ZMM_L(i);
     }
@@ -686,7 +706,7 @@ void helper_sqrtss(CPUX86State *env, Reg *d, Reg *v, Reg *s)
 void helper_sqrtsd(CPUX86State *env, Reg *d, Reg *v, Reg *s)
 {
     int i;
-    d->ZMM_D(0) = float64_sqrt(s->ZMM_D(0), &env->sse_status);
+    d->ZMM_D(0) = xemu_sse_sqrt64(s->ZMM_D(0), &env->sse_status);
     for (i = 1; i < 1 << SHIFT; i++) {
         d->ZMM_Q(i) = v->ZMM_Q(i);
     }

@@ -2772,3 +2772,6 @@ redundant driver calls; no hardware cache-miss or frame-time benefit is claimed.
 
 Win64 settle-poll stack usage remains 80 bytes; PGRAPHState, PGRAPHVkState
 and the renderer interface remain 4,295,312, 5,845,344 and 232 bytes respectively.
+
+
+`test-sse-native-sqrt.py CHECKOUT [CC]` exercises the production scalar and packed sqrt helpers with actual SoftFloat, both with its normal host shortcuts and with those shortcuts disabled in the oracle. Each oracle runs 393,216 result/status/alias cases across XMM/YMM widths, eight rounding policies, guest flushing, sticky flags and exceptional/random inputs. x86-64 cases poison MXCSR rounding, flushing, masks and sticky flags and require exact restoration. Fallback calls are counted per lane. A negative control removes the rounding check from the sticky-state fast path and must fail. Only the four SSE rounding policies use native instructions; other policies retain software behavior.
