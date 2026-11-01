@@ -221,15 +221,24 @@ static void bump_mixed_triangle(u32 layout, u32 footprint)
 #endif
     };
 #endif
-#ifdef BUMP_NATIVE_CUBE_FACE
+#if defined(BUMP_NATIVE_CUBE_FACE) || defined(BUMP_NATIVE_VOLUME)
     (void)layout; (void)tex_u;
-    /* Fixed major coordinate one keeps the sampled quad within one face.
-     * Projected texel footprints are 1/8, 1/2 and 1/4, exactly. */
+    /* Three-component fixtures use texel footprints 1/8, 1/2 and 1/4. */
+#ifdef BUMP_NATIVE_VOLUME
+    /* Volume coordinates preserve the three controlled footprints. */
+    static const u32 cube_s[3][3] = {
+        {0xc1168000u, 0x41298000u, 0x3f180000u},
+        {0xc21e0000u, 0x42220000u, 0x3f000000u},
+        {0xc19b8000u, 0x41a48000u, 0x3f100000u},
+    };
+#else
+    /* Fixed major coordinate one keeps the sampled quad within one face. */
     static const u32 cube_s[3][3] = {
         {0xc19e8000u, 0x41a18000u, 0x3e400000u},
         {0xc2a00000u, 0x42a00000u, 0x00000000u},
         {0xc21f8000u, 0x42208000u, 0x3e000000u},
     };
+#endif
     method(NV097_SET_VERTEX_DATA_ARRAY_FORMAT + 9 * 4, 2u | (3u << 4));
     method(NV097_SET_BEGIN_END, 5);
     push(0x40000000u | (21u << 18) | NV097_INLINE_ARRAY);
@@ -240,10 +249,13 @@ static void bump_mixed_triangle(u32 layout, u32 footprint)
 #endif
     for (u32 vertex = 0; vertex < 3; vertex++) {
         for (u32 component = 0; component < 4; component++) push(pos[vertex][component]);
-#ifdef BUMP_NATIVE_CUBE_FACE
+#if defined(BUMP_NATIVE_CUBE_FACE) || defined(BUMP_NATIVE_VOLUME)
         u32 c = cube_s[footprint][vertex], neg = c ^ 0x80000000u;
         (void)neg;
-#if BUMP_NATIVE_CUBE_FACE == 0
+#ifdef BUMP_NATIVE_VOLUME
+        push(c); push(0x3e800000u);
+        push(BUMP_NATIVE_VOLUME_SLICE ? 0x3f400000u : 0x3e800000u);
+#elif BUMP_NATIVE_CUBE_FACE == 0
         push(0x3f800000u); push(0x3f000000u); push(neg);
 #elif BUMP_NATIVE_CUBE_FACE == 1
         push(0xbf800000u); push(0x3f000000u); push(c);
@@ -451,6 +463,16 @@ static void bump_filter_probe(void)
 #endif
         }
 #endif
+#ifdef BUMP_NATIVE_VOLUME
+        swizzled_layout = 1; format = 0x06;
+        /* Alternating X colors in each 2x2 slice; slice one has distinct G. */
+        for (u32 z = 0; z < 2; z++) {
+            u32 offset = z * 16u;
+            u32 c0 = first + (z * 16u << 8), c1 = second + (z * 16u << 8);
+            ram32(bump_address + offset, c0); ram32(bump_address + offset + 4, c1);
+            ram32(bump_address + offset + 8, c0); ram32(bump_address + offset + 12, c1);
+        }
+#endif
         flags = 0; /* Independent colors, without signed-channel conversion. */
 #endif
         /* Reuse the established surface/transform setup, but defer its draw. */
@@ -532,6 +554,11 @@ static void bump_filter_probe(void)
 #endif
                (1u << 20) | (1u << 24));
 #endif
+#ifdef BUMP_NATIVE_VOLUME
+        method(NV097_SET_TEXTURE_FORMAT,
+               1u | (3u << 4) | (1u << 3) | (format << 8) |
+               (1u << 16) | (1u << 20) | (1u << 24) | (1u << 28));
+#endif
         method(NV097_SET_TEXTURE_FILTER,
 #ifdef BUMP_NATIVE_MIP_FILTER
                (BUMP_NATIVE_MIP_FILTER << 16) | ((linear ? 2u : 1u) << 24) | BUMP_MIXED_BIAS |
@@ -583,6 +610,9 @@ static void bump_filter_probe(void)
 #endif
 #ifdef BUMP_NATIVE_CUBE_FACE
         method(NV097_SET_SHADER_STAGE_PROGRAM, 3);
+#endif
+#ifdef BUMP_NATIVE_VOLUME
+        method(NV097_SET_SHADER_STAGE_PROGRAM, 2);
 #endif
 #ifdef BUMP_FILTER_MIP_PROBE
 #ifdef BUMP_PRIME_SINGLE_ADDRESS

@@ -40,6 +40,10 @@ def main():
                         help="use a 4x4 linear G8B8 image with --single-level")
     parser.add_argument("--native-color", nargs="?", choices=("rgba8", "rgb565"), const="rgba8",
                         help="RGBA8 native sampler colors with --mixed or --color")
+    parser.add_argument("--native-volume-slice", type=int, choices=(0,1), default=0,
+                        help="select one of the two distinct volume slices")
+    parser.add_argument("--native-volume", action="store_true",
+                        help="probe a single-level 2x2x2 RGBA8 volume with distinct slices")
     parser.add_argument("--native-cube-face", type=int, choices=range(6),
                         help="probe one swizzled native cube face with controlled derivatives")
     parser.add_argument("--native-matching", action="store_true",
@@ -88,6 +92,9 @@ def main():
         parser.error("--linear-level requires --single-level, 4x4 and explicit addresses")
     if args.native_color and not ((args.mixed or args.color) and not args.mip_filter):
         parser.error("--native-color requires --mixed or --color without mip filters")
+    if args.native_volume:
+        if (args.native_color != "rgba8" or not args.mixed or args.native_cube_face is not None or args.native_mip_chain):
+            parser.error("--native-volume requires --mixed --native-color rgba8, without cube or mip chain")
     if args.native_cube_face is not None and not (args.native_color and args.mixed):
         parser.error("--native-cube-face requires --native-color and --mixed")
     if args.native_matching and not (args.native_color and args.mixed and not args.native_mip_filter):
@@ -146,6 +153,8 @@ def main():
             defines.append("-DBUMP_FILTER_COLOR_PROBE")
         if args.native_color:
             defines.append("-DBUMP_NATIVE_COLOR")
+            if args.native_volume:
+                defines += ["-DBUMP_NATIVE_VOLUME", f"-DBUMP_NATIVE_VOLUME_SLICE={args.native_volume_slice}"]
             if args.native_cube_face is not None:
                 defines.append(f"-DBUMP_NATIVE_CUBE_FACE={args.native_cube_face}")
             if args.native_matching:
@@ -225,7 +234,7 @@ def main():
         writer.writerow(["id", "layout", "mode", "axis", "signed_channels", "filter",
                          "coordinate", "result_address", "lod_bias", "mip_filter",
                          "max_lod", "wrap_period", "mag_filter", "address_mode",
-                         "sample_u", "sample_v", "min_lod", "sampler_transition", "base_size", "border_color", "mip_count", "native_palette", "native_format", "native_chain", "native_min_filter", "native_mag_filter", "native_min_lod", "native_base_only", "native_cube_face", "native_cube_variant", "native_cube_lod"])
+                         "sample_u", "sample_v", "min_lod", "sampler_transition", "base_size", "border_color", "mip_count", "native_palette", "native_format", "native_chain", "native_min_filter", "native_mag_filter", "native_min_lod", "native_base_only", "native_cube_face", "native_cube_variant", "native_cube_lod", "native_volume", "native_volume_slice"])
         for i in range(192):
             if args.luminance_profile:
                 flags = (i // 6) % 16
@@ -280,7 +289,10 @@ def main():
                                          args.min_lod, int(args.native_base_only),
                                          args.native_cube_face if args.native_cube_face is not None else "",
                                          i // 96 if args.native_cube_face is not None else "",
-                                         (-3,-1,-2)[i % 3] if args.native_cube_face is not None else ""]
+                                         (-3,-1,-2)[i % 3] if args.native_cube_face is not None else "", int(args.native_volume), args.native_volume_slice if args.native_volume else ""]
+                    if args.native_volume:
+                        row[1] = "volume"
+                        row[6] = f"volume_lod_{(-3,-1,-2)[i % 3]}"
                     if args.native_cube_face is not None:
                         row[1] = "cube"
                         row[6] = f"cube_lod_{(-3,-1,-2)[i % 3]}"

@@ -2008,6 +2008,15 @@ scale; presentation does not query texture-level dimensions from the driver.
 The GPU display ROM covers clipping, mode changes and overlays. Repeat it at
 internal scale 2 to check geometry and pixels after display-texture recreation.
 
+
+`test-native-color-volumes.py CHECKOUT PARENT CANDIDATE HARNESS SCRATCH`
+checks single-level 2x2x2 RGBA8 volumes with independent depth slices, both mixed
+filter directions, biased footprints, all four mip filters and Force LOD0.
+Matching filters and existing 2D/cube/G8B8 paths compare exact parent pixels.
+Use `--assembler yasm` as needed; `--windows-paths` runs a Windows harness from
+WSL. Scalar and cross-API volume comparisons allow one color LSB for rounding.
+Probe observations are test-only; the emulator adds no readback or waits.
+
 The region-TB fixture now enforces the core ownership contract (one Xbox CPU, MTTCG disabled, one region, no region mutexes and reviewed index callers). Its 25,000 checks cover 400,074 recycles, 112,111 removals and 104 flushes; production region allocation/exhaustion and 100 safe-work resets also retain prologue/highwater semantics. `REGION_TBS_BINARY` and `REGION_TBS_SKIP_RUN=1` retain native fixtures. These restrictions are ownership requirements, not synchronization for a future concurrent reader or translator.
 
 The region ownership guard now verifies TCG startup asserts one machine CPU and passes a literal one-translator count. The obsolete MTTCG selector/property is gone; startup had always forced it off. Existing translation-cache size, split-WX and instruction-debug controls remain.
