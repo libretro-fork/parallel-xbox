@@ -246,10 +246,11 @@ static void stage_blocks_3d(PGRAPHState *pg, TextureLevel *level,
 {
     unsigned int bw = ((width + 3) & ~3) / 4, bh = ((height + 3) & ~3) / 4;
     size_t slice = (size_t)bw * bh * block_size;
-    /* With one slice or one XY block, Xbox's four-deep block groups
-     * already have Vulkan slice order. Keep those bytes in VRAM. */
+    /* One slice/XY block already has Vulkan slice order. A single block
+     * column can instead be copied one slice at a time with a strided
+     * buffer row (copy_volume_block_slices), without CPU rearrangement. */
     bool ordered = depth == 1 || bw * bh == 1;
-    if (ordered &&
+    if ((ordered || bw == 1) &&
         level_from_vram(pg, level, data, width, height, depth,
                         slice * depth, block_size)) {
         return;
@@ -409,6 +410,51 @@ static VkBufferImageCopy texture_level_copy(const TextureLevel *level,
         .imageOffset = { 0, 0, 0 },
         .imageExtent = { level->width, level->height, level->depth },
     };
+}
+
+/* Only imported native BC volumes have grouped source slices here. Other
+ * levels retain the ordinary single-region copy. */
+static size_t volume_block_slice_size(const TextureLevel *level, VkFormat format)
+{
+    if (level->source != LEVEL_VRAM || level->width > 4 ||
+        level->height <= 4 || level->depth <= 1) {
+        return 0;
+    }
+    switch (format) {
+    case VK_FORMAT_BC1_RGBA_UNORM_BLOCK: return 8;
+    case VK_FORMAT_BC2_UNORM_BLOCK:
+    case VK_FORMAT_BC3_UNORM_BLOCK: return 16;
+    default: return 0;
+    }
+}
+
+/* Xbox stores each XY block's slices together in groups of up to four.
+ * For one block column, bufferRowLength expresses that interleaving as
+ * the stride between block rows in a single destination Z slice. */
+static void copy_volume_block_slices(VkCommandBuffer cmd, VkBuffer source,
+                                     VkImage image, const TextureLevel *level,
+                                     unsigned layer, unsigned mip,
+                                     size_t block_size)
+{
+    VkDeviceSize slice = (VkDeviceSize)((level->height + 3) / 4) * block_size;
+    VkBufferImageCopy regions[64];
+    for (unsigned z = 0; z < level->depth;) {
+        unsigned count = MIN(level->depth - z, ARRAY_SIZE(regions));
+        for (unsigned i = 0; i < count; i++, z++) {
+            unsigned group = z & ~3u;
+            unsigned group_depth = MIN(level->depth - group, 4);
+            regions[i] = (VkBufferImageCopy){
+                .bufferOffset = level->offset + group * slice +
+                                (z - group) * block_size,
+                .bufferRowLength = group_depth * 4,
+                .imageSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, mip, layer, 1 },
+                .imageOffset = { 0, 0, z },
+                .imageExtent = { level->width, level->height, 1 },
+            };
+        }
+        vkCmdCopyBufferToImage(cmd, source, image,
+            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, count, regions);
+    }
 }
 
 /* The texture's levels, from the guest's memory into the staging ring, in
@@ -759,6 +805,7 @@ static void upload_texture_image(PGRAPHState *pg, int texture_idx,
     VkBufferImageCopy regions[6 * 16], vram_regions[6 * 16],
         unswizzled_regions[6 * 16];
     int num_regions = 0, num_vram_regions = 0, num_unswizzled_regions = 0;
+    bool volume_slices = false;
 
     for (int layer_idx = 0; layer_idx < num_layers; layer_idx++) {
         if (skip_layers & (1u << layer_idx)) continue;
@@ -769,13 +816,19 @@ static void upload_texture_image(PGRAPHState *pg, int texture_idx,
             NV2A_VK_DPRINTF(" - Level %d, w=%d h=%d d=%d @ %08" HWADDR_PRIx,
                             level_idx, level->width, level->height,
                             level->depth, level->offset);
+            if (level->source == LEVEL_VRAM) {
+                lr_gpu_ram_claim((uintptr_t)cmd, level->offset, level->size);
+            }
+            if (volume_block_slice_size(level, vkf.vk_format)) {
+                volume_slices = true;
+                continue;
+            }
             VkBufferImageCopy *region =
                 level->source == LEVEL_VRAM ?
                     &vram_regions[num_vram_regions++] :
                 level->source == LEVEL_UNSWIZZLED ?
                     &unswizzled_regions[num_unswizzled_regions++] :
                     &regions[num_regions++];
-            if(level->source==LEVEL_VRAM) lr_gpu_ram_claim((uintptr_t)cmd,level->offset,level->size);
             *region = texture_level_copy(level, layer_idx, level_idx);
         }
     }
@@ -784,7 +837,8 @@ static void upload_texture_image(PGRAPHState *pg, int texture_idx,
         flush_texture_staging(pg, &layout, num_layers, num_levels, skip_layers);
     }
 
-    pgraph_vk_upload_source_barrier(pg, cmd, num_vram_regions != 0);
+    pgraph_vk_upload_source_barrier(pg, cmd,
+                                    num_vram_regions != 0 || volume_slices);
     if (num_unswizzled_regions) {
         pgraph_vk_unswizzle_done(pg, cmd);
     }
@@ -804,6 +858,19 @@ static void upload_texture_image(PGRAPHState *pg, int texture_idx,
         vkCmdCopyBufferToImage(cmd, r->vram_buffer, binding->image,
                                binding->current_layout, num_vram_regions,
                                vram_regions);
+    }
+    if (volume_slices) {
+        for (int layer = 0; layer < num_layers; layer++) {
+            if (skip_layers & (1u << layer)) continue;
+            for (int mip = 0; mip < num_levels; mip++) {
+                TextureLevel *level = &layout.layers[layer].levels[mip];
+                size_t block_size = volume_block_slice_size(level, vkf.vk_format);
+                if (block_size) {
+                    copy_volume_block_slices(cmd, r->vram_buffer, binding->image,
+                                             level, layer, mip, block_size);
+                }
+            }
+        }
     }
     if (num_unswizzled_regions) {
         vkCmdCopyBufferToImage(

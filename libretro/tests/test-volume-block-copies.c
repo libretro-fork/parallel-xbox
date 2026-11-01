@@ -77,10 +77,15 @@ static void check(unsigned w,unsigned h,unsigned depth,unsigned bs,unsigned kind
     size_t size=bytes+128;PGRAPHVkState renderer={.vram_buffer=kind?(VkBuffer)(uintptr_t)1:VK_NULL_HANDLE};
     NV2AState dev={.vram_ptr=guest,.vram=&size,.pgraph={&renderer,actual,3}};TextureLevel level;
     stage_blocks_3d(&dev.pgraph,&level,guest+offset,w,h,depth,bs);
-    bool direct=kind&&offset%bs==0&&(depth==1||bw*bh==1);
+    bool direct=kind&&offset%bs==0&&(depth==1||bw==1);
     assert(level.width==w&&level.height==h&&level.depth==depth&&level.size==bytes&&!level.row_length&&!level.crop_offset);
     assert(level.source==(direct?LEVEL_VRAM:LEVEL_STAGING));
-    if(direct){assert(dev.pgraph.head==3&&level.offset==offset);assert(!memcmp(guest+offset,expected,bytes));}
+    if(direct){assert(dev.pgraph.head==3&&level.offset==offset);if(depth==1||bh==1)assert(!memcmp(guest+offset,expected,bytes));
+        else for(unsigned z=0;z<depth;z++)for(unsigned y=0;y<bh;y++){
+            unsigned group=z&~3u,nz=MIN(depth-group,4);
+            size_t src=((size_t)group*bh+y*nz+z-group)*bs;
+            assert(!memcmp(guest+offset+src,expected+((size_t)z*bh+y)*bs,bs));
+        }}
     else{assert(level.offset==16&&dev.pgraph.head==16+bytes);assert(!memcmp(actual+16,expected,bytes));}
     for(unsigned i=0;i<16;i++)assert(actual[i]==0xCD);
     for(size_t i=16+bytes;i<bytes+64;i++)assert(actual[i]==0xCD);

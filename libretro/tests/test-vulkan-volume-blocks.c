@@ -10,6 +10,7 @@
 #include "hw/xbox/nv2a/nv2a_regs.h"
 #define CHECK(x) assert((x) == VK_SUCCESS)
 #define MAX(a,b) ((a) > (b) ? (a) : (b))
+#define ARRAY_SIZE(a) (sizeof(a)/sizeof((a)[0]))
 #define MIN(a,b) ((a)<(b)?(a):(b))
 #define container_of(p,t,m) ((t *)((char *)(p)-offsetof(t,m)))
 typedef struct { VkBuffer vram_buffer; } PGRAPHVkState;
@@ -82,16 +83,18 @@ int main(void)
     VkValidationFeaturesEXT validation_features = { .sType = VK_STRUCTURE_TYPE_VALIDATION_FEATURES_EXT,
         .enabledValidationFeatureCount = 1, .pEnabledValidationFeatures = &enabled };
     VkApplicationInfo app = { .sType = VK_STRUCTURE_TYPE_APPLICATION_INFO, .apiVersion = VK_API_VERSION_1_1 };
+    bool enable_validation = getenv("VOLUME_NO_VALIDATION") == NULL;
     VkInstanceCreateInfo ci = { .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
-        .pNext = &validation_features, .pApplicationInfo = &app, .enabledLayerCount = 1,
-        .ppEnabledLayerNames = layers, .enabledExtensionCount = 2, .ppEnabledExtensionNames = extensions };
+        .pNext = enable_validation ? &validation_features : NULL, .pApplicationInfo = &app, .enabledLayerCount = enable_validation,
+        .ppEnabledLayerNames = layers, .enabledExtensionCount = enable_validation ? 2 : 0, .ppEnabledExtensionNames = extensions };
     VkInstance instance; CHECK(vkCreateInstance(&ci, NULL, &instance));
     PFN_vkCreateDebugUtilsMessengerEXT create = (void *)vkGetInstanceProcAddr(instance, "vkCreateDebugUtilsMessengerEXT");
     PFN_vkDestroyDebugUtilsMessengerEXT destroy = (void *)vkGetInstanceProcAddr(instance, "vkDestroyDebugUtilsMessengerEXT");
     VkDebugUtilsMessengerCreateInfoEXT mi = { .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
         .messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT, .messageType = 7,
         .pfnUserCallback = validation };
-    VkDebugUtilsMessengerEXT messenger; CHECK(create(instance, &mi, NULL, &messenger));
+    VkDebugUtilsMessengerEXT messenger = VK_NULL_HANDLE;
+    if (enable_validation) CHECK(create(instance, &mi, NULL, &messenger));
     uint32_t n = 1; VkPhysicalDevice gpu; CHECK(vkEnumeratePhysicalDevices(instance, &n, &gpu));
     vkGetPhysicalDeviceMemoryProperties(gpu, &memory_properties);
     VkPhysicalDeviceProperties properties; vkGetPhysicalDeviceProperties(gpu, &properties);
@@ -99,7 +102,7 @@ int main(void)
     vkGetPhysicalDeviceFeatures(gpu, &supported);
     assert(supported.textureCompressionBC);
     VkPhysicalDeviceFeatures features = { .textureCompressionBC = VK_TRUE };
-    printf("Vulkan volume block-copy oracle: %s\n", properties.deviceName);
+    printf("Vulkan volume block-copy oracle: %s; synchronization validation=%u\n", properties.deviceName, enable_validation);
     uint32_t nq = 32; VkQueueFamilyProperties queues[32]; vkGetPhysicalDeviceQueueFamilyProperties(gpu, &nq, queues);
     unsigned family = 0; while (family < nq && !(queues[family].queueFlags & VK_QUEUE_GRAPHICS_BIT)) family++;
     assert(family < nq);
@@ -117,13 +120,14 @@ int main(void)
     VkCommandBuffer cmd; CHECK(vkAllocateCommandBuffers(device, &ca, &cmd));
     const VkFormat formats[] = {VK_FORMAT_BC1_RGBA_UNORM_BLOCK,
         VK_FORMAT_BC2_UNORM_BLOCK, VK_FORMAT_BC3_UNORM_BLOCK};
-    const unsigned widths[] = {1,4,8}, heights[] = {1,4,8}, depths[] = {1,2,4,5};
-    unsigned cases = 0, direct = 0; size_t avoided = 0, total_copies = 0;
+    const unsigned widths[] = {1,4,8}, heights[] = {1,4,5,8,20}, depths[] = {1,2,4,5,65,129};
+    unsigned cases = 0, direct = 0; size_t avoided = 0, total_copies = 0, previous_copies = 0;
     for (unsigned f=0;f<3;f++)
     for (unsigned wi=0;wi<3;wi++)
-    for (unsigned hi=0;hi<3;hi++)
-    for (unsigned di=0;di<4;di++)
-    for (unsigned kind=0;kind<3;kind++) {
+    for (unsigned hi=0;hi<ARRAY_SIZE(heights);hi++)
+    for (unsigned di=0;di<ARRAY_SIZE(depths);di++)
+    for (unsigned kind=0;kind<3;kind++)
+    for (unsigned mip=0;mip<2;mip++) {
         unsigned w=widths[wi], h=heights[hi], depth=depths[di];
         unsigned bs=f?16:8, blocks=((w+3)/4)*((h+3)/4);
         size_t bytes=(size_t)blocks*depth*bs, offset=kind==2?36:32;
@@ -149,7 +153,10 @@ int main(void)
         copy_calls = 0;
         stage_blocks_3d(&state.pgraph,&level,upload.mapped+offset,w,h,depth,bs);
         total_copies += copy_calls;
-        bool eligible=kind==0 && (depth==1 || blocks==1);
+        bool previous_direct = kind==0 && (depth==1 || blocks==1);
+        previous_copies += previous_direct ? 0 :
+            depth==1 || blocks==1 ? 1 : (size_t)blocks*depth;
+        bool eligible=kind==0 && (depth==1 || w<=4);
         assert((level.source==LEVEL_VRAM)==eligible);
         assert(copy_calls == (eligible ? 0 :
             depth==1 || blocks==1 ? 1 : (size_t)blocks*depth));
@@ -162,11 +169,12 @@ int main(void)
         } else {
             assert(state.pgraph.head==bytes && level.offset==0);
         }
-        assert(!memcmp(eligible?upload.mapped+offset:staging.mapped,expected,bytes));
-        VkBufferImageCopy copy=texture_level_copy(&level,0,0);
+        if (!eligible || depth==1 || h<=4)
+            assert(!memcmp(eligible?upload.mapped+offset:staging.mapped,expected,bytes));
+        VkBufferImageCopy copy=texture_level_copy(&level,0,mip);
         VkImageCreateInfo ii = { .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
             .imageType = VK_IMAGE_TYPE_3D, .format = formats[f],
-            .extent = {w,h,depth}, .mipLevels = 1, .arrayLayers = 1,
+            .extent = {w << mip,h << mip,depth << mip}, .mipLevels = mip+1, .arrayLayers = 1,
             .samples = VK_SAMPLE_COUNT_1_BIT, .tiling = VK_IMAGE_TILING_OPTIMAL,
             .usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT };
         VkImage image; CHECK(vkCreateImage(device, &ii, NULL, &image));
@@ -180,9 +188,12 @@ int main(void)
             .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED, .newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
             .dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT, .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
             .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED, .image = image,
-            .subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1} };
+            .subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, mip, 1, 0, 1} };
         vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 0, NULL, 1, &ib);
-        vkCmdCopyBufferToImage(cmd, eligible?upload.handle:staging.handle, image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy);
+        size_t sliced = volume_block_slice_size(&level, formats[f]);
+        assert(sliced == (eligible && w<=4 && h>4 && depth>1 ? bs : 0));
+        if (sliced) copy_volume_block_slices(cmd, upload.handle, image, &level, 0, mip, sliced);
+        else vkCmdCopyBufferToImage(cmd, eligible?upload.handle:staging.handle, image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy);
         ib.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL; ib.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
         ib.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT; ib.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
         vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 0, NULL, 1, &ib);
@@ -204,9 +215,10 @@ int main(void)
         CHECK(vkResetCommandBuffer(cmd, 0)); cases++;
     }
     printf("volume cases=%u direct=%u avoided_staging_bytes=%zu; all bytes exact\n",cases,direct,avoided);
-    printf("CPU copy calls=%zu\n",total_copies);
+    printf("CPU copy calls=%zu; previous-path model=%zu\n",total_copies,previous_copies);
     vkDestroyCommandPool(device, pool, NULL); vkDestroyDevice(device, NULL);
-    destroy(instance, messenger, NULL); vkDestroyInstance(instance, NULL);
+    if (messenger) destroy(instance, messenger, NULL);
+    vkDestroyInstance(instance, NULL);
     printf("validation_errors=%u\n", errors);
     return errors ? 1 : 0;
 }

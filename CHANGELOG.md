@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Upload aligned native BC1/BC2/BC3 volume levels one block wide directly from imported Vulkan VRAM. Bounded per-slice copy regions express the Xbox slice-group stride, eliminating CPU block reordering and staging allocation for eligible narrow levels; wider, unaligned and non-imported layouts retain their fallback.
+
 - Read eligible single-axis swizzled native color and D16 surfaces directly into imported Vulkan RAM, skipping the temporary output ring and swizzle dispatch. Preserve packed depth/stencil routing, CPU visibility barriers and immediate/batched completion waits.
 
 - Upload eligible single-axis swizzled color and depth surfaces directly from imported Vulkan VRAM. Their canonical tight rows are already in linear order, so surface uploads skip GPU unswizzling or CPU staging while retaining packed depth unpacking, RAM ownership claims and alignment fallbacks.

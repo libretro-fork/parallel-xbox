@@ -1024,9 +1024,22 @@ The compressed-volume oracle adds 21 strict fallback cases against independently
 
 The GL upload-alignment oracle now uses the production BC decoder for 36 additional forced 2D fallback cases: BC1/BC2/BC3 at unpack alignments 1/2/4/8, 7x5 odd images, 1x8 narrow rows and 16x8 mip chains down to 1x1. It verifies level dimensions, RGBA8 storage, 10,944 component values and restoration of unpack alignment. The 2D and volume oracles share `bc-reference.h` for the independent normalized-color reference.
 
-`python3 libretro/tests/test-vulkan-volume-blocks.py CHECKOUT [CC]` compiles the production volume staging, VRAM selection and copy-region functions, then transfers compressed BC1/BC2/BC3 volume data through Vulkan 3D images. Its 324 cases cover one/multiple XY blocks, depth groups including a partial fifth slice, absent VRAM buffers, unaligned source offsets, and ranges ending exactly at VRAM end. It checks exact block bytes and staging allocation avoidance; Khronos synchronization validation must report zero errors. Requires Linux Vulkan with BC 3D image support and validation layers.
+`python libretro/tests/test-vulkan-volume-blocks.py CHECKOUT [CC]` compiles
+production volume staging, VRAM selection and ordinary/per-slice copy functions,
+then transfers native BC1/BC2/BC3 data through Vulkan 3D images. Its 1,620 cases
+cover narrow/wide block grids, partial block rows, depth groups including a fifth
+slice and 65/129-slice levels, mip 0/1, missing imports, unaligned offsets and data
+ending exactly at VRAM end. A single block column can use one strided region per
+Z slice in batches of at most 64 regions, avoiding CPU block reordering. Wider
+layouts retain staging. Destination block bytes must match the coordinate oracle.
 
-The volume-block oracle also records production copy operations. Direct VRAM levels must copy nothing; ordered layouts falling back because VRAM is absent or unaligned must use one bulk copy; layouts requiring rearrangement must retain their per-block copies. The 324-case matrix records 1,314 operations after coalescing versus 1,548 before, with identical GPU bytes. These are source-level copy-operation counts, not a game frame-time benchmark.
+The fixture records CPU copies and staging avoidance: the current matrix has
+390 direct levels and 125,880 CPU copy calls versus a 148,020-call previous-path
+model. These are operation counts, not game frame-time measurements. Vulkan BC
+3D image support is required. Synchronization validation is requested by default;
+set `VOLUME_NO_VALIDATION=1` only when unavailable and record that limitation.
+The runner supports Linux and Windows; fixture buffers model imported RAM,
+without testing the external-host import extension itself.
 
 `python3 libretro/tests/test-vulkan-linear-span.py CHECKOUT [CC]` validates production linear staging and copy-region functions with 324 Vulkan image transfers. R8, RG8, RGBA8 and RGB565 cases cover narrow/padded rows, one/multiple rows, absent VRAM buffers, unaligned offsets, and valid VRAM-end ranges. It checks exact pixels, row pitch, unchanged direct spans and exclusion of trailing padding from staging writes/allocation, plus an empty-height underflow check. Requires Linux Vulkan and Khronos validation layers.
 
