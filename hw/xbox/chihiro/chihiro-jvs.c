@@ -376,22 +376,22 @@ int chihiro_jvs_process(ChihiroJVSState *s,
 
     /* Build framed response: SYNC + host_addr + count + payload + checksum,
      * raw: the caller escapes it. */
-    uint8_t frame[sizeof(payload) + 4];     /* SYNC, address, count, sum */
-    int fpos = 0;
     uint8_t resp_count = ppos + 1; /* payload + checksum */
 
     uint8_t resp_csum = JVS_HOST_ADDR + resp_count;
     for (int i = 0; i < ppos; i++) resp_csum += payload[i];
 
-    frame[fpos++] = JVS_SYNC;
-    frame[fpos++] = JVS_HOST_ADDR;
-    frame[fpos++] = resp_count;
-    memcpy(frame + fpos, payload, ppos);
-    fpos += ppos;
-    frame[fpos++] = resp_csum & 0xFF;
-
-    int out_len = (fpos < out_max) ? fpos : out_max;
-    memcpy(out, frame, out_len);
+    /* Emit the same truncated frame prefix directly. Commands have already
+     * finished, so an output buffer aliasing the input remains safe. */
+    int out_len = MIN(ppos + 4, out_max);
+    if (out_len > 0) out[0] = JVS_SYNC;
+    if (out_len > 1) out[1] = JVS_HOST_ADDR;
+    if (out_len > 2) out[2] = resp_count;
+    if (out_len > 3) {
+        int n = MIN(ppos, out_len - 3);
+        if (n) memcpy(out + 3, payload, n);
+        if (out_len > ppos + 3) out[ppos + 3] = resp_csum & 0xFF;
+    }
 
     return out_len;
 }
