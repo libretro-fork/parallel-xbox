@@ -96,14 +96,17 @@ jobs:
           submodules: false
 
       # The POSIX thread model, as MSYS2's gcc has; Wine and Mesa for the
-      # tests, nasm for the test ROMs
+      # tests, nasm for the test ROMs. run.sh also compiles native Linux
+      # test fixtures, which need the host graphics development packages.
       - name: Install dependencies
         run: |
           sudo dpkg --add-architecture i386
           sudo apt-get -qy update
           sudo apt-get -qy install make gcc-mingw-w64-x86-64-posix \
             g++-mingw-w64-x86-64-posix nasm wine64 xvfb \
-            libgl1-mesa-dri
+            pkg-config libepoxy-dev libegl-dev libgl-dev \
+            libvulkan-dev vulkan-validationlayers spirv-tools \
+            libegl-mesa0 libgl1-mesa-dri mesa-vulkan-drivers qemu-utils strace
           sudo update-alternatives --set x86_64-w64-mingw32-gcc /usr/bin/x86_64-w64-mingw32-gcc-posix
           sudo update-alternatives --set x86_64-w64-mingw32-g++ /usr/bin/x86_64-w64-mingw32-g++-posix
 
@@ -155,7 +158,7 @@ jobs:
         run: |
           sudo apt-get -qy update
           sudo apt-get -qy install pkg-config \
-            libepoxy-dev libglib2.0-dev libvulkan-dev vulkan-validationlayers spirv-tools patchelf \
+            libepoxy-dev libvulkan-dev vulkan-validationlayers spirv-tools patchelf \
             nasm libegl-dev libgl-dev libegl-mesa0 libgl1-mesa-dri \
             mesa-vulkan-drivers strace qemu-utils
           if [ "$(uname -m)" = aarch64 ]; then

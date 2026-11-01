@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""Production direct POSIX AIO readiness with real GLib, pipes and nested dispatch."""
+"""Production direct POSIX AIO readiness with the core compatibility layer, pipes and nested dispatch."""
 from pathlib import Path
 import os,re,shlex,subprocess,sys,tempfile
+from glib_fixture import compat_glib_flags
 r=Path(sys.argv[1]).resolve();cc=sys.argv[2] if len(sys.argv)>2 else 'cc'
 macros=subprocess.check_output([cc,'-dM','-E','-'],input='',text=True)
 if '#define _WIN32 ' in macros:
@@ -17,7 +18,7 @@ names=['aio_add_ready_handler','aio_update_source_poll','find_aio_handler','aio_
 handler=re.search(r'struct AioHandler \{.*?\n\};',ih,re.S)[0]
 helpers=h[h.index('static inline void aio_assert_handler_owner'):h.index('/**\n * aio_context_new:')]
 code=Path(__file__).with_suffix('.c').read_text().replace('/* HANDLER */',handler).replace('/* OWNER HELPERS */',helpers).replace('/* PRODUCTION */','\n'.join(function(n) for n in names))
-flags=shlex.split(subprocess.check_output(['pkg-config','--cflags','--libs','glib-2.0'],text=True))
+flags=compat_glib_flags(r, cc, main_context=True)
 with tempfile.TemporaryDirectory(prefix='posix-aio-source-') as tmp:
  p=Path(tmp);(p/'test.c').write_text(code);binary=os.environ.get('POSIX_AIO_BINARY',str(p/'test'))
  cmd=[cc,'-O2','-g','-std=gnu11','-Wall','-Wextra','-Werror','-Wno-unused-parameter','-Wno-unused-function','-I'+str(r/'include'),'-I'+str(r/'libretro-common/include')]

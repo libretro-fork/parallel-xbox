@@ -1,5 +1,7 @@
 # Changelog of the libretro core
 
+- Run shader-generation and POSIX AIO fixtures against the core’s compatibility API instead of upstream GLib. Remove the host GLib development dependency from CI, and supply native graphics-test dependencies to the Windows/Wine job.
+
 - Match each utility vertex shader’s builtin interface in the test-only geometry capture stage, retaining strict Vulkan validation for clear-shader comparisons.
 
 - Build signed-texture guest ROM fixtures with an x86 cross compiler on ARM CI hosts, independently of the native core compiler.

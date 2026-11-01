@@ -3,10 +3,10 @@
 """Check production shader generation for all extended minimum/address codes."""
 from pathlib import Path
 import re
-import shlex
 import subprocess
 import sys
 import tempfile
+from glib_fixture import compat_glib_flags
 
 repo = Path(sys.argv[1]).resolve()
 header = (repo / "hw/xbox/nv2a/pgraph/glsl/psh.h").read_text()
@@ -60,13 +60,13 @@ int main(void) {
     printf("PASS: %u extended minimum/address shader-generation cases\n", cases);
 }
 '''.replace("/* STATE */", state).replace("/* HELPER */", helper)
-flags = shlex.split(subprocess.check_output(
-    ["pkg-config", "--cflags", "--libs", "glib-2.0"], text=True))
+cc = sys.argv[2] if len(sys.argv) > 2 else "cc"
+flags = compat_glib_flags(repo, cc)
 with tempfile.TemporaryDirectory(prefix="g8b8-higher-lod-") as folder:
     c = Path(folder) / "test.c"
     binary = Path(folder) / "test"
     c.write_text(code)
-    subprocess.run([sys.argv[2] if len(sys.argv) > 2 else "cc", "-std=gnu11", "-O2",
+    subprocess.run([cc, "-std=gnu11", "-O2",
                     "-Wall", "-Wextra", "-Werror", "-I", str(repo), str(c),
                     "-o", str(binary), *flags], check=True)
     subprocess.run([str(binary)], check=True)
