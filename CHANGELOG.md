@@ -1,5 +1,7 @@
 # Changelog of the libretro core
 
+- Keep the direct index shift for Vulkan ready queues of 32 entries or fewer; it copies less than amortized window compaction, including zero shifted indices for a single entry.
+
 - Adopt the oldest ready Vulkan shader module by advancing the existing index window, avoiding an active-index shift on each FIFO hit. Preserve remaining module order, free-slot uniqueness and reference ownership without extra storage.
 
 - Complete Vulkan synchronous readbacks through the shared newest-fence drain. Wait once for the readback submission instead of separately waiting on older uploads; keep FIFO resource retirement and reset the now-empty staging rings for reuse. Required readback completion still waits.

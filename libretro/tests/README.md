@@ -2385,3 +2385,5 @@ frame from 64 to 48 bytes, with unchanged renderer layouts. Hardware
 cache-miss and game-latency effects are unmeasured.
 
 Ready-order coverage now exercises oldest-record adoption at every occupancy from 1 to 768 for 33 cycles each, including every window offset and compaction boundary. It checks the full slot permutation and FIFO/reference oracle, with 399,069 checks and 356,181 lifetimes. On the new head-take path, tracked index moves occur only at the existing 32-step compaction boundary. Benchmark mode 5 repeatedly adopts and reinserts the oldest record. Physical free-slot reuse order is private; active FIFO order and module ownership are preserved.
+
+For queues of at most 32 entries, oldest adoption retains the direct shift: its zero to 124 bytes avoids window compaction for tiny queues. Larger queues use pointer advancement. The occupancy oracle asserts both copy policies; benchmark modes 6/7 adopt and reinsert the oldest of 1/16 entries.

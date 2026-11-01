@@ -2,7 +2,7 @@
  * Geforce NV2A PGRAPH Vulkan Renderer
  *
  * Copyright (c) 2024-2025 Matt Borgerson
- * Copyright (c) 2026 RÃ©da ChÃ©rif-Touil
+ * Copyright (c) 2026 RÃƒÂ©da ChÃƒÂ©rif-Touil
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -573,8 +573,9 @@ static unsigned *vk_spec_ready_order = vk_spec_ready_order_storage;
 
 static void vk_spec_ready_remove_order(unsigned i, unsigned slot)
 {
-    if (i == 0) {
-        /* Keep the active FIFO contiguous without shifting it on adoption.
+    if (i == 0 && vk_spec_ready_n > VK_SPEC_READY_HEADROOM) {
+        /* Small queues cost less to shift than a window compaction.
+         * Keep the active FIFO contiguous without shifting it on adoption.
          * Rotate this free slot behind the existing free suffix. */
         vk_spec_ready_order[VK_SPEC_READY] = slot;
         --vk_spec_ready_n;
