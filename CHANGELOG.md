@@ -1,6 +1,8 @@
 # Changelog of the libretro core
 
 - Skip unused palette DMA resolution during non-indexed Vulkan texture staging, avoiding redundant descriptor work and validation of palette state those formats never read. Indexed texture uploads are unchanged.
+- Vulkan mip-filtered 2D color textures now preserve min/mag selection at LOD0, including single-level images, guest clamps and Force LOD0, without reading lower mips.
+
 
 - Load both OpenGL shader-seed sections from one local mapping and one embedded-dictionary inflation, copying local/embedded records directly into their final arrays instead of temporary duplicated arrays and reallocations. Seed ordering and file format are unchanged.
 
