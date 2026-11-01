@@ -73,6 +73,10 @@ typedef struct PGRAPHSeedRead {
 } PGRAPHSeedRead;
 void pgraph_seed_read_combined(PGRAPHSeedRead *reads, size_t count);
 
+/* Try requests in order, populating only the first nonempty valid result.
+ * All other outputs are empty; source lifetime/ownership matches combined. */
+void pgraph_seed_read_first(PGRAPHSeedRead *reads, size_t count);
+
 /* Replace one section of the current game's local seed, keeping every
  * other section as it is on disk. Atomic (temporary file + rename). */
 bool pgraph_seed_write(int section, size_t itemsize, const void *items,

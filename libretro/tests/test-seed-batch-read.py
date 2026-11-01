@@ -8,7 +8,7 @@ types=[]
 for name in ['SeedHeader','SeedSection','SeedDictHeader','SeedDictEntry']:types.append(re.search(r'typedef struct '+name+r' \{.*?\} '+name+r';',s,re.S).group())
 types.append(re.search(r'struct SeedFind \{.*?\};',s,re.S).group());types.append(re.search(r'typedef struct PGRAPHSeedRead \{.*?\} PGRAPHSeedRead;',h,re.S).group())
 parts=[]
-for name in ['seed_walk','seed_find_visit','seed_find_view','seed_find','pgraph_seed_read','seed_dict_open','pgraph_seed_dict_read','pgraph_seed_read_combined']:
+for name in ['seed_walk','seed_find_visit','seed_find_view','seed_find','pgraph_seed_read','seed_dict_open','pgraph_seed_dict_read','seed_read_batch','pgraph_seed_read_combined','pgraph_seed_read_first']:
  m=re.search(r'^(?:static )?[^\n]*\b'+name+r'\(.*?^\}',s,re.M|re.S);assert m,name;parts.append(m.group())
 def seed(items):
  out=struct.pack('<4I',0x44455358,1,len(items),0)

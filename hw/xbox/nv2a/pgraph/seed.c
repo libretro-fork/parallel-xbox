@@ -253,10 +253,14 @@ void *pgraph_seed_dict_read(int section, size_t itemsize, unsigned *count)
     return items;
 }
 
-void pgraph_seed_read_combined(PGRAPHSeedRead *reads, size_t count)
+static void seed_read_batch(PGRAPHSeedRead *reads, size_t count, bool first_only)
 {
     if (!count) {
         return;
+    }
+    for (size_t i = 0; i < count; i++) {
+        reads[i].items = NULL;
+        reads[i].count = reads[i].dict_count = 0;
     }
     XemuFileMap mapping = { 0 };
     char *path = seed_path();
@@ -266,8 +270,6 @@ void pgraph_seed_read_combined(PGRAPHSeedRead *reads, size_t count)
     uint8_t *raw = seed_dict_open(&length);
     for (size_t i = 0; i < count; i++) {
         PGRAPHSeedRead *read = &reads[i];
-        read->items = NULL;
-        read->count = read->dict_count = 0;
         unsigned local_count = 0, dict_count = 0;
         const void *local = mapped ? seed_find_view(mapping.data, mapping.len,
                           read->section, read->itemsize, &local_count) : NULL;
@@ -290,11 +292,24 @@ void pgraph_seed_read_combined(PGRAPHSeedRead *reads, size_t count)
         read->items = items;
         read->count = total;
         read->dict_count = dict_count;
+        if (first_only) {
+            break;
+        }
     }
     if (mapped) {
         xemu_file_unmap(&mapping);
     }
     g_free(raw);
+}
+
+void pgraph_seed_read_combined(PGRAPHSeedRead *reads, size_t count)
+{
+    seed_read_batch(reads, count, false);
+}
+
+void pgraph_seed_read_first(PGRAPHSeedRead *reads, size_t count)
+{
+    seed_read_batch(reads, count, true);
 }
 
 struct SeedRewrite {

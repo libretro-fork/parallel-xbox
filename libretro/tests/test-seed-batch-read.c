@@ -77,9 +77,31 @@ int main(int argc,char **argv)
   }
   unsigned retained=live;counters();pgraph_seed_read_combined(reads,4);assert(maps<=1&&maps==unmaps&&inflations<=1&&!duplicates&&!active);
   for(unsigned i=0;i<4;i++){assert(reads[i].count==totals[i]&&reads[i].dict_count==dict_counts[i]);assert(!!reads[i].items==!!totals[i]);if(totals[i])assert(!memcmp(reads[i].items,expected[i],totals[i]*reads[i].itemsize));g_free(reads[i].items);}
+  assert(live==retained);
+  /* Prefer states; absent/stale/malformed states fall back to module keys.
+   * Reused outputs are deliberately poisoned before each call. */
+  PGRAPHSeedRead first[]={{.section=2,.itemsize=8},{.section=1,.itemsize=4},{.section=99,.itemsize=4}};
+  for(unsigned i=0;i<3;i++){first[i].items=(void *)(uintptr_t)1;first[i].count=first[i].dict_count=UINT_MAX;}
+  counters();pgraph_seed_read_first(first,3);
+  unsigned chosen=totals[1]?0:totals[0]?1:3;
+  assert(maps<=1&&maps==unmaps&&inflations<=1&&!duplicates&&!active);
+  for(unsigned i=0;i<3;i++) {
+   unsigned ref=i==0?1:0;
+   if(i==chosen){assert(first[i].count==totals[ref]&&first[i].dict_count==dict_counts[ref]);assert(!memcmp(first[i].items,expected[ref],totals[ref]*first[i].itemsize));g_free(first[i].items);}
+   else assert(!first[i].items&&!first[i].count&&!first[i].dict_count);
+  }
   assert(live==retained);for(unsigned i=0;i<4;i++)g_free(expected[i]);assert(!live);cases++;
  }
  /* Independently known local-first ordering, and one map/inflation for both. */
  local_case(0);dictionary_case(0);map_available=path_available=true;PGRAPHSeedRead reads[]={{.section=1,.itemsize=4},{.section=2,.itemsize=8}};counters();pgraph_seed_read_combined(reads,2);assert(maps==1&&unmaps==1&&inflations==1&&!duplicates);uint32_t words[]={11,12,21,22,23};uint64_t wide[]={111,222,333};assert(reads[0].count==5&&reads[0].dict_count==3&&!memcmp(reads[0].items,words,sizeof(words)));assert(reads[1].count==3&&reads[1].dict_count==2&&!memcmp(reads[1].items,wide,sizeof(wide)));g_free(reads[0].items);g_free(reads[1].items);assert(!live);
- counters();pgraph_seed_read_combined(NULL,0);assert(!maps&&!inflations&&!allocations);if(argc>1)real_dictionary(argv[1]);printf("Seed batch: %u legacy-equivalence cases plus independent order/lifetime oracle; one mapping/inflation, no duplicate arrays, malformed/missing/stale/failure handling PASS\n",cases);return 0;
+ /* With both sources valid, first-only materializes exactly one fewer array. */
+ local_case(0);dictionary_case(0);map_available=path_available=true;
+ PGRAPHSeedRead preferred[]={{.section=2,.itemsize=8},{.section=1,.itemsize=4}};
+ counters();pgraph_seed_read_combined(preferred,2);unsigned all_allocations=allocations;
+ g_free(preferred[0].items);g_free(preferred[1].items);counters();
+ pgraph_seed_read_first(preferred,2);assert(allocations+1==all_allocations);
+ assert(preferred[0].count==3&&!preferred[1].items&&!preferred[1].count);
+ g_free(preferred[0].items);assert(!live);
+ counters();pgraph_seed_read_first(NULL,0);assert(!maps&&!inflations&&!allocations);
+ counters();pgraph_seed_read_combined(NULL,0);assert(!maps&&!inflations&&!allocations);if(argc>1)real_dictionary(argv[1]);printf("Seed batch: %u combined + first-only equivalence cases plus independent order/lifetime/allocation oracle; one mapping/inflation, no duplicate arrays, malformed/missing/stale/failure handling PASS\n",cases);return 0;
 }

@@ -1862,18 +1862,18 @@ static void seed_load(PGRAPHGLState *r)
         !gl_sso_enabled()) {
         return;
     }
-    /* The local mapping and embedded inflation serve both sections once.
-     * Copy each source directly into its final local-first array. */
+    /* States supersede stored module keys: materialize keys only when no
+     * usable states exist. Both requests share mapping and dictionary I/O. */
     PGRAPHSeedRead reads[] = {
+        { .section = PGRAPH_SEED_GL_STATES, .itemsize = sizeof(ShaderState) },
         { .section = PGRAPH_SEED_GL_MODULES,
           .itemsize = sizeof(ShaderModuleCacheKey) },
-        { .section = PGRAPH_SEED_GL_STATES, .itemsize = sizeof(ShaderState) },
     };
-    pgraph_seed_read_combined(reads, ARRAY_SIZE(reads));
-    r->seed.mod_keys = reads[0].items;
-    r->seed.mod_n = reads[0].count;
-    r->seed.pipe_states = reads[1].items;
-    r->seed.pipe_n = reads[1].count;
+    pgraph_seed_read_first(reads, ARRAY_SIZE(reads));
+    r->seed.pipe_states = reads[0].items;
+    r->seed.pipe_n = reads[0].count;
+    r->seed.mod_keys = reads[1].items;
+    r->seed.mod_n = reads[1].count;
     const char *origin = reads[0].dict_count || reads[1].dict_count ?
                          "local + embedded dictionary" : "local";
     if (r->seed.pipe_states) {

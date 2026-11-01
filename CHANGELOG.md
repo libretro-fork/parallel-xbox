@@ -1,5 +1,7 @@
 # Changelog of the libretro core
 
+- Load GL shader seed states before stored module keys, copying module keys only when no usable state array exists. Avoid allocating and copying the key array that state-based sibling rebuilding immediately discards; preserve module-only fallback and local-first contents.
+
 - Specialize TCG translation-block hash lookups at their call sites, removing generic hash-reader dispatch and indirect comparison calls on uncontended misses. Preserve atomic publication, sequence-lock retries and RCU reclamation; keep the primary jump-cache hit path separate.
 - Add a standalone paired fragment-compiler benchmark with uninstrumented timing, separate allocation profiling and uniform-layout checks. It measures compiler work without adding emulator diagnostics or runtime overhead.
 
