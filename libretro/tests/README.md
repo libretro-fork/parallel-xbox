@@ -2369,3 +2369,17 @@ keeps its 96-byte stack frame; the full drain now uses one 96-byte frame
 instead of a 48-byte caller nested with the old 96-byte retirement function.
 Renderer structure sizes are unchanged. No hardware cache-miss or game-latency
 gain is established by this code-generation check.
+
+The ring-pressure fixture additionally exercises the production synchronous
+readback submission helper in 64 schedules covering every ring start and zero
+through seven prior submissions. Each readback waits exactly once on its own
+newest fence, retires earlier ownership in FIFO order, and leaves both staging
+rings empty for reuse. All owned bytes are checked before release; repeated
+drains make no extra waits or duplicate releases. This uses the existing
+same-queue completion rule and single-fence drain, with no new buffers, copies,
+PSOs, locks, status polls or queued video frames. Necessary readback completion
+remains synchronous.
+
+Win64 code generation reduces the synchronous submission helper's stack
+frame from 64 to 48 bytes, with unchanged renderer layouts. Hardware
+cache-miss and game-latency effects are unmeasured.

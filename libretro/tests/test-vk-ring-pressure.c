@@ -92,6 +92,21 @@ int main(void){
   finish();drain_cases++;
  }
  printf("Aux full drain: %u wrapped/open/empty/full schedules, at most one wait\n",drain_cases);
+ unsigned readback_cases=0;
+ for(unsigned start=0;start<PGRAPH_VK_AUX_SLOTS;start++)
+ for(unsigned prior=0;prior<PGRAPH_VK_AUX_SLOTS;prior++){
+  setup(CAPACITY,CAPACITY);state.aux_slot=state.aux_oldest=start;
+  for(unsigned i=0;i<prior;i++){VkCommandBuffer cmd=pgraph_vk_begin_single_time_commands(&pg);allocate(0,1,1);submit(cmd);}
+  VkCommandBuffer cmd=pgraph_vk_begin_single_time_commands(&pg);allocate(0,1,1);allocate(1,1,1);
+  pgraph_vk_end_single_time_commands(&pg,cmd);
+  assert(waits==1&&!polls&&resets==prior+1&&drops==prior+1);
+  assert(last_waited==(start+prior)%PGRAPH_VK_AUX_SLOTS&&!state.aux_npending&&!state.in_aux_command_buffer);
+  assert(state.aux_settled==prior+1&&!state.ring_head[0]&&!state.ring_head[1]);
+  for(unsigned ring=0;ring<2;ring++)for(unsigned i=0;i<CAPACITY;i++)assert(owner[ring][i]==-1);
+  finish();assert(waits==1&&resets==prior+1&&drops==prior+1);readback_cases++;
+ }
+ printf("Aux synchronous readback: %u wrapped/pending schedules, one wait on readback fence\n",readback_cases);
+
 
  /* A long recording fits alongside an unfinished submission. The old eager
   * loop queried its fence before each allocation; fitting must not need it. */

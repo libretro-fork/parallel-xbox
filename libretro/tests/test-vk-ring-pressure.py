@@ -7,7 +7,7 @@ if os.name=='nt':
  k=ctypes.WinDLL('kernel32');k.GetErrorMode.restype=ctypes.c_uint;k.SetErrorMode(k.GetErrorMode()|0x8003)
 env=os.environ.copy();env['PATH']=str(Path(cc).resolve().parent)+os.pathsep+env.get('PATH','')
 s=(r/'hw/xbox/nv2a/pgraph/vk/command.c').read_text();parts=[]
-for name in ['aux_release_oldest','aux_retire_oldest','pgraph_vk_wait_for_aux','pgraph_vk_begin_single_time_commands','ring_tail','pgraph_vk_ring_alloc','pgraph_vk_end_single_time_commands_async']:
+for name in ['aux_release_oldest','aux_retire_oldest','pgraph_vk_wait_for_aux','pgraph_vk_begin_single_time_commands','ring_tail','pgraph_vk_ring_alloc','pgraph_vk_end_single_time_commands_async','pgraph_vk_end_single_time_commands']:
  match=re.search(r'^(?:static )?(?:inline )?(?:bool|void|VkCommandBuffer) '+name+r'\([^;{]*\)\s*\{',s,re.M);assert match,name;a=match.start();b=s.index('{',a)+1;depth=1
  while depth:depth+=(s[b]=='{')-(s[b]=='}');b+=1
  parts.append(s[a:b])

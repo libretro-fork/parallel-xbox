@@ -426,13 +426,10 @@ void pgraph_vk_end_single_time_commands_async(PGRAPHState *pg,
 /* Submit and wait for this submission: for a readback */
 void pgraph_vk_end_single_time_commands(PGRAPHState *pg, VkCommandBuffer cmd)
 {
-    PGRAPHVkState *r = pg->vk_renderer_state;
-    int slot = r->aux_slot;
-
     pgraph_vk_end_single_time_commands_async(pg, cmd);
-    while (r->aux[slot].pending) {
-        aux_retire_oldest(r, false);
-    }
+    /* This is now the newest auxiliary submission, so its completion also
+     * covers every earlier upload. Reuse the single-fence FIFO drain. */
+    pgraph_vk_wait_for_aux(pg);
 }
 
 /* Timestamps are defined only on a queue family with valid bits. */
