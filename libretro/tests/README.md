@@ -1938,3 +1938,5 @@ Repeated busy attempts leave work and slot rotation untouched; a mode-only
 change remains eligible for retry. The drawing path no longer calls the fence
 wait helper; shutdown draining retains it. This does not remove the separate
 libretro frame-end acknowledgement wait or establish frontend image retirement.
+
+`test-vk-depth-source.py CHECKOUT [CC] [--gpu]` checks production source eligibility and depth row packing: 122,880 eligibility cases and 1,188 packed/padded/offset/empty copies, aligned region batches, byte-exact destinations and source/guard preservation. CPU mode defaults to ASan/UBSan; GPU mode can use `DEPTH_SOURCE_CFLAGS=-fsanitize=undefined`. GPU mode requires synchronization validation unless `DEPTH_SOURCE_NO_VALIDATION=1` is explicitly set. GPU fixture buffers model imported memory without testing the external-host import extension itself. `DEPTH_SOURCE_BINARY` and `DEPTH_SOURCE_SKIP_RUN=1` retain native fixtures. The existing depth-kernel fixtures cover unpack shaders, which are unchanged.

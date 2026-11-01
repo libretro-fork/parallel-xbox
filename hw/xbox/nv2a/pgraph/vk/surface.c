@@ -104,6 +104,47 @@ static bool framebuffer_dirty(PGRAPHState const *pg)
     return true;
 }
 
+/* Importable linear colour and packed depth share the same source rules. */
+static bool surface_upload_from_vram(const PGRAPHVkState *r,
+                                      const SurfaceBinding *surface)
+{
+    return !surface->swizzle && r->vram_buffer != VK_NULL_HANDLE &&
+           surface->vram_addr % surface->fmt.bytes_per_pixel == 0 &&
+           surface->vram_addr % 4 == 0 &&
+           surface->pitch % surface->fmt.bytes_per_pixel == 0 &&
+           surface->pitch >= (VkDeviceSize)surface->width *
+                                 surface->fmt.bytes_per_pixel;
+}
+
+/* Pack pitched source rows on the GPU, directly into the existing depth
+ * unpack input. Staged inputs are already packed and take one region. */
+static void copy_depth_source(VkCommandBuffer cmd, VkBuffer source,
+                               VkBuffer destination, VkDeviceSize offset,
+                               VkDeviceSize pitch, VkDeviceSize row_bytes,
+                               unsigned height)
+{
+    if (!height || !row_bytes) {
+        return;
+    }
+    assert(pitch >= row_bytes);
+    if (pitch == row_bytes) {
+        VkBufferCopy region = { .srcOffset = offset,
+                                .size = row_bytes * height };
+        vkCmdCopyBuffer(cmd, source, destination, 1, &region);
+        return;
+    }
+    VkBufferCopy regions[64];
+    for (unsigned y = 0; y < height;) {
+        unsigned count = MIN(height - y, ARRAY_SIZE(regions));
+        for (unsigned i = 0; i < count; i++, y++) {
+            regions[i] = (VkBufferCopy){ .srcOffset = offset + y * pitch,
+                                       .dstOffset = y * row_bytes,
+                                       .size = row_bytes };
+        }
+        vkCmdCopyBuffer(cmd, source, destination, count, regions);
+    }
+}
+
 static void memcpy_image(void *dst, void const *src, int dst_stride,
                          int src_stride, int height)
 {
@@ -1745,17 +1786,12 @@ void pgraph_vk_upload_surface_data(NV2AState *d, SurfaceBinding *surface,
         use_compute_to_convert_depth_stencil_format;
     assert(no_conversion_necessary);
 
-    /* A linear surface is copied from the RAM itself where the RAM is a
-     * buffer (its rows the pitch apart); a swizzled one is unswizzled
-     * straight into the ring, its rows packed. The compute unpack reads
-     * the ring. */
+    /* Linear surfaces read imported RAM directly, including packed depth
+     * copied into the unpack input below. Otherwise stage packed rows;
+     * swizzled surfaces retain their existing unswizzle path. */
     VkDeviceSize staged_offset = 0;
     unsigned int staged_row_length = 0;
-    bool from_vram = !surface->swizzle && r->vram_buffer != VK_NULL_HANDLE &&
-                     !use_compute_to_convert_depth_stencil_format &&
-                     surface->vram_addr % surface->fmt.bytes_per_pixel == 0 &&
-                     surface->vram_addr % 4 == 0 &&
-                     surface->pitch % surface->fmt.bytes_per_pixel == 0;
+    bool from_vram = surface_upload_from_vram(r, surface);
     VkBuffer source_buffer = from_vram ? r->vram_buffer : copy_buffer->buffer;
     bool gpu_unswizzled = false;
     if (from_vram) {
@@ -1828,14 +1864,12 @@ void pgraph_vk_upload_surface_data(NV2AState *d, SurfaceBinding *surface,
         // Copy packed image buffer to compute_dst for unpacking
         //
 
-        size_t packed_size = uploaded_image_size;
-        VkBufferCopy buffer_copy_region = {
-            .srcOffset = staged_offset,
-            .size = packed_size,
-        };
-        vkCmdCopyBuffer(cmd, copy_buffer->buffer,
-                        r->storage_buffers[BUFFER_COMPUTE_DST].buffer, 1,
-                        &buffer_copy_region);
+        VkDeviceSize row_bytes = (VkDeviceSize)surface->width *
+                                  surface->fmt.bytes_per_pixel;
+        copy_depth_source(cmd, source_buffer,
+                          r->storage_buffers[BUFFER_COMPUTE_DST].buffer,
+                          staged_offset, from_vram ? surface->pitch : row_bytes,
+                          row_bytes, surface->height);
 
         size_t num_pixels = scaled_width * scaled_height;
         size_t unpacked_depth_image_size = num_pixels * 4;
@@ -1849,7 +1883,7 @@ void pgraph_vk_upload_surface_data(NV2AState *d, SurfaceBinding *surface,
             .dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
             .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
             .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-            .buffer = copy_buffer->buffer,
+            .buffer = source_buffer,
             .size = VK_WHOLE_SIZE
         };
         vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
@@ -1920,6 +1954,7 @@ void pgraph_vk_upload_surface_data(NV2AState *d, SurfaceBinding *surface,
 
         // Already scaled during compute. Adjust copy regions.
         regions[0].bufferOffset = 0;
+        regions[0].bufferRowLength = 0;
         regions[0].imageExtent = (VkExtent3D){ scaled_width, scaled_height, 1 };
         regions[1].imageExtent = regions[0].imageExtent;
         regions[1].bufferOffset =

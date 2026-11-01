@@ -1,5 +1,7 @@
 # Changelog of the libretro core
 
+- Upload eligible linear depth/stencil surfaces from imported guest RAM directly into the GPU unpack input, avoiding the CPU staging reservation/copy. Padded rows use bounded GPU-copy batches; swizzled/unimported/misaligned inputs retain staging.
+
 - Keep short OpenGL visibility-query lists inside pooled report objects and transfer those objects directly to the report queue, removing per-report query-array allocation for up to eight intervals; long lists grow geometrically and all lists release on clear/completion/teardown.
 - Vulkan now preserves different minification and magnification filters for nonmip 2D color textures, keeping reads on the base level even when the image has a mip chain.
 
