@@ -124,8 +124,11 @@ def main():
                 logs.mkdir()
                 (logs / "cases.csv").write_bytes((output / "cases.csv").read_bytes())
             for api in ("gl", "vk"):
+                # A fixed-frame oracle must not charge host GPU wait time
+                # against the guest work needed to finish all 192 cases.
                 command = [str(args.harness.resolve()), str(args.core.resolve()),
-                           str(output / "system"), "--frames", "240", "--strict"]
+                           str(output / "system"), "--frames", "240", "--strict",
+                           "--opt", "xemu_deterministic=enabled"]
                 command += ["--opt", f"xemu_renderer={'vulkan' if api == 'vk' else 'opengl'}"]
                 value = "enabled" if quality else "disabled"
                 command += ["--opt", f"xemu_force_quality_filtering={value}",
