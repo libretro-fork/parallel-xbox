@@ -3815,7 +3815,7 @@ static VertexCowCacheEntry *vertex_cow_lookup(PGRAPHVkState *r, hwaddr lo,
 /* Cache the snapshot of [lo, lo + size) at arena offset dst for reuse by
  * later draws of any contained window. */
 static void vertex_cow_store(PGRAPHVkState *r, hwaddr lo, VkDeviceSize size,
-                             VkDeviceSize dst)
+                             VkDeviceSize dst, unsigned slot)
 {
     VertexCowCacheEntry *store = NULL;
     for (int c = 0; c < ARRAY_SIZE(r->vertex_cow_cache); c++) {
@@ -3836,11 +3836,11 @@ static void vertex_cow_store(PGRAPHVkState *r, hwaddr lo, VkDeviceSize size,
         .addr = lo,
         .size = size,
         .arena_offset = dst,
-        .epoch = r->vertex_arena_epoch[r->slot & 1],
-        .slot = r->slot & 1,
+        .epoch = r->vertex_arena_epoch[slot],
+        .slot = slot,
         .valid = true,
     };
-    r->vertex_cow_tail[r->slot & 1] = store - r->vertex_cow_cache + 1;
+    r->vertex_cow_tail[slot] = store - r->vertex_cow_cache + 1;
     vertex_cow_remember(r, store - r->vertex_cow_cache);
 }
 
@@ -3983,7 +3983,22 @@ static void vertex_cow_snapshot(PGRAPHState *pg, hwaddr addr,
         dst = 0;
     }
     if (dst + copy_size > arena->buffer_size) {
-        /* Arena exhausted: settle everything (consumed marks clear), then
+        /* Both arenas are append-only and bindings carry their arena index.
+         * Use the other unused tail before settling any live readers. */
+        unsigned other = arena_slot ^ 1;
+        StorageBuffer *spare = &r->vertex_arena[other];
+        VkDeviceSize spare_alignment = r->vertex_arena_coherent[other] ? 256 :
+            MAX((VkDeviceSize)256, r->device_props.limits.nonCoherentAtomSize);
+        VkDeviceSize spare_dst = ROUND_UP(spare->buffer_offset, spare_alignment);
+        if (spare_dst <= spare->buffer_size &&
+            copy_size <= spare->buffer_size - spare_dst) {
+            arena_slot = other;
+            arena = spare;
+            dst = spare_dst;
+        }
+    }
+    if (dst + copy_size > arena->buffer_size) {
+        /* Both arenas exhausted: settle everything (consumed marks clear), then
          * the mirror path is legal again. */
         pgraph_vk_finish(pg, VK_FINISH_REASON_NEED_BUFFER_SPACE);
         pgraph_vk_settle_all_slots(pg);
@@ -4001,7 +4016,7 @@ static void vertex_cow_snapshot(PGRAPHState *pg, hwaddr addr,
     arena->buffer_offset = dst + copy_size;
     out->cow = true;
     out->lo = lo;
-    out->slot = r->slot & 1;
+    out->slot = arena_slot;
     out->arena_offset = dst;
     r->vertex_arena_pending = true;
     /* The mirror falls behind only where the guest wrote: a COW driven by
@@ -4009,7 +4024,7 @@ static void vertex_cow_snapshot(PGRAPHState *pg, hwaddr addr,
     if (dirty) {
         bitmap_set(r->vertex_stale_bitmap, start_bit, end_bit - start_bit);
     }
-    vertex_cow_store(r, lo, copy_size, dst);
+    vertex_cow_store(r, lo, copy_size, dst, arena_slot);
 }
 
 /* Point this draw's attribute bindings at their COW snapshots. */

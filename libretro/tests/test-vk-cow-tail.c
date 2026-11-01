@@ -96,11 +96,13 @@ int main(void){
   * settled: this draw has not bound them yet. */
  reset();r.vertex_arena[0].buffer_size=r.vertex_arena[1].buffer_size=8192;
  a=snapshot(0,4096,0,true);b=snapshot(8192,4096,8192,true);assert(r.vertex_arena_pending);
- VertexCowDispatch fallback=snapshot(16384,4096,16384,true);assert(!fallback.cow&&r.vertex_arena[0].buffer_offset==8192&&!r.vertex_arena_epoch[0]);
+ c=snapshot(16384,4096,16384,true);VertexCowDispatch e=snapshot(24576,4096,24576,true);
+ assert(c.cow&&c.slot==1&&e.cow&&e.slot==1&&!finishes&&!settles);
+ VertexCowDispatch fallback=snapshot(40960,4096,40960,true);assert(!fallback.cow&&r.vertex_arena[0].buffer_offset==8192&&!r.vertex_arena_epoch[0]);
  assert(!memcmp(arena[0]+a.arena_offset,ram,4096)&&!memcmp(arena[0]+b.arena_offset,ram+8192,4096));
- hold(a,4096);hold(b,12288);pgraph_vk_finish(&d.pgraph,0);pgraph_vk_settle_all_slots(&d.pgraph);
+ hold(a,4096);hold(b,12288);hold(c,20480);hold(e,28672);pgraph_vk_finish(&d.pgraph,0);pgraph_vk_settle_all_slots(&d.pgraph);
  (void)snapshot(32768,4096,32768,true);assert(r.vertex_arena_epoch[0]==1&&r.vertex_cow_tail[0]);
- reset();r.vertex_arena[0].buffer_size=4096;fallback=snapshot(4096,8192,0,true);assert(!fallback.cow&&finishes&&settles);
+ reset();r.vertex_arena[0].buffer_size=r.vertex_arena[1].buffer_size=4096;fallback=snapshot(4096,8192,0,true);assert(!fallback.cow&&finishes&&settles);
  reset();r.vertex_cow_tail[0]=513;assert(!vertex_cow_extendable(&r,0,4096));r.vertex_cow_tail[0]=0;assert(!vertex_cow_extendable(&r,0,4096));
  /* Crossing the recycle threshold must not submit or wait for readers.
   * Known completion permits epoch reset; unproved readers keep their bytes
@@ -122,11 +124,35 @@ int main(void){
  }
  printf("PASS: %u opportunistic recycle schedules, rollover, current-draw guards, live-prefix preservation and zero threshold waits\n",pressure_cases);
  /* Actual exhaustion with unproved readers retains the existing fallback. */
- reset();r.submit_count=7;r.settled_submit=6;r.vertex_arena[0].buffer_size=8192;r.vertex_arena[0].buffer_offset=4096;
+ reset();r.submit_count=7;r.settled_submit=6;r.vertex_arena[0].buffer_size=r.vertex_arena[1].buffer_size=8192;r.vertex_arena[0].buffer_offset=r.vertex_arena[1].buffer_offset=4096;
  memset(arena[0],0x57,4096);fallback=snapshot(16384,8192,16384,true);
  assert(!fallback.cow&&finishes==1&&settles==1&&!r.vertex_arena_epoch[0]);
  for(unsigned i=0;i<4096;i++)assert(arena[0][i]==0x57);
  assert(!memcmp(mirror+16384,ram+16384,8192));
+ /* Spill preserves both live prefixes and uses the destination memory type's
+  * atom alignment. Cache reuse must retain the selected arena and epoch. */
+ unsigned spill_cases=0;
+ for(unsigned slot=0;slot<2;slot++)for(unsigned coherent=0;coherent<2;coherent++)
+ for(unsigned atom=256;atom<=8192;atom*=2)for(unsigned pending=0;pending<2;pending++){
+  reset();r.slot=slot;r.submit_count=2;r.settled_submit=1;
+  r.vertex_arena[slot].buffer_offset=ARENASIZE;r.vertex_arena[slot^1].buffer_offset=513;
+  r.vertex_arena_coherent[slot^1]=coherent;r.device_props.limits.nonCoherentAtomSize=atom;
+  r.vertex_arena_pending=pending;r.vertex_arena_used=!pending;
+  r.vertex_arena_epoch[slot]=7;r.vertex_arena_epoch[slot^1]=11;
+  memset(arena[slot],0x57,ARENASIZE);memset(arena[slot^1],0x63,513);
+  VertexCowDispatch out=snapshot(65536,4096,65536,true);
+  unsigned align=coherent?256:atom;size_t want=ROUND_UP(513,align);
+  assert(out.cow&&out.slot==(slot^1)&&out.arena_offset==want&&!finishes&&!settles);
+  assert(r.vertex_arena[slot].buffer_offset==ARENASIZE&&r.vertex_arena[slot^1].buffer_offset==want+4096);
+  for(unsigned i=0;i<ARENASIZE;i++)assert(arena[slot][i]==0x57);
+  for(unsigned i=0;i<513;i++)assert(arena[slot^1][i]==0x63);
+  assert(!memcmp(arena[slot^1]+want,ram+65536,4096));
+  assert(r.vertex_arena_dirty_start[slot^1]==(coherent?UINT64_MAX:want)&&r.vertex_arena_dirty_start[slot]==UINT64_MAX);
+  VertexCowCacheEntry *entry=vertex_cow_lookup(&r,65536,69632);assert(entry&&entry->slot==(slot^1)&&entry->epoch==11);
+  before=copied;out=snapshot(65536,4096,65536,false);assert(out.cow&&out.slot==(slot^1)&&copied==before);
+  assert(r.vertex_arena_epoch[slot]==7&&r.vertex_arena_epoch[slot^1]==11);spill_cases++;
+ }
+ printf("PASS: %u cross-arena spill schedules, live prefixes, mixed coherence/atom alignment, cache reuse and zero exhaustion waits when spare space fits\n",spill_cases);
  /* Selector adversaries: stale epochs, overwritten entries, wrong base/slot,
   * allocation holes, capacity, and atom boundaries. No array scan is needed. */
  for(unsigned n=0;n<100000;n++){

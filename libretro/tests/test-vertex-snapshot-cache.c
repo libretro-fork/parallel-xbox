@@ -58,7 +58,7 @@ int main(void)
 {
     PGRAPHVkState r = {0};
     check_lookup(&r, 100, 120);
-    vertex_cow_store(&r, 100, 100, 256);
+    vertex_cow_store(&r, 100, 100, 256, r.slot & 1);
     VertexCowCacheEntry *e = vertex_cow_lookup(&r, 120, 180);
     assert(e && e->addr == 100 && e->arena_offset == 256);
     /* Touching ranges do not overlap; one byte inside invalidates it. */
@@ -67,11 +67,11 @@ int main(void)
     pgraph_vk_vertex_cow_cache_invalidate(&r, 199, 1);
     assert(!vertex_cow_lookup(&r, 120, 180));
     /* Recycling an arena invalidates even the most recent index. */
-    vertex_cow_store(&r, 100, 100, 512);
+    vertex_cow_store(&r, 100, 100, 512, r.slot & 1);
     r.vertex_arena_epoch[0]++;
     assert(!vertex_cow_lookup(&r, 120, 180));
     r.slot = 1;
-    vertex_cow_store(&r, 100, 100, 768);
+    vertex_cow_store(&r, 100, 100, 768, r.slot & 1);
     e = vertex_cow_lookup(&r, 120, 180);
     assert(e && e->slot == 1 && e->arena_offset == 768);
     r.vertex_arena_epoch[0]++;
@@ -89,7 +89,7 @@ int main(void)
         case 2:
         case 3:
             r.slot = random_value() & 1;
-            vertex_cow_store(&r, addr, size, i * 256);
+            vertex_cow_store(&r, addr, size, i * 256, r.slot & 1);
             break;
         case 4:
             pgraph_vk_vertex_cow_cache_invalidate(&r, addr, size);

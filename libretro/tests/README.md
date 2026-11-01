@@ -2775,3 +2775,29 @@ cache-miss or total copy-volume improvement has been measured for this change.
 Win64 code generation keeps sync_vertex_ram_buffer and pgraph_vk_flush_draw
 at 704-byte stack usage, bind_vertex_buffer at 368 bytes, and all renderer
 state sizes unchanged. The snapshot helper remains inlined.
+
+### Reusing spare Vulkan snapshot-arena capacity
+
+A snapshot that does not fit the active arena may append into the other
+existing arena. Both buffers remain append-only; no live prefix is overwritten
+and no arena epoch is reset by this spill. The destination arena's coherence
+and non-coherent atom size govern alignment and dirty-range flushing. Cached
+snapshots carry that arena's index and epoch, and existing attribute bindings
+already select the buffer by index. No new buffer, copy pass, PSO, fence query,
+lock or frame buffering is introduced. The blocking mirror fallback remains
+when neither safe tail fits.
+
+The COW-tail fixture adds 48 schedules covering both source slots, pending and
+bound current-draw references, mixed destination coherence, atom sizes 256-8192,
+unaligned tail offsets, live prefix preservation, destination dirty ranges and
+cache reuse without another copy. A four-snapshot case fills both arenas before
+the fifth takes the fallback. The baseline fails the spill regression. Existing
+160 recycle, 100,000 selector, 10,000 live-reader and 80,000 cache-lookup cases
+are retained. Native runtime checks do not establish a hardware stall-time or
+cache-miss improvement under arena pressure.
+
+Win64 sync_vertex_ram_buffer stack usage rises from 704 to 736 bytes; the
+snapshot stays inlined and normal uploads gain no helper call. Outlining the
+spare-space arithmetic did not reduce that frame and was rejected. Flush-draw
+stack usage stays 704 bytes; renderer state sizes are unchanged. This stack
+tradeoff is recorded separately from unmeasured hardware cache/spill costs.

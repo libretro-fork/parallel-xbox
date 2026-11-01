@@ -1,5 +1,6 @@
 # Changelog of the libretro core
 
+- Use safe unused space in the second Vulkan vertex-snapshot arena before falling back to synchronous settlement when the active arena fills. No additional buffer or intermediary copy is allocated.
 - Stream shader-seed replacements through libretro-common atomic-file primitives instead of assembling a whole-file byte array. Borrow preserved sections while writing the temporary file, unmap before commit, and retain exact section order, valid-prefix behavior and failure cleanup. Reject overflowing malformed section sizes before reading.
 
 
