@@ -339,7 +339,29 @@ out:
     return ok;
 }
 
-static void module_save_to_disk(ShaderModuleCacheEntry *module, uint64_t hash)
+/* The flip-time save queue alone owns these bytes. Growth discards old
+ * contents rather than copying a binary the driver will replace. */
+static void *module_binary_reserve(PGRAPHGLState *r, size_t size)
+{
+    if (size > r->module_binary_capacity) {
+        size_t grown = r->module_binary_capacity <= SIZE_MAX / 2 ?
+                       r->module_binary_capacity * 2 : size;
+        r->module_binary_capacity = MAX(size, grown);
+        g_free(r->module_binary_scratch);
+        r->module_binary_scratch = g_malloc(r->module_binary_capacity);
+    }
+    return r->module_binary_scratch;
+}
+
+static void module_binary_release(PGRAPHGLState *r)
+{
+    g_free(r->module_binary_scratch);
+    r->module_binary_scratch = NULL;
+    r->module_binary_capacity = 0;
+}
+
+static void module_save_to_disk(PGRAPHGLState *r,
+                                ShaderModuleCacheEntry *module, uint64_t hash)
 {
     GLint size = 0;
     glGetProgramiv(module->gl_stage_program, GL_PROGRAM_BINARY_LENGTH, &size);
@@ -347,12 +369,11 @@ static void module_save_to_disk(ShaderModuleCacheEntry *module, uint64_t hash)
         return;
     }
 
-    void *bin = g_malloc(size);
+    void *bin = module_binary_reserve(r, size);
     GLsizei copied;
     GLenum format;
     glGetProgramBinary(module->gl_stage_program, size, &copied, &format, bin);
     if (glGetError() != GL_NO_ERROR) {
-        g_free(bin);
         return;
     }
 
@@ -369,7 +390,6 @@ static void module_save_to_disk(ShaderModuleCacheEntry *module, uint64_t hash)
     FILE *f = qemu_fopen(path, "wb");
     if (!f) {
         g_free(path);
-        g_free(bin);
         return;
     }
 
@@ -396,7 +416,6 @@ static void module_save_to_disk(ShaderModuleCacheEntry *module, uint64_t hash)
         qemu_unlink(path);
     }
     g_free(path);
-    g_free(bin);
 }
 
 /* Uniform locations belong to the stage program, not to the combination that
@@ -494,7 +513,7 @@ static void module_save_queue_drain(PGRAPHGLState *r, int64_t budget_us)
             /* Link done: finalizing locations here is free and keeps the
              * first draw that uses this module from paying it. */
             module_locs_demand(module);
-            module_save_to_disk(module,
+            module_save_to_disk(r, module,
                                 fast_hash((void *)&module->key,
                                           sizeof(ShaderModuleCacheKey)));
         }
@@ -1248,6 +1267,7 @@ void pgraph_gl_init_shaders(PGRAPHState *pg)
     r->shader_module_cache.compare_nodes = shader_module_cache_entry_compare;
     r->shader_module_cache.post_node_evict = shader_module_cache_entry_post_evict;
 
+    module_binary_reserve(r, 64 * 1024);
     r->seed.state = -1;
     r->prewarm.state = -1;
 }
@@ -1276,6 +1296,7 @@ void pgraph_gl_finalize_shaders(PGRAPHState *pg)
     lru_flush(&r->shader_module_cache);
     g_free(r->shader_module_cache_entries);
     r->shader_module_cache_entries = NULL;
+    module_binary_release(r);
 }
 
 static void shader_write_to_disk(void *arg)

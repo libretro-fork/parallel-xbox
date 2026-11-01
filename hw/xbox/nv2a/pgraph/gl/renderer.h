@@ -472,6 +472,8 @@ typedef struct PGRAPHGLState {
      * link. */
     ShaderModuleCacheEntry *module_save_queue[256];
     unsigned module_save_r, module_save_w;
+    void *module_binary_scratch;
+    size_t module_binary_capacity;
     /* The finished link the module cache's entry init adopts. */
     uint64_t comb_adopt_hash;
     GLuint comb_adopt_program;

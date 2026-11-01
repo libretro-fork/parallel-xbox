@@ -1877,3 +1877,5 @@ Worker-module lifetime tests follow the combined module/parameter allocation pat
 
 For release timing, use `VK_S3TC_BENCH=1 VK_S3TC_NO_VALIDATION=1`; benchmark builds default to no sanitizers. Normal Linux correctness builds default to UBSan; `VK_S3TC_CFLAGS` can override the extra compiler flags. Full-size nine-mip cube callers are covered above the production size threshold, including border crops and preserved skipped faces.
 `test-wgl-context-versions.py CHECKOUT [CC]` checks production Windows context negotiation: prefer 4.5, then 4.3, 4.1 and 4.0, preserving the share-context and DC arguments on every attempt. Unsupported drivers return failure. The real WGL dispatch test also reports the selected version and checks sharing from a 4.0 frontend context. `WGL_CORE_CFLAGS` enables sanitizers.
+
+`test-gl-module-export.py CHECKOUT [CC]` exercises production OpenGL module export with 100 same-buffer saves, geometric growth, byte-exact headers and copied-length payloads, driver/open/write failures and release/reinitialization. `GL_MODULE_EXPORT_CFLAGS` enables sanitizers. Export storage belongs solely to the flip-time save queue.
