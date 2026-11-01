@@ -49,9 +49,6 @@ static uint64_t mcpx_apu_read(void *opaque, hwaddr addr, unsigned int size)
     MCPXAPUState *d = opaque;
 
     uint64_t r = 0;
-    if (mcpx_apu_dsp_uses_reg(addr)) {
-        mcpx_apu_dsp_quiesce(d);
-    }
     switch (addr) {
     case NV_PAPU_XGSCNT:
         r = (uint64_t)d->ep_frame_div * NUM_SAMPLES_PER_FRAME;
@@ -113,18 +110,15 @@ static void se_frame(MCPXAPUState *d)
 {
     mcpx_apu_update_dsp_preference(d);
 
-    /* This frame's mixbins, the VP's into the DSPs': its slot of the
-     * thread's ring, the others holding frames it may still be on */
+    /* One owner fills and consumes this tick's mixbins in place. */
     int64_t (*mixbins)[NUM_SAMPLES_PER_FRAME] = mcpx_apu_dsp_mixbins(d);
 
     memset(mixbins, 0, sizeof(int64_t[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME]));
     mcpx_apu_vp_frame(d, mixbins);
     mcpx_apu_dsp_post(d, mixbins);
 
-    /* DMA reads the guest's live scratch pages and scatter/gather tables.
-     * Finish this tick before the vCPU can change them. Queuing MMIO
-     * writes alone cannot order the RAM updates that precede them. */
-    mcpx_apu_dsp_quiesce(d);
+    /* The inline DSP tick has completed every live guest-RAM DMA before
+     * the vCPU can change its scratch pages or scatter/gather tables. */
 
     d->ep_frame_div++;
 }
@@ -208,13 +202,11 @@ static void apu_tick_rearm(MCPXAPUState *d)
 
 static void mcpx_apu_reset_locked(MCPXAPUState *d)
 {
-    /* The DSPs' thread is done with its frame first: the processors'
-     * registers go too (their GPRST/EPRST hold them in reset until the
-     * guest brings them up again) and the cores are reset. With the
+    /* The processors' registers go too (GPRST/EPRST hold them in reset
+     * until the guest brings them up again) and the cores are reset. With the
      * processors left running their old program against zeroed global
      * registers, the next frame's FIFO walk divided by a FIFO of no size
      * and walked past a table of no entries. */
-    mcpx_apu_dsp_quiesce(d);
     memset(d->regs, 0, sizeof(d->regs));
     memset(d->gp.regs, 0, sizeof(d->gp.regs));
     memset(d->ep.regs, 0, sizeof(d->ep.regs));
@@ -242,7 +234,6 @@ static void mcpx_apu_vm_state_change(void *opaque, bool running, RunState state)
 {
     MCPXAPUState *d = opaque;
 
-    mcpx_apu_dsp_quiesce(d);
     if (!running) {
         if (d->gp.dsp) {
             dsp_sync_to_vm(d->gp.dsp);
@@ -292,7 +283,6 @@ static int mcpx_apu_output_pre_save(void *opaque)
 {
     MCPXAPUState *d = opaque;
 
-    mcpx_apu_dsp_quiesce(d);
     d->saved_output.frames = mcpx_apu_monitor_save(
         d->saved_output.samples, MCPX_APU_MONITOR_STATE_FRAMES,
         &d->saved_output.ahead);

@@ -5,7 +5,7 @@ import subprocess,sys,tempfile
 repo=Path(sys.argv[1]).resolve()
 source=(repo/"target/i386/tcg/system/misc_helper.c").read_text(encoding="utf-8",errors="surrogateescape")
 a=source.index("static const uint8_t *lr_idle_ram_ptr(")
-b=source.index("/* A port read",a)
+b=source.index("bool xemu_libretro_memory_poll(",a)
 code=Path(__file__).with_suffix(".c").read_text().replace("/* PRODUCTION */",source[a:b])
 with tempfile.TemporaryDirectory(prefix="kernel-idle-") as directory:
  p=Path(directory);(p/"test.c").write_text(code)

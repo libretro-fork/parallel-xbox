@@ -3,6 +3,9 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
+#undef assert
+#define assert(x) do {if(!(x)){fprintf(stderr,"FAIL %d: %s\n",__LINE__,#x);_Exit(1);}}while(0)
 #include <string.h>
 
 #define TARGET_PAGE_SIZE 4096
@@ -14,9 +17,9 @@ typedef struct MCPXAPUState {
     uint8_t *ram_ptr;
     void *ram;
     int ep_frame_div;
-    int64_t mixbins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME];
-    bool pending, write, register_pending;
-    unsigned int max_sge, next_max_sge;
+    struct {int64_t mixbins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME];} dsp_state;
+    bool write;
+    unsigned int max_sge;
     hwaddr table;
     uint32_t guest_dma_addr;
     uint8_t result[64];
@@ -57,26 +60,8 @@ static void transfer(void *user, uint8_t *host, size_t bytes)
     }
     d->transfers++;
 }
-/* A deterministic scheduler holds the worker until quiesce. Guest RAM
- * remains live, just as it does for the real DSP DMA callbacks. Register
- * writes are applied after the previously posted frame. */
-static void mcpx_apu_dsp_quiesce(MCPXAPUState *d)
-{
-    if (d->pending) {
-        scatter_gather_walk(d, d->table, d->max_sge, d->guest_dma_addr,
-                            sizeof(d->result), d->write, transfer, d);
-        d->pending = false;
-    }
-    if (d->register_pending) {
-        d->max_sge = d->next_max_sge;
-        d->register_pending = false;
-    }
-}
 static void mcpx_apu_update_dsp_preference(MCPXAPUState *d) { (void)d; }
-static int64_t (*mcpx_apu_dsp_mixbins(MCPXAPUState *d))[NUM_SAMPLES_PER_FRAME]
-{
-    return d->mixbins;
-}
+/* PRODUCTION MIXBINS */
 static void mcpx_apu_vp_frame(MCPXAPUState *d,
                             int64_t bins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME])
 {
@@ -88,12 +73,14 @@ static void mcpx_apu_vp_frame(MCPXAPUState *d,
         }
     }
 }
-static void mcpx_apu_dsp_post(MCPXAPUState *d,
-                            int64_t bins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME])
+static void dsp_run_frame(MCPXAPUState *d,
+                            int64_t bins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME], int frame_div)
 {
-    assert(!d->pending && bins == d->mixbins && bins[0][0] == 42);
-    d->pending = true;
+    assert(bins == d->dsp_state.mixbins && bins[0][0] == 42 && frame_div == d->ep_frame_div);
+    scatter_gather_walk(d, d->table, d->max_sge, d->guest_dma_addr,
+                        sizeof(d->result), d->write, transfer, d);
 }
+/* PRODUCTION POST */
 /* PRODUCTION FRAME */
 
 static void init(MCPXAPUState *d)
@@ -124,17 +111,15 @@ int main(void)
          * parameters for a 64-byte read at 0x12520 before the MMIO write.
          * With the old deferred tick, this drain asserts on page 0x12. */
         d.guest_dma_addr = 0x12520;
-        d.next_max_sge = 0x6c;
-        d.register_pending = true;
-        mcpx_apu_dsp_quiesce(&d);
-        assert(d.transfers == 1 && !d.pending && d.ep_frame_div == 1);
+        d.max_sge = 0x6c;
+        assert(d.transfers == 1 && d.ep_frame_div == 1);
         assert(d.dirty == (unsigned int)write);
         for (size_t i = 0; i < sizeof(d.result); i++) {
             assert(d.result[i] == (write ? 0xa5 : 0x31));
             assert(ram[0x10520 + i] == (write ? 0xa5 : 0x31));
         }
         se_frame(&d);
-        assert(d.transfers == 2 && !d.pending && d.ep_frame_div == 2);
+        assert(d.transfers == 2 && d.ep_frame_div == 2);
         assert(d.dirty == (unsigned int)(2 * write));
         if (!write) {
             for (size_t i = 0; i < sizeof(d.result); i++) {
@@ -146,10 +131,17 @@ int main(void)
     se_frame(&d);
     /* Reusing a scratch page after the tick must not change its output. */
     memset(ram + 0x10520, 0xfe, sizeof(d.result));
-    mcpx_apu_dsp_quiesce(&d);
     for (size_t i = 0; i < sizeof(d.result); i++) {
         assert(d.result[i] == 0x31);
     }
-    puts("DSP guest RAM: scratch growth, reads, writes and page reuse passed");
+    for(unsigned i=0;i<20000;i++) {
+        ram[0x10520]=(uint8_t)i;
+        unsigned before=d.transfers;
+        se_frame(&d);
+        assert(d.transfers==before+1 && d.result[0]==(uint8_t)i);
+        ram[0x10520]^=0xff;
+        assert(d.result[0]==(uint8_t)i);
+    }
+    puts("DSP guest RAM: scratch growth, reads, writes, page reuse and 20000 synchronous zero-copy mix-buffer ticks passed");
     return 0;
 }

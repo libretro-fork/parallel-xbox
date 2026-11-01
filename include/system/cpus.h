@@ -20,6 +20,8 @@ bool all_cpu_threads_idle(void);
 bool cpu_can_run(CPUState *cpu);
 /* Prove the Xbox kernel is in an empty idle loop before skipping time. */
 bool xemu_libretro_kernel_idle(CPUState *cpu);
+/* Prove a complete, interruptible ordinary-RAM polling loop is waiting. */
+bool xemu_libretro_memory_poll(CPUState *cpu);
 void cpu_thread_signal_created(CPUState *cpu);
 void cpu_handle_guest_debug(CPUState *cpu);
 

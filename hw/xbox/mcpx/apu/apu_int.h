@@ -97,9 +97,9 @@ typedef struct MCPXAPUState {
     MCPXAPUVPState vp;
     MCPXAPUGPState gp;
     MCPXAPUEPState ep;
-    MCPXAPUDSPThread dsp_thread;
+    MCPXAPUDSPState dsp_state;
 
-    /* the guest's from the vCPU, the DSP thread's and the voice workers':
+    /* The engine owner and voice workers:
      * word-atomic, apu_reg_r/w */
     retro_atomic_int_t regs[0x20000];
 

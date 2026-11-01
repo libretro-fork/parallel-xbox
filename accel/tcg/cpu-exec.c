@@ -1123,7 +1123,7 @@ static bool cpu_kernel_idle_wait(CPUState *cpu, TranslationBlock **last_tb)
         cpu_handle_interrupt(cpu, last_tb)) {
         cpu_loop_exit(cpu);
     }
-    return xemu_libretro_kernel_idle(cpu);
+    return xemu_libretro_kernel_idle(cpu) || xemu_libretro_memory_poll(cpu);
 }
 
 static inline void cpu_loop_exec_tb(CPUState *cpu, TranslationBlock *tb,
@@ -1174,7 +1174,7 @@ static inline void cpu_loop_exec_tb(CPUState *cpu, TranslationBlock *tb,
     if (cpu->neg.lr_quiet < 0) {
         /* A store-free stretch is only a candidate: register-only work
          * and read-only scans still make progress. Skip time only for a
-         * verified kernel idle loop or the device-poll detector's wait. */
+         * verified kernel idle loop or an explicit device/RAM-poll wait. */
         extern void lr_quiet_exit(CPUState *cpu);
         cpu->neg.lr_quiet = LR_QUIET_INSNS;
         cpu->lr_quiet_at_exit = LR_QUIET_INSNS;

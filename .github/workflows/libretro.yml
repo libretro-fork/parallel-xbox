@@ -26,6 +26,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: DSP ticks must finish before the guest changes scratch RAM
         run: python3 libretro/tests/test-dsp-guest-ram.py . cc
+      - name: Every frontend turn must retain exact audio cadence
+        run: python3 libretro/tests/test-frame-audio-pull.py . cc
       - name: Store-free work must not be mistaken for an idle wait
         run: python3 libretro/tests/test-quiet-progress.py . cc
 
@@ -37,6 +39,10 @@ jobs:
       # Production MMIO handlers and wake accounting; no game, BIOS or GPU.
       - name: Guest flip releases must prevent premature idle time skips
         run: python3 libretro/tests/test-nv2a-guest-wakes.py . cc
+      - name: NGB RAM-counter waits must yield without skipping useful computation
+        run: python3 libretro/tests/test-memory-poll.py . cc
+      - name: Deliver interrupts before proving kernel or RAM waits
+        run: python3 libretro/tests/test-idle-interrupts.py . cc
       - name: GPU waits must respect guest timer deadlines
         run: python3 libretro/tests/test-gpu-wait-deadline.py . cc
       - name: Depth readback must pack directly into mapped output safely

@@ -21,7 +21,6 @@
 
 #include "hw/xbox/mcpx/apu/apu_int.h"
 #include "hw/xbox/mcpx/apu/monitor.h"
-#include <rthreads/rthreads.h>
 
 /* The option values the DSPs were last set up for: none on a new device
  * (mcpx_apu_dsp_init), so new content gets its monitor point and engine
@@ -35,9 +34,7 @@ void mcpx_apu_update_dsp_preference(MCPXAPUState *d)
         last_known_jit_pref == (int)g_config.audio.use_dsp_jit) {
         return;
     }
-    /* a change: the thread done with its frame first, since the monitor
-     * point and the engine are its */
-    mcpx_apu_dsp_quiesce(d);
+    /* Options and DSP ticks share the engine owner. */
 
     if (last_known_dsp_pref != (int)g_config.audio.use_dsp) {
         if (g_config.audio.use_dsp) {
@@ -230,13 +227,13 @@ static void ep_fifo_walk(void *opaque, unsigned int index, size_t len, bool dir,
 
     if (dir && index == 0 && d->monitor.point != MCPX_APU_DEBUG_MON_AC97) {
         /* sunk: the EP's 256 samples, 8 engine frames' worth, written
-         * straight into the frontend's queue (dsp_thread_frame), and the
+         * straight into the frontend's queue (dsp_run_frame), and the
          * guest's FIFO gets silence */
         if ((d->monitor.point == MCPX_APU_DEBUG_MON_EP) ||
             (d->monitor.point == MCPX_APU_DEBUG_MON_GP_OR_EP)) {
-            assert(len == sizeof(d->dsp_thread.ep_spare));
-            fn(user, (uint8_t *)d->dsp_thread.ep_dst, len);
-            d->dsp_thread.ep_written = true;
+            assert(len == sizeof(d->dsp_state.ep_spare));
+            fn(user, (uint8_t *)d->dsp_state.ep_dst, len);
+            d->dsp_state.ep_written = true;
         }
         fn = ep_silence_run;
     }
@@ -292,10 +289,6 @@ static uint64_t gp_read(void *opaque, hwaddr addr, unsigned int size)
     assert(addr % 4 == 0);
 
     uint64_t r = 0;
-    if (gp_is_memory(addr)) {
-        /* the DSP's memories: the thread done, the writes applied */
-        mcpx_apu_dsp_quiesce(d);
-    }
     switch (addr) {
     case NV_PAPU_GPXMEM ... NV_PAPU_GPXMEM + 0x1000 * 4 - 1: {
         uint32_t xaddr = (addr - NV_PAPU_GPXMEM) / 4;
@@ -357,8 +350,8 @@ static void gp_apply(MCPXAPUState *d, hwaddr addr, uint32_t val)
         break;
     }
     case NV_PAPU_GPRST:
-        proc_rst_write(d->gp.dsp, d->dsp_thread.gp_rst, val);
-        d->dsp_thread.gp_rst = val;
+        proc_rst_write(d->gp.dsp, d->dsp_state.gp_rst, val);
+        d->dsp_state.gp_rst = val;
         break;
     default:
         break;
@@ -398,10 +391,6 @@ static uint64_t ep_read(void *opaque, hwaddr addr, unsigned int size)
     assert(addr % 4 == 0);
 
     uint64_t r = 0;
-    if (ep_is_memory(addr)) {
-        /* the DSP's memories: the thread done, the writes applied */
-        mcpx_apu_dsp_quiesce(d);
-    }
     switch (addr) {
     case NV_PAPU_EPXMEM ... NV_PAPU_EPXMEM + 0xC00 * 4 - 1: {
         uint32_t xaddr = (addr - NV_PAPU_EPXMEM) / 4;
@@ -451,8 +440,8 @@ static void ep_apply(MCPXAPUState *d, hwaddr addr, uint32_t val)
         break;
     }
     case NV_PAPU_EPRST:
-        proc_rst_write(d->ep.dsp, d->dsp_thread.ep_rst, val);
-        d->dsp_thread.ep_rst = val;
+        proc_rst_write(d->ep.dsp, d->dsp_state.ep_rst, val);
+        d->dsp_state.ep_rst = val;
         break;
     default:
         break;
@@ -486,13 +475,13 @@ const MemoryRegionOps ep_ops = {
     .write = ep_write,
 };
 
-/* One engine frame of the DSPs, on their thread: the mixbins into the
+/* One engine frame of the DSPs, on the engine owner: the mixbins into the
  * GP's MIXBUF, the GP, every 8th frame the EP, and the frame's 32 samples
  * of output to the frontend's queue (the GP's with the EP off; the EP's
  * 256 go in at its run, for its eight frames): one frame's worth each
  * frame, so a video frame's samples are all there whatever the DSPs'
  * programs did */
-static void dsp_thread_frame(MCPXAPUState *d, int64_t mixbins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME],
+static void dsp_run_frame(MCPXAPUState *d, int64_t mixbins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME],
                              int frame_div)
 {
     /* Write VP results to the GP DSP MIXBUF, in place */
@@ -503,7 +492,7 @@ static void dsp_thread_frame(MCPXAPUState *d, int64_t mixbins[NUM_MIXBINS][NUM_S
         mixbuf[i] = (uint32_t)vp_mix_to_24(in[i]) & 0xffffff;
     }
 
-    uint32_t ep_rst = d->dsp_thread.ep_rst, gp_rst = d->dsp_thread.gp_rst;
+    uint32_t ep_rst = d->dsp_state.ep_rst, gp_rst = d->dsp_state.gp_rst;
     bool ep_enabled = (ep_rst & NV_PAPU_GPRST_GPRST) &&
                       (ep_rst & NV_PAPU_GPRST_GPDSPRST);
 
@@ -547,7 +536,7 @@ static void dsp_thread_frame(MCPXAPUState *d, int64_t mixbins[NUM_MIXBINS][NUM_S
      * they are committed at once; the next seven frames then skip theirs
      * (monitor.c). Silence where its program made none. */
     if (ep_enabled && frame_div % 8 == 0) {
-        MCPXAPUDSPThread *t = &d->dsp_thread;
+        MCPXAPUDSPState *t = &d->dsp_state;
         int16_t *q = ep_out ? mcpx_apu_monitor_begin_ahead(256) : NULL;
 
         t->ep_dst = q ? (int16_t (*)[2])q : t->ep_spare;
@@ -575,257 +564,39 @@ static void dsp_thread_frame(MCPXAPUState *d, int64_t mixbins[NUM_MIXBINS][NUM_S
     }
 }
 
-/* The queued writes up to frame n (those written with fewer than n frames
- * posted), in order, by the side that owns the DSPs: the thread before
- * its frame n, or the engine with the thread idle (n past every tag) */
-static void dsp_apply_writes(MCPXAPUState *d, int n)
-{
-    MCPXAPUDSPThread *t = &d->dsp_thread;
-    int tail = retro_atomic_load_relaxed_int(&t->write_tail);
-    int head = retro_atomic_load_acquire_int(&t->write_head);
-
-    while (tail != head) {
-        const MCPXAPUDSPWrite *w = &t->writes[tail & (MCPX_APU_DSP_WRITES - 1)];
-        if ((int)((unsigned)w->tag - (unsigned)n) >= 0) {
-            break;
-        }
-        switch (w->kind) {
-        case MCPX_APU_DSP_WRITE_GP:
-            gp_apply(d, w->addr, w->val);
-            break;
-        case MCPX_APU_DSP_WRITE_EP:
-            ep_apply(d, w->addr, w->val);
-            break;
-        default:
-            apu_reg_w(d, w->addr, w->val);
-            break;
-        }
-        tail++;
-    }
-    retro_atomic_store_release_int(&t->write_tail, tail);
-}
-
-static void dsp_thread_main(void *arg)
-{
-    MCPXAPUState *d = arg;
-    MCPXAPUDSPThread *t = &d->dsp_thread;
-
-    rcu_register_thread();
-    for (;;) {
-        int n = retro_atomic_load_acquire_int(&t->posted);
-        if (n == t->seen) {
-            int key = retro_eventcount_prepare_wait(&t->wake);
-            n = retro_atomic_load_acquire_int(&t->posted);
-            if (n == t->seen) {
-                retro_eventcount_commit_wait(&t->wake, key);
-                continue;
-            }
-            retro_eventcount_cancel_wait(&t->wake);
-        }
-        if (retro_atomic_load_acquire_int(&t->should_exit)) {
-            break;
-        }
-        /* every frame posted, in order, each after the writes before it */
-        while (t->seen != n) {
-            int m = t->seen + 1;
-            int slot = m & (MCPX_APU_DSP_RING - 1);
-            dsp_apply_writes(d, m);
-            if (t->silent[slot]) {
-                mcpx_apu_monitor_push_silence();
-            } else {
-                dsp_thread_frame(d, t->mixbins[slot], t->frame_div[slot]);
-            }
-            t->seen = m;
-            retro_atomic_store_release_int(&t->done, m);
-            retro_eventcount_notify(&t->finished);
-        }
-    }
-    rcu_unregister_thread();
-}
-
-/* The thread woken for the frames posted since it last was */
-static void dsp_notify(MCPXAPUDSPThread *t)
-{
-    int posted = retro_atomic_load_relaxed_int(&t->posted);
-
-    if (t->notified != posted) {
-        t->notified = posted;
-        retro_eventcount_notify(&t->wake);
-    }
-}
-
-/* The engine until the thread has done frame want or later; the thread
- * woken for every frame posted first */
-static void dsp_wait_done(MCPXAPUDSPThread *t, int want)
-{
-    if ((int)((unsigned)retro_atomic_load_acquire_int(&t->done) -
-              (unsigned)want) >= 0) {
-        return;
-    }
-    dsp_notify(t);
-    while ((int)((unsigned)retro_atomic_load_acquire_int(&t->done) -
-                 (unsigned)want) < 0) {
-        int key = retro_eventcount_prepare_wait(&t->finished);
-        if ((int)((unsigned)retro_atomic_load_acquire_int(&t->done) -
-                  (unsigned)want) >= 0) {
-            retro_eventcount_cancel_wait(&t->finished);
-            break;
-        }
-        retro_eventcount_commit_wait(&t->finished, key);
-    }
-}
-
-void mcpx_apu_dsp_quiesce(MCPXAPUState *d)
-{
-    MCPXAPUDSPThread *t = &d->dsp_thread;
-    int posted;
-
-    if (!t->thread) {
-        return;
-    }
-    posted = retro_atomic_load_acquire_int(&t->posted);
-    dsp_wait_done(t, posted);
-    /* the thread idle until the next post: the writes since, here */
-    dsp_apply_writes(d, posted + 1);
-}
-
 void mcpx_apu_dsp_write(MCPXAPUState *d, uint32_t kind, hwaddr addr, uint32_t val)
 {
-    MCPXAPUDSPThread *t = &d->dsp_thread;
-
-    if (t->thread) {
-        int posted = retro_atomic_load_acquire_int(&t->posted);
-        int head = retro_atomic_load_relaxed_int(&t->write_head);
-
-        if (retro_atomic_load_acquire_int(&t->done) != posted) {
-            /* the thread on a frame: the write after the frames posted */
-            if (head - retro_atomic_load_acquire_int(&t->write_tail) <
-                MCPX_APU_DSP_WRITES) {
-                MCPXAPUDSPWrite *w = &t->writes[head & (MCPX_APU_DSP_WRITES - 1)];
-                w->tag = posted;
-                w->kind = kind;
-                w->addr = addr;
-                w->val = val;
-                retro_atomic_store_release_int(&t->write_head, head + 1);
-                return;
-            }
-            /* the queue full (a program loaded word by word while the
-             * frames run): the thread done first */
-        }
-        mcpx_apu_dsp_quiesce(d);
-    }
     switch (kind) {
-    case MCPX_APU_DSP_WRITE_GP:
-        gp_apply(d, addr, val);
-        break;
-    case MCPX_APU_DSP_WRITE_EP:
-        ep_apply(d, addr, val);
-        break;
-    default:
-        apu_reg_w(d, addr, val);
-        break;
+    case MCPX_APU_DSP_WRITE_GP: gp_apply(d, addr, val); break;
+    case MCPX_APU_DSP_WRITE_EP: ep_apply(d, addr, val); break;
+    default: apu_reg_w(d, addr, val); break;
     }
 }
 
 void mcpx_apu_dsp_sync_regs(MCPXAPUState *d)
 {
-    d->dsp_thread.gp_rst = d->gp.regs[NV_PAPU_GPRST];
-    d->dsp_thread.ep_rst = d->ep.regs[NV_PAPU_EPRST];
-}
-
-/* The thread, at the engine's first frame with the DSPs on */
-static void dsp_thread_start(MCPXAPUState *d)
-{
-    MCPXAPUDSPThread *t = &d->dsp_thread;
-
-    retro_eventcount_init(&t->wake);
-    retro_eventcount_init(&t->finished);
-    retro_atomic_int_init(&t->posted, 0);
-    retro_atomic_int_init(&t->done, 0);
-    retro_atomic_int_init(&t->should_exit, 0);
-    retro_atomic_int_init(&t->write_head, 0);
-    retro_atomic_int_init(&t->write_tail, 0);
-    t->seen = 0;
-    t->notified = 0;
-    t->thread = sthread_create(dsp_thread_main, d);
+    d->dsp_state.gp_rst = d->gp.regs[NV_PAPU_GPRST];
+    d->dsp_state.ep_rst = d->ep.regs[NV_PAPU_EPRST];
 }
 
 int64_t (*mcpx_apu_dsp_mixbins(MCPXAPUState *d))[NUM_SAMPLES_PER_FRAME]
 {
-    MCPXAPUDSPThread *t = &d->dsp_thread;
-    int n;
-
-    if (!t->thread) {
-        return t->mixbins[0];
-    }
-    /* frame n runs on slot n % RING, free once the thread is done with
-     * frame n - RING: the engine waits only that far behind */
-    n = retro_atomic_load_acquire_int(&t->posted) + 1;
-    dsp_wait_done(t, n - MCPX_APU_DSP_RING);
-    return t->mixbins[n & (MCPX_APU_DSP_RING - 1)];
-}
-
-static void dsp_post_slot(MCPXAPUState *d, bool silent)
-{
-    MCPXAPUDSPThread *t = &d->dsp_thread;
-    int n = retro_atomic_load_acquire_int(&t->posted) + 1;
-    int slot = n & (MCPX_APU_DSP_RING - 1);
-
-    t->frame_div[slot] = d->ep_frame_div;
-    t->silent[slot] = silent;
-    retro_atomic_store_release_int(&t->posted, n);
-    /* the thread woken for half a ring of frames at a time, not for each
-     * (1,500 a second of guest time): the rest at the video frame's end
-     * (mcpx_apu_dsp_kick) or before the engine waits for it */
-    if (n - retro_atomic_load_acquire_int(&t->done) >= MCPX_APU_DSP_RING / 2) {
-        dsp_notify(t);
-    }
-}
-
-void mcpx_apu_dsp_kick(MCPXAPUState *d)
-{
-    if (d->dsp_thread.thread) {
-        dsp_notify(&d->dsp_thread);
-    }
+    return d->dsp_state.mixbins;
 }
 
 void mcpx_apu_dsp_post(MCPXAPUState *d, int64_t mixbins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME])
 {
-    MCPXAPUDSPThread *t = &d->dsp_thread;
-
-    if (!g_config.audio.use_dsp) {
-        /* no DSP work: the frame on this thread, as it was; the VP's
-         * output is the frontend's (vp.c) */
-        mcpx_apu_dsp_quiesce(d);
-        dsp_thread_frame(d, mixbins, d->ep_frame_div);
-        return;
-    }
-    if (!t->thread) {
-        /* the first frame, built in slot 0 before there was a thread: the
-         * thread's frame 1 runs on slot 1 */
-        dsp_thread_start(d);
-        memcpy(t->mixbins[1], mixbins, sizeof(t->mixbins[1]));
-        mixbins = t->mixbins[1];
-    }
-    assert(mixbins == t->mixbins[(retro_atomic_load_acquire_int(&t->posted) + 1) &
-                                 (MCPX_APU_DSP_RING - 1)]);
-    dsp_post_slot(d, false);
+    /* DMA uses live guest scratch and scatter/gather tables. Finish now,
+     * rather than posting a worker only to wait for it before the CPU runs. */
+    dsp_run_frame(d, mixbins, d->ep_frame_div);
 }
 
 void mcpx_apu_dsp_post_silence(MCPXAPUState *d)
 {
-    MCPXAPUDSPThread *t = &d->dsp_thread;
-
-    if (!t->thread || !g_config.audio.use_dsp) {
-        mcpx_apu_dsp_quiesce(d);
-        mcpx_apu_monitor_push_silence();
-        return;
-    }
-    /* in the frames' order, on the thread: the queue has one producer */
-    dsp_wait_done(t, retro_atomic_load_acquire_int(&t->posted) + 1 -
-                     MCPX_APU_DSP_RING);
-    dsp_post_slot(d, true);
+    (void)d;
+    mcpx_apu_monitor_push_silence();
 }
+
 bool mcpx_apu_dsp_uses_reg(hwaddr addr)
 {
     /* the scatter-gather tables and FIFOs (gp_scratch_walk, ep_scratch_walk,
@@ -854,24 +625,9 @@ void mcpx_apu_dsp_init(MCPXAPUState *d)
     mcpx_apu_update_dsp_preference(d);
 }
 
-/* The device going away (content closed): the thread stopped and joined,
- * the way the VP's workers are, then the DSPs freed */
+/* The owning engine has stopped before device teardown. */
 void mcpx_apu_dsp_finalize(MCPXAPUState *d)
 {
-    MCPXAPUDSPThread *t = &d->dsp_thread;
-
-    if (t->thread) {
-        mcpx_apu_dsp_quiesce(d);
-        retro_atomic_store_release_int(&t->should_exit, 1);
-        /* a post it does not run: should_exit is checked first */
-        retro_atomic_store_release_int(&t->posted,
-                                       retro_atomic_load_acquire_int(&t->posted) + 1);
-        retro_eventcount_notify(&t->wake);
-        sthread_join(t->thread);
-        retro_eventcount_free(&t->wake);
-        retro_eventcount_free(&t->finished);
-        t->thread = NULL;
-    }
     dsp_destroy(d->gp.dsp);
     dsp_destroy(d->ep.dsp);
     d->gp.dsp = NULL;

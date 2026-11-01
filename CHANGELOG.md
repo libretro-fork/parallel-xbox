@@ -1,5 +1,7 @@
 # Changelog of the libretro core
 
+- Restore Ninja Gaiden Black timer-wait throughput by proving its complete ordinary-RAM polling loop before yielding. Preserve useful store-free computations, interrupt delivery, counter release and the existing device-wait timing rules; add native CI regression coverage. Run each DSP tick on the engine owner, preserving live guest-RAM DMA ordering while removing its immediately-waited worker handoff, frame ring and queued register writes.
+
 - Correct signed G8B8 filtering with constant-border addressing when matching filters are restricted to mip zero, including Force Texture LOD0. Reuse existing point/gather shaders and cache keys; retain full-mip and mixed-filter border exclusions.
 
 ## Unreleased

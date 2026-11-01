@@ -139,6 +139,50 @@ bool xemu_libretro_kernel_idle(CPUState *cpu)
     return false;
 }
 
+/* A bounded register-only loop polling ordinary guest RAM. NGB's timer wait
+ * uses this form; an arbitrary store-free run still proves nothing. Require
+ * its complete back edge and reevaluate the unsigned comparison each time.
+ * Interrupts must be enabled; device work and deadlines still use the
+ * existing frame scheduler. */
+bool xemu_libretro_memory_poll(CPUState *cpu)
+{
+    CPUX86State *env = cpu_env(cpu);
+    static const uint8_t loop[] = {
+        0x8b,0x0a,       /* mov ecx,[edx] */
+        0x8b,0xfe,       /* mov edi,esi */
+        0x2b,0xf9,       /* sub edi,ecx */
+        0x3b,0xc7,       /* cmp eax,edi */
+        0x72,0xf6,       /* jb back to mov ecx,[edx] */
+    };
+    const uint8_t *code, *counter;
+    RCU_READ_LOCK_GUARD();
+
+    if (cpu->singlestep_enabled || env->segs[R_CS].base || env->segs[R_DS].base ||
+        !(env->hflags & HF_CS32_MASK) ||
+        (env->hflags & (HF_CPL_MASK | HF_CS64_MASK | HF_INHIBIT_IRQ_MASK)) ||
+        (env->eflags & (IF_MASK | TF_MASK | VM_MASK)) != IF_MASK) {
+        return false;
+    }
+    uint32_t ip = env->eip, addr = env->regs[R_EDX];
+    if (ip > env->segs[R_CS].limit ||
+        sizeof(loop) - 1 > env->segs[R_CS].limit - ip ||
+        addr > env->segs[R_DS].limit ||
+        3 > env->segs[R_DS].limit - addr) {
+        return false;
+    }
+    /* No MMIO, debug-read fallback, cached proof or intermediate byte copy. */
+    code = lr_idle_ram_ptr(cpu, ip, sizeof(loop));
+    if (!code || memcmp(code, loop, sizeof(loop))) {
+        return false;
+    }
+    counter = lr_idle_ram_ptr(cpu, addr, 4);
+    if (!counter) {
+        return false;
+    }
+    uint32_t remaining = (uint32_t)env->regs[R_ESI] - ldl_le_p(counter);
+    return (uint32_t)env->regs[R_EAX] < remaining;
+}
+
 /* A port read is a device access, unless it is the last one again with the
  * same value: a loop polling a status port that has not changed waits
  * (accel/tcg/cputlb.c lr_poll_read, as for memory-mapped registers; ports

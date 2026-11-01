@@ -7,11 +7,13 @@
 ## DSP and guest RAM ordering
 
 `test-dsp-guest-ram.py CHECKOUT [CC]` compiles the production APU tick and
-DSP scatter/gather walker against a deterministic delayed-worker scheduler.
+DSP dispatcher, mix-buffer accessor and scatter/gather walker with an
+independent DMA callback. Each tick must finish before guest execution resumes.
 It reproduces OutRun 2's scratch growth from maximum page `0xc` to `0x6c`,
 with a new 64-byte transfer at `0x12520` published before the register write.
-It checks reads, writes, dirty tracking, frame cadence, and scratch-page reuse.
-The uncorrected tick fails at the production `page_entry <= max_sge` assertion.
+It checks reads, writes, dirty tracking, frame cadence, scratch-page reuse and
+20,000 synchronous ticks without a mix-buffer copy. An asynchronous dispatcher
+would observe modified guest RAM or tables after the tick has returned.
 
 `test-core-timers.py CHECKOUT [CC]` compiles the production clock queues and
 checks 20,000 operations against an independent ordered-array oracle:
@@ -377,9 +379,9 @@ compressed, with a snapshot, the bundled HDD) and has `qemu-img check` and
 killed partway leave no error; without `qemu-img` that part is skipped.
 
 `test-audio-margin.c` works out the worst room the frontend's audio pull
-finds without waiting for the DSPs' thread, over every phase of the APU's
-engine frames against the video frames, with the engine frames in flight
-(`MCPX_APU_MONITOR_FRAMES_IN_FLIGHT`) not counted: the queue's preroll
+finds over every phase of the APU's engine frames against the video frames,
+retaining a conservative eight-frame production-delay allowance
+(`MCPX_APU_MONITOR_FRAMES_IN_FLIGHT`): the queue's preroll
 (`hw/xbox/mcpx/apu/monitor.h`) has to leave a whole engine frame to spare.
 
 `rom/cf.asm` checks the carry flag across translation block boundaries:
@@ -1732,3 +1734,22 @@ reproduces the old 384 MiB pool's exact 75 MiB failed request and occupancy,
 then verifies the corrected startup reservation handles the complete sequence
 without any new driver allocations or mappings. The shared reservation helper
 is also checked at 1x/2x/4x/8x and for overflow.
+
+
+`test-memory-poll.py CHECKOUT [CC]` covers the NGB slot-0 throughput regression
+using the production x86 proof and RAM-borrow helper. 52,580 arithmetic/opcode/
+mode/mapping cases check the unsigned countdown, every instruction byte,
+interruptibility, ordinary RAM only, segment bases/limits, page/region bounds, counter
+release and code modifications. No title address is embedded in the core.
+`test-idle-interrupts.py` covers both kernel and RAM proofs after pending IRQs,
+stops and chain invalidations. CI also retains `test-quiet-progress.py`: useful
+store-free computation must continue instead of acquiring an artificial wait.
+Hardware-independent proof/work tests prevent the regression without asserting
+an unreliable FPS threshold on shared CI hosts. Real slot-0 8x timing comparisons
+and the game suite remain separate from these native oracles.
+
+The DSP tick now runs on the engine owner because its live-RAM DMA must settle
+before the guest resumes. `test-dsp-guest-ram.py` compiles that actual dispatcher
+and tick, preventing a deferred-worker regression while retaining scratch growth
+and page-reuse coverage. GP/EP register effects occur in that same order; the
+frontend queue's SPSC ownership, sample cadence and existing lead are unchanged.

@@ -1,9 +1,8 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later
  *
- * The frontend's audio pull never waits for the DSPs' thread
- * (hw/xbox/mcpx/apu/monitor.c), so the queue's preroll has to cover the
- * engine frames that thread may still be on (MCPX_APU_MONITOR_FRAMES_IN_
- * FLIGHT). This works out the worst
+ * The queue retains its established conservative eight-engine-frame
+ * production-delay allowance even though DSP ticks now finish on the engine
+ * owner. This works out the worst
  * margin over every phase of the APU's engine frames (32 samples, 1500 a
  * second of the guest's time) against the video frames (1001/60 ms, 800
  * or 801 samples, 4004 every 5: ui/libretro.c), with the worst
@@ -34,7 +33,7 @@ static long long worst_margin(int preroll)
             if (end > t0) {
                 made = (end - t0 - 1) / T_ENGINE + 1;   /* due before end */
             }
-            made -= MCPX_APU_MONITOR_FRAMES_IN_FLIGHT;    /* in flight */
+            made -= MCPX_APU_MONITOR_FRAMES_IN_FLIGHT;    /* retained delay allowance */
             if (made < 0) {
                 made = 0;
             }

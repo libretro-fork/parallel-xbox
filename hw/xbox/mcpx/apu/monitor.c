@@ -26,16 +26,10 @@
  * frontend's thread hands the frontend a pointer into it, exactly one
  * video frame's worth (libretro_audio_read_begin/end), without copying.
  *
- * The producer is whichever thread builds the output (apu.c): the DSPs'
- * thread with APU DSP Emulation on (the EP's 256 samples every 8th engine
- * frame, or the GP's 32 each frame), the emulator thread with it off (the
- * VP's 32 each frame) and for the frames with the engine stopped. The
- * two never produce at once: the switch waits for the thread's frame
- * (mcpx_apu_update_dsp_preference), and retro_run waits for it before
- * reading (libretro_audio_read_begin), so what it reads is what the guest
- * time run made, whatever the thread's timing. The queue starts with two
- * engine frames of silence, so a video frame's 800 or 801 samples are
- * always there out of the engine's 32-sample frames (apu_queue_reset).
+ * The emulator thread produces VP/GP/EP output while it advances guest time;
+ * the frontend consumes exactly one video frame's worth after that turn.
+ * DSP DMA and register accesses share the engine owner. The existing queue
+ * lead is preserved (monitor.h), including the EP's eight-frame burst.
  */
 
 #include "apu_int.h"
@@ -54,7 +48,7 @@ static retro_atomic_int_t apu_gain_q16 = RETRO_ATOMIC_INT_INITIALIZER(65536);
 /* Engine frames already in the queue ahead of the engine: the EP's eight
  * go in at once (mcpx_apu_monitor_end_ahead), and the next seven frames'
  * output is skipped, whichever producer it comes from. The producer
- * side's alone (the DSPs' thread, or the emulator thread with it done);
+ * side is the engine owner;
  * the queue's reset, with both stopped, clears it. */
 static unsigned apu_ahead;
 
@@ -75,8 +69,7 @@ void libretro_audio_set_volume(float volume)
     retro_atomic_store_relaxed_int(&apu_gain_q16, (int)(vu * 65536.0f + 0.5f));
 }
 
-/* The queue for a state: the frontend's thread in the command, not
- * reading, the DSPs' thread done (quiesce), so neither side moves */
+/* State commands run with the engine stopped and the frontend not reading. */
 size_t mcpx_apu_monitor_save(int16_t *samples, size_t max, uint32_t *ahead)
 {
     size_t frames = 0;
@@ -101,11 +94,8 @@ void mcpx_apu_monitor_restore(const int16_t *samples, size_t frames,
     apu_ahead = ahead;
 }
 
-/* Consumer, the frontend's thread, between frames: a pointer
- * to the samples there, contiguous, and how many frames. It does not wait
- * for the DSPs' thread: the queue's preroll covers the engine frames that
- * thread may still be on (monitor.h), so the samples a frame hands over
- * are the same however the two threads ran. */
+/* Consumer, the frontend between engine turns: a contiguous pointer to
+ * the produced samples. The retained preroll covers cadence phase (monitor.h). */
 size_t libretro_audio_read_begin(const int16_t **samples)
 {
     const void *p;
@@ -125,20 +115,9 @@ void libretro_audio_read_end(size_t frames)
     }
 }
 
-void libretro_audio_frame_end(void)
-{
-    if (g_state) {
-        mcpx_apu_dsp_kick(g_state);
-    }
-}
-
-/* Both sides stopped (a reset, a state loaded, new content): the queue
- * starts over, once the DSPs' thread is done producing */
+/* The stopped engine owns the DSPs and the queue at reset/state boundaries. */
 void libretro_audio_discard(void)
 {
-    if (g_state) {
-        mcpx_apu_dsp_quiesce(g_state);
-    }
     if (apu_queue_ready) {
         apu_queue_reset();
     }
@@ -264,7 +243,7 @@ void mcpx_apu_monitor_push_silence(void)
 }
 
 /* An engine frame with the engine stopped: silence, in order with the
- * frames before it, from the DSPs' thread (the queue's one producer) */
+ * frames before it, from the engine (the queue's one producer) */
 void mcpx_apu_monitor_silence(MCPXAPUState *d)
 {
     mcpx_apu_dsp_post_silence(d);

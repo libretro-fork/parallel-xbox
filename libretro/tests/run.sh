@@ -132,6 +132,7 @@ case $core in
     ;;
 esac
 python3 "$here/test-kernel-idle.py" "$here/../.." "$cc"
+python3 "$here/test-memory-poll.py" "$here/../.." "$cc"
 python3 "$here/test-interrupt-shadow.py" "$here/../.." "$cc"
 python3 "$here/test-tb-cache-flags.py" "$here/../.." "$cc"
 python3 "$here/test-tb-secondary.py" "$here/../.." "$cc"
