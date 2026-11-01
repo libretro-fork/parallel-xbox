@@ -1,5 +1,7 @@
 # Changelog of the libretro core
 
+- Bypass generic chardev write locking for the default unlogged null UART sinks, which discard bytes without shared mutable state. Logged sinks and real backends retain their existing write/retry/error behavior.
+
 - Remove QEMU block-accounting telemetry, latency histograms and timed averages from IDE/ATAPI I/O, including their mutex-protected counters and per-request clock reads. Retain save-state HDD-change detection with a small retro_atomic write-completion counter; disk errors, DMA/PIO completion and state format are preserved.
 
 - Remove the CPU frame-end acknowledgement wait for shared-device Vulkan. Present the latest safely published image, repeating the previous image when needed, without adding a queued frame or changing audio cadence.

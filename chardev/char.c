@@ -107,6 +107,11 @@ static void qemu_chr_write_log(Chardev *s, const uint8_t *buf, size_t len)
     }
 }
 
+static int null_chr_write(Chardev *chr, const uint8_t *buf, int len)
+{
+    return len;
+}
+
 static int qemu_chr_write_buffer(Chardev *s,
                                  const uint8_t *buf, int len,
                                  int *offset, bool write_all)
@@ -114,6 +119,13 @@ static int qemu_chr_write_buffer(Chardev *s,
     ChardevClass *cc = CHARDEV_GET_CLASS(s);
     int res = 0;
     *offset = 0;
+
+    /* The Xbox's default UART backends discard output. This immutable,
+     * stateless sink has nothing to serialize unless a log file is attached. */
+    if (cc->chr_write == null_chr_write && s->logfd < 0) {
+        *offset = len > 0 ? len : 0;
+        return *offset;
+    }
 
     qemu_mutex_lock(&s->chr_write_lock);
     while (*offset < len) {
@@ -256,11 +268,6 @@ static void char_init(Object *obj)
         qemu_chr_set_feature(chr, QEMU_CHAR_FEATURE_GCONTEXT);
     }
 
-}
-
-static int null_chr_write(Chardev *chr, const uint8_t *buf, int len)
-{
-    return len;
 }
 
 static void char_class_init(ObjectClass *oc, const void *data)

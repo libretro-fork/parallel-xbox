@@ -1982,3 +1982,5 @@ FIFO acknowledgement. Presentation consumes the latest claimed publication or
 duplicates the previous image. Legacy GL and Vulkan interop still acknowledge
 frame end synchronously. `test-frame-completion.py` covers all four Vulkan flag
 combinations, including an owner that remains busy in the asynchronous path.
+
+`test-null-chardev.py CHECKOUT [CC]` runs the production sink and generic write/log paths through 960 combinations of short writes, retry/error handling, best-effort logging and zero-length requests. Unlogged null sinks take no locks and never read the payload; logged or real backends preserve their existing behavior. NULL source/INT_MAX and negative-length cases are covered. `NULL_CHARDEV_CFLAGS`, `NULL_CHARDEV_BINARY` and `NULL_CHARDEV_SKIP_RUN=1` support sanitized and native fixtures.
