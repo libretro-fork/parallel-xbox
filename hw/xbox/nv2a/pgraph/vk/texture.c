@@ -1304,12 +1304,13 @@ static void record_surface_copy(PGRAPHState *pg, VkCommandBuffer cmd,
                          VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
 }
 
-/* An ARGB row has the same pixel bytes as a twice-as-wide linear 16-bit
- * row. Transfers pack the active pixels, omitting guest row padding,
- * through a device buffer to reinterpret those bytes without host readback,
- * arithmetic conversion or a CPU upload. Keep the ordinary CoW snapshot. */
-static void copy_argb_to_packed16_texture(PGRAPHState *pg, SurfaceBinding *surface,
-                                       TextureBinding *texture)
+/* Reinterpret equal-sized rows of native color pixels as a linear texture.
+ * Transfers pack active bytes through a device buffer, omitting guest row
+ * padding without host readback, arithmetic conversion or a CPU upload.
+ * Keep the ordinary CoW snapshot. */
+static void copy_surface_to_linear_texture(PGRAPHState *pg,
+                                           SurfaceBinding *surface,
+                                           TextureBinding *texture)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
     const TextureShape *shape = &texture->key.state;
@@ -1397,7 +1398,7 @@ static void copy_surface_to_texture(PGRAPHState *pg, SurfaceBinding *surface,
         return;
     }
     if (texture->key.byte_reinterpret) {
-        copy_argb_to_packed16_texture(pg, surface, texture);
+        copy_surface_to_linear_texture(pg, surface, texture);
         return;
     }
 
@@ -1556,29 +1557,60 @@ static bool download_indexed_texture_inputs(
     return needs_ram;
 }
 
-static bool can_reinterpret_argb_as_packed16(PGRAPHState *pg,
-                                           const SurfaceBinding *surface,
-                                           const TextureShape *shape)
+static bool can_reinterpret_surface_as_linear(PGRAPHState *pg,
+                                              const SurfaceBinding *surface,
+                                              const TextureShape *shape)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
+    unsigned source_bpp, texture_bpp;
+    VkFormat source_format;
+    /* Only native host representations whose transfer bytes are the guest
+     * bytes. XRGB/depth/expanded formats keep their materialization rules. */
+    switch (surface->shape.color_format) {
+    case NV097_SET_SURFACE_FORMAT_COLOR_LE_A8R8G8B8:
+        source_bpp = 4;
+        source_format = VK_FORMAT_B8G8R8A8_UNORM;
+        break;
+    case NV097_SET_SURFACE_FORMAT_COLOR_LE_R5G6B5:
+        source_bpp = 2;
+        source_format = VK_FORMAT_R5G6B5_UNORM_PACK16;
+        break;
+    default:
+        return false;
+    }
+    switch (shape->color_format) {
+    case NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_Y8:
+    case NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_AY8:
+    case NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_A8:
+        texture_bpp = 1;
+        break;
+    case NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_R5G6B5:
+    case NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_A1R5G5B5:
+    case NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_X1R5G5B5:
+    case NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_A4R4G4B4:
+    case NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_G8B8:
+    case NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_A8Y8:
+        texture_bpp = 2;
+        break;
+    case NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_A8R8G8B8:
+    case NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_X8R8G8B8:
+        texture_bpp = 4;
+        break;
+    default:
+        return false;
+    }
     if (!surface->color || surface->swizzle || surface->native_resolution ||
-        surface->shape.color_format != NV097_SET_SURFACE_FORMAT_COLOR_LE_A8R8G8B8 ||
         surface->shape.anti_aliasing != NV097_SET_SURFACE_FORMAT_ANTI_ALIASING_CENTER_1 ||
-        surface->host_fmt.vk_format != VK_FORMAT_B8G8R8A8_UNORM ||
-        (shape->color_format != NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_R5G6B5 &&
-         shape->color_format != NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_A1R5G5B5 &&
-         shape->color_format != NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_X1R5G5B5 &&
-         shape->color_format != NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_A4R4G4B4 &&
-         shape->color_format != NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_G8B8 &&
-         shape->color_format != NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_A8Y8) ||
+        surface->host_fmt.vk_format != source_format ||
         shape->dimensionality != 2 || shape->cubemap || shape->border ||
         shape->levels != 1 || !surface->width || !surface->height ||
-        (uint64_t)shape->width != (uint64_t)surface->width * 2 ||
+        (uint64_t)shape->width * texture_bpp !=
+            (uint64_t)surface->width * source_bpp ||
         shape->height != surface->height ||
-        (uint64_t)surface->pitch < (uint64_t)surface->width * 4 ||
+        (uint64_t)surface->pitch < (uint64_t)surface->width * source_bpp ||
         shape->pitch != surface->pitch ||
         r->storage_buffers[BUFFER_COMPUTE_DST].buffer_size <
-            (uint64_t)surface->width * 4 * surface->height) {
+            (uint64_t)surface->width * source_bpp * surface->height) {
         return false;
     }
     /* A single image must own the whole range. Do not bypass the ordered
@@ -2329,7 +2361,7 @@ static void create_texture(PGRAPHState *pg, int texture_idx)
             check_surface_to_texture_compatiblity(surface, &state);
         if (!surface_to_texture) {
             surface_to_texture_bytes =
-                can_reinterpret_argb_as_packed16(pg, surface, &state);
+                can_reinterpret_surface_as_linear(pg, surface, &state);
             surface_to_texture |= surface_to_texture_bytes;
         }
 

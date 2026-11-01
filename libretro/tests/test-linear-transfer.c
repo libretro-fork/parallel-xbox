@@ -25,11 +25,18 @@ typedef struct { VkFormat vk_format; } VkColorFormatInfo;
 #define NV2A_PROF_SURF_TO_TEX_REINTERPRET 0
 #define HANDLE(type, n) ((type)(uintptr_t)(n))
 static VkFormat expected_format;
-static unsigned stage, blits, transitions, expected_scale;
+static unsigned stage, blits, transitions, expected_scale, expected_width;
 static VkColorFormatInfo texture_vkf(PGRAPHVkState *r, unsigned f)
 {
     (void)r;
     switch (f) {
+    case NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_Y8:
+    case NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_AY8:
+    case NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_A8:
+        return (VkColorFormatInfo){ VK_FORMAT_R8_UNORM };
+    case NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_A8R8G8B8:
+    case NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_X8R8G8B8:
+        return (VkColorFormatInfo){ VK_FORMAT_B8G8R8A8_UNORM };
     case NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_R5G6B5:
         return (VkColorFormatInfo){ VK_FORMAT_R5G6B5_UNORM_PACK16 };
     case NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_A4R4G4B4:
@@ -86,7 +93,7 @@ static void buffer_to_image(VkCommandBuffer c, VkBuffer buffer, VkImage image,
 {
     (void)c; (void)buffer; (void)image; (void)layout;
     assert(stage++ == 3 && count == 1 && region->bufferOffset == 0);
-    assert(region->imageExtent.width == 64 && region->imageExtent.height == 16);
+    assert(region->imageExtent.width == expected_width && region->imageExtent.height == 16);
 }
 static void blit(VkCommandBuffer c, VkImage src, VkImageLayout sl, VkImage dst,
     VkImageLayout dl, unsigned count, const VkImageBlit *r, VkFilter filter)
@@ -105,24 +112,35 @@ static void blit(VkCommandBuffer c, VkImage src, VkImageLayout sl, VkImage dst,
 int main(void)
 {
     const unsigned formats[] = { NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_R5G6B5,
-                                 NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_A1R5G5B5,
-                                 NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_X1R5G5B5,
-                                 NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_A4R4G4B4,
-                                 NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_G8B8,
-                                 NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_A8Y8 };
+        NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_A1R5G5B5,
+        NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_X1R5G5B5,
+        NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_A4R4G4B4,
+        NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_G8B8,
+        NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_A8Y8,
+        NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_Y8,
+        NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_AY8,
+        NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_A8,
+        NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_A8R8G8B8,
+        NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_X8R8G8B8 };
     PGRAPHVkState r = { .storage_buffers = {{ HANDLE(VkBuffer, 1) }} };
     SurfaceBinding surface = { .host_fmt = { VK_FORMAT_B8G8R8A8_UNORM },
         .width = 32, .height = 16, .image = HANDLE(VkImage, 1), .draw_time = 42 };
+    for (unsigned source_bpp = 2; source_bpp <= 4; source_bpp *= 2)
     for (unsigned f = 0; f < sizeof(formats) / sizeof(formats[0]); f++) for (unsigned scale = 1; scale <= 4; scale *= 2) {
         PGRAPHState pg = { &r, scale };
         TextureBinding texture = { .key.state = { formats[f], 64, 16 },
             .image = HANDLE(VkImage, 2), .current_layout = VK_IMAGE_LAYOUT_UNDEFINED };
         expected_format = texture_vkf(&r, formats[f]).vk_format;
+        unsigned texture_bpp = expected_format == VK_FORMAT_R8_UNORM ? 1 :
+            expected_format == VK_FORMAT_B8G8R8A8_UNORM ? 4 : 2;
+        expected_width = 32 * source_bpp / texture_bpp;
+        texture.key.state.width = expected_width;
+        surface.host_fmt.vk_format = source_bpp == 4 ? VK_FORMAT_B8G8R8A8_UNORM : VK_FORMAT_R5G6B5_UNORM_PACK16;
         stage = transitions = blits = 0; expected_scale = scale;
-        copy_argb_to_packed16_texture(&pg, &surface, &texture);
+        copy_surface_to_linear_texture(&pg, &surface, &texture);
         assert(stage == 5 && transitions == 2 && blits == (scale > 1));
         assert(texture.current_layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
         assert(texture.draw_time == 42);
     }
-    puts("packed16 transfer: six formats, scale 1/2/4, extents, layouts and barriers passed");
+    puts("linear-byte transfer: two source formats, eleven destination formats, scale 1/2/4, extents, layouts and barriers passed");
 }
