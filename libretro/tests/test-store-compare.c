@@ -13,15 +13,7 @@
 
 #define CHECK(c) do { if (!(c)) { fprintf(stderr, "store compare: line %d: %s\n", __LINE__, #c); exit(1); } } while (0)
 #define MAKE_64BIT_MASK(shift, length) (((~0ULL) >> (64 - (length))) << (shift))
-typedef uintptr_t ram_addr_t;
-static unsigned maps, checks;
-static void *qemu_map_ram_ptr(void *ignored, ram_addr_t addr)
-{
-    (void)ignored;
-    CHECK(addr);
-    maps++;
-    return (void *)addr;
-}
+static unsigned checks;
 /* PRODUCTION */
 
 static void test(const uint8_t *p, unsigned size)
@@ -35,10 +27,8 @@ static void test(const uint8_t *p, unsigned size)
             truncated &= (UINT64_C(1) << (size * 8)) - 1;
         }
         for (unsigned known = 0; known <= 16; known++) {
-            unsigned before = maps;
             bool expected = known != size || current != truncated;
-            CHECK(store_changes_memory((uintptr_t)p, size, value, known) == expected);
-            CHECK(maps == before + (known == size));
+            CHECK(store_changes_memory(p, size, value, known) == expected);
             checks++;
         }
     }
@@ -74,15 +64,13 @@ int main(void)
             }
         }
     }
-    /* Unknown/wide writes must not map or read RAM at all. */
-    unsigned before = maps;
+    /* Unknown/wide writes must not read RAM at all. */
     for (unsigned size = 1; size <= 32; size++) {
         CHECK(store_changes_memory(0, size, 0, 0));
         if (size > 8) {
             CHECK(store_changes_memory(0, size, 0, size));
         }
     }
-    CHECK(maps == before);
 #ifdef _WIN32
     CHECK(VirtualFree(base, 0, MEM_RELEASE));
 #else

@@ -1,5 +1,7 @@
 # Changelog of the libretro core
 
+- Reuse the TLB-resolved RAM address for CPU Boost unchanged-store checks instead of looking up the same RAM block again. Dirty tracking, watchpoints and invalidation decisions are preserved.
+
 - Reduce CPU Boost unchanged-store comparison work with exact-width scalar reads, preserving unaligned accesses, page boundaries and invalidation decisions. No additional host CPU instruction requirements.
 
 - Remove the unused multi-threaded TCG selector and configuration path that startup always overrode. Initialize one translator explicitly and retain the existing Xbox CPU limit; translation behavior and cache controls are unchanged.

@@ -1149,7 +1149,7 @@ static bool victim_tlb_hit(CPUState *cpu, size_t mmu_idx, size_t index,
  * code, so the page's blocks are kept, not retranslated. @store_size 0:
  * value unknown.
  */
-static bool store_changes_memory(ram_addr_t ram_addr, unsigned size,
+static bool store_changes_memory(const void *host, unsigned size,
                                  uint64_t store_val, unsigned store_size)
 {
     uint64_t cur = 0;
@@ -1157,8 +1157,6 @@ static bool store_changes_memory(ram_addr_t ram_addr, unsigned size,
     if (store_size != size || size > sizeof(cur)) {
         return true;
     }
-    const void *host = qemu_map_ram_ptr(NULL, ram_addr);
-
     /* Scalar stores need only an exact-width read and comparison. Keep
      * memcpy's unaligned-access semantics without a variable-length copy
      * or a runtime mask on these paths. Partial-page sizes use the fallback. */
@@ -1193,7 +1191,8 @@ static bool store_changes_memory(ram_addr_t ram_addr, unsigned size,
 
 static void notdirty_write(CPUState *cpu, vaddr mem_vaddr, unsigned size,
                            CPUTLBEntryFull *full, uintptr_t retaddr,
-                           uint64_t store_val, unsigned store_size)
+                           uint64_t store_val, unsigned store_size,
+                           const void *host)
 {
     ram_addr_t ram_addr = mem_vaddr + full->xlat_section;
 
@@ -1201,7 +1200,7 @@ static void notdirty_write(CPUState *cpu, vaddr mem_vaddr, unsigned size,
 
     if (!physical_memory_get_dirty_flag(ram_addr, DIRTY_MEMORY_CODE)) {
         if (xemu_cpu_boost &&
-            !store_changes_memory(ram_addr, size, store_val, store_size)) {
+            !store_changes_memory(host, size, store_val, store_size)) {
             /* Leave the entry slow so the next store is inspected too. */
             physical_memory_set_dirty_range(ram_addr, size,
                                             DIRTY_CLIENTS_NOCODE);
@@ -1294,7 +1293,7 @@ int probe_access_full_mmu(CPUArchState *env, vaddr addr, int size,
     /* Handle clean RAM pages.  */
     if (unlikely(flags & TLB_NOTDIRTY)) {
         int dirtysize = size == 0 ? 1 : size;
-        notdirty_write(env_cpu(env), addr, dirtysize, *pfull, 0, 0, 0);
+        notdirty_write(env_cpu(env), addr, dirtysize, *pfull, 0, 0, 0, *phost);
         flags &= ~TLB_NOTDIRTY;
     }
 
@@ -1332,7 +1331,7 @@ void *probe_access(CPUArchState *env, vaddr addr, int size,
 
         /* Handle clean RAM pages.  */
         if (flags & TLB_NOTDIRTY) {
-            notdirty_write(env_cpu(env), addr, size, full, retaddr, 0, 0);
+            notdirty_write(env_cpu(env), addr, size, full, retaddr, 0, 0, host);
         }
     }
 
@@ -1507,7 +1506,10 @@ static void mmu_watch_or_dirty(CPUState *cpu, MMULookupPageData *data,
 
     /* Note that notdirty is only set for writes. */
     if (flags & TLB_NOTDIRTY) {
-        notdirty_write(cpu, addr, size, full, ra, store_val, store_size);
+        /* TLB_NOTDIRTY identifies RAM. Reuse the host address resolved by
+         * mmu_lookup1, which is also the address used for the actual store. */
+        notdirty_write(cpu, addr, size, full, ra, store_val, store_size,
+                       data->haddr);
         flags &= ~TLB_NOTDIRTY;
     }
     data->flags = flags;
