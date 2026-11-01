@@ -20,7 +20,9 @@ def struct(name):
 assert 'QemuMutex' not in s and 'qemu_mutex_' not in s
 assert 'g_assert(max_threads == 1);' in s and 'region.n = 1;' in s
 machine=(repo/'hw/xbox/xbox.c').read_text();assert re.search(r'm->max_cpus\s*=\s*1;',machine)
-accel=(repo/'accel/tcg/tcg-all.c').read_text();assert 's->mttcg_enabled = ON_OFF_AUTO_OFF;' in accel
+accel=(repo/'accel/tcg/tcg-all.c').read_text();assert 'g_assert(ms->smp.max_cpus == 1);' in accel
+assert 'tcg_init(s->tb_size * MiB, s->splitwx_enabled, 1);' in accel
+assert 'mttcg_enabled' not in accel and 'tcg_set_thread' not in accel
 allowed={'tcg_tb_lookup':{'accel/tcg/tb-maint.c','accel/tcg/translate-all.c'},'tcg_tb_insert':{'accel/tcg/translate-all.c'},'tcg_tb_remove':{'accel/tcg/translate-all.c'},'tcg_region_reset_all':{'accel/tcg/tb-maint.c'}}
 for tree in ['accel','tcg','system','target','hw','ui']:
  for path in (repo/tree).rglob('*.c'):

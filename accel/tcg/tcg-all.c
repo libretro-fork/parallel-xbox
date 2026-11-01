@@ -25,12 +25,9 @@
 
 #include "qemu/osdep.h"
 #include "system/tcg.h"
-#include "exec/icount.h"
 #include "tcg/startup.h"
 #include "qapi/error.h"
-#include "qemu/error-report.h"
 #include "qemu/accel.h"
-#include "qapi/qapi-types-common.h"
 #include "qapi/qapi-builtin-visit.h"
 #include "qemu/units.h"
 #include "qemu/target-info.h"
@@ -46,7 +43,6 @@
 struct TCGState {
     AccelState parent_obj;
 
-    OnOffAuto mttcg_enabled;
     bool one_insn_per_tb;
     int splitwx_enabled;
     unsigned long tb_size;
@@ -72,47 +68,8 @@ retro_atomic_int_t one_insn_per_tb;
 static int tcg_init_machine(AccelState *as, MachineState *ms)
 {
     TCGState *s = TCG_STATE(as);
-    unsigned max_threads = 1;
-
-    CPUClass *cc = CPU_CLASS(object_class_by_name(target_cpu_type()));
-    bool mttcg_supported = cc->tcg_ops->mttcg_supported;
-
-    /* One vCPU, run by the core's emulator thread: no parallel TCG, and
-     * guest atomics need no host atomics */
-    s->mttcg_enabled = ON_OFF_AUTO_OFF;
-    switch (s->mttcg_enabled) {
-    case ON_OFF_AUTO_AUTO:
-        /*
-         * We default to false if we know other options have been enabled
-         * which are currently incompatible with MTTCG. Otherwise when each
-         * guest (target) has been updated to support:
-         *   - atomic instructions
-         *   - memory ordering primitives (barriers)
-         * they can set the appropriate CONFIG flags in ${target}-softmmu.mak
-         *
-         * Once a guest architecture has been converted to the new primitives
-         * there is one remaining limitation to check:
-         *   - The guest can't be oversized (e.g. 64 bit guest on 32 bit host)
-         */
-        if (mttcg_supported && !icount_enabled()) {
-            s->mttcg_enabled = ON_OFF_AUTO_ON;
-            max_threads = ms->smp.max_cpus;
-        } else {
-            s->mttcg_enabled = ON_OFF_AUTO_OFF;
-        }
-        break;
-    case ON_OFF_AUTO_ON:
-        if (!mttcg_supported) {
-            warn_report("Guest not yet converted to MTTCG - "
-                        "you may get unexpected results");
-        }
-        max_threads = ms->smp.max_cpus;
-        break;
-    case ON_OFF_AUTO_OFF:
-        break;
-    default:
-        g_assert_not_reached();
-    }
+    /* The Xbox has one CPU, driven by the serialized libretro runloop. */
+    g_assert(ms->smp.max_cpus == 1);
 
     /* No flush of every translation when a state is loaded: the load drops
      * those of the pages it changes (migration/ram-libretro.c), the way a
@@ -122,7 +79,7 @@ static int tcg_init_machine(AccelState *as, MachineState *ms)
 
     page_init();
     tb_htable_init();
-    tcg_init(s->tb_size * MiB, s->splitwx_enabled, max_threads);
+    tcg_init(s->tb_size * MiB, s->splitwx_enabled, 1);
 
 #if defined(CONFIG_SOFTMMU)
     /*
@@ -134,30 +91,6 @@ static int tcg_init_machine(AccelState *as, MachineState *ms)
 
 
     return 0;
-}
-
-static char *tcg_get_thread(Object *obj, Error **errp)
-{
-    TCGState *s = TCG_STATE(obj);
-
-    return g_strdup(s->mttcg_enabled == ON_OFF_AUTO_ON ? "multi" : "single");
-}
-
-static void tcg_set_thread(Object *obj, const char *value, Error **errp)
-{
-    TCGState *s = TCG_STATE(obj);
-
-    if (strcmp(value, "multi") == 0) {
-        if (icount_enabled()) {
-            error_setg(errp, "No MTTCG when icount is enabled");
-        } else {
-            s->mttcg_enabled = ON_OFF_AUTO_ON;
-        }
-    } else if (strcmp(value, "single") == 0) {
-        s->mttcg_enabled = ON_OFF_AUTO_OFF;
-    } else {
-        error_setg(errp, "Invalid 'thread' setting %s", value);
-    }
 }
 
 static void tcg_get_tb_size(Object *obj, Visitor *v,
@@ -224,10 +157,6 @@ static void tcg_accel_class_init(ObjectClass *oc, const void *data)
     ac->cpu_common_unrealize = tcg_exec_unrealizefn;
     ac->allowed = &tcg_allowed;
     ac->gdbstub_supported_sstep_flags = tcg_gdbstub_supported_sstep_flags;
-
-    object_class_property_add_str(oc, "thread",
-                                  tcg_get_thread,
-                                  tcg_set_thread);
 
     object_class_property_add(oc, "tb-size", "int",
         tcg_get_tb_size, tcg_set_tb_size,

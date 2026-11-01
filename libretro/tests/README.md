@@ -2009,3 +2009,5 @@ The GPU display ROM covers clipping, mode changes and overlays. Repeat it at
 internal scale 2 to check geometry and pixels after display-texture recreation.
 
 The region-TB fixture now enforces the core ownership contract (one Xbox CPU, MTTCG disabled, one region, no region mutexes and reviewed index callers). Its 25,000 checks cover 400,074 recycles, 112,111 removals and 104 flushes; production region allocation/exhaustion and 100 safe-work resets also retain prologue/highwater semantics. `REGION_TBS_BINARY` and `REGION_TBS_SKIP_RUN=1` retain native fixtures. These restrictions are ownership requirements, not synchronization for a future concurrent reader or translator.
+
+The region ownership guard now verifies TCG startup asserts one machine CPU and passes a literal one-translator count. The obsolete MTTCG selector/property is gone; startup had always forced it off. Existing translation-cache size, split-WX and instruction-debug controls remain.
