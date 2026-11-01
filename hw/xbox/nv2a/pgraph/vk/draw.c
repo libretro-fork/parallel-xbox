@@ -3073,12 +3073,24 @@ void pgraph_vk_reclaim_command_buffer(PGRAPHState *pg, bool reuse)
 /* Wait for every slot's pending submission. */
 void pgraph_vk_wait_all_slots(PGRAPHVkState *r)
 {
-    PGRAPHState *pg = container_of((void *)r, PGRAPHState, vk_renderer_state);
-    (void)pg;
+    /* All command slots submit to the same queue. The latest pending
+     * submission's fence covers the earlier commands too; already proven
+     * serials need no driver wait. Do not release ownership until it returns. */
+    int latest = -1;
+    uint32_t latest_submit = r->settled_submit;
+    for (int s = 0; s < PGRAPH_VK_SLOTS; s++) {
+        if (r->slot_fence_pending[s] &&
+            (int32_t)(r->slot_submit[s] - latest_submit) > 0) {
+            latest = s;
+            latest_submit = r->slot_submit[s];
+        }
+    }
+    if (latest >= 0) {
+        VK_CHECK(vkWaitForFences(r->device, 1, &r->slot_fence[latest], VK_TRUE,
+                                 UINT64_MAX));
+    }
     for (int s = 0; s < PGRAPH_VK_SLOTS; s++) {
         if (r->slot_fence_pending[s]) {
-            VK_CHECK(vkWaitForFences(r->device, 1, &r->slot_fence[s], VK_TRUE,
-                                     UINT64_MAX));
             r->slot_fence_pending[s] = false;
             lr_gpu_ram_drop((uintptr_t)r->slot_main[s]);
             lr_gpu_ram_drop((uintptr_t)r->slot_sync[s]);

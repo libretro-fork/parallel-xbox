@@ -108,7 +108,7 @@ def expected(case, force_lod0=False):
         lod = ((-3,-1,-2)[int(case["id"]) % 3] if case.get("native_volume") == "1" else
                float(case["native_cube_lod"]) if case.get("native_cube_face") else {
             "magnified": -3, "near_magnified": -1, "minified": 2}[case["coordinate"]])
-        minified = lod + float(case.get("lod_bias", 0)) > 0
+        minified = not case.get("gather_boundary") and lod + float(case.get("lod_bias", 0)) > 0
         if case.get("native_min_filter"):
             if (int(case["native_min_filter"]) >= 3 and case["layout"] in ("swizzled","cube","volume") and
                     case.get("native_chain") == "1" and
@@ -122,6 +122,8 @@ def expected(case, force_lod0=False):
         coordinate = ("left_center", "midpoint", "right_center").index(case["coordinate"])
         linear = case["filter"] == "linear"
         weight = coordinate / 2 if linear else int(coordinate != 0)
+    if case.get("gather_boundary"):
+        weight = 2 / 65536 if linear else 0.0
     if case.get("native_depth_reference"):
         if case.get("native_depth_float") == "1":
             codes=(0,1,0x0fff,0x1000,0x1001,0x3fff,0x4000,0x4001,

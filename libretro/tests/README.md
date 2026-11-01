@@ -893,6 +893,11 @@ with Xbox direct dispatch and generic target dispatch. It checks boost on/off,
 32/64-bit PCs, flag combinations, single-step/one-instruction/no-chain modes,
 lookup hits/misses, logging and breakpoint exits against independent results.
 The Xbox path must bypass the target function pointer in both boost modes.
+The dispatcher is built with the single x86 target and shares an inline state
+calculation with the generic target hook. Release Win64 disassembly confirms
+that both dispatcher and indirect-branch paths avoid the out-of-line state
+return call; the two callers grow by 288 bytes in the inspected build.
+This code-generation result does not establish a game FPS improvement.
 
 `test-rdpmc.py CHECKOUT [CC]` executes the production RDPMC helper and
 translator against privilege, counter-index and intercept-order oracles over
@@ -2251,6 +2256,25 @@ its stack frame at 96 bytes. PGRAPHState (4,295,312 bytes), PGRAPHVkState
 (5,845,216 bytes) and PGRAPHRenderer (232 bytes) are unchanged. These layout
 and assembly checks do not establish hardware cache-miss or game-latency gains.
 
+`test-g8b8-gather-boundary.py CHECKOUT [--parent REV] [--cc CC] [--output DIR]`
+executes the production base-level signed G8B8 shader in OpenGL against a scalar
+2D reference. It checks 81,920 signed components just before/after texel boundaries,
+including 1x64, 2x7, 4x4, 7x2 and 64x1 images and all sixteen wrap/edge/mirror/border
+address pairs. Native Windows accepts `--epoxy-root DIRECTORY` for a separate
+libepoxy build. The four texture lanes are selected at the calculated quad center;
+weights still come from the original coordinates. Point and explicit-mip paths
+retain their behavior. Only base-level gather shader keys gain a revision tag in
+the otherwise mip-only upper stage flag, preserving seed layout and other keys.
+
+`test-g8b8-centered-sampler.py CHECKOUT PARENT CANDIDATE HARNESS SCRATCH` checks
+3,456 guest pixels per API: near-boundary mixed-filter colors, ordinary bump/color,
+luminance profiles, mixed filters/biases, swizzled/linear single-level images,
+edge/border addressing, explicit-mip controls and Force LOD0. Ordinary pixels must
+match the parent exactly; boundary pixels follow the scalar model. The builder's
+`--mixed --gather-boundary before|after` selects flat coordinates at either side
+of a texel boundary. Use `--windows-paths` for a Windows harness through WSL.
+These tests exercise the implemented filtering model, not a hardware NV2A oracle.
+
 The eager-retirement fixture additionally covers 1,032 serial-proof reclamation
 schedules and eight production allocation-retry/reclaim sequences. Equal or
 older submissions skip waiting without a new status probe; newer unfinished
@@ -2266,3 +2290,19 @@ locks, status queries or frame queue. Hardware cache-miss and game-latency
 effects are unmeasured; unfinished submissions still have their existing wait.
 
 `test-lru-promote.py CHECKOUT [CC]` compares production lookup with the original unconditional unlink/reinsert algorithm over 30,000 operations. It checks exact global/bin ordering, callbacks, counts, collisions, blocked eviction and flush/reuse. A separate 10,000-hit test maps the live MRU container/node read-only: the optimized lookup must not write its links. The original source faults on that negative control. Linux defaults to ASan/UBSan. LRU_PROMOTE_SOURCE, LRU_PROMOTE_CFLAGS, LRU_PROMOTE_BINARY and LRU_PROMOTE_SKIP_RUN support parent/native runs; -DBENCH enables exploratory hit/collision/miss timing with small keys. Callbacks still run on every hit; this only removes redundant container-link updates.
+
+The retirement fixture also extracts the production full-slot drain. Eighty
+schedules cover both slot orders, every pending mask, known/unknown completion
+and serial rollover. Draining waits only on the latest unproved submission's
+fence, or makes no driver call when all completion is already proved. It makes
+no status probes and releases neither GPU-RAM ownership nor garbage/timestamps
+before the wait returns. Repeated drains never drop ownership twice.
+
+Both command slots submit to the same queue. The latest submission's fence
+covers preceding commands as specified by the [Vulkan synchronization rules](https://docs.vulkan.org/spec/latest/chapters/synchronization.html).
+This reduces redundant synchronization calls; it does not make a necessary
+full drain asynchronous. No buffers, copies, PSOs, locks or frame queue change.
+
+Win64 full-drain stack usage falls from 96 to 80 bytes; renderer structure
+sizes remain unchanged. This is a code-generation result, not a measured
+hardware cache-miss or game-latency improvement.

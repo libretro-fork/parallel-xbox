@@ -465,6 +465,12 @@ void pgraph_glsl_set_psh_state(PGRAPHState *pg, PshState *state)
                     }
                 }
             }
+            /* Centered gathers need fresh base-level programs. The upper
+             * stage bit is otherwise used only by explicit mip reconstruction. */
+            if (!(state->g8b8_signed[i] & 128) &&
+                (state->g8b8_signed[i] & (16 | 64))) {
+                state->g8b8_mip_flags |= 1u << (i + 4);
+            }
         }
     }
 
@@ -1481,7 +1487,11 @@ static void psh_append_signed_g8b8(const struct PixelShader *ps, MString *vars,
             ps->opts.vulkan ? ", 1e-15)" : ")");
     }
     mstring_append_fmt(vars,
-        "vec2 gbFrac%d = fract(gbCoord%d * vec2(textureSize(texSamp%d, 0)) - 0.5);\n",
+        "vec2 gbSize%d = vec2(textureSize(texSamp%d, 0));\n"
+        "vec2 gbPos%d = gbCoord%d * gbSize%d - 0.5;\n"
+        "vec2 gbFrac%d = fract(gbPos%d);\n"
+        "vec2 gbQuad%d = (floor(gbPos%d) + 1.0) / gbSize%d;\n",
+        source, source, source, source, source, source, source,
         source, source, source);
     if (signs & 64) {
         mstring_append_fmt(vars,
@@ -1493,7 +1503,7 @@ static void psh_append_signed_g8b8(const struct PixelShader *ps, MString *vars,
             continue;
         }
         mstring_append_fmt(vars,
-            "vec4 gbTaps%d_%d = textureGather(texSamp%d, gbCoord%d, %d);\n",
+            "vec4 gbTaps%d_%d = textureGather(texSamp%d, gbQuad%d, %d);\n",
             source, axis, source, source, axis == 0 ? 2 : 1);
         mstring_append_fmt(vars,
             "gbTaps%d_%d = vec4(sign3(gbTaps%d_%d.x), sign3(gbTaps%d_%d.y), "

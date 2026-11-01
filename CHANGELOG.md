@@ -2,11 +2,21 @@
 
 - Avoid rewriting LRU cache links when a hit already leads the global recency list or its hash bin. Preserve comparison callbacks, allocation/eviction behavior and exact cache ordering without extra storage.
 
+- Drain Vulkan command slots with at most one fence wait, using the latest pending submission on their shared queue. Skip the wait when retirement is already proved; preserve ownership cleanup and timestamps after completion. Actual unfinished drains still wait.
+- Keep the shader-worker regression fixture on the production ready-index window, adoption and clear helpers so CI continues checking exact FIFO order and source ownership after compaction changes.
+
+- Keep signed G8B8 bump/color gathers aligned with their interpolation weights near texel boundaries. This prevents host coordinate rounding from selecting the wrong neighboring block, without extra texture reads or CPU/GPU synchronization.
+
+
+- Inline the Xbox translation-block state calculation in the dispatcher and indirect-branch lookup. Keep one shared calculation and the generic target hook, avoiding the out-of-line state-return call without changing lookup keys or debug policy.
+
 - Reuse Vulkan retirement serials during command-slot reclamation. When allocation retries already proved a submission complete, skip its redundant fence wait while preserving normal ownership, garbage and timestamp cleanup. Unfinished submissions keep their existing wait policy.
+
 - Reduce floating-depth bilinear shader reads from four samples to one unfiltered gather in GL and Vulkan, preserving decode-before-filter results without extra CPU/GPU synchronization.
 
 
 - Amortize Vulkan shader-ready cache index compaction with a small sliding window, preserving oldest-first eviction and module reference ownership. Keep miss scans contiguous and outline successful-take bookkeeping; module capacity is unchanged.
+
 - Skip CPU lookup and thread-identity checks when DSP guards are already retired. Use an atomic inactive flag so external borrowers keep the fast path without touching CPU-owned callback/TLB state.
 
 - Retire a completed Vulkan command slot when eager submission has already proved its fence ready. The following draw reuses that result instead of calling a fence wait again; existing GPU-RAM ownership, deferred destruction and timestamp retirement still run exactly once.

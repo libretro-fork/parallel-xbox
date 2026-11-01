@@ -10,18 +10,18 @@
 #define VK_TRUE 1
 #define VK_FINISH_REASON_EAGER 11
 #define VK_CHECK(s) assert((s)==VK_SUCCESS)
-typedef struct {unsigned slot,eager_draw_count;bool in_command_buffer,slot_fence_pending[2];unsigned slot_main[2],slot_sync[2],slot_fence[2],slot_submit[2],settled_submit,submit_count;int device,reuse_wait_us;struct{unsigned w_end[2];}frame_gpu;}PGRAPHVkState;
+typedef struct {unsigned slot,eager_draw_count;bool in_command_buffer,slot_fence_pending[2];unsigned slot_main[2],slot_sync[2],slot_fence[2],slot_submit[2],settled_submit,submit_count;int device,reuse_wait_us;struct{unsigned w,w_end[2];}frame_gpu;}PGRAPHVkState;
 typedef struct {PGRAPHVkState*vk_renderer_state;}PGRAPHState;
 static unsigned polls,waits,retirements,resolves,submits,clock_now,drops,pool_flushes;
 static void lr_gpu_ram_drop(uintptr_t cmd){(void)cmd;drops++;}
-static int status[2];static bool drain_expected;
+static int status[2];static bool drain_expected,draining;static unsigned waited_fence;
 static int vkGetFenceStatus(int device,unsigned fence){assert(device==9&&fence<2);polls++;return status[fence];}
-static int vkWaitForFences(int device,unsigned count,unsigned*fence,unsigned all,uint64_t timeout){assert(device==9&&count==1&&*fence<2&&all==1&&timeout==UINT64_MAX);waits++;status[*fence]=0;return 0;}
+static int vkWaitForFences(int device,unsigned count,unsigned*fence,unsigned all,uint64_t timeout){assert(device==9&&count==1&&*fence<2&&all==1&&timeout==UINT64_MAX);if(draining)assert(!drops&&!retirements&&!resolves);waited_fence=*fence;waits++;status[*fence]=0;return 0;}
 static int64_t g_get_monotonic_time(void){return ++clock_now;}
 static void ema16(int *p,int64_t value){assert(value>0);*p+=(int)value;}
 static void trash_drain_retired(PGRAPHVkState*r){assert(drain_expected);retirements++;(void)r;}
 static void pgraph_vk_image_pool_flush(PGRAPHVkState*r){(void)r;pool_flushes++;}
-static void frame_gpu_resolve_until(PGRAPHVkState*r,unsigned end){assert(end==r->frame_gpu.w_end[0]||end==r->frame_gpu.w_end[1]);resolves++;}
+static void frame_gpu_resolve_until(PGRAPHVkState*r,unsigned end){assert(end==r->frame_gpu.w||end==r->frame_gpu.w_end[0]||end==r->frame_gpu.w_end[1]);resolves++;}
 static void pgraph_vk_finish(PGRAPHState*pg,unsigned why){
  PGRAPHVkState*r=pg->vk_renderer_state;assert(why==11&&r->in_command_buffer);
  unsigned next=r->slot^1;assert(!r->slot_fence_pending[next]);
@@ -84,5 +84,23 @@ int main(void){
   assert(polls==before_polls&&!waits&&drops==2&&resolves==1&&retirements==2);
   assert(!q.slot_fence_pending[target]&&q.slot_fence_pending[target^1]);retry_cases++;
  }
- printf("PASS: %u eager, %u serial-proof and %u allocation-retry schedules; completed slots never wait\n",cases,serial_cases,retry_cases);
+ unsigned drain_cases=0;
+ for(unsigned newer=0;newer<2;newer++)for(unsigned mask=0;mask<4;mask++)
+ for(unsigned wrap=0;wrap<2;wrap++)for(int delta=-2;delta<=2;delta++){
+  PGRAPHVkState q={.device=9,.slot_fence={0,1},.frame_gpu={.w=303,.w_end={101,202}}};
+  uint32_t serial=wrap?0:100;q.submit_count=delta>0?serial+(uint32_t)delta:serial;q.slot_submit[newer]=serial;q.slot_submit[newer^1]=serial-1;q.settled_submit=serial+(uint32_t)delta;
+  q.slot_fence_pending[0]=mask&1;q.slot_fence_pending[1]=mask&2;
+  int expected=-1;
+  if((mask&(1u<<newer))&&delta<0)expected=(int)newer;
+  else if((mask&(1u<<(newer^1)))&&delta< -1)expected=(int)(newer^1);
+  polls=waits=retirements=resolves=drops=0;draining=drain_expected=true;
+  pgraph_vk_wait_all_slots(&q);draining=false;
+  assert(!polls&&waits==(unsigned)(expected>=0));
+  if(expected>=0)assert(waited_fence==(unsigned)expected);
+  assert(drops==2*((unsigned)((mask&1)!=0)+(unsigned)((mask&2)!=0)));
+  assert(!q.slot_fence_pending[0]&&!q.slot_fence_pending[1]&&q.settled_submit==q.submit_count&&retirements==1&&resolves==1);
+  waits=drops=retirements=resolves=0;draining=true;pgraph_vk_wait_all_slots(&q);draining=false;
+  assert(!waits&&!drops&&retirements==1&&resolves==1);drain_cases++;
+ }
+ printf("PASS: %u eager, %u serial-proof, %u allocation-retry and %u full-drain schedules\n",cases,serial_cases,retry_cases,drain_cases);
 }
