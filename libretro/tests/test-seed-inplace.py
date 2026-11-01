@@ -14,7 +14,15 @@ psh=(r/'hw/xbox/nv2a/pgraph/glsl/psh.c').read_text(encoding='utf-8')
 seed=(r/'hw/xbox/nv2a/pgraph/seed.c').read_text(encoding='utf-8')
 pieces=[function(psh,n) for n in ['psh_zero_combiner_fields','psh_zero_alpha_fields','pgraph_glsl_psh_canonicalize_dynamic']]
 pieces += [function(seed,n) for n in ['pgraph_seed_hash_set_new','pgraph_seed_hash_set_add']]
-pieces += [function(gl,'seed_compact_dynamic_states')]
+geom=(r/'hw/xbox/nv2a/pgraph/glsl/geom.c').read_text(encoding='utf-8')
+renderer=(r/'hw/xbox/nv2a/pgraph/gl/renderer.h').read_text(encoding='utf-8')
+key=re.search(r'typedef struct ShaderModuleCacheKey \{.*?\} ShaderModuleCacheKey;',renderer,re.S).group()
+pieces += [key,function(geom,'pgraph_glsl_need_geom'),function(gl,'state_module_keys'),function(gl,'seed_compact_dynamic_states')]
+a=gl.index('        g_free(r->seed.mod_keys);',gl.index('static void seed_load('))
+b=gl.index('        origin = "dynamic siblings";',a)
+block=gl[a:b]
+loader='static ShaderModuleCacheKey *build_keys(ShaderState *sib,unsigned n_sib,unsigned *count) {\nstruct { struct { ShaderModuleCacheKey *mod_keys; unsigned mod_n; } seed; } storage={0}, *r=&storage;\n'+block+'\n*count=r->seed.mod_n;return r->seed.mod_keys;\n}'
+pieces += [loader]
 code=Path(__file__).with_suffix('.c').read_text().replace('/* PRODUCTION */','\n'.join(pieces))
 with tempfile.TemporaryDirectory(prefix='seed-inplace-') as tmp:
  p=Path(tmp);(p/'qemu').mkdir()

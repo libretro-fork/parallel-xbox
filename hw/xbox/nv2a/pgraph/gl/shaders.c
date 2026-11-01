@@ -1884,7 +1884,8 @@ static void seed_load(PGRAPHGLState *r)
         r->seed.pipe_n = n_sib;
         /* Module keys for exactly those siblings. */
         g_free(r->seed.mod_keys);
-        r->seed.mod_keys = g_new0(ShaderModuleCacheKey, n_sib * 3);
+        /* Accepted keys are copied in full; only the n_keys prefix is live. */
+        r->seed.mod_keys = g_new(ShaderModuleCacheKey, n_sib * 3);
         unsigned n_keys = 0;
         GHashTable *seen = pgraph_seed_hash_set_new();
         for (unsigned i = 0; i < n_sib; i++) {

@@ -1,5 +1,7 @@
 # Changelog of the libretro core
 
+- Avoid zero-filling the GL seed module-key destination array before copying complete accepted keys. Keep deterministic temporary-key initialization and the populated-count boundary, removing redundant startup initialization without changing key bytes or ordering.
+
 - Reuse the bound Vulkan pipeline when register writes change only dynamic or unused key bits. Share the key register projection with the dirty check, avoiding repeated key construction, hashing and cache lookup while preserving dynamic-state updates and existing PSO keys.
 - Compact GL shader-seed sibling states in their existing owned array. Remove the second state-array allocation and per-input stack copy while preserving canonicalization, hash deduplication and output order; unchanged positions need no whole-state copy.
 
