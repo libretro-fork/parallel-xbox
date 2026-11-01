@@ -1,5 +1,7 @@
 # Changelog of the libretro core
 
+- Skip the obsolete Vulkan transfer dependency after packing depth for direct GPU swizzling. Preserve transfer fallbacks, shader visibility and conversion-buffer reuse ordering without new resources.
+
 - Correct signed G8B8 bump-map reconstruction with minimum mip levels above three in OpenGL and Vulkan. Preserve existing shader-cache keys and layouts through a compact extended encoding; Force Texture LOD0 still overrides the guest minimum. Add filtering, addressing and cache-compatibility regression coverage without runtime diagnostics.
 - Remove the intermediate Vulkan ring copy and reservation when swizzling packed depth directly into guest RAM. Reuse a descriptor set allocated at startup; preserve range-limited fallbacks and conversion-buffer synchronization.
 
