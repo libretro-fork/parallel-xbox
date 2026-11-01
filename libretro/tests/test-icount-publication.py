@@ -35,6 +35,6 @@ with tempfile.TemporaryDirectory(prefix='icount-publication-') as tmp:
  if state_lock:cmd+=['-DICOUNT_HAS_STATELOCK']
  if core_init:cmd+=['-DICOUNT_CORE_INIT']
  if windows:cmd+=['-Wno-cast-function-type']
- cmd+=[str(p/'test.c')]+[str(r/x) for x in ['libretro-common/rthreads/rthreads.c','libretro-common/features/features_cpu.c','libretro-common/time/rtime.c']]+['-pthread','-o',binary]
+ cmd+=[str(p/'test.c')]+[str(r/x) for x in ['libretro-common/rthreads/rthreads.c','libretro-common/compat/compat_strl.c','libretro-common/features/features_cpu.c','libretro-common/time/rtime.c']]+['-pthread','-o',binary]
  subprocess.run(cmd,check=True)
  if not os.environ.get('ICOUNT_TEST_SKIP_RUN'):subprocess.run([binary,*shlex.split(os.environ.get('ICOUNT_TEST_ARGS',''))],check=True,timeout=60)

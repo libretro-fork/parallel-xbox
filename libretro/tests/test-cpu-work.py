@@ -39,7 +39,7 @@ with tempfile.TemporaryDirectory(prefix="cpu-work-") as temporary:
                 "libretro-common/rthreads/rthreads.c"]]
     if windows:
         command += [str(root / path) for path in [
-            "libretro-common/features/features_cpu.c", "libretro-common/time/rtime.c"]]
+            "libretro-common/compat/compat_strl.c","libretro-common/features/features_cpu.c", "libretro-common/time/rtime.c"]]
         command += ["-Wno-cast-function-type"]
     command += ["-pthread", "-o", str(binary)]
     subprocess.run(command, check=True)

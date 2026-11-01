@@ -33,7 +33,7 @@ with tempfile.TemporaryDirectory(prefix='pgraph-fence-') as directory:
     providers = [str(repo / 'libretro-common/rthreads/rthreads.c')]
     if 'mingw' in cc[0]:
         options += ['-Wno-cast-function-type']
-        providers += [str(repo / p) for p in ('libretro-common/features/features_cpu.c', 'libretro-common/time/rtime.c')]
+        providers += [str(repo / p) for p in ('libretro-common/compat/compat_strl.c','libretro-common/features/features_cpu.c', 'libretro-common/time/rtime.c')]
     subprocess.run(cc + options + [str(c)] + providers + ['-pthread', '-o', binary], check=True)
     if not os.environ.get('PGRAPH_FENCE_SKIP_RUN'):
         subprocess.run([binary], check=True, timeout=30)

@@ -37,7 +37,7 @@ with tempfile.TemporaryDirectory(prefix='qemu-parking-') as t:
  cmd+=shlex.split(os.environ.get('QEMU_PARKING_CFLAGS',''))
  cmd+=[str(p/'test.c'),str(r/'libretro-common/rthreads/retro_eventcount.c'),str(r/'libretro-common/rthreads/rthreads.c')]
  if 'mingw' in cc[0]:
-  cmd+=['-Wno-cast-function-type',str(r/'libretro-common/features/features_cpu.c'),str(r/'libretro-common/time/rtime.c')]
+  cmd+=['-Wno-cast-function-type',str(r/'libretro-common/compat/compat_strl.c'),str(r/'libretro-common/features/features_cpu.c'),str(r/'libretro-common/time/rtime.c')]
   if baseline:cmd+=['-lsynchronization']
  cmd+=['-pthread','-o',str(binary)]
  subprocess.run(cmd,check=True)

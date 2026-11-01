@@ -61,7 +61,7 @@ with tempfile.TemporaryDirectory(prefix="rcu-owner-") as temporary:
     if windows:
         command += ["-Wno-cast-function-type"]
         command += [str(root / path) for path in [
-            "libretro-common/features/features_cpu.c", "libretro-common/time/rtime.c"]]
+            "libretro-common/compat/compat_strl.c","libretro-common/features/features_cpu.c", "libretro-common/time/rtime.c"]]
     command += ["-pthread", "-o", str(binary)]
     subprocess.run(command, check=True)
     if not os.environ.get("RCU_OWNER_SKIP_RUN"):

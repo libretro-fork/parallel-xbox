@@ -24,7 +24,7 @@ with tempfile.TemporaryDirectory(prefix='init-publication-') as temporary:
  cmd+=shlex.split(os.environ.get('INIT_PUBLICATION_CFLAGS',''))
  cmd+=[str(p/'test.c'),str(r/'libretro-common/rthreads/rthreads.c')]
  if 'mingw' in cc[0]:
-  cmd+=['-Wno-cast-function-type',str(r/'libretro-common/features/features_cpu.c'),str(r/'libretro-common/time/rtime.c')]
+  cmd+=['-Wno-cast-function-type',str(r/'libretro-common/compat/compat_strl.c'),str(r/'libretro-common/features/features_cpu.c'),str(r/'libretro-common/time/rtime.c')]
  cmd+=['-pthread','-o',str(binary)]
  subprocess.run(cmd,check=True)
  if not os.environ.get('INIT_PUBLICATION_SKIP_RUN'):

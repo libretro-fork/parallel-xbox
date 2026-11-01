@@ -1,5 +1,7 @@
 # Changelog of the libretro core
 
+- Supply the Linux graphics-test GLib dependency and link CPU-feature test fixtures with the compatibility string provider required on ARM.
+
 - Reduce x86-64 CPU dispatch overhead by retaining the instruction budget in a nonvolatile host register across translated blocks. Synchronize the canonical 16-bit budget at helper, memory-access slow-path and return boundaries; keep interrupt requests in their independent atomic half. Preserve instruction deadlines, guest clock rate and state layout.
 
 - Keep real-time DSP budget renewals inside native chains, including REP, while preserving the existing 1,000-cycle quantum, budget carry, hardware halt, interrupts and synchronous guest-RAM ordering. Non-real-time DSP mode retains its single-quantum behavior.

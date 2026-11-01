@@ -155,7 +155,7 @@ jobs:
         run: |
           sudo apt-get -qy update
           sudo apt-get -qy install pkg-config \
-            libepoxy-dev libvulkan-dev patchelf \
+            libepoxy-dev libglib2.0-dev libvulkan-dev patchelf \
             nasm libegl-dev libgl-dev libegl-mesa0 libgl1-mesa-dri \
             mesa-vulkan-drivers strace qemu-utils
 

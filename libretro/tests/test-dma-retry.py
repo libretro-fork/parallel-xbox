@@ -23,5 +23,5 @@ with tempfile.TemporaryDirectory(prefix='dma-retry-') as tmp:
  p=Path(tmp);(p/'test.c').write_text(code);binary=os.environ.get('DMA_RETRY_BINARY',str(p/'test'));l=r/'libretro-common'
  cmd=[cc,'-O2','-g','-std=gnu11','-Wall','-Wextra','-Werror','-Wno-unused-parameter','-Wno-cast-function-type','-DHAVE_THREADS','-I'+str(r/'include'),'-I'+str(l/'include')]
  cmd+=shlex.split(os.environ.get('DMA_RETRY_CFLAGS','-fsanitize=address,undefined'))
- subprocess.run(cmd+[str(p/'test.c'),str(l/'rthreads/rthreads.c'),str(l/'features/features_cpu.c'),str(l/'time/rtime.c'),'-pthread','-o',binary],check=True)
+ subprocess.run(cmd+[str(p/'test.c'),str(l/'rthreads/rthreads.c'),str(l/'compat/compat_strl.c'),str(l/'features/features_cpu.c'),str(l/'time/rtime.c'),'-pthread','-o',binary],check=True)
  if not os.environ.get('DMA_RETRY_SKIP_RUN'):subprocess.run([binary],check=True,timeout=60)

@@ -21,6 +21,6 @@ with tempfile.TemporaryDirectory(prefix='timer-readers-') as tmp:
  if 'active_timers_lock' in production:cmd+=['-DTIMER_QUEUE_LOCKS']
  if os.environ.get('TIMER_READ_BENCHMARK') or os.environ.get('TIMER_READ_ARGS') in ('bench','matrix'):cmd+=['-DTIMER_READ_BENCHMARK']
  if windows:cmd+=['-Wno-cast-function-type']
- cmd+=[str(p/'test.c')]+[str(r/x) for x in ['libretro-common/rthreads/rthreads.c','libretro-common/features/features_cpu.c','libretro-common/time/rtime.c']]+['-pthread','-o',binary]
+ cmd+=[str(p/'test.c')]+[str(r/x) for x in ['libretro-common/rthreads/rthreads.c','libretro-common/compat/compat_strl.c','libretro-common/features/features_cpu.c','libretro-common/time/rtime.c']]+['-pthread','-o',binary]
  subprocess.run(cmd,check=True)
  if not os.environ.get('TIMER_READ_SKIP_RUN'):subprocess.run([binary,*shlex.split(os.environ.get('TIMER_READ_ARGS',''))],check=True,timeout=60)

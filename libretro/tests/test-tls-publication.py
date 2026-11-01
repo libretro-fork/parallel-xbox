@@ -11,6 +11,6 @@ with tempfile.TemporaryDirectory(prefix='tls-publication-') as t:
  cmd+=shlex.split(os.environ.get('TLS_PUBLICATION_CFLAGS',''))
  cmd += [str(r/'libretro/tests'/source),str(r/'libretro-common/rthreads/rthreads.c')]
  if windows:
-  cmd+=['-Wno-cast-function-type']+[str(r/p) for p in ['libretro-common/features/features_cpu.c','libretro-common/time/rtime.c']]
+  cmd+=['-Wno-cast-function-type']+[str(r/p) for p in ['libretro-common/compat/compat_strl.c','libretro-common/features/features_cpu.c','libretro-common/time/rtime.c']]
  cmd+=['-pthread','-o',binary];subprocess.run(cmd,check=True)
  if not os.environ.get('TLS_PUBLICATION_SKIP_RUN'):subprocess.run([binary],check=True,timeout=30)

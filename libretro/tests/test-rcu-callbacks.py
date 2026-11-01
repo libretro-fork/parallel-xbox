@@ -23,7 +23,7 @@ with tempfile.TemporaryDirectory(prefix="rcu-callbacks-") as temporary:
     cmd += shlex.split(os.environ.get("RCU_CALLBACK_CFLAGS", ""))
     cmd += [str(directory / "test.c"), str(root / "libretro-common/rthreads/retro_eventcount.c"), str(root / "libretro-common/rthreads/rthreads.c")]
     if windows:
-        cmd += ["-Wno-cast-function-type", str(root / "libretro-common/features/features_cpu.c"), str(root / "libretro-common/time/rtime.c")]
+        cmd += ["-Wno-cast-function-type", str(root / "libretro-common/compat/compat_strl.c"), str(root / "libretro-common/features/features_cpu.c"), str(root / "libretro-common/time/rtime.c")]
     cmd += ["-pthread", "-o", str(binary)]
     subprocess.run(cmd, check=True)
     if not os.environ.get("RCU_CALLBACK_SKIP_RUN"):

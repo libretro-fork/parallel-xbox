@@ -16,7 +16,7 @@ code=Path(__file__).with_suffix('.c').read_text().replace('/* ENUM */',enum).rep
 with tempfile.TemporaryDirectory(prefix='vmstop-mailbox-') as t:
  p=Path(t);(p/'test.c').write_text(code);binary=Path(os.environ.get('VMSTOP_BINARY',str(p/'test')))
  flags=shlex.split(os.environ.get('VMSTOP_CFLAGS','-fsanitize=undefined -fsanitize-undefined-trap-on-error'))
- cmd=[cc,'-O2','-g','-std=gnu11','-Wall','-Wextra','-Werror','-Wno-unused-parameter','-DHAVE_THREADS',*flags,'-I'+str(r/'libretro-common/include'),str(p/'test.c'),str(r/'libretro-common/rthreads/rthreads.c'),str(r/'libretro-common/features/features_cpu.c'),str(r/'libretro-common/time/rtime.c'),'-pthread','-o',str(binary)]
+ cmd=[cc,'-O2','-g','-std=gnu11','-Wall','-Wextra','-Werror','-Wno-unused-parameter','-DHAVE_THREADS',*flags,'-I'+str(r/'libretro-common/include'),str(p/'test.c'),str(r/'libretro-common/rthreads/rthreads.c'),str(r/'libretro-common/compat/compat_strl.c'),str(r/'libretro-common/features/features_cpu.c'),str(r/'libretro-common/time/rtime.c'),'-pthread','-o',str(binary)]
  if 'mingw' in cc:cmd.insert(1,'-Wno-cast-function-type')
  subprocess.run(cmd,check=True)
  if not os.environ.get('VMSTOP_SKIP_RUN'):
