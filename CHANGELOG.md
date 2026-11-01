@@ -1,5 +1,7 @@
 # Changelog of the libretro core
 
+- Reuse known invalidation-page descriptors and avoid recollecting the current locked page while visiting its translation blocks. Distinct physical pages, instruction offsets and sorted lock retries are preserved.
+
 - Avoid binary search for appended/repeated-tail invalidation pages and skip zero-length array moves. Out-of-order insertion and existing sorted page-lock retries are preserved.
 
 - Fetch 16/32-bit instruction operands directly from the mapped first translation page, preserving aligned atomic reads, byte swapping and existing page-crossing/MMIO handling.

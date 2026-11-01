@@ -2086,3 +2086,5 @@ measured, and legacy flip/report/download waits remain separate work.
 The opcode-fetch fixture also exercises the production 16/32-bit fetches: 523,688 endian/alignment/page-crossing/MMIO cases. First-page scalar reads avoid the general loader and aligned reads must still use the existing atomic primitives. Both general-loader output and recorded MMIO bytes retain host/guest byte-order behavior.
 
 The page-collection fixture now checks append/repeated-tail and reverse-order insertion explicitly, including heap growth and absent pages. Every memmove must have nonzero length; ascending inserts make none. Its 160,000 reference cases cover 69,309 contention retries and 21,570 grown arrays. PAGE_COLLECTION_CFLAGS, PAGE_COLLECTION_BINARY and PAGE_COLLECTION_SKIP_RUN retain native Windows fixtures.
+
+The page-collection fixture additionally counts descriptor lookups for a TB with an instruction offset, same-page aliases and a distinct second physical page. A one-page collection must do just the range scan lookup; a different page must still be found and locked. All 160,000 contention/growth/reference cases remain covered.

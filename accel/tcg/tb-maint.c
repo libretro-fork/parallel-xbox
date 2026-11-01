@@ -392,13 +392,14 @@ static void page_collection_unlock_all(struct page_collection *set)
 /*
  * Trylock a page, and if successful, add the page to a collection.
  * Returns true ("busy") if the page could not be locked; false otherwise.
+ * pd may supply the already-resolved descriptor for addr; NULL resolves it.
  */
-static bool page_trylock_add(struct page_collection *set, tb_page_addr_t addr)
+static bool page_trylock_add(struct page_collection *set, tb_page_addr_t addr,
+                            PageDesc *pd)
 {
     tb_page_addr_t index = addr >> TARGET_PAGE_BITS;
     struct page_entry *pe;
     unsigned lo = 0, hi = set->n;
-    PageDesc *pd;
 
     /* Range pages arrive in ascending order. Repeated references to the
      * current tail need neither a search nor a second lock attempt. */
@@ -423,7 +424,9 @@ static bool page_trylock_add(struct page_collection *set, tb_page_addr_t addr)
         }
     }
 
-    pd = page_find(index);
+    if (pd == NULL) {
+        pd = page_find(index);
+    }
     if (pd == NULL) {
         return false;
     }
@@ -494,15 +497,22 @@ static void page_collection_lock(struct page_collection *set,
         if (pd == NULL) {
             continue;
         }
-        if (page_trylock_add(set, index << TARGET_PAGE_BITS)) {
+        if (page_trylock_add(set, index << TARGET_PAGE_BITS, pd)) {
             page_collection_unlock_all(set);
             goto retry;
         }
         assert_page_locked(pd);
         PAGE_FOR_EACH_TB(unused, unused, pd, tb, n) {
-            if (page_trylock_add(set, tb_page_addr0(tb)) ||
-                (tb_page_addr1(tb) != -1 &&
-                 page_trylock_add(set, tb_page_addr1(tb)))) {
+            tb_page_addr_t page0 = tb_page_addr0(tb);
+            tb_page_addr_t page1 = tb_page_addr1(tb);
+
+            /* The current page is already collected and locked. Only a
+             * different TB page can extend the collection. page0 includes
+             * the instruction's offset within its physical page. */
+            if (((page0 >> TARGET_PAGE_BITS) != index &&
+                 page_trylock_add(set, page0, NULL)) ||
+                (page1 != -1 && (page1 >> TARGET_PAGE_BITS) != index &&
+                 page_trylock_add(set, page1, NULL))) {
                 /* drop all locks, and reacquire in order */
                 page_collection_unlock_all(set);
                 goto retry;

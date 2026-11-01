@@ -36,6 +36,7 @@ static PageDesc pds[NPAGES];
 static bool present[NPAGES];
 static TranslationBlock tbs[NTBS];
 static unsigned busy_left, busy_hits, allocs;
+static unsigned finds;
 static uint64_t seed = 42;
 
 static uint64_t rnd(void)
@@ -48,6 +49,7 @@ static uint64_t rnd(void)
 
 static PageDesc *page_find(tb_page_addr_t index)
 {
+    finds++;
     return index < NPAGES && present[index] ? &pds[index] : NULL;
 }
 static void page_lock(PageDesc *pd)
@@ -192,15 +194,35 @@ int main(void)
         moves = 0;
         for (unsigned i = 0; i < NPAGES; i++) {
             unsigned page = reverse ? NPAGES - i - 1 : i;
-            assert(!page_trylock_add(&set, (tb_page_addr_t)page << TARGET_PAGE_BITS));
+            assert(!page_trylock_add(&set, (tb_page_addr_t)page << TARGET_PAGE_BITS, NULL));
             unsigned before = moves;
-            assert(!page_trylock_add(&set, (tb_page_addr_t)page << TARGET_PAGE_BITS));
+            assert(!page_trylock_add(&set, (tb_page_addr_t)page << TARGET_PAGE_BITS, NULL));
             assert(moves == before && set.n == i + 1);
             for (unsigned k = 1; k < set.n; k++) assert(set.entries[k - 1].index < set.entries[k].index);
         }
         assert(moves == (reverse ? NPAGES - 1 : 0));
-        assert(!page_trylock_add(&set, (tb_page_addr_t)NPAGES << TARGET_PAGE_BITS));
+        assert(!page_trylock_add(&set, (tb_page_addr_t)NPAGES << TARGET_PAGE_BITS, NULL));
         assert(set.n == NPAGES);
+        page_collection_unlock(&set);
+        assert_no_pages_locked();
+    }
+
+    /* Keep physical page identity separate from the first instruction's
+     * offset. One-page TBs need only the range scan's descriptor lookup;
+     * a different second page still has to be found and locked. */
+    for (unsigned second = 0; second < 3; second++) {
+        struct page_collection set;
+        memset(pds, 0, sizeof(pds));
+        memset(tbs, 0, sizeof(tbs));
+        tbs[0].page_addr[0] = (2 << TARGET_PAGE_BITS) | 63;
+        tbs[0].page_addr[1] = second == 0 ? (tb_page_addr_t)-1 :
+                            (tb_page_addr_t)(second == 1 ? 2 : 3) << TARGET_PAGE_BITS;
+        pds[2].first_tb = (uintptr_t)&tbs[0];
+        finds = 0;
+        page_collection_lock(&set, 2 << TARGET_PAGE_BITS, (3 << TARGET_PAGE_BITS) - 1);
+        assert(finds == (second == 2 ? 2 : 1));
+        assert(set.n == (second == 2 ? 2 : 1));
+        assert(pds[2].lock && (pds[3].lock == (second == 2)));
         page_collection_unlock(&set);
         assert_no_pages_locked();
     }
