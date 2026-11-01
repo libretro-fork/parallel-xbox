@@ -1,5 +1,8 @@
 # Changelog of the libretro core
 
+- Keep convolution-filter texel spacing fixed after projective texture-coordinate division in GL and Vulkan. Prevent the blur footprint from shrinking or growing with Q, using the existing nine reads and kernel weights.
+
+
 - Combine independent SSE rounding/flush eligibility checks into one mode predicate before native arithmetic. Preserve CPU Boost, host-MXCSR tracking and all software fallback conditions while removing two conditional branches from the inspected Win64 native helper path.
 
 - Drain Vulkan auxiliary uploads with one newest-submission fence wait instead of waiting on each pending slot. Release completed ownership and staging ranges in FIFO order, preserving any open recording. No buffers, copies, PSOs or locks are added; necessary drains still wait.

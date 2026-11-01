@@ -124,6 +124,9 @@ def expected(case, force_lod0=False):
         weight = coordinate / 2 if linear else int(coordinate != 0)
     if case.get("gather_boundary"):
         weight = 2 / 65536 if linear else 0.0
+    if case.get("native_convolution_q"):
+        # A [1,2,1]/4 kernel averages a repeating two-column image exactly.
+        weight = 0.5
     if case.get("native_depth_reference"):
         if case.get("native_depth_float") == "1":
             codes=(0,1,0x0fff,0x1000,0x1001,0x3fff,0x4000,0x4001,

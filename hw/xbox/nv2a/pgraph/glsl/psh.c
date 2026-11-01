@@ -317,7 +317,8 @@ void pgraph_glsl_set_psh_state(PGRAPHState *pg, PshState *state)
             int k = GET_MASK(filter, NV_PGRAPH_TEXFILTER0_CONVOLUTION_KERNEL);
             assert(k == NV_PGRAPH_TEXFILTER0_CONVOLUTION_KERNEL_QUINCUNX ||
                    k == NV_PGRAPH_TEXFILTER0_CONVOLUTION_KERNEL_GAUSSIAN_3);
-            kernel = (enum ConvolutionFilter)k;
+            kernel = k == NV_PGRAPH_TEXFILTER0_CONVOLUTION_KERNEL_QUINCUNX ?
+                CONVOLUTION_FILTER_QUINCUNX : CONVOLUTION_FILTER_GAUSSIAN;
         }
 
         state->conv_tex[i] = kernel;
@@ -1128,17 +1129,22 @@ static void apply_convolution_filter(const struct PixelShader *ps, MString *vars
 {
     assert(ps->state->dim_tex[tex] == 2);
     // FIXME: Quincunx
+    /* The convolution footprint is measured in texels after projection;
+     * adding offsets before the divide would scale the kernel by 1/Q. */
 
     g_autofree gchar *normalize_tex_coords = g_strdup_printf("norm%d", tex);
     const char *tex_remap = ps->state->rect_tex[tex] ? normalize_tex_coords : "";
 
     mstring_append_fmt(vars,
+        "vec3 convCoord%d = %s(pT%d.xyw);\n"
+        "vec2 convUV%d = convCoord%d.xy / convCoord%d.z;\n"
+        "vec2 convStep%d = 1.0 / vec2(textureSize(texSamp%d, 0));\n"
         "vec4 t%d = vec4(0.0);\n"
         "for (int i = 0; i < 9; i++) {\n"
-        "    vec3 texCoordDelta = vec3(convolution3x3[i], 0);\n"
-        "    texCoordDelta.xy /= textureSize(texSamp%d, 0);\n"
-        "    t%d += textureProj(texSamp%d, %s(pT%d.xyw) + texCoordDelta) * gaussian3x3[i];\n"
-        "}\n", tex, tex, tex, tex, tex_remap, tex);
+        "    vec2 uv = convUV%d + convolution3x3[i] * convStep%d;\n"
+        "    t%d += texture(texSamp%d, uv) * gaussian3x3[i];\n"
+        "}\n", tex, tex_remap, tex, tex, tex, tex, tex, tex, tex,
+        tex, tex, tex, tex);
 }
 
 static void define_colorkey_comparator(MString *preflight)

@@ -256,6 +256,10 @@ static void bump_mixed_triangle(u32 layout, u32 footprint)
     method(NV097_SET_VERTEX_DATA_ARRAY_FORMAT + 9 * 4, 2u | (3u << 4));
     method(NV097_SET_BEGIN_END, 5);
     push(0x40000000u | (21u << 18) | NV097_INLINE_ARRAY);
+#elif defined(BUMP_NATIVE_CONV_Q_BITS)
+    method(NV097_SET_VERTEX_DATA_ARRAY_FORMAT + 9 * 4, 2u | (4u << 4));
+    method(NV097_SET_BEGIN_END, 5);
+    push(0x40000000u | (24u << 18) | NV097_INLINE_ARRAY);
 #elif defined(BUMP_NATIVE_DEPTH)
     method(NV097_SET_VERTEX_DATA_ARRAY_FORMAT + 9 * 4, 2u | (3u << 4));
     method(NV097_SET_BEGIN_END, 5);
@@ -293,6 +297,10 @@ static void bump_mixed_triangle(u32 layout, u32 footprint)
         push(neg); push(0x3f000000u); push(0xbf800000u);
 #endif
 #else
+#ifdef BUMP_NATIVE_CONV_Q_BITS
+        /* These finite nonzero fixtures scale exactly by a power of two. */
+        push(tex_u[layout][footprint][vertex] + BUMP_NATIVE_CONV_Q_SHIFT);
+#else
 #ifdef BUMP_GATHER_BOUNDARY_U
         (void)tex_u; (void)footprint;
         push(layout ? BUMP_GATHER_BOUNDARY_U : BUMP_GATHER_BOUNDARY_LINEAR_U);
@@ -312,6 +320,7 @@ static void bump_mixed_triangle(u32 layout, u32 footprint)
 #endif
 #endif
 #endif
+#endif
 #ifdef BUMP_FILTER_CLAMP_PROBE
 #ifdef BUMP_LINEAR_LEVEL
         push(tex_v[layout][footprint][vertex] + 0x01000000u);
@@ -319,11 +328,18 @@ static void bump_mixed_triangle(u32 layout, u32 footprint)
         push(tex_v[layout][footprint][vertex]);
 #endif
 #else
+#ifdef BUMP_NATIVE_CONV_Q_BITS
+        push((layout ? 0x3e800000u : 0x3f000000u) + BUMP_NATIVE_CONV_Q_SHIFT);
+#else
 #ifdef BUMP_NATIVE_F16_GRID
         push(0x3fa00000u); /* V 1.25, fractional texel weight 0.75. */
 #else
         push(layout ? 0x3e800000u : 0x3f000000u);
 #endif
+#endif
+#endif
+#ifdef BUMP_NATIVE_CONV_Q_BITS
+        push(0); push(BUMP_NATIVE_CONV_Q_BITS);
 #endif
 #ifdef BUMP_NATIVE_DEPTH
         push(BUMP_NATIVE_DEPTH_REF_BITS);
@@ -349,6 +365,7 @@ static void bump_filter_probe(void)
         /* Fastest to slowest: coordinate, filter, flags, axis, mode, layout. */
         u32 coord = id % 3;
         u32 linear = (id / 3) % 2;
+        (void)linear; /* Convolution fixtures use matching Gaussian filters. */
         u32 flags = (id / 6) % 4; /* bit 0 B, bit 1 G */
         u32 axis = (id / 24) % 2;
         u32 lum = (id / 48) % 2;
@@ -704,7 +721,9 @@ static void bump_filter_probe(void)
 #endif
 #endif
         method(NV097_SET_TEXTURE_FILTER,
-#ifdef BUMP_NATIVE_MIP_FILTER
+#ifdef BUMP_NATIVE_CONV_Q_BITS
+               (7u << 16) | (2u << 24) | (2u << 13) |
+#elif defined(BUMP_NATIVE_MIP_FILTER)
                (BUMP_NATIVE_MIP_FILTER << 16) | ((linear ? 2u : 1u) << 24) | BUMP_MIXED_BIAS |
 #elif defined(BUMP_FILTER_MIP_PROBE)
                (BUMP_MIP_FILTER << 16) | (BUMP_MIP_MAG << 24) | BUMP_MIXED_BIAS |

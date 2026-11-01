@@ -2324,6 +2324,29 @@ Win64 full-drain stack usage falls from 96 to 80 bytes; renderer structure
 sizes remain unchanged. This is a code-generation result, not a measured
 hardware cache-miss or game-latency improvement.
 
+`test-convolution-projection.py CHECKOUT [--parent REV] [--cc CC] [--output DIR]`
+executes the production convolution helper on an OpenGL compute context. Native
+Windows accepts `--epoxy-root DIRECTORY` for a separate libepoxy build. An
+independent scalar kernel checks 1,572,864 RGBA components per GPU across Q
+0.25/0.5/1/2/4/-1, normalized and rectangle coordinates, point/linear host sampling,
+four image shapes and all sixteen wrap/edge/mirror/border pairs. The 262,144 Q=1
+controls match parent float results within 1e-6. Linear host sampling permits one
+color LSB for hardware interpolation precision. Zero-Q behavior is outside this
+fixture. The helper keeps its existing projective divide and nine kernel reads;
+o new runtime transfer, synchronization or diagnostic path is added.
+
+`test-convolution-sampler.py CHECKOUT PARENT CANDIDATE HARNESS SCRATCH` checks
+1,728 guest pixels per API: Gaussian projective Q 0.5/1/2, Force LOD0 and native
+RGBA8/RGB565/cube/volume/F16 controls. Q=1 and ordinary controls must remain exact
+parent pixels; other convolution pixels follow the scalar two-column kernel.
+Use `--windows-paths` for a Windows harness through WSL.
+
+`test-convolution-state.py CHECKOUT [--cc CC]` checks 168 kernel/filter/stage keys.
+Only convolution enum values gain a revision bit to refresh cached programs;
+disabled convolution and other stage bytes keep their keys and enum size. The
+existing Quincunx Gaussian fallback and min-only convolution selection remain
+separate limitations; these tests establish projected kernel spacing.
+
 The ring-pressure fixture adds 136 auxiliary full-drain schedules: every ring
 start, zero through eight pending submissions, and an optional open recording.
 A nonempty full drain waits once on the newest submission's fence, releases
