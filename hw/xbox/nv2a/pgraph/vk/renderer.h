@@ -588,7 +588,7 @@ typedef struct PGRAPHVkState {
     struct {
         VkDescriptorPool pool;
         VkDescriptorSetLayout set_layout;
-        VkDescriptorSet set;
+        VkDescriptorSet set, packed_set;
         VkPipelineLayout layout;
         VkPipeline pipeline;
         VkPipeline swizzle_pipeline;
@@ -1022,6 +1022,11 @@ bool pgraph_vk_ring_alloc(PGRAPHState *pg, int ring, size_t size,
                           size_t alignment, VkDeviceSize *offset);
 
 // unswizzle.c
+void pgraph_vk_unswizzle_packed_buffer_changed(PGRAPHState *pg);
+bool pgraph_vk_swizzle_packed_possible(PGRAPHState *pg, hwaddr dst_offset,
+    unsigned width, unsigned height, unsigned bpp);
+void pgraph_vk_swizzle_packed_to_ram(PGRAPHState *pg, VkCommandBuffer cmd,
+    hwaddr dst_offset, unsigned width, unsigned height, unsigned bpp);
 void pgraph_vk_init_unswizzle(PGRAPHState *pg);
 void pgraph_vk_finalize_unswizzle(PGRAPHState *pg);
 /* A swizzled level of the Xbox's RAM unswizzled by the GPU into the output

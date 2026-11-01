@@ -500,6 +500,7 @@ void pgraph_vk_buffer_ensure_capacity(PGRAPHState *pg, int index,
         recreate_buffer(pg, &r->storage_buffers[BUFFER_COMPUTE_DST], size);
         recreate_buffer(pg, &r->storage_buffers[BUFFER_COMPUTE_SRC], size);
         pgraph_vk_compute_buffers_changed(pg);
+        pgraph_vk_unswizzle_packed_buffer_changed(pg);
         return;
     }
     recreate_buffer(pg, &r->storage_buffers[index], size);

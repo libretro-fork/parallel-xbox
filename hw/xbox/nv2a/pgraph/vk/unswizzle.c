@@ -10,9 +10,10 @@
  *
  * The other way, a surface read back is swizzled into the RAM by the GPU
  * as well (pgraph_vk_swizzle_to_ram): from the ring, where the read-back
- * copied it linear, into its place in the RAM's buffer.
+ * copied it linear, into its place in the RAM's buffer. Packed depth can
+ * instead feed that shader directly from the conversion buffer.
  *
- * Two compute pipelines and one descriptor set (the two buffers, whole),
+ * Two compute pipelines and fixed ring/packed-source descriptor sets,
  * made at init: a level or a surface is a dispatch with push constants.
  *
  * Copyright (c) 2026 Réda Chérif-Touil
@@ -43,6 +44,34 @@ struct UnswizzlePush {
     uint32_t mask_x, mask_y, mask_z, n_words, palette;
 };
 _Static_assert(sizeof(struct UnswizzlePush) == 44, "swizzle SPIR-V push layout");
+
+/* Updated only after conversion-buffer users have settled. No dispatch-time
+ * descriptor allocation or mutation of a set already recorded in a batch. */
+void pgraph_vk_unswizzle_packed_buffer_changed(PGRAPHState *pg)
+{
+    PGRAPHVkState *r = pg->vk_renderer_state;
+    if (r->unswizzle.packed_set == VK_NULL_HANDLE) {
+        return;
+    }
+    VkDescriptorBufferInfo buffers[2] = {
+        { .buffer = r->vram_buffer, .range = VK_WHOLE_SIZE },
+        { .buffer = r->storage_buffers[BUFFER_COMPUTE_SRC].buffer,
+          .range = MIN(r->storage_buffers[BUFFER_COMPUTE_SRC].buffer_size,
+                       r->device_props.limits.maxStorageBufferRange) },
+    };
+    VkWriteDescriptorSet writes[2];
+    for (int i = 0; i < 2; i++) {
+        writes[i] = (VkWriteDescriptorSet){
+            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+            .dstSet = r->unswizzle.packed_set,
+            .dstBinding = i,
+            .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+            .descriptorCount = 1,
+            .pBufferInfo = &buffers[i],
+        };
+    }
+    vkUpdateDescriptorSets(r->device, 2, writes, 0, NULL);
+}
 
 void pgraph_vk_init_unswizzle(PGRAPHState *pg)
 {
@@ -77,24 +106,29 @@ void pgraph_vk_init_unswizzle(PGRAPHState *pg)
 
     VkDescriptorPoolSize pool_size = {
         .type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-        .descriptorCount = 2,
+        .descriptorCount = 4,
     };
     VkDescriptorPoolCreateInfo pool_info = {
         .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
         .poolSizeCount = 1,
         .pPoolSizes = &pool_size,
-        .maxSets = 1,
+        .maxSets = 2,
     };
     VK_CHECK(vkCreateDescriptorPool(r->device, &pool_info, NULL,
                                     &r->unswizzle.pool));
+    VkDescriptorSetLayout layouts[2] = { r->unswizzle.set_layout,
+                                         r->unswizzle.set_layout };
+    VkDescriptorSet sets[2];
     VkDescriptorSetAllocateInfo alloc_info = {
         .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
         .descriptorPool = r->unswizzle.pool,
-        .descriptorSetCount = 1,
-        .pSetLayouts = &r->unswizzle.set_layout,
+        .descriptorSetCount = 2,
+        .pSetLayouts = layouts,
     };
-    VK_CHECK(vkAllocateDescriptorSets(r->device, &alloc_info,
-                                      &r->unswizzle.set));
+    VK_CHECK(vkAllocateDescriptorSets(r->device, &alloc_info, sets));
+    r->unswizzle.set = sets[0];
+    r->unswizzle.packed_set = sets[1];
+    pgraph_vk_unswizzle_packed_buffer_changed(pg);
 
     VkDescriptorBufferInfo buffers[2] = {
         { .buffer = r->vram_buffer, .range = VK_WHOLE_SIZE },
@@ -303,10 +337,10 @@ bool pgraph_vk_swizzle_possible(PGRAPHState *pg, hwaddr dst_offset,
            size <= r->storage_buffers[BUFFER_UNSWIZZLE_OUT].buffer_size;
 }
 
-void pgraph_vk_swizzle_to_ram(PGRAPHState *pg, VkCommandBuffer cmd,
-                              VkDeviceSize src_offset, hwaddr dst_offset,
-                              unsigned int width, unsigned int height,
-                              unsigned int bpp)
+static void swizzle_to_ram_from(PGRAPHState *pg, VkCommandBuffer cmd,
+    VkBuffer source, VkDescriptorSet set, VkDeviceSize src_offset,
+    hwaddr dst_offset, unsigned width, unsigned height, unsigned bpp,
+    VkPipelineStageFlags producer_stage, VkAccessFlags producer_access)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
     size_t size = (size_t)width * height * bpp;
@@ -323,28 +357,74 @@ void pgraph_vk_swizzle_to_ram(PGRAPHState *pg, VkCommandBuffer cmd,
     generate_swizzle_masks(width, height, 1, &push.mask_x, &push.mask_y,
                            &push.mask_z);
 
-    /* The linear copy's writes into the ring before the shader reads it */
+    /* The actual producer (image transfer or depth pack) before sampling. */
     VkBufferMemoryBarrier before = {
         .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
-        .srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
+        .srcAccessMask = producer_access,
         .dstAccessMask = VK_ACCESS_SHADER_READ_BIT,
         .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
         .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        .buffer = r->storage_buffers[BUFFER_UNSWIZZLE_OUT].buffer,
+        .buffer = source,
         .offset = src_offset,
         .size = size,
     };
-    vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
+    vkCmdPipelineBarrier(cmd, producer_stage,
                          VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, NULL, 1,
                          &before, 0, NULL);
 
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
                       r->unswizzle.swizzle_pipeline);
     vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
-                            r->unswizzle.layout, 0, 1, &r->unswizzle.set, 0,
+                            r->unswizzle.layout, 0, 1, &set, 0,
                             NULL);
     vkCmdPushConstants(cmd, r->unswizzle.layout, VK_SHADER_STAGE_COMPUTE_BIT,
                        0, sizeof(push), &push);
     vkCmdDispatch(cmd, DIV_ROUND_UP(push.n_words, UNSWIZZLE_WORKGROUP), 1, 1);
     nv2a_profile_inc_counter(NV2A_PROF_SURF_SWIZZLE);
+}
+
+void pgraph_vk_swizzle_to_ram(PGRAPHState *pg, VkCommandBuffer cmd,
+    VkDeviceSize src_offset, hwaddr dst_offset, unsigned width,
+    unsigned height, unsigned bpp)
+{
+    PGRAPHVkState *r = pg->vk_renderer_state;
+    swizzle_to_ram_from(pg, cmd,
+        r->storage_buffers[BUFFER_UNSWIZZLE_OUT].buffer, r->unswizzle.set,
+        src_offset, dst_offset, width, height, bpp,
+        VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
+}
+
+bool pgraph_vk_swizzle_packed_possible(PGRAPHState *pg, hwaddr dst_offset,
+    unsigned width, unsigned height, unsigned bpp)
+{
+    PGRAPHVkState *r = pg->vk_renderer_state;
+    VkDeviceSize bytes = (VkDeviceSize)width * height * bpp;
+    return pgraph_vk_swizzle_possible(pg, dst_offset, width, height, bpp) &&
+        r->unswizzle.packed_set != VK_NULL_HANDLE &&
+        bytes <= r->storage_buffers[BUFFER_COMPUTE_SRC].buffer_size &&
+        bytes <= r->device_props.limits.maxStorageBufferRange;
+}
+
+void pgraph_vk_swizzle_packed_to_ram(PGRAPHState *pg, VkCommandBuffer cmd,
+    hwaddr dst_offset, unsigned width, unsigned height, unsigned bpp)
+{
+    PGRAPHVkState *r = pg->vk_renderer_state;
+    assert(pgraph_vk_swizzle_packed_possible(pg, dst_offset, width, height, bpp));
+    VkBuffer source = r->storage_buffers[BUFFER_COMPUTE_SRC].buffer;
+    VkDeviceSize size = (VkDeviceSize)width * height * bpp;
+    swizzle_to_ram_from(pg, cmd, source, r->unswizzle.packed_set, 0,
+        dst_offset, width, height, bpp,
+        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT);
+    /* Chain back to the existing conversion-buffer transfer reuse protocol. */
+    VkBufferMemoryBarrier after = {
+        .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
+        .srcAccessMask = VK_ACCESS_SHADER_READ_BIT,
+        .dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT | VK_ACCESS_TRANSFER_WRITE_BIT,
+        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .buffer = source,
+        .size = size,
+    };
+    vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+        VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 1, &after, 0, NULL);
 }

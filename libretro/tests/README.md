@@ -1608,3 +1608,13 @@ with a poisoning allocator. It checks 14000 alternating requests, zero-size
 requests, geometric capacity growth, no allocation on reuse, discard-before-
 allocate and preservation of the other live scratch slot. TEX_SCRATCH_BINARY,
 TEX_SCRATCH_CFLAGS and TEX_SCRATCH_SKIP_RUN support native cross builds.
+
+`test-packed-swizzle.py CHECKOUT [CC]` checks 6,000 production routing,
+descriptor, barrier and Morton-addressing cases, including capped-range fallback
+and conversion-buffer reuse. Native CI runs it and the buffer-growth ownership
+oracle. Optional `--gpu` runs the production depth-pack and Morton shaders on
+Vulkan, comparing the former ring-copy route against the direct packed source
+for D24S8/D32S8, native/2x scaling and three rectangular/square sizes. It checks
+identical guest bytes, two successive readbacks per command buffer and one
+removed copy per readback; timings describe this isolated GPU
+chain, not whole-core latency. The GPU fixture does not enable validation layers.
