@@ -386,6 +386,9 @@ static void bump_filter_probe(void)
                (1u << 16) | (BUMP_SINGLE_MIP_LOG << 20) | (BUMP_SINGLE_MIP_LOG << 24));
 #endif
 #ifdef BUMP_LINEAR_LEVEL
+        method(NV097_SET_TEXTURE_FORMAT,
+               1u | (2u << 4) | (1u << 3) | (format << 8) |
+               (BUMP_LINEAR_MIP_COUNT << 16) | (2u << 20) | (2u << 24));
         method(NV097_SET_TEXTURE_CONTROL1, 8u << 16);
         method(NV097_SET_TEXTURE_IMAGE_RECT, (4u << 16) | 4u);
 #endif

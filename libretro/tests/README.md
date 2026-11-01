@@ -198,6 +198,19 @@ same image with mip filtering. It checks each backend's existing behavior;
 it does not require unsupported nonmip-chain sampling to agree across APIs.
 Use `--assembler yasm` when nasm is unavailable.
 
+`test-linear-texture-shape.py CHECKOUT [CC]` compiles the production shape
+builder and format table: 403,200 linear cases cover every supported linear
+format, all raw mip counts, clamp extremes, dimensions, pitch, border source,
+texture stage and Force LOD0. Another 15,360 swizzled cases retain their mip
+counts and clamps.
+`test-g8b8-linear-count.py CHECKOUT PARENT CANDIDATE HARNESS SCRATCH` checks
+7,296 scalar cases, 2,304 nonmip aliases against the parent's count-one images,
+and 1,920 unchanged count-one/swizzled pixels per backend. Raw counts 0, 2 and
+15 cover mixed/matching filters, bias, border addressing and Force LOD0.
+`build-bump-probe.py --linear-mip-count N` changes the raw register field while
+keeping `--linear-level` storage fixed at one image. Linear texture shapes
+ignore raw mip counts and clamps; signed G8B8 shader selection follows that rule.
+
 `test-g8b8-single-level.py CHECKOUT PARENT CANDIDATE HARNESS SCRATCH` checks
 one-level swizzled G8B8 images requesting mip-filter modes 3 through 6.
 It covers mixed min/mag, all wrap/edge/mirror/border pairs, LOD bias,

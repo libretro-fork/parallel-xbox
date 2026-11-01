@@ -1,5 +1,8 @@
 # Changelog of the libretro core
 
+- Linear textures now consistently use one stored level, preventing Vulkan upload assertions and incorrect signed G8B8 filtering when mip-count or clamp fields are stale.
+
+
 - Skip per-page inspection of wholly clean or dirty bitmap chunks during display dirty-run collection, preserving concurrent-write and clipped-range behavior.
 - Fixed signed bump filtering and Vulkan min/mag selection when linear G8B8 textures request mip filters, matching their single-level storage.
 
