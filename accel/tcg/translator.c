@@ -270,18 +270,21 @@ static TCGOp *gen_tb_start(DisasContextBase *db, uint32_t cflags)
      * interrupted. */
     tcg_ctx->lr_quiet_label = NULL;
     tcg_ctx->lr_quiet_insn = NULL;
+    tcg_ctx->lr_quiet_first = tcg_ctx->lr_quiet_last = NULL;
     tcg_ctx->lr_quiet_store = false;
     if ((cflags & CF_USE_ICOUNT) && !(cflags & CF_NOIRQ)) {
         TCGv_i32 quiet = tcg_temp_new_i32();
 
         tcg_gen_ld_i32(quiet, tcg_env,
                        offsetof(CPUState, neg.lr_quiet) - sizeof(CPUState));
+        tcg_ctx->lr_quiet_first = tcg_last_op();
         tcg_gen_sub_i32(quiet, quiet, tcg_constant_i32(0));
         tcg_ctx->lr_quiet_insn = tcg_last_op();
         tcg_gen_st_i32(quiet, tcg_env,
                        offsetof(CPUState, neg.lr_quiet) - sizeof(CPUState));
         tcg_ctx->lr_quiet_label = gen_new_label();
         tcg_gen_brcondi_i32(TCG_COND_LT, quiet, 0, tcg_ctx->lr_quiet_label);
+        tcg_ctx->lr_quiet_last = tcg_last_op();
     }
 
     return icount_start_insn;
@@ -293,6 +296,30 @@ void lr_quiet_store_emitted(void)
 {
     if (tcg_ctx->lr_quiet_label && !tcg_ctx->lr_quiet_store) {
         tcg_ctx->lr_quiet_store = true;
+        /* A straight-line, side-effect-free prefix cannot bypass this
+         * reset. Its quiet decrement/check would immediately be overwritten.
+         * Keep the preamble if any branch, helper or guest access precedes
+         * the reset: that path may leave without ever reaching this store. */
+        TCGOp *op = QTAILQ_NEXT(tcg_ctx->lr_quiet_last, link);
+        bool dominates = true;
+        for (; op; op = QTAILQ_NEXT(op, link)) {
+            if (tcg_op_defs[op->opc].flags &
+                (TCG_OPF_BB_END | TCG_OPF_COND_BRANCH | TCG_OPF_SIDE_EFFECTS |
+                 TCG_OPF_CALL_CLOBBER)) {
+                dominates = false;
+                break;
+            }
+        }
+        if (dominates) {
+            TCGOp *stop = QTAILQ_NEXT(tcg_ctx->lr_quiet_last, link);
+            op = tcg_ctx->lr_quiet_first;
+            while (op != stop) {
+                TCGOp *next = QTAILQ_NEXT(op, link);
+                tcg_op_remove(tcg_ctx, op);
+                op = next;
+            }
+            tcg_ctx->lr_quiet_label = NULL;
+        }
         tcg_gen_st_i32(tcg_constant_i32(LR_QUIET_INSNS), tcg_env,
                        offsetof(CPUState, neg.lr_quiet) - sizeof(CPUState));
     }

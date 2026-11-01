@@ -1,5 +1,7 @@
 # Changelog of the libretro core
 
+- Avoid redundant idle-counter work when a translated block reaches its first store through a straight-line prefix without earlier side effects. Preserve checks on conditional paths, helper calls and guest accesses, and keep instruction deadlines unchanged.
+
 - Remove the unused standalone CPU host-pacing budget, busy-wait loop and stall-credit accounting. Translated blocks retain the frame engine’s instruction budget; lock-contention diagnostics remain available.
 
 - Make the frame engine the sole owner of guest time: remove QEMU idle warps, host-clock alignment/sleeps, adaptive rate timers and CPU timing-option parsing. Initialize the fixed Xbox instruction clock directly, preserving the existing guest rate, interrupt handling and saved-state wire layout. Add halted-device-wait and direct-clock-initialization regression coverage.

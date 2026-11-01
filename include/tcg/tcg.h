@@ -422,6 +422,7 @@ struct TCGContext {
     /* the libretro core's idle detection (accel/tcg/translator.c) */
     TCGLabel *lr_quiet_label;
     TCGOp *lr_quiet_insn;
+    TCGOp *lr_quiet_first, *lr_quiet_last;
     bool lr_quiet_store;    /* the block's first store resets the count */
 
 

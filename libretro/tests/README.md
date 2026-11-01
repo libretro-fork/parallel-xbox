@@ -1759,3 +1759,8 @@ before the guest resumes. `test-dsp-guest-ram.py` compiles that actual dispatche
 and tick, preventing a deferred-worker regression while retaining scratch growth
 and page-reuse coverage. GP/EP register effects occur in that same order; the
 frontend queue's SPSC ownership, sample cadence and existing lead are unchanged.
+
+`test-quiet-store-prefix.py` exercises the production translation-time rewrite
+that removes an overwritten quiet-counter preamble. Straight-line prefixes may
+remove it; branches, labels, helper calls and guest accesses retain it. The
+reset itself remains, as do frame instruction budgets and interrupt checks.
