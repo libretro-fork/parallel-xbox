@@ -167,6 +167,7 @@ python3 "$here/test-sse-native-gate.py" "$here/../.." "$cc"
 python3 "$here/test-x87-load-precision.py" "$here/../.." "$cc"
 python3 "$here/test-fp-flags.py" "$here/../.." "$cc"
 python3 "$here/test-gl-flip-retirement.py" "$here/../.." "$cc"
+python3 "$here/test-vk-flip-retirement.py" "$here/../.." "$cc"
 python3 "$here/test-gl-display-mailbox.py" "$here/../.." "$cc"
 python3 "$here/test-frame-completion.py" "$here/../.." "$cc"
 ${cc} -O2 -std=c11 -Wall -Wextra -Werror -I"$here/../.." \
@@ -971,7 +972,10 @@ gpu_check() {
     done
 }
 echo "== the display, OpenGL"
-timeout 300 $h "$(path "$core")" "$(path "$work/sysg")" $vp --opt xemu_deterministic=enabled --frames 485 --strict \
+# Every oracle below addresses guest work by a fixed frontend frame.
+# Host GPU wait time must not move that work into a different frame.
+gpu="$vp --opt xemu_deterministic=enabled"
+timeout 300 $h "$(path "$core")" "$(path "$work/sysg")" $gpu --frames 485 --strict \
   --min-speed 0.2 --pixel 10 --pixel 25 --pixel 45 --pixel 85 --pixel 115 --pixel 130:4:20 --pixel 130:320:100 --pixel 130:320:350 \
   --pixel 130:4:100 --pixel 145:4:20 --pixel 165:320:120 --pixel 180 \
   --pixel 240:320:120 --pixel 270:320:100 --pixel 270:4:20 --pixel 300:320:100 --pixel 300:4:20 --pixel 325:320:100 --pixel 345:320:100 --pixel 375:320:120 --pixel 390:320:316 --pixel 420:320:324 --pixel 436:320:120 --pixel 460:320:120 --pixel 460:4:20 --pixel 470:32:120 --pixel 470:10:120 --pixel 480:10:120 --pixel 484:10:120 --pixel 150:4:20 --pixel 150:639:479 --peek 0x300040 --peek 0x300014 --peek 0x300018 \
@@ -982,8 +986,8 @@ grep -E "pixel_|peek_" "$work/gpu_gl.txt"
 gpu_check "$work/gpu_gl.txt" "OpenGL"
 echo "== the display, Vulkan"
 set +e
-timeout 300 $h "$(path "$core")" "$(path "$work/sysg")" $vp --vulkan \
-  --opt xemu_renderer=vulkan --opt xemu_deterministic=enabled --frames 485 --strict \
+timeout 300 $h "$(path "$core")" "$(path "$work/sysg")" $gpu --vulkan \
+  --opt xemu_renderer=vulkan --frames 485 --strict \
   --pixel 10 --pixel 25 --pixel 45 --pixel 85 --pixel 115 --pixel 130:4:20 --pixel 130:320:100 --pixel 130:320:350 \
   --pixel 130:4:100 --pixel 145:4:20 --pixel 165:320:120 --pixel 180 \
   --pixel 240:320:120 --pixel 270:320:100 --pixel 270:4:20 --pixel 300:320:100 --pixel 300:4:20 --pixel 325:320:100 --pixel 345:320:100 --pixel 375:320:120 --pixel 390:320:316 --pixel 420:320:324 --pixel 436:320:120 --pixel 460:320:120 --pixel 460:4:20 --pixel 470:32:120 --pixel 470:10:120 --pixel 480:10:120 --pixel 484:10:120 --pixel 150:4:20 --pixel 150:639:479 --peek 0x300040 --peek 0x300014 --peek 0x300018 \
@@ -999,7 +1003,7 @@ case $r in
      grep -q "^$want$" "$work/gpu_vk.txt" || { echo "FAIL: Vulkan overlay: $want"; exit 1; }
    done
    echo "== GPU byte reinterpretation, Vulkan"
-   timeout 300 $h "$(path "$core")" "$(path "$work/sysg")" $vp --vulkan \
+   timeout 300 $h "$(path "$core")" "$(path "$work/sysg")" $gpu --vulkan \
      --opt xemu_renderer=vulkan --frames 655 --strict \
      --pixel 510:32:120 --pixel 510:320:120 --pixel 530:100:210 \
      --pixel 550:32:210 --pixel 550:33:210 --pixel 570:32:210 --pixel 570:33:210 \
@@ -1025,7 +1029,7 @@ for r in OpenGL Vulkan; do
     o=; [ $r = Vulkan ] && o="--vulkan --opt xemu_renderer=vulkan"
     echo "== the display at 2x, $r"
     set +e
-    timeout 300 $h "$(path "$core")" "$(path "$work/sysg")" $vp $o \
+    timeout 300 $h "$(path "$core")" "$(path "$work/sysg")" $gpu $o \
       --opt xemu_surface_scale=2 --frames 485 --strict \
       --pixel 130:8:40 --pixel 130:640:200 --pixel 130:640:700 \
       --pixel 165:640:240 --pixel 240:640:240 --pixel 270:640:200 --pixel 270:8:40 --pixel 300:640:200 --pixel 300:8:40 --pixel 325:640:200 --pixel 345:640:200 --pixel 375:640:240 --pixel 390:640:632 --pixel 420:640:648 --pixel 436:640:240 --pixel 460:640:240 --pixel 460:8:40 --pixel 470:64:240 --pixel 470:20:240 --pixel 480:20:240 --pixel 484:20:240 --pixel 150:8:40 --pixel 150:1278:958 --peek 0x300014 \
@@ -1063,7 +1067,7 @@ for api in OpenGL Vulkan; do
   o=; [ "$api" = Vulkan ] && o="--vulkan --opt xemu_renderer=vulkan"
   for scale in 1 2 4; do
     set +e
-    timeout 300 $h "$(path "$core")" "$(path "$work/sysg")" $vp $o \
+    timeout 300 $h "$(path "$core")" "$(path "$work/sysg")" $gpu $o \
       --opt xemu_memory=64 --opt xemu_surface_scale=$scale --frames 1480 --strict \
       --pixel 690 --pixel 710 --pixel 730 --pixel 750 \
       --pixel 770 --pixel 790 --pixel 810 \
@@ -1104,7 +1108,7 @@ done
 
 # A retired GPU-only source must survive a snapshot before its CPU reader.
 set +e
-timeout 300 $h "$(path "$core")" "$(path "$work/sysg")" $vp \
+timeout 300 $h "$(path "$core")" "$(path "$work/sysg")" $gpu \
   --vulkan --opt xemu_renderer=vulkan --opt xemu_memory=64 \
   --opt xemu_surface_scale=1 --frames 1540 --strict --save 1447 --load 1470 \
   --verify-load --pixel 1530 --peek 0x300014 >"$work/gpu_expired_state.txt"
@@ -1121,7 +1125,7 @@ fi
 for api in OpenGL Vulkan; do
   o=; [ "$api" = Vulkan ] && o="--vulkan --opt xemu_renderer=vulkan"
 set +e
-timeout 300 $h "$(path "$core")" "$(path "$work/sysg")" $vp $o \
+timeout 300 $h "$(path "$core")" "$(path "$work/sysg")" $gpu $o \
   --frames 820 --strict --save 705 --load 785 \
   --verify-load --pixel 710 --pixel 770 --pixel 790 --pixel 810 \
   >"$work/gpu_texture_alias_state.txt"
@@ -1141,7 +1145,7 @@ done
 # A 4x capture exceeds the old fixed 1920x1080 readback allocation. A
 # timing-only run at the same size must not allocate capture buffers at all.
 set +e
-timeout 300 $h "$(path "$core")" "$(path "$work/sysg")" $vp --vulkan \
+timeout 300 $h "$(path "$core")" "$(path "$work/sysg")" $gpu --vulkan \
   --opt xemu_renderer=vulkan --opt xemu_surface_scale=4 --frames 150 --strict \
   --pixel 130:1280:400 >"$work/gpu_4x_capture.txt"
 r=$?
@@ -1149,7 +1153,7 @@ set -e
 if [ "$r" = 0 ]; then
   grep -q '^pixel_130_1280_400=0xff0000$' "$work/gpu_4x_capture.txt"
   grep -q '^vulkan_readback_allocations=3 max_bytes=19660800$' "$work/gpu_4x_capture.txt"
-  timeout 300 $h "$(path "$core")" "$(path "$work/sysg")" $vp --vulkan \
+  timeout 300 $h "$(path "$core")" "$(path "$work/sysg")" $gpu --vulkan \
     --opt xemu_renderer=vulkan --opt xemu_surface_scale=4 --frames 40 --strict \
     --stutter >"$work/gpu_4x_timing.txt"
   grep -q '^vulkan_readback_allocations=0 max_bytes=0$' "$work/gpu_4x_timing.txt"
@@ -1159,7 +1163,7 @@ fi
 
 # A copied RGB565 texture outlives five-frame source expiry, then changes sampler.
 set +e
-timeout 300 $h "$core" "$work/sysg" $vp --vulkan --opt xemu_renderer=vulkan \
+timeout 300 $h "$core" "$work/sysg" $gpu --vulkan --opt xemu_renderer=vulkan \
   --opt xemu_memory=64 --opt xemu_surface_scale=1 --frames 1780 --strict \
   --pixel 1670 --pixel 1710 --pixel 1770 --peek 0x300044 >"$work/gpu_copied_source.txt"
 r=$?
@@ -1177,7 +1181,7 @@ fi
 
 # GPU cube updates preserve unchanged faces across redraws and sampler changes.
 set +e
-timeout 300 $h "$core" "$work/sysg" $vp --vulkan --opt xemu_renderer=vulkan \
+timeout 300 $h "$core" "$work/sysg" $gpu --vulkan --opt xemu_renderer=vulkan \
   --opt xemu_memory=64 --opt xemu_surface_scale=1 --frames 1920 --strict \
   --pixel 1810 --pixel 1830 --pixel 1842 --pixel 1850 --pixel 1870 --pixel 1910 \
   --peek 0x300048 --peek 0x30004c \
@@ -1202,7 +1206,7 @@ fi
 
 # D16 and D24 GPU depth copies survive filter changes and later CPU reads.
 set +e
-timeout 300 $h "$core" "$work/sysg" $vp --vulkan --opt xemu_renderer=vulkan \
+timeout 300 $h "$core" "$work/sysg" $gpu --vulkan --opt xemu_renderer=vulkan \
   --opt xemu_memory=64 --opt xemu_surface_scale=2 --frames 2240 --strict \
   --pixel 1970 --pixel 2010 --pixel 2070 --pixel 2130 --pixel 2170 --pixel 2230 \
   --peek 0x300060 --peek 0x300064 >"$work/gpu_depth_source.txt"
@@ -1223,7 +1227,7 @@ fi
 
 # A retired GPU depth snapshot becomes RAM data, then CPU/GPU rewrite it.
 set +e
-timeout 300 $h "$core" "$work/sysg" $vp --vulkan --opt xemu_renderer=vulkan \
+timeout 300 $h "$core" "$work/sysg" $gpu --vulkan --opt xemu_renderer=vulkan \
   --opt xemu_memory=64 --opt xemu_surface_scale=2 --frames 2420 --strict \
   --pixel 2290 --pixel 2330 --pixel 2350 --pixel 2370 --pixel 2410 \
   --peek 0x300068 --peek 0x30006c >"$work/gpu_depth_transition.txt"
@@ -1249,7 +1253,7 @@ for cube_api in gl vk; do
     cube_api_args="--vulkan --opt xemu_renderer=vulkan"
   fi
   set +e
-  timeout 300 $h "$core" "$work/sysg" $vp $cube_api_args \
+  timeout 300 $h "$core" "$work/sysg" $gpu $cube_api_args \
     --opt xemu_memory=64 --opt xemu_surface_scale=1 --frames 2660 --strict \
     --pixel 2490 --pixel 2530 --pixel 2550 --pixel 2570 --pixel 2590 \
     --pixel 2610 --pixel 2650 --peek 0x300070 --peek 0x300074 --peek 0x300078 \
@@ -1273,7 +1277,7 @@ done
 
 # One GPU cube face combined with RAM faces; subsequent CPU and GPU edits.
 set +e
-timeout 300 $h "$core" "$work/sysg" $vp --vulkan --opt xemu_renderer=vulkan \
+timeout 300 $h "$core" "$work/sysg" $gpu --vulkan --opt xemu_renderer=vulkan \
   --opt xemu_memory=64 --opt xemu_surface_scale=1 --frames 2840 --strict \
   --pixel 2730 --pixel 2742 --pixel 2750 --pixel 2770 --pixel 2790 --pixel 2830 \
   --peek 0x30007c --peek 0x300080 --peek 0x300084 >"$work/gpu_mixed_cube.txt"
@@ -1306,7 +1310,7 @@ for quality_api in vk gl; do
     for quality_scale in $quality_scales; do
       quality_log="$work/gpu-quality-$quality_api-$quality_option-$quality_scale.txt"
       set +e
-      timeout 300 $h "$core" "$work/sysg" $vp $quality_args \
+      timeout 300 $h "$core" "$work/sysg" $gpu $quality_args \
         --opt xemu_memory=64 --opt xemu_surface_scale=$quality_scale \
         --opt xemu_force_texture_lod0=$quality_option \
         --opt xemu_force_quality_filtering=$quality_option --frames 4440 --strict \
@@ -1359,7 +1363,7 @@ for independent_api in vk gl; do
     [ "$independent_lod" = disabled ] || independent_af=disabled
     independent_log="$work/gpu-quality-independent-$independent_api-$independent_lod.txt"
     set +e
-    timeout 300 $h "$core" "$work/sysg" $vp $independent_args \
+    timeout 300 $h "$core" "$work/sysg" $gpu $independent_args \
       --opt xemu_memory=64 --opt xemu_surface_scale=2 --frames 4160 --strict \
       --opt xemu_force_texture_lod0=$independent_lod \
       --opt xemu_force_quality_filtering=$independent_af \
@@ -1392,7 +1396,7 @@ done
 # States serialize native guest RAM. Loading drops extra sub-native detail
 # until the game redraws; no stale high-resolution binding may survive it.
 set +e
-timeout 300 $h "$core" "$work/sysg" $vp --vulkan --opt xemu_renderer=vulkan \
+timeout 300 $h "$core" "$work/sysg" $gpu --vulkan --opt xemu_renderer=vulkan \
   --opt xemu_memory=64 --opt xemu_surface_scale=2 \
   --opt xemu_force_texture_lod0=enabled --frames 3960 --strict \
   --save 3825 --load 3870 --verify-load \
@@ -1412,7 +1416,7 @@ fi
 
 # Rebinding an exact live swizzled color view permits a full all-channel clear.
 set +e
-timeout 300 $h "$core" "$work/sysg" $vp --vulkan --opt xemu_renderer=vulkan \
+timeout 300 $h "$core" "$work/sysg" $gpu --vulkan --opt xemu_renderer=vulkan \
   --opt xemu_memory=64 --opt xemu_surface_scale=1 --frames 2900 --strict \
   --peek 0x300088 --peek 0x30008c --peek 0x300090 --peek 0x300094 \
   >"$work/gpu_swizzled_reclear.txt"
@@ -1436,7 +1440,7 @@ for clear_api in gl vk; do
     clear_api_args="--vulkan --opt xemu_renderer=vulkan"
   fi
   set +e
-  timeout 300 $h "$core" "$work/sysg" $vp $clear_api_args \
+  timeout 300 $h "$core" "$work/sysg" $gpu $clear_api_args \
     --opt xemu_memory=64 --opt xemu_surface_scale=1 --frames 3080 --strict \
     --pixel 2990 --pixel 3070 --peek 0x300098 --peek 0x30009c --peek 0x3000a0 \
     --peek 0x3000a4 --peek 0x3000a8 --peek 0x3000ac >"$work/gpu_partial_clear_$clear_api.txt"
@@ -1458,7 +1462,7 @@ done
 
 # Explicit FLIP_STALL exercises speculative PBO freshness across eviction/redraw.
 set +e
-timeout 300 $h "$core" "$work/sysg" $vp --opt xemu_renderer=opengl \
+timeout 300 $h "$core" "$work/sysg" $gpu --opt xemu_renderer=opengl \
   --opt xemu_memory=64 --opt xemu_surface_scale=1 --frames 3400 --strict \
   --peek 0x3000b0 --peek 0x3000b4 --peek 0x3000b8 --peek 0x3000bc \
   --peek 0x3000c0 --peek 0x3000c4 --peek 0x3000c8 >"$work/gpu_predownload.txt"
@@ -1485,7 +1489,7 @@ for lod_api in gl vk; do
   for lod_option in disabled enabled; do
     lod_file="$work/gpu-lod-$lod_api-$lod_option"
     set +e
-    timeout 300 $h "$(path "$core")" "$(path "$work/sysg")" $vp $lod_args \
+    timeout 300 $h "$(path "$core")" "$(path "$work/sysg")" $gpu $lod_args \
       --opt xemu_force_texture_lod0=$lod_option --frames 3675 --strict \
       --save 3520 --load 3620 --verify-load --state-out "$(path "$lod_file.state")" \
       --pixel 3450 --pixel 3510 --pixel 3570 --pixel 3625 --pixel 3670 >"$lod_file.txt"
@@ -1510,7 +1514,7 @@ for lod_api in gl vk; do
       lod_saved=enabled; lod_wants="pixel_3=0x00ff00 pixel_60=0x0000ff"
     fi
     lod_file="$work/gpu-lod-$lod_api-$lod_saved-to-$lod_option"
-    timeout 300 $h "$(path "$core")" "$(path "$work/sysg")" $vp $lod_args \
+    timeout 300 $h "$(path "$core")" "$(path "$work/sysg")" $gpu $lod_args \
       --opt xemu_force_texture_lod0=$lod_option --frames 80 --load 1 --verify-load \
       --state-in "$(path "$work/gpu-lod-$lod_api-$lod_saved.state")" \
       --pixel 3 --pixel 60 >"$lod_file.txt"
@@ -1530,10 +1534,10 @@ for r in OpenGL Vulkan; do
     o=; [ $r = Vulkan ] && o="--vulkan --opt xemu_renderer=vulkan"
     echo "== surfaces saved from the GPU, $r"
     set +e
-    timeout 300 $h "$(path "$core")" "$(path "$work/sysg")" $vp $o --frames 66 \
+    timeout 300 $h "$(path "$core")" "$(path "$work/sysg")" $gpu $o --frames 66 \
       --save 64 --state-out "$(path "$work/gpu.state")" >/dev/null
     a=$?
-    timeout 300 $h "$(path "$core")" "$(path "$work/sysg")" $vp $o --frames 20 \
+    timeout 300 $h "$(path "$core")" "$(path "$work/sysg")" $gpu $o --frames 20 \
       --load 1 --state-in "$(path "$work/gpu.state")" --peek 0x30002c \
       --peek 0x300030 >"$work/gpu_state.txt"
     b=$?
@@ -1553,7 +1557,7 @@ for r in OpenGL Vulkan; do
     o=; [ $r = Vulkan ] && o="--vulkan --opt xemu_renderer=vulkan"
     echo "== offset composition after a state load, $r"
     set +e
-    timeout 300 $h "$(path "$core")" "$(path "$work/sysg")" $vp $o --frames 400 \
+    timeout 300 $h "$(path "$core")" "$(path "$work/sysg")" $gpu $o --frames 400 \
       --save 240 --load 390 --verify-load --state-out "$(path "$work/scanout.state")" \
       --pixel 395:320:120 --pixel 395:320:350 >"$work/scanout_state.txt"
     a=$?

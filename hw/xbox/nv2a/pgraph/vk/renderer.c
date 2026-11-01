@@ -101,6 +101,7 @@ static void pgraph_vk_finalize(NV2AState *d)
     pgraph_vk_finalize_surfaces(pg);
     pgraph_vk_finalize_buffers(d);
     pgraph_vk_finalize_command_buffers(pg);
+    pg->host_flip_pending = false;
     pgraph_vk_image_pool_flush(pg->vk_renderer_state);
     pgraph_vk_finalize_instance(pg);
 
@@ -178,6 +179,25 @@ static void pgraph_vk_process_pending(NV2AState *d)
     }
 }
 
+/* A flip rotates to the next command slot before any new method is accepted.
+ * Retire that slot from the owner dispatch instead of waiting in draw setup.
+ * Mid-method resource exhaustion retains its existing separate policy. */
+static bool pgraph_vk_flip_stall_ready(NV2AState *d)
+{
+    PGRAPHState *pg = &d->pgraph;
+    PGRAPHVkState *r = pg->vk_renderer_state;
+    if (r->slot_fence_pending[r->slot]) {
+        VkResult status = vkGetFenceStatus(r->device, r->slot_fence[r->slot]);
+        if (status == VK_NOT_READY) {
+            return false;
+        }
+        VK_CHECK(status);
+        r->slot_fence_pending[r->slot] = false;
+        pgraph_vk_slot_retired(pg, r->slot);
+    }
+    return true;
+}
+
 static void pgraph_vk_flip_stall(NV2AState *d)
 {
     /* The frame's recording is submitted and runs on: the GPU is not
@@ -205,6 +225,11 @@ static void pgraph_vk_flip_stall(NV2AState *d)
     if (++flips % 600 == 0) {
         pgraph_vk_save_pipeline_cache(&d->pgraph, false);
     }
+    /* settle_poll above already checked the slot fences. Do not poll twice
+     * here or start the next method while its recording storage is busy. */
+    d->pgraph.host_flip_pending =
+        d->pgraph.vk_renderer_state->slot_fence_pending[
+            d->pgraph.vk_renderer_state->slot];
 }
 
 static void pgraph_vk_pre_savevm_trigger(NV2AState *d)
@@ -420,6 +445,7 @@ static PGRAPHRenderer pgraph_vk_renderer = {
         .draw_begin = pgraph_vk_draw_begin,
         .draw_end = pgraph_vk_draw_end,
         .flip_stall = pgraph_vk_flip_stall,
+        .flip_stall_ready = pgraph_vk_flip_stall_ready,
         .flush_draw = pgraph_vk_flush_draw,
         .get_report = pgraph_vk_get_report,
         .image_blit = pgraph_vk_image_blit,

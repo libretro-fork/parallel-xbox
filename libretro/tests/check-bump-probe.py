@@ -194,7 +194,7 @@ def read_log(path):
             raise ValueError(f"duplicate result address in {path}: {address:#x}")
         values[address] = int(value, 16)
     if values.get(0x300100) != 192:
-        raise ValueError(f"incomplete probe: {path}")
+        raise ValueError(f"incomplete probe: {path}: completed={values.get(0x300100)!r}, expected=192")
     return values
 
 

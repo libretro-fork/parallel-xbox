@@ -2186,3 +2186,29 @@ need no game, BIOS or GPU. Game captures and throughput still need live
 testing; passing these fixtures is not a claim of a universal latency gain.
 
 `test-vk-ready-order.py CHECKOUT [CC]` extracts production ready-cache push, lookup, take and clear logic. A FIFO reference checks 52,317 states, 35,541 module lifetimes and 414 window compactions, including collisions, repeated keys, free-slot permutation, exact reference transfer and clear/reuse. Full-cache compaction occurs once per 32 evictions, not every eviction: index-move traffic averages 96 rather than 3,068 bytes per eviction, excluding the unchanged module record assignment. Static headroom is 32 indices plus a pointer (136 bytes on Win64); capacity stays 768. A circular prototype was rejected for lookup regressions. VK_READY_SOURCE supports a parent source; VK_READY_CFLAGS, VK_READY_BINARY and VK_READY_SKIP_RUN support native fixtures. -DBENCH enables isolated bookkeeping timing with compact synthetic keys and a reference stub; modes cover overflow push, miss and take/refill at base and displaced windows. These are not shader compilation or game FPS measurements.
+
+### Vulkan flip command-slot retirement
+
+`test-vk-flip-retirement.py CHECKOUT [CC]` extracts the production Vulkan flip,
+readiness callback and shared owner continuation. It checks 2,176 schedules
+covering both slots, rotation enabled/disabled, empty flips, cost-mode settlement,
+busy/ready fences, deferred deadline billing and maintenance that settles a slot
+before its next poll. Busy attempts make exactly one status probe, retain FIFO
+backpressure and leave the other slot untouched; successful retirement happens
+once. The flip uses its existing settle probes without adding another probe.
+Linux defaults to ASan/UBSan; `VK_FLIP_CFLAGS`, `VK_FLIP_BINARY` and
+`VK_FLIP_SKIP_RUN` support native fixtures.
+
+The runtime flag and owner hook introduced for GL now also defer subsequent
+Vulkan methods while the command slot selected after a flip is busy. Independent
+display submissions keep their existing bounded ownership rules. No new buffers,
+PSOs, copies, locks or frame queue are introduced. Mid-method slot exhaustion,
+demand readbacks, cost-mode synchronous finishes and lifecycle drains still have
+their existing waits. Renderer teardown clears the owner flag after command
+resources have settled; the flag is runtime-only and is not migrated.
+
+Win64 layout checks leave PGRAPHState at 4,295,312 bytes, PGRAPHVkState at
+5,845,216 bytes and PGRAPHRenderer at 232 bytes. The flip and finalize handlers
+retain their previous 64-byte stack frames; the readiness callback also uses
+64 bytes (ABI register saves and outgoing-call space). No hardware cache-miss
+or game-latency improvement is established by these code-generation checks.
