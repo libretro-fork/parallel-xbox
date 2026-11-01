@@ -16,13 +16,15 @@ def main():
     for name in ("checkout", "parent", "candidate", "harness", "scratch"):
         parser.add_argument(name, type=Path)
     parser.add_argument("--assembler", default="nasm")
+    parser.add_argument("--linear-layout", action="store_true",
+                        help="exercise linear G8B8; multi-level controls stay swizzled")
     parser.add_argument("--custom-border-colors", action="store_true",
                         help="requires the existing Vulkan custom-border-color capability")
     args = parser.parse_args()
     here = args.checkout.resolve() / "libretro/tests"
     read_log = runpy.run_path(str(here / "check-bump-probe.py"))["read_log"]
     args.scratch.mkdir(parents=True, exist_ok=True)
-    root = Path(tempfile.mkdtemp(prefix="g8b8-single-", dir=args.scratch.resolve()))
+    root = Path(tempfile.mkdtemp(prefix="g8b8-linear-" if args.linear_layout else "g8b8-single-", dir=args.scratch.resolve()))
     env = dict(os.environ)
     env.setdefault("EGL_PLATFORM", "surfaceless")
 
@@ -35,6 +37,8 @@ def main():
             command.append("--prime-address")
         if single:
             command.append("--single-level")
+            if args.linear_layout:
+                command.append("--linear-level")
         if mixed:
             command.append("--mip-mixed")
         if guest:
@@ -119,6 +123,14 @@ def main():
                                u, v, filter, single=False, guest=guest)
                 compare(output, not guest)
                 controls += 192
+    if args.linear_layout:
+        for force in (False, True):
+            output = root / f"existing-nonmip-{force}"
+            subprocess.run([sys.executable, str(here / "build-bump-probe.py"), str(output),
+                            "--assembler", args.assembler, "--mixed", "--lod-bias", "0.25"],
+                           check=True)
+            compare(output, force)
+            controls += 192
     print(f"PASS: {scalar} single-level scalar cases and {controls} exact parent pixels "
           f"per renderer; logs in {root}")
 
