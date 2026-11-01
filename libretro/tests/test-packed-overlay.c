@@ -41,7 +41,7 @@ static void run_case(GLuint program,unsigned w,unsigned h,unsigned pad,unsigned 
  glBindTexture(GL_TEXTURE_2D,texture);glTexImage2D(GL_TEXTURE_2D,0,GL_RGBA8,w+1,h+1,0,GL_RGBA,GL_UNSIGNED_BYTE,actual);
  glBindImageTexture(1,texture,0,GL_FALSE,0,GL_WRITE_ONLY,GL_RGBA8);
  uint32_t push[]={4,0,w,h};glBindBuffer(GL_UNIFORM_BUFFER,buffers[1]);glBufferData(GL_UNIFORM_BUFFER,sizeof(push),push,GL_STATIC_DRAW);glBindBufferBase(GL_UNIFORM_BUFFER,2,buffers[1]);
- glUseProgram(program);glDispatchCompute(((size_t)w*h+63)/64,1,1);glMemoryBarrier(GL_TEXTURE_UPDATE_BARRIER_BIT);
+ glUseProgram(program);glDispatchCompute((((size_t)(w+1)/2)*h+63)/64,1,1);glMemoryBarrier(GL_TEXTURE_UPDATE_BARRIER_BIT);
  glGetTexImage(GL_TEXTURE_2D,0,GL_RGBA,GL_UNSIGNED_BYTE,actual);
  for(unsigned y=0;y<=h;y++)for(unsigned x=0;x<=w;x++)for(unsigned c=0;c<4;c++){
   uint8_t want=x<w&&y<h?rgba[(y*w+x)*4+c]:0xAB;

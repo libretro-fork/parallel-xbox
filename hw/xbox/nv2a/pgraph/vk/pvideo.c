@@ -15,7 +15,7 @@ static void pvideo_pack_rows(uint8_t *dst, const uint8_t *src,
     }
 }
 
-/* One invocation per logical pixel, preserving the old integer conversion.
+/* One invocation per YUY2 pair shares its read and chroma arithmetic.
  * The packed snapshot belongs to this auxiliary slot until its fence retires. */
 static const char *pvideo_convert_glsl =
     "#version 450\n"
@@ -25,16 +25,28 @@ static const char *pvideo_convert_glsl =
     "layout(push_constant, std430) uniform Args { uint src; uint dst; uint width; uint height; };\n"
     "void main() {\n"
     "    uint i = gl_GlobalInvocationID.x;\n"
-    "    if (i >= width * height) return;\n"
-    "    uint x = i % width;\n"
-    "    uint pair = yuy2[src + (i / width) * ((width + 1u) / 2u) + x / 2u];\n"
-    "    int c = int((pair >> ((x & 1u) * 16u)) & 255u) - 16;\n"
+    "    uint pairs = (width + 1u) / 2u;\n"
+    "    if (i >= pairs * height) return;\n"
+    "    uint x = (i % pairs) * 2u;\n"
+    "    uint y = i / pairs;\n"
+    "    uint pair = yuy2[src + i];\n"
     "    int d = int((pair >> 8u) & 255u) - 128;\n"
     "    int e = int(pair >> 24u) - 128;\n"
-    "    int r = clamp((298 * c + 409 * e + 128) >> 8, 0, 255);\n"
-    "    int g = clamp((298 * c - 100 * d - 208 * e + 128) >> 8, 0, 255);\n"
-    "    int b = clamp((298 * c + 516 * d + 128) >> 8, 0, 255);\n"
-    "    imageStore(rgba, ivec2(x, i / width), vec4(r, g, b, 255) / 255.0);\n"
+    "    int cr = 409 * e + 128;\n"
+    "    int cg = -100 * d - 208 * e + 128;\n"
+    "    int cb = 516 * d + 128;\n"
+    "    int c = 298 * (int(pair & 255u) - 16);\n"
+    "    int r = clamp((c + cr) >> 8, 0, 255);\n"
+    "    int g = clamp((c + cg) >> 8, 0, 255);\n"
+    "    int b = clamp((c + cb) >> 8, 0, 255);\n"
+    "    imageStore(rgba, ivec2(x, y), vec4(r, g, b, 255) / 255.0);\n"
+    "    if (x + 1u < width) {\n"
+    "        c = 298 * (int((pair >> 16u) & 255u) - 16);\n"
+    "        r = clamp((c + cr) >> 8, 0, 255);\n"
+    "        g = clamp((c + cg) >> 8, 0, 255);\n"
+    "        b = clamp((c + cb) >> 8, 0, 255);\n"
+    "        imageStore(rgba, ivec2(x + 1u, y), vec4(r, g, b, 255) / 255.0);\n"
+    "    }\n"
     "}\n";
 
 static void pvideo_convert_bind_source(PGRAPHVkState *r)
@@ -134,9 +146,10 @@ bool pgraph_vk_pvideo_convert(PGRAPHState *pg, VkCommandBuffer cmd,
     PGRAPHVkState *r = pg->vk_renderer_state;
     size_t pixels = (size_t)width * height;
     size_t packed_size = ((size_t)width + 1) / 2 * height * 4;
+    size_t pairs = packed_size / 4;
     VkDeviceSize limit = r->device_props.limits.maxStorageBufferRange;
     if (!r->display.pvideo.storage || !pixels || pixels > UINT32_MAX / 4 ||
-        DIV_ROUND_UP(pixels, 64) > r->device_props.limits.maxComputeWorkGroupCount[0] ||
+        DIV_ROUND_UP(pairs, 64) > r->device_props.limits.maxComputeWorkGroupCount[0] ||
         r->storage_buffers[BUFFER_STAGING_SRC].buffer_size > limit ||
         packed_size >= r->storage_buffers[BUFFER_STAGING_SRC].buffer_size) {
         return false;
@@ -175,7 +188,7 @@ bool pgraph_vk_pvideo_convert(PGRAPHState *pg, VkCommandBuffer cmd,
     vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, c->layout,
                             0, 1, &c->sets[r->aux_slot], 0, NULL);
     vkCmdPushConstants(cmd, c->layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(push), push);
-    vkCmdDispatch(cmd, DIV_ROUND_UP(pixels, 64), 1, 1);
+    vkCmdDispatch(cmd, DIV_ROUND_UP(pairs, 64), 1, 1);
     image.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
     image.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
     image.oldLayout = VK_IMAGE_LAYOUT_GENERAL;

@@ -78,6 +78,13 @@ static VkShaderModule pgraph_vk_create_fixed_shader_module_from_glsl(PGRAPHVkSta
  VkShaderModule module;CHECK(vkCreateShaderModule(r->device,&ci,NULL,&module));free(result.words);return module;
 }
 
+static unsigned dispatch_expected, dispatch_calls;
+static void tracked_dispatch(VkCommandBuffer cmd, uint32_t x, uint32_t y, uint32_t z)
+{
+ assert(x==dispatch_expected && y==1 && z==1);dispatch_calls++;
+ vkCmdDispatch(cmd,x,y,z);
+}
+#define vkCmdDispatch tracked_dispatch
 /* PRODUCTION */
 /* REFERENCE */
 int main(void)
@@ -91,7 +98,15 @@ int main(void)
     VkInstanceCreateInfo ci = { .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
         .pNext = &validation_features, .pApplicationInfo = &app, .enabledLayerCount = 1,
         .ppEnabledLayerNames = layers, .enabledExtensionCount = 2, .ppEnabledExtensionNames = extensions };
-    VkInstance instance; CHECK(vkCreateInstance(&ci, NULL, &instance));
+    VkInstance instance; bool validation_enabled=true;
+    VkResult instance_result=vkCreateInstance(&ci,NULL,&instance);
+#ifdef OVERLAY_ALLOW_NO_VALIDATION
+    if(instance_result==VK_ERROR_LAYER_NOT_PRESENT || instance_result==VK_ERROR_EXTENSION_NOT_PRESENT) {
+        ci.pNext=NULL;ci.enabledLayerCount=0;ci.enabledExtensionCount=1;
+        validation_enabled=false;instance_result=vkCreateInstance(&ci,NULL,&instance);
+    }
+#endif
+    CHECK(instance_result);
     PFN_vkCreateDebugUtilsMessengerEXT create = (void *)vkGetInstanceProcAddr(instance, "vkCreateDebugUtilsMessengerEXT");
     PFN_vkDestroyDebugUtilsMessengerEXT destroy = (void *)vkGetInstanceProcAddr(instance, "vkDestroyDebugUtilsMessengerEXT");
     VkDebugUtilsMessengerCreateInfoEXT mi = { .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
@@ -140,8 +155,13 @@ int main(void)
   VkDeviceMemory image_memory;CHECK(vkAllocateMemory(device,&allocate,NULL,&image_memory));CHECK(vkBindImageMemory(device,r.display.pvideo.image,image_memory,0));
   VkImageViewCreateInfo view={.sType=VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,.image=r.display.pvideo.image,.viewType=VK_IMAGE_VIEW_TYPE_2D,.format=VK_FORMAT_R8G8B8A8_UNORM,.subresourceRange={VK_IMAGE_ASPECT_COLOR_BIT,0,1,0,1}};
   CHECK(vkCreateImageView(device,&view,NULL,&r.display.pvideo.image_view));r.display.pvideo.storage=true;
+  dispatch_expected=DIV_ROUND_UP(((w+1)/2)*h,64);unsigned before_dispatch=dispatch_calls;
+  /* Exactly enough groups for pairs; a pixel-based preflight would reject. */
+  r.device_props.limits.maxComputeWorkGroupCount[0]=dispatch_expected;
   assert(pgraph_vk_pvideo_convert(&pg,cmd,guest,w,h,pitch,true));
   assert(pgraph_vk_pvideo_convert(&pg,cmd,guest,w,h,pitch,false));
+  assert(dispatch_calls==before_dispatch+2);
+  r.device_props.limits.maxComputeWorkGroupCount[0]=properties.limits.maxComputeWorkGroupCount[0];
   assert(pg.written==2*(size_t)((w+1)/2)*h*4);
   /* Guest mutations after snapshotting must not affect the pending reads. */
   memset(guest,0xE5,(size_t)pitch*h);
@@ -164,7 +184,8 @@ int main(void)
  pg.written=0;r.display.pvideo.storage=false;assert(!pgraph_vk_pvideo_convert(&pg,cmd,NULL,64,64,128,true));assert(!pg.written);r.display.pvideo.storage=true;
  r.device_props.limits.maxStorageBufferRange=1024;assert(!pgraph_vk_pvideo_convert(&pg,cmd,NULL,64,64,128,true));assert(!pg.written);r.device_props=properties;
  assert(!pgraph_vk_pvideo_convert(&pg,cmd,NULL,0,1,0,true));assert(!pg.written);
+ r.device_props.limits.maxComputeWorkGroupCount[0]=0;assert(!pgraph_vk_pvideo_convert(&pg,cmd,NULL,64,64,128,true));assert(!pg.written);r.device_props=properties;
  pgraph_vk_pvideo_finalize(&pg);assert(!r.display.pvideo.convert.pipeline);
  drop_buffer(src);drop_buffer(dst);vkDestroyCommandPool(device,pool,NULL);vkDestroyDevice(device,NULL);destroy(instance,messenger,NULL);vkDestroyInstance(instance,NULL);
- printf("%u production conversion/descriptor/barrier cases, %zu pixels byte-exact; fallback preflight PASS; validation_errors=%u\n",cases,checked,errors);return errors?1:0;
+ printf("%u production conversion/descriptor/barrier cases, %zu pixels byte-exact; fallback preflight PASS; validation_errors=%u validation_enabled=%u\n",cases,checked,errors,validation_enabled);return errors?1:0;
 }

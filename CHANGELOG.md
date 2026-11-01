@@ -1,5 +1,7 @@
 # Changelog of the libretro core
 
+- Convert Vulkan YUY2 video overlays one pixel pair per compute invocation, sharing packed reads and chroma arithmetic. Preserve integer color output, odd final pixels, captured staging snapshots and CPU fallback.
+
 - Assemble Chihiro JVS replies directly into the caller buffer, removing the intermediate framed-response buffer and copy. Truncated prefixes, checksums, escaping ownership and command side effects are preserved.
 
 - Initialize only the optional second-page pointer when preparing x86 block accesses instead of clearing metadata that is immediately overwritten. Preserve probing/coalescing and avoid adjacency arithmetic on a null first mapping.
