@@ -117,7 +117,7 @@ static bool seed_walk(const uint8_t *buf, size_t len,
 struct SeedFind {
     int section;
     size_t itemsize;
-    void *items;
+    const void *items;
     unsigned count;
 };
 
@@ -129,18 +129,26 @@ static bool seed_find_visit(const SeedSection *sec, const uint8_t *items,
         sec->count == 0) {
         return true;
     }
-    f->items = g_memdup2(items, (size_t)sec->itemsize * sec->count);
+    f->items = items;
     f->count = sec->count;
     return false;
 }
 
-static void *seed_find(const uint8_t *buf, size_t len, int section,
-                       size_t itemsize, unsigned *count)
+/* Borrowed until the input mapping or decompression buffer is released. */
+static const void *seed_find_view(const uint8_t *buf, size_t len, int section,
+                                 size_t itemsize, unsigned *count)
 {
     struct SeedFind f = { .section = section, .itemsize = itemsize };
     seed_walk(buf, len, seed_find_visit, &f);
     *count = f.count;
     return f.items;
+}
+
+static void *seed_find(const uint8_t *buf, size_t len, int section,
+                       size_t itemsize, unsigned *count)
+{
+    const void *items = seed_find_view(buf, len, section, itemsize, count);
+    return items ? g_memdup2(items, itemsize * *count) : NULL;
 }
 
 void *pgraph_seed_read(int section, size_t itemsize, unsigned *count)
@@ -302,7 +310,13 @@ unsigned pgraph_seed_merge(int section, size_t itemsize, const void *items,
                            unsigned count, unsigned cap, unsigned *total)
 {
     unsigned n_disk = 0;
-    uint8_t *disk = pgraph_seed_read(section, itemsize, &n_disk);
+    char *path = seed_path();
+    XemuFileMap mapping;
+    bool mapped = path && xemu_file_map(&mapping, path);
+    const uint8_t *disk = mapped ?
+        seed_find_view(mapping.data, mapping.len, section, itemsize, &n_disk) :
+        NULL;
+    g_free(path);
     GHashTable *seen = pgraph_seed_hash_set_new();
     GByteArray *out = g_byte_array_new();
     unsigned n = 0, added = 0;
@@ -322,12 +336,16 @@ unsigned pgraph_seed_merge(int section, size_t itemsize, const void *items,
             added++;
         }
     }
+    /* No borrowed record survives the merge. Release the file mapping before
+     * rewriting the seed file, including on Windows. */
+    if (mapped) {
+        xemu_file_unmap(&mapping);
+    }
     if (added && !pgraph_seed_write(section, itemsize, out->data, n)) {
         added = 0;
     }
     *total = n;
     g_byte_array_free(out, TRUE);
     g_hash_table_destroy(seen);
-    g_free(disk);
     return added;
 }

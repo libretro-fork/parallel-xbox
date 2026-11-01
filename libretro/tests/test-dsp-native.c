@@ -110,6 +110,14 @@ static void prepare(Machine *m, uint32_t op, uint32_t ext, unsigned seed,
     if (seed & 0x1000000) {
         c->registers[DSP_REG_SR] |= 1u << DSP_SR_FV;
     }
+    if (seed & 0x20000000) {
+        c->registers[DSP_REG_SR] &= ~(1u << DSP_SR_LF);
+    }
+    if (seed & 0x10000000) {
+        c->registers[DSP_REG_SR] |= 1u << DSP_SR_LF;
+        c->registers[DSP_REG_LA] = ext - 1;
+        c->registers[DSP_REG_LC] = seed & 1 ? 1 : 2;
+    }
     if (seed & 0x40000) {
         DspDecoded decoded;
         dsp56k_decode(c, 0, &decoded);
@@ -132,14 +140,20 @@ static void check(Machine *a, Machine *b, uint32_t op, uint32_t ext,
     prepare(a, op, ext, seed, mode, long_irq);
     prepare(b, op, ext, seed, mode, long_irq);
     dsp_core_t *ca = a->dsp->backend;
+    uint64_t reads_before = peripheral_read_count;
     a->dsp->ops->step(a->dsp);
+    uint64_t reads_a = peripheral_read_count - reads_before;
     ca->cycle_count += ca->instr_cycle;
     dspjit_test_reset_fallback_count();
+    reads_before = peripheral_read_count;
     b->dsp->ops->run(b->dsp, 1);
-    if (dspjit_test_fallback_count() || compare_machines(a, b)) {
+    uint64_t reads_b = peripheral_read_count - reads_before;
+    if (dspjit_test_fallback_count() || reads_a != reads_b || compare_machines(a, b)) {
         fprintf(stderr, "native DSP case %u: op=%06x ext=%x seed=%u mode=%u irq=%d fallbacks=%llu\n",
                 cases, op, ext, seed, mode, long_irq,
                 (unsigned long long)dspjit_test_fallback_count());
+        fprintf(stderr, "peripheral reads: interpreter=%llu jit=%llu\n",
+                (unsigned long long)reads_a, (unsigned long long)reads_b);
         exit(1);
     }
     cases++;
@@ -660,8 +674,61 @@ static void check_loop_address_reload(Machine *a, Machine *b)
     }
 }
 
-int main(void)
+static void check_relative_branches(Machine *a, Machine *b, unsigned mode)
 {
+    static const uint32_t status[] = { 0, 0xFF, 2, 8, 0x10, 0x20, 0x40, 4 };
+    static const uint32_t profiles[] = { 0x20000000, 0x10000000, 0x40000 };
+    static const int offsets[] = { -256, -1, 0, 1, 2, 255 };
+    for (unsigned s = 0; s < ARRAY_SIZE(status); s++) {
+        for (unsigned p = 0; p < ARRAY_SIZE(profiles); p++) {
+            unsigned seed = 0x20000 | status[s] | profiles[p];
+            for (unsigned o = 0; o < ARRAY_SIZE(offsets); o++) {
+                uint32_t ext = offsets[o] & 0xFFFFFF;
+                uint32_t short_imm = (offsets[o] & 0x1F) | ((offsets[o] & 0x1E0) << 1);
+                check(a, b, 0x050C00 | short_imm, ext, seed, mode, false);
+                check(a, b, 0x0D10C0, ext, seed, mode, false);
+                for (unsigned cc = 0; cc < 16; cc++) {
+                    check(a, b, 0x050400 | (cc << 12) | short_imm, ext, seed, mode, false);
+                    check(a, b, 0x0D1040 | cc, ext, seed, mode, false);
+                }
+                for (unsigned irq = 0; irq < 2; irq++) {
+                    check(a, b, 0x050800 | short_imm, ext, seed, mode, irq);
+                    check(a, b, 0x0D1080, ext, seed, mode, irq);
+                    check(a, b, 0x050800 | short_imm, ext, seed | 0x80000, mode, irq);
+                    check(a, b, 0x0D1080, ext, seed | 0x80000, mode, irq);
+                }
+            }
+        }
+    }
+    static const unsigned regs[] = { DSP_REG_X0, DSP_REG_A, DSP_REG_B, DSP_REG_R0 };
+    for (unsigned p = 0; p < ARRAY_SIZE(profiles); p++) {
+        for (unsigned seed = 0; seed < 4; seed++) {
+            for (unsigned bit = 0; bit < 32; bit++) {
+                for (unsigned set = 0; set < 2; set++) {
+                    uint32_t low = (set << 5) | bit;
+                    unsigned input = seed | profiles[p];
+                    for (unsigned r = 0; r < ARRAY_SIZE(regs); r++) {
+                        check(a, b, 0x0CC080 | (regs[r] << 8) | low, 0x30, input, mode, false);
+                    }
+                    /* These peripherals are mapped in X space. */
+                    static const unsigned ports[] = { 0, 5, 0x14, 0x15 };
+                    for (unsigned port = 0; port < ARRAY_SIZE(ports); port++) {
+                        check(a, b, 0x0CC000 | (ports[port] << 8) | low,
+                              0x30, input, mode, false);
+                    }
+                }
+            }
+        }
+    }
+}
+
+int main(int argc, char **argv)
+{
+    bool relative_only = argc == 2 && !strcmp(argv[1], "--relative");
+    if (argc != 1 && !relative_only) {
+        fputs("usage: dspnative [--relative]\n", stderr);
+        return 2;
+    }
     Machine *a = machine_new(false), *b = machine_new(true);
     if (a->dsp->ops == b->dsp->ops) {
         fputs("native DSP test requires a JIT host\n", stderr);
@@ -673,6 +740,12 @@ int main(void)
 #ifdef _WIN32
     assert(initially_committed == (64u << 10));
 #endif
+    if (relative_only) {
+        for (unsigned mode = 0; mode < 4; mode++) {
+            check_relative_branches(a, b, mode);
+        }
+        goto done;
+    }
     check_macr_rounding(a, b);
     check_rotate_carry(a, b);
     check_max_transfer(a, b);
@@ -692,6 +765,7 @@ int main(void)
     }
     for (unsigned mode = 0; mode < 4; mode++) {
         /* Sweep every legal parallel ALU encoding. */
+        check_relative_branches(a, b, mode);
         for (unsigned cc = 0; cc < 16; cc++) {
             for (unsigned sr = 0; sr <= 0xFF; sr += 0xFF) {
                 unsigned input = 0xE0000 | sr;
@@ -824,6 +898,7 @@ int main(void)
     check_register_bits(a, b);
     check_call_chains(a, b);
     check_loop_cache_identity(a, b);
+done:
     assert(dspjit_test_mode_count(jit) == 8);
     assert(dspjit_test_committed_bytes(jit) >= initially_committed);
     assert(dspjit_test_committed_bytes(jit) <= (4u << 20));

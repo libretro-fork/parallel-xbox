@@ -1,6 +1,8 @@
 # Changelog of the libretro core
 
 - Remove obsolete intermediate conversion storage from GL and Vulkan swizzled-texture upload paths; retain direct palette/RGB655 expansion and linear YUV conversion.
+- Merge shader seeds directly from mapped records, removing the intermediate section allocation and copy while releasing the mapping before file replacement.
+
 - Remove temporary allocations and scratch copies when strings insert or append their own contents; preserve overlapping ranges and buffer growth.
 
 - Run the exact four-trip GPU-progress display oracle in deterministic mode so host scheduling delays cannot cause false failures; retain normal-mode deadline-accounting coverage.
@@ -54,6 +56,8 @@
 - Correct signed G8B8 filtering with constant-border addressing when matching filters are restricted to mip zero, including Force Texture LOD0. Reuse existing point/gather shaders and cache keys; retain full-mip and mixed-filter border exclusions.
 
 ## Unreleased
+
+- Keep relative conditional and bit-test branches native when they finish a DO loop; never repeat a completed peripheral read. Compile short BRA and use the native call path for both BSR forms, fixing an extra return-stack push during long-interrupt vectors. Add 48,768 relative-boundary cases and production-block/interpreter/budget-carry regressions.
 
 - Fix Ninja Gaiden Black cold-boot Vulkan image allocation failure. Reserve the boot-to-game render-target working set at startup (128 MiB at 1x/2x, 512 MiB at 4x, 2 GiB at 8x), without runtime heap growth or extra host-buffer padding. Replay the captured boot allocation lifetimes as a heap regression and report image requirements/pool occupancy on allocation failure.
 
