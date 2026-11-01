@@ -999,17 +999,25 @@ void tb_invalidate_phys_range(CPUState *cpu, tb_page_addr_t start,
                               tb_page_addr_t last)
 {
     struct page_collection pages;
-    tb_page_addr_t index, index_last;
+    tb_page_addr_t index_first = start >> TARGET_PAGE_BITS;
+    tb_page_addr_t index_last = last >> TARGET_PAGE_BITS;
 
     page_collection_lock(&pages, start, last);
 
-    index_last = last >> TARGET_PAGE_BITS;
-    for (index = start >> TARGET_PAGE_BITS; index <= index_last; index++) {
-        PageDesc *pd = page_find(index);
+    /* Collection already resolved and locked the descriptors in order.
+     * It may include other pages of intersecting TBs outside this range;
+     * those need their locks held, but are not invalidation targets here. */
+    for (unsigned i = 0; i < pages.n; i++) {
+        const struct page_entry *pe = &pages.entries[i];
+        tb_page_addr_t index = pe->index;
+        PageDesc *pd = pe->pd;
         tb_page_addr_t page_start, page_last;
 
-        if (pd == NULL) {
+        if (index < index_first) {
             continue;
+        }
+        if (index > index_last) {
+            break;
         }
         assert_page_locked(pd);
         page_start = index << TARGET_PAGE_BITS;

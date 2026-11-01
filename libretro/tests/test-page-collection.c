@@ -14,6 +14,8 @@
 #include <string.h>
 
 #define TARGET_PAGE_BITS 12
+#define TARGET_PAGE_MASK (~UINT64_C(4095))
+#define MIN(a, b) ((a) < (b) ? (a) : (b))
 #define NPAGES 96
 #define NTBS 160
 #define g_assert(x) assert(x)
@@ -23,6 +25,7 @@
 #define assert_page_locked(pd) assert((pd)->lock == 1)
 
 typedef uint64_t tb_page_addr_t;
+typedef struct { int unused; } CPUState;
 typedef struct PageDesc {
     int lock;
     uintptr_t first_tb;
@@ -98,6 +101,26 @@ static void *tracked_move(void *dest, const void *src, size_t size)
 }
 #define memmove tracked_move
 /* PRODUCTION */
+
+static bool range_want[NPAGES];
+static tb_page_addr_t range_next, range_last;
+static unsigned range_calls, range_finds;
+static void tb_invalidate_phys_page_range__locked(CPUState *cpu,
+    struct page_collection *pages, PageDesc *pd,
+    tb_page_addr_t first, tb_page_addr_t last, uintptr_t ra)
+{
+    assert(cpu && pages && !ra);
+    if (!range_calls) range_finds = finds;
+    assert(finds == range_finds); /* no descriptor lookups during invalidation */
+    while (range_next < NPAGES && !present[range_next]) range_next++;
+    assert(pd == &pds[range_next] && pd->lock);
+    assert(first == range_next << TARGET_PAGE_BITS);
+    assert(last == MIN(first | 4095, range_last));
+    for (unsigned i = 0; i < NPAGES; i++) assert(pds[i].lock == (int)range_want[i]);
+    range_next++;
+    range_calls++;
+}
+/* RANGE */
 
 /* pages and TBs at random: a TB on one page or two, its pages present */
 static void build(void)
@@ -177,6 +200,19 @@ static void check(tb_page_addr_t first, tb_page_addr_t last)
         assert(pds[i].lock == (int)want[i]);
     }
     page_collection_unlock(&set);
+    assert_no_pages_locked();
+
+    CPUState cpu = {0};
+    memcpy(range_want, want, sizeof(want));
+    range_next = first;
+    range_last = (last << TARGET_PAGE_BITS) | 127;
+    range_calls = 0;
+    busy_left = 0;
+    tb_invalidate_phys_range(&cpu, (first << TARGET_PAGE_BITS) | 63, range_last);
+    unsigned expected_calls = 0;
+    for (tb_page_addr_t i = first; i <= last; i++) expected_calls += present[i];
+    assert(range_calls == expected_calls);
+    if (range_calls) assert(finds == range_finds);
     assert_no_pages_locked();
 }
 

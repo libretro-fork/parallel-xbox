@@ -1,5 +1,7 @@
 # Changelog of the libretro core
 
+- Walk already-collected page descriptors during physical-range invalidation, avoiding a second page-table scan while keeping additional TB pages locked and outside the invalidation targets.
+
 - Reuse known invalidation-page descriptors and avoid recollecting the current locked page while visiting its translation blocks. Distinct physical pages, instruction offsets and sorted lock retries are preserved.
 
 - Avoid binary search for appended/repeated-tail invalidation pages and skip zero-length array moves. Out-of-order insertion and existing sorted page-lock retries are preserved.
