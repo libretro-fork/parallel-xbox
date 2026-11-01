@@ -1867,7 +1867,11 @@ enum {
     NP_MOVEP_EA,        /* movep [X or Y]:ea <-> [X or Y]:pp */
     NP_MOVEP_REG,
     NP_CMPU,
+    NP_TCC,
+    NP_MOVEC_REG,
 };
+
+static void emit_cc(Emitter *e, int cc);
 
 /* the AluOp of an NP_ALU_IMM instruction; whether it is one */
 static bool np_alu(const Insn *in, AluOp *a)
@@ -1921,6 +1925,19 @@ static int np_kind(const Insn *in)
     if (!strcmp(name, "nop")) {
         return NP_NOP;
     }
+    if (!strncmp(name, "tcc ", 4)) {
+        unsigned pair = (in->inst >> 3) & 15;
+        return pair < 2 || pair >= 8 ? NP_TCC : NP_NONE;
+    }
+    if (!strcmp(name, "movec R1, R2")) {
+        unsigned r1 = in->inst & 63, r2 = (in->inst >> 8) & 63;
+        unsigned src = in->inst & (1 << 15) ? r2 : r1;
+        unsigned dst = in->inst & (1 << 15) ? r1 : r2;
+        /* SR reads consume deferred arithmetic flags. SR writes and stack
+         * accesses retain their interpreter side effects and block exit. */
+        return (reg_supported(src) || src == DSP_REG_SR) && reg_supported(dst)
+               ? NP_MOVEC_REG : NP_NONE;
+    }
     if (!strcmp(name, "move X:(Rn + xxx) <-> R") || !strcmp(name, "move Y:(Rn + xxx) <-> R")) {
         int numreg = in->inst & 0xF;
         return numreg >= DSP_REG_X0 ? NP_MOVE_XY_SHORT : NP_NONE;
@@ -1959,6 +1976,49 @@ static void emit_nonparallel(Tr *t, const Insn *in, int kind)
     uint32_t inst = in->inst;
 
     switch (kind) {
+    case NP_MOVEC_REG: {
+        unsigned r1 = inst & 63, r2 = (inst >> 8) & 63;
+        unsigned src = inst & (1 << 15) ? r2 : r1;
+        unsigned dst = inst & (1 << 15) ? r1 : r2;
+        if (src == DSP_REG_SR) {
+            emit_flags_flush(t);
+        }
+        emit_read_reg(t, src, V1);
+        emit_write_reg(t, dst, V1);
+        break;
+    }
+    case NP_TCC: {
+        unsigned pair = (inst >> 3) & 15;
+        unsigned dst = pair & 1;
+        /* A conditional write must leave a valid old destination in its
+         * host register on the untaken path too. Resolve the old ALU flags
+         * before either accumulator can be overwritten. Tcc transfers the
+         * whole accumulator, without parallel-move limiting or new flags. */
+        emit_flags_flush(t);
+        acc_load(t, dst);
+        if (pair < 2) {
+            acc_load(t, dst ^ 1);
+        }
+        emit_cc(e, (inst >> 12) & 15);
+        size_t skip = h_jcc(e, HC_EQ);
+        if (pair < 2) {
+            h_mov_rr(e, 1, acc_reg(dst), acc_reg(dst ^ 1));
+        } else {
+            static const int sources[] = {
+                DSP_REG_X0, DSP_REG_Y0, DSP_REG_X1, DSP_REG_Y1
+            };
+            h_ld32(e, acc_reg(dst), REG_CORE, REGOFF(sources[(pair - 8) >> 1]));
+            h_shl_ri(e, 1, acc_reg(dst), 40);
+            h_sar_ri(e, 1, acc_reg(dst), 16);
+        }
+        if (inst & (1 << 16)) {
+            h_ld32(e, T0, REG_CORE, REGOFF(DSP_REG_R0 + ((inst >> 8) & 7)));
+            h_st32(e, REG_CORE, REGOFF(DSP_REG_R0 + (inst & 7)), T0);
+        }
+        h_patch(e, skip, e->len);
+        acc_written(t, dst);
+        break;
+    }
     case NP_CMPU: {
         static const int srcs[8] = {
             -1, -1, -1, -1, DSP_REG_X0, DSP_REG_Y0, DSP_REG_X1, DSP_REG_Y1

@@ -30,6 +30,10 @@ jobs:
         run: python3 libretro/tests/test-frame-audio-pull.py . cc
       - name: Store-free work must not be mistaken for an idle wait
         run: python3 libretro/tests/test-quiet-progress.py . cc
+      - name: Install native DSP test build dependency
+        run: sudo apt-get update -qq && sudo apt-get install -y libepoxy-dev
+      - name: Native DSP transfers must match the interpreter without fallback
+        run: make dspnative dspmax dspjumps dsptcc
 
   guest-gpu-progress:
     name: DOAX guest GPU progress regression
@@ -154,7 +158,7 @@ jobs:
         run: libretro/tests/run.sh parallel_xbox_libretro.so
 
       - name: Native DSP coverage and interpreter equivalence
-        run: make dspnative dspmax dspjumps
+        run: make dspnative dspmax dspjumps dsptcc
 
       # GLib is the core's own and libslirp is linked in: the core is the
       # one file

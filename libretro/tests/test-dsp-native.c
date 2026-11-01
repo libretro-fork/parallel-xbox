@@ -266,6 +266,63 @@ static void check_max_transfer(Machine *a, Machine *b)
     }
 }
 
+static void check_tcc(Machine *a, Machine *b)
+{
+    for (unsigned mode = 0; mode < 4; mode++) {
+        for (unsigned cc = 0; cc < 16; cc++) {
+            for (unsigned pair = 0; pair < 16; pair++) {
+                if (pair >= 2 && pair < 8) {
+                    continue; /* reserved accumulator selector */
+                }
+                for (unsigned sr = 0; sr < 256; sr++) {
+                    check(a, b, 0x020000 | (cc << 12) | (pair << 3),
+                          0, 0x20000 | sr, mode, false);
+                }
+                for (unsigned src = 0; src < 8; src++) {
+                    for (unsigned dst = 0; dst < 8; dst++) {
+                        for (unsigned sr = 0; sr < 2; sr++) {
+                            uint32_t op = 0x030000 | (cc << 12) |
+                                          (src << 8) | (pair << 3) | dst;
+                            check(a, b, op, 0, 0x20000 | (sr ? 255 : 0), mode, false);
+                        }
+                    }
+                }
+                /* Complete the transfer at a DO boundary as well. */
+                check(a, b, 0x020000 | (cc << 12) | (pair << 3),
+                      0, 0x60001, mode, false);
+            }
+            for (unsigned src = 0; src < 8; src++) {
+                for (unsigned dst = 0; dst < 8; dst++) {
+                    check(a, b, 0x020800 | (cc << 12) | (src << 8) | dst,
+                          0, 0x20055, mode, false);
+                }
+            }
+        }
+    }
+}
+
+static void check_movec(Machine *a, Machine *b)
+{
+    for (unsigned mode = 0; mode < 4; mode++) {
+        for (unsigned r1 = DSP_REG_M0; r1 <= DSP_REG_SR; r1++) {
+            if (r1 > DSP_REG_M7 && r1 != DSP_REG_SR) {
+                continue;
+            }
+            for (unsigned r2 = DSP_REG_X0; r2 <= DSP_REG_M7; r2++) {
+                for (unsigned dir = 0; dir < 2; dir++) {
+                    if (dir && r1 == DSP_REG_SR) {
+                        continue; /* writes may change the JIT scaling mode */
+                    }
+                    for (unsigned seed = 0; seed < 16; seed++) {
+                        check(a, b, 0x0440A0 | (dir << 15) | (r2 << 8) | r1,
+                              0, seed, mode, false);
+                    }
+                }
+            }
+        }
+    }
+}
+
 int main(void)
 {
     Machine *a = machine_new(false), *b = machine_new(true);
@@ -282,6 +339,8 @@ int main(void)
     check_macr_rounding(a, b);
     check_rotate_carry(a, b);
     check_max_transfer(a, b);
+    check_tcc(a, b);
+    check_movec(a, b);
     for (unsigned sr = 0; sr < 256; sr++) {
         for (unsigned cc = 0; cc < 16; cc++) {
             check(a, b, 0x0E0030 | (cc << 12), 0x30, 0x20000 | sr, 0, false);

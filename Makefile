@@ -309,6 +309,11 @@ dspjumps: $(DSPDIFF)
 	$(DSPDIFF) --frames 100 --x 0=4 --seed 1 $(CORE_DIR)/libretro/tests/rom/gp-jumps.inc
 	$(DSPDIFF) --frames 100 --x 0=4 --seed 2 $(CORE_DIR)/libretro/tests/rom/gp-jumps.inc
 
+# Conditional moves must consume flags and keep both paths' accumulators live.
+dsptcc: $(DSPDIFF)
+	$(DSPDIFF) --frames 100 --x 0=4 --seed 1 $(CORE_DIR)/libretro/tests/rom/gp-tcc.inc
+	$(DSPDIFF) --frames 100 --x 0=4 --seed 2 $(CORE_DIR)/libretro/tests/rom/gp-tcc.inc
+
 # One-instruction blocks let the coverage test compare every architectural
 # boundary, and count real interpreter calls rather than translation claims.
 DSPNATIVE := $(CORE_DIR)/libretro/tests/dspnative$(if $(filter win,$(platform)),.exe,)
@@ -356,6 +361,6 @@ $(FILEIOTEST): $(CORE_DIR)/libretro/tests/test-file-io.c \
 		$(DEPS_LIBS) $(OS_LIBS)
 fileiotest: $(FILEIOTEST)
 
-.PHONY: all clean dspdiff dspnative seedshaders s3tctest fileiotest FORCE
+.PHONY: all clean dspdiff dspnative dsptcc seedshaders s3tctest fileiotest FORCE
 
 -include $(ALL_OBJECTS:.o=.d)
