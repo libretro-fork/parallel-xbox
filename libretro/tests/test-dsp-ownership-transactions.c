@@ -6,7 +6,7 @@
 #include <stdio.h>
 static __thread bool ownership_is_worker, ownership_is_vp_worker;
 static __thread unsigned ownership_cpu_depth;
-static bool self=true;static unsigned loans;
+static bool self=true;static unsigned loans,owner_lookups,self_checks;
 struct MemoryRegionOps {int tag;};
 typedef struct MemoryRegion {const struct MemoryRegionOps *ops;} MemoryRegion;
 static void apu_cb(void *unused){}
@@ -30,8 +30,8 @@ static void classified_cb_15(void *unused){}
 static void classified_cb_16(void *unused){}
 
 typedef int CPUState;static CPUState cpu;
-static CPUState *qemu_get_cpu(unsigned i){return &cpu;}
-static bool qemu_cpu_is_self(CPUState*c){return self;}
+static CPUState *qemu_get_cpu(unsigned i){assert(i==0);owner_lookups++;return &cpu;}
+static bool qemu_cpu_is_self(CPUState*c){assert(c==&cpu);self_checks++;return self;}
 static void lr_dsp_bus_borrow(void){loans++;}
 static void lr_dsp_bus_return(void){assert(loans);loans--;}
 /* PRODUCTION TRANSACTIONS */
@@ -57,8 +57,11 @@ static void external_transaction(void)
 int main(void)
 {
     for(unsigned i=0;i<2000;i++){
+        unsigned before=owner_lookups;
         self=true;assert(can_post());cpu_transaction();assert(can_post());
+        assert(owner_lookups==before+1 && self_checks==owner_lookups);
         self=false;external_transaction();assert(can_post());
+        assert(owner_lookups==before+2 && self_checks==owner_lookups);
     }
     assert(lr_dsp_timer_guarded(apu_cb));
     lr_dsp_register_guarded_timer(classified_cb_0);

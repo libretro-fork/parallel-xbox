@@ -156,6 +156,9 @@ static int ownership_page_live(uint64_t page);
 int lr_dsp_external_begin(void)
 {
     if(ownership_is_worker || ownership_is_vp_worker) return 0;
+    /* A live CPU scope already proved this thread owns the CPU. Nested
+     * memory/device callbacks only extend that scope until they return. */
+    if(ownership_cpu_depth) {ownership_cpu_depth++;return 2;}
     CPUState *cpu=qemu_get_cpu(0);
     if(cpu && qemu_cpu_is_self(cpu)) {ownership_cpu_depth++;return 2;}
     lr_dsp_bus_borrow();return 1;

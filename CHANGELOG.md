@@ -1,5 +1,7 @@
 # Changelog of the libretro core
 
+- Reuse the proven CPU owner within nested DSP ownership scopes instead of repeating CPU lookup and thread identity checks for each nested memory/device callback. Retain outer-scope validation and external RAM leases.
+
 - Update standalone regression fixtures for DSP callback scopes, RAM loans, TLB victim tracking and sparse GL uploads. Check ownership at callback dispatch, DMA borrowing and GPU fence retirement.
 
 - Run GP on the CPU owner while a guarded EP worker executes its audio tick. Shared RAM and imported GPU ranges retain ownership through completion, with inline fallback for incompatible access; audio producer handoffs, save/load and unload remain ordered. Reuse the existing mix buffer without staging copies or per-tick allocations. NGB throughput remains close to the inline path, with a small measured tradeoff; further dispatcher work remains.
