@@ -537,6 +537,20 @@ static __attribute__((noinline)) u32 check_swizzled(u32 addr, u32 left,
     return bad;
 }
 
+/* Exercise the exact supported RAM-counter wait proof. Arbitrary equality
+ * spins deliberately consume instruction time, even in deterministic mode.
+ * The test flash masks the PIC before entering this ROM; preserve IF across
+ * this wait and allow STI's interrupt shadow to expire before the proof. */
+static void wait_semaphore(u32 sem)
+{
+    __asm__ volatile(
+        "pushfl; sti; nop; nop;\n"
+        ".byte 0x8b,0x0a,0x8b,0xfe,0x2b,0xf9,0x3b,0xc7,0x72,0xf6;\n"
+        "popfl"
+        : : "a"(0u), "S"(sem), "d"(GPU_SEM)
+        : "ecx", "edi", "cc", "memory");
+}
+
 /* The register is read into a volatile local, so every turn stores it to
  * the stack, as game code built without optimisation (or spilling) does:
  * the core must still see the loop as a wait (accel/tcg/cputlb.c
@@ -1731,8 +1745,7 @@ void gpu_main(void)
                 }
                 method(NV097_BACK_END_WRITE_SEMAPHORE_RELEASE, sem);
                 post();
-                while (rd32(GPU_SEM) != sem) {
-                }
+                wait_semaphore(sem);
                 trips++;
             }
             if (frame == 101 || trips < rd32(GPU_TRIPS)) {

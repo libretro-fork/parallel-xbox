@@ -1,8 +1,11 @@
 # Changelog of the libretro core
 
+- Resume a runnable guest when device completion races its parked slice exit, instead of advancing idle time past newly available work. Exercise a supported RAM-wait proof in the exact GPU-progress ROM oracle.
+
 - Decode BC2/BC3 alpha directly into final RGBA pixels in the CPU texture fallback, removing per-block alpha expansion storage.
 
 - Remove obsolete intermediate conversion storage from GL and Vulkan swizzled-texture upload paths; retain direct palette/RGB655 expansion and linear YUV conversion.
+
 - Merge shader seeds directly from mapped records, removing the intermediate section allocation and copy while releasing the mapping before file replacement.
 
 - Remove temporary allocations and scratch copies when strings insert or append their own contents; preserve overlapping ranges and buffer growth.

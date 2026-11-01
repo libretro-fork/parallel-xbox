@@ -6,7 +6,7 @@
 
 ## Frame ownership of guest time
 
-`test-gpu-wait-deadline.py CHECKOUT [CC]` checks 326 cases against the production host dispatch and GPU-wait functions. A halted CPU, a GPU completion wait, a descriptor poll and a NAT poll must not advance guest time independently. It covers timed-wait rounding, prepare/notify races, deterministic completion and the frame owner's bounded elapsed-time advancement. Its regression model rejects the old idle-warp callback, which moved a halted guest from 1000 to 1500 ns inside host dispatch.
+`test-gpu-wait-deadline.py CHECKOUT [CC]` checks 342 cases against the production host dispatch and GPU-wait functions. A halted CPU, a GPU completion wait, a descriptor poll and a NAT poll must not advance guest time independently. It covers timed-wait rounding, prepare/notify races, deterministic completion and the frame owner's bounded elapsed-time advancement. Its regression model rejects the old idle-warp callback, which moved a halted guest from 1000 to 1500 ns inside host dispatch.
 
 `test-icount-publication.py CHECKOUT [CC]` also executes the production fixed-clock initializer. It preserves raw instruction count and bias, selects the fixed Xbox rate, initializes legacy compatibility fields and creates no host-paced timers. Existing owner-accounting, I/O-boundary, restored-state and six-reader publication tests remain. These tests run in regression-only CI. The standalone QEMU CPU timing-option parser, adaptive clock governor and host/guest clock-alignment sleeps are no longer part of core initialization or CPU execution; saved-state fields retain their previous wire layout.
 
@@ -1521,7 +1521,7 @@ assets or a GPU in the regular suite and GPU-progress CI job.
 
 `test-gpu-wait-deadline.py CHECKOUT [CC]` compiles the production main-loop
 waits, descriptor-poll path and guest idle-time accounting against a scheduler
-model. Its 314 cases cover bounded/unbounded/nonblocking waits, zero and
+model. Its 342 cases cover bounded/unbounded/nonblocking waits, zero and
 sub-microsecond bounds, overflow-safe rounding, notification during wait
 preparation, due bottom halves, socket/host timer deadline clamping, BQL
 release/reacquisition and balanced eventcount wait bookkeeping. Deterministic
@@ -1816,3 +1816,7 @@ Checks that every converted swizzled format has a fused upload path and the rema
 
 
 The S3TC oracle also covers 1,944 clipped image/volume shapes, partial four-slice groups, unaligned output and full-output guards, alongside exhaustive normalized color/alpha checks. CPU BC2/BC3 decode consumes packed alpha directly while writing final RGBA pixels.
+
+GPU completion races are covered in `test-nv2a-guest-wakes.py` and `test-gpu-wait-deadline.py`: completion after an idle sample invalidates that sample, and completion between the parked slice exit and the frame-owner recheck must resume a runnable guest before skipping time. A halted guest still advances to its timer when no device work remains. Both fixtures run in the DOAX GPU-progress CI job.
+
+The display ROM's exact four-GPU-round-trip check runs in deterministic mode and uses the supported RAM-counter wait encoding. The flash masks PIC lines before entering the ROM; the wait saves/restores interrupt flags. An arbitrary equality spin remains unproven and consumes instruction time, so it cannot provide a host-speed-independent GPU-progress oracle.

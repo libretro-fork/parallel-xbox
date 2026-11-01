@@ -1949,14 +1949,18 @@ extern retro_atomic_int_t nv2a_libretro_waiter;
 /* the guest left its slice waiting on a device (lr_quiet_exit): it is
  * parked, as a halted guest is, until the frame loop is woken */
 static bool lr_quiet;
+static unsigned lr_gpu_completed_at_slice;
+extern unsigned nv2a_libretro_guest_completed(void);
 
 void lr_quiet_exit(CPUState *cpu)
 {
     int64_t deadline;
 
-    if (lr_devices_busy()) {
-        /* The GPU (or the disk) has work the guest may be waiting for:
-         * the slice ends, and the frame loop waits as for a halted guest,
+    if (lr_devices_busy() ||
+        nv2a_libretro_guest_completed() != lr_gpu_completed_at_slice) {
+        /* Pending work or a completion since this slice started invalidates
+         * the idle sample. The guest must retry its poll before skipping.
+         * The slice ends, and the frame loop waits as for a halted guest,
          * until the GPU parks or anything else wakes it, its time moving
          * on only by the GPU's time (lr_run_frame); then the guest looks
          * again. Spinning on through
@@ -2001,6 +2005,36 @@ static void lr_wait_for_device(int64_t now, int64_t until)
         waited = get_clock() - waited;
         cpu_clock_skip_to(now + MIN(waited, until));
     }
+}
+
+/* Recheck completion after a parked slice before advancing idle time. */
+static void lr_idle_wait(CPUState *cpu, int64_t now, int64_t until)
+{
+    /* The guest idles: halted, or parked waiting on a device
+     * (lr_quiet_exit), for this one wait */
+    lr_quiet = false;
+    /* the flag, a full fence, then the look at the GPU's thread: a
+     * Dekker handshake with its park (pfifo.c pfifo_idle_wait) */
+    retro_atomic_store_relaxed_int(&nv2a_libretro_waiter, 1);
+    retro_atomic_thread_fence_seq_cst();
+    if (lr_devices_busy()) {
+        /* it waits until something happens: a bottom half (a disk read
+         * done), the GPU going idle or raising an interrupt. Use an
+         * unbounded wait for disk-only or deterministic completion.
+         * A GPU wait also ends at the next guest deadline so its timer can
+         * run while rendering continues. The guest's time
+         * stands still for a disk read; for the GPU it moves on by the
+         * time the GPU took, up to the next deadline, unless the
+         * emulation is deterministic: the Xbox's CPU waits on its GPU
+         * as long as the GPU draws, never longer */
+        lr_wait_for_device(now, until);
+    } else if (!lr_vcpu_runnable(cpu)) {
+        /* A halted guest waits for its timer. A runnable guest parked on
+         * device work must retry its poll: completion may have raced its
+         * slice exit. Skipping here can skip useful post-fence work. */
+        cpu_clock_skip_to(now + until);
+    }
+    retro_atomic_store_relaxed_int(&nv2a_libretro_waiter, 0);
 }
 
 static void lr_finish_frame(void)
@@ -2120,33 +2154,12 @@ static void lr_run_frame(void)
             /* the guest runs until its next timer is due: the slice stops
              * itself after the instructions that take it there */
             lr_next_stop_vt = now + until;
+            lr_gpu_completed_at_slice = nv2a_libretro_guest_completed();
             lr_vcpu_run_slice(cpu, until);
             continue;
         }
 
-        /* The guest idles: halted, or parked waiting on a device
-         * (lr_quiet_exit), for this one wait */
-        lr_quiet = false;
-        /* the flag, a full fence, then the look at the GPU's thread: a
-         * Dekker handshake with its park (pfifo.c pfifo_idle_wait) */
-        retro_atomic_store_relaxed_int(&nv2a_libretro_waiter, 1);
-        retro_atomic_thread_fence_seq_cst();
-        if (lr_devices_busy()) {
-            /* it waits until something happens: a bottom half (a disk read
-             * done), the GPU going idle or raising an interrupt. Use an
-             * unbounded wait for disk-only or deterministic completion.
-             * A GPU wait also ends at the next guest deadline so its timer can
-             * run while rendering continues. The guest's time
-             * stands still for a disk read; for the GPU it moves on by the
-             * time the GPU took, up to the next deadline, unless the
-             * emulation is deterministic: the Xbox's CPU waits on its GPU
-             * as long as the GPU draws, never longer */
-            lr_wait_for_device(now, until);
-        } else {
-            /* nothing to wait for: on to the next deadline */
-            cpu_clock_skip_to(now + until);
-        }
-        retro_atomic_store_relaxed_int(&nv2a_libretro_waiter, 0);
+        lr_idle_wait(cpu, now, until);
     }
 
     lr_finish_frame();

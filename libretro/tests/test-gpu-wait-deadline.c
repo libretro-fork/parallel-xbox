@@ -43,6 +43,13 @@ static void bql_lock(void){assert(!bql);bql=true;}
 bool nv2a_libretro_guest_busy(void){return gpu_busy;}
 static int64_t get_clock(void){return host_now;}
 static void cpu_clock_skip_to(int64_t ns){assert(ns>=virtual_now);virtual_now=ns;skips++;}
+typedef struct { bool runnable; } CPUState;
+static bool lr_quiet, disk_busy;
+static int nv2a_libretro_waiter;
+static bool lr_devices_busy(void) {return gpu_busy || disk_busy;}
+static bool lr_vcpu_runnable(CPUState *cpu) {return cpu->runnable;}
+static void retro_atomic_store_relaxed_int(int *p,int v) {*p=v;}
+static void retro_atomic_thread_fence_seq_cst(void) {}
 /* PRODUCTION */
 static void reset(void){
  mainctx=(AioContext){0};ioctx=(AioContext){0};
@@ -92,6 +99,18 @@ int main(void){
   if(gpu && !det){assert(timed==1 && !committed && skips==1);assert(virtual_now==1000+MIN(waits[w],bounds[n]));}
   else assert(!timed && committed==1 && !skips && virtual_now==1000);
   assert(bql && timers==1);cases++;
+ }
+ /* Completion between the quiet exit and frame-owner recheck. A runnable
+  * guest must execute again; only HALT may skip directly to the deadline. */
+ for(unsigned run=0;run<2;run++)for(unsigned gpu=0;gpu<2;gpu++)
+ for(unsigned disk=0;disk<2;disk++)for(unsigned det=0;det<2;det++) {
+  reset();CPUState cpu={.runnable=run};gpu_busy=gpu;disk_busy=disk;
+  opt_deterministic=det;lr_quiet=true;nv2a_libretro_waiter=0;
+  lr_idle_wait(&cpu,1000,999);
+  assert(!lr_quiet && !nv2a_libretro_waiter);
+  if(gpu || disk) assert(virtual_now==1000+(gpu && !det?500:0));
+  else assert(virtual_now==(run?1000:1999) && skips==!run);
+  cases++;
  }
  printf("GPU deadline waits: %u clock-ownership/HALT/timeout/rounding/prepare-race/notification/dispatch/poll/deterministic/elapsed-clock cases passed\n",cases);
  return 0;

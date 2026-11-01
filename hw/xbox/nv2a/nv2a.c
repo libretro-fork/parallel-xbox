@@ -208,6 +208,13 @@ int nv2a_get_screen_off(void)
  * unlock, a frame's redraw) are not the guest's to wait for: counting
  * them let the GPU's host time, at boot or after a reset, move the guest's
  * time on by different amounts from run to run. */
+/* Completion epoch sampled before a guest slice proves an idle wait. */
+unsigned nv2a_libretro_guest_completed(void)
+{
+    NV2AState *d = g_nv2a;
+    return d ? (unsigned)retro_atomic_load_acquire_int(&d->pfifo.guest_done) : 0;
+}
+
 bool nv2a_libretro_guest_busy(void)
 {
     NV2AState *d = g_nv2a;

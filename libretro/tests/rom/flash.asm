@@ -234,6 +234,11 @@ busy:   inc dword [0x00300000]
         call PAD_ENTRY
 %endif
 %ifdef GPU
+        ; The RAM-wait proof temporarily enables IF, with no IRQ handler.
+        ; Keep PIC lines masked as in the standalone PROVEN_WAIT fixture.
+        mov al, 0xff
+        out 0x21, al
+        out 0xa1, al
         ; the NV2A's display and renderer scenario (gpu.c): never returns
         call GPU_ENTRY
 %endif

@@ -20,6 +20,7 @@ typedef struct NV2AState {
  unsigned ramin;uint8_t ramin_ptr[4096],vram_ptr[256];
 } NV2AState;
 static NV2AState *g_nv2a;
+static unsigned lr_gpu_completed_at_slice;
 static unsigned wakes;static int expect_guest;
 static int retro_atomic_load_acquire_int(const int *p) {return *p;}
 static int retro_atomic_load_relaxed_int(const int *p) {return *p;}
@@ -109,6 +110,11 @@ int main(void) {
   expect_guest=seen;pfifo_kick(&d);
   assert(!nv2a_libretro_guest_busy() && d.pfifo.guest_kicks==seen);
   CPUState cpu={0};lr_quiet=false;unsigned old_skips=skips;
+  /* Completion after the slice began must retry the poll before skipping. */
+  lr_gpu_completed_at_slice=(unsigned)seen-1;
+  lr_quiet_exit(&cpu);
+  assert(lr_quiet && skips==old_skips);
+  lr_quiet=false;lr_gpu_completed_at_slice=(unsigned)seen;
   lr_quiet_exit(&cpu);
   assert(!lr_quiet && skips==old_skips+1 && virtual_time==1000);
   unsigned before=wakes;
