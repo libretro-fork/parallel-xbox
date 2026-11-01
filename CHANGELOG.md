@@ -1,5 +1,7 @@
 # Changelog of the libretro core
 
+- Run the exact four-trip GPU-progress display oracle in deterministic mode so host scheduling delays cannot cause false failures; retain normal-mode deadline-accounting coverage.
+
 - Fix strict ARM test builds with unsigned char; verify ASCII control classification and shader generation with both char signedness modes.
 
 - Adopt formatted shader-string buffers directly instead of allocating and copying a second buffer during shader generation.

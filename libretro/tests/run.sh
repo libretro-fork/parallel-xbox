@@ -890,8 +890,12 @@ esac
 # 20 the CPU reads the surface's first and last pixels: the renderer
 # downloads it to RAM for that, and both are red (0xffff0000). From frame
 # 100 the guest waits on the GPU, a semaphore after a run of no-ops, up to
-# 4 times a frame: it must manage all 4 in every frame. A guest waiting on
-# the GPU had its time skip on to its next deadline while the GPU worked,
+# 4 times a frame: deterministic mode must manage all 4 in every frame.
+# Normal mode charges elapsed host GPU-wait time to the guest; a loaded
+# software-rendering runner can legitimately complete fewer. Keep the exact
+# count independent of host speed, not a relaxed threshold or a retry.
+# test-gpu-wait-deadline.py covers normal-mode elapsed-time accounting.
+# A guest waiting on the GPU had its time skip on to its next deadline while the GPU worked,
 # and managed 1 (Ninja Gaiden Black in slow motion). The ROM waits for each
 # vblank polling the GPU's interrupt register: a wait, so the OpenGL run
 # goes at least 0.2x real time (it went 0.03x when each poll was a device
@@ -940,7 +944,7 @@ gpu_check() {
     done
 }
 echo "== the display, OpenGL"
-timeout 300 $h "$(path "$core")" "$(path "$work/sysg")" $vp --frames 485 --strict \
+timeout 300 $h "$(path "$core")" "$(path "$work/sysg")" $vp --opt xemu_deterministic=enabled --frames 485 --strict \
   --min-speed 0.2 --pixel 10 --pixel 25 --pixel 45 --pixel 85 --pixel 115 --pixel 130:4:20 --pixel 130:320:100 --pixel 130:320:350 \
   --pixel 130:4:100 --pixel 145:4:20 --pixel 165:320:120 --pixel 180 \
   --pixel 240:320:120 --pixel 270:320:100 --pixel 270:4:20 --pixel 300:320:100 --pixel 300:4:20 --pixel 325:320:100 --pixel 345:320:100 --pixel 375:320:120 --pixel 390:320:316 --pixel 420:320:324 --pixel 436:320:120 --pixel 460:320:120 --pixel 460:4:20 --pixel 470:32:120 --pixel 470:10:120 --pixel 480:10:120 --pixel 484:10:120 --pixel 150:4:20 --pixel 150:639:479 --peek 0x300040 --peek 0x300014 --peek 0x300018 \
@@ -952,7 +956,7 @@ gpu_check "$work/gpu_gl.txt" "OpenGL"
 echo "== the display, Vulkan"
 set +e
 timeout 300 $h "$(path "$core")" "$(path "$work/sysg")" $vp --vulkan \
-  --opt xemu_renderer=vulkan --frames 485 --strict \
+  --opt xemu_renderer=vulkan --opt xemu_deterministic=enabled --frames 485 --strict \
   --pixel 10 --pixel 25 --pixel 45 --pixel 85 --pixel 115 --pixel 130:4:20 --pixel 130:320:100 --pixel 130:320:350 \
   --pixel 130:4:100 --pixel 145:4:20 --pixel 165:320:120 --pixel 180 \
   --pixel 240:320:120 --pixel 270:320:100 --pixel 270:4:20 --pixel 300:320:100 --pixel 300:4:20 --pixel 325:320:100 --pixel 345:320:100 --pixel 375:320:120 --pixel 390:320:316 --pixel 420:320:324 --pixel 436:320:120 --pixel 460:320:120 --pixel 460:4:20 --pixel 470:32:120 --pixel 470:10:120 --pixel 480:10:120 --pixel 484:10:120 --pixel 150:4:20 --pixel 150:639:479 --peek 0x300040 --peek 0x300014 --peek 0x300018 \
