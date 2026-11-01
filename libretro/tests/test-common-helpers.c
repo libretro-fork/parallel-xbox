@@ -2,10 +2,19 @@
 #include "qemu/osdep.h"
 #include "hw/xbox/nv2a/pgraph/glsl/psh.h"
 #include "hw/xbox/nv2a/pgraph/spv/glslc.h"
-static unsigned convolution_equivalence_checks, clip_equivalence_checks, shadow_equivalence_checks;
+static unsigned convolution_equivalence_checks, clip_equivalence_checks, shadow_equivalence_checks, shaderctl_equivalence_checks;
 static void emit(const char *directory,unsigned api,unsigned kind,unsigned id,const PshState *state) {
   GenPshGlslOptions opts={.vulkan=api,.ubo_binding=0,.tex_binding=1};
   MString *text=pgraph_glsl_gen_psh(state,opts);char path[4096];
+  for(unsigned bit=0;bit<=32;bit++) {
+    uint32_t ignored=0xFF00F000u;
+    uint32_t change=bit==32?ignored:((1u<<bit)&ignored);
+    if(!change)continue;
+    PshState variant;memcpy(&variant,state,sizeof(variant));variant.other_stage_input^=change;
+    MString *other=pgraph_glsl_gen_psh(&variant,opts);
+    assert(!strcmp(mstring_get_str(text),mstring_get_str(other)));
+    mstring_unref(other);shaderctl_equivalence_checks++;
+  }
   bool shadow_comparison=false;
   for(unsigned i=0;i<4;i++) {
     unsigned mode=(state->shader_stage_program>>(i*5))&31;
@@ -100,7 +109,33 @@ static void check_active_shadow(void) {
  }
  assert(count==256);printf("PASS: 256 active shadow programs; 128 Vulkan variants compile\n");
 }
+static void check_active_input_selectors(void) {
+ unsigned count=0;
+ for(unsigned api=0;api<2;api++)for(unsigned gb=0;gb<2;gb++)for(unsigned stage=2;stage<4;stage++) {
+  PshState state={0};state.depth_format=DEPTH_FORMAT_D24;state.smooth_shading=true;
+  for(unsigned i=0;i<=stage;i++) {
+   state.dim_tex[i]=2;
+   state.shader_stage_program|=(i==stage?(gb?PS_TEXTUREMODES_DPNDNT_GB:PS_TEXTUREMODES_DPNDNT_AR):PS_TEXTUREMODES_PROJECT2D)<<(i*5);
+  }
+  state.final_inputs_0=PS_REGISTER_T0+stage;
+  GenPshGlslOptions opts={.vulkan=api,.ubo_binding=0,.tex_binding=1};
+  MString *baseline=pgraph_glsl_gen_psh(&state,opts);
+  for(unsigned input=0;input<stage;input++) {
+   state.other_stage_input=input<<(16+4*(stage-2));
+   MString *text=pgraph_glsl_gen_psh(&state,opts);
+   assert((strcmp(mstring_get_str(baseline),mstring_get_str(text))!=0)==(input!=0));
+   if(api) {
+    GlslcOptions options={0};GlslcResult result={0};
+    assert(glslc_compile(GLSLC_STAGE_FRAGMENT,mstring_get_str(text),&options,&result));free(result.words);
+   }
+   mstring_unref(text);count++;
+  }
+  mstring_unref(baseline);
+ }
+ assert(count==20);printf("PASS: 20 active stage-input programs; 10 Vulkan variants compile\n");
+}
 int main(int argc,char **argv) {
+ check_active_input_selectors();
  check_active_shadow();
  check_active_clip();
  assert(argc==2);unsigned count=0;
@@ -158,6 +193,8 @@ int main(int argc,char **argv) {
    state.final_inputs_0=PS_REGISTER_T0;emit(argv[1],api,3,count++,&state);
   }
  }
+ assert(shaderctl_equivalence_checks==10036);
+ printf("PASS: %u byte-identical ignored-SHADERCTL source comparisons\n",shaderctl_equivalence_checks);
  printf("PASS: %u byte-identical unused-shadow-function source comparisons\n",shadow_equivalence_checks);
  assert(clip_equivalence_checks==18528);
  printf("PASS: %u byte-identical unused-clip source comparisons\n",clip_equivalence_checks);

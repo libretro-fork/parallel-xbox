@@ -219,7 +219,8 @@ void pgraph_glsl_set_psh_state(PGRAPHState *pg, PshState *state)
                                    NV_PGRAPH_SETUPRASTER_WINDOWCLIPTYPE;
     state->combiner_control = pgraph_reg_r(pg, NV_PGRAPH_COMBINECTL);
     state->shader_stage_program = pgraph_reg_r(pg, NV_PGRAPH_SHADERPROG);
-    state->other_stage_input = pgraph_reg_r(pg, NV_PGRAPH_SHADERCTL);
+    /* Three dot mappings and the stage 2/3 input selectors affect GLSL. */
+    state->other_stage_input = pgraph_reg_r(pg, NV_PGRAPH_SHADERCTL) & 0x00FF0FFFu;
     state->final_inputs_0 = pgraph_reg_r(pg, NV_PGRAPH_COMBINESPECFOG0);
     state->final_inputs_1 = pgraph_reg_r(pg, NV_PGRAPH_COMBINESPECFOG1);
 
