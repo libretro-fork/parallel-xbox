@@ -12,7 +12,7 @@ repo = Path(sys.argv[1]).resolve()
 cc = sys.argv[2] if len(sys.argv)>2 and sys.argv[2]!='--gl' else 'cc'
 source = (repo/'hw/xbox/nv2a/pgraph/vk/draw.c').read_text()
 parts = [re.search(r'static const unsigned pipeline_registers\[\] = \{.*?\};',source,re.S)[0]]
-for name in ('pipeline_reg_values', 'check_render_pass_dirty', 'check_pipeline_dirty', 'init_pipeline_key', 'color_write_mask', 'emit_dynamic_state'):
+for name in ('pipeline_cache_entry_init', 'pipeline_reg_values', 'check_render_pass_dirty', 'check_pipeline_dirty', 'init_pipeline_key', 'color_write_mask', 'emit_dynamic_state'):
     match = re.search(r'^static (?:inline )?(?:bool|void|VkColorComponentFlags) '+name+r'\([^;{]*\)\s*\{', source, re.M)
     assert match, name
     end=source.index('{', match.start())+1;depth=1

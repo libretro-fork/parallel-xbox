@@ -2636,3 +2636,16 @@ game cache-hit and stutter effects are unmeasured.
 `test-qht-inline.py CHECKOUT [CC]` exercises the production inline QHT reader and generic entry point with native retro atomics. It covers hash collisions, chained buckets, null pointers, absent keys, map replacement, forced sequence retries and 200,000 concurrent reads. Set `QHT_SANITIZE=1` for address/undefined behavior sanitizers. RCU object lifetime is modeled by retaining every map, bucket and item until readers finish.
 
 Seed batch coverage also checks `pgraph_seed_read_first`: requests are tried in order, only the first nonempty valid result is populated, and every other output is cleared. The 480 source/availability cases compare state-first/module-fallback bytes/counts with legacy combined reads, including missing, stale, malformed and failed-inflate inputs. Reused outputs are poisoned to catch skipped initialization. An independent valid-input check verifies one fewer materialized array while retaining one mapping/inflation and exact local-first order. Bundled dictionary and existing combined/ownership tests remain covered.
+
+The surface-blend fixture also extracts the production pipeline-cache entry
+initializer. A poisoned allocation/recycled entry with dynamic line width set
+must reset that flag, layout, pipeline handle and draw stamp while preserving
+all key bytes. This regression fails before the fix. Clear-pipeline creation
+does not request dynamic line width, so it must not inherit metadata from an
+old cache occupant. Normal pipeline construction and worker adoption still
+assign their computed line-width metadata. No extra key copy, buffer, PSO,
+lock, wait or video frame queue is introduced.
+
+Win64 entry-initializer stack remains 8 bytes and create_pipeline remains
+3,536 bytes, with unchanged renderer layouts. Hardware cache-miss and
+game-latency effects are unmeasured.

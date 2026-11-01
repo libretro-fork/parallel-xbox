@@ -142,6 +142,7 @@ static void pipeline_cache_entry_init(Lru *lru, LruNode *node,
     snode->layout = VK_NULL_HANDLE;
     snode->pipeline = VK_NULL_HANDLE;
     snode->draw_time = 0;
+    snode->has_dynamic_line_width = false;
 }
 
 static void pipeline_cache_entry_post_evict(Lru *lru, LruNode *node)

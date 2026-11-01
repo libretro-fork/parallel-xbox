@@ -16,7 +16,8 @@
 typedef struct {unsigned value;} ShaderState;
 typedef struct {unsigned format;} RenderPassState;
 typedef struct {bool clear;RenderPassState render_pass_state;ShaderState shader_state;VkVertexInputBindingDescription binding_descriptions[16];VkVertexInputAttributeDescription attribute_descriptions[16];uint32_t regs[9];} PipelineKey;
-typedef struct {PipelineKey key;} PipelineBinding;
+typedef struct {unsigned unused;} Lru, LruNode;
+typedef struct {LruNode node;PipelineKey key;VkPipelineLayout layout;VkPipeline pipeline;unsigned draw_time;bool has_dynamic_line_width;} PipelineBinding;
 typedef struct {ShaderState state;} ShaderBinding;
 typedef struct {
     PipelineBinding *pipeline_binding;ShaderBinding *shader_binding;bool shader_bindings_changed,texture_bindings_changed,ahead_valid;
@@ -150,6 +151,15 @@ static unsigned oracle(unsigned factor,unsigned format,bool enabled) {
 int main(void) {
     static PGRAPHState pg;PGRAPHVkState r={0};PipelineBinding binding={0};ShaderBinding shader={0};
     pg.vk_renderer_state=&r;r.pipeline_binding=&binding;r.shader_binding=&shader;r.dyn_vertex_input=true;
+    /* Fresh allocations are not zeroed, and recycled line entries may carry
+     * true metadata into a clear, which has no dynamic line-width state. */
+    PipelineBinding recycled;memset(&recycled,0xa5,sizeof(recycled));recycled.has_dynamic_line_width=true;
+    PipelineKey untouched;memcpy(&untouched,&recycled.key,sizeof(untouched));
+    pipeline_cache_entry_init(NULL,&recycled.node,NULL);
+    assert(recycled.layout==VK_NULL_HANDLE&&recycled.pipeline==VK_NULL_HANDLE&&!recycled.draw_time&&!recycled.has_dynamic_line_width);
+    assert(!memcmp(&untouched,&recycled.key,sizeof(untouched)));
+    puts("pipeline entry metadata: poisoned/recycled line-width flag reset without clearing key bytes");
+
     unsigned cases=0;
     for(unsigned fmt=0;fmt<32;fmt++) for(unsigned enabled=0;enabled<2;enabled++)
     for(unsigned sf=0;sf<16;sf++) for(unsigned df=0;df<16;df++) {
