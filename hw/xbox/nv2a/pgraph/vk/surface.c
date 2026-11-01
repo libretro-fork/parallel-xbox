@@ -2856,31 +2856,32 @@ static void upload_scanout_background(NV2AState *d, SurfaceBinding *out,
                 VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
             out->image_scratch_current_layout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
         }
-        size_t bytes = 0;
-        for (unsigned i = 0; i < count; i++) {
-            bytes += ROUND_UP((size_t)rects[i].width * rects[i].height * scan->bpp, 16);
-        }
         VkDeviceSize offset = staged_offset + staged_used;
         for (unsigned i = 0; i < count; i++) {
             PGRAPHScanoutRect *p = &rects[i];
             VkDeviceSize ram_offset = scan->start +
                 (VkDeviceSize)p->dy * scan->pitch + p->dx * scan->bpp;
-            if(from_vram) lr_gpu_ram_claim((uintptr_t)cmd,ram_offset,
-                (VkDeviceSize)(p->height-1)*scan->pitch+(VkDeviceSize)p->width*scan->bpp);
-            if (!from_vram) {
+            VkDeviceSize buffer_offset = ram_offset;
+            if (from_vram) {
+                lr_gpu_ram_claim((uintptr_t)cmd, ram_offset,
+                    (VkDeviceSize)(p->height - 1) * scan->pitch +
+                    (VkDeviceSize)p->width * scan->bpp);
+            } else {
                 size_t row_bytes = (size_t)p->width * scan->bpp;
                 memcpy_image(staged + offset - staged_offset,
                     d->vram_ptr + ram_offset, row_bytes, scan->pitch, p->height);
+                buffer_offset = offset;
+                offset += ROUND_UP((VkDeviceSize)row_bytes * p->height, 16);
             }
             regions[i] = (VkBufferImageCopy){
-                .bufferOffset = from_vram ? ram_offset : offset,
+                .bufferOffset = buffer_offset,
                 .bufferRowLength = from_vram ? scan->pitch / scan->bpp : 0,
                 .imageSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 },
                 .imageOffset = { p->dx, p->dy, 0 },
                 .imageExtent = { p->width, p->height, 1 },
             };
-            offset += ROUND_UP((VkDeviceSize)p->width * p->height * scan->bpp, 16);
         }
+        if (!from_vram) staged_used = offset - staged_offset;
         vkCmdCopyBufferToImage(cmd, source, target,
             VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, count, regions);
         if (via_scratch) {
@@ -2904,7 +2905,6 @@ static void upload_scanout_background(NV2AState *d, SurfaceBinding *out,
         for (unsigned i = 0; i < count; i++) {
             pgraph_scanout_background_clean(background, &rects[i]);
         }
-        staged_used += bytes;
         count = 0;
         while (count < ARRAY_SIZE(rects) &&
                pgraph_scanout_background_next(background, &cursor, &rects[count])) {

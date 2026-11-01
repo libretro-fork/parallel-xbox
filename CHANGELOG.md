@@ -1,5 +1,6 @@
 # Changelog of the libretro core
 
+- Remove the extra scanout-rectangle size pass from Vulkan background uploads. Compute fallback staging offsets while copying each rectangle, and omit packed-staging accounting on the direct guest-RAM path. Transfer regions, byte ownership and synchronization are preserved.
 - Avoid clearing GL disk-result records before overwriting their state and metadata. Keep binary ownership initialization and libretro-common MPSC publication unchanged, removing redundant startup-cache memory writes.
 
 - Remove the explicit GPU drain from Vulkan scanout-mode cache eviction. Reuse only backgrounds whose upload and display work has completed, within the existing eight-mode/32 MiB cache limits. When no safe reservation exists, retain the published image and retry the requested mode without allocating extra images or adding a frame queue.

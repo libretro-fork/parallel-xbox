@@ -2504,3 +2504,27 @@ lifetime and budget paths have controlled-model coverage; native GPU testing
 uses NVIDIA shared-device presentation.
 
 Disk-result allocation now uses the non-clearing allocator. The handoff fixture poisons non-clearing allocations with 0xa5 and asserts that every valid disk-reader round trip takes that path, then checks parsed state, binary owner/format/size, MPSC adoption and release for retained/capped mappings. This verifies that allocator zeros are not required by any published field or the queue link.
+
+### Vulkan scanout upload accounting
+
+`test-vk-scanout-upload.py CHECKOUT [CC]` extracts the production upload-region
+loop. Eight thousand schedules over four batches each cover 16/32-bit pixels,
+packed fallback staging and direct guest RAM, varied pitches/rectangles and
+nonzero allocation prefixes. A per-byte reference checks every copied row,
+alignment gap and guard byte; descriptor offsets, row lengths, extents and
+GPU-RAM ownership spans must match exactly. Direct RAM makes no CPU image
+copy and leaves staging accounting untouched. Linux defaults to ASan/UBSan;
+`VK_SCANOUT_UPLOAD_CFLAGS`, `VK_SCANOUT_UPLOAD_BINARY` and
+`VK_SCANOUT_UPLOAD_SKIP_RUN` support native fixtures.
+
+The fallback now advances packed staging offsets in the existing copy loop,
+removing the second rectangle pass. Direct guest-RAM uploads omit packed
+staging arithmetic. The initial full-recording capacity reservation and final
+flush remain intact. No additional copies, buffers, PSOs, locks, waits, queue
+submissions or video frame queue are introduced.
+
+Win64 composition stack usage falls from 91,872 to 91,856 bytes; renderer
+structure sizes remain unchanged. Hardware cache-miss and game-latency effects
+are unmeasured. Both direct-RAM and fallback copy paths have byte-exact
+controlled-model coverage; native GPU regressions additionally exercise the
+renderer and mode-change lifecycle.
