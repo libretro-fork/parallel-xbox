@@ -751,12 +751,95 @@ static void check_loop_setup(Machine *a, Machine *b, unsigned mode)
     }
 }
 
+static void check_program_transfers(Machine *a, Machine *b, unsigned mode)
+{
+    for (unsigned reg = DSP_REG_X0; reg <= DSP_REG_M7; reg++) {
+        for (unsigned ea = 0; ea < 64; ea++) {
+            if ((ea >> 3) == 6 && (ea & 7) != 0 && (ea & 7) != 4) continue;
+            for (unsigned seed = 0; seed < 4; seed++) {
+                check(a, b, 0x074080 | (ea << 8) | reg, 0x30,
+                      seed | 0x10000 | 0x8000000, mode, false);
+            }
+        }
+        for (unsigned addr = 0; addr < 64; addr++) {
+            for (unsigned read = 0; read < 2; read++) {
+                for (unsigned seed = 0; seed < 2; seed++) {
+                    check(a, b, 0x070000 | (addr << 8) | (read << 15) | reg,
+                          0x30, seed | 0x10000 | 0x8000000 |
+                          (seed ? 0x4000000 : 0), mode, false);
+                }
+            }
+        }
+    }
+}
+
+static void check_program_write_sequences(Machine *a, Machine *b, unsigned mode)
+{
+    static const uint32_t programs[][5] = {
+        /* Replace an already cached next opcode (CLR A -> CLR B). */
+        {0x070104, 0x200013, 0x08F484, 1, 0},
+        /* REP replaces its own body, then must execute the new CLR A. */
+        {0x0603A0, 0x070104, 0x08F484, 1, 0},
+        /* REP changes its EA extension from P:2 to P:$40. */
+        {0x0602A0, 0x077084, 2, 0x08F484, 1},
+        /* An unchanged cached extension must not invalidate code. */
+        {0x070304, 0, 0x08F484, 1, 0},
+    };
+    Machine *machines[] = {a, b};
+    for (unsigned which = 0; which < ARRAY_SIZE(programs); which++) {
+        for (unsigned i = 0; i < ARRAY_SIZE(machines); i++) {
+            Machine *m = machines[i];
+            prepare(m, programs[which][0], 0, 1, mode, false);
+            dsp_core_t *c = m->dsp->backend;
+            c->registers[DSP_REG_SR] = mode << DSP_SR_S0;
+            c->registers[DSP_REG_LA] = 0xFFF;
+            for (unsigned pc = 0; pc < ARRAY_SIZE(programs[which]); pc++) {
+                m->dsp->ops->write_memory(m->dsp, 'P', pc, programs[which][pc]);
+            }
+            m->dsp->ops->write_memory(m->dsp, 'P', 0x40, 0);
+        }
+        if (which == 0 || which == 3) {
+            /* Populate the destination's translation before the write. */
+            for (unsigned i = 0; i < ARRAY_SIZE(machines); i++) {
+                dsp_core_t *c = machines[i]->dsp->backend;
+                c->pc = which == 0 ? 1 : 2;
+                assert(run_frame(machines[i], 100000, false) == 0);
+            }
+            assert(compare_machines(a, b) == 0);
+        }
+        for (unsigned i = 0; i < ARRAY_SIZE(machines); i++) {
+            dsp_core_t *c = machines[i]->dsp->backend;
+            c->pc = 0;
+            c->registers[DSP_REG_A0] = c->registers[DSP_REG_A2] = 0;
+            c->registers[DSP_REG_B0] = c->registers[DSP_REG_B2] = 0;
+            c->registers[DSP_REG_A1] = 0x123456;
+            c->registers[DSP_REG_B1] = 0x654321;
+            c->registers[DSP_REG_X0] = which == 0 ? 0x20001B :
+                which == 1 ? 0x200013 : which == 2 ? 0x40 : 1;
+            machines[i]->dsp->save_cycles = 0;
+        }
+        uint64_t scans = dspjit_test_invalidation_scans();
+        dspjit_test_reset_fallback_count();
+        assert(run_frame(a, 100000, false) == 0);
+        assert(run_frame(b, 100000, true) == 0);
+        assert(!dspjit_test_fallback_count());
+        assert(compare_machines(a, b) == 0);
+        dsp_core_t *c = b->dsp->backend;
+        if (which == 0) assert(c->registers[DSP_REG_B1] == 0);
+        if (which == 1) assert(c->registers[DSP_REG_A1] == 0);
+        if (which == 2) assert(b->dsp->ops->read_memory(b->dsp, 'P', 0x40) == 0x40);
+        if (which == 3) assert(dspjit_test_invalidation_scans() == scans);
+        cases++;
+    }
+}
+
 int main(int argc, char **argv)
 {
     bool relative_only = argc == 2 && !strcmp(argv[1], "--relative");
     bool loops_only = argc == 2 && !strcmp(argv[1], "--loops");
-    if (argc != 1 && !relative_only && !loops_only) {
-        fputs("usage: dspnative [--relative|--loops]\n", stderr);
+    bool program_only = argc == 2 && !strcmp(argv[1], "--program");
+    if (argc != 1 && !relative_only && !loops_only && !program_only) {
+        fputs("usage: dspnative [--relative|--loops|--program]\n", stderr);
         return 2;
     }
     Machine *a = machine_new(false), *b = machine_new(true);
@@ -770,10 +853,12 @@ int main(int argc, char **argv)
 #ifdef _WIN32
     assert(initially_committed == (64u << 10));
 #endif
-    if (relative_only || loops_only) {
+    if (relative_only || loops_only || program_only) {
         for (unsigned mode = 0; mode < 4; mode++) {
             if (relative_only) check_relative_branches(a, b, mode);
             if (loops_only) check_loop_setup(a, b, mode);
+            if (program_only) check_program_transfers(a, b, mode);
+            if (program_only) check_program_write_sequences(a, b, mode);
         }
         goto done;
     }
@@ -785,6 +870,10 @@ int main(int argc, char **argv)
     check_data_write_invalidation(a, b);
     check_hot_control_registers(a, b);
     check_program_memory_reads(a, b);
+    for (unsigned mode = 0; mode < 4; mode++) {
+        check_program_transfers(a, b, mode);
+        check_program_write_sequences(a, b, mode);
+    }
     check_status_restore_chains(a, b);
     check_logical_immediates(a, b);
     check_loop_address_reload(a, b);
