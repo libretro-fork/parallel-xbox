@@ -1836,3 +1836,12 @@ The GL volume compression oracle forces both CPU and GL 4.3 compute decoding, re
 Shader-layout ownership tests require one module allocation, 16-byte parameter alignment, shared immutable metadata, non-overlapping parameter regions and independent mutable storage across modules. `SHADER_LAYOUT_CFLAGS` enables additional compiler/sanitizer flags.
 
 `test-pipeline-job-view.py CHECKOUT [CC]` checks production job linking, slot clearing and release publication across 36,992 count/lifetime/slot-reuse cases, plus full-ring rejection and both pipeline-library halves. Synchronous jobs borrow caller vertex descriptions; queued jobs rebind to owned keys before publication. `PIPELINE_JOB_CFLAGS` enables sanitizers.
+
+### CPU blit row coalescing
+
+`python3 libretro/tests/test-blit-copy.py .` compares the shared production copy
+helper with forward, row-by-row `memmove` across contiguous and pitched copies,
+both overlap directions, identical buffers, zero pitches and empty dimensions.
+It checks the entire backing store and counts copy calls: disjoint packed
+multi-row copies issue one call; dependent overlapping rows retain their order.
+This does not exercise GPU transfers or claim class 0x39 support.

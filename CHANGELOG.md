@@ -1,5 +1,7 @@
 # Changelog of the libretro core
 
+- Copy tightly packed, disjoint CPU blit rows in one transfer in both renderers. Preserve row-order behavior for overlapping copies and preserve pitched layouts, without adding staging buffers or GPU synchronization.
+
 - Decode larger S3TC volume textures directly into GPU images on hardware GL 4.3 drivers without VTC; keep native compressed uploads and CPU fallbacks for small textures, older GL and software Mesa.
 - Remove duplicate vertex-description arrays and copies from Vulkan pipeline jobs. Worker jobs reference their owned pipeline key; synchronous creation borrows the caller's key only for the driver call.
 

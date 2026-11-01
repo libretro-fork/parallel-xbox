@@ -26,6 +26,7 @@
 
 #include "hw/xbox/nv2a/nv2a_int.h"
 #include "renderer.h"
+#include "hw/xbox/nv2a/pgraph/copy.h"
 #include "ui/xemu-settings.h"
 
 static void perform_blit(int operation, uint8_t *source, uint8_t *dest,
@@ -34,11 +35,8 @@ static void perform_blit(int operation, uint8_t *source, uint8_t *dest,
                          BetaState *beta)
 {
     if (operation == NV09F_SET_OPERATION_SRCCOPY) {
-        for (unsigned int y = 0; y < height; y++) {
-            memmove(dest, source, width_bytes);
-            source += source_pitch;
-            dest += dest_pitch;
-        }
+        pgraph_copy_rows(dest, source, width_bytes, height,
+                         source_pitch, dest_pitch);
     } else if (operation == NV09F_SET_OPERATION_BLEND_AND) {
         uint32_t max_beta_mult = 0x7f80;
         uint32_t beta_mult = beta->beta >> 16;
