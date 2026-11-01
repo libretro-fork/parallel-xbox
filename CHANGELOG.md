@@ -1,5 +1,7 @@
 # Changelog of the libretro core
 
+- Negotiate modern shared OpenGL contexts on Windows instead of forcing 4.0, enabling supported separable-shader and GPU conversion paths while retaining a 4.0 fallback.
+
 - Fixed signed G8B8 bump filtering for one-level textures requesting mip filters with different minification and magnification modes, including address-only changes.
 
 - Update worker-module lifetime tests to exercise the combined module/parameter allocation path rather than the removed per-layout destructor.

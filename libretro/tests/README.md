@@ -1870,3 +1870,5 @@ This defines the no-progress contract; it does not enable class 0x39 transfers.
 `test-gpl-lookup-cache.py CHECKOUT [CC]` compares production GPL lookups to a first-match scan across 122,120 cases: zero/large hashes, cache-slot collisions, duplicate hashes, misses followed by insertion, independently moving pre/fragment arrays, and renderer reinitialization. Warm hits require one library-entry probe and allocate nothing. `GPL_LOOKUP_CFLAGS` enables sanitizers.
 
 Worker-module lifetime tests follow the combined module/parameter allocation path and verify that shared metadata outlives the shader words and either module. `VK_WORKER_MODULE_CFLAGS` enables extra sanitizer flags; assertion failures exit normally without opening a Windows crash dialog.
+
+`test-wgl-context-versions.py CHECKOUT [CC]` checks production Windows context negotiation: prefer 4.5, then 4.3, 4.1 and 4.0, preserving the share-context and DC arguments on every attempt. Unsupported drivers return failure. The real WGL dispatch test also reports the selected version and checks sharing from a 4.0 frontend context. `WGL_CORE_CFLAGS` enables sanitizers.
