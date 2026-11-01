@@ -760,12 +760,12 @@ static void upload_texture_image(PGRAPHState *pg, int texture_idx,
 {
     binding->cube_source_mask = 0;
     binding->depth_source_copy = false;
-    /* An aux upload runs before the open recording: when draws recorded
-     * there sample this binding, the recording is submitted first, or they
-     * would see the new content. */
+    /* An aux upload runs before the open recording. Submit first only if
+     * that recording references the current image. A CoW replacement is
+     * unreferenced; recorded descriptors retain the retired image. */
     {
         PGRAPHVkState *rr = pg->vk_renderer_state;
-        if (rr->in_command_buffer &&
+        if (binding->image_referenced && rr->in_command_buffer &&
             binding->submit_time == rr->submit_count) {
             pgraph_vk_finish(pg, VK_FINISH_REASON_TEXTURE_UP);
         }
@@ -1899,9 +1899,9 @@ static bool texture_cow_if_referenced(PGRAPHState *pg, TextureBinding *snode,
     }
     bool in_open_recording =
         r->in_command_buffer && snode->submit_time == r->submit_count;
-    bool referenced =
-        (snode->submit_time > r->settled_submit && !in_open_recording) ||
-        (open_recording_counts && in_open_recording);
+    bool referenced = snode->image_referenced &&
+        ((snode->submit_time > r->settled_submit && !in_open_recording) ||
+         (open_recording_counts && in_open_recording));
     if (!referenced) {
         return false;
     }
@@ -1934,6 +1934,9 @@ static bool texture_cow_if_referenced(PGRAPHState *pg, TextureBinding *snode,
     create_texture_view(r, snode, &vkf);
 
     snode->current_layout = VK_IMAGE_LAYOUT_UNDEFINED;
+    /* Recorded descriptors still refer to the retired image, whose trash
+     * entry retains its lifetime. The replacement has no draw references. */
+    snode->image_referenced = false;
     snode->seq = ++r->texture_binding_seq;
     return true;
 }
@@ -2768,6 +2771,7 @@ static void create_texture(PGRAPHState *pg, int texture_idx)
         }
     }
     snode->image_ci = image_create_info;
+    snode->image_referenced = false;
     create_texture_view(r, snode, &vkf);
 
     snode->sampler = create_sampler_for_state(pg, &state, filter, address,
@@ -2833,6 +2837,7 @@ static void update_timestamps(PGRAPHState *pg)
     for (int i = 0; i < ARRAY_SIZE(r->texture_bindings); i++) {
         if (r->texture_bindings[i]) {
             r->texture_bindings[i]->submit_time = r->submit_count;
+            r->texture_bindings[i]->image_referenced = true;
             r->texture_bindings[i]->sampled_frame = pg->frame_time;
         }
     }
@@ -2907,6 +2912,8 @@ static void texture_cache_entry_init(Lru *lru, LruNode *node, const void *state)
     /* Entries come from a non-zeroed g_malloc_n, and the release path
      * reads this flag even on a node that never borrowed. */
     snode->s2t_borrowed = false;
+    snode->submit_time = 0;
+    snode->image_referenced = false;
     snode->seq = ++r->texture_binding_seq;
     snode->validation_frame = (unsigned int)-1;
     snode->sampled_frame = 0;
@@ -2940,6 +2947,7 @@ static void texture_cache_release_node_resources(PGRAPHVkState *r, TextureBindin
     snode->image_view = VK_NULL_HANDLE;
     snode->image = VK_NULL_HANDLE;
     snode->allocation = VK_NULL_HANDLE;
+    snode->image_referenced = false;
 }
 
 static bool texture_cache_entry_pre_evict(Lru *lru, LruNode *node)
@@ -2958,7 +2966,8 @@ static bool texture_cache_entry_pre_evict(Lru *lru, LruNode *node)
     }
 
     // Used in command buffer
-    if (r->in_command_buffer && snode->submit_time == r->submit_count) {
+    if (snode->image_referenced && r->in_command_buffer &&
+        snode->submit_time == r->submit_count) {
         return false;
     }
 

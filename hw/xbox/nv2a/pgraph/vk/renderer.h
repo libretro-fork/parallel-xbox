@@ -274,6 +274,7 @@ typedef struct TextureBinding {
     uint64_t hash;
     unsigned int draw_time;
     uint32_t submit_time;
+    bool image_referenced; /* current image has recorded draw references */
     unsigned int sampled_frame; /* last bind use, including the fast path */
     /* Monotonic creation id: tells a recreated texture apart from the one
      * previously in this node even if the driver recycled the Vk handles. */

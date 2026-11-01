@@ -7,7 +7,7 @@
 typedef uint64_t hwaddr;
 #define NV2A_MAX_TEXTURES 4
 #define ARRAY_SIZE(a) (sizeof(a)/sizeof((a)[0]))
-typedef struct TextureBinding { bool s2t_borrowed,depth_source_copy; uintptr_t image;
+typedef struct TextureBinding { bool s2t_borrowed,depth_source_copy,image_referenced; uintptr_t image;
     struct { bool byte_reinterpret; uint64_t texture_vram_offset;
         size_t texture_length; struct { bool cubemap; } state; } key;
     unsigned cube_source_mask, cube_source_draw_time[6];
@@ -103,7 +103,7 @@ int main(void) {
     PGRAPHVkState r={.surfaces={&s},.texture_bindings={&t},.submit_count=33};
     NV2AState d={.pgraph={10,&r}};
     update_timestamps(&d.pgraph);
-    assert(t.sampled_frame==10 && t.submit_time==33);
+    assert(t.sampled_frame==10 && t.submit_time==33 && t.image_referenced);
     expire_old_surfaces(&d);
     assert(!s.evicted && s.frame_time==10);
     d.pgraph.frame_time=16; /* Still bound but unused: must not pin forever. */

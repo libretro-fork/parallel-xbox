@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Track draw references per Vulkan texture image so copy-on-write replacements do not inherit the retired image's upload-ordering requirement. Skip redundant recording submissions for unreferenced replacement images while preserving deferred retirement, descriptor sequence changes and ordering once the new image is drawn.
+
 - Use aligned depth/stencil plane footprints for Vulkan readback batching and buffer capacity instead of eight bytes per scaled pixel. Keep direct readbacks in the open batch when their actual storage fits, avoiding unnecessary batch flushes and paired-buffer growth while retaining host visibility and completion waits.
 
 - End direct linear Vulkan texture-upload spans at the last active texel instead of unused final-row pitch padding. Narrow imported-RAM ownership claims and transfer bounds while retaining row pitch, full texture keys, dirty tracking and existing staging fallback.

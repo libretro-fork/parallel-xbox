@@ -2989,3 +2989,17 @@ accepted short-capacity cases are also rejected by the exact requirement.
 Readback still waits for
 guest CPU visibility at immediate or batch completion. Upload and readback now
 share the footprint helper; the 480-case upload-range oracle remains applicable.
+
+
+`python libretro/tests/test-texture-cow-ordering.py CHECKOUT [CC]` exercises
+production copy-on-write selection/replacement, trash retirement, upload-order
+guard, draw stamping, initialization, eviction eligibility and release with
+allocation/view/finish spies. Its 1,536 states include serial zero, open and
+submitted references, pool hits/misses and unreferenced images. The current
+image's draw-reference flag clears on replacement/release and sets on a new draw;
+the old image remains in deferred trash with its original handles and retirement
+domains. The matrix has 188 replacements and 36 cases where an obsolete upload
+submission is avoided. Fresh replacements are not repeatedly copied before a
+new draw; live images still require ordering. Poisoned cache-node initialization
+must clear the reference flag and stamp. These are modeled metadata/lifetime
+checks, not measured Vulkan submissions or a full GPU sampling/game test.
