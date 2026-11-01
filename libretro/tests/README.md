@@ -1813,3 +1813,6 @@ python3 libretro/tests/test-texture-conversion-partition.py .
 
 Checks that every converted swizzled format has a fused upload path and the remaining conversions are linear YUV. Pair with `test-palette-unswizzle.py` and `test-rgb655-unswizzle.py` for pixel and caller-storage coverage.
 `test-seed-merge-view.py CHECKOUT [CC]` exercises the production seed parser, borrowed section lookup and merge. Mapping storage is poisoned and released before the write callback. It checks deduplication, caps, missing/malformed/mismatched files, write failures, no intermediate section duplication and the independently owned public read API. `SEED_VIEW_CFLAGS` enables sanitizers.
+
+
+The S3TC oracle also covers 1,944 clipped image/volume shapes, partial four-slice groups, unaligned output and full-output guards, alongside exhaustive normalized color/alpha checks. CPU BC2/BC3 decode consumes packed alpha directly while writing final RGBA pixels.

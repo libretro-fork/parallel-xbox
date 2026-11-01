@@ -1,5 +1,7 @@
 # Changelog of the libretro core
 
+- Decode BC2/BC3 alpha directly into final RGBA pixels in the CPU texture fallback, removing per-block alpha expansion storage.
+
 - Remove obsolete intermediate conversion storage from GL and Vulkan swizzled-texture upload paths; retain direct palette/RGB655 expansion and linear YUV conversion.
 - Merge shader seeds directly from mapped records, removing the intermediate section allocation and copy while releasing the mapping before file replacement.
 

@@ -79,8 +79,59 @@ static void check(unsigned format, const uint8_t block[16])
     }
 }
 
+/* Compare clipped images/volumes against independently placed complete blocks.
+ * The exhaustive normalized oracle below checks each complete block's values. */
+static void check_images(void)
+{
+    const unsigned widths[] = {1, 2, 3, 4, 5, 7, 8, 9, 17};
+    const unsigned depths[] = {1, 2, 3, 4, 5, 7, 8, 9};
+    uint64_t compressed[5 * 5 * 9 * 2];
+    uint8_t actual[17 * 17 * 9 * 4 + 32];
+    uint8_t expected[sizeof(actual)];
+    uint8_t block[64];
+    unsigned seed = 7, cases = 0;
+    for (unsigned f = 0; f < 3; f++)
+    for (unsigned wi = 0; wi < sizeof(widths)/sizeof(widths[0]); wi++)
+    for (unsigned hi = 0; hi < sizeof(widths)/sizeof(widths[0]); hi++)
+    for (unsigned di = 0; di < sizeof(depths)/sizeof(depths[0]); di++) {
+        unsigned w = widths[wi], h = widths[hi], d = depths[di];
+        unsigned bw = (w + 3)/4, bh = (h + 3)/4;
+        unsigned bs = f ? 16 : 8, n = 0;
+        uint8_t *input = (uint8_t *)compressed;
+        for (unsigned i = 0; i < bw * bh * d * bs; i++) {
+            seed = seed * 1664525u + 1013904223u;
+            input[i] = seed >> 24;
+        }
+        memset(actual, 0xa7, sizeof(actual));
+        memset(expected, 0xa7, sizeof(expected));
+        for (unsigned z0 = 0; z0 < d; z0 += 4) {
+            unsigned nz = d-z0 < 4 ? d-z0 : 4;
+            for (unsigned by = 0; by < bh; by++)
+            for (unsigned bx = 0; bx < bw; bx++)
+            for (unsigned z = 0; z < nz; z++) {
+                s3tc_decompress_2d_into(f, input + n++ * bs, 4, 4, block);
+                for (unsigned y = 0; y < 4 && by*4+y < h; y++)
+                for (unsigned x = 0; x < 4 && bx*4+x < w; x++) {
+                    size_t dst = 1 + (((size_t)(z0+z)*h + by*4+y)*w + bx*4+x)*4;
+                    memcpy(expected + dst, block + (y*4+x)*4, 4);
+                }
+            }
+        }
+        s3tc_decompress_3d_into(f, input, w, h, d, actual+1);
+        assert(memcmp(actual, expected, sizeof(actual)) == 0);
+        if (d == 1) {
+            memset(actual, 0xa7, sizeof(actual));
+            s3tc_decompress_2d_into(f, input, w, h, actual+1);
+            assert(memcmp(actual, expected, sizeof(actual)) == 0);
+        }
+        cases++;
+    }
+    printf("S3TC clipped image/volume oracle: %u cases, guards and unaligned output PASS\n", cases);
+}
+
 int main(void)
 {
+    check_images();
     uint8_t block[16];
     /* All endpoint pairs per component and all four color selectors. DXT1
      * covers both palette modes; BC2/3 must keep four colors in either order. */

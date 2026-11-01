@@ -45,7 +45,7 @@ static void decode_bc1_channel(unsigned c0, unsigned c1, unsigned max,
 }
 
 static void decode_bc1_colors(uint16_t c0, uint16_t c1, uint8_t r[4],
-                              uint8_t g[4], uint8_t b[4], uint8_t a[16],
+                              uint8_t g[4], uint8_t b[4], uint8_t a[8],
                               bool transparent)
 {
     decode_bc1_channel((c0 >> 11) & 31, (c1 >> 11) & 31, 31, r, transparent);
@@ -55,11 +55,17 @@ static void decode_bc1_colors(uint16_t c0, uint16_t c1, uint8_t r[4],
     a[3] = transparent ? 0 : 255;
 }
 
+enum BlockAlphaMode {
+    ALPHA_COLOR_SELECTOR,
+    ALPHA_EXPLICIT_NIBBLE,
+    ALPHA_PALETTE_SELECTOR,
+};
+
 static void write_block_to_texture(uint8_t *converted_data, uint32_t indices,
                                    int i, int j, int width, int height,
                                    int z_pos_factor, uint8_t r[4],
-                                   uint8_t g[4], uint8_t b[4], uint8_t a[16],
-                                   bool separate_alpha)
+                                   uint8_t g[4], uint8_t b[4], uint8_t a[8],
+                                   enum BlockAlphaMode alpha_mode, uint64_t alpha_bits)
 {
     int x0 = i * 4,
         y0 = j * 4;
@@ -73,12 +79,20 @@ static void write_block_to_texture(uint8_t *converted_data, uint32_t indices,
         for (int x = x0; x < x1 && x < width; x++) {
             int xy_index = y_index + x - x0;
             uint8_t index = (indices >> 2 * xy_index) & 0x03;
-            uint8_t alpha_index = separate_alpha ? xy_index : index;
+            /* BC2/3 alpha is consumed once, directly from its packed bits. */
+            uint8_t alpha;
+            if (alpha_mode == ALPHA_EXPLICIT_NIBBLE) {
+                alpha = ((alpha_bits >> (4 * xy_index)) & 15) * 17;
+            } else if (alpha_mode == ALPHA_PALETTE_SELECTOR) {
+                alpha = a[(alpha_bits >> (16 + 3 * xy_index)) & 7];
+            } else {
+                alpha = a[index];
+            }
             uint8_t *p = converted_data + (z_plus_y_pos_factor + x) * 4;
             *p++ = r[index];
             *p++ = g[index];
             *p++ = b[index];
-            *p++ = a[alpha_index];
+            *p++ = alpha;
         }
     }
 }
@@ -89,13 +103,13 @@ static void decompress_dxt1_block(const uint8_t block_data[8],
 {
     uint16_t c0 = ((uint16_t*)block_data)[0],
              c1 = ((uint16_t*)block_data)[1];
-    uint8_t r[4], g[4], b[4], a[16];
+    uint8_t r[4], g[4], b[4], a[8];
     decode_bc1_colors(c0, c1, r, g, b, a, c0 <= c1);
 
     uint32_t indices = ((uint32_t*)block_data)[1];
     write_block_to_texture(converted_data, indices,
                            i, j, width, height, z_pos_factor,
-                           r, g, b, a, false);
+                           r, g, b, a, ALPHA_COLOR_SELECTOR, 0);
 }
 
 static void decompress_dxt3_block(const uint8_t block_data[16],
@@ -104,18 +118,14 @@ static void decompress_dxt3_block(const uint8_t block_data[16],
 {
     uint16_t c0 = ((uint16_t*)block_data)[4],
              c1 = ((uint16_t*)block_data)[5];
-    uint8_t r[4], g[4], b[4], a[16];
+    uint8_t r[4], g[4], b[4], a[8];
     decode_bc1_colors(c0, c1, r, g, b, a, false);
 
     uint64_t alpha = ((uint64_t*)block_data)[0];
-    for (int a_i=0; a_i < 16; a_i++) {
-        a[a_i] = (((alpha >> 4*a_i) & 0x0F) << 4) * 0xFF / 0xF0;
-    }
-
     uint32_t indices = ((uint32_t*)block_data)[3];
     write_block_to_texture(converted_data, indices,
                            i, j, width, height, z_pos_factor,
-                           r, g, b, a, true);
+                           r, g, b, a, ALPHA_EXPLICIT_NIBBLE, alpha);
 }
 
 static void decompress_dxt5_block(const uint8_t block_data[16],
@@ -124,38 +134,35 @@ static void decompress_dxt5_block(const uint8_t block_data[16],
 {
     uint16_t c0 = ((uint16_t*)block_data)[4],
              c1 = ((uint16_t*)block_data)[5];
-    uint8_t r[4], g[4], b[4], a[16];
+    uint8_t r[4], g[4], b[4], a[8];
     decode_bc1_colors(c0, c1, r, g, b, a, false);
 
     uint64_t alpha = ((uint64_t*)block_data)[0];
     uint8_t a0 = block_data[0];
     uint8_t a1 = block_data[1];
-    uint8_t a_palette[8];
-    a_palette[0] = a0;
-    a_palette[1] = a1;
+    /* Keep only the eight palette entries; select alpha while writing. */
+    a[0] = a0;
+    a[1] = a1;
     if (a0 > a1) {
-        a_palette[2] = (6*a0+1*a1+3)/7;
-        a_palette[3] = (5*a0+2*a1+3)/7;
-        a_palette[4] = (4*a0+3*a1+3)/7;
-        a_palette[5] = (3*a0+4*a1+3)/7;
-        a_palette[6] = (2*a0+5*a1+3)/7;
-        a_palette[7] = (1*a0+6*a1+3)/7;
+        a[2] = (6*a0+1*a1+3)/7;
+        a[3] = (5*a0+2*a1+3)/7;
+        a[4] = (4*a0+3*a1+3)/7;
+        a[5] = (3*a0+4*a1+3)/7;
+        a[6] = (2*a0+5*a1+3)/7;
+        a[7] = (1*a0+6*a1+3)/7;
     } else {
-        a_palette[2] = (4*a0+1*a1+2)/5;
-        a_palette[3] = (3*a0+2*a1+2)/5;
-        a_palette[4] = (2*a0+3*a1+2)/5;
-        a_palette[5] = (1*a0+4*a1+2)/5;
-        a_palette[6] = 0;
-        a_palette[7] = 255;
-    }
-    for (int a_i = 0; a_i < 16; a_i++) {
-        a[a_i] = a_palette[(alpha >> (16+3*a_i)) & 0x07];
+        a[2] = (4*a0+1*a1+2)/5;
+        a[3] = (3*a0+2*a1+2)/5;
+        a[4] = (2*a0+3*a1+2)/5;
+        a[5] = (1*a0+4*a1+2)/5;
+        a[6] = 0;
+        a[7] = 255;
     }
 
     uint32_t indices = ((uint32_t*)block_data)[3];
     write_block_to_texture(converted_data, indices,
                            i, j, width, height, z_pos_factor,
-                           r, g, b, a, true);
+                           r, g, b, a, ALPHA_PALETTE_SELECTOR, alpha);
 }
 
 void s3tc_decompress_3d_into(enum S3TC_DECOMPRESS_FORMAT color_format,
