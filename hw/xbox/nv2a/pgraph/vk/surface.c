@@ -109,7 +109,14 @@ static bool framebuffer_dirty(PGRAPHState const *pg)
 static bool surface_upload_from_vram(const PGRAPHVkState *r,
                                       const SurfaceBinding *surface)
 {
-    return !surface->swizzle && r->vram_buffer != VK_NULL_HANDLE &&
+    /* One non-unit axis has no Morton interleave. Surface creation already
+     * canonicalizes swizzled pitch to a tight row; retain that invariant. */
+    bool linear_order = !surface->swizzle ||
+        (surface->width && surface->height &&
+         (surface->width == 1 || surface->height == 1) &&
+         surface->pitch == (VkDeviceSize)surface->width *
+                               surface->fmt.bytes_per_pixel);
+    return linear_order && r->vram_buffer != VK_NULL_HANDLE &&
            surface->vram_addr % surface->fmt.bytes_per_pixel == 0 &&
            surface->vram_addr % 4 == 0 &&
            surface->pitch % surface->fmt.bytes_per_pixel == 0 &&
@@ -1791,9 +1798,9 @@ void pgraph_vk_upload_surface_data(NV2AState *d, SurfaceBinding *surface,
         use_compute_to_convert_depth_stencil_format;
     assert(no_conversion_necessary);
 
-    /* Linear surfaces read imported RAM directly, including packed depth
-     * copied into the unpack input below. Otherwise stage packed rows;
-     * swizzled surfaces retain their existing unswizzle path. */
+    /* Linear and single-axis swizzled surfaces read imported RAM directly,
+     * including packed depth copied into the unpack input below. Otherwise
+     * stage packed rows or use the existing unswizzle path. */
     VkDeviceSize staged_offset = 0;
     unsigned int staged_row_length = 0;
     bool from_vram = surface_upload_from_vram(r, surface);

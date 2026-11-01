@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Upload eligible single-axis swizzled color and depth surfaces directly from imported Vulkan VRAM. Their canonical tight rows are already in linear order, so surface uploads skip GPU unswizzling or CPU staging while retaining packed depth unpacking, RAM ownership claims and alignment fallbacks.
+
 - Upload unconverted swizzled texture levels directly from imported Vulkan VRAM when only one axis has more than one texel. Their Morton order is already linear, so thin levels and mip tails skip the unswizzle dispatch, output ring and CPU staging copy; unaligned, non-imported and conversion cases keep their fallbacks.
 
 - Size Vulkan depth-sampling conversion buffers after selecting the native or scaled transfer extent, using the actual depth/stencil planes and output bytes. Avoid unnecessary buffer growth and its GPU drain at high scales, and include stencil-plane alignment for small images.
