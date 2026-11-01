@@ -16,6 +16,13 @@ typedef struct PGRAPHM2MFExecution {
 
 #define PGRAPH_M2MF_CPU_MAX_BYTES (64 * 1024)
 
+typedef enum PGRAPHM2MFSchedule {
+    PGRAPH_M2MF_BLOCKED,
+    PGRAPH_M2MF_RUNNABLE,
+    PGRAPH_M2MF_FINISHED,
+    PGRAPH_M2MF_ERROR,
+} PGRAPHM2MFSchedule;
+
 struct NV2AState;
 /* notify_enabled is explicit: instance zero must not be guessed to mean an
  * unbound notifier. DMA bindings and command layout are immutable afterwards.
@@ -29,5 +36,11 @@ PGRAPHM2MFResult pgraph_m2mf_execution_cpu_step(struct NV2AState *d,
 /* Only the PUBLISH phase may write completion. Returns YIELD if notifier RAM
  * is still GPU-owned. This does not deliver an optional notify interrupt. */
 PGRAPHM2MFResult pgraph_m2mf_execution_publish(struct NV2AState *d,
+    PGRAPHM2MFCommand *command, const PGRAPHM2MFExecution *execution);
+/* One owner turn: bounded CPU progress, immediate publication when possible,
+ * and an explicit scheduling result. Only RUNNABLE requests another work turn;
+ * BLOCKED requires backend progress/visibility notification, never a busy poll.
+ * The FIFO owner decides how to service frame requests between these turns. */
+PGRAPHM2MFSchedule pgraph_m2mf_execution_progress(struct NV2AState *d,
     PGRAPHM2MFCommand *command, const PGRAPHM2MFExecution *execution);
 #endif

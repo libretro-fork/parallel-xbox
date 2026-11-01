@@ -1912,3 +1912,11 @@ and payload writes. Tests check explicit notifier instance zero, stale execution
 unsupported CPU targets/classes, bounds/alignment failures and empty transfers.
 Backend retirement is still controlled; no GPU fence or guest-runtime validation
 is established, and the coordinator still has no pgraph_method caller.
+
+The coordinator's owner-progress API explicitly returns RUNNABLE only after
+bounded CPU progress with more work remaining. Preparation, GPU retirement and
+unchanged blocked RAM authority return BLOCKED, requiring a real backend event
+rather than self-kicking a poll loop. A ready notifier publishes in the same
+owner turn as CPU-copy completion. Tests exercise these results, partial-copy
+visibility loss and duplicate-completion protection; frame presentation policy
+and actual FIFO integration are still outside this experimental slice.

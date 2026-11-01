@@ -143,3 +143,40 @@ PGRAPHM2MFResult pgraph_m2mf_execution_publish(NV2AState *d,
     pgraph_m2mf_job_published(&command->job, execution->ticket);
     return PGRAPH_M2MF_DONE;
 }
+
+PGRAPHM2MFSchedule pgraph_m2mf_execution_progress(NV2AState *d,
+    PGRAPHM2MFCommand *command, const PGRAPHM2MFExecution *execution)
+{
+    PGRAPHM2MFJob *job = &command->job;
+    if (!command->pending || job->ticket != execution->ticket) {
+        return PGRAPH_M2MF_ERROR;
+    }
+    if (job->phase == PGRAPH_M2MF_CPU_COPY) {
+        uint32_t row = job->transfer.row, column = job->transfer.column;
+        PGRAPHM2MFResult result = pgraph_m2mf_execution_cpu_step(d,
+            command, execution, PGRAPH_M2MF_CPU_MAX_BYTES);
+        if (result == PGRAPH_M2MF_INVALID) {
+            return PGRAPH_M2MF_ERROR;
+        }
+        if (result == PGRAPH_M2MF_YIELD) {
+            return row != job->transfer.row || column != job->transfer.column ?
+                   PGRAPH_M2MF_RUNNABLE : PGRAPH_M2MF_BLOCKED;
+        }
+        /* Data completed this turn: do not defer a ready notifier until a
+         * later owner turn, much less until the next video frame. */
+    }
+    if (job->phase == PGRAPH_M2MF_PUBLISH) {
+        PGRAPHM2MFResult result = pgraph_m2mf_execution_publish(d,
+                                                               command, execution);
+        return result == PGRAPH_M2MF_DONE ? PGRAPH_M2MF_FINISHED :
+               result == PGRAPH_M2MF_YIELD ? PGRAPH_M2MF_BLOCKED :
+                                            PGRAPH_M2MF_ERROR;
+    }
+    if (job->phase == PGRAPH_M2MF_COMPLETE) {
+        return PGRAPH_M2MF_FINISHED;
+    }
+    if (job->phase == PGRAPH_M2MF_PREPARE || job->phase == PGRAPH_M2MF_GPU_WAIT) {
+        return PGRAPH_M2MF_BLOCKED;
+    }
+    return PGRAPH_M2MF_ERROR;
+}

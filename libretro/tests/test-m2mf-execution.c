@@ -143,6 +143,36 @@ int main(void)
  assert(!big[131072+PGRAPH_M2MF_CPU_MAX_BYTES]);
  assert(pgraph_m2mf_execution_cpu_step(&d,&c,&e,SIZE_MAX)==PGRAPH_M2MF_DONE);
  assert(!memcmp(big,big+131072,70000));cases++;
+ vr.bytes=16384;setup(&d,&c);
+ assert(pgraph_m2mf_execution_start(&d,&c,&e,true)==PGRAPH_M2MF_YIELD);
+ assert(pgraph_m2mf_execution_progress(&d,&c,&e)==PGRAPH_M2MF_BLOCKED&&!dirty_calls&&!clock_calls);
+ assert(pgraph_m2mf_job_prepared(&c.job,e.ticket,false));
+ retro_atomic_store_relaxed_int(&d.pgraph.cpu.ahead[0],1);
+ assert(pgraph_m2mf_execution_progress(&d,&c,&e)==PGRAPH_M2MF_BLOCKED&&!dirty_calls);
+ retro_atomic_store_relaxed_int(&d.pgraph.cpu.ahead[0],0);
+ assert(pgraph_m2mf_execution_progress(&d,&c,&e)==PGRAPH_M2MF_FINISHED&&clock_calls==1&&status_calls==1);
+ unsigned previous_dirty=dirty_calls;
+ assert(pgraph_m2mf_execution_progress(&d,&c,&e)==PGRAPH_M2MF_FINISHED&&clock_calls==1&&dirty_calls==previous_dirty);
+ assert(pgraph_m2mf_decode(&c,0,NV039_BUFFER_NOTIFY,0)==PGRAPH_M2MF_CONSUMED);
+ assert(pgraph_m2mf_execution_progress(&d,&c,&e)==PGRAPH_M2MF_ERROR);cases++;
+ setup(&d,&c);
+ assert(pgraph_m2mf_execution_start(&d,&c,&e,true)==PGRAPH_M2MF_YIELD);
+ assert(pgraph_m2mf_job_prepared(&c.job,e.ticket,true));
+ for(unsigned i=0;i<100;i++)assert(pgraph_m2mf_execution_progress(&d,&c,&e)==PGRAPH_M2MF_BLOCKED&&!dirty_calls&&!clock_calls);
+ /* Controlled backend completes the data before its retirement event. */
+ for(unsigned y=0;y<4;y++)memcpy(d.vram_ptr+4096+4+y*32,expected+4096+4+y*32,16);
+ assert(pgraph_m2mf_job_gpu_retired(&c.job,e.ticket));
+ assert(pgraph_m2mf_execution_progress(&d,&c,&e)==PGRAPH_M2MF_FINISHED&&status_calls==1);cases++;
+ setup(&d,&c);vr.bytes=sizeof(big);d.vram_ptr=big;
+ maps[0].bytes=70000;maps[1].address=131072;maps[1].bytes=70000;
+ c.job.transfer=(PGRAPHM2MFTransfer){.length=70000,.rows=1,.stride_in=1,.stride_out=1};
+ assert(pgraph_m2mf_execution_start(&d,&c,&e,false)==PGRAPH_M2MF_YIELD);
+ assert(pgraph_m2mf_job_prepared(&c.job,e.ticket,false));
+ assert(pgraph_m2mf_execution_progress(&d,&c,&e)==PGRAPH_M2MF_RUNNABLE&&c.job.transfer.column==65536);
+ retro_atomic_store_relaxed_int(&d.pgraph.cpu.ahead[0],1<<16);
+ assert(pgraph_m2mf_execution_progress(&d,&c,&e)==PGRAPH_M2MF_BLOCKED&&c.job.transfer.column==65536);
+ retro_atomic_store_relaxed_int(&d.pgraph.cpu.ahead[0],0);
+ assert(pgraph_m2mf_execution_progress(&d,&c,&e)==PGRAPH_M2MF_FINISHED&&!clock_calls&&!status_calls);cases++;
  printf("PASS: %u M2MF coordinator schedules (latched DMA, bounded copies, visibility, dirty tracking and status publication)\n",cases);
  return 0;
 }
