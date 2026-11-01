@@ -232,8 +232,10 @@ bool nv2a_libretro_guest_busy(void)
  * the display again and draw it (pfifo_idle_wait), so the picture handed
  * over is the front buffer as the frame's last draws left it - the guest
  * may have moved the scanout while they were still queued, and the display
- * was drawn before them. The request's number, to wait for; 0 with no GPU
- * thread running. */
+ * was drawn before them. Requests replace the latest sequence, without a
+ * frame queue. Shared-device Vulkan presents the latest safely published
+ * image without waiting for acknowledgement; legacy paths wait for this
+ * sequence. Return 0 with no GPU thread running. */
 int nv2a_libretro_frame_end(void)
 {
     NV2AState *d = g_nv2a;
@@ -243,10 +245,8 @@ int nv2a_libretro_frame_end(void)
         retro_atomic_load_relaxed_int(&d->pfifo.halt)) {
         return 0;
     }
-    end = retro_atomic_load_relaxed_int(&d->pfifo.frame_end_req) + 1;
-    if (!end) {
-        end = 1;
-    }
+    end = retro_atomic_load_relaxed_int(&d->pfifo.frame_end_req);
+    end = end == INT_MAX ? 1 : end + 1;
     retro_atomic_store_release_int(&d->pfifo.frame_end_req, end);
     pfifo_kick(d);
     return end;

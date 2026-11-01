@@ -2039,9 +2039,10 @@ static void lr_idle_wait(CPUState *cpu, int64_t now, int64_t until)
 
 static void lr_finish_frame(void)
 {
-    /* Finish submitted GPU work and the resulting display composition
-     * before handing the picture to the frontend. This completion barrier
-     * leaves guest time unchanged in both timing modes. */
+    /* Ask the FIFO owner to refresh scanout after its pending work. Shared
+     * Vulkan images carry frontend ownership claims and queue ordering, so
+     * presentation can take the latest publication without this CPU wait.
+     * Legacy display paths still require the acknowledgement below. */
     extern int nv2a_libretro_frame_end(void);
     extern bool nv2a_libretro_frame_end_done(int end);
     int end;
@@ -2049,12 +2050,10 @@ static void lr_finish_frame(void)
     if (!runstate_is_running()) {
         return;
     }
-    /* one request and one wait: the GPU's thread draws the display from
-     * what the frame's work left once that work is done, where it would
-     * park, and says so (pfifo_idle_wait). It took two before: a wait for
-     * the work, then a redraw asked for and waited for. */
+    /* Request scanout composition once. Legacy paths then wait for the
+     * FIFO owner to reach its idle point and acknowledge the refresh. */
     end = nv2a_libretro_frame_end();
-    if (!end) {
+    if (!end || (use_vulkan && xemu_libretro_vk.active)) {
         return;
     }
     for (;;) {
@@ -3127,7 +3126,7 @@ static void lr_present_audio(bool have_frame)
     }
 }
 
-/* The picture of the frame just run, to the frontend */
+/* The latest safely available picture, once per run, to the frontend */
 static void lr_present_video(void)
 {
     /* ---- OpenGL path ---- */

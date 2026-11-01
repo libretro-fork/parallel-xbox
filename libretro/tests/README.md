@@ -1049,9 +1049,12 @@ read path over 20,000 mutations, work-list changes and failed reads. It covers
 page/region boundaries, RAM-device rejection, address-space attributes and RCU
 lifetime, and asserts zero copied bytes for supported RAM.
 `test-frame-completion.py` compiles the production frame-end handoff against a
-model of the GPU's thread: one request, then waits until the thread has drawn
-the display. 216 combinations cover pending work, racing/spurious wakeups,
-stopping while waiting and no GPU thread. Guest time is not advanced by it.
+model of the GPU's thread: one request, with immediate return for shared-device
+Vulkan and acknowledgement for legacy paths. 864 combinations cover pending
+work, racing/spurious wakeups, stopping, no GPU thread and both Vulkan flags.
+Guest time is not advanced. It also extracts the production request publisher
+for 40,000 requests, including INT_MAX wrap, missing/stopped owners and one kick
+per accepted request.
 
 there is no texture upload at the filter change.
 
@@ -1971,3 +1974,11 @@ Backend fence completion is controlled in this fixture; the separate frame-end
 acknowledgement wait is not removed by this ownership change.
 
 `test-ide-write-generation.py CHECKOUT [CC]` executes production PIO completion and the retro_atomic save-state write counter through 6,144 success/error/retry/IRQ/continuation schedules, plus counter wrap and missing-drive behavior. It checks DMA write-only completion placement and removal of block accounting from active paths. `IDE_WRITE_CFLAGS`, `IDE_WRITE_BINARY` and `IDE_WRITE_SKIP_RUN=1` support sanitized and native runs. The HDD/DVD ROM integration tests cover DMA, PIO reads and out-of-range errors after telemetry removal.
+fixture covers asynchronous shared-device Vulkan and legacy acknowledgement.
+
+
+Shared-device Vulkan now requests a frame-end scanout refresh without waiting for
+FIFO acknowledgement. Presentation consumes the latest claimed publication or
+duplicates the previous image. Legacy GL and Vulkan interop still acknowledge
+frame end synchronously. `test-frame-completion.py` covers all four Vulkan flag
+combinations, including an owner that remains busy in the asynchronous path.

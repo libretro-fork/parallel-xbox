@@ -4,11 +4,14 @@
  * production source against a model of the GPU's thread: one request,
  * then waits until the thread says the display is drawn, each wait after
  * the flag and a full fence; none with no GPU thread or the machine
- * stopped; a stop while waiting ends it. */
+ * stopped; a stop while waiting ends it. Shared-device Vulkan requests
+ * work and returns immediately even when the owner remains busy. */
 #include <assert.h>
 #include <stdbool.h>
 #include <stdio.h>
 static int nv2a_libretro_waiter;
+static bool use_vulkan;
+static struct { bool active; } xemu_libretro_vk;
 static unsigned work, waits, fences, checks, requests, stop_after;
 static int end_req, end_done;
 static bool running, fenced, racing, spurious, gpu_thread;
@@ -42,9 +45,11 @@ static void main_loop_wait(bool nonblocking) {
 /* PRODUCTION */
 int main(void) {
     unsigned cases=0;
+    for(unsigned mode=0;mode<4;mode++)
     for(unsigned pending=0;pending<9;pending++)
     for(unsigned race=0;race<2;race++) for(unsigned wake=0;wake<2;wake++)
     for(unsigned stop=0;stop<3;stop++) for(unsigned gpu=0;gpu<2;gpu++) {
+        use_vulkan=mode&1;xemu_libretro_vk.active=mode&2;
         work=pending;waits=fences=checks=requests=0;end_req=end_done=7;
         racing=race;spurious=wake;running=stop!=2;stop_after=stop==1?2:0;
         gpu_thread=gpu;nv2a_libretro_waiter=0;fenced=false;
@@ -53,6 +58,9 @@ int main(void) {
         if(stop==2) { assert(!requests && !waits && !checks); cases++; continue; }
         assert(requests==1);
         if(!gpu) { assert(!waits && !checks && !fences); cases++; continue; }
+        if(use_vulkan && xemu_libretro_vk.active) {
+            assert(!waits && !checks && !fences);cases++;continue;
+        }
         assert(fences==waits+1 && checks<=fences);
         if(running) assert(end_done==end_req && checks==waits+1);
         else assert(waits==stop_after);
