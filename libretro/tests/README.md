@@ -1041,7 +1041,18 @@ set `VOLUME_NO_VALIDATION=1` only when unavailable and record that limitation.
 The runner supports Linux and Windows; fixture buffers model imported RAM,
 without testing the external-host import extension itself.
 
-`python3 libretro/tests/test-vulkan-linear-span.py CHECKOUT [CC]` validates production linear staging and copy-region functions with 324 Vulkan image transfers. R8, RG8, RGBA8 and RGB565 cases cover narrow/padded rows, one/multiple rows, absent VRAM buffers, unaligned offsets, and valid VRAM-end ranges. It checks exact pixels, row pitch, unchanged direct spans and exclusion of trailing padding from staging writes/allocation, plus an empty-height underflow check. Requires Linux Vulkan and Khronos validation layers.
+`python libretro/tests/test-vulkan-linear-span.py CHECKOUT [CC]` validates
+production linear staging and copy-region functions with 432 Vulkan transfers.
+R8, RG8, RGBA8 and RGB565 cases cover narrow/padded rows, one/multiple rows,
+missing imports, unaligned offsets and source spans ending at VRAM end. Direct
+metadata ends at the final active texel: `(height-1)*pitch + row_bytes`, with
+zero size for empty height. Guest row pitch is retained. Full texture keys and
+dirty-span validation remain unchanged; the fixture's trimmed-boundary cases
+exercise the transfer helper, not a relaxation of renderer-wide validation.
+The runner supports Linux/Windows and requests synchronization validation by
+default. Set `LINEAR_SPAN_NO_VALIDATION=1` explicitly if that layer is unavailable
+and record the reduced coverage. Fixture buffers model imported VRAM, without
+testing the external-host import extension itself.
 
 The `EXITWORK` flash scenario checks that register-only work crossing STI/CLI
 block exits completes inside 20 runs, with CPU Boost enabled and disabled.
@@ -2956,3 +2967,11 @@ route. It covers 3,200 chains in 1,600 two-readback submissions, with byte-exact
 RAM output. The fixture models imported RAM and command ownership, and requests
 no validation layer. Its isolated timings compare current routing variants,
 not this change against the previous implementation or whole-game performance.
+
+
+The 30,000-case linear-staging CPU matrix also checks trimmed direct spans:
+claimed bytes change from 26,222,135 to 25,230,296 in that matrix, with unchanged
+pixels and fallback staging. A sparse-pitch direct fixture claims 258,064 rather
+than 262,144 bytes without allocating staging. These are requested byte counts;
+actual ownership tracking may round to pages, and no CPU-wait reduction is
+measured. Staged fallback continues to reserve only active row bytes.

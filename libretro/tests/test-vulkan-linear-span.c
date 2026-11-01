@@ -92,16 +92,18 @@ int main(void)
     VkValidationFeaturesEXT validation_features = { .sType = VK_STRUCTURE_TYPE_VALIDATION_FEATURES_EXT,
         .enabledValidationFeatureCount = 1, .pEnabledValidationFeatures = &enabled };
     VkApplicationInfo app = { .sType = VK_STRUCTURE_TYPE_APPLICATION_INFO, .apiVersion = VK_API_VERSION_1_1 };
+    bool enable_validation = getenv("LINEAR_SPAN_NO_VALIDATION") == NULL;
     VkInstanceCreateInfo ci = { .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
-        .pNext = &validation_features, .pApplicationInfo = &app, .enabledLayerCount = 1,
-        .ppEnabledLayerNames = layers, .enabledExtensionCount = 2, .ppEnabledExtensionNames = extensions };
+        .pNext = enable_validation ? &validation_features : NULL, .pApplicationInfo = &app, .enabledLayerCount = enable_validation,
+        .ppEnabledLayerNames = layers, .enabledExtensionCount = enable_validation ? 2 : 0, .ppEnabledExtensionNames = extensions };
     VkInstance instance; CHECK(vkCreateInstance(&ci, NULL, &instance));
     PFN_vkCreateDebugUtilsMessengerEXT create = (void *)vkGetInstanceProcAddr(instance, "vkCreateDebugUtilsMessengerEXT");
     PFN_vkDestroyDebugUtilsMessengerEXT destroy = (void *)vkGetInstanceProcAddr(instance, "vkDestroyDebugUtilsMessengerEXT");
     VkDebugUtilsMessengerCreateInfoEXT mi = { .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
         .messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT, .messageType = 7,
         .pfnUserCallback = validation };
-    VkDebugUtilsMessengerEXT messenger; CHECK(create(instance, &mi, NULL, &messenger));
+    VkDebugUtilsMessengerEXT messenger = VK_NULL_HANDLE;
+    if (enable_validation) CHECK(create(instance, &mi, NULL, &messenger));
     uint32_t n = 1; VkPhysicalDevice gpu; CHECK(vkEnumeratePhysicalDevices(instance, &n, &gpu));
     vkGetPhysicalDeviceMemoryProperties(gpu, &memory_properties);
     VkPhysicalDeviceProperties properties; vkGetPhysicalDeviceProperties(gpu, &properties);
@@ -131,7 +133,7 @@ int main(void)
     for(unsigned wi=0;wi<3;wi++)
     for(unsigned hi=0;hi<3;hi++)
     for(unsigned padding=0;padding<3;padding++)
-    for(unsigned kind=0;kind<3;kind++) {
+    for(unsigned kind=0;kind<4;kind++) {
         unsigned w=widths[wi],h=heights[hi],bpp=pixel_bytes[f];
         unsigned pitch=padding==2?128:w*bpp+padding*4;
         unsigned depth=1;
@@ -146,17 +148,18 @@ int main(void)
             upload.mapped[offset+y*pitch+x]=value; expected[(y*w*bpp)+x]=value;
         }
         PGRAPHVkState renderer={.vram_buffer=kind==1?VK_NULL_HANDLE:upload.handle};
-        size_t limit=offset+guest_bytes;
+        size_t read_bytes=(size_t)(h-1)*pitch+(size_t)w*bpp;
+        size_t limit=offset+(kind==3?read_bytes:guest_bytes);
         NV2AState state={.vram_ptr=upload.mapped,.vram=&limit,
             .pgraph={.vk_renderer_state=&renderer,.arena=staging.mapped}};
         TextureLevel level={0}; copy_calls=0;
         stage_linear_2d(&state.pgraph,&level,upload.mapped+offset,w,h,pitch,bpp);
-        bool eligible=kind==0;
+        bool eligible=kind==0||kind==3;
         assert((level.source==LEVEL_VRAM)==eligible);
         assert(level.width==w && level.height==h && level.depth==1 && !level.crop_offset);
         assert(level.row_length==(eligible?pitch/bpp:0));
         if(eligible) {
-            assert(!copy_calls && !state.pgraph.head && level.offset==offset && level.size==guest_bytes);
+            assert(!copy_calls && !state.pgraph.head && level.offset==offset && level.size==read_bytes);
             direct++;
         } else {
             assert(copy_calls==(pitch==w*bpp?1:h) && state.pgraph.head==bytes && level.offset==0 && level.size==bytes);
@@ -204,9 +207,11 @@ int main(void)
         drop_buffer(upload); drop_buffer(staging); drop_buffer(output); free(expected);
         CHECK(vkResetCommandBuffer(cmd, 0)); cases++;
     }
+    printf("synchronization validation=%u\n",enable_validation);
     printf("linear cases=%u direct=%u omitted_staging_bytes=%zu; pixels exact\n",cases,direct,omitted);
     vkDestroyCommandPool(device, pool, NULL); vkDestroyDevice(device, NULL);
-    destroy(instance, messenger, NULL); vkDestroyInstance(instance, NULL);
+    if (messenger) destroy(instance, messenger, NULL);
+    vkDestroyInstance(instance, NULL);
     printf("validation_errors=%u\n", errors);
     return errors ? 1 : 0;
 }

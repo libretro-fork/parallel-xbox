@@ -1,9 +1,10 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """Validate production linear staging spans and direct VRAM copies.
-Usage: python3 SCRIPT CHECKOUT [CC]. Requires Linux Vulkan and validation layers.
+Usage: python3 SCRIPT CHECKOUT [CC]. Requires Vulkan; validation is on unless explicitly disabled.
 """
 from pathlib import Path
 import re
+import os
 import subprocess
 import sys
 import tempfile
@@ -21,11 +22,14 @@ for name in ("stage_level", "level_from_vram", "stage_linear_2d", "texture_level
         end += 1
     parts.append(source[start:end])
 code = Path(__file__).with_suffix(".c").read_text().replace("/* PRODUCTION */", "\n".join(parts))
-with tempfile.TemporaryDirectory(prefix="vk-linear-span-") as directory:
+with tempfile.TemporaryDirectory(prefix="vk-linear-span-", dir=repo.parent) as directory:
     folder = Path(directory)
     (folder / "test.c").write_text(code)
+    exe = folder / ("test.exe" if os.name == "nt" else "test")
+    link = [str(Path(os.environ.get("WINDIR", "C:/Windows")) / "System32/vulkan-1.dll")] if os.name == "nt" else ["-lvulkan"]
     subprocess.run([sys.argv[2] if len(sys.argv) > 2 else "gcc", "-O2", "-std=gnu11",
                     "-Wall", "-Wextra", "-Werror", "-Wno-sign-compare",
-                    "-fsanitize=undefined", "-fno-sanitize-recover=all", "-I", str(repo),
-                    str(folder / "test.c"), "-lvulkan", "-o", str(folder / "test")], check=True)
-    subprocess.run([str(folder / "test")], check=True)
+                    "-fsanitize=undefined", "-fsanitize-undefined-trap-on-error", "-I", str(repo),
+                    "-I", str(repo / "deps/vulkan-headers"),
+                    str(folder / "test.c"), *link, "-o", str(exe)], check=True)
+    subprocess.run([str(exe)], check=True, timeout=120)

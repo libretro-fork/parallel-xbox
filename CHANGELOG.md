@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- End direct linear Vulkan texture-upload spans at the last active texel instead of unused final-row pitch padding. Narrow imported-RAM ownership claims and transfer bounds while retaining row pitch, full texture keys, dirty tracking and existing staging fallback.
+
 - Let single-axis packed depth/stencil readbacks fall back to a direct Vulkan transfer into imported RAM when packed/fused shader routes are unavailable. Skip the intermediate swizzle ring and fallback swizzle kernel while preserving existing zero-copy shader routes and CPU completion barriers.
 
 - Use the actual aligned depth/stencil output footprint for Vulkan depth-upload capacity and barriers. Include the stencil alignment gap and complete final shader-written word, fixing short synchronization ranges for small surfaces and avoiding oversized eight-byte-per-pixel growth requests.

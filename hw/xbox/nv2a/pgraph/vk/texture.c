@@ -199,18 +199,18 @@ static bool level_from_vram(PGRAPHState *pg, TextureLevel *level,
     return true;
 }
 
-/* Direct VRAM reads retain guest pitch. Staged fallback rows only contain
- * texels: padding is neither copied nor reserved in the staging ring. */
+/* Direct VRAM reads retain guest pitch, but their ownership/bounds span
+ * ends at the last active texel. Staged rows contain no pitch padding. */
 static void stage_linear_2d(PGRAPHState *pg, TextureLevel *level,
                             const uint8_t *data, unsigned width,
                             unsigned height, unsigned pitch, unsigned bpp)
 {
-    size_t guest_size = (size_t)pitch * height;
-    if (level_from_vram(pg, level, data, width, height, 1, guest_size, bpp)) {
+    size_t row_size = (size_t)width * bpp;
+    size_t read_size = height ? (size_t)(height - 1) * pitch + row_size : 0;
+    if (level_from_vram(pg, level, data, width, height, 1, read_size, bpp)) {
         level->row_length = pitch / bpp;
         return;
     }
-    size_t row_size = (size_t)width * bpp;
     uint8_t *dst = stage_level(pg, level, width, height, 1, row_size * height);
     if (row_size == pitch) {
         memcpy(dst, data, row_size * height);

@@ -35,7 +35,7 @@ static uint32_t random32(void){seed^=seed<<13;seed^=seed>>17;seed^=seed<<5;retur
 int main(void){
  PGRAPHVkState renderer={0};size_t limit=sizeof(ram);NV2AState d={.pgraph={&renderer},.vram_ptr=ram,.vram=&limit};
  for(unsigned i=0;i<sizeof(ram);i++)ram[i]=(uint8_t)(i*53+(i>>7));
- uint64_t old_bytes=0,new_bytes=0;unsigned direct=0,staged=0;
+ uint64_t old_bytes=0,new_bytes=0,old_claims=0,new_claims=0;unsigned direct=0,staged=0;
  for(unsigned i=0;i<30000;i++){
   unsigned bpp=1u<<(random32()%3),w=1+random32()%128,h=random32()%34;
   unsigned pitch=(w+random32()%257)*bpp;
@@ -46,7 +46,7 @@ int main(void){
   TextureLevel level={0};stage_linear_2d(&d.pgraph,&level,source,w,h,pitch,bpp);
   bool eligible=renderer.vram_buffer&&off%4==0&&off%bpp==0;
   assert((level.source==LEVEL_VRAM)==eligible&&level.width==w&&level.height==h&&level.depth==1&&!level.crop_offset);
-  if(eligible){assert(!calls&&!reads&&!head&&!copied&&level.size==(size_t)pitch*h&&level.row_length==pitch/bpp);direct++;}
+  if(eligible){assert(!calls&&!reads&&!head&&!copied&&level.size==(h?(size_t)(h-1)*pitch+row_bytes:0)&&level.row_length==pitch/bpp);old_claims+=(size_t)pitch*h;new_claims+=level.size;direct++;}
   else{assert(calls==1&&copied==row_bytes*h&&head==copied&&level.size==copied&&!level.row_length);assert(reads==(pitch==row_bytes?1:h));staged++;old_bytes+=(size_t)pitch*h;new_bytes+=copied;}
   VkBufferImageCopy c=texture_level_copy(&level,2,3);
   assert(c.imageSubresource.baseArrayLayer==2&&c.imageSubresource.mipLevel==3&&c.imageSubresource.layerCount==1&&c.imageSubresource.aspectMask==1&&!c.bufferImageHeight&&c.imageExtent.width==w&&c.imageExtent.height==h&&c.imageExtent.depth==1);
@@ -58,5 +58,10 @@ int main(void){
  /* Width 16, pitch 4096: only texels, not 4080 padding bytes per row. */
  source=ram;row_bytes=16;source_pitch=4096;source_height=64;renderer.vram_buffer=0;head=copied=reads=calls=0;
  TextureLevel level={0};stage_linear_2d(&d.pgraph,&level,source,16,64,4096,1);assert(level.size==1024&&copied==1024&&head==1024);
+ renderer.vram_buffer=1;head=copied=reads=calls=0;
+ stage_linear_2d(&d.pgraph,&level,source,16,64,4096,1);
+ assert(level.source==LEVEL_VRAM&&level.size==63u*4096+16&&!head&&!copied&&!reads&&!calls);
+ printf("Sparse direct claim: 262144 -> %llu bytes; no staging\n",(unsigned long long)level.size);
+ printf("Direct claimed bytes: %llu -> %llu; final-row padding excluded\n",(unsigned long long)old_claims,(unsigned long long)new_claims);
  printf("Linear staging: 30000 copy-region/texel/source-read-bound cases; %u direct zero-copy, %u tightly staged; modeled staging bytes %llu -> %llu; sparse-pitch fixture 262144 -> 1024 bytes\n",direct,staged,(unsigned long long)old_bytes,(unsigned long long)new_bytes);return 0;
 }
