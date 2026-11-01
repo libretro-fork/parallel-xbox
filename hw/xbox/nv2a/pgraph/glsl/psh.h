@@ -47,8 +47,9 @@ typedef struct PshState {
     bool combiner_dynamic;
     bool alpha_dynamic;
     /* Low four bits select mixed mip reconstruction per stage; high four
-     * select clamp-to-edge on both axes. Reuses the never-set universal byte
-     * so shader seeds retain their layout and existing wrap keys. */
+     * select clamp-to-edge on both axes for explicit mip reconstruction,
+     * or version centered gathers for the base-level path. Reuses the byte
+     * so shader seeds retain their layout. */
     uint8_t g8b8_mip_flags;
 
     bool point_sprite;

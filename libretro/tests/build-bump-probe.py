@@ -19,6 +19,7 @@ def main():
     parser.add_argument("--cross-prefix", default=os.environ.get("GUEST_CROSS_PREFIX",
                         "x86_64-linux-gnu-" if platform.machine().lower() in ("aarch64", "arm64") else ""),
                         help="x86 guest-ROM compiler/binutils prefix; independent of the host core compiler")
+    parser.add_argument("--gather-boundary", choices=("before","after"), help="flat mixed G8B8 coordinates near a texel boundary")
     parser.add_argument("--color", action="store_true", help="test all signed color-channel combinations")
     parser.add_argument("--mixed", action="store_true", help="test mixed filters at varying footprints")
     parser.add_argument("--luminance-profile", choices=("scale_bias", "negative_scale", "overbright"),
@@ -87,6 +88,8 @@ def main():
     parser.add_argument("--lod-bias", type=float, choices=(-4, 0, 0.25, 1, 1.25, 4), default=0,
                         help="sampler LOD bias for the mixed/mip-filter matrix")
     args = parser.parse_args()
+    if args.gather_boundary and (not args.mixed or args.native_color):
+        parser.error("--gather-boundary requires --mixed without native formats")
     if args.luminance_profile and (args.color or args.mixed or args.mip_filter):
         parser.error("--luminance-profile is a separate bump fixture")
     if args.min_lod and not (args.mip_filter or args.native_mip_filter):
@@ -183,6 +186,11 @@ def main():
                         f"-DBUMP_LUM_OFFSET={offset}"]
         if args.color or args.mixed or args.mip_filter:
             defines.append("-DBUMP_FILTER_COLOR_PROBE")
+        if args.gather_boundary:
+            offset = (-1 if args.gather_boundary == "before" else 1) / 65536
+            bits = lambda x: struct.unpack('<I',struct.pack('<f',x))[0]
+            defines += [f"-DBUMP_GATHER_BOUNDARY_U={bits(0.25+offset)}",
+                        f"-DBUMP_GATHER_BOUNDARY_LINEAR_U={bits(0.5+2*offset)}"]
         if args.native_color:
             defines.append("-DBUMP_NATIVE_COLOR")
             if args.native_depth:
@@ -277,10 +285,11 @@ def main():
                         str(rom / "bootrom.asm")], check=True)
     with (output / "cases.csv").open("w", newline="") as file:
         writer = csv.writer(file)
-        writer.writerow(["id", "layout", "mode", "axis", "signed_channels", "filter",
+        columns = ["id", "layout", "mode", "axis", "signed_channels", "filter",
                          "coordinate", "result_address", "lod_bias", "mip_filter",
                          "max_lod", "wrap_period", "mag_filter", "address_mode",
-                         "sample_u", "sample_v", "min_lod", "sampler_transition", "base_size", "border_color", "mip_count", "native_palette", "native_format", "native_chain", "native_min_filter", "native_mag_filter", "native_min_lod", "native_base_only", "native_cube_face", "native_cube_variant", "native_cube_lod", "native_volume", "native_volume_slice", "native_depth_reference", "native_depth_float", "native_depth_constant", "native_depth_alias", "native_depth_grid"])
+                         "sample_u", "sample_v", "min_lod", "sampler_transition", "base_size", "border_color", "mip_count", "native_palette", "native_format", "native_chain", "native_min_filter", "native_mag_filter", "native_min_lod", "native_base_only", "native_cube_face", "native_cube_variant", "native_cube_lod", "native_volume", "native_volume_slice", "native_depth_reference", "native_depth_float", "native_depth_constant", "native_depth_alias", "native_depth_grid", "gather_boundary"]
+        writer.writerow(columns)
         for i in range(192):
             if args.luminance_profile:
                 flags = (i // 6) % 16
@@ -335,7 +344,7 @@ def main():
                                          args.min_lod, int(args.native_base_only),
                                          args.native_cube_face if args.native_cube_face is not None else "",
                                          i // 96 if args.native_cube_face is not None else "",
-                                         (-3,-1,-2)[i % 3] if args.native_cube_face is not None else "", int(args.native_volume), args.native_volume_slice if args.native_volume else "", depth_reference if args.native_depth else "", int(args.native_depth_float), int(f16_constant), int(args.native_depth_float_alias and ((i//6)%16)&1), int(args.native_depth_float_grid)]
+                                         (-3,-1,-2)[i % 3] if args.native_cube_face is not None else "", int(args.native_volume), args.native_volume_slice if args.native_volume else "", depth_reference if args.native_depth else "", int(args.native_depth_float), int(f16_constant), int(args.native_depth_float_alias and ((i//6)%16)&1), int(args.native_depth_float_grid), args.gather_boundary or ""]
                     if args.native_depth_float:
                         row[1] = "linear"
                         row[22] = "f16_depth"
@@ -349,6 +358,8 @@ def main():
                         row[5] = f"min_{((i // 3) % 2) + 1}_mag_{((i // 3) % 2) + 1}"
                     if args.native_mip_filter:
                         row[5] = f"min_mip_{args.native_mip_filter}_mag_{((i // 3) % 2) + 1}"
+                if args.gather_boundary:
+                    row += [""] * (len(columns) - 1 - len(row)) + [args.gather_boundary]
                 writer.writerow(row)
                 continue
             writer.writerow([i, ("linear", "swizzled")[i // 96],

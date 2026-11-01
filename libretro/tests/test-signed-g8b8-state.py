@@ -25,6 +25,7 @@ assert pixel_source.count("g8b8_single_level(color_format,") == 2
 single_filter = re.search(r"^static unsigned g8b8_single_mip_min_filter\(.*?^\}", pixel_source, re.S | re.M).group()
 single_selection = re.search(r"        /\* A one-level image.*?^        \}", pixel_source, re.S | re.M).group()
 encoding = re.search(r"^            if \(signs.*?^            \}$", pixel_source, re.S | re.M).group()
+encoding += re.search(r"^            /\* Centered gathers.*?^            \}", pixel_source, re.S | re.M).group()
 lower_selection = re.search(r"^            if \(mip_filter && mip_min_lod\) \{.*?^            \}", pixel_source, re.S | re.M).group()
 code = r'''
 #include <assert.h>
@@ -131,9 +132,12 @@ int main(void) {
                                        mag, false, u, v, false, others, stage, 0);
         PshState b = encode_signed_g8b8(signs, filter & 1 ? 1 : 2,
                                        mag, false, u, v, false, others, stage, 0);
-        assert(!memcmp(&a, &b, sizeof(a)));single_keys++;
+        assert(!memcmp(&a, &b, sizeof(a)));
+        assert(!!(a.g8b8_mip_flags & (1u << (stage + 4))) ==
+               (signs && (!(filter & 1) || mag == 2)));
+        single_keys++;
     }
-    printf("PASS: %u one-level filter eligibility cases and %u existing-key aliases\n",
+    printf("PASS: %u one-level filter eligibility cases and %u canonical-key aliases\n",
            single_cases, single_keys);
     unsigned mip_addresses = 0;
     for (unsigned u = 0; u < 8; u++)
@@ -249,7 +253,8 @@ int main(void) {
         assert(key.g8b8_mip_clamp_v == ((0xaau & ~(bit | (bit << 4))) |
                (explicit_fetch && v == 1 && u != 1 ? bit : 0)));
         assert(!!(key.g8b8_mip_flags & (bit << 4)) ==
-               (explicit_fetch && u == 1 && v == 1));
+               ((explicit_fetch && u == 1 && v == 1) ||
+                (signs && zero && !mixed && !(filter % 2))));
         assert(key.g8b8_mip_mirror == ((0x96u & ~(bit | (bit << 4))) |
                (explicit_fetch && u == 2 ? bit : 0) |
                (explicit_fetch && v == 2 ? bit << 4 : 0)));

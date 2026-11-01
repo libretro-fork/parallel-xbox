@@ -2256,6 +2256,25 @@ its stack frame at 96 bytes. PGRAPHState (4,295,312 bytes), PGRAPHVkState
 (5,845,216 bytes) and PGRAPHRenderer (232 bytes) are unchanged. These layout
 and assembly checks do not establish hardware cache-miss or game-latency gains.
 
+`test-g8b8-gather-boundary.py CHECKOUT [--parent REV] [--cc CC] [--output DIR]`
+executes the production base-level signed G8B8 shader in OpenGL against a scalar
+2D reference. It checks 81,920 signed components just before/after texel boundaries,
+including 1x64, 2x7, 4x4, 7x2 and 64x1 images and all sixteen wrap/edge/mirror/border
+address pairs. Native Windows accepts `--epoxy-root DIRECTORY` for a separate
+libepoxy build. The four texture lanes are selected at the calculated quad center;
+weights still come from the original coordinates. Point and explicit-mip paths
+retain their behavior. Only base-level gather shader keys gain a revision tag in
+the otherwise mip-only upper stage flag, preserving seed layout and other keys.
+
+`test-g8b8-centered-sampler.py CHECKOUT PARENT CANDIDATE HARNESS SCRATCH` checks
+3,456 guest pixels per API: near-boundary mixed-filter colors, ordinary bump/color,
+luminance profiles, mixed filters/biases, swizzled/linear single-level images,
+edge/border addressing, explicit-mip controls and Force LOD0. Ordinary pixels must
+match the parent exactly; boundary pixels follow the scalar model. The builder's
+`--mixed --gather-boundary before|after` selects flat coordinates at either side
+of a texel boundary. Use `--windows-paths` for a Windows harness through WSL.
+These tests exercise the implemented filtering model, not a hardware NV2A oracle.
+
 The eager-retirement fixture additionally covers 1,032 serial-proof reclamation
 schedules and eight production allocation-retry/reclaim sequences. Equal or
 older submissions skip waiting without a new status probe; newer unfinished

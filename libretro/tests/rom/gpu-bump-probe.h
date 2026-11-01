@@ -293,6 +293,10 @@ static void bump_mixed_triangle(u32 layout, u32 footprint)
         push(neg); push(0x3f000000u); push(0xbf800000u);
 #endif
 #else
+#ifdef BUMP_GATHER_BOUNDARY_U
+        (void)tex_u; (void)footprint;
+        push(layout ? BUMP_GATHER_BOUNDARY_U : BUMP_GATHER_BOUNDARY_LINEAR_U);
+#else
 #ifdef BUMP_LINEAR_LEVEL
         /* Scale normalized 4x4 coordinates to texels exactly by increasing
          * the exponent by two; these fixture values are finite and nonzero. */
@@ -305,6 +309,7 @@ static void bump_mixed_triangle(u32 layout, u32 footprint)
         push(shifted.bits);
 #else
         push(tex_u[layout][footprint][vertex]);
+#endif
 #endif
 #endif
 #ifdef BUMP_FILTER_CLAMP_PROBE
