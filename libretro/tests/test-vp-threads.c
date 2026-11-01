@@ -30,8 +30,30 @@ static uint32_t rnd(void){rs^=rs<<13;rs^=rs>>7;rs^=rs<<17;return (uint32_t)(rs>>
 static uint32_t rr(uint32_t n){return rnd()%n;}
 static void vset(MCPXAPUState*d,int v,uint32_t reg,uint32_t mask,uint32_t val){voice_set_mask(d,v,reg,mask,val);}
 
+static void repeated_voice_schedule_tests(void)
+{
+    MCPXAPUState *d=calloc(1,sizeof(*d));
+    d->ram_ptr=calloc(1,RAM_SIZE);address_space_memory.d=d;
+    d->regs[NV_PAPU_VPVADDR]=0x1000;
+    VoiceWorkDispatch *vwd=&d->vp.voice_work_dispatch;
+    vwd->queue_len=MCPX_HW_MAX_VOICES;
+    for(unsigned i=0;i<MCPX_HW_MAX_VOICES;i++)vwd->queue[i]=(VoiceWorkItem){.voice=i,.list=i%3};
+    assert(voice_work_schedule(d)&&vwd->num_units==MCPX_HW_MAX_VOICES);
+    for(unsigned voice=0;voice<MCPX_HW_MAX_VOICES;voice++){
+        unsigned pos=(voice+1)%MCPX_HW_MAX_VOICES;
+        vwd->queue[pos].voice=voice;
+        assert(!voice_work_schedule(d));
+        vwd->queue[pos].voice=pos;
+    }
+    assert(voice_work_schedule(d)&&vwd->num_units==MCPX_HW_MAX_VOICES);
+    vwd->queue[0].voice=MCPX_HW_MAX_VOICES;assert(!voice_work_schedule(d));
+    free(d->ram_ptr);free(d);
+    puts("PASS: 256 repeated-handle queues rejected; all unique handles retain parallel units; invalid handles cannot index ownership bits");
+}
+
 int main(int argc,char**argv)
 {
+    repeated_voice_schedule_tests();
     int scenarios=argc>1?atoi(argv[1]):400;
     long compared=0,parallel_frames=0;
     for(int sc=0;sc<scenarios;sc++)for(int pass=0;pass<2;pass++){
@@ -111,6 +133,9 @@ int main(int argc,char**argv)
             {uint32_t h=rr(5)?rr(4):0xffff;vset(d,v,NV_PAVS_VOICE_CFG_HRTF_TARGET,NV_PAVS_VOICE_CFG_HRTF_TARGET_HANDLE,1?h:0xffff);}
             voice_reset_filters(d,v);
         }
+        /* A shared list tail queues the same voice state twice. Its results
+         * must match ordered execution, regardless of the worker count. */
+        if((sc&3)==0)heads[1]=heads[0];
         d->regs[NV_PAPU_TVL2D]=heads[0];d->regs[NV_PAPU_TVL3D]=heads[1];d->regs[NV_PAPU_TVLMP]=heads[2];
         int frames=8+rr(24);
         for(int f=0;f<frames;f++){
@@ -129,6 +154,6 @@ int main(int argc,char**argv)
         voice_work_finalize(d);
         free(d->ram_ptr);free(d);
     }
-    printf("PASS: %ld frames of random voices (multipass groups, HRTF, filters, the monitor) the same on four voice threads as on one; %ld scenarios split\n",compared,parallel_frames);
+    printf("PASS: %ld frames of random voices (repeated handles, multipass groups, HRTF, filters, the monitor) the same on four voice threads as on one; %ld scenarios split\n",compared,parallel_frames);
     return 0;
 }

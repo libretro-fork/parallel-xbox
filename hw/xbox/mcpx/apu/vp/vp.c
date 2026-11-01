@@ -1999,6 +1999,7 @@ static bool voice_work_schedule(MCPXAPUState *d)
     VoiceWorkDispatch *vwd = &d->vp.voice_work_dispatch;
     bool group = false;
     uint32_t dirty = 0;
+    uint64_t seen[(MCPX_HW_MAX_VOICES + 63) / 64] = { 0 };
 
     struct {
         uint32_t src, dst, clr;
@@ -2007,7 +2008,15 @@ static bool voice_work_schedule(MCPXAPUState *d)
     /* Preserve the parallel DirectSound layout. Other layouts need list
      * order and shared mix bins, including multipass reads without clears. */
     for (int i = 0; i < vwd->queue_len; i++) {
-        get_voice_bin_src_dst(d, vwd->queue[i].voice,
+        unsigned voice = vwd->queue[i].voice;
+        /* Mix-bin independence does not make a repeated voice independent:
+         * its filter, envelope and resampler state has one owner at a time. */
+        if (voice >= MCPX_HW_MAX_VOICES ||
+            (seen[voice >> 6] & (UINT64_C(1) << (voice & 63)))) {
+            return false;
+        }
+        seen[voice >> 6] |= UINT64_C(1) << (voice & 63);
+        get_voice_bin_src_dst(d, voice,
                              &masks[i].src, &masks[i].dst, &masks[i].clr);
         uint32_t src = masks[i].src, dst = masks[i].dst, clr = masks[i].clr;
         if ((src && (src != MULTIPASS_BIN_MASK || clr != MULTIPASS_BIN_MASK)) ||

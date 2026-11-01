@@ -2826,3 +2826,28 @@ sizes are unchanged. Caller and nested selector usage are reported separately.
 
 
 `test-sse-directed.py CHECKOUT [CC]` tests the production scalar/packed add, subtract and multiply helpers against actual SoftFloat for three directed rounding modes. The 2,359,296 cases cover XMM/YMM/wide widths, Boost on/off, flushing and tininess policies, sticky flags, all register aliases, exceptional/boundary/random inputs and hostile host MXCSR settings. Native-lane selection is checked by counting software calls; removing the guest inexact merge must fail a negative control. Safe inputs have exponents [-60,60] for float32 and [-500,500] for float64, or are signed zero: neither products nor cancellation can produce subnormal results or overflow. The round-to-nearest Boost exception-flag limitation remains separate.
+
+### VP voice-state ownership with repeated handles
+
+The parallel VP scheduler now rejects queues containing a repeated voice handle,
+even when their mix-bin masks appear independent. Filter, resampler and envelope
+state belong to the voice, so two workers must not execute it concurrently.
+These queues use the existing ordered serial dispatch directly, without worker
+wakes, private mixing or reduction. Unique handles retain normal scheduling.
+The guard is a local 256-bit set; no persistent state, mutex, spinlock, sample
+copy or audio queue is added. This does not remove the existing completion
+barrier for other parallel frames.
+
+`test-vp-threads.py CHECKOUT [CC] [SCENARIOS]` now rejects 256 repeated-handle
+queues across every ownership-bit boundary and accepts all 256 unique handles.
+One quarter of the randomized scenarios share a list tail, comparing real voice
+processing on one/four workers against the same serial result. Existing HRTF,
+filters, envelopes, pitch, LFOs, multipass and monitor coverage remains.
+`VP_THREADS_SOURCE` supports a baseline production-source override.
+
+`VP_THREADS_BINARY`/`VP_THREADS_SKIP_RUN` support native cross-built fixtures.
+The `VP_REPEAT` NASM test-ROM define shares the looping PCM voice between the
+2D and 3D lists; compare strict one/four-worker audio hashes and lifecycle runs.
+Win64 scheduling stack usage changes from 3,248 to 3,264 bytes; voice_process
+remains 1,248 bytes and the VP frame 160 bytes. Dispatch/filter state sizes
+remain 3,120/1,120 bytes. The guard adds no per-voice processing fields.

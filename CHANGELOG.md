@@ -1,5 +1,6 @@
 # Changelog of the libretro core
 
+- Preserve serial voice-list order when an APU frame repeats a voice handle, preventing parallel workers from racing that voice's filter, envelope and resampler state. Unique-voice layouts keep the existing parallel scheduler.
 - Accelerate directed-rounding SSE add/subtract/multiply on x86-64 for bounded normal operands and signed zero, preserving guest inexact flags and host MXCSR. Batch packed values in 128-bit groups without intermediate data buffers. Keep SoftFloat for unsafe inputs and preserve the existing round-to-nearest CPU Boost behavior.
 - Extend clean Vulkan vertex snapshots in either arena by copying only their new suffix, preserving reuse after arena spill or command-slot rotation without duplicating the valid prefix.
 - Use safe unused space in the second Vulkan vertex-snapshot arena before falling back to synchronous settlement when the active arena fills. No additional buffer or intermediary copy is allocated.

@@ -117,6 +117,11 @@ entry:
         pio 0x3DC, 1919                  ; end
         pio 0x120, (1 << 16)             ; antecedent: 2D list top
         pio 0x124, VOICE                 ; VOICE_ON, envelopes off
+%ifdef VP_REPEAT
+        ; A shared list tail must execute twice in order, never concurrently.
+        apu 0x2060, VOICE                ; TVL3D shares the 2D voice
+%endif
+
 
 %ifdef DSP
         ; the GP DSP's program (gp.a56) into its scratch memory, where its
