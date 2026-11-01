@@ -1,5 +1,7 @@
 # Changelog of the libretro core
 
+- Make PFIFO yield when a method reports no progress, preserving its command position for a later kick instead of immediately retrying it in a tight loop. This establishes the retry contract for deferred transfers; class 0x39 support is not yet enabled.
+
 - Build speculative Vulkan pipeline keys directly in reserved worker slots, removing the temporary full-key copy before queue publication.
 
 - Copy tightly packed, disjoint CPU blit rows in one transfer in both renderers. Preserve row-order behavior for overlapping copies and preserve pitched layouts, without adding staging buffers or GPU synchronization.

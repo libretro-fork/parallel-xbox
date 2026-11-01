@@ -1847,3 +1847,11 @@ multi-row copies issue one call; dependent overlapping rows retain their order.
 This does not exercise GPU transfers or claim class 0x39 support.
 
 `test-pipeline-ahead-key.py CHECKOUT [CC]` runs production speculative-job construction against an independent final-key/hash oracle in 4,096 cases. It checks direct slot construction, source lifetime, shader replacement, module ordering, cache/in-flight hits and full-ring backpressure. `PIPELINE_AHEAD_CFLAGS` enables sanitizers.
+
+### PFIFO deferred-method progress
+
+`python3 libretro/tests/test-pfifo-no-progress.py .` exercises production pusher
+accounting for negative, zero and positive method results. It checks one dispatch
+per zero-progress attempt, unchanged GET/method/count registers, successful later
+retry, and incrementing/non-incrementing batches from one through 64 words.
+This defines the no-progress contract; it does not enable class 0x39 transfers.

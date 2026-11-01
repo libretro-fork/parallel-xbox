@@ -434,7 +434,10 @@ static void pfifo_run_pusher(NV2AState *d)
                 pfifo_run_puller(d, method_entry, word, word_ptr,
                                  MIN(method_count, num_words_available),
                                  num_words_available);
-            if (num_words_processed < 0) {
+            /* A deferred method may consume no words. Leave GET and the
+             * method count untouched and yield to the owner loop; its
+             * completion path must kick the FIFO before it can be retried. */
+            if (num_words_processed <= 0) {
                 break;
             }
 
