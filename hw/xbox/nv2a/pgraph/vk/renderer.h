@@ -720,6 +720,8 @@ typedef struct PGRAPHVkState {
     bool pcache_thread_spawned;
     retro_atomic_int_t pcache_busy;
     size_t pcache_saved_len;
+    void *pcache_blob;
+    size_t pcache_blob_capacity;
     PipelineBinding *pipeline_cache_entries;
     PipelineBinding *pipeline_binding;
     bool pipeline_binding_changed;

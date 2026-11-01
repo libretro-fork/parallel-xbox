@@ -207,6 +207,8 @@ static void init_pipeline_cache(PGRAPHState *pg)
     r->pcache_saved_len = 0;
     vkGetPipelineCacheData(r->device, r->vk_pipeline_cache,
                            &r->pcache_saved_len, NULL);
+    r->pcache_blob_capacity = MAX(r->pcache_saved_len, 64 * 1024);
+    r->pcache_blob = g_malloc(r->pcache_blob_capacity);
     r->pcache_thread_spawned = false;
     retro_atomic_int_init(&r->pcache_busy, 0);
 
@@ -238,16 +240,25 @@ static void pcache_save_now(PGRAPHVkState *r)
         !pc_len || pc_len == r->pcache_saved_len) {
         return;
     }
-    void *pc_blob = g_malloc(pc_len);
+    /* Saves own this scratch serially: the previous worker is joined before
+     * a new save or teardown starts. Old contents need not survive growth. */
+    if (pc_len > r->pcache_blob_capacity) {
+        size_t grown = r->pcache_blob_capacity <= SIZE_MAX / 2 ?
+                       r->pcache_blob_capacity * 2 : pc_len;
+        r->pcache_blob_capacity = MAX(pc_len, grown);
+        g_free(r->pcache_blob);
+        r->pcache_blob = g_malloc(r->pcache_blob_capacity);
+    }
+    pc_len = r->pcache_blob_capacity;
     if (vkGetPipelineCacheData(r->device, r->vk_pipeline_cache, &pc_len,
-                               pc_blob) == VK_SUCCESS) {
+                               r->pcache_blob) == VK_SUCCESS) {
         char *pc_path = g_strdup_printf("%s/vk_pipeline_cache.bin",
                                         xemu_settings_get_base_path());
-        g_file_set_contents(pc_path, pc_blob, pc_len, NULL);
+        if (g_file_set_contents(pc_path, r->pcache_blob, pc_len, NULL)) {
+            r->pcache_saved_len = pc_len;
+        }
         g_free(pc_path);
-        r->pcache_saved_len = pc_len;
     }
-    g_free(pc_blob);
 }
 
 static void *pcache_save_thread(void *arg)
@@ -288,6 +299,9 @@ static void finalize_pipeline_cache(PGRAPHState *pg)
     r->pipeline_cache_entries = NULL;
 
     pgraph_vk_save_pipeline_cache(pg, true);
+    g_free(r->pcache_blob);
+    r->pcache_blob = NULL;
+    r->pcache_blob_capacity = 0;
 
     vkDestroyPipelineCache(r->device, r->vk_pipeline_cache, NULL);
 }
