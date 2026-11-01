@@ -2019,6 +2019,14 @@ Probe observations are test-only; the emulator adds no readback or waits.
 
 The region-TB fixture now enforces the core ownership contract (one Xbox CPU, MTTCG disabled, one region, no region mutexes and reviewed index callers). Its 25,000 checks cover 400,074 recycles, 112,111 removals and 104 flushes; production region allocation/exhaustion and 100 safe-work resets also retain prologue/highwater semantics. `REGION_TBS_BINARY` and `REGION_TBS_SKIP_RUN=1` retain native fixtures. These restrictions are ownership requirements, not synchronization for a future concurrent reader or translator.
 
+
+The volume runner's `--mip-chains` matrix uses 8x8x8 swizzled bases and a
+contrasting 4x4x4 lower mip. It tests nonmip filters, guest maximum zero and
+Force LOD0 on an intact chain, sampling both end depth slices. Full chains,
+positive minimum clamps, matching filters and old single-level volumes compare
+exact parent pixels. Force LOD0 retains the stored volume chain and dimensions;
+the CPU shape fixture checks this across 3,840 metadata combinations.
+
 The region ownership guard now verifies TCG startup asserts one machine CPU and passes a literal one-translator count. The obsolete MTTCG selector/property is gone; startup had always forced it off. Existing translation-cache size, split-WX and instruction-debug controls remain.
 
 	est-store-compare.py CHECKOUT [CC] extracts the production unchanged-store comparator. It checks 2,263,040 value/width/alignment combinations, all scalar and partial widths, guarded page edges, high-bit truncation, and no-read behavior for unknown/wide writes. Linux defaults to ASan/UBSan; STORE_COMPARE_CFLAGS, STORE_COMPARE_BINARY and STORE_COMPARE_SKIP_RUN support retained native Windows fixtures.

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""Check single-level color volume filtering and independent depth slices."""
+"""Check base-level color volume filtering and independent depth slices."""
 import argparse
 import csv
 import os
@@ -16,6 +16,8 @@ def main():
     for name in ("checkout", "parent", "candidate", "harness", "scratch"):
         parser.add_argument(name, type=Path)
     parser.add_argument("--assembler", default="nasm")
+    parser.add_argument("--mip-chains", action="store_true",
+                        help="check stored 8x8x8 mip chains with contrasting lower mips")
     parser.add_argument("--windows-paths", action="store_true",
                         help="run a Windows harness through WSL with translated input paths")
     args = parser.parse_args()
@@ -75,23 +77,35 @@ def main():
     for slice in (0,1):
         base=["--mixed","--native-color","rgba8","--native-volume",
               "--native-volume-slice",str(slice)]
+        if args.mip_chains:
+            base.append("--native-mip-chain")
         for bias in (-4,0,1,1.25,4):
             check(build(f"slice-{slice}-bias-{bias}",base+["--lod-bias",str(bias)]))
             scalar += 192
         for filter in (3,4,5,6):
             for force in (False,True):
+                extra = ["--native-base-only"] if args.mip_chains and not force else []
                 check(build(f"slice-{slice}-filter-{filter}-force-{force}",
-                            base+["--native-mip-filter",str(filter),"--lod-bias","1.25"]),force)
+                            base+["--native-mip-filter",str(filter),"--lod-bias","1.25",*extra]),force)
                 scalar += 192
+            if args.mip_chains:
+                compare(build(f"full-{slice}-{filter}",base+
+                        ["--native-mip-filter",str(filter),"--lod-bias","1.25"]))
+                controls += 192
         compare(build(f"matching-{slice}",base+["--native-matching","--lod-bias","4"]))
         controls += 192
+        if args.mip_chains:
+            compare(build(f"lower-{slice}",base+["--native-mip-filter","6","--min-lod","1","--lod-bias","4"]))
+            compare(build(f"single-{slice}",[x for x in base if x != "--native-mip-chain"]+["--lod-bias","1.25"]))
+            controls += 384
     for shape,extra in (("2d",[]),("cube",["--native-cube-face","4"])):
         compare(build(f"control-{shape}",["--mixed","--native-color","rgba8",
                       "--lod-bias","1.25",*extra]))
         controls += 192
     compare(build("control-g8b8",["--mixed","--lod-bias","1.25"]))
     controls += 192
-    print(f"PASS: {scalar} single-level volume scalar cases and {controls} exact parent pixels per API")
+    kind = "mip-chain" if args.mip_chains else "single-level"
+    print(f"PASS: {scalar} {kind} volume scalar cases and {controls} exact parent pixels per API")
 
 
 if __name__ == "__main__":

@@ -109,7 +109,7 @@ def expected(case, force_lod0=False):
             "magnified": -3, "near_magnified": -1, "minified": 2}[case["coordinate"]])
         minified = lod + float(case.get("lod_bias", 0)) > 0
         if case.get("native_min_filter"):
-            if (int(case["native_min_filter"]) >= 3 and case["layout"] in ("swizzled","cube") and
+            if (int(case["native_min_filter"]) >= 3 and case["layout"] in ("swizzled","cube","volume") and
                     case.get("native_chain") == "1" and
                     case.get("native_base_only") != "1" and not force_lod0):
                 raise ValueError("unclamped native mip controls require parent comparison")
@@ -126,7 +126,7 @@ def expected(case, force_lod0=False):
         first = (255, 16 + palette * 11, 32 + palette * 7, 240 - palette * 9)
         second = (255, 224 - palette * 9, 208 - palette * 7, 16 + palette * 11)
         if case.get("native_volume") == "1":
-            offset = int(case["native_volume_slice"]) * 16
+            offset = int(case["native_volume_slice"]) * (14 if case.get("native_chain") == "1" else 16)
             first = (first[0], first[1], first[2] + offset, first[3])
             second = (second[0], second[1], second[2] + offset, second[3])
         if case.get("native_cube_face"):

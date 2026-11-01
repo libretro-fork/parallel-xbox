@@ -37,6 +37,12 @@ _Static_assert(BUMP_RAMP + 32u * 16u * 4u <= 0x04000000u,
 _Static_assert(BUMP_DATA + 192u * 1024u <= BUMP_RAMP, "cube slots overlap ramp");
 #endif
 
+#if defined(BUMP_NATIVE_VOLUME) && defined(BUMP_NATIVE_CHAIN)
+#undef BUMP_RAMP
+#define BUMP_RAMP 0x03600000u
+_Static_assert(BUMP_DATA + 192u * 4096u <= BUMP_RAMP, "volume slots overlap ramp");
+#endif
+
 #if defined(BUMP_FILTER_MIXED_PROBE) || defined(BUMP_FILTER_MIP_PROBE)
 static void bump_mixed_triangle(u32 layout, u32 footprint)
 {
@@ -226,11 +232,19 @@ static void bump_mixed_triangle(u32 layout, u32 footprint)
     /* Three-component fixtures use texel footprints 1/8, 1/2 and 1/4. */
 #ifdef BUMP_NATIVE_VOLUME
     /* Volume coordinates preserve the three controlled footprints. */
+#ifdef BUMP_NATIVE_CHAIN
+    static const u32 cube_s[3][3] = {
+        {0xc0168000u, 0x40298000u, 0x3e180000u},
+        {0xc11e0000u, 0x41220000u, 0x3e000000u},
+        {0xc09b8000u, 0x40a48000u, 0x3e100000u},
+    };
+#else
     static const u32 cube_s[3][3] = {
         {0xc1168000u, 0x41298000u, 0x3f180000u},
         {0xc21e0000u, 0x42220000u, 0x3f000000u},
         {0xc19b8000u, 0x41a48000u, 0x3f100000u},
     };
+#endif
 #else
     /* Fixed major coordinate one keeps the sampled quad within one face. */
     static const u32 cube_s[3][3] = {
@@ -253,8 +267,14 @@ static void bump_mixed_triangle(u32 layout, u32 footprint)
         u32 c = cube_s[footprint][vertex], neg = c ^ 0x80000000u;
         (void)neg;
 #ifdef BUMP_NATIVE_VOLUME
-        push(c); push(0x3e800000u);
+        push(c);
+#ifdef BUMP_NATIVE_CHAIN
+        push(0x3d800000u); /* V = 0.5 / 8 */
+        push(BUMP_NATIVE_VOLUME_SLICE ? 0x3f700000u : 0x3d800000u); /* Z 7 or 0 */
+#else
+        push(0x3e800000u);
         push(BUMP_NATIVE_VOLUME_SLICE ? 0x3f400000u : 0x3e800000u);
+#endif
 #elif BUMP_NATIVE_CUBE_FACE == 0
         push(0x3f800000u); push(0x3f000000u); push(neg);
 #elif BUMP_NATIVE_CUBE_FACE == 1
@@ -327,6 +347,9 @@ static void bump_filter_probe(void)
         u32 bump_address = BUMP_DATA + id * 16;
 #ifdef BUMP_NATIVE_COLOR
         bump_address = BUMP_DATA + id * 32;
+#if defined(BUMP_NATIVE_VOLUME) && defined(BUMP_NATIVE_CHAIN)
+        bump_address = BUMP_DATA + id * 4096;
+#endif
 #ifdef BUMP_NATIVE_CUBE_FACE
         bump_address = BUMP_DATA + id * 1024;
 #endif
@@ -465,6 +488,23 @@ static void bump_filter_probe(void)
 #endif
 #ifdef BUMP_NATIVE_VOLUME
         swizzled_layout = 1; format = 0x06;
+#ifdef BUMP_NATIVE_CHAIN
+        /* 8x8x8 Morton layout. Every depth slice has a distinct green offset;
+         * a contrasting 4x4x4 lower mip exposes any unintended mip mixing. */
+        for (u32 z = 0; z < 8; z++)
+        for (u32 y = 0; y < 8; y++)
+        for (u32 x = 0; x < 8; x++) {
+            u32 texel = 0;
+            for (u32 bit = 0; bit < 3; bit++) {
+                texel |= ((x >> bit) & 1) << (3 * bit);
+                texel |= ((y >> bit) & 1) << (3 * bit + 1);
+                texel |= ((z >> bit) & 1) << (3 * bit + 2);
+            }
+            ram32(bump_address + texel * 4, (x & 1 ? second : first) + (z * 2u << 8));
+        }
+        for (u32 texel = 0; texel < 64; texel++)
+            ram32(bump_address + 2048 + texel * 4, 0xff00ff00u);
+#else
         /* Alternating X colors in each 2x2 slice; slice one has distinct G. */
         for (u32 z = 0; z < 2; z++) {
             u32 offset = z * 16u;
@@ -472,6 +512,7 @@ static void bump_filter_probe(void)
             ram32(bump_address + offset, c0); ram32(bump_address + offset + 4, c1);
             ram32(bump_address + offset + 8, c0); ram32(bump_address + offset + 12, c1);
         }
+#endif
 #endif
         flags = 0; /* Independent colors, without signed-channel conversion. */
 #endif
@@ -557,7 +598,11 @@ static void bump_filter_probe(void)
 #ifdef BUMP_NATIVE_VOLUME
         method(NV097_SET_TEXTURE_FORMAT,
                1u | (3u << 4) | (1u << 3) | (format << 8) |
+#ifdef BUMP_NATIVE_CHAIN
+               (2u << 16) | (3u << 20) | (3u << 24) | (3u << 28));
+#else
                (1u << 16) | (1u << 20) | (1u << 24) | (1u << 28));
+#endif
 #endif
         method(NV097_SET_TEXTURE_FILTER,
 #ifdef BUMP_NATIVE_MIP_FILTER

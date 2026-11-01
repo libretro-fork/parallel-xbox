@@ -115,6 +115,25 @@ int main(void) {
         cubes++;
     }
     printf("PASS: %u Force LOD0 cube-chain metadata invariants\n",cubes);
+    unsigned volumes=0;
+    for (unsigned raw=1; raw<16; raw++)
+    for (unsigned low=0; low<16; low++)
+    for (unsigned high=0; high<16; high++) {
+        pg.ctl[0]=low<<18 | high<<6;
+        pg.fmt[0]=3u<<6 | NV097_SET_TEXTURE_FORMAT_COLOR_SZ_A8R8G8B8<<8 |
+                  raw<<16 | 3u<<20 | 3u<<24 | 3u<<28 |
+                  NV_PGRAPH_TEXFMT0_BORDER_SOURCE;
+        pg.program=2;
+        force_texture_lod0=false;
+        TextureShape expected=pgraph_get_texture_shape(&pg,0);
+        expected.min_mipmap_level=expected.max_mipmap_level=0;
+        force_texture_lod0=true;
+        TextureShape actual=pgraph_get_texture_shape(&pg,0);
+        assert(!actual.cubemap && actual.dimensionality==3 && actual.width==8 && actual.height==8 && actual.depth==8);
+        assert(!memcmp(&actual,&expected,sizeof(actual)));
+        volumes++;
+    }
+    printf("PASS: %u Force LOD0 volume-chain metadata invariants\n",volumes);
     printf("PASS: %u linear shapes and %u unchanged swizzled shapes\n",cases,legacy);
 }
 """.replace("/* TYPES */", shape+"\n"+info).replace("/* FORMATS */", formats).replace("/* FUNCTION */", function)
