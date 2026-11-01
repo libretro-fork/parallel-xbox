@@ -2682,3 +2682,18 @@ cache formats and active shadow keys. No runtime diagnostics, GPU transfers or
 waits are added. Game cache-hit and frame-time effects are unmeasured.
 
 The seed key fixture now compares production construction directly with the original unconditional three-slot clear. It checks all active key bytes and hashes; when geometry is absent, its kind stays zero and all payload bytes retain poison. All four production callers skip that absent payload. Geometry-enabled construction and the complete module-key collection oracle remain covered.
+
+`test-shaderctl-state.py CHECKOUT [--cc CC]` checks 65,602 production SHADERCTL
+key projections: zero/all-set, each bit and its inverse, and deterministic random
+words. Its independent oracle rebuilds the three dot-mapping nibbles and two
+stage-input nibbles decoded by the fragment generator; all other key bytes stay
+intact. The state builder masks only ignored bits, keeping `0x00FF0FFF`.
+
+The common-helper full-generator fixture adds 10,036 byte-identical source
+comparisons per generator, flipping each ignored bit and their combined mask.
+Another 20 active stage-input programs exercise stage 2/3 selectors with AR/GB
+dependent sampling; changing live selectors must change source, and 10 Vulkan
+variants compile. Existing dot-mapping/dependency regressions remain covered.
+Existing shader/module bytes and cache formats remain unchanged. No runtime
+diagnostics, GPU transfers or synchronization are added. Game cache-hit and
+frame-time effects are unmeasured.

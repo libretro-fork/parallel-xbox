@@ -1,5 +1,7 @@
 # Changelog of the libretro core
 
+- Reuse fragment shader keys across ignored SHADERCTL bits. Preserve all dot-mapping and stage-input selectors consumed by the generator, without changing shaders or cache formats.
+
 - Reuse fragment shader keys across unused shadow-comparison functions and skip the unused shadow-control register read. Preserve all comparisons for active PROJECT2D/PROJECT3D shadow stages.
 
 - Skip clearing the unused GL geometry-module key payload for states that need no geometry stage. Keep its zero kind tag and byte-identical vertex/fragment keys; geometry-stage states retain full key initialization.
