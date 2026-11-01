@@ -16,7 +16,7 @@ source = (repo / "hw/xbox/nv2a/pgraph/gl/surface.c").read_text()
 functions = []
 common = (repo / "hw/xbox/nv2a/pgraph/thirdparty/gloffscreen/common.c").read_text()
 source += "\n" + common
-for name in ("glo_readpixels", "surface_shrink_on_gpu",
+for name in ("glo_flip_rows_portable", "glo_flip_rows", "glo_readpixels", "surface_shrink_on_gpu",
              "pgraph_gl_reinterpret_surface_to_texture", "surface_download_issue"):
     match = re.search(r"^(?:static )?(?:bool|void) " + name + r"\(", source, re.M)
     assert match
