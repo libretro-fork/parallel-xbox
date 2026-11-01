@@ -95,6 +95,39 @@ void *nv_dma_map(NV2AState *d, hwaddr dma_obj_address, hwaddr *len)
     return d->vram_ptr + dma.address;
 }
 
+/* Establish the whole descriptor before calling the legacy loader, whose
+ * assertion checks only its starting byte. Preserve its 27-bit VRAM decode;
+ * clamp the inclusive limit to actual RAM without forming an end pointer. */
+bool nv_dma_map_checked(NV2AState *d, hwaddr instance, NVDMAView *view)
+{
+    *view = (NVDMAView){0};
+    hwaddr ramin_bytes = memory_region_size(&d->ramin);
+    if (ramin_bytes < 12 || instance > ramin_bytes - 12) {
+        return false;
+    }
+    DMAObject dma = nv_dma_load(d, instance);
+    hwaddr address = dma.address & 0x07ffffff;
+    hwaddr vram_bytes = memory_region_size(d->vram);
+    if (address >= vram_bytes) {
+        return false;
+    }
+    hwaddr bytes = MIN((hwaddr)dma.limit + 1, vram_bytes - address);
+    view->data = d->vram_ptr + address;
+    view->address = address;
+    view->bytes = bytes;
+    view->dma_class = dma.dma_class;
+    view->dma_target = dma.dma_target;
+    return true;
+}
+
+uint8_t *nv_dma_view_range(const NVDMAView *view, hwaddr offset, hwaddr bytes)
+{
+    if (!view->data || offset > view->bytes || bytes > view->bytes - offset) {
+        return NULL;
+    }
+    return view->data + offset;
+}
+
 hwaddr nv_clip_gpu_tile_blit(NV2AState *d, hwaddr blit_base_address, hwaddr len)
 {
     const uint32_t *regs = d->pfb.regs;

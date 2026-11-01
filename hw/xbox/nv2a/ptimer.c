@@ -90,6 +90,13 @@ static inline uint64_t get_reg_time(NV2AState *d)
     return PTIMER_INTERNAL_TO_REG_TIME(internal_clock);
 }
 
+/* One virtual-clock sample yields both notifier timestamp words. Do not read
+ * TIME_1/TIME_0 separately and retry across a rollover in method dispatch. */
+uint64_t ptimer_snapshot(NV2AState *d)
+{
+    return get_reg_time(d);
+}
+
 static uint64_t ptimer_ticks_to_ns(NV2AState *d, uint64_t internal_ticks)
 {
     uint64_t gpu_ticks =

@@ -1887,3 +1887,14 @@ copy, overwrite setup, or consume another subchannel's pending word. Completion
 is consumed only after publication; failed validation remains pending until the
 owner acknowledges its fault policy. The decoder is not called by pgraph_method
 yet, and these tests do not establish host-GPU or guest save-state correctness.
+
+### Experimental M2MF DMA views and timestamps
+
+`python3 libretro/tests/test-m2mf-mapping.py .` extracts production DMA descriptor
+loading, checked view/range mapping and timer snapshot code. Cases cover partial
+RAMIN descriptors, inclusive limits, VRAM boundaries and address masking, empty
+end ranges, extreme offsets/sizes, retained class/target metadata and timer-word
+rollover. Clock sampling is counted: each snapshot reads it once. These helpers
+check bounds and preserve metadata; the transfer owner still must apply DMA
+access policy and renderer authority. The existing mapper is unchanged, and
+class 0x39 remains unconnected. No real GPU or guest runtime is tested here.

@@ -1,5 +1,7 @@
 # Changelog of the libretro core
 
+- Experimental class 0x39 work: add bounds-checked DMA views with inclusive-limit conversion and retained access metadata, plus a single-sample timer snapshot for completion timestamps. The transfer owner and renderer integration remain unfinished; existing DMA mapper behavior is unchanged.
+
 - Experimental class 0x39 work: decode object, DMA, layout and notify methods while retaining command ownership across retries. Prevent duplicate launches and setup mutation during an in-flight copy. Guest method dispatch and renderer integration remain disabled on this feature branch.
 
 - Experimental class 0x39 work: add owner-thread transfer lifecycle state that preserves an in-flight command, gates completion publication on CPU copy or GPU retirement, and rejects stale reset tokens. This remains feature-branch infrastructure with no guest-visible class 0x39 support.

@@ -275,6 +275,21 @@ void pfb_update_zcomp(NV2AState *d);
 DMAObject nv_dma_load(NV2AState *d, hwaddr dma_obj_address);
 void *nv_dma_map(NV2AState *d, hwaddr dma_obj_address, hwaddr *len);
 
+/* Checked RAM view for transfers. bytes is a byte count, unlike the inclusive
+ * limit returned by nv_dma_map. This checks bounds, not class/target access
+ * policy: callers must examine those fields before using the RAM view. No
+ * payload is copied or retained by the view. */
+typedef struct NVDMAView {
+    uint8_t *data;
+    hwaddr address;
+    hwaddr bytes;
+    unsigned int dma_class, dma_target;
+} NVDMAView;
+
+bool nv_dma_map_checked(NV2AState *d, hwaddr instance, NVDMAView *view);
+uint8_t *nv_dma_view_range(const NVDMAView *view, hwaddr offset, hwaddr bytes);
+
+
 /**
  * Clips an image blit to fit into a GPU tile it overlaps.
  * @param blit_base_address Address of the blit target
@@ -286,5 +301,6 @@ hwaddr nv_clip_gpu_tile_blit(NV2AState *d, hwaddr blit_base_address,
 
 void ptimer_init(NV2AState *d);
 void ptimer_reset(NV2AState *d);
+uint64_t ptimer_snapshot(NV2AState *d);
 
 #endif
