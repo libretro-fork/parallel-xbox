@@ -28,6 +28,7 @@ static PGRAPHVkState state;
 static uint64_t completed;
 static unsigned probes,resets,work;
 static bool shared=true;
+static bool gamma_changed;
 static VkResult vkGetFenceStatus(unsigned device,VkFence fence)
 {assert(device==7&&fence>=1&&fence<=8);probes++;return state.display.sync[fence-1].serial<=completed?VK_SUCCESS:VK_NOT_READY;}
 static VkResult vkResetFences(unsigned device,unsigned n,const VkFence*fences)
@@ -91,7 +92,8 @@ int main(void)
  PGRAPHVkDisplayState d={.last_surface_addr=0x1000,.draw_time=9,.last_line_offset=32,
   .last_mode_width=640,.last_mode_height=480,.last_scale=2};
  assert(cached(&d,false));assert(!cached(&d,true));
+ gamma_changed=true;assert(!cached(&d,false));gamma_changed=false;
  d.last_mode_width=800;assert(!cached(&d,false));
- printf("PASS: %u Vulkan slot schedules, repeated busy probes and mode-only retry preservation\n",cases+4);
+ printf("PASS: %u Vulkan slot schedules, repeated busy probes and mode/gamma-only retry preservation\n",cases+4);
  return 0;
 }

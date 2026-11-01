@@ -48,7 +48,15 @@ void prmdio_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
         break;
     case NV_USER_DAC_PALETTE_DATA:
         /* FIXME: Confirm wrap-around */
-        d->puserdac.palette[d->puserdac.write_mode_address++ % (256*3)] = val;
+        {
+            unsigned byte = d->puserdac.write_mode_address++ % (256 * 3);
+            unsigned i = byte / 3;
+            d->puserdac.palette[byte] = val;
+            const uint8_t *p = &d->puserdac.palette[i * 3];
+            retro_atomic_store_relaxed_int(&d->puserdac.packed[i],
+                                          p[0] | (p[1] << 8) | (p[2] << 16));
+            retro_atomic_store_release_int(&d->puserdac.dirty, 1);
+        }
         break;
     default:
         break;

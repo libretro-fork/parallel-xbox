@@ -2851,3 +2851,9 @@ The `VP_REPEAT` NASM test-ROM define shares the looping PCM voice between the
 Win64 scheduling stack usage changes from 3,248 to 3,264 bytes; voice_process
 remains 1,248 bytes and the VP frame 160 bytes. Dispatch/filter state sizes
 remain 3,120/1,120 bytes. The guard adds no per-voice processing fields.
+
+## Guest display gamma
+
+`test-display-gamma.py CHECKOUT --cc CC` executes the production DAC writer, atomic snapshot and ramp cache against 1,024 sequences, including identity/repeated writes, concurrent-write retry, palette wrapping and version wrapping. `--gpu --output DIR` additionally compiles the actual GL and Vulkan native/byte presentation shaders and checks 90 GL and 180 Vulkan cases: independent channel curves, identity bypass, alpha, video-overlay color-key ordering and RGBA8/RGB565/1555 inputs. Sixteen-bit curves are checked against each driver's neutral conversion; RGBA8 uses an independent pixel oracle. Vulkan checks the 128-byte push ABI, 1,024-byte lookup layout and eight aligned uniform snapshots. Synchronization validation is enabled when available, and generated modules are checked with `spirv-val` when installed. On Windows, provide `--epoxy-root DIR` containing `libepoxy/include` and `libepoxy.a`.
+
+The runtime reuses the presentation draw. Vulkan reserves and maps eight small lookup snapshots at startup, with immutable descriptor bindings; OpenGL uses packed uniforms. Unchanged palettes avoid uploads. Palette-only changes invalidate cached presentation; the display-slot regression also checks gamma-only redraw/retry behavior.

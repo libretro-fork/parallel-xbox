@@ -198,6 +198,21 @@ const uint8_t *nv2a_get_dac_palette(void)
     return g_nv2a->puserdac.palette;
 }
 
+bool nv2a_get_dac_palette_snapshot(uint32_t ramp[256], bool force)
+{
+    NV2AState *d = g_nv2a;
+    if (!force && !retro_atomic_load_acquire_int(&d->puserdac.dirty)) {
+        return false;
+    }
+    /* Clear first: a concurrent palette write schedules another snapshot.
+     * Packed entries use libretro atomics; no renderer/BQL lock dependency. */
+    retro_atomic_exchange_int(&d->puserdac.dirty, 0);
+    for (unsigned i = 0; i < 256; i++) {
+        ramp[i] = retro_atomic_load_relaxed_int(&d->puserdac.packed[i]);
+    }
+    return true;
+}
+
 int nv2a_get_screen_off(void)
 {
     return g_nv2a->vga.sr[VGA_SEQ_CLOCK_MODE] & VGA_SR01_SCREEN_OFF;
@@ -450,7 +465,10 @@ static void nv2a_reset(NV2AState *d)
         d->puserdac.palette[i*3]   = i;
         d->puserdac.palette[i*3+1] = i;
         d->puserdac.palette[i*3+2] = i;
+        retro_atomic_store_relaxed_int(&d->puserdac.packed[i],
+                                      i | (i << 8) | (i << 16));
     }
+    retro_atomic_store_release_int(&d->puserdac.dirty, 1);
 
     if (have_renderer) {
         nv2a_unlock_fifo(d);
@@ -565,6 +583,12 @@ static int nv2a_pre_load(void *opaque)
 static int nv2a_post_load(void *opaque, int version_id)
 {
     NV2AState *d = opaque;
+    for (unsigned i = 0; i < 256; i++) {
+        const uint8_t *p = &d->puserdac.palette[i * 3];
+        retro_atomic_store_relaxed_int(&d->puserdac.packed[i],
+                                      p[0] | (p[1] << 8) | (p[2] << 16));
+    }
+    retro_atomic_store_release_int(&d->puserdac.dirty, 1);
     /* The switch registers come back with the snapshot; the subchannel they
      * were loaded for does not. */
     d->pgraph.ctx_switch_subchannel = -1;

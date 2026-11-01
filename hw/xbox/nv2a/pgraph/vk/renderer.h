@@ -29,6 +29,7 @@
 #include "hw/xbox/nv2a/nv2a_int.h"
 #include "hw/xbox/nv2a/nv2a_regs.h"
 #include "hw/xbox/nv2a/pgraph/cost.h"
+#include "hw/xbox/nv2a/pgraph/gamma.h"
 #include "hw/xbox/nv2a/pgraph/surface.h"
 #include "hw/xbox/nv2a/pgraph/scanout.h"
 #include "hw/xbox/nv2a/pgraph/texture.h"
@@ -111,6 +112,7 @@ enum Buffer {
     BUFFER_UNIFORM_STAGING,
     /* the GPU unswizzle's output ring (unswizzle.c) */
     BUFFER_UNSWIZZLE_OUT,
+    BUFFER_DISPLAY_GAMMA,
     BUFFER_COUNT
 };
 
@@ -329,13 +331,17 @@ typedef struct PvideoState {
 
 typedef struct PGRAPHVkDisplayState {
     ShaderModuleInfo *display_frag, *native_frag;
+    PGRAPHGammaState gamma;
+    uint64_t gamma_uploaded[PGRAPH_GAMMA_SLOTS];
+    VkDescriptorSetLayout gamma_set_layout;
+    VkDescriptorSet gamma_sets[PGRAPH_GAMMA_SLOTS];
 
     VkDescriptorPool descriptor_pool;
     VkDescriptorSetLayout descriptor_set_layout;
     /* One set per source, eight worst-case presentations in flight.
      * Background rectangles share one set without rewriting its bindings. */
 #define PGRAPH_VK_SCANOUT_DIRECT_LAYERS PGRAPH_SCANOUT_LAYERS
-#define PGRAPH_VK_DISPLAY_SETS (8 * (PGRAPH_VK_SCANOUT_DIRECT_LAYERS + 1))
+#define PGRAPH_VK_DISPLAY_SETS (PGRAPH_GAMMA_SLOTS * (PGRAPH_VK_SCANOUT_DIRECT_LAYERS + 1))
     VkDescriptorSet descriptor_sets[PGRAPH_VK_DISPLAY_SETS];
     int descriptor_index;
     struct {

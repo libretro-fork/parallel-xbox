@@ -190,6 +190,8 @@ typedef struct NV2AState {
     struct {
         uint16_t write_mode_address;
         uint8_t palette[256*3];
+        retro_atomic_int_t packed[256]; /* host snapshot, not serialized */
+        retro_atomic_int_t dirty;
     } puserdac;
 
 } NV2AState;

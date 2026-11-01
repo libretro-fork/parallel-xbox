@@ -68,6 +68,8 @@ S3TC textures keep native compressed storage when supported. Larger fallback tex
 
 Core Options > Video > Force Quality Filtering (Restart) independently requests up to 16x anisotropic filtering on wrapping or mirrored, linearly filtered 2D color textures, capped by device support. Point/depth sampling, G8B8 data, cubemaps, clamped/bordered textures and unsupported formats retain game filtering to avoid changing data sampling or widening footprints across seams. Texture address modes remain unchanged. It is disabled by default; restart content to apply. The core cannot infer internal tile boundaries in a wrapping texture atlas, so such game-specific layouts still need visual validation.
 
+Guest RGB gamma ramps are applied automatically during presentation in both renderers, after video overlay composition. Game brightness settings and gamma fades need no core option. Neutral ramps bypass the lookup.
+
 The core renders with OpenGL or Vulkan, whichever RetroArch's video driver is (`glcore` or `vulkan`). On Android it is Vulkan only. On macOS it is OpenGL: MoltenVK has no geometry shaders, which xemu's Vulkan renderer needs, so use RetroArch's `glcore` driver there.
 
 ## Building
