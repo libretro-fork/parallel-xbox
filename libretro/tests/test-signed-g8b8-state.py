@@ -70,6 +70,7 @@ static PshState encode_signed_g8b8(unsigned signs, unsigned min_filter,
     bool mip_clamp_u = address_u == 1, mip_clamp_v = address_v == 1;
     bool mip_mirror_u = address_u == 2, mip_mirror_v = address_v == 2;
     bool mip_clamp = mip_clamp_u && mip_clamp_v;
+    bool mip_border = address_u == 3 || address_v == 3;
     bool min_linear = min_filter == 2 || min_filter == 4 || min_filter == 6;
     bool linear_filter = min_linear && mag_filter == 2;
     bool point_filter = !min_linear && mag_filter == 1;
@@ -87,12 +88,13 @@ int main(void) {
     for (unsigned u = 0; u < 8; u++)
     for (unsigned v = 0; v < 8; v++)
     for (unsigned base_only = 0; base_only < 2; base_only++)
-    for (unsigned mixed = 0; mixed < 2; mixed++) {
+    for (unsigned mixed = 0; mixed < 2; mixed++)
+    for (unsigned minimum = 0; minimum < 3; minimum++) {
         bool old = u >= 1 && u <= 3 && v >= 1 && v <= 3;
         bool border = (u == 4 && v >= 1 && v <= 4) ||
                       (v == 4 && u >= 1 && u <= 4);
-        assert(g8b8_mip_address_supported(u, v, base_only, mixed) ==
-               (old || (base_only && !mixed && border)));
+        assert(g8b8_mip_address_supported(u, v, base_only, mixed, minimum) ==
+               (old || (base_only && border && (!mixed || !minimum))));
         mip_addresses++;
     }
     printf("PASS: %u mip-address eligibility cases\n", mip_addresses);
@@ -140,6 +142,24 @@ int main(void) {
         assert(!memcmp(&mip, &base, sizeof(mip)));
         canonical++;
     }
+    unsigned mixed_border = 0;
+    for (unsigned stage = 0; stage < 4; stage++)
+    for (unsigned signs = 0; signs < 16; signs++)
+    for (unsigned filter = 3; filter <= 6; filter++)
+    for (unsigned u = 0; u < 4; u++)
+    for (unsigned v = 0; v < 4; v++)
+    for (unsigned others = 0; others < 2; others++) {
+        if (u != 3 && v != 3) continue;
+        unsigned base_filter = filter % 2 ? 1 : 2;
+        unsigned mag = 3 - base_filter;
+        PshState mip = encode_signed_g8b8(signs, filter, mag, true,
+                                         u, v, true, others, stage, 0);
+        PshState base = encode_signed_g8b8(signs, base_filter, mag, false,
+                                          u, v, true, others, stage, 0);
+        assert(!memcmp(&mip, &base, sizeof(mip)));
+        mixed_border++;
+    }
+    printf("PASS: %u mixed-border single-level key reuse cases\n", mixed_border);
     unsigned addressed = 0;
     for (unsigned stage = 0; stage < 4; stage++)
     for (unsigned signs = 0; signs < 16; signs++)

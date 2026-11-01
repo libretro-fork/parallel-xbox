@@ -187,7 +187,9 @@ hardware-validation limits. The test code is absent from normal emulation.
 
 `test-g8b8-sampler-views.py CHECKOUT [CC]` checks production GL sampler-view
 classification, 3840 filter-mode transitions, 64 reuse gates, GL parameter
-selection and unchanged cache-key/binding layouts. Mip and nonmip views of
+selection and unchanged cache-key/binding layouts. Another 294912
+Vulkan cases check the quarter-LOD ceiling, nearest mip selection, and
+exclusions by address, filter, minimum/maximum, format, cube/border and dimension. Mip and nonmip views of
 the same image must remain separate when their base/minimum settings differ.
 
 `test-g8b8-nonmip-transitions.py CHECKOUT PARENT CANDIDATE HARNESS SCRATCH`
@@ -197,22 +199,27 @@ it does not require unsupported nonmip-chain sampling to agree across APIs.
 Use `--assembler yasm` when nasm is unavailable.
 
 `test-g8b8-base-border.py CHECKOUT PARENT CANDIDATE HARNESS SCRATCH` checks
-matching G8B8 filters with constant-border addressing when the effective
-maximum mip is zero. The builder's `--base-only` programs that guest clamp;
-the other matrix enables Force Texture LOD0 over a normal mip chain.
-Black-border cases cover all seven wrap/edge/mirror/border pairs containing
-a border axis with both linear mip modes; border/border point controls cover
-the other two modes. Opaque-white cases add standard nonzero borders.
-`--custom-border-colors` adds two independent R/G border profiles and requires
-the backend's existing Vulkan custom-border-color support. The default is
-6912 scalar cases per renderer, or 8448 with custom colors, plus 1920 exact
-parent comparisons for excluded full-mip and mixed-filter border paths.
-The scalar model includes the other axis's border coverage and native G8B8
-R/G view swizzles. `--border-color 0x40c02080` isolates a colored builder case.
-New paths reuse the existing single-level point/gather keys; they add no
-shader uniforms or serialized state fields. Color keys, embedded borders and
-signed alpha-kill remain excluded. This script is an explicit parent/candidate
-comparison rather than part of the default scalar runner.
+G8B8 constant borders when mip chains are clamped to zero, with guest
+`--base-only` clamps and Force Texture LOD0. `--mode matching`, `mixed` or
+`all` (default) selects the matrix. Black-border mixed cases cover all seven
+border-containing address pairs and all four mip modes. Bias -4/0/+0.25/+4
+checks min/mag selection while reads stay at mip zero. Matching cases cover
+both linear mip modes across all pairs and border/border point controls.
+Opaque white adds standard nonzero borders; `--custom-border-colors` adds two
+independent R/G profiles and requires Vulkan custom-border-color support.
+Matching mode checks 6912 scalar cases (8448 custom), mixed mode 13824
+(15360 custom), and all mode 20736 (23808 custom), per renderer. All modes
+compare 1920 full-mip pixels with the parent. Mixed mode adds 1536 exact
+matching-filter controls, for 3456 parent-comparison pixels per renderer.
+The scalar reference includes both axes' border coverage and the native G8B8
+R/G swizzle. `--border-color 0x40c02080` isolates a colored builder case.
+Mixed borders reuse the single-level mixed keys; previously supported mixed
+nonborder mip keys remain unchanged. Vulkan's 0.25 sampler ceiling preserves
+min/mag selection, with nearest mip selection keeping all reads at level zero.
+Mixed borders with a positive minimum, full-mip borders, color keys, embedded
+borders and signed alpha-kill retain their exclusions. No uniforms or state
+fields are added. This manual parent/candidate test is separate from the
+default general scalar runner.
 
 Lower-clamp scalar matrices first prime a nonmip view, then draw with mip
 filtering. The builder's `--sampler-transition lod0-to-mip` selects this
@@ -222,12 +229,13 @@ runner above rather than `check-bump-probe.py`.
 `test-signed-g8b8-state.py CHECKOUT [CC]` checks the production shader address
 invalidation predicate over 262144 register combinations and verifies that
 signed-channel, min/mag, mip-count and mip-size changes invalidate shader state.
-It also checks 256 mip-address eligibility combinations, accepting new border
-addresses only for base-only matching filters. Reuse of the reserved universal
+It also checks 768 mip-address eligibility combinations, including minimum
+clamps and both matching/mixed filters. Reuse of the reserved universal
 byte preserves the
 serialized pixel-shader state size and field offsets.
 Another 8192 cases verify that matching, base-only wrap/edge/mirror/border filters reuse the
-single-level point/gather shader keys without clearing other stages' flags.
+single-level point/gather shader keys without clearing other stages' flags. Another
+3584 cases check mixed border reuse of single-level mixed-filter keys.
 An additional 9216 cases verify independent-axis flags and preserve other stages;
 3072 more check lower-mip bitplanes, matching/mixed canonicalization and
 other-stage preservation without altering the serialized layout. Another

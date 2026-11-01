@@ -113,12 +113,15 @@ matching/mixed filters and negative-bias override controls. Force LOD0 resets
 both effective clamps to zero before shader selection, overriding guest lower
 clamps in both renderers. It requires restarting content.
 
-For an effective maximum mip of zero and matching min/mag filters, constant
-border addressing can also reuse the native single-level point/gather path.
-This includes a guest-requested zero maximum and Force Texture LOD0. No
-explicit border taps or new uniforms are required. Mixed-filter borders and
-full-mip border reconstruction remain excluded; color keys, embedded borders
-and signed alpha-kill retain their existing exclusions.
+For a zero maximum mip, matching constant-border filters reuse the native
+single-level point/gather path. Mixed borders with both effective clamps zero
+reuse the single-level mixed shader instead, preserving raw-footprint min/mag
+selection. This includes guest-requested zero clamps and Force Texture LOD0.
+Vulkan retains a 0.25 sampler ceiling for filter selection and forces nearest
+mip selection; native gather and sampling still read mip zero. No explicit
+border taps or new uniforms are needed. Existing mixed nonborder mip keys stay
+intact. Full-mip borders, mixed borders with a positive minimum, color keys,
+embedded borders and signed alpha-kill retain their exclusions.
 
 `test-g8b8-base-border.py` verifies this scope against scalar colors and the
 parent's excluded paths. Transparent-black and opaque-white borders use native

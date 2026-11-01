@@ -1,5 +1,7 @@
 # Changelog of the libretro core
 
+- Correct mixed min/mag G8B8 border filtering when a mip chain is clamped to mip zero. Reuse existing mixed point/gather shaders; preserve Vulkan filter selection without reading higher mips, including unsigned channels. Keep existing shader-cache layouts and nonborder keys.
+
 - Reuse Vulkan pipeline-cache export storage across background saves, with startup reservation and geometric growth. Failed file writes remain eligible for retry.
 
 - Resume a runnable guest when device completion races its parked slice exit, instead of advancing idle time past newly available work. Exercise a supported RAM-wait proof in the exact GPU-progress ROM oracle.

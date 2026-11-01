@@ -20,6 +20,10 @@ predicate = re.search(r"^static bool g8b8_sampler_lod_clamp\(.*?^\}", source, re
 guard = re.search(r"if \(!pg->texture_dirty\[i\].*?\) \{", source, re.S).group()
 parameters = re.search(r"/\* Linear textures don't support mipmapping \*/.*?^    \}",
                        source, re.S | re.M).group()
+vk_source = (repo / "hw/xbox/nv2a/pgraph/vk/texture.c").read_text()
+vk_clamped = re.search(r"    bool mixed_g8b8_clamped = .*?;", vk_source, re.S).group()
+vk_nearest = re.search(r"    if \(mixed_g8b8_clamped\) \{.*?^    \}", vk_source, re.S | re.M).group()
+vk_ceiling = re.search(r"\.maxLod = (.*?),\n\s+\.mipLodBias", vk_source, re.S).group(1)
 code = r'''
 #include <assert.h>
 #include <stdbool.h>
@@ -65,6 +69,19 @@ static void sampler_parameters(TextureShape s, bool linear, bool g8b8_lod_clamp)
     struct { bool linear; } f = {linear};
     GLenum gl_target = 0;
     /* PARAMETERS */
+}
+#define MIN(a, b) ((a) < (b) ? (a) : (b))
+static float vk_clamped_maximum(TextureShape state, unsigned min_filter,
+                                unsigned address, bool mipmap_en,
+                                bool opposite, bool *nearest) {
+    unsigned vk_min_filter = !(min_filter & 1);
+    unsigned vk_mag_filter = opposite ? !vk_min_filter : vk_min_filter;
+    bool mixed_g8b8_lod0 = false;
+    bool mipmap_nearest = min_filter == 3 || min_filter == 4;
+    /* VK_CLAMPED */
+    /* VK_NEAREST */
+    *nearest = mipmap_nearest;
+    return /* VK_CEILING */;
 }
 int main(void) {
     TextureShape shape;
@@ -124,9 +141,37 @@ int main(void) {
     shape.dimensionality = 3; assert(!g8b8_sampler_lod_clamp(&shape, 3u << 16));
     calls = 0; sampler_parameters(shape, true, false); assert(!calls);
     printf("PASS: %u sampler-view transitions, %u reuse gates, legacy layout/keys and GL parameters\n", transitions, gates);
+    unsigned vk_cases = 0;
+    for (unsigned filter = 0; filter < 8; filter++)
+    for (unsigned u = 0; u < 8; u++) for (unsigned v = 0; v < 8; v++)
+    for (unsigned enabled = 0; enabled < 2; enabled++)
+    for (unsigned opposite = 0; opposite < 2; opposite++)
+    for (unsigned minimum = 0; minimum < 3; minimum++)
+    for (unsigned maximum = 0; maximum < 3; maximum++)
+    for (unsigned bits = 0; bits < 16; bits++) {
+        TextureShape s = {0};
+        s.levels = 3;
+        s.dimensionality = bits & 1 ? 3 : 2;
+        s.cubemap = bits & 2;
+        s.border = bits & 4;
+        s.color_format = bits & 8 ? NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_G8B8 :
+                                   NV097_SET_TEXTURE_FORMAT_COLOR_SZ_G8B8;
+        s.min_mipmap_level = minimum; s.max_mipmap_level = maximum;
+        bool clamped = enabled && opposite && !minimum && !maximum && !bits &&
+                       filter >= 3 && filter <= 6 &&
+                       u >= 1 && u <= 4 && v >= 1 && v <= 4;
+        bool nearest;
+        float ceiling = vk_clamped_maximum(s, filter, u | v << 8, enabled,
+                                            opposite, &nearest);
+        assert(ceiling == (clamped ? 0.25f : enabled ? maximum : 0.0f));
+        assert(nearest == (filter == 3 || filter == 4 || clamped));
+        vk_cases++;
+    }
+    printf("PASS: %u Vulkan base-only mixed-filter sampler policies\n", vk_cases);
 }
 '''.replace("/* TYPES */", shape + key + binding).replace("/* LEGACY */", legacy).replace(
-    "/* PREDICATE */", predicate).replace("/* GUARD */", guard).replace("/* PARAMETERS */", parameters)
+    "/* PREDICATE */", predicate).replace("/* GUARD */", guard).replace("/* PARAMETERS */", parameters).replace(
+    "/* VK_CLAMPED */", vk_clamped).replace("/* VK_NEAREST */", vk_nearest).replace("/* VK_CEILING */", vk_ceiling)
 with tempfile.TemporaryDirectory(prefix="g8b8-views-") as folder:
     c = Path(folder) / "test.c"
     binary = Path(folder) / "test"

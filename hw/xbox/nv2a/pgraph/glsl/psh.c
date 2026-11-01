@@ -38,13 +38,14 @@
 DEF_UNIFORM_INFO_ARR(PshUniform, PSH_UNIFORM_DECL_X)
 
 static bool g8b8_mip_address_supported(unsigned u, unsigned v,
-                                      bool base_only, bool mixed)
+                                      bool base_only, bool mixed,
+                                      unsigned minimum)
 {
-    /* Matching base-only filters reuse native point/gather sampling, which
-     * already applies constant borders. Explicit mip reconstruction does not
-     * implement border taps, including the mixed-filter base-only helper. */
-    unsigned last = base_only && !mixed ? NV_PGRAPH_TEXADDRESS0_ADDRU_BORDER :
-                                         NV_PGRAPH_TEXADDRESS0_ADDRU_CLAMP_TO_EDGE;
+    /* Base-only borders reuse native point/gather sampling. Explicit mip
+     * reconstruction still does not implement border taps. Mixed borders
+     * require a zero minimum, matching the native sampler's clamp policy. */
+    unsigned last = base_only && (!mixed || minimum == 0) ?
+        NV_PGRAPH_TEXADDRESS0_ADDRU_BORDER : NV_PGRAPH_TEXADDRESS0_ADDRU_CLAMP_TO_EDGE;
     return u >= NV_PGRAPH_TEXADDRESS0_ADDRU_WRAP && u <= last &&
            v >= NV_PGRAPH_TEXADDRESS0_ADDRU_WRAP && v <= last;
 }
@@ -331,6 +332,7 @@ void pgraph_glsl_set_psh_state(PGRAPHState *pg, PshState *state)
               min_filter == NV_PGRAPH_TEXFILTER0_MIN_BOX_TENT_LOD));
         bool mip_filter = false;
         bool mip_lod0 = false;
+        bool mip_border = false;
         bool mip_clamp = false;
         bool mip_clamp_u = false;
         bool mip_clamp_v = false;
@@ -343,6 +345,8 @@ void pgraph_glsl_set_psh_state(PGRAPHState *pg, PshState *state)
             uint32_t address = pgraph_reg_r(pg, NV_PGRAPH_TEXADDRESS0 + i * 4);
             unsigned addru = GET_MASK(address, NV_PGRAPH_TEXADDRESS0_ADDRU);
             unsigned addrv = GET_MASK(address, NV_PGRAPH_TEXADDRESS0_ADDRV);
+            mip_border = addru == NV_PGRAPH_TEXADDRESS0_ADDRU_BORDER ||
+                         addrv == NV_PGRAPH_TEXADDRESS0_ADDRU_BORDER;
             TextureShape shape = pgraph_get_texture_shape(pg, i);
             mip_lod0 = shape.max_mipmap_level == 0;
             mip_min_lod = shape.min_mipmap_level;
@@ -354,7 +358,8 @@ void pgraph_glsl_set_psh_state(PGRAPHState *pg, PshState *state)
             /* Both renderers keep the original footprint for these lower
              * clamps. A positive sampler minimum always selects minification. */
             mip_filter = mip_min_lod <= 15 &&
-                g8b8_mip_address_supported(addru, addrv, mip_lod0, mixed_mip_filter) &&
+                g8b8_mip_address_supported(addru, addrv, mip_lod0,
+                                           mixed_mip_filter, mip_min_lod) &&
                 min_filter >= NV_PGRAPH_TEXFILTER0_MIN_BOX_NEARESTLOD &&
                 min_filter <= NV_PGRAPH_TEXFILTER0_MIN_TENT_TENT_LOD;
             if (mip_filter && mip_min_lod) {
@@ -376,11 +381,11 @@ void pgraph_glsl_set_psh_state(PGRAPHState *pg, PshState *state)
                 ((filter & NV_PGRAPH_TEXFILTER0_RSIGNED) ? 4 : 0) |
                 ((filter & NV_PGRAPH_TEXFILTER0_ASIGNED) ? 8 : 0);
             if (signs && mip_filter && mip_lod0 &&
-                !mixed_mip_filter) {
-                /* Matching filters restricted to mip zero can reuse the
-                 * single-level point/gather programs. Canonicalizing the
-                 * state also reuses their existing cache keys and seeds. */
-                state->g8b8_signed[i] = signs | (mip_min_linear ? 16 : 0);
+                (!mixed_mip_filter || mip_border)) {
+                /* Reuse single-level point/gather keys for matching filters
+                 * and mixed borders. Keep existing mixed nonborder mip keys. */
+                state->g8b8_signed[i] = signs | (mip_min_linear ? 16 : 0) |
+                    (mixed_mip_filter ? 64 | (mag_filter == 2 ? 32 : 0) : 0);
             } else if (signs) {
                 state->g8b8_signed[i] = signs |
                     ((linear_filter || (mip_filter && mip_min_linear)) ? 16 : 0) |
