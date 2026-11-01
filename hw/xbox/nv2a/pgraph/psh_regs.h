@@ -183,8 +183,10 @@ enum PshShadowDepthFunc {
 
 enum ConvolutionFilter {
     CONVOLUTION_FILTER_DISABLED,
-    CONVOLUTION_FILTER_QUINCUNX,
-    CONVOLUTION_FILTER_GAUSSIAN,
+    /* Revision bit 2 refreshes convolution shaders with projected offsets.
+     * Disabled and all other shader-state bytes retain their existing keys. */
+    CONVOLUTION_FILTER_QUINCUNX = 1 | 4,
+    CONVOLUTION_FILTER_GAUSSIAN = 2 | 4,
 };
 
 #endif

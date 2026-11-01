@@ -2325,3 +2325,47 @@ sizes remain unchanged. This is a code-generation result, not a measured
 hardware cache-miss or game-latency improvement.
 
 The LRU fixture also compares flush, eviction and active visits (including current-node eviction) with independent original scans. Guarded pages prove full-cache allocation avoids an unrelated newer node and empty helpers avoid all list/bin/node metadata. A parent header without count gates must fault on a read. Benchmark mode 4 fills 51,200 nodes (the Vulkan shader-module cache capacity) before measuring 1,000 full-cache misses; modes 0-3 retain the small-cache comparisons. These synthetic timings are not frame-rate measurements.
+
+`test-convolution-projection.py CHECKOUT [--parent REV] [--cc CC] [--output DIR]`
+executes the production convolution helper on an OpenGL compute context. Native
+Windows accepts `--epoxy-root DIRECTORY` for a separate libepoxy build. An
+independent scalar kernel checks 1,572,864 RGBA components per GPU across Q
+0.25/0.5/1/2/4/-1, normalized and rectangle coordinates, point/linear host sampling,
+four image shapes and all sixteen wrap/edge/mirror/border pairs. The 262,144 Q=1
+controls match parent float results within 1e-6. Linear host sampling permits one
+color LSB for hardware interpolation precision. Zero-Q behavior is outside this
+fixture. The helper keeps its existing projective divide and nine kernel reads;
+o new runtime transfer, synchronization or diagnostic path is added.
+
+`test-convolution-sampler.py CHECKOUT PARENT CANDIDATE HARNESS SCRATCH` checks
+1,728 guest pixels per API: Gaussian projective Q 0.5/1/2, Force LOD0 and native
+RGBA8/RGB565/cube/volume/F16 controls. Q=1 and ordinary controls must remain exact
+parent pixels; other convolution pixels follow the scalar two-column kernel.
+Use `--windows-paths` for a Windows harness through WSL.
+
+`test-convolution-state.py CHECKOUT [--cc CC]` checks 168 kernel/filter/stage keys.
+Only convolution enum values gain a revision bit to refresh cached programs;
+disabled convolution and other stage bytes keep their keys and enum size. The
+existing Quincunx Gaussian fallback and min-only convolution selection remain
+separate limitations; these tests establish projected kernel spacing.
+
+The ring-pressure fixture adds 136 auxiliary full-drain schedules: every ring
+start, zero through eight pending submissions, and an optional open recording.
+A nonempty full drain waits once on the newest submission's fence, releases
+completed slots in FIFO order, and leaves open recording ranges intact. Empty
+and repeated drains add no waits or duplicate ownership releases. The existing
+108,609 byte-ownership allocations over 20,000 delayed submissions and 20,000
+PVIDEO resize/upload/display schedules remain covered. Ring pressure and
+single-slot reuse retain their existing oldest-first behavior.
+
+`VK_RING_BINARY`, `VK_RING_SKIP_RUN` and `VK_RING_CFLAGS` allow native fixtures;
+the default compiler flags retain UBSan with traps. Full auxiliary drains still
+wait for real completion. The change adds no state fields, buffers, copies,
+PSOs, locks, status polls or video frame queue. Newest-fence coverage uses the
+same-queue synchronization rule cited above.
+
+Win64 code generation inlines the release helper. Oldest-slot retirement
+keeps its 96-byte stack frame; the full drain now uses one 96-byte frame
+instead of a 48-byte caller nested with the old 96-byte retirement function.
+Renderer structure sizes are unchanged. No hardware cache-miss or game-latency
+gain is established by this code-generation check.

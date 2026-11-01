@@ -22,6 +22,34 @@ int xemu_cpu_boost;
 static unsigned gates;
 /* The full SoftFloat source's only GLib dependency, used for failed assertions. */
 void g_assertion_message_expr(const char *domain,const char *file,int line,const char *func,const char *expr) { fprintf(stderr,"assertion %s:%d %s: %s\n",file,line,func,expr); abort(); }
+/* Freeze the pre-predicate gate as the reference. Changing production
+ * eligibility must not silently change the arithmetic/status oracle. */
+static inline bool reference_native_ok(CPUX86State *env)
+{
+    const float_status *s = &env->sse_status;
+    if (!(xemu_cpu_boost &&
+          s->float_rounding_mode == float_round_nearest_even &&
+          !s->flush_to_zero && !s->flush_inputs_to_zero)) {
+        return false;
+    }
+    /* The host must round to nearest without flushing, MXCSR 0x1f80. The
+     * hard x87 path loads the guest's x87 rounding into the host MXCSR
+     * (gen_flcr, which notes it here) and leaves it until its next load:
+     * the software path runs meanwhile. */
+    uint32_t mxcsr = env->xemu_host_mxcsr;
+    if (likely(mxcsr == 0x1f80)) {
+        return true;
+    }
+    if (mxcsr == 0) {
+        /* First native operation on this vCPU, or after a reset. */
+        if ((__builtin_ia32_stmxcsr() & ~0x3fu) != 0x1f80) {
+            __builtin_ia32_ldmxcsr(0x1f80);
+        }
+        env->xemu_host_mxcsr = 0x1f80;
+        return true;
+    }
+    return false;
+}
 /* PRODUCTION */
 typedef void (*Fn)(CPUX86State *,TestReg *,TestReg *,TestReg *);
 static Fn funcs[]={glue(helper_addps,SUFFIX),glue(helper_subps,SUFFIX),glue(helper_mulps,SUFFIX),glue(helper_divps,SUFFIX),glue(helper_minps,SUFFIX),glue(helper_maxps,SUFFIX),
@@ -36,7 +64,7 @@ static uint64_t rng=0xc145321ed789ab3;
 static uint64_t random64(void) { rng^=rng<<13;rng^=rng>>7;rng^=rng<<17;return rng; }
 #define REF_VALUE(size,member,hosttype) do { \
  float##size a=v->member[i],b=s->member[i],r; \
- if(op<3 && sse_native_ok_impl(env)) { \
+ if(op<3 && reference_native_ok(env)) { \
   union { float##size s;hosttype h; } x={.s=a},y={.s=b},z; \
   switch(op) {case 0:z.h=x.h+y.h;break;case 1:z.h=x.h-y.h;break;default:z.h=x.h*y.h;break;}r=z.s; \
  } else {switch(op) {case 0:r=float##size##_add(a,b,&env->sse_status);break; \

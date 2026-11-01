@@ -2,12 +2,20 @@
 
 - Skip the free-node search when an LRU cache is full, proceeding directly to the existing eligible-victim search. Return immediately from empty eviction, flush and active-visit operations using the existing counts; preserve ordering, callbacks and ownership without extra storage.
 
+
+- Keep convolution-filter texel spacing fixed after projective texture-coordinate division in GL and Vulkan. Prevent the blur footprint from shrinking or growing with Q, using the existing nine reads and kernel weights.
+
+
+- Combine independent SSE rounding/flush eligibility checks into one mode predicate before native arithmetic. Preserve CPU Boost, host-MXCSR tracking and all software fallback conditions while removing two conditional branches from the inspected Win64 native helper path.
+
+- Drain Vulkan auxiliary uploads with one newest-submission fence wait instead of waiting on each pending slot. Release completed ownership and staging ranges in FIFO order, preserving any open recording. No buffers, copies, PSOs or locks are added; necessary drains still wait.
 - Avoid rewriting LRU cache links when a hit already leads the global recency list or its hash bin. Preserve comparison callbacks, allocation/eviction behavior and exact cache ordering without extra storage.
 
 - Add GPU regression coverage for signed G8B8 mip filtering near texel boundaries, checking lower clamps, addressing, mixed filters and mip tails against an independent model. This is test-only coverage.
 
 
 - Drain Vulkan command slots with at most one fence wait, using the latest pending submission on their shared queue. Skip the wait when retirement is already proved; preserve ownership cleanup and timestamps after completion. Actual unfinished drains still wait.
+
 - Keep the shader-worker regression fixture on the production ready-index window, adoption and clear helpers so CI continues checking exact FIFO order and source ownership after compaction changes.
 
 - Keep signed G8B8 bump/color gathers aligned with their interpolation weights near texel boundaries. This prevents host coordinate rounding from selecting the wrong neighboring block, without extra texture reads or CPU/GPU synchronization.
