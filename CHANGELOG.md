@@ -1,5 +1,7 @@
 # Changelog of the libretro core
 
+- Reuse valid secondary translated-block cache entries after unrelated primary-slot collisions or primary invalidation. Preserve full PC, execution-mode and validity checks, avoiding unnecessary global-table lookups without allocating another cache.
+
 - Avoid redundant idle-counter work when a translated block reaches its first store through a straight-line prefix without earlier side effects. Preserve checks on conditional paths, helper calls and guest accesses, and keep instruction deadlines unchanged.
 
 - Remove the unused standalone CPU host-pacing budget, busy-wait loop and stall-credit accounting. Translated blocks retain the frame engine’s instruction budget; lock-contention diagnostics remain available.

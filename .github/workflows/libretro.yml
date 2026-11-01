@@ -30,6 +30,8 @@ jobs:
         run: python3 libretro/tests/test-frame-audio-pull.py . cc
       - name: Store-free work must not be mistaken for an idle wait
         run: python3 libretro/tests/test-quiet-progress.py . cc
+      - name: Secondary jump cache survives primary collisions
+        run: python3 libretro/tests/test-secondary-cache.py . cc
       - name: Only dominating stores may remove quiet-budget checks
         run: python3 libretro/tests/test-quiet-store-prefix.py . cc
       - name: Install native DSP test build dependency

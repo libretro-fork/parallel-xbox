@@ -339,7 +339,10 @@ static inline TranslationBlock *tb_lookup(CPUState *cpu, TCGTBCPUState s)
         goto hit;
     }
 
-    if (xemu_cpu_boost && tb && jc->array[hash].pc == s.pc) {
+    /* A different PC may have displaced the primary slot while its class
+     * entry remains valid. Check the full identity in the secondary cache
+     * after any primary miss, including an invalidated primary entry. */
+    if (xemu_cpu_boost) {
         unsigned secondary = tb_jmp_cache_class_hash(s.pc, s.flags);
         tb = retro_atomic_load_relaxed_ptr(&jc->classes[secondary].tb);
         if (tb && jc->classes[secondary].pc == s.pc &&

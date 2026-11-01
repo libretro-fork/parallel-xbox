@@ -1764,3 +1764,8 @@ frontend queue's SPSC ownership, sample cadence and existing lead are unchanged.
 that removes an overwritten quiet-counter preamble. Straight-line prefixes may
 remove it; branches, labels, helper calls and guest accesses retain it. The
 reset itself remains, as do frame instruction budgets and interrupt checks.
+
+`test-secondary-cache.py` runs the production block lookup against primary
+collisions, empty/invalidated primary slots and secondary identity mismatches.
+A valid secondary entry avoids the global lookup and is promoted; invalid PC,
+mode or cflags entries must miss. CPU boost disabled retains the primary path.
