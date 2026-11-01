@@ -304,13 +304,12 @@ bool nv2a_vk_libretro_get_frame(VkImage *image, VkImageView *view,
     if (!r || r->device != xemu_libretro_vk.device) {
         return false;
     }
-    /* The last frame the renderer's thread drew and published: its slot
-     * and number in one word (display.c render_display); the slot's image
-     * stays as it is until every other slot has been drawn */
+    /* Claim the published slot without dropping the previous front. A
+     * concurrent producer must observe this claim or the reader observes
+     * its write marker and defers. Recheck publication before reading any
+     * mutable slot metadata; commit the new front after video_refresh. */
     uint64_t published =
         (uint64_t)retro_atomic_load_acquire_64(&r->display.published);
-    const struct PGRAPHVkFrameImage *f =
-        &r->display.frames[published & 0xff];
     if (published >> 8 == *count) {
         /* nothing new: have the renderer look at the scanout again (a
          * front buffer drawn to in place, the video overlay) */
@@ -318,16 +317,43 @@ bool nv2a_vk_libretro_get_frame(VkImage *image, VkImageView *view,
         pfifo_kick(d);
         return false;
     }
-    *count = published >> 8;
-    if (!f->ready) {
+    unsigned slot = published & 0xff;
+    if (slot >= XEMU_LIBRETRO_VK_FRAMES ||
+        !pgraph_vk_frame_read_begin(&r->display.handoff, slot)) {
         return false;
     }
+    if ((uint64_t)retro_atomic_load_acquire_64(&r->display.published) != published) {
+        pgraph_vk_frame_read_cancel(&r->display.handoff);
+        return false;
+    }
+    const struct PGRAPHVkFrameImage *f = &r->display.frames[slot];
+    if (!f->ready) {
+        pgraph_vk_frame_read_cancel(&r->display.handoff);
+        return false;
+    }
+    *count = published >> 8;
     *image = f->image;
     *view = f->view;
     *format = VK_FORMAT_R8G8B8A8_UNORM;
     *width = f->width;
     *height = f->height;
     return true;
+}
+
+void nv2a_vk_libretro_frame_presented(void)
+{
+    NV2AState *d = g_nv2a;
+    PGRAPHVkState *r = d ? d->pgraph.vk_renderer_state : NULL;
+    if (r && r->device == xemu_libretro_vk.device) {
+        bool claimed = retro_atomic_load_relaxed_int(&r->display.handoff.reading) != 0;
+        pgraph_vk_frame_read_commit(&r->display.handoff);
+        if (claimed) {
+            /* Releasing the old front may unblock the next producer slot.
+             * Wake its scanout retry now, rather than requiring a guest write. */
+            retro_atomic_store_relaxed_int(&r->display.check_pending, 1);
+            pfifo_kick(d);
+        }
+    }
 }
 
 void nv2a_get_vk_display_info(void **out_handle, int *out_width, int *out_height)

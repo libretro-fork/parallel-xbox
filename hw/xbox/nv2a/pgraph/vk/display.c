@@ -1211,6 +1211,8 @@ static void create_frame_sync(PGRAPHState *pg)
     PGRAPHVkState *r = pg->vk_renderer_state;
     PGRAPHVkDisplayState *disp = &r->display;
 
+    pgraph_vk_frame_handoff_init(&disp->handoff);
+
     VkCommandPoolCreateInfo pool_info = {
         .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
         .flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
@@ -1422,8 +1424,8 @@ static void draw_crosshairs(VkCommandBuffer cmd, int width, int height)
  * frame's draws are in, and the renderer's next submission waits for the
  * frame to have been drawn before it draws to the surface again
  * (pgraph_vk_queue_submit). A slot is drawn again only after every other
- * has been, XEMU_LIBRETRO_VK_FRAMES renders later, by when the frontend
- * has long moved on from it.
+ * has been and the frontend holds neither a current nor an acquiring claim
+ * on it. Resized images retire against the replacement submission serial.
  */
 static struct PGRAPHVkFrameImage *frame_image_for_slot(PGRAPHState *pg,
                                                        unsigned slot)
@@ -1432,35 +1434,35 @@ static struct PGRAPHVkFrameImage *frame_image_for_slot(PGRAPHState *pg,
     PGRAPHVkDisplayState *disp = &r->display;
     struct PGRAPHVkFrameImage *f = &disp->frames[slot];
 
-    disp->frame_count++;
     for (int i = 0; i < ARRAY_SIZE(disp->retired); i++) {
         if (disp->retired[i].image != VK_NULL_HANDLE &&
-            disp->frame_count >= disp->retired[i].retire_at) {
+            disp->settled >= disp->retired[i].retire_at) {
             destroy_frame_image(r, &disp->retired[i]);
         }
     }
 
     if (f->image != VK_NULL_HANDLE &&
         (f->width != disp->width || f->height != disp->height)) {
-        /* A frame the frontend was handed may still be on screen: kept until
-         * every sync index has come round twice */
+        /* The frontend's last sampling commands precede the replacement
+         * display submission. Retire against its fence serial, not age. */
         bool kept = false;
         for (int i = 0; i < ARRAY_SIZE(disp->retired) && !kept; i++) {
             if (disp->retired[i].image == VK_NULL_HANDLE) {
                 disp->retired[i] = *f;
                 disp->retired[i].retire_at =
-                    disp->frame_count + 2 * XEMU_LIBRETRO_VK_FRAMES;
+                    disp->submitted + 1;
                 kept = true;
             }
         }
         if (!kept) {
-            destroy_frame_image(r, f);
+            return NULL; /* bounded retirement storage: defer, never destroy live data */
         }
         memset(f, 0, sizeof(*f));
     }
     if (f->image == VK_NULL_HANDLE) {
         create_frame_image(pg, f, disp->width, disp->height);
     }
+    disp->frame_count++;
     return f;
 }
 
@@ -1539,9 +1541,24 @@ static void render_display(PGRAPHState *pg, SurfaceBinding *surface)
     unsigned slot = 0;
     struct PGRAPHVkFrameSync *sync = NULL;
     if (on_frontend_device()) {
-        slot = disp->next_slot;
+        /* Skip frontend-held slots rather than forcing a frame of latency
+         * just because the ring cursor caught the displayed image. This is
+         * a bounded capacity search, not a wait or repeated fence poll. */
+        bool owned = false;
+        for (unsigned n = 0; n < XEMU_LIBRETRO_VK_FRAMES; n++) {
+            slot = (disp->next_slot + n) % XEMU_LIBRETRO_VK_FRAMES;
+            if (pgraph_vk_frame_write_begin(&disp->handoff, slot)) {
+                owned = true;
+                break;
+            }
+        }
+        if (!owned) {
+            disp->retry_pending = true;
+            return;
+        }
         sync = &disp->sync[slot];
         if (!try_frame_sync(r, sync)) {
+            pgraph_vk_frame_write_end(&disp->handoff);
             /* Retain a retry even when only the display mode changed and
              * present_scanout has already refreshed its mode cache. */
             disp->retry_pending = true;
@@ -1584,13 +1601,18 @@ static void render_display(PGRAPHState *pg, SurfaceBinding *surface)
     VkCommandBuffer cmd;
     struct PGRAPHVkFrameImage *f = NULL;
     if (on_frontend_device()) {
+        f = frame_image_for_slot(pg, slot);
+        if (!f) {
+            disp->retry_pending = true;
+            pgraph_vk_frame_write_end(&disp->handoff);
+            return;
+        }
         if (surface->vram_addr != disp->last_surface_addr ||
             surface->draw_time != disp->draw_time) {
             disp->guest_frame_count++;
         }
         disp->last_surface_addr = surface->vram_addr;
         disp->next_slot = (slot + 1) % XEMU_LIBRETRO_VK_FRAMES;
-        f = frame_image_for_slot(pg, slot);
         target = f->image;
         framebuffer = f->framebuffer;
         cmd = sync->cmd;
@@ -1768,9 +1790,12 @@ static void render_display(PGRAPHState *pg, SurfaceBinding *surface)
         VK_CHECK(vkEndCommandBuffer(cmd));
         submit_frame(r, sync);
         f->ready = true;
-        /* the frontend's thread takes it from here */
+        /* Publish before dropping the write marker: even if a protected
+         * slot was skipped and the previous published slot is reused, a
+         * reader can never accept new metadata under an old generation. */
         retro_atomic_store_release_64(&disp->published,
             (int64_t)(((uint64_t)disp->frame_count << 8) | slot));
+        pgraph_vk_frame_write_end(&disp->handoff);
     } else
     {
         pgraph_vk_transition_image_layout(pg, cmd, disp->image,

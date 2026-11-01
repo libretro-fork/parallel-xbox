@@ -39,6 +39,7 @@
 #include <vulkan/vulkan.h>
 #include <volk.h>
 #include "memory.h"
+#include "frame-handoff.h"
 
 #include "libretro_shared.h"
 
@@ -406,7 +407,7 @@ typedef struct PGRAPHVkDisplayState {
         VkFramebuffer framebuffer;
         int width, height;
         bool ready;
-        uint64_t retire_at;
+        uint64_t retire_at; /* display submission serial protecting last frontend read */
     } frames[XEMU_LIBRETRO_VK_FRAMES], retired[XEMU_LIBRETRO_VK_FRAMES * 2];
     // Each sync index's command buffer, fence and, where the renderer has a
     // queue of its own, the semaphores between its queue and the
@@ -434,6 +435,7 @@ typedef struct PGRAPHVkDisplayState {
      * in turn, so a slot the frontend holds is not drawn again until every
      * other has been. */
     retro_atomic_64_t published;
+    PGRAPHVkFrameHandoff handoff;
     unsigned next_slot;
     /* The display mode the last frame was drawn in (present_scanout) */
     uint32_t last_line_offset;
