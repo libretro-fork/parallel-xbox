@@ -2528,3 +2528,5 @@ structure sizes remain unchanged. Hardware cache-miss and game-latency effects
 are unmeasured. Both direct-RAM and fallback copy paths have byte-exact
 controlled-model coverage; native GPU regressions additionally exercise the
 renderer and mode-change lifecycle.
+
+`test-seed-inplace.py CHECKOUT [CC]` compares production sibling compaction with the original copy filter using the real ShaderState layout, canonicalizer/zeroing helpers, XXH3 and compatibility hash set. Its 128 cases cover 76,464 inputs across counts 0 through 4,096, disabled/enabled Boost, already-dynamic states, all-unique/all-duplicate/mixed families, forced hash collisions, exact output bytes/order, repeated filtering and boundary canaries. Linux defaults to ASan/UBSan; SEED_INPLACE_CFLAGS, SEED_INPLACE_BINARY and SEED_INPLACE_SKIP_RUN support native Win32/Win64 runs. The caller retains its original owned allocation and only the returned prefix is live.

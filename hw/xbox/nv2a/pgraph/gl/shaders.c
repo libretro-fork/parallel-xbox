@@ -1827,6 +1827,27 @@ static bool module_known(PGRAPHGLState *r, const ShaderModuleCacheKey *key)
     return lru_contains_hash(&r->shader_module_cache, hash);
 }
 
+/* The input is owned: compact accepted siblings over records already read.
+ * Only the returned prefix is live; no borrowed seed data is modified. */
+static unsigned seed_compact_dynamic_states(ShaderState *states, unsigned count)
+{
+    unsigned used = 0;
+    GHashTable *seen = pgraph_seed_hash_set_new();
+    for (unsigned i = 0; i < count; i++) {
+        ShaderState *state = &states[i];
+        if (pgraph_glsl_psh_canonicalize_dynamic(&state->psh) &&
+            pgraph_seed_hash_set_add(
+                seen, fast_hash((const uint8_t *)state, sizeof(*state)))) {
+            if (used != i) {
+                states[used] = *state;
+            }
+            used++;
+        }
+    }
+    g_hash_table_destroy(seen);
+    return used;
+}
+
 static void seed_load(PGRAPHGLState *r)
 {
     if (!pgraph_seed_game_tag()) {
@@ -1858,26 +1879,14 @@ static void seed_load(PGRAPHGLState *r)
     if (r->seed.pipe_states) {
         /* Reduce to the dynamic-sibling set: same derivation as the
          * first_meet cover path, deduplicated. */
-        unsigned n_sib = 0;
-        ShaderState *sib = g_new0(ShaderState, r->seed.pipe_n);
-        GHashTable *seen = pgraph_seed_hash_set_new();
-        for (unsigned i = 0; i < r->seed.pipe_n; i++) {
-            ShaderState fb = r->seed.pipe_states[i];
-            if (pgraph_glsl_psh_canonicalize_dynamic(&fb.psh) &&
-                pgraph_seed_hash_set_add(
-                    seen, fast_hash((const uint8_t *)&fb, sizeof(fb)))) {
-                sib[n_sib++] = fb;
-            }
-        }
-        g_hash_table_destroy(seen);
-        g_free(r->seed.pipe_states);
-        r->seed.pipe_states = sib;
+        ShaderState *sib = r->seed.pipe_states;
+        unsigned n_sib = seed_compact_dynamic_states(sib, r->seed.pipe_n);
         r->seed.pipe_n = n_sib;
         /* Module keys for exactly those siblings. */
         g_free(r->seed.mod_keys);
         r->seed.mod_keys = g_new0(ShaderModuleCacheKey, n_sib * 3);
         unsigned n_keys = 0;
-        seen = pgraph_seed_hash_set_new();
+        GHashTable *seen = pgraph_seed_hash_set_new();
         for (unsigned i = 0; i < n_sib; i++) {
             ShaderModuleCacheKey keys[3];
             bool need_gs = state_module_keys(&sib[i], keys);
