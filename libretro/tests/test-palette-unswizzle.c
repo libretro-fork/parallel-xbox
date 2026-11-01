@@ -26,12 +26,13 @@ typedef struct {
     size_t size; VkDeviceSize offset;
     enum { LEVEL_STAGING, LEVEL_UNSWIZZLED } source;
 } TextureLevel;
-static unsigned cpu_conversions, raw_unswizzles, reallocations, gpu_calls;
+static unsigned cpu_conversions, raw_unswizzles, allocations, gpu_calls;
 static bool gpu_available;
-static void *checked_realloc(void *p,size_t n) {
-    reallocations++; p=realloc(p,n); assert(p); return p;
+static void *checked_malloc(size_t n) {
+    allocations++; void *p=malloc(n); assert(p); return p;
 }
-#define g_realloc checked_realloc
+#define g_malloc checked_malloc
+#define g_free free
 static VkDeviceSize pgraph_vk_staging_alloc(PGRAPHState *p,size_t n,size_t align,uint8_t **out) {
     size_t off=(p->head+align-1)&~(align-1);
     assert(off+n<=p->capacity); p->head=off+n; p->allocations++;
@@ -83,11 +84,11 @@ static void run_case(unsigned w,unsigned h,unsigned d,unsigned shift) {
     for(unsigned i=0;i<shift;i++)assert(output[i]==0xAB);
     for(size_t i=bytes+shift;i<bytes+32;i++)assert(output[i]==0xAB);
     TextureShape shape={NV097_SET_TEXTURE_FORMAT_COLOR_SZ_I8_A8R8G8B8};
-    PGRAPHGLState gl={0}; raw_unswizzles=cpu_conversions=reallocations=0;
+    PGRAPHGLState gl={0}; raw_unswizzles=cpu_conversions=allocations=0;
     const uint8_t *result=unswizzle_level(&gl,&shape,src,palette,w,h,d,1);
     assert(!memcmp(result,expected,bytes));
-    assert(!gl.tex_scratch[0]&&gl.tex_scratch_size[0]==0&&reallocations==1&&!raw_unswizzles);
-    assert(unswizzle_level(&gl,&shape,src,palette,w,h,d,1)==result&&reallocations==1);
+    assert(!gl.tex_scratch[0]&&gl.tex_scratch_size[0]==0&&allocations==1&&!raw_unswizzles);
+    assert(unswizzle_level(&gl,&shape,src,palette,w,h,d,1)==result&&allocations==1);
     NV2AState dev={.vram_ptr=guest,.pgraph={.arena=arena,.head=3,.capacity=bytes+64}};
     TextureLevel level={0};gpu_available=false;gpu_calls=0;
     memset(arena,0xAB,bytes+64);

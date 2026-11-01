@@ -663,13 +663,15 @@ gl_internal_format_to_s3tc_enum(GLint gl_internal_format)
     }
 }
 
-/* The upload's scratch buffers, grown to what the largest level needs
- * (the first big texture of a game; nothing afterwards) */
+/* Each caller overwrites the requested range before uploading it. Retain
+ * capacity, but do not copy obsolete pixels when a slot must grow. The two
+ * slots stay separate: conversion can read slot 0 while writing slot 1. */
 static uint8_t *tex_scratch(PGRAPHGLState *r, int which, size_t size)
 {
     if (r->tex_scratch_size[which] < size) {
         size_t grown = MAX(size, 2 * r->tex_scratch_size[which]);
-        r->tex_scratch[which] = g_realloc(r->tex_scratch[which], grown);
+        g_free(r->tex_scratch[which]);
+        r->tex_scratch[which] = g_malloc(grown);
         r->tex_scratch_size[which] = grown;
     }
     return r->tex_scratch[which];

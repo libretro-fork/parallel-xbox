@@ -22,6 +22,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- OpenGL: discard obsolete texture scratch pixels on growth instead of preserving them through realloc; retain capacity reuse and independent conversion slots.
+
 - Fix OutRun 2's long black screen after the Xbox logo: register-only work and read-only scans no longer count as idle waits merely because they run without stores. Verified kernel idle loops and repeated device polls still skip waiting time.
 
 - Compile DSP subroutine calls, unsigned compares, peripheral/register moves and bit-test jumps natively, including long-interrupt vector calls. Add instruction-boundary equivalence tests that also require zero interpreter calls for the covered forms. Reserve the Windows code arena without committing all 4 MiB, grow committed pages on translation overflow, and allocate only the scaling-mode tables actually used.

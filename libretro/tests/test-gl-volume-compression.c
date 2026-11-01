@@ -16,7 +16,8 @@
 #include <math.h>
 #include "s3tc.h"
 #define MAX(a,b) ((a) > (b) ? (a) : (b))
-#define g_realloc realloc
+#define g_malloc malloc
+#define g_free free
 typedef struct {
     bool s3tc_3d_native;
     uint8_t *tex_scratch[2];
