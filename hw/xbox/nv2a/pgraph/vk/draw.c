@@ -2163,10 +2163,12 @@ static void pipeline_ahead(PGRAPHState *pg, const PipelineKey *draw_key)
     if (!job) {
         return; /* the ring is full: the next meeting queues it */
     }
-    PipelineKey key;
-    memcpy(&key, draw_key, sizeof(key));
-    memcpy(&key.shader_state, &r->ahead_state, sizeof(ShaderState));
-    uint64_t hash = fast_hash((const uint8_t *)&key, sizeof(key));
+    /* Build the final immutable key in its reserved slot. The fill below
+     * does not clear the slot; release publication happens in pump_submit. */
+    PipelineKey *key = &job->key;
+    memcpy(key, draw_key, sizeof(*key));
+    memcpy(&key->shader_state, &r->ahead_state, sizeof(ShaderState));
+    uint64_t hash = fast_hash((const uint8_t *)key, sizeof(*key));
     if (lru_contains_hash(&r->pipeline_cache, hash) ||
         pump_full_in_flight(hash)) {
         pgraph_vk_spec_pipeline_landed(r->ahead_hash);
@@ -2174,8 +2176,7 @@ static void pipeline_ahead(PGRAPHState *pg, const PipelineKey *draw_key)
     }
     ShaderModuleInfo *geom, *vsh, *psh;
     pgraph_vk_ref_state_modules(r, &r->ahead_state, &geom, &vsh, &psh);
-    pipeline_job_fill(pg, &r->ahead_state, vsh, geom, psh, &key, job);
-    memcpy(&job->key, &key, sizeof(key));
+    pipeline_job_fill(pg, &r->ahead_state, vsh, geom, psh, key, job);
     job->hash = hash;
     job->state_hash = r->ahead_hash;
     job->mods[job->nmods++] = vsh;

@@ -1845,3 +1845,5 @@ both overlap directions, identical buffers, zero pitches and empty dimensions.
 It checks the entire backing store and counts copy calls: disjoint packed
 multi-row copies issue one call; dependent overlapping rows retain their order.
 This does not exercise GPU transfers or claim class 0x39 support.
+
+`test-pipeline-ahead-key.py CHECKOUT [CC]` runs production speculative-job construction against an independent final-key/hash oracle in 4,096 cases. It checks direct slot construction, source lifetime, shader replacement, module ordering, cache/in-flight hits and full-ring backpressure. `PIPELINE_AHEAD_CFLAGS` enables sanitizers.
