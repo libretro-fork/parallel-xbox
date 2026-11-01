@@ -158,7 +158,7 @@ VkShaderModule pgraph_vk_create_fixed_shader_module_from_glsl(
 /* Compiler metadata is immutable and may be shared with the worker memo.
  * Vulkan modules share names/descriptors and own mutable parameter storage. */
 static void init_uniform_layout(ShaderUniformLayout *layout,
-                                const GlslcLayout *source)
+                                const GlslcLayout *source, void *storage)
 {
     if (!source->count) {
         return;
@@ -166,22 +166,46 @@ static void init_uniform_layout(ShaderUniformLayout *layout,
     layout->num_uniforms = source->count;
     layout->total_size = source->size;
     layout->uniforms = source->members;
-    layout->allocation = g_malloc0(source->size);
+    layout->allocation = storage;
+}
+
+/* Mutable parameter bytes share the module's lifetime, never another module's.
+ * Keep both regions 16-byte aligned, including scalar-only push constants. */
+static ShaderModuleInfo *alloc_shader_module_info(const ShaderLayouts *layouts)
+{
+    if (!layouts || (!layouts->uniforms.count &&
+                     !layouts->push_constants.count)) {
+        return g_malloc0(sizeof(ShaderModuleInfo));
+    }
+    size_t uniform_size = layouts && layouts->uniforms.count ?
+                          layouts->uniforms.size : 0;
+    size_t push_size = layouts && layouts->push_constants.count ?
+                       layouts->push_constants.size : 0;
+    size_t uniform_offset = (sizeof(ShaderModuleInfo) + 15) & ~(size_t)15;
+    assert(uniform_size <= SIZE_MAX - uniform_offset - 15);
+    size_t push_offset = (uniform_offset + uniform_size + 15) & ~(size_t)15;
+    assert(push_size <= SIZE_MAX - push_offset);
+    ShaderModuleInfo *info = g_malloc0(push_offset + push_size);
+    if (layouts) {
+        init_uniform_layout(&info->uniforms, &layouts->uniforms,
+                            (char *)info + uniform_offset);
+        init_uniform_layout(&info->push_constants, &layouts->push_constants,
+                            (char *)info + push_offset);
+    }
+    return info;
 }
 
 /* A module from SPIR-V the caller hands over (a worker compiled it) */
 ShaderModuleInfo *pgraph_vk_create_shader_module_from_spirv(PGRAPHVkState *r,
                                                              ShaderSource *spirv)
 {
-    ShaderModuleInfo *info = g_malloc0(sizeof(*info));
+    ShaderModuleInfo *info = alloc_shader_module_info(spirv->layouts);
     info->refcnt = 0;
     info->module = pgraph_vk_create_shader_module_from_words(
         r, spirv->words, spirv->num_words);
     info->layouts = spirv->layouts;
     if (info->layouts) {
         retro_atomic_fetch_add_int(&info->layouts->refs, 1);
-        init_uniform_layout(&info->uniforms, &info->layouts->uniforms);
-        init_uniform_layout(&info->push_constants, &info->layouts->push_constants);
     }
     pgraph_vk_shader_source_unref(spirv);
     return info;
@@ -194,10 +218,6 @@ ShaderModuleInfo *pgraph_vk_create_shader_module_from_glsl(
         r, pgraph_vk_compile_shader(stage, glsl));
 }
 
-static void finalize_uniform_layout(ShaderUniformLayout *layout)
-{
-    g_free(layout->allocation);
-}
 
 void pgraph_vk_ref_shader_module(ShaderModuleInfo *info)
 {
@@ -217,8 +237,6 @@ void pgraph_vk_unref_shader_module(PGRAPHVkState *r, ShaderModuleInfo *info)
 void pgraph_vk_destroy_shader_module(PGRAPHVkState *r, ShaderModuleInfo *info)
 {
     assert(info->refcnt == 0);
-    finalize_uniform_layout(&info->uniforms);
-    finalize_uniform_layout(&info->push_constants);
     pgraph_vk_shader_layouts_unref(info->layouts);
     vkDestroyShaderModule(r->device, info->module, NULL);
     g_free(info);
