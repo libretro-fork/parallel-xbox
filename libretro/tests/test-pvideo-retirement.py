@@ -4,12 +4,12 @@ from pathlib import Path
 import os,re,subprocess,sys,tempfile,ctypes
 r=Path(sys.argv[1]).resolve();cc=sys.argv[2] if len(sys.argv)>2 else 'cc'
 def function(path,name):
- s=(r/path).read_text();m=re.search(r'^(?:static )?(?:void|bool) '+name+r'\(',s,re.M);assert m,name
+ s=(r/path).read_text();m=re.search(r'^(?:static )?(?:inline )?(?:void|bool) '+name+r'\(',s,re.M);assert m,name
  a=m.start();b=s.index('{',a)+1;depth=1
  while depth:depth+=(s[b]=='{')-(s[b]=='}');b+=1
  return s[a:b]
 base='hw/xbox/nv2a/pgraph/vk/'
-parts=[function(base+'command.c',n) for n in ['aux_retire_oldest','pgraph_vk_poll_aux_retired','pgraph_vk_end_single_time_commands_async']]
+parts=[function(base+'command.c',n) for n in ['aux_release_oldest','aux_retire_oldest','pgraph_vk_poll_aux_retired','pgraph_vk_end_single_time_commands_async']]
 parts += [function(base+'draw.c',n) for n in ['trash_drain_retired','pgraph_vk_trash_push']]
 parts += [function(base+'display.c','retire_pvideo_image'),function(base+'pvideo.c','pvideo_convert_bind_source')]
 create=function(base+'display.c','create_pvideo_image')

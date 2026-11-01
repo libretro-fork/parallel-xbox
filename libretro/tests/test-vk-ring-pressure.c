@@ -38,13 +38,13 @@ static int owner[2][CAPACITY];
 static uint32_t bytes[2][CAPACITY],expected[2][CAPACITY];
 static bool signaled[PGRAPH_VK_AUX_SLOTS];
 static unsigned serial[PGRAPH_VK_AUX_SLOTS],submit_serial;
-static unsigned polls,waits,resets,growths,allocations;
+static unsigned polls,waits,resets,growths,allocations,last_waited,drops;
 static bool grow_noncoherent;
 void pgraph_vk_wait_for_aux(PGRAPHState *pg);
 static unsigned fence_slot(VkFence f){unsigned i=(unsigned)(uintptr_t)f-1;assert(i<PGRAPH_VK_AUX_SLOTS);return i;}
 static void nv2a_profile_inc_counter(unsigned n){assert(n==NV2A_PROF_QUEUE_SUBMIT_AUX);}
 VKAPI_ATTR VkResult VKAPI_CALL vkGetFenceStatus(VkDevice device,VkFence fence){assert(device==state.device);unsigned s=fence_slot(fence);assert(state.aux[s].pending);polls++;return signaled[s]?VK_SUCCESS:VK_NOT_READY;}
-VKAPI_ATTR VkResult VKAPI_CALL vkWaitForFences(VkDevice device,uint32_t count,const VkFence *fences,VkBool32 all,uint64_t timeout){assert(device==state.device&&count==1&&all&&timeout==UINT64_MAX);unsigned s=fence_slot(fences[0]);assert(state.aux[s].pending);waits++;for(unsigned i=0;i<PGRAPH_VK_AUX_SLOTS;i++)if(state.aux[i].pending&&serial[i]<=serial[s])signaled[i]=true;return VK_SUCCESS;}
+VKAPI_ATTR VkResult VKAPI_CALL vkWaitForFences(VkDevice device,uint32_t count,const VkFence *fences,VkBool32 all,uint64_t timeout){assert(device==state.device&&count==1&&all&&timeout==UINT64_MAX);unsigned s=fence_slot(fences[0]);assert(state.aux[s].pending);last_waited=s;waits++;for(unsigned i=0;i<PGRAPH_VK_AUX_SLOTS;i++)if(state.aux[i].pending&&serial[i]<=serial[s])signaled[i]=true;return VK_SUCCESS;}
 VKAPI_ATTR VkResult VKAPI_CALL vkResetFences(VkDevice device,uint32_t count,const VkFence *fences){assert(device==state.device&&count==1);unsigned s=fence_slot(fences[0]);assert(state.aux[s].pending&&signaled[s]);for(unsigned r=0;r<2;r++)for(unsigned i=0;i<CAPACITY;i++)if(owner[r][i]==(int)s){assert(bytes[r][i]==expected[r][i]);owner[r][i]=-1;}signaled[s]=false;resets++;return VK_SUCCESS;}
 VKAPI_ATTR VkResult VKAPI_CALL vkBeginCommandBuffer(VkCommandBuffer cmd,const VkCommandBufferBeginInfo *info){assert(state.in_aux_command_buffer&&cmd==state.aux[state.aux_slot].cmd&&!state.aux[state.aux_slot].pending&&info->flags==VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);return VK_SUCCESS;}
 VKAPI_ATTR VkResult VKAPI_CALL vkEndCommandBuffer(VkCommandBuffer cmd){assert(state.in_aux_command_buffer&&cmd==state.aux[state.aux_slot].cmd);return VK_SUCCESS;}
@@ -52,11 +52,11 @@ static void pgraph_vk_queue_submit(PGRAPHVkState *r,uint32_t count,const VkSubmi
 static void pgraph_vk_buffer_ensure_capacity(PGRAPHState *p,unsigned buffer,size_t size){assert(p==&pg&&buffer==BUFFER_STAGING_SRC&&size<=CAPACITY);pgraph_vk_wait_for_aux(p);state.storage_buffers[buffer].buffer_size=size;if(grow_noncoherent)state.storage_buffers[buffer].properties=VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;growths++;}
 static void lr_gpu_ram_drop(uintptr_t cmd){
  unsigned i=(unsigned)(cmd-0x100);assert(i<PGRAPH_VK_AUX_SLOTS);
- assert(state.aux[i].pending && signaled[i]);
+ assert(state.aux[i].pending && signaled[i]);drops++;
 }
 /* PRODUCTION */
 static void setup(size_t staging,size_t unswizzle){
- memset(&state,0,sizeof(state));memset(owner,0xff,sizeof(owner));memset(bytes,0,sizeof(bytes));memset(expected,0,sizeof(expected));memset(signaled,0,sizeof(signaled));memset(serial,0,sizeof(serial));submit_serial=polls=waits=resets=growths=allocations=0;state.device=(VkDevice)(uintptr_t)3;grow_noncoherent=false;state.device_props.limits.nonCoherentAtomSize=128;for(unsigned i=0;i<2;i++)state.storage_buffers[i].properties=VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT|VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+ memset(&state,0,sizeof(state));memset(owner,0xff,sizeof(owner));memset(bytes,0,sizeof(bytes));memset(expected,0,sizeof(expected));memset(signaled,0,sizeof(signaled));memset(serial,0,sizeof(serial));submit_serial=polls=waits=resets=growths=allocations=drops=0;state.device=(VkDevice)(uintptr_t)3;grow_noncoherent=false;state.device_props.limits.nonCoherentAtomSize=128;for(unsigned i=0;i<2;i++)state.storage_buffers[i].properties=VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT|VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
  state.storage_buffers[0].buffer_size=staging;state.storage_buffers[1].buffer_size=unswizzle;
  for(unsigned i=0;i<PGRAPH_VK_AUX_SLOTS;i++){state.aux[i].cmd=(VkCommandBuffer)(uintptr_t)(0x100+i);state.aux[i].fence=(VkFence)(uintptr_t)(1+i);}
 }
@@ -73,6 +73,26 @@ static uint32_t rng=0x842a7913;
 static unsigned random_word(void){rng^=rng<<13;rng^=rng>>17;rng^=rng<<5;return rng;}
 int main(void){
  quiet_test_errors();
+ unsigned drain_cases=0;
+ for(unsigned start=0;start<PGRAPH_VK_AUX_SLOTS;start++)
+ for(unsigned n=0;n<=PGRAPH_VK_AUX_SLOTS;n++)for(unsigned open=0;open<2;open++){
+  if(open&&n==PGRAPH_VK_AUX_SLOTS)continue;
+  setup(CAPACITY,CAPACITY);state.aux_slot=state.aux_oldest=start;
+  for(unsigned i=0;i<n;i++){VkCommandBuffer cmd=pgraph_vk_begin_single_time_commands(&pg);allocate(0,1,1);submit(cmd);}
+  VkCommandBuffer cmd=VK_NULL_HANDLE;
+  if(open){cmd=pgraph_vk_begin_single_time_commands(&pg);allocate(0,1,1);}
+  size_t head=state.ring_head[0];
+  pgraph_vk_wait_for_aux(&pg);
+  assert(waits==(unsigned)(n!=0)&&!polls&&resets==n&&drops==n);
+  if(n)assert(last_waited==(start+n-1)%PGRAPH_VK_AUX_SLOTS);
+  assert(!state.aux_npending&&state.aux_settled==n&&state.aux_oldest==(int)((start+n)%PGRAPH_VK_AUX_SLOTS));
+  assert(state.in_aux_command_buffer==(bool)open&&state.ring_head[0]==(open?head:0));
+  pgraph_vk_wait_for_aux(&pg);assert(waits==(unsigned)(n!=0)&&resets==n&&drops==n);
+  if(open){submit(cmd);}
+  finish();drain_cases++;
+ }
+ printf("Aux full drain: %u wrapped/open/empty/full schedules, at most one wait\n",drain_cases);
+
  /* A long recording fits alongside an unfinished submission. The old eager
   * loop queried its fence before each allocation; fitting must not need it. */
  for(unsigned eager=0;eager<2;eager++){

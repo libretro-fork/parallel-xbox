@@ -145,6 +145,20 @@ void pgraph_vk_queue_submit_and_wait(PGRAPHVkState *r, uint32_t count,
     vkDestroyFence(r->device, fence, NULL);
 }
 
+/* Release only after completion has been proved, keeping ring ownership and
+ * serial retirement in FIFO order even when one fence covers several slots. */
+static inline void aux_release_oldest(PGRAPHVkState *r)
+{
+    struct PGRAPHVkAuxSlot *a = &r->aux[r->aux_oldest];
+    assert(r->aux_npending > 0 && a->pending);
+    lr_gpu_ram_drop((uintptr_t)a->cmd);
+    VK_CHECK(vkResetFences(r->device, 1, &a->fence));
+    a->pending = false;
+    r->aux_settled = a->serial;
+    r->aux_oldest = (r->aux_oldest + 1) % PGRAPH_VK_AUX_SLOTS;
+    r->aux_npending--;
+}
+
 /* The oldest pending aux submission, retired: its fence waited for, or
  * only looked at when `poll` */
 static bool aux_retire_oldest(PGRAPHVkState *r, bool poll)
@@ -160,12 +174,7 @@ static bool aux_retire_oldest(PGRAPHVkState *r, bool poll)
         VK_CHECK(vkWaitForFences(r->device, 1, &a->fence, VK_TRUE,
                                  UINT64_MAX));
     }
-    lr_gpu_ram_drop((uintptr_t)a->cmd);
-    VK_CHECK(vkResetFences(r->device, 1, &a->fence));
-    a->pending = false;
-    r->aux_settled = a->serial;
-    r->aux_oldest = (r->aux_oldest + 1) % PGRAPH_VK_AUX_SLOTS;
-    r->aux_npending--;
+    aux_release_oldest(r);
     return true;
 }
 
@@ -183,8 +192,16 @@ void pgraph_vk_wait_for_aux(PGRAPHState *pg)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
 
-    while (r->aux_npending) {
-        aux_retire_oldest(r, false);
+    if (r->aux_npending) {
+        /* Aux submissions share one queue: the newest fence covers all the
+         * earlier commands and signal operations. Release nothing before it. */
+        int newest = (r->aux_oldest + r->aux_npending - 1) % PGRAPH_VK_AUX_SLOTS;
+        assert(r->aux[newest].pending);
+        VK_CHECK(vkWaitForFences(r->device, 1, &r->aux[newest].fence, VK_TRUE,
+                                 UINT64_MAX));
+        while (r->aux_npending) {
+            aux_release_oldest(r);
+        }
     }
     if (!r->in_aux_command_buffer) {
         for (int i = 0; i < PGRAPH_VK_RINGS; i++) {

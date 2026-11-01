@@ -2323,3 +2323,24 @@ full drain asynchronous. No buffers, copies, PSOs, locks or frame queue change.
 Win64 full-drain stack usage falls from 96 to 80 bytes; renderer structure
 sizes remain unchanged. This is a code-generation result, not a measured
 hardware cache-miss or game-latency improvement.
+
+The ring-pressure fixture adds 136 auxiliary full-drain schedules: every ring
+start, zero through eight pending submissions, and an optional open recording.
+A nonempty full drain waits once on the newest submission's fence, releases
+completed slots in FIFO order, and leaves open recording ranges intact. Empty
+and repeated drains add no waits or duplicate ownership releases. The existing
+108,609 byte-ownership allocations over 20,000 delayed submissions and 20,000
+PVIDEO resize/upload/display schedules remain covered. Ring pressure and
+single-slot reuse retain their existing oldest-first behavior.
+
+`VK_RING_BINARY`, `VK_RING_SKIP_RUN` and `VK_RING_CFLAGS` allow native fixtures;
+the default compiler flags retain UBSan with traps. Full auxiliary drains still
+wait for real completion. The change adds no state fields, buffers, copies,
+PSOs, locks, status polls or video frame queue. Newest-fence coverage uses the
+same-queue synchronization rule cited above.
+
+Win64 code generation inlines the release helper. Oldest-slot retirement
+keeps its 96-byte stack frame; the full drain now uses one 96-byte frame
+instead of a 48-byte caller nested with the old 96-byte retirement function.
+Renderer structure sizes are unchanged. No hardware cache-miss or game-latency
+gain is established by this code-generation check.
