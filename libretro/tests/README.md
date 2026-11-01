@@ -2343,9 +2343,10 @@ RGBA8/RGB565/cube/volume/F16 controls. Q=1 and ordinary controls must remain exa
 parent pixels; other convolution pixels follow the scalar two-column kernel.
 Use `--windows-paths` for a Windows harness through WSL.
 
-`test-convolution-state.py CHECKOUT [--cc CC]` checks 168 kernel/filter/stage keys.
-Only convolution enum values gain a revision bit to refresh cached programs;
-disabled convolution and other stage bytes keep their keys and enum size. The
+`test-convolution-state.py CHECKOUT [--cc CC]` checks 10,752 kernel/filter/stage
+keys across all 32 mode encodings and both shadow states. Active convolution
+retains its enum revision bit; ordinary nonconvolution keys and the enum size
+remain unchanged. Unused kernel settings collapse to disabled. The
 existing Quincunx Gaussian fallback and min-only convolution selection remain
 separate limitations; these tests establish projected kernel spacing.
 
@@ -2620,6 +2621,16 @@ initialization; the temporary feature override is removed for delivery.
 Static list transitions additionally have exhaustive controlled-model coverage. Valid attributes use supported vertex formats as required by the
 [Vulkan attribute description rules](https://docs.vulkan.org/refpages/latest/refpages/source/VkVertexInputAttributeDescription.html).
 Hardware cache-miss and game-latency effects are unmeasured.
+
+The state builder clears convolution kernels for shadow sampling and texture
+modes other than PROJECT2D, where the generator ignores them. Active non-shadow
+PROJECT2D kernels retain their existing keys, including the convolution revision.
+The common-helper generator fixture additionally compares 6,912 source pairs
+per generator, varying disabled/Quincunx/Gaussian kernels independently on unused
+stages, including mixed active/unused programs. Every source byte must match.
+This removes redundant shader key distinctions without changing generated code,
+cache formats, texture sampling, CPU/GPU transfers or synchronization. Actual
+game cache-hit and stutter effects are unmeasured.
 
 
 `test-qht-inline.py CHECKOUT [CC]` exercises the production inline QHT reader and generic entry point with native retro atomics. It covers hash collisions, chained buckets, null pointers, absent keys, map replacement, forced sequence retries and 200,000 concurrent reads. Set `QHT_SANITIZE=1` for address/undefined behavior sanitizers. RCU object lifetime is modeled by retaining every map, bucket and item until readers finish.

@@ -2,9 +2,25 @@
 #include "qemu/osdep.h"
 #include "hw/xbox/nv2a/pgraph/glsl/psh.h"
 #include "hw/xbox/nv2a/pgraph/spv/glslc.h"
+static unsigned convolution_equivalence_checks;
 static void emit(const char *directory,unsigned api,unsigned kind,unsigned id,const PshState *state) {
   GenPshGlslOptions opts={.vulkan=api,.ubo_binding=0,.tex_binding=1};
   MString *text=pgraph_glsl_gen_psh(state,opts);char path[4096];
+  /* Unused convolution settings must not change any generated source byte.
+   * Cover each stage independently, including mixed active/unused stages. */
+  for (unsigned i=0;i<4;i++) {
+    unsigned mode=(state->shader_stage_program>>(i*5))&31;
+    if (mode==PS_TEXTUREMODES_PROJECT2D&&!state->shadow_map[i])continue;
+    const enum ConvolutionFilter kernels[]={CONVOLUTION_FILTER_DISABLED,
+      CONVOLUTION_FILTER_QUINCUNX,CONVOLUTION_FILTER_GAUSSIAN};
+    for(unsigned k=0;k<ARRAY_SIZE(kernels);k++) {
+      PshState variant;memcpy(&variant,state,sizeof(variant));
+      variant.conv_tex[i]=kernels[k];
+      MString *other=pgraph_glsl_gen_psh(&variant,opts);
+      assert(!strcmp(mstring_get_str(text),mstring_get_str(other)));
+      mstring_unref(other);convolution_equivalence_checks++;
+    }
+  }
   int length=snprintf(path,sizeof(path),"%s/%u-%u-%u.frag",directory,api,kind,id);assert(length>0&&(size_t)length<sizeof(path));
   FILE *f=fopen(path,"wb");assert(f);size_t bytes=strlen(mstring_get_str(text));assert(fwrite(mstring_get_str(text),1,bytes,f)==bytes);assert(!fclose(f));
   if(api){GlslcResult result={0};GlslcOptions options={0};
@@ -70,5 +86,7 @@ int main(int argc,char **argv) {
    state.final_inputs_0=PS_REGISTER_T0;emit(argv[1],api,3,count++,&state);
   }
  }
+ assert(convolution_equivalence_checks==6912);
+ printf("PASS: %u byte-identical unused-convolution source comparisons\n",convolution_equivalence_checks);
  assert(count==772);printf("PASS: %u full fragment variants, including signed/cube helper dependencies; Vulkan variants compile\n",count);
 }

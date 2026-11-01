@@ -1,5 +1,8 @@
 # Changelog of the libretro core
 
+- Reuse fragment shader keys across unused convolution-kernel settings in shadow and non-PROJECT2D texture stages. Active convolution and generated shader code remain unchanged.
+
+
 - Load GL shader seed states before stored module keys, copying module keys only when no usable state array exists. Avoid allocating and copying the key array that state-based sibling rebuilding immediately discards; preserve module-only fallback and local-first contents.
 
 - Specialize TCG translation-block hash lookups at their call sites, removing generic hash-reader dispatch and indirect comparison calls on uncontended misses. Preserve atomic publication, sequence-lock retries and RCU reclamation; keep the primary jump-cache hit path separate.

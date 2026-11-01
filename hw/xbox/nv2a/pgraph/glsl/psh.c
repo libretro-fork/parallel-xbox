@@ -308,12 +308,16 @@ void pgraph_glsl_set_psh_state(PGRAPHState *pg, PshState *state)
 
         uint32_t filter = pgraph_reg_r(pg, NV_PGRAPH_TEXFILTER0 + i * 4);
         unsigned int min_filter = GET_MASK(filter, NV_PGRAPH_TEXFILTER0_MIN);
+        unsigned mode = (state->shader_stage_program >> (i * 5)) & 31;
         enum ConvolutionFilter kernel = CONVOLUTION_FILTER_DISABLED;
         /* FIXME: We do not distinguish between min and mag when
          * performing convolution. Just use it if specified for min (common AA
          * case).
          */
-        if (min_filter == NV_PGRAPH_TEXFILTER0_MIN_CONVOLUTION_2D_LOD0) {
+        /* Only non-shadow PROJECT2D emits the convolution path. Keep unused
+         * kernel settings out of the shader key for all other paths. */
+        if (min_filter == NV_PGRAPH_TEXFILTER0_MIN_CONVOLUTION_2D_LOD0 &&
+            mode == PS_TEXTUREMODES_PROJECT2D && !state->shadow_map[i]) {
             int k = GET_MASK(filter, NV_PGRAPH_TEXFILTER0_CONVOLUTION_KERNEL);
             assert(k == NV_PGRAPH_TEXFILTER0_CONVOLUTION_KERNEL_QUINCUNX ||
                    k == NV_PGRAPH_TEXFILTER0_CONVOLUTION_KERNEL_GAUSSIAN_3);
@@ -326,7 +330,6 @@ void pgraph_glsl_set_psh_state(PGRAPHState *pg, PshState *state)
          * sampler's computed LOD; mipmapped filtering decodes each mip's taps. */
         bool gb = color_format == NV097_SET_TEXTURE_FORMAT_COLOR_SZ_G8B8 ||
                   color_format == NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_G8B8;
-        unsigned mode = (state->shader_stage_program >> (i * 5)) & 31;
         unsigned mag_filter = GET_MASK(filter, NV_PGRAPH_TEXFILTER0_MAG);
         if (color_format == NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_DEPTH_Y16_FLOAT &&
             state->dim_tex[i] == 2 && !cubemap && pgraph_is_texture_enabled(pg, i)) {
