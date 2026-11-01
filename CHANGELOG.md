@@ -1,5 +1,6 @@
 # Changelog of the libretro core
 
+- Defer Vulkan FIFO progress at a flip when the next command slot is still in flight. Poll retirement from the existing owner dispatch instead of entering the next draw and waiting for that slot; keep display and frame-sized audio progressing without extra buffers, copies or a frame queue. Mid-method resource and demand-readback waits remain separate work.
 - Reuse the proven CPU owner within nested DSP ownership scopes instead of repeating CPU lookup and thread identity checks for each nested memory/device callback. Retain outer-scope validation and external RAM leases.
 
 - Update standalone regression fixtures for DSP callback scopes, RAM loans, TLB victim tracking and sparse GL uploads. Check ownership at callback dispatch, DMA borrowing and GPU fence retirement.
