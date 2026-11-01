@@ -1,5 +1,7 @@
 # Changelog of the libretro core
 
+- Avoid waiting for a busy Vulkan display command-buffer slot during gameplay. Keep the previous image published and retry on a later scanout check, including display-mode-only changes, without allocating another frame slot. Shutdown draining remains unchanged.
+
 - Flip GL client readback rows in place on SSE2 x86 CPUs without AVX2, removing the temporary-row allocation and extra row copy while retaining the fallback for other CPUs.
 
 - Defer maximum-size inline vertex arrays until an attribute first varies, avoiding sixteen startup allocation requests totaling about 128 MiB while reusing each array across later batches.

@@ -1479,7 +1479,7 @@ The test reports whether the validation layer is available.
 reuse against 20,000 delayed same-queue workloads. It checks newest-first probes,
 all completion frontiers, shuffled slot order, reuse and mandatory fence resets.
 Eight completed submissions require one status query; older slots already
-covered by that completion skip waits, while unfinished slots still wait.
+covered by that completion skip waits; the shutdown drain still waits for unfinished slots. Drawing now uses the separate nonblocking slot-acquisition path.
 [Vulkan fence ordering](https://docs.vulkan.org/spec/latest/chapters/synchronization.html#synchronization-fences-signaling)
 covers earlier commands and fence signal operations on the same queue.
 
@@ -1912,3 +1912,14 @@ The Vulkan S3TC uploader publishes all source/image descriptors in one driver ca
 `test-inline-vertex-storage.py CHECKOUT [CC]` executes production inline backfill/append: constant attributes allocate nothing, all sixteen first-use arrays preserve float/NaN bits, 300 batches reuse allocations, and the 524287-vertex limit remains valid. `INLINE_STORAGE_CFLAGS`, `INLINE_STORAGE_BINARY` and `INLINE_STORAGE_SKIP_RUN=1` support sanitized and noninteractive native fixtures. Allocation-request savings are not a resident-memory or FPS measurement.
 
 The GL readpixels flip fixture explicitly checks AVX2, SSE2 and portable routes (14,400 cases each). The SSE2 route removes the heap row temporary on supported x86 targets; AVX2 remains preferred. Release benchmark mode alternates old/new order across eight rounds. Forced SSE2 measurements on a modern CPU do not establish performance on all older CPUs or game FPS.
+
+### Nonblocking Vulkan display slot acquisition
+
+`python3 libretro/tests/test-vk-display-slot.py .` extracts production slot
+acquisition, the early render admission boundary and the cached-scanout retry
+condition. Busy, completed, cached-completed and unused slots are checked for
+bounded queries, reset ordering and preservation of published-frame counters.
+Repeated busy attempts leave work and slot rotation untouched; a mode-only
+change remains eligible for retry. The drawing path no longer calls the fence
+wait helper; shutdown draining retains it. This does not remove the separate
+libretro frame-end acknowledgement wait or establish frontend image retirement.

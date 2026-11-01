@@ -73,6 +73,6 @@ int main(void) {
   unsigned slot=rand()%8;reuse(slot);
   assert(state.display.settled<=completed && completed<=submitted);
  }
- printf("Display retirement: 20000 delayed/reordered-slot workloads passed; eight completed fences -> one status query, zero older-slot waits; unfinished slots still wait/reset\n");
+ printf("Display retirement: 20000 delayed/reordered-slot workloads passed; eight completed fences -> one status query, zero older-slot waits; shutdown drain still waits/resets unfinished slots\n");
  return 0;
 }
