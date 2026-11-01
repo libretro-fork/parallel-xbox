@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""Check production SHADERCTL key projection against generator field decoding."""
+"""Check production texture-register keys against generator field decoding."""
 import argparse
 from pathlib import Path
 import re
@@ -14,6 +14,7 @@ a = p.parse_args()
 r = a.checkout.resolve()
 source = (r / "hw/xbox/nv2a/pgraph/glsl/psh.c").read_text()
 selection = re.search(r"    state->other_stage_input =.*?;", source, re.S).group()
+selection += "\n" + re.search(r"    state->shader_stage_program =.*?;", source, re.S).group()
 state = re.search(r"typedef struct PshState \{.*?\} PshState;", (r / "hw/xbox/nv2a/pgraph/glsl/psh.h").read_text(), re.S).group()
 code = r"""
 #include <assert.h>
@@ -26,18 +27,19 @@ code = r"""
 enum PshDepthFormat { DEPTH_DISABLED };
 /* STATE */
 static uint32_t pgraph_reg_r(const uint32_t *pg,unsigned reg) {
- assert(reg==NV_PGRAPH_SHADERCTL);return *pg;
+ assert(reg==NV_PGRAPH_SHADERCTL||reg==NV_PGRAPH_SHADERPROG);return *pg;
 }
 static void select_key(PshState *state,const uint32_t *pg) {
  /* SELECTION */
 }
 static void check(uint32_t raw) {
  PshState actual,expected;memset(&actual,0,sizeof(actual));
- actual.other_stage_input=UINT32_MAX;actual.combiner_control=0xdeadbeef;
- memcpy(&expected,&actual,sizeof(expected));expected.other_stage_input=0;
- /* Independently rebuild exactly the five fields decoded by the generator. */
+ actual.shader_stage_program=UINT32_MAX;actual.other_stage_input=UINT32_MAX;actual.combiner_control=0xdeadbeef;
+ memcpy(&expected,&actual,sizeof(expected));expected.other_stage_input=0;expected.shader_stage_program=0;
+ /* Independently rebuild fields decoded by the generator. */
  for(unsigned i=0;i<3;i++)expected.other_stage_input|=((raw>>(i*4))&15u)<<(i*4);
  for(unsigned i=0;i<2;i++)expected.other_stage_input|=((raw>>(16+i*4))&15u)<<(16+i*4);
+ for(unsigned i=0;i<4;i++)expected.shader_stage_program|=((raw>>(i*5))&31u)<<(i*5);
  select_key(&actual,&raw);assert(!memcmp(&actual,&expected,sizeof(actual)));
 }
 int main(void) {
@@ -47,7 +49,7 @@ int main(void) {
  for(unsigned i=0;i<65536;i++) {
   random^=random<<13;random^=random>>17;random^=random<<5;check(random);cases++;
  }
- assert(cases==65602);printf("PASS: %u SHADERCTL keys; all decoded fields preserved; ignored bits cleared\n",cases);
+ assert(cases==65602);printf("PASS: %u paired SHADERCTL/SHADERPROG keys; all decoded fields preserved; ignored bits cleared\n",cases);
 }
 """.replace("/* STATE */", state).replace("/* SELECTION */", selection)
 with tempfile.TemporaryDirectory(prefix="shaderctl-state-") as folder:

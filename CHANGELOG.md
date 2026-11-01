@@ -1,5 +1,7 @@
 # Changelog of the libretro core
 
+- Reuse fragment shader keys across ignored upper SHADERPROG bits. Preserve all four five-bit texture modes and existing shader/cache formats.
+
 - Stop LRU active visits after the entry-time active count, avoiding inactive free-node suffix scans in texture dirty tracking and shader seed collection. Preserve recency/callback order and current-node eviction without extra storage or allocations.
 
 - Reuse fragment shader keys across ignored SHADERCTL bits. Preserve all dot-mapping and stage-input selectors consumed by the generator, without changing shaders or cache formats.

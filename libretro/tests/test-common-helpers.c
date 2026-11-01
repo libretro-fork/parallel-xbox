@@ -2,10 +2,17 @@
 #include "qemu/osdep.h"
 #include "hw/xbox/nv2a/pgraph/glsl/psh.h"
 #include "hw/xbox/nv2a/pgraph/spv/glslc.h"
-static unsigned convolution_equivalence_checks, clip_equivalence_checks, shadow_equivalence_checks, shaderctl_equivalence_checks;
+static unsigned convolution_equivalence_checks, clip_equivalence_checks, shadow_equivalence_checks, shaderctl_equivalence_checks, shaderprog_equivalence_checks;
 static void emit(const char *directory,unsigned api,unsigned kind,unsigned id,const PshState *state) {
   GenPshGlslOptions opts={.vulkan=api,.ubo_binding=0,.tex_binding=1};
   MString *text=pgraph_glsl_gen_psh(state,opts);char path[4096];
+  for(unsigned bit=20;bit<=32;bit++) {
+    uint32_t change=bit==32?0xFFF00000u:(1u<<bit);
+    PshState variant;memcpy(&variant,state,sizeof(variant));variant.shader_stage_program^=change;
+    MString *other=pgraph_glsl_gen_psh(&variant,opts);
+    assert(!strcmp(mstring_get_str(text),mstring_get_str(other)));
+    mstring_unref(other);shaderprog_equivalence_checks++;
+  }
   for(unsigned bit=0;bit<=32;bit++) {
     uint32_t ignored=0xFF00F000u;
     uint32_t change=bit==32?ignored:((1u<<bit)&ignored);
@@ -193,6 +200,8 @@ int main(int argc,char **argv) {
    state.final_inputs_0=PS_REGISTER_T0;emit(argv[1],api,3,count++,&state);
   }
  }
+ assert(shaderprog_equivalence_checks==10036);
+ printf("PASS: %u byte-identical ignored-SHADERPROG source comparisons\n",shaderprog_equivalence_checks);
  assert(shaderctl_equivalence_checks==10036);
  printf("PASS: %u byte-identical ignored-SHADERCTL source comparisons\n",shaderctl_equivalence_checks);
  printf("PASS: %u byte-identical unused-shadow-function source comparisons\n",shadow_equivalence_checks);

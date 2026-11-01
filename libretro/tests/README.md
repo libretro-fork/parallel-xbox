@@ -2686,10 +2686,11 @@ The seed key fixture now compares production construction directly with the orig
 LRU visits now stop after the entry-time active count, even when callbacks evict their current node. The order/callback model still checks 30,000 operations, and the membership fixture covers every occupancy across 8,200 cases. A protected free-node suffix proves the visitor does not dereference it after the last active callback, including current-node eviction; the parent implementation faults on that read as expected. LRU_VISIT_SOURCE, LRU_VISIT_CFLAGS, LRU_VISIT_BINARY and LRU_VISIT_SKIP_RUN support parent/native comparisons. Timings include five occupancies in a 1,024-node pool and are synthetic, not game FPS measurements.
 
 `test-shaderctl-state.py CHECKOUT [--cc CC]` checks 65,602 production SHADERCTL
-key projections: zero/all-set, each bit and its inverse, and deterministic random
-words. Its independent oracle rebuilds the three dot-mapping nibbles and two
-stage-input nibbles decoded by the fragment generator; all other key bytes stay
-intact. The state builder masks only ignored bits, keeping `0x00FF0FFF`.
+paired SHADERCTL/SHADERPROG key projections: zero/all-set, each bit and its
+inverse, and deterministic random words. Its independent oracle rebuilds the
+three dot-mapping nibbles, two stage-input nibbles and four five-bit texture
+modes decoded by the fragment generator; other state bytes stay intact. The
+state builder keeps `0x00FF0FFF` and `0x000FFFFF`, respectively.
 
 The common-helper full-generator fixture adds 10,036 byte-identical source
 comparisons per generator, flipping each ignored bit and their combined mask.
@@ -2699,3 +2700,13 @@ variants compile. Existing dot-mapping/dependency regressions remain covered.
 Existing shader/module bytes and cache formats remain unchanged. No runtime
 diagnostics, GPU transfers or synchronization are added. Game cache-hit and
 frame-time effects are unmeasured.
+
+The common-helper fixture additionally flips each ignored SHADERPROG bit and
+their combined mask, checking 10,036 byte-identical source pairs per generator.
+All live texture-mode fields remain significant in the key, including mode
+encodings not currently implemented. Existing shadow, clip, convolution, cube,
+signed-texture and dot-dependency cases remain covered. Stored states keep their
+layout and remain readable; old noncanonical keys can retain redundant entries,
+but their shader meaning does not change. No cache-format invalidation, runtime
+diagnostics, GPU transfers or synchronization are introduced. Game cache-hit and
+frame-time effects remain unmeasured.

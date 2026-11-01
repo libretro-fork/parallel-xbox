@@ -218,7 +218,8 @@ void pgraph_glsl_set_psh_state(PGRAPHState *pg, PshState *state)
     state->window_clip_exclusive = pgraph_reg_r(pg, NV_PGRAPH_SETUPRASTER) &
                                    NV_PGRAPH_SETUPRASTER_WINDOWCLIPTYPE;
     state->combiner_control = pgraph_reg_r(pg, NV_PGRAPH_COMBINECTL);
-    state->shader_stage_program = pgraph_reg_r(pg, NV_PGRAPH_SHADERPROG);
+    /* Four five-bit texture modes affect the fragment program. */
+    state->shader_stage_program = pgraph_reg_r(pg, NV_PGRAPH_SHADERPROG) & 0x000FFFFFu;
     /* Three dot mappings and the stage 2/3 input selectors affect GLSL. */
     state->other_stage_input = pgraph_reg_r(pg, NV_PGRAPH_SHADERCTL) & 0x00FF0FFFu;
     state->final_inputs_0 = pgraph_reg_r(pg, NV_PGRAPH_COMBINESPECFOG0);
