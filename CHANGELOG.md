@@ -93,6 +93,9 @@
 
 ## Unreleased
 
+- Long-immediate DSP comparisons now run natively, removing OutRun 2's remaining hot interpreter fallback. Negative 24-bit compare immediates now sign-extend correctly in the interpreter, and native compares clear stale internal status bits. Independent arithmetic/flags tests and production-block loop/code-write regressions cover both engines.
+
+
 - Register-count DOR, DO and REP loops now run in native DSP code, including status and stack-register sources. Setup preserves count-read order, accumulator limiting and zero-count repeats. New regression matrices and nested-loop programs guard against interpreter fallback and stale status/count values.
 
 

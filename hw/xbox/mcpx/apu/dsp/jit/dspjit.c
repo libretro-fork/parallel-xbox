@@ -1003,7 +1003,7 @@ static void emit_src56(Tr *t, const AluOp *a, int out)
         if (!a->imm_unsigned && (v & 0x800000)) {
             v -= 1 << 24;
         }
-        h_mov_ri(e, out, (uint64_t)(v << 24));
+        h_mov_ri(e, out, (uint64_t)v << 24);
         break;
     }
     default:
@@ -1245,7 +1245,13 @@ static void emit_alu(Tr *t, const AluOp *a)
         acc_load(t, a->d);
         emit_src56(t, a, T1);
         emit_addsub56(e, acc, T1, a->op != OP_ADD);
-        emit_sr_result(t, SR_EUNZ | SR_V | SR_C, T4, T3, a->op == OP_CMP ? -1 : a->d);
+        /* CMP consumes the current flags and clears the interpreter's
+         * virtual upper status bits as its CCR update does. */
+        uint32_t clear = SR_EUNZ | SR_V | SR_C;
+        if (a->op == OP_CMP) {
+            clear |= 0xFFFF0000u;
+        }
+        emit_sr_result(t, clear, T4, T3, a->op == OP_CMP ? -1 : a->d);
         if (a->op != OP_CMP) {
             h_mov_rr(e, 1, acc, T3);
             acc_written(t, a->d);
@@ -1983,6 +1989,11 @@ static bool np_alu(const Insn *in, AluOp *a)
     }
     if (!strcmp(name, "add #xxxx, D")) {
         a->op = OP_ADD;
+        a->imm = in->ext;
+        return true;
+    }
+    if (!strcmp(name, "cmp #xxxx, S2")) {
+        a->op = OP_CMP;
         a->imm = in->ext;
         return true;
     }
