@@ -1872,3 +1872,5 @@ This defines the no-progress contract; it does not enable class 0x39 transfers.
 Worker-module lifetime tests follow the combined module/parameter allocation path and verify that shared metadata outlives the shader words and either module. `VK_WORKER_MODULE_CFLAGS` enables extra sanitizer flags; assertion failures exit normally without opening a Windows crash dialog.
 
 `test-wgl-context-versions.py CHECKOUT [CC]` checks production Windows context negotiation: prefer 4.5, then 4.3, 4.1 and 4.0, preserving the share-context and DC arguments on every attempt. Unsupported drivers return failure. The real WGL dispatch test also reports the selected version and checks sharing from a 4.0 frontend context. `WGL_CORE_CFLAGS` enables sanitizers.
+
+`test-gl-module-export.py CHECKOUT [CC]` exercises production OpenGL module export with 100 same-buffer saves, geometric growth, byte-exact headers and copied-length payloads, driver/open/write failures and release/reinitialization. `GL_MODULE_EXPORT_CFLAGS` enables sanitizers. Export storage belongs solely to the flip-time save queue.
