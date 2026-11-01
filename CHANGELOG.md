@@ -1,6 +1,9 @@
 # Changelog of the libretro core
 
+- Keep the shader-worker regression fixture on the production ready-index window, adoption and clear helpers so CI continues checking exact FIFO order and source ownership after compaction changes.
+
 - Keep signed G8B8 bump/color gathers aligned with their interpolation weights near texel boundaries. This prevents host coordinate rounding from selecting the wrong neighboring block, without extra texture reads or CPU/GPU synchronization.
+
 
 - Inline the Xbox translation-block state calculation in the dispatcher and indirect-branch lookup. Keep one shared calculation and the generic target hook, avoiding the out-of-line state-return call without changing lookup keys or debug policy.
 

@@ -63,9 +63,7 @@ static VkSpecDone emitted[3];
 static unsigned emitted_n,queue_limit=3;
 static size_t retro_spsc_write(void *ring,const void *data,size_t n){assert(ring==&vk_spec_out&&n==sizeof(VkSpecDone));if(emitted_n==queue_limit)return 0;emitted[emitted_n++]=*(const VkSpecDone *)data;return n;}
 #define VK_SPEC_READY 768
-static VkSpecDone vk_spec_ready[VK_SPEC_READY];
-static unsigned vk_spec_ready_n;
-static unsigned vk_spec_ready_order[VK_SPEC_READY];
+/* READY STATE */
 /* PRODUCTION */
 static uint32_t seed=19;
 static uint32_t rnd(void){seed^=seed<<13;seed^=seed>>17;seed^=seed<<5;return seed;}
@@ -89,7 +87,7 @@ int main(void)
   uint64_t h=fast_hash((const uint8_t *)&st,sizeof(st));assert(!emitted[0].state_hash&&!emitted[1].state_hash&&emitted[2].state_hash==h);
   for(unsigned i=0;i<3;i++)vk_spec_ready_push(&emitted[i]);
   ShaderSource *same=vk_spec_take_ready(&emitted[0].key);assert(same==emitted[0].spirv&&vk_spec_ready_n==2);pgraph_vk_shader_source_unref(same);
-  for(unsigned i=0;i<vk_spec_ready_n;i++)pgraph_vk_shader_source_unref(vk_spec_ready[vk_spec_ready_order[i]].spirv);vk_spec_ready_n=0;
+  vk_spec_ready_clear();assert(vk_spec_ready_order==vk_spec_ready_order_storage);
  }
  vk_spec_modules_clear();assert(!retro_atomic_load_relaxed_int(&live_sources));
  /* Insertion/eviction order agrees with an independent FIFO oracle.
@@ -108,7 +106,7 @@ int main(void)
   }
   bool seen[VK_SPEC_READY]={0};for(unsigned i=0;i<VK_SPEC_READY;i++){assert(vk_spec_ready_order[i]<VK_SPEC_READY&&!seen[vk_spec_ready_order[i]]);seen[vk_spec_ready_order[i]]=true;if(i<nfifo)assert(!memcmp(&vk_spec_ready[vk_spec_ready_order[i]].key,&fifo[i],sizeof(fifo[i])));}
  }
- for(unsigned i=0;i<vk_spec_ready_n;i++)pgraph_vk_shader_source_unref(vk_spec_ready[vk_spec_ready_order[i]].spirv);vk_spec_ready_n=0;vk_spec_modules_clear();assert(!retro_atomic_load_relaxed_int(&live_sources));
+ vk_spec_ready_clear();assert(vk_spec_ready_order==vk_spec_ready_order_storage);vk_spec_modules_clear();assert(!retro_atomic_load_relaxed_int(&live_sources));
  /* Dropped queue records release their own references, not the memo's. */
  queue_limit=0;emitted_n=0;ShaderState st={1000};vk_spec_compile_state(&st);assert(!emitted_n);vk_spec_modules_clear();assert(!retro_atomic_load_relaxed_int(&live_sources));queue_limit=3;
  /* Consumer references survive concurrent ref/unref, eviction and clearing. */

@@ -8,14 +8,16 @@ repo=Path(sys.argv[1]).resolve();cc=sys.argv[2] if len(sys.argv)>2 else 'gcc'
 s=(repo/'hw/xbox/nv2a/pgraph/vk/shaders.c').read_text();g=(repo/'hw/xbox/nv2a/pgraph/vk/glsl.c').read_text()
 h=(repo/'hw/xbox/nv2a/pgraph/vk/glsl.h').read_text()
 def function(source,name):
- m=re.search(r'^(?:static )?(?:void|ShaderSource \*|ShaderModuleInfo \*)\s*'+name+r'\([^;]*?\)\s*\{',source,re.M);assert m,name
+ m=re.search(r'^(?:static )?(?:void|ShaderSource \*|ShaderModuleInfo \*)\s*(?:__attribute__\(\(noinline\)\)\s*)?'+name+r'\([^;]*?\)\s*\{',source,re.M);assert m,name
  a=source.index('{',m.start());b=a+1;depth=1
  while depth:depth+=(source[b]=='{')-(source[b]=='}');b+=1
  return source[m.start():b]
 record=re.search(r'typedef struct VkSpecDone \{.*?\} VkSpecDone;',s,re.S)[0]
 state=s[s.index('#define VK_SPEC_MODULE_SLOTS'):s.index('static void vk_spec_module_evict')]
 code=Path(__file__).with_suffix('.c').read_text().replace('/* RECORD */',record)
-code=code.replace('/* PRODUCTION */','\n'.join([state]+[function(s,n) for n in ['vk_spec_module_evict','vk_spec_modules_clear','vk_spec_compile_module','vk_spec_compile_state','vk_spec_ready_push','vk_spec_take_ready']]))
+ready=s[s.index('static VkSpecDone vk_spec_ready['):s.index('static void vk_spec_ready_remove_order(')]
+code=code.replace('/* READY STATE */',ready)
+code=code.replace('/* PRODUCTION */','\n'.join([state]+[function(s,n) for n in ['vk_spec_module_evict','vk_spec_modules_clear','vk_spec_compile_module','vk_spec_compile_state','vk_spec_ready_remove_order','vk_spec_ready_clear','vk_spec_ready_push','vk_spec_ready_take_at','vk_spec_take_ready']]))
 types='\n'.join(re.search(r'typedef struct '+name+r' \{.*?\} '+name+r';',h,re.S)[0] for name in ['ShaderLayouts','ShaderSource'])
 code=code.replace('/* SOURCE TYPES */',types).replace('/* SOURCE FUNCTIONS */','\n'.join(function(g,n) for n in ['pgraph_vk_shader_source_new','pgraph_vk_shader_source_ref','pgraph_vk_shader_layouts_unref','pgraph_vk_shader_source_unref']))
 module_types=re.search(r'typedef struct ShaderUniformLayout \{.*?\} ShaderUniformLayout;',h,re.S)[0]
