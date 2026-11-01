@@ -1801,12 +1801,15 @@ the terminator, and all four combinations of missing driver vendor/version.
 Normal identities and existing cache encodings are preserved; fallback strings
 are selected only at initialization, with no repeated driver query.
 
-`test-vk-memory.py ROOT CC [--gpu]` exercises the production fixed-capacity
+`test-vk-memory.py ROOT CC [--gpu]` exercises the production reserved
 Vulkan heap with a deterministic driver oracle: fragmented lifetimes, binding
 alignment and overlap, linear/image isolation, persistent mappings,
 noncoherent atom isolation, dedicated requirements and failure rollback. Its
-sealed-reservation cases assert no driver allocations, mappings or frees during
-reuse or exhaustion. `--gpu` adds actual image clears, direct mapped readbacks,
+reservation cases assert no driver allocations, mappings or frees during ordinary
+reuse and buffer exhaustion. Image-capacity/fragmentation/type/dedicated pressure
+reclaims first, then uses overflow; empty overflow blocks are released while
+fixed blocks stay live. Real driver-OOM cleanup is checked. `--gpu` forces image
+reservation overflow, then checks actual image clears, direct mapped readbacks,
 offset copies and guard-byte checks, enabling Khronos validation when available.
 
 `test-fused-depth.py CHECKOUT [CC]` executes the immutable fused depth SPIR-V
@@ -1830,8 +1833,8 @@ linear, incompatible-layout and range-limited fallback routes remain intact.
 `test-vk-memory.py` also replays all 718 allocation/free events from a 6000-frame
 Ninja Gaiden Black cold boot at 8x. The fixture contains only host allocation
 sizes/alignment/lifetimes, with units scaled 1:256, and no guest assets. It
-reproduces the old 384 MiB pool's exact 75 MiB failed request and occupancy,
-then verifies the corrected startup reservation handles the complete sequence
+verifies the old 384 MiB reservation completes through overflow, while the
+corrected startup reservation handles the complete sequence
 without any new driver allocations or mappings. The shared reservation helper
 is also checked at 1x/2x/4x/8x and for overflow.
 
@@ -1960,7 +1963,9 @@ The Vulkan S3TC uploader publishes all source/image descriptors in one driver ca
 `test-dirty-page-runs.py CHECKOUT [CC]` checks production dirty-run collection against an independent page oracle, including clipped callbacks, word/block boundaries, other clients, reprotection ordering and injected late writes. `--real-block-size` uses production bitmap block geometry. `DIRTY_RUN_CFLAGS` controls sanitizer flags; `DIRTY_RUN_BINARY` and `DIRTY_RUN_SKIP_RUN=1` retain native fixtures for noninteractive execution.
 
 `test-gl-vertex-sparse.py CHECKOUT [CC]` exercises production GL vertex uploads with 3,011 byte-exact mirror cases: sparse/dense/fragmented changes, small spans, clipped page bounds, foreign dirty-bit consumers, quick checks, late writes and reset. `--real-gl` enables native WGL uploads and final real-buffer readback. `GL_VERTEX_SPARSE_CFLAGS`, `GL_VERTEX_SPARSE_BINARY` and `GL_VERTEX_SPARSE_SKIP_RUN=1` control sanitizer flags and noninteractive native fixture execution. Bitmap/dirty-provider stubs isolate upload ownership; the separate dirty-run fixture tests the real atomic collector.
-`test-vk-image-pressure.py CHECKOUT [CC]` uses the production allocator, retirement drain and allocation-retry callback with a deterministic driver; it creates no window or game session. It checks 48 pressure schedules across draw/display/upload completion orders, active command recordings, pooled/direct destruction and submission-counter wrap, with live image bytes preserved and no backing allocations/maps/frees. Six driver-creation error cases cover bounded host/device-memory retries and non-memory failures. This guards false allocation failures when completed images are still awaiting retirement-list collection; it does not prove every game fits the fixed reservation.
+`test-vk-image-pressure.py CHECKOUT [CC]` uses the production allocator, retirement drain and allocation-retry callback with a deterministic driver; it creates no window or game session. It checks 48 pressure schedules across draw/display/upload completion orders, active command recordings, pooled/direct destruction and submission-counter wrap, with live image bytes preserved. Pending GPU users must remain untouched while
+overflow serves the replacement; completed reclamation needs no backing growth.
+Overflow blocks are freed once empty, without additional maps. Six driver-creation error cases cover bounded host/device-memory retries and non-memory failures. This guards false allocation failures when completed images are still awaiting retirement-list collection; it does not prove every game fits the fixed reservation.
 
 `test-inline-vertex-storage.py CHECKOUT [CC]` executes production inline backfill/append: constant attributes allocate nothing, all sixteen first-use arrays preserve float/NaN bits, 300 batches reuse allocations, and the 524287-vertex limit remains valid. `INLINE_STORAGE_CFLAGS`, `INLINE_STORAGE_BINARY` and `INLINE_STORAGE_SKIP_RUN=1` support sanitized and noninteractive native fixtures. Allocation-request savings are not a resident-memory or FPS measurement.
 
@@ -2732,3 +2737,12 @@ The full-generator ignored-field equivalence and active combiner/texture/shadow
 fixtures remain in place. They protect rendering correctness, while the raw-key
 fixture separately protects compatibility; equivalent shader source does not
 imply interchangeable binary cache keys.
+
+`VK_MEMORY_SOURCE` overrides the allocator source for negative-control runs. The
+new simultaneous-image capacity regression fails with the previous allocator.
+The fix adds no runtime diagnostic logging or per-frame GPU queries/waits. Normal
+reserved-pool reuse remains allocation-free; exceptional image pressure may make
+a driver memory allocation rather than crashing at the fixed reservation limit.
+The DOA3 character-select crash report identified the render-target allocation
+assertion in an 8x build; its exact Vulkan return code was not present in the
+screenshot. Saved-state entry can have a smaller live set than cold/menu entry.

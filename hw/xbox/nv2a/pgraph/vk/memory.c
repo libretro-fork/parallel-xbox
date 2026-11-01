@@ -144,7 +144,7 @@ void xemu_vk_trim_memory(XemuVkAllocator a)
     if (a->sealed) return;
     for (Block *b = a->blocks, *next; b; b = next) {
         next = b->next;
-        if (!b->live) block_drop(a, b);
+        if (!b->live && !b->fixed) block_drop(a, b);
     }
 }
 
@@ -152,7 +152,7 @@ static VkResult block_new(XemuVkAllocator a, uint32_t type, bool linear,
     bool host, bool dedicated, VkDeviceSize bytes, VkBuffer buffer,
     VkImage image, Block **out)
 {
-    if (a->sealed) return VK_ERROR_OUT_OF_DEVICE_MEMORY;
+    if (a->sealed && image == VK_NULL_HANDLE) return VK_ERROR_OUT_OF_DEVICE_MEMORY;
     if (a->allocation_count >= a->max_allocations) return VK_ERROR_OUT_OF_DEVICE_MEMORY;
     Block *b = calloc(1, sizeof(*b));
     if (!b) return VK_ERROR_OUT_OF_HOST_MEMORY;
@@ -246,15 +246,16 @@ static void allocation_free(XemuVkAllocator a, XemuVkAllocation allocation)
         b->free[lo] = (Span){start,size}; b->free_count++;
         if (size > b->max_free) b->max_free = size;
     }
-    if (!b->live && !a->sealed) {
+    if (!b->live && !b->fixed) {
         uint32_t heap = a->props.memoryTypes[b->type].heapIndex;
-        if (b->dedicated || a->external_usage[heap] + a->reserved[heap] > a->budget[heap]) block_drop(a,b);
+        if (b->dedicated || a->sealed ||
+            a->external_usage[heap] + a->reserved[heap] > a->budget[heap]) block_drop(a,b);
         else {
             /* One warm empty block per kind. Give obsolete spare blocks
              * back instead of retaining every peak for the whole session. */
             for (Block *other=a->blocks,*next; other; other=next) {
                 next=other->next;
-                if (other!=b && !other->live && !other->dedicated &&
+                if (other!=b && !other->live && !other->fixed && !other->dedicated &&
                     other->type==b->type && other->linear==b->linear) block_drop(a,other);
             }
         }
@@ -288,7 +289,8 @@ static VkResult allocate(XemuVkAllocator a, const VkMemoryRequirements *req,
     VkResult result=VK_ERROR_OUT_OF_DEVICE_MEMORY;
     for (unsigned retry=0;retry<2;retry++) {
         if (retry) {
-            if (!dedicated && a->reclaim) a->reclaim(a->reclaim_opaque);
+            if ((!dedicated || image != VK_NULL_HANDLE) && a->reclaim)
+                a->reclaim(a->reclaim_opaque);
             xemu_vk_trim_memory(a);
         }
         for (uint32_t t=0;t<count;t++) {
@@ -308,7 +310,10 @@ static VkResult allocate(XemuVkAllocator a, const VkMemoryRequirements *req,
             }
             VkDeviceSize bytes=dedicated?req->size:block_size(a,type,request->host,size);
             Block *b;
-            if (a->sealed) continue;
+            /* Keep startup buffer backing fixed. Images may exceed the
+             * reservation during scene transitions or require another type.
+             * Try overflow only after reclaiming already-completed images. */
+            if (a->sealed && (image == VK_NULL_HANDLE || !retry)) continue;
             result=block_new(a,type,linear,request->host,dedicated,bytes,buffer,image,&b);
             if (result!=VK_SUCCESS && !dedicated && bytes!=size)
                 result=block_new(a,type,linear,request->host,false,size,buffer,image,&b);
@@ -377,8 +382,8 @@ VkResult xemu_vk_allocator_create(VkPhysicalDevice physical, VkDevice device,
 }
 
 /* Probe common buffer/image memory compatibility before committing the fixed
- * reservation. Unsupported resource-specific requirements subsequently fail
- * rather than growing the heap during gameplay. */
+ * reservation. Image requirements or peaks outside that reservation can use
+ * reclaim-first overflow backing; startup buffer backing remains fixed. */
 VkResult xemu_vk_allocator_reserve(XemuVkAllocator a, VkDeviceSize host_bytes,
     VkDeviceSize device_bytes, VkDeviceSize image_bytes)
 {
@@ -591,9 +596,9 @@ void xemu_vk_get_heap_budgets(XemuVkAllocator a, XemuVkBudget *out)
 {
     for (uint32_t i=0;i<a->props.memoryHeapCount;i++)
         out[i]=(XemuVkBudget){a->external_usage[i],a->budget[i]};
-    /* Evict against the live working set. A sealed heap cannot return its
-     * unused backing: counting that spare capacity as live would repeatedly
-     * destroy reusable images without ever reducing the reported pressure. */
+    /* Evict against live spans after reservation. Fixed spare backing cannot
+     * be returned, so counting it as live would evict reusable images without
+     * reducing pressure. Overflow blocks are returned when they become empty. */
     for (Block *b=a->blocks;b;b=b->next)
         out[a->props.memoryTypes[b->type].heapIndex].usage += a->sealed?b->used:b->size;
 }

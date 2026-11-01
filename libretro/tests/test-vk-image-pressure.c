@@ -125,6 +125,7 @@ int main(void)
                 display_serial = 7; aux_serial = 9;
                 pool_flushes = fence_polls = 0;
                 xemu_vk_allocator_set_reclaim(r.allocator, reclaim_retired_images, &r);
+                unsigned overflow=0;
                 for (unsigned step = 0; step < 3; step++) {
                     switch (orders[order][step]) {
                     case 0: draw_ready = true; break;
@@ -134,14 +135,15 @@ int main(void)
                     VkResult result = xemu_vk_create_image(r.allocator, &ci, &request,
                                                           &replacement, &replacement_mem);
                     if (step < 2 || open) {
-                        assert(result == VK_ERROR_OUT_OF_DEVICE_MEMORY && !replacement && !replacement_mem);
+                        assert(result == VK_SUCCESS && replacement && replacement_mem);
+                        overflow++;
                         assert(r.trash_n == 1 && images[number((uintptr_t)retired)].live);
                     } else {
                         assert(result == VK_SUCCESS && !r.trash_n);
-                        xemu_vk_destroy_image(r.allocator, replacement, replacement_mem);
                     }
+                    xemu_vk_destroy_image(r.allocator, replacement, replacement_mem);
                     assert(r.slot_fence_pending[0] && r.in_command_buffer == !!open);
-                    assert(creates == backing && maps == mapping && frees == released);
+                    assert(creates == backing+overflow && maps == mapping && frees == released+overflow);
                     for (unsigned i = 0; i < resource->size; i++) assert(memories[memory].bytes[offset + i] == 0xA7);
                 }
                 if (open) {
@@ -154,7 +156,7 @@ int main(void)
                     xemu_vk_destroy_image(r.allocator, replacement, replacement_mem);
                 }
                 assert(pool_flushes && fence_polls);
-                assert(creates == backing && maps == mapping && frees == released);
+                assert(creates == backing+overflow && maps == mapping && frees == released+overflow);
                 xemu_vk_destroy_image(r.allocator, live, live_mem);
                 xemu_vk_allocator_destroy(r.allocator);
                 assert(!live_memory && !live_resources);
@@ -191,5 +193,5 @@ int main(void)
     }
     xemu_vk_allocator_destroy(r.allocator);
     assert(!live_memory && !live_resources);
-    printf("PASS: %u pressure schedules; draw/display/aux and open-recording safety, serial wrapping, live bytes preserved; no backing allocation, mapping or free; six driver-creation failure/retry cases\n", cases);
+    printf("PASS: %u pressure schedules; draw/display/aux and open-recording safety, serial wrapping, live bytes preserved; overflow only while resources remain pending, no extra mapping; six driver-creation failure/retry cases\n", cases);
 }

@@ -140,8 +140,10 @@ balanced counters; backend destruction and media I/O are outside this model.
 ### Vulkan memory reservations
 
 The Vulkan heap reserves its backing and metadata at renderer
-startup, then suballocates and reuses that capacity without growing or mapping
-new heap blocks during gameplay. Host and device buffer reservations are
+startup, then normally suballocates and reuses that capacity without growing or
+mapping new blocks. If an image cannot fit, completed cached resources are
+reclaimed first, then overflow backing is allowed instead of treating the
+reservation as a fatal limit. Empty overflow blocks are released. Host and device buffer reservations are
 computed from the actual startup buffers' Vulkan requirements, including both
 staging sets and vertex arenas. There is no guessed host-memory padding.
 Conversion buffers retain min(32 MiB * scale^2, 800 MiB) each. Host memory
@@ -152,9 +154,9 @@ The optimal-image reservation is max(128 MiB, 32 MiB * scale^2):
 keeps boot render targets alongside game targets; NGB startup reached about
 1.46 GiB of live image backing at 8x. Retired image objects can release their
 spans under pressure;
-unfinished GPU resources cannot be reclaimed. This is a finite working-set
-limit, not a bound proven sufficient for every game. Exhaustion cannot grow the
-heap. Raising resolution beyond the startup reservation requires restarting.
+unfinished GPU resources cannot be reclaimed. Capacity exhaustion, fragmentation,
+incompatible memory types and driver-required dedicated images can use overflow
+backing after reclamation; no new GPU wait or readback is added. Raising resolution beyond the startup reservation requires restarting.
 The existing imported/exported memory and display-image allocation paths are
 separate from this heap; fixed heap backing is not a blanket guarantee that no
 Vulkan allocation can ever occur on a display-size change.
@@ -178,7 +180,7 @@ worker. This is an ownership change, not a general frame-rate improvement.
 The renderer uses an Xbox-specific C allocator instead of VMA, removing the
 core's C++ runtime dependency. Measured startup driver allocation/map counts
 and binary size improve; a general frame-rate improvement is not claimed.
-The fixed image pool reserves spare memory upfront to avoid heap growth during
-play. The earlier 384 MiB image pool and its 25-142 MiB overhead measurements only
+The fixed image pool reserves spare memory upfront to avoid ordinary heap growth
+during play, with reclaim-first overflow available for image-memory pressure. The earlier 384 MiB image pool and its 25-142 MiB overhead measurements only
 covered loaded savestates and were insufficient for cold boot. The corrected
 reservation is larger; allocation sizes do not measure resident VRAM.

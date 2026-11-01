@@ -165,7 +165,7 @@ static void replay_boot_images(bool old_capacity)
     assert(xemu_vk_allocator_reserve(heap,0,0,capacity/256)==VK_SUCCESS);
     unsigned fixed_creates=creates,fixed_maps=maps;
     VkImage handles[BOOT_TRACE_SLOTS]={0};XemuVkAllocation spans[BOOT_TRACE_SLOTS]={0};
-    bool exhausted=false;requirement_bits=1;
+    requirement_bits=1;
     for(unsigned i=0;i<sizeof(boot_trace)/sizeof(boot_trace[0]);i++) {
         unsigned slot=boot_trace[i].slot;
         if (!boot_trace[i].bytes) {
@@ -175,19 +175,11 @@ static void replay_boot_images(bool old_capacity)
             assert(!handles[slot]);alignment=boot_trace[i].alignment;
             VkImageCreateInfo ci=image_info(boot_trace[i].bytes);
             VkResult result=xemu_vk_create_image(heap,&ci,&(XemuVkMemoryRequest){0},&handles[slot],&spans[slot]);
-            if(result!=VK_SUCCESS){
-                assert(i>1&&old_capacity&&!handles[slot]&&!spans[slot]);
-                assert(result==VK_ERROR_OUT_OF_DEVICE_MEMORY);
-                assert(boot_trace[i].bytes==78643200u/256);
-                XemuVkBudget observed[VK_MAX_MEMORY_HEAPS];
-                xemu_vk_get_heap_budgets(heap,observed);
-                assert(observed[0].usage==365405184u/256);
-                exhausted=true;break;
-            }
+            assert(result==VK_SUCCESS);
         }
     }
-    assert(exhausted==old_capacity);
-    assert(creates==fixed_creates&&maps==fixed_maps);
+    assert(old_capacity?creates>fixed_creates:creates==fixed_creates);
+    assert(maps==fixed_maps);
     for(unsigned i=0;i<BOOT_TRACE_SLOTS;i++)if(handles[i])xemu_vk_destroy_image(heap,handles[i],spans[i]);
     xemu_vk_allocator_destroy(heap);
     assert(!live_memory&&!live_resources);
@@ -255,8 +247,8 @@ int main(void)
     }
     for(unsigned i=0;i<512;i++)if(live[i].allocation){if(live[i].b)xemu_vk_destroy_buffer(a,live[i].b,live[i].allocation);else xemu_vk_destroy_image(a,live[i].image,live[i].allocation);}
     xemu_vk_allocator_destroy(a);assert(!live_memory&&!live_resources&&creates==frees&&maps==unmaps);
-    /* A sealed gameplay heap never allocates/maps/frees backing memory,
-     * including exhaustion, incompatible types and mandatory dedicated requests. */
+    /* Ordinary reservation reuse and buffer exhaustion never grow backing.
+     * Image peaks can use reclaim-first overflow instead of failing. */
     requirement_bits=7;alignment=256;
     assert(xemu_vk_allocator_create(HANDLE(VkPhysicalDevice,1),HANDLE(VkDevice,1),false,&a)==VK_SUCCESS);
     assert(xemu_vk_allocator_reserve(a,1u<<20,1u<<20,1u<<20)==VK_SUCCESS);
@@ -295,15 +287,58 @@ int main(void)
     }
     bi=buffer_info(4u<<20);
     assert(xemu_vk_create_buffer(a,&bi,&host,&b1,&m1)!=VK_SUCCESS&&!b1&&!m1);
-    require_dedicated=true;ii=image_info(4096);
-    assert(xemu_vk_create_image(a,&ii,&gpu,&ims[0],&allocations[0])!=VK_SUCCESS&&!ims[0]&&!allocations[0]);
-    require_dedicated=false;requirement_bits=2;
-    bi=buffer_info(4096);
+    requirement_bits=2;bi=buffer_info(4096);
     assert(xemu_vk_create_buffer(a,&bi,&host,&b1,&m1)!=VK_SUCCESS&&!b1&&!m1);
     assert(creates==fixed_creates&&maps==fixed_maps&&frees==fixed_frees);
+    /* Keep the reservation live: the next scene's image must reclaim first,
+     * then obtain overflow rather than return a false device-memory OOM. */
+    requirement_bits=1;ii=image_info(1u<<20);
+    assert(xemu_vk_create_image(a,&ii,&gpu,&ims[0],&allocations[0])==VK_SUCCESS);
+    unsigned calls=retired.calls,extra=creates;ii=image_info(512u<<10);
+    assert(xemu_vk_create_image(a,&ii,&gpu,&ims[1],&allocations[1])==VK_SUCCESS);
+    assert(retired.calls==calls+1&&creates==extra+1&&maps==fixed_maps);
+    unsigned fixed_memory=images[(uintptr_t)ims[0]].memory;
+    unsigned overflow_memory=images[(uintptr_t)ims[1]].memory;
+    assert(fixed_memory!=overflow_memory&&memories[fixed_memory].live);
+    ii=image_info(4096);extra=creates;
+    assert(xemu_vk_create_image(a,&ii,&gpu,&ims[2],&allocations[2])==VK_SUCCESS);
+    assert(creates==extra&&images[(uintptr_t)ims[2]].memory==overflow_memory);
+    xemu_vk_destroy_image(a,ims[1],allocations[1]);assert(memories[overflow_memory].live);
+    xemu_vk_destroy_image(a,ims[2],allocations[2]);assert(!memories[overflow_memory].live);
+    assert(memories[fixed_memory].live);
+    xemu_vk_destroy_image(a,ims[0],allocations[0]);assert(memories[fixed_memory].live);
+    /* Enough total reservation space but no contiguous span: fragment it. */
+    ii=image_info(256u<<10);
+    for(unsigned n=0;n<4;n++)assert(xemu_vk_create_image(a,&ii,&gpu,&ims[n],&allocations[n])==VK_SUCCESS);
+    xemu_vk_destroy_image(a,ims[0],allocations[0]);xemu_vk_destroy_image(a,ims[2],allocations[2]);
+    ii=image_info(512u<<10);calls=retired.calls;extra=creates;
+    assert(xemu_vk_create_image(a,&ii,&gpu,&ims[4],&allocations[4])==VK_SUCCESS);
+    assert(retired.calls==calls+1&&creates==extra+1);
+    xemu_vk_destroy_image(a,ims[4],allocations[4]);
+    xemu_vk_destroy_image(a,ims[1],allocations[1]);xemu_vk_destroy_image(a,ims[3],allocations[3]);
+    /* Larger-than-reservation, incompatible type and driver-dedicated images. */
+    ii=image_info(4u<<20);extra=creates;
+    assert(xemu_vk_create_image(a,&ii,&gpu,&ims[0],&allocations[0])==VK_SUCCESS);
+    assert(creates==extra+1);xemu_vk_destroy_image(a,ims[0],allocations[0]);
+    requirement_bits=2;ii=image_info(4096);extra=creates;
+    assert(xemu_vk_create_image(a,&ii,&gpu,&ims[0],&allocations[0])==VK_SUCCESS);
+    assert(creates==extra+1&&memories[images[(uintptr_t)ims[0]].memory].type==1);
+    xemu_vk_destroy_image(a,ims[0],allocations[0]);
+    requirement_bits=1;require_dedicated=true;extra=creates;
+    assert(xemu_vk_create_image(a,&ii,&gpu,&ims[0],&allocations[0])==VK_SUCCESS);
+    assert(creates==extra+1&&memories[images[(uintptr_t)ims[0]].memory].dedicated);
+    xemu_vk_destroy_image(a,ims[0],allocations[0]);require_dedicated=false;
+    /* A real driver OOM still cleans up and leaves the reservation usable. */
+    allocation_limit=0;ii=image_info(4u<<20);
+    assert(xemu_vk_create_image(a,&ii,&gpu,&ims[0],&allocations[0])!=VK_SUCCESS&&!ims[0]&&!allocations[0]);
+    allocation_limit=UINT64_MAX;ii=image_info(4096);extra=creates;
+    assert(xemu_vk_create_image(a,&ii,&gpu,&ims[0],&allocations[0])==VK_SUCCESS);
+    assert(creates==extra&&images[(uintptr_t)ims[0]].memory==fixed_memory);
+    xemu_vk_destroy_image(a,ims[0],allocations[0]);
+    assert(maps==fixed_maps);
     xemu_vk_allocator_destroy(a);
     assert(!live_memory&&!live_resources&&creates==frees&&maps==unmaps);
-    puts("PASS: fixed startup reservation, 4000 gameplay reuse cycles, capacity/type/dedicated exhaustion: zero driver allocations, maps or frees");
+    puts("PASS: fixed startup backing and 4000 allocation-free reuse cycles; reclaim-first image overflow, fragmentation, type/dedicated fallback, overflow release and real-OOM cleanup");
     assert(xemu_vk_image_reservation(0)==(128ull<<20));
     assert(xemu_vk_image_reservation(1)==(128ull<<20));
     assert(xemu_vk_image_reservation(2)==(128ull<<20));
@@ -312,7 +347,7 @@ int main(void)
     assert(xemu_vk_image_reservation(UINT32_MAX)==UINT64_MAX);
     replay_boot_images(true);replay_boot_images(false);
     assert(creates==frees&&maps==unmaps);
-    puts("PASS: complete NGB cold-boot image lifetimes: old pool reproduces OOM; corrected startup reservation fits with no driver growth");
+    puts("PASS: complete NGB cold-boot image lifetimes: undersized pool recovers through overflow; corrected startup reservation fits with no driver growth");
     printf("PASS: 40000 fragmented allocation schedules, alignment/class separation, 1000 images per driver block, warm reuse, persistent maps, atom-isolated flush/invalidate, dedicated requirements, type/OOM fallback and bind/map rollback; no leaks\n");
     return 0;
 }

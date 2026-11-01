@@ -28,8 +28,10 @@ typedef struct XemuVkBudget {
 VkDeviceSize xemu_vk_image_reservation(uint32_t scale);
 VkResult xemu_vk_allocator_create(VkPhysicalDevice physical, VkDevice device,
                                   bool memory_budget, XemuVkAllocator *out);
-/* Startup only. After success, gameplay can only suballocate these blocks;
- * no driver allocation, mapping, trimming or metadata growth is permitted. */
+/* Startup only. Buffers cannot trigger backing growth; images suballocate these
+ * blocks, then reclaim completed resources before using overflow backing for
+ * exhaustion, fragmentation, incompatible types or dedicated requirements.
+ * Fixed blocks remain reserved; empty overflow blocks are returned. */
 VkResult xemu_vk_allocator_reserve(XemuVkAllocator allocator,
     VkDeviceSize host_bytes, VkDeviceSize device_bytes, VkDeviceSize image_bytes);
 /* Owner-thread callback may release already-retired cached resources. It

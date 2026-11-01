@@ -9,12 +9,16 @@
 #include "hw/xbox/nv2a/pgraph/vk/memory.h"
 /* GPU HELPERS */
 
+static unsigned reclaim_calls;
+static void observe_reclaim(void *opaque) {(void)opaque;reclaim_calls++;}
+
 int main(void)
 {
     gpu_init();
     XemuVkAllocator heap;
     assert(xemu_vk_allocator_create(physical,device,false,&heap)==VK_SUCCESS);
-    CHECK(xemu_vk_allocator_reserve(heap,8u<<20,8u<<20,8u<<20));
+    CHECK(xemu_vk_allocator_reserve(heap,8u<<20,8u<<20,64u<<10));
+    xemu_vk_allocator_set_reclaim(heap,observe_reclaim,NULL);
     XemuVkMemoryRequest host={.host=true},gpu={0};
     VkBuffer buffers[2];XemuVkAllocation allocations[2];void *mapped[2];
     VkBufferCreateInfo bi={.sType=VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,.size=65536+1024,
@@ -29,6 +33,7 @@ int main(void)
         .samples=VK_SAMPLE_COUNT_1_BIT,.tiling=VK_IMAGE_TILING_OPTIMAL,
         .usage=VK_IMAGE_USAGE_TRANSFER_SRC_BIT|VK_IMAGE_USAGE_TRANSFER_DST_BIT};
     for(unsigned i=0;i<64;i++)CHECK(xemu_vk_create_image(heap,&ii,&gpu,&images[i],&image_allocations[i]));
+    assert(reclaim_calls>0); /* Image backing must exceed the tiny reservation. */
     for(unsigned i=0;i<64;i++) {
         memset(mapped[0],0xcd,(size_t)bi.size);memset(mapped[1],0x7e,(size_t)bi.size);
         CHECK(xemu_vk_flush_allocation(heap,allocations[0],0,VK_WHOLE_SIZE));
@@ -79,5 +84,5 @@ int main(void)
         destroy(instance,messenger,NULL);
     }
     vkDestroyInstance(instance,NULL);assert(!errors);
-    printf("PASS: 64 real pooled image clears/direct mapped readbacks and offset buffer copies, exact pixels/guards and live-resource trimming; validation=%u\n",validation_enabled);
+    printf("PASS: 64 real overflow-backed image clears/direct mapped readbacks and offset buffer copies, exact pixels/guards and live-resource trimming; validation=%u\n",validation_enabled);
 }
