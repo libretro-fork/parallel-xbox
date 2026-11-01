@@ -23,6 +23,7 @@
  */
 
 #include "qemu/osdep.h"
+#include "block/libretro-disk.h"
 #include "libretro/dsp-ownership.h"
 #include "qapi/error.h"
 #include "qemu/cutils.h"
@@ -588,14 +589,16 @@ static bool main_loop_dispatch(AioContext *io)
 static void main_loop_wait_internal(int nonblocking, int64_t max_wait_ns)
 {
     AioContext *io = iohandler_get_aio_context();
+    bool disk_progress = lr_disk_pending > 0 && lr_disk_poll();
 
     if (!QLIST_EMPTY(&main_loop_poll_notifiers.notifiers) ||
         aio_has_fd_handlers(qemu_aio_context) || aio_has_fd_handlers(io)) {
-        main_loop_wait_poll(nonblocking, max_wait_ns);
+        main_loop_wait_poll(nonblocking || disk_progress, max_wait_ns);
         return;
     }
 
-    if (!main_loop_dispatch(io) && !nonblocking) {
+    bool progress = main_loop_dispatch(io);
+    if (!progress && !disk_progress && !nonblocking) {
         int key = retro_eventcount_prepare_wait(&main_loop_ec);
 
         if (main_loop_notified(io)) {

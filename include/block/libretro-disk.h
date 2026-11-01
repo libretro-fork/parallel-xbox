@@ -14,10 +14,13 @@
 #include "system/blockdev.h"
 #include "system/block-backend.h"
 
-/* Requests done, their completions not yet run (a bottom half each): the
+/* Requests done, their completions not yet run (fixed owner slots): the
  * frame loop waits for them as for the GPU (ui/libretro.c). The emulator
  * thread only. */
 extern int lr_disk_pending;
+
+/* Dispatch a snapshot of completed disk requests on the emulation owner. */
+bool lr_disk_poll(void);
 
 /* Immutable bytes of a read-only mapped image; no read/copy. NULL means use
  * blk_pread. The loan ends on eject/change, and never exposes a writable HDD. */

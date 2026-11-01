@@ -16,6 +16,6 @@ code=code.replace('#include <assert.h>','#include <assert.h>\n#undef assert\n#de
 if os.name=='nt':ctypes.WinDLL('kernel32').SetErrorMode(0x8003)
 env=os.environ.copy();env['PATH']=str(Path(cc).resolve().parent)+os.pathsep+env.get('PATH','')
 with tempfile.TemporaryDirectory(prefix='gpu-wait-deadline-') as tmp:
- d=Path(tmp);(d/'test.c').write_text(code);exe=d/('test.exe' if os.name=='nt' else 'test')
+ d=Path(tmp);(d/'test.c').write_text(code);exe=Path(os.environ.get('GPU_WAIT_TEST_OUTPUT',str(d/('test.exe' if os.name=='nt' else 'test'))))
  subprocess.run([cc,'-O2','-std=gnu11','-Wall','-Wextra','-Werror',str(d/'test.c'),'-o',str(exe)],check=True,env=env)
- subprocess.run([str(exe)],check=True,env=env,timeout=30)
+ if not os.environ.get('GPU_WAIT_TEST_NO_RUN'):subprocess.run([str(exe)],check=True,env=env,timeout=30)

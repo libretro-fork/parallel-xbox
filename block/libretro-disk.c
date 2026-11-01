@@ -14,7 +14,7 @@
  *
  * A request is done when it is made, on the emulator thread: a read or a
  * write is one positional system call into the guest's own memory (the
- * request's I/O vector), and its completion runs as a bottom half at the
+ * request's I/O vector), and its completion runs from its fixed slot at the
  * next pass of the frame loop, as QEMU's callers expect (never inside the
  * call that made the request). No coroutine, no thread pool, no thread
  * switch, no allocation. What a request takes on the guest's time is
@@ -40,6 +40,7 @@
 
 #include "qemu/osdep.h"
 #include <retro_atomic.h>
+#include "libretro/dsp-ownership.h"
 #include "qapi/error.h"
 #include "qemu/error-report.h"
 #include "qemu/iov.h"
@@ -57,6 +58,8 @@
 #include "block/libretro-qcow2.h"
 #include "system/block-backend.h"
 #include "system/blockdev.h"
+#include "hw/core/cpu.h"
+#include "system/libretro-vcpu.h"
 #include "system/memory.h"
 #include "migration/misc.h"
 #include "migration/migration.h"
@@ -93,7 +96,7 @@ typedef struct LRMedium {
 typedef struct LRDiskReq {
     BlockAIOCB common;
     BlockBackend *blk;
-    QEMUBH *bh;
+    bool dispatch;     /* included in this owner dispatch snapshot */
     int ret;
     bool busy;          /* reserve the slot until its callback returns */
     bool completing;    /* no longer queued for cancellation/draining */
@@ -348,7 +351,6 @@ static BlockBackend *lr_disk_alloc(void)
     for (int i = 0; i < LR_DISK_REQS; i++) {
         blk->req[i].blk = blk;
         blk->req[i].common.aiocb_info = &lr_disk_aiocb_info;
-        blk->req[i].bh = qemu_bh_new(lr_disk_req_done, &blk->req[i]);
     }
     QTAILQ_INSERT_TAIL(&lr_disks, blk, link);
     return blk;
@@ -443,6 +445,7 @@ static void lr_disk_req_done(void *opaque)
     BlockBackend *blk = r->blk;
 
     assert(r->busy && !r->completing);
+    r->dispatch = false;
     r->completing = true;
     lr_disk_pending--;
     r->common.cb(r->common.opaque, r->ret);
@@ -458,13 +461,16 @@ static BlockAIOCB *lr_disk_submit(BlockBackend *blk, int ret,
         LRDiskReq *r = &blk->req[i];
         if (!r->busy) {
             r->busy = true;
+            r->dispatch = false;
             r->ret = ret;
             r->common.cb = cb;
             r->common.opaque = opaque;
             r->common.refcnt = 1;
             blk->in_flight++;
             lr_disk_pending++;
-            qemu_bh_schedule(r->bh);
+            if (first_cpu) {
+                lr_vcpu_exit(first_cpu);
+            }
             return &r->common;
         }
     }
@@ -483,8 +489,37 @@ static bool lr_disk_run_pending(void)
     QTAILQ_FOREACH(blk, &lr_disks, link) {
         for (int i = 0; i < LR_DISK_REQS; i++) {
             if (blk->req[i].busy && !blk->req[i].completing) {
-                qemu_bh_cancel(blk->req[i].bh);
                 lr_disk_req_done(&blk->req[i]);
+                ran = true;
+            }
+        }
+    }
+    return ran;
+}
+
+/* A normal owner pass visits only its entry-time request snapshot. New
+ * submissions wait for another pass; an explicit nested drain may run them. */
+bool lr_disk_poll(void)
+{
+    BlockBackend *blk;
+    bool ran = false;
+
+    if (!lr_disk_pending) {
+        return false;
+    }
+    QTAILQ_FOREACH(blk, &lr_disks, link) {
+        for (int i = 0; i < LR_DISK_REQS; i++) {
+            LRDiskReq *r = &blk->req[i];
+            r->dispatch = r->busy && !r->completing;
+        }
+    }
+    QTAILQ_FOREACH(blk, &lr_disks, link) {
+        for (int i = 0; i < LR_DISK_REQS; i++) {
+            LRDiskReq *r = &blk->req[i];
+            if (r->dispatch) {
+                LR_DSP_EXTERNAL_GUARD;
+                lr_dsp_ownership_fence(LR_DSP_FENCE_POLL);
+                lr_disk_req_done(r);
                 ran = true;
             }
         }
@@ -560,7 +595,6 @@ void blk_aio_cancel(BlockAIOCB *acb)
     if (acb->aiocb_info == &lr_disk_aiocb_info) {
         LRDiskReq *r = container_of(acb, LRDiskReq, common);
         if (r->busy && !r->completing) {
-            qemu_bh_cancel(r->bh);
             lr_disk_req_done(r);
         }
         return;
@@ -726,9 +760,6 @@ void blk_unref(BlockBackend *blk)
     if (blk && --blk->refcnt == 0) {
         bdrv_drain_all();
         lr_medium_close(&blk->m);
-        for (int i = 0; i < LR_DISK_REQS; i++) {
-            qemu_bh_delete(blk->req[i].bh);
-        }
         QTAILQ_REMOVE(&lr_disks, blk, link);
         g_free(blk->dinfo);
         g_free(blk->name);

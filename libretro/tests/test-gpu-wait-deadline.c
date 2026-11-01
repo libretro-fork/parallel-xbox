@@ -16,6 +16,9 @@ static AioContext mainctx,ioctx,*qemu_aio_context=&mainctx;
 static struct {struct {bool empty;} notifiers;} main_loop_poll_notifiers;
 typedef struct {int state;uint32_t timeout;void *pollfds;} MainLoopPoll;
 static int poll_storage,*gpollfds=&poll_storage,main_loop_ec;
+static bool disk_progress;
+static int lr_disk_pending;
+static bool lr_disk_poll(void){bool ran=disk_progress;disk_progress=false;lr_disk_pending=0;return ran;}
 static bool bql,progress,prepare_race,icount,opt_deterministic,gpu_busy,cpu_halted;
 static unsigned prepared,cancelled,committed,timed,polls,timers,warps,skips;
 static int64_t host_now,elapsed,virtual_now,last_us,last_poll,clock_deadline;
@@ -57,7 +60,7 @@ static void lr_dsp_ownership_fence(unsigned reason){assert(reason==1 && bql);}
 static void reset(void){
  mainctx=(AioContext){0};ioctx=(AioContext){0};
  main_loop_poll_notifiers.notifiers.empty=true;
- bql=true;progress=prepare_race=opt_deterministic=gpu_busy=cpu_halted=false;icount=true;
+ disk_progress=false;lr_disk_pending=0;bql=true;progress=prepare_race=opt_deterministic=gpu_busy=cpu_halted=false;icount=true;
  prepared=cancelled=committed=timed=polls=timers=warps=skips=0;
  host_now=0;elapsed=500;virtual_now=1000;last_us=last_poll=-2;clock_deadline=-1;socket_ms=UINT32_MAX;
 }
@@ -72,6 +75,15 @@ int main(void){
   if(nb)main_loop_wait(true);else main_loop_wait_timeout(1000);
   if(virtual_now!=1000 || warps){fprintf(stderr,"Host dispatch moved guest clock from 1000 to %lld ns (%u warp calls, HALT=%d)\n",(long long)virtual_now,warps,cpu_halted);_Exit(1);}
   assert(timers==1);cases++;
+ }
+ /* Disk completions make progress on either dispatch path and must not park. */
+ for(unsigned path=0;path<3;path++) {
+  reset();disk_progress=true;lr_disk_pending=1;
+  if(path==1)ioctx.fds=true;
+  if(path==2)main_loop_poll_notifiers.notifiers.empty=false;
+  main_loop_wait(false);assert(!disk_progress && !prepared && !committed && !timed);
+  if(path)assert(polls==1 && last_poll==0);
+  cases++;
  }
  const int64_t bounds[]={-1,0,1,999,1000,1001,1234567,INT64_MAX};
  for(unsigned n=0;n<8;n++)for(unsigned race=0;race<2;race++)for(unsigned due=0;due<2;due++)for(unsigned mode=0;mode<2;mode++){

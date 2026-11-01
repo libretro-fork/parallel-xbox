@@ -6,7 +6,7 @@
 
 ## Frame ownership of guest time
 
-`test-gpu-wait-deadline.py CHECKOUT [CC]` checks 342 cases against the production host dispatch and GPU-wait functions. A halted CPU, a GPU completion wait, a descriptor poll and a NAT poll must not advance guest time independently. It covers timed-wait rounding, prepare/notify races, deterministic completion and the frame owner's bounded elapsed-time advancement. Its regression model rejects the old idle-warp callback, which moved a halted guest from 1000 to 1500 ns inside host dispatch.
+`test-gpu-wait-deadline.py CHECKOUT [CC]` checks 345 cases against the production host dispatch and GPU-wait functions. A halted CPU, a GPU completion wait, a descriptor poll and a NAT poll must not advance guest time independently. It covers timed-wait rounding, prepare/notify races, deterministic completion and the frame owner's bounded elapsed-time advancement. Its regression model rejects the old idle-warp callback, which moved a halted guest from 1000 to 1500 ns inside host dispatch.
 
 `test-icount-publication.py CHECKOUT [CC]` also executes the production fixed-clock initializer. It preserves raw instruction count and bias, selects the fixed Xbox rate, initializes legacy compatibility fields and creates no host-paced timers. Existing owner-accounting, I/O-boundary, restored-state and six-reader publication tests remain. These tests run in regression-only CI. The standalone QEMU CPU timing-option parser, adaptive clock governor and host/guest clock-alignment sleeps are no longer part of core initialization or CPU execution; saved-state fields retain their previous wire layout.
 
@@ -2823,3 +2823,9 @@ Win64 code generation changes the vertex-sync caller frame from 736 to 720
 bytes and emits a shared 24-byte tail selector, called at most twice after a
 clean snapshot cache miss. Flush-draw remains 704 bytes and renderer state
 sizes are unchanged. Caller and nested selector usage are reported separately.
+
+## Disk completion ownership
+
+`test-block-completion.py CHECKOUT [CC]` extracts production submit, poll, cancel and drain functions. It checks callback reentry, next-pass and cross-drive deferral, cancellation with immediate slot reuse, and 100,000 randomized scheduling operations with independent callback/counter accounting. The GPU-wait fixture prevents parking after disk progress in eventcount, descriptor and notifier paths.
+
+`test-disk-completion-bench.py CHECKOUT [CC]` measures source-extracted completion scheduling with generic BH polling retained. Set `DISK_BENCH_SOURCE` to a prior `block/libretro-disk.c` for the old BH path. Reports empty passes and batches of 1, 4, 8 and 24 completions across up to three drives. CPU kicks use production functions and common atomics/eventcount; DSP fences are modeled equally. This isolates scheduling cost, excluding disk I/O and FPS. `DISK_BENCH_SKIP_RUN=1` and `DISK_BENCH_BINARY` support supervised cross-platform runs.
