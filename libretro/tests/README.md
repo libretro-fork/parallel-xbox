@@ -1857,6 +1857,10 @@ It checks the entire backing store and counts copy calls: disjoint packed
 multi-row copies issue one call; dependent overlapping rows retain their order.
 This does not exercise GPU transfers or claim class 0x39 support.
 
+
+`test-vulkan-s3tc-decode.py CHECKOUT [CC]` runs production planning, shared integer shader, descriptor/view ownership, source selection and barriers through the internal compiler and real Vulkan. It covers 1,035 image cases / 35,902,305 exact pixels, exhaustive endpoint/selector palettes, odd mips, cube borders, skipped faces, compressed snapshot poisoning, direct/unaligned buffers, eight queued submissions GPU-produced compressed input, and preflight rejection. Synchronization validation is on by default. `VK_S3TC_NO_VALIDATION=1` is an explicit escape for native environments without the validation layer; `VK_S3TC_BINARY` and `VK_S3TC_SKIP_RUN=1` retain a fixture for noninteractive native runs. `VK_S3TC_BENCH=1` compares production CPU decode/staging with snapshot/direct compute for one- and four-level volumes, including submission/fence completion and GPU timestamps. Timed CPU input uses cached heap RAM, and coherent GPU buffers prefer HOST_CACHED like the core allocator; the direct buffer models imported guest RAM without timing its setup copy.
+
+`test-texture-aux-retirement.py CHECKOUT [CC]` executes production texture release and deferred retirement through 48 independent main/display/aux completion schedules, borrowed-image ownership and wrap-near main counters. `TEXTURE_AUX_CFLAGS` controls sanitizers.
 `test-pipeline-ahead-key.py CHECKOUT [CC]` runs production speculative-job construction against an independent final-key/hash oracle in 4,096 cases. It checks direct slot construction, source lifetime, shader replacement, module ordering, cache/in-flight hits and full-ring backpressure. `PIPELINE_AHEAD_CFLAGS` enables sanitizers.
 
 ### PFIFO deferred-method progress
@@ -1870,3 +1874,5 @@ This defines the no-progress contract; it does not enable class 0x39 transfers.
 `test-gpl-lookup-cache.py CHECKOUT [CC]` compares production GPL lookups to a first-match scan across 122,120 cases: zero/large hashes, cache-slot collisions, duplicate hashes, misses followed by insertion, independently moving pre/fragment arrays, and renderer reinitialization. Warm hits require one library-entry probe and allocate nothing. `GPL_LOOKUP_CFLAGS` enables sanitizers.
 
 Worker-module lifetime tests follow the combined module/parameter allocation path and verify that shared metadata outlives the shader words and either module. `VK_WORKER_MODULE_CFLAGS` enables extra sanitizer flags; assertion failures exit normally without opening a Windows crash dialog.
+
+For release timing, use `VK_S3TC_BENCH=1 VK_S3TC_NO_VALIDATION=1`; benchmark builds default to no sanitizers. Normal Linux correctness builds default to UBSan; `VK_S3TC_CFLAGS` can override the extra compiler flags. Full-size nine-mip cube callers are covered above the production size threshold, including border crops and preserved skipped faces.

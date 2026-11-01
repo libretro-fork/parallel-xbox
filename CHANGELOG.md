@@ -1,5 +1,6 @@
 # Changelog of the libretro core
 
+- Decode larger unsupported-BC Vulkan textures directly into final GPU mip/cube images, with compressed snapshots or imported-VRAM reads; retain native BC and CPU fallbacks, and protect retired texture resources until auxiliary uploads finish.
 - Fixed signed G8B8 bump filtering for one-level textures requesting mip filters with different minification and magnification modes, including address-only changes.
 
 - Update worker-module lifetime tests to exercise the combined module/parameter allocation path rather than the removed per-layout destructor.

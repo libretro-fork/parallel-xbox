@@ -64,6 +64,8 @@ Each frame RetroArch asks for is one frame of the Xbox's time, 1001/60 ms (NTSC,
 
 Core Options > Video > Force Texture LOD0 (Restart) forces the largest texture level in both renderers. Compatible GPU render textures retain internal resolution; Vulkan also preserves GPU faces of eligible mixed RAM/GPU cubemaps at that resolution, expanding only the RAM faces on the GPU. Compatible Vulkan 2D surfaces are sampled directly without a texture copy. Byte-reinterpreted aliases, depth and incompatible layouts retain their existing fallback. It is disabled by default and can increase shimmering; restart content to apply.
 
+S3TC textures keep native compressed storage when supported. Larger fallback textures can decode into final GPU images on hardware GL 4.3 (volumes) or Vulkan (2D, cube and volume textures); small textures, older GL and software renderers retain CPU decoding.
+
 Core Options > Video > Force Quality Filtering (Restart) independently requests up to 16x anisotropic filtering on wrapping or mirrored, linearly filtered 2D color textures, capped by device support. Point/depth sampling, G8B8 data, cubemaps, clamped/bordered textures and unsupported formats retain game filtering to avoid changing data sampling or widening footprints across seams. Texture address modes remain unchanged. It is disabled by default; restart content to apply. The core cannot infer internal tile boundaries in a wrapping texture atlas, so such game-specific layouts still need visual validation.
 
 The core renders with OpenGL or Vulkan, whichever RetroArch's video driver is (`glcore` or `vulkan`). On Android it is Vulkan only. On macOS it is OpenGL: MoltenVK has no geometry shaders, which xemu's Vulkan renderer needs, so use RetroArch's `glcore` driver there.

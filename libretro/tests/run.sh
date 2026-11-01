@@ -197,6 +197,7 @@ ${cc} -O2 -std=c99 -Wall -I"$here/../.." -o "$work/bin/surfaceclear" "$here/test
 ${cc} -O2 -std=c99 -Wall -I"$here/../.." -o "$work/bin/vramranges" "$here/test-vram-ranges.c"
 "$work/bin/vramranges"
 python3 "$here/test-texture-dirty.py" "$here/../.." "$cc"
+python3 "$here/test-texture-aux-retirement.py" "$here/../.." "$cc"
 python3 "$here/test-vulkan-surface-age.py" "$here/../.." "$cc"
 python3 "$here/test-gl-readpixels-flip.py" "$here/../.." "$cc"
 python3 "$here/test-gl-readback-fused.py" "$here/../.." "$cc"
@@ -886,6 +887,7 @@ case $core in
         python3 "$here/test-packed-overlay-vulkan.py" "$here/../.." "$cc"
         python3 "$here/test-volume-block-copies.py" "$here/../.." "$cc"
         python3 "$here/test-vulkan-volume-blocks.py" "$here/../.." "$cc"
+        python3 "$here/test-vulkan-s3tc-decode.py" "$here/../.." "$cc"
     fi
     ;;
 esac

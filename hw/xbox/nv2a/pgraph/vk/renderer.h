@@ -616,6 +616,19 @@ typedef struct PGRAPHVkState {
         SurfaceBinding *surfaces[64];
     } readback_batch;
 
+    struct {
+        bool enabled;
+        VkDescriptorSetLayout set_layout;
+        VkPipelineLayout layout;
+        VkPipeline pipelines[2]; /* 2D array layer, 3D */
+        struct S3TCDecodeSlot {
+            VkDescriptorPool pool;
+            VkDescriptorSet sets[96];
+            VkImageView views[96];
+            unsigned used;
+        } slots[PGRAPH_VK_AUX_SLOTS];
+    } s3tc_decode;
+
     /* Rotation: an async finish submits this slot and records on into the
      * next without waiting. */
     int slot;

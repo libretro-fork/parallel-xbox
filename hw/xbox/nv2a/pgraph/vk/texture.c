@@ -673,6 +673,8 @@ static bool check_texture_possibly_dirty(NV2AState *d,
     return possibly_dirty;
 }
 
+#include "s3tc-decode.h"
+
 // FIXME: Make sure we update sampler when data matches. Should we add filtering
 // options to the textureshape?
 static void upload_texture_image(PGRAPHState *pg, int texture_idx,
@@ -700,6 +702,13 @@ static void upload_texture_image(PGRAPHState *pg, int texture_idx,
      * which it reads after flushing and auxiliary queue submission */
     VkCommandBuffer cmd = pgraph_vk_begin_single_time_commands(pg);
     pgraph_vk_begin_debug_marker(r, cmd, RGBA_GREEN, __func__);
+
+    if (upload_s3tc_image_gpu(pg, cmd, texture_idx, binding, skip_layers)) {
+        nv2a_profile_inc_counter(NV2A_PROF_QUEUE_SUBMIT_4);
+        pgraph_vk_end_debug_marker(r, cmd);
+        pgraph_vk_end_single_time_commands_async(pg, cmd);
+        return;
+    }
 
     TextureLayout layout;
     if (binding->logo) {
@@ -1774,7 +1783,8 @@ static bool texture_cow_if_referenced(PGRAPHState *pg, TextureBinding *snode,
                                   .image = snode->image,
                                   .allocation = snode->allocation,
                                   .image_ci = snode->image_ci,
-                                  .pool_ok = true };
+                                  .pool_ok = true,
+                                  .aux_after = r->aux_submitted };
     pgraph_vk_trash_push(r, &e);
 
     /* The new image is the retired one's twin: its own creation info, not
@@ -2573,6 +2583,16 @@ static void create_texture(PGRAPHState *pg, int texture_idx)
                                         &image_create_info.extent.height);
     }
 
+    if (!r->bc_native && !snode->logo && !s2t_borrow &&
+        (!state.border || state.cubemap) &&
+        image_create_info.extent.width == state.width &&
+        image_create_info.extent.height == state.height &&
+        pgraph_is_texture_format_compressed(pg, state.color_format) &&
+        (size_t)state.width * state.height * state.depth >= 65536 &&
+        s3tc_storage_image(r, &image_create_info)) {
+        image_create_info.usage |= VK_IMAGE_USAGE_STORAGE_BIT;
+    }
+
     if (s2t_borrow) {
         snode->image = surface->image;
         snode->allocation = VK_NULL_HANDLE;
@@ -2747,8 +2767,8 @@ static void texture_cache_release_node_resources(PGRAPHVkState *r, TextureBindin
                     snode->allocation == VK_NULL_HANDLE;
     snode->s2t_borrowed = false;
 
-    /* An in-flight slot may still sample this binding: defer the destruction
-     * until every slot fence settles. */
+    /* In-flight draws or auxiliary uploads may still use this binding:
+     * retain its resources until both submission domains have retired. */
     struct XemuVkTrashEntry e = { .sampler = snode->sampler,
                                   .image_view = snode->image_view,
                                   .image = borrowed ? VK_NULL_HANDLE :
@@ -2756,7 +2776,8 @@ static void texture_cache_release_node_resources(PGRAPHVkState *r, TextureBindin
                                   .allocation = borrowed ?
                                       VK_NULL_HANDLE : snode->allocation,
                                   .image_ci = snode->image_ci,
-                                  .pool_ok = !borrowed };
+                                  .pool_ok = !borrowed,
+                                  .aux_after = r->aux_submitted };
     pgraph_vk_trash_push(r, &e);
     snode->sampler = VK_NULL_HANDLE;
     snode->image_view = VK_NULL_HANDLE;
@@ -2862,6 +2883,9 @@ void pgraph_vk_init_textures(PGRAPHState *pg)
         }
     }
 
+    r->s3tc_decode.enabled = !r->bc_native &&
+        r->device_props.deviceType != VK_PHYSICAL_DEVICE_TYPE_CPU;
+
     create_dummy_texture(pg);
 
     /* the host formats' properties, by guest format */
@@ -2884,6 +2908,7 @@ void pgraph_vk_finalize_textures(PGRAPHState *pg)
         r->texture_bindings[i] = NULL;
     }
 
+    s3tc_decode_finalize(pg);
     destroy_dummy_texture(r);
     texture_cache_finalize(r);
     sampler_cache_destroy(r);
