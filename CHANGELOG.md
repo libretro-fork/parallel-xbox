@@ -90,6 +90,9 @@
 
 ## Unreleased
 
+- Register-count DOR, DO and REP loops now run in native DSP code, including status and stack-register sources. Setup preserves count-read order, accumulator limiting and zero-count repeats. New regression matrices and nested-loop programs guard against interpreter fallback and stale status/count values.
+
+
 - DSP program-memory writes now run natively for ordinary data and address registers, removing OutRun 2's hottest interpreter fallback. Self-modifying code and REP bodies redispatch after writes, while unchanged words retain cached code. Short absolute MOVEM addresses now decode across the full six-bit range. Regression tests cover transfers and code invalidation on x86-64 and AArch64.
 
 
