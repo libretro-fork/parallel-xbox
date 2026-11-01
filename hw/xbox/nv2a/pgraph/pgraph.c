@@ -425,6 +425,34 @@ bool pgraph_cpu_access(PGRAPHState *pg, hwaddr addr, hwaddr len, bool write)
     return false;
 }
 
+/* FIFO-owner RAM transfers share page visibility bookkeeping, but must not
+ * overwrite dl_addr/dl_len: those belong to the emulator thread's outstanding
+ * download request. Return not-ready without creating another requester. */
+bool pgraph_cpu_transfer_access(PGRAPHState *pg, hwaddr addr, hwaddr len,
+                                bool write)
+{
+    unsigned long first, count;
+    if (!pgraph_cpu_pages(addr, len, &first, &count)) {
+        return false;
+    }
+    for (unsigned long n = first; n < first + count;) {
+        unsigned long lo = n % PGRAPH_CPU_WORD_BITS;
+        unsigned long span = MIN(first + count - n, PGRAPH_CPU_WORD_BITS - lo);
+        if ((uint32_t)retro_atomic_load_relaxed_int(
+                &pg->cpu.ahead[n / PGRAPH_CPU_WORD_BITS]) &
+            pgraph_cpu_mask(lo, span)) {
+            return true;
+        }
+        n += span;
+    }
+    pgraph_cpu_set_atomic(write ? pg->cpu.written : pg->cpu.clean_read,
+                          first, count);
+    if (!retro_atomic_load_relaxed_int(&pg->cpu.touched)) {
+        retro_atomic_store_release_int(&pg->cpu.touched, 1);
+    }
+    return false;
+}
+
 static char pgraph_game_tag[64];
 static unsigned long long xemu_flip_inc_count; /* guest flips */
 

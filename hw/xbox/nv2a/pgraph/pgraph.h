@@ -448,6 +448,9 @@ bool pgraph_cpu_taken_read(PGRAPHState *pg, hwaddr addr, hwaddr size);
 /* the emulator thread, in the access callback: whether the access needs a
  * download (it then asks for it), noting it otherwise */
 bool pgraph_cpu_access(PGRAPHState *pg, hwaddr addr, hwaddr len, bool write);
+/* FIFO owner only: same visibility check, without changing CPU download requests. */
+bool pgraph_cpu_transfer_access(PGRAPHState *pg, hwaddr addr, hwaddr len,
+                                bool write);
 
 // FIXME: Move from here
 

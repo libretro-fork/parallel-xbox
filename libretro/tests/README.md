@@ -1898,3 +1898,17 @@ rollover. Clock sampling is counted: each snapshot reads it once. These helpers
 check bounds and preserve metadata; the transfer owner still must apply DMA
 access policy and renderer authority. The existing mapper is unchanged, and
 class 0x39 remains unconnected. No real GPU or guest runtime is tested here.
+
+### Experimental M2MF execution coordinator
+
+`python3 libretro/tests/test-m2mf-execution.py .` exercises production coordinator
+and FIFO-owner visibility code with controlled DMA views. DMA descriptors are
+latched once, so later descriptor edits do not retarget a pending command. RAM
+backing moves between steps. CPU writes update dirty ranges before modification;
+GPU-owned source/destination/notifier pages defer without changing the CPU's
+outstanding download request. A dispatch processes at most 64 KiB and 256 row
+chunks. Notifier status uses libretro-common release publication after timestamp
+and payload writes. Tests check explicit notifier instance zero, stale execution,
+unsupported CPU targets/classes, bounds/alignment failures and empty transfers.
+Backend retirement is still controlled; no GPU fence or guest-runtime validation
+is established, and the coordinator still has no pgraph_method caller.

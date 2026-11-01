@@ -1,5 +1,7 @@
 # Changelog of the libretro core
 
+- Experimental class 0x39 work: coordinate latched DMA bindings, bounded RAM copies and ordered notifier publication. Defer access to GPU-owned RAM without waits and preserve CPU download-request ownership. Renderer preparation, FIFO dispatch and migration integration remain unfinished; class 0x39 is still disabled.
+
 - Experimental class 0x39 work: add bounds-checked DMA views with inclusive-limit conversion and retained access metadata, plus a single-sample timer snapshot for completion timestamps. The transfer owner and renderer integration remain unfinished; existing DMA mapper behavior is unchanged.
 
 - Experimental class 0x39 work: decode object, DMA, layout and notify methods while retaining command ownership across retries. Prevent duplicate launches and setup mutation during an in-flight copy. Guest method dispatch and renderer integration remain disabled on this feature branch.

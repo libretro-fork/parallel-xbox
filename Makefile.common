@@ -515,6 +515,7 @@ SOURCES_TARGET := \
 	$(CORE_DIR)/hw/xbox/nv2a/pgraph/glsl/vsh-prog.c \
 	$(CORE_DIR)/hw/xbox/nv2a/pgraph/glsl/vsh.c \
 	$(CORE_DIR)/hw/xbox/nv2a/pgraph/null/renderer.c \
+	$(CORE_DIR)/hw/xbox/nv2a/pgraph/m2mf-execution.c \
 	$(CORE_DIR)/hw/xbox/nv2a/pgraph/pgraph.c \
 	$(CORE_DIR)/hw/xbox/nv2a/pgraph/profile.c \
 	$(CORE_DIR)/hw/xbox/nv2a/pgraph/rdi.c \
