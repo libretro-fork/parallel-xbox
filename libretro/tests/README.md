@@ -2430,3 +2430,5 @@ Win64 finalize_display stack usage grows from 128 to 144 bytes to retain the
 circular traversal start across driver calls; the wait helper stays inlined.
 This is confined to teardown, with unchanged renderer layouts and no per-frame
 stack change. Hardware cache-miss and game-latency effects are unmeasured.
+
+The shader-cache handoff fixture also executes the production disk reader against the production writer output. Across 32 mapping alignments, both retained mappings and the 64-mapping fallback preserve state/format/binary bytes and release ownership exactly once. The fallback frees input before publication, catching state copies made too late under ASan. Every truncated binary is rejected without queue publication and its invalid fixture file is removed. Existing 18,000 concurrent publications, owner-only LRU, shutdown and immutable save snapshots remain covered.

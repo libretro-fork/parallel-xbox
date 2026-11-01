@@ -4,7 +4,7 @@
  * Copyright (c) 2015 espes
  * Copyright (c) 2015 Jannik Vogel
  * Copyright (c) 2020-2025 Matt Borgerson
- * Copyright (c) 2026 RÃ©da ChÃ©rif-Touil
+ * Copyright (c) 2026 Réda Chérif-Touil
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -1072,7 +1072,7 @@ static void shader_load_from_disk(PGRAPHState *pg, uint64_t hash)
     const void *p;
     uint64_t cached_state_size;
     GLenum program_binary_format;
-    ShaderState state;
+    const void *state;
     size_t shader_size;
 
     g_free(shader_bin_dir);
@@ -1093,7 +1093,7 @@ static void shader_load_from_disk(PGRAPHState *pg, uint64_t hash)
     /* The cached blob embeds a raw ShaderState: reject files written by
      * a build whose layout differs, or its size fields are garbage. */
     if (!cursor_take_u64(&c, &cached_state_size) ||
-        cached_state_size != sizeof(state)) {
+        cached_state_size != sizeof(ShaderState)) {
         goto error;
     }
     p = cursor_take(&c, sizeof(program_binary_format));
@@ -1101,11 +1101,10 @@ static void shader_load_from_disk(PGRAPHState *pg, uint64_t hash)
         goto error;
     }
     memcpy(&program_binary_format, p, sizeof(program_binary_format));
-    p = cursor_take(&c, sizeof(state));
-    if (!p) {
+    state = cursor_take(&c, sizeof(ShaderState));
+    if (!state) {
         goto error;
     }
-    memcpy(&state, p, sizeof(state));
     p = cursor_take(&c, sizeof(shader_size));
     if (!p) {
         goto error;
@@ -1116,11 +1115,12 @@ static void shader_load_from_disk(PGRAPHState *pg, uint64_t hash)
         goto error;
     }
     ShaderDiskResult *result = g_new0(ShaderDiskResult, 1);
+    /* The mapping-limit fallback may unmap immediately: own the state first. */
+    memcpy(&result->state, state, sizeof(result->state));
     program_buffer = shader_binary_take_file(&result->program_owner, &m, p,
                                              shader_size, &r->shader_disk_mappings);
     g_free(shader_path);
     result->hash = hash;
-    result->state = state;
     result->program_format = program_binary_format;
     result->program_size = shader_size;
     result->program = program_buffer;

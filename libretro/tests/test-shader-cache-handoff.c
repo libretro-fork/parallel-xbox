@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 #include <assert.h>
+#include <limits.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -48,6 +49,7 @@ static _Thread_local bool owner;
 static retro_atomic_int_t done;
 static const char *directory, *shader_gl_vendor = "test-vendor", *shader_gl_version = "test-version";
 #define container_of(p, type, field) ((type *)((char *)(p) - offsetof(type, field)))
+#define g_new0(type, n) ((type *)calloc(n, sizeof(type)))
 #define g_new(type, n) ((type *)malloc(sizeof(type) * (n)))
 #define g_free free
 #define qemu_fopen fopen
@@ -65,6 +67,18 @@ static char *shader_get_binary_path(const char *path, uint64_t hash)
 static bool shader_write_cache_version(FILE *file)
 {
     return fwrite("TEST", 4, 1, file) == 1;
+}
+#include "shader-cache-cursor.h"
+static bool shader_read_cache_version(FileCursor *c) {
+    const void *p=cursor_take(c,4);return p && !memcmp(p,"TEST",4);
+}
+static unsigned map_shift;
+bool xemu_file_map(XemuFileMap *m,const char *path) {
+    FILE *f=fopen(path,"rb");if(!f)return false;
+    assert(!fseek(f,0,SEEK_END));long size=ftell(f);assert(size>=0);rewind(f);
+    unsigned char *base=malloc((size_t)size+32);assert(base);
+    assert(fread(base+map_shift,1,size,f)==(size_t)size);fclose(f);
+    *m=(XemuFileMap){base+map_shift,(size_t)size,base,base};return true;
 }
 static char *shader_get_lru_cache_path(void) { return shader_get_binary_path(directory, 0); }
 static void seed_write_files(PGRAPHGLState *r) { assert(owner); }
@@ -248,8 +262,31 @@ int main(int argc, char **argv)
     memcpy(&program_size, bytes + offset, sizeof(program_size)); offset += sizeof(program_size);
     assert(format == 77 && state.id == 42 && program_size == 16 && size == offset + 16);
     for (unsigned i = 0; i < 16; i++) assert(bytes[offset + i] == 0xab);
-    assert(!remove(name));
+    /* Exercise the production reader before and after its mapping cap.
+     * A capped transfer frees input bytes before the result is published. */
+    for(unsigned shift=0;shift<32;shift++)for(unsigned capped=0;capped<2;capped++) {
+        map_shift=shift;
+        retro_atomic_store_relaxed_int(&renderer.shader_disk_mappings,capped?SHADER_BINARY_MAX_MAPPINGS:0);
+        shader_load_from_disk(&pg,123);shader_adopt_disk_results(&renderer,0);
+        ShaderState key={42};
+        ShaderBinding *loaded=container_of(lru_lookup(&renderer.shader_cache,123,&key),ShaderBinding,node);
+        assert(loaded->cached && loaded->state.id==42 && loaded->program_format==77 && loaded->program_size==16);
+        for(unsigned i=0;i<16;i++)assert(((unsigned char *)loaded->program)[i]==0xab);
+        assert(!!loaded->program_owner.file.data==!capped);
+        lru_flush(&renderer.shader_cache);
+        assert(retro_atomic_load_acquire_int(&renderer.shader_disk_mappings)==(capped?SHADER_BINARY_MAX_MAPPINGS:0));
+        retro_atomic_store_relaxed_int(&renderer.shader_disk_mappings,0);
+    }
+    /* Every truncated binary must be rejected without publication. */
+    for(size_t n=0;n<size;n++) {
+        file=fopen(name,"wb");assert(file);assert(fwrite(bytes,1,n,file)==n);fclose(file);
+        shader_load_from_disk(&pg,123);
+        assert(retro_mpsc_empty(&renderer.shader_disk_results));
+        assert(!renderer.shader_disk_pending);
+        assert(retro_atomic_load_acquire_int(&renderer.shader_disk_mappings)==0);
+        file=fopen(name,"rb");assert(!file);
+    }
     free(name);
-    puts("Shader cache: 18000 publications, render-only LRU, shutdown joins and immutable disk-save snapshot passed");
+    puts("Shader cache: 18000 publications, render-only LRU, shutdown joins and immutable disk-save snapshot, 64 mapped/capped reader round trips and all binary truncations passed");
     return 0;
 }
