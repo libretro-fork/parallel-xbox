@@ -21,7 +21,7 @@ legacy = legacy.replace("uint8_t g8b8_mip_mirror;", "")
 pixel_source = (repo / "hw/xbox/nv2a/pgraph/glsl/psh.c").read_text()
 mip_address = re.search(r"^static bool g8b8_mip_address_supported\(.*?^\}", pixel_source, re.S | re.M).group()
 single_filter = re.search(r"^static unsigned g8b8_single_mip_min_filter\(.*?^\}", pixel_source, re.S | re.M).group()
-single_selection = re.search(r"        /\* A one-level swizzled image.*?^        \}", pixel_source, re.S | re.M).group()
+single_selection = re.search(r"        /\* A one-level image.*?^        \}", pixel_source, re.S | re.M).group()
 encoding = re.search(r"^            if \(signs.*?^            \}$", pixel_source, re.S | re.M).group()
 lower_selection = re.search(r"^            if \(mip_filter && mip_min_lod\) \{.*?^            \}", pixel_source, re.S | re.M).group()
 code = r'''
@@ -67,6 +67,8 @@ static unsigned normalize_single(unsigned color_format, bool cubemap,
     pg->address[i] = u | v << 8;
     uint32_t tex_fmt = levels << 16;
     unsigned min_filter = filter;
+    bool gb = color_format == NV097_SET_TEXTURE_FORMAT_COLOR_SZ_G8B8 ||
+              color_format == NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_G8B8;
     /* SINGLE_SELECTION */
     return min_filter;
 }
@@ -102,16 +104,17 @@ static PshState encode_signed_g8b8(unsigned signs, unsigned min_filter,
 int main(void) {
     unsigned single_cases = 0, single_keys = 0;
     for (unsigned stage = 0; stage < 4; stage++)
-    for (unsigned format = 0; format < 2; format++)
+    for (unsigned format = 0; format < 3; format++)
     for (unsigned cube = 0; cube < 2; cube++)
     for (unsigned dim = 1; dim <= 3; dim++)
     for (unsigned levels = 0; levels < 4; levels++)
     for (unsigned filter = 0; filter < 16; filter++)
     for (unsigned u = 0; u < 8; u++) for (unsigned v = 0; v < 8; v++) {
-        unsigned color = format ? NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_G8B8 :
+        unsigned color = format == 2 ? 6 : format ? NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_G8B8 :
                                   NV097_SET_TEXTURE_FORMAT_COLOR_SZ_G8B8;
-        bool eligible = !format && !cube && dim == 2 && levels == 1 &&
-                        filter >= 3 && filter <= 6 && u >= 1 && u <= 4 && v >= 1 && v <= 4;
+        bool eligible = format != 2 && !cube && dim == 2 && levels == 1 &&
+                        filter >= 3 && filter <= 6 &&
+                        (format || (u >= 1 && u <= 4 && v >= 1 && v <= 4));
         unsigned expected = eligible ? (filter & 1 ? 1 : 2) : filter;
         assert(normalize_single(color, cube, dim, levels, filter, u, v, stage) == expected);
         single_cases++;

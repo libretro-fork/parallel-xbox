@@ -322,15 +322,15 @@ void pgraph_glsl_set_psh_state(PGRAPHState *pg, PshState *state)
                   color_format == NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_G8B8;
         unsigned mode = (state->shader_stage_program >> (i * 5)) & 31;
         unsigned mag_filter = GET_MASK(filter, NV_PGRAPH_TEXFILTER0_MAG);
-        /* A one-level swizzled image has no mip selection to reconstruct.
+        /* A one-level image has no mip selection to reconstruct.
          * Reuse the same keys as its corresponding nonmip min/mag filters. */
-        if (color_format == NV097_SET_TEXTURE_FORMAT_COLOR_SZ_G8B8 &&
-            !cubemap && state->dim_tex[i] == 2 &&
+        if (gb && !cubemap && state->dim_tex[i] == 2 &&
             min_filter >= NV_PGRAPH_TEXFILTER0_MIN_BOX_NEARESTLOD &&
             min_filter <= NV_PGRAPH_TEXFILTER0_MIN_TENT_TENT_LOD &&
             GET_MASK(tex_fmt, NV_PGRAPH_TEXFMT0_MIPMAP_LEVELS) == 1) {
             uint32_t address = pgraph_reg_r(pg, NV_PGRAPH_TEXADDRESS0 + i * 4);
-            if (g8b8_mip_address_supported(
+            if (color_format == NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_G8B8 ||
+                g8b8_mip_address_supported(
                     GET_MASK(address, NV_PGRAPH_TEXADDRESS0_ADDRU),
                     GET_MASK(address, NV_PGRAPH_TEXADDRESS0_ADDRV), true, true, 0)) {
                 min_filter = g8b8_single_mip_min_filter(min_filter);

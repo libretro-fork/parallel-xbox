@@ -1,5 +1,7 @@
 # Changelog of the libretro core
 
+- Fixed signed bump filtering and Vulkan min/mag selection when linear G8B8 textures request mip filters, matching their single-level storage.
+
 - Reduce Vulkan driver calls for fallback S3TC mipmaps and cube faces by publishing their descriptors together.
 
 - Decode larger unsupported-BC Vulkan textures directly into final GPU mip/cube images, with compressed snapshots or imported-VRAM reads; retain native BC and CPU fallbacks, and protect retired texture resources until auxiliary uploads finish.

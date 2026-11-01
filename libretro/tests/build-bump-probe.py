@@ -36,6 +36,8 @@ def main():
                         help="program guest maximum mip zero with --mip-filter")
     parser.add_argument("--single-level", action="store_true",
                         help="declare one swizzled mip while retaining a mip-filter request")
+    parser.add_argument("--linear-level", action="store_true",
+                        help="use a 4x4 linear G8B8 image with --single-level")
     parser.add_argument("--prime-address", action="store_true",
                         help="prime a one-level mixed shader with legacy clamp before drawing")
     parser.add_argument("--border-color", type=lambda s: int(s, 0), default=0,
@@ -68,6 +70,8 @@ def main():
     if args.mip_mixed and not args.mip_filter:
         parser.error("--mip-mixed requires --mip-filter")
     explicit_address = args.mip_address_u is not None or args.mip_address_v is not None
+    if args.linear_level and (not args.single_level or args.mip_base_size != 4 or not explicit_address):
+        parser.error("--linear-level requires --single-level, 4x4 and explicit addresses")
     if args.prime_address and not (args.single_level and args.mip_mixed and explicit_address):
         parser.error("--prime-address requires a single-level mixed probe with explicit addresses")
     if explicit_address and (args.mip_clamp or args.mip_clamp_axis):
@@ -114,6 +118,8 @@ def main():
             defines.append("-DBUMP_FILTER_MIXED_PROBE")
             defines.append(f"-DBUMP_MIXED_BIAS={int(args.lod_bias * 256) & 0x1fff}")
         if args.mip_filter:
+            if args.linear_level:
+                defines.append("-DBUMP_LINEAR_LEVEL")
             if args.single_level:
                 defines.append(f"-DBUMP_SINGLE_MIP_LOG={args.mip_base_size.bit_length() - 1}")
             if args.prime_address:
@@ -204,7 +210,7 @@ def main():
                         maximum = 1 if (i // 3) % 2 else 2
                     if args.base_only or args.single_level:
                         maximum = 0
-                    writer.writerow([i, "swizzled", "mixed_mip_color" if args.mip_mixed else "mip_color", "BG", channels,
+                    writer.writerow([i, "linear" if args.linear_level else "swizzled", "mixed_mip_color" if args.mip_mixed else "mip_color", "BG", channels,
                                      {3: "point_nearest_mip", 4: "linear_nearest_mip",
                                       5: "point_linear_mip", 6: "linear_linear_mip"}[args.mip_filter],
                                      ("magnified", "near_magnified", "minified")[i % 3],
