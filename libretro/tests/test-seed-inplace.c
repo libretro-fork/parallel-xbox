@@ -51,6 +51,10 @@ int main(void) {
    s->vsh.programmable.program_data[0][0]=mode==1?0:mode==2?i%7:i;
    s->geom.primitive_mode=i%2?PRIM_TYPE_POINTS:PRIM_TYPE_TRIANGLES;
    s->geom.polygon_front_mode=s->geom.polygon_back_mode=POLY_MODE_FILL;
+   /* Seed files carry object bytes: preserve nonzero padding too. */
+   size_t begin=offsetof(FixedFunctionVshState,texture_matrix_enable)+sizeof(s->vsh.fixed_function.texture_matrix_enable);
+   size_t end=offsetof(FixedFunctionVshState,texgen);assert(end>begin);
+   for(size_t p=begin;p<end;p++)((unsigned char *)&s->vsh.fixed_function)[p]=(unsigned char)(mode==1?11:mode==2?i%7:i);
    s->psh.combiner_control=i*17;s->psh.final_inputs_0=i;
    s->psh.rgb_inputs[i%8]=i;s->psh.alpha_test=i%2;
    s->psh.combiner_dynamic=mode==0 || (mode==2 && i%3==0);

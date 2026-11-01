@@ -1,5 +1,7 @@
 # Changelog of the libretro core
 
+- Preserve complete seed state/key representations with explicit byte copies when compacting or collecting them, including padding used by byte-hashed keys.
+
 - Avoid zero-filling the GL seed module-key destination array before copying complete accepted keys. Keep deterministic temporary-key initialization and the populated-count boundary, removing redundant startup initialization without changing key bytes or ordering.
 
 - Reuse the bound Vulkan pipeline when register writes change only dynamic or unused key bits. Share the key register projection with the dirty check, avoiding repeated key construction, hashing and cache lookup while preserving dynamic-state updates and existing PSO keys.

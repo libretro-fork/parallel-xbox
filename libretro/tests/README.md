@@ -2574,3 +2574,5 @@ falls from 3,552 to 3,536 bytes with unchanged renderer layouts. Hardware
 cache-miss, compilation-stutter and game-latency effects are unmeasured.
 
 The seed-inplace fixture also executes the production module-key collection block with poisoned destination allocation, real ShaderModuleCacheKey/geometry-predicate construction, actual hashes and deduplication. It compares populated key bytes and order against the original zero-filled destination and asserts that the unused tail stays poisoned. Both geometry/no-geometry families and forced hash collisions are covered. Temporary-key zeroing remains essential for deterministic full-union hashes; only redundant destination initialization is removed.
+
+Seed inputs now carry varied nonzero FixedFunctionVshState padding. Compaction and destination collection use explicit memcpy for complete object representations; they do not rely on C structure assignment preserving padding bytes. The real-layout output and hash oracle checks remain byte-exact.

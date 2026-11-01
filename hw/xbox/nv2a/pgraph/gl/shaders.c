@@ -1839,7 +1839,7 @@ static unsigned seed_compact_dynamic_states(ShaderState *states, unsigned count)
             pgraph_seed_hash_set_add(
                 seen, fast_hash((const uint8_t *)state, sizeof(*state)))) {
             if (used != i) {
-                states[used] = *state;
+                memcpy(&states[used], state, sizeof(*state));
             }
             used++;
         }
@@ -1895,7 +1895,7 @@ static void seed_load(PGRAPHGLState *r)
                 if (pgraph_seed_hash_set_add(
                         seen, fast_hash((const uint8_t *)&keys[k],
                                         sizeof(keys[k])))) {
-                    r->seed.mod_keys[n_keys++] = keys[k];
+                    memcpy(&r->seed.mod_keys[n_keys++], &keys[k], sizeof(keys[k]));
                 }
             }
         }
