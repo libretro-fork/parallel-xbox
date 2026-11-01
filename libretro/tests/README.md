@@ -1049,9 +1049,12 @@ read path over 20,000 mutations, work-list changes and failed reads. It covers
 page/region boundaries, RAM-device rejection, address-space attributes and RCU
 lifetime, and asserts zero copied bytes for supported RAM.
 `test-frame-completion.py` compiles the production frame-end handoff against a
-model of the GPU's thread: one request, then waits until the thread has drawn
-the display. 216 combinations cover pending work, racing/spurious wakeups,
-stopping while waiting and no GPU thread. Guest time is not advanced by it.
+model of the GPU's thread: one request, with immediate return for shared-device
+Vulkan and acknowledgement for legacy paths. 864 combinations cover pending
+work, racing/spurious wakeups, stopping, no GPU thread and both Vulkan flags.
+Guest time is not advanced. It also extracts the production request publisher
+for 40,000 requests, including INT_MAX wrap, missing/stopped owners and one kick
+per accepted request.
 
 there is no texture upload at the filter change.
 
@@ -1968,4 +1971,11 @@ consistent; both old and candidate images remain protected through presentation.
 Resized images are destroyed only after their display submission serial settles,
 and full retirement storage defers without image destruction or counter advance.
 Backend fence completion is controlled in this fixture; the separate frame-end
-acknowledgement wait is not removed by this ownership change.
+fixture covers asynchronous shared-device Vulkan and legacy acknowledgement.
+
+
+Shared-device Vulkan now requests a frame-end scanout refresh without waiting for
+FIFO acknowledgement. Presentation consumes the latest claimed publication or
+duplicates the previous image. Legacy GL and Vulkan interop still acknowledge
+frame end synchronously. `test-frame-completion.py` covers all four Vulkan flag
+combinations, including an owner that remains busy in the asynchronous path.

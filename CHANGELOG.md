@@ -1,5 +1,6 @@
 # Changelog of the libretro core
 
+- Remove the CPU frame-end acknowledgement wait for shared-device Vulkan. Present the latest safely published image, repeating the previous image when needed, without adding a queued frame or changing audio cadence.
 - Reuse captured Vulkan texture-key shape, source/palette offsets and cube face spans during RAM staging and GPU S3TC upload, avoiding repeated register/DMA decoding and cube mip-span walks. Pixel-copy behavior is unchanged.
 
 - Protect Vulkan images held by the frontend or being acquired without waiting locks. Keep the previous image held through presentation, and retire resized images by GPU submission completion rather than frame age. Defer when retirement storage is full instead of destroying a potentially live image.
