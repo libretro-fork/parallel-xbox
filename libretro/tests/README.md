@@ -1572,14 +1572,22 @@ unswizzle success branch is preserved. PALETTE_CFLAGS, PALETTE_BINARY and
 PALETTE_SKIP_RUN support optimized or native cross builds; --bench after the
 compiler compares the old unswizzle+convert functions with the fused helper.
 
-`test-ohci-pending.py CHECKOUT [CC]` extracts the production OHCI TD service
-with controlled USB completion and guest-DMA callbacks. Its 784 scenarios cover
-pending/completed IN and OUT ownership, blocked SETUP/IN/OUT transfers, both
-direction encodings, zero-length/partial transfers and normal/error completion.
-The original handler fails the shared-payload integrity assertion. Blocked TDs
-must leave controller state and payload unchanged without any DMA read/copy or
-device lookup; the original TD and following TD then proceed normally. This
-does not implement per-endpoint asynchronous slots or model USB device timing.
+`test-ohci-pending.py CHECKOUT [CC]` extracts production packet ownership,
+TD/ED service, completion and cancellation code with controlled USB and DMA
+callbacks and the production owned-iovec lifecycle. It covers 2,865 scenarios: 40 concurrent endpoints, shared control
+endpoint ownership, reverse completions, growth and allocation-free reuse,
+immediate callback delivery, paused endpoints, device address changes, hub
+subtree removal, rewind, zero/partial transfers, backend errors, DMA faults and bounded TD cycles.
+The ASan/UBSan run checks that callbacks retain stable packet addresses through
+key-table growth/compaction and that freed packets are not used after faults.
+The old single-packet VMState bytes remain as ignored padding, without a
+runtime buffer; outstanding host requests are canceled before state load and
+guest TDs are reissued. Isochronous transfers retain their existing path.
+This fixture does not model physical USB passthrough or external device rewind.
+The core USB ROM also checks button release after repeated state loads. Win64
+validation additionally loaded an original-controller state with zero RAM
+differences, and passed reset and Vulkan reload under strict audio/video
+cadence. OpenGL reload retains its existing restart restriction.
 
 `test-rgb655-unswizzle.py` checks all 65536 RGB655 words against independent
 channel equations, rectangular Morton levels and unaligned source/output.

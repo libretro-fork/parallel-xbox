@@ -27,6 +27,7 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- OHCI asynchronous transfers are tracked per USB endpoint, so one pending transfer no longer stalls unrelated endpoints. Compact endpoint keys and reusable, demand-sized payload buffers replace the shared 8 KiB buffer. Reset, detach and state load cancel host requests; guest descriptors resume after loading. Completions delivered during endpoint flush are consumed in the same service pass. TD service is bounded so malformed descriptor cycles cannot monopolize a frame.
 - Remove unused allocating texture conversion APIs; keep caller-owned outputs and make the S3TC decoder independent of QEMU/GLib headers.
 
 - Compile DSP MAX natively and correct its interpreter subtraction direction, full-accumulator transfer and carry result. Check every legal parallel ALU encoding without interpreter fallback, with 178,209 boundary cases and a repeated MAX program that preserves deferred arithmetic flags.

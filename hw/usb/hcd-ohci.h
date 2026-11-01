@@ -36,6 +36,22 @@ typedef struct OHCIPort {
 
 typedef struct OHCIState OHCIState;
 
+typedef struct OHCIEndpointPacket {
+    USBPacket usb_packet;
+    OHCIState *ohci;
+    uint8_t *buffer;
+    size_t buffer_size;
+    unsigned slot;
+    bool complete;
+} OHCIEndpointPacket;
+
+/* Compact keys stay contiguous: lookup does not chase a linked packet list. */
+typedef struct OHCIEndpointSlot {
+    USBEndpoint *ep;
+    OHCIEndpointPacket *packet;
+    uint32_t td;
+} OHCIEndpointSlot;
+
 struct OHCIState {
     USBBus bus;
     qemu_irq irq;
@@ -87,10 +103,9 @@ struct OHCIState {
 
     /* Active packets.  */
     uint32_t old_ctl;
-    USBPacket usb_packet;
-    uint8_t usb_buf[8192];
-    uint32_t async_td;
-    bool async_complete;
+    OHCIEndpointSlot *packets;
+    unsigned packet_count, packet_capacity;
+    unsigned servicing; /* callback recursion guard, never a wait */
 
     void (*ohci_die)(OHCIState *ohci);
 };
