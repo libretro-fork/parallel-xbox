@@ -2193,9 +2193,18 @@ static VkSampler create_sampler_for_state(PGRAPHState *pg,
         GET_MASK(address, NV_PGRAPH_TEXADDRESS0_ADDRU) <= NV_PGRAPH_TEXADDRESS0_ADDRU_BORDER &&
         GET_MASK(address, NV_PGRAPH_TEXADDRESS0_ADDRV) >= NV_PGRAPH_TEXADDRESS0_ADDRU_WRAP &&
         GET_MASK(address, NV_PGRAPH_TEXADDRESS0_ADDRV) <= NV_PGRAPH_TEXADDRESS0_ADDRU_BORDER;
+    /* Nonmip color filters need the same min/mag choice even when the
+     * image contains a mip chain. Linear storage also ignores mip requests. */
+    bool mixed_color_lod0 = !mipmap_en && state.dimensionality == 2 &&
+        !state.cubemap && !state.border && !f_basic.depth &&
+        vk_min_filter != vk_mag_filter &&
+        min_filter >= NV_PGRAPH_TEXFILTER0_MIN_BOX_LOD0 &&
+        min_filter <= NV_PGRAPH_TEXFILTER0_MIN_TENT_TENT_LOD &&
+        state.color_format != NV097_SET_TEXTURE_FORMAT_COLOR_SZ_G8B8 &&
+        state.color_format != NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_G8B8;
     /* With an intact mip chain, nearest selection is also required: a
      * positive ceiling must not interpolate encoded bytes from mip one. */
-    if (mixed_g8b8_clamped) {
+    if (mixed_g8b8_clamped || mixed_color_lod0) {
         mipmap_nearest = true;
     }
 
@@ -2219,7 +2228,7 @@ static VkSampler create_sampler_for_state(PGRAPHState *pg,
         .mipmapMode = mipmap_nearest ? VK_SAMPLER_MIPMAP_MODE_NEAREST :
                                        VK_SAMPLER_MIPMAP_MODE_LINEAR,
         .minLod = mipmap_en ? MIN(state.min_mipmap_level, state.levels - 1) : 0.0,
-        .maxLod = mixed_g8b8_lod0 || mixed_g8b8_clamped ? 0.25f :
+        .maxLod = mixed_g8b8_lod0 || mixed_g8b8_clamped || mixed_color_lod0 ? 0.25f :
                   mipmap_en ? MIN(state.max_mipmap_level, state.levels - 1) : 0.0f,
         .mipLodBias = lod_bias,
         .pNext = sampler_next_struct,

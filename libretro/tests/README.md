@@ -211,6 +211,20 @@ and 1,920 unchanged count-one/swizzled pixels per backend. Raw counts 0, 2 and
 keeping `--linear-level` storage fixed at one image. Linear texture shapes
 ignore raw mip counts and clamps; signed G8B8 shader selection follows that rule.
 
+`test-native-color-sampler.py CHECKOUT [CC]` checks 381,024 production Vulkan
+sampler policies across supported formats, image levels, min/mag modes, clamp
+values, dimensions, cubes, embedded borders and format filtering support.
+`test-native-color-lod0.py CHECKOUT PARENT CANDIDATE HARNESS SCRATCH` checks
+5,376 native RGBA8/RGB565 scalar cases and 1,344 exact matching-filter/G8B8
+parent pixels per backend. Linear and swizzled layouts, six biases, Force
+LOD0 and contrasting lower mip data expose both filter-choice and accidental
+mip-blending failures. `build-bump-probe.py --native-color [rgba8|rgb565]`
+uses 16 independent palettes with `--mixed` or `--color`;
+`--native-mip-chain` retains nonmip filters with a contrasting second image level.
+The Vulkan policy follows the Khronos nonmip emulation rule: a 0.25 LOD ceiling
+preserves the min/mag choice, and nearest mip selection keeps reads at zero.
+Depth, cubes, embedded borders, convolution and existing G8B8 policies are unchanged.
+
 `test-g8b8-single-level.py CHECKOUT PARENT CANDIDATE HARNESS SCRATCH` checks
 one-level swizzled G8B8 images requesting mip-filter modes 3 through 6.
 It covers mixed min/mag, all wrap/edge/mirror/border pairs, LOD bias,
@@ -1479,7 +1493,7 @@ The test reports whether the validation layer is available.
 reuse against 20,000 delayed same-queue workloads. It checks newest-first probes,
 all completion frontiers, shuffled slot order, reuse and mandatory fence resets.
 Eight completed submissions require one status query; older slots already
-covered by that completion skip waits, while unfinished slots still wait.
+covered by that completion skip waits; the shutdown drain still waits for unfinished slots. Drawing now uses the separate nonblocking slot-acquisition path.
 [Vulkan fence ordering](https://docs.vulkan.org/spec/latest/chapters/synchronization.html#synchronization-fences-signaling)
 covers earlier commands and fence signal operations on the same queue.
 
@@ -1914,3 +1928,13 @@ The Vulkan S3TC uploader publishes all source/image descriptors in one driver ca
 The GL readpixels flip fixture explicitly checks AVX2, SSE2 and portable routes (14,400 cases each). The SSE2 route removes the heap row temporary on supported x86 targets; AVX2 remains preferred. Release benchmark mode alternates old/new order across eight rounds. Forced SSE2 measurements on a modern CPU do not establish performance on all older CPUs or game FPS.
 
 `test-gl-report-storage.py CHECKOUT [CC]` runs production GL report handling, queue primitives and object pool through 1,526 schedules / 15,051 query lifetimes: no separate allocation for inline lists, same-object queue handoff, geometric overflow, scale rounding, FIFO availability, clear, blocking drain, pool exhaustion, teardown and reinitialization. Query GL calls use deterministic stubs. `GL_REPORT_STORAGE_CFLAGS`, `GL_REPORT_STORAGE_BINARY` and `GL_REPORT_STORAGE_SKIP_RUN=1` support sanitized and native runs.
+### Nonblocking Vulkan display slot acquisition
+
+`python3 libretro/tests/test-vk-display-slot.py .` extracts production slot
+acquisition, the early render admission boundary and the cached-scanout retry
+condition. Busy, completed, cached-completed and unused slots are checked for
+bounded queries, reset ordering and preservation of published-frame counters.
+Repeated busy attempts leave work and slot rotation untouched; a mode-only
+change remains eligible for retry. The drawing path no longer calls the fence
+wait helper; shutdown draining retains it. This does not remove the separate
+libretro frame-end acknowledgement wait or establish frontend image retirement.

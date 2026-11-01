@@ -439,6 +439,7 @@ typedef struct PGRAPHVkDisplayState {
     uint32_t last_line_offset;
     unsigned int last_mode_width, last_mode_height, last_scale;
     bool last_interlaced;
+    bool retry_pending; /* next display slot was busy: do not lose mode-only redraw */
     /* The frontend found nothing new: look at the scanout again (a front
      * buffer drawn to in place, the video overlay) */
     retro_atomic_int_t check_pending;

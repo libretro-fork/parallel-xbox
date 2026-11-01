@@ -102,7 +102,7 @@ def expected_mip(case, force_lod0):
 def expected(case, force_lod0=False):
     if case["mode"] in ("mip_color", "mixed_mip_color"):
         return expected_mip(case, force_lod0)
-    mixed = case["mode"] == "mixed_color"
+    mixed = case["mode"] in ("mixed_color", "native_mixed")
     if mixed:
         lod = {"magnified": -3, "near_magnified": -1, "minified": 2}[case["coordinate"]]
         minified = lod + float(case.get("lod_bias", 0)) > 0
@@ -112,6 +112,16 @@ def expected(case, force_lod0=False):
         coordinate = ("left_center", "midpoint", "right_center").index(case["coordinate"])
         linear = case["filter"] == "linear"
         weight = coordinate / 2 if linear else int(coordinate != 0)
+    if case["mode"] in ("native_color", "native_mixed"):
+        palette = int(case["native_palette"])
+        first = (255, 16 + palette * 11, 32 + palette * 7, 240 - palette * 9)
+        second = (255, 224 - palette * 9, 208 - palette * 7, 16 + palette * 11)
+        if case.get("native_format") == "rgb565":
+            def quantized(color):
+                return (255, (color[1] >> 3) * 255 / 31,
+                        (color[2] >> 2) * 255 / 63, (color[3] >> 3) * 255 / 31)
+            first, second = quantized(first), quantized(second)
+        return [math.floor(mix(a, b, weight) + 0.5) for a, b in zip(first, second)]
     signs = case["signed_channels"]
     if case["mode"] in ("color", "mixed_color"):
         result = []

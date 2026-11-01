@@ -23,7 +23,7 @@ parameters = re.search(r"/\* Linear textures don't support mipmapping \*/.*?^   
 vk_source = (repo / "hw/xbox/nv2a/pgraph/vk/texture.c").read_text()
 vk_lod0 = re.search(r"    bool mixed_g8b8_lod0 = .*?;", vk_source, re.S).group()
 vk_clamped = re.search(r"    bool mixed_g8b8_clamped = .*?;", vk_source, re.S).group()
-vk_nearest = re.search(r"    if \(mixed_g8b8_clamped\) \{.*?^    \}", vk_source, re.S | re.M).group()
+vk_nearest = re.search(r"    if \(mixed_g8b8_clamped(?: \|\| mixed_color_lod0)?\) \{.*?^    \}", vk_source, re.S | re.M).group()
 vk_ceiling = re.search(r"\.maxLod = (.*?),\n\s+\.mipLodBias", vk_source, re.S).group(1)
 code = r'''
 #include <assert.h>
@@ -81,6 +81,7 @@ static float vk_clamped_maximum(TextureShape state, unsigned min_filter,
     unsigned mip_levels = linear ? 1 : state.levels;
     /* VK_LOD0 */
     bool mipmap_nearest = linear || mip_levels == 1 || min_filter == 3 || min_filter == 4;
+    bool mixed_color_lod0 = false;
     /* VK_CLAMPED */
     /* VK_NEAREST */
     *nearest = mipmap_nearest;

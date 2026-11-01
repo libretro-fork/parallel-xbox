@@ -1246,11 +1246,8 @@ static void create_frame_sync(PGRAPHState *pg)
     }
 }
 
-/* The frame's last submission, waited for: its command buffer and the
- * image can be recorded and drawn again. Our own fence, on our own
- * submission; by the time a sync index comes round again the frontend has
- * waited for its frame at that index, which came after, so this is
- * normally already signalled. */
+/* Shutdown drain: retire the slot's last submission before destroying its
+ * resources. Drawing uses try_frame_sync instead and never waits here. */
 static void wait_frame_sync(PGRAPHVkState *r, struct PGRAPHVkFrameSync *s)
 {
     if (s->pending) {
@@ -1264,6 +1261,25 @@ static void wait_frame_sync(PGRAPHVkState *r, struct PGRAPHVkFrameSync *s)
         s->pending = false;
         r->display.settled = MAX(r->display.settled, s->serial);
     }
+}
+
+/* Drawing must not wait for slot reuse. Keep the previous image published
+ * while this slot is busy; only reset a fence once completion is established. */
+static bool try_frame_sync(PGRAPHVkState *r, struct PGRAPHVkFrameSync *s)
+{
+    if (s->pending) {
+        if (s->serial > r->display.settled) {
+            VkResult status = vkGetFenceStatus(r->device, s->fence);
+            if (status == VK_NOT_READY) {
+                return false;
+            }
+            VK_CHECK(status);
+        }
+        VK_CHECK(vkResetFences(r->device, 1, &s->fence));
+        s->pending = false;
+        r->display.settled = MAX(r->display.settled, s->serial);
+    }
+    return true;
 }
 
 /* Render-thread retirement query, never a CPU wait. The display can use
@@ -1520,6 +1536,20 @@ static void render_display(PGRAPHState *pg, SurfaceBinding *surface)
     PGRAPHVkState *r = pg->vk_renderer_state;
     PGRAPHVkDisplayState *disp = &r->display;
 
+    unsigned slot = 0;
+    struct PGRAPHVkFrameSync *sync = NULL;
+    if (on_frontend_device()) {
+        slot = disp->next_slot;
+        sync = &disp->sync[slot];
+        if (!try_frame_sync(r, sync)) {
+            /* Retain a retry even when only the display mode changed and
+             * present_scanout has already refreshed its mode cache. */
+            disp->retry_pending = true;
+            return;
+        }
+        disp->retry_pending = false;
+    }
+
     struct PGRAPHVkScanoutMode *mode = &r->scanout_modes[r->scanout_mode];
     bool direct = r->scanout_active && surface == &mode->out;
     unsigned layer_count = direct ? r->scanout_layer_count : 0;
@@ -1553,18 +1583,13 @@ static void render_display(PGRAPHState *pg, SurfaceBinding *surface)
     VkFramebuffer framebuffer = disp->framebuffer;
     VkCommandBuffer cmd;
     struct PGRAPHVkFrameImage *f = NULL;
-    struct PGRAPHVkFrameSync *sync = NULL;
-    unsigned slot = 0;
     if (on_frontend_device()) {
         if (surface->vram_addr != disp->last_surface_addr ||
             surface->draw_time != disp->draw_time) {
             disp->guest_frame_count++;
         }
         disp->last_surface_addr = surface->vram_addr;
-        slot = disp->next_slot;
         disp->next_slot = (slot + 1) % XEMU_LIBRETRO_VK_FRAMES;
-        sync = &disp->sync[slot];
-        wait_frame_sync(r, sync);
         f = frame_image_for_slot(pg, slot);
         target = f->image;
         framebuffer = f->framebuffer;
@@ -1868,7 +1893,8 @@ void pgraph_vk_present_scanout(NV2AState *d)
     d->vga.get_resolution(&d->vga, (int *)&width, (int *)&height);
     const bool interlaced = d->vga.cr[NV_PRMCIO_INTERLACE_MODE] !=
                             NV_PRMCIO_INTERLACE_MODE_DISABLED;
-    if (surface->vram_addr == disp->last_surface_addr &&
+    if (!disp->retry_pending &&
+        surface->vram_addr == disp->last_surface_addr &&
         surface->draw_time == disp->draw_time &&
         !surface->upload_pending &&
         vga_display_params.line_offset == disp->last_line_offset &&
