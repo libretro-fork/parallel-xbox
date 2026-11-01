@@ -25,6 +25,7 @@
 #include "hw/xbox/nv2a/pgraph/pgraph.h"
 #include "hw/xbox/nv2a/pgraph/seed.h"
 #include <encodings/deflate.h>
+#include <streams/file_stream.h>
 #include "data/shader_seeds.bin.h"
 
 #define SEED_MAGIC 0x44455358u /* "XSED" */
@@ -102,10 +103,11 @@ static bool seed_walk(const uint8_t *buf, size_t len,
         }
         memcpy(&sec, buf + off, sizeof(sec));
         off += sizeof(sec);
-        size_t bytes = (size_t)sec.itemsize * sec.count;
-        if (sec.count > SEED_MAX_ITEMS || len - off < bytes) {
+        if (sec.count > SEED_MAX_ITEMS ||
+            (sec.count && sec.itemsize > (len - off) / sec.count)) {
             return false;
         }
+        size_t bytes = (size_t)sec.itemsize * sec.count;
         if (!visit(&sec, buf + off, opaque)) {
             return true;
         }
@@ -314,53 +316,72 @@ void pgraph_seed_read_first(PGRAPHSeedRead *reads, size_t count)
 
 struct SeedRewrite {
     int section;
-    GByteArray *out;
+    RFILE *file;
     uint32_t nsections;
+    bool ok;
 };
+
+static bool seed_stream_write(RFILE *file, const void *data, uint64_t size)
+{
+    return !size || (size <= INT64_MAX &&
+                    filestream_write(file, data, (int64_t)size) == (int64_t)size);
+}
 
 static bool seed_rewrite_visit(const SeedSection *sec, const uint8_t *items,
                                void *opaque)
 {
     struct SeedRewrite *w = opaque;
     if (sec->id == (uint32_t)w->section) {
-        return true; /* replaced by the caller's section */
+        return true;
     }
-    g_byte_array_append(w->out, (const uint8_t *)sec, sizeof(*sec));
-    g_byte_array_append(w->out, items, (size_t)sec->itemsize * sec->count);
-    w->nsections++;
-    return true;
+    if (!w->file) {
+        w->nsections++;
+    } else {
+        /* seed_walk validated this original contiguous header/payload span. */
+        w->ok = seed_stream_write(w->file, items - sizeof(*sec),
+                        sizeof(*sec) + (uint64_t)sec->itemsize * sec->count);
+    }
+    return w->ok;
 }
 
 bool pgraph_seed_write(int section, size_t itemsize, const void *items,
                        unsigned count)
 {
     char *path = seed_path();
-    if (!path || !count || count > SEED_MAX_ITEMS) {
+    if (!path || !count || count > SEED_MAX_ITEMS ||
+        itemsize > UINT32_MAX || itemsize > SIZE_MAX / count) {
         g_free(path);
         return false;
     }
-    struct SeedRewrite w = { .section = section,
-                             .out = g_byte_array_new() };
-    SeedHeader hdr = { .magic = SEED_MAGIC, .version = SEED_VERSION };
-    g_byte_array_append(w.out, (const uint8_t *)&hdr, sizeof(hdr));
-
-    XemuFileMap old;
-    if (xemu_file_map(&old, path)) {
+    XemuFileMap old = { 0 };
+    bool mapped = xemu_file_map(&old, path);
+    struct SeedRewrite w = { .section = section, .ok = true };
+    if (mapped) {
         seed_walk(old.data, old.len, seed_rewrite_visit, &w);
+    }
+    SeedHeader hdr = { .magic = SEED_MAGIC, .version = SEED_VERSION,
+                       .nsections = w.nsections + 1 };
+    w.file = filestream_open_atomic(path);
+    if (w.file) {
+        w.ok = seed_stream_write(w.file, &hdr, sizeof(hdr));
+        if (w.ok && mapped) {
+            seed_walk(old.data, old.len, seed_rewrite_visit, &w);
+        }
+        SeedSection sec = { .id = section, .itemsize = itemsize, .count = count };
+        w.ok = w.ok && seed_stream_write(w.file, &sec, sizeof(sec)) &&
+               seed_stream_write(w.file, items, (uint64_t)itemsize * count);
+    }
+    /* Borrowed spans are consumed before unmapping; replacement follows it. */
+    if (mapped) {
         xemu_file_unmap(&old);
     }
-    SeedSection sec = { .id = section, .itemsize = itemsize, .count = count };
-    g_byte_array_append(w.out, (const uint8_t *)&sec, sizeof(sec));
-    g_byte_array_append(w.out, items, itemsize * count);
-    w.nsections++;
-    memcpy(w.out->data + offsetof(SeedHeader, nsections), &w.nsections,
-           sizeof(w.nsections));
-
-    bool ok = g_file_set_contents(path, (const gchar *)w.out->data,
-                                  w.out->len, NULL);
-    g_byte_array_free(w.out, TRUE);
+    int result = w.file ? filestream_commit_atomic(w.file, path, w.ok) : -1;
+    if (result == 1) {
+        /* Match write_file_atomic: discard a complete but unrenamed temp. */
+        filestream_finish_atomic(path, false);
+    }
     g_free(path);
-    return ok;
+    return result == 0;
 }
 
 GHashTable *pgraph_seed_hash_set_new(void)

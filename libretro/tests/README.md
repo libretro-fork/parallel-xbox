@@ -2704,7 +2704,7 @@ and the renderer interface remain 4,295,312, 5,845,344 and 232 bytes respectivel
 
 `test-sse-native-sqrt.py CHECKOUT [CC]` exercises the production scalar and packed sqrt helpers with actual SoftFloat, both with its normal host shortcuts and with those shortcuts disabled in the oracle. Each oracle runs 393,216 result/status/alias cases across XMM/YMM widths, eight rounding policies, guest flushing, sticky flags and exceptional/random inputs. x86-64 cases poison MXCSR rounding, flushing, masks and sticky flags and require exact restoration. Fallback calls are counted per lane. A negative control removes the rounding check from the sticky-state fast path and must fail. Only the four SSE rounding policies use native instructions; other policies retain software behavior.
 
-Seed merge coverage instruments merged-payload allocation: unchanged/duplicate-only merges allocate none, changed merges allocate exactly the final byte count. Another 512 randomized cases compare an independent hash-only/order/cap oracle, including forced collisions, pointer-vector growth, failed writes and poisoned mapping release. Record bytes are copied before unmapping, and no borrowed pointer survives into the file writer. SEED_VIEW_BINARY and SEED_VIEW_SKIP_RUN support native fixtures. Atomic file-rewrite assembly remains a separate copy opportunity.
+Seed merge coverage instruments merged-payload allocation: unchanged/duplicate-only merges allocate none, changed merges allocate exactly the final byte count. Another 512 randomized cases compare an independent hash-only/order/cap oracle, including forced collisions, pointer-vector growth, failed writes and poisoned mapping release. Record bytes are copied before unmapping, and no borrowed pointer survives into the file writer. SEED_VIEW_BINARY and SEED_VIEW_SKIP_RUN support native fixtures. The streaming file writer removes the separate whole-file assembly buffer.
 
 ### Completion proofs at Vulkan readiness checks
 
@@ -2746,3 +2746,5 @@ a driver memory allocation rather than crashing at the fixed reservation limit.
 The DOA3 character-select crash report identified the render-target allocation
 assertion in an 8x build; its exact Vulkan return code was not present in the
 screenshot. Saved-state entry can have a smaller live set than cold/menu entry.
+
+`test-seed-stream.py CHECKOUT [CC]` executes the production writer and parser against an independent byte-image oracle and injected stream failures. Its 2,560 cases check duplicate/replaced/unknown sections, reserved bytes, zero-length sections, valid malformed prefixes, size overflow, absent mappings, short writes, open/close/rename failure cleanup, direct mapped spans and unmapping before atomic commit. Linux defaults to ASan/UBSan; SEED_STREAM_CFLAGS, SEED_STREAM_BINARY and SEED_STREAM_SKIP_RUN support native Win32/Win64. Seed parsing checks multiplication against remaining input before forming a byte count.

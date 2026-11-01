@@ -1,5 +1,7 @@
 # Changelog of the libretro core
 
+- Stream shader-seed replacements through libretro-common atomic-file primitives instead of assembling a whole-file byte array. Borrow preserved sections while writing the temporary file, unmap before commit, and retain exact section order, valid-prefix behavior and failure cleanup. Reject overflowing malformed section sizes before reading.
+
 - Recover Vulkan image allocations that exceed or fragment the startup reservation instead of treating its fixed capacity as a fatal out-of-memory limit. Reclaim completed images before overflow allocation, preserve in-flight resources and release empty overflow blocks; normal reuse and startup buffer backing remain unchanged.
 
 - Roll back the recent fragment-key canonicalization and texture-program dirty-check optimizations after reported shader-compilation stutter. Restore existing cached/seeded shader identities while retaining earlier rendering fixes and helper-emission improvements.
