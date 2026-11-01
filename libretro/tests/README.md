@@ -2092,6 +2092,17 @@ with encoded RAM textures, including repeated use of one address. Existing fixed
 depth/color/cube/volume/G8B8 controls compare exact parent pixels. Use
 `--assembler yasm` and `--windows-paths` as appropriate.
 
+`test-f16-gather-sampler.py CHECKOUT PARENT CANDIDATE HARNESS SCRATCH`
+compares centered gathers with the four-read F16 implementation and an independent
+2D scalar model: 6,144 exact pixels per API across checkerboard rows/columns,
+exponent boundaries, mixed filters, LOD biases, wrapped coordinates, native
+surface copies and repeated RAM/native use of one address. Matching-filter cases
+also enable Force LOD0. Use the same assembler/Windows path flags as above.
+The shader still decodes each texel before interpolation; only the linear fetch
+changes. Point sampling remains one explicit LOD0 read. A dedicated F16 key bit
+refreshes cached F16 shaders while preserving other shader keys. No runtime
+readback, synchronization or diagnostic code is added. Game FPS effects remain unmeasured.
+
 `test-float-depth-codec.py CHECKOUT [--gpu] [--output DIRECTORY]` verifies shader
 key/seed ABI and fixed-depth byte compatibility. With `--gpu`, `glslc` compiles the
 actual production decoder expressions and a Vulkan fixture checks all 65,536

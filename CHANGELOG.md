@@ -1,5 +1,8 @@
 # Changelog of the libretro core
 
+- Reduce floating-depth bilinear shader reads from four samples to one unfiltered gather in GL and Vulkan, preserving decode-before-filter results without extra CPU/GPU synchronization.
+
+
 - Amortize Vulkan shader-ready cache index compaction with a small sliding window, preserving oldest-first eviction and module reference ownership. Keep miss scans contiguous and outline successful-take bookkeeping; module capacity is unchanged.
 - Skip CPU lookup and thread-identity checks when DSP guards are already retired. Use an atomic inactive flag so external borrowers keep the fast path without touching CPU-owned callback/TLB state.
 

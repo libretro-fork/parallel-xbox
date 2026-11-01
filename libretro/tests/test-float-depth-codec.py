@@ -55,7 +55,7 @@ int main(void) {
    unsigned k=key(format,min,mag,dim,cube,i,true);
    if(format!=0x31||dim!=2||cube)assert(k==1);
    else {
-    assert((k&3)==3);
+    assert((k&19)==19);
     assert(!!(k&4)==(min==2||min==4||min==6||min==7));
     assert(!!(k&8)==(mag==2||mag==4));
    }

@@ -331,7 +331,7 @@ void pgraph_glsl_set_psh_state(PGRAPHState *pg, PshState *state)
             state->dim_tex[i] == 2 && !cubemap && pgraph_is_texture_enabled(pg, i)) {
             bool min_linear = min_filter == 2 || min_filter == 4 ||
                               min_filter == 6 || min_filter == 7;
-            state->shadow_map[i] |= 2u | (min_linear ? 4u : 0u) |
+            state->shadow_map[i] |= 18u | (min_linear ? 4u : 0u) |
                                     ((mag_filter == 2 || mag_filter == 4) ? 8u : 0u);
         }
 
@@ -983,7 +983,8 @@ static const char *shadow_comparison_map[] = {
 
 /* Decode guest F16 before interpolation. A negative texScale tags encoded
  * RAM texels; native GPU surface copies already contain normalized depth.
- * Sample exact texel centers so host sampler filtering never mixes codes. */
+ * Gather at the quad center, away from hardware quad-selection boundaries;
+ * host sampler filtering must never mix encoded texels. */
 static void psh_append_f16_shadow(const struct PixelShader *ps, int i,
                                   const char *tex_remap, MString *vars)
 {
@@ -1008,11 +1009,8 @@ static void psh_append_f16_shadow(const struct PixelShader *ps, int i,
         "if (fdLinear) {\n"
         " vec2 fdPos = fdUV * fdSize - 0.5;\n"
         " fdFrac = fract(fdPos);\n"
-        " vec2 fdBase = (floor(fdPos) + 0.5) / fdSize;\n"
-        " fdRaw = vec4(textureLod(texSamp%d, fdBase, 0.0).r,\n"
-        "  textureLod(texSamp%d, fdBase + vec2(1.0,0.0)/fdSize, 0.0).r,\n"
-        "  textureLod(texSamp%d, fdBase + vec2(0.0,1.0)/fdSize, 0.0).r,\n"
-        "  textureLod(texSamp%d, fdBase + vec2(1.0,1.0)/fdSize, 0.0).r);\n"
+        " vec2 fdQuad = (floor(fdPos) + 1.0) / fdSize;\n"
+        " fdRaw = textureGather(texSamp%d, fdQuad, 0).wzxy;\n"
         "} else {\n"
         " vec2 fdPoint = (floor(fdUV * fdSize) + 0.5) / fdSize;\n"
         " fdRaw = vec4(textureLod(texSamp%d, fdPoint, 0.0).r);\n"
@@ -1025,7 +1023,7 @@ static void psh_append_f16_shadow(const struct PixelShader *ps, int i,
         "} else { fdValue = fdRaw * 511.9375; }\n"
         "t%d_depth = vec4(mix(mix(fdValue.x,fdValue.y,fdFrac.x),\n"
         "                     mix(fdValue.z,fdValue.w,fdFrac.x),fdFrac.y),0.0,1.0,0.0);\n"
-        "}\n", i, i, i, i, i, i, i);
+        "}\n", i, i, i, i);
 }
 
 static void psh_append_shadowmap(const struct PixelShader *ps, int i, bool compare_z, MString *vars)

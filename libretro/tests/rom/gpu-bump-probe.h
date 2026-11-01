@@ -298,7 +298,14 @@ static void bump_mixed_triangle(u32 layout, u32 footprint)
          * the exponent by two; these fixture values are finite and nonzero. */
         push(tex_u[layout][footprint][vertex] + 0x01000000u);
 #else
+#ifdef BUMP_NATIVE_F16_SHIFT
+        union { u32 bits; float value; } shifted;
+        shifted.bits = tex_u[layout][footprint][vertex];
+        shifted.value += BUMP_NATIVE_F16_SHIFT;
+        push(shifted.bits);
+#else
         push(tex_u[layout][footprint][vertex]);
+#endif
 #endif
 #ifdef BUMP_FILTER_CLAMP_PROBE
 #ifdef BUMP_LINEAR_LEVEL
@@ -307,7 +314,11 @@ static void bump_mixed_triangle(u32 layout, u32 footprint)
         push(tex_v[layout][footprint][vertex]);
 #endif
 #else
+#ifdef BUMP_NATIVE_F16_GRID
+        push(0x3fa00000u); /* V 1.25, fractional texel weight 0.75. */
+#else
         push(layout ? 0x3e800000u : 0x3f000000u);
+#endif
 #endif
 #ifdef BUMP_NATIVE_DEPTH
         push(BUMP_NATIVE_DEPTH_REF_BITS);
@@ -539,7 +550,11 @@ static void bump_filter_probe(void)
         u32 f16_second = codes[15 - (id / 6) % 16];
 #endif
         ram32(bump_address, f16_first | (f16_second << 16));
+#ifdef BUMP_NATIVE_F16_GRID
+        ram32(bump_address + 4, f16_second | (f16_first << 16));
+#else
         ram32(bump_address + 4, f16_first | (f16_second << 16));
+#endif
 #else
         format = swizzled_layout ? 0x2c : 0x30; /* Fixed D16 */
         ram32(bump_address, 0xe0002000u); ram32(bump_address + 4, 0xe0002000u);
@@ -563,15 +578,29 @@ static void bump_filter_probe(void)
             method(NV097_SET_SURFACE_COLOR_OFFSET, 0x03800000u);
             method(NV097_SET_SURFACE_ZETA_OFFSET, bump_address);
             method(NV097_SET_ZSTENCIL_CLEAR_VALUE, f16_first);
-#ifdef BUMP_NATIVE_F16_CONSTANT
+#if defined(BUMP_NATIVE_F16_CONSTANT) && !defined(BUMP_NATIVE_F16_GRID)
             method(NV097_SET_CLEAR_RECT_H, 1u << 16);
 #else
             method(NV097_SET_CLEAR_RECT_H, 0);
 #endif
+#ifdef BUMP_NATIVE_F16_GRID
+            method(NV097_SET_CLEAR_RECT_V, 0);
+#else
             method(NV097_SET_CLEAR_RECT_V, 1u << 16);
+#endif
             method(NV097_SET_DEPTH_MASK, 1);
             method(NV097_CLEAR_SURFACE, 1);
-#ifndef BUMP_NATIVE_F16_CONSTANT
+#ifdef BUMP_NATIVE_F16_GRID
+            method(NV097_SET_ZSTENCIL_CLEAR_VALUE, f16_second);
+            method(NV097_SET_CLEAR_RECT_H, 0x00010001u);
+            method(NV097_CLEAR_SURFACE, 1);
+            method(NV097_SET_CLEAR_RECT_H, 0);
+            method(NV097_SET_CLEAR_RECT_V, 0x00010001u);
+            method(NV097_CLEAR_SURFACE, 1);
+            method(NV097_SET_ZSTENCIL_CLEAR_VALUE, f16_first);
+            method(NV097_SET_CLEAR_RECT_H, 0x00010001u);
+            method(NV097_CLEAR_SURFACE, 1);
+#elif !defined(BUMP_NATIVE_F16_CONSTANT)
             method(NV097_SET_ZSTENCIL_CLEAR_VALUE, f16_second);
             method(NV097_SET_CLEAR_RECT_H, 0x00010001u);
             method(NV097_CLEAR_SURFACE, 1);

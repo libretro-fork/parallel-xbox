@@ -41,6 +41,10 @@ def main():
                         help="use a 4x4 linear G8B8 image with --single-level")
     parser.add_argument("--native-color", nargs="?", choices=("rgba8", "rgb565"), const="rgba8",
                         help="RGBA8 native sampler colors with --mixed or --color")
+    parser.add_argument("--native-depth-float-grid", action="store_true",
+                        help="distinct rows and columns for F16 quad validation")
+    parser.add_argument("--native-depth-float-shift", type=int, choices=(-2,0,2), default=0,
+                        help="wrap the F16 footprint by a whole 2-texel period")
     parser.add_argument("--native-depth-float", action="store_true")
     parser.add_argument("--native-depth-float-reference", type=float, default=1.0)
     parser.add_argument("--native-depth-float-constant", action="store_true")
@@ -106,7 +110,7 @@ def main():
         parser.error("--linear-level requires --single-level, 4x4 and explicit addresses")
     if args.native_color and not ((args.mixed or args.color) and not args.mip_filter):
         parser.error("--native-color requires --mixed or --color without mip filters")
-    if (args.native_depth_float_constant or args.native_depth_float_alias or args.native_depth_float_reuse or args.native_depth_float_alias_ramp) and not args.native_depth_float:
+    if (args.native_depth_float_constant or args.native_depth_float_alias or args.native_depth_float_reuse or args.native_depth_float_alias_ramp or args.native_depth_float_grid or args.native_depth_float_shift) and not args.native_depth_float:
         parser.error("F16 source controls require --native-depth-float")
     if (args.native_depth_float_reuse or args.native_depth_float_alias_ramp) and not args.native_depth_float_alias:
         parser.error("F16 reuse/ramp requires --native-depth-float-alias")
@@ -185,6 +189,10 @@ def main():
                 defines += ["-DBUMP_NATIVE_DEPTH", f"-DBUMP_NATIVE_DEPTH_REF_BITS={struct.unpack('<I',struct.pack('<f',depth_reference))[0]}"]
             if args.native_depth_float:
                 defines.append("-DBUMP_NATIVE_F16")
+                if args.native_depth_float_grid:
+                    defines.append("-DBUMP_NATIVE_F16_GRID")
+                if args.native_depth_float_shift:
+                    defines.append(f"-DBUMP_NATIVE_F16_SHIFT={args.native_depth_float_shift}")
                 if f16_constant:
                     defines.append("-DBUMP_NATIVE_F16_CONSTANT")
                 if args.native_depth_float_alias:
@@ -272,7 +280,7 @@ def main():
         writer.writerow(["id", "layout", "mode", "axis", "signed_channels", "filter",
                          "coordinate", "result_address", "lod_bias", "mip_filter",
                          "max_lod", "wrap_period", "mag_filter", "address_mode",
-                         "sample_u", "sample_v", "min_lod", "sampler_transition", "base_size", "border_color", "mip_count", "native_palette", "native_format", "native_chain", "native_min_filter", "native_mag_filter", "native_min_lod", "native_base_only", "native_cube_face", "native_cube_variant", "native_cube_lod", "native_volume", "native_volume_slice", "native_depth_reference", "native_depth_float", "native_depth_constant", "native_depth_alias"])
+                         "sample_u", "sample_v", "min_lod", "sampler_transition", "base_size", "border_color", "mip_count", "native_palette", "native_format", "native_chain", "native_min_filter", "native_mag_filter", "native_min_lod", "native_base_only", "native_cube_face", "native_cube_variant", "native_cube_lod", "native_volume", "native_volume_slice", "native_depth_reference", "native_depth_float", "native_depth_constant", "native_depth_alias", "native_depth_grid"])
         for i in range(192):
             if args.luminance_profile:
                 flags = (i // 6) % 16
@@ -327,7 +335,7 @@ def main():
                                          args.min_lod, int(args.native_base_only),
                                          args.native_cube_face if args.native_cube_face is not None else "",
                                          i // 96 if args.native_cube_face is not None else "",
-                                         (-3,-1,-2)[i % 3] if args.native_cube_face is not None else "", int(args.native_volume), args.native_volume_slice if args.native_volume else "", depth_reference if args.native_depth else "", int(args.native_depth_float), int(f16_constant), int(args.native_depth_float_alias and ((i//6)%16)&1)]
+                                         (-3,-1,-2)[i % 3] if args.native_cube_face is not None else "", int(args.native_volume), args.native_volume_slice if args.native_volume else "", depth_reference if args.native_depth else "", int(args.native_depth_float), int(f16_constant), int(args.native_depth_float_alias and ((i//6)%16)&1), int(args.native_depth_float_grid)]
                     if args.native_depth_float:
                         row[1] = "linear"
                         row[22] = "f16_depth"

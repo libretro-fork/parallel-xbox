@@ -131,6 +131,8 @@ def expected(case, force_lod0=False):
             palette=int(case["native_palette"])
             first=codes[palette]
             second=first if case.get("native_depth_constant") == "1" else codes[15-palette]
+            if case.get("native_depth_grid") == "1":
+                weight = 0.375 if linear else 0.0
             depth=mix(decode(first),decode(second),weight)
             return [255 if depth > float(case["native_depth_reference"]) else 0] * 4
         depth = mix(0x2000, 0xe000, weight)
