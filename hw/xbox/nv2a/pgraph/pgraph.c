@@ -683,8 +683,14 @@ void nv2a_fifo_kick_safety(void)
     }
 }
 
-int nv2a_get_framebuffer_surface(void)
+int nv2a_get_framebuffer_surface(unsigned *width, unsigned *height)
 {
+    if (width) {
+        *width = 0;
+    }
+    if (height) {
+        *height = 0;
+    }
     NV2AState *d = g_nv2a;
     if (!d) {
         return 0;
@@ -697,7 +703,7 @@ int nv2a_get_framebuffer_surface(void)
     const PGRAPHRenderer *renderer =
         retro_atomic_load_acquire_ptr(&pg->renderer);
     if (renderer && renderer->ops.get_framebuffer_surface) {
-        s = renderer->ops.get_framebuffer_surface(d);
+        s = renderer->ops.get_framebuffer_surface(d, width, height);
     }
 
     return s;

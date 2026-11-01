@@ -23,7 +23,9 @@
 
 void nv2a_init(PCIBus *bus, int devfn, MemoryRegion *ram);
 void nv2a_context_init(void);
-int nv2a_get_framebuffer_surface(void);
+/* Acquire the display image and its resolved dimensions. Either output may
+ * be NULL; missing images report zero dimensions. Release after use. */
+int nv2a_get_framebuffer_surface(unsigned *width, unsigned *height);
 void nv2a_profile_present(void);
 void nv2a_release_framebuffer_surface(void);
 /* VK display info for libretro VK HW render interface.

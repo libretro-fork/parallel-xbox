@@ -3132,7 +3132,8 @@ static void lr_present_video(void)
     /* ---- OpenGL path ---- */
     if (!use_vulkan) {
         /* Get NV2A framebuffer texture */
-        GLuint tex = nv2a_get_framebuffer_surface();
+        unsigned tex_w = 0, tex_h = 0;
+        GLuint tex = nv2a_get_framebuffer_surface(&tex_w, &tex_h);
         uintptr_t fbo = hw_render.get_current_framebuffer();
 
         unsigned width = 640;
@@ -3142,16 +3143,10 @@ static void lr_present_video(void)
             /* The frame at the size it was rendered at - Internal
              * Resolution Scale times the guest's output - not squeezed back
              * into 640x480, which undid the scaling on GL (NNshi) */
-            GLint tex_w = 0, tex_h = 0;
-            glBindTexture(GL_TEXTURE_2D, tex);
-            glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH, &tex_w);
-            glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_HEIGHT, &tex_h);
-            glBindTexture(GL_TEXTURE_2D, 0);
             if (tex_w > 0 && tex_h > 0 &&
-                (unsigned)tex_w <= declared_max_width &&
-                (unsigned)tex_h <= declared_max_height) {
-                width = (unsigned)tex_w;
-                height = (unsigned)tex_h;
+                tex_w <= declared_max_width && tex_h <= declared_max_height) {
+                width = tex_w;
+                height = tex_h;
             }
             blit_nv2a_texture(tex, width, height, fbo);
             draw_gl_crosshairs(width, height, fbo);
@@ -3227,7 +3222,7 @@ static void lr_present_video(void)
 
     if (!vk_display_initialized) {
         /* First frame: blocking sync to initialize display image */
-        int tex = nv2a_get_framebuffer_surface();
+        int tex = nv2a_get_framebuffer_surface(NULL, NULL);
         nv2a_release_framebuffer_surface();
         if (tex) {
             vk_display_initialized = true;

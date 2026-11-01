@@ -1984,3 +1984,9 @@ frame end synchronously. `test-frame-completion.py` covers all four Vulkan flag
 combinations, including an owner that remains busy in the asynchronous path.
 
 `test-null-chardev.py CHECKOUT [CC]` runs the production sink and generic write/log paths through 960 combinations of short writes, retry/error handling, best-effort logging and zero-length requests. Unlogged null sinks take no locks and never read the payload; logged or real backends preserve their existing behavior. NULL source/INT_MAX and negative-length cases are covered. `NULL_CHARDEV_CFLAGS`, `NULL_CHARDEV_BINARY` and `NULL_CHARDEV_SKIP_RUN=1` support sanitized and native fixtures.
+
+OpenGL presentation receives width/height with the acquired resolved texture.
+The display slot already includes scanout clipping and internal-resolution
+scale; presentation does not query texture-level dimensions from the driver.
+The GPU display ROM covers clipping, mode changes and overlays. Repeat it at
+internal scale 2 to check geometry and pixels after display-texture recreation.
