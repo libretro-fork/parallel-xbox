@@ -2291,6 +2291,23 @@ effects are unmeasured; unfinished submissions still have their existing wait.
 
 `test-lru-promote.py CHECKOUT [CC]` compares production lookup with the original unconditional unlink/reinsert algorithm over 30,000 operations. It checks exact global/bin ordering, callbacks, counts, collisions, blocked eviction and flush/reuse. A separate 10,000-hit test maps the live MRU container/node read-only: the optimized lookup must not write its links. The original source faults on that negative control. Linux defaults to ASan/UBSan. LRU_PROMOTE_SOURCE, LRU_PROMOTE_CFLAGS, LRU_PROMOTE_BINARY and LRU_PROMOTE_SKIP_RUN support parent/native runs; -DBENCH enables exploratory hit/collision/miss timing with small keys. Callbacks still run on every hit; this only removes redundant container-link updates.
 
+`test-g8b8-mip-boundary.py CHECKOUT [--cc CC] [--output DIR]` executes the
+production explicit-mip signed G8B8 generator on an OpenGL compute context.
+Native Windows accepts `--epoxy-root DIRECTORY` for a separate libepoxy build.
+The independent scalar oracle checks 1,327,104 signed components in 162 variants:
+both GL/Vulkan generation branches, all nine wrap/mirror/edge address pairs,
+matching point/bilinear/trilinear and mixed min/mag filters, lower clamps zero,
+one and four, integer/fractional LODs and a 64x32 chain through its 1x1 tail.
+Coordinates lie just before/after texel boundaries and include negative periods.
+Each mip uses different byte patterns with signed discontinuities.
+
+A test uniform supplies the host LOD-query result; the production shader still
+selects levels, applies lower clamps, addresses integer taps, decodes each tap
+and interpolates. Both generated branches execute in OpenGL here; this does not
+validate native Vulkan execution or host derivative/query behavior. Existing guest
+GL/Vulkan tests cover actual sampler queries. A deliberately shifted fetch fails
+the scalar oracle. Test buffers/readbacks are confined to the standalone fixture.
+
 The retirement fixture also extracts the production full-slot drain. Eighty
 schedules cover both slot orders, every pending mask, known/unknown completion
 and serial rollover. Draining waits only on the latest unproved submission's
