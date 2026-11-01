@@ -227,7 +227,7 @@ static bool s3tc_decode_levels(PGRAPHState *pg, VkCommandBuffer cmd,
 }
 
 static bool upload_s3tc_image_gpu(PGRAPHState *pg, VkCommandBuffer cmd,
-    int texture_idx, TextureBinding *binding, unsigned skip_layers)
+    TextureBinding *binding, unsigned skip_layers)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
     const TextureShape *s = &binding->key.state;
@@ -235,9 +235,9 @@ static bool upload_s3tc_image_gpu(PGRAPHState *pg, VkCommandBuffer cmd,
         (size_t)s->width * s->height * s->depth < 65536) return false;
     S3TCUploadLevel levels[96];
     unsigned format = kelvin_format_to_s3tc_format(s->color_format);
-    size_t stride = s->cubemap ? pgraph_get_cubemap_face_length(pg, *s) : 0;
+    size_t stride = s->cubemap ? binding->key.texture_length / 6 : 0;
     unsigned count = s3tc_plan_levels(s, &binding->image_ci,
-        pgraph_get_texture_phys_addr(pg, texture_idx), stride, skip_layers,
+        binding->key.texture_vram_offset, stride, skip_layers,
         format == S3TC_DECOMPRESS_FORMAT_DXT1 ? 8 : 16, levels);
     return s3tc_decode_levels(pg, cmd, binding, levels, count, format);
 }

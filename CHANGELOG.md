@@ -1,5 +1,7 @@
 # Changelog of the libretro core
 
+- Reuse captured Vulkan texture-key shape, source/palette offsets and cube face spans during RAM staging and GPU S3TC upload, avoiding repeated register/DMA decoding and cube mip-span walks. Pixel-copy behavior is unchanged.
+
 - Skip unused palette DMA resolution during non-indexed Vulkan texture staging, avoiding redundant descriptor work and validation of palette state those formats never read. Indexed texture uploads are unchanged.
 - Vulkan mip-filtered 2D color textures now preserve min/mag selection at LOD0, including single-level images, guest clamps and Force LOD0, without reading lower mips.
 

@@ -71,7 +71,7 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL validation(VkDebugUtilsMessageSeverityFlag
 #define ROUND_UP(a,b) (((a)+(b)-1)&~((b)-1))
 #define container_of(p,t,m) ((t *)((char *)(p)-offsetof(t,m)))
 typedef struct {unsigned width,height,depth,levels,dimensionality,color_format;bool cubemap,border;} TextureShape;
-typedef struct {VkImage image;VkImageCreateInfo image_ci;VkImageLayout current_layout;bool logo,s2t_borrowed;struct {TextureShape state;} key;} TextureBinding;
+typedef struct {VkImage image;VkImageCreateInfo image_ci;VkImageLayout current_layout;bool logo,s2t_borrowed;struct {TextureShape state;size_t texture_vram_offset,texture_length;} key;} TextureBinding;
 typedef struct {VkBuffer buffer;VkDeviceSize buffer_size;uint8_t *mapped;} StorageBuffer;
 typedef struct {
  VkDevice device;VkPhysicalDevice physical_device;VkPhysicalDeviceProperties device_props;VkPipelineCache vk_pipeline_cache;
@@ -96,7 +96,7 @@ static size_t memory_region_size(size_t *p){return *p;}
 static bool pgraph_is_texture_format_compressed(PGRAPHState *p,unsigned f){(void)p;return f>=1&&f<=3;}
 static unsigned kelvin_format_to_s3tc_format(unsigned f){assert(f>=1&&f<=3);return f-1;}
 static size_t pgraph_get_cubemap_face_length(PGRAPHState *p,TextureShape s){(void)s;return p->face_stride;}
-static size_t pgraph_get_texture_phys_addr(PGRAPHState *p,int i){(void)i;return p->source;}
+static size_t pgraph_get_texture_phys_addr(PGRAPHState *p,int i){(void)p;(void)i;assert(!"upload must use binding metadata without resolving DMA again");return 0;}
 static VkDeviceSize pgraph_vk_staging_alloc(PGRAPHState *pg,size_t size,size_t align,uint8_t **out)
 {pg->src=ROUND_UP(pg->src,align);assert(pg->src+size<=pg->vk_renderer_state->storage_buffers[0].buffer_size);size_t off=pg->src;pg->src+=size;pg->written+=size;*out=pg->vk_renderer_state->storage_buffers[0].mapped+off;return off;}
 static void pgraph_vk_staging_flush(PGRAPHState *p,VkDeviceSize off,size_t size){(void)p;(void)off;(void)size;}
@@ -143,7 +143,9 @@ static Case record_case(PGRAPHVkState *r, PGRAPHState *pg, VkCommandBuffer cmd,
     NV2AState *nv=container_of(pg,NV2AState,pgraph);
     unsigned mode=shape.color_format-1,bs=mode?16:8;
     pg->source=512+(queued?c.slot*1024*1024:0)+((kind==1||kind==3)?0:1);
+    b->key.texture_vram_offset=pg->source;
     pg->face_stride=1024*1024;
+    b->key.texture_length=shape.cubemap?pg->face_stride*6:0;
     S3TCUploadLevel levels[96];unsigned n=s3tc_plan_levels(&shape,&b->image_ci,pg->source,pg->face_stride,skip,bs,levels);
     assert(n && n==(shape.cubemap?(6-__builtin_popcount(skip)):1)*shape.levels);
     uint32_t random=cases+77;
@@ -204,7 +206,7 @@ static Case record_case(PGRAPHVkState *r, PGRAPHState *pg, VkCommandBuffer cmd,
         assert(levels[j].size<=65536);
         vkCmdUpdateBuffer(cmd,test_ram_handle,levels[j].source,levels[j].size,nv->vram_ptr+levels[j].source);
     }
-    if((size_t)shape.width*shape.height*shape.depth>=65536) assert(upload_s3tc_image_gpu(pg,cmd,0,b,skip));
+    if((size_t)shape.width*shape.height*shape.depth>=65536) assert(upload_s3tc_image_gpu(pg,cmd,b,skip));
     else assert(s3tc_decode_levels(pg,cmd,b,levels,n,mode));
     size_t packed=0;for(unsigned j=0;j<n;j++)packed+=ROUND_UP(levels[j].size,16);
     assert(pg->written==((kind==1||kind==3)?0:packed));
@@ -246,7 +248,7 @@ static void check_rejections(PGRAPHVkState *r,PGRAPHState *pg,VkCommandBuffer cm
     uint32_t z=r->device_props.limits.maxComputeWorkGroupCount[2];r->device_props.limits.maxComputeWorkGroupCount[2]=0;assert(!s3tc_decode_levels(pg,cmd,&b,&l,1,2));r->device_props.limits.maxComputeWorkGroupCount[2]=z;
     VkDeviceSize size=r->storage_buffers[0].buffer_size;r->storage_buffers[0].buffer_size=16;r->vram_buffer=VK_NULL_HANDLE;assert(!s3tc_decode_levels(pg,cmd,&b,&l,1,2));r->storage_buffers[0].buffer_size=size;
     b.key.state=(TextureShape){.width=4,.height=4,.depth=1,.levels=1,.dimensionality=3,.color_format=3};
-    assert(!upload_s3tc_image_gpu(pg,cmd,0,&b,0));r->bc_native=true;assert(!upload_s3tc_image_gpu(pg,cmd,0,&b,0));r->bc_native=false;
+    assert(!upload_s3tc_image_gpu(pg,cmd,&b,0));r->bc_native=true;assert(!upload_s3tc_image_gpu(pg,cmd,&b,0));r->bc_native=false;
     assert(!pg->written&&pg->src==17&&r->s3tc_decode.slots[r->aux_slot].used==used);
     puts("S3TC preflight: disabled/native/small, format/usage, source bounds, storage/dispatch/capacity rejection leave staging and descriptors untouched");
 }

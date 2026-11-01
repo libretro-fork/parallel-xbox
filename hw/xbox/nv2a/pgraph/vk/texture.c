@@ -385,11 +385,12 @@ static VkBufferImageCopy texture_level_copy(const TextureLevel *level,
  * the open single-time command buffer's range. No buffer of its own: a
  * level is decoded, unswizzled or copied straight into the ring. */
 static void stage_texture(PGRAPHState *pg, VkCommandBuffer cmd,
-                          int texture_idx, TextureLayout *layout, unsigned skip_layers)
+                          int texture_idx, const TextureKey *key,
+                          TextureLayout *layout, unsigned skip_layers)
 {
     NV2AState *d = container_of(pg, NV2AState, pgraph);
     PGRAPHVkState *r = pg->vk_renderer_state;
-    TextureShape s = pgraph_get_texture_shape(pg, texture_idx);
+    TextureShape s = key->state;
     BasicColorFormatInfo f = kelvin_color_format_info_map[s.color_format];
 
     NV2A_VK_DGROUP_BEGIN("Texture %d: cubemap=%d, dimensionality=%d, color_format=0x%x, levels=%d, width=%d, height=%d, depth=%d border=%d, min_mipmap_level=%d, max_mipmap_level=%d, pitch=%d",
@@ -417,16 +418,14 @@ static void stage_texture(PGRAPHState *pg, VkCommandBuffer cmd,
     }
     assert(s.dimensionality > 1);
 
-    const hwaddr texture_vram_offset = pgraph_get_texture_phys_addr(pg, texture_idx);
+    const hwaddr texture_vram_offset = key->texture_vram_offset;
     const uint8_t *texture_data_ptr = (uint8_t *)d->vram_ptr + texture_vram_offset;
 
-    /* Only indexed texels consume palette memory. Other formats must not
-     * resolve or validate an otherwise unused palette DMA descriptor. */
+    /* The binding key already validated the source addresses. Only indexed
+     * texels consume palette memory; other formats keep a NULL pointer. */
     const uint8_t *palette_data_ptr = NULL;
     if (s.color_format == NV097_SET_TEXTURE_FORMAT_COLOR_SZ_I8_A8R8G8B8) {
-        hwaddr palette_offset = pgraph_get_texture_palette_phys_addr_length(
-            pg, texture_idx, NULL);
-        palette_data_ptr = (uint8_t *)d->vram_ptr + palette_offset;
+        palette_data_ptr = (uint8_t *)d->vram_ptr + key->palette_vram_offset;
     }
 
     unsigned int adjusted_width = s.width, adjusted_height = s.height,
@@ -474,7 +473,8 @@ static void stage_texture(PGRAPHState *pg, VkCommandBuffer cmd,
     }
 
     if (s.dimensionality == 2) {
-        hwaddr layer_size = s.cubemap ? pgraph_get_cubemap_face_length(pg, s) : 0;
+        /* texture_length is six equally aligned faces for a cube key. */
+        hwaddr layer_size = s.cubemap ? key->texture_length / 6 : 0;
         const int num_layers = s.cubemap ? 6 : 1;
         for (int layer = 0; layer < num_layers; layer++) {
             if (skip_layers & (1u << layer)) continue;
@@ -705,7 +705,7 @@ static void upload_texture_image(PGRAPHState *pg, int texture_idx,
     VkCommandBuffer cmd = pgraph_vk_begin_single_time_commands(pg);
     pgraph_vk_begin_debug_marker(r, cmd, RGBA_GREEN, __func__);
 
-    if (upload_s3tc_image_gpu(pg, cmd, texture_idx, binding, skip_layers)) {
+    if (upload_s3tc_image_gpu(pg, cmd, binding, skip_layers)) {
         nv2a_profile_inc_counter(NV2A_PROF_QUEUE_SUBMIT_4);
         pgraph_vk_end_debug_marker(r, cmd);
         pgraph_vk_end_single_time_commands_async(pg, cmd);
@@ -719,7 +719,7 @@ static void upload_texture_image(PGRAPHState *pg, int texture_idx,
                                    512, 1, segaboot_logo_size);
         memcpy(dst, segaboot_logo_data, segaboot_logo_size);
     } else {
-        stage_texture(pg, cmd, texture_idx, &layout, skip_layers);
+        stage_texture(pg, cmd, texture_idx, &binding->key, &layout, skip_layers);
     }
     const int num_layers = state->cubemap ? 6 : 1;
     const int num_levels = binding->logo ? 1 : state->levels;

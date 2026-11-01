@@ -6,6 +6,12 @@ r=Path(sys.argv[1]).resolve()
 s=(r/'hw/xbox/nv2a/pgraph/vk/s3tc-decode.h').read_text()
 import re
 texture=(r/'hw/xbox/nv2a/pgraph/vk/texture.c').read_text()
+stage=texture[texture.index('static void stage_texture('):texture.index('static void stage_texture(')+11000]
+stage=stage[:stage.index('\nstatic ')]
+assert 'TextureShape s = key->state;' in stage
+assert 'key->texture_vram_offset' in stage and 'key->palette_vram_offset' in stage
+assert not re.search(r'pgraph_get_texture_(?:shape|phys_addr|palette_phys_addr_length)\(',stage)
+assert 'stage_texture(pg, cmd, texture_idx, &binding->key, &layout, skip_layers);' in texture
 parts=[re.search(r'typedef struct TextureLevel \{.*?\} TextureLevel;',texture,re.S)[0]]
 for name in ('stage_level','decode_level_3d'):
  pos=texture.index(name+'(');start=texture.rfind('\nstatic ',0,pos)+1;end=texture.index('{',pos)+1;depth=1
