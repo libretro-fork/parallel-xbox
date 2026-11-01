@@ -1645,6 +1645,14 @@ identical guest bytes, two successive readbacks per command buffer and one
 removed copy per readback; timings describe this isolated GPU
 chain, not whole-core latency. The GPU fixture does not enable validation layers.
 
+`test-volume-block-copies.py` checks production compressed-volume CPU staging
+against a coordinate oracle, including 8/16-byte specialization and the generic
+block-size fallback, odd XY extents, partial Z groups, direct VRAM, guards and
+metadata. VOLUME_COPY_CFLAGS/BINARY/SKIP_RUN support native cross builds.
+`--bench` after the compiler compares a frozen fcea99f7cf control with current
+code, with both copy bodies inlined into equivalent runtime-BC1/BC3 wrappers
+and preallocated output. CPU helper timings only.
+
 The depth-host oracle also covers 514 eligible direct packed-swizzle routes
 that must omit the stale compute-to-transfer dependency. Linear, capped-range
 and host-readback routes retain their transfer dependencies. The optional

@@ -858,6 +858,7 @@ case $core in
         python3 "$here/test-vulkan-query-scope.py" "$here/../.." "$cc"
         python3 "$here/test-vulkan-rgb-snorm.py" "$here/../.." "$cc"
         python3 "$here/test-packed-overlay-vulkan.py" "$here/../.." "$cc"
+        python3 "$here/test-volume-block-copies.py" "$here/../.." "$cc"
         python3 "$here/test-vulkan-volume-blocks.py" "$here/../.." "$cc"
     fi
     ;;

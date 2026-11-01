@@ -31,6 +31,9 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Vulkan: specialize compressed-volume CPU reordering for 8/16-byte BC blocks, reducing runtime copy-size dispatch while retaining direct VRAM and generic fallback behavior.
+
+
 - Compile immediate and effective-address DSP jumps, conditional jumps and conditional subroutine calls natively. Preserve untaken-branch address updates, loop completion, stack errors and long-interrupt call behavior without reinterpreting the instruction. Add exhaustive condition/status tests and a production-block jump/call regression.
 
 - OHCI asynchronous transfers are tracked per USB endpoint, so one pending transfer no longer stalls unrelated endpoints. Compact endpoint keys and reusable, demand-sized payload buffers replace the shared 8 KiB buffer. Reset, detach and state load cancel host requests; guest descriptors resume after loading. Completions delivered during endpoint flush are consumed in the same service pass. TD service is bounded so malformed descriptor cycles cannot monopolize a frame.

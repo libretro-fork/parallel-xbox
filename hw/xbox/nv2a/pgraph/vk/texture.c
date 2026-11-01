@@ -246,8 +246,16 @@ static void stage_blocks_3d(PGRAPHState *pg, TextureLevel *level,
         unsigned int nz = MIN(depth - z0, 4);
         for (unsigned int b = 0; b < bw * bh; b++) {
             for (unsigned int z = 0; z < nz; z++) {
-                memcpy(dst + (z0 + z) * slice + b * block_size, src,
-                       block_size);
+                uint8_t *out = dst + (z0 + z) * slice + b * block_size;
+                /* BC1 uses eight bytes, BC2/3 sixteen. Constant sizes avoid
+                 * generic copy-size dispatch, even when memcpy is inlined. */
+                if (block_size == 8) {
+                    memcpy(out, src, 8);
+                } else if (block_size == 16) {
+                    memcpy(out, src, 16);
+                } else {
+                    memcpy(out, src, block_size);
+                }
                 src += block_size;
             }
         }
