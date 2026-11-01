@@ -7,7 +7,7 @@ macros=subprocess.run([cc,'-dM','-E','-'],input='',text=True,capture_output=True
 if '__x86_64__' not in macros:
  print('SSE native gate: skipped (x86-64 host fast path only)');sys.exit(0)
 s=(repo/'target/i386/ops_sse.h').read_text(encoding='utf-8',errors='surrogateescape')
-a=s.index('#define SSE_HELPER_P(');body=s[a:s.index('#include "target/i386/tcg/sse-native.h"',a)]
+a=s.index('#if defined(XBOX) && defined(__x86_64__)\n#define XEMU_SSE_DIRECTED_ENTRY');body=s[a:s.index('#include "target/i386/tcg/sse-native.h"',a)]
 # Count actual eligibility decisions without replacing the production gate.
 body=body.replace('static inline bool sse_native_ok(', 'static inline bool sse_native_ok_impl(')
 needle='#define XEMU_SSE_NATIVE_INIT'

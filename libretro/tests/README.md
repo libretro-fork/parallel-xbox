@@ -2823,3 +2823,6 @@ Win64 code generation changes the vertex-sync caller frame from 736 to 720
 bytes and emits a shared 24-byte tail selector, called at most twice after a
 clean snapshot cache miss. Flush-draw remains 704 bytes and renderer state
 sizes are unchanged. Caller and nested selector usage are reported separately.
+
+
+`test-sse-directed.py CHECKOUT [CC]` tests the production scalar/packed add, subtract and multiply helpers against actual SoftFloat for three directed rounding modes. The 2,359,296 cases cover XMM/YMM/wide widths, Boost on/off, flushing and tininess policies, sticky flags, all register aliases, exceptional/boundary/random inputs and hostile host MXCSR settings. Native-lane selection is checked by counting software calls; removing the guest inexact merge must fail a negative control. Safe inputs have exponents [-60,60] for float32 and [-500,500] for float64, or are signed zero: neither products nor cancellation can produce subnormal results or overflow. The round-to-nearest Boost exception-flag limitation remains separate.
