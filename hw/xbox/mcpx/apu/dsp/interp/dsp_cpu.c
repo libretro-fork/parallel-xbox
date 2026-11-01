@@ -1435,6 +1435,12 @@ void dsp56k_decode(dsp_core_t *dsp, uint32_t pc, DspDecoded *d)
     }
 }
 
+void dsp56k_write_reg(dsp_core_t *dsp, uint32_t numreg, uint32_t value)
+{
+    assert(numreg < DSP_REG_MAX);
+    dsp_write_reg(dsp, numreg, value & BITMASK(registers_mask[numreg]));
+}
+
 void dsp56k_update_rn(dsp_core_t *dsp, uint32_t numreg, int modifier)
 {
     emu_update_rn(dsp, numreg, (int16_t)modifier);
