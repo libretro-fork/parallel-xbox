@@ -1855,3 +1855,14 @@ accounting for negative, zero and positive method results. It checks one dispatc
 per zero-progress attempt, unchanged GET/method/count registers, successful later
 retry, and incrementing/non-incrementing batches from one through 64 words.
 This defines the no-progress contract; it does not enable class 0x39 transfers.
+
+### Experimental bounded M2MF transfer engine
+
+`python3 libretro/tests/test-m2mf-transfer.py .` tests the standalone CPU engine
+for class 0x39 work. Range validation is compared with an independent 128-bit
+footprint oracle. Transfers are compared with whole-row memmove or forward
+strided reference copies under varying budgets, overlap directions and pitches.
+RAM is moved to another backing buffer after every dispatch and progress is
+copied, checking that no hidden host pointer is required. A UINT32_MAX-row
+zero-pitch transfer stops after a 17-byte dispatch budget. This is not guest
+save-state or GPU testing, and the engine is not yet connected to method dispatch.

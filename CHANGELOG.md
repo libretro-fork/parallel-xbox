@@ -1,5 +1,7 @@
 # Changelog of the libretro core
 
+- Experimental class 0x39 work: add a bounded, resumable CPU transfer engine with overflow-safe footprint checks and overlap-aware row copying. This feature-branch groundwork does not enable class 0x39 or change the running emulator; renderer retirement and command integration remain unfinished.
+
 - Make PFIFO yield when a method reports no progress, preserving its command position for a later kick instead of immediately retrying it in a tight loop. This establishes the retry contract for deferred transfers; class 0x39 support is not yet enabled.
 
 - Build speculative Vulkan pipeline keys directly in reserved worker slots, removing the temporary full-key copy before queue publication.
