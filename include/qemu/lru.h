@@ -119,6 +119,9 @@ void lru_evict_node(Lru *lru, LruNode *node)
 static inline
 LruNode *lru_try_evict_one(Lru *lru)
 {
+	if (!lru->num_used) {
+		return NULL;
+	}
 	LruNode *found;
 
 	QTAILQ_FOREACH_REVERSE(found, &lru->global, next_global) {
@@ -145,11 +148,13 @@ LruNode *lru_evict_one(Lru *lru)
 static inline
 LruNode *lru_get_one_free(Lru *lru)
 {
-	LruNode *found;
-
-	QTAILQ_FOREACH_REVERSE(found, &lru->global, next_global) {
-		if (!lru_is_node_in_use(lru, found)) {
-			return found;
+	/* A full cache has no free node to find by walking the entire pool. */
+	if (lru->num_free) {
+		LruNode *found;
+		QTAILQ_FOREACH_REVERSE(found, &lru->global, next_global) {
+			if (!lru_is_node_in_use(lru, found)) {
+				return found;
+			}
 		}
 	}
 
@@ -217,6 +222,9 @@ LruNode *lru_lookup(Lru *lru, uint64_t hash, const void *key)
 static inline
 void lru_flush(Lru *lru)
 {
+	if (!lru->num_used) {
+		return;
+	}
 	LruNode *iter, *iter_next;
 
 	for (unsigned int bin = 0; bin < LRU_NUM_BINS; bin++) {
@@ -239,6 +247,9 @@ typedef void (*LruNodeVisitorFunc)(Lru *lru, LruNode *node, void *opaque);
 static inline
 void lru_visit_active(Lru *lru, LruNodeVisitorFunc visitor_func, void *opaque)
 {
+	if (!lru->num_used) {
+		return;
+	}
 	LruNode *iter, *iter_next;
 
 	/* Visit resident nodes in recency order instead of reading every empty

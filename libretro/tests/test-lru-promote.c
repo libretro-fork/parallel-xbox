@@ -2,6 +2,7 @@
 #include <assert.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -28,14 +29,41 @@ static void event(Lru *lru, Node *node, unsigned kind, unsigned key) {
 }
 static void init_node(Lru *l,LruNode *n,const void *k) {Node *node=(Node *)n;event(l,node,1,*(const unsigned *)k);node->key=*(const unsigned *)k;}
 static bool differs(Lru *l,LruNode *n,const void *k) {event(l,(Node *)n,2,*(const unsigned *)k);return ((Node *)n)->key!=*(const unsigned *)k;}
-static bool pre_evict(Lru *l,LruNode *n) {event(l,(Node *)n,3,((Node *)n)->key);return !blocked[((Node *)n)->id];}
+static bool pre_evict(Lru *l,LruNode *n) {event(l,(Node *)n,3,((Node *)n)->key);return !blocked[((Node *)n)->id%CAP];}
 static void post_evict(Lru *l,LruNode *n) {event(l,(Node *)n,4,((Node *)n)->key);}
+static LruNode *reference_try_evict(Lru *lru) {
+ LruNode *found;
+ QTAILQ_FOREACH_REVERSE(found,&lru->global,next_global) {
+  if(lru_is_node_in_use(lru,found) && (!lru->pre_node_evict || lru->pre_node_evict(lru,found))) {lru_evict_node(lru,found);return found;}
+ }
+ return NULL;
+}
+static LruNode *reference_get_free(Lru *lru) {
+ LruNode *found;
+ QTAILQ_FOREACH_REVERSE(found,&lru->global,next_global)if(!lru_is_node_in_use(lru,found))return found;
+ found=reference_try_evict(lru);assert(found);return found;
+}
+static void reference_flush(Lru *lru) {
+ LruNode *node,*next;
+ for(unsigned bin=0;bin<LRU_NUM_BINS;bin++)QTAILQ_FOREACH_SAFE(node,&lru->bins[bin],next_bin,next) {
+  if(!lru->pre_node_evict || lru->pre_node_evict(lru,node)) {lru_evict_node(lru,node);QTAILQ_REMOVE(&lru->global,node,next_global);QTAILQ_INSERT_TAIL(&lru->global,node,next_global);}
+ }
+}
+static bool visit_evict;
+static void visit_node(Lru *l,LruNode *n,void *opaque) {
+ event(l,(Node *)n,5,((Node *)n)->key);
+ if(visit_evict && !(((Node *)n)->id%3))lru_evict_node(l,n);
+}
+static void reference_visit(Lru *lru,LruNodeVisitorFunc visitor,void *opaque) {
+ LruNode *node,*next;
+ QTAILQ_FOREACH_SAFE(node,&lru->global,next_global,next)if(lru_is_node_in_use(lru,node))visitor(lru,node,opaque);
+}
 /* Original unlink/reinsert implementation, independent of new head checks. */
 static LruNode *reference_lookup(Lru *lru,uint64_t hash,const void *key) {
  unsigned bin=lru_hash_to_bin(lru,hash);LruNode *iter,*found=NULL;
  QTAILQ_FOREACH(iter,&lru->bins[bin],next_bin)if(iter->hash==hash && !lru->compare_nodes(lru,iter,key)){found=iter;break;}
  if(found)QTAILQ_REMOVE(&lru->bins[bin],found,next_bin);
- else {found=lru_get_one_free(lru);found->hash=hash;if(lru->init_node)lru->init_node(lru,found,key);assert(found->hash==hash);lru->num_used++;lru->num_free--;}
+ else {found=reference_get_free(lru);found->hash=hash;if(lru->init_node)lru->init_node(lru,found,key);assert(found->hash==hash);lru->num_used++;lru->num_free--;}
  QTAILQ_REMOVE(&lru->global,found,next_global);QTAILQ_INSERT_HEAD(&lru->global,found,next_global);QTAILQ_INSERT_HEAD(&lru->bins[bin],found,next_bin);return found;
 }
 static void setup(Lru *lru,Node *ns,unsigned count) {
@@ -76,6 +104,54 @@ static void readonly_mru(void) {
  assert(!munmap(lru,bytes) && !munmap(node,page));
 #endif
 }
+/* Protect unrelated nodes/metadata to prove these paths do not scan them. */
+static void guarded_counts(void) {
+ size_t page,bytes;Lru *lru;unsigned char *pool;
+#ifdef _WIN32
+ SYSTEM_INFO info;DWORD old;GetSystemInfo(&info);page=info.dwPageSize;
+#define PROTECT(p,n,mode) assert(VirtualProtect(p,n,mode,&old))
+#define NONE PAGE_NOACCESS
+#define READ PAGE_READONLY
+#define WRITE PAGE_READWRITE
+ bytes=(sizeof(Lru)+page-1)/page*page;
+ lru=VirtualAlloc(NULL,bytes,MEM_RESERVE|MEM_COMMIT,WRITE);
+ pool=VirtualAlloc(NULL,3*page,MEM_RESERVE|MEM_COMMIT,WRITE);assert(lru && pool);
+#else
+ page=sysconf(_SC_PAGESIZE);bytes=(sizeof(Lru)+page-1)/page*page;
+#define PROTECT(p,n,mode) assert(!mprotect(p,n,mode))
+#define NONE PROT_NONE
+#define READ PROT_READ
+#define WRITE (PROT_READ|PROT_WRITE)
+ lru=mmap(NULL,bytes,WRITE,MAP_PRIVATE|MAP_ANONYMOUS,-1,0);
+ pool=mmap(NULL,3*page,WRITE,MAP_PRIVATE|MAP_ANONYMOUS,-1,0);assert(lru!=MAP_FAILED && pool!=MAP_FAILED);
+#endif
+ Node *newest=(Node *)pool,*middle=(Node *)(pool+page),*oldest=(Node *)(pool+2*page);
+ memset(blocked,0,sizeof(blocked));setup(lru,newest,1);
+ *middle=(Node){.id=1};lru_add_free(lru,&middle->node);
+ *oldest=(Node){.id=2};lru_add_free(lru,&oldest->node);
+ unsigned key=0;assert(lru_lookup(lru,key,&key)==&oldest->node);
+ key=1;assert(lru_lookup(lru,key,&key)==&middle->node);
+ key=2;assert(lru_lookup(lru,key,&key)==&newest->node);
+ assert(lru->num_used==3 && !lru->num_free);
+ PROTECT(newest,page,NONE);
+ assert(lru_get_one_free(lru)==&oldest->node);
+ assert(lru->num_used==2 && lru->num_free==1);
+ assert(lru_get_one_free(lru)==&oldest->node);
+ PROTECT(newest,page,WRITE);lru_flush(lru);
+ assert(!lru->num_used && lru->num_free==3);
+ PROTECT(lru,bytes,NONE);PROTECT(pool,3*page,NONE);
+ PROTECT((unsigned char *)lru+offsetof(Lru,num_used)/page*page,page,READ);
+ assert(!lru_try_evict_one(lru));lru_flush(lru);lru_visit_active(lru,visit_node,NULL);
+#ifdef _WIN32
+ assert(VirtualFree(lru,0,MEM_RELEASE) && VirtualFree(pool,0,MEM_RELEASE));
+#else
+ assert(!munmap(lru,bytes) && !munmap(pool,3*page));
+#endif
+#undef PROTECT
+#undef NONE
+#undef READ
+#undef WRITE
+}
 static unsigned rng=42;
 static unsigned random_u(void) {rng^=rng<<13;rng^=rng>>17;rng^=rng<<5;return rng;}
 #ifdef _WIN32
@@ -93,19 +169,28 @@ int main(void) {
   unsigned r=random_u(),key=r%97,op=r%32;event_n[0]=event_n[1]=0;
   for(unsigned n=0;n<CAP;n++)blocked[n]=((n+i)%7)==0;
   if(op<26){LruNode *a=lru_lookup(caches[0],key%5,&key),*b=reference_lookup(caches[1],key%5,&key);assert(((Node *)a)->id==((Node *)b)->id);}
-  else if(op==26){lru_flush(caches[0]);lru_flush(caches[1]);}
-  else if(op<29){LruNode *a=lru_try_evict_one(caches[0]),*b=lru_try_evict_one(caches[1]);assert((!a && !b)||(a && b && ((Node *)a)->id==((Node *)b)->id));}
+  else if(op==26){lru_flush(caches[0]);reference_flush(caches[1]);}
+  else if(op<29){LruNode *a=lru_try_evict_one(caches[0]),*b=reference_try_evict(caches[1]);assert((!a && !b)||(a && b && ((Node *)a)->id==((Node *)b)->id));}
+  else if(op==31){visit_evict=!!(r&32);lru_visit_active(caches[0],visit_node,NULL);reference_visit(caches[1],visit_node,NULL);}
   else {lru_evict_node(caches[0],&nodes[0][key%CAP].node);lru_evict_node(caches[1],&nodes[1][key%CAP].node);}
   verify();
  }
  recording=false;
 #ifndef LRU_LOOKUP_BASELINE
  readonly_mru();
+ guarded_counts();
 #endif
- printf("LRU promotions: 30000 order/callback/collision/eviction cases; read-only MRU metadata PASS\n");
+ printf("LRU promotions: 30000 order/callback/collision/eviction cases; read-only MRU metadata and guarded count gates PASS\n");
 #else
  memset(blocked,0,sizeof(blocked));
- for(unsigned mode=0;mode<4;mode++) {
+ for(unsigned mode=0;mode<5;mode++) {
+  if(mode==4) {
+   const unsigned count=50*1024,loops=1000;Node *large=calloc(count,sizeof(Node));assert(large);setup(caches[0],large,count);
+   for(unsigned key=0;key<count;key++)lookup_call(caches[0],key,&key);
+   uintptr_t sum=0;double start=now();
+   for(unsigned i=0;i<loops;i++){unsigned key=count+i;sum+=(uintptr_t)lookup_call(caches[0],key,&key);}
+   sink=sum;printf("mode=%u ns=%.3f\n",mode,(now()-start)/loops);free(large);continue;
+  }
   setup(caches[0],nodes[0],CAP);
   for(unsigned i=0;i<16;i++){unsigned key=i;lookup_call(caches[0],mode==2?(uint64_t)key*LRU_NUM_BINS+1:key,&key);}
   const unsigned loops=2000000;uintptr_t sum=0;double start=now();

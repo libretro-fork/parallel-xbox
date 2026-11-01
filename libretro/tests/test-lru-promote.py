@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""Check production LRU promotions against the original lookup and read-only MRU metadata."""
+"""Check LRU promotions/count gates against original scans and protected metadata."""
 from pathlib import Path
 import os, shlex, subprocess, sys, tempfile
 

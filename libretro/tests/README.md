@@ -2323,3 +2323,5 @@ full drain asynchronous. No buffers, copies, PSOs, locks or frame queue change.
 Win64 full-drain stack usage falls from 96 to 80 bytes; renderer structure
 sizes remain unchanged. This is a code-generation result, not a measured
 hardware cache-miss or game-latency improvement.
+
+The LRU fixture also compares flush, eviction and active visits (including current-node eviction) with independent original scans. Guarded pages prove full-cache allocation avoids an unrelated newer node and empty helpers avoid all list/bin/node metadata. A parent header without count gates must fault on a read. Benchmark mode 4 fills 51,200 nodes (the Vulkan shader-module cache capacity) before measuring 1,000 full-cache misses; modes 0-3 retain the small-cache comparisons. These synthetic timings are not frame-rate measurements.

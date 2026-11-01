@@ -1,5 +1,7 @@
 # Changelog of the libretro core
 
+- Skip the free-node search when an LRU cache is full, proceeding directly to the existing eligible-victim search. Return immediately from empty eviction, flush and active-visit operations using the existing counts; preserve ordering, callbacks and ownership without extra storage.
+
 - Avoid rewriting LRU cache links when a hit already leads the global recency list or its hash bin. Preserve comparison callbacks, allocation/eviction behavior and exact cache ordering without extra storage.
 
 - Add GPU regression coverage for signed G8B8 mip filtering near texel boundaries, checking lower clamps, addressing, mixed filters and mip tails against an independent model. This is test-only coverage.
