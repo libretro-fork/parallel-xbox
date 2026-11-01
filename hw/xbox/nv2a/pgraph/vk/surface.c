@@ -124,6 +124,16 @@ static bool surface_upload_from_vram(const PGRAPHVkState *r,
                                  surface->fmt.bytes_per_pixel;
 }
 
+/* Depth is a 32-bit plane; stencil starts at descriptor alignment and
+ * compute writes stencil in whole 32-bit words, including the last word. */
+static VkDeviceSize depth_upload_plane_size(unsigned width, unsigned height,
+                                            VkDeviceSize alignment)
+{
+    VkDeviceSize pixels = (VkDeviceSize)width * height;
+    VkDeviceSize stencil_offset = ROUND_UP(pixels * 4, alignment);
+    return stencil_offset + ROUND_UP(pixels, 4);
+}
+
 /* Pack pitched source rows on the GPU, directly into the existing depth
  * unpack input. Staged inputs are already packed and take one region. */
 static void copy_depth_source(VkCommandBuffer cmd, VkBuffer source,
@@ -1795,8 +1805,11 @@ void pgraph_vk_upload_surface_data(NV2AState *d, SurfaceBinding *surface,
         /* The unpacked planes, before the aux recording that writes them. */
         unsigned int cw = surface->width, ch = surface->height;
         pgraph_apply_scaling_factor(pg, &cw, &ch);
+        VkDeviceSize planes = depth_upload_plane_size(cw, ch,
+            r->device_props.limits.minStorageBufferOffsetAlignment);
+        VkDeviceSize packed = (VkDeviceSize)surface->width * surface->height * 4;
         pgraph_vk_buffer_ensure_capacity(pg, BUFFER_COMPUTE_DST,
-                                         (VkDeviceSize)cw * ch * 8);
+                                         MAX(planes, packed));
         /* The compute buffers are one set, which an earlier submission may
          * still be using; no wait for it here: every user ends its use
          * with barriers into the transfer stage (the unpack below, the
@@ -1902,11 +1915,11 @@ void pgraph_vk_upload_surface_data(NV2AState *d, SurfaceBinding *surface,
                           staged_offset, from_vram ? surface->pitch : row_bytes,
                           row_bytes, surface->height);
 
-        size_t num_pixels = scaled_width * scaled_height;
-        size_t unpacked_depth_image_size = num_pixels * 4;
-        size_t unpacked_stencil_image_size = num_pixels;
-        size_t unpacked_size =
-            unpacked_depth_image_size + unpacked_stencil_image_size;
+        VkDeviceSize num_pixels = (VkDeviceSize)scaled_width * scaled_height;
+        VkDeviceSize unpacked_depth_image_size = num_pixels * 4;
+        VkDeviceSize unpacked_size = depth_upload_plane_size(
+            scaled_width, scaled_height,
+            r->device_props.limits.minStorageBufferOffsetAlignment);
 
         VkBufferMemoryBarrier post_copy_src_barrier = {
             .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,

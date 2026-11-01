@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Use the actual aligned depth/stencil output footprint for Vulkan depth-upload capacity and barriers. Include the stencil alignment gap and complete final shader-written word, fixing short synchronization ranges for small surfaces and avoiding oversized eight-byte-per-pixel growth requests.
+
 - Upload aligned native BC1/BC2/BC3 volume levels one block wide directly from imported Vulkan VRAM. Bounded per-slice copy regions express the Xbox slice-group stride, eliminating CPU block reordering and staging allocation for eligible narrow levels; wider, unaligned and non-imported layouts retain their fallback.
 
 - Read eligible single-axis swizzled native color and D16 surfaces directly into imported Vulkan RAM, skipping the temporary output ring and swizzle dispatch. Preserve packed depth/stencil routing, CPU visibility barriers and immediate/batched completion waits.

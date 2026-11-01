@@ -2925,3 +2925,16 @@ batch scheduler and external-host import extension are not exercised. No Vulkan
 validation layer is requested. The regular CPU depth-source fixture checks the
 new routing exclusions; packed-swizzle/depth-host-pack fixtures preserve their
 existing packed-depth paths. Full-game performance remains unmeasured.
+
+
+`python libretro/tests/test-depth-upload-footprint.py CHECKOUT [CC]` executes the
+production depth-upload footprint helper, capacity block, unpack destination
+barrier declarations and stencil copy offset. Its 480 extent/scale/alignment
+cases include small planes and scale 8. Both pre-unpack and post-unpack ranges
+must reach the complete last shader-written stencil word, including alignment
+padding. The matrix identifies 151 previously short ranges and four eight-byte-
+per-pixel requests that would unnecessarily exceed the 800 MiB reservation
+ceiling. These are planning/range counts, not measured runtime hazard or wait
+counts. Packed input capacity and both compute buffers remain covered; all
+capacity changes occur before auxiliary recording. The unchanged depth kernels
+have separate real-device parity tests in `test-spv-depth.py --gpu`.
