@@ -38,7 +38,9 @@ def run(r,cc,folder,gpu):
  command+=sources+['-Wl,--wrap=malloc,--wrap=calloc,--wrap=realloc','-lm']
  if gpu and os.name!='nt':command+=['-ldl']
  subprocess.run(command+['-o',str(exe)],check=True,env=env)
- subprocess.run([str(exe),str(folder)],check=True,timeout=120,env=env)
+ # Software Vulkan compiles and executes hundreds of pipeline pairs.
+ # Keep the shorter bound for the CPU-only generator checks.
+ subprocess.run([str(exe),str(folder)],check=True,timeout=600 if gpu else 120,env=env)
  validator=shutil.which('spirv-val',path=env['PATH'])
  if validator:
   files=list(folder.glob('*.spv'))
