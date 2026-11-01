@@ -3216,6 +3216,7 @@ static void lr_present_video(void)
             vulkan_if->set_image(vulkan_if->handle, &retro_vk_image, 0,
                                  NULL, VK_QUEUE_FAMILY_IGNORED);
             video_cb(RETRO_HW_FRAME_BUFFER_VALID, last_w, last_h, 0);
+            nv2a_vk_libretro_frame_presented();
         } else {
             /* nothing new drawn: the frontend repeats its last frame */
             video_cb(NULL, last_w, last_h, 0);

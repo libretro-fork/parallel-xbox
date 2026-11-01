@@ -1956,3 +1956,15 @@ libretro frame-end acknowledgement wait or establish frontend image retirement.
 `test-vk-depth-source.py CHECKOUT [CC] [--gpu]` checks production source eligibility and depth row packing: 122,880 eligibility cases and 1,188 packed/padded/offset/empty copies, aligned region batches, byte-exact destinations and source/guard preservation. CPU mode defaults to ASan/UBSan; GPU mode can use `DEPTH_SOURCE_CFLAGS=-fsanitize=undefined`. GPU mode requires synchronization validation unless `DEPTH_SOURCE_NO_VALIDATION=1` is explicitly set. GPU fixture buffers model imported memory without testing the external-host import extension itself. `DEPTH_SOURCE_BINARY` and `DEPTH_SOURCE_SKIP_RUN=1` retain native fixtures. The existing depth-kernel fixtures cover unpack shaders, which are unchanged.
 
 `test-seed-batch-read.py CHECKOUT [CC]` exercises production batch/individual seed loaders with real libretro-common inflate: 480 legacy-equivalence cases, independent local-first ordering, poisoned mapping/decompression lifetimes, missing/stale/malformed/corrupt input and inflater failure. Both sections share one mapping/inflation with no duplicated section arrays. It also checks all 14 games / 38 sections in the bundled dictionary byte-for-byte. `SEED_BATCH_CFLAGS`, `SEED_BATCH_BINARY` and `SEED_BATCH_SKIP_RUN=1` support sanitized and native execution; retained native binaries accept the dictionary path as their optional argument.
+
+### Vulkan frontend image ownership and resize retirement
+
+`python3 libretro/tests/test-vk-frame-handoff.py .` extracts production frontend
+acquisition and resize retirement with the real libretro-common atomic handoff.
+It checks 20,009 deterministic schedules, injected acquisition races and two
+libretro-common threads making 300,000 attempts each. Snapshot metadata must be
+consistent; both old and candidate images remain protected through presentation.
+Resized images are destroyed only after their display submission serial settles,
+and full retirement storage defers without image destruction or counter advance.
+Backend fence completion is controlled in this fixture; the separate frame-end
+acknowledgement wait is not removed by this ownership change.

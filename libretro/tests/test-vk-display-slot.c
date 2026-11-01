@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include "hw/xbox/nv2a/pgraph/vk/frame-handoff.h"
 #define MAX(a,b) ((a)>(b)?(a):(b))
 #define XEMU_LIBRETRO_VK_FRAMES 8
 #define VK_SUCCESS 0
@@ -14,6 +15,7 @@ typedef unsigned VkFence;
 typedef struct PGRAPHVkDisplayState {
  struct PGRAPHVkFrameSync {VkFence fence;bool pending;uint64_t serial;}sync[8];
  uint64_t settled,frame_count,published;
+ PGRAPHVkFrameHandoff handoff;
  unsigned next_slot;
  bool retry_pending;
  uint64_t last_surface_addr;
@@ -38,7 +40,8 @@ static void attempt(PGRAPHVkState*r)
 /* PREFIX */
  (void)sync;
  /* Model work after the production acquisition boundary. */
- work++;disp->next_slot=(slot+1)%8;disp->frame_count++;disp->published++;
+ work++;disp->next_slot=(slot+1)%8;disp->frame_count++;
+ pgraph_vk_frame_write_end(&disp->handoff);disp->published++;
 }
 typedef struct {uint64_t vram_addr;int draw_time;bool upload_pending;}SurfaceBinding;
 typedef struct {unsigned surface_scale_factor;bool pvideo;}PGRAPHState;
@@ -78,10 +81,17 @@ int main(void)
   }
   cases++;
  }
+ state=(PGRAPHVkState){.device=7};state.display.next_slot=3;
+ retro_atomic_store_relaxed_int(&state.display.handoff.front,4);
+ retro_atomic_store_relaxed_int(&state.display.handoff.reading,5);
+ probes=resets=work=0;attempt(&state);
+ assert(work==1&&state.display.next_slot==6&&!probes&&!resets);
+ assert(retro_atomic_load_relaxed_int(&state.display.handoff.front)==4);
+ assert(retro_atomic_load_relaxed_int(&state.display.handoff.reading)==5);
  PGRAPHVkDisplayState d={.last_surface_addr=0x1000,.draw_time=9,.last_line_offset=32,
   .last_mode_width=640,.last_mode_height=480,.last_scale=2};
  assert(cached(&d,false));assert(!cached(&d,true));
  d.last_mode_width=800;assert(!cached(&d,false));
- printf("PASS: %u Vulkan slot schedules, repeated busy probes and mode-only retry preservation\n",cases+3);
+ printf("PASS: %u Vulkan slot schedules, repeated busy probes and mode-only retry preservation\n",cases+4);
  return 0;
 }

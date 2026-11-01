@@ -1,5 +1,6 @@
 # Changelog of the libretro core
 
+- Protect Vulkan images held by the frontend or being acquired without waiting locks. Keep the previous image held through presentation, and retire resized images by GPU submission completion rather than frame age. Defer when retirement storage is full instead of destroying a potentially live image.
 - Skip unused palette DMA resolution during non-indexed Vulkan texture staging, avoiding redundant descriptor work and validation of palette state those formats never read. Indexed texture uploads are unchanged.
 - Vulkan mip-filtered 2D color textures now preserve min/mag selection at LOD0, including single-level images, guest clamps and Force LOD0, without reading lower mips.
 

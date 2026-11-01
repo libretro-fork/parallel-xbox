@@ -84,6 +84,7 @@ uint64_t nv2a_vk_libretro_guest_frames(void);
 bool nv2a_vk_libretro_get_frame(VkImage *image, VkImageView *view,
                                 VkFormat *format, int *width, int *height,
                                 uint64_t *count);
+void nv2a_vk_libretro_frame_presented(void);
 
 
 #endif
