@@ -1,5 +1,7 @@
 # Changelog of the libretro core
 
+- Cache recent Vulkan pipeline-library lookup indices in fixed renderer storage, avoiding repeated full-array scans without per-lookup allocations or pointers invalidated by array growth.
+
 - Make PFIFO yield when a method reports no progress, preserving its command position for a later kick instead of immediately retrying it in a tight loop. This establishes the retry contract for deferred transfers; class 0x39 support is not yet enabled.
 
 - Build speculative Vulkan pipeline keys directly in reserved worker slots, removing the temporary full-key copy before queue publication.

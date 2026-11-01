@@ -478,6 +478,11 @@ typedef struct VkSamplerCacheKey {
 
 #define VK_SAMPLER_CACHE_SIZE 512
 
+typedef struct PipelineLibraryLookup {
+    uint64_t hash;
+    unsigned index_plus_one; /* zero means no cached entry */
+} PipelineLibraryLookup;
+
 typedef struct PGRAPHVkState {
     uint32_t vk_api_version;
     VkInstance instance;
@@ -505,6 +510,7 @@ typedef struct PGRAPHVkState {
     /* Pipeline libraries: shader halves compiled once, linked per draw,
      * kept for the renderer's life (draw.c). */
     GArray *gpl_pre, *gpl_frag;
+    PipelineLibraryLookup gpl_lookup_cache[2][64];
     /* Library pump progress per render pass (draw.c): the next seed state
      * and the states whose SPIR-V was not ready yet. The libraries die
      * with the renderer, so a new renderer pumps again. */

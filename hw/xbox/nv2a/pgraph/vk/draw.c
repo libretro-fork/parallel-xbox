@@ -1127,6 +1127,7 @@ typedef struct GplLibrary {
 
 static void gpl_init(PGRAPHVkState *r)
 {
+    memset(r->gpl_lookup_cache, 0, sizeof(r->gpl_lookup_cache));
     r->gpl_pre = g_array_new(false, false, sizeof(GplLibrary));
     r->gpl_frag = g_array_new(false, false, sizeof(GplLibrary));
 }
@@ -1152,10 +1153,25 @@ static VkPipeline gpl_lookup(PGRAPHVkState *r, bool frag, uint64_t hash,
                              bool *found)
 {
     GArray *libs = frag ? r->gpl_frag : r->gpl_pre;
+    unsigned slot = (hash ^ (hash >> 32)) % ARRAY_SIZE(r->gpl_lookup_cache[0]);
+    PipelineLibraryLookup *cached = &r->gpl_lookup_cache[frag][slot];
 
+    /* Keep indices, not pointers: appending may move the library array.
+     * Misses are never cached because the worker can append a result later. */
+    if (cached->hash == hash && cached->index_plus_one &&
+        cached->index_plus_one <= libs->len) {
+        GplLibrary *e = &g_array_index(libs, GplLibrary,
+                                      cached->index_plus_one - 1);
+        if (e->hash == hash) {
+            *found = true;
+            return e->lib;
+        }
+    }
     for (guint i = 0; i < libs->len; i++) {
         GplLibrary *e = &g_array_index(libs, GplLibrary, i);
         if (e->hash == hash) {
+            cached->hash = hash;
+            cached->index_plus_one = i + 1;
             *found = true;
             return e->lib;
         }

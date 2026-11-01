@@ -298,6 +298,7 @@ python3 "$here/test-seed-merge-view.py" "$here/../.." "$cc"
 python3 "$here/test-pipeline-cache-export.py" "$here/../.." "$cc"
 python3 "$here/test-pipeline-job-view.py" "$here/../.." "$cc"
 python3 "$here/test-pipeline-ahead-key.py" "$here/../.." "$cc"
+python3 "$here/test-gpl-lookup-cache.py" "$here/../.." "$cc"
 case $h in
 wine*)
     # shellcheck disable=SC2086
