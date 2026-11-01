@@ -25,6 +25,7 @@
 #define assert_page_locked(pd) assert((pd)->lock == 1)
 
 typedef uint64_t tb_page_addr_t;
+typedef uint64_t ram_addr_t;
 typedef struct { int unused; } CPUState;
 typedef struct PageDesc {
     int lock;
@@ -105,16 +106,19 @@ static void *tracked_move(void *dest, const void *src, size_t size)
 static bool range_want[NPAGES];
 static tb_page_addr_t range_next, range_last;
 static unsigned range_calls, range_finds;
+static uintptr_t expected_ra;
+static bool fast_range;
+static tb_page_addr_t fast_start;
 static void tb_invalidate_phys_page_range__locked(CPUState *cpu,
     struct page_collection *pages, PageDesc *pd,
     tb_page_addr_t first, tb_page_addr_t last, uintptr_t ra)
 {
-    assert(cpu && pages && !ra);
+    assert(cpu && pages && ra == expected_ra);
     if (!range_calls) range_finds = finds;
     assert(finds == range_finds); /* no descriptor lookups during invalidation */
     while (range_next < NPAGES && !present[range_next]) range_next++;
     assert(pd == &pds[range_next] && pd->lock);
-    assert(first == range_next << TARGET_PAGE_BITS);
+    assert(first == (fast_range ? fast_start : range_next << TARGET_PAGE_BITS));
     assert(last == MIN(first | 4095, range_last));
     for (unsigned i = 0; i < NPAGES; i++) assert(pds[i].lock == (int)range_want[i]);
     range_next++;
@@ -185,7 +189,7 @@ static void check(tb_page_addr_t first, tb_page_addr_t last)
     struct page_collection set;
     busy_left = rnd() % 8;
     page_collection_lock(&set, first << TARGET_PAGE_BITS,
-                         (last << TARGET_PAGE_BITS) | (rnd() & 4095));
+                         (last << TARGET_PAGE_BITS) | (rnd() & 4095), NULL);
     assert(set.n == nwant);
     assert(set.n <= set.cap);
     assert((set.entries == set.inl) == (set.cap == PAGE_COLLECTION_INLINE));
@@ -255,13 +259,37 @@ int main(void)
                             (tb_page_addr_t)(second == 1 ? 2 : 3) << TARGET_PAGE_BITS;
         pds[2].first_tb = (uintptr_t)&tbs[0];
         finds = 0;
-        page_collection_lock(&set, 2 << TARGET_PAGE_BITS, (3 << TARGET_PAGE_BITS) - 1);
+        page_collection_lock(&set, 2 << TARGET_PAGE_BITS, (3 << TARGET_PAGE_BITS) - 1, NULL);
         assert(finds == (second == 2 ? 2 : 1));
         assert(set.n == (second == 2 ? 2 : 1));
         assert(pds[2].lock && (pds[3].lock == (second == 2)));
         page_collection_unlock(&set);
         assert_no_pages_locked();
+
+        CPUState cpu = {0};
+        memset(range_want, 0, sizeof(range_want));
+        range_want[2] = true;
+        range_want[3] = second == 2;
+        fast_range = true;
+        expected_ra = 0x12345678;
+        for (unsigned size = 1; size <= 8; size *= 2)
+        for (unsigned offset = 0; offset < 4096; offset += size) {
+            fast_start = (2 << TARGET_PAGE_BITS) + offset;
+            range_next = 2; range_last = fast_start + size - 1;
+            finds = range_calls = 0;
+            tb_invalidate_phys_range_fast(&cpu, fast_start, size, expected_ra);
+            assert(finds == (second == 2 ? 2 : 1) && range_calls == 1);
+            assert_no_pages_locked();
+        }
+        fast_range = false;
+        expected_ra = 0;
     }
+
+    finds = range_calls = 0;
+    present[2] = false;
+    tb_invalidate_phys_range_fast(NULL, 2 << TARGET_PAGE_BITS, 8, 0);
+    assert(finds == 1 && !range_calls);
+    assert_no_pages_locked();
 
     for (unsigned trial = 0; trial < 20000; trial++) {
         build();

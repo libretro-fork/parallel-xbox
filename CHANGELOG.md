@@ -1,5 +1,7 @@
 # Changelog of the libretro core
 
+- Reuse the page descriptor already resolved by small CPU-store invalidation during collection, avoiding its immediate repeat lookup while preserving precise-SMC return addresses and additional page locks.
+
 - Walk already-collected page descriptors during physical-range invalidation, avoiding a second page-table scan while keeping additional TB pages locked and outside the invalidation targets.
 
 - Reuse known invalidation-page descriptors and avoid recollecting the current locked page while visiting its translation blocks. Distinct physical pages, instruction offsets and sorted lock retries are preserved.

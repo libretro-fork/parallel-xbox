@@ -472,7 +472,8 @@ static bool page_trylock_add(struct page_collection *set, tb_page_addr_t addr,
  * Locking order: acquire locks in ascending order of page index.
  */
 static void page_collection_lock(struct page_collection *set,
-                                 tb_page_addr_t start, tb_page_addr_t last)
+                                 tb_page_addr_t start, tb_page_addr_t last,
+                                 PageDesc *first_pd)
 {
     tb_page_addr_t index;
     PageDesc *pd;
@@ -493,7 +494,9 @@ static void page_collection_lock(struct page_collection *set,
         TranslationBlock *tb;
         PageForEachNext n;
 
-        pd = page_find(index);
+        /* The small-store caller already resolved its first descriptor
+         * and retains it through invalidation, including lock retries. */
+        pd = index == start && first_pd ? first_pd : page_find(index);
         if (pd == NULL) {
             continue;
         }
@@ -1002,7 +1005,7 @@ void tb_invalidate_phys_range(CPUState *cpu, tb_page_addr_t start,
     tb_page_addr_t index_first = start >> TARGET_PAGE_BITS;
     tb_page_addr_t index_last = last >> TARGET_PAGE_BITS;
 
-    page_collection_lock(&pages, start, last);
+    page_collection_lock(&pages, start, last, NULL);
 
     /* Collection already resolved and locked the descriptors in order.
      * It may include other pages of intersecting TBs outside this range;
@@ -1043,7 +1046,7 @@ void tb_invalidate_phys_range_fast(CPUState *cpu, ram_addr_t start,
         ram_addr_t last = start + len - 1;
         struct page_collection pages;
 
-        page_collection_lock(&pages, start, last);
+        page_collection_lock(&pages, start, last, p);
         tb_invalidate_phys_page_range__locked(cpu, &pages, p,
                                               start, last, ra);
         page_collection_unlock(&pages);

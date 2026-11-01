@@ -26,8 +26,11 @@ parts=['typedef int PageForEachNext;',define('TB_FOR_EACH_TAGGED'),define('PAGE_
   'page_trylock_add','page_collection_lock','page_collection_unlock']]
 fixture=Path(__file__).with_suffix('.c').read_text()
 code=fixture.replace('/* PRODUCTION */','\n'.join(parts))
-m=re.search(r'^void tb_invalidate_phys_range\(',s,re.M);assert m
-code=code.replace('/* RANGE */',block(m))
+wrappers=[]
+for name in ('tb_invalidate_phys_range','tb_invalidate_phys_range_fast'):
+ m=re.search(r'^void '+name+r'\(',s,re.M);assert m
+ wrappers.append(block(m))
+code=code.replace('/* RANGE */','\n'.join(wrappers))
 env=os.environ.copy();env['PATH']=str(Path(cc).resolve().parent)+os.pathsep+env.get('PATH','')
 with tempfile.TemporaryDirectory(prefix='page-collection-',dir=repo.parent) as directory:
  p=Path(directory);(p/'test.c').write_text(code);exe=os.environ.get('PAGE_COLLECTION_BINARY',str(p/('test.exe' if os.name=='nt' else 'test')))
