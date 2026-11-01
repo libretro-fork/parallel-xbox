@@ -545,9 +545,14 @@ typedef double XemuSseF64 __attribute__((vector_size(16)));
 static inline bool sse_native_ok(CPUX86State *env)
 {
     const float_status *s = &env->sse_status;
-    if (!(xemu_cpu_boost &&
-          s->float_rounding_mode == float_round_nearest_even &&
-          !s->flush_to_zero && !s->flush_inputs_to_zero)) {
+    if (!xemu_cpu_boost) {
+        return false;
+    }
+    /* Read the independent mode fields together instead of branching on
+     * each one in the common native path. Preserve the same eligibility. */
+    unsigned unsupported = ((unsigned)s->float_rounding_mode ^ float_round_nearest_even) |
+                           s->flush_to_zero | s->flush_inputs_to_zero;
+    if (unsupported) {
         return false;
     }
     /* The host must round to nearest without flushing, MXCSR 0x1f80. The
