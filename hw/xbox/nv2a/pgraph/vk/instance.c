@@ -733,9 +733,7 @@ uint32_t pgraph_vk_get_memory_type(PGRAPHState *pg, uint32_t type_bits,
 
 static void reclaim_retired_images(void *opaque)
 {
-    /* The image pool contains only resources whose GPU users have retired.
-     * Reclaim their spans without waiting, allocating, or touching live slots. */
-    pgraph_vk_image_pool_flush(opaque);
+    pgraph_vk_reclaim_retired_images(opaque);
 }
 
 static bool init_allocator(PGRAPHState *pg, Error **errp)

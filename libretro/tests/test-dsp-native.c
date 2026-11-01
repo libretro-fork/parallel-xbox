@@ -137,6 +137,26 @@ static void prepare(Machine *m, uint32_t op, uint32_t ext, unsigned seed,
         c->registers[DSP_REG_SP] = 14;
         c->stack[0][14] = c->registers[DSP_REG_SSH];
     }
+    if (seed & 0x100000) {
+        /* Explicit loop-count edges; special registers retain the stack,
+         * status and loop fixtures above so aliases observe real setup. */
+        static const uint32_t values[] = {
+            0, 1, 2, 0xFFFF, 0x10000, 0xFFFFFF, 0x7FFFFF, 0x800000
+        };
+        unsigned reg = (op >> 8) & 63;
+        uint32_t value = values[(seed >> 8) & 7];
+        if (reg == DSP_REG_A || reg == DSP_REG_B) {
+            unsigned d = reg & 1;
+            c->registers[DSP_REG_A0 + d] = 0x800001;
+            c->registers[DSP_REG_A1 + d] = value;
+            c->registers[DSP_REG_A2 + d] = (seed & 0x800) ? 1 :
+                (value & 0x800000 ? 0xFF : 0);
+        } else if (reg >= DSP_REG_X0 && reg <= DSP_REG_M7) {
+            c->registers[reg] = value &
+                ((reg == DSP_REG_A2 || reg == DSP_REG_B2) ? 0xFF : 0xFFFFFF);
+        }
+    }
+
 }
 
 static void check(Machine *a, Machine *b, uint32_t op, uint32_t ext,
@@ -647,6 +667,92 @@ static void check_logical_immediates(Machine *a, Machine *b)
     }
 }
 
+/* Independent arithmetic/flags oracle, including negative long immediates.
+ * Do not use the interpreter's subtraction or CCR helpers here. */
+static void check_compare_immediates(Machine *a, Machine *b, unsigned mode)
+{
+    static const uint64_t accum[] = {
+        0, 1, 0xFFFFFF, 0x1000000, 0xFFFFFFFFFFFFFF,
+        0x7FFFFFFFFFFFFF, 0x80000000000000, 0x80000000000001,
+        0xFFFFFF00000000, 0x007FFFFF123456, 0x00800000800000, 0xFF000000FFFFFF
+    };
+    static const uint32_t words[] = {
+        0, 1, 2, 31, 32, 63, 0xFFFF, 0x7FFFFE, 0x7FFFFF,
+        0x800000, 0x800001, 0xFFFFFE, 0xFFFFFF
+    };
+    static const uint32_t status[] = {0, 0xFF, 0x100FF, 0x2080};
+    const uint64_t mask = UINT64_C(0xFFFFFFFFFFFFFF);
+    const uint64_t sign = UINT64_C(0x80000000000000);
+    for (unsigned d = 0; d < 2; d++) {
+        for (unsigned n = 0; n < ARRAY_SIZE(accum); n++) {
+            for (unsigned w = 0; w < ARRAY_SIZE(words); w++) {
+                for (unsigned short_form = 0; short_form < 2; short_form++) {
+                    if (short_form && words[w] > 63) continue;
+                    uint32_t op = short_form ?
+                        0x014085 | (words[w] << 8) | (d << 3) : 0x0140C5 | (d << 3);
+                    uint64_t src = (uint64_t)words[w] << 24;
+                    if (!short_form && (words[w] & 0x800000)) src |= UINT64_C(0xFF000000000000);
+                    uint64_t dst = accum[n], result = (dst - src) & mask;
+                    bool overflow = ((dst ^ src) & (dst ^ result) & sign) != 0;
+                    for (unsigned f = 0; f < ARRAY_SIZE(status); f++) {
+                        uint32_t sr = status[f] | (mode << DSP_SR_S0);
+                        uint32_t expected = (sr & 0xFFFF & ~0x3F) |
+                            (dst < src) | (overflow << DSP_SR_V) |
+                            (overflow << DSP_SR_L);
+                        if (mode != 3) {
+                            unsigned eb = mode == 1 ? 48 : mode == 2 ? 46 : 47;
+                            uint64_t upper = result >> eb;
+                            bool extension = upper != 0 && upper != (mask >> eb);
+                            bool unnormalized = ((result >> (eb - 1)) & 3) == 0 ||
+                                                ((result >> (eb - 1)) & 3) == 3;
+                            expected |= (extension << DSP_SR_E) | (unnormalized << DSP_SR_U) |
+                                ((result == 0) << DSP_SR_Z) | (((result >> 55) & 1) << DSP_SR_N);
+                        }
+                        Machine *machines[] = {a, b};
+                        dspjit_test_reset_fallback_count();
+                        for (unsigned engine = 0; engine < 2; engine++) {
+                            Machine *m = machines[engine];
+                            prepare(m, op, words[w], 1, mode, false);
+                            dsp_core_t *c = m->dsp->backend;
+                            c->registers[DSP_REG_SR] = sr;
+                            c->registers[DSP_REG_A0 + d] = dst & 0xFFFFFF;
+                            c->registers[DSP_REG_A1 + d] = (dst >> 24) & 0xFFFFFF;
+                            c->registers[DSP_REG_A2 + d] = dst >> 48;
+                            if (!engine) {
+                                m->dsp->ops->step(m->dsp);
+                                c->cycle_count += c->instr_cycle;
+                            } else {
+                                m->dsp->ops->run(m->dsp, 1);
+                            }
+                            if (c->registers[DSP_REG_SR] != expected ||
+                                c->registers[DSP_REG_A0 + d] != (dst & 0xFFFFFF) ||
+                                c->registers[DSP_REG_A1 + d] != ((dst >> 24) & 0xFFFFFF) ||
+                                c->registers[DSP_REG_A2 + d] != (dst >> 48)) {
+                                fprintf(stderr, "CMP immediate: engine=%u d=%u short=%u src=%06x dst=%014llx sr=%x expected=%x got=%x\n",
+                                    engine, d, short_form, words[w], (unsigned long long)dst,
+                                    sr, expected, c->registers[DSP_REG_SR]);
+                                exit(1);
+                            }
+                        }
+                        assert(dspjit_test_fallback_count() == 0);
+                        assert(compare_machines(a, b) == 0);
+                        cases++;
+                    }
+                }
+            }
+        }
+    }
+    /* Post-processing when a two-word compare lands on a DO boundary. */
+    for (unsigned seed = 0; seed < 16; seed++) {
+        for (unsigned d = 0; d < 2; d++) {
+            for (unsigned w = 0; w < ARRAY_SIZE(words); w++) {
+                check(a, b, 0x0140C5 | (d << 3), words[w],
+                      seed | 0x10000 | 0x40000, mode, false);
+            }
+        }
+    }
+}
+
 static void check_loop_address_reload(Machine *a, Machine *b)
 {
     static const uint32_t ends[] = { 0x100, 0, 1, 0x123, 0, 0, 0, 0x100 };
@@ -751,6 +857,31 @@ static void check_loop_setup(Machine *a, Machine *b, unsigned mode)
     }
 }
 
+static void check_register_loop_setup(Machine *a, Machine *b, unsigned mode)
+{
+    static const unsigned ends[] = { 0, 1, 2, 0xFFFF, 0x10001, 0xFFFFFF };
+    static const unsigned loops[] = { 0x20000000, 0x10000000, 0x40000 };
+    static const unsigned stacks[] = { 0, 0x80000, 0x40000000 };
+    for (unsigned reg = DSP_REG_X0; reg <= DSP_REG_LC; reg++) {
+        if (reg > DSP_REG_M7 && reg < DSP_REG_SR) continue;
+        for (unsigned n = 0; n < 16; n++) {
+            for (unsigned l = 0; l < ARRAY_SIZE(loops); l++) {
+                for (unsigned sp = 0; sp < ARRAY_SIZE(stacks); sp++) {
+                    for (unsigned irq = 0; irq < 2; irq++) {
+                        unsigned seed = 0x100000 | 0x20000 | (n << 8) |
+                            (n & 1 ? 0xFF : 0) | loops[l] | stacks[sp];
+                        check(a, b, 0x06C020 | (reg << 8), 0x30, seed, mode, irq);
+                        for (unsigned e = 0; e < ARRAY_SIZE(ends); e++) {
+                            check(a, b, 0x06C010 | (reg << 8), ends[e], seed, mode, irq);
+                            check(a, b, 0x06C000 | (reg << 8), ends[e], seed, mode, irq);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 static void check_program_transfers(Machine *a, Machine *b, unsigned mode)
 {
     for (unsigned reg = DSP_REG_X0; reg <= DSP_REG_M7; reg++) {
@@ -837,9 +968,10 @@ int main(int argc, char **argv)
 {
     bool relative_only = argc == 2 && !strcmp(argv[1], "--relative");
     bool loops_only = argc == 2 && !strcmp(argv[1], "--loops");
+    bool compare_only = argc == 2 && !strcmp(argv[1], "--compare");
     bool program_only = argc == 2 && !strcmp(argv[1], "--program");
-    if (argc != 1 && !relative_only && !loops_only && !program_only) {
-        fputs("usage: dspnative [--relative|--loops|--program]\n", stderr);
+    if (argc != 1 && !relative_only && !loops_only && !program_only && !compare_only) {
+        fputs("usage: dspnative [--relative|--loops|--program|--compare]\n", stderr);
         return 2;
     }
     Machine *a = machine_new(false), *b = machine_new(true);
@@ -853,10 +985,14 @@ int main(int argc, char **argv)
 #ifdef _WIN32
     assert(initially_committed == (64u << 10));
 #endif
-    if (relative_only || loops_only || program_only) {
+    if (relative_only || loops_only || program_only || compare_only) {
         for (unsigned mode = 0; mode < 4; mode++) {
+            if (compare_only) check_compare_immediates(a, b, mode);
             if (relative_only) check_relative_branches(a, b, mode);
-            if (loops_only) check_loop_setup(a, b, mode);
+            if (loops_only) {
+                check_loop_setup(a, b, mode);
+                check_register_loop_setup(a, b, mode);
+            }
             if (program_only) check_program_transfers(a, b, mode);
             if (program_only) check_program_write_sequences(a, b, mode);
         }
@@ -871,6 +1007,7 @@ int main(int argc, char **argv)
     check_hot_control_registers(a, b);
     check_program_memory_reads(a, b);
     for (unsigned mode = 0; mode < 4; mode++) {
+        check_compare_immediates(a, b, mode);
         check_program_transfers(a, b, mode);
         check_program_write_sequences(a, b, mode);
     }
@@ -887,6 +1024,7 @@ int main(int argc, char **argv)
         /* Sweep every legal parallel ALU encoding. */
         check_relative_branches(a, b, mode);
         check_loop_setup(a, b, mode);
+        check_register_loop_setup(a, b, mode);
         for (unsigned cc = 0; cc < 16; cc++) {
             for (unsigned sr = 0; sr <= 0xFF; sr += 0xFF) {
                 unsigned input = 0xE0000 | sr;

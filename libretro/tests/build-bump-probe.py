@@ -38,6 +38,8 @@ def main():
                         help="declare one swizzled mip while retaining a mip-filter request")
     parser.add_argument("--linear-level", action="store_true",
                         help="use a 4x4 linear G8B8 image with --single-level")
+    parser.add_argument("--linear-mip-count", type=int, choices=range(16), default=1,
+                        help="raw mip-count field for --linear-level; storage stays one level")
     parser.add_argument("--prime-address", action="store_true",
                         help="prime a one-level mixed shader with legacy clamp before drawing")
     parser.add_argument("--border-color", type=lambda s: int(s, 0), default=0,
@@ -72,6 +74,8 @@ def main():
     explicit_address = args.mip_address_u is not None or args.mip_address_v is not None
     if args.linear_level and (not args.single_level or args.mip_base_size != 4 or not explicit_address):
         parser.error("--linear-level requires --single-level, 4x4 and explicit addresses")
+    if args.linear_mip_count != 1 and not args.linear_level:
+        parser.error("--linear-mip-count requires --linear-level")
     if args.prime_address and not (args.single_level and args.mip_mixed and explicit_address):
         parser.error("--prime-address requires a single-level mixed probe with explicit addresses")
     if explicit_address and (args.mip_clamp or args.mip_clamp_axis):
@@ -119,7 +123,7 @@ def main():
             defines.append(f"-DBUMP_MIXED_BIAS={int(args.lod_bias * 256) & 0x1fff}")
         if args.mip_filter:
             if args.linear_level:
-                defines.append("-DBUMP_LINEAR_LEVEL")
+                defines += ["-DBUMP_LINEAR_LEVEL", f"-DBUMP_LINEAR_MIP_COUNT={args.linear_mip_count}"]
             if args.single_level:
                 defines.append(f"-DBUMP_SINGLE_MIP_LOG={args.mip_base_size.bit_length() - 1}")
             if args.prime_address:
@@ -218,7 +222,7 @@ def main():
                                      args.mip_filter, maximum, 0 if axis_data else -(i // 96), mag,
                                      address_mode, u, v, args.min_lod, args.sampler_transition or "",
                                      args.mip_base_size, f"0x{args.border_color:08x}",
-                                     1 if args.single_level else args.mip_base_size.bit_length()])
+                                     args.linear_mip_count if args.linear_level else 1 if args.single_level else args.mip_base_size.bit_length()])
                     continue
                 writer.writerow([i, ("linear", "swizzled")[i // 96],
                                  "mixed_color" if args.mixed else "color", "BG", channels,

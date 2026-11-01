@@ -341,6 +341,10 @@ TextureShape pgraph_get_texture_shape(PGRAPHState *pg, int texture_idx)
         width = rect_width;
         height = rect_height;
         depth = 1;
+
+        /* Linear storage has one image, regardless of stale mip fields. */
+        levels = 1;
+        min_mipmap_level = max_mipmap_level = 0;
     } else {
         width = 1 << log_width;
         height = 1 << log_height;

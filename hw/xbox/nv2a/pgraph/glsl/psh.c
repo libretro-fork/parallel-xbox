@@ -37,6 +37,11 @@
 
 DEF_UNIFORM_INFO_ARR(PshUniform, PSH_UNIFORM_DECL_X)
 
+static bool g8b8_single_level(unsigned format, unsigned levels)
+{
+    return format == NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_G8B8 || levels == 1;
+}
+
 static unsigned g8b8_single_mip_min_filter(unsigned filter)
 {
     if (filter >= NV_PGRAPH_TEXFILTER0_MIN_BOX_NEARESTLOD &&
@@ -327,7 +332,8 @@ void pgraph_glsl_set_psh_state(PGRAPHState *pg, PshState *state)
         if (gb && !cubemap && state->dim_tex[i] == 2 &&
             min_filter >= NV_PGRAPH_TEXFILTER0_MIN_BOX_NEARESTLOD &&
             min_filter <= NV_PGRAPH_TEXFILTER0_MIN_TENT_TENT_LOD &&
-            GET_MASK(tex_fmt, NV_PGRAPH_TEXFMT0_MIPMAP_LEVELS) == 1) {
+            g8b8_single_level(color_format,
+                GET_MASK(tex_fmt, NV_PGRAPH_TEXFMT0_MIPMAP_LEVELS))) {
             uint32_t address = pgraph_reg_r(pg, NV_PGRAPH_TEXADDRESS0 + i * 4);
             if (color_format == NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_G8B8 ||
                 g8b8_mip_address_supported(
@@ -395,7 +401,8 @@ void pgraph_glsl_set_psh_state(PGRAPHState *pg, PshState *state)
         }
         if (gb && mode == PS_TEXTUREMODES_PROJECT2D && !cubemap &&
             state->dim_tex[i] == 2 && !state->border_adjust[i] &&
-            (GET_MASK(tex_fmt, NV_PGRAPH_TEXFMT0_MIPMAP_LEVELS) == 1 || mip_filter) &&
+            (g8b8_single_level(color_format,
+                GET_MASK(tex_fmt, NV_PGRAPH_TEXFMT0_MIPMAP_LEVELS)) || mip_filter) &&
             state->colorkey_mode[i] == COLOR_KEY_NONE &&
             !(state->alphakill[i] && (filter & NV_PGRAPH_TEXFILTER0_ASIGNED)) &&
             (linear_filter || point_filter || mixed_filter ||

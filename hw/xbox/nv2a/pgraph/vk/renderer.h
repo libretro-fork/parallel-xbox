@@ -1232,6 +1232,7 @@ extern const XemuCostQueryOps pgraph_vk_cost_ops;
 void pgraph_vk_finish(PGRAPHState *pg, FinishReason why);
 void pgraph_vk_settle_reports(PGRAPHState *pg);
 void pgraph_vk_reclaim_command_buffer(PGRAPHState *pg, bool reuse);
+void pgraph_vk_reclaim_retired_images(PGRAPHVkState *r);
 void pgraph_vk_framebuffer_drop_view(PGRAPHVkState *r, VkImageView view);
 void pgraph_vk_frame_gpu_cb_begin(PGRAPHVkState *r, VkCommandBuffer cmd);
 void pgraph_vk_frame_gpu_cb_end(PGRAPHVkState *r, VkCommandBuffer cmd);

@@ -20,6 +20,8 @@ legacy = legacy.replace("uint8_t g8b8_mip_clamp_u;", "").replace("uint8_t g8b8_m
 legacy = legacy.replace("uint8_t g8b8_mip_mirror;", "")
 pixel_source = (repo / "hw/xbox/nv2a/pgraph/glsl/psh.c").read_text()
 mip_address = re.search(r"^static bool g8b8_mip_address_supported\(.*?^\}", pixel_source, re.S | re.M).group()
+single_level = re.search(r"^static bool g8b8_single_level\(.*?^\}", pixel_source, re.S | re.M).group()
+assert pixel_source.count("g8b8_single_level(color_format,") == 2
 single_filter = re.search(r"^static unsigned g8b8_single_mip_min_filter\(.*?^\}", pixel_source, re.S | re.M).group()
 single_selection = re.search(r"        /\* A one-level image.*?^        \}", pixel_source, re.S | re.M).group()
 encoding = re.search(r"^            if \(signs.*?^            \}$", pixel_source, re.S | re.M).group()
@@ -107,12 +109,12 @@ int main(void) {
     for (unsigned format = 0; format < 3; format++)
     for (unsigned cube = 0; cube < 2; cube++)
     for (unsigned dim = 1; dim <= 3; dim++)
-    for (unsigned levels = 0; levels < 4; levels++)
+    for (unsigned levels = 0; levels < 16; levels++)
     for (unsigned filter = 0; filter < 16; filter++)
     for (unsigned u = 0; u < 8; u++) for (unsigned v = 0; v < 8; v++) {
         unsigned color = format == 2 ? 6 : format ? NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_G8B8 :
                                   NV097_SET_TEXTURE_FORMAT_COLOR_SZ_G8B8;
-        bool eligible = format != 2 && !cube && dim == 2 && levels == 1 &&
+        bool eligible = format != 2 && !cube && dim == 2 && (format == 1 || levels == 1) &&
                         filter >= 3 && filter <= 6 &&
                         (format || (u >= 1 && u <= 4 && v >= 1 && v <= 4));
         unsigned expected = eligible ? (filter & 1 ? 1 : 2) : filter;
@@ -309,7 +311,7 @@ int main(void) {
     printf("PASS: %u signed-G8B8 address invalidation cases and shader field coverage\n", cases);
     printf("PASS: %u base-only shader cache canonicalization cases\n", canonical);
 }
-'''.replace("/* PRODUCTION */", function + "\n" + mip_address + "\n" + single_filter).replace("/* SINGLE_SELECTION */", single_selection).replace("/* MASKS */", masks).replace("/* STATE */", state + "\n" + legacy + '\n#include "hw/xbox/nv2a/pgraph/glsl/g8b8-lod.h"').replace("/* ENCODING */", encoding).replace("/* LOWER_SELECTION */", lower_selection)
+'''.replace("/* PRODUCTION */", function + "\n" + mip_address + "\n" + single_level + "\n" + single_filter).replace("/* SINGLE_SELECTION */", single_selection).replace("/* MASKS */", masks).replace("/* STATE */", state + "\n" + legacy + '\n#include "hw/xbox/nv2a/pgraph/glsl/g8b8-lod.h"').replace("/* ENCODING */", encoding).replace("/* LOWER_SELECTION */", lower_selection)
 with tempfile.TemporaryDirectory(prefix="g8b8-state-") as folder:
     source = Path(folder) / "test.c"
     binary = Path(folder) / "test"

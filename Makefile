@@ -376,6 +376,26 @@ dsploops: $(DSPNATIVE) $(DSPDIFF)
 	$(DSPDIFF) --until-halt --baseline-jit --frames 100 --seed 1 $(CORE_DIR)/libretro/tests/rom/gp-loop-setup.inc
 	$(DSPDIFF) --until-halt --baseline-jit --frames 100 --seed 2 $(CORE_DIR)/libretro/tests/rom/gp-loop-setup.inc
 
+DSP_REGISTER_LOOP_ROMS := gp-register-loops gp-register-repeat gp-register-accumulator
+dspregisterloops: $(DSPNATIVE) $(DSPDIFF)
+	$(DSP_PROGRAM_RUNNER) $(DSPNATIVE) --loops
+	@for rom in $(DSP_REGISTER_LOOP_ROMS); do \
+		$(DSP_PROGRAM_RUNNER) $(DSPDIFF) --until-halt --frames 100 --seed 1 $(CORE_DIR)/libretro/tests/rom/$$rom.inc || exit $$?; \
+		$(DSP_PROGRAM_RUNNER) $(DSPDIFF) --until-halt --frames 100 --seed 2 $(CORE_DIR)/libretro/tests/rom/$$rom.inc || exit $$?; \
+		$(DSP_PROGRAM_RUNNER) $(DSPDIFF) --until-halt --baseline-jit --frames 100 --seed 1 $(CORE_DIR)/libretro/tests/rom/$$rom.inc || exit $$?; \
+		$(DSP_PROGRAM_RUNNER) $(DSPDIFF) --until-halt --baseline-jit --frames 100 --seed 2 $(CORE_DIR)/libretro/tests/rom/$$rom.inc || exit $$?; \
+	done
+
+DSP_COMPARE_ROMS := gp-compare-immediate gp-compare-code-write
+dspcompare: $(DSPNATIVE) $(DSPDIFF)
+	$(DSP_PROGRAM_RUNNER) $(DSPNATIVE) --compare
+	@for rom in $(DSP_COMPARE_ROMS); do \
+		$(DSP_PROGRAM_RUNNER) $(DSPDIFF) --until-halt --frames 100 --seed 1 $(CORE_DIR)/libretro/tests/rom/$$rom.inc || exit $$?; \
+		$(DSP_PROGRAM_RUNNER) $(DSPDIFF) --until-halt --frames 100 --seed 2 $(CORE_DIR)/libretro/tests/rom/$$rom.inc || exit $$?; \
+		$(DSP_PROGRAM_RUNNER) $(DSPDIFF) --until-halt --baseline-jit --frames 100 --seed 1 $(CORE_DIR)/libretro/tests/rom/$$rom.inc || exit $$?; \
+		$(DSP_PROGRAM_RUNNER) $(DSPDIFF) --until-halt --baseline-jit --frames 100 --seed 2 $(CORE_DIR)/libretro/tests/rom/$$rom.inc || exit $$?; \
+	done
+
 DSP_PROGRAM_RUNNER ?=
 DSP_PROGRAM_ROMS := gp-program-write gp-program-selfrep gp-program-extension
 dspprogram: $(DSPNATIVE) $(DSPDIFF)
@@ -422,6 +442,6 @@ $(FILEIOTEST): $(CORE_DIR)/libretro/tests/test-file-io.c \
 		$(DEPS_LIBS) $(OS_LIBS)
 fileiotest: $(FILEIOTEST)
 
-.PHONY: all clean dspdiff dspnative dsprelative dsploops dspprogram dsptcc dsplogical dspstatus dspbudget seedshaders s3tctest fileiotest FORCE
+.PHONY: all clean dspdiff dspnative dsprelative dsploops dspprogram dspregisterloops dspcompare dsptcc dsplogical dspstatus dspbudget seedshaders s3tctest fileiotest FORCE
 
 -include $(ALL_OBJECTS:.o=.d)

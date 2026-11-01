@@ -1003,7 +1003,7 @@ static void emit_src56(Tr *t, const AluOp *a, int out)
         if (!a->imm_unsigned && (v & 0x800000)) {
             v -= 1 << 24;
         }
-        h_mov_ri(e, out, (uint64_t)(v << 24));
+        h_mov_ri(e, out, (uint64_t)v << 24);
         break;
     }
     default:
@@ -1245,7 +1245,13 @@ static void emit_alu(Tr *t, const AluOp *a)
         acc_load(t, a->d);
         emit_src56(t, a, T1);
         emit_addsub56(e, acc, T1, a->op != OP_ADD);
-        emit_sr_result(t, SR_EUNZ | SR_V | SR_C, T4, T3, a->op == OP_CMP ? -1 : a->d);
+        /* CMP consumes the current flags and clears the interpreter's
+         * virtual upper status bits as its CCR update does. */
+        uint32_t clear = SR_EUNZ | SR_V | SR_C;
+        if (a->op == OP_CMP) {
+            clear |= 0xFFFF0000u;
+        }
+        emit_sr_result(t, clear, T4, T3, a->op == OP_CMP ? -1 : a->d);
         if (a->op != OP_CMP) {
             h_mov_rr(e, 1, acc, T3);
             acc_written(t, a->d);
@@ -1983,6 +1989,11 @@ static bool np_alu(const Insn *in, AluOp *a)
     }
     if (!strcmp(name, "add #xxxx, D")) {
         a->op = OP_ADD;
+        a->imm = in->ext;
+        return true;
+    }
+    if (!strcmp(name, "cmp #xxxx, S2")) {
+        a->op = OP_CMP;
         a->imm = in->ext;
         return true;
     }
@@ -2798,8 +2809,16 @@ static bool emit_control(Tr *t, const Insn *in)
         return true;
     }
 
-    if (!strcmp(name, "dor #xxx, label")) {
-        uint32_t la = (at + in->ext) & 0xFFFF;
+    if (!strcmp(name, "dor #xxx, label") || !strcmp(name, "dor S, label") ||
+        !strcmp(name, "do S, expr")) {
+        bool from_reg = strcmp(name, "dor #xxx, label") != 0;
+        bool absolute = !strcmp(name, "do S, expr");
+        unsigned reg = (inst >> 8) & 63;
+        if (from_reg && !reg_supported(reg) &&
+            !(reg >= DSP_REG_SR && reg <= DSP_REG_LC)) {
+            return false;
+        }
+        uint32_t la = ((absolute ? 0 : at) + in->ext) & 0xFFFF;
         uint32_t lc = ((inst >> 8) & 0xFF) + ((inst & 0xF) << 8);
         acc_spill_all(t, false);
         h_mov_rr(e, 1, H_ARG0, REG_CORE);
@@ -2807,12 +2826,27 @@ static bool emit_control(Tr *t, const Insn *in)
         h_ld32(e, H_ARG2, REG_CORE, REGOFF(DSP_REG_LC));
         h_call(e, (const void *)dsp56k_stack_push);
         h_st32_imm(e, REG_CORE, REGOFF(DSP_REG_LA), la);
+        if (absolute) {
+            /* DO reads after the first push/LA update, before saving SR.
+             * Accumulator limiting must be visible in that saved status. */
+            emit_read_reg(t, reg, V1);
+            h_and_ri(e, 0, V1, 0xFFFF);
+            h_st32(e, REG_CORE, REGOFF(DSP_REG_LC), V1);
+        }
         h_mov_rr(e, 1, H_ARG0, REG_CORE);
         h_mov_ri(e, H_ARG1, in->next);
         h_ld32(e, H_ARG2, REG_CORE, REGOFF(DSP_REG_SR));
         h_call(e, (const void *)dsp56k_stack_push);
         h_or_mem32_imm(e, REG_CORE, REGOFF(DSP_REG_SR), 1 << DSP_SR_LF);
-        h_st32_imm(e, REG_CORE, REGOFF(DSP_REG_LC), lc);
+        if (!from_reg) {
+            h_st32_imm(e, REG_CORE, REGOFF(DSP_REG_LC), lc);
+        } else if (!absolute) {
+            /* DOR reads after both pushes and LF is set. SR, SP, SSH,
+             * SSL and LA operands must observe those effects exactly. */
+            emit_read_reg(t, reg, V1);
+            h_and_ri(e, 0, V1, 0xFFFF);
+            h_st32(e, REG_CORE, REGOFF(DSP_REG_LC), V1);
+        }
         emit_stack_check(t, in, in->next, 6);
         /* DOR enables LF. Chain through that identity's stable table;
          * a missing translation still leaves through the normal path. */
@@ -2827,14 +2861,30 @@ static bool emit_control(Tr *t, const Insn *in)
         return true;
     }
 
-    if (!strcmp(name, "rep #xxx")) {
+    if (!strcmp(name, "rep #xxx") || !strcmp(name, "rep S")) {
+        bool from_reg = !strcmp(name, "rep S");
+        unsigned reg = (inst >> 8) & 63;
+        if (from_reg && !reg_supported(reg) &&
+            !(reg >= DSP_REG_SR && reg <= DSP_REG_LC)) {
+            return false;
+        }
         uint32_t lc = ((inst >> 8) & 0xFF) + ((inst & 0xF) << 8);
         acc_spill_all(t, false);
         /* emu_rep_imm, then dsp_postexecute_update_pc's first pass over
          * the REP (LC 0 counts 65536; the REP's instruction next) */
         h_ld32(e, T0, REG_CORE, REGOFF(DSP_REG_LC));
         h_st32(e, REG_CORE, REGOFF(DSP_REG_LCSAVE), T0);
-        h_st32_imm(e, REG_CORE, REGOFF(DSP_REG_LC), lc ? lc : 0x10000);
+        if (from_reg) {
+            emit_read_reg(t, reg, V1);
+            h_and_ri(e, 0, V1, 0xFFFF);
+            h_cmp_ri(e, 0, V1, 0);
+            size_t nonzero = h_jcc(e, HC_NE);
+            h_mov_ri(e, V1, 0x10000);
+            h_patch(e, nonzero, e->len);
+            h_st32(e, REG_CORE, REGOFF(DSP_REG_LC), V1);
+        } else {
+            h_st32_imm(e, REG_CORE, REGOFF(DSP_REG_LC), lc ? lc : 0x10000);
+        }
         h_st32_imm(e, REG_CORE, OFF(loop_rep), 1);
         h_st32_imm(e, REG_CORE, OFF(pc_on_rep), 0);
         h_st32_imm(e, REG_CORE, OFF(pc), in->next);

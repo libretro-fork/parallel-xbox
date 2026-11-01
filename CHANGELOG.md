@@ -1,6 +1,8 @@
 # Changelog of the libretro core
 
 - Upload only a few dirty page runs for large OpenGL vertex spans, retaining bulk uploads for dense/fragmented changes and private stale tracking when surfaces consume shared dirty bits.
+- Linear textures now consistently use one stored level, preventing Vulkan upload assertions and incorrect signed G8B8 filtering when mip-count or clamp fields are stale.
+
 
 - Skip per-page inspection of wholly clean or dirty bitmap chunks during display dirty-run collection, preserving concurrent-write and clipped-range behavior.
 - Fixed signed bump filtering and Vulkan min/mag selection when linear G8B8 textures request mip filters, matching their single-level storage.
@@ -94,6 +96,15 @@
 - Correct signed G8B8 filtering with constant-border addressing when matching filters are restricted to mip zero, including Force Texture LOD0. Reuse existing point/gather shaders and cache keys; retain full-mip and mixed-filter border exclusions.
 
 ## Unreleased
+
+- Vulkan image allocation pressure now reclaims deferred images whose draw, display and upload work has finished, instead of failing while reusable memory is waiting in the retirement list. Driver image-creation memory errors receive one reclamation retry, with allocation-stage diagnostics if recovery fails. Headless regression tests protect live and in-flight images.
+
+
+- Long-immediate DSP comparisons now run natively, removing OutRun 2's remaining hot interpreter fallback. Negative 24-bit compare immediates now sign-extend correctly in the interpreter, and native compares clear stale internal status bits. Independent arithmetic/flags tests and production-block loop/code-write regressions cover both engines.
+
+
+- Register-count DOR, DO and REP loops now run in native DSP code, including status and stack-register sources. Setup preserves count-read order, accumulator limiting and zero-count repeats. New regression matrices and nested-loop programs guard against interpreter fallback and stale status/count values.
+
 
 - DSP program-memory writes now run natively for ordinary data and address registers, removing OutRun 2's hottest interpreter fallback. Self-modifying code and REP bodies redispatch after writes, while unchanged words retain cached code. Short absolute MOVEM addresses now decode across the full six-bit range. Regression tests cover transfers and code invalidation on x86-64 and AArch64.
 

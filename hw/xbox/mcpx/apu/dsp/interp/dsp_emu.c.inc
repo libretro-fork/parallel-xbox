@@ -6554,7 +6554,8 @@ static void emu_cmp_long(dsp_core_t* dsp)
 
     source[2] = 0;
     source[1] = xxxx;
-    source[0] = 0x0;
+    /* A 24-bit long immediate is a signed word (DSP56300FM 13-45). */
+    source[0] = (xxxx & 0x800000) ? 0xFF : 0;
 
     uint16_t newsr = dsp_sub56(source, dest);
 
