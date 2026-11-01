@@ -1,5 +1,7 @@
 # Changelog of the libretro core
 
+- Add optional GPU regressions for signed G8B8 minimum mip levels five and six, using larger textures with nontrivial final mip levels. Keep the normal test matrix and emulator runtime unchanged.
+
 - Skip the obsolete Vulkan transfer dependency after packing depth for direct GPU swizzling. Preserve transfer fallbacks, shader visibility and conversion-buffer reuse ordering without new resources.
 
 - Correct signed G8B8 bump-map reconstruction with minimum mip levels above three in OpenGL and Vulkan. Preserve existing shader-cache keys and layouts through a compact extended encoding; Force Texture LOD0 still overrides the guest minimum. Add filtering, addressing and cache-compatibility regression coverage without runtime diagnostics.

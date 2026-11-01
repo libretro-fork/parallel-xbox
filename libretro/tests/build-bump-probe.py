@@ -27,10 +27,10 @@ def main():
                         help="clamp only this axis and wrap the other with --mip-filter")
     parser.add_argument("--mip-address-u", choices=("wrap", "edge", "mirror"))
     parser.add_argument("--mip-address-v", choices=("wrap", "edge", "mirror"))
-    parser.add_argument("--min-lod", type=int, choices=(0, 1, 2, 3, 4), default=0,
+    parser.add_argument("--min-lod", type=int, choices=range(7), default=0,
                         help="guest lower mip clamp with --mip-filter")
-    parser.add_argument("--mip-base-size", type=int, choices=(4, 16, 32), default=4,
-                        help="4x4, 16x16 or 32x32 mip fixture")
+    parser.add_argument("--mip-base-size", type=int, choices=(4, 16, 32, 64, 128), default=4,
+                        help="base size of the complete mip fixture")
     parser.add_argument("--sampler-transition", choices=("lod0-to-mip", "mip-to-lod0"),
                         help="prime the same image with the other filter class before drawing")
     parser.add_argument("--lod-bias", type=float, choices=(-4, 0, 0.25, 4), default=0,
@@ -42,11 +42,8 @@ def main():
         parser.error("--min-lod requires --mip-filter")
     if args.mip_base_size != 4 and not args.mip_filter:
         parser.error("--mip-base-size requires --mip-filter")
-    if args.min_lod == 3 and args.mip_base_size != 16:
-        if args.mip_base_size != 32:
-            parser.error("--min-lod 3 requires --mip-base-size 16 or 32")
-    if args.min_lod == 4 and args.mip_base_size != 32:
-        parser.error("--min-lod 4 requires --mip-base-size 32")
+    if args.min_lod >= 3 and args.mip_base_size < 1 << (args.min_lod + 1):
+        parser.error("the selected lower mip must remain at least 2x2")
     if args.sampler_transition and not args.mip_filter:
         parser.error("--sampler-transition requires --mip-filter")
     if args.mixed and args.mip_filter:
@@ -95,7 +92,8 @@ def main():
         if args.mip_filter:
             if args.mip_base_size >= 16:
                 defines += ["-DBUMP_FILTER_WIDE_MIP_PROBE",
-                            f"-DBUMP_MIP_BASE_SIZE={args.mip_base_size}"]
+                            f"-DBUMP_MIP_BASE_SIZE={args.mip_base_size}",
+                            f"-DBUMP_MIP_LOG_SIZE={args.mip_base_size.bit_length() - 1}"]
             if args.sampler_transition:
                 defines.append("-DBUMP_SAMPLER_TRANSITION")
                 if args.sampler_transition == "lod0-to-mip":
@@ -166,7 +164,7 @@ def main():
                                 (4.25, 4.25), (-0.25, 4.25))[i // 48]
                         maximum = 1 if flags & 1 else 2
                         if args.mip_base_size >= 16:
-                            maximum = (3 if args.mip_base_size == 16 else 4) + (not (flags & 1))
+                            maximum = args.mip_base_size.bit_length() - 2 + (not (flags & 1))
                             u += 1 / args.mip_base_size
                             v += 1 / args.mip_base_size
                     else:

@@ -152,6 +152,18 @@ four through fifteen and all nine address pairs, preserving existing state
 layout, keys and shader seeds. Only extended keys use this encoding.
 The 32x32 fixture shifts normalized coordinates by 1/128, avoiding both
 point and gather boundaries after Force LOD0; its footprint adds three to LOD.
+Use `--extended-mip-minima` to add 13824 cases at minima five and six:
+64x64/seven-level and 128x128/eight-level textures keep the selected lower
+mip at 2x2 and the next at 1x1. They cover all nine address pairs, all four
+mip-filter modes, matching/mixed filters, bias +0.25, negative-bias controls
+and both override settings. The optional total is 89088 cases per renderer,
+or 242688 with `--extended-address-biases` too. Default totals stay unchanged.
+The builder accepts `--min-lod 5 --mip-base-size 64` or
+`--min-lod 6 --mip-base-size 128`. Larger fixtures use independent texture
+slots below 48 MiB, separated from the target, scanout and gradient buffers;
+compile-time bounds enforce the 64 MiB limit. Their normalized coordinate
+shifts are 1/256 and 1/512, away from mip-zero point/gather boundaries.
+These guest probes add no normal-emulator code or logging.
 Non-neutral bump-luminance profiles add scale/bias (0.5, 0.25), negative
 scale (-0.5, 0.75) and saturation (3, -0.5). Each profile covers all 16 channel
 sign masks, point/linear filtering, three coordinates and linear/swizzled
