@@ -25,7 +25,7 @@ typedef struct {hwaddr addr,size;} Span;
 typedef struct {
  StorageBuffer vertex_arena[2];bool vertex_arena_coherent[2],vertex_arena_pending,vertex_arena_used;VkDeviceSize vertex_arena_dirty_start[2];
  Span vertex_attr_span[16];int vertex_attribute_to_description_location[16];hwaddr vertex_attribute_offsets[16];
- VertexCowCacheEntry vertex_cow_cache[512];unsigned vertex_cow_recent[4],vertex_cow_tail[2],vertex_cow_cache_rr;uint32_t vertex_arena_epoch[2];unsigned slot;
+ VertexCowCacheEntry vertex_cow_cache[512];unsigned vertex_cow_recent[4],vertex_cow_tail[2],vertex_cow_cache_rr;uint32_t vertex_arena_epoch[2],submit_count,settled_submit;unsigned slot;
  struct{struct{uint64_t nonCoherentAtomSize;} limits;} device_props;
  uint64_t vertex_stale_bitmap[1];
 } PGRAPHVkState;
@@ -102,6 +102,31 @@ int main(void){
  (void)snapshot(32768,4096,32768,true);assert(r.vertex_arena_epoch[0]==1&&r.vertex_cow_tail[0]);
  reset();r.vertex_arena[0].buffer_size=4096;fallback=snapshot(4096,8192,0,true);assert(!fallback.cow&&finishes&&settles);
  reset();r.vertex_cow_tail[0]=513;assert(!vertex_cow_extendable(&r,0,4096));r.vertex_cow_tail[0]=0;assert(!vertex_cow_extendable(&r,0,4096));
+ /* Crossing the recycle threshold must not submit or wait for readers.
+  * Known completion permits epoch reset; unproved readers keep their bytes
+  * and use the remaining capacity. Current draw references always forbid reset. */
+ unsigned pressure_cases=0;
+ for(unsigned slot=0;slot<2;slot++)for(unsigned wrap=0;wrap<2;wrap++)
+ for(int delta=-2;delta<=2;delta++)for(unsigned pending=0;pending<2;pending++)
+ for(unsigned used=0;used<2;used++)for(unsigned coherent=0;coherent<2;coherent++){
+  reset();r.slot=slot;r.vertex_arena_coherent[slot]=coherent;
+  uint32_t serial=wrap?0:100;r.submit_count=serial;r.settled_submit=serial+(uint32_t)delta;
+  r.vertex_arena[slot].buffer_offset=49152;r.vertex_arena_pending=pending;r.vertex_arena_used=used;
+  memset(arena[slot],0x57,49152);
+  VertexCowDispatch out=snapshot(65536,4096,65536,true);
+  bool recycle=delta>=0&&!pending&&!used;
+  assert(out.cow&&out.slot==slot&&out.arena_offset==(recycle?0u:49152u));
+  assert(!finishes&&!settles&&r.vertex_arena_epoch[slot]==(unsigned)recycle&&r.vertex_arena_epoch[slot^1]==(unsigned)recycle);
+  if(!recycle)for(unsigned i=0;i<49152;i++)assert(arena[slot][i]==0x57);
+  assert(!memcmp(arena[slot]+out.arena_offset,ram+65536,4096));pressure_cases++;
+ }
+ printf("PASS: %u opportunistic recycle schedules, rollover, current-draw guards, live-prefix preservation and zero threshold waits\n",pressure_cases);
+ /* Actual exhaustion with unproved readers retains the existing fallback. */
+ reset();r.submit_count=7;r.settled_submit=6;r.vertex_arena[0].buffer_size=8192;r.vertex_arena[0].buffer_offset=4096;
+ memset(arena[0],0x57,4096);fallback=snapshot(16384,8192,16384,true);
+ assert(!fallback.cow&&finishes==1&&settles==1&&!r.vertex_arena_epoch[0]);
+ for(unsigned i=0;i<4096;i++)assert(arena[0][i]==0x57);
+ assert(!memcmp(mirror+16384,ram+16384,8192));
  /* Selector adversaries: stale epochs, overwritten entries, wrong base/slot,
   * allocation holes, capacity, and atom boundaries. No array scan is needed. */
  for(unsigned n=0;n<100000;n++){
@@ -120,5 +145,5 @@ int main(void){
   bool dirty=(rnd()&3)==0;if(dirty)ram[addr+rnd()%size]^=0x5d;
   VertexCowDispatch out=snapshot(addr,size,lo,dirty);hold(out,addr+size);
  }
- check_readers();assert(finishes&&settles&&r.vertex_arena_epoch[0]);printf("PASS: immutable reader snapshots, tail-only growth, dirty/writeback/rotation fallbacks, coherent/atom-aligned gates, 100000 selector cases and 10000 live snapshot cases; UB traps enabled\n");
+ check_readers();assert(finishes&&settles&&r.vertex_arena_epoch[0]);printf("PASS: immutable reader snapshots, tail-only growth, dirty/writeback/rotation fallbacks, coherent/atom-aligned gates, 100000 selector cases and 10000 live snapshot cases\n");
 }
