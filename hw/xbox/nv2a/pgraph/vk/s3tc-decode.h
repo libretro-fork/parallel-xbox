@@ -185,6 +185,8 @@ static bool s3tc_decode_levels(PGRAPHState *pg, VkCommandBuffer cmd,
     vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_HOST_BIT | VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
         VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, NULL, 1, &before, 1, &image);
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, r->s3tc_decode.pipelines[volume]);
+    VkDescriptorImageInfo outputs[96];
+    VkWriteDescriptorSet writes[192];
     for (unsigned i = 0; i < count; i++) {
         S3TCUploadLevel *l = &levels[i];
         VkImageViewCreateInfo vi = { .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
@@ -193,15 +195,18 @@ static bool s3tc_decode_levels(PGRAPHState *pg, VkCommandBuffer cmd,
             .subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, l->mip, 1, l->layer, 1 } };
         VK_CHECK(vkCreateImageView(r->device, &vi, NULL, &slot->views[i]));
         slot->used++;
-        VkDescriptorImageInfo output = { .imageView = slot->views[i], .imageLayout = VK_IMAGE_LAYOUT_GENERAL };
-        VkWriteDescriptorSet writes[2] = {
-            { .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, .dstSet = slot->sets[i],
+        outputs[i] = (VkDescriptorImageInfo){ .imageView = slot->views[i], .imageLayout = VK_IMAGE_LAYOUT_GENERAL };
+        writes[2 * i] = (VkWriteDescriptorSet){ .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, .dstSet = slot->sets[i],
               .dstBinding = 0, .descriptorCount = 1, .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-              .pBufferInfo = &input },
-            { .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, .dstSet = slot->sets[i],
+              .pBufferInfo = &input };
+        writes[2 * i + 1] = (VkWriteDescriptorSet){ .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, .dstSet = slot->sets[i],
               .dstBinding = 1, .descriptorCount = 1, .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
-              .pImageInfo = &output } };
-        vkUpdateDescriptorSets(r->device, 2, writes, 0, NULL);
+              .pImageInfo = &outputs[i] };
+    }
+    /* Every set belongs to this retired slot; publish all bindings together. */
+    vkUpdateDescriptorSets(r->device, 2 * count, writes, 0, NULL);
+    for (unsigned i = 0; i < count; i++) {
+        S3TCUploadLevel *l = &levels[i];
         uint32_t push[9] = { l->width, l->height, l->depth, format,
             l->out_width, l->out_height, l->crop, l->crop,
             (direct ? l->source : l->packed)/4 };

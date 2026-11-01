@@ -1,5 +1,7 @@
 # Changelog of the libretro core
 
+- Reduce Vulkan driver calls for fallback S3TC mipmaps and cube faces by publishing their descriptors together.
+
 - Decode larger unsupported-BC Vulkan textures directly into final GPU mip/cube images, with compressed snapshots or imported-VRAM reads; retain native BC and CPU fallbacks, and protect retired texture resources until auxiliary uploads finish.
 - Reuse OpenGL stage-binary export storage across module saves, with a startup reservation and growth that discards obsolete contents instead of copying them.
 
