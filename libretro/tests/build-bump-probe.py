@@ -27,10 +27,10 @@ def main():
                         help="clamp only this axis and wrap the other with --mip-filter")
     parser.add_argument("--mip-address-u", choices=("wrap", "edge", "mirror"))
     parser.add_argument("--mip-address-v", choices=("wrap", "edge", "mirror"))
-    parser.add_argument("--min-lod", type=int, choices=(0, 1, 2, 3), default=0,
+    parser.add_argument("--min-lod", type=int, choices=(0, 1, 2, 3, 4), default=0,
                         help="guest lower mip clamp with --mip-filter")
-    parser.add_argument("--mip-base-size", type=int, choices=(4, 16), default=4,
-                        help="4x4/three-level or 16x16/five-level mip fixture")
+    parser.add_argument("--mip-base-size", type=int, choices=(4, 16, 32), default=4,
+                        help="4x4, 16x16 or 32x32 mip fixture")
     parser.add_argument("--sampler-transition", choices=("lod0-to-mip", "mip-to-lod0"),
                         help="prime the same image with the other filter class before drawing")
     parser.add_argument("--lod-bias", type=float, choices=(-4, 0, 0.25, 4), default=0,
@@ -43,7 +43,10 @@ def main():
     if args.mip_base_size != 4 and not args.mip_filter:
         parser.error("--mip-base-size requires --mip-filter")
     if args.min_lod == 3 and args.mip_base_size != 16:
-        parser.error("--min-lod 3 requires --mip-base-size 16")
+        if args.mip_base_size != 32:
+            parser.error("--min-lod 3 requires --mip-base-size 16 or 32")
+    if args.min_lod == 4 and args.mip_base_size != 32:
+        parser.error("--min-lod 4 requires --mip-base-size 32")
     if args.sampler_transition and not args.mip_filter:
         parser.error("--sampler-transition requires --mip-filter")
     if args.mixed and args.mip_filter:
@@ -53,7 +56,7 @@ def main():
     explicit_address = args.mip_address_u is not None or args.mip_address_v is not None
     if explicit_address and (args.mip_clamp or args.mip_clamp_axis):
         parser.error("explicit addresses cannot be combined with mip clamp options")
-    if args.mip_base_size == 16 and not (args.mip_clamp or args.mip_clamp_axis):
+    if args.mip_base_size >= 16 and not (args.mip_clamp or args.mip_clamp_axis):
         explicit_address = True
     axis_data = args.mip_clamp or args.mip_clamp_axis is not None or explicit_address
     if axis_data and not args.mip_filter:
@@ -90,8 +93,9 @@ def main():
             defines.append("-DBUMP_FILTER_MIXED_PROBE")
             defines.append(f"-DBUMP_MIXED_BIAS={int(args.lod_bias * 256) & 0x1fff}")
         if args.mip_filter:
-            if args.mip_base_size == 16:
-                defines.append("-DBUMP_FILTER_WIDE_MIP_PROBE")
+            if args.mip_base_size >= 16:
+                defines += ["-DBUMP_FILTER_WIDE_MIP_PROBE",
+                            f"-DBUMP_MIP_BASE_SIZE={args.mip_base_size}"]
             if args.sampler_transition:
                 defines.append("-DBUMP_SAMPLER_TRANSITION")
                 if args.sampler_transition == "lod0-to-mip":
@@ -161,10 +165,10 @@ def main():
                         u, v = ((1.25, 1.25), (-0.25, -0.25),
                                 (4.25, 4.25), (-0.25, 4.25))[i // 48]
                         maximum = 1 if flags & 1 else 2
-                        if args.mip_base_size == 16:
-                            maximum = 3 if flags & 1 else 4
-                            u += 0.0625
-                            v += 0.0625
+                        if args.mip_base_size >= 16:
+                            maximum = (3 if args.mip_base_size == 16 else 4) + (not (flags & 1))
+                            u += 1 / args.mip_base_size
+                            v += 1 / args.mip_base_size
                     else:
                         u, v = 1.25 - 4 * (i // 96), 0
                         maximum = 1 if (i // 3) % 2 else 2

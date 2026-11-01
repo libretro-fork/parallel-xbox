@@ -111,7 +111,7 @@ while an unlinker owns the list. It includes the production implementation.
 `run.sh` runs it through the alert, keyed-event and event tiers with Wine.
 
 `test-signed-g8b8.py CHECKOUT CORE HARNESS SCRATCH` builds isolated guest bump
-and color probes and checks 68352 cases on each of OpenGL and Vulkan, including
+and color probes and checks 75264 cases on each of OpenGL and Vulkan, including
 all channel-sign combinations for the color probe, with quality overrides off
 and on. Mixed LOD0 filters additionally cover magnification/minification and
 sampler LOD biases of -4, 0 and +4. Three-level mipmapped probes cover all four
@@ -121,7 +121,7 @@ and mixed min/mag reconstruction.
 Clamp-to-edge matrices add independent X/Y data and samples inside, below,
 above and at opposite U/V edges, with matching and mixed filters. New
 independent-axis matrices are covered at bias +0.25; `--extended-address-biases` repeats
-these at -4/0/+0.25/+4 (168960 total cases per renderer). The probe builder
+these at -4/0/+0.25/+4 (193536 total cases per renderer). The probe builder
 accepts `--mip-clamp-axis u` or `v` for these independent-axis cases.
 Mirrored U/V addressing is covered against wrap, edge and mirror partners,
 with matching/mixed filters and bias +0.25 (all four biases in extended mode).
@@ -137,13 +137,21 @@ all four biases in extended mode. Level-three matrices add 6912 cases per
 renderer, including all nine address pairs, matching/mixed filters, and
 negative-bias mixed point/trilinear controls. These use a 16x16 five-level
 chain so level three remains 2x2 and level four exercises cross-mip blending.
-Wide-fixture coordinates move 1/64 in normalized space to avoid exact mip-zero
+The 16x16 fixture coordinates move 1/64 in normalized space to avoid exact mip-zero
 point-sampling boundaries; their footprint LOD increases by two. Clamps above
-level three retain their previous path. Use `--min-lod 1` or `2` with the
+level fifteen retain their previous path. Use `--min-lod 1` or `2` with the
 probe builder, or `--min-lod 3 --mip-base-size 16` for level three. Force LOD0 overrides the guest lower clamp and
 retains mixed min/mag selection. Nonzero lower-clamp reconstruction uses a
 new absolute-LOD tag in the existing stage byte, keeping legacy GL seed
 programs distinct. Zero-lower-clamp shader keys remain unchanged.
+Extended lower-clamp matrices add 6912 cases with a 32x32 six-level chain,
+a 2x2 mip four and 1x1 mip five. Use `--min-lod 4 --mip-base-size 32`.
+The runtime supports effective minima through fifteen. An otherwise unused
+combination of per-axis edge flags marks a seven-bit dense code for minima
+four through fifteen and all nine address pairs, preserving existing state
+layout, keys and shader seeds. Only extended keys use this encoding.
+The 32x32 fixture shifts normalized coordinates by 1/128, avoiding both
+point and gather boundaries after Force LOD0; its footprint adds three to LOD.
 Non-neutral bump-luminance profiles add scale/bias (0.5, 0.25), negative
 scale (-0.5, 0.75) and saturation (3, -0.5). Each profile covers all 16 channel
 sign masks, point/linear filtering, three coordinates and linear/swizzled
@@ -158,12 +166,12 @@ when Vulkan is available. See `docs/bump-filter-probe.md` for the model and
 hardware-validation limits. The test code is absent from normal emulation.
 
 `test-g8b8-sampler-views.py CHECKOUT [CC]` checks production GL sampler-view
-classification, 768 filter-mode transitions, 64 reuse gates, GL parameter
+classification, 3840 filter-mode transitions, 64 reuse gates, GL parameter
 selection and unchanged cache-key/binding layouts. Mip and nonmip views of
 the same image must remain separate when their base/minimum settings differ.
 
 `test-g8b8-nonmip-transitions.py CHECKOUT PARENT CANDIDATE HARNESS SCRATCH`
-compares 2304 nonmip pixels per renderer against the parent after priming the
+compares 3072 nonmip pixels per renderer against the parent after priming the
 same image with mip filtering. It checks each backend's existing behavior;
 it does not require unsupported nonmip-chain sampling to agree across APIs.
 Use `--assembler yasm` when nasm is unavailable.
@@ -182,7 +190,15 @@ Another 4608 cases verify that matching, base-only wrap/edge/mirror filters reus
 single-level point/gather shader keys without clearing other stages' flags.
 An additional 9216 cases verify independent-axis flags and preserve other stages;
 3072 more check lower-mip bitplanes, matching/mixed canonicalization and
-other-stage preservation without altering the serialized layout.
+other-stage preservation without altering the serialized layout. Another
+110592 cases check all extended minima, address pairs, signs and filter
+combinations, including preservation of other stages.
+
+`test-g8b8-higher-lod.py CHECKOUT [CC]` compiles the production mip shader
+generator and checks 2592 minimum/address/filter/API combinations. It verifies
+that every extended code emits its absolute lower clamp, correct address
+handling and fixed minification reconstruction. It uses the core's GLib
+development dependency through `pkg-config`.
 
 `run.sh` runs every test script here. The extracted-code tests (`test-*.py`, which
 compile production functions into a fixture) run for either core; the ones
@@ -1598,3 +1614,13 @@ QEMU, GLib or libretro-common. `make s3tctest` links only the decoder, oracle
 and math library. GL upload tests compile the production decoder unchanged,
 without allocation/include rewriting. Texture conversion APIs take caller-owned
 output; the unused allocating wrappers have been removed.
+
+`test-packed-swizzle.py CHECKOUT [CC]` checks 6,000 production routing,
+descriptor, barrier and Morton-addressing cases, including capped-range fallback
+and conversion-buffer reuse. Native CI runs it and the buffer-growth ownership
+oracle. Optional `--gpu` runs the production depth-pack and Morton shaders on
+Vulkan, comparing the former ring-copy route against the direct packed source
+for D24S8/D32S8, native/2x scaling and three rectangular/square sizes. It checks
+identical guest bytes, two successive readbacks per command buffer and one
+removed copy per readback; timings describe this isolated GPU
+chain, not whole-core latency. The GPU fixture does not enable validation layers.

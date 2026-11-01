@@ -77,7 +77,7 @@ and [GLSL LOD query](https://github.khronos.org/Vulkan-Site/glsl/latest/chapters
 ## Mipmapped signed G8B8
 
 Swizzled, projective 2D G8B8 with independent wrap, clamp-to-edge or mirror
-addressing and a lower mip clamp from zero through three now decodes
+addressing and a lower mip clamp from zero through fifteen now decodes
 texels before filtering with matching or mixed point/linear min/mag reconstruction
 within and between mip levels. All four nearest/linear mip modes are supported.
 The accessed-mip component of `textureQueryLod` supplies sampler bias, nearest
@@ -94,13 +94,13 @@ builds a 4x4/2x2/1x1 mip chain with distinct byte patterns. Its 192 cases combin
 16 channel-sign masks, three exact footprints (1/4, 1 and 2 texels/pixel), upper
 clamps 1/2 and positive/negative wrap periods. Fractional bias 0.25 exercises
 interpolation between levels without using an approximate fractional footprint.
-The full runner checks 68352 cases per renderer with both quality overrides off
+The full runner checks 75264 cases per renderer with both quality overrides off
 and on. Original cases retain a one-LSB scalar tolerance and exact GL/Vulkan
 agreement. Mip cases allow one LSB, or two for cross-mip interpolation, in the
 scalar and backend comparison because native LOD approximation can shift a
 high-contrast signed color. This is not a physical-console precision oracle.
 
-Lower clamps above three, border addressing, cubemaps, embedded borders, color
+Lower clamps above fifteen, border addressing, cubemaps, embedded borders, color
 keys and signed alpha-kill remain on their previous paths. Linear-layout
 textures do not support mip chains.
 
@@ -112,6 +112,15 @@ its texture footprint adds two to the original LOD. The default runner adds
 matching/mixed filters and negative-bias override controls. Force LOD0 resets
 both effective clamps to zero before shader selection, overriding guest lower
 clamps in both renderers. It requires restarting content.
+
+`--min-lod 4 --mip-base-size 32` covers the extended minimum path with a
+32x32 six-level chain. Mip four stays 2x2 and mip five is 1x1; the normalized
+coordinate shift is 1/128, away from point and gather boundaries at mip zero.
+The extended minimum/address code uses the otherwise unreachable combination
+of both per-axis edge flags, retaining the serialized layout and all
+previously supported shader keys. CPU tests cover minima 4..15; GPU matrices
+exercise minimum four across all nine wrap/mirror/edge pairs and all four
+mip-filter modes. Force LOD0 bypasses the extended encoding entirely.
 
 Add `--mip-mixed` to the mip fixture command to choose the opposite magnification
 filter. The 6144 extra cases cover both directions for every mip mode and bias,

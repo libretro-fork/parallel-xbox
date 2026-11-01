@@ -172,11 +172,42 @@ int main(void) {
         lower++;
     }
     printf("PASS: %u lower-mip state encodings\n", lower);
+    unsigned extended = 0;
+    for (unsigned stage = 0; stage < 4; stage++)
+    for (unsigned signs = 0; signs < 16; signs++)
+    for (unsigned filter = 3; filter <= 6; filter++)
+    for (unsigned level = 4; level <= 15; level++)
+    for (unsigned u = 0; u < 3; u++)
+    for (unsigned v = 0; v < 3; v++)
+    for (unsigned opposite = 0; opposite < 2; opposite++)
+    for (unsigned others = 0; others < 2; others++) {
+        unsigned mag = filter % 2 ? 1 : 2;
+        PshState key = encode_signed_g8b8(signs, filter, opposite ? 3 - mag : mag,
+                                         true, u, v, false, others, stage, level);
+        PshState base = encode_signed_g8b8(signs, filter, mag, true,
+                                          u, v, false, others, stage, 0);
+        unsigned got_min = 0, got_u = 0, got_v = 0;
+        bool fetch = signs && filter != 3;
+        assert(psh_g8b8_get_extended_lod(&key, stage, &got_min, &got_u, &got_v) == fetch);
+        if (fetch) {
+            assert(got_min == level);
+            assert(got_u == (u == 1 ? 3u : u == 2 ? 2u : 1u));
+            assert(got_v == (v == 1 ? 3u : v == 2 ? 2u : 1u));
+            assert((key.g8b8_signed[stage] & ~32u) == (base.g8b8_signed[stage] & ~32u));
+        }
+        unsigned mask = (1u << stage) | (1u << (stage + 4));
+        assert((key.g8b8_mip_flags & ~mask) == (base.g8b8_mip_flags & ~mask));
+        assert((key.g8b8_mip_clamp_u & ~mask) == (base.g8b8_mip_clamp_u & ~mask));
+        assert((key.g8b8_mip_clamp_v & ~mask) == (base.g8b8_mip_clamp_v & ~mask));
+        assert((key.g8b8_mip_mirror & ~mask) == (base.g8b8_mip_mirror & ~mask));
+        extended++;
+    }
+    printf("PASS: %u extended lower-mip encodings\n", extended);
     printf("PASS: %u independent-axis state encodings\n", addressed);
     printf("PASS: %u signed-G8B8 address invalidation cases and shader field coverage\n", cases);
     printf("PASS: %u base-only shader cache canonicalization cases\n", canonical);
 }
-'''.replace("/* PRODUCTION */", function).replace("/* MASKS */", masks).replace("/* STATE */", state + "\n" + legacy).replace("/* ENCODING */", encoding).replace("/* LOWER_SELECTION */", lower_selection)
+'''.replace("/* PRODUCTION */", function).replace("/* MASKS */", masks).replace("/* STATE */", state + "\n" + legacy + '\n#include "hw/xbox/nv2a/pgraph/glsl/g8b8-lod.h"').replace("/* ENCODING */", encoding).replace("/* LOWER_SELECTION */", lower_selection)
 with tempfile.TemporaryDirectory(prefix="g8b8-state-") as folder:
     source = Path(folder) / "test.c"
     binary = Path(folder) / "test"
