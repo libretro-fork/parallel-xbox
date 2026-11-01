@@ -1768,4 +1768,7 @@ reset itself remains, as do frame instruction budgets and interrupt checks.
 `test-secondary-cache.py` runs the production block lookup against primary
 collisions, empty/invalidated primary slots and secondary identity mismatches.
 A valid secondary entry avoids the global lookup and is promoted; invalid PC,
-mode or cflags entries must miss. CPU boost disabled retains the primary path.
+mode or cflags entries must miss. The production cache-store and flush paths
+also cover creating class variants, PC-relative virtual identities, eviction,
+invalidated entries and clearing both arrays. CPU boost disabled retains the
+primary path.

@@ -1,5 +1,7 @@
 # Changelog of the libretro core
 
+- Extend translated-block cache regression coverage through production insertion, class conflicts, PC-relative identities, invalidation and flushing of both cache arrays.
+
 - Reuse valid secondary translated-block cache entries after unrelated primary-slot collisions or primary invalidation. Preserve full PC, execution-mode and validity checks, avoiding unnecessary global-table lookups without allocating another cache.
 
 - Avoid redundant idle-counter work when a translated block reaches its first store through a straight-line prefix without earlier side effects. Preserve checks on conditional paths, helper calls and guest accesses, and keep instruction deadlines unchanged.

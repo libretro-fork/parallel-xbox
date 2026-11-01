@@ -11,7 +11,10 @@
 #define likely(c) (c)
 #define CF_INVALID 0x80000000u
 #define CF_PCREL 0x40000000u
+#define unlikely(c) (c)
+#define TB_JMP_CACHE_SIZE 256
 #define XEMU_TB_CF_ANY 0xc0000004u
+typedef uint64_t vaddr;
 typedef struct TranslationBlock { uint64_t pc,cs_base; uint32_t flags,cflags; } TranslationBlock;
 typedef struct { uint64_t pc,cs_base; uint32_t flags,cflags; } TCGTBCPUState;
 typedef struct { TranslationBlock *tb; uint64_t pc; } Entry;
@@ -24,7 +27,8 @@ static unsigned tb_jmp_cache_hash_func(uint64_t pc) { return pc&255; }
 static unsigned tb_jmp_cache_class_hash(uint64_t pc,uint32_t flags) { return (pc^((flags>>30)*8))&255; }
 static uint32_t tb_cflags(const TranslationBlock *tb) { return tb->cflags; }
 static TranslationBlock *tb_htable_lookup(CPUState *cpu,TCGTBCPUState s) { (void)cpu;(void)s;global_lookups++;return NULL; }
-static void tb_jmp_cache_store(CPUJumpCache *jc,uint64_t pc,uint32_t flags,TranslationBlock *tb) { (void)flags;jc->array[pc&255]=(Entry){tb,pc}; }
+/* STORE */
+/* FLUSH */
 /* PRODUCTION */
 int main(void) {
  unsigned cases=0;
@@ -51,5 +55,28 @@ int main(void) {
   if(valid) {assert(cache.array[h].tb==&wanted && cache.array[h].pc==s.pc);assert(tb_lookup(&cpu,s)==&wanted);assert(!global_lookups);}
   cases++;
  }
+ /* Populate variants through the actual store path, displace the primary,
+  * then recover or reject the secondary identity and flush both arrays. */
+ for(unsigned boost=0;boost<2;boost++)for(unsigned invalid=0;invalid<2;invalid++)
+ for(unsigned relative=0;relative<2;relative++) {
+  CPUJumpCache cache={0};CPUState cpu={&cache};
+  uint32_t cflags=123|(relative?CF_PCREL:0);
+  uint64_t pc=0x1234;
+  TranslationBlock a={relative?0xdeadbeef:pc,0,0x40000000,cflags};
+  TranslationBlock variant={pc,0,0x80000000,cflags},other={pc+256,0,0,123};
+  xemu_cpu_boost=boost;global_lookups=0;
+  tb_jmp_cache_store(&cache,pc,a.flags,&a);
+  tb_jmp_cache_store(&cache,pc,variant.flags,&variant);
+  tb_jmp_cache_store(&cache,other.pc,other.flags,&other);
+  if(invalid)a.cflags|=CF_INVALID;
+  TCGTBCPUState want={pc,a.cs_base,a.flags,cflags};
+  bool retained=boost && !invalid;
+  assert(tb_lookup(&cpu,want)==(retained?&a:NULL));
+  assert(global_lookups==!retained);
+  tcg_flush_jmp_cache(&cpu);
+  for(unsigned i=0;i<256;i++)assert(!cache.array[i].tb && !cache.classes[i].tb);
+  cases++;
+ }
+ CPUState unallocated={0};tcg_flush_jmp_cache(&unallocated);
  printf("secondary cache: %u primary collision/empty/invalidation/PC/mode/boost cases passed\n",cases);
 }
