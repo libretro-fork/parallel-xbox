@@ -1804,3 +1804,11 @@ Native test harness maintenance also includes the out-of-line voice-signature he
 The frame suite distinguishes an arbitrary RAM spin (`SPIN`, no idle proof) from the exact supported timer-counter loop (`PROVEN_WAIT`). Both retain strict audio cadence; only the proven wait is required to exceed 4x real time. The ROM pins the exact supported instruction encodings and masks PIC lines before enabling interrupts.
 
 Standalone shader-generation and POSIX AIO fixtures use `glib_fixture.py` to link the core’s compatibility implementation. They do not query `pkg-config glib-2.0` or link upstream GLib. The Windows/Wine CI job installs native graphics-test headers because these source-extraction fixtures run on the Linux host.
+
+Texture conversion partition guard:
+
+```sh
+python3 libretro/tests/test-texture-conversion-partition.py .
+```
+
+Checks that every converted swizzled format has a fused upload path and the remaining conversions are linear YUV. Pair with `test-palette-unswizzle.py` and `test-rgb655-unswizzle.py` for pixel and caller-storage coverage.

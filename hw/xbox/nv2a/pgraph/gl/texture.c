@@ -698,7 +698,7 @@ static void upload_compressed_volume(PGRAPHGLState *r, GLenum target,
 }
 
 /* A swizzled level in its host upload format. Palette and RGB655 expansion
- * read Morton input directly; other conversions retain their linear scratch. */
+ * read Morton input directly. YUV conversion belongs to the linear path. */
 static const uint8_t *unswizzle_level(PGRAPHGLState *r, const TextureShape *s,
                                       const uint8_t *data,
                                       const uint8_t *palette,
@@ -725,16 +725,8 @@ static const uint8_t *unswizzle_level(PGRAPHGLState *r, const TextureShape *s,
         unswizzle_box(data, width, height, depth, unswizzled, row_pitch,
                       slice_pitch, bpp);
     }
-    size_t converted_size =
-        pgraph_converted_texture_size(*s, width, height, depth);
-    if (!converted_size) {
-        return unswizzled;
-    }
-    uint8_t *converted = tex_scratch(r, 1, converted_size);
-    pgraph_convert_texture_data_into(*s, unswizzled, palette, width, height,
-                                     depth, row_pitch, slice_pitch,
-                                     converted);
-    return converted;
+    assert(!pgraph_converted_texture_size(*s, width, height, depth));
+    return unswizzled;
 }
 
 static void upload_gl_texture(GLenum gl_target,

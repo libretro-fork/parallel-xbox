@@ -285,8 +285,7 @@ static void decode_level_3d(PGRAPHState *pg, TextureLevel *level,
 }
 
 /* A swizzled level, preferably converted on the GPU. CPU palette/RGB655 fallback
- * expands directly into its final staging range; other conversions may need
- * a linear scratch range that the GPU copy does not read. */
+ * expands directly into its final staging range. YUV uses the linear path. */
 static void stage_swizzled(PGRAPHState *pg, VkCommandBuffer cmd,
                            TextureLevel *level, const TextureShape *s,
                            const uint8_t *data, const uint8_t *palette,
@@ -322,16 +321,6 @@ static void stage_swizzled(PGRAPHState *pg, VkCommandBuffer cmd,
         }
     }
 
-    if (!converted) {
-        uint8_t *dst = stage_level(pg, level, width, height, depth, raw);
-        if (depth == 1) {
-            unswizzle_rect(data, width, height, dst, row_pitch, bpp);
-        } else {
-            unswizzle_box(data, width, height, depth, dst, row_pitch,
-                          slice_pitch, bpp);
-        }
-        return;
-    }
     if (palette_format) {
         uint8_t *dst = stage_level(pg, level, width, height, depth, converted);
         unswizzle_box_palette(data, palette, width, height, depth, dst);
@@ -344,18 +333,15 @@ static void stage_swizzled(PGRAPHState *pg, VkCommandBuffer cmd,
         pgraph_convert_swizzled_rgb655_into(data, width, height, true, dst);
         return;
     }
-    uint8_t *scratch;
-    pgraph_vk_staging_alloc(pg, raw, 16, &scratch);
+    /* All non-linear conversion formats returned above. */
+    assert(!converted);
+    uint8_t *dst = stage_level(pg, level, width, height, depth, raw);
     if (depth == 1) {
-        unswizzle_rect(data, width, height, scratch, row_pitch, bpp);
+        unswizzle_rect(data, width, height, dst, row_pitch, bpp);
     } else {
-        unswizzle_box(data, width, height, depth, scratch, row_pitch,
+        unswizzle_box(data, width, height, depth, dst, row_pitch,
                       slice_pitch, bpp);
     }
-    uint8_t *dst = stage_level(pg, level, width, height, depth,
-                               converted);
-    pgraph_convert_texture_data_into(*s, scratch, palette, width, height,
-                                     depth, row_pitch, slice_pitch, dst);
 }
 
 /* Match the existing GL base-face crop. Higher mip border origins remain

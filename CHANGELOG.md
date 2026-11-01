@@ -1,5 +1,7 @@
 # Changelog of the libretro core
 
+- Remove obsolete intermediate conversion storage from GL and Vulkan swizzled-texture upload paths; retain direct palette/RGB655 expansion and linear YUV conversion.
+
 - Run the exact four-trip GPU-progress display oracle in deterministic mode so host scheduling delays cannot cause false failures; retain normal-mode deadline-accounting coverage.
 
 - Fix strict ARM test builds with unsigned char; verify ASCII control classification and shader generation with both char signedness modes.
