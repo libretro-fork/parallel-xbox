@@ -48,7 +48,7 @@ static void init(void) { memset(vk_spec_ready,0,sizeof(vk_spec_ready));vk_spec_r
 }
 static ShaderModuleCacheKey key(unsigned id) { ShaderModuleCacheKey k={0};k.code=id;k.kind=id%3;for(unsigned i=0;i<8;i++)k.attrs[i]=(uint64_t)id*(i+1);return k; }
 #ifndef BENCH
-#define RECORDS 70000
+#define RECORDS 400000
 static ShaderSource sources[RECORDS];
 static unsigned model[VK_SPEC_READY], model_n, made, checks, compactions;
 static unsigned random_state=42;
@@ -88,7 +88,13 @@ static void take(unsigned code)
 {
  ShaderModuleCacheKey k=key(code);unsigned found=model_n;
  for(unsigned i=0;i<model_n;i++)if(model[i]%997==code){found=i;break;}
+#ifdef HEAD_TAKE
+ size_t before=moved;unsigned head_before=vk_spec_ready_order-vk_spec_ready_order_storage;
+#endif
  ShaderSource *got=vk_spec_take_ready(&k);
+#ifdef HEAD_TAKE
+ if(found==0 && model_n)assert(moved-before==(head_before+1==VK_SPEC_READY_HEADROOM?VK_SPEC_READY*sizeof(unsigned):0));
+#endif
  if(found==model_n)assert(!got);
  else {assert(got==&sources[model[found]] && got->refs==1);pgraph_vk_shader_source_unref(got);memmove(model+found,model+found+1,(--model_n-found)*sizeof(model[0]));}
  verify();
@@ -96,7 +102,13 @@ static void take(unsigned code)
 static void clear(void) {vk_spec_ready_clear();for(unsigned i=0;i<model_n;i++)assert(!sources[model[i]].refs);model_n=0;verify();}
 int main(void)
 {
- init();for(unsigned i=0;i<3*VK_SPEC_READY;i++)push();
+ init();
+ for(unsigned occupancy=1;occupancy<=VK_SPEC_READY;occupancy++) {
+  while(model_n<occupancy)push();
+  for(unsigned n=0;n<VK_SPEC_READY_HEADROOM+1;n++) {take(model[0]%997);push();}
+  clear();
+ }
+ for(unsigned i=0;i<3*VK_SPEC_READY;i++)push();
  for(unsigned i=0;i<50000;i++) {
   unsigned value=random_u();
   if(i && i%4096==0)clear();
@@ -120,14 +132,14 @@ static volatile uintptr_t sink;
 int main(void)
 {
  static ShaderSource source={1,UINT32_MAX};
- for(unsigned mode=0;mode<5;mode++) {
+ for(unsigned mode=0;mode<6;mode++) {
   init();for(unsigned i=0;i<VK_SPEC_READY;i++){ShaderModuleCacheKey k=key(i);VkSpecDone d={.key_hash=fast_hash((const uint8_t *)&k,sizeof(k)),.key=k,.spirv=&source};vk_spec_ready_push(&d);}
   if(mode>=3)for(unsigned i=0;i<VK_SPEC_READY/2+13;i++){ShaderModuleCacheKey k=key(VK_SPEC_READY+i);VkSpecDone d={.key_hash=fast_hash((const uint8_t *)&k,sizeof(k)),.key=k,.spirv=&source};vk_spec_ready_push(&d);}
   unsigned loops=mode?100000:1000000;double start=now();
   for(unsigned i=0;i<loops;i++) {
    if(mode==0) {ShaderModuleCacheKey k=key(9000);VkSpecDone d={.key_hash=fast_hash((const uint8_t *)&k,sizeof(k)),.key=k,.spirv=&source};vk_spec_ready_push(&d);}
    else if(mode==1 || mode==3){ShaderModuleCacheKey k=key(999999);sink=(uintptr_t)vk_spec_take_ready(&k);}
-   else {unsigned slot=vk_spec_ready_order[vk_spec_ready_position((i*37)%vk_spec_ready_n)];ShaderModuleCacheKey k=vk_spec_ready[slot].key;ShaderSource *got=vk_spec_take_ready(&k);assert(got);VkSpecDone d={.key_hash=fast_hash((const uint8_t *)&k,sizeof(k)),.key=k,.spirv=got};vk_spec_ready_push(&d);}
+   else {unsigned slot=vk_spec_ready_order[vk_spec_ready_position(mode==5?0:(i*37)%vk_spec_ready_n)];ShaderModuleCacheKey k=vk_spec_ready[slot].key;ShaderSource *got=vk_spec_take_ready(&k);assert(got);VkSpecDone d={.key_hash=fast_hash((const uint8_t *)&k,sizeof(k)),.key=k,.spirv=got};vk_spec_ready_push(&d);}
   }
   printf("mode=%u ns=%.3f\n",mode,(now()-start)/loops);vk_spec_ready_clear();
  }

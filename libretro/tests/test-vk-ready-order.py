@@ -28,6 +28,7 @@ with tempfile.TemporaryDirectory(prefix='vk-ready-') as tmp:
     flags = shlex.split(os.environ.get('VK_READY_CFLAGS', '-fsanitize=address,undefined'))
     subprocess.run(shlex.split(sys.argv[2] if len(sys.argv) > 2 else 'cc') +
                    ['-O2', '-g', '-std=gnu11', '-Wall', '-Wextra', '-Werror'] + flags +
-                   (['-DBASELINE'] if baseline else []) + [str(p / 'test.c'), '-o', binary], check=True)
+                   (['-DBASELINE'] if baseline else []) +
+                   (['-DHEAD_TAKE'] if 'Rotate this free slot' in s else []) + [str(p / 'test.c'), '-o', binary], check=True)
     if not os.environ.get('VK_READY_SKIP_RUN'):
         subprocess.run([binary], check=True, timeout=60)

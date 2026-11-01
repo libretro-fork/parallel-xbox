@@ -1,5 +1,7 @@
 # Changelog of the libretro core
 
+- Adopt the oldest ready Vulkan shader module by advancing the existing index window, avoiding an active-index shift on each FIFO hit. Preserve remaining module order, free-slot uniqueness and reference ownership without extra storage.
+
 - Complete Vulkan synchronous readbacks through the shared newest-fence drain. Wait once for the readback submission instead of separately waiting on older uploads; keep FIFO resource retirement and reset the now-empty staging rings for reuse. Required readback completion still waits.
 - Skip the free-node search when an LRU cache is full, proceeding directly to the existing eligible-victim search. Return immediately from empty eviction, flush and active-visit operations using the existing counts; preserve ordering, callbacks and ownership without extra storage.
 

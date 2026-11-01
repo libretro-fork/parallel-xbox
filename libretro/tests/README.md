@@ -2383,3 +2383,5 @@ remains synchronous.
 Win64 code generation reduces the synchronous submission helper's stack
 frame from 64 to 48 bytes, with unchanged renderer layouts. Hardware
 cache-miss and game-latency effects are unmeasured.
+
+Ready-order coverage now exercises oldest-record adoption at every occupancy from 1 to 768 for 33 cycles each, including every window offset and compaction boundary. It checks the full slot permutation and FIFO/reference oracle, with 399,069 checks and 356,181 lifetimes. On the new head-take path, tracked index moves occur only at the existing 32-step compaction boundary. Benchmark mode 5 repeatedly adopts and reinserts the oldest record. Physical free-slot reuse order is private; active FIFO order and module ownership are preserved.
