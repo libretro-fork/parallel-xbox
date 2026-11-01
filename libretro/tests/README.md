@@ -2068,3 +2068,5 @@ grows from 128 to 320 bytes for the third slot and cache-line separation.
 The frontend getter stack falls from 336 to 96 bytes; owner post_scanout grows
 from 272 to 400 bytes because it now composes. No hardware cache counters were
 measured, and legacy flip/report/download waits remain separate work.
+
+`test-opcode-byte.py CHECKOUT [CC]` checks the production byte fetch and general loader: 302,292 first/second-page reads, guarded edges, noncontiguous host mappings, existing/replaced page locks, MMIO recording and fault propagation. First-page reads must avoid the general loader. Linux defaults to ASan/UBSan; OPCODE_BYTE_CFLAGS, OPCODE_BYTE_BINARY and OPCODE_BYTE_SKIP_RUN support native Windows fixtures.

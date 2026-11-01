@@ -1,5 +1,7 @@
 # Changelog of the libretro core
 
+- Fetch opcode and prefix bytes directly from the already-mapped first translation page, avoiding the general page-crossing loader call on that path. Second-page, MMIO and fault handling remain unchanged.
+
 - Reuse the TLB-resolved RAM address for CPU Boost unchanged-store checks instead of looking up the same RAM block again. Dirty tracking, watchpoints and invalidation decisions are preserved.
 
 - Compose OpenGL display images on the renderer context and hand them over through owned mailbox slots, removing the CPU frame-end acknowledgement wait without adding an image-copy pass. Restore the frontend GL context after renderer setup and order display-slot reuse with GPU fences.

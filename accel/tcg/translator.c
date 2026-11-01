@@ -761,6 +761,14 @@ uint8_t translator_ldub(CPUArchState *env, DisasContextBase *db, vaddr pc)
 {
     uint8_t val;
 
+    /* A byte cannot straddle pages. The first-page mapping and lock were
+     * established before translation; avoid the general loader's call and
+     * output temporary for ordinary opcode/prefix reads from that page. */
+    if (likely(tb_page_addr0(db->tb) != -1 &&
+               ((db->pc_first ^ pc) & TARGET_PAGE_MASK) == 0)) {
+        return *(const uint8_t *)(db->host_addr[0] + (pc - db->pc_first));
+    }
+
     if (!translator_ld(env, db, &val, pc, sizeof(val))) {
         MemOpIdx oi = make_memop_idx(MO_UB, db->code_mmuidx);
         val = cpu_ldb_code_mmu(env, pc, oi, 0);
