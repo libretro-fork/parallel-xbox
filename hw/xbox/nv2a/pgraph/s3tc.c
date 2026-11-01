@@ -22,7 +22,8 @@
  * THE SOFTWARE.
  */
 
-#include "qemu/osdep.h"
+#include <assert.h>
+#include <stdbool.h>
 #include "s3tc.h"
 
 /* Interpolate the normalized 5/6-bit endpoints before rounding to RGBA8.
@@ -174,7 +175,7 @@ void s3tc_decompress_3d_into(enum S3TC_DECOMPRESS_FORMAT color_format,
     int sub_block_index = 0;
     for (int k = 0; k < num_blocks_z; k++) {
         int residual_depth = depth - cur_depth;
-        int block_depth = MIN(residual_depth, 4);
+        int block_depth = residual_depth < 4 ? residual_depth : 4;
         for (int j = 0; j < num_blocks_y; j++) {
             for (int i = 0; i < num_blocks_x; i++) {
                 for (int slice = 0; slice < block_depth; slice++) {
@@ -197,16 +198,6 @@ void s3tc_decompress_3d_into(enum S3TC_DECOMPRESS_FORMAT color_format,
         }
         cur_depth += block_depth;
     }
-}
-
-uint8_t *s3tc_decompress_3d(enum S3TC_DECOMPRESS_FORMAT color_format,
-                            const uint8_t *data, unsigned int width,
-                            unsigned int height, unsigned int depth)
-{
-    uint8_t *converted_data = (uint8_t*)g_malloc(width * height * depth * 4);
-    s3tc_decompress_3d_into(color_format, data, width, height, depth,
-                            converted_data);
-    return converted_data;
 }
 
 void s3tc_decompress_2d_into(enum S3TC_DECOMPRESS_FORMAT color_format,
@@ -235,14 +226,4 @@ void s3tc_decompress_2d_into(enum S3TC_DECOMPRESS_FORMAT color_format,
             }
         }
     }
-}
-
-uint8_t *s3tc_decompress_2d(enum S3TC_DECOMPRESS_FORMAT color_format,
-                            const uint8_t *data, unsigned int width,
-                            unsigned int height)
-{
-    uint8_t *converted_data = (uint8_t *)g_malloc(width * height * 4);
-    s3tc_decompress_2d_into(color_format, data, width, height,
-                            converted_data);
-    return converted_data;
 }

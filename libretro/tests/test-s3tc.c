@@ -4,7 +4,10 @@
  * Reference: microsoft/DirectXTex, BC.cpp, ec66b78b37389e8373a8e14ccc3cd29be94146b3.
  * DIRECTXTEX_ORACLE substitutes the actual vendor decoder for cross-checking.
  */
-#include "qemu/osdep.h"
+#include <assert.h>
+#include <stdbool.h>
+#include <stdio.h>
+#include <string.h>
 #include <math.h>
 #include "hw/xbox/nv2a/pgraph/s3tc.h"
 

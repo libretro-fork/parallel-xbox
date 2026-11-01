@@ -25,11 +25,8 @@ for name in ("gl_internal_format_to_s3tc_enum", "tex_scratch",
     functions.append(source[start:end])
 code = Path(__file__).with_suffix(".c").read_text().replace(
     "/* PRODUCTION */", "\n".join(functions))
-# Only the QEMU allocation/include adapter differs from the production decoder.
-decoder = (repo / "hw/xbox/nv2a/pgraph/s3tc.c").read_text().replace(
-    '#include "qemu/osdep.h"',
-    '#include <stdbool.h>\n#include <stdlib.h>\n#include <assert.h>\n'
-    '#define MIN(a,b) ((a)<(b)?(a):(b))\n#define g_malloc malloc')
+# Compile the standalone production decoder without include/allocation adapters.
+decoder = (repo / "hw/xbox/nv2a/pgraph/s3tc.c").read_text()
 with tempfile.TemporaryDirectory(prefix="gl-volume-") as directory:
     folder = Path(directory)
     (folder / "test.c").write_text(code)

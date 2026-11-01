@@ -1592,3 +1592,9 @@ with a poisoning allocator. It checks 14000 alternating requests, zero-size
 requests, geometric capacity growth, no allocation on reuse, discard-before-
 allocate and preservation of the other live scratch slot. TEX_SCRATCH_BINARY,
 TEX_SCRATCH_CFLAGS and TEX_SCRATCH_SKIP_RUN support native cross builds.
+
+The S3TC decoder and its normalized oracle now compile as standard C without
+QEMU, GLib or libretro-common. `make s3tctest` links only the decoder, oracle
+and math library. GL upload tests compile the production decoder unchanged,
+without allocation/include rewriting. Texture conversion APIs take caller-owned
+output; the unused allocating wrappers have been removed.

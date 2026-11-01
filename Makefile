@@ -338,13 +338,13 @@ $(SEEDSHADERS): $(CORE_DIR)/libretro/tests/seedshaders.c $(SEEDSHADERS_OBJS) \
 		$(DEPS_LIBS) $(OS_LIBS)
 seedshaders: $(SEEDSHADERS)
 
-S3TCTEST := $(CORE_DIR)/libretro/tests/s3tctest
+S3TCTEST := $(CORE_DIR)/libretro/tests/s3tctest$(if $(filter win,$(platform)),.exe,)
 $(S3TCTEST): $(CORE_DIR)/libretro/tests/test-s3tc.c \
-		$(CORE_DIR)/hw/xbox/nv2a/pgraph/s3tc.o $(OBJS_GLIB) $(OBJS_LRCOMMON) \
-		$(LIBQEMUUTIL)
-	$(CC) -O2 $(CFLAGS_TARGET) -o $@ $< \
-		$(CORE_DIR)/hw/xbox/nv2a/pgraph/s3tc.o $(OBJS_GLIB) $(OBJS_LRCOMMON) \
-		$(DEPS_LIBS) $(OS_LIBS) -lm
+		$(CORE_DIR)/hw/xbox/nv2a/pgraph/s3tc.c \
+		$(CORE_DIR)/hw/xbox/nv2a/pgraph/s3tc.h
+	$(CC) -O2 $(ARCH_CFLAGS) -std=c11 -I$(CORE_DIR) -o $@ \
+		$(CORE_DIR)/libretro/tests/test-s3tc.c \
+		$(CORE_DIR)/hw/xbox/nv2a/pgraph/s3tc.c -lm
 s3tctest: $(S3TCTEST)
 
 FILEIOTEST := $(CORE_DIR)/libretro/tests/fileiotest$(if $(filter win,$(platform)),.exe,)
