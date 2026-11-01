@@ -25,8 +25,12 @@ def main():
                         help="test clamp-to-edge on both axes with --mip-filter")
     parser.add_argument("--mip-clamp-axis", choices=("u", "v"),
                         help="clamp only this axis and wrap the other with --mip-filter")
-    parser.add_argument("--mip-address-u", choices=("wrap", "edge", "mirror"))
-    parser.add_argument("--mip-address-v", choices=("wrap", "edge", "mirror"))
+    parser.add_argument("--mip-address-u", choices=("wrap", "edge", "mirror", "border"))
+    parser.add_argument("--mip-address-v", choices=("wrap", "edge", "mirror", "border"))
+    parser.add_argument("--base-only", action="store_true",
+                        help="program guest maximum mip zero with --mip-filter")
+    parser.add_argument("--border-color", type=lambda s: int(s, 0), default=0,
+                        help="ARGB sampler border with an explicit border address")
     parser.add_argument("--min-lod", type=int, choices=range(7), default=0,
                         help="guest lower mip clamp with --mip-filter")
     parser.add_argument("--mip-base-size", type=int, choices=(4, 16, 32, 64, 128), default=4,
@@ -40,6 +44,8 @@ def main():
         parser.error("--luminance-profile is a separate bump fixture")
     if args.min_lod and not args.mip_filter:
         parser.error("--min-lod requires --mip-filter")
+    if args.base_only and not args.mip_filter:
+        parser.error("--base-only requires --mip-filter")
     if args.mip_base_size != 4 and not args.mip_filter:
         parser.error("--mip-base-size requires --mip-filter")
     if args.min_lod >= 3 and args.mip_base_size < 1 << (args.min_lod + 1):
@@ -63,6 +69,10 @@ def main():
     address_mode = "clamp_edge" if args.mip_clamp else (
         "clamp_" + args.mip_clamp_axis if args.mip_clamp_axis else "wrap")
     address_u, address_v = args.mip_address_u or "wrap", args.mip_address_v or "wrap"
+    if not 0 <= args.border_color <= 0xffffffff:
+        parser.error("--border-color must be a packed 32-bit ARGB value")
+    if args.border_color and "border" not in (address_u, address_v):
+        parser.error("--border-color requires an explicit border address")
     if explicit_address:
         address_mode = f"axes_{address_u}_{address_v}"
     output = args.output.resolve()
@@ -90,6 +100,8 @@ def main():
             defines.append("-DBUMP_FILTER_MIXED_PROBE")
             defines.append(f"-DBUMP_MIXED_BIAS={int(args.lod_bias * 256) & 0x1fff}")
         if args.mip_filter:
+            if args.base_only:
+                defines.append("-DBUMP_MAX_LOD_ZERO")
             if args.mip_base_size >= 16:
                 defines += ["-DBUMP_FILTER_WIDE_MIP_PROBE",
                             f"-DBUMP_MIP_BASE_SIZE={args.mip_base_size}",
@@ -104,7 +116,9 @@ def main():
                         f"-DBUMP_MIP_MAG={mag}",
                         f"-DBUMP_MIXED_BIAS={int(args.lod_bias * 256) & 0x1fff}"]
             if axis_data:
-                modes = {"wrap": 1, "mirror": 2, "edge": 3}
+                modes = {"wrap": 1, "mirror": 2, "edge": 3, "border": 4}
+                if "border" in (address_u, address_v):
+                    defines.append(f"-DBUMP_BORDER_COLOR=0x{args.border_color:08x}u")
                 address = (0x10000 | modes[address_v] << 8 | modes[address_u]) if explicit_address else {
                     "clamp_edge": 0x30303, "clamp_u": 0x10103, "clamp_v": 0x10301}[address_mode]
                 defines += ["-DBUMP_FILTER_CLAMP_PROBE", f"-DBUMP_CLAMP_ADDRESS={address}"]
@@ -142,7 +156,7 @@ def main():
         writer.writerow(["id", "layout", "mode", "axis", "signed_channels", "filter",
                          "coordinate", "result_address", "lod_bias", "mip_filter",
                          "max_lod", "wrap_period", "mag_filter", "address_mode",
-                         "sample_u", "sample_v", "min_lod", "sampler_transition", "base_size"])
+                         "sample_u", "sample_v", "min_lod", "sampler_transition", "base_size", "border_color"])
         for i in range(192):
             if args.luminance_profile:
                 flags = (i // 6) % 16
@@ -170,6 +184,8 @@ def main():
                     else:
                         u, v = 1.25 - 4 * (i // 96), 0
                         maximum = 1 if (i // 3) % 2 else 2
+                    if args.base_only:
+                        maximum = 0
                     writer.writerow([i, "swizzled", "mixed_mip_color" if args.mip_mixed else "mip_color", "BG", channels,
                                      {3: "point_nearest_mip", 4: "linear_nearest_mip",
                                       5: "point_linear_mip", 6: "linear_linear_mip"}[args.mip_filter],
@@ -177,7 +193,7 @@ def main():
                                      f"0x{0x300204 + i * 8:08x}", args.lod_bias,
                                      args.mip_filter, maximum, 0 if axis_data else -(i // 96), mag,
                                      address_mode, u, v, args.min_lod, args.sampler_transition or "",
-                                     args.mip_base_size])
+                                     args.mip_base_size, f"0x{args.border_color:08x}"])
                     continue
                 writer.writerow([i, ("linear", "swizzled")[i // 96],
                                  "mixed_color" if args.mixed else "color", "BG", channels,

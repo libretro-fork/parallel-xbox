@@ -65,6 +65,8 @@ def expected_mip(case, force_lod0):
         index = math.floor(position)
         weight = position - index if linear else 0
         def addressed(i):
+            if mode == "border" and not 0 <= i < size:
+                return None
             if mode == "edge":
                 return min(size - 1, max(0, i))
             if mode == "mirror":
@@ -72,10 +74,25 @@ def expected_mip(case, force_lod0):
                 return min(i, 2 * size - 1 - i)
             return i % size
         indices = [addressed(index + offset) for offset in (0, 1)]
-        values = [pair[i % 2] for i in indices]
+        # G8B8's R/G image-view swizzle duplicates R into B and G into A,
+        # including the native sampler border used by point/gather reads.
+        border = int(case.get("border_color") or "0", 0)
+        border = (border >> (16 if channel in "RB" else 8)) & 255
+        values = [border if i is None else pair[i % 2] for i in indices]
         if channel in case["signed_channels"]:
             values = [signed_byte(v) * 255 for v in values]
-        return mix(*values, weight)
+            border = signed_byte(border) * 255
+        coverage = 1
+        if address.startswith("axes_"):
+            other_mode = address.split("_")[1 if axis_v else 2]
+            if other_mode == "border":
+                other = float(case["sample_u" if axis_v else "sample_v"]) * size / 4
+                other -= 0.5 if linear else 0
+                other_index = math.floor(other)
+                other_weight = other - other_index if linear else 0
+                coverage = ((1 - other_weight) if 0 <= other_index < size else 0) + (
+                    other_weight if 0 <= other_index + 1 < size else 0)
+        return mix(*values, weight) * coverage + border * (1 - coverage)
 
     return [min(255, max(0, math.floor(mix(sample(math.floor(lod), channel),
                                          sample(math.ceil(lod), channel), lod % 1) + 0.5)))

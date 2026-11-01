@@ -19,6 +19,7 @@ legacy = state.replace("uint8_t g8b8_mip_flags;", "bool universal;").replace("Ps
 legacy = legacy.replace("uint8_t g8b8_mip_clamp_u;", "").replace("uint8_t g8b8_mip_clamp_v;", "")
 legacy = legacy.replace("uint8_t g8b8_mip_mirror;", "")
 pixel_source = (repo / "hw/xbox/nv2a/pgraph/glsl/psh.c").read_text()
+mip_address = re.search(r"^static bool g8b8_mip_address_supported\(.*?^\}", pixel_source, re.S | re.M).group()
 encoding = re.search(r"^            if \(signs.*?^            \}$", pixel_source, re.S | re.M).group()
 lower_selection = re.search(r"^            if \(mip_filter && mip_min_lod\) \{.*?^            \}", pixel_source, re.S | re.M).group()
 code = r'''
@@ -82,6 +83,19 @@ static PshState encode_signed_g8b8(unsigned signs, unsigned min_filter,
     return result;
 }
 int main(void) {
+    unsigned mip_addresses = 0;
+    for (unsigned u = 0; u < 8; u++)
+    for (unsigned v = 0; v < 8; v++)
+    for (unsigned base_only = 0; base_only < 2; base_only++)
+    for (unsigned mixed = 0; mixed < 2; mixed++) {
+        bool old = u >= 1 && u <= 3 && v >= 1 && v <= 3;
+        bool border = (u == 4 && v >= 1 && v <= 4) ||
+                      (v == 4 && u >= 1 && u <= 4);
+        assert(g8b8_mip_address_supported(u, v, base_only, mixed) ==
+               (old || (base_only && !mixed && border)));
+        mip_addresses++;
+    }
+    printf("PASS: %u mip-address eligibility cases\n", mip_addresses);
     unsigned cases = 0;
     for (unsigned slot = 0; slot < 4; slot++)
     for (unsigned color = 0; color < 128; color++)
@@ -115,8 +129,8 @@ int main(void) {
     for (unsigned stage = 0; stage < 4; stage++)
     for (unsigned signs = 0; signs < 16; signs++)
     for (unsigned filter = 3; filter <= 6; filter++)
-    for (unsigned address_u = 0; address_u < 3; address_u++)
-    for (unsigned address_v = 0; address_v < 3; address_v++)
+    for (unsigned address_u = 0; address_u < 4; address_u++)
+    for (unsigned address_v = 0; address_v < 4; address_v++)
     for (unsigned others = 0; others < 2; others++) {
         unsigned base_filter = filter % 2 ? 1 : 2;
         PshState mip = encode_signed_g8b8(signs, filter, base_filter,
@@ -207,7 +221,7 @@ int main(void) {
     printf("PASS: %u signed-G8B8 address invalidation cases and shader field coverage\n", cases);
     printf("PASS: %u base-only shader cache canonicalization cases\n", canonical);
 }
-'''.replace("/* PRODUCTION */", function).replace("/* MASKS */", masks).replace("/* STATE */", state + "\n" + legacy + '\n#include "hw/xbox/nv2a/pgraph/glsl/g8b8-lod.h"').replace("/* ENCODING */", encoding).replace("/* LOWER_SELECTION */", lower_selection)
+'''.replace("/* PRODUCTION */", function + "\n" + mip_address).replace("/* MASKS */", masks).replace("/* STATE */", state + "\n" + legacy + '\n#include "hw/xbox/nv2a/pgraph/glsl/g8b8-lod.h"').replace("/* ENCODING */", encoding).replace("/* LOWER_SELECTION */", lower_selection)
 with tempfile.TemporaryDirectory(prefix="g8b8-state-") as folder:
     source = Path(folder) / "test.c"
     binary = Path(folder) / "test"

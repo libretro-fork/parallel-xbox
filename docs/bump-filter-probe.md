@@ -100,7 +100,7 @@ agreement. Mip cases allow one LSB, or two for cross-mip interpolation, in the
 scalar and backend comparison because native LOD approximation can shift a
 high-contrast signed color. This is not a physical-console precision oracle.
 
-Lower clamps above fifteen, border addressing, cubemaps, embedded borders, color
+Lower clamps above fifteen, full-mip border addressing, cubemaps, embedded borders, color
 keys and signed alpha-kill remain on their previous paths. Linear-layout
 textures do not support mip chains.
 
@@ -112,6 +112,20 @@ its texture footprint adds two to the original LOD. The default runner adds
 matching/mixed filters and negative-bias override controls. Force LOD0 resets
 both effective clamps to zero before shader selection, overriding guest lower
 clamps in both renderers. It requires restarting content.
+
+For an effective maximum mip of zero and matching min/mag filters, constant
+border addressing can also reuse the native single-level point/gather path.
+This includes a guest-requested zero maximum and Force Texture LOD0. No
+explicit border taps or new uniforms are required. Mixed-filter borders and
+full-mip border reconstruction remain excluded; color keys, embedded borders
+and signed alpha-kill retain their existing exclusions.
+
+`test-g8b8-base-border.py` verifies this scope against scalar colors and the
+parent's excluded paths. Transparent-black and opaque-white borders use native
+standard colors. Optional custom R/G profiles require Vulkan custom-border
+support. Border coverage couples the two texture axes, and the reference
+applies the G8B8 R/G view swizzle before signed reconstruction. These are
+host GPU/model checks, not new physical-console observations.
 
 `--min-lod 4 --mip-base-size 32` covers the extended minimum path with a
 32x32 six-level chain. Mip four stays 2x2 and mip five is 1x1; the normalized
@@ -184,7 +198,7 @@ integer edge clamps. The driver may already fold duplicate base-mip fetches;
 this specializes the generated program before compilation. It also reuses
 existing base-level cache keys and seeds, so no cache-version bump is needed.
 Mixed-filter and genuinely mipmapped reconstruction retain their states
-and shader text. The state test checks 1024 canonical key configurations,
+and shader text. The state test checks 8192 canonical key configurations,
 including active flags on other texture stages.
 
 192 cases cover linear/swizzled G8B8, BUMPENVMAP/BUMPENVMAP_LUM, B/G displacement,

@@ -338,6 +338,9 @@ static void bump_filter_probe(void)
         method(NV097_SET_TEXTURE_ADDRESS, 0x00010101u); /* wrap: AF-eligible */
 #endif
         method(NV097_SET_TEXTURE_IMAGE_RECT, (2u << 16) | 2u);
+#ifdef BUMP_BORDER_COLOR
+        method(0x1b24u, BUMP_BORDER_COLOR);
+#endif
 #ifdef BUMP_FILTER_MIP_PROBE
         method(NV097_SET_TEXTURE_FORMAT,
                1u | (2u << 4) | (1u << 3) | (format << 8) |
@@ -351,6 +354,9 @@ static void bump_filter_probe(void)
         method(NV097_SET_TEXTURE_CONTROL0, (1u << 30) | (BUMP_MIN_LOD << 18) |
                ((linear ? 1u : 2u) << 6));
 #endif
+#endif
+#ifdef BUMP_MAX_LOD_ZERO
+        method(NV097_SET_TEXTURE_CONTROL0, (1u << 30) | (BUMP_MIN_LOD << 18));
 #endif
         method(NV097_SET_TEXTURE_FILTER,
 #ifdef BUMP_FILTER_MIP_PROBE

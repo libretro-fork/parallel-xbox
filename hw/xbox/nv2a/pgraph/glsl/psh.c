@@ -37,6 +37,18 @@
 
 DEF_UNIFORM_INFO_ARR(PshUniform, PSH_UNIFORM_DECL_X)
 
+static bool g8b8_mip_address_supported(unsigned u, unsigned v,
+                                      bool base_only, bool mixed)
+{
+    /* Matching base-only filters reuse native point/gather sampling, which
+     * already applies constant borders. Explicit mip reconstruction does not
+     * implement border taps, including the mixed-filter base-only helper. */
+    unsigned last = base_only && !mixed ? NV_PGRAPH_TEXADDRESS0_ADDRU_BORDER :
+                                         NV_PGRAPH_TEXADDRESS0_ADDRU_CLAMP_TO_EDGE;
+    return u >= NV_PGRAPH_TEXADDRESS0_ADDRU_WRAP && u <= last &&
+           v >= NV_PGRAPH_TEXADDRESS0_ADDRU_WRAP && v <= last;
+}
+
 static void psh_zero_combiner_fields(PshState *state)
 {
     state->combiner_control = 0;
@@ -342,8 +354,7 @@ void pgraph_glsl_set_psh_state(PGRAPHState *pg, PshState *state)
             /* Both renderers keep the original footprint for these lower
              * clamps. A positive sampler minimum always selects minification. */
             mip_filter = mip_min_lod <= 15 &&
-                (addru == NV_PGRAPH_TEXADDRESS0_ADDRU_WRAP || mip_clamp_u || mip_mirror_u) &&
-                (addrv == NV_PGRAPH_TEXADDRESS0_ADDRU_WRAP || mip_clamp_v || mip_mirror_v) &&
+                g8b8_mip_address_supported(addru, addrv, mip_lod0, mixed_mip_filter) &&
                 min_filter >= NV_PGRAPH_TEXFILTER0_MIN_BOX_NEARESTLOD &&
                 min_filter <= NV_PGRAPH_TEXFILTER0_MIN_TENT_TENT_LOD;
             if (mip_filter && mip_min_lod) {

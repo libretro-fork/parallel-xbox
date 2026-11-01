@@ -188,6 +188,24 @@ same image with mip filtering. It checks each backend's existing behavior;
 it does not require unsupported nonmip-chain sampling to agree across APIs.
 Use `--assembler yasm` when nasm is unavailable.
 
+`test-g8b8-base-border.py CHECKOUT PARENT CANDIDATE HARNESS SCRATCH` checks
+matching G8B8 filters with constant-border addressing when the effective
+maximum mip is zero. The builder's `--base-only` programs that guest clamp;
+the other matrix enables Force Texture LOD0 over a normal mip chain.
+Black-border cases cover all seven wrap/edge/mirror/border pairs containing
+a border axis with both linear mip modes; border/border point controls cover
+the other two modes. Opaque-white cases add standard nonzero borders.
+`--custom-border-colors` adds two independent R/G border profiles and requires
+the backend's existing Vulkan custom-border-color support. The default is
+6912 scalar cases per renderer, or 8448 with custom colors, plus 1920 exact
+parent comparisons for excluded full-mip and mixed-filter border paths.
+The scalar model includes the other axis's border coverage and native G8B8
+R/G view swizzles. `--border-color 0x40c02080` isolates a colored builder case.
+New paths reuse the existing single-level point/gather keys; they add no
+shader uniforms or serialized state fields. Color keys, embedded borders and
+signed alpha-kill remain excluded. This script is an explicit parent/candidate
+comparison rather than part of the default scalar runner.
+
 Lower-clamp scalar matrices first prime a nonmip view, then draw with mip
 filtering. The builder's `--sampler-transition lod0-to-mip` selects this
 sequence. The reverse `mip-to-lod0` sequence needs the parent-comparison
@@ -196,9 +214,11 @@ runner above rather than `check-bump-probe.py`.
 `test-signed-g8b8-state.py CHECKOUT [CC]` checks the production shader address
 invalidation predicate over 262144 register combinations and verifies that
 signed-channel, min/mag, mip-count and mip-size changes invalidate shader state.
-It also checks that reuse of the reserved universal byte preserves the
+It also checks 256 mip-address eligibility combinations, accepting new border
+addresses only for base-only matching filters. Reuse of the reserved universal
+byte preserves the
 serialized pixel-shader state size and field offsets.
-Another 4608 cases verify that matching, base-only wrap/edge/mirror filters reuse the
+Another 8192 cases verify that matching, base-only wrap/edge/mirror/border filters reuse the
 single-level point/gather shader keys without clearing other stages' flags.
 An additional 9216 cases verify independent-axis flags and preserve other stages;
 3072 more check lower-mip bitplanes, matching/mixed canonicalization and
@@ -212,7 +232,8 @@ that every extended code emits its absolute lower clamp, correct address
 handling and fixed minification reconstruction. It uses the core's GLib
 development dependency through `pkg-config`.
 
-`run.sh` runs every test script here. The extracted-code tests (`test-*.py`, which
+`run.sh` runs the automatic suite. Parent/candidate GPU comparisons are
+invoked separately with explicit core binaries. The extracted-code tests (`test-*.py`, which
 compile production functions into a fixture) run for either core; the ones
 that need Mesa's GL on EGL, and `test-mcpx-hle.py`, run with the Linux core;
 the Vulkan copy, depth-clear and vertex-fetch tests run with the Linux core

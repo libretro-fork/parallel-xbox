@@ -1,5 +1,7 @@
 # Changelog of the libretro core
 
+- Correct signed G8B8 filtering with constant-border addressing when matching filters are restricted to mip zero, including Force Texture LOD0. Reuse existing point/gather shaders and cache keys; retain full-mip and mixed-filter border exclusions.
+
 ## Unreleased
 
 - Replace Vulkan Memory Allocator with an Xbox-specific free-span heap modeled on GSdx/parallel-dc. Pool the exact startup buffer requirements, persistently map host backing, and isolate noncoherent ranges and linear/optimal resources. Reserve a bounded image working set before gameplay and reclaim only retired images under pressure. Remove the C++ runtime build/link dependency. Tests show fewer startup allocations/maps and a smaller DLL. Reserve spare image memory upfront rather than growing the heap during gameplay; higher resolution than the startup reservation requires restarting the core. No general frame-rate gain is claimed.
