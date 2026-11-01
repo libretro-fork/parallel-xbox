@@ -1,5 +1,8 @@
 # Changelog of the libretro core
 
+- Add GPU regression coverage for signed G8B8 mip filtering near texel boundaries, checking lower clamps, addressing, mixed filters and mip tails against an independent model. This is test-only coverage.
+
+
 - Drain Vulkan command slots with at most one fence wait, using the latest pending submission on their shared queue. Skip the wait when retirement is already proved; preserve ownership cleanup and timestamps after completion. Actual unfinished drains still wait.
 - Keep the shader-worker regression fixture on the production ready-index window, adoption and clear helpers so CI continues checking exact FIFO order and source ownership after compaction changes.
 

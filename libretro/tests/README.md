@@ -2289,6 +2289,23 @@ frame and all renderer structure sizes. It adds no allocations, PSOs, copies,
 locks, status queries or frame queue. Hardware cache-miss and game-latency
 effects are unmeasured; unfinished submissions still have their existing wait.
 
+`test-g8b8-mip-boundary.py CHECKOUT [--cc CC] [--output DIR]` executes the
+production explicit-mip signed G8B8 generator on an OpenGL compute context.
+Native Windows accepts `--epoxy-root DIRECTORY` for a separate libepoxy build.
+The independent scalar oracle checks 1,327,104 signed components in 162 variants:
+both GL/Vulkan generation branches, all nine wrap/mirror/edge address pairs,
+matching point/bilinear/trilinear and mixed min/mag filters, lower clamps zero,
+one and four, integer/fractional LODs and a 64x32 chain through its 1x1 tail.
+Coordinates lie just before/after texel boundaries and include negative periods.
+Each mip uses different byte patterns with signed discontinuities.
+
+A test uniform supplies the host LOD-query result; the production shader still
+selects levels, applies lower clamps, addresses integer taps, decodes each tap
+and interpolates. Both generated branches execute in OpenGL here; this does not
+validate native Vulkan execution or host derivative/query behavior. Existing guest
+GL/Vulkan tests cover actual sampler queries. A deliberately shifted fetch fails
+the scalar oracle. Test buffers/readbacks are confined to the standalone fixture.
+
 The retirement fixture also extracts the production full-slot drain. Eighty
 schedules cover both slot orders, every pending mask, known/unknown completion
 and serial rollover. Draining waits only on the latest unproved submission's
