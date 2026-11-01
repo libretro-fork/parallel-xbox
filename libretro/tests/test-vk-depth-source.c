@@ -85,7 +85,7 @@ static void eligibility(void)
   r.vram_buffer=imported?source_handle:VK_NULL_HANDLE;s=(SurfaceBinding){.swizzle=swizzle,.vram_addr=offset,.width=width,.height=height,.pitch=pitch,.fmt={bpp}};bool expected=imported&&(!swizzle||((width==1||height==1)&&pitch==width*bpp))&&offset%4==0&&offset%bpp==0&&pitch%bpp==0&&pitch>=width*bpp;assert(surface_upload_from_vram(&r,&s)==expected);
   for(unsigned color=0;color<2;color++)for(unsigned depth=0;depth<2;depth++){
    s.color=color;s.host_fmt.vk_format=depth?VK_FORMAT_D16_UNORM:VK_FORMAT_D24_UNORM_S8_UINT;
-   bool need=swizzle&&(!((color||depth)&&(width==1||height==1)&&pitch==width*bpp));
+   bool need=swizzle&&(!((width==1||height==1)&&pitch==width*bpp));
    assert(surface_readback_needs_swizzle(&s)==need);
   }
  }

@@ -2032,7 +2032,7 @@ change remains eligible for retry. The drawing path no longer calls the fence
 wait helper; shutdown draining retains it. This does not remove the separate
 libretro frame-end acknowledgement wait or establish frontend image retirement.
 
-`test-vk-depth-source.py CHECKOUT [CC] [--gpu]` checks production source eligibility and depth row packing: 368,640 upload eligibility and 1,474,560 readback routing cases, 1,188 packed/padded/offset/empty copies and eight single-axis swizzled packed-depth copies, aligned region batches, byte-exact destinations and source/guard preservation. CPU mode defaults to ASan/UBSan; GPU mode can use `DEPTH_SOURCE_CFLAGS=-fsanitize=undefined`. GPU mode requires synchronization validation unless `DEPTH_SOURCE_NO_VALIDATION=1` is explicitly set. Single-axis swizzled surfaces qualify only with a canonical tight pitch; two-dimensional Morton layouts and padded swizzled rows retain their fallback. GPU fixture buffers model imported memory without testing the external-host import extension itself. `DEPTH_SOURCE_BINARY` and `DEPTH_SOURCE_SKIP_RUN=1` retain native fixtures. The existing depth-kernel fixtures cover unpack shaders, which are unchanged.
+`test-vk-depth-source.py CHECKOUT [CC] [--gpu]` checks production source eligibility and depth row packing: 368,640 upload eligibility and 1,474,560 readback routing cases, 1,188 packed/padded/offset/empty copies and eight single-axis swizzled packed-depth copies, aligned region batches, byte-exact destinations and source/guard preservation. CPU mode defaults to ASan/UBSan; GPU mode can use `DEPTH_SOURCE_CFLAGS=-fsanitize=undefined`. GPU mode requires synchronization validation unless `DEPTH_SOURCE_NO_VALIDATION=1` is explicitly set. Single-axis swizzled surfaces, including packed-depth readbacks, qualify only with a canonical tight pitch; two-dimensional Morton layouts and padded swizzled rows retain their fallback. GPU fixture buffers model imported memory without testing the external-host import extension itself. `DEPTH_SOURCE_BINARY` and `DEPTH_SOURCE_SKIP_RUN=1` retain native fixtures. The existing depth-kernel fixtures cover unpack shaders, which are unchanged.
 
 `test-seed-batch-read.py CHECKOUT [CC]` exercises production batch/individual seed loaders with real libretro-common inflate: 480 legacy-equivalence cases, independent local-first ordering, poisoned mapping/decompression lifetimes, missing/stale/malformed/corrupt input and inflater failure. Both sections share one mapping/inflation with no duplicated section arrays. It also checks all 14 games / 38 sections in the bundled dictionary byte-for-byte. `SEED_BATCH_CFLAGS`, `SEED_BATCH_BINARY` and `SEED_BATCH_SKIP_RUN=1` support sanitized and native execution; retained native binaries accept the dictionary path as their optional argument.
 
@@ -2938,3 +2938,21 @@ ceiling. These are planning/range counts, not measured runtime hazard or wait
 counts. Packed input capacity and both compute buffers remain covered; all
 capacity changes occur before auxiliary recording. The unchanged depth kernels
 have separate real-device parity tests in `test-spv-depth.py --gpu`.
+
+
+The packed-depth readback fallback now treats tight single-axis guest words as
+already linear. `store_packed_to_ram` still prefers the existing packed shader
+when its descriptor fits, and fused packing remains unchanged. If those shader
+routes are unavailable, a single transfer writes imported RAM without allocating
+or reading the swizzle ring. Other Morton layouts retain the ring fallback.
+The 6,000-case packed-source oracle records 5,828 swizzle dispatches versus the
+6,000-dispatch previous-path model, preserving 4,800 packed-shader routes and all
+RAM byte checks. This is an operation count, not a game-speed result.
+
+`python libretro/tests/test-packed-swizzle.py CHECKOUT CC --gpu --thin` runs the
+production packed-depth chain on 1024x1 and 1x1024 D24S8/D32S8 surfaces at scale
+1/2, comparing descriptor-disabled transfer fallback with the packed-shader
+route. It covers 3,200 chains in 1,600 two-readback submissions, with byte-exact
+RAM output. The fixture models imported RAM and command ownership, and requests
+no validation layer. Its isolated timings compare current routing variants,
+not this change against the previous implementation or whole-game performance.

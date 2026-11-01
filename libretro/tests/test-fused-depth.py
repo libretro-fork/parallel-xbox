@@ -11,7 +11,7 @@ def fn(file,name):
  a=m.start();end=s.index('{',a)+1;depth=1
  while depth:depth+=(s[end]=='{')-(s[end]=='}');end+=1
  return s[a:end]
-parts=[fn(b+'surface.c','store_packed_to_ram')]
+parts=[fn(b+'surface.c',n) for n in ['surface_readback_needs_swizzle','store_packed_to_ram']]
 with tempfile.TemporaryDirectory(prefix='fused-depth-') as tmp:
  p=Path(tmp);exe=p/('test.exe' if os.name=='nt' else 'test')
  subprocess.run([cc,'-O2','-std=gnu11','-Wall','-Wextra','-Werror','-Wno-sign-compare','-fsanitize=undefined','-fsanitize-undefined-trap-on-error','-I'+str(r),'-I'+str(r/'deps/spirv-headers/include'),str(Path(__file__).with_suffix('.c')),str(r/'hw/xbox/nv2a/pgraph/spv/depth.c'),'-o',str(exe)],env=env,check=True)
@@ -30,14 +30,14 @@ with tempfile.TemporaryDirectory(prefix='fused-depth-host-') as tmp:
  subprocess.run([str(exe)],env=env,check=True,timeout=60)
 
 if '--gpu' in sys.argv[3:]:
- compute=(r/(b+'surface-compute.c')).read_text().replace('#include "hw/xbox/nv2a/pgraph/pgraph.h"','').replace('#include "renderer.h"','').replace('#include "compute-dispatch.h"','#include "hw/xbox/nv2a/pgraph/vk/compute-dispatch.h"')
- unswizzle=(r/(b+'unswizzle.c')).read_text().replace('#include "hw/xbox/nv2a/nv2a_int.h"','').replace('#include "renderer.h"','').replace('#include "compute-dispatch.h"','#include "hw/xbox/nv2a/pgraph/vk/compute-dispatch.h"')
+ compute=(r/(b+'surface-compute.c')).read_text().replace('#include "hw/xbox/nv2a/pgraph/pgraph.h"','').replace('#include "renderer.h"','').replace('#include "compute-dispatch.h"','#include "hw/xbox/nv2a/pgraph/vk/compute-dispatch.h"').replace('#include "libretro/dsp-ownership.h"','')
+ unswizzle=(r/(b+'unswizzle.c')).read_text().replace('#include "hw/xbox/nv2a/nv2a_int.h"','').replace('#include "renderer.h"','').replace('#include "compute-dispatch.h"','#include "hw/xbox/nv2a/pgraph/vk/compute-dispatch.h"').replace('#include "libretro/dsp-ownership.h"','')
  pack=[]
  for name in ['packed_readback_to_host_barrier','pack_depth_readback']:
   src=(r/(b+'surface.c')).read_text();m=re.search(r'^static (?:void|VkBuffer) '+name+r'\(',src,re.M);a=m.start();end=src.index('{',a)+1;depth=1
   while depth:depth+=(src[end]=='{')-(src[end]=='}');end+=1
   pack.append(src[a:end])
- code=Path(__file__).with_name('test-packed-swizzle-vulkan.c').read_text().replace('/* COMPUTE PRODUCTION */',compute+'\n'+unswizzle).replace('/* READBACK PRODUCTION */',parts[-1]+'\n'+'\n'.join(pack))
+ code=Path(__file__).with_name('test-packed-swizzle-vulkan.c').read_text().replace('/* COMPUTE PRODUCTION */',compute+'\n'+unswizzle).replace('/* READBACK PRODUCTION */','\n'.join(parts+pack))
  code=code.replace('r.unswizzle.depth_set=VK_NULL_HANDLE;', '').replace('VkDescriptorSet packed_set=r.unswizzle.packed_set;', 'VkDescriptorSet depth_set=r.unswizzle.depth_set;VkDescriptorSet packed_set=r.unswizzle.packed_set;')
  code=code.replace('r.unswizzle.packed_set=variant?packed_set:VK_NULL_HANDLE;', 'r.unswizzle.packed_set=packed_set;r.unswizzle.depth_set=variant?depth_set:VK_NULL_HANDLE;').replace('copies=transfer_dependencies=0;', 'command_dispatches=copies=transfer_dependencies=0;').replace('copies==2*!variant&&transfer_dependencies==2*!variant','copies==0&&transfer_dependencies==0&&command_dispatches==(variant?2:4)')
  code=code.replace('static VkBuffer packed_buffer;', 'static unsigned command_dispatches;static void counted_dispatch(VkCommandBuffer c,uint32_t x,uint32_t y,uint32_t z){command_dispatches++;vkCmdDispatch(c,x,y,z);}'+'\n#define vkCmdDispatch counted_dispatch\nstatic VkBuffer packed_buffer;')

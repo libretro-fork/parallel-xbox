@@ -12,7 +12,7 @@ b='hw/xbox/nv2a/pgraph/vk/'
 u=(r/(b+'unswizzle.c')).read_text();push=re.search(r'struct UnswizzlePush \{.*?\};',u,re.S)[0]
 parts=[fn('hw/xbox/nv2a/pgraph/swizzle.c','generate_swizzle_masks')]
 parts += [fn(b+'unswizzle.c',n) for n in ['pgraph_vk_unswizzle_packed_buffer_changed','swizzle_to_ram_from','pgraph_vk_swizzle_to_ram','pgraph_vk_swizzle_possible','pgraph_vk_swizzle_packed_possible','pgraph_vk_swizzle_packed_to_ram']]
-parts.append(fn(b+'surface.c','store_packed_to_ram'))
+parts += [fn(b+'surface.c',n) for n in ['surface_readback_needs_swizzle','store_packed_to_ram']]
 surface=(r/(b+'surface.c')).read_text();assert 'swizzle_required && !packed_swizzle' in surface
 code=Path(__file__).with_suffix('.c').read_text().replace('/* PUSH */',push).replace('/* PRODUCTION */','\n'.join(parts));env=os.environ.copy();env['PATH']=str(Path(cc).resolve().parent)+os.pathsep+env.get('PATH','')
 if os.name=='nt':ctypes.WinDLL('kernel32').SetErrorMode(0x8003)
@@ -22,14 +22,18 @@ with tempfile.TemporaryDirectory(prefix='packed-swizzle-') as tmp:
  subprocess.run([str(exe)],env=env,check=True,timeout=60)
 
 if '--gpu' in sys.argv[3:]:
- compute=(r/(b+'surface-compute.c')).read_text().replace('#include "hw/xbox/nv2a/pgraph/pgraph.h"','').replace('#include "renderer.h"','').replace('#include "compute-dispatch.h"','#include "hw/xbox/nv2a/pgraph/vk/compute-dispatch.h"')
- unswizzle=(r/(b+'unswizzle.c')).read_text().replace('#include "hw/xbox/nv2a/nv2a_int.h"','').replace('#include "renderer.h"','').replace('#include "compute-dispatch.h"','#include "hw/xbox/nv2a/pgraph/vk/compute-dispatch.h"')
+ compute=(r/(b+'surface-compute.c')).read_text().replace('#include "hw/xbox/nv2a/pgraph/pgraph.h"','').replace('#include "renderer.h"','').replace('#include "compute-dispatch.h"','#include "hw/xbox/nv2a/pgraph/vk/compute-dispatch.h"').replace('#include "libretro/dsp-ownership.h"','')
+ unswizzle=(r/(b+'unswizzle.c')).read_text().replace('#include "hw/xbox/nv2a/nv2a_int.h"','').replace('#include "renderer.h"','').replace('#include "compute-dispatch.h"','#include "hw/xbox/nv2a/pgraph/vk/compute-dispatch.h"').replace('#include "libretro/dsp-ownership.h"','')
  pack=[]
  for name in ['packed_readback_to_host_barrier','pack_depth_readback']:
   src=(r/(b+'surface.c')).read_text();m=re.search(r'^static (?:void|VkBuffer) '+name+r'\(',src,re.M);a=m.start();end=src.index('{',a)+1;depth=1
   while depth:depth+=(src[end]=='{')-(src[end]=='}');end+=1
   pack.append(src[a:end])
- code=Path(__file__).with_name('test-packed-swizzle-vulkan.c').read_text().replace('/* COMPUTE PRODUCTION */',compute+'\n'+unswizzle).replace('/* READBACK PRODUCTION */',parts[-1]+'\n'+'\n'.join(pack))
+ code=Path(__file__).with_name('test-packed-swizzle-vulkan.c').read_text().replace('/* COMPUTE PRODUCTION */',compute+'\n'+unswizzle).replace('/* READBACK PRODUCTION */','\n'.join(parts[-2:]+pack))
+ if '--thin' in sys.argv[3:]:
+  code=code.replace('mode<3;mode++){unsigned w=mode==0?64:mode==1?512:1024,h=mode==0?64:mode==1?256:1024;', 'mode<2;mode++){unsigned w=mode?1:1024,h=mode?1024:1;')
+  code=code.replace('4800 depth/Morton chains in 2400 two-readback submissions', '3200 single-axis depth chains in 1600 two-readback submissions')
+  code=code.replace('ring %.3fus packed %.3fus', 'linear transfer %.3fus packed shader %.3fus').replace('old ring vs direct source', 'single-axis transfer vs packed shader')
  with tempfile.TemporaryDirectory(prefix='packed-swizzle-gpu-') as tmp:
   p=Path(tmp);(p/'test.c').write_text(code);exe=p/('test.exe' if os.name=='nt' else 'test')
   link=[str(Path(os.environ.get('WINDIR','C:/Windows'))/'System32/vulkan-1.dll')] if os.name=='nt' else ['-lvulkan']

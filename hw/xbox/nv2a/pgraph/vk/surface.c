@@ -233,10 +233,23 @@ void pgraph_vk_download_surfaces_in_range_if_dirty(PGRAPHState *pg,
     readback_batch_end(container_of(pg, NV2AState, pgraph));
 }
 
+/* Single-axis tight rows already have Morton order, including the guest
+ * words produced by depth/stencil packing. */
+static bool surface_readback_needs_swizzle(const SurfaceBinding *surface)
+{
+    if (!surface->swizzle) {
+        return false;
+    }
+    return !(surface->width && surface->height &&
+             (surface->width == 1 || surface->height == 1) &&
+             surface->pitch == (VkDeviceSize)surface->width *
+                                   surface->fmt.bytes_per_pixel);
+}
+
 /* The packed read-back at the start of src (rows of width texels) written
  * into the Xbox's RAM by the GPU: copied at the surface's pitch or, for a
- * swizzled surface, copied into the ring at ring_offset and swizzled into
- * place from there. */
+ * swizzled surface needing interleave, copied into the ring at ring_offset
+ * and swizzled into place from there. */
 static void store_packed_to_ram(PGRAPHState *pg, VkCommandBuffer cmd,
                                 SurfaceBinding *surface, VkBuffer src,
                                 VkDeviceSize ring_offset)
@@ -247,14 +260,18 @@ static void store_packed_to_ram(PGRAPHState *pg, VkCommandBuffer cmd,
 
     lr_gpu_ram_claim((uintptr_t)cmd,surface->vram_addr,
         (VkDeviceSize)(surface->height-1)*surface->pitch+row);
-    if (surface->swizzle) {
-        if (src == r->storage_buffers[BUFFER_COMPUTE_SRC].buffer &&
-            pgraph_vk_swizzle_packed_possible(pg, surface->vram_addr,
-                surface->width, surface->height, surface->fmt.bytes_per_pixel)) {
-            pgraph_vk_swizzle_packed_to_ram(pg, cmd, surface->vram_addr,
-                surface->width, surface->height, surface->fmt.bytes_per_pixel);
-            return;
-        }
+    /* Keep the existing zero-copy packed shader when its descriptors fit,
+     * even for a single-axis surface. Otherwise linear words need only a
+     * transfer to RAM, without the ring and an additional swizzle kernel. */
+    if (surface->swizzle &&
+        src == r->storage_buffers[BUFFER_COMPUTE_SRC].buffer &&
+        pgraph_vk_swizzle_packed_possible(pg, surface->vram_addr,
+            surface->width, surface->height, surface->fmt.bytes_per_pixel)) {
+        pgraph_vk_swizzle_packed_to_ram(pg, cmd, surface->vram_addr,
+            surface->width, surface->height, surface->fmt.bytes_per_pixel);
+        return;
+    }
+    if (surface_readback_needs_swizzle(surface)) {
         VkBufferCopy region = {
             .dstOffset = ring_offset,
             .size = row * surface->height,
@@ -566,20 +583,6 @@ static VkBuffer pack_depth_readback(PGRAPHState *pg, SurfaceBinding *surface,
     return copy_buffer;
 }
 
-/* Single-axis native color/D16 rows already have Morton order. Packed
- * depth/stencil retains the existing pack/swizzle routing. */
-static bool surface_readback_needs_swizzle(const SurfaceBinding *surface)
-{
-    if (!surface->swizzle) {
-        return false;
-    }
-    return !((surface->color || surface->host_fmt.vk_format == VK_FORMAT_D16_UNORM) &&
-             surface->width && surface->height &&
-             (surface->width == 1 || surface->height == 1) &&
-             surface->pitch == (VkDeviceSize)surface->width *
-                                   surface->fmt.bytes_per_pixel);
-}
-
 static bool download_surface_to_buffer(NV2AState *d, SurfaceBinding *surface,
                                        uint8_t *pixels)
 {
@@ -606,9 +609,9 @@ static bool download_surface_to_buffer(NV2AState *d, SurfaceBinding *surface,
      * GPU writes the read-back into it itself (direct): a linear surface
      * copied there at its pitch, a swizzled one copied linear into the
      * ring and swizzled into place by the swizzle shader (unswizzle.c).
-     * Single-axis native color/D16 surfaces skip the ring and swizzle,
-     * copying directly to RAM. Packed depth keeps its existing routing
-     * and feeds the shader directly when its descriptor fits.
+     * Single-axis surfaces skip the ring and fallback swizzle, copying
+     * directly to RAM. Packed depth still prefers its direct shader routes
+     * when their descriptors fit.
      * No staging buffer and no copy by the CPU. Otherwise the read-back
      * goes through the staging buffer and the CPU copies or swizzles it
      * into the RAM. */

@@ -32,6 +32,7 @@ typedef struct {PGRAPHState pgraph;size_t *vram;} NV2AState;
 typedef struct {unsigned width,height,pitch;hwaddr vram_addr;bool swizzle;struct {unsigned bytes_per_pixel;} fmt;struct {VkFormat vk_format;} host_fmt;} SurfaceBinding;
 static VkDevice device;static VkQueue queue;static VkCommandBuffer command;static VkFence fence;static VkQueryPool query;static unsigned copies;
 static VkPhysicalDeviceMemoryProperties memories;
+static void lr_gpu_ram_claim(uintptr_t cmd,uint64_t addr,uint64_t len){assert(cmd==(uintptr_t)command&&len&&addr+len<=(64ull<<20));}
 static void pgraph_apply_scaling_factor(PGRAPHState *p,unsigned *w,unsigned *h){*w*=p->scale;*h*=p->scale;}
 static void pgraph_vk_begin_debug_marker(PGRAPHVkState *r,VkCommandBuffer cmd,int color,const char *name){(void)r;(void)cmd;(void)color;(void)name;}
 static void pgraph_vk_end_debug_marker(PGRAPHVkState *r,VkCommandBuffer cmd){(void)r;(void)cmd;}
