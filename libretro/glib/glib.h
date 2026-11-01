@@ -608,7 +608,7 @@ static inline gboolean g_ascii_isgraph(gchar c)
 }
 static inline gboolean g_ascii_iscntrl(gchar c)
 {
-    return (c >= 0 && c < ' ') || c == 127;
+    return (guchar)c < 32 || (guchar)c == 127;
 }
 static inline gboolean g_ascii_ispunct(gchar c)
 {

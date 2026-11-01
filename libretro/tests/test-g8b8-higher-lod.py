@@ -31,6 +31,10 @@ typedef GString MString;
 struct PixelShader { const PshState *state; struct { bool vulkan; } opts; };
 /* HELPER */
 int main(void) {
+    for (unsigned byte = 0; byte < 256; byte++) {
+        assert(!!g_ascii_iscntrl((gchar)(guchar)byte) ==
+               (byte < 32 || byte == 127));
+    }
     unsigned cases = 0;
     for (unsigned api = 0; api < 2; api++)
     for (unsigned stage = 0; stage < 4; stage++)
@@ -66,7 +70,8 @@ with tempfile.TemporaryDirectory(prefix="g8b8-higher-lod-") as folder:
     c = Path(folder) / "test.c"
     binary = Path(folder) / "test"
     c.write_text(code)
-    subprocess.run([cc, "-std=gnu11", "-O2",
-                    "-Wall", "-Wextra", "-Werror", "-I", str(repo), str(c),
-                    "-o", str(binary), *flags], check=True)
-    subprocess.run([str(binary)], check=True)
+    for char_mode in ("-fsigned-char", "-funsigned-char"):
+        subprocess.run([cc, "-std=gnu11", "-O2", char_mode,
+                        "-Wall", "-Wextra", "-Werror", "-I", str(repo), str(c),
+                        "-o", str(binary), *flags], check=True)
+        subprocess.run([str(binary)], check=True)

@@ -1,5 +1,7 @@
 # Changelog of the libretro core
 
+- Fix strict ARM test builds with unsigned char; verify ASCII control classification and shader generation with both char signedness modes.
+
 - Adopt formatted shader-string buffers directly instead of allocating and copying a second buffer during shader generation.
 
 - Run shader-generation and POSIX AIO fixtures against the core’s compatibility API instead of upstream GLib. Remove the host GLib development dependency from CI, and supply native graphics-test dependencies to the Windows/Wine job.
