@@ -2801,3 +2801,25 @@ snapshot stays inlined and normal uploads gain no helper call. Outlining the
 spare-space arithmetic did not reduce that frame and was rejected. Flush-draw
 stack usage stays 704 bytes; renderer state sizes are unchanged. This stack
 tradeoff is recorded separately from unmeasured hardware cache/spill costs.
+
+### Tail growth after snapshot-arena spill
+
+Clean growing snapshots now check both arenas' last allocations, active first.
+An eligible prefix extends in its existing arena; the copy and dirty range use
+that arena's memory properties. Epoch, tail position, bounds and non-coherent
+atom-alignment checks remain mandatory. Download/writeback and late CPU dirty
+checks still invalidate stale prefixes before extension. No new buffer, copy
+pass, synchronization, PSO, lock or frame queue is introduced.
+
+The 48 spill schedules now grow each cached allocation and assert a suffix-only
+4 KiB copy when alignment permits, otherwise an independent 8 KiB allocation
+that preserves the old prefix. Slot rotation can retain the previous arena's
+valid prefix too. Two additional download-mutation cases reject reuse of the
+other arena's stale prefix. Live-reader and 100,000 tail-selector cases remain.
+The old production implementation fails the new copied-byte regression before
+any fixture signature changes. Hardware cache/stall effects remain unmeasured.
+
+Win64 code generation changes the vertex-sync caller frame from 736 to 720
+bytes and emits a shared 24-byte tail selector, called at most twice after a
+clean snapshot cache miss. Flush-draw remains 704 bytes and renderer state
+sizes are unchanged. Caller and nested selector usage are reported separately.

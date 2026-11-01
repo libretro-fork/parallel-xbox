@@ -3844,14 +3844,14 @@ static void vertex_cow_store(PGRAPHVkState *r, hwaddr lo, VkDeviceSize size,
     vertex_cow_remember(r, store - r->vertex_cow_cache);
 }
 
-/* Only the active arena's last allocation can grow without moving bytes.
+/* Only an arena's last allocation can grow without moving bytes.
  * Earlier draws keep their immutable prefix. On non-coherent memory, the
  * tail must start in a separate atom from any existing reader. */
 static VertexCowCacheEntry *vertex_cow_extendable(PGRAPHVkState *r,
                                                   hwaddr lo,
-                                                  VkDeviceSize size)
+                                                  VkDeviceSize size,
+                                                  unsigned slot)
 {
-    unsigned slot = r->slot & 1;
     unsigned key = r->vertex_cow_tail[slot];
     if (!key || key > ARRAY_SIZE(r->vertex_cow_cache)) {
         return NULL;
@@ -3929,8 +3929,13 @@ static void vertex_cow_snapshot(PGRAPHState *pg, hwaddr addr,
      * submitted readers are already proved complete and this draw holds none. */
     unsigned arena_slot = r->slot & 1;
     StorageBuffer *arena = &r->vertex_arena[arena_slot];
-    VertexCowCacheEntry *extend = dirty ? NULL :
-                                  vertex_cow_extendable(r, lo, copy_size);
+    VertexCowCacheEntry *extend = NULL;
+    if (!dirty) {
+        extend = vertex_cow_extendable(r, lo, copy_size, arena_slot);
+        if (!extend) {
+            extend = vertex_cow_extendable(r, lo, copy_size, arena_slot ^ 1);
+        }
+    }
     if (extend && lo + extend->size > addr &&
         memory_region_test_and_clear_dirty(d->vram, addr,
                                             lo + extend->size - addr,
@@ -3942,6 +3947,8 @@ static void vertex_cow_snapshot(PGRAPHState *pg, hwaddr addr,
         extend = NULL;
     }
     if (extend) {
+        arena_slot = extend->slot;
+        arena = &r->vertex_arena[arena_slot];
         /* Downloads above may rotate the slot or invalidate the prefix:
          * select it only afterwards. Never overwrite the old allocation. */
         VkDeviceSize tail = copy_size - extend->size;

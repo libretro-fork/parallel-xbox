@@ -91,7 +91,7 @@ int main(void){
  /* Download callbacks may invalidate the prefix or rotate to another slot. */
  reset();a=snapshot(4096,4096,0,true);hold(a,8192);writeback_download=true;before=copied;b=snapshot(4096,8192,0,false);assert(b.arena_offset!=a.arena_offset&&copied-before==12288);
  reset();a=snapshot(4096,4096,0,true);hold(a,8192);cpu_write_download=true;before=copied;b=snapshot(4096,8192,0,false);assert(b.arena_offset!=a.arena_offset&&copied-before==12288&&(*r.vertex_stale_bitmap&(UINT64_C(1)<<2)));
- reset();a=snapshot(4096,4096,0,true);hold(a,8192);rotate_download=true;before=copied;b=snapshot(4096,8192,0,false);assert(b.slot==1&&copied-before==12288);
+ reset();a=snapshot(4096,4096,0,true);hold(a,8192);rotate_download=true;before=copied;b=snapshot(4096,8192,0,false);assert(r.slot==1&&b.slot==a.slot&&b.arena_offset==a.arena_offset&&copied-before==4096);
  /* Pending snapshots cannot be recycled merely because earlier GPU work
   * settled: this draw has not bound them yet. */
  reset();r.vertex_arena[0].buffer_size=r.vertex_arena[1].buffer_size=8192;
@@ -103,7 +103,7 @@ int main(void){
  hold(a,4096);hold(b,12288);hold(c,20480);hold(e,28672);pgraph_vk_finish(&d.pgraph,0);pgraph_vk_settle_all_slots(&d.pgraph);
  (void)snapshot(32768,4096,32768,true);assert(r.vertex_arena_epoch[0]==1&&r.vertex_cow_tail[0]);
  reset();r.vertex_arena[0].buffer_size=r.vertex_arena[1].buffer_size=4096;fallback=snapshot(4096,8192,0,true);assert(!fallback.cow&&finishes&&settles);
- reset();r.vertex_cow_tail[0]=513;assert(!vertex_cow_extendable(&r,0,4096));r.vertex_cow_tail[0]=0;assert(!vertex_cow_extendable(&r,0,4096));
+ reset();r.vertex_cow_tail[0]=513;assert(!vertex_cow_extendable(&r,0,4096,r.slot&1));r.vertex_cow_tail[0]=0;assert(!vertex_cow_extendable(&r,0,4096,r.slot&1));
  /* Crossing the recycle threshold must not submit or wait for readers.
   * Known completion permits epoch reset; unproved readers keep their bytes
   * and use the remaining capacity. Current draw references always forbid reset. */
@@ -150,9 +150,25 @@ int main(void){
   assert(r.vertex_arena_dirty_start[slot^1]==(coherent?UINT64_MAX:want)&&r.vertex_arena_dirty_start[slot]==UINT64_MAX);
   VertexCowCacheEntry *entry=vertex_cow_lookup(&r,65536,69632);assert(entry&&entry->slot==(slot^1)&&entry->epoch==11);
   before=copied;out=snapshot(65536,4096,65536,false);assert(out.cow&&out.slot==(slot^1)&&copied==before);
+  hold(out,69632);before=copied;
+  out=snapshot(65536,8192,65536,false);
+  bool extend=coherent||((want+4096)%atom==0);
+  assert(out.cow&&out.slot==(slot^1)&&!finishes&&!settles);
+  assert(copied-before==(extend?4096u:8192u));
+  assert((out.arena_offset==want)==extend);
+  assert(!memcmp(arena[slot^1]+out.arena_offset,ram+65536,8192));check_readers();
   assert(r.vertex_arena_epoch[slot]==7&&r.vertex_arena_epoch[slot^1]==11);spill_cases++;
  }
- printf("PASS: %u cross-arena spill schedules, live prefixes, mixed coherence/atom alignment, cache reuse and zero exhaustion waits when spare space fits\n",spill_cases);
+ printf("PASS: %u cross-arena spill schedules, live prefixes, mixed coherence/atom alignment, cache reuse, suffix-only growth and zero exhaustion waits when spare space fits\n",spill_cases);
+ /* A prefix in the other arena must still be invalidated by a writeback
+  * or a CPU write observed during download before any suffix reuse. */
+ for(unsigned cpu_write=0;cpu_write<2;cpu_write++){
+  reset();r.submit_count=2;r.settled_submit=1;r.vertex_arena[0].buffer_offset=ARENASIZE;r.vertex_arena_used=true;
+  a=snapshot(4096,4096,0,true);assert(a.cow&&a.slot==1);hold(a,8192);
+  cpu_write_download=cpu_write;writeback_download=!cpu_write;before=copied;
+  b=snapshot(4096,8192,0,false);assert(b.cow&&b.slot==1&&b.arena_offset!=a.arena_offset&&copied-before==12288);
+  check_readers();
+ }
  /* Selector adversaries: stale epochs, overwritten entries, wrong base/slot,
   * allocation holes, capacity, and atom boundaries. No array scan is needed. */
  for(unsigned n=0;n<100000;n++){
@@ -161,7 +177,7 @@ int main(void){
   VertexCowCacheEntry *e=&r.vertex_cow_cache[key-1];e->valid=(rnd()&7)!=0;e->slot=(rnd()&7)?slot:slot^1;e->epoch=rnd()%3;r.vertex_arena_epoch[slot]=rnd()%3;e->addr=13+rnd()%3;e->arena_offset=rnd()%1024;e->size=1+rnd()%10000;
   r.vertex_arena[slot].buffer_offset=e->arena_offset+e->size+((rnd()&7)?0:1);VkDeviceSize want=1+rnd()%70000;hwaddr lo=13+rnd()%3;
   bool eligible=e->valid&&e->slot==slot&&e->epoch==r.vertex_arena_epoch[slot]&&e->addr==lo&&want>e->size&&e->arena_offset+e->size==r.vertex_arena[slot].buffer_offset&&e->arena_offset+want<=ARENASIZE&&(r.vertex_arena_coherent[slot]||r.vertex_arena[slot].buffer_offset%r.device_props.limits.nonCoherentAtomSize==0);
-  assert(vertex_cow_extendable(&r,lo,want)==(eligible?e:NULL));
+  assert(vertex_cow_extendable(&r,lo,want,slot)==(eligible?e:NULL));
  }
  reset();
  for(unsigned n=0;n<10000;n++){
