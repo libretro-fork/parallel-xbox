@@ -10,9 +10,12 @@
 #include <spirv_reflect.h>
 #endif
 /* TYPES */
+typedef struct { GlslcLayout uniforms, push_constants; } ShaderLayouts;
 typedef struct { ShaderUniformLayout uniforms, push_constants; } ShaderModuleInfo;
+static unsigned allocations;
+static void *module_alloc(size_t n) { allocations++; return calloc(1,n); }
 #define g_malloc0_n(n,s) calloc(n,s)
-#define g_malloc0(n) calloc(1,n)
+#define g_malloc0(n) module_alloc(n)
 #define g_free free
 /* PRODUCTION */
 
@@ -87,16 +90,16 @@ static void test(GlslcStage stage, const char *text, bool version,
     assert(glslc_compile(stage, text, &opts, &bare));
     assert(!bare.uniforms.members && !bare.push_constants.members);
     assert(bare.num_words == code.num_words && !memcmp(bare.words, code.words, code.num_words * 4));
-    ShaderModuleInfo first = {0}, second = {0};
-    init_uniform_layout(&first.uniforms, &code.uniforms);
-    init_uniform_layout(&first.push_constants, &code.push_constants);
-    init_uniform_layout(&second.uniforms, &code.uniforms);
-    init_uniform_layout(&second.push_constants, &code.push_constants);
+    ShaderLayouts layouts = {code.uniforms, code.push_constants};
+    unsigned before = allocations;
+    ShaderModuleInfo *first = alloc_shader_module_info(&layouts);
+    ShaderModuleInfo *second = alloc_shader_module_info(&layouts);
+    assert(allocations == before + 2);
     free(code.words); free(bare.words);
     /* Names are shared; mutable upload buffers must
      * remain independent across modules sharing that source. */
-    ShaderUniformLayout *a[] = { &first.uniforms, &first.push_constants };
-    ShaderUniformLayout *b[] = { &second.uniforms, &second.push_constants };
+    ShaderUniformLayout *a[] = { &first->uniforms, &first->push_constants };
+    ShaderUniformLayout *b[] = { &second->uniforms, &second->push_constants };
     for (unsigned i = 0; i < 2; i++) {
         assert(a[i]->total_size == b[i]->total_size);
         for (size_t j = 0; j < a[i]->num_uniforms; j++) {
@@ -104,17 +107,24 @@ static void test(GlslcStage stage, const char *text, bool version,
             assert(a[i]->uniforms == b[i]->uniforms);
         }
         if (a[i]->total_size) {
+            for (size_t j = 0; j < a[i]->total_size; j++) assert(!((unsigned char *)a[i]->allocation)[j]);
             memset(a[i]->allocation, 0xa5, a[i]->total_size);
             for (size_t j = 0; j < b[i]->total_size; j++) assert(!((unsigned char *)b[i]->allocation)[j]);
         }
-        finalize_uniform_layout(a[i]); finalize_uniform_layout(b[i]);
+        if (a[i]->allocation) assert((uintptr_t)a[i]->allocation % 16 == 0);
+        if (b[i]->allocation) assert((uintptr_t)b[i]->allocation % 16 == 0);
     }
+    free(first); free(second);
     free(code.uniforms.members); free(code.push_constants.members);
     cases++;
 }
 
 int main(int argc, char **argv)
 {
+    ShaderModuleInfo *plain = alloc_shader_module_info(NULL);
+    assert(allocations == 1 && !plain->uniforms.allocation &&
+           !plain->push_constants.allocation);
+    free(plain);
     static const GlslcUniform uniforms[] = {
         {"color",4,1,0,0}, {"transform",4,4,16,16}, {"lights",3,3,16,80},
     };

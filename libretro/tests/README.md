@@ -1830,3 +1830,5 @@ GPU completion races are covered in `test-nv2a-guest-wakes.py` and `test-gpu-wai
 The display ROM's exact four-GPU-round-trip check runs in deterministic mode and uses the supported RAM-counter wait encoding. The flash masks PIC lines before entering the ROM; the wait saves/restores interrupt flags. An arbitrary equality spin remains unproven and consumes instruction time, so it cannot provide a host-speed-independent GPU-progress oracle.
 
 `test-pipeline-cache-export.py CHECKOUT [CC]` runs production Vulkan pipeline-cache export and teardown against a driver oracle: scratch reuse/geometric growth, growth between size query and export, incomplete data, failed-write retries, query errors and release after the synchronous final save. `PCACHE_EXPORT_CFLAGS` supports sanitizers.
+
+Shader-layout ownership tests require one module allocation, 16-byte parameter alignment, shared immutable metadata, non-overlapping parameter regions and independent mutable storage across modules. `SHADER_LAYOUT_CFLAGS` enables additional compiler/sanitizer flags.
