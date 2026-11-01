@@ -1251,6 +1251,12 @@ static void set_psh_texscale_values(PGRAPHState *pg,
             scale = 1.0;
         }
 
+        if (r->texture_bindings[i]->key.state.color_format ==
+                NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_DEPTH_Y16_FLOAT &&
+            pgraph_is_texture_enabled(pg, i) &&
+            !r->texture_bindings[i]->depth_source_copy) {
+            scale = -scale;
+        }
         psh_values->texScale[i] = scale;
     }
 }

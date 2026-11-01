@@ -337,6 +337,9 @@ static void bump_filter_probe(void)
         u32 axis = (id / 24) % 2;
         u32 lum = (id / 48) % 2;
         u32 swizzled_layout = id / 96;
+#ifdef BUMP_NATIVE_F16
+        swizzled_layout = 0;
+#endif
 #ifdef BUMP_FILTER_LUMINANCE_PROBE
         flags = (id / 6) % 16;
         axis = 0;
@@ -354,6 +357,9 @@ static void bump_filter_probe(void)
         u32 bump_address = BUMP_DATA + id * 16;
 #ifdef BUMP_NATIVE_COLOR
         bump_address = BUMP_DATA + id * 32;
+#ifdef BUMP_NATIVE_F16_REUSE
+        bump_address = BUMP_DATA;
+#endif
 #if defined(BUMP_NATIVE_VOLUME) && defined(BUMP_NATIVE_CHAIN)
         bump_address = BUMP_DATA + id * 4096;
 #endif
@@ -522,13 +528,58 @@ static void bump_filter_probe(void)
 #endif
 #endif
 #ifdef BUMP_NATIVE_DEPTH
+#ifdef BUMP_NATIVE_F16
+        format = 0x31;
+        static const u32 codes[16] = {0,1,0x0fff,0x1000,0x1001,0x3fff,0x4000,0x4001,
+                                      0x7fff,0x8000,0x8001,0xbfff,0xc000,0xc001,0xfffe,0xffff};
+        u32 f16_first = codes[(id / 6) % 16];
+#ifdef BUMP_NATIVE_F16_CONSTANT
+        u32 f16_second = f16_first;
+#else
+        u32 f16_second = codes[15 - (id / 6) % 16];
+#endif
+        ram32(bump_address, f16_first | (f16_second << 16));
+        ram32(bump_address + 4, f16_first | (f16_second << 16));
+#else
         format = swizzled_layout ? 0x2c : 0x30; /* Fixed D16 */
         ram32(bump_address, 0xe0002000u); ram32(bump_address + 4, 0xe0002000u);
+#endif
 #ifdef BUMP_NATIVE_CHAIN
         ram32(bump_address + 8, 0x1000u); /* Contrasting lower mip */
 #endif
 #endif
         flags = 0; /* Independent colors, without signed-channel conversion. */
+#endif
+#ifdef BUMP_NATIVE_F16_ALIAS
+        if (((id / 6) % 16) & 1) {
+            /* Native clears must differ from RAM so bypassing the GPU
+             * alias cannot accidentally satisfy the scalar oracle. */
+            ram32(bump_address, 0); ram32(bump_address + 4, 0);
+            method(0x290u, 1u << 12); /* Floating Z16 */
+            method(NV097_SET_SURFACE_CLIP_H, 2u << 16);
+            method(NV097_SET_SURFACE_CLIP_V, 2u << 16);
+            method(NV097_SET_SURFACE_FORMAT, 0x118u);
+            method(NV097_SET_SURFACE_PITCH, 8u | (4u << 16));
+            method(NV097_SET_SURFACE_COLOR_OFFSET, 0x03800000u);
+            method(NV097_SET_SURFACE_ZETA_OFFSET, bump_address);
+            method(NV097_SET_ZSTENCIL_CLEAR_VALUE, f16_first);
+#ifdef BUMP_NATIVE_F16_CONSTANT
+            method(NV097_SET_CLEAR_RECT_H, 1u << 16);
+#else
+            method(NV097_SET_CLEAR_RECT_H, 0);
+#endif
+            method(NV097_SET_CLEAR_RECT_V, 1u << 16);
+            method(NV097_SET_DEPTH_MASK, 1);
+            method(NV097_CLEAR_SURFACE, 1);
+#ifndef BUMP_NATIVE_F16_CONSTANT
+            method(NV097_SET_ZSTENCIL_CLEAR_VALUE, f16_second);
+            method(NV097_SET_CLEAR_RECT_H, 0x00010001u);
+            method(NV097_CLEAR_SURFACE, 1);
+#endif
+            method(NV097_SET_DEPTH_MASK, 0);
+            method(0x290u, 0);
+            method(NV097_SET_SURFACE_ZETA_OFFSET, ZETA_B);
+        }
 #endif
         /* Reuse the established surface/transform setup, but defer its draw. */
         texture_alias_target(0xc0000000u | format, 1,

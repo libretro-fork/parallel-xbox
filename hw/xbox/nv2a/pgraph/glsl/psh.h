@@ -70,7 +70,9 @@ typedef struct PshState {
 
     bool border_adjust[4];
 
-    bool shadow_map[4];
+    /* Bit 0: shadow; F16 uses bits 1/2/3 for decode/min-linear/mag-linear.
+     * Byte size and fixed-depth seed keys remain unchanged. */
+    uint8_t shadow_map[4];
     enum PshShadowDepthFunc shadow_depth_func;
 
     bool alpha_test;

@@ -1,5 +1,8 @@
 # Changelog of the libretro core
 
+- Decode NV2A floating 16-bit depth texels on the GPU before shadow filtering/comparison in GL and Vulkan. Keep native surface copies separate from encoded RAM, including CPU-overwrite transitions, without adding GPU readbacks or conversion passes.
+
+
 - Convert Vulkan YUY2 video overlays one pixel pair per compute invocation, sharing packed reads and chroma arithmetic. Preserve integer color output, odd final pixels, captured staging snapshots and CPU fallback.
 
 

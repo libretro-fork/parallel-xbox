@@ -2309,6 +2309,12 @@ static void create_texture(PGRAPHState *pg, int texture_idx)
 
     // Check active surfaces to see if this texture was a render target
     SurfaceBinding *surface = pgraph_vk_surface_get(d, texture_vram_offset);
+    if (surface && state.color_format ==
+            NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_DEPTH_Y16_FLOAT &&
+        surface->upload_pending && !surface->draw_dirty) {
+        surface = NULL;
+    }
+
     if (surface && state.levels == 1) {
         surface_to_texture =
             check_surface_to_texture_compatiblity(surface, &state);
@@ -2467,9 +2473,12 @@ static void create_texture(PGRAPHState *pg, int texture_idx)
      * runs at most once per frame per binding: bind_textures stamps
      * validation_frame after this call (-1 on a fresh node, which always
      * hashes). The sampler is still resolved on every bind below. */
+    bool f16_to_ram = !surface_to_texture &&
+        state.color_format == NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_DEPTH_Y16_FLOAT &&
+        snode->depth_source_copy;
     uint64_t content_hash = 0;
-    if (!surface_to_texture && (!surface_to_texture_cube || mixed_cube) && possibly_dirty &&
-        snode->validation_frame != pg->frame_time) {
+    if (!surface_to_texture && (!surface_to_texture_cube || mixed_cube) && (possibly_dirty || f16_to_ram) &&
+        (snode->validation_frame != pg->frame_time || f16_to_ram)) {
         content_hash = fast_hash(texture_data,
                 pgraph_texture_hash_length(state, texture_length));
         if (is_indexed) {
@@ -2530,8 +2539,8 @@ static void create_texture(PGRAPHState *pg, int texture_idx)
                 texture_cow_if_referenced(pg, snode, false);
                 copy_surface_to_texture(pg, surface, snode);
             }
-        } else if (snode->validation_frame != pg->frame_time) {
-            if (possibly_dirty && content_hash != snode->hash) {
+        } else if (snode->validation_frame != pg->frame_time || f16_to_ram) {
+            if (f16_to_ram || (possibly_dirty && content_hash != snode->hash)) {
                 texture_cow_if_referenced(pg, snode, true);
                 upload_texture_image(pg, texture_idx, snode, 0);
                 snode->hash = content_hash;

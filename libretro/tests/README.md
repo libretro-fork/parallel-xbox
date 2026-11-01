@@ -2083,6 +2083,26 @@ measured. Demand report/download waits remain separate work.
 
 `test-opcode-byte.py CHECKOUT [CC]` checks the production byte fetch and general loader: 302,292 first/second-page reads, guarded edges, noncontiguous host mappings, existing/replaced page locks, MMIO recording and fault propagation. First-page reads must avoid the general loader. Linux defaults to ASan/UBSan; OPCODE_BYTE_CFLAGS, OPCODE_BYTE_BINARY and OPCODE_BYTE_SKIP_RUN support native Windows fixtures.
 
+
+`test-float-depth-sampler.py CHECKOUT PARENT CANDIDATE HARNESS SCRATCH`
+checks NV2A F16 decode before filtering and shadow comparison. The matrix covers
+zero, exponent boundaries, maximum codes, exact comparison thresholds, bilinear
+ramps, mixed filters/biases, stale mip fields and Force LOD0. GPU clears alternate
+with encoded RAM textures, including repeated use of one address. Existing fixed
+depth/color/cube/volume/G8B8 controls compare exact parent pixels. Use
+`--assembler yasm` and `--windows-paths` as appropriate.
+
+`test-float-depth-codec.py CHECKOUT [--gpu] [--output DIRECTORY]` verifies shader
+key/seed ABI and fixed-depth byte compatibility. With `--gpu`, `glslc` compiles the
+actual production decoder expressions and a Vulkan fixture checks all 65,536
+codes against an independent exponent/mantissa model. Test-only readbacks are
+not linked into the emulator. Floating-depth render/guest-readback precision
+outside texture sampling retains its existing limitations.
+
+`test-float-depth-legacy.py CHECKOUT PARENT [CC]` compares 512 non-F16 shadow
+shader snippets byte-for-byte with the selected parent, including fixed 16/24-bit
+depth, all comparisons, projective/rectangle sampling and GL/Vulkan generation.
+
 The opcode-fetch fixture also exercises the production 16/32-bit fetches: 523,688 endian/alignment/page-crossing/MMIO cases. First-page scalar reads avoid the general loader and aligned reads must still use the existing atomic primitives. Both general-loader output and recorded MMIO bytes retain host/guest byte-order behavior.
 
 The page-collection fixture now checks append/repeated-tail and reverse-order insertion explicitly, including heap growth and absent pages. Every memmove must have nonzero length; ascending inserts make none. Its 160,000 reference cases cover 69,309 contention retries and 21,570 grown arrays. PAGE_COLLECTION_CFLAGS, PAGE_COLLECTION_BINARY and PAGE_COLLECTION_SKIP_RUN retain native Windows fixtures.

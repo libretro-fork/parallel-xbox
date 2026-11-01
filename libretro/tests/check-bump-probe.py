@@ -8,6 +8,7 @@ with default filtering options; save gl.log and vk.log beside cases.csv.
 import argparse
 import csv
 import math
+import struct
 from pathlib import Path
 import re
 
@@ -122,6 +123,16 @@ def expected(case, force_lod0=False):
         linear = case["filter"] == "linear"
         weight = coordinate / 2 if linear else int(coordinate != 0)
     if case.get("native_depth_reference"):
+        if case.get("native_depth_float") == "1":
+            codes=(0,1,0x0fff,0x1000,0x1001,0x3fff,0x4000,0x4001,
+                   0x7fff,0x8000,0x8001,0xbfff,0xc000,0xc001,0xfffe,0xffff)
+            def decode(code):
+                return struct.unpack("<f",struct.pack("<I",(code<<11)+0x3c000000))[0] if code else 0.0
+            palette=int(case["native_palette"])
+            first=codes[palette]
+            second=first if case.get("native_depth_constant") == "1" else codes[15-palette]
+            depth=mix(decode(first),decode(second),weight)
+            return [255 if depth > float(case["native_depth_reference"]) else 0] * 4
         depth = mix(0x2000, 0xe000, weight)
         return [255 if depth > int(case["native_depth_reference"]) else 0] * 4
     if case["mode"] in ("native_color", "native_mixed"):

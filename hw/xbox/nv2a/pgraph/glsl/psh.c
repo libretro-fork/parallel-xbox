@@ -327,6 +327,14 @@ void pgraph_glsl_set_psh_state(PGRAPHState *pg, PshState *state)
                   color_format == NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_G8B8;
         unsigned mode = (state->shader_stage_program >> (i * 5)) & 31;
         unsigned mag_filter = GET_MASK(filter, NV_PGRAPH_TEXFILTER0_MAG);
+        if (color_format == NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_DEPTH_Y16_FLOAT &&
+            state->dim_tex[i] == 2 && !cubemap && pgraph_is_texture_enabled(pg, i)) {
+            bool min_linear = min_filter == 2 || min_filter == 4 ||
+                              min_filter == 6 || min_filter == 7;
+            state->shadow_map[i] |= 2u | (min_linear ? 4u : 0u) |
+                                    ((mag_filter == 2 || mag_filter == 4) ? 8u : 0u);
+        }
+
         /* A one-level image has no mip selection to reconstruct.
          * Reuse the same keys as its corresponding nonmip min/mag filters. */
         if (gb && !cubemap && state->dim_tex[i] == 2 &&
@@ -973,6 +981,53 @@ static const char *shadow_comparison_map[] = {
     [SHADOW_DEPTH_FUNC_GEQUAL] = ">=",
 };
 
+/* Decode guest F16 before interpolation. A negative texScale tags encoded
+ * RAM texels; native GPU surface copies already contain normalized depth.
+ * Sample exact texel centers so host sampler filtering never mixes codes. */
+static void psh_append_f16_shadow(const struct PixelShader *ps, int i,
+                                  const char *tex_remap, MString *vars)
+{
+    unsigned flags = ps->state->shadow_map[i];
+    bool min_linear = flags & 4, mag_linear = flags & 8;
+    mstring_append_fmt(vars,
+        "vec4 t%d_depth;\n{\n"
+        "vec3 fdCoord = %s(pT%d.xyw);\n"
+        "vec2 fdUV = fdCoord.xy / fdCoord.z;\n"
+        "vec2 fdSize = vec2(textureSize(texSamp%d, 0));\n",
+        i, tex_remap, i, i);
+    if (min_linear == mag_linear) {
+        mstring_append_fmt(vars, "bool fdLinear = %s;\n",
+                           min_linear ? "true" : "false");
+    } else {
+        mstring_append_fmt(vars,
+            "bool fdLinear = textureQueryLod(texSamp%d, fdUV).y %s 0.0;\n",
+            i, min_linear ? ">" : "<=");
+    }
+    mstring_append_fmt(vars,
+        "vec4 fdRaw; vec2 fdFrac = vec2(0.0);\n"
+        "if (fdLinear) {\n"
+        " vec2 fdPos = fdUV * fdSize - 0.5;\n"
+        " fdFrac = fract(fdPos);\n"
+        " vec2 fdBase = (floor(fdPos) + 0.5) / fdSize;\n"
+        " fdRaw = vec4(textureLod(texSamp%d, fdBase, 0.0).r,\n"
+        "  textureLod(texSamp%d, fdBase + vec2(1.0,0.0)/fdSize, 0.0).r,\n"
+        "  textureLod(texSamp%d, fdBase + vec2(0.0,1.0)/fdSize, 0.0).r,\n"
+        "  textureLod(texSamp%d, fdBase + vec2(1.0,1.0)/fdSize, 0.0).r);\n"
+        "} else {\n"
+        " vec2 fdPoint = (floor(fdUV * fdSize) + 0.5) / fdSize;\n"
+        " fdRaw = vec4(textureLod(texSamp%d, fdPoint, 0.0).r);\n"
+        "}\n"
+        "vec4 fdValue;\n"
+        "if (texScale[%d] < 0.0) {\n"
+        " uvec4 fdBits = uvec4(round(fdRaw * 65535.0));\n"
+        " fdValue = uintBitsToFloat((fdBits << 11) + uvec4(0x3c000000u));\n"
+        " fdValue = mix(fdValue, vec4(0.0), equal(fdBits, uvec4(0u)));\n"
+        "} else { fdValue = fdRaw * 511.9375; }\n"
+        "t%d_depth = vec4(mix(mix(fdValue.x,fdValue.y,fdFrac.x),\n"
+        "                     mix(fdValue.z,fdValue.w,fdFrac.x),fdFrac.y),0.0,1.0,0.0);\n"
+        "}\n", i, i, i, i, i, i, i);
+}
+
 static void psh_append_shadowmap(const struct PixelShader *ps, int i, bool compare_z, MString *vars)
 {
     if (ps->state->shadow_depth_func == SHADOW_DEPTH_FUNC_NEVER) {
@@ -992,10 +1047,14 @@ static void psh_append_shadowmap(const struct PixelShader *ps, int i, bool compa
 
     bool extract_msb_24b = ps->state->tex_x8y24[i] && ps->opts.vulkan;
 
-    mstring_append_fmt(
-        vars, "%svec4 t%d_depth%s = textureProj(texSamp%d, %s(pT%d.xyw));\n",
-        extract_msb_24b ? "u" : "", i, extract_msb_24b ? "_raw" : "", i,
-        tex_remap, i);
+    if (ps->state->shadow_map[i] & 2) {
+        psh_append_f16_shadow(ps, i, tex_remap, vars);
+    } else {
+        mstring_append_fmt(
+            vars, "%svec4 t%d_depth%s = textureProj(texSamp%d, %s(pT%d.xyw));\n",
+            extract_msb_24b ? "u" : "", i, extract_msb_24b ? "_raw" : "", i,
+            tex_remap, i);
+    }
 
     if (extract_msb_24b) {
         mstring_append_fmt(vars,
@@ -1013,13 +1072,15 @@ static void psh_append_shadowmap(const struct PixelShader *ps, int i, bool compa
             "  t%d_max_depth = 0xFFFFFF;\n"
             "} else {\n"
             "  t%d_max_depth = t%d_depth.z > 0 ? 511.9375 : 0xFFFF;\n"
-            "}\n"
-            "t%d_depth.x *= t%d_max_depth;\n"
+            "}\n", i, i, i, i, i);
+        if (!(ps->state->shadow_map[i] & 2)) {
+            mstring_append_fmt(vars, "t%d_depth.x *= t%d_max_depth;\n", i, i);
+        }
+        mstring_append_fmt(
+            vars,
             "pT%d.z = clamp(pT%d.z / pT%d.w, 0, t%d_max_depth);\n"
             "vec4 t%d = vec4(t%d_depth.x %s pT%d.z ? 1.0 : 0.0);\n",
-            i, i, i, i, i,
-            i, i, i, i, i, i,
-            i, i, comparison, i);
+            i, i, i, i, i, i, comparison, i);
     } else {
         mstring_append_fmt(
             vars,
@@ -2122,11 +2183,18 @@ static MString* psh_convert(struct PixelShader *ps)
             }
 
             if (ps->state->rect_tex[i]) {
+                if (ps->state->shadow_map[i] & 2) {
+                    mstring_append_fmt(preflight,
+                        "vec2 norm%d(vec2 coord) {\n"
+                        " return coord / (textureSize(texSamp%d,0) / abs(texScale[%d]));\n"
+                        "}\n", i, i, i);
+                } else {
                 mstring_append_fmt(preflight,
                 "vec2 norm%d(vec2 coord) {\n"
                 "    return coord / (textureSize(texSamp%d, 0) / texScale[%d]);\n"
                 "}\n",
                 i, i, i);
+                }
                 mstring_append_fmt(preflight,
                 "vec3 norm%d(vec3 coord) {\n"
                 "    return vec3(norm%d(coord.xy), coord.z);\n"

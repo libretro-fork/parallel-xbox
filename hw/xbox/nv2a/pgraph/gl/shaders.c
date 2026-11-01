@@ -1605,6 +1605,11 @@ static void update_shader_uniforms(PGRAPHState *pg, ShaderBinding *binding)
     for (int i = 0; i < 4; i++) {
         if (r->texture_binding[i] != NULL) {
             float scale = r->texture_binding[i]->scale;
+            /* Sign tags encoded F16 RAM texels without extending uniforms. */
+            if ((binding->state.psh.shadow_map[i] & 2) &&
+                r->texture_binding[i]->s2t_format != GL_DEPTH_COMPONENT24) {
+                scale = -scale;
+            }
             psh_values.texScale[i] = scale;
         }
     }

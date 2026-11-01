@@ -386,6 +386,14 @@ void pgraph_gl_bind_textures(NV2AState *d)
         bool possibly_dirty_checked = false;
 
         SurfaceBinding *surface = pgraph_gl_surface_get(d, texture_vram_offset);
+        /* CPU-authored F16 bytes are sampled as encoded RAM, not uploaded
+         * through the native floating-depth surface representation first. */
+        if (surface && state.color_format ==
+                NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_DEPTH_Y16_FLOAT &&
+            surface->upload_pending && !surface->draw_dirty) {
+            surface = NULL;
+        }
+
         /* A cubemap whose six faces are live colour surfaces is filled by
          * GPU copies (render_cube_faces_to_texture). */
         SurfaceBinding *cube_faces[6] = { 0 };
@@ -526,8 +534,11 @@ void pgraph_gl_bind_textures(NV2AState *d)
         void *texture_data = (char*)d->vram_ptr + texture_vram_offset;
         void *palette_data = (char*)d->vram_ptr + palette_vram_offset;
 
+        bool f16_to_ram = key_out->binding && !surf_to_tex &&
+            state.color_format == NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_DEPTH_Y16_FLOAT &&
+            key_out->binding->s2t_format == GL_DEPTH_COMPONENT24;
         uint64_t tex_data_hash = 0;
-        if (!surf_to_tex && !surf_to_tex_cube && possibly_dirty) {
+        if (!surf_to_tex && !surf_to_tex_cube && (possibly_dirty || f16_to_ram)) {
             tex_data_hash = fast_hash(texture_data,
                 pgraph_texture_hash_length(state, length));
             if (is_indexed) {
@@ -536,9 +547,9 @@ void pgraph_gl_bind_textures(NV2AState *d)
         }
 
         // Free existing binding, if texture data has changed
-        bool must_destroy = (key_out->binding != NULL)
-                            && possibly_dirty
-                            && (key_out->binding->data_hash != tex_data_hash);
+        bool must_destroy = (key_out->binding != NULL) &&
+            (f16_to_ram || (possibly_dirty &&
+             key_out->binding->data_hash != tex_data_hash));
         if (must_destroy) {
             texture_binding_destroy(key_out->binding);
             key_out->binding = NULL;
