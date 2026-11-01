@@ -1,5 +1,7 @@
 # Changelog of the libretro core
 
+- Remove duplicate vertex-description arrays and copies from Vulkan pipeline jobs. Worker jobs reference their owned pipeline key; synchronous creation borrows the caller's key only for the driver call.
+
 - Pack Vulkan shader-module uniform and push-constant storage into the module allocation, removing up to two heap allocations per module while keeping mutable data independent.
 
 - Correct mixed min/mag G8B8 border filtering when a mip chain is clamped to mip zero. Reuse existing mixed point/gather shaders; preserve Vulkan filter selection without reading higher mips, including unsigned channels. Keep existing shader-cache layouts and nonborder keys.

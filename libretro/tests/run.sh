@@ -296,6 +296,7 @@ python3 "$here/test-glslgen-queue.py" "$here/../.." "$cc"
 python3 "$here/test-shader-cache-handoff.py" "$here/../.." "$cc"
 python3 "$here/test-seed-merge-view.py" "$here/../.." "$cc"
 python3 "$here/test-pipeline-cache-export.py" "$here/../.." "$cc"
+python3 "$here/test-pipeline-job-view.py" "$here/../.." "$cc"
 case $h in
 wine*)
     # shellcheck disable=SC2086

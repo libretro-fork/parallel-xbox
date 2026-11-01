@@ -1832,3 +1832,5 @@ The display ROM's exact four-GPU-round-trip check runs in deterministic mode and
 `test-pipeline-cache-export.py CHECKOUT [CC]` runs production Vulkan pipeline-cache export and teardown against a driver oracle: scratch reuse/geometric growth, growth between size query and export, incomplete data, failed-write retries, query errors and release after the synchronous final save. `PCACHE_EXPORT_CFLAGS` supports sanitizers.
 
 Shader-layout ownership tests require one module allocation, 16-byte parameter alignment, shared immutable metadata, non-overlapping parameter regions and independent mutable storage across modules. `SHADER_LAYOUT_CFLAGS` enables additional compiler/sanitizer flags.
+
+`test-pipeline-job-view.py CHECKOUT [CC]` checks production job linking, slot clearing and release publication across 36,992 count/lifetime/slot-reuse cases, plus full-ring rejection and both pipeline-library halves. Synchronous jobs borrow caller vertex descriptions; queued jobs rebind to owned keys before publication. `PIPELINE_JOB_CFLAGS` enables sanitizers.
