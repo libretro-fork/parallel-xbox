@@ -699,13 +699,14 @@ void *tcg_malloc_internal(TCGContext *s, int size);
 void tcg_pool_reset(TCGContext *s);
 TranslationBlock *tcg_tb_alloc(TCGContext *s);
 
+/* Core safe-work phase: translated execution must be quiescent. */
 void tcg_region_reset_all(void);
 
 /**
  * tcg_tb_insert:
  * @tb: translation block to insert
  *
- * Insert @tb into the region trees.
+ * Insert @tb into the region trees, on the serialized vCPU translator.
  */
 void tcg_tb_insert(TranslationBlock *tb);
 
@@ -713,7 +714,7 @@ void tcg_tb_insert(TranslationBlock *tb);
  * tcg_tb_remove:
  * @tb: translation block to remove
  *
- * Remove @tb from the region trees.
+ * Remove @tb from the region trees, on the serialized vCPU translator.
  */
 void tcg_tb_remove(TranslationBlock *tb);
 
@@ -723,7 +724,9 @@ void tcg_tb_remove(TranslationBlock *tb);
  *
  * Look up a translation block inside the region trees by @tc_ptr. This is
  * useful for exception handling, but must not be used for the purposes of
- * executing the returned translation block. See struct tb_tc for more
+ * executing the returned translation block. The core calls this only for
+ * vCPU fault/unwind handling, not from a concurrent external reader.
+ * See struct tb_tc for more
  * information.
  *
  * Returns: a translation block previously inserted into the region trees,

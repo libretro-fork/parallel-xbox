@@ -34,7 +34,6 @@
 #include "tcg-internal.h"
 #include "host/cpuinfo.h"
 
-
 /*
  * Local source-level compatibility with Unix.
  * Used by tcg_region_init below.
@@ -54,6 +53,11 @@
  * translating allocates only when a region holds more TBs than ever
  * before.
  */
+/* Insert/recycle/remove run only during serialized vCPU translation. Host-PC
+ * lookups run on the same vCPU for fault/unwind handling; a foreign physical
+ * write invalidates TBs but does not edit this host-code index. Full reset is
+ * safe work, with execution stopped. Parallel translators or foreign readers
+ * require a different ownership scheme, not removal of these restrictions. */
 struct tcg_region_tb {
     const void *ptr;          /* tb->tc.ptr */
     size_t size;              /* tb->tc.size */
@@ -61,22 +65,16 @@ struct tcg_region_tb {
 };
 
 struct tcg_region_tree {
-    QemuMutex lock;
     struct tcg_region_tb *tbs;
     size_t n, cap;
     size_t nb_tbs;            /* entries with a TB */
-    /* padding to avoid false sharing is computed at run-time */
 };
 
 /*
- * We divide code_gen_buffer into equally-sized "regions" that TCG threads
- * dynamically allocate from as demand dictates. Given appropriate region
- * sizing, this minimizes flushes even when some TCG threads generate a lot
- * more code than others.
+ * The Xbox has one serialized TCG translator and one code region.
+ * Allocation and reset run on that owner or during its stopped safe-work phase.
  */
 struct tcg_region_state {
-    QemuMutex lock;
-
     /* fields set at init time */
     void *start_aligned;
     void *after_prologue;
@@ -85,7 +83,7 @@ struct tcg_region_state {
     size_t stride; /* .size + guard size */
     size_t total_size; /* size of entire buffer, >= n * stride */
 
-    /* fields protected by the lock */
+    /* fields owned by the serialized translator */
     size_t current; /* current region index */
     size_t agg_size_full; /* aggregate size of full regions */
 };
@@ -120,7 +118,6 @@ static int host_prot_read_exec(void)
     return PROT_READ | PROT_EXEC;
 }
 
-
 static void tb_destroy(TranslationBlock *tb)
 {
     qemu_spin_destroy(&tb->jmp_lock);
@@ -152,7 +149,6 @@ static void tcg_region_trees_init(void)
     for (i = 0; i < region.n; i++) {
         struct tcg_region_tree *rt = region_trees + i * tree_size;
 
-        qemu_mutex_init(&rt->lock);
         rt->tbs = NULL;
         rt->n = rt->cap = rt->nb_tbs = 0;
     }
@@ -195,7 +191,7 @@ void tcg_tb_insert(TranslationBlock *tb)
     size_t i;
 
     g_assert(rt != NULL);
-    qemu_mutex_lock(&rt->lock);
+
     i = rt->n;
     if (i && rt->tbs[i - 1].ptr >= (const void *)tb->tc.ptr) {
         /* not above the last: a recycled TB, in its own place */
@@ -208,7 +204,7 @@ void tcg_tb_insert(TranslationBlock *tb)
             rt->nb_tbs += !e->tb;
             e->size = tb->tc.size;
             e->tb = tb;
-            qemu_mutex_unlock(&rt->lock);
+
             return;
         }
     }
@@ -223,7 +219,7 @@ void tcg_tb_insert(TranslationBlock *tb)
     e->ptr = tb->tc.ptr;
     e->size = tb->tc.size;
     e->tb = tb;
-    qemu_mutex_unlock(&rt->lock);
+
 }
 
 void tcg_tb_remove(TranslationBlock *tb)
@@ -233,7 +229,7 @@ void tcg_tb_remove(TranslationBlock *tb)
     size_t i;
 
     g_assert(rt != NULL);
-    qemu_mutex_lock(&rt->lock);
+
     i = region_tb_upper(rt, tb->tc.ptr);
     if (i && rt->tbs[i - 1].ptr == tb->tc.ptr && rt->tbs[i - 1].tb) {
         tb_destroy(rt->tbs[i - 1].tb);
@@ -244,7 +240,7 @@ void tcg_tb_remove(TranslationBlock *tb)
             rt->n--;
         }
     }
-    qemu_mutex_unlock(&rt->lock);
+
 }
 
 /*
@@ -263,42 +259,18 @@ TranslationBlock *tcg_tb_lookup(uintptr_t tc_ptr)
         return NULL;
     }
 
-    qemu_mutex_lock(&rt->lock);
     i = region_tb_upper(rt, p);
     if (i && p < rt->tbs[i - 1].ptr + rt->tbs[i - 1].size) {
         tb = rt->tbs[i - 1].tb;
     }
-    qemu_mutex_unlock(&rt->lock);
+
     return tb;
-}
-
-static void tcg_region_tree_lock_all(void)
-{
-    size_t i;
-
-    for (i = 0; i < region.n; i++) {
-        struct tcg_region_tree *rt = region_trees + i * tree_size;
-
-        qemu_mutex_lock(&rt->lock);
-    }
-}
-
-static void tcg_region_tree_unlock_all(void)
-{
-    size_t i;
-
-    for (i = 0; i < region.n; i++) {
-        struct tcg_region_tree *rt = region_trees + i * tree_size;
-
-        qemu_mutex_unlock(&rt->lock);
-    }
 }
 
 static void tcg_region_tree_reset_all(void)
 {
     size_t i;
 
-    tcg_region_tree_lock_all();
     for (i = 0; i < region.n; i++) {
         struct tcg_region_tree *rt = region_trees + i * tree_size;
 
@@ -311,7 +283,6 @@ static void tcg_region_tree_reset_all(void)
         rt->n = 0;
         rt->nb_tbs = 0;
     }
-    tcg_region_tree_unlock_all();
 }
 
 static void tcg_region_bounds(size_t curr_region, void **pstart, void **pend)
@@ -345,7 +316,7 @@ static void tcg_region_assign(TCGContext *s, size_t curr_region)
     s->code_gen_highwater = end - TCG_HIGHWATER;
 }
 
-static bool tcg_region_alloc__locked(TCGContext *s)
+static bool tcg_region_assign_next(TCGContext *s)
 {
     if (region.current == region.n) {
         return true;
@@ -362,15 +333,14 @@ static bool tcg_region_alloc__locked(TCGContext *s)
 bool tcg_region_alloc(TCGContext *s)
 {
     bool err;
-    /* read the region size now; alloc__locked will overwrite it on success */
+    /* read the region size now; assign_next will overwrite it on success */
     size_t size_full = s->code_gen_buffer_size;
 
-    qemu_mutex_lock(&region.lock);
-    err = tcg_region_alloc__locked(s);
+    err = tcg_region_assign_next(s);
     if (!err) {
         region.agg_size_full += size_full - TCG_HIGHWATER;
     }
-    qemu_mutex_unlock(&region.lock);
+
     return err;
 }
 
@@ -378,17 +348,10 @@ bool tcg_region_alloc(TCGContext *s)
  * Perform a context's first region allocation.
  * This function does _not_ increment region.agg_size_full.
  */
-static void tcg_region_initial_alloc__locked(TCGContext *s)
-{
-    bool err = tcg_region_alloc__locked(s);
-    g_assert(!err);
-}
-
 void tcg_region_initial_alloc(TCGContext *s)
 {
-    qemu_mutex_lock(&region.lock);
-    tcg_region_initial_alloc__locked(s);
-    qemu_mutex_unlock(&region.lock);
+    bool err = tcg_region_assign_next(s);
+    g_assert(!err);
 }
 
 /* Call from a safe-work context */
@@ -397,44 +360,16 @@ void tcg_region_reset_all(void)
     unsigned int n_ctxs = retro_atomic_load_relaxed_int(&tcg_cur_ctxs);
     unsigned int i;
 
-    qemu_mutex_lock(&region.lock);
+    g_assert(n_ctxs <= 1);
     region.current = 0;
     region.agg_size_full = 0;
 
     for (i = 0; i < n_ctxs; i++) {
         TCGContext *s = retro_atomic_load_relaxed_ptr(&tcg_ctxs[i]);
-        tcg_region_initial_alloc__locked(s);
+        tcg_region_initial_alloc(s);
     }
-    qemu_mutex_unlock(&region.lock);
 
     tcg_region_tree_reset_all();
-}
-
-static size_t tcg_n_regions(size_t tb_size, unsigned max_threads)
-{
-    size_t n_regions;
-
-    /*
-     * It is likely that some vCPUs will translate more code than others,
-     * so we first try to set more regions than threads, with those regions
-     * being of reasonable size. If that's not possible we make do by evenly
-     * dividing the code_gen_buffer among the vCPUs.
-     *
-     * Use a single region if all we have is one vCPU thread.
-     */
-    if (max_threads == 1) {
-        return 1;
-    }
-
-    /*
-     * Try to have more regions than threads, with each region being >= 2 MB.
-     * If we can't, then just allocate one region per vCPU thread.
-     */
-    n_regions = tb_size / (2 * MiB);
-    if (n_regions <= max_threads) {
-        return max_threads;
-    }
-    return MIN(n_regions, max_threads * 8);
 }
 
 /*
@@ -685,35 +620,14 @@ static int alloc_code_gen_buffer(size_t size, int splitwx, Error **errp)
 }
 #endif /* USE_STATIC_CODE_GEN_BUFFER, WIN32, POSIX */
 
-/*
- * Initializes region partitioning.
- *
- * Called at init time from the parent thread (i.e. the one calling
- * tcg_context_init), after the target's TCG globals have been set.
- *
- * Region partitioning works by splitting code_gen_buffer into separate regions,
- * and then assigning regions to TCG threads so that the threads can translate
- * code in parallel without synchronization.
- *
- * In system-mode the number of TCG threads is bounded by max_threads,
- *
- * In user-mode we use a single region.  Having multiple regions in user-mode
- * is not supported, because the number of vCPU threads (recall that each thread
- * spawned by the guest corresponds to a vCPU thread) is only bounded by the
- * OS, and usually this number is huge (tens of thousands is not uncommon).
- * Thus, given this large bound on the number of vCPU threads and the fact
- * that code_gen_buffer is allocated at compile-time, we cannot guarantee
- * that the availability of at least one region per vCPU thread.
- *
- * However, this user-mode limitation is unlikely to be a significant problem
- * in practice. Multi-threaded guests share most if not all of their translated
- * code, which makes parallel code generation less appealing than in system-mode
- */
+/* Initialize the Xbox's one code region before its translator is published. */
 void tcg_region_init(size_t tb_size, int splitwx, unsigned max_threads)
 {
     const size_t page_size = qemu_real_host_page_size();
     size_t region_size;
     int have_prot, need_prot;
+
+    g_assert(max_threads == 1);
 
     /* Size the buffer.  */
     if (tb_size == 0) {
@@ -747,7 +661,7 @@ void tcg_region_init(size_t tb_size, int splitwx, unsigned max_threads)
      * As a result of this we might end up with a few extra pages at the end of
      * the buffer; we will assign those to the last region.
      */
-    region.n = tcg_n_regions(tb_size, max_threads);
+    region.n = 1;
     region_size = tb_size / region.n;
     region_size = QEMU_ALIGN_DOWN(region_size, page_size);
 
@@ -765,9 +679,6 @@ void tcg_region_init(size_t tb_size, int splitwx, unsigned max_threads)
      * the page boundary.
      */
     region.after_prologue = region.start_aligned;
-
-    /* init the region struct */
-    qemu_mutex_init(&region.lock);
 
     /*
      * Set guard pages in the rw buffer, as that's the one into which
@@ -817,7 +728,7 @@ void tcg_region_init(size_t tb_size, int splitwx, unsigned max_threads)
      * Leave the initial context initialized to the first region.
      * This will be the context into which we generate the prologue.
      */
-    tcg_region_initial_alloc__locked(&tcg_init_ctx);
+    tcg_region_initial_alloc(&tcg_init_ctx);
 }
 
 void tcg_region_prologue_set(TCGContext *s)

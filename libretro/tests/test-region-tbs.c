@@ -3,7 +3,7 @@
  * The production TB index of a code region (tcg/region.c: insert, remove,
  * lookup by host address, reset; walked and counted here) against a
  * reference, in the order tb_gen_code drives it: new TBs upwards, the
- * newest one dropped when another thread linked the same TB first (and
+ * newest one dropped when an equivalent TB was already linked (and
  * its code space taken again), old invalidated TBs recycled in place,
  * lookups anywhere, TB flushes. test-region-tbs.py puts the production
  * code in place of PRODUCTION.
@@ -15,6 +15,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <retro_atomic.h>
 
 #define g_assert(x) assert(x)
 #define g_renew(t, p, n) ((t *)realloc((p), sizeof(t) * (n)))
@@ -24,9 +25,6 @@
 typedef int gboolean;
 typedef void *gpointer;
 typedef gboolean (*GTraverseFunc)(gpointer key, gpointer value, gpointer data);
-typedef struct { int locked; } QemuMutex;
-static void qemu_mutex_lock(QemuMutex *m) { assert(!m->locked); m->locked = 1; }
-static void qemu_mutex_unlock(QemuMutex *m) { assert(m->locked); m->locked = 0; }
 
 struct tb_tc {
     const void *ptr;
@@ -42,7 +40,11 @@ static void qemu_spin_destroy(int *l) { *l = 0; }
 #define NTB 40000
 static unsigned char buf[BUF];
 static TranslationBlock tbs[NTB];
-static struct { size_t n; } region = { 1 };
+#define TCG_HIGHWATER 1024
+static struct { size_t n,current,size,stride,total_size,agg_size_full;void *start_aligned,*after_prologue; } region = { .n = 1 };
+typedef struct TCGContext {void *code_gen_buffer,*code_gen_ptr,*code_gen_highwater;size_t code_gen_buffer_size;} TCGContext;
+static retro_atomic_int_t tcg_cur_ctxs;
+static retro_atomic_ptr_t tcg_ctxs[1];
 static void *region_trees;
 static size_t tree_size;
 static uint64_t seed = 42;
@@ -69,7 +71,6 @@ static void tcg_tb_foreach(GTraverseFunc func, gpointer user_data)
 {
     size_t i;
 
-    tcg_region_tree_lock_all();
     for (i = 0; i < region.n; i++) {
         struct tcg_region_tree *rt = region_trees + i * tree_size;
 
@@ -81,7 +82,6 @@ static void tcg_tb_foreach(GTraverseFunc func, gpointer user_data)
             }
         }
     }
-    tcg_region_tree_unlock_all();
 }
 
 static size_t tcg_nb_tbs(void)
@@ -89,13 +89,11 @@ static size_t tcg_nb_tbs(void)
     size_t nb_tbs = 0;
     size_t i;
 
-    tcg_region_tree_lock_all();
     for (i = 0; i < region.n; i++) {
         struct tcg_region_tree *rt = region_trees + i * tree_size;
 
         nb_tbs += rt->nb_tbs;
     }
-    tcg_region_tree_unlock_all();
     return nb_tbs;
 }
 
@@ -232,5 +230,24 @@ int main(void)
     assert(recycles > 10000 && drops > 10000 && flushes > 20 && grown);
     printf("region TBs: %u checks, %u recycles, %u drops, %u flushes\n",
            cases, recycles, drops, flushes);
+    /* Initial allocation, exhaustion and safe-work reset keep the original
+     * prologue skip, usable buffer extent, highwater and aggregate semantics. */
+    TCGContext ctx={0};
+    region.start_aligned=buf;region.after_prologue=buf+128;
+    region.size=region.total_size=BUF-4096;region.stride=BUF;region.current=0;
+    tcg_region_initial_alloc(&ctx);
+    assert(region.current==1&&ctx.code_gen_buffer==buf+128&&ctx.code_gen_ptr==buf+128);
+    assert(ctx.code_gen_buffer_size==BUF-4096-128&&ctx.code_gen_highwater==buf+BUF-4096-TCG_HIGHWATER);
+    assert(tcg_region_alloc(&ctx)&&!region.agg_size_full);
+    region.current=0;ctx.code_gen_buffer_size=8192;
+    assert(!tcg_region_alloc(&ctx)&&region.agg_size_full==8192-TCG_HIGHWATER);
+    retro_atomic_store_relaxed_ptr(&tcg_ctxs[0],&ctx);
+    retro_atomic_store_relaxed_int(&tcg_cur_ctxs,1);
+    for(unsigned i=0;i<100;i++){
+        ctx.code_gen_ptr=buf+1000;tcg_region_reset_all();
+        assert(region.current==1&&!region.agg_size_full&&ctx.code_gen_ptr==buf+128);
+        assert(tcg_region_alloc(&ctx));
+    }
+    puts("Single-owner region allocation/exhaustion and 100 safe-work resets PASS");
     return 0;
 }
