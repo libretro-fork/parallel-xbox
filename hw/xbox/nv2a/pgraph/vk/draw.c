@@ -3044,9 +3044,12 @@ void pgraph_vk_settle_poll(PGRAPHState *pg)
     PGRAPHVkState *r = pg->vk_renderer_state;
     bool pending = false;
 
+    /* Reuse allocation-retry or later same-queue completion proofs. Slot
+     * cleanup still runs here exactly once, even when no query is needed. */
     for (int s = 0; s < PGRAPH_VK_SLOTS; s++) {
         if (r->slot_fence_pending[s] &&
-            vkGetFenceStatus(r->device, r->slot_fence[s]) == VK_SUCCESS) {
+            ((int32_t)(r->slot_submit[s] - r->settled_submit) <= 0 ||
+             vkGetFenceStatus(r->device, r->slot_fence[s]) == VK_SUCCESS)) {
             r->slot_fence_pending[s] = false;
             pgraph_vk_slot_retired(pg, s);
         }

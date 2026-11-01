@@ -1,5 +1,6 @@
 # Changelog of the libretro core
 
+- Avoid redundant Vulkan fence-status queries during routine retirement when submission completion is already proved, while preserving slot cleanup and GPU resource ownership.
 - Reuse fragment shader keys across ignored combiner-control bits. Preserve stage count, MUX selection and per-stage constant flags; dynamic combiner uniforms still receive the complete guest register.
 
 

@@ -2753,3 +2753,20 @@ The native GPU ROM at frame 4700 requests a 48,000-sample triangle report,
 then a clear and an empty report. Offsets 0x300100 and 0x300120 retain timestamps,
 counts and completion words for both renderer checks. GL GET_REPORT already
 flushes closed queries; idle polls add no repeated glFlush calls.
+
+### Completion proofs in Vulkan settle polling
+
+`test-vk-eager-retirement.py CHECKOUT [CC]` also exercises the production settle
+poll in 384 schedules: both slot orders, pending masks, uint32 serial rollover,
+known completion before/at/after each submission, partially completed GPU work,
+and open/closed recordings. Proven slots perform no driver status query but
+still drop both command-buffer RAM claims, retire trash and resolve timestamps
+exactly once. An unavailable unproved slot remains owned. Global teardown runs
+only after all slots retire and no recording is open. A repeated poll cannot
+release ownership again. `VK_EAGER_SOURCE` permits a baseline production source
+for regression checks. Existing eager/reclaim/full-drain coverage is retained.
+No state, buffer copies, PSO variants, waits or locks are added. This reduces
+redundant driver calls; no hardware cache-miss or frame-time benefit is claimed.
+
+Win64 settle-poll stack usage remains 80 bytes; PGRAPHState, PGRAPHVkState
+and the renderer interface remain 4,295,312, 5,845,344 and 232 bytes respectively.
