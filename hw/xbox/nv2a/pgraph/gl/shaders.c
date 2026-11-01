@@ -4,7 +4,7 @@
  * Copyright (c) 2015 espes
  * Copyright (c) 2015 Jannik Vogel
  * Copyright (c) 2020-2025 Matt Borgerson
- * Copyright (c) 2026 Réda Chérif-Touil
+ * Copyright (c) 2026 RÃ©da ChÃ©rif-Touil
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -265,21 +265,26 @@ static bool shader_write_cache_version(FILE *f)
 
 /* The header of a cached module file: upstream/generator versions and GL
  * vendor, then its key. Reject a different revision/driver or truncated file. */
-static bool module_read_header(FileCursor *c, ShaderModuleCacheKey *key)
+/* The key can be unaligned in the file. Borrow its bytes only while mapped. */
+static const void *module_read_header_view(FileCursor *c)
 {
     uint64_t len;
-    const void *k;
-
     if (!shader_read_cache_version(c) ||
         !cursor_take_string_eq(c, shader_gl_vendor) ||
-        !cursor_take_u64(c, &len) || len != sizeof(*key)) {
+        !cursor_take_u64(c, &len) || len != sizeof(ShaderModuleCacheKey)) {
+        return NULL;
+    }
+    return cursor_take(c, sizeof(ShaderModuleCacheKey));
+}
+
+/* Prewarming needs an owned key after its file mapping is released. */
+static bool module_read_header(FileCursor *c, ShaderModuleCacheKey *key)
+{
+    const void *bytes = module_read_header_view(c);
+    if (!bytes) {
         return false;
     }
-    k = cursor_take(c, sizeof(*key));
-    if (!k) {
-        return false;
-    }
-    memcpy(key, k, sizeof(*key));
+    memcpy(key, bytes, sizeof(*key));
     return true;
 }
 
@@ -305,11 +310,12 @@ static bool module_load_from_disk(PGRAPHGLState *r,
     const void *bin;
     uint64_t len;
     GLenum format;
-    ShaderModuleCacheKey cached_key;
+    const void *cached_key;
     GLuint program = 0;
 
-    if (!module_read_header(&c, &cached_key) ||
-        memcmp(&cached_key, &module->key, sizeof(cached_key)) != 0) {
+    cached_key = module_read_header_view(&c);
+    if (!cached_key ||
+        memcmp(cached_key, &module->key, sizeof(module->key)) != 0) {
         goto out;
     }
     fmt = cursor_take(&c, sizeof(format));
