@@ -1,5 +1,6 @@
 # Changelog of the libretro core
 
+- Use the resolved OpenGL image dimensions directly during presentation, removing two texture-size driver queries and their temporary texture binding on every displayed frame.
 - Remove QEMU block-accounting telemetry, latency histograms and timed averages from IDE/ATAPI I/O, including their mutex-protected counters and per-request clock reads. Retain save-state HDD-change detection with a small retro_atomic write-completion counter; disk errors, DMA/PIO completion and state format are preserved.
 
 - Remove the CPU frame-end acknowledgement wait for shared-device Vulkan. Present the latest safely published image, repeating the previous image when needed, without adding a queued frame or changing audio cadence.

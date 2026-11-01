@@ -648,7 +648,8 @@ static bool disp_take_post(PGRAPHGLState *r, DispPost *p)
     return true;
 }
 
-int pgraph_gl_get_framebuffer_surface(NV2AState *d)
+int pgraph_gl_get_framebuffer_surface(NV2AState *d,
+                                      unsigned *width, unsigned *height)
 {
     PGRAPHState *pg = &d->pgraph;
     PGRAPHGLState *r = pg->gl_renderer_state;
@@ -712,6 +713,14 @@ int pgraph_gl_get_framebuffer_surface(NV2AState *d)
     }
     if (ui.cur < 0) {
         return 0;
+    }
+    /* Geometry belongs to this resolved image, including its scale and
+     * clipping. Never query the GL driver to rediscover known dimensions. */
+    if (width) {
+        *width = ui.slot[ui.cur].width;
+    }
+    if (height) {
+        *height = ui.slot[ui.cur].height;
     }
     return ui.slot[ui.cur].tex;
 }

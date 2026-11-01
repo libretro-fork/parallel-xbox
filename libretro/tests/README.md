@@ -1982,3 +1982,10 @@ FIFO acknowledgement. Presentation consumes the latest claimed publication or
 duplicates the previous image. Legacy GL and Vulkan interop still acknowledge
 frame end synchronously. `test-frame-completion.py` covers all four Vulkan flag
 combinations, including an owner that remains busy in the asynchronous path.
+
+
+OpenGL presentation receives width/height with the acquired resolved texture.
+The display slot already includes scanout clipping and internal-resolution
+scale; presentation does not query texture-level dimensions from the driver.
+The GPU display ROM covers clipping, mode changes and overlays. Repeat it at
+internal scale 2 to check geometry and pixels after display-texture recreation.

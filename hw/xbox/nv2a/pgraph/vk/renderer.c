@@ -232,7 +232,8 @@ static void pgraph_vk_pre_shutdown_wait(NV2AState *d)
                             &r->seed_writeback_pending);
 }
 
-static int pgraph_vk_get_framebuffer_surface(NV2AState *d)
+static int pgraph_vk_get_framebuffer_surface(NV2AState *d,
+                                              unsigned *width, unsigned *height)
 {
     PGRAPHState *pg = &d->pgraph;
     PGRAPHVkState *r = pg->vk_renderer_state;
@@ -263,8 +264,16 @@ static int pgraph_vk_get_framebuffer_surface(NV2AState *d)
     qemu_mutex_unlock(&d->pfifo.lock);
     pgraph_wait_until_clear(&d->pgraph.sync_complete, &pg->sync_pending);
     g_nv2a_stats.presented_frame_id = r->display.draw_time;
+    if (width && r->display.gl_texture_id) {
+        *width = r->display.width;
+    }
+    if (height && r->display.gl_texture_id) {
+        *height = r->display.height;
+    }
     return r->display.gl_texture_id;
 #else
+    (void)width;
+    (void)height;
     /* the surface is the GPU thread's: looked at under the lock */
     bool dirty = surface->draw_dirty;
     hwaddr addr = surface->vram_addr, len = surface->size;
