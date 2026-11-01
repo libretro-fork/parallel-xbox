@@ -851,7 +851,7 @@ enum {
     OP_MOVE, OP_ADD, OP_SUB, OP_CMP, OP_TFR, OP_CLR, OP_TST, OP_RND,
     OP_MPY, OP_MPYR, OP_MAC, OP_MACR, OP_ASL, OP_ASR, OP_LSL, OP_LSR,
     OP_NEG, OP_NOT, OP_AND, OP_OR, OP_EOR, OP_ABS, OP_ADDL, OP_ADDR,
-    OP_SUBL, OP_SUBR, OP_ADC, OP_SBC,
+    OP_SUBL, OP_SUBR, OP_ADC, OP_SBC, OP_CMPM, OP_ROL, OP_ROR,
     OP_UNSUPPORTED
 };
 
@@ -879,13 +879,13 @@ typedef struct AluOp {
 static void decode_alu(uint32_t code, AluOp *a)
 {
     static const int ops_0_3f[32] = {
-        /* 0x */ OP_MOVE, OP_TFR, OP_ADDR, OP_TST, OP_UNSUPPORTED, OP_CMP, OP_SUBR, OP_UNSUPPORTED,
+        /* 0x */ OP_MOVE, OP_TFR, OP_ADDR, OP_TST, OP_UNSUPPORTED, OP_CMP, OP_SUBR, OP_CMPM,
         /* 1x */ OP_ADD, OP_RND, OP_ADDL, OP_CLR, OP_SUB, OP_UNSUPPORTED, OP_SUBL, OP_NOT,
-        /* 2x */ OP_ADD, OP_ADC, OP_ASR, OP_LSR, OP_SUB, OP_SBC, OP_ABS, OP_UNSUPPORTED,
-        /* 3x */ OP_ADD, OP_ADC, OP_ASL, OP_LSL, OP_SUB, OP_SBC, OP_NEG, OP_UNSUPPORTED,
+        /* 2x */ OP_ADD, OP_ADC, OP_ASR, OP_LSR, OP_SUB, OP_SBC, OP_ABS, OP_ROR,
+        /* 3x */ OP_ADD, OP_ADC, OP_ASL, OP_LSL, OP_SUB, OP_SBC, OP_NEG, OP_ROL,
     };
     static const int ops_40_7f[8] = {
-        OP_ADD, OP_TFR, OP_OR, OP_EOR, OP_SUB, OP_CMP, OP_AND, OP_UNSUPPORTED /* cmpm */
+        OP_ADD, OP_TFR, OP_OR, OP_EOR, OP_SUB, OP_CMP, OP_AND, OP_CMPM
     };
     static const int qqq1[8] = { DSP_REG_X0, DSP_REG_Y0, DSP_REG_X1, DSP_REG_Y1,
                                  DSP_REG_X0, DSP_REG_Y0, DSP_REG_X1, DSP_REG_Y1 };
@@ -1202,6 +1202,28 @@ static void emit_alu(Tr *t, const AluOp *a)
         }
         break;
 
+    case OP_CMPM: {
+        acc_load(t, a->d);
+        emit_src56(t, a, T1);
+        h_mov_rr(e, 1, T0, acc);
+        /* Magnitudes are temporary: neither accumulator is written, and
+         * the minimum 56-bit value wraps just as dsp_abs56 does. The ABS
+         * steps do not contribute status flags to the comparison. */
+        h_test_rr(e, 1, T0, T0);
+        size_t positive_dst = h_jcc(e, HC_NS);
+        h_neg(e, 1, T0);
+        emit_sext56(e, T0);
+        h_patch(e, positive_dst, e->len);
+        h_test_rr(e, 1, T1, T1);
+        size_t positive_src = h_jcc(e, HC_NS);
+        h_neg(e, 1, T1);
+        emit_sext56(e, T1);
+        h_patch(e, positive_src, e->len);
+        emit_addsub56(e, T0, T1, true);
+        emit_sr_result(t, SR_EUNZ | SR_V | SR_C, T4, T3, -1);
+        break;
+    }
+
     case OP_ADC:
     case OP_SBC: {
         bool sub = a->op == OP_SBC;
@@ -1455,19 +1477,32 @@ static void emit_alu(Tr *t, const AluOp *a)
 
     case OP_LSL:
     case OP_LSR:
+    case OP_ROL:
+    case OP_ROR:
         emit_flags_flush(t);
         acc_load(t, a->d);
         h_mov_rr(e, 1, T0, acc);
         h_shr_ri(e, 1, T0, 24);
         h_and_ri(e, 0, T0, 0xFFFFFF);
         h_mov_rr(e, 0, T4, T0);
-        if (a->op == OP_LSL) {
+        if (a->op == OP_LSL || a->op == OP_ROL) {
             h_shr_ri(e, 0, T4, 23);
             h_shl_ri(e, 0, T0, 1);
             h_and_ri(e, 0, T0, 0xFFFFFF);
+            if (a->op == OP_ROL) {
+                h_ld32(e, T2, REG_CORE, REGOFF(DSP_REG_SR));
+                h_and_ri(e, 0, T2, SR_C);
+                h_or_rr(e, 0, T0, T2);
+            }
         } else {
             h_and_ri(e, 0, T4, 1);
             h_shr_ri(e, 0, T0, 1);
+            if (a->op == OP_ROR) {
+                h_ld32(e, T2, REG_CORE, REGOFF(DSP_REG_SR));
+                h_and_ri(e, 0, T2, SR_C);
+                h_shl_ri(e, 0, T2, 23);
+                h_or_rr(e, 0, T0, T2);
+            }
         }
         emit_a1_result(t, a->d, SR_C | SR_N | SR_Z | SR_V, T4);
         break;

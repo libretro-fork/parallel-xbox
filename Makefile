@@ -303,7 +303,11 @@ DSPDIFF_SRC := $(CORE_DIR)/libretro/tests/dspdiff.c \
 	$(CORE_DIR)/hw/xbox/mcpx/apu/dsp/dsp_dma.c \
 	$(CORE_DIR)/hw/xbox/mcpx/apu/dsp/interp/dsp_cpu.c \
 	$(CORE_DIR)/hw/xbox/mcpx/apu/dsp/jit/dspjit.c
-$(DSPDIFF): $(DSPDIFF_SRC)
+DSP_TEST_HEADERS := $(wildcard $(CORE_DIR)/hw/xbox/mcpx/apu/dsp/*.h \
+	$(CORE_DIR)/hw/xbox/mcpx/apu/dsp/interp/*.h \
+	$(CORE_DIR)/hw/xbox/mcpx/apu/dsp/interp/*.inc \
+	$(CORE_DIR)/hw/xbox/mcpx/apu/dsp/jit/*.h)
+$(DSPDIFF): $(DSPDIFF_SRC) $(DSP_TEST_HEADERS)
 	$(CC) -O2 $(QEMU_CFLAGS) $(ARCH_CFLAGS) -I$(CORE_DIR)/hw/xbox/mcpx/apu/dsp \
 		-I$(CORE_DIR)/hw/xbox/mcpx/apu/dsp/interp -o $@ $(DSPDIFF_SRC)
 dspdiff: $(DSPDIFF)
@@ -313,7 +317,7 @@ dspdiff: $(DSPDIFF)
 DSPNATIVE := $(CORE_DIR)/libretro/tests/dspnative$(if $(filter win,$(platform)),.exe,)
 DSPNATIVE_SRC := $(filter-out $(CORE_DIR)/libretro/tests/dspdiff.c,$(DSPDIFF_SRC)) \
 	$(CORE_DIR)/libretro/tests/test-dsp-native.c
-$(DSPNATIVE): $(DSPNATIVE_SRC) $(CORE_DIR)/libretro/tests/dspdiff.c
+$(DSPNATIVE): $(DSPNATIVE_SRC) $(CORE_DIR)/libretro/tests/dspdiff.c $(DSP_TEST_HEADERS)
 	$(CC) -O2 $(QEMU_CFLAGS) $(ARCH_CFLAGS) -DDSPJIT_TEST -DDSPJIT_BLOCK_MAX_INSNS=1 \
 		-I$(CORE_DIR)/hw/xbox/mcpx/apu/dsp -I$(CORE_DIR)/hw/xbox/mcpx/apu/dsp/interp \
 		-o $@ $(DSPNATIVE_SRC)

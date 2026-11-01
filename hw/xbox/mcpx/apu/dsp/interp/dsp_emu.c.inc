@@ -3046,12 +3046,12 @@ static void emu_macr_p_x1_y0_b(dsp_core_t* dsp)
 
     dsp_mul56(dsp->registers[DSP_REG_X1], dsp->registers[DSP_REG_Y0], source, SIGN_PLUS);
 
-    dsp_rnd56(dsp, dest);
-
     dest[0] = dsp->registers[DSP_REG_B2];
     dest[1] = dsp->registers[DSP_REG_B1];
     dest[2] = dsp->registers[DSP_REG_B0];
     newsr = dsp_add56(source, dest);
+
+    dsp_rnd56(dsp, dest);
 
     dsp->registers[DSP_REG_B2] = dest[0];
     dsp->registers[DSP_REG_B1] = dest[1];
@@ -4309,11 +4309,12 @@ static void emu_rnd_b(dsp_core_t* dsp)
 static void emu_rol_a(dsp_core_t* dsp)
 {
     uint32_t newcarry;
+    uint32_t carry = dsp->registers[DSP_REG_SR] & (1 << DSP_SR_C);
 
     newcarry = (dsp->registers[DSP_REG_A1]>>23) & 1;
 
     dsp->registers[DSP_REG_A1] <<= 1;
-    dsp->registers[DSP_REG_A1] |= newcarry;
+    dsp->registers[DSP_REG_A1] |= carry;
     dsp->registers[DSP_REG_A1] &= BITMASK(24);
 
     dsp->registers[DSP_REG_SR] &= BITMASK(16)-((1<<DSP_SR_C)|(1<<DSP_SR_N)|(1<<DSP_SR_Z)|(1<<DSP_SR_V));
@@ -4325,11 +4326,12 @@ static void emu_rol_a(dsp_core_t* dsp)
 static void emu_rol_b(dsp_core_t* dsp)
 {
     uint32_t newcarry;
+    uint32_t carry = dsp->registers[DSP_REG_SR] & (1 << DSP_SR_C);
 
     newcarry = (dsp->registers[DSP_REG_B1]>>23) & 1;
 
     dsp->registers[DSP_REG_B1] <<= 1;
-    dsp->registers[DSP_REG_B1] |= newcarry;
+    dsp->registers[DSP_REG_B1] |= carry;
     dsp->registers[DSP_REG_B1] &= BITMASK(24);
 
     dsp->registers[DSP_REG_SR] &= BITMASK(16)-((1<<DSP_SR_C)|(1<<DSP_SR_N)|(1<<DSP_SR_Z)|(1<<DSP_SR_V));
@@ -4341,30 +4343,32 @@ static void emu_rol_b(dsp_core_t* dsp)
 static void emu_ror_a(dsp_core_t* dsp)
 {
     uint32_t newcarry;
+    uint32_t carry = dsp->registers[DSP_REG_SR] & (1 << DSP_SR_C);
 
     newcarry = dsp->registers[DSP_REG_A1] & 1;
 
     dsp->registers[DSP_REG_A1] >>= 1;
-    dsp->registers[DSP_REG_A1] |= newcarry<<23;
+    dsp->registers[DSP_REG_A1] |= carry<<23;
 
     dsp->registers[DSP_REG_SR] &= BITMASK(16)-((1<<DSP_SR_C)|(1<<DSP_SR_N)|(1<<DSP_SR_Z)|(1<<DSP_SR_V));
     dsp->registers[DSP_REG_SR] |= newcarry;
-    dsp->registers[DSP_REG_SR] |= newcarry<<DSP_SR_N;
+    dsp->registers[DSP_REG_SR] |= carry<<DSP_SR_N;
     dsp->registers[DSP_REG_SR] |= (dsp->registers[DSP_REG_A1]==0)<<DSP_SR_Z;
 }
 
 static void emu_ror_b(dsp_core_t* dsp)
 {
     uint32_t newcarry;
+    uint32_t carry = dsp->registers[DSP_REG_SR] & (1 << DSP_SR_C);
 
     newcarry = dsp->registers[DSP_REG_B1] & 1;
 
     dsp->registers[DSP_REG_B1] >>= 1;
-    dsp->registers[DSP_REG_B1] |= newcarry<<23;
+    dsp->registers[DSP_REG_B1] |= carry<<23;
 
     dsp->registers[DSP_REG_SR] &= BITMASK(16)-((1<<DSP_SR_C)|(1<<DSP_SR_N)|(1<<DSP_SR_Z)|(1<<DSP_SR_V));
     dsp->registers[DSP_REG_SR] |= newcarry;
-    dsp->registers[DSP_REG_SR] |= newcarry<<DSP_SR_N;
+    dsp->registers[DSP_REG_SR] |= carry<<DSP_SR_N;
     dsp->registers[DSP_REG_SR] |= (dsp->registers[DSP_REG_B1]==0)<<DSP_SR_Z;
 }
 

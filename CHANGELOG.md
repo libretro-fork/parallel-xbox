@@ -22,6 +22,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Compile all ten DSP magnitude-compare and four accumulator rotate forms natively, preserving parallel loads/stores and accumulator fields. Expand the native regression suite to 173,793 cases, including an ALU encoding sweep. Correct rotates to shift in the previous carry bit. Fix MACR X1,Y0,B rounding an uninitialized temporary in the interpreter; round the completed sum instead. Rebuild DSP tests when included emulator or emitter headers change.
+
 - Compile all X/Y-to-A/B DSP add-with-carry and subtract-with-carry forms natively. Preserve carry, overflow and sticky-limit flags through both arithmetic stages and keep parallel memory moves intact. Add boundary and randomized equivalence tests that forbid interpreter fallback.
 
 - Fix OutRun 2's long black screen after the Xbox logo: register-only work and read-only scans no longer count as idle waits merely because they run without stores. Verified kernel idle loops and repeated device polls still skip waiting time.
