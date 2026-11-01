@@ -29,6 +29,29 @@ static void prepare(Machine *m, uint32_t op, uint32_t ext, unsigned seed,
         c->yram[i] = rng();
     }
     c->registers[DSP_REG_SR] = (rng() & 0xFF) | (mode << DSP_SR_S0);
+    if (seed & 0x10000) {
+        static const uint64_t accum[] = {
+            0, 1, 0xFFFFFFFFFFFFFF, 0x7FFFFFFFFFFFFF,
+            0x80000000000000, 0x7FFFFFFFFFFFFE,
+            0x80000000000001, 0xFFFFFF00000000
+        };
+        static const uint64_t source[] = {
+            0, 1, 0xFFFFFFFFFFFF, 0x7FFFFFFFFFFF,
+            0x800000000000, 0x7FFFFFFFFFFE,
+            0x800000000001, 0xFFFFFF000000
+        };
+        uint64_t v = accum[(seed >> 1) & 7];
+        uint64_t s = source[(seed >> 4) & 7];
+        for (unsigned d = 0; d < 2; d++) {
+            c->registers[DSP_REG_A0 + d] = v & 0xFFFFFF;
+            c->registers[DSP_REG_A1 + d] = (v >> 24) & 0xFFFFFF;
+            c->registers[DSP_REG_A2 + d] = v >> 48;
+            c->registers[DSP_REG_X0 + 2 * d] = s & 0xFFFFFF;
+            c->registers[DSP_REG_X1 + 2 * d] = s >> 24;
+        }
+        c->registers[DSP_REG_SR] =
+            (c->registers[DSP_REG_SR] & ~(1 << DSP_SR_C)) | (seed & 1);
+    }
     c->registers[DSP_REG_SP] = 2;
     c->registers[DSP_REG_SSH] = 0x20;
     c->registers[DSP_REG_SSL] = 0;
@@ -83,8 +106,28 @@ int main(void)
     assert(initially_committed == (64u << 10));
 #endif
     for (unsigned mode = 0; mode < 4; mode++) {
+        for (unsigned edge = 0; edge < 128; edge++) {
+            for (unsigned d = 0; d < 2; d++) {
+                for (unsigned y = 0; y < 2; y++) {
+                    for (unsigned sub = 0; sub < 2; sub++) {
+                        uint32_t alu = 0x21 | (y << 4) | (sub << 2) | (d << 3);
+                        check(a, b, 0x200000 | alu, 0, 0x10000 | edge, mode, false);
+                        check(a, b, 0x800000 | alu, 0, 0x10000 | edge, mode, false);
+                    }
+                }
+            }
+        }
         for (unsigned seed = 0; seed < 64; seed++) {
             for (unsigned d = 0; d < 2; d++) {
+                for (unsigned y = 0; y < 2; y++) {
+                    for (unsigned sub = 0; sub < 2; sub++) {
+                        uint32_t alu = 0x21 | (y << 4) | (sub << 2) | (d << 3);
+                        check(a, b, 0x200000 | alu, 0, seed, mode, false);
+                        /* Parallel X/Y stores must keep both addresses and
+                         * both source values live across the carry ALU. */
+                        check(a, b, 0x800000 | alu, 0, seed, mode, false);
+                    }
+                }
                 for (unsigned g = 0; g < 8; g++) {
                     if (g == 0 || g >= 4) {
                         check(a, b, 0x0C1FF0 | (g << 1) | d, 0, seed, mode, false);

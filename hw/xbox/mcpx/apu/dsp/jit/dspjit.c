@@ -851,7 +851,7 @@ enum {
     OP_MOVE, OP_ADD, OP_SUB, OP_CMP, OP_TFR, OP_CLR, OP_TST, OP_RND,
     OP_MPY, OP_MPYR, OP_MAC, OP_MACR, OP_ASL, OP_ASR, OP_LSL, OP_LSR,
     OP_NEG, OP_NOT, OP_AND, OP_OR, OP_EOR, OP_ABS, OP_ADDL, OP_ADDR,
-    OP_SUBL, OP_SUBR,
+    OP_SUBL, OP_SUBR, OP_ADC, OP_SBC,
     OP_UNSUPPORTED
 };
 
@@ -881,8 +881,8 @@ static void decode_alu(uint32_t code, AluOp *a)
     static const int ops_0_3f[32] = {
         /* 0x */ OP_MOVE, OP_TFR, OP_ADDR, OP_TST, OP_UNSUPPORTED, OP_CMP, OP_SUBR, OP_UNSUPPORTED,
         /* 1x */ OP_ADD, OP_RND, OP_ADDL, OP_CLR, OP_SUB, OP_UNSUPPORTED, OP_SUBL, OP_NOT,
-        /* 2x */ OP_ADD, OP_UNSUPPORTED, OP_ASR, OP_LSR, OP_SUB, OP_UNSUPPORTED, OP_ABS, OP_UNSUPPORTED,
-        /* 3x */ OP_ADD, OP_UNSUPPORTED, OP_ASL, OP_LSL, OP_SUB, OP_UNSUPPORTED, OP_NEG, OP_UNSUPPORTED,
+        /* 2x */ OP_ADD, OP_ADC, OP_ASR, OP_LSR, OP_SUB, OP_SBC, OP_ABS, OP_UNSUPPORTED,
+        /* 3x */ OP_ADD, OP_ADC, OP_ASL, OP_LSL, OP_SUB, OP_SBC, OP_NEG, OP_UNSUPPORTED,
     };
     static const int ops_40_7f[8] = {
         OP_ADD, OP_TFR, OP_OR, OP_EOR, OP_SUB, OP_CMP, OP_AND, OP_UNSUPPORTED /* cmpm */
@@ -1201,6 +1201,29 @@ static void emit_alu(Tr *t, const AluOp *a)
             acc_written(t, a->d);
         }
         break;
+
+    case OP_ADC:
+    case OP_SBC: {
+        bool sub = a->op == OP_SBC;
+        emit_flags_flush(t);
+        acc_load(t, a->d);
+        emit_src56(t, a, T1);
+        emit_addsub56(e, acc, T1, sub);
+        /* Preserve both operations' carry/overflow, as dsp_add/sub56 do.
+         * Adding the carry to the source first would lose its overflow. */
+        h_ld32(e, T0, REG_CORE, REGOFF(DSP_REG_SR));
+        h_and_ri(e, 0, T0, SR_C);
+        size_t no_carry = h_jcc(e, HC_EQ);
+        h_mov_rr(e, 0, T0, T4);
+        h_mov_ri(e, T1, 1);
+        emit_addsub56(e, T3, T1, sub);
+        h_or_rr(e, 0, T4, T0);
+        h_patch(e, no_carry, e->len);
+        emit_sr_result(t, SR_EUNZ | SR_V | SR_C, T4, T3, a->d);
+        h_mov_rr(e, 1, acc, T3);
+        acc_written(t, a->d);
+        break;
+    }
 
     case OP_ADDL:
     case OP_ADDR:
