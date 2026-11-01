@@ -46,6 +46,8 @@ static void nv2a_update_irq(NV2AState *d) {
 }
 /* PRODUCTION */
 static void graphic_hw_update(void *con) {nv2a_vga_gfx_update(con);}
+enum { LR_DSP_FENCE_FRAME = 7 };
+static void lr_dsp_ownership_fence(unsigned reason){assert(reason==LR_DSP_FENCE_FRAME);assert(running);}
 /* FRAME DISPATCH */
 static size_t save(const VMStateDescription *desc,void *device,uint8_t *out) {
     size_t n=0;

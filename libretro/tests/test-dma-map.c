@@ -39,13 +39,15 @@ static void *qemu_ram_ptr_length(void*block,hwaddr x,hwaddr*l,bool lock,bool wri
 {*l=MIN(*l,ram_limit);assert(x+*l<=sizeof(ram));return fail_ptr?NULL:ram+x;}
 static CPUState *qemu_get_cpu(int n){assert(n==0);return &cpu;}
 static hwaddr memory_region_get_ram_addr(MemoryRegion*m){return m->base;}
+static unsigned bus_borrows;
+static void lr_dsp_bus_borrow(void){bus_borrows++;}
 static void settle(void){if(pending){memset(ram+8,0x33,16);pending=false;}}
 static void mem_check_access_callback_ramaddr(CPUState*c,hwaddr a,hwaddr n,int flags)
-{assert(c==&cpu);calls++;last_addr=a;last_len=n;last_flags=flags;settle();}
+{assert(c==&cpu && bus_borrows==1);calls++;last_addr=a;last_len=n;last_flags=flags;settle();}
 static void flatview_read(FlatView*f,hwaddr a,MemTxAttrs attrs,void*out,hwaddr n)
 {mmio_reads++;memset(out,0x44,n);}
 /* PRODUCTION MAP */
-static void reset(void){memset(ram,0,sizeof(ram));mr=(MemoryRegion){.base=0x1000,.direct=true};calls=mmio_reads=0;pending=true;fail_ptr=false;translated=16;ram_limit=16;}
+static void reset(void){memset(ram,0,sizeof(ram));mr=(MemoryRegion){.base=0x1000,.direct=true};calls=mmio_reads=bus_borrows=0;pending=true;fail_ptr=false;translated=16;ram_limit=16;}
 int main(void)
 {
     AddressSpace as={.max_bounce_buffer_size=64};hwaddr n;uint8_t *p;

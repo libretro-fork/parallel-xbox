@@ -50,6 +50,15 @@ static int64_t qemu_soonest_timeout(int64_t a,int64_t b){return a<0?b:b<0?a:MIN(
 static void qemu_notify_event(void){}
 int64_t qemu_clock_get_ns(QEMUClockType);
 bool timer_pending(const QEMUTimer*);
+/* Model the ownership scope independently of timer storage: callbacks may free
+ * their timer, but must retain the scope until returning to the dispatcher. */
+static unsigned dsp_timer_depth;
+enum { LR_DSP_FENCE_TIMER = 2 };
+static __attribute__((unused)) int dsp_timer_begin(QEMUTimerCB *cb){assert(cb);dsp_timer_depth++;return 1;}
+static __attribute__((unused)) void dsp_timer_end(int *scope){assert(*scope==1);assert(dsp_timer_depth);dsp_timer_depth--;}
+#define LR_DSP_TIMER_GUARD(cb) int dsp_timer_scope __attribute__((cleanup(dsp_timer_end))) = dsp_timer_begin(cb)
+static __attribute__((unused)) bool lr_dsp_timer_guarded(QEMUTimerCB *cb){assert(cb);assert(dsp_timer_depth);return false;}
+static __attribute__((unused)) void lr_dsp_ownership_fence(int reason){assert(reason==LR_DSP_FENCE_TIMER);assert(dsp_timer_depth);}
 /* PRODUCTION */
 static retro_atomic_int_t started, stop;
 #define A ((1ll<<33)+7)

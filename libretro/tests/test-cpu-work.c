@@ -41,6 +41,12 @@ static void bql_lock(void) { assert(!held); held = true; }
 #define trace_cpu_exec_start(index) ((void)(index))
 #define trace_cpu_exec_end(index) ((void)(index))
 
+static _Thread_local unsigned dsp_scope;
+static int dsp_begin(void){dsp_scope++;return 1;}
+static void dsp_end(int *scope){assert(*scope==1 && dsp_scope);dsp_scope--;}
+#define LR_DSP_EXTERNAL_GUARD int dsp_loan __attribute__((cleanup(dsp_end)))=dsp_begin()
+enum {LR_DSP_FENCE_POLL=1};
+static void lr_dsp_ownership_fence(unsigned reason){assert(reason==LR_DSP_FENCE_POLL && dsp_scope);}
 /* Extracted from cpu-common.c by test-cpu-work.py. */
 #include "cpu-work-production.h"
 

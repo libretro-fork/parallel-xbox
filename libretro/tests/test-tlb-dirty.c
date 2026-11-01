@@ -18,7 +18,7 @@ typedef uintptr_t retro_atomic_size_t;
 typedef uint32_t MMUIdxMap;
 typedef uintptr_t vaddr;
 typedef struct {uintptr_t addr_write,addend;} CPUTLBEntry;
-typedef struct {unsigned slow_flags[3];uint8_t padding[80];} CPUTLBEntryFull;
+typedef struct {unsigned slow_flags[3];uint8_t padding[80];uintptr_t xlat_section;} CPUTLBEntryFull;
 typedef struct {CPUTLBEntry table[256];unsigned n;} CPUTLBDescFast;
 typedef struct {CPUTLBEntryFull fulltlb[256],vfulltlb[4];CPUTLBEntry vtable[4];uint64_t dirty_write_tags[64];} CPUTLBDesc;
 typedef struct {struct {struct {struct {unsigned lock;MMUIdxMap dirty;}c;CPUTLBDesc d[8];}tlb;}neg;CPUTLBDescFast fast[8];} CPUState;
@@ -30,6 +30,7 @@ static void assert_cpu_is_self(CPUState*c){assert(c);}
 static CPUTLBEntry*tlb_entry(CPUState*c,int m,vaddr addr){assert(c->neg.tlb.c.lock);return &c->fast[m].table[(addr>>12)%c->fast[m].n];}
 typedef int MMUAccessType;
 static uint64_t tlb_read_idx(const CPUTLBEntry*e,MMUAccessType a){assert(a==MMU_DATA_STORE);return e->addr_write;}
+static void dsp_tlb_record(CPUState *cpu,int mmu,size_t index,vaddr page,uintptr_t ram){assert(cpu->neg.tlb.c.lock && mmu>=0 && mmu<8 && index<cpu->fast[mmu].n);assert(!(page&4095) && !(ram&4095));}
 /* PRODUCTION */
 static uint64_t seed=42;
 static uintptr_t rnd(void){seed^=seed<<13;seed^=seed>>7;seed^=seed<<17;return (uintptr_t)seed;}
@@ -39,7 +40,7 @@ int main(void)
 {
  unsigned count=0;
  for(unsigned trial=0;trial<1000000;trial++){
-  CPUTLBEntry e={rnd(),rnd()};CPUTLBEntryFull f={{0,(unsigned)rnd()&511,0},{0}};
+  CPUTLBEntry e={rnd(),rnd()};CPUTLBEntryFull f={.slow_flags={0,(unsigned)rnd()&511,0}};
   if(trial&1)e.addr_write&=~(uintptr_t)511;
   uintptr_t host=(e.addr_write&TARGET_PAGE_MASK)+e.addend;
   uintptr_t start=trial%3?host-(trial&4095):rnd(),len=trial%5?4096:rnd();

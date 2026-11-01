@@ -111,6 +111,7 @@ static VkShaderModule pgraph_vk_create_fixed_shader_module_from_glsl(PGRAPHVkSta
 
 /* CPU PRODUCTION */
 static VkBuffer test_ram_handle;
+static void lr_gpu_ram_claim(uintptr_t cmd,uint64_t addr,uint64_t len){assert(cmd && len && addr<=64*1024*1024 && len<=64*1024*1024-addr);}
 /* PRODUCTION */
 typedef struct {
     TextureBinding binding;

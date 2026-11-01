@@ -12,7 +12,8 @@ u=(r/'hw/xbox/nv2a/pgraph/util.h').read_text();v=(r/'hw/xbox/nv2a/pgraph/vk/vert
 def block(s):
  a=s.index('            start = attrib_data_addr + min_element * stride;');b=s.index('\n        }\n\n        uint32_t provoking_element_index',a);return s[a:b]
 code=Path(__file__).with_suffix('.c').read_text().replace('/* HELPER */',function(u,'pgraph_vertex_fetch_span'))
-code=code.replace('/* UPDATERS */',function(g,'update_memory_buffer').replace('update_memory_buffer','gl_update_memory_buffer')+'\n'+function(v,'update_memory_buffer').replace('update_memory_buffer','vk_update_memory_buffer'))
+a=g.index('typedef struct VertexDirtyPages');b=g.index('static void update_memory_buffer',a)
+code=code.replace('/* UPDATERS */',g[a:b]+function(g,'update_memory_buffer').replace('update_memory_buffer','gl_update_memory_buffer')+'\n'+function(v,'update_memory_buffer').replace('update_memory_buffer','vk_update_memory_buffer'))
 code=code.replace('/* GL BLOCK */',block(g).replace('update_memory_buffer','gl_update_memory_buffer')).replace('/* VK BLOCK */',block(v).replace('update_memory_buffer','vk_update_memory_buffer'))
 env=os.environ.copy();env['PATH']=str(Path(cc).resolve().parent)+os.pathsep+env.get('PATH','')
 with tempfile.TemporaryDirectory(prefix='vertex-span-',dir=r.parent) as d:

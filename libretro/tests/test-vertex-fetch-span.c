@@ -6,6 +6,7 @@
 #include <stdio.h>
 #define ARRAY_SIZE(a) (sizeof(a)/sizeof((a)[0]))
 #define MAX(a,b) ((a)>(b)?(a):(b))
+#define TARGET_PAGE_SIZE 4096u
 #define TARGET_PAGE_MASK (~UINT64_C(4095))
 #define TARGET_PAGE_ALIGN(a) (((a)+4095)&TARGET_PAGE_MASK)
 #define GL_ARRAY_BUFFER 1
@@ -13,19 +14,26 @@
 #define NV2A_PROF_GEOM_BUFFER_UPDATE_1 0
 #define VRAM (64u*1024*1024)
 typedef uint64_t hwaddr;
-typedef struct {unsigned gl_memory_buffer;} PGRAPHGLState;
+typedef struct {unsigned gl_memory_buffer;unsigned long *vertex_stale_bitmap;} PGRAPHGLState;
 typedef struct {hwaddr addr,size;} Span;
 typedef Span MemorySyncRequirement;
 typedef struct {size_t num_vertex_ram_buffer_syncs;Span vertex_ram_buffer_syncs[16],vertex_attr_span[16];} PGRAPHVkState;
 typedef struct {PGRAPHGLState *gl_renderer_state;PGRAPHVkState *vk_renderer_state;} PGRAPHState;
 typedef struct {PGRAPHState pgraph;uint8_t *vram_ptr;void *vram;} NV2AState;
 static uint8_t ram[VRAM];static bool dirty;static unsigned queries,uploads,binds;static hwaddr queried_addr,queried_size;
-static PGRAPHGLState gl={42};static PGRAPHVkState vk;static NV2AState machine={{&gl,&vk},ram,&dirty};
+static unsigned long stale[VRAM/4096/(sizeof(unsigned long)*8)];
+static PGRAPHGLState gl={42,stale};static PGRAPHVkState vk;static NV2AState machine={{&gl,&vk},ram,&dirty};
 static void glBindBuffer(unsigned target,unsigned id){assert(target==GL_ARRAY_BUFFER&&id==42);binds++;}
 static hwaddr memory_region_size(void *mr){assert(mr==&dirty);return VRAM;}
 static bool memory_region_test_and_clear_dirty(void *mr,hwaddr addr,hwaddr size,int client){assert(mr==&dirty&&client==0&&size&&addr+size<=VRAM);queries++;queried_addr=addr;queried_size=size;bool old=dirty;dirty=false;return old;}
 static void glBufferSubData(unsigned target,hwaddr addr,hwaddr size,const void *data){assert(target==GL_ARRAY_BUFFER&&addr==queried_addr&&size==queried_size&&data==ram+addr);uploads++;}
 static void nv2a_profile_inc_counter(unsigned counter){assert(counter==0);}
+#define BITS (sizeof(unsigned long)*8)
+static void bitmap_set(unsigned long *b,size_t p,size_t n){for(size_t i=p;i<p+n;i++)b[i/BITS]|=1UL<<(i%BITS);}
+static void bitmap_clear(unsigned long *b,size_t p,size_t n){for(size_t i=p;i<p+n;i++)b[i/BITS]&=~(1UL<<(i%BITS));}
+static size_t find_next_bit(const unsigned long *b,size_t end,size_t p){while(p<end&&!(b[p/BITS]&(1UL<<(p%BITS))))p++;return p;}
+static size_t find_next_zero_bit(const unsigned long *b,size_t end,size_t p){while(p<end&&(b[p/BITS]&(1UL<<(p%BITS))))p++;return p;}
+static void memory_region_test_and_clear_dirty_ranges(void *mr,hwaddr addr,hwaddr size,int client,void (*cb)(void*,hwaddr,hwaddr),void *opaque){if(memory_region_test_and_clear_dirty(mr,addr,size,client))cb(opaque,0,size);}
 /* HELPER */
 static hwaddr last_addr,last_end; /* gl/vertex.c's, at file scope there */
 /* UPDATERS */

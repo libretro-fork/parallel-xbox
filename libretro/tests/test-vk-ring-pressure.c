@@ -50,6 +50,10 @@ VKAPI_ATTR VkResult VKAPI_CALL vkBeginCommandBuffer(VkCommandBuffer cmd,const Vk
 VKAPI_ATTR VkResult VKAPI_CALL vkEndCommandBuffer(VkCommandBuffer cmd){assert(state.in_aux_command_buffer&&cmd==state.aux[state.aux_slot].cmd);return VK_SUCCESS;}
 static void pgraph_vk_queue_submit(PGRAPHVkState *r,uint32_t count,const VkSubmitInfo *info,VkFence fence){assert(r==&state&&count==1&&info->commandBufferCount==1&&info->pCommandBuffers[0]==r->aux[r->aux_slot].cmd&&fence==r->aux[r->aux_slot].fence);unsigned s=fence_slot(fence);assert(!state.aux[s].pending&&!signaled[s]);serial[s]=++submit_serial;}
 static void pgraph_vk_buffer_ensure_capacity(PGRAPHState *p,unsigned buffer,size_t size){assert(p==&pg&&buffer==BUFFER_STAGING_SRC&&size<=CAPACITY);pgraph_vk_wait_for_aux(p);state.storage_buffers[buffer].buffer_size=size;if(grow_noncoherent)state.storage_buffers[buffer].properties=VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;growths++;}
+static void lr_gpu_ram_drop(uintptr_t cmd){
+ unsigned i=(unsigned)(cmd-0x100);assert(i<PGRAPH_VK_AUX_SLOTS);
+ assert(state.aux[i].pending && signaled[i]);
+}
 /* PRODUCTION */
 static void setup(size_t staging,size_t unswizzle){
  memset(&state,0,sizeof(state));memset(owner,0xff,sizeof(owner));memset(bytes,0,sizeof(bytes));memset(expected,0,sizeof(expected));memset(signaled,0,sizeof(signaled));memset(serial,0,sizeof(serial));submit_serial=polls=waits=resets=growths=allocations=0;state.device=(VkDevice)(uintptr_t)3;grow_noncoherent=false;state.device_props.limits.nonCoherentAtomSize=128;for(unsigned i=0;i<2;i++)state.storage_buffers[i].properties=VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT|VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;

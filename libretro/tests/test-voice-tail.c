@@ -87,6 +87,7 @@ static int peek_ahead_multipass_bin(MCPXAPUState*d,uint16_t v,uint16_t*dest){*de
 static bool allow_multipass;
 static void get_multipass_samples(MCPXAPUState*d,int64_t mix[][32],uint16_t v,int32_t out[][2])
 {assert(allow_multipass);memset(out,0,sizeof(int32_t[32][2]));}
+static inline void vp_ram_guard(MCPXAPUState *d,hwaddr addr,size_t len){assert(d && addr<=RAM_SIZE && len<=RAM_SIZE-addr);}
 /* INSERT PRODUCTION FUNCTIONS */
 
 static const struct {hwaddr top,current,next;}voice_list_regs[]={

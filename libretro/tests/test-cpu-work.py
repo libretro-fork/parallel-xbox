@@ -14,7 +14,7 @@ source = (root / "cpu-common.c").read_text()
 starts = ["struct qemu_work_item {", "static void queue_work_on_cpu(",
           "void start_exclusive(", "void end_exclusive(",
           "void cpu_exec_start(", "void cpu_exec_end(",
-          "void do_run_on_cpu(", "void async_run_on_cpu(",
+          "static void ownership_call_cpu_work(", "void do_run_on_cpu(", "void async_run_on_cpu(",
           "void async_safe_run_on_cpu(", "static struct qemu_work_item *take_cpu_work(",
           "void free_queued_cpu_work(", "void process_queued_cpu_work("]
 with tempfile.TemporaryDirectory(prefix="cpu-work-") as temporary:

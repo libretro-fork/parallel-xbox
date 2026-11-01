@@ -54,6 +54,15 @@ typedef struct {QEMUTimerList *tl[QEMU_CLOCK_MAX];} QEMUTimerListGroup;
 bool timerlist_has_timers(QEMUTimerList*);
 void timerlist_notify(QEMUTimerList*);
 #endif
+/* Model the ownership scope independently of timer storage: callbacks may free
+ * their timer, but must retain the scope until returning to the dispatcher. */
+static unsigned dsp_timer_depth;
+enum { LR_DSP_FENCE_TIMER = 2 };
+static __attribute__((unused)) int dsp_timer_begin(QEMUTimerCB *cb){assert(cb);dsp_timer_depth++;return 1;}
+static __attribute__((unused)) void dsp_timer_end(int *scope){assert(*scope==1);assert(dsp_timer_depth);dsp_timer_depth--;}
+#define LR_DSP_TIMER_GUARD(cb) int dsp_timer_scope __attribute__((cleanup(dsp_timer_end))) = dsp_timer_begin(cb)
+static __attribute__((unused)) bool lr_dsp_timer_guarded(QEMUTimerCB *cb){assert(cb);assert(dsp_timer_depth);return false;}
+static __attribute__((unused)) void lr_dsp_ownership_fence(int reason){assert(reason==LR_DSP_FENCE_TIMER);assert(dsp_timer_depth);}
 /* PRODUCTION */
 static void notify(void *opaque,QEMUClockType type){assert(!opaque);notifies[type]++;}
 #ifdef TIMER_BASELINE

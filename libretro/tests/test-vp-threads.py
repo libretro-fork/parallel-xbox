@@ -42,6 +42,8 @@ fixture = fixture.replace('#include "hw/xbox/mcpx/apu/sample.h"', '''#include "h
 #include <rthreads/retro_eventcount.h>
 #include "qemu/processor.h"
 #define MAX_VOICE_WORKERS 16
+static _Thread_local bool dsp_vp_worker;
+static void lr_dsp_vp_worker(bool active){assert(active!=dsp_vp_worker);dsp_vp_worker=active;}
 static void rcu_register_thread(void){}
 static void rcu_unregister_thread(void){}
 static unsigned g_get_num_processors(void){return 8;}
