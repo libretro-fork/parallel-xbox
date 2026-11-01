@@ -132,6 +132,11 @@ static void prepare(Machine *m, uint32_t op, uint32_t ext, unsigned seed,
         c->registers[DSP_REG_SP] = 15;
         c->stack[0][15] = c->registers[DSP_REG_SSH];
     }
+    if (seed & 0x40000000) {
+        c->exception_debugging = false;
+        c->registers[DSP_REG_SP] = 14;
+        c->stack[0][14] = c->registers[DSP_REG_SSH];
+    }
 }
 
 static void check(Machine *a, Machine *b, uint32_t op, uint32_t ext,
@@ -722,11 +727,36 @@ static void check_relative_branches(Machine *a, Machine *b, unsigned mode)
     }
 }
 
+static void check_loop_setup(Machine *a, Machine *b, unsigned mode)
+{
+    static const unsigned counts[] = { 0, 1, 2, 3, 255, 256, 4095 };
+    static const unsigned ends[] = { 0, 1, 2, 3, 0xFFFF, 0x10001 };
+    static const unsigned loops[] = { 0x20000000, 0x10000000, 0x40000 };
+    static const unsigned stacks[] = { 0, 0x80000, 0x40000000 };
+    for (unsigned n = 0; n < ARRAY_SIZE(counts); n++) {
+        uint32_t imm = ((counts[n] & 0xFF) << 8) | (counts[n] >> 8);
+        for (unsigned l = 0; l < ARRAY_SIZE(loops); l++) {
+            for (unsigned sp = 0; sp < ARRAY_SIZE(stacks); sp++) {
+                for (unsigned irq = 0; irq < 2; irq++) {
+                    for (unsigned sr = 0; sr <= 0xFF; sr += 0xFF) {
+                        unsigned seed = 0x20000 | sr | loops[l] | stacks[sp];
+                        check(a, b, 0x0600A0 | imm, 0x30, seed, mode, irq);
+                        for (unsigned end = 0; end < ARRAY_SIZE(ends); end++) {
+                            check(a, b, 0x060090 | imm, ends[end], seed, mode, irq);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 int main(int argc, char **argv)
 {
     bool relative_only = argc == 2 && !strcmp(argv[1], "--relative");
-    if (argc != 1 && !relative_only) {
-        fputs("usage: dspnative [--relative]\n", stderr);
+    bool loops_only = argc == 2 && !strcmp(argv[1], "--loops");
+    if (argc != 1 && !relative_only && !loops_only) {
+        fputs("usage: dspnative [--relative|--loops]\n", stderr);
         return 2;
     }
     Machine *a = machine_new(false), *b = machine_new(true);
@@ -740,9 +770,10 @@ int main(int argc, char **argv)
 #ifdef _WIN32
     assert(initially_committed == (64u << 10));
 #endif
-    if (relative_only) {
+    if (relative_only || loops_only) {
         for (unsigned mode = 0; mode < 4; mode++) {
-            check_relative_branches(a, b, mode);
+            if (relative_only) check_relative_branches(a, b, mode);
+            if (loops_only) check_loop_setup(a, b, mode);
         }
         goto done;
     }
@@ -766,6 +797,7 @@ int main(int argc, char **argv)
     for (unsigned mode = 0; mode < 4; mode++) {
         /* Sweep every legal parallel ALU encoding. */
         check_relative_branches(a, b, mode);
+        check_loop_setup(a, b, mode);
         for (unsigned cc = 0; cc < 16; cc++) {
             for (unsigned sr = 0; sr <= 0xFF; sr += 0xFF) {
                 unsigned input = 0xE0000 | sr;
