@@ -2649,3 +2649,6 @@ lock, wait or video frame queue is introduced.
 Win64 entry-initializer stack remains 8 bytes and create_pipeline remains
 3,536 bytes, with unchanged renderer layouts. Hardware cache-miss and
 game-latency effects are unmeasured.
+
+
+`test-sse-ordered-compare.py CHECKOUT [CC]` compares the four production COMIS helpers with real SoftFloat in both optimized and generic configurations. Each configuration covers 1,280,000 cases: float32/64 boundary and random pairs, signed zero, infinities, signaling/quiet NaNs, subnormals, 16 guest rounding/flushing modes, sticky exception flags, operand aliasing and source preservation. On x86-64 it also changes host MXCSR and checks ordinary inputs leave it unchanged. Instrumented fallback counts require zero general comparison calls for ordinary inputs and one for exceptional inputs.

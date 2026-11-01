@@ -1269,6 +1269,40 @@ SSE_HELPER_CMP(cmptrues, FPU_CMPS,  !FPU_FALSE)
 #undef SSE_HELPER_CMP
 
 #if SHIFT == 1
+
+#ifdef XBOX
+/* Normal values and signed zero compare exactly by their IEEE encodings.
+ * No host FP state or guest exception flags are touched. Keep NaNs and
+ * subnormals in SoftFloat for signaling and input-denormal handling. */
+#define XEMU_SSE_ORDERED_COMPARE(bits, sign)                              \
+static inline FloatRelation xemu_sse_compare##bits(                       \
+    float##bits a, float##bits b, float_status *status, bool quiet)        \
+{                                                                        \
+    if (likely(float##bits##_is_zero_or_normal(a) &&                       \
+               float##bits##_is_zero_or_normal(b))) {                     \
+        if (a == b || ((a | b) & ~(sign)) == 0) {                          \
+            return float_relation_equal;                                 \
+        }                                                                \
+        if ((a ^ b) & (sign)) {                                          \
+            return a & (sign) ? float_relation_less :                     \
+                                float_relation_greater;                  \
+        }                                                                \
+        return ((a < b) ^ !!(a & (sign))) ? float_relation_less :          \
+                                            float_relation_greater;      \
+    }                                                                    \
+    return quiet ? float##bits##_compare_quiet(a, b, status) :             \
+                   float##bits##_compare(a, b, status);                   \
+}
+XEMU_SSE_ORDERED_COMPARE(32, UINT32_C(0x80000000))
+XEMU_SSE_ORDERED_COMPARE(64, UINT64_C(0x8000000000000000))
+#undef XEMU_SSE_ORDERED_COMPARE
+#else
+#define xemu_sse_compare32(a, b, status, quiet) \
+    ((quiet) ? float32_compare_quiet(a, b, status) : float32_compare(a, b, status))
+#define xemu_sse_compare64(a, b, status, quiet) \
+    ((quiet) ? float64_compare_quiet(a, b, status) : float64_compare(a, b, status))
+#endif
+
 static const int comis_eflags[4] = {CC_C, CC_Z, 0, CC_Z | CC_P | CC_C};
 
 void helper_ucomiss(CPUX86State *env, Reg *d, Reg *s)
@@ -1278,7 +1312,7 @@ void helper_ucomiss(CPUX86State *env, Reg *d, Reg *s)
 
     s0 = d->ZMM_S(0);
     s1 = s->ZMM_S(0);
-    ret = float32_compare_quiet(s0, s1, &env->sse_status);
+    ret = xemu_sse_compare32(s0, s1, &env->sse_status, true);
     CC_SRC = comis_eflags[ret + 1];
     CC_OP = CC_OP_EFLAGS;
 }
@@ -1290,7 +1324,7 @@ void helper_comiss(CPUX86State *env, Reg *d, Reg *s)
 
     s0 = d->ZMM_S(0);
     s1 = s->ZMM_S(0);
-    ret = float32_compare(s0, s1, &env->sse_status);
+    ret = xemu_sse_compare32(s0, s1, &env->sse_status, false);
     CC_SRC = comis_eflags[ret + 1];
     CC_OP = CC_OP_EFLAGS;
 }
@@ -1302,7 +1336,7 @@ void helper_ucomisd(CPUX86State *env, Reg *d, Reg *s)
 
     d0 = d->ZMM_D(0);
     d1 = s->ZMM_D(0);
-    ret = float64_compare_quiet(d0, d1, &env->sse_status);
+    ret = xemu_sse_compare64(d0, d1, &env->sse_status, true);
     CC_SRC = comis_eflags[ret + 1];
     CC_OP = CC_OP_EFLAGS;
 }
@@ -1314,7 +1348,7 @@ void helper_comisd(CPUX86State *env, Reg *d, Reg *s)
 
     d0 = d->ZMM_D(0);
     d1 = s->ZMM_D(0);
-    ret = float64_compare(d0, d1, &env->sse_status);
+    ret = xemu_sse_compare64(d0, d1, &env->sse_status, false);
     CC_SRC = comis_eflags[ret + 1];
     CC_OP = CC_OP_EFLAGS;
 }
