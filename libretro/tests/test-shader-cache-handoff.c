@@ -50,7 +50,11 @@ static retro_atomic_int_t done;
 static const char *directory, *shader_gl_vendor = "test-vendor", *shader_gl_version = "test-version";
 #define container_of(p, type, field) ((type *)((char *)(p) - offsetof(type, field)))
 #define g_new0(type, n) ((type *)calloc(n, sizeof(type)))
-#define g_new(type, n) ((type *)malloc(sizeof(type) * (n)))
+static unsigned poisoned_allocations;
+static void *poisoned_alloc(size_t size) {
+    void *p=malloc(size);assert(p);memset(p,0xa5,size);poisoned_allocations++;return p;
+}
+#define g_new(type, n) ((type *)poisoned_alloc(sizeof(type) * (n)))
 #define g_free free
 #define qemu_fopen fopen
 #define qemu_unlink remove
@@ -267,7 +271,9 @@ int main(int argc, char **argv)
     for(unsigned shift=0;shift<32;shift++)for(unsigned capped=0;capped<2;capped++) {
         map_shift=shift;
         retro_atomic_store_relaxed_int(&renderer.shader_disk_mappings,capped?SHADER_BINARY_MAX_MAPPINGS:0);
-        shader_load_from_disk(&pg,123);shader_adopt_disk_results(&renderer,0);
+        unsigned before=poisoned_allocations;
+        shader_load_from_disk(&pg,123);assert(poisoned_allocations==before+1);
+        shader_adopt_disk_results(&renderer,0);
         ShaderState key={42};
         ShaderBinding *loaded=container_of(lru_lookup(&renderer.shader_cache,123,&key),ShaderBinding,node);
         assert(loaded->cached && loaded->state.id==42 && loaded->program_format==77 && loaded->program_size==16);
@@ -287,6 +293,6 @@ int main(int argc, char **argv)
         file=fopen(name,"rb");assert(!file);
     }
     free(name);
-    puts("Shader cache: 18000 publications, render-only LRU, shutdown joins and immutable disk-save snapshot, 64 mapped/capped reader round trips and all binary truncations passed");
+    puts("Shader cache: 18000 publications, render-only LRU, shutdown joins and immutable disk-save snapshot, 64 poisoned mapped/capped reader round trips and all binary truncations passed");
     return 0;
 }

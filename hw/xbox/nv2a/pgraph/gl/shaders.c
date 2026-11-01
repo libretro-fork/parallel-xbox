@@ -1114,7 +1114,8 @@ static void shader_load_from_disk(PGRAPHState *pg, uint64_t hash)
     if (!p || !shader_size || shader_size > INT_MAX) {
         goto error;
     }
-    ShaderDiskResult *result = g_new0(ShaderDiskResult, 1);
+    /* Every field is assigned below; MPSC push initializes the link. */
+    ShaderDiskResult *result = g_new(ShaderDiskResult, 1);
     /* The mapping-limit fallback may unmap immediately: own the state first. */
     memcpy(&result->state, state, sizeof(result->state));
     program_buffer = shader_binary_take_file(&result->program_owner, &m, p,

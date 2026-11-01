@@ -2502,3 +2502,5 @@ grows from 91,856 to 91,872 bytes; the mode-miss planner uses a 72-byte frame.
 Hardware cache-miss and game-latency effects are unmeasured. Scratch-image
 lifetime and budget paths have controlled-model coverage; native GPU testing
 uses NVIDIA shared-device presentation.
+
+Disk-result allocation now uses the non-clearing allocator. The handoff fixture poisons non-clearing allocations with 0xa5 and asserts that every valid disk-reader round trip takes that path, then checks parsed state, binary owner/format/size, MPSC adoption and release for retained/capped mappings. This verifies that allocator zeros are not required by any published field or the queue link.
