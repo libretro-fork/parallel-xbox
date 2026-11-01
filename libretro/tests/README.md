@@ -2383,11 +2383,12 @@ the emulator build objects remain intact.
 The matrix covers 384 complete GL/Vulkan shader sources: disabled/ordinary/shadow
 stages, normalized/rectangle coordinates, both convolution kernels and every
 convolution-stage mask. Programs needing convolution get one unchanged table
-pair even with multiple stages; 264 unused pairs disappear. Removing just those
-declarations must leave parent/candidate shader text byte-identical. All 192
+pair even with multiple stages; 264 unused pairs disappear. Removing those
+declarations and separately unused dot-mapping definitions must leave the
+remaining parent/candidate shader text byte-identical. All 192
 Vulkan variants per side compile with the core compiler, and image-operation
-counts remain equal. Current builds save 336 GLSL bytes per unused program and
-560 SPIR-V bytes per unused Vulkan module. This is module/source-size evidence,
+counts remain equal. The table pair occupies 336 GLSL bytes. Reported SPIR-V deltas include
+other omitted unused helpers in the compared builds. This is module/source-size evidence,
 not an FPS or shader-compilation latency benchmark. Cache hits remain valid;
 the smaller declarations apply to newly generated programs.
 
@@ -2408,6 +2409,23 @@ cache-miss and game-latency effects are unmeasured.
 Ready-order coverage now exercises oldest-record adoption at every occupancy from 1 to 768 for 33 cycles each, including every window offset and compaction boundary. It checks the full slot permutation and FIFO/reference oracle, with 399,069 checks and 356,181 lifetimes. On the new head-take path, tracked index moves occur only at the existing 32-step compaction boundary. Benchmark mode 5 repeatedly adopts and reinserts the oldest record. Physical free-slot reuse order is private; active FIFO order and module ownership are preserved.
 
 For queues of at most 32 entries, oldest adoption retains the direct shift: its zero to 124 bytes avoids window compaction for tiny queues. Larger queues use pointer advancement. The occupancy oracle asserts both copy policies; benchmark modes 6/7 adopt and reinsert the oldest of 1/16 entries.
+
+`test-dotmap-helpers.py CHECKOUT BUILD PARENT_PSH_OBJECT SCRATCH` uses the same
+configured-build driver/link options as `test-convolution-tables.py`. Save the
+parent `glsl/psh.o` before building the candidate. It compares 448 complete
+GL/Vulkan variants per side across all eight mappings: ordinary/disabled/shadow
+programs, DOTPRODUCT, DOT_ST/ZW, diffuse/specular reflection, 3D/cube sampling,
+repeated mappings and all 64 diffuse-reflection look-ahead pairs. Inactive next
+stages still supply the reflection mapping. Unsupported hemisphere and constant
+specular fallback behavior is preserved. One case combines convolution and dot
+mapping to check their independent lazy declarations.
+
+Only referenced mapping definitions may remain, once each and byte-identical to
+the parent. Removing all mapping definitions must leave the remaining complete
+shader text byte-identical. All 224 Vulkan variants per side compile with the
+core compiler; image-operation counts remain equal. Ordinary programs omit 882
+GLSL bytes and 2,360 SPIR-V bytes in the checked builds. Keys and persistent state
+are unchanged. Cache hits remain valid; no FPS or compile-latency gain is claimed.
 
 GL shader-cache version coverage checks both borrowed mapped-key views and owned key copies. It verifies exact borrowed byte addresses and contents at 32 input alignments, every truncated prefix of a 2 KiB-key header, legacy/changed versions and the owned round trip. Linux defaults to ASan/UBSan; GL_SHADER_VERSION_CFLAGS, GL_SHADER_VERSION_BINARY and GL_SHADER_VERSION_SKIP_RUN support native Win32/Win64 fixtures. Windows temporary files use the user temporary directory and delete-on-close. No mapped key pointer escapes unmapping.
 

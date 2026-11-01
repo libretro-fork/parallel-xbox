@@ -1560,6 +1560,49 @@ static void psh_append_signed_bump(const struct PixelShader *ps, MString *vars,
     }
 }
 
+/* Definitions are shared by every stage that actually references a mapping. */
+static void psh_append_dotmap(MString *preflight, unsigned mapping,
+                              unsigned *emitted)
+{
+    static const char *const functions[] = {
+        "vec3 dotmap_zero_to_one(vec4 col) {\n"
+        "    return col.rgb;\n"
+        "}\n",
+        "vec3 dotmap_minus1_to_1_d3d(vec4 col) {\n"
+        "    return vec3(sign1(col.r),sign1(col.g),sign1(col.b));\n"
+        "}\n",
+        "vec3 dotmap_minus1_to_1_gl(vec4 col) {\n"
+        "    return vec3(sign2(col.r),sign2(col.g),sign2(col.b));\n"
+        "}\n",
+        "vec3 dotmap_minus1_to_1(vec4 col) {\n"
+        "    return vec3(sign3(col.r),sign3(col.g),sign3(col.b));\n"
+        "}\n",
+        "vec3 dotmap_hilo_1(vec4 col) {\n"
+        "    uint hi_i = uint(col.a * float(0xff)) << 8\n"
+        "              | uint(col.r * float(0xff));\n"
+        "    uint lo_i = uint(col.g * float(0xff)) << 8\n"
+        "              | uint(col.b * float(0xff));\n"
+        "    float hi_f = float(hi_i) / float(0xffff);\n"
+        "    float lo_f = float(lo_i) / float(0xffff);\n"
+        "    return vec3(hi_f, lo_f, 1.0);\n"
+        "}\n",
+        "vec3 dotmap_hilo_hemisphere_d3d(vec4 col) {\n"
+        "    return col.rgb;\n" // FIXME
+        "}\n",
+        "vec3 dotmap_hilo_hemisphere_gl(vec4 col) {\n"
+        "    return col.rgb;\n" // FIXME
+        "}\n",
+        "vec3 dotmap_hilo_hemisphere(vec4 col) {\n"
+        "    return col.rgb;\n" // FIXME
+        "}\n"
+    };
+    assert(mapping < ARRAY_SIZE(functions));
+    if (!(*emitted & (1u << mapping))) {
+        mstring_append(preflight, functions[mapping]);
+        *emitted |= 1u << mapping;
+    }
+}
+
 static MString* psh_convert(struct PixelShader *ps)
 {
     MString *preflight = mstring_new();
@@ -1632,36 +1675,6 @@ static MString* psh_convert(struct PixelShader *ps)
         "float sign3_to_0_to_1(float x) {\n"
         "    if (x >= 0) return x/2;\n"
         "           else return 1+x/2;\n"
-        "}\n"
-        "vec3 dotmap_zero_to_one(vec4 col) {\n"
-        "    return col.rgb;\n"
-        "}\n"
-        "vec3 dotmap_minus1_to_1_d3d(vec4 col) {\n"
-        "    return vec3(sign1(col.r),sign1(col.g),sign1(col.b));\n"
-        "}\n"
-        "vec3 dotmap_minus1_to_1_gl(vec4 col) {\n"
-        "    return vec3(sign2(col.r),sign2(col.g),sign2(col.b));\n"
-        "}\n"
-        "vec3 dotmap_minus1_to_1(vec4 col) {\n"
-        "    return vec3(sign3(col.r),sign3(col.g),sign3(col.b));\n"
-        "}\n"
-        "vec3 dotmap_hilo_1(vec4 col) {\n"
-        "    uint hi_i = uint(col.a * float(0xff)) << 8\n"
-        "              | uint(col.r * float(0xff));\n"
-        "    uint lo_i = uint(col.g * float(0xff)) << 8\n"
-        "              | uint(col.b * float(0xff));\n"
-        "    float hi_f = float(hi_i) / float(0xffff);\n"
-        "    float lo_f = float(lo_i) / float(0xffff);\n"
-        "    return vec3(hi_f, lo_f, 1.0);\n"
-        "}\n"
-        "vec3 dotmap_hilo_hemisphere_d3d(vec4 col) {\n"
-        "    return col.rgb;\n" // FIXME
-        "}\n"
-        "vec3 dotmap_hilo_hemisphere_gl(vec4 col) {\n"
-        "    return col.rgb;\n" // FIXME
-        "}\n"
-        "vec3 dotmap_hilo_hemisphere(vec4 col) {\n"
-        "    return col.rgb;\n" // FIXME
         "}\n"
         // Kahan's algorithm for computing determinant using FMA for higher
         // precision. See e.g.:
@@ -1835,6 +1848,7 @@ static MString* psh_convert(struct PixelShader *ps)
 
     MString *vars = mstring_new();
     bool convolution_tables = false;
+    unsigned dotmaps_emitted = 0;
     mstring_append(vars, "vec4 pD0 = vtxD0;\n");
     mstring_append(vars, "vec4 pD1 = vtxD1;\n");
     mstring_append(vars, "vec4 pB0 = vtxB0;\n");
@@ -1874,7 +1888,7 @@ static MString* psh_convert(struct PixelShader *ps)
 
         assert(ps->dot_map[i] < 8);
         const char *dotmap_func = dotmap_funcs[ps->dot_map[i]];
-        /* 4 (dotmap_hilo_1) is fully implemented above; only the three
+        /* 4 (dotmap_hilo_1) is fully implemented; only the three
          * hemisphere variants are stubs returning col.rgb. Warning from 4
          * flagged a working path as missing. */
         if (ps->dot_map[i] > 4) {
@@ -2025,6 +2039,7 @@ static MString* psh_convert(struct PixelShader *ps)
             break;
         case PS_TEXTUREMODES_DOT_ST:
             assert(i >= 2);
+            psh_append_dotmap(preflight, ps->dot_map[i], &dotmaps_emitted);
             mstring_append_fmt(vars, "/* PS_TEXTUREMODES_DOT_ST */\n");
             mstring_append_fmt(vars,
                "float dot%d = dot(pT%d.xyz, %s(t%d));\n"
@@ -2037,6 +2052,7 @@ static MString* psh_convert(struct PixelShader *ps)
             break;
         case PS_TEXTUREMODES_DOT_ZW:
             assert(i >= 2);
+            psh_append_dotmap(preflight, ps->dot_map[i], &dotmaps_emitted);
             mstring_append_fmt(vars, "/* PS_TEXTUREMODES_DOT_ZW */\n");
             mstring_append_fmt(vars, "float dot%d = dot(pT%d.xyz, %s(t%d));\n",
                 i, i, dotmap_func, ps->input_tex[i]);
@@ -2053,10 +2069,12 @@ static MString* psh_convert(struct PixelShader *ps)
             break;
         case PS_TEXTUREMODES_DOT_RFLCT_DIFF:
             assert(i == 2);
+            psh_append_dotmap(preflight, ps->dot_map[i], &dotmaps_emitted);
             mstring_append_fmt(vars, "/* PS_TEXTUREMODES_DOT_RFLCT_DIFF */\n");
             mstring_append_fmt(vars, "float dot%d = dot(pT%d.xyz, %s(t%d));\n",
                 i, i, dotmap_func, ps->input_tex[i]);
             assert(ps->dot_map[i+1] < 8);
+            psh_append_dotmap(preflight, ps->dot_map[i+1], &dotmaps_emitted);
             mstring_append_fmt(vars, "float dot%d_n = dot(pT%d.xyz, %s(t%d));\n",
                 i, i+1, dotmap_funcs[ps->dot_map[i+1]], ps->input_tex[i+1]);
             mstring_append_fmt(vars, "vec3 n_%d = vec3(dot%d, dot%d, dot%d_n);\n",
@@ -2072,6 +2090,7 @@ static MString* psh_convert(struct PixelShader *ps)
             break;
         case PS_TEXTUREMODES_DOT_RFLCT_SPEC:
             assert(i == 3);
+            psh_append_dotmap(preflight, ps->dot_map[i], &dotmaps_emitted);
             mstring_append_fmt(vars, "/* PS_TEXTUREMODES_DOT_RFLCT_SPEC */\n");
             mstring_append_fmt(vars, "float dot%d = dot(pT%d.xyz, %s(t%d));\n",
                 i, i, dotmap_func, ps->input_tex[i]);
@@ -2092,6 +2111,7 @@ static MString* psh_convert(struct PixelShader *ps)
             break;
         case PS_TEXTUREMODES_DOT_STR_3D:
             assert(i == 3);
+            psh_append_dotmap(preflight, ps->dot_map[i], &dotmaps_emitted);
             mstring_append_fmt(vars, "/* PS_TEXTUREMODES_DOT_STR_3D */\n");
             mstring_append_fmt(vars,
                "float dot%d = dot(pT%d.xyz, %s(t%d));\n"
@@ -2106,6 +2126,7 @@ static MString* psh_convert(struct PixelShader *ps)
             break;
         case PS_TEXTUREMODES_DOT_STR_CUBE:
             assert(i == 3);
+            psh_append_dotmap(preflight, ps->dot_map[i], &dotmaps_emitted);
             mstring_append_fmt(vars, "/* PS_TEXTUREMODES_DOT_STR_CUBE */\n");
             mstring_append_fmt(vars, "float dot%d = dot(pT%d.xyz, %s(t%d));\n",
                 i, i, dotmap_func, ps->input_tex[i]);
@@ -2139,6 +2160,7 @@ static MString* psh_convert(struct PixelShader *ps)
             break;
         case PS_TEXTUREMODES_DOTPRODUCT:
             assert(i == 1 || i == 2);
+            psh_append_dotmap(preflight, ps->dot_map[i], &dotmaps_emitted);
             mstring_append_fmt(vars, "/* PS_TEXTUREMODES_DOTPRODUCT */\n");
             mstring_append_fmt(vars, "float dot%d = dot(pT%d.xyz, %s(t%d));\n",
                 i, i, dotmap_func, ps->input_tex[i]);
