@@ -72,6 +72,14 @@ static inline unsigned int tb_jmp_cache_class_hash(vaddr pc, uint32_t flags)
     return h;
 }
 
+static inline void tb_jmp_cache_record(CPUJumpCache *jc, unsigned index,
+                                      unsigned secondary)
+{
+    unsigned group = index >> TB_JMP_DIRTY_SHIFT;
+    retro_atomic_fetch_or_int(&jc->dirty[secondary][group >> 5],
+                              (int)(1u << (group & 31)));
+}
+
 static inline void tb_jmp_cache_store(CPUJumpCache *jc, vaddr pc,
                                       uint32_t flags, TranslationBlock *tb)
 {
@@ -89,13 +97,16 @@ static inline void tb_jmp_cache_store(CPUJumpCache *jc, vaddr pc,
             unsigned secondary = tb_jmp_cache_class_hash(pc, old->flags);
             jc->classes[secondary].pc = pc;
             retro_atomic_store_relaxed_ptr(&jc->classes[secondary].tb, old);
+            tb_jmp_cache_record(jc, secondary, 1);
             secondary = tb_jmp_cache_class_hash(pc, flags);
             jc->classes[secondary].pc = pc;
             retro_atomic_store_relaxed_ptr(&jc->classes[secondary].tb, tb);
+            tb_jmp_cache_record(jc, secondary, 1);
         }
     }
     jc->array[h].pc = pc;
     retro_atomic_store_relaxed_ptr(&jc->array[h].tb, tb);
+    tb_jmp_cache_record(jc, h, 0);
 }
 
 static inline

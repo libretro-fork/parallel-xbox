@@ -15,10 +15,21 @@
 #define TB_JMP_CACHE_SIZE 256
 #define XEMU_TB_CF_ANY 0xc0000004u
 typedef uint64_t vaddr;
+#define retro_atomic_fetch_or_int(p,v) (*(p)|=(v))
+#define retro_atomic_load_relaxed_int(p) (*(p))
+static uint32_t exchange32(uint32_t *p){uint32_t old=*p;*p=0;return old;}
+#define retro_atomic_exchange_int(p,v) exchange32(p)
+#define TB_JMP_CACHE_SIZE_MAX 256
+#define TB_JMP_DIRTY_SHIFT 6
+#define TB_JMP_DIRTY_WORDS ((TB_JMP_CACHE_SIZE_MAX + 2047) / 2048)
+#define ctz32(v) __builtin_ctz(v)
+#ifndef MIN
+#define MIN(a,b) ((a)<(b)?(a):(b))
+#endif
 typedef struct TranslationBlock { uint64_t pc,cs_base; uint32_t flags,cflags; } TranslationBlock;
 typedef struct { uint64_t pc,cs_base; uint32_t flags,cflags; } TCGTBCPUState;
 typedef struct { TranslationBlock *tb; uint64_t pc; } Entry;
-typedef struct { Entry array[256],classes[256]; } CPUJumpCache;
+typedef struct { Entry array[256],classes[256]; uint32_t dirty[2][TB_JMP_DIRTY_WORDS]; } CPUJumpCache;
 typedef struct { CPUJumpCache *tb_jmp_cache; } CPUState;
 static int xemu_cpu_boost,global_lookups;
 #define retro_atomic_load_relaxed_ptr(p) (*(p))

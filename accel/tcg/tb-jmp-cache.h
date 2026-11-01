@@ -18,6 +18,8 @@
 #define TB_JMP_CACHE_BITS (xemu_cpu_boost ? 16 : 12)
 #define TB_JMP_CACHE_SIZE (1 << TB_JMP_CACHE_BITS)
 #define TB_JMP_CACHE_SIZE_MAX (1 << 16)
+#define TB_JMP_DIRTY_SHIFT 6
+#define TB_JMP_DIRTY_WORDS ((TB_JMP_CACHE_SIZE_MAX + 2047) / 2048)
 
 /*
  * Invalidated in parallel; all accesses to 'tb' must be atomic.
@@ -31,6 +33,10 @@ typedef struct CPUJumpCache {
         retro_atomic_ptr_t tb;      /* TranslationBlock * */
         vaddr pc;
     } array[TB_JMP_CACHE_SIZE_MAX], classes[TB_JMP_CACHE_SIZE_MAX];
+    /* Insertions mark groups after publishing their pointer. Concurrent
+     * invalidators may exchange summaries and clear atomic pointers; a
+     * surviving insertion therefore remains marked for the next flush. */
+    retro_atomic_int_t dirty[2][TB_JMP_DIRTY_WORDS];
     /* classes is consulted only after a primary miss; preallocated so class
      * conflicts cannot allocate during emulation. */
 } CPUJumpCache;

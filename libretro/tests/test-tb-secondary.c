@@ -19,13 +19,26 @@
 #define unlikely(x) (x)
 #define tcg_debug_assert assert
 #define retro_atomic_load_relaxed_ptr(p) (*(p))
-#define retro_atomic_store_relaxed_ptr(p,v) (*(p)=(v))
+static unsigned pointer_stores;
+#define retro_atomic_store_relaxed_ptr(p,v) store_pointer((p),(v))
 #define CPU_FOREACH(cpu) for(cpu=cpus;cpu<cpus+2;cpu++)
 typedef uint64_t vaddr;
+#define retro_atomic_fetch_or_int(p,v) (*(p)|=(v))
+#define retro_atomic_load_relaxed_int(p) (*(p))
+static uint32_t exchange32(uint32_t *p){uint32_t old=*p;*p=0;return old;}
+#define retro_atomic_exchange_int(p,v) exchange32(p)
+#define TB_JMP_CACHE_SIZE_MAX 65536
+#define TB_JMP_DIRTY_SHIFT 6
+#define TB_JMP_DIRTY_WORDS ((TB_JMP_CACHE_SIZE_MAX + 2047) / 2048)
+#define ctz32(v) __builtin_ctz(v)
+#ifndef MIN
+#define MIN(a,b) ((a)<(b)?(a):(b))
+#endif
 typedef struct {vaddr pc,cs_base;uint32_t flags,cflags;} TranslationBlock;
-typedef struct {struct {TranslationBlock *tb;vaddr pc;} array[65536],classes[65536];} CPUJumpCache;
+typedef struct {struct {TranslationBlock *tb;vaddr pc;} array[65536],classes[65536];uint32_t dirty[2][TB_JMP_DIRTY_WORDS];} CPUJumpCache;
 typedef struct {CPUJumpCache *tb_jmp_cache;} CPUState;
 typedef struct {vaddr pc,cs_base;uint32_t flags,cflags;} TCGTBCPUState;
+static TranslationBlock variants_dummy;
 static CPUJumpCache caches[2];
 static CPUState cpus[2]={{&caches[0]},{&caches[1]}};
 static bool xemu_cpu_boost;
@@ -33,6 +46,13 @@ static unsigned table_lookups;
 static TranslationBlock *table_answer;
 static uint32_t tb_cflags(TranslationBlock *tb){return tb->cflags;}
 static TranslationBlock *tb_htable_lookup(CPUState *cpu,TCGTBCPUState s){table_lookups++;return table_answer;}
+static TranslationBlock **flush_before_publish;
+void tcg_flush_jmp_cache(CPUState *cpu);
+static void store_pointer(TranslationBlock **slot,TranslationBlock *value)
+{
+ if(value && slot==flush_before_publish){flush_before_publish=NULL;tcg_flush_jmp_cache(&cpus[0]);}
+ pointer_stores++;*slot=value;
+}
 /* PRODUCTION */
 static uint32_t flags(unsigned cls){return ((cls&3u)<<30)|(cls&4u);}
 static unsigned seed=0x71a2c981;
@@ -101,5 +121,66 @@ int main(void){
    cases++;
   }
  }
+ /* Sparse full flushes agree with a complete scan, including stale summary
+  * bits left by page/TB invalidators and low/high cache mode transitions. */
+ uint64_t sparse_stores=0;
+ for(unsigned epoch=0;epoch<2000;epoch++) {
+  CPUJumpCache *jc=&caches[0];tcg_flush_jmp_cache(&cpus[0]);
+  bool groups[2][1024]={{0}};unsigned occupied=0;
+  unsigned count=epoch%257;
+  for(unsigned n=0;n<count;n++) {
+   unsigned index=(n<4?(unsigned[]){0,63,64,65535}[n]:random32()&65535);
+   unsigned bank=random32()&1,group=index>>6;
+   if(!groups[bank][group]){groups[bank][group]=true;occupied++;}
+   tb_jmp_cache_record(jc,index,bank);
+   if(bank)jc->classes[index].tb=&variants_dummy;
+   else jc->array[index].tb=&variants_dummy;
+   /* A concurrent invalidator may clear an entry without its summary. */
+   if(n&1){if(bank)jc->classes[index].tb=NULL;else jc->array[index].tb=NULL;}
+  }
+  xemu_cpu_boost=epoch&1;pointer_stores=0;
+  tcg_flush_jmp_cache(&cpus[0]);assert(pointer_stores==occupied*64);
+  sparse_stores+=pointer_stores;
+  for(unsigned n=0;n<65536;n++)assert(!jc->array[n].tb&&!jc->classes[n].tb);
+  for(unsigned bank=0;bank<2;bank++)for(unsigned word=0;word<TB_JMP_DIRTY_WORDS;word++)assert(!jc->dirty[bank][word]);
+  pointer_stores=0;tcg_flush_jmp_cache(&cpus[0]);assert(!pointer_stores);
+ }
+ printf("Sparse jump flush: 2000 epochs, boundary slots, individual invalidation and mode changes; %llu stores vs 262144000 full-scan stores; repeated empty flushes write no pointers\n",(unsigned long long)sparse_stores);
+ /* Force a full invalidator flush immediately before pointer publication.
+  * A surviving publication must be marked after that flush, not before it. */
+ xemu_cpu_boost=true;
+ for(unsigned path=0;path<4;path++) {
+  tcg_flush_jmp_cache(&cpus[0]);
+  vaddr pc=0x12345678;unsigned h=tb_jmp_cache_hash_func(pc);
+  TranslationBlock a={pc,0,flags(0),0},b={pc,0,flags(1),0};
+  if(path==0){
+   flush_before_publish=&caches[0].array[h].tb;
+   tb_jmp_cache_store(&caches[0],pc,a.flags,&a);
+  }else{
+   tb_jmp_cache_store(&caches[0],pc,a.flags,&a);
+   if(path<3){
+    unsigned cls=tb_jmp_cache_class_hash(pc,path==1?a.flags:b.flags);
+    flush_before_publish=&caches[0].classes[cls].tb;
+    tb_jmp_cache_store(&caches[0],pc,b.flags,&b);
+   }else{
+    tb_jmp_cache_store(&caches[0],pc,b.flags,&b);
+    caches[0].array[h].tb=NULL;
+    flush_before_publish=&caches[0].array[h].tb;
+    assert(tb_lookup(&cpus[0],(TCGTBCPUState){pc,0,a.flags,0})==&a);
+   }
+  }
+  assert(!flush_before_publish);tcg_flush_jmp_cache(&cpus[0]);
+  for(unsigned n=0;n<65536;n++)assert(!caches[0].array[n].tb&&!caches[0].classes[n].tb);
+ }
+ puts("Jump-cache publication: primary, both class stores and promotion survive an overlapping flush without losing tracking");
+ /* Dense occupancy remains a complete clear of both tables. */
+ for(unsigned bank=0;bank<2;bank++)for(unsigned n=0;n<65536;n++){
+  if(bank)caches[0].classes[n].tb=&variants_dummy;
+  else caches[0].array[n].tb=&variants_dummy;
+  tb_jmp_cache_record(&caches[0],n,bank);
+ }
+ pointer_stores=0;tcg_flush_jmp_cache(&cpus[0]);assert(pointer_stores==131072);
+ for(unsigned n=0;n<65536;n++)assert(!caches[0].array[n].tb&&!caches[0].classes[n].tb);
+ puts("Dense jump flush: all groups and both complete tables cleared");
  printf("Secondary class cache: %u store/lookup/promotion/identity/invalidation/flush scenarios passed\n",cases);
 }

@@ -2432,3 +2432,19 @@ This is confined to teardown, with unchanged renderer layouts and no per-frame
 stack change. Hardware cache-miss and game-latency effects are unmeasured.
 
 The shader-cache handoff fixture also executes the production disk reader against the production writer output. Across 32 mapping alignments, both retained mappings and the 64-mapping fallback preserve state/format/binary bytes and release ownership exactly once. The fallback frees input before publication, catching state copies made too late under ASan. Every truncated binary is rejected without queue publication and its invalid fixture file is removed. Existing 18,000 concurrent publications, owner-only LRU, shutdown and immutable save snapshots remain covered.
+
+Sparse jump-cache flushing
+-------------------------
+
+The jump cache keeps 256 bytes of preallocated atomic group summaries.
+Insertions and class promotions publish their pointer before marking its
+64-slot group. Full invalidators atomically take the groups and retain atomic
+pointer clears; individual page/TB invalidators may leave conservative marks.
+No generation checks are added to successful lookups.
+
+`test-tb-secondary.py CHECKOUT [CC]` includes 2,000 sparse/dense-boundary
+flush epochs against a full-scan oracle, high/low cache-mode transitions and
+repeated empty flushes. It forces a flush immediately before publication in
+all four insertion/promotion paths. On POSIX, a negative control that marks
+before publication must fail because it loses tracking of a surviving entry.
+The existing 24,000 lookup/invalidation scenarios remain enabled.

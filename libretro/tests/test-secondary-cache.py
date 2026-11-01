@@ -4,7 +4,7 @@ from pathlib import Path
 import os,subprocess,sys,tempfile
 r=Path(sys.argv[1]).resolve();cc=sys.argv[2] if len(sys.argv)>2 else 'cc'
 s=(r/'accel/tcg/cpu-exec.c').read_text();a=s.index('static inline TranslationBlock *tb_lookup(');b=s.index('static void log_cpu_exec(',a)
-h=(r/'accel/tcg/tb-hash.h').read_text();i=h.index('static inline void tb_jmp_cache_store(');j=h.index('static inline\nuint32_t tb_hash_func',i)
+h=(r/'accel/tcg/tb-hash.h').read_text();i=h.index('static inline void tb_jmp_cache_record(');j=h.index('static inline\nuint32_t tb_hash_func',i)
 f=(r/'accel/tcg/translate-all.c').read_text();k=f.index('void tcg_flush_jmp_cache(');e=f.index('{',k)+1;depth=1
 while depth:
  depth+=(f[e]=='{')-(f[e]=='}');e+=1

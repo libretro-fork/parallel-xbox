@@ -1,5 +1,7 @@
 # Changelog of the libretro core
 
+- Track populated jump-cache groups in 256 bytes of preallocated atomic metadata. Full flushes clear only groups touched by insertion or promotion, retaining atomic pointer invalidation without adding checks to successful lookups or allocating during emulation.
+
 - Copy cached GL shader state directly from its mapped file into the disk-result owner, avoiding a whole-state stack intermediate. Complete the copy before the mapping-limit fallback can release the file; cache format and publication order are unchanged.
 
 - Drain Vulkan display synchronization at teardown through the newest pending submission first, avoiding repeated waits on older completed display fences. Preserve per-slot resets and fence/semaphore destruction; per-frame presentation still polls without waiting. Necessary teardown completion still waits.

@@ -351,6 +351,7 @@ static inline TranslationBlock *tb_lookup(CPUState *cpu, TCGTBCPUState s)
             /* Promote without touching the class entry or the global table. */
             jc->array[hash].pc = s.pc;
             retro_atomic_store_relaxed_ptr(&jc->array[hash].tb, tb);
+            tb_jmp_cache_record(jc, hash, 0);
             goto hit;
         }
     }

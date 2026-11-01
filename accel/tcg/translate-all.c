@@ -689,8 +689,25 @@ void tcg_flush_jmp_cache(CPUState *cpu)
         return;
     }
 
-    for (int i = 0; i < TB_JMP_CACHE_SIZE; i++) {
-        retro_atomic_store_relaxed_ptr(&jc->array[i].tb, NULL);
-        retro_atomic_store_relaxed_ptr(&jc->classes[i].tb, NULL);
+    /* Atomically take populated groups. Keep pointer clears atomic for
+     * invalidators outside the CPU owner, as in the original full scan. */
+    for (unsigned table = 0; table < 2; table++) {
+        __typeof__(jc->array[0]) *entries = table ? jc->classes : jc->array;
+        for (unsigned word = 0; word < TB_JMP_DIRTY_WORDS; word++) {
+            if (!retro_atomic_load_relaxed_int(&jc->dirty[table][word])) {
+                continue;
+            }
+            uint32_t groups = retro_atomic_exchange_int(&jc->dirty[table][word], 0);
+            while (groups) {
+                unsigned group = word * 32 + ctz32(groups);
+                unsigned first = group << TB_JMP_DIRTY_SHIFT;
+                unsigned end = MIN(first + (1u << TB_JMP_DIRTY_SHIFT),
+                                   TB_JMP_CACHE_SIZE_MAX);
+                for (unsigned i = first; i < end; i++) {
+                    retro_atomic_store_relaxed_ptr(&entries[i].tb, NULL);
+                }
+                groups &= groups - 1;
+            }
+        }
     }
 }
