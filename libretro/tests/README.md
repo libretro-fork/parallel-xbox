@@ -2975,3 +2975,17 @@ pixels and fallback staging. A sparse-pitch direct fixture claims 258,064 rather
 than 262,144 bytes without allocating staging. These are requested byte counts;
 actual ownership tracking may round to pages, and no CPU-wait reduction is
 measured. Staged fallback continues to reserve only active row bytes.
+
+
+`python libretro/tests/test-depth-readback-capacity.py CHECKOUT [CC]` runs the
+production readback planning prefix and shared aligned plane-size helper over
+1,296 format/scale/alignment/capacity/batch/import combinations. The batch gate
+and ensure-capacity call must use the same storage requirement, including the
+last stencil word. Exact-fit and undersized buffers, missing imports and closed
+batches retain their respective behavior. In this matrix 62 reads remain batched
+where the old eight-byte-per-pixel estimate would request a flush; those are
+planning decisions, not measured runtime fence counts. Fourteen previously
+accepted short-capacity cases are also rejected by the exact requirement.
+Readback still waits for
+guest CPU visibility at immediate or batch completion. Upload and readback now
+share the footprint helper; the 480-case upload-range oracle remains applicable.

@@ -126,7 +126,7 @@ static bool surface_upload_from_vram(const PGRAPHVkState *r,
 
 /* Depth is a 32-bit plane; stencil starts at descriptor alignment and
  * compute writes stencil in whole 32-bit words, including the last word. */
-static VkDeviceSize depth_upload_plane_size(unsigned width, unsigned height,
+static VkDeviceSize depth_stencil_plane_size(unsigned width, unsigned height,
                                             VkDeviceSize alignment)
 {
     VkDeviceSize pixels = (VkDeviceSize)width * height;
@@ -643,11 +643,13 @@ static bool download_surface_to_buffer(NV2AState *d, SurfaceBinding *surface,
      * Anything else settles the batch first. */
     unsigned int compute_w = surface->width, compute_h = surface->height;
     pgraph_apply_scaling_factor(pg, &compute_w, &compute_h);
+    VkDeviceSize compute_size = use_compute_to_convert_depth_stencil_format ?
+        depth_stencil_plane_size(compute_w, compute_h,
+            r->device_props.limits.minStorageBufferOffsetAlignment) : 0;
     bool batched =
         direct && r->readback_batch.open &&
         (!use_compute_to_convert_depth_stencil_format ||
-         (VkDeviceSize)compute_w * compute_h * 8 <=
-             r->storage_buffers[BUFFER_COMPUTE_DST].buffer_size);
+         compute_size <= r->storage_buffers[BUFFER_COMPUTE_DST].buffer_size);
     if (!batched) {
         readback_batch_flush(d);
     }
@@ -667,15 +669,12 @@ static bool download_surface_to_buffer(NV2AState *d, SurfaceBinding *surface,
         surface->fmt.bytes_per_pixel);
 
 
-    unsigned int scaled_width = surface->width,
-                 scaled_height = surface->height;
-    pgraph_apply_scaling_factor(pg, &scaled_width, &scaled_height);
+    unsigned int scaled_width = compute_w, scaled_height = compute_h;
     if (use_compute_to_convert_depth_stencil_format) {
         /* Depth and stencil planes side by side, before the aux recording
          * that reads them. */
         pgraph_vk_buffer_ensure_capacity(pg, BUFFER_COMPUTE_DST,
-                                         (VkDeviceSize)scaled_width *
-                                             scaled_height * 8);
+                                         compute_size);
     }
 
     VkCommandBuffer cmd = batched ? readback_batch_cmd(pg) :
@@ -794,7 +793,7 @@ static bool download_surface_to_buffer(NV2AState *d, SurfaceBinding *surface,
     }
 
     if (surface->host_fmt.aspect & VK_IMAGE_ASPECT_STENCIL_BIT) {
-        size_t depth_size = scaled_width * scaled_height * 4;
+        size_t depth_size = (size_t)scaled_width * scaled_height * 4;
         copy_regions[num_copy_regions++] = (VkBufferImageCopy){
             .bufferOffset = ROUND_UP(
                 depth_size,
@@ -1808,7 +1807,7 @@ void pgraph_vk_upload_surface_data(NV2AState *d, SurfaceBinding *surface,
         /* The unpacked planes, before the aux recording that writes them. */
         unsigned int cw = surface->width, ch = surface->height;
         pgraph_apply_scaling_factor(pg, &cw, &ch);
-        VkDeviceSize planes = depth_upload_plane_size(cw, ch,
+        VkDeviceSize planes = depth_stencil_plane_size(cw, ch,
             r->device_props.limits.minStorageBufferOffsetAlignment);
         VkDeviceSize packed = (VkDeviceSize)surface->width * surface->height * 4;
         pgraph_vk_buffer_ensure_capacity(pg, BUFFER_COMPUTE_DST,
@@ -1920,7 +1919,7 @@ void pgraph_vk_upload_surface_data(NV2AState *d, SurfaceBinding *surface,
 
         VkDeviceSize num_pixels = (VkDeviceSize)scaled_width * scaled_height;
         VkDeviceSize unpacked_depth_image_size = num_pixels * 4;
-        VkDeviceSize unpacked_size = depth_upload_plane_size(
+        VkDeviceSize unpacked_size = depth_stencil_plane_size(
             scaled_width, scaled_height,
             r->device_props.limits.minStorageBufferOffsetAlignment);
 

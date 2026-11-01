@@ -10,7 +10,7 @@ repo = Path(sys.argv[1]).resolve()
 cc = sys.argv[2] if len(sys.argv) > 2 else "gcc"
 source = (repo / "hw/xbox/nv2a/pgraph/vk/surface.c").read_text()
 parts = []
-for name in ("surface_readback_needs_swizzle", "readback_to_host_barrier", "download_surface_to_buffer"):
+for name in ("depth_stencil_plane_size", "surface_readback_needs_swizzle", "readback_to_host_barrier", "download_surface_to_buffer"):
     position = source.index(name + "(")
     start = source.rfind("\nstatic ", 0, position) + 1
     end = source.index("{", position) + 1

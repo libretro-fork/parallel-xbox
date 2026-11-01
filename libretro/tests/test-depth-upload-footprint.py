@@ -19,7 +19,7 @@ def block(start):
         end += 1
     return source[start:end]
 
-helper = block(source.index("static VkDeviceSize depth_upload_plane_size("))
+helper = block(source.index("static VkDeviceSize depth_stencil_plane_size("))
 upload = source.index("void pgraph_vk_upload_surface_data(")
 capacity = block(source.index("    if (use_compute_to_convert_depth_stencil_format) {", upload))
 start = source.index("        VkDeviceSize num_pixels =", upload)
