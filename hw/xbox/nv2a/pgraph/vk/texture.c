@@ -2175,7 +2175,10 @@ static VkSampler create_sampler_for_state(PGRAPHState *pg,
     bool mixed_g8b8_lod0 = mip_levels == 1 && state.dimensionality == 2 &&
         !state.cubemap && !state.border &&
         (min_filter == NV_PGRAPH_TEXFILTER0_MIN_BOX_LOD0 ||
-         min_filter == NV_PGRAPH_TEXFILTER0_MIN_TENT_LOD0) &&
+         min_filter == NV_PGRAPH_TEXFILTER0_MIN_TENT_LOD0 ||
+         (state.color_format == NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_G8B8 &&
+          min_filter >= NV_PGRAPH_TEXFILTER0_MIN_BOX_NEARESTLOD &&
+          min_filter <= NV_PGRAPH_TEXFILTER0_MIN_TENT_TENT_LOD)) &&
         vk_min_filter != vk_mag_filter &&
         (state.color_format == NV097_SET_TEXTURE_FORMAT_COLOR_SZ_G8B8 ||
          state.color_format == NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_G8B8);

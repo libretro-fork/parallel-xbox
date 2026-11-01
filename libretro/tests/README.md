@@ -205,6 +205,15 @@ Force LOD0, border colors and address-only transitions from an excluded mode.
 With `--custom-border-colors`, each backend checks 17,280 scalar cases
 and 3,072 exact parent pixels for matching filters and existing mip chains.
 The custom-color flag requires Vulkan custom-border-color support.
+Add `--linear-layout` to run the same model matrix on row-major G8B8 images;
+multi-level controls stay swizzled and two existing nonmip fixtures bring
+the parent comparisons to 3,456 pixels per renderer. The builder option
+`--linear-level` requires a 4x4 single-level probe with explicit addresses.
+Linear mip-filter requests reuse the existing nonmip reconstruction keys.
+Vulkan retains a positive quarter-LOD ceiling and nearest mip selection
+for their mixed min/mag filters, so the choice remains observable while
+all texels come from level zero.
+
 `build-bump-probe.py --single-level` declares one mip without changing the
 underlying texels; `--prime-address` first draws with legacy clamp so that
 a later address-only write must invalidate the shader key.

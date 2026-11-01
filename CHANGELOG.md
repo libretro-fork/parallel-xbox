@@ -1,6 +1,7 @@
 # Changelog of the libretro core
 
 - Skip per-page inspection of wholly clean or dirty bitmap chunks during display dirty-run collection, preserving concurrent-write and clipped-range behavior.
+- Fixed signed bump filtering and Vulkan min/mag selection when linear G8B8 textures request mip filters, matching their single-level storage.
 
 - Reduce Vulkan driver calls for fallback S3TC mipmaps and cube faces by publishing their descriptors together.
 

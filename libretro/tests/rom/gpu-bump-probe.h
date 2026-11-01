@@ -215,9 +215,19 @@ static void bump_mixed_triangle(u32 layout, u32 footprint)
     push(0x40000000u | (18u << 18) | NV097_INLINE_ARRAY);
     for (u32 vertex = 0; vertex < 3; vertex++) {
         for (u32 component = 0; component < 4; component++) push(pos[vertex][component]);
+#ifdef BUMP_LINEAR_LEVEL
+        /* Scale normalized 4x4 coordinates to texels exactly by increasing
+         * the exponent by two; these fixture values are finite and nonzero. */
+        push(tex_u[layout][footprint][vertex] + 0x01000000u);
+#else
         push(tex_u[layout][footprint][vertex]);
+#endif
 #ifdef BUMP_FILTER_CLAMP_PROBE
+#ifdef BUMP_LINEAR_LEVEL
+        push(tex_v[layout][footprint][vertex] + 0x01000000u);
+#else
         push(tex_v[layout][footprint][vertex]);
+#endif
 #else
         push(layout ? 0x3e800000u : 0x3f000000u);
 #endif
@@ -324,6 +334,16 @@ static void bump_filter_probe(void)
         ram32(bump_address + 40, 0x7010u);
 #endif
 #endif
+#ifdef BUMP_LINEAR_LEVEL
+        swizzled_layout = 0;
+        format = 0x17;
+        /* Four row-major 4-texel rows, preserving the swizzled oracle's
+         * independent alternating X/R and Y/G byte patterns. */
+        for (u32 word = 0; word < 8; word++) {
+            ram32(bump_address + word * 4,
+                  (word / 2) & 1 ? 0xc040c0c0u : 0x404040c0u);
+        }
+#endif
         /* Reuse the established surface/transform setup, but defer its draw. */
         texture_alias_target(0xc0000000u | format, 1,
                              swizzled_layout ? norm_u[coord] : rect_u[coord],
@@ -364,6 +384,10 @@ static void bump_filter_probe(void)
         method(NV097_SET_TEXTURE_FORMAT,
                1u | (2u << 4) | (1u << 3) | (format << 8) |
                (1u << 16) | (BUMP_SINGLE_MIP_LOG << 20) | (BUMP_SINGLE_MIP_LOG << 24));
+#endif
+#ifdef BUMP_LINEAR_LEVEL
+        method(NV097_SET_TEXTURE_CONTROL1, 8u << 16);
+        method(NV097_SET_TEXTURE_IMAGE_RECT, (4u << 16) | 4u);
 #endif
         method(NV097_SET_TEXTURE_FILTER,
 #ifdef BUMP_FILTER_MIP_PROBE
