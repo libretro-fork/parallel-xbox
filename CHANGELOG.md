@@ -1,5 +1,6 @@
 # Changelog of the libretro core
 
+- Reject stale Vulkan static vertex-input pipelines when the active attribute list shrinks. Check the existing zeroed key tail before accepting a matching prefix, including transitions to no attributes. Dynamic vertex-input devices retain their current reuse path; no key or pipeline-cache format changes.
 - Preserve complete seed state/key representations with explicit byte copies when compacting or collecting them, including padding used by byte-hashed keys.
 
 - Avoid zero-filling the GL seed module-key destination array before copying complete accepted keys. Keep deterministic temporary-key initialization and the populated-count boundary, removing redundant startup initialization without changing key bytes or ordering.

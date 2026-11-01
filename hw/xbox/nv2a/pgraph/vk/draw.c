@@ -908,9 +908,16 @@ static bool check_pipeline_dirty(PGRAPHState *pg)
      * set on the command buffer, emit_dynamic_vertex_input compares them
      * itself): compared against the key's zeros, every draw with a vertex
      * array counted as dirty and rebuilt, hashed and looked up its key. */
+    /* init_pipeline_key zeroes the unused tail. A valid format immediately
+     * beyond the new list means the old static pipeline has more attributes;
+     * comparing only the new prefix would accept it (including an empty list). */
     // FIXME: Use dirty bits instead
     if (!r->dyn_vertex_input &&
-        (memcmp(r->vertex_attribute_descriptions,
+        ((r->num_active_vertex_attribute_descriptions <
+              ARRAY_SIZE(r->pipeline_binding->key.attribute_descriptions) &&
+          r->pipeline_binding->key.attribute_descriptions[
+              r->num_active_vertex_attribute_descriptions].format != VK_FORMAT_UNDEFINED) ||
+         memcmp(r->vertex_attribute_descriptions,
                r->pipeline_binding->key.attribute_descriptions,
                r->num_active_vertex_attribute_descriptions *
                    sizeof(r->vertex_attribute_descriptions[0])) ||

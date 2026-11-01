@@ -2576,3 +2576,21 @@ cache-miss, compilation-stutter and game-latency effects are unmeasured.
 The seed-inplace fixture also executes the production module-key collection block with poisoned destination allocation, real ShaderModuleCacheKey/geometry-predicate construction, actual hashes and deduplication. It compares populated key bytes and order against the original zero-filled destination and asserts that the unused tail stays poisoned. Both geometry/no-geometry families and forced hash collisions are covered. Temporary-key zeroing remains essential for deterministic full-union hashes; only redundant destination initialization is removed.
 
 Seed inputs now carry varied nonzero FixedFunctionVshState padding. Compaction and destination collection use explicit memcpy for complete object representations; they do not rely on C structure assignment preserving padding bytes. The real-layout output and hash oracle checks remain byte-exact.
+
+The surface-blend fixture additionally checks all 578 old/new attribute-list
+length and dynamic-input feature combinations (zero through sixteen entries).
+The previously accepted shrinking-prefix case is a regression: a static
+pipeline with extra trailing attributes must not be reused. Existing canonical
+keys zero the unused tail, so the next entry's valid format detects a longer
+old list without extra fields or key-format changes. The full-length guard
+avoids reading beyond the array. Dynamic vertex input keeps its existing
+command-state path. No buffers, copies, locks, waits or frame queue are added;
+a genuinely different static input layout can require its own PSO.
+
+Win64 create_pipeline remains at 3,536 stack bytes with unchanged renderer
+layouts. The guard applies only to static input. Native NVIDIA tests also
+exercise a private build with dynamic vertex input disabled before pipeline
+initialization; the temporary feature override is removed for delivery.
+Static list transitions additionally have exhaustive controlled-model coverage. Valid attributes use supported vertex formats as required by the
+[Vulkan attribute description rules](https://docs.vulkan.org/refpages/latest/refpages/source/VkVertexInputAttributeDescription.html).
+Hardware cache-miss and game-latency effects are unmeasured.

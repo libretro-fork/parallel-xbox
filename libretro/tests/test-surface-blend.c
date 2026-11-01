@@ -222,6 +222,22 @@ int main(void) {
     r.vertex_binding_descriptions[0].stride=32;assert(check_pipeline_dirty(&pg));r.vertex_binding_descriptions[0].stride=16;
     r.vertex_attribute_descriptions[0].offset=4;assert(check_pipeline_dirty(&pg));r.vertex_attribute_descriptions[0].offset=0;
     assert(!check_pipeline_dirty(&pg));r.pipeline_binding=NULL;assert(check_pipeline_dirty(&pg));r.pipeline_binding=&binding;
+    /* All static list lengths, including empty/full and matching prefixes.
+     * Dynamic VI ignores these key arrays and updates its command state. */
+    for(unsigned i=0;i<16;i++){
+        r.vertex_binding_descriptions[i]=(VkVertexInputBindingDescription){.binding=i,.stride=16,.inputRate=VK_VERTEX_INPUT_RATE_VERTEX};
+        r.vertex_attribute_descriptions[i]=(VkVertexInputAttributeDescription){.location=i,.binding=i,.format=VK_FORMAT_R32G32B32A32_SFLOAT,.offset=0};
+    }
+    unsigned length_cases=0;
+    for(unsigned dynamic=0;dynamic<2;dynamic++)for(unsigned old=0;old<=16;old++){
+        r.dyn_vertex_input=dynamic;r.num_active_vertex_binding_descriptions=r.num_active_vertex_attribute_descriptions=old;
+        init_pipeline_key(&pg,&binding.key);
+        for(unsigned count=0;count<=16;count++){
+            r.num_active_vertex_binding_descriptions=r.num_active_vertex_attribute_descriptions=count;
+            assert(check_pipeline_dirty(&pg)==(!dynamic&&old!=count));length_cases++;
+        }
+    }
+    printf("static vertex input: %u old/new length and feature schedules; shrinking prefixes cannot reuse stale attributes\n",length_cases);
     /* Execute the production create_pipeline prefix, observing whether it
      * reaches key construction, including the speculative-ahead exception. */
     r.dyn_vertex_input=true;r.num_active_vertex_binding_descriptions=r.num_active_vertex_attribute_descriptions=0;
