@@ -524,15 +524,7 @@ gl_state_done:;
     if (pg->zpass_pixel_count_enable) {
         if (!r->gl_zpass_query_open) {
             nv2a_profile_inc_counter(NV2A_PROF_QUERY);
-            r->gl_zpass_pixel_count_query_count++;
-            r->gl_zpass_pixel_count_queries = (GLuint*)g_realloc(
-                r->gl_zpass_pixel_count_queries,
-                sizeof(GLuint) * r->gl_zpass_pixel_count_query_count);
-
-            GLuint gl_query;
-            glGenQueries(1, &gl_query);
-            r->gl_zpass_pixel_count_queries[
-                r->gl_zpass_pixel_count_query_count - 1] = gl_query;
+            GLuint gl_query = pgraph_gl_alloc_zpass_query(d);
             /* The game's query takes SAMPLES_PASSED: end the cost model's
              * and mark its sample count partial. */
             if (xemu_cost_q2_open) {

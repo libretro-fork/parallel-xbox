@@ -266,6 +266,8 @@ typedef struct QueryReport {
     uint32_t parameter;
     unsigned int query_count;
     GLuint *queries;
+    unsigned int query_capacity;
+    GLuint inline_queries[8];
 } QueryReport;
 
 typedef struct PGRAPHGLState {
@@ -513,8 +515,7 @@ typedef struct PGRAPHGLState {
     UniformCache uni_cache;
 
     unsigned int zpass_pixel_count_result;
-    unsigned int gl_zpass_pixel_count_query_count;
-    GLuint *gl_zpass_pixel_count_queries;
+    QueryReport *zpass_report;
     bool gl_zpass_query_open;
     QSIMPLEQ_HEAD(, QueryReport) report_queue;
 
@@ -603,6 +604,7 @@ void pgraph_gl_draw_begin(NV2AState *d);
 void pgraph_gl_draw_state_invalidate(PGRAPHGLState *r);
 void pgraph_gl_draw_end(NV2AState *d);
 void pgraph_gl_flush_draw(NV2AState *d);
+GLuint pgraph_gl_alloc_zpass_query(NV2AState *d);
 void pgraph_gl_get_report(NV2AState *d, uint32_t parameter);
 void pgraph_gl_image_blit(NV2AState *d);
 void pgraph_gl_mark_textures_possibly_dirty(NV2AState *d, hwaddr addr, hwaddr size);

@@ -24,6 +24,56 @@
 #include "renderer.h"
 #include "ui/xemu-settings.h"
 
+/* The active interval list becomes the queued report without copying IDs.
+ * Most reports fit in pooled storage; long intervals grow geometrically. */
+static QueryReport *query_report_take(PGRAPHGLState *r)
+{
+    QueryReport *report = obj_pool_take(&r->report_pool);
+    report->clear = false;
+    report->parameter = 0;
+    report->query_count = 0;
+    report->queries = report->inline_queries;
+    report->query_capacity = ARRAY_SIZE(report->inline_queries);
+    return report;
+}
+
+static void query_report_release(PGRAPHGLState *r, QueryReport *report)
+{
+    if (report->query_count) {
+        glDeleteQueries(report->query_count, report->queries);
+    }
+    if (report->queries != report->inline_queries) {
+        g_free(report->queries);
+    }
+    obj_pool_give(&r->report_pool, report);
+}
+
+GLuint pgraph_gl_alloc_zpass_query(NV2AState *d)
+{
+    PGRAPHGLState *r = d->pgraph.gl_renderer_state;
+    if (!r->zpass_report) {
+        r->zpass_report = query_report_take(r);
+    }
+    QueryReport *report = r->zpass_report;
+    if (report->query_count == report->query_capacity) {
+        assert(report->query_capacity <= UINT_MAX / 2);
+        unsigned capacity = report->query_capacity * 2;
+        if (report->queries == report->inline_queries) {
+            report->queries = g_malloc_n(capacity, sizeof(GLuint));
+            memcpy(report->queries, report->inline_queries,
+                   report->query_count * sizeof(GLuint));
+        } else {
+            report->queries = g_realloc_n(report->queries, capacity,
+                                           sizeof(GLuint));
+        }
+        report->query_capacity = capacity;
+    }
+    GLuint query;
+    glGenQueries(1, &query);
+    report->queries[report->query_count++] = query;
+    return query;
+}
+
 static void process_pending_report(NV2AState *d, QueryReport *report)
 {
     PGRAPHState *pg = &d->pgraph;
@@ -46,11 +96,6 @@ static void process_pending_report(NV2AState *d, QueryReport *report)
         glGetQueryObjectuiv(report->queries[i], GL_QUERY_RESULT, &gl_query_result);
         gl_query_result /= pg->surface_scale_factor * pg->surface_scale_factor;
         r->zpass_pixel_count_result += gl_query_result;
-    }
-
-    if (report->query_count) {
-        glDeleteQueries(report->query_count, report->queries);
-        g_free(report->queries);
     }
 
     pgraph_write_zpass_pixel_cnt_report(d, report->parameter, r->zpass_pixel_count_result);
@@ -91,7 +136,7 @@ void pgraph_gl_process_pending_reports(NV2AState *d)
         }
         process_pending_report(d, report);
         QSIMPLEQ_REMOVE_HEAD(&r->report_queue, entry);
-        obj_pool_give(&r->report_pool, report);
+        query_report_release(r, report);
     }
     pg->reports_pending = false;
 }
@@ -125,7 +170,7 @@ void pgraph_gl_drain_pending_reports(NV2AState *d)
     QSIMPLEQ_FOREACH_SAFE(report, &r->report_queue, entry, next) {
         process_pending_report(d, report);
         QSIMPLEQ_REMOVE_HEAD(&r->report_queue, entry);
-        obj_pool_give(&r->report_pool, report);
+        query_report_release(r, report);
     }
     d->pgraph.reports_pending = false;
 }
@@ -142,13 +187,12 @@ void pgraph_gl_clear_report_value(NV2AState *d)
         glEndQuery(GL_SAMPLES_PASSED);
         r->gl_zpass_query_open = false;
     }
-    if (r->gl_zpass_pixel_count_query_count) {
-        glDeleteQueries(r->gl_zpass_pixel_count_query_count,
-                        r->gl_zpass_pixel_count_queries);
-        r->gl_zpass_pixel_count_query_count = 0;
+    if (r->zpass_report) {
+        query_report_release(r, r->zpass_report);
+        r->zpass_report = NULL;
     }
 
-    QueryReport *report = obj_pool_take(&r->report_pool);
+    QueryReport *report = query_report_take(r);
     report->clear = true;
     QSIMPLEQ_INSERT_TAIL(&r->report_queue, report, entry);
 }
@@ -159,6 +203,7 @@ void pgraph_gl_init_reports(NV2AState *d)
     PGRAPHGLState *r = pg->gl_renderer_state;
 
     QSIMPLEQ_INIT(&r->report_queue);
+    r->zpass_report = NULL;
     /* The reports of a frame's draws, well beyond what a game queues */
     obj_pool_init(&r->report_pool, sizeof(QueryReport), 1024);
 }
@@ -173,15 +218,12 @@ void pgraph_gl_get_report(NV2AState *d, uint32_t parameter)
         r->gl_zpass_query_open = false;
     }
 
-    QueryReport *report = obj_pool_take(&r->report_pool);
-    report->clear = false;
+    QueryReport *report = r->zpass_report ? r->zpass_report :
+                                             query_report_take(r);
     report->parameter = parameter;
-    report->query_count = r->gl_zpass_pixel_count_query_count;
-    report->queries = r->gl_zpass_pixel_count_queries;
     QSIMPLEQ_INSERT_TAIL(&r->report_queue, report, entry);
 
-    r->gl_zpass_pixel_count_query_count = 0;
-    r->gl_zpass_pixel_count_queries = NULL;
+    r->zpass_report = NULL;
     /* Hand the work to the GPU now: a driver batching until a flush would
      * start it only at the report read, and the guest would wait a whole
      * frame per report (MEASURED, AMD Windows). */
@@ -195,21 +237,17 @@ void pgraph_gl_finalize_reports(PGRAPHState *pg)
 
     QueryReport *report, *next;
     QSIMPLEQ_FOREACH_SAFE (report, &r->report_queue, entry, next) {
-        if (report->query_count) {
-            glDeleteQueries(report->query_count, report->queries);
-        }
         QSIMPLEQ_REMOVE_HEAD(&r->report_queue, entry);
-        obj_pool_give(&r->report_pool, report);
+        query_report_release(r, report);
     }
 
     if (r->gl_zpass_query_open) {
         glEndQuery(GL_SAMPLES_PASSED);
         r->gl_zpass_query_open = false;
     }
-    if (r->gl_zpass_pixel_count_query_count) {
-        glDeleteQueries(r->gl_zpass_pixel_count_query_count,
-                        r->gl_zpass_pixel_count_queries);
-        r->gl_zpass_pixel_count_query_count = 0;
+    if (r->zpass_report) {
+        query_report_release(r, r->zpass_report);
+        r->zpass_report = NULL;
     }
     obj_pool_finalize(&r->report_pool);
 }

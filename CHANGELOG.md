@@ -1,5 +1,7 @@
 # Changelog of the libretro core
 
+- Keep short OpenGL visibility-query lists inside pooled report objects and transfer those objects directly to the report queue, removing per-report query-array allocation for up to eight intervals; long lists grow geometrically and all lists release on clear/completion/teardown.
+
 - Flip GL client readback rows in place on SSE2 x86 CPUs without AVX2, removing the temporary-row allocation and extra row copy while retaining the fallback for other CPUs.
 
 - Defer maximum-size inline vertex arrays until an attribute first varies, avoiding sixteen startup allocation requests totaling about 128 MiB while reusing each array across later batches.
