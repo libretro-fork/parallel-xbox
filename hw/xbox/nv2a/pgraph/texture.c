@@ -417,27 +417,6 @@ size_t pgraph_converted_texture_size(const TextureShape s, unsigned int width,
     }
 }
 
-uint8_t *pgraph_convert_texture_data(const TextureShape s, const uint8_t *data,
-                                     const uint8_t *palette_data,
-                                     unsigned int width, unsigned int height,
-                                     unsigned int depth, unsigned int row_pitch,
-                                     unsigned int slice_pitch,
-                                     size_t *converted_size)
-{
-    size_t size = pgraph_converted_texture_size(s, width, height, depth);
-    if (!size) {
-        return NULL;
-    }
-    uint8_t *converted_data = g_malloc(size);
-    pgraph_convert_texture_data_into(s, data, palette_data, width, height,
-                                     depth, row_pitch, slice_pitch,
-                                     converted_data);
-    if (converted_size) {
-        *converted_size = size;
-    }
-    return converted_data;
-}
-
 static void convert_r6g5b5_pixel(uint16_t rgb655, uint8_t *out)
 {
     /* Exactly r*127/63 and ((v^16)*255/31)-128, respectively. The small

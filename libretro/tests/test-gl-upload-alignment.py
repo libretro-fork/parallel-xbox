@@ -25,10 +25,7 @@ for name in ("tex_scratch", "gl_internal_format_to_s3tc_enum", "upload_gl_textur
         depth += (source[end] == "{") - (source[end] == "}")
         end += 1
     functions.append(source[position:end])
-decoder = (repo / "hw/xbox/nv2a/pgraph/s3tc.c").read_text().replace(
-    '#include "qemu/osdep.h"',
-    '#include <stdbool.h>\n#include <stdlib.h>\n#include <assert.h>\n'
-    '#define MIN(a,b) ((a)<(b)?(a):(b))\n#define g_malloc malloc')
+decoder = (repo / "hw/xbox/nv2a/pgraph/s3tc.c").read_text()
 code = Path(__file__).with_suffix(".c").read_text().replace(
     "/* PRODUCTION */", "\n".join(functions))
 with tempfile.TemporaryDirectory(prefix="gl-upload-") as directory:

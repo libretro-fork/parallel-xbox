@@ -1609,6 +1609,12 @@ requests, geometric capacity growth, no allocation on reuse, discard-before-
 allocate and preservation of the other live scratch slot. TEX_SCRATCH_BINARY,
 TEX_SCRATCH_CFLAGS and TEX_SCRATCH_SKIP_RUN support native cross builds.
 
+The S3TC decoder and its normalized oracle now compile as standard C without
+QEMU, GLib or libretro-common. `make s3tctest` links only the decoder, oracle
+and math library. GL upload tests compile the production decoder unchanged,
+without allocation/include rewriting. Texture conversion APIs take caller-owned
+output; the unused allocating wrappers have been removed.
+
 `test-packed-swizzle.py CHECKOUT [CC]` checks 6,000 production routing,
 descriptor, barrier and Morton-addressing cases, including capped-range fallback
 and conversion-buffer reuse. Native CI runs it and the buffer-growth ownership
