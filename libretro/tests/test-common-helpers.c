@@ -2,10 +2,22 @@
 #include "qemu/osdep.h"
 #include "hw/xbox/nv2a/pgraph/glsl/psh.h"
 #include "hw/xbox/nv2a/pgraph/spv/glslc.h"
-static unsigned convolution_equivalence_checks;
+static unsigned convolution_equivalence_checks, clip_equivalence_checks;
 static void emit(const char *directory,unsigned api,unsigned kind,unsigned id,const PshState *state) {
   GenPshGlslOptions opts={.vulkan=api,.ubo_binding=0,.tex_binding=1};
   MString *text=pgraph_glsl_gen_psh(state,opts);char path[4096];
+  for(unsigned i=0;i<4;i++) {
+    unsigned mode=(state->shader_stage_program>>(i*5))&31;
+    if(mode==PS_TEXTUREMODES_CLIPPLANE)continue;
+    const unsigned masks[]={0,1,2,4,8,15};
+    for(unsigned k=0;k<ARRAY_SIZE(masks);k++) {
+      PshState variant;memcpy(&variant,state,sizeof(variant));
+      for(unsigned j=0;j<4;j++)variant.compare_mode[i][j]=(masks[k]>>j)&1;
+      MString *other=pgraph_glsl_gen_psh(&variant,opts);
+      assert(!strcmp(mstring_get_str(text),mstring_get_str(other)));
+      mstring_unref(other);clip_equivalence_checks++;
+    }
+  }
   /* Unused convolution settings must not change any generated source byte.
    * Cover each stage independently, including mixed active/unused stages. */
   for (unsigned i=0;i<4;i++) {
@@ -30,7 +42,30 @@ static void emit(const char *directory,unsigned api,unsigned kind,unsigned id,co
   }
   mstring_unref(text);
 }
+static void check_active_clip(void) {
+ for(unsigned api=0;api<2;api++)for(unsigned i=0;i<4;i++) {
+  PshState state={0};state.depth_format=DEPTH_FORMAT_D24;state.smooth_shading=true;
+  state.shader_stage_program=PS_TEXTUREMODES_CLIPPLANE<<(i*5);
+  state.final_inputs_0=PS_REGISTER_V0;
+  GenPshGlslOptions opts={.vulkan=api,.ubo_binding=0,.tex_binding=1};
+  MString *baseline=pgraph_glsl_gen_psh(&state,opts);
+  for(unsigned mask=0;mask<16;mask++) {
+   for(unsigned j=0;j<4;j++)state.compare_mode[i][j]=(mask>>j)&1;
+   MString *text=pgraph_glsl_gen_psh(&state,opts);
+   assert((strcmp(mstring_get_str(baseline),mstring_get_str(text))!=0)==(mask!=0));
+   if(api) {
+    GlslcOptions options={0};GlslcResult result={0};
+    assert(glslc_compile(GLSLC_STAGE_FRAGMENT,mstring_get_str(text),&options,&result));
+    free(result.words);
+   }
+   mstring_unref(text);
+  }
+  mstring_unref(baseline);
+ }
+ printf("PASS: 128 active clip comparison programs; 64 Vulkan variants compile\n");
+}
 int main(int argc,char **argv) {
+ check_active_clip();
  assert(argc==2);unsigned count=0;
  for(unsigned api=0;api<2;api++)for(unsigned mode=0;mode<11;mode++)
  for(unsigned mapping=0;mapping<8;mapping++)
@@ -86,6 +121,8 @@ int main(int argc,char **argv) {
    state.final_inputs_0=PS_REGISTER_T0;emit(argv[1],api,3,count++,&state);
   }
  }
+ assert(clip_equivalence_checks==18528);
+ printf("PASS: %u byte-identical unused-clip source comparisons\n",clip_equivalence_checks);
  assert(convolution_equivalence_checks==6912);
  printf("PASS: %u byte-identical unused-convolution source comparisons\n",convolution_equivalence_checks);
  assert(count==772);printf("PASS: %u full fragment variants, including signed/cube helper dependencies; Vulkan variants compile\n",count);
