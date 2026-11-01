@@ -403,6 +403,15 @@ bytes, not shader sampling or full-game behavior.
 The suite also restores an earlier alias state after a differently colored
 GPU redraw and checks both the restored picture and subsequent sampling.
 
+`python libretro/tests/test-depth-transfer-capacity.py CHECKOUT [CC]` runs the
+production depth-sampling planning prefix before command recording. It checks
+D16, D24S8 and D32S8, three extents, scale 1/2/4/8, available/unavailable native
+scratch, three stencil alignments and 16/32-bit output footprints (432 cases).
+A simulated 800 MiB buffer capacity matches the production reservation ceiling;
+the fixture verifies native transfers avoid unnecessary growth requests while
+scaled fallbacks and aligned stencil planes remain fully covered. This tests
+capacity and ordering, without allocating those buffers or measuring GPU stalls.
+
 Vulkan captures allocate mapped readback buffers lazily per sync slot and
 grow them to the actual output dimensions. Requested captures fail explicitly
 if the image, size or allocation is invalid. Timing-only runs allocate no

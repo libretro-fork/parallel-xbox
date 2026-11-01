@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Size Vulkan depth-sampling conversion buffers after selecting the native or scaled transfer extent, using the actual depth/stencil planes and output bytes. Avoid unnecessary buffer growth and its GPU drain at high scales, and include stencil-plane alignment for small images.
+
 - Keep eligible RGB565 render-target views as linear ARGB/XRGB textures on the Vulkan GPU, and support linear Y8, AY8 and A8 byte views of native ARGB/RGB565 surfaces. Match active row bytes across 8/16/32-bit views without CPU readback or reupload; retain native-format, dirty-overlap, pitch, capacity and scaling checks.
 
 - Keep linear XRGB1555, ARGB4444, G8B8 and A8Y8 views of eligible ARGB render targets on the Vulkan GPU. Accept matching padded guest pitches without copying padding or waiting for CPU readback, and check transfer capacity against active pixels. Add an opt-in real-device transfer oracle covering formats, scaling, row padding and repeated updates.

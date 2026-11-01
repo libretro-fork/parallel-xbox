@@ -122,6 +122,23 @@ static VkColorFormatInfo texture_vkf(PGRAPHVkState *r, int color_format)
     return kelvin_color_format_vk_map[color_format];
 }
 
+static unsigned int vk_format_texel_size(VkFormat format)
+{
+    switch (format) {
+    case VK_FORMAT_R8_UNORM:                return 1;
+    case VK_FORMAT_R8G8_UNORM:              return 2;
+    case VK_FORMAT_A1R5G5B5_UNORM_PACK16:   return 2;
+    case VK_FORMAT_R5G6B5_UNORM_PACK16:     return 2;
+    case VK_FORMAT_A4R4G4B4_UNORM_PACK16:   return 2;
+    case VK_FORMAT_R16_UNORM:               return 2;
+    case VK_FORMAT_R8G8B8A8_SNORM:          return 4;
+    case VK_FORMAT_B8G8R8A8_UNORM:          return 4;
+    case VK_FORMAT_R8G8B8A8_UNORM:          return 4;
+    case VK_FORMAT_R32_UINT:                return 4;
+    default:                                return 0;
+    }
+}
+
 // FIXME: Move to common
 static enum S3TC_DECOMPRESS_FORMAT kelvin_format_to_s3tc_format(int color_format)
 {
@@ -955,14 +972,6 @@ static void copy_zeta_surface_to_texture(PGRAPHState *pg, SurfaceBinding *surfac
     unsigned int scaled_width = surface->width,
                  scaled_height = surface->height;
     pgraph_apply_scaling_factor(pg, &scaled_width, &scaled_height);
-    /* Before the recording below: growing settles everything. */
-    pgraph_vk_buffer_ensure_capacity(pg, BUFFER_COMPUTE_DST,
-                                     (VkDeviceSize)scaled_width *
-                                         scaled_height * 8);
-
-    VkCommandBuffer cmd = pgraph_vk_begin_nondraw_commands(pg);
-    pgraph_vk_begin_debug_marker(r, cmd, RGBA_GREEN, __func__);
-
     /* Native depth: the copy/pack/upload chain below runs at cw x ch
      * (native when the scratch blit is in play, scaled otherwise). */
     VkImage znative_scratch = VK_NULL_HANDLE;
@@ -974,7 +983,7 @@ static void copy_zeta_surface_to_texture(PGRAPHState *pg, SurfaceBinding *surfac
     unsigned int ch = znative_scratch ? surface->height : scaled_height;
 
     size_t copied_image_size =
-        cw * ch * surface->host_fmt.host_bytes_per_pixel;
+        (size_t)cw * ch * surface->host_fmt.host_bytes_per_pixel;
     size_t stencil_buffer_offset = 0;
     size_t stencil_buffer_size = 0;
 
@@ -994,9 +1003,9 @@ static void copy_zeta_surface_to_texture(PGRAPHState *pg, SurfaceBinding *surfac
 
     if (surface->host_fmt.aspect & VK_IMAGE_ASPECT_STENCIL_BIT) {
         stencil_buffer_offset =
-            ROUND_UP(cw * ch * 4,
+            ROUND_UP((size_t)cw * ch * 4,
                      r->device_props.limits.minStorageBufferOffsetAlignment);
-        stencil_buffer_size = cw * ch;
+        stencil_buffer_size = (size_t)cw * ch;
         /* The depth plane copies as 32-bit texels whatever the image texel
          * size (8 bytes for D32_SFLOAT_S8_UINT, the AMD fallback): the
          * copy ends with the stencil plane. Summing the image texel size
@@ -1016,8 +1025,21 @@ static void copy_zeta_surface_to_texture(PGRAPHState *pg, SurfaceBinding *surfac
             .imageExtent = (VkExtent3D){cw, ch, 1},
         };
     }
+    /* Choose native/scaled extents before sizing. Growing drains GPU work,
+     * so request only the copied planes and their packed/texture output,
+     * including alignment before the stencil plane. Grow before recording. */
+    VkDeviceSize output_size = (VkDeviceSize)cw * ch *
+        vk_format_texel_size(vkf.vk_format);
+    if (use_compute_to_convert_depth_stencil) {
+        output_size = MAX(output_size, (VkDeviceSize)cw * ch * 4);
+    }
+    pgraph_vk_buffer_ensure_capacity(pg, BUFFER_COMPUTE_DST,
+                                     MAX(copied_image_size, output_size));
     StorageBuffer *dst_storage_buffer = &r->storage_buffers[BUFFER_COMPUTE_DST];
     assert(dst_storage_buffer->buffer_size >= copied_image_size);
+
+    VkCommandBuffer cmd = pgraph_vk_begin_nondraw_commands(pg);
+    pgraph_vk_begin_debug_marker(r, cmd, RGBA_GREEN, __func__);
 
     pgraph_vk_transition_image_layout(
         pg, cmd, surface->image, surface->host_fmt.vk_format,
@@ -1484,23 +1506,6 @@ static void copy_cube_faces_to_texture(PGRAPHState *pg,
 
     texture->draw_time = max_draw_time;
     texture->cube_source_mask = source_mask;
-}
-
-static unsigned int vk_format_texel_size(VkFormat format)
-{
-    switch (format) {
-    case VK_FORMAT_R8_UNORM:                return 1;
-    case VK_FORMAT_R8G8_UNORM:              return 2;
-    case VK_FORMAT_A1R5G5B5_UNORM_PACK16:   return 2;
-    case VK_FORMAT_R5G6B5_UNORM_PACK16:     return 2;
-    case VK_FORMAT_A4R4G4B4_UNORM_PACK16:   return 2;
-    case VK_FORMAT_R16_UNORM:               return 2;
-    case VK_FORMAT_R8G8B8A8_SNORM:          return 4;
-    case VK_FORMAT_B8G8R8A8_UNORM:          return 4;
-    case VK_FORMAT_R8G8B8A8_UNORM:          return 4;
-    case VK_FORMAT_R32_UINT:                return 4;
-    default:                                return 0;
-    }
 }
 
 static bool check_surface_to_texture_compatiblity(const SurfaceBinding *surface,
