@@ -21,7 +21,7 @@ source = (repo/'hw/xbox/mcpx/apu/vp/vp.c').read_text(encoding='utf-8')
 header = (repo/'hw/xbox/mcpx/apu/vp/vp.h').read_text(encoding='utf-8')
 
 def function(name):
-    match = re.search(r'^(?:static\s+)?(?:inline\s+)?(?:void|int|int32_t|uint32_t|bool|hwaddr|VoicePitchRamp)\s*\n?\s*'
+    match = re.search(r'^(?:static\s+)?(?:inline\s+)?(?:void|int|int32_t|uint32_t|bool|hwaddr|VoicePitchRamp|uint64_t)\s*(?:__attribute__\(\(noinline\)\)\s*)?\n?\s*'
                       + name + r'\([^;]*?\)\s*\{', source, re.M)
     assert match, name
     start = source.index('{', match.start())
@@ -61,7 +61,7 @@ fixture = re.sub(r'static void get_multipass_samples\(.*?\n\{.*?\}\n', '', fixtu
 functions = ['set_notify_status', 'voice_get_mask', 'voice_set_mask', 'voice_off',
              'voice_resample_reset', 'voice_reset_filters', 'filter_coefficient', 'attenuation_gain',
              'get_data_ptr', 'envelope_level', 'voice_step_envelope', 'voice_step_lfos',
-             'voice_get_samples', 'voice_resample_fetch', 'voice_pitch_ramp',
+             'voice_jingle_hash', 'voice_get_samples', 'voice_resample_fetch', 'voice_pitch_ramp',
              'voice_pitch_step', 'voice_resample', 'peek_ahead_multipass_bin',
              'get_multipass_samples', 'voice_process', 'hrir_tap',
              'get_voice_bin_src_dst', 'voice_work_claim', 'voice_work_unit', 'voice_worker_thread',

@@ -1783,6 +1783,12 @@ static void tcg_context_init(unsigned max_threads)
     tcg_debug_assert(!tcg_regset_test_reg(s->reserved_regs, TCG_AREG0));
     ts = tcg_global_reg_new_internal(s, TCG_TYPE_PTR, TCG_AREG0, "env");
     tcg_env = temp_tcgv_ptr(ts);
+#ifdef TCG_TARGET_LR_ICOUNT_REG
+    /* Shadow the CPU-owned budget in a nonvolatile host register. This
+     * is an emitter optimization, not a writable TCG fixed temporary. */
+    tcg_debug_assert(!tcg_regset_test_reg(s->reserved_regs, TCG_TARGET_LR_ICOUNT_REG));
+    tcg_regset_set_reg(s->reserved_regs, TCG_TARGET_LR_ICOUNT_REG);
+#endif
 }
 
 void tcg_init(size_t tb_size, int splitwx, unsigned max_threads)

@@ -1,5 +1,17 @@
 # Changelog of the libretro core
 
+- Reduce x86-64 CPU dispatch overhead by retaining the instruction budget in a nonvolatile host register across translated blocks. Synchronize the canonical 16-bit budget at helper, memory-access slow-path and return boundaries; keep interrupt requests in their independent atomic half. Preserve instruction deadlines, guest clock rate and state layout.
+
+- Keep real-time DSP budget renewals inside native chains, including REP, while preserving the existing 1,000-cycle quantum, budget carry, hardware halt, interrupts and synchronous guest-RAM ordering. Non-real-time DSP mode retains its single-quantum behavior.
+
+- Recognize the existing proven RAM-counter wait at block entry, refunding its unexecuted instructions and retaining interrupt-aware handoff. Omit quiet-counter checks in blocks that cannot start either accepted wait proof, while preserving store resets and page-boundary fallbacks.
+
+- Skip DSP code-invalidation scans for program-memory data words that have never been translated, using 512 bytes of persistent coverage per DSP. Compile modifier-register effective-address loads and non-writable upper status-bit modifications natively.
+
+- Compile DSP status restores and program-memory effective-address reads natively. Ordinary status restores remain in generated code; scaling and DO-loop changes use architectural post-processing. Read program RAM directly without transient buffers, while preserving address updates and bounded slow-path handling.
+
+- Compile DSP register bit operations and reserved-slot parallel moves natively. Avoid redundant parallel self-move temporaries, preserving register-width masking. Keep normal cached JSR/RTS chains native while retaining interrupt, stack-error and loop-boundary post-processing.
+
 - Specialize native DSP blocks for active DO-loop state, omitting per-instruction loop-end checks outside loops. Keep REP translations shared and group both loop indexes into one persistent allocation per scaling mode. Preserve loop transitions, interrupts, program-write invalidation and synchronous guest-RAM DMA ordering. Metadata can grow by up to 160 KiB per DSP; the code arena remains capped at 4 MiB.
 
 - Extend translated-block cache regression coverage through production insertion, class conflicts, PC-relative identities, invalidation and flushing of both cache arrays.

@@ -28,10 +28,14 @@ void dspjit_flush(DspJit *jit);
 void dspjit_invalidate(DspJit *jit, uint32_t address);
 /* As dsp_c_run: cycles of the DSP, until they are spent or it halts */
 void dspjit_run(DspJit *jit, int cycles);
+void dspjit_run_until_halt(DspJit *jit, int cycles);
 
 #ifdef DSPJIT_TEST
 /* Test builds count actual execution through either interpreter path. */
 uint64_t dspjit_test_fallback_count(void);
+uint64_t dspjit_test_invalidation_scans(void);
+uint64_t dspjit_test_entry_count(void);
+void dspjit_test_reset_entry_count(void);
 void dspjit_test_reset_fallback_count(void);
 uint64_t dspjit_test_committed_bytes(DspJit *jit);
 unsigned dspjit_test_mode_count(DspJit *jit);

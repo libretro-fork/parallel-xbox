@@ -506,9 +506,11 @@ static void dsp_run_frame(MCPXAPUState *d, int64_t mixbins[NUM_MIXBINS][NUM_SAMP
         dsp_start_frame(d->gp.dsp);
         dsp_set_halt_requested(d->gp.dsp, false);
         dsp_set_cycle_count(d->gp.dsp, 0);
-        do {
+        if (d->gp.realtime) {
+            dsp_run_until_halt(d->gp.dsp);
+        } else {
             dsp_run(d->gp.dsp, 1000);
-        } while (!dsp_get_halt_requested(d->gp.dsp) && d->gp.realtime);
+        }
 
         if (gp_out) {
             /* mixbins 0 and 1, straight into the frontend's queue */
@@ -544,9 +546,11 @@ static void dsp_run_frame(MCPXAPUState *d, int64_t mixbins[NUM_MIXBINS][NUM_SAMP
         dsp_start_frame(d->ep.dsp);
         dsp_set_halt_requested(d->ep.dsp, false);
         dsp_set_cycle_count(d->ep.dsp, 0);
-        do {
+        if (d->ep.realtime) {
+            dsp_run_until_halt(d->ep.dsp);
+        } else {
             dsp_run(d->ep.dsp, 1000);
-        } while (!dsp_get_halt_requested(d->ep.dsp) && d->ep.realtime);
+        }
         if (q) {
             if (!t->ep_written) {
                 memset(q, 0, 256 * 2 * sizeof(int16_t));

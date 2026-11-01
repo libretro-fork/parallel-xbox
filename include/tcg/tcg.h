@@ -423,6 +423,7 @@ struct TCGContext {
     TCGLabel *lr_quiet_label;
     TCGOp *lr_quiet_insn;
     TCGOp *lr_quiet_first, *lr_quiet_last;
+    bool lr_quiet_enabled;  /* stores must reset even without a check */
     bool lr_quiet_store;    /* the block's first store resets the count */
 
 

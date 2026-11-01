@@ -37,7 +37,8 @@ jobs:
       - name: Install native DSP test build dependency
         run: sudo apt-get update -qq && sudo apt-get install -y libepoxy-dev
       - name: Native DSP instructions must match the interpreter without fallback
-        run: make dspnative dspmax dspjumps dsptcc dsplogical
+        timeout-minutes: 10
+        run: make dspnative dspmax dspjumps dsptcc dsplogical dspstatus dspbudget
 
   guest-gpu-progress:
     name: DOAX guest GPU progress regression
@@ -49,6 +50,12 @@ jobs:
         run: python3 libretro/tests/test-nv2a-guest-wakes.py . cc
       - name: NGB RAM-counter waits must yield without skipping useful computation
         run: python3 libretro/tests/test-memory-poll.py . cc
+      - name: Native register budgets must preserve helper accounting and request halves
+        run: python3 libretro/tests/test-tcg-budget-register.py . cc
+      - name: Early wait nominations must preserve prepaid instructions and interrupt requests
+        run: python3 libretro/tests/test-early-memory-wait.py . cc
+      - name: Idle candidates must preserve proof entries without crossing code pages
+        run: python3 libretro/tests/test-idle-candidate-prefix.py . cc
       - name: Deliver interrupts before proving kernel or RAM waits
         run: python3 libretro/tests/test-idle-interrupts.py . cc
       - name: GPU and halted waits must leave guest time to the frame owner
@@ -164,7 +171,8 @@ jobs:
         run: libretro/tests/run.sh parallel_xbox_libretro.so
 
       - name: Native DSP coverage and interpreter equivalence
-        run: make dspnative dspmax dspjumps dsptcc dsplogical
+        timeout-minutes: 10
+        run: make dspnative dspmax dspjumps dsptcc dsplogical dspstatus dspbudget
 
       # GLib is the core's own and libslirp is linked in: the core is the
       # one file

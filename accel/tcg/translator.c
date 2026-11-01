@@ -197,6 +197,39 @@ bool translator_io_start(DisasContextBase *db)
     return true;
 }
 
+/* This is only a feasibility filter, never an idle proof. The live kernel
+ * and RAM-poll proofs in misc_helper.c still validate complete code and
+ * memory state before time can advance. These bytes belong to the first
+ * translated instruction, so ordinary TB invalidation covers their changes. */
+static bool lr_quiet_candidate_prefix(const DisasContextBase *db)
+{
+#ifdef XBOX
+    const uint8_t *code = db->host_addr[0];
+    if (!code) {
+        return true; /* MMIO/non-RAM code: keep the conservative path. */
+    }
+    switch (code[0]) {
+    case 0xFB: /* kernel STI */
+    case 0x90: /* either NOP after STI */
+        return true;
+    case 0x3B: /* CMP EBP,[EBP+0] after CLI */
+        if ((db->pc_first & ~TARGET_PAGE_MASK) > TARGET_PAGE_SIZE - 3) {
+            return true;
+        }
+        return code[1] == 0x6D && code[2] == 0;
+    case 0x8B: /* RAM timer wait starts with MOV ECX,[EDX]. */
+        if ((db->pc_first & ~TARGET_PAGE_MASK) == TARGET_PAGE_SIZE - 1) {
+            return true; /* Do not inspect an unprobed second code page. */
+        }
+        return code[1] == 0x0A;
+    default:
+        return false;
+    }
+#else
+    return true;
+#endif
+}
+
 static TCGOp *gen_tb_start(DisasContextBase *db, uint32_t cflags)
 {
     TCGv_i32 count = NULL;
@@ -208,12 +241,12 @@ static TCGOp *gen_tb_start(DisasContextBase *db, uint32_t cflags)
 
     if (budget) {
         /*
-         * The budget's half alone: the block before stored it with a
-         * 16-bit store (below), and a 32-bit load of icount_decr.u32 over
-         * that store cannot be forwarded from it, so every block would
-         * wait for the store to reach the cache. The exit request half
-         * (u16.high, 0 or -1, set by other threads) is a load of its own;
-         * negative in either is what u32 < 0 was.
+         * Keep the budget separate from the signed request half. The
+         * x86-64 emitter retains the low half in its reserved register
+         * across chains, synchronizing it at C calls and returns. Other
+         * hosts use matching 16-bit stores/loads, avoiding a full-width
+         * load that cannot forward from the preceding narrow store.
+         * Negative in either half is the original u32 < 0 condition.
          */
         count = tcg_temp_new_i32();
         tcg_gen_ld16u_i32(count, tcg_env,
@@ -272,7 +305,8 @@ static TCGOp *gen_tb_start(DisasContextBase *db, uint32_t cflags)
     tcg_ctx->lr_quiet_insn = NULL;
     tcg_ctx->lr_quiet_first = tcg_ctx->lr_quiet_last = NULL;
     tcg_ctx->lr_quiet_store = false;
-    if ((cflags & CF_USE_ICOUNT) && !(cflags & CF_NOIRQ)) {
+    tcg_ctx->lr_quiet_enabled = (cflags & CF_USE_ICOUNT) && !(cflags & CF_NOIRQ);
+    if (tcg_ctx->lr_quiet_enabled && lr_quiet_candidate_prefix(db)) {
         TCGv_i32 quiet = tcg_temp_new_i32();
 
         tcg_gen_ld_i32(quiet, tcg_env,
@@ -294,32 +328,35 @@ static TCGOp *gen_tb_start(DisasContextBase *db, uint32_t cflags)
  * one resets the quiet count, so the wait starts over */
 void lr_quiet_store_emitted(void)
 {
-    if (tcg_ctx->lr_quiet_label && !tcg_ctx->lr_quiet_store) {
+    if (tcg_ctx->lr_quiet_enabled && !tcg_ctx->lr_quiet_store) {
         tcg_ctx->lr_quiet_store = true;
-        /* A straight-line, side-effect-free prefix cannot bypass this
-         * reset. Its quiet decrement/check would immediately be overwritten.
-         * Keep the preamble if any branch, helper or guest access precedes
-         * the reset: that path may leave without ever reaching this store. */
-        TCGOp *op = QTAILQ_NEXT(tcg_ctx->lr_quiet_last, link);
-        bool dominates = true;
-        for (; op; op = QTAILQ_NEXT(op, link)) {
-            if (tcg_op_defs[op->opc].flags &
-                (TCG_OPF_BB_END | TCG_OPF_COND_BRANCH | TCG_OPF_SIDE_EFFECTS |
-                 TCG_OPF_CALL_CLOBBER)) {
-                dominates = false;
-                break;
+        if (tcg_ctx->lr_quiet_label) {
+            /* A straight-line, side-effect-free prefix cannot bypass this
+             * reset. Its quiet decrement/check would immediately be overwritten.
+             * Keep the preamble if any branch, helper or guest access precedes
+             * the reset: that path may leave without ever reaching this store. */
+            TCGOp *op = QTAILQ_NEXT(tcg_ctx->lr_quiet_last, link);
+            bool dominates = true;
+            for (; op; op = QTAILQ_NEXT(op, link)) {
+                if (tcg_op_defs[op->opc].flags &
+                    (TCG_OPF_BB_END | TCG_OPF_COND_BRANCH | TCG_OPF_SIDE_EFFECTS |
+                     TCG_OPF_CALL_CLOBBER)) {
+                    dominates = false;
+                    break;
+                }
+            }
+            if (dominates) {
+                TCGOp *stop = QTAILQ_NEXT(tcg_ctx->lr_quiet_last, link);
+                op = tcg_ctx->lr_quiet_first;
+                while (op != stop) {
+                    TCGOp *next = QTAILQ_NEXT(op, link);
+                    tcg_op_remove(tcg_ctx, op);
+                    op = next;
+                }
+                tcg_ctx->lr_quiet_label = NULL;
             }
         }
-        if (dominates) {
-            TCGOp *stop = QTAILQ_NEXT(tcg_ctx->lr_quiet_last, link);
-            op = tcg_ctx->lr_quiet_first;
-            while (op != stop) {
-                TCGOp *next = QTAILQ_NEXT(op, link);
-                tcg_op_remove(tcg_ctx, op);
-                op = next;
-            }
-            tcg_ctx->lr_quiet_label = NULL;
-        }
+        /* Stores retain their reset even when no quiet check was emitted. */
         tcg_gen_st_i32(tcg_constant_i32(LR_QUIET_INSNS), tcg_env,
                        offsetof(CPUState, neg.lr_quiet) - sizeof(CPUState));
     }

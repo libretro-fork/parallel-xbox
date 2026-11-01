@@ -314,6 +314,38 @@ dsptcc: $(DSPDIFF)
 	$(DSPDIFF) --frames 100 --x 0=4 --seed 1 $(CORE_DIR)/libretro/tests/rom/gp-tcc.inc
 	$(DSPDIFF) --frames 100 --x 0=4 --seed 2 $(CORE_DIR)/libretro/tests/rom/gp-tcc.inc
 
+dspstatus: $(DSPDIFF)
+	$(DSPDIFF) --frames 100 --x 0=4 --seed 1 $(CORE_DIR)/libretro/tests/rom/gp-status.inc
+	$(DSPDIFF) --frames 100 --x 0=4 --seed 2 $(CORE_DIR)/libretro/tests/rom/gp-status.inc
+
+# Native budget refills must match both the interpreter and the old
+# chunked JIT, including its host budget remainder, at every hardware halt.
+dspbudget: $(DSPDIFF)
+	$(DSPDIFF) --until-halt --frames 100 --x 0=4 --seed 1 $(CORE_DIR)/libretro/tests/rom/gp.inc
+	$(DSPDIFF) --until-halt --baseline-jit --frames 100 --x 0=4 --seed 1 $(CORE_DIR)/libretro/tests/rom/gp.inc
+	$(DSPDIFF) --until-halt --frames 100 --x 0=4 --seed 2 $(CORE_DIR)/libretro/tests/rom/gp.inc
+	$(DSPDIFF) --until-halt --baseline-jit --frames 100 --x 0=4 --seed 2 $(CORE_DIR)/libretro/tests/rom/gp.inc
+	$(DSPDIFF) --until-halt --frames 100 --x 0=4 --seed 1 $(CORE_DIR)/libretro/tests/rom/gp-max.inc
+	$(DSPDIFF) --until-halt --baseline-jit --frames 100 --x 0=4 --seed 1 $(CORE_DIR)/libretro/tests/rom/gp-max.inc
+	$(DSPDIFF) --until-halt --frames 100 --x 0=4 --seed 2 $(CORE_DIR)/libretro/tests/rom/gp-max.inc
+	$(DSPDIFF) --until-halt --baseline-jit --frames 100 --x 0=4 --seed 2 $(CORE_DIR)/libretro/tests/rom/gp-max.inc
+	$(DSPDIFF) --until-halt --frames 100 --x 0=4 --seed 1 $(CORE_DIR)/libretro/tests/rom/gp-jumps.inc
+	$(DSPDIFF) --until-halt --baseline-jit --frames 100 --x 0=4 --seed 1 $(CORE_DIR)/libretro/tests/rom/gp-jumps.inc
+	$(DSPDIFF) --until-halt --frames 100 --x 0=4 --seed 2 $(CORE_DIR)/libretro/tests/rom/gp-jumps.inc
+	$(DSPDIFF) --until-halt --baseline-jit --frames 100 --x 0=4 --seed 2 $(CORE_DIR)/libretro/tests/rom/gp-jumps.inc
+	$(DSPDIFF) --until-halt --frames 100 --x 0=4 --seed 1 $(CORE_DIR)/libretro/tests/rom/gp-tcc.inc
+	$(DSPDIFF) --until-halt --baseline-jit --frames 100 --x 0=4 --seed 1 $(CORE_DIR)/libretro/tests/rom/gp-tcc.inc
+	$(DSPDIFF) --until-halt --frames 100 --x 0=4 --seed 2 $(CORE_DIR)/libretro/tests/rom/gp-tcc.inc
+	$(DSPDIFF) --until-halt --baseline-jit --frames 100 --x 0=4 --seed 2 $(CORE_DIR)/libretro/tests/rom/gp-tcc.inc
+	$(DSPDIFF) --until-halt --frames 100 --x 0=4 --seed 1 $(CORE_DIR)/libretro/tests/rom/gp-logical.inc
+	$(DSPDIFF) --until-halt --baseline-jit --frames 100 --x 0=4 --seed 1 $(CORE_DIR)/libretro/tests/rom/gp-logical.inc
+	$(DSPDIFF) --until-halt --frames 100 --x 0=4 --seed 2 $(CORE_DIR)/libretro/tests/rom/gp-logical.inc
+	$(DSPDIFF) --until-halt --baseline-jit --frames 100 --x 0=4 --seed 2 $(CORE_DIR)/libretro/tests/rom/gp-logical.inc
+	$(DSPDIFF) --until-halt --frames 100 --x 0=4 --seed 1 $(CORE_DIR)/libretro/tests/rom/gp-status.inc
+	$(DSPDIFF) --until-halt --baseline-jit --frames 100 --x 0=4 --seed 1 $(CORE_DIR)/libretro/tests/rom/gp-status.inc
+	$(DSPDIFF) --until-halt --frames 100 --x 0=4 --seed 2 $(CORE_DIR)/libretro/tests/rom/gp-status.inc
+	$(DSPDIFF) --until-halt --baseline-jit --frames 100 --x 0=4 --seed 2 $(CORE_DIR)/libretro/tests/rom/gp-status.inc
+
 dsplogical: $(DSPDIFF)
 	$(DSPDIFF) --frames 100 --x 0=4 --seed 1 $(CORE_DIR)/libretro/tests/rom/gp-logical.inc
 	$(DSPDIFF) --frames 100 --x 0=4 --seed 2 $(CORE_DIR)/libretro/tests/rom/gp-logical.inc
@@ -336,7 +368,7 @@ dspnative: $(DSPNATIVE)
 SEEDSHADERS := $(CORE_DIR)/libretro/tests/seedshaders$(if $(filter win,$(platform)),.exe,)
 SEEDSHADERS_OBJS := $(call obj,$(addprefix $(CORE_DIR)/hw/xbox/nv2a/pgraph/, \
 		glsl/common.c glsl/geom.c glsl/psh.c glsl/shaders.c glsl/vsh.c \
-		glsl/vsh-ff.c glsl/vsh-prog.c glsl/uniform-cache.c texture.c)) \
+		glsl/vsh-ff.c glsl/vsh-prog.c glsl/uniform-cache.c texture.c swizzle.c)) \
 	$(OBJS_GLSLC) $(OBJS_VSH) $(OBJS_GLIB) $(OBJS_LRCOMMON)
 $(SEEDSHADERS): $(CORE_DIR)/libretro/tests/seedshaders.c $(SEEDSHADERS_OBJS) \
 		$(LIBQEMUUTIL)
@@ -365,6 +397,6 @@ $(FILEIOTEST): $(CORE_DIR)/libretro/tests/test-file-io.c \
 		$(DEPS_LIBS) $(OS_LIBS)
 fileiotest: $(FILEIOTEST)
 
-.PHONY: all clean dspdiff dspnative dsptcc dsplogical seedshaders s3tctest fileiotest FORCE
+.PHONY: all clean dspdiff dspnative dsptcc dsplogical dspstatus dspbudget seedshaders s3tctest fileiotest FORCE
 
 -include $(ALL_OBJECTS:.o=.d)

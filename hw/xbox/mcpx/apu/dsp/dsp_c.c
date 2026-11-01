@@ -100,6 +100,22 @@ static void dsp_c_run(DSPState *dsp, int cycles)
     }
 }
 
+/* The real-time engine did nothing between consecutive 1000-cycle runs.
+ * Let native chains renew that same quantum without leaving host code. */
+static void dsp_c_run_until_halt(DSPState *dsp)
+{
+    dsp_core_t *core = c_core(dsp);
+    if (core->jit) {
+        dsp->save_cycles += 1000;
+        dspjit_run_until_halt(core->jit, dsp->save_cycles);
+        dsp->save_cycles = core->jit_cycles;
+    } else {
+        do {
+            dsp_c_run(dsp, 1000);
+        } while (!core->is_idle);
+    }
+}
+
 /* a run of the scratch space into P, for dsp_c_bootstrap */
 static void dsp_c_bootstrap_run(void *user, uint8_t *host, size_t bytes)
 {
@@ -341,6 +357,7 @@ const DSPOps jit_dsp_ops = {
     .read_memory = dsp_c_read_memory,
     .reset = dsp_c_reset,
     .run = dsp_c_run,
+    .run_until_halt = dsp_c_run_until_halt,
     .set_cycle_count = dsp_c_set_cycle_count,
     .set_halt_requested = dsp_c_set_halt_requested,
     .start_frame = dsp_start_frame_impl,
@@ -360,6 +377,7 @@ const DSPOps c_dsp_ops = {
     .read_memory = dsp_c_read_memory,
     .reset = dsp_c_reset,
     .run = dsp_c_run,
+    .run_until_halt = dsp_c_run_until_halt,
     .set_cycle_count = dsp_c_set_cycle_count,
     .set_halt_requested = dsp_c_set_halt_requested,
     .start_frame = dsp_start_frame_impl,

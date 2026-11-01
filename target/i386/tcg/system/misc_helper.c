@@ -31,6 +31,7 @@
 #include "system/hw_accel.h"
 #include "qemu/rcu.h"
 #include "exec/target_page.h"
+#include "exec/translation-block.h"
 
 /* A short store-free run is not proof of idleness: NGB does active work
  * across STI/CLI boundaries. Recognise the kernel's actual idle loops and
@@ -181,6 +182,23 @@ bool xemu_libretro_memory_poll(CPUState *cpu)
     }
     uint32_t remaining = (uint32_t)env->regs[R_ESI] - ldl_le_p(counter);
     return (uint32_t)env->regs[R_EAX] < remaining;
+}
+
+/* An eligible block has not executed any guest instruction yet. A live
+ * proof may hand its wait to the existing interrupt-aware exit path now,
+ * without burning the quiet-counter threshold first. Refund only this
+ * block's prepaid instructions, preserving the concurrent request half. */
+uint32_t helper_xemu_memory_wait(CPUX86State *env, void *opaque)
+{
+    CPUState *cpu = env_cpu(env);
+    const TranslationBlock *tb = opaque;
+    if (!xemu_libretro_memory_poll(cpu)) {
+        return 0;
+    }
+    uint16_t low = retro_atomic_load_relaxed_u16(&cpu->neg.icount_decr.u16.low);
+    retro_atomic_store_relaxed_u16(&cpu->neg.icount_decr.u16.low, low + tb->icount);
+    cpu->neg.lr_quiet = -1;
+    return 1;
 }
 
 /* A port read is a device access, unless it is the last one again with the

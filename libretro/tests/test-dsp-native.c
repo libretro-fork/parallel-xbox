@@ -93,6 +93,23 @@ static void prepare(Machine *m, uint32_t op, uint32_t ext, unsigned seed,
     dsp->ops->write_memory(dsp, 'P', 0, op);
     dsp->ops->write_memory(dsp, 'P', 1, ext);
     dsp->ops->write_memory(dsp, 'P', 2, 0);
+    if (seed & 0x8000000) {
+        /* Reset uses an invalid-word sentinel in untouched P RAM. Supply
+         * architectural 24-bit program data for memory-read operands. */
+        for (unsigned i = 3; i < DSP_PRAM_SIZE; i++) {
+            c->pram[i] = (i * 0x010307u) & 0xFFFFFF;
+        }
+    }
+    if (seed & 0x2000000) {
+        for (unsigned r = 0; r < 4; r++) c->registers[r] = rng() & 0xFFFFFF;
+    }
+    if (seed & 0x4000000) {
+        for (unsigned r = DSP_REG_R0; r <= DSP_REG_N7; r++)
+            c->registers[r] = 0xFF0000 | (rng() & 0xFFFF);
+    }
+    if (seed & 0x1000000) {
+        c->registers[DSP_REG_SR] |= 1u << DSP_SR_FV;
+    }
     if (seed & 0x40000) {
         DspDecoded decoded;
         dsp56k_decode(c, 0, &decoded);
@@ -130,6 +147,82 @@ static void check(Machine *a, Machine *b, uint32_t op, uint32_t ext,
 
 /* Reuse the same translated PC across LF changes without resetting or
  * flushing the JIT. LA deliberately matches even when LF is clear. */
+/* A warmed native JSR/RTS loop should enter generated code once per run,
+ * while matching the interpreter at every varying budget boundary. */
+static void check_parallel_discard_and_self_moves(Machine *a, Machine *b)
+{
+    static const unsigned alus[] = {0, 0x10, 0x18, 0x13, 0x1B, 0x40, 0x80, 0x88};
+    for (unsigned mode = 0; mode < 4; mode++) {
+        for (unsigned src = 0; src < 32; src++) {
+            for (unsigned dst = 0; dst < 32; dst++) {
+                if (src != dst && src >= 4 && dst >= 4) continue;
+                for (unsigned alu = 0; alu < ARRAY_SIZE(alus); alu++) {
+                    uint32_t inst = 0x200000 | (src << 13) | (dst << 8) | alus[alu];
+                    for (unsigned seed = 0; seed < 4; seed++) {
+                        unsigned flags = seed | 0x10000 | 0x2000000;
+                        if ((inst & 0xFFE000) != 0x204000) flags |= 0x4000000;
+                        check(a, b, inst, 0, flags, mode, false);
+                    }
+                }
+            }
+        }
+    }
+}
+
+static void check_register_bits(Machine *a, Machine *b)
+{
+    static const uint32_t encodings[] = {0x0AC040, 0x0AC060, 0x0BC040, 0x0BC060};
+    for (unsigned mode = 0; mode < 4; mode++) {
+        for (unsigned reg = DSP_REG_X0; reg <= DSP_REG_M7; reg++) {
+            for (unsigned op = 0; op < ARRAY_SIZE(encodings); op++) {
+                unsigned bits = op == 3 ? 16 : 32;
+                if ((reg == DSP_REG_A || reg == DSP_REG_B) && bits > 24) bits = 24;
+                for (unsigned bit = 0; bit < bits; bit++) {
+                    for (unsigned seed = 0; seed < 8; seed++) {
+                        unsigned flags = seed | 0x1000000 |
+                            (seed & 1 ? 0x40000 : 0) | (seed & 2 ? 0x10000 : 0);
+                        check(a, b, encodings[op] | (reg << 8) | bit,
+                              0, flags, mode, false);
+                    }
+                }
+            }
+        }
+    }
+}
+
+static void check_call_chains(Machine *a, Machine *b)
+{
+    static const uint32_t program[] = {0x0D0003, 0x200040, 0x0C0000, 0x200048, 0x00000C};
+    static const unsigned budgets[] = {1024, 1, 2, 3, 31, 32, 63, 64, 127, 1000};
+    Machine *machines[] = {a, b};
+    for (unsigned mode = 0; mode < 4; mode++) {
+        for (unsigned i = 0; i < ARRAY_SIZE(machines); i++) {
+            Machine *m = machines[i];
+            prepare(m, program[0], 0, 1, mode, false);
+            dsp_core_t *c = m->dsp->backend;
+            c->registers[DSP_REG_SR] = mode << DSP_SR_S0;
+            c->registers[DSP_REG_LA] = 0xFFF;
+            for (unsigned pc = 0; pc < ARRAY_SIZE(program); pc++) {
+                m->dsp->ops->write_memory(m->dsp, 'P', pc, program[pc]);
+            }
+        }
+        for (unsigned pass = 0; pass < 4; pass++) {
+            for (unsigned n = 0; n < ARRAY_SIZE(budgets); n++) {
+                dspjit_test_reset_fallback_count();
+                dspjit_test_reset_entry_count();
+                a->dsp->ops->run(a->dsp, budgets[n]);
+                b->dsp->ops->run(b->dsp, budgets[n]);
+                assert(!dspjit_test_fallback_count());
+                assert(compare_machines(a, b) == 0);
+                if (pass > 0 && budgets[n] >= 1000) {
+                    assert(dspjit_test_entry_count() == 1);
+                }
+                cases++;
+            }
+        }
+    }
+}
+
 static void check_loop_cache_identity(Machine *a, Machine *b)
 {
     prepare(a, 0x200000, 0, 1, 0, false);
@@ -352,6 +445,106 @@ static void check_tcc(Machine *a, Machine *b)
     }
 }
 
+static void check_data_write_invalidation(Machine *a, Machine *b)
+{
+    Machine *machines[] = {a, b};
+    for (unsigned mode = 0; mode < 4; mode++) {
+        for (unsigned i = 0; i < ARRAY_SIZE(machines); i++) {
+            prepare(machines[i], 0x0140CA, 0x800000, 1, mode, false);
+        }
+        a->dsp->ops->run(a->dsp, 1);
+        b->dsp->ops->run(b->dsp, 1);
+        assert(compare_machines(a, b) == 0);
+        uint64_t scans = dspjit_test_invalidation_scans();
+        for (unsigned i = 0; i < ARRAY_SIZE(machines); i++) {
+            machines[i]->dsp->ops->write_memory(machines[i]->dsp, 'P', DSP_PRAM_SIZE - 2, 0x654321);
+        }
+        assert(dspjit_test_invalidation_scans() == scans);
+        for (unsigned i = 0; i < ARRAY_SIZE(machines); i++) {
+            Machine *m = machines[i];
+            dsp_core_t *c = m->dsp->backend;
+            m->dsp->ops->write_memory(m->dsp, 'P', 1, 1);
+            c->pc = 0;
+            m->dsp->save_cycles = 0;
+        }
+        assert(dspjit_test_invalidation_scans() == scans + 1);
+        a->dsp->ops->run(a->dsp, 1);
+        b->dsp->ops->run(b->dsp, 1);
+        assert(compare_machines(a, b) == 0);
+        cases += 2;
+    }
+}
+
+static void check_hot_control_registers(Machine *a, Machine *b)
+{
+    static const uint32_t bits[] = {0x0AC040, 0x0AC060, 0x0BC040};
+    for (unsigned mode = 0; mode < 4; mode++) {
+        for (unsigned seed = 0; seed < 16; seed++) {
+            for (unsigned op = 0; op < ARRAY_SIZE(bits); op++) {
+                for (unsigned bit = 16; bit < 32; bit++) {
+                    check(a, b, bits[op] | (DSP_REG_SR << 8) | bit, 0,
+                          seed | 0x1000000 | (seed & 1 ? 0x40000 : 0), mode, false);
+                }
+            }
+            for (unsigned reg = DSP_REG_M0; reg <= DSP_REG_M7; reg++) {
+                for (unsigned ea = 0; ea < 64; ea++) {
+                    if ((ea >> 3) == 6 && (ea & 7) != 0 && (ea & 7) != 4) continue;
+                    check(a, b, 0x05C020 | (ea << 8) | reg, 0x30, seed, mode, false);
+                }
+            }
+        }
+    }
+}
+
+static void check_program_memory_reads(Machine *a, Machine *b)
+{
+    for (unsigned mode = 0; mode < 4; mode++) {
+        for (unsigned reg = DSP_REG_X0; reg <= DSP_REG_M7; reg++) {
+            for (unsigned ea = 0; ea < 64; ea++) {
+                if ((ea >> 3) == 6 && (ea & 7) != 0) continue;
+                for (unsigned seed = 0; seed < 4; seed++) {
+                    check(a, b, 0x07C080 | (ea << 8) | reg, 0x30,
+                          seed | 0x10000 | 0x8000000, mode, false);
+                }
+            }
+        }
+    }
+}
+
+static void check_status_restore_chains(Machine *a, Machine *b)
+{
+    static const unsigned budgets[] = {1, 2, 3, 7, 31, 63, 127, 1000};
+    static const uint32_t program[] = {0x200040, 0x04C4B9, 0x200048, 0x0C0000};
+    Machine *machines[] = {a, b};
+    for (unsigned before = 0; before < 8; before++) {
+        for (unsigned after = 0; after < 8; after++) {
+            for (unsigned flags = 0; flags < 16; flags++) {
+                for (unsigned i = 0; i < ARRAY_SIZE(machines); i++) {
+                    Machine *m = machines[i];
+                    prepare(m, program[0], 0, 1, before & 3, false);
+                    dsp_core_t *c = m->dsp->backend;
+                    c->registers[DSP_REG_SR] = ((before & 3) << DSP_SR_S0) |
+                        (before & 4 ? 1 << DSP_SR_LF : 0);
+                    c->registers[DSP_REG_X0] = ((after & 3) << DSP_SR_S0) |
+                        (after & 4 ? 1 << DSP_SR_LF : 0) | flags | 0xF00000;
+                    c->registers[DSP_REG_LA] = 0xFFF;
+                    for (unsigned pc = 0; pc < ARRAY_SIZE(program); pc++) {
+                        m->dsp->ops->write_memory(m->dsp, 'P', pc, program[pc]);
+                    }
+                }
+                for (unsigned n = 0; n < ARRAY_SIZE(budgets); n++) {
+                    dspjit_test_reset_fallback_count();
+                    a->dsp->ops->run(a->dsp, budgets[n]);
+                    b->dsp->ops->run(b->dsp, budgets[n]);
+                    assert(!dspjit_test_fallback_count());
+                    assert(compare_machines(a, b) == 0);
+                    cases++;
+                }
+            }
+        }
+    }
+}
+
 static void check_movec(Machine *a, Machine *b)
 {
     for (unsigned mode = 0; mode < 4; mode++) {
@@ -361,12 +554,13 @@ static void check_movec(Machine *a, Machine *b)
             }
             for (unsigned r2 = DSP_REG_X0; r2 <= DSP_REG_M7; r2++) {
                 for (unsigned dir = 0; dir < 2; dir++) {
-                    if (dir && r1 == DSP_REG_SR) {
-                        continue; /* writes may change the JIT scaling mode */
-                    }
                     for (unsigned seed = 0; seed < 16; seed++) {
                         check(a, b, 0x0440A0 | (dir << 15) | (r2 << 8) | r1,
                               0, seed, mode, false);
+                        if (dir && r1 == DSP_REG_SR) {
+                            check(a, b, 0x0440A0 | (dir << 15) | (r2 << 8) | r1,
+                                  0, seed | 0x40000, mode, false);
+                        }
                     }
                 }
             }
@@ -484,6 +678,10 @@ int main(void)
     check_max_transfer(a, b);
     check_tcc(a, b);
     check_movec(a, b);
+    check_data_write_invalidation(a, b);
+    check_hot_control_registers(a, b);
+    check_program_memory_reads(a, b);
+    check_status_restore_chains(a, b);
     check_logical_immediates(a, b);
     check_loop_address_reload(a, b);
     for (unsigned sr = 0; sr < 256; sr++) {
@@ -622,6 +820,9 @@ int main(void)
             }
         }
     }
+    check_parallel_discard_and_self_moves(a, b);
+    check_register_bits(a, b);
+    check_call_chains(a, b);
     check_loop_cache_identity(a, b);
     assert(dspjit_test_mode_count(jit) == 8);
     assert(dspjit_test_committed_bytes(jit) >= initially_committed);

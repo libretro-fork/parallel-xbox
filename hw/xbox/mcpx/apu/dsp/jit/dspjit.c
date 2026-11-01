@@ -62,7 +62,12 @@
 #endif
 
 #ifdef DSPJIT_TEST
+static uint64_t test_invalidation_scans;
+uint64_t dspjit_test_invalidation_scans(void) { return test_invalidation_scans; }
 static uint64_t test_fallback_count;
+static uint64_t test_entry_count;
+uint64_t dspjit_test_entry_count(void) { return test_entry_count; }
+void dspjit_test_reset_entry_count(void) { test_entry_count = 0; }
 uint64_t dspjit_test_fallback_count(void) { return test_fallback_count; }
 void dspjit_test_reset_fallback_count(void) { test_fallback_count = 0; }
 static void test_note_fallback(dsp_core_t *core)
@@ -97,6 +102,7 @@ typedef struct DspJitModeCache {
 
 struct DspJit {
     dsp_core_t *core;
+    bool run_until_halt;
     uint8_t *cache;
     size_t cache_len;
     size_t cache_committed;
@@ -111,6 +117,9 @@ struct DspJit {
     dspjit_block_fn *blocks[DSPJIT_MODES];
     uint16_t *block_end[DSPJIT_MODES];
     dspjit_block_fn *rep_blocks[4]; /* REP checks loop state dynamically */
+    /* Conservative coverage since the last flush. Stale bits cost only
+     * another scan; data words never translated need no cache walk. */
+    uint64_t covered[(DSP_PRAM_SIZE + 63) / 64];
     struct Tr *tr;      /* the translator's state, made once */
 };
 
@@ -264,6 +273,8 @@ enum {
     STUB_LOOPEND,       /* the PC reached LA+1: the DO loop's end, if in one */
     STUB_READ_X,        /* an X read outside the fast range */
     STUB_WRITE_X,
+    STUB_REFILL_BUDGET,
+    STUB_READ_P,
     STUB_READ_Y,
     STUB_WRITE_Y,
     STUB_RN_UPDATE,     /* an Rn update with Mn not linear */
@@ -274,6 +285,7 @@ enum {
     STUB_FALLBACK,      /* the instruction through the interpreter's function */
     STUB_CTRL_POST,     /* the instruction's work done, the PC to be imm
                            (0xFFFFFFFF: as set): dsp56k_post for the rest */
+    STUB_STATUS_POST,   /* a status write changed scaling or DO-loop state */
 };
 
 enum { MOD_IMM, MOD_PLUS_N, MOD_MINUS_N };
@@ -311,6 +323,7 @@ struct Tr {
     Stub stubs[MAX_STUBS];
     int nstubs;
     const void *leave;  /* the way out of the code (DspJit's) */
+    const bool *run_until_halt;
     dspjit_block_fn *table; /* the blocks for the block's scaling/loop mode */
     dspjit_block_fn *loop_table; /* same scaling mode, LF set */
 };
@@ -431,7 +444,8 @@ static void emit_chain(Tr *t, uint32_t cyc)
     } else {
         h_cmp_mem32_imm(e, REG_CORE, OFF(jit_cycles), 0);
     }
-    h_jcc_abs(e, HC_LE, t->leave);
+    Stub *budget = stub_new(t, STUB_REFILL_BUDGET, h_jcc(e, HC_LE));
+    budget->back = e->len;
     h_ld32(e, T0, REG_CORE, OFF(pc));
     h_and_ri(e, 0, T0, DSP_PRAM_SIZE - 1);
     h_mov_ri(e, T1, (uint64_t)(uintptr_t)t->table);
@@ -454,7 +468,8 @@ static void emit_chain_to(Tr *t, uint32_t target, uint32_t cyc)
     } else {
         h_cmp_mem32_imm(e, REG_CORE, OFF(jit_cycles), 0);
     }
-    h_jcc_abs(e, HC_LE, t->leave);
+    Stub *budget = stub_new(t, STUB_REFILL_BUDGET, h_jcc(e, HC_LE));
+    budget->back = e->len;
     h_mov_ri(e, T0, (uint64_t)(uintptr_t)&t->table[target & (DSP_PRAM_SIZE - 1)]);
     h_ld64(e, T0, T0, 0);
     h_test_rr(e, 1, T0, T0);
@@ -463,6 +478,11 @@ static void emit_chain_to(Tr *t, uint32_t target, uint32_t cyc)
 }
 
 /* --- helpers called from the generated code --- */
+
+static uint32_t jit_read_p(dsp_core_t *core, uint32_t addr)
+{
+    return dsp56k_read_memory(core, DSP_SPACE_P, addr);
+}
 
 static uint32_t jit_read_x(dsp_core_t *core, uint32_t addr)
 {
@@ -1602,7 +1622,10 @@ static bool pm_supported(const Insn *in)
         }
         if ((inst & 0xfc0000) == 0x200000) {
             int src = (inst >> 13) & 0x1F, dst = (inst >> 8) & 0x1F;
-            return reg_supported(src) && reg_supported(dst);
+            /* Reserved 0..3 slots are raw reads and zero-masked writes
+             * in the interpreter. SDK code uses these move decorations. */
+            return (src < 4 || reg_supported(src)) &&
+                   (dst < 4 || reg_supported(dst));
         }
         return reg_supported((inst >> 16) & 0x1F);
     case 3:
@@ -1641,9 +1664,26 @@ static void emit_pm_2(Tr *t, const Insn *in, const AluOp *a)
     if ((inst & 0xfc0000) == 0x200000) {
         /* S,D */
         int src = (inst >> 13) & 0x1F, dst = (inst >> 8) & 0x1F;
-        emit_read_reg(t, src, V1);
-        emit_alu(t, a);
-        emit_write_reg(t, dst, V1);
+        if (dst < 4) {
+            /* A discarded accumulator read can still set the limiter flag.
+             * Other source values cannot affect a zero-width destination. */
+            if (src == DSP_REG_A || src == DSP_REG_B) {
+                emit_read_reg(t, src, V1);
+            }
+            emit_alu(t, a);
+            h_st32_imm(e, REG_CORE, REGOFF(dst), 0);
+        } else if (src == dst && (src < DSP_REG_A0 || src > DSP_REG_B)) {
+            /* The ALU does not modify data/address registers. Canonicalize
+             * in place rather than saving and restoring an identical value.
+             * Accumulator parts are excluded: their pre-ALU value matters. */
+            emit_alu(t, a);
+            h_and_mem32_imm(e, REG_CORE, REGOFF(dst),
+                           src <= DSP_REG_Y1 ? 0xFFFFFF : 0xFFFF);
+        } else {
+            emit_read_reg(t, src, V1);
+            emit_alu(t, a);
+            emit_write_reg(t, dst, V1);
+        }
         return;
     }
     /* #xx,D (emu_pm_3) */
@@ -1910,6 +1950,11 @@ enum {
     NP_CMPU,
     NP_TCC,
     NP_MOVEC_REG,
+    NP_MOVEC_SR,
+    NP_MOVEM_P_READ,
+    NP_BIT_REG,
+    NP_BIT_SR_UPPER,
+    NP_MOVEC_EA,
 };
 
 static void emit_cc(Emitter *e, int cc);
@@ -1981,12 +2026,36 @@ static int np_kind(const Insn *in)
         unsigned pair = (in->inst >> 3) & 15;
         return pair < 2 || pair >= 8 ? NP_TCC : NP_NONE;
     }
+    if (!strcmp(name, "bclr #n, D") || !strcmp(name, "bset, #n, D") ||
+        !strcmp(name, "bchg, #n, D") || !strcmp(name, "btst #n, D")) {
+        unsigned reg = (in->inst >> 8) & 63;
+        unsigned bit = in->inst & 31;
+        if (reg == DSP_REG_SR && bit >= 16 && strcmp(name, "btst #n, D")) {
+            return NP_BIT_SR_UPPER;
+        }
+        /* The interpreter exposes malformed upper accumulator words for
+         * out-of-width modifying bit numbers; keep that path unchanged. */
+        return reg_supported(reg) &&
+               !((reg == DSP_REG_A || reg == DSP_REG_B) && bit >= 24)
+               ? NP_BIT_REG : NP_NONE;
+    }
+    if (!strcmp(name, "movec [X or Y]:ea <-> R") &&
+        (in->inst & (1 << 15)) && reg_supported(in->inst & 63)) {
+        return NP_MOVEC_EA;
+    }
+    if (!strcmp(name, "movem P:ea <-> R") &&
+        (in->inst & 0xC000) == 0xC000 && reg_supported(in->inst & 63)) {
+        return NP_MOVEM_P_READ;
+    }
     if (!strcmp(name, "movec R1, R2")) {
         unsigned r1 = in->inst & 63, r2 = (in->inst >> 8) & 63;
         unsigned src = in->inst & (1 << 15) ? r2 : r1;
         unsigned dst = in->inst & (1 << 15) ? r1 : r2;
-        /* SR reads consume deferred arithmetic flags. SR writes and stack
-         * accesses retain their interpreter side effects and block exit. */
+        /* SR reads consume deferred arithmetic flags. Status writes have
+         * their own mode guard; stack accesses retain interpreter effects. */
+        if (reg_supported(src) && dst == DSP_REG_SR) {
+            return NP_MOVEC_SR;
+        }
         return (reg_supported(src) || src == DSP_REG_SR) && reg_supported(dst)
                ? NP_MOVEC_REG : NP_NONE;
     }
@@ -2028,6 +2097,87 @@ static void emit_nonparallel(Tr *t, const Insn *in, int kind)
     uint32_t inst = in->inst;
 
     switch (kind) {
+    case NP_MOVEC_EA: {
+        Ea ea;
+        emit_calc_ea(t, (inst >> 8) & 63, in->ext, EA1, &ea);
+        if (ea.kind == EA_IMM) {
+            h_mov_ri(e, V1, ea.imm);
+        } else {
+            emit_read_mem(t, (inst >> 6) & 1, ea_addr_reg(t, &ea), V1);
+        }
+        emit_write_reg(t, inst & 63, V1);
+        break;
+    }
+    case NP_BIT_SR_UPPER: {
+        /* Modifying a non-writable upper SR bit still masks reserved bits
+         * and reports its previous value in carry. Scale and LF survive. */
+        emit_flags_flush(t);
+        h_ld32(e, T0, REG_CORE, REGOFF(DSP_REG_SR));
+        h_mov_rr(e, 0, T1, T0);
+        h_shr_ri(e, 0, T1, inst & 31);
+        h_and_ri(e, 0, T1, 1);
+        h_and_ri(e, 0, T0, 0xAF7E);
+        h_or_rr(e, 0, T0, T1);
+        h_st32(e, REG_CORE, REGOFF(DSP_REG_SR), T0);
+        t->cyc += 2;
+        break;
+    }
+    case NP_BIT_REG: {
+        unsigned reg = (inst >> 8) & 63;
+        unsigned bit = inst & 31;
+        unsigned operation = ((inst >> 15) & 2) | ((inst >> 5) & 1);
+        uint32_t mask = 1u << bit;
+        emit_flags_flush(t);
+        emit_read_reg(t, reg, V1);
+        h_mov_rr(e, 0, V2, V1);
+        h_shr_ri(e, 0, V2, bit);
+        h_and_ri(e, 0, V2, 1);
+        switch (operation) {
+        case 0: h_and_ri(e, 0, V1, ~mask); break;
+        case 1: h_or_ri(e, 0, V1, mask); break;
+        case 2: h_xor_ri(e, 0, V1, mask); break;
+        }
+        if (operation != 3) {
+            emit_write_reg(t, reg, V1);
+        }
+        /* Match the interpreter's 16-bit status mask, including clearing
+         * its upper FV bookkeeping bit, while replacing only carry below. */
+        h_ld32(e, T0, REG_CORE, REGOFF(DSP_REG_SR));
+        h_and_ri(e, 0, T0, 0xFFFE);
+        h_or_rr(e, 0, T0, V2);
+        h_st32(e, REG_CORE, REGOFF(DSP_REG_SR), T0);
+        t->cyc += 2;
+        break;
+    }
+    case NP_MOVEM_P_READ: {
+        Ea ea;
+        emit_calc_ea(t, (inst >> 8) & 63, in->ext, EA1, &ea);
+        if (ea.kind == EA_IMM) {
+            ea.kind = EA_ABS;
+            ea.abs = ea.imm;
+        }
+        int addr = ea_addr_reg(t, &ea);
+        h_cmp_ri(e, 0, addr, DSP_PRAM_SIZE);
+        size_t j = h_jcc(e, HC_AE);
+        h_ld32_idx4(e, V1, REG_CORE, addr, OFF(pram));
+        Stub *s = stub_new(t, STUB_READ_P, j);
+        s->reg = addr;
+        s->reg2 = V1;
+        s->back = e->len;
+        emit_write_reg(t, inst & 63, V1);
+        t->cyc += 4;
+        break;
+    }
+    case NP_MOVEC_SR: {
+        /* Preserve the interpreter's writable status bits. The caller
+         * leaves through post-processing if scale or DO identity changes. */
+        unsigned src = (inst >> 8) & 63;
+        emit_flags_flush(t);
+        emit_read_reg(t, src, V1);
+        h_and_ri(e, 0, V1, 0xAF7F);
+        h_st32(e, REG_CORE, REGOFF(DSP_REG_SR), V1);
+        break;
+    }
     case NP_MOVEC_REG: {
         unsigned r1 = inst & 63, r2 = (inst >> 8) & 63;
         unsigned src = inst & (1 << 15) ? r2 : r1;
@@ -2458,12 +2608,26 @@ static bool emit_control(Tr *t, const Insn *in)
             h_st16_imm(e, REG_CORE, OFF(interrupt_state), DSP_INTERRUPT_DISABLED);
             h_patch(e, pushed, e->len);
         }
-        h_st32_imm(e, REG_CORE, OFF(cur_inst_len), 0);
-        h_st16_imm(e, REG_CORE, OFF(instr_cycle), cycles);
-        h_mov_rr(e, 1, H_ARG0, REG_CORE);
-        h_call(e, (const void *)dsp56k_post);
-        emit_charge(e, before);
-        emit_jump_to_epilogue(t);
+        /* A normal call has no post-processing beyond charging cycles:
+         * PC is already set and its stack push is complete. Keep cached
+         * call/return chains native. Interrupt pipelines, stack errors and
+         * DO-loop boundaries still use the interpreter's post routine. */
+        Stub *post;
+        h_cmp_mem16_imm(e, REG_CORE, OFF(interrupt_state), DSP_INTERRUPT_NONE);
+        post = stub_new(t, STUB_CTRL_POST, h_jcc(e, HC_NE));
+        post->imm = 0xFFFFFFFF;
+        stub_set_insn(t, post, in, cycles, before);
+        h_cmp_mem16_imm(e, REG_CORE, OFF(interrupt_counter), 0);
+        post = stub_new(t, STUB_CTRL_POST, h_jcc(e, HC_NE));
+        post->imm = 0xFFFFFFFF;
+        stub_set_insn(t, post, in, cycles, before);
+        h_ld32(e, T0, REG_CORE, OFF(pc));
+        h_sub_ri(e, 0, T0, 1);
+        h_cmp_r_mem32(e, T0, REG_CORE, REGOFF(DSP_REG_LA));
+        post = stub_new(t, STUB_CTRL_POST, h_jcc(e, HC_EQ));
+        post->imm = 0xFFFFFFFF;
+        stub_set_insn(t, post, in, cycles, before);
+        emit_chain(t, before + cycles);
         return true;
     }
 
@@ -2766,6 +2930,22 @@ static void emit_stubs(Tr *t)
             emit_jump_to_epilogue(t);
             continue;
 
+        case STUB_STATUS_POST:
+            emit_flags_flush_stub(t, s);
+            for (int n = 0; n < 2; n++) {
+                if (s->dirty[n]) {
+                    emit_acc_store(e, n);
+                }
+            }
+            h_st32_imm(e, REG_CORE, OFF(pc), s->at);
+            h_st32_imm(e, REG_CORE, OFF(cur_inst_len), s->len);
+            h_st16_imm(e, REG_CORE, OFF(instr_cycle), s->cycles);
+            h_mov_rr(e, 1, H_ARG0, REG_CORE);
+            h_call(e, (const void *)dsp56k_post);
+            emit_charge(e, s->cyc_before);
+            emit_jump_to_epilogue(t);
+            continue;
+
         case STUB_CTRL_POST:
             if (s->imm != 0xFFFFFFFF) {
                 h_st32_imm(e, REG_CORE, OFF(pc), s->imm);
@@ -2822,6 +3002,28 @@ static void emit_stubs(Tr *t)
             emit_stub_call_end(e);
             break;
         }
+        case STUB_REFILL_BUDGET:
+            h_mov_ri(e, T0, (uintptr_t)t->run_until_halt);
+            h_cmp_mem8_imm(e, T0, 0, 0);
+            h_jcc_abs(e, HC_EQ, t->leave);
+            h_cmp_mem8_imm(e, REG_CORE, OFF(is_idle), 0);
+            h_jcc_abs(e, HC_NE, t->leave);
+            {
+                size_t top = e->len;
+                h_add_mem32_imm(e, REG_CORE, OFF(jit_cycles), 1000);
+                h_jcc_to(e, HC_LE, top);
+            }
+            h_jmp_to(e, s->back);
+            continue;
+
+        case STUB_READ_P:
+            emit_stub_call_begin(e);
+            h_mov_rr(e, 0, H_ARG1, s->reg);
+            h_call(e, (const void *)jit_read_p);
+            emit_stub_call_end(e);
+            h_mov_rr(e, 0, s->reg2, T0);
+            break;
+
         case STUB_READ_Y:
             emit_stub_call_begin(e);
             h_mov_rr(e, 0, H_ARG1, s->reg);
@@ -2948,6 +3150,7 @@ static void translate_begin(DspJit *jit, int mode)
     t->loop_active = (mode & 4) != 0;
     t->lazy_acc = -1;
     t->leave = jit->leave;
+    t->run_until_halt = &jit->run_until_halt;
     t->table = jit->blocks[mode];
     t->loop_table = jit->blocks[(mode & 3) | 4];
     /* the cache writable to this thread until translate_end (macOS) */
@@ -3001,6 +3204,17 @@ retry:
 
         if (insn_native(&in)) {
             emit_native(t, &in);
+            if (np_kind(&in) == NP_MOVEC_SR) {
+                /* Leave only when this write changes the code's scale/LF
+                 * identity. Ordinary flag restores stay in native code. */
+                h_ld32(&t->e, T0, REG_CORE, REGOFF(DSP_REG_SR));
+                h_and_ri(&t->e, 0, T0, (3 << DSP_SR_S0) | (1 << DSP_SR_LF));
+                h_cmp_ri(&t->e, 0, T0, (t->mode << DSP_SR_S0) |
+                         (t->loop_active ? 1 << DSP_SR_LF : 0));
+                size_t j = h_jcc(&t->e, HC_NE);
+                stub_set_insn(t, stub_new(t, STUB_STATUS_POST, j), &in,
+                              t->cyc - cyc_before, cyc_before);
+            }
             emit_insn_checks(t, &in, t->cyc - cyc_before);
         } else if (in.d.control && emit_control(t, &in)) {
             t->cyc = 0;
@@ -3070,7 +3284,7 @@ static dspjit_block_fn dspjit_translate_rep(DspJit *jit, int mode, uint32_t pc)
         return NULL;
     }
     decode_insn(core, pc, &in);
-    if (!insn_native(&in)) {
+    if (!insn_native(&in) || np_kind(&in) == NP_MOVEC_SR) {
         return NULL;
     }
 
@@ -3101,6 +3315,19 @@ retry:
     j_end = h_jcc(e, HC_EQ);
     h_sub_mem32_imm(e, REG_CORE, OFF(jit_cycles), cycles);
     h_jcc_to(e, HC_G, top);
+    /* A real-time REP can renew its quantum in place. Publish partial
+     * counters and LC just as the old return/reentry did, retaining A/B. */
+    h_mov_ri(e, T0, (uintptr_t)t->run_until_halt);
+    h_cmp_mem8_imm(e, T0, 0, 0);
+    size_t normal_budget_exit = h_jcc(e, HC_EQ);
+    emit_rep_charge(e, cycles, 0);
+    h_frame_st32(e, SLOT_REP_START, REG_LC);
+    h_st32(e, REG_CORE, REGOFF(DSP_REG_LC), REG_LC);
+    size_t refill_top = e->len;
+    h_add_mem32_imm(e, REG_CORE, OFF(jit_cycles), 1000);
+    h_jcc_to(e, HC_LE, refill_top);
+    h_jmp_to(e, top);
+    h_patch(e, normal_budget_exit, e->len);
     /* the budget spent: out, the REP still on (the other path below
      * starts from the same state) */
     {
@@ -3179,6 +3406,7 @@ void dspjit_destroy(DspJit *jit)
 void dspjit_flush(DspJit *jit)
 {
     jit->cache_used = jit->cache_base;
+    memset(jit->covered, 0, sizeof(jit->covered));
     for (int mode = 0; mode < DSPJIT_MODES; mode++) {
         if (jit->blocks[mode]) {
             memset(jit->blocks[mode], 0, DSP_PRAM_SIZE * sizeof(*jit->blocks[mode]));
@@ -3195,9 +3423,13 @@ void dspjit_invalidate(DspJit *jit, uint32_t address)
 {
     uint32_t from = address >= DSPJIT_BLOCK_MAX_WORDS ? address - DSPJIT_BLOCK_MAX_WORDS + 1 : 0;
 
-    if (address >= DSP_PRAM_SIZE) {
+    if (address >= DSP_PRAM_SIZE ||
+        !(jit->covered[address >> 6] & (UINT64_C(1) << (address & 63)))) {
         return;
     }
+#ifdef DSPJIT_TEST
+    test_invalidation_scans++;
+#endif
     for (int m = 0; m < DSPJIT_MODES; m++) {
         if (!jit->blocks[m]) {
             continue;
@@ -3228,12 +3460,22 @@ static void rep_step(dsp_core_t *core)
     core->jit_cycles -= core->instr_cycle;
 }
 
+static void dspjit_cover_words(DspJit *jit, uint32_t start, uint32_t end)
+{
+    for (uint32_t pc = start; pc < MIN(end, DSP_PRAM_SIZE); pc++) {
+        jit->covered[pc >> 6] |= UINT64_C(1) << (pc & 63);
+    }
+}
+
 void dspjit_run(DspJit *jit, int cycles)
 {
     dsp_core_t *core = jit->core;
 
     core->jit_cycles = cycles;
-    while (core->jit_cycles > 0 && !core->is_idle) {
+    while ((core->jit_cycles > 0 || jit->run_until_halt) && !core->is_idle) {
+        while (core->jit_cycles <= 0) {
+            core->jit_cycles += 1000;
+        }
         uint32_t pc = core->pc & (DSP_PRAM_SIZE - 1);
         dspjit_block_fn fn;
 
@@ -3265,11 +3507,17 @@ void dspjit_run(DspJit *jit, int cycles)
                 if (!fn) {
                     fn = rep_step;
                 }
+                /* Include extension words and fallback REP decodes too.
+                 * A changed instruction must reconsider native eligibility. */
+                dspjit_cover_words(jit, pc, pc + 2);
                 jit->rep_blocks[mode & 3][pc] = fn;
             }
             if (fn == rep_step) {
                 rep_step(core);
             } else {
+#ifdef DSPJIT_TEST
+                test_entry_count++;
+#endif
                 jit->enter(core, fn);
             }
             continue;
@@ -3284,6 +3532,9 @@ void dspjit_run(DspJit *jit, int cycles)
             }
             jit->blocks[mode][pc] = fn;
             jit->block_end[mode][pc] = jit->tr->end;
+            if (fn) {
+                dspjit_cover_words(jit, pc, jit->tr->end);
+            }
 #endif
             if (!fn) {
                 /* a block too big for an empty cache cannot happen; the
@@ -3294,6 +3545,19 @@ void dspjit_run(DspJit *jit, int cycles)
                 continue;
             }
         }
+#ifdef DSPJIT_TEST
+        test_entry_count++;
+#endif
         jit->enter(core, fn);
     }
+}
+
+/* Same sequence of budgets as the caller's former run(1000) loop. The
+ * refill flag belongs to the host JIT, not to serialized hardware state. */
+void dspjit_run_until_halt(DspJit *jit, int cycles)
+{
+    assert(!jit->run_until_halt);
+    jit->run_until_halt = true;
+    dspjit_run(jit, cycles);
+    jit->run_until_halt = false;
 }

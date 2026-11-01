@@ -151,6 +151,11 @@ void dsp_run(DSPState *dsp, int cycles)
     dsp->ops->run(dsp, cycles);
 }
 
+void dsp_run_until_halt(DSPState *dsp)
+{
+    dsp->ops->run_until_halt(dsp);
+}
+
 void dsp_bootstrap(DSPState *dsp)
 {
     dsp->ops->bootstrap(dsp);

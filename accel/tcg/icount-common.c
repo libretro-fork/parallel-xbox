@@ -72,7 +72,9 @@ void libretro_instruction_clock_init(void)
 /*
  * The current number of executed instructions is based on what we
  * originally budgeted minus the current state of the decrementing
- * icount counters in extra/u16.low.
+ * icount counters in extra/u16.low. The x86-64 emitter publishes its
+ * register-held low half before C helpers and returns, so accounting
+ * always reads a canonical field. Observers use the published timestamp.
  */
 static int64_t icount_get_executed(CPUState *cpu)
 {

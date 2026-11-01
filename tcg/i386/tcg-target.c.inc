@@ -1996,10 +1996,33 @@ static void tcg_out_branch(TCGContext *s, int call, const tcg_insn_unit *dest)
     }
 }
 
+/* The owner keeps only the low instruction budget in R15 while native
+ * blocks chain. C helpers (including guest faults/MMIO) and every return see
+ * the canonical low half; the concurrent request half stays in memory. */
+#define LR_ICOUNT_OFFSET ((ptrdiff_t)offsetof(CPUState, neg.icount_decr.u16.low) - (ptrdiff_t)sizeof(CPUState))
+
+static void tcg_lr_budget_publish(TCGContext *s)
+{
+#ifdef TCG_TARGET_LR_ICOUNT_REG
+    tcg_out_modrm_offset(s, OPC_MOVL_EvGv | P_DATA16, TCG_TARGET_LR_ICOUNT_REG, TCG_AREG0,
+                        LR_ICOUNT_OFFSET);
+#endif
+}
+
+static void tcg_lr_budget_reload(TCGContext *s)
+{
+#ifdef TCG_TARGET_LR_ICOUNT_REG
+    tcg_out_modrm_offset(s, OPC_MOVZWL, TCG_TARGET_LR_ICOUNT_REG, TCG_AREG0,
+                        LR_ICOUNT_OFFSET);
+#endif
+}
+
 static void tcg_out_call(TCGContext *s, const tcg_insn_unit *dest,
                          const TCGHelperInfo *info)
 {
+    tcg_lr_budget_publish(s);
     tcg_out_branch(s, 1, dest);
+    tcg_lr_budget_reload(s);
 
 #ifndef _WIN32
     if (TCG_TARGET_REG_BITS == 32 && info->out_kind == TCG_CALL_RET_BY_REF) {
@@ -2129,7 +2152,9 @@ static bool tcg_out_qemu_ld_slow_path(TCGContext *s, TCGLabelQemuLdst *l)
     }
 
     tcg_out_ld_helper_args(s, l, &ldst_helper_param);
+    tcg_lr_budget_publish(s);
     tcg_out_branch(s, 1, qemu_ld_helpers[opc & MO_SIZE]);
+    tcg_lr_budget_reload(s);
     tcg_out_ld_helper_ret(s, l, false, &ldst_helper_param);
 
     tcg_out_jmp(s, l->raddr);
@@ -2151,7 +2176,9 @@ static bool tcg_out_qemu_st_slow_path(TCGContext *s, TCGLabelQemuLdst *l)
     }
 
     tcg_out_st_helper_args(s, l, &ldst_helper_param);
+    tcg_lr_budget_publish(s);
     tcg_out_branch(s, 1, qemu_st_helpers[opc & MO_SIZE]);
+    tcg_lr_budget_reload(s);
 
     tcg_out_jmp(s, l->raddr);
     return true;
@@ -3763,6 +3790,13 @@ static const TCGOutOpLoad outop_ld8s = {
 static void tgen_ld16u(TCGContext *s, TCGType type, TCGReg dest,
                        TCGReg base, ptrdiff_t offset)
 {
+#ifdef TCG_TARGET_LR_ICOUNT_REG
+    if (base == TCG_AREG0 &&
+        offset == LR_ICOUNT_OFFSET) {
+        tcg_out_mov(s, TCG_TYPE_I32, dest, TCG_TARGET_LR_ICOUNT_REG);
+        return;
+    }
+#endif
     tcg_out_modrm_offset(s, OPC_MOVZWL, dest, base, offset);
 }
 
@@ -3829,12 +3863,26 @@ static const TCGOutOpStore outop_st8 = {
 static void tgen_st16_r(TCGContext *s, TCGType type, TCGReg data,
                         TCGReg base, ptrdiff_t offset)
 {
+#ifdef TCG_TARGET_LR_ICOUNT_REG
+    if (base == TCG_AREG0 &&
+        offset == LR_ICOUNT_OFFSET) {
+        tcg_out_ext16u(s, TCG_TARGET_LR_ICOUNT_REG, data);
+        return;
+    }
+#endif
     tcg_out_modrm_offset(s, OPC_MOVL_EvGv | P_DATA16, data, base, offset);
 }
 
 static void tgen_st16_i(TCGContext *s, TCGType type, tcg_target_long data,
                         TCGReg base, ptrdiff_t offset)
 {
+#ifdef TCG_TARGET_LR_ICOUNT_REG
+    if (base == TCG_AREG0 &&
+        offset == LR_ICOUNT_OFFSET) {
+        tcg_out_movi(s, TCG_TYPE_I32, TCG_TARGET_LR_ICOUNT_REG, data & 0xFFFF);
+        return;
+    }
+#endif
     tcg_out_modrm_offset(s, OPC_MOVL_EvIz | P_DATA16, 0, base, offset);
     tcg_out16(s, data);
 }
@@ -5114,6 +5162,7 @@ static void tcg_target_qemu_prologue(TCGContext *s)
                              + stack_addend);
     } else {
         tcg_out_mov(s, TCG_TYPE_PTR, TCG_AREG0, tcg_target_call_iarg_regs[0]);
+        tcg_lr_budget_reload(s);
         tcg_out_addi(s, TCG_REG_ESP, -stack_addend);
         /* jmp *tb.  */
         tcg_out_modrm(s, OPC_GRP5, EXT5_JMPN_Ev, tcg_target_call_iarg_regs[1]);
@@ -5128,6 +5177,7 @@ static void tcg_target_qemu_prologue(TCGContext *s)
 
     /* TB epilogue */
     tb_ret_addr = tcg_splitwx_to_rx(s->code_ptr);
+    tcg_lr_budget_publish(s);
 
     tcg_out_addi(s, TCG_REG_CALL_STACK, stack_addend);
 

@@ -16,7 +16,7 @@ cc=sys.argv[2] if len(sys.argv)>2 else 'gcc'
 source=(repo/'hw/xbox/mcpx/apu/vp/vp.c').read_text(encoding='utf-8')
 header=(repo/'hw/xbox/mcpx/apu/vp/vp.h').read_text(encoding='utf-8')
 def function(name):
-    match=re.search(r'^(?:static\s+)?(?:inline\s+)?(?:void|bool|float|int|int32_t|uint32_t|hwaddr|VoicePitchRamp)\s+'+name+r'\([^;]*?\)\s*\{',source,re.M)
+    match=re.search(r'^(?:static\s+)?(?:inline\s+)?(?:void|bool|float|int|int32_t|uint32_t|hwaddr|VoicePitchRamp|uint64_t)\s+(?:__attribute__\(\(noinline\)\)\s*)?'+name+r'\([^;]*?\)\s*\{',source,re.M)
     assert match,name
     start=source.index('{',match.start())
     depth,end=1,start+1
@@ -33,7 +33,7 @@ functions=['set_notify_status','voice_get_mask','voice_set_mask','voice_off',
     'voice_lock','is_voice_locked',
     'voice_resample_reset','voice_reset_filters','filter_coefficient','attenuation_gain',
     'get_data_ptr','envelope_level','voice_step_envelope','voice_step_lfos',
-    'voice_get_samples','voice_resample_fetch','voice_pitch_ramp',
+    'voice_jingle_hash','voice_get_samples','voice_resample_fetch','voice_pitch_ramp',
     'voice_pitch_step','voice_resample','voice_process','mcpx_apu_vp_reset']
 generated=before+table+''.join(function(n) for n in functions)
 generated+=after.replace('/* VOICE FRAME */',function('mcpx_apu_vp_frame'))

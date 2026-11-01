@@ -38,6 +38,8 @@ case $core in
         ${cc} -O2 -std=gnu99 -Wall -I"$here/../../deps/vulkan-headers" -I"$here/../../libretro-common/include" \
             -o "$work/bin/harness.exe" "$here/harness.c" -lopengl32 -lgdi32 -static
         h="$work/bin/harness.exe"
+        # Embedded VFS URIs bypass MSYS automatic argument conversion.
+        path() { cygpath -m "$1"; }
         ;;
     *)
         cc=${CC:-cc}
@@ -133,6 +135,10 @@ case $core in
 esac
 python3 "$here/test-kernel-idle.py" "$here/../.." "$cc"
 python3 "$here/test-memory-poll.py" "$here/../.." "$cc"
+python3 "$here/test-early-memory-wait.py" "$here/../.." "$cc"
+python3 "$here/test-idle-candidate-prefix.py" "$here/../.." "$cc"
+python3 "$here/test-quiet-store-prefix.py" "$here/../.." "$cc"
+python3 "$here/test-tcg-budget-register.py" "$here/../.." "$cc"
 python3 "$here/test-interrupt-shadow.py" "$here/../.." "$cc"
 python3 "$here/test-tb-cache-flags.py" "$here/../.." "$cc"
 python3 "$here/test-tb-secondary.py" "$here/../.." "$cc"

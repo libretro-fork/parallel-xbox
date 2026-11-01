@@ -88,4 +88,8 @@ typedef enum {
     TCG_REG_CALL_STACK = TCG_REG_ESP
 } TCGReg;
 
+#if defined(XBOX) && TCG_TARGET_REG_BITS == 64
+#define TCG_TARGET_LR_ICOUNT_REG TCG_REG_R15
+#endif
+
 #endif

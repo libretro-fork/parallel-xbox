@@ -38,6 +38,7 @@ typedef struct DSPOps {
     void (*reset)(DSPState *dsp);
     void (*step)(DSPState *dsp);
     void (*run)(DSPState *dsp, int cycles);
+    void (*run_until_halt)(DSPState *dsp);
     void (*bootstrap)(DSPState *dsp);
     void (*start_frame)(DSPState *dsp);
     uint32_t (*read_memory)(DSPState *dsp, char space, uint32_t addr);
@@ -115,6 +116,7 @@ void dsp_reset(DSPState *dsp);
 
 void dsp_step(DSPState *dsp);
 void dsp_run(DSPState *dsp, int cycles);
+void dsp_run_until_halt(DSPState *dsp);
 
 void dsp_bootstrap(DSPState *dsp);
 void dsp_start_frame(DSPState *dsp);

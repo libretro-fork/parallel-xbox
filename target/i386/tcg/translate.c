@@ -4534,8 +4534,26 @@ static void i386_tr_init_disas_context(DisasContextBase *dcbase, CPUState *cpu)
     dc->flcr_set = false;
 }
 
+/* A nomination only: the runtime helper still proves the live wait. */
+static bool xemu_ram_wait_candidate(const DisasContextBase *db)
+{
+    static const uint8_t poll[] = {0x8B,0x0A,0x8B,0xFE,0x2B,0xF9,0x3B,0xC7,0x72,0xF6};
+    uint32_t flags = tb_cflags(db->tb);
+    return (flags & (CF_USE_ICOUNT | CF_NOIRQ)) == CF_USE_ICOUNT &&
+        db->host_addr[0] &&
+        (db->pc_first & ~TARGET_PAGE_MASK) <= TARGET_PAGE_SIZE - sizeof(poll) &&
+        !memcmp(db->host_addr[0], poll, sizeof(poll));
+}
+
 static void i386_tr_tb_start(DisasContextBase *db, CPUState *cpu)
 {
+    if (xemu_ram_wait_candidate(db)) {
+        DisasContext *dc = container_of(db, DisasContext, base);
+        TCGv_i32 wait = tcg_temp_new_i32();
+        gen_update_eip_cur(dc);
+        gen_helper_xemu_memory_wait(wait, tcg_env, tcg_constant_ptr(db->tb));
+        tcg_gen_brcondi_i32(TCG_COND_NE, wait, 0, tcg_ctx->exitreq_label);
+    }
     if (xemu_xbe_runtime_entry && db->pc_first == xemu_xbe_runtime_entry) {
         gen_helper_xemu_xbe_runtime(tcg_env, tcg_constant_tl(db->pc_first));
     }

@@ -15,7 +15,9 @@
  *     --x ADDR=VALUE  an X word set after the random fill (the test ROM's
  *                     pass count at X:0, say); --y likewise
  *     --max-cycles C  a frame that has not halted after C cycles fails
- *                     (default 50000000)
+ *                     (default 50000000; chunked path only)
+ *     --until-halt    renew the JIT's 1000-cycle budgets internally
+ *     --baseline-jit compare against the old chunked JIT, including carry
  *
  * Exit 0 when every frame matched, 1 on a difference or a frame that did
  * not halt, 2 when the host has no JIT (nothing to compare).
@@ -341,7 +343,7 @@ static int compare_machines(Machine *a, Machine *b)
 }
 
 /* dsp_thread_frame's frame: until the program halts */
-static int run_frame(Machine *m, uint32_t max_cycles)
+static int run_frame(Machine *m, uint32_t max_cycles, bool until_halt)
 {
     DSPState *dsp = m->dsp;
     uint32_t cycles = 0;
@@ -349,6 +351,10 @@ static int run_frame(Machine *m, uint32_t max_cycles)
     dsp->ops->start_frame(dsp);
     dsp->ops->set_halt_requested(dsp, false);
     dsp->ops->set_cycle_count(dsp, 0);
+    if (until_halt) {
+        dsp->ops->run_until_halt(dsp);
+        return dsp->ops->get_halt_requested(dsp) ? 0 : -1;
+    }
     do {
         dsp->ops->run(dsp, 1000);
         cycles += 1000;
@@ -366,11 +372,17 @@ int main(int argc, char **argv)
     struct { int space; uint32_t addr, value; } sets[32];
     int nsets = 0;
     bool has_xy;
+    bool until_halt = false;
+    bool baseline_jit = false;
     Machine *a, *b;
 
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--frames") && i + 1 < argc) {
             frames = atoi(argv[++i]);
+        } else if (!strcmp(argv[i], "--baseline-jit")) {
+            baseline_jit = true;
+        } else if (!strcmp(argv[i], "--until-halt")) {
+            until_halt = true;
         } else if (!strcmp(argv[i], "--seed") && i + 1 < argc) {
             seed = strtoul(argv[++i], NULL, 0);
         } else if (!strcmp(argv[i], "--max-cycles") && i + 1 < argc) {
@@ -390,16 +402,17 @@ int main(int argc, char **argv)
         }
     }
     if (!path) {
-        fprintf(stderr, "usage: dspdiff [--frames N] [--seed S] [--x ADDR=VALUE] [--y ADDR=VALUE] [--max-cycles C] program\n");
+        fprintf(stderr, "usage: dspdiff [--frames N] [--seed S] [--x ADDR=VALUE] [--y ADDR=VALUE] [--max-cycles C] [--until-halt] [--baseline-jit] program\n");
         return 1;
     }
     if (load_program(path, p, x, y, &has_xy)) {
         return 1;
     }
 
-    a = machine_new(false);
+    a = machine_new(baseline_jit);
     b = machine_new(true);
-    if (b->dsp->ops == a->dsp->ops) {
+    if (!((dsp_core_t *)b->dsp->backend)->jit ||
+        (baseline_jit && !((dsp_core_t *)a->dsp->backend)->jit)) {
         fprintf(stderr, "dspdiff: no JIT on this host: nothing to compare\n");
         return 2;
     }
@@ -452,11 +465,16 @@ int main(int argc, char **argv)
     }
 
     for (int frame = 0; frame < frames; frame++) {
-        int ra = run_frame(a, max_cycles);
-        int rb = run_frame(b, max_cycles);
+        int ra = run_frame(a, max_cycles, false);
+        int rb = run_frame(b, max_cycles, until_halt);
         if (ra || rb) {
             fprintf(stderr, "dspdiff: frame %d: the program did not halt within %u cycles (interpreter %s, jit %s)\n",
                     frame, max_cycles, ra ? "running" : "halted", rb ? "running" : "halted");
+            return 1;
+        }
+        if (baseline_jit && a->dsp->save_cycles != b->dsp->save_cycles) {
+            fprintf(stderr, "dspdiff: frame %d budget remainder differs: %d versus %d\n",
+                    frame, a->dsp->save_cycles, b->dsp->save_cycles);
             return 1;
         }
         if (compare_machines(a, b)) {
@@ -464,6 +482,7 @@ int main(int argc, char **argv)
             return 1;
         }
     }
-    printf("dspdiff: %d frames, %s: the JIT and the interpreter agree\n", frames, path);
+    printf("dspdiff: %d frames, %s: the JIT and the %s agree\n", frames, path,
+           baseline_jit ? "chunked JIT (including budget carry)" : "interpreter");
     return 0;
 }
