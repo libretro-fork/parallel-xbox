@@ -565,9 +565,36 @@ static bool vk_spec_push_constants;
  * than compiling */
 static VkSpecDone vk_spec_ready[VK_SPEC_READY];
 static unsigned vk_spec_ready_n;
-/* Active prefix is oldest first; the suffix contains free slot indices.
- * Only indices move when a record is taken or evicted. */
-static unsigned vk_spec_ready_order[VK_SPEC_READY];
+#define VK_SPEC_READY_HEADROOM 32
+/* The window's active prefix is oldest first; its suffix contains free slots.
+ * Small headroom amortizes eviction shifts while keeping lookups contiguous. */
+static unsigned vk_spec_ready_order_storage[VK_SPEC_READY + VK_SPEC_READY_HEADROOM];
+static unsigned *vk_spec_ready_order = vk_spec_ready_order_storage;
+
+static void vk_spec_ready_remove_order(unsigned i, unsigned slot)
+{
+    unsigned count = --vk_spec_ready_n - i;
+    if (count) {
+        memmove(vk_spec_ready_order + i, vk_spec_ready_order + i + 1,
+                count * sizeof(vk_spec_ready_order[0]));
+    }
+    vk_spec_ready_order[vk_spec_ready_n] = slot;
+}
+
+static void vk_spec_ready_clear(void)
+{
+    for (unsigned i = 0; i < vk_spec_ready_n; i++) {
+        VkSpecDone *d = &vk_spec_ready[vk_spec_ready_order[i]];
+        pgraph_vk_shader_source_unref(d->spirv);
+        d->spirv = NULL;
+    }
+    vk_spec_ready_n = 0;
+    if (vk_spec_ready_order != vk_spec_ready_order_storage) {
+        memmove(vk_spec_ready_order_storage, vk_spec_ready_order,
+                VK_SPEC_READY * sizeof(vk_spec_ready_order[0]));
+    }
+    vk_spec_ready_order = vk_spec_ready_order_storage;
+}
 
 static int vk_spec_find(uint64_t h)
 {
@@ -868,9 +895,12 @@ static void vk_spec_ready_push(const VkSpecDone *done)
     } else {
         slot = vk_spec_ready_order[0];
         pgraph_vk_shader_source_unref(vk_spec_ready[slot].spirv);
-        memmove(vk_spec_ready_order, vk_spec_ready_order + 1,
-                (VK_SPEC_READY - 1) * sizeof(vk_spec_ready_order[0]));
-        vk_spec_ready_order[VK_SPEC_READY - 1] = slot;
+        vk_spec_ready_order[VK_SPEC_READY] = slot;
+        if (++vk_spec_ready_order == vk_spec_ready_order_storage + VK_SPEC_READY_HEADROOM) {
+            memmove(vk_spec_ready_order_storage, vk_spec_ready_order,
+                    VK_SPEC_READY * sizeof(vk_spec_ready_order[0]));
+            vk_spec_ready_order = vk_spec_ready_order_storage;
+        }
     }
     vk_spec_ready[slot] = *done;
 }
@@ -895,22 +925,30 @@ static void vk_spec_drain(void)
     }
 }
 
+/* Keep ownership/movement register pressure out of unsuccessful scans. */
+static ShaderSource * __attribute__((noinline)) vk_spec_ready_take_at(unsigned i)
+{
+    unsigned slot = vk_spec_ready_order[i];
+    VkSpecDone *d = &vk_spec_ready[slot];
+    ShaderSource *spv = d->spirv;
+
+    vk_spec_ready_remove_order(i, slot);
+    d->spirv = NULL;
+    return spv;
+}
+
 /* The worker's SPIR-V for a module key, taken out of the ready table,
  * or NULL: the caller then compiles it itself */
 static ShaderSource *vk_spec_take_ready(const ShaderModuleCacheKey *key)
 {
     uint64_t h = fast_hash((const uint8_t *)key, sizeof(*key));
+    const unsigned *order = vk_spec_ready_order;
     for (unsigned i = 0; i < vk_spec_ready_n; i++) {
-        unsigned slot = vk_spec_ready_order[i];
+        unsigned slot = order[i];
         VkSpecDone *d = &vk_spec_ready[slot];
         if (d->key_hash == h && memcmp(&d->key, key, sizeof(*key)) == 0) {
-            ShaderSource *spv = d->spirv;
-            vk_spec_ready_n--;
-            memmove(vk_spec_ready_order + i, vk_spec_ready_order + i + 1,
-                    (vk_spec_ready_n - i) * sizeof(vk_spec_ready_order[0]));
-            vk_spec_ready_order[vk_spec_ready_n] = slot;
-            d->spirv = NULL;
-            return spv;
+            /* Keep ownership/movement register pressure out of miss scans. */
+            return vk_spec_ready_take_at(i);
         }
     }
     return NULL;
@@ -976,12 +1014,7 @@ static void vk_spec_quiesce(void)
     }
     retro_atomic_store_release_int(&vk_spec_cancel, 0);
     vk_spec_drain();
-    for (unsigned i = 0; i < vk_spec_ready_n; i++) {
-        VkSpecDone *d = &vk_spec_ready[vk_spec_ready_order[i]];
-        pgraph_vk_shader_source_unref(d->spirv);
-        d->spirv = NULL;
-    }
-    vk_spec_ready_n = 0;
+    vk_spec_ready_clear();
     vk_spec_modules_clear();
     vk_spec_undrained = 0;
     for (unsigned i = 0; i < ARRAY_SIZE(vk_spec_track); i++) {

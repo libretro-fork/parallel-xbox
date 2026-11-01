@@ -1,5 +1,7 @@
 # Changelog of the libretro core
 
+- Amortize Vulkan shader-ready cache index compaction with a small sliding window, preserving oldest-first eviction and module reference ownership. Keep miss scans contiguous and outline successful-take bookkeeping; module capacity is unchanged.
+
 - Reuse the proven CPU owner within nested DSP ownership scopes instead of repeating CPU lookup and thread identity checks for each nested memory/device callback. Retain outer-scope validation and external RAM leases.
 
 - Update standalone regression fixtures for DSP callback scopes, RAM loans, TLB victim tracking and sparse GL uploads. Check ownership at callback dispatch, DMA borrowing and GPU fence retirement.

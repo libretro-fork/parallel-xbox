@@ -308,6 +308,7 @@ ${cc} -O2 -std=gnu11 -Wall -DHAVE_THREADS -I"$lrc/include" \
 python3 "$here/test-cpu-work.py" "$here/../.." "$cc"
 python3 "$here/test-glslgen-queue.py" "$here/../.." "$cc"
 python3 "$here/test-shader-cache-handoff.py" "$here/../.." "$cc"
+python3 "$here/test-vk-ready-order.py" "$here/../.." "$cc"
 python3 "$here/test-seed-merge-view.py" "$here/../.." "$cc"
 python3 "$here/test-pipeline-cache-export.py" "$here/../.." "$cc"
 python3 "$here/test-pipeline-job-view.py" "$here/../.." "$cc"
