@@ -337,8 +337,38 @@ static void test_arrays(void)
     g_byte_array_unref(b);
 }
 
+static void test_string_self_insert(void)
+{
+    /* Independent snapshot oracle, including explicit embedded terminators.
+     * Exact-size ownership forces growth; reserved storage must stay put. */
+    for (unsigned n = 0; n <= 24; n++) {
+        char original[25], expected[51];
+        for (unsigned i = 0; i < n; i++) original[i] = 'a' + i % 26;
+        original[n] = 0;
+        for (unsigned source = 0; source <= n; source++)
+        for (unsigned length = 0; length <= n + 1 - source; length++)
+        for (unsigned pos = 0; pos <= n; pos++)
+        for (unsigned reserve = 0; reserve < 2; reserve++) {
+            GString *s = reserve ? g_string_sized_new(128) :
+                g_string_new_take(g_memdup2(original, n + 1));
+            if (reserve) g_string_append_len(s, original, n);
+            char *before = s->str;
+            memcpy(expected, original, pos);
+            memcpy(expected + pos, original + source, length);
+            memcpy(expected + pos + length, original + pos, n - pos);
+            expected[n + length] = 0;
+            g_string_insert_len(s, pos, s->str + source, length);
+            CHECK(s->len == n + length);
+            CHECK(!memcmp(s->str, expected, n + length + 1));
+            CHECK(!reserve || s->str == before);
+            g_string_free(s, TRUE);
+        }
+    }
+}
+
 static void test_strings(void)
 {
+    test_string_self_insert();
     GString *s = g_string_new("abc");
     gchar **v, *t;
     guchar *d;

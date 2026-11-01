@@ -1,5 +1,7 @@
 # Changelog of the libretro core
 
+- Remove temporary allocations and scratch copies when strings insert or append their own contents; preserve overlapping ranges and buffer growth.
+
 - Run the exact four-trip GPU-progress display oracle in deterministic mode so host scheduling delays cannot cause false failures; retain normal-mode deadline-accounting coverage.
 
 - Fix strict ARM test builds with unsigned char; verify ASCII control classification and shader generation with both char signedness modes.
