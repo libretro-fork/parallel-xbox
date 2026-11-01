@@ -313,6 +313,9 @@ static const char *display_frag_glsl =
     "const bool byte_scanout = true;\n"
     "layout(binding = 0) uniform sampler2D tex;\n"
     "layout(binding = 1) uniform sampler2D pvideo_tex;\n"
+    "layout(set = 1, binding = 0, std140) uniform GammaRamp {\n"
+    "    uvec4 gamma_lut[64];\n"
+    "};\n"
     "layout(push_constant, std430) uniform PushConstants {\n"
     "    float line_offset;\n"
     "    vec2 display_size;\n"
@@ -326,6 +329,7 @@ static const char *display_frag_glsl =
     "    uvec4 source_bytes; /* relative address, pitch/mask X, mask Y, formats */\n"
     "};\n"
     "layout(location = 0) out vec4 out_Color;\n"
+    PGRAPH_GAMMA_GLSL
     "uint compact_bits(uint v, uint mask) {\n"
     "    uint r = 0u, bit = 1u;\n"
     "    while (mask != 0u) {\n"
@@ -408,22 +412,23 @@ static const char *display_frag_glsl =
     "            out_Color.rgba = texture(pvideo_tex, in_st);\n"
     "        }\n"
     "    }\n"
+    "    if (pvideo_scale.w > 0.0) out_Color.rgb = apply_gamma(out_Color.rgb);\n"
     "}\n";
 
 static void create_descriptor_pool(PGRAPHState *pg)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
 
-    VkDescriptorPoolSize pool_sizes = {
-        .type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-        .descriptorCount = 2 * PGRAPH_VK_DISPLAY_SETS,
+    VkDescriptorPoolSize pool_sizes[] = {
+        { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 2 * PGRAPH_VK_DISPLAY_SETS },
+        { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, PGRAPH_GAMMA_SLOTS },
     };
 
     VkDescriptorPoolCreateInfo pool_info = {
         .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
-        .poolSizeCount = 1,
-        .pPoolSizes = &pool_sizes,
-        .maxSets = PGRAPH_VK_DISPLAY_SETS,
+        .poolSizeCount = ARRAY_SIZE(pool_sizes),
+        .pPoolSizes = pool_sizes,
+        .maxSets = PGRAPH_VK_DISPLAY_SETS + PGRAPH_GAMMA_SLOTS,
         .flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT,
     };
     VK_CHECK(vkCreateDescriptorPool(r->device, &pool_info, NULL,
@@ -459,6 +464,15 @@ static void create_descriptor_set_layout(PGRAPHState *pg)
     };
     VK_CHECK(vkCreateDescriptorSetLayout(r->device, &layout_info, NULL,
                                          &r->display.descriptor_set_layout));
+    VkDescriptorSetLayoutBinding gamma = {
+        .binding = 0, .descriptorCount = 1,
+        .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+        .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+    };
+    layout_info.bindingCount = 1;
+    layout_info.pBindings = &gamma;
+    VK_CHECK(vkCreateDescriptorSetLayout(r->device, &layout_info, NULL,
+                                        &r->display.gamma_set_layout));
 }
 
 static void destroy_descriptor_set_layout(PGRAPHState *pg)
@@ -468,6 +482,8 @@ static void destroy_descriptor_set_layout(PGRAPHState *pg)
     vkDestroyDescriptorSetLayout(r->device, r->display.descriptor_set_layout,
                                  NULL);
     r->display.descriptor_set_layout = VK_NULL_HANDLE;
+    vkDestroyDescriptorSetLayout(r->device, r->display.gamma_set_layout, NULL);
+    r->display.gamma_set_layout = VK_NULL_HANDLE;
 }
 
 static void create_descriptor_sets(PGRAPHState *pg)
@@ -487,6 +503,31 @@ static void create_descriptor_sets(PGRAPHState *pg)
     };
     VK_CHECK(vkAllocateDescriptorSets(r->device, &alloc_info,
                                       r->display.descriptor_sets));
+    VkDescriptorSetLayout gamma_layouts[PGRAPH_GAMMA_SLOTS];
+    VkDescriptorBufferInfo gamma_buffers[PGRAPH_GAMMA_SLOTS];
+    VkWriteDescriptorSet gamma_writes[PGRAPH_GAMMA_SLOTS];
+    for (unsigned i = 0; i < PGRAPH_GAMMA_SLOTS; i++) {
+        gamma_layouts[i] = r->display.gamma_set_layout;
+    }
+    alloc_info.descriptorSetCount = PGRAPH_GAMMA_SLOTS;
+    alloc_info.pSetLayouts = gamma_layouts;
+    VK_CHECK(vkAllocateDescriptorSets(r->device, &alloc_info, r->display.gamma_sets));
+    size_t stride = pgraph_gamma_stride(
+        r->device_props.limits.minUniformBufferOffsetAlignment,
+        r->device_props.limits.nonCoherentAtomSize);
+    for (unsigned i = 0; i < PGRAPH_GAMMA_SLOTS; i++) {
+        gamma_buffers[i] = (VkDescriptorBufferInfo){
+            r->storage_buffers[BUFFER_DISPLAY_GAMMA].buffer,
+            i * stride, sizeof(r->display.gamma.ramp),
+        };
+        gamma_writes[i] = (VkWriteDescriptorSet){
+            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+            .dstSet = r->display.gamma_sets[i], .dstBinding = 0,
+            .descriptorCount = 1, .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+            .pBufferInfo = &gamma_buffers[i],
+        };
+    }
+    vkUpdateDescriptorSets(r->device, PGRAPH_GAMMA_SLOTS, gamma_writes, 0, NULL);
     r->display.descriptor_index = 0;
 }
 
@@ -647,10 +688,13 @@ static void create_display_pipeline(PGRAPHState *pg)
         .size = r->display.display_frag->push_constants.total_size,
     };
 
+    VkDescriptorSetLayout set_layouts[] = {
+        r->display.descriptor_set_layout, r->display.gamma_set_layout,
+    };
     VkPipelineLayoutCreateInfo pipeline_layout_info = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-        .setLayoutCount = 1,
-        .pSetLayouts = &r->display.descriptor_set_layout,
+        .setLayoutCount = ARRAY_SIZE(set_layouts),
+        .pSetLayouts = set_layouts,
         .pushConstantRangeCount = 1,
         .pPushConstantRanges = &push_constant_range,
     };
@@ -1091,6 +1135,20 @@ static PvideoState get_pvideo_state(PGRAPHState *pg)
     return state;
 }
 
+static bool update_gamma(PGRAPHVkDisplayState *disp)
+{
+    uint32_t ramp[256];
+    if (!nv2a_get_dac_palette_snapshot(ramp, !disp->gamma.version) ||
+        !pgraph_gamma_update(&disp->gamma, ramp)) {
+        return false;
+    }
+    if (disp->gamma.version == 1) {
+        memset(disp->gamma_uploaded, 0, sizeof(disp->gamma_uploaded));
+    }
+    return true;
+}
+
+
 static void update_uniforms(PGRAPHState *pg, SurfaceBinding *surface)
 {
     NV2AState *d = container_of(pg, NV2AState, pgraph);
@@ -1126,6 +1184,9 @@ static void update_uniforms(PGRAPHState *pg, SurfaceBinding *surface)
         uniform4f(l, uniform_index(l, "pvideo_scale"), pvideo->scale_x,
                   pvideo->scale_y, 1.0f / pg->surface_scale_factor, 1.0);
     }
+    /* w is unused by overlay coordinates; keep the existing 128-byte push ABI. */
+    float *scale = uniform_ptr(l, uniform_index(l, "pvideo_scale"));
+    scale[3] = r->display.gamma.enabled ? 1.0f : 0.0f;
 }
 
 static void destroy_frame_image(PGRAPHVkState *r, struct PGRAPHVkFrameImage *f)
@@ -1607,6 +1668,7 @@ static void render_display(PGRAPHState *pg, SurfaceBinding *surface)
         upload_pvideo_image(pg, disp->pvideo.state);
     }
 
+    update_gamma(disp);
     update_uniforms(pg, surface);
 
     /* The render target: the display image, or on the frontend's device
@@ -1709,8 +1771,25 @@ static void render_display(PGRAPHState *pg, SurfaceBinding *surface)
     /* Each source has its own descriptor set, reserved at init for eight
      * worst-case frames. Its background rectangles share immutable bindings. */
     const unsigned sets_per_frame = PGRAPH_VK_SCANOUT_DIRECT_LAYERS + 1;
-    unsigned set_base = ((disp->descriptor_index / sets_per_frame + 1) % 8) *
+    unsigned set_base = ((disp->descriptor_index / sets_per_frame + 1) % PGRAPH_GAMMA_SLOTS) *
                         sets_per_frame;
+    unsigned gamma_slot = set_base / sets_per_frame;
+    /* This ring has the same lifetime protection as the existing immutable
+     * display descriptors: at most eight display submissions are in flight.
+     * Atom-aligned strides keep noncoherent flushes off neighboring snapshots. */
+    if (disp->gamma.enabled &&
+        disp->gamma_uploaded[gamma_slot] != disp->gamma.version) {
+        StorageBuffer *buffer = &r->storage_buffers[BUFFER_DISPLAY_GAMMA];
+        size_t offset = gamma_slot * pgraph_gamma_stride(
+            r->device_props.limits.minUniformBufferOffsetAlignment,
+            r->device_props.limits.nonCoherentAtomSize);
+        memcpy(buffer->mapped + offset, disp->gamma.ramp, sizeof(disp->gamma.ramp));
+        VK_CHECK(xemu_vk_flush_allocation(r->allocator, buffer->allocation,
+                                         offset, sizeof(disp->gamma.ramp)));
+        disp->gamma_uploaded[gamma_slot] = disp->gamma.version;
+    }
+    vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
+        disp->pipeline_layout, 1, 1, &disp->gamma_sets[gamma_slot], 0, NULL);
     VkPipeline bound = disp->pipeline;
     for (unsigned i = 0; i <= layer_count; i++) {
         VkPipeline pipeline = i && r->scanout_layers[i - 1].reinterpret ?
@@ -1861,6 +1940,9 @@ static void destroy_surface_sampler(PGRAPHState *pg)
 
 void pgraph_vk_init_display(PGRAPHState *pg)
 {
+    PGRAPHVkState *r = pg->vk_renderer_state;
+    memset(&r->display.gamma, 0, sizeof(r->display.gamma));
+    memset(r->display.gamma_uploaded, 0, sizeof(r->display.gamma_uploaded));
     create_descriptor_pool(pg);
     create_descriptor_set_layout(pg);
     create_descriptor_sets(pg);
@@ -1897,6 +1979,7 @@ void pgraph_vk_finalize_display(PGRAPHState *pg)
     destroy_descriptor_set_layout(pg);
     destroy_descriptor_pool(pg);
 }
+
 
 /* The scanout moved (PCRTC_START), or the frontend found nothing new and
  * asks for another look: the display is drawn again when the front buffer
@@ -1936,7 +2019,8 @@ void pgraph_vk_present_scanout(NV2AState *d)
     d->vga.get_resolution(&d->vga, (int *)&width, (int *)&height);
     const bool interlaced = d->vga.cr[NV_PRMCIO_INTERLACE_MODE] !=
                             NV_PRMCIO_INTERLACE_MODE_DISABLED;
-    if (!disp->retry_pending &&
+    bool gamma_changed = update_gamma(disp);
+    if (!gamma_changed && !disp->retry_pending &&
         surface->vram_addr == disp->last_surface_addr &&
         surface->draw_time == disp->draw_time &&
         !surface->upload_pending &&

@@ -13,7 +13,7 @@ a=s.index('static void render_display(');b=s.index('    struct PGRAPHVkScanoutMo
 prefix=s[s.index('    unsigned slot = 0;',a):b]
 assert 'wait_frame_sync(' not in s[a:s.index('static void create_surface_sampler',a)]
 assert b<s.index('pgraph_vk_finish(',a) and b<s.index('pgraph_vk_upload_surface_data(',a)
-a=s.index('    if (!disp->retry_pending &&');b=s.index(') {',a)
+a=s.index('    if (!gamma_changed && !disp->retry_pending &&');b=s.index(') {',a)
 condition=s[a+len('    if ('):b]
 code=Path(__file__).with_suffix('.c').read_text().replace('/* ACQUIRE */',function('try_frame_sync')).replace('/* PREFIX */',prefix).replace('/* CACHE */',condition)
 win='mingw' in cc or os.name=='nt'

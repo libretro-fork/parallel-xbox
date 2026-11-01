@@ -464,10 +464,29 @@ void glue(helper_pshufhw, SUFFIX)(Reg *d, Reg *s, int order)
 /* FPU ops */
 /* XXX: not accurate */
 
+#if defined(XBOX) && defined(__x86_64__)
+#define XEMU_SSE_DIRECTED_ENTRY(size,name) do {                          \
+    if (xemu_sse_directed_mode(&env->sse_status)) {                      \
+        XEMU_SSE_DIRECTED_SUFFIX(                                      \
+            xemu_sse_directed_##name##size,SUFFIX)(env,d,v,s);          \
+        return;                                                        \
+    }                                                                  \
+} while (0)
+#else
+#define XEMU_SSE_DIRECTED_ENTRY(size,name)
+#endif
+#define XEMU_SSE_DIRECTED_ENTRY_add(size) XEMU_SSE_DIRECTED_ENTRY(size,add)
+#define XEMU_SSE_DIRECTED_ENTRY_sub(size) XEMU_SSE_DIRECTED_ENTRY(size,sub)
+#define XEMU_SSE_DIRECTED_ENTRY_mul(size) XEMU_SSE_DIRECTED_ENTRY(size,mul)
+#define XEMU_SSE_DIRECTED_ENTRY_div(size)
+#define XEMU_SSE_DIRECTED_ENTRY_min(size)
+#define XEMU_SSE_DIRECTED_ENTRY_max(size)
+
 #define SSE_HELPER_P(name, F, INIT)                                     \
     void glue(helper_ ## name ## ps, SUFFIX)(CPUX86State *env,          \
             Reg *d, Reg *v, Reg *s)                                     \
     {                                                                   \
+        glue(XEMU_SSE_DIRECTED_ENTRY_,name)(32);                          \
         INIT                                                            \
         int i;                                                          \
         glue(XEMU_SSE_PACKED32_, name)                                   \
@@ -479,6 +498,7 @@ void glue(helper_pshufhw, SUFFIX)(Reg *d, Reg *s, int order)
     void glue(helper_ ## name ## pd, SUFFIX)(CPUX86State *env,          \
             Reg *d, Reg *v, Reg *s)                                     \
     {                                                                   \
+        glue(XEMU_SSE_DIRECTED_ENTRY_,name)(64);                          \
         INIT                                                            \
         int i;                                                          \
         glue(XEMU_SSE_PACKED64_, name)                                   \
@@ -496,7 +516,7 @@ void glue(helper_pshufhw, SUFFIX)(Reg *d, Reg *s, int order)
     {                                                                   \
         INIT                                                            \
         int i;                                                          \
-        d->ZMM_S(0) = F(32, v->ZMM_S(0), s->ZMM_S(0));                  \
+        d->ZMM_S(0) = glue(F, _SCALAR)(32, v->ZMM_S(0), s->ZMM_S(0));          \
         /* CPU boost: non-VEX encodings have d == v, a self-move. */    \
         if (!xemu_cpu_boost || d != v) {                                \
             for (i = 1; i < 2 << SHIFT; i++) {                          \
@@ -509,7 +529,7 @@ void glue(helper_pshufhw, SUFFIX)(Reg *d, Reg *s, int order)
     {                                                                   \
         INIT                                                            \
         int i;                                                          \
-        d->ZMM_D(0) = F(64, v->ZMM_D(0), s->ZMM_D(0));                  \
+        d->ZMM_D(0) = glue(F, _SCALAR)(64, v->ZMM_D(0), s->ZMM_D(0));          \
         if (!xemu_cpu_boost || d != v) {                                \
             for (i = 1; i < 1 << SHIFT; i++) {                          \
                 d->ZMM_Q(i) = v->ZMM_Q(i);                              \
@@ -525,13 +545,41 @@ void glue(helper_pshufhw, SUFFIX)(Reg *d, Reg *s, int order)
 
 #if defined(XBOX) && defined(__x86_64__)
 /*
- * Native SSE arithmetic, on by default (the "CPU boost" setting) and taken
- * only with round-to-nearest and no flush-to-zero, where the host rounds
- * exactly as the guest's SSE unit does. It differs from the real CPU in two
- * ways: it raises no exception flags, so stmxcsr and fxsave show only those
- * of the software path; and the compiler may swap the operands of add and
- * mul, which changes which NaN comes back when both are NaN.
+ * CPU Boost's native round-to-nearest arithmetic, with flushing disabled.
+ * This path does not record guest exception flags, so stmxcsr and fxsave
+ * show only those raised by the software paths. The compiler may also
+ * commute add/mul operands, changing which NaN wins when both are NaNs.
+ * Directed rounding uses the separate scoped native path where safe.
  */
+#include "target/i386/tcg/sse-directed.h"
+
+/* Match the public helper ABI so a directed-rounding miss can tail-call
+ * without adding five-argument call spills to ordinary packed arithmetic. */
+#define XEMU_SSE_DIRECTED_SUFFIX_(name,suffix) name##suffix
+#define XEMU_SSE_DIRECTED_SUFFIX(name,suffix) \
+    XEMU_SSE_DIRECTED_SUFFIX_(name,suffix)
+#define XEMU_SSE_DIRECTED_WRAPPERS(name)                                 \
+static __attribute__((noinline)) void                                   \
+glue(xemu_sse_directed_##name##32,SUFFIX)(                               \
+    CPUX86State *env, Reg *d, Reg *v, Reg *s)                            \
+{                                                                      \
+    xemu_sse_directed_##name##32_vector(                                \
+        &d->ZMM_S(0),&v->ZMM_S(0),&s->ZMM_S(0),&env->sse_status,        \
+        2u<<SHIFT);                                                    \
+}                                                                      \
+static __attribute__((noinline)) void                                   \
+glue(xemu_sse_directed_##name##64,SUFFIX)(                               \
+    CPUX86State *env, Reg *d, Reg *v, Reg *s)                            \
+{                                                                      \
+    xemu_sse_directed_##name##64_vector(                                \
+        &d->ZMM_D(0),&v->ZMM_D(0),&s->ZMM_D(0),&env->sse_status,        \
+        1u<<SHIFT);                                                    \
+}
+XEMU_SSE_DIRECTED_WRAPPERS(add)
+XEMU_SSE_DIRECTED_WRAPPERS(sub)
+XEMU_SSE_DIRECTED_WRAPPERS(mul)
+#undef XEMU_SSE_DIRECTED_WRAPPERS
+
 #define XEMU_HOST_F32 float
 #define XEMU_HOST_F64 double
 
@@ -616,9 +664,28 @@ static inline bool sse_native_ok(CPUX86State *env)
         _r;                                                              \
     })
 
+#define XEMU_SSE_SCALAR_OP(size, a, b, name, op, softfn)                  \
+    ({                                                                   \
+        float##size result;                                             \
+        if (!xemu_sse_native &&                                          \
+            xemu_sse_directed_mode(&env->sse_status)) {                   \
+            result=xemu_sse_directed_##name##size(                       \
+                (a),(b),&env->sse_status);                               \
+        } else {                                                        \
+            result=XEMU_SSE_OP(size,a,b,op,softfn);                      \
+        }                                                               \
+        result;                                                         \
+    })
+
 #define FPU_ADD(size, a, b) XEMU_SSE_OP(size, a, b, +, float ## size ## _add)
 #define FPU_SUB(size, a, b) XEMU_SSE_OP(size, a, b, -, float ## size ## _sub)
 #define FPU_MUL(size, a, b) XEMU_SSE_OP(size, a, b, *, float ## size ## _mul)
+#define FPU_ADD_SCALAR(size,a,b) \
+    XEMU_SSE_SCALAR_OP(size,a,b,add,+,float##size##_add)
+#define FPU_SUB_SCALAR(size,a,b) \
+    XEMU_SSE_SCALAR_OP(size,a,b,sub,-,float##size##_sub)
+#define FPU_MUL_SCALAR(size,a,b) \
+    XEMU_SSE_SCALAR_OP(size,a,b,mul,*,float##size##_mul)
 #else
 #define XEMU_SSE_NATIVE_INIT
 #define FPU_ADD(size, a, b) float ## size ## _add(a, b, &env->sse_status)
@@ -639,6 +706,14 @@ static inline bool sse_native_ok(CPUX86State *env)
 #define XEMU_SSE_PACKED64_sub
 #define XEMU_SSE_PACKED64_mul
 #endif
+#if !defined(XBOX) || !defined(__x86_64__)
+#define FPU_ADD_SCALAR FPU_ADD
+#define FPU_SUB_SCALAR FPU_SUB
+#define FPU_MUL_SCALAR FPU_MUL
+#endif
+#define FPU_DIV_SCALAR FPU_DIV
+#define FPU_MIN_SCALAR FPU_MIN
+#define FPU_MAX_SCALAR FPU_MAX
 #define FPU_DIV(size, a, b) float ## size ## _div(a, b, &env->sse_status)
 
 /* Note that the choice of comparison op here is important to get the

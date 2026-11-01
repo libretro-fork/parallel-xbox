@@ -45,6 +45,8 @@ bool nv2a_get_force_texture_lod0(void);
 void nv2a_set_force_quality_filtering(bool enabled);
 unsigned int nv2a_get_surface_scale_factor(void);
 const uint8_t *nv2a_get_dac_palette(void);
+/* Owner-renderer snapshot; unchanged palettes need only an atomic flag read. */
+bool nv2a_get_dac_palette_snapshot(uint32_t ramp[256], bool force);
 int nv2a_get_screen_off(void);
 struct QemuConsole *nv2a_get_vga_console(void);
 void nv2a_profile_present(void);

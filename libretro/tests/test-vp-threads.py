@@ -17,7 +17,7 @@ repo = Path(sys.argv[1]).resolve()
 cc = sys.argv[2] if len(sys.argv) > 2 else 'gcc'
 scenarios = sys.argv[3] if len(sys.argv) > 3 else '400'
 here = Path(__file__).resolve().parent
-source = (repo/'hw/xbox/mcpx/apu/vp/vp.c').read_text(encoding='utf-8')
+source = Path(os.environ.get('VP_THREADS_SOURCE',repo/'hw/xbox/mcpx/apu/vp/vp.c')).read_text(encoding='utf-8')
 header = (repo/'hw/xbox/mcpx/apu/vp/vp.h').read_text(encoding='utf-8')
 
 def function(name):
@@ -79,7 +79,7 @@ with tempfile.TemporaryDirectory(prefix='vp-threads-', dir=repo.parent) as direc
     tmp = Path(directory)
     c = tmp/'test.c'
     c.write_text(generated, encoding='utf-8')
-    exe = tmp/('test.exe' if os.name == 'nt' else 'test')
+    exe = Path(os.environ.get('VP_THREADS_BINARY',str(tmp/('test.exe' if os.name == 'nt' else 'test'))))
     args = [cc, '-O2', '-g', '-fwrapv', '-fno-strict-aliasing', '-std=gnu11', '-w', '-pthread',
             '-I' + str(repo), '-I' + str(repo/'include'), '-I' + str(lrc/'include'), str(c),
             str(lrc/'rthreads/rthreads.c'), str(lrc/'rthreads/retro_eventcount.c'), '-o', str(exe)]
@@ -87,4 +87,5 @@ with tempfile.TemporaryDirectory(prefix='vp-threads-', dir=repo.parent) as direc
     if os.name != 'nt':
         args += ['-lm']
     subprocess.run(args, env=env, check=True)
-    subprocess.run([str(exe), scenarios], env=env, check=True, timeout=300)
+    if not os.environ.get('VP_THREADS_SKIP_RUN'):
+        subprocess.run([str(exe), scenarios], env=env, check=True, timeout=300)

@@ -2,6 +2,10 @@
 
 - Dispatch deferred disk completions directly from fixed owner-thread slots, removing per-drive bottom-half allocations and per-request atomic queue/notification work. Preserve cancellation, nested drains, DSP ownership and next-pass submission deferral; retain native positional/vectored and mapped disk I/O. Generic AIO remains for other users.
 
+- Apply the game's RGB gamma ramp in OpenGL and Vulkan after video overlay composition. Brightness settings and fades now affect the displayed image automatically, including palette-only updates. Neutral ramps preserve existing output; no extra rendering pass, GPU readback or game-shader variants are added.
+
+- Preserve serial voice-list order when an APU frame repeats a voice handle, preventing parallel workers from racing that voice's filter, envelope and resampler state. Unique-voice layouts keep the existing parallel scheduler.
+- Accelerate directed-rounding SSE add/subtract/multiply on x86-64 for bounded normal operands and signed zero, preserving guest inexact flags and host MXCSR. Batch packed values in 128-bit groups without intermediate data buffers. Keep SoftFloat for unsafe inputs and preserve the existing round-to-nearest CPU Boost behavior.
 - Extend clean Vulkan vertex snapshots in either arena by copying only their new suffix, preserving reuse after arena spill or command-slot rotation without duplicating the valid prefix.
 - Use safe unused space in the second Vulkan vertex-snapshot arena before falling back to synchronous settlement when the active arena fills. No additional buffer or intermediary copy is allocated.
 - Stream shader-seed replacements through libretro-common atomic-file primitives instead of assembling a whole-file byte array. Borrow preserved sections while writing the temporary file, unmap before commit, and retain exact section order, valid-prefix behavior and failure cleanup. Reject overflowing malformed section sizes before reading.

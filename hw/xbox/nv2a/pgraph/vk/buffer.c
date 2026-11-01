@@ -337,6 +337,16 @@ void pgraph_vk_init_buffers(NV2AState *d)
         .buffer_size = r->storage_buffers[BUFFER_UNIFORM].buffer_size,
     };
 
+    /* Immutable palette snapshots share the display descriptor ring's lifetime.
+     * Include backing in startup reservation; map once, flush only changed slots. */
+    r->storage_buffers[BUFFER_DISPLAY_GAMMA] = (StorageBuffer){
+        .alloc_info = host_alloc_create_info,
+        .usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+        .buffer_size = PGRAPH_GAMMA_SLOTS * pgraph_gamma_stride(
+            r->device_props.limits.minUniformBufferOffsetAlignment,
+            r->device_props.limits.nonCoherentAtomSize),
+    };
+
     reserve_buffer_backing(pg);
     for (int i = 0; i < BUFFER_COUNT; i++) {
         create_buffer(pg, &r->storage_buffers[i]);
@@ -394,7 +404,7 @@ void pgraph_vk_init_buffers(NV2AState *d)
                              BUFFER_VERTEX_INLINE_STAGING,
                              BUFFER_UNIFORM_STAGING,
                              BUFFER_STAGING_SRC,
-                             BUFFER_STAGING_DST };
+                             BUFFER_STAGING_DST, BUFFER_DISPLAY_GAMMA };
 
     for (int i = 0; i < ARRAY_SIZE(buffers_to_map); i++) {
         VK_CHECK(xemu_vk_map_memory(

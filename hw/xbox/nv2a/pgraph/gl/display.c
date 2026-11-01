@@ -25,6 +25,7 @@
 #include "hw/xbox/nv2a/nv2a_int.h"
 #include "hw/xbox/nv2a/pgraph/util.h"
 #include "renderer.h"
+#include "hw/xbox/nv2a/pgraph/gamma.h"
 
 #include <math.h>
 
@@ -74,6 +75,9 @@ void pgraph_gl_display_surface_gone(NV2AState *d, SurfaceBinding *surface)
  * slot's metadata; separate cache lines keep writes off the frontend's slot. */
 static struct {
     GLuint prog, vao, fbo, pvideo_tex;
+    PGRAPHGammaState gamma;
+    uint64_t gamma_uploaded;
+    GLint gamma_enable_loc, gamma_lut_loc;
     unsigned pvideo_width, pvideo_height;
     GLint tex_loc, pvideo_enable_loc, pvideo_tex_loc, pvideo_in_pos_loc,
           pvideo_pos_loc, pvideo_scale_loc, pvideo_color_key_enable_loc,
@@ -93,6 +97,8 @@ _Static_assert(sizeof(ui.slot[0]) == 64, "display slot metadata fits one cache l
 
 static void ui_init(void)
 {
+    memset(&ui.gamma, 0, sizeof(ui.gamma));
+    ui.gamma_uploaded = 0;
     for (int i = 0; i < ARRAY_SIZE(ui.slot); i++) {
         memset(&ui.slot[i], 0, sizeof(ui.slot[i]));
         glGenTextures(1, &ui.slot[i].tex);
@@ -111,6 +117,8 @@ static void ui_init(void)
     const char *fs =
         "#version 330\n"
         "uniform sampler2D tex;\n"
+        "uniform bool gamma_enable;\n"
+        "uniform uvec4 gamma_lut[64];\n"
         "uniform bool pvideo_enable;\n"
         "uniform sampler2D pvideo_tex;\n"
         "uniform vec2 pvideo_in_pos;\n"
@@ -121,6 +129,7 @@ static void ui_init(void)
         "uniform vec2 display_size;\n"
         "uniform float line_offset;\n"
         "layout(location = 0) out vec4 out_Color;\n"
+        PGRAPH_GAMMA_GLSL
         "void main()\n"
         "{\n"
         "    vec2 texCoord = gl_FragCoord.xy/display_size;\n"
@@ -139,10 +148,13 @@ static void ui_init(void)
         "            out_Color.rgba = texture(pvideo_tex, in_st);\n"
         "        }\n"
         "    }\n"
+        "    if (gamma_enable) out_Color.rgb = apply_gamma(out_Color.rgb);\n"
         "}\n";
 
     ui.prog = pgraph_gl_compile_shader(vs, fs);
     ui.tex_loc = glGetUniformLocation(ui.prog, "tex");
+    ui.gamma_enable_loc = glGetUniformLocation(ui.prog, "gamma_enable");
+    ui.gamma_lut_loc = glGetUniformLocation(ui.prog, "gamma_lut");
     ui.pvideo_enable_loc = glGetUniformLocation(ui.prog, "pvideo_enable");
     ui.pvideo_tex_loc = glGetUniformLocation(ui.prog, "pvideo_tex");
     ui.pvideo_in_pos_loc = glGetUniformLocation(ui.prog, "pvideo_in_pos");
@@ -157,6 +169,17 @@ static void ui_init(void)
     glBindVertexArray(ui.vao);
     glGenFramebuffers(1, &ui.fbo);
     glGenTextures(1, &ui.pvideo_tex);
+}
+
+static bool ui_update_gamma(void)
+{
+    uint32_t ramp[256];
+    if (!nv2a_get_dac_palette_snapshot(ramp, !ui.gamma.version) ||
+        !pgraph_gamma_update(&ui.gamma, ramp)) {
+        return false;
+    }
+    if (ui.gamma.version == 1) ui.gamma_uploaded = 0;
+    return true;
 }
 
 static void ui_pvideo_overlay(NV2AState *d, const DispCompose *p,
@@ -315,12 +338,16 @@ static void ui_resolve(NV2AState *d, const DispCompose *p, int slot)
     glBindFramebuffer(GL_FRAMEBUFFER, ui.fbo);
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, ui.slot[slot].tex);
+    /* The DAC has eight output bits even when scanout is RGB565/1555. */
+    GLint target_internal = ui.gamma.enabled ? GL_RGBA8 : p->internal_format;
+    GLenum target_format = ui.gamma.enabled ? GL_RGBA : p->format;
+    GLenum target_type = ui.gamma.enabled ? GL_UNSIGNED_BYTE : p->type;
     bool recreate = (
-        p->internal_format != ui.slot[slot].internal_format
+        target_internal != ui.slot[slot].internal_format
         || width != ui.slot[slot].width
         || height != ui.slot[slot].height
-        || p->format != ui.slot[slot].format
-        || p->type != ui.slot[slot].type
+        || target_format != ui.slot[slot].format
+        || target_type != ui.slot[slot].type
         );
 
     if (recreate) {
@@ -335,11 +362,11 @@ static void ui_resolve(NV2AState *d, const DispCompose *p, int slot)
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-        ui.slot[slot].internal_format = p->internal_format;
+        ui.slot[slot].internal_format = target_internal;
         ui.slot[slot].width = width;
         ui.slot[slot].height = height;
-        ui.slot[slot].format = p->format;
-        ui.slot[slot].type = p->type;
+        ui.slot[slot].format = target_format;
+        ui.slot[slot].type = target_type;
         glTexImage2D(GL_TEXTURE_2D, 0, ui.slot[slot].internal_format,
                      ui.slot[slot].width, ui.slot[slot].height, 0,
                      ui.slot[slot].format, ui.slot[slot].type, NULL);
@@ -354,6 +381,11 @@ static void ui_resolve(NV2AState *d, const DispCompose *p, int slot)
     glBindTexture(GL_TEXTURE_2D, p->tex);
     glBindVertexArray(ui.vao);
     glUseProgram(ui.prog);
+    if (ui.gamma_uploaded != ui.gamma.version) {
+        glUniform1i(ui.gamma_enable_loc, ui.gamma.enabled);
+        if (ui.gamma.enabled) glUniform4uiv(ui.gamma_lut_loc, 64, ui.gamma.ramp);
+        ui.gamma_uploaded = ui.gamma.version;
+    }
     glProgramUniform1i(ui.prog, ui.tex_loc, 0);
     glUniform2f(ui.display_size_loc, width, height);
     glUniform1f(ui.line_offset_loc, line_offset);
@@ -488,7 +520,8 @@ static bool post_scanout(NV2AState *d, bool *fresh)
     d->vga.get_resolution(&d->vga, &disp_width, &disp_height);
     bool interlaced = d->vga.cr[NV_PRMCIO_INTERLACE_MODE] !=
                       NV_PRMCIO_INTERLACE_MODE_DISABLED;
-    if (r->disp_last_surface != NULL &&
+    bool gamma_changed = ui_update_gamma();
+    if (!gamma_changed && r->disp_last_surface != NULL &&
         surface == r->disp_last_surface &&
         surface->draw_time == r->disp_last_draw_time &&
         !surface->upload_pending && !pvideo &&

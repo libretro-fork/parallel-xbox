@@ -94,7 +94,9 @@ int main(void) {
   unsigned d=alias[aliasno][0],v=alias[aliasno][1],s=alias[aliasno][2];TestReg in_v=a[v],in_s=a[s];
   _mm_setcsr(host>=2?0x3f80:0x1f80);reference(&x,&a[d],&a[v],&a[s],which);unsigned mxcsr=_mm_getcsr();
   _mm_setcsr(host>=2?0x3f80:0x1f80);gates=0;funcs[which](&y,&b[d],&b[v],&b[s]);
-  assert(gates==(which%6<3?1u:0u));
+  /* Packed directed rounding bypasses the legacy nearest-mode gate. */
+  unsigned expected_gates=(which%6<3 && !(which<12 && (mode&3)))?1u:0u;
+  assert(gates==expected_gates);
   /* The existing native path permits the compiler to commute add/mul.
    * For two NaNs, either input payload may win; both must be quieted.
    * Every other bit and all software results are compared exactly. */
