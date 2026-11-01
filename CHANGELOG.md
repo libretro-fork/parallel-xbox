@@ -1,5 +1,7 @@
 # Changelog of the libretro core
 
+- Decode larger S3TC volume textures directly into GPU images on hardware GL 4.3 drivers without VTC; keep native compressed uploads and CPU fallbacks for small textures, older GL and software Mesa.
+
 - Correct mixed min/mag G8B8 border filtering when a mip chain is clamped to mip zero. Reuse existing mixed point/gather shaders; preserve Vulkan filter selection without reading higher mips, including unsigned channels. Keep existing shader-cache layouts and nonborder keys.
 
 - Reuse Vulkan pipeline-cache export storage across background saves, with startup reservation and geometric growth. Failed file writes remain eligible for retry.

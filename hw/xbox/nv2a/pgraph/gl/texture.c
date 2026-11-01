@@ -4,7 +4,7 @@
  * Copyright (c) 2012 espes
  * Copyright (c) 2015 Jannik Vogel
  * Copyright (c) 2018-2024 Matt Borgerson
- * Copyright (c) 2026 RÃ©da ChÃ©rif-Touil
+ * Copyright (c) 2026 RÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â©da ChÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â©rif-Touil
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -27,6 +27,7 @@
 #include "hw/xbox/nv2a/pgraph/texture.h"
 #include "debug.h"
 #include "renderer.h"
+#include "s3tc-decode.h"
 #include "hw/xbox/nv2a/pgraph/vram-ranges.h"
 #include "ui/xemu-settings.h"
 #include "data/segaboot_logo.rgba.h"
@@ -677,6 +678,91 @@ static uint8_t *tex_scratch(PGRAPHGLState *r, int which, size_t size)
     return r->tex_scratch[which];
 }
 
+/* Upload only packed blocks. No decoded CPU image or GPU readback. */
+static bool decode_compressed_volume_gpu(PGRAPHGLState *r, GLint level,
+    GLenum format, const uint8_t *data, unsigned width, unsigned height,
+    unsigned depth, size_t compressed_size)
+{
+    if (!r->s3tc_decode.enabled || compressed_size > r->s3tc_decode.max_bytes ||
+        (width+7u)/8u > r->s3tc_decode.max_groups[0] ||
+        (height+7u)/8u > r->s3tc_decode.max_groups[1] ||
+        depth > r->s3tc_decode.max_groups[2]) {
+        return false;
+    }
+    if (!r->s3tc_decode.program) {
+        GLuint shader = glCreateShader(GL_COMPUTE_SHADER);
+        const char *source = s3tc_volume_decode_glsl;
+        glShaderSource(shader, 1, &source, NULL);
+        glCompileShader(shader);
+        GLint ok;
+        glGetShaderiv(shader, GL_COMPILE_STATUS, &ok);
+        if (ok) {
+            r->s3tc_decode.program = glCreateProgram();
+            glAttachShader(r->s3tc_decode.program, shader);
+            glLinkProgram(r->s3tc_decode.program);
+            glGetProgramiv(r->s3tc_decode.program, GL_LINK_STATUS, &ok);
+        }
+        glDeleteShader(shader);
+        if (!ok) {
+            glDeleteProgram(r->s3tc_decode.program);
+            r->s3tc_decode.program = 0;
+            r->s3tc_decode.enabled = false;
+            return false;
+        }
+        glGenBuffers(1, &r->s3tc_decode.buffer);
+    }
+    GLint program, generic, indexed, texture, unpack, base_level, max_level;
+    GLint image, image_level, layered, layer, access, image_format;
+    GLint64 start, size;
+    glGetIntegerv(GL_CURRENT_PROGRAM, &program);
+    glGetIntegerv(GL_TEXTURE_BINDING_3D, &texture);
+    glGetTexParameteriv(GL_TEXTURE_3D, GL_TEXTURE_BASE_LEVEL, &base_level);
+    glGetTexParameteriv(GL_TEXTURE_3D, GL_TEXTURE_MAX_LEVEL, &max_level);
+    glGetIntegerv(GL_PIXEL_UNPACK_BUFFER_BINDING, &unpack);
+    glGetIntegerv(GL_SHADER_STORAGE_BUFFER_BINDING, &generic);
+    glGetIntegeri_v(GL_SHADER_STORAGE_BUFFER_BINDING, 0, &indexed);
+    glGetInteger64i_v(GL_SHADER_STORAGE_BUFFER_START, 0, &start);
+    glGetInteger64i_v(GL_SHADER_STORAGE_BUFFER_SIZE, 0, &size);
+    glGetIntegeri_v(GL_IMAGE_BINDING_NAME, 0, &image);
+    glGetIntegeri_v(GL_IMAGE_BINDING_LEVEL, 0, &image_level);
+    glGetIntegeri_v(GL_IMAGE_BINDING_LAYERED, 0, &layered);
+    glGetIntegeri_v(GL_IMAGE_BINDING_LAYER, 0, &layer);
+    glGetIntegeri_v(GL_IMAGE_BINDING_ACCESS, 0, &access);
+    glGetIntegeri_v(GL_IMAGE_BINDING_FORMAT, 0, &image_format);
+
+    glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+    glTexImage3D(GL_TEXTURE_3D, level, GL_RGBA8, width, height, depth, 0,
+                 GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+    glBindBuffer(GL_PIXEL_UNPACK_BUFFER, unpack);
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, r->s3tc_decode.buffer);
+    /* Orphan the previous snapshot rather than overwriting an in-flight read. */
+    glBufferData(GL_SHADER_STORAGE_BUFFER, compressed_size, data, GL_STREAM_DRAW);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, r->s3tc_decode.buffer);
+    /* A mutable texture's other mip levels may not have been uploaded yet.
+     * Image stores require completeness, even though only this level is bound. */
+    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_BASE_LEVEL, level);
+    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAX_LEVEL, level);
+    glBindImageTexture(0, texture, level, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA8);
+    glUseProgram(r->s3tc_decode.program);
+    glUniform4ui(0, width, height, depth,
+                 gl_internal_format_to_s3tc_enum(format));
+    glDispatchCompute((width+7u)/8u, (height+7u)/8u, depth);
+    glMemoryBarrier(GL_TEXTURE_FETCH_BARRIER_BIT | GL_TEXTURE_UPDATE_BARRIER_BIT |
+                     GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+
+    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_BASE_LEVEL, base_level);
+    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAX_LEVEL, max_level);
+    glUseProgram(program);
+    glBindImageTexture(0, image, image_level, layered, layer, access, image_format);
+    if (indexed && size) {
+        glBindBufferRange(GL_SHADER_STORAGE_BUFFER, 0, indexed, start, size);
+    } else {
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, indexed);
+    }
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, generic);
+    return true;
+}
+
 /* EXT_texture_compression_s3tc alone only covers 2D images. VTC accepts
  * the Xbox's 4-deep block groups directly; slice reordering corrupts them. */
 static void upload_compressed_volume(PGRAPHGLState *r, GLenum target,
@@ -688,6 +774,10 @@ static void upload_compressed_volume(PGRAPHGLState *r, GLenum target,
     if (r->s3tc_3d_native) {
         glCompressedTexImage3D(target, level, format, width, height, depth, 0,
                                compressed_size, data);
+    } else if (target == GL_TEXTURE_3D && (size_t)width * height * depth >= 16384 &&
+               decode_compressed_volume_gpu(r, level, format, data, width,
+                                             height, depth, compressed_size)) {
+        /* Final RGBA image was written by compute. */
     } else {
         uint8_t *converted = tex_scratch(r, 1, (size_t)width * height * depth * 4);
         s3tc_decompress_3d_into(gl_internal_format_to_s3tc_enum(format), data,
@@ -1123,6 +1213,18 @@ void pgraph_gl_init_textures(NV2AState *d)
     r->s3tc_native = xemu_gl_has_extension("GL_EXT_texture_compression_s3tc");
     r->s3tc_3d_native = r->s3tc_native &&
         xemu_gl_has_extension("GL_NV_texture_compression_vtc");
+    const char *renderer = (const char *)glGetString(GL_RENDERER);
+    /* Measured software Mesa dispatch cost exceeds the scalar fallback. */
+    r->s3tc_decode.enabled = xemu_gl_version() >= 43 &&
+        !strstr(renderer, "llvmpipe") && !strstr(renderer, "softpipe");
+    if (r->s3tc_decode.enabled) {
+        glGetInteger64v(GL_MAX_SHADER_STORAGE_BLOCK_SIZE, &r->s3tc_decode.max_bytes);
+        for (unsigned i = 0; i < 3; i++) {
+            glGetIntegeri_v(GL_MAX_COMPUTE_WORK_GROUP_COUNT, i,
+                           &r->s3tc_decode.max_groups[i]);
+        }
+    }
+
 }
 
 void pgraph_gl_finalize_textures(PGRAPHState *pg)
@@ -1132,6 +1234,10 @@ void pgraph_gl_finalize_textures(PGRAPHState *pg)
     for (int i = 0; i < NV2A_MAX_TEXTURES; i++) {
         r->texture_binding[i] = NULL;
     }
+
+    glDeleteProgram(r->s3tc_decode.program);
+    glDeleteBuffers(1, &r->s3tc_decode.buffer);
+    memset(&r->s3tc_decode, 0, sizeof(r->s3tc_decode));
 
     lru_flush(&r->texture_cache);
     free(r->texture_cache_entries);

@@ -4,7 +4,7 @@
  * Copyright (c) 2012 espes
  * Copyright (c) 2015 Jannik Vogel
  * Copyright (c) 2018-2025 Matt Borgerson
- * Copyright (c) 2026 Réda Chérif-Touil
+ * Copyright (c) 2026 RÃ©da ChÃ©rif-Touil
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -447,6 +447,13 @@ typedef struct PGRAPHGLState {
     bool s3tc_native;
     /* Native volume blocks additionally require NV_texture_compression_vtc. */
     bool s3tc_3d_native;
+    struct {
+        bool enabled;
+        GLuint program, buffer;
+        GLint64 max_bytes;
+        GLint max_groups[3];
+    } s3tc_decode;
+
 
     Lru shader_cache;
     ShaderBinding *shader_cache_entries;
