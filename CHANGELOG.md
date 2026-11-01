@@ -1,5 +1,6 @@
 # Changelog of the libretro core
 
+- Drain Vulkan command slots with at most one fence wait, using the latest pending submission on their shared queue. Skip the wait when retirement is already proved; preserve ownership cleanup and timestamps after completion. Actual unfinished drains still wait.
 - Keep the shader-worker regression fixture on the production ready-index window, adoption and clear helpers so CI continues checking exact FIFO order and source ownership after compaction changes.
 
 - Keep signed G8B8 bump/color gathers aligned with their interpolation weights near texel boundaries. This prevents host coordinate rounding from selecting the wrong neighboring block, without extra texture reads or CPU/GPU synchronization.

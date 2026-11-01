@@ -2288,3 +2288,19 @@ The serial-proof check preserves the Win64 reclaim function's 96-byte stack
 frame and all renderer structure sizes. It adds no allocations, PSOs, copies,
 locks, status queries or frame queue. Hardware cache-miss and game-latency
 effects are unmeasured; unfinished submissions still have their existing wait.
+
+The retirement fixture also extracts the production full-slot drain. Eighty
+schedules cover both slot orders, every pending mask, known/unknown completion
+and serial rollover. Draining waits only on the latest unproved submission's
+fence, or makes no driver call when all completion is already proved. It makes
+no status probes and releases neither GPU-RAM ownership nor garbage/timestamps
+before the wait returns. Repeated drains never drop ownership twice.
+
+Both command slots submit to the same queue. The latest submission's fence
+covers preceding commands as specified by the [Vulkan synchronization rules](https://docs.vulkan.org/spec/latest/chapters/synchronization.html).
+This reduces redundant synchronization calls; it does not make a necessary
+full drain asynchronous. No buffers, copies, PSOs, locks or frame queue change.
+
+Win64 full-drain stack usage falls from 96 to 80 bytes; renderer structure
+sizes remain unchanged. This is a code-generation result, not a measured
+hardware cache-miss or game-latency improvement.

@@ -9,7 +9,7 @@ def function(name):
  a=m.start();b=source.index('{',a)+1;depth=1
  while depth:depth+=(source[b]=='{')-(source[b]=='}');b+=1
  return source[a:b]
-code=Path(__file__).with_suffix('.c').read_text().replace('/* PRODUCTION */','\n'.join(function(n) for n in ['pgraph_vk_reclaim_retired_images','pgraph_vk_slot_retired','pgraph_vk_reclaim_command_buffer','eager_submit_after_draw']))
+code=Path(__file__).with_suffix('.c').read_text().replace('/* PRODUCTION */','\n'.join(function(n) for n in ['pgraph_vk_reclaim_retired_images','pgraph_vk_slot_retired','pgraph_vk_reclaim_command_buffer','pgraph_vk_wait_all_slots','eager_submit_after_draw']))
 assert 'eager_submit_after_draw(pg);' in function('pgraph_vk_draw_end')
 win='mingw' in cc or os.name=='nt'
 with tempfile.TemporaryDirectory(prefix='vk-eager-retirement-',dir=root.parent) as tmp:
