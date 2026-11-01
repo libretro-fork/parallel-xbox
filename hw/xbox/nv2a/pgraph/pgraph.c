@@ -546,8 +546,7 @@ void pgraph_init(NV2AState *d)
 
     for (int i = 0; i < NV2A_VERTEXSHADER_ATTRIBUTES; i++) {
         VertexAttribute *attribute = &pg->vertex_attributes[i];
-        attribute->inline_buffer = (float*)g_malloc(NV2A_MAX_BATCH_LENGTH
-                                              * sizeof(float) * 4);
+        attribute->inline_buffer = NULL;
         attribute->inline_buffer_populated = false;
     }
 

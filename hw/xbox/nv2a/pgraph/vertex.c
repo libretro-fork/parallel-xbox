@@ -110,6 +110,13 @@ void pgraph_allocate_inline_buffer_vertices(PGRAPHState *pg, unsigned int attr)
         return;
     }
 
+    /* Constant attributes need no array. Allocate once on first variation,
+     * retaining the full capacity for subsequent batches without growth copies. */
+    if (!attribute->inline_buffer) {
+        attribute->inline_buffer = g_malloc((size_t)NV2A_MAX_BATCH_LENGTH *
+                                             sizeof(float) * 4);
+    }
+
     /* Now upload the previous attribute value */
     attribute->inline_buffer_populated = true;
     for (int i = 0; i < pg->inline_buffer_length; i++) {

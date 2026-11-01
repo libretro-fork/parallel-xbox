@@ -1,5 +1,7 @@
 # Changelog of the libretro core
 
+- Defer maximum-size inline vertex arrays until an attribute first varies, avoiding sixteen startup allocation requests totaling about 128 MiB while reusing each array across later batches.
+
 - Upload only a few dirty page runs for large OpenGL vertex spans, retaining bulk uploads for dense/fragmented changes and private stale tracking when surfaces consume shared dirty bits.
 - Linear textures now consistently use one stored level, preventing Vulkan upload assertions and incorrect signed G8B8 filtering when mip-count or clamp fields are stale.
 
