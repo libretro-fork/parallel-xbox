@@ -49,9 +49,8 @@ mstring_from_fmt(const char *fmt, ...)
 
     va_list args;
     va_start(args, fmt);
-    // FIXME: Use g_string_new_take (GLib 2.78+)
-    g_autofree gchar *str = g_strdup_vprintf(fmt, args);
-    mstr->gstr = g_string_new(str);
+    gchar *str = g_strdup_vprintf(fmt, args);
+    mstr->gstr = g_string_new_take(str);
     va_end(args);
 
     return mstr;
