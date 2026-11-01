@@ -53,6 +53,8 @@ static void counted_unswizzle(const uint8_t *src,unsigned w,unsigned h,unsigned 
 }
 #define unswizzle_box counted_unswizzle
 #define unswizzle_rect(s,w,h,d,p,b) counted_unswizzle(s,w,h,1,d,p,0,b)
+/* These conversion fixtures never take the unconverted direct-VRAM path. */
+#define level_from_vram(...) false
 /* PRODUCTION */
 #undef unswizzle_box
 #undef unswizzle_rect

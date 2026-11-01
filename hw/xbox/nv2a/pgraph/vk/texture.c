@@ -317,6 +317,18 @@ static void stage_swizzled(PGRAPHState *pg, VkCommandBuffer cmd,
     bool palette_format =
         s->color_format == NV097_SET_TEXTURE_FORMAT_COLOR_SZ_I8_A8R8G8B8;
 
+    /* With at most one non-unit axis Morton order is already linear.
+     * Copy straight from imported RAM instead of dispatching unswizzle or
+     * staging the same bytes. Keep conversion and alignment fallbacks. */
+    bool linear_order = width && height && depth &&
+        ((width == 1 && height == 1) ||
+         (width == 1 && depth == 1) ||
+         (height == 1 && depth == 1));
+    if (!converted && linear_order &&
+        level_from_vram(pg, level, data, width, height, depth, raw, bpp)) {
+        return;
+    }
+
     /* by the GPU, from the RAM, where it can: as it is, or through the
      * palette */
     if (!converted || palette_format) {

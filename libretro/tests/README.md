@@ -403,6 +403,15 @@ bytes, not shader sampling or full-game behavior.
 The suite also restores an earlier alias state after a differently colored
 GPU redraw and checks both the restored picture and subsequent sampling.
 
+`python libretro/tests/test-degenerate-texture-vram.py CHECKOUT [CC]` runs
+production swizzled-level selection against the production Morton swizzle and
+unswizzle routines. It covers 1,920 combinations of axis lengths, 1/2/4-byte
+texels, imported/missing VRAM, offsets, range boundaries and compute availability.
+Single-axis direct levels must match linear reference bytes without staging or
+compute calls; other cases retain their CPU/GPU fallback. Raw copies use the
+existing upload-time imported-RAM ownership claims. Palette/RGB655 conversion
+fixtures separately verify their unchanged conversion paths.
+
 `python libretro/tests/test-depth-transfer-capacity.py CHECKOUT [CC]` runs the
 production depth-sampling planning prefix before command recording. It checks
 D16, D24S8 and D32S8, three extents, scale 1/2/4/8, available/unavailable native

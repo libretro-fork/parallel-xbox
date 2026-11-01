@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Upload unconverted swizzled texture levels directly from imported Vulkan VRAM when only one axis has more than one texel. Their Morton order is already linear, so thin levels and mip tails skip the unswizzle dispatch, output ring and CPU staging copy; unaligned, non-imported and conversion cases keep their fallbacks.
+
 - Size Vulkan depth-sampling conversion buffers after selecting the native or scaled transfer extent, using the actual depth/stencil planes and output bytes. Avoid unnecessary buffer growth and its GPU drain at high scales, and include stencil-plane alignment for small images.
 
 - Keep eligible RGB565 render-target views as linear ARGB/XRGB textures on the Vulkan GPU, and support linear Y8, AY8 and A8 byte views of native ARGB/RGB565 surfaces. Match active row bytes across 8/16/32-bit views without CPU readback or reupload; retain native-format, dirty-overlap, pitch, capacity and scaling checks.
