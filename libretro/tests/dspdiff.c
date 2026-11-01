@@ -79,8 +79,14 @@ typedef struct Machine {
 #define INTERRUPT_DMA_EOL (1 << 7)
 
 /* dsp.c's peripherals */
+#ifdef DSPJIT_TEST
+static uint64_t peripheral_read_count;
+#endif
 uint32_t read_peripheral(DSPState *dsp, uint32_t address)
 {
+#ifdef DSPJIT_TEST
+    peripheral_read_count++;
+#endif
     uint32_t v = 0xababa;
     switch (address) {
     case 0xFFFFB3:

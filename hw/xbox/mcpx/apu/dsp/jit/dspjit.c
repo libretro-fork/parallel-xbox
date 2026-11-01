@@ -2466,10 +2466,10 @@ static void emit_cc(Emitter *e, int cc)
     h_test_rr(e, 0, T0, T0);
 }
 
-/* End a control instruction at target. A DO boundary at LA+1 needs
- * post-processing if effects are already applied, or fallback otherwise.
+/* End an already executed control instruction at target. A DO boundary
+ * at LA+1 needs post-processing, never a second execution of the opcode.
  * cycles: the instruction's. The accumulators must be stored. */
-static void emit_exit_to(Tr *t, const Insn *in, uint32_t target, uint32_t cycles, bool after_effects)
+static void emit_exit_to(Tr *t, const Insn *in, uint32_t target, uint32_t cycles)
 {
     Emitter *e = &t->e;
     size_t j;
@@ -2477,14 +2477,8 @@ static void emit_exit_to(Tr *t, const Insn *in, uint32_t target, uint32_t cycles
 
     h_cmp_mem32_imm(e, REG_CORE, REGOFF(DSP_REG_LA), (int32_t)target - 1);
     j = h_jcc(e, HC_EQ);
-    if (after_effects) {
-        /* the instruction's work is done: dsp56k_post for the rest */
-        s = stub_new(t, STUB_CTRL_POST, j);
-        s->imm = target;
-    } else {
-        /* nothing done yet: the interpreter does the instruction */
-        s = stub_new(t, STUB_FALLBACK, j);
-    }
+    s = stub_new(t, STUB_CTRL_POST, j);
+    s->imm = target;
     stub_set_insn(t, s, in, cycles, t->cyc);
     emit_chain_to(t, target, t->cyc + cycles);
 }
@@ -2553,25 +2547,38 @@ static bool emit_control(Tr *t, const Insn *in)
         if (conditional) {
             emit_cc(e, computed ? inst & 0xF : (inst >> 12) & 0xF);
             size_t taken = h_jcc(e, HC_NE);
-            emit_exit_to(t, in, in->next, cycles, true);
+            emit_exit_to(t, in, in->next, cycles);
             h_patch(e, taken, e->len);
         }
         if (computed) {
             emit_exit_to_reg(t, in, EA1, cycles);
         } else {
-            emit_exit_to(t, in, inst & 0xFFF, cycles, true);
+            emit_exit_to(t, in, inst & 0xFFF, cycles);
         }
         return true;
     }
 
     if (!strcmp(name, "jsr ea") || !strcmp(name, "jsr xxx") ||
-        !strcmp(name, "jscc ea") || !strcmp(name, "jscc xxx")) {
-        bool conditional = name[2] == 'c';
-        bool computed = !strcmp(name + (conditional ? 5 : 4), "ea");
+        !strcmp(name, "jscc ea") || !strcmp(name, "jscc xxx") ||
+        !strcmp(name, "bsr xxxx") || !strcmp(name, "bsr xxx")) {
+        bool relative = name[0] == 'b';
+        bool conditional = !relative && name[2] == 'c';
+        bool computed = !relative && !strcmp(name + (conditional ? 5 : 4), "ea");
         uint32_t before = t->cyc;
+        uint32_t base_cycles = 4;
         size_t long_irq = 0, pushed;
         acc_spill_all(t, false);
-        if (!computed) {
+        if (relative) {
+            uint32_t target;
+            if (!strcmp(name, "bsr xxxx")) {
+                target = (at + in->ext) & 0xFFFFFF;
+                base_cycles = 6;
+            } else {
+                uint32_t xxx = (inst & 0x1F) + ((inst & (0xF << 6)) >> 1);
+                target = (at + ((int32_t)(xxx << 23) >> 23)) & 0xFFFFFF;
+            }
+            h_mov_ri(e, EA1, target);
+        } else if (!computed) {
             h_mov_ri(e, EA1, inst & 0xFFF);
         } else {
             Ea ea;
@@ -2582,17 +2589,17 @@ static bool emit_control(Tr *t, const Insn *in)
                 ea_addr_reg(t, &ea);
             }
         }
-        uint32_t cycles = 4 + t->cyc - before;
+        uint32_t cycles = base_cycles + t->cyc - before;
         t->cyc = before;
         if (conditional) {
             emit_cc(e, computed ? inst & 0xF : (inst >> 12) & 0xF);
             size_t taken = h_jcc(e, HC_NE);
-            emit_exit_to(t, in, in->next, cycles, true);
+            emit_exit_to(t, in, in->next, cycles);
             h_patch(e, taken, e->len);
         }
         h_st32(e, REG_CORE, OFF(pc), EA1);
         /* Interrupt entry has already saved PC/SR for a long interrupt.
-         * Only an unconditional JSR gets the vector's no-second-push
+         * Only unconditional JSR/BSR get the vector's no-second-push
          * behavior; JScc still performs its ordinary conditional push. */
         if (!conditional) {
             h_cmp_mem16_imm(e, REG_CORE, OFF(interrupt_state), DSP_INTERRUPT_LONG);
@@ -2670,35 +2677,33 @@ static bool emit_control(Tr *t, const Insn *in)
         taken = h_jcc(e, clear ? HC_EQ : HC_NE);
         /* The operand has already been read; post-processing must not
          * repeat a peripheral read when the target ends a DO loop. */
-        emit_exit_to(t, in, next, 6, true);
+        emit_exit_to(t, in, next, 6);
         h_patch(e, taken, e->len);
-        emit_exit_to(t, in, in->ext, 6, true);
+        emit_exit_to(t, in, in->ext, 6);
         return true;
     }
 
-    if (!strcmp(name, "bcc xxxx") || !strcmp(name, "bcc xxx") || !strcmp(name, "bra xxxx")) {
-        bool lng = name[3] == ' ' && name[6] == 'x' ? true : !strcmp(name, "bcc xxxx");
+    if (!strcmp(name, "bcc xxxx") || !strcmp(name, "bcc xxx") ||
+        !strcmp(name, "bra xxxx") || !strcmp(name, "bra xxx")) {
         uint32_t target;
         int cc;
-        if (!strcmp(name, "bcc xxx")) {
+        if (!strcmp(name, "bcc xxx") || !strcmp(name, "bra xxx")) {
             uint32_t xxx = (inst & 0x1F) + ((inst & (0xF << 6)) >> 1);
             target = (at + ((int32_t)(xxx << 23) >> 23)) & 0xFFFFFF;
-            cc = (inst >> 12) & 0xF;
-            lng = false;
+            cc = name[1] == 'r' ? -1 : (inst >> 12) & 0xF;
         } else {
             target = (at + in->ext) & 0xFFFFFF;
             cc = name[1] == 'r' ? -1 : inst & 0xF;
         }
-        (void)lng;
         acc_spill_all(t, false);
         if (cc >= 0) {
             size_t j;
             emit_cc(e, cc);
             j = h_jcc(e, HC_NE);
-            emit_exit_to(t, in, in->next, 2, false);
+            emit_exit_to(t, in, in->next, 2);
             h_patch(e, j, e->len);
         }
-        emit_exit_to(t, in, target, 2, false);
+        emit_exit_to(t, in, target, 2);
         return true;
     }
 
@@ -2714,9 +2719,9 @@ static bool emit_control(Tr *t, const Insn *in)
         acc_spill_all(t, false);
         h_test_ri(e, 0, V1, 1u << numbit);
         j = h_jcc(e, name[2] == 'c' ? HC_EQ : HC_NE);
-        emit_exit_to(t, in, in->next, 6, false);
+        emit_exit_to(t, in, in->next, 6);
         h_patch(e, j, e->len);
-        emit_exit_to(t, in, target, 6, false);
+        emit_exit_to(t, in, target, 6);
         return true;
     }
 
@@ -2731,34 +2736,11 @@ static bool emit_control(Tr *t, const Insn *in)
         emit_read_mem(t, memspace, EA1, V1);
         h_test_ri(e, 0, V1, 1u << numbit);
         j = h_jcc(e, name[2] == 'c' ? HC_EQ : HC_NE);
-        /* the read done: the interpreter's way would read again, but a
-         * peripheral read has no side effects (dsp.c) */
-        emit_exit_to(t, in, in->next, 6, false);
+        /* The operand was read already; finish a DO boundary without
+         * reinterpreting the branch and repeating that read. */
+        emit_exit_to(t, in, in->next, 6);
         h_patch(e, j, e->len);
-        emit_exit_to(t, in, target, 6, false);
-        return true;
-    }
-
-    if (!strcmp(name, "bsr xxxx") || !strcmp(name, "bsr xxx")) {
-        uint32_t target, cycles;
-        if (name[4] == 'x' && name[7] == 'x') {
-            target = (at + in->ext) & 0xFFFFFF;
-            cycles = 6;
-        } else {
-            uint32_t xxx = (inst & 0x1F) + ((inst & (0xF << 6)) >> 1);
-            target = (at + ((int32_t)(xxx << 23) >> 23)) & 0xFFFFFF;
-            cycles = 4;
-        }
-        acc_spill_all(t, false);
-        /* the loop's end at the target: the interpreter's */
-        h_cmp_mem32_imm(e, REG_CORE, REGOFF(DSP_REG_LA), (int32_t)target - 1);
-        stub_set_insn(t, stub_new(t, STUB_FALLBACK, h_jcc(e, HC_EQ)), in, cycles, t->cyc);
-        h_mov_rr(e, 1, H_ARG0, REG_CORE);
-        h_mov_ri(e, H_ARG1, in->next);
-        h_ld32(e, H_ARG2, REG_CORE, REGOFF(DSP_REG_SR));
-        h_call(e, (const void *)dsp56k_stack_push);
-        emit_stack_check(t, in, target, cycles);
-        emit_chain_to(t, target, t->cyc + cycles);
+        emit_exit_to(t, in, target, 6);
         return true;
     }
 

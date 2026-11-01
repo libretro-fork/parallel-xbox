@@ -362,6 +362,13 @@ $(DSPNATIVE): $(DSPNATIVE_SRC) $(CORE_DIR)/libretro/tests/dspdiff.c $(DSP_TEST_H
 dspnative: $(DSPNATIVE)
 	$(DSPNATIVE)
 
+dsprelative: $(DSPNATIVE) $(DSPDIFF)
+	$(DSPNATIVE) --relative
+	$(DSPDIFF) --until-halt --frames 100 --x 0=4 --seed 1 $(CORE_DIR)/libretro/tests/rom/gp-relative.inc
+	$(DSPDIFF) --until-halt --frames 100 --x 0=4 --seed 2 $(CORE_DIR)/libretro/tests/rom/gp-relative.inc
+	$(DSPDIFF) --until-halt --baseline-jit --frames 100 --x 0=4 --seed 1 $(CORE_DIR)/libretro/tests/rom/gp-relative.inc
+	$(DSPDIFF) --until-halt --baseline-jit --frames 100 --x 0=4 --seed 2 $(CORE_DIR)/libretro/tests/rom/gp-relative.inc
+
 # Every seed-dictionary shader through the GLSL to SPIR-V compiler
 # (libretro/tests/seedshaders.c), linked with the core's own generators and
 # compiler objects: built after the core, for the host
@@ -397,6 +404,6 @@ $(FILEIOTEST): $(CORE_DIR)/libretro/tests/test-file-io.c \
 		$(DEPS_LIBS) $(OS_LIBS)
 fileiotest: $(FILEIOTEST)
 
-.PHONY: all clean dspdiff dspnative dsptcc dsplogical dspstatus dspbudget seedshaders s3tctest fileiotest FORCE
+.PHONY: all clean dspdiff dspnative dsprelative dsptcc dsplogical dspstatus dspbudget seedshaders s3tctest fileiotest FORCE
 
 -include $(ALL_OBJECTS:.o=.d)

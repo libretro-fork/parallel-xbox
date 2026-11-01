@@ -52,6 +52,8 @@
 
 ## Unreleased
 
+- Keep relative conditional and bit-test branches native when they finish a DO loop; never repeat a completed peripheral read. Compile short BRA and use the native call path for both BSR forms, fixing an extra return-stack push during long-interrupt vectors. Add 48,768 relative-boundary cases and production-block/interpreter/budget-carry regressions.
+
 - Fix Ninja Gaiden Black cold-boot Vulkan image allocation failure. Reserve the boot-to-game render-target working set at startup (128 MiB at 1x/2x, 512 MiB at 4x, 2 GiB at 8x), without runtime heap growth or extra host-buffer padding. Replay the captured boot allocation lifetimes as a heap regression and report image requirements/pool occupancy on allocation failure.
 
 - Replace Vulkan Memory Allocator with an Xbox-specific free-span heap modeled on GSdx/parallel-dc. Pool the exact startup buffer requirements, persistently map host backing, and isolate noncoherent ranges and linear/optimal resources. Reserve a bounded image working set before gameplay and reclaim only retired images under pressure. Remove the C++ runtime build/link dependency. Tests show fewer startup allocations/maps and a smaller DLL. Reserve spare image memory upfront rather than growing the heap during gameplay; higher resolution than the startup reservation requires restarting the core. No general frame-rate gain is claimed.
