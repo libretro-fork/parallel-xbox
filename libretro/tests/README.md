@@ -1772,3 +1772,10 @@ mode or cflags entries must miss. The production cache-store and flush paths
 also cover creating class variants, PC-relative virtual identities, eviction,
 invalidated entries and clearing both arrays. CPU boost disabled retains the
 primary path.
+
+The native DSP test also warms one PC in all eight scaling/LF identities,
+toggles LF without flushing and compares architectural boundaries with the
+interpreter. A changed P word and an explicit flush must invalidate all loop
+variants. REP code remains shared per scaling mode. Both loop indexes are
+prepared together: no extra metadata allocation when LF changes. Worst-case
+metadata grows by 160 KiB per DSP; the executable arena retains its 4 MiB cap.

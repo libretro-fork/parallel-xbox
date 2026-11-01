@@ -1,5 +1,7 @@
 # Changelog of the libretro core
 
+- Specialize native DSP blocks for active DO-loop state, omitting per-instruction loop-end checks outside loops. Keep REP translations shared and group both loop indexes into one persistent allocation per scaling mode. Preserve loop transitions, interrupts, program-write invalidation and synchronous guest-RAM DMA ordering. Metadata can grow by up to 160 KiB per DSP; the code arena remains capped at 4 MiB.
+
 - Extend translated-block cache regression coverage through production insertion, class conflicts, PC-relative identities, invalidation and flushing of both cache arrays.
 
 - Reuse valid secondary translated-block cache entries after unrelated primary-slot collisions or primary invalidation. Preserve full PC, execution-mode and validity checks, avoiding unnecessary global-table lookups without allocating another cache.

@@ -128,6 +128,57 @@ static void check(Machine *a, Machine *b, uint32_t op, uint32_t ext,
     cases++;
 }
 
+/* Reuse the same translated PC across LF changes without resetting or
+ * flushing the JIT. LA deliberately matches even when LF is clear. */
+static void check_loop_cache_identity(Machine *a, Machine *b)
+{
+    prepare(a, 0x200000, 0, 1, 0, false);
+    prepare(b, 0x200000, 0, 1, 0, false);
+    Machine *machines[] = {a, b};
+    for (unsigned n = 0; n < 64; n++) {
+        unsigned mode = (n >> 1) & 3;
+        bool loop = (n & 1) != 0;
+        if (n == 32) {
+            /* All eight identities are warm: a changed P word must drop
+             * every variant, not just the four scaling-only entries. */
+            for (unsigned i = 0; i < ARRAY_SIZE(machines); i++) {
+                machines[i]->dsp->ops->write_memory(machines[i]->dsp, 'P', 0, 0x200040);
+            }
+        }
+        if (n == 48) {
+            for (unsigned i = 0; i < ARRAY_SIZE(machines); i++) {
+                machines[i]->dsp->ops->invalidate_opcache(machines[i]->dsp);
+            }
+        }
+        dspjit_test_reset_fallback_count();
+        for (unsigned i = 0; i < ARRAY_SIZE(machines); i++) {
+            Machine *m = machines[i];
+            dsp_core_t *c = m->dsp->backend;
+            c->pc = 0;
+            m->dsp->save_cycles = 0; /* one fresh instruction budget */
+            c->registers[DSP_REG_SR] = (mode << DSP_SR_S0) |
+                (loop ? 1 << DSP_SR_LF : 0);
+            c->registers[DSP_REG_LA] = 0;
+            c->registers[DSP_REG_LC] = 2;
+            c->registers[DSP_REG_SSH] = 0;
+            if (i == 0) {
+                m->dsp->ops->step(m->dsp);
+                c->cycle_count += c->instr_cycle;
+            } else {
+                m->dsp->ops->run(m->dsp, 1);
+            }
+            assert(c->pc == (loop ? 0u : 1u));
+            if (c->registers[DSP_REG_LC] != (loop ? 1u : 2u)) {
+                fprintf(stderr, "loop reuse n=%u engine=%u loop=%u lc=%u sr=%x pc=%u\n", n, i, loop, c->registers[DSP_REG_LC], c->registers[DSP_REG_SR], c->pc);
+                exit(1);
+            }
+        }
+        assert(!dspjit_test_fallback_count());
+        assert(compare_machines(a, b) == 0);
+        cases++;
+    }
+}
+
 static void check_macr_rounding(Machine *a, Machine *b)
 {
     Machine *machines[] = { a, b };
@@ -571,7 +622,8 @@ int main(void)
             }
         }
     }
-    assert(dspjit_test_mode_count(jit) == 4);
+    check_loop_cache_identity(a, b);
+    assert(dspjit_test_mode_count(jit) == 8);
     assert(dspjit_test_committed_bytes(jit) >= initially_committed);
     assert(dspjit_test_committed_bytes(jit) <= (4u << 20));
 #ifdef _WIN32

@@ -21,8 +21,10 @@
  * else may look at them (an interpreter function, the end of the block).
  * The rest of the DSP's registers are read and written in place.
  * Condition codes are computed as the interpreter computes them; they
- * depend on the scaling mode (SR's S1 S0), so there is a block per mode
- * at an address. A REP repeats its instruction in a loop of its own
+ * depend on the scaling mode (SR's S1 S0). Blocks are also specialized
+ * for LF: without an active DO loop they omit instruction-level LA checks.
+ * SR-changing control paths select the matching table or return through
+ * dispatch when that identity changes. A REP repeats its instruction in a loop of its own
  * (rep_blocks); the interpreter steps the rest (an interrupt in its
  * pipeline, a REP's own instruction). A block charges its cycles when it
  * ends, so a run may go a block past its budget; the budget carries over,
@@ -31,8 +33,9 @@
  * Every write to P drops the blocks made from the word (dspjit_invalidate):
  * a program that changes itself runs its new code from the next block on
  * (the instruction that writes P ends its block). The code cache is one
- * fixed arena made with the context: no allocation while the DSP runs;
- * when it is full, it is emptied and filled again.
+ * fixed arena made with the context; executable pages and per-scaling-mode
+ * indexes are prepared on demand. Entering a DO loop needs no new index
+ * allocation. When the code arena is full, it is emptied and filled again.
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
@@ -51,6 +54,7 @@
 #include "host.h"
 #endif
 
+#define DSPJIT_MODES 8 /* four scaling modes, with and without an active DO loop */
 #define DSPJIT_CACHE_BYTES (4u << 20)
 #define DSPJIT_COMMIT_BYTES (64u << 10)
 #ifndef DSPJIT_BLOCK_MAX_INSNS
@@ -83,6 +87,14 @@ typedef struct Tr Tr;
  * place, into the block */
 typedef void (*dspjit_enter_fn)(dsp_core_t *core, dspjit_block_fn fn);
 
+/* One persistent allocation per used scaling mode. Both loop identities
+ * share its REP translations, which inspect loop state dynamically. */
+typedef struct DspJitModeCache {
+    dspjit_block_fn blocks[2][DSP_PRAM_SIZE];
+    uint16_t block_end[2][DSP_PRAM_SIZE];
+    dspjit_block_fn rep[DSP_PRAM_SIZE];
+} DspJitModeCache;
+
 struct DspJit {
     dsp_core_t *core;
     uint8_t *cache;
@@ -95,9 +107,10 @@ struct DspJit {
     /* the blocks by scaling mode (SR's S1 S0) and P address, and the
      * P address each ends before (their instruction words, for a write
      * to P); the rep_blocks are the instruction at the address repeated */
-    dspjit_block_fn *blocks[4];
-    uint16_t *block_end[4];
-    dspjit_block_fn *rep_blocks[4];
+    DspJitModeCache *modes[4];
+    dspjit_block_fn *blocks[DSPJIT_MODES];
+    uint16_t *block_end[DSPJIT_MODES];
+    dspjit_block_fn *rep_blocks[4]; /* REP checks loop state dynamically */
     struct Tr *tr;      /* the translator's state, made once */
 };
 
@@ -106,7 +119,7 @@ uint64_t dspjit_test_committed_bytes(DspJit *jit) { return jit->cache_committed;
 unsigned dspjit_test_mode_count(DspJit *jit)
 {
     unsigned count = 0;
-    for (int mode = 0; mode < 4; mode++) {
+    for (int mode = 0; mode < DSPJIT_MODES; mode++) {
         count += jit->blocks[mode] != NULL;
     }
     return count;
@@ -164,10 +177,15 @@ static bool dspjit_commit_exec(DspJit *jit, size_t end)
 
 static void dspjit_prepare_mode(DspJit *jit, int mode)
 {
-    if (!jit->blocks[mode]) {
-        jit->blocks[mode] = g_new0(dspjit_block_fn, DSP_PRAM_SIZE);
-        jit->rep_blocks[mode] = g_new0(dspjit_block_fn, DSP_PRAM_SIZE);
-        jit->block_end[mode] = g_new0(uint16_t, DSP_PRAM_SIZE);
+    int scale = mode & 3;
+    if (!jit->modes[scale]) {
+        DspJitModeCache *cache = g_new0(DspJitModeCache, 1);
+        jit->modes[scale] = cache;
+        jit->blocks[scale] = cache->blocks[0];
+        jit->blocks[scale | 4] = cache->blocks[1];
+        jit->block_end[scale] = cache->block_end[0];
+        jit->block_end[scale | 4] = cache->block_end[1];
+        jit->rep_blocks[scale] = cache->rep;
     }
 }
 
@@ -286,13 +304,15 @@ struct Tr {
     uint32_t cyc;       /* the cycles of the instructions translated so far */
     bool wrote_x;       /* the instruction being translated writes X */
     int mode;           /* the scaling mode the block is for */
+    bool loop_active;   /* LF is part of the block cache identity */
     int lazy_acc;       /* SR's E, U, N, Z are those of this accumulator's
                            value, not computed yet (-1: none) */
     uint32_t end;       /* the P address the block ends before */
     Stub stubs[MAX_STUBS];
     int nstubs;
     const void *leave;  /* the way out of the code (DspJit's) */
-    dspjit_block_fn *table; /* the blocks for the block's scaling mode */
+    dspjit_block_fn *table; /* the blocks for the block's scaling/loop mode */
+    dspjit_block_fn *loop_table; /* same scaling mode, LF set */
 };
 
 static Stub *stub_new(Tr *t, int kind, size_t jump)
@@ -2624,7 +2644,12 @@ static bool emit_control(Tr *t, const Insn *in)
         h_or_mem32_imm(e, REG_CORE, REGOFF(DSP_REG_SR), 1 << DSP_SR_LF);
         h_st32_imm(e, REG_CORE, REGOFF(DSP_REG_LC), lc);
         emit_stack_check(t, in, in->next, 6);
+        /* DOR enables LF. Chain through that identity's stable table;
+         * a missing translation still leaves through the normal path. */
+        dspjit_block_fn *previous_table = t->table;
+        t->table = t->loop_table;
         emit_chain_to(t, in->next, t->cyc + 6);
+        t->table = previous_table;
         return true;
     }
 
@@ -2665,9 +2690,11 @@ static void emit_insn_checks(Tr *t, const Insn *in, uint32_t cycles)
         stub_set_insn(t, stub_new(t, STUB_HALT, j), in, cycles, t->cyc - cycles);
         t->wrote_x = false;
     }
-    h_cmp_mem32_imm(e, REG_CORE, REGOFF(DSP_REG_LA), in->next - 1);
-    j = h_jcc(e, HC_EQ);
-    stub_set_insn(t, stub_new(t, STUB_LOOPEND, j), in, cycles, t->cyc - cycles);
+    if (t->loop_active) {
+        h_cmp_mem32_imm(e, REG_CORE, REGOFF(DSP_REG_LA), in->next - 1);
+        j = h_jcc(e, HC_EQ);
+        stub_set_insn(t, stub_new(t, STUB_LOOPEND, j), in, cycles, t->cyc - cycles);
+    }
 }
 
 static void emit_stubs(Tr *t)
@@ -2917,10 +2944,12 @@ static void translate_begin(DspJit *jit, int mode)
     memset(t, 0, offsetof(Tr, stubs));
     t->nstubs = 0;
     t->core = jit->core;
-    t->mode = mode;
+    t->mode = mode & 3;
+    t->loop_active = (mode & 4) != 0;
     t->lazy_acc = -1;
     t->leave = jit->leave;
     t->table = jit->blocks[mode];
+    t->loop_table = jit->blocks[(mode & 3) | 4];
     /* the cache writable to this thread until translate_end (macOS) */
     qemu_thread_jit_write();
     /* The emitter cannot write past committed pages. An overflowing
@@ -3141,9 +3170,7 @@ void dspjit_destroy(DspJit *jit)
     }
     dspjit_unmap_exec(jit->cache, jit->cache_len);
     for (int mode = 0; mode < 4; mode++) {
-        g_free(jit->blocks[mode]);
-        g_free(jit->rep_blocks[mode]);
-        g_free(jit->block_end[mode]);
+        g_free(jit->modes[mode]);
     }
     g_free(jit->tr);
     g_free(jit);
@@ -3152,9 +3179,13 @@ void dspjit_destroy(DspJit *jit)
 void dspjit_flush(DspJit *jit)
 {
     jit->cache_used = jit->cache_base;
-    for (int mode = 0; mode < 4; mode++) {
+    for (int mode = 0; mode < DSPJIT_MODES; mode++) {
         if (jit->blocks[mode]) {
             memset(jit->blocks[mode], 0, DSP_PRAM_SIZE * sizeof(*jit->blocks[mode]));
+        }
+    }
+    for (int mode = 0; mode < 4; mode++) {
+        if (jit->rep_blocks[mode]) {
             memset(jit->rep_blocks[mode], 0, DSP_PRAM_SIZE * sizeof(*jit->rep_blocks[mode]));
         }
     }
@@ -3167,7 +3198,7 @@ void dspjit_invalidate(DspJit *jit, uint32_t address)
     if (address >= DSP_PRAM_SIZE) {
         return;
     }
-    for (int m = 0; m < 4; m++) {
+    for (int m = 0; m < DSPJIT_MODES; m++) {
         if (!jit->blocks[m]) {
             continue;
         }
@@ -3176,6 +3207,11 @@ void dspjit_invalidate(DspJit *jit, uint32_t address)
             if (jit->blocks[m][pc] && jit->block_end[m][pc] > address) {
                 jit->blocks[m][pc] = NULL;
             }
+        }
+    }
+    for (int m = 0; m < 4; m++) {
+        if (!jit->rep_blocks[m]) {
+            continue;
         }
         jit->rep_blocks[m][address] = NULL;
         if (address > 0) {
@@ -3201,7 +3237,9 @@ void dspjit_run(DspJit *jit, int cycles)
         uint32_t pc = core->pc & (DSP_PRAM_SIZE - 1);
         dspjit_block_fn fn;
 
-        int mode = (core->registers[DSP_REG_SR] >> DSP_SR_S0) & 3;
+        uint32_t sr = core->registers[DSP_REG_SR];
+        int mode = ((sr >> DSP_SR_S0) & 3) |
+                   (((sr >> DSP_SR_LF) & 1) << 2);
         dspjit_prepare_mode(jit, mode);
 
         /* what the blocks' code is not made for: an interrupt in its
@@ -3215,7 +3253,7 @@ void dspjit_run(DspJit *jit, int cycles)
         }
         if (core->loop_rep) {
             /* in a REP: the instruction's repeating code */
-            fn = jit->rep_blocks[mode][pc];
+            fn = jit->rep_blocks[mode & 3][pc];
             if (!fn) {
 #if DSPJIT_HOST
                 fn = dspjit_translate_rep(jit, mode, pc);
@@ -3227,7 +3265,7 @@ void dspjit_run(DspJit *jit, int cycles)
                 if (!fn) {
                     fn = rep_step;
                 }
-                jit->rep_blocks[mode][pc] = fn;
+                jit->rep_blocks[mode & 3][pc] = fn;
             }
             if (fn == rep_step) {
                 rep_step(core);
