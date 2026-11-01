@@ -2180,6 +2180,11 @@ case runs 20,000 delayed EP jobs through signed and zero epoch wrap, followed
 by stop/join; a separate stress case races 200,000 external borrow lifetimes
 against DSP admission. Set `DSP_OWNERSHIP_SANITIZE=1` for ASan/UBSan.
 
+The guard-retirement fixture checks 2,000 arm/retire epochs: missing and
+external CPUs retain protection, the CPU retires each epoch once, and 66,001
+inactive checks avoid both CPU lookup and callback access, including before
+setup and after teardown.
+
 The DSP guest-RAM CI job runs these checks, the original GP scratch-growth
 regression and the exact frontend audio-cadence regression. These host tests
 need no game, BIOS or GPU. Game captures and throughput still need live

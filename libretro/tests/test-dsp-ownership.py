@@ -11,6 +11,7 @@ def between(s,a,b):
  start=s.index(a); return s[start:s.index(b,start)]
 header=(repo/'libretro/dsp-ownership.h').read_text()
 blocks={
+ '/* PRODUCTION RETIRE */':between(dsp,'static retro_atomic_int_t ownership_guards_armed;','bool lr_dsp_tlb_watched('),
  '/* PRODUCTION TRANSACTIONS */':between(dsp,'int lr_dsp_external_begin(','static void ownership_ram_access('),
  '/* PRODUCTION CLEANUP */':between(header,'static inline void lr_dsp_external_cleanup(','bool lr_dsp_tlb_watched('),
  '/* PRODUCTION WAIT */':between(dsp,'void lr_dsp_ownership_quiesce(','static void *ownership_worker('),
@@ -33,7 +34,7 @@ else: flags+=['-pthread']
 rendered={}
 with tempfile.TemporaryDirectory(prefix='dsp-ownership-') as directory:
  tmp=Path(directory)
- for case in ['access','dma','dispatch','scalar','footprint','tlb','epochs','transactions']:
+ for case in ['access','dma','dispatch','scalar','footprint','tlb','epochs','transactions','retire']:
   code=(repo/('libretro/tests/test-dsp-ownership-'+case+'.c')).read_text()
   for marker,body in blocks.items(): code=code.replace(marker,body)
   rendered[case]=code

@@ -269,13 +269,16 @@ static int ownership_page_live(uint64_t page)
 { return page<DSP_RAM_PAGES && ((uint64_t)retro_atomic_load_relaxed_64(&own_live[page/64])&(UINT64_C(1)<<(page%64)))!=0; }
 
 static MemAccessCallback *own_callback;
-static bool ownership_guards_armed;
+static retro_atomic_int_t ownership_guards_armed;
 static void ownership_relax_if_cpu(void)
 {
+    /* External borrowers can reach this too. Keep the cheap inactive check
+     * atomic; only the CPU owner may inspect and retire the callback/TLB. */
+    if(!retro_atomic_load_relaxed_int(&ownership_guards_armed)) return;
     CPUState *cpu=qemu_get_cpu(0);
-    if(!cpu || !qemu_cpu_is_self(cpu) || !ownership_guards_armed) return;
+    if(!cpu || !qemu_cpu_is_self(cpu)) return;
     retro_atomic_store_relaxed_int(&own_callback->watch_flags,0);
-    ownership_guards_armed=false;
+    retro_atomic_store_relaxed_int(&ownership_guards_armed,0);
     lr_dsp_tlb_refresh(cpu,false);
 }
 bool lr_dsp_tlb_watched(uint64_t addr)
@@ -323,7 +326,7 @@ static void own_protect(MCPXAPUState *d)
      * an unguarded RAM pointer when newly protected pages are published. */
     if (changed) tlb_flush(qemu_get_cpu(0));
     retro_atomic_store_relaxed_int(&own_callback->watch_flags,BP_MEM_READ|BP_MEM_WRITE);
-    ownership_guards_armed=true;
+    retro_atomic_store_relaxed_int(&ownership_guards_armed,1);
     lr_dsp_tlb_refresh(qemu_get_cpu(0),true);
 }
 
@@ -1109,7 +1112,7 @@ void mcpx_apu_dsp_finalize(MCPXAPUState *d)
     ownership_finish();
     mem_access_callback_remove_by_ref(qemu_get_cpu(0), own_callback);
     own_callback = NULL;
-    ownership_guards_armed = false;
+    retro_atomic_store_relaxed_int(&ownership_guards_armed,0);
     dsp_destroy(d->gp.dsp);
     dsp_destroy(d->ep.dsp);
     d->gp.dsp = NULL;
