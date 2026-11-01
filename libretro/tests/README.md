@@ -2637,6 +2637,20 @@ game cache-hit and stutter effects are unmeasured.
 
 Seed batch coverage also checks `pgraph_seed_read_first`: requests are tried in order, only the first nonempty valid result is populated, and every other output is cleared. The 480 source/availability cases compare state-first/module-fallback bytes/counts with legacy combined reads, including missing, stale, malformed and failed-inflate inputs. Reused outputs are poisoned to catch skipped initialization. An independent valid-input check verifies one fewer materialized array while retaining one mapping/inflation and exact local-first order. Bundled dictionary and existing combined/ownership tests remain covered.
 
+`test-clipplane-state.py CHECKOUT [--cc CC]` checks the production clip-key
+selection over 4,096 stage/mode/mask/sampler-enable combinations. All four
+comparison bits remain significant for CLIPPLANE, even with sampling disabled;
+other modes clear those key fields and perform no clip-register reads. Other
+state bytes stay intact, including poisoned comparisons for neighboring stages.
+
+The common-helper full-generator fixture also checks 18,528 byte-identical
+unused-clip source pairs per generator, varying each bit and the all-set mask.
+Another 128 active clip programs cover all masks on all four stages for GL and
+Vulkan; nonzero masks must change the source, and 64 Vulkan programs compile.
+Generated shader and SPIR-V bytes remain unchanged for the existing corpus.
+No cache format, runtime diagnostics, GPU transfers or synchronization change.
+Game cache-hit, frame-time and stutter effects remain unmeasured.
+
 The surface-blend fixture also extracts the production pipeline-cache entry
 initializer. A poisoned allocation/recycled entry with dynamic line width set
 must reset that flag, layout, pipeline handle and draw stamp while preserving

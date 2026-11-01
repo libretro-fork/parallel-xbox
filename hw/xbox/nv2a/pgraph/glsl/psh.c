@@ -262,9 +262,11 @@ void pgraph_glsl_set_psh_state(PGRAPHState *pg, PshState *state)
     state->g8b8_mip_mirror = 0;
     for (int i = 0; i < 4; i++) {
         state->g8b8_signed[i] = 0;
+        unsigned mode = (state->shader_stage_program >> (i * 5)) & 31;
         for (int j = 0; j < 4; j++) {
-            state->compare_mode[i][j] =
-                (pgraph_reg_r(pg, NV_PGRAPH_SHADERCLIPMODE) >> (4 * i + j)) & 1;
+            /* Clip tests do not require an enabled texture sampler. */
+            state->compare_mode[i][j] = mode == PS_TEXTUREMODES_CLIPPLANE &&
+                ((pgraph_reg_r(pg, NV_PGRAPH_SHADERCLIPMODE) >> (4 * i + j)) & 1);
         }
 
         uint32_t ctl_0 = pgraph_reg_r(pg, NV_PGRAPH_TEXCTL0_0 + i * 4);
@@ -308,7 +310,6 @@ void pgraph_glsl_set_psh_state(PGRAPHState *pg, PshState *state)
 
         uint32_t filter = pgraph_reg_r(pg, NV_PGRAPH_TEXFILTER0 + i * 4);
         unsigned int min_filter = GET_MASK(filter, NV_PGRAPH_TEXFILTER0_MIN);
-        unsigned mode = (state->shader_stage_program >> (i * 5)) & 31;
         enum ConvolutionFilter kernel = CONVOLUTION_FILTER_DISABLED;
         /* FIXME: We do not distinguish between min and mag when
          * performing convolution. Just use it if specified for min (common AA

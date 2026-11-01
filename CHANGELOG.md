@@ -1,5 +1,8 @@
 # Changelog of the libretro core
 
+- Reuse fragment shader keys across unused clip-plane comparison settings. Preserve every active clip comparison, including stages without an enabled texture sampler, and skip unused clip-register reads.
+
+
 - Compare ordinary COMISS/UCOMISS and COMISD/UCOMISD inputs directly by their IEEE bit encodings, avoiding the general SoftFloat comparison call. Preserve signed-zero equality and all guest status flags; NaNs and subnormal inputs retain the original exceptional path, independently of CPU Boost and host FP mode.
 - Reset dynamic line-width metadata when initializing Vulkan pipeline-cache entries. Fresh or recycled clear-pipeline nodes no longer inherit a prior line pipeline's flag or uninitialized allocation bytes, avoiding incorrect line-width state emission. No key/cache format changes.
 - Reuse fragment shader keys across unused convolution-kernel settings in shadow and non-PROJECT2D texture stages. Active convolution and generated shader code remain unchanged.

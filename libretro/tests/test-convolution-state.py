@@ -11,7 +11,7 @@ p.add_argument("checkout",type=Path)
 p.add_argument("--cc",default="gcc")
 a=p.parse_args();r=a.checkout.resolve()
 source=(r/"hw/xbox/nv2a/pgraph/glsl/psh.c").read_text()
-selection=re.search(r"        unsigned mode =.*?        state->conv_tex\[i\] = kernel;",source,re.S).group()
+selection=re.search(r"        enum ConvolutionFilter kernel =.*?        state->conv_tex\[i\] = kernel;",source,re.S).group()
 state=re.search(r"typedef struct PshState \{.*?\} PshState;",(r/"hw/xbox/nv2a/pgraph/glsl/psh.h").read_text(),re.S).group()
 code=r"""
 #include <assert.h>
@@ -29,6 +29,7 @@ static PshState key(unsigned min,unsigned mag,unsigned k,unsigned i,unsigned tex
  PshState value={0},*state=&value;
  state->shader_stage_program=texture_mode<<(i*5);state->shadow_map[i]=shadow;
  unsigned filter=(min<<16)|(mag<<24)|(k<<13),min_filter=min;
+ unsigned mode=texture_mode;
  /* SELECTION */
  return value;
 }
