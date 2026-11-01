@@ -2031,6 +2031,18 @@ The region ownership guard now verifies TCG startup asserts one machine CPU and 
 
 	est-store-compare.py CHECKOUT [CC] extracts the production unchanged-store comparator. It checks 2,263,040 value/width/alignment combinations, all scalar and partial widths, guarded page edges, high-bit truncation, and no-read behavior for unknown/wide writes. Linux defaults to ASan/UBSan; STORE_COMPARE_CFLAGS, STORE_COMPARE_BINARY and STORE_COMPARE_SKIP_RUN support retained native Windows fixtures.
 
+
+`test-fixed-depth-sampler.py CHECKOUT PARENT CANDIDATE HARNESS SCRATCH`
+checks fixed D16 filtering before shadow comparison on swizzled and linear 2D
+images. It covers five reference depths, four biases, mixed min/mag filters,
+all mip modes, guest maximum zero and Force LOD0 with a contrasting lower mip.
+Matching filters, swizzled full chains and positive minima, and existing
+color/cube/volume/G8B8 paths compare exact parent pixels. Linear images with
+stale mip fields remain single-level and use the scalar model. Depth probes
+return binary comparison results;
+it adds no emulator readback, shader code, settings or runtime diagnostics.
+Use `--assembler yasm` as needed and `--windows-paths` for a Windows harness in WSL.
+
 	est-notdirty-host.py CHECKOUT [CC] checks production dirty/watchpoint handling with resolved host addresses: 2,048 dirty/Boost/watch/alignment cases plus unknown probe writes. It checks physical-address dirty tracking separately from the host pointer and rejects a repeated RAM lookup. NOTDIRTY_HOST_CFLAGS, NOTDIRTY_HOST_BINARY and NOTDIRTY_HOST_SKIP_RUN support native Windows fixtures. The store comparator fixture now takes the resolved host pointer directly.
 
 ### OpenGL composed display mailbox

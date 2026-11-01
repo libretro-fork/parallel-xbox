@@ -1,6 +1,8 @@
 # Changelog of the libretro core
 
 - Fetch 16/32-bit instruction operands directly from the mapped first translation page, preserving aligned atomic reads, byte swapping and existing page-crossing/MMIO handling.
+- Fixed 16-bit depth textures now retain min/mag filtering at mip zero in Vulkan, correcting affected shadow comparisons, including Force LOD0, without shader readbacks or waits.
+
 
 - Fetch opcode and prefix bytes directly from the already-mapped first translation page, avoiding the general page-crossing loader call on that path. Second-page, MMIO and fault handling remain unchanged.
 

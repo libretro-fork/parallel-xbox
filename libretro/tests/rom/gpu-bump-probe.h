@@ -256,6 +256,10 @@ static void bump_mixed_triangle(u32 layout, u32 footprint)
     method(NV097_SET_VERTEX_DATA_ARRAY_FORMAT + 9 * 4, 2u | (3u << 4));
     method(NV097_SET_BEGIN_END, 5);
     push(0x40000000u | (21u << 18) | NV097_INLINE_ARRAY);
+#elif defined(BUMP_NATIVE_DEPTH)
+    method(NV097_SET_VERTEX_DATA_ARRAY_FORMAT + 9 * 4, 2u | (3u << 4));
+    method(NV097_SET_BEGIN_END, 5);
+    push(0x40000000u | (21u << 18) | NV097_INLINE_ARRAY);
 #else
     method(NV097_SET_VERTEX_DATA_ARRAY_FORMAT + 9 * 4, 2u | (2u << 4));
     method(NV097_SET_BEGIN_END, 5);
@@ -304,6 +308,9 @@ static void bump_mixed_triangle(u32 layout, u32 footprint)
 #endif
 #else
         push(layout ? 0x3e800000u : 0x3f000000u);
+#endif
+#ifdef BUMP_NATIVE_DEPTH
+        push(BUMP_NATIVE_DEPTH_REF_BITS);
 #endif
 #endif
     }
@@ -514,6 +521,13 @@ static void bump_filter_probe(void)
         }
 #endif
 #endif
+#ifdef BUMP_NATIVE_DEPTH
+        format = swizzled_layout ? 0x2c : 0x30; /* Fixed D16 */
+        ram32(bump_address, 0xe0002000u); ram32(bump_address + 4, 0xe0002000u);
+#ifdef BUMP_NATIVE_CHAIN
+        ram32(bump_address + 8, 0x1000u); /* Contrasting lower mip */
+#endif
+#endif
         flags = 0; /* Independent colors, without signed-channel conversion. */
 #endif
         /* Reuse the established surface/transform setup, but defer its draw. */
@@ -523,7 +537,7 @@ static void bump_filter_probe(void)
         method(NV097_SET_TEXTURE_FORMAT,
                1u | (2u << 4) | (1u << 3) | (format << 8) |
                (1u << 16) | (1u << 20) | (1u << 24));
-#if defined(BUMP_NATIVE_COLOR) && !defined(BUMP_NATIVE_RGB565)
+#if defined(BUMP_NATIVE_COLOR) && !defined(BUMP_NATIVE_RGB565) && !defined(BUMP_NATIVE_DEPTH)
         method(NV097_SET_TEXTURE_CONTROL1, 8u << 16);
 #else
         method(NV097_SET_TEXTURE_CONTROL1, 4u << 16);
@@ -652,6 +666,10 @@ static void bump_filter_probe(void)
         method(NV097_SET_SHADER_STAGE_PROGRAM, 1);
         method(NV097_SET_COMBINER_SPECULAR_FOG_CW0, 8);
         method(NV097_SET_COMBINER_SPECULAR_FOG_CW1, 0x00001800u);
+#endif
+#ifdef BUMP_NATIVE_DEPTH
+        method(NV097_SET_SHADER_STAGE_PROGRAM, 2);
+        method(0x1e6cu, 4); /* Sampled depth > reference */
 #endif
 #ifdef BUMP_NATIVE_CUBE_FACE
         method(NV097_SET_SHADER_STAGE_PROGRAM, 3);
