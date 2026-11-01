@@ -115,6 +115,7 @@ python3 "$here/test-vk-ring-pressure.py" "$here/../.." "$cc"
 python3 "$here/test-surface-blend.py" "$here/../.." "$cc"
 python3 "$here/test-vk-depth-reuse.py" "$here/../.." "$cc"
 python3 "$here/test-lru-visit.py" "$here/../.." "$cc"
+python3 "$here/test-lru-promote.py" "$here/../.." "$cc"
 python3 "$here/test-block-memory.py" "$here/../.." "$cc"
 case $core in
 *.dll)

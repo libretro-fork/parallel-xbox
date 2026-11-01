@@ -2264,3 +2264,5 @@ The serial-proof check preserves the Win64 reclaim function's 96-byte stack
 frame and all renderer structure sizes. It adds no allocations, PSOs, copies,
 locks, status queries or frame queue. Hardware cache-miss and game-latency
 effects are unmeasured; unfinished submissions still have their existing wait.
+
+`test-lru-promote.py CHECKOUT [CC]` compares production lookup with the original unconditional unlink/reinsert algorithm over 30,000 operations. It checks exact global/bin ordering, callbacks, counts, collisions, blocked eviction and flush/reuse. A separate 10,000-hit test maps the live MRU container/node read-only: the optimized lookup must not write its links. The original source faults on that negative control. Linux defaults to ASan/UBSan. LRU_PROMOTE_SOURCE, LRU_PROMOTE_CFLAGS, LRU_PROMOTE_BINARY and LRU_PROMOTE_SKIP_RUN support parent/native runs; -DBENCH enables exploratory hit/collision/miss timing with small keys. Callbacks still run on every hit; this only removes redundant container-link updates.
