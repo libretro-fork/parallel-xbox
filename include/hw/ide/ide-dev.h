@@ -107,7 +107,6 @@ struct IDEState {
      * guest's memory (atapi.c ide_atapi_cmd_read_dma_direct_cb) */
     bool atapi_dma_direct;
     int atapi_dma; /* true if dma is requested for the packet cmd */
-    BlockAcctCookie acct;
     BlockAIOCB *pio_aiocb;
     QEMUIOVector qiov;
     QLIST_HEAD(, IDEBufferedRequest) buffered_requests;

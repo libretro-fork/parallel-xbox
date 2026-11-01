@@ -14,7 +14,6 @@
 #define BLOCK_BACKEND_IO_H
 
 #include "block-backend-common.h"
-#include "block/accounting.h"
 
 /*
  * I/O API functions. These functions are thread-safe.
@@ -73,8 +72,9 @@ void blk_error_action(BlockBackend *blk, BlockErrorAction action,
                       bool is_read, int error);
 int blk_get_max_hw_iov(BlockBackend *blk);
 
+void blk_note_guest_write(BlockBackend *blk);
+uint64_t blk_get_guest_write_generation(BlockBackend *blk);
 AioContext *blk_get_aio_context(BlockBackend *blk);
-BlockAcctStats *blk_get_stats(BlockBackend *blk);
 void *blk_aio_get(const AIOCBInfo *aiocb_info, BlockBackend *blk,
                   BlockCompletionFunc *cb, void *opaque);
 BlockAIOCB *blk_abort_aio_request(BlockBackend *blk,

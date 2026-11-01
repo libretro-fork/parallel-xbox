@@ -27,7 +27,6 @@
 #include "system/runstate.h"
 #include "system/block-backend.h"
 #include "system/blockdev.h"
-#include "block/accounting.h"
 #include "block/block.h"
 #include "block/snapshot.h"
 #include "libretro-state.h"
@@ -82,7 +81,7 @@ static BlockBackend *lr_state_hdd(void)
 static uint64_t lr_state_hdd_writes(void)
 {
     BlockBackend *blk = lr_state_hdd();
-    return blk ? blk_get_stats(blk)->nr_ops[BLOCK_ACCT_WRITE] : 0;
+    return blk ? blk_get_guest_write_generation(blk) : 0;
 }
 
 /* The frontend thread, under the BQL, the guest between frames */

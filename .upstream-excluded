@@ -3221,3 +3221,8 @@ util/fdmon-epoll.c
 # Bespoke fixed-capacity Vulkan heap replaces VMA.
 deps/VulkanMemoryAllocator
 thirdparty/vma.cc
+
+block/accounting.c
+include/block/accounting.h
+util/timed-average.c
+include/qemu/timed-average.h

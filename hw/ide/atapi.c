@@ -92,8 +92,6 @@ static int
 cd_read_sector_sync(IDEState *s)
 {
     int ret;
-    block_acct_start(blk_get_stats(s->blk), &s->acct,
-                     ATAPI_SECTOR_SIZE, BLOCK_ACCT_READ);
 
     trace_cd_read_sector_sync(s->lba);
 
@@ -110,14 +108,10 @@ cd_read_sector_sync(IDEState *s)
         }
         break;
     default:
-        block_acct_invalid(blk_get_stats(s->blk), BLOCK_ACCT_READ);
         return -EIO;
     }
 
-    if (ret < 0) {
-        block_acct_failed(blk_get_stats(s->blk), &s->acct);
-    } else {
-        block_acct_done(blk_get_stats(s->blk), &s->acct);
+    if (ret >= 0) {
         s->lba++;
         s->io_buffer_index = 0;
     }
@@ -132,12 +126,9 @@ static void cd_read_sector_cb(void *opaque, int ret)
     trace_cd_read_sector_cb(s->lba, ret);
 
     if (ret < 0) {
-        block_acct_failed(blk_get_stats(s->blk), &s->acct);
         ide_atapi_io_error(s, ret);
         return;
     }
-
-    block_acct_done(blk_get_stats(s->blk), &s->acct);
 
     if (s->cd_sector_size == 2352) {
         cd_data_to_raw(s->io_buffer, s->lba);
@@ -155,7 +146,6 @@ static int cd_read_sector(IDEState *s)
     void *buf;
 
     if (s->cd_sector_size != 2048 && s->cd_sector_size != 2352) {
-        block_acct_invalid(blk_get_stats(s->blk), BLOCK_ACCT_READ);
         return -EINVAL;
     }
 
@@ -163,9 +153,6 @@ static int cd_read_sector(IDEState *s)
     qemu_iovec_init_buf(&s->qiov, buf, ATAPI_SECTOR_SIZE);
 
     trace_cd_read_sector(s->lba);
-
-    block_acct_start(blk_get_stats(s->blk), &s->acct,
-                     ATAPI_SECTOR_SIZE, BLOCK_ACCT_READ);
 
     ide_buffered_readv(s, (int64_t)s->lba << 2, &s->qiov, 4,
                        cd_read_sector_cb, s);
@@ -309,8 +296,6 @@ static void ide_atapi_cmd_reply(IDEState *s, int size, int max_size)
     s->elementary_transfer_size = 0;
 
     if (s->atapi_dma) {
-        block_acct_start(blk_get_stats(s->blk), &s->acct, size,
-                         BLOCK_ACCT_READ);
         s->status = READY_STAT | SEEK_STAT | DRQ_STAT;
         ide_start_dma(s, ide_atapi_cmd_read_dma_cb);
     } else {
@@ -400,11 +385,6 @@ static void ide_atapi_cmd_read_dma_direct_cb(void *opaque, int ret)
     return;
 
 eot:
-    if (ret < 0) {
-        block_acct_failed(blk_get_stats(s->blk), &s->acct);
-    } else {
-        block_acct_done(blk_get_stats(s->blk), &s->acct);
-    }
     ide_set_inactive(s, false);
 }
 
@@ -474,11 +454,6 @@ static void ide_atapi_cmd_read_dma_cb(void *opaque, int ret)
     return;
 
 eot:
-    if (ret < 0) {
-        block_acct_failed(blk_get_stats(s->blk), &s->acct);
-    } else {
-        block_acct_done(blk_get_stats(s->blk), &s->acct);
-    }
     ide_set_inactive(s, false);
 }
 
@@ -493,9 +468,6 @@ static void ide_atapi_cmd_read_dma(IDEState *s, int lba, int nb_sectors,
     s->packet_transfer_size = nb_sectors * sector_size;
     s->io_buffer_size = 0;
     s->cd_sector_size = sector_size;
-
-    block_acct_start(blk_get_stats(s->blk), &s->acct, s->packet_transfer_size,
-                     BLOCK_ACCT_READ);
 
     /* XXX: check if BUSY_STAT should be set */
     s->status = READY_STAT | SEEK_STAT | DRQ_STAT | BUSY_STAT;

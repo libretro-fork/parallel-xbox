@@ -39,6 +39,7 @@
  */
 
 #include "qemu/osdep.h"
+#include <retro_atomic.h>
 #include "qapi/error.h"
 #include "qemu/error-report.h"
 #include "qemu/iov.h"
@@ -47,7 +48,6 @@
 #include "qemu/queue.h"
 #include "qemu/job.h"
 #include "block/aio.h"
-#include "block/accounting.h"
 #include "block/block.h"
 #include "block/block_int-io.h"
 #include "block/snapshot.h"
@@ -109,9 +109,9 @@ struct BlockBackend {
     bool wce;
     bool error_logged;
     BlockdevOnError on_read_error, on_write_error;
+    retro_atomic_64_t guest_write_generation;
     int in_flight;
     int refcnt;
-    BlockAcctStats stats;
     LRDiskReq req[LR_DISK_REQS];
     QTAILQ_ENTRY(BlockBackend) link;
 };
@@ -340,11 +340,11 @@ static BlockBackend *lr_disk_alloc(void)
 {
     BlockBackend *blk = g_new0(BlockBackend, 1);
 
+    retro_atomic_store_relaxed_64(&blk->guest_write_generation, 0);
     blk->refcnt = 1;
     blk->wce = true;
     blk->on_read_error = BLOCKDEV_ON_ERROR_REPORT;
     blk->on_write_error = BLOCKDEV_ON_ERROR_ENOSPC;
-    block_acct_init(&blk->stats);
     for (int i = 0; i < LR_DISK_REQS; i++) {
         blk->req[i].blk = blk;
         blk->req[i].common.aiocb_info = &lr_disk_aiocb_info;
@@ -730,7 +730,6 @@ void blk_unref(BlockBackend *blk)
             qemu_bh_delete(blk->req[i].bh);
         }
         QTAILQ_REMOVE(&lr_disks, blk, link);
-        block_acct_cleanup(&blk->stats);
         g_free(blk->dinfo);
         g_free(blk->name);
         g_free(blk);
@@ -900,9 +899,16 @@ void blk_iostatus_enable(BlockBackend *blk)
 {
 }
 
-BlockAcctStats *blk_get_stats(BlockBackend *blk)
+/* Save states only need to detect completed guest writes since their save.
+ * Keep the former IDE write-completion count without block telemetry locks. */
+void blk_note_guest_write(BlockBackend *blk)
 {
-    return &blk->stats;
+    retro_atomic_fetch_add_64(&blk->guest_write_generation, 1);
+}
+
+uint64_t blk_get_guest_write_generation(BlockBackend *blk)
+{
+    return (uint64_t)retro_atomic_load_relaxed_64(&blk->guest_write_generation);
 }
 
 AioContext *blk_get_aio_context(BlockBackend *blk)

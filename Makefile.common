@@ -217,7 +217,6 @@ SOURCES_UTIL := \
 	$(CORE_DIR)/util/rcu.c \
 	$(CORE_DIR)/util/process-barrier.c \
 	$(CORE_DIR)/util/sha1.c \
-	$(CORE_DIR)/util/timed-average.c \
 	$(CORE_DIR)/util/unicode.c \
 	$(CORE_DIR)/util/uuid.c \
 
@@ -242,7 +241,6 @@ SOURCES_UTIL_WIN32 := \
 # Block layer, crypto, chardev, I/O channels, QOM, migration core
 SOURCES_COMMON := \
 	$(CORE_DIR)/accel/accel-common.c \
-	$(CORE_DIR)/block/accounting.c \
 	$(CORE_DIR)/block/libretro-disk.c \
 	$(CORE_DIR)/block/libretro-file.c \
 	$(CORE_DIR)/block/libretro-qcow2.c \

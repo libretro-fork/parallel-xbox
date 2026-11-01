@@ -1969,3 +1969,5 @@ Resized images are destroyed only after their display submission serial settles,
 and full retirement storage defers without image destruction or counter advance.
 Backend fence completion is controlled in this fixture; the separate frame-end
 acknowledgement wait is not removed by this ownership change.
+
+`test-ide-write-generation.py CHECKOUT [CC]` executes production PIO completion and the retro_atomic save-state write counter through 6,144 success/error/retry/IRQ/continuation schedules, plus counter wrap and missing-drive behavior. It checks DMA write-only completion placement and removal of block accounting from active paths. `IDE_WRITE_CFLAGS`, `IDE_WRITE_BINARY` and `IDE_WRITE_SKIP_RUN=1` support sanitized and native runs. The HDD/DVD ROM integration tests cover DMA, PIO reads and out-of-range errors after telemetry removal.
