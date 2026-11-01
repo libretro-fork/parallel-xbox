@@ -1669,3 +1669,11 @@ SMC. The byte-by-byte physical-address oracle is independent of the production
 range calculation. REP MOVS/STOS guest tests additionally cover self-modifying
 code with CPU Boost enabled and disabled. No lock implementation is substituted
 or added to the emulator by this fixture.
+
+### OpenGL shader-cache identity strings
+
+`python3 libretro/tests/test-gl-cache-strings.py .` checks the production mapped
+string reader against truncated lengths/payloads, every corrupted byte including
+the terminator, and all four combinations of missing driver vendor/version.
+Normal identities and existing cache encodings are preserved; fallback strings
+are selected only at initialization, with no repeated driver query.

@@ -559,6 +559,7 @@ for source_address in normal zero; do
 done
 python3 "$here/check-stream-address.py" "$work/stream-normal.wav" "$work/stream-zero.wav"
 
+python3 "$here/test-gl-cache-strings.py" "$here/../.."
 python3 "$here/test-tb-store-overlap.py" "$here/../.."
 
 # REP MOVS/STOS: per-element memory semantics, debug/RF behavior, pending IRQ

@@ -241,7 +241,7 @@ static bool cursor_take_string_eq(FileCursor *c, const char *expect)
     }
     str = cursor_take(c, len);
     return str && strlen(expect) == len - 1 &&
-           memcmp(str, expect, len - 1) == 0;
+           memcmp(str, expect, len) == 0;
 }
 
 static bool shader_read_cache_version(FileCursor *c)
@@ -1203,9 +1203,15 @@ void pgraph_gl_init_shaders(PGRAPHState *pg)
 
     if (!shader_gl_vendor) {
         shader_gl_vendor = (const char *) glGetString(GL_VENDOR);
+        if (!shader_gl_vendor) {
+            shader_gl_vendor = "Unknown vendor";
+        }
     }
     if (!shader_gl_version) {
         shader_gl_version = (const char *) glGetString(GL_VERSION);
+        if (!shader_gl_version) {
+            shader_gl_version = "Unknown version";
+        }
     }
 
     shader_create_cache_folder();
