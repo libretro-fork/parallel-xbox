@@ -38,7 +38,7 @@ jobs:
         run: sudo apt-get update -qq && sudo apt-get install -y libepoxy-dev
       - name: Native DSP instructions must match the interpreter without fallback
         timeout-minutes: 10
-        run: make dspnative dspmax dspjumps dsptcc dsplogical dspstatus dspbudget dsprelative dsploops dspprogram dspregisterloops dspcompare
+        run: make dspnative dspmax dspjumps dsptcc dsplogical dspstatus dspbudget dsprelative dsploops dspprogram dspregisterloops dspcompare dspstartup
 
   guest-gpu-progress:
     name: DOAX guest GPU progress regression
@@ -178,7 +178,7 @@ jobs:
 
       - name: Native DSP coverage and interpreter equivalence
         timeout-minutes: 10
-        run: make dspnative dspmax dspjumps dsptcc dsplogical dspstatus dspbudget dsprelative dsploops dspprogram dspregisterloops dspcompare
+        run: make dspnative dspmax dspjumps dsptcc dsplogical dspstatus dspbudget dsprelative dsploops dspprogram dspregisterloops dspcompare dspstartup
 
       # GLib is the core's own and libslirp is linked in: the core is the
       # one file
