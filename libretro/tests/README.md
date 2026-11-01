@@ -2070,3 +2070,5 @@ from 272 to 400 bytes because it now composes. No hardware cache counters were
 measured, and legacy flip/report/download waits remain separate work.
 
 `test-opcode-byte.py CHECKOUT [CC]` checks the production byte fetch and general loader: 302,292 first/second-page reads, guarded edges, noncontiguous host mappings, existing/replaced page locks, MMIO recording and fault propagation. First-page reads must avoid the general loader. Linux defaults to ASan/UBSan; OPCODE_BYTE_CFLAGS, OPCODE_BYTE_BINARY and OPCODE_BYTE_SKIP_RUN support native Windows fixtures.
+
+The opcode-fetch fixture also exercises the production 16/32-bit fetches: 523,688 endian/alignment/page-crossing/MMIO cases. First-page scalar reads avoid the general loader and aligned reads must still use the existing atomic primitives. Both general-loader output and recorded MMIO bytes retain host/guest byte-order behavior.

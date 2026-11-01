@@ -782,7 +782,17 @@ uint16_t translator_lduw_end(CPUArchState *env, DisasContextBase *db,
 {
     uint16_t val;
 
-    if (!translator_ld(env, db, &val, pc, sizeof(val))) {
+    if (likely(tb_page_addr0(db->tb) != -1 &&
+               ((db->pc_first ^ (pc + sizeof(val) - 1)) & TARGET_PAGE_MASK) == 0)) {
+        const void *host = db->host_addr[0] + (pc - db->pc_first);
+
+        /* Preserve the general loader's aligned atomic read. */
+        if (QEMU_IS_ALIGNED(pc, sizeof(val))) {
+            val = retro_atomic_load_relaxed_u16((retro_atomic_u16_t *)host);
+        } else {
+            val = lduw_he_p(host);
+        }
+    } else if (!translator_ld(env, db, &val, pc, sizeof(val))) {
         MemOpIdx oi = make_memop_idx(MO_UW, db->code_mmuidx);
         val = cpu_ldw_code_mmu(env, pc, oi, 0);
         record_save(db, pc, &val, sizeof(val));
@@ -798,7 +808,16 @@ uint32_t translator_ldl_end(CPUArchState *env, DisasContextBase *db,
 {
     uint32_t val;
 
-    if (!translator_ld(env, db, &val, pc, sizeof(val))) {
+    if (likely(tb_page_addr0(db->tb) != -1 &&
+               ((db->pc_first ^ (pc + sizeof(val) - 1)) & TARGET_PAGE_MASK) == 0)) {
+        const void *host = db->host_addr[0] + (pc - db->pc_first);
+
+        if (QEMU_IS_ALIGNED(pc, sizeof(val))) {
+            val = retro_atomic_load_relaxed_int((retro_atomic_int_t *)host);
+        } else {
+            val = ldl_he_p(host);
+        }
+    } else if (!translator_ld(env, db, &val, pc, sizeof(val))) {
         MemOpIdx oi = make_memop_idx(MO_UL, db->code_mmuidx);
         val = cpu_ldl_code_mmu(env, pc, oi, 0);
         record_save(db, pc, &val, sizeof(val));

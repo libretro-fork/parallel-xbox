@@ -1,5 +1,7 @@
 # Changelog of the libretro core
 
+- Fetch 16/32-bit instruction operands directly from the mapped first translation page, preserving aligned atomic reads, byte swapping and existing page-crossing/MMIO handling.
+
 - Fetch opcode and prefix bytes directly from the already-mapped first translation page, avoiding the general page-crossing loader call on that path. Second-page, MMIO and fault handling remain unchanged.
 
 - Reuse the TLB-resolved RAM address for CPU Boost unchanged-store checks instead of looking up the same RAM block again. Dirty tracking, watchpoints and invalidation decisions are preserved.
