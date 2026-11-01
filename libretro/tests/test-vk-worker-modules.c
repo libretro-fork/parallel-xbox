@@ -1,5 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 #include <assert.h>
+#undef assert
+#define assert(x) do { if (!(x)) { fprintf(stderr,"FAIL line %d: %s\n",__LINE__,#x); _Exit(1); } } while(0)
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -123,7 +125,8 @@ int main(void)
  ShaderModuleInfo *two=pgraph_vk_create_shader_module_from_spirv(&renderer,a);
  assert(one->uniforms.uniforms==two->uniforms.uniforms && one->layouts==two->layouts);
  vk_spec_modules_clear(); /* destroys words/source but keeps shared layouts */
- assert(retro_atomic_load_relaxed_int(&live_sources)==5);
+ /* One shared immutable layout and one allocation per mutable module. */
+ assert(retro_atomic_load_relaxed_int(&live_sources)==3);
  assert(!strcmp(one->uniforms.uniforms[0].name,"value"));
  memset(one->uniforms.allocation,0xa5,16);
  for(unsigned i=0;i<16;i++)assert(!((unsigned char*)two->uniforms.allocation)[i]);

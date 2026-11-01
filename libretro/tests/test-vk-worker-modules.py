@@ -3,7 +3,7 @@
 Usage: python test-vk-worker-modules.py CHECKOUT [GCC]
 """
 from pathlib import Path
-import os,re,subprocess,sys,tempfile
+import os,re,shlex,subprocess,sys,tempfile
 repo=Path(sys.argv[1]).resolve();cc=sys.argv[2] if len(sys.argv)>2 else 'gcc'
 s=(repo/'hw/xbox/nv2a/pgraph/vk/shaders.c').read_text();g=(repo/'hw/xbox/nv2a/pgraph/vk/glsl.c').read_text()
 h=(repo/'hw/xbox/nv2a/pgraph/vk/glsl.h').read_text()
@@ -19,9 +19,9 @@ code=code.replace('/* PRODUCTION */','\n'.join([state]+[function(s,n) for n in [
 types='\n'.join(re.search(r'typedef struct '+name+r' \{.*?\} '+name+r';',h,re.S)[0] for name in ['ShaderLayouts','ShaderSource'])
 code=code.replace('/* SOURCE TYPES */',types).replace('/* SOURCE FUNCTIONS */','\n'.join(function(g,n) for n in ['pgraph_vk_shader_source_new','pgraph_vk_shader_source_ref','pgraph_vk_shader_layouts_unref','pgraph_vk_shader_source_unref']))
 module_types=re.search(r'typedef struct ShaderUniformLayout \{.*?\} ShaderUniformLayout;',h,re.S)[0]
-code=code.replace('/* MODULE TYPES */',module_types).replace('/* MODULE FUNCTIONS */','\n'.join(function(g,n) for n in ['init_uniform_layout','finalize_uniform_layout','pgraph_vk_create_shader_module_from_spirv','pgraph_vk_destroy_shader_module']))
+code=code.replace('/* MODULE TYPES */',module_types).replace('/* MODULE FUNCTIONS */','\n'.join(function(g,n) for n in ['init_uniform_layout','alloc_shader_module_info','pgraph_vk_create_shader_module_from_spirv','pgraph_vk_destroy_shader_module']))
 env=os.environ.copy();env['PATH']=str(Path(cc).resolve().parent)+os.pathsep+env.get('PATH','')
 with tempfile.TemporaryDirectory(prefix='vk-worker-modules-',dir=repo.parent) as directory:
  p=Path(directory);(p/'test.c').write_text(code);exe=p/('test.exe' if os.name=='nt' else 'test')
- subprocess.run([cc,'-O2','-std=gnu11','-Wall','-Wextra','-Werror','-Wno-sign-compare','-Wno-misleading-indentation','-I'+str(repo),'-I'+str(repo/'libretro-common/include'),'-pthread','-fsanitize=undefined','-fsanitize-undefined-trap-on-error',str(p/'test.c'),'-o',str(exe)],check=True,env=env)
- subprocess.run([str(exe)],check=True,env=env)
+ subprocess.run([cc,'-O2','-std=gnu11','-Wall','-Wextra','-Werror','-Wno-sign-compare','-Wno-misleading-indentation','-I'+str(repo),'-I'+str(repo/'libretro-common/include'),'-pthread','-fsanitize=undefined','-fsanitize-undefined-trap-on-error',*shlex.split(os.environ.get('VK_WORKER_MODULE_CFLAGS','')),str(p/'test.c'),'-o',str(exe)],check=True,env=env)
+ subprocess.run([str(exe)],check=True,env=env,timeout=120)

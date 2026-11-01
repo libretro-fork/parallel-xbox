@@ -1857,3 +1857,5 @@ retry, and incrementing/non-incrementing batches from one through 64 words.
 This defines the no-progress contract; it does not enable class 0x39 transfers.
 
 `test-gpl-lookup-cache.py CHECKOUT [CC]` compares production GPL lookups to a first-match scan across 122,120 cases: zero/large hashes, cache-slot collisions, duplicate hashes, misses followed by insertion, independently moving pre/fragment arrays, and renderer reinitialization. Warm hits require one library-entry probe and allocate nothing. `GPL_LOOKUP_CFLAGS` enables sanitizers.
+
+Worker-module lifetime tests follow the combined module/parameter allocation path and verify that shared metadata outlives the shader words and either module. `VK_WORKER_MODULE_CFLAGS` enables extra sanitizer flags; assertion failures exit normally without opening a Windows crash dialog.
