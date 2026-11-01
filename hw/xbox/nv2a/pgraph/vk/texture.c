@@ -1304,8 +1304,9 @@ static void record_surface_copy(PGRAPHState *pg, VkCommandBuffer cmd,
                          VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
 }
 
-/* A tight ARGB row is the same bytes as a twice-as-wide RGB565 or ARGB1555
- * row. Transfer through a device buffer to reinterpret those bytes without host readback,
+/* An ARGB row has the same pixel bytes as a twice-as-wide linear 16-bit
+ * row. Transfers pack the active pixels, omitting guest row padding,
+ * through a device buffer to reinterpret those bytes without host readback,
  * arithmetic conversion or a CPU upload. Keep the ordinary CoW snapshot. */
 static void copy_argb_to_packed16_texture(PGRAPHState *pg, SurfaceBinding *surface,
                                        TextureBinding *texture)
@@ -1565,15 +1566,19 @@ static bool can_reinterpret_argb_as_packed16(PGRAPHState *pg,
         surface->shape.anti_aliasing != NV097_SET_SURFACE_FORMAT_ANTI_ALIASING_CENTER_1 ||
         surface->host_fmt.vk_format != VK_FORMAT_B8G8R8A8_UNORM ||
         (shape->color_format != NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_R5G6B5 &&
-         shape->color_format != NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_A1R5G5B5) ||
+         shape->color_format != NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_A1R5G5B5 &&
+         shape->color_format != NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_X1R5G5B5 &&
+         shape->color_format != NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_A4R4G4B4 &&
+         shape->color_format != NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_G8B8 &&
+         shape->color_format != NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_A8Y8) ||
         shape->dimensionality != 2 || shape->cubemap || shape->border ||
         shape->levels != 1 || !surface->width || !surface->height ||
         (uint64_t)shape->width != (uint64_t)surface->width * 2 ||
         shape->height != surface->height ||
-        (uint64_t)surface->pitch != (uint64_t)surface->width * 4 ||
+        (uint64_t)surface->pitch < (uint64_t)surface->width * 4 ||
         shape->pitch != surface->pitch ||
         r->storage_buffers[BUFFER_COMPUTE_DST].buffer_size <
-            (uint64_t)surface->pitch * surface->height) {
+            (uint64_t)surface->width * 4 * surface->height) {
         return false;
     }
     /* A single image must own the whole range. Do not bypass the ordered

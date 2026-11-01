@@ -30,7 +30,7 @@ with tempfile.TemporaryDirectory(prefix="texture-alias-", dir=repo.parent) as di
                     str(folder / "test.c"), "-o", str(exe)], check=True)
     subprocess.run([str(exe)], check=True)
 
-# Record the production transfer commands for both packed formats. No host
+# Record the production transfer commands for all supported packed formats. No host
 # readback/wait APIs are provided by this fixture.
 start = source.index("static void copy_argb_to_packed16_texture(")
 end = source.index("{", start) + 1
@@ -87,3 +87,29 @@ with tempfile.TemporaryDirectory(prefix="gl-texture-alias-", dir=repo.parent) as
                     "-I", str(repo), "-I", str(repo / "deps/vulkan-headers"),
                     str(folder / "test.c"), "-o", str(exe)], check=True)
     subprocess.run([str(exe)], check=True)
+
+# Opt-in real-device oracle; ordinary gate tests need no Vulkan loader/GPU.
+if os.environ.get("PACKED16_GPU_TEST") == "1":
+    constants = (repo / "hw/xbox/nv2a/pgraph/vk/constants.h").read_text()
+    start = constants.index("static const VkColorFormatInfo kelvin_color_format_vk_map[")
+    end = constants.index("\n};", start) + 3
+    oracle = (repo / "libretro/tests/test-packed16-vulkan.c").read_text()
+    oracle = oracle.replace("/* FORMAT_MAP */", constants[start:end])
+    start = source.index("static void copy_argb_to_packed16_texture(")
+    end = source.index("{", start) + 1
+    depth = 1
+    while depth:
+        depth += (source[end] == "{") - (source[end] == "}")
+        end += 1
+    oracle = oracle.replace("/* PRODUCTION */", source[start:end])
+    with tempfile.TemporaryDirectory(prefix="packed16-vulkan-", dir=repo.parent) as directory:
+        folder = Path(directory)
+        (folder / "test.c").write_text(oracle)
+        exe = folder / ("test.exe" if os.name == "nt" else "test")
+        subprocess.run([cc, "-O2", "-std=gnu11", "-Wall", "-Wextra", "-Werror",
+                        "-Wno-missing-field-initializers", "-I", str(repo),
+                        "-I", str(repo / "deps/vulkan-headers"),
+                        "-I", str(repo / "deps/volk"), str(folder / "test.c"),
+                        str(repo / "deps/volk/volk.c"), "-o", str(exe)] +
+                       ([] if os.name == "nt" else ["-ldl"]), check=True)
+        subprocess.run([str(exe)], check=True)

@@ -59,6 +59,16 @@ static void check_format(unsigned format)
     REJECT_FIELD(shape,width,63);
     REJECT_FIELD(shape,height,15);
     REJECT_FIELD(shape,pitch,132);
+#ifdef TEST_VULKAN_PACKED16
+    /* Both views omit the same padding; only active pixels need storage. */
+    source.pitch = shape.pitch = 256;
+    source.size = 4096;
+    assert(can_reinterpret_argb_as_packed16(&pg,&source,&shape));
+    source.pitch = shape.pitch = 124;
+    assert(!can_reinterpret_argb_as_packed16(&pg,&source,&shape));
+    source.pitch = shape.pitch = 128;
+    source.size = 2048;
+#endif
     renderer.storage_buffers[0].buffer_size=2047;
     assert(!can_reinterpret_argb_as_packed16(&pg,&source,&shape));
     renderer.storage_buffers[0].buffer_size=2048;
@@ -95,6 +105,10 @@ int main(void)
     check_format(NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_R5G6B5);
 #ifdef TEST_VULKAN_PACKED16
     check_format(NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_A1R5G5B5);
+    check_format(NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_X1R5G5B5);
+    check_format(NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_A4R4G4B4);
+    check_format(NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_G8B8);
+    check_format(NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_A8Y8);
 #endif
     return 0;
 }

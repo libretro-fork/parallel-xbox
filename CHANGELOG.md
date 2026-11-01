@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Keep linear XRGB1555, ARGB4444, G8B8 and A8Y8 views of eligible ARGB render targets on the Vulkan GPU. Accept matching padded guest pitches without copying padding or waiting for CPU readback, and check transfer capacity against active pixels. Add an opt-in real-device transfer oracle covering formats, scaling, row padding and repeated updates.
+
 - Keep eligible ARGB render-target to linear ARGB1555 texture reinterpretation on the Vulkan GPU, avoiding the surface readback, CPU wait and texture reupload. Preserve overlap, layout and transfer-capacity fallbacks.
 
 - Dispatch deferred disk completions directly from fixed owner-thread slots, removing per-drive bottom-half allocations and per-request atomic queue/notification work. Preserve cancellation, nested drains, DSP ownership and next-pass submission deferral; retain native positional/vectored and mapped disk I/O. Generic AIO remains for other users.

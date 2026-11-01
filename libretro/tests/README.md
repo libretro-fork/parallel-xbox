@@ -381,12 +381,23 @@ aliased texture. The source RAM starts blue, so stale-RAM sampling cannot pass.
 This phase initializes its transform and window-clip state explicitly and
 exercises both compatible GPU reuse and the incompatible readback/upload path.
 Vulkan uses a device-buffer reinterpretation for the supported live ARGB-to-
-RGB565 and ARGB1555 layouts; the fallback remains covered when the source has
-aged out. The eligibility fixture runs both Vulkan formats through the layout,
+RGB565, ARGB1555, XRGB1555, ARGB4444, G8B8 and A8Y8 layouts; the fallback
+remains covered when the source has aged out. The eligibility fixture runs all six Vulkan formats through the layout,
 capacity, scaling and overlap cases; OpenGL retains its RGB565-only gate.
 The command-recording fixture also runs the production packed16 transfer for
-both formats at scale 1/2/4, checking destination formats, extents, layouts and
+all six formats at scale 1/2/4, checking destination formats, extents, layouts and
 transfer-buffer barriers without exposing any host readback or wait APIs.
+Matching padded guest pitches are supported; padding is omitted from the packed
+transfer and the capacity check counts only active pixels.
+
+Set `PACKED16_GPU_TEST=1` when running `test-texture-reinterpret.py` to additionally
+compile the production transfer against Volk and run it on the first Vulkan GPU.
+The oracle uploads nonuniform ARGB bytes, then checks every destination byte for
+six formats at scale 1/2/4 with tight/padded source rows and two updates per image
+(72 cases). It extracts the production texture format map as well as the transfer.
+The test's final readback verifies output; the production function records only
+GPU commands. This requires a Vulkan loader/device, but no window or game assets.
+It checks raw destination bytes, not shader sampling or full-game behavior.
 The suite also restores an earlier alias state after a differently colored
 GPU redraw and checks both the restored picture and subsequent sampling.
 

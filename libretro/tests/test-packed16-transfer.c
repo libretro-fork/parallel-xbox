@@ -29,8 +29,17 @@ static unsigned stage, blits, transitions, expected_scale;
 static VkColorFormatInfo texture_vkf(PGRAPHVkState *r, unsigned f)
 {
     (void)r;
-    return (VkColorFormatInfo){ f == NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_R5G6B5 ?
-        VK_FORMAT_R5G6B5_UNORM_PACK16 : VK_FORMAT_A1R5G5B5_UNORM_PACK16 };
+    switch (f) {
+    case NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_R5G6B5:
+        return (VkColorFormatInfo){ VK_FORMAT_R5G6B5_UNORM_PACK16 };
+    case NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_A4R4G4B4:
+        return (VkColorFormatInfo){ VK_FORMAT_A4R4G4B4_UNORM_PACK16 };
+    case NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_G8B8:
+    case NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_A8Y8:
+        return (VkColorFormatInfo){ VK_FORMAT_R8G8_UNORM };
+    default:
+        return (VkColorFormatInfo){ VK_FORMAT_A1R5G5B5_UNORM_PACK16 };
+    }
 }
 static VkImage native_get_scratch(PGRAPHState *p, VkFormat f, unsigned w, unsigned h)
 { (void)p; (void)f; (void)w; (void)h; return HANDLE(VkImage, 3); }
@@ -96,11 +105,15 @@ static void blit(VkCommandBuffer c, VkImage src, VkImageLayout sl, VkImage dst,
 int main(void)
 {
     const unsigned formats[] = { NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_R5G6B5,
-                                 NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_A1R5G5B5 };
+                                 NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_A1R5G5B5,
+                                 NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_X1R5G5B5,
+                                 NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_A4R4G4B4,
+                                 NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_G8B8,
+                                 NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_A8Y8 };
     PGRAPHVkState r = { .storage_buffers = {{ HANDLE(VkBuffer, 1) }} };
     SurfaceBinding surface = { .host_fmt = { VK_FORMAT_B8G8R8A8_UNORM },
         .width = 32, .height = 16, .image = HANDLE(VkImage, 1), .draw_time = 42 };
-    for (unsigned f = 0; f < 2; f++) for (unsigned scale = 1; scale <= 4; scale *= 2) {
+    for (unsigned f = 0; f < sizeof(formats) / sizeof(formats[0]); f++) for (unsigned scale = 1; scale <= 4; scale *= 2) {
         PGRAPHState pg = { &r, scale };
         TextureBinding texture = { .key.state = { formats[f], 64, 16 },
             .image = HANDLE(VkImage, 2), .current_layout = VK_IMAGE_LAYOUT_UNDEFINED };
@@ -111,5 +124,5 @@ int main(void)
         assert(texture.current_layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
         assert(texture.draw_time == 42);
     }
-    puts("packed16 transfer: both formats, scale 1/2/4, extents, layouts and barriers passed");
+    puts("packed16 transfer: six formats, scale 1/2/4, extents, layouts and barriers passed");
 }
