@@ -893,6 +893,11 @@ with Xbox direct dispatch and generic target dispatch. It checks boost on/off,
 32/64-bit PCs, flag combinations, single-step/one-instruction/no-chain modes,
 lookup hits/misses, logging and breakpoint exits against independent results.
 The Xbox path must bypass the target function pointer in both boost modes.
+The dispatcher is built with the single x86 target and shares an inline state
+calculation with the generic target hook. Release Win64 disassembly confirms
+that both dispatcher and indirect-branch paths avoid the out-of-line state
+return call; the two callers grow by 288 bytes in the inspected build.
+This code-generation result does not establish a game FPS improvement.
 
 `test-rdpmc.py CHECKOUT [CC]` executes the production RDPMC helper and
 translator against privilege, counter-index and intercept-order oracles over

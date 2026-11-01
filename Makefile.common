@@ -298,7 +298,6 @@ SOURCES_COMMON_WIN32 := \
 SOURCES_SYSTEM := \
 	$(CORE_DIR)/accel/accel-system.c \
 	$(CORE_DIR)/accel/tcg/cpu-exec-common.c \
-	$(CORE_DIR)/accel/tcg/cpu-exec.c \
 	$(CORE_DIR)/accel/tcg/cputlb.c \
 	$(CORE_DIR)/accel/tcg/icount-common.c \
 	$(CORE_DIR)/accel/tcg/tb-maint.c \
@@ -447,7 +446,10 @@ SOURCES_SYSTEM_WIN32 := \
 	$(CORE_DIR)/net/capture_win_ifnames.c \
 
 # Built for the i386 target: the CPU, the Xbox and Chihiro hardware, nv2a
+# The core has one x86 target. Compile its dispatcher with target types so
+# block-state calculation can inline without a generic ABI callback.
 SOURCES_TARGET := \
+	$(CORE_DIR)/accel/tcg/cpu-exec.c \
 	$(CORE_DIR)/accel/accel-target.c \
 	$(CORE_DIR)/accel/stubs/kvm-stub.c \
 	$(CORE_DIR)/accel/stubs/xen-stub.c \

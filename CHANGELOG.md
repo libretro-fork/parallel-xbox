@@ -1,10 +1,14 @@
 # Changelog of the libretro core
 
+- Inline the Xbox translation-block state calculation in the dispatcher and indirect-branch lookup. Keep one shared calculation and the generic target hook, avoiding the out-of-line state-return call without changing lookup keys or debug policy.
+
 - Reuse Vulkan retirement serials during command-slot reclamation. When allocation retries already proved a submission complete, skip its redundant fence wait while preserving normal ownership, garbage and timestamp cleanup. Unfinished submissions keep their existing wait policy.
+
 - Reduce floating-depth bilinear shader reads from four samples to one unfiltered gather in GL and Vulkan, preserving decode-before-filter results without extra CPU/GPU synchronization.
 
 
 - Amortize Vulkan shader-ready cache index compaction with a small sliding window, preserving oldest-first eviction and module reference ownership. Keep miss scans contiguous and outline successful-take bookkeeping; module capacity is unchanged.
+
 - Skip CPU lookup and thread-identity checks when DSP guards are already retired. Use an atomic inactive flag so external borrowers keep the fast path without touching CPU-owned callback/TLB state.
 
 - Retire a completed Vulkan command slot when eager submission has already proved its fence ready. The following draw reuses that result instead of calling a fence wait again; existing GPU-RAM ownership, deferred destruction and timestamp retirement still run exactly once.

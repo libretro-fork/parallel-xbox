@@ -279,13 +279,13 @@ TranslationBlock *inv_tb_htable_lookup(CPUState *cpu, TCGTBCPUState s,
 /* The Xbox target always uses the x86 hook, including without CPU boost.
  * Boost still controls the guest flag specialization inside that hook. */
 #ifdef XBOX
-TCGTBCPUState x86_get_tb_cpu_state(CPUState *cs);
+#include "target/i386/tcg/tcg-cpu.h"
 #endif
 
 static inline TCGTBCPUState xemu_get_tb_cpu_state(CPUState *cpu)
 {
 #ifdef XBOX
-    return x86_get_tb_cpu_state(cpu);
+    return x86_tb_cpu_state(cpu);
 #else
     return cpu->cc->tcg_ops->get_tb_cpu_state(cpu);
 #endif

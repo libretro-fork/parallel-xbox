@@ -22,7 +22,8 @@ def function(path, name):
     return source[match.start():end]
 
 
-production = function('target/i386/tcg/tcg-cpu.c', 'x86_get_tb_cpu_state')
+production = function('target/i386/tcg/tcg-cpu.h', 'x86_tb_cpu_state')
+production += '\n' + function('target/i386/tcg/tcg-cpu.c', 'x86_get_tb_cpu_state')
 production += '\n' + function('accel/tcg/cpu-exec-common.c', 'curr_cflags')
 production += '\n' + '\n'.join(function('accel/tcg/cpu-exec.c', name) for name in
                               ('xemu_get_tb_cpu_state', 'xemu_lookup_cflags', 'HELPER(lookup_tb_ptr)'))

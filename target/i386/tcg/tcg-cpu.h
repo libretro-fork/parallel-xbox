@@ -19,8 +19,33 @@
 #ifndef TCG_CPU_H
 #define TCG_CPU_H
 
-#include "cpu.h"
+#include "target/i386/cpu.h"
 #include "accel/tcg/tb-cpu-state.h"
+#include "qemu/cpu-boost.h"
+
+/* Share the state calculation with the Xbox dispatcher without an ABI
+ * call. The generic target hook uses the same calculation. */
+static inline TCGTBCPUState x86_tb_cpu_state(CPUState *cs)
+{
+    CPUX86State *env = cpu_env(cs);
+    uint32_t flags, cs_base;
+    vaddr pc;
+
+    flags = env->hflags |
+        (env->eflags & (IOPL_MASK | TF_MASK | RF_MASK | VM_MASK | AC_MASK));
+    if (xemu_cpu_boost) {
+        flags |= tb_cf_flags(x86_cc_op_cf_class(env->cc_op));
+    }
+    if (env->hflags & HF_CS64_MASK) {
+        cs_base = 0;
+        pc = env->eip;
+    } else {
+        cs_base = env->segs[R_CS].base;
+        pc = (uint32_t)(cs_base + env->eip);
+    }
+
+    return (TCGTBCPUState){ .pc = pc, .flags = flags, .cs_base = cs_base };
+}
 
 #define XSAVE_FCW_FSW_OFFSET    0x000
 #define XSAVE_FTW_FOP_OFFSET    0x004
@@ -85,7 +110,7 @@ bool tcg_cpu_realizefn(CPUState *cs, Error **errp);
 
 int x86_mmu_index_pl(CPUX86State *env, unsigned pl);
 
-/* Not static: xemu's cpu_exec calls it directly (accel/tcg/cpu-exec.c). */
+/* Generic target hook; the Xbox dispatcher shares the inline calculation. */
 TCGTBCPUState x86_get_tb_cpu_state(CPUState *cs);
 
 #endif /* TCG_CPU_H */
