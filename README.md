@@ -134,3 +134,36 @@ Block completion regression tests (`libretro/tests/test-block-completion.py`) ex
 production request and drain functions with a modeled bottom-half scheduler. They
 cover nested drain/cancel callbacks, callback-submitted work, slot retention and
 balanced counters; backend destruction and media I/O are outside this model.
+
+### Vulkan memory reservations
+
+The Vulkan heap reserves its backing and metadata at renderer
+startup, then suballocates and reuses that capacity without growing or mapping
+new heap blocks during gameplay. Host and device buffer reservations are
+computed from the actual startup buffers' Vulkan requirements, including both
+staging sets and vertex arenas. There is no guessed host-memory padding.
+Conversion buffers retain min(32 MiB * scale^2, 800 MiB) each. Host memory
+prefers CPU caching, with noncoherent flush/invalidate ranges isolated by atom.
+
+The optimal-image reservation is max(128 MiB, 6 MiB * scale^2):
+384 MiB at 8x. Retired image objects can release their spans under pressure;
+unfinished GPU resources cannot be reclaimed. This is a finite working-set
+limit, not a bound proven sufficient for every game. Exhaustion cannot grow the
+heap. Raising resolution beyond the startup reservation requires restarting.
+The existing imported/exported memory and display-image allocation paths are
+separate from this heap; fixed heap backing is not a blanket guarantee that no
+Vulkan allocation can ever occur on a display-size change.
+
+Guest main RAM and NV2A RAM already share one backing allocation. With
+`VK_EXT_external_memory_host`, compatible systems expose those same pages as a
+Vulkan buffer for direct texture uploads, GPU conversions and surface downloads.
+This does not make upscaled/optimal images aliasable with guest RAM, or remove
+the snapshots needed when guest writes overlap unfinished GPU work. Persistent
+mapping and coherent memory do not replace CPU/GPU synchronization.
+
+The renderer uses an Xbox-specific C allocator instead of VMA, removing the
+core's C++ runtime dependency. Measured startup driver allocation/map counts
+and binary size improve; a general frame-rate improvement is not claimed.
+The fixed image pool reserves spare memory upfront to avoid heap growth during
+play. At 8x, the four tested savestates used 25-142 MiB more reserved Vulkan
+backing than VMA. These allocation sizes do not measure resident VRAM.

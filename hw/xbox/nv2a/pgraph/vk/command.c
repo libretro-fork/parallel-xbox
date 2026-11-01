@@ -343,7 +343,7 @@ void pgraph_vk_staging_flush(PGRAPHState *pg, VkDeviceSize offset,
 
     StorageBuffer *staging = &r->storage_buffers[BUFFER_STAGING_SRC];
     if (size && !(staging->properties & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT)) {
-        VK_CHECK(vmaFlushAllocation(r->allocator, staging->allocation,
+        VK_CHECK(xemu_vk_flush_allocation(r->allocator, staging->allocation,
                                     offset, size));
     }
 }

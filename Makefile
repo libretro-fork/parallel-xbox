@@ -65,18 +65,13 @@ ifeq ($(platform),android)
    endif
    NDK_BIN := $(NDK)/toolchains/llvm/prebuilt/$(shell uname -s | tr A-Z a-z)-x86_64/bin
    CC      := $(NDK_BIN)/$(ANDROID_TARGET)-clang
-   CXX     := $(NDK_BIN)/$(ANDROID_TARGET)-clang++
    AR      := $(NDK_BIN)/llvm-ar
 else ifneq ($(CROSS_PREFIX),)
    CC  := $(CROSS_PREFIX)gcc
-   CXX := $(CROSS_PREFIX)g++
    AR  := $(CROSS_PREFIX)ar
 else ifeq ($(platform),win)
    ifeq ($(origin CC),default)
       CC := gcc
-   endif
-   ifeq ($(origin CXX),default)
-      CXX := g++
    endif
 endif
 
@@ -113,8 +108,7 @@ ifeq ($(platform),unix)
 
    PKGS := epoxy
    DEPS_CFLAGS := $(shell $(PKG_CONFIG) --cflags $(PKGS)) -pthread
-   DEPS_LIBS   := $(shell $(PKG_CONFIG) --libs $(PKGS)) \
-                  -lstdc++
+   DEPS_LIBS   := $(shell $(PKG_CONFIG) --libs $(PKGS))
    ifeq ($(DEPS_CFLAGS),-pthread)
       $(error pkg-config found none of: $(PKGS))
    endif
@@ -122,7 +116,7 @@ else ifeq ($(platform),win)
    HOST_OS     := win32
    TARGET      := $(TARGET_NAME)_libretro.dll
    fpic        :=
-   # -static: libgcc, libstdc++ and winpthread go into the DLL too
+   # -static: libgcc and winpthread go into the DLL too
    # --discard-all: with a section per function the DLL's symbol table
    # would carry a local symbol for every one of them (.text$name,
    # .pdata$name, .xdata$name: 30 MB instead of 22)
@@ -172,8 +166,7 @@ else ifeq ($(platform),android)
    fpic        := -fPIC
    SHARED      := -shared -Wl,--version-script=$(CORE_DIR)/ui/libretro.map \
                   -Wl,--no-undefined -Wl,-Bsymbolic -Wl,--exclude-libs,ALL \
-                  -Wl,-z,relro -Wl,-z,now -Wl,--gc-sections \
-                  -static-libstdc++
+                  -Wl,-z,relro -Wl,-z,now -Wl,--gc-sections
    OS_INCFLAGS := -isystem $(CORE_DIR)/linux-headers
    OS_CFLAGS   := -DVK_USE_PLATFORM_ANDROID_KHR
    OS_LIBS     := -ldl -lm -llog -landroid
@@ -225,7 +218,6 @@ OBJS_GLIB     := $(call obj,$(SOURCES_GLIB))
 OBJS_VOLK     := $(call obj,$(SOURCES_VOLK))
 OBJS_GLSLC    := $(call obj,$(SOURCES_GLSLC))
 OBJS_VSH      := $(call obj,$(SOURCES_VSH))
-OBJS_VMA      := $(patsubst %.cc,%.o,$(SOURCES_VMA_CXX))
 OBJS_DATA     := $(patsubst %.S,%.o,$(SOURCES_DATA_ASM))
 
 # QEMU's utility code is an archive, as meson builds it: its stubs/ stand in
@@ -235,7 +227,6 @@ LIBQEMUUTIL := $(CORE_DIR)/libqemuutil.a
 OBJECTS := $(OBJS_COMMON) $(OBJS_SYSTEM) $(OBJS_TARGET) \
            $(OBJS_DSP) $(OBJS_GLOFF) $(OBJS_LRCOMMON) $(OBJS_GLIB) \
            $(OBJS_VOLK) $(OBJS_GLSLC) $(OBJS_VSH) \
-           $(OBJS_VMA) \
            $(OBJS_DATA)
 
 $(OBJS_UTIL):     GROUP_CFLAGS := $(CFLAGS_UTIL)
@@ -251,7 +242,6 @@ $(OBJS_GLIB):     GROUP_CFLAGS := $(CFLAGS_GLIB)
 $(OBJS_VOLK):     GROUP_CFLAGS := $(CFLAGS_VOLK)
 $(OBJS_GLSLC):    GROUP_CFLAGS := $(CFLAGS_GLSLC)
 $(OBJS_VSH):      GROUP_CFLAGS := $(CFLAGS_VSH)
-$(OBJS_VMA):      GROUP_CXXFLAGS := $(CXXFLAGS_VMA)
 # MinGW's __try1/__except1 (util/oslib-win32.c) put the exception handler's
 # directives in .text, which the assembler rejects in a function's own
 # section: that file keeps one .text
@@ -270,7 +260,7 @@ $(CORE_DIR)/xemu-version.o: $(VERSION_H)
 FORCE:
 
 $(TARGET): $(OBJECTS) $(LIBQEMUUTIL) $(filter %.a,$(DEPS_LIBS))
-	$(CXX) -o $@ $(SHARED) $(fpic) $(LDFLAGS) $(OBJECTS) $(LIBQEMUUTIL) \
+	$(CC) -o $@ $(SHARED) $(fpic) $(LDFLAGS) $(OBJECTS) $(LIBQEMUUTIL) \
 		$(DEPS_LIBS) $(OS_LIBS)
 
 $(LIBQEMUUTIL): $(OBJS_UTIL)
@@ -279,9 +269,6 @@ $(LIBQEMUUTIL): $(OBJS_UTIL)
 
 %.o: %.c
 	$(CC) $(BASE_FLAGS) $(GROUP_CFLAGS) $(CFLAGS) -MMD -MP -c -o $@ $<
-
-%.o: %.cc
-	$(CXX) $(BASE_FLAGS) $(GROUP_CXXFLAGS) $(CXXFLAGS) -MMD -MP -c -o $@ $<
 
 # .incbin finds data/ from the core's directory
 %.o: %.S

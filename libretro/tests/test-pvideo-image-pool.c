@@ -9,35 +9,34 @@
 #define VK_NULL_HANDLE 0
 #define VK_MAX_MEMORY_HEAPS 2
 #define VK_CHECK(x) assert((x)==0)
-#define VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE 1
 /* LIMIT */
-typedef unsigned VkImage,VmaAllocation,VkImageView;
+typedef unsigned VkImage,XemuVkAllocation,VkImageView;
 typedef struct {unsigned imageType,format;struct {unsigned width,height,depth;} extent;unsigned mipLevels,arrayLayers,samples,tiling,usage,flags,sharingMode;} VkImageCreateInfo;
-typedef struct {size_t size;unsigned memoryType;} VmaAllocationInfo;
-typedef struct {uint64_t usage,budget;} VmaBudget;
+typedef struct {size_t size;unsigned memoryType;} XemuVkAllocationInfo;
+typedef struct {uint64_t usage,budget;} XemuVkBudget;
 typedef struct {struct {unsigned heapIndex;} memoryTypes[2];} VkPhysicalDeviceMemoryProperties;
-typedef struct {unsigned usage;} VmaAllocationCreateInfo;
-typedef struct {struct {VkImage image;VkImageView image_view;VmaAllocation allocation;VkImageCreateInfo image_ci;} pvideo;} PGRAPHVkDisplayState;
+typedef struct {bool host,dedicated;} XemuVkMemoryRequest;
+typedef struct {struct {VkImage image;VkImageView image_view;XemuVkAllocation allocation;VkImageCreateInfo image_ci;} pvideo;} PGRAPHVkDisplayState;
 typedef struct {
  unsigned allocator,device;PGRAPHVkDisplayState display;
- struct XemuVkPooledImage {VkImage image;VkImageView view;VmaAllocation allocation;VkImageCreateInfo ci;size_t bytes;unsigned heap;uint64_t seq;} image_pool[16];
+ struct XemuVkPooledImage {VkImage image;VkImageView view;XemuVkAllocation allocation;VkImageCreateInfo ci;size_t bytes;unsigned heap;uint64_t seq;} image_pool[16];
  int image_pool_n;size_t image_pool_bytes;uint64_t image_pool_seq;
 } PGRAPHVkState;
-static VmaAllocationInfo allocation[10000];
+static XemuVkAllocationInfo allocation[10000];
 static bool destroyed[10000];
 static unsigned creates,destroys,view_creates,view_destroys;
 static bool live_view[10000];
 static uint64_t heap_usage[2],budget[2]={UINT64_MAX,UINT64_MAX};
 static VkPhysicalDeviceMemoryProperties props={{{0},{1}}};
-static void vmaGetHeapBudgets(unsigned a,VmaBudget *out){assert(a==7);for(unsigned i=0;i<2;i++)out[i]=(VmaBudget){heap_usage[i],budget[i]};}
-static void vmaGetAllocationInfo(unsigned a,VmaAllocation im,VmaAllocationInfo *out){assert(a==7&&im&&im<=creates&&!destroyed[im]);*out=allocation[im];}
-static void vmaGetMemoryProperties(unsigned a,const VkPhysicalDeviceMemoryProperties **out){assert(a==7);*out=&props;}
-static int vmaCreateImage(unsigned a,const VkImageCreateInfo *ci,const VmaAllocationCreateInfo *aci,VkImage *im,VmaAllocation *mem,void *unused){
- assert(a==7&&aci->usage==1&&!unused&&creates+1<10000);*im=*mem=++creates;
- allocation[*im]=(VmaAllocationInfo){(size_t)ci->extent.width*ci->extent.height*4,ci->flags&1};heap_usage[ci->flags&1]+=allocation[*im].size;return 0;
+static void xemu_vk_get_heap_budgets(unsigned a,XemuVkBudget *out){assert(a==7);for(unsigned i=0;i<2;i++)out[i]=(XemuVkBudget){heap_usage[i],budget[i]};}
+static void xemu_vk_get_allocation_info(unsigned a,XemuVkAllocation im,XemuVkAllocationInfo *out){assert(a==7&&im&&im<=creates&&!destroyed[im]);*out=allocation[im];}
+static void xemu_vk_get_memory_properties(unsigned a,const VkPhysicalDeviceMemoryProperties **out){assert(a==7);*out=&props;}
+static int xemu_vk_create_image(unsigned a,const VkImageCreateInfo *ci,const XemuVkMemoryRequest *aci,VkImage *im,XemuVkAllocation *mem){
+ assert(a==7&&!aci->host&&creates+1<10000);*im=*mem=++creates;
+ allocation[*im]=(XemuVkAllocationInfo){(size_t)ci->extent.width*ci->extent.height*4,ci->flags&1};heap_usage[ci->flags&1]+=allocation[*im].size;return 0;
 }
 static void vkDestroyImageView(unsigned d,VkImageView v,void *p){assert(d==9&&v&&live_view[v]&&!p);live_view[v]=false;view_destroys++;}
-static void vmaDestroyImage(unsigned a,VkImage im,VmaAllocation mem){assert(a==7&&im==mem&&!destroyed[im]&&!live_view[im]);destroyed[im]=true;heap_usage[allocation[im].memoryType]-=allocation[im].size;destroys++;}
+static void xemu_vk_destroy_image(unsigned a,VkImage im,XemuVkAllocation mem){assert(a==7&&im==mem&&!destroyed[im]&&!live_view[im]);destroyed[im]=true;heap_usage[allocation[im].memoryType]-=allocation[im].size;destroys++;}
 /* PRODUCTION */
 static void acquire_view(PGRAPHVkState *r,const VkImageCreateInfo *ci){
  acquire_pvideo_image(r,ci);
@@ -45,7 +44,7 @@ static void acquire_view(PGRAPHVkState *r,const VkImageCreateInfo *ci){
 }
 static void put(PGRAPHVkState *r){
  typeof(r->display.pvideo) *v=&r->display.pvideo;
- if(!pgraph_vk_image_pool_put_with_view(r,v->image,v->allocation,&v->image_ci,v->image_view)){if(v->image_view)vkDestroyImageView(r->device,v->image_view,NULL);vmaDestroyImage(r->allocator,v->image,v->allocation);}
+ if(!pgraph_vk_image_pool_put_with_view(r,v->image,v->allocation,&v->image_ci,v->image_view)){if(v->image_view)vkDestroyImageView(r->device,v->image_view,NULL);xemu_vk_destroy_image(r->allocator,v->image,v->allocation);}
  v->image=v->allocation=v->image_view=0;
 }
 int main(void){
@@ -65,7 +64,7 @@ int main(void){
  }
  assert(creates==2&&destroys==0&&r.image_pool_n==2&&view_creates==2&&!view_destroys);
  /* A texture/surface acquisition must discard the canonical overlay view. */
- VkImage im;VmaAllocation mem;
+ VkImage im;XemuVkAllocation mem;
  assert(pgraph_vk_image_pool_get(&r,&ci,&im,&mem));assert(view_destroys==1&&!live_view[im]);
  assert(pgraph_vk_image_pool_put(&r,im,mem,&ci));
  acquire_pvideo_image(&r,&ci);assert(!r.display.pvideo.image_view);put(&r);

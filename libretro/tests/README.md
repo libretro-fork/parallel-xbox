@@ -1677,3 +1677,11 @@ string reader against truncated lengths/payloads, every corrupted byte including
 the terminator, and all four combinations of missing driver vendor/version.
 Normal identities and existing cache encodings are preserved; fallback strings
 are selected only at initialization, with no repeated driver query.
+
+`test-vk-memory.py ROOT CC [--gpu]` exercises the production fixed-capacity
+Vulkan heap with a deterministic driver oracle: fragmented lifetimes, binding
+alignment and overlap, linear/image isolation, persistent mappings,
+noncoherent atom isolation, dedicated requirements and failure rollback. Its
+sealed-reservation cases assert no driver allocations, mappings or frees during
+reuse or exhaustion. `--gpu` adds actual image clears, direct mapped readbacks,
+offset copies and guard-byte checks, enabling Khronos validation when available.

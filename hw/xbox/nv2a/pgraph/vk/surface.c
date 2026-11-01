@@ -39,6 +39,11 @@ const int max_surface_frame_time_delta = 5;
 
 void pgraph_vk_set_surface_scale_factor(NV2AState *d, unsigned int scale)
 {
+    PGRAPHVkState *heap_state = d->pgraph.vk_renderer_state;
+    if (scale > heap_state->reserved_surface_scale) {
+        fprintf(stderr, "nv2a: increasing Vulkan scale beyond startup capacity requires a restart\n");
+        return;
+    }
     g_config.display.quality.surface_scale = scale < 1 ? 1 : scale;
 
     /* the pusher stops at its next batch; the downloads and the flush
@@ -69,7 +74,8 @@ unsigned int pgraph_vk_get_surface_scale_factor(NV2AState *d)
 void pgraph_vk_reload_surface_scale_factor(PGRAPHState *pg)
 {
     int factor = g_config.display.quality.surface_scale;
-    pg->surface_scale_factor = MAX(factor, 1);
+    PGRAPHVkState *r = pg->vk_renderer_state;
+    pg->surface_scale_factor = MIN(MAX(factor, 1), r->reserved_surface_scale);
 }
 
 // FIXME: Move to common
@@ -335,7 +341,7 @@ static void invalidate_readback(PGRAPHVkState *r, VkDeviceSize size)
 {
     StorageBuffer *dst = &r->storage_buffers[BUFFER_STAGING_DST];
     if (size && !(dst->properties & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT)) {
-        VK_CHECK(vmaInvalidateAllocation(r->allocator, dst->allocation, 0,
+        VK_CHECK(xemu_vk_invalidate_allocation(r->allocator, dst->allocation, 0,
                                          size));
     }
 }
@@ -1299,7 +1305,6 @@ static void set_surface_label(PGRAPHState *pg, SurfaceBinding const *surface)
     if (r->debug_utils_extension_enabled) {
         vkSetDebugUtilsObjectNameEXT(r->device, &name_info);
     }
-    vmaSetAllocationName(r->allocator, surface->allocation, label);
 
     if (surface->image_scratch) {
         char label_scratch[112];
@@ -1310,8 +1315,6 @@ static void set_surface_label(PGRAPHState *pg, SurfaceBinding const *surface)
         if (r->debug_utils_extension_enabled) {
             vkSetDebugUtilsObjectNameEXT(r->device, &name_info);
         }
-        vmaSetAllocationName(r->allocator, surface->allocation_scratch,
-                             label_scratch);
     }
 }
 
@@ -1335,12 +1338,12 @@ static void ensure_surface_scratch(PGRAPHVkState *r, SurfaceBinding *surface)
     if (!pgraph_vk_image_pool_get(r, &surface->scratch_ci,
                                   &surface->image_scratch,
                                   &surface->allocation_scratch)) {
-        VmaAllocationCreateInfo alloc_create_info = {
-            .usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE,
+        XemuVkMemoryRequest alloc_create_info = {
+            .host = false,
         };
-        VK_CHECK(vmaCreateImage(r->allocator, &surface->scratch_ci,
+        VK_CHECK(xemu_vk_create_image(r->allocator, &surface->scratch_ci,
                                 &alloc_create_info, &surface->image_scratch,
-                                &surface->allocation_scratch, NULL));
+                                &surface->allocation_scratch));
     }
     surface->image_scratch_current_layout = VK_IMAGE_LAYOUT_UNDEFINED;
 }
@@ -1389,12 +1392,12 @@ static void create_surface_image(PGRAPHState *pg, SurfaceBinding *surface)
     surface->image_ci = image_create_info;
     if (!pgraph_vk_image_pool_get(r, &image_create_info, &surface->image,
                                   &surface->allocation)) {
-        VmaAllocationCreateInfo alloc_create_info = {
-            .usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE,
+        XemuVkMemoryRequest alloc_create_info = {
+            .host = false,
         };
-        VK_CHECK(vmaCreateImage(r->allocator, &image_create_info,
+        VK_CHECK(xemu_vk_create_image(r->allocator, &image_create_info,
                                 &alloc_create_info, &surface->image,
-                                &surface->allocation, NULL));
+                                &surface->allocation));
     }
     surface->image_scratch_current_layout = VK_IMAGE_LAYOUT_UNDEFINED;
 
@@ -3238,5 +3241,4 @@ void pgraph_vk_surface_flush(NV2AState *d)
     prune_invalid_surfaces(r, 0);
 
     pgraph_vk_reload_surface_scale_factor(pg);
-    pgraph_vk_reserve_compute_buffers(pg, pg->surface_scale_factor);
 }

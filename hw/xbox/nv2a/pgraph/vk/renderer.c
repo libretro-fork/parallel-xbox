@@ -412,38 +412,17 @@ static void __attribute__((constructor)) register_renderer(void)
 
 void pgraph_vk_check_memory_budget(PGRAPHState *pg)
 {
-#if 0 // FIXME
+    /* Reclaim only idle memory. Resource retirement and GPU completion
+     * remain the renderer's responsibility; trimming never waits. */
     PGRAPHVkState *r = pg->vk_renderer_state;
-
-    VkPhysicalDeviceMemoryProperties const *props;
-    vmaGetMemoryProperties(r->allocator, &props);
-
-    g_autofree VmaBudget *budgets = g_malloc_n(props->memoryHeapCount, sizeof(VmaBudget));
-    vmaGetHeapBudgets(r->allocator, budgets);
-
-    const float budget_threshold = 0.8;
-    bool near_budget = false;
-
-    for (int i = 0; i < props->memoryHeapCount; i++) {
-        VmaBudget *b = &budgets[i];
-        float use_to_budget_ratio =
-            (double)b->statistics.allocationBytes / (double)b->budget;
-        NV2A_VK_DPRINTF("Heap %d: used %lu/%lu MiB (%.2f%%)", i,
-                        b->statistics.allocationBytes / (1024 * 1024),
-                        b->budget / (1024 * 1024), use_to_budget_ratio * 100);
-        near_budget |= use_to_budget_ratio > budget_threshold;
+    XemuVkBudget budgets[VK_MAX_MEMORY_HEAPS];
+    const VkPhysicalDeviceMemoryProperties *props;
+    xemu_vk_get_memory_properties(r->allocator, &props);
+    xemu_vk_get_heap_budgets(r->allocator, budgets);
+    for (uint32_t i = 0; i < props->memoryHeapCount; i++) {
+        if (budgets[i].usage > budgets[i].budget) {
+            xemu_vk_trim_memory(r->allocator);
+            break;
+        }
     }
-
-    // If any heaps are near budget, free up some resources
-    if (near_budget) {
-        pgraph_vk_trim_texture_cache(pg);
-    }
-#endif
-
-#if 0
-    char *s;
-    vmaBuildStatsString(r->allocator, &s, VK_TRUE);
-    puts(s);
-    vmaFreeStatsString(r->allocator, s);
-#endif
 }

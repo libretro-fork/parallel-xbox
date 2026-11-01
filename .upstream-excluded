@@ -3217,3 +3217,7 @@ include/qemu/lockcnt.h
 # Unused synchronous POSIX AIO monitor backends
 util/fdmon-poll.c
 util/fdmon-epoll.c
+
+# Bespoke fixed-capacity Vulkan heap replaces VMA.
+deps/VulkanMemoryAllocator
+thirdparty/vma.cc

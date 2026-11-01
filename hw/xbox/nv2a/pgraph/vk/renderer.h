@@ -38,7 +38,7 @@
 
 #include <vulkan/vulkan.h>
 #include <volk.h>
-#include <vk_mem_alloc.h>
+#include "memory.h"
 
 #include "libretro_shared.h"
 
@@ -123,8 +123,8 @@ extern const StagedBuffer pgraph_vk_staged_buffers[3];
 typedef struct StorageBuffer {
     VkBuffer buffer;
     VkBufferUsageFlags usage;
-    VmaAllocationCreateInfo alloc_info;
-    VmaAllocation allocation;
+    XemuVkMemoryRequest alloc_info;
+    XemuVkAllocation allocation;
     VkMemoryPropertyFlags properties;
     size_t buffer_offset;
     size_t buffer_size;
@@ -174,7 +174,7 @@ typedef struct SurfaceBinding {
     VkImage image;
     VkImageView image_view;
     uint64_t image_seq; /* distinguishes recycled view handles in display sets */
-    VmaAllocation allocation;
+    XemuVkAllocation allocation;
     /* How the images were created: the image pool's exact keys
      * when they retire (surface.c destroy_surface_image) */
     VkImageCreateInfo image_ci, scratch_ci;
@@ -184,7 +184,7 @@ typedef struct SurfaceBinding {
      * ensure_surface_scratch), so a surface only drawn has none */
     VkImage image_scratch;
     VkImageLayout image_scratch_current_layout;
-    VmaAllocation allocation_scratch;
+    XemuVkAllocation allocation_scratch;
 
     bool initialized;
 } SurfaceBinding;
@@ -265,7 +265,7 @@ typedef struct TextureBinding {
     VkImage image;
     VkImageLayout current_layout;
     VkImageView image_view;
-    VmaAllocation allocation;
+    XemuVkAllocation allocation;
     VkSampler sampler;
     bool possibly_dirty;
     uint64_t hash;
@@ -363,7 +363,7 @@ typedef struct PGRAPHVkDisplayState {
         int width, height;
         VkImage image;
         VkImageView image_view;
-        VmaAllocation allocation;
+        XemuVkAllocation allocation;
         VkSampler sampler;
         bool storage;
         VkImageCreateInfo image_ci; /* exact key for retired allocation reuse */
@@ -537,7 +537,8 @@ typedef struct PGRAPHVkState {
     VkPhysicalDeviceFeatures enabled_physical_device_features;
     VkPhysicalDeviceProperties device_props;
     VkDevice device;
-    VmaAllocator allocator;
+    XemuVkAllocator allocator;
+    unsigned int reserved_surface_scale;
     uint32_t allocator_last_submit_index;
 
     VkQueue queue;
@@ -636,7 +637,7 @@ typedef struct PGRAPHVkState {
         VkFramebuffer framebuffer;
         VkImageView image_view;
         VkImage image;
-        VmaAllocation allocation;
+        XemuVkAllocation allocation;
         VkImageCreateInfo image_ci; /* pooled image creation key */
         bool pool_ok;
         bool pool_view; /* retain the overlay's canonical 2D view with its image */
@@ -652,7 +653,7 @@ typedef struct PGRAPHVkState {
     struct XemuVkPooledImage {
         VkImage image;
         VkImageView view; /* optional canonical overlay view; never a texture view */
-        VmaAllocation allocation;
+        XemuVkAllocation allocation;
         VkImageCreateInfo ci;
         size_t bytes;
         uint32_t heap;
@@ -913,7 +914,7 @@ typedef struct PGRAPHVkState {
      * in-flight submissions may use them. */
     struct {
         VkImage image;
-        VmaAllocation allocation;
+        XemuVkAllocation allocation;
         VkFormat format;
         unsigned int width, height;
     } znative_scratch[4];
@@ -930,14 +931,14 @@ typedef struct PGRAPHVkState {
 // renderer.c
 void pgraph_vk_save_pipeline_cache(PGRAPHState *pg, bool sync);
 bool pgraph_vk_image_pool_put(PGRAPHVkState *r, VkImage image,
-                              VmaAllocation allocation,
+                              XemuVkAllocation allocation,
                               const VkImageCreateInfo *ci);
 bool pgraph_vk_image_pool_get(PGRAPHVkState *r, const VkImageCreateInfo *ci,
-                              VkImage *image, VmaAllocation *allocation);
+                              VkImage *image, XemuVkAllocation *allocation);
 bool pgraph_vk_image_pool_put_with_view(PGRAPHVkState *r, VkImage image,
-    VmaAllocation allocation, const VkImageCreateInfo *ci, VkImageView view);
+    XemuVkAllocation allocation, const VkImageCreateInfo *ci, VkImageView view);
 bool pgraph_vk_image_pool_get_with_view(PGRAPHVkState *r,
-    const VkImageCreateInfo *ci, VkImage *image, VmaAllocation *allocation,
+    const VkImageCreateInfo *ci, VkImage *image, XemuVkAllocation *allocation,
     VkImageView *view);
 void pgraph_vk_image_pool_flush(PGRAPHVkState *r);
 void pgraph_vk_check_memory_budget(PGRAPHState *pg);
@@ -1202,7 +1203,6 @@ void pgraph_vk_draw_begin(NV2AState *d);
 void pgraph_vk_draw_end(NV2AState *d);
 extern const XemuCostQueryOps pgraph_vk_cost_ops;
 void pgraph_vk_finish(PGRAPHState *pg, FinishReason why);
-void pgraph_vk_reserve_compute_buffers(PGRAPHState *pg, unsigned int scale);
 void pgraph_vk_settle_reports(PGRAPHState *pg);
 void pgraph_vk_reclaim_command_buffer(PGRAPHState *pg, bool reuse);
 void pgraph_vk_framebuffer_drop_view(PGRAPHVkState *r, VkImageView view);
