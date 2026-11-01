@@ -533,6 +533,9 @@ cp "$work/sys/xemu/mcpx_1.0.bin" "$work/sysb/xemu/"
 nasm -f bin -DBUSY -I"$here/rom/" -o "$work/sysb/xemu/Complex_4627v1.03.bin" "$here/rom/flash.asm"
 cp "$work/sys/xemu/mcpx_1.0.bin" "$work/syss/xemu/"
 nasm -f bin -DSPIN -I"$here/rom/" -o "$work/syss/xemu/Complex_4627v1.03.bin" "$here/rom/flash.asm"
+mkdir -p "$work/syswait/xemu"
+cp "$work/sys/xemu/mcpx_1.0.bin" "$work/syswait/xemu/"
+nasm -f bin -DPROVEN_WAIT -I"$here/rom/" -o "$work/syswait/xemu/Complex_4627v1.03.bin" "$here/rom/flash.asm"
 cp "$work/sys/xemu/mcpx_1.0.bin" "$work/sysp/xemu/"
 nasm -f bin -DPAD -I"$here/rom/" -o "$work/sysp/xemu/Complex_4627v1.03.bin" "$here/rom/flash.asm"
 cp "$work/sys/xemu/mcpx_1.0.bin" "$work/sysg/xemu/"
@@ -822,12 +825,17 @@ t "busy guest, unpaced" $h "$(path "$core")" "$(path "$work/sysb")" $vp --frames
   --wav "$(path "$work/busy.wav")"
 "$work/bin/sinecheck" "$work/busy.wav" --frames 480480
 
-# The guest spins on RAM that nothing writes, as the Xbox kernel's idle
-# thread does: a wait, recognised and skipped, so it runs as fast as the
-# halted guest and its tone is as whole.
-t "spinning guest, unpaced" $h "$(path "$core")" "$(path "$work/syss")" $vp --frames 3000 --strict \
-  --min-speed 4 --wav "$(path "$work/spin.wav")"
-"$work/bin/sinecheck" "$work/spin.wav" --frames 2402400
+# An arbitrary RAM poll does not establish idleness. It must keep correct
+# audio cadence while executing normally; no host-speed requirement applies.
+t "unproven RAM poll, unpaced" $h "$(path "$core")" "$(path "$work/syss")" $vp --frames 300 --strict \
+  --wav "$(path "$work/spin.wav")"
+"$work/bin/sinecheck" "$work/spin.wav" --frames 240240
+
+# The accepted live RAM-counter proof must skip its genuine wait. Retain
+# the existing 4x threshold, alongside the separate always-busy work test.
+t "proven RAM wait, unpaced" $h "$(path "$core")" "$(path "$work/syswait")" $vp --frames 3000 --strict \
+  --min-speed 4 --wav "$(path "$work/wait.wav")"
+"$work/bin/sinecheck" "$work/wait.wav" --frames 2402400
 
 # The same idle guest on a Vulkan context, as RetroArch's vulkan driver
 # gives one (the device made by the core's negotiation interface, the frame

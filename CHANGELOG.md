@@ -1,5 +1,7 @@
 # Changelog of the libretro core
 
+- Separate the unproven RAM-spin cadence fixture from the exact supported wait-proof fixture, retaining the 4x fast-forward requirement for proven waits.
+
 - Supply the Linux graphics-test GLib dependency and link CPU-feature test fixtures with the compatibility string provider required on ARM.
 
 - Reduce x86-64 CPU dispatch overhead by retaining the instruction budget in a nonvolatile host register across translated blocks. Synchronize the canonical 16-bit budget at helper, memory-access slow-path and return boundaries; keep interrupt requests in their independent atomic half. Preserve instruction deadlines, guest clock rate and state layout.

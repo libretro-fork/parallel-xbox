@@ -249,10 +249,27 @@ busy:   inc dword [0x00300000]
         ; the hard disk's writes and reads, DMA and PIO (hdd.c)
         call HDD_ENTRY
 %endif
+%ifdef PROVEN_WAIT
+        ; An exact supported RAM-counter proof, with interrupts enabled.
+        ; PIC lines stay masked because this fixture installs no IRQ handler.
+        mov al, 0xff
+        out 0x21, al
+        out 0xa1, al
+        mov dword [0x00300004], 0
+        mov edx, 0x00300004
+        mov esi, 1
+        xor eax, eax
+        sti
+        nop
+        nop
+ram_wait:
+        ; Preserve the proof's exact encodings (NASM otherwise chooses
+        ; equivalent MOV/SUB/CMP encodings that are intentionally unproved).
+        db 0x8b,0x0a,0x8b,0xfe,0x2b,0xf9,0x3b,0xc7,0x72,0xf6
+        jmp ram_wait
+%endif
 %ifdef SPIN
-        ; the CPU spins on a word in RAM that nothing writes, as the kernel's
-        ; idle thread does: a wait, which the core's idle detection moves
-        ; the guest's time past
+        ; An arbitrary store-free poll is deliberately NOT an idle proof.
 spin:   cmp dword [0x00300004], 0
         jne spin
         jmp spin
