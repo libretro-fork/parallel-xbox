@@ -19,11 +19,24 @@ static void *poison(size_t bytes) {
 #undef g_new
 #define g_new(type,n) ((type *)poison((size_t)(n)*sizeof(type)))
 /* PRODUCTION */
+/* Original constructor clears all three slots, even without geometry. */
+static bool legacy_keys(const ShaderState *st,ShaderModuleCacheKey keys[3]) {
+ bool need=pgraph_glsl_need_geom(&st->geom);memset(keys,0,3*sizeof(keys[0]));
+ if(need){keys[0].kind=GL_GEOMETRY_SHADER;keys[0].geom.state=st->geom;}
+ keys[1].kind=GL_VERTEX_SHADER;keys[1].vsh.state=st->vsh;keys[1].vsh.glsl_opts.prefix_outputs=need;
+ keys[2].kind=GL_FRAGMENT_SHADER;keys[2].psh.state=st->psh;return need;
+}
 static void check_keys(ShaderState *states,unsigned count) {
  ShaderModuleCacheKey *expected=calloc(3*count+1,sizeof(*expected));assert(expected);
  unsigned used=0;GHashTable *seen=pgraph_seed_hash_set_new();
  for(unsigned i=0;i<count;i++) {
-  ShaderModuleCacheKey keys[3];bool geom=state_module_keys(&states[i],keys);
+  ShaderModuleCacheKey keys[3],actual_keys[3];bool geom=legacy_keys(&states[i],keys);
+  memset(actual_keys,0xa5,sizeof(actual_keys));assert(state_module_keys(&states[i],actual_keys)==geom);
+  for(unsigned k=geom?0:1;k<3;k++) {
+   assert(!memcmp(actual_keys+k,keys+k,sizeof(keys[k])));
+   assert(fast_hash((const uint8_t *)(actual_keys+k),sizeof(keys[k]))==fast_hash((const uint8_t *)(keys+k),sizeof(keys[k])));
+  }
+  if(!geom){assert(!actual_keys[0].kind);for(size_t p=sizeof(actual_keys[0].kind);p<sizeof(actual_keys[0]);p++)assert(((unsigned char *)actual_keys)[p]==0xa5);}
   for(unsigned k=geom?0:1;k<3;k++)if(pgraph_seed_hash_set_add(seen,fast_hash((const uint8_t *)&keys[k],sizeof(keys[k]))))expected[used++]=keys[k];
  }
  g_hash_table_destroy(seen);
@@ -70,5 +83,5 @@ int main(void) {
   cases++;states+=count;free(input);free(expected);free(actual);
  }
  assert(seed_compact_dynamic_states(NULL,0)==0);
- printf("Seed compaction: %u model cases, %zu input states, real key layout/hash/canonicalizer, duplicates, forced hash collisions, modes, canaries and poisoned module-key output PASS (state bytes=%zu; key bytes=%zu)\n",cases,states,sizeof(ShaderState),sizeof(ShaderModuleCacheKey));
+ printf("Seed compaction: %u model cases, %zu input states, real key layout/hash/canonicalizer, duplicates, forced hash collisions, modes, canaries and poisoned module-key output and inactive geometry payload PASS (state bytes=%zu; key bytes=%zu)\n",cases,states,sizeof(ShaderState),sizeof(ShaderModuleCacheKey));
 }

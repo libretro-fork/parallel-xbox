@@ -2652,3 +2652,5 @@ game-latency effects are unmeasured.
 
 
 `test-sse-ordered-compare.py CHECKOUT [CC]` compares the four production COMIS helpers with real SoftFloat in both optimized and generic configurations. Each configuration covers 1,280,000 cases: float32/64 boundary and random pairs, signed zero, infinities, signaling/quiet NaNs, subnormals, 16 guest rounding/flushing modes, sticky exception flags, operand aliasing and source preservation. On x86-64 it also changes host MXCSR and checks ordinary inputs leave it unchanged. Instrumented fallback counts require zero general comparison calls for ordinary inputs and one for exceptional inputs.
+
+The seed key fixture now compares production construction directly with the original unconditional three-slot clear. It checks all active key bytes and hashes; when geometry is absent, its kind stays zero and all payload bytes retain poison. All four production callers skip that absent payload. Geometry-enabled construction and the complete module-key collection oracle remain covered.

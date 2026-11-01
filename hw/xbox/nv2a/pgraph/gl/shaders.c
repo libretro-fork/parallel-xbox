@@ -704,10 +704,14 @@ static bool state_module_keys(const ShaderState *st,
 {
     bool need_gs = pgraph_glsl_need_geom(&st->geom);
 
-    memset(keys, 0, 3 * sizeof(keys[0]));
     if (need_gs) {
+        memset(keys, 0, 3 * sizeof(keys[0]));
         keys[0].kind = GL_GEOMETRY_SHADER;
         keys[0].geom.state = st->geom;
+    } else {
+        /* Callers skip this key; only its kind tag is meaningful. */
+        keys[0].kind = 0;
+        memset(&keys[1], 0, 2 * sizeof(keys[0]));
     }
     keys[1].kind = GL_VERTEX_SHADER;
     keys[1].vsh.state = st->vsh;
