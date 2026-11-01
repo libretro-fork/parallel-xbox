@@ -2250,3 +2250,17 @@ Win64 code generation inlines the small eager helper into draw_end and keeps
 its stack frame at 96 bytes. PGRAPHState (4,295,312 bytes), PGRAPHVkState
 (5,845,216 bytes) and PGRAPHRenderer (232 bytes) are unchanged. These layout
 and assembly checks do not establish hardware cache-miss or game-latency gains.
+
+The eager-retirement fixture additionally covers 1,032 serial-proof reclamation
+schedules and eight production allocation-retry/reclaim sequences. Equal or
+older submissions skip waiting without a new status probe; newer unfinished
+submissions retain the wait and its optional reuse-time accounting. Serial
+rollover and exactly-once ownership/garbage/timestamp cleanup are checked. A
+completed later submission on the same queue also proves the earlier slot safe,
+even if the earlier slot's own status was not observed ready. Allocation retry
+still leaves slot flags and GPU-RAM ownership for normal slot cleanup.
+
+The serial-proof check preserves the Win64 reclaim function's 96-byte stack
+frame and all renderer structure sizes. It adds no allocations, PSOs, copies,
+locks, status queries or frame queue. Hardware cache-miss and game-latency
+effects are unmeasured; unfinished submissions still have their existing wait.

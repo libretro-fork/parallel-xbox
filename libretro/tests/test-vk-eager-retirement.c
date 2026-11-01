@@ -12,7 +12,7 @@
 #define VK_CHECK(s) assert((s)==VK_SUCCESS)
 typedef struct {unsigned slot,eager_draw_count;bool in_command_buffer,slot_fence_pending[2];unsigned slot_main[2],slot_sync[2],slot_fence[2],slot_submit[2],settled_submit,submit_count;int device,reuse_wait_us;struct{unsigned w_end[2];}frame_gpu;}PGRAPHVkState;
 typedef struct {PGRAPHVkState*vk_renderer_state;}PGRAPHState;
-static unsigned polls,waits,retirements,resolves,submits,clock_now,drops;
+static unsigned polls,waits,retirements,resolves,submits,clock_now,drops,pool_flushes;
 static void lr_gpu_ram_drop(uintptr_t cmd){(void)cmd;drops++;}
 static int status[2];static bool drain_expected;
 static int vkGetFenceStatus(int device,unsigned fence){assert(device==9&&fence<2);polls++;return status[fence];}
@@ -20,6 +20,7 @@ static int vkWaitForFences(int device,unsigned count,unsigned*fence,unsigned all
 static int64_t g_get_monotonic_time(void){return ++clock_now;}
 static void ema16(int *p,int64_t value){assert(value>0);*p+=(int)value;}
 static void trash_drain_retired(PGRAPHVkState*r){assert(drain_expected);retirements++;(void)r;}
+static void pgraph_vk_image_pool_flush(PGRAPHVkState*r){(void)r;pool_flushes++;}
 static void frame_gpu_resolve_until(PGRAPHVkState*r,unsigned end){assert(end==r->frame_gpu.w_end[0]||end==r->frame_gpu.w_end[1]);resolves++;}
 static void pgraph_vk_finish(PGRAPHState*pg,unsigned why){
  PGRAPHVkState*r=pg->vk_renderer_state;assert(why==11&&r->in_command_buffer);
@@ -52,6 +53,36 @@ int main(void){
  }
  /* A genuinely busy direct reclaim retains its separate wait policy. */
  PGRAPHVkState r={.device=9,.slot_fence={0,1},.slot_fence_pending={true,false},.frame_gpu={.w_end={101,202}}};PGRAPHState pg={.vk_renderer_state=&r};
- waits=0;drain_expected=true;pgraph_vk_reclaim_command_buffer(&pg,true);assert(waits==1&&!r.slot_fence_pending[0]);
- printf("PASS: %u eager submit/retirement/slot-reuse schedules; completed slots never wait\n",cases);
+ r.slot_submit[0]=1;waits=0;drain_expected=true;pgraph_vk_reclaim_command_buffer(&pg,true);assert(waits==1&&!r.slot_fence_pending[0]);
+ unsigned serial_cases=0;
+ for(unsigned slot=0;slot<2;slot++)for(unsigned reuse=0;reuse<2;reuse++)
+ for(unsigned wrap=0;wrap<2;wrap++)for(int delta=-64;delta<=64;delta++){
+  PGRAPHVkState q={.device=9,.slot=slot,.slot_fence={0,1},.frame_gpu={.w_end={101,202}}};PGRAPHState p={.vk_renderer_state=&q};
+  q.settled_submit=wrap?3:200;q.slot_submit[slot]=q.settled_submit+(uint32_t)delta;
+  q.slot_fence_pending[slot]=true;q.slot_fence_pending[slot^1]=true;
+  status[slot]=delta<=0?VK_SUCCESS:VK_NOT_READY;
+  polls=waits=retirements=resolves=drops=clock_now=0;drain_expected=true;
+  pgraph_vk_reclaim_command_buffer(&p,reuse);
+  assert(!polls&&waits==(unsigned)(delta>0)&&retirements==1&&resolves==1&&drops==2);
+  assert(!q.slot_fence_pending[slot]&&q.slot_fence_pending[slot^1]);
+  assert(q.settled_submit==(delta>0?q.slot_submit[slot]:(wrap?3u:200u)));
+  assert((q.reuse_wait_us!=0)==(reuse&&delta>0));
+  unsigned before_waits=waits;pgraph_vk_reclaim_command_buffer(&p,reuse);
+  assert(waits==before_waits&&retirements==1&&drops==2);serial_cases++;
+ }
+ unsigned retry_cases=0;
+ for(unsigned newer=0;newer<2;newer++)for(unsigned wrap=0;wrap<2;wrap++)for(unsigned target=0;target<2;target++){
+  PGRAPHVkState q={.device=9,.slot=target,.slot_fence={0,1},.slot_fence_pending={true,true},.frame_gpu={.w_end={101,202}}};PGRAPHState p={.vk_renderer_state=&q};
+  uint32_t serial=wrap?0:100;q.slot_submit[newer]=serial;q.slot_submit[newer^1]=serial-1;q.settled_submit=serial-2;
+  status[newer]=VK_SUCCESS;status[newer^1]=VK_NOT_READY;
+  polls=waits=retirements=resolves=drops=pool_flushes=0;drain_expected=true;
+  pgraph_vk_reclaim_retired_images(&q);
+  assert(q.settled_submit==serial&&q.slot_fence_pending[0]&&q.slot_fence_pending[1]);
+  assert(!drops&&!resolves&&pool_flushes==1&&retirements==1);
+  unsigned before_polls=polls;
+  pgraph_vk_reclaim_command_buffer(&p,true);
+  assert(polls==before_polls&&!waits&&drops==2&&resolves==1&&retirements==2);
+  assert(!q.slot_fence_pending[target]&&q.slot_fence_pending[target^1]);retry_cases++;
+ }
+ printf("PASS: %u eager, %u serial-proof and %u allocation-retry schedules; completed slots never wait\n",cases,serial_cases,retry_cases);
 }

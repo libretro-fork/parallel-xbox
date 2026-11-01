@@ -1,5 +1,6 @@
 # Changelog of the libretro core
 
+- Reuse Vulkan retirement serials during command-slot reclamation. When allocation retries already proved a submission complete, skip its redundant fence wait while preserving normal ownership, garbage and timestamp cleanup. Unfinished submissions keep their existing wait policy.
 - Reduce floating-depth bilinear shader reads from four samples to one unfiltered gather in GL and Vulkan, preserving decode-before-filter results without extra CPU/GPU synchronization.
 
 

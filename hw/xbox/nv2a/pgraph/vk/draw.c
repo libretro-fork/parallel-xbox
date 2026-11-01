@@ -3049,13 +3049,18 @@ void pgraph_vk_reclaim_command_buffer(PGRAPHState *pg, bool reuse)
     PGRAPHVkState *r = pg->vk_renderer_state;
 
     if (r->slot_fence_pending[r->slot]) {
-        /* The eager policy counts only a wait at slot reuse, the cost of an
-         * early submission, not the wait of a synchronous finish. */
-        int64_t w0 = reuse ? g_get_monotonic_time() : 0;
-        VK_CHECK(vkWaitForFences(r->device, 1, &r->slot_fence[r->slot],
-                                 VK_TRUE, UINT64_MAX));
-        if (reuse) {
-            ema16(&r->reuse_wait_us, g_get_monotonic_time() - w0);
+        /* Allocation-retry reclamation can already prove this submission
+         * complete while leaving slot cleanup here. Reuse that serial proof
+         * instead of asking the driver to wait for completed work again. */
+        if ((int32_t)(r->slot_submit[r->slot] - r->settled_submit) > 0) {
+            /* The eager policy counts only a wait at slot reuse, the cost of an
+             * early submission, not the wait of a synchronous finish. */
+            int64_t w0 = reuse ? g_get_monotonic_time() : 0;
+            VK_CHECK(vkWaitForFences(r->device, 1, &r->slot_fence[r->slot],
+                                     VK_TRUE, UINT64_MAX));
+            if (reuse) {
+                ema16(&r->reuse_wait_us, g_get_monotonic_time() - w0);
+            }
         }
         r->slot_fence_pending[r->slot] = false;
         pgraph_vk_slot_retired(pg, r->slot);
