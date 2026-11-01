@@ -1,5 +1,8 @@
 # Changelog of the libretro core
 
+- Single-level Vulkan color volumes now preserve minification versus magnification filtering at mip zero, including Force LOD0, without adding GPU readbacks or waits.
+
+
 - Remove redundant mutexes from TCG region allocation and host-code indexing under the core's serialized vCPU/safe-work ownership. Enforce one translator/region and retain existing block recycling, fault/unwind lookup and flush behavior; jump/page synchronization is unchanged.
 - Vulkan color cubemaps now retain min/mag filtering at mip zero, including Force LOD0, while keeping lower mips unread and the cube layout intact.
 
