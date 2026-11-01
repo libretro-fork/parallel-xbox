@@ -50,11 +50,15 @@ def expected_mip(case, force_lod0):
         coordinate = "sample_v" if axis_v else "sample_u"
         u = float(case.get(coordinate) or "1.25") * size / 4
         if base_size >= 16:
-            extra = ((224, 32),) if channel in "RB" else ((96, 160),)
-            if base_size == 16:
-                extra = ()
-            pair = (((192, 64), (224, 32), (16, 240), (208, 48)) + extra + ((16, 16),))[level] if channel in "RB" else (
-                ((64, 192), (96, 160), (112, 144), (80, 176)) + extra + ((112, 112),))[level]
+            last = base_size.bit_length() - 1
+            if channel in "RB":
+                pairs = ((192, 64), (224, 32), (16, 240), (208, 48),
+                         (224, 32), (192, 64), (208, 48))
+                pair = (pairs[:last] + ((16, 16),))[level]
+            else:
+                pairs = ((64, 192), (96, 160), (112, 144), (80, 176),
+                         (96, 160), (64, 192), (80, 176))
+                pair = (pairs[:last] + ((112, 112),))[level]
         else:
             pair = ((192, 64), (224, 32), (16, 16))[level] if channel in "RB" else ((64, 192), (96, 160), (112, 112))[level]
         position = u - 0.5 if linear else u

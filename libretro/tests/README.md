@@ -152,6 +152,18 @@ four through fifteen and all nine address pairs, preserving existing state
 layout, keys and shader seeds. Only extended keys use this encoding.
 The 32x32 fixture shifts normalized coordinates by 1/128, avoiding both
 point and gather boundaries after Force LOD0; its footprint adds three to LOD.
+Use `--extended-mip-minima` to add 13824 cases at minima five and six:
+64x64/seven-level and 128x128/eight-level textures keep the selected lower
+mip at 2x2 and the next at 1x1. They cover all nine address pairs, all four
+mip-filter modes, matching/mixed filters, bias +0.25, negative-bias controls
+and both override settings. The optional total is 89088 cases per renderer,
+or 242688 with `--extended-address-biases` too. Default totals stay unchanged.
+The builder accepts `--min-lod 5 --mip-base-size 64` or
+`--min-lod 6 --mip-base-size 128`. Larger fixtures use independent texture
+slots below 48 MiB, separated from the target, scanout and gradient buffers;
+compile-time bounds enforce the 64 MiB limit. Their normalized coordinate
+shifts are 1/256 and 1/512, away from mip-zero point/gather boundaries.
+These guest probes add no normal-emulator code or logging.
 Non-neutral bump-luminance profiles add scale/bias (0.5, 0.25), negative
 scale (-0.5, 0.75) and saturation (3, -0.5). Each profile covers all 16 channel
 sign masks, point/linear filtering, three coordinates and linear/swizzled
@@ -1572,14 +1584,22 @@ unswizzle success branch is preserved. PALETTE_CFLAGS, PALETTE_BINARY and
 PALETTE_SKIP_RUN support optimized or native cross builds; --bench after the
 compiler compares the old unswizzle+convert functions with the fused helper.
 
-`test-ohci-pending.py CHECKOUT [CC]` extracts the production OHCI TD service
-with controlled USB completion and guest-DMA callbacks. Its 784 scenarios cover
-pending/completed IN and OUT ownership, blocked SETUP/IN/OUT transfers, both
-direction encodings, zero-length/partial transfers and normal/error completion.
-The original handler fails the shared-payload integrity assertion. Blocked TDs
-must leave controller state and payload unchanged without any DMA read/copy or
-device lookup; the original TD and following TD then proceed normally. This
-does not implement per-endpoint asynchronous slots or model USB device timing.
+`test-ohci-pending.py CHECKOUT [CC]` extracts production packet ownership,
+TD/ED service, completion and cancellation code with controlled USB and DMA
+callbacks and the production owned-iovec lifecycle. It covers 2,865 scenarios: 40 concurrent endpoints, shared control
+endpoint ownership, reverse completions, growth and allocation-free reuse,
+immediate callback delivery, paused endpoints, device address changes, hub
+subtree removal, rewind, zero/partial transfers, backend errors, DMA faults and bounded TD cycles.
+The ASan/UBSan run checks that callbacks retain stable packet addresses through
+key-table growth/compaction and that freed packets are not used after faults.
+The old single-packet VMState bytes remain as ignored padding, without a
+runtime buffer; outstanding host requests are canceled before state load and
+guest TDs are reissued. Isochronous transfers retain their existing path.
+This fixture does not model physical USB passthrough or external device rewind.
+The core USB ROM also checks button release after repeated state loads. Win64
+validation additionally loaded an original-controller state with zero RAM
+differences, and passed reset and Vulkan reload under strict audio/video
+cadence. OpenGL reload retains its existing restart restriction.
 
 `test-rgb655-unswizzle.py` checks all 65536 RGB655 words against independent
 channel equations, rectangular Morton levels and unaligned source/output.

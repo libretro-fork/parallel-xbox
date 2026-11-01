@@ -1,5 +1,7 @@
 # Changelog of the libretro core
 
+- Add optional GPU regressions for signed G8B8 minimum mip levels five and six, using larger textures with nontrivial final mip levels. Keep the normal test matrix and emulator runtime unchanged.
+
 - Skip the obsolete Vulkan transfer dependency after packing depth for direct GPU swizzling. Preserve transfer fallbacks, shader visibility and conversion-buffer reuse ordering without new resources.
 
 - Correct signed G8B8 bump-map reconstruction with minimum mip levels above three in OpenGL and Vulkan. Preserve existing shader-cache keys and layouts through a compact extended encoding; Force Texture LOD0 still overrides the guest minimum. Add filtering, addressing and cache-compatibility regression coverage without runtime diagnostics.
@@ -28,6 +30,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 ## Unreleased
 
 - Compile immediate and effective-address DSP jumps, conditional jumps and conditional subroutine calls natively. Preserve untaken-branch address updates, loop completion, stack errors and long-interrupt call behavior without reinterpreting the instruction. Add exhaustive condition/status tests and a production-block jump/call regression.
+
+- OHCI asynchronous transfers are tracked per USB endpoint, so one pending transfer no longer stalls unrelated endpoints. Compact endpoint keys and reusable, demand-sized payload buffers replace the shared 8 KiB buffer. Reset, detach and state load cancel host requests; guest descriptors resume after loading. Completions delivered during endpoint flush are consumed in the same service pass. TD service is bounded so malformed descriptor cycles cannot monopolize a frame.
 
 - Remove unused allocating texture conversion APIs; keep caller-owned outputs and make the S3TC decoder independent of QEMU/GLib headers.
 

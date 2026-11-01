@@ -122,6 +122,16 @@ previously supported shader keys. CPU tests cover minima 4..15; GPU matrices
 exercise minimum four across all nine wrap/mirror/edge pairs and all four
 mip-filter modes. Force LOD0 bypasses the extended encoding entirely.
 
+Optional `--extended-mip-minima` runner coverage exercises minimum five on
+64x64 textures and minimum six on 128x128 textures, with all nine address
+pairs and matching/mixed filters. Both retain a 2x2 lower mip and a distinct
+1x1 upper mip. The builder uses normalized shifts 1/256 and 1/512 to avoid
+mip-zero point/gather boundaries when overridden. Separate guest texture
+slots stay below 48 MiB and clear the target/scanout buffers; the ramp sits
+at 52 MiB. Compile-time checks keep all fixture allocations inside 64 MiB.
+This supplements the exhaustive CPU/emitted-shader coverage of minima
+4..15; it does not extend physical-console precision claims.
+
 Add `--mip-mixed` to the mip fixture command to choose the opposite magnification
 filter. The 6144 extra cases cover both directions for every mip mode and bias,
 including a zero computed LOD and a fractional positive LOD. A single LOD query

@@ -266,6 +266,16 @@ void qemu_iovec_add(QEMUIOVector *qiov, void *base, size_t len)
     ++qiov->niov;
 }
 
+void qemu_iovec_destroy(QEMUIOVector *qiov)
+{
+    assert(qiov->nalloc != -1);
+    g_free(qiov->iov);
+    qiov->iov = NULL;
+    qiov->niov = 0;
+    qiov->nalloc = 0;
+    qiov->size = 0;
+}
+
 void qemu_iovec_reset(QEMUIOVector *qiov)
 {
     assert(qiov->nalloc != -1);

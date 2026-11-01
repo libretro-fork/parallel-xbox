@@ -18,6 +18,8 @@ def main():
     parser.add_argument("--assembler", default="nasm")
     parser.add_argument("--extended-address-biases", action="store_true",
                         help="repeat new mixed-axis matrices at -4/0/+0.25/+4 instead of +0.25")
+    parser.add_argument("--extended-mip-minima", action="store_true",
+                        help="also exercise minimum mip levels five and six on larger textures")
     args = parser.parse_args()
     here = args.checkout.resolve() / "libretro/tests"
     args.scratch.mkdir(parents=True, exist_ok=True)
@@ -63,6 +65,13 @@ def main():
               (("-4", "0", "0.25", "4") if args.extended_address_biases else ("0.25",))]
     if not args.extended_address_biases:
         modes += [f"miphighermixed-wrap-wrap_{f}_-4" for f in (3, 6)]
+    if args.extended_mip_minima:
+        modes += [f"mipdeep{'mixed' if mixed else ''}-{level}-{u}-{v}_{filter}_{bias}"
+                  for level in (5, 6) for mixed, u, v, filter in third for bias in
+                  (("-4", "0", "0.25", "4") if args.extended_address_biases else ("0.25",))]
+        if not args.extended_address_biases:
+            modes += [f"mipdeepmixed-{level}-wrap-wrap_{f}_-4"
+                      for level in (5, 6) for f in (3, 6)]
     for mode in modes:
         output = root / mode
         build = [sys.executable, str(here / "build-bump-probe.py"), str(output),
@@ -74,12 +83,17 @@ def main():
         elif mode.startswith("mixed"):
             bias = 4 if mode.endswith("plus4") else -4 if mode.endswith("minus4") else 0
             build += ["--mixed", "--lod-bias", str(bias)]
-        elif mode.startswith(("mip_", "mipmixed_", "mipclamp", "mipaddr", "miplower", "mipthree", "miphigher")):
+        elif mode.startswith(("mip_", "mipmixed_", "mipclamp", "mipaddr", "miplower", "mipthree", "miphigher", "mipdeep")):
             family, filter, bias = mode.split("_")
             build += ["--mip-filter", filter, "--lod-bias", bias]
             if "mixed" in family:
                 build.append("--mip-mixed")
-            if family.startswith(("mipthree", "miphigher")):
+            if family.startswith("mipdeep"):
+                _, level, u, v = family.split("-")
+                build += ["--min-lod", level, "--mip-base-size", str(1 << (int(level) + 1)),
+                          "--mip-address-u", u, "--mip-address-v", v,
+                          "--sampler-transition", "lod0-to-mip"]
+            elif family.startswith(("mipthree", "miphigher")):
                 _, u, v = family.split("-")
                 higher = family.startswith("miphigher")
                 build += ["--min-lod", "4" if higher else "3",

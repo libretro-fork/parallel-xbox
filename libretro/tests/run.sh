@@ -1556,9 +1556,21 @@ grep -E "peek_0x300020=0xb564d33c$" "$work/pad.txt" >/dev/null || {
     echo "FAIL: the right stick did not reach the pad: $(grep peek_0x300020 "$work/pad.txt")"; exit 1; }
 grep -E "rumble_calls=[1-9]" "$work/pad.txt" >/dev/null || {
     echo "FAIL: the pad's motors did not reach the frontend"; exit 1; }
+# The USB controller's packet ownership must survive a rewind. Release Start
+# after the final restore, so a stale pre-load report cannot pass this check.
+t "USB input after repeated state load" $h "$(path "$core")" "$(path "$work/sysp")" $vp \
+  --frames 300 --strict --save 100 --load 150 --load-again 220 --verify-load \
+  --pad 20:3:220 --stick 20:12000:-20000:1000 --peek 0x300008 --peek 0x300010 >"$work/pad-state.txt"
+for want in "peek_0x300008=0x00000000" "peek_0x300010=0x00001400"; do
+  grep -q "^$want$" "$work/pad-state.txt" || {
+    cat "$work/pad-state.txt"; echo "FAIL: USB input after state load"; exit 1;
+  }
+done
+
 # Both sticks pushed fully up, RetroArch's -32768: the Xbox's way up is
 # 32767 on both, not -32768 (a negation that wrapped, full down: Jet Set
 # Radio Future turned round instead of running forward)
+
 echo "== the pad over USB, sticks fully up"
 timeout 300 $h "$(path "$core")" "$(path "$work/sysp")" $vp --frames 300 --strict \
   --stick 20:0:-32768:1000 --peek 0x30001c --peek 0x300020 >"$work/pad2.txt"

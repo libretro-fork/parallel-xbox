@@ -12,6 +12,18 @@
 #undef BUMP_RAMP
 #define BUMP_RAMP  0x03600000u /* Beyond 192 independent 4096-byte slots. */
 #endif
+#if BUMP_MIP_BASE_SIZE >= 64
+#undef BUMP_DATA
+#undef BUMP_RAMP
+/* Up to 192 independent 128x128 mip chains fit below 48 MiB, away from
+ * this fixture's SURF_D target and its scanout buffers. */
+#define BUMP_DATA  0x02400000u
+#define BUMP_RAMP  0x03400000u
+#endif
+_Static_assert(BUMP_DATA + 192u * BUMP_MIP_BASE_SIZE * BUMP_MIP_BASE_SIZE * 4u <= BUMP_RAMP,
+               "independent mip slots must not overlap the ramp");
+_Static_assert(BUMP_RAMP + 32u * 16u * 4u <= 0x04000000u,
+               "the fixture must fit in 64 MiB");
 #endif
 
 #if defined(BUMP_FILTER_MIXED_PROBE) || defined(BUMP_FILTER_MIP_PROBE)
@@ -30,7 +42,65 @@ static void bump_mixed_triangle(u32 layout, u32 footprint)
 #ifdef BUMP_FILTER_WIDE_MIP_PROBE
     /* Shift normalized U/V by 1/(4 * base size), keeping mip-zero point
      * and gather footprints away from exact boundaries after Force LOD0. */
-#if BUMP_MIP_BASE_SIZE == 32
+#if BUMP_MIP_BASE_SIZE == 128
+    static const u32 tex_u[4][3][3] = {
+        {{0xc11b7800u, 0x41248800u, 0x3e910000u},
+         {0xc21f3e00u, 0x4220c200u, 0x3e420000u},
+         {0xc29fdf00u, 0x42a02100u, 0x3d840000u}},
+        {{0xc1217800u, 0x411e8800u, 0xbdbc0000u},
+         {0xc220be00u, 0x421f4200u, 0xbe3e0000u},
+         {0xc2a09f00u, 0x429f6100u, 0xbe9f0000u}},
+        {{0xc10f7800u, 0x41308800u, 0x3f844000u},
+         {0xc21c3e00u, 0x4223c200u, 0x3f708000u},
+         {0xc29e5f00u, 0x42a1a100u, 0x3f508000u}},
+        {{0xc1217800u, 0x411e8800u, 0xbdbc0000u},
+         {0xc220be00u, 0x421f4200u, 0xbe3e0000u},
+         {0xc2a09f00u, 0x429f6100u, 0xbe9f0000u}},
+    };
+    static const u32 tex_v[4][3][3] = {
+        {{0xc1077800u, 0xc1077800u, 0x41248800u},
+         {0xc20b3e00u, 0xc20b3e00u, 0x4220c200u},
+         {0xc28bdf00u, 0xc28bdf00u, 0x42a02100u}},
+        {{0xc10d7800u, 0xc10d7800u, 0x411e8800u},
+         {0xc20cbe00u, 0xc20cbe00u, 0x421f4200u},
+         {0xc28c9f00u, 0xc28c9f00u, 0x429f6100u}},
+        {{0xc0f6f000u, 0xc0f6f000u, 0x41308800u},
+         {0xc2083e00u, 0xc2083e00u, 0x4223c200u},
+         {0xc28a5f00u, 0xc28a5f00u, 0x42a1a100u}},
+        {{0xc0f6f000u, 0xc0f6f000u, 0x41308800u},
+         {0xc2083e00u, 0xc2083e00u, 0x4223c200u},
+         {0xc28a5f00u, 0xc28a5f00u, 0x42a1a100u}},
+    };
+#elif BUMP_MIP_BASE_SIZE == 64
+    static const u32 tex_u[4][3][3] = {
+        {{0xc11b7000u, 0x41249000u, 0x3e920000u},
+         {0xc21f3c00u, 0x4220c400u, 0x3e440000u},
+         {0xc29fde00u, 0x42a02200u, 0x3d880000u}},
+        {{0xc1217000u, 0x411e9000u, 0xbdb80000u},
+         {0xc220bc00u, 0x421f4400u, 0xbe3c0000u},
+         {0xc2a09e00u, 0x429f6200u, 0xbe9e0000u}},
+        {{0xc10f7000u, 0x41309000u, 0x3f848000u},
+         {0xc21c3c00u, 0x4223c400u, 0x3f710000u},
+         {0xc29e5e00u, 0x42a1a200u, 0x3f510000u}},
+        {{0xc1217000u, 0x411e9000u, 0xbdb80000u},
+         {0xc220bc00u, 0x421f4400u, 0xbe3c0000u},
+         {0xc2a09e00u, 0x429f6200u, 0xbe9e0000u}},
+    };
+    static const u32 tex_v[4][3][3] = {
+        {{0xc1077000u, 0xc1077000u, 0x41249000u},
+         {0xc20b3c00u, 0xc20b3c00u, 0x4220c400u},
+         {0xc28bde00u, 0xc28bde00u, 0x42a02200u}},
+        {{0xc10d7000u, 0xc10d7000u, 0x411e9000u},
+         {0xc20cbc00u, 0xc20cbc00u, 0x421f4400u},
+         {0xc28c9e00u, 0xc28c9e00u, 0x429f6200u}},
+        {{0xc0f6e000u, 0xc0f6e000u, 0x41309000u},
+         {0xc2083c00u, 0xc2083c00u, 0x4223c400u},
+         {0xc28a5e00u, 0xc28a5e00u, 0x42a1a200u}},
+        {{0xc0f6e000u, 0xc0f6e000u, 0x41309000u},
+         {0xc2083c00u, 0xc2083c00u, 0x4223c400u},
+         {0xc28a5e00u, 0xc28a5e00u, 0x42a1a200u}},
+    };
+#elif BUMP_MIP_BASE_SIZE == 32
     static const u32 tex_u[4][3][3] = {
         {{0xc11b6000u, 0x4124a000u, 0x3e940000u},
          {0xc21f3800u, 0x4220c800u, 0x3e480000u},
@@ -219,8 +289,14 @@ static void bump_filter_probe(void)
         static const u32 pairs[][2] = {
             {0x404040c0u, 0xc040c0c0u}, {0x602060e0u, 0xa020a0e0u},
             {0x70f07010u, 0x90f09010u}, {0x503050d0u, 0xb030b0d0u},
-#if BUMP_MIP_BASE_SIZE == 32
+#if BUMP_MIP_BASE_SIZE >= 32
             {0x602060e0u, 0xa020a0e0u},
+#endif
+#if BUMP_MIP_BASE_SIZE >= 64
+            {0x404040c0u, 0xc040c0c0u},
+#endif
+#if BUMP_MIP_BASE_SIZE >= 128
+            {0x503050d0u, 0xb030b0d0u},
 #endif
         };
         u32 offset = 0, size = BUMP_MIP_BASE_SIZE;
@@ -266,15 +342,10 @@ static void bump_filter_probe(void)
         method(NV097_SET_TEXTURE_FORMAT,
                1u | (2u << 4) | (1u << 3) | (format << 8) |
 #ifdef BUMP_FILTER_WIDE_MIP_PROBE
-#if BUMP_MIP_BASE_SIZE == 32
-               (6u << 16) | (5u << 20) | (5u << 24));
+               ((BUMP_MIP_LOG_SIZE + 1u) << 16) |
+               (BUMP_MIP_LOG_SIZE << 20) | (BUMP_MIP_LOG_SIZE << 24));
         method(NV097_SET_TEXTURE_CONTROL0, (1u << 30) | (BUMP_MIN_LOD << 18) |
-               ((linear ? 4u : 5u) << 6));
-#else
-               (5u << 16) | (4u << 20) | (4u << 24));
-        method(NV097_SET_TEXTURE_CONTROL0, (1u << 30) | (BUMP_MIN_LOD << 18) |
-               ((linear ? 3u : 4u) << 6));
-#endif
+               ((BUMP_MIP_LOG_SIZE - (linear ? 1u : 0u)) << 6));
 #else
                (3u << 16) | (2u << 20) | (2u << 24));
         method(NV097_SET_TEXTURE_CONTROL0, (1u << 30) | (BUMP_MIN_LOD << 18) |
