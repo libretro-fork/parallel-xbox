@@ -33,6 +33,7 @@
 #include "hw/xbox/nv2a/pgraph/pgraph.h"
 #include "shaders.h"
 #include "psh.h"
+#include "g8b8-lod.h"
 
 DEF_UNIFORM_INFO_ARR(PshUniform, PSH_UNIFORM_DECL_X)
 
@@ -340,7 +341,7 @@ void pgraph_glsl_set_psh_state(PGRAPHState *pg, PshState *state)
             mip_mirror_v = addrv == NV_PGRAPH_TEXADDRESS0_ADDRU_MIRROR;
             /* Both renderers keep the original footprint for these lower
              * clamps. A positive sampler minimum always selects minification. */
-            mip_filter = mip_min_lod <= 3 &&
+            mip_filter = mip_min_lod <= 15 &&
                 (addru == NV_PGRAPH_TEXADDRESS0_ADDRU_WRAP || mip_clamp_u || mip_mirror_u) &&
                 (addrv == NV_PGRAPH_TEXADDRESS0_ADDRU_WRAP || mip_clamp_v || mip_mirror_v) &&
                 min_filter >= NV_PGRAPH_TEXFILTER0_MIN_BOX_NEARESTLOD &&
@@ -401,6 +402,11 @@ void pgraph_glsl_set_psh_state(PGRAPHState *pg, PshState *state)
                      * keeps every previously supported shader key intact. */
                     state->g8b8_mip_clamp_u |= (mip_min_lod & 1u) << (i + 4);
                     state->g8b8_mip_clamp_v |= ((mip_min_lod >> 1) & 1u) << (i + 4);
+                    if (mip_min_lod >= 4) {
+                        psh_g8b8_set_extended_lod(state, i, mip_min_lod,
+                            mip_mirror_u ? 2 : mip_clamp_u ? 3 : 1,
+                            mip_mirror_v ? 2 : mip_clamp_v ? 3 : 1);
+                    }
                 }
             }
         }
@@ -1194,6 +1200,16 @@ static void psh_append_signed_g8b8_mips(const struct PixelShader *ps, MString *v
     bool mirror_v = ps->state->g8b8_mip_mirror & (1u << (source + 4));
     unsigned min_lod = ((ps->state->g8b8_mip_clamp_u >> (source + 4)) & 1u) |
                       (((ps->state->g8b8_mip_clamp_v >> (source + 4)) & 1u) << 1);
+    unsigned address_u, address_v;
+    bool extended = psh_g8b8_get_extended_lod(ps->state, source, &min_lod,
+                                            &address_u, &address_v);
+    if (extended) {
+        mixed = false;
+        clamp_u = address_u == 3;
+        clamp_v = address_v == 3;
+        mirror_u = address_u == 2;
+        mirror_v = address_v == 2;
+    }
     bool linear = (signs & 16) || mixed;
     bool trilinear = signs & 64;
     mstring_append_fmt(vars,
@@ -1214,10 +1230,11 @@ static void psh_append_signed_g8b8_mips(const struct PixelShader *ps, MString *v
         /* Some drivers' LOD queries ignore a zero maximum even when their
          * sampling honors it. Also avoid querying an overridden footprint. */
         mstring_append_fmt(vars, "float gbLod%d = 0.0;\n", source);
-    } else if (min_lod && (ps->opts.vulkan || (signs & 32))) {
+    } else if (min_lod && (ps->opts.vulkan || (signs & 32) || extended)) {
         /* Image LOD queries do not reliably apply the sampler's lower
          * clamp. New GL lower-clamp programs also use absolute mip levels;
-         * their bit-five tag keeps old base-relative shader seeds distinct. */
+         * their bit-five tag or extended marker keeps old base-relative
+         * shader seeds distinct. */
         mstring_append_fmt(vars,
             "float gbLod%d = max(textureQueryLod(texSamp%d, gbCoord%d).x, %u.0);\n",
             source, source, source, min_lod);

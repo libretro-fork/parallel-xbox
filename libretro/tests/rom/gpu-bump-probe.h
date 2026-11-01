@@ -8,6 +8,10 @@
 #ifdef BUMP_FILTER_WIDE_MIP_PROBE
 #undef BUMP_RAMP
 #define BUMP_RAMP  0x03540000u /* Beyond all 192 independent 1024-byte slots. */
+#if BUMP_MIP_BASE_SIZE == 32
+#undef BUMP_RAMP
+#define BUMP_RAMP  0x03600000u /* Beyond 192 independent 4096-byte slots. */
+#endif
 #endif
 
 #if defined(BUMP_FILTER_MIXED_PROBE) || defined(BUMP_FILTER_MIP_PROBE)
@@ -24,8 +28,38 @@ static void bump_mixed_triangle(u32 layout, u32 footprint)
     /* Independent U/X and V/Y slopes preserve exact LOD footprints. Sample
      * centers cover inside, below, above and opposite U/V texture edges. */
 #ifdef BUMP_FILTER_WIDE_MIP_PROBE
-    /* Shift normalized U/V by 1/64 so mip-zero point samples land inside
-     * texels on every driver, including after a Force LOD0 override. */
+    /* Shift normalized U/V by 1/(4 * base size), keeping mip-zero point
+     * and gather footprints away from exact boundaries after Force LOD0. */
+#if BUMP_MIP_BASE_SIZE == 32
+    static const u32 tex_u[4][3][3] = {
+        {{0xc11b6000u, 0x4124a000u, 0x3e940000u},
+         {0xc21f3800u, 0x4220c800u, 0x3e480000u},
+         {0xc29fdc00u, 0x42a02400u, 0x3d900000u}},
+        {{0xc1216000u, 0x411ea000u, 0xbdb00000u},
+         {0xc220b800u, 0x421f4800u, 0xbe380000u},
+         {0xc2a09c00u, 0x429f6400u, 0xbe9c0000u}},
+        {{0xc10f6000u, 0x4130a000u, 0x3f850000u},
+         {0xc21c3800u, 0x4223c800u, 0x3f720000u},
+         {0xc29e5c00u, 0x42a1a400u, 0x3f520000u}},
+        {{0xc1216000u, 0x411ea000u, 0xbdb00000u},
+         {0xc220b800u, 0x421f4800u, 0xbe380000u},
+         {0xc2a09c00u, 0x429f6400u, 0xbe9c0000u}},
+    };
+    static const u32 tex_v[4][3][3] = {
+        {{0xc1076000u, 0xc1076000u, 0x4124a000u},
+         {0xc20b3800u, 0xc20b3800u, 0x4220c800u},
+         {0xc28bdc00u, 0xc28bdc00u, 0x42a02400u}},
+        {{0xc10d6000u, 0xc10d6000u, 0x411ea000u},
+         {0xc20cb800u, 0xc20cb800u, 0x421f4800u},
+         {0xc28c9c00u, 0xc28c9c00u, 0x429f6400u}},
+        {{0xc0f6c000u, 0xc0f6c000u, 0x4130a000u},
+         {0xc2083800u, 0xc2083800u, 0x4223c800u},
+         {0xc28a5c00u, 0xc28a5c00u, 0x42a1a400u}},
+        {{0xc0f6c000u, 0xc0f6c000u, 0x4130a000u},
+         {0xc2083800u, 0xc2083800u, 0x4223c800u},
+         {0xc28a5c00u, 0xc28a5c00u, 0x42a1a400u}},
+    };
+#else
     static const u32 tex_u[4][3][3] = {
         {{0xc11b4000u, 0x4124c000u, 0x3e980000u},
          {0xc21f3000u, 0x4220d000u, 0x3e500000u},
@@ -54,6 +88,7 @@ static void bump_mixed_triangle(u32 layout, u32 footprint)
          {0xc2083000u, 0xc2083000u, 0x4223d000u},
          {0xc28a5800u, 0xc28a5800u, 0x42a1a800u}},
     };
+#endif
 #else
     static const u32 tex_u[4][3][3] = {
         {{0xc11b8000u, 0x41248000u, 0x3e900000u},
@@ -160,7 +195,7 @@ static void bump_filter_probe(void)
         format = 0x28;
         bump_address = BUMP_DATA + id * 64;
 #ifdef BUMP_FILTER_WIDE_MIP_PROBE
-        bump_address = BUMP_DATA + id * 1024;
+        bump_address = BUMP_DATA + id * BUMP_MIP_BASE_SIZE * BUMP_MIP_BASE_SIZE * 4;
 #endif
 #endif
         static const u32 rect_u[] = {0x3f000000, 0x3f800000, 0x3fc00000};
@@ -180,13 +215,16 @@ static void bump_filter_probe(void)
 #ifdef BUMP_FILTER_MIP_PROBE
 #ifdef BUMP_FILTER_WIDE_MIP_PROBE
         /* Adjacent Morton X pairs; word bit zero gives Y parity at every
-         * nontrivial level. Level three remains 2x2, level four is 1x1. */
-        static const u32 pairs[4][2] = {
+         * nontrivial level. The last two levels are 2x2 and 1x1. */
+        static const u32 pairs[][2] = {
             {0x404040c0u, 0xc040c0c0u}, {0x602060e0u, 0xa020a0e0u},
             {0x70f07010u, 0x90f09010u}, {0x503050d0u, 0xb030b0d0u},
+#if BUMP_MIP_BASE_SIZE == 32
+            {0x602060e0u, 0xa020a0e0u},
+#endif
         };
-        u32 offset = 0, size = 16;
-        for (u32 level = 0; level < 4; level++) {
+        u32 offset = 0, size = BUMP_MIP_BASE_SIZE;
+        for (u32 level = 0; size > 1; level++) {
             for (u32 word = 0; word < size * size / 2; word++) {
                 ram32(bump_address + offset + word * 4, pairs[level][word & 1]);
             }
@@ -228,9 +266,15 @@ static void bump_filter_probe(void)
         method(NV097_SET_TEXTURE_FORMAT,
                1u | (2u << 4) | (1u << 3) | (format << 8) |
 #ifdef BUMP_FILTER_WIDE_MIP_PROBE
+#if BUMP_MIP_BASE_SIZE == 32
+               (6u << 16) | (5u << 20) | (5u << 24));
+        method(NV097_SET_TEXTURE_CONTROL0, (1u << 30) | (BUMP_MIN_LOD << 18) |
+               ((linear ? 4u : 5u) << 6));
+#else
                (5u << 16) | (4u << 20) | (4u << 24));
         method(NV097_SET_TEXTURE_CONTROL0, (1u << 30) | (BUMP_MIN_LOD << 18) |
                ((linear ? 3u : 4u) << 6));
+#endif
 #else
                (3u << 16) | (2u << 20) | (2u << 24));
         method(NV097_SET_TEXTURE_CONTROL0, (1u << 30) | (BUMP_MIN_LOD << 18) |

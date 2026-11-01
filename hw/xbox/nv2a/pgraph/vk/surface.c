@@ -181,6 +181,13 @@ static void store_packed_to_ram(PGRAPHState *pg, VkCommandBuffer cmd,
         (VkDeviceSize)surface->width * surface->fmt.bytes_per_pixel;
 
     if (surface->swizzle) {
+        if (src == r->storage_buffers[BUFFER_COMPUTE_SRC].buffer &&
+            pgraph_vk_swizzle_packed_possible(pg, surface->vram_addr,
+                surface->width, surface->height, surface->fmt.bytes_per_pixel)) {
+            pgraph_vk_swizzle_packed_to_ram(pg, cmd, surface->vram_addr,
+                surface->width, surface->height, surface->fmt.bytes_per_pixel);
+            return;
+        }
         VkBufferCopy region = {
             .dstOffset = ring_offset,
             .size = row * surface->height,
@@ -499,6 +506,7 @@ static bool download_surface_to_buffer(NV2AState *d, SurfaceBinding *surface,
      * GPU writes the read-back into it itself (direct): a linear surface
      * copied there at its pitch, a swizzled one copied linear into the
      * ring and swizzled into place by the swizzle shader (unswizzle.c).
+     * Packed depth feeds that shader directly when its descriptor fits.
      * No staging buffer and no copy by the CPU. Otherwise the read-back
      * goes through the staging buffer and the CPU copies or swizzles it
      * into the RAM. */
@@ -568,7 +576,11 @@ static bool download_surface_to_buffer(NV2AState *d, SurfaceBinding *surface,
                                     pgraph_vk_begin_single_time_commands(pg);
 
     VkDeviceSize ring_offset = 0;
-    if (direct && surface->swizzle &&
+    bool packed_swizzle = direct && surface->swizzle &&
+        use_compute_to_convert_depth_stencil_format &&
+        pgraph_vk_swizzle_packed_possible(pg, surface->vram_addr,
+            surface->width, surface->height, bpp);
+    if (direct && surface->swizzle && !packed_swizzle &&
         !pgraph_vk_ring_alloc(pg, PGRAPH_VK_RING_UNSWIZZLE, ram_size, 16,
                               &ring_offset)) {
         if (batched) {

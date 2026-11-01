@@ -27,7 +27,7 @@ static const StagedBuffer pgraph_vk_staged_buffers[]={{STAGED,DEVICE}};
 typedef struct { StorageBuffer storage_buffers[NBUF],alt_staging[1],alt_device[1];
                  int in_command_buffer; struct {struct {struct {unsigned source[8];} convert;} pvideo;} display; } PGRAPHVkState;
 typedef struct { PGRAPHVkState *vk_renderer_state; } PGRAPHState;
-static unsigned step, finished, waited, settled, recreated, changed, generation;
+static unsigned step, finished, waited, settled, recreated, changed, packed_changed, generation;
 static void pgraph_vk_finish(PGRAPHState *pg,int reason)
 { (void)reason; assert(!step++); finished++; pg->vk_renderer_state->in_command_buffer=0; }
 static void pgraph_vk_wait_for_aux(PGRAPHState *pg)
@@ -38,6 +38,8 @@ static void recreate_buffer(PGRAPHState *pg,StorageBuffer *b,VkDeviceSize size)
 { (void)pg; assert(step==3); b->buffer_size=size; b->handle=++generation; recreated++; }
 static void pgraph_vk_compute_buffers_changed(PGRAPHState *pg)
 { (void)pg; assert(recreated==1||recreated==2); changed++; }
+static void pgraph_vk_unswizzle_packed_buffer_changed(PGRAPHState *pg)
+{ (void)pg; assert(recreated==2); packed_changed++; }
 /* PRODUCTION */
 int main(void) {
  const VkDeviceSize mb=1024*1024;
@@ -47,7 +49,7 @@ int main(void) {
   r.alt_staging[0]=(StorageBuffer){64*mb,200};
   r.alt_device[0]=(StorageBuffer){64*mb,201};
   r.in_command_buffer=open;
-  step=finished=waited=settled=recreated=changed=0;
+  step=finished=waited=settled=recreated=changed=packed_changed=0;
   pgraph_vk_buffer_ensure_capacity(&pg,index,64*mb);
   assert(!step && !recreated);
   pgraph_vk_buffer_ensure_capacity(&pg,index,65*mb);
@@ -62,6 +64,7 @@ int main(void) {
   assert(recreated==((index==STAGED||index==DEVICE)?4:
     (index==BUFFER_COMPUTE_SRC||index==BUFFER_COMPUTE_DST)?2:1));
   assert(changed==((index==BUFFER_COMPUTE_SRC||index==BUFFER_COMPUTE_DST||index==BUFFER_STAGING_DST)?1u:0u));
+  assert(packed_changed==((index==BUFFER_COMPUTE_SRC||index==BUFFER_COMPUTE_DST)?1u:0u));
   if(index==STAGED||index==DEVICE) {
    assert(r.alt_staging[0].buffer_size==128*mb && r.alt_device[0].buffer_size==128*mb);
   } else assert(r.alt_staging[0].handle==200 && r.alt_device[0].handle==201);

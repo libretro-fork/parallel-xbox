@@ -42,7 +42,7 @@ static bool g8b8_sampler_lod_clamp(const TextureShape *s, unsigned filter)
     unsigned min_filter = GET_MASK(filter, NV_PGRAPH_TEXFILTER0_MIN);
     return s->color_format == NV097_SET_TEXTURE_FORMAT_COLOR_SZ_G8B8 &&
            s->dimensionality == 2 && !s->cubemap && !s->border &&
-           s->min_mipmap_level > 0 && s->min_mipmap_level <= 3 &&
+           s->min_mipmap_level > 0 && s->min_mipmap_level <= 15 &&
            min_filter >= NV_PGRAPH_TEXFILTER0_MIN_BOX_NEARESTLOD &&
            min_filter <= NV_PGRAPH_TEXFILTER0_MIN_TENT_TENT_LOD;
 }

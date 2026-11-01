@@ -41,6 +41,8 @@ jobs:
         run: python3 libretro/tests/test-gpu-wait-deadline.py . cc
       - name: Depth readback must pack directly into mapped output safely
         run: python3 libretro/tests/test-depth-host-pack.py . cc
+      - name: Packed depth swizzle routing and reuse barriers
+        run: python3 libretro/tests/test-packed-swizzle.py . cc
       - name: Readback buffer growth must refresh fixed descriptors after settlement
         run: python3 libretro/tests/test-vk-buffer-growth.py . cc
       - name: Linear texture staging must skip padding and preserve direct reads

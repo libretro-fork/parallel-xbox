@@ -88,6 +88,8 @@ typedef struct PshState {
     /* Their low nibbles are edge masks; upper nibbles hold respectively
      * bit zero and bit one of each stage's supported lower mip clamp. */
     uint8_t g8b8_mip_mirror; /* U stages in low nibble, V in high nibble. */
+    /* Both low per-axis clamp bits set mark the extended minimum/address
+     * encoding in g8b8-lod.h. Legacy keys and this layout stay unchanged. */
 
     unsigned int surface_zeta_format;
     enum PshDepthFormat depth_format;

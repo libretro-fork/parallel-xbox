@@ -49,9 +49,12 @@ def expected_mip(case, force_lod0):
             "edge" if clamp else "wrap")
         coordinate = "sample_v" if axis_v else "sample_u"
         u = float(case.get(coordinate) or "1.25") * size / 4
-        if base_size == 16:
-            pair = ((192, 64), (224, 32), (16, 240), (208, 48), (16, 16))[level] if channel in "RB" else (
-                (64, 192), (96, 160), (112, 144), (80, 176), (112, 112))[level]
+        if base_size >= 16:
+            extra = ((224, 32),) if channel in "RB" else ((96, 160),)
+            if base_size == 16:
+                extra = ()
+            pair = (((192, 64), (224, 32), (16, 240), (208, 48)) + extra + ((16, 16),))[level] if channel in "RB" else (
+                ((64, 192), (96, 160), (112, 144), (80, 176)) + extra + ((112, 112),))[level]
         else:
             pair = ((192, 64), (224, 32), (16, 16))[level] if channel in "RB" else ((64, 192), (96, 160), (112, 112))[level]
         position = u - 0.5 if linear else u

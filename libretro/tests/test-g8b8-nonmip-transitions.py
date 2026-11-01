@@ -27,7 +27,7 @@ def main():
     env = dict(os.environ)
     env.setdefault("EGL_PLATFORM", "surfaceless")
     cases = 0
-    for lower in (1, 2, 3):
+    for lower in (1, 2, 3, 4):
         for filter in (3, 4):
             for mixed in (False, True):
                 output = root / f"{lower}-{filter}-{int(mixed)}"
@@ -38,8 +38,8 @@ def main():
                          "--sampler-transition", "mip-to-lod0"]
                 if mixed:
                     build.append("--mip-mixed")
-                if lower == 3:
-                    build += ["--mip-base-size", "16"]
+                if lower >= 3:
+                    build += ["--mip-base-size", "32" if lower == 4 else "16"]
                 subprocess.run(build, check=True)
                 with (output / "cases.csv").open() as file:
                     addresses = [int(c["result_address"], 16) for c in csv.DictReader(file)]
