@@ -77,6 +77,9 @@
 
 ## Unreleased
 
+- DSP program-memory writes now run natively for ordinary data and address registers, removing OutRun 2's hottest interpreter fallback. Self-modifying code and REP bodies redispatch after writes, while unchanged words retain cached code. Short absolute MOVEM addresses now decode across the full six-bit range. Regression tests cover transfers and code invalidation on x86-64 and AArch64.
+
+
 - Compile REP and DOR setup natively even when setup coincides with a DO-loop boundary. Preserve repeat zero-count expansion, the first post-processing pass, saved loop state and stack errors without reinterpreting the instruction. Add 7,056 boundary cases and a 65,536-iteration repeat program checked against the interpreter and chunked JIT.
 
 - Keep relative conditional and bit-test branches native when they finish a DO loop; never repeat a completed peripheral read. Compile short BRA and use the native call path for both BSR forms, fixing an extra return-stack push during long-interrupt vectors. Add 48,768 relative-boundary cases and production-block/interpreter/budget-carry regressions.

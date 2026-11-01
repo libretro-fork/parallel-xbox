@@ -9,11 +9,11 @@
  * A block is the straight-line code from a P address: the instructions
  * the translator knows (the parallel-move instructions with the data ALU
  * operations the DSP programs are made of, the register moves, the
- * address register updates) are translated to native code; the first
- * instruction it does not know, or one that may move the PC (dsp56k_decode's
- * control flag), ends the block and runs as the interpreter's own function
- * for it followed by dsp56k_post(), which moves the PC the interpreter's
- * way (loops, repeats, interrupts) and spends its cycles.
+ * address register updates) are translated to native code. Native control
+ * instructions chain blocks or finish through post-processing. An unknown
+ * instruction ends the block and runs its interpreter handler followed by
+ * dsp56k_post(), which moves the PC and spends its cycles. Program-memory
+ * writes end blocks so execution observes invalidated or modified code.
  *
  * The native code keeps the DSP's state pointer in rbx and the
  * accumulators A and B in r12 and r13, as 56-bit values sign-extended to
@@ -482,6 +482,13 @@ static void emit_chain_to(Tr *t, uint32_t target, uint32_t cyc)
 static uint32_t jit_read_p(dsp_core_t *core, uint32_t addr)
 {
     return dsp56k_read_memory(core, DSP_SPACE_P, addr);
+}
+
+static void jit_write_p(dsp_core_t *core, uint32_t addr, uint32_t value)
+{
+    /* Keep opcode-cache and translated-block invalidation in the shared
+     * program-memory write path, including unchanged-word suppression. */
+    dsp56k_write_memory(core, DSP_SPACE_P, addr, value);
 }
 
 static uint32_t jit_read_x(dsp_core_t *core, uint32_t addr)
@@ -1952,6 +1959,7 @@ enum {
     NP_MOVEC_REG,
     NP_MOVEC_SR,
     NP_MOVEM_P_READ,
+    NP_MOVEM_P_WRITE,
     NP_BIT_REG,
     NP_BIT_SR_UPPER,
     NP_MOVEC_EA,
@@ -2043,9 +2051,9 @@ static int np_kind(const Insn *in)
         (in->inst & (1 << 15)) && reg_supported(in->inst & 63)) {
         return NP_MOVEC_EA;
     }
-    if (!strcmp(name, "movem P:ea <-> R") &&
-        (in->inst & 0xC000) == 0xC000 && reg_supported(in->inst & 63)) {
-        return NP_MOVEM_P_READ;
+    if ((!strcmp(name, "movem P:ea <-> R") || !strcmp(name, "movem P:aa <-> R")) &&
+        reg_supported(in->inst & 63)) {
+        return in->inst & (1 << 15) ? NP_MOVEM_P_READ : NP_MOVEM_P_WRITE;
     }
     if (!strcmp(name, "movec R1, R2")) {
         unsigned r1 = in->inst & 63, r2 = (in->inst >> 8) & 63;
@@ -2149,14 +2157,34 @@ static void emit_nonparallel(Tr *t, const Insn *in, int kind)
         t->cyc += 2;
         break;
     }
-    case NP_MOVEM_P_READ: {
+    case NP_MOVEM_P_READ:
+    case NP_MOVEM_P_WRITE: {
         Ea ea;
-        emit_calc_ea(t, (inst >> 8) & 63, in->ext, EA1, &ea);
+        if (kind == NP_MOVEM_P_WRITE) {
+            acc_spill_all(t, false);
+        }
+        if (inst & (1 << 14)) {
+            emit_calc_ea(t, (inst >> 8) & 63, in->ext, EA1, &ea);
+        } else {
+            ea.kind = EA_ABS;
+            ea.reg = EA1;
+            ea.abs = (inst >> 8) & 63;
+        }
         if (ea.kind == EA_IMM) {
             ea.kind = EA_ABS;
             ea.abs = ea.imm;
         }
         int addr = ea_addr_reg(t, &ea);
+        if (kind == NP_MOVEM_P_WRITE) {
+            /* EA updates precede the source read, including Rn aliases. */
+            emit_read_reg(t, inst & 63, V1);
+            h_mov_rr(e, 0, H_ARG2, V1);
+            h_mov_rr(e, 0, H_ARG1, addr);
+            h_mov_rr(e, 1, H_ARG0, REG_CORE);
+            h_call(e, (const void *)jit_write_p);
+            t->cyc += 4;
+            break;
+        }
         h_cmp_ri(e, 0, addr, DSP_PRAM_SIZE);
         size_t j = h_jcc(e, HC_AE);
         h_ld32_idx4(e, V1, REG_CORE, addr, OFF(pram));
@@ -3189,18 +3217,29 @@ retry:
 
         if (insn_native(&in)) {
             emit_native(t, &in);
-            if (np_kind(&in) == NP_MOVEC_SR) {
-                /* Leave only when this write changes the code's scale/LF
-                 * identity. Ordinary flag restores stay in native code. */
-                h_ld32(&t->e, T0, REG_CORE, REGOFF(DSP_REG_SR));
-                h_and_ri(&t->e, 0, T0, (3 << DSP_SR_S0) | (1 << DSP_SR_LF));
-                h_cmp_ri(&t->e, 0, T0, (t->mode << DSP_SR_S0) |
-                         (t->loop_active ? 1 << DSP_SR_LF : 0));
-                size_t j = h_jcc(&t->e, HC_NE);
-                stub_set_insn(t, stub_new(t, STUB_STATUS_POST, j), &in,
-                              t->cyc - cyc_before, cyc_before);
+            if (np_kind(&in) == NP_MOVEM_P_WRITE) {
+                /* A write can replace this opcode, its extension, or the
+                 * next instruction. Never translate past it or resume
+                 * already decoded code from before invalidation. */
+                uint32_t cycles = t->cyc - cyc_before;
+                t->cyc = cyc_before;
+                emit_exit_to(t, &in, in.next, cycles);
+                t->cyc = 0;
+                done = true;
+            } else {
+                if (np_kind(&in) == NP_MOVEC_SR) {
+                    /* Leave only when this write changes the code's scale/LF
+                     * identity. Ordinary flag restores stay in native code. */
+                    h_ld32(&t->e, T0, REG_CORE, REGOFF(DSP_REG_SR));
+                    h_and_ri(&t->e, 0, T0, (3 << DSP_SR_S0) | (1 << DSP_SR_LF));
+                    h_cmp_ri(&t->e, 0, T0, (t->mode << DSP_SR_S0) |
+                             (t->loop_active ? 1 << DSP_SR_LF : 0));
+                    size_t j = h_jcc(&t->e, HC_NE);
+                    stub_set_insn(t, stub_new(t, STUB_STATUS_POST, j), &in,
+                                  t->cyc - cyc_before, cyc_before);
+                }
+                emit_insn_checks(t, &in, t->cyc - cyc_before);
             }
-            emit_insn_checks(t, &in, t->cyc - cyc_before);
         } else if (in.d.control && emit_control(t, &in)) {
             t->cyc = 0;
             done = true;
@@ -3264,6 +3303,7 @@ static dspjit_block_fn dspjit_translate_rep(DspJit *jit, int mode, uint32_t pc)
     Insn in;
     uint32_t cycles;
     size_t top, j_end;
+    dspjit_block_fn fn;
 
     if (pc >= DSP_PRAM_SIZE) {
         return NULL;
@@ -3286,6 +3326,18 @@ retry:
     emit_native(t, &in);
     cycles = t->cyc;
     t->cyc = 0;
+    if (np_kind(&in) == NP_MOVEM_P_WRITE) {
+        /* REP may overwrite its own body or extension. Retire one write,
+         * then dispatch again so invalidation selects the updated opcode. */
+        h_st32(e, REG_CORE, REGOFF(DSP_REG_LC), REG_LC);
+        h_st32_imm(e, REG_CORE, OFF(pc), in.at);
+        h_st32_imm(e, REG_CORE, OFF(cur_inst_len), in.len);
+        h_st16_imm(e, REG_CORE, OFF(instr_cycle), cycles);
+        h_mov_rr(e, 1, H_ARG0, REG_CORE);
+        h_call(e, (const void *)dsp56k_post);
+        emit_jump_to_epilogue(t);
+        goto finalize_rep;
+    }
     if (t->wrote_x) {
         /* halted: this repeat ends the interpreter's way, then out */
         size_t j;
@@ -3344,7 +3396,8 @@ retry:
     h_call(e, (const void *)dsp56k_post);
     emit_jump_to_epilogue(t);
 
-    dspjit_block_fn fn = translate_end(jit);
+finalize_rep:
+    fn = translate_end(jit);
     if (!fn && e->overflow && jit->cache_committed < jit->cache_len &&
         dspjit_commit_exec(jit, jit->cache_committed + DSPJIT_COMMIT_BYTES)) {
         goto retry;
