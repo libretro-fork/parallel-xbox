@@ -1728,6 +1728,31 @@ void gpu_main(void)
             method(NV097_SET_SURFACE_COLOR_OFFSET, SURF_D);
             triangle(); if (frame == 4420) disable_texture(); kick();
         }
+        /* More than the eight private scanout modes: each distinct width
+         * keeps the pitch and static purple RAM background. Return to the
+         * evicted first width after twelve modes. */
+        if (frame == 4500) {
+            wr(0x8700, 0); /* no overlay in the mode-cache oracle */
+            for (u32 i = 0; i < PITCH * HEIGHT; i += 4) {
+                ram32(SURF_F + i, 0xff800080u);
+            }
+            method(NV097_SET_SURFACE_CLIP_H, 32u << 16);
+            method(NV097_SET_SURFACE_CLIP_V, 16u << 16);
+            method(NV097_SET_SURFACE_COLOR_OFFSET, SURF_F + 64 * PITCH + 16 * 4);
+            method(NV097_SET_COLOR_CLEAR_VALUE, 0xffff0000u);
+            method(NV097_SET_CLEAR_RECT_H, 31u << 16);
+            method(NV097_SET_CLEAR_RECT_V, 15u << 16);
+            method(NV097_CLEAR_SURFACE, 0xf0);
+            method(NV097_SET_SURFACE_CLIP_H, WIDTH << 16);
+            method(NV097_SET_SURFACE_CLIP_V, HEIGHT << 16);
+            method(NV097_SET_SURFACE_COLOR_OFFSET, SURF_B);
+        }
+        if (frame >= 4500 && frame <= 4620 && (frame - 4500) % 10 == 0) {
+            u32 mode = (frame - 4500) / 10;
+            u32 width = mode < 12 ? WIDTH - mode * 8 : WIDTH;
+            cr(0x01, width / 8 - 1);
+            wr(PCRTC_START, SURF_F);
+        }
         method(NV097_FLIP_INCREMENT_WRITE, 0);
         kick();
         if (frame >= 100 && frame < 125) {

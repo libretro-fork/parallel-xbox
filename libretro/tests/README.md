@@ -2466,3 +2466,39 @@ repeated empty flushes. It forces a flush immediately before publication in
 all four insertion/promotion paths. On POSIX, a negative control that marks
 before publication must fail because it loses tracking of a surviving entry.
 The existing 24,000 lookup/invalidation scenarios remain enabled.
+
+### Bounded Vulkan scanout-mode retirement
+
+`test-vk-scanout-mode-retirement.py CHECKOUT [CC]` extracts production size
+accounting, eviction planning, resource release and pressure-driven reservation.
+Thirty thousand schedules compare feasibility with all 256 eviction subsets,
+covering independent aux/display ownership, LRU choice, scratch images, pool
+acceptance/refusal, insufficient safe space and oversized single modes. Failed
+planning must leave the cache untouched; actual retries probe each queue domain
+once and release no image until both prove completion. Empty capacity fits
+without driver probes. Linux defaults to ASan/UBSan; `VK_MODE_CFLAGS`,
+`VK_MODE_BINARY` and `VK_MODE_SKIP_RUN` support native fixtures.
+
+Private mode backgrounds are never main-draw attachments. Track their last
+aux and display submissions, then reuse the existing image pool only after
+both domains retire. Mode changes keep the eight-entry/32 MiB policy and its
+single-oversized-mode exception. A busy cache retains its images and frontend
+publication, with the existing display retry flag preserving mode-only updates.
+No shader/PSO variants, image copies, locks or video frame queue are added.
+Other materialization, readback, allocation and ring-pressure paths retain
+their separate policies; this removes the explicit mode-eviction drain only.
+
+The GPU ROM at frames 4500-4620 initializes a purple RAM background with a red
+GPU tile, cycles twelve distinct widths at fixed pitch, then returns to the
+first evicted width. Pixel checks and right-edge inside/outside probes verify
+content and geometry. Native save/load during mode churn and reset also run
+with strict video/audio cadence; both RAM restores must be byte-exact.
+
+Win64 layout checks add two 64-bit serials per mode: mode size grows from
+139,976 to 139,992 bytes and renderer state from 5,845,216 to 5,845,344 bytes
+(128 bytes total). PGRAPHState remains 4,295,312 bytes. Display render stacks
+remain 1,056 bytes internally and 112 bytes at the public entry. Composition
+grows from 91,856 to 91,872 bytes; the mode-miss planner uses a 72-byte frame.
+Hardware cache-miss and game-latency effects are unmeasured. Scratch-image
+lifetime and budget paths have controlled-model coverage; native GPU testing
+uses NVIDIA shared-device presentation.

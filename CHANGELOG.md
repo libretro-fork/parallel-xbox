@@ -1,5 +1,6 @@
 # Changelog of the libretro core
 
+- Remove the explicit GPU drain from Vulkan scanout-mode cache eviction. Reuse only backgrounds whose upload and display work has completed, within the existing eight-mode/32 MiB cache limits. When no safe reservation exists, retain the published image and retry the requested mode without allocating extra images or adding a frame queue.
 - Emit only dot-mapping shader helpers referenced by active texture stages, sharing repeated mappings and preserving reflection look-ahead dependencies. Newly generated ordinary shaders have smaller source and SPIR-V modules; existing cache keys remain valid.
 
 - Track populated jump-cache groups in 256 bytes of preallocated atomic metadata. Full flushes clear only groups touched by insertion or promotion, retaining atomic pointer invalidation without adding checks to successful lookups or allocating during emulation.

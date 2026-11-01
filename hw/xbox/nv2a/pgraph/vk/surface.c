@@ -2937,6 +2937,91 @@ static void upload_scanout_background(NV2AState *d, SurfaceBinding *out,
     nv2a_profile_inc_counter(NV2A_PROF_SURF_UPLOAD);
 }
 
+static uint64_t scanout_mode_bytes(const struct PGRAPHVkScanoutMode *m)
+{
+    const SurfaceBinding *o = &m->out;
+    uint64_t bytes = (uint64_t)o->image_ci.extent.width *
+        o->image_ci.extent.height * o->fmt.bytes_per_pixel;
+    if (o->image_scratch) {
+        bytes += (uint64_t)o->scratch_ci.extent.width *
+            o->scratch_ci.extent.height * o->fmt.bytes_per_pixel;
+    }
+    return bytes;
+}
+
+/* Select the complete eviction set before touching any mode. A busy GPU
+ * retains the old cache and published image; no extra allocation is made. */
+static bool plan_scanout_mode(PGRAPHVkState *r, uint64_t required,
+                              unsigned *next, unsigned *evict)
+{
+    const unsigned count = ARRAY_SIZE(r->scanout_modes);
+    unsigned empty = count, victims = 0;
+    uint64_t kept = 0;
+    uint64_t limit = required < 32 * MiB ? 32 * MiB - required : 0;
+    for (unsigned i = 0; i < count; i++) {
+        if (!r->scanout_modes[i].out.image) empty = i;
+        else kept += scanout_mode_bytes(&r->scanout_modes[i]);
+    }
+    for (unsigned n = 0; n <= count; n++) {
+        if (empty < count && kept <= limit) {
+            *next = empty;
+            *evict = victims;
+            return true;
+        }
+        unsigned oldest = count;
+        for (unsigned i = 0; i < count; i++) {
+            const struct PGRAPHVkScanoutMode *m = &r->scanout_modes[i];
+            if (!(victims & (1u << i)) && m->out.image &&
+                m->aux_after <= r->aux_settled &&
+                m->display_after <= r->display.settled &&
+                (oldest == count || m->last_used < r->scanout_modes[oldest].last_used)) {
+                oldest = i;
+            }
+        }
+        if (oldest == count) return false;
+        victims |= 1u << oldest;
+        kept -= scanout_mode_bytes(&r->scanout_modes[oldest]);
+        if (empty == count) empty = oldest;
+    }
+    return false;
+}
+
+/* Unlike guest render targets these private images are never bound by a
+ * main draw. Their two actual readers are complete before immediate reuse. */
+static void release_scanout_mode(PGRAPHVkState *r, struct PGRAPHVkScanoutMode *m)
+{
+    SurfaceBinding *o = &m->out;
+    assert(m->aux_after <= r->aux_settled &&
+           m->display_after <= r->display.settled);
+    assert(o != r->color_binding && o != r->zeta_binding);
+    if (!pgraph_vk_image_pool_put_with_view(r, o->image, o->allocation,
+                                           &o->image_ci, o->image_view)) {
+        vkDestroyImageView(r->device, o->image_view, NULL);
+        xemu_vk_destroy_image(r->allocator, o->image, o->allocation);
+    }
+    if (o->image_scratch && !pgraph_vk_image_pool_put(r, o->image_scratch,
+            o->allocation_scratch, &o->scratch_ci)) {
+        xemu_vk_destroy_image(r->allocator, o->image_scratch, o->allocation_scratch);
+    }
+    memset(m, 0, sizeof(*m));
+}
+
+static bool reserve_scanout_mode(PGRAPHVkState *r, uint64_t required,
+                                 unsigned *next)
+{
+    unsigned evict;
+    if (!plan_scanout_mode(r, required, next, &evict)) {
+        /* Probe only under pressure, once per queue domain. */
+        pgraph_vk_poll_aux_retired(r);
+        pgraph_vk_poll_display_retired(r);
+        if (!plan_scanout_mode(r, required, next, &evict)) return false;
+    }
+    for (unsigned i = 0; i < ARRAY_SIZE(r->scanout_modes); i++) {
+        if (evict & (1u << i)) release_scanout_mode(r, &r->scanout_modes[i]);
+    }
+    return true;
+}
+
 SurfaceBinding *pgraph_vk_compose_scanout(NV2AState *d)
 {
     PGRAPHState *pg = &d->pgraph;
@@ -3062,50 +3147,21 @@ SurfaceBinding *pgraph_vk_compose_scanout(NV2AState *d)
     bool match = m->out.image && m->out.width == scan.width &&
         m->out.height == scan.height && m->out.shape.color_format == format;
     if (!match) {
-        unsigned next = ARRAY_SIZE(r->scanout_modes), empty = next, oldest = 0;
+        unsigned next = ARRAY_SIZE(r->scanout_modes);
         for (unsigned i = 0; i < ARRAY_SIZE(r->scanout_modes); i++) {
             struct PGRAPHVkScanoutMode *p = &r->scanout_modes[i];
             if (p->out.image && p->out.width == scan.width &&
                 p->out.height == scan.height && p->out.shape.color_format == format) {
                 next = i; break;
             }
-            if (!p->out.image) empty = i;
-            if (p->last_used < r->scanout_modes[oldest].last_used) oldest = i;
         }
         if (next == ARRAY_SIZE(r->scanout_modes)) {
-            next = empty < ARRAY_SIZE(r->scanout_modes) ? empty : oldest;
             uint64_t required = (uint64_t)scan.width * scan.height * scan.bpp;
             if (r->device_props.vendorID == 0x1002)
                 required += (uint64_t)scan.width * scan.height * scan.bpp;
-            uint64_t kept = 0;
-            for (unsigned i = 0; i < ARRAY_SIZE(r->scanout_modes); i++) {
-                SurfaceBinding *o = &r->scanout_modes[i].out;
-                kept += (uint64_t)o->image_ci.extent.width * o->image_ci.extent.height * o->fmt.bytes_per_pixel;
-                if (o->image_scratch) kept += (uint64_t)o->scratch_ci.extent.width * o->scratch_ci.extent.height * o->fmt.bytes_per_pixel;
-            }
-            bool drained = false;
-            for (;;) {
-                struct PGRAPHVkScanoutMode *victim = &r->scanout_modes[next];
-                if (!victim->out.image && kept + required <= 32 * MiB) break;
-                if (!victim->out.image) {
-                    victim = NULL;
-                    for (unsigned i = 0; i < ARRAY_SIZE(r->scanout_modes); i++) {
-                        struct PGRAPHVkScanoutMode *p = &r->scanout_modes[i];
-                        if (i != next && p->out.image && (!victim || p->last_used < victim->last_used)) victim = p;
-                    }
-                    if (!victim) break; /* One oversized native mode remains usable. */
-                }
-                if (!drained) {
-                    pgraph_vk_finish(pg, VK_FINISH_REASON_FLUSH);
-                    VkCommandBuffer cmd = pgraph_vk_begin_single_time_commands(pg);
-                    pgraph_vk_end_single_time_commands(pg, cmd);
-                    drained = true;
-                }
-                SurfaceBinding *o = &victim->out;
-                kept -= (uint64_t)o->image_ci.extent.width * o->image_ci.extent.height * o->fmt.bytes_per_pixel;
-                if (o->image_scratch) kept -= (uint64_t)o->scratch_ci.extent.width * o->scratch_ci.extent.height * o->fmt.bytes_per_pixel;
-                destroy_surface_image(r, o);
-                memset(victim, 0, sizeof(*victim));
+            if (!reserve_scanout_mode(r, required, &next)) {
+                r->display.retry_pending = true;
+                return NULL;
             }
             struct PGRAPHVkScanoutMode *p = &r->scanout_modes[next];
             memset(p, 0, sizeof(*p));
@@ -3167,7 +3223,9 @@ SurfaceBinding *pgraph_vk_compose_scanout(NV2AState *d)
         m->trim_background = pgraph_scanout_regions_worthwhile(&m->uncovered,
             scan.width, scan.height, pg->surface_scale_factor);
     }
+    uint64_t aux_before = r->aux_submitted;
     upload_scanout_background(d, out, &m->background, &scan);
+    if (r->aux_submitted != aux_before) m->aux_after = r->aux_submitted;
     /* Only the native RAM background is private. Every GPU layer is sampled
      * in the final display pass, including layouts formerly copied via the
      * scaled composition fallback. */

@@ -820,6 +820,8 @@ typedef struct PGRAPHVkState {
         SurfaceBinding out;
         unsigned scale;
         uint64_t last_used;
+        /* Private backgrounds are referenced only by aux uploads and display. */
+        uint64_t aux_after, display_after;
         bool trim_background;
         PGRAPHScanoutCache cache;
         PGRAPHScanoutBackground background;

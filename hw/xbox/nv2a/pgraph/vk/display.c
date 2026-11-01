@@ -1600,6 +1600,7 @@ static void render_display(PGRAPHState *pg, SurfaceBinding *surface)
     }
 
     pgraph_vk_upload_surface_data(d, surface, !tcg_enabled());
+    if (direct) mode->aux_after = r->aux_submitted;
 
     disp->pvideo.state = get_pvideo_state(pg);
     if (disp->pvideo.state.enabled) {
@@ -1804,6 +1805,7 @@ static void render_display(PGRAPHState *pg, SurfaceBinding *surface)
         pgraph_vk_end_debug_marker(r, cmd);
         VK_CHECK(vkEndCommandBuffer(cmd));
         submit_frame(r, sync);
+        if (direct) mode->display_after = sync->serial;
         f->ready = true;
         /* Publish before dropping the write marker: even if a protected
          * slot was skipped and the previous published slot is reused, a
@@ -1819,6 +1821,7 @@ static void render_display(PGRAPHState *pg, SurfaceBinding *surface)
                                           VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
         pgraph_vk_end_debug_marker(r, cmd);
         pgraph_vk_end_single_time_commands(pg, cmd);
+        if (direct) mode->aux_after = r->aux_submitted;
         nv2a_profile_inc_counter(NV2A_PROF_QUEUE_SUBMIT_5);
     }
 
