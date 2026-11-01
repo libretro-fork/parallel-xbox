@@ -7,6 +7,7 @@
 #include <string.h>
 #include <volk.h>
 #include "hw/xbox/nv2a/pgraph/vk/memory.h"
+#include "vk-boot-image-trace.h"
 
 typedef struct {
     bool live,mapped,dedicated;
@@ -148,6 +149,44 @@ static void reclaim_image(void *opaque)
     }
 }
 
+static void replay_boot_images(bool old_capacity)
+{
+    XemuVkAllocator heap;
+    properties.memoryHeaps[0].size=32u<<20;
+    requirement_bits=1;alignment=4;
+    assert(xemu_vk_allocator_create(HANDLE(VkPhysicalDevice,1),HANDLE(VkDevice,1),false,&heap)==VK_SUCCESS);
+    VkDeviceSize capacity=old_capacity?(384ull<<20):xemu_vk_image_reservation(8);
+    assert(xemu_vk_allocator_reserve(heap,0,0,capacity/256)==VK_SUCCESS);
+    unsigned fixed_creates=creates,fixed_maps=maps;
+    VkImage handles[BOOT_TRACE_SLOTS]={0};XemuVkAllocation spans[BOOT_TRACE_SLOTS]={0};
+    bool exhausted=false;requirement_bits=1;
+    for(unsigned i=0;i<sizeof(boot_trace)/sizeof(boot_trace[0]);i++) {
+        unsigned slot=boot_trace[i].slot;
+        if (!boot_trace[i].bytes) {
+            assert(handles[slot]);xemu_vk_destroy_image(heap,handles[slot],spans[slot]);
+            handles[slot]=VK_NULL_HANDLE;spans[slot]=NULL;
+        } else {
+            assert(!handles[slot]);alignment=boot_trace[i].alignment;
+            VkImageCreateInfo ci=image_info(boot_trace[i].bytes);
+            VkResult result=xemu_vk_create_image(heap,&ci,&(XemuVkMemoryRequest){0},&handles[slot],&spans[slot]);
+            if(result!=VK_SUCCESS){
+                assert(i>1&&old_capacity&&!handles[slot]&&!spans[slot]);
+                assert(result==VK_ERROR_OUT_OF_DEVICE_MEMORY);
+                assert(boot_trace[i].bytes==78643200u/256);
+                XemuVkBudget observed[VK_MAX_MEMORY_HEAPS];
+                xemu_vk_get_heap_budgets(heap,observed);
+                assert(observed[0].usage==365405184u/256);
+                exhausted=true;break;
+            }
+        }
+    }
+    assert(exhausted==old_capacity);
+    assert(creates==fixed_creates&&maps==fixed_maps);
+    for(unsigned i=0;i<BOOT_TRACE_SLOTS;i++)if(handles[i])xemu_vk_destroy_image(heap,handles[i],spans[i]);
+    xemu_vk_allocator_destroy(heap);
+    assert(!live_memory&&!live_resources);
+}
+
 int main(void)
 {
     properties.memoryHeapCount=2;properties.memoryHeaps[0].size=properties.memoryHeaps[1].size=8u<<20;
@@ -259,5 +298,14 @@ int main(void)
     xemu_vk_allocator_destroy(a);
     assert(!live_memory&&!live_resources&&creates==frees&&maps==unmaps);
     puts("PASS: fixed startup reservation, 4000 gameplay reuse cycles, capacity/type/dedicated exhaustion: zero driver allocations, maps or frees");
+    assert(xemu_vk_image_reservation(0)==(128ull<<20));
+    assert(xemu_vk_image_reservation(1)==(128ull<<20));
+    assert(xemu_vk_image_reservation(2)==(128ull<<20));
+    assert(xemu_vk_image_reservation(4)==(512ull<<20));
+    assert(xemu_vk_image_reservation(8)>=BOOT_TRACE_PEAK_BYTES);
+    assert(xemu_vk_image_reservation(UINT32_MAX)==UINT64_MAX);
+    replay_boot_images(true);replay_boot_images(false);
+    assert(creates==frees&&maps==unmaps);
+    puts("PASS: complete NGB cold-boot image lifetimes: old pool reproduces OOM; corrected startup reservation fits with no driver growth");
     printf("PASS: 40000 fragmented allocation schedules, alignment/class separation, 1000 images per driver block, warm reuse, persistent maps, atom-isolated flush/invalidate, dedicated requirements, type/OOM fallback and bind/map rollback; no leaks\n");
 }

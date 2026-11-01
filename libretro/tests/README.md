@@ -1724,3 +1724,11 @@ successive readbacks per submission. It covers 28 format/scale/layout cases and
 microbenchmarks, not whole-core latency measurements; the fixture enables no
 validation layer. Original pack/unpack shader encodings and all CPU-readback,
 linear, incompatible-layout and range-limited fallback routes remain intact.
+
+`test-vk-memory.py` also replays all 718 allocation/free events from a 6000-frame
+Ninja Gaiden Black cold boot at 8x. The fixture contains only host allocation
+sizes/alignment/lifetimes, with units scaled 1:256, and no guest assets. It
+reproduces the old 384 MiB pool's exact 75 MiB failed request and occupancy,
+then verifies the corrected startup reservation handles the complete sequence
+without any new driver allocations or mappings. The shared reservation helper
+is also checked at 1x/2x/4x/8x and for overflow.

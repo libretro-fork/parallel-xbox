@@ -4,6 +4,8 @@
 
 ## Unreleased
 
+- Fix Ninja Gaiden Black cold-boot Vulkan image allocation failure. Reserve the boot-to-game render-target working set at startup (128 MiB at 1x/2x, 512 MiB at 4x, 2 GiB at 8x), without runtime heap growth or extra host-buffer padding. Replay the captured boot allocation lifetimes as a heap regression and report image requirements/pool occupancy on allocation failure.
+
 - Replace Vulkan Memory Allocator with an Xbox-specific free-span heap modeled on GSdx/parallel-dc. Pool the exact startup buffer requirements, persistently map host backing, and isolate noncoherent ranges and linear/optimal resources. Reserve a bounded image working set before gameplay and reclaim only retired images under pressure. Remove the C++ runtime build/link dependency. Tests show fewer startup allocations/maps and a smaller DLL. Reserve spare image memory upfront rather than growing the heap during gameplay; higher resolution than the startup reservation requires restarting the core. No general frame-rate gain is claimed.
 
 - Reject shader-cache identity strings with a corrupted terminator and avoid null identity-string crashes when an OpenGL driver does not return its vendor or version. Preserve mapped cache loading and existing cache keys for normal drivers.

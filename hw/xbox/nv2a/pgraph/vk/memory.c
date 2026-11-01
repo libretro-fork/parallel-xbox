@@ -4,6 +4,7 @@
  * lifetimes, required dedicated allocations and noncoherent ranges. */
 #include <assert.h>
 #include <stdlib.h>
+#include <stdio.h>
 #include <string.h>
 #include <volk.h>
 #include "memory.h"
@@ -346,6 +347,18 @@ void xemu_vk_update_budget(XemuVkAllocator a, uint32_t frame)
     }
 }
 
+VkDeviceSize xemu_vk_image_reservation(uint32_t scale)
+{
+    /* Cold-boot render targets coexist with the first game targets, unlike
+     * a freshly loaded savestate. Leave room for that transition before
+     * sealing: 128 MiB at 1x/2x, 512 MiB at 4x, 2 GiB at 8x. */
+    VkDeviceSize factor=scale?scale:1;
+    const VkDeviceSize per_scale=32ull<<20;
+    if (factor>UINT64_MAX/per_scale/factor) return UINT64_MAX;
+    VkDeviceSize bytes=factor*factor*per_scale;
+    return bytes<(128ull<<20)?(128ull<<20):bytes;
+}
+
 VkResult xemu_vk_allocator_create(VkPhysicalDevice physical, VkDevice device,
                                   bool memory_budget, XemuVkAllocator *out)
 {
@@ -497,6 +510,15 @@ VkResult xemu_vk_create_image(XemuVkAllocator a, const VkImageCreateInfo *ci,
     result=allocate(a,&req.memoryRequirements,request,ci->tiling==VK_IMAGE_TILING_LINEAR,dedicated.requiresDedicatedAllocation,VK_NULL_HANDLE,*image,allocation);
     if (result==VK_SUCCESS) result=vkBindImageMemory(a->device,*image,(*allocation)->block->memory,(*allocation)->offset);
     if (result!=VK_SUCCESS) {
+        fprintf(stderr,"nv2a: Vulkan image allocation failed: %ux%ux%u format=%u size=%llu alignment=%llu types=%x dedicated=%u result=%d\n",
+            ci->extent.width,ci->extent.height,ci->extent.depth,ci->format,
+            (unsigned long long)req.memoryRequirements.size,
+            (unsigned long long)req.memoryRequirements.alignment,
+            req.memoryRequirements.memoryTypeBits,(unsigned)(request->dedicated||dedicated.requiresDedicatedAllocation),result);
+        for (Block *b=a->blocks;b;b=b->next) if (!b->linear)
+            fprintf(stderr,"nv2a: image pool type=%u capacity=%llu used=%llu max_free=%llu live=%u\n",
+                b->type,(unsigned long long)b->size,(unsigned long long)b->used,
+                (unsigned long long)b->max_free,b->live);
         vkDestroyImage(a->device,*image,NULL); *image=VK_NULL_HANDLE;
         allocation_free(a,*allocation); *allocation=NULL;
     }

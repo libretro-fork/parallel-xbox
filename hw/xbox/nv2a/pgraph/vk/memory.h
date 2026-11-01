@@ -25,6 +25,7 @@ typedef struct XemuVkBudget {
     VkDeviceSize usage, budget;
 } XemuVkBudget;
 
+VkDeviceSize xemu_vk_image_reservation(uint32_t scale);
 VkResult xemu_vk_allocator_create(VkPhysicalDevice physical, VkDevice device,
                                   bool memory_budget, XemuVkAllocator *out);
 /* Startup only. After success, gameplay can only suballocate these blocks;

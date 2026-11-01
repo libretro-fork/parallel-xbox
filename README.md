@@ -145,8 +145,11 @@ staging sets and vertex arenas. There is no guessed host-memory padding.
 Conversion buffers retain min(32 MiB * scale^2, 800 MiB) each. Host memory
 prefers CPU caching, with noncoherent flush/invalidate ranges isolated by atom.
 
-The optimal-image reservation is max(128 MiB, 6 MiB * scale^2):
-384 MiB at 8x. Retired image objects can release their spans under pressure;
+The optimal-image reservation is max(128 MiB, 32 MiB * scale^2):
+128 MiB at 1x/2x, 512 MiB at 4x, and 2 GiB at 8x. Cold boot temporarily
+keeps boot render targets alongside game targets; NGB startup reached about
+1.46 GiB of live image backing at 8x. Retired image objects can release their
+spans under pressure;
 unfinished GPU resources cannot be reclaimed. This is a finite working-set
 limit, not a bound proven sufficient for every game. Exhaustion cannot grow the
 heap. Raising resolution beyond the startup reservation requires restarting.
@@ -165,5 +168,6 @@ The renderer uses an Xbox-specific C allocator instead of VMA, removing the
 core's C++ runtime dependency. Measured startup driver allocation/map counts
 and binary size improve; a general frame-rate improvement is not claimed.
 The fixed image pool reserves spare memory upfront to avoid heap growth during
-play. At 8x, the four tested savestates used 25-142 MiB more reserved Vulkan
-backing than VMA. These allocation sizes do not measure resident VRAM.
+play. The earlier 384 MiB image pool and its 25-142 MiB overhead measurements only
+covered loaded savestates and were insufficient for cold boot. The corrected
+reservation is larger; allocation sizes do not measure resident VRAM.

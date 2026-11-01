@@ -206,7 +206,7 @@ static void reserve_buffer_backing(PGRAPHState *pg)
         VkDeviceSize *bytes=b->alloc_info.host?&host:&device;
         *bytes=ROUND_UP(*bytes,alignment)+ROUND_UP(req.size,alignment);
     }
-    VkDeviceSize images=MAX(128ull<<20,6ull*r->reserved_surface_scale*r->reserved_surface_scale<<20);
+    VkDeviceSize images=xemu_vk_image_reservation(r->reserved_surface_scale);
     VkResult result=xemu_vk_allocator_reserve(r->allocator,host,device,images);
     if (result!=VK_SUCCESS) {
         fprintf(stderr,"nv2a: Vulkan startup reservation failed: host=%llu MiB, device=%llu MiB, images=%llu MiB (%d)\n",
