@@ -190,9 +190,9 @@ typedef struct SeedDictEntry {
     uint32_t z_len;
 } SeedDictEntry;
 
-void *pgraph_seed_dict_read(int section, size_t itemsize, unsigned *count)
+static uint8_t *seed_dict_open(size_t *length)
 {
-    *count = 0;
+    *length = 0;
     const char *tag = pgraph_seed_game_tag();
     /* An entry name holds at most 31 characters and its NUL. */
     if (!tag || strlen(tag) >= sizeof_field(SeedDictEntry, game)) {
@@ -231,7 +231,9 @@ void *pgraph_seed_dict_read(int section, size_t itemsize, unsigned *count)
             rinflate_set_out(inf, raw, e.raw_len);
             if (rinflate_process(inf, NULL, &dlen) == RDEFLATE_PROCESS_END &&
                 dlen == e.raw_len) {
-                items = seed_find(raw, dlen, section, itemsize, count);
+                *length = dlen;
+                items = raw;
+                raw = NULL;
             }
             rinflate_free(inf);
         }
@@ -239,6 +241,60 @@ void *pgraph_seed_dict_read(int section, size_t itemsize, unsigned *count)
         return items;
     }
     return NULL;
+}
+
+void *pgraph_seed_dict_read(int section, size_t itemsize, unsigned *count)
+{
+    size_t length;
+    uint8_t *raw = seed_dict_open(&length);
+    *count = 0;
+    void *items = raw ? seed_find(raw, length, section, itemsize, count) : NULL;
+    g_free(raw);
+    return items;
+}
+
+void pgraph_seed_read_combined(PGRAPHSeedRead *reads, size_t count)
+{
+    if (!count) {
+        return;
+    }
+    XemuFileMap mapping = { 0 };
+    char *path = seed_path();
+    bool mapped = path && xemu_file_map(&mapping, path);
+    g_free(path);
+    size_t length;
+    uint8_t *raw = seed_dict_open(&length);
+    for (size_t i = 0; i < count; i++) {
+        PGRAPHSeedRead *read = &reads[i];
+        read->items = NULL;
+        read->count = read->dict_count = 0;
+        unsigned local_count = 0, dict_count = 0;
+        const void *local = mapped ? seed_find_view(mapping.data, mapping.len,
+                          read->section, read->itemsize, &local_count) : NULL;
+        const void *dict = raw ? seed_find_view(raw, length, read->section,
+                                          read->itemsize, &dict_count) : NULL;
+        size_t total = (size_t)local_count + dict_count;
+        if (!total || !read->itemsize || total > UINT_MAX ||
+            total > SIZE_MAX / read->itemsize) {
+            continue;
+        }
+        /* Borrow both inputs until their one final allocation is populated. */
+        uint8_t *items = g_malloc(total * read->itemsize);
+        if (local_count) {
+            memcpy(items, local, (size_t)local_count * read->itemsize);
+        }
+        if (dict_count) {
+            memcpy(items + (size_t)local_count * read->itemsize, dict,
+                   (size_t)dict_count * read->itemsize);
+        }
+        read->items = items;
+        read->count = total;
+        read->dict_count = dict_count;
+    }
+    if (mapped) {
+        xemu_file_unmap(&mapping);
+    }
+    g_free(raw);
 }
 
 struct SeedRewrite {

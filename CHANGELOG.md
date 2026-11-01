@@ -1,5 +1,7 @@
 # Changelog of the libretro core
 
+- Load both OpenGL shader-seed sections from one local mapping and one embedded-dictionary inflation, copying local/embedded records directly into their final arrays instead of temporary duplicated arrays and reallocations. Seed ordering and file format are unchanged.
+
 - Upload eligible linear depth/stencil surfaces from imported guest RAM directly into the GPU unpack input, avoiding the CPU staging reservation/copy. Padded rows use bounded GPU-copy batches; swizzled/unimported/misaligned inputs retain staging.
 
 - Keep short OpenGL visibility-query lists inside pooled report objects and transfer those objects directly to the report queue, removing per-report query-array allocation for up to eight intervals; long lists grow geometrically and all lists release on clear/completion/teardown.

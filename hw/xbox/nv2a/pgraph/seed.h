@@ -61,6 +61,18 @@ void *pgraph_seed_read(int section, size_t itemsize, unsigned *count);
 /* Same, from the embedded dictionary. */
 void *pgraph_seed_dict_read(int section, size_t itemsize, unsigned *count);
 
+/* Batch local + embedded reads in local-first order. Each returned items
+ * array is independently owned by the caller; missing/stale sections are empty.
+ * The local mapping and dictionary inflation are shared only within this call. */
+typedef struct PGRAPHSeedRead {
+    int section;
+    size_t itemsize;
+    void *items;
+    unsigned count;
+    unsigned dict_count;
+} PGRAPHSeedRead;
+void pgraph_seed_read_combined(PGRAPHSeedRead *reads, size_t count);
+
 /* Replace one section of the current game's local seed, keeping every
  * other section as it is on disk. Atomic (temporary file + rename). */
 bool pgraph_seed_write(int section, size_t itemsize, const void *items,

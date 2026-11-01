@@ -1829,39 +1829,20 @@ static void seed_load(PGRAPHGLState *r)
         !gl_sso_enabled()) {
         return;
     }
-    r->seed.mod_keys = pgraph_seed_read(PGRAPH_SEED_GL_MODULES,
-                                        sizeof(ShaderModuleCacheKey),
-                                        &r->seed.mod_n);
-    r->seed.pipe_states = pgraph_seed_read(PGRAPH_SEED_GL_STATES,
-                                           sizeof(ShaderState),
-                                           &r->seed.pipe_n);
-    /* The learned file plus the embedded dictionary, which a short file
-     * must not mask; the sibling reduction below deduplicates. */
-    const char *origin = "local";
-    {
-        unsigned dn = 0;
-        ShaderModuleCacheKey *dm = pgraph_seed_dict_read(
-            PGRAPH_SEED_GL_MODULES, sizeof(ShaderModuleCacheKey), &dn);
-        if (dm) {
-            r->seed.mod_keys = g_realloc_n(r->seed.mod_keys,
-                                           r->seed.mod_n + dn, sizeof(*dm));
-            memcpy(&r->seed.mod_keys[r->seed.mod_n], dm, dn * sizeof(*dm));
-            r->seed.mod_n += dn;
-            g_free(dm);
-            origin = "local + embedded dictionary";
-        }
-        ShaderState *dp = pgraph_seed_dict_read(PGRAPH_SEED_GL_STATES,
-                                                sizeof(ShaderState), &dn);
-        if (dp) {
-            r->seed.pipe_states = g_realloc_n(r->seed.pipe_states,
-                                              r->seed.pipe_n + dn,
-                                              sizeof(*dp));
-            memcpy(&r->seed.pipe_states[r->seed.pipe_n], dp, dn * sizeof(*dp));
-            r->seed.pipe_n += dn;
-            g_free(dp);
-            origin = "local + embedded dictionary";
-        }
-    }
+    /* The local mapping and embedded inflation serve both sections once.
+     * Copy each source directly into its final local-first array. */
+    PGRAPHSeedRead reads[] = {
+        { .section = PGRAPH_SEED_GL_MODULES,
+          .itemsize = sizeof(ShaderModuleCacheKey) },
+        { .section = PGRAPH_SEED_GL_STATES, .itemsize = sizeof(ShaderState) },
+    };
+    pgraph_seed_read_combined(reads, ARRAY_SIZE(reads));
+    r->seed.mod_keys = reads[0].items;
+    r->seed.mod_n = reads[0].count;
+    r->seed.pipe_states = reads[1].items;
+    r->seed.pipe_n = reads[1].count;
+    const char *origin = reads[0].dict_count || reads[1].dict_count ?
+                         "local + embedded dictionary" : "local";
     if (r->seed.pipe_states) {
         /* Reduce to the dynamic-sibling set: same derivation as the
          * first_meet cover path, deduplicated. */
