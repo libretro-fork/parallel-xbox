@@ -37,16 +37,16 @@ static void create_buffer(PGRAPHState *pg, StorageBuffer *buffer)
         .usage = buffer->usage,
         .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
     };
-    VkResult result = vmaCreateBuffer(r->allocator, &buffer_create_info,
+    VkResult result = xemu_vk_create_buffer(r->allocator, &buffer_create_info,
                                       &buffer->alloc_info, &buffer->buffer,
-                                      &buffer->allocation, NULL);
+                                      &buffer->allocation);
     if (result != VK_SUCCESS) {
         /* which one, for a GPU that runs out of memory at start */
         fprintf(stderr, "nv2a: Vulkan buffer of %llu bytes (usage %x) failed: %d\n",
                 (unsigned long long)buffer->buffer_size, buffer->usage, result);
     }
     VK_CHECK(result);
-    vmaGetAllocationMemoryProperties(r->allocator, buffer->allocation,
+    xemu_vk_get_allocation_memory_properties(r->allocator, buffer->allocation,
                                      &buffer->properties);
 }
 
@@ -54,41 +54,17 @@ static void destroy_buffer(PGRAPHState *pg, StorageBuffer *buffer)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
 
-    vmaDestroyBuffer(r->allocator, buffer->buffer, buffer->allocation);
+    xemu_vk_destroy_buffer(r->allocator, buffer->buffer, buffer->allocation);
     buffer->buffer = VK_NULL_HANDLE;
     buffer->allocation = VK_NULL_HANDLE;
 }
 
-/*
- * The compute buffers hold a surface at the surface scale: 2048x2048 surfaces
- * at 8 bytes a pixel, times the scale squared, up to what upstream allocates
- * for every scale (10240x10240). Upstream's fixed 2x800 MB failed to allocate
- * on smaller GPUs (Adreno 618 with 4 GB shared memory) even at 1x, where 32 MB
- * each is enough; a larger scale set while running grows them at the flush
- * the scale change goes through (surface.c).
- */
+/* Reserve conversion capacity at initialization, including the largest scale
+ * accepted without a renderer restart. No on-demand compute-buffer growth. */
 static VkDeviceSize compute_buffer_size(unsigned int scale)
 {
-    const VkDeviceSize side = 2048 * (VkDeviceSize)MAX(scale, 1);
-    return MIN(side * side * 8, (VkDeviceSize)(1024 * 10) * (1024 * 10) * 8);
-}
-
-void pgraph_vk_reserve_compute_buffers(PGRAPHState *pg, unsigned int scale)
-{
-    PGRAPHVkState *r = pg->vk_renderer_state;
-    const VkDeviceSize size = compute_buffer_size(scale);
-
-    if (size <= r->storage_buffers[BUFFER_COMPUTE_DST].buffer_size) {
-        return;
-    }
-
-    pgraph_vk_finish(pg, VK_FINISH_REASON_FLUSH);
-    const int resized[] = { BUFFER_COMPUTE_DST, BUFFER_COMPUTE_SRC };
-    for (int i = 0; i < ARRAY_SIZE(resized); i++) {
-        destroy_buffer(pg, &r->storage_buffers[resized[i]]);
-        r->storage_buffers[resized[i]].buffer_size = size;
-        create_buffer(pg, &r->storage_buffers[resized[i]]);
-    }
+    VkDeviceSize side = 2048ull * MAX(scale, 1);
+    return MIN(side * side * 8, 800ull << 20);
 }
 
 /* The Xbox's RAM imported as a buffer the GPU copies from
@@ -203,6 +179,43 @@ static void destroy_vram_buffer(PGRAPHVkState *r)
     }
 }
 
+/* Query the actual startup buffers, including both ring sets, instead of
+ * reserving a guessed host/device margin. No unused mapped host backing. */
+static void reserve_buffer_backing(PGRAPHState *pg)
+{
+    PGRAPHVkState *r=pg->vk_renderer_state;
+    VkDeviceSize host=0, device=0;
+    const StorageBuffer *buffers[BUFFER_COUNT+8];
+    unsigned count=0;
+    for (int i=0;i<BUFFER_COUNT;i++) buffers[count++]=&r->storage_buffers[i];
+    for (int i=0;i<ARRAY_SIZE(pgraph_vk_staged_buffers);i++) {
+        buffers[count++]=&r->storage_buffers[pgraph_vk_staged_buffers[i].staging];
+        buffers[count++]=&r->storage_buffers[pgraph_vk_staged_buffers[i].device];
+    }
+    for (int i=0;i<2;i++) buffers[count++]=&r->vertex_arena[i];
+    for (unsigned i=0;i<count;i++) {
+        const StorageBuffer *b=buffers[i];
+        VkBufferCreateInfo ci={.sType=VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+            .size=b->buffer_size,.usage=b->usage,.sharingMode=VK_SHARING_MODE_EXCLUSIVE};
+        VkBuffer probe;
+        VK_CHECK(vkCreateBuffer(r->device,&ci,NULL,&probe));
+        VkMemoryRequirements req;
+        vkGetBufferMemoryRequirements(r->device,probe,&req);
+        vkDestroyBuffer(r->device,probe,NULL);
+        VkDeviceSize alignment=MAX(req.alignment,r->device_props.limits.nonCoherentAtomSize);
+        VkDeviceSize *bytes=b->alloc_info.host?&host:&device;
+        *bytes=ROUND_UP(*bytes,alignment)+ROUND_UP(req.size,alignment);
+    }
+    VkDeviceSize images=MAX(128ull<<20,6ull*r->reserved_surface_scale*r->reserved_surface_scale<<20);
+    VkResult result=xemu_vk_allocator_reserve(r->allocator,host,device,images);
+    if (result!=VK_SUCCESS) {
+        fprintf(stderr,"nv2a: Vulkan startup reservation failed: host=%llu MiB, device=%llu MiB, images=%llu MiB (%d)\n",
+            (unsigned long long)(host>>20),(unsigned long long)(device>>20),
+            (unsigned long long)(images>>20),result);
+    }
+    VK_CHECK(result);
+}
+
 void pgraph_vk_init_buffers(NV2AState *d)
 {
     PGRAPHState *pg = &d->pgraph;
@@ -212,14 +225,11 @@ void pgraph_vk_init_buffers(NV2AState *d)
 
     // FIXME: Profile buffer sizes
 
-    VmaAllocationCreateInfo host_alloc_create_info = {
-        .usage = VMA_MEMORY_USAGE_AUTO_PREFER_HOST,
-        .flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT |
-                 VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT,
+    XemuVkMemoryRequest host_alloc_create_info = {
+        .host = true,
     };
-    VmaAllocationCreateInfo device_alloc_create_info = {
-        .usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE,
-        .flags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT
+    XemuVkMemoryRequest device_alloc_create_info = {
+        .host = false,
     };
 
     r->storage_buffers[BUFFER_STAGING_DST] = (StorageBuffer){
@@ -237,15 +247,13 @@ void pgraph_vk_init_buffers(NV2AState *d)
         .buffer_size = r->storage_buffers[BUFFER_STAGING_DST].buffer_size,
     };
 
-    /* Sized to the need MEASURED in six games at 3x, and grown on demand
-     * (pgraph_vk_buffer_ensure_capacity), where the fixed upstream sizes do
-     * not fit an integrated GPU at 4x. */
+    /* Fixed upfront capacity; changing resolution does not resize these. */
     r->storage_buffers[BUFFER_COMPUTE_DST] = (StorageBuffer){
         .alloc_info = device_alloc_create_info,
         .usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT |
                  VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
                  VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-        .buffer_size = compute_buffer_size(g_config.display.quality.surface_scale),
+        .buffer_size = compute_buffer_size(r->reserved_surface_scale),
     };
 
     /* The GPU unswizzle's output ring (unswizzle.c): a level or a surface
@@ -328,6 +336,7 @@ void pgraph_vk_init_buffers(NV2AState *d)
         .buffer_size = r->storage_buffers[BUFFER_UNIFORM].buffer_size,
     };
 
+    reserve_buffer_backing(pg);
     for (int i = 0; i < BUFFER_COUNT; i++) {
         create_buffer(pg, &r->storage_buffers[i]);
     }
@@ -345,7 +354,7 @@ void pgraph_vk_init_buffers(NV2AState *d)
             .buffer_size = staging->buffer_size,
         };
         create_buffer(pg, &r->alt_staging[i]);
-        VK_CHECK(vmaMapMemory(r->allocator, r->alt_staging[i].allocation,
+        VK_CHECK(xemu_vk_map_memory(r->allocator, r->alt_staging[i].allocation,
                               (void **)&r->alt_staging[i].mapped));
         r->alt_device[i] = (StorageBuffer){
             .alloc_info = device->alloc_info,
@@ -359,11 +368,11 @@ void pgraph_vk_init_buffers(NV2AState *d)
         create_buffer(pg, &r->vertex_arena[i]);
         r->vertex_arena_dirty_start[i] = UINT64_MAX;
         VkMemoryPropertyFlags props;
-        vmaGetAllocationMemoryProperties(r->allocator,
+        xemu_vk_get_allocation_memory_properties(r->allocator,
                                          r->vertex_arena[i].allocation, &props);
         r->vertex_arena_coherent[i] =
             (props & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) != 0;
-        VK_CHECK(vmaMapMemory(r->allocator, r->vertex_arena[i].allocation,
+        VK_CHECK(xemu_vk_map_memory(r->allocator, r->vertex_arena[i].allocation,
                               (void **)&r->vertex_arena[i].mapped));
     }
 
@@ -372,7 +381,7 @@ void pgraph_vk_init_buffers(NV2AState *d)
     /* the surface downloads' buffer too: mapped once, not at each
      * download (vk/surface.c) */
     VkMemoryPropertyFlags mirror_props;
-    vmaGetAllocationMemoryProperties(
+    xemu_vk_get_allocation_memory_properties(
         r->allocator, r->storage_buffers[BUFFER_VERTEX_RAM].allocation,
         &mirror_props);
     r->vertex_ram_coherent =
@@ -387,7 +396,7 @@ void pgraph_vk_init_buffers(NV2AState *d)
                              BUFFER_STAGING_DST };
 
     for (int i = 0; i < ARRAY_SIZE(buffers_to_map); i++) {
-        VK_CHECK(vmaMapMemory(
+        VK_CHECK(xemu_vk_map_memory(
             r->allocator, r->storage_buffers[buffers_to_map[i]].allocation,
             (void **)&r->storage_buffers[buffers_to_map[i]].mapped));
     }
@@ -399,24 +408,15 @@ void pgraph_vk_finalize_buffers(NV2AState *d)
     PGRAPHVkState *r = pg->vk_renderer_state;
 
     for (int i = 0; i < BUFFER_COUNT; i++) {
-        if (r->storage_buffers[i].mapped) {
-            vmaUnmapMemory(r->allocator, r->storage_buffers[i].allocation);
-        }
         destroy_buffer(pg, &r->storage_buffers[i]);
     }
 
     for (int i = 0; i < ARRAY_SIZE(pgraph_vk_staged_buffers); i++) {
-        if (r->alt_staging[i].mapped) {
-            vmaUnmapMemory(r->allocator, r->alt_staging[i].allocation);
-        }
         destroy_buffer(pg, &r->alt_staging[i]);
         destroy_buffer(pg, &r->alt_device[i]);
     }
 
     for (int i = 0; i < 2; i++) {
-        if (r->vertex_arena[i].mapped) {
-            vmaUnmapMemory(r->allocator, r->vertex_arena[i].allocation);
-        }
         destroy_buffer(pg, &r->vertex_arena[i]);
     }
 
@@ -444,7 +444,6 @@ static void recreate_buffer(PGRAPHState *pg, StorageBuffer *b,
     bool mapped = b->mapped != NULL;
 
     if (mapped) {
-        vmaUnmapMemory(r->allocator, b->allocation);
         b->mapped = NULL;
     }
     destroy_buffer(pg, b);
@@ -452,7 +451,7 @@ static void recreate_buffer(PGRAPHState *pg, StorageBuffer *b,
     b->buffer_offset = 0;
     create_buffer(pg, b);
     if (mapped) {
-        VK_CHECK(vmaMapMemory(r->allocator, b->allocation,
+        VK_CHECK(xemu_vk_map_memory(r->allocator, b->allocation,
                               (void **)&b->mapped));
     }
 }

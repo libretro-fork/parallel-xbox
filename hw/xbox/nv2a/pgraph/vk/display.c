@@ -67,7 +67,7 @@ static void destroy_pvideo_image(PGRAPHState *pg)
     }
 
     if (d->pvideo.image != VK_NULL_HANDLE) {
-        vmaDestroyImage(r->allocator, d->pvideo.image, d->pvideo.allocation);
+        xemu_vk_destroy_image(r->allocator, d->pvideo.image, d->pvideo.allocation);
         d->pvideo.image = VK_NULL_HANDLE;
         d->pvideo.allocation = VK_NULL_HANDLE;
     }
@@ -104,12 +104,12 @@ static void acquire_pvideo_image(PGRAPHVkState *r, const VkImageCreateInfo *ci)
     d->pvideo.image_ci = *ci;
     if (!pgraph_vk_image_pool_get_with_view(r, ci, &d->pvideo.image,
                                 &d->pvideo.allocation, &d->pvideo.image_view)) {
-        VmaAllocationCreateInfo alloc_create_info = {
-            .usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE,
+        XemuVkMemoryRequest alloc_create_info = {
+            .host = false,
         };
-        VK_CHECK(vmaCreateImage(r->allocator, ci,
+        VK_CHECK(xemu_vk_create_image(r->allocator, ci,
                                &alloc_create_info, &d->pvideo.image,
-                               &d->pvideo.allocation, NULL));
+                               &d->pvideo.allocation));
     }
 }
 

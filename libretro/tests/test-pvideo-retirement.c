@@ -20,7 +20,7 @@
 #define NV2A_PROF_QUEUE_SUBMIT_AUX 0
 #define VK_CHECK(x) assert((x)==VK_SUCCESS)
 #define g_renew(type,p,n) ((type*)grow(p,(n)*sizeof(type)))
-typedef unsigned VkFence,VkCommandBuffer,VkPipeline,VkPipelineLayout,VkSampler,VkFramebuffer,VkImageView,VkImage,VmaAllocation,VkBuffer,VkImageCreateInfo;
+typedef unsigned VkFence,VkCommandBuffer,VkPipeline,VkPipelineLayout,VkSampler,VkFramebuffer,VkImageView,VkImage,XemuVkAllocation,VkBuffer,VkImageCreateInfo;
 typedef struct {int sType;unsigned commandBufferCount;const VkCommandBuffer *pCommandBuffers;} VkSubmitInfo;
 typedef struct {VkBuffer buffer;uint64_t range;} VkDescriptorBufferInfo;
 typedef struct {VkImageView imageView;int imageLayout;} VkDescriptorImageInfo;
@@ -60,12 +60,12 @@ static void vkUpdateDescriptorSets(unsigned device,unsigned count,const VkWriteD
  sources[slot]=w[0].pBufferInfo->buffer;descriptors[slot]=w[1].pImageInfo->imageView;updates++;
 }
 static void pgraph_vk_poll_display_retired(PGRAPHVkState *r){r->display.settled=gpu_display;}
-static bool pgraph_vk_image_pool_put(PGRAPHVkState *r,VkImage im,VmaAllocation a,const VkImageCreateInfo *ci){(void)r;assert(im==a&&ci);assert(last_aux[im]<=gpu_aux&&last_display[im]<=gpu_display);return false;}
-static bool pgraph_vk_image_pool_put_with_view(PGRAPHVkState *r,VkImage im,VmaAllocation a,const VkImageCreateInfo *ci,VkImageView view){assert(view==im);return pgraph_vk_image_pool_put(r,im,a,ci);}
+static bool pgraph_vk_image_pool_put(PGRAPHVkState *r,VkImage im,XemuVkAllocation a,const VkImageCreateInfo *ci){(void)r;assert(im==a&&ci);assert(last_aux[im]<=gpu_aux&&last_display[im]<=gpu_display);return false;}
+static bool pgraph_vk_image_pool_put_with_view(PGRAPHVkState *r,VkImage im,XemuVkAllocation a,const VkImageCreateInfo *ci,VkImageView view){assert(view==im);return pgraph_vk_image_pool_put(r,im,a,ci);}
 static void check_destroy(unsigned h){assert(h&&!destroyed[h]&&last_aux[h]<=gpu_aux&&last_display[h]<=gpu_display);}
 static void vkDestroySampler(unsigned d,unsigned h,void *p){assert(d==7&&!p);check_destroy(h);}
 static void vkDestroyImageView(unsigned d,unsigned h,void *p){assert(d==7&&!p);check_destroy(h);}
-static void vmaDestroyImage(unsigned a,VkImage im,VmaAllocation alloc){assert(a==9&&im==alloc);check_destroy(im);destroyed[im]++;}
+static void xemu_vk_destroy_image(unsigned a,VkImage im,XemuVkAllocation alloc){assert(a==9&&im==alloc);check_destroy(im);destroyed[im]++;}
 static void vkDestroyPipeline(unsigned d,unsigned h,void *p){(void)d;(void)h;(void)p;assert(false);}
 static void vkDestroyPipelineLayout(unsigned d,unsigned h,void *p){(void)d;(void)h;(void)p;assert(false);}
 static void vkDestroyFramebuffer(unsigned d,unsigned h,void *p){(void)d;(void)h;(void)p;assert(false);}

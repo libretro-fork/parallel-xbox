@@ -731,35 +731,27 @@ uint32_t pgraph_vk_get_memory_type(PGRAPHState *pg, uint32_t type_bits,
     return 0xFFFFFFFF; // Unable to find memoryType
 }
 
+static void reclaim_retired_images(void *opaque)
+{
+    /* The image pool contains only resources whose GPU users have retired.
+     * Reclaim their spans without waiting, allocating, or touching live slots. */
+    pgraph_vk_image_pool_flush(opaque);
+}
+
 static bool init_allocator(PGRAPHState *pg, Error **errp)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
     VkResult result;
 
-    VmaAllocatorCreateInfo create_info = {
-        .flags = (r->memory_budget_extension_enabled ?
-                      VMA_ALLOCATOR_CREATE_EXT_MEMORY_BUDGET_BIT :
-                      0),
-        .vulkanApiVersion = r->vk_api_version,
-        .instance = r->instance,
-        .physicalDevice = r->physical_device,
-        .device = r->device,
-    };
-
-    VmaVulkanFunctions vulkan_functions;
-    VkResult res = vmaImportVulkanFunctionsFromVolk(&create_info, &vulkan_functions);
-    if (res != VK_SUCCESS) {
-        error_setg(errp, "vmaImportVulkanFunctionsFromVolk failed");
-        return false;
-    }
-    create_info.pVulkanFunctions = &vulkan_functions;
-
-    result = vmaCreateAllocator(&create_info, &r->allocator);
+    result = xemu_vk_allocator_create(r->physical_device, r->device,
+        r->memory_budget_extension_enabled, &r->allocator);
     if (result != VK_SUCCESS) {
-        error_setg(errp, "vmaCreateAllocator failed");
+        error_setg(errp, "Xbox Vulkan memory heap initialization failed: %d", result);
         return false;
     }
 
+    r->reserved_surface_scale = MAX(g_config.display.quality.surface_scale, 1);
+    xemu_vk_allocator_set_reclaim(r->allocator, reclaim_retired_images, r);
     return true;
 }
 
@@ -841,7 +833,7 @@ void pgraph_vk_finalize_instance(PGRAPHState *pg)
     PGRAPHVkState *r = pg->vk_renderer_state;
 
     if (r->allocator != VK_NULL_HANDLE) {
-        vmaDestroyAllocator(r->allocator);
+        xemu_vk_allocator_destroy(r->allocator);
         r->allocator = VK_NULL_HANDLE;
     }
 

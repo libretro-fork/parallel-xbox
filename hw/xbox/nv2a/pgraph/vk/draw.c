@@ -2357,7 +2357,7 @@ static void sync_staging_buffer(PGRAPHState *pg, VkCommandBuffer cmd,
     }
 
     if (!(b_src->properties & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT)) {
-        VK_CHECK(vmaFlushAllocation(r->allocator, b_src->allocation, 0,
+        VK_CHECK(xemu_vk_flush_allocation(r->allocator, b_src->allocation, 0,
                                     b_src->buffer_offset));
     }
     VkBufferCopy copy_region = { .size = b_src->buffer_offset };
@@ -2409,7 +2409,7 @@ static void flush_memory_buffer(PGRAPHState *pg)
 
     if (r->vertex_ram_dirty.size) {
         if (!r->vertex_ram_coherent) {
-            VK_CHECK(vmaFlushAllocation(
+            VK_CHECK(xemu_vk_flush_allocation(
                 r->allocator, r->storage_buffers[BUFFER_VERTEX_RAM].allocation,
                 r->vertex_ram_dirty.addr, r->vertex_ram_dirty.size));
         }
@@ -2421,7 +2421,7 @@ static void flush_memory_buffer(PGRAPHState *pg)
             VkDeviceSize end = r->vertex_arena[i].buffer_offset;
             assert(start < end);
             if (!r->vertex_arena_coherent[i]) {
-                VK_CHECK(vmaFlushAllocation(r->allocator,
+                VK_CHECK(xemu_vk_flush_allocation(r->allocator,
                                             r->vertex_arena[i].allocation,
                                             start, end - start));
             }
@@ -2758,8 +2758,8 @@ void pgraph_vk_finish(PGRAPHState *pg, FinishReason finish_reason)
             (r->submit_count - r->allocator_last_submit_index) >
                 max_num_submits_before_budget_update) {
 
-            // VMA queries budget via vmaSetCurrentFrameIndex
-            vmaSetCurrentFrameIndex(r->allocator, r->submit_count);
+            // Refresh the heap budget without allocating or growing its backing.
+            xemu_vk_update_budget(r->allocator, r->submit_count);
             r->allocator_last_submit_index = r->submit_count;
             r->budget_check_pending = true;
         }
@@ -2924,7 +2924,7 @@ static void trash_drain_retired(PGRAPHVkState *r)
                 if (e->pool_view && e->image_view) {
                     vkDestroyImageView(r->device, e->image_view, NULL);
                 }
-                vmaDestroyImage(r->allocator, e->image, e->allocation);
+                xemu_vk_destroy_image(r->allocator, e->image, e->allocation);
             }
         }
     }

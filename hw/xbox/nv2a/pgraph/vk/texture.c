@@ -852,13 +852,12 @@ static VkImage native_get_scratch(PGRAPHState *pg, VkFormat format,
         .samples = VK_SAMPLE_COUNT_1_BIT,
         .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
     };
-    VmaAllocationCreateInfo aci = {
-        .usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE,
+    XemuVkMemoryRequest aci = {
+        .host = false,
     };
     VkImage image;
-    VmaAllocation allocation;
-    VK_CHECK(vmaCreateImage(r->allocator, &ici, &aci, &image, &allocation,
-                            NULL));
+    XemuVkAllocation allocation;
+    VK_CHECK(xemu_vk_create_image(r->allocator, &ici, &aci, &image, &allocation));
     r->znative_scratch[free_slot].image = image;
     r->znative_scratch[free_slot].allocation = allocation;
     r->znative_scratch[free_slot].format = format;
@@ -887,11 +886,11 @@ static void upload_mixed_cube_ram(PGRAPHState *pg, int texture_idx,
     native.image_ci.extent.width = native.key.state.width;
     native.image_ci.extent.height = native.key.state.height;
     native.image_ci.usage |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
-    VmaAllocationCreateInfo aci = { .usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE };
+    XemuVkMemoryRequest aci = { .host = false };
     if (!pgraph_vk_image_pool_get(r, &native.image_ci, &native.image,
                                   &native.allocation)) {
-        VK_CHECK(vmaCreateImage(r->allocator, &native.image_ci, &aci,
-                                &native.image, &native.allocation, NULL));
+        VK_CHECK(xemu_vk_create_image(r->allocator, &native.image_ci, &aci,
+                                &native.image, &native.allocation));
     }
     upload_texture_image(pg, texture_idx, &native, gpu_mask);
 
@@ -1593,10 +1592,10 @@ static bool can_reinterpret_argb_as_rgb565(PGRAPHState *pg,
 /* Texture images retired by the CoW rule below or by cache eviction, and
  * surface images (surface.c destroy_surface_image), are kept for reuse
  * instead of freed. A feedback pass retires the same few
- * images many times per frame, and at high scales each one is a large
- * dedicated device allocation. Semantics of a fresh image: contents
+ * images many times per frame, and at high scales each one occupies a large
+ * part of the fixed image reservation. Semantics of a fresh image: contents
  * undefined, layout UNDEFINED. The pool only keeps what the device can
- * spare: over its heap's budget (VK_EXT_memory_budget, or VMA's estimate
+ * spare: over its heap's budget (VK_EXT_memory_budget, or the heap-size estimate
  * without it), a retired image gives the pool's oldest ones of that heap
  * back first, then itself. */
 #define IMAGE_POOL_MAX_BYTES ((size_t)1536 << 20)
@@ -1620,32 +1619,32 @@ static void image_pool_drop(PGRAPHVkState *r, int i)
     if (p->view) {
         vkDestroyImageView(r->device, p->view, NULL);
     }
-    vmaDestroyImage(r->allocator, p->image, p->allocation);
+    xemu_vk_destroy_image(r->allocator, p->image, p->allocation);
     r->image_pool_bytes -= p->bytes;
     r->image_pool[i] = r->image_pool[--r->image_pool_n];
 }
 
 static bool image_pool_heap_over_budget(PGRAPHVkState *r, uint32_t heap)
 {
-    VmaBudget budgets[VK_MAX_MEMORY_HEAPS];
+    XemuVkBudget budgets[VK_MAX_MEMORY_HEAPS];
 
-    vmaGetHeapBudgets(r->allocator, budgets);
+    xemu_vk_get_heap_budgets(r->allocator, budgets);
     return budgets[heap].usage > budgets[heap].budget;
 }
 
 bool pgraph_vk_image_pool_put_with_view(PGRAPHVkState *r, VkImage image,
-    VmaAllocation allocation, const VkImageCreateInfo *ci, VkImageView view)
+    XemuVkAllocation allocation, const VkImageCreateInfo *ci, VkImageView view)
 {
     if (allocation == VK_NULL_HANDLE) {
         return false;
     }
-    VmaAllocationInfo ai;
-    vmaGetAllocationInfo(r->allocator, allocation, &ai);
+    XemuVkAllocationInfo ai;
+    xemu_vk_get_allocation_info(r->allocator, allocation, &ai);
     if (ai.size > IMAGE_POOL_MAX_BYTES / 4) {
         return false;
     }
     const VkPhysicalDeviceMemoryProperties *props;
-    vmaGetMemoryProperties(r->allocator, &props);
+    xemu_vk_get_memory_properties(r->allocator, &props);
     uint32_t heap = props->memoryTypes[ai.memoryType].heapIndex;
     while (image_pool_heap_over_budget(r, heap)) {
         int oldest = -1;
@@ -1685,7 +1684,7 @@ bool pgraph_vk_image_pool_put_with_view(PGRAPHVkState *r, VkImage image,
 }
 
 bool pgraph_vk_image_pool_get_with_view(PGRAPHVkState *r,
-    const VkImageCreateInfo *ci, VkImage *image, VmaAllocation *allocation,
+    const VkImageCreateInfo *ci, VkImage *image, XemuVkAllocation *allocation,
     VkImageView *view)
 {
     for (int i = 0; i < r->image_pool_n; i++) {
@@ -1704,14 +1703,14 @@ bool pgraph_vk_image_pool_get_with_view(PGRAPHVkState *r,
 /* Texture/surface callers create views with their own component mapping and
  * shape. Only overlay callers may reuse the pool's canonical overlay view. */
 bool pgraph_vk_image_pool_put(PGRAPHVkState *r, VkImage image,
-    VmaAllocation allocation, const VkImageCreateInfo *ci)
+    XemuVkAllocation allocation, const VkImageCreateInfo *ci)
 {
     return pgraph_vk_image_pool_put_with_view(r, image, allocation, ci,
                                              VK_NULL_HANDLE);
 }
 
 bool pgraph_vk_image_pool_get(PGRAPHVkState *r, const VkImageCreateInfo *ci,
-    VkImage *image, VmaAllocation *allocation)
+    VkImage *image, XemuVkAllocation *allocation)
 {
     VkImageView view;
     if (!pgraph_vk_image_pool_get_with_view(r, ci, image, allocation, &view)) {
@@ -1792,13 +1791,13 @@ static bool texture_cow_if_referenced(PGRAPHState *pg, TextureBinding *snode,
                          state->color_format);
     VkImageCreateInfo ici = snode->image_ci;
     ici.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    VmaAllocationCreateInfo aci = {
-        .usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE,
+    XemuVkMemoryRequest aci = {
+        .host = false,
     };
     if (!pgraph_vk_image_pool_get(r, &ici, &snode->image,
                                   &snode->allocation)) {
-        VK_CHECK(vmaCreateImage(r->allocator, &ici, &aci, &snode->image,
-                                &snode->allocation, NULL));
+        VK_CHECK(xemu_vk_create_image(r->allocator, &ici, &aci, &snode->image,
+                                &snode->allocation));
     }
     snode->image_ci = ici;
     create_texture_view(r, snode, &vkf);
@@ -1829,16 +1828,16 @@ static void create_dummy_texture(PGRAPHState *pg)
         .flags = 0,
     };
 
-    VmaAllocationCreateInfo alloc_create_info = {
-        .usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE,
+    XemuVkMemoryRequest alloc_create_info = {
+        .host = false,
     };
 
     VkImage texture_image;
-    VmaAllocation texture_allocation;
+    XemuVkAllocation texture_allocation;
 
-    VK_CHECK(vmaCreateImage(r->allocator, &image_create_info,
+    VK_CHECK(xemu_vk_create_image(r->allocator, &image_create_info,
                             &alloc_create_info, &texture_image,
-                            &texture_allocation, NULL));
+                            &texture_allocation));
 
     VkImageViewCreateInfo image_view_create_info = {
         .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
@@ -1957,10 +1956,6 @@ static void set_texture_label(PGRAPHState *pg, TextureBinding *texture)
 
     if (r->debug_utils_extension_enabled) {
         vkSetDebugUtilsObjectNameEXT(r->device, &name_info);
-    }
-    /* In-place sampling: borrowed images have no allocation of their own. */
-    if (texture->allocation != VK_NULL_HANDLE) {
-        vmaSetAllocationName(r->allocator, texture->allocation, label);
     }
 }
 
@@ -2592,15 +2587,15 @@ static void create_texture(PGRAPHState *pg, int texture_idx)
         snode->s2t_borrowed = true;
         snode->current_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
     } else {
-        VmaAllocationCreateInfo alloc_create_info = {
-            .usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE,
+        XemuVkMemoryRequest alloc_create_info = {
+            .host = false,
         };
 
         if (!pgraph_vk_image_pool_get(r, &image_create_info, &snode->image,
                                       &snode->allocation)) {
-            VK_CHECK(vmaCreateImage(r->allocator, &image_create_info,
+            VK_CHECK(xemu_vk_create_image(r->allocator, &image_create_info,
                                     &alloc_create_info, &snode->image,
-                                    &snode->allocation, NULL));
+                                    &snode->allocation));
         }
     }
     snode->image_ci = image_create_info;
@@ -2902,7 +2897,7 @@ void pgraph_vk_finalize_textures(PGRAPHState *pg)
     sampler_cache_destroy(r);
     for (int i = 0; i < ARRAY_SIZE(r->znative_scratch); i++) {
         if (r->znative_scratch[i].image != VK_NULL_HANDLE) {
-            vmaDestroyImage(r->allocator, r->znative_scratch[i].image,
+            xemu_vk_destroy_image(r->allocator, r->znative_scratch[i].image,
                             r->znative_scratch[i].allocation);
             r->znative_scratch[i].image = VK_NULL_HANDLE;
         }

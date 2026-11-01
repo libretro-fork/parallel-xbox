@@ -1,5 +1,9 @@
 # Changelog of the libretro core
 
+## Unreleased
+
+- Replace Vulkan Memory Allocator with an Xbox-specific free-span heap modeled on GSdx/parallel-dc. Pool the exact startup buffer requirements, persistently map host backing, and isolate noncoherent ranges and linear/optimal resources. Reserve a bounded image working set before gameplay and reclaim only retired images under pressure. Remove the C++ runtime build/link dependency. Tests show fewer startup allocations/maps and a smaller DLL. Reserve spare image memory upfront rather than growing the heap during gameplay; higher resolution than the startup reservation requires restarting the core. No general frame-rate gain is claimed.
+
 - Reject shader-cache identity strings with a corrupted terminator and avoid null identity-string crashes when an OpenGL driver does not return its vendor or version. Preserve mapped cache loading and existing cache keys for normal drivers.
 
 - Avoid repeatedly discarding executing code when a guest writes nearby data on the same physical page. Preserve invalidation and precise restart when a write actually changes code, including blocks spanning nonadjacent physical pages.

@@ -95,7 +95,7 @@ static VkResult vkQueueSubmit(VkQueue queue,uint32_t n,const VkSubmitInfo *info,
     if(expected_frontend_wait){assert(info[0].pWaitSemaphores[0]==expected_frontend_wait&&info[0].pWaitDstStageMask[0]==VK_PIPELINE_STAGE_ALL_COMMANDS_BIT);}
     host_flushed=false;submits++;return VK_SUCCESS;
 }
-static void vmaSetCurrentFrameIndex(void *allocator,unsigned frame) { (void)allocator;(void)frame; }
+static void xemu_vk_update_budget(void *allocator,unsigned frame) { (void)allocator;(void)frame; }
 static void rotate_slot(PGRAPHVkState *r,bool staged) {
     (void)staged;assert(!r->in_command_buffer && r->slot_fence_pending[r->slot]);
     r->slot=(r->slot+1)%2;r->command_buffer=r->slot_main[r->slot];
