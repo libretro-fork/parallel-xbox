@@ -13,11 +13,12 @@
 #if (defined(__i386__) || defined(__x86_64__)) && (defined(__GNUC__) || defined(__clang__))
 #include <immintrin.h>
 #define GLO_HAVE_AVX2_SWAP
+#define GLO_HAVE_SSE2_SWAP
 #endif
-static bool portable;
+static bool portable,sse2;
 uint64_t cpu_features_get(void){
 #ifdef GLO_HAVE_AVX2_SWAP
- return !portable&&__builtin_cpu_supports("avx2")?RETRO_SIMD_AVX2:0;
+ return portable?0:(!sse2&&__builtin_cpu_supports("avx2")?RETRO_SIMD_AVX2:__builtin_cpu_supports("sse2")?RETRO_SIMD_SSE2:0);
 #else
  return 0;
 #endif
@@ -62,9 +63,13 @@ static void benchmark(void){unsigned widths[]={64,640,1920,6400},heights[]={64,4
  for(unsigned t=0;t<4;t++){
   unsigned width=widths[t],height=heights[t],stride=width*4;size_t bytes=(size_t)stride*height;
   uint8_t *image=malloc(bytes);assert(image);memset(image,0x3C,bytes);unsigned n=bytes<1024*1024?1000:100;
-  double a=monotonic_seconds();for(unsigned i=0;i<n;i++){old_flip(image,stride,stride,height);checksum+=image[i%bytes];}double b=monotonic_seconds();
-  for(unsigned i=0;i<n;i++){glo_flip_rows(image,stride,stride,height);checksum+=image[i%bytes];}double c=monotonic_seconds();
-  printf("%ux%u isolated flip: old %.3f us, in-place %.3f us per image\n",width,height,1e6*(b-a)/n,1e6*(c-b)/n);free(image);
+  double totals[2]={0};
+  for(unsigned round=0;round<8;round++)for(unsigned order=0;order<2;order++) {
+   unsigned variant=order^(round&1);double a=monotonic_seconds();
+   for(unsigned i=0;i<n;i++){if(variant)glo_flip_rows(image,stride,stride,height);else old_flip(image,stride,stride,height);checksum+=image[i%bytes];}
+   totals[variant]+=monotonic_seconds()-a;
+  }
+  printf("%ux%u isolated flip: old %.3f us, in-place %.3f us per image\n",width,height,1e6*totals[0]/n/8,1e6*totals[1]/n/8);free(image);
  }assert(checksum);
 }
-int main(int argc,char **argv){portable=getenv("GL_FLIP_PORTABLE")!=NULL||(argc>1&&!strcmp(argv[1],"portable"))||(argc>2&&!strcmp(argv[2],"portable"));printf("swap route=%s\n",cpu_features_get()&RETRO_SIMD_AVX2?"AVX2":"portable");if(argc>1&&!strcmp(argv[1],"bench"))benchmark();else correctness();return 0;}
+int main(int argc,char **argv){portable=getenv("GL_FLIP_PORTABLE")!=NULL||(argc>1&&!strcmp(argv[1],"portable"))||(argc>2&&!strcmp(argv[2],"portable"));sse2=(argc>1&&!strcmp(argv[1],"sse2"))||(argc>2&&!strcmp(argv[2],"sse2"));printf("swap route=%s\n",cpu_features_get()&RETRO_SIMD_AVX2?"AVX2":cpu_features_get()&RETRO_SIMD_SSE2?"SSE2":"portable");if(argc>1&&!strcmp(argv[1],"bench"))benchmark();else correctness();return 0;}

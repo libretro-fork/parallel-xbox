@@ -32,13 +32,14 @@
 #if (defined(__i386__) || defined(__x86_64__)) && (defined(__GNUC__) || defined(__clang__))
 #include <immintrin.h>
 #define GLO_HAVE_AVX2_SWAP
+#define GLO_HAVE_SSE2_SWAP
 #endif
 
 #include "gloffscreen.h"
 
 
-/* Keep the tuned libc copy path on CPUs without AVX2: a scalar swap
- * regresses large rows on some targets. The AVX2 path needs no row buffer. */
+/* Keep the tuned libc copy path on targets without an in-place vector
+ * swap: scalar swapping regresses large rows on some targets. */
 static void glo_flip_rows_portable(uint8_t *data, unsigned stride, size_t row_bytes,
                                    unsigned height)
 {
@@ -55,6 +56,51 @@ static void glo_flip_rows_portable(uint8_t *data, unsigned stride, size_t row_by
     }
     free(tmp);
 }
+
+#ifdef GLO_HAVE_SSE2_SWAP
+__attribute__((target("sse2")))
+static void glo_flip_rows_sse2(uint8_t *data, unsigned stride, size_t row_bytes,
+                              unsigned height)
+{
+    if (height < 2 || !row_bytes) {
+        return;
+    }
+    for (unsigned y = 0; y < height / 2; y++) {
+        uint8_t *top = data + (size_t)y * stride;
+        uint8_t *bottom = data + (size_t)(height - 1 - y) * stride;
+        size_t x = 0;
+        for (; row_bytes - x >= 64; x += 64) {
+            __m128i a = _mm_loadu_si128((const __m128i *)(top + x));
+            __m128i b = _mm_loadu_si128((const __m128i *)(bottom + x));
+            __m128i c = _mm_loadu_si128((const __m128i *)(top + x + 16));
+            __m128i d = _mm_loadu_si128((const __m128i *)(bottom + x + 16));
+            _mm_storeu_si128((__m128i *)(top + x), b);
+            _mm_storeu_si128((__m128i *)(bottom + x), a);
+            _mm_storeu_si128((__m128i *)(top + x + 16), d);
+            _mm_storeu_si128((__m128i *)(bottom + x + 16), c);
+            a = _mm_loadu_si128((const __m128i *)(top + x + 32));
+            b = _mm_loadu_si128((const __m128i *)(bottom + x + 32));
+            c = _mm_loadu_si128((const __m128i *)(top + x + 48));
+            d = _mm_loadu_si128((const __m128i *)(bottom + x + 48));
+            _mm_storeu_si128((__m128i *)(top + x + 32), b);
+            _mm_storeu_si128((__m128i *)(bottom + x + 32), a);
+            _mm_storeu_si128((__m128i *)(top + x + 48), d);
+            _mm_storeu_si128((__m128i *)(bottom + x + 48), c);
+        }
+        for (; row_bytes - x >= 16; x += 16) {
+            __m128i a = _mm_loadu_si128((const __m128i *)(top + x));
+            __m128i b = _mm_loadu_si128((const __m128i *)(bottom + x));
+            _mm_storeu_si128((__m128i *)(top + x), b);
+            _mm_storeu_si128((__m128i *)(bottom + x), a);
+        }
+        for (; x < row_bytes; x++) {
+            uint8_t a = top[x];
+            top[x] = bottom[x];
+            bottom[x] = a;
+        }
+    }
+}
+#endif
 
 #ifdef GLO_HAVE_AVX2_SWAP
 __attribute__((target("avx2")))
@@ -95,9 +141,18 @@ static void glo_flip_rows(uint8_t *data, unsigned stride, size_t row_bytes,
     if (height < 2 || !row_bytes) {
         return;
     }
+#if defined(GLO_HAVE_AVX2_SWAP) || defined(GLO_HAVE_SSE2_SWAP)
+    uint64_t features = cpu_features_get();
+#endif
 #ifdef GLO_HAVE_AVX2_SWAP
-    if (cpu_features_get() & RETRO_SIMD_AVX2) {
+    if (features & RETRO_SIMD_AVX2) {
         glo_flip_rows_avx2(data, stride, row_bytes, height);
+        return;
+    }
+#endif
+#ifdef GLO_HAVE_SSE2_SWAP
+    if (features & RETRO_SIMD_SSE2) {
+        glo_flip_rows_sse2(data, stride, row_bytes, height);
         return;
     }
 #endif

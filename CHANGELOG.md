@@ -1,5 +1,7 @@
 # Changelog of the libretro core
 
+- Flip GL client readback rows in place on SSE2 x86 CPUs without AVX2, removing the temporary-row allocation and extra row copy while retaining the fallback for other CPUs.
+
 - Defer maximum-size inline vertex arrays until an attribute first varies, avoiding sixteen startup allocation requests totaling about 128 MiB while reusing each array across later batches.
 
 - Upload only a few dirty page runs for large OpenGL vertex spans, retaining bulk uploads for dense/fragmented changes and private stale tracking when surfaces consume shared dirty bits.
