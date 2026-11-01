@@ -217,16 +217,9 @@ void pgraph_glsl_set_psh_state(PGRAPHState *pg, PshState *state)
 {
     state->window_clip_exclusive = pgraph_reg_r(pg, NV_PGRAPH_SETUPRASTER) &
                                    NV_PGRAPH_SETUPRASTER_WINDOWCLIPTYPE;
-    /* Only stage count, mux-bit selection and per-stage constants affect GLSL. */
-    state->combiner_control = pgraph_reg_r(pg, NV_PGRAPH_COMBINECTL) &
-        (0xFFu | ((PS_COMBINERCOUNT_MUX_MSB | PS_COMBINERCOUNT_UNIQUE_C0 |
-                   PS_COMBINERCOUNT_UNIQUE_C1) << 8));
-    /* Four five-bit texture modes affect the fragment program. */
-    state->shader_stage_program = pgraph_reg_r(pg, NV_PGRAPH_SHADERPROG) &
-        NV_PGRAPH_SHADERPROG_SHADER_FIELDS;
-    /* Three dot mappings and the stage 2/3 input selectors affect GLSL. */
-    state->other_stage_input = pgraph_reg_r(pg, NV_PGRAPH_SHADERCTL) &
-        NV_PGRAPH_SHADERCTL_SHADER_FIELDS;
+    state->combiner_control = pgraph_reg_r(pg, NV_PGRAPH_COMBINECTL);
+    state->shader_stage_program = pgraph_reg_r(pg, NV_PGRAPH_SHADERPROG);
+    state->other_stage_input = pgraph_reg_r(pg, NV_PGRAPH_SHADERCTL);
     state->final_inputs_0 = pgraph_reg_r(pg, NV_PGRAPH_COMBINESPECFOG0);
     state->final_inputs_1 = pgraph_reg_r(pg, NV_PGRAPH_COMBINESPECFOG1);
 
@@ -236,7 +229,9 @@ void pgraph_glsl_set_psh_state(PGRAPHState *pg, PshState *state)
     state->point_sprite = pgraph_reg_r(pg, NV_PGRAPH_SETUPRASTER) &
                           NV_PGRAPH_SETUPRASTER_POINTSMOOTHENABLE;
 
-    state->shadow_depth_func = SHADOW_DEPTH_FUNC_NEVER;
+    state->shadow_depth_func =
+        (enum PshShadowDepthFunc)GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_SHADOWCTL),
+                                          NV_PGRAPH_SHADOWCTL_SHADOW_ZFUNC);
     state->z_perspective = pgraph_reg_r(pg, NV_PGRAPH_CONTROL_0) &
                            NV_PGRAPH_CONTROL_0_Z_PERSPECTIVE_ENABLE;
 
@@ -261,18 +256,15 @@ void pgraph_glsl_set_psh_state(PGRAPHState *pg, PshState *state)
             pgraph_reg_r(pg, NV_PGRAPH_COMBINEALPHAO0 + i * 4);
     }
 
-    bool shadow_comparison = false;
     state->g8b8_mip_flags = 0;
     state->g8b8_mip_clamp_u = 0;
     state->g8b8_mip_clamp_v = 0;
     state->g8b8_mip_mirror = 0;
     for (int i = 0; i < 4; i++) {
         state->g8b8_signed[i] = 0;
-        unsigned mode = (state->shader_stage_program >> (i * 5)) & 31;
         for (int j = 0; j < 4; j++) {
-            /* Clip tests do not require an enabled texture sampler. */
-            state->compare_mode[i][j] = mode == PS_TEXTUREMODES_CLIPPLANE &&
-                ((pgraph_reg_r(pg, NV_PGRAPH_SHADERCLIPMODE) >> (4 * i + j)) & 1);
+            state->compare_mode[i][j] =
+                (pgraph_reg_r(pg, NV_PGRAPH_SHADERCLIPMODE) >> (4 * i + j)) & 1;
         }
 
         uint32_t ctl_0 = pgraph_reg_r(pg, NV_PGRAPH_TEXCTL0_0 + i * 4);
@@ -313,8 +305,6 @@ void pgraph_glsl_set_psh_state(PGRAPHState *pg, PshState *state)
         }
 
         state->shadow_map[i] = f.depth;
-        shadow_comparison |= state->shadow_map[i] &&
-            (mode == PS_TEXTUREMODES_PROJECT2D || mode == PS_TEXTUREMODES_PROJECT3D);
 
         uint32_t filter = pgraph_reg_r(pg, NV_PGRAPH_TEXFILTER0 + i * 4);
         unsigned int min_filter = GET_MASK(filter, NV_PGRAPH_TEXFILTER0_MIN);
@@ -323,10 +313,7 @@ void pgraph_glsl_set_psh_state(PGRAPHState *pg, PshState *state)
          * performing convolution. Just use it if specified for min (common AA
          * case).
          */
-        /* Only non-shadow PROJECT2D emits the convolution path. Keep unused
-         * kernel settings out of the shader key for all other paths. */
-        if (min_filter == NV_PGRAPH_TEXFILTER0_MIN_CONVOLUTION_2D_LOD0 &&
-            mode == PS_TEXTUREMODES_PROJECT2D && !state->shadow_map[i]) {
+        if (min_filter == NV_PGRAPH_TEXFILTER0_MIN_CONVOLUTION_2D_LOD0) {
             int k = GET_MASK(filter, NV_PGRAPH_TEXFILTER0_CONVOLUTION_KERNEL);
             assert(k == NV_PGRAPH_TEXFILTER0_CONVOLUTION_KERNEL_QUINCUNX ||
                    k == NV_PGRAPH_TEXFILTER0_CONVOLUTION_KERNEL_GAUSSIAN_3);
@@ -339,6 +326,7 @@ void pgraph_glsl_set_psh_state(PGRAPHState *pg, PshState *state)
          * sampler's computed LOD; mipmapped filtering decodes each mip's taps. */
         bool gb = color_format == NV097_SET_TEXTURE_FORMAT_COLOR_SZ_G8B8 ||
                   color_format == NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_G8B8;
+        unsigned mode = (state->shader_stage_program >> (i * 5)) & 31;
         unsigned mag_filter = GET_MASK(filter, NV_PGRAPH_TEXFILTER0_MAG);
         if (color_format == NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_DEPTH_Y16_FLOAT &&
             state->dim_tex[i] == 2 && !cubemap && pgraph_is_texture_enabled(pg, i)) {
@@ -485,13 +473,6 @@ void pgraph_glsl_set_psh_state(PGRAPHState *pg, PshState *state)
                 state->g8b8_mip_flags |= 1u << (i + 4);
             }
         }
-    }
-
-    /* The comparison register is irrelevant without a shadow lookup. */
-    if (shadow_comparison) {
-        state->shadow_depth_func =
-            (enum PshShadowDepthFunc)GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_SHADOWCTL),
-                                              NV_PGRAPH_SHADOWCTL_SHADOW_ZFUNC);
     }
 
     state->surface_zeta_format = pg->surface_shape.zeta_format;

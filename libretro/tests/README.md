@@ -2344,10 +2344,9 @@ RGBA8/RGB565/cube/volume/F16 controls. Q=1 and ordinary controls must remain exa
 parent pixels; other convolution pixels follow the scalar two-column kernel.
 Use `--windows-paths` for a Windows harness through WSL.
 
-`test-convolution-state.py CHECKOUT [--cc CC]` checks 10,752 kernel/filter/stage
-keys across all 32 mode encodings and both shadow states. Active convolution
-retains its enum revision bit; ordinary nonconvolution keys and the enum size
-remain unchanged. Unused kernel settings collapse to disabled. The
+`test-convolution-state.py CHECKOUT [--cc CC]` checks 168 kernel/filter/stage keys.
+Only convolution enum values gain a revision bit to refresh cached programs;
+disabled convolution and other stage bytes keep their keys and enum size. The
 existing Quincunx Gaussian fallback and min-only convolution selection remain
 separate limitations; these tests establish projected kernel spacing.
 
@@ -2623,34 +2622,10 @@ Static list transitions additionally have exhaustive controlled-model coverage. 
 [Vulkan attribute description rules](https://docs.vulkan.org/refpages/latest/refpages/source/VkVertexInputAttributeDescription.html).
 Hardware cache-miss and game-latency effects are unmeasured.
 
-The state builder clears convolution kernels for shadow sampling and texture
-modes other than PROJECT2D, where the generator ignores them. Active non-shadow
-PROJECT2D kernels retain their existing keys, including the convolution revision.
-The common-helper generator fixture additionally compares 6,912 source pairs
-per generator, varying disabled/Quincunx/Gaussian kernels independently on unused
-stages, including mixed active/unused programs. Every source byte must match.
-This removes redundant shader key distinctions without changing generated code,
-cache formats, texture sampling, CPU/GPU transfers or synchronization. Actual
-game cache-hit and stutter effects are unmeasured.
-
 
 `test-qht-inline.py CHECKOUT [CC]` exercises the production inline QHT reader and generic entry point with native retro atomics. It covers hash collisions, chained buckets, null pointers, absent keys, map replacement, forced sequence retries and 200,000 concurrent reads. Set `QHT_SANITIZE=1` for address/undefined behavior sanitizers. RCU object lifetime is modeled by retaining every map, bucket and item until readers finish.
 
 Seed batch coverage also checks `pgraph_seed_read_first`: requests are tried in order, only the first nonempty valid result is populated, and every other output is cleared. The 480 source/availability cases compare state-first/module-fallback bytes/counts with legacy combined reads, including missing, stale, malformed and failed-inflate inputs. Reused outputs are poisoned to catch skipped initialization. An independent valid-input check verifies one fewer materialized array while retaining one mapping/inflation and exact local-first order. Bundled dictionary and existing combined/ownership tests remain covered.
-
-`test-clipplane-state.py CHECKOUT [--cc CC]` checks the production clip-key
-selection over 4,096 stage/mode/mask/sampler-enable combinations. All four
-comparison bits remain significant for CLIPPLANE, even with sampling disabled;
-other modes clear those key fields and perform no clip-register reads. Other
-state bytes stay intact, including poisoned comparisons for neighboring stages.
-
-The common-helper full-generator fixture also checks 18,528 byte-identical
-unused-clip source pairs per generator, varying each bit and the all-set mask.
-Another 128 active clip programs cover all masks on all four stages for GL and
-Vulkan; nonzero masks must change the source, and 64 Vulkan programs compile.
-Generated shader and SPIR-V bytes remain unchanged for the existing corpus.
-No cache format, runtime diagnostics, GPU transfers or synchronization change.
-Game cache-hit, frame-time and stutter effects remain unmeasured.
 
 The surface-blend fixture also extracts the production pipeline-cache entry
 initializer. A poisoned allocation/recycled entry with dynamic line width set
@@ -2668,61 +2643,9 @@ game-latency effects are unmeasured.
 
 `test-sse-ordered-compare.py CHECKOUT [CC]` compares the four production COMIS helpers with real SoftFloat in both optimized and generic configurations. Each configuration covers 1,280,000 cases: float32/64 boundary and random pairs, signed zero, infinities, signaling/quiet NaNs, subnormals, 16 guest rounding/flushing modes, sticky exception flags, operand aliasing and source preservation. On x86-64 it also changes host MXCSR and checks ordinary inputs leave it unchanged. Instrumented fallback counts require zero general comparison calls for ordinary inputs and one for exceptional inputs.
 
-`test-shadow-function-state.py CHECKOUT [--cc CC]` checks 65,536 combinations
-of mixed stage modes, sampler enables, shadow flags and comparison functions.
-The shared fragment builder reads SHADOWCTL once when an enabled PROJECT2D or
-PROJECT3D shadow stage needs it; otherwise the key uses NEVER and omits the
-register read. Other state bytes remain unchanged. Raw shadow flags on disabled
-stages must not enable a comparison-register read.
-
-The common-helper fixture adds 6,048 byte-identical unused-shadow-function source
-comparisons per generator. Another 256 active programs cover all eight functions,
-all four stages, PROJECT2D/PROJECT3D and fixed/F16 depth for GL and Vulkan; 128
-Vulkan variants compile. Existing source/module bytes remain unchanged, as do
-cache formats and active shadow keys. No runtime diagnostics, GPU transfers or
-waits are added. Game cache-hit and frame-time effects are unmeasured.
-
 The seed key fixture now compares production construction directly with the original unconditional three-slot clear. It checks all active key bytes and hashes; when geometry is absent, its kind stays zero and all payload bytes retain poison. All four production callers skip that absent payload. Geometry-enabled construction and the complete module-key collection oracle remain covered.
 
 LRU visits now stop after the entry-time active count, even when callbacks evict their current node. The order/callback model still checks 30,000 operations, and the membership fixture covers every occupancy across 8,200 cases. A protected free-node suffix proves the visitor does not dereference it after the last active callback, including current-node eviction; the parent implementation faults on that read as expected. LRU_VISIT_SOURCE, LRU_VISIT_CFLAGS, LRU_VISIT_BINARY and LRU_VISIT_SKIP_RUN support parent/native comparisons. Timings include five occupancies in a 1,024-node pool and are synthetic, not game FPS measurements.
-
-`test-shaderctl-state.py CHECKOUT [--cc CC]` checks 65,602 production SHADERCTL
-SHADERCTL/SHADERPROG/COMBINECTL key triples: zero/all-set, each bit and its
-inverse, and deterministic random words. Its independent oracle rebuilds the
-three dot-mapping nibbles, two stage-input nibbles, four five-bit texture modes,
-eight-bit combiner count and the MUX/C0/C1 flags decoded by the generator; other
-state bytes stay intact. The state builder keeps `0x00FF0FFF`, `0x000FFFFF` and
-`0x000111FF`, respectively. The production uniform assignment also runs for each
-word and must retain the full unmasked COMBINECTL value.
-
-The common-helper full-generator fixture adds 10,036 byte-identical source
-comparisons per generator, flipping each ignored bit and their combined mask.
-Another 20 active stage-input programs exercise stage 2/3 selectors with AR/GB
-dependent sampling; changing live selectors must change source, and 10 Vulkan
-variants compile. Existing dot-mapping/dependency regressions remain covered.
-Existing shader/module bytes and cache formats remain unchanged. No runtime
-diagnostics, GPU transfers or synchronization are added. Game cache-hit and
-frame-time effects are unmeasured.
-
-The common-helper fixture additionally flips each ignored SHADERPROG bit and
-their combined mask, checking 10,036 byte-identical source pairs per generator.
-All live texture-mode fields remain significant in the key, including mode
-encodings not currently implemented. Existing shadow, clip, convolution, cube,
-signed-texture and dot-dependency cases remain covered. Stored states keep their
-layout and remain readable; old noncanonical keys can retain redundant entries,
-but their shader meaning does not change. No cache-format invalidation, runtime
-diagnostics, GPU transfers or synchronization are introduced. Game cache-hit and
-frame-time effects remain unmeasured.
-
-The common-helper fixture adds 16,984 byte-identical ignored-COMBINECTL source
-comparisons per generator. Another 144 programs exercise stage counts 0 through
-8 and every MUX/per-stage C0/C1 flag combination for GL and Vulkan, including
-3,168 ignored-bit source comparisons and 72 Vulkan compilations. Live flag
-changes must affect generated source whenever the program uses them. Texture,
-shadow and clipping regressions remain covered. Existing corpus source/module
-bytes and cache formats remain unchanged. No runtime diagnostics, GPU transfers
-or synchronization are added. Gameplay cache-hit/frame-time effects remain
-unmeasured.
 
 ### Interruptible idle report retirement
 
@@ -2753,21 +2676,6 @@ The native GPU ROM at frame 4700 requests a 48,000-sample triangle report,
 then a clear and an empty report. Offsets 0x300100 and 0x300120 retain timestamps,
 counts and completion words for both renderer checks. GL GET_REPORT already
 flushes closed queries; idle polls add no repeated glFlush calls.
-
-`test-texture-program-dirty.py CHECKOUT [--cc CC]` extracts the complete shared
-shader dirty check and its helpers. Its 32,768 schedules cover each bit of
-SHADERCTL/SHADERPROG, dirty/clean flags, randomized bound fields, restored live
-writes, and static/dynamic siblings. Ignored writes and restored values must
-reuse the bound shader; live changes must invalidate it. The dirty map stays
-unchanged, clean flags cause no added register reads, and retained unconditional
-invalidators and program-data changes still force rebuilding. Old noncanonical
-seed states conservatively rebuild when those registers are dirty.
-
-Key construction and dirty checking share the same two field masks. No new
-snapshot slots, state fields, allocations, GPU queries, transfers or waits are
-introduced. Both backends use the shared check; dynamic combiner uniform reads
-remain unchanged. Shader source/cache formats and struct layouts are unchanged.
-Gameplay cache-hit and frame-time effects remain unmeasured.
 
 The guarded LRU fixture also flushes one early-bin entry with later bin pages inaccessible. It verifies list/count updates complete before returning; the parent faults on a later-bin read. Existing 30,000 exact order/callback operations include flushes and blocked evictions. BENCH modes 5-8 time refill+flush cycles for one early/late-bin entry and 512/16,384 distributed entries; these are synthetic cycles, not isolated flush or game FPS measurements.
 
@@ -2809,3 +2717,18 @@ partially executed draw setup remain a separate resumable-method task.
 Win64 draw-end stack usage remains 96 bytes and flip-readiness stack usage
 64 bytes. PGRAPHState/PGRAPHVkState/renderer-interface sizes remain
 4,295,312/5,845,344/232 bytes. No hardware cache-miss reduction is established.
+
+`test-fragment-register-keys.py CHECKOUT [--cc CC]` protects existing shader
+cache identities across 65,602 register triples. Production assignments must
+preserve full SHADERCTL, SHADERPROG and COMBINECTL words; the dynamic combiner
+uniform assignment must also preserve the raw guest word. The shadow function
+must retain the guest three-bit value even when unused. This deliberately
+keeps ignored bits in keys until saved states and disk-cache compatibility can
+be handled together. The experimental key canonicalization and masked dirty
+check have been rolled back after a user-reported compilation-stutter regression.
+Image equivalence alone does not validate shader-cache reuse or frame pacing.
+
+The full-generator ignored-field equivalence and active combiner/texture/shadow
+fixtures remain in place. They protect rendering correctness, while the raw-key
+fixture separately protects compatibility; equivalent shader source does not
+imply interchangeable binary cache keys.

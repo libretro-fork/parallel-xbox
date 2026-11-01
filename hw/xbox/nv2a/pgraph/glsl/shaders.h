@@ -39,9 +39,6 @@ ShaderState pgraph_glsl_get_shader_state(PGRAPHState *pg);
  * fields are read when a shader state is built: a write landing outside
  * them cannot change the generated code. These are exactly the fields
  * the generators read -- keep them in step with vsh.c/geom.c/psh.c. */
-#define NV_PGRAPH_SHADERCTL_SHADER_FIELDS  0x00FF0FFFu
-#define NV_PGRAPH_SHADERPROG_SHADER_FIELDS 0x000FFFFFu
-
 #define NV_PGRAPH_SETUPRASTER_SHADER_FIELDS       \
     (NV_PGRAPH_SETUPRASTER_FRONTFACEMODE |        \
      NV_PGRAPH_SETUPRASTER_BACKFACEMODE |         \

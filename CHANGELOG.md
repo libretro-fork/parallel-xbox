@@ -1,5 +1,7 @@
 # Changelog of the libretro core
 
+- Roll back the recent fragment-key canonicalization and texture-program dirty-check optimizations after reported shader-compilation stutter. Restore existing cached/seeded shader identities while retaining earlier rendering fixes and helper-emission improvements.
+
 - Defer shader-seed merge payload copies until a new record requires a write. Keep small borrowed references during deduplication, then copy accepted records into one exact-sized merge buffer; unchanged seeds avoid that payload allocation entirely. Preserve order, caps and unmap-before-write ownership.
 
 
