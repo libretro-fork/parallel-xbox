@@ -198,6 +198,17 @@ same image with mip filtering. It checks each backend's existing behavior;
 it does not require unsupported nonmip-chain sampling to agree across APIs.
 Use `--assembler yasm` when nasm is unavailable.
 
+`test-g8b8-single-level.py CHECKOUT PARENT CANDIDATE HARNESS SCRATCH` checks
+one-level swizzled G8B8 images requesting mip-filter modes 3 through 6.
+It covers mixed min/mag, all wrap/edge/mirror/border pairs, LOD bias,
+Force LOD0, border colors and address-only transitions from an excluded mode.
+With `--custom-border-colors`, each backend checks 17,280 scalar cases
+and 3,072 exact parent pixels for matching filters and existing mip chains.
+The custom-color flag requires Vulkan custom-border-color support.
+`build-bump-probe.py --single-level` declares one mip without changing the
+underlying texels; `--prime-address` first draws with legacy clamp so that
+a later address-only write must invalidate the shader key.
+
 `test-g8b8-base-border.py CHECKOUT PARENT CANDIDATE HARNESS SCRATCH` checks
 G8B8 constant borders when mip chains are clamped to zero, with guest
 `--base-only` clamps and Force Texture LOD0. `--mode matching`, `mixed` or

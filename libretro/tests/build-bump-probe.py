@@ -34,6 +34,10 @@ def main():
     parser.add_argument("--mip-address-v", choices=("wrap", "edge", "mirror", "border"))
     parser.add_argument("--base-only", action="store_true",
                         help="program guest maximum mip zero with --mip-filter")
+    parser.add_argument("--single-level", action="store_true",
+                        help="declare one swizzled mip while retaining a mip-filter request")
+    parser.add_argument("--prime-address", action="store_true",
+                        help="prime a one-level mixed shader with legacy clamp before drawing")
     parser.add_argument("--border-color", type=lambda s: int(s, 0), default=0,
                         help="ARGB sampler border with an explicit border address")
     parser.add_argument("--min-lod", type=int, choices=range(7), default=0,
@@ -51,6 +55,8 @@ def main():
         parser.error("--min-lod requires --mip-filter")
     if args.base_only and not args.mip_filter:
         parser.error("--base-only requires --mip-filter")
+    if args.single_level and (not args.mip_filter or args.min_lod):
+        parser.error("--single-level requires --mip-filter and minimum zero")
     if args.mip_base_size != 4 and not args.mip_filter:
         parser.error("--mip-base-size requires --mip-filter")
     if args.min_lod >= 3 and args.mip_base_size < 1 << (args.min_lod + 1):
@@ -62,6 +68,8 @@ def main():
     if args.mip_mixed and not args.mip_filter:
         parser.error("--mip-mixed requires --mip-filter")
     explicit_address = args.mip_address_u is not None or args.mip_address_v is not None
+    if args.prime_address and not (args.single_level and args.mip_mixed and explicit_address):
+        parser.error("--prime-address requires a single-level mixed probe with explicit addresses")
     if explicit_address and (args.mip_clamp or args.mip_clamp_axis):
         parser.error("explicit addresses cannot be combined with mip clamp options")
     if args.mip_base_size >= 16 and not (args.mip_clamp or args.mip_clamp_axis):
@@ -106,6 +114,10 @@ def main():
             defines.append("-DBUMP_FILTER_MIXED_PROBE")
             defines.append(f"-DBUMP_MIXED_BIAS={int(args.lod_bias * 256) & 0x1fff}")
         if args.mip_filter:
+            if args.single_level:
+                defines.append(f"-DBUMP_SINGLE_MIP_LOG={args.mip_base_size.bit_length() - 1}")
+            if args.prime_address:
+                defines.append("-DBUMP_PRIME_SINGLE_ADDRESS")
             if args.base_only:
                 defines.append("-DBUMP_MAX_LOD_ZERO")
             if args.mip_base_size >= 16:
@@ -162,7 +174,7 @@ def main():
         writer.writerow(["id", "layout", "mode", "axis", "signed_channels", "filter",
                          "coordinate", "result_address", "lod_bias", "mip_filter",
                          "max_lod", "wrap_period", "mag_filter", "address_mode",
-                         "sample_u", "sample_v", "min_lod", "sampler_transition", "base_size", "border_color"])
+                         "sample_u", "sample_v", "min_lod", "sampler_transition", "base_size", "border_color", "mip_count"])
         for i in range(192):
             if args.luminance_profile:
                 flags = (i // 6) % 16
@@ -190,7 +202,7 @@ def main():
                     else:
                         u, v = 1.25 - 4 * (i // 96), 0
                         maximum = 1 if (i // 3) % 2 else 2
-                    if args.base_only:
+                    if args.base_only or args.single_level:
                         maximum = 0
                     writer.writerow([i, "swizzled", "mixed_mip_color" if args.mip_mixed else "mip_color", "BG", channels,
                                      {3: "point_nearest_mip", 4: "linear_nearest_mip",
@@ -199,7 +211,8 @@ def main():
                                      f"0x{0x300204 + i * 8:08x}", args.lod_bias,
                                      args.mip_filter, maximum, 0 if axis_data else -(i // 96), mag,
                                      address_mode, u, v, args.min_lod, args.sampler_transition or "",
-                                     args.mip_base_size, f"0x{args.border_color:08x}"])
+                                     args.mip_base_size, f"0x{args.border_color:08x}",
+                                     1 if args.single_level else args.mip_base_size.bit_length()])
                     continue
                 writer.writerow([i, ("linear", "swizzled")[i // 96],
                                  "mixed_color" if args.mixed else "color", "BG", channels,

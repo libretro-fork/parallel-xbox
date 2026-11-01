@@ -20,6 +20,8 @@ legacy = legacy.replace("uint8_t g8b8_mip_clamp_u;", "").replace("uint8_t g8b8_m
 legacy = legacy.replace("uint8_t g8b8_mip_mirror;", "")
 pixel_source = (repo / "hw/xbox/nv2a/pgraph/glsl/psh.c").read_text()
 mip_address = re.search(r"^static bool g8b8_mip_address_supported\(.*?^\}", pixel_source, re.S | re.M).group()
+single_filter = re.search(r"^static unsigned g8b8_single_mip_min_filter\(.*?^\}", pixel_source, re.S | re.M).group()
+single_selection = re.search(r"        /\* A one-level swizzled image.*?^        \}", pixel_source, re.S | re.M).group()
 encoding = re.search(r"^            if \(signs.*?^            \}$", pixel_source, re.S | re.M).group()
 lower_selection = re.search(r"^            if \(mip_filter && mip_min_lod\) \{.*?^            \}", pixel_source, re.S | re.M).group()
 code = r'''
@@ -41,12 +43,14 @@ _Static_assert(offsetof(PshState, surface_zeta_format) == offsetof(LegacyPshStat
 _Static_assert(offsetof(PshState, g8b8_mip_mirror) < offsetof(LegacyPshState, surface_zeta_format), "address flags exceed old padding");
 static unsigned ctz32(uint32_t x) { return __builtin_ctz(x); }
 #include "hw/xbox/nv2a/nv2a_regs.h"
-typedef struct { uint32_t fmt[4], filter[4]; bool dirty[4]; } PGRAPHState;
+typedef struct { uint32_t fmt[4], filter[4], address[4]; bool dirty[4]; } PGRAPHState;
 static bool pgraph_is_reg_dirty(PGRAPHState *pg, unsigned reg) {
     assert(reg >= NV_PGRAPH_TEXADDRESS0 && reg < NV_PGRAPH_TEXADDRESS0 + 16);
     return pg->dirty[(reg - NV_PGRAPH_TEXADDRESS0) / 4];
 }
 static uint32_t pgraph_reg_r(PGRAPHState *pg, unsigned reg) {
+    if (reg >= NV_PGRAPH_TEXADDRESS0 && reg < NV_PGRAPH_TEXADDRESS0 + 16)
+        return pg->address[(reg - NV_PGRAPH_TEXADDRESS0) / 4];
     if (reg >= NV_PGRAPH_TEXFMT0 && reg < NV_PGRAPH_TEXFMT0 + 16)
         return pg->fmt[(reg - NV_PGRAPH_TEXFMT0) / 4];
     assert(reg >= NV_PGRAPH_TEXFILTER0 && reg < NV_PGRAPH_TEXFILTER0 + 16);
@@ -54,6 +58,18 @@ static uint32_t pgraph_reg_r(PGRAPHState *pg, unsigned reg) {
 }
 /* MASKS */
 /* PRODUCTION */
+static unsigned normalize_single(unsigned color_format, bool cubemap,
+                                  unsigned dim, unsigned levels, unsigned filter,
+                                  unsigned u, unsigned v, int i) {
+    PGRAPHState value = {0}, *pg = &value;
+    PshState key = {0}, *state = &key;
+    state->dim_tex[i] = dim;
+    pg->address[i] = u | v << 8;
+    uint32_t tex_fmt = levels << 16;
+    unsigned min_filter = filter;
+    /* SINGLE_SELECTION */
+    return min_filter;
+}
 static PshState encode_signed_g8b8(unsigned signs, unsigned min_filter,
                                  unsigned mag_filter, bool mip_filter,
                                  unsigned address_u, unsigned address_v,
@@ -84,6 +100,36 @@ static PshState encode_signed_g8b8(unsigned signs, unsigned min_filter,
     return result;
 }
 int main(void) {
+    unsigned single_cases = 0, single_keys = 0;
+    for (unsigned stage = 0; stage < 4; stage++)
+    for (unsigned format = 0; format < 2; format++)
+    for (unsigned cube = 0; cube < 2; cube++)
+    for (unsigned dim = 1; dim <= 3; dim++)
+    for (unsigned levels = 0; levels < 4; levels++)
+    for (unsigned filter = 0; filter < 16; filter++)
+    for (unsigned u = 0; u < 8; u++) for (unsigned v = 0; v < 8; v++) {
+        unsigned color = format ? NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_G8B8 :
+                                  NV097_SET_TEXTURE_FORMAT_COLOR_SZ_G8B8;
+        bool eligible = !format && !cube && dim == 2 && levels == 1 &&
+                        filter >= 3 && filter <= 6 && u >= 1 && u <= 4 && v >= 1 && v <= 4;
+        unsigned expected = eligible ? (filter & 1 ? 1 : 2) : filter;
+        assert(normalize_single(color, cube, dim, levels, filter, u, v, stage) == expected);
+        single_cases++;
+    }
+    for (unsigned stage = 0; stage < 4; stage++)
+    for (unsigned signs = 0; signs < 16; signs++)
+    for (unsigned filter = 3; filter <= 6; filter++)
+    for (unsigned mag = 1; mag <= 2; mag++)
+    for (unsigned u = 0; u < 4; u++) for (unsigned v = 0; v < 4; v++)
+    for (unsigned others = 0; others < 2; others++) {
+        PshState a = encode_signed_g8b8(signs, g8b8_single_mip_min_filter(filter),
+                                       mag, false, u, v, false, others, stage, 0);
+        PshState b = encode_signed_g8b8(signs, filter & 1 ? 1 : 2,
+                                       mag, false, u, v, false, others, stage, 0);
+        assert(!memcmp(&a, &b, sizeof(a)));single_keys++;
+    }
+    printf("PASS: %u one-level filter eligibility cases and %u existing-key aliases\n",
+           single_cases, single_keys);
     unsigned mip_addresses = 0;
     for (unsigned u = 0; u < 8; u++)
     for (unsigned v = 0; v < 8; v++)
@@ -113,6 +159,25 @@ int main(void) {
         assert(!signed_g8b8_address_dirty(&pg, (slot + 1) % 4));
         cases++;
     }
+    unsigned single_dirty = 0;
+    for (unsigned stage = 0; stage < 4; stage++)
+    for (unsigned dim = 0; dim < 4; dim++)
+    for (unsigned cube = 0; cube < 2; cube++)
+    for (unsigned min = 0; min < 16; min++)
+    for (unsigned mag = 0; mag < 16; mag++)
+    for (unsigned signs = 0; signs < 16; signs++)
+    for (unsigned dirty = 0; dirty < 2; dirty++) {
+        PGRAPHState pg = {0};
+        pg.fmt[stage] = 0x28u << 8 | 1u << 16 | dim << 6 | cube << 2;
+        pg.filter[stage] = signs << 28 | min << 16 | mag << 24;
+        pg.dirty[stage] = dirty;
+        bool mixed = ((min == 3 || min == 5) && mag == 2) ||
+                     ((min == 4 || min == 6) && mag == 1);
+        assert(signed_g8b8_address_dirty(&pg, stage) ==
+               (dirty && signs && dim == 2 && !cube && mixed));
+        single_dirty++;
+    }
+    printf("PASS: %u one-level address invalidation cases\n", single_dirty);
     const uint32_t filter_fields[] = {
         NV_PGRAPH_TEXFILTER0_MAG, NV_PGRAPH_TEXFILTER0_MIN,
         NV_PGRAPH_TEXFILTER0_ASIGNED, NV_PGRAPH_TEXFILTER0_RSIGNED,
@@ -241,7 +306,7 @@ int main(void) {
     printf("PASS: %u signed-G8B8 address invalidation cases and shader field coverage\n", cases);
     printf("PASS: %u base-only shader cache canonicalization cases\n", canonical);
 }
-'''.replace("/* PRODUCTION */", function + "\n" + mip_address).replace("/* MASKS */", masks).replace("/* STATE */", state + "\n" + legacy + '\n#include "hw/xbox/nv2a/pgraph/glsl/g8b8-lod.h"').replace("/* ENCODING */", encoding).replace("/* LOWER_SELECTION */", lower_selection)
+'''.replace("/* PRODUCTION */", function + "\n" + mip_address + "\n" + single_filter).replace("/* SINGLE_SELECTION */", single_selection).replace("/* MASKS */", masks).replace("/* STATE */", state + "\n" + legacy + '\n#include "hw/xbox/nv2a/pgraph/glsl/g8b8-lod.h"').replace("/* ENCODING */", encoding).replace("/* LOWER_SELECTION */", lower_selection)
 with tempfile.TemporaryDirectory(prefix="g8b8-state-") as folder:
     source = Path(folder) / "test.c"
     binary = Path(folder) / "test"

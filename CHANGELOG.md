@@ -1,5 +1,7 @@
 # Changelog of the libretro core
 
+- Fixed signed G8B8 bump filtering for one-level textures requesting mip filters with different minification and magnification modes, including address-only changes.
+
 - Update worker-module lifetime tests to exercise the combined module/parameter allocation path rather than the removed per-layout destructor.
 
 - Cache recent Vulkan pipeline-library lookup indices in fixed renderer storage, avoiding repeated full-array scans without per-lookup allocations or pointers invalidated by array growth.

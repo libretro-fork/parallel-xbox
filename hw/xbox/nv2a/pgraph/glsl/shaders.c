@@ -74,11 +74,27 @@ static bool signed_g8b8_address_dirty(PGRAPHState *pg, int i)
     }
     uint32_t fmt = pgraph_reg_r(pg, NV_PGRAPH_TEXFMT0 + i * 4);
     uint32_t filter = pgraph_reg_r(pg, NV_PGRAPH_TEXFILTER0 + i * 4);
-    return GET_MASK(fmt, NV_PGRAPH_TEXFMT0_COLOR) ==
-               NV097_SET_TEXTURE_FORMAT_COLOR_SZ_G8B8 &&
-           GET_MASK(fmt, NV_PGRAPH_TEXFMT0_MIPMAP_LEVELS) > 1 &&
-           (filter & (NV_PGRAPH_TEXFILTER0_ASIGNED | NV_PGRAPH_TEXFILTER0_RSIGNED |
-                      NV_PGRAPH_TEXFILTER0_GSIGNED | NV_PGRAPH_TEXFILTER0_BSIGNED));
+    if (GET_MASK(fmt, NV_PGRAPH_TEXFMT0_COLOR) !=
+            NV097_SET_TEXTURE_FORMAT_COLOR_SZ_G8B8 ||
+        !(filter & (NV_PGRAPH_TEXFILTER0_ASIGNED | NV_PGRAPH_TEXFILTER0_RSIGNED |
+                    NV_PGRAPH_TEXFILTER0_GSIGNED | NV_PGRAPH_TEXFILTER0_BSIGNED))) {
+        return false;
+    }
+    unsigned levels = GET_MASK(fmt, NV_PGRAPH_TEXFMT0_MIPMAP_LEVELS);
+    if (levels > 1) {
+        return true;
+    }
+    unsigned min = GET_MASK(filter, NV_PGRAPH_TEXFILTER0_MIN);
+    unsigned mag = GET_MASK(filter, NV_PGRAPH_TEXFILTER0_MAG);
+    /* One-level mixed filters also depend on the supported address modes. */
+    return levels == 1 && !(fmt & NV_PGRAPH_TEXFMT0_CUBEMAPENABLE) &&
+           GET_MASK(fmt, NV_PGRAPH_TEXFMT0_DIMENSIONALITY) == 2 &&
+           ((min == NV_PGRAPH_TEXFILTER0_MIN_BOX_NEARESTLOD ||
+             min == NV_PGRAPH_TEXFILTER0_MIN_BOX_TENT_LOD) ?
+                mag == 2 :
+            (min == NV_PGRAPH_TEXFILTER0_MIN_TENT_NEARESTLOD ||
+             min == NV_PGRAPH_TEXFILTER0_MIN_TENT_TENT_LOD) &&
+                mag == 1);
 }
 
 bool pgraph_glsl_check_shader_state_dirty(PGRAPHState *pg,

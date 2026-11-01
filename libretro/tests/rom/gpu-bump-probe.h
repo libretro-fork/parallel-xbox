@@ -332,7 +332,9 @@ static void bump_filter_probe(void)
                1u | (2u << 4) | (1u << 3) | (format << 8) |
                (1u << 16) | (1u << 20) | (1u << 24));
         method(NV097_SET_TEXTURE_CONTROL1, 4u << 16);
-#ifdef BUMP_FILTER_CLAMP_PROBE
+#ifdef BUMP_PRIME_SINGLE_ADDRESS
+        method(NV097_SET_TEXTURE_ADDRESS, 0x00050505u);
+#elif defined(BUMP_FILTER_CLAMP_PROBE)
         method(NV097_SET_TEXTURE_ADDRESS, BUMP_CLAMP_ADDRESS);
 #else
         method(NV097_SET_TEXTURE_ADDRESS, 0x00010101u); /* wrap: AF-eligible */
@@ -357,6 +359,11 @@ static void bump_filter_probe(void)
 #endif
 #ifdef BUMP_MAX_LOD_ZERO
         method(NV097_SET_TEXTURE_CONTROL0, (1u << 30) | (BUMP_MIN_LOD << 18));
+#endif
+#ifdef BUMP_SINGLE_MIP_LOG
+        method(NV097_SET_TEXTURE_FORMAT,
+               1u | (2u << 4) | (1u << 3) | (format << 8) |
+               (1u << 16) | (BUMP_SINGLE_MIP_LOG << 20) | (BUMP_SINGLE_MIP_LOG << 24));
 #endif
         method(NV097_SET_TEXTURE_FILTER,
 #ifdef BUMP_FILTER_MIP_PROBE
@@ -404,6 +411,18 @@ static void bump_filter_probe(void)
         method(NV097_SET_COMBINER_SPECULAR_FOG_CW1, 0x00001800u);
 #endif
 #ifdef BUMP_FILTER_MIP_PROBE
+#ifdef BUMP_PRIME_SINGLE_ADDRESS
+        /* Bind the excluded legacy-clamp key without touching the sampled
+         * pixel, then cross the address-only eligibility boundary. */
+        method(NV097_SET_VERTEX_DATA_ARRAY_FORMAT + 9 * 4, 2u | (2u << 4));
+        method(NV097_SET_BEGIN_END, 5);
+        push(0x40000000u | (18u << 18) | NV097_INLINE_ARRAY);
+        for (u32 vertex = 0; vertex < 3; vertex++) {
+            push(0); push(0); push(0); push(0x3f800000u); push(0); push(0);
+        }
+        method(NV097_SET_BEGIN_END, 0);
+        method(NV097_SET_TEXTURE_ADDRESS, BUMP_CLAMP_ADDRESS);
+#endif
 #ifdef BUMP_SAMPLER_TRANSITION
         u32 mip_sampler = (BUMP_MIP_FILTER << 16) | (BUMP_MIP_MAG << 24) |
             BUMP_MIXED_BIAS | ((flags & 1) ? 0x80000000u : 0) |
