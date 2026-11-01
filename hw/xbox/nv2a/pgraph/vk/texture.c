@@ -32,6 +32,7 @@
 #include "data/segaboot_logo.rgba.h"
 #include "qemu/lru.h"
 #include "renderer.h"
+#include "libretro/dsp-ownership.h"
 #include "hw/xbox/nv2a/pgraph/vram-ranges.h"
 #include "ui/xemu-settings.h"
 
@@ -745,6 +746,7 @@ static void upload_texture_image(PGRAPHState *pg, int texture_idx,
                 level->source == LEVEL_UNSWIZZLED ?
                     &unswizzled_regions[num_unswizzled_regions++] :
                     &regions[num_regions++];
+            if(level->source==LEVEL_VRAM) lr_gpu_ram_claim((uintptr_t)cmd,level->offset,level->size);
             *region = texture_level_copy(level, layer_idx, level_idx);
         }
     }

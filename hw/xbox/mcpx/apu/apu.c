@@ -21,6 +21,7 @@
 
 #include "apu_int.h"
 #include "monitor.h"
+#include "libretro/dsp-ownership.h"
 
 MCPXAPUState *g_state; /* for monitor.c */
 
@@ -46,6 +47,7 @@ static void update_irq(MCPXAPUState *d)
 
 static uint64_t mcpx_apu_read(void *opaque, hwaddr addr, unsigned int size)
 {
+    lr_dsp_ownership_quiesce();
     MCPXAPUState *d = opaque;
 
     uint64_t r = 0;
@@ -67,6 +69,7 @@ static uint64_t mcpx_apu_read(void *opaque, hwaddr addr, unsigned int size)
 static void mcpx_apu_write(void *opaque, hwaddr addr, uint64_t val,
                            unsigned int size)
 {
+    lr_dsp_ownership_quiesce();
     MCPXAPUState *d = opaque;
 
     trace_mcpx_apu_reg_write(addr, size, val);
@@ -110,15 +113,16 @@ static void se_frame(MCPXAPUState *d)
 {
     mcpx_apu_update_dsp_preference(d);
 
-    /* One owner fills and consumes this tick's mixbins in place. */
+    /* EP can run while VP fills the CPU-owned mix buffer. GP consumes
+     * it inline; EP never borrows this input. */
     int64_t (*mixbins)[NUM_SAMPLES_PER_FRAME] = mcpx_apu_dsp_mixbins(d);
 
     memset(mixbins, 0, sizeof(int64_t[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME]));
     mcpx_apu_vp_frame(d, mixbins);
     mcpx_apu_dsp_post(d, mixbins);
 
-    /* The inline DSP tick has completed every live guest-RAM DMA before
-     * the vCPU can change its scratch pages or scatter/gather tables. */
+    /* Inline ticks finish DMA here. The private worker instead retains
+     * page ownership until completion; conflicting guest accesses wait. */
 
     d->ep_frame_div++;
 }
@@ -190,6 +194,8 @@ static void apu_tick_cb(void *opaque)
     timer_mod_ns(d->tick_timer, d->next_tick_ns);
 }
 
+bool lr_dsp_is_tick_callback(void (*cb)(void *)) {return cb==apu_tick_cb;}
+
 /* The engine's frames start again from now: at start, and after a state
  * was loaded (the clock is the state's) */
 static void apu_tick_rearm(MCPXAPUState *d)
@@ -202,6 +208,7 @@ static void apu_tick_rearm(MCPXAPUState *d)
 
 static void mcpx_apu_reset_locked(MCPXAPUState *d)
 {
+    lr_dsp_ownership_fence(LR_DSP_FENCE_STATE);
     /* The processors' registers go too (GPRST/EPRST hold them in reset
      * until the guest brings them up again) and the cores are reset. With the
      * processors left running their old program against zeroed global
@@ -232,6 +239,7 @@ static void mcpx_apu_reset_hold(Object *obj, ResetType type)
  * as for a savestate; the engine's frames stop with QEMU_CLOCK_VIRTUAL */
 static void mcpx_apu_vm_state_change(void *opaque, bool running, RunState state)
 {
+    lr_dsp_ownership_fence(LR_DSP_FENCE_STATE);
     MCPXAPUState *d = opaque;
 
     if (!running) {
@@ -242,6 +250,7 @@ static void mcpx_apu_vm_state_change(void *opaque, bool running, RunState state)
             dsp_sync_to_vm(d->ep.dsp);
         }
     } else {
+        lr_dsp_ownership_resume();
         if (d->gp.dsp) {
             dsp_sync_from_vm(d->gp.dsp);
         }
@@ -281,6 +290,7 @@ static int mcpx_apu_post_load(void *opaque, int version_id)
 
 static int mcpx_apu_output_pre_save(void *opaque)
 {
+    lr_dsp_ownership_fence(LR_DSP_FENCE_STATE);
     MCPXAPUState *d = opaque;
 
     d->saved_output.frames = mcpx_apu_monitor_save(

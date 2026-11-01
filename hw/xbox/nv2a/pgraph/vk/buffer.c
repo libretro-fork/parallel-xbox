@@ -20,6 +20,7 @@
 
 #include "ui/xemu-settings.h"
 #include "renderer.h"
+#include "libretro/dsp-ownership.h"
 
 const StagedBuffer pgraph_vk_staged_buffers[3] = {
     { BUFFER_INDEX_STAGING, BUFFER_INDEX },

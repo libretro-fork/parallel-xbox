@@ -23,6 +23,7 @@
 #include "qemu/file-map.h"
 #include "ui/xemu-settings.h"
 #include "renderer.h"
+#include "libretro/dsp-ownership.h"
 #include "hw/xbox/nv2a/pgraph/spv/clear.h"
 #include "hw/xbox/nv2a/pgraph/blend.h"
 #include <math.h>
@@ -3013,6 +3014,8 @@ void pgraph_vk_trash_push(PGRAPHVkState *r, const struct XemuVkTrashEntry *e)
 void pgraph_vk_slot_retired(PGRAPHState *pg, int slot)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
+    lr_gpu_ram_drop((uintptr_t)r->slot_main[slot]);
+    lr_gpu_ram_drop((uintptr_t)r->slot_sync[slot]);
 
     if ((int32_t)(r->slot_submit[slot] - r->settled_submit) > 0) {
         r->settled_submit = r->slot_submit[slot];
@@ -3072,6 +3075,8 @@ void pgraph_vk_wait_all_slots(PGRAPHVkState *r)
             VK_CHECK(vkWaitForFences(r->device, 1, &r->slot_fence[s], VK_TRUE,
                                      UINT64_MAX));
             r->slot_fence_pending[s] = false;
+            lr_gpu_ram_drop((uintptr_t)r->slot_main[s]);
+            lr_gpu_ram_drop((uintptr_t)r->slot_sync[s]);
         }
     }
     r->settled_submit = r->submit_count;

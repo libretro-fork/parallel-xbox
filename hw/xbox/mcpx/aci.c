@@ -35,6 +35,7 @@
  */
 
 #include "qemu/osdep.h"
+#include "libretro/dsp-ownership.h"
 #include "hw/hw.h"
 #include "hw/pci/pci.h"
 #include "hw/pci/pci_device.h"
@@ -865,6 +866,8 @@ static void mcpx_aci_realize(PCIDevice *dev, Error **errp)
     pci_register_bar(&d->dev, 2, PCI_BASE_ADDRESS_SPACE_MEMORY, &d->mmio);
 
     d->as = pci_get_address_space(dev);
+    /* Private DSP overlap: Codec position and descriptor DMA; descriptors use guarded DMA APIs. */
+    lr_dsp_register_guarded_timer(po_tick);
     d->po_timer = timer_new_ns(QEMU_CLOCK_VIRTUAL, po_tick, d);
 
     reset_bm_regs(d, &d->bm_regs[PI_INDEX]);

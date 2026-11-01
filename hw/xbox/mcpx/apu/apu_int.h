@@ -98,6 +98,10 @@ typedef struct MCPXAPUState {
     MCPXAPUGPState gp;
     MCPXAPUEPState ep;
     MCPXAPUDSPState dsp_state;
+    /* Published with VP work; immutable until all voice workers finish. */
+    bool dsp_vp_pending;
+    const retro_atomic_64_t *dsp_vp_pages;
+    const uint64_t *dsp_vp_readonly;
 
     /* The engine owner and voice workers:
      * word-atomic, apu_reg_r/w */

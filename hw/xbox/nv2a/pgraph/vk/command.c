@@ -19,6 +19,7 @@
  */
 
 #include "renderer.h"
+#include "libretro/dsp-ownership.h"
 #include "libretro_shared.h"
 #include "ui/xemu-settings.h"
 
@@ -81,6 +82,7 @@ static void destroy_command_buffers(PGRAPHState *pg)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
 
+    for(unsigned i=0;i<ARRAY_SIZE(r->command_buffers);i++) lr_gpu_ram_drop((uintptr_t)r->command_buffers[i]);
     vkFreeCommandBuffers(r->device, r->command_pool,
                          ARRAY_SIZE(r->command_buffers), r->command_buffers);
 
@@ -158,6 +160,7 @@ static bool aux_retire_oldest(PGRAPHVkState *r, bool poll)
         VK_CHECK(vkWaitForFences(r->device, 1, &a->fence, VK_TRUE,
                                  UINT64_MAX));
     }
+    lr_gpu_ram_drop((uintptr_t)a->cmd);
     VK_CHECK(vkResetFences(r->device, 1, &a->fence));
     a->pending = false;
     r->aux_settled = a->serial;

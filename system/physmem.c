@@ -803,13 +803,20 @@ AddressSpace *cpu_get_address_space(CPUState *cpu, int asidx)
 }
 
 
+#include "libretro/dsp-ownership.h"
+
 static inline bool access_callback_address_matches(MemAccessCallback *cb,
                                                    hwaddr addr, hwaddr len)
 {
     hwaddr watch_end = cb->addr + cb->len - 1;
     hwaddr access_end = addr + len - 1;
 
-    return !(addr > watch_end || cb->addr > access_end);
+    bool hit = !(addr > watch_end || cb->addr > access_end);
+    if (hit && cb->func == lr_dsp_ownership_callback) {
+        hwaddr start = MAX(addr, cb->addr), end = MIN(access_end, watch_end);
+        return lr_dsp_ownership_match(cb->mr, start - cb->addr, end - start + 1);
+    }
+    return hit;
 }
 
 int mem_access_callback_address_matches(CPUState *cpu, hwaddr addr, hwaddr len)
@@ -904,6 +911,7 @@ void mem_check_access_callback_vaddr(CPUState *cpu,
 void mem_check_access_callback_ramaddr(CPUState *cpu,
                                        hwaddr ram_addr, vaddr len, int flags)
 {
+    LR_DSP_EXTERNAL_GUARD;
     MemAccessCallback *cb;
     QTAILQ_FOREACH(cb, &cpu->mem_access_callbacks, entry) {
         if (access_callback_address_matches(cb, ram_addr, len)) {
@@ -2887,6 +2895,7 @@ static MemTxResult flatview_write_continue_step(MemTxAttrs attrs,
                                                 hwaddr len, hwaddr mr_addr,
                                                 hwaddr *l, MemoryRegion *mr)
 {
+    LR_DSP_EXTERNAL_GUARD;
     if (!flatview_access_allowed(mr, attrs, mr_addr, *l)) {
         return MEMTX_ACCESS_ERROR;
     }
@@ -2925,6 +2934,7 @@ static MemTxResult flatview_write_continue_step(MemTxAttrs attrs,
         uint8_t *ram_ptr = qemu_ram_ptr_length(mr->ram_block, mr_addr, l,
                                                false, true);
 
+        lr_dsp_ownership_ram(memory_region_get_ram_addr(mr)+mr_addr,*l);
         memmove(ram_ptr, buf, *l);
         invalidate_and_set_dirty(mr, mr_addr, *l);
 
@@ -2987,6 +2997,7 @@ static MemTxResult flatview_read_continue_step(MemTxAttrs attrs, uint8_t *buf,
                                                hwaddr *l,
                                                MemoryRegion *mr)
 {
+    LR_DSP_EXTERNAL_GUARD;
     if (!flatview_access_allowed(mr, attrs, mr_addr, *l)) {
         return MEMTX_ACCESS_ERROR;
     }
@@ -3022,6 +3033,7 @@ static MemTxResult flatview_read_continue_step(MemTxAttrs attrs, uint8_t *buf,
         uint8_t *ram_ptr = qemu_ram_ptr_length(mr->ram_block, mr_addr, l,
                                                false, false);
 
+        lr_dsp_ownership_read(memory_region_get_ram_addr(mr)+mr_addr,*l);
         memcpy(buf, ram_ptr, *l);
 
         return MEMTX_OK;
@@ -3442,6 +3454,8 @@ static void *address_space_map_internal(AddressSpace *as,
         *plen = 0;
         return NULL;
     }
+    /* Hold the lifetime, not merely the mapping callback. */
+    lr_dsp_bus_borrow();
     fuzz_dma_read_cb(addr, *plen, mr);
     /* Direct DMA must observe the same GPU/CPU ownership transitions as
      * flatview_read/write before the caller accesses the borrowed RAM.
@@ -3484,6 +3498,7 @@ void address_space_unmap(AddressSpace *as, void *buffer, hwaddr len,
         if (xen_enabled()) {
             xen_invalidate_map_cache_entry(buffer);
         }
+        lr_dsp_bus_return();
         memory_region_unref(mr);
         return;
     }

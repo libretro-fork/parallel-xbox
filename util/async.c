@@ -24,6 +24,7 @@
  */
 
 #include "qemu/osdep.h"
+#include "libretro/dsp-ownership.h"
 #include "qapi/error.h"
 #include "block/aio.h"
 #include "qemu/main-loop.h"
@@ -152,6 +153,8 @@ QEMUBH *aio_bh_new_full(AioContext *ctx, QEMUBHFunc *cb, void *opaque,
 
 void aio_bh_call(QEMUBH *bh)
 {
+    LR_DSP_EXTERNAL_GUARD;
+    lr_dsp_ownership_fence(LR_DSP_FENCE_POLL);
     bool last_engaged_in_io = false;
 
     /* Make a copy of the guard-pointer as cb may free the bh */

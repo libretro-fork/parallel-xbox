@@ -14,6 +14,7 @@
  */
 
 #include "qemu/osdep.h"
+#include "libretro/dsp-ownership.h"
 #include "qemu/log.h"
 #include "qapi/error.h"
 #include "system/memory.h"
@@ -1428,6 +1429,8 @@ MemTxResult memory_region_dispatch_read(MemoryRegion *mr,
                                         MemOp op,
                                         MemTxAttrs attrs)
 {
+    LR_DSP_EXTERNAL_GUARD;
+    if(!lr_dsp_mmio_guarded(mr)) lr_dsp_ownership_fence(LR_DSP_FENCE_MMIO);
     unsigned size = memop_size(op);
     MemTxResult r;
 
@@ -1478,6 +1481,8 @@ MemTxResult memory_region_dispatch_write(MemoryRegion *mr,
                                          MemOp op,
                                          MemTxAttrs attrs)
 {
+    LR_DSP_EXTERNAL_GUARD;
+    if(!lr_dsp_mmio_guarded(mr)) lr_dsp_ownership_fence(LR_DSP_FENCE_MMIO);
     unsigned size = memop_size(op);
 
     if (mr->alias) {

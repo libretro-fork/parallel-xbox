@@ -19,6 +19,7 @@
  */
 
 #include "qemu/osdep.h"
+#include "libretro/dsp-ownership.h"
 /* the libretro core's idle detection (hw/core/cpu.h): a store made by a
  * helper or on the slow path, or any device access, is not waiting */
 #define LR_QUIET_RESET(cpu) \
@@ -826,6 +827,79 @@ static inline void tlb_set_compare(CPUTLBEntryFull *full, CPUTLBEntry *ent,
     full->slow_flags[access_type] = flags;
 }
 
+
+/* Sparse reverse index: CPU-owned slot identities, never pointers
+ * into tables that can resize. Victim entries are scanned independently. */
+#define DSP_TLB_SLOTS 256
+static struct {int mmu;size_t index;vaddr page;ram_addr_t ram;} dsp_tlb_slots[DSP_TLB_SLOTS];
+static unsigned dsp_tlb_count;
+static bool dsp_tlb_overflow;
+static void dsp_tlb_record(CPUState *cpu,int mmu,size_t index,vaddr page,ram_addr_t ram)
+{
+    unsigned found;
+    for(found=0;found<dsp_tlb_count;found++)
+        if(dsp_tlb_slots[found].mmu==mmu && dsp_tlb_slots[found].index==index) break;
+    if(!lr_dsp_tlb_watched(ram)) {
+        if(found<dsp_tlb_count) dsp_tlb_slots[found]=dsp_tlb_slots[--dsp_tlb_count];
+        return;
+    }
+    if(found==dsp_tlb_count) {
+        if(found==DSP_TLB_SLOTS) {dsp_tlb_overflow=true;return;}
+        dsp_tlb_count++;
+    }
+    dsp_tlb_slots[found].mmu=mmu;dsp_tlb_slots[found].index=index;
+    dsp_tlb_slots[found].page=page;dsp_tlb_slots[found].ram=ram;
+}
+static bool dsp_tlb_identity(CPUTLBEntry *entry,CPUTLBEntryFull *full,vaddr page,ram_addr_t ram)
+{
+    if((full->slow_flags[MMU_DATA_LOAD]|full->slow_flags[MMU_DATA_STORE])&TLB_MMIO) return false;
+    uintptr_t tag=entry->addr_read!=(uintptr_t)-1?entry->addr_read:entry->addr_write;
+    return tag!=(uintptr_t)-1 && (tag&TARGET_PAGE_MASK)==page &&
+        ((full->xlat_section+page)&TARGET_PAGE_MASK)==ram;
+}
+static void dsp_tlb_adjust(CPUState *cpu,CPUTLBEntry *entry,CPUTLBEntryFull *full,vaddr page,ram_addr_t ram,bool arm)
+{
+    int wp=arm?(BP_MEM_READ|BP_MEM_WRITE):
+        cpu_watchpoint_address_matches(cpu,page,TARGET_PAGE_SIZE)|
+        mem_access_callback_address_matches(cpu,ram,TARGET_PAGE_SIZE);
+    for(unsigned access=MMU_DATA_LOAD;access<=MMU_DATA_STORE;access++) {
+        if(entry->addr_idx[access]==(uintptr_t)-1) continue;
+        int flags=full->slow_flags[access] |
+            (entry->addr_idx[access]&(TLB_FLAGS_MASK&~TLB_FORCE_SLOW));
+        int bit=access==MMU_DATA_LOAD?BP_MEM_READ:BP_MEM_WRITE;
+        if(wp&bit) flags|=TLB_WATCHPOINT;else flags&=~TLB_WATCHPOINT;
+        tlb_set_compare(full,entry,page,flags,access,true);
+    }
+}
+void lr_dsp_tlb_refresh(CPUState *cpu,bool arm)
+{
+    assert_cpu_is_self(cpu);
+    if(arm && dsp_tlb_overflow) {
+        /* An unindexed inactive entry must never bypass a new epoch. */
+        tlb_flush(cpu);dsp_tlb_count=0;dsp_tlb_overflow=false;return;
+    }
+    if(dsp_tlb_overflow) return;
+    qemu_spin_lock(&cpu->neg.tlb.c.lock);
+    for(unsigned i=0;i<dsp_tlb_count;) {
+        int mmu=dsp_tlb_slots[i].mmu;size_t index=dsp_tlb_slots[i].index;
+        CPUTLBDescFast *fast=cpu_tlb_fast(cpu,mmu);
+        CPUTLBEntryFull *full=&cpu->neg.tlb.d[mmu].fulltlb[index<tlb_n_entries(fast)?index:0];
+        if(index>=tlb_n_entries(fast) || !dsp_tlb_identity(&fast->table[index],full,dsp_tlb_slots[i].page,dsp_tlb_slots[i].ram)) {
+            dsp_tlb_slots[i]=dsp_tlb_slots[--dsp_tlb_count];continue;
+        }
+        dsp_tlb_adjust(cpu,&fast->table[index],full,dsp_tlb_slots[i].page,dsp_tlb_slots[i].ram,arm);i++;
+    }
+    for(int mmu=0;mmu<NB_MMU_MODES;mmu++) for(unsigned i=0;i<CPU_VTLB_SIZE;i++) {
+        CPUTLBEntry *entry=&cpu->neg.tlb.d[mmu].vtable[i];
+        CPUTLBEntryFull *full=&cpu->neg.tlb.d[mmu].vfulltlb[i];
+        uintptr_t tag=entry->addr_read!=(uintptr_t)-1?entry->addr_read:entry->addr_write;
+        if(tag==(uintptr_t)-1) continue;
+        vaddr page=tag&TARGET_PAGE_MASK;ram_addr_t ram=(full->xlat_section+page)&TARGET_PAGE_MASK;
+        if(lr_dsp_tlb_watched(ram) && dsp_tlb_identity(entry,full,page,ram))
+            dsp_tlb_adjust(cpu,entry,full,page,ram,arm);
+    }
+    qemu_spin_unlock(&cpu->neg.tlb.c.lock);
+}
 /*
  * Add a new TLB entry. At most one entry for a given virtual address
  * is permitted. Only a single TARGET_PAGE_SIZE region is mapped, the
@@ -995,6 +1069,7 @@ void tlb_set_page_full(CPUState *cpu, int mmu_idx,
                     MMU_DATA_STORE, prot & PAGE_WRITE);
 
     copy_tlb_helper_locked(te, &tn);
+    if(is_ram) dsp_tlb_record(cpu,mmu_idx,index,addr_page,iotlb&TARGET_PAGE_MASK);
     tlb_dirty_index_mark(desc, cpu_tlb_fast(cpu, mmu_idx), index);
     tlb_n_used_entries_inc(cpu, mmu_idx);
     qemu_spin_unlock(&tlb->c.lock);
@@ -1135,6 +1210,7 @@ static bool victim_tlb_hit(CPUState *cpu, size_t mmu_idx, size_t index,
             CPUTLBEntryFull *f2 = &cpu->neg.tlb.d[mmu_idx].vfulltlb[vidx];
             CPUTLBEntryFull tmpf;
             tmpf = *f1; *f1 = *f2; *f2 = tmpf;
+            dsp_tlb_record(cpu,mmu_idx,index,page,(f1->xlat_section+page)&TARGET_PAGE_MASK);
             tlb_dirty_index_mark(&cpu->neg.tlb.d[mmu_idx],
                                  cpu_tlb_fast(cpu, mmu_idx), index);
             qemu_spin_unlock(&cpu->neg.tlb.c.lock);
@@ -1365,6 +1441,7 @@ tb_page_addr_t get_page_addr_code_hostp(CPUArchState *env, vaddr addr,
         return -1;
     }
 
+    mem_check_access_callback_ramaddr(env_cpu(env),qemu_ram_addr_from_host_nofail(p)&TARGET_PAGE_MASK,TARGET_PAGE_SIZE,BP_MEM_READ);
     if (hostp) {
         *hostp = p;
     }

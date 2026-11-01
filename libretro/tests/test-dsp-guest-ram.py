@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""Exercise the production APU tick and DMA walker with synchronous owner-thread DSP execution.
+"""Exercise the production APU tick and DMA walker with synchronous CPU-owned GP execution.
 
 Usage: python test-dsp-guest-ram.py CHECKOUT [CC]
 """
@@ -17,7 +17,8 @@ frame = apu[apu.index('static void se_frame('):apu.index('\n/*', apu.index('stat
 walk = dsp[dsp.index('static void scatter_gather_walk('):dsp.index('static void gp_scratch_walk(')]
 fixture = Path(__file__).with_suffix('.c').read_text()
 post = dsp[dsp.index('void mcpx_apu_dsp_post('):dsp.index('void mcpx_apu_dsp_post_silence(')]
-mixbins = dsp[dsp.index('int64_t (*mcpx_apu_dsp_mixbins('):dsp.index('void mcpx_apu_dsp_post(')]
+start = dsp.index('int64_t (*mcpx_apu_dsp_mixbins(')
+mixbins = dsp[start:dsp.index('\n}', start) + 2]
 code = fixture.replace('/* PRODUCTION WALK */', walk).replace('/* PRODUCTION FRAME */', frame).replace('/* PRODUCTION POST */', post).replace('/* PRODUCTION MIXBINS */', mixbins)
 env = os.environ.copy()
 env['PATH'] = str(Path(cc).resolve().parent) + os.pathsep + env.get('PATH', '')

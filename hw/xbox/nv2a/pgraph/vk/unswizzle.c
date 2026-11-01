@@ -36,6 +36,7 @@
 #include "hw/xbox/nv2a/nv2a_int.h"
 #include "hw/xbox/nv2a/pgraph/swizzle.h"
 #include "renderer.h"
+#include "libretro/dsp-ownership.h"
 #include "compute-dispatch.h"
 #include "hw/xbox/nv2a/pgraph/spv/depth.h"
 #include "hw/xbox/nv2a/pgraph/spv/swizzle.h"
@@ -332,6 +333,8 @@ bool pgraph_vk_unswizzle(PGRAPHState *pg, VkCommandBuffer cmd,
         return false;
     }
 
+    lr_gpu_ram_claim((uintptr_t)cmd,src_offset,texels*bpp);
+    if(palette_offset) lr_gpu_ram_claim((uintptr_t)cmd,palette_offset,256*4);
     struct UnswizzlePush push = {
         .src = src_offset,
         .dst = dst,
@@ -429,6 +432,7 @@ static void swizzle_to_ram_from(PGRAPHState *pg, VkCommandBuffer cmd,
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
     size_t size = (size_t)width * height * bpp;
+    lr_gpu_ram_claim((uintptr_t)cmd,dst_offset,size);
 
     struct UnswizzlePush push = {
         .src = src_offset,
@@ -540,6 +544,7 @@ void pgraph_vk_pack_depth_swizzled(PGRAPHState *pg, SurfaceBinding *surface,
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
     assert(pgraph_vk_pack_depth_swizzled_possible(pg, surface));
+    lr_gpu_ram_claim((uintptr_t)cmd,surface->vram_addr,(VkDeviceSize)surface->width*surface->height*surface->fmt.bytes_per_pixel);
     unsigned w = surface->width, h = surface->height;
     pgraph_apply_scaling_factor(pg, &w, &h);
     uint32_t push[5] = {

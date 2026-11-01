@@ -18,6 +18,7 @@
  */
 
 #include "qemu/osdep.h"
+#include "libretro/dsp-ownership.h"
 #include "qemu/main-loop.h"
 #include "exec/cpu-common.h"
 #include "hw/core/cpu.h"
@@ -116,12 +117,19 @@ static void queue_work_on_cpu(CPUState *cpu, struct qemu_work_item *wi)
     cpu_exit(cpu);
 }
 
+static void ownership_call_cpu_work(CPUState *cpu, run_on_cpu_func func, run_on_cpu_data data)
+{
+    LR_DSP_EXTERNAL_GUARD;
+    lr_dsp_ownership_fence(LR_DSP_FENCE_POLL);
+    func(cpu,data);
+}
+
 void do_run_on_cpu(CPUState *cpu, run_on_cpu_func func, run_on_cpu_data data)
 {
     struct qemu_work_item wi;
 
     if (qemu_cpu_is_self(cpu)) {
-        func(cpu, data);
+        ownership_call_cpu_work(cpu,func,data);
         return;
     }
 
@@ -242,11 +250,11 @@ void process_queued_cpu_work(CPUState *cpu)
              * enters its exclusive scope only after leaving guest execution. */
             bql_unlock();
             start_exclusive();
-            wi->func(cpu, wi->data);
+            ownership_call_cpu_work(cpu,wi->func,wi->data);
             end_exclusive();
             bql_lock();
         } else {
-            wi->func(cpu, wi->data);
+            ownership_call_cpu_work(cpu,wi->func,wi->data);
         }
         if (wi->free) {
             g_free(wi);

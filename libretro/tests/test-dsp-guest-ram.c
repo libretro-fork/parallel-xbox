@@ -17,7 +17,9 @@ typedef struct MCPXAPUState {
     uint8_t *ram_ptr;
     void *ram;
     int ep_frame_div;
-    struct {int64_t mixbins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME];} dsp_state;
+    struct {int64_t mixbins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME];uint32_t ep_rst;} dsp_state;
+    struct {int point;} monitor;
+    bool dsp_vp_pending;const uint64_t *dsp_vp_pages,*dsp_vp_readonly;
     bool write;
     unsigned int max_sge;
     hwaddr table;
@@ -28,6 +30,33 @@ typedef struct MCPXAPUState {
 
 static uint8_t ram[1024 * 1024];
 static int address_space_memory;
+#define NV_PAPU_GPRST_GPRST 1
+#define NV_PAPU_GPRST_GPDSPRST 2
+#define MCPX_APU_DEBUG_MON_GP_OR_EP 1
+#define LR_DSP_FENCE_TICK 5
+static bool ownership_enabled,ownership_is_worker,ownership_gp_dma_guard;
+static int ownership_ready,ownership_posted,ownership_done,ownership_work,ownership_div,bus_lease;
+static unsigned ownership_cpu_depth;
+static uint64_t ownership_pages[512],ownership_tables[512],own_live[512];
+static int retro_atomic_load_acquire_int(int*p){return *p;}
+static int retro_atomic_load_relaxed_int(int*p){return *p;}
+static void retro_atomic_store_release_int(int*p,int v){*p=v;}
+static void retro_eventcount_notify(int*p){(void)p;}
+static void lr_dsp_ownership_quiesce(void){}
+static void lr_dsp_ownership_fence(unsigned reason){assert(reason==5);}
+static void lr_dsp_ownership_ram(uint64_t addr,uint64_t len){(void)addr;(void)len;}
+static void lr_dsp_ownership_read(uint64_t addr,uint64_t len){(void)addr;(void)len;}
+static uint64_t memory_region_get_ram_addr(void*p){(void)p;return 0;}
+static uint32_t ldl_le_p(const void*p){uint32_t v;memcpy(&v,p,4);return v;}
+static bool bus_lease_try_dsp(int*p){(void)p;return false;}
+static void bus_lease_dsp_done(int*p){(void)p;}
+static bool ownership_reserve_tables(MCPXAPUState*d){(void)d;return false;}
+static bool ownership_candidate(MCPXAPUState*d){(void)d;return false;}
+static bool gpu_try_dsp_pages(void){return false;}
+static void gpu_release_dsp_pages(void){}
+static void own_protect(MCPXAPUState*d){(void)d;}
+static void dsp_run_ep(MCPXAPUState*d,int div){assert(div==d->ep_frame_div);}
+
 static uint32_t ldl_le_phys(void *space, hwaddr addr)
 {
     uint32_t value;
@@ -73,10 +102,10 @@ static void mcpx_apu_vp_frame(MCPXAPUState *d,
         }
     }
 }
-static void dsp_run_frame(MCPXAPUState *d,
-                            int64_t bins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME], int frame_div)
+static void dsp_run_gp(MCPXAPUState *d,
+                            int64_t bins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME])
 {
-    assert(bins == d->dsp_state.mixbins && bins[0][0] == 42 && frame_div == d->ep_frame_div);
+    assert(bins == d->dsp_state.mixbins && bins[0][0] == 42);
     scatter_gather_walk(d, d->table, d->max_sge, d->guest_dma_addr,
                         sizeof(d->result), d->write, transfer, d);
 }

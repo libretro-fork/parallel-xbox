@@ -32,6 +32,7 @@ static inline uint32_t glue(address_space_ldl_internal, SUFFIX)(ARG1_DECL,
     MemTxResult r;
     bool release_lock = false;
 
+    LR_DSP_EXTERNAL_GUARD;
     RCU_READ_LOCK();
     mr = TRANSLATE(addr, &addr1, &l, false, attrs);
     if (l < 4 || !memory_access_is_direct(mr, false, attrs)) {
@@ -43,6 +44,7 @@ static inline uint32_t glue(address_space_ldl_internal, SUFFIX)(ARG1_DECL,
     } else {
         /* RAM case */
         fuzz_dma_read_cb(addr, 4, mr);
+        lr_dsp_ownership_read(memory_region_get_ram_addr(mr)+addr1,l);
         ptr = qemu_map_ram_ptr(mr->ram_block, addr1);
         switch (endian) {
         case DEVICE_LITTLE_ENDIAN:
@@ -101,6 +103,7 @@ static inline uint64_t glue(address_space_ldq_internal, SUFFIX)(ARG1_DECL,
     MemTxResult r;
     bool release_lock = false;
 
+    LR_DSP_EXTERNAL_GUARD;
     RCU_READ_LOCK();
     mr = TRANSLATE(addr, &addr1, &l, false, attrs);
     if (l < 8 || !memory_access_is_direct(mr, false, attrs)) {
@@ -112,6 +115,7 @@ static inline uint64_t glue(address_space_ldq_internal, SUFFIX)(ARG1_DECL,
     } else {
         /* RAM case */
         fuzz_dma_read_cb(addr, 8, mr);
+        lr_dsp_ownership_read(memory_region_get_ram_addr(mr)+addr1,l);
         ptr = qemu_map_ram_ptr(mr->ram_block, addr1);
         switch (endian) {
         case DEVICE_LITTLE_ENDIAN:
@@ -168,6 +172,7 @@ uint8_t glue(address_space_ldub, SUFFIX)(ARG1_DECL,
     MemTxResult r;
     bool release_lock = false;
 
+    LR_DSP_EXTERNAL_GUARD;
     RCU_READ_LOCK();
     mr = TRANSLATE(addr, &addr1, &l, false, attrs);
     if (!memory_access_is_direct(mr, false, attrs)) {
@@ -178,6 +183,7 @@ uint8_t glue(address_space_ldub, SUFFIX)(ARG1_DECL,
     } else {
         /* RAM case */
         fuzz_dma_read_cb(addr, 1, mr);
+        lr_dsp_ownership_read(memory_region_get_ram_addr(mr)+addr1,l);
         ptr = qemu_map_ram_ptr(mr->ram_block, addr1);
         val = ldub_p(ptr);
         r = MEMTX_OK;
@@ -205,6 +211,7 @@ static inline uint16_t glue(address_space_lduw_internal, SUFFIX)(ARG1_DECL,
     MemTxResult r;
     bool release_lock = false;
 
+    LR_DSP_EXTERNAL_GUARD;
     RCU_READ_LOCK();
     mr = TRANSLATE(addr, &addr1, &l, false, attrs);
     if (l < 2 || !memory_access_is_direct(mr, false, attrs)) {
@@ -216,6 +223,7 @@ static inline uint16_t glue(address_space_lduw_internal, SUFFIX)(ARG1_DECL,
     } else {
         /* RAM case */
         fuzz_dma_read_cb(addr, 2, mr);
+        lr_dsp_ownership_read(memory_region_get_ram_addr(mr)+addr1,l);
         ptr = qemu_map_ram_ptr(mr->ram_block, addr1);
         switch (endian) {
         case DEVICE_LITTLE_ENDIAN:
@@ -275,6 +283,7 @@ void glue(address_space_stl_notdirty, SUFFIX)(ARG1_DECL,
     uint8_t dirty_log_mask;
     bool release_lock = false;
 
+    LR_DSP_EXTERNAL_GUARD;
     RCU_READ_LOCK();
     mr = TRANSLATE(addr, &addr1, &l, true, attrs);
     if (l < 4 || !memory_access_is_direct(mr, true, attrs)) {
@@ -282,6 +291,7 @@ void glue(address_space_stl_notdirty, SUFFIX)(ARG1_DECL,
 
         r = memory_region_dispatch_write(mr, addr1, val, MO_32, attrs);
     } else {
+        lr_dsp_ownership_ram(memory_region_get_ram_addr(mr)+addr1,l);
         ptr = qemu_map_ram_ptr(mr->ram_block, addr1);
         stl_p(ptr, val);
 
@@ -312,6 +322,7 @@ static inline void glue(address_space_stl_internal, SUFFIX)(ARG1_DECL,
     MemTxResult r;
     bool release_lock = false;
 
+    LR_DSP_EXTERNAL_GUARD;
     RCU_READ_LOCK();
     mr = TRANSLATE(addr, &addr1, &l, true, attrs);
     if (l < 4 || !memory_access_is_direct(mr, true, attrs)) {
@@ -320,6 +331,7 @@ static inline void glue(address_space_stl_internal, SUFFIX)(ARG1_DECL,
                                          MO_32 | devend_memop(endian), attrs);
     } else {
         /* RAM case */
+        lr_dsp_ownership_ram(memory_region_get_ram_addr(mr)+addr1,l);
         ptr = qemu_map_ram_ptr(mr->ram_block, addr1);
         switch (endian) {
         case DEVICE_LITTLE_ENDIAN:
@@ -375,6 +387,7 @@ void glue(address_space_stb, SUFFIX)(ARG1_DECL,
     MemTxResult r;
     bool release_lock = false;
 
+    LR_DSP_EXTERNAL_GUARD;
     RCU_READ_LOCK();
     mr = TRANSLATE(addr, &addr1, &l, true, attrs);
     if (!memory_access_is_direct(mr, true, attrs)) {
@@ -382,6 +395,7 @@ void glue(address_space_stb, SUFFIX)(ARG1_DECL,
         r = memory_region_dispatch_write(mr, addr1, val, MO_8, attrs);
     } else {
         /* RAM case */
+        lr_dsp_ownership_ram(memory_region_get_ram_addr(mr)+addr1,l);
         ptr = qemu_map_ram_ptr(mr->ram_block, addr1);
         stb_p(ptr, val);
         invalidate_and_set_dirty(mr, addr1, 1);
@@ -408,6 +422,7 @@ static inline void glue(address_space_stw_internal, SUFFIX)(ARG1_DECL,
     MemTxResult r;
     bool release_lock = false;
 
+    LR_DSP_EXTERNAL_GUARD;
     RCU_READ_LOCK();
     mr = TRANSLATE(addr, &addr1, &l, true, attrs);
     if (l < 2 || !memory_access_is_direct(mr, true, attrs)) {
@@ -416,6 +431,7 @@ static inline void glue(address_space_stw_internal, SUFFIX)(ARG1_DECL,
                                          MO_16 | devend_memop(endian), attrs);
     } else {
         /* RAM case */
+        lr_dsp_ownership_ram(memory_region_get_ram_addr(mr)+addr1,l);
         ptr = qemu_map_ram_ptr(mr->ram_block, addr1);
         switch (endian) {
         case DEVICE_LITTLE_ENDIAN:
@@ -472,6 +488,7 @@ static void glue(address_space_stq_internal, SUFFIX)(ARG1_DECL,
     MemTxResult r;
     bool release_lock = false;
 
+    LR_DSP_EXTERNAL_GUARD;
     RCU_READ_LOCK();
     mr = TRANSLATE(addr, &addr1, &l, true, attrs);
     if (l < 8 || !memory_access_is_direct(mr, true, attrs)) {
@@ -480,6 +497,7 @@ static void glue(address_space_stq_internal, SUFFIX)(ARG1_DECL,
                                          MO_64 | devend_memop(endian), attrs);
     } else {
         /* RAM case */
+        lr_dsp_ownership_ram(memory_region_get_ram_addr(mr)+addr1,l);
         ptr = qemu_map_ram_ptr(mr->ram_block, addr1);
         switch (endian) {
         case DEVICE_LITTLE_ENDIAN:

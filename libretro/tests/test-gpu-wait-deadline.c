@@ -50,6 +50,9 @@ static bool lr_devices_busy(void) {return gpu_busy || disk_busy;}
 static bool lr_vcpu_runnable(CPUState *cpu) {return cpu->runnable;}
 static void retro_atomic_store_relaxed_int(int *p,int v) {*p=v;}
 static void retro_atomic_thread_fence_seq_cst(void) {}
+#define LR_DSP_EXTERNAL_GUARD ((void)0)
+#define LR_DSP_FENCE_POLL 1
+static void lr_dsp_ownership_fence(unsigned reason){assert(reason==1 && bql);}
 /* PRODUCTION */
 static void reset(void){
  mainctx=(AioContext){0};ioctx=(AioContext){0};

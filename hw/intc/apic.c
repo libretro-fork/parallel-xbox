@@ -17,6 +17,7 @@
  * License along with this library; if not, see <http://www.gnu.org/licenses/>
  */
 #include "qemu/osdep.h"
+#include "libretro/dsp-ownership.h"
 #include "qemu/thread.h"
 #include "qemu/error-report.h"
 #include "hw/i386/apic_internal.h"
@@ -1111,6 +1112,8 @@ static void apic_realize(DeviceState *dev, Error **errp)
      */
     s->io_memory.disable_reentrancy_guard = true;
 
+    /* Private DSP overlap: IRQ updates; optional VAPIC access uses guarded physical-memory APIs. */
+    lr_dsp_register_guarded_timer(apic_timer);
     s->timer = timer_new_ns(QEMU_CLOCK_VIRTUAL, apic_timer, s);
 
     /*

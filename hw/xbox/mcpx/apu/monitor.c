@@ -28,8 +28,9 @@
  *
  * The emulator thread produces VP/GP/EP output while it advances guest time;
  * the frontend consumes exactly one video frame's worth after that turn.
- * DSP DMA and register accesses share the engine owner. The existing queue
- * lead is preserved (monitor.h), including the EP's eight-frame burst.
+ * An EP worker can own production during its job. CPU GP work may
+ * overlap it, but queue operations wait for job completion before changing
+ * producer ownership. The queue lead includes the EP's eight-frame burst.
  */
 
 #include "apu_int.h"

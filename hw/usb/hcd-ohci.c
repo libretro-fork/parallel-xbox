@@ -26,6 +26,7 @@
  */
 
 #include "qemu/osdep.h"
+#include "libretro/dsp-ownership.h"
 #include "hw/irq.h"
 #include "qapi/error.h"
 #include "qemu/module.h"
@@ -2096,6 +2097,8 @@ void usb_ohci_init(OHCIState *ohci, DeviceState *dev, uint32_t num_ports,
     ohci->name = object_get_typename(OBJECT(dev));
 
 
+    /* Private DSP overlap: All HCCA/endpoint/transfer guest-RAM accesses use guarded dma_memory APIs. */
+    lr_dsp_register_guarded_timer(ohci_frame_boundary);
     ohci->eof_timer = timer_new_ns(QEMU_CLOCK_VIRTUAL,
                                    ohci_frame_boundary, ohci);
 }

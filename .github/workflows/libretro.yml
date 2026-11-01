@@ -24,7 +24,13 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - name: DSP ticks must finish before the guest changes scratch RAM
+      - name: EP worker ownership must preserve RAM, queue handoffs and TLB guards
+        run: python3 libretro/tests/test-dsp-ownership.py . cc
+      - name: EP ownership under address and undefined behavior sanitizers
+        env:
+          DSP_OWNERSHIP_SANITIZE: 1
+        run: python3 libretro/tests/test-dsp-ownership.py . cc
+      - name: GP ticks must finish before the guest changes scratch RAM
         run: python3 libretro/tests/test-dsp-guest-ram.py . cc
       - name: Every frontend turn must retain exact audio cadence
         run: python3 libretro/tests/test-frame-audio-pull.py . cc

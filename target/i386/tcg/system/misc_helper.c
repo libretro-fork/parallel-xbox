@@ -64,6 +64,7 @@ static const uint8_t *lr_idle_ram_ptr(CPUState *cpu, uint32_t addr, size_t len)
         memory_region_is_ram_device(mr)) {
         return NULL;
     }
+    mem_check_access_callback_ramaddr(cpu,memory_region_get_ram_addr(mr)+offset,len,BP_MEM_READ);
     return (const uint8_t *)memory_region_get_ram_ptr(mr) + offset;
 }
 

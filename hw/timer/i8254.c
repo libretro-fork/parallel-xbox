@@ -23,6 +23,7 @@
  */
 
 #include "qemu/osdep.h"
+#include "libretro/dsp-ownership.h"
 #include "hw/irq.h"
 #include "qemu/module.h"
 #include "qemu/timer.h"
@@ -345,6 +346,8 @@ static void pit_realizefn(DeviceState *dev, Error **errp)
 
     s = &pit->channels[0];
     /* the timer 0 is connected to an IRQ */
+    /* Private DSP overlap: IRQ updates and rescheduling; no guest-RAM access. */
+    lr_dsp_register_guarded_timer(pit_irq_timer);
     s->irq_timer = timer_new_ns(QEMU_CLOCK_VIRTUAL, pit_irq_timer, s);
     qdev_init_gpio_out(dev, &s->irq, 1);
 

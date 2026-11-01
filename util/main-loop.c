@@ -23,6 +23,7 @@
  */
 
 #include "qemu/osdep.h"
+#include "libretro/dsp-ownership.h"
 #include "qapi/error.h"
 #include "qemu/cutils.h"
 #include "qemu/timer.h"
@@ -498,6 +499,8 @@ void main_loop_poll_remove_notifier(Notifier *notify)
 /* the loop that polls: NAT networking's sockets, and descriptors */
 static void main_loop_wait_poll(int nonblocking, int64_t max_wait_ns)
 {
+    LR_DSP_EXTERNAL_GUARD;
+    lr_dsp_ownership_fence(LR_DSP_FENCE_POLL);
     MainLoopPoll mlpoll = {
         .state = MAIN_LOOP_POLL_FILL,
         .timeout = UINT32_MAX,

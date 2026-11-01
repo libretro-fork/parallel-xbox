@@ -69,6 +69,7 @@ static void xemu_vk_destroy_image(unsigned a,VkImage im,XemuVkAllocation alloc){
 static void vkDestroyPipeline(unsigned d,unsigned h,void *p){(void)d;(void)h;(void)p;assert(false);}
 static void vkDestroyPipelineLayout(unsigned d,unsigned h,void *p){(void)d;(void)h;(void)p;assert(false);}
 static void vkDestroyFramebuffer(unsigned d,unsigned h,void *p){(void)d;(void)h;(void)p;assert(false);}
+static void lr_gpu_ram_drop(uintptr_t cmd){assert(cmd>=1 && cmd<=8 && state.aux[cmd-1].serial<=gpu_aux);}
 /* PRODUCTION */
 static void replace(void){
  if(state.display.pvideo.image)retire_pvideo_image(&state);

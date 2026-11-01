@@ -166,6 +166,15 @@ This does not make upscaled/optimal images aliasable with guest RAM, or remove
 the snapshots needed when guest writes overlap unfinished GPU work. Persistent
 mapping and coherent memory do not replace CPU/GPU synchronization.
 
+GP executes on the CPU owner; eligible EP ticks use a separate worker on
+lock-free atomic targets. The worker owns its reachable guest-RAM pages until
+completion. CPU writes, conflicting DMA and GPU imported-memory commands
+retain that ownership ordering; incompatible cases execute inline. VP and GP
+reuse the existing mix buffer, and EP DMA writes audio directly into the
+frontend queue. Audio producer handoffs and state/unload boundaries drain the
+worker. This is an ownership change, not a general frame-rate improvement.
+
+
 The renderer uses an Xbox-specific C allocator instead of VMA, removing the
 core's C++ runtime dependency. Measured startup driver allocation/map counts
 and binary size improve; a general frame-rate improvement is not claimed.

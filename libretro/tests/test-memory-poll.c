@@ -46,6 +46,9 @@ static MemoryRegion *address_space_translate(void *as,hwaddr addr,hwaddr *offset
 }
 static bool memory_region_is_ram(MemoryRegion *r){return r->ram;}
 static bool memory_region_is_ram_device(MemoryRegion *r){return r->device;}
+#define BP_MEM_READ 1
+static uint64_t memory_region_get_ram_addr(MemoryRegion*r){assert(rcu_depth && r->ram && !r->device);return 0;}
+static void mem_check_access_callback_ramaddr(CPUState*cpu,uint64_t addr,uint64_t len,int flags){(void)cpu;(void)addr;assert(rcu_depth && len && flags==BP_MEM_READ);}
 static void *memory_region_get_ram_ptr(MemoryRegion *r){assert(rcu_depth&&r->ram&&!r->device);return r->ptr;}
 static uint32_t ldl_le_p(const uint8_t *p){return p[0]|(uint32_t)p[1]<<8|(uint32_t)p[2]<<16|(uint32_t)p[3]<<24;}
 static void put(uint32_t value){for(unsigned i=0;i<4;i++)data[i]=value>>(i*8);}

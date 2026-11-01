@@ -23,6 +23,7 @@
  */
 
 #include "qemu/osdep.h"
+#include "libretro/dsp-ownership.h"
 #include "qemu/cutils.h"
 #include "qemu/module.h"
 #include "qemu/bcd.h"
@@ -883,6 +884,10 @@ static void rtc_realizefn(DeviceState *dev, Error **errp)
         return;
     }
 
+    /* Private DSP overlap: CMOS/IRQ updates only. */
+    lr_dsp_register_guarded_timer(rtc_periodic_timer);
+    lr_dsp_register_guarded_timer(rtc_update_timer);
+    lr_dsp_register_guarded_timer(rtc_coalesced_timer);
     s->periodic_timer = timer_new_ns(rtc_clock, rtc_periodic_timer, s);
     s->update_timer = timer_new_ns(rtc_clock, rtc_update_timer, s);
     check_update_timer(s);

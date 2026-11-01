@@ -51,7 +51,9 @@ static void spy_drop_module(VkDevice d,VkShaderModule m,const VkAllocationCallba
 static void spy_bind(VkCommandBuffer c,VkPipelineBindPoint p,VkPipeline pipeline){assert(c==H(VkCommandBuffer,8)&&p==VK_PIPELINE_BIND_POINT_COMPUTE);bound_pipeline=pipeline;}
 static void spy_bind_set(VkCommandBuffer c,VkPipelineBindPoint p,VkPipelineLayout l,unsigned first,unsigned count,const VkDescriptorSet *s,unsigned offsets,const uint32_t *o){assert(c==H(VkCommandBuffer,8)&&p==VK_PIPELINE_BIND_POINT_COMPUTE&&l==H(VkPipelineLayout,16)&&!first&&count==1&&*s==H(VkDescriptorSet,12)&&!offsets&&!o);}
 static void spy_push(VkCommandBuffer c,VkPipelineLayout l,VkShaderStageFlags s,unsigned offset,unsigned size,const void *p){assert(c==H(VkCommandBuffer,8)&&l==H(VkPipelineLayout,16)&&s==VK_SHADER_STAGE_COMPUTE_BIT&&!offset&&size==20);memcpy(last_push,p,20);}
-static void spy_dispatch(VkCommandBuffer c,unsigned x,unsigned y,unsigned z){assert(c==H(VkCommandBuffer,8)&&z==1&&x&&y&&(uint64_t)x*y*state.compute.workgroup_size>=last_push[3]);dispatches++;}
+static bool ram_claimed;
+static void lr_gpu_ram_claim(uintptr_t cmd,uint64_t addr,uint64_t len){assert(cmd==8 && !(addr&3) && len);ram_claimed=true;}
+static void spy_dispatch(VkCommandBuffer c,unsigned x,unsigned y,unsigned z){assert(ram_claimed);ram_claimed=false;assert(c==H(VkCommandBuffer,8)&&z==1&&x&&y&&(uint64_t)x*y*state.compute.workgroup_size>=last_push[3]);dispatches++;}
 static void spy_drop_pipeline(VkDevice d,VkPipeline p,const VkAllocationCallbacks *a){(void)d;assert(!a&&p==H(VkPipeline,100+dropped_pipelines));dropped_pipelines++;}
 static void spy_drop_layout(VkDevice d,VkPipelineLayout l,const VkAllocationCallbacks *a){(void)d;assert(!a&&l==H(VkPipelineLayout,16));dropped_layouts++;}
 static void spy_drop_set(VkDevice d,VkDescriptorSetLayout l,const VkAllocationCallbacks *a){(void)d;assert(!a&&l==H(VkDescriptorSetLayout,15));dropped_sets++;}

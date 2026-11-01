@@ -48,9 +48,9 @@ typedef struct MCPXAPUEPState {
 extern const MemoryRegionOps gp_ops;
 extern const MemoryRegionOps ep_ops;
 
-/* The engine thread owns the DSPs and their live guest-RAM DMA. Each tick
- * completes before guest execution resumes. One mix buffer is sufficient;
- * EP output still commits directly to the frontend's SPSC audio queue. */
+/* The CPU owns GP and its mix input. EP may execute one guarded worker
+ * job; its output goes directly to the frontend SPSC audio queue. Queue
+ * producer handoffs wait for the preceding job to complete. */
 enum {
     MCPX_APU_DSP_WRITE_GP,
     MCPX_APU_DSP_WRITE_EP,
@@ -67,12 +67,11 @@ typedef struct MCPXAPUDSPState {
 void mcpx_apu_dsp_init(MCPXAPUState *d);
 void mcpx_apu_dsp_finalize(MCPXAPUState *d);
 void mcpx_apu_update_dsp_preference(MCPXAPUState *d);
-/* The VP fills the engine-owned mix buffer, then the GP/EP finish the same
- * tick synchronously. No queue, worker wake or deferred guest-memory access. */
+/* Snapshot the EP footprint for VP RAM reads and return the CPU mix input. */
 int64_t (*mcpx_apu_dsp_mixbins(MCPXAPUState *d))[NUM_SAMPLES_PER_FRAME];
 void mcpx_apu_dsp_post(MCPXAPUState *d, int64_t mixbins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME]);
 void mcpx_apu_dsp_post_silence(MCPXAPUState *d);
-/* Register writes are ordered on that same owner thread. */
+/* Register writes drain pending worker execution before changing DSP state. */
 void mcpx_apu_dsp_write(MCPXAPUState *d, uint32_t kind, hwaddr addr, uint32_t val);
 /* The DSP reset shadows, synchronized on reset or state load. */
 void mcpx_apu_dsp_sync_regs(MCPXAPUState *d);

@@ -23,6 +23,7 @@
  */
 
 #include "qemu/osdep.h"
+#include "libretro/dsp-ownership.h"
 #include "hw/intc/i8259.h"
 #include "hw/irq.h"
 #include "hw/isa/isa.h"
@@ -395,6 +396,9 @@ static void pic_realize(DeviceState *dev, Error **errp)
                           "pic", 2);
     memory_region_init_io(&s->elcr_io, OBJECT(s), &pic_elcr_ioport_ops, s,
                           "elcr", 1);
+    /* IRQ masks/acknowledgements do not touch DSP state or guest RAM. */
+    lr_dsp_register_guarded_mmio_ops(&pic_base_ioport_ops);
+    lr_dsp_register_guarded_mmio_ops(&pic_elcr_ioport_ops);
 
     qdev_init_gpio_out(dev, s->int_out, ARRAY_SIZE(s->int_out));
     qdev_init_gpio_in(dev, pic_set_irq, 8);

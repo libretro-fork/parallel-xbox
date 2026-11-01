@@ -168,6 +168,7 @@ static bool s3tc_decode_levels(PGRAPHState *pg, VkCommandBuffer cmd,
     struct S3TCDecodeSlot *slot = s3tc_decode_slot(r);
     VkDescriptorBufferInfo input = { .buffer = source, .offset = source_offset,
                                      .range = direct ? ram_size : total };
+    if(direct) for(unsigned i=0;i<count;i++) lr_gpu_ram_claim((uintptr_t)cmd,levels[i].source,levels[i].size);
     /* Imported RAM may also contain writes from an earlier GPU operation. */
     VkBufferMemoryBarrier before = { .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
         .srcAccessMask = VK_ACCESS_HOST_WRITE_BIT | VK_ACCESS_MEMORY_WRITE_BIT,

@@ -24,6 +24,7 @@
  */
 
 #include "qemu/osdep.h"
+#include "libretro/dsp-ownership.h"
 #include "qemu/main-loop.h"
 #include "qemu/timer.h"
 #include "qemu/cpu-boost.h"
@@ -540,7 +541,11 @@ bool qemu_clock_run_timers(QEMUClockType type)
         opaque = ts->opaque;
 
         /* run the callback (the timer list can be modified) */
-        cb(opaque);
+        {
+            LR_DSP_TIMER_GUARD(cb);
+            if(!lr_dsp_timer_guarded(cb)) lr_dsp_ownership_fence(LR_DSP_FENCE_TIMER);
+            cb(opaque);
+        }
 
         progress = true;
     }

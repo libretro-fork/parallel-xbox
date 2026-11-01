@@ -17,6 +17,7 @@
 #include "system/system.h"
 #include "system/runstate.h"
 #include "system/memory.h"
+#include "libretro/dsp-ownership.h"
 #include "qapi/error.h"
 #include "system/cpus.h"
 #include "ui/console.h"
@@ -2139,6 +2140,7 @@ static void lr_run_frame(void)
         if (!vblank_done && now >= vblank_at) {
             vblank_done = true;
             if (con) {
+                lr_dsp_ownership_fence(LR_DSP_FENCE_FRAME);
                 graphic_hw_update(con);
             }
         }
@@ -2273,6 +2275,7 @@ static bool lr_state(bool save)
 static void lr_stop_machine(void)
 {
     vm_shutdown();
+    lr_dsp_ownership_stop();
     if (opt_hdd_trim && !xemu_chihiro_mode()) {
         hdd_trim();
     }
@@ -2679,6 +2682,7 @@ RETRO_API void retro_get_system_av_info(struct retro_system_av_info *info)
 
 RETRO_API void retro_init(void)
 {
+    lr_dsp_bus_init();
     LRLOG_INFO("[xemu] retro_init\n");
     /* Which commit of this repository the core was built from, so a
      * tester's log says which build it came from (xemu_commit, from
@@ -3092,6 +3096,7 @@ RETRO_API void retro_unload_game(void)
  * or 801 by an exact count (4004 every 5 frames) */
 static int lr_audio_frames_this_run(void)
 {
+    lr_dsp_ownership_fence(LR_DSP_FENCE_FRAME);
     int n;
 
     lr_audio_rem += 4004;

@@ -20,6 +20,7 @@
  */
 
 #include "nv2a_int.h"
+#include "libretro/dsp-ownership.h"
 
 typedef struct RAMHTEntry {
     uint32_t handle;
@@ -204,7 +205,9 @@ static inline void pfifo_idle_wait(NV2AState *d)
         if (end != retro_atomic_load_relaxed_int(&d->pfifo.frame_end_done)) {
             retro_eventcount_cancel_wait(&d->pfifo.fifo_ec);
             retro_atomic_store_relaxed_int(&d->pgraph.scanout_changed, 1);
+            lr_dsp_bus_borrow();
             pgraph_process_pending(d);
+            lr_dsp_bus_return();
             retro_atomic_store_release_int(&d->pfifo.frame_end_done, end);
             retro_atomic_thread_fence_seq_cst();
             if (retro_atomic_load_relaxed_int(&nv2a_libretro_waiter)) {
@@ -573,7 +576,9 @@ void *pfifo_thread(void *arg)
 {
     NV2AState *d = (NV2AState *)arg;
 
+    lr_dsp_bus_borrow();
     pgraph_init_thread(d);
+    lr_dsp_bus_return();
 
     rcu_register_thread();
 
@@ -595,6 +600,7 @@ void *pfifo_thread(void *arg)
         d->pfifo.guest_seen =
             retro_atomic_load_acquire_int(&d->pfifo.guest_kicks);
 
+        lr_dsp_bus_borrow();
         pgraph_process_pending(d);
 
         if (!retro_atomic_load_acquire_int(&d->pfifo.halt)) {
@@ -602,6 +608,7 @@ void *pfifo_thread(void *arg)
         }
 
         pgraph_process_pending_reports(d);
+        lr_dsp_bus_return();
 
         if (!retro_atomic_load_acquire_int(&d->pfifo.fifo_kick)) {
             // Both the pusher and puller are waiting for some action

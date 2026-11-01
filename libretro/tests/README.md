@@ -2166,3 +2166,21 @@ without awaiting physical completion. Later display requests stay latched; on
 retirement they are serviced before the FIFO resumes, without a second GPU
 poll or an extra queued video frame. A failed marker disables early display
 work. The model also checks this budget, coalescing and maintenance progress.
+
+
+EP ownership regression coverage
+-------------------------------
+
+`python3 libretro/tests/test-dsp-ownership.py . cc` extracts the production
+RAM guards, DMA walker, post dispatcher, worker loop and sparse TLB updates
+into host fixtures. It covers shared table reads, conflicting writes, direct
+pointer lifetime, invalid/table-alias admission, imported GPU page leases,
+victim TLB swaps, remapping, resize and fail-closed index overflow. A threaded
+case runs 20,000 delayed EP jobs through signed and zero epoch wrap, followed
+by stop/join; a separate stress case races 200,000 external borrow lifetimes
+against DSP admission. Set `DSP_OWNERSHIP_SANITIZE=1` for ASan/UBSan.
+
+The DSP guest-RAM CI job runs these checks, the original GP scratch-growth
+regression and the exact frontend audio-cadence regression. These host tests
+need no game, BIOS or GPU. Game captures and throughput still need live
+testing; passing these fixtures is not a claim of a universal latency gain.

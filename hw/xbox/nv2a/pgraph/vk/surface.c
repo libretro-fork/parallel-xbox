@@ -30,6 +30,7 @@
 #include "qemu/compiler.h"
 #include "ui/xemu-settings.h"
 #include "renderer.h"
+#include "libretro/dsp-ownership.h"
 #include "hw/xbox/nv2a/pgraph/vram-ranges.h"
 #include "hw/xbox/nv2a/pgraph/scanout.h"
 #include <math.h>
@@ -227,6 +228,8 @@ static void store_packed_to_ram(PGRAPHState *pg, VkCommandBuffer cmd,
     VkDeviceSize row =
         (VkDeviceSize)surface->width * surface->fmt.bytes_per_pixel;
 
+    lr_gpu_ram_claim((uintptr_t)cmd,surface->vram_addr,
+        (VkDeviceSize)(surface->height-1)*surface->pitch+row);
     if (surface->swizzle) {
         if (src == r->storage_buffers[BUFFER_COMPUTE_SRC].buffer &&
             pgraph_vk_swizzle_packed_possible(pg, surface->vram_addr,
@@ -803,6 +806,8 @@ static bool download_surface_to_buffer(NV2AState *d, SurfaceBinding *surface,
                              VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 1,
                              &pre_copy_dst_barrier, 0, NULL);
     }
+    if(direct) lr_gpu_ram_claim((uintptr_t)cmd,surface->vram_addr,
+        surface->swizzle ? ram_size : (VkDeviceSize)(surface->height-1)*surface->pitch+(VkDeviceSize)surface->width*bpp);
     vkCmdCopyImageToBuffer(cmd, surface_image_loc,
                            VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, copy_buffer,
                            num_copy_regions, copy_regions);
@@ -1826,6 +1831,8 @@ void pgraph_vk_upload_surface_data(NV2AState *d, SurfaceBinding *surface,
     if (gpu_unswizzled) {
         pgraph_vk_unswizzle_done(pg, cmd);
     } else {
+        if(from_vram) lr_gpu_ram_claim((uintptr_t)cmd,surface->vram_addr,
+            (VkDeviceSize)(surface->height-1)*surface->pitch+(VkDeviceSize)surface->width*surface->fmt.bytes_per_pixel);
         pgraph_vk_upload_source_barrier(pg, cmd, from_vram);
     }
 
@@ -2858,6 +2865,8 @@ static void upload_scanout_background(NV2AState *d, SurfaceBinding *out,
             PGRAPHScanoutRect *p = &rects[i];
             VkDeviceSize ram_offset = scan->start +
                 (VkDeviceSize)p->dy * scan->pitch + p->dx * scan->bpp;
+            if(from_vram) lr_gpu_ram_claim((uintptr_t)cmd,ram_offset,
+                (VkDeviceSize)(p->height-1)*scan->pitch+(VkDeviceSize)p->width*scan->bpp);
             if (!from_vram) {
                 size_t row_bytes = (size_t)p->width * scan->bpp;
                 memcpy_image(staged + offset - staged_offset,

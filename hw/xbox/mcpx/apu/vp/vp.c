@@ -29,6 +29,24 @@
 #include <rthreads/rthreads.h>
 #include "adpcm.h"
 #include "vpmath.h"
+#include "libretro/dsp-ownership.h"
+
+/* The CPU snapshots this footprint before releasing VP work. It cannot
+ * publish another DSP epoch until all these readers have finished. */
+static inline void vp_ram_guard(MCPXAPUState *d, hwaddr addr, size_t len)
+{
+    if (!d->dsp_vp_pending || !len) return;
+    uint64_t first=addr/TARGET_PAGE_SIZE;
+    uint64_t last=(addr+len-1)/TARGET_PAGE_SIZE;
+    for (uint64_t page=first; page<=last && page<LR_DSP_RAM_PAGES; page++) {
+        uint64_t hazards=(uint64_t)retro_atomic_load_relaxed_64(&d->dsp_vp_pages[page/64]) &
+                         ~d->dsp_vp_readonly[page/64];
+        if (hazards & (UINT64_C(1) << (page%64))) {
+            lr_dsp_ownership_ram(memory_region_get_ram_addr(d->ram)+addr,len);
+            return;
+        }
+    }
+}
 
 static const struct {
     hwaddr top, current, next;
@@ -123,6 +141,7 @@ static inline uint32_t apu_ram_ldl(MCPXAPUState *d, hwaddr addr)
 {
     if (xemu_cpu_boost && d->ram_ptr &&
         addr + 4 <= memory_region_size(d->ram)) {
+        vp_ram_guard(d,addr,4);
         return ldl_le_p(&d->ram_ptr[addr]);
     }
     return ldl_le_phys(&address_space_memory, addr);
@@ -132,6 +151,7 @@ static inline uint16_t apu_ram_lduw(MCPXAPUState *d, hwaddr addr)
 {
     if (xemu_cpu_boost && d->ram_ptr &&
         addr + 2 <= memory_region_size(d->ram)) {
+        vp_ram_guard(d,addr,2);
         return lduw_le_p(&d->ram_ptr[addr]);
     }
     return lduw_le_phys(&address_space_memory, addr);
@@ -140,6 +160,7 @@ static inline uint16_t apu_ram_lduw(MCPXAPUState *d, hwaddr addr)
 static inline uint8_t apu_ram_ldub(MCPXAPUState *d, hwaddr addr)
 {
     if (xemu_cpu_boost && d->ram_ptr && addr < memory_region_size(d->ram)) {
+        vp_ram_guard(d,addr,1);
         return d->ram_ptr[addr];
     }
     return ldub_phys(&address_space_memory, addr);
@@ -1111,6 +1132,7 @@ static int voice_get_samples(MCPXAPUState *d, uint32_t v, int32_t samples[][2],
                     hwaddr addr = segment_offset + linear_addr;
                     int max_seg_byte = (seg_len >> 6) * block_size;
                     assert(linear_addr + block_size <= max_seg_byte);
+                    vp_ram_guard(d,addr,block_size);
                     encoded = &d->ram_ptr[addr];
                 } else {
                     linear_addr += ba;
@@ -1120,7 +1142,8 @@ static int voice_get_samples(MCPXAPUState *d, uint32_t v, int32_t samples[][2],
                                        linear_addr % TARGET_PAGE_SIZE;
                     if (block_size <= available && d->ram_ptr &&
                         addr + block_size <= memory_region_size(d->ram)) {
-                        encoded = &d->ram_ptr[addr];
+                        vp_ram_guard(d,addr,block_size);
+                    encoded = &d->ram_ptr[addr];
                     } else {
                         /* SGE pages need not be adjacent in guest RAM.
                          * Gather split blocks, keeping the address-space
@@ -1921,6 +1944,7 @@ static void voice_worker_thread(void *arg)
     VoiceWorkDispatch *vwd = &d->vp.voice_work_dispatch;
 
     rcu_register_thread();
+    lr_dsp_vp_worker(true);
     for (;;) {
         int gen = retro_atomic_load_acquire_int(&self->generation);
         if (gen == self->seen_generation) {
@@ -1951,6 +1975,7 @@ static void voice_worker_thread(void *arg)
             voice_work_unit(d, vwd, unit, self->mixbins, self->sample_buf);
         }
     }
+    lr_dsp_vp_worker(false);
     rcu_unregister_thread();
 }
 

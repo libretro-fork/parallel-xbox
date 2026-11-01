@@ -8,7 +8,8 @@ import tempfile
 repo = Path(sys.argv[1]).resolve()
 source = (repo / 'ui/libretro.c').read_text(errors='surrogateescape')
 start = source.index('static int lr_audio_frames_this_run(void)')
-end = source.index('/* The picture of the frame just run,', start)
+audio = source.index('static void lr_present_audio(', start)
+end = source.index('\n}', audio) + 2
 code = r'''
 #include <assert.h>
 #include <stdbool.h>
@@ -17,6 +18,8 @@ code = r'''
 #include <stdio.h>
 #include <string.h>
 static int32_t lr_audio_rem;
+#define LR_DSP_FENCE_FRAME 7
+static void lr_dsp_ownership_fence(unsigned reason){assert(reason==7);}
 static int16_t samples[802*2];
 static size_t available, consumed, callbacks, total, expected;
 static int16_t sequence(size_t i) { return (int16_t)(i%30001); }
