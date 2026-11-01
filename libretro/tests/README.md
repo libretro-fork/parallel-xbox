@@ -2746,3 +2746,30 @@ a driver memory allocation rather than crashing at the fixed reservation limit.
 The DOA3 character-select crash report identified the render-target allocation
 assertion in an 8x build; its exact Vulkan return code was not present in the
 screenshot. Saved-state entry can have a smaller live set than cold/menu entry.
+
+### Opportunistic Vulkan snapshot-arena recycling
+
+The 75% snapshot-arena threshold no longer submits the current recording or
+waits for GPU work. Both arenas may reset only when the existing main-queue
+completion serial covers every submitted reader and no current draw has pending
+or bound snapshots. Otherwise immutable snapshots append into remaining space.
+Actual exhaustion retains its existing synchronous mirror fallback. No storage,
+copy pass, PSO, fence query, lock or frame buffering is added.
+
+`test-vk-cow-tail.py CHECKOUT [CC]` adds 160 threshold schedules for both slots,
+serial rollover, completed/unproved readers, pending/bound snapshots and
+coherent/non-coherent memory. They assert zero finishes/settles at the threshold,
+unchanged live prefixes, correct copied bytes and epoch invalidation only when
+safe. An unproved full arena still takes exactly one existing fallback. The old
+production source fails this regression; 100,000 selector and 10,000 live-reader
+cases remain. `VK_COW_SOURCE`, `VK_COW_BINARY`, `VK_COW_SKIP_RUN` and
+`VK_COW_CFLAGS` permit baseline checks and native cross-built fixtures.
+
+Mirror consumed-page marks are intentionally retained: the open recording may
+still read the mirror even though it references no arena snapshots. Clearing
+those marks here would permit an unsafe mirror overwrite. No hardware stall,
+cache-miss or total copy-volume improvement has been measured for this change.
+
+Win64 code generation keeps sync_vertex_ram_buffer and pgraph_vk_flush_draw
+at 704-byte stack usage, bind_vertex_buffer at 368 bytes, and all renderer
+state sizes unchanged. The snapshot helper remains inlined.

@@ -3925,8 +3925,8 @@ static void vertex_cow_snapshot(PGRAPHState *pg, hwaddr addr,
     pgraph_vk_download_surfaces_in_range_if_dirty(pg, lo, copy_size);
 
     /* Snapshots persist across frames: the arena is append-only, so
-     * appending needs no fence wait; it is reset at 3/4 full with
-     * everything settled. */
+     * appending needs no fence wait. Above 3/4 full, recycle only when all
+     * submitted readers are already proved complete and this draw holds none. */
     unsigned arena_slot = r->slot & 1;
     StorageBuffer *arena = &r->vertex_arena[arena_slot];
     VertexCowCacheEntry *extend = dirty ? NULL :
@@ -3969,10 +3969,11 @@ static void vertex_cow_snapshot(PGRAPHState *pg, hwaddr addr,
     VkDeviceSize alignment = r->vertex_arena_coherent[arena_slot] ? 256 :
         MAX((VkDeviceSize)256, r->device_props.limits.nonCoherentAtomSize);
     VkDeviceSize dst = ROUND_UP(arena->buffer_offset, alignment);
+    /* The recording can still read the mirror: retain its consumed marks.
+     * Only arena readers are absent here, so no global teardown is needed. */
     if (dst + copy_size > (arena->buffer_size / 4) * 3 &&
-        !r->vertex_arena_pending && !r->vertex_arena_used) {
-        pgraph_vk_finish(pg, VK_FINISH_REASON_NEED_BUFFER_SPACE);
-        pgraph_vk_settle_all_slots(pg);
+        !r->vertex_arena_pending && !r->vertex_arena_used &&
+        (int32_t)(r->submit_count - r->settled_submit) <= 0) {
         for (int s = 0; s < 2; s++) {
             r->vertex_arena[s].buffer_offset = 0;
             r->vertex_arena_dirty_start[s] = UINT64_MAX;
