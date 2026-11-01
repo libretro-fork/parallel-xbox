@@ -17,6 +17,9 @@ selection = re.search(r"    state->other_stage_input =.*?;", source, re.S).group
 selection += "\n" + re.search(r"    state->shader_stage_program =.*?;", source, re.S).group()
 selection += "\n" + re.search(r"    state->combiner_control = pgraph_reg_r.*?;", source, re.S).group()
 uniform = re.search(r"        values->combCtl\[0\] =.*?;", source, re.S).group()
+header = (r / "hw/xbox/nv2a/pgraph/glsl/shaders.h").read_text()
+masks = "\n".join(re.search(r"#define " + name + r"[^\n]*", header).group()
+                  for name in ("NV_PGRAPH_SHADERCTL_SHADER_FIELDS", "NV_PGRAPH_SHADERPROG_SHADER_FIELDS"))
 state = re.search(r"typedef struct PshState \{.*?\} PshState;", (r / "hw/xbox/nv2a/pgraph/glsl/psh.h").read_text(), re.S).group()
 code = r"""
 #include <assert.h>
@@ -27,6 +30,7 @@ code = r"""
 #include "hw/xbox/nv2a/nv2a_regs.h"
 #include "hw/xbox/nv2a/pgraph/psh_regs.h"
 enum PshDepthFormat { DEPTH_DISABLED };
+/* MASKS */
 /* STATE */
 static uint32_t pgraph_reg_r(const uint32_t *pg,unsigned reg) {
  assert(reg==NV_PGRAPH_SHADERCTL||reg==NV_PGRAPH_SHADERPROG||reg==NV_PGRAPH_COMBINECTL);return *pg;
@@ -60,7 +64,7 @@ int main(void) {
  }
  assert(cases==65602);printf("PASS: %u SHADERCTL/SHADERPROG/COMBINECTL key triples; all decoded fields preserved; ignored bits cleared\n",cases);
 }
-""".replace("/* STATE */", state).replace("/* SELECTION */", selection).replace("/* UNIFORM */", uniform)
+""".replace("/* MASKS */", masks).replace("/* STATE */", state).replace("/* SELECTION */", selection).replace("/* UNIFORM */", uniform)
 with tempfile.TemporaryDirectory(prefix="shaderctl-state-") as folder:
     c = Path(folder) / "test.c"
     exe = Path(folder) / "test"

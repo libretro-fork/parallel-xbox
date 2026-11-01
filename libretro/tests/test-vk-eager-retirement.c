@@ -125,6 +125,21 @@ int main(void){
   unsigned old_retired=retirements,old_drops=drops;polls=0;pgraph_vk_settle_poll(&p);assert(retirements==old_retired&&drops==old_drops&&!waits);
   settle_cases++;
  }
+ unsigned eager_proof_cases=0;
+ for(unsigned slot=0;slot<2;slot++)for(unsigned wrap=0;wrap<2;wrap++)
+ for(int delta=-64;delta<=64;delta++)for(unsigned ready=0;ready<2;ready++){
+  uint32_t serial=wrap?0:100;unsigned next=slot^1;
+  PGRAPHVkState q={.device=9,.slot=slot,.slot_fence={0,1},.frame_gpu={.w_end={101,202}},.in_command_buffer=true,.eager_draw_count=127,.submit_count=serial+100,.settled_submit=serial+(uint32_t)delta};PGRAPHState p={.vk_renderer_state=&q};
+  q.slot_fence_pending[next]=true;q.slot_submit[next]=serial;
+  status[next]=ready?VK_SUCCESS:VK_NOT_READY;
+  polls=waits=retirements=resolves=drops=submits=0;drain_expected=true;
+  eager_submit_after_draw(&p);bool complete=delta>=0||ready;
+  assert(polls==(unsigned)(delta<0)&&!waits&&submits==(unsigned)complete);
+  assert(retirements==(unsigned)complete&&resolves==retirements&&drops==retirements*2);
+  assert(q.slot_fence_pending[next]==!complete&&q.eager_draw_count==(complete?0u:128u));
+  eager_proof_cases++;
+ }
+ printf("PASS: %u eager completion-proof schedules, rollover and unavailable fences\n",eager_proof_cases);
  printf("PASS: %u settle-poll schedules, completion proofs, same-queue coverage, rollover, partial retirement and recording-safe teardown\n",settle_cases);
  printf("PASS: %u eager, %u serial-proof, %u allocation-retry and %u full-drain schedules\n",cases,serial_cases,retry_cases,drain_cases);
 }

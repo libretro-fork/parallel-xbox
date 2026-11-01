@@ -3,7 +3,7 @@
 from pathlib import Path
 import os,re,shlex,subprocess,sys,tempfile
 root=Path(sys.argv[1]).resolve();cc=sys.argv[2] if len(sys.argv)>2 else 'cc'
-v=(root/'hw/xbox/nv2a/pgraph/vk/renderer.c').read_text()
+v=Path(os.environ.get('VK_FLIP_SOURCE',root/'hw/xbox/nv2a/pgraph/vk/renderer.c')).read_text()
 p=(root/'hw/xbox/nv2a/pgraph/pgraph.c').read_text()
 def function(source,name):
  m=re.search(r'^[^\n;]*\b'+name+r'\([^;{]*\)\s*\{',source,re.M);assert m,name

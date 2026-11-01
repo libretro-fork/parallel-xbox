@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 #include <assert.h>
 #include <stdbool.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 typedef int VkResult;
@@ -8,7 +9,7 @@ typedef int VkResult;
 #define VK_NOT_READY 1
 #define VK_CHECK(s) assert((s)==VK_SUCCESS)
 #define VK_FINISH_REASON_FLIP_STALL 7
-typedef struct {unsigned slot;bool slot_fence_pending[2];unsigned slot_fence[2];int device;} PGRAPHVkState;
+typedef struct {unsigned slot;bool slot_fence_pending[2];unsigned slot_fence[2],slot_submit[2],settled_submit;int device;} PGRAPHVkState;
 typedef struct {PGRAPHVkState *vk_renderer_state;unsigned surface_scale_factor;bool host_flip_pending;} PGRAPHState;
 typedef struct {PGRAPHState pgraph;} NV2AState;
 typedef struct {struct {bool (*flip_stall_ready)(NV2AState*);}ops;} PGRAPHRenderer;
@@ -18,7 +19,12 @@ static unsigned polls,retired,finishes,resolves,deadlines,services,saves;
 static bool done[2],submit,rotate,cost;
 static int pgraph_vk_cost_ops;
 static VkResult vkGetFenceStatus(int device,unsigned fence){assert(device==9&&fence<2);polls++;return done[fence]?VK_SUCCESS:VK_NOT_READY;}
-static void pgraph_vk_slot_retired(PGRAPHState *pg,unsigned slot){assert(!pg->vk_renderer_state->slot_fence_pending[slot]&&done[slot]);retired++;}
+static void pgraph_vk_slot_retired(PGRAPHState *pg,unsigned slot){
+ PGRAPHVkState *r=pg->vk_renderer_state;
+ assert(!r->slot_fence_pending[slot]&&(done[slot]||(int32_t)(r->slot_submit[slot]-r->settled_submit)<=0));
+ if((int32_t)(r->slot_submit[slot]-r->settled_submit)>0)r->settled_submit=r->slot_submit[slot];
+ retired++;
+}
 static void pgraph_vk_finish(PGRAPHState *pg,int reason){
  assert(reason==7);PGRAPHVkState *r=pg->vk_renderer_state;finishes++;
  if(submit){assert(!r->slot_fence_pending[r->slot]);r->slot_fence_pending[r->slot]=true;done[r->slot]=false;if(rotate)r->slot^=1;}
@@ -39,7 +45,7 @@ int main(void){
  unsigned cases=0;
  renderer.ops.flip_stall_ready=pgraph_vk_flip_stall_ready;
  for(unsigned mode=0;mode<128;mode++)for(unsigned delay=0;delay<17;delay++){
-  PGRAPHVkState r={.slot=mode&1,.slot_fence={0,1},.device=9};NV2AState d={.pgraph={.vk_renderer_state=&r,.surface_scale_factor=1+mode%4}};
+  PGRAPHVkState r={.slot=mode&1,.slot_fence={0,1},.slot_submit={1,2},.device=9};NV2AState d={.pgraph={.vk_renderer_state=&r,.surface_scale_factor=1+mode%4}};
   polls=retired=finishes=resolves=deadlines=services=0;
   submit=mode&2;rotate=mode&4;cost=mode&8;
   r.slot_fence_pending[r.slot]=!submit&&(mode&16);
@@ -71,5 +77,20 @@ int main(void){
   cases++;
  }
  assert(saves==cases/600);
+ unsigned proof_cases=0;
+ for(unsigned slot=0;slot<2;slot++)for(unsigned wrap=0;wrap<2;wrap++)
+ for(int delta=-64;delta<=64;delta++)for(unsigned ready=0;ready<2;ready++){
+  uint32_t serial=wrap?0:100;
+  PGRAPHVkState r={.slot=slot,.slot_fence={0,1},.device=9,.settled_submit=serial+(uint32_t)delta};
+  r.slot_submit[slot]=serial;r.slot_fence_pending[slot]=true;r.slot_fence_pending[slot^1]=true;
+  NV2AState d={.pgraph={.vk_renderer_state=&r}};done[0]=done[1]=false;done[slot]=ready;
+  polls=retired=0;bool complete=delta>=0||ready;
+  assert(pgraph_vk_flip_stall_ready(&d)==complete);
+  assert(polls==(unsigned)(delta<0)&&retired==(unsigned)complete);
+  assert(r.slot_fence_pending[slot]==!complete&&r.slot_fence_pending[slot^1]);
+  if(complete){unsigned before=polls;assert(pgraph_vk_flip_stall_ready(&d)&&polls==before&&retired==1);}
+  proof_cases++;
+ }
+ printf("PASS: %u flip completion-proof schedules, rollover, busy/ready fences and exactly-once retirement\n",proof_cases);
  printf("PASS: %u Vulkan flip slot/rotation/cost/empty/retirement schedules\n",cases);
 }

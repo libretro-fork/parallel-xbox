@@ -2754,6 +2754,21 @@ then a clear and an empty report. Offsets 0x300100 and 0x300120 retain timestamp
 counts and completion words for both renderer checks. GL GET_REPORT already
 flushes closed queries; idle polls add no repeated glFlush calls.
 
+`test-texture-program-dirty.py CHECKOUT [--cc CC]` extracts the complete shared
+shader dirty check and its helpers. Its 32,768 schedules cover each bit of
+SHADERCTL/SHADERPROG, dirty/clean flags, randomized bound fields, restored live
+writes, and static/dynamic siblings. Ignored writes and restored values must
+reuse the bound shader; live changes must invalidate it. The dirty map stays
+unchanged, clean flags cause no added register reads, and retained unconditional
+invalidators and program-data changes still force rebuilding. Old noncanonical
+seed states conservatively rebuild when those registers are dirty.
+
+Key construction and dirty checking share the same two field masks. No new
+snapshot slots, state fields, allocations, GPU queries, transfers or waits are
+introduced. Both backends use the shared check; dynamic combiner uniform reads
+remain unchanged. Shader source/cache formats and struct layouts are unchanged.
+Gameplay cache-hit and frame-time effects remain unmeasured.
+
 The guarded LRU fixture also flushes one early-bin entry with later bin pages inaccessible. It verifies list/count updates complete before returning; the parent faults on a later-bin read. Existing 30,000 exact order/callback operations include flushes and blocked evictions. BENCH modes 5-8 time refill+flush cycles for one early/late-bin entry and 512/16,384 distributed entries; these are synthetic cycles, not isolated flush or game FPS measurements.
 
 ### Completion proofs in Vulkan settle polling
@@ -2777,3 +2792,20 @@ and the renderer interface remain 4,295,312, 5,845,344 and 232 bytes respectivel
 `test-sse-native-sqrt.py CHECKOUT [CC]` exercises the production scalar and packed sqrt helpers with actual SoftFloat, both with its normal host shortcuts and with those shortcuts disabled in the oracle. Each oracle runs 393,216 result/status/alias cases across XMM/YMM widths, eight rounding policies, guest flushing, sticky flags and exceptional/random inputs. x86-64 cases poison MXCSR rounding, flushing, masks and sticky flags and require exact restoration. Fallback calls are counted per lane. A negative control removes the rounding check from the sticky-state fast path and must fail. Only the four SSE rounding policies use native instructions; other policies retain software behavior.
 
 Seed merge coverage instruments merged-payload allocation: unchanged/duplicate-only merges allocate none, changed merges allocate exactly the final byte count. Another 512 randomized cases compare an independent hash-only/order/cap oracle, including forced collisions, pointer-vector growth, failed writes and poisoned mapping release. Record bytes are copied before unmapping, and no borrowed pointer survives into the file writer. SEED_VIEW_BINARY and SEED_VIEW_SKIP_RUN support native fixtures. Atomic file-rewrite assembly remains a separate copy opportunity.
+
+### Completion proofs at Vulkan readiness checks
+
+The eager-submit and deferred-flip fixtures each add 1,032 cases covering both
+slots, serial rollover, known completion 64 submissions before/after the target,
+and unavailable/ready fences. A serial proof bypasses the driver query while
+still retiring the slot exactly once. An unproved unavailable fence retains
+ownership and backpressure. Eager submission then uses the normal slot rotation;
+flip retirement resumes through the existing owner continuation. Both baseline
+sources fail the new no-redundant-query cases. `VK_FLIP_SOURCE` and the existing
+`VK_EAGER_SOURCE` allow baseline production-source overrides. No state, waits,
+locks, copies, PSOs or frame queues are added. Resource-pressure waits inside
+partially executed draw setup remain a separate resumable-method task.
+
+Win64 draw-end stack usage remains 96 bytes and flip-readiness stack usage
+64 bytes. PGRAPHState/PGRAPHVkState/renderer-interface sizes remain
+4,295,312/5,845,344/232 bytes. No hardware cache-miss reduction is established.

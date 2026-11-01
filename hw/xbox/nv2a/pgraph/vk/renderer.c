@@ -187,11 +187,13 @@ static bool pgraph_vk_flip_stall_ready(NV2AState *d)
     PGRAPHState *pg = &d->pgraph;
     PGRAPHVkState *r = pg->vk_renderer_state;
     if (r->slot_fence_pending[r->slot]) {
-        VkResult status = vkGetFenceStatus(r->device, r->slot_fence[r->slot]);
-        if (status == VK_NOT_READY) {
-            return false;
+        if ((int32_t)(r->slot_submit[r->slot] - r->settled_submit) > 0) {
+            VkResult status = vkGetFenceStatus(r->device, r->slot_fence[r->slot]);
+            if (status == VK_NOT_READY) {
+                return false;
+            }
+            VK_CHECK(status);
         }
-        VK_CHECK(status);
         r->slot_fence_pending[r->slot] = false;
         pgraph_vk_slot_retired(pg, r->slot);
     }
