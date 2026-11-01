@@ -449,9 +449,6 @@ void xemu_tbrate_lock_slow(QemuMutex *m)
         t0 = get_clock() - t0;
         xemu_vcpu_waits.gpu_ns += t0;
         xemu_vcpu_waits.gpu_waits++;
-        if (current_cpu) {
-            xemu_cpu_pace_stall_ns += t0;
-        }
     }
 }
 
@@ -487,18 +484,15 @@ bool bql_locked(void)
 void bql_lock_impl(const char *file, int line)
 {
     g_assert(!bql_locked());
-    if (unlikely(xemu_tbrate_enabled() ||
-                 retro_atomic_load_relaxed_int(&xemu_cpu_pace_on)) &&
+    if (unlikely(xemu_tbrate_enabled()) &&
         current_cpu) {
-        /* XEMU_TBRATE, and Real hardware speed's stall account: only a lock
-         * someone else holds costs a wait, so that is the only case timed. */
+        /* Only contention contributes to the diagnostic wait counter. */
         if (qemu_mutex_trylock_impl(&bql, file, line) != 0) {
             int64_t t0 = get_clock();
             qemu_mutex_lock_impl(&bql, file, line);
             t0 = get_clock() - t0;
             xemu_vcpu_waits.bql_ns += t0;
             xemu_vcpu_waits.bql_waits++;
-            xemu_cpu_pace_stall_ns += t0;
         }
         return;
     }

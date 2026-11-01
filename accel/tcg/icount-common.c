@@ -152,9 +152,8 @@ int64_t icount_get(void)
 /* Executed instructions use a fixed conversion independent of host load.
  * The frame owner accounts separately for idle/device intervals. 1.977 ns an
  * instruction, 1.45 of the 733.33 MHz Pentium III's clock periods, the
- * rate standalone's Real hardware speed paces its CPU at (XEMU_PACE_PS,
- * accel/tcg/cpu-exec.c: judged on footage of Virtua Cop 3's cinematics,
- * and the games that hold 60 frames a second on the cabinet). The guest's
+ * historical standalone CPU pacing rate (judged on footage of Virtua Cop
+ * 3's cinematics and games holding 60 frames a second on the cabinet). The guest's
  * TSC counts 733.33 MHz of this time (hw/i386/x86-cpu.c). */
 #define LR_ICOUNT_NS_NUM 1977
 #define LR_ICOUNT_NS_DEN 1000

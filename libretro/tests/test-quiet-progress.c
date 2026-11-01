@@ -23,7 +23,7 @@ typedef struct CPUState {
     int lr_quiet_at_exit, lr_quiet_exits, icount_budget, icount_extra, cflags_next_tb;
     bool lr_poll_wait, idle, requested, interrupt;
 } CPUState;
-static unsigned waits, proofs, refills, paces, useful_work;
+static unsigned waits, proofs, refills, useful_work;
 static int returned_exit;
 static bool return_null, use_icount = true;
 static void trace_exec_tb(TranslationBlock *tb, vaddr pc) { (void)tb; (void)pc; }
@@ -48,7 +48,6 @@ static void lr_quiet_exit(CPUState *cpu) { waits++; cpu->requested = true; }
 static bool cpu_loop_exit_requested(CPUState *cpu) { return cpu->requested; }
 static bool icount_enabled(void) { return use_icount; }
 static void icount_update(CPUState *cpu) { (void)cpu; refills++; }
-static void xemu_cpu_pace_refill(CPUState *cpu) { (void)cpu; paces++; }
 static void retro_atomic_store_relaxed_u16(uint16_t *p, uint16_t v) { *p = v; }
 /* PRODUCTION */
 

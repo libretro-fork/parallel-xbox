@@ -2,7 +2,6 @@
 #define QEMU_CPUS_H
 
 #include "qemu/thread.h"
-#include "qemu/cpu-pace.h"
 #include <retro_atomic.h>
 
 /* register accel-specific operations */
@@ -62,13 +61,10 @@ static inline bool xemu_tbrate_enabled(void)
                                           : xemu_tbrate_init();
 }
 
-/* A GPU lock taken on the guest's behalf; with the probe on, or Real
- * hardware speed (its stall account), a wait for a lock the GPU thread
- * holds is timed. */
+/* Time GPU lock contention only when the diagnostic probe is enabled. */
 static inline void xemu_tbrate_lock(QemuMutex *m)
 {
-    if (likely(!xemu_tbrate_enabled() &&
-               !retro_atomic_load_relaxed_int(&xemu_cpu_pace_on))) {
+    if (likely(!xemu_tbrate_enabled())) {
         qemu_mutex_lock(m);
     } else {
         xemu_tbrate_lock_slow(m);

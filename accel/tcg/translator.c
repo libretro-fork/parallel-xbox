@@ -27,7 +27,6 @@
 #include "tcg/tcg-temp-internal.h"
 #include "hw/core/cpu.h"
 #include "system/cpus.h"
-#include "qemu/cpu-pace.h"
 #include "qemu/cpu-boost.h"
 
 #ifdef CONFIG_SOFTMMU
@@ -202,12 +201,8 @@ static TCGOp *gen_tb_start(DisasContextBase *db, uint32_t cflags)
 {
     TCGv_i32 count = NULL;
     TCGOp *icount_start_insn = NULL;
-    /* Real hardware speed: the block draws its instructions from the
-     * budget in icount_decr.u16.low, as with icount, and stops below when
-     * the budget is spent. */
-    bool budget = (cflags & CF_USE_ICOUNT) ||
-                  (retro_atomic_load_relaxed_int(&xemu_cpu_pace_on) &&
-                   !(cflags & CF_NOIRQ));
+    /* Only the frame engine's guest instruction budget limits a block. */
+    bool budget = (cflags & CF_USE_ICOUNT) != 0;
 
     TCGv_i32 test = NULL;
 
