@@ -1189,11 +1189,26 @@ GString *g_string_insert_len(GString *string, gssize pos, const gchar *val,
     }
     l = (gsize)len;
     p = pos < 0 ? string->len : (gsize)pos;
-    if (val >= string->str && val <= string->str + string->len) {
-        /* a piece of itself: copied out first */
-        gchar *copy = g_memdup2(val, l);
-        g_string_insert_len(string, pos, copy, len);
-        g_free(copy);
+    if ((uintptr_t)val >= (uintptr_t)string->str &&
+        (uintptr_t)val - (uintptr_t)string->str <= string->len) {
+        /* Keep an offset across growth. Moving the tail preserves the part
+         * of the source after the insertion point at its shifted address;
+         * copy the unshifted prefix before filling in that suffix. Include
+         * the terminator because explicit-length input may contain it. */
+        gsize source = (uintptr_t)val - (uintptr_t)string->str;
+        gsize prefix = source < p ? MIN(l, p - source) : 0;
+        g_string_maybe_expand(string, l);
+        memmove(string->str + p + l, string->str + p,
+                string->len - p + 1);
+        if (prefix) {
+            memmove(string->str + p, string->str + source, prefix);
+        }
+        if (l > prefix) {
+            memmove(string->str + p + prefix,
+                    string->str + source + prefix + l, l - prefix);
+        }
+        string->len += l;
+        string->str[string->len] = 0;
         return string;
     }
     g_string_maybe_expand(string, l);

@@ -1,6 +1,7 @@
 # Changelog of the libretro core
 
 - Remove obsolete intermediate conversion storage from GL and Vulkan swizzled-texture upload paths; retain direct palette/RGB655 expansion and linear YUV conversion.
+- Remove temporary allocations and scratch copies when strings insert or append their own contents; preserve overlapping ranges and buffer growth.
 
 - Run the exact four-trip GPU-progress display oracle in deterministic mode so host scheduling delays cannot cause false failures; retain normal-mode deadline-accounting coverage.
 
