@@ -876,6 +876,10 @@ static void emit_write_reg(Tr *t, int r, int val)
         h_or_rr(e, 1, acc, val);
         acc_written(t, n);
         break;
+    case DSP_REG_OMR:
+        h_and_ri(e, 0, val, 0xC7);
+        h_st32(e, REG_CORE, REGOFF(r), val);
+        break;
     case DSP_REG_X0:
     case DSP_REG_X1:
     case DSP_REG_Y0:
@@ -898,7 +902,7 @@ enum {
     OP_MOVE, OP_ADD, OP_SUB, OP_CMP, OP_TFR, OP_CLR, OP_TST, OP_RND,
     OP_MPY, OP_MPYR, OP_MAC, OP_MACR, OP_ASL, OP_ASR, OP_LSL, OP_LSR,
     OP_NEG, OP_NOT, OP_AND, OP_OR, OP_EOR, OP_ABS, OP_ADDL, OP_ADDR,
-    OP_SUBL, OP_SUBR, OP_ADC, OP_SBC, OP_CMPM, OP_ROL, OP_ROR, OP_MAX,
+    OP_SUBL, OP_SUBR, OP_ADC, OP_SBC, OP_CMPM, OP_ROL, OP_ROR, OP_MAX, OP_INC, OP_DEC,
     OP_UNSUPPORTED
 };
 
@@ -1242,15 +1246,18 @@ static void emit_alu(Tr *t, const AluOp *a)
     case OP_ADD:
     case OP_SUB:
     case OP_CMP:
+    case OP_INC:
+    case OP_DEC:
         acc_load(t, a->d);
-        emit_src56(t, a, T1);
-        emit_addsub56(e, acc, T1, a->op != OP_ADD);
-        /* CMP consumes the current flags and clears the interpreter's
-         * virtual upper status bits as its CCR update does. */
-        uint32_t clear = SR_EUNZ | SR_V | SR_C;
-        if (a->op == OP_CMP) {
-            clear |= 0xFFFF0000u;
+        if (a->op == OP_INC || a->op == OP_DEC) {
+            /* INC/DEC operate at accumulator bit zero, not the word's bit 24. */
+            h_mov_ri(e, T1, 1);
+        } else {
+            emit_src56(t, a, T1);
         }
+        emit_addsub56(e, acc, T1, a->op == OP_SUB || a->op == OP_CMP || a->op == OP_DEC);
+        /* Arithmetic CCR updates clear the interpreter's virtual upper bits. */
+        uint32_t clear = SR_EUNZ | SR_V | SR_C | 0xFFFF0000u;
         emit_sr_result(t, clear, T4, T3, a->op == OP_CMP ? -1 : a->d);
         if (a->op != OP_CMP) {
             h_mov_rr(e, 1, acc, T3);
@@ -1969,6 +1976,8 @@ enum {
     NP_BIT_REG,
     NP_BIT_SR_UPPER,
     NP_MOVEC_EA,
+    NP_MOVEC_IMM,
+    NP_MOVEC_SPECIAL, /* control writes retire through post, never re-execute */
 };
 
 static void emit_cc(Emitter *e, int cc);
@@ -1982,6 +1991,16 @@ static bool np_alu(const Insn *in, AluOp *a)
     memset(a, 0, sizeof(*a));
     a->src = SRC_IMM;
     a->d = (inst >> 3) & 1;
+    if (!strcmp(name, "inc D") || !strcmp(name, "dec D")) {
+        a->op = name[0] == 'i' ? OP_INC : OP_DEC;
+        a->d = inst & 1;
+        return true;
+    }
+    if (!strcmp(name, "sub #xx, D") || !strcmp(name, "sub #xxxx, D")) {
+        a->op = OP_SUB;
+        a->imm = !strcmp(name, "sub #xx, D") ? (inst >> 8) & 0x3F : in->ext;
+        return true;
+    }
     if (!strcmp(name, "add #xx, D")) {
         a->op = OP_ADD;
         a->imm = (inst >> 8) & 0x3F;
@@ -2054,13 +2073,16 @@ static int np_kind(const Insn *in)
         }
         /* The interpreter exposes malformed upper accumulator words for
          * out-of-width modifying bit numbers; keep that path unchanged. */
-        return reg_supported(reg) &&
+        return (reg_supported(reg) || reg == DSP_REG_OMR) &&
                !((reg == DSP_REG_A || reg == DSP_REG_B) && bit >= 24)
                ? NP_BIT_REG : NP_NONE;
     }
+    if (!strcmp(name, "movec #xx, D1")) {
+        return reg_supported(in->inst & 63) ? NP_MOVEC_IMM : NP_MOVEC_SPECIAL;
+    }
     if (!strcmp(name, "movec [X or Y]:ea <-> R") &&
-        (in->inst & (1 << 15)) && reg_supported(in->inst & 63)) {
-        return NP_MOVEC_EA;
+        (in->inst & (1 << 15))) {
+        return reg_supported(in->inst & 63) ? NP_MOVEC_EA : NP_MOVEC_SPECIAL;
     }
     if ((!strcmp(name, "movem P:ea <-> R") || !strcmp(name, "movem P:aa <-> R")) &&
         reg_supported(in->inst & 63)) {
@@ -2091,7 +2113,8 @@ static int np_kind(const Insn *in)
     if (!strcmp(name, "lua (Rn + aa), D")) {
         return NP_LUA_REL;
     }
-    if (!strcmp(name, "movep [X or Y]:ea <-> [X or Y]:pp")) {
+    if (!strcmp(name, "movep [X or Y]:ea <-> [X or Y]:pp") ||
+        !strcmp(name, "movep [X or Y]:ea <-> X:qq")) {
         return NP_MOVEP_EA;
     }
     if (!strcmp(name, "movep [X or Y]:pp <-> R")) {
@@ -2116,15 +2139,33 @@ static void emit_nonparallel(Tr *t, const Insn *in, int kind)
     uint32_t inst = in->inst;
 
     switch (kind) {
+    case NP_MOVEC_IMM:
+        h_mov_ri(e, V1, (inst >> 8) & 255);
+        emit_write_reg(t, inst & 63, V1);
+        break;
+    case NP_MOVEC_SPECIAL:
     case NP_MOVEC_EA: {
         Ea ea;
-        emit_calc_ea(t, (inst >> 8) & 63, in->ext, EA1, &ea);
+        if (kind == NP_MOVEC_SPECIAL) acc_spill_all(t, false);
+        if (!strcmp(in->d.name, "movec #xx, D1")) {
+            ea.kind = EA_IMM;
+            ea.imm = (inst >> 8) & 255;
+        } else {
+            emit_calc_ea(t, (inst >> 8) & 63, in->ext, EA1, &ea);
+        }
         if (ea.kind == EA_IMM) {
             h_mov_ri(e, V1, ea.imm);
         } else {
             emit_read_mem(t, (inst >> 6) & 1, ea_addr_reg(t, &ea), V1);
         }
-        emit_write_reg(t, inst & 63, V1);
+        if (kind == NP_MOVEC_SPECIAL) {
+            h_mov_rr(e, 0, H_ARG2, V1);
+            h_mov_ri(e, H_ARG1, inst & 63);
+            h_mov_rr(e, 1, H_ARG0, REG_CORE);
+            h_call(e, (const void *)dsp56k_write_reg);
+        } else {
+            emit_write_reg(t, inst & 63, V1);
+        }
         break;
     }
     case NP_BIT_SR_UPPER: {
@@ -2368,8 +2409,9 @@ static void emit_nonparallel(Tr *t, const Insn *in, int kind)
     case NP_MOVEP_EA: {
         /* emu_movep_23: a peripheral (through the interpreter's memory
          * access, out of line) and X/Y memory */
-        uint32_t peraddr = 0xFFFFC0 + (inst & 0x3F);
-        int perspace = (inst >> 16) & 1;
+        bool qq = !strcmp(in->d.name, "movep [X or Y]:ea <-> X:qq");
+        uint32_t peraddr = (qq ? 0xFFFF80 : 0xFFFFC0) + (inst & 0x3F);
+        int perspace = qq ? DSP_SPACE_X : (inst >> 16) & 1;
         int easpace = (inst >> 6) & 1;
         Ea ea;
         emit_calc_ea(t, (inst >> 8) & 0x3F, in->ext, EA1, &ea);
@@ -3267,7 +3309,20 @@ retry:
 
         if (insn_native(&in)) {
             emit_native(t, &in);
-            if (np_kind(&in) == NP_MOVEM_P_WRITE) {
+            if (np_kind(&in) == NP_MOVEC_SPECIAL) {
+                /* Register writes may change scale/LF, stack state or LC.
+                 * Post once, then select the resulting cache identity. */
+                acc_spill_all(t, false);
+                h_st32_imm(&t->e, REG_CORE, OFF(pc), in.at);
+                h_st32_imm(&t->e, REG_CORE, OFF(cur_inst_len), in.len);
+                h_st16_imm(&t->e, REG_CORE, OFF(instr_cycle), t->cyc - cyc_before);
+                h_mov_rr(&t->e, 1, H_ARG0, REG_CORE);
+                h_call(&t->e, (const void *)dsp56k_post);
+                emit_charge(&t->e, cyc_before);
+                emit_jump_to_epilogue(t);
+                t->cyc = 0;
+                done = true;
+            } else if (np_kind(&in) == NP_MOVEM_P_WRITE) {
                 /* A write can replace this opcode, its extension, or the
                  * next instruction. Never translate past it or resume
                  * already decoded code from before invalidation. */
@@ -3376,10 +3431,13 @@ retry:
     emit_native(t, &in);
     cycles = t->cyc;
     t->cyc = 0;
-    if (np_kind(&in) == NP_MOVEM_P_WRITE) {
-        /* REP may overwrite its own body or extension. Retire one write,
-         * then dispatch again so invalidation selects the updated opcode. */
-        h_st32(e, REG_CORE, REGOFF(DSP_REG_LC), REG_LC);
+    if (np_kind(&in) == NP_MOVEM_P_WRITE || np_kind(&in) == NP_MOVEC_SPECIAL) {
+        /* P writes can replace REP's body; control writes can change its
+         * count or mode. Retire once and redispatch the updated state. */
+        if (np_kind(&in) == NP_MOVEM_P_WRITE) {
+            h_st32(e, REG_CORE, REGOFF(DSP_REG_LC), REG_LC);
+        }
+        acc_spill_all(t, false);
         h_st32_imm(e, REG_CORE, OFF(pc), in.at);
         h_st32_imm(e, REG_CORE, OFF(cur_inst_len), in.len);
         h_st16_imm(e, REG_CORE, OFF(instr_cycle), cycles);

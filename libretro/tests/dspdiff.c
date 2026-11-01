@@ -81,6 +81,7 @@ typedef struct Machine {
 /* dsp.c's peripherals */
 #ifdef DSPJIT_TEST
 static uint64_t peripheral_read_count;
+static uint64_t peripheral_write_count, peripheral_write_hash;
 #endif
 uint32_t read_peripheral(DSPState *dsp, uint32_t address)
 {
@@ -116,6 +117,11 @@ uint32_t read_peripheral(DSPState *dsp, uint32_t address)
 
 void write_peripheral(DSPState *dsp, uint32_t address, uint32_t value)
 {
+#ifdef DSPJIT_TEST
+    peripheral_write_count++;
+    peripheral_write_hash = (peripheral_write_hash ^ address) * UINT64_C(1099511628211);
+    peripheral_write_hash = (peripheral_write_hash ^ value) * UINT64_C(1099511628211);
+#endif
     switch (address) {
     case 0xFFFFC4:
         if (value & 1) {

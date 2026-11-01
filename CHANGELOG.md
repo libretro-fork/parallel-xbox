@@ -121,6 +121,8 @@
 
 ## Unreleased
 
+- DSP: compile the remaining instruction forms recorded in the OutRun 2 startup fallback audit, including control-register and peripheral transfers. Preserve scaling, stack and repeat-count changes, with 45,632 focused headless regression boundaries and production-block fixtures. This does not establish zero fallback for every game.
+
 - Vulkan image allocation pressure now reclaims deferred images whose draw, display and upload work has finished, instead of failing while reusable memory is waiting in the retirement list. Driver image-creation memory errors receive one reclamation retry, with allocation-stage diagnostics if recovery fails. Headless regression tests protect live and in-flight images.
 
 

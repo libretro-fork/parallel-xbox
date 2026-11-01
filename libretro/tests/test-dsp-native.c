@@ -157,6 +157,17 @@ static void prepare(Machine *m, uint32_t op, uint32_t ext, unsigned seed,
         }
     }
 
+    if (seed & 0x400000) {
+        c->exception_debugging = false;
+        for (unsigned n = 0; n < 16; n++) {
+            c->stack[0][n] = n ? 0x1200 + n : 0;
+            c->stack[1][n] = n ? 0x5600 + n : 0;
+        }
+        unsigned sp = c->registers[DSP_REG_SP] & 15;
+        c->registers[DSP_REG_SSH] = c->stack[0][sp];
+        c->registers[DSP_REG_SSL] = c->stack[1][sp];
+    }
+
 }
 
 static void check(Machine *a, Machine *b, uint32_t op, uint32_t ext,
@@ -166,19 +177,30 @@ static void check(Machine *a, Machine *b, uint32_t op, uint32_t ext,
     prepare(b, op, ext, seed, mode, long_irq);
     dsp_core_t *ca = a->dsp->backend;
     uint64_t reads_before = peripheral_read_count;
+    uint64_t writes_before = peripheral_write_count;
+    peripheral_write_hash = 0;
     a->dsp->ops->step(a->dsp);
     uint64_t reads_a = peripheral_read_count - reads_before;
     ca->cycle_count += ca->instr_cycle;
+    uint64_t writes_a = peripheral_write_count - writes_before;
+    uint64_t hash_a = peripheral_write_hash;
     dspjit_test_reset_fallback_count();
     reads_before = peripheral_read_count;
+    writes_before = peripheral_write_count;
+    peripheral_write_hash = 0;
     b->dsp->ops->run(b->dsp, 1);
     uint64_t reads_b = peripheral_read_count - reads_before;
-    if (dspjit_test_fallback_count() || reads_a != reads_b || compare_machines(a, b)) {
+    uint64_t writes_b = peripheral_write_count - writes_before;
+    if (dspjit_test_fallback_count() || reads_a != reads_b ||
+        writes_a != writes_b || hash_a != peripheral_write_hash || compare_machines(a, b)) {
         fprintf(stderr, "native DSP case %u: op=%06x ext=%x seed=%u mode=%u irq=%d fallbacks=%llu\n",
                 cases, op, ext, seed, mode, long_irq,
                 (unsigned long long)dspjit_test_fallback_count());
         fprintf(stderr, "peripheral reads: interpreter=%llu jit=%llu\n",
                 (unsigned long long)reads_a, (unsigned long long)reads_b);
+        fprintf(stderr, "peripheral writes: interpreter=%llu jit=%llu hashes=%llx/%llx\n",
+                (unsigned long long)writes_a, (unsigned long long)writes_b,
+                (unsigned long long)hash_a, (unsigned long long)peripheral_write_hash);
         exit(1);
     }
     cases++;
@@ -753,6 +775,111 @@ static void check_compare_immediates(Machine *a, Machine *b, unsigned mode)
     }
 }
 
+static void check_inc_dec_words(Machine *a, Machine *b, unsigned mode)
+{
+    static const uint64_t values[] = {0, 1, 0xFFFFFF, 0x1000000,
+        0xFFFFFFFFFFFFFF, 0x7FFFFFFFFFFFFF, 0x80000000000000, 0x80000000000001};
+    const uint64_t mask = UINT64_C(0xFFFFFFFFFFFFFF), sign = UINT64_C(0x80000000000000);
+    for (unsigned d = 0; d < 2; d++) for (unsigned sub = 0; sub < 2; sub++) {
+        for (unsigned n = 0; n < ARRAY_SIZE(values); n++) for (unsigned sticky = 0; sticky < 2; sticky++) {
+            uint64_t v = values[n], result = (sub ? v - 1 : v + 1) & mask;
+            bool overflow = sub ? v == sign : v == sign - 1;
+            unsigned expected = ((sub ? v == 0 : v == mask) << DSP_SR_C) |
+                                (overflow << DSP_SR_V) | ((sticky || overflow) << DSP_SR_L);
+            Machine *machines[] = {a, b};
+            dspjit_test_reset_fallback_count();
+            for (unsigned engine = 0; engine < 2; engine++) {
+                Machine *m = machines[engine];
+                prepare(m, (sub ? 0xA : 8) | d, 0, 1, mode, false);
+                dsp_core_t *c = m->dsp->backend;
+                c->registers[DSP_REG_SR] = (mode << DSP_SR_S0) | (sticky << DSP_SR_L);
+                c->registers[DSP_REG_A0 + d] = v & 0xFFFFFF;
+                c->registers[DSP_REG_A1 + d] = (v >> 24) & 0xFFFFFF;
+                c->registers[DSP_REG_A2 + d] = v >> 48;
+                if (!engine) { m->dsp->ops->step(m->dsp); c->cycle_count += c->instr_cycle; }
+                else m->dsp->ops->run(m->dsp, 1);
+                uint64_t actual = c->registers[DSP_REG_A0 + d] |
+                    ((uint64_t)c->registers[DSP_REG_A1 + d] << 24) |
+                    ((uint64_t)c->registers[DSP_REG_A2 + d] << 48);
+                assert(actual == result && (c->registers[DSP_REG_SR] & 0x43) == expected);
+            }
+            assert(!dspjit_test_fallback_count() && !compare_machines(a, b));
+            cases++;
+        }
+    }
+}
+
+static void check_startup_operations(Machine *a, Machine *b, unsigned mode)
+{
+    check_inc_dec_words(a, b, mode);
+    static const unsigned values[] = {0, 1, 0x20, 0x3F, 0x80, 0xFF};
+    static const unsigned contexts[] = {0x20000000, 0x40000, 0x80000};
+    for (unsigned reg = DSP_REG_M0; reg < DSP_REG_MAX; reg++) {
+        for (unsigned v = 0; v < ARRAY_SIZE(values); v++) {
+            for (unsigned ctx = 0; ctx < ARRAY_SIZE(contexts); ctx++) {
+                for (unsigned irq = 0; irq < 2; irq++) {
+                    check(a, b, 0x0500A0 | (values[v] << 8) | reg, 0x30,
+                          0x400000 | 0x1000000 | contexts[ctx], mode, irq);
+                }
+            }
+        }
+        if (reg <= DSP_REG_M7) continue; /* existing native EA register coverage */
+        for (unsigned ea = 0; ea < 64; ea++) {
+            if ((ea >> 3) == 6 && (ea & 7) != 0 && (ea & 7) != 4) continue;
+            for (unsigned space = 0; space < 2; space++) {
+                for (unsigned seed = 0; seed < 2; seed++) {
+                    check(a, b, 0x05C020 | (ea << 8) | (space << 6) | reg,
+                          seed || space ? 0x30 : 0xFFFF85, 0x400000 | 0x1000000 | seed,
+                          mode, false);
+                }
+            }
+        }
+    }
+    static const unsigned ports[] = {0, 0x30, 0x31, 0x32, 0x3F};
+    for (unsigned ea = 0; ea < 64; ea++) {
+        if ((ea >> 3) == 6 && (ea & 7) != 0 && (ea & 7) != 4) continue;
+        for (unsigned port = 0; port < ARRAY_SIZE(ports); port++) {
+            for (unsigned space = 0; space < 2; space++) {
+                for (unsigned write = 0; write < 2; write++) {
+                    for (unsigned seed = 0; seed < 2; seed++) {
+                        check(a, b, 0x074000 | (write << 15) | (ea << 8) |
+                              (space << 6) | ports[port], 0x30, seed, mode, false);
+                    }
+                }
+            }
+        }
+    }
+    for (unsigned port = 0; port < 64; port++) {
+        for (unsigned space = 0; space < 2; space++) {
+            for (unsigned write = 0; write < 2; write++) {
+                check(a, b, 0x077400 | (write << 15) | (space << 6) | port,
+                      0x30, 1, mode, false);
+            }
+        }
+    }
+    for (unsigned seed = 0; seed < 8; seed++) {
+        for (unsigned d = 0; d < 2; d++) {
+            unsigned input = 0x10000 | 0x1000000 | (seed << 1);
+            for (unsigned value = 0; value < 64; value++) {
+                check(a, b, 0x014084 | (value << 8) | (d << 3), 0, input, mode, false);
+            }
+            static const unsigned words[] = {0, 1, 63, 0x7FFFFF, 0x800000, 0xFFFFFF};
+            for (unsigned w = 0; w < ARRAY_SIZE(words); w++) {
+                check(a, b, 0x0140C4 | (d << 3), words[w], input, mode, false);
+            }
+            check(a, b, 0x000008 | d, 0, input, mode, false);
+            check(a, b, 0x00000A | d, 0, input, mode, false);
+        }
+        for (unsigned op = 0; op < 4; op++) {
+            static const uint32_t codes[] = {0x0AC040, 0x0AC060, 0x0BC040, 0x0BC060};
+            for (unsigned bit = 0; bit < (op == 3 ? 16u : 32u); bit++) {
+                check(a, b, codes[op] | (DSP_REG_OMR << 8) | bit,
+                      0, seed | 0x1000000, mode, false);
+            }
+        }
+    }
+}
+
 static void check_loop_address_reload(Machine *a, Machine *b)
 {
     static const uint32_t ends[] = { 0x100, 0, 1, 0x123, 0, 0, 0, 0x100 };
@@ -969,9 +1096,10 @@ int main(int argc, char **argv)
     bool relative_only = argc == 2 && !strcmp(argv[1], "--relative");
     bool loops_only = argc == 2 && !strcmp(argv[1], "--loops");
     bool compare_only = argc == 2 && !strcmp(argv[1], "--compare");
+    bool startup_only = argc == 2 && !strcmp(argv[1], "--startup");
     bool program_only = argc == 2 && !strcmp(argv[1], "--program");
-    if (argc != 1 && !relative_only && !loops_only && !program_only && !compare_only) {
-        fputs("usage: dspnative [--relative|--loops|--program|--compare]\n", stderr);
+    if (argc != 1 && !relative_only && !loops_only && !program_only && !compare_only && !startup_only) {
+        fputs("usage: dspnative [--relative|--loops|--program|--compare|--startup]\n", stderr);
         return 2;
     }
     Machine *a = machine_new(false), *b = machine_new(true);
@@ -985,8 +1113,9 @@ int main(int argc, char **argv)
 #ifdef _WIN32
     assert(initially_committed == (64u << 10));
 #endif
-    if (relative_only || loops_only || program_only || compare_only) {
+    if (relative_only || loops_only || program_only || compare_only || startup_only) {
         for (unsigned mode = 0; mode < 4; mode++) {
+            if (startup_only) check_startup_operations(a, b, mode);
             if (compare_only) check_compare_immediates(a, b, mode);
             if (relative_only) check_relative_branches(a, b, mode);
             if (loops_only) {
@@ -1007,6 +1136,7 @@ int main(int argc, char **argv)
     check_hot_control_registers(a, b);
     check_program_memory_reads(a, b);
     for (unsigned mode = 0; mode < 4; mode++) {
+        check_startup_operations(a, b, mode);
         check_compare_immediates(a, b, mode);
         check_program_transfers(a, b, mode);
         check_program_write_sequences(a, b, mode);
