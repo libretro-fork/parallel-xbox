@@ -9,7 +9,7 @@ env=os.environ.copy();env['PATH']=str(Path(cc).resolve().parent)+os.pathsep+env.
 s=(r/'hw/xbox/nv2a/pgraph/vk/reports.c').read_text();name='pgraph_vk_process_pending_reports_internal';a=s.index('void '+name+'(');b=s.index('{',a)+1;depth=1
 while depth:depth+=(s[b]=='{')-(s[b]=='}');b+=1
 header=(r/'hw/xbox/nv2a/pgraph/vk/renderer.h').read_text();a1=header.index('#define PGRAPH_VK_MAX_QUERIES');b1=header.index('} QueryReport;',a1)+len('} QueryReport;');storage=re.search(r'uint64_t query_results\[[^;]+;',header).group(0)
-wa=s.index('bool pgraph_vk_wait_pending_report(');wb=s.index('{',wa)+1;depth=1
+wa=s.index('int pgraph_vk_poll_pending_report(');wb=s.index('{',wa)+1;depth=1
 while depth:depth+=(s[wb]=='{')-(s[wb]=='}');wb+=1
 code=Path(__file__).with_suffix('.c').read_text().replace('/* REPORT TYPE */',header[a1:b1]).replace('/* RESULT STORAGE */',storage).replace('/* PRODUCTION */',s[a:b]+'\n'+s[wa:wb])
 q=(r/'libretro/tests/test-spv-geom.c').read_text();a=q.index('#ifdef _WIN32\nstatic void quiet_test_abort');b=q.index('int line_tests(',a);code=code.replace('/* QUIET ERRORS */',q[a:b])

@@ -165,11 +165,11 @@ typedef struct PGRAPHRenderer {
         void (*pre_shutdown_wait)(NV2AState *d);
         void (*process_pending)(NV2AState *d);
         void (*process_pending_reports)(NV2AState *d);
-        /* Optional: with nothing else to do, wait for the host GPU to have
-         * the oldest pending report's results (no clock: the GPU's own
-         * completion). Called without the pfifo lock; false when it could
-         * not wait (the report's queries are not submitted). */
-        bool (*wait_pending_report)(NV2AState *d);
+        /* Optional, owner thread only: poll the oldest report without waiting.
+         * 1: ready to process; 0: submitted but pending; -1: not submitted.
+         * Pending results keep guest work outstanding across interruptible
+         * eventcount parks; unsubmitted work waits for the next FIFO kick. */
+        int (*poll_pending_report)(NV2AState *d);
         /* Optional: build a vertex program's shaders at upload time. */
         void (*prewarm_vertex_program)(NV2AState *d);
         void (*surface_flush)(NV2AState *d);

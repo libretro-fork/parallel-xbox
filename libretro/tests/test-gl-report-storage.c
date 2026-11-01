@@ -67,7 +67,7 @@ int main(void)
  /* No younger clear/report may pass an unavailable older report. */
  sum+=add_query(&d,false);QueryReport *older=r.zpass_report;GLuint held=older->queries[0];pgraph_gl_get_report(&d,0x01020000);pgraph_gl_clear_report_value(&d);
  uint32_t younger=add_query(&d,true);pgraph_gl_get_report(&d,0x01020001);unsigned before=writes;pgraph_gl_process_pending_reports(&d);assert(writes==before&&QSIMPLEQ_FIRST(&r.report_queue)==older&&d.pgraph.reports_pending);
- assert(pgraph_gl_wait_pending_report(&d));assert(queries[held].ready);pgraph_gl_process_pending_reports(&d);assert(writes==before+2&&last_result==younger&&!d.pgraph.reports_pending);sum=younger;cases++;
+ unsigned prior_flushes=flushes;for(unsigned i=0;i<1000;i++)assert(pgraph_gl_poll_pending_report(&d)==0&&!queries[held].ready&&writes==before&&flushes==prior_flushes);queries[held].ready=true;assert(pgraph_gl_poll_pending_report(&d)==1);pgraph_gl_process_pending_reports(&d);assert(writes==before+2&&last_result==younger&&!d.pgraph.reports_pending);sum=younger;cases++;
  /* An open, unreported interval is ended and discarded by CLEAR. */
  open_query(&d);unsigned old_deleted=deleted,old_ends=ends;pgraph_gl_clear_report_value(&d);assert(!open_id&&!r.zpass_report&&deleted==old_deleted+1&&ends==old_ends+1);pgraph_gl_process_pending_reports(&d);assert(!r.zpass_pixel_count_result);sum=0;cases++;
  /* Queue pool exhaustion and empty reports preserve order and free fallback. */

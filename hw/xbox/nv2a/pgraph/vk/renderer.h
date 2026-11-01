@@ -909,7 +909,7 @@ typedef struct PGRAPHVkState {
     /* Value/availability pairs, written directly by vkGetQueryPoolResults.
      * Report processing is serialized with the renderer; no per-poll copy. */
     uint64_t query_results[2 * PGRAPH_VK_MAX_QUERIES];
-    /* The idle wait writes directly here; a one-slot poll borrows the pair. */
+    /* The idle poll writes directly here; a one-slot poll borrows the pair. */
     uint64_t waited_query_result[2];
     int waited_query_slot;
     bool waited_query_valid;
@@ -1204,7 +1204,7 @@ void pgraph_vk_clear_report_value(NV2AState *d);
 void pgraph_vk_get_report(NV2AState *d, uint32_t parameter);
 void pgraph_vk_process_pending_reports(NV2AState *d);
 void pgraph_vk_process_pending_reports_internal(NV2AState *d);
-bool pgraph_vk_wait_pending_report(NV2AState *d);
+int pgraph_vk_poll_pending_report(NV2AState *d);
 
 typedef enum FinishReason {
     VK_FINISH_REASON_VERTEX_BUFFER_DIRTY,

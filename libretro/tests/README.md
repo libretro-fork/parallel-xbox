@@ -2084,7 +2084,7 @@ In the mailbox revision, the Win64 ticket shrank from 120 to 24 bytes, SurfaceBi
 grows from 128 to 320 bytes for the third slot and cache-line separation.
 The frontend getter stack falls from 336 to 96 bytes; owner post_scanout grows
 from 272 to 400 bytes because it now composes. No hardware cache counters were
-measured. Demand report/download waits remain separate work.
+measured. Demand downloads remain separate work; idle reports now use interruptible retirement.
 
 `test-opcode-byte.py CHECKOUT [CC]` checks the production byte fetch and general loader: 302,292 first/second-page reads, guarded edges, noncontiguous host mappings, existing/replaced page locks, MMIO recording and fault propagation. First-page reads must avoid the general loader. Linux defaults to ASan/UBSan; OPCODE_BYTE_CFLAGS, OPCODE_BYTE_BINARY and OPCODE_BYTE_SKIP_RUN support native Windows fixtures.
 
@@ -2141,7 +2141,7 @@ The packed-overlay GPU fixtures dispatch one invocation per YUY2 pair and check 
 
 `test-gl-flip-retirement.py CHECKOUT [CC]` extracts the production flip start,
 readiness, completion and discard functions, owner-dispatch hook, FIFO gate and
-idle report-wait guard. It checks 615 controlled schedules and 5,000 mixed
+idle report-poll guard. It checks 615 controlled schedules and 5,000 mixed
 ordinary/cost frames: unavailable/ready markers, bounded one-shot polls,
 previous/current-frame selection, unchanged pending queries, latched scale,
 exactly-once completion/deadline billing, reset-independent backpressure and renderer teardown.
@@ -2154,14 +2154,15 @@ against the previous frame; frames containing cost queries defer against the
 current frame before reusing query slots. At most two markers are retained.
 The FIFO owner polls once per dispatch, including empty-FIFO dispatches; a busy
 result does not self-kick, replay the flip or consume new methods. The idle
-report-wait callback is skipped while a flip is pending. Existing frontend/frame requests provide wakeups. The runtime pending
+report-poll callback is skipped while a flip is pending. Existing frontend/frame requests provide wakeups. The runtime pending
 flag survives a guest reset until retirement. Neither it nor GPU handles are
 serialized. Renderer teardown discards pending private cost samples while keeping
 guest reports on their existing drain path. No guest query result is dropped.
 
 The core currently forces the cost model off; its asynchronous query path has
 controlled-model coverage rather than native-game coverage. Demand downloads,
-report waits and lifecycle drains remain separate blocking paths. The native
+lifecycle drains remain separate blocking paths. Idle report retirement now
+uses interruptible eventcount parks, described below. The native
 GPU ROM's 3,120-3,135 and 3,280 FLIP_STALL sequence checks PBO freshness and
 subsequent FIFO progress through 3,400 frames.
 
@@ -2710,3 +2711,33 @@ layout and remain readable; old noncanonical keys can retain redundant entries,
 but their shader meaning does not change. No cache-format invalidation, runtime
 diagnostics, GPU transfers or synchronization are introduced. Game cache-hit and
 frame-time effects remain unmeasured.
+
+### Interruptible idle report retirement
+
+`test-pfifo-report-retirement.py CHECKOUT [CC]` extracts the complete production
+idle path. Sixty schedules cover submitted/unsubmitted/ready reports, pending
+flips, kicks, park requests, shutdown and frame-end races. A thousand delayed
+retries retain outstanding guest work without waking the emulator for unchanged
+results, then complete without another guest submission. Frame-end requests are
+acknowledged while results remain unavailable. UBSan is enabled by default.
+
+GL and Vulkan idle callbacks now observe availability instead of blocking for
+results. PFIFO parks through libretro-common's eventcount with a 100 us timeout
+request while a submitted query is pending; OS scheduling can delay the retry.
+Kicks interrupt the park. Unsubmitted queries retain ordinary kick-driven
+parking. The existing GL/Vulkan storage fixtures reject premature publication
+and check delayed availability; Vulkan retains its one-slot cached result and
+zero polling allocations. No new locks, fields, copies, PSOs or frame queue are
+introduced. GPU resource-pressure waits, demand downloads and lifecycle drains
+remain. Deterministic guest execution still preserves report completion order;
+this change does not establish a globally bounded retro_run duration.
+
+Win64 code generation keeps PFIFO thread stack usage at 288 bytes and the
+Vulkan poll at 96 bytes; the GL poll decreases from 64 to 48 bytes. PGRAPHState
+remains 4,295,312 bytes and the renderer interface 232 bytes. These are layout
+and stack observations, not hardware cache-miss or latency measurements.
+
+The native GPU ROM at frame 4700 requests a 48,000-sample triangle report,
+then a clear and an empty report. Offsets 0x300100 and 0x300120 retain timestamps,
+counts and completion words for both renderer checks. GL GET_REPORT already
+flushes closed queries; idle polls add no repeated glFlush calls.

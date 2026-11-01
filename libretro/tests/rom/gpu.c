@@ -1753,6 +1753,20 @@ void gpu_main(void)
             cr(0x01, width / 8 - 1);
             wr(PCRTC_START, SURF_F);
         }
+        if (frame == 4700) {
+            /* Occlusion results must retire with no further guest FIFO work:
+             * a triangle, then a younger clear/empty report in FIFO order. */
+            ram32(0x0030010cu, 0xffffffffu);
+            ram32(0x0030012cu, 0xffffffffu);
+            disable_texture();
+            method(0x17c8, 1); /* CLEAR_REPORT_VALUE: ZPASS */
+            method(0x17cc, 1); /* SET_ZPASS_PIXEL_COUNT_ENABLE */
+            triangle();
+            method(0x17d0, 0x01300100u); /* GET_REPORT */
+            method(0x17c8, 1);
+            method(0x17d0, 0x01300120u);
+            method(0x17cc, 0);
+        }
         method(NV097_FLIP_INCREMENT_WRITE, 0);
         kick();
         if (frame >= 100 && frame < 125) {

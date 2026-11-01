@@ -132,7 +132,7 @@ void pgraph_gl_process_pending_reports(NV2AState *d)
     }
     QSIMPLEQ_FOREACH_SAFE(report, &r->report_queue, entry, next) {
         if (!report->clear && !report_available(report)) {
-            return; /* still pending: the pfifo thread waits for it */
+            return; /* still pending: PFIFO retries after an interruptible park */
         }
         process_pending_report(d, report);
         QSIMPLEQ_REMOVE_HEAD(&r->report_queue, entry);
@@ -141,22 +141,17 @@ void pgraph_gl_process_pending_reports(NV2AState *d)
     pg->reports_pending = false;
 }
 
-/* The pfifo thread has nothing else to do while a report waits: block on
- * the host GPU's result for the oldest report's last query (they complete
- * in order), then the pass above serves it. */
-bool pgraph_gl_wait_pending_report(NV2AState *d)
+/* GET_REPORT already flushes its closed queries. Observe availability without
+ * another flush or a result read that could wait; normal processing consumes it. */
+int pgraph_gl_poll_pending_report(NV2AState *d)
 {
     PGRAPHGLState *r = d->pgraph.gl_renderer_state;
     QueryReport *head = QSIMPLEQ_FIRST(&r->report_queue);
-    GLuint result;
 
     if (!head || head->clear || !head->query_count) {
-        return true; /* served on the next pass */
+        return 1;
     }
-    glFlush();
-    glGetQueryObjectuiv(head->queries[head->query_count - 1], GL_QUERY_RESULT,
-                        &result);
-    return true;
+    return report_available(head) ? 1 : 0;
 }
 
 /* Every queued report into guest RAM, waiting on its queries: a snapshot

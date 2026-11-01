@@ -20,7 +20,7 @@ b=p.index('    if (g_config.display.renderer',a)
 functions.append('static void owner_dispatch(NV2AState *d) {\n'+p[a:b]+'\n}')
 a=f.index('    const PGRAPHRenderer *renderer',f.index('static inline void pfifo_idle_wait'))
 b=f.index('    /* The wait is prepared',a)
-functions.append('static void idle_report_prefix(NV2AState *d) {\n'+f[a:b]+'\n}')
+functions.append('static void idle_report_prefix(NV2AState *d) {\n'+f[a:b]+'\n(void)report_pending;\n}')
 code=code.replace('/* PRODUCTION */','\n'.join(functions))
 win='mingw' in cc or os.name=='nt'
 with tempfile.TemporaryDirectory(prefix='gl-flip-retirement-',dir=r.parent) as tmp:

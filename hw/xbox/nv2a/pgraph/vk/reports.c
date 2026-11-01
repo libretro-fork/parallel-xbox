@@ -143,8 +143,8 @@ void pgraph_vk_process_pending_reports_internal(NV2AState *d)
      * counted per report window, up to the slot the method was issued at:
      * a later slot would count pixels drawn after the test, and a clear
      * served in the same pass would wipe the next test's. A report
-     * still running stays queued (the pfifo thread waits for it when it has
-     * nothing else to do, pgraph_vk_wait_pending_report)
+     * still running stays queued (the pfifo thread polls it between
+     * interruptible parks, pgraph_vk_poll_pending_report)
      * and the guest reads the previous value meanwhile, as on the hardware. */
 
     const int base = r->queries_read;
@@ -155,7 +155,7 @@ void pgraph_vk_process_pending_reports_internal(NV2AState *d)
         assert(unread <= ARRAY_SIZE(r->query_results) / 2);
         if (r->waited_query_valid && unread == 1 &&
             r->waited_query_slot == base) {
-            /* The idle wait already fetched this exact slot. Borrow its
+            /* The idle poll already fetched this exact slot. Borrow its
              * value/availability pair instead of reading it from the driver
              * again. Other ranges retain the ordinary nonblocking poll. */
             results = r->waited_query_result;
@@ -218,33 +218,34 @@ void pgraph_vk_process_pending_reports_internal(NV2AState *d)
     NV2A_VK_DGROUP_END();
 }
 
-/* The pfifo thread has nothing else to do while a report waits: block on
- * the host GPU's completion of the report's last submitted slot (queries
- * of one queue complete in order), then the poll above serves it. */
-bool pgraph_vk_wait_pending_report(NV2AState *d)
+/* Poll the oldest report's last submitted query. Preserve a ready one-slot
+ * result for normal processing, without VK_QUERY_RESULT_WAIT_BIT. */
+int pgraph_vk_poll_pending_report(NV2AState *d)
 {
     PGRAPHVkState *r = d->pgraph.vk_renderer_state;
     QueryReport *head = QSIMPLEQ_FIRST(&r->report_queue);
     int end;
 
     if (!head || head->query_count <= r->queries_read) {
-        return true; /* nothing to wait for: served on the next pass */
+        return 1;
     }
     end = MIN((int)head->query_count, r->queries_submitted);
     if (end <= r->queries_read) {
-        return false; /* not submitted yet */
+        return -1;
     }
     r->waited_query_valid = false;
     VkResult result = vkGetQueryPoolResults(
         r->device, r->query_pool, end - 1, 1,
-        sizeof(uint64_t), r->waited_query_result, sizeof(uint64_t),
-        VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WAIT_BIT);
-    if (result == VK_SUCCESS) {
-        r->waited_query_result[1] = 1;
-        r->waited_query_slot = end - 1;
-        r->waited_query_valid = true;
+        sizeof(r->waited_query_result), r->waited_query_result,
+        sizeof(r->waited_query_result),
+        VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WITH_AVAILABILITY_BIT);
+    assert(result == VK_SUCCESS || result == VK_NOT_READY);
+    if (result != VK_SUCCESS || !r->waited_query_result[1]) {
+        return 0;
     }
-    return true;
+    r->waited_query_slot = end - 1;
+    r->waited_query_valid = true;
+    return 1;
 }
 
 void pgraph_vk_process_pending_reports(NV2AState *d)

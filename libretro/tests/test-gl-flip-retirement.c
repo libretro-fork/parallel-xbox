@@ -17,7 +17,7 @@ typedef struct SurfaceBinding { unsigned cpu_reads,cpu_reads_last_flip;struct {s
 typedef struct {GLsync flip_fence,flip_wait_fence;unsigned flip_scale;bool flip_failed,flip_display_queued;retro_atomic_int_t download_dirty_surfaces_pending,disp_check_pending,shader_cache_writeback_pending;bool gl_zpass_query_open;struct {SurfaceBinding *first;}surfaces;} PGRAPHGLState;
 typedef struct {PGRAPHGLState *gl_renderer_state;bool host_flip_pending,reports_pending;unsigned surface_scale_factor;retro_atomic_int_t waiting_for_flip,scanout_changed,sync_pending,flush_pending;struct {retro_atomic_int_t touched,dl_pending;}cpu;} PGRAPHState;
 typedef struct {PGRAPHState pgraph;struct {int lock;}pfifo;} NV2AState;
-typedef struct {struct {void (*process_pending)(NV2AState *);void (*cpu_access_service)(NV2AState *);void (*surface_update)(NV2AState *,bool,bool,bool);void (*flip_stall)(NV2AState *);bool (*flip_stall_ready)(NV2AState *);bool (*wait_pending_report)(NV2AState *);}ops;} PGRAPHRenderer;
+typedef struct {struct {void (*process_pending)(NV2AState *);void (*cpu_access_service)(NV2AState *);void (*surface_update)(NV2AState *,bool,bool,bool);void (*flip_stall)(NV2AState *);bool (*flip_stall_ready)(NV2AState *);int (*poll_pending_report)(NV2AState *);}ops;} PGRAPHRenderer;
 static PGRAPHRenderer renderer;
 static PGRAPHRenderer *pgraph_renderer(PGRAPHState *p){(void)p;return &renderer;}
 static unsigned created,deleted,polls,flushes,services,closes,finishes,predownloads,refreshes,report_waits,deadlines;
@@ -55,7 +55,7 @@ static bool guest_stall,intr_error,intr_context,fifo_access;
 static bool pfifo_stall_for_flip(NV2AState*d){(void)d;return guest_stall;}
 static bool pgraph_pending_bit(PGRAPHState*p,unsigned flag){(void)p;return flag==1?intr_error:intr_context;}
 static bool can_fifo_access(NV2AState*d){(void)d;return fifo_access;}
-static bool mock_report_wait(NV2AState*d){(void)d;report_waits++;return false;}
+static int mock_report_wait(NV2AState*d){(void)d;report_waits++;return false;}
 static void qemu_mutex_unlock(int*p){(void)p;unlocks++;}
 static void qemu_mutex_lock(int*p){(void)p;locks++;}
 #define GL_SAMPLES_PASSED 5
@@ -75,7 +75,7 @@ static void reset(NV2AState*d,PGRAPHGLState*r,SurfaceBinding*s){
  complete_on_flush=profile=guest_stall=intr_error=intr_context=fail_fence=false;fifo_access=true;
  displays=unlocks=locks=maintenance=0;
  renderer.ops.process_pending=pgraph_gl_process_pending;renderer.ops.cpu_access_service=NULL;
- renderer.ops.surface_update=mock_surface_update;renderer.ops.flip_stall=pgraph_gl_flip_stall;renderer.ops.flip_stall_ready=pgraph_gl_flip_stall_ready;renderer.ops.wait_pending_report=mock_report_wait;
+ renderer.ops.surface_update=mock_surface_update;renderer.ops.flip_stall=pgraph_gl_flip_stall;renderer.ops.flip_stall_ready=pgraph_gl_flip_stall_ready;renderer.ops.poll_pending_report=mock_report_wait;
  xemu_cost_segn=0;xemu_cost_q_open=xemu_cost_q2_open=false;
 }
 int main(void){

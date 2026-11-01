@@ -36,16 +36,18 @@ typedef struct {PGRAPHState pgraph;} NV2AState;
 static PGRAPHVkState state;
 static uint64_t query_values[PGRAPH_VK_MAX_QUERIES];
 static unsigned ready,query_calls,retired,writes,wait_calls;
-static bool wait_error;
+
 static uint32_t params[32],values[32];
 static void obj_pool_give(int *pool,void *p){assert(pool==&state.report_pool&&p);retired++;}
 static void pgraph_write_zpass_pixel_cnt_report(NV2AState *d,uint32_t parameter,uint32_t value){(void)d;assert(writes<32);params[writes]=parameter;values[writes++]=value;}
 VKAPI_ATTR VkResult VKAPI_CALL vkGetQueryPoolResults(VkDevice device,VkQueryPool pool,uint32_t first,uint32_t count,size_t bytes,void *data,VkDeviceSize stride,VkQueryResultFlags flags){
  assert(device==state.device&&pool==state.query_pool);
- if(flags==(VK_QUERY_RESULT_64_BIT|VK_QUERY_RESULT_WAIT_BIT)){
-  assert(count==1&&first<(unsigned)state.queries_submitted&&bytes==8&&stride==8&&data==state.waited_query_result);wait_calls++;
-  if(wait_error)return VK_ERROR_DEVICE_LOST;
-  *(uint64_t*)data=query_values[first];if(ready<first+1)ready=first+1;return VK_SUCCESS;
+ assert(!(flags&VK_QUERY_RESULT_WAIT_BIT));
+ if(data==state.waited_query_result){
+  assert(count==1&&first<(unsigned)state.queries_submitted&&bytes==16&&stride==16);wait_calls++;
+  assert(flags==(VK_QUERY_RESULT_64_BIT|VK_QUERY_RESULT_WITH_AVAILABILITY_BIT));
+  uint64_t *out=data;out[1]=first<ready;if(out[1])out[0]=query_values[first];
+  return out[1]?VK_SUCCESS:VK_NOT_READY;
  }
  assert(first==(unsigned)state.queries_read&&count==(unsigned)(state.queries_submitted-state.queries_read));
  assert(data==state.query_results&&bytes==count*16&&stride==16);
@@ -68,27 +70,31 @@ static void setup_wait(NV2AState *d,QueryReport *report,unsigned count){
  memset(&state,0,sizeof(state));state.device=(VkDevice)(uintptr_t)3;state.query_pool=(VkQueryPool)(uintptr_t)7;state.max_queries_in_flight=PGRAPH_VK_MAX_QUERIES;state.num_queries_in_flight=state.queries_submitted=count;state.guard_before=state.guard_after=0xc91ab76e583e91ffull;QSIMPLEQ_INIT(&state.report_queue);
  *d=(NV2AState){.pgraph={.vk_renderer_state=&state,.surface_scale_factor=1}};
  *report=(QueryReport){.clear=false,.parameter=0x1234,.query_count=count};QSIMPLEQ_INSERT_TAIL(&state.report_queue,report,entry);
- ready=query_calls=retired=writes=wait_calls=0;wait_error=false;
+ ready=query_calls=retired=writes=wait_calls=0;
 }
 static void waited_result_tests(void){
  NV2AState d;QueryReport report;
  for(unsigned i=0;i<10000;i++){
   setup_wait(&d,&report,1);query_values[0]=((uint64_t)i<<32)|(i+17);
-  checking=true;assert(pgraph_vk_wait_pending_report(&d));pgraph_vk_process_pending_reports_internal(&d);checking=false;
+  ready=1;checking=true;assert(pgraph_vk_poll_pending_report(&d)==1);pgraph_vk_process_pending_reports_internal(&d);checking=false;
   assert(wait_calls==1&&!query_calls&&writes==1&&values[0]==i+17&&params[0]==0x1234&&retired==1&&!state.waited_query_valid&&!state.num_queries_in_flight&&!allocations);
  }
- /* A wait on the last slot proves preceding slots complete, but its value
+ /* A ready last slot covers the preceding queries, but its value
   * is not their aggregate: multi-slot reads must retain ordinary polling. */
- setup_wait(&d,&report,3);query_values[0]=1;query_values[1]=2;query_values[2]=3;assert(pgraph_vk_wait_pending_report(&d));pgraph_vk_process_pending_reports_internal(&d);assert(wait_calls==1&&query_calls==1&&writes==1&&values[0]==6&&!state.waited_query_valid);
- /* New submissions after a successful wait invalidate one-slot eligibility. */
- setup_wait(&d,&report,1);query_values[0]=10;query_values[1]=20;assert(pgraph_vk_wait_pending_report(&d));state.num_queries_in_flight=state.queries_submitted=report.query_count=2;ready=2;pgraph_vk_process_pending_reports_internal(&d);assert(query_calls==1&&writes==1&&values[0]==30&&!state.waited_query_valid);
+ setup_wait(&d,&report,3);query_values[0]=1;query_values[1]=2;query_values[2]=3;ready=3;assert(pgraph_vk_poll_pending_report(&d));pgraph_vk_process_pending_reports_internal(&d);assert(wait_calls==1&&query_calls==1&&writes==1&&values[0]==6&&!state.waited_query_valid);
+ /* New submissions after a successful poll invalidate one-slot eligibility. */
+ setup_wait(&d,&report,1);query_values[0]=10;query_values[1]=20;ready=1;assert(pgraph_vk_poll_pending_report(&d));state.num_queries_in_flight=state.queries_submitted=report.query_count=2;ready=2;pgraph_vk_process_pending_reports_internal(&d);assert(query_calls==1&&writes==1&&values[0]==30&&!state.waited_query_valid);
  /* A cached value from another slot must not be consumed. */
  setup_wait(&d,&report,2);state.queries_read=1;state.zpass_pixel_count_result=100;state.waited_query_valid=true;state.waited_query_slot=0;state.waited_query_result[0]=999;state.waited_query_result[1]=1;query_values[1]=7;ready=2;pgraph_vk_process_pending_reports_internal(&d);assert(query_calls==1&&writes==1&&values[0]==107&&!state.waited_query_valid);
  /* No submitted slot, an already-counted report and an empty queue do not wait. */
- setup_wait(&d,&report,1);state.queries_submitted=0;assert(!pgraph_vk_wait_pending_report(&d)&&!wait_calls);state.queries_read=1;assert(pgraph_vk_wait_pending_report(&d)&&!wait_calls);QSIMPLEQ_REMOVE_HEAD(&state.report_queue,entry);assert(pgraph_vk_wait_pending_report(&d)&&!wait_calls);
- /* Driver errors never publish stale cached data. Normal polling remains. */
- setup_wait(&d,&report,1);state.waited_query_valid=true;state.waited_query_result[0]=999;state.waited_query_result[1]=1;wait_error=true;assert(pgraph_vk_wait_pending_report(&d)&&!state.waited_query_valid);pgraph_vk_process_pending_reports_internal(&d);assert(!writes&&query_calls==1);ready=1;query_values[0]=42;pgraph_vk_process_pending_reports_internal(&d);assert(writes==1&&values[0]==42);
- puts("Waited query reuse: 10000 duplicate poll calls eliminated; multi-slot, new-submission, wrong-slot, no-work, error and pool-reset guards passed");
+ setup_wait(&d,&report,1);state.queries_submitted=0;assert(pgraph_vk_poll_pending_report(&d)==-1&&!wait_calls);state.queries_read=1;assert(pgraph_vk_poll_pending_report(&d)&&!wait_calls);QSIMPLEQ_REMOVE_HEAD(&state.report_queue,entry);assert(pgraph_vk_poll_pending_report(&d)&&!wait_calls);
+ /* A busy query must not publish a poisoned value or imply completion. */
+ setup_wait(&d,&report,1);state.waited_query_valid=true;state.waited_query_result[0]=999;state.waited_query_result[1]=1;
+ for(unsigned i=0;i<1000;i++)assert(pgraph_vk_poll_pending_report(&d)==0&&!state.waited_query_valid);
+ assert(!writes&&!query_calls&&wait_calls==1000&&!ready);
+ pgraph_vk_process_pending_reports_internal(&d);assert(!writes&&query_calls==1);
+ ready=1;query_values[0]=42;assert(pgraph_vk_poll_pending_report(&d)==1);pgraph_vk_process_pending_reports_internal(&d);assert(writes==1&&values[0]==42);
+ puts("Nonblocking query reuse: 10000 duplicate reads eliminated; 1000 busy polls never wait or publish stale data; multi-slot and reset guards passed");
 }
 int main(void){
  quiet_test_errors();unsigned polls=0;

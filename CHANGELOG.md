@@ -1,5 +1,6 @@
 # Changelog of the libretro core
 
+- Keep idle GL/Vulkan query retirement responsive to frame, reset and shutdown requests by polling availability between interruptible libretro-common eventcount parks instead of waiting inside the graphics driver.
 - Reuse fragment shader keys across ignored upper SHADERPROG bits. Preserve all four five-bit texture modes and existing shader/cache formats.
 
 - Stop LRU active visits after the entry-time active count, avoiding inactive free-node suffix scans in texture dirty tracking and shader seed collection. Preserve recency/callback order and current-node eviction without extra storage or allocations.

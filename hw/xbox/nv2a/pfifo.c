@@ -165,24 +165,25 @@ static bool pfifo_puller_should_stall(NV2AState *d)
  * GPU works (ui/libretro.c), and is woken when this thread parks */
 retro_atomic_int_t nv2a_libretro_waiter;
 
-/* Nothing to do. A pending report is written when the host GPU reaches it,
- * not when the guest next pushes: with one pending, wait for the GPU's own
- * completion of it, then serve it. */
+/* Idle report checks never wait inside the graphics driver. A bounded
+ * eventcount park retries submitted reports even without another guest kick. */
 static inline void pfifo_idle_wait(NV2AState *d)
 {
     const PGRAPHRenderer *renderer = pgraph_renderer(&d->pgraph);
+    bool report_pending = false;
 
     if (!d->pgraph.host_flip_pending &&
         d->pgraph.reports_pending && renderer &&
-        renderer->ops.wait_pending_report) {
-        bool waited;
+        renderer->ops.poll_pending_report) {
+        int status;
 
         qemu_mutex_unlock(&d->pfifo.lock);
-        waited = renderer->ops.wait_pending_report(d);
+        status = renderer->ops.poll_pending_report(d);
         qemu_mutex_lock(&d->pfifo.lock);
-        if (waited) {
+        if (status > 0) {
             return;
         }
+        report_pending = status == 0;
     }
     /* The wait is prepared under the lock and committed without it: a
      * kick between the two (the flag set after the prepare) cancels it,
@@ -220,14 +221,24 @@ static inline void pfifo_idle_wait(NV2AState *d)
          * this pass took marked done, a full fence, then the look at the
          * waiter flag, which that thread stores and fences before it looks
          * (nv2a_libretro_guest_busy) */
-        retro_atomic_store_release_int(&d->pfifo.guest_done,
-                                       d->pfifo.guest_seen);
+        if (!report_pending) {
+            retro_atomic_store_release_int(&d->pfifo.guest_done,
+                                           d->pfifo.guest_seen);
+        }
         retro_atomic_thread_fence_seq_cst();
-        if (retro_atomic_load_relaxed_int(&nv2a_libretro_waiter)) {
+        if (!report_pending &&
+            retro_atomic_load_relaxed_int(&nv2a_libretro_waiter)) {
             qemu_notify_event();
         }
         qemu_mutex_unlock(&d->pfifo.lock);
-        retro_eventcount_commit_wait(&d->pfifo.fifo_ec, key);
+        if (report_pending) {
+            /* No completion callback is exposed by GL/Vulkan queries. Retry
+             * with a 100 us timeout request; kicks interrupt the park.
+             * Keep guest_done unchanged until the report has been served. */
+            retro_eventcount_commit_wait_timeout(&d->pfifo.fifo_ec, key, 100);
+        } else {
+            retro_eventcount_commit_wait(&d->pfifo.fifo_ec, key);
+        }
         qemu_mutex_lock(&d->pfifo.lock);
     }
 }
