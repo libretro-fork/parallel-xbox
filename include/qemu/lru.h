@@ -235,8 +235,13 @@ void lru_flush(Lru *lru)
 			}
 			if (can_evict) {
 				lru_evict_node(lru, iter);
+				bool empty = !lru->num_used;
 				QTAILQ_REMOVE(&lru->global, iter, next_global);
 				QTAILQ_INSERT_TAIL(&lru->global, iter, next_global);
+				/* No active node remains in any later bin. */
+				if (empty) {
+					return;
+				}
 			}
 		}
 	}

@@ -2741,3 +2741,5 @@ The native GPU ROM at frame 4700 requests a 48,000-sample triangle report,
 then a clear and an empty report. Offsets 0x300100 and 0x300120 retain timestamps,
 counts and completion words for both renderer checks. GL GET_REPORT already
 flushes closed queries; idle polls add no repeated glFlush calls.
+
+The guarded LRU fixture also flushes one early-bin entry with later bin pages inaccessible. It verifies list/count updates complete before returning; the parent faults on a later-bin read. Existing 30,000 exact order/callback operations include flushes and blocked evictions. BENCH modes 5-8 time refill+flush cycles for one early/late-bin entry and 512/16,384 distributed entries; these are synthetic cycles, not isolated flush or game FPS measurements.

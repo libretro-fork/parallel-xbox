@@ -1,5 +1,7 @@
 # Changelog of the libretro core
 
+- Stop LRU flushes once the final active entry is evicted and its list updates are complete. Avoid scanning empty later hash bins while preserving eviction eligibility, callback order and free-node order.
+
 - Keep idle GL/Vulkan query retirement responsive to frame, reset and shutdown requests by polling availability between interruptible libretro-common eventcount parks instead of waiting inside the graphics driver.
 - Reuse fragment shader keys across ignored upper SHADERPROG bits. Preserve all four five-bit texture modes and existing shader/cache formats.
 

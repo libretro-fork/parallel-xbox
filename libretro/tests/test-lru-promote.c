@@ -150,6 +150,12 @@ static void guarded_counts(void) {
  GuardVisit visit={0};lru_visit_active(lru,guarded_visitor,&visit);assert(visit.calls==1);
  visit=(GuardVisit){.evict=true};lru_visit_active(lru,guarded_visitor,&visit);assert(visit.calls==1);
  PROTECT(pool+page,2*page,WRITE);assert(!lru->num_used && lru->num_free==3);
+ /* Last-active flush must not scan inaccessible, empty later bin pages. */
+ key=4;lru_lookup(lru,key,&key);assert(lru->num_used==1);
+ PROTECT(lru,bytes,NONE);PROTECT(lru,page,WRITE);
+ PROTECT((unsigned char *)lru+offsetof(Lru,num_used)/page*page,page,WRITE);
+ lru_flush(lru);assert(!lru->num_used && lru->num_free==3);
+ PROTECT(lru,bytes,WRITE);
  PROTECT(lru,bytes,NONE);PROTECT(pool,3*page,NONE);
  PROTECT((unsigned char *)lru+offsetof(Lru,num_used)/page*page,page,READ);
  assert(!lru_try_evict_one(lru));lru_flush(lru);lru_visit_active(lru,visit_node,NULL);
@@ -191,10 +197,21 @@ int main(void) {
  readonly_mru();
  guarded_counts();
 #endif
- printf("LRU promotions: 30000 order/callback/collision/eviction cases; read-only MRU metadata, guarded count gates and free-tail visits PASS\n");
+ printf("LRU promotions: 30000 order/callback/collision/eviction cases; read-only MRU metadata, guarded count gates, free-tail visits and last-active flush PASS\n");
 #else
  memset(blocked,0,sizeof(blocked));
- for(unsigned mode=0;mode<5;mode++) {
+ for(unsigned mode=0;mode<9;mode++) {
+  if(mode>=5) {
+   unsigned count=mode<7?1:mode==7?512:16384,loops=mode<7?4096:mode==7?512:256;
+   Node *pool=calloc(count,sizeof(*pool));assert(pool);setup(caches[0],pool,count);
+   double start=now();uintptr_t sum=0;
+   for(unsigned n=0;n<loops;n++) {
+    for(unsigned key=0;key<count;key++)sum+=(uintptr_t)lookup_call(caches[0],mode==5?0:mode==6?LRU_NUM_BINS-1:(uint64_t)key*619,&key);
+    lru_flush(caches[0]);
+   }
+   sink=sum;assert(!caches[0]->num_used && caches[0]->num_free==(int)count);
+   printf("flush_mode=%u ns=%.3f\n",mode,(now()-start)/loops);free(pool);continue;
+  }
   if(mode==4) {
    const unsigned count=50*1024,loops=1000;Node *large=calloc(count,sizeof(Node));assert(large);setup(caches[0],large,count);
    for(unsigned key=0;key<count;key++)lookup_call(caches[0],key,&key);
