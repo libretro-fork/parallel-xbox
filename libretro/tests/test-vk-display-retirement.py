@@ -1,10 +1,10 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
 """Run production display fence retirement against a delayed same-queue model."""
 from pathlib import Path
-import ctypes, os, re, subprocess, sys, tempfile
+import ctypes, os, re, subprocess, sys, tempfile, shlex
 r=Path(sys.argv[1]).resolve();cc=sys.argv[2] if len(sys.argv)>2 else 'gcc'
 s=(r/'hw/xbox/nv2a/pgraph/vk/display.c').read_text();parts=[]
-for name in ['wait_frame_sync','pgraph_vk_poll_display_retired']:
+for name in ['wait_frame_sync','pgraph_vk_poll_display_retired','destroy_frame_sync']:
  m=re.search(r'^(?:static )?void '+name+r'\(',s,re.M);assert m
  a=m.start();b=s.index('{',a)+1;depth=1
  while depth:depth+=(s[b]=='{')-(s[b]=='}');b+=1
@@ -15,6 +15,6 @@ if os.name=='nt':
  k=ctypes.WinDLL('kernel32');k.GetErrorMode.restype=ctypes.c_uint;k.SetErrorMode(k.GetErrorMode()|0x8003)
 env=os.environ.copy();env['PATH']=str(Path(cc).resolve().parent)+os.pathsep+env.get('PATH','')
 with tempfile.TemporaryDirectory(prefix='display-retirement-') as tmp:
- d=Path(tmp);(d/'test.c').write_text(code);exe=d/('test.exe' if os.name=='nt' else 'test')
- subprocess.run([cc,'-O2','-std=gnu11','-Wall','-Wextra','-Werror','-fsanitize=undefined','-fsanitize-undefined-trap-on-error',str(d/'test.c'),'-o',str(exe)],check=True,env=env)
- subprocess.run([str(exe)],check=True,env=env,timeout=30)
+ d=Path(tmp);(d/'test.c').write_text(code);exe=Path(os.environ.get('VK_DISPLAY_RETIRE_BINARY',str(d/('test.exe' if os.name=='nt' else 'test'))))
+ subprocess.run([cc,'-O2','-std=gnu11','-Wall','-Wextra','-Werror',*shlex.split(os.environ.get('VK_DISPLAY_RETIRE_CFLAGS','-fsanitize=undefined -fsanitize-undefined-trap-on-error')),str(d/'test.c'),'-o',str(exe)],check=True,env=env)
+ if not os.environ.get('VK_DISPLAY_RETIRE_SKIP_RUN'):subprocess.run([str(exe)],check=True,env=env,timeout=30)

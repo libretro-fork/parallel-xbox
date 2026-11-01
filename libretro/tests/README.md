@@ -2410,3 +2410,23 @@ Ready-order coverage now exercises oldest-record adoption at every occupancy fro
 For queues of at most 32 entries, oldest adoption retains the direct shift: its zero to 124 bytes avoids window compaction for tiny queues. Larger queues use pointer advancement. The occupancy oracle asserts both copy policies; benchmark modes 6/7 adopt and reinsert the oldest of 1/16 entries.
 
 GL shader-cache version coverage checks both borrowed mapped-key views and owned key copies. It verifies exact borrowed byte addresses and contents at 32 input alignments, every truncated prefix of a 2 KiB-key header, legacy/changed versions and the owned round trip. Linux defaults to ASan/UBSan; GL_SHADER_VERSION_CFLAGS, GL_SHADER_VERSION_BINARY and GL_SHADER_VERSION_SKIP_RUN support native Win32/Win64 fixtures. Windows temporary files use the user temporary directory and delete-on-close. No mapped key pointer escapes unmapping.
+
+The display-retirement fixture adds 36,864 production teardown schedules over
+all pending masks, rotated slot serial orders, known-completion points, and
+with/without the split-queue semaphores. It checks at most one wait on the
+newest unproved submission, exactly-once resets and destruction, completion
+before resource destruction, cleared handles and idempotent teardown. Existing
+20,000 display retirement workloads and per-frame busy-slot tests remain covered.
+All display slots submit to one display queue even when it differs from the
+renderer queue, so the newest display fence covers the older submissions.
+
+`VK_DISPLAY_RETIRE_BINARY`, `VK_DISPLAY_RETIRE_SKIP_RUN` and
+`VK_DISPLAY_RETIRE_CFLAGS` support native fixtures; default flags retain UBSan
+with traps. This changes only teardown order. No state fields, buffers, copies,
+PSOs, locks, status polls or video frame queue are added. A necessary teardown
+drain still waits.
+
+Win64 finalize_display stack usage grows from 128 to 144 bytes to retain the
+circular traversal start across driver calls; the wait helper stays inlined.
+This is confined to teardown, with unchanged renderer layouts and no per-frame
+stack change. Hardware cache-miss and game-latency effects are unmeasured.

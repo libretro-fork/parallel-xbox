@@ -1,5 +1,6 @@
 # Changelog of the libretro core
 
+- Drain Vulkan display synchronization at teardown through the newest pending submission first, avoiding repeated waits on older completed display fences. Preserve per-slot resets and fence/semaphore destruction; per-frame presentation still polls without waiting. Necessary teardown completion still waits.
 - Compare GL shader-module cache keys directly in their mapped files instead of copying each key to a temporary. Keep owned key copies for prewarming after unmapping, with unchanged cache format and validation.
 
 - Omit unused convolution tables from generated fragment shaders. Ordinary shaders have smaller source and SPIR-V modules; convolution stages share one table pair. Existing shader cache keys remain valid.

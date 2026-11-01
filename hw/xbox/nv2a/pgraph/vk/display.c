@@ -1320,15 +1320,30 @@ static void destroy_frame_sync(PGRAPHState *pg)
     if (disp->frame_pool == VK_NULL_HANDLE) {
         return;
     }
+    /* These submissions share one display queue, including when it differs
+     * from the renderer queue. Retire the newest unproved submission first
+     * so teardown does not wait separately on each older fence. */
+    struct PGRAPHVkFrameSync *first = disp->sync;
+    uint64_t newest = disp->settled;
     for (int i = 0; i < XEMU_LIBRETRO_VK_FRAMES; i++) {
         struct PGRAPHVkFrameSync *s = &disp->sync[i];
+        if (s->pending && s->serial > newest) {
+            first = s;
+            newest = s->serial;
+        }
+    }
+    struct PGRAPHVkFrameSync *s = first;
+    do {
         wait_frame_sync(r, s);
         vkDestroyFence(r->device, s->fence, NULL);
         if (s->drawn != VK_NULL_HANDLE) {
             vkDestroySemaphore(r->device, s->drawn, NULL);
             vkDestroySemaphore(r->device, s->shown, NULL);
         }
-    }
+        if (++s == disp->sync + XEMU_LIBRETRO_VK_FRAMES) {
+            s = disp->sync;
+        }
+    } while (s != first);
     vkDestroyCommandPool(r->device, disp->frame_pool, NULL);
     memset(disp->sync, 0, sizeof(disp->sync));
     disp->frame_pool = VK_NULL_HANDLE;
