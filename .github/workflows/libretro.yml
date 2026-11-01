@@ -146,7 +146,7 @@ jobs:
         run: libretro/tests/run.sh parallel_xbox_libretro.so
 
       - name: Native DSP coverage and interpreter equivalence
-        run: make dspnative
+        run: make dspnative dspmax
 
       # GLib is the core's own and libslirp is linked in: the core is the
       # one file
