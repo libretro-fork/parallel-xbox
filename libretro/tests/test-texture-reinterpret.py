@@ -10,7 +10,7 @@ import tempfile
 repo = Path(sys.argv[1]).resolve()
 cc = sys.argv[2] if len(sys.argv) > 2 else "gcc"
 source = (repo / "hw/xbox/nv2a/pgraph/vk/texture.c").read_text()
-match = re.search(r"^static bool can_reinterpret_argb_as_rgb565\(", source, re.M)
+match = re.search(r"^static bool can_reinterpret_argb_as_packed16\(", source, re.M)
 assert match
 start = source.index("{", match.start())
 end, depth = start + 1, 1
@@ -23,6 +23,26 @@ code = Path(__file__).with_suffix(".c").read_text().replace(
 with tempfile.TemporaryDirectory(prefix="texture-alias-", dir=repo.parent) as directory:
     folder = Path(directory)
     (folder / "test.c").write_text(code)
+    exe = folder / ("test.exe" if os.name == "nt" else "test")
+    subprocess.run([cc, "-DTEST_VULKAN_PACKED16", "-O2", "-std=gnu11", "-Wall", "-Wextra", "-Werror",
+                    "-fsanitize=undefined", "-fsanitize-undefined-trap-on-error",
+                    "-I", str(repo), "-I", str(repo / "deps/vulkan-headers"),
+                    str(folder / "test.c"), "-o", str(exe)], check=True)
+    subprocess.run([str(exe)], check=True)
+
+# Record the production transfer commands for both packed formats. No host
+# readback/wait APIs are provided by this fixture.
+start = source.index("static void copy_argb_to_packed16_texture(")
+end = source.index("{", start) + 1
+depth = 1
+while depth:
+    depth += (source[end] == "{") - (source[end] == "}")
+    end += 1
+transfer = (repo / "libretro/tests/test-packed16-transfer.c").read_text().replace(
+    "/* PRODUCTION */", source[start:end])
+with tempfile.TemporaryDirectory(prefix="packed16-transfer-", dir=repo.parent) as directory:
+    folder = Path(directory)
+    (folder / "test.c").write_text(transfer)
     exe = folder / ("test.exe" if os.name == "nt" else "test")
     subprocess.run([cc, "-O2", "-std=gnu11", "-Wall", "-Wextra", "-Werror",
                     "-fsanitize=undefined", "-fsanitize-undefined-trap-on-error",
@@ -42,13 +62,15 @@ while depth:
     end += 1
 gl_gate = gl_source[match.start():end]
 # A representation adapter leaves the extracted production predicate unchanged.
-code = code.replace(gate, gl_gate)
+code = code.replace(gate, gl_gate.replace("can_reinterpret_argb_as_rgb565",
+                                           "can_reinterpret_argb_as_packed16"))
 code = code.replace("    REJECT_FIELD(source,native_resolution,true);", "")
-code = code.replace("    renderer.storage_buffers[0].buffer_size=2047;\n    assert(!can_reinterpret_argb_as_rgb565(&pg,&source,&shape));", "")
-code = code.replace("    pg.surface_scale_factor=2; scratch_available=false;\n    assert(!can_reinterpret_argb_as_rgb565(&pg,&source,&shape));", "")
+code = code.replace("    renderer.storage_buffers[0].buffer_size=2047;\n    assert(!can_reinterpret_argb_as_packed16(&pg,&source,&shape));", "")
+code = code.replace("    pg.surface_scale_factor=2; scratch_available=false;\n    assert(!can_reinterpret_argb_as_packed16(&pg,&source,&shape));", "")
 code = code.replace("static bool scratch_available = true;", "")
+code = code.replace("    scratch_available = true;", "")
 a = code.index("static VkImage native_get_scratch")
-b = code.index("static bool can_reinterpret_argb_as_rgb565", a)
+b = code.index("static bool can_reinterpret_argb_as_packed16", a)
 code = code[:a] + code[b:]
 code = code.replace("PGRAPHVkState", "PGRAPHGLState").replace("vk_renderer_state", "gl_renderer_state")
 code = code.replace("host_fmt", "fmt").replace("vk_format", "gl_internal_format")

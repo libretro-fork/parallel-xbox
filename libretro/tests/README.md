@@ -381,7 +381,12 @@ aliased texture. The source RAM starts blue, so stale-RAM sampling cannot pass.
 This phase initializes its transform and window-clip state explicitly and
 exercises both compatible GPU reuse and the incompatible readback/upload path.
 Vulkan uses a device-buffer reinterpretation for the supported live ARGB-to-
-RGB565 layout; the fallback remains covered when the source has aged out.
+RGB565 and ARGB1555 layouts; the fallback remains covered when the source has
+aged out. The eligibility fixture runs both Vulkan formats through the layout,
+capacity, scaling and overlap cases; OpenGL retains its RGB565-only gate.
+The command-recording fixture also runs the production packed16 transfer for
+both formats at scale 1/2/4, checking destination formats, extents, layouts and
+transfer-buffer barriers without exposing any host readback or wait APIs.
 The suite also restores an earlier alias state after a differently colored
 GPU redraw and checks both the restored picture and subsequent sampling.
 

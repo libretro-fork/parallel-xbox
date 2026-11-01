@@ -1,5 +1,9 @@
 # Changelog of the libretro core
 
+## Unreleased
+
+- Keep eligible ARGB render-target to linear ARGB1555 texture reinterpretation on the Vulkan GPU, avoiding the surface readback, CPU wait and texture reupload. Preserve overlap, layout and transfer-capacity fallbacks.
+
 - Dispatch deferred disk completions directly from fixed owner-thread slots, removing per-drive bottom-half allocations and per-request atomic queue/notification work. Preserve cancellation, nested drains, DSP ownership and next-pass submission deferral; retain native positional/vectored and mapped disk I/O. Generic AIO remains for other users.
 
 - Apply the game's RGB gamma ramp in OpenGL and Vulkan after video overlay composition. Brightness settings and fades now affect the displayed image automatically, including palette-only updates. Neutral ramps preserve existing output; no extra rendering pass, GPU readback or game-shader variants are added.

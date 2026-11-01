@@ -1304,14 +1304,15 @@ static void record_surface_copy(PGRAPHState *pg, VkCommandBuffer cmd,
                          VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
 }
 
-/* A tight ARGB row is the same bytes as a twice-as-wide RGB565 row. Transfer
- * through a device buffer to reinterpret those bytes without host readback,
+/* A tight ARGB row is the same bytes as a twice-as-wide RGB565 or ARGB1555
+ * row. Transfer through a device buffer to reinterpret those bytes without host readback,
  * arithmetic conversion or a CPU upload. Keep the ordinary CoW snapshot. */
-static void copy_argb_to_rgb565_texture(PGRAPHState *pg, SurfaceBinding *surface,
+static void copy_argb_to_packed16_texture(PGRAPHState *pg, SurfaceBinding *surface,
                                        TextureBinding *texture)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
     const TextureShape *shape = &texture->key.state;
+    VkFormat format = texture_vkf(r, shape->color_format).vk_format;
     VkBuffer buffer = r->storage_buffers[BUFFER_COMPUTE_DST].buffer;
     VkImage scratch = pg->surface_scale_factor > 1 ?
         native_get_scratch(pg, surface->host_fmt.vk_format,
@@ -1364,7 +1365,7 @@ static void copy_argb_to_rgb565_texture(PGRAPHState *pg, SurfaceBinding *surface
     vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
         VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 1, &storage, 0, NULL);
     pgraph_vk_transition_image_layout(pg, cmd, texture->image,
-        VK_FORMAT_R5G6B5_UNORM_PACK16, texture->current_layout,
+        format, texture->current_layout,
         VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
     region.imageExtent.width = shape->width;
     region.imageExtent.height = shape->height;
@@ -1378,7 +1379,7 @@ static void copy_argb_to_rgb565_texture(PGRAPHState *pg, SurfaceBinding *surface
         surface->host_fmt.vk_format, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
         VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
     pgraph_vk_transition_image_layout(pg, cmd, texture->image,
-        VK_FORMAT_R5G6B5_UNORM_PACK16, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+        format, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
         VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
     texture->current_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
     texture->draw_time = surface->draw_time;
@@ -1395,7 +1396,7 @@ static void copy_surface_to_texture(PGRAPHState *pg, SurfaceBinding *surface,
         return;
     }
     if (texture->key.byte_reinterpret) {
-        copy_argb_to_rgb565_texture(pg, surface, texture);
+        copy_argb_to_packed16_texture(pg, surface, texture);
         return;
     }
 
@@ -1554,7 +1555,7 @@ static bool download_indexed_texture_inputs(
     return needs_ram;
 }
 
-static bool can_reinterpret_argb_as_rgb565(PGRAPHState *pg,
+static bool can_reinterpret_argb_as_packed16(PGRAPHState *pg,
                                            const SurfaceBinding *surface,
                                            const TextureShape *shape)
 {
@@ -1563,7 +1564,8 @@ static bool can_reinterpret_argb_as_rgb565(PGRAPHState *pg,
         surface->shape.color_format != NV097_SET_SURFACE_FORMAT_COLOR_LE_A8R8G8B8 ||
         surface->shape.anti_aliasing != NV097_SET_SURFACE_FORMAT_ANTI_ALIASING_CENTER_1 ||
         surface->host_fmt.vk_format != VK_FORMAT_B8G8R8A8_UNORM ||
-        shape->color_format != NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_R5G6B5 ||
+        (shape->color_format != NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_R5G6B5 &&
+         shape->color_format != NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_A1R5G5B5) ||
         shape->dimensionality != 2 || shape->cubemap || shape->border ||
         shape->levels != 1 || !surface->width || !surface->height ||
         (uint64_t)shape->width != (uint64_t)surface->width * 2 ||
@@ -2322,7 +2324,7 @@ static void create_texture(PGRAPHState *pg, int texture_idx)
             check_surface_to_texture_compatiblity(surface, &state);
         if (!surface_to_texture) {
             surface_to_texture_bytes =
-                can_reinterpret_argb_as_rgb565(pg, surface, &state);
+                can_reinterpret_argb_as_packed16(pg, surface, &state);
             surface_to_texture |= surface_to_texture_bytes;
         }
 
