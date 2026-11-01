@@ -1,5 +1,6 @@
 # Changelog of the libretro core
 
+- Compose OpenGL display images on the renderer context and hand them over through owned mailbox slots, removing the CPU frame-end acknowledgement wait without adding an image-copy pass. Restore the frontend GL context after renderer setup and order display-slot reuse with GPU fences.
 - Vulkan color volumes with stored mip chains now preserve min/mag filtering when sampling is restricted to mip zero, including Force LOD0; lower mip data and volume layout stay intact.
 
 

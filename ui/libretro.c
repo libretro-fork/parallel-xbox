@@ -1218,7 +1218,12 @@ static void context_reset(void)
         extern void libretro_gl_prepare(void);
 
         libretro_gl_prepare();
+        /* Early renderer context setup changes the current context. Restore
+         * the frontend's context, whose VAO and FBO names are not shared. */
+        GloCurrent gl;
+        glo_current_save(&gl);
         nv2a_context_init();
+        glo_current_restore(&gl);
     } else {
         if (environ_cb) {
             struct retro_hw_render_interface *iface = NULL;
@@ -2039,10 +2044,10 @@ static void lr_idle_wait(CPUState *cpu, int64_t now, int64_t until)
 
 static void lr_finish_frame(void)
 {
-    /* Ask the FIFO owner to refresh scanout after its pending work. Shared
-     * Vulkan images carry frontend ownership claims and queue ordering, so
-     * presentation can take the latest publication without this CPU wait.
-     * Legacy display paths still require the acknowledgement below. */
+    /* Ask the FIFO owner to refresh scanout after its pending work. GL and
+     * shared-device Vulkan publish owned display images with GPU ordering;
+     * their frontend never waits for this CPU acknowledgement. Legacy Vulkan
+     * interop still needs the acknowledgement below. */
     extern int nv2a_libretro_frame_end(void);
     extern bool nv2a_libretro_frame_end_done(int end);
     int end;
@@ -2053,7 +2058,7 @@ static void lr_finish_frame(void)
     /* Request scanout composition once. Legacy paths then wait for the
      * FIFO owner to reach its idle point and acknowledge the refresh. */
     end = nv2a_libretro_frame_end();
-    if (!end || (use_vulkan && xemu_libretro_vk.active)) {
+    if (!end || !use_vulkan || xemu_libretro_vk.active) {
         return;
     }
     for (;;) {

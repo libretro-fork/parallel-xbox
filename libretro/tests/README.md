@@ -1067,7 +1067,7 @@ page/region boundaries, RAM-device rejection, address-space attributes and RCU
 lifetime, and asserts zero copied bytes for supported RAM.
 `test-frame-completion.py` compiles the production frame-end handoff against a
 model of the GPU's thread: one request, with immediate return for shared-device
-Vulkan and acknowledgement for legacy paths. 864 combinations cover pending
+Vulkan/GL and acknowledgement for legacy Vulkan interop. 864 combinations cover pending
 work, racing/spurious wakeups, stopping, no GPU thread and both Vulkan flags.
 Guest time is not advanced. It also extracts the production request publisher
 for 40,000 requests, including INT_MAX wrap, missing/stopped owners and one kick
@@ -1991,13 +1991,13 @@ Backend fence completion is controlled in this fixture; the separate frame-end
 acknowledgement wait is not removed by this ownership change.
 
 `test-ide-write-generation.py CHECKOUT [CC]` executes production PIO completion and the retro_atomic save-state write counter through 6,144 success/error/retry/IRQ/continuation schedules, plus counter wrap and missing-drive behavior. It checks DMA write-only completion placement and removal of block accounting from active paths. `IDE_WRITE_CFLAGS`, `IDE_WRITE_BINARY` and `IDE_WRITE_SKIP_RUN=1` support sanitized and native runs. The HDD/DVD ROM integration tests cover DMA, PIO reads and out-of-range errors after telemetry removal.
-fixture covers asynchronous shared-device Vulkan and legacy acknowledgement.
+fixture covers asynchronous GL/shared-device Vulkan and legacy interop acknowledgement.
 
 
 Shared-device Vulkan now requests a frame-end scanout refresh without waiting for
 FIFO acknowledgement. Presentation consumes the latest claimed publication or
-duplicates the previous image. Legacy GL and Vulkan interop still acknowledge
-frame end synchronously. `test-frame-completion.py` covers all four Vulkan flag
+duplicates the previous image. GL also publishes renderer-composed images without
+CPU acknowledgement; legacy Vulkan interop still acknowledges frame end synchronously. `test-frame-completion.py` covers all four Vulkan flag
 combinations, including an owner that remains busy in the asynchronous path.
 
 `test-null-chardev.py CHECKOUT [CC]` runs the production sink and generic write/log paths through 960 combinations of short writes, retry/error handling, best-effort logging and zero-length requests. Unlogged null sinks take no locks and never read the payload; logged or real backends preserve their existing behavior. NULL source/INT_MAX and negative-length cases are covered. `NULL_CHARDEV_CFLAGS`, `NULL_CHARDEV_BINARY` and `NULL_CHARDEV_SKIP_RUN=1` support sanitized and native fixtures.
@@ -2030,3 +2030,39 @@ the CPU shape fixture checks this across 3,840 metadata combinations.
 The region ownership guard now verifies TCG startup asserts one machine CPU and passes a literal one-translator count. The obsolete MTTCG selector/property is gone; startup had always forced it off. Existing translation-cache size, split-WX and instruction-debug controls remain.
 
 	est-store-compare.py CHECKOUT [CC] extracts the production unchanged-store comparator. It checks 2,263,040 value/width/alignment combinations, all scalar and partial widths, guarded page edges, high-bit truncation, and no-read behavior for unknown/wide writes. Linux defaults to ASan/UBSan; STORE_COMPARE_CFLAGS, STORE_COMPARE_BINARY and STORE_COMPARE_SKIP_RUN support retained native Windows fixtures.
+
+### OpenGL composed display mailbox
+
+`test-gl-display-mailbox.py CHECKOUT [CC]` extracts production mailbox publish,
+take, acquisition, front release and slot reuse functions with real libretro-common
+atomics and threads. It checks 4,098 controlled schedules, persistent front
+ownership, superseded tickets, early boot and 100,000 attempts per thread.
+Fake GPU fences never signal: only server waits are allowed, and every created
+fence must be released. Linux defaults to ASan/UBSan. `GL_MAILBOX_BINARY`,
+`GL_MAILBOX_SKIP_RUN` and `GL_MAILBOX_CFLAGS` support native fixtures.
+
+The renderer composes directly into its write slot before publication; the
+frontend keeps its read slot until the next successful take. The third slot
+is a replaceable latest-image mailbox, not an extra queued frame. A fence queued
+before returning the old read slot covers its preceding frontend blits and
+orders GPU reuse, without a fence/flush per duplicate run. Composition retains the same shader
+and image passes, suspends guest/cost queries and invalidates affected state
+caches. No live source surface crosses contexts. Renderer teardown frees its
+composition resources after frontend use ends. Legacy Vulkan interop and
+other emulator blocking paths remain separate.
+
+The source-texture reference pool and per-surface display references are removed.
+Composition uses an empty VAO with gl_VertexID, so it needs no VBO; its full-screen
+triangle overwrites the complete target, so it needs no preceding color clear.
+Only the render context is created for GL; early setup preserves the frontend
+context rather than relying on context-local object names from another context.
+
+Published tickets contain only a texture handle, frame stamp, overlay flag and
+fence. Each ticket shares the statically aligned 64-byte slot with its image
+metadata and frontend fence; full composition parameters remain owner-local.
+On Win64 the ticket shrinks from 120 to 24 bytes, SurfaceBinding from 216 to
+208, and PGRAPHGLState from 7,440,896 to 7,440,424 bytes. Static display state
+grows from 128 to 320 bytes for the third slot and cache-line separation.
+The frontend getter stack falls from 336 to 96 bytes; owner post_scanout grows
+from 272 to 400 bytes because it now composes. No hardware cache counters were
+measured, and legacy flip/report/download waits remain separate work.

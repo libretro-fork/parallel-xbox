@@ -28,18 +28,10 @@
 #include "ui/xemu-settings.h"
 
 GloContext *g_nv2a_context_render;
-GloContext *g_nv2a_context_display;
 
 static void early_context_init(void)
 {
     g_nv2a_context_render = glo_context_create_4_1();
-    g_nv2a_context_display = glo_context_create_4_1();
-
-    // Note: Due to use of shared contexts, this must happen after some other
-    // context is created so the temporary context will not become the thread
-    // context. After destroying the context, some a durable context should be
-    // selected.
-    glo_set_current(g_nv2a_context_display);
 }
 
 static void pgraph_gl_init(NV2AState *d, Error **errp)
