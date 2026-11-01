@@ -1,5 +1,7 @@
 # Changelog of the libretro core
 
+- Upload only a few dirty page runs for large OpenGL vertex spans, retaining bulk uploads for dense/fragmented changes and private stale tracking when surfaces consume shared dirty bits.
+
 - Skip per-page inspection of wholly clean or dirty bitmap chunks during display dirty-run collection, preserving concurrent-write and clipped-range behavior.
 - Fixed signed bump filtering and Vulkan min/mag selection when linear G8B8 textures request mip filters, matching their single-level storage.
 

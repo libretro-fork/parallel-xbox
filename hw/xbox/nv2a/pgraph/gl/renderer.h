@@ -318,6 +318,8 @@ typedef struct PGRAPHGLState {
     VertexLruNode *element_cache_entries;
     GLuint gl_inline_array_buffer;
     GLuint gl_memory_buffer;
+    unsigned long *vertex_stale_bitmap;
+    size_t vertex_stale_pages;
     GLuint gl_vertex_array;
     GLuint gl_inline_buffer[NV2A_VERTEXSHADER_ATTRIBUTES];
 
@@ -616,6 +618,8 @@ void pgraph_gl_surfaces_refresh_any_dirty(NV2AState *d);
 void pgraph_gl_display_surface_gone(NV2AState *d, SurfaceBinding *surface);
 void pgraph_gl_display_surface_reuse(NV2AState *d, SurfaceBinding *surface);
 void pgraph_gl_invalidate_memory_buffer(NV2AState *d);
+bool pgraph_gl_surface_test_and_clear_dirty(NV2AState *d, hwaddr addr,
+                                             hwaddr size);
 void pgraph_gl_init_display(NV2AState *d);
 void pgraph_gl_finalize_display(PGRAPHState *pg);
 void pgraph_gl_init_reports(NV2AState *d);

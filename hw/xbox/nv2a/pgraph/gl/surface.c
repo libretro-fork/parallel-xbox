@@ -2736,9 +2736,8 @@ static void update_surface_part(NV2AState *d, bool upload, bool color)
 
     Surface *surface = color ? &pg->surface_color : &pg->surface_zeta;
 
-    bool mem_dirty = !tcg_enabled() && memory_region_test_and_clear_dirty(
-                                           d->vram, entry.vram_addr, entry.size,
-                                           DIRTY_MEMORY_NV2A);
+    bool mem_dirty = !tcg_enabled() && pgraph_gl_surface_test_and_clear_dirty(
+                                           d, entry.vram_addr, entry.size);
 
     if (upload && (surface->buffer_dirty || mem_dirty)) {
         pgraph_gl_unbind_surface(d, color);
@@ -2875,9 +2874,8 @@ static void update_surface_part(NV2AState *d, bool upload, bool color)
                            entry.width, entry.height, surface->offset);
             if (pgraph_writeback_discarded(&d->pgraph, entry.vram_addr,
                                            entry.size) &&
-                !memory_region_test_and_clear_dirty(d->vram, entry.vram_addr,
-                                                    entry.size,
-                                                    DIRTY_MEMORY_NV2A)) {
+                !pgraph_gl_surface_test_and_clear_dirty(d, entry.vram_addr,
+                                                       entry.size)) {
                 /* Dead-upload skip: see pgraph/writeback.h. */
                 entry.upload_pending = false;
             }

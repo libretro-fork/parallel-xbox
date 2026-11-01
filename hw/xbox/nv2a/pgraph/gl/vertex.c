@@ -24,9 +24,40 @@
 #include <hw/xbox/nv2a/nv2a_int.h>
 #include "debug.h"
 #include "renderer.h"
+#include "qemu/bitmap.h"
 
 /* The range a draw last took, which a quick update within it trusts */
 static hwaddr last_addr, last_end;
+
+/* Only the renderer thread owns this bitmap. Foreign consumers of the
+ * shared atomic dirty bits must preserve the mirror's stale state here. */
+bool pgraph_gl_surface_test_and_clear_dirty(NV2AState *d, hwaddr addr,
+                                             hwaddr size)
+{
+    PGRAPHGLState *r = d->pgraph.gl_renderer_state;
+    bool dirty = memory_region_test_and_clear_dirty(d->vram, addr, size,
+                                                    DIRTY_MEMORY_NV2A);
+    if (dirty && size) {
+        size_t first = addr / TARGET_PAGE_SIZE;
+        size_t end = TARGET_PAGE_ALIGN(addr + size) / TARGET_PAGE_SIZE;
+        assert(end <= r->vertex_stale_pages);
+        bitmap_set(r->vertex_stale_bitmap, first, end - first);
+        last_addr = last_end = 0;
+    }
+    return dirty;
+}
+
+typedef struct VertexDirtyPages {
+    unsigned long *bitmap;
+    size_t first;
+} VertexDirtyPages;
+
+static void vertex_dirty_pages(void *opaque, hwaddr offset, hwaddr size)
+{
+    VertexDirtyPages *pages = opaque;
+    bitmap_set(pages->bitmap, pages->first + offset / TARGET_PAGE_SIZE,
+               size / TARGET_PAGE_SIZE);
+}
 
 static void update_memory_buffer(NV2AState *d, hwaddr addr, hwaddr size,
                                  bool quick)
@@ -47,12 +78,56 @@ static void update_memory_buffer(NV2AState *d, hwaddr addr, hwaddr size,
     last_end = end;
 
     size = end - addr;
-    if (memory_region_test_and_clear_dirty(d->vram, addr, size,
-                                           DIRTY_MEMORY_NV2A)) {
-        glBufferSubData(GL_ARRAY_BUFFER, addr, size,
-                        d->vram_ptr + addr);
-        nv2a_profile_inc_counter(NV2A_PROF_GEOM_BUFFER_UPDATE_1);
+    size_t first = addr / TARGET_PAGE_SIZE;
+    size_t limit = end / TARGET_PAGE_SIZE;
+    bool bulk = size < 256 * 1024;
+    if (bulk) {
+        if (memory_region_test_and_clear_dirty(d->vram, addr, size,
+                                               DIRTY_MEMORY_NV2A)) {
+            bitmap_set(r->vertex_stale_bitmap, first, limit - first);
+        }
+    } else {
+        VertexDirtyPages pages = { r->vertex_stale_bitmap, first };
+        memory_region_test_and_clear_dirty_ranges(d->vram, addr, size,
+                         DIRTY_MEMORY_NV2A, vertex_dirty_pages, &pages);
     }
+
+    /* Collect outside GL calls: the dirty callback runs under RCU.
+     * Bound driver calls and keep one upload for dense/fragmented spans. */
+    struct { size_t first, end; } runs[4];
+    unsigned count = 0;
+    size_t dirty_pages = 0;
+    size_t bit = find_next_bit(r->vertex_stale_bitmap, limit, first);
+    if (bit == limit) {
+        return;
+    }
+    while (!bulk && bit < limit) {
+        if (count == ARRAY_SIZE(runs)) {
+            bulk = true;
+            break;
+        }
+        size_t stop = find_next_zero_bit(r->vertex_stale_bitmap, limit, bit);
+        runs[count].first = bit;
+        runs[count++].end = stop;
+        dirty_pages += stop - bit;
+        if (dirty_pages > (limit - first) / 2) {
+            bulk = true;
+            break;
+        }
+        bit = find_next_bit(r->vertex_stale_bitmap, limit, stop);
+    }
+    if (bulk) {
+        glBufferSubData(GL_ARRAY_BUFFER, addr, size, d->vram_ptr + addr);
+    } else {
+        for (unsigned i = 0; i < count; i++) {
+            hwaddr offset = runs[i].first * TARGET_PAGE_SIZE;
+            glBufferSubData(GL_ARRAY_BUFFER, offset,
+                            (runs[i].end - runs[i].first) * TARGET_PAGE_SIZE,
+                            d->vram_ptr + offset);
+        }
+    }
+    bitmap_clear(r->vertex_stale_bitmap, first, limit - first);
+    nv2a_profile_inc_counter(NV2A_PROF_GEOM_BUFFER_UPDATE_1);
 }
 
 /* The whole buffer to be taken from RAM again (at start, a reset, a state
@@ -63,6 +138,8 @@ void pgraph_gl_invalidate_memory_buffer(NV2AState *d)
 {
     memory_region_set_client_dirty(d->vram, 0, memory_region_size(d->vram),
                                    DIRTY_MEMORY_NV2A);
+    PGRAPHGLState *r = d->pgraph.gl_renderer_state;
+    bitmap_set(r->vertex_stale_bitmap, 0, r->vertex_stale_pages);
     last_addr = last_end = 0;
 }
 
@@ -438,6 +515,14 @@ void pgraph_gl_init_buffers(NV2AState *d)
     glGenBuffers(NV2A_VERTEXSHADER_ATTRIBUTES, r->gl_inline_buffer);
     glGenBuffers(1, &r->gl_inline_array_buffer);
 
+    r->vertex_stale_pages = TARGET_PAGE_ALIGN(memory_region_size(d->vram)) /
+                            TARGET_PAGE_SIZE;
+    r->vertex_stale_bitmap = calloc(BITS_TO_LONGS(r->vertex_stale_pages),
+                                    sizeof(unsigned long));
+    assert(r->vertex_stale_bitmap);
+    bitmap_set(r->vertex_stale_bitmap, 0, r->vertex_stale_pages);
+    last_addr = last_end = 0;
+
     glGenBuffers(1, &r->gl_memory_buffer);
     glBindBuffer(GL_ARRAY_BUFFER, r->gl_memory_buffer);
     glBufferData(GL_ARRAY_BUFFER, memory_region_size(d->vram),
@@ -471,6 +556,9 @@ void pgraph_gl_finalize_buffers(PGRAPHState *pg)
 
     glDeleteBuffers(1, &r->gl_memory_buffer);
     r->gl_memory_buffer = 0;
+    free(r->vertex_stale_bitmap);
+    r->vertex_stale_bitmap = NULL;
+    r->vertex_stale_pages = 0;
 
     glDeleteVertexArrays(1, &r->gl_vertex_array);
     r->gl_vertex_array = 0;
