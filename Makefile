@@ -312,6 +312,11 @@ $(DSPDIFF): $(DSPDIFF_SRC) $(DSP_TEST_HEADERS)
 		-I$(CORE_DIR)/hw/xbox/mcpx/apu/dsp/interp -o $@ $(DSPDIFF_SRC)
 dspdiff: $(DSPDIFF)
 
+# Production-size blocks and REP must preserve arithmetic flags through MAX.
+dspmax: $(DSPDIFF)
+	$(DSPDIFF) --frames 100 --x 0=4 --seed 1 $(CORE_DIR)/libretro/tests/rom/gp-max.inc
+	$(DSPDIFF) --frames 100 --x 0=4 --seed 2 $(CORE_DIR)/libretro/tests/rom/gp-max.inc
+
 # One-instruction blocks let the coverage test compare every architectural
 # boundary, and count real interpreter calls rather than translation claims.
 DSPNATIVE := $(CORE_DIR)/libretro/tests/dspnative$(if $(filter win,$(platform)),.exe,)

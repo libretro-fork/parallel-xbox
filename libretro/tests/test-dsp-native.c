@@ -49,7 +49,7 @@ static void prepare(Machine *m, uint32_t op, uint32_t ext, unsigned seed,
             c->registers[DSP_REG_X0 + 2 * d] = s & 0xFFFFFF;
             c->registers[DSP_REG_X1 + 2 * d] = s >> 24;
         }
-        if ((op & 7) == 7) {
+        if ((op & 7) == 7 || (op & 0xFF) == 0x1D) {
             static const uint32_t data[] = {
                 0, 1, 0xFFFFFF, 0x7FFFFF, 0x800000, 0x7FFFFE,
                 0x800001, 0xFFFF00
@@ -192,6 +192,63 @@ static void check_rotate_carry(Machine *a, Machine *b)
     }
 }
 
+static void check_max_transfer(Machine *a, Machine *b)
+{
+    static const uint64_t values[] = {
+        0, 1, 0xFFFFFFFFFFFFFF, 0x7FFFFFFFFFFFFF,
+        0x80000000000000, 0x123456789ABCDE,
+        0xFEDCBA98765432, 0x80000000000001
+    };
+    for (unsigned mode = 0; mode < 4; mode++) {
+        for (unsigned carry = 0; carry < 2; carry++) {
+            for (unsigned ai = 0; ai < ARRAY_SIZE(values); ai++) {
+                for (unsigned bi = 0; bi < ARRAY_SIZE(values); bi++) {
+                    uint64_t va = values[ai], vb = values[bi];
+                    /* MAX tests B-A in 56 bits, including wraparound. C is
+                     * cleared on transfer (DSP56300FM 13-106). */
+                    uint64_t diff = (vb - va) & 0xFFFFFFFFFFFFFF;
+                    bool transfer = diff == 0 || (diff & 0x80000000000000);
+                    uint64_t expected_b = transfer ? va : vb;
+                    uint32_t sr = 0xFE | (mode << DSP_SR_S0);
+                    Machine *machines[] = { a, b };
+                    dspjit_test_reset_fallback_count();
+                    for (unsigned i = 0; i < ARRAY_SIZE(machines); i++) {
+                        Machine *m = machines[i];
+                        prepare(m, 0x20001D, 0, 1, mode, false);
+                        dsp_core_t *c = m->dsp->backend;
+                        c->registers[DSP_REG_SR] = sr | carry;
+                        for (unsigned d = 0; d < 2; d++) {
+                            uint64_t v = d == 0 ? va : vb;
+                            c->registers[DSP_REG_A0 + d] = v & 0xFFFFFF;
+                            c->registers[DSP_REG_A1 + d] = (v >> 24) & 0xFFFFFF;
+                            c->registers[DSP_REG_A2 + d] = v >> 48;
+                        }
+                        if (i == 0) {
+                            m->dsp->ops->step(m->dsp);
+                            c->cycle_count += c->instr_cycle;
+                        } else {
+                            m->dsp->ops->run(m->dsp, 1);
+                        }
+                        uint64_t actual_a = ((uint64_t)c->registers[DSP_REG_A2] << 48) |
+                            ((uint64_t)c->registers[DSP_REG_A1] << 24) | c->registers[DSP_REG_A0];
+                        uint64_t actual_b = ((uint64_t)c->registers[DSP_REG_B2] << 48) |
+                            ((uint64_t)c->registers[DSP_REG_B1] << 24) | c->registers[DSP_REG_B0];
+                        if (actual_a != va || actual_b != expected_b ||
+                            c->registers[DSP_REG_SR] != (sr | !transfer)) {
+                            fprintf(stderr, "MAX regression: engine=%u a=%014llx b=%014llx mode=%u carry=%u\n",
+                                    i, (unsigned long long)va, (unsigned long long)vb, mode, carry);
+                            exit(1);
+                        }
+                    }
+                    assert(dspjit_test_fallback_count() == 0);
+                    assert(compare_machines(a, b) == 0);
+                    cases++;
+                }
+            }
+        }
+    }
+}
+
 int main(void)
 {
     Machine *a = machine_new(false), *b = machine_new(true);
@@ -207,12 +264,12 @@ int main(void)
 #endif
     check_macr_rounding(a, b);
     check_rotate_carry(a, b);
+    check_max_transfer(a, b);
     for (unsigned mode = 0; mode < 4; mode++) {
-        /* Sweep every parallel ALU encoding except illegal encodings and
-         * MAX, whose interpreter register ordering needs a separate audit. */
+        /* Sweep every legal parallel ALU encoding. */
         for (unsigned alu = 0; alu < 256; alu++) {
             if (alu == 0x04 || alu == 0x08 || alu == 0x0C ||
-                alu == 0x15 || alu == 0x1D) {
+                alu == 0x15) {
                 continue;
             }
             for (unsigned seed = 0; seed < 16; seed++) {
@@ -221,6 +278,12 @@ int main(void)
         }
         for (unsigned seed = 0; seed < 192; seed++) {
             unsigned input = seed < 64 ? seed : 0x10000 | (seed - 64);
+            static const uint32_t max_moves[] = {
+                0x200000, 0x800000, 0xC08000, 0x808000, 0xC00000
+            };
+            for (unsigned pm = 0; pm < ARRAY_SIZE(max_moves); pm++) {
+                check(a, b, max_moves[pm] | 0x1D, 0, input, mode, false);
+            }
             for (unsigned d = 0; d < 2; d++) {
                 for (unsigned src = 0; src < 7; src++) {
                     uint32_t alu = src == 0 ? 0x07 :

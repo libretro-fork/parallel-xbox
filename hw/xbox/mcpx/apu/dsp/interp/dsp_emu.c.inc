@@ -5070,26 +5070,27 @@ static void emu_max(dsp_core_t* dsp)
 {
     uint32_t source[3], dest[3];
 
-    dest[2] = dsp->registers[DSP_REG_A0];
-    dest[1] = dsp->registers[DSP_REG_A1];
-    dest[0] = dsp->registers[DSP_REG_A2];
+    dest[2] = dsp->registers[DSP_REG_B0];
+    dest[1] = dsp->registers[DSP_REG_B1];
+    dest[0] = dsp->registers[DSP_REG_B2];
 
-    source[2] = dsp->registers[DSP_REG_B0];
-    source[1] = dsp->registers[DSP_REG_B1];
-    source[0] = dsp->registers[DSP_REG_B2];
+    source[2] = dsp->registers[DSP_REG_A0];
+    source[1] = dsp->registers[DSP_REG_A1];
+    source[0] = dsp->registers[DSP_REG_A2];
 
     dsp_sub56(source, dest);
     bool pass = ((dest[0] & (1<<7))
         || (dest[0] == 0 && dest[1] == 0 && dest[2] == 0));
 
     if (pass) {
-        dsp->registers[DSP_REG_B0] = dsp->registers[DSP_REG_A2];
+        dsp->registers[DSP_REG_B0] = dsp->registers[DSP_REG_A0];
         dsp->registers[DSP_REG_B1] = dsp->registers[DSP_REG_A1];
-        dsp->registers[DSP_REG_B2] = dsp->registers[DSP_REG_A0];
+        dsp->registers[DSP_REG_B2] = dsp->registers[DSP_REG_A2];
     }
 
     dsp->registers[DSP_REG_SR] &= BITMASK(16)-(1<<DSP_SR_C);
-    dsp->registers[DSP_REG_SR] |= pass<<DSP_SR_C;
+    /* DSP56300FM 13-106: clear C when the transfer is performed. */
+    dsp->registers[DSP_REG_SR] |= (!pass)<<DSP_SR_C;
 }
 
 

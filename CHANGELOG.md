@@ -22,6 +22,8 @@ What changed in the libretro core of this fork, newest first. Changes that come 
 
 ## Unreleased
 
+- Compile DSP MAX natively and correct its interpreter subtraction direction, full-accumulator transfer and carry result. Check every legal parallel ALU encoding without interpreter fallback, with 178,209 boundary cases and a repeated MAX program that preserves deferred arithmetic flags.
+
 - Compile all ten DSP magnitude-compare and four accumulator rotate forms natively, preserving parallel loads/stores and accumulator fields. Expand the native regression suite to 173,793 cases, including an ALU encoding sweep. Correct rotates to shift in the previous carry bit. Fix MACR X1,Y0,B rounding an uninitialized temporary in the interpreter; round the completed sum instead. Rebuild DSP tests when included emulator or emitter headers change.
 
 - OpenGL: discard obsolete texture scratch pixels on growth instead of preserving them through realloc; retain capacity reuse and independent conversion slots.

@@ -851,7 +851,7 @@ enum {
     OP_MOVE, OP_ADD, OP_SUB, OP_CMP, OP_TFR, OP_CLR, OP_TST, OP_RND,
     OP_MPY, OP_MPYR, OP_MAC, OP_MACR, OP_ASL, OP_ASR, OP_LSL, OP_LSR,
     OP_NEG, OP_NOT, OP_AND, OP_OR, OP_EOR, OP_ABS, OP_ADDL, OP_ADDR,
-    OP_SUBL, OP_SUBR, OP_ADC, OP_SBC, OP_CMPM, OP_ROL, OP_ROR,
+    OP_SUBL, OP_SUBR, OP_ADC, OP_SBC, OP_CMPM, OP_ROL, OP_ROR, OP_MAX,
     OP_UNSUPPORTED
 };
 
@@ -898,6 +898,9 @@ static void decode_alu(uint32_t code, AluOp *a)
     if (code < 0x40) {
         int row = code >> 4;
         a->op = ops_0_3f[row * 8 + (code & 7)];
+        if (code == 0x1D) {
+            a->op = OP_MAX;
+        }
         if (a->op == OP_MOVE && code != 0) {
             a->op = OP_UNSUPPORTED;
         }
@@ -1201,6 +1204,23 @@ static void emit_alu(Tr *t, const AluOp *a)
             acc_written(t, a->d);
         }
         break;
+
+    case OP_MAX: {
+        /* Preserve flags owed to B before a conditional overwrite. MAX
+         * tests N/Z of the wrapped 56-bit B-A result, not host signed B>A. */
+        emit_flags_flush(t);
+        acc_load(t, 0);
+        acc_load(t, 1);
+        emit_addsub56(e, acc_reg(1), acc_reg(0), true);
+        h_test_rr(e, 1, T3, T3);
+        h_setcc(e, HC_G, T4);
+        size_t no_transfer = h_jcc(e, HC_G);
+        h_mov_rr(e, 1, acc_reg(1), acc_reg(0));
+        h_patch(e, no_transfer, e->len);
+        acc_written(t, 1);
+        emit_sr_result(t, SR_C, T4, -1, -1);
+        break;
+    }
 
     case OP_CMPM: {
         acc_load(t, a->d);
