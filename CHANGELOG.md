@@ -9,6 +9,7 @@
 - Avoid repeatedly discarding executing code when a guest writes nearby data on the same physical page. Preserve invalidation and precise restart when a write actually changes code, including blocks spanning nonadjacent physical pages.
 
 - Add optional GPU regressions for signed G8B8 minimum mip levels five and six, using larger textures with nontrivial final mip levels. Keep the normal test matrix and emulator runtime unchanged.
+- Fuse Vulkan depth packing and swizzling into one dispatch for eligible imported guest-RAM surfaces. Write contiguous final guest words without an intermediate packed-buffer payload; prepare fixed format pipelines and descriptors at startup, retaining the previous paths for unsupported layouts and ranges.
 
 - Skip the obsolete Vulkan transfer dependency after packing depth for direct GPU swizzling. Preserve transfer fallbacks, shader visibility and conversion-buffer reuse ordering without new resources.
 

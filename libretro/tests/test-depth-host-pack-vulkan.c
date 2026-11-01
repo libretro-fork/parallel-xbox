@@ -28,6 +28,8 @@ static void pgraph_vk_begin_debug_marker(PGRAPHVkState *r,VkCommandBuffer cmd,in
 static void pgraph_vk_end_debug_marker(PGRAPHVkState *r,VkCommandBuffer cmd){(void)r;(void)cmd;}
 static VkShaderModule pgraph_vk_create_shader_module_from_words(PGRAPHVkState *r,const uint32_t *words,size_t n){VkShaderModule m;VkShaderModuleCreateInfo ci={.sType=VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,.codeSize=n*4,.pCode=words};VK_CHECK(vkCreateShaderModule(r->device,&ci,NULL,&m));return m;}
 void pgraph_vk_pack_depth_stencil_dims(PGRAPHState*,SurfaceBinding*,VkCommandBuffer,VkBuffer,VkBuffer,unsigned,unsigned,unsigned,unsigned);
+static bool pgraph_vk_pack_depth_swizzled_possible(PGRAPHState *p,SurfaceBinding *s){(void)p;(void)s;return false;}
+static void pgraph_vk_pack_depth_swizzled(PGRAPHState *p,SurfaceBinding *s,VkCommandBuffer c){(void)p;(void)s;(void)c;assert(false);}
 static bool pgraph_vk_swizzle_packed_possible(PGRAPHState *pg,uint64_t offset,unsigned w,unsigned h,unsigned bpp){(void)pg;(void)offset;(void)w;(void)h;(void)bpp;return false;}
 static void store_packed_to_ram(PGRAPHState *pg,VkCommandBuffer cmd,SurfaceBinding *s,VkBuffer buf,VkDeviceSize off){(void)pg;(void)cmd;(void)s;(void)buf;(void)off;assert(false);}
 static void counted_copy(VkCommandBuffer cmd,VkBuffer src,VkBuffer dst,unsigned n,const VkBufferCopy *copy){copies++;vkCmdCopyBuffer(cmd,src,dst,n,copy);}

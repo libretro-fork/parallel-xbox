@@ -65,6 +65,8 @@ static void vkCmdPipelineBarrier(VkCommandBuffer cmd,unsigned src,unsigned dst,u
  if(b->dstAccessMask==VK_ACCESS_SHADER_WRITE_BIT&&id==3)assert((src&VK_PIPELINE_STAGE_HOST_BIT)&&(b->srcAccessMask&VK_ACCESS_HOST_READ_BIT));
 }
 static void vkCmdCopyBuffer(VkCommandBuffer cmd,VkBuffer src,VkBuffer dst,unsigned count,const VkBufferCopy *r){assert(cmd==8&&src==2&&dst==3&&count==1&&transfer_read[src]&&!r->srcOffset&&!r->dstOffset);memcpy(data[dst],data[src],r->size);latest[dst]=VK_ACCESS_TRANSFER_WRITE_BIT;host_visible[dst]=false;copies++;}
+static bool pgraph_vk_pack_depth_swizzled_possible(PGRAPHState *p,SurfaceBinding *s){(void)p;(void)s;return false;}
+static void pgraph_vk_pack_depth_swizzled(PGRAPHState *p,SurfaceBinding *s,VkCommandBuffer c){(void)p;(void)s;(void)c;assert(false);}
 static bool pgraph_vk_swizzle_packed_possible(PGRAPHState *pg,uint64_t offset,unsigned w,unsigned h,unsigned bpp){(void)offset;return (uint64_t)w*h*bpp<=pg->vk_renderer_state->device_props.limits.maxStorageBufferRange;}
 static void store_packed_to_ram(PGRAPHState *pg,VkCommandBuffer cmd,SurfaceBinding *s,VkBuffer src,VkDeviceSize offset){assert(pg->vk_renderer_state==&state&&cmd==8&&src==2&&offset==16&&transfer_read[src]==!(s->swizzle&&pgraph_vk_swizzle_packed_possible(pg,s->vram_addr,s->width,s->height,4)));omitted_dependencies+=!transfer_read[src];memcpy(ram,data[src],(size_t)s->width*s->height*4);stores++;}
 /* PRODUCTION */

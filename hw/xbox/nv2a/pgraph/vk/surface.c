@@ -391,25 +391,31 @@ static VkBuffer pack_depth_readback(PGRAPHState *pg, SurfaceBinding *surface,
     VkBuffer pack_buffer = r->storage_buffers[packed_to_host ?
         BUFFER_STAGING_DST : BUFFER_COMPUTE_SRC].buffer;
 
-    VkBufferMemoryBarrier pre_compute_dst_barrier = {
-        .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
-        .srcAccessMask = packed_to_host ?
-            VK_ACCESS_HOST_READ_BIT | VK_ACCESS_TRANSFER_WRITE_BIT :
-            VK_ACCESS_TRANSFER_READ_BIT,
-        .dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT,
-        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        .buffer = pack_buffer,
-        .size = VK_WHOLE_SIZE
-    };
-    vkCmdPipelineBarrier(cmd, packed_to_host ?
-                         VK_PIPELINE_STAGE_HOST_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT :
-                         VK_PIPELINE_STAGE_TRANSFER_BIT,
-                         VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, NULL,
-                         1, &pre_compute_dst_barrier, 0, NULL);
+    bool fused = direct &&
+        pgraph_vk_pack_depth_swizzled_possible(pg, surface);
+    if (fused) {
+        pgraph_vk_pack_depth_swizzled(pg, surface, cmd);
+    } else {
+        VkBufferMemoryBarrier pre_compute_dst_barrier = {
+            .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
+            .srcAccessMask = packed_to_host ?
+                VK_ACCESS_HOST_READ_BIT | VK_ACCESS_TRANSFER_WRITE_BIT :
+                VK_ACCESS_TRANSFER_READ_BIT,
+            .dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT,
+            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .buffer = pack_buffer,
+            .size = VK_WHOLE_SIZE
+        };
+        vkCmdPipelineBarrier(cmd, packed_to_host ?
+                             VK_PIPELINE_STAGE_HOST_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT :
+                             VK_PIPELINE_STAGE_TRANSFER_BIT,
+                             VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, NULL,
+                             1, &pre_compute_dst_barrier, 0, NULL);
 
-    pgraph_vk_pack_depth_stencil(pg, surface, cmd, copy_buffer, pack_buffer,
-                                 downscale);
+        pgraph_vk_pack_depth_stencil(pg, surface, cmd, copy_buffer, pack_buffer,
+                                     downscale);
+    }
 
     VkBufferMemoryBarrier post_compute_src_barrier = {
         .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
@@ -424,6 +430,11 @@ static VkBuffer pack_depth_readback(PGRAPHState *pg, SurfaceBinding *surface,
                          VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 1,
                          &post_compute_src_barrier, 0, NULL);
 
+    if (fused) {
+        /* The final guest words are already written; no packed-buffer user. */
+        *host_output = false;
+        return copy_buffer;
+    }
     if (packed_to_host) {
         /* Compute produced the CPU's final packed representation. */
         copy_buffer = pack_buffer;
@@ -771,7 +782,7 @@ static bool download_surface_to_buffer(NV2AState *d, SurfaceBinding *surface,
                         (scaled_width * scaled_height * bytes_per_pixel);
 
         //
-        // Pack the depth-stencil image into compute_src buffer
+        // Pack depth/stencil into final guest words or the selected fallback.
         //
 
         copy_buffer = pack_depth_readback(pg, surface, cmd, copy_buffer,

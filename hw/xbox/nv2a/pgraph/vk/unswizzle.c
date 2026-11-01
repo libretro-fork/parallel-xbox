@@ -11,9 +11,10 @@
  * The other way, a surface read back is swizzled into the RAM by the GPU
  * as well (pgraph_vk_swizzle_to_ram): from the ring, where the read-back
  * copied it linear, into its place in the RAM's buffer. Packed depth can
- * instead feed that shader directly from the conversion buffer.
+ * instead feed that shader directly from the conversion buffer, or pack
+ * depth and stencil straight into their final Morton-order guest words.
  *
- * Two compute pipelines and fixed ring/packed-source descriptor sets,
+ * Four compute pipelines and fixed ring/packed/depth descriptor sets,
  * made at init: a level or a surface is a dispatch with push constants.
  *
  * Copyright (c) 2026 Réda Chérif-Touil
@@ -35,6 +36,8 @@
 #include "hw/xbox/nv2a/nv2a_int.h"
 #include "hw/xbox/nv2a/pgraph/swizzle.h"
 #include "renderer.h"
+#include "compute-dispatch.h"
+#include "hw/xbox/nv2a/pgraph/spv/depth.h"
 #include "hw/xbox/nv2a/pgraph/spv/swizzle.h"
 
 #define UNSWIZZLE_WORKGROUP PGRAPH_SPV_SWIZZLE_WORKGROUP
@@ -71,6 +74,76 @@ void pgraph_vk_unswizzle_packed_buffer_changed(PGRAPHState *pg)
         };
     }
     vkUpdateDescriptorSets(r->device, 2, writes, 0, NULL);
+    if (r->unswizzle.depth_set != VK_NULL_HANDLE) {
+        VkDeviceSize range = MIN(
+            r->storage_buffers[BUFFER_COMPUTE_DST].buffer_size,
+            r->device_props.limits.maxStorageBufferRange);
+        VkDescriptorBufferInfo depth_buffers[3] = {
+            { .buffer = r->storage_buffers[BUFFER_COMPUTE_DST].buffer, .range = range },
+            { .buffer = r->storage_buffers[BUFFER_COMPUTE_DST].buffer, .range = range },
+            { .buffer = r->vram_buffer, .range = VK_WHOLE_SIZE },
+        };
+        VkWriteDescriptorSet depth_writes[3];
+        for (unsigned i = 0; i < 3; i++) {
+            depth_writes[i] = (VkWriteDescriptorSet){
+                .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .dstSet = r->unswizzle.depth_set, .dstBinding = i,
+                .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                .descriptorCount = 1, .pBufferInfo = &depth_buffers[i],
+            };
+        }
+        vkUpdateDescriptorSets(r->device, 3, depth_writes, 0, NULL);
+    }
+}
+
+/* Two format pipelines and one immutable-per-buffer-generation set. The
+ * imported guest buffer has already passed the whole-buffer range guard. */
+static void init_depth_swizzle(PGRAPHState *pg)
+{
+    PGRAPHVkState *r = pg->vk_renderer_state;
+    VkDescriptorSetLayoutBinding bindings[3];
+    for (unsigned i = 0; i < 3; i++) {
+        bindings[i] = (VkDescriptorSetLayoutBinding){
+            .binding = i, .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+            .descriptorCount = 1, .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
+        };
+    }
+    VkDescriptorSetLayoutCreateInfo set_info = {
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+        .bindingCount = 3, .pBindings = bindings,
+    };
+    VK_CHECK(vkCreateDescriptorSetLayout(r->device, &set_info, NULL,
+                                        &r->unswizzle.depth_set_layout));
+    VkDescriptorSetAllocateInfo alloc = {
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+        .descriptorPool = r->unswizzle.pool, .descriptorSetCount = 1,
+        .pSetLayouts = &r->unswizzle.depth_set_layout,
+    };
+    VK_CHECK(vkAllocateDescriptorSets(r->device, &alloc, &r->unswizzle.depth_set));
+    pgraph_vk_unswizzle_packed_buffer_changed(pg);
+    VkPushConstantRange push = { VK_SHADER_STAGE_COMPUTE_BIT, 0, 5 * sizeof(uint32_t) };
+    VkPipelineLayoutCreateInfo layout = {
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+        .setLayoutCount = 1, .pSetLayouts = &r->unswizzle.depth_set_layout,
+        .pushConstantRangeCount = 1, .pPushConstantRanges = &push,
+    };
+    VK_CHECK(vkCreatePipelineLayout(r->device, &layout, NULL,
+                                    &r->unswizzle.depth_layout));
+    for (unsigned f = 0; f < 2; f++) {
+        SpvStaticModule words = pgraph_spv_depth_swizzled(f, r->compute.workgroup_size);
+        VkShaderModule module = pgraph_vk_create_shader_module_from_words(
+            r, words.words, words.num_words);
+        VkComputePipelineCreateInfo info = {
+            .sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
+            .layout = r->unswizzle.depth_layout,
+            .stage = { .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+                       .stage = VK_SHADER_STAGE_COMPUTE_BIT,
+                       .pName = "main", .module = module },
+        };
+        VK_CHECK(vkCreateComputePipelines(r->device, r->vk_pipeline_cache, 1,
+                  &info, NULL, &r->unswizzle.depth_pipelines[f]));
+        vkDestroyShaderModule(r->device, module, NULL);
+    }
 }
 
 void pgraph_vk_init_unswizzle(PGRAPHState *pg)
@@ -106,13 +179,13 @@ void pgraph_vk_init_unswizzle(PGRAPHState *pg)
 
     VkDescriptorPoolSize pool_size = {
         .type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-        .descriptorCount = 4,
+        .descriptorCount = 7,
     };
     VkDescriptorPoolCreateInfo pool_info = {
         .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
         .poolSizeCount = 1,
         .pPoolSizes = &pool_size,
-        .maxSets = 2,
+        .maxSets = 3,
     };
     VK_CHECK(vkCreateDescriptorPool(r->device, &pool_info, NULL,
                                     &r->unswizzle.pool));
@@ -188,6 +261,7 @@ void pgraph_vk_init_unswizzle(PGRAPHState *pg)
                                       &pipeline_info, NULL,
                                       &r->unswizzle.swizzle_pipeline));
     vkDestroyShaderModule(r->device, module, NULL);
+    init_depth_swizzle(pg);
     r->unswizzle.ready = true;
 }
 
@@ -200,6 +274,17 @@ void pgraph_vk_finalize_unswizzle(PGRAPHState *pg)
     }
     if (r->unswizzle.swizzle_pipeline != VK_NULL_HANDLE) {
         vkDestroyPipeline(r->device, r->unswizzle.swizzle_pipeline, NULL);
+    }
+    for (unsigned f = 0; f < 2; f++) {
+        if (r->unswizzle.depth_pipelines[f] != VK_NULL_HANDLE) {
+            vkDestroyPipeline(r->device, r->unswizzle.depth_pipelines[f], NULL);
+        }
+    }
+    if (r->unswizzle.depth_layout != VK_NULL_HANDLE) {
+        vkDestroyPipelineLayout(r->device, r->unswizzle.depth_layout, NULL);
+    }
+    if (r->unswizzle.depth_set_layout != VK_NULL_HANDLE) {
+        vkDestroyDescriptorSetLayout(r->device, r->unswizzle.depth_set_layout, NULL);
     }
     if (r->unswizzle.layout != VK_NULL_HANDLE) {
         vkDestroyPipelineLayout(r->device, r->unswizzle.layout, NULL);
@@ -427,4 +512,53 @@ void pgraph_vk_swizzle_packed_to_ram(PGRAPHState *pg, VkCommandBuffer cmd,
     };
     vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
         VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 1, &after, 0, NULL);
+}
+
+/* The old direct route remains available for every ineligible surface. */
+bool pgraph_vk_pack_depth_swizzled_possible(PGRAPHState *pg, SurfaceBinding *surface)
+{
+    PGRAPHVkState *r = pg->vk_renderer_state;
+    unsigned w = surface->width, h = surface->height;
+    pgraph_apply_scaling_factor(pg, &w, &h);
+    VkDeviceSize planes = ROUND_UP((VkDeviceSize)w * h * 4,
+        r->device_props.limits.minStorageBufferOffsetAlignment) + (VkDeviceSize)w * h;
+    return surface->swizzle && surface->width && surface->height &&
+        !(surface->width & (surface->width - 1)) &&
+        !(surface->height & (surface->height - 1)) &&
+        surface->fmt.bytes_per_pixel == 4 &&
+        (surface->host_fmt.vk_format == VK_FORMAT_D24_UNORM_S8_UINT ||
+         surface->host_fmt.vk_format == VK_FORMAT_D32_SFLOAT_S8_UINT) &&
+        r->unswizzle.depth_set != VK_NULL_HANDLE &&
+        pgraph_vk_swizzle_possible(pg, surface->vram_addr,
+                                  surface->width, surface->height, 4) &&
+        planes <= r->storage_buffers[BUFFER_COMPUTE_DST].buffer_size &&
+        planes <= r->device_props.limits.maxStorageBufferRange;
+}
+
+void pgraph_vk_pack_depth_swizzled(PGRAPHState *pg, SurfaceBinding *surface,
+                                   VkCommandBuffer cmd)
+{
+    PGRAPHVkState *r = pg->vk_renderer_state;
+    assert(pgraph_vk_pack_depth_swizzled_possible(pg, surface));
+    unsigned w = surface->width, h = surface->height;
+    pgraph_apply_scaling_factor(pg, &w, &h);
+    uint32_t push[5] = {
+        w, surface->width,
+        ROUND_UP((VkDeviceSize)w * h * 4,
+                 r->device_props.limits.minStorageBufferOffsetAlignment) / 4,
+        surface->width * surface->height, surface->vram_addr / 4,
+    };
+    ComputeGrid grid;
+    bool valid = pgraph_compute_grid(push[3], r->compute.workgroup_size,
+        r->device_props.limits.maxComputeWorkGroupCount[0],
+        r->device_props.limits.maxComputeWorkGroupCount[1], &grid);
+    assert(valid);
+    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
+        r->unswizzle.depth_pipelines[surface->host_fmt.vk_format == VK_FORMAT_D32_SFLOAT_S8_UINT]);
+    vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
+        r->unswizzle.depth_layout, 0, 1, &r->unswizzle.depth_set, 0, NULL);
+    vkCmdPushConstants(cmd, r->unswizzle.depth_layout, VK_SHADER_STAGE_COMPUTE_BIT,
+                       0, sizeof(push), push);
+    vkCmdDispatch(cmd, grid.x, grid.y, 1);
+    nv2a_profile_inc_counter(NV2A_PROF_SURF_SWIZZLE);
 }

@@ -32,8 +32,8 @@ typedef struct {VkBuffer buffer;VkDeviceSize offset,range;} VkDescriptorBufferIn
 typedef struct {int sType;VkDescriptorSet dstSet;unsigned dstBinding,descriptorType,descriptorCount;const VkDescriptorBufferInfo *pBufferInfo;} VkWriteDescriptorSet;
 typedef struct {int sType;unsigned srcAccessMask,dstAccessMask,srcQueueFamilyIndex,dstQueueFamilyIndex;VkBuffer buffer;VkDeviceSize offset,size;} VkBufferMemoryBarrier;
 typedef struct {VkDeviceSize srcOffset,dstOffset,size;} VkBufferCopy;
-enum {BUFFER_UNSWIZZLE_OUT,BUFFER_COMPUTE_SRC};
-typedef struct {unsigned device;VkBuffer vram_buffer;struct {VkBuffer buffer;VkDeviceSize buffer_size;} storage_buffers[2];struct {struct {VkDeviceSize maxStorageBufferRange;unsigned maxComputeWorkGroupCount[3];} limits;} device_props;struct {bool ready;VkDescriptorSet set,packed_set;unsigned layout,swizzle_pipeline;} unswizzle;} PGRAPHVkState;
+enum {BUFFER_UNSWIZZLE_OUT,BUFFER_COMPUTE_SRC,BUFFER_COMPUTE_DST};
+typedef struct {unsigned device;VkBuffer vram_buffer;struct {VkBuffer buffer;VkDeviceSize buffer_size;} storage_buffers[3];struct {struct {VkDeviceSize maxStorageBufferRange;unsigned maxComputeWorkGroupCount[3];} limits;} device_props;struct {bool ready;VkDescriptorSet set,packed_set,depth_set;unsigned layout,swizzle_pipeline;} unswizzle;} PGRAPHVkState;
 typedef struct {PGRAPHVkState *vk_renderer_state;} PGRAPHState;
 typedef struct {PGRAPHState pgraph;size_t *vram;} NV2AState;
 #define memory_region_size(p) (*(p))

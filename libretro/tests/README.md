@@ -1685,3 +1685,21 @@ noncoherent atom isolation, dedicated requirements and failure rollback. Its
 sealed-reservation cases assert no driver allocations, mappings or frees during
 reuse or exhaustion. `--gpu` adds actual image clears, direct mapped readbacks,
 offset copies and guard-byte checks, enabling Khronos validation when available.
+
+`test-fused-depth.py CHECKOUT [CC]` executes the immutable fused depth SPIR-V
+through a bounded SSA interpreter and compares 48,000 cases with an independent
+Morton/depth/stencil oracle. It covers both formats, 128/256 workgroups, scales
+1/2/3, rectangular and degenerate dimensions, offsets and padded dispatch tails.
+A second oracle compiles production initialization, eligibility, descriptor
+refresh, dispatch and teardown: 6,000 dispatches create no additional objects;
+format, plane-size, descriptor-range, alignment and guest bounds retain fallbacks.
+`spirv-val` validates all four fused modules when installed. CI runs both native
+oracles without copyrighted firmware, game files or a GPU.
+
+Optional `--gpu` compares the actual production two-pass and fused paths with
+identical bytes, zero intermediate copies and dispatch counts 4 versus 2 for two
+successive readbacks per submission. It covers 28 format/scale/layout cases and
+11,200 chains. `--group128` selects the 128-thread device fallback. These are GPU
+microbenchmarks, not whole-core latency measurements; the fixture enables no
+validation layer. Original pack/unpack shader encodings and all CPU-readback,
+linear, incompatible-layout and range-limited fallback routes remain intact.

@@ -23,7 +23,7 @@ with tempfile.TemporaryDirectory(prefix='packed-swizzle-') as tmp:
 
 if '--gpu' in sys.argv[3:]:
  compute=(r/(b+'surface-compute.c')).read_text().replace('#include "hw/xbox/nv2a/pgraph/pgraph.h"','').replace('#include "renderer.h"','').replace('#include "compute-dispatch.h"','#include "hw/xbox/nv2a/pgraph/vk/compute-dispatch.h"')
- unswizzle=(r/(b+'unswizzle.c')).read_text().replace('#include "hw/xbox/nv2a/nv2a_int.h"','').replace('#include "renderer.h"','')
+ unswizzle=(r/(b+'unswizzle.c')).read_text().replace('#include "hw/xbox/nv2a/nv2a_int.h"','').replace('#include "renderer.h"','').replace('#include "compute-dispatch.h"','#include "hw/xbox/nv2a/pgraph/vk/compute-dispatch.h"')
  pack=[]
  for name in ['packed_readback_to_host_barrier','pack_depth_readback']:
   src=(r/(b+'surface.c')).read_text();m=re.search(r'^static (?:void|VkBuffer) '+name+r'\(',src,re.M);a=m.start();end=src.index('{',a)+1;depth=1
