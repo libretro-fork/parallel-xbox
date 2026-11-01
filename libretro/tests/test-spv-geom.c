@@ -9,6 +9,7 @@
 #include <math.h>
 #include <time.h>
 #include <signal.h>
+#include <spirv/unified1/spirv.h>
 #ifdef _WIN32
 #include <windows.h>
 #endif
@@ -52,8 +53,30 @@ static double now(void){
 static void save(const char *folder,const char *kind,unsigned version,unsigned smooth,unsigned provoking,const uint32_t *words,size_t n){
  char path[2048];snprintf(path,sizeof(path),"%s/%s-%u-%u-%u.spv",folder,kind,version,smooth,provoking);FILE*f=fopen(path,"wb");assert(f);assert(fwrite(words,4,n,f)==n);assert(!fclose(f));
 }
+/* The output topology must never resize the geometry input arrays. Check
+ * this directly, including CPU-only CI where permissive drivers cannot hide
+ * an out-of-bounds input declaration. No heap allocation affects timings. */
+static void check_geometry_input_arrays(const GlslcResult *m, const char *source)
+{
+ unsigned expected = strstr(source, "layout(triangles) in;") ? 3 :
+                     strstr(source, "layout(lines_adjacency) in;") ? 4 : 2;
+ uint32_t bound=m->words[3], child[bound], length[bound], value[bound];
+ memset(child,0,sizeof(child));memset(length,0,sizeof(length));memset(value,0,sizeof(value));
+ for(size_t at=5;at<m->num_words;){const uint32_t *p=m->words+at;unsigned n=p[0]>>16,op=p[0]&65535;assert(n&&at+n<=m->num_words);
+  if(op==SpvOpTypePointer)child[p[1]]=p[3];
+  if(op==SpvOpTypeArray)length[p[1]]=p[3];
+  if(op==SpvOpConstant&&n==4)value[p[2]]=p[3];
+  at+=n;
+ }
+ unsigned checked=0;
+ for(size_t at=5;at<m->num_words;){const uint32_t *p=m->words+at;unsigned n=p[0]>>16,op=p[0]&65535;
+  if(op==SpvOpVariable&&p[3]==SpvStorageClassInput){uint32_t array=child[p[1]];if(length[array]){assert(value[length[array]]==expected);checked++;}}
+  at+=n;
+ }
+ assert(checked>=14);
+}
 static GlslcResult compile(GlslcStage stage,const char *source,bool version){
- GlslcResult result;GlslcOptions opts={.spirv_1_6=version};if(!glslc_compile(stage,source,&opts,&result)){fprintf(stderr,"line %d: %s\n%s\n",result.error_line,result.error,source);abort();}return result;
+ GlslcResult result;GlslcOptions opts={.spirv_1_6=version};if(!glslc_compile(stage,source,&opts,&result)){fprintf(stderr,"line %d: %s\n%s\n",result.error_line,result.error,source);abort();}if(stage==GLSLC_STAGE_GEOMETRY)check_geometry_input_arrays(&result,source);return result;
 }
 #ifdef TEST_VULKAN
 #include "spv-geom-vulkan.h"

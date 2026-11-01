@@ -1,5 +1,7 @@
 # Changelog of the libretro core
 
+- Preserve geometry input-array extents when parsing point output layouts in the core shader compiler; triangle and quad point modes retain all input vertices. Validate every generated reference module’s input extents independently of GPU behavior.
+
 - Separate the unproven RAM-spin cadence fixture from the exact supported wait-proof fixture, retaining the 4x fast-forward requirement for proven waits.
 
 - Supply the Linux graphics-test GLib dependency and link CPU-feature test fixtures with the compatibility string provider required on ARM.

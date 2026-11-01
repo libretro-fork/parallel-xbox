@@ -222,6 +222,7 @@ typedef struct Quals {
     bool std140, std430;
     int format;     /* image format or -1 */
     int geom_mode;  /* a geometry primitive layout, or 0 */
+    int geom_vertices; /* applied only after the layout is known to be input */
     bool geom_points; /* layout(points): in or out decides the mode */
 } Quals;
 
@@ -3684,7 +3685,6 @@ static void parse_qualifiers(C *c, Quals *q)
                     /* geometry primitive layouts, applied by the in/out
                      * that follows */
                     int mode, verts = 0;
-                    bool out = false;
                     if (!strcmp(k, "points")) {
                         mode = SpvExecutionModeInputPoints;
                         verts = 1;
@@ -3702,10 +3702,8 @@ static void parse_qualifiers(C *c, Quals *q)
                         verts = 6;
                     } else if (!strcmp(k, "line_strip")) {
                         mode = SpvExecutionModeOutputLineStrip;
-                        out = true;
                     } else {
                         mode = SpvExecutionModeOutputTriangleStrip;
-                        out = true;
                     }
                     if (c->stage != GLSLC_STAGE_GEOMETRY) {
                         fail(c, "layout(%s) outside a geometry shader", k);
@@ -3714,9 +3712,7 @@ static void parse_qualifiers(C *c, Quals *q)
                      * both an input and an output mode */
                     q->geom_mode = mode;
                     q->geom_points = !strcmp(k, "points");
-                    if (!out) {
-                        c->geom_in_vertices = verts;
-                    }
+                    q->geom_vertices = verts;
                 } else if (!strcmp(k, "origin_upper_left") ||
                            !strcmp(k, "pixel_center_integer") ||
                            !strcmp(k, "early_fragment_tests") ||
@@ -4835,6 +4831,7 @@ static void parse_toplevel(C *c)
                 buf_put(&c->exec_modes, 0);
                 buf_put(&c->exec_modes, mode);
                 if (q.is_in) {
+                    c->geom_in_vertices = q.geom_vertices;
                     c->geom_in_set = true;
                 } else {
                     c->geom_out_set = true;
