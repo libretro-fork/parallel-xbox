@@ -282,7 +282,7 @@ enum {
     STUB_LIMIT,         /* an accumulator read that limits */
     STUB_HALT,          /* the DSP halted (a peripheral write) */
     STUB_REP_POST,      /* a REP's repeat ended through dsp56k_post */
-    STUB_FALLBACK,      /* the instruction through the interpreter's function */
+    STUB_REP_SETUP_POST, /* REP setup coincides with a DO boundary */
     STUB_CTRL_POST,     /* the instruction's work done, the PC to be imm
                            (0xFFFFFFFF: as set): dsp56k_post for the rest */
     STUB_STATUS_POST,   /* a status write changed scaling or DO-loop state */
@@ -2773,10 +2773,6 @@ static bool emit_control(Tr *t, const Insn *in)
     if (!strcmp(name, "dor #xxx, label")) {
         uint32_t la = (at + in->ext) & 0xFFFF;
         uint32_t lc = ((inst >> 8) & 0xFF) + ((inst & 0xF) << 8);
-        if (in->next == la + 1) {
-            /* the loop's end right after: the interpreter's */
-            return false;
-        }
         acc_spill_all(t, false);
         h_mov_rr(e, 1, H_ARG0, REG_CORE);
         h_ld32(e, H_ARG1, REG_CORE, REGOFF(DSP_REG_LA));
@@ -2794,7 +2790,11 @@ static bool emit_control(Tr *t, const Insn *in)
          * a missing translation still leaves through the normal path. */
         dspjit_block_fn *previous_table = t->table;
         t->table = t->loop_table;
-        emit_chain_to(t, in->next, t->cyc + 6);
+        if (in->next == la + 1) {
+            emit_exit_to(t, in, in->next, 6);
+        } else {
+            emit_chain_to(t, in->next, t->cyc + 6);
+        }
         t->table = previous_table;
         return true;
     }
@@ -2802,9 +2802,6 @@ static bool emit_control(Tr *t, const Insn *in)
     if (!strcmp(name, "rep #xxx")) {
         uint32_t lc = ((inst >> 8) & 0xFF) + ((inst & 0xF) << 8);
         acc_spill_all(t, false);
-        /* the loop's end right after the REP: the interpreter's */
-        h_cmp_mem32_imm(e, REG_CORE, REGOFF(DSP_REG_LA), (int32_t)in->next - 1);
-        stub_set_insn(t, stub_new(t, STUB_FALLBACK, h_jcc(e, HC_EQ)), in, 4, t->cyc);
         /* emu_rep_imm, then dsp_postexecute_update_pc's first pass over
          * the REP (LC 0 counts 65536; the REP's instruction next) */
         h_ld32(e, T0, REG_CORE, REGOFF(DSP_REG_LC));
@@ -2813,6 +2810,15 @@ static bool emit_control(Tr *t, const Insn *in)
         h_st32_imm(e, REG_CORE, OFF(loop_rep), 1);
         h_st32_imm(e, REG_CORE, OFF(pc_on_rep), 0);
         h_st32_imm(e, REG_CORE, OFF(pc), in->next);
+        /* LF is part of the cache identity; without a DO loop no check
+         * is needed. A coincident DO boundary must observe REP's first
+         * post pass, not decrement LC as if its body had executed. */
+        if (t->loop_active) {
+            h_cmp_mem32_imm(e, REG_CORE, REGOFF(DSP_REG_LA), (int32_t)in->next - 1);
+            Stub *post = stub_new(t, STUB_REP_SETUP_POST, h_jcc(e, HC_EQ));
+            post->imm = 0xFFFFFFFF;
+            stub_set_insn(t, post, in, 4, t->cyc);
+        }
         emit_charge(e, t->cyc + 4);
         emit_jump_to_epilogue(t);
         return true;
@@ -2906,12 +2912,6 @@ static void emit_stubs(Tr *t)
             emit_jump_to_epilogue(t);
             continue;
 
-        case STUB_FALLBACK:
-            /* the accumulators are stored before a control instruction */
-            emit_fallback_body(e, &s->in, s->cyc_before);
-            emit_jump_to_epilogue(t);
-            continue;
-
         case STUB_STATUS_POST:
             emit_flags_flush_stub(t, s);
             for (int n = 0; n < 2; n++) {
@@ -2928,6 +2928,9 @@ static void emit_stubs(Tr *t)
             emit_jump_to_epilogue(t);
             continue;
 
+        case STUB_REP_SETUP_POST:
+            h_st32_imm(e, REG_CORE, OFF(pc_on_rep), 1);
+            /* fall through */
         case STUB_CTRL_POST:
             if (s->imm != 0xFFFFFFFF) {
                 h_st32_imm(e, REG_CORE, OFF(pc), s->imm);

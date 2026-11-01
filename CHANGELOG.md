@@ -59,6 +59,8 @@
 
 ## Unreleased
 
+- Compile REP and DOR setup natively even when setup coincides with a DO-loop boundary. Preserve repeat zero-count expansion, the first post-processing pass, saved loop state and stack errors without reinterpreting the instruction. Add 7,056 boundary cases and a 65,536-iteration repeat program checked against the interpreter and chunked JIT.
+
 - Keep relative conditional and bit-test branches native when they finish a DO loop; never repeat a completed peripheral read. Compile short BRA and use the native call path for both BSR forms, fixing an extra return-stack push during long-interrupt vectors. Add 48,768 relative-boundary cases and production-block/interpreter/budget-carry regressions.
 
 - Fix Ninja Gaiden Black cold-boot Vulkan image allocation failure. Reserve the boot-to-game render-target working set at startup (128 MiB at 1x/2x, 512 MiB at 4x, 2 GiB at 8x), without runtime heap growth or extra host-buffer padding. Replay the captured boot allocation lifetimes as a heap regression and report image requirements/pool occupancy on allocation failure.
