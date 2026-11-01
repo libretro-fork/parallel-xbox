@@ -1866,3 +1866,14 @@ RAM is moved to another backing buffer after every dispatch and progress is
 copied, checking that no hidden host pointer is required. A UINT32_MAX-row
 zero-pitch transfer stops after a 17-byte dispatch budget. This is not guest
 save-state or GPU testing, and the engine is not yet connected to method dispatch.
+
+### Experimental M2MF lifecycle
+
+`python3 libretro/tests/test-m2mf-job.py .` covers 585 controlled owner schedules:
+preparation delays, bounded overlapping CPU copies, delayed/duplicate/stale GPU
+retirement events, command replacement rejection, reset from every phase and
+invalid/empty transfers. Publication remains gated until data completion. The
+56-byte state uses a runtime-only generation token; that token must not be
+restored from guest save-state data. Tests simulate backend events and do not
+exercise real GPU fences, notifier writes, resource cancellation or migration.
+The lifecycle and CPU engine still have no method-dispatch caller.
