@@ -2019,7 +2019,7 @@ change remains eligible for retry. The drawing path no longer calls the fence
 wait helper; shutdown draining retains it. This does not remove the separate
 libretro frame-end acknowledgement wait or establish frontend image retirement.
 
-`test-vk-depth-source.py CHECKOUT [CC] [--gpu]` checks production source eligibility and depth row packing: 368,640 eligibility cases, 1,188 packed/padded/offset/empty copies and eight single-axis swizzled packed-depth copies, aligned region batches, byte-exact destinations and source/guard preservation. CPU mode defaults to ASan/UBSan; GPU mode can use `DEPTH_SOURCE_CFLAGS=-fsanitize=undefined`. GPU mode requires synchronization validation unless `DEPTH_SOURCE_NO_VALIDATION=1` is explicitly set. Single-axis swizzled surfaces qualify only with a canonical tight pitch; two-dimensional Morton layouts and padded swizzled rows retain their fallback. GPU fixture buffers model imported memory without testing the external-host import extension itself. `DEPTH_SOURCE_BINARY` and `DEPTH_SOURCE_SKIP_RUN=1` retain native fixtures. The existing depth-kernel fixtures cover unpack shaders, which are unchanged.
+`test-vk-depth-source.py CHECKOUT [CC] [--gpu]` checks production source eligibility and depth row packing: 368,640 upload eligibility and 1,474,560 readback routing cases, 1,188 packed/padded/offset/empty copies and eight single-axis swizzled packed-depth copies, aligned region batches, byte-exact destinations and source/guard preservation. CPU mode defaults to ASan/UBSan; GPU mode can use `DEPTH_SOURCE_CFLAGS=-fsanitize=undefined`. GPU mode requires synchronization validation unless `DEPTH_SOURCE_NO_VALIDATION=1` is explicitly set. Single-axis swizzled surfaces qualify only with a canonical tight pitch; two-dimensional Morton layouts and padded swizzled rows retain their fallback. GPU fixture buffers model imported memory without testing the external-host import extension itself. `DEPTH_SOURCE_BINARY` and `DEPTH_SOURCE_SKIP_RUN=1` retain native fixtures. The existing depth-kernel fixtures cover unpack shaders, which are unchanged.
 
 `test-seed-batch-read.py CHECKOUT [CC]` exercises production batch/individual seed loaders with real libretro-common inflate: 480 legacy-equivalence cases, independent local-first ordering, poisoned mapping/decompression lifetimes, missing/stale/malformed/corrupt input and inflater failure. Both sections share one mapping/inflation with no duplicated section arrays. It also checks all 14 games / 38 sections in the bundled dictionary byte-for-byte. `SEED_BATCH_CFLAGS`, `SEED_BATCH_BINARY` and `SEED_BATCH_SKIP_RUN=1` support sanitized and native execution; retained native binaries accept the dictionary path as their optional argument.
 
@@ -2898,3 +2898,17 @@ remain 3,120/1,120 bytes. The guard adds no per-voice processing fields.
 `test-display-gamma.py CHECKOUT --cc CC` executes the production DAC writer, atomic snapshot and ramp cache against 1,024 sequences, including identity/repeated writes, concurrent-write retry, palette wrapping and version wrapping. `--gpu --output DIR` additionally compiles the actual GL and Vulkan native/byte presentation shaders and checks 90 GL and 180 Vulkan cases: independent channel curves, identity bypass, alpha, video-overlay color-key ordering and RGBA8/RGB565/1555 inputs. Sixteen-bit curves are checked against each driver's neutral conversion; RGBA8 uses an independent pixel oracle. Vulkan checks the 128-byte push ABI, 1,024-byte lookup layout and eight aligned uniform snapshots. Synchronization validation is enabled when available, and generated modules are checked with `spirv-val` when installed. On Windows, provide `--epoxy-root DIR` containing `libepoxy/include` and `libepoxy.a`.
 
 The runtime reuses the presentation draw. Vulkan reserves and maps eight small lookup snapshots at startup, with immutable descriptor bindings; OpenGL uses packed uniforms. Unchanged palettes avoid uploads. Palette-only changes invalidate cached presentation; the display-slot regression also checks gamma-only redraw/retry behavior.
+
+
+`python libretro/tests/test-single-axis-readback-vulkan.py CHECKOUT [CC]`
+executes the production `download_surface_to_buffer`, routing helper and host
+visibility barrier on a real Vulkan device via Volk. It checks 288 combinations
+of R8, RGB565, ARGB8888 and D16, horizontal/vertical single-axis extents, scale
+1/2/4, immediate/single-entry batch completion and two updates. Destination RAM
+bytes and guards must match; imported-RAM claims and the required wait are
+checked. Ring allocation, swizzle dispatch and staging fallback hooks fail if
+reached. Fixture hooks supply image transitions and command submission; the full
+batch scheduler and external-host import extension are not exercised. No Vulkan
+validation layer is requested. The regular CPU depth-source fixture checks the
+new routing exclusions; packed-swizzle/depth-host-pack fixtures preserve their
+existing packed-depth paths. Full-game performance remains unmeasured.

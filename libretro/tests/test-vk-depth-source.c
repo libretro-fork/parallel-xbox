@@ -11,7 +11,7 @@
 #define VK_CHECK(x) assert((x)==VK_SUCCESS)
 #define CAPACITY (4u*1024u*1024u)
 typedef struct {VkBuffer vram_buffer;} PGRAPHVkState;
-typedef struct {bool swizzle;uint64_t vram_addr;unsigned width,height,pitch;struct {unsigned bytes_per_pixel;} fmt;} SurfaceBinding;
+typedef struct {bool swizzle,color;struct {VkFormat vk_format;} host_fmt;uint64_t vram_addr;unsigned width,height,pitch;struct {unsigned bytes_per_pixel;} fmt;} SurfaceBinding;
 static uint8_t *source_bytes,*destination_bytes,*expected,*snapshot;
 static unsigned calls,regions_seen;static VkDeviceSize copied,source_size,destination_size;
 static VkBuffer source_handle,destination_handle;
@@ -83,10 +83,15 @@ static void eligibility(void)
  PGRAPHVkState r={source_handle};SurfaceBinding s={.vram_addr=4,.pitch=260,.fmt={4}};assert(surface_upload_from_vram(&r,&s));
  for(unsigned width=1;width<=16;width*=4)for(unsigned height=1;height<=16;height*=4)for(unsigned bpp=1;bpp<=8;bpp*=2)for(unsigned offset=0;offset<32;offset++)for(unsigned pitch=1;pitch<=80;pitch++)for(unsigned swizzle=0;swizzle<2;swizzle++)for(unsigned imported=0;imported<2;imported++){
   r.vram_buffer=imported?source_handle:VK_NULL_HANDLE;s=(SurfaceBinding){.swizzle=swizzle,.vram_addr=offset,.width=width,.height=height,.pitch=pitch,.fmt={bpp}};bool expected=imported&&(!swizzle||((width==1||height==1)&&pitch==width*bpp))&&offset%4==0&&offset%bpp==0&&pitch%bpp==0&&pitch>=width*bpp;assert(surface_upload_from_vram(&r,&s)==expected);
+  for(unsigned color=0;color<2;color++)for(unsigned depth=0;depth<2;depth++){
+   s.color=color;s.host_fmt.vk_format=depth?VK_FORMAT_D16_UNORM:VK_FORMAT_D24_UNORM_S8_UINT;
+   bool need=swizzle&&(!((color||depth)&&(width==1||height==1)&&pitch==width*bpp));
+   assert(surface_readback_needs_swizzle(&s)==need);
+  }
  }
  s=(SurfaceBinding){.swizzle=true,.width=1,.height=0,.pitch=4,.fmt={4}};
- assert(!surface_upload_from_vram(&r,&s));
- s.width=0;s.height=1;assert(!surface_upload_from_vram(&r,&s));
+ assert(!surface_upload_from_vram(&r,&s));s.color=true;assert(surface_readback_needs_swizzle(&s));
+ s.width=0;s.height=1;assert(!surface_upload_from_vram(&r,&s));assert(surface_readback_needs_swizzle(&s));
 }
 static unsigned swizzled_depth_copies(void)
 {
@@ -117,5 +122,5 @@ int main(void)
   assert(calls==(!row||!height?0u:pad?(height+63)/64:1u));assert(regions_seen==(!row||!height?0u:pad?height:1u));cases++;
  }
  unsigned swizzled=swizzled_depth_copies();
- free(expected);free(snapshot);finalize();printf("Depth source: %u packed/padded/offset/empty copy cases and 368640 eligibility cases; exact bytes, source/guard preservation, aligned bounded regions PASS; %u single-axis swizzled packed-depth copies\n",cases,swizzled);return 0;
+ free(expected);free(snapshot);finalize();printf("Depth source: %u packed/padded/offset/empty copy cases and 368640 upload / 1474560 readback routing cases; exact bytes, source/guard preservation, aligned bounded regions PASS; %u single-axis swizzled packed-depth copies\n",cases,swizzled);return 0;
 }

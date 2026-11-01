@@ -13,7 +13,7 @@ u=(r/(b+'unswizzle.c')).read_text();push=re.search(r'struct UnswizzlePush \{.*?\
 parts=[fn('hw/xbox/nv2a/pgraph/swizzle.c','generate_swizzle_masks')]
 parts += [fn(b+'unswizzle.c',n) for n in ['pgraph_vk_unswizzle_packed_buffer_changed','swizzle_to_ram_from','pgraph_vk_swizzle_to_ram','pgraph_vk_swizzle_possible','pgraph_vk_swizzle_packed_possible','pgraph_vk_swizzle_packed_to_ram']]
 parts.append(fn(b+'surface.c','store_packed_to_ram'))
-surface=(r/(b+'surface.c')).read_text();assert 'surface->swizzle && !packed_swizzle' in surface
+surface=(r/(b+'surface.c')).read_text();assert 'swizzle_required && !packed_swizzle' in surface
 code=Path(__file__).with_suffix('.c').read_text().replace('/* PUSH */',push).replace('/* PRODUCTION */','\n'.join(parts));env=os.environ.copy();env['PATH']=str(Path(cc).resolve().parent)+os.pathsep+env.get('PATH','')
 if os.name=='nt':ctypes.WinDLL('kernel32').SetErrorMode(0x8003)
 with tempfile.TemporaryDirectory(prefix='packed-swizzle-') as tmp:

@@ -556,6 +556,20 @@ static VkBuffer pack_depth_readback(PGRAPHState *pg, SurfaceBinding *surface,
     return copy_buffer;
 }
 
+/* Single-axis native color/D16 rows already have Morton order. Packed
+ * depth/stencil retains the existing pack/swizzle routing. */
+static bool surface_readback_needs_swizzle(const SurfaceBinding *surface)
+{
+    if (!surface->swizzle) {
+        return false;
+    }
+    return !((surface->color || surface->host_fmt.vk_format == VK_FORMAT_D16_UNORM) &&
+             surface->width && surface->height &&
+             (surface->width == 1 || surface->height == 1) &&
+             surface->pitch == (VkDeviceSize)surface->width *
+                                   surface->fmt.bytes_per_pixel);
+}
+
 static bool download_surface_to_buffer(NV2AState *d, SurfaceBinding *surface,
                                        uint8_t *pixels)
 {
@@ -582,20 +596,23 @@ static bool download_surface_to_buffer(NV2AState *d, SurfaceBinding *surface,
      * GPU writes the read-back into it itself (direct): a linear surface
      * copied there at its pitch, a swizzled one copied linear into the
      * ring and swizzled into place by the swizzle shader (unswizzle.c).
-     * Packed depth feeds that shader directly when its descriptor fits.
+     * Single-axis native color/D16 surfaces skip the ring and swizzle,
+     * copying directly to RAM. Packed depth keeps its existing routing
+     * and feeds the shader directly when its descriptor fits.
      * No staging buffer and no copy by the CPU. Otherwise the read-back
      * goes through the staging buffer and the CPU copies or swizzles it
      * into the RAM. */
     const unsigned int bpp = surface->fmt.bytes_per_pixel;
     const VkDeviceSize ram_size =
         (VkDeviceSize)surface->width * surface->height * bpp;
+    bool swizzle_required = surface_readback_needs_swizzle(surface);
     bool direct =
         r->vram_buffer != VK_NULL_HANDLE &&
         pixels == d->vram_ptr + surface->vram_addr &&
         surface->vram_addr % 4 == 0 &&
         (use_compute_to_convert_depth_stencil_format ||
          surface->host_fmt.host_bytes_per_pixel == bpp) &&
-        (surface->swizzle ?
+        (swizzle_required ?
              pgraph_vk_swizzle_possible(pg, surface->vram_addr,
                                         surface->width, surface->height,
                                         bpp) :
@@ -656,7 +673,7 @@ static bool download_surface_to_buffer(NV2AState *d, SurfaceBinding *surface,
         use_compute_to_convert_depth_stencil_format &&
         pgraph_vk_swizzle_packed_possible(pg, surface->vram_addr,
             surface->width, surface->height, bpp);
-    if (direct && surface->swizzle && !packed_swizzle &&
+    if (direct && swizzle_required && !packed_swizzle &&
         !pgraph_vk_ring_alloc(pg, PGRAPH_VK_RING_UNSWIZZLE, ram_size, 16,
                               &ring_offset)) {
         if (batched) {
@@ -789,7 +806,7 @@ static bool download_surface_to_buffer(NV2AState *d, SurfaceBinding *surface,
                              BUFFER_STAGING_DST;
     VkBuffer copy_buffer = r->storage_buffers[copy_buffer_idx].buffer;
     if (direct && !use_compute_to_convert_depth_stencil_format) {
-        if (surface->swizzle) {
+        if (swizzle_required) {
             copy_buffer = r->storage_buffers[BUFFER_UNSWIZZLE_OUT].buffer;
             copy_regions[0].bufferOffset = ring_offset;
         } else {
@@ -840,7 +857,7 @@ static bool download_surface_to_buffer(NV2AState *d, SurfaceBinding *surface,
 
         copy_buffer = pack_depth_readback(pg, surface, cmd, copy_buffer,
             packed_size, direct, downscale, ring_offset, &packed_to_host);
-    } else if (direct && surface->swizzle) {
+    } else if (direct && swizzle_required) {
         pgraph_vk_swizzle_to_ram(pg, cmd, ring_offset, surface->vram_addr,
                                  surface->width, surface->height, bpp);
     }

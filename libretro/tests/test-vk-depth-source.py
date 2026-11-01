@@ -14,7 +14,7 @@ assert 'bool from_vram = surface_upload_from_vram(r, surface);' in u
 assert 'staged_offset, from_vram ? surface->pitch : row_bytes,' in u
 assert 'regions[0].bufferRowLength = 0;' in u
 assert '.buffer = source_buffer,' in u[u.index('VkBufferMemoryBarrier post_copy_src_barrier'):]
-code=Path(__file__).with_suffix('.c').read_text().replace('/* PRODUCTION */','\n'.join(function(n) for n in ['surface_upload_from_vram','copy_depth_source']))
+code=Path(__file__).with_suffix('.c').read_text().replace('/* PRODUCTION */','\n'.join(function(n) for n in ['surface_readback_needs_swizzle','surface_upload_from_vram','copy_depth_source']))
 with tempfile.TemporaryDirectory(prefix='vk-depth-source-') as tmp:
  d=Path(tmp);(d/'test.c').write_text(code);exe=d/('test.exe' if os.name=='nt' or 'mingw' in a.cc else 'test')
  flags=shlex.split(os.environ.get('DEPTH_SOURCE_CFLAGS','-fsanitize=address,undefined' if os.name!='nt' else '-g'))
