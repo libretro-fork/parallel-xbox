@@ -1,5 +1,7 @@
 # Changelog of the libretro core
 
+- Correct signed G8B8 bump-map reconstruction with minimum mip levels above three in OpenGL and Vulkan. Preserve existing shader-cache keys and layouts through a compact extended encoding; Force Texture LOD0 still overrides the guest minimum. Add filtering, addressing and cache-compatibility regression coverage without runtime diagnostics.
+
 - Correct signed G8B8 bump-map filtering with a minimum mip level of three in OpenGL and Vulkan. Force Texture LOD0 still overrides the clamp; existing shader encodings and state layouts remain unchanged. Add guest and sampler-transition regression coverage without runtime diagnostics.
 
 - Trim unused Windows linker libraries and replace the Win8-era PathCch resource-root dependency with allocation-free compatible parsing.
