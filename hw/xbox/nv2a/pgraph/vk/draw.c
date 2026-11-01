@@ -3624,6 +3624,35 @@ static void end_draw(PGRAPHState *pg)
     r->in_draw = false;
 }
 
+static void eager_submit_after_draw(PGRAPHState *pg)
+{
+    PGRAPHVkState *r = pg->vk_renderer_state;
+
+    /* The NV2A consumes its pushbuffer continuously: every 128 draws
+     * [HEURISTIC], submit the recording if the next ring slot has retired
+     * (never wait), also in scenes that seldom switch target (surface.c). */
+    const unsigned eager_draws = 128;
+    if (r->in_command_buffer &&
+        ++r->eager_draw_count >= eager_draws) {
+        int next = (r->slot + 1) % PGRAPH_VK_SLOTS;
+        bool slot_free = !r->slot_fence_pending[next];
+        if (!slot_free &&
+            vkGetFenceStatus(r->device, r->slot_fence[next]) == VK_SUCCESS) {
+            /* This probe proves retirement. Keep that result so the next
+             * draw does not wait again for the already completed slot. */
+            r->slot_fence_pending[next] = false;
+            pgraph_vk_slot_retired(pg, next);
+            slot_free = true;
+        }
+        if (slot_free) {
+            r->eager_draw_count = 0;
+            pgraph_vk_finish(pg, VK_FINISH_REASON_EAGER);
+        } else {
+            r->eager_draw_count = eager_draws;
+        }
+    }
+}
+
 void pgraph_vk_draw_end(NV2AState *d)
 {
     PGRAPHState *pg = &d->pgraph;
@@ -3671,23 +3700,7 @@ void pgraph_vk_draw_end(NV2AState *d)
 
     pgraph_vk_set_surface_dirty(pg, color_write, depth_test || stencil_test);
 
-    /* The NV2A consumes its pushbuffer continuously: every 128 draws
-     * [HEURISTIC], submit the recording if the next ring slot has retired
-     * (never wait), also in scenes that seldom switch target (surface.c). */
-    const unsigned eager_draws = 128;
-    if (r->in_command_buffer &&
-        ++r->eager_draw_count >= eager_draws) {
-        int next = (r->slot + 1) % PGRAPH_VK_SLOTS;
-        bool slot_free = !r->slot_fence_pending[next] ||
-                         vkGetFenceStatus(r->device, r->slot_fence[next]) ==
-                             VK_SUCCESS;
-        if (slot_free) {
-            r->eager_draw_count = 0;
-            pgraph_vk_finish(pg, VK_FINISH_REASON_EAGER);
-        } else {
-            r->eager_draw_count = eager_draws;
-        }
-    }
+    eager_submit_after_draw(pg);
 }
 
 static int compare_memory_sync_requirement_by_addr(const void *p1,

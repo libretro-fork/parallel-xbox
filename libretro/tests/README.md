@@ -2210,3 +2210,25 @@ Win64 layout checks leave PGRAPHState at 4,295,312 bytes, PGRAPHVkState at
 retain their previous 64-byte stack frames; the readiness callback also uses
 64 bytes (ABI register saves and outgoing-call space). No hardware cache-miss
 or game-latency improvement is established by these code-generation checks.
+
+### Vulkan eager-submit retirement
+
+`test-vk-eager-retirement.py CHECKOUT [CC]` extracts production eager submission,
+slot retirement and command-buffer reclamation. Its 12,480 schedules cover
+both command slots, recording/no-recording, threshold edges, free/busy/ready
+fences, unavailable/error status, and submission-serial rollover. A successful
+readiness probe clears the slot's pending bit and performs normal GPU-RAM
+ownership, garbage and timestamp retirement before rotating; the following
+reclaim must make neither a second status probe nor a fence wait. Busy attempts
+retain pending ownership and make no submission. A separate genuinely busy
+reclaim retains its existing wait policy. Linux defaults to ASan/UBSan;
+`VK_EAGER_CFLAGS`, `VK_EAGER_BINARY` and `VK_EAGER_SKIP_RUN` support native tests.
+
+This changes no eager threshold, PSOs, image copies, buffers, locks or frame
+queue. It removes a redundant wait API call for an already completed slot,
+not the separate waits for resource exhaustion or demand readbacks.
+
+Win64 code generation inlines the small eager helper into draw_end and keeps
+its stack frame at 96 bytes. PGRAPHState (4,295,312 bytes), PGRAPHVkState
+(5,845,216 bytes) and PGRAPHRenderer (232 bytes) are unchanged. These layout
+and assembly checks do not establish hardware cache-miss or game-latency gains.
