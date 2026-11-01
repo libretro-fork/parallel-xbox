@@ -1,5 +1,8 @@
 # Changelog of the libretro core
 
+- Reuse fragment shader keys across ignored combiner-control bits. Preserve stage count, MUX selection and per-stage constant flags; dynamic combiner uniforms still receive the complete guest register.
+
+
 - Keep idle GL/Vulkan query retirement responsive to frame, reset and shutdown requests by polling availability between interruptible libretro-common eventcount parks instead of waiting inside the graphics driver.
 - Reuse fragment shader keys across ignored upper SHADERPROG bits. Preserve all four five-bit texture modes and existing shader/cache formats.
 

@@ -2687,11 +2687,13 @@ The seed key fixture now compares production construction directly with the orig
 LRU visits now stop after the entry-time active count, even when callbacks evict their current node. The order/callback model still checks 30,000 operations, and the membership fixture covers every occupancy across 8,200 cases. A protected free-node suffix proves the visitor does not dereference it after the last active callback, including current-node eviction; the parent implementation faults on that read as expected. LRU_VISIT_SOURCE, LRU_VISIT_CFLAGS, LRU_VISIT_BINARY and LRU_VISIT_SKIP_RUN support parent/native comparisons. Timings include five occupancies in a 1,024-node pool and are synthetic, not game FPS measurements.
 
 `test-shaderctl-state.py CHECKOUT [--cc CC]` checks 65,602 production SHADERCTL
-paired SHADERCTL/SHADERPROG key projections: zero/all-set, each bit and its
+SHADERCTL/SHADERPROG/COMBINECTL key triples: zero/all-set, each bit and its
 inverse, and deterministic random words. Its independent oracle rebuilds the
-three dot-mapping nibbles, two stage-input nibbles and four five-bit texture
-modes decoded by the fragment generator; other state bytes stay intact. The
-state builder keeps `0x00FF0FFF` and `0x000FFFFF`, respectively.
+three dot-mapping nibbles, two stage-input nibbles, four five-bit texture modes,
+eight-bit combiner count and the MUX/C0/C1 flags decoded by the generator; other
+state bytes stay intact. The state builder keeps `0x00FF0FFF`, `0x000FFFFF` and
+`0x000111FF`, respectively. The production uniform assignment also runs for each
+word and must retain the full unmasked COMBINECTL value.
 
 The common-helper full-generator fixture adds 10,036 byte-identical source
 comparisons per generator, flipping each ignored bit and their combined mask.
@@ -2711,6 +2713,16 @@ layout and remain readable; old noncanonical keys can retain redundant entries,
 but their shader meaning does not change. No cache-format invalidation, runtime
 diagnostics, GPU transfers or synchronization are introduced. Game cache-hit and
 frame-time effects remain unmeasured.
+
+The common-helper fixture adds 16,984 byte-identical ignored-COMBINECTL source
+comparisons per generator. Another 144 programs exercise stage counts 0 through
+8 and every MUX/per-stage C0/C1 flag combination for GL and Vulkan, including
+3,168 ignored-bit source comparisons and 72 Vulkan compilations. Live flag
+changes must affect generated source whenever the program uses them. Texture,
+shadow and clipping regressions remain covered. Existing corpus source/module
+bytes and cache formats remain unchanged. No runtime diagnostics, GPU transfers
+or synchronization are added. Gameplay cache-hit/frame-time effects remain
+unmeasured.
 
 ### Interruptible idle report retirement
 
