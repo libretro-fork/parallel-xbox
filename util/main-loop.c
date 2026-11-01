@@ -27,7 +27,6 @@
 #include "qemu/cutils.h"
 #include "qemu/timer.h"
 #include "system/cpu-timers.h"
-#include "exec/icount.h"
 #include "qemu/main-loop.h"
 #include "block/aio.h"
 #include "block/thread-pool.h"
@@ -530,13 +529,7 @@ static void main_loop_wait_poll(int nonblocking, int64_t max_wait_ns)
     mlpoll.state = ret < 0 ? MAIN_LOOP_POLL_ERR : MAIN_LOOP_POLL_OK;
     notifier_list_notify(&main_loop_poll_notifiers, &mlpoll);
 
-    if (icount_enabled()) {
-        /*
-         * CPU thread can infinitely wait for event after
-         * missing the warp
-         */
-        icount_start_warp_timer();
-    }
+    /* The frame owner advances guest time; host dispatch only runs events. */
     qemu_clock_run_all_timers();
 }
 
@@ -619,13 +612,7 @@ static void main_loop_wait_internal(int nonblocking, int64_t max_wait_ns)
         main_loop_dispatch(io);
     }
 
-    if (icount_enabled()) {
-        /*
-         * CPU thread can infinitely wait for event after
-         * missing the warp
-         */
-        icount_start_warp_timer();
-    }
+    /* The frame owner advances guest time; host dispatch only runs events. */
     qemu_clock_run_all_timers();
 }
 

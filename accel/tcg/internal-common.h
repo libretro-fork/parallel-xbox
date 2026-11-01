@@ -14,12 +14,7 @@
 #include "exec/mmap-lock.h"
 #include "accel/tcg/tb-cpu-state.h"
 
-extern int64_t max_delay;
-extern int64_t max_advance;
-
 extern retro_atomic_int_t one_insn_per_tb;
-
-extern bool icount_align_option;
 
 /*
  * Debug probe (XEMU_TBRATE=1; the vCPU waits are in system/cpus.h). Blocks

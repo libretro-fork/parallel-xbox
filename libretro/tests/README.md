@@ -4,6 +4,12 @@
 
 `test-quiet-progress.py CHECKOUT [CC]` runs the production TB-exit path against useful store-free work, verified kernel waits, device polling, interrupt release and null-TB exits. It prevents computation from acquiring synthetic timer waits.
 
+## Frame ownership of guest time
+
+`test-gpu-wait-deadline.py CHECKOUT [CC]` checks 326 cases against the production host dispatch and GPU-wait functions. A halted CPU, a GPU completion wait, a descriptor poll and a NAT poll must not advance guest time independently. It covers timed-wait rounding, prepare/notify races, deterministic completion and the frame owner's bounded elapsed-time advancement. Its regression model rejects the old idle-warp callback, which moved a halted guest from 1000 to 1500 ns inside host dispatch.
+
+`test-icount-publication.py CHECKOUT [CC]` also executes the production fixed-clock initializer. It preserves raw instruction count and bias, selects the fixed Xbox rate, initializes legacy compatibility fields and creates no host-paced timers. Existing owner-accounting, I/O-boundary, restored-state and six-reader publication tests remain. These tests run in regression-only CI. The standalone QEMU CPU timing-option parser, adaptive clock governor and host/guest clock-alignment sleeps are no longer part of core initialization or CPU execution; saved-state fields retain their previous wire layout.
+
 ## DSP and guest RAM ordering
 
 `test-dsp-guest-ram.py CHECKOUT [CC]` compiles the production APU tick and

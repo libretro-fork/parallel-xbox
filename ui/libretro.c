@@ -2048,13 +2048,11 @@ static void lr_run_frame(void)
         return;
     }
 
-    /* The guest's time is its instructions (QEMU's icount, -icount in
-     * lr_start_machine), at a Pentium III's pace on game code (1.977 ns
-     * an instruction, accel/tcg/icount-common.c): no host clock enters
-     * it. A frame is a fixed amount of the guest's work, done as fast as
-     * the host can: the devices' timers and bottom halves (an APU frame
-     * through the DSP) take none of it, and while the guest idles its time
-     * moves on to the next deadline at once. */
+    /* The core initializes a fixed instruction clock: 1.977 ns per guest
+     * instruction (accel/tcg/icount-common.c). Devices and bottom halves
+     * do not consume instruction time. This frame owner advances proven
+     * idle intervals to the next deadline; bounded asynchronous GPU waits
+     * may also account for elapsed host time outside deterministic mode. */
     now = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
     /* A first frame, or a clock that jumped (a state was loaded): the grid
      * starts here */
@@ -2714,8 +2712,8 @@ RETRO_API void retro_init(void)
 #endif
 
 #ifdef _WIN32
-    /* Set Windows timer resolution to 1ms for accurate APU throttle sleeps.
-     * Default is ~15.6ms which causes bursty audio production. */
+    /* Keep bounded GPU/device deadline waits responsive on Windows.
+     * APU samples follow guest time; this does not pace their production. */
     {
         typedef unsigned int (__stdcall *timeBeginPeriod_t)(unsigned int);
         HMODULE winmm = LoadLibraryA("winmm.dll");

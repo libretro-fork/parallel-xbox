@@ -13,8 +13,8 @@
  * ICountMode: icount enablement state:
  *
  * @ICOUNT_DISABLED: Disabled - Do not count executed instructions.
- * @ICOUNT_PRECISE: Enabled - Fixed conversion of insn to ns via "shift" option
- * @ICOUNT_ADAPTATIVE: Enabled - Runtime adaptive algorithm to compute shift
+ * @ICOUNT_PRECISE: Enabled - Fixed Xbox conversion of instructions to nanoseconds
+ * @ICOUNT_ADAPTATIVE: Reserved for legacy VMState metadata; not enabled by the core
  */
 typedef enum {
     ICOUNT_DISABLED = 0,
@@ -44,30 +44,17 @@ int64_t icount_get_raw(void);
 
 /* return the virtual CPU time in ns, based on the instruction counter. */
 int64_t icount_get(void);
-/*
- * convert an instruction counter value to ns, based on the icount shift.
- * This shift is set as a fixed value with the icount "shift" option
- * (precise mode), or it is constantly approximated and corrected at
- * runtime in adaptive mode.
- */
+/* Convert instructions using the fixed Xbox rate, independent of host time. */
 int64_t icount_to_ns(int64_t icount);
 
-/**
- * icount_configure: configure the icount options, including "shift"
- * @opts: Options to parse
- * @errp: pointer to a NULL-initialized error object
- *
- * Return: true on success, else false setting @errp with error
- */
-bool icount_configure(QemuOpts *opts, Error **errp);
+/* Initialize the core's fixed Xbox instruction clock. No host pacing or
+ * QEMU command-line timing policy participates in frame execution. */
+void libretro_instruction_clock_init(void);
 
 /* used by tcg vcpu thread to calc icount budget */
 int64_t icount_round(int64_t count);
 void icount_skip_to(int64_t vt);
-
-/* if the CPUs are idle, start accounting real time to virtual clock. */
-void icount_start_warp_timer(void);
-void icount_account_warp_timer(void);
+/* A scheduled bottom half ends the current instruction slice. */
 void icount_notify_exit(void);
 
 #endif /* EXEC_ICOUNT_H */

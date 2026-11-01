@@ -23,16 +23,8 @@
  */
 
 #include "qemu/osdep.h"
-#include "qemu/cutils.h"
-#include "migration/vmstate.h"
-#include "qapi/error.h"
-#include "qemu/error-report.h"
 #include "system/cpus.h"
 #include "system/cpu-timers.h"
-#include "system/qtest.h"
-#include "qemu/main-loop.h"
-#include "qemu/option.h"
-#include "system/runstate.h"
 #include "hw/core/cpu.h"
 #include "exec/icount.h"
 #include "system/cpu-timers-internal.h"
@@ -45,8 +37,6 @@
     retro_atomic_load_relaxed_64((retro_atomic_64_t *)&timers_state.f)
 #define TS_STORE64(f, v) \
     retro_atomic_store_relaxed_64((retro_atomic_64_t *)&timers_state.f, (v))
-#define TS_STORE16(f, v) \
-    retro_atomic_store_relaxed_u16((retro_atomic_u16_t *)&timers_state.f, (v))
 
 #if !defined(RETRO_ATOMIC_LOCK_FREE) || !defined(RETRO_ATOMIC_HAS_64)
 #error "Virtual clock publication requires lock-free 64-bit atomics"
@@ -65,31 +55,18 @@ void icount_publish_time(void)
     retro_atomic_store_release_64(&timers_state.published_icount_ns, ns);
 }
 
-/*
- * ICOUNT: Instruction Counter
- *
- * this module is split off from cpu-timers because the icount part
- * is TCG-specific, and does not need to be built for other accels.
- */
-static bool icount_sleep = true;
-/* Arbitrarily pick 1MIPS as the minimum allowable speed.  */
-#define MAX_ICOUNT_SHIFT 10
-
-bool icount_align_option;
-
-/* Do not count executed instructions */
+/* Disabled until the core initializes its fixed Xbox instruction clock. */
 ICountMode use_icount = ICOUNT_DISABLED;
 
-static void icount_enable_precise(void)
+void libretro_instruction_clock_init(void)
 {
-    /* Fixed conversion of insn to ns via "shift" option */
     use_icount = ICOUNT_PRECISE;
-}
-
-static void icount_enable_adaptive(void)
-{
-    /* Runtime adaptive algorithm to compute shift */
-    use_icount = ICOUNT_ADAPTATIVE;
+    /* Keep the legacy VMState fields and wire layout, with no host-paced
+     * timers or adaptive rate changes attached to them. */
+    timers_state.icount_time_shift = 0;
+    timers_state.last_delta = 0;
+    timers_state.vm_clock_warp_start = -1;
+    icount_publish_time();
 }
 
 /*
@@ -172,9 +149,8 @@ int64_t icount_get(void)
     return retro_atomic_load_acquire_64(&timers_state.published_icount_ns);
 }
 
-/* The libretro core counts the guest's time in its instructions alone: no
- * clock of the host's enters it, so a frame of guest time is a fixed amount
- * of the guest's work, whatever the host's speed or load. 1.977 ns an
+/* Executed instructions use a fixed conversion independent of host load.
+ * The frame owner accounts separately for idle/device intervals. 1.977 ns an
  * instruction, 1.45 of the 733.33 MHz Pentium III's clock periods, the
  * rate standalone's Real hardware speed paces its CPU at (XEMU_PACE_PS,
  * accel/tcg/cpu-exec.c: judged on footage of Virtua Cop 3's cinematics,
@@ -188,8 +164,8 @@ int64_t icount_to_ns(int64_t icount)
     return icount * LR_ICOUNT_NS_NUM / LR_ICOUNT_NS_DEN;
 }
 
-/* The guest idles with nothing under way: its time moves on to vt at once,
- * as with sleep=off at a timer deadline (icount_start_warp_timer) */
+/* The frame owner proved an idle interval with nothing under way and
+ * selected its next deadline: advance guest time to vt at once. */
 void icount_skip_to(int64_t vt)
 {
     int64_t now = icount_get_owner();
@@ -201,281 +177,11 @@ void icount_skip_to(int64_t vt)
     }
 }
 
-/*
- * Correlation between real and virtual time is always going to be
- * fairly approximate, so ignore small variation.
- * When the guest is idle real and virtual time will be aligned in
- * the IO wait loop.
- */
-#define ICOUNT_WOBBLE (NANOSECONDS_PER_SECOND / 10)
-
-static void icount_adjust(void)
-{
-    int64_t cur_time;
-    int64_t cur_icount;
-    int64_t delta;
-
-    /* If the VM is not running, then do nothing.  */
-    if (!runstate_is_running()) {
-        return;
-    }
-
-    cur_time = cpu_get_clock();
-    cur_icount = icount_get_owner();
-
-    delta = cur_icount - cur_time;
-    /* FIXME: This is a very crude algorithm, somewhat prone to oscillation.  */
-    if (delta > 0
-        && timers_state.last_delta + ICOUNT_WOBBLE < delta * 2
-        && timers_state.icount_time_shift > 0) {
-        /* The guest is getting too far ahead.  Slow time down.  */
-        TS_STORE16(icount_time_shift,
-                    timers_state.icount_time_shift - 1);
-    }
-    if (delta < 0
-        && timers_state.last_delta - ICOUNT_WOBBLE > delta * 2
-        && timers_state.icount_time_shift < MAX_ICOUNT_SHIFT) {
-        /* The guest is getting too far behind.  Speed time up.  */
-        TS_STORE16(icount_time_shift,
-                    timers_state.icount_time_shift + 1);
-    }
-    timers_state.last_delta = delta;
-    TS_STORE64(qemu_icount_bias,
-                    cur_icount - (timers_state.qemu_icount
-                                  << timers_state.icount_time_shift));
-    icount_publish_time();
-}
-
-static void icount_adjust_rt(void *opaque)
-{
-    timer_mod(timers_state.icount_rt_timer,
-              qemu_clock_get_ms(QEMU_CLOCK_VIRTUAL_RT) + 1000);
-    icount_adjust();
-}
-
-static void icount_adjust_vm(void *opaque)
-{
-    timer_mod(timers_state.icount_vm_timer,
-                   qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) +
-                   NANOSECONDS_PER_SECOND / 10);
-    icount_adjust();
-}
-
 int64_t icount_round(int64_t count)
 {
     /* the instructions that take at least count ns */
     return (count * LR_ICOUNT_NS_DEN + LR_ICOUNT_NS_NUM - 1) /
            LR_ICOUNT_NS_NUM;
-}
-
-static void icount_warp_rt(void)
-{
-    int64_t warp_start;
-
-    /*
-     * The icount_warp_timer is rescheduled soon after vm_clock_warp_start
-     * changes from -1 to another value, so the race here is okay.
-     */
-    warp_start = timers_state.vm_clock_warp_start;
-
-    if (warp_start == -1) {
-        return;
-    }
-
-    if (runstate_is_running()) {
-        int64_t clock = cpu_get_clock();
-        int64_t warp_delta;
-
-        warp_delta = clock - timers_state.vm_clock_warp_start;
-        if (icount_enabled() == ICOUNT_ADAPTATIVE) {
-            /*
-             * In adaptive mode, do not let QEMU_CLOCK_VIRTUAL run too far
-             * ahead of real time (it might already be ahead so careful not
-             * to go backwards).
-             */
-            int64_t cur_icount = icount_get_owner();
-            int64_t delta = clock - cur_icount;
-
-            if (delta < 0) {
-                delta = 0;
-            }
-            warp_delta = MIN(warp_delta, delta);
-        }
-        TS_STORE64(qemu_icount_bias,
-                        timers_state.qemu_icount_bias + warp_delta);
-        icount_publish_time();
-    }
-    timers_state.vm_clock_warp_start = -1;
-
-
-    if (qemu_clock_expired(QEMU_CLOCK_VIRTUAL)) {
-        qemu_clock_notify(QEMU_CLOCK_VIRTUAL);
-    }
-}
-
-static void icount_timer_cb(void *opaque)
-{
-    /*
-     * No need for a checkpoint because the timer already synchronizes
-     * with CHECKPOINT_CLOCK_VIRTUAL_RT.
-     */
-    icount_warp_rt();
-}
-
-void icount_start_warp_timer(void)
-{
-    int64_t clock;
-    int64_t deadline;
-
-    assert(icount_enabled());
-
-    /*
-     * Nothing to do if the VM is stopped: QEMU_CLOCK_VIRTUAL timers
-     * do not fire, so computing the deadline does not make sense.
-     */
-    if (!runstate_is_running()) {
-        return;
-    }
-
-    if (!all_cpu_threads_idle()) {
-        return;
-    }
-
-    if (qtest_enabled()) {
-        /* When testing, qtest commands advance icount.  */
-        return;
-    }
-
-    /* We want to use the earliest deadline from ALL vm_clocks */
-    clock = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL_RT);
-    deadline = qemu_clock_deadline_ns_all(QEMU_CLOCK_VIRTUAL,
-                                          ~QEMU_TIMER_ATTR_EXTERNAL);
-    if (deadline < 0) {
-        if (!icount_sleep) {
-            warn_report_once("icount sleep disabled and no active timers");
-        }
-        return;
-    }
-
-    if (deadline > 0) {
-        /*
-         * Ensure QEMU_CLOCK_VIRTUAL proceeds even when the virtual CPU goes to
-         * sleep.  Otherwise, the CPU might be waiting for a future timer
-         * interrupt to wake it up, but the interrupt never comes because
-         * the vCPU isn't running any insns and thus doesn't advance the
-         * QEMU_CLOCK_VIRTUAL.
-         */
-        if (!icount_sleep) {
-            /*
-             * We never let VCPUs sleep in no sleep icount mode.
-             * If there is a pending QEMU_CLOCK_VIRTUAL timer we just advance
-             * to the next QEMU_CLOCK_VIRTUAL event and notify it.
-             * It is useful when we want a deterministic execution time,
-             * isolated from host latencies.
-             */
-
-            TS_STORE64(qemu_icount_bias,
-                            timers_state.qemu_icount_bias + deadline);
-            icount_publish_time();
-
-            qemu_clock_notify(QEMU_CLOCK_VIRTUAL);
-        } else {
-            /*
-             * We do stop VCPUs and only advance QEMU_CLOCK_VIRTUAL after some
-             * "real" time, (related to the time left until the next event) has
-             * passed. The QEMU_CLOCK_VIRTUAL_RT clock will do this.
-             * This avoids that the warps are visible externally; for example,
-             * you will not be sending network packets continuously instead of
-             * every 100ms.
-             */
-
-            if (timers_state.vm_clock_warp_start == -1
-                || timers_state.vm_clock_warp_start > clock) {
-                timers_state.vm_clock_warp_start = clock;
-            }
-
-            timer_mod_anticipate(timers_state.icount_warp_timer,
-                                 clock + deadline);
-        }
-    } else if (deadline == 0) {
-        qemu_clock_notify(QEMU_CLOCK_VIRTUAL);
-    }
-}
-
-bool icount_configure(QemuOpts *opts, Error **errp)
-{
-    const char *option = qemu_opt_get(opts, "shift");
-    bool sleep = qemu_opt_get_bool(opts, "sleep", true);
-    bool align = qemu_opt_get_bool(opts, "align", false);
-    long time_shift = -1;
-
-    if (!option) {
-        if (qemu_opt_get(opts, "align") != NULL) {
-            error_setg(errp, "Please specify shift option when using align");
-            return false;
-        }
-        return true;
-    }
-
-    if (align && !sleep) {
-        error_setg(errp, "align=on and sleep=off are incompatible");
-        return false;
-    }
-
-    if (strcmp(option, "auto") != 0) {
-        if (qemu_strtol(option, NULL, 0, &time_shift) < 0
-            || time_shift < 0 || time_shift > MAX_ICOUNT_SHIFT) {
-            error_setg(errp, "icount: Invalid shift value");
-            return false;
-        }
-    } else if (icount_align_option) {
-        error_setg(errp, "shift=auto and align=on are incompatible");
-        return false;
-    } else if (!icount_sleep) {
-        error_setg(errp, "shift=auto and sleep=off are incompatible");
-        return false;
-    }
-
-    icount_sleep = sleep;
-    if (icount_sleep) {
-        timers_state.icount_warp_timer = timer_new_ns(QEMU_CLOCK_VIRTUAL_RT,
-                                         icount_timer_cb, NULL);
-    }
-
-    icount_align_option = align;
-
-    if (time_shift >= 0) {
-        timers_state.icount_time_shift = time_shift;
-        icount_enable_precise();
-        return true;
-    }
-
-    icount_enable_adaptive();
-
-    /*
-     * 125MIPS seems a reasonable initial guess at the guest speed.
-     * It will be corrected fairly quickly anyway.
-     */
-    timers_state.icount_time_shift = 3;
-
-    /*
-     * Have both realtime and virtual time triggers for speed adjustment.
-     * The realtime trigger catches emulated time passing too slowly,
-     * the virtual time trigger catches emulated time passing too fast.
-     * Realtime triggers occur even when idle, so use them less frequently
-     * than VM triggers.
-     */
-    timers_state.vm_clock_warp_start = -1;
-    timers_state.icount_rt_timer = timer_new_ms(QEMU_CLOCK_VIRTUAL_RT,
-                                   icount_adjust_rt, NULL);
-    timer_mod(timers_state.icount_rt_timer,
-                   qemu_clock_get_ms(QEMU_CLOCK_VIRTUAL_RT) + 1000);
-    timers_state.icount_vm_timer = timer_new_ns(QEMU_CLOCK_VIRTUAL,
-                                        icount_adjust_vm, NULL);
-    timer_mod(timers_state.icount_vm_timer,
-                   qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) +
-                   NANOSECONDS_PER_SECOND / 10);
-    return true;
 }
 
 void icount_notify_exit(void)

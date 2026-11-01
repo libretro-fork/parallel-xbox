@@ -9,6 +9,9 @@ def function(s,token):
  while depth:depth+=(s[i]=='{')-(s[i]=='}');i+=1
  return s[a:i]
 s=read('accel/tcg/icount-common.c');h=read('include/system/cpu-timers-internal.h');c=read('system/cpu-timers.c')
+api=read('include/exec/icount.h');enum=api[api.index('typedef enum {'):api.index('} ICountMode;')+len('} ICountMode;')]
+core_init='void libretro_instruction_clock_init(' in s
+if not baseline:assert core_init,'The core must initialize its instruction clock directly'
 a=h.index('typedef struct TimersState {');b=h.index('} TimersState;',a)+len('} TimersState;')
 snapshot='published_icount_ns' in h
 state_lock='vm_clock_seqlock' in h
@@ -20,15 +23,17 @@ if snapshot:
  for match in re.finditer(r'TS_STORE64\(qemu_icount_bias,.*?\);',s,re.S):assert s[match.end():].lstrip().startswith('icount_publish_time();')
  assert 'icount_publish_time();' in function(c,'void cpu_enable_ticks(')
  assert '.post_load = cpu_timers_post_load,' in c
+if core_init:production+='\n'+function(s,'void libretro_instruction_clock_init(')
 # Preserve out-of-line call costs equally, with no role/TLS assertions in either getter.
 production=production.replace('int64_t icount_get(void)','__attribute__((noinline,noclone)) int64_t icount_get(void)').replace('void icount_update(CPUState *cpu)','__attribute__((noinline,noclone)) void icount_update(CPUState *cpu)')
-code=Path(__file__).with_suffix('.c').read_text().replace('/* TIMERS */',h[a:b]).replace('/* PRODUCTION */',production)
+code=Path(__file__).with_suffix('.c').read_text().replace('/* ICOUNT MODE */',enum).replace('/* TIMERS */',h[a:b]).replace('/* PRODUCTION */',production)
 windows=os.name=='nt' or 'mingw' in cc[0]
 with tempfile.TemporaryDirectory(prefix='icount-publication-') as tmp:
  p=Path(tmp);(p/'test.c').write_text(code);binary=os.environ.get('ICOUNT_TEST_BINARY',str(p/('test.exe' if windows else 'test')))
  cmd=cc+['-O2','-g','-std=gnu11','-Wall','-Wextra','-Werror','-Wno-unused-parameter','-DHAVE_THREADS','-DHAVE_THREAD_STORAGE','-I'+str(r/'libretro-common/include')]+shlex.split(os.environ.get('ICOUNT_TEST_CFLAGS',''))
  if not snapshot:cmd+=['-DICOUNT_BASELINE']
  if state_lock:cmd+=['-DICOUNT_HAS_STATELOCK']
+ if core_init:cmd+=['-DICOUNT_CORE_INIT']
  if windows:cmd+=['-Wno-cast-function-type']
  cmd+=[str(p/'test.c')]+[str(r/x) for x in ['libretro-common/rthreads/rthreads.c','libretro-common/features/features_cpu.c','libretro-common/time/rtime.c']]+['-pthread','-o',binary]
  subprocess.run(cmd,check=True)

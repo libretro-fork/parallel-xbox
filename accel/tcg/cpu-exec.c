@@ -166,100 +166,6 @@ static void xemu_tbrate_reset_exits(void)
     r->exit_req = r->longjmps = 0;
 }
 
-/* -icount align implementation. */
-
-typedef struct SyncClocks {
-    int64_t diff_clk;
-    int64_t last_cpu_icount;
-    int64_t realtime_clock;
-} SyncClocks;
-
-/* Allow the guest to have a max 3ms advance.
- * The difference between the 2 clocks could therefore
- * oscillate around 0.
- */
-#define VM_CLOCK_ADVANCE 3000000
-#define THRESHOLD_REDUCE 1.5
-#define MAX_DELAY_PRINT_RATE 2000000000LL
-#define MAX_NB_PRINTS 100
-
-int64_t max_delay;
-int64_t max_advance;
-
-static void align_clocks(SyncClocks *sc, CPUState *cpu)
-{
-    int64_t cpu_icount;
-
-    if (!icount_align_option) {
-        return;
-    }
-
-    cpu_icount = cpu->icount_extra +
-        retro_atomic_load_relaxed_u16(&cpu->neg.icount_decr.u16.low);
-    sc->diff_clk += icount_to_ns(sc->last_cpu_icount - cpu_icount);
-    sc->last_cpu_icount = cpu_icount;
-
-    if (sc->diff_clk > VM_CLOCK_ADVANCE) {
-#ifndef _WIN32
-        struct timespec sleep_delay, rem_delay;
-        sleep_delay.tv_sec = sc->diff_clk / 1000000000LL;
-        sleep_delay.tv_nsec = sc->diff_clk % 1000000000LL;
-        if (nanosleep(&sleep_delay, &rem_delay) < 0) {
-            sc->diff_clk = rem_delay.tv_sec * 1000000000LL + rem_delay.tv_nsec;
-        } else {
-            sc->diff_clk = 0;
-        }
-#else
-        Sleep(sc->diff_clk / SCALE_MS);
-        sc->diff_clk = 0;
-#endif
-    }
-}
-
-static void print_delay(const SyncClocks *sc)
-{
-    static float threshold_delay;
-    static int64_t last_realtime_clock;
-    static int nb_prints;
-
-    if (icount_align_option &&
-        sc->realtime_clock - last_realtime_clock >= MAX_DELAY_PRINT_RATE &&
-        nb_prints < MAX_NB_PRINTS) {
-        if ((-sc->diff_clk / (float)1000000000LL > threshold_delay) ||
-            (-sc->diff_clk / (float)1000000000LL <
-             (threshold_delay - THRESHOLD_REDUCE))) {
-            threshold_delay = (-sc->diff_clk / 1000000000LL) + 1;
-            qemu_printf("Warning: The guest is now late by %.1f to %.1f seconds\n",
-                        threshold_delay - 1,
-                        threshold_delay);
-            nb_prints++;
-            last_realtime_clock = sc->realtime_clock;
-        }
-    }
-}
-
-static void init_delay_params(SyncClocks *sc, CPUState *cpu)
-{
-    if (!icount_align_option) {
-        return;
-    }
-    sc->realtime_clock = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL_RT);
-    sc->diff_clk = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) - sc->realtime_clock;
-    sc->last_cpu_icount
-        = cpu->icount_extra +
-          retro_atomic_load_relaxed_u16(&cpu->neg.icount_decr.u16.low);
-    if (sc->diff_clk < max_delay) {
-        max_delay = sc->diff_clk;
-    }
-    if (sc->diff_clk > max_advance) {
-        max_advance = sc->diff_clk;
-    }
-
-    /* Print every 2s max if the guest is late. We limit the number
-       of printed messages to NB_PRINT_MAX(currently 100) */
-    print_delay(sc);
-}
-
 struct tb_desc {
     TCGTBCPUState s;
     CPUArchState *env;
@@ -1227,7 +1133,7 @@ static inline void cpu_loop_exec_tb(CPUState *cpu, TranslationBlock *tb,
 /* main execution loop */
 
 static int __attribute__((noinline))
-cpu_exec_loop(CPUState *cpu, SyncClocks *sc)
+cpu_exec_loop(CPUState *cpu)
 {
     int ret;
 
@@ -1306,15 +1212,12 @@ cpu_exec_loop(CPUState *cpu, SyncClocks *sc)
 
             cpu_loop_exec_tb(cpu, tb, s.pc, &last_tb, &tb_exit);
 
-            /* Try to align the host and virtual clocks
-               if the guest is in advance */
-            align_clocks(sc, cpu);
         }
     }
     return ret;
 }
 
-static int cpu_exec_setjmp(CPUState *cpu, SyncClocks *sc)
+static int cpu_exec_setjmp(CPUState *cpu)
 {
     /* Prepare setjmp context for exception handling. */
     if (unlikely(sigsetjmp(cpu->jmp_env, 0) != 0)) {
@@ -1325,13 +1228,12 @@ static int cpu_exec_setjmp(CPUState *cpu, SyncClocks *sc)
         cpu_exec_longjmp_cleanup(cpu);
     }
 
-    return cpu_exec_loop(cpu, sc);
+    return cpu_exec_loop(cpu);
 }
 
 int cpu_exec(CPUState *cpu)
 {
     int ret;
-    SyncClocks sc = { 0 };
 
     SET_current_cpu(cpu);
 
@@ -1342,15 +1244,7 @@ int cpu_exec(CPUState *cpu)
     RCU_READ_LOCK_GUARD();
     cpu_exec_enter(cpu);
 
-    /*
-     * Calculate difference between guest clock and host clock.
-     * This delay includes the delay of the last cycle, so
-     * what we have to do is sleep until it is 0. As for the
-     * advance/delay we gain here, we try to fix it next time.
-     */
-    init_delay_params(&sc, cpu);
-
-    ret = cpu_exec_setjmp(cpu, &sc);
+    ret = cpu_exec_setjmp(cpu);
 
     cpu_exec_exit(cpu);
     return ret;

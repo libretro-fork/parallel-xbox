@@ -16,7 +16,7 @@ static AioContext mainctx,ioctx,*qemu_aio_context=&mainctx;
 static struct {struct {bool empty;} notifiers;} main_loop_poll_notifiers;
 typedef struct {int state;uint32_t timeout;void *pollfds;} MainLoopPoll;
 static int poll_storage,*gpollfds=&poll_storage,main_loop_ec;
-static bool bql,progress,prepare_race,icount,opt_deterministic,gpu_busy;
+static bool bql,progress,prepare_race,icount,opt_deterministic,gpu_busy,cpu_halted;
 static unsigned prepared,cancelled,committed,timed,polls,timers,warps,skips;
 static int64_t host_now,elapsed,virtual_now,last_us,last_poll,clock_deadline;
 static uint32_t socket_ms;
@@ -30,8 +30,9 @@ static void notifier_list_notify(void *list,MainLoopPoll *p){assert(list==&main_
 static int64_t qemu_soonest_timeout(int64_t a,int64_t b){return a<0?b:b<0?a:MIN(a,b);}
 static int64_t qemu_clock_deadline_ns(void){return clock_deadline;}
 static int os_host_main_loop_wait(int64_t ns){assert(bql);polls++;last_poll=ns;host_now+=elapsed;return 0;}
-static bool icount_enabled(void){return icount;}
-static void icount_start_warp_timer(void){warps++;}
+static bool __attribute__((unused)) icount_enabled(void){return icount;}
+/* The old second clock owner: even a host device wait moved guest time. */
+static void __attribute__((unused)) icount_start_warp_timer(void){warps++;if(icount && cpu_halted && clock_deadline>0)virtual_now+=clock_deadline;}
 static void qemu_clock_run_all_timers(void){assert(bql);timers++;}
 static int retro_eventcount_prepare_wait(int *p){assert(p==&main_loop_ec && bql);prepared++;if(prepare_race)ioctx.notified=1;return 7;}
 static void retro_eventcount_cancel_wait(int *p){assert(p==&main_loop_ec && bql);cancelled++;}
@@ -46,16 +47,26 @@ static void cpu_clock_skip_to(int64_t ns){assert(ns>=virtual_now);virtual_now=ns
 static void reset(void){
  mainctx=(AioContext){0};ioctx=(AioContext){0};
  main_loop_poll_notifiers.notifiers.empty=true;
- bql=true;progress=prepare_race=opt_deterministic=gpu_busy=false;icount=true;
+ bql=true;progress=prepare_race=opt_deterministic=gpu_busy=cpu_halted=false;icount=true;
  prepared=cancelled=committed=timed=polls=timers=warps=skips=0;
  host_now=0;elapsed=500;virtual_now=1000;last_us=last_poll=-2;clock_deadline=-1;socket_ms=UINT32_MAX;
 }
 int main(void){
  unsigned cases=0;
+ /* Host dispatch never owns the guest clock, including HALT plus a GPU
+  * wait, descriptor polling or NAT polling. The frame owner advances it. */
+ for(unsigned path=0;path<3;path++)for(unsigned nb=0;nb<2;nb++)for(unsigned halt=0;halt<2;halt++){
+  reset();cpu_halted=!halt;gpu_busy=true;clock_deadline=500;
+  if(path==1)ioctx.fds=true;
+  if(path==2)main_loop_poll_notifiers.notifiers.empty=false;
+  if(nb)main_loop_wait(true);else main_loop_wait_timeout(1000);
+  if(virtual_now!=1000 || warps){fprintf(stderr,"Host dispatch moved guest clock from 1000 to %lld ns (%u warp calls, HALT=%d)\n",(long long)virtual_now,warps,cpu_halted);_Exit(1);}
+  assert(timers==1);cases++;
+ }
  const int64_t bounds[]={-1,0,1,999,1000,1001,1234567,INT64_MAX};
  for(unsigned n=0;n<8;n++)for(unsigned race=0;race<2;race++)for(unsigned due=0;due<2;due++)for(unsigned mode=0;mode<2;mode++){
   reset();prepare_race=race;progress=due;icount=mode;
-  main_loop_wait_timeout(bounds[n]);assert(bql && timers==1 && warps==mode);
+  main_loop_wait_timeout(bounds[n]);assert(bql && timers==1 && warps==0);
   if(due)assert(!prepared && !timed && !committed && !cancelled);
   else if(race)assert(prepared==1 && cancelled==1 && !timed && !committed);
   else if(bounds[n]<0)assert(prepared==1 && committed==1 && !timed);
@@ -82,6 +93,6 @@ int main(void){
   else assert(!timed && committed==1 && !skips && virtual_now==1000);
   assert(bql && timers==1);cases++;
  }
- printf("GPU deadline waits: %u timeout/rounding/prepare-race/notification/dispatch/poll/deterministic/elapsed-clock cases passed\n",cases);
+ printf("GPU deadline waits: %u clock-ownership/HALT/timeout/rounding/prepare-race/notification/dispatch/poll/deterministic/elapsed-clock cases passed\n",cases);
  return 0;
 }

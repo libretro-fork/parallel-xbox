@@ -1,5 +1,7 @@
 # Changelog of the libretro core
 
+- Make the frame engine the sole owner of guest time: remove QEMU idle warps, host-clock alignment/sleeps, adaptive rate timers and CPU timing-option parsing. Initialize the fixed Xbox instruction clock directly, preserving the existing guest rate, interrupt handling and saved-state wire layout. Add halted-device-wait and direct-clock-initialization regression coverage.
+
 - Keep DSP immediate logical shifts, long immediate OR and short immediate AND in native code. Replace repeated one-bit interpreter shifts with one bounded native operation, preserving zero-count status, final carry and untouched accumulator fields. Add instruction-boundary and full-frame CI regressions.
 
 - Compile DSP conditional register transfers and ordinary register MOVECs directly, including status-register reads, instead of leaving native code for each instruction. Keep status writes, stack side effects, guest-RAM DMA ordering and audio cadence unchanged. Add native instruction-boundary and complete-frame regression coverage to CI.

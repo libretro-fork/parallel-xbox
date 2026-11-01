@@ -47,8 +47,10 @@ jobs:
         run: python3 libretro/tests/test-memory-poll.py . cc
       - name: Deliver interrupts before proving kernel or RAM waits
         run: python3 libretro/tests/test-idle-interrupts.py . cc
-      - name: GPU waits must respect guest timer deadlines
+      - name: GPU and halted waits must leave guest time to the frame owner
         run: python3 libretro/tests/test-gpu-wait-deadline.py . cc
+      - name: Fixed instruction clock initialization, accounting and restored state
+        run: python3 libretro/tests/test-icount-publication.py . cc
       - name: Depth readback must pack directly into mapped output safely
         run: python3 libretro/tests/test-depth-host-pack.py . cc
       - name: Packed depth swizzle routing and reuse barriers

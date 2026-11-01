@@ -8,12 +8,16 @@
 #include <retro_atomic.h>
 #include <rthreads/rthreads.h>
 #include <features/features_cpu.h>
+#undef assert
+#define assert(x) do { if (!(x)) { fprintf(stderr,"FAIL clock line %d: %s\n",__LINE__,#x); _Exit(1); } } while (0)
 #define LR_ICOUNT_NS_NUM 1977
 #define LR_ICOUNT_NS_DEN 1000
 #define unlikely(x) (x)
 typedef struct { retro_atomic_int_t sequence; } QemuSeqLock;
 typedef struct { unsigned depth; } QemuSpin;
 typedef struct QEMUTimer QEMUTimer;
+/* ICOUNT MODE */
+ICountMode use_icount;
 /* TIMERS */
 TimersState timers_state;
 typedef struct CPUState {
@@ -39,6 +43,22 @@ void icount_publish_time(void);
 void icount_publish_time(void){}
 #endif
 static int64_t reference(int64_t count,int64_t bias){return bias+count*1977/1000;}
+#ifdef ICOUNT_CORE_INIT
+static void initialize_clock(void)
+{
+ use_icount=ICOUNT_DISABLED;
+ TS_STORE64(qemu_icount,1234);TS_STORE64(qemu_icount_bias,56);
+ timers_state.icount_time_shift=9;timers_state.last_delta=77;
+ timers_state.vm_clock_warp_start=99;
+ libretro_instruction_clock_init();
+ assert(use_icount==ICOUNT_PRECISE && timers_state.icount_time_shift==0);
+ assert(timers_state.last_delta==0 && timers_state.vm_clock_warp_start==-1);
+ assert(!timers_state.icount_warp_timer && !timers_state.icount_rt_timer && !timers_state.icount_vm_timer);
+ assert(TS_LOAD64(qemu_icount)==1234 && TS_LOAD64(qemu_icount_bias)==56);
+ assert(icount_get()==reference(1234,56));
+ puts("Fixed instruction-clock initialization: counters preserved, no host pacing timers PASS");
+}
+#endif
 static void restore(int64_t count,int64_t bias)
 {
  TS_STORE64(qemu_icount,count);TS_STORE64(qemu_icount_bias,bias);
@@ -145,6 +165,9 @@ static void benchmark(void)
 int main(int argc,char **argv)
 {
  (void)argv;assert(sthread_tls_create(&cpu_key));
+#ifdef ICOUNT_CORE_INIT
+ initialize_clock();
+#endif
  if(argc>1){benchmark();return 0;}
  owner_cases();
 #ifndef ICOUNT_BASELINE
@@ -154,7 +177,7 @@ int main(int argc,char **argv)
 #ifdef ICOUNT_BASELINE
  puts("Instruction clock baseline: owner accounting, conversion, I/O boundaries, warp and restore PASS");
 #else
- puts("Instruction clock: owner accounting, fractional conversion, I/O boundaries, warp, restore, stalled writer and six snapshot readers PASS");
+ puts("Instruction clock: owner accounting, fractional conversion, I/O boundaries, explicit owner skips, restore, stalled writer and six snapshot readers PASS");
 #endif
  return 0;
 }

@@ -266,34 +266,7 @@ static QemuOptsList qemu_mem_opts = {
     },
 };
 
-static QemuOptsList qemu_icount_opts = {
-    .name = "icount",
-    .implied_opt_name = "shift",
-    .merge_lists = true,
-    .head = QTAILQ_HEAD_INITIALIZER(qemu_icount_opts.head),
-    .desc = {
-        {
-            .name = "shift",
-            .type = QEMU_OPT_STRING,
-        }, {
-            .name = "align",
-            .type = QEMU_OPT_BOOL,
-        }, {
-            .name = "sleep",
-            .type = QEMU_OPT_BOOL,
-        }, {
-            .name = "rr",
-            .type = QEMU_OPT_STRING,
-        }, {
-            .name = "rrfile",
-            .type = QEMU_OPT_STRING,
-        }, {
-            .name = "rrsnapshot",
-            .type = QEMU_OPT_STRING,
-        },
-        { /* end of list */ }
-    },
-};
+
 
 static void default_driver_disable(const char *driver)
 {
@@ -1212,11 +1185,6 @@ static void qemu_create_machine(QDict *qdict)
     }
 }
 
-static int do_configure_icount(void *opaque, QemuOpts *opts, Error **errp)
-{
-    return !icount_configure(opts, errp);
-}
-
 static int accelerator_set_property(void *opaque,
                                 const char *name, const char *value,
                                 Error **errp)
@@ -1264,8 +1232,7 @@ static void configure_accelerators(const char *progname)
 {
     bool init_failed = false;
 
-    qemu_opts_foreach(qemu_find_opts("icount"),
-                      do_configure_icount, NULL, &error_fatal);
+    libretro_instruction_clock_init();
 
     if (QTAILQ_EMPTY(&qemu_accel_opts.head)) {
         char **accel_list, **tmp;
@@ -1741,7 +1708,6 @@ static const char *get_eeprom_path(void)
 
 void qemu_init(void)
 {
-    QemuOpts *icount_opts = NULL;
     MachineClass *machine_class;
 
 /*****************************************************************************/
@@ -1921,7 +1887,6 @@ void qemu_init(void)
     qemu_add_opts(&qemu_accel_opts);
     qemu_add_opts(&qemu_mem_opts);
     qemu_add_opts(&qemu_numa_opts);
-    qemu_add_opts(&qemu_icount_opts);
 
     error_init("xemu");
     qemu_init_exec_dir("xemu");
@@ -1975,16 +1940,6 @@ void qemu_init(void)
     /* -serial null */
     add_device_config(DEV_SERIAL, "null");
     default_serial = 0;
-    /* -icount shift=0,sleep=off: the guest's time is its instructions,
-     * never the host's: precise icount (at the Xbox CPU's pace,
-     * accel/tcg/icount-common.c), and sleep=off, so an idle guest's time
-     * moves on at once */
-    icount_opts = qemu_opts_parse_noisily(qemu_find_opts("icount"),
-                                          "shift=0,sleep=off", true);
-    if (!icount_opts) {
-        exit(1);
-    }
-
     qemu_validate_options(machine_opts_dict);
 
     /*
