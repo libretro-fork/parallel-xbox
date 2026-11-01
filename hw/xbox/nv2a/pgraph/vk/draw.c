@@ -994,9 +994,8 @@ static int fill_dynamic_states(PGRAPHVkState *r, VkDynamicState *out,
  * costs far less than compiling a pipeline.
  */
 
-/* One pipeline compile handed to the worker - a library half, or a whole
- * pipeline for a state met for the first time - with every structure its
- * create info points to held in the job itself. */
+/* Queued pipeline compiles own every structure their create info references.
+ * Synchronous creation may borrow its caller's key until the call returns. */
 typedef struct {
     bool frag;
     bool full;     /* a whole pipeline, for the pipeline cache */
@@ -1011,8 +1010,8 @@ typedef struct {
     VkGraphicsPipelineLibraryCreateInfoEXT lib_info;
     VkPipelineShaderStageCreateInfo stages[3];
     VkPipelineVertexInputStateCreateInfo vi;
-    VkVertexInputBindingDescription vib[NV2A_VERTEXSHADER_ATTRIBUTES];
-    VkVertexInputAttributeDescription via[NV2A_VERTEXSHADER_ATTRIBUTES];
+    /* Borrowed by synchronous creation; queued jobs point at their own key. */
+    const PipelineKey *vertex_key;
     VkPipelineInputAssemblyStateCreateInfo ia;
     VkPipelineViewportStateCreateInfo vp;
     VkPipelineRasterizationStateCreateInfo raster;
@@ -1027,8 +1026,8 @@ typedef struct {
     VkPipeline result;
 } LibJob;
 
-/* Point the create info at the job's own storage (its address is stable
- * until the worker is done with it). */
+/* Rebind create-info pointers after filling or moving a job. Queued vertex
+ * descriptions are job-owned; synchronous ones may borrow their caller. */
 static void lib_job_link(LibJob *job)
 {
     bool pre = job->full || !job->frag;
@@ -1036,9 +1035,11 @@ static void lib_job_link(LibJob *job)
     job->ci.pNext = job->full ? NULL : &job->lib_info;
     job->ci.pStages = job->stages;
     job->vi.pVertexBindingDescriptions =
-        job->vi.vertexBindingDescriptionCount ? job->vib : NULL;
+        job->vi.vertexBindingDescriptionCount ?
+            job->vertex_key->binding_descriptions : NULL;
     job->vi.pVertexAttributeDescriptions =
-        job->vi.vertexAttributeDescriptionCount ? job->via : NULL;
+        job->vi.vertexAttributeDescriptionCount ?
+            job->vertex_key->attribute_descriptions : NULL;
     job->ci.pVertexInputState = pre ? &job->vi : NULL;
     job->ci.pInputAssemblyState = pre ? &job->ia : NULL;
     job->ci.pViewportState = pre ? &job->vp : NULL;
@@ -1477,6 +1478,10 @@ static LibJob *pump_slot(void)
 static void pump_submit(LibJob *job)
 {
     assert(job == &pump_jobs[pump_w_local % PUMP_RING]);
+    /* A queued create never borrows the render thread's temporary key. */
+    if (job->full) {
+        job->vertex_key = &job->key;
+    }
     lib_job_link(job); /* ring slots never move */
     pipe_start();
     pump_w_local++;
@@ -1898,7 +1903,8 @@ void pgraph_vk_prewarm_shaders(NV2AState *d)
 
 /* A whole pipeline's create info, for the shader state st (its modules
  * vsh, geom, psh) under the registers of the draw at hand, into job: the
- * draw path makes its own from it, the worker one for later. */
+ * draw path makes its own from it, the worker one for later. The caller
+ * supplies a cleared slot (pump_slot or the synchronous job below). */
 static void pipeline_job_fill(PGRAPHState *pg, const ShaderState *st,
                               const ShaderModuleInfo *vsh,
                               const ShaderModuleInfo *geom,
@@ -1907,7 +1913,6 @@ static void pipeline_job_fill(PGRAPHState *pg, const ShaderState *st,
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
 
-    memset(job, 0, sizeof(*job));
     job->full = true;
     job->device = r->device;
     job->cache = r->vk_pipeline_cache;
@@ -1954,11 +1959,7 @@ static void pipeline_job_fill(PGRAPHState *pg, const ShaderState *st,
             r->num_active_vertex_binding_descriptions;
         job->vi.vertexAttributeDescriptionCount =
             r->num_active_vertex_attribute_descriptions;
-        memcpy(job->vib, key->binding_descriptions,
-               sizeof(job->vib[0]) * r->num_active_vertex_binding_descriptions);
-        memcpy(job->via, key->attribute_descriptions,
-               sizeof(job->via[0]) *
-                   r->num_active_vertex_attribute_descriptions);
+        job->vertex_key = key;
     }
 
     job->ia = (VkPipelineInputAssemblyStateCreateInfo){
@@ -2231,6 +2232,7 @@ static void create_pipeline(PGRAPHState *pg)
 
     /* The job holds the create info; it never leaves this thread. */
     static LibJob job;
+    memset(&job, 0, sizeof(job));
     pipeline_job_fill(pg, &r->shader_binding->state,
                       r->shader_binding->vsh.module_info,
                       r->shader_binding->geom.module_info,
