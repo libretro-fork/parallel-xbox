@@ -389,34 +389,44 @@ unsigned pgraph_seed_merge(int section, size_t itemsize, const void *items,
         NULL;
     g_free(path);
     GHashTable *seen = pgraph_seed_hash_set_new();
-    GByteArray *out = g_byte_array_new();
+    GPtrArray *records = g_ptr_array_new();
     unsigned n = 0, added = 0;
 
     for (unsigned i = 0; i < n_disk; i++) {
         const uint8_t *it = disk + (size_t)i * itemsize;
         if (pgraph_seed_hash_set_add(seen, fast_hash(it, itemsize))) {
-            g_byte_array_append(out, it, itemsize);
+            g_ptr_array_add(records, (gpointer)it);
             n++;
         }
     }
     for (unsigned i = 0; i < count && n < cap; i++) {
         const uint8_t *it = (const uint8_t *)items + (size_t)i * itemsize;
         if (pgraph_seed_hash_set_add(seen, fast_hash(it, itemsize))) {
-            g_byte_array_append(out, it, itemsize);
+            g_ptr_array_add(records, (gpointer)it);
             n++;
             added++;
         }
     }
+    /* Unchanged seeds need no payload allocation or record copies. Keep
+     * only borrowed references until deduplication proves a write is needed. */
+    uint8_t *out = NULL;
+    if (added && itemsize) {
+        out = g_malloc_n(n, itemsize);
+        for (unsigned i = 0; i < n; i++) {
+            memcpy(out + (size_t)i * itemsize, records->pdata[i], itemsize);
+        }
+    }
+    g_ptr_array_free(records, TRUE);
     /* No borrowed record survives the merge. Release the file mapping before
      * rewriting the seed file, including on Windows. */
     if (mapped) {
         xemu_file_unmap(&mapping);
     }
-    if (added && !pgraph_seed_write(section, itemsize, out->data, n)) {
+    if (added && !pgraph_seed_write(section, itemsize, out, n)) {
         added = 0;
     }
     *total = n;
-    g_byte_array_free(out, TRUE);
+    g_free(out);
     g_hash_table_destroy(seen);
     return added;
 }
