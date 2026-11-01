@@ -72,6 +72,9 @@ static void prepare(Machine *m, uint32_t op, uint32_t ext, unsigned seed,
             (c->registers[DSP_REG_SR] & ~(1 << DSP_SR_C)) | (seed & 1);
     }
     c->registers[DSP_REG_SP] = 2;
+    if (seed & 0x20000) {
+        c->registers[DSP_REG_SR] = (seed & 0xFF) | (mode << DSP_SR_S0);
+    }
     c->registers[DSP_REG_SSH] = 0x20;
     c->registers[DSP_REG_SSL] = 0;
     memset(c->stack, 0, sizeof(c->stack));
@@ -90,6 +93,20 @@ static void prepare(Machine *m, uint32_t op, uint32_t ext, unsigned seed,
     dsp->ops->write_memory(dsp, 'P', 0, op);
     dsp->ops->write_memory(dsp, 'P', 1, ext);
     dsp->ops->write_memory(dsp, 'P', 2, 0);
+    if (seed & 0x40000) {
+        DspDecoded decoded;
+        dsp56k_decode(c, 0, &decoded);
+        c->registers[DSP_REG_SR] |= 1 << DSP_SR_LF;
+        c->registers[DSP_REG_LA] = decoded.len - 1;
+        c->registers[DSP_REG_LC] = seed & 1 ? 1 : 2;
+    }
+    if (seed & 0x80000) {
+        /* Exercise the architectural stack-error interrupt, not the
+         * interpreter's optional host-debug assertion. */
+        c->exception_debugging = false;
+        c->registers[DSP_REG_SP] = 15;
+        c->stack[0][15] = c->registers[DSP_REG_SSH];
+    }
 }
 
 static void check(Machine *a, Machine *b, uint32_t op, uint32_t ext,
@@ -265,8 +282,53 @@ int main(void)
     check_macr_rounding(a, b);
     check_rotate_carry(a, b);
     check_max_transfer(a, b);
+    for (unsigned sr = 0; sr < 256; sr++) {
+        for (unsigned cc = 0; cc < 16; cc++) {
+            check(a, b, 0x0E0030 | (cc << 12), 0x30, 0x20000 | sr, 0, false);
+            check(a, b, 0x0F0030 | (cc << 12), 0x30, 0x20000 | sr, 0, false);
+        }
+    }
     for (unsigned mode = 0; mode < 4; mode++) {
         /* Sweep every legal parallel ALU encoding. */
+        for (unsigned cc = 0; cc < 16; cc++) {
+            for (unsigned sr = 0; sr <= 0xFF; sr += 0xFF) {
+                unsigned input = 0xE0000 | sr;
+                check(a, b, 0x0E0030 | (cc << 12), 0x30, input, mode, false);
+                check(a, b, 0x0F0030 | (cc << 12), 0x30, input, mode, false);
+                check(a, b, 0x0F0030 | (cc << 12), 0x30, input, mode, true);
+                for (unsigned ea = 0; ea < 64; ea++) {
+                    if ((ea >> 3) == 6 && (ea & 7) != 0 && (ea & 7) != 4) {
+                        continue;
+                    }
+                    check(a, b, 0x0AC0A0 | (ea << 8) | cc, 0x30, input, mode, false);
+                    check(a, b, 0x0BC0A0 | (ea << 8) | cc, 0x30, input, mode, false);
+                    check(a, b, 0x0BC0A0 | (ea << 8) | cc, 0x30, input, mode, true);
+                }
+            }
+        }
+        for (unsigned seed = 0; seed < 64; seed++) {
+            check(a, b, 0x0C0030, 0x30, seed, mode, false);
+            for (unsigned cc = 0; cc < 16; cc++) {
+                check(a, b, 0x0E0030 | (cc << 12), 0x30, seed, mode, false);
+                if (seed < 16) {
+                    check(a, b, 0x0F0030 | (cc << 12), 0x30, seed, mode, false);
+                    check(a, b, 0x0F0030 | (cc << 12), 0x30, seed, mode, true);
+                }
+            }
+            for (unsigned ea = 0; ea < 64; ea++) {
+                if ((ea >> 3) == 6 && (ea & 7) != 0 && (ea & 7) != 4) {
+                    continue;
+                }
+                check(a, b, 0x0AC080 | (ea << 8), 0x30, seed, mode, false);
+                for (unsigned cc = 0; cc < 16; cc++) {
+                    check(a, b, 0x0AC0A0 | (ea << 8) | cc, 0x30, seed, mode, false);
+                    if (seed < 16) {
+                        check(a, b, 0x0BC0A0 | (ea << 8) | cc, 0x30, seed, mode, false);
+                        check(a, b, 0x0BC0A0 | (ea << 8) | cc, 0x30, seed, mode, true);
+                    }
+                }
+            }
+        }
         for (unsigned alu = 0; alu < 256; alu++) {
             if (alu == 0x04 || alu == 0x08 || alu == 0x0C ||
                 alu == 0x15) {

@@ -2204,9 +2204,9 @@ static void emit_cc(Emitter *e, int cc)
     h_test_rr(e, 0, T0, T0);
 }
 
-/* the block's end at a control instruction, the PC to be target: the DO
- * loop's end if that is LA+1 (through the interpreter), else straight
- * out. cycles: the instruction's. The accumulators must be stored. */
+/* End a control instruction at target. A DO boundary at LA+1 needs
+ * post-processing if effects are already applied, or fallback otherwise.
+ * cycles: the instruction's. The accumulators must be stored. */
 static void emit_exit_to(Tr *t, const Insn *in, uint32_t target, uint32_t cycles, bool after_effects)
 {
     Emitter *e = &t->e;
@@ -2242,6 +2242,21 @@ static void emit_stack_check(Tr *t, const Insn *in, uint32_t target, uint32_t cy
     stub_set_insn(t, s, in, cycles, t->cyc);
 }
 
+/* A computed target whose EA effects have already happened. Finish a DO
+ * boundary with post-processing, without executing the instruction twice. */
+static void emit_exit_to_reg(Tr *t, const Insn *in, int target, uint32_t cycles)
+{
+    Emitter *e = &t->e;
+    h_st32(e, REG_CORE, OFF(pc), target);
+    h_mov_rr(e, 0, T0, target);
+    h_sub_ri(e, 0, T0, 1);
+    h_cmp_r_mem32(e, T0, REG_CORE, REGOFF(DSP_REG_LA));
+    Stub *s = stub_new(t, STUB_CTRL_POST, h_jcc(e, HC_EQ));
+    s->imm = 0xFFFFFFFF; /* PC is already set. */
+    stub_set_insn(t, s, in, cycles, t->cyc);
+    emit_chain(t, t->cyc + cycles);
+}
+
 /* the control instructions with native code; false: the interpreter's */
 static bool emit_control(Tr *t, const Insn *in)
 {
@@ -2254,11 +2269,47 @@ static bool emit_control(Tr *t, const Insn *in)
         return false;
     }
 
-    if (!strcmp(name, "jsr ea") || !strcmp(name, "jsr xxx")) {
+    if (!strcmp(name, "jmp xxx") || !strcmp(name, "jmp ea") ||
+        !strcmp(name, "jcc xxx") || !strcmp(name, "jcc ea")) {
+        bool conditional = name[1] == 'c';
+        bool computed = !strcmp(name + 4, "ea");
         uint32_t before = t->cyc;
-        size_t long_irq, pushed;
+        uint32_t cycles = 4;
         acc_spill_all(t, false);
-        if (!strcmp(name, "jsr xxx")) {
+        if (computed) {
+            Ea ea;
+            /* Even an untaken Jcc performs its address-register update. */
+            emit_calc_ea(t, (inst >> 8) & 0x3F, in->ext, EA1, &ea);
+            if (ea.kind == EA_IMM) {
+                h_mov_ri(e, EA1, ea.imm);
+            } else {
+                ea_addr_reg(t, &ea);
+            }
+            cycles += t->cyc - before;
+            t->cyc = before;
+        }
+        if (conditional) {
+            emit_cc(e, computed ? inst & 0xF : (inst >> 12) & 0xF);
+            size_t taken = h_jcc(e, HC_NE);
+            emit_exit_to(t, in, in->next, cycles, true);
+            h_patch(e, taken, e->len);
+        }
+        if (computed) {
+            emit_exit_to_reg(t, in, EA1, cycles);
+        } else {
+            emit_exit_to(t, in, inst & 0xFFF, cycles, true);
+        }
+        return true;
+    }
+
+    if (!strcmp(name, "jsr ea") || !strcmp(name, "jsr xxx") ||
+        !strcmp(name, "jscc ea") || !strcmp(name, "jscc xxx")) {
+        bool conditional = name[2] == 'c';
+        bool computed = !strcmp(name + (conditional ? 5 : 4), "ea");
+        uint32_t before = t->cyc;
+        size_t long_irq = 0, pushed;
+        acc_spill_all(t, false);
+        if (!computed) {
             h_mov_ri(e, EA1, inst & 0xFFF);
         } else {
             Ea ea;
@@ -2269,21 +2320,34 @@ static bool emit_control(Tr *t, const Insn *in)
                 ea_addr_reg(t, &ea);
             }
         }
+        uint32_t cycles = 4 + t->cyc - before;
+        t->cyc = before;
+        if (conditional) {
+            emit_cc(e, computed ? inst & 0xF : (inst >> 12) & 0xF);
+            size_t taken = h_jcc(e, HC_NE);
+            emit_exit_to(t, in, in->next, cycles, true);
+            h_patch(e, taken, e->len);
+        }
         h_st32(e, REG_CORE, OFF(pc), EA1);
         /* Interrupt entry has already saved PC/SR for a long interrupt.
-         * The vector's JSR enters its handler without pushing twice. */
-        h_cmp_mem16_imm(e, REG_CORE, OFF(interrupt_state), DSP_INTERRUPT_LONG);
-        long_irq = h_jcc(e, HC_EQ);
+         * Only an unconditional JSR gets the vector's no-second-push
+         * behavior; JScc still performs its ordinary conditional push. */
+        if (!conditional) {
+            h_cmp_mem16_imm(e, REG_CORE, OFF(interrupt_state), DSP_INTERRUPT_LONG);
+            long_irq = h_jcc(e, HC_EQ);
+        }
         h_mov_rr(e, 1, H_ARG0, REG_CORE);
         h_mov_ri(e, H_ARG1, in->next);
         h_ld32(e, H_ARG2, REG_CORE, REGOFF(DSP_REG_SR));
         h_call(e, (const void *)dsp56k_stack_push);
-        pushed = h_jmp(e);
-        h_patch(e, long_irq, e->len);
-        h_st16_imm(e, REG_CORE, OFF(interrupt_state), DSP_INTERRUPT_DISABLED);
-        h_patch(e, pushed, e->len);
+        if (!conditional) {
+            pushed = h_jmp(e);
+            h_patch(e, long_irq, e->len);
+            h_st16_imm(e, REG_CORE, OFF(interrupt_state), DSP_INTERRUPT_DISABLED);
+            h_patch(e, pushed, e->len);
+        }
         h_st32_imm(e, REG_CORE, OFF(cur_inst_len), 0);
-        h_st16_imm(e, REG_CORE, OFF(instr_cycle), 4 + t->cyc - before);
+        h_st16_imm(e, REG_CORE, OFF(instr_cycle), cycles);
         h_mov_rr(e, 1, H_ARG0, REG_CORE);
         h_call(e, (const void *)dsp56k_post);
         emit_charge(e, before);

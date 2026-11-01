@@ -317,6 +317,11 @@ dspmax: $(DSPDIFF)
 	$(DSPDIFF) --frames 100 --x 0=4 --seed 1 $(CORE_DIR)/libretro/tests/rom/gp-max.inc
 	$(DSPDIFF) --frames 100 --x 0=4 --seed 2 $(CORE_DIR)/libretro/tests/rom/gp-max.inc
 
+# Lazy arithmetic flags, conditional calls/returns, jumps and nested loops.
+dspjumps: $(DSPDIFF)
+	$(DSPDIFF) --frames 100 --x 0=4 --seed 1 $(CORE_DIR)/libretro/tests/rom/gp-jumps.inc
+	$(DSPDIFF) --frames 100 --x 0=4 --seed 2 $(CORE_DIR)/libretro/tests/rom/gp-jumps.inc
+
 # One-instruction blocks let the coverage test compare every architectural
 # boundary, and count real interpreter calls rather than translation claims.
 DSPNATIVE := $(CORE_DIR)/libretro/tests/dspnative$(if $(filter win,$(platform)),.exe,)
