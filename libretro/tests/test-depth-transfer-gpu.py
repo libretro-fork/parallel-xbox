@@ -54,6 +54,64 @@ code=code.replace('bool host=false;VkBuffer result=', 'bool host=false;r.device_
 code=code.replace('host==!!variant&&copies==!variant','!host&&copies==1')
 code=code.replace('old %.3fus host %.3fus','readback %.3fus texture-pack %.3fus').replace('copy 1 -> 0','one GPU pack and one fixture readback copy per path')
 code=code.replace('2400 synchronous production packs','4800 packs: 2400 production texture dependency chains and 2400 readback reference chains; D24 independent word oracle; no validation layer')
+# Keep two distinct uploads and output snapshots alive until one submission ends.
+code=code.replace('StorageBuffer upload=buffer(64<<20,true);','StorageBuffer upload=buffer(128<<20,true);')
+a=code.index('uint32_t *in=(uint32_t*)upload.mapped;')
+b=code.index('uint8_t *reference=',a)
+code=code[:a]+"""
+assert(base+ROUND_UP(pixels,4)<(32u<<20)&&bytes*2<(64u<<20));
+for(unsigned generation=0;generation<2;generation++){
+ uint8_t *data=upload.mapped+((size_t)generation<<25);
+ memset(data,0xa5,base+ROUND_UP(pixels,4));uint32_t *in=(uint32_t*)data;
+ for(size_t i=0;i<pixels;i++){
+  if(f){float z=(float)((i*37+generation*17)%100000)/100000;memcpy(in+i,&z,4);}
+  else in[i]=(uint32_t)(i*37+generation*17)&0xffffff;
+  data[base+i]=(uint8_t)(i*13+generation*31);
+ }
+}
+"""+code[b:]
+a=code.index('bool host=false;r.device_props.limits.maxStorageBufferRange=')
+b=code.index('vkCmdWriteTimestamp(command,VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT',a)
+code=code[:a]+"""
+for(unsigned chain=0;chain<2;chain++){
+ VkBufferCopy input_copy={.srcOffset=(VkDeviceSize)chain<<25,.size=base+ROUND_UP(pixels,4)};
+ vkCmdCopyBuffer(command,upload.buffer,r.storage_buffers[0].buffer,1,&input_copy);
+ copies=0;bool host=false;r.device_props.limits.maxStorageBufferRange=(uint32_t)(bytes-1);
+ VkBuffer result=(variant?texture_pack_readback:pack_depth_readback)(&pg,&s,command,r.storage_buffers[0].buffer,bytes,false,false,0,&host);
+ assert(result==r.storage_buffers[2].buffer&&!host&&copies==1);
+ VkBufferMemoryBarrier visible={.sType=VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
+  .srcAccessMask=VK_ACCESS_TRANSFER_WRITE_BIT,.dstAccessMask=VK_ACCESS_TRANSFER_READ_BIT,
+  .srcQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED,.dstQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED,
+  .buffer=result,.size=bytes};
+ vkCmdPipelineBarrier(command,VK_PIPELINE_STAGE_TRANSFER_BIT,VK_PIPELINE_STAGE_TRANSFER_BIT,0,0,NULL,1,&visible,0,NULL);
+ VkBufferCopy snapshot={.dstOffset=(64u<<20)+(VkDeviceSize)chain*bytes,.size=bytes};
+ vkCmdCopyBuffer(command,result,upload.buffer,1,&snapshot);
+}
+packed_readback_to_host_barrier(command,upload.buffer,false,64u<<20,bytes*2);
+"""+code[b:]
+# The fixture destination needs reuse ordering after the prior snapshot read.
+needle='    VkBufferCopy copy={.size=bytes};'
+code=code.replace(needle,"""
+    VkBufferMemoryBarrier target={.sType=VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
+        .srcAccessMask=VK_ACCESS_TRANSFER_READ_BIT,.dstAccessMask=VK_ACCESS_TRANSFER_WRITE_BIT,
+        .srcQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED,.dstQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED,
+        .buffer=r->storage_buffers[BUFFER_STAGING_DST].buffer,.size=bytes};
+    vkCmdPipelineBarrier(cmd,VK_PIPELINE_STAGE_TRANSFER_BIT,VK_PIPELINE_STAGE_TRANSFER_BIT,
+        0,0,NULL,1,&target,0,NULL);
+"""+needle)
+code=code.replace('malloc(bytes)','malloc(bytes*2)')
+code=code.replace('memcpy(reference,r.storage_buffers[2].mapped,bytes)','memcpy(reference,upload.mapped+(64u<<20),bytes*2)')
+code=code.replace('memcmp(reference,r.storage_buffers[2].mapped,bytes)','memcmp(reference,upload.mapped+(64u<<20),bytes*2)')
+a=code.index('if(!f)for(size_t i=0;i<(size_t)w*h;i++)assert(')
+b=code.index('total_cases++;',a)
+code=code[:a]+"""if(!f)for(unsigned generation=0;generation<2;generation++)for(size_t i=0;i<(size_t)w*h;i++)
+ assert(((uint32_t*)(upload.mapped+(64u<<20)))[generation*(size_t)w*h+i]==
+ ((((uint32_t)(i*37+generation*17)&0xffffff)<<8)|(uint8_t)(i*13+generation*31)));
+"""+code[b:]
+code=code.replace('4800 packs: 2400 production texture dependency chains and 2400 readback reference chains;',
+ '9600 packs: 4800 production texture dependency chains and 4800 readback reference chains; two distinct inputs per submission, no inter-chain CPU wait;')
+code=code.replace('one GPU pack and one fixture readback copy per path','two packs per submission; times include fixture transfers')
+assert code.count('for(unsigned chain=0;chain<2;chain++)')==1
 env=os.environ.copy();env['PATH']=str(Path(cc).resolve().parent)+os.pathsep+env.get('PATH','')
 with tempfile.TemporaryDirectory(prefix='depth-texture-gpu-') as tmp:
     root=Path(tmp);(root/'test.c').write_text(code);exe=root/('test.exe' if os.name=='nt' else 'test')

@@ -4,6 +4,8 @@
 
 ## Unreleased
 
+- Extend the Vulkan depth-texture GPU oracle to reuse input/output buffers for two distinct packs in one submission, retaining both results without an inter-chain CPU wait. Runtime rendering behavior is unchanged.
+
 - Add a real-device oracle for Vulkan depth-to-texture pack dependencies, comparing the production barrier/dispatch segment with readback packing across native/doubled grids and partial stencil words. Runtime rendering behavior is unchanged.
 
 - Batch Vulkan index, inline-vertex and uniform staging visibility into one barrier call after their copies. Preserve non-coherent flushes, per-buffer byte/access ranges, both uniform shader consumers and empty-buffer omission.
