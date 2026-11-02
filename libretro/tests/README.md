@@ -3406,3 +3406,13 @@ frames, two for crossing frames, and no gather for adjacent backing. The old
 fetch fails this oracle. `PCM_SGE_SPLIT` creates a native sine ROM split at
 logical byte 4093; corrected output must equal the contiguous control, while
 the old core differs. Existing frame cadence and state checks remain separate.
+
+`test-nvnet-mac-filter.py CHECKOUT [CC]` compiles the production filter and
+compares 200,000 acceptance/trace cases with an independent byte-wise oracle.
+It covers broadcast, masked multicast, unicast, filter bypass, reserved high
+register bits, all short lengths and unaligned exact-length buffers. Input and
+registers must remain unchanged. The prior implementation passes the same
+semantic oracle; a reserved-bit comparison mutation is rejected.
+`NVNET_MAC_SOURCE`, `NVNET_MAC_CFLAGS`, `NVNET_MAC_BINARY` and
+`NVNET_MAC_SKIP_RUN` support baseline, sanitizer and Win64 checks. These are
+filter semantics tests with modeled register/trace access, not live networking.

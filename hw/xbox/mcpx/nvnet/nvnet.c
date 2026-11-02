@@ -643,28 +643,28 @@ static bool receive_filter(NvNetState *s, const uint8_t *buf, int size)
         return true;
     }
 
-    /* Multicast */
-    uint32_t addr[2];
-    addr[0] = cpu_to_le32(get_reg(s, NVNET_MULTICAST_ADDR_A));
-    addr[1] = cpu_to_le32(get_reg(s, NVNET_MULTICAST_ADDR_B));
-    if (!is_broadcast_ether_addr((uint8_t *)addr)) {
-        uint32_t dest_addr[2];
-        memcpy(dest_addr, buf, 6);
-        dest_addr[0] &= cpu_to_le32(get_reg(s, NVNET_MULTICAST_MASK_A));
-        dest_addr[1] &= cpu_to_le32(get_reg(s, NVNET_MULTICAST_MASK_B));
-
-        if (!memcmp(dest_addr, addr, 6)) {
-            trace_nvnet_rx_filter_mcast_match(MAC_ARG(dest_addr));
+    /* Decode exactly six bytes once. Comparing CPU-order register values
+     * avoids partial MAC temporaries and ignores the unused upper half of B. */
+    uint32_t packet_a = ldl_le_p(buf);
+    uint16_t packet_b = lduw_le_p(buf + 4);
+    uint32_t addr_a = get_reg(s, NVNET_MULTICAST_ADDR_A);
+    uint16_t addr_b = get_reg(s, NVNET_MULTICAST_ADDR_B);
+    if (addr_a != UINT32_MAX || addr_b != UINT16_MAX) {
+        uint32_t masked_a = packet_a & get_reg(s, NVNET_MULTICAST_MASK_A);
+        uint16_t masked_b = packet_b & get_reg(s, NVNET_MULTICAST_MASK_B);
+        if (masked_a == addr_a && masked_b == addr_b) {
+            trace_nvnet_rx_filter_mcast_match(masked_a, masked_a >> 8,
+                masked_a >> 16, masked_a >> 24, masked_b, masked_b >> 8);
             return true;
         } else {
-            trace_nvnet_rx_filter_mcast_mismatch(MAC_ARG(dest_addr));
+            trace_nvnet_rx_filter_mcast_mismatch(masked_a, masked_a >> 8,
+                masked_a >> 16, masked_a >> 24, masked_b, masked_b >> 8);
         }
     }
 
     /* Unicast */
-    addr[0] = cpu_to_le32(get_reg(s, NVNET_MAC_ADDR_A));
-    addr[1] = cpu_to_le32(get_reg(s, NVNET_MAC_ADDR_B));
-    if (!memcmp(buf, addr, 6)) {
+    if (packet_a == get_reg(s, NVNET_MAC_ADDR_A) &&
+        packet_b == (uint16_t)get_reg(s, NVNET_MAC_ADDR_B)) {
         trace_nvnet_rx_filter_ucast_match(MAC_ARG(buf));
         return true;
     } else {

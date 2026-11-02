@@ -1,5 +1,6 @@
 # Changelog of the libretro core
 
+- Compare NVNet MAC filter fields directly as six-byte scalar values, removing temporary address copies and partial initialization. Broadcast, masked multicast, unicast and trace behavior stay unchanged; reserved upper register bits remain ignored.
 - Fix PCM samples and stereo frames that cross noncontiguous SGE pages. Read the correct logical source pages, retain direct loads when physical backing is contiguous, and gather at most eight bytes only for split backing. Source offsets, audio cadence and state layout are unchanged.
 - Decode ADPCM windows directly into VP samples instead of building and copying an intermediate PCM block. Preserve mono/stereo output, source offsets and notifications; unsupported block layouts produce bounded silence before any gather. No new audio buffering or threading state.
 - Bind the core directly to its fixed x86 CPU entry/exit routines, removing nullable dispatch checks and out-of-line hook calls while retaining the CPU operations table layout while preserving the existing flag and state boundaries.

@@ -260,3 +260,11 @@ of at most eight bytes. No persistent map cache, frame buffer, lock or wait
 is added. The boundary helper has a 160-byte Win64 frame; the ordinary voice
 frame grows by 32 bytes, with HRTF remaining outlined and worker/owner stacks
 unchanged. Hardware cache misses, register spills and game speed are unmeasured.
+
+NVNet MAC filtering compares exact 32-bit and 16-bit little-endian fields
+instead of temporary address arrays. It preserves existing acceptance and
+trace behavior, ignores reserved upper register bits, and reads only the six
+address bytes. A byte-wise oracle checks 200,000 packet/filter combinations.
+Compiled Win64 receive stack sizes are unchanged; no throughput or hardware
+cache/spill improvement is claimed. Payload staging and synchronization stay
+unchanged.
