@@ -19,6 +19,8 @@
 
 ## Unreleased
 
+- Add per-lookup LRU key callbacks so borrowed shader-state spans can compare against and initialize owned cache entries without changing shared cache callbacks. Preserve normal lookup code generation, collision checks, recency and eviction behavior; renderer view integration remains pending.
+
 - Add an allocation-free two-span XXH3 API as a prerequisite for borrowed shader-state views. Preserve existing hashes and callers; validate seeded, boundary and unaligned inputs across host scalar/SIMD backends. Renderer copy and queue behavior is unchanged.
 
 - Extend shader-binding CPU probes to nine queue, handoff, rejection and unchanged-state paths, with a frozen copy baseline for detecting measurement variation before more copy changes. Renderer behavior is unchanged.
