@@ -919,8 +919,9 @@ typedef struct AluOp {
     int src;            /* SRC_*; for the multiplies, the first factor */
     int src2;           /* the multiplies' second factor */
     bool minus;         /* the multiplies' sign */
+    bool mul_imm;       /* first multiply factor is the immediate word */
     int d;              /* 0: A, 1: B */
-    uint32_t imm;       /* SRC_IMM's value */
+    uint32_t imm;       /* SRC_IMM or the immediate multiply factor */
     bool imm_unsigned;  /* ... not sign-extended (cmp #xx) */
     int shift;          /* asl/asr #ii's count */
     int s;              /* asl/asr #ii's source accumulator */
@@ -1186,11 +1187,15 @@ static void emit_rnd56(Tr *t, int res)
     }
 }
 
-/* the product of the two 24-bit registers, times two, into rax
- * (dsp_mul56, exact in 64 bits) */
+/* The product of two signed 24-bit factors, times two, into T0. The
+ * first factor can be immediate (dsp_mul56, exact in 64 bits). */
 static void emit_mul56(Emitter *e, const AluOp *a)
 {
-    h_ld32(e, T0, REG_CORE, REGOFF(a->src));
+    if (a->mul_imm) {
+        h_mov_ri(e, T0, a->imm);
+    } else {
+        h_ld32(e, T0, REG_CORE, REGOFF(a->src));
+    }
     h_shl_ri(e, 1, T0, 40);
     h_sar_ri(e, 1, T0, 40);
     h_ld32(e, T1, REG_CORE, REGOFF(a->src2));
@@ -1402,7 +1407,8 @@ static void emit_alu(Tr *t, const AluOp *a)
             emit_rnd56(t, acc);
         }
         acc_written(t, a->d);
-        emit_sr_result(t, SR_EUNZ | SR_V, -1, acc, a->d);
+        emit_sr_result(t, SR_EUNZ | SR_V | (a->mul_imm ? 0xFFFF0000u : 0),
+                       -1, acc, a->d);
         break;
 
     case OP_MAC:
@@ -1994,6 +2000,15 @@ static bool np_alu(const Insn *in, AluOp *a)
     memset(a, 0, sizeof(*a));
     a->src = SRC_IMM;
     a->d = (inst >> 3) & 1;
+    if (!strcmp(name, "mpyi #xxxx, S, D")) {
+        static const int sources[] = {DSP_REG_X0, DSP_REG_Y0, DSP_REG_X1, DSP_REG_Y1};
+        a->op = OP_MPY;
+        a->mul_imm = true;
+        a->imm = in->ext;
+        a->src2 = sources[(inst >> 4) & 3];
+        a->minus = (inst >> 2) & 1;
+        return true;
+    }
     if (!strcmp(name, "inc D") || !strcmp(name, "dec D")) {
         a->op = name[0] == 'i' ? OP_INC : OP_DEC;
         a->d = inst & 1;
