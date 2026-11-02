@@ -68,6 +68,12 @@ jobs:
         env:
           X86_ENTRY_CFLAGS: -fsanitize=address -fno-omit-frame-pointer
         run: python3 libretro/tests/test-fixed-x86-entry.py . cc
+      - name: Fixed x86 block-exit PC synchronization
+        run: python3 libretro/tests/test-fixed-tb-sync.py . cc
+      - name: Fixed x86 block-exit synchronization under sanitizers
+        env:
+          TB_SYNC_CFLAGS: -fsanitize=address -fno-omit-frame-pointer
+        run: python3 libretro/tests/test-fixed-tb-sync.py . cc
       - name: Only dominating stores may remove quiet-budget checks
         run: python3 libretro/tests/test-quiet-store-prefix.py . cc
       - name: Install native DSP test build dependency

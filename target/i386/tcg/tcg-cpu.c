@@ -32,20 +32,6 @@ TCGTBCPUState x86_get_tb_cpu_state(CPUState *cs)
     return x86_tb_cpu_state(cs);
 }
 
-static void x86_cpu_synchronize_from_tb(CPUState *cs,
-                                        const TranslationBlock *tb)
-{
-    /* The instruction pointer is always up to date with CF_PCREL. */
-    if (!(tb_cflags(tb) & CF_PCREL)) {
-        CPUX86State *env = cpu_env(cs);
-
-        if (tb->flags & HF_CS64_MASK) {
-            env->eip = tb->pc;
-        } else {
-            env->eip = (uint32_t)(tb->pc - tb->cs_base);
-        }
-    }
-}
 
 static void x86_restore_state_to_opc(CPUState *cs,
                                      const TranslationBlock *tb,
