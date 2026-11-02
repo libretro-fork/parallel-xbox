@@ -8,7 +8,10 @@
 
 ## Unreleased
 
+- Build only geometry/vertex module keys during Vulkan prewarming, avoiding an unused fragment key. Preserve full shader lookup and worker keys, module-reference order and GPU compilation policy.
+
 - Skip IDE restart bottom-half allocation and wakeup on ordinary VM resumes when no disk error needs retrying. Preserve deferred/coalesced retry handling for actual errors; avoid housekeeping work around save/load and reset.
+
 
 - Prewarm Vulkan pre-rasterization libraries directly from their stage and render-pass inputs, avoiding temporary full shader bindings and pipeline keys. Preserve library identity, create info, module references and compilation policy.
 

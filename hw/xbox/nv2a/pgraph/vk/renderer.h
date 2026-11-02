@@ -1206,6 +1206,9 @@ void pgraph_vk_uniform_sources_invalidate(PGRAPHVkState *r);
 
 void pgraph_vk_bind_shaders(PGRAPHState *pg);
 void pgraph_vk_prewarm_shaders(NV2AState *d);
+void pgraph_vk_ref_pre_state_modules(PGRAPHVkState *r, const ShaderState *st,
+                                     ShaderModuleInfo **geom,
+                                     ShaderModuleInfo **vsh);
 void pgraph_vk_ref_state_modules(PGRAPHVkState *r, const ShaderState *st,
                                  ShaderModuleInfo **geom,
                                  ShaderModuleInfo **vsh,

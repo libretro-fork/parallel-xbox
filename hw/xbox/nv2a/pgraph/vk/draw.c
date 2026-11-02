@@ -1883,7 +1883,7 @@ void pgraph_vk_prewarm_shaders(NV2AState *d)
     }
 
     ShaderModuleInfo *geom_info, *vsh_info;
-    pgraph_vk_ref_state_modules(r, &state, &geom_info, &vsh_info, NULL);
+    pgraph_vk_ref_pre_state_modules(r, &state, &geom_info, &vsh_info);
 
     VkPipelineShaderStageCreateInfo stages[2];
     int num_stages = pre_stages(stages, vsh_info, geom_info);
