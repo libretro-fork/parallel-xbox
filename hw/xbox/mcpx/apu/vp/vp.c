@@ -2230,7 +2230,14 @@ void mcpx_apu_vp_frame(MCPXAPUState *d, int64_t mixbins[NUM_MIXBINS][NUM_SAMPLES
                 break;
             }
 
-            uint16_t v = apu_reg_r(d, current);
+            uint32_t handle = apu_reg_r(d, current);
+            if (handle >= MCPX_HW_MAX_VOICES) {
+                /* Reject before descriptor access or narrowing the MMIO
+                 * value: truncation could turn an invalid head into a voice. */
+                DPRINTF("Voice list contains invalid handle!\n");
+                break;
+            }
+            uint16_t v = handle;
             apu_reg_w(d, next, voice_get_mask(d, v, NV_PAVS_VOICE_TAR_PITCH_LINK,
                                NV_PAVS_VOICE_TAR_PITCH_LINK_NEXT_VOICE_HANDLE));
             if (!voice_get_mask(d, v, NV_PAVS_VOICE_PAR_STATE,

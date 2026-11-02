@@ -1,5 +1,6 @@
 # Changelog of the libretro core
 
+- Stop malformed VP lists before an out-of-range voice handle can access descriptors or voice state. Validate full list-head register values before narrowing them, preserving valid prefixes and the other voice lists.
 - Build VP parallel work units during routing validation, removing the temporary per-voice mask array and second queue scan. Multipass grouping, repeated-voice protection and serial fallbacks are preserved.
 - Keep CPU execution on the existing libretro device owner, removing QEMU CPU/I/O-thread BQL transfers around guest slices, MMIO, exceptions and interrupts. Preserve explicit GPU-wait releases and exception cleanup; guard APIC/FERR helpers conditionally.
 - Add generated TB-cache lookup regression coverage for address layout, identity checks and slow-path guards before further execution-core simplification; no runtime changes.
