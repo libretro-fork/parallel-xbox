@@ -1590,19 +1590,19 @@ static void copy_surface_to_texture(PGRAPHState *pg, SurfaceBinding *surface,
     texture->draw_time = surface->draw_time;
 }
 
-/* Batch color source transitions while preserving per-face image copies.
+/* Batch source and destination transitions around per-face image copies.
  * A source image appearing in several layers needs only one transition pair. */
 static void record_cube_surface_copies(PGRAPHState *pg, VkCommandBuffer cmd,
                                         SurfaceBinding *faces[6],
                                         TextureBinding *texture, unsigned mask)
 {
-    VkImageMemoryBarrier before[6], after[6];
+    VkImageMemoryBarrier before[7], after[7];
     unsigned count = 0;
     VkPipelineStageFlags stages = 0;
     for (unsigned f = 0; f < 6; f++) {
         if (!(mask & (1u << f))) continue;
         SurfaceBinding *surface = faces[f];
-        assert(surface && surface->color);
+        assert(surface && surface->color && surface->image != texture->image);
         bool seen = false;
         for (unsigned i = 0; i < count; i++) seen |= before[i].image == surface->image;
         if (!seen) {
@@ -1634,14 +1634,41 @@ static void record_cube_surface_copies(PGRAPHState *pg, VkCommandBuffer cmd,
         pgraph_vk_surface_left_shader_read(pg, surface);
     }
     assert(count);
+    VkImageMemoryBarrier destination = {
+        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+        .srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
+        .dstAccessMask = VK_ACCESS_SHADER_READ_BIT,
+        .oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+        .newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .image = texture->image,
+        .subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0,
+            VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS },
+    };
+    after[count] = destination;
+    unsigned before_count = count;
+    if (texture->current_layout != VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) {
+        bool fresh = texture->current_layout == VK_IMAGE_LAYOUT_UNDEFINED;
+        assert(fresh || texture->current_layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        destination.oldLayout = texture->current_layout;
+        destination.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+        destination.srcAccessMask = fresh ? 0 : VK_ACCESS_SHADER_READ_BIT;
+        destination.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        before[before_count++] = destination;
+        stages |= fresh ? VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT :
+                          VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+    }
     vkCmdPipelineBarrier(cmd, stages, VK_PIPELINE_STAGE_TRANSFER_BIT,
-                         0, 0, NULL, 0, NULL, count, before);
+                         0, 0, NULL, 0, NULL, before_count, before);
+    texture->current_layout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
     for (unsigned f = 0; f < 6; f++) {
         if (mask & (1u << f)) record_surface_copy(pg, cmd, faces[f], texture, f, true);
     }
     vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
-                         VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-                         0, 0, NULL, 0, NULL, count, after);
+                         VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT |
+                             VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                         0, 0, NULL, 0, NULL, count + 1, after);
 }
 
 /* Cube faces: six per-face render surfaces feed one cubemap, which
@@ -1675,25 +1702,19 @@ static void copy_cube_faces_to_texture(PGRAPHState *pg,
     }
 
     PGRAPHVkState *r = pg->vk_renderer_state;
-    TextureShape *state = &texture->key.state;
-    VkColorFormatInfo vkf = texture_vkf(r, state->color_format);
     if (copy_mask) nv2a_profile_inc_counter(NV2A_PROF_SURF_TO_TEX);
     VkCommandBuffer cmd = pgraph_vk_begin_nondraw_commands(pg);
     pgraph_vk_begin_debug_marker(r, cmd, RGBA_GREEN, __func__);
 
     if (copy_mask) {
-        if (texture->current_layout != VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) {
-            pgraph_vk_transition_image_layout(pg, cmd, texture->image, vkf.vk_format,
-                                              texture->current_layout,
-                                              VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
-        }
-        texture->current_layout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
         record_cube_surface_copies(pg, cmd, faces, texture, copy_mask);
+    } else {
+        /* Scaled RAM blits still need their final sampling dependency. */
+        VkColorFormatInfo vkf = texture_vkf(r, texture->key.state.color_format);
+        pgraph_vk_transition_image_layout(
+            pg, cmd, texture->image, vkf.vk_format, texture->current_layout,
+            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
     }
-    /* Scaled RAM uploads leave transfer-dst even when GPU faces are unchanged. */
-    pgraph_vk_transition_image_layout(
-        pg, cmd, texture->image, vkf.vk_format, texture->current_layout,
-        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
     texture->current_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
     pgraph_vk_end_debug_marker(r, cmd);
     pgraph_vk_end_nondraw_commands(pg, cmd);

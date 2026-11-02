@@ -3018,7 +3018,8 @@ Vulkan graphics queue. Its 1,512 cases cover every mixed face mask and fully GPU
 unchanged and changed GPU faces, fresh replacement images, old-image byte
 preservation, shared source images, sampled/attachment source layouts, and
 native-readable versus scaled-transfer-dst upload states. Source barrier spies
-require one deduplicated batch before and one after nonempty face copies.
+require one combined source/destination batch before and one after nonempty
+face copies, including fresh all-GPU cubes starting in undefined layout.
 RAM-face refreshes are modeled with per-layer GPU clears; this does not test
 the CPU upload or scaling-blit implementation. Readback verifies 6,096,384
 pixels, and command spies check that unchanged readable cubes open no recording.

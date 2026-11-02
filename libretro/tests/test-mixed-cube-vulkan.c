@@ -30,20 +30,31 @@ static void pgraph_apply_scaling_factor(PGRAPHState *pg,unsigned *w,unsigned *h)
 static void tracked_copy(VkCommandBuffer cmd,VkImage src,VkImageLayout sl,VkImage dst,VkImageLayout dl,uint32_t n,const VkImageCopy *regions){copies+=n;vkCmdCopyImage(cmd,src,sl,dst,dl,n,regions);}
 static bool count_source_barriers;
 static VkImage target_image;
+static VkImageLayout target_before;
+static unsigned total_barriers;
 static unsigned source_batches,source_images,expected_sources;
 static VkPipelineStageFlags expected_stages;
 static void tracked_barrier(VkCommandBuffer cmd,VkPipelineStageFlags src,VkPipelineStageFlags dst,VkDependencyFlags flags,uint32_t nm,const VkMemoryBarrier *m,uint32_t nb,const VkBufferMemoryBarrier *b,uint32_t ni,const VkImageMemoryBarrier *im){
+ if(count_source_barriers)total_barriers++;
  if(count_source_barriers&&ni&&im[0].image!=target_image){
-  assert(!flags&&!nm&&!nb&&ni==expected_sources);
   bool before=im[0].newLayout==VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+  unsigned extra=before?(target_before!=VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL):1;
+  assert(!flags&&!nm&&!nb&&ni==expected_sources+extra);
   assert(src==(before?expected_stages:VK_PIPELINE_STAGE_TRANSFER_BIT));
-  assert(dst==(before?VK_PIPELINE_STAGE_TRANSFER_BIT:VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT));
+  assert(dst==(before?VK_PIPELINE_STAGE_TRANSFER_BIT:(VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT|VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT)));
+  unsigned targets=0;
   for(unsigned i=0;i<ni;i++){
-   assert(im[i].image!=target_image&&im[i].subresourceRange.aspectMask==VK_IMAGE_ASPECT_COLOR_BIT);
-   assert(im[i].dstAccessMask==(before?VK_ACCESS_TRANSFER_READ_BIT:(VK_ACCESS_COLOR_ATTACHMENT_READ_BIT|VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT)));
+   assert(im[i].subresourceRange.aspectMask==VK_IMAGE_ASPECT_COLOR_BIT);
+   if(im[i].image==target_image){
+    targets++;assert(im[i].dstAccessMask==(before?VK_ACCESS_TRANSFER_WRITE_BIT:VK_ACCESS_SHADER_READ_BIT));
+    assert(im[i].srcAccessMask==(before?(target_before==VK_IMAGE_LAYOUT_UNDEFINED?0:VK_ACCESS_SHADER_READ_BIT):VK_ACCESS_TRANSFER_WRITE_BIT));
+   }else{
+    assert(im[i].dstAccessMask==(before?VK_ACCESS_TRANSFER_READ_BIT:(VK_ACCESS_COLOR_ATTACHMENT_READ_BIT|VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT)));
+    source_images++;
+   }
    for(unsigned j=0;j<i;j++)assert(im[i].image!=im[j].image);
   }
-  source_batches++;source_images+=ni;
+  assert(targets==extra);source_batches++;
  }
  vkCmdPipelineBarrier(cmd,src,dst,flags,nm,m,nb,b,ni,im);
 }
@@ -91,18 +102,22 @@ int main(void){
   for(unsigned f=0;f<6;f++)clear_face(cmd,old.image,f,(mask&(1u<<f)?128+(alias?first:f):16+f));
   pgraph_vk_transition_image_layout(&pg,cmd,old.image,VK_FORMAT_R8G8B8A8_UNORM,VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
   preserve_cube_upload_sources(&t,mask);
+  if(!(fresh&&mask==63)){ /* A fresh all-GPU cube has no preceding RAM upload. */
   pgraph_vk_transition_image_layout(&pg,cmd,t.image,VK_FORMAT_R8G8B8A8_UNORM,t.current_layout,VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);t.current_layout=VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
   for(unsigned f=0;f<6;f++)if(!(mask&(1u<<f)))clear_face(cmd,t.image,f,32+f);
   if(scale==1){pgraph_vk_transition_image_layout(&pg,cmd,t.image,VK_FORMAT_R8G8B8A8_UNORM,t.current_layout,VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);t.current_layout=VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;}
+  }
   unsigned needed=fresh?__builtin_popcount(mask):(changed?(alias?__builtin_popcount(mask):1):0);
-  copies=recordings=ends=source_batches=source_images=0;target_image=t.image;
+  copies=recordings=ends=source_batches=source_images=total_barriers=0;target_image=t.image;target_before=t.current_layout;
   expected_stages=0;expected_sources=0;
   for(unsigned f=0;f<6;f++)if(faces[f]&&(fresh||faces[f]->draw_time!=10)){
    if(alias&&expected_sources)continue;
    expected_sources++;expected_stages|=faces[f]->in_shader_read?VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT:VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
   }
+  if(needed&&target_before!=VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL)expected_stages|=target_before==VK_IMAGE_LAYOUT_UNDEFINED?VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT:VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
   count_source_barriers=true;copy_cube_faces_to_texture(&pg,faces,&t);count_source_barriers=false;
   assert(source_batches==(needed?2u:0u)&&source_images==2*expected_sources);
+  assert(total_barriers==(needed?2u:(scale!=1?1u:0u)));
   assert(copies==needed&&t.current_layout==VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL&&t.cube_source_mask==mask);
   assert(recordings==(unsigned)(needed||scale!=1)&&recordings==ends);
   pgraph_vk_transition_image_layout(&pg,cmd,t.image,VK_FORMAT_R8G8B8A8_UNORM,t.current_layout,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);

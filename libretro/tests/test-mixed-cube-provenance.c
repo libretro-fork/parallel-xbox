@@ -118,7 +118,7 @@ int main(void){
   unsigned expected=__builtin_popcount(mask&(fresh?63u:(~old|changed)));
   assert(copies==expected&&t.cube_source_mask==mask&&t.current_layout==1);
   assert(recordings==(unsigned)(expected||layout==2)&&ends==recordings);
-  assert(transitions==(expected?(layout==1?2u:1u):(layout==2?1u:0u)));
+  assert(transitions==(expected?0u:(layout==2?1u:0u)));
   for(unsigned f=0;f<6;f++)assert(t.pixels[f]==(faces[f]?source[f].pixel:2000+f));
   saved+=__builtin_popcount(mask)-copies;cases++;
  }
