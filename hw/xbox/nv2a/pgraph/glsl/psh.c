@@ -30,6 +30,7 @@
 #include "qemu/osdep.h"
 #include "qemu/fast-hash.h"
 #include "hw/xbox/nv2a/debug.h"
+#include "hw/xbox/nv2a/nv2a.h"
 #include "hw/xbox/nv2a/pgraph/pgraph.h"
 #include "shaders.h"
 #include "psh.h"
@@ -213,9 +214,58 @@ static uint32_t get_color_key_mask_for_texture(PGRAPHState *pg, int i)
     return get_colorkey_mask(color_format);
 }
 
+/* Select only upscaled colour overlays. Keep 1x and depth-tested shaders on
+ * their original keys and instruction streams; no per-draw vertex inspection. */
+static bool psh_ui_clamp_eligible(const PshState *state, unsigned scale,
+                                  unsigned primitive, uint32_t control)
+{
+    if (scale <= 1 || (control & NV_PGRAPH_CONTROL_0_ZENABLE) ||
+        state->point_sprite || primitive < PRIM_TYPE_TRIANGLES ||
+        primitive > PRIM_TYPE_QUAD_STRIP) {
+        return false;
+    }
+    bool textured = false;
+    for (unsigned i = 0; i < 4; i++) {
+        unsigned mode = (state->shader_stage_program >> (5 * i)) & 31;
+        if (mode == PS_TEXTUREMODES_NONE || mode == PS_TEXTUREMODES_PASSTHRU) {
+            continue;
+        }
+        if (mode != PS_TEXTUREMODES_PROJECT2D || state->dim_tex[i] != 2 ||
+            state->tex_cubemap[i] || state->shadow_map[i] ||
+            state->border_adjust[i] ||
+            state->conv_tex[i] != CONVOLUTION_FILTER_DISABLED) {
+            return false;
+        }
+        if (textured) {
+            return false; /* One atlas stage: no extra varyings. */
+        }
+        textured = true;
+    }
+    return textured;
+}
+
+/* Clamping must not change an implicit mip or mixed min/mag selection. */
+static bool psh_ui_filter_supported(bool linear, unsigned levels,
+                                     unsigned min, unsigned mag, bool forced)
+{
+    bool matched = (mag == 1 &&
+        (min == NV_PGRAPH_TEXFILTER0_MIN_BOX_LOD0 ||
+         min == NV_PGRAPH_TEXFILTER0_MIN_BOX_NEARESTLOD ||
+         min == NV_PGRAPH_TEXFILTER0_MIN_BOX_TENT_LOD)) || (mag == 2 &&
+        (min == NV_PGRAPH_TEXFILTER0_MIN_TENT_LOD0 ||
+         min == NV_PGRAPH_TEXFILTER0_MIN_TENT_NEARESTLOD ||
+         min == NV_PGRAPH_TEXFILTER0_MIN_TENT_TENT_LOD));
+    return matched && (linear || levels <= 1 || forced ||
+        min == NV_PGRAPH_TEXFILTER0_MIN_BOX_LOD0 ||
+        min == NV_PGRAPH_TEXFILTER0_MIN_TENT_LOD0);
+}
+
 void pgraph_glsl_set_psh_state(PGRAPHState *pg, PshState *state)
 {
-    state->window_clip_exclusive = pgraph_reg_r(pg, NV_PGRAPH_SETUPRASTER) &
+    /* Coherent flag snapshots, also reused by the UI selector below. */
+    uint32_t raster = pgraph_reg_r(pg, NV_PGRAPH_SETUPRASTER);
+    uint32_t control = pgraph_reg_r(pg, NV_PGRAPH_CONTROL_0);
+    state->window_clip_exclusive = raster &
                                    NV_PGRAPH_SETUPRASTER_WINDOWCLIPTYPE;
     state->combiner_control = pgraph_reg_r(pg, NV_PGRAPH_COMBINECTL);
     state->shader_stage_program = pgraph_reg_r(pg, NV_PGRAPH_SHADERPROG);
@@ -223,16 +273,16 @@ void pgraph_glsl_set_psh_state(PGRAPHState *pg, PshState *state)
     state->final_inputs_0 = pgraph_reg_r(pg, NV_PGRAPH_COMBINESPECFOG0);
     state->final_inputs_1 = pgraph_reg_r(pg, NV_PGRAPH_COMBINESPECFOG1);
 
-    state->alpha_test = pgraph_reg_r(pg, NV_PGRAPH_CONTROL_0) &
+    state->alpha_test = control &
                         NV_PGRAPH_CONTROL_0_ALPHATESTENABLE;
 
-    state->point_sprite = pgraph_reg_r(pg, NV_PGRAPH_SETUPRASTER) &
+    state->point_sprite = raster &
                           NV_PGRAPH_SETUPRASTER_POINTSMOOTHENABLE;
 
     state->shadow_depth_func =
         (enum PshShadowDepthFunc)GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_SHADOWCTL),
                                           NV_PGRAPH_SHADOWCTL_SHADOW_ZFUNC);
-    state->z_perspective = pgraph_reg_r(pg, NV_PGRAPH_CONTROL_0) &
+    state->z_perspective = control &
                            NV_PGRAPH_CONTROL_0_Z_PERSPECTIVE_ENABLE;
 
     state->smooth_shading = GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_CONTROL_3),
@@ -255,6 +305,15 @@ void pgraph_glsl_set_psh_state(PGRAPHState *pg, PshState *state)
         state->alpha_outputs[i] =
             pgraph_reg_r(pg, NV_PGRAPH_COMBINEALPHAO0 + i * 4);
     }
+
+    bool ui_possible = pg->surface_scale_factor > 1 &&
+        !(control & NV_PGRAPH_CONTROL_0_ZENABLE) && !state->point_sprite &&
+        !(raster & (NV_PGRAPH_SETUPRASTER_FRONTFACEMODE |
+                    NV_PGRAPH_SETUPRASTER_BACKFACEMODE)) &&
+        pg->primitive_mode >= PRIM_TYPE_TRIANGLES &&
+        pg->primitive_mode <= PRIM_TYPE_QUAD_STRIP;
+    bool ui_forced = ui_possible && nv2a_get_force_texture_lod0();
+    unsigned ui_filter_mask = 0;
 
     state->g8b8_mip_flags = 0;
     state->g8b8_mip_clamp_u = 0;
@@ -308,6 +367,13 @@ void pgraph_glsl_set_psh_state(PGRAPHState *pg, PshState *state)
 
         uint32_t filter = pgraph_reg_r(pg, NV_PGRAPH_TEXFILTER0 + i * 4);
         unsigned int min_filter = GET_MASK(filter, NV_PGRAPH_TEXFILTER0_MIN);
+        if (ui_possible &&
+            ((state->shader_stage_program >> (i * 5)) & 31) == PS_TEXTUREMODES_PROJECT2D &&
+            psh_ui_filter_supported(f.linear,
+                GET_MASK(tex_fmt, NV_PGRAPH_TEXFMT0_MIPMAP_LEVELS), min_filter,
+                GET_MASK(filter, NV_PGRAPH_TEXFILTER0_MAG), ui_forced)) {
+            ui_filter_mask |= 1u << i;
+        }
         enum ConvolutionFilter kernel = CONVOLUTION_FILTER_DISABLED;
         /* FIXME: We do not distinguish between min and mag when
          * performing convolution. Just use it if specified for min (common AA
@@ -476,8 +542,7 @@ void pgraph_glsl_set_psh_state(PGRAPHState *pg, PshState *state)
     }
 
     state->surface_zeta_format = pg->surface_shape.zeta_format;
-    unsigned int z_format = GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_SETUPRASTER),
-                                     NV_PGRAPH_SETUPRASTER_Z_FORMAT);
+    unsigned int z_format = GET_MASK(raster, NV_PGRAPH_SETUPRASTER_Z_FORMAT);
 
     switch (pg->surface_shape.zeta_format) {
     case NV097_SET_SURFACE_FORMAT_ZETA_Z16:
@@ -492,6 +557,11 @@ void pgraph_glsl_set_psh_state(PGRAPHState *pg, PshState *state)
         fprintf(stderr, "Unknown zeta surface format: 0x%x\n", pg->surface_shape.zeta_format);
         assert(!"Unknown zeta surface format");
         break;
+    }
+
+    if (ui_filter_mask && psh_ui_clamp_eligible(state, pg->surface_scale_factor,
+                                               pg->primitive_mode, control)) {
+        state->depth_format |= DEPTH_FORMAT_UI_CLAMP;
     }
 
     state->combiner_dynamic = false;
@@ -1785,7 +1855,20 @@ static MString* psh_convert(struct PixelShader *ps)
      * (perspective-correct) and interpolates w instead of z. */
     mstring_append(
         clip,
-        "vec2 unscaled_xy = gl_FragCoord.xy / surfaceScale;\n"
+        "vec2 unscaled_xy = gl_FragCoord.xy / surfaceScale;\n");
+    bool ui_clamp = ps->state->depth_format & DEPTH_FORMAT_UI_CLAMP;
+    if (ui_clamp) {
+        /* A right-triangle half of an axis-aligned rectangle has its full
+         * sampling bounds prepared once by the existing geometry stage.
+         * Its negative-zero slope marker selects constant finite depth and
+         * reuses the otherwise unneeded plane positions for UV bounds. */
+        mstring_append(clip,
+            "bool uiRect = floatBitsToUint(triMZ) == 0x80000000u;\n"
+            "precise float uiBc1=0.0,uiBc2=0.0;\n"
+            "if(!uiRect){\n"
+        );
+    }
+    mstring_append(clip,
         "precise float bc0 = area(unscaled_xy, vtxPos1.xy, vtxPos2.xy);\n"
         "precise float bc1 = area(unscaled_xy, vtxPos2.xy, vtxPos0.xy);\n"
         "precise float bc2 = area(unscaled_xy, vtxPos0.xy, vtxPos1.xy);\n"
@@ -1828,6 +1911,12 @@ static MString* psh_convert(struct PixelShader *ps)
         "}\n"
         "bc1 *= inv_bcsum;\n"
         "bc2 *= inv_bcsum;\n");
+    if (ui_clamp) {
+        mstring_append(clip,
+            "uiBc1=bc1;uiBc2=bc2;}\n"
+            "precise float bc1=uiBc1,bc2=uiBc2;\n");
+    }
+
     if (ps->state->z_perspective) {
         mstring_append(
             clip,
@@ -1882,6 +1971,12 @@ static MString* psh_convert(struct PixelShader *ps)
         mstring_append(vars, "vec4 pT3 = vec4(gl_PointCoord, 1.0, 1.0);\n");
     } else {
         mstring_append(vars, "vec4 pT3 = vtxT3;\n");
+    }
+    if (ui_clamp) {
+        unsigned stage = pgraph_glsl_ui_clamp_stage(ps->state) - 1;
+        mstring_append_fmt(vars,
+            "if(uiRect) pT%u.xy=clamp(pT%u.xy,vtxPos1.xy,vtxPos2.xy);\n",
+            stage, stage);
     }
     mstring_append(vars, "\n");
     /* With two-sided lighting the rasterizer picks the front or back
@@ -2368,7 +2463,7 @@ static MString* psh_convert(struct PixelShader *ps)
      * due to rounding.)
      */
 
-    switch (ps->state->depth_format) {
+    switch (ps->state->depth_format & DEPTH_FORMAT_MASK) {
     case DEPTH_FORMAT_D16:
         // 16-bit unsigned int
         mstring_append(

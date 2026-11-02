@@ -113,6 +113,74 @@ bool pgraph_glsl_need_geom(const GeomState *state)
     }
 }
 
+/* The 3/4 input positions are already on the GPU. Emit constant indices so
+ * the small UI classifier has no shader loops or dynamic attribute indexing. */
+static void append_ui_prepare(MString *out, unsigned stage, unsigned count)
+{
+    mstring_append(out,
+        "bool uiValid;\nvec2 uiUVLo,uiUVHi;\nvoid ui_prepare(){\n");
+    for (unsigned i = 0; i < count; i++) {
+        mstring_append_fmt(out,
+            "vec4 uiP%u=v_vtxPos[%u],uiT%u=v_vtxT%u[%u];\n",
+            i, i, i, stage, i);
+    }
+    mstring_append(out,
+        "vec2 lo=uiP0.xy,hi=lo;\n"
+        "uiValid=uiT0.w>0.0;\n");
+    for (unsigned i = 0; i < count; i++) {
+        mstring_append_fmt(out,
+            "lo=min(lo,uiP%u.xy);hi=max(hi,uiP%u.xy);\n"
+            "uiValid=uiValid&&all(equal(uiP%u.zw,uiP0.zw))&&uiT%u.w==uiT0.w;\n"
+            "uiValid=uiValid&&!any(isnan(uiP%u))&&!any(isinf(uiP%u))"
+            "&&!any(isnan(uiT%u))&&!any(isinf(uiT%u));\n",
+            i,i,i,i,i,i,i,i);
+    }
+    mstring_append(out,
+        "uiValid=uiValid&&all(greaterThanEqual(hi-lo,vec2(1.0)))&&!any(isinf(hi-lo));\n");
+    for (unsigned i = 0; i < count; i++) {
+        mstring_append_fmt(out,
+            "uiValid=uiValid&&(uiP%u.x==lo.x||uiP%u.x==hi.x)"
+            "&&(uiP%u.y==lo.y||uiP%u.y==hi.y);\n",i,i,i,i);
+    }
+    mstring_append(out,
+        "if(!uiValid)return;\nvec2 dx=vec2(0.0),dy=vec2(0.0);\n"
+        "bool foundX=false,foundY=false;\n");
+    for (unsigned i = 0; i < count; i++) {
+        for (unsigned j = i + 1; j < count; j++) {
+            mstring_append_fmt(out,
+                "{vec2 d=uiP%u.xy-uiP%u.xy,t=uiT%u.xy-uiT%u.xy;\n"
+                "if(!foundX&&d.y==0.0&&abs(d.x)>=1.0){dx=t/d.x;foundX=true;}\n"
+                "if(!foundY&&d.x==0.0&&abs(d.y)>=1.0){dy=t/d.y;foundY=true;}}\n",
+                j,i,j,i);
+        }
+    }
+    mstring_append(out,
+        "uiValid=uiValid&&foundX&&foundY;\n"
+        "uiValid=uiValid&&((dx.y==0.0&&dy.x==0.0)||(dx.x==0.0&&dy.y==0.0));\n"
+        "uiValid=uiValid&&!any(isnan(dx))&&!any(isinf(dx))"
+        "&&!any(isnan(dy))&&!any(isinf(dy));\n");
+    if (count == 4) {
+        /* Only the opposite corner is independent of the two edge gradients. */
+        for (unsigned i = 1; i < count; i++) {
+            mstring_append_fmt(out,
+                "if(uiP%u.x!=uiP0.x&&uiP%u.y!=uiP0.y){\n"
+                "vec2 expected=uiT0.xy+dx*(uiP%u.x-uiP0.x)+dy*(uiP%u.y-uiP0.y);\n"
+                "uiValid=uiValid&&all(lessThanEqual(abs(expected-uiT%u.xy),"
+                "1e-6*max(vec2(1.0),abs(uiT%u.xy))));}\n",i,i,i,i,i,i);
+        }
+    }
+    /* Preserve the actual native sample range, including fractional origins. */
+    mstring_append(out,
+        "vec2 first=ceil(lo-vec2(0.5))+vec2(0.5);\n"
+        "vec2 last=ceil(hi-vec2(0.5))-vec2(0.5);\n"
+        "vec2 a=uiT0.xy+dx*(first.x-uiP0.x)+dy*(first.y-uiP0.y);\n"
+        "vec2 b=uiT0.xy+dx*(last.x-uiP0.x)+dy*(last.y-uiP0.y);\n"
+        "uiValid=uiValid&&!any(isnan(a))&&!any(isinf(a))"
+        "&&!any(isnan(b))&&!any(isinf(b));\n"
+        "uiUVLo=min(a,b);uiUVHi=max(a,b);\n"
+        "uiValid=uiValid&&all(lessThanEqual(first,last));\n}\n");
+}
+
 MString *pgraph_glsl_gen_geom(const GeomState *state, GenGeomGlslOptions opts)
 {
     /* FIXME: Missing support for 2-sided-poly mode */
@@ -332,6 +400,19 @@ MString *pgraph_glsl_gen_geom(const GeomState *state, GenGeomGlslOptions opts)
     pgraph_glsl_get_vtx_header(output, opts.vulkan || opts.locations,
                                state->smooth_shading, false, false, false);
 
+    const char *ui_emit = "";
+    const char *ui_setup = "";
+    if (opts.ui_clamp_stage) {
+        unsigned stage = opts.ui_clamp_stage - 1;
+        append_ui_prepare(output, stage,
+            state->primitive_mode == PRIM_TYPE_QUADS ||
+            state->primitive_mode == PRIM_TYPE_QUAD_STRIP ? 4 : 3);
+        ui_emit = "if (uiValid) {\n    vtxPos1.xy = uiUVLo; vtxPos2.xy = uiUVHi;\n    triMZ = uintBitsToFloat(0x80000000u);\n}\n";
+        ui_setup = state->primitive_mode == PRIM_TYPE_QUAD_STRIP ?
+            "if ((gl_PrimitiveIDIn & 1) != 0) return; ui_prepare();\n" :
+            "ui_prepare();\n";
+    }
+
     char vertex_order_buf[80];
     const char *vertex_order_body = "";
 
@@ -378,12 +459,13 @@ MString *pgraph_glsl_gen_geom(const GeomState *state, GenGeomGlslOptions opts)
         "  vtxPos1 = pz[1];\n"
         "  vtxPos2 = pz[2];\n"
         "  triMZ = (isnan(pz[3].x) || isinf(pz[3].x)) ? 0.0 : pz[3].x;\n"
+        "%s"
         "  EmitVertex();\n"
         "}\n",
         provoking_index,
         provoking_index,
         provoking_index,
-        provoking_index);
+        provoking_index, ui_emit);
 
     if (need_triz || need_quadz) {
         mstring_append(
@@ -403,10 +485,14 @@ MString *pgraph_glsl_gen_geom(const GeomState *state, GenGeomGlslOptions opts)
             "  return res;\n"
             "}\n");
 
+        const char *ui_plane = opts.ui_clamp_stage ?
+            "  if(uiValid) return mat4(v_vtxPos[i0],v_vtxPos[i1],v_vtxPos[i2],"
+            "uintBitsToFloat(0x80000000u),vec3(0.0));\n" : "";
         if (state->z_perspective) {
-            mstring_append(
+            mstring_append_fmt(
                 output,
                 "mat4 calc_triz(int i0, int i1, int i2) {\n"
+                "%s"
                 "  mat2 m = mat2(v_vtxPos[i1].xy - v_vtxPos[i0].xy,\n"
                 "                v_vtxPos[i2].xy - v_vtxPos[i0].xy);\n"
                 "  precise vec2 b = vec2(v_vtxPos[i0].w - v_vtxPos[i1].w,\n"
@@ -419,11 +505,12 @@ MString *pgraph_glsl_gen_geom(const GeomState *state, GenGeomGlslOptions opts)
                 "  float dzy = kahan_det(b.y, m[0].x, b.x, m[1].x) / det;\n"
                 "  float dz = max(abs(dzx), abs(dzy));\n"
                 "  return mat4(v_vtxPos[i0], v_vtxPos[i1], v_vtxPos[i2], dz, vec3(0.0));\n"
-                "}\n");
+                "}\n", ui_plane);
         } else {
-            mstring_append(
+            mstring_append_fmt(
                 output,
                 "mat4 calc_triz(int i0, int i1, int i2) {\n"
+                "%s"
                 "  mat2 m = mat2(v_vtxPos[i1].xy - v_vtxPos[i0].xy,\n"
                 "                v_vtxPos[i2].xy - v_vtxPos[i0].xy);\n"
                 "  precise vec2 b = vec2(v_vtxPos[i1].z - v_vtxPos[i0].z,\n"
@@ -435,7 +522,7 @@ MString *pgraph_glsl_gen_geom(const GeomState *state, GenGeomGlslOptions opts)
                 "  float dzy = kahan_det(b.y, m[0].x, b.x, m[1].x) / det;\n"
                 "  float dz = max(abs(dzx), abs(dzy));\n"
                 "  return mat4(v_vtxPos[i0], v_vtxPos[i1], v_vtxPos[i2], dz, vec3(0.0));\n"
-                "}\n");
+                "}\n", ui_plane);
         }
     }
 
@@ -525,8 +612,9 @@ MString *pgraph_glsl_gen_geom(const GeomState *state, GenGeomGlslOptions opts)
                        "void main() {\n"
                        "%s"
                        "%s"
+                       "%s"
                        "}\n",
-                       vertex_order_body, body);
+                       vertex_order_body, ui_setup, body);
 
     return output;
 }

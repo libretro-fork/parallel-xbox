@@ -631,6 +631,7 @@ static int vk_state_module_keys(const ShaderState *st, bool push_constants,
         keys[n].kind = VK_SHADER_STAGE_GEOMETRY_BIT;
         keys[n].geom.state = st->geom;
         keys[n].geom.glsl_opts.vulkan = true;
+        keys[n].geom.glsl_opts.ui_clamp_stage = pgraph_glsl_ui_clamp_stage(&st->psh);
         n++;
     }
     memset(&keys[n], 0, sizeof(keys[n]));
@@ -673,7 +674,7 @@ static bool vk_module_line_options(const ShaderModuleCacheKey *key,
                                     SpvLineGeomOptions *opts)
 {
     if (key->kind != VK_SHADER_STAGE_GEOMETRY_BIT ||
-        !key->geom.glsl_opts.vulkan) {
+        (!key->geom.glsl_opts.vulkan || key->geom.glsl_opts.ui_clamp_stage)) {
         return false;
     }
     const GeomState *state = &key->geom.state;
@@ -698,7 +699,7 @@ static bool vk_module_triangle_options(const ShaderModuleCacheKey *key,
                                         SpvTriangleGeomOptions *opts)
 {
     if (key->kind != VK_SHADER_STAGE_GEOMETRY_BIT ||
-        !key->geom.glsl_opts.vulkan) {
+        (!key->geom.glsl_opts.vulkan || key->geom.glsl_opts.ui_clamp_stage)) {
         return false;
     }
     const GeomState *state = &key->geom.state;
@@ -734,7 +735,7 @@ static bool vk_module_quad_options(const ShaderModuleCacheKey *key,
                                     SpvQuadGeomOptions *opts)
 {
     if (key->kind != VK_SHADER_STAGE_GEOMETRY_BIT ||
-        !key->geom.glsl_opts.vulkan) {
+        (!key->geom.glsl_opts.vulkan || key->geom.glsl_opts.ui_clamp_stage)) {
         return false;
     }
     const GeomState *state = &key->geom.state;

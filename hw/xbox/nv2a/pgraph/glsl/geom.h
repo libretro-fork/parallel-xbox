@@ -43,6 +43,7 @@ typedef struct {
 typedef struct GenGeomGlslOptions {
     bool vulkan;
     bool locations;
+    uint8_t ui_clamp_stage; /* 0 off, 1..4: one atlas stage; key padding */
 } GenGeomGlslOptions;
 
 void pgraph_glsl_set_geom_state(PGRAPHState *pg, GeomState *geom);

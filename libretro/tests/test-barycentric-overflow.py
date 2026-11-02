@@ -12,13 +12,16 @@ import tempfile
 repo=Path(sys.argv[1]).resolve()
 cc=sys.argv[2] if len(sys.argv)>2 else 'cc'
 source=(repo/'hw/xbox/nv2a/pgraph/glsl/psh.c').read_text()
+# This fixture checks the unchanged general-depth path. UI bypasses have
+# their own selection and GPU-expression fixtures.
+source=re.sub(r'    if \(ui_clamp\) \{\n.*?\n    \}\n','',source,flags=re.S)
 
 
 def strings(text):
     return ''.join(ast.literal_eval(token) for token in re.findall(r'"(?:[^"\\]|\\.)*"',text))
 
 
-helpers=strings(source[source.index('        "float kahan_det('):source.index('        "const float[9] gaussian3x3')])
+helpers=strings(source[source.index('        "float kahan_det('):source.index('    MString *clip =',source.index('        "float kahan_det('))])
 start=source.index('    /* Barycentric depth:')
 divide=source.index('    if (ps->state->z_perspective)',start)
 barycentric=strings(source[start:divide])

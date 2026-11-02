@@ -708,6 +708,7 @@ static bool state_module_keys(const ShaderState *st,
         memset(keys, 0, 3 * sizeof(keys[0]));
         keys[0].kind = GL_GEOMETRY_SHADER;
         keys[0].geom.state = st->geom;
+        keys[0].geom.glsl_opts.ui_clamp_stage = pgraph_glsl_ui_clamp_stage(&st->psh);
     } else {
         /* Callers skip this key; only its kind tag is meaningful. */
         keys[0].kind = 0;

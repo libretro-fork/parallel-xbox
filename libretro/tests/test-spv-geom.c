@@ -121,6 +121,22 @@ int line_tests(int argc,char **argv){
   if(expected){assert(opts.smooth_shading==smooth&&opts.spirv_1_6==version);assert(opts.provoking_vertex==((primitive==PRIM_TYPE_POLYGON||first)?0u:1u));}cases++;
  }
  printf("Direct geometry selector: %u stage/primitive/mode/shading/wide/version cases passed\n",cases);
+ for(unsigned stage=1;stage<=4;stage++){
+  ShaderModuleCacheKey key={.kind=VK_SHADER_STAGE_GEOMETRY_BIT,.geom={.glsl_opts={.vulkan=true,.ui_clamp_stage=stage}}};
+  SpvLineGeomOptions line;SpvTriangleGeomOptions tri;SpvQuadGeomOptions quad;
+  key.geom.state.primitive_mode=PRIM_TYPE_LINES;assert(!vk_module_line_options(&key,&line));
+  key.geom.state.primitive_mode=PRIM_TYPE_TRIANGLES;assert(!vk_module_triangle_options(&key,&tri));
+  key.geom.state.primitive_mode=PRIM_TYPE_QUADS;assert(!vk_module_quad_options(&key,&quad));
+ }
+ for(unsigned version=0;version<2;version++)for(unsigned stage=1;stage<=4;stage++)for(unsigned mode=0;mode<3;mode++){
+  GeomState state={.primitive_mode=mode==0?PRIM_TYPE_TRIANGLES:mode==1?PRIM_TYPE_QUADS:PRIM_TYPE_QUAD_STRIP,
+   .polygon_front_mode=POLY_MODE_FILL,.polygon_back_mode=POLY_MODE_FILL,.smooth_shading=true};
+  MString *glsl=pgraph_glsl_gen_geom(&state,(GenGeomGlslOptions){.vulkan=true,.ui_clamp_stage=stage});
+  GlslcResult code=compile(GLSLC_STAGE_GEOMETRY,glsl->str,version);
+  char name[64];snprintf(name,sizeof(name),"ui-%u-%u",mode,stage);save(argv[1],name,version,0,0,code.words,code.num_words);
+  free(code.words);mstring_unref(glsl);
+ }
+ puts("UI geometry: 24 complete modules and native-selector exclusions passed");
  SpvDirectModule invalid;allocations=0;assert(!pgraph_spv_line_geom((SpvLineGeomOptions){.provoking_vertex=2},&invalid));assert(!allocations&&!invalid.words&&!invalid.num_words);
  for(unsigned version=0;version<2;version++)for(unsigned smooth=0;smooth<2;smooth++)for(unsigned provoking=0;provoking<2;provoking++){
   GeomState state={.primitive_mode=PRIM_TYPE_LINES,.polygon_front_mode=POLY_MODE_FILL,.polygon_back_mode=POLY_MODE_FILL,.smooth_shading=smooth,.first_vertex_is_provoking=provoking==0};

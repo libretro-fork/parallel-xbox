@@ -32,6 +32,9 @@ enum PshDepthFormat {
     DEPTH_FORMAT_D16,
     DEPTH_FORMAT_F24,
     DEPTH_FORMAT_F16,
+    /* Sampling flag in the existing enum word; legacy keys/layout stay intact. */
+    DEPTH_FORMAT_MASK = 3,
+    DEPTH_FORMAT_UI_CLAMP = 1 << 8,
 };
 
 typedef struct PshState {
@@ -98,6 +101,21 @@ typedef struct PshState {
     unsigned int surface_zeta_format;
     enum PshDepthFormat depth_format;
 } PshState;
+
+/* One-based stage tag fits the geometry key's existing option padding. */
+static inline unsigned pgraph_glsl_ui_clamp_stage(const PshState *state)
+{
+    if (!(state->depth_format & DEPTH_FORMAT_UI_CLAMP)) {
+        return 0;
+    }
+    for (unsigned i = 0; i < 4; i++) {
+        if (((state->shader_stage_program >> (i * 5)) & 31) ==
+            PS_TEXTUREMODES_PROJECT2D) {
+            return i + 1;
+        }
+    }
+    return 0;
+}
 
 void pgraph_glsl_set_psh_state(PGRAPHState *pg, PshState *state);
 

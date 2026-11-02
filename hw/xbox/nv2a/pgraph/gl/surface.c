@@ -139,8 +139,13 @@ unsigned int pgraph_gl_get_surface_scale_factor(NV2AState *d)
 
 void pgraph_gl_reload_surface_scale_factor(PGRAPHState *pg)
 {
+    unsigned old_scale = pg->surface_scale_factor;
     int factor = g_config.display.quality.surface_scale;
     pg->surface_scale_factor = factor < 1 ? 1 : factor;
+    if ((old_scale > 1) != (pg->surface_scale_factor > 1)) {
+        /* Re-select only when entering/leaving native-resolution sampling. */
+        bitmap_set(pg->regs_dirty, NV_PGRAPH_CONTROL_0 / sizeof(uint32_t), 1);
+    }
 }
 
 // FIXME: Move to common
