@@ -3003,3 +3003,24 @@ submission is avoided. Fresh replacements are not repeatedly copied before a
 new draw; live images still require ordering. Poisoned cache-node initialization
 must clear the reference flag and stamp. These are modeled metadata/lifetime
 checks, not measured Vulkan submissions or a full GPU sampling/game test.
+
+
+`python libretro/tests/test-mixed-cube-provenance.py CHECKOUT CC` runs the
+production mixed-cube RAM hash, provenance, face-copy routing and cache-hit
+refresh against payload and command spies. It checks 4,464 byte mutations,
+62 COW hash-retention schedules, 3,844 same-frame mask-change gates and
+1,048,576 face/layout combinations under UBSan. GPU-backed guest RAM spans
+must remain unread by the RAM hash; fresh images must rebuild all GPU faces.
+
+`python libretro/tests/test-mixed-cube-vulkan.py CHECKOUT CC` runs the production
+image-layout transitions, cube provenance and surface-copy recording on a real
+Vulkan graphics queue. Its 744 cases cover every mixed face mask at 1x/2x/4x,
+unchanged and changed GPU faces, fresh replacement images, old-image byte
+preservation, and native-readable versus scaled-transfer-dst upload states.
+RAM-face refreshes are modeled with per-layer GPU clears; this does not test
+the CPU upload or scaling-blit implementation. Readback verifies 2,999,808
+pixels, and command spies check that unchanged readable cubes open no recording.
+The fixture defaults to synchronization validation. Only when the layer is
+unavailable, explicitly set `CUBE_COPY_NO_VALIDATION=1` and record that limitation.
+This focused fixture needs no core build or game assets. It does not validate
+full-game rendering, imported-host RAM or real frontend scheduling.

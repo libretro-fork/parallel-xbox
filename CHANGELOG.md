@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add a real-device Vulkan byte oracle for mixed-cubemap face refreshes and image replacement, covering native/scaled layout states, preserved old-image bytes and empty-recording suppression.
+
 - Retain the validated RAM-face hash when Vulkan mixed-cube copy-on-write restores unchanged RAM after a GPU-only update. Avoid a later redundant RAM upload, and rehash immediately when the GPU/RAM face mask changes, including within the same frame.
 
 - Hash only RAM-backed faces for Vulkan mixed cubemaps. GPU faces retain draw-stamp identity, avoiding CPU reads of stale guest bytes and RAM-face refreshes caused only by changes beneath GPU-backed faces. Keep face positions and the source mask in the content identity.
