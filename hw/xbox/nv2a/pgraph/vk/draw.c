@@ -1323,19 +1323,18 @@ static uint64_t gpl_frag_hash(PGRAPHVkState *r, VkShaderModule psh,
 }
 
 /* The pre-rasterization library: the first num_pre_stages stages of full
- * (vertex, and geometry if any). */
+ * (vertex, and geometry if any). Hash the same module handles passed to
+ * the driver, so prewarming needs no temporary shader binding or draw key. */
 static VkPipeline gpl_get_pre(PGRAPHState *pg,
                               const VkGraphicsPipelineCreateInfo *full,
-                              const PipelineKey *key, VkPipelineLayout layout,
+                              const RenderPassState *rp, VkPipelineLayout layout,
                               int num_pre_stages)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
     uint64_t hash = gpl_pre_hash(
-        r, r->shader_binding->vsh.module_info->module,
-        r->shader_binding->geom.module_info ?
-            r->shader_binding->geom.module_info->module :
-            VK_NULL_HANDLE,
-        &key->render_pass_state, full->pRasterizationState,
+        r, full->pStages[0].module,
+        num_pre_stages > 1 ? full->pStages[1].module : VK_NULL_HANDLE,
+        rp, full->pRasterizationState,
         full->pInputAssemblyState, full->pVertexInputState);
     bool found;
     VkPipeline lib = gpl_lookup(r, false, hash, &found);
@@ -1886,15 +1885,6 @@ void pgraph_vk_prewarm_shaders(NV2AState *d)
     ShaderModuleInfo *geom_info, *vsh_info;
     pgraph_vk_ref_state_modules(r, &state, &geom_info, &vsh_info, NULL);
 
-    ShaderBinding warm;
-    memset(&warm, 0, sizeof(warm));
-    warm.state = state;
-    warm.vsh.module_info = vsh_info;
-    warm.geom.module_info = geom_info;
-
-    ShaderBinding *saved_binding = r->shader_binding;
-    r->shader_binding = &warm;
-
     VkPipelineShaderStageCreateInfo stages[2];
     int num_stages = pre_stages(stages, vsh_info, geom_info);
 
@@ -1921,10 +1911,6 @@ void pgraph_vk_prewarm_shaders(NV2AState *d)
 
     RenderPassState rp_state;
     init_render_pass_state(pg, &rp_state);
-    PipelineKey pre_key;
-    memset(&pre_key, 0, sizeof(pre_key));
-    pre_key.render_pass_state = rp_state;
-
     VkGraphicsPipelineCreateInfo info = {
         .sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
         .stageCount = num_stages,
@@ -1936,10 +1922,9 @@ void pgraph_vk_prewarm_shaders(NV2AState *d)
         .pDynamicState = &dynamic_state,
         .renderPass = get_render_pass(r, &rp_state),
     };
-    gpl_get_pre(pg, &info, &pre_key, layout, num_stages);
+    gpl_get_pre(pg, &info, &rp_state, layout, num_stages);
 
     vkDestroyPipelineLayout(r->device, layout, NULL);
-    r->shader_binding = saved_binding;
     /* The library holds no module: give back the references taken above. */
     pgraph_vk_unref_shader_module(r, vsh_info);
     if (geom_info) {
@@ -2298,7 +2283,7 @@ static void create_pipeline(PGRAPHState *pg)
     if (r->pipeline_library) {
         int num_active_shader_stages = job.ci.stageCount;
         /* The fragment stage is the last one. */
-        VkPipeline pre = gpl_get_pre(pg, &job.ci, &key, layout,
+        VkPipeline pre = gpl_get_pre(pg, &job.ci, &key.render_pass_state, layout,
                                      num_active_shader_stages - 1);
         VkPipeline frag = gpl_get_frag(pg, &job.ci, &key, layout,
                                        num_active_shader_stages);
