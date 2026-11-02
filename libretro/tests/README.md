@@ -1535,6 +1535,13 @@ fallbacks combine both inputs. Palette hashing still waits for RAM visibility.
 
 `test-vk-ring-pressure.py` executes production aux submission, fence retirement,
 ring-tail selection and allocation with byte-level ownership and payload guards.
+Another 648 wrapped/partial/full/open schedules exercise newest-first cleanup:
+a completed newest fence retires all pending submissions with one query; partial
+completion retains FIFO release without polling the known-incomplete newest
+fence twice. No cleanup wait is allowed, and open recording ownership and ring
+heads must remain intact. An incomplete newest fence can add a status query
+before the FIFO scan; this trades that query for fewer calls on fully completed
+queues.
 An unfinished earlier submission must cause zero fence-status calls across
 1,000 fitting allocations (the old eager loop made 1,000 calls). Under pressure,
 retiring one completed slot must not poll another slot when the gap now fits.

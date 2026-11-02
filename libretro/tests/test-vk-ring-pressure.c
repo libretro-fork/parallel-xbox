@@ -73,6 +73,28 @@ static uint32_t rng=0x842a7913;
 static unsigned random_word(void){rng^=rng<<13;rng^=rng>>17;rng^=rng<<5;return rng;}
 int main(void){
  quiet_test_errors();
+ unsigned poll_cases=0;
+ for(unsigned start=0;start<PGRAPH_VK_AUX_SLOTS;start++)
+ for(unsigned n=0;n<=PGRAPH_VK_AUX_SLOTS;n++)for(unsigned complete=0;complete<=n;complete++)
+ for(unsigned open=0;open<2;open++){
+  if(open&&n==PGRAPH_VK_AUX_SLOTS)continue;
+  setup(CAPACITY,CAPACITY);state.aux_slot=state.aux_oldest=start;
+  for(unsigned i=0;i<n;i++){VkCommandBuffer c=pgraph_vk_begin_single_time_commands(&pg);allocate(i%2,1,1);submit(c);}
+  VkCommandBuffer active=VK_NULL_HANDLE;
+  if(open){active=pgraph_vk_begin_single_time_commands(&pg);allocate(0,1,1);}
+  size_t heads[2]={state.ring_head[0],state.ring_head[1]};
+  if(n&&complete==n)signaled[(start+n-1)%PGRAPH_VK_AUX_SLOTS]=true;
+  else for(unsigned i=0;i<complete;i++)signaled[(start+i)%PGRAPH_VK_AUX_SLOTS]=true;
+  pgraph_vk_poll_aux_retired(&state);
+  unsigned expected_polls=!n?0:complete==n?1:1+((complete+1<n-1)?complete+1:n-1);
+  assert(polls==expected_polls&&!waits&&resets==complete&&drops==complete);
+  assert(state.aux_npending==(int)(n-complete)&&state.aux_settled==complete);
+  assert(state.aux_oldest==(int)((start+complete)%PGRAPH_VK_AUX_SLOTS));
+  assert(state.in_aux_command_buffer==(bool)open&&state.ring_head[0]==heads[0]&&state.ring_head[1]==heads[1]);
+  if(open){submit(active);}
+  finish();poll_cases++;
+ }
+ printf("Aux newest-first poll: %u wrapped/partial/full/open schedules, no waits and one query for complete queues\n",poll_cases);
  unsigned drain_cases=0;
  for(unsigned start=0;start<PGRAPH_VK_AUX_SLOTS;start++)
  for(unsigned n=0;n<=PGRAPH_VK_AUX_SLOTS;n++)for(unsigned open=0;open<2;open++){

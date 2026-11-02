@@ -181,7 +181,21 @@ static bool aux_retire_oldest(PGRAPHVkState *r, bool poll)
 /* Garbage collection only observes fences; slot/ring exhaustion may wait. */
 void pgraph_vk_poll_aux_retired(PGRAPHVkState *r)
 {
-    while (r->aux_npending && aux_retire_oldest(r, true)) {
+    if (!r->aux_npending) {
+        return;
+    }
+    /* One queue: the newest completed fence proves every earlier signal.
+     * Keep partial progress FIFO and never release an unobserved submission. */
+    int newest = (r->aux_oldest + r->aux_npending - 1) % PGRAPH_VK_AUX_SLOTS;
+    assert(r->aux[newest].pending);
+    if (vkGetFenceStatus(r->device, r->aux[newest].fence) == VK_SUCCESS) {
+        while (r->aux_npending) {
+            aux_release_oldest(r);
+        }
+        return;
+    }
+    /* The newest was already observed incomplete; do not poll it twice. */
+    while (r->aux_npending > 1 && aux_retire_oldest(r, true)) {
     }
 }
 
