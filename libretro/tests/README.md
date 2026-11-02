@@ -1067,7 +1067,10 @@ The matrix has 2,718 direct levels. Relative to the prior compact-grid gate,
 378 newly direct strided-column levels avoid 4,086,240 staging bytes and 306,468
 CPU block copies. Heights through 256 texels exercise tall rows and strided
 source boundaries.
-These are operation counts, not game frame-time measurements. Vulkan BC
+Final single-slice groups now coalesce into one XY-plane region without changing
+eligibility. The GPU fixture checks submitted region and command counts as well
+as bytes, including partially filled final block groups. These are operation
+counts, not game frame-time measurements. Vulkan BC
 3D image support is required. Synchronization validation is requested by default;
 set `VOLUME_NO_VALIDATION=1` only when unavailable and record that limitation.
 The runner supports Linux and Windows; fixture buffers model imported RAM,

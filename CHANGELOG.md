@@ -4,6 +4,8 @@
 
 ## Unreleased
 
+- Coalesce the final single-slice native BC volume group into one whole-plane copy region. Reduce submitted regions while preserving direct-upload eligibility, byte layout, ownership and staging fallbacks.
+
 - Upload taller native BC volume grids directly using strided block-column regions when they fit one 64-region batch. Choose the smaller grouped-block/strided-column representation and retain prior direct routes and larger-layout staging fallback.
 
 - Upload compact multi-row native BC volumes directly from imported RAM when grouped XY/Z block regions fit one 64-region batch. Avoid CPU block rearrangement and staging while retaining narrow-column copies and larger-layout fallbacks.

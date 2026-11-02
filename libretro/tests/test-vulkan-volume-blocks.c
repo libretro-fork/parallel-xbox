@@ -31,6 +31,14 @@ static void *record_copy(void *dst, const void *src, size_t bytes)
     return memcpy(dst, src, bytes);
 }
 #define memcpy record_copy
+static unsigned submitted_regions,submitted_commands;
+static void tracked_copy(VkCommandBuffer cmd,VkBuffer buffer,VkImage image,
+    VkImageLayout layout,uint32_t count,const VkBufferImageCopy *regions)
+{
+    submitted_regions+=count;submitted_commands++;
+    vkCmdCopyBufferToImage(cmd,buffer,image,layout,count,regions);
+}
+#define vkCmdCopyBufferToImage tracked_copy
 /* PRODUCTION */
 #undef memcpy
 
@@ -121,7 +129,7 @@ int main(void)
     const VkFormat formats[] = {VK_FORMAT_BC1_RGBA_UNORM_BLOCK,
         VK_FORMAT_BC2_UNORM_BLOCK, VK_FORMAT_BC3_UNORM_BLOCK};
     const unsigned widths[] = {1,4,5,8,12,16,17,20,32,64,128,256,260}, heights[] = {1,4,5,8,20,32,36,128,256}, depths[] = {1,2,4,5,65,129};
-    unsigned cases = 0, direct = 0, expanded = 0; size_t avoided = 0, total_copies = 0, previous_copies = 0, expanded_bytes = 0, expanded_copies = 0;
+    unsigned cases = 0, direct = 0, expanded = 0; size_t saved_regions = 0; size_t avoided = 0, total_copies = 0, previous_copies = 0, expanded_bytes = 0, expanded_copies = 0;
     for (unsigned f=0;f<3;f++)
     for (unsigned wi=0;wi<ARRAY_SIZE(widths);wi++)
     for (unsigned hi=0;hi<ARRAY_SIZE(heights);hi++)
@@ -195,8 +203,18 @@ int main(void)
         vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 0, NULL, 1, &ib);
         size_t sliced = volume_block_slice_size(&level, formats[f]);
         assert(sliced == (eligible && blocks>1 && depth>1 ? bs : 0));
+        submitted_regions=submitted_commands=0;
         if (sliced) copy_volume_block_slices(cmd, upload.handle, image, &level, 0, mip, sliced);
         else vkCmdCopyBufferToImage(cmd, eligible?upload.handle:staging.handle, image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy);
+        unsigned expected_regions=1,old_regions=1;
+        if(sliced){
+            unsigned grouped=blocks*((depth+3)/4),columns=((w+3)/4)*depth;
+            old_regions=w>4?(grouped<columns?grouped:columns):columns;
+            if(depth%4==1)grouped-=blocks-1;
+            expected_regions=w>4?(grouped<columns?grouped:columns):columns;
+        }
+        assert(submitted_regions==expected_regions&&submitted_commands==(expected_regions+63)/64);
+        saved_regions+=old_regions-expected_regions;
         ib.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL; ib.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
         ib.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT; ib.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
         vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 0, NULL, 1, &ib);
@@ -217,6 +235,8 @@ int main(void)
         drop_buffer(upload); drop_buffer(staging); drop_buffer(output); free(expected);
         CHECK(vkResetCommandBuffer(cmd, 0)); cases++;
     }
+    assert(saved_regions>0);
+    printf("Coalesced tail planes avoid %zu submitted copy regions with identical eligibility\n",saved_regions);
     printf("Expanded strided-column routes=%u; additional staging bytes avoided=%zu; CPU block copies avoided=%zu\n",expanded,expanded_bytes,expanded_copies);
     printf("volume cases=%u direct=%u avoided_staging_bytes=%zu; all bytes exact\n",cases,direct,avoided);
     printf("CPU copy calls=%zu; previous-path model=%zu\n",total_copies,previous_copies);

@@ -451,6 +451,8 @@ static void copy_volume_block_slices(VkCommandBuffer cmd, VkBuffer source,
     unsigned bw = (level->width + 3) / 4;
     unsigned bh = (level->height + 3) / 4;
     unsigned grouped_regions = bw * bh * ((level->depth + 3) / 4);
+    /* A final single-slice group is a contiguous whole XY plane. */
+    if (level->depth % 4 == 1) grouped_regions -= bw * bh - 1;
     unsigned column_regions = bw * level->depth;
     if (level->width > 4 && grouped_regions <= column_regions) {
         /* A single XY block's group of Z slices is contiguous in guest RAM.
@@ -462,6 +464,16 @@ static void copy_volume_block_slices(VkCommandBuffer cmd, VkBuffer source,
         for (unsigned first = 0; first < total;) {
             unsigned count = MIN(total - first, ARRAY_SIZE(regions));
             for (unsigned i = 0; i < count; i++, first++) {
+                if (level->depth % 4 == 1 && first == total - 1) {
+                    regions[i] = (VkBufferImageCopy){
+                        .bufferOffset = level->offset +
+                            (VkDeviceSize)(level->depth - 1) * blocks * block_size,
+                        .imageSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, mip, layer, 1 },
+                        .imageOffset = { 0, 0, level->depth - 1 },
+                        .imageExtent = { level->width, level->height, 1 },
+                    };
+                    continue;
+                }
                 unsigned group = (first / blocks) * 4;
                 unsigned block = first % blocks;
                 unsigned x = (block % bw) * 4;
