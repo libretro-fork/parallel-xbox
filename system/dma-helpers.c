@@ -68,12 +68,22 @@ typedef struct {
 static void dma_blk_cb(void *opaque, int ret);
 
 /*
- * The iovec array of the thread's last transfer, kept for its next one, so
- * a transfer allocates nothing (its DMAAIOCB comes from qemu_aio_get's
- * cache). Transfers start and complete on their AddressSpace's owner.
+ * The owner's spare iovec array, returned after unmapping and before the
+ * completion callback, so a callback's successor can reuse it without allocation.
+ * Warm transfers reuse descriptors and qemu_aio_get's request objects.
+ * Transfers start and complete on their AddressSpace's owner.
  */
-static __thread struct iovec *dma_iov_spare;
-static __thread int dma_iov_spare_alloc;
+static struct iovec *dma_iov_spare;
+static int dma_iov_spare_alloc;
+
+void lr_dma_iov_cache_clear(void)
+{
+    if (dma_iov_spare) {
+        g_free(dma_iov_spare);
+    }
+    dma_iov_spare = NULL;
+    dma_iov_spare_alloc = 0;
+}
 
 static void reschedule_dma(void *opaque)
 {
@@ -102,18 +112,23 @@ static void dma_complete(DMAAIOCB *dbs, int ret)
 
     assert(!dbs->acb && !dbs->waiting_for_map);
     dma_blk_unmap(dbs);
-    if (dbs->common.cb) {
-        dbs->common.cb(dbs->common.opaque, ret);
-    }
-    /* as qemu_iovec_destroy, the array kept for the next transfer */
+    /* No mapping or I/O still uses these descriptors. Detach them before
+     * the callback can start another transfer or close the content. */
     if (dbs->iov.nalloc > dma_iov_spare_alloc) {
-        g_free(dma_iov_spare);
+        if (dma_iov_spare) {
+            g_free(dma_iov_spare);
+        }
         dma_iov_spare = dbs->iov.iov;
         dma_iov_spare_alloc = dbs->iov.nalloc;
     } else {
         g_free(dbs->iov.iov);
     }
-    memset(&dbs->iov, 0, sizeof(dbs->iov));
+    /* Unmapping reset niov/size; embedded-vector storage is unused here. */
+    dbs->iov.iov = NULL;
+    dbs->iov.nalloc = 0;
+    if (dbs->common.cb) {
+        dbs->common.cb(dbs->common.opaque, ret);
+    }
     qemu_aio_unref(dbs);
 }
 
@@ -206,6 +221,8 @@ static void dma_aio_cancel(BlockAIOCB *acb)
     if (dbs->waiting_for_map) {
         address_space_unregister_map_client(dbs->sg->as, &dbs->map_client);
         dbs->waiting_for_map = false;
+        dma_complete(dbs, -ECANCELED);
+        return;
     }
     if (dbs->common.cb) {
         dbs->common.cb(dbs->common.opaque, -ECANCELED);
@@ -242,9 +259,14 @@ BlockAIOCB *dma_blk_io(
     dbs->map_client = (AddressSpaceMapClient){0};
     dbs->waiting_for_map = false;
     if (dma_iov_spare) {
-        /* qemu_iovec_add grows it if this transfer needs more */
         dbs->iov.iov = dma_iov_spare;
         dbs->iov.nalloc = dma_iov_spare_alloc;
+        /* A callback may follow a small transfer with a much larger SG list.
+         * Reserve its hint once instead of repeatedly growing the spare. */
+        if (dbs->iov.nalloc < sg->nsg) {
+            dbs->iov.iov = g_renew(struct iovec, dbs->iov.iov, sg->nsg);
+            dbs->iov.nalloc = sg->nsg;
+        }
         dbs->iov.niov = 0;
         dbs->iov.size = 0;
         dma_iov_spare = NULL;

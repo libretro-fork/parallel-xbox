@@ -17,6 +17,7 @@
 #include "system/system.h"
 #include "system/runstate.h"
 #include "system/memory.h"
+#include "system/dma.h"
 #include "libretro/dsp-ownership.h"
 #include "qapi/error.h"
 #include "system/cpus.h"
@@ -2276,6 +2277,7 @@ static bool lr_state(bool save)
 static void lr_stop_machine(void)
 {
     vm_shutdown();
+    lr_dma_iov_cache_clear();
     lr_aiocb_cache_clear();
     ide_buffered_read_cache_clear();
     lr_dsp_ownership_stop();

@@ -298,4 +298,7 @@ BlockAIOCB *dma_blk_write(BlockBackend *blk,
                           QEMUSGList *sg, uint64_t offset, uint32_t align,
                           BlockCompletionFunc *cb, void *opaque);
 
+/* Core owner only; clear spare descriptors after content-close draining. */
+void lr_dma_iov_cache_clear(void);
+
 #endif

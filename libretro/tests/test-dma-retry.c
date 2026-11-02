@@ -96,6 +96,7 @@ typedef struct {BlockAIOCB common;BlockAIOCB *acb;SG *sg;AddressSpaceMapClient m
 static unsigned resumed,cancelled;
 static void dma_blk_cb(void *opaque,int ret){DMAAIOCB*d=opaque;assert(!ret&&!d->waiting_for_map&&!d->map_client.registered);resumed++;}
 static void blk_aio_cancel_async(BlockAIOCB *a){(void)a;abort();}
+static void dma_complete(DMAAIOCB*d,int ret){assert(!d->acb&&!d->waiting_for_map&&!d->map_client.registered);d->common.cb(d->common.opaque,ret);}
 /* DMA CONSUMER */
 static void cancelled_cb(void *opaque,int ret){DMAAIOCB*d=opaque;assert(ret==-ECANCELED&&!d->waiting_for_map&&!d->map_client.registered);cancelled++;}
 static void consumer_cases(void){

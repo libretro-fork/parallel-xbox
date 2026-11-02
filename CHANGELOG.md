@@ -17,6 +17,8 @@
 
 ## Unreleased
 
+- Return DMA descriptor storage before completion callbacks so successor transfers reuse it, reserve larger SG hints in one resize, and clear the owner cache on content close. Remove descriptor-cache TLS and fix the completion-reference leak when cancelling a mapping wait; guest payload mapping and copies are unchanged.
+
 - Extend shader-binding CPU probes to nine queue, handoff, rejection and unchanged-state paths, with a frozen copy baseline for detecting measurement variation before more copy changes. Renderer behavior is unchanged.
 
 - Keep DMA/TRIM request-object reuse on the emulation owner instead of per-thread TLS and QEMU thread-exit notifiers. Preserve cache limits and reference counting; clear cached objects on content close and free late completions until another submission begins reuse.
