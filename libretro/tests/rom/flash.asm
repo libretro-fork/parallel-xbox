@@ -23,7 +23,11 @@
 %ifndef GP_PASSES
 %define GP_PASSES    1              ; gp.a56's passes a frame
 %endif
+%ifdef VP_HRTF
+%define VOICE        0
+%else
 %define VOICE        64
+%endif
 %ifndef HEADROOM
 %define HEADROOM     0
 %endif
@@ -111,6 +115,14 @@ entry:
         pio 0x360, 0x000F000F            ; VOLA: vol0 = vol1 = 0 dB, 6/7 off
         pio 0x364, 0xFFFFFFFF            ; VOLB: vol2, vol3 off
         pio 0x368, 0xFFFFFFFF            ; VOLC: vol4, vol5 off
+%ifdef VP_HRTF
+        ; A spatial mono voice, half-scale tap for each ear and fractional ITD.
+        pio 0x160, 0                     ; current HRTF entry
+        pio 0x400, 0x00007070            ; tap 0: left/right 1/2
+        pio 0x43C, ((3 * 512 + 211) << 16) ; fractional left delay
+        pio 0x31C, 0                     ; voice uses entry 0
+        pio 0x2C0, 0x03020100            ; HRTF routes to bins 0,1,2,3
+%endif
         pio 0x37C, 0                     ; pitch 0: 48 kHz
         pio 0x3A0, 0                     ; buffer base
         pio 0x3A4, 0                     ; loop start
@@ -130,7 +142,11 @@ entry:
         cmp ebx, VOICE + 64
         jb .vp_clone
 %endif
+%ifdef VP_HRTF
+        pio 0x120, (2 << 16)             ; antecedent: 3D list top
+%else
         pio 0x120, (1 << 16)             ; antecedent: 2D list top
+%endif
         pio 0x124, VOICE                 ; VOICE_ON, envelopes off
 %ifdef VP_UNIQUE
         mov ebx, VOICE + 1

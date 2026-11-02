@@ -214,6 +214,10 @@ ${cc} -O2 -std=c11 -Wall -Wextra -Werror -fsanitize=undefined \
     -fsanitize-undefined-trap-on-error -I"$here/../.." \
     -o "$work/bin/svfcheck" "$here/test-svf.c"
 "$work/bin/svfcheck"
+${cc} -O2 -std=c11 -Wall -Wextra -Werror -fsanitize=undefined \
+    -fsanitize-undefined-trap-on-error -I"$here/../.." \
+    -o "$work/bin/hrtfcheck" "$here/test-hrtf.c"
+"$work/bin/hrtfcheck"
 ${cc} -O2 -std=c99 -Wall -I"$here/../.." -o "$work/bin/surfaceclear" "$here/test-surface-clear.c"
 "$work/bin/surfaceclear"
 ${cc} -O2 -std=c99 -Wall -I"$here/../.." -o "$work/bin/vramranges" "$here/test-vram-ranges.c"

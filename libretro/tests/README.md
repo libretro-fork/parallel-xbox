@@ -3352,3 +3352,11 @@ queued PCM verbatim. `AUDIO_QUEUE_CFLAGS`, `AUDIO_QUEUE_BINARY` and
 `AUDIO_QUEUE_SKIP_RUN` support sanitizer and native Windows checks. The margin
 proof covers every engine phase; the frontend pull fixture requires DSP work
 to retire before queue access.
+
+`test-hrtf.c` compares the production HRTF against an independent 128-bit
+ring-indexed oracle for 6,424 frames. It covers all 73 history positions, first
+frame/parameter ramps, fractional delays, clamping, narrow/wide thresholds and
+INT32_MIN/MAX. The regular suite uses UBSan without signed-wrap assumptions;
+`--bench` isolates 200,000 frames per zero-delay, fractional-delay and wide mode.
+`VP_HRTF` builds a native spatial-voice ROM with a half-scale HRIR tap and
+fractional ITD. Isolated timings do not measure game FPS or hardware cache misses.

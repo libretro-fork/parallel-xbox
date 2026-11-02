@@ -1,5 +1,6 @@
 # Changelog of the libretro core
 
+- Detect HRTF sample peaks while loading history and input, removing the separate peak-scan pass. Use unsigned magnitudes so INT32_MIN selects the overflow-safe wide accumulator; convolution, ramps and saved state stay unchanged.
 - Reduce fresh/reset audio preroll from 320 to 64 samples, removing 5.33 ms of queue latency at 48 kHz. DSP work already retires before each frame pull; EP bursts publish future samples. Retain the two-engine-frame phase margin and restore legacy queued PCM unchanged, without inserting silence.
 - Reuse one maximum monitor gain across a VP frame when eligible routes have constant gain, avoiding repeated per-sample ramp calculations for DSP-off audio. Changing routes retain exact interpolation, channel selection and multipass exclusions.
 - Stop malformed VP lists before an out-of-range voice handle can access descriptors or voice state. Validate full list-head register values before narrowing them, preserving valid prefixes and the other voice lists.

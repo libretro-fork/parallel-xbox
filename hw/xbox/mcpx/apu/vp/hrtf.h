@@ -80,21 +80,20 @@ static inline void hrtf_filter_process(HrtfFilter *f,
      * taps), and at a 42-sample delay there is no fraction, so the
      * interpolation's second sample is never before lin[0]. */
     int32_t lin[HRTF_BUFLEN + HRTF_SAMPLES_PER_FRAME];
-    for (int i = 0; i < HRTF_BUFLEN; i++) {
-        lin[i] = f->buf[(f->buf_pos + i) % HRTF_BUFLEN];
-    }
-    for (int n = 0; n < HRTF_SAMPLES_PER_FRAME; n++) {
-        lin[HRTF_BUFLEN + n] = in[n][0];
+    uint32_t peak = 0;
+    for (int i = 0; i < HRTF_BUFLEN + HRTF_SAMPLES_PER_FRAME; i++) {
+        int32_t sample = i < HRTF_BUFLEN ?
+            f->buf[(f->buf_pos + i) % HRTF_BUFLEN] :
+            in[i - HRTF_BUFLEN][0];
+        lin[i] = sample;
+        /* Unsigned magnitude includes INT32_MIN without signed negation. */
+        uint32_t a = sample < 0 ? 0u - (uint32_t)sample : (uint32_t)sample;
+        peak = a > peak ? a : peak;
     }
     /* Below 2^26 (8 times full scale), the usual case, a tap's products
      * and their 31-term sums fit int64 as they are: the frame's two dot
      * products (with the sample and the one before) and their weights
      * give the same integer as the split sum, which louder samples take. */
-    int32_t peak = 0;
-    for (int i = 0; i < HRTF_BUFLEN + HRTF_SAMPLES_PER_FRAME; i++) {
-        int32_t a = lin[i] < 0 ? -lin[i] : lin[i];
-        peak = a > peak ? a : peak;
-    }
     bool narrow = peak < (1 << 26);
     /* the taps n/32 of the way, a step a sample (exact: in 1/65536) */
     int32_t c[2][HRTF_NUM_TAPS], dc[2][HRTF_NUM_TAPS];

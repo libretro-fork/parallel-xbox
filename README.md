@@ -223,3 +223,9 @@ This removes 5.33 ms of queue latency without changing the exact 800/801-sample
 frontend cadence. Existing savestates retain their queued PCM and queue lead;
 loading does not drop samples or add delay padding. Existing completion waits
 remain; this is not a claim that all core paths are nonblocking.
+
+HRTF peak detection shares the history/input loads instead of scanning the
+linear buffer again. Unsigned magnitudes cover INT32_MIN without signed
+negation. A 6,424-frame wide-integer oracle checks every ring position, tap
+and delay ramps, narrow/wide boundaries and full-range samples. Filter storage,
+savestate layout, frame cadence and completion waits are unchanged.
