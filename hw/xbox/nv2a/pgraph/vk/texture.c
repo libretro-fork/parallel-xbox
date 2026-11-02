@@ -295,6 +295,22 @@ static void stage_blocks_3d(PGRAPHState *pg, TextureLevel *level,
     /* Write each destination slice sequentially, keeping the source's
      * grouped layout while avoiding four destination streams per block. */
     unsigned blocks = bw * bh;
+    if (block_size == 8 && blocks >= 4096) {
+        /* Large cached BC1 slices amortize specialization. Keep the block
+         * size decision and source/destination bases outside the copy loop. */
+        for (unsigned z0 = 0; z0 < depth; z0 += 4) {
+            unsigned nz = MIN(depth - z0, 4);
+            size_t stride = (size_t)nz * 8;
+            for (unsigned z = 0; z < nz; z++) {
+                const uint8_t *src = data + ((size_t)z0 * blocks + z) * 8;
+                uint8_t *out = dst + (size_t)(z0 + z) * slice;
+                for (unsigned b = 0; b < blocks; b++) {
+                    memcpy(out + (size_t)b * 8, src + (size_t)b * stride, 8);
+                }
+            }
+        }
+        return;
+    }
     for (unsigned z0 = 0; z0 < depth; z0 += 4) {
         unsigned nz = MIN(depth - z0, 4);
         for (unsigned z = 0; z < nz; z++) {

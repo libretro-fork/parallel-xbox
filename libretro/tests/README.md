@@ -1097,7 +1097,7 @@ For host-cached allocations, the BC staging fallback writes each destination Z
 slice contiguously within four-slice source groups. Uncached allocations retain
 the previous traversal after the probe detected a regression for those types. It changes CPU traversal order only: payload bytes,
 buffer placement, GPU copy commands, barriers and direct eligibility stay the
-same. The 1,944-case CPU oracle includes generic block sizes and partial groups;
+same. The 2,268-case CPU oracle includes generic block sizes and partial groups;
 the 13,824-case GPU oracle checks final image bytes.
 
 Add `--cpu-layout` to the volume benchmark command to compare the current
@@ -1111,6 +1111,22 @@ BC1 CPU sample at 195.8-196.6 us baseline versus 141.7-142.9 us current and the
 8.5 MB BC3 sample at 307-324 us versus 281-290 us. GPU times remained within measurement noise with identical
 GPU work. Smaller samples were generally flat or improved. These are isolated
 CPU preparation/recording medians, not full-game FPS or universal device claims.
+
+For cached BC1 slices with at least 4,096 blocks, a fixed eight-byte copy loop
+sets up slice bases and stride once, leaving the block-size decision outside the
+inner loop. Smaller slices, BC3/generic blocks and uncached allocations retain
+their existing traversal. GPU payload, buffer placement and upload commands do
+not change.
+
+`test-vulkan-volume-benchmark.py CHECKOUT CC --cpu-loop` compares this increment
+against `bc-volume-staging-sequential-reference.h`, frozen at 3cd33fb. Its eighteen
+workloads include 256x256 BC1/BC3 volumes at depths 4/16/32/129. It reports CPU
+staging alone in addition to preparation/recording and GPU timestamps, separating
+copy-loop changes from host driver-recording noise. Two cached RTX 5090 runs show
+about 3-7 percent lower staging-only medians for the four targeted BC1 workloads;
+GPU timings remain within noise with identical command work. Other timed paths
+keep the previous loop. These are paired synthetic results, not full-game FPS
+or a claim covering every CPU, device or workload.
 
 `python libretro/tests/test-vulkan-linear-span.py CHECKOUT [CC]` validates
 production linear staging and copy-region functions with 432 Vulkan transfers.

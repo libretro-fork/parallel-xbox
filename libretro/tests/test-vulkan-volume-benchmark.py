@@ -71,13 +71,14 @@ bench="""
         assert(queues[family].timestampValidBits);
         VkQueryPoolCreateInfo qci={.sType=VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO,.queryType=VK_QUERY_TYPE_TIMESTAMP,.queryCount=2};
         VkQueryPool query;CHECK(vkCreateQueryPool(device,&qci,NULL,&query));
-        double cpu[2][64],gpu_time[2][64];unsigned direct_regions=0;bool direct_used=false;
+        double cpu[2][64],cpu_stage[2][64],gpu_time[2][64];unsigned direct_regions=0;bool direct_used=false;
         for(unsigned rep=0;rep<72;rep++)for(unsigned order=0;order<2;order++){
             unsigned variant=(rep+order)%2;
             CHECK(vkResetCommandBuffer(cmd,0));CHECK(vkResetFences(device,1,&fence));
             renderer.vram_buffer=variant?upload.handle:VK_NULL_HANDLE;state.pgraph.head=0;
             double start=now_us();
             TextureLevel measured={0};measured_stage_blocks_3d(&state.pgraph,&measured,upload.mapped+offset,w,h,depth,bs);
+            double staging_time=now_us()-start;
             CHECK(vkBeginCommandBuffer(cmd,&bi));vkCmdResetQueryPool(cmd,query,0,2);
             ib.oldLayout=VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;ib.newLayout=VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
             ib.srcAccessMask=VK_ACCESS_TRANSFER_READ_BIT;ib.dstAccessMask=VK_ACCESS_TRANSFER_WRITE_BIT;
@@ -103,16 +104,18 @@ bench="""
             uint64_t stamps[2];CHECK(vkGetQueryPoolResults(device,query,0,2,sizeof(stamps),stamps,sizeof(uint64_t),VK_QUERY_RESULT_64_BIT));
             uint64_t ticks=stamps[1]-stamps[0];
             if(queues[family].timestampValidBits<64)ticks&=(1ull<<queues[family].timestampValidBits)-1;
-            if(rep>=8){cpu[variant][rep-8]=prepared;gpu_time[variant][rep-8]=ticks*properties.limits.timestampPeriod/1000;}
+            if(rep>=8){cpu_stage[variant][rep-8]=staging_time;cpu[variant][rep-8]=prepared;gpu_time[variant][rep-8]=ticks*properties.limits.timestampPeriod/1000;}
         }
         printf("BENCH BC%u %ux%ux%u bytes=%zu route=%s regions=%u CPU-stage/direct-us=%.3f/%.3f GPU-stage/direct-us=%.3f/%.3f exact-bytes\\n",f?3:1,w,h,depth,bytes,direct_used?"direct":"fallback-control",direct_regions,median64(cpu[0]),median64(cpu[1]),median64(gpu_time[0]),median64(gpu_time[1]));
+        printf("STAGING-ONLY BC%u %ux%ux%u baseline/current-us=%.3f/%.3f\\n",f?3:1,w,h,depth,median64(cpu_stage[0]),median64(cpu_stage[1]));
         vkDestroyQueryPool(device,query,NULL);
 """
 needle='        vkDestroyFence(device, fence, NULL);'
 assert needle in code
 code=code.replace(needle,bench+needle)
-if '--cpu-layout' in sys.argv[3:]:
-    baseline=(repo/'libretro/tests/bc-volume-staging-reference.h').read_text()
+if '--cpu-layout' in sys.argv[3:] or '--cpu-loop' in sys.argv[3:]:
+    reference='bc-volume-staging-sequential-reference.h' if '--cpu-loop' in sys.argv[3:] else 'bc-volume-staging-reference.h'
+    baseline=(repo/'libretro/tests'/reference).read_text()
     position=code.index('static unsigned selected_host_flags;')
     code=code[:position]+baseline+'\n'+code[position:]
     code=code.replace('renderer.vram_buffer=variant?upload.handle:VK_NULL_HANDLE;', 'renderer.vram_buffer=VK_NULL_HANDLE;')
@@ -122,6 +125,9 @@ if '--cpu-layout' in sys.argv[3:]:
     code=code.replace('fallback-control','staged')
     code=code.replace('    assert(saved_regions>0);','    puts("Setup-oracle counters below are outside timed CPU-layout paths.");\n    assert(saved_regions>0);')
     code=code.replace('EXPERIMENTAL ROUTES; conservative renderer defaults unchanged.', 'CPU LAYOUT COMPARISON; both timed paths use identical staged GPU uploads.')
+if '--cpu-loop' in sys.argv[3:]:
+    code=code.replace('(w==256&&h==256&&depth==129)', '(w==256&&h==256&&(depth==4||depth==16||depth==32||depth==129))')
+    code=code.replace('depths[] = {1,2,4,5,9,17,65,129}', 'depths[] = {1,2,4,5,9,16,17,32,65,129}')
 if '--uncached-memory' in sys.argv[3:]:
     code=code.replace('((flags&VK_MEMORY_PROPERTY_HOST_CACHED_BIT)?8:0)', '((flags&VK_MEMORY_PROPERTY_HOST_CACHED_BIT)?0:8)')
 env=os.environ.copy();env['PATH']=str(Path(cc).resolve().parent)+os.pathsep+env.get('PATH','')

@@ -134,10 +134,10 @@ static void benchmark(void) {
 }
 int main(int argc,char **argv) {
     if(argc>1&&!strcmp(argv[1],"--bench")){benchmark();return 0;}
-    unsigned widths[]={1,4,8,12,64,256},heights[]={1,4,8,9,20,64},depths[]={1,2,4,5,8,16},cases=0;
-    for(unsigned f=0;f<3;f++)for(unsigned w=0;w<6;w++)for(unsigned h=0;h<6;h++)for(unsigned d=0;d<6;d++)for(unsigned kind=0;kind<3;kind++) {
+    unsigned widths[]={1,4,8,12,64,256},heights[]={1,4,8,9,20,64,256},depths[]={1,2,4,5,8,16},cases=0;
+    for(unsigned f=0;f<3;f++)for(unsigned w=0;w<6;w++)for(unsigned h=0;h<7;h++)for(unsigned d=0;d<6;d++)for(unsigned kind=0;kind<3;kind++) {
         check(widths[w],heights[h],depths[d],f==0?8:f==1?16:24,kind);cases++;
     }
-    puts("1944 coordinate-oracle cases: direct VRAM, reordered/fallback staging, partial Z groups, odd dimensions, guards and metadata PASS");
-    assert(cases==1944);return 0;
+    puts("2268 coordinate-oracle cases: direct VRAM, reordered/fallback staging, partial Z groups, odd dimensions, guards and metadata PASS");
+    assert(cases==2268);return 0;
 }
