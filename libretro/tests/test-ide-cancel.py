@@ -18,7 +18,8 @@ def function(signature):
     return source[start:end]
 
 limit = re.search(r"^#define MAX_BUFFERED_REQS \d+", source, re.M).group()
-production = function("static void ide_buffered_readv_cb(") + "\n" + function("void ide_cancel_dma_sync(")
+cache = source[source.index("/* One completed request per owner"):source.index("static void ide_buffered_readv_cb(")] if "/* One completed request per owner" in source else "static void ide_buffered_read_cache_clear(void) {}\n"
+production = cache + function("static void ide_buffered_readv_cb(") + "\n" + function("void ide_cancel_dma_sync(")
 code = limit + "\n" + Path(__file__).with_suffix(".c").read_text().replace("/* PRODUCTION */", production)
 with tempfile.TemporaryDirectory(prefix="ide-cancel-") as tmp:
     work = Path(tmp)

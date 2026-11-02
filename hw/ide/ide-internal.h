@@ -325,6 +325,7 @@ extern const MemoryRegionPortio ide_portio2_list[];
 typedef struct IDEBufferedRequest {
     QLIST_ENTRY(IDEBufferedRequest) list;
     QEMUIOVector qiov;
+    size_t buffer_capacity;
     QEMUIOVector *original_qiov;
     BlockCompletionFunc *original_cb;
     void *original_opaque;

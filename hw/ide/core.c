@@ -670,9 +670,48 @@ static void ide_rw_error(IDEState *s) {
     ide_bus_set_irq(s->bus);
 }
 
+/* One completed request per owner, retaining its largest scratch buffer.
+ * Live requests keep their buffers until their callbacks return. */
+static struct {
+    IDEBufferedRequest *spare;
+    uint64_t epoch;
+} ide_read_cache;
+
+static void ide_buffered_request_free(IDEBufferedRequest *req)
+{
+    qemu_vfree(qemu_iovec_buf(&req->qiov));
+    g_free(req);
+}
+
+void ide_buffered_read_cache_clear(void)
+{
+    IDEBufferedRequest *req = ide_read_cache.spare;
+
+    ide_read_cache.spare = NULL;
+    ide_read_cache.epoch++;
+    if (req) {
+        ide_buffered_request_free(req);
+    }
+}
+
+static void ide_buffered_request_release(IDEBufferedRequest *req, uint64_t epoch)
+{
+    if (epoch == ide_read_cache.epoch &&
+        (!ide_read_cache.spare ||
+         req->buffer_capacity > ide_read_cache.spare->buffer_capacity)) {
+        IDEBufferedRequest *old = ide_read_cache.spare;
+        ide_read_cache.spare = req;
+        req = old;
+    }
+    if (req) {
+        ide_buffered_request_free(req);
+    }
+}
+
 static void ide_buffered_readv_cb(void *opaque, int ret)
 {
     IDEBufferedRequest *req = opaque;
+    uint64_t epoch = ide_read_cache.epoch;
 
     /* This read is complete. A callback may cancel or submit pending reads. */
     QLIST_REMOVE(req, list);
@@ -685,8 +724,7 @@ static void ide_buffered_readv_cb(void *opaque, int ret)
         }
         req->original_cb(req->original_opaque, ret);
     }
-    qemu_vfree(qemu_iovec_buf(&req->qiov));
-    g_free(req);
+    ide_buffered_request_release(req, epoch);
 }
 
 #define MAX_BUFFERED_REQS 16
@@ -706,12 +744,24 @@ BlockAIOCB *ide_buffered_readv(IDEState *s, int64_t sector_num,
         return blk_abort_aio_request(s->blk, cb, opaque, -EIO);
     }
 
-    req = g_new0(IDEBufferedRequest, 1);
+    req = ide_read_cache.spare;
+    ide_read_cache.spare = NULL;
+    void *buffer = NULL;
+    if (!req) {
+        req = g_new0(IDEBufferedRequest, 1);
+    } else {
+        buffer = qemu_iovec_buf(&req->qiov);
+    }
+    if (!buffer || req->buffer_capacity < iov->size) {
+        qemu_vfree(buffer);
+        buffer = blk_blockalign(s->blk, iov->size);
+        req->buffer_capacity = iov->size;
+    }
+    req->orphaned = false;
     req->original_qiov = iov;
     req->original_cb = cb;
     req->original_opaque = opaque;
-    qemu_iovec_init_buf(&req->qiov, blk_blockalign(s->blk, iov->size),
-                        iov->size);
+    qemu_iovec_init_buf(&req->qiov, buffer, iov->size);
 
     aioreq = blk_aio_preadv(s->blk, sector_num << BDRV_SECTOR_BITS,
                             &req->qiov, 0, ide_buffered_readv_cb, req);

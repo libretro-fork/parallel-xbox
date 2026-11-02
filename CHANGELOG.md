@@ -9,6 +9,8 @@
 
 ## Unreleased
 
+- Reuse one completed IDE buffered-read request and its largest aligned scratch buffer on the emulation owner. Preserve error/cancellation copy suppression and callback lifetime; release the cache on content close, including close from a completing callback. Warm reads avoid repeated heap allocations without changing payload copying.
+
 - DSP: compile short-address X/Y MOVEC control-register loads and stores, including stack-pop reads of SSH, scaling changes and repeated loop-count writes. Add 178,176 regression boundaries and a production-block fixture.
 - Remove per-transfer AioContext storage and repeated context queries from IDE/ATAPI DMA. Check AddressSpace ownership with libretro-common at submission; fixed disk completions and the shared retry notifier continue on that owner. Preserve mapped transfers, overlap ordering and deferred completion.
 - Hash each speculative shader-module key once and reuse the value for both the worker memo and completion record. Preserve cache checks, immutable module ownership, queue drops and state markers while removing duplicate CPU hashing.

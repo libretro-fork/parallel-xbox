@@ -30,6 +30,7 @@
 #include "system/blockdev.h"
 #include "system/block-backend.h"
 #include "block/libretro-disk.h"
+#include "hw/ide/ide-dev.h"
 #include "block/libretro-file.h"
 #include "block/qcow2-raw.h"
 #include <glib/gstdio.h>
@@ -2275,6 +2276,7 @@ static bool lr_state(bool save)
 static void lr_stop_machine(void)
 {
     vm_shutdown();
+    ide_buffered_read_cache_clear();
     lr_dsp_ownership_stop();
     if (opt_hdd_trim && !xemu_chihiro_mode()) {
         hdd_trim();

@@ -18,6 +18,7 @@ typedef struct QEMUIOVector {
 typedef struct IDEBufferedRequest {
     QLIST_ENTRY(IDEBufferedRequest) list;
     QEMUIOVector qiov;
+    size_t buffer_capacity;
     QEMUIOVector *original_qiov;
     BlockCompletionFunc *original_cb;
     void *original_opaque;
@@ -176,6 +177,7 @@ int main(int argc, char **argv)
     unsigned expected_copies = submitted ? original_count + 1 :
                                completed ? (failed ? 0 : 1) : (extra ? 1 : 0);
     assert(copies == expected_copies);
+    ide_buffered_read_cache_clear();
     assert(frees == 2 * (original_count + (extra ? 1 : 0)));
     assert(drains == (drain ? 1u : 0u));
     if (extra) {

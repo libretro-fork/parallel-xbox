@@ -190,4 +190,7 @@ void ide_dev_initfn(IDEDevice *dev, IDEDriveKind kind, Error **errp);
 
 void ide_drive_get(DriveInfo **hd, int max_bus);
 
+/* Owner-thread scratch cache; clear after content-close disk draining. */
+void ide_buffered_read_cache_clear(void);
+
 #endif
