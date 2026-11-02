@@ -4,6 +4,8 @@
 
 ## Unreleased
 
+- Bound Vulkan depth-to-texture output reuse to packed shader words and the final texture-copy payload; scope D16 transfer visibility to its copied input. Preserve aligned shader-input dependencies, GPU copies and completion behavior.
+
 - Include the final shader-read stencil word in Vulkan depth-to-texture input capacity and bound pack-input visibility/reuse barriers to that aligned plane range. Preserve native/scaled extent selection and GPU-only conversion.
 
 - Limit native color-to-linear-texture transfer-buffer barriers to the packed pixel payload. Preserve the GPU-only reinterpretation, native downscale scratch ordering, snapshot copy and buffer reuse dependencies.

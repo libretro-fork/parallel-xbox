@@ -8,6 +8,7 @@
 #define MAX(a,b) ((a) > (b) ? (a) : (b))
 #define ROUND_UP(n,a) (((n) + (a) - 1) & ~((a) - 1))
 #define BUFFER_COMPUTE_DST 0
+#define BUFFER_COMPUTE_SRC 1
 #define NV2A_PROF_SURF_TO_TEX 0
 #define RGBA_GREEN 0
 #define nv2a_profile_inc_counter(c) ((void)(c))
@@ -22,7 +23,7 @@ typedef struct {
 } SurfaceBinding;
 typedef struct { struct { TextureShape state; } key; } TextureBinding;
 typedef struct { VkDeviceSize buffer_size; VkBuffer buffer; } StorageBuffer;
-typedef struct { StorageBuffer storage_buffers[1]; VkPhysicalDeviceProperties device_props; } PGRAPHVkState;
+typedef struct { StorageBuffer storage_buffers[2]; VkPhysicalDeviceProperties device_props; } PGRAPHVkState;
 typedef struct { PGRAPHVkState *vk_renderer_state; unsigned surface_scale_factor; } PGRAPHState;
 static bool scratch_available, ensured, recording, grown;
 static VkDeviceSize requested;

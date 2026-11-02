@@ -16,13 +16,25 @@ start = source.index("static void copy_zeta_surface_to_texture(")
 end = source.index("    pgraph_vk_transition_image_layout(", start)
 prefix = source[start:end]
 input_barriers=[]
-for name in ('pre_pack_src_barrier','post_pack_src_barrier'):
-    a=source.index('        VkBufferMemoryBarrier '+name, start)
-    b=source.index('        vkCmdPipelineBarrier', a)
+for name in ('pre_pack_src_barrier','post_pack_src_barrier','pre_pack_dst_barrier','post_pack_dst_barrier','barrier','post_copy_barrier'):
+    a=source.index('VkBufferMemoryBarrier '+name+' =', start)
+    b=source.index('};', a)+2
     input_barriers.append(source[a:b])
 tail = """
     assert(copied_image_size <= input_size && input_size <= requested);
+    size_t packed_image_size=(size_t)cw*ch*4;
+    VkBuffer texture_source_buffer=r->storage_buffers[use_compute_to_convert_depth_stencil?BUFFER_COMPUTE_SRC:BUFFER_COMPUTE_DST].buffer;
     /* INPUT BARRIERS */
+    assert(!pre_pack_dst_barrier.offset&&!post_pack_dst_barrier.offset);
+    assert(pre_pack_dst_barrier.size==packed_image_size&&post_pack_dst_barrier.size==packed_image_size);
+    assert(pre_pack_dst_barrier.srcAccessMask==VK_ACCESS_TRANSFER_READ_BIT&&pre_pack_dst_barrier.dstAccessMask==VK_ACCESS_SHADER_WRITE_BIT);
+    assert(post_pack_dst_barrier.srcAccessMask==VK_ACCESS_SHADER_WRITE_BIT&&post_pack_dst_barrier.dstAccessMask==VK_ACCESS_TRANSFER_READ_BIT);
+    assert(!barrier.offset&&barrier.size==copied_image_size);
+    assert(barrier.srcAccessMask==VK_ACCESS_TRANSFER_WRITE_BIT&&barrier.dstAccessMask==VK_ACCESS_TRANSFER_READ_BIT);
+    assert(!post_copy_barrier.offset&&post_copy_barrier.size==(VkDeviceSize)cw*ch*vk_format_texel_size(vkf.vk_format));
+    assert(post_copy_barrier.size<=requested);
+    assert(!use_compute_to_convert_depth_stencil||pre_pack_dst_barrier.size<=requested);
+    assert(post_copy_barrier.buffer==texture_source_buffer&&post_copy_barrier.srcAccessMask==VK_ACCESS_TRANSFER_READ_BIT&&post_copy_barrier.dstAccessMask==VK_ACCESS_TRANSFER_WRITE_BIT);
     assert(!pre_pack_src_barrier.offset&&!post_pack_src_barrier.offset);
     assert(pre_pack_src_barrier.size==input_size&&post_pack_src_barrier.size==input_size);
     assert(pre_pack_src_barrier.buffer==dst_storage_buffer->buffer&&post_pack_src_barrier.buffer==dst_storage_buffer->buffer);
