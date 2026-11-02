@@ -112,11 +112,17 @@ int main(void){
   q.slot_fence_pending[0]=mask&1;q.slot_fence_pending[1]=mask&2;
   status[newer]=completed==2?VK_SUCCESS:VK_NOT_READY;status[newer^1]=completed>=1?VK_SUCCESS:VK_NOT_READY;
   bool model_pending[2]={q.slot_fence_pending[0],q.slot_fence_pending[1]};uint32_t model_settled=q.settled_submit;unsigned expected_polls=0,expected_retired=0;
-  for(unsigned slot=0;slot<2;slot++)if(model_pending[slot]){
-   bool proven=(int32_t)(q.slot_submit[slot]-model_settled)<=0;
-   if(!proven)expected_polls++;
-   if(proven||status[slot]==VK_SUCCESS){model_pending[slot]=false;expected_retired++;if((int32_t)(q.slot_submit[slot]-model_settled)>0)model_settled=q.slot_submit[slot];}
+  /* Queue completion model, independent of physical slot ordering. */
+  for(unsigned rank=0;rank<2;rank++){
+   unsigned slot=rank?newer^1:newer;
+   if(!model_pending[slot])continue;
+   if((int32_t)(q.slot_submit[slot]-model_settled)>0){
+    expected_polls++;
+    if(status[slot]==VK_SUCCESS)model_settled=q.slot_submit[slot];
+   }
   }
+  for(unsigned slot=0;slot<2;slot++)if(model_pending[slot]&&
+      (int32_t)(q.slot_submit[slot]-model_settled)<=0){model_pending[slot]=false;expected_retired++;}
   polls=waits=retirements=resolves=drops=teardowns=0;drain_expected=true;
   pgraph_vk_settle_poll(&p);
   assert(polls==expected_polls&&!waits&&retirements==expected_retired&&resolves==expected_retired&&drops==2*expected_retired);
