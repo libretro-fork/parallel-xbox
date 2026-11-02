@@ -21,6 +21,8 @@
 
 ## Unreleased
 
+- DSP: compile NORM normalization natively, preserving flag-controlled shifts, sticky L and 16-bit Rn wrapping. REP publishes each iteration's flags before the next decision. Add 101,376 regression boundaries, an independent oracle and a production program.
+
 - DSP: compile immediate MPYI multiplies natively, including signed/negated products and scaling-sensitive flags. Add 55,296 regression boundaries, an independent arithmetic/status oracle and a program that rewrites a cached multiply extension.
 
 - DSP: compile program-memory/peripheral MOVEP transfers, preserving extra cycles, peripheral side effects and code invalidation during REP. Add 176,792 regression boundaries and two production programs, including a self-replacing two-word repeat body.
