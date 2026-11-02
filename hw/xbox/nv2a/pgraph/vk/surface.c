@@ -1735,12 +1735,15 @@ void pgraph_vk_upload_surface_data(NV2AState *d, SurfaceBinding *surface,
         return;
     }
 
-    /* A complete color clear replaces the RAM data this upload would read.
+    /* A complete attachment clear replaces the RAM data this upload would read.
      * Record the clear in order with the draws, without an aux upload that
-     * may first drain them. Other surfaces/aspects and partial clears retain
+     * may first drain them. Partial aspects and rectangles retain
      * the normal upload path. */
-    if (!force && pg->clearing && surface->color &&
-        surface == r->color_binding &&
+    if (!force && pg->clearing &&
+        surface == (surface->color ? r->color_binding : r->zeta_binding) &&
+        (!r->color_binding ||
+         (r->color_binding->width == surface->width &&
+          r->color_binding->height == surface->height)) &&
         surface->width == pg->surface_binding_dim.width &&
         surface->height == pg->surface_binding_dim.height &&
         !pg->surface_shape.clip_x && !pg->surface_shape.clip_y &&
@@ -1748,12 +1751,17 @@ void pgraph_vk_upload_surface_data(NV2AState *d, SurfaceBinding *surface,
             NV097_SET_SURFACE_FORMAT_ANTI_ALIASING_CENTER_1) {
         uint32_t x = pgraph_reg_r(pg, NV_PGRAPH_CLEARRECTX);
         uint32_t y = pgraph_reg_r(pg, NV_PGRAPH_CLEARRECTY);
-        if (pgraph_full_color_clear(r->clear_parameter,
-                GET_MASK(x, NV_PGRAPH_CLEARRECTX_XMIN),
-                GET_MASK(x, NV_PGRAPH_CLEARRECTX_XMAX),
-                GET_MASK(y, NV_PGRAPH_CLEARRECTY_YMIN),
-                GET_MASK(y, NV_PGRAPH_CLEARRECTY_YMAX),
-                surface->width, surface->height)) {
+        unsigned xmin = GET_MASK(x, NV_PGRAPH_CLEARRECTX_XMIN);
+        unsigned xmax = GET_MASK(x, NV_PGRAPH_CLEARRECTX_XMAX);
+        unsigned ymin = GET_MASK(y, NV_PGRAPH_CLEARRECTY_YMIN);
+        unsigned ymax = GET_MASK(y, NV_PGRAPH_CLEARRECTY_YMAX);
+        bool full = surface->color ?
+            pgraph_full_color_clear(r->clear_parameter, xmin, xmax, ymin, ymax,
+                                    surface->width, surface->height) :
+            pgraph_full_zeta_clear(r->clear_parameter,
+                surface->host_fmt.aspect & VK_IMAGE_ASPECT_STENCIL_BIT,
+                xmin, xmax, ymin, ymax, surface->width, surface->height);
+        if (full) {
             surface->upload_pending = false;
             surface->initialized = true;
             surface->draw_time = pg->draw_time;

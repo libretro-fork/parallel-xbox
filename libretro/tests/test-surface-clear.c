@@ -38,6 +38,31 @@ int main(void)
         assert(discard == all_overwritten);
         accepted += discard;
     }
+    unsigned zeta_accepted = 0;
+    for (unsigned n = 0; n < 200000; n++) {
+        unsigned w = next() % 9, h = next() % 9;
+        unsigned x0 = next() % 4, x1 = x0 + next() % 12;
+        unsigned y0 = next() % 4, y1 = y0 + next() % 12;
+        bool stencil = next() & 1;
+        uint32_t mask = next() % 256;
+        bool overwritten = w && h;
+        for (unsigned y = 0; y < h; y++)
+        for (unsigned x = 0; x < w; x++)
+        for (unsigned aspect = 0; aspect < (stencil ? 2u : 1u); aspect++) {
+            unsigned flag = aspect ? NV097_CLEAR_SURFACE_STENCIL : NV097_CLEAR_SURFACE_Z;
+            if (!(x >= x0 && x <= x1 && y >= y0 && y <= y1 && (mask & flag)))
+                overwritten = false;
+        }
+        bool discard = pgraph_full_zeta_clear(mask, stencil, x0, x1, y0, y1, w, h);
+        assert(discard == overwritten);
+        zeta_accepted += discard;
+    }
+    assert(pgraph_full_zeta_clear(NV097_CLEAR_SURFACE_Z, false, 0, 639, 0, 479, 640, 480));
+    assert(!pgraph_full_zeta_clear(NV097_CLEAR_SURFACE_Z, true, 0, 639, 0, 479, 640, 480));
+    assert(!pgraph_full_zeta_clear(NV097_CLEAR_SURFACE_STENCIL, true, 0, 639, 0, 479, 640, 480));
+    assert(pgraph_full_zeta_clear(NV097_CLEAR_SURFACE_Z | NV097_CLEAR_SURFACE_STENCIL,
+                                  true, 0, 639, 0, 479, 640, 480));
+    printf("depth/stencil clear upload gate: 200000 pixel/aspect oracle cases passed (%u complete)\n", zeta_accepted);
     /* Guard against inclusive-bound off-by-one and invalid zero dimensions. */
     assert(pgraph_full_color_clear(NV097_CLEAR_SURFACE_COLOR, 0, 639, 0, 479, 640, 480));
     assert(!pgraph_full_color_clear(NV097_CLEAR_SURFACE_COLOR, 0, 638, 0, 479, 640, 480));

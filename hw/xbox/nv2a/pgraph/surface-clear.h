@@ -18,4 +18,18 @@ static inline bool pgraph_full_color_clear(uint32_t parameter,
            (parameter & NV097_CLEAR_SURFACE_COLOR) == NV097_CLEAR_SURFACE_COLOR;
 }
 
+/* Depth-only formats need Z; packed depth/stencil formats need both aspects.
+ * A depth-only clear must preserve the packed stencil contents. */
+static inline bool pgraph_full_zeta_clear(uint32_t parameter, bool stencil,
+                                          unsigned xmin, unsigned xmax,
+                                          unsigned ymin, unsigned ymax,
+                                          unsigned width, unsigned height)
+{
+    uint32_t required = NV097_CLEAR_SURFACE_Z |
+        (stencil ? NV097_CLEAR_SURFACE_STENCIL : 0);
+    return width && height && xmin == 0 && ymin == 0 &&
+           xmax >= width - 1 && ymax >= height - 1 &&
+           (parameter & required) == required;
+}
+
 #endif

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Skip Vulkan depth/stencil uploads immediately replaced by a complete attachment clear, avoiding RAM conversion, transfer work and upload-ordering submissions. Depth-only formats require a full Z clear; packed depth/stencil formats require both aspects. Partial clears, forced uploads, clipping and antialiasing retain the upload path.
+
 - Poll the newest pending Vulkan draw submission first when checking completion. Its signaled fence proves earlier same-queue work complete, avoiding redundant driver queries while retaining partial retirement and recording-safe cleanup.
 
 - Under Vulkan upload-ring pressure, wait directly for the first submission owning the full ring and retire covered earlier work in FIFO order. Avoid separate fence queries/waits for unrelated ring users and skip futile waits when only the open recording owns ring space.
