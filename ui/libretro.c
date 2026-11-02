@@ -2276,6 +2276,7 @@ static bool lr_state(bool save)
 static void lr_stop_machine(void)
 {
     vm_shutdown();
+    lr_aiocb_cache_clear();
     ide_buffered_read_cache_clear();
     lr_dsp_ownership_stop();
     if (opt_hdd_trim && !xemu_chihiro_mode()) {

@@ -39,10 +39,13 @@ struct BlockAIOCB {
     int refcnt;
 };
 
+/* Core DMA/TRIM objects and their refcounts belong to the emulation owner. */
 void *qemu_aio_get(const AIOCBInfo *aiocb_info, BlockDriverState *bs,
                    BlockCompletionFunc *cb, void *opaque);
 void qemu_aio_unref(void *p);
 void qemu_aio_ref(void *p);
+/* Core owner only; call after content-close disk draining. */
+void lr_aiocb_cache_clear(void);
 
 typedef struct AioHandler AioHandler;
 typedef QLIST_RCU_HEAD(, AioHandler) AioHandlerList;

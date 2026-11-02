@@ -24,18 +24,11 @@
 
 #include "qemu/osdep.h"
 #include "block/aio.h"
-#include "qemu/notify.h"
-#include "qemu/thread.h"
 
-/*
- * Freed AIOCBs are kept, a few of each kind, in a cache of the thread that
- * freed them, and handed out again by its next qemu_aio_get of that kind:
- * a DVD or disk read takes three (DMA, block backend, thread pool) and
- * gives them back when it completes, so the reads of a running game
- * allocate nothing. Each thread has its own cache, so it takes no lock and
- * no atomic; an AIOCB freed on another thread than it came from just joins
- * that thread's cache. A thread's cache is freed when it exits.
- */
+/* The libretro core's DMA and TRIM requests belong to the emulation owner.
+ * Retain a bounded pool without TLS or thread-exit notifiers. Content close
+ * clears it after disk draining; late completing requests are freed unless
+ * a subsequent submission has started using the cache again. */
 #define AIOCB_CACHE_KINDS 8
 #define AIOCB_CACHE_DEPTH 8
 
@@ -45,13 +38,12 @@ typedef struct AIOCBCache {
     unsigned n;
 } AIOCBCache;
 
-static __thread AIOCBCache aiocb_cache[AIOCB_CACHE_KINDS];
-static __thread bool aiocb_cache_registered;
-static __thread Notifier aiocb_cache_exit;
+static AIOCBCache aiocb_cache[AIOCB_CACHE_KINDS];
+static bool aiocb_cache_enabled;
 
-static void aiocb_cache_free(Notifier *n, void *unused)
+void lr_aiocb_cache_clear(void)
 {
-    aiocb_cache_registered = false;
+    aiocb_cache_enabled = false;
     for (int i = 0; i < AIOCB_CACHE_KINDS; i++) {
         AIOCBCache *c = &aiocb_cache[i];
 
@@ -79,11 +71,6 @@ static AIOCBCache *aiocb_cache_of(const AIOCBInfo *info, bool make)
             if (!make) {
                 return NULL;
             }
-            if (!aiocb_cache_registered) {
-                aiocb_cache_registered = true;
-                aiocb_cache_exit.notify = aiocb_cache_free;
-                qemu_thread_atexit_add(&aiocb_cache_exit);
-            }
             c->info = info;
             return c;
         }
@@ -96,6 +83,8 @@ void *qemu_aio_get(const AIOCBInfo *aiocb_info, BlockDriverState *bs,
 {
     AIOCBCache *c = aiocb_cache_of(aiocb_info, false);
     BlockAIOCB *acb;
+
+    aiocb_cache_enabled = true;
 
     if (c && c->head) {
         acb = c->head;
@@ -123,7 +112,8 @@ void qemu_aio_unref(void *p)
     BlockAIOCB *acb = p;
     assert(acb->refcnt > 0);
     if (--acb->refcnt == 0) {
-        AIOCBCache *c = aiocb_cache_of(acb->aiocb_info, true);
+        AIOCBCache *c = aiocb_cache_enabled ?
+                         aiocb_cache_of(acb->aiocb_info, true) : NULL;
 
         if (c && c->n < AIOCB_CACHE_DEPTH) {
             acb->opaque = c->head;

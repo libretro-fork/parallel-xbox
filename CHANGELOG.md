@@ -13,6 +13,8 @@
 
 ## Unreleased
 
+- Keep DMA/TRIM request-object reuse on the emulation owner instead of per-thread TLS and QEMU thread-exit notifiers. Preserve cache limits and reference counting; clear cached objects on content close and free late completions until another submission begins reuse.
+
 - Reuse one completed IDE buffered-read request and its largest aligned scratch buffer on the emulation owner. Preserve error/cancellation copy suppression and callback lifetime; release the cache on content close, including close from a completing callback. Warm reads avoid repeated heap allocations without changing payload copying.
 - Reuse the shader-module LRU lookup hash when adopting worker results on a cache miss. Preserve full-key collision checks and module ownership while avoiding a duplicate render-thread hash scan.
 
