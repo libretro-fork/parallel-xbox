@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Bind aligned per-frame storage-buffer windows for direct Vulkan YUY2 overlays. Keep frames in imported RAM even when the complete RAM buffer exceeds the descriptor-range limit; cache each auxiliary slot's descriptor offset/range and retain exact RAM ownership and staging fallback.
+
 - Read padded YUY2 overlay rows directly from imported RAM with a shader row stride. Avoid CPU row packing for word-aligned pitches, claim only through the final active YUY2 pair, and retain staging for unaligned strides and unsupported source ranges.
 
 - Convert tightly packed, aligned YUY2 overlays directly from imported guest RAM on Vulkan, avoiding the CPU staging snapshot and its flush. Keep source ownership until auxiliary completion and retain staging for pitched, misaligned, unavailable or oversized imported buffers.

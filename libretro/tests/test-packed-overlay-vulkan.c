@@ -9,6 +9,7 @@
 #include "hw/xbox/nv2a/pgraph/spv/glslc.h"
 #define VK_CHECK(x) assert((x)==VK_SUCCESS)
 #define CHECK VK_CHECK
+#define MAX(a,b) ((a)>(b)?(a):(b))
 #define DIV_ROUND_UP(x,n) (((x)+(n)-1)/(n))
 #define PGRAPH_VK_AUX_SLOTS 8
 #define BUFFER_STAGING_SRC 0
@@ -62,7 +63,7 @@ typedef struct {
  VkBuffer vram_buffer; StorageBuffer storage_buffers[2];
  unsigned aux_slot; bool in_aux_command_buffer; struct {bool pending;} aux[PGRAPH_VK_AUX_SLOTS];
  struct { struct { VkImage image; VkImageView image_view; bool storage; struct { VkDescriptorPool pool; VkDescriptorSetLayout set_layout;
- VkDescriptorSet sets[PGRAPH_VK_AUX_SLOTS]; VkPipelineLayout layout; VkPipeline pipeline; VkBuffer source[PGRAPH_VK_AUX_SLOTS]; VkImageView output[PGRAPH_VK_AUX_SLOTS];
+ VkDescriptorSet sets[PGRAPH_VK_AUX_SLOTS]; VkPipelineLayout layout; VkPipeline pipeline; VkBuffer source[PGRAPH_VK_AUX_SLOTS]; VkDeviceSize source_offset[PGRAPH_VK_AUX_SLOTS],source_range[PGRAPH_VK_AUX_SLOTS]; VkImageView output[PGRAPH_VK_AUX_SLOTS];
  } convert; } pvideo; } display;
 } PGRAPHVkState;
 typedef struct {PGRAPHVkState *vk_renderer_state; size_t src,dst,written;bool reject_ring;} PGRAPHState;
@@ -153,11 +154,13 @@ int main(void)
   size_t bytes=(size_t)w*h*4;
   bool imported=test>=45;
   size_t span=(size_t)pitch*(h-1)+(w+1)/2*4;
-  size_t offset=test==81?16*1024*1024-span:32+(test%3==1?1:0);
+  size_t offset=test==81?16*1024*1024-span:test==72?1024*1024+32:32+(test%3==1?1:0);
   uint8_t *guest=imported?ram.mapped+offset:malloc((size_t)pitch*h),*expected=malloc(bytes);assert(guest&&expected);
   r.vram_buffer=imported?ram.handle:VK_NULL_HANDLE;
-  ram_size=test==72?(size_t)properties.limits.maxStorageBufferRange+1:16*1024*1024;
-  bool direct=imported&&offset%4==0&&pitch%4==0&&ram_size<=properties.limits.maxStorageBufferRange;
+  ram_size=16*1024*1024;
+  /* A small hardware descriptor limit must still allow a high RAM window. */
+  r.device_props.limits.maxStorageBufferRange=test==72?4096:properties.limits.maxStorageBufferRange;
+  bool direct=imported&&offset%4==0&&pitch%4==0&&span+offset%properties.limits.minStorageBufferOffsetAlignment<=r.device_props.limits.maxStorageBufferRange;
   /* Direct conversion must not depend on staging capacity. */
   r.storage_buffers[0].buffer_size=direct?128:16*1024*1024;
   claims=0;
@@ -180,6 +183,11 @@ int main(void)
   assert(pgraph_vk_pvideo_convert(&pg,cmd,guest,w,h,pitch,false));
   assert(claims==(direct?2u:0u));
   if(direct){assert(!pg.written&&claim_offset==offset&&claim_size==(size_t)pitch*(h-1)+(w+1)/2*4);direct_cases++;avoided+=2*(size_t)((w+1)/2)*h*4;}
+  if(direct){
+   VkDeviceSize align=properties.limits.minStorageBufferOffsetAlignment;
+   assert(r.display.pvideo.convert.source_offset[r.aux_slot]==offset-offset%align);
+   assert(r.display.pvideo.convert.source_range[r.aux_slot]==span+offset%align);
+  }
   assert(dispatch_calls==before_dispatch+2);
   r.device_props.limits.maxComputeWorkGroupCount[0]=properties.limits.maxComputeWorkGroupCount[0];
   assert(pg.written==(direct?0:2*(size_t)((w+1)/2)*h*4));

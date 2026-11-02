@@ -382,6 +382,8 @@ typedef struct PGRAPHVkDisplayState {
             VkPipelineLayout layout;
             VkPipeline pipeline;
             VkBuffer source[PGRAPH_VK_AUX_SLOTS];
+            VkDeviceSize source_offset[PGRAPH_VK_AUX_SLOTS];
+            VkDeviceSize source_range[PGRAPH_VK_AUX_SLOTS];
             VkImageView output[PGRAPH_VK_AUX_SLOTS];
         } convert;
     } pvideo;

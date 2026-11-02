@@ -20,13 +20,14 @@
 #define NV2A_PROF_QUEUE_SUBMIT_AUX 0
 #define VK_CHECK(x) assert((x)==VK_SUCCESS)
 #define g_renew(type,p,n) ((type*)grow(p,(n)*sizeof(type)))
+typedef uint64_t VkDeviceSize;
 typedef unsigned VkFence,VkCommandBuffer,VkPipeline,VkPipelineLayout,VkSampler,VkFramebuffer,VkImageView,VkImage,XemuVkAllocation,VkBuffer,VkImageCreateInfo;
 typedef struct {int sType;unsigned commandBufferCount;const VkCommandBuffer *pCommandBuffers;} VkSubmitInfo;
-typedef struct {VkBuffer buffer;uint64_t range;} VkDescriptorBufferInfo;
+typedef struct {VkBuffer buffer;uint64_t offset,range;} VkDescriptorBufferInfo;
 typedef struct {VkImageView imageView;int imageLayout;} VkDescriptorImageInfo;
 typedef struct {int sType;unsigned dstSet,dstBinding,descriptorCount;int descriptorType;const VkDescriptorBufferInfo *pBufferInfo;const VkDescriptorImageInfo *pImageInfo;} VkWriteDescriptorSet;
 /* TRASH TYPE */
-typedef struct {unsigned sampler,image_view,image,allocation;VkImageCreateInfo image_ci;struct {unsigned sets[8],source[8],output[8];} convert;} Video;
+typedef struct {unsigned sampler,image_view,image,allocation;VkImageCreateInfo image_ci;struct {unsigned sets[8],source[8],output[8];VkDeviceSize source_offset[8],source_range[8];} convert;} Video;
 typedef struct {Video pvideo;uint64_t submitted,settled;} PGRAPHVkDisplayState;
 typedef struct {
  unsigned device,allocator;
@@ -41,6 +42,7 @@ typedef struct {
 typedef struct {PGRAPHVkState *vk_renderer_state;} PGRAPHState;
 static PGRAPHVkState state;
 static uint64_t gpu_aux,gpu_display;
+static uint64_t offsets[8],ranges[8];
 static unsigned descriptors[8],sources[8],bound[8],destroyed[100000],next_image,waits,polls,updates,growths;
 static uint64_t last_aux[100000],last_display[100000];
 static void *grow(void *p,size_t n){growths++;p=realloc(p,n);assert(p);return p;}
@@ -57,6 +59,7 @@ static void vkUpdateDescriptorSets(unsigned device,unsigned count,const VkWriteD
  assert(device==7&&count==2&&!copies&&!unused);unsigned slot=w[0].dstSet-1;
  assert(slot<8&&w[1].dstSet==w[0].dstSet&&!state.aux[slot].pending);
  assert(w[0].dstBinding==0&&w[1].dstBinding==1&&w[0].descriptorCount==1&&w[1].descriptorCount==1);
+ offsets[slot]=w[0].pBufferInfo->offset;ranges[slot]=w[0].pBufferInfo->range;
  sources[slot]=w[0].pBufferInfo->buffer;descriptors[slot]=w[1].pImageInfo->imageView;updates++;
 }
 static void pgraph_vk_poll_display_retired(PGRAPHVkState *r){r->display.settled=gpu_display;}
@@ -81,9 +84,13 @@ static void submit(void){
  while(state.aux[slot].pending)assert(aux_retire_oldest(&state,false));
  state.in_aux_command_buffer=true;
  unsigned source=state.aux_submitted%2?456:state.storage_buffers[0].buffer;
- unsigned prior=updates;pvideo_convert_bind_source(&state,source);
- assert(updates<=prior+1&&descriptors[slot]==state.display.pvideo.image_view&&sources[slot]==source);
- pvideo_convert_bind_source(&state,source);assert(updates<=prior+1); /* identical reuse */
+ unsigned offset=(state.aux_submitted%4)*256,range=1024+(state.aux_submitted%3)*4;
+ unsigned prior=updates;pvideo_convert_bind_source(&state,source,offset,range);
+ assert(updates<=prior+1&&descriptors[slot]==state.display.pvideo.image_view&&sources[slot]==source&&offsets[slot]==offset&&ranges[slot]==range);
+ pvideo_convert_bind_source(&state,source,offset,range);assert(updates<=prior+1); /* identical reuse */
+ unsigned unchanged=updates;
+ pvideo_convert_bind_source(&state,source,offset+256,range);assert(updates==unchanged+1&&offsets[slot]==offset+256);
+ pvideo_convert_bind_source(&state,source,offset+256,range+4);assert(updates==unchanged+2&&ranges[slot]==range+4);
  bound[slot]=descriptors[slot];
  pgraph_vk_end_single_time_commands_async(&pg,slot+1);
 }

@@ -51,16 +51,19 @@ static const char *pvideo_convert_glsl =
     "    }\n"
     "}\n";
 
-static void pvideo_convert_bind_source(PGRAPHVkState *r, VkBuffer source)
+static void pvideo_convert_bind_source(PGRAPHVkState *r, VkBuffer source,
+                                       VkDeviceSize offset, VkDeviceSize range)
 {
     typeof(r->display.pvideo.convert) *c = &r->display.pvideo.convert;
     VkImageView output = r->display.pvideo.image_view;
     unsigned slot = r->aux_slot;
     assert(r->in_aux_command_buffer && !r->aux[slot].pending);
-    if (c->source[slot] != source || c->output[slot] != output) {
+    if (c->source[slot] != source || c->output[slot] != output ||
+        c->source_offset[slot] != offset || c->source_range[slot] != range) {
         /* begin_single_time_commands retired this slot before reuse. Other
          * slots keep their old descriptors while a resize is in flight. */
-        VkDescriptorBufferInfo buffer = { .buffer = source, .range = VK_WHOLE_SIZE };
+        VkDescriptorBufferInfo buffer = { .buffer = source, .offset = offset,
+                                        .range = range };
         VkDescriptorImageInfo image = { .imageView = output,
                                        .imageLayout = VK_IMAGE_LAYOUT_GENERAL };
         VkWriteDescriptorSet writes[2] = {
@@ -73,6 +76,7 @@ static void pvideo_convert_bind_source(PGRAPHVkState *r, VkBuffer source)
         };
         vkUpdateDescriptorSets(r->device, 2, writes, 0, NULL);
         c->source[slot] = source; c->output[slot] = output;
+        c->source_offset[slot] = offset; c->source_range[slot] = range;
     }
 }
 
@@ -154,8 +158,8 @@ bool pgraph_vk_pvideo_convert(PGRAPHState *pg, VkCommandBuffer cmd,
         return false;
     }
     /* Read complete YUY2 pairs using the guest row stride. Imported RAM stays
-     * owned by this aux command until fence retirement. The descriptor covers
-     * the entire buffer; the claim ends at the last pair, not row padding. */
+     * owned by this aux command until fence retirement. An aligned descriptor
+     * window covers only this frame; the claim excludes alignment padding. */
     NV2AState *d = container_of(pg, NV2AState, pgraph);
     VkDeviceSize ram_size = memory_region_size(d->vram);
     uintptr_t base = (uintptr_t)d->vram_ptr;
@@ -163,7 +167,10 @@ bool pgraph_vk_pvideo_convert(PGRAPHState *pg, VkCommandBuffer cmd,
     VkDeviceSize src = address >= base ? address - base : ram_size;
     size_t row_bytes = ((size_t)width + 1) / 2 * 4;
     VkDeviceSize read_size = (VkDeviceSize)(height - 1) * pitch + row_bytes;
-    bool direct = r->vram_buffer != VK_NULL_HANDLE && ram_size <= limit &&
+    VkDeviceSize alignment = MAX(4, r->device_props.limits.minStorageBufferOffsetAlignment);
+    VkDeviceSize window = src - src % alignment;
+    VkDeviceSize range = src - window + read_size;
+    bool direct = r->vram_buffer != VK_NULL_HANDLE && range <= limit &&
         pitch >= row_bytes && !(pitch % 4) && !(src % 4) &&
         src <= ram_size && read_size <= ram_size - src;
     VkBuffer input = direct ? r->vram_buffer :
@@ -180,7 +187,8 @@ bool pgraph_vk_pvideo_convert(PGRAPHState *pg, VkCommandBuffer cmd,
         pvideo_pack_rows(staged, source, width, height, pitch);
         pgraph_vk_staging_flush(pg, src, packed_size);
     }
-    pvideo_convert_bind_source(r, input);
+    pvideo_convert_bind_source(r, input, direct ? window : 0,
+                               direct ? range : VK_WHOLE_SIZE);
 
     VkBufferMemoryBarrier before = {
         .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
@@ -205,7 +213,8 @@ bool pgraph_vk_pvideo_convert(PGRAPHState *pg, VkCommandBuffer cmd,
     vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_HOST_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
         VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, NULL, 1, &before, 1, &image);
     typeof(r->display.pvideo.convert) *c = &r->display.pvideo.convert;
-    uint32_t push[4] = {src / 4, direct ? pitch / 4 : 0, width, height};
+    uint32_t push[4] = {(src - (direct ? window : 0)) / 4,
+                        direct ? pitch / 4 : 0, width, height};
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, c->pipeline);
     vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, c->layout,
                             0, 1, &c->sets[r->aux_slot], 0, NULL);
