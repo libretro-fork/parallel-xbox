@@ -85,13 +85,9 @@ void icount_prepare_for_run(CPUState *cpu, int64_t cpu_budget)
     cpu->icount_extra = cpu->icount_budget - insns_left;
 
     if (cpu->icount_budget == 0) {
-        /*
-         * We're called without the BQL, so must take it while
-         * we're calling timer handlers.
-         */
-        bql_lock();
+        /* The frame owner retains device ownership while running the CPU. */
+        g_assert(bql_locked());
         icount_notify_aio_contexts();
-        bql_unlock();
     }
 }
 

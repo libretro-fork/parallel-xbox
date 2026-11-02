@@ -104,7 +104,9 @@ int lr_vcpu_run_slice(CPUState *cpu, int64_t ns)
         return EXCP_HALTED;
     }
 
-    bql_unlock();
+    /* CPU and devices share the libretro frame owner. Keep its ownership
+     * across guest execution instead of transferring it at every MMIO. */
+    g_assert(bql_locked());
     SET_current_cpu(cpu);
     if (icount_enabled()) {
         /* at most the instructions that take it to ns from now: the
@@ -116,7 +118,7 @@ int lr_vcpu_run_slice(CPUState *cpu, int64_t ns)
         icount_process_data(cpu);
     }
     SET_current_cpu(NULL);
-    bql_lock();
+    g_assert(bql_locked());
 
     if (r == EXCP_DEBUG) {
         cpu_handle_guest_debug(cpu);

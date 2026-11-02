@@ -2022,9 +2022,8 @@ static bool voice_work_schedule(MCPXAPUState *d)
     uint32_t dirty = 0;
     uint64_t seen[(MCPX_HW_MAX_VOICES + 63) / 64] = { 0 };
 
-    struct {
-        uint32_t src, dst, clr;
-    } masks[MCPX_HW_MAX_VOICES];
+    int mp_writer = -1;
+    vwd->num_units = 0;
 
     /* Preserve the parallel DirectSound layout. Other layouts need list
      * order and shared mix bins, including multipass reads without clears. */
@@ -2037,27 +2036,18 @@ static bool voice_work_schedule(MCPXAPUState *d)
             return false;
         }
         seen[voice >> 6] |= UINT64_C(1) << (voice & 63);
-        get_voice_bin_src_dst(d, voice,
-                             &masks[i].src, &masks[i].dst, &masks[i].clr);
-        uint32_t src = masks[i].src, dst = masks[i].dst, clr = masks[i].clr;
+        uint32_t src, dst, clr;
+        get_voice_bin_src_dst(d, voice, &src, &dst, &clr);
         if ((src && (src != MULTIPASS_BIN_MASK || clr != MULTIPASS_BIN_MASK)) ||
             (!src && !(dst & MULTIPASS_BIN_MASK) &&
              (dirty & MULTIPASS_BIN_MASK))) {
             return false;
         }
-        dirty = (dirty & ~clr) | dst;
-    }
-    dirty = 0;
-
-    /* A voice that reads or writes the multipass bin while it holds a mix
-     * goes in the unit that last wrote it, which has that mix in its
-     * buffer: the open group, or the voice before (a multipass voice that
-     * mixes back into the bin it read, for the next to read). Any other
-     * unit would read or add to an empty bin: the frame runs serially. */
-    int mp_writer = -1;
-    vwd->num_units = 0;
-    for (int i = 0; i < vwd->queue_len; i++) {
-        uint32_t src = masks[i].src, dst = masks[i].dst, clr = masks[i].clr;
+        /* Resolve the unit against the same pre-voice bin history used by
+         * validation. No routing-mask array or second queue scan is needed.
+         * Keep readers and writers of a live multipass bin with its last
+         * writer, so they use the same private mix. A rejected partial
+         * schedule is never published to the workers. */
         bool open = group;
 
         if (((src | dst) & dirty & MULTIPASS_BIN_MASK)) {
@@ -2240,7 +2230,14 @@ void mcpx_apu_vp_frame(MCPXAPUState *d, int64_t mixbins[NUM_MIXBINS][NUM_SAMPLES
                 break;
             }
 
-            uint16_t v = apu_reg_r(d, current);
+            uint32_t handle = apu_reg_r(d, current);
+            if (handle >= MCPX_HW_MAX_VOICES) {
+                /* Reject before descriptor access or narrowing the MMIO
+                 * value: truncation could turn an invalid head into a voice. */
+                DPRINTF("Voice list contains invalid handle!\n");
+                break;
+            }
+            uint16_t v = handle;
             apu_reg_w(d, next, voice_get_mask(d, v, NV_PAVS_VOICE_TAR_PITCH_LINK,
                                NV_PAVS_VOICE_TAR_PITCH_LINK_NEXT_VOICE_HANDLE));
             if (!voice_get_mask(d, v, NV_PAVS_VOICE_PAR_STATE,

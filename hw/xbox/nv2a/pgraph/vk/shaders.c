@@ -37,7 +37,8 @@ static int vk_state_module_keys(const ShaderState *st, bool push_constants,
                                 ShaderModuleCacheKey *keys);
 static MString *vk_module_glsl(const ShaderModuleCacheKey *key);
 static ShaderSource *vk_module_spirv(const ShaderModuleCacheKey *key);
-static ShaderSource *vk_spec_take_ready(const ShaderModuleCacheKey *key);
+static ShaderSource *vk_spec_take_ready(const ShaderModuleCacheKey *key,
+                                         uint64_t h);
 
 const size_t MAX_UNIFORM_ATTR_VALUES_SIZE = NV2A_VERTEXSHADER_ATTRIBUTES * 4 * sizeof(float);
 
@@ -427,7 +428,8 @@ static void shader_module_cache_entry_init(Lru *lru, LruNode *node,
     memcpy(&module->key, key, sizeof(ShaderModuleCacheKey));
 
     /* the worker's SPIR-V when it made this module, else compiled here */
-    ShaderSource *spv = vk_spec_take_ready(&module->key);
+    /* lru_lookup assigns node->hash before invoking this initializer. */
+    ShaderSource *spv = vk_spec_take_ready(&module->key, node->hash);
     if (!spv) {
         spv = vk_module_spirv(&module->key);
     }
@@ -981,10 +983,11 @@ static ShaderSource * __attribute__((noinline)) vk_spec_ready_take_at(unsigned i
 }
 
 /* The worker's SPIR-V for a module key, taken out of the ready table,
- * or NULL: the caller then compiles it itself */
-static ShaderSource *vk_spec_take_ready(const ShaderModuleCacheKey *key)
+ * or NULL: the caller then compiles it itself. The digest is reused from
+ * the module-cache lookup. */
+static ShaderSource *vk_spec_take_ready(const ShaderModuleCacheKey *key,
+                                         uint64_t h)
 {
-    uint64_t h = fast_hash((const uint8_t *)key, sizeof(*key));
     const unsigned *order = vk_spec_ready_order;
     for (unsigned i = 0; i < vk_spec_ready_n; i++) {
         unsigned slot = order[i];

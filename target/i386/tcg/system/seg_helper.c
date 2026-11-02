@@ -135,10 +135,11 @@ bool x86_cpu_exec_halt(CPUState *cpu)
     CPUX86State *env = &x86_cpu->env;
 
     if (cpu_test_interrupt(cpu, CPU_INTERRUPT_POLL)) {
-        bql_lock();
-        apic_poll_irq(x86_cpu->apic_state);
-        cpu_reset_interrupt(cpu, CPU_INTERRUPT_POLL);
-        bql_unlock();
+        {
+            BQL_LOCK_GUARD();
+            apic_poll_irq(x86_cpu->apic_state);
+            cpu_reset_interrupt(cpu, CPU_INTERRUPT_POLL);
+        }
     }
 
     if (!cpu_has_work(cpu)) {

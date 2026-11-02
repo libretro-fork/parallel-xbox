@@ -144,6 +144,14 @@ entry:
         ; A shared list tail must execute twice in order, never concurrently.
         apu 0x2060, VOICE                ; TVL3D shares the 2D voice
 %endif
+%ifdef VP_INVALID_HEAD
+        ; A malformed second list must not alias or disrupt the valid 2D voice.
+        apu 0x2060, VP_INVALID_HEAD
+%endif
+%ifdef VP_INVALID_LINK
+        ; Keep the valid prefix, then stop before reading an invalid descriptor.
+        mov word [VOICES + VOICE * 0x80 + 0x7C], VP_INVALID_LINK
+%endif
 %ifdef VP_CYCLE
         ; Each list is bounded at 256 visits: 768 total must not overflow
         ; the 256-item work queue or discard an earlier partial mix.

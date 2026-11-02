@@ -1,5 +1,9 @@
 # Changelog of the libretro core
 
+- Stop malformed VP lists before an out-of-range voice handle can access descriptors or voice state. Validate full list-head register values before narrowing them, preserving valid prefixes and the other voice lists.
+- Build VP parallel work units during routing validation, removing the temporary per-voice mask array and second queue scan. Multipass grouping, repeated-voice protection and serial fallbacks are preserved.
+- Keep CPU execution on the existing libretro device owner, removing QEMU CPU/I/O-thread BQL transfers around guest slices, MMIO, exceptions and interrupts. Preserve explicit GPU-wait releases and exception cleanup; guard APIC/FERR helpers conditionally.
+- Add generated TB-cache lookup regression coverage for address layout, identity checks and slow-path guards before further execution-core simplification; no runtime changes.
 - Skip unused worker mix-bin reductions when DSP-off audio uses the VP stereo monitor. Multipass processing and DSP-on mixing remain intact; no extra queue, copy, lock or wait is introduced.
 - Reduce VP completion-counter traffic by publishing each participant's completed units once per batch instead of once per unit. Unused worker labels are retired before generation wrap to prevent stale output reuse. Parallel scheduling, audio ordering and the existing completion barrier are retained.
 - Remove the standalone per-CPU-run MXCSR boundary pending a complete, throughput-validated native FP ownership implementation.
@@ -10,9 +14,11 @@
 ## Unreleased
 
 - Reuse one completed IDE buffered-read request and its largest aligned scratch buffer on the emulation owner. Preserve error/cancellation copy suppression and callback lifetime; release the cache on content close, including close from a completing callback. Warm reads avoid repeated heap allocations without changing payload copying.
+- Reuse the shader-module LRU lookup hash when adopting worker results on a cache miss. Preserve full-key collision checks and module ownership while avoiding a duplicate render-thread hash scan.
 
 - DSP: compile short-address X/Y MOVEC control-register loads and stores, including stack-pop reads of SSH, scaling changes and repeated loop-count writes. Add 178,176 regression boundaries and a production-block fixture.
 - Remove per-transfer AioContext storage and repeated context queries from IDE/ATAPI DMA. Check AddressSpace ownership with libretro-common at submission; fixed disk completions and the shared retry notifier continue on that owner. Preserve mapped transfers, overlap ordering and deferred completion.
+
 - Hash each speculative shader-module key once and reuse the value for both the worker memo and completion record. Preserve cache checks, immutable module ownership, queue drops and state markers while removing duplicate CPU hashing.
 
 - DSP: compile register-to-control MOVEC writes without interpreter fallback, preserving accumulator limiting, stack side effects and changes to scaling or REP counts. Add 170,496 regression boundaries and a repeated-control-write program.

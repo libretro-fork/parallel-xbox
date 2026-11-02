@@ -66,6 +66,9 @@ static size_t retro_spsc_write(void *ring,const void *data,size_t n){assert(ring
 #define VK_SPEC_READY 768
 /* READY STATE */
 /* PRODUCTION */
+static ShaderSource *take_ready_for_test(const ShaderModuleCacheKey *key)
+{ return vk_spec_take_ready(key,fast_hash((const uint8_t *)key,sizeof(*key))); }
+
 static ShaderSource *compile_for_test(const ShaderModuleCacheKey *key)
 { return vk_spec_compile_module(key,fast_hash((const uint8_t *)key,sizeof(*key))); }
 
@@ -90,7 +93,7 @@ int main(void)
   ShaderState st={trial};emitted_n=0;unsigned before_hashes=key_hash_calls;vk_spec_compile_state(&st);assert(emitted_n==3&&key_hash_calls-before_hashes==3);
   uint64_t h=fast_hash((const uint8_t *)&st,sizeof(st));assert(!emitted[0].state_hash&&!emitted[1].state_hash&&emitted[2].state_hash==h);
   for(unsigned i=0;i<3;i++)vk_spec_ready_push(&emitted[i]);
-  ShaderSource *same=vk_spec_take_ready(&emitted[0].key);assert(same==emitted[0].spirv&&vk_spec_ready_n==2);pgraph_vk_shader_source_unref(same);
+  ShaderSource *same=take_ready_for_test(&emitted[0].key);assert(same==emitted[0].spirv&&vk_spec_ready_n==2);pgraph_vk_shader_source_unref(same);
   vk_spec_ready_clear();assert(vk_spec_ready_order==vk_spec_ready_order_storage);
  }
  vk_spec_modules_clear();assert(!retro_atomic_load_relaxed_int(&live_sources));
@@ -104,7 +107,7 @@ int main(void)
   fifo[nfifo++]=key;vk_spec_ready_push(&d);assert(vk_spec_ready_n==nfifo);
   if((rnd()&3)==0){
    unsigned take=rnd()%nfifo;VkSpecDone *still=&vk_spec_ready[vk_spec_ready_order[nfifo-1]];ShaderModuleCacheKey saved_key=still->key;ShaderSource *saved_spirv=still->spirv;
-   ShaderSource *got=vk_spec_take_ready(&fifo[take]);assert(got);pgraph_vk_shader_source_unref(got);
+   ShaderSource *got=take_ready_for_test(&fifo[take]);assert(got);pgraph_vk_shader_source_unref(got);
    if(take!=nfifo-1)assert(!memcmp(&still->key,&saved_key,sizeof(saved_key))&&still->spirv==saved_spirv);
    memmove(fifo+take,fifo+take+1,(nfifo-take-1)*sizeof(fifo[0]));nfifo--;
   }
