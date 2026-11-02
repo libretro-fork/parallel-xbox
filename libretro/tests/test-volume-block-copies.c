@@ -77,7 +77,7 @@ static void check(unsigned w,unsigned h,unsigned depth,unsigned bs,unsigned kind
     size_t size=bytes+128;PGRAPHVkState renderer={.vram_buffer=kind?(VkBuffer)(uintptr_t)1:VK_NULL_HANDLE};
     NV2AState dev={.vram_ptr=guest,.vram=&size,.pgraph={&renderer,actual,3}};TextureLevel level;
     stage_blocks_3d(&dev.pgraph,&level,guest+offset,w,h,depth,bs);
-    bool direct=kind&&offset%bs==0&&(depth==1||bw==1||((bh==1&&bw<=4)||(uint64_t)bw*bh*((depth+3)/4)<=64));
+    bool direct=kind&&offset%bs==0&&(depth==1||bw==1||((bh==1&&bw<=4)||(uint64_t)bw*bh*((depth+3)/4)<=64||(uint64_t)bw*depth<=64));
     assert(level.width==w&&level.height==h&&level.depth==depth&&level.size==bytes&&!level.row_length&&!level.crop_offset);
     assert(level.source==(direct?LEVEL_VRAM:LEVEL_STAGING));
     if(direct){

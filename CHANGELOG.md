@@ -4,6 +4,8 @@
 
 ## Unreleased
 
+- Upload taller native BC volume grids directly using strided block-column regions when they fit one 64-region batch. Choose the smaller grouped-block/strided-column representation and retain prior direct routes and larger-layout staging fallback.
+
 - Upload compact multi-row native BC volumes directly from imported RAM when grouped XY/Z block regions fit one 64-region batch. Avoid CPU block rearrangement and staging while retaining narrow-column copies and larger-layout fallbacks.
 
 - Prevent upscaled 2D atlas-edge lines such as Ninja Gaiden Black's equipment-menu seams while retaining linear filtering. Eligible depth-disabled, flat screen rectangles clamp UVs to the native pixel-center range and reuse constant depth instead of reconstructing its plane. Native resolution and depth-tested shader paths keep their existing keys and code; no extra draw, texture fetch, buffer or readback is added.

@@ -239,12 +239,13 @@ static void stage_blocks_2d(PGRAPHState *pg, TextureLevel *level,
     memcpy(dst, data, size);
 }
 
-/* Compact block grids fit one existing region batch; retain narrow rows. */
+/* Compact grouped blocks or strided columns fit one region batch. */
 static bool volume_blocks_direct(unsigned width, unsigned height, unsigned depth)
 {
     return (height <= 4 && width <= 16) ||
         (VkDeviceSize)((width + 3) / 4) * ((height + 3) / 4) *
-            ((depth + 3) / 4) <= 64;
+            ((depth + 3) / 4) <= 64 ||
+        (VkDeviceSize)((width + 3) / 4) * depth <= 64;
 }
 
 static void stage_blocks_3d(PGRAPHState *pg, TextureLevel *level,
@@ -440,21 +441,24 @@ static size_t volume_block_slice_size(const TextureLevel *level, VkFormat format
 }
 
 /* Xbox stores each XY block's slices together in groups of up to four.
- * For one block column, bufferRowLength expresses that interleaving as
- * the stride between block rows in a single destination Z slice. */
+ * Multi-column grids choose grouped blocks or columns by region count.
+ * bufferRowLength spans all columns' grouped slices between block rows. */
 static void copy_volume_block_slices(VkCommandBuffer cmd, VkBuffer source,
                                      VkImage image, const TextureLevel *level,
                                      unsigned layer, unsigned mip,
                                      size_t block_size)
 {
-    if (level->width > 4) {
+    unsigned bw = (level->width + 3) / 4;
+    unsigned bh = (level->height + 3) / 4;
+    unsigned grouped_regions = bw * bh * ((level->depth + 3) / 4);
+    unsigned column_regions = bw * level->depth;
+    if (level->width > 4 && grouped_regions <= column_regions) {
         /* A single XY block's group of Z slices is contiguous in guest RAM.
          * Wider block grids are eligible only when the whole level fits in this
          * region batch; the original four-block route retains its limits. */
-        unsigned bw = (level->width + 3) / 4;
-        unsigned blocks = bw * ((level->height + 3) / 4);
+        unsigned blocks = bw * bh;
         VkBufferImageCopy regions[64];
-        unsigned total = blocks * ((level->depth + 3) / 4);
+        unsigned total = grouped_regions;
         for (unsigned first = 0; first < total;) {
             unsigned count = MIN(total - first, ARRAY_SIZE(regions));
             for (unsigned i = 0; i < count; i++, first++) {
@@ -477,20 +481,23 @@ static void copy_volume_block_slices(VkCommandBuffer cmd, VkBuffer source,
         }
         return;
     }
-    VkDeviceSize slice = (VkDeviceSize)((level->height + 3) / 4) * block_size;
+    /* Each source block row advances over every column's grouped slices. */
+    VkDeviceSize slice = (VkDeviceSize)bw * bh * block_size;
     VkBufferImageCopy regions[64];
-    for (unsigned z = 0; z < level->depth;) {
-        unsigned count = MIN(level->depth - z, ARRAY_SIZE(regions));
-        for (unsigned i = 0; i < count; i++, z++) {
+    for (unsigned first = 0; first < column_regions;) {
+        unsigned count = MIN(column_regions - first, ARRAY_SIZE(regions));
+        for (unsigned i = 0; i < count; i++, first++) {
+            unsigned z = first / bw;
+            unsigned x = (first % bw) * 4;
             unsigned group = z & ~3u;
             unsigned group_depth = MIN(level->depth - group, 4);
             regions[i] = (VkBufferImageCopy){
                 .bufferOffset = level->offset + group * slice +
-                                (z - group) * block_size,
-                .bufferRowLength = group_depth * 4,
+                    ((first % bw) * group_depth + z - group) * block_size,
+                .bufferRowLength = bw * group_depth * 4,
                 .imageSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, mip, layer, 1 },
-                .imageOffset = { 0, 0, z },
-                .imageExtent = { level->width, level->height, 1 },
+                .imageOffset = { x, 0, z },
+                .imageExtent = { MIN(level->width - x, 4), level->height, 1 },
             };
         }
         vkCmdCopyBufferToImage(cmd, source, image,
