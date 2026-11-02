@@ -92,6 +92,20 @@ static void tracked_dispatch(VkCommandBuffer cmd, uint32_t x, uint32_t y, uint32
  assert(x==dispatch_expected && y==1 && z==1);dispatch_calls++;
  vkCmdDispatch(cmd,x,y,z);
 }
+static bool expect_direct;
+static unsigned source_barriers;
+static void tracked_barrier(VkCommandBuffer cmd,VkPipelineStageFlags src,VkPipelineStageFlags dst,
+ VkDependencyFlags flags,uint32_t nm,const VkMemoryBarrier *m,uint32_t nb,const VkBufferMemoryBarrier *b,
+ uint32_t ni,const VkImageMemoryBarrier *im){
+ if(nb==1&&dst==VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT){
+  assert(b->srcAccessMask&VK_ACCESS_HOST_WRITE_BIT);
+  assert(((b->srcAccessMask&VK_ACCESS_MEMORY_WRITE_BIT)!=0)==expect_direct);
+  assert(((src&VK_PIPELINE_STAGE_ALL_COMMANDS_BIT)!=0)==expect_direct);
+  source_barriers++;
+ }
+ vkCmdPipelineBarrier(cmd,src,dst,flags,nm,m,nb,b,ni,im);
+}
+#define vkCmdPipelineBarrier tracked_barrier
 #define vkCmdDispatch tracked_dispatch
 /* PRODUCTION */
 /* REFERENCE */
@@ -181,8 +195,18 @@ int main(void)
   dispatch_expected=DIV_ROUND_UP(((w+1)/2)*h,64);unsigned before_dispatch=dispatch_calls;
   /* Exactly enough groups for pairs; a pixel-based preflight would reject. */
   r.device_props.limits.maxComputeWorkGroupCount[0]=dispatch_expected;
+  bool gpu_written=direct&&test%4==0;
+  if(gpu_written){
+   for(size_t first=0;first<span;){
+    size_t chunk=span-first>65536?65536:span-first;
+    assert(!(chunk%4));
+    vkCmdUpdateBuffer(cmd,ram.handle,offset+first,chunk,guest+first);first+=chunk;
+   }
+  }
+  expect_direct=direct;unsigned prior_barriers=source_barriers;
   assert(pgraph_vk_pvideo_convert(&pg,cmd,guest,w,h,pitch,true));
   assert(pgraph_vk_pvideo_convert(&pg,cmd,guest,w,h,pitch,false));
+  assert(source_barriers==prior_barriers+2);
   assert(claims==(direct?2u:0u));
   if(direct){assert(!pg.written&&claim_offset==offset&&claim_size==(size_t)pitch*(h-1)+(w+1)/2*4);direct_cases++;avoided+=2*(size_t)((w+1)/2)*h*4;}
   if(direct){
@@ -199,7 +223,7 @@ int main(void)
   r.device_props.limits.maxComputeWorkGroupCount[0]=properties.limits.maxComputeWorkGroupCount[0];
   assert(pg.written==(direct?0:2*(size_t)((w+1)/2)*h*4));
   /* Staging snapshots tolerate mutations; direct reads retain the RAM claim. */
-  if(!direct)memset(guest,0xE5,(size_t)pitch*h);
+  if(!direct||gpu_written)memset(guest,0xE5,span);
   VkImageMemoryBarrier copy_image={.sType=VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,.srcAccessMask=VK_ACCESS_SHADER_WRITE_BIT,.dstAccessMask=VK_ACCESS_TRANSFER_READ_BIT,.oldLayout=VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,.newLayout=VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,.srcQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED,.dstQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED,.image=r.display.pvideo.image,.subresourceRange={VK_IMAGE_ASPECT_COLOR_BIT,0,1,0,1}};
   vkCmdPipelineBarrier(cmd,VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,VK_PIPELINE_STAGE_TRANSFER_BIT,0,0,NULL,0,NULL,1,&copy_image);
   VkDeviceSize result=16;VkBufferImageCopy copy={.bufferOffset=result,.imageSubresource={VK_IMAGE_ASPECT_COLOR_BIT,0,0,1},.imageExtent={w,h,1}};

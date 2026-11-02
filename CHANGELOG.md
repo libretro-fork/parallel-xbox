@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Order direct Vulkan overlay reads after earlier GPU writes into imported RAM as well as host writes. Preserve the zero-staging path with a GPU memory dependency instead of a CPU wait; staged snapshots retain their existing host-only dependency.
+
 - Bind Vulkan staged S3TC decode input per level instead of exposing the entire packed snapshot in every descriptor. Retain GPU decoding when individual aligned level windows fit the device range limit even if the full mip/cube snapshot does not, avoiding CPU RGBA decoding and larger uploads.
 
 - Give each Vulkan S3TC decode level its own aligned imported-RAM descriptor window. Avoid compressed staging copies caused solely by gaps between cubemap faces or selected levels while retaining per-level bounds, ownership and descriptor-slot retirement.

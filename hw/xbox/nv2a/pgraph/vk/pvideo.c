@@ -193,7 +193,9 @@ bool pgraph_vk_pvideo_convert(PGRAPHState *pg, VkCommandBuffer cmd,
 
     VkBufferMemoryBarrier before = {
         .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
-        .srcAccessMask = VK_ACCESS_HOST_WRITE_BIT,
+        /* Direct RAM can contain earlier GPU readback/conversion writes. */
+        .srcAccessMask = VK_ACCESS_HOST_WRITE_BIT |
+            (direct ? VK_ACCESS_MEMORY_WRITE_BIT : 0),
         .dstAccessMask = VK_ACCESS_SHADER_READ_BIT,
         .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
         .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
@@ -211,7 +213,8 @@ bool pgraph_vk_pvideo_convert(PGRAPHState *pg, VkCommandBuffer cmd,
         .image = r->display.pvideo.image,
         .subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1},
     };
-    vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_HOST_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+    vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_HOST_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT |
+        (direct ? VK_PIPELINE_STAGE_ALL_COMMANDS_BIT : 0),
         VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, NULL, 1, &before, 1, &image);
     typeof(r->display.pvideo.convert) *c = &r->display.pvideo.convert;
     uint32_t push[4] = {(src - window) / 4,
