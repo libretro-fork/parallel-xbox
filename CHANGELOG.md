@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Preserve GPU-face provenance when an in-place Vulkan mixed-cubemap upload refreshes only RAM faces. Avoid recopying unchanged GPU faces at native and scaled sizes; fresh/copy-on-write images still rebuild all required faces and changed sources retain their copy path.
+
 - Cache successful Vulkan S3TC storage-image capability queries per renderer and creation-parameter tuple. Avoid repeated driver queries during texture setup while rechecking each image's limits; failed queries remain retryable and cache storage is bounded.
 
 - Reuse newest-first draw completion polling during Vulkan image-allocation recovery. Skip redundant older-fence queries when the newest submission is complete while preserving partial completion, deferred slot cleanup and binding-safe resource reclamation.

@@ -781,12 +781,22 @@ static bool check_texture_possibly_dirty(NV2AState *d,
 
 #include "s3tc-decode.h"
 
+/* An upload leaves skipped cube layers untouched. Provenance belongs to the
+ * current image only: fresh/COW images have no layers worth retaining. */
+static void preserve_cube_upload_sources(TextureBinding *binding,
+                                          unsigned skipped_layers)
+{
+    binding->cube_source_mask =
+        binding->current_layout == VK_IMAGE_LAYOUT_UNDEFINED ? 0 :
+            binding->cube_source_mask & skipped_layers;
+}
+
 // FIXME: Make sure we update sampler when data matches. Should we add filtering
 // options to the textureshape?
 static void upload_texture_image(PGRAPHState *pg, int texture_idx,
                                  TextureBinding *binding, unsigned skip_layers)
 {
-    binding->cube_source_mask = 0;
+    preserve_cube_upload_sources(binding, skip_layers);
     binding->depth_source_copy = false;
     /* An aux upload runs before the open recording. Submit first only if
      * that recording references the current image. A CoW replacement is
@@ -1008,6 +1018,7 @@ static void upload_mixed_cube_ram(PGRAPHState *pg, int texture_idx,
         upload_texture_image(pg, texture_idx, binding, gpu_mask);
         return;
     }
+    preserve_cube_upload_sources(binding, gpu_mask);
     PGRAPHVkState *r = pg->vk_renderer_state;
     TextureBinding native = { 0 };
     native.key = binding->key;
@@ -1050,7 +1061,6 @@ static void upload_mixed_cube_ram(PGRAPHState *pg, int texture_idx,
     /* The caller fills GPU layers next, then transitions the whole cube
      * once for sampling. Avoid a redundant read-layout round trip here. */
     binding->current_layout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-    binding->cube_source_mask = 0;
     binding->depth_source_copy = false;
     struct XemuVkTrashEntry trash = {
         .image = native.image, .allocation = native.allocation,
