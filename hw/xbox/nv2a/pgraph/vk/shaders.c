@@ -852,9 +852,10 @@ static void vk_spec_modules_clear(void)
     assert(vk_spec_module_bytes == 0);
 }
 
-static ShaderSource *vk_spec_compile_module(const ShaderModuleCacheKey *key)
+/* The caller shares this immutable key digest with the completion record. */
+static ShaderSource *vk_spec_compile_module(const ShaderModuleCacheKey *key,
+                                             uint64_t hash)
 {
-    uint64_t hash = fast_hash((const uint8_t *)key, sizeof(*key));
     unsigned slot = hash % ARRAY_SIZE(vk_spec_modules);
     if (vk_spec_modules[slot].spirv &&
         vk_spec_modules[slot].hash == hash &&
@@ -889,11 +890,12 @@ static void vk_spec_compile_state(const ShaderState *st)
     int n = vk_state_module_keys(st, vk_spec_push_constants, keys);
     uint64_t state_hash = fast_hash((const uint8_t *)st, sizeof(*st));
     for (int i = 0; i < n; i++) {
-        ShaderSource *spv = vk_spec_compile_module(&keys[i]);
+        uint64_t key_hash = fast_hash((const uint8_t *)&keys[i], sizeof(keys[i]));
+        ShaderSource *spv = vk_spec_compile_module(&keys[i], key_hash);
         VkSpecDone d;
         memset(&d, 0, sizeof(d));
         d.key = keys[i];
-        d.key_hash = fast_hash((const uint8_t *)&keys[i], sizeof(keys[i]));
+        d.key_hash = key_hash;
         d.spirv = spv;
         d.state_hash = i == n - 1 ? state_hash : 0;
         /* The out ring holds three records for each state the render

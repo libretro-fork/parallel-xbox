@@ -2143,22 +2143,24 @@ voice_work_dispatch(MCPXAPUState *d,
     }
     vwd->queue_len = 0;
 
-    /* The workers that mixed units of this frame. Integer sums: the same
-     * whoever took which unit. */
+    /* Reduce only the output consumed after this frame. VP monitoring uses
+     * stereo samples and clears the bins; multipass dependencies have already
+     * been resolved inside each unit's private bins. DSP execution needs bins. */
     for (int w = 1; w < vwd->num_workers; w++) {
         VoiceWorker *worker = &vwd->workers[w];
         if (retro_atomic_load_acquire_int(&worker->used_gen) != vwd->gen) {
             continue;
         }
-        for (int b = 0; b < NUM_MIXBINS; b++) {
-            for (int i = 0; i < NUM_SAMPLES_PER_FRAME; i++) {
-                mixbins[b][i] += worker->mixbins[b][i];
-            }
-        }
         if (d->monitor.point == MCPX_APU_DEBUG_MON_VP) {
             for (int i = 0; i < NUM_SAMPLES_PER_FRAME; i++) {
                 d->vp.sample_buf[i][0] += worker->sample_buf[i][0];
                 d->vp.sample_buf[i][1] += worker->sample_buf[i][1];
+            }
+        } else {
+            for (int b = 0; b < NUM_MIXBINS; b++) {
+                for (int i = 0; i < NUM_SAMPLES_PER_FRAME; i++) {
+                    mixbins[b][i] += worker->mixbins[b][i];
+                }
             }
         }
     }

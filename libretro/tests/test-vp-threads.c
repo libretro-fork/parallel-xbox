@@ -80,6 +80,39 @@ static void stale_buffer_wrap_tests(void)
     puts("PASS: unused worker buffers stay retired across claim-generation wrap");
 }
 
+static void output_reduction_tests(void)
+{
+    unsigned cases=0;const int generations[]={0,1,0x7fff};
+    for(unsigned monitor=0;monitor<2;monitor++)for(unsigned g=0;g<3;g++)for(unsigned mask=0;mask<8;mask++){
+        MCPXAPUState *d=calloc(1,sizeof(*d));VoiceWorkDispatch *vwd=&d->vp.voice_work_dispatch;
+        vwd->num_workers=4;vwd->workers=calloc(4,sizeof(*vwd->workers));vwd->gen=generations[g];
+        d->monitor.point=monitor?MCPX_APU_DEBUG_MON_VP:0;
+        int64_t mix[32][32],expected_mix[32][32],expected_samples[32][2];
+        for(int b=0;b<32;b++)for(int n=0;n<32;n++)mix[b][n]=expected_mix[b][n]=b-n;
+        for(int n=0;n<32;n++)for(int c=0;c<2;c++)d->vp.sample_buf[n][c]=expected_samples[n][c]=-100+n+c;
+        for(int w=0;w<4;w++){
+            bool used=w>0&&(mask&(1u<<(w-1)));
+            retro_atomic_int_init(&vwd->workers[w].used_gen,w==0||used?vwd->gen:w&1?-1:vwd->gen^1);
+            for(int b=0;b<32;b++)for(int n=0;n<32;n++){
+                int64_t value=w*13+b*2-n*3;vwd->workers[w].mixbins[b][n]=value;
+                if(used&&!monitor)expected_mix[b][n]+=value;
+            }
+            for(int n=0;n<32;n++)for(int c=0;c<2;c++){
+                int64_t value=w*37-n*3+c;vwd->workers[w].sample_buf[n][c]=value;
+                if(used&&monitor)expected_samples[n][c]+=value;
+            }
+        }
+        test_reduce_worker_outputs(d,mix);
+        assert(!memcmp(mix,expected_mix,sizeof(mix))&&!memcmp(d->vp.sample_buf,expected_samples,sizeof(expected_samples)));
+        for(int w=0;w<4;w++){
+            for(int b=0;b<32;b++)for(int n=0;n<32;n++)assert(vwd->workers[w].mixbins[b][n]==w*13+b*2-n*3);
+            for(int n=0;n<32;n++)for(int c=0;c<2;c++)assert(vwd->workers[w].sample_buf[n][c]==w*37-n*3+c);
+        }
+        free(vwd->workers);free(d);cases++;
+    }
+    printf("PASS: %u worker-output reductions; VP mode retains destination bins, DSP mode retains monitor samples, stale/owner buffers excluded\n",cases);
+}
+
 int main(int argc,char**argv)
 {
     repeated_voice_schedule_tests();
@@ -202,6 +235,7 @@ int main(int argc,char**argv)
         free(d->ram_ptr);free(d);
     }
     stale_buffer_wrap_tests();
+    output_reduction_tests();
     assert(completion_calls<=completion_units);
     if(completion_frames>(unsigned long)scenarios)assert(completion_wraps);
     printf("PASS: %lu completion publications for %lu units across %lu parallel frames (%lu generation wraps); at most one per participant\n",completion_calls,completion_units,completion_frames,completion_wraps);

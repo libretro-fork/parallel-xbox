@@ -35,7 +35,8 @@ typedef struct {unsigned id;} ShaderState;
 typedef ShaderModuleCacheKey MString;
 static bool pgraph_vk_spirv_1_6,vk_spec_push_constants,force_collision;
 static unsigned compiles;
-static uint64_t fast_hash(const uint8_t *p,size_t n){uint64_t h=17;if(force_collision)return 7;while(n--)h=h*33+*p++;return h;}
+static unsigned key_hash_calls;
+static uint64_t fast_hash(const uint8_t *p,size_t n){if(n==sizeof(ShaderModuleCacheKey))key_hash_calls++;uint64_t h=17;if(force_collision)return 7;while(n--)h=h*33+*p++;return h;}
 static MString *vk_module_glsl(const ShaderModuleCacheKey *key){MString *m=malloc(sizeof(*m));assert(m);*m=*key;return m;}
 static const char *mstring_get_str(MString *m){return (const char *)m;}
 static void mstring_unref(MString *m){free(m);}
@@ -65,6 +66,9 @@ static size_t retro_spsc_write(void *ring,const void *data,size_t n){assert(ring
 #define VK_SPEC_READY 768
 /* READY STATE */
 /* PRODUCTION */
+static ShaderSource *compile_for_test(const ShaderModuleCacheKey *key)
+{ return vk_spec_compile_module(key,fast_hash((const uint8_t *)key,sizeof(*key))); }
+
 static uint32_t seed=19;
 static uint32_t rnd(void){seed^=seed<<13;seed^=seed>>17;seed^=seed<<5;return seed;}
 static void *consumer(void *arg){ShaderSource *a=arg;for(unsigned i=0;i<200000;i++){ShaderSource *b=pgraph_vk_shader_source_ref(a);assert(b==a&&b->num_words==16);assert(!strcmp(b->layouts->uniforms.members[0].name,"value"));pgraph_vk_shader_source_unref(b);}return NULL;}
@@ -74,16 +78,16 @@ int main(void)
  for(unsigned i=0;i<VK_SPEC_READY;i++)vk_spec_ready_order[i]=i;
  ShaderSource *empty=pgraph_vk_shader_source_new(NULL,0);assert(!empty->words&&!empty->num_words);pgraph_vk_shader_source_unref(empty);
  ShaderModuleCacheKey k={.kind=1,.id=42,.len=64};
- ShaderSource *a=vk_spec_compile_module(&k),*b=vk_spec_compile_module(&k);assert(a==b&&compiles==1);
+ ShaderSource *a=compile_for_test(&k),*b=compile_for_test(&k);assert(a==b&&compiles==1);
  vk_spec_modules_clear();assert(!vk_spec_module_bytes&&a->words==b->words);pgraph_vk_shader_source_unref(a);assert(((unsigned char *)b->words)[0]==payload_byte(&k));pgraph_vk_shader_source_unref(b);assert(!retro_atomic_load_relaxed_int(&live_sources));
- force_collision=true;a=vk_spec_compile_module(&k);k.id++;b=vk_spec_compile_module(&k);assert(a!=b);assert(((unsigned char *)a->words)[0]!=payload_byte(&k));pgraph_vk_shader_source_unref(a);pgraph_vk_shader_source_unref(b);vk_spec_modules_clear();force_collision=false;
- a=vk_spec_compile_module(&k);pgraph_vk_spirv_1_6=true;b=vk_spec_compile_module(&k);assert(a!=b&&((unsigned char *)a->words)[0]!=((unsigned char *)b->words)[0]);pgraph_vk_shader_source_unref(a);pgraph_vk_shader_source_unref(b);vk_spec_modules_clear();
- k.len=VK_SPEC_MODULE_BYTES+1;a=vk_spec_compile_module(&k);b=vk_spec_compile_module(&k);assert(a!=b&&!vk_spec_module_bytes);pgraph_vk_shader_source_unref(a);pgraph_vk_shader_source_unref(b);
+ force_collision=true;a=compile_for_test(&k);k.id++;b=compile_for_test(&k);assert(a!=b);assert(((unsigned char *)a->words)[0]!=payload_byte(&k));pgraph_vk_shader_source_unref(a);pgraph_vk_shader_source_unref(b);vk_spec_modules_clear();force_collision=false;
+ a=compile_for_test(&k);pgraph_vk_spirv_1_6=true;b=compile_for_test(&k);assert(a!=b&&((unsigned char *)a->words)[0]!=((unsigned char *)b->words)[0]);pgraph_vk_shader_source_unref(a);pgraph_vk_shader_source_unref(b);vk_spec_modules_clear();
+ k.len=VK_SPEC_MODULE_BYTES+1;a=compile_for_test(&k);b=compile_for_test(&k);assert(a!=b&&!vk_spec_module_bytes);pgraph_vk_shader_source_unref(a);pgraph_vk_shader_source_unref(b);
  /* Metadata alone can take an otherwise fitting payload over the cap. */
- k.len=VK_SPEC_MODULE_BYTES-sizeof(ShaderSource);a=vk_spec_compile_module(&k);b=vk_spec_compile_module(&k);assert(a!=b&&a->len>VK_SPEC_MODULE_BYTES&&!vk_spec_module_bytes);pgraph_vk_shader_source_unref(a);pgraph_vk_shader_source_unref(b);
+ k.len=VK_SPEC_MODULE_BYTES-sizeof(ShaderSource);a=compile_for_test(&k);b=compile_for_test(&k);assert(a!=b&&a->len>VK_SPEC_MODULE_BYTES&&!vk_spec_module_bytes);pgraph_vk_shader_source_unref(a);pgraph_vk_shader_source_unref(b);
  /* Every state's end marker must still be emitted on module cache hits. */
  for(unsigned trial=0;trial<100;trial++){
-  ShaderState st={trial};emitted_n=0;vk_spec_compile_state(&st);assert(emitted_n==3);
+  ShaderState st={trial};emitted_n=0;unsigned before_hashes=key_hash_calls;vk_spec_compile_state(&st);assert(emitted_n==3&&key_hash_calls-before_hashes==3);
   uint64_t h=fast_hash((const uint8_t *)&st,sizeof(st));assert(!emitted[0].state_hash&&!emitted[1].state_hash&&emitted[2].state_hash==h);
   for(unsigned i=0;i<3;i++)vk_spec_ready_push(&emitted[i]);
   ShaderSource *same=vk_spec_take_ready(&emitted[0].key);assert(same==emitted[0].spirv&&vk_spec_ready_n==2);pgraph_vk_shader_source_unref(same);
@@ -95,7 +99,7 @@ int main(void)
  ShaderModuleCacheKey fifo[VK_SPEC_READY];unsigned nfifo=0;
  for(unsigned n=0;n<10000;n++){
   ShaderModuleCacheKey key={.kind=3,.id=n+100000,.len=16};
-  VkSpecDone d={.key=key,.key_hash=fast_hash((const uint8_t *)&key,sizeof(key)),.spirv=vk_spec_compile_module(&key)};
+  VkSpecDone d={.key=key,.key_hash=fast_hash((const uint8_t *)&key,sizeof(key)),.spirv=compile_for_test(&key)};
   if(nfifo==VK_SPEC_READY){memmove(fifo,fifo+1,(nfifo-1)*sizeof(fifo[0]));nfifo--;}
   fifo[nfifo++]=key;vk_spec_ready_push(&d);assert(vk_spec_ready_n==nfifo);
   if((rnd()&3)==0){
@@ -110,14 +114,14 @@ int main(void)
  /* Dropped queue records release their own references, not the memo's. */
  queue_limit=0;emitted_n=0;ShaderState st={1000};vk_spec_compile_state(&st);assert(!emitted_n);vk_spec_modules_clear();assert(!retro_atomic_load_relaxed_int(&live_sources));queue_limit=3;
  /* Consumer references survive concurrent ref/unref, eviction and clearing. */
- k=(ShaderModuleCacheKey){.kind=1,.id=42,.len=64};ShaderSource *shared=vk_spec_compile_module(&k);pthread_t threads[4];for(unsigned i=0;i<4;i++)assert(!pthread_create(&threads[i],NULL,consumer,shared));
+ k=(ShaderModuleCacheKey){.kind=1,.id=42,.len=64};ShaderSource *shared=compile_for_test(&k);pthread_t threads[4];for(unsigned i=0;i<4;i++)assert(!pthread_create(&threads[i],NULL,consumer,shared));
  for(unsigned n=0;n<5000;n++){
-  k.id=rnd();k.len=1+rnd()%700000;k.opts[0]=rnd();a=vk_spec_compile_module(&k);assert(a->num_words==(k.len+3)/4&&((unsigned char *)a->words)[0]==payload_byte(&k));assert(vk_spec_module_bytes<=VK_SPEC_MODULE_BYTES);pgraph_vk_shader_source_unref(a);if(n%97==0)vk_spec_modules_clear();
+  k.id=rnd();k.len=1+rnd()%700000;k.opts[0]=rnd();a=compile_for_test(&k);assert(a->num_words==(k.len+3)/4&&((unsigned char *)a->words)[0]==payload_byte(&k));assert(vk_spec_module_bytes<=VK_SPEC_MODULE_BYTES);pgraph_vk_shader_source_unref(a);if(n%97==0)vk_spec_modules_clear();
  }
  for(unsigned i=0;i<4;i++)assert(!pthread_join(threads[i],NULL));assert(shared->num_words==16);pgraph_vk_shader_source_unref(shared);vk_spec_modules_clear();assert(!retro_atomic_load_relaxed_int(&live_sources));
  /* Module descriptors borrow the same immutable layout allocation. Words
   * can be released first; upload buffers remain independently writable. */
- k=(ShaderModuleCacheKey){.kind=1,.id=42,.len=64};a=vk_spec_compile_module(&k);
+ k=(ShaderModuleCacheKey){.kind=1,.id=42,.len=64};a=compile_for_test(&k);
  expected_words=a->words;PGRAPHVkState renderer={0};
  ShaderModuleInfo *one=pgraph_vk_create_shader_module_from_spirv(&renderer,pgraph_vk_shader_source_ref(a));
  ShaderModuleInfo *two=pgraph_vk_create_shader_module_from_spirv(&renderer,a);
