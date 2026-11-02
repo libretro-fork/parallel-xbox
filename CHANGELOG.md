@@ -4,6 +4,8 @@
 
 ## Unreleased
 
+- Compose NV097 texture-format fields locally and publish the final register once on change, replacing nine atomic register stores per method. Preserve reserved bits and dirty-state behavior while omitting unchanged publications.
+
 - Extend the BC1 CPU-loop benchmark to rectangular and just-below/above-threshold slices, checking byte parity and paired CPU/GPU timings without changing rendering behavior.
 
 - Specialize large host-cached BC1 volume staging slices to hoist block-size decisions and slice-base arithmetic out of the block-copy loop. Retain smaller/BC3/uncached traversal and identical GPU upload work; add an incremental frozen-reference benchmark.

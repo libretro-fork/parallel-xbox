@@ -3178,3 +3178,16 @@ The point-size source selection follows the hardware-documented `VSPointSize` ca
 The correction uses the existing geometry shader, not a new stage or interface. Rectangle recognition and UV bounds are emitted with constant indices, without shader loops or CPU vertex reads. For finite constant-depth rectangles, the otherwise unused flat plane positions carry the single atlas stage's bounds; a negative-zero slope marker selects constant depth and fragment UV clamping. Other geometry retains the original plane and sampling. Depth-tested and 1x shaders do not emit the correction. Only one ordinary 2D color stage and filled polygons are eligible. Matched point or linear min/mag filtering and a fixed mip level are required (including Force Texture LOD0); multi-texture, mixed filters, mip selection, special sampling and varying projective q retain their paths.
 
 Timing runs must omit `--shot`, `--pixel` and `--hash-video`, and confirm zero readback allocations. The stock harness GL framebuffer is 1920x1080: larger captures require a suitably sized test framebuffer to avoid black capture regions. Slot-10 captures at 1x/8x supplement the expression tests; these are not full game/hardware conformance.
+
+
+`python libretro/tests/test-texture-format-publication.py CHECKOUT [CC]` compares
+the production SET_TEXTURE_FORMAT body against a frozen 68efb96 reference over
+200,000 all-slot, random/reserved-bit, repeated and pre-dirty cases. Final words,
+register dirty bits and texture dirty bits must match. A separate counted build
+checks unchanged methods make zero register stores instead of nine, and changed
+methods make one instead of nine; reads fall from twenty to one/two. That build
+uses UBSan. An uninstrumented C11 relaxed-atomic register model times unchanged,
+alternating and randomized methods over five alternating-order rounds of two
+million calls/path. Two Windows GCC runs showed lower time in all three cases.
+These are isolated method-model timings, not full-core FPS or GPU benchmarks.
+The shared NV2A method's final GPU-facing state remains the same in both renderers.
