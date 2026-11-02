@@ -25,10 +25,70 @@ static int to24(int64_t x){return vp_mix_to_24(x);}
 
 /* VOICE FRAME */
 
+#include <time.h>
+
 static uint64_t rs;
 static uint32_t rnd(void){rs^=rs<<13;rs^=rs>>7;rs^=rs<<17;return (uint32_t)(rs>>11);}
 static uint32_t rr(uint32_t n){return rnd()%n;}
 static void vset(MCPXAPUState*d,int v,uint32_t reg,uint32_t mask,uint32_t val){voice_set_mask(d,v,reg,mask,val);}
+
+#if defined(__GNUC__)
+__attribute__((noinline, noclone))
+#endif
+static void resample_bench_frame(MCPXAPUState *d, int32_t samples[32][2],
+                                 const VoicePitchRamp *pitch)
+{
+    assert(voice_resample(d,64,samples,32,pitch,0)==32);
+}
+
+static int resample_bench(void)
+{
+    MCPXAPUState *d=calloc(1,sizeof(*d));MCPXAPUVoiceFilter *f=&d->vp.filters[64];
+    const VoicePitchRamp pitch={0};int32_t samples[32][2];
+    volatile uint64_t checksum=0;
+    for(int k=0;k<8;k++)for(int ch=0;ch<2;ch++)f->resample_hist[k][ch]=(k*101+ch*233-475)*1234;
+    for(unsigned mode=0;mode<3;mode++){
+        clock_t start=clock();
+        for(unsigned frame=0;frame<2000000;frame++){
+            f->resample_head=frame&7;f->resample_phase=mode==0?0:mode==1?0x8000:0x8081;
+            resample_bench_frame(d,samples,&pitch);checksum+=(uint32_t)samples[31][0];
+        }
+        printf("kernel_mode%u=%.6f ",mode,(double)(clock()-start)/CLOCKS_PER_SEC);
+    }
+    printf("checksum=%llu\n",(unsigned long long)checksum);free(d);return 0;
+}
+
+static void resample_row_tests(void)
+{
+    MCPXAPUState *d=calloc(1,sizeof(*d));uint64_t saved=rs;rs=0xabc789123;
+    MCPXAPUVoiceFilter *f=&d->vp.filters[64];
+    const VoicePitchRamp pitch={0};unsigned cases=0;
+    for(unsigned wide=0;wide<2;wide++)for(unsigned head=0;head<8;head++){
+        for(int k=0;k<8;k++)for(int ch=0;ch<2;ch++)
+            f->resample_hist[k][ch]=wide?(int32_t)rnd():(int32_t)rr(0x1000000)-0x800000;
+        if(wide){f->resample_hist[0][0]=INT32_MIN;f->resample_hist[0][1]=INT32_MAX;}
+        for(unsigned fraction=0;fraction<65536;fraction++){
+            int32_t out[1][2],expected[2];
+            for(int ch=0;ch<2;ch++){
+                __int128 sum=0;
+                for(int k=0;k<8;k++){
+                    int64_t weight=(int64_t)lagrange_rows[fraction/256][k]*256+
+                        (int64_t)(lagrange_rows[fraction/256+1][k]-lagrange_rows[fraction/256][k])*(fraction%256);
+                    sum+=(__int128)weight*f->resample_hist[(head+k)%8][ch];
+                }
+                sum+=(__int128)1<<23;__int128 result=sum/((__int128)1<<24);
+                if(sum<0&&sum%((__int128)1<<24))result--;
+                expected[ch]=(int32_t)(uint32_t)result;
+            }
+            f->resample_head=head;f->resample_phase=fraction;
+            assert(voice_resample(d,64,out,1,&pitch,0)==1);
+            assert(out[0][0]==expected[0]&&out[0][1]==expected[1]);
+            assert(f->resample_head==head&&f->resample_phase==fraction);cases++;
+        }
+    }
+    printf("PASS: %u resampler phases against wide dot-product oracle; every row, fraction, ring head and stereo channel\n",cases);
+    rs=saved;free(d);
+}
 
 static void monitor_gain_tests(void)
 {
@@ -224,6 +284,8 @@ static void output_reduction_tests(void)
 
 int main(int argc,char**argv)
 {
+    if(argc>1&&!strcmp(argv[1],"--bench-kernel"))return resample_bench();
+    resample_row_tests();
     monitor_gain_tests();
     repeated_voice_schedule_tests();
     schedule_layout_tests();

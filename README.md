@@ -236,3 +236,9 @@ call. The backend readiness callback still reads fresh guest state, and no
 descriptor is cached between callbacks. Payload staging retains snapshot
 semantics for potentially guest-backed packet buffers. No lock, wait, timer
 interval, state field or queue depth changes.
+
+The resampler regression fixture checks 1,048,576 cases across every Q16
+fraction, all eight ring heads and stereo sample ranges, including INT32_MIN/MAX,
+against a wide-integer dot-product oracle. An exact-row specialization was
+rejected after isolated timing and stack checks found tradeoffs; production
+resampling, buffering and synchronization remain unchanged.

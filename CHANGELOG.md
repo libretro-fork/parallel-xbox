@@ -1,5 +1,6 @@
 # Changelog of the libretro core
 
+- Expand resampler regression coverage to every fractional phase and ring position, including full-range stereo samples. Keep the production kernel unchanged after an exact-row fast path regressed integer-position timing and increased stack use.
 - Reuse NVNet RX readiness descriptors within packet delivery, removing the duplicate guest descriptor DMA read. Descriptor snapshots stay local to one callback; fresh readiness, ring updates, polling and payload staging are preserved.
 - Detect HRTF sample peaks while loading history and input, removing the separate peak-scan pass. Use unsigned magnitudes so INT32_MIN selects the overflow-safe wide accumulator; convolution, ramps and saved state stay unchanged.
 - Reduce fresh/reset audio preroll from 320 to 64 samples, removing 5.33 ms of queue latency at 48 kHz. DSP work already retires before each frame pull; EP bursts publish future samples. Retain the two-engine-frame phase margin and restore legacy queued PCM unchanged, without inserting silence.

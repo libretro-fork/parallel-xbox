@@ -3369,3 +3369,12 @@ zero-to-2,048-byte payloads and overlapping descriptor/payload destinations.
 `NVNET_RX_SOURCE`, `NVNET_RX_BINARY`, `NVNET_RX_SKIP_RUN` and `NVNET_RX_CFLAGS`
 support baseline and native checks. DMA memory and timers are bounded models;
 this is not a live-network throughput measurement.
+
+`test-vp-threads.py CHECKOUT [CC] --bench-kernel` isolates 2,000,000
+32-sample resampler calls each for integer positions, exact table rows and
+interpolated rows, with identical history and output checksums. It excludes
+decoding, source fetch and game throughput. Normal runs also check 1,048,576
+resampler phase/head/range cases against a 128-bit oracle. These controls rejected
+a proposed exact-row specialization: outlined Win64 trials reduced exact-row
+time but regressed integer-position time and added a 128-byte helper frame.
+The production interpolator stays unchanged.
