@@ -7,11 +7,12 @@ r=Path(sys.argv[1]).resolve();cc=sys.argv[2] if len(sys.argv)>2 else 'cc'
 s=(r/'hw/xbox/nv2a/pgraph/vk/draw.c').read_text()
 job=re.search(r'typedef struct \{\n    bool frag;.*?\} LibJob;',s,re.S).group()
 parts=[]
-for name in ['lib_job_link','pump_slot','pump_submit']:
+for name in ['pipeline_job_reset','lib_job_link','pump_slot','pump_submit']:
     m=re.search(r'^static (?:void|LibJob \*) *'+name+r'\(.*?^\}',s,re.M|re.S);assert m,name
     parts.append(m.group())
 code=r'''
 #include <stdint.h>
+#include <stddef.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -57,7 +58,8 @@ int main(void) {
     for(unsigned generation=0;generation<128;generation++)
     for(unsigned nb=0;nb<=16;nb++)for(unsigned na=0;na<=16;na++) {
         PipelineKey caller;fill_key(&caller,generation+1);
-        LibJob local={.full=true,.vertex_key=&caller};
+        LibJob local;memset(&local,0xa5,sizeof(local));
+        pipeline_job_reset(&local);local.full=true;local.vertex_key=&caller;
         local.vi.vertexBindingDescriptionCount=nb;
         local.vi.vertexAttributeDescriptionCount=na;
         local.ds.sType=VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
@@ -70,9 +72,12 @@ int main(void) {
         /* Simulate a full queued job: the key is copied once, then all
          * driver pointers must be rebound before release publication. */
         pump_d=pump_w_local;
+        PipelineKey retained;memcpy(&retained,&pump_jobs[pump_w_local%PUMP_RING].key,sizeof(retained));
         LibJob *queued=pump_slot();assert(queued);
+        assert(!memcmp(&retained,&queued->key,sizeof(retained)));
         const unsigned char *clear=(const unsigned char *)queued;
-        for(size_t i=0;i<sizeof(*queued);i++) assert(!clear[i]);
+        for(size_t i=0;i<sizeof(*queued);i++)
+            if(i<offsetof(LibJob,key)||i>=offsetof(LibJob,key)+sizeof(queued->key)) assert(!clear[i]);
         *queued=local;queued->key=caller;pump_submit(queued);
         memset(&caller,0xa5,sizeof(caller));memset(&local,0xa5,sizeof(local));
         for(unsigned i=0;i<nb;i++) assert(queued->vi.pVertexBindingDescriptions[i].stride==generation+1+i);
@@ -84,10 +89,13 @@ int main(void) {
     }
     pump_d=pump_w_local-PUMP_RING;assert(!pump_slot());
     for(unsigned frag=0;frag<2;frag++) {
-        LibJob library={.frag=frag};lib_job_link(&library);
-        assert(!library.vertex_key && !library.vi.pVertexBindingDescriptions && !library.vi.pVertexAttributeDescriptions);
-        assert(library.ci.pNext==&library.lib_info);
-        assert(library.ci.pVertexInputState==(frag?NULL:&library.vi));
+        pump_d=pump_w_local;
+        LibJob *library=pump_slot();assert(library);
+        memset(&library->key,0xdc,sizeof(library->key));
+        library->frag=frag;lib_job_link(library);
+        assert(!library->full && !library->vertex_key && !library->vi.pVertexBindingDescriptions && !library->vi.pVertexAttributeDescriptions);
+        assert(library->ci.pNext==&library->lib_info);
+        assert(library->ci.pVertexInputState==(frag?NULL:&library->vi));
     }
     assert(starts==cases && wakes==cases);
     printf("Pipeline job vertex views: %u synchronous/queued/count/slot-reuse/publication cases and both library halves PASS\n",cases);
