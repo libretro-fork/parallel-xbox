@@ -1,5 +1,6 @@
 # Changelog of the libretro core
 
+- Skip unused worker mix-bin reductions when DSP-off audio uses the VP stereo monitor. Multipass processing and DSP-on mixing remain intact; no extra queue, copy, lock or wait is introduced.
 - Reduce VP completion-counter traffic by publishing each participant's completed units once per batch instead of once per unit. Unused worker labels are retired before generation wrap to prevent stale output reuse. Parallel scheduling, audio ordering and the existing completion barrier are retained.
 - Remove the standalone per-CPU-run MXCSR boundary pending a complete, throughput-validated native FP ownership implementation.
 - Bound the VP monitor's multipass lookahead so cyclic or invalid voice links cannot trap the audio owner in an endless scan. Valid reader selection remains unchanged.
@@ -9,8 +10,11 @@
 ## Unreleased
 
 - DSP: compile short-address X/Y MOVEC control-register loads and stores, including stack-pop reads of SSH, scaling changes and repeated loop-count writes. Add 178,176 regression boundaries and a production-block fixture.
+- Remove per-transfer AioContext storage and repeated context queries from IDE/ATAPI DMA. Check AddressSpace ownership with libretro-common at submission; fixed disk completions and the shared retry notifier continue on that owner. Preserve mapped transfers, overlap ordering and deferred completion.
+- Hash each speculative shader-module key once and reuse the value for both the worker memo and completion record. Preserve cache checks, immutable module ownership, queue drops and state markers while removing duplicate CPU hashing.
 
 - DSP: compile register-to-control MOVEC writes without interpreter fallback, preserving accumulator limiting, stack side effects and changes to scaling or REP counts. Add 170,496 regression boundaries and a repeated-control-write program.
+
 - Build only geometry/vertex module keys during Vulkan prewarming, avoiding an unused fragment key. Preserve full shader lookup and worker keys, module-reference order and GPU compilation policy.
 
 - Skip IDE restart bottom-half allocation and wakeup on ordinary VM resumes when no disk error needs retrying. Preserve deferred/coalesced retry handling for actual errors; avoid housekeeping work around save/load and reset.

@@ -188,3 +188,10 @@ The fixed image pool reserves spare memory upfront to avoid ordinary heap growth
 during play, with reclaim-first overflow available for image-memory pressure. The earlier 384 MiB image pool and its 25-142 MiB overhead measurements only
 covered loaded savestates and were insufficient for cold boot. The corrected
 reservation is larger; allocation sizes do not measure resident VRAM.
+
+VP-monitor worker output reduction is covered by 48 direct cases across active
+worker masks and generation boundaries: only stereo monitor samples are reduced
+in VP mode, while DSP mode reduces mix bins. Stale and owner buffers are excluded.
+This removes 1,024 unused integer additions per participating worker in VP mode;
+physical cache traffic and game frame-rate improvements have not been measured.
+The existing VP completion barrier remains.

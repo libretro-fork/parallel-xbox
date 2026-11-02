@@ -11,8 +11,7 @@
 #include "system/block-backend.h"
 #include "system/dma.h"
 #include "trace.h"
-#include "qemu/thread.h"
-#include "qemu/main-loop.h"
+#include <rthreads/rthreads.h>
 #include "exec/icount.h"
 #include "qemu/range.h"
 
@@ -52,7 +51,6 @@ void qemu_sglist_add(QEMUSGList *qsg, dma_addr_t base, dma_addr_t len)
 
 typedef struct {
     BlockAIOCB common;
-    AioContext *ctx;
     BlockAIOCB *acb;
     QEMUSGList *sg;
     uint32_t align;
@@ -72,7 +70,7 @@ static void dma_blk_cb(void *opaque, int ret);
 /*
  * The iovec array of the thread's last transfer, kept for its next one, so
  * a transfer allocates nothing (its DMAAIOCB comes from qemu_aio_get's
- * cache). Transfers start and complete in their AioContext's thread.
+ * cache). Transfers start and complete on their AddressSpace's owner.
  */
 static __thread struct iovec *dma_iov_spare;
 static __thread int dma_iov_spare_alloc;
@@ -122,14 +120,13 @@ static void dma_complete(DMAAIOCB *dbs, int ret)
 static void dma_blk_cb(void *opaque, int ret)
 {
     DMAAIOCB *dbs = (DMAAIOCB *)opaque;
-    AioContext *ctx = dbs->ctx;
     dma_addr_t cur_addr, cur_len;
     void *mem;
 
     trace_dma_blk_cb(dbs, ret);
 
-    /* DMAAIOCB is not thread-safe and must be accessed only from dbs->ctx */
-    assert(ctx == qemu_get_current_aio_context());
+    /* Submission checks the owner. Continuations arrive only through fixed
+     * disk completions or the AddressSpace owner retry notifier. */
 
     dbs->acb = NULL;
     dbs->offset += dbs->iov.size;
@@ -226,13 +223,15 @@ BlockAIOCB *dma_blk_io(
     BlockCompletionFunc *cb,
     void *opaque, DMADirection dir)
 {
-    DMAAIOCB *dbs = qemu_aio_get(&dma_aiocb_info, NULL, cb, opaque);
+    DMAAIOCB *dbs;
+
+    assert(sg->as->map_client_owner == sthread_get_current_thread_id());
+    dbs = qemu_aio_get(&dma_aiocb_info, NULL, cb, opaque);
 
     trace_dma_blk_io(dbs, io_func_opaque, offset, (dir == DMA_DIRECTION_TO_DEVICE));
 
     dbs->acb = NULL;
     dbs->sg = sg;
-    dbs->ctx = qemu_get_current_aio_context();
     dbs->offset = offset;
     dbs->align = align;
     dbs->sg_cur_index = 0;
