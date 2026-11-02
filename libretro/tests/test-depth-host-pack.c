@@ -41,7 +41,7 @@ static VkDescriptorBufferInfo descriptor[4][3];
 static uint32_t data[4][65536],ram[65536],push[4];
 static unsigned bound,copies,stores,dispatches,writes,host_barriers,omitted_dependencies;
 static unsigned latest[4];
-static size_t expected_packed_size,expected_input_size;
+static size_t expected_packed_size,expected_input_size,expected_host_offset;
 static unsigned output_range_checks,input_range_checks,pre_batches,post_batches,expected_post_count;
 static bool expected_host_pack,expected_fallback;
 static bool transfer_read[4],shader_read[4],host_visible[4];
@@ -83,7 +83,7 @@ static void vkCmdPipelineBarrier(VkCommandBuffer cmd,unsigned src,unsigned dst,u
  }
  if(b->dstAccessMask==VK_ACCESS_SHADER_READ_BIT){assert((src&VK_PIPELINE_STAGE_TRANSFER_BIT)&&dst==VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT&&(b->srcAccessMask&VK_ACCESS_TRANSFER_WRITE_BIT));shader_read[id]=true;}
  if(b->dstAccessMask==VK_ACCESS_TRANSFER_READ_BIT){assert((src&VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT)&&dst==VK_PIPELINE_STAGE_TRANSFER_BIT&&b->srcAccessMask==VK_ACCESS_SHADER_WRITE_BIT);transfer_read[id]=true;}
- if(b->dstAccessMask==VK_ACCESS_HOST_READ_BIT){assert(dst==VK_PIPELINE_STAGE_HOST_BIT&&b->srcAccessMask==latest[id]);assert(src==(latest[id]==VK_ACCESS_SHADER_WRITE_BIT?VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT:VK_PIPELINE_STAGE_TRANSFER_BIT));host_visible[id]=true;host_barriers++;}
+ if(b->dstAccessMask==VK_ACCESS_HOST_READ_BIT){assert(b->offset==expected_host_offset&&b->size==expected_packed_size);assert(dst==VK_PIPELINE_STAGE_HOST_BIT&&b->srcAccessMask==latest[id]);assert(src==(latest[id]==VK_ACCESS_SHADER_WRITE_BIT?VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT:VK_PIPELINE_STAGE_TRANSFER_BIT));host_visible[id]=true;host_barriers++;}
  if(b->dstAccessMask==VK_ACCESS_SHADER_WRITE_BIT&&id==3)assert((src&VK_PIPELINE_STAGE_HOST_BIT)&&(b->srcAccessMask&VK_ACCESS_HOST_READ_BIT));
  }
 }
@@ -113,12 +113,21 @@ int main(void){
   bool host=false;unsigned oldcopies=copies,oldstores=stores;VkBuffer out=pack_depth_readback(&pg,&s,8,1,bytes,direct,pg.scale!=1,16,&host);
   assert(host==(!direct&&bytes<=state.device_props.limits.maxStorageBufferRange));
   if(direct){assert(!host&&stores==oldstores+1&&copies==oldcopies);direct_cases++;}
-  else{assert(out==3&&stores==oldstores);packed_readback_to_host_barrier(8,out,host);assert(host_visible[3]&&copies==oldcopies+!host);host?host_cases++:fallback++;}
+  else{assert(out==3&&stores==oldstores);packed_readback_to_host_barrier(8,out,host,0,bytes);assert(host_visible[3]&&copies==oldcopies+!host);host?host_cases++:fallback++;}
   const uint32_t *actual=direct?ram:data[3];
   for(unsigned j=0;j<n;j++){unsigned si=((j/s.width)*pg.scale+pg.scale/2)*iw+(j%s.width)*pg.scale+pg.scale/2;uint32_t expected=(((si*97+i*31)&0xffffff)<<8)|(uint8_t)(si+i);assert(actual[j]==expected);}
  }
  assert(omitted_dependencies==514&&output_range_checks>6000&&input_range_checks==12000&&pre_batches==6000&&post_batches==6000);
  assert(dispatches==6000&&host_cases&&fallback&&direct_cases&&host_barriers==host_cases+fallback);
+ /* Shared host visibility also covers byte/16-bit color and offset slices. */
+ for(unsigned producer=0;producer<2;producer++)for(unsigned bits=0;bits<3;bits++)for(unsigned off=0;off<2;off++){
+  expected_host_offset=off*64;expected_packed_size=(size_t)37*19*(1u<<bits);
+  latest[3]=producer?VK_ACCESS_SHADER_WRITE_BIT:VK_ACCESS_TRANSFER_WRITE_BIT;
+  host_visible[3]=false;
+  packed_readback_to_host_barrier(8,3,producer,expected_host_offset,expected_packed_size);
+  assert(host_visible[3]);
+ }
+ printf("Host visibility ranges: 4800 production readbacks and 12 byte/16/32-bit producer/offset cases passed\n");
  printf("Depth post-pack dependencies: %u consumer-specific batches passed\n",post_batches);
  printf("Depth pre-pack dependencies: %u combined input/output batches passed\n",pre_batches);
  printf("Depth input plane ranges: %u scaled/aligned checks passed\n",input_range_checks);

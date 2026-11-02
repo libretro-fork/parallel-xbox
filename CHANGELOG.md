@@ -4,6 +4,8 @@
 
 ## Unreleased
 
+- Limit Vulkan staging readback host visibility to the surface payload instead of the whole buffer. Preserve compute/transfer producer selection, completion waits and non-coherent cache invalidation.
+
 - Batch Vulkan depth-pack input reuse, transfer-result visibility and fallback staging reuse into one post-dispatch barrier call. Retain input-only dependencies for fused, direct-host and shader-swizzle routes; preserve copies and host completion waits.
 
 - Combine Vulkan depth-pack input visibility and output reuse into one pre-dispatch barrier call for non-fused packing. Preserve each buffer's access/range and mapped-host ordering; fused packing retains an input-only dependency.

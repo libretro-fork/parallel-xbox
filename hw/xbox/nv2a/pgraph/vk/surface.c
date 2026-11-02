@@ -425,7 +425,8 @@ static void invalidate_readback(PGRAPHVkState *r, VkDeviceSize size)
 }
 
 static void packed_readback_to_host_barrier(VkCommandBuffer cmd, VkBuffer buffer,
-                                            bool packed_to_host)
+                                            bool packed_to_host,
+                                            VkDeviceSize offset, VkDeviceSize size)
 {
     VkBufferMemoryBarrier post_copy_dst_barrier = {
         .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
@@ -435,7 +436,8 @@ static void packed_readback_to_host_barrier(VkCommandBuffer cmd, VkBuffer buffer
         .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
         .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
         .buffer = buffer,
-        .size = VK_WHOLE_SIZE
+        .offset = offset,
+        .size = size
     };
     vkCmdPipelineBarrier(cmd, packed_to_host ? VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT :
                                             VK_PIPELINE_STAGE_TRANSFER_BIT,
@@ -889,7 +891,9 @@ static bool download_surface_to_buffer(NV2AState *d, SurfaceBinding *surface,
     // Download image data to host
     //
 
-    packed_readback_to_host_barrier(cmd, copy_buffer, packed_to_host);
+    const VkDeviceSize read_size = ram_size;
+    packed_readback_to_host_barrier(cmd, copy_buffer, packed_to_host, 0,
+                                    read_size);
 
     nv2a_profile_inc_counter(NV2A_PROF_QUEUE_SUBMIT_1);
     pgraph_vk_end_debug_marker(r, cmd);
@@ -899,9 +903,6 @@ static bool download_surface_to_buffer(NV2AState *d, SurfaceBinding *surface,
     /* Mapped for good (buffer.c); only the rows read are made visible to
      * the host, not the whole buffer (64 MB, cached memory) */
     StorageBuffer *dst = &r->storage_buffers[BUFFER_STAGING_DST];
-    const VkDeviceSize read_size = (VkDeviceSize)surface->width *
-                                   surface->fmt.bytes_per_pixel *
-                                   surface->height;
     invalidate_readback(r, read_size);
 
     /* Its rows are packed: swizzled straight out of it, or copied at
