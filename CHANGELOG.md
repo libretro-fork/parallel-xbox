@@ -26,6 +26,8 @@
 
 ## Unreleased
 
+- Consume contiguous QCOW2 memory-copy spans directly instead of staging them through the general multi-vector builder. Preserve compressed-read caching, partial-write workspaces, coalescing and destination bytes. Reduce small-copy cursor bookkeeping without changing payload copying or zero-fill.
+
 - DSP: compile ANDI/ORI status-byte operations natively, preserving raw CCR/OMR masks and reselecting compiled code after MR scaling/loop changes. Add 81,920 regression boundaries, an independent status oracle and a production program.
 
 - Borrow immutable mapped compressed QCOW2 input during synchronous decompression, avoiding compressed-input staging when the complete range is mapped. Keep the read fallback, writable-image behavior and decompressed cache. Writable HDDs keep their existing input path; no overall throughput gain is claimed.

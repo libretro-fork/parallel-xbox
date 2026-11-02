@@ -167,27 +167,57 @@ static int cursor_take(Cursor *c, size_t len, LRFileIOV *out, int max,
     return k;
 }
 
+/* Memory copies consume one contiguous run, without staging an I/O
+ * descriptor through the multi-piece system-call builder. */
+static LRFileIOV cursor_span(Cursor *c, size_t len)
+{
+    LRFileIOV span = { NULL, 0 };
+
+    while (len && c->i < c->n) {
+        size_t here = c->iov[c->i].len - c->off;
+        if (!here) {
+            c->i++;
+            c->off = 0;
+            continue;
+        }
+        uint8_t *base = (uint8_t *)c->iov[c->i].base + c->off;
+        if (span.len &&
+            (span.len > UINTPTR_MAX - (uintptr_t)span.base ||
+             (uintptr_t)base != (uintptr_t)span.base + span.len)) {
+            break;
+        }
+        size_t n = here < len ? here : len;
+        if (!span.len) {
+            span.base = base;
+        }
+        span.len += n; /* bounded by the original len */
+        len -= n;
+        c->off += n;
+        if (c->off == c->iov[c->i].len) {
+            c->i++;
+            c->off = 0;
+        }
+    }
+    return span;
+}
+
 static void cursor_copy_out(Cursor *c, const uint8_t *src, size_t len)
 {
     while (len) {
-        LRFileIOV p;
-        size_t took;
-        cursor_take(c, len, &p, 1, &took);
-        memcpy(p.base, src, took);
-        src += took;
-        len -= took;
+        LRFileIOV p = cursor_span(c, len);
+        memcpy(p.base, src, p.len);
+        src += p.len;
+        len -= p.len;
     }
 }
 
 static void cursor_copy_in(Cursor *c, uint8_t *dst, size_t len)
 {
     while (len) {
-        LRFileIOV p;
-        size_t took;
-        cursor_take(c, len, &p, 1, &took);
-        memcpy(dst, p.base, took);
-        dst += took;
-        len -= took;
+        LRFileIOV p = cursor_span(c, len);
+        memcpy(dst, p.base, p.len);
+        dst += p.len;
+        len -= p.len;
     }
 }
 
