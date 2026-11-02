@@ -135,6 +135,12 @@ int main(int argc,char**argv)
         }
         /* A shared list tail queues the same voice state twice. Its results
          * must match ordered execution, regardless of the worker count. */
+        if((sc&7)<2){
+            int source=(sc&1)&&heads[1]!=0xffff?1:heads[0]!=0xffff?0:heads[1]!=0xffff?1:2;
+            vset(d,tails[source],NV_PAVS_VOICE_TAR_PITCH_LINK,
+                 NV_PAVS_VOICE_TAR_PITCH_LINK_NEXT_VOICE_HANDLE,heads[source]);
+            heads[0]=heads[source];
+        }
         if((sc&3)==0)heads[1]=heads[0];
         d->regs[NV_PAPU_TVL2D]=heads[0];d->regs[NV_PAPU_TVL3D]=heads[1];d->regs[NV_PAPU_TVLMP]=heads[2];
         int frames=8+rr(24);

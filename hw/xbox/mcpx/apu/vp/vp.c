@@ -1979,6 +1979,17 @@ static void voice_worker_thread(void *arg)
     rcu_unregister_thread();
 }
 
+static void voice_work_run_serial(MCPXAPUState *d,
+    int64_t mixbins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME])
+{
+    VoiceWorkDispatch *vwd = &d->vp.voice_work_dispatch;
+    for (int i = 0; i < vwd->queue_len; i++) {
+        voice_process(d, mixbins, d->vp.sample_buf,
+                      vwd->queue[i].voice, vwd->queue[i].list);
+    }
+    vwd->queue_len = 0;
+}
+
 static void voice_work_enqueue(MCPXAPUState *d, int v, int list)
 {
     VoiceWorkDispatch *vwd = &d->vp.voice_work_dispatch;
@@ -2083,11 +2094,7 @@ voice_work_dispatch(MCPXAPUState *d,
     if (wake <= 0) {
         /* No wakeup, claims or reduction on a serial frame. The caller has
          * already cleared the DSP output buffer. */
-        for (int i = 0; i < vwd->queue_len; i++) {
-            voice_process(d, mixbins, d->vp.sample_buf,
-                          vwd->queue[i].voice, vwd->queue[i].list);
-        }
-        vwd->queue_len = 0;
+        voice_work_run_serial(d, mixbins);
         return;
     }
 
@@ -2187,6 +2194,9 @@ static void voice_work_finalize(MCPXAPUState *d)
 
 void mcpx_apu_vp_frame(MCPXAPUState *d, int64_t mixbins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME])
 {
+    VoiceWorkDispatch *vwd = &d->vp.voice_work_dispatch;
+    bool serial_overflow = false;
+
     memset(d->vp.sample_buf, 0, sizeof(d->vp.sample_buf));
 
     /* Process all voices, mixing each into the affected MIXBINs */
@@ -2215,7 +2225,19 @@ void mcpx_apu_vp_frame(MCPXAPUState *d, int64_t mixbins[NUM_MIXBINS][NUM_SAMPLES
             } else if (!is_voice_locked(d, v)) {
                 /* a locked voice is being changed by the guest: it sits
                  * this frame out rather than the frame waiting (apu.c) */
-                voice_work_enqueue(d, v, list);
+                if (!serial_overflow &&
+                    vwd->queue_len == ARRAY_SIZE(vwd->queue)) {
+                    /* More visits than distinct hardware voices necessarily
+                     * repeat state. Keep order across the capacity boundary,
+                     * including multipass reads of earlier shared mix bins. */
+                    voice_work_run_serial(d, mixbins);
+                    serial_overflow = true;
+                }
+                if (serial_overflow) {
+                    voice_process(d, mixbins, d->vp.sample_buf, v, list);
+                } else {
+                    voice_work_enqueue(d, v, list);
+                }
             }
             apu_reg_w(d, current, apu_reg_r(d, next));
         }

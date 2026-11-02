@@ -67,7 +67,7 @@ functions = ['set_notify_status', 'voice_get_mask', 'voice_set_mask', 'voice_off
              'voice_pitch_step', 'voice_resample', 'peek_ahead_multipass_bin',
              'get_multipass_samples', 'voice_process', 'hrir_tap',
              'get_voice_bin_src_dst', 'voice_work_claim', 'voice_work_unit', 'voice_worker_thread',
-             'voice_work_enqueue', 'voice_work_schedule', 'voice_work_dispatch', 'voice_work_init',
+             'voice_work_run_serial', 'voice_work_enqueue', 'voice_work_schedule', 'voice_work_dispatch', 'voice_work_init',
              'voice_work_finalize']
 driver = (here/'test-vp-threads.c').read_text(encoding='utf-8')
 generated = fixture + table + ''.join(function(n) for n in functions) + \

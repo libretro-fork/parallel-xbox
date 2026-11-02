@@ -121,6 +121,13 @@ entry:
         ; A shared list tail must execute twice in order, never concurrently.
         apu 0x2060, VOICE                ; TVL3D shares the 2D voice
 %endif
+%ifdef VP_CYCLE
+        ; Each list is bounded at 256 visits: 768 total must not overflow
+        ; the 256-item work queue or discard an earlier partial mix.
+        mov word [VOICES + VOICE * 0x80 + 0x7C], VOICE
+        apu 0x2060, VOICE
+        apu 0x206C, VOICE
+%endif
 
 
 %ifdef DSP

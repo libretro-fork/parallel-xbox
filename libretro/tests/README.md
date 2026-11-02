@@ -3220,3 +3220,32 @@ Register stores drop from four to zero/one; counted reads fall from nine to
 two/three while preserving the existing predicate call. Both method-model runs
 improve unchanged, alternating and randomized color masks. GPU-facing state,
 surface-write history and command work remain unchanged.
+
+### Bounded VP list overflow
+
+Three lists can each make 256 visits, while the work queue has 256 entries.
+If a frame needs a 257th queued item, the owner processes the queued prefix
+serially into the existing shared mix buffers, then processes the remaining
+visits directly. No second worker batch starts: multipass consumers retain the
+mix produced before the capacity boundary. Each list keeps its existing
+256-visit cap. Frames fitting the queue retain normal scheduling. No queue
+storage, sample copy, lock, spin, worker wake or completion wait is added by the
+overflow path. The existing completion barrier on ordinary parallel frames
+remains separate work.
+
+`test-vp-list-capacity.py CHECKOUT [CC]` compiles the production traversal,
+enqueue and serial helper against an independent ordered oracle. Its 448 cases
+include 118 overflow frames, up to 768 visits, cycles/shared lists, inactive and
+locked voices, exact process order, current-list registers, partial mix/monitor
+preservation and queue canaries. The baseline fails at the enqueue assertion.
+`VP_CAPACITY_SOURCE` overrides traversal/enqueue for regression checks;
+`VP_CAPACITY_BINARY`, `VP_CAPACITY_SKIP_RUN` and `VP_CAPACITY_CFLAGS` support
+native fixtures. Default GCC flags enable UB traps. The real VP thread fixture
+also includes cyclic shared lists in its one/four-worker audio comparison.
+`VP_CYCLE` enables a corresponding native test-ROM workload.
+
+The capacity oracle also models multipass-style consume/clear operations
+across chunk boundaries. Real threaded scenarios include cyclic 3D/multipass
+layouts. Win64 VP-frame stack usage changes from 160 to 176 bytes; the serial
+helper remains inlined. Voice-processing/scheduler stack usage stays
+1,248/3,264 bytes and dispatch/filter state sizes 3,120/1,120 bytes.
