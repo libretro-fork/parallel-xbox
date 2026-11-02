@@ -59,13 +59,20 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL validation(VkDebugUtilsMessageSeverityFlag
 typedef struct { VkBuffer buffer; VkDeviceSize buffer_size; uint8_t *mapped; } StorageBuffer;
 typedef struct {
  VkDevice device; VkPhysicalDevice physical_device; VkPhysicalDeviceProperties device_props; VkPipelineCache vk_pipeline_cache;
- StorageBuffer storage_buffers[2];
+ VkBuffer vram_buffer; StorageBuffer storage_buffers[2];
  unsigned aux_slot; bool in_aux_command_buffer; struct {bool pending;} aux[PGRAPH_VK_AUX_SLOTS];
  struct { struct { VkImage image; VkImageView image_view; bool storage; struct { VkDescriptorPool pool; VkDescriptorSetLayout set_layout;
  VkDescriptorSet sets[PGRAPH_VK_AUX_SLOTS]; VkPipelineLayout layout; VkPipeline pipeline; VkBuffer source[PGRAPH_VK_AUX_SLOTS]; VkImageView output[PGRAPH_VK_AUX_SLOTS];
  } convert; } pvideo; } display;
 } PGRAPHVkState;
 typedef struct {PGRAPHVkState *vk_renderer_state; size_t src,dst,written;bool reject_ring;} PGRAPHState;
+typedef struct {void *vram_ptr;size_t *vram;} NV2AState;
+static NV2AState guest_state;
+#define container_of(ptr,type,field) ((void)(ptr), &guest_state)
+static size_t memory_region_size(size_t *size){return *size;}
+static unsigned claims;
+static VkDeviceSize claim_offset,claim_size;
+static void lr_gpu_ram_claim(uintptr_t cmd,VkDeviceSize offset,size_t size){assert(cmd);claims++;claim_offset=offset;claim_size=size;}
 static VkDeviceSize pgraph_vk_staging_alloc(PGRAPHState *pg,size_t size,size_t align,uint8_t **out)
 {assert(align==16&&pg->src+size<=pg->vk_renderer_state->storage_buffers[0].buffer_size);pg->written+=size;size_t offset=pg->src;pg->src=(pg->src+size+15)&~15u;*out=pg->vk_renderer_state->storage_buffers[0].mapped+offset;return offset;}
 static void pgraph_vk_staging_flush(PGRAPHState *pg,VkDeviceSize offset,size_t size){(void)pg;(void)offset;(void)size;}
@@ -135,14 +142,23 @@ int main(void)
 
  PGRAPHVkState r={.in_aux_command_buffer=true,.physical_device=gpu,.device=device,.device_props=properties};PGRAPHState pg={.vk_renderer_state=&r};
  pgraph_vk_pvideo_init(&pg);assert(r.display.pvideo.convert.pipeline);
- Buffer src=buffer(16*1024*1024),dst=buffer(16*1024*1024);
+ Buffer src=buffer(16*1024*1024),dst=buffer(16*1024*1024),ram=buffer(16*1024*1024);
+ size_t ram_size=16*1024*1024;guest_state=(NV2AState){ram.mapped,&ram_size};
  r.storage_buffers[0]=(StorageBuffer){src.handle,16*1024*1024,src.mapped};
  r.storage_buffers[1]=(StorageBuffer){dst.handle,16*1024*1024,dst.mapped};
- unsigned widths[]={1,2,3,7,16,63,64,65,640,641,1920};size_t checked=0;unsigned cases=0;
- for(unsigned test=0;test<45;test++){
-  unsigned w=test==44?1920:widths[test%11],h=test==44?1080:13,pitch=(w+1)/2*4+(test%4)*8;
+ unsigned widths[]={1,2,3,7,16,63,64,65,640,641,1920};size_t checked=0;unsigned cases=0,direct_cases=0;size_t avoided=0;
+ for(unsigned test=0;test<90;test++){
+  unsigned w=(test==44||test==84)?1920:widths[test%11],h=(test==44||test==84)?1080:13,pitch=(w+1)/2*4+(test%4)*8;
   size_t bytes=(size_t)w*h*4;
-  uint8_t *guest=malloc((size_t)pitch*h),*expected=malloc(bytes);assert(guest&&expected);
+  bool imported=test>=45;
+  size_t offset=32+(test%3==1?1:0);
+  uint8_t *guest=imported?ram.mapped+offset:malloc((size_t)pitch*h),*expected=malloc(bytes);assert(guest&&expected);
+  r.vram_buffer=imported?ram.handle:VK_NULL_HANDLE;
+  ram_size=test==72?(size_t)properties.limits.maxStorageBufferRange+1:16*1024*1024;
+  bool direct=imported&&offset%4==0&&pitch==(w+1)/2*4&&ram_size<=properties.limits.maxStorageBufferRange;
+  /* Direct conversion must not depend on staging capacity. */
+  r.storage_buffers[0].buffer_size=direct?128:16*1024*1024;
+  claims=0;
   uint32_t random=0x1234+test;
   for(size_t i=0;i<(size_t)pitch*h;i++){random=random*1664525u+1013904223u;guest[i]=random>>24;}
   old_rgba(expected,guest,w,h,pitch);memset(dst.mapped,0xAB,bytes+512);
@@ -160,11 +176,13 @@ int main(void)
   r.device_props.limits.maxComputeWorkGroupCount[0]=dispatch_expected;
   assert(pgraph_vk_pvideo_convert(&pg,cmd,guest,w,h,pitch,true));
   assert(pgraph_vk_pvideo_convert(&pg,cmd,guest,w,h,pitch,false));
+  assert(claims==(direct?2u:0u));
+  if(direct){assert(!pg.written&&claim_offset==offset&&claim_size==(size_t)pitch*h);direct_cases++;avoided+=2*(size_t)pitch*h;}
   assert(dispatch_calls==before_dispatch+2);
   r.device_props.limits.maxComputeWorkGroupCount[0]=properties.limits.maxComputeWorkGroupCount[0];
-  assert(pg.written==2*(size_t)((w+1)/2)*h*4);
-  /* Guest mutations after snapshotting must not affect the pending reads. */
-  memset(guest,0xE5,(size_t)pitch*h);
+  assert(pg.written==(direct?0:2*(size_t)((w+1)/2)*h*4));
+  /* Staging snapshots tolerate mutations; direct reads retain the RAM claim. */
+  if(!direct)memset(guest,0xE5,(size_t)pitch*h);
   VkImageMemoryBarrier copy_image={.sType=VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,.srcAccessMask=VK_ACCESS_SHADER_WRITE_BIT,.dstAccessMask=VK_ACCESS_TRANSFER_READ_BIT,.oldLayout=VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,.newLayout=VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,.srcQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED,.dstQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED,.image=r.display.pvideo.image,.subresourceRange={VK_IMAGE_ASPECT_COLOR_BIT,0,1,0,1}};
   vkCmdPipelineBarrier(cmd,VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,VK_PIPELINE_STAGE_TRANSFER_BIT,0,0,NULL,0,NULL,1,&copy_image);
   VkDeviceSize result=16;VkBufferImageCopy copy={.bufferOffset=result,.imageSubresource={VK_IMAGE_ASPECT_COLOR_BIT,0,0,1},.imageExtent={w,h,1}};
@@ -173,19 +191,20 @@ int main(void)
   vkCmdPipelineBarrier(cmd,VK_PIPELINE_STAGE_TRANSFER_BIT,VK_PIPELINE_STAGE_HOST_BIT,0,0,NULL,1,&host,0,NULL);
   CHECK(vkEndCommandBuffer(cmd));VkFenceCreateInfo fi={.sType=VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};VkFence fence;CHECK(vkCreateFence(device,&fi,NULL,&fence));
   VkSubmitInfo submit={.sType=VK_STRUCTURE_TYPE_SUBMIT_INFO,.commandBufferCount=1,.pCommandBuffers=&cmd};CHECK(vkQueueSubmit(queue,1,&submit,fence));CHECK(vkWaitForFences(device,1,&fence,VK_TRUE,10000000000ULL));
-  assert(!memcmp(dst.mapped+result,expected,bytes));for(unsigned i=0;i<16;i++){assert(dst.mapped[result-16+i]==0xAB);assert(dst.mapped[result+bytes+i]==0xAB);}
+  if(memcmp(dst.mapped+result,expected,bytes)){fprintf(stderr,"mismatch test=%u direct=%u width=%u pitch=%u slot=%u offset=%zu\n",test,direct,w,pitch,r.aux_slot,offset);abort();}for(unsigned i=0;i<16;i++){assert(dst.mapped[result-16+i]==0xAB);assert(dst.mapped[result+bytes+i]==0xAB);}
   memset(r.display.pvideo.convert.output,0,sizeof(r.display.pvideo.convert.output));
   vkDestroyImageView(device,r.display.pvideo.image_view,NULL);vkDestroyImage(device,r.display.pvideo.image,NULL);vkFreeMemory(device,image_memory,NULL);
-  vkDestroyFence(device,fence,NULL);CHECK(vkResetCommandBuffer(cmd,0));free(guest);free(expected);checked+=(size_t)w*h;cases++;
+  vkDestroyFence(device,fence,NULL);CHECK(vkResetCommandBuffer(cmd,0));if(!imported)free(guest);free(expected);checked+=(size_t)w*h;cases++;
   if(test==20){/* Drained buffer growth refreshes the immutable descriptor bindings. */
    memset(r.display.pvideo.convert.source,0,sizeof(r.display.pvideo.convert.source));drop_buffer(src);src=buffer(16*1024*1024);r.storage_buffers[0].buffer=src.handle;r.storage_buffers[0].mapped=src.mapped;
   }
  }
- pg.written=0;r.display.pvideo.storage=false;assert(!pgraph_vk_pvideo_convert(&pg,cmd,NULL,64,64,128,true));assert(!pg.written);r.display.pvideo.storage=true;
+ r.storage_buffers[0].buffer_size=16*1024*1024;r.vram_buffer=VK_NULL_HANDLE;pg.written=0;r.display.pvideo.storage=false;assert(!pgraph_vk_pvideo_convert(&pg,cmd,NULL,64,64,128,true));assert(!pg.written);r.display.pvideo.storage=true;
  r.device_props.limits.maxStorageBufferRange=1024;assert(!pgraph_vk_pvideo_convert(&pg,cmd,NULL,64,64,128,true));assert(!pg.written);r.device_props=properties;
  assert(!pgraph_vk_pvideo_convert(&pg,cmd,NULL,0,1,0,true));assert(!pg.written);
  r.device_props.limits.maxComputeWorkGroupCount[0]=0;assert(!pgraph_vk_pvideo_convert(&pg,cmd,NULL,64,64,128,true));assert(!pg.written);r.device_props=properties;
  pgraph_vk_pvideo_finalize(&pg);assert(!r.display.pvideo.convert.pipeline);
- drop_buffer(src);drop_buffer(dst);vkDestroyCommandPool(device,pool,NULL);vkDestroyDevice(device,NULL);destroy(instance,messenger,NULL);vkDestroyInstance(instance,NULL);
+ drop_buffer(ram);drop_buffer(src);drop_buffer(dst);vkDestroyCommandPool(device,pool,NULL);vkDestroyDevice(device,NULL);destroy(instance,messenger,NULL);vkDestroyInstance(instance,NULL);
+ printf("direct overlay cases=%u avoided_staging_bytes=%zu\n",direct_cases,avoided);
  printf("%u production conversion/descriptor/barrier cases, %zu pixels byte-exact; fallback preflight PASS; validation_errors=%u validation_enabled=%u\n",cases,checked,errors,validation_enabled);return errors?1:0;
 }

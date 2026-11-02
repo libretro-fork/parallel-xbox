@@ -2,7 +2,7 @@
 """Production Vulkan overlay converter + internal compiler, real Vulkan sync validation."""
 from pathlib import Path
 import os,shlex,subprocess,sys,tempfile
-r=Path(sys.argv[1]).resolve();s=(r/'hw/xbox/nv2a/pgraph/vk/pvideo.c').read_text().replace('#include "renderer.h"','')
+r=Path(sys.argv[1]).resolve();s=(r/'hw/xbox/nv2a/pgraph/vk/pvideo.c').read_text().replace('#include "renderer.h"','').replace('#include "libretro/dsp-ownership.h"','')
 reference=(r/'libretro/tests/test-packed-overlay.c').read_text();a2=reference.index('static uint8_t clip');b2=reference.index('static unsigned cases',a2)
 code=Path(__file__).with_suffix('.c').read_text().replace('/* PRODUCTION */',s).replace('/* REFERENCE */',reference[a2:b2])
 with tempfile.TemporaryDirectory(prefix='vk-packed-overlay-') as tmp:

@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
 #include "renderer.h"
+#include "libretro/dsp-ownership.h"
 
 /* An odd final pixel still needs Cr from the complete four-byte YUY2 pair. */
 static void pvideo_pack_rows(uint8_t *dst, const uint8_t *src,
@@ -16,7 +17,7 @@ static void pvideo_pack_rows(uint8_t *dst, const uint8_t *src,
 }
 
 /* One invocation per YUY2 pair shares its read and chroma arithmetic.
- * The packed snapshot belongs to this auxiliary slot until its fence retires. */
+ * The input belongs to this auxiliary slot until its fence retires. */
 static const char *pvideo_convert_glsl =
     "#version 450\n"
     "layout(local_size_x=64) in;\n"
@@ -49,10 +50,9 @@ static const char *pvideo_convert_glsl =
     "    }\n"
     "}\n";
 
-static void pvideo_convert_bind_source(PGRAPHVkState *r)
+static void pvideo_convert_bind_source(PGRAPHVkState *r, VkBuffer source)
 {
     typeof(r->display.pvideo.convert) *c = &r->display.pvideo.convert;
-    VkBuffer source = r->storage_buffers[BUFFER_STAGING_SRC].buffer;
     VkImageView output = r->display.pvideo.image_view;
     unsigned slot = r->aux_slot;
     assert(r->in_aux_command_buffer && !r->aux[slot].pending);
@@ -149,16 +149,35 @@ bool pgraph_vk_pvideo_convert(PGRAPHState *pg, VkCommandBuffer cmd,
     size_t pairs = packed_size / 4;
     VkDeviceSize limit = r->device_props.limits.maxStorageBufferRange;
     if (!r->display.pvideo.storage || !pixels || pixels > UINT32_MAX / 4 ||
-        DIV_ROUND_UP(pairs, 64) > r->device_props.limits.maxComputeWorkGroupCount[0] ||
-        r->storage_buffers[BUFFER_STAGING_SRC].buffer_size > limit ||
-        packed_size >= r->storage_buffers[BUFFER_STAGING_SRC].buffer_size) {
+        DIV_ROUND_UP(pairs, 64) > r->device_props.limits.maxComputeWorkGroupCount[0]) {
         return false;
     }
-    uint8_t *staged;
-    VkDeviceSize src = pgraph_vk_staging_alloc(pg, packed_size, 16, &staged);
-    pvideo_pack_rows(staged, source, width, height, pitch);
-    pgraph_vk_staging_flush(pg, src, packed_size);
-    pvideo_convert_bind_source(r);
+    /* Tight YUY2 pairs already match the shader input. Imported RAM stays
+     * owned by this aux command until fence retirement; padded rows retain
+     * the packed snapshot fallback. The descriptor covers the entire buffer. */
+    NV2AState *d = container_of(pg, NV2AState, pgraph);
+    VkDeviceSize ram_size = memory_region_size(d->vram);
+    uintptr_t base = (uintptr_t)d->vram_ptr;
+    uintptr_t address = (uintptr_t)source;
+    VkDeviceSize src = address >= base ? address - base : ram_size;
+    bool direct = r->vram_buffer != VK_NULL_HANDLE && ram_size <= limit &&
+        pitch == ((size_t)width + 1) / 2 * 4 && !(src % 4) &&
+        src <= ram_size && packed_size <= ram_size - src;
+    VkBuffer input = direct ? r->vram_buffer :
+        r->storage_buffers[BUFFER_STAGING_SRC].buffer;
+    if (direct) {
+        lr_gpu_ram_claim((uintptr_t)cmd, src, packed_size);
+    } else {
+        if (r->storage_buffers[BUFFER_STAGING_SRC].buffer_size > limit ||
+            packed_size >= r->storage_buffers[BUFFER_STAGING_SRC].buffer_size) {
+            return false;
+        }
+        uint8_t *staged;
+        src = pgraph_vk_staging_alloc(pg, packed_size, 16, &staged);
+        pvideo_pack_rows(staged, source, width, height, pitch);
+        pgraph_vk_staging_flush(pg, src, packed_size);
+    }
+    pvideo_convert_bind_source(r, input);
 
     VkBufferMemoryBarrier before = {
         .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
@@ -166,7 +185,7 @@ bool pgraph_vk_pvideo_convert(PGRAPHState *pg, VkCommandBuffer cmd,
         .dstAccessMask = VK_ACCESS_SHADER_READ_BIT,
         .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
         .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        .buffer = r->storage_buffers[BUFFER_STAGING_SRC].buffer,
+        .buffer = input,
         .offset = src, .size = packed_size,
     };
     VkImageMemoryBarrier image = {

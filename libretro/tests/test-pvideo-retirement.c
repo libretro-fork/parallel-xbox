@@ -80,9 +80,10 @@ static void submit(void){
  PGRAPHState pg={&state};unsigned slot=state.aux_slot;
  while(state.aux[slot].pending)assert(aux_retire_oldest(&state,false));
  state.in_aux_command_buffer=true;
- unsigned prior=updates;pvideo_convert_bind_source(&state);
- assert(updates<=prior+1&&descriptors[slot]==state.display.pvideo.image_view&&sources[slot]==state.storage_buffers[0].buffer);
- pvideo_convert_bind_source(&state);assert(updates<=prior+1); /* identical reuse */
+ unsigned source=state.aux_submitted%2?456:state.storage_buffers[0].buffer;
+ unsigned prior=updates;pvideo_convert_bind_source(&state,source);
+ assert(updates<=prior+1&&descriptors[slot]==state.display.pvideo.image_view&&sources[slot]==source);
+ pvideo_convert_bind_source(&state,source);assert(updates<=prior+1); /* identical reuse */
  bound[slot]=descriptors[slot];
  pgraph_vk_end_single_time_commands_async(&pg,slot+1);
 }
