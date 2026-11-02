@@ -27,6 +27,20 @@ typedef struct {
 static VkDeviceSize observed_size;
 static void pgraph_apply_scaling_factor(PGRAPHState *p,unsigned *w,unsigned *h)
 {*w*=p->scale;*h*=p->scale;}
+static VkDeviceSize expected_barrier_size,expected_barrier_offset;
+static unsigned barrier_checks;
+static void checked_barrier(VkCommandBuffer cmd,VkPipelineStageFlags src,
+    VkPipelineStageFlags dst,VkDependencyFlags flags,uint32_t nm,
+    const VkMemoryBarrier *mem,uint32_t nb,const VkBufferMemoryBarrier *buf,
+    uint32_t ni,const VkImageMemoryBarrier *im)
+{
+    assert(cmd==(VkCommandBuffer)(uintptr_t)2&&nb==1&&!nm&&!ni&&!flags&&!mem&&!im);
+    assert(src==VK_PIPELINE_STAGE_TRANSFER_BIT&&dst==VK_PIPELINE_STAGE_TRANSFER_BIT);
+    assert(buf->buffer==(VkBuffer)(uintptr_t)3&&buf->offset==expected_barrier_offset&&buf->size==expected_barrier_size);
+    assert(buf->srcAccessMask==VK_ACCESS_TRANSFER_READ_BIT&&buf->dstAccessMask==VK_ACCESS_TRANSFER_WRITE_BIT);
+    barrier_checks++;
+}
+#define vkCmdPipelineBarrier checked_barrier
 /* PRODUCTION */
 int main(void)
 {
@@ -55,10 +69,16 @@ int main(void)
         bool expected=imported&&open&&(!f||required<=capacity);
         bool previous=imported&&open&&(!f||pixels*8<=capacity);
         assert(observed_size==required&&batched==expected);
+        VkBufferImageCopy region={.bufferOffset=a*256,.imageExtent={w,h,1}};
+        expected_barrier_offset=region.bufferOffset;
+        expected_barrier_size=f?plane:(VkDeviceSize)w*h*2;
+        record_destination(&s,f!=0,observed_size,&region,
+            (VkBuffer)(uintptr_t)3,(VkCommandBuffer)(uintptr_t)2);
         if(batched&&!previous)retained++;
         if(previous&&!batched)rejected_short++;
         cases++;
     }
-    assert(retained&&rejected_short);
+    assert(retained&&rejected_short&&barrier_checks==cases);
+    printf("Readback destination ranges: %u native D16/aligned scaled depth plane checks passed\n",barrier_checks);
     printf("depth readback: %u format/scale/alignment/capacity/batch/import cases; %u unnecessary batch flush decisions avoided, %u short-capacity batches rejected\n",cases,retained,rejected_short);
 }

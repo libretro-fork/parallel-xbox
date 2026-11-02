@@ -32,7 +32,14 @@ tail = """
     return batched;
 }
 """
-parts = [function("depth_stencil_plane_size"), function("surface_readback_needs_swizzle"), prefix + tail]
+barrier_start = readback.index("    /* Cover the written planes or pitched rows")
+barrier_end = readback.index("    if(direct) lr_gpu_ram_claim", barrier_start)
+barrier = """static void record_destination(SurfaceBinding *surface,
+    bool use_compute_to_convert_depth_stencil_format, VkDeviceSize compute_size,
+    VkBufferImageCopy *copy_regions, VkBuffer copy_buffer, VkCommandBuffer cmd)
+{
+""" + readback[barrier_start:barrier_end] + "}"
+parts = [function("depth_stencil_plane_size"), function("surface_readback_needs_swizzle"), prefix + tail, barrier]
 code = Path(__file__).with_suffix(".c").read_text().replace("/* PRODUCTION */", "\n".join(parts))
 with tempfile.TemporaryDirectory(prefix="depth-readback-capacity-", dir=repo.parent) as directory:
     folder = Path(directory)

@@ -828,6 +828,16 @@ static bool download_surface_to_buffer(NV2AState *d, SurfaceBinding *surface,
         }
     }
 
+    /* Cover the written planes or pitched rows, excluding unused storage
+     * and final-row padding. Depth packing reads aligned stencil words. */
+    VkDeviceSize copy_size = compute_size;
+    if (!use_compute_to_convert_depth_stencil_format) {
+        VkDeviceSize row_pixels = copy_regions[0].bufferRowLength ?
+            copy_regions[0].bufferRowLength : copy_regions[0].imageExtent.width;
+        copy_size = ((copy_regions[0].imageExtent.height - 1) * row_pixels +
+                     copy_regions[0].imageExtent.width) *
+                    surface->host_fmt.host_bytes_per_pixel;
+    }
     {
         VkBufferMemoryBarrier pre_copy_dst_barrier = {
             .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
@@ -836,7 +846,8 @@ static bool download_surface_to_buffer(NV2AState *d, SurfaceBinding *surface,
             .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
             .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
             .buffer = copy_buffer,
-            .size = VK_WHOLE_SIZE
+            .offset = copy_regions[0].bufferOffset,
+            .size = copy_size
         };
         vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
                              VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 1,

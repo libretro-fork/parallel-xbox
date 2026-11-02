@@ -90,6 +90,24 @@ static VkImage image(VkFormat format, unsigned width, unsigned height,
     return result;
 }
 
+static VkDeviceSize expected_copy_size;
+static unsigned copy_barriers;
+static void checked_barrier(VkCommandBuffer cmd,VkPipelineStageFlags src,
+    VkPipelineStageFlags dst,VkDependencyFlags flags,uint32_t nm,
+    const VkMemoryBarrier *mem,uint32_t nb,const VkBufferMemoryBarrier *buf,
+    uint32_t ni,const VkImageMemoryBarrier *im)
+{
+    if(nb){
+        assert(nb==1&&buf[0].offset==65536&&buf[0].size==expected_copy_size);
+        assert(buf[0].srcAccessMask==VK_ACCESS_TRANSFER_READ_BIT&&
+               buf[0].dstAccessMask==VK_ACCESS_TRANSFER_WRITE_BIT);
+        assert(src==VK_PIPELINE_STAGE_TRANSFER_BIT&&dst==VK_PIPELINE_STAGE_TRANSFER_BIT);
+        copy_barriers++;
+    }
+    vkCmdPipelineBarrier(cmd,src,dst,flags,nm,mem,nb,buf,ni,im);
+}
+#define vkCmdPipelineBarrier checked_barrier
+
 static void unexpected(void) { assert(!"unexpected staging/swizzle/packed fallback"); abort(); }
 #define readback_batch_flush(...) ((void)0)
 #define pgraph_vk_surface_borrow_pending(...) false
@@ -207,40 +225,45 @@ int main(void)
     NV2AState d={.pgraph={&r,1},.vram_ptr=mapped,.vram=&vram_size};
     const VkFormat formats[]={VK_FORMAT_R8_UNORM,VK_FORMAT_R5G6B5_UNORM_PACK16,VK_FORMAT_B8G8R8A8_UNORM,VK_FORMAT_D16_UNORM};
     const unsigned lengths[]={1,4,64};unsigned cases=0;
-    for(unsigned f=0;f<4;f++)for(unsigned axis=0;axis<2;axis++)
+    for(unsigned f=0;f<4;f++)for(unsigned axis=0;axis<3;axis++)
     for(unsigned n=0;n<3;n++)for(unsigned scale=1;scale<=4;scale*=2)
-    for(unsigned batch=0;batch<2;batch++){
+    for(unsigned batch=0;batch<2;batch++)for(unsigned layout=0;layout<3;layout++){
+        if(axis==2&&layout==0)continue; /* 2D linear copies avoid the swizzle path. */
         unsigned bpp=f==0?1:f==2?4:2;
-        unsigned w=axis?1:lengths[n],h=axis?lengths[n]:1;
+        unsigned w=axis==1?1:lengths[n],h=axis==0?1:axis==1?lengths[n]:5;
+        unsigned pitch=w*bpp+(layout==2?16:0);
+        size_t span=(size_t)(h-1)*pitch+w*bpp;
         bool color=f!=3;VkImageAspectFlags aspect=color?VK_IMAGE_ASPECT_COLOR_BIT:VK_IMAGE_ASPECT_DEPTH_BIT;
         VkDeviceMemory source_memory;
-        SurfaceBinding s={.width=w,.height=h,.pitch=w*bpp,.color=color,.swizzle=true,.vram_addr=65536,
+        SurfaceBinding s={.width=w,.height=h,.pitch=pitch,.color=color,.swizzle=layout==0,.vram_addr=65536,
             .fmt={bpp},.host_fmt={formats[f],bpp,aspect},
             .image=image(formats[f],w*scale,h*scale,color?VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT:VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,&source_memory)};
         d.pgraph.surface_scale_factor=scale;r.readback_batch.open=batch;
         for(unsigned gen=0;gen<2;gen++){
             for(unsigned y=0;y<h*scale;y++)for(unsigned x=0;x<w*scale;x++)for(unsigned b=0;b<bpp;b++)
                 mapped[(y*w*scale+x)*bpp+b]=(x/scale)*37+(y/scale)*71+b*53+gen*109;
-            memset(mapped+65520,0xcd,(size_t)w*h*bpp+32);
+            memset(mapped+65520,0xcd,span+32);
             pgraph_vk_begin_single_time_commands(&d.pgraph);
             pgraph_vk_transition_image_layout(&d.pgraph,command,s.image,formats[f],gen?pgraph_vk_surface_base_layout(&s):VK_IMAGE_LAYOUT_UNDEFINED,VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
             VkBufferImageCopy region={.imageSubresource={aspect,0,0,1},.imageExtent={w*scale,h*scale,1}};
             vkCmdCopyBufferToImage(command,host,s.image,VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,1,&region);
             pgraph_vk_transition_image_layout(&d.pgraph,command,s.image,formats[f],VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,pgraph_vk_surface_base_layout(&s));
-            submit_and_wait();claims=waits=batch_adds=0;
+            submit_and_wait();claims=waits=batch_adds=copy_barriers=0;expected_copy_size=span;
             bool done=download_surface_to_buffer(&d,&s,mapped+65536);
             assert(done==!batch&&waits==!batch&&batch_adds==batch);
             if(batch){readback_to_host_barrier(command);submit_and_wait();waits++;}
-            assert(claims==1&&waits==1&&claimed_bytes==(VkDeviceSize)w*h*bpp);
+            assert(claims==1&&waits==1&&claimed_bytes==span&&copy_barriers==1);
             for(unsigned y=0;y<h;y++)for(unsigned x=0;x<w;x++)for(unsigned b=0;b<bpp;b++)
-                assert(mapped[65536+(y*w+x)*bpp+b]==(unsigned char)(x*37+y*71+b*53+gen*109));
-            for(unsigned guard=0;guard<16;guard++)assert(mapped[65520+guard]==0xcd&&mapped[65536+w*h*bpp+guard]==0xcd);
+                assert(mapped[65536+y*pitch+x*bpp+b]==(unsigned char)(x*37+y*71+b*53+gen*109));
+            for(unsigned guard=0;guard<16;guard++)assert(mapped[65520+guard]==0xcd&&mapped[65536+span+guard]==0xcd);
+            for(unsigned y=0;y+1<h;y++)for(unsigned pad=w*bpp;pad<pitch;pad++)
+                assert(mapped[65536+y*pitch+pad]==0xcd);
             cases++;
         }
         if(s.image_scratch){vkDestroyImage(device,s.image_scratch,NULL);vkFreeMemory(device,scratch_memory,NULL);}
         vkDestroyImage(device,s.image,NULL);vkFreeMemory(device,source_memory,NULL);
     }
-    printf("single-axis readback GPU: %u color/D16 axis/extent/scale/batch/update cases; no ring or swizzle, exact RAM bytes and guards, required wait retained\n",cases);
+    printf("single-axis readback GPU: %u color/D16 axis/extent/scale/batch/update/layout cases; exact barrier ranges; no ring or swizzle, exact RAM bytes and guards, required wait retained\n",cases);
     vkUnmapMemory(device,host_memory);vkDestroyBuffer(device,host,NULL);vkFreeMemory(device,host_memory,NULL);
     vkDestroyFence(device,fence,NULL);vkDestroyCommandPool(device,pool,NULL);vkDestroyDevice(device,NULL);vkDestroyInstance(instance,NULL);
 }

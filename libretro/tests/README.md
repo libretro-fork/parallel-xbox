@@ -2926,11 +2926,12 @@ The runtime reuses the presentation draw. Vulkan reserves and maps eight small l
 
 `python libretro/tests/test-single-axis-readback-vulkan.py CHECKOUT [CC]`
 executes the production `download_surface_to_buffer`, routing helper and host
-visibility barrier on a real Vulkan device via Volk. It checks 288 combinations
-of R8, RGB565, ARGB8888 and D16, horizontal/vertical single-axis extents, scale
-1/2/4, immediate/single-entry batch completion and two updates. Destination RAM
-bytes and guards must match; imported-RAM claims and the required wait are
-checked. Ring allocation, swizzle dispatch and staging fallback hooks fail if
+visibility barrier on a real Vulkan device via Volk. It checks 1,152 combinations
+of R8, RGB565, ARGB8888 and D16, horizontal/vertical single-axis and 2D linear
+extents, scale 1/2/4, immediate/single-entry batch completion, two updates and
+swizzled/tight-linear/padded-linear destinations. Destination RAM bytes, row
+padding and guards must match; destination barrier offsets/spans, imported-RAM
+claims and the required wait are checked. Ring allocation, swizzle dispatch and staging fallback hooks fail if
 reached. Fixture hooks supply image transitions and command submission; the full
 batch scheduler and external-host import extension are not exercised. No Vulkan
 validation layer is requested. The regular CPU depth-source fixture checks the
@@ -2986,6 +2987,8 @@ batches retain their respective behavior. In this matrix 62 reads remain batched
 where the old eight-byte-per-pixel estimate would request a flush; those are
 planning decisions, not measured runtime fence counts. Fourteen previously
 accepted short-capacity cases are also rejected by the exact requirement.
+The same matrix executes the production destination reuse barrier block and
+checks native D16 and aligned scaled depth/stencil spans and offsets.
 Readback still waits for
 guest CPU visibility at immediate or batch completion. Upload and readback now
 share the footprint helper; the 480-case upload-range oracle remains applicable.
