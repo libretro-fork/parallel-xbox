@@ -12,7 +12,7 @@ import tempfile
 repo = Path(sys.argv[1]).resolve()
 source = (repo / "hw/xbox/nv2a/pgraph/vk/texture.c").read_text()
 parts = [re.search(r"typedef struct TextureLevel \{.*?\} TextureLevel;", source, re.S)[0]]
-for name in ("stage_level", "level_from_vram", "volume_row_direct", "stage_blocks_3d", "texture_level_copy", "volume_block_slice_size", "copy_volume_block_slices"):
+for name in ("stage_level", "level_from_vram", "volume_blocks_direct", "stage_blocks_3d", "texture_level_copy", "volume_block_slice_size", "copy_volume_block_slices"):
     position = source.index(name + "(")
     start = source.rfind("\nstatic ", 0, position) + 1
     end = source.index("{", position) + 1

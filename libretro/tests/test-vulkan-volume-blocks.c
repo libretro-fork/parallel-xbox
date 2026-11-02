@@ -120,7 +120,7 @@ int main(void)
     VkCommandBuffer cmd; CHECK(vkAllocateCommandBuffers(device, &ca, &cmd));
     const VkFormat formats[] = {VK_FORMAT_BC1_RGBA_UNORM_BLOCK,
         VK_FORMAT_BC2_UNORM_BLOCK, VK_FORMAT_BC3_UNORM_BLOCK};
-    const unsigned widths[] = {1,4,5,8,12,16,17,20,32,64,128,256,260}, heights[] = {1,4,5,8,20}, depths[] = {1,2,4,5,65,129};
+    const unsigned widths[] = {1,4,5,8,12,16,17,20,32,64,128,256,260}, heights[] = {1,4,5,8,20,32,36}, depths[] = {1,2,4,5,65,129};
     unsigned cases = 0, direct = 0, expanded = 0; size_t avoided = 0, total_copies = 0, previous_copies = 0, expanded_bytes = 0, expanded_copies = 0;
     for (unsigned f=0;f<3;f++)
     for (unsigned wi=0;wi<ARRAY_SIZE(widths);wi++)
@@ -156,8 +156,8 @@ int main(void)
         bool previous_direct = kind==0 && (depth==1 || blocks==1);
         previous_copies += previous_direct ? 0 :
             depth==1 || blocks==1 ? 1 : (size_t)blocks*depth;
-        bool eligible=kind==0 && (depth==1 || w<=4 || (h<=4 && (w<=16 || (uint64_t)((w+3)/4)*((depth+3)/4)<=64)));
-        bool before_direct=kind==0 && (depth==1 || w<=4 || (h<=4 && w<=16));
+        bool eligible=kind==0 && (depth==1 || w<=4 || (h<=4 && w<=16) || (uint64_t)((w+3)/4)*((h+3)/4)*((depth+3)/4)<=64);
+        bool before_direct=kind==0 && (depth==1 || w<=4 || (h<=4 && (w<=16 || (uint64_t)((w+3)/4)*((depth+3)/4)<=64)));
         if(eligible&&!before_direct){expanded++;expanded_bytes+=bytes;expanded_copies+=(size_t)blocks*depth;}
 
         assert((level.source==LEVEL_VRAM)==eligible);
@@ -217,7 +217,7 @@ int main(void)
         drop_buffer(upload); drop_buffer(staging); drop_buffer(output); free(expected);
         CHECK(vkResetCommandBuffer(cmd, 0)); cases++;
     }
-    printf("Expanded row routes=%u; additional staging bytes avoided=%zu; CPU block copies avoided=%zu\n",expanded,expanded_bytes,expanded_copies);
+    printf("Expanded compact-grid routes=%u; additional staging bytes avoided=%zu; CPU block copies avoided=%zu\n",expanded,expanded_bytes,expanded_copies);
     printf("volume cases=%u direct=%u avoided_staging_bytes=%zu; all bytes exact\n",cases,direct,avoided);
     printf("CPU copy calls=%zu; previous-path model=%zu\n",total_copies,previous_copies);
     vkDestroyCommandPool(device, pool, NULL); vkDestroyDevice(device, NULL);

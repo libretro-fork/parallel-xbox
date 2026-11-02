@@ -239,11 +239,12 @@ static void stage_blocks_2d(PGRAPHState *pg, TextureLevel *level,
     memcpy(dst, data, size);
 }
 
-/* Wider single-row volumes remain bounded to one existing region batch. */
-static bool volume_row_direct(unsigned width, unsigned height, unsigned depth)
+/* Compact block grids fit one existing region batch; retain narrow rows. */
+static bool volume_blocks_direct(unsigned width, unsigned height, unsigned depth)
 {
-    return height <= 4 && (width <= 16 ||
-        (VkDeviceSize)((width + 3) / 4) * ((depth + 3) / 4) <= 64);
+    return (height <= 4 && width <= 16) ||
+        (VkDeviceSize)((width + 3) / 4) * ((height + 3) / 4) *
+            ((depth + 3) / 4) <= 64;
 }
 
 static void stage_blocks_3d(PGRAPHState *pg, TextureLevel *level,
@@ -256,9 +257,9 @@ static void stage_blocks_3d(PGRAPHState *pg, TextureLevel *level,
     /* One slice/XY block already has Vulkan slice order. A single block
      * column can instead be copied one slice at a time with a strided
      * buffer row (copy_volume_block_slices), without CPU rearrangement.
-     * Short single-row levels use one copy per block and four-slice group. */
+     * Compact grids use one copy region per block and four-slice group. */
     bool ordered = depth == 1 || bw * bh == 1;
-    if ((ordered || bw == 1 || volume_row_direct(width, height, depth)) &&
+    if ((ordered || bw == 1 || volume_blocks_direct(width, height, depth)) &&
         level_from_vram(pg, level, data, width, height, depth,
                         slice * depth, block_size)) {
         return;
@@ -425,9 +426,9 @@ static VkBufferImageCopy texture_level_copy(const TextureLevel *level,
 static size_t volume_block_slice_size(const TextureLevel *level, VkFormat format)
 {
     bool column = level->width <= 4 && level->height > 4;
-    bool row = level->width > 4 &&
-        volume_row_direct(level->width, level->height, level->depth);
-    if (level->source != LEVEL_VRAM || !(column || row) || level->depth <= 1) {
+    bool blocks = level->width > 4 &&
+        volume_blocks_direct(level->width, level->height, level->depth);
+    if (level->source != LEVEL_VRAM || !(column || blocks) || level->depth <= 1) {
         return 0;
     }
     switch (format) {
@@ -448,23 +449,27 @@ static void copy_volume_block_slices(VkCommandBuffer cmd, VkBuffer source,
 {
     if (level->width > 4) {
         /* A single XY block's group of Z slices is contiguous in guest RAM.
-         * Wider rows are eligible only when the whole level fits in this
+         * Wider block grids are eligible only when the whole level fits in this
          * region batch; the original four-block route retains its limits. */
         unsigned bw = (level->width + 3) / 4;
+        unsigned blocks = bw * ((level->height + 3) / 4);
         VkBufferImageCopy regions[64];
-        unsigned total = bw * ((level->depth + 3) / 4);
+        unsigned total = blocks * ((level->depth + 3) / 4);
         for (unsigned first = 0; first < total;) {
             unsigned count = MIN(total - first, ARRAY_SIZE(regions));
             for (unsigned i = 0; i < count; i++, first++) {
-                unsigned group = (first / bw) * 4;
-                unsigned x = (first % bw) * 4;
+                unsigned group = (first / blocks) * 4;
+                unsigned block = first % blocks;
+                unsigned x = (block % bw) * 4;
+                unsigned y = (block / bw) * 4;
                 unsigned nz = MIN(level->depth - group, 4);
                 regions[i] = (VkBufferImageCopy){
                     .bufferOffset = level->offset +
-                        ((VkDeviceSize)group * bw + (first % bw) * nz) * block_size,
+                        ((VkDeviceSize)group * blocks + block * nz) * block_size,
                     .imageSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, mip, layer, 1 },
-                    .imageOffset = { x, 0, group },
-                    .imageExtent = { MIN(level->width - x, 4), level->height, nz },
+                    .imageOffset = { x, y, group },
+                    .imageExtent = { MIN(level->width - x, 4),
+                                     MIN(level->height - y, 4), nz },
                 };
             }
             vkCmdCopyBufferToImage(cmd, source, image,

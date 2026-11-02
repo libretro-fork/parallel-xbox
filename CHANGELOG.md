@@ -4,6 +4,8 @@
 
 ## Unreleased
 
+- Upload compact multi-row native BC volumes directly from imported RAM when grouped XY/Z block regions fit one 64-region batch. Avoid CPU block rearrangement and staging while retaining narrow-column copies and larger-layout fallbacks.
+
 - Prevent upscaled 2D atlas-edge lines such as Ninja Gaiden Black's equipment-menu seams while retaining linear filtering. Eligible depth-disabled, flat screen rectangles clamp UVs to the native pixel-center range and reuse constant depth instead of reconstructing its plane. Native resolution and depth-tested shader paths keep their existing keys and code; no extra draw, texture fetch, buffer or readback is added.
 
 - Upload wider single-row BC volumes directly from imported RAM when all grouped block copies fit one 64-region batch. Avoid their CPU reorder/staging copy while retaining prior narrow routes and larger-layout fallbacks.
