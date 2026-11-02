@@ -2662,14 +2662,18 @@ static void create_texture(PGRAPHState *pg, int texture_idx)
         state.color_format == NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_DEPTH_Y16_FLOAT &&
         snode->depth_source_copy;
     uint64_t content_hash = 0;
-    if (!surface_to_texture && (!surface_to_texture_cube || mixed_cube) && (possibly_dirty || f16_to_ram) &&
-        (snode->validation_frame != pg->frame_time || f16_to_ram)) {
+    bool content_hashed = false;
+    bool cube_hash_mask_changed = mixed_cube && cube_mask != snode->cube_source_mask;
+    if (!surface_to_texture && (!surface_to_texture_cube || mixed_cube) &&
+        (possibly_dirty || f16_to_ram || cube_hash_mask_changed) &&
+        (snode->validation_frame != pg->frame_time || f16_to_ram || cube_hash_mask_changed)) {
         content_hash = mixed_cube ?
             hash_mixed_cube_ram(texture_data, texture_length / 6, cube_mask) :
             fast_hash(texture_data, pgraph_texture_hash_length(state, texture_length));
         if (is_indexed) {
             content_hash ^= fast_hash(palette_data, texture_palette_data_size);
         }
+        content_hashed = true;
     }
 
     /* A doge logo node holds only while the guest data is the logo's: new
@@ -2707,7 +2711,8 @@ static void create_texture(PGRAPHState *pg, int texture_idx)
                 upload_ram |= mixed_cube && replaced;
                 if (upload_ram) {
                     upload_mixed_cube_ram(pg, texture_idx, snode, cube_mask);
-                    snode->hash = content_hash;
+                    /* A GPU-only COW restore did not rehash unchanged RAM. */
+                    if (content_hashed) snode->hash = content_hash;
                 }
                 copy_cube_faces_to_texture(pg, cube_faces, snode);
             }

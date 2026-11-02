@@ -12,6 +12,13 @@ for name in ('hash_mixed_cube_ram','preserve_cube_upload_sources','copy_cube_fac
 assert 'hash_mixed_cube_ram(texture_data, texture_length / 6, cube_mask)' in s
 assert 'preserve_cube_upload_sources(binding, skip_layers);' in s
 assert 'preserve_cube_upload_sources(binding, gpu_mask);' in s
+anchor=s.index('bool ram_changed = mixed_cube')
+a=s.rfind('            unsigned int maxdt',0,anchor)
+b=s.index('        } else if (surface_to_texture && snode->s2t_borrowed)',anchor)
+parts.append('static void refresh_cube(PGRAPHState *pg,TextureBinding *snode,SurfaceBinding *cube_faces[6],unsigned cube_mask,bool mixed_cube,bool possibly_dirty,uint64_t content_hash,bool content_hashed){int texture_idx=0;'+s[a:b]+'}')
+a=s.index('    bool cube_hash_mask_changed =')
+b=s.index('{',a)
+parts.append('static bool cube_hash_needed(bool mixed_cube,unsigned cube_mask,TextureBinding *snode,PGRAPHState *pg,bool surface_to_texture,bool surface_to_texture_cube,bool possibly_dirty,bool f16_to_ram){'+s[a:b]+'{return true;}return false;}')
 code=Path(__file__).with_suffix('.c').read_text().replace('/* PRODUCTION */','\n'.join(parts))
 env=os.environ.copy();env['PATH']=str(Path(cc).resolve().parent)+os.pathsep+env.get('PATH','')
 with tempfile.TemporaryDirectory(prefix='mixed-cube-') as tmp:
