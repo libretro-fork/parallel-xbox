@@ -14,7 +14,10 @@
 
 ## Unreleased
 
+- Reuse the selected shader-state digest for Vulkan binding-cache lookup, including dynamic siblings. Preserve complete state bytes, cache collision checks, queue/ahead decisions and clean-state behavior while avoiding duplicate hashing and the sibling copy-back.
+
 - Reuse one completed IDE buffered-read request and its largest aligned scratch buffer on the emulation owner. Preserve error/cancellation copy suppression and callback lifetime; release the cache on content close, including close from a completing callback. Warm reads avoid repeated heap allocations without changing payload copying.
+
 - Reuse the shader-module LRU lookup hash when adopting worker results on a cache miss. Preserve full-key collision checks and module ownership while avoiding a duplicate render-thread hash scan.
 
 - DSP: compile short-address X/Y MOVEC control-register loads and stores, including stack-pop reads of SSH, scaling changes and repeated loop-count writes. Add 178,176 regression boundaries and a production-block fixture.
