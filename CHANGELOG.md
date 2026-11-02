@@ -1,5 +1,6 @@
 # Changelog of the libretro core
 
+- Reuse one maximum monitor gain across a VP frame when eligible routes have constant gain, avoiding repeated per-sample ramp calculations for DSP-off audio. Changing routes retain exact interpolation, channel selection and multipass exclusions.
 - Stop malformed VP lists before an out-of-range voice handle can access descriptors or voice state. Validate full list-head register values before narrowing them, preserving valid prefixes and the other voice lists.
 - Build VP parallel work units during routing validation, removing the temporary per-voice mask array and second queue scan. Multipass grouping, repeated-voice protection and serial fallbacks are preserved.
 - Keep CPU execution on the existing libretro device owner, removing QEMU CPU/I/O-thread BQL transfers around guest slices, MMIO, exceptions and interrupts. Preserve explicit GPU-wait releases and exception cleanup; guard APIC/FERR helpers conditionally.

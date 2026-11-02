@@ -1828,24 +1828,48 @@ static void voice_process(MCPXAPUState *d,
 
         /* DSP-off audio uses this monitor: ramp it too. Compare gains at
          * a common headroom of seven. */
-        for (int i = 0; i < NUM_SAMPLES_PER_FRAME; i++) {
-            uint32_t best = 0;
-            for (int b = 0; b < 8; b++) {
-                if ((three_d && b < 4 && !spatial) ||
-                    bin[b] == mp_bin) {
-                    continue;
-                }
-                uint32_t gain = ((32 - i) * previous_gain[b] +
-                                 i * filter->route_gain[b]) >> 5;
-                gain <<= 7 - d->vp.submix_headroom[bin[b]];
-                best = MAX(best, gain);
+        uint32_t constant_best = 0;
+        bool ramping = false;
+        for (int b = 0; b < 8; b++) {
+            if ((three_d && b < 4 && !spatial) || bin[b] == mp_bin) {
+                continue;
             }
-            /* best / 2^21 of a sample: the mix's own steps (sample.h) */
-            sample_buf[i][0] += (int64_t)best * ear_samples[i][0];
-            sample_buf[i][1] += (int64_t)best *
-                                ear_samples[i][filtered ? 1 : channels - 1];
+            if (previous_gain[b] != filter->route_gain[b]) {
+                ramping = true;
+                break;
+            }
+            constant_best = MAX(constant_best,
+                (uint32_t)filter->route_gain[b] <<
+                    (7 - d->vp.submix_headroom[bin[b]]));
+        }
+        /* Stable eligible routes share one maximum for all 32 samples. */
+        if (!ramping) {
+            for (int i = 0; i < NUM_SAMPLES_PER_FRAME; i++) {
+                sample_buf[i][0] += (int64_t)constant_best * ear_samples[i][0];
+                sample_buf[i][1] += (int64_t)constant_best *
+                                    ear_samples[i][filtered ? 1 : channels - 1];
+            }
+        } else {
+            for (int i = 0; i < NUM_SAMPLES_PER_FRAME; i++) {
+                uint32_t best = 0;
+                for (int b = 0; b < 8; b++) {
+                    if ((three_d && b < 4 && !spatial) ||
+                        bin[b] == mp_bin) {
+                        continue;
+                    }
+                    uint32_t gain = ((32 - i) * previous_gain[b] +
+                                     i * filter->route_gain[b]) >> 5;
+                    gain <<= 7 - d->vp.submix_headroom[bin[b]];
+                    best = MAX(best, gain);
+                }
+                /* best / 2^21 of a sample: the mix's own steps (sample.h) */
+                sample_buf[i][0] += (int64_t)best * ear_samples[i][0];
+                sample_buf[i][1] += (int64_t)best *
+                                    ear_samples[i][filtered ? 1 : channels - 1];
+            }
         }
     }
+
     if (source_finished) {
         voice_off(d, v);
     }

@@ -30,6 +30,49 @@ static uint32_t rnd(void){rs^=rs<<13;rs^=rs>>7;rs^=rs<<17;return (uint32_t)(rs>>
 static uint32_t rr(uint32_t n){return rnd()%n;}
 static void vset(MCPXAPUState*d,int v,uint32_t reg,uint32_t mask,uint32_t val){voice_set_mask(d,v,reg,mask,val);}
 
+static void monitor_gain_tests(void)
+{
+    MCPXAPUState *d=calloc(1,sizeof(*d));uint64_t saved=rs;rs=0x90123abcd;
+    unsigned stable=0,ramped=0;
+    for(unsigned trial=0;trial<12000;trial++){
+        int bin[8];uint16_t previous[8];int32_t samples[32][2];
+        int64_t actual[32][2],expected[32][2];
+        bool three_d=trial%3!=0,spatial=trial%3==2;
+        bool filtered=spatial&&(trial&1);int channels=1+(trial/3)%2;
+        int mp_bin=trial%4?rr(32):-1;
+        for(int b=0;b<32;b++)d->vp.submix_headroom[b]=rr(8);
+        bool changes=false;
+        for(int b=0;b<8;b++){
+            bin[b]=rr(32);
+            unsigned gain=trial%7?rr(16385):0;
+            d->vp.filters[64].route_gain[b]=gain;
+            previous[b]=trial&1?gain:rr(16385);
+            if((!three_d||b>=4||spatial)&&bin[b]!=mp_bin)changes|=previous[b]!=gain;
+        }
+        if(changes)ramped++;else stable++;
+        for(int i=0;i<32;i++){
+            uint64_t best=0;
+            for(int b=0;b<8;b++){
+                if((three_d&&b<4&&!spatial)||bin[b]==mp_bin)continue;
+                uint64_t gain=((uint64_t)(32-i)*previous[b]+(uint64_t)i*d->vp.filters[64].route_gain[b])/32;
+                gain*=UINT64_C(1)<<(7-d->vp.submix_headroom[bin[b]]);
+                if(gain>best)best=gain;
+            }
+            for(int c=0;c<2;c++){
+                samples[i][c]=(int32_t)rr(0x1000000)-0x800000;
+                actual[i][c]=expected[i][c]=i-c;
+            }
+            expected[i][0]+=(int64_t)best*samples[i][0];
+            expected[i][1]+=(int64_t)best*samples[i][filtered?1:channels-1];
+        }
+        test_monitor_gain(d,previous,bin,mp_bin,three_d,spatial,filtered,channels,(const int32_t (*)[2])samples,actual);
+        assert(!memcmp(actual,expected,sizeof(actual)));
+    }
+    assert(stable&&ramped);
+    printf("PASS: 12000 monitor gain frames (%u stable, %u ramped), exact maximum/headroom/channel oracle\n",stable,ramped);
+    rs=saved;free(d);
+}
+
 static void repeated_voice_schedule_tests(void)
 {
     MCPXAPUState *d=calloc(1,sizeof(*d));
@@ -181,6 +224,7 @@ static void output_reduction_tests(void)
 
 int main(int argc,char**argv)
 {
+    monitor_gain_tests();
     repeated_voice_schedule_tests();
     schedule_layout_tests();
     int scenarios=argc>1?atoi(argv[1]):400;

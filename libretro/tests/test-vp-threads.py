@@ -73,6 +73,14 @@ functions = ['set_notify_status', 'voice_get_mask', 'voice_set_mask', 'voice_off
 reduction = function('voice_work_dispatch')
 reduction = reduction[reduction.rindex('    for (int w = 1; w < vwd->num_workers; w++) {'):]
 reduction = 'static void test_reduce_worker_outputs(MCPXAPUState *d, int64_t mixbins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME]) {\nVoiceWorkDispatch *vwd=&d->vp.voice_work_dispatch;\n' + reduction
+# Isolate the real monitor accumulation from decoder/filter state for exact
+# gain/headroom/channel oracle checks. The trailing brace closes this function.
+monitor = function('voice_process')
+monitor = monitor[monitor.index('        /* DSP-off audio'):monitor.index('    if (source_finished)')]
+monitor = ('static void test_monitor_gain(MCPXAPUState *d, uint16_t previous_gain[8], '
+           'int bin[8], int mp_bin, bool three_d, bool spatial, bool filtered, '
+           'int channels, const int32_t ear_samples[32][2], int64_t sample_buf[32][2]) {\n'
+           'MCPXAPUVoiceFilter *filter=&d->vp.filters[64];\n') + monitor
 driver = (here/'test-vp-threads.c').read_text(encoding='utf-8')
 instrumentation = r'''
 /* Count completion publications without changing the production functions. */
@@ -88,7 +96,7 @@ static int test_fetch_add(retro_atomic_int_t *p, int value)
 #undef retro_atomic_fetch_add_int
 #define retro_atomic_fetch_add_int(p, v) test_fetch_add((p), (v))
 '''
-generated = fixture + instrumentation + table + ''.join(function(n) for n in functions) + reduction + \
+generated = fixture + instrumentation + table + ''.join(function(n) for n in functions) + reduction + monitor + \
     driver.replace('/* VOICE FRAME */', function('mcpx_apu_vp_frame'))
 env = os.environ.copy()
 env['PATH'] = str(Path(cc).resolve().parent) + os.pathsep + env.get('PATH', '')
