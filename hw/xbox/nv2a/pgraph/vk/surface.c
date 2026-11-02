@@ -2918,7 +2918,10 @@ static void upload_scanout_background(NV2AState *d, SurfaceBinding *out,
     VkImage target = via_scratch ? out->image_scratch : out->image;
     VkBuffer source = from_vram ? r->vram_buffer :
                       r->storage_buffers[BUFFER_STAGING_SRC].buffer;
-    pgraph_vk_upload_source_barrier(pg, cmd, from_vram, 0, VK_WHOLE_SIZE);
+    pgraph_vk_upload_source_barrier(pg, cmd, from_vram, scan->start,
+        (VkDeviceSize)(scan->height - 1) * scan->pitch +
+        (VkDeviceSize)scan->width * scan->bpp);
+    VkDeviceSize source_begin = UINT64_MAX, source_end = 0;
     for (;;) {
         if (via_scratch && out->image_scratch_current_layout !=
                            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) {
@@ -2944,6 +2947,12 @@ static void upload_scanout_background(NV2AState *d, SurfaceBinding *out,
                 buffer_offset = offset;
                 offset += ROUND_UP((VkDeviceSize)row_bytes * p->height, 16);
             }
+            VkDeviceSize source_span = from_vram ?
+                (VkDeviceSize)(p->height - 1) * scan->pitch +
+                    (VkDeviceSize)p->width * scan->bpp :
+                (VkDeviceSize)p->width * p->height * scan->bpp;
+            source_begin = MIN(source_begin, buffer_offset);
+            source_end = MAX(source_end, buffer_offset + source_span);
             regions[i] = (VkBufferImageCopy){
                 .bufferOffset = buffer_offset,
                 .bufferRowLength = from_vram ? scan->pitch / scan->bpp : 0,
@@ -2995,7 +3004,8 @@ static void upload_scanout_background(NV2AState *d, SurfaceBinding *out,
         .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
         .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
         .buffer = source,
-        .size = VK_WHOLE_SIZE,
+        .offset = source_begin,
+        .size = source_end - source_begin,
     };
     vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
         VK_PIPELINE_STAGE_TRANSFER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,

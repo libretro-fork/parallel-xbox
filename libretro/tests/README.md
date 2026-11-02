@@ -2597,8 +2597,11 @@ loop. Eight thousand schedules over four batches each cover 16/32-bit pixels,
 packed fallback staging and direct guest RAM, varied pitches/rectangles and
 nonzero allocation prefixes. A per-byte reference checks every copied row,
 alignment gap and guard byte; descriptor offsets, row lengths, extents and
-GPU-RAM ownership spans must match exactly. Direct RAM makes no CPU image
-copy and leaves staging accounting untouched. Linux defaults to ASan/UBSan;
+GPU-RAM ownership spans must match exactly. The fixture also executes the
+frame-bounded source visibility call and final reuse barrier, checking 4,000
+direct visibility ranges and 8,000 accumulated source envelopes across batches.
+Final staged ranges exclude unused trailing alignment padding. Direct RAM makes
+no CPU image copy and leaves staging accounting untouched. Linux defaults to ASan/UBSan;
 `VK_SCANOUT_UPLOAD_CFLAGS`, `VK_SCANOUT_UPLOAD_BINARY` and
 `VK_SCANOUT_UPLOAD_SKIP_RUN` support native fixtures.
 

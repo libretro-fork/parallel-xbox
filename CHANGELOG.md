@@ -4,6 +4,8 @@
 
 ## Unreleased
 
+- Bound Vulkan scanout background upload visibility to the scanout frame and source reuse to the accumulated dirty-rectangle/staging source envelope. Preserve one recording, per-rectangle RAM ownership, pitched copies and asynchronous submission without an extra rectangle pass.
+
 - Scope Vulkan surface upload source reuse after buffer-to-image copies to the actual pitched/staged/ring slice or aligned unpacked depth planes. Apply the same ranges to direct-image and scratch-image routes without changing their copy or completion policies.
 
 - Batch Vulkan depth-unpack input/output dependencies into paired pre-dispatch and post-dispatch calls, reducing this upload section from five barrier calls to three. Preserve source reuse, per-buffer ranges, stage masks and GPU conversion ordering.
