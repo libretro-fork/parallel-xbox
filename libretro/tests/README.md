@@ -3200,3 +3200,12 @@ stores drop from four to zero/one; light-control stores drop from three to
 zero/one. Two uninstrumented method-model runs improve unchanged, alternating
 and randomized inputs for every handler. GPU-facing words remain identical;
 these CPU-model timings are not game FPS measurements.
+
+The publication fixture further covers SET_TEXTURE_PALETTE and
+SET_TRANSFORM_EXECUTION_MODE against frozen e052e45 bodies, bringing each pass
+to 1.2 million state cases across six handlers. Palette context/length/offset,
+all four slots, transform mode/range bits and dirty flags must match. Stores
+fall from three (palette) or two (transform mode) to zero/one. Two paired model
+runs improve palette timings for all patterns; transform timings improve for
+unchanged/randomized inputs and stay flat for alternating inputs. No GPU-facing
+state or command change is introduced, and no full-game speedup is inferred.

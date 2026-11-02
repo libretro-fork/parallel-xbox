@@ -3122,11 +3122,13 @@ DEF_METHOD(NV097, SET_TEXTURE_PALETTE)
 
     unsigned int reg = NV_PGRAPH_TEXPALETTE0 + slot * 4;
     uint32_t prev = pgraph_reg_r(pg, reg);
-    PG_SET_MASK(reg, NV_PGRAPH_TEXPALETTE0_CONTEXT_DMA, dma_select);
-    PG_SET_MASK(reg, NV_PGRAPH_TEXPALETTE0_LENGTH, length);
-    PG_SET_MASK(reg, NV_PGRAPH_TEXPALETTE0_OFFSET, offset);
+    uint32_t next = prev;
+    SET_MASK(next, NV_PGRAPH_TEXPALETTE0_CONTEXT_DMA, dma_select);
+    SET_MASK(next, NV_PGRAPH_TEXPALETTE0_LENGTH, length);
+    SET_MASK(next, NV_PGRAPH_TEXPALETTE0_OFFSET, offset);
 
-    if (pgraph_reg_r(pg, reg) != prev) {
+    if (next != prev) {
+        pgraph_reg_w(pg, reg, next);
         pg->texture_dirty[slot] = true;
     }
 }
@@ -3580,12 +3582,17 @@ DEF_METHOD(NV097, LAUNCH_TRANSFORM_PROGRAM)
 
 DEF_METHOD(NV097, SET_TRANSFORM_EXECUTION_MODE)
 {
-    PG_SET_MASK(NV_PGRAPH_CSV0_D, NV_PGRAPH_CSV0_D_MODE,
+    uint32_t prev = pgraph_reg_r(pg, NV_PGRAPH_CSV0_D);
+    uint32_t next = prev;
+    SET_MASK(next, NV_PGRAPH_CSV0_D_MODE,
              GET_MASK(parameter,
                       NV097_SET_TRANSFORM_EXECUTION_MODE_MODE));
-    PG_SET_MASK(NV_PGRAPH_CSV0_D, NV_PGRAPH_CSV0_D_RANGE_MODE,
+    SET_MASK(next, NV_PGRAPH_CSV0_D_RANGE_MODE,
              GET_MASK(parameter,
                       NV097_SET_TRANSFORM_EXECUTION_MODE_RANGE_MODE));
+    if (next != prev) {
+        pgraph_reg_w(pg, NV_PGRAPH_CSV0_D, next);
+    }
 }
 
 DEF_METHOD(NV097, SET_TRANSFORM_PROGRAM_CXT_WRITE_EN)

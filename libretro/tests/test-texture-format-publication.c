@@ -14,7 +14,21 @@ static double now_ns(void){LARGE_INTEGER t,f;QueryPerformanceCounter(&t);QueryPe
 #include <time.h>
 static double now_ns(void){struct timespec t;clock_gettime(CLOCK_MONOTONIC,&t);return t.tv_sec*1e9+t.tv_nsec;}
 #endif
-#if defined(TEST_FOG_COLOR)
+#if defined(TEST_TEXTURE_PALETTE)
+#define REGISTER_BASE NV_PGRAPH_TEXPALETTE0
+#define METHOD_BASE NV097_SET_TEXTURE_PALETTE
+#define TEST_SLOTS 4
+#define BASE_WRITES 3
+#define BASE_READS 8
+#define TOGGLE_MASK NV097_SET_TEXTURE_PALETTE_LENGTH
+#elif defined(TEST_TRANSFORM_MODE)
+#define REGISTER_BASE NV_PGRAPH_CSV0_D
+#define METHOD_BASE NV097_SET_TRANSFORM_EXECUTION_MODE
+#define TEST_SLOTS 1
+#define BASE_WRITES 2
+#define BASE_READS 4
+#define TOGGLE_MASK NV097_SET_TRANSFORM_EXECUTION_MODE_RANGE_MODE
+#elif defined(TEST_FOG_COLOR)
 #define REGISTER_BASE NV_PGRAPH_FOGCOLOR
 #define METHOD_BASE NV097_SET_FOG_COLOR
 #define TEST_SLOTS 1

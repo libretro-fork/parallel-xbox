@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
-"""Check texture-format method equivalence, atomic work counts and CPU timing."""
+"""Check NV097 register-method equivalence, publication counts and CPU timing."""
 from pathlib import Path
 import os,subprocess,sys,tempfile
 repo=Path(sys.argv[1]).resolve();cc=sys.argv[2] if len(sys.argv)>2 else 'gcc'
@@ -8,7 +8,9 @@ env=os.environ.copy();env['PATH']=str(Path(cc).resolve().parent)+os.pathsep+env.
 methods=[('SET_TEXTURE_FORMAT','texture-format-method-reference.h',[]),
  ('SET_FOG_COLOR','fog-color-method-reference.h',['-DTEST_FOG_COLOR']),
  ('SET_LIGHT_CONTROL','light-control-method-reference.h',['-DTEST_LIGHT_CONTROL']),
- ('SET_COLOR_MATERIAL','color-material-method-reference.h',['-DTEST_COLOR_MATERIAL'])]
+ ('SET_COLOR_MATERIAL','color-material-method-reference.h',['-DTEST_COLOR_MATERIAL']),
+ ('SET_TEXTURE_PALETTE','texture-palette-method-reference.h',['-DTEST_TEXTURE_PALETTE']),
+ ('SET_TRANSFORM_EXECUTION_MODE','transform-mode-method-reference.h',['-DTEST_TRANSFORM_MODE'])]
 with tempfile.TemporaryDirectory(prefix='register-method-') as tmp:
  root=Path(tmp)
  for method,reference,defines in methods:

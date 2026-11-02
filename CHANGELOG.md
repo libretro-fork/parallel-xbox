@@ -4,6 +4,8 @@
 
 ## Unreleased
 
+- Publish texture-palette and transform execution-mode register fields once only on a real change. Preserve palette addresses/context, mode/range bits and dirty flags while removing redundant atomic register traffic.
+
 - Compose fog-color, light-control and color-material register fields locally and publish once only on change. Preserve final fields and dirty flags while removing redundant atomic register traffic in both renderers.
 
 - Compose NV097 texture-format fields locally and publish the final register once on change, replacing nine atomic register stores per method. Preserve reserved bits and dirty-state behavior while omitting unchanged publications.
