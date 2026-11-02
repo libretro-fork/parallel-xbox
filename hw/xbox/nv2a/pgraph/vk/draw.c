@@ -2980,18 +2980,41 @@ static void trash_drain_retired(PGRAPHVkState *r)
     r->trash_n = kept;
 }
 
-/* An allocation retry can run midway through binding a texture or surface.
- * Observe completed work and free only its deferred garbage; the normal
- * settle path also tears down current bindings and must not run here. */
-void pgraph_vk_reclaim_retired_images(PGRAPHVkState *r)
+/* Observe same-queue completion without releasing slots or current bindings.
+ * Safe both during allocation recovery and normal retirement polling. */
+static void poll_completed_draw_submissions(PGRAPHVkState *r)
 {
+    /* A completed newest submission covers older slots on the same queue.
+     * Query it first, then retain partial-completion checks if still busy. */
+    int newest = -1;
+    uint32_t newest_submit = r->settled_submit;
     for (int s = 0; s < PGRAPH_VK_SLOTS; s++) {
         if (r->slot_fence_pending[s] &&
+            (int32_t)(r->slot_submit[s] - newest_submit) > 0) {
+            newest = s;
+            newest_submit = r->slot_submit[s];
+        }
+    }
+    if (newest >= 0 &&
+        vkGetFenceStatus(r->device, r->slot_fence[newest]) == VK_SUCCESS) {
+        r->settled_submit = newest_submit;
+    }
+
+    for (int s = 0; s < PGRAPH_VK_SLOTS; s++) {
+        if (s != newest && r->slot_fence_pending[s] &&
             (int32_t)(r->slot_submit[s] - r->settled_submit) > 0 &&
             vkGetFenceStatus(r->device, r->slot_fence[s]) == VK_SUCCESS) {
             r->settled_submit = r->slot_submit[s];
         }
     }
+}
+
+/* An allocation retry can run midway through binding a texture or surface.
+ * Observe completed work and free only its deferred garbage; the normal
+ * settle path also tears down current bindings and must not run here. */
+void pgraph_vk_reclaim_retired_images(PGRAPHVkState *r)
+{
+    poll_completed_draw_submissions(r);
     /* This also checks independent display and upload retirement. Leave
      * slot flags/fences and timestamp resolution to normal slot reuse. */
     trash_drain_retired(r);
@@ -3044,29 +3067,13 @@ void pgraph_vk_settle_poll(PGRAPHState *pg)
     PGRAPHVkState *r = pg->vk_renderer_state;
     bool pending = false;
 
-    /* A completed newest submission covers older slots on the same queue.
-     * Query it first, then retain partial-completion checks if still busy. */
-    int newest = -1;
-    uint32_t newest_submit = r->settled_submit;
-    for (int s = 0; s < PGRAPH_VK_SLOTS; s++) {
-        if (r->slot_fence_pending[s] &&
-            (int32_t)(r->slot_submit[s] - newest_submit) > 0) {
-            newest = s;
-            newest_submit = r->slot_submit[s];
-        }
-    }
-    if (newest >= 0 &&
-        vkGetFenceStatus(r->device, r->slot_fence[newest]) == VK_SUCCESS) {
-        r->settled_submit = newest_submit;
-    }
+    poll_completed_draw_submissions(r);
 
     /* Reuse allocation-retry or later same-queue completion proofs. Slot
      * cleanup still runs here exactly once, even when no query is needed. */
     for (int s = 0; s < PGRAPH_VK_SLOTS; s++) {
         if (r->slot_fence_pending[s] &&
-            ((int32_t)(r->slot_submit[s] - r->settled_submit) <= 0 ||
-             (s != newest &&
-              vkGetFenceStatus(r->device, r->slot_fence[s]) == VK_SUCCESS))) {
+            (int32_t)(r->slot_submit[s] - r->settled_submit) <= 0) {
             r->slot_fence_pending[s] = false;
             pgraph_vk_slot_retired(pg, s);
         }

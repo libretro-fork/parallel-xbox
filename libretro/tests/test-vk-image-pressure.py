@@ -21,7 +21,7 @@ def function(path, name):
     return source[match.start():end]
 
 parts = [function('hw/xbox/nv2a/pgraph/vk/draw.c', name) for name in
-         ('trash_drain_retired', 'pgraph_vk_reclaim_retired_images')]
+         ('trash_drain_retired', 'poll_completed_draw_submissions', 'pgraph_vk_reclaim_retired_images')]
 parts.append(function('hw/xbox/nv2a/pgraph/vk/instance.c', 'reclaim_retired_images'))
 code = Path(__file__).with_suffix('.c').read_text().replace('/* PRODUCTION */', '\n'.join(parts))
 cc = sys.argv[2] if len(sys.argv) > 2 else 'gcc'

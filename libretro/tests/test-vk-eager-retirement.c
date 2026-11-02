@@ -79,7 +79,7 @@ int main(void){
   polls=waits=retirements=resolves=drops=pool_flushes=0;drain_expected=true;
   pgraph_vk_reclaim_retired_images(&q);
   assert(q.settled_submit==serial&&q.slot_fence_pending[0]&&q.slot_fence_pending[1]);
-  assert(!drops&&!resolves&&pool_flushes==1&&retirements==1);
+  assert(polls==1&&!drops&&!resolves&&pool_flushes==1&&retirements==1);
   unsigned before_polls=polls;
   pgraph_vk_reclaim_command_buffer(&p,true);
   assert(polls==before_polls&&!waits&&drops==2&&resolves==1&&retirements==2);
