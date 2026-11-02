@@ -128,6 +128,12 @@ if '--cpu-layout' in sys.argv[3:] or '--cpu-loop' in sys.argv[3:]:
 if '--cpu-loop' in sys.argv[3:]:
     code=code.replace('(w==256&&h==256&&depth==129)', '(w==256&&h==256&&(depth==4||depth==16||depth==32||depth==129))')
     code=code.replace('depths[] = {1,2,4,5,9,17,65,129}', 'depths[] = {1,2,4,5,9,16,17,32,65,129}')
+    code=code.replace('widths[] = {1,4,5,8,12,16,17,20,32,64,128,256,260}', 'widths[] = {1,4,5,8,12,16,17,20,32,64,128,256,257,260,512}')
+    code=code.replace('heights[] = {1,4,5,8,9,12,20,32,36,128,256}', 'heights[] = {1,4,5,8,9,12,20,32,36,128,249,253,256,512}')
+    rectangular='((w==128&&h==512)||(w==512&&h==128)||(w==257&&h==249)||(w==257&&h==253))&&(depth==5||depth==129)'
+    square='(w==256&&h==256&&(depth==4||depth==16||depth==32||depth==129))'
+    code=code.replace(square,'('+square+'||('+rectangular+'))')
+
 if '--uncached-memory' in sys.argv[3:]:
     code=code.replace('((flags&VK_MEMORY_PROPERTY_HOST_CACHED_BIT)?8:0)', '((flags&VK_MEMORY_PROPERTY_HOST_CACHED_BIT)?0:8)')
 env=os.environ.copy();env['PATH']=str(Path(cc).resolve().parent)+os.pathsep+env.get('PATH','')

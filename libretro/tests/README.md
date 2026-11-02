@@ -1119,14 +1119,18 @@ their existing traversal. GPU payload, buffer placement and upload commands do
 not change.
 
 `test-vulkan-volume-benchmark.py CHECKOUT CC --cpu-loop` compares this increment
-against `bc-volume-staging-sequential-reference.h`, frozen at 3cd33fb. Its eighteen
-workloads include 256x256 BC1/BC3 volumes at depths 4/16/32/129. It reports CPU
+against `bc-volume-staging-sequential-reference.h`, frozen at 3cd33fb. Its thirty-four
+workloads include 256x256 BC1/BC3 volumes at depths 4/16/32/129, tall/wide
+128x512 and 512x128 slices, and 257x249/257x253 slices with 4,095/4,160 blocks. It reports CPU
 staging alone in addition to preparation/recording and GPU timestamps, separating
 copy-loop changes from host driver-recording noise. Two cached RTX 5090 runs show
 about 3-7 percent lower staging-only medians for the four targeted BC1 workloads;
 GPU timings remain within noise with identical command work. Other timed paths
 keep the previous loop. These are paired synthetic results, not full-game FPS
 or a claim covering every CPU, device or workload.
+Two rectangular-threshold runs also show roughly 4-6 percent lower staging
+time on newly targeted BC1 rectangles, while the 4,095-block control stays flat.
+All measured outputs remain byte-exact; GPU commands are unchanged.
 
 `python libretro/tests/test-vulkan-linear-span.py CHECKOUT [CC]` validates
 production linear staging and copy-region functions with 432 Vulkan transfers.

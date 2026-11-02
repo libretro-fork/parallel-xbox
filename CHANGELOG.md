@@ -4,6 +4,8 @@
 
 ## Unreleased
 
+- Extend the BC1 CPU-loop benchmark to rectangular and just-below/above-threshold slices, checking byte parity and paired CPU/GPU timings without changing rendering behavior.
+
 - Specialize large host-cached BC1 volume staging slices to hoist block-size decisions and slice-base arithmetic out of the block-copy loop. Retain smaller/BC3/uncached traversal and identical GPU upload work; add an incremental frozen-reference benchmark.
 
 - Write host-cached BC volume staging one destination slice at a time for faster CPU preparation. Preserve the prior uncached traversal, exact GPU payload, upload command path and conservative direct-upload policy; add a frozen-reference memory-aware benchmark.
