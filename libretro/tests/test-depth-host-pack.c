@@ -40,6 +40,8 @@ static VkDescriptorBufferInfo descriptor[4][3];
 static uint32_t data[4][65536],ram[65536],push[4];
 static unsigned bound,copies,stores,dispatches,writes,host_barriers,omitted_dependencies;
 static unsigned latest[4];
+static size_t expected_packed_size;
+static unsigned output_range_checks;
 static bool transfer_read[4],shader_read[4],host_visible[4];
 static void vkUpdateDescriptorSets(unsigned d,unsigned n,const VkWriteDescriptorSet *w,unsigned count,void *p){assert(d==7&&n==9&&!count&&!p);for(unsigned i=0;i<n;i++){assert(w[i].dstSet>=1&&w[i].dstSet<=3&&w[i].dstBinding<3&&w[i].descriptorCount==1);descriptor[w[i].dstSet][w[i].dstBinding]=*w[i].pBufferInfo;}writes++;}
 static void pgraph_apply_scaling_factor(PGRAPHState *pg,unsigned *w,unsigned *h){*w*=pg->scale;*h*=pg->scale;}
@@ -59,6 +61,10 @@ static void vkCmdDispatch(VkCommandBuffer cmd,unsigned x,unsigned y,unsigned z){
 static void vkCmdPipelineBarrier(VkCommandBuffer cmd,unsigned src,unsigned dst,unsigned flags,unsigned mem,void *m,unsigned n,const VkBufferMemoryBarrier *b,unsigned images,void *im){
  assert(cmd==8&&!flags&&!mem&&!m&&n==1&&!images&&!im&&b->buffer>=1&&b->buffer<=3);
  unsigned id=b->buffer;
+ if(id!=1&&(b->dstAccessMask==VK_ACCESS_SHADER_WRITE_BIT||
+    (b->srcAccessMask==VK_ACCESS_TRANSFER_READ_BIT&&b->dstAccessMask==VK_ACCESS_TRANSFER_WRITE_BIT))){
+  assert(!b->offset&&b->size==expected_packed_size);output_range_checks++;
+ }
  if(b->dstAccessMask==VK_ACCESS_SHADER_READ_BIT){assert(src==VK_PIPELINE_STAGE_TRANSFER_BIT&&dst==VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT&&(b->srcAccessMask&VK_ACCESS_TRANSFER_WRITE_BIT));shader_read[id]=true;}
  if(b->dstAccessMask==VK_ACCESS_TRANSFER_READ_BIT){assert(src==VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT&&dst==VK_PIPELINE_STAGE_TRANSFER_BIT&&b->srcAccessMask==VK_ACCESS_SHADER_WRITE_BIT);transfer_read[id]=true;}
  if(b->dstAccessMask==VK_ACCESS_HOST_READ_BIT){assert(dst==VK_PIPELINE_STAGE_HOST_BIT&&b->srcAccessMask==latest[id]);assert(src==(latest[id]==VK_ACCESS_SHADER_WRITE_BIT?VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT:VK_PIPELINE_STAGE_TRANSFER_BIT));host_visible[id]=true;host_barriers++;}
@@ -81,6 +87,7 @@ int main(void){
   write_descriptor_sets(&pg);assert(descriptor[3][2].buffer==3&&descriptor[3][2].range==MIN(state.storage_buffers[2].buffer_size,state.device_props.limits.maxStorageBufferRange));
   size_t base=ROUND_UP((size_t)iw*ih*4,256)/4;assert(base*4+(size_t)iw*ih<=sizeof(data[0]));
   for(unsigned j=0;j<iw*ih;j++){data[1][j]=(j*97+i*31)&0xffffff;((uint8_t*)(data[1]+base))[j]=(uint8_t)(j+i);}
+  expected_packed_size=bytes;
   bool host=false;unsigned oldcopies=copies,oldstores=stores;VkBuffer out=pack_depth_readback(&pg,&s,8,1,bytes,direct,pg.scale!=1,16,&host);
   assert(host==(!direct&&bytes<=state.device_props.limits.maxStorageBufferRange));
   if(direct){assert(!host&&stores==oldstores+1&&copies==oldcopies);direct_cases++;}
@@ -88,7 +95,8 @@ int main(void){
   const uint32_t *actual=direct?ram:data[3];
   for(unsigned j=0;j<n;j++){unsigned si=((j/s.width)*pg.scale+pg.scale/2)*iw+(j%s.width)*pg.scale+pg.scale/2;uint32_t expected=(((si*97+i*31)&0xffffff)<<8)|(uint8_t)(si+i);assert(actual[j]==expected);}
  }
- assert(omitted_dependencies==514);
+ assert(omitted_dependencies==514&&output_range_checks>6000);
  assert(dispatches==6000&&host_cases&&fallback&&direct_cases&&host_barriers==host_cases+fallback);
+ printf("Packed-depth output barrier ranges: %u exact-byte checks passed\n",output_range_checks);
  printf("Depth host pack: 6000 production descriptor/dispatch/visibility schedules; %u host packs omit GPU copy, %u oversized fallbacks and %u direct-RAM routes preserved; 514 stale transfer dependencies omitted; refreshed capped descriptors and exact output passed\n",host_cases,fallback,direct_cases);return 0;
 }

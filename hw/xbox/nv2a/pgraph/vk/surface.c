@@ -483,7 +483,7 @@ static VkBuffer pack_depth_readback(PGRAPHState *pg, SurfaceBinding *surface,
             .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
             .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
             .buffer = pack_buffer,
-            .size = VK_WHOLE_SIZE
+            .size = packed_size
         };
         vkCmdPipelineBarrier(cmd, packed_to_host ?
                              VK_PIPELINE_STAGE_HOST_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT :
@@ -554,7 +554,7 @@ static VkBuffer pack_depth_readback(PGRAPHState *pg, SurfaceBinding *surface,
                 .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
                 .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
                 .buffer = copy_buffer,
-                .size = VK_WHOLE_SIZE
+                .size = packed_size
             };
             vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
                                  VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 1,
@@ -572,7 +572,7 @@ static VkBuffer pack_depth_readback(PGRAPHState *pg, SurfaceBinding *surface,
                 .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
                 .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
                 .buffer = pack_buffer,
-                .size = VK_WHOLE_SIZE
+                .size = packed_size
             };
             vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
                                  VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 1,

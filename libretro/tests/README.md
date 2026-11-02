@@ -3037,3 +3037,11 @@ contained in or separate from texture input. The real GPU swizzle fixture
 barrier block before unswizzle dispatches. This checks partial-word and palette
 range coverage alongside its original/direct shader byte comparisons; it does
 not establish a frame-time gain or replace synchronization validation.
+
+
+The depth-host-pack fixture also checks that packed-output reuse and fallback
+transfer barriers cover exactly the result bytes (7,372 checks in its 6,000
+routing/visibility schedules). Depth/stencil input-plane barriers retain their
+separate footprint. Its `--gpu` mode compares production direct-host and
+transfer-fallback outputs across native/scaled D24S8 and D32S8 cases; this does
+not measure a before/after speedup from narrowing those barriers.
