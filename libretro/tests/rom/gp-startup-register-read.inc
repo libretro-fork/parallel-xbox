@@ -1,0 +1,26 @@
+; Direction-specific MOVEC: tagged SSH pops, raw SR/SSH copies, REP.
+        dd 0x0A8581 ; P:00
+        dd 0x000000 ; P:01
+        dd 0x08F485 ; P:02
+        dd 0x000002 ; P:03
+        dd 0x0500BB ; P:04
+        dd 0x0535BC ; P:05
+        dd 0x0546BC ; P:06
+        dd 0x0444BC ; P:07
+        dd 0x044EBC ; P:08
+        dd 0x05FFA0 ; P:09
+        dd 0x0479A0 ; P:0A
+        dd 0x0446B9 ; P:0B
+        dd 0x000008 ; P:0C
+        dd 0x0553BC ; P:0D
+        dd 0x0564BC ; P:0E
+        dd 0x0602A0 ; P:0F
+        dd 0x0444BC ; P:10
+        dd 0x047CA0 ; P:11
+        dd 0x60F400 ; P:12
+        dd 0x001400 ; P:13
+        dd 0x565800 ; P:14
+        dd 0x08F484 ; P:15
+        dd 0x000001 ; P:16
+        dd 0x0AF080 ; P:17
+        dd 0x000000 ; P:18

@@ -1435,6 +1435,12 @@ void dsp56k_decode(dsp_core_t *dsp, uint32_t pc, DspDecoded *d)
     }
 }
 
+uint32_t dsp56k_register_mask(uint32_t numreg)
+{
+    assert(numreg < DSP_REG_MAX);
+    return BITMASK(registers_mask[numreg]);
+}
+
 void dsp56k_write_reg(dsp_core_t *dsp, uint32_t numreg, uint32_t value)
 {
     assert(numreg < DSP_REG_MAX);

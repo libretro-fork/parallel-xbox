@@ -829,8 +829,27 @@ static void check_effective_control_stores(Machine *a, Machine *b, unsigned mode
     }
 }
 
+static void check_register_control_transfers(Machine *a, Machine *b, unsigned mode)
+{
+    static const unsigned contexts[] = {0x20000000, 0x40000, 0x80000};
+    for (unsigned control = DSP_REG_M0; control < DSP_REG_MAX; control++) {
+        for (unsigned general = 0; general < DSP_REG_MAX; general++) {
+            for (unsigned dir = 0; dir < 2; dir++) {
+                for (unsigned ctx = 0; ctx < ARRAY_SIZE(contexts); ctx++) {
+                    for (unsigned seed = 0; seed < 2; seed++) {
+                        check(a, b, 0x0440A0 | (dir << 15) | (general << 8) | control,
+                              0x30, 0x400000 | 0x1000000 | 0x2000000 |
+                              contexts[ctx] | (seed ? 9 : 0), mode, seed != 0);
+                    }
+                }
+            }
+        }
+    }
+}
+
 static void check_startup_operations(Machine *a, Machine *b, unsigned mode)
 {
+    check_register_control_transfers(a, b, mode);
     check_inc_dec_words(a, b, mode);
     static const unsigned values[] = {0, 1, 0x20, 0x3F, 0x80, 0xFF};
     static const unsigned contexts[] = {0x20000000, 0x40000, 0x80000};
@@ -1150,11 +1169,12 @@ int main(int argc, char **argv)
     bool relative_only = argc == 2 && !strcmp(argv[1], "--relative");
     bool loops_only = argc == 2 && !strcmp(argv[1], "--loops");
     bool compare_only = argc == 2 && !strcmp(argv[1], "--compare");
+    bool register_only = argc == 2 && !strcmp(argv[1], "--register-control");
     bool effective_only = argc == 2 && !strcmp(argv[1], "--effective-control");
     bool startup_only = argc == 2 && !strcmp(argv[1], "--startup");
     bool program_only = argc == 2 && !strcmp(argv[1], "--program");
-    if (argc != 1 && !relative_only && !loops_only && !program_only && !compare_only && !startup_only && !effective_only) {
-        fputs("usage: dspnative [--relative|--loops|--program|--compare|--startup|--effective-control]\n", stderr);
+    if (argc != 1 && !relative_only && !loops_only && !program_only && !compare_only && !startup_only && !effective_only && !register_only) {
+        fputs("usage: dspnative [--relative|--loops|--program|--compare|--startup|--effective-control|--register-control]\n", stderr);
         return 2;
     }
     Machine *a = machine_new(false), *b = machine_new(true);
@@ -1168,8 +1188,9 @@ int main(int argc, char **argv)
 #ifdef _WIN32
     assert(initially_committed == (64u << 10));
 #endif
-    if (relative_only || loops_only || program_only || compare_only || startup_only || effective_only) {
+    if (relative_only || loops_only || program_only || compare_only || startup_only || effective_only || register_only) {
         for (unsigned mode = 0; mode < 4; mode++) {
+            if (register_only) check_register_control_transfers(a, b, mode);
             if (effective_only) check_effective_control_stores(a, b, mode);
             if (startup_only) check_startup_operations(a, b, mode);
             if (compare_only) check_compare_immediates(a, b, mode);
