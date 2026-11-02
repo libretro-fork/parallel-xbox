@@ -4,6 +4,8 @@
 
 ## Unreleased
 
+- Withdraw grouped/strided native BC volume direct-upload expansions after cached-memory benchmarks showed CPU and GPU regressions. Retain already-ordered direct layouts and keep experimental copy routes confined to a reproducible byte-checked microbenchmark.
+
 - Use the coalesced final-plane region count for native BC volume direct-upload eligibility. Layouts newly fitting one 64-region batch skip CPU rearrangement/staging; larger layouts retain their fallback.
 
 - Coalesce the final single-slice native BC volume group into one whole-plane copy region. Reduce submitted regions while preserving direct-upload eligibility, byte layout, ownership and staging fallbacks.

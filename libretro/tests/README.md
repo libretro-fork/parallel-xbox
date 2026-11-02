@@ -1052,30 +1052,46 @@ The compressed-volume oracle adds 21 strict fallback cases against independently
 The GL upload-alignment oracle now uses the production BC decoder for 36 additional forced 2D fallback cases: BC1/BC2/BC3 at unpack alignments 1/2/4/8, 7x5 odd images, 1x8 narrow rows and 16x8 mip chains down to 1x1. It verifies level dimensions, RGBA8 storage, 10,944 component values and restoration of unpack alignment. The 2D and volume oracles share `bc-reference.h` for the independent normalized-color reference.
 
 `python libretro/tests/test-vulkan-volume-blocks.py CHECKOUT [CC]` compiles
-production volume staging, VRAM selection and ordinary/per-slice copy functions,
-then transfers native BC1/BC2/BC3 data through Vulkan 3D images. Its 13,824 cases
-cover narrow/wide block grids, partial block rows, depth groups including a fifth
-slice and 65/129-slice levels, mip 0/1, missing imports, unaligned offsets and data
-ending exactly at VRAM end. A single block column uses strided regions; row
-volumes and compact multi-row grids use grouped XY/Z block regions or strided
-block columns, choosing fewer regions for multi-column grids. Expanded layouts
-become direct only when their whole level fits one 64-region batch;
-larger layouts retain staging. Existing four-block row eligibility remains intact. Destination block bytes must match
-the coordinate oracle, including 256/260-pixel budget boundaries.
+production volume staging, VRAM selection and copy functions, then transfers
+native BC1/BC2/BC3 data through Vulkan 3D images. Its 13,824 cases cover odd and
+wide block grids, partial XY/Z groups, mip 0/1, missing imports, unaligned offsets,
+source-end bounds and heights through 256 texels. Destination block bytes must
+match the independent coordinate oracle.
 
-The matrix has 3,042 direct levels. Relative to the prior uncoalesced budget
-gate, 48 newly direct levels avoid 154,560 staging bytes and 11,592 CPU block
-copies. Additional depth 5/9/17 and height 9/12 cases check effective-budget
-boundaries. Heights through 256 texels exercise tall rows and strided
-source boundaries.
-Final single-slice groups coalesce into one XY-plane region, and eligibility
-uses that effective region count to admit newly bounded layouts. The GPU fixture checks submitted region and command counts as well
-as bytes, including partially filled final block groups. These are operation
-counts, not game frame-time measurements. Vulkan BC
-3D image support is required. Synchronization validation is requested by default;
-set `VOLUME_NO_VALIDATION=1` only when unavailable and record that limitation.
-The runner supports Linux and Windows; fixture buffers model imported RAM,
-without testing the external-host import extension itself.
+Default direct uploads are restricted to source layouts already in Vulkan slice
+order: a single Z slice or one XY block. Grouped/strided multi-region expansions
+are withdrawn because corrected microbenchmarks show CPU and GPU regressions.
+Their copy recorder remains available to the isolated experimental benchmark,
+not enabled by runtime eligibility. Fewer staging bytes alone are not acceptance
+evidence. Vulkan BC 3D support is required; synchronization validation is requested
+by default. Set `VOLUME_NO_VALIDATION=1` only when unavailable and record that
+limitation. Fixture buffers model RAM, not external-host import itself.
+
+`python libretro/tests/test-vulkan-volume-benchmark.py CHECKOUT [CC]` compares
+forced staging with experimental grouped/strided uploads for BC1/BC3 on five
+layouts, including an over-budget fallback control. Experimental eligibility is
+injected only into this fixture and never changes renderer defaults. Each path
+has eight warmups and 64 timed uploads in alternating order. It reports median
+CPU preparation/upload recording time and GPU upload timestamps separately;
+every output must match the byte oracle. Timed CPU rearrangement has no copy
+counter instrumentation. Readback/submission/wait overhead lies outside the CPU
+recording sample. GPU timestamps bracket the image upload. No full-game FPS or
+pipeline overlap is measured.
+
+Host memory selection prefers cached coherent types, matching the renderer's
+cached/coherent ranking among the fixture's supported coherent types, and prints
+the chosen property flags. The renderer may also use non-coherent memory;
+that case and external-host import are not benchmarked. Earlier measurements
+using the first coherent type selected uncached memory and overstated CPU
+staging costs; those CPU conclusions are withdrawn.
+
+Corrected RTX 5090 runs use cached/coherent flags 0xe. For a BC3 32x32x4 upload,
+CPU staging/experimental-direct medians are about 1.4/3.6 us and GPU medians
+about 3.3/16.3 us. High-region cases also regress on both sides. The default
+therefore keeps staged rearrangement for those layouts. Any future GPU reorder
+or direct-binding implementation must demonstrate better end-to-end throughput
+without a material CPU/GPU regression, using representative memory and workloads,
+before being enabled. The validation-layer opt-out above applies here too.
 
 `python libretro/tests/test-vulkan-linear-span.py CHECKOUT [CC]` validates
 production linear staging and copy-region functions with 432 Vulkan transfers.

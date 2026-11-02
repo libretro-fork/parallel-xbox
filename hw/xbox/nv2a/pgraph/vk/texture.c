@@ -239,15 +239,11 @@ static void stage_blocks_2d(PGRAPHState *pg, TextureLevel *level,
     memcpy(dst, data, size);
 }
 
-/* Compact grouped blocks or strided columns fit one region batch. */
+/* Grouped direct copies need performance proof with cached staging memory.
+ * Keep only source layouts that already match Vulkan's slice order. */
 static bool volume_blocks_direct(unsigned width, unsigned height, unsigned depth)
 {
-    VkDeviceSize bw = (width + 3) / 4;
-    VkDeviceSize blocks = bw * ((height + 3) / 4);
-    VkDeviceSize grouped = blocks * (depth / 4);
-    unsigned tail = depth % 4;
-    if (tail) grouped += tail == 1 ? 1 : blocks;
-    return (height <= 4 && width <= 16) || grouped <= 64 || bw * depth <= 64;
+    return depth == 1 || (width <= 4 && height <= 4);
 }
 
 static void stage_blocks_3d(PGRAPHState *pg, TextureLevel *level,
@@ -262,7 +258,7 @@ static void stage_blocks_3d(PGRAPHState *pg, TextureLevel *level,
      * buffer row (copy_volume_block_slices), without CPU rearrangement.
      * Compact grids use one copy region per block and four-slice group. */
     bool ordered = depth == 1 || bw * bh == 1;
-    if ((ordered || bw == 1 || volume_blocks_direct(width, height, depth)) &&
+    if ((ordered || volume_blocks_direct(width, height, depth)) &&
         level_from_vram(pg, level, data, width, height, depth,
                         slice * depth, block_size)) {
         return;

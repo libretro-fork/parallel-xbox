@@ -166,9 +166,8 @@ int main(void)
         bool previous_direct = kind==0 && (depth==1 || blocks==1);
         previous_copies += previous_direct ? 0 :
             depth==1 || blocks==1 ? 1 : (size_t)blocks*depth;
-        bool before_direct=kind==0 && (depth==1 || w<=4 || (h<=4 && w<=16) || (uint64_t)((w+3)/4)*((h+3)/4)*((depth+3)/4)<=64 || (uint64_t)((w+3)/4)*depth<=64);
-        unsigned effective=blocks*(depth/4)+(depth%4==1?1:depth%4?blocks:0);
-        bool eligible=before_direct || (kind==0&&effective<=64);
+        bool before_direct=kind==0 && (depth==1 || blocks==1);
+        bool eligible=before_direct;
         if(eligible&&!before_direct){expanded++;expanded_bytes+=bytes;expanded_copies+=(size_t)blocks*depth;}
 
         assert((level.source==LEVEL_VRAM)==eligible);
@@ -238,7 +237,7 @@ int main(void)
         drop_buffer(upload); drop_buffer(staging); drop_buffer(output); free(expected);
         CHECK(vkResetCommandBuffer(cmd, 0)); cases++;
     }
-    assert(saved_regions>0);
+    assert(saved_regions==0);
     printf("Coalesced representation uses %zu fewer copy regions than unmerged direct blocks\n",saved_regions);
     printf("Expanded coalesced-budget routes=%u; additional staging bytes avoided=%zu; CPU block copies avoided=%zu\n",expanded,expanded_bytes,expanded_copies);
     printf("volume cases=%u direct=%u avoided_staging_bytes=%zu; all bytes exact\n",cases,direct,avoided);
