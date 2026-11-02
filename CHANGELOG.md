@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Bind aligned source windows for Vulkan S3TC image decoding, allowing selected compressed levels to read imported RAM directly even when the complete RAM buffer exceeds the descriptor-range limit. Preserve per-level ownership, GPU-write barriers and staging for oversized or unaligned level spans.
+
 - Bind only the active packed-frame range for staged Vulkan overlay conversion, with descriptor-aligned staging allocation. Keep GPU conversion available when a large staging buffer exceeds the device descriptor-range limit but the frame fits, avoiding the CPU RGBA conversion/upload fallback.
 
 - Bind aligned per-frame storage-buffer windows for direct Vulkan YUY2 overlays. Keep frames in imported RAM even when the complete RAM buffer exceeds the descriptor-range limit; cache each auxiliary slot's descriptor offset/range and retain exact RAM ownership and staging fallback.
