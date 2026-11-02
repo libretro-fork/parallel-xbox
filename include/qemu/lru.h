@@ -176,14 +176,27 @@ bool lru_contains_hash(Lru *lru, uint64_t hash)
 	return false;
 }
 
+/* Per-lookup key representation. These callbacks must compare and initialize
+ * the same owned node values as the cache's ordinary callbacks. The key and
+ * ops are borrowed only for this synchronous lookup; neither is retained.
+ * compare_nodes is required; init_node may be NULL. Eviction and recency
+ * behavior always belongs to the cache itself. */
+typedef struct LruKeyOps {
+    void (*init_node)(Lru *lru, LruNode *node, const void *key);
+    bool (*compare_nodes)(Lru *lru, LruNode *node, const void *key);
+} LruKeyOps;
+
+/* NULL ops uses the cache's ordinary key representation. */
 static inline
-LruNode *lru_lookup(Lru *lru, uint64_t hash, const void *key)
+LruNode *lru_lookup_with_ops(Lru *lru, uint64_t hash, const void *key,
+                             const LruKeyOps *ops)
 {
 	unsigned int bin = lru_hash_to_bin(lru, hash);
 	LruNode *iter, *found = NULL;
 
 	QTAILQ_FOREACH(iter, &lru->bins[bin], next_bin) {
-        if ((iter->hash == hash) && !lru->compare_nodes(lru, iter, key)) {
+        if ((iter->hash == hash) && !(ops ? ops->compare_nodes(lru, iter, key)
+                                    : lru->compare_nodes(lru, iter, key))) {
             found = iter;
             break;
         }
@@ -197,7 +210,11 @@ LruNode *lru_lookup(Lru *lru, uint64_t hash, const void *key)
 	} else {
 		found = lru_get_one_free(lru);
 		found->hash = hash;
-		if (lru->init_node) {
+		if (ops) {
+			if (ops->init_node) {
+				ops->init_node(lru, found, key);
+			}
+		} else if (lru->init_node) {
 			lru->init_node(lru, found, key);
 		}
 		assert(found->hash == hash);
@@ -217,6 +234,12 @@ LruNode *lru_lookup(Lru *lru, uint64_t hash, const void *key)
 	}
 
 	return found;
+}
+
+static inline
+LruNode *lru_lookup(Lru *lru, uint64_t hash, const void *key)
+{
+    return lru_lookup_with_ops(lru, hash, key, NULL);
 }
 
 static inline
