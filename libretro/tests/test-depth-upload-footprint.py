@@ -29,8 +29,20 @@ barrier_start = source.index("        VkBufferMemoryBarrier post_copy_src_barrie
 barrier_end = source.index("        // Already scaled during compute.", barrier_start)
 barriers = source[barrier_start:barrier_end]
 region = re.search(r"        regions\[1\]\.bufferOffset =.*?;", source[upload:], re.S)[0]
+reuse_start = source.index("    VkDeviceSize source_reuse_offset =", upload)
+reuse_end = source.index("    if (use_compute_to_convert_depth_stencil_format)", reuse_start)
+reuse = source[reuse_start:reuse_end]
+override_start = source.index("        source_reuse_offset = 0;", reuse_end)
+override_end = source.index("\n    }", override_start)
+reuse += "if (depth) {\n" + source[override_start:override_end] + "\n}\n"
+position = override_end
+for name in ("direct_source_barrier", "scratch_source_barrier"):
+    position = source.index("        VkBufferMemoryBarrier post_copy_src_buffer_barrier =", position)
+    declaration = block(position)
+    reuse += declaration.replace("post_copy_src_buffer_barrier", name) + ";\n"
+    position += len(declaration)
 code = Path(__file__).with_suffix(".c").read_text().replace("/* HELPER */", helper).replace(
-    "/* PLAN */", capacity + "\n" + calculation + "\n" + barriers + "\n" + region)
+    "/* PLAN */", capacity + "\n" + calculation + "\n" + barriers + "\n" + region).replace("/* SOURCE REUSE */", reuse)
 with tempfile.TemporaryDirectory(prefix="depth-upload-footprint-", dir=repo.parent) as directory:
     folder = Path(directory)
     (folder / "test.c").write_text(code)

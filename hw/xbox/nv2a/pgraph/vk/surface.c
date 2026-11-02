@@ -1924,6 +1924,12 @@ void pgraph_vk_upload_surface_data(NV2AState *d, SurfaceBinding *surface,
         pgraph_apply_scaling_factor(pg, &scaled_width, &scaled_height);
     }
 
+    VkDeviceSize source_reuse_offset = staged_offset;
+    VkDeviceSize source_reuse_size =
+        ((VkDeviceSize)(surface->height - 1) *
+             (staged_row_length ? staged_row_length : surface->width) +
+         surface->width) * surface->fmt.bytes_per_pixel;
+
     if (use_compute_to_convert_depth_stencil_format) {
 
         //
@@ -2030,6 +2036,8 @@ void pgraph_vk_upload_surface_data(NV2AState *d, SurfaceBinding *surface,
                      r->device_props.limits.minStorageBufferOffsetAlignment);
 
         source_buffer = unpack_buffer->buffer;
+        source_reuse_offset = 0;
+        source_reuse_size = unpacked_size;
     }
 
     bool upscale = !surface->native_resolution && pg->surface_scale_factor > 1 &&
@@ -2060,7 +2068,8 @@ void pgraph_vk_upload_surface_data(NV2AState *d, SurfaceBinding *surface,
             .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
             .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
             .buffer = source_buffer,
-            .size = VK_WHOLE_SIZE
+            .offset = source_reuse_offset,
+            .size = source_reuse_size
         };
         vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
                              VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 1,
@@ -2093,7 +2102,8 @@ void pgraph_vk_upload_surface_data(NV2AState *d, SurfaceBinding *surface,
             .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
             .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
             .buffer = source_buffer,
-            .size = VK_WHOLE_SIZE
+            .offset = source_reuse_offset,
+            .size = source_reuse_size
         };
         vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
                              VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 1,

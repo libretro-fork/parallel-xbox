@@ -10,7 +10,7 @@ enum {BUFFER_COMPUTE_DST, BUFFER_COMPUTE_SRC};
 typedef struct {VkBuffer buffer; VkDeviceSize buffer_size;} StorageBuffer;
 typedef struct {StorageBuffer storage_buffers[2]; VkPhysicalDeviceProperties device_props;} PGRAPHVkState;
 typedef struct {PGRAPHVkState *vk_renderer_state; unsigned scale;} PGRAPHState;
-typedef struct {unsigned width,height,pitch;} SurfaceBinding;
+typedef struct {unsigned width,height,pitch;struct {unsigned bytes_per_pixel;} fmt;} SurfaceBinding;
 static VkDeviceSize requested;
 static unsigned requests;
 static void pgraph_apply_scaling_factor(PGRAPHState *p, unsigned *w, unsigned *h)
@@ -59,7 +59,7 @@ static void check(unsigned width,unsigned height,unsigned scale,VkDeviceSize ali
     state.device_props.limits.minStorageBufferOffsetAlignment=alignment;
     PGRAPHVkState *r=&state;
     PGRAPHState graph={r,scale},*pg=&graph;
-    SurfaceBinding source={width,height,width*4+64},*surface=&source;
+    SurfaceBinding source={width,height,width*4+64,{4}},*surface=&source;
     VkDeviceSize row_bytes=(VkDeviceSize)width*4;
     VkBuffer source_buffer=(VkBuffer)(uintptr_t)3;
     bool use_compute_to_convert_depth_stencil_format=true;
@@ -101,6 +101,24 @@ static void check(unsigned width,unsigned height,unsigned scale,VkDeviceSize ali
     if(pixels*5<word_end)(*old_short)++;
     if(pixels*8>capacity&&requested<=capacity)(*growth_avoided)++;
 }
+static void check_copy_source(unsigned width,unsigned height,unsigned bpp,
+    unsigned padding,VkDeviceSize staged_offset,bool depth)
+{
+    SurfaceBinding source={width,height,(width+padding)*bpp,{bpp}},*surface=&source;
+    unsigned staged_row_length=padding?width+padding:0;
+    VkBuffer source_buffer=(VkBuffer)(uintptr_t)5;
+    VkDeviceSize unpacked_size=depth_stencil_plane_size(width*3,height*3,256);
+    /* SOURCE REUSE */
+    VkDeviceSize expected_offset=depth?0:staged_offset;
+    VkDeviceSize expected_size=depth?unpacked_size:
+        (VkDeviceSize)height*width*bpp+(VkDeviceSize)(height-1)*padding*bpp;
+    const VkBufferMemoryBarrier *actual[]={&direct_source_barrier,&scratch_source_barrier};
+    for(unsigned i=0;i<2;i++){
+        assert(actual[i]->buffer==source_buffer&&actual[i]->offset==expected_offset&&actual[i]->size==expected_size);
+        assert(actual[i]->srcAccessMask==VK_ACCESS_TRANSFER_READ_BIT&&actual[i]->dstAccessMask==VK_ACCESS_TRANSFER_WRITE_BIT);
+        assert(actual[i]->srcQueueFamilyIndex==VK_QUEUE_FAMILY_IGNORED&&actual[i]->dstQueueFamilyIndex==VK_QUEUE_FAMILY_IGNORED);
+    }
+}
 int main(void)
 {
     const unsigned widths[]={1,2,3,7,640,1920},heights[]={1,2,3,480,1080};
@@ -111,6 +129,15 @@ int main(void)
     for(unsigned imported=0;imported<2;imported++)for(unsigned offset=0;offset<3;offset++){
         check(widths[w],heights[h],scale,alignments[a],&old_short,&growth_avoided,imported,offset==0?0:offset==1?16:65536);cases++;
     }
+    unsigned reuse_cases=0;
+    for(unsigned w=0;w<6;w++)for(unsigned h=0;h<5;h++)
+    for(unsigned bpp=1;bpp<=4;bpp*=2)for(unsigned pad=0;pad<2;pad++)
+    for(unsigned offset=0;offset<3;offset++)for(unsigned depth=0;depth<2;depth++){
+        if(depth&&bpp!=4)continue;
+        check_copy_source(widths[w],heights[h],bpp,pad*16,offset==0?0:offset==1?16:65536,depth);
+        reuse_cases++;
+    }
+    printf("Surface upload reuse: %u tight/pitched/offset/depth cases check both direct and scratch image paths\n",reuse_cases);
     assert(old_short&&growth_avoided);
     printf("Depth unpack: %u pre/post paired barrier schedules passed (5 -> 3 calls per upload)\n",cases);
     printf("depth upload: %u footprint/barrier/copy-offset cases; %u old short ranges corrected, %u oversized growth requests avoided\n",

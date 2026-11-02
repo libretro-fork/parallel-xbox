@@ -4,6 +4,8 @@
 
 ## Unreleased
 
+- Scope Vulkan surface upload source reuse after buffer-to-image copies to the actual pitched/staged/ring slice or aligned unpacked depth planes. Apply the same ranges to direct-image and scratch-image routes without changing their copy or completion policies.
+
 - Batch Vulkan depth-unpack input/output dependencies into paired pre-dispatch and post-dispatch calls, reducing this upload section from five barrier calls to three. Preserve source reuse, per-buffer ranges, stage masks and GPU conversion ordering.
 
 - Limit Vulkan depth-upload packed input barriers to the native packed payload and source reuse to the actual staged/imported pitched span and offset. Preserve scaled aligned unpacked output dependencies and the GPU conversion path.

@@ -2943,15 +2943,18 @@ existing packed-depth paths. Full-game performance remains unmeasured.
 production depth-upload footprint helper, capacity block, unpack dependency
 calls and stencil copy offset. The fixture checks three barrier calls with
 paired input/output dependencies around one unpack dispatch, including the
-actual submitted buffer ranges, access masks, stage masks and ordering. Its 2,880 cases cover 480
-extent/scale/alignment combinations, each with staged/imported sources and three
+actual submitted buffer ranges, access masks, stage masks and ordering. Its
+2,880 cases cover 480 extent/scale/alignment combinations, each with staged/imported sources and three
 offsets. Packed shader-input barriers must cover the native payload; source
 reuse covers its tight or padded span from the actual offset. Unpacked output
 ranges must reach the complete last shader-written stencil word, including
 alignment padding. The base 480 combinations identify 151 previously short
 output ranges and four eight-byte-per-pixel requests that would unnecessarily
-exceed the 800 MiB reservation ceiling; each repeats across the six source cases. These are planning/range counts, not measured runtime hazard or wait
-counts. Packed input capacity and both compute buffers remain covered; all
+exceed the 800 MiB reservation ceiling; each repeats across the six source
+cases. These are planning/range counts, not measured runtime hazard or wait
+counts. Another 720 cases execute the final source-reuse range calculation and
+both direct-image/scratch-image barrier declarations, checking byte/16/32-bit
+tight/pitched slices, offsets and aligned scaled depth planes. Packed input capacity and both compute buffers remain covered; all
 capacity changes occur before auxiliary recording. The unchanged depth kernels
 have separate real-device parity tests in `test-spv-depth.py --gpu`.
 
