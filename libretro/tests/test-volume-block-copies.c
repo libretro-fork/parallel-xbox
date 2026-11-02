@@ -17,7 +17,8 @@
 #define MAX(a,b) ((a) > (b) ? (a) : (b))
 #define MIN(a,b) ((a)<(b)?(a):(b))
 #define container_of(p,t,m) ((t *)((char *)(p)-offsetof(t,m)))
-typedef struct { VkBuffer vram_buffer; } PGRAPHVkState;
+typedef struct { VkBuffer vram_buffer; struct {VkMemoryPropertyFlags properties;} storage_buffers[1]; } PGRAPHVkState;
+#define BUFFER_STAGING_SRC 0
 typedef struct { PGRAPHVkState *vk_renderer_state; uint8_t *arena; size_t head; } PGRAPHState;
 typedef struct { uint8_t *vram_ptr; size_t *vram; PGRAPHState pgraph; } NV2AState;
 #define memory_region_size(p) (*(p))
@@ -74,7 +75,7 @@ static void check(unsigned w,unsigned h,unsigned depth,unsigned bs,unsigned kind
         uint8_t value=(uint8_t)(block*31+z*13+b*7);
         guest[offset+src]=value;expected[((size_t)z*bw*bh+block)*bs+b]=value;
     }
-    size_t size=bytes+128;PGRAPHVkState renderer={.vram_buffer=kind?(VkBuffer)(uintptr_t)1:VK_NULL_HANDLE};
+    size_t size=bytes+128;PGRAPHVkState renderer={.vram_buffer=kind?(VkBuffer)(uintptr_t)1:VK_NULL_HANDLE,.storage_buffers={{kind==1?VK_MEMORY_PROPERTY_HOST_CACHED_BIT:0}}};
     NV2AState dev={.vram_ptr=guest,.vram=&size,.pgraph={&renderer,actual,3}};TextureLevel level;
     stage_blocks_3d(&dev.pgraph,&level,guest+offset,w,h,depth,bs);
     bool direct=kind&&offset%bs==0&&(depth==1||bw*bh==1);

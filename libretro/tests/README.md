@@ -1093,6 +1093,25 @@ or direct-binding implementation must demonstrate better end-to-end throughput
 without a material CPU/GPU regression, using representative memory and workloads,
 before being enabled. The validation-layer opt-out above applies here too.
 
+For host-cached allocations, the BC staging fallback writes each destination Z
+slice contiguously within four-slice source groups. Uncached allocations retain
+the previous traversal after the probe detected a regression for those types. It changes CPU traversal order only: payload bytes,
+buffer placement, GPU copy commands, barriers and direct eligibility stay the
+same. The 1,944-case CPU oracle includes generic block sizes and partial groups;
+the 13,824-case GPU oracle checks final image bytes.
+
+Add `--cpu-layout` to the volume benchmark command to compare the current
+staging traversal with the frozen a2c63a0 reference in
+`bc-volume-staging-reference.h`. Both timed paths force staging and issue the
+same GPU upload, covering twelve BC1/BC3 workloads including 4.2/8.5 MB payloads.
+Add `--uncached-memory` to prefer an uncached coherent type when available; always
+inspect the printed property flags. These flags affect this fixture only.
+Two cached/coherent RTX 5090 runs of the memory-aware path measured the 4.2 MB
+BC1 CPU sample at 195.8-196.6 us baseline versus 141.7-142.9 us current and the
+8.5 MB BC3 sample at 307-324 us versus 281-290 us. GPU times remained within measurement noise with identical
+GPU work. Smaller samples were generally flat or improved. These are isolated
+CPU preparation/recording medians, not full-game FPS or universal device claims.
+
 `python libretro/tests/test-vulkan-linear-span.py CHECKOUT [CC]` validates
 production linear staging and copy-region functions with 432 Vulkan transfers.
 R8, RG8, RGBA8 and RGB565 cases cover narrow/padded rows, one/multiple rows,

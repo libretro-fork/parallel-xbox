@@ -13,7 +13,8 @@
 #define ARRAY_SIZE(a) (sizeof(a)/sizeof((a)[0]))
 #define MIN(a,b) ((a)<(b)?(a):(b))
 #define container_of(p,t,m) ((t *)((char *)(p)-offsetof(t,m)))
-typedef struct { VkBuffer vram_buffer; } PGRAPHVkState;
+typedef struct { VkBuffer vram_buffer; struct {VkMemoryPropertyFlags properties;} storage_buffers[1]; } PGRAPHVkState;
+#define BUFFER_STAGING_SRC 0
 typedef struct { PGRAPHVkState *vk_renderer_state; uint8_t *arena; size_t head; } PGRAPHState;
 typedef struct { uint8_t *vram_ptr; size_t *vram; PGRAPHState pgraph; } NV2AState;
 #define memory_region_size(p) (*(p))
@@ -47,13 +48,18 @@ static VkPhysicalDeviceMemoryProperties memory_properties;
 static unsigned errors;
 static unsigned memory_type(unsigned bits, VkMemoryPropertyFlags flags)
 {
-    for (unsigned i = 0; i < memory_properties.memoryTypeCount; i++) {
-        if ((bits & (1u << i)) &&
-            (memory_properties.memoryTypes[i].propertyFlags & flags) == flags) return i;
+    unsigned best=32;int best_score=-1;
+    for (unsigned i=0;i<memory_properties.memoryTypeCount;i++) {
+        VkMemoryPropertyFlags actual=memory_properties.memoryTypes[i].propertyFlags;
+        if (!(bits&(1u<<i)) || (actual&flags)!=flags) continue;
+        int score=(flags&VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) &&
+                  (actual&VK_MEMORY_PROPERTY_HOST_CACHED_BIT) ? 1 : 0;
+        if (score>best_score) {best=i;best_score=score;}
     }
-    abort();
+    assert(best<32);return best;
 }
-typedef struct { VkBuffer handle; VkDeviceMemory memory; uint8_t *mapped; } Buffer;
+
+typedef struct { VkBuffer handle; VkDeviceMemory memory; uint8_t *mapped; VkMemoryPropertyFlags properties; } Buffer;
 static Buffer buffer(size_t bytes)
 {
     Buffer b = {0};
@@ -64,6 +70,7 @@ static Buffer buffer(size_t bytes)
     VkMemoryAllocateInfo ai = { .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
         .allocationSize = req.size, .memoryTypeIndex = memory_type(req.memoryTypeBits,
             VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) };
+    b.properties=memory_properties.memoryTypes[ai.memoryTypeIndex].propertyFlags;
     CHECK(vkAllocateMemory(device, &ai, NULL, &b.memory));
     CHECK(vkBindBufferMemory(device, b.handle, b.memory, 0));
     CHECK(vkMapMemory(device, b.memory, 0, VK_WHOLE_SIZE, 0, (void **)&b.mapped));
@@ -155,7 +162,7 @@ int main(void)
             uint8_t value=(z*53+b*19+byte*7+f*31)&255;
             upload.mapped[offset+src]=value; expected[dst]=value;
         }
-        PGRAPHVkState renderer={.vram_buffer=kind==1?VK_NULL_HANDLE:upload.handle};
+        PGRAPHVkState renderer={.vram_buffer=kind==1?VK_NULL_HANDLE:upload.handle,.storage_buffers={{staging.properties}}};
         size_t limit=offset+bytes; /* valid data ending exactly at VRAM end */
         NV2AState state={.vram_ptr=upload.mapped,.vram=&limit,
             .pgraph={.vk_renderer_state=&renderer,.arena=staging.mapped}};

@@ -111,6 +111,19 @@ bench="""
 needle='        vkDestroyFence(device, fence, NULL);'
 assert needle in code
 code=code.replace(needle,bench+needle)
+if '--cpu-layout' in sys.argv[3:]:
+    baseline=(repo/'libretro/tests/bc-volume-staging-reference.h').read_text()
+    position=code.index('static unsigned selected_host_flags;')
+    code=code[:position]+baseline+'\n'+code[position:]
+    code=code.replace('renderer.vram_buffer=variant?upload.handle:VK_NULL_HANDLE;', 'renderer.vram_buffer=VK_NULL_HANDLE;')
+    code=code.replace('measured_stage_blocks_3d(&state.pgraph,&measured,', '(variant?measured_stage_blocks_3d:baseline_stage_blocks_3d)(&state.pgraph,&measured,')
+    code=code.replace('(w==128&&h==128&&depth==4)', '(w==128&&h==128&&depth==4)||(w==256&&h==256&&depth==129)')
+    code=code.replace('CPU-stage/direct-us','CPU-baseline/current-us').replace('GPU-stage/direct-us','GPU-baseline/current-us')
+    code=code.replace('fallback-control','staged')
+    code=code.replace('    assert(saved_regions>0);','    puts("Setup-oracle counters below are outside timed CPU-layout paths.");\n    assert(saved_regions>0);')
+    code=code.replace('EXPERIMENTAL ROUTES; conservative renderer defaults unchanged.', 'CPU LAYOUT COMPARISON; both timed paths use identical staged GPU uploads.')
+if '--uncached-memory' in sys.argv[3:]:
+    code=code.replace('((flags&VK_MEMORY_PROPERTY_HOST_CACHED_BIT)?8:0)', '((flags&VK_MEMORY_PROPERTY_HOST_CACHED_BIT)?0:8)')
 env=os.environ.copy();env['PATH']=str(Path(cc).resolve().parent)+os.pathsep+env.get('PATH','')
 with tempfile.TemporaryDirectory(prefix='volume-bench-') as tmp:
     root=Path(tmp);(root/'test.c').write_text(code);exe=root/('test.exe' if os.name=='nt' else 'test')

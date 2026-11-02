@@ -268,14 +268,40 @@ static void stage_blocks_3d(PGRAPHState *pg, TextureLevel *level,
         memcpy(dst, data, slice * depth);
         return;
     }
-    const uint8_t *src = data;
-    for (unsigned int z0 = 0; z0 < depth; z0 += 4) {
-        unsigned int nz = MIN(depth - z0, 4);
-        for (unsigned int b = 0; b < bw * bh; b++) {
-            for (unsigned int z = 0; z < nz; z++) {
-                uint8_t *out = dst + (z0 + z) * slice + b * block_size;
-                /* BC1 uses eight bytes, BC2/3 sixteen. Constant sizes avoid
-                 * generic copy-size dispatch, even when memcpy is inlined. */
+    /* Keep the previous write order for uncached host memory. */
+    if (!(pg->vk_renderer_state->storage_buffers[BUFFER_STAGING_SRC].properties &
+          VK_MEMORY_PROPERTY_HOST_CACHED_BIT)) {
+        const uint8_t *src = data;
+        for (unsigned int z0 = 0; z0 < depth; z0 += 4) {
+            unsigned int nz = MIN(depth - z0, 4);
+            for (unsigned int b = 0; b < bw * bh; b++) {
+                for (unsigned int z = 0; z < nz; z++) {
+                    uint8_t *out = dst + (z0 + z) * slice + b * block_size;
+                    /* BC1 uses eight bytes, BC2/3 sixteen. Constant sizes avoid
+                     * generic copy-size dispatch, even when memcpy is inlined. */
+                    if (block_size == 8) {
+                        memcpy(out, src, 8);
+                    } else if (block_size == 16) {
+                        memcpy(out, src, 16);
+                    } else {
+                        memcpy(out, src, block_size);
+                    }
+                    src += block_size;
+                }
+            }
+        }
+        return;
+    }
+    /* Write each destination slice sequentially, keeping the source's
+     * grouped layout while avoiding four destination streams per block. */
+    unsigned blocks = bw * bh;
+    for (unsigned z0 = 0; z0 < depth; z0 += 4) {
+        unsigned nz = MIN(depth - z0, 4);
+        for (unsigned z = 0; z < nz; z++) {
+            for (unsigned b = 0; b < blocks; b++) {
+                const uint8_t *src = data +
+                    ((size_t)z0 * blocks + (size_t)b * nz + z) * block_size;
+                uint8_t *out = dst + ((size_t)(z0 + z) * blocks + b) * block_size;
                 if (block_size == 8) {
                     memcpy(out, src, 8);
                 } else if (block_size == 16) {
@@ -283,7 +309,6 @@ static void stage_blocks_3d(PGRAPHState *pg, TextureLevel *level,
                 } else {
                     memcpy(out, src, block_size);
                 }
-                src += block_size;
             }
         }
     }
