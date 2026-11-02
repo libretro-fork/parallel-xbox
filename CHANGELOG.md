@@ -4,6 +4,8 @@
 
 ## Unreleased
 
+- Add a report-dispatch probe comparing production decisions with two fixture-only idle-polling candidates. Preserve renderer behavior while timings do not establish a consistent improvement across all paths.
+
 - Publish stencil-write and depth-perspective control bits together after the existing surface update, reducing redundant register traffic while preserving final state and the depth-format update.
 
 - Add a production uniform-refresh/cache probe for repeated and changing viewport writes, checking bound bytes and upload counts before considering dirty-marker changes. Rendering behavior is unchanged.
