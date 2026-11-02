@@ -502,9 +502,9 @@ static void shader_cache_finalize(PGRAPHState *pg)
 }
 
 static ShaderBinding *get_shader_binding_for_state(PGRAPHVkState *r,
-                                                   const ShaderState *state)
+                                                   const ShaderState *state,
+                                                   uint64_t hash)
 {
-    uint64_t hash = fast_hash((void *)state, sizeof(*state));
     LruNode *node = lru_lookup(&r->shader_cache, hash, state);
     ShaderBinding *binding = container_of(node, ShaderBinding, node);
     NV2A_VK_DPRINTF("shader state hash: %016" PRIx64 " %p", hash, binding);
@@ -1413,6 +1413,8 @@ void pgraph_vk_bind_shaders(PGRAPHState *pg)
         ShaderState new_state = pgraph_glsl_get_shader_state(pg);
         if (!r->shader_binding || memcmp(&r->shader_binding->state, &new_state,
                                          sizeof(ShaderState))) {
+            ShaderState fb;
+            const ShaderState *bound_state = &new_state;
             uint64_t h =
                 fast_hash((const uint8_t *)&new_state, sizeof(new_state));
             uint64_t bound_h = h; /* of the state drawn with, below */
@@ -1424,7 +1426,7 @@ void pgraph_vk_bind_shaders(PGRAPHState *pg)
                      * compiles nothing. */
                     vk_spec_release_adopted(h);
                 } else {
-                    ShaderState fb = new_state;
+                    fb = new_state;
                     if (pgraph_glsl_psh_canonicalize_dynamic(&fb.psh)) {
                         uint64_t fh = fast_hash((const uint8_t *)&fb,
                                                 sizeof(fb));
@@ -1451,7 +1453,9 @@ void pgraph_vk_bind_shaders(PGRAPHState *pg)
                             }
                             nv2a_profile_inc_counter(
                                 NV2A_PROF_SHADER_FALLBACK);
-                            new_state = fb;
+                            /* Keep the hashed sibling alive through lookup;
+                             * the cache owns its copy before this scope ends. */
+                            bound_state = &fb;
                             bound_h = fh;
                         } else if (fh != h && !sphase) {
                             /* The sibling, interpreter code, compiles
@@ -1468,7 +1472,7 @@ void pgraph_vk_bind_shaders(PGRAPHState *pg)
                     }
                 }
             }
-            r->shader_binding = get_shader_binding_for_state(r, &new_state);
+            r->shader_binding = get_shader_binding_for_state(r, bound_state, bound_h);
             vk_seen_add(bound_h);
             r->shader_bindings_changed = true;
         }

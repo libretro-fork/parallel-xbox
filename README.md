@@ -208,3 +208,9 @@ set. The capacity fixture checks 864 malformed heads and links across all lists,
 monitor modes and active/idle/locked prefixes. Invalid entries stop that list;
 valid prefixes and the other lists still run. Synthetic ROM modes
 `VP_INVALID_HEAD` and `VP_INVALID_LINK` exercise these paths in the native core.
+
+The DSP-off VP monitor computes its maximum eligible route gain once when
+those gains stay constant across the frame. Ramping routes keep the per-sample
+calculation; no persistent gain cache or additional audio frame is stored. The
+threaded fixture checks 12,000 exact gain frames (stable and ramped) across
+headroom, channel selection, spatial routes and multipass-bin exclusion.

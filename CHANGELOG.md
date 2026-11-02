@@ -1,5 +1,6 @@
 # Changelog of the libretro core
 
+- Reuse one maximum monitor gain across a VP frame when eligible routes have constant gain, avoiding repeated per-sample ramp calculations for DSP-off audio. Changing routes retain exact interpolation, channel selection and multipass exclusions.
 - Stop malformed VP lists before an out-of-range voice handle can access descriptors or voice state. Validate full list-head register values before narrowing them, preserving valid prefixes and the other voice lists.
 - Build VP parallel work units during routing validation, removing the temporary per-voice mask array and second queue scan. Multipass grouping, repeated-voice protection and serial fallbacks are preserved.
 - Keep CPU execution on the existing libretro device owner, removing QEMU CPU/I/O-thread BQL transfers around guest slices, MMIO, exceptions and interrupts. Preserve explicit GPU-wait releases and exception cleanup; guard APIC/FERR helpers conditionally.
@@ -14,8 +15,10 @@
 ## Unreleased
 
 - Keep DMA/TRIM request-object reuse on the emulation owner instead of per-thread TLS and QEMU thread-exit notifiers. Preserve cache limits and reference counting; clear cached objects on content close and free late completions until another submission begins reuse.
+- Reuse the selected shader-state digest for Vulkan binding-cache lookup, including dynamic siblings. Preserve complete state bytes, cache collision checks, queue/ahead decisions and clean-state behavior while avoiding duplicate hashing and the sibling copy-back.
 
 - Reuse one completed IDE buffered-read request and its largest aligned scratch buffer on the emulation owner. Preserve error/cancellation copy suppression and callback lifetime; release the cache on content close, including close from a completing callback. Warm reads avoid repeated heap allocations without changing payload copying.
+
 - Reuse the shader-module LRU lookup hash when adopting worker results on a cache miss. Preserve full-key collision checks and module ownership while avoiding a duplicate render-thread hash scan.
 
 - DSP: compile short-address X/Y MOVEC control-register loads and stores, including stack-pop reads of SSH, scaling changes and repeated loop-count writes. Add 178,176 regression boundaries and a production-block fixture.
