@@ -36,6 +36,8 @@ jobs:
         run: python3 libretro/tests/test-frame-audio-pull.py . cc
       - name: Store-free work must not be mistaken for an idle wait
         run: python3 libretro/tests/test-quiet-progress.py . cc
+      - name: CPU execution restores host SSE context after faults and resets
+        run: python3 libretro/tests/test-sse-context.py . cc
       - name: Directed SSE arithmetic preserves flags, aliases and host state
         run: python3 libretro/tests/test-sse-directed.py . cc
       - name: Native SSE square root preserves rounding, flags and host state

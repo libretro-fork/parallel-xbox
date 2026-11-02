@@ -3249,3 +3249,6 @@ across chunk boundaries. Real threaded scenarios include cyclic 3D/multipass
 layouts. Win64 VP-frame stack usage changes from 160 to 176 bytes; the serial
 helper remains inlined. Voice-processing/scheduler stack usage stays
 1,248/3,264 bytes and dispatch/filter state sizes 3,120/1,120 bytes.
+
+
+`test-sse-context.py CHECKOUT [CC]` exercises the production `cpu_exec` boundary and native eligibility gate on x86-64. Its 65,536 normal/halt/nested/reset/longjmp cases vary host rounding, flushing, exception masks and sticky flags, deliberately seed a stale mode cache, execute a halfway native add, and require exact caller-state restoration. The saved state must survive guest reset and fault unwinding; halted calls must leave it untouched. Omitting the production restore must fail a negative control. The scope does not merge host exception flags into guest status, since unrelated helpers may also use host FP.

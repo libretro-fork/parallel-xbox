@@ -283,6 +283,7 @@ TranslationBlock *inv_tb_htable_lookup(CPUState *cpu, TCGTBCPUState s,
  * Boost still controls the guest flag specialization inside that hook. */
 #ifdef XBOX
 #include "target/i386/tcg/tcg-cpu.h"
+#include "target/i386/tcg/sse-context.h"
 #endif
 
 static inline TCGTBCPUState xemu_get_tb_cpu_state(CPUState *cpu)
@@ -1179,11 +1180,17 @@ int cpu_exec(CPUState *cpu)
     }
 
     RCU_READ_LOCK_GUARD();
+#if defined(XBOX) && defined(__x86_64__)
+    uint32_t saved_mxcsr = xemu_sse_context_enter(cpu_env(cpu));
+#endif
     cpu_exec_enter(cpu);
 
     ret = cpu_exec_setjmp(cpu);
 
     cpu_exec_exit(cpu);
+#if defined(XBOX) && defined(__x86_64__)
+    xemu_sse_context_exit(cpu_env(cpu), saved_mxcsr);
+#endif
     return ret;
 }
 
