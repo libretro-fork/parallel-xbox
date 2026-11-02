@@ -938,7 +938,12 @@ static void init_pipeline_key(PGRAPHState *pg, PipelineKey *key)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
 
-    memset(key, 0, sizeof(*key));
+    /* The shader state is copied in full below, including its padding.
+     * Clear only the surrounding bytes; every hashed key byte stays defined. */
+    memset(key, 0, offsetof(PipelineKey, shader_state));
+    const size_t after_shader = offsetof(PipelineKey, shader_state) +
+                                sizeof(key->shader_state);
+    memset((char *)key + after_shader, 0, sizeof(*key) - after_shader);
     init_render_pass_state(pg, &key->render_pass_state);
     memcpy(&key->shader_state, &r->shader_binding->state,
            sizeof(ShaderState));

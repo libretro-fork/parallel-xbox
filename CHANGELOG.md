@@ -8,6 +8,7 @@
 ## Unreleased
 
 - Complete IDE TRIM through the fixed disk slots instead of allocating a one-use QEMU bottom half. Preserve deferred delivery and device guards; cancellation now handles empty descriptors and retains its error when the outstanding discard completes.
+- Avoid clearing shader-state bytes immediately overwritten during Vulkan pipeline-key construction. Preserve every key byte and cache identity while reducing CPU memory writes; GPU state and compilation policy are unchanged.
 
 - Copy the final contiguous slice of large host-cached BC1 volumes in one CPU operation instead of one per block. Preserve upload bytes, GPU commands, uncached traversal and other texture layouts; add a frozen-reference benchmark.
 
