@@ -1473,7 +1473,9 @@ static void copy_surface_to_linear_texture(PGRAPHState *pg,
         .dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
         .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
         .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        .buffer = buffer, .size = VK_WHOLE_SIZE,
+        .buffer = buffer,
+        .size = (VkDeviceSize)surface->width * surface->height *
+                vk_format_texel_size(surface->host_fmt.vk_format),
     };
     /* Also orders reuse of the native scratch after earlier transfer reads. */
     vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,

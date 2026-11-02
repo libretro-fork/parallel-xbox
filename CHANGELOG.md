@@ -4,6 +4,8 @@
 
 ## Unreleased
 
+- Limit native color-to-linear-texture transfer-buffer barriers to the packed pixel payload. Preserve the GPU-only reinterpretation, native downscale scratch ordering, snapshot copy and buffer reuse dependencies.
+
 - Bound Vulkan scanout background upload visibility to the scanout frame and source reuse to the accumulated dirty-rectangle/staging source envelope. Preserve one recording, per-rectangle RAM ownership, pitched copies and asynchronous submission without an extra rectangle pass.
 
 - Scope Vulkan surface upload source reuse after buffer-to-image copies to the actual pitched/staged/ring slice or aligned unpacked depth planes. Apply the same ranges to direct-image and scratch-image routes without changing their copy or completion policies.

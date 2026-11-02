@@ -386,9 +386,11 @@ ARGB4444, G8B8, A8Y8, ARGB8888 or XRGB8888 textures. Active row byte counts
 must match; XRGB/depth/expanded source formats retain their existing fallback.
 The eligibility fixture runs all 22 source/destination pairs through layout,
 capacity, scaling and overlap cases; OpenGL retains its ARGB-to-RGB565 gate.
-The command-recording fixture also runs the production transfer at scale 1/2/4,
-checking destination formats, extents, layouts and transfer-buffer barriers
-without exposing host readback or wait APIs. Matching padded guest pitches are
+The command-recording fixture runs 792 production transfers across four native
+widths, three heights and scale 1/2/4, checking destination formats, extents,
+layouts and all three transfer-buffer barriers. Barrier ranges must equal the
+native packed pixel payload, with original access/stage masks and reuse order.
+The fixture exposes no host readback or wait APIs. Matching padded guest pitches are
 supported; padding is omitted and the capacity check counts active pixels.
 
 Set `TEXTURE_TRANSFER_GPU_TEST=1` when running `test-texture-reinterpret.py` to

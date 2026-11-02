@@ -64,6 +64,11 @@ static void pgraph_vk_transition_image_layout(PGRAPHState *p, VkCommandBuffer c,
     vkCmdPipelineBarrier(c, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
         VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 0, NULL, 0, NULL, 1, &b);
 }
+static unsigned vk_format_texel_size(VkFormat format)
+{
+    assert(format==VK_FORMAT_B8G8R8A8_UNORM||format==VK_FORMAT_R5G6B5_UNORM_PACK16);
+    return format==VK_FORMAT_B8G8R8A8_UNORM?4:2;
+}
 /* PRODUCTION */
 static VkDeviceMemory allocate(VkMemoryRequirements requirements, VkMemoryPropertyFlags flags)
 {
