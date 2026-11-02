@@ -20,6 +20,8 @@
 
 ## Unreleased
 
+- DSP: compile peripheral MOVEP transfers involving control and reserved registers, preserving SSH pops, scaling/loop-count changes and halt/interrupt effects. Add 85,568 X-peripheral regression boundaries, DMA state comparisons and a production program.
+
 - DSP: compile MOVEM program-memory transfers involving control and reserved registers, preserving SSH stack pops, scaling/count changes and self-modifying REP bodies. Add 163,968 regression boundaries and two production programs.
 
 - DSP: complete native register MOVEC coverage and fix read-direction copies into SR, which could read the wrong source and apply write-direction semantics. Preserve raw width-masked copies and SSH pops, with 98,304 new regression boundaries and a production program.

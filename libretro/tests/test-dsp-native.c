@@ -168,6 +168,18 @@ static void prepare(Machine *m, uint32_t op, uint32_t ext, unsigned seed,
         c->registers[DSP_REG_SSL] = c->stack[1][sp];
     }
 
+    if (seed & 0x80000000u) {
+        /* A valid STOP/FREEZE action for DMA-control peripheral writes. */
+        unsigned reg = (op >> 8) & 63;
+        unsigned value = 2 + ((seed >> 8) & 1);
+        c->registers[reg] = value;
+        if (reg == DSP_REG_SSH) c->stack[0][c->registers[DSP_REG_SP] & 15] = value;
+        if (reg == DSP_REG_SP) {
+            c->registers[DSP_REG_SSH] = c->stack[0][value];
+            c->registers[DSP_REG_SSL] = c->stack[1][value];
+        }
+    }
+
 }
 
 static void check(Machine *a, Machine *b, uint32_t op, uint32_t ext,
@@ -847,8 +859,33 @@ static void check_register_control_transfers(Machine *a, Machine *b, unsigned mo
     }
 }
 
+static void check_peripheral_control_transfers(Machine *a, Machine *b, unsigned mode)
+{
+    static const unsigned contexts[] = {0x20000000, 0x40000, 0x80000};
+    for (unsigned reg = 0; reg < DSP_REG_MAX; reg++) {
+        if (reg >= DSP_REG_X0 && reg <= DSP_REG_M7) continue;
+        for (unsigned port = 0; port < 64; port++) {
+            for (unsigned write = 0; write < 2; write++) {
+                if (write && port == 0x16) continue;
+                for (unsigned ctx = 0; ctx < ARRAY_SIZE(contexts); ctx++) {
+                    for (unsigned seed = 0; seed < 2; seed++) {
+                        check(a, b, 0x084000 | (write << 15) | (reg << 8) | port, 0x30,
+                              0x400000 | 0x1000000 | 0x2000000 | contexts[ctx] |
+                              (seed ? 9 : 0), mode, seed != 0);
+                    }
+                }
+            }
+        }
+        for (unsigned action = 0; action < 2; action++) {
+            check(a, b, 0x08C016 | (reg << 8), 0x30,
+                  0x80000000u | 0x400000 | 0x20000000 | (action << 8), mode, false);
+        }
+    }
+}
+
 static void check_startup_operations(Machine *a, Machine *b, unsigned mode)
 {
+    check_peripheral_control_transfers(a, b, mode);
     check_register_control_transfers(a, b, mode);
     check_inc_dec_words(a, b, mode);
     static const unsigned values[] = {0, 1, 0x20, 0x3F, 0x80, 0xFF};
@@ -1193,13 +1230,14 @@ int main(int argc, char **argv)
     bool relative_only = argc == 2 && !strcmp(argv[1], "--relative");
     bool loops_only = argc == 2 && !strcmp(argv[1], "--loops");
     bool compare_only = argc == 2 && !strcmp(argv[1], "--compare");
+    bool peripheral_only = argc == 2 && !strcmp(argv[1], "--peripheral-control");
     bool program_control_only = argc == 2 && !strcmp(argv[1], "--program-control");
     bool register_only = argc == 2 && !strcmp(argv[1], "--register-control");
     bool effective_only = argc == 2 && !strcmp(argv[1], "--effective-control");
     bool startup_only = argc == 2 && !strcmp(argv[1], "--startup");
     bool program_only = argc == 2 && !strcmp(argv[1], "--program");
-    if (argc != 1 && !relative_only && !loops_only && !program_only && !compare_only && !startup_only && !effective_only && !register_only && !program_control_only) {
-        fputs("usage: dspnative [--relative|--loops|--program|--compare|--startup|--effective-control|--register-control|--program-control]\n", stderr);
+    if (argc != 1 && !relative_only && !loops_only && !program_only && !compare_only && !startup_only && !effective_only && !register_only && !program_control_only && !peripheral_only) {
+        fputs("usage: dspnative [--relative|--loops|--program|--compare|--startup|--effective-control|--register-control|--program-control|--peripheral-control]\n", stderr);
         return 2;
     }
     Machine *a = machine_new(false), *b = machine_new(true);
@@ -1213,8 +1251,9 @@ int main(int argc, char **argv)
 #ifdef _WIN32
     assert(initially_committed == (64u << 10));
 #endif
-    if (relative_only || loops_only || program_only || compare_only || startup_only || effective_only || register_only || program_control_only) {
+    if (relative_only || loops_only || program_only || compare_only || startup_only || effective_only || register_only || program_control_only || peripheral_only) {
         for (unsigned mode = 0; mode < 4; mode++) {
+            if (peripheral_only) check_peripheral_control_transfers(a, b, mode);
             if (program_control_only) check_program_control_transfers(a, b, mode);
             if (register_only) check_register_control_transfers(a, b, mode);
             if (effective_only) check_effective_control_stores(a, b, mode);

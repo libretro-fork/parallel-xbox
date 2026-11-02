@@ -348,6 +348,20 @@ static int compare_machines(Machine *a, Machine *b)
     bad |= compare("interrupt_pipeline_count", &sa->interrupt_pipeline_count, &sb->interrupt_pipeline_count, 2, 2);
     bad |= compare("interrupt_is_pending", sa->interrupt_is_pending, sb->interrupt_is_pending, sizeof(sa->interrupt_is_pending), 2);
     bad |= compare("interrupts", &a->dsp->interrupts, &b->dsp->interrupts, 4, 4);
+    bad |= compare("DMA configuration", &a->dsp->dma.configuration, &b->dsp->dma.configuration,
+                   sizeof(a->dsp->dma.configuration), sizeof(a->dsp->dma.configuration));
+    bad |= compare("DMA control", &a->dsp->dma.control, &b->dsp->dma.control,
+                   sizeof(a->dsp->dma.control), sizeof(a->dsp->dma.control));
+    bad |= compare("DMA start_block", &a->dsp->dma.start_block, &b->dsp->dma.start_block,
+                   sizeof(a->dsp->dma.start_block), sizeof(a->dsp->dma.start_block));
+    bad |= compare("DMA next_block", &a->dsp->dma.next_block, &b->dsp->dma.next_block,
+                   sizeof(a->dsp->dma.next_block), sizeof(a->dsp->dma.next_block));
+    bad |= compare("DMA error", &a->dsp->dma.error, &b->dsp->dma.error,
+                   sizeof(a->dsp->dma.error), sizeof(a->dsp->dma.error));
+    bad |= compare("DMA eol", &a->dsp->dma.eol, &b->dsp->dma.eol,
+                   sizeof(a->dsp->dma.eol), sizeof(a->dsp->dma.eol));
+    bad |= compare("DMA dma_read_count", &a->dsp->dma.dma_read_count, &b->dsp->dma.dma_read_count,
+                   sizeof(a->dsp->dma.dma_read_count), sizeof(a->dsp->dma.dma_read_count));
     bad |= compare("scratch", a->scratch, b->scratch, sizeof(a->scratch), 1);
     bad |= compare("fifo", a->fifo, b->fifo, sizeof(a->fifo), 1);
     bad |= compare("fifo_cur", a->fifo_cur, b->fifo_cur, sizeof(a->fifo_cur), 4);
