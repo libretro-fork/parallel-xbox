@@ -1940,7 +1940,6 @@ static void voice_work_unit(MCPXAPUState *d, VoiceWorkDispatch *vwd, int unit,
         voice_process(d, mixbins, sample_buf,
                       vwd->queue[i].voice, vwd->queue[i].list);
     }
-    retro_atomic_fetch_add_int(&vwd->units_done, 1);
 }
 
 static void voice_worker_thread(void *arg)
@@ -1968,17 +1967,22 @@ static void voice_worker_thread(void *arg)
         }
         /* the frame's claim generation, published before the wake */
         int claim_gen = retro_atomic_load_acquire_int(&vwd->claim) >> 16;
-        bool first = true;
+        int completed = 0;
         for (int unit; (unit = voice_work_claim(vwd, claim_gen)) >= 0;) {
-            if (first) {
+            if (!completed) {
                 memset(self->mixbins, 0, sizeof(self->mixbins));
                 if (d->monitor.point == MCPX_APU_DEBUG_MON_VP) {
                     memset(self->sample_buf, 0, sizeof(self->sample_buf));
                 }
                 retro_atomic_store_release_int(&self->used_gen, claim_gen);
-                first = false;
             }
             voice_work_unit(d, vwd, unit, self->mixbins, self->sample_buf);
+            completed++;
+        }
+        if (completed) {
+            /* Publish all buffer/state writes once. A late worker that
+             * claimed nothing must not touch another frame's counter. */
+            retro_atomic_fetch_add_int(&vwd->units_done, completed);
         }
     }
     lr_dsp_vp_worker(false);
@@ -2106,6 +2110,13 @@ voice_work_dispatch(MCPXAPUState *d,
 
     /* The frame's units, then its claim word, then the workers' wake */
     vwd->gen = (vwd->gen + 1) & 0x7FFF;
+    if (!vwd->gen) {
+        /* Prior work has retired and the new claim is not published yet.
+         * An unused worker must not match a label from the previous cycle. */
+        for (int w = 1; w < vwd->num_workers; w++) {
+            retro_atomic_store_relaxed_int(&vwd->workers[w].used_gen, -1);
+        }
+    }
     retro_atomic_store_relaxed_int(&vwd->units_done, 0);
     retro_atomic_store_relaxed_int(&vwd->claim_limit, vwd->num_units);
     retro_atomic_store_release_int(&vwd->claim, vwd->gen << 16);
@@ -2113,15 +2124,20 @@ voice_work_dispatch(MCPXAPUState *d,
         retro_atomic_fetch_add_int(&vwd->workers[w].generation, 1);
         retro_eventcount_notify(&vwd->workers[w].wake);
     }
-    /* This thread takes units like any worker, into the DSP's buffer;
-     * what the workers have started when none is left takes a few
-     * microseconds: it spins for those, it does not sleep. */
+    /* The owner also processes units, directly into the DSP's buffer. */
+    int completed = 0;
     for (int unit; (unit = voice_work_claim(vwd, vwd->gen)) >= 0;) {
         voice_work_unit(d, vwd, unit, mixbins, d->vp.sample_buf);
+        completed++;
     }
     /* none left: the word exhausted for good, so a claim a worker read
      * before cannot succeed once the next frame's units are written */
     retro_atomic_store_release_int(&vwd->claim, (vwd->gen << 16) | 0xFFFF);
+    if (completed) {
+        retro_atomic_fetch_add_int(&vwd->units_done, completed);
+    }
+    /* The existing barrier still waits for every claimed unit. Completion
+     * is published once per participant, not once per unit. */
     while (retro_atomic_load_acquire_int(&vwd->units_done) < vwd->num_units) {
         cpu_relax();
     }

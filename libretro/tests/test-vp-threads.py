@@ -70,7 +70,21 @@ functions = ['set_notify_status', 'voice_get_mask', 'voice_set_mask', 'voice_off
              'voice_work_run_serial', 'voice_work_enqueue', 'voice_work_schedule', 'voice_work_dispatch', 'voice_work_init',
              'voice_work_finalize']
 driver = (here/'test-vp-threads.c').read_text(encoding='utf-8')
-generated = fixture + table + ''.join(function(n) for n in functions) + \
+instrumentation = r'''
+/* Count completion publications without changing the production functions. */
+static retro_atomic_int_t *test_completion_target;
+static retro_atomic_int_t test_completion_rmws = RETRO_ATOMIC_INT_INITIALIZER(0);
+static int test_fetch_add(retro_atomic_int_t *p, int value)
+{
+    if (p == test_completion_target) {
+        retro_atomic_fetch_add_int(&test_completion_rmws, 1);
+    }
+    return retro_atomic_fetch_add_int(p, value);
+}
+#undef retro_atomic_fetch_add_int
+#define retro_atomic_fetch_add_int(p, v) test_fetch_add((p), (v))
+'''
+generated = fixture + instrumentation + table + ''.join(function(n) for n in functions) + \
     driver.replace('/* VOICE FRAME */', function('mcpx_apu_vp_frame'))
 env = os.environ.copy()
 env['PATH'] = str(Path(cc).resolve().parent) + os.pathsep + env.get('PATH', '')

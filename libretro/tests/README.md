@@ -3278,3 +3278,37 @@ frame at 176 bytes for this lookahead fix; dispatch/filter sizes remain
 `test-ide-trim.py CHECKOUT [CC]` compiles production TRIM and fixed disk completion functions with production generic BH enqueue/poll, CPU kicks and libretro-common atomics/eventcount. It checks deferred empty/error completions, cancellation before/between/after discards, nested dispatch, both initial device guard states and 10,000 lifecycles. `TRIM_CFLAGS` enables sanitizers, and `TRIM_BINARY` plus `TRIM_SKIP_RUN=1` supports supervised native execution. Runs in the regression suite.
 
 Pass `--bench` after CC for scheduler-only batches of empty, one-range and 32-range TRIM; `TRIM_SOURCE` selects an older IDE source for comparison. File discard is modeled as a successful fixed-slot submission. Both variants use identical modeled AIO allocation; real BH allocation, scheduling, deletion and retirement are included. DSP fences are modeled equally. These timings exclude file operations and game FPS.
+
+### Batched VP completion publication
+
+The dispatcher only consumes completion after claiming closes. Each participant
+now accumulates completed units locally, then adds that count once through the
+existing acquire/release atomic. This still publishes every buffer and voice
+state write before the owner reduces outputs. A worker that claimed nothing
+publishes nothing, so late empty wakeups cannot touch another frame's counter.
+No field, sample copy, frame queue, lock or new wait is introduced. The ordinary
+parallel completion barrier still spins; this change does not remove it.
+
+The real VP thread fixture counts only completion-counter RMWs, leaving the
+production functions unchanged. Every parallel frame must publish exactly the
+scheduled unit count, with at most one publication per participant. Serial and
+overflow frames publish none. Each setup starts near the 15-bit claim-generation
+wrap; the 400-scenario comparison covers 7,706 audio frames and 203 wraps while
+matching every mix-bin/monitor sample on one and four workers. Controlled runs
+recorded 7,676 Linux and 12,123 Windows publications for 34,054 units; participant
+scheduling changes the totals. These are operation counts, not cache-miss,
+latency or game-performance measurements. The test-only counting wrapper adds
+its own instrumentation atomics and must not be used for timing comparisons.
+
+Before the 15-bit claim generation wraps, the owner invalidates all worker
+buffer labels while prior work is retired and the new claim is unpublished.
+This prevents an unused worker from matching a label left from an earlier
+generation cycle. A deterministic fixture poisons never-notified worker buffers
+then crosses wrap with a two-unit batch; no stale bin or monitor sample may
+enter reduction. This uses existing labels and adds no persistent fields.
+
+The VP_UNIQUE ROM mode activates 64 distinct looping PCM voices to exercise
+the parallel core path; VP_REPEAT and VP_CYCLE are serial-fallback controls.
+Win64 code generation keeps worker/frame/voice stack usage at 144/176/1,248
+bytes and dispatch/filter/worker sizes at 3,120/1,120/8,776 bytes. The old
+112-byte voice_work_unit helper frame is now inlined into its callers.

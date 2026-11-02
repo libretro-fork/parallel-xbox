@@ -93,8 +93,8 @@ typedef struct VoiceWorker {
     retro_atomic_int_t generation; /* moved on by the dispatcher */
     int seen_generation;           /* the worker's own */
     retro_eventcount_t wake;
-    /* the frame (claim generation) its buffers hold units of: set before
-     * its first unit of the frame is mixed */
+    /* the claim generation its buffers hold units of: set before the first
+     * unit is mixed, invalidated by the owner before claim-generation wrap */
     retro_atomic_int_t used_gen;
     int64_t mixbins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME];
     int64_t sample_buf[NUM_SAMPLES_PER_FRAME][2];
@@ -118,7 +118,7 @@ typedef struct VoiceWorkDispatch {
      * frame's schedule is made, its claim then failing (atomic: no torn
      * or undefined read) */
     retro_atomic_int_t claim_limit;
-    retro_atomic_int_t units_done; /* units mixed this frame */
+    retro_atomic_int_t units_done; /* completed units, batch-published per participant */
     int gen;
     VoiceWorkUnit units[MCPX_HW_MAX_VOICES];
     int num_units;
