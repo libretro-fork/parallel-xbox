@@ -408,7 +408,7 @@ dspstartup: $(DSPNATIVE) $(DSPDIFF)
 	done
 
 DSP_PROGRAM_RUNNER ?=
-DSP_PROGRAM_ROMS := gp-program-write gp-program-selfrep gp-program-extension gp-program-control gp-program-control-selfrep
+DSP_PROGRAM_ROMS := gp-program-write gp-program-selfrep gp-program-extension gp-program-control gp-program-control-selfrep gp-program-peripheral gp-program-peripheral-selfrep
 DSP_PROGRAM_ARGS ?= --program
 dspprogram: $(DSPNATIVE) $(DSPDIFF)
 	$(DSP_PROGRAM_RUNNER) $(DSPNATIVE) $(DSP_PROGRAM_ARGS)

@@ -1967,6 +1967,7 @@ enum {
     NP_ALU_IMM,         /* add/cmp/and #, asl/asr #ii: an AluOp (np_alu) */
     NP_MOVEP_EA,        /* movep [X or Y]:ea <-> [X or Y]:pp */
     NP_MOVEP_REG,
+    NP_MOVEP_P,       /* program/peripheral transfer, with P invalidation */
     NP_MOVEP_SPECIAL, /* peripheral access with control/stack effects */
     NP_CMPU,
     NP_TCC,
@@ -2121,6 +2122,9 @@ static int np_kind(const Insn *in)
     if (!strcmp(name, "movep [X or Y]:ea <-> [X or Y]:pp") ||
         !strcmp(name, "movep [X or Y]:ea <-> X:qq")) {
         return NP_MOVEP_EA;
+    }
+    if (!strcmp(name, "movep [X or Y]:pp <-> P:ea")) {
+        return NP_MOVEP_P;
     }
     if (!strcmp(name, "movep [X or Y]:pp <-> R")) {
         return reg_supported((in->inst >> 8) & 0x3F) ? NP_MOVEP_REG : NP_MOVEP_SPECIAL;
@@ -2422,6 +2426,37 @@ static void emit_nonparallel(Tr *t, const Insn *in, int kind)
         break;
     }
 
+    case NP_MOVEP_P: {
+        Ea ea;
+        acc_spill_all(t, false);
+        emit_calc_ea(t, (inst >> 8) & 63, in->ext, EA1, &ea);
+        if (ea.kind == EA_IMM) {
+            ea.kind = EA_ABS;
+            ea.abs = ea.imm;
+        }
+        int addr = ea_addr_reg(t, &ea);
+        if (inst & (1 << 15)) {
+            h_cmp_ri(e, 0, addr, DSP_PRAM_SIZE);
+            size_t j = h_jcc(e, HC_AE);
+            h_ld32_idx4(e, V1, REG_CORE, addr, OFF(pram));
+            Stub *s = stub_new(t, STUB_READ_P, j);
+            s->reg = addr;
+            s->reg2 = V1;
+            s->back = e->len;
+            h_mov_ri(e, EA2, 0xFFFFC0 + (inst & 63));
+            emit_write_mem(t, (inst >> 16) & 1, EA2, V1);
+        } else {
+            /* The peripheral callback must preserve the computed P address. */
+            h_mov_ri(e, EA2, 0xFFFFC0 + (inst & 63));
+            emit_read_mem(t, (inst >> 16) & 1, EA2, V1);
+            h_mov_rr(e, 0, H_ARG2, V1);
+            h_mov_rr(e, 0, H_ARG1, addr);
+            h_mov_rr(e, 1, H_ARG0, REG_CORE);
+            h_call(e, (const void *)jit_write_p);
+        }
+        t->cyc += 4;
+        break;
+    }
     case NP_MOVEP_SPECIAL:
     case NP_MOVEP_REG: {
         int reg = (inst >> 8) & 0x3F;
@@ -3421,7 +3456,7 @@ retry:
         if (insn_native(&in)) {
             emit_native(t, &in);
             if (np_kind(&in) == NP_MOVEC_SPECIAL || np_kind(&in) == NP_MOVEM_P_SPECIAL ||
-                np_kind(&in) == NP_MOVEP_SPECIAL) {
+                np_kind(&in) == NP_MOVEP_SPECIAL || np_kind(&in) == NP_MOVEP_P) {
                 /* Control transfers may change scale/LF, stack state or LC.
                  * Post once, then select the resulting cache identity. */
                 acc_spill_all(t, false);
@@ -3544,7 +3579,8 @@ retry:
     cycles = t->cyc;
     t->cyc = 0;
     if (np_kind(&in) == NP_MOVEM_P_WRITE || np_kind(&in) == NP_MOVEC_SPECIAL ||
-        np_kind(&in) == NP_MOVEM_P_SPECIAL || np_kind(&in) == NP_MOVEP_SPECIAL) {
+        np_kind(&in) == NP_MOVEM_P_SPECIAL || np_kind(&in) == NP_MOVEP_SPECIAL ||
+        np_kind(&in) == NP_MOVEP_P) {
         /* P writes can replace REP's body; control writes can change its
          * count, mode or stack. Retire once and redispatch updated state. */
         if (np_kind(&in) == NP_MOVEM_P_WRITE) {
