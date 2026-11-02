@@ -19,7 +19,10 @@
 
 ## Unreleased
 
+- Add an all-or-nothing two-span SPSC write as the queue prerequisite for borrowed shader states. Copy spans directly into plain or mirrored rings and publish once after both are complete; reject oversized or non-fitting records without a partial write. Existing queue callers and renderer behavior are unchanged.
+
 - Return DMA descriptor storage before completion callbacks so successor transfers reuse it, reserve larger SG hints in one resize, and clear the owner cache on content close. Remove descriptor-cache TLS and fix the completion-reference leak when cancelling a mapping wait; guest payload mapping and copies are unchanged.
+
 
 - Add per-lookup LRU key callbacks so borrowed shader-state spans can compare against and initialize owned cache entries without changing shared cache callbacks. Preserve normal lookup code generation, collision checks, recency and eviction behavior; renderer view integration remains pending.
 

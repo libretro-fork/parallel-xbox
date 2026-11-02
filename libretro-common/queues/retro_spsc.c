@@ -451,6 +451,48 @@ size_t retro_spsc_write(retro_spsc_t *q, const void *data, size_t bytes)
    return bytes;
 }
 
+/* Copy a nonempty span at a producer-private cursor; publish only after
+ * every span in the record has been copied. */
+static INLINE void spsc_copy_span(retro_spsc_t *q, size_t head,
+      const void *data, size_t bytes)
+{
+   size_t index = head & q->mask;
+   size_t first = spsc_contig(q, index);
+   if (first > bytes)
+      first = bytes;
+   memcpy(q->buffer + index, data, first);
+   if (bytes > first)
+      memcpy(q->buffer, (const uint8_t *)data + first, bytes - first);
+}
+
+size_t retro_spsc_write_pair(retro_spsc_t *q, const void *first,
+      size_t first_bytes, const void *second, size_t second_bytes)
+{
+   size_t head, bytes, avail;
+   /* Check before adding so oversized records cannot wrap into a small one. */
+   if (first_bytes > q->capacity || second_bytes > q->capacity - first_bytes)
+      return 0;
+   bytes = first_bytes + second_bytes;
+   if (!bytes)
+      return 0;
+   head = retro_atomic_load_relaxed_size(&q->head);
+   avail = q->capacity - (head - q->cached_tail);
+   if (avail < bytes)
+   {
+      q->cached_tail = retro_atomic_load_acquire_size(&q->tail);
+      avail = q->capacity - (head - q->cached_tail);
+   }
+   if (avail < bytes)
+      return 0;
+   if (first_bytes)
+      spsc_copy_span(q, head, first, first_bytes);
+   if (second_bytes)
+      spsc_copy_span(q, head + first_bytes, second, second_bytes);
+   /* One release publishes the complete record, including across the wrap. */
+   retro_atomic_store_release_size(&q->head, head + bytes);
+   return bytes;
+}
+
 size_t retro_spsc_write_frames(retro_spsc_t *q, const void *data,
       size_t frames, size_t frame_bytes)
 {

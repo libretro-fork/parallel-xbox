@@ -322,6 +322,17 @@ size_t retro_spsc_read_avail(const retro_spsc_t *q);
  */
 size_t retro_spsc_write(retro_spsc_t *q, const void *data, size_t bytes);
 
+/* Producer-only, all-or-nothing write of the concatenation of two spans.
+ * Returns the total byte count on success, or zero if the whole record does
+ * not fit (also for an empty record). No partial record is ever published.
+ * Either source may be NULL when its length is zero. Nonempty sources must
+ * be readable and must not overlap the queue's storage. Oversized lengths,
+ * including sums that would overflow size_t, are rejected without reading
+ * either source. The initialized queue and single-producer rules of write()
+ * apply. Consumers preserve record framing by reading complete records. */
+size_t retro_spsc_write_pair(retro_spsc_t *q, const void *first,
+      size_t first_bytes, const void *second, size_t second_bytes);
+
 /* Producer-only whole-frame write; returns frames, not bytes. Free bytes
  * shorter than one frame remain unused. The byte queue capacity need not be
  * divisible by frame_bytes, and frames may wrap across its physical end.
