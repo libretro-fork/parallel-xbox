@@ -120,10 +120,10 @@ int main(void)
     VkCommandBuffer cmd; CHECK(vkAllocateCommandBuffers(device, &ca, &cmd));
     const VkFormat formats[] = {VK_FORMAT_BC1_RGBA_UNORM_BLOCK,
         VK_FORMAT_BC2_UNORM_BLOCK, VK_FORMAT_BC3_UNORM_BLOCK};
-    const unsigned widths[] = {1,4,8}, heights[] = {1,4,5,8,20}, depths[] = {1,2,4,5,65,129};
+    const unsigned widths[] = {1,4,5,8,12,16,17,20}, heights[] = {1,4,5,8,20}, depths[] = {1,2,4,5,65,129};
     unsigned cases = 0, direct = 0; size_t avoided = 0, total_copies = 0, previous_copies = 0;
     for (unsigned f=0;f<3;f++)
-    for (unsigned wi=0;wi<3;wi++)
+    for (unsigned wi=0;wi<ARRAY_SIZE(widths);wi++)
     for (unsigned hi=0;hi<ARRAY_SIZE(heights);hi++)
     for (unsigned di=0;di<ARRAY_SIZE(depths);di++)
     for (unsigned kind=0;kind<3;kind++)
@@ -156,7 +156,7 @@ int main(void)
         bool previous_direct = kind==0 && (depth==1 || blocks==1);
         previous_copies += previous_direct ? 0 :
             depth==1 || blocks==1 ? 1 : (size_t)blocks*depth;
-        bool eligible=kind==0 && (depth==1 || w<=4);
+        bool eligible=kind==0 && (depth==1 || w<=4 || (h<=4 && w<=16));
         assert((level.source==LEVEL_VRAM)==eligible);
         assert(copy_calls == (eligible ? 0 :
             depth==1 || blocks==1 ? 1 : (size_t)blocks*depth));
@@ -169,7 +169,7 @@ int main(void)
         } else {
             assert(state.pgraph.head==bytes && level.offset==0);
         }
-        if (!eligible || depth==1 || h<=4)
+        if (!eligible || depth==1 || blocks==1)
             assert(!memcmp(eligible?upload.mapped+offset:staging.mapped,expected,bytes));
         VkBufferImageCopy copy=texture_level_copy(&level,0,mip);
         VkImageCreateInfo ii = { .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
@@ -191,7 +191,7 @@ int main(void)
             .subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, mip, 1, 0, 1} };
         vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 0, NULL, 1, &ib);
         size_t sliced = volume_block_slice_size(&level, formats[f]);
-        assert(sliced == (eligible && w<=4 && h>4 && depth>1 ? bs : 0));
+        assert(sliced == (eligible && blocks>1 && depth>1 ? bs : 0));
         if (sliced) copy_volume_block_slices(cmd, upload.handle, image, &level, 0, mip, sliced);
         else vkCmdCopyBufferToImage(cmd, eligible?upload.handle:staging.handle, image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy);
         ib.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL; ib.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;

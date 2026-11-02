@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Upload native BC compressed volumes with a single block row up to 16 texels wide directly from imported RAM. Copy contiguous block/slice groups without CPU rearrangement or staging-ring copies; wider layouts and unavailable/misaligned imported buffers retain staging.
+
 - Skip Vulkan depth/stencil uploads immediately replaced by a complete attachment clear, avoiding RAM conversion, transfer work and upload-ordering submissions. Depth-only formats require a full Z clear; packed depth/stencil formats require both aspects. Partial clears, forced uploads, clipping and antialiasing retain the upload path.
 
 - Poll the newest pending Vulkan draw submission first when checking completion. Its signaled fence proves earlier same-queue work complete, avoiding redundant driver queries while retaining partial retirement and recording-safe cleanup.

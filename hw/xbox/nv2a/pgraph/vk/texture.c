@@ -248,9 +248,10 @@ static void stage_blocks_3d(PGRAPHState *pg, TextureLevel *level,
     size_t slice = (size_t)bw * bh * block_size;
     /* One slice/XY block already has Vulkan slice order. A single block
      * column can instead be copied one slice at a time with a strided
-     * buffer row (copy_volume_block_slices), without CPU rearrangement. */
+     * buffer row (copy_volume_block_slices), without CPU rearrangement.
+     * Short single-row levels use one copy per block and four-slice group. */
     bool ordered = depth == 1 || bw * bh == 1;
-    if ((ordered || bw == 1) &&
+    if ((ordered || bw == 1 || (bh == 1 && bw <= 4)) &&
         level_from_vram(pg, level, data, width, height, depth,
                         slice * depth, block_size)) {
         return;
@@ -416,8 +417,9 @@ static VkBufferImageCopy texture_level_copy(const TextureLevel *level,
  * levels retain the ordinary single-region copy. */
 static size_t volume_block_slice_size(const TextureLevel *level, VkFormat format)
 {
-    if (level->source != LEVEL_VRAM || level->width > 4 ||
-        level->height <= 4 || level->depth <= 1) {
+    bool column = level->width <= 4 && level->height > 4;
+    bool row = level->height <= 4 && level->width > 4 && level->width <= 16;
+    if (level->source != LEVEL_VRAM || !(column || row) || level->depth <= 1) {
         return 0;
     }
     switch (format) {
@@ -436,6 +438,32 @@ static void copy_volume_block_slices(VkCommandBuffer cmd, VkBuffer source,
                                      unsigned layer, unsigned mip,
                                      size_t block_size)
 {
+    if (level->width > 4) {
+        /* A single XY block's group of Z slices is contiguous in guest RAM.
+         * Cap this route at four blocks per row so a full group needs no
+         * more regions than the narrow-column route's four slice copies. */
+        unsigned bw = (level->width + 3) / 4;
+        VkBufferImageCopy regions[64];
+        unsigned total = bw * ((level->depth + 3) / 4);
+        for (unsigned first = 0; first < total;) {
+            unsigned count = MIN(total - first, ARRAY_SIZE(regions));
+            for (unsigned i = 0; i < count; i++, first++) {
+                unsigned group = (first / bw) * 4;
+                unsigned x = (first % bw) * 4;
+                unsigned nz = MIN(level->depth - group, 4);
+                regions[i] = (VkBufferImageCopy){
+                    .bufferOffset = level->offset +
+                        ((VkDeviceSize)group * bw + (first % bw) * nz) * block_size,
+                    .imageSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, mip, layer, 1 },
+                    .imageOffset = { x, 0, group },
+                    .imageExtent = { MIN(level->width - x, 4), level->height, nz },
+                };
+            }
+            vkCmdCopyBufferToImage(cmd, source, image,
+                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, count, regions);
+        }
+        return;
+    }
     VkDeviceSize slice = (VkDeviceSize)((level->height + 3) / 4) * block_size;
     VkBufferImageCopy regions[64];
     for (unsigned z = 0; z < level->depth;) {
