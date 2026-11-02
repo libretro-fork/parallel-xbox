@@ -30,6 +30,9 @@
 #include <retro_atomic.h>
 #include <rthreads/retro_eventcount.h>
 
+static inline int vk_pre_state_module_keys(const ShaderState *st,
+                                            bool push_constants,
+                                            ShaderModuleCacheKey *keys);
 static int vk_state_module_keys(const ShaderState *st, bool push_constants,
                                 ShaderModuleCacheKey *keys);
 static MString *vk_module_glsl(const ShaderModuleCacheKey *key);
@@ -337,6 +340,23 @@ get_and_ref_shader_module_for_key(PGRAPHVkState *r,
     return module->module_info;
 }
 
+/* Prewarming needs only geometry and vertex keys; no fragment key or
+ * fragment-module lookup is constructed on this path. */
+void pgraph_vk_ref_pre_state_modules(PGRAPHVkState *r, const ShaderState *st,
+                                     ShaderModuleInfo **geom,
+                                     ShaderModuleInfo **vsh)
+{
+    ShaderModuleCacheKey keys[2];
+    int n = vk_pre_state_module_keys(st, r->use_push_constants_for_uniform_attrs,
+                                     keys);
+    int i = 0;
+    *geom = NULL;
+    if (n == 2) {
+        *geom = get_and_ref_shader_module_for_key(r, &keys[i++]);
+    }
+    *vsh = get_and_ref_shader_module_for_key(r, &keys[i]);
+}
+
 /* The modules of a state's pipeline, each referenced once: geometry (NULL
  * when the state needs none), vertex, and fragment when psh is given. */
 void pgraph_vk_ref_state_modules(PGRAPHVkState *r, const ShaderState *st,
@@ -619,10 +639,10 @@ static int vk_spec_find(uint64_t h)
     return -1;
 }
 
-/* The keys of a state's modules, as pgraph_vk_ref_state_modules makes
- * them: geometry when needed, vertex, fragment. */
-static int vk_state_module_keys(const ShaderState *st, bool push_constants,
-                                ShaderModuleCacheKey *keys)
+/* The pre-rasterization prefix shared by prewarm and full module keys. */
+static inline int vk_pre_state_module_keys(const ShaderState *st,
+                                            bool push_constants,
+                                            ShaderModuleCacheKey *keys)
 {
     int n = 0;
     bool need_gs = pgraph_glsl_need_geom(&st->geom);
@@ -642,6 +662,13 @@ static int vk_state_module_keys(const ShaderState *st, bool push_constants,
     keys[n].vsh.glsl_opts.use_push_constants_for_uniform_attrs = push_constants;
     keys[n].vsh.glsl_opts.ubo_binding = VSH_UBO_BINDING;
     n++;
+    return n;
+}
+
+static int vk_state_module_keys(const ShaderState *st, bool push_constants,
+                                ShaderModuleCacheKey *keys)
+{
+    int n = vk_pre_state_module_keys(st, push_constants, keys);
     memset(&keys[n], 0, sizeof(keys[n]));
     keys[n].kind = VK_SHADER_STAGE_FRAGMENT_BIT;
     keys[n].psh.state = st->psh;

@@ -9,8 +9,11 @@
 ## Unreleased
 
 - Remove per-transfer AioContext storage and repeated context queries from IDE/ATAPI DMA. Check AddressSpace ownership with libretro-common at submission; fixed disk completions and the shared retry notifier continue on that owner. Preserve mapped transfers, overlap ordering and deferred completion.
+- DSP: compile register-to-control MOVEC writes without interpreter fallback, preserving accumulator limiting, stack side effects and changes to scaling or REP counts. Add 170,496 regression boundaries and a repeated-control-write program.
+- Build only geometry/vertex module keys during Vulkan prewarming, avoiding an unused fragment key. Preserve full shader lookup and worker keys, module-reference order and GPU compilation policy.
 
 - Skip IDE restart bottom-half allocation and wakeup on ordinary VM resumes when no disk error needs retrying. Preserve deferred/coalesced retry handling for actual errors; avoid housekeeping work around save/load and reset.
+
 
 - Prewarm Vulkan pre-rasterization libraries directly from their stage and render-pass inputs, avoiding temporary full shader bindings and pipeline keys. Preserve library identity, create info, module references and compilation policy.
 
