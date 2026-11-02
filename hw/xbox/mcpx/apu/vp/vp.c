@@ -1439,8 +1439,11 @@ static int peek_ahead_multipass_bin(MCPXAPUState *d, uint16_t v,
                                     uint16_t *dst_voice)
 {
     bool first = true;
+    uint16_t start = v;
 
-    while (v != 0xFFFF) {
+    /* This monitor-only scan must be as bounded as voice-list traversal. */
+    for (unsigned visited = 0;
+         v < MCPX_HW_MAX_VOICES && visited < MCPX_HW_MAX_VOICES; visited++) {
         bool multipass = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_FMT,
                                         NV_PAVS_VOICE_CFG_FMT_MULTIPASS);
         if (multipass) {
@@ -1456,6 +1459,9 @@ static int peek_ahead_multipass_bin(MCPXAPUState *d, uint16_t v,
 
         v = voice_get_mask(d, v, NV_PAVS_VOICE_TAR_PITCH_LINK,
                            NV_PAVS_VOICE_TAR_PITCH_LINK_NEXT_VOICE_HANDLE);
+        if (v == start) {
+            break;
+        }
         first = false;
     }
 

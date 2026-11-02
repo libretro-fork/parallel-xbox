@@ -3252,3 +3252,24 @@ helper remains inlined. Voice-processing/scheduler stack usage stays
 
 
 `test-sse-context.py CHECKOUT [CC]` exercises the production `cpu_exec` boundary and native eligibility gate on x86-64. Its 65,536 normal/halt/nested/reset/longjmp cases vary host rounding, flushing, exception masks and sticky flags, deliberately seed a stale mode cache, execute a halfway native add, and require exact caller-state restoration. The saved state must survive guest reset and fault unwinding; halted calls must leave it untouched. Omitting the production restore must fail a negative control. The scope does not merge host exception flags into guest status, since unrelated helpers may also use host FP.
+
+### Bounded multipass monitor lookahead
+
+The native cyclic-list test exposed a separate pre-existing unbounded scan in
+peek_ahead_multipass_bin. It now stops at the hardware voice-count limit,
+rejects out-of-range handles before RAM access, and stops early when a link
+returns to the starting voice. No visited array, allocation, lock or wait is
+added. First-voice multipass handling and valid later-reader/bin selection are
+unchanged. This is the DSP-off VP monitor's routing heuristic, not a change to
+the emulated mix-bin processing order.
+
+The capacity fixture adds 1,408 lookahead cases covering handle/bit boundaries,
+empty lists, first/later readers, bins 0/31, valid 256-node chains and cycles.
+A lollipop cycle proves the hard 256-node limit; invalid handles perform no RAM
+reads. VP_LOOKAHEAD_SOURCE compares a baseline implementation: its cyclic scan
+fails the bounded-read oracle instead of hanging the test host. The native
+VP_CYCLE test needs both the queue-capacity and lookahead fixes.
+
+Win64 code generation keeps voice_process at 1,248 stack bytes and the VP
+frame at 176 bytes for this lookahead fix; dispatch/filter sizes remain
+3,120/1,120 bytes. The bounded scan remains inlined with no visited array.
