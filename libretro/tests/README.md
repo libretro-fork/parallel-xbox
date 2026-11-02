@@ -3317,3 +3317,7 @@ the parallel core path; VP_REPEAT and VP_CYCLE are serial-fallback controls.
 Win64 code generation keeps worker/frame/voice stack usage at 144/176/1,248
 bytes and dispatch/filter/worker sizes at 3,120/1,120/8,776 bytes. The old
 112-byte voice_work_unit helper frame is now inlined into its callers.
+
+## Idle IDE resume
+
+`test-ide-restart.py CHECKOUT [CC]` compiles production restart callbacks with actual generic BH allocation/enqueue/notification/retirement and libretro-common atomics/eventcount. It checks idle/stopped resumes, all eight retry dispatch cases, duplicate resume coalescing, clearing status before retry, new retry errors and a queued error cleared before dispatch. `--bench` after CC measures idle resume, stopped VM and actual flush retry through a volatile callback pointer; generic polling remains in both variants. `IDE_RESTART_SOURCE` selects a prior core.c. `IDE_RESTART_CFLAGS`, `IDE_RESTART_BINARY` and `IDE_RESTART_SKIP_RUN` support sanitizers and supervised native execution. DSP guards are modeled equally; no actual disk I/O or game FPS is timed.

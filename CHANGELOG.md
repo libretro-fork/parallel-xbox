@@ -8,6 +8,8 @@
 
 ## Unreleased
 
+- Skip IDE restart bottom-half allocation and wakeup on ordinary VM resumes when no disk error needs retrying. Preserve deferred/coalesced retry handling for actual errors; avoid housekeeping work around save/load and reset.
+
 - Prewarm Vulkan pre-rasterization libraries directly from their stage and render-pass inputs, avoiding temporary full shader bindings and pipeline keys. Preserve library identity, create info, module references and compilation policy.
 
 - Retry DMA mappings through caller-owned registrations and one shared owner notifier instead of allocating a list entry and bottom half for every retry. Cancellation unlinks directly; preserve deferred owner callbacks, release publication and DSP ownership while leaving data mappings unchanged.

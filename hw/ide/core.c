@@ -2854,8 +2854,11 @@ static void ide_restart_cb(void *opaque, bool running, RunState state)
 {
     IDEBus *bus = opaque;
 
-    if (!running)
+    /* The libretro backend normally reports errors without stopping the VM.
+     * Resume/save-state housekeeping needs no deferred work without a retry. */
+    if (!running || !bus->error_status) {
         return;
+    }
 
     if (!bus->bh) {
         bus->bh = qemu_bh_new(ide_restart_bh, bus);
