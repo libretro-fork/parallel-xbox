@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Read padded YUY2 overlay rows directly from imported RAM with a shader row stride. Avoid CPU row packing for word-aligned pitches, claim only through the final active YUY2 pair, and retain staging for unaligned strides and unsupported source ranges.
+
 - Convert tightly packed, aligned YUY2 overlays directly from imported guest RAM on Vulkan, avoiding the CPU staging snapshot and its flush. Keep source ownership until auxiliary completion and retain staging for pitched, misaligned, unavailable or oversized imported buffers.
 
 - Upload native BC compressed volumes with a single block row up to 16 texels wide directly from imported RAM. Copy contiguous block/slice groups without CPU rearrangement or staging-ring copies; wider layouts and unavailable/misaligned imported buffers retain staging.

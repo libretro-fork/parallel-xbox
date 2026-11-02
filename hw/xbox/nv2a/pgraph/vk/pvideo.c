@@ -23,14 +23,15 @@ static const char *pvideo_convert_glsl =
     "layout(local_size_x=64) in;\n"
     "layout(binding=0, std430) readonly buffer Input { uint yuy2[]; };\n"
     "layout(binding=1, rgba8) uniform writeonly image2D rgba;\n"
-    "layout(push_constant, std430) uniform Args { uint src; uint dst; uint width; uint height; };\n"
+    "layout(push_constant, std430) uniform Args { uint src; uint stride; uint width; uint height; };\n"
     "void main() {\n"
     "    uint i = gl_GlobalInvocationID.x;\n"
     "    uint pairs = (width + 1u) / 2u;\n"
     "    if (i >= pairs * height) return;\n"
     "    uint x = (i % pairs) * 2u;\n"
     "    uint y = i / pairs;\n"
-    "    uint pair = yuy2[src + i];\n"
+    "    uint row = stride == 0u ? pairs : stride;\n"
+    "    uint pair = yuy2[src + y * row + i % pairs];\n"
     "    int d = int((pair >> 8u) & 255u) - 128;\n"
     "    int e = int(pair >> 24u) - 128;\n"
     "    int cr = 409 * e + 128;\n"
@@ -152,21 +153,23 @@ bool pgraph_vk_pvideo_convert(PGRAPHState *pg, VkCommandBuffer cmd,
         DIV_ROUND_UP(pairs, 64) > r->device_props.limits.maxComputeWorkGroupCount[0]) {
         return false;
     }
-    /* Tight YUY2 pairs already match the shader input. Imported RAM stays
-     * owned by this aux command until fence retirement; padded rows retain
-     * the packed snapshot fallback. The descriptor covers the entire buffer. */
+    /* Read complete YUY2 pairs using the guest row stride. Imported RAM stays
+     * owned by this aux command until fence retirement. The descriptor covers
+     * the entire buffer; the claim ends at the last pair, not row padding. */
     NV2AState *d = container_of(pg, NV2AState, pgraph);
     VkDeviceSize ram_size = memory_region_size(d->vram);
     uintptr_t base = (uintptr_t)d->vram_ptr;
     uintptr_t address = (uintptr_t)source;
     VkDeviceSize src = address >= base ? address - base : ram_size;
+    size_t row_bytes = ((size_t)width + 1) / 2 * 4;
+    VkDeviceSize read_size = (VkDeviceSize)(height - 1) * pitch + row_bytes;
     bool direct = r->vram_buffer != VK_NULL_HANDLE && ram_size <= limit &&
-        pitch == ((size_t)width + 1) / 2 * 4 && !(src % 4) &&
-        src <= ram_size && packed_size <= ram_size - src;
+        pitch >= row_bytes && !(pitch % 4) && !(src % 4) &&
+        src <= ram_size && read_size <= ram_size - src;
     VkBuffer input = direct ? r->vram_buffer :
         r->storage_buffers[BUFFER_STAGING_SRC].buffer;
     if (direct) {
-        lr_gpu_ram_claim((uintptr_t)cmd, src, packed_size);
+        lr_gpu_ram_claim((uintptr_t)cmd, src, read_size);
     } else {
         if (r->storage_buffers[BUFFER_STAGING_SRC].buffer_size > limit ||
             packed_size >= r->storage_buffers[BUFFER_STAGING_SRC].buffer_size) {
@@ -186,7 +189,7 @@ bool pgraph_vk_pvideo_convert(PGRAPHState *pg, VkCommandBuffer cmd,
         .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
         .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
         .buffer = input,
-        .offset = src, .size = packed_size,
+        .offset = src, .size = direct ? read_size : packed_size,
     };
     VkImageMemoryBarrier image = {
         .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
@@ -202,7 +205,7 @@ bool pgraph_vk_pvideo_convert(PGRAPHState *pg, VkCommandBuffer cmd,
     vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_HOST_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
         VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, NULL, 1, &before, 1, &image);
     typeof(r->display.pvideo.convert) *c = &r->display.pvideo.convert;
-    uint32_t push[4] = {src / 4, 0, width, height};
+    uint32_t push[4] = {src / 4, direct ? pitch / 4 : 0, width, height};
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, c->pipeline);
     vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, c->layout,
                             0, 1, &c->sets[r->aux_slot], 0, NULL);

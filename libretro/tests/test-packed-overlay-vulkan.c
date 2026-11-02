@@ -149,18 +149,20 @@ int main(void)
  unsigned widths[]={1,2,3,7,16,63,64,65,640,641,1920};size_t checked=0;unsigned cases=0,direct_cases=0;size_t avoided=0;
  for(unsigned test=0;test<90;test++){
   unsigned w=(test==44||test==84)?1920:widths[test%11],h=(test==44||test==84)?1080:13,pitch=(w+1)/2*4+(test%4)*8;
+  if(test%7==0&&test!=84)pitch+=2; /* Word-unaligned strides retain staging. */
   size_t bytes=(size_t)w*h*4;
   bool imported=test>=45;
-  size_t offset=32+(test%3==1?1:0);
+  size_t span=(size_t)pitch*(h-1)+(w+1)/2*4;
+  size_t offset=test==81?16*1024*1024-span:32+(test%3==1?1:0);
   uint8_t *guest=imported?ram.mapped+offset:malloc((size_t)pitch*h),*expected=malloc(bytes);assert(guest&&expected);
   r.vram_buffer=imported?ram.handle:VK_NULL_HANDLE;
   ram_size=test==72?(size_t)properties.limits.maxStorageBufferRange+1:16*1024*1024;
-  bool direct=imported&&offset%4==0&&pitch==(w+1)/2*4&&ram_size<=properties.limits.maxStorageBufferRange;
+  bool direct=imported&&offset%4==0&&pitch%4==0&&ram_size<=properties.limits.maxStorageBufferRange;
   /* Direct conversion must not depend on staging capacity. */
   r.storage_buffers[0].buffer_size=direct?128:16*1024*1024;
   claims=0;
   uint32_t random=0x1234+test;
-  for(size_t i=0;i<(size_t)pitch*h;i++){random=random*1664525u+1013904223u;guest[i]=random>>24;}
+  for(size_t i=0;i<span;i++){random=random*1664525u+1013904223u;guest[i]=random>>24;}
   old_rgba(expected,guest,w,h,pitch);memset(dst.mapped,0xAB,bytes+512);
   pg.src=16+16*(test%8);pg.dst=32+16*(test%8);pg.written=0;
   VkCommandBufferBeginInfo begin={.sType=VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};CHECK(vkBeginCommandBuffer(cmd,&begin));
@@ -177,7 +179,7 @@ int main(void)
   assert(pgraph_vk_pvideo_convert(&pg,cmd,guest,w,h,pitch,true));
   assert(pgraph_vk_pvideo_convert(&pg,cmd,guest,w,h,pitch,false));
   assert(claims==(direct?2u:0u));
-  if(direct){assert(!pg.written&&claim_offset==offset&&claim_size==(size_t)pitch*h);direct_cases++;avoided+=2*(size_t)pitch*h;}
+  if(direct){assert(!pg.written&&claim_offset==offset&&claim_size==(size_t)pitch*(h-1)+(w+1)/2*4);direct_cases++;avoided+=2*(size_t)((w+1)/2)*h*4;}
   assert(dispatch_calls==before_dispatch+2);
   r.device_props.limits.maxComputeWorkGroupCount[0]=properties.limits.maxComputeWorkGroupCount[0];
   assert(pg.written==(direct?0:2*(size_t)((w+1)/2)*h*4));
