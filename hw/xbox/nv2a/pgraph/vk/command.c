@@ -389,9 +389,10 @@ void pgraph_vk_staging_flush(PGRAPHState *pg, VkDeviceSize offset,
  * host-to-device visibility. Imported RAM also needs visibility for earlier
  * GPU writes before the next direct transfer reads it. */
 void pgraph_vk_upload_source_barrier(PGRAPHState *pg, VkCommandBuffer cmd,
-                                     bool from_vram)
+                                     bool from_vram, VkDeviceSize offset,
+                                     VkDeviceSize size)
 {
-    if (!from_vram) {
+    if (!from_vram || !size) {
         return;
     }
     PGRAPHVkState *r = pg->vk_renderer_state;
@@ -403,7 +404,7 @@ void pgraph_vk_upload_source_barrier(PGRAPHState *pg, VkCommandBuffer cmd,
         .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
         .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
         .buffer = r->vram_buffer,
-        .size = VK_WHOLE_SIZE,
+        .offset = offset, .size = size,
     };
     vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_HOST_BIT |
                              VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,

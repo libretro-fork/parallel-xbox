@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Scope direct Vulkan texture/surface upload source barriers to their imported-RAM spans instead of all RAM, preserving host/GPU write visibility and ownership. Texture batches cover their selected direct levels; scanout background batches retain their existing whole-buffer scope.
+
 - Reuse batched image-layout transitions for ordinary Vulkan color surface-to-texture copies, reducing their barrier API calls from four to two. Keep snapshot copies and source restoration intact; depth, byte reinterpretation and borrowed surfaces retain their separate paths.
 
 - Combine Vulkan cubemap destination transitions with the existing source barrier batches, using two barrier API calls total around a nonempty face refresh. Preserve all source dependencies, destination transfer visibility and the transition-only scaled-RAM path.

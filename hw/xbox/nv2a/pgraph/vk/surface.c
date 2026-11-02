@@ -1878,9 +1878,11 @@ void pgraph_vk_upload_surface_data(NV2AState *d, SurfaceBinding *surface,
     if (gpu_unswizzled) {
         pgraph_vk_unswizzle_done(pg, cmd);
     } else {
-        if(from_vram) lr_gpu_ram_claim((uintptr_t)cmd,surface->vram_addr,
-            (VkDeviceSize)(surface->height-1)*surface->pitch+(VkDeviceSize)surface->width*surface->fmt.bytes_per_pixel);
-        pgraph_vk_upload_source_barrier(pg, cmd, from_vram);
+        VkDeviceSize source_size = (VkDeviceSize)(surface->height - 1) * surface->pitch +
+            (VkDeviceSize)surface->width * surface->fmt.bytes_per_pixel;
+        if (from_vram) lr_gpu_ram_claim((uintptr_t)cmd, surface->vram_addr, source_size);
+        pgraph_vk_upload_source_barrier(pg, cmd, from_vram,
+                                        surface->vram_addr, source_size);
     }
 
     // Set up image copy regions (which may be modified by compute unpack)
@@ -2894,7 +2896,7 @@ static void upload_scanout_background(NV2AState *d, SurfaceBinding *out,
     VkImage target = via_scratch ? out->image_scratch : out->image;
     VkBuffer source = from_vram ? r->vram_buffer :
                       r->storage_buffers[BUFFER_STAGING_SRC].buffer;
-    pgraph_vk_upload_source_barrier(pg, cmd, from_vram);
+    pgraph_vk_upload_source_barrier(pg, cmd, from_vram, 0, VK_WHOLE_SIZE);
     for (;;) {
         if (via_scratch && out->image_scratch_current_layout !=
                            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) {

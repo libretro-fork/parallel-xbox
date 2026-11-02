@@ -192,7 +192,7 @@ int main(void)
             /* The recorded update owns its data; require GPU-produced bytes. */
             memset(upload.mapped+offset,0xe5,update_size);
         }
-        pgraph_vk_upload_source_barrier(&state.pgraph,cmd,eligible);
+        pgraph_vk_upload_source_barrier(&state.pgraph,cmd,eligible,level.offset,level.size);
         vkCmdCopyBufferToImage(cmd, eligible?upload.handle:staging.handle, image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy);
         ib.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL; ib.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
         ib.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT; ib.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;

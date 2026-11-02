@@ -858,6 +858,7 @@ static void upload_texture_image(PGRAPHState *pg, int texture_idx,
         unswizzled_regions[6 * 16];
     int num_regions = 0, num_vram_regions = 0, num_unswizzled_regions = 0;
     bool volume_slices = false;
+    VkDeviceSize vram_begin = 0, vram_end = 0;
 
     for (int layer_idx = 0; layer_idx < num_layers; layer_idx++) {
         if (skip_layers & (1u << layer_idx)) continue;
@@ -870,6 +871,9 @@ static void upload_texture_image(PGRAPHState *pg, int texture_idx,
                             level->depth, level->offset);
             if (level->source == LEVEL_VRAM) {
                 lr_gpu_ram_claim((uintptr_t)cmd, level->offset, level->size);
+                vram_begin = vram_end ? MIN(vram_begin, level->offset) :
+                                        level->offset;
+                vram_end = MAX(vram_end, level->offset + level->size);
             }
             if (volume_block_slice_size(level, vkf.vk_format)) {
                 volume_slices = true;
@@ -889,8 +893,8 @@ static void upload_texture_image(PGRAPHState *pg, int texture_idx,
         flush_texture_staging(pg, &layout, num_layers, num_levels, skip_layers);
     }
 
-    pgraph_vk_upload_source_barrier(pg, cmd,
-                                    num_vram_regions != 0 || volume_slices);
+    pgraph_vk_upload_source_barrier(pg, cmd, vram_end != 0,
+                                    vram_begin, vram_end - vram_begin);
     if (num_unswizzled_regions) {
         pgraph_vk_unswizzle_done(pg, cmd);
     }
