@@ -670,22 +670,30 @@ cpu_tb_exec(CPUState *cpu, TranslationBlock *itb, int *tb_exit)
 }
 
 
-static void cpu_exec_enter(CPUState *cpu)
+static inline void cpu_exec_enter(CPUState *cpu)
 {
+#ifdef XBOX
+    x86_cpu_exec_enter(cpu);
+#else
     const TCGCPUOps *tcg_ops = cpu->cc->tcg_ops;
 
     if (tcg_ops->cpu_exec_enter) {
         tcg_ops->cpu_exec_enter(cpu);
     }
+#endif
 }
 
-static void cpu_exec_exit(CPUState *cpu)
+static inline void cpu_exec_exit(CPUState *cpu)
 {
+#ifdef XBOX
+    x86_cpu_exec_exit(cpu);
+#else
     const TCGCPUOps *tcg_ops = cpu->cc->tcg_ops;
 
     if (tcg_ops->cpu_exec_exit) {
         tcg_ops->cpu_exec_exit(cpu);
     }
+#endif
 }
 
 static void cpu_exec_longjmp_cleanup(CPUState *cpu)

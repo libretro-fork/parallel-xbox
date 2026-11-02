@@ -46,6 +46,21 @@ RETRO_BEGIN_DECLS
  */
 uint64_t xxh3_64(const void *data, size_t len, uint64_t seed);
 
+/**
+ * xxh3_64_pair:
+ *
+ * Returns xxh3_64() of the concatenation of two readable spans without
+ * allocating a concatenated buffer. Either pointer may be NULL when its
+ * length is zero. The sum of the lengths must fit size_t.
+ *
+ * A first length divisible by 64 and a second length of at least 64 use
+ * direct stripe processing for totals above 240; other splits use the
+ * incremental path. Pointer alignment is unrestricted.
+ */
+uint64_t xxh3_64_pair(const void *first, size_t first_len,
+      const void *second, size_t second_len, uint64_t seed);
+
+
 /* The same hash taken over pieces handed to it one after another,
  * XXH3_64bits_update() and its digest. Pieces are taken where they lie
  * a 64-octet stripe at a time; at most 1024 octets are held between

@@ -1,5 +1,7 @@
 # Changelog of the libretro core
 
+- Bind the core directly to its fixed x86 CPU entry/exit routines, removing nullable dispatch checks and out-of-line hook calls while retaining the CPU operations table layout while preserving the existing flag and state boundaries.
+- Expand resampler regression coverage to every fractional phase and ring position, including full-range stereo samples. Keep the production kernel unchanged after an exact-row fast path regressed integer-position timing and increased stack use.
 - Reuse NVNet RX readiness descriptors within packet delivery, removing the duplicate guest descriptor DMA read. Descriptor snapshots stay local to one callback; fresh readiness, ring updates, polling and payload staging are preserved.
 - Detect HRTF sample peaks while loading history and input, removing the separate peak-scan pass. Use unsigned magnitudes so INT32_MIN selects the overflow-safe wide accumulator; convolution, ramps and saved state stay unchanged.
 - Reduce fresh/reset audio preroll from 320 to 64 samples, removing 5.33 ms of queue latency at 48 kHz. DSP work already retires before each frame pull; EP bursts publish future samples. Retain the two-engine-frame phase margin and restore legacy queued PCM unchanged, without inserting silence.
@@ -18,6 +20,8 @@
 ## Unreleased
 
 - Return DMA descriptor storage before completion callbacks so successor transfers reuse it, reserve larger SG hints in one resize, and clear the owner cache on content close. Remove descriptor-cache TLS and fix the completion-reference leak when cancelling a mapping wait; guest payload mapping and copies are unchanged.
+
+- Add an allocation-free two-span XXH3 API as a prerequisite for borrowed shader-state views. Preserve existing hashes and callers; validate seeded, boundary and unaligned inputs across host scalar/SIMD backends. Renderer copy and queue behavior is unchanged.
 
 - Extend shader-binding CPU probes to nine queue, handoff, rejection and unchanged-state paths, with a frozen copy baseline for detecting measurement variation before more copy changes. Renderer behavior is unchanged.
 

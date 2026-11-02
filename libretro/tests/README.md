@@ -8,6 +8,8 @@
 
 `test-owner-cpu-boundary.py CHECKOUT [CC]` executes the production slice runner, CPU exception/interrupt handlers, fault cleanup and conditional BQL guards. The sole frame owner keeps device ownership through guest execution, avoiding the old CPU/I/O-thread mutex transfers for each MMIO operation. The fixture covers 600 slices, instruction-budget modes, nested guest/IRQ faults, page-lock cleanup, stop/work/debug states, conditional FERR helpers and explicit GPU-wait ownership releases. Three negative controls reject dropping ownership at CPU entry, releasing it after a fault and recursively acquiring it in FERR delivery. CPU work queues, interrupt atomics and real worker-wait releases retain their existing contracts. ASan/UBSan runs in CI.
 
+`test-fixed-x86-entry.py CHECKOUT [CC]` executes the fixed x86 entry/exit binding and CPU entry function against a frozen legacy state-boundary reference. It compares 524,288 complete states, covering varied architectural flags, lazy-state payloads, direction flags, and halted CPUs. The fixture deliberately has no generic CPUClass callback interface. Three negative controls reject missing entry preparation, missing exit materialization and a retained direction bit in internal flags. The optimization binds the existing conversions directly; it does not extend lazy-state lifetime or change save/debugger behavior. Both native and ASan/UBSan runs are in CI.
+
 ## Frame ownership of guest time
 
 `test-gpu-wait-deadline.py CHECKOUT [CC]` checks 345 cases against the production host dispatch and GPU-wait functions. A halted CPU, a GPU completion wait, a descriptor poll and a NAT poll must not advance guest time independently. It covers timed-wait rounding, prepare/notify races, deterministic completion and the frame owner's bounded elapsed-time advancement. Its regression model rejects the old idle-warp callback, which moved a halted guest from 1000 to 1500 ns inside host dispatch.
@@ -3373,3 +3375,12 @@ zero-to-2,048-byte payloads and overlapping descriptor/payload destinations.
 `NVNET_RX_SOURCE`, `NVNET_RX_BINARY`, `NVNET_RX_SKIP_RUN` and `NVNET_RX_CFLAGS`
 support baseline and native checks. DMA memory and timers are bounded models;
 this is not a live-network throughput measurement.
+
+`test-vp-threads.py CHECKOUT [CC] --bench-kernel` isolates 2,000,000
+32-sample resampler calls each for integer positions, exact table rows and
+interpolated rows, with identical history and output checksums. It excludes
+decoding, source fetch and game throughput. Normal runs also check 1,048,576
+resampler phase/head/range cases against a 128-bit oracle. These controls rejected
+a proposed exact-row specialization: outlined Win64 trials reduced exact-row
+time but regressed integer-position time and added a 128-byte helper frame.
+The production interpolator stays unchanged.

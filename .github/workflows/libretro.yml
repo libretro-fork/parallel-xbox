@@ -62,6 +62,12 @@ jobs:
         env:
           OWNER_CPU_CFLAGS: -fsanitize=address -fno-omit-frame-pointer
         run: python3 libretro/tests/test-owner-cpu-boundary.py . cc
+      - name: Fixed x86 execution binding preserves complete legacy boundary state
+        run: python3 libretro/tests/test-fixed-x86-entry.py . cc
+      - name: Fixed x86 binding under address and undefined behavior sanitizers
+        env:
+          X86_ENTRY_CFLAGS: -fsanitize=address -fno-omit-frame-pointer
+        run: python3 libretro/tests/test-fixed-x86-entry.py . cc
       - name: Only dominating stores may remove quiet-budget checks
         run: python3 libretro/tests/test-quiet-store-prefix.py . cc
       - name: Install native DSP test build dependency

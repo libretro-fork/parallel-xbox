@@ -23,6 +23,25 @@
 #include "accel/tcg/tb-cpu-state.h"
 #include "qemu/cpu-boost.h"
 
+/* The core has one fixed x86 target. Bind its existing flag boundary
+ * directly, without generic lifecycle callbacks or CPU object casts. */
+static inline void x86_cpu_exec_enter(CPUState *cs)
+{
+    CPUX86State *env = cpu_env(cs);
+
+    CC_SRC = env->eflags & (CC_O | CC_S | CC_Z | CC_A | CC_P | CC_C);
+    env->df = 1 - (2 * ((env->eflags >> 10) & 1));
+    CC_OP = CC_OP_EFLAGS;
+    env->eflags &= ~(DF_MASK | CC_O | CC_S | CC_Z | CC_A | CC_P | CC_C);
+}
+
+static inline void x86_cpu_exec_exit(CPUState *cs)
+{
+    CPUX86State *env = cpu_env(cs);
+
+    env->eflags = cpu_compute_eflags(env);
+}
+
 /* Share the state calculation with the Xbox dispatcher without an ABI
  * call. The generic target hook uses the same calculation. */
 static inline TCGTBCPUState x86_tb_cpu_state(CPUState *cs)

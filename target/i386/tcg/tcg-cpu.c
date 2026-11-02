@@ -27,27 +27,6 @@
 #include "accel/tcg/cpu-ops.h"
 #include "tcg-cpu.h"
 
-/* Frob eflags into and out of the CPU temporary format.  */
-
-static void x86_cpu_exec_enter(CPUState *cs)
-{
-    X86CPU *cpu = X86_CPU(cs);
-    CPUX86State *env = &cpu->env;
-
-    CC_SRC = env->eflags & (CC_O | CC_S | CC_Z | CC_A | CC_P | CC_C);
-    env->df = 1 - (2 * ((env->eflags >> 10) & 1));
-    CC_OP = CC_OP_EFLAGS;
-    env->eflags &= ~(DF_MASK | CC_O | CC_S | CC_Z | CC_A | CC_P | CC_C);
-}
-
-static void x86_cpu_exec_exit(CPUState *cs)
-{
-    X86CPU *cpu = X86_CPU(cs);
-    CPUX86State *env = &cpu->env;
-
-    env->eflags = cpu_compute_eflags(env);
-}
-
 TCGTBCPUState x86_get_tb_cpu_state(CPUState *cs)
 {
     return x86_tb_cpu_state(cs);
@@ -154,8 +133,10 @@ const TCGCPUOps x86_tcg_ops = {
     .synchronize_from_tb = x86_cpu_synchronize_from_tb,
     .restore_state_to_opc = x86_restore_state_to_opc,
     .mmu_index = x86_cpu_mmu_index,
+#ifndef XBOX
     .cpu_exec_enter = x86_cpu_exec_enter,
     .cpu_exec_exit = x86_cpu_exec_exit,
+#endif
     .tlb_fill = x86_cpu_tlb_fill,
     .pointer_wrap = x86_pointer_wrap,
     .do_interrupt = x86_cpu_do_interrupt,
