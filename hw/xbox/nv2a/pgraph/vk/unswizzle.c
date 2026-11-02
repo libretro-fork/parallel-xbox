@@ -348,12 +348,13 @@ bool pgraph_vk_unswizzle(PGRAPHState *pg, VkCommandBuffer cmd,
     generate_swizzle_masks(width, height, depth, &push.mask_x, &push.mask_y,
                            &push.mask_z);
 
-    /* The guest's writes to its RAM before the shader reads it; the copies
-     * of earlier submissions that read the ring before this writes it */
+    /* Host and earlier GPU writes to RAM must precede shader reads; copies
+     * from earlier submissions must finish reading the output ring before
+     * this dispatch overwrites its range. */
     VkBufferMemoryBarrier before[2] = {
         {
             .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
-            .srcAccessMask = VK_ACCESS_HOST_WRITE_BIT,
+            .srcAccessMask = VK_ACCESS_HOST_WRITE_BIT | VK_ACCESS_MEMORY_WRITE_BIT,
             .dstAccessMask = VK_ACCESS_SHADER_READ_BIT,
             .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
             .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
@@ -372,7 +373,7 @@ bool pgraph_vk_unswizzle(PGRAPHState *pg, VkCommandBuffer cmd,
         },
     };
     vkCmdPipelineBarrier(cmd,
-                         VK_PIPELINE_STAGE_HOST_BIT |
+                         VK_PIPELINE_STAGE_HOST_BIT | VK_PIPELINE_STAGE_ALL_COMMANDS_BIT |
                              VK_PIPELINE_STAGE_TRANSFER_BIT,
                          VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, NULL, 2,
                          before, 0, NULL);

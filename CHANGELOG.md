@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Order Vulkan unswizzle shader reads after earlier GPU writes into imported RAM, including palette data. Keep the output-ring transfer-read dependency and direct GPU conversion path without adding a CPU completion wait.
+
 - Make prior GPU writes into imported RAM visible to direct Vulkan texture/surface upload transfers. Keep staging submission visibility unchanged and preserve the direct path without adding CPU waits or snapshots.
 
 - Order direct Vulkan overlay reads after earlier GPU writes into imported RAM as well as host writes. Preserve the zero-staging path with a GPU memory dependency instead of a CPU wait; staged snapshots retain their existing host-only dependency.

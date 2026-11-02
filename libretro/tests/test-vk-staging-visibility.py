@@ -13,6 +13,10 @@ for path,names in [('buffer.c',['create_buffer','destroy_buffer','recreate_buffe
   m=re.search(r'^(?:static )?void '+name+r'\([^;{]*\)\s*\{',s,re.M);assert m,name;a=m.start();b=s.index('{',a)+1;depth=1
   while depth:depth+=(s[b]=='{')-(s[b]=='}');b+=1
   parts.append(s[a:b])
+unswizzle=(r/'hw/xbox/nv2a/pgraph/vk/unswizzle.c').read_text()
+a=unswizzle.index('    /* Host and earlier GPU writes')
+b=unswizzle.index('    vkCmdBindPipeline',a)
+parts.append('static void unswizzle_source_barriers(PGRAPHVkState *r,VkCommandBuffer cmd,VkDeviceSize dst,size_t out_size){'+unswizzle[a:b]+'}')
 code=Path(__file__).with_suffix('.c').read_text().replace('/* PRODUCTION */','\n'.join(parts));q=(r/'libretro/tests/test-spv-geom.c').read_text();a=q.index('#ifdef _WIN32\nstatic void quiet_test_abort');b=q.index('int line_tests(',a);code=code.replace('/* QUIET ERRORS */',q[a:b])
 with tempfile.TemporaryDirectory(prefix='vk-staging-visibility-') as tmp:
  d=Path(tmp);(d/'test.c').write_text(code);exe=d/('test.exe' if os.name=='nt' else 'test')
