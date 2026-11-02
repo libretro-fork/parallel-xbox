@@ -311,9 +311,10 @@ void helper_write_crN(CPUX86State *env, int reg, target_ulong t0)
         break;
     case 8:
         if (!(env->hflags2 & HF2_VINTR_MASK)) {
-            bql_lock();
-            cpu_set_apic_tpr(env_archcpu(env)->apic_state, t0);
-            bql_unlock();
+            {
+                BQL_LOCK_GUARD();
+                cpu_set_apic_tpr(env_archcpu(env)->apic_state, t0);
+            }
         }
         env->int_ctl = (env->int_ctl & ~V_TPR_MASK) | (t0 & V_TPR_MASK);
 
@@ -499,9 +500,10 @@ void helper_wrmsr(CPUX86State *env)
         int ret;
         int index = (uint32_t)env->regs[R_ECX] - MSR_APIC_START;
 
-        bql_lock();
-        ret = apic_msr_write(env_archcpu(env)->apic_state, index, val);
-        bql_unlock();
+        {
+            BQL_LOCK_GUARD();
+            ret = apic_msr_write(env_archcpu(env)->apic_state, index, val);
+        }
         if (ret < 0) {
             goto error;
         }
@@ -680,9 +682,10 @@ void helper_rdmsr(CPUX86State *env)
         int ret;
         int index = (uint32_t)env->regs[R_ECX] - MSR_APIC_START;
 
-        bql_lock();
-        ret = apic_msr_read(x86_cpu->apic_state, index, &val);
-        bql_unlock();
+        {
+            BQL_LOCK_GUARD();
+            ret = apic_msr_read(x86_cpu->apic_state, index, &val);
+        }
         if (ret < 0) {
             raise_exception_err_ra(env, EXCP0D_GPF, 0, GETPC());
         }

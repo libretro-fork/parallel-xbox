@@ -6,6 +6,8 @@
 
 `test-quiet-progress.py CHECKOUT [CC]` runs the production TB-exit path against useful store-free work, verified kernel waits, device polling, interrupt release and null-TB exits. It prevents computation from acquiring synthetic timer waits.
 
+`test-owner-cpu-boundary.py CHECKOUT [CC]` executes the production slice runner, CPU exception/interrupt handlers, fault cleanup and conditional BQL guards. The sole frame owner keeps device ownership through guest execution, avoiding the old CPU/I/O-thread mutex transfers for each MMIO operation. The fixture covers 600 slices, instruction-budget modes, nested guest/IRQ faults, page-lock cleanup, stop/work/debug states, conditional FERR helpers and explicit GPU-wait ownership releases. Three negative controls reject dropping ownership at CPU entry, releasing it after a fault and recursively acquiring it in FERR delivery. CPU work queues, interrupt atomics and real worker-wait releases retain their existing contracts. ASan/UBSan runs in CI.
+
 ## Frame ownership of guest time
 
 `test-gpu-wait-deadline.py CHECKOUT [CC]` checks 345 cases against the production host dispatch and GPU-wait functions. A halted CPU, a GPU completion wait, a descriptor poll and a NAT poll must not advance guest time independently. It covers timed-wait rounding, prepare/notify races, deterministic completion and the frame owner's bounded elapsed-time advancement. Its regression model rejects the old idle-warp callback, which moved a halted guest from 1000 to 1500 ns inside host dispatch.

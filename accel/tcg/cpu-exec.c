@@ -712,9 +712,9 @@ static void cpu_exec_longjmp_cleanup(CPUState *cpu)
         tb_unlock_pages(tcg_ctx->gen_tb);
         tcg_ctx->gen_tb = NULL;
     }
-    if (bql_locked()) {
-        bql_unlock();
-    }
+    /* Guest faults resume on the same frame owner. Longjmp bypasses C
+     * cleanup guards; the ownership inherited at CPU entry remains held. */
+    g_assert(bql_locked());
     assert_no_pages_locked();
 }
 
@@ -818,9 +818,7 @@ static inline bool cpu_handle_exception(CPUState *cpu, int *ret)
 
     const TCGCPUOps *tcg_ops = cpu->cc->tcg_ops;
 
-    bql_lock();
     tcg_ops->do_interrupt(cpu);
-    bql_unlock();
     cpu->exception_index = -1;
 
     if (unlikely(cpu->singlestep_enabled)) {
@@ -885,18 +883,15 @@ static inline bool cpu_handle_interrupt(CPUState *cpu,
     retro_atomic_thread_fence_seq_cst();
 
     if (unlikely(cpu_test_interrupt(cpu, ~0))) {
-        bql_lock();
         if (cpu_test_interrupt(cpu, CPU_INTERRUPT_DEBUG)) {
             cpu_reset_interrupt(cpu, CPU_INTERRUPT_DEBUG);
             cpu->exception_index = EXCP_DEBUG;
-            bql_unlock();
             return true;
         }
         if (cpu_test_interrupt(cpu, CPU_INTERRUPT_HALT)) {
             cpu_reset_interrupt(cpu, CPU_INTERRUPT_HALT);
             cpu->halted = 1;
             cpu->exception_index = EXCP_HLT;
-            bql_unlock();
             return true;
         } else {
             const TCGCPUOps *tcg_ops = cpu->cc->tcg_ops;
@@ -905,7 +900,6 @@ static inline bool cpu_handle_interrupt(CPUState *cpu,
 
             if (cpu_test_interrupt(cpu, CPU_INTERRUPT_RESET)) {
                 tcg_ops->cpu_exec_reset(cpu);
-                bql_unlock();
                 return true;
             }
 
@@ -931,7 +925,6 @@ static inline bool cpu_handle_interrupt(CPUState *cpu,
                  */
                 if (unlikely(cpu->singlestep_enabled)) {
                     cpu->exception_index = EXCP_DEBUG;
-                    bql_unlock();
                     return true;
                 }
                 cpu->exception_index = -1;
@@ -945,8 +938,6 @@ static inline bool cpu_handle_interrupt(CPUState *cpu,
             *last_tb = NULL;
         }
 
-        /* If we exit via cpu_loop_exit/longjmp it is reset in cpu_exec */
-        bql_unlock();
     }
 
     /*
@@ -1171,6 +1162,9 @@ static int cpu_exec_setjmp(CPUState *cpu)
 int cpu_exec(CPUState *cpu)
 {
     int ret;
+
+    /* Only the libretro frame owner executes this core's sole guest CPU. */
+    g_assert(bql_locked());
 
     SET_current_cpu(cpu);
 

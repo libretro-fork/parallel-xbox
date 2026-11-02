@@ -56,6 +56,12 @@ jobs:
         env:
           TB_MMU_CFLAGS: -fsanitize=address -fno-omit-frame-pointer
         run: python3 libretro/tests/test-generated-tb-lookup.py . cc
+      - name: Frame owner retains CPU device ownership across faults and interrupts
+        run: python3 libretro/tests/test-owner-cpu-boundary.py . cc
+      - name: CPU owner boundary under address and undefined behavior sanitizers
+        env:
+          OWNER_CPU_CFLAGS: -fsanitize=address -fno-omit-frame-pointer
+        run: python3 libretro/tests/test-owner-cpu-boundary.py . cc
       - name: Only dominating stores may remove quiet-budget checks
         run: python3 libretro/tests/test-quiet-store-prefix.py . cc
       - name: Install native DSP test build dependency
