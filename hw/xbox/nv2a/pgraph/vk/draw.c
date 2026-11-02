@@ -1042,10 +1042,19 @@ typedef struct {
     VkPipelineColorBlendAttachmentState cba;
     VkPipelineDynamicStateCreateInfo dyn;
     VkDynamicState dyn_states[24];
-    PipelineKey key; /* full */
+    PipelineKey key; /* queued full jobs initialize this before publication */
     bool has_dynamic_line_width;
     VkPipeline result;
 } LibJob;
+
+/* Queued full jobs overwrite every key byte before publication. Library
+ * jobs never read it; synchronous full jobs borrow their caller's key. */
+static void pipeline_job_reset(LibJob *job)
+{
+    memset(job, 0, offsetof(LibJob, key));
+    const size_t after_key = offsetof(LibJob, key) + sizeof(job->key);
+    memset((char *)job + after_key, 0, sizeof(*job) - after_key);
+}
 
 /* Rebind create-info pointers after filling or moving a job. Queued vertex
  * descriptions are job-owned; synchronous ones may borrow their caller. */
@@ -1508,7 +1517,7 @@ static LibJob *pump_slot(void)
         return NULL;
     }
     LibJob *job = &pump_jobs[pump_w_local % PUMP_RING];
-    memset(job, 0, sizeof(*job));
+    pipeline_job_reset(job);
     return job;
 }
 
@@ -1941,7 +1950,8 @@ void pgraph_vk_prewarm_shaders(NV2AState *d)
 /* A whole pipeline's create info, for the shader state st (its modules
  * vsh, geom, psh) under the registers of the draw at hand, into job: the
  * draw path makes its own from it, the worker one for later. The caller
- * supplies a cleared slot (pump_slot or the synchronous job below). */
+ * supplies cleared metadata (pump_slot or the synchronous job below);
+ * queued keys are filled separately, while synchronous keys are borrowed. */
 static void pipeline_job_fill(PGRAPHState *pg, const ShaderState *st,
                               const ShaderModuleInfo *vsh,
                               const ShaderModuleInfo *geom,
@@ -2276,7 +2286,7 @@ static void create_pipeline(PGRAPHState *pg)
 
     /* The job holds the create info; it never leaves this thread. */
     static LibJob job;
-    memset(&job, 0, sizeof(job));
+    pipeline_job_reset(&job);
     pipeline_job_fill(pg, &r->shader_binding->state,
                       r->shader_binding->vsh.module_info,
                       r->shader_binding->geom.module_info,

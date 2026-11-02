@@ -7,6 +7,8 @@
 
 ## Unreleased
 
+- Reset Vulkan pipeline-job metadata without clearing embedded keys that queued full jobs replace and other jobs do not use. Preserve cleared flags, pointers, results and worker publication while reducing CPU initialization.
+
 - Build speculative Vulkan pipeline keys without copying draw-shader bytes that are immediately replaced. Preserve complete key bytes, hashing, worker-slot ownership and publication order while reducing CPU copying.
 
 - Complete IDE TRIM through the fixed disk slots instead of allocating a one-use QEMU bottom half. Preserve deferred delivery and device guards; cancellation now handles empty descriptors and retains its error when the outstanding discard completes.
