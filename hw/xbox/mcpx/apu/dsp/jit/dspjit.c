@@ -1971,6 +1971,7 @@ enum {
     NP_LUA,
     NP_LUA_REL,
     NP_ALU_IMM,         /* add/cmp/and #, asl/asr #ii: an AluOp (np_alu) */
+    NP_NORM,            /* flag-controlled shift and 16-bit Rn update */
     NP_MOVEP_EA,        /* movep [X or Y]:ea <-> [X or Y]:pp */
     NP_MOVEP_REG,
     NP_MOVEP_P,       /* program/peripheral transfer, with P invalidation */
@@ -2095,6 +2096,7 @@ static int np_kind(const Insn *in)
                !((reg == DSP_REG_A || reg == DSP_REG_B) && bit >= 24)
                ? NP_BIT_REG : NP_NONE;
     }
+    if (!strcmp(name, "norm Rn, D")) return NP_NORM;
     if (!strcmp(name, "movec #xx, D1")) {
         return reg_supported(in->inst & 63) ? NP_MOVEC_IMM : NP_MOVEC_SPECIAL;
     }
@@ -2163,6 +2165,52 @@ static void emit_nonparallel(Tr *t, const Insn *in, int kind)
     uint32_t inst = in->inst;
 
     switch (kind) {
+    case NP_NORM: {
+        unsigned d = (inst >> 3) & 1;
+        unsigned r = DSP_REG_R0 + ((inst >> 8) & 7);
+        emit_flags_flush(t);
+        acc_load(t, d);
+        int acc = acc_reg(d);
+        h_ld32(e, T0, REG_CORE, REGOFF(DSP_REG_SR));
+        h_test_ri(e, 0, T0, SR_E);
+        size_t right = h_jcc(e, HC_NE);
+        h_and_ri(e, 0, T0, SR_U | SR_Z);
+        h_cmp_ri(e, 0, T0, SR_U);
+        size_t unchanged = h_jcc(e, HC_NE);
+        /* ASL shares doubling's C/V; L records the shifted-out sign bit. */
+        emit_addsub56(e, acc, acc, false);
+        h_and_ri(e, 0, T4, ~SR_L);
+        h_mov_rr(e, 0, T0, T4);
+        h_and_ri(e, 0, T0, SR_C);
+        h_shl_ri(e, 0, T0, DSP_SR_L);
+        h_or_rr(e, 0, T4, T0);
+        h_ld32(e, T0, REG_CORE, REGOFF(r));
+        h_add_ri(e, 0, T0, -1);
+        h_and_ri(e, 0, T0, 0xFFFF);
+        h_st32(e, REG_CORE, REGOFF(r), T0);
+        size_t left_done = h_jmp(e);
+        h_patch(e, right, e->len);
+        /* Match dsp_asr56's logical shift of the 56 accumulator bits. */
+        h_mov_rr(e, 1, T4, acc);
+        h_and_ri(e, 0, T4, 1);
+        h_mov_rr(e, 1, T3, acc);
+        h_shl_ri(e, 1, T3, 8);
+        h_shr_ri(e, 1, T3, 9);
+        h_ld32(e, T0, REG_CORE, REGOFF(r));
+        h_add_ri(e, 0, T0, 1);
+        h_and_ri(e, 0, T0, 0xFFFF);
+        h_st32(e, REG_CORE, REGOFF(r), T0);
+        size_t right_done = h_jmp(e);
+        h_patch(e, unchanged, e->len);
+        h_mov_rr(e, 1, T3, acc);
+        h_mov_ri(e, T4, 0);
+        h_patch(e, left_done, e->len);
+        h_patch(e, right_done, e->len);
+        h_mov_rr(e, 1, acc, T3);
+        acc_written(t, d);
+        emit_sr_result(t, SR_EUNZ | SR_C | SR_V | 0xFFFF0000u, T4, acc, d);
+        break;
+    }
     case NP_MOVEC_IMM:
         h_mov_ri(e, V1, (inst >> 8) & 255);
         emit_write_reg(t, inst & 63, V1);
@@ -3591,6 +3639,10 @@ retry:
 
     top = e->len;
     emit_native(t, &in);
+    if (np_kind(&in) == NP_NORM) {
+        /* NORM's next iteration consumes the E/U/Z from this iteration. */
+        emit_flags_flush(t);
+    }
     cycles = t->cyc;
     t->cyc = 0;
     if (np_kind(&in) == NP_MOVEM_P_WRITE || np_kind(&in) == NP_MOVEC_SPECIAL ||
