@@ -1,5 +1,6 @@
 # Changelog of the libretro core
 
+- Decode ADPCM windows directly into VP samples instead of building and copying an intermediate PCM block. Preserve mono/stereo output, source offsets and notifications; unsupported block layouts produce bounded silence before any gather. No new audio buffering or threading state.
 - Bind the core directly to its fixed x86 CPU entry/exit routines, removing nullable dispatch checks and out-of-line hook calls while retaining the CPU operations table layout while preserving the existing flag and state boundaries.
 - Expand resampler regression coverage to every fractional phase and ring position, including full-range stereo samples. Keep the production kernel unchanged after an exact-row fast path regressed integer-position timing and increased stack use.
 - Reuse NVNet RX readiness descriptors within packet delivery, removing the duplicate guest descriptor DMA read. Descriptor snapshots stay local to one callback; fresh readiness, ring updates, polling and payload staging are preserved.

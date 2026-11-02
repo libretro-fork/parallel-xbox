@@ -101,7 +101,10 @@ entry:
 
         pio 0x2F8, VOICE                 ; SET_CURRENT_VOICE
         pio 0x300, (1 << 5)              ; VBIN: v0 -> bin 0, v1 -> bin 1
-%ifdef STREAM
+%ifdef VP_ADPCM
+        ; Mono/stereo Xbox ADPCM, 64 exposed samples per 36-byte channel block.
+        pio 0x304, (2 << 30) | (2 << 28) | (1 << 25) | ((VP_ADPCM - 1) << 27) | ((VP_ADPCM - 1) << 16)
+%elifdef STREAM
         pio 0x304, (1 << 30) | (1 << 28) | (1 << 24) | (1 << 23) ; persistent stream
         pio 0x320, 255                   ; SSL A, entries 0..254
 %else
@@ -353,7 +356,24 @@ gp_prog:
 gp_prog_end:
 %endif
 pcm_data:
+%ifdef VP_ADPCM
+%rep 30
+        dw 1234
+        db 30, 0
+%if VP_ADPCM == 2
+        dw -2345
+        db 40, 0
+%endif
+%rep 8
+        dd 0x17395B7D
+%if VP_ADPCM == 2
+        dd 0xE6C4A280
+%endif
+%endrep
+%endrep
+%else
 %include "sine.inc"
+%endif
 pcm_end:
 %ifdef PAD
         times PAD_BASE - 0xFFF00000 - ($ - $$) db 0xFF

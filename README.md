@@ -242,3 +242,12 @@ fraction, all eight ring heads and stereo sample ranges, including INT32_MIN/MAX
 against a wide-integer dot-product oracle. An exact-row specialization was
 rejected after isolated timing and stack checks found tradeoffs; production
 resampling, buffering and synchronization remain unchanged.
+
+ADPCM fetches decode only the predictor prefix needed for the requested window
+and write VP samples directly into the existing destination. The intermediate
+65-sample PCM array is removed; encoded SGE fragments still use the necessary
+bounded gather. A 1,424-byte read-only nibble-magnitude table preserves the
+reference shift rounding. No source pointer, decoded cache or new per-voice
+state survives the call. Win64 voice stack use drops from 1,248 to 1,136 bytes.
+Local decoder timing favors typical paired 32-sample windows; very short late
+windows can be slower. Game throughput and hardware cache misses are unmeasured.

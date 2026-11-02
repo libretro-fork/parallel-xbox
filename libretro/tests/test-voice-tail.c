@@ -393,6 +393,48 @@ static void pitch_cache(void)
 }
 /* An ADPCM block whose header the decoder rejects plays silence, the same
  * every run, whatever the stack held */
+static void adpcm_partial_fetches(void)
+{
+    unsigned cases=0;const unsigned offsets[]={0,4093,4095},counts[]={1,17,32,64};
+    for(unsigned stereo=0;stereo<2;stereo++)for(unsigned stream=0;stream<2;stream++)
+    for(unsigned o=0;o<ARRAY_SIZE(offsets);o++)for(unsigned start=0;start<64;start++)
+    for(unsigned n=0;n<ARRAY_SIZE(counts);n++){
+        MCPXAPUState *d=setup(128,4,stereo,0);unsigned channels=1+stereo,bytes=36*channels;
+        uint8_t encoded[144];int16_t reference[2][130];unsigned offset=offsets[o];
+        store(d,0x4008,0x60000);
+        for(unsigned block=0;block<2;block++){
+            for(unsigned i=0;i<bytes;i++)encoded[block*bytes+i]=(i*73+start*17+block*31)&255;
+            for(unsigned ch=0;ch<channels;ch++){encoded[block*bytes+ch*4+2]=(start+ch*29+block*13)%89;encoded[block*bytes+ch*4+3]=0;}
+            assert(adpcm_decode_block(reference[block],encoded+block*bytes,bytes,channels)==65);
+        }
+        put(d,NV_PAVS_VOICE_CUR_PSL_START,NV_PAVS_VOICE_CUR_PSL_START_BA,offset);
+        put(d,NV_PAVS_VOICE_PAR_OFFSET,NV_PAVS_VOICE_PAR_OFFSET_CBO,start);
+        for(unsigned i=0;i<2*bytes;i++){
+            unsigned at=offset+i;
+            d->ram_ptr[stream?0x70000+at:at<4096?0x20000+at:0x60000+at-4096]=encoded[i];
+        }
+        if(stream){
+            put(d,NV_PAVS_VOICE_CFG_FMT,NV_PAVS_VOICE_CFG_FMT_DATA_TYPE,1);
+            put(d,NV_PAVS_VOICE_CFG_FMT,NV_PAVS_VOICE_CFG_FMT_PERSIST,1);d->vp.ssl[64].count[0]=1;
+            store(d,0x8000,0x70000+offset);store(d,0x8004,128|(2u<<16)|(stereo<<18)|(stereo<<23));
+        }
+        int32_t out[64][2];assert(voice_get_samples(d,64,out,counts[n])==(int)counts[n]);
+        for(unsigned i=0;i<counts[n];i++)for(unsigned ch=0;ch<2;ch++){
+            unsigned pos=start+i;assert(out[i][ch]==vp_sample_s16(reference[pos/64][(pos%64)*channels+(stereo?ch:0)]));
+        }
+        assert(voice_get_mask(d,64,NV_PAVS_VOICE_PAR_OFFSET,NV_PAVS_VOICE_PAR_OFFSET_CBO)==start+counts[n]);
+        assert(active(d)&&!d->vp.filters[64].source_ended);dispose(d);cases++;
+    }
+    for(unsigned stereo=0;stereo<2;stereo++){
+        MCPXAPUState *d=setup(128,4,stereo,0);int32_t out[32][2];
+        put(d,NV_PAVS_VOICE_CFG_FMT,NV_PAVS_VOICE_CFG_FMT_SAMPLES_PER_BLOCK,31);sge_reads=0;
+        assert(voice_get_samples(d,64,out,32)==32&&!sge_reads);
+        for(unsigned i=0;i<32;i++)assert(!out[i][0]&&!out[i][1]);
+        dispose(d);
+    }
+    printf("PASS: %u partial ADPCM fetches, every block offset, cross-block/SGE/SSL windows and bounded unsupported layouts\n",cases);
+}
+
 static void rejected_adpcm(void)
 {
     for(unsigned stereo=0;stereo<2;stereo++)for(unsigned bad=0;bad<2;bad++){
@@ -536,5 +578,5 @@ int main(int argc,char**argv)
     if(argc>1&&strcmp(argv[1],"locks")==0){lock_boundaries();return 0;}
     lock_boundaries();
     signed_filters();
-    inclusive_boundary();tails();loops();streams();control_paths();adpcm_pages();rejected_adpcm();pitch_cache();return 0;
+    inclusive_boundary();tails();loops();streams();control_paths();adpcm_pages();adpcm_partial_fetches();rejected_adpcm();pitch_cache();return 0;
 }

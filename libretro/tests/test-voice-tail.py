@@ -13,7 +13,7 @@ import tempfile
 
 repo=Path(sys.argv[1]).resolve()
 cc=sys.argv[2] if len(sys.argv)>2 else 'gcc'
-source=(repo/'hw/xbox/mcpx/apu/vp/vp.c').read_text(encoding='utf-8')
+source=Path(os.environ.get('TAIL_TEST_SOURCE',repo/'hw/xbox/mcpx/apu/vp/vp.c')).read_text(encoding='utf-8')
 header=(repo/'hw/xbox/mcpx/apu/vp/vp.h').read_text(encoding='utf-8')
 def function(name):
     match=re.search(r'^(?:static\s+)?(?:inline\s+)?(?:void|bool|float|int|int32_t|uint32_t|hwaddr|VoicePitchRamp|uint64_t)\s+(?:__attribute__\(\(noinline\)\)\s*)?'+name+r'\([^;]*?\)\s*\{',source,re.M)
@@ -29,6 +29,16 @@ table=source[source.index('static const uint16_t attenuation_nodes'):source.inde
 fixture=Path(__file__).with_suffix('.c').read_text(encoding='utf-8')
 before,after=fixture.split('/* INSERT PRODUCTION FUNCTIONS */')
 before=before.replace('/* TYPES */',types+pitch)
+# The serial decoder fixture supplies only the dispatch fields used by frame
+# traversal; real parallel scheduling is covered by test-vp-threads.py.
+before=before.replace('        uint64_t voice_locked[4];',
+    '        uint64_t voice_locked[4];\n        VoiceWorkDispatch voice_work_dispatch;')
+before=before.replace('struct MCPXAPUState {',
+    'typedef struct {int queue[256];int queue_len;} VoiceWorkDispatch;\nstruct MCPXAPUState {')
+after=after.replace('d->queue[d->queued++]=v;',
+    'd->queue[d->queued++]=v;d->vp.voice_work_dispatch.queue_len=d->queued;')
+after=after.replace('d->queued=0;}', 'd->queued=0;d->vp.voice_work_dispatch.queue_len=0;}')
+
 functions=['set_notify_status','voice_get_mask','voice_set_mask','voice_off',
     'voice_lock','is_voice_locked',
     'voice_resample_reset','voice_reset_filters','filter_coefficient','attenuation_gain',
@@ -36,14 +46,16 @@ functions=['set_notify_status','voice_get_mask','voice_set_mask','voice_off',
     'voice_jingle_hash','voice_get_samples','voice_resample_fetch','voice_pitch_ramp',
     'voice_pitch_step','voice_resample','voice_process','mcpx_apu_vp_reset']
 generated=before+table+''.join(function(n) for n in functions)
-generated+=after.replace('/* VOICE FRAME */',function('mcpx_apu_vp_frame'))
+generated+=after.replace('/* VOICE FRAME */',
+    'static void voice_work_run_serial(MCPXAPUState*d,int64_t mix[][32]){voice_work_dispatch(d,mix); }\n'+function('mcpx_apu_vp_frame'))
 env=os.environ.copy();env['PATH']=str(Path(cc).resolve().parent)+os.pathsep+env.get('PATH','')
 with tempfile.TemporaryDirectory(prefix='voice-tail-',dir=repo.parent) as directory:
     tmp=Path(directory);c=tmp/'test.c';c.write_text(generated,encoding='utf-8')
-    exe=tmp/('test.exe' if os.name=='nt' else 'test')
+    exe=Path(os.environ.get('TAIL_TEST_BINARY',str(tmp/('test.exe' if os.name=='nt' else 'test'))))
     args=[cc,'-O2','-g','-fwrapv','-fno-strict-aliasing','-std=gnu11','-Wall','-Wextra','-Werror',
           '-Wno-unused-parameter','-Wno-unused-function','-Wno-sign-compare','-Wno-error=maybe-uninitialized','-I'+str(repo),str(c),'-o',str(exe)]
     args+=shlex.split(os.environ.get('TAIL_TEST_CFLAGS',''))
     if os.name!='nt':args+=['-lm']
     subprocess.run(args,env=env,check=True)
-    subprocess.run([str(exe),*sys.argv[3:]],env=env,check=True,timeout=60)
+    if not os.environ.get('TAIL_TEST_SKIP_RUN'):
+        subprocess.run([str(exe),*sys.argv[3:]],env=env,check=True,timeout=60)

@@ -3384,3 +3384,16 @@ resampler phase/head/range cases against a 128-bit oracle. These controls reject
 a proposed exact-row specialization: outlined Win64 trials reduced exact-row
 time but regressed integer-position time and added a 128-byte helper frame.
 The production interpolator stays unchanged.
+
+`test-adpcm-window.c` compares all 381,632 mono/stereo start/count windows
+against the retained full-block decoder across every initial step index. It
+checks malformed headers, untouched output guards and input immutability;
+`--bench` compares full decode/conversion with direct windows at positions
+0/32/63. The source-tail fixture adds 3,072 partial fetches across SGE/SSL
+block boundaries and unsupported layouts, retaining 24,576 page alignments.
+`TAIL_TEST_SOURCE`, `TAIL_TEST_BINARY` and `TAIL_TEST_SKIP_RUN` support baseline
+and native cross-builds; `TAIL_TEST_CFLAGS` supports sanitizers. Its serial
+dispatch adapter now reflects the bounded production traversal.
+`VP_ADPCM=1` or `2` builds synthetic native mono/stereo ADPCM ROMs; combine
+with `VP_UNIQUE` and `HEADROOM=6` for 64 scaled routes. No game-throughput
+or physical cache/spill improvement is inferred from the decoder benchmark.
