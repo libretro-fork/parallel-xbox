@@ -3235,42 +3235,54 @@ static void
 address_space_unregister_map_client_do(AddressSpaceMapClient *client)
 {
     QLIST_REMOVE(client, link);
-    g_free(client);
+    client->registered = false;
 }
 
 static void address_space_notify_map_clients_owner(void *opaque)
 {
     AddressSpace *as = opaque;
-    AddressSpaceMapClient *client;
+    QLIST_HEAD(, AddressSpaceMapClient) ready = QLIST_HEAD_INITIALIZER(ready);
 
     assert(as->map_client_owner == sthread_get_current_thread_id());
+    /* Snapshot before callbacks: new registrations wait for the next pass.
+     * Intrusive links let callbacks cancel any remaining snapshot member. */
+    QLIST_SWAP(&ready, &as->map_client_list, link);
+    while (!QLIST_EMPTY(&ready)) {
+        AddressSpaceMapClient *client = QLIST_FIRST(&ready);
+        void (*callback)(void *) = client->callback;
+        void *arg = client->opaque;
 
-    while (!QLIST_EMPTY(&as->map_client_list)) {
-        client = QLIST_FIRST(&as->map_client_list);
-        qemu_bh_schedule(client->bh);
         address_space_unregister_map_client_do(client);
+        LR_DSP_EXTERNAL_GUARD;
+        lr_dsp_ownership_fence(LR_DSP_FENCE_POLL);
+        callback(arg); /* may free/re-register client or dispatch recursively */
     }
 }
 
-void address_space_register_map_client(AddressSpace *as, QEMUBH *bh)
+void address_space_register_map_client(AddressSpace *as,
+                                       AddressSpaceMapClient *client,
+                                       void (*callback)(void *), void *opaque)
 {
-    AddressSpaceMapClient *client;
+    QEMUBH *notify;
 
     assert(as->map_client_owner == sthread_get_current_thread_id());
-    if (!retro_atomic_load_relaxed_ptr(&as->map_client_bh)) {
-        QEMUBH *notify = qemu_bh_new(address_space_notify_map_clients_owner, as);
+    assert(!client->registered);
+    notify = retro_atomic_load_relaxed_ptr(&as->map_client_bh);
+    if (!notify) {
+        notify = qemu_bh_new(address_space_notify_map_clients_owner, as);
         retro_atomic_store_release_ptr(&as->map_client_bh, notify);
     }
-    client = g_malloc(sizeof(*client));
-    client->bh = bh;
+    client->callback = callback;
+    client->opaque = opaque;
+    client->registered = true;
     QLIST_INSERT_HEAD(&as->map_client_list, client, link);
     /* Publish the notifier before checking resource availability. Paired
-     * with the release-side fence: either registration sees the free space
+     * with the release-side fence: either registration sees free space
      * or the releasing thread sees this notifier and queues the owner. */
     retro_atomic_thread_fence_seq_cst();
     if ((size_t)retro_atomic_load_relaxed_64(&as->bounce_buffer_size) <
         as->max_bounce_buffer_size) {
-        address_space_notify_map_clients_owner(as);
+        qemu_bh_schedule(notify);
     }
 }
 
@@ -3289,28 +3301,22 @@ void cpu_exec_init_all(void)
     memory_map_init();
 }
 
-void address_space_unregister_map_client(AddressSpace *as, QEMUBH *bh)
+void address_space_unregister_map_client(AddressSpace *as,
+                                         AddressSpaceMapClient *client)
 {
-    AddressSpaceMapClient *client;
-
     assert(as->map_client_owner == sthread_get_current_thread_id());
-    QLIST_FOREACH(client, &as->map_client_list, link) {
-        if (client->bh == bh) {
-            address_space_unregister_map_client_do(client);
-            break;
-        }
+    if (client->registered) {
+        address_space_unregister_map_client_do(client);
     }
 }
 
 static void address_space_notify_map_clients(AddressSpace *as)
 {
-    if (as->map_client_owner == sthread_get_current_thread_id()) {
-        address_space_notify_map_clients_owner(as);
-    } else {
-        QEMUBH *notify = retro_atomic_load_acquire_ptr(&as->map_client_bh);
-        if (notify) {
-            qemu_bh_schedule(notify);
-        }
+    /* Releasing threads only schedule the stable owner notifier. They never
+     * access caller-owned registrations, including during cancellation. */
+    QEMUBH *notify = retro_atomic_load_acquire_ptr(&as->map_client_bh);
+    if (notify) {
+        qemu_bh_schedule(notify);
     }
 }
 

@@ -61,7 +61,8 @@ typedef struct {
     int sg_cur_index;
     dma_addr_t sg_cur_byte;
     QEMUIOVector iov;
-    QEMUBH *bh;
+    AddressSpaceMapClient map_client;
+    bool waiting_for_map;
     DMAIOFunc *io_func;
     void *io_func_opaque;
 } DMAAIOCB;
@@ -80,9 +81,8 @@ static void reschedule_dma(void *opaque)
 {
     DMAAIOCB *dbs = (DMAAIOCB *)opaque;
 
-    assert(!dbs->acb && dbs->bh);
-    qemu_bh_delete(dbs->bh);
-    dbs->bh = NULL;
+    assert(!dbs->acb && dbs->waiting_for_map);
+    dbs->waiting_for_map = false;
     dma_blk_cb(dbs, 0);
 }
 
@@ -102,7 +102,7 @@ static void dma_complete(DMAAIOCB *dbs, int ret)
 {
     trace_dma_complete(dbs, ret, dbs->common.cb);
 
-    assert(!dbs->acb && !dbs->bh);
+    assert(!dbs->acb && !dbs->waiting_for_map);
     dma_blk_unmap(dbs);
     if (dbs->common.cb) {
         dbs->common.cb(dbs->common.opaque, ret);
@@ -177,8 +177,9 @@ static void dma_blk_cb(void *opaque, int ret)
 
     if (dbs->iov.size == 0) {
         trace_dma_map_wait(dbs);
-        dbs->bh = aio_bh_new(ctx, reschedule_dma, dbs);
-        address_space_register_map_client(dbs->sg->as, dbs->bh);
+        dbs->waiting_for_map = true;
+        address_space_register_map_client(dbs->sg->as, &dbs->map_client,
+                                          reschedule_dma, dbs);
         return;
     }
 
@@ -198,17 +199,16 @@ static void dma_aio_cancel(BlockAIOCB *acb)
 
     trace_dma_aio_cancel(dbs);
 
-    assert(!(dbs->acb && dbs->bh));
+    assert(!(dbs->acb && dbs->waiting_for_map));
     if (dbs->acb) {
         /* This will invoke dma_blk_cb.  */
         blk_aio_cancel_async(dbs->acb);
         return;
     }
 
-    if (dbs->bh) {
-        address_space_unregister_map_client(dbs->sg->as, dbs->bh);
-        qemu_bh_delete(dbs->bh);
-        dbs->bh = NULL;
+    if (dbs->waiting_for_map) {
+        address_space_unregister_map_client(dbs->sg->as, &dbs->map_client);
+        dbs->waiting_for_map = false;
     }
     if (dbs->common.cb) {
         dbs->common.cb(dbs->common.opaque, -ECANCELED);
@@ -240,7 +240,8 @@ BlockAIOCB *dma_blk_io(
     dbs->dir = dir;
     dbs->io_func = io_func;
     dbs->io_func_opaque = io_func_opaque;
-    dbs->bh = NULL;
+    dbs->map_client = (AddressSpaceMapClient){0};
+    dbs->waiting_for_map = false;
     if (dma_iov_spare) {
         /* qemu_iovec_add grows it if this transfer needs more */
         dbs->iov.iov = dma_iov_spare;

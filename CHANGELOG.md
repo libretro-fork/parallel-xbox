@@ -7,6 +7,8 @@
 
 ## Unreleased
 
+- Retry DMA mappings through caller-owned registrations and one shared owner notifier instead of allocating a list entry and bottom half for every retry. Cancellation unlinks directly; preserve deferred owner callbacks, release publication and DSP ownership while leaving data mappings unchanged.
+
 - Build speculative Vulkan pipeline keys without copying draw-shader bytes that are immediately replaced. Preserve complete key bytes, hashing, worker-slot ownership and publication order while reducing CPU copying.
 
 - Complete IDE TRIM through the fixed disk slots instead of allocating a one-use QEMU bottom half. Preserve deferred delivery and device guards; cancellation now handles empty descriptors and retains its error when the outstanding discard completes.

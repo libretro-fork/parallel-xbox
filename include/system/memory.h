@@ -1077,7 +1077,9 @@ struct MemoryListener {
 };
 
 typedef struct AddressSpaceMapClient {
-    QEMUBH *bh;
+    void (*callback)(void *);
+    void *opaque;
+    bool registered;
     QLIST_ENTRY(AddressSpaceMapClient) link;
 } AddressSpaceMapClient;
 
@@ -2520,18 +2522,23 @@ void address_space_unmap(AddressSpace *as, void *buffer, hwaddr len,
  * Registration/cancellation belong to the AddressSpace frontend owner.
  * Buffer release may notify from any thread; it never walks this list.
  *
- * @bh: callback to invoke when address_space_map() retry is appropriate
+ * @client: zero-initialized caller-owned registration, alive until fired or cancelled
+ * @callback: owner-thread callback, deferred even if resources are available
+ * @opaque: callback argument
  */
-void address_space_register_map_client(AddressSpace *as, QEMUBH *bh);
+void address_space_register_map_client(AddressSpace *as,
+                                       AddressSpaceMapClient *client,
+                                       void (*callback)(void *), void *opaque);
 
 /*
  * address_space_unregister_map_client: Unregister a callback that has
  * previously been registered and not fired yet.
  *
  * @as: #AddressSpace to be accessed
- * @bh: callback to unregister
+ * @client: registration to unregister (already fired/cancelled is harmless)
  */
-void address_space_unregister_map_client(AddressSpace *as, QEMUBH *bh);
+void address_space_unregister_map_client(AddressSpace *as,
+                                         AddressSpaceMapClient *client);
 
 /* Internal functions, part of the implementation of address_space_read.  */
 MemTxResult address_space_read_full(AddressSpace *as, hwaddr addr,
