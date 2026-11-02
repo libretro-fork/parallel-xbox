@@ -1,7 +1,7 @@
 # Changelog of the libretro core
 
+- Remove the standalone per-CPU-run MXCSR boundary pending a complete, throughput-validated native FP ownership implementation.
 - Bound the VP monitor's multipass lookahead so cyclic or invalid voice links cannot trap the audio owner in an endless scan. Valid reader selection remains unchanged.
-- Isolate x86-64 guest CPU execution from the caller's MXCSR. Establish masked nearest/no-flush host controls on entry, revalidate the native-SSE mode cache, and restore the caller's complete state on exit, including fault and guest-reset paths. Keep the saved state outside guest-reset memory; do not misattribute device or x87 flags to guest SSE status.
 - Prevent VP work-queue overflow from shared or cyclic voice lists. Oversized frames process in bounded list order on the owner thread without growing the queue, clearing a partial mix, or adding worker waits.
 - Scale vertex-program point sizes with internal resolution in both renderers, matching fixed-function and register-sized points. This keeps particles using shader-provided sizes from shrinking relative to the scene above 1x. Sprite coordinates and fog behavior are unchanged.
 
