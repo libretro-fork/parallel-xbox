@@ -1,5 +1,7 @@
 # Changelog of the libretro core
 
+- Scale vertex-program point sizes with internal resolution in both renderers, matching fixed-function and register-sized points. This keeps particles using shader-provided sizes from shrinking relative to the scene above 1x. Sprite coordinates and fog behavior are unchanged.
+
 ## Unreleased
 
 - Combine Vulkan depth-pack input visibility and output reuse into one pre-dispatch barrier call for non-fused packing. Preserve each buffer's access/range and mapped-host ordering; fused packing retains an input-only dependency.
