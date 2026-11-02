@@ -8,6 +8,8 @@
 
 ## Unreleased
 
+- DSP: compile short-address X/Y MOVEC control-register loads and stores, including stack-pop reads of SSH, scaling changes and repeated loop-count writes. Add 178,176 regression boundaries and a production-block fixture.
+
 - DSP: compile register-to-control MOVEC writes without interpreter fallback, preserving accumulator limiting, stack side effects and changes to scaling or REP counts. Add 170,496 regression boundaries and a repeated-control-write program.
 - Build only geometry/vertex module keys during Vulkan prewarming, avoiding an unused fragment key. Preserve full shader lookup and worker keys, module-reference order and GPU compilation policy.
 

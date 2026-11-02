@@ -851,6 +851,23 @@ static void check_startup_operations(Machine *a, Machine *b, unsigned mode)
             }
         }
     }
+    for (unsigned reg = DSP_REG_M0; reg < DSP_REG_MAX; reg++) {
+        for (unsigned addr = 0; addr < 64; addr++) {
+            if ((addr >> 3) == 6 && (addr & 7) != 0 && (addr & 7) != 4) continue;
+            for (unsigned space = 0; space < 2; space++) {
+                for (unsigned write = 0; write < 2; write++) {
+                    for (unsigned ctx = 0; ctx < ARRAY_SIZE(contexts); ctx++) {
+                        for (unsigned seed = 0; seed < 2; seed++) {
+                            check(a, b, 0x050020 | (write << 15) | (addr << 8) |
+                                  (space << 6) | reg, 0x30,
+                                  0x400000 | 0x1000000 | contexts[ctx] | seed,
+                                  mode, seed != 0);
+                        }
+                    }
+                }
+            }
+        }
+    }
     static const unsigned ports[] = {0, 0x30, 0x31, 0x32, 0x3F};
     for (unsigned ea = 0; ea < 64; ea++) {
         if ((ea >> 3) == 6 && (ea & 7) != 0 && (ea & 7) != 4) continue;

@@ -1977,7 +1977,7 @@ enum {
     NP_BIT_SR_UPPER,
     NP_MOVEC_EA,
     NP_MOVEC_IMM,
-    NP_MOVEC_SPECIAL, /* control writes retire through post, never re-execute */
+    NP_MOVEC_SPECIAL, /* control side effects retire through post exactly once */
 };
 
 static void emit_cc(Emitter *e, int cc);
@@ -2084,6 +2084,9 @@ static int np_kind(const Insn *in)
         (in->inst & (1 << 15))) {
         return reg_supported(in->inst & 63) ? NP_MOVEC_EA : NP_MOVEC_SPECIAL;
     }
+    if (!strcmp(name, "movec [X or Y]:aa <-> R")) {
+        return NP_MOVEC_SPECIAL;
+    }
     if ((!strcmp(name, "movem P:ea <-> R") || !strcmp(name, "movem P:aa <-> R")) &&
         reg_supported(in->inst & 63)) {
         return in->inst & (1 << 15) ? NP_MOVEM_P_READ : NP_MOVEM_P_WRITE;
@@ -2153,6 +2156,29 @@ static void emit_nonparallel(Tr *t, const Insn *in, int kind)
     case NP_MOVEC_EA: {
         Ea ea;
         if (kind == NP_MOVEC_SPECIAL) acc_spill_all(t, false);
+        if (!strcmp(in->d.name, "movec [X or Y]:aa <-> R")) {
+            unsigned reg = inst & 63;
+            unsigned space = (inst >> 6) & 1;
+            if (inst & (1 << 15)) {
+                h_mov_ri(e, EA1, (inst >> 8) & 63);
+                emit_read_mem(t, space, EA1, V1);
+                h_mov_rr(e, 0, H_ARG2, V1);
+                h_mov_ri(e, H_ARG1, reg);
+                h_mov_rr(e, 1, H_ARG0, REG_CORE);
+                h_call(e, (const void *)dsp56k_write_reg);
+            } else {
+                if (reg == DSP_REG_SSH) {
+                    h_mov_rr(e, 1, H_ARG0, REG_CORE);
+                    h_call(e, (const void *)dsp56k_stack_pop);
+                    h_mov_rr(e, 0, V1, T0);
+                } else {
+                    h_ld32(e, V1, REG_CORE, REGOFF(reg));
+                }
+                h_mov_ri(e, EA1, (inst >> 8) & 63);
+                emit_write_mem(t, space, EA1, V1);
+            }
+            break;
+        }
         if (!strcmp(in->d.name, "movec R1, R2")) {
             emit_read_reg(t, (inst >> 8) & 63, V1);
             h_mov_rr(e, 0, H_ARG2, V1);
@@ -3324,7 +3350,7 @@ retry:
         if (insn_native(&in)) {
             emit_native(t, &in);
             if (np_kind(&in) == NP_MOVEC_SPECIAL) {
-                /* Register writes may change scale/LF, stack state or LC.
+                /* Control transfers may change scale/LF, stack state or LC.
                  * Post once, then select the resulting cache identity. */
                 acc_spill_all(t, false);
                 h_st32_imm(&t->e, REG_CORE, OFF(pc), in.at);
@@ -3447,7 +3473,7 @@ retry:
     t->cyc = 0;
     if (np_kind(&in) == NP_MOVEM_P_WRITE || np_kind(&in) == NP_MOVEC_SPECIAL) {
         /* P writes can replace REP's body; control writes can change its
-         * count or mode. Retire once and redispatch the updated state. */
+         * count, mode or stack. Retire once and redispatch updated state. */
         if (np_kind(&in) == NP_MOVEM_P_WRITE) {
             h_st32(e, REG_CORE, REGOFF(DSP_REG_LC), REG_LC);
         }
