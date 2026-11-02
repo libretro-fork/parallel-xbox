@@ -67,11 +67,25 @@ entry:
         pcicfg 5, 0x10, APU
         pcicfg 5, 0x04, 0x00000006
 
+%ifdef PCM_SGE_SPLIT
+        ; Split the first PCM frame boundary across discontiguous SGE pages.
+        ; Source starts at logical byte 4093: sample 1 straddles the pages.
+        mov esi, pcm_data
+        mov edi, PCM + 4093
+        mov ecx, 3
+        rep movsb
+        mov edi, PCM + 0x3000
+        mov ecx, pcm_end - pcm_data - 3
+        rep movsb
+        mov dword [SGE + 8], PCM + 0x3000
+        mov dword [SGE + 12], 0
+%else
         ; the sine into RAM, the SGE table's one page entry
         mov esi, pcm_data
         mov edi, PCM
         mov ecx, pcm_end - pcm_data
         rep movsb
+%endif
         mov dword [SGE], PCM
         mov dword [SGE + 4], 0
 
@@ -127,7 +141,11 @@ entry:
         pio 0x2C0, 0x03020100            ; HRTF routes to bins 0,1,2,3
 %endif
         pio 0x37C, 0                     ; pitch 0: 48 kHz
+%ifdef PCM_SGE_SPLIT
+        pio 0x3A0, 4093                  ; buffer crosses logical SGE pages
+%else
         pio 0x3A0, 0                     ; buffer base
+%endif
         pio 0x3A4, 0                     ; loop start
         pio 0x3DC, 1919                  ; end
 %ifdef VP_UNIQUE

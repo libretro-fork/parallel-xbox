@@ -248,6 +248,15 @@ and write VP samples directly into the existing destination. The intermediate
 65-sample PCM array is removed; encoded SGE fragments still use the necessary
 bounded gather. A 1,424-byte read-only nibble-magnitude table preserves the
 reference shift rounding. No source pointer, decoded cache or new per-voice
-state survives the call. Win64 voice stack use drops from 1,248 to 1,136 bytes.
+state survives the call. The ADPCM change reduced Win64 voice stack use; with PCM SGE boundary handling
+it is 1,168 bytes.
 Local decoder timing favors typical paired 32-sample windows; very short late
 windows can be slower. Game throughput and hardware cache misses are unmeasured.
+
+PCM frames spanning SGE pages use both logical mappings, including a stereo
+channel beginning on the next page. Same-page and adjacent physical backing
+retain direct scalar loads; only discontiguous backing needs a bounded gather
+of at most eight bytes. No persistent map cache, frame buffer, lock or wait
+is added. The boundary helper has a 160-byte Win64 frame; the ordinary voice
+frame grows by 32 bytes, with HRTF remaining outlined and worker/owner stacks
+unchanged. Hardware cache misses, register spills and game speed are unmeasured.

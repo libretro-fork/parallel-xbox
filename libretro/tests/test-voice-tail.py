@@ -43,7 +43,7 @@ functions=['set_notify_status','voice_get_mask','voice_set_mask','voice_off',
     'voice_lock','is_voice_locked',
     'voice_resample_reset','voice_reset_filters','filter_coefficient','attenuation_gain',
     'get_data_ptr','envelope_level','voice_step_envelope','voice_step_lfos',
-    'voice_jingle_hash','voice_get_samples','voice_resample_fetch','voice_pitch_ramp',
+    'voice_jingle_hash','voice_pcm_sge_frame','voice_get_samples','voice_resample_fetch','voice_pitch_ramp',
     'voice_pitch_step','voice_resample','voice_process','mcpx_apu_vp_reset']
 generated=before+table+''.join(function(n) for n in functions)
 generated+=after.replace('/* VOICE FRAME */',

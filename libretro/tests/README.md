@@ -3397,3 +3397,12 @@ dispatch adapter now reflects the bounded production traversal.
 `VP_ADPCM=1` or `2` builds synthetic native mono/stereo ADPCM ROMs; combine
 with `VP_UNIQUE` and `HEADROOM=6` for 64 scaled routes. No game-throughput
 or physical cache/spill improvement is inferred from the decoder benchmark.
+
+The source-tail fixture checks 122,880 PCM alignments across U8/S16/S24/S32
+and padded S16, mono/stereo, SSL, adjacent/discontiguous SGE pages and every
+byte offset. A poisoned physical neighbor detects reads outside the logical
+SGE mapping. Mapping and gather counts require one SGE lookup for ordinary
+frames, two for crossing frames, and no gather for adjacent backing. The old
+fetch fails this oracle. `PCM_SGE_SPLIT` creates a native sine ROM split at
+logical byte 4093; corrected output must equal the contiguous control, while
+the old core differs. Existing frame cadence and state checks remain separate.

@@ -53,8 +53,9 @@ static uint32_t apu_reg_r(MCPXAPUState *d,unsigned r){return d->regs[r];}
 static void apu_reg_w(MCPXAPUState *d,unsigned r,uint32_t v){d->regs[r]=v;}
 #define retro_atomic_fetch_or_int(p,v) (*(p)|=(v))
 #define retro_atomic_store_relaxed_int(p,v) (*(p)=(v))
+static unsigned physical_read_calls;
 static void cpu_physical_memory_read(hwaddr a,void *out,hwaddr bytes)
-{assert(a+bytes<=RAM_SIZE);memcpy(out,address_space_memory.d->ram_ptr+a,bytes);}
+{assert(a+bytes<=RAM_SIZE);physical_read_calls++;memcpy(out,address_space_memory.d->ram_ptr+a,bytes);}
 static unsigned sge_reads;
 static uint32_t apu_ram_ldl(MCPXAPUState *d,hwaddr a)
 {
@@ -313,6 +314,53 @@ static void control_paths(void)
     frame(d,mix);assert(active(d));dispose(d);
     puts("PASS: pause, immediate explicit stop, restart, VP reset/pre-load, finite SSL drain and zero-progress guard");
 }
+static void pcm_pages(void)
+{
+    unsigned cases=0;
+    for(unsigned format=0;format<5;format++)for(unsigned stereo=0;stereo<2;stereo++)
+    for(unsigned stream=0;stream<2;stream++)for(unsigned adjacent=0;adjacent<(stream?1u:2u);adjacent++)
+    for(unsigned offset=0;offset<4096;offset++){
+        unsigned source_format=format==4?1:format;
+        unsigned width=source_format==0?1:source_format==1?2:4;
+        unsigned container=format==4?4:width,channels=1+stereo,stride=container*channels;
+        MCPXAPUState *d=setup(64,source_format,stereo,0);
+        if(format==4)put(d,NV_PAVS_VOICE_CFG_FMT,NV_PAVS_VOICE_CFG_FMT_CONTAINER_SIZE,3);
+        put(d,NV_PAVS_VOICE_CUR_PSL_START,NV_PAVS_VOICE_CUR_PSL_START_BA,offset);
+        unsigned page1=adjacent?0x21000:0x60000;
+        store(d,0x4008,page1);memset(d->ram_ptr+0x21000,0xa5,4096);
+        uint8_t bytes[512];
+        for(unsigned i=0;i<64*stride;i++){
+            bytes[i]=(i*73+offset*17+format*31)&255;unsigned logical=offset+i;
+            d->ram_ptr[stream?0x70000+logical:logical<4096?0x20000+logical:page1+logical-4096]=bytes[i];
+        }
+        if(stream){
+            put(d,NV_PAVS_VOICE_CFG_FMT,NV_PAVS_VOICE_CFG_FMT_DATA_TYPE,1);
+            put(d,NV_PAVS_VOICE_CFG_FMT,NV_PAVS_VOICE_CFG_FMT_PERSIST,1);d->vp.ssl[64].count[0]=1;
+            unsigned cs=container==1?0:container==2?1:3;
+            store(d,0x8000,0x70000+offset);store(d,0x8004,64|(cs<<16)|(stereo<<18)|(stereo<<23));
+        }
+        int32_t out[34][2];memset(out,0x35,sizeof(out));sge_reads=physical_read_calls=0;
+        assert(voice_get_samples(d,64,&out[1],32)==32);
+        unsigned crossings=0;
+        for(unsigned i=0;i<32;i++){
+            unsigned logical=offset+i*stride,span=(channels-1)*container+width;
+            crossings+=span>4096-logical%4096;
+            for(unsigned ch=0;ch<2;ch++){
+                unsigned at=i*stride+(stereo?ch:0)*container;uint32_t value=0;
+                for(unsigned b=0;b<width;b++)value|=(uint32_t)bytes[at+b]<<(8*b);
+                int32_t expected=source_format==0?vp_sample_u8(value):source_format==1?vp_sample_s16(value):source_format==2?vp_sample_s24(value):vp_sample_s32(value);
+                assert(out[i+1][ch]==expected);
+            }
+        }
+        assert(sge_reads==(stream?0:32+crossings));
+        assert(physical_read_calls==(!stream&&!adjacent?2*crossings:0));
+        assert(out[0][0]==0x35353535&&out[0][1]==0x35353535&&out[33][0]==0x35353535&&out[33][1]==0x35353535);
+        assert(voice_get_mask(d,64,NV_PAVS_VOICE_PAR_OFFSET,NV_PAVS_VOICE_PAR_OFFSET_CBO)==32);
+        assert(active(d)&&!d->vp.filters[64].source_ended);dispose(d);cases++;
+    }
+    printf("PASS: %u PCM buffer/SSL alignments, U8/S16/S24/S32 and padded S16, mono/stereo, adjacent/discontiguous SGEs and exact mapping counts\n",cases);
+}
+
 static void adpcm_pages(void)
 {
     unsigned cases=0;
@@ -578,5 +626,5 @@ int main(int argc,char**argv)
     if(argc>1&&strcmp(argv[1],"locks")==0){lock_boundaries();return 0;}
     lock_boundaries();
     signed_filters();
-    inclusive_boundary();tails();loops();streams();control_paths();adpcm_pages();adpcm_partial_fetches();rejected_adpcm();pitch_cache();return 0;
+    inclusive_boundary();tails();loops();streams();control_paths();pcm_pages();adpcm_pages();adpcm_partial_fetches();rejected_adpcm();pitch_cache();return 0;
 }
