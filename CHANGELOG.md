@@ -4,6 +4,8 @@
 
 ## Unreleased
 
+- Compose fog-color, light-control and color-material register fields locally and publish once only on change. Preserve final fields and dirty flags while removing redundant atomic register traffic in both renderers.
+
 - Compose NV097 texture-format fields locally and publish the final register once on change, replacing nine atomic register stores per method. Preserve reserved bits and dirty-state behavior while omitting unchanged publications.
 
 - Extend the BC1 CPU-loop benchmark to rectangular and just-below/above-threshold slices, checking byte parity and paired CPU/GPU timings without changing rendering behavior.

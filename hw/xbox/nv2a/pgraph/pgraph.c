@@ -1513,26 +1513,36 @@ DEF_METHOD(NV097, SET_CONTROL0)
 
 DEF_METHOD(NV097, SET_LIGHT_CONTROL)
 {
-    PG_SET_MASK(NV_PGRAPH_CSV0_C, NV_PGRAPH_CSV0_C_SEPARATE_SPECULAR,
+    uint32_t prev = pgraph_reg_r(pg, NV_PGRAPH_CSV0_C);
+    uint32_t next = prev;
+    SET_MASK(next, NV_PGRAPH_CSV0_C_SEPARATE_SPECULAR,
              (parameter & NV097_SET_LIGHT_CONTROL_SEPARATE_SPECULAR) != 0);
 
-    PG_SET_MASK(NV_PGRAPH_CSV0_C, NV_PGRAPH_CSV0_C_LOCALEYE,
+    SET_MASK(next, NV_PGRAPH_CSV0_C_LOCALEYE,
              (parameter & NV097_SET_LIGHT_CONTROL_LOCALEYE) != 0);
 
-    PG_SET_MASK(NV_PGRAPH_CSV0_C, NV_PGRAPH_CSV0_C_ALPHA_FROM_MATERIAL_SPECULAR,
+    SET_MASK(next, NV_PGRAPH_CSV0_C_ALPHA_FROM_MATERIAL_SPECULAR,
              (parameter & NV097_SET_LIGHT_CONTROL_ALPHA_FROM_MATERIAL_SPECULAR) != 0);
+    if (next != prev) {
+        pgraph_reg_w(pg, NV_PGRAPH_CSV0_C, next);
+    }
 }
 
 DEF_METHOD(NV097, SET_COLOR_MATERIAL)
 {
-    PG_SET_MASK(NV_PGRAPH_CSV0_C, NV_PGRAPH_CSV0_C_EMISSION,
+    uint32_t prev = pgraph_reg_r(pg, NV_PGRAPH_CSV0_C);
+    uint32_t next = prev;
+    SET_MASK(next, NV_PGRAPH_CSV0_C_EMISSION,
              (parameter >> 0) & 3);
-    PG_SET_MASK(NV_PGRAPH_CSV0_C, NV_PGRAPH_CSV0_C_AMBIENT,
+    SET_MASK(next, NV_PGRAPH_CSV0_C_AMBIENT,
              (parameter >> 2) & 3);
-    PG_SET_MASK(NV_PGRAPH_CSV0_C, NV_PGRAPH_CSV0_C_DIFFUSE,
+    SET_MASK(next, NV_PGRAPH_CSV0_C_DIFFUSE,
              (parameter >> 4) & 3);
-    PG_SET_MASK(NV_PGRAPH_CSV0_C, NV_PGRAPH_CSV0_C_SPECULAR,
+    SET_MASK(next, NV_PGRAPH_CSV0_C_SPECULAR,
              (parameter >> 6) & 3);
+    if (next != prev) {
+        pgraph_reg_w(pg, NV_PGRAPH_CSV0_C, next);
+    }
 }
 
 DEF_METHOD(NV097, SET_FOG_MODE)
@@ -1594,15 +1604,20 @@ DEF_METHOD(NV097, SET_FOG_ENABLE)
 
 DEF_METHOD(NV097, SET_FOG_COLOR)
 {
+    uint32_t prev = pgraph_reg_r(pg, NV_PGRAPH_FOGCOLOR);
+    uint32_t next = prev;
     /* PGRAPH channels are ARGB, parameter channels are ABGR */
     uint8_t red = GET_MASK(parameter, NV097_SET_FOG_COLOR_RED);
     uint8_t green = GET_MASK(parameter, NV097_SET_FOG_COLOR_GREEN);
     uint8_t blue = GET_MASK(parameter, NV097_SET_FOG_COLOR_BLUE);
     uint8_t alpha = GET_MASK(parameter, NV097_SET_FOG_COLOR_ALPHA);
-    PG_SET_MASK(NV_PGRAPH_FOGCOLOR, NV_PGRAPH_FOGCOLOR_RED, red);
-    PG_SET_MASK(NV_PGRAPH_FOGCOLOR, NV_PGRAPH_FOGCOLOR_GREEN, green);
-    PG_SET_MASK(NV_PGRAPH_FOGCOLOR, NV_PGRAPH_FOGCOLOR_BLUE, blue);
-    PG_SET_MASK(NV_PGRAPH_FOGCOLOR, NV_PGRAPH_FOGCOLOR_ALPHA, alpha);
+    SET_MASK(next, NV_PGRAPH_FOGCOLOR_RED, red);
+    SET_MASK(next, NV_PGRAPH_FOGCOLOR_GREEN, green);
+    SET_MASK(next, NV_PGRAPH_FOGCOLOR_BLUE, blue);
+    SET_MASK(next, NV_PGRAPH_FOGCOLOR_ALPHA, alpha);
+    if (next != prev) {
+        pgraph_reg_w(pg, NV_PGRAPH_FOGCOLOR, next);
+    }
 }
 
 DEF_METHOD(NV097, SET_WINDOW_CLIP_TYPE)

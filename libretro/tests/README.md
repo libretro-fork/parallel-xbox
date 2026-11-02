@@ -3191,3 +3191,12 @@ alternating and randomized methods over five alternating-order rounds of two
 million calls/path. Two Windows GCC runs showed lower time in all three cases.
 These are isolated method-model timings, not full-core FPS or GPU benchmarks.
 The shared NV2A method's final GPU-facing state remains the same in both renderers.
+
+The same publication fixture also covers SET_FOG_COLOR, SET_LIGHT_CONTROL and
+SET_COLOR_MATERIAL against frozen d99a0a5 bodies: 200,000 cases each, 800,000
+state cases total with the texture-format recheck. Fog ABGR-to-ARGB mapping,
+reserved/control bits and existing dirty flags must match. Fog/color-material
+stores drop from four to zero/one; light-control stores drop from three to
+zero/one. Two uninstrumented method-model runs improve unchanged, alternating
+and randomized inputs for every handler. GPU-facing words remain identical;
+these CPU-model timings are not game FPS measurements.
