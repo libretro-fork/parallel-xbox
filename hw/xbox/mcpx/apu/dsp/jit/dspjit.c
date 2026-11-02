@@ -2092,6 +2092,12 @@ static int np_kind(const Insn *in)
         unsigned r1 = in->inst & 63, r2 = (in->inst >> 8) & 63;
         unsigned src = in->inst & (1 << 15) ? r2 : r1;
         unsigned dst = in->inst & (1 << 15) ? r1 : r2;
+        /* Only the write direction uses dsp_write_reg control side effects. */
+        if ((in->inst & (1 << 15)) &&
+            (reg_supported(src) || src == DSP_REG_SR) && !reg_supported(dst) &&
+            (dst != DSP_REG_SR || src == DSP_REG_SR)) {
+            return NP_MOVEC_SPECIAL;
+        }
         /* SR reads consume deferred arithmetic flags. Status writes have
          * their own mode guard; stack accesses retain interpreter effects. */
         if (reg_supported(src) && dst == DSP_REG_SR) {
@@ -2147,6 +2153,14 @@ static void emit_nonparallel(Tr *t, const Insn *in, int kind)
     case NP_MOVEC_EA: {
         Ea ea;
         if (kind == NP_MOVEC_SPECIAL) acc_spill_all(t, false);
+        if (!strcmp(in->d.name, "movec R1, R2")) {
+            emit_read_reg(t, (inst >> 8) & 63, V1);
+            h_mov_rr(e, 0, H_ARG2, V1);
+            h_mov_ri(e, H_ARG1, inst & 63);
+            h_mov_rr(e, 1, H_ARG0, REG_CORE);
+            h_call(e, (const void *)dsp56k_write_reg);
+            break;
+        }
         if (!strcmp(in->d.name, "movec #xx, D1")) {
             ea.kind = EA_IMM;
             ea.imm = (inst >> 8) & 255;

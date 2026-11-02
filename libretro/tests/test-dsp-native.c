@@ -835,6 +835,22 @@ static void check_startup_operations(Machine *a, Machine *b, unsigned mode)
             }
         }
     }
+    /* Register-sourced control writes must flush flags, limit accumulator
+     * sources, preserve stack side effects and retire only once. */
+    for (unsigned dst = DSP_REG_M7 + 1; dst < DSP_REG_MAX; dst++) {
+        for (unsigned src = DSP_REG_X0; src <= DSP_REG_SR; src++) {
+            if (src > DSP_REG_M7 && src != DSP_REG_SR) continue;
+            for (unsigned seed = 0; seed < 8; seed++) {
+                for (unsigned ctx = 0; ctx < ARRAY_SIZE(contexts); ctx++) {
+                    for (unsigned irq = 0; irq < 2; irq++) {
+                        check(a, b, 0x04C0A0 | (src << 8) | dst, 0x30,
+                              0x400000 | 0x1000000 | 0x10000 | (seed << 1) | (seed << 4) |
+                              contexts[ctx], mode, irq);
+                    }
+                }
+            }
+        }
+    }
     static const unsigned ports[] = {0, 0x30, 0x31, 0x32, 0x3F};
     for (unsigned ea = 0; ea < 64; ea++) {
         if ((ea >> 3) == 6 && (ea & 7) != 0 && (ea & 7) != 4) continue;

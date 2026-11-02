@@ -8,6 +8,8 @@
 
 ## Unreleased
 
+- DSP: compile register-to-control MOVEC writes without interpreter fallback, preserving accumulator limiting, stack side effects and changes to scaling or REP counts. Add 170,496 regression boundaries and a repeated-control-write program.
+
 - Prewarm Vulkan pre-rasterization libraries directly from their stage and render-pass inputs, avoiding temporary full shader bindings and pipeline keys. Preserve library identity, create info, module references and compilation policy.
 
 - Retry DMA mappings through caller-owned registrations and one shared owner notifier instead of allocating a list entry and bottom half for every retry. Cancellation unlinks directly; preserve deferred owner callbacks, release publication and DSP ownership while leaving data mappings unchanged.
