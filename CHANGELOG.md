@@ -4,6 +4,8 @@
 
 ## Unreleased
 
+- Use the coalesced final-plane region count for native BC volume direct-upload eligibility. Layouts newly fitting one 64-region batch skip CPU rearrangement/staging; larger layouts retain their fallback.
+
 - Coalesce the final single-slice native BC volume group into one whole-plane copy region. Reduce submitted regions while preserving direct-upload eligibility, byte layout, ownership and staging fallbacks.
 
 - Upload taller native BC volume grids directly using strided block-column regions when they fit one 64-region batch. Choose the smaller grouped-block/strided-column representation and retain prior direct routes and larger-layout staging fallback.

@@ -77,7 +77,7 @@ static void check(unsigned w,unsigned h,unsigned depth,unsigned bs,unsigned kind
     size_t size=bytes+128;PGRAPHVkState renderer={.vram_buffer=kind?(VkBuffer)(uintptr_t)1:VK_NULL_HANDLE};
     NV2AState dev={.vram_ptr=guest,.vram=&size,.pgraph={&renderer,actual,3}};TextureLevel level;
     stage_blocks_3d(&dev.pgraph,&level,guest+offset,w,h,depth,bs);
-    bool direct=kind&&offset%bs==0&&(depth==1||bw==1||((bh==1&&bw<=4)||(uint64_t)bw*bh*((depth+3)/4)<=64||(uint64_t)bw*depth<=64));
+    bool direct=kind&&offset%bs==0&&(depth==1||bw==1||((bh==1&&bw<=4)||(uint64_t)bw*bh*(depth/4)+(depth%4==1?1:depth%4?bw*bh:0)<=64||(uint64_t)bw*depth<=64));
     assert(level.width==w&&level.height==h&&level.depth==depth&&level.size==bytes&&!level.row_length&&!level.crop_offset);
     assert(level.source==(direct?LEVEL_VRAM:LEVEL_STAGING));
     if(direct){
@@ -133,10 +133,10 @@ static void benchmark(void) {
 }
 int main(int argc,char **argv) {
     if(argc>1&&!strcmp(argv[1],"--bench")){benchmark();return 0;}
-    unsigned widths[]={1,4,8,12,64,256},heights[]={1,4,8,20,64},depths[]={1,2,4,5,8,16},cases=0;
-    for(unsigned f=0;f<3;f++)for(unsigned w=0;w<6;w++)for(unsigned h=0;h<5;h++)for(unsigned d=0;d<6;d++)for(unsigned kind=0;kind<3;kind++) {
+    unsigned widths[]={1,4,8,12,64,256},heights[]={1,4,8,9,20,64},depths[]={1,2,4,5,8,16},cases=0;
+    for(unsigned f=0;f<3;f++)for(unsigned w=0;w<6;w++)for(unsigned h=0;h<6;h++)for(unsigned d=0;d<6;d++)for(unsigned kind=0;kind<3;kind++) {
         check(widths[w],heights[h],depths[d],f==0?8:f==1?16:24,kind);cases++;
     }
-    puts("1620 coordinate-oracle cases: direct VRAM, reordered/fallback staging, partial Z groups, odd dimensions, guards and metadata PASS");
-    assert(cases==1620);return 0;
+    puts("1944 coordinate-oracle cases: direct VRAM, reordered/fallback staging, partial Z groups, odd dimensions, guards and metadata PASS");
+    assert(cases==1944);return 0;
 }

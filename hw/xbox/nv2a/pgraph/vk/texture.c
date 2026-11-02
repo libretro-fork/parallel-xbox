@@ -242,10 +242,12 @@ static void stage_blocks_2d(PGRAPHState *pg, TextureLevel *level,
 /* Compact grouped blocks or strided columns fit one region batch. */
 static bool volume_blocks_direct(unsigned width, unsigned height, unsigned depth)
 {
-    return (height <= 4 && width <= 16) ||
-        (VkDeviceSize)((width + 3) / 4) * ((height + 3) / 4) *
-            ((depth + 3) / 4) <= 64 ||
-        (VkDeviceSize)((width + 3) / 4) * depth <= 64;
+    VkDeviceSize bw = (width + 3) / 4;
+    VkDeviceSize blocks = bw * ((height + 3) / 4);
+    VkDeviceSize grouped = blocks * (depth / 4);
+    unsigned tail = depth % 4;
+    if (tail) grouped += tail == 1 ? 1 : blocks;
+    return (height <= 4 && width <= 16) || grouped <= 64 || bw * depth <= 64;
 }
 
 static void stage_blocks_3d(PGRAPHState *pg, TextureLevel *level,

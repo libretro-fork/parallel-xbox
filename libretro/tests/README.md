@@ -1053,7 +1053,7 @@ The GL upload-alignment oracle now uses the production BC decoder for 36 additio
 
 `python libretro/tests/test-vulkan-volume-blocks.py CHECKOUT [CC]` compiles
 production volume staging, VRAM selection and ordinary/per-slice copy functions,
-then transfers native BC1/BC2/BC3 data through Vulkan 3D images. Its 12,636 cases
+then transfers native BC1/BC2/BC3 data through Vulkan 3D images. Its 13,824 cases
 cover narrow/wide block grids, partial block rows, depth groups including a fifth
 slice and 65/129-slice levels, mip 0/1, missing imports, unaligned offsets and data
 ending exactly at VRAM end. A single block column uses strided regions; row
@@ -1063,12 +1063,13 @@ become direct only when their whole level fits one 64-region batch;
 larger layouts retain staging. Existing four-block row eligibility remains intact. Destination block bytes must match
 the coordinate oracle, including 256/260-pixel budget boundaries.
 
-The matrix has 2,718 direct levels. Relative to the prior compact-grid gate,
-378 newly direct strided-column levels avoid 4,086,240 staging bytes and 306,468
-CPU block copies. Heights through 256 texels exercise tall rows and strided
+The matrix has 3,042 direct levels. Relative to the prior uncoalesced budget
+gate, 48 newly direct levels avoid 154,560 staging bytes and 11,592 CPU block
+copies. Additional depth 5/9/17 and height 9/12 cases check effective-budget
+boundaries. Heights through 256 texels exercise tall rows and strided
 source boundaries.
-Final single-slice groups now coalesce into one XY-plane region without changing
-eligibility. The GPU fixture checks submitted region and command counts as well
+Final single-slice groups coalesce into one XY-plane region, and eligibility
+uses that effective region count to admit newly bounded layouts. The GPU fixture checks submitted region and command counts as well
 as bytes, including partially filled final block groups. These are operation
 counts, not game frame-time measurements. Vulkan BC
 3D image support is required. Synchronization validation is requested by default;

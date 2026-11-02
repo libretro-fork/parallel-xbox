@@ -128,7 +128,7 @@ int main(void)
     VkCommandBuffer cmd; CHECK(vkAllocateCommandBuffers(device, &ca, &cmd));
     const VkFormat formats[] = {VK_FORMAT_BC1_RGBA_UNORM_BLOCK,
         VK_FORMAT_BC2_UNORM_BLOCK, VK_FORMAT_BC3_UNORM_BLOCK};
-    const unsigned widths[] = {1,4,5,8,12,16,17,20,32,64,128,256,260}, heights[] = {1,4,5,8,20,32,36,128,256}, depths[] = {1,2,4,5,65,129};
+    const unsigned widths[] = {1,4,5,8,12,16,17,20,32,64,128,256,260}, heights[] = {1,4,5,8,9,12,20,32,36,128,256}, depths[] = {1,2,4,5,9,17,65,129};
     unsigned cases = 0, direct = 0, expanded = 0; size_t saved_regions = 0; size_t avoided = 0, total_copies = 0, previous_copies = 0, expanded_bytes = 0, expanded_copies = 0;
     for (unsigned f=0;f<3;f++)
     for (unsigned wi=0;wi<ARRAY_SIZE(widths);wi++)
@@ -137,6 +137,8 @@ int main(void)
     for (unsigned kind=0;kind<3;kind++)
     for (unsigned mip=0;mip<2;mip++) {
         unsigned w=widths[wi], h=heights[hi], depth=depths[di];
+        if(h==9||h==12){if((depth!=5&&depth!=9&&depth!=17)||w>128)continue;}
+        else if(depth==9||depth==17)continue;
         unsigned bs=f?16:8, blocks=((w+3)/4)*((h+3)/4);
         size_t bytes=(size_t)blocks*depth*bs, offset=kind==2?36:32;
         Buffer upload=buffer(bytes+64), staging=buffer(bytes+16), output=buffer(bytes);
@@ -164,8 +166,9 @@ int main(void)
         bool previous_direct = kind==0 && (depth==1 || blocks==1);
         previous_copies += previous_direct ? 0 :
             depth==1 || blocks==1 ? 1 : (size_t)blocks*depth;
-        bool before_direct=kind==0 && (depth==1 || w<=4 || (h<=4 && w<=16) || (uint64_t)((w+3)/4)*((h+3)/4)*((depth+3)/4)<=64);
-        bool eligible=before_direct || (kind==0 && (uint64_t)((w+3)/4)*depth<=64);
+        bool before_direct=kind==0 && (depth==1 || w<=4 || (h<=4 && w<=16) || (uint64_t)((w+3)/4)*((h+3)/4)*((depth+3)/4)<=64 || (uint64_t)((w+3)/4)*depth<=64);
+        unsigned effective=blocks*(depth/4)+(depth%4==1?1:depth%4?blocks:0);
+        bool eligible=before_direct || (kind==0&&effective<=64);
         if(eligible&&!before_direct){expanded++;expanded_bytes+=bytes;expanded_copies+=(size_t)blocks*depth;}
 
         assert((level.source==LEVEL_VRAM)==eligible);
@@ -236,8 +239,8 @@ int main(void)
         CHECK(vkResetCommandBuffer(cmd, 0)); cases++;
     }
     assert(saved_regions>0);
-    printf("Coalesced tail planes avoid %zu submitted copy regions with identical eligibility\n",saved_regions);
-    printf("Expanded strided-column routes=%u; additional staging bytes avoided=%zu; CPU block copies avoided=%zu\n",expanded,expanded_bytes,expanded_copies);
+    printf("Coalesced representation uses %zu fewer copy regions than unmerged direct blocks\n",saved_regions);
+    printf("Expanded coalesced-budget routes=%u; additional staging bytes avoided=%zu; CPU block copies avoided=%zu\n",expanded,expanded_bytes,expanded_copies);
     printf("volume cases=%u direct=%u avoided_staging_bytes=%zu; all bytes exact\n",cases,direct,avoided);
     printf("CPU copy calls=%zu; previous-path model=%zu\n",total_copies,previous_copies);
     vkDestroyCommandPool(device, pool, NULL); vkDestroyDevice(device, NULL);
