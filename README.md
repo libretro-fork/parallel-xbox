@@ -229,3 +229,10 @@ linear buffer again. Unsigned magnitudes cover INT32_MIN without signed
 negation. A 6,424-frame wide-integer oracle checks every ring position, tap
 and delay ramps, narrow/wide boundaries and full-range samples. Filter storage,
 savestate layout, frame cadence and completion waits are unchanged.
+
+NVNet RX delivery reuses the descriptor read by its own readiness check,
+performing one guest descriptor DMA read instead of two inside that receive
+call. The backend readiness callback still reads fresh guest state, and no
+descriptor is cached between callbacks. Payload staging retains snapshot
+semantics for potentially guest-backed packet buffers. No lock, wait, timer
+interval, state field or queue depth changes.

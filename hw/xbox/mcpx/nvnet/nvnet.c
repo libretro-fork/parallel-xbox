@@ -373,14 +373,21 @@ static void store_ring_desc(NvNetState *s, dma_addr_t desc_addr,
     pci_dma_write(d, desc_addr, &raw_desc, sizeof(raw_desc));
 }
 
-static bool rx_buf_available(NvNetState *s)
+static bool rx_buf_available(NvNetState *s, struct RingDesc *snapshot)
 {
     uint32_t cur_desc_addr = update_current_rx_ring_desc_addr(s);
     struct RingDesc desc = load_ring_desc(s, cur_desc_addr);
+    if (snapshot) {
+        *snapshot = desc;
+    }
     return desc.flags & NV_RX_AVAIL;
 }
 
-static bool nvnet_can_receive(NetClientState *nc)
+/* A receive call may consume the same readiness snapshot immediately. No
+ * guest execution or payload DMA occurs between this check and its use; never
+ * retain it across callbacks or cache guest descriptor memory. */
+static bool nvnet_can_receive_desc(NetClientState *nc,
+                                   struct RingDesc *snapshot)
 {
     NvNetState *s = qemu_get_nic_opaque(nc);
 
@@ -389,7 +396,7 @@ static bool nvnet_can_receive(NetClientState *nc)
     bool link_en = link_up(s);
     /* Disabled DMA must not read the guest's descriptor ring. */
     bool ready = rx_en && dma_en && link_en;
-    bool buf_avail = ready && rx_buf_available(s);
+    bool buf_avail = ready && rx_buf_available(s, snapshot);
     bool can_rx = rx_en && dma_en && link_en && buf_avail;
 
     if (!can_rx) {
@@ -408,6 +415,11 @@ static bool nvnet_can_receive(NetClientState *nc)
         timer_del(s->rx_poll_timer);
     }
     return can_rx;
+}
+
+static bool nvnet_can_receive(NetClientState *nc)
+{
+    return nvnet_can_receive_desc(nc, NULL);
 }
 
 /* Re-enable backend polling as well as draining queued packets. The socket
@@ -431,16 +443,16 @@ static ssize_t dma_packet_to_guest(NvNetState *s, const uint8_t *buf,
     PCIDevice *d = PCI_DEVICE(s);
     NetClientState *nc = qemu_get_queue(s->nic);
     ssize_t rval;
+    struct RingDesc desc;
 
-    if (!nvnet_can_receive(nc)) {
+    if (!nvnet_can_receive_desc(nc, &desc)) {
         return -1;
     }
 
     set_dma_idle(s, false);
 
     uint32_t base_desc_addr = get_reg(s, NVNET_RX_RING_PHYS_ADDR);
-    uint32_t cur_desc_addr = update_current_rx_ring_desc_addr(s);
-    struct RingDesc desc = load_ring_desc(s, cur_desc_addr);
+    uint32_t cur_desc_addr = get_reg(s, NVNET_RX_RING_CURRENT_DESC_PHYS_ADDR);
 
     NVNET_DPRINTF("RX: Looking at ring descriptor %zd (0x%x): "
                   "Buffer: 0x%x, Length: 0x%x, Flags: 0x%x\n",

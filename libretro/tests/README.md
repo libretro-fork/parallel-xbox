@@ -3360,3 +3360,12 @@ INT32_MIN/MAX. The regular suite uses UBSan without signed-wrap assumptions;
 `--bench` isolates 200,000 frames per zero-delay, fractional-delay and wide mode.
 `VP_HRTF` builds a native spatial-voice ROM with a half-scale HRIR tap and
 fractional ITD. Isolated timings do not measure game FPS or hardware cache misses.
+
+`test-nvnet-rx-snapshot.py CHECKOUT [CC]` compiles production RX readiness,
+ring-address selection, descriptor loads/stores and delivery. Its 2,304 cases
+check disabled/full/available receivers, one descriptor DMA read per enabled
+receive, fresh state after a backend probe, ring updates, timer/IRQ state,
+zero-to-2,048-byte payloads and overlapping descriptor/payload destinations.
+`NVNET_RX_SOURCE`, `NVNET_RX_BINARY`, `NVNET_RX_SKIP_RUN` and `NVNET_RX_CFLAGS`
+support baseline and native checks. DMA memory and timers are bounded models;
+this is not a live-network throughput measurement.
