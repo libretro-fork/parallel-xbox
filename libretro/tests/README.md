@@ -432,6 +432,18 @@ the fixture verifies native transfers avoid unnecessary growth requests while
 scaled fallbacks and aligned stencil planes remain fully covered. This tests
 capacity and ordering, without allocating those buffers or measuring GPU stalls.
 
+`python libretro/tests/test-depth-transfer-gpu.py CHECKOUT [CC]` runs the
+production depth-to-texture pack dependency segment, fixed compute descriptors
+and generated shader on a real Vulkan device. It compares 2,400 texture-pack
+chains with 2,400 readback-reference chains across D24S8/D32S8, six grids,
+native/doubled extents and 192 alternating batches. Tiny 1x1, 3x5 and 7x9 grids
+exercise stencil word tails; D24 words also match an independent byte oracle.
+D32 uses the shared pack shader reference. Upload/readback and fence submission
+are fixture plumbing: this does not exercise image-to-buffer copies, native
+scratch blits, final texture images or overlapping submissions. Reported times
+are serialized fixture observations, not before/after optimization or game FPS.
+No validation layer is requested. A Vulkan loader/device is required.
+
 Vulkan captures allocate mapped readback buffers lazily per sync slot and
 grow them to the actual output dimensions. Requested captures fail explicitly
 if the image, size or allocation is invalid. Timing-only runs allocate no

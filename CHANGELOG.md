@@ -4,6 +4,8 @@
 
 ## Unreleased
 
+- Add a real-device oracle for Vulkan depth-to-texture pack dependencies, comparing the production barrier/dispatch segment with readback packing across native/doubled grids and partial stencil words. Runtime rendering behavior is unchanged.
+
 - Batch Vulkan index, inline-vertex and uniform staging visibility into one barrier call after their copies. Preserve non-coherent flushes, per-buffer byte/access ranges, both uniform shader consumers and empty-buffer omission.
 
 - Poll the newest Vulkan auxiliary fence first during cleanup, retiring a fully completed queue with one status query. Preserve FIFO partial completion, ring/RAM ownership release and open recordings without adding a CPU wait.
