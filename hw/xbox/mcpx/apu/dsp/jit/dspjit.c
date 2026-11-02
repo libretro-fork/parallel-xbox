@@ -2080,9 +2080,9 @@ static int np_kind(const Insn *in)
     if (!strcmp(name, "movec #xx, D1")) {
         return reg_supported(in->inst & 63) ? NP_MOVEC_IMM : NP_MOVEC_SPECIAL;
     }
-    if (!strcmp(name, "movec [X or Y]:ea <-> R") &&
-        (in->inst & (1 << 15))) {
-        return reg_supported(in->inst & 63) ? NP_MOVEC_EA : NP_MOVEC_SPECIAL;
+    if (!strcmp(name, "movec [X or Y]:ea <-> R")) {
+        return (in->inst & (1 << 15)) && reg_supported(in->inst & 63)
+               ? NP_MOVEC_EA : NP_MOVEC_SPECIAL;
     }
     if (!strcmp(name, "movec [X or Y]:aa <-> R")) {
         return NP_MOVEC_SPECIAL;
@@ -2156,6 +2156,30 @@ static void emit_nonparallel(Tr *t, const Insn *in, int kind)
     case NP_MOVEC_EA: {
         Ea ea;
         if (kind == NP_MOVEC_SPECIAL) acc_spill_all(t, false);
+        if (!strcmp(in->d.name, "movec [X or Y]:ea <-> R") &&
+            !(inst & (1 << 15))) {
+            emit_calc_ea(t, (inst >> 8) & 63, in->ext, EA1, &ea);
+            if (ea.kind == EA_IMM) {
+                /* The interpreter uses the immediate as a store address. */
+                ea.kind = EA_ABS;
+                ea.abs = ea.imm;
+            }
+            ea_addr_reg(t, &ea);
+            unsigned reg = inst & 63;
+            if (reg == DSP_REG_SSH) {
+                /* Address generation precedes the pop. Keep the destination
+                 * across the C helper, including caller-saved x86 EA1. */
+                h_stub_call_begin(e);
+                h_mov_rr(e, 1, H_ARG0, REG_CORE);
+                h_call(e, (const void *)dsp56k_stack_pop);
+                h_stub_call_end(e);
+                h_mov_rr(e, 0, V1, T0);
+            } else {
+                h_ld32(e, V1, REG_CORE, REGOFF(reg));
+            }
+            emit_write_mem(t, (inst >> 6) & 1, ea.reg, V1);
+            break;
+        }
         if (!strcmp(in->d.name, "movec [X or Y]:aa <-> R")) {
             unsigned reg = inst & 63;
             unsigned space = (inst >> 6) & 1;

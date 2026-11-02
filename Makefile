@@ -396,9 +396,10 @@ dspcompare: $(DSPNATIVE) $(DSPDIFF)
 		$(DSP_PROGRAM_RUNNER) $(DSPDIFF) --until-halt --baseline-jit --frames 100 --seed 2 $(CORE_DIR)/libretro/tests/rom/$$rom.inc || exit $$?; \
 	done
 
-DSP_STARTUP_ROMS := gp-startup-control gp-startup-peripheral gp-startup-register gp-startup-short-control
+DSP_STARTUP_ROMS := gp-startup-control gp-startup-peripheral gp-startup-register gp-startup-short-control gp-startup-effective-control
+DSP_STARTUP_ARGS ?= --startup
 dspstartup: $(DSPNATIVE) $(DSPDIFF)
-	$(DSP_PROGRAM_RUNNER) $(DSPNATIVE) --startup
+	$(DSP_PROGRAM_RUNNER) $(DSPNATIVE) $(DSP_STARTUP_ARGS)
 	@for rom in $(DSP_STARTUP_ROMS); do \
 		$(DSP_PROGRAM_RUNNER) $(DSPDIFF) --until-halt --frames 100 --seed 1 $(CORE_DIR)/libretro/tests/rom/$$rom.inc || exit $$?; \
 		$(DSP_PROGRAM_RUNNER) $(DSPDIFF) --until-halt --frames 100 --seed 2 $(CORE_DIR)/libretro/tests/rom/$$rom.inc || exit $$?; \

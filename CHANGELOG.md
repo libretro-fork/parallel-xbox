@@ -19,6 +19,8 @@
 
 ## Unreleased
 
+- DSP: compile effective-address X/Y MOVEC control stores without interpreter fallback. Preserve address updates and SSH stack pops, including the destination across helper calls. Add 89,088 regression boundaries and a repeated-store program.
+
 - Add an all-or-nothing two-span SPSC write as the queue prerequisite for borrowed shader states. Copy spans directly into plain or mirrored rings and publish once after both are complete; reject oversized or non-fitting records without a partial write. Existing queue callers and renderer behavior are unchanged.
 
 - Return DMA descriptor storage before completion callbacks so successor transfers reuse it, reserve larger SG hints in one resize, and clear the owner cache on content close. Remove descriptor-cache TLS and fix the completion-reference leak when cancelling a mapping wait; guest payload mapping and copies are unchanged.

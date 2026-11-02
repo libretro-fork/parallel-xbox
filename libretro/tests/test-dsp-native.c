@@ -809,6 +809,26 @@ static void check_inc_dec_words(Machine *a, Machine *b, unsigned mode)
     }
 }
 
+static void check_effective_control_stores(Machine *a, Machine *b, unsigned mode)
+{
+    static const unsigned contexts[] = {0x20000000, 0x40000, 0x80000};
+    for (unsigned reg = DSP_REG_M0; reg < DSP_REG_MAX; reg++) {
+        for (unsigned ea = 0; ea < 64; ea++) {
+            if ((ea >> 3) == 6 && (ea & 7) != 0 && (ea & 7) != 4) continue;
+            for (unsigned space = 0; space < 2; space++) {
+                for (unsigned ctx = 0; ctx < ARRAY_SIZE(contexts); ctx++) {
+                    for (unsigned seed = 0; seed < 2; seed++) {
+                        check(a, b, 0x054020 | (ea << 8) | (space << 6) | reg,
+                              space || seed ? 0x30 : 0xFFFF85,
+                              0x400000 | 0x1000000 | contexts[ctx] | (seed ? 9 : 0),
+                              mode, seed != 0);
+                    }
+                }
+            }
+        }
+    }
+}
+
 static void check_startup_operations(Machine *a, Machine *b, unsigned mode)
 {
     check_inc_dec_words(a, b, mode);
@@ -868,6 +888,7 @@ static void check_startup_operations(Machine *a, Machine *b, unsigned mode)
             }
         }
     }
+    check_effective_control_stores(a, b, mode);
     static const unsigned ports[] = {0, 0x30, 0x31, 0x32, 0x3F};
     for (unsigned ea = 0; ea < 64; ea++) {
         if ((ea >> 3) == 6 && (ea & 7) != 0 && (ea & 7) != 4) continue;
@@ -1129,10 +1150,11 @@ int main(int argc, char **argv)
     bool relative_only = argc == 2 && !strcmp(argv[1], "--relative");
     bool loops_only = argc == 2 && !strcmp(argv[1], "--loops");
     bool compare_only = argc == 2 && !strcmp(argv[1], "--compare");
+    bool effective_only = argc == 2 && !strcmp(argv[1], "--effective-control");
     bool startup_only = argc == 2 && !strcmp(argv[1], "--startup");
     bool program_only = argc == 2 && !strcmp(argv[1], "--program");
-    if (argc != 1 && !relative_only && !loops_only && !program_only && !compare_only && !startup_only) {
-        fputs("usage: dspnative [--relative|--loops|--program|--compare|--startup]\n", stderr);
+    if (argc != 1 && !relative_only && !loops_only && !program_only && !compare_only && !startup_only && !effective_only) {
+        fputs("usage: dspnative [--relative|--loops|--program|--compare|--startup|--effective-control]\n", stderr);
         return 2;
     }
     Machine *a = machine_new(false), *b = machine_new(true);
@@ -1146,8 +1168,9 @@ int main(int argc, char **argv)
 #ifdef _WIN32
     assert(initially_committed == (64u << 10));
 #endif
-    if (relative_only || loops_only || program_only || compare_only || startup_only) {
+    if (relative_only || loops_only || program_only || compare_only || startup_only || effective_only) {
         for (unsigned mode = 0; mode < 4; mode++) {
+            if (effective_only) check_effective_control_stores(a, b, mode);
             if (startup_only) check_startup_operations(a, b, mode);
             if (compare_only) check_compare_immediates(a, b, mode);
             if (relative_only) check_relative_branches(a, b, mode);
