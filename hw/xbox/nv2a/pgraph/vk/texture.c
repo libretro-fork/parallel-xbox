@@ -253,10 +253,9 @@ static void stage_blocks_3d(PGRAPHState *pg, TextureLevel *level,
 {
     unsigned int bw = ((width + 3) & ~3) / 4, bh = ((height + 3) & ~3) / 4;
     size_t slice = (size_t)bw * bh * block_size;
-    /* One slice/XY block already has Vulkan slice order. A single block
-     * column can instead be copied one slice at a time with a strided
-     * buffer row (copy_volume_block_slices), without CPU rearrangement.
-     * Compact grids use one copy region per block and four-slice group. */
+    /* One slice/XY block already has Vulkan slice order. Other grouped
+     * layouts retain CPU staging; multi-region direct routes are confined
+     * to the upload benchmark after cached-memory regressions. */
     bool ordered = depth == 1 || bw * bh == 1;
     if ((ordered || volume_blocks_direct(width, height, depth)) &&
         level_from_vram(pg, level, data, width, height, depth,
@@ -300,6 +299,12 @@ static void stage_blocks_3d(PGRAPHState *pg, TextureLevel *level,
          * size decision and source/destination bases outside the copy loop. */
         for (unsigned z0 = 0; z0 < depth; z0 += 4) {
             unsigned nz = MIN(depth - z0, 4);
+            /* The last one-slice group is already contiguous. */
+            if (nz == 1) {
+                size_t tail = (size_t)z0 * slice;
+                memcpy(dst + tail, data + tail, slice);
+                break;
+            }
             size_t stride = (size_t)nz * 8;
             for (unsigned z = 0; z < nz; z++) {
                 const uint8_t *src = data + ((size_t)z0 * blocks + z) * 8;

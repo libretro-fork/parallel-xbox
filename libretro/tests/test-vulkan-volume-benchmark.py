@@ -1,5 +1,7 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""Serialized direct-versus-staged BC upload microbenchmark, with byte checks."""
+"""Byte-checked BC upload benchmark. --cpu-tail compares final-slice staging
+against frozen 3b8b00a; both timed paths submit identical staged GPU uploads.
+"""
 from pathlib import Path
 import os,re,subprocess,sys,tempfile
 repo=Path(sys.argv[1]).resolve();cc=sys.argv[2] if len(sys.argv)>2 else 'gcc'
@@ -113,8 +115,10 @@ bench="""
 needle='        vkDestroyFence(device, fence, NULL);'
 assert needle in code
 code=code.replace(needle,bench+needle)
-if '--cpu-layout' in sys.argv[3:] or '--cpu-loop' in sys.argv[3:]:
+if any(flag in sys.argv[3:] for flag in ('--cpu-layout','--cpu-loop','--cpu-tail')):
     reference='bc-volume-staging-sequential-reference.h' if '--cpu-loop' in sys.argv[3:] else 'bc-volume-staging-reference.h'
+    if '--cpu-tail' in sys.argv[3:]:
+        reference='bc1-tail-staging-reference.h'
     baseline=(repo/'libretro/tests'/reference).read_text()
     position=code.index('static unsigned selected_host_flags;')
     code=code[:position]+baseline+'\n'+code[position:]
@@ -125,7 +129,7 @@ if '--cpu-layout' in sys.argv[3:] or '--cpu-loop' in sys.argv[3:]:
     code=code.replace('fallback-control','staged')
     code=code.replace('    assert(saved_regions>0);','    puts("Setup-oracle counters below are outside timed CPU-layout paths.");\n    assert(saved_regions>0);')
     code=code.replace('EXPERIMENTAL ROUTES; conservative renderer defaults unchanged.', 'CPU LAYOUT COMPARISON; both timed paths use identical staged GPU uploads.')
-if '--cpu-loop' in sys.argv[3:]:
+if '--cpu-loop' in sys.argv[3:] or '--cpu-tail' in sys.argv[3:]:
     code=code.replace('(w==256&&h==256&&depth==129)', '(w==256&&h==256&&(depth==4||depth==16||depth==32||depth==129))')
     code=code.replace('depths[] = {1,2,4,5,9,17,65,129}', 'depths[] = {1,2,4,5,9,16,17,32,65,129}')
     code=code.replace('widths[] = {1,4,5,8,12,16,17,20,32,64,128,256,260}', 'widths[] = {1,4,5,8,12,16,17,20,32,64,128,256,257,260,512}')

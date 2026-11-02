@@ -179,7 +179,10 @@ int main(void)
 
         assert((level.source==LEVEL_VRAM)==eligible);
         assert(copy_calls == (eligible ? 0 :
-            depth==1 || blocks==1 ? 1 : (size_t)blocks*depth));
+            depth==1 || blocks==1 ? 1 : (size_t)blocks*depth -
+            ((bs==8 && blocks>=4096 && (depth&3)==1 &&
+              (renderer.storage_buffers[BUFFER_STAGING_SRC].properties &
+               VK_MEMORY_PROPERTY_HOST_CACHED_BIT)) ? blocks-1 : 0)));
         assert(level.width==w && level.height==h && level.depth==depth && level.size==bytes);
         assert(!level.row_length && !level.crop_offset);
         if(eligible) {

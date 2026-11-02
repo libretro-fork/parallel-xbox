@@ -4,6 +4,8 @@
 
 ## Unreleased
 
+- Copy the final contiguous slice of large host-cached BC1 volumes in one CPU operation instead of one per block. Preserve upload bytes, GPU commands, uncached traversal and other texture layouts; add a frozen-reference benchmark.
+
 - Add a report-dispatch probe comparing production decisions with two fixture-only idle-polling candidates. Preserve renderer behavior while timings do not establish a consistent improvement across all paths.
 
 - Publish stencil-write and depth-perspective control bits together after the existing surface update, reducing redundant register traffic while preserving final state and the depth-format update.
