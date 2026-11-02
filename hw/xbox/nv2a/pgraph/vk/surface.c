@@ -1937,6 +1937,9 @@ void pgraph_vk_upload_surface_data(NV2AState *d, SurfaceBinding *surface,
                           staged_offset, from_vram ? surface->pitch : row_bytes,
                           row_bytes, surface->height);
 
+        VkDeviceSize packed_input_size = row_bytes * surface->height;
+        VkDeviceSize source_span = (surface->height - 1) *
+            (from_vram ? surface->pitch : row_bytes) + row_bytes;
         VkDeviceSize num_pixels = (VkDeviceSize)scaled_width * scaled_height;
         VkDeviceSize unpacked_depth_image_size = num_pixels * 4;
         VkDeviceSize unpacked_size = depth_stencil_plane_size(
@@ -1950,7 +1953,8 @@ void pgraph_vk_upload_surface_data(NV2AState *d, SurfaceBinding *surface,
             .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
             .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
             .buffer = source_buffer,
-            .size = VK_WHOLE_SIZE
+            .offset = staged_offset,
+            .size = source_span
         };
         vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
                              VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 1,
@@ -1967,7 +1971,7 @@ void pgraph_vk_upload_surface_data(NV2AState *d, SurfaceBinding *surface,
             .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
             .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
             .buffer = r->storage_buffers[BUFFER_COMPUTE_DST].buffer,
-            .size = VK_WHOLE_SIZE
+            .size = packed_input_size
         };
         vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
                              VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, NULL,
@@ -1999,7 +2003,7 @@ void pgraph_vk_upload_surface_data(NV2AState *d, SurfaceBinding *surface,
             .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
             .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
             .buffer = r->storage_buffers[BUFFER_COMPUTE_DST].buffer,
-            .size = VK_WHOLE_SIZE
+            .size = packed_input_size
         };
         vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
                              VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 1,

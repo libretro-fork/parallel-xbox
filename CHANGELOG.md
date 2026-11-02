@@ -4,6 +4,8 @@
 
 ## Unreleased
 
+- Limit Vulkan depth-upload packed input barriers to the native packed payload and source reuse to the actual staged/imported pitched span and offset. Preserve scaled aligned unpacked output dependencies and the GPU conversion path.
+
 - Scope Vulkan image-to-buffer readback reuse barriers to aligned depth/stencil planes or the actual color/D16 destination span, including pitch and ring/RAM offsets. Exclude unused buffer space and trailing row padding while preserving ordering and host waits.
 
 - Limit Vulkan staging readback host visibility to the surface payload instead of the whole buffer. Preserve compute/transfer producer selection, completion waits and non-coherent cache invalidation.

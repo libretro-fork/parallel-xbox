@@ -2941,12 +2941,14 @@ existing packed-depth paths. Full-game performance remains unmeasured.
 
 `python libretro/tests/test-depth-upload-footprint.py CHECKOUT [CC]` executes the
 production depth-upload footprint helper, capacity block, unpack destination
-barrier declarations and stencil copy offset. Its 480 extent/scale/alignment
-cases include small planes and scale 8. Both pre-unpack and post-unpack ranges
-must reach the complete last shader-written stencil word, including alignment
-padding. The matrix identifies 151 previously short ranges and four eight-byte-
-per-pixel requests that would unnecessarily exceed the 800 MiB reservation
-ceiling. These are planning/range counts, not measured runtime hazard or wait
+barrier declarations and stencil copy offset. Its 2,880 cases cover 480
+extent/scale/alignment combinations, each with staged/imported sources and three
+offsets. Packed shader-input barriers must cover the native payload; source
+reuse covers its tight or padded span from the actual offset. Unpacked output
+ranges must reach the complete last shader-written stencil word, including
+alignment padding. The base 480 combinations identify 151 previously short
+output ranges and four eight-byte-per-pixel requests that would unnecessarily
+exceed the 800 MiB reservation ceiling; each repeats across the six source cases. These are planning/range counts, not measured runtime hazard or wait
 counts. Packed input capacity and both compute buffers remain covered; all
 capacity changes occur before auxiliary recording. The unchanged depth kernels
 have separate real-device parity tests in `test-spv-depth.py --gpu`.

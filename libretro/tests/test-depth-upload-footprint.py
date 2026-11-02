@@ -22,11 +22,11 @@ def block(start):
 helper = block(source.index("static VkDeviceSize depth_stencil_plane_size("))
 upload = source.index("void pgraph_vk_upload_surface_data(")
 capacity = block(source.index("    if (use_compute_to_convert_depth_stencil_format) {", upload))
-start = source.index("        VkDeviceSize num_pixels =", upload)
+start = source.index("        VkDeviceSize packed_input_size =", upload)
 end = source.index("        VkBufferMemoryBarrier post_copy_src_barrier", start)
 calculation = source[start:end]
 barriers = []
-for name in ("pre_unpack_dst_barrier", "post_unpack_dst_barrier"):
+for name in ("post_copy_src_barrier", "pre_unpack_src_barrier", "pre_unpack_dst_barrier", "post_unpack_src_barrier", "post_unpack_dst_barrier"):
     start = source.index("        VkBufferMemoryBarrier " + name + " =", upload)
     barriers.append(block(start) + ";")
 region = re.search(r"        regions\[1\]\.bufferOffset =.*?;", source[upload:], re.S)[0]
