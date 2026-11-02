@@ -1578,51 +1578,56 @@ static void copy_cube_faces_to_texture(PGRAPHState *pg,
                                        SurfaceBinding *faces[6],
                                        TextureBinding *texture)
 {
-    PGRAPHVkState *r = pg->vk_renderer_state;
-    TextureShape *state = &texture->key.state;
-    VkColorFormatInfo vkf = texture_vkf(r, state->color_format);
-
     bool fresh_image = texture->current_layout == VK_IMAGE_LAYOUT_UNDEFINED;
-
-    nv2a_profile_inc_counter(NV2A_PROF_SURF_TO_TEX);
-
-    VkCommandBuffer cmd = pgraph_vk_begin_nondraw_commands(pg);
-    pgraph_vk_begin_debug_marker(r, cmd, RGBA_GREEN, __func__);
-
-    if (texture->current_layout != VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) {
-        pgraph_vk_transition_image_layout(pg, cmd, texture->image, vkf.vk_format,
-                                          texture->current_layout,
-                                          VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
-    }
-    texture->current_layout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-
     int max_draw_time = 0;
-    unsigned source_mask = 0;
+    unsigned source_mask = 0, copy_mask = 0;
     for (int f = 0; f < 6; f++) {
         if (!faces[f]) continue;
         source_mask |= 1u << f;
-        /* An in-place refresh keeps untouched layers. A replacement image
-         * or RAM upload has no reusable GPU-face provenance. */
+        /* Skipped upload layers retain provenance only in the same image. */
         if (fresh_image || !(texture->cube_source_mask & (1u << f)) ||
             texture->cube_source_draw_time[f] != faces[f]->draw_time) {
-            record_surface_copy(pg, cmd, faces[f], texture, f);
+            copy_mask |= 1u << f;
         }
         texture->cube_source_draw_time[f] = faces[f]->draw_time;
         if (faces[f]->draw_time > max_draw_time) {
             max_draw_time = faces[f]->draw_time;
         }
     }
+    texture->draw_time = max_draw_time;
+    texture->cube_source_mask = source_mask;
+    if (!copy_mask &&
+        texture->current_layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
+        return;
+    }
 
+    PGRAPHVkState *r = pg->vk_renderer_state;
+    TextureShape *state = &texture->key.state;
+    VkColorFormatInfo vkf = texture_vkf(r, state->color_format);
+    if (copy_mask) nv2a_profile_inc_counter(NV2A_PROF_SURF_TO_TEX);
+    VkCommandBuffer cmd = pgraph_vk_begin_nondraw_commands(pg);
+    pgraph_vk_begin_debug_marker(r, cmd, RGBA_GREEN, __func__);
+
+    if (copy_mask) {
+        if (texture->current_layout != VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) {
+            pgraph_vk_transition_image_layout(pg, cmd, texture->image, vkf.vk_format,
+                                              texture->current_layout,
+                                              VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+        }
+        texture->current_layout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+        for (int f = 0; f < 6; f++) {
+            if (copy_mask & (1u << f)) {
+                record_surface_copy(pg, cmd, faces[f], texture, f);
+            }
+        }
+    }
+    /* Scaled RAM uploads leave transfer-dst even when GPU faces are unchanged. */
     pgraph_vk_transition_image_layout(
         pg, cmd, texture->image, vkf.vk_format, texture->current_layout,
         VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
     texture->current_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-
     pgraph_vk_end_debug_marker(r, cmd);
     pgraph_vk_end_nondraw_commands(pg, cmd);
-
-    texture->draw_time = max_draw_time;
-    texture->cube_source_mask = source_mask;
 }
 
 static bool check_surface_to_texture_compatiblity(const SurfaceBinding *surface,

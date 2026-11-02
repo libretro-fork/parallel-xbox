@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Skip empty Vulkan cubemap refresh recordings and layout round trips when every GPU face is current and the texture is already shader-readable. Keep metadata current and retain the final shader-read transition after scaled RAM blits, even when no GPU face copy is needed.
+
 - Preserve GPU-face provenance when an in-place Vulkan mixed-cubemap upload refreshes only RAM faces. Avoid recopying unchanged GPU faces at native and scaled sizes; fresh/copy-on-write images still rebuild all required faces and changed sources retain their copy path.
 
 - Cache successful Vulkan S3TC storage-image capability queries per renderer and creation-parameter tuple. Avoid repeated driver queries during texture setup while rechecking each image's limits; failed queries remain retryable and cache storage is bounded.
