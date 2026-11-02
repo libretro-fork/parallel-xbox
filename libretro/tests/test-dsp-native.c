@@ -1045,8 +1045,85 @@ static void check_normalize(Machine *a, Machine *b, unsigned mode)
     }
 }
 
+static void check_divide_step(Machine *a, Machine *b, unsigned mode)
+{
+    static const unsigned regs[] = {DSP_REG_X0, DSP_REG_Y0, DSP_REG_X1, DSP_REG_Y1};
+    static const uint64_t values[] = {
+        0, 1, 0xFFFFFFFFFFFFFF, 0x7FFFFFFFFFFFFF, 0x80000000000000,
+        0x40000000000000, 0xC0000000000000, 0x00000080000000,
+        0xFFFFFF00000000, 0x0123456789ABCD, 0xFEDCBA98765432, 0x08000000000000
+    };
+    static const uint32_t words[] = {0, 1, 2, 0x7FFFFF, 0x800000, 0xFFFFFF, 0x400000, 0xC00000};
+    static const unsigned flags[] = {0, 0x3C, 0x14, 0x28};
+    const uint64_t mask = UINT64_C(0xFFFFFFFFFFFFFF), sign = UINT64_C(1) << 55;
+    for (unsigned q = 0; q < 4; q++) {
+        for (unsigned d = 0; d < 2; d++) {
+            uint32_t op = 0x018040 | (q << 4) | (d << 3);
+            for (unsigned v = 0; v < ARRAY_SIZE(values); v++) {
+                for (unsigned w = 0; w < ARRAY_SIZE(words); w++) {
+                    uint64_t old = values[v], shifted = (old * 2) & mask;
+                    int64_t signed_word = words[w] & 0x800000 ? (int64_t)words[w] - 0x1000000 : words[w];
+                    uint64_t source = (uint64_t)(signed_word * 0x1000000) & mask;
+                    bool add = ((old ^ source) & sign) != 0;
+                    uint64_t partial = (add ? shifted + source : shifted - source) & mask;
+                    bool overflow = ((old ^ shifted) & sign) != 0;
+                    for (unsigned f = 0; f < ARRAY_SIZE(flags); f++) {
+                        for (unsigned carry = 0; carry < 2; carry++) {
+                            uint64_t result = partial | carry;
+                            for (unsigned sticky = 0; sticky < 2; sticky++) {
+                                unsigned sr = (mode << DSP_SR_S0) | 0x82 | flags[f] | carry |
+                                    (sticky << DSP_SR_L) | (1u << DSP_SR_FV);
+                                unsigned expected = (sr & 0xFFFF & ~3u) |
+                                    ((result & sign) == 0) | (overflow << DSP_SR_V) |
+                                    (((old & sign) != 0) << DSP_SR_L);
+                                Machine *machines[] = {a, b};
+                                dspjit_test_reset_fallback_count();
+                                for (unsigned engine = 0; engine < 2; engine++) {
+                                    Machine *m = machines[engine];
+                                    prepare(m, op, 0x30, 1, mode, false);
+                                    dsp_core_t *c = m->dsp->backend;
+                                    c->registers[DSP_REG_A0 + d] = old & 0xFFFFFF;
+                                    c->registers[DSP_REG_A1 + d] = (old >> 24) & 0xFFFFFF;
+                                    c->registers[DSP_REG_A2 + d] = old >> 48;
+                                    c->registers[regs[q]] = words[w];
+                                    c->registers[DSP_REG_SR] = sr;
+                                    if (engine == 0) {
+                                        m->dsp->ops->step(m->dsp);
+                                        c->cycle_count += c->instr_cycle;
+                                    } else m->dsp->ops->run(m->dsp, 1);
+                                    uint64_t actual = c->registers[DSP_REG_A0 + d] |
+                                        ((uint64_t)c->registers[DSP_REG_A1 + d] << 24) |
+                                        ((uint64_t)c->registers[DSP_REG_A2 + d] << 48);
+                                    if (actual != result || c->registers[DSP_REG_SR] != expected) {
+                                        fprintf(stderr, "DIV engine=%u q=%u d=%u old=%014llx word=%06x sr=%x result=%014llx/%014llx flags=%x/%x\n",
+                                                engine, q, d, (unsigned long long)old, words[w], sr,
+                                                (unsigned long long)actual, (unsigned long long)result,
+                                                c->registers[DSP_REG_SR], expected);
+                                        exit(1);
+                                    }
+                                }
+                                assert(!dspjit_test_fallback_count());
+                                assert(compare_machines(a, b) == 0);
+                                cases++;
+                            }
+                        }
+                    }
+                }
+            }
+            static const unsigned contexts[] = {0x20000000, 0x40000, 0x80000};
+            for (unsigned ctx = 0; ctx < ARRAY_SIZE(contexts); ctx++) {
+                for (unsigned seed = 0; seed < 16; seed++) {
+                    check(a, b, op, 0x30, 0x400000 | 0x20000 | 0x1000000 | 0x10000 |
+                          contexts[ctx] | seed | (seed << 4), mode, seed & 1);
+                }
+            }
+        }
+    }
+}
+
 static void check_startup_operations(Machine *a, Machine *b, unsigned mode)
 {
+    check_divide_step(a, b, mode);
     check_normalize(a, b, mode);
     check_immediate_multiply(a, b, mode);
     check_peripheral_control_transfers(a, b, mode);
@@ -1419,6 +1496,7 @@ int main(int argc, char **argv)
     bool relative_only = argc == 2 && !strcmp(argv[1], "--relative");
     bool loops_only = argc == 2 && !strcmp(argv[1], "--loops");
     bool compare_only = argc == 2 && !strcmp(argv[1], "--compare");
+    bool divide_only = argc == 2 && !strcmp(argv[1], "--divide");
     bool normalize_only = argc == 2 && !strcmp(argv[1], "--normalize");
     bool multiply_only = argc == 2 && !strcmp(argv[1], "--multiply");
     bool program_peripheral_only = argc == 2 && !strcmp(argv[1], "--program-peripheral");
@@ -1428,8 +1506,8 @@ int main(int argc, char **argv)
     bool effective_only = argc == 2 && !strcmp(argv[1], "--effective-control");
     bool startup_only = argc == 2 && !strcmp(argv[1], "--startup");
     bool program_only = argc == 2 && !strcmp(argv[1], "--program");
-    if (argc != 1 && !relative_only && !loops_only && !program_only && !compare_only && !startup_only && !effective_only && !register_only && !program_control_only && !peripheral_only && !program_peripheral_only && !multiply_only && !normalize_only) {
-        fputs("usage: dspnative [--relative|--loops|--program|--compare|--startup|--effective-control|--register-control|--program-control|--peripheral-control|--program-peripheral|--multiply|--normalize]\n", stderr);
+    if (argc != 1 && !relative_only && !loops_only && !program_only && !compare_only && !startup_only && !effective_only && !register_only && !program_control_only && !peripheral_only && !program_peripheral_only && !multiply_only && !normalize_only && !divide_only) {
+        fputs("usage: dspnative [--relative|--loops|--program|--compare|--startup|--effective-control|--register-control|--program-control|--peripheral-control|--program-peripheral|--multiply|--normalize|--divide]\n", stderr);
         return 2;
     }
     Machine *a = machine_new(false), *b = machine_new(true);
@@ -1443,8 +1521,9 @@ int main(int argc, char **argv)
 #ifdef _WIN32
     assert(initially_committed == (64u << 10));
 #endif
-    if (relative_only || loops_only || program_only || compare_only || startup_only || effective_only || register_only || program_control_only || peripheral_only || program_peripheral_only || multiply_only || normalize_only) {
+    if (relative_only || loops_only || program_only || compare_only || startup_only || effective_only || register_only || program_control_only || peripheral_only || program_peripheral_only || multiply_only || normalize_only || divide_only) {
         for (unsigned mode = 0; mode < 4; mode++) {
+            if (divide_only) check_divide_step(a, b, mode);
             if (normalize_only) check_normalize(a, b, mode);
             if (multiply_only) check_immediate_multiply(a, b, mode);
             if (program_peripheral_only) check_program_peripheral_transfers(a, b, mode);
@@ -1629,7 +1708,8 @@ done:
     assert(dspjit_test_committed_bytes(jit) >= initially_committed);
     assert(dspjit_test_committed_bytes(jit) <= (4u << 20));
 #ifdef _WIN32
-    assert(dspjit_test_committed_bytes(jit) > initially_committed);
+    /* A focused matrix can fit in the initial committed page. */
+    if (argc == 1) assert(dspjit_test_committed_bytes(jit) > initially_committed);
 #endif
     a->dsp->ops->finalize(a->dsp);
     b->dsp->ops->finalize(b->dsp);

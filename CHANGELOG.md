@@ -22,6 +22,8 @@
 
 ## Unreleased
 
+- DSP: compile DIV non-restoring division steps natively, preserving carry feedback, shift-specific V/L and unchanged E/U/N/Z. Add 50,688 regression boundaries, an independent result/status oracle and 24-step repeat programs, including zero divisors.
+
 - DSP: compile NORM normalization natively, preserving flag-controlled shifts, sticky L and 16-bit Rn wrapping. REP publishes each iteration's flags before the next decision. Add 101,376 regression boundaries, an independent oracle and a production program.
 
 - DSP: compile immediate MPYI multiplies natively, including signed/negated products and scaling-sensitive flags. Add 55,296 regression boundaries, an independent arithmetic/status oracle and a program that rewrites a cached multiply extension.

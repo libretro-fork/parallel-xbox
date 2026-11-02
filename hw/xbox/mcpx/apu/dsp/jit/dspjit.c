@@ -1971,6 +1971,7 @@ enum {
     NP_LUA,
     NP_LUA_REL,
     NP_ALU_IMM,         /* add/cmp/and #, asl/asr #ii: an AluOp (np_alu) */
+    NP_DIV,             /* one non-restoring divide step */
     NP_NORM,            /* flag-controlled shift and 16-bit Rn update */
     NP_MOVEP_EA,        /* movep [X or Y]:ea <-> [X or Y]:pp */
     NP_MOVEP_REG,
@@ -2096,6 +2097,7 @@ static int np_kind(const Insn *in)
                !((reg == DSP_REG_A || reg == DSP_REG_B) && bit >= 24)
                ? NP_BIT_REG : NP_NONE;
     }
+    if (!strcmp(name, "div S, D")) return NP_DIV;
     if (!strcmp(name, "norm Rn, D")) return NP_NORM;
     if (!strcmp(name, "movec #xx, D1")) {
         return reg_supported(in->inst & 63) ? NP_MOVEC_IMM : NP_MOVEC_SPECIAL;
@@ -2165,6 +2167,53 @@ static void emit_nonparallel(Tr *t, const Insn *in, int kind)
     uint32_t inst = in->inst;
 
     switch (kind) {
+    case NP_DIV: {
+        static const int sources[] = {DSP_REG_X0, DSP_REG_Y0, DSP_REG_X1, DSP_REG_Y1};
+        unsigned d = (inst >> 3) & 1;
+        /* DIV preserves old E/U/N/Z even when it changes their accumulator. */
+        emit_flags_flush(t);
+        acc_load(t, d);
+        int acc = acc_reg(d);
+        h_ld32(e, V1, REG_CORE, REGOFF(DSP_REG_SR));
+        h_and_ri(e, 0, V1, SR_C);
+        h_mov_rr(e, 1, T3, acc);
+        h_shl_ri(e, 1, T3, 1);
+        emit_sext56(e, T3);
+        /* Only the initial shift contributes V/L. L is its discarded bit. */
+        h_mov_rr(e, 1, V2, acc);
+        h_shr_ri(e, 1, V2, 55);
+        h_and_ri(e, 0, V2, 1);
+        h_shl_ri(e, 0, V2, DSP_SR_L);
+        h_mov_rr(e, 1, T0, acc);
+        h_xor_rr(e, 1, T0, T3);
+        h_shr_ri(e, 1, T0, 55 - DSP_SR_V);
+        h_and_ri(e, 0, T0, SR_V);
+        h_or_rr(e, 0, V2, T0);
+        h_ld32(e, T1, REG_CORE, REGOFF(sources[(inst >> 4) & 3]));
+        h_shl_ri(e, 1, T1, 40);
+        h_sar_ri(e, 1, T1, 16);
+        h_mov_rr(e, 1, T0, acc);
+        h_xor_rr(e, 1, T0, T1);
+        h_test_rr(e, 1, T0, T0);
+        size_t subtract = h_jcc(e, HC_NS);
+        h_add_rr(e, 1, T3, T1);
+        size_t combined = h_jmp(e);
+        h_patch(e, subtract, e->len);
+        h_sub_rr(e, 1, T3, T1);
+        h_patch(e, combined, e->len);
+        emit_sext56(e, T3);
+        h_or_rr(e, 1, T3, V1);
+        /* New C is the complement of the resulting accumulator sign. */
+        h_mov_rr(e, 1, T0, T3);
+        h_shr_ri(e, 1, T0, 55);
+        h_not(e, 0, T0);
+        h_and_ri(e, 0, T0, SR_C);
+        h_or_rr(e, 0, V2, T0);
+        h_mov_rr(e, 1, acc, T3);
+        acc_written(t, d);
+        emit_sr_result(t, SR_C | SR_V | 0xFFFF0000u, V2, -1, -1);
+        break;
+    }
     case NP_NORM: {
         unsigned d = (inst >> 3) & 1;
         unsigned r = DSP_REG_R0 + ((inst >> 8) & 7);
