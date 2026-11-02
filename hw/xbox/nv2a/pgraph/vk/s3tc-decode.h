@@ -138,6 +138,7 @@ static bool s3tc_decode_levels(PGRAPHState *pg, VkCommandBuffer cmd,
         !(binding->image_ci.usage & VK_IMAGE_USAGE_STORAGE_BIT)) return false;
     VkDeviceSize ram_size = memory_region_size(d->vram), total = 0;
     VkDeviceSize limit = r->device_props.limits.maxStorageBufferRange;
+    VkDeviceSize alignment = MAX(4, r->device_props.limits.minStorageBufferOffsetAlignment);
     bool direct = r->vram_buffer != VK_NULL_HANDLE;
     VkDeviceSize first = ram_size, end = 0;
     for (unsigned i = 0; i < count; i++) {
@@ -146,20 +147,19 @@ static bool s3tc_decode_levels(PGRAPHState *pg, VkCommandBuffer cmd,
             DIV_ROUND_UP(l->out_width, 8) > r->device_props.limits.maxComputeWorkGroupCount[0] ||
             DIV_ROUND_UP(l->out_height, 8) > r->device_props.limits.maxComputeWorkGroupCount[1] ||
             l->depth > r->device_props.limits.maxComputeWorkGroupCount[2]) return false;
-        direct = direct && l->source % 4 == 0;
+        direct = direct && l->source % 4 == 0 &&
+            l->source % alignment + l->size <= limit;
         first = MIN(first, l->source);
         end = MAX(end, l->source + l->size);
         l->packed = total;
         total += ROUND_UP(l->size, 16);
     }
-    VkDeviceSize alignment = MAX(4, r->device_props.limits.minStorageBufferOffsetAlignment);
     first -= first % alignment;
     VkDeviceSize span = end - first;
-    direct = direct && span <= limit;
     if (!direct && (total > limit || total >= r->storage_buffers[BUFFER_STAGING_SRC].buffer_size)) return false;
 
-    /* Restrict imported descriptors to the selected levels, rather than all
-     * guest RAM. Shader addresses are relative to this aligned window. */
+    /* The barrier covers the selected levels; each imported descriptor uses
+     * its own aligned window so gaps between cube faces do not force staging. */
     VkDeviceSize source_offset = direct ? first : 0;
     VkBuffer source = r->vram_buffer;
     if (!direct) {
@@ -175,15 +175,14 @@ static bool s3tc_decode_levels(PGRAPHState *pg, VkCommandBuffer cmd,
     unsigned volume = binding->image_ci.imageType == VK_IMAGE_TYPE_3D;
     s3tc_decode_pipeline(r, volume);
     struct S3TCDecodeSlot *slot = s3tc_decode_slot(r);
-    VkDescriptorBufferInfo input = { .buffer = source, .offset = source_offset,
-                                     .range = direct ? span : total };
+    VkDescriptorBufferInfo inputs[96];
     if(direct) for(unsigned i=0;i<count;i++) lr_gpu_ram_claim((uintptr_t)cmd,levels[i].source,levels[i].size);
     /* Imported RAM may also contain writes from an earlier GPU operation. */
     VkBufferMemoryBarrier before = { .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
         .srcAccessMask = VK_ACCESS_HOST_WRITE_BIT | VK_ACCESS_MEMORY_WRITE_BIT,
         .dstAccessMask = VK_ACCESS_SHADER_READ_BIT,
         .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED, .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        .buffer = source, .offset = source_offset, .size = input.range };
+        .buffer = source, .offset = source_offset, .size = direct ? span : total };
     VkImageMemoryBarrier image = { .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
         .srcAccessMask = binding->current_layout == VK_IMAGE_LAYOUT_UNDEFINED ? 0 :
                          VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT,
@@ -199,6 +198,10 @@ static bool s3tc_decode_levels(PGRAPHState *pg, VkCommandBuffer cmd,
     VkWriteDescriptorSet writes[192];
     for (unsigned i = 0; i < count; i++) {
         S3TCUploadLevel *l = &levels[i];
+        VkDeviceSize window = l->source - l->source % alignment;
+        inputs[i] = (VkDescriptorBufferInfo){
+            .buffer = source, .offset = direct ? window : source_offset,
+            .range = direct ? l->source - window + l->size : total };
         VkImageViewCreateInfo vi = { .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
             .image = binding->image, .viewType = volume ? VK_IMAGE_VIEW_TYPE_3D : VK_IMAGE_VIEW_TYPE_2D_ARRAY,
             .format = VK_FORMAT_R8G8B8A8_UNORM,
@@ -208,7 +211,7 @@ static bool s3tc_decode_levels(PGRAPHState *pg, VkCommandBuffer cmd,
         outputs[i] = (VkDescriptorImageInfo){ .imageView = slot->views[i], .imageLayout = VK_IMAGE_LAYOUT_GENERAL };
         writes[2 * i] = (VkWriteDescriptorSet){ .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, .dstSet = slot->sets[i],
               .dstBinding = 0, .descriptorCount = 1, .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-              .pBufferInfo = &input };
+              .pBufferInfo = &inputs[i] };
         writes[2 * i + 1] = (VkWriteDescriptorSet){ .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, .dstSet = slot->sets[i],
               .dstBinding = 1, .descriptorCount = 1, .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
               .pImageInfo = &outputs[i] };
@@ -219,7 +222,7 @@ static bool s3tc_decode_levels(PGRAPHState *pg, VkCommandBuffer cmd,
         S3TCUploadLevel *l = &levels[i];
         uint32_t push[9] = { l->width, l->height, l->depth, format,
             l->out_width, l->out_height, l->crop, l->crop,
-            (direct ? l->source - source_offset : l->packed)/4 };
+            (direct ? l->source % alignment : l->packed)/4 };
         vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, r->s3tc_decode.layout,
                                 0, 1, &slot->sets[i], 0, NULL);
         vkCmdPushConstants(cmd, r->s3tc_decode.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(push), push);
