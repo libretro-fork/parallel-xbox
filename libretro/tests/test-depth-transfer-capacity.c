@@ -21,7 +21,7 @@ typedef struct {
     unsigned width, height;
 } SurfaceBinding;
 typedef struct { struct { TextureShape state; } key; } TextureBinding;
-typedef struct { VkDeviceSize buffer_size; } StorageBuffer;
+typedef struct { VkDeviceSize buffer_size; VkBuffer buffer; } StorageBuffer;
 typedef struct { StorageBuffer storage_buffers[1]; VkPhysicalDeviceProperties device_props; } PGRAPHVkState;
 typedef struct { PGRAPHVkState *vk_renderer_state; unsigned surface_scale_factor; } PGRAPHState;
 static bool scratch_available, ensured, recording, grown;
@@ -52,10 +52,10 @@ int main(void)
 {
     const VkFormat formats[] = { VK_FORMAT_D16_UNORM, VK_FORMAT_D24_UNORM_S8_UINT,
                                  VK_FORMAT_D32_SFLOAT_S8_UINT };
-    const unsigned dimensions[][2] = {{1, 1}, {640, 480}, {1920, 1080}};
+    const unsigned dimensions[][2] = {{1, 1}, {3, 5}, {7, 9}, {640, 480}, {1920, 1080}};
     const unsigned alignments[] = {1, 256, 4096};
-    unsigned cases = 0, native_avoided = 0;
-    for (unsigned f = 0; f < 3; f++) for (unsigned d = 0; d < 3; d++)
+    unsigned cases = 0, native_avoided = 0, tail_cases = 0;
+    for (unsigned f = 0; f < 3; f++) for (unsigned d = 0; d < 5; d++)
     for (unsigned scale = 1; scale <= 8; scale *= 2)
     for (unsigned available = 0; available < 2; available++)
     for (unsigned a = 0; a < 3; a++) for (unsigned output_bpp = 2; output_bpp <= 4; output_bpp *= 2) {
@@ -73,16 +73,18 @@ int main(void)
         copy_zeta_surface_to_texture(&pg, &surface, &texture);
         size_t pixels = (size_t)surface.width * surface.height;
         if (!(scale > 1 && available)) pixels *= scale * scale;
-        size_t planes = f ? ((pixels * 4 + alignments[a] - 1) / alignments[a]) * alignments[a] + pixels : pixels * 2;
+        size_t planes = f ? ((pixels * 4 + alignments[a] - 1) / alignments[a]) * alignments[a] + ((pixels+3)/4)*4 : pixels * 2;
         size_t output = pixels * (f ? 4 : output_bpp);
         assert(requested == (planes > output ? planes : output));
+        tail_cases+=f&&pixels%4!=0;
         assert(planned_pixels == pixels && recording && ensured);
         assert(grown == (requested > capacity));
         VkDeviceSize old_needed = (VkDeviceSize)surface.width * surface.height * scale * scale * 8;
         if (scale > 1 && available && old_needed > capacity && !grown) native_avoided++;
         cases++;
     }
-    assert(native_avoided);
+    assert(native_avoided&&tail_cases);
+    printf("Depth texture input: %u range checks, %u stencil tails include the complete final word\n",cases,tail_cases);
     printf("depth transfer capacity: %u format/extent/scale/scratch/alignment/output cases, %u unnecessary growth requests avoided\n",
            cases, native_avoided);
 }

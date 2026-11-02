@@ -1160,6 +1160,9 @@ static void copy_zeta_surface_to_texture(PGRAPHState *pg, SurfaceBinding *surfac
             .imageExtent = (VkExtent3D){cw, ch, 1},
         };
     }
+    /* The pack shader reads complete stencil words, including its tail. */
+    VkDeviceSize input_size = use_compute_to_convert_depth_stencil ?
+        ROUND_UP((VkDeviceSize)copied_image_size, 4) : copied_image_size;
     /* Choose native/scaled extents before sizing. Growing drains GPU work,
      * so request only the copied planes and their packed/texture output,
      * including alignment before the stencil plane. Grow before recording. */
@@ -1169,9 +1172,9 @@ static void copy_zeta_surface_to_texture(PGRAPHState *pg, SurfaceBinding *surfac
         output_size = MAX(output_size, (VkDeviceSize)cw * ch * 4);
     }
     pgraph_vk_buffer_ensure_capacity(pg, BUFFER_COMPUTE_DST,
-                                     MAX(copied_image_size, output_size));
+                                     MAX(input_size, output_size));
     StorageBuffer *dst_storage_buffer = &r->storage_buffers[BUFFER_COMPUTE_DST];
-    assert(dst_storage_buffer->buffer_size >= copied_image_size);
+    assert(dst_storage_buffer->buffer_size >= input_size);
 
     VkCommandBuffer cmd = pgraph_vk_begin_nondraw_commands(pg);
     pgraph_vk_begin_debug_marker(r, cmd, RGBA_GREEN, __func__);
@@ -1243,7 +1246,7 @@ static void copy_zeta_surface_to_texture(PGRAPHState *pg, SurfaceBinding *surfac
             .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
             .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
             .buffer = r->storage_buffers[BUFFER_COMPUTE_DST].buffer,
-            .size = VK_WHOLE_SIZE
+            .size = input_size
         };
         vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
                              VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, NULL,
@@ -1274,7 +1277,7 @@ static void copy_zeta_surface_to_texture(PGRAPHState *pg, SurfaceBinding *surfac
             .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
             .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
             .buffer = r->storage_buffers[BUFFER_COMPUTE_DST].buffer,
-            .size = VK_WHOLE_SIZE
+            .size = input_size
         };
         vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
                              VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 1,

@@ -416,8 +416,10 @@ fixtures separately verify their unchanged conversion paths.
 
 `python libretro/tests/test-depth-transfer-capacity.py CHECKOUT [CC]` runs the
 production depth-sampling planning prefix before command recording. It checks
-D16, D24S8 and D32S8, three extents, scale 1/2/4/8, available/unavailable native
-scratch, three stencil alignments and 16/32-bit output footprints (432 cases).
+D16, D24S8 and D32S8, five extents, scale 1/2/4/8, available/unavailable native
+scratch, three stencil alignments and 16/32-bit output footprints (720 cases).
+The pack-input barrier declarations must cover exactly the aligned input range;
+180 partial stencil tails include the complete final shader-read word.
 A simulated 800 MiB buffer capacity matches the production reservation ceiling;
 the fixture verifies native transfers avoid unnecessary growth requests while
 scaled fallbacks and aligned stencil planes remain fully covered. This tests

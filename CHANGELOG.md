@@ -4,6 +4,8 @@
 
 ## Unreleased
 
+- Include the final shader-read stencil word in Vulkan depth-to-texture input capacity and bound pack-input visibility/reuse barriers to that aligned plane range. Preserve native/scaled extent selection and GPU-only conversion.
+
 - Limit native color-to-linear-texture transfer-buffer barriers to the packed pixel payload. Preserve the GPU-only reinterpretation, native downscale scratch ordering, snapshot copy and buffer reuse dependencies.
 
 - Bound Vulkan scanout background upload visibility to the scanout frame and source reuse to the accumulated dirty-rectangle/staging source envelope. Preserve one recording, per-rectangle RAM ownership, pitched copies and asynchronous submission without an extra rectangle pass.
