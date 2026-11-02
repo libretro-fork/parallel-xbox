@@ -69,6 +69,10 @@ functions = ['set_notify_status', 'voice_get_mask', 'voice_set_mask', 'voice_off
              'get_voice_bin_src_dst', 'voice_work_claim', 'voice_work_unit', 'voice_worker_thread',
              'voice_work_run_serial', 'voice_work_enqueue', 'voice_work_schedule', 'voice_work_dispatch', 'voice_work_init',
              'voice_work_finalize']
+# Test the production post-barrier reduction independently of voice processing.
+reduction = function('voice_work_dispatch')
+reduction = reduction[reduction.rindex('    for (int w = 1; w < vwd->num_workers; w++) {'):]
+reduction = 'static void test_reduce_worker_outputs(MCPXAPUState *d, int64_t mixbins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME]) {\nVoiceWorkDispatch *vwd=&d->vp.voice_work_dispatch;\n' + reduction
 driver = (here/'test-vp-threads.c').read_text(encoding='utf-8')
 instrumentation = r'''
 /* Count completion publications without changing the production functions. */
@@ -84,7 +88,7 @@ static int test_fetch_add(retro_atomic_int_t *p, int value)
 #undef retro_atomic_fetch_add_int
 #define retro_atomic_fetch_add_int(p, v) test_fetch_add((p), (v))
 '''
-generated = fixture + instrumentation + table + ''.join(function(n) for n in functions) + \
+generated = fixture + instrumentation + table + ''.join(function(n) for n in functions) + reduction + \
     driver.replace('/* VOICE FRAME */', function('mcpx_apu_vp_frame'))
 env = os.environ.copy()
 env['PATH'] = str(Path(cc).resolve().parent) + os.pathsep + env.get('PATH', '')
