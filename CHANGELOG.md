@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Reuse batched image-layout transitions for ordinary Vulkan color surface-to-texture copies, reducing their barrier API calls from four to two. Keep snapshot copies and source restoration intact; depth, byte reinterpretation and borrowed surfaces retain their separate paths.
+
 - Combine Vulkan cubemap destination transitions with the existing source barrier batches, using two barrier API calls total around a nonempty face refresh. Preserve all source dependencies, destination transfer visibility and the transition-only scaled-RAM path.
 
 - Batch Vulkan cubemap source-layout transitions around face copies, reducing source-barrier API calls to one before and one after the selected copies. Preserve sampled/attachment dependencies, deduplicate shared source images and retain the single-surface path.

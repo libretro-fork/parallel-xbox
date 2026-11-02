@@ -1422,21 +1422,12 @@ void pgraph_vk_texture_drop_borrowed(NV2AState *d, SurfaceBinding *surface)
     lru_visit_active(&ctx.r->texture_cache, drop_borrowed_visitor, &ctx);
 }
 
-/* One surface into one layer of a texture in TRANSFER_DST. A cube batch can
- * own the source transitions; otherwise restore the source as an attachment. */
+/* Layouts are established by the color-copy batch: source TRANSFER_SRC,
+ * destination TRANSFER_DST. Record one destination layer's pixel copy. */
 static void record_surface_copy(PGRAPHState *pg, VkCommandBuffer cmd,
                                 SurfaceBinding *surface,
-                                TextureBinding *texture, int layer,
-                                bool source_layouts_ready)
+                                TextureBinding *texture, int layer)
 {
-    if (!source_layouts_ready) {
-        pgraph_vk_transition_image_layout(
-            pg, cmd, surface->image, surface->host_fmt.vk_format,
-            pgraph_vk_surface_base_layout(surface),
-            VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
-        pgraph_vk_surface_left_shader_read(pg, surface);
-    }
-
     VkImageCopy region = {
         .srcSubresource.aspectMask = surface->host_fmt.aspect,
         .srcSubresource.layerCount = 1,
@@ -1453,13 +1444,6 @@ static void record_surface_copy(PGRAPHState *pg, VkCommandBuffer cmd,
                    VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, texture->image,
                    texture->current_layout, 1, &region);
 
-    if (!source_layouts_ready) {
-        pgraph_vk_transition_image_layout(
-            pg, cmd, surface->image, surface->host_fmt.vk_format,
-            VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-            surface->color ? VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL :
-                             VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
-    }
 }
 
 /* Reinterpret equal-sized rows of native color pixels as a linear texture.
@@ -1547,52 +1531,9 @@ static void copy_surface_to_linear_texture(PGRAPHState *pg,
     pgraph_vk_end_nondraw_commands(pg, cmd);
 }
 
-// FIXME: Should be able to skip the copy and sample the original surface image
-static void copy_surface_to_texture(PGRAPHState *pg, SurfaceBinding *surface,
-                                    TextureBinding *texture)
-{
-    if (!surface->color) {
-        copy_zeta_surface_to_texture(pg, surface, texture);
-        return;
-    }
-    if (texture->key.byte_reinterpret) {
-        copy_surface_to_linear_texture(pg, surface, texture);
-        return;
-    }
-
-    PGRAPHVkState *r = pg->vk_renderer_state;
-    TextureShape *state = &texture->key.state;
-    VkColorFormatInfo vkf = texture_vkf(r, state->color_format);
-
-    nv2a_profile_inc_counter(NV2A_PROF_SURF_TO_TEX);
-
-    trace_nv2a_pgraph_surface_render_to_texture(
-        surface->vram_addr, surface->width, surface->height);
-
-    VkCommandBuffer cmd = pgraph_vk_begin_nondraw_commands(pg);
-    pgraph_vk_begin_debug_marker(r, cmd, RGBA_GREEN, __func__);
-
-    pgraph_vk_transition_image_layout(pg, cmd, texture->image, vkf.vk_format,
-                                      texture->current_layout,
-                                      VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
-    texture->current_layout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-
-    record_surface_copy(pg, cmd, surface, texture, 0, false);
-
-    pgraph_vk_transition_image_layout(pg, cmd, texture->image, vkf.vk_format,
-                                      texture->current_layout,
-                                      VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-    texture->current_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-
-    pgraph_vk_end_debug_marker(r, cmd);
-    pgraph_vk_end_nondraw_commands(pg, cmd);
-
-    texture->draw_time = surface->draw_time;
-}
-
 /* Batch source and destination transitions around per-face image copies.
  * A source image appearing in several layers needs only one transition pair. */
-static void record_cube_surface_copies(PGRAPHState *pg, VkCommandBuffer cmd,
+static void record_color_surface_copies(PGRAPHState *pg, VkCommandBuffer cmd,
                                         SurfaceBinding *faces[6],
                                         TextureBinding *texture, unsigned mask)
 {
@@ -1663,12 +1604,45 @@ static void record_cube_surface_copies(PGRAPHState *pg, VkCommandBuffer cmd,
                          0, 0, NULL, 0, NULL, before_count, before);
     texture->current_layout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
     for (unsigned f = 0; f < 6; f++) {
-        if (mask & (1u << f)) record_surface_copy(pg, cmd, faces[f], texture, f, true);
+        if (mask & (1u << f)) record_surface_copy(pg, cmd, faces[f], texture, f);
     }
     vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
                          VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT |
                              VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
                          0, 0, NULL, 0, NULL, count + 1, after);
+}
+
+// FIXME: Should be able to skip the copy and sample the original surface image
+static void copy_surface_to_texture(PGRAPHState *pg, SurfaceBinding *surface,
+                                    TextureBinding *texture)
+{
+    if (!surface->color) {
+        copy_zeta_surface_to_texture(pg, surface, texture);
+        return;
+    }
+    if (texture->key.byte_reinterpret) {
+        copy_surface_to_linear_texture(pg, surface, texture);
+        return;
+    }
+
+    PGRAPHVkState *r = pg->vk_renderer_state;
+
+    nv2a_profile_inc_counter(NV2A_PROF_SURF_TO_TEX);
+
+    trace_nv2a_pgraph_surface_render_to_texture(
+        surface->vram_addr, surface->width, surface->height);
+
+    VkCommandBuffer cmd = pgraph_vk_begin_nondraw_commands(pg);
+    pgraph_vk_begin_debug_marker(r, cmd, RGBA_GREEN, __func__);
+
+    SurfaceBinding *sources[6] = { surface };
+    record_color_surface_copies(pg, cmd, sources, texture, 1);
+    texture->current_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+    pgraph_vk_end_debug_marker(r, cmd);
+    pgraph_vk_end_nondraw_commands(pg, cmd);
+
+    texture->draw_time = surface->draw_time;
 }
 
 /* Cube faces: six per-face render surfaces feed one cubemap, which
@@ -1707,7 +1681,7 @@ static void copy_cube_faces_to_texture(PGRAPHState *pg,
     pgraph_vk_begin_debug_marker(r, cmd, RGBA_GREEN, __func__);
 
     if (copy_mask) {
-        record_cube_surface_copies(pg, cmd, faces, texture, copy_mask);
+        record_color_surface_copies(pg, cmd, faces, texture, copy_mask);
     } else {
         /* Scaled RAM blits still need their final sampling dependency. */
         VkColorFormatInfo vkf = texture_vkf(r, texture->key.state.color_format);

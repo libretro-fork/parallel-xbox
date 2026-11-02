@@ -11,8 +11,8 @@
 #define RGBA_GREEN 0
 /* GPU COMMON */
 typedef struct {unsigned color_format;} TextureShape;
-typedef struct {VkImage image;VkImageLayout current_layout;struct {TextureShape state;}key;unsigned cube_source_mask,cube_source_draw_time[6];int draw_time;} TextureBinding;
-typedef struct {VkImage image;unsigned width,height;bool color,in_shader_read;int draw_time;struct {VkFormat vk_format;VkImageAspectFlags aspect;}host_fmt;} SurfaceBinding;
+typedef struct {VkImage image;VkImageLayout current_layout;struct {TextureShape state;bool byte_reinterpret;}key;unsigned cube_source_mask,cube_source_draw_time[6];int draw_time;} TextureBinding;
+typedef struct {VkImage image;uint64_t vram_addr;unsigned width,height;bool color,in_shader_read;int draw_time;struct {VkFormat vk_format;VkImageAspectFlags aspect;}host_fmt;} SurfaceBinding;
 typedef struct {unsigned unused;} PGRAPHVkState;
 typedef struct {PGRAPHVkState *vk_renderer_state;unsigned surface_scale_factor;} PGRAPHState;
 typedef struct {VkFormat vk_format;} VkColorFormatInfo;
@@ -60,6 +60,9 @@ static void tracked_barrier(VkCommandBuffer cmd,VkPipelineStageFlags src,VkPipel
 }
 #define vkCmdPipelineBarrier tracked_barrier
 #define vkCmdCopyImage tracked_copy
+#define trace_nv2a_pgraph_surface_render_to_texture(...) ((void)0)
+static void copy_zeta_surface_to_texture(PGRAPHState *pg,SurfaceBinding *s,TextureBinding *t){assert(!"depth must retain its separate path");}
+static void copy_surface_to_linear_texture(PGRAPHState *pg,SurfaceBinding *s,TextureBinding *t){assert(!"byte views must retain their separate path");}
 /* PRODUCTION */
 typedef struct {VkImage image;VkDeviceMemory memory;} Image;
 static Image image(unsigned size,unsigned layers){
@@ -83,15 +86,17 @@ int main(void){
 /* GPU INIT */
  active_cmd=cmd;PGRAPHVkState renderer={0};unsigned cases=0;size_t pixels=0;
  for(unsigned scale=1;scale<=4;scale*=2)for(unsigned mask=1;mask<64;mask++)
- for(unsigned changed=0;changed<2;changed++)for(unsigned fresh=0;fresh<2;fresh++)for(unsigned alias=0;alias<2;alias++){
+ for(unsigned changed=0;changed<2;changed++)for(unsigned fresh=0;fresh<2;fresh++)for(unsigned alias=0;alias<2;alias++)for(unsigned ordinary=0;ordinary<2;ordinary++){
+  if(ordinary&&(mask!=1||alias))continue;
+  unsigned layers=ordinary?1:6;
   unsigned size=8*scale,first=__builtin_ctz(mask);
-  PGRAPHState pg={&renderer,scale};Image sources[6],old=image(size,6),replacement={0};
-  if(fresh)replacement=image(size,6);
+  PGRAPHState pg={&renderer,scale};Image sources[6],old=image(size,layers),replacement={0};
+  if(fresh)replacement=image(size,layers);
   TextureBinding t={.image=fresh?replacement.image:old.image,.current_layout=fresh?VK_IMAGE_LAYOUT_UNDEFINED:VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,.cube_source_mask=mask};
-  SurfaceBinding surfaces[6],*faces[6];Buffer output=buffer((size_t)size*size*6*4*(fresh?2:1));
+  SurfaceBinding surfaces[6],*faces[6];Buffer output=buffer((size_t)size*size*layers*4*(fresh?2:1));
   VkCommandBufferBeginInfo begin={.sType=VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};CHECK(vkBeginCommandBuffer(cmd,&begin));
   for(unsigned f=0;f<6;f++){
-   sources[f]=image(size,1);surfaces[f]=(SurfaceBinding){.image=sources[f].image,.width=8,.height=8,.color=true,.in_shader_read=(f%2)!=0,.draw_time=10+(changed&&f==first),.host_fmt={VK_FORMAT_R8G8B8A8_UNORM,VK_IMAGE_ASPECT_COLOR_BIT}};
+   sources[f]=image(size,1);surfaces[f]=(SurfaceBinding){.image=sources[f].image,.width=8,.height=8,.color=true,.in_shader_read=(f%2)!=0||(ordinary&&changed),.draw_time=10+(changed&&f==first),.host_fmt={VK_FORMAT_R8G8B8A8_UNORM,VK_IMAGE_ASPECT_COLOR_BIT}};
    faces[f]=mask&(1u<<f)?&surfaces[f]:NULL;t.cube_source_draw_time[f]=10;
    pgraph_vk_transition_image_layout(&pg,cmd,sources[f].image,VK_FORMAT_R8G8B8A8_UNORM,VK_IMAGE_LAYOUT_UNDEFINED,VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
    clear_face(cmd,sources[f].image,0,128+f+16*(changed&&f==first));
@@ -99,43 +104,45 @@ int main(void){
   }
   if(alias)for(unsigned f=0;f<6;f++)if(mask&(1u<<f))faces[f]=&surfaces[first];
   pgraph_vk_transition_image_layout(&pg,cmd,old.image,VK_FORMAT_R8G8B8A8_UNORM,VK_IMAGE_LAYOUT_UNDEFINED,VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
-  for(unsigned f=0;f<6;f++)clear_face(cmd,old.image,f,(mask&(1u<<f)?128+(alias?first:f):16+f));
+  for(unsigned f=0;f<layers;f++)clear_face(cmd,old.image,f,(mask&(1u<<f)?128+(alias?first:f):16+f));
   pgraph_vk_transition_image_layout(&pg,cmd,old.image,VK_FORMAT_R8G8B8A8_UNORM,VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
   preserve_cube_upload_sources(&t,mask);
-  if(!(fresh&&mask==63)){ /* A fresh all-GPU cube has no preceding RAM upload. */
+  if(!(fresh&&(mask==63||ordinary))){ /* A fresh all-GPU cube has no preceding RAM upload. */
   pgraph_vk_transition_image_layout(&pg,cmd,t.image,VK_FORMAT_R8G8B8A8_UNORM,t.current_layout,VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);t.current_layout=VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-  for(unsigned f=0;f<6;f++)if(!(mask&(1u<<f)))clear_face(cmd,t.image,f,32+f);
+  for(unsigned f=0;f<layers;f++)if(!(mask&(1u<<f)))clear_face(cmd,t.image,f,32+f);
   if(scale==1){pgraph_vk_transition_image_layout(&pg,cmd,t.image,VK_FORMAT_R8G8B8A8_UNORM,t.current_layout,VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);t.current_layout=VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;}
   }
-  unsigned needed=fresh?__builtin_popcount(mask):(changed?(alias?__builtin_popcount(mask):1):0);
+  unsigned needed=ordinary?1:fresh?__builtin_popcount(mask):(changed?(alias?__builtin_popcount(mask):1):0);
   copies=recordings=ends=source_batches=source_images=total_barriers=0;target_image=t.image;target_before=t.current_layout;
   expected_stages=0;expected_sources=0;
-  for(unsigned f=0;f<6;f++)if(faces[f]&&(fresh||faces[f]->draw_time!=10)){
+  for(unsigned f=0;f<6;f++)if(faces[f]&&(ordinary||fresh||faces[f]->draw_time!=10)){
    if(alias&&expected_sources)continue;
    expected_sources++;expected_stages|=faces[f]->in_shader_read?VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT:VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
   }
   if(needed&&target_before!=VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL)expected_stages|=target_before==VK_IMAGE_LAYOUT_UNDEFINED?VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT:VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-  count_source_barriers=true;copy_cube_faces_to_texture(&pg,faces,&t);count_source_barriers=false;
+  count_source_barriers=true;
+  if(ordinary)copy_surface_to_texture(&pg,&surfaces[0],&t);else copy_cube_faces_to_texture(&pg,faces,&t);
+  count_source_barriers=false;
   assert(source_batches==(needed?2u:0u)&&source_images==2*expected_sources);
   assert(total_barriers==(needed?2u:(scale!=1?1u:0u)));
-  assert(copies==needed&&t.current_layout==VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL&&t.cube_source_mask==mask);
+  assert(copies==needed&&t.current_layout==VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL&&(ordinary||t.cube_source_mask==mask));
   assert(recordings==(unsigned)(needed||scale!=1)&&recordings==ends);
   pgraph_vk_transition_image_layout(&pg,cmd,t.image,VK_FORMAT_R8G8B8A8_UNORM,t.current_layout,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
-  VkBufferImageCopy region={.imageSubresource={VK_IMAGE_ASPECT_COLOR_BIT,0,0,6},.imageExtent={size,size,1}};
+  VkBufferImageCopy region={.imageSubresource={VK_IMAGE_ASPECT_COLOR_BIT,0,0,layers},.imageExtent={size,size,1}};
   vkCmdCopyImageToBuffer(cmd,t.image,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,output.handle,1,&region);
   if(fresh){
    pgraph_vk_transition_image_layout(&pg,cmd,old.image,VK_FORMAT_R8G8B8A8_UNORM,VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
-   region.bufferOffset=(size_t)size*size*6*4;vkCmdCopyImageToBuffer(cmd,old.image,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,output.handle,1,&region);
+   region.bufferOffset=(size_t)size*size*layers*4;vkCmdCopyImageToBuffer(cmd,old.image,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,output.handle,1,&region);
   }
   VkBufferMemoryBarrier host={.sType=VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,.srcAccessMask=VK_ACCESS_TRANSFER_WRITE_BIT,.dstAccessMask=VK_ACCESS_HOST_READ_BIT,.srcQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED,.dstQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED,.buffer=output.handle,.size=VK_WHOLE_SIZE};
   vkCmdPipelineBarrier(cmd,VK_PIPELINE_STAGE_TRANSFER_BIT,VK_PIPELINE_STAGE_HOST_BIT,0,0,NULL,1,&host,0,NULL);
   CHECK(vkEndCommandBuffer(cmd));VkFenceCreateInfo fi={.sType=VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};VkFence fence;CHECK(vkCreateFence(device,&fi,NULL,&fence));
   VkSubmitInfo submit={.sType=VK_STRUCTURE_TYPE_SUBMIT_INFO,.commandBufferCount=1,.pCommandBuffers=&cmd};CHECK(vkQueueSubmit(queue,1,&submit,fence));CHECK(vkWaitForFences(device,1,&fence,VK_TRUE,10000000000ULL));
-  for(unsigned f=0;f<6;f++){
+  for(unsigned f=0;f<layers;f++){
    verify(output.mapped,size,f,mask&(1u<<f)?128+(alias?first:f)+16*(changed&&(alias||f==first)):32+f);
-   if(fresh)verify(output.mapped+(size_t)size*size*6*4,size,f,mask&(1u<<f)?128+(alias?first:f):16+f);
+   if(fresh)verify(output.mapped+(size_t)size*size*layers*4,size,f,mask&(1u<<f)?128+(alias?first:f):16+f);
   }
-  pixels+=(size_t)size*size*6*(fresh?2:1);cases++;
+  pixels+=(size_t)size*size*layers*(fresh?2:1);cases++;
   vkDestroyFence(device,fence,NULL);CHECK(vkResetCommandBuffer(cmd,0));drop_buffer(output);
   for(unsigned f=0;f<6;f++){vkDestroyImage(device,sources[f].image,NULL);vkFreeMemory(device,sources[f].memory,NULL);}
   vkDestroyImage(device,old.image,NULL);vkFreeMemory(device,old.memory,NULL);

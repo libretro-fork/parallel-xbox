@@ -3014,14 +3014,15 @@ must remain unread by the RAM hash; fresh images must rebuild all GPU faces.
 
 `python libretro/tests/test-mixed-cube-vulkan.py CHECKOUT CC` runs the production
 image-layout transitions, cube provenance and surface-copy recording on a real
-Vulkan graphics queue. Its 1,512 cases cover every mixed face mask and fully GPU-backed cubes at 1x/2x/4x,
+Vulkan graphics queue. Its 1,524 cases cover ordinary color surface copies, every mixed face mask
+and fully GPU-backed cubes at 1x/2x/4x,
 unchanged and changed GPU faces, fresh replacement images, old-image byte
 preservation, shared source images, sampled/attachment source layouts, and
 native-readable versus scaled-transfer-dst upload states. Source barrier spies
 require one combined source/destination batch before and one after nonempty
 face copies, including fresh all-GPU cubes starting in undefined layout.
 RAM-face refreshes are modeled with per-layer GPU clears; this does not test
-the CPU upload or scaling-blit implementation. Readback verifies 6,096,384
+the CPU upload or scaling-blit implementation. Readback verifies 6,104,448
 pixels, and command spies check that unchanged readable cubes open no recording.
 The fixture defaults to synchronization validation. Only when the layer is
 unavailable, explicitly set `CUBE_COPY_NO_VALIDATION=1` and record that limitation.

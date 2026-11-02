@@ -28,7 +28,7 @@ static void pgraph_vk_begin_debug_marker(PGRAPHVkState *r,VkCommandBuffer cmd,un
 static void pgraph_vk_end_debug_marker(PGRAPHVkState *r,VkCommandBuffer cmd){(void)r;assert(cmd==1);}
 static void pgraph_vk_transition_image_layout(PGRAPHState *pg,VkCommandBuffer cmd,unsigned image,unsigned format,unsigned before,unsigned after){assert(pg&&cmd==1&&image==3&&!format);assert(before<=2&&after>=1&&after<=2);transitions++;}
 static void record_surface_copy(PGRAPHState *pg,VkCommandBuffer cmd,SurfaceBinding *s,TextureBinding *t,unsigned f){assert(pg&&cmd==1&&f<6);t->pixels[f]=s->pixel;copies++;}
-static void record_cube_surface_copies(PGRAPHState *pg,VkCommandBuffer cmd,SurfaceBinding *faces[6],TextureBinding *t,unsigned mask){
+static void record_color_surface_copies(PGRAPHState *pg,VkCommandBuffer cmd,SurfaceBinding *faces[6],TextureBinding *t,unsigned mask){
  for(unsigned f=0;f<6;f++)if(mask&(1u<<f))record_surface_copy(pg,cmd,faces[f],t,f);
 }
 static uint8_t ram[6*4096];

@@ -3,7 +3,7 @@
 from pathlib import Path
 import os,re,subprocess,sys,tempfile
 r=Path(sys.argv[1]).resolve();cc=sys.argv[2];parts=[]
-for path,names in [('image.c',['check_format_has_depth_component','check_format_has_stencil_component','pgraph_vk_transition_image_layout']),('texture.c',['preserve_cube_upload_sources','record_surface_copy','record_cube_surface_copies','copy_cube_faces_to_texture'])]:
+for path,names in [('image.c',['check_format_has_depth_component','check_format_has_stencil_component','pgraph_vk_transition_image_layout']),('texture.c',['preserve_cube_upload_sources','record_surface_copy','record_color_surface_copies','copy_surface_to_texture','copy_cube_faces_to_texture'])]:
  s=(r/'hw/xbox/nv2a/pgraph/vk'/path).read_text()
  for name in names:
   m=re.search(r'^(?:static )?(?:void|bool) '+name+r'\([^;{]*\)\s*\{',s,re.M);assert m,name
