@@ -528,7 +528,7 @@ bool lr_disk_poll(void)
 }
 
 /* what a drain or a cancel waits on that is not one of these requests (a
- * DMA's bounce buffer, the IDE's TRIM) is a bottom half of its own */
+ * DMA's bounce buffer) is a bottom half of its own */
 static bool lr_disk_progress(void)
 {
     return lr_disk_run_pending() || aio_bh_poll(qemu_get_aio_context()) > 0;

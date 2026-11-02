@@ -7,6 +7,8 @@
 
 ## Unreleased
 
+- Complete IDE TRIM through the fixed disk slots instead of allocating a one-use QEMU bottom half. Preserve deferred delivery and device guards; cancellation now handles empty descriptors and retains its error when the outstanding discard completes.
+
 - Copy the final contiguous slice of large host-cached BC1 volumes in one CPU operation instead of one per block. Preserve upload bytes, GPU commands, uncached traversal and other texture layouts; add a frozen-reference benchmark.
 
 - Add a report-dispatch probe comparing production decisions with two fixture-only idle-polling candidates. Preserve renderer behavior while timings do not establish a consistent improvement across all paths.

@@ -3272,3 +3272,9 @@ VP_CYCLE test needs both the queue-capacity and lookahead fixes.
 Win64 code generation keeps voice_process at 1,248 stack bytes and the VP
 frame at 176 bytes for this lookahead fix; dispatch/filter sizes remain
 3,120/1,120 bytes. The bounded scan remains inlined with no visited array.
+
+## IDE TRIM completion
+
+`test-ide-trim.py CHECKOUT [CC]` compiles production TRIM and fixed disk completion functions with production generic BH enqueue/poll, CPU kicks and libretro-common atomics/eventcount. It checks deferred empty/error completions, cancellation before/between/after discards, nested dispatch, both initial device guard states and 10,000 lifecycles. `TRIM_CFLAGS` enables sanitizers, and `TRIM_BINARY` plus `TRIM_SKIP_RUN=1` supports supervised native execution. Runs in the regression suite.
+
+Pass `--bench` after CC for scheduler-only batches of empty, one-range and 32-range TRIM; `TRIM_SOURCE` selects an older IDE source for comparison. File discard is modeled as a successful fixed-slot submission. Both variants use identical modeled AIO allocation; real BH allocation, scheduling, deletion and retirement are included. DSP fences are modeled equally. These timings exclude file operations and game FPS.

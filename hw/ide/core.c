@@ -428,7 +428,7 @@ static bool ide_sect_range_ok(IDEState *s,
 typedef struct TrimAIOCB {
     BlockAIOCB common;
     IDEState *s;
-    QEMUBH *bh;
+    MemReentrancyGuard *reentrancy_guard;
     int ret;
     QEMUIOVector *qiov;
     BlockAIOCB *aiocb;
@@ -438,10 +438,6 @@ typedef struct TrimAIOCB {
 static void trim_aio_cancel(BlockAIOCB *acb)
 {
     TrimAIOCB *iocb = container_of(acb, TrimAIOCB, common);
-
-    /* Exit the loop so ide_issue_trim_cb will not continue  */
-    iocb->j = iocb->qiov->niov - 1;
-    iocb->i = (iocb->qiov->iov[iocb->j].iov_len / 8) - 1;
 
     iocb->ret = -ECANCELED;
 
@@ -456,19 +452,23 @@ static const AIOCBInfo trim_aiocb_info = {
     .cancel_async       = trim_aio_cancel,
 };
 
-static void ide_trim_bh_cb(void *opaque)
+static void ide_trim_done_cb(void *opaque, int ret)
 {
     TrimAIOCB *iocb = opaque;
     BlockBackend *blk = iocb->s->blk;
+    MemReentrancyGuard *guard = iocb->reentrancy_guard;
+    bool engaged = guard->engaged_in_io;
 
+    /* The fixed-slot dispatcher supplies the DSP ownership fence. Preserve
+     * the device guard formerly supplied by the guarded bottom half. */
+    guard->engaged_in_io = true;
     iocb->common.cb(iocb->common.opaque, iocb->ret);
 
-    qemu_bh_delete(iocb->bh);
-    iocb->bh = NULL;
     qemu_aio_unref(iocb);
 
     /* Paired with an increment in ide_issue_trim() */
     blk_dec_in_flight(blk);
+    guard->engaged_in_io = engaged;
 }
 
 static void ide_issue_trim_cb(void *opaque, int ret)
@@ -476,7 +476,7 @@ static void ide_issue_trim_cb(void *opaque, int ret)
     TrimAIOCB *iocb = opaque;
     IDEState *s = iocb->s;
 
-    if (ret >= 0) {
+    if (ret >= 0 && iocb->ret >= 0) {
         while (iocb->j < iocb->qiov->niov) {
             int j = iocb->j;
             while (++iocb->i < iocb->qiov->iov[j].iov_len / 8) {
@@ -508,15 +508,15 @@ static void ide_issue_trim_cb(void *opaque, int ret)
             iocb->j++;
             iocb->i = -1;
         }
-    } else {
+    } else if (ret < 0 && iocb->ret >= 0) {
         iocb->ret = ret;
     }
 
 done:
     iocb->aiocb = NULL;
-    if (iocb->bh) {
-        qemu_bh_schedule(iocb->bh);
-    }
+    /* Even empty/error TRIM completes after its submission returns. This
+     * uses a fixed disk slot rather than allocating a one-use bottom half. */
+    blk_abort_aio_request(s->blk, ide_trim_done_cb, iocb, 0);
 }
 
 BlockAIOCB *ide_issue_trim(
@@ -527,13 +527,13 @@ BlockAIOCB *ide_issue_trim(
     IDEDevice *dev = s->unit ? s->bus->slave : s->bus->master;
     TrimAIOCB *iocb;
 
-    /* Paired with a decrement in ide_trim_bh_cb() */
+    /* Paired with a decrement in ide_trim_done_cb() */
     blk_inc_in_flight(s->blk);
 
     iocb = blk_aio_get(&trim_aiocb_info, s->blk, cb, cb_opaque);
     iocb->s = s;
-    iocb->bh = qemu_bh_new_guarded(ide_trim_bh_cb, iocb,
-                                   &DEVICE(dev)->mem_reentrancy_guard);
+    iocb->reentrancy_guard = &DEVICE(dev)->mem_reentrancy_guard;
+    iocb->aiocb = NULL;
     iocb->ret = 0;
     iocb->qiov = qiov;
     iocb->i = -1;
