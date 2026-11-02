@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Scope Vulkan unswizzle input barriers to the texture's enclosing 32-bit words and, when needed, a separate palette range. Avoid whole-RAM source barriers while preserving partial-word reads, GPU/host visibility and output-ring reuse ordering.
+
 - Scope direct Vulkan texture/surface upload source barriers to their imported-RAM spans instead of all RAM, preserving host/GPU write visibility and ownership. Texture batches cover their selected direct levels; scanout background batches retain their existing whole-buffer scope.
 
 - Reuse batched image-layout transitions for ordinary Vulkan color surface-to-texture copies, reducing their barrier API calls from four to two. Keep snapshot copies and source restoration intact; depth, byte reinterpretation and borrowed surfaces retain their separate paths.

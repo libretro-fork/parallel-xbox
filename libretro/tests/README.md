@@ -3028,3 +3028,12 @@ The fixture defaults to synchronization validation. Only when the layer is
 unavailable, explicitly set `CUBE_COPY_NO_VALIDATION=1` and record that limitation.
 This focused fixture needs no core build or game assets. It does not validate
 full-game rendering, imported-host RAM or real frontend scheduling.
+
+
+The staging-visibility fixture also executes the production unswizzle source
+barrier block with a byte-enumerated word-span oracle, including palettes
+contained in or separate from texture input. The real GPU swizzle fixture
+(`test-spv-swizzle.py CHECKOUT CC --gpu`) executes that same production source
+barrier block before unswizzle dispatches. This checks partial-word and palette
+range coverage alongside its original/direct shader byte comparisons; it does
+not establish a frame-time gain or replace synchronization validation.

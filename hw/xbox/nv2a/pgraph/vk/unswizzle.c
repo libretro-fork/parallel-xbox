@@ -351,7 +351,9 @@ bool pgraph_vk_unswizzle(PGRAPHState *pg, VkCommandBuffer cmd,
     /* Host and earlier GPU writes to RAM must precede shader reads; copies
      * from earlier submissions must finish reading the output ring before
      * this dispatch overwrites its range. */
-    VkBufferMemoryBarrier before[2] = {
+    VkDeviceSize source_start = src_offset & ~(VkDeviceSize)3;
+    VkDeviceSize source_end = (src_offset + texels * bpp + 3) & ~(VkDeviceSize)3;
+    VkBufferMemoryBarrier before[3] = {
         {
             .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
             .srcAccessMask = VK_ACCESS_HOST_WRITE_BIT | VK_ACCESS_MEMORY_WRITE_BIT,
@@ -359,7 +361,7 @@ bool pgraph_vk_unswizzle(PGRAPHState *pg, VkCommandBuffer cmd,
             .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
             .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
             .buffer = r->vram_buffer,
-            .size = VK_WHOLE_SIZE,
+            .offset = source_start, .size = source_end - source_start,
         },
         {
             .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
@@ -372,10 +374,18 @@ bool pgraph_vk_unswizzle(PGRAPHState *pg, VkCommandBuffer cmd,
             .size = out_size,
         },
     };
+    unsigned barrier_count = 2;
+    if (palette_offset &&
+        (palette_offset < source_start || palette_offset + 256 * 4 > source_end)) {
+        before[2] = before[0];
+        before[2].offset = palette_offset;
+        before[2].size = 256 * 4;
+        barrier_count++;
+    }
     vkCmdPipelineBarrier(cmd,
                          VK_PIPELINE_STAGE_HOST_BIT | VK_PIPELINE_STAGE_ALL_COMMANDS_BIT |
                              VK_PIPELINE_STAGE_TRANSFER_BIT,
-                         VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, NULL, 2,
+                         VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, NULL, barrier_count,
                          before, 0, NULL);
 
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,

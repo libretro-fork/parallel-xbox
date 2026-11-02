@@ -11,7 +11,9 @@ def run(r,cc,folder,gpu):
  block=re.search(r'struct UnswizzlePush \{(.*?)\};',host,re.S).group(1)
  fields=re.findall(r'\b\w+\b',block.replace('uint32_t',''))
  assert fields==['src','dst','width','height','depth','bpp','mask_x','mask_y','mask_z','n_words','palette'],fields
- code=Path(__file__).with_suffix('.c').read_text()
+ a=host.index('    /* Host and earlier GPU writes');b=host.index('    vkCmdBindPipeline',a)
+ barrier='static void production_unswizzle_barrier(Buffer source,Buffer output,const uint32_t push[11]){\n#define BUFFER_UNSWIZZLE_OUT 0\nstruct {VkBuffer vram_buffer;struct {VkBuffer buffer;}storage_buffers[1];}state={.vram_buffer=source.buffer,.storage_buffers={{output.buffer}}},*r=&state;VkCommandBuffer cmd=command;VkDeviceSize src_offset=push[0],dst=push[1],palette_offset=push[10];size_t texels=(size_t)push[2]*push[3]*push[4],out_size=push[9]*4;unsigned bpp=push[5];'+host[a:b]+'\n#undef BUFFER_UNSWIZZLE_OUT\n}'
+ code=Path(__file__).with_suffix('.c').read_text().replace('/* HOST SOURCE BARRIER */',barrier)
  q=(r/'libretro/tests/test-spv-geom.c').read_text();a=q.index('#ifdef _WIN32\nstatic void quiet_test_abort');b=q.index('int line_tests(',a);code=code.replace('/* QUIET ERRORS */',q[a:b])
  prefix=(r/'libretro/tests/spv-clear-vulkan.h').read_text();prefix=prefix[:prefix.index('static VkPipeline pipeline(')].replace('Utility GPU:','Swizzle GPU:')
  prefix=prefix.replace('static unsigned memory_type(unsigned bits,VkMemoryPropertyFlags flags){for(unsigned i=0;i<memory_properties.memoryTypeCount;i++)if((bits&(1u<<i))&&(memory_properties.memoryTypes[i].propertyFlags&flags)==flags)return i;abort();}', 'static unsigned memory_type(unsigned bits,VkMemoryPropertyFlags flags){for(unsigned pass=0;pass<2;pass++){unsigned required=flags|(pass?0:VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);for(unsigned i=0;i<memory_properties.memoryTypeCount;i++)if((bits&(1u<<i))&&(memory_properties.memoryTypes[i].propertyFlags&required)==required)return i;}abort();}')

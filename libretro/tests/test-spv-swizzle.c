@@ -21,6 +21,7 @@ static GlslcResult reference(bool to_ram){GlslcResult result;GlslcOptions opts={
 #define VK_NO_PROTOTYPES
 #include <volk.h>
 #include "gpu-common.h"
+/* HOST SOURCE BARRIER */
 static VkPipeline pipeline(VkShaderModule module,VkPipelineLayout layout){VkComputePipelineCreateInfo ci={.sType=VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,.layout=layout,.stage={.sType=VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,.stage=VK_SHADER_STAGE_COMPUTE_BIT,.module=module,.pName="main"}};VkPipeline p;CHECK(vkCreateComputePipelines(device,VK_NULL_HANDLE,1,&ci,NULL,&p));return p;}
 /* Independent coordinate interleaver: advance the source coordinate bits in
  * X/Y/Z order while each dimension still has a bit. */
@@ -58,7 +59,7 @@ static void gpu_tests(const char *folder){
    VkDescriptorBufferInfo bi[2]={{vram.buffer,0,VK_WHOLE_SIZE},{linear.buffer,0,VK_WHOLE_SIZE}};VkWriteDescriptorSet writes[2];for(unsigned i=0;i<2;i++)writes[i]=(VkWriteDescriptorSet){.sType=VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,.dstSet=set,.dstBinding=i,.descriptorCount=1,.descriptorType=VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,.pBufferInfo=&bi[i]};vkUpdateDescriptorSets(device,2,writes,0,NULL);
    Buffer source=to_ram?linear:vram,output=to_ram?vram:linear;
    for(unsigned candidate=0;candidate<2;candidate++){
-    memcpy(source.mapped,input,input_size);memset(output.mapped,0xcd,output_size);begin();vkCmdBindPipeline(command,VK_PIPELINE_BIND_POINT_COMPUTE,pipelines[candidate]);vkCmdBindDescriptorSets(command,VK_PIPELINE_BIND_POINT_COMPUTE,layout,0,1,&set,0,NULL);vkCmdPushConstants(command,layout,VK_SHADER_STAGE_COMPUTE_BIT,0,44,push);vkCmdDispatch(command,(push[9]+255)/256,1,1);host_barrier(output,VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,VK_ACCESS_SHADER_WRITE_BIT);submit();check_bytes(output.mapped,expected,output_size,to_ram,bpp,pal,w,h,d,candidate);assert(!memcmp(source.mapped,input,input_size));gpu_cases++;
+    memcpy(source.mapped,input,input_size);memset(output.mapped,0xcd,output_size);begin();if(!to_ram)production_unswizzle_barrier(source,output,push);vkCmdBindPipeline(command,VK_PIPELINE_BIND_POINT_COMPUTE,pipelines[candidate]);vkCmdBindDescriptorSets(command,VK_PIPELINE_BIND_POINT_COMPUTE,layout,0,1,&set,0,NULL);vkCmdPushConstants(command,layout,VK_SHADER_STAGE_COMPUTE_BIT,0,44,push);vkCmdDispatch(command,(push[9]+255)/256,1,1);host_barrier(output,VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,VK_ACCESS_SHADER_WRITE_BIT);submit();check_bytes(output.mapped,expected,output_size,to_ram,bpp,pal,w,h,d,candidate);assert(!memcmp(source.mapped,input,input_size));gpu_cases++;
    }
    if(dim==11&&!alignment){double times[2][4];for(unsigned sample=0;sample<4;sample++)for(unsigned order=0;order<2;order++){unsigned candidate=order^(sample&1);times[candidate][sample]=time_kernel(pipelines[candidate],layout,set,push);}for(unsigned c=0;c<2;c++)for(unsigned i=0;i<4;i++)for(unsigned j=i+1;j<4;j++)if(times[c][j]<times[c][i]){double t=times[c][i];times[c][i]=times[c][j];times[c][j]=t;}printf("Swizzle GPU timestamps 1024x512 ram=%u bpp=%u palette=%u: original=%.3fus direct=%.3fus (median, four alternating 32-dispatch batches)\n",to_ram,bpp,pal,(times[0][1]+times[0][2])/2,(times[1][1]+times[1][2])/2);}
    free(input);free(expected);drop_buffer(vram);drop_buffer(linear);

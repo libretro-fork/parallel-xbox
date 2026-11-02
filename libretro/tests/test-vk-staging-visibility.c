@@ -24,6 +24,8 @@ static unsigned char host_bytes[32][64],visible_bytes[32][64],device_bytes[32][6
 static uintptr_t next_allocation;
 static unsigned invalidates,flushes,copies,barriers,maps,unmaps,destroys,host_barriers;
 static unsigned unswizzle_barriers;
+static VkDeviceSize source_first,source_size,palette_extra;
+static const unsigned texel_counts[]={1,8,64,512,2048};
 static unsigned expected_dst;static size_t expected_size,expected_offset;
 static VkResult xemu_vk_create_buffer(void *allocator,const VkBufferCreateInfo *info,const int *allocation_info,VkBuffer *buffer,uintptr_t *allocation){(void)allocation_info;assert(allocator==(void*)(uintptr_t)7&&info->size==64&&info->sharingMode==VK_SHARING_MODE_EXCLUSIVE);assert(next_allocation+1<32);*allocation=++next_allocation;*buffer=(VkBuffer)*allocation;properties[*allocation]=next_properties;return VK_SUCCESS;}
 static void xemu_vk_get_allocation_memory_properties(void *allocator,uintptr_t allocation,VkMemoryPropertyFlags *out){assert(allocator==(void*)(uintptr_t)7&&allocation&&allocation<=next_allocation);*out=properties[allocation];}
@@ -34,12 +36,13 @@ static VkResult xemu_vk_invalidate_allocation(void *allocator,uintptr_t allocati
 VKAPI_ATTR void VKAPI_CALL vkCmdCopyBuffer(VkCommandBuffer cmd,VkBuffer src,VkBuffer dst,uint32_t count,const VkBufferCopy *regions){assert(cmd==(VkCommandBuffer)(uintptr_t)4&&count==1&&!regions[0].srcOffset&&!regions[0].dstOffset&&regions[0].size==expected_size);uintptr_t s=(uintptr_t)src,d=(uintptr_t)dst;const void *input=properties[s]&VK_MEMORY_PROPERTY_HOST_COHERENT_BIT?host_bytes[s]:visible_bytes[s];assert(!memcmp(input,host_bytes[s],expected_size));memcpy(device_bytes[d],input,expected_size);copies++;}
 VKAPI_ATTR void VKAPI_CALL vkCmdPipelineBarrier(VkCommandBuffer cmd,VkPipelineStageFlags src,VkPipelineStageFlags dst,VkDependencyFlags flags,uint32_t memory_count,const VkMemoryBarrier *memory,uint32_t count,const VkBufferMemoryBarrier *buffers,uint32_t image_count,const VkImageMemoryBarrier *images){if(dst==VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT){
  assert(src==(VK_PIPELINE_STAGE_HOST_BIT|VK_PIPELINE_STAGE_ALL_COMMANDS_BIT|VK_PIPELINE_STAGE_TRANSFER_BIT));
- assert(cmd==(VkCommandBuffer)(uintptr_t)4&&!flags&&!memory_count&&!memory&&count==2&&!image_count&&!images);
- assert(buffers[0].buffer==(VkBuffer)(uintptr_t)0x555&&buffers[0].size==VK_WHOLE_SIZE&&!buffers[0].offset);
+ assert(cmd==(VkCommandBuffer)(uintptr_t)4&&!flags&&!memory_count&&!memory&&count==(palette_extra?3u:2u)&&!image_count&&!images);
+ assert(buffers[0].buffer==(VkBuffer)(uintptr_t)0x555&&buffers[0].size==source_size&&buffers[0].offset==source_first);
  assert(buffers[0].srcAccessMask==(VK_ACCESS_HOST_WRITE_BIT|VK_ACCESS_MEMORY_WRITE_BIT)&&buffers[0].dstAccessMask==VK_ACCESS_SHADER_READ_BIT);
  assert(buffers[1].buffer==(VkBuffer)(uintptr_t)0x556&&buffers[1].offset==16&&buffers[1].size==17);
  assert(buffers[1].srcAccessMask==VK_ACCESS_TRANSFER_READ_BIT&&buffers[1].dstAccessMask==VK_ACCESS_SHADER_WRITE_BIT);
- for(unsigned i=0;i<2;i++)assert(buffers[i].srcQueueFamilyIndex==VK_QUEUE_FAMILY_IGNORED&&buffers[i].dstQueueFamilyIndex==VK_QUEUE_FAMILY_IGNORED);
+ if(palette_extra){assert(buffers[2].buffer==buffers[0].buffer&&buffers[2].offset==palette_extra&&buffers[2].size==1024);assert(buffers[2].srcAccessMask==buffers[0].srcAccessMask&&buffers[2].dstAccessMask==buffers[0].dstAccessMask);}
+ for(unsigned i=0;i<count;i++)assert(buffers[i].srcQueueFamilyIndex==VK_QUEUE_FAMILY_IGNORED&&buffers[i].dstQueueFamilyIndex==VK_QUEUE_FAMILY_IGNORED);
  unswizzle_barriers++;return;
 }if(src==(VK_PIPELINE_STAGE_HOST_BIT|VK_PIPELINE_STAGE_ALL_COMMANDS_BIT)){assert(cmd==(VkCommandBuffer)(uintptr_t)4&&dst==VK_PIPELINE_STAGE_TRANSFER_BIT&&!flags&&!memory_count&&!memory&&count==1&&!image_count&&!images);assert(buffers[0].srcAccessMask==(VK_ACCESS_HOST_WRITE_BIT|VK_ACCESS_MEMORY_WRITE_BIT)&&buffers[0].dstAccessMask==VK_ACCESS_TRANSFER_READ_BIT&&buffers[0].buffer==(VkBuffer)(uintptr_t)0x555&&buffers[0].size==17&&buffers[0].offset==16);host_barriers++;return;}assert(cmd==(VkCommandBuffer)(uintptr_t)4&&src==VK_PIPELINE_STAGE_TRANSFER_BIT&&!flags&&!memory_count&&!memory&&count==1&&!image_count&&!images);VkAccessFlags access=expected_dst==BUFFER_INDEX?VK_ACCESS_INDEX_READ_BIT:expected_dst==BUFFER_VERTEX_INLINE?VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT:VK_ACCESS_UNIFORM_READ_BIT;VkPipelineStageFlags stages=expected_dst==BUFFER_UNIFORM?(VK_PIPELINE_STAGE_VERTEX_SHADER_BIT|VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT):VK_PIPELINE_STAGE_VERTEX_INPUT_BIT;assert(dst==stages&&buffers[0].srcAccessMask==VK_ACCESS_TRANSFER_WRITE_BIT&&buffers[0].dstAccessMask==access&&buffers[0].size==expected_size&&!buffers[0].offset&&buffers[0].srcQueueFamilyIndex==VK_QUEUE_FAMILY_IGNORED&&buffers[0].dstQueueFamilyIndex==VK_QUEUE_FAMILY_IGNORED);barriers++;}
 /* PRODUCTION */
@@ -66,9 +69,19 @@ int main(void){quiet_test_errors();unsigned cases=0;
   }
   pgraph_vk_upload_source_barrier(&pg,(VkCommandBuffer)(uintptr_t)4,false,16,17);assert(!host_barriers);r.vram_buffer=(VkBuffer)(uintptr_t)0x555;pgraph_vk_upload_source_barrier(&pg,(VkCommandBuffer)(uintptr_t)4,false,16,17);assert(!host_barriers);pgraph_vk_upload_source_barrier(&pg,(VkCommandBuffer)(uintptr_t)4,true,16,17);assert(host_barriers==1);pgraph_vk_upload_source_barrier(&pg,(VkCommandBuffer)(uintptr_t)4,true,16,0);assert(host_barriers==1);
   r.storage_buffers[BUFFER_UNSWIZZLE_OUT].buffer=(VkBuffer)(uintptr_t)0x556;
-  unsigned prior_unswizzle=unswizzle_barriers;
-  unswizzle_source_barriers(&r,(VkCommandBuffer)(uintptr_t)4,16,17);
-  assert(unswizzle_barriers==prior_unswizzle+1);
+  for(unsigned src=0;src<8;src++)for(unsigned bpp=1;bpp<=4;bpp*=2)
+  for(unsigned ni=0;ni<5;ni++)for(unsigned pal=0;pal<3;pal++){
+   unsigned n=texel_counts[ni];
+   if(src%bpp||(pal&&bpp!=1))continue;
+   unsigned palette=pal==0?0:pal==1?16:4096;
+   uint64_t low=UINT64_MAX,high=0;
+   for(unsigned byte=0;byte<n*bpp;byte++){uint64_t word=(src+byte)/4;if(word<low)low=word;if(word>high)high=word;}
+   source_first=low*4;source_size=(high-low+1)*4;
+   palette_extra=palette&&(palette<source_first||palette+1024>source_first+source_size)?palette:0;
+   unsigned prior_unswizzle=unswizzle_barriers;
+   unswizzle_source_barriers(&r,(VkCommandBuffer)(uintptr_t)4,16,17,src,n,bpp,palette);
+   assert(unswizzle_barriers==prior_unswizzle+1);
+  }
  }
  printf("Unswizzle visibility: %u source/ring dependency schedules passed\n",unswizzle_barriers);
  printf("Staging visibility: %u coherent/non-coherent copy and recreation cases passed; flush-before-copy, vertex/fragment UBO barriers, empty skips, payload bytes, readback invalidation/recreation and imported-RAM-only upload barriers verified\n",cases);return 0;}
