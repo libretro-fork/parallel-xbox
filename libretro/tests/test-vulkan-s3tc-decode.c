@@ -67,6 +67,7 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL validation(VkDebugUtilsMessageSeverityFlag
 #include <stddef.h>
 #include "hw/xbox/nv2a/pgraph/s3tc.h"
 #include "bc-reference.h"
+#define ARRAY_SIZE(a) (sizeof(a)/sizeof((a)[0]))
 #define MIN(a,b) ((a)<(b)?(a):(b))
 #define MAX(a,b) ((a)>(b)?(a):(b))
 #define ROUND_UP(a,b) (((a)+(b)-1)&~((b)-1))
@@ -83,6 +84,14 @@ typedef struct {
         VkDescriptorSetLayout set_layout;
         VkPipelineLayout layout;
         VkPipeline pipelines[2]; /* 2D array layer, 3D */
+        unsigned format_count;
+        struct {
+            VkImageType type;
+            VkImageTiling tiling;
+            VkImageUsageFlags usage;
+            VkImageCreateFlags flags;
+            VkImageFormatProperties props;
+        } formats[8];
         struct S3TCDecodeSlot {
             VkDescriptorPool pool;
             VkDescriptorSet sets[96];
@@ -113,6 +122,18 @@ static VkShaderModule pgraph_vk_create_fixed_shader_module_from_glsl(PGRAPHVkSta
 /* CPU PRODUCTION */
 static VkBuffer test_ram_handle;
 static void lr_gpu_ram_claim(uintptr_t cmd,uint64_t addr,uint64_t len){assert(cmd && len && addr<=64*1024*1024 && len<=64*1024*1024-addr);}
+static unsigned format_queries;
+static bool mock_formats,fail_format;
+static VkResult counted_format_query(VkPhysicalDevice dev,VkFormat format,VkImageType type,
+ VkImageTiling tiling,VkImageUsageFlags usage,VkImageCreateFlags flags,VkImageFormatProperties *props){
+ format_queries++;
+ if(mock_formats){
+  if(fail_format){fail_format=false;return VK_ERROR_OUT_OF_HOST_MEMORY;}
+  *props=(VkImageFormatProperties){.maxExtent={4096,4096,256},.maxMipLevels=12,.maxArrayLayers=6};return VK_SUCCESS;
+ }
+ return vkGetPhysicalDeviceImageFormatProperties(dev,format,type,tiling,usage,flags,props);
+}
+#define vkGetPhysicalDeviceImageFormatProperties counted_format_query
 /* PRODUCTION */
 typedef struct {
     TextureBinding binding;
@@ -361,8 +382,28 @@ static void benchmark(PGRAPHVkState *r,PGRAPHState *pg,VkCommandBuffer *commands
     vkDestroyQueryPool(device,queries,NULL);
     free(nv->vram_ptr); nv->vram_ptr=original;
 }
+static void test_format_cache(void){
+ PGRAPHVkState r={0};r.s3tc_decode.enabled=true;
+ VkImageCreateInfo ci={.format=VK_FORMAT_R8G8B8A8_UNORM,.imageType=VK_IMAGE_TYPE_2D,
+  .tiling=VK_IMAGE_TILING_OPTIMAL,.usage=VK_IMAGE_USAGE_SAMPLED_BIT,.extent={32,32,1},.mipLevels=1,.arrayLayers=1};
+ mock_formats=true;format_queries=0;
+ for(unsigned i=0;i<100;i++)assert(s3tc_storage_image(&r,&ci));
+ assert(format_queries==1&&r.s3tc_decode.format_count==1);
+ ci.extent.width=4097;assert(!s3tc_storage_image(&r,&ci)&&format_queries==1);ci.extent.width=32;
+ ci.imageType=VK_IMAGE_TYPE_3D;fail_format=true;assert(!s3tc_storage_image(&r,&ci));
+ assert(r.s3tc_decode.format_count==1);assert(s3tc_storage_image(&r,&ci)&&format_queries==3);
+ ci.tiling=VK_IMAGE_TILING_LINEAR;assert(s3tc_storage_image(&r,&ci)&&format_queries==4);
+ ci.usage|=VK_IMAGE_USAGE_TRANSFER_SRC_BIT;assert(s3tc_storage_image(&r,&ci)&&format_queries==5);
+ ci.flags=VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT;assert(s3tc_storage_image(&r,&ci)&&format_queries==6);
+ for(unsigned i=0;i<4;i++){ci.flags=16u<<i;assert(s3tc_storage_image(&r,&ci));}
+ assert(r.s3tc_decode.format_count==8);unsigned old=format_queries;
+ assert(s3tc_storage_image(&r,&ci)&&format_queries==old+1); /* Full cache still queries. */
+ mock_formats=false;format_queries=0;
+ puts("S3TC capability cache: reuse, tuple keys, per-image extent checks, transient retry and bounded overflow PASS");
+}
 int main(void)
 {
+    test_format_cache();
     const char *layers[] = { "VK_LAYER_KHRONOS_validation" };
     const char *extensions[] = { VK_EXT_DEBUG_UTILS_EXTENSION_NAME, VK_EXT_VALIDATION_FEATURES_EXTENSION_NAME };
     VkValidationFeatureEnableEXT enabled = VK_VALIDATION_FEATURE_ENABLE_SYNCHRONIZATION_VALIDATION_EXT;
@@ -445,5 +486,6 @@ int main(void)
  exhaustive_channel=-1;check_rejections(&r,pg,commands[0]);
  if(getenv("VK_S3TC_BENCH"))benchmark(&r,pg,commands,queue);
  s3tc_decode_finalize(pg);drop_buffer(ram);drop_buffer(src);drop_buffer(dst);vkDestroyCommandPool(device,pool,NULL);vkDestroyDevice(device,NULL);if(messenger)destroy(instance,messenger,NULL);vkDestroyInstance(instance,NULL);
+ printf("S3TC real driver capability queries=%u\n",format_queries);
  printf("S3TC Vulkan: %u cases, %zu exact pixels, snapshot/direct/unaligned, mips/cubes/borders/skips, eight queued lifetimes; validation_errors=%u\n",cases,pixels,errors);return errors?1:0;
 }

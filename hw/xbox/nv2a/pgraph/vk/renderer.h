@@ -633,6 +633,14 @@ typedef struct PGRAPHVkState {
         VkDescriptorSetLayout set_layout;
         VkPipelineLayout layout;
         VkPipeline pipelines[2]; /* 2D array layer, 3D */
+        unsigned format_count;
+        struct {
+            VkImageType type;
+            VkImageTiling tiling;
+            VkImageUsageFlags usage;
+            VkImageCreateFlags flags;
+            VkImageFormatProperties props;
+        } formats[8];
         struct S3TCDecodeSlot {
             VkDescriptorPool pool;
             VkDescriptorSet sets[96];

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Cache successful Vulkan S3TC storage-image capability queries per renderer and creation-parameter tuple. Avoid repeated driver queries during texture setup while rechecking each image's limits; failed queries remain retryable and cache storage is bounded.
+
 - Reuse newest-first draw completion polling during Vulkan image-allocation recovery. Skip redundant older-fence queries when the newest submission is complete while preserving partial completion, deferred slot cleanup and binding-safe resource reclamation.
 
 - Order Vulkan unswizzle shader reads after earlier GPU writes into imported RAM, including palette data. Keep the output-ring transfer-read dependency and direct GPU conversion path without adding a CPU completion wait.

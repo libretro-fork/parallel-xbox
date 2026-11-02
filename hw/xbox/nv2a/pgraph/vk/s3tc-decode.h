@@ -66,12 +66,36 @@ static unsigned s3tc_plan_levels(const TextureShape *s,
 static bool s3tc_storage_image(PGRAPHVkState *r, const VkImageCreateInfo *ci)
 {
     if (!r->s3tc_decode.enabled || ci->format != VK_FORMAT_R8G8B8A8_UNORM) return false;
-    VkImageFormatProperties props;
-    return vkGetPhysicalDeviceImageFormatProperties(r->physical_device, ci->format,
-        ci->imageType, ci->tiling, ci->usage | VK_IMAGE_USAGE_STORAGE_BIT,
-        ci->flags, &props) == VK_SUCCESS && ci->extent.width <= props.maxExtent.width &&
-        ci->extent.height <= props.maxExtent.height && ci->extent.depth <= props.maxExtent.depth &&
-        ci->mipLevels <= props.maxMipLevels && ci->arrayLayers <= props.maxArrayLayers;
+    VkImageUsageFlags usage = ci->usage | VK_IMAGE_USAGE_STORAGE_BIT;
+    VkImageFormatProperties queried;
+    const VkImageFormatProperties *props = NULL;
+    for (unsigned i = 0; i < r->s3tc_decode.format_count; i++) {
+        typeof(r->s3tc_decode.formats[0]) *entry = &r->s3tc_decode.formats[i];
+        if (entry->type == ci->imageType && entry->tiling == ci->tiling &&
+            entry->usage == usage && entry->flags == ci->flags) {
+            props = &entry->props;
+            break;
+        }
+    }
+    if (!props) {
+        if (vkGetPhysicalDeviceImageFormatProperties(r->physical_device, ci->format,
+                ci->imageType, ci->tiling, usage, ci->flags, &queried) != VK_SUCCESS) {
+            return false; /* Retry errors; do not cache transient failures. */
+        }
+        props = &queried;
+        if (r->s3tc_decode.format_count < ARRAY_SIZE(r->s3tc_decode.formats)) {
+            typeof(r->s3tc_decode.formats[0]) *entry =
+                &r->s3tc_decode.formats[r->s3tc_decode.format_count++];
+            entry->type = ci->imageType;
+            entry->tiling = ci->tiling;
+            entry->usage = usage;
+            entry->flags = ci->flags;
+            entry->props = queried;
+        }
+    }
+    return ci->extent.width <= props->maxExtent.width &&
+        ci->extent.height <= props->maxExtent.height && ci->extent.depth <= props->maxExtent.depth &&
+        ci->mipLevels <= props->maxMipLevels && ci->arrayLayers <= props->maxArrayLayers;
 }
 
 static void s3tc_decode_pipeline(PGRAPHVkState *r, unsigned volume)
