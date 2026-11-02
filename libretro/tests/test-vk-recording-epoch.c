@@ -76,8 +76,9 @@ static VkResult vkBeginCommandBuffer(VkCommandBuffer cmd,const VkCommandBufferBe
 static VkResult vkResetFences(VkDevice dev,uint32_t n,const VkFence *fences) {
     (void)dev;(void)fences;assert(n==1);return VK_SUCCESS;
 }
-static void sync_staging_buffer(PGRAPHState *pg,VkCommandBuffer cmd,int src,int dst) {
-    (void)cmd;assert(dst==src+1);pg->vk_renderer_state->storage_buffers[src].buffer_offset=0;
+static void sync_staging_buffers(PGRAPHState *pg,VkCommandBuffer cmd) {
+    (void)cmd;for(unsigned i=0;i<ARRAY_SIZE(pgraph_vk_staged_buffers);i++)
+        pg->vk_renderer_state->storage_buffers[pgraph_vk_staged_buffers[i].staging].buffer_offset=0;
 }
 static void flush_memory_buffer(PGRAPHState *pg) { (void)pg;host_flushed=true; }
 static int64_t g_get_monotonic_time(void) { static int64_t n;return ++n; }

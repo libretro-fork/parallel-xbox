@@ -4,6 +4,8 @@
 
 ## Unreleased
 
+- Batch Vulkan index, inline-vertex and uniform staging visibility into one barrier call after their copies. Preserve non-coherent flushes, per-buffer byte/access ranges, both uniform shader consumers and empty-buffer omission.
+
 - Poll the newest Vulkan auxiliary fence first during cleanup, retiring a fully completed queue with one status query. Preserve FIFO partial completion, ring/RAM ownership release and open recordings without adding a CPU wait.
 
 - Batch Vulkan depth-to-texture pack input/output barriers into one pre-dispatch and one post-dispatch call. Preserve per-buffer ranges, access/stage masks, dispatch ordering and the separate D16 transfer route.

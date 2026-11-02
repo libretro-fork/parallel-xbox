@@ -1582,6 +1582,9 @@ and staging copies against a byte-visibility model. Across all eight coherency
 combinations it checks flush-before-copy, exact payloads, empty skips, refreshed
 memory properties after recreation and TRANSFER-to-index/vertex/uniform
 barriers; uniform reads must include both vertex and fragment shader stages.
+Another 64 active-buffer/coherency combinations check that every copy finishes
+recording before one visibility batch, with exact per-buffer ranges/access masks
+and the union of required consumer stages. Empty batches record no barrier.
 Queue submission provides the host-write visibility guarantee described in the
 [Vulkan specification](https://docs.vulkan.org/spec/latest/chapters/synchronization.html#synchronization-submission-host-writes),
 while [pipeline barriers](https://docs.vulkan.org/refpages/latest/refpages/source/vkCmdPipelineBarrier.html)

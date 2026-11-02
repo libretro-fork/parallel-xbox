@@ -2394,59 +2394,68 @@ static void end_query(PGRAPHVkState *r)
     r->query_in_render_pass = false;
 }
 
-static void sync_staging_buffer(PGRAPHState *pg, VkCommandBuffer cmd,
-                                int index_src, int index_dst)
+static void sync_staging_buffers(PGRAPHState *pg, VkCommandBuffer cmd)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
-    StorageBuffer *b_src = &r->storage_buffers[index_src];
-    StorageBuffer *b_dst = &r->storage_buffers[index_dst];
+    VkBufferMemoryBarrier barriers[ARRAY_SIZE(pgraph_vk_staged_buffers)];
+    unsigned count = 0;
+    VkPipelineStageFlags stages = 0;
+    for (unsigned i = 0; i < ARRAY_SIZE(pgraph_vk_staged_buffers); i++) {
+        int index_src = pgraph_vk_staged_buffers[i].staging;
+        int index_dst = pgraph_vk_staged_buffers[i].device;
+        StorageBuffer *b_src = &r->storage_buffers[index_src];
+        StorageBuffer *b_dst = &r->storage_buffers[index_dst];
 
-    if (!b_src->buffer_offset) {
-        return;
+        if (!b_src->buffer_offset) {
+            continue;
+        }
+
+        if (!(b_src->properties & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT)) {
+            VK_CHECK(xemu_vk_flush_allocation(r->allocator, b_src->allocation, 0,
+                                        b_src->buffer_offset));
+        }
+        VkBufferCopy copy_region = { .size = b_src->buffer_offset };
+        vkCmdCopyBuffer(cmd, b_src->buffer, b_dst->buffer, 1, &copy_region);
+
+        VkAccessFlags dst_access_mask;
+        VkPipelineStageFlags dst_stage_mask;
+
+        switch (index_dst) {
+        case BUFFER_INDEX:
+            dst_access_mask = VK_ACCESS_INDEX_READ_BIT;
+            dst_stage_mask = VK_PIPELINE_STAGE_VERTEX_INPUT_BIT;
+            break;
+        case BUFFER_VERTEX_INLINE:
+            dst_access_mask = VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT;
+            dst_stage_mask = VK_PIPELINE_STAGE_VERTEX_INPUT_BIT;
+            break;
+        case BUFFER_UNIFORM:
+            dst_access_mask = VK_ACCESS_UNIFORM_READ_BIT;
+            dst_stage_mask = VK_PIPELINE_STAGE_VERTEX_SHADER_BIT |
+                             VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+            break;
+        default:
+            assert(0);
+            break;
+        }
+
+        barriers[count++] = (VkBufferMemoryBarrier) {
+            .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
+            .srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
+            .dstAccessMask = dst_access_mask,
+            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .buffer = b_dst->buffer,
+            .size = b_src->buffer_offset
+        };
+        stages |= dst_stage_mask;
+
+        b_src->buffer_offset = 0;
     }
-
-    if (!(b_src->properties & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT)) {
-        VK_CHECK(xemu_vk_flush_allocation(r->allocator, b_src->allocation, 0,
-                                    b_src->buffer_offset));
+    if (count) {
+        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, stages, 0,
+                             0, NULL, count, barriers, 0, NULL);
     }
-    VkBufferCopy copy_region = { .size = b_src->buffer_offset };
-    vkCmdCopyBuffer(cmd, b_src->buffer, b_dst->buffer, 1, &copy_region);
-
-    VkAccessFlags dst_access_mask;
-    VkPipelineStageFlags dst_stage_mask;
-
-    switch (index_dst) {
-    case BUFFER_INDEX:
-        dst_access_mask = VK_ACCESS_INDEX_READ_BIT;
-        dst_stage_mask = VK_PIPELINE_STAGE_VERTEX_INPUT_BIT;
-        break;
-    case BUFFER_VERTEX_INLINE:
-        dst_access_mask = VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT;
-        dst_stage_mask = VK_PIPELINE_STAGE_VERTEX_INPUT_BIT;
-        break;
-    case BUFFER_UNIFORM:
-        dst_access_mask = VK_ACCESS_UNIFORM_READ_BIT;
-        dst_stage_mask = VK_PIPELINE_STAGE_VERTEX_SHADER_BIT |
-                         VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-        break;
-    default:
-        assert(0);
-        break;
-    }
-
-    VkBufferMemoryBarrier barrier = {
-        .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
-        .srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
-        .dstAccessMask = dst_access_mask,
-        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        .buffer = b_dst->buffer,
-        .size = b_src->buffer_offset
-    };
-    vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, dst_stage_mask, 0,
-                         0, NULL, 1, &barrier, 0, NULL);
-
-    b_src->buffer_offset = 0;
 }
 
 /* Host writes and non-coherent flushes finish before vkQueueSubmit, whose
@@ -2767,11 +2776,7 @@ void pgraph_vk_finish(PGRAPHState *pg, FinishReason finish_reason)
 
         if (staged_this_submit) {
             VK_CHECK(vkBeginCommandBuffer(sync_cmd, &sync_begin_info));
-            sync_staging_buffer(pg, sync_cmd, BUFFER_INDEX_STAGING, BUFFER_INDEX);
-            sync_staging_buffer(pg, sync_cmd, BUFFER_VERTEX_INLINE_STAGING,
-                                    BUFFER_VERTEX_INLINE);
-            sync_staging_buffer(pg, sync_cmd, BUFFER_UNIFORM_STAGING,
-                                    BUFFER_UNIFORM);
+            sync_staging_buffers(pg, sync_cmd);
             VK_CHECK(vkEndCommandBuffer(sync_cmd));
         }
         flush_memory_buffer(pg);
