@@ -1,5 +1,6 @@
 # Changelog of the libretro core
 
+- Build VP parallel work units during routing validation, removing the temporary per-voice mask array and second queue scan. Multipass grouping, repeated-voice protection and serial fallbacks are preserved.
 - Keep CPU execution on the existing libretro device owner, removing QEMU CPU/I/O-thread BQL transfers around guest slices, MMIO, exceptions and interrupts. Preserve explicit GPU-wait releases and exception cleanup; guard APIC/FERR helpers conditionally.
 - Add generated TB-cache lookup regression coverage for address layout, identity checks and slow-path guards before further execution-core simplification; no runtime changes.
 - Skip unused worker mix-bin reductions when DSP-off audio uses the VP stereo monitor. Multipass processing and DSP-on mixing remain intact; no extra queue, copy, lock or wait is introduced.

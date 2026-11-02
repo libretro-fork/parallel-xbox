@@ -195,3 +195,9 @@ in VP mode, while DSP mode reduces mix bins. Stale and owner buffers are exclude
 This removes 1,024 unused integer additions per participating worker in VP mode;
 physical cache traffic and game frame-rate improvements have not been measured.
 The existing VP completion barrier remains.
+
+VP scheduling validates routing and forms units in a single scan, without a
+256-entry routing-mask array. The threaded fixture checks 55,987 routing layouts
+against independent symbolic bin reads, clears and additions, including reversed
+unit execution. It also covers repeated handles and serial fallback. This changes
+scheduler scratch use, not the existing worker completion barrier or frame queue.

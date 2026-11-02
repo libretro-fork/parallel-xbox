@@ -51,6 +51,72 @@ static void repeated_voice_schedule_tests(void)
     puts("PASS: 256 repeated-handle queues rejected; all unique handles retain parallel units; invalid handles cannot index ownership bits");
 }
 
+/* Compare symbolic serial mixing with independent units executed in reverse.
+ * The voices use real routing descriptors; the oracle only implements bin
+ * reads, clears and additive writes, independent of the grouping algorithm. */
+static void schedule_symbolic_mix(MCPXAPUState *d, int start, int count,
+                                  int64_t bins[NUM_MIXBINS])
+{
+    for(int i=start;i<start+count;i++){
+        uint32_t src,dst,clr;
+        get_voice_bin_src_dst(d,d->vp.voice_work_dispatch.queue[i].voice,&src,&dst,&clr);
+        int64_t value=i+1;
+        for(int b=0;b<NUM_MIXBINS;b++)if(src&(1u<<b))value+=bins[b];
+        for(int b=0;b<NUM_MIXBINS;b++){
+            if(clr&(1u<<b))bins[b]=0;
+            if(dst&(1u<<b))bins[b]+=value;
+        }
+    }
+}
+
+static void schedule_layout_tests(void)
+{
+    MCPXAPUState *d=calloc(1,sizeof(*d));
+    d->ram_ptr=calloc(1,RAM_SIZE);address_space_memory.d=d;
+    d->regs[NV_PAPU_VPVADDR]=0x1000;
+    VoiceWorkDispatch *vwd=&d->vp.voice_work_dispatch;
+    unsigned cases=0,accepted=0,rejected=0,limit=1;
+    for(int length=0;length<=6;length++,limit*=6){
+        vwd->queue_len=length;
+        for(unsigned pattern=0;pattern<limit;pattern++){
+            unsigned code=pattern;bool unsupported=false;
+            for(int i=0;i<length;i++){
+                unsigned kind=code%6;code/=6;int voice=64+i;
+                for(int r=0;r<0x80;r+=4)vset(d,voice,r,0xffffffff,0);
+                vwd->queue[i]=(VoiceWorkItem){.voice=voice,.list=0};
+                if(kind==1||kind==3)vset(d,voice,NV_PAVS_VOICE_CFG_FMT,NV_PAVS_VOICE_CFG_FMT_V6BIN,31);
+                if(kind>=2){
+                    vset(d,voice,NV_PAVS_VOICE_CFG_FMT,NV_PAVS_VOICE_CFG_FMT_MULTIPASS,1);
+                    vset(d,voice,NV_PAVS_VOICE_CFG_FMT,NV_PAVS_VOICE_CFG_FMT_MULTIPASS_BIN,kind==4?30:31);
+                    vset(d,voice,NV_PAVS_VOICE_CFG_FMT,NV_PAVS_VOICE_CFG_FMT_CLEAR_MIX,kind!=5);
+                }
+                unsupported|=kind>=4;
+            }
+            cases++;
+            if(!voice_work_schedule(d)){rejected++;continue;}
+            assert(!unsupported);accepted++;
+            int64_t serial[NUM_MIXBINS]={0},parallel[NUM_MIXBINS]={0};
+            schedule_symbolic_mix(d,0,length,serial);
+            int end=0;
+            for(int u=0;u<vwd->num_units;u++){
+                assert(vwd->units[u].start==end&&vwd->units[u].count>0);
+                end+=vwd->units[u].count;
+            }
+            assert(end==length);
+            for(int u=vwd->num_units-1;u>=0;u--){
+                int64_t local[NUM_MIXBINS]={0};
+                schedule_symbolic_mix(d,vwd->units[u].start,vwd->units[u].count,local);
+                for(int b=0;b<NUM_MIXBINS;b++)parallel[b]+=local[b];
+            }
+            assert(!memcmp(serial,parallel,sizeof(serial)));
+            if(pattern==0)assert(vwd->num_units==length);
+        }
+    }
+    assert(accepted&&rejected);
+    printf("PASS: %u routing layouts; %u independent schedules match serial bin reads/clears/writes, %u serial fallbacks\n",cases,accepted,rejected);
+    free(d->ram_ptr);free(d);
+}
+
 /* Workers beyond the first are never notified for a two-unit batch. A label
  * left from an earlier generation cycle must not make their stale data live. */
 static void stale_buffer_wrap_tests(void)
@@ -116,6 +182,7 @@ static void output_reduction_tests(void)
 int main(int argc,char**argv)
 {
     repeated_voice_schedule_tests();
+    schedule_layout_tests();
     int scenarios=argc>1?atoi(argv[1]):400;
     long compared=0,parallel_frames=0;
     unsigned long completion_calls=0,completion_units=0,completion_frames=0,completion_wraps=0;
@@ -208,6 +275,7 @@ int main(int argc,char**argv)
         }
         if((sc&3)==0)heads[1]=heads[0];
         d->regs[NV_PAPU_TVL2D]=heads[0];d->regs[NV_PAPU_TVL3D]=heads[1];d->regs[NV_PAPU_TVLMP]=heads[2];
+        bool scenario_parallel=false;
         int frames=8+rr(24);
         for(int f=0;f<frames;f++){
             static mix_t mix[32][32];
@@ -218,6 +286,7 @@ int main(int argc,char**argv)
             mcpx_apu_vp_frame(d,mix);
             int publications=retro_atomic_load_acquire_int(&test_completion_rmws);
             if(d->vp.voice_work_dispatch.gen!=old_gen){
+                scenario_parallel=true;
                 assert(publications>0&&publications<=d->vp.voice_work_dispatch.num_workers&&publications<=d->vp.voice_work_dispatch.num_units);
                 assert(retro_atomic_load_acquire_int(&d->vp.voice_work_dispatch.units_done)==d->vp.voice_work_dispatch.num_units);
                 if(d->vp.voice_work_dispatch.gen<old_gen)completion_wraps++;
@@ -230,7 +299,7 @@ int main(int argc,char**argv)
                 for(int x=0;x<1088;x++)if(out[0][f][x]!=out[1][f][x]){fprintf(stderr,"FAIL: scenario %d frame %d: %s %d sample %d serial %d threaded %d\n",sc,f,x<1024?"bin":"monitor",x<1024?x/32:(x-1024)/2,x<1024?x%32:x%2,out[0][f][x],out[1][f][x]);break;}
                 exit(1);}}
         }
-        if(pass&&d->vp.voice_work_dispatch.num_units)parallel_frames++;
+        if(pass&&scenario_parallel)parallel_frames++;
         voice_work_finalize(d);
         free(d->ram_ptr);free(d);
     }
