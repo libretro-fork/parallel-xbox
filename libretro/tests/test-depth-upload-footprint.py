@@ -25,13 +25,12 @@ capacity = block(source.index("    if (use_compute_to_convert_depth_stencil_form
 start = source.index("        VkDeviceSize packed_input_size =", upload)
 end = source.index("        VkBufferMemoryBarrier post_copy_src_barrier", start)
 calculation = source[start:end]
-barriers = []
-for name in ("post_copy_src_barrier", "pre_unpack_src_barrier", "pre_unpack_dst_barrier", "post_unpack_src_barrier", "post_unpack_dst_barrier"):
-    start = source.index("        VkBufferMemoryBarrier " + name + " =", upload)
-    barriers.append(block(start) + ";")
+barrier_start = source.index("        VkBufferMemoryBarrier post_copy_src_barrier", upload)
+barrier_end = source.index("        // Already scaled during compute.", barrier_start)
+barriers = source[barrier_start:barrier_end]
 region = re.search(r"        regions\[1\]\.bufferOffset =.*?;", source[upload:], re.S)[0]
 code = Path(__file__).with_suffix(".c").read_text().replace("/* HELPER */", helper).replace(
-    "/* PLAN */", capacity + "\n" + calculation + "\n" + "\n".join(barriers) + "\n" + region)
+    "/* PLAN */", capacity + "\n" + calculation + "\n" + barriers + "\n" + region)
 with tempfile.TemporaryDirectory(prefix="depth-upload-footprint-", dir=repo.parent) as directory:
     folder = Path(directory)
     (folder / "test.c").write_text(code)

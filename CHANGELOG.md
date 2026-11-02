@@ -4,6 +4,8 @@
 
 ## Unreleased
 
+- Batch Vulkan depth-unpack input/output dependencies into paired pre-dispatch and post-dispatch calls, reducing this upload section from five barrier calls to three. Preserve source reuse, per-buffer ranges, stage masks and GPU conversion ordering.
+
 - Limit Vulkan depth-upload packed input barriers to the native packed payload and source reuse to the actual staged/imported pitched span and offset. Preserve scaled aligned unpacked output dependencies and the GPU conversion path.
 
 - Scope Vulkan image-to-buffer readback reuse barriers to aligned depth/stencil planes or the actual color/D16 destination span, including pitch and ring/RAM offsets. Exclude unused buffer space and trailing row padding while preserving ordering and host waits.

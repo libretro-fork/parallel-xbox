@@ -1973,10 +1973,6 @@ void pgraph_vk_upload_surface_data(NV2AState *d, SurfaceBinding *surface,
             .buffer = r->storage_buffers[BUFFER_COMPUTE_DST].buffer,
             .size = packed_input_size
         };
-        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
-                             VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, NULL,
-                             1, &pre_unpack_src_barrier, 0, NULL);
-
         StorageBuffer *unpack_buffer = &r->storage_buffers[BUFFER_COMPUTE_SRC];
 
         VkBufferMemoryBarrier pre_unpack_dst_barrier = {
@@ -1988,9 +1984,12 @@ void pgraph_vk_upload_surface_data(NV2AState *d, SurfaceBinding *surface,
             .buffer = unpack_buffer->buffer,
             .size = unpacked_size
         };
+        const VkBufferMemoryBarrier pre_unpack[] = {
+            pre_unpack_src_barrier, pre_unpack_dst_barrier
+        };
         vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
-                             VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, NULL, 1,
-                             &pre_unpack_dst_barrier, 0, NULL);
+                             VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, NULL, 2,
+                             pre_unpack, 0, NULL);
 
         pgraph_vk_unpack_depth_stencil(
             pg, surface, cmd, r->storage_buffers[BUFFER_COMPUTE_DST].buffer,
@@ -2005,10 +2004,6 @@ void pgraph_vk_upload_surface_data(NV2AState *d, SurfaceBinding *surface,
             .buffer = r->storage_buffers[BUFFER_COMPUTE_DST].buffer,
             .size = packed_input_size
         };
-        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                             VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 1,
-                             &post_unpack_src_barrier, 0, NULL);
-
         VkBufferMemoryBarrier post_unpack_dst_barrier = {
             .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
             .srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT,
@@ -2018,9 +2013,12 @@ void pgraph_vk_upload_surface_data(NV2AState *d, SurfaceBinding *surface,
             .buffer = unpack_buffer->buffer,
             .size = unpacked_size
         };
+        const VkBufferMemoryBarrier post_unpack[] = {
+            post_unpack_src_barrier, post_unpack_dst_barrier
+        };
         vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                             VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 1,
-                             &post_unpack_dst_barrier, 0, NULL);
+                             VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 2,
+                             post_unpack, 0, NULL);
 
         // Already scaled during compute. Adjust copy regions.
         regions[0].bufferOffset = 0;

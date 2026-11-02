@@ -2940,8 +2940,10 @@ existing packed-depth paths. Full-game performance remains unmeasured.
 
 
 `python libretro/tests/test-depth-upload-footprint.py CHECKOUT [CC]` executes the
-production depth-upload footprint helper, capacity block, unpack destination
-barrier declarations and stencil copy offset. Its 2,880 cases cover 480
+production depth-upload footprint helper, capacity block, unpack dependency
+calls and stencil copy offset. The fixture checks three barrier calls with
+paired input/output dependencies around one unpack dispatch, including the
+actual submitted buffer ranges, access masks, stage masks and ordering. Its 2,880 cases cover 480
 extent/scale/alignment combinations, each with staged/imported sources and three
 offsets. Packed shader-input barriers must cover the native payload; source
 reuse covers its tight or padded span from the actual offset. Unpacked output
