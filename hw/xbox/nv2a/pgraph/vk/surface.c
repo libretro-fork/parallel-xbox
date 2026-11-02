@@ -456,7 +456,12 @@ static VkBuffer pack_depth_readback(PGRAPHState *pg, SurfaceBinding *surface,
     pgraph_apply_scaling_factor(pg, &input_width, &input_height);
     VkDeviceSize input_size = depth_stencil_plane_size(input_width, input_height,
         r->device_props.limits.minStorageBufferOffsetAlignment);
-    VkBufferMemoryBarrier pre_compute_src_barrier = {
+    bool packed_to_host = !direct &&
+        packed_size <= r->device_props.limits.maxStorageBufferRange;
+    VkBuffer pack_buffer = r->storage_buffers[packed_to_host ?
+        BUFFER_STAGING_DST : BUFFER_COMPUTE_SRC].buffer;
+    bool fused = direct && pgraph_vk_pack_depth_swizzled_possible(pg, surface);
+    VkBufferMemoryBarrier pre_compute[2] = {{
         .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
         .srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
         .dstAccessMask = VK_ACCESS_SHADER_READ_BIT,
@@ -464,22 +469,11 @@ static VkBuffer pack_depth_readback(PGRAPHState *pg, SurfaceBinding *surface,
         .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
         .buffer = copy_buffer,
         .size = input_size
-    };
-    vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
-                         VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, NULL,
-                         1, &pre_compute_src_barrier, 0, NULL);
-
-    bool packed_to_host = !direct &&
-        packed_size <= r->device_props.limits.maxStorageBufferRange;
-    VkBuffer pack_buffer = r->storage_buffers[packed_to_host ?
-        BUFFER_STAGING_DST : BUFFER_COMPUTE_SRC].buffer;
-
-    bool fused = direct &&
-        pgraph_vk_pack_depth_swizzled_possible(pg, surface);
-    if (fused) {
-        pgraph_vk_pack_depth_swizzled(pg, surface, cmd);
-    } else {
-        VkBufferMemoryBarrier pre_compute_dst_barrier = {
+    }};
+    unsigned pre_count = 1;
+    VkPipelineStageFlags pre_stages = VK_PIPELINE_STAGE_TRANSFER_BIT;
+    if (!fused) {
+        pre_compute[1] = (VkBufferMemoryBarrier) {
             .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
             .srcAccessMask = packed_to_host ?
                 VK_ACCESS_HOST_READ_BIT | VK_ACCESS_TRANSFER_WRITE_BIT :
@@ -490,12 +484,14 @@ static VkBuffer pack_depth_readback(PGRAPHState *pg, SurfaceBinding *surface,
             .buffer = pack_buffer,
             .size = packed_size
         };
-        vkCmdPipelineBarrier(cmd, packed_to_host ?
-                             VK_PIPELINE_STAGE_HOST_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT :
-                             VK_PIPELINE_STAGE_TRANSFER_BIT,
-                             VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, NULL,
-                             1, &pre_compute_dst_barrier, 0, NULL);
-
+        pre_count++;
+        if (packed_to_host) pre_stages |= VK_PIPELINE_STAGE_HOST_BIT;
+    }
+    vkCmdPipelineBarrier(cmd, pre_stages, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                         0, 0, NULL, pre_count, pre_compute, 0, NULL);
+    if (fused) {
+        pgraph_vk_pack_depth_swizzled(pg, surface, cmd);
+    } else {
         pgraph_vk_pack_depth_stencil(pg, surface, cmd, copy_buffer, pack_buffer,
                                      downscale);
     }

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Combine Vulkan depth-pack input visibility and output reuse into one pre-dispatch barrier call for non-fused packing. Preserve each buffer's access/range and mapped-host ordering; fused packing retains an input-only dependency.
+
 - Scope Vulkan depth-pack input reuse barriers to the aligned scaled depth/stencil planes, including the final stencil word. Native-size packed output still retains the full scaled input dependency; fused, direct-host and transfer fallbacks keep their completion policies.
 
 - Scope packed-depth output reuse and fallback-transfer barriers to the packed result instead of whole Vulkan compute/readback buffers. Preserve the separate aligned depth/stencil input-plane dependencies and all required host completion waits.
