@@ -2020,7 +2020,8 @@ The DSP tick now runs on the engine owner because its live-RAM DMA must settle
 before the guest resumes. `test-dsp-guest-ram.py` compiles that actual dispatcher
 and tick, preventing a deferred-worker regression while retaining scratch growth
 and page-reuse coverage. GP/EP register effects occur in that same order; the
-frontend queue's SPSC ownership, sample cadence and existing lead are unchanged.
+frontend queue retains SPSC ownership and sample cadence, with the phase margin
+documented in `monitor.h`.
 
 `test-quiet-store-prefix.py` exercises the production translation-time rewrite
 that removes an overwritten quiet-counter preamble. Straight-line prefixes may
@@ -3343,3 +3344,11 @@ The single emulation owner retains at most one completed request and the largest
 DMA and TRIM are the only request-object consumers in this core. Allocation, references and completion belong to the emulation owner; the cache no longer uses per-thread state or a QEMU exit notifier. Its eight-kind/eight-depth limits and uncached overflow behavior remain. Content close clears cached objects after draining, disables caching for late completions, and a new submission enables reuse again. Live references remain valid across clear; no fields or payload buffers are added to request objects.
 
 `test-aiocb-owner.py CHECKOUT [CC]` compiles production allocation/ref/cache functions and common request types. It checks metadata reset, reuse, nested references, kind/depth overflow, close with live references, late final release, reopen and 20,000 warm cycles with balanced frees. `--bench` after CC measures 1/2/9 kinds and 1/8/16-request batches through volatile API pointers. The allocator is modeled by counted malloc/free; thread-exit registration is modeled outside warm timings. `AIOCB_SOURCE`, `AIOCB_CFLAGS`, `AIOCB_BINARY` and `AIOCB_SKIP_RUN` support baselines, sanitizers and supervised native runs. Windows benchmarks set `_NO_DEBUG_HEAP=1`. No disk I/O, callback work or game FPS is timed.
+`test-audio-queue.py CHECKOUT [CC]` compiles production monitor.c and its actual
+libretro-common mirrored SPSC queue. It verifies 153,600 exact PCM pulls across
+32 engine-tick phases, all eight EP burst offsets, VP/GP/EP production, queue
+reset and save/restore. It also tests 28 legacy/current post-load cases preserve
+queued PCM verbatim. `AUDIO_QUEUE_CFLAGS`, `AUDIO_QUEUE_BINARY` and
+`AUDIO_QUEUE_SKIP_RUN` support sanitizer and native Windows checks. The margin
+proof covers every engine phase; the frontend pull fixture requires DSP work
+to retire before queue access.

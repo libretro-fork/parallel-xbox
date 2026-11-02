@@ -19,7 +19,8 @@ code = r'''
 #include <string.h>
 static int32_t lr_audio_rem;
 #define LR_DSP_FENCE_FRAME 7
-static void lr_dsp_ownership_fence(unsigned reason){assert(reason==7);}
+static bool pending;
+static void lr_dsp_ownership_fence(unsigned reason){assert(reason==7);pending=false;}
 static int16_t samples[802*2];
 static size_t available, consumed, callbacks, total, expected;
 static int16_t sequence(size_t i) { return (int16_t)(i%30001); }
@@ -29,7 +30,7 @@ static size_t sink(const int16_t *p,size_t n) {
     return n;
 }
 static size_t (*audio_batch_cb)(const int16_t *,size_t)=sink;
-static size_t libretro_audio_read_begin(const int16_t **p) { *p=samples;return available; }
+static size_t libretro_audio_read_begin(const int16_t **p) { assert(!pending);*p=samples;return available; }
 static void libretro_audio_read_end(size_t n) { assert(n<=available);consumed+=n;available-=n; }
 /* PRODUCTION */
 int main(void) {
@@ -39,7 +40,7 @@ int main(void) {
             expected=((frame+1)*4004+phase)/5-(frame*4004+phase)/5;
             available=802;
             for(size_t i=0;i<available*2;i++) samples[i]=sequence(consumed*2+i);
-            lr_present_audio(true);
+            pending=true;lr_present_audio(true);
             assert(callbacks==frame+1 && consumed==total);
         }
         assert(total==8008000 && lr_audio_rem==phase);

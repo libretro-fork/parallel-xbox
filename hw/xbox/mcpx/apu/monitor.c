@@ -30,7 +30,8 @@
  * the frontend consumes exactly one video frame's worth after that turn.
  * An EP worker can own production during its job. CPU GP work may
  * overlap it, but queue operations wait for job completion before changing
- * producer ownership. The queue lead includes the EP's eight-frame burst.
+ * producer ownership. The frame pull retires DSP work before reading; EP
+ * bursts queue future samples, and do not need an extra delay allowance.
  */
 
 #include "apu_int.h"

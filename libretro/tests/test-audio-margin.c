@@ -1,14 +1,11 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later
  *
- * The queue retains its established conservative eight-engine-frame
- * production-delay allowance even though DSP ticks now finish on the engine
- * owner. This works out the worst
- * margin over every phase of the APU's engine frames (32 samples, 1500 a
- * second of the guest's time) against the video frames (1001/60 ms, 800
- * or 801 samples, 4004 every 5: ui/libretro.c), with the worst
- * assumptions: the last engine frames of the video frame not yet made, and
- * one due exactly at the frame's end not yet run. Every pull has to find
- * its samples there, with a whole engine frame to spare. */
+ * DSP ownership retires before a frontend pull, so there are no engine
+ * frames still in flight. Check every phase of 32-sample engine ticks
+ * against the 800/801-sample video cadence, excluding a tick due exactly
+ * at the video boundary. Retain a whole engine frame beyond each pull.
+ * EP's burst covers the current and next seven ticks, so it cannot reduce
+ * this per-tick production bound. */
 #include <stdio.h>
 #include "../../hw/xbox/mcpx/apu/monitor.h"
 
@@ -33,7 +30,7 @@ static long long worst_margin(int preroll)
             if (end > t0) {
                 made = (end - t0 - 1) / T_ENGINE + 1;   /* due before end */
             }
-            made -= MCPX_APU_MONITOR_FRAMES_IN_FLIGHT;    /* retained delay allowance */
+            made -= MCPX_APU_MONITOR_FRAMES_IN_FLIGHT;    /* retired before the pull */
             if (made < 0) {
                 made = 0;
             }
@@ -54,7 +51,7 @@ int main(void)
 
     printf("audio pull margin: %lld samples at the worst phase "
            "(%lld with a frame less of preroll)\n", m, less);
-    if (m < SAMPLES) {
+    if (m < SAMPLES || less >= SAMPLES) {
         printf("FAIL: the preroll (%d engine frames) does not cover the "
                "frames in flight with a frame to spare\n",
                MCPX_APU_MONITOR_PREROLL_FRAMES);

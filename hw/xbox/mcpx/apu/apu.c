@@ -385,19 +385,8 @@ static int mcpx_apu_output_post_load(void *opaque, int version_id)
             *p = vp_pitch_from_double_bits((uint64_t)*p);
         }
     }
-    if (version_id < 4) {
-        /* the queue's preroll was 3 engine frames then: the frames it is
-         * longer now, silence ahead of what was queued, or the frames in
-         * flight would come up short (monitor.h) */
-        uint32_t extra = (MCPX_APU_MONITOR_PREROLL_FRAMES - 3) *
-                         NUM_SAMPLES_PER_FRAME;
-        uint32_t keep = MIN(d->saved_output.frames,
-                            MCPX_APU_MONITOR_STATE_FRAMES - extra);
-        memmove(&d->saved_output.samples[extra * 2], d->saved_output.samples,
-                keep * 2 * sizeof(int16_t));
-        memset(d->saved_output.samples, 0, extra * 2 * sizeof(int16_t));
-        d->saved_output.frames = keep + extra;
-    }
+    /* Preserve queued PCM exactly, including legacy states' longer lead.
+     * DSP work retires before the frame pull; no delay padding is needed. */
     d->saved_output.loaded = true;
     return 0;
 }
@@ -407,7 +396,8 @@ static int mcpx_apu_output_post_load(void *opaque, int version_id)
  * pointer is set by setup_svf before each run and is not saved. Version 1
  * of the output subsection held floats in the same words, versions 1 and 2
  * the pitch as a double: post_load turns them into the integers. Up to
- * version 3 the queue it carries had a shorter preroll. */
+ * version 3 the queue it carries used a three-engine-frame preroll;
+ * later version-4 builds used ten. Queued samples restore unchanged. */
 QEMU_BUILD_BUG_ON(offsetof(sv_filter, n) - offsetof(sv_filter, f) !=
                   6 * sizeof(int32_t));
 
