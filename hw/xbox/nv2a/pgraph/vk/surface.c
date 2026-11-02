@@ -451,6 +451,11 @@ static VkBuffer pack_depth_readback(PGRAPHState *pg, SurfaceBinding *surface,
     bool downscale, VkDeviceSize ring_offset, bool *host_output)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
+    /* Downscale changes the output grid; the input still has scaled planes. */
+    unsigned input_width = surface->width, input_height = surface->height;
+    pgraph_apply_scaling_factor(pg, &input_width, &input_height);
+    VkDeviceSize input_size = depth_stencil_plane_size(input_width, input_height,
+        r->device_props.limits.minStorageBufferOffsetAlignment);
     VkBufferMemoryBarrier pre_compute_src_barrier = {
         .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
         .srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
@@ -458,7 +463,7 @@ static VkBuffer pack_depth_readback(PGRAPHState *pg, SurfaceBinding *surface,
         .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
         .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
         .buffer = copy_buffer,
-        .size = VK_WHOLE_SIZE
+        .size = input_size
     };
     vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
                          VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, NULL,
@@ -502,7 +507,7 @@ static VkBuffer pack_depth_readback(PGRAPHState *pg, SurfaceBinding *surface,
         .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
         .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
         .buffer = copy_buffer,
-        .size = VK_WHOLE_SIZE
+        .size = input_size
     };
     vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
                          VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 1,

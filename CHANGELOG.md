@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Scope Vulkan depth-pack input reuse barriers to the aligned scaled depth/stencil planes, including the final stencil word. Native-size packed output still retains the full scaled input dependency; fused, direct-host and transfer fallbacks keep their completion policies.
+
 - Scope packed-depth output reuse and fallback-transfer barriers to the packed result instead of whole Vulkan compute/readback buffers. Preserve the separate aligned depth/stencil input-plane dependencies and all required host completion waits.
 
 - Scope Vulkan unswizzle input barriers to the texture's enclosing 32-bit words and, when needed, a separate palette range. Avoid whole-RAM source barriers while preserving partial-word reads, GPU/host visibility and output-ring reuse ordering.

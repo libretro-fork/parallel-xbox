@@ -3041,7 +3041,8 @@ not establish a frame-time gain or replace synchronization validation.
 
 The depth-host-pack fixture also checks that packed-output reuse and fallback
 transfer barriers cover exactly the result bytes (7,372 checks in its 6,000
-routing/visibility schedules). Depth/stencil input-plane barriers retain their
-separate footprint. Its `--gpu` mode compares production direct-host and
+routing/visibility schedules). Depth/stencil input-plane barriers use the shared aligned scaled-plane
+footprint, including the final stencil word (12,000 exact-range checks);
+downscaling the output must not shrink the input dependency. Its `--gpu` mode compares production direct-host and
 transfer-fallback outputs across native/scaled D24S8 and D32S8 cases; this does
 not measure a before/after speedup from narrowing those barriers.
