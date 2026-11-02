@@ -4,6 +4,8 @@
 
 ## Unreleased
 
+- Add a production uniform-refresh/cache probe for repeated and changing viewport writes, checking bound bytes and upload counts before considering dirty-marker changes. Rendering behavior is unchanged.
+
 - Publish color-write-mask fields once only on change while preserving the pre-update surface write-enabled cache. Remove redundant atomic register traffic without changing color masks, dirty flags or surface-write history.
 
 - Publish texture-palette and transform execution-mode register fields once only on a real change. Preserve palette addresses/context, mode/range bits and dirty flags while removing redundant atomic register traffic.
