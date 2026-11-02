@@ -47,8 +47,11 @@ tail = """
     (void)cmd;
 }
 """
+schedule_start=source.index('    VkBuffer texture_source_buffer;', start)
+schedule_end=source.index('    pgraph_vk_transition_image_layout', schedule_start)
+schedule=source[schedule_start:schedule_end]
 code = Path(__file__).with_suffix(".c").read_text().replace(
-    "/* PRODUCTION */", helper + "\n" + prefix + tail.replace("/* INPUT BARRIERS */", "\n".join(input_barriers)))
+    "/* PRODUCTION */", helper + "\n" + prefix + tail.replace("/* INPUT BARRIERS */", "\n".join(input_barriers))).replace("/* PACK SCHEDULE */", schedule)
 with tempfile.TemporaryDirectory(prefix="depth-transfer-capacity-", dir=repo.parent) as directory:
     folder = Path(directory)
     (folder / "test.c").write_text(code)

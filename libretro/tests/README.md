@@ -422,6 +422,11 @@ The pack-input barrier declarations must cover exactly the aligned input range;
 180 partial stencil tails include the complete final shader-read word. Output
 barrier declarations cover packed shader words, D16 transfer input and the
 16/32-bit final texture-copy payload with their original access masks.
+The fixture also executes the production pack dependency sequence: 480 compute
+routes submit paired input/output barriers before and after one dispatch,
+reducing four barrier calls to two; 240 D16 routes retain one transfer barrier.
+Submitted buffer identities, ranges, access/stage masks and dispatch order are
+checked directly.
 A simulated 800 MiB buffer capacity matches the production reservation ceiling;
 the fixture verifies native transfers avoid unnecessary growth requests while
 scaled fallbacks and aligned stencil planes remain fully covered. This tests

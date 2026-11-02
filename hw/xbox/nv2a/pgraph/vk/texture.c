@@ -1248,10 +1248,6 @@ static void copy_zeta_surface_to_texture(PGRAPHState *pg, SurfaceBinding *surfac
             .buffer = r->storage_buffers[BUFFER_COMPUTE_DST].buffer,
             .size = input_size
         };
-        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
-                             VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, NULL,
-                             1, &pre_pack_src_barrier, 0, NULL);
-
         VkBufferMemoryBarrier pre_pack_dst_barrier = {
             .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
             .srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT,
@@ -1261,9 +1257,12 @@ static void copy_zeta_surface_to_texture(PGRAPHState *pg, SurfaceBinding *surfac
             .buffer = r->storage_buffers[BUFFER_COMPUTE_SRC].buffer,
             .size = packed_image_size
         };
+        const VkBufferMemoryBarrier pre_pack[] = {
+            pre_pack_src_barrier, pre_pack_dst_barrier
+        };
         vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
-                             VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, NULL,
-                             1, &pre_pack_dst_barrier, 0, NULL);
+                             VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, NULL, 2,
+                             pre_pack, 0, NULL);
 
         pgraph_vk_pack_depth_stencil_dims(
             pg, surface, cmd,
@@ -1279,10 +1278,6 @@ static void copy_zeta_surface_to_texture(PGRAPHState *pg, SurfaceBinding *surfac
             .buffer = r->storage_buffers[BUFFER_COMPUTE_DST].buffer,
             .size = input_size
         };
-        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                             VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 1,
-                             &post_pack_src_barrier, 0, NULL);
-
         VkBufferMemoryBarrier post_pack_dst_barrier = {
             .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
             .srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT,
@@ -1292,9 +1287,12 @@ static void copy_zeta_surface_to_texture(PGRAPHState *pg, SurfaceBinding *surfac
             .buffer = r->storage_buffers[BUFFER_COMPUTE_SRC].buffer,
             .size = packed_image_size
         };
+        const VkBufferMemoryBarrier post_pack[] = {
+            post_pack_src_barrier, post_pack_dst_barrier
+        };
         vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                             VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 1,
-                             &post_pack_dst_barrier, 0, NULL);
+                             VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 2,
+                             post_pack, 0, NULL);
 
         texture_source_buffer = r->storage_buffers[BUFFER_COMPUTE_SRC].buffer;
     } else {

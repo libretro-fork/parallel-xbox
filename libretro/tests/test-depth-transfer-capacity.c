@@ -48,6 +48,57 @@ static void pgraph_vk_buffer_ensure_capacity(PGRAPHState *p, unsigned index, VkD
 }
 static VkCommandBuffer pgraph_vk_begin_nondraw_commands(PGRAPHState *p)
 { (void)p; assert(ensured && !recording); recording = true; return VK_NULL_HANDLE; }
+static unsigned pack_phase,pack_barriers,pack_dispatches;
+static VkDeviceSize expected_input,expected_output,expected_copy;
+static bool expected_compute;
+static void checked_barrier(VkCommandBuffer cmd,VkPipelineStageFlags src,
+    VkPipelineStageFlags dst,VkDependencyFlags flags,uint32_t nm,
+    const VkMemoryBarrier *mem,uint32_t nb,const VkBufferMemoryBarrier *b,
+    uint32_t ni,const VkImageMemoryBarrier *im)
+{
+    assert(cmd==(VkCommandBuffer)(uintptr_t)4&&!flags&&!nm&&!mem&&!ni&&!im);
+    if(expected_compute){
+        assert(nb==2&&b[0].buffer==(VkBuffer)(uintptr_t)1&&b[1].buffer==(VkBuffer)(uintptr_t)2);
+        assert(b[0].size==expected_input&&b[1].size==expected_output);
+        if(pack_phase==0){
+            assert(src==VK_PIPELINE_STAGE_TRANSFER_BIT&&dst==VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+            assert(b[0].srcAccessMask==VK_ACCESS_TRANSFER_WRITE_BIT&&b[0].dstAccessMask==VK_ACCESS_SHADER_READ_BIT);
+            assert(b[1].srcAccessMask==VK_ACCESS_TRANSFER_READ_BIT&&b[1].dstAccessMask==VK_ACCESS_SHADER_WRITE_BIT);
+        }else{
+            assert(pack_phase==2&&src==VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT&&dst==VK_PIPELINE_STAGE_TRANSFER_BIT);
+            assert(b[0].srcAccessMask==VK_ACCESS_SHADER_READ_BIT&&b[0].dstAccessMask==VK_ACCESS_TRANSFER_WRITE_BIT);
+            assert(b[1].srcAccessMask==VK_ACCESS_SHADER_WRITE_BIT&&b[1].dstAccessMask==VK_ACCESS_TRANSFER_READ_BIT);
+        }
+    }else{
+        assert(!pack_phase&&nb==1&&src==VK_PIPELINE_STAGE_TRANSFER_BIT&&dst==src);
+        assert(b[0].buffer==(VkBuffer)(uintptr_t)1&&b[0].size==expected_copy);
+        assert(b[0].srcAccessMask==VK_ACCESS_TRANSFER_WRITE_BIT&&b[0].dstAccessMask==VK_ACCESS_TRANSFER_READ_BIT);
+    }
+    for(unsigned i=0;i<nb;i++)assert(!b[i].offset&&b[i].srcQueueFamilyIndex==VK_QUEUE_FAMILY_IGNORED&&b[i].dstQueueFamilyIndex==VK_QUEUE_FAMILY_IGNORED);
+    pack_phase++;pack_barriers++;
+}
+static void checked_pack(PGRAPHState *pg,SurfaceBinding *s,VkCommandBuffer cmd,
+    VkBuffer src,VkBuffer dst,unsigned iw,unsigned ih,unsigned ow,unsigned oh)
+{
+    assert(pg&&s&&cmd==(VkCommandBuffer)(uintptr_t)4&&expected_compute&&pack_phase==1);
+    assert(src==(VkBuffer)(uintptr_t)1&&dst==(VkBuffer)(uintptr_t)2);
+    assert(iw==ow&&ih==oh&&(VkDeviceSize)iw*ih*4==expected_output);
+    pack_phase++;pack_dispatches++;
+}
+#define vkCmdPipelineBarrier checked_barrier
+#define pgraph_vk_pack_depth_stencil_dims checked_pack
+static void record_pack(PGRAPHState *pg,SurfaceBinding *surface,unsigned cw,unsigned ch,
+    VkDeviceSize input_size,size_t copied_image_size,bool use_compute_to_convert_depth_stencil)
+{
+    PGRAPHVkState *r=pg->vk_renderer_state;
+    StorageBuffer *dst_storage_buffer=&r->storage_buffers[BUFFER_COMPUTE_DST];
+    VkCommandBuffer cmd=(VkCommandBuffer)(uintptr_t)4;
+    pack_phase=0;expected_compute=use_compute_to_convert_depth_stencil;
+    expected_input=input_size;expected_output=(VkDeviceSize)cw*ch*4;expected_copy=copied_image_size;
+    /* PACK SCHEDULE */
+    assert(pack_phase==(expected_compute?3u:1u));
+    assert(texture_source_buffer==r->storage_buffers[expected_compute?BUFFER_COMPUTE_SRC:BUFFER_COMPUTE_DST].buffer);
+}
 /* PRODUCTION */
 int main(void)
 {
@@ -61,7 +112,7 @@ int main(void)
     for (unsigned available = 0; available < 2; available++)
     for (unsigned a = 0; a < 3; a++) for (unsigned output_bpp = 2; output_bpp <= 4; output_bpp *= 2) {
         const VkDeviceSize capacity = 800ull * 1024 * 1024;
-        PGRAPHVkState r = {.storage_buffers = {{capacity}}};
+        PGRAPHVkState r = {.storage_buffers = {{capacity,(VkBuffer)(uintptr_t)1},{capacity,(VkBuffer)(uintptr_t)2}}};
         r.device_props.limits.minStorageBufferOffsetAlignment = alignments[a];
         PGRAPHState pg = {&r, scale};
         SurfaceBinding surface = {.width = dimensions[d][0], .height = dimensions[d][1],
@@ -78,13 +129,17 @@ int main(void)
         size_t output = pixels * (f ? 4 : output_bpp);
         assert(requested == (planes > output ? planes : output));
         tail_cases+=f&&pixels%4!=0;
+        unsigned factor=scale>1&&!available?scale:1;
+        size_t copied=f?((pixels*4+alignments[a]-1)/alignments[a])*alignments[a]+pixels:pixels*2;
+        record_pack(&pg,&surface,surface.width*factor,surface.height*factor,planes,copied,f!=0);
         assert(planned_pixels == pixels && recording && ensured);
         assert(grown == (requested > capacity));
         VkDeviceSize old_needed = (VkDeviceSize)surface.width * surface.height * scale * scale * 8;
         if (scale > 1 && available && old_needed > capacity && !grown) native_avoided++;
         cases++;
     }
-    assert(native_avoided&&tail_cases);
+    assert(native_avoided&&tail_cases&&pack_barriers==1200&&pack_dispatches==480);
+    printf("Depth texture schedules: 480 paired compute routes (4 -> 2 barriers) and 240 D16 transfer routes passed\n");
     printf("Depth texture input: %u range checks, %u stencil tails include the complete final word\n",cases,tail_cases);
     printf("depth transfer capacity: %u format/extent/scale/scratch/alignment/output cases, %u unnecessary growth requests avoided\n",
            cases, native_avoided);

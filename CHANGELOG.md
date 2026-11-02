@@ -4,6 +4,8 @@
 
 ## Unreleased
 
+- Batch Vulkan depth-to-texture pack input/output barriers into one pre-dispatch and one post-dispatch call. Preserve per-buffer ranges, access/stage masks, dispatch ordering and the separate D16 transfer route.
+
 - Bound Vulkan depth-to-texture output reuse to packed shader words and the final texture-copy payload; scope D16 transfer visibility to its copied input. Preserve aligned shader-input dependencies, GPU copies and completion behavior.
 
 - Include the final shader-read stencil word in Vulkan depth-to-texture input capacity and bound pack-input visibility/reuse barriers to that aligned plane range. Preserve native/scaled extent selection and GPU-only conversion.
