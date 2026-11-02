@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Hash only RAM-backed faces for Vulkan mixed cubemaps. GPU faces retain draw-stamp identity, avoiding CPU reads of stale guest bytes and RAM-face refreshes caused only by changes beneath GPU-backed faces. Keep face positions and the source mask in the content identity.
+
 - Skip empty Vulkan cubemap refresh recordings and layout round trips when every GPU face is current and the texture is already shader-readable. Keep metadata current and retain the final shader-read transition after scaled RAM blits, even when no GPU face copy is needed.
 
 - Preserve GPU-face provenance when an in-place Vulkan mixed-cubemap upload refreshes only RAM faces. Avoid recopying unchanged GPU faces at native and scaled sizes; fresh/copy-on-write images still rebuild all required faces and changed sources retain their copy path.

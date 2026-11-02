@@ -781,6 +781,20 @@ static bool check_texture_possibly_dirty(NV2AState *d,
 
 #include "s3tc-decode.h"
 
+/* GPU faces use draw stamps, not the stale guest bytes beneath them. Keep
+ * RAM-face identity position-sensitive without reading those GPU spans. */
+static uint64_t hash_mixed_cube_ram(const uint8_t *data, size_t face_length,
+                                    unsigned gpu_mask)
+{
+    uint64_t faces[7] = { gpu_mask };
+    for (unsigned f = 0; f < 6; f++) {
+        if (!(gpu_mask & (1u << f))) {
+            faces[f + 1] = fast_hash(data + f * face_length, face_length);
+        }
+    }
+    return fast_hash((const uint8_t *)faces, sizeof(faces));
+}
+
 /* An upload leaves skipped cube layers untouched. Provenance belongs to the
  * current image only: fresh/COW images have no layers worth retaining. */
 static void preserve_cube_upload_sources(TextureBinding *binding,
@@ -2650,8 +2664,9 @@ static void create_texture(PGRAPHState *pg, int texture_idx)
     uint64_t content_hash = 0;
     if (!surface_to_texture && (!surface_to_texture_cube || mixed_cube) && (possibly_dirty || f16_to_ram) &&
         (snode->validation_frame != pg->frame_time || f16_to_ram)) {
-        content_hash = fast_hash(texture_data,
-                pgraph_texture_hash_length(state, texture_length));
+        content_hash = mixed_cube ?
+            hash_mixed_cube_ram(texture_data, texture_length / 6, cube_mask) :
+            fast_hash(texture_data, pgraph_texture_hash_length(state, texture_length));
         if (is_indexed) {
             content_hash ^= fast_hash(palette_data, texture_palette_data_size);
         }
