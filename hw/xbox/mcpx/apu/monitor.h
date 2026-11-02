@@ -12,12 +12,12 @@
 #include <stddef.h>
 #include <stdint.h>
 
-/* Preserve the established queue lead while DSP ticks move to the engine
- * owner. Eight frames cover an EP output burst; two retain phase/slack.
- * There are no asynchronous DSP frames. The conservative margin remains
- * independently tested by test-audio-margin.c. */
-#define MCPX_APU_MONITOR_FRAMES_IN_FLIGHT 8
-#define MCPX_APU_MONITOR_PREROLL_FRAMES (MCPX_APU_MONITOR_FRAMES_IN_FLIGHT + 2)
+/* The frame pull retires DSP ownership before reading the queue, so no
+ * delayed engine frames need buffering here. EP bursts publish this frame
+ * and the next seven, never eight frames of delayed output. Two engine
+ * frames retain the cadence/phase margin, with one full frame to spare. */
+#define MCPX_APU_MONITOR_FRAMES_IN_FLIGHT 0
+#define MCPX_APU_MONITOR_PREROLL_FRAMES 2
 
 /* Host volume only, after the guest's S16 output conversion. Gain is Q16
  * in [0, 65536]. Round symmetrically: shifting a signed product downward

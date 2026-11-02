@@ -2020,7 +2020,8 @@ The DSP tick now runs on the engine owner because its live-RAM DMA must settle
 before the guest resumes. `test-dsp-guest-ram.py` compiles that actual dispatcher
 and tick, preventing a deferred-worker regression while retaining scratch growth
 and page-reuse coverage. GP/EP register effects occur in that same order; the
-frontend queue's SPSC ownership, sample cadence and existing lead are unchanged.
+frontend queue retains SPSC ownership and sample cadence, with the phase margin
+documented in `monitor.h`.
 
 `test-quiet-store-prefix.py` exercises the production translation-time rewrite
 that removes an overwritten quiet-counter preamble. Straight-line prefixes may
@@ -3337,3 +3338,12 @@ bytes and dispatch/filter/worker sizes at 3,120/1,120/8,776 bytes. The old
 The single emulation owner retains at most one completed request and the largest scratch buffer seen. Live requests retain their private buffers until callbacks return; a callback may submit/drain/cancel another request. Content close clears the spare and changes an owner epoch, so an already completing callback frees its older buffer instead of refilling the closed cache. No new TLS, thread, lock, state-format field or payload-copy change.
 
 `test-ide-buffer-cache.py CHECKOUT [CC]` compiles production submission/completion/cache helpers and actual embedded QEMUIOVector accessors. It checks destination bytes and gaps, zero/512/2048/65536-byte reads, injected read errors, orphan copy suppression, growth/shrink, callback close/reentry, reverse-order concurrent completions, largest-buffer retention and balanced cleanup. Existing cancellation/reentry tests also clear and check the cache. `IDE_CACHE_SOURCE`/`IDE_CACHE_HEADER` select frozen baselines; `IDE_CACHE_CFLAGS`, `IDE_CACHE_BINARY` and `IDE_CACHE_SKIP_RUN` support sanitizers/native runs. Pass `--bench` after CC for warm allocation/copy cost; provider reads are modeled, both payload copies remain, and no disk-throughput/FPS gain is inferred. Five alternating process pairs use a volatile read-function pointer and compiler memory barrier to retain payload work. Windows timing must set `_NO_DEBUG_HEAP=1` when using the debugger wrapper; otherwise allocator costs are inflated.
+
+`test-audio-queue.py CHECKOUT [CC]` compiles production monitor.c and its actual
+libretro-common mirrored SPSC queue. It verifies 153,600 exact PCM pulls across
+32 engine-tick phases, all eight EP burst offsets, VP/GP/EP production, queue
+reset and save/restore. It also tests 28 legacy/current post-load cases preserve
+queued PCM verbatim. `AUDIO_QUEUE_CFLAGS`, `AUDIO_QUEUE_BINARY` and
+`AUDIO_QUEUE_SKIP_RUN` support sanitizer and native Windows checks. The margin
+proof covers every engine phase; the frontend pull fixture requires DSP work
+to retire before queue access.

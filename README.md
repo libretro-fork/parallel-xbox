@@ -214,3 +214,12 @@ those gains stay constant across the frame. Ramping routes keep the per-sample
 calculation; no persistent gain cache or additional audio frame is stored. The
 threaded fixture checks 12,000 exact gain frames (stable and ramped) across
 headroom, channel selection, spatial routes and multipass-bin exclusion.
+
+Fresh loads and resets retain 64 samples (1.33 ms at 48 kHz) of audio preroll,
+down from 320 samples. The existing frame-pull ownership fence retires DSP work
+before queue access; EP bursts contain current and future samples. The two-tick
+phase margin leaves at least 33 samples after a pull at the worst cadence phase.
+This removes 5.33 ms of queue latency without changing the exact 800/801-sample
+frontend cadence. Existing savestates retain their queued PCM and queue lead;
+loading does not drop samples or add delay padding. Existing completion waits
+remain; this is not a claim that all core paths are nonblocking.

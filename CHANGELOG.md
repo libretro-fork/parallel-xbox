@@ -1,5 +1,6 @@
 # Changelog of the libretro core
 
+- Reduce fresh/reset audio preroll from 320 to 64 samples, removing 5.33 ms of queue latency at 48 kHz. DSP work already retires before each frame pull; EP bursts publish future samples. Retain the two-engine-frame phase margin and restore legacy queued PCM unchanged, without inserting silence.
 - Reuse one maximum monitor gain across a VP frame when eligible routes have constant gain, avoiding repeated per-sample ramp calculations for DSP-off audio. Changing routes retain exact interpolation, channel selection and multipass exclusions.
 - Stop malformed VP lists before an out-of-range voice handle can access descriptors or voice state. Validate full list-head register values before narrowing them, preserving valid prefixes and the other voice lists.
 - Build VP parallel work units during routing validation, removing the temporary per-voice mask array and second queue scan. Multipass grouping, repeated-voice protection and serial fallbacks are preserved.
