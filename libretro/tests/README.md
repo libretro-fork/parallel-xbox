@@ -3209,3 +3209,14 @@ fall from three (palette) or two (transform mode) to zero/one. Two paired model
 runs improve palette timings for all patterns; transform timings improve for
 unchanged/randomized inputs and stay flat for alternating inputs. No GPU-facing
 state or command change is introduced, and no full-game speedup is inferred.
+
+SET_COLOR_MASK is included against a frozen 481c41b body, bringing the shared
+publication pass to 1.4 million state cases. Its original pre-write
+surface_color.write_enabled_cache update remains first. The test extracts the
+production write-enabled predicate and checks both the old/new register result
+and the retained pre-update write-cache value. Another 1,024 exhaustive cases
+cover all old/new channel masks, initially set/clear cache and dirty state.
+Register stores drop from four to zero/one; counted reads fall from nine to
+two/three while preserving the existing predicate call. Both method-model runs
+improve unchanged, alternating and randomized color masks. GPU-facing state,
+surface-write history and command work remain unchanged.

@@ -4,6 +4,8 @@
 
 ## Unreleased
 
+- Publish color-write-mask fields once only on change while preserving the pre-update surface write-enabled cache. Remove redundant atomic register traffic without changing color masks, dirty flags or surface-write history.
+
 - Publish texture-palette and transform execution-mode register fields once only on a real change. Preserve palette addresses/context, mode/range bits and dirty flags while removing redundant atomic register traffic.
 
 - Compose fog-color, light-control and color-material register fields locally and publish once only on change. Preserve final fields and dirty flags while removing redundant atomic register traffic in both renderers.
