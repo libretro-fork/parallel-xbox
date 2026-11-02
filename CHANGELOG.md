@@ -1,5 +1,6 @@
 # Changelog of the libretro core
 
+- Reduce VP completion-counter traffic by publishing each participant's completed units once per batch instead of once per unit. Unused worker labels are retired before generation wrap to prevent stale output reuse. Parallel scheduling, audio ordering and the existing completion barrier are retained.
 - Remove the standalone per-CPU-run MXCSR boundary pending a complete, throughput-validated native FP ownership implementation.
 - Bound the VP monitor's multipass lookahead so cyclic or invalid voice links cannot trap the audio owner in an endless scan. Valid reader selection remains unchanged.
 - Prevent VP work-queue overflow from shared or cyclic voice lists. Oversized frames process in bounded list order on the owner thread without growing the queue, clearing a partial mix, or adding worker waits.

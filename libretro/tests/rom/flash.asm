@@ -115,8 +115,31 @@ entry:
         pio 0x3A0, 0                     ; buffer base
         pio 0x3A4, 0                     ; loop start
         pio 0x3DC, 1919                  ; end
+%ifdef VP_UNIQUE
+        ; Clone the inactive descriptor, then activate 64 distinct voices.
+        ; Their PCM is shared read-only; filter/resampler state is per voice.
+        mov ebx, VOICE + 1
+.vp_clone:
+        mov esi, VOICES + VOICE * 0x80
+        mov edi, ebx
+        shl edi, 7
+        add edi, VOICES
+        mov ecx, 0x80 / 4
+        rep movsd
+        inc ebx
+        cmp ebx, VOICE + 64
+        jb .vp_clone
+%endif
         pio 0x120, (1 << 16)             ; antecedent: 2D list top
         pio 0x124, VOICE                 ; VOICE_ON, envelopes off
+%ifdef VP_UNIQUE
+        mov ebx, VOICE + 1
+.vp_activate:
+        pio 0x124, ebx
+        inc ebx
+        cmp ebx, VOICE + 64
+        jb .vp_activate
+%endif
 %ifdef VP_REPEAT
         ; A shared list tail must execute twice in order, never concurrently.
         apu 0x2060, VOICE                ; TVL3D shares the 2D voice

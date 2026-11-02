@@ -51,16 +51,48 @@ static void repeated_voice_schedule_tests(void)
     puts("PASS: 256 repeated-handle queues rejected; all unique handles retain parallel units; invalid handles cannot index ownership bits");
 }
 
+/* Workers beyond the first are never notified for a two-unit batch. A label
+ * left from an earlier generation cycle must not make their stale data live. */
+static void stale_buffer_wrap_tests(void)
+{
+    MCPXAPUState *d=calloc(1,sizeof(*d));
+    g_config.audio.vp.num_workers=MAX_VOICE_WORKERS;
+    voice_work_init(d);test_completion_target=&d->vp.voice_work_dispatch.units_done;
+    d->ram_ptr=calloc(1,RAM_SIZE);address_space_memory.d=d;
+    d->regs[NV_PAPU_VPVADDR]=0x1000;d->monitor.point=MCPX_APU_DEBUG_MON_VP;
+    vset(d,64,NV_PAVS_VOICE_PAR_STATE,NV_PAVS_VOICE_PAR_STATE_PAUSED,1);
+    vset(d,65,NV_PAVS_VOICE_PAR_STATE,NV_PAVS_VOICE_PAR_STATE_PAUSED,1);
+    for(int w=1;w<MAX_VOICE_WORKERS;w++){
+        retro_atomic_store_relaxed_int(&d->vp.voice_work_dispatch.workers[w].used_gen,0);
+        for(int b=0;b<32;b++)for(int n=0;n<32;n++)d->vp.voice_work_dispatch.workers[w].mixbins[b][n]=1;
+        for(int n=0;n<32;n++)for(int c=0;c<2;c++)d->vp.voice_work_dispatch.workers[w].sample_buf[n][c]=1;
+    }
+    d->vp.voice_work_dispatch.gen=0x7ffe;
+    for(int frame=0;frame<2;frame++){
+        int64_t mix[32][32]={0};memset(d->vp.sample_buf,0,sizeof(d->vp.sample_buf));
+        voice_work_enqueue(d,64,0);voice_work_enqueue(d,65,0);
+        voice_work_dispatch(d,mix);
+        for(int b=0;b<32;b++)for(int n=0;n<32;n++)assert(mix[b][n]==0);
+        for(int n=0;n<32;n++)for(int c=0;c<2;c++)assert(d->vp.sample_buf[n][c]==0);
+    }
+    assert(d->vp.voice_work_dispatch.gen==0);
+    voice_work_finalize(d);free(d->ram_ptr);free(d);test_completion_target=NULL;
+    puts("PASS: unused worker buffers stay retired across claim-generation wrap");
+}
+
 int main(int argc,char**argv)
 {
     repeated_voice_schedule_tests();
     int scenarios=argc>1?atoi(argv[1]):400;
     long compared=0,parallel_frames=0;
+    unsigned long completion_calls=0,completion_units=0,completion_frames=0,completion_wraps=0;
     for(int sc=0;sc<scenarios;sc++)for(int pass=0;pass<2;pass++){
         rs=0x9e3779b97f4a7c15ull^((uint64_t)sc*0x100000001b3ull);rnd();rnd();
         MCPXAPUState*d=calloc(1,sizeof(*d));
         cur_pass=pass; g_config.audio.vp.num_workers=pass?4:1;
         voice_work_init(d);
+        test_completion_target=&d->vp.voice_work_dispatch.units_done;
+        d->vp.voice_work_dispatch.gen=0x7ffe;
         d->ram_ptr=calloc(1,RAM_SIZE);address_space_memory.d=d;
         d->regs[NV_PAPU_VPVADDR]=0x1000;d->regs[NV_PAPU_VPSGEADDR]=0x10000;
         d->regs[NV_PAPU_VPSSLADDR]=0x18000;d->regs[NV_PAPU_FENADDR]=0x80000;
@@ -148,7 +180,16 @@ int main(int argc,char**argv)
             static mix_t mix[32][32];
             memset(mix,0,sizeof(mix));
             if(d->monitor.point)memset(mon_out,0,sizeof(mon_out));
+            retro_atomic_store_relaxed_int(&test_completion_rmws,0);
+            int old_gen=d->vp.voice_work_dispatch.gen;
             mcpx_apu_vp_frame(d,mix);
+            int publications=retro_atomic_load_acquire_int(&test_completion_rmws);
+            if(d->vp.voice_work_dispatch.gen!=old_gen){
+                assert(publications>0&&publications<=d->vp.voice_work_dispatch.num_workers&&publications<=d->vp.voice_work_dispatch.num_units);
+                assert(retro_atomic_load_acquire_int(&d->vp.voice_work_dispatch.units_done)==d->vp.voice_work_dispatch.num_units);
+                if(d->vp.voice_work_dispatch.gen<old_gen)completion_wraps++;
+                completion_calls+=publications;completion_units+=d->vp.voice_work_dispatch.num_units;completion_frames++;
+            }else assert(!publications);
             static int out[2][64][32*32+64];
             for(int b=0;b<32;b++)for(int ii=0;ii<32;ii++)out[pass][f][b*32+ii]=to24(mix[b][ii]);
             for(int ii=0;ii<32;ii++){out[pass][f][1024+2*ii]=mon_out[ii][0];out[pass][f][1025+2*ii]=mon_out[ii][1];}
@@ -160,6 +201,10 @@ int main(int argc,char**argv)
         voice_work_finalize(d);
         free(d->ram_ptr);free(d);
     }
+    stale_buffer_wrap_tests();
+    assert(completion_calls<=completion_units);
+    if(completion_frames>(unsigned long)scenarios)assert(completion_wraps);
+    printf("PASS: %lu completion publications for %lu units across %lu parallel frames (%lu generation wraps); at most one per participant\n",completion_calls,completion_units,completion_frames,completion_wraps);
     printf("PASS: %ld frames of random voices (repeated handles, multipass groups, HRTF, filters, the monitor) the same on four voice threads as on one; %ld scenarios split\n",compared,parallel_frames);
     return 0;
 }
