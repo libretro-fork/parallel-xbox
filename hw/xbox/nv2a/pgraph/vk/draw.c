@@ -2203,7 +2203,13 @@ static void pipeline_ahead(PGRAPHState *pg, const PipelineKey *draw_key)
     /* Build the final immutable key in its reserved slot. The fill below
      * does not clear the slot; release publication happens in pump_submit. */
     PipelineKey *key = &job->key;
-    memcpy(key, draw_key, sizeof(*key));
+    /* The speculative shader replaces the draw shader. Copy only the
+     * surrounding bytes from the draw key, including all padding. */
+    memcpy(key, draw_key, offsetof(PipelineKey, shader_state));
+    const size_t after_shader = offsetof(PipelineKey, shader_state) +
+                                sizeof(key->shader_state);
+    memcpy((char *)key + after_shader, (const char *)draw_key + after_shader,
+           sizeof(*key) - after_shader);
     memcpy(&key->shader_state, &r->ahead_state, sizeof(ShaderState));
     uint64_t hash = fast_hash((const uint8_t *)key, sizeof(*key));
     if (lru_contains_hash(&r->pipeline_cache, hash) ||
