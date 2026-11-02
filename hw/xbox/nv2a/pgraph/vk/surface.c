@@ -496,7 +496,14 @@ static VkBuffer pack_depth_readback(PGRAPHState *pg, SurfaceBinding *surface,
                                      downscale);
     }
 
-    VkBufferMemoryBarrier post_compute_src_barrier = {
+    /* Batch adjacent dependencies before any transfer consumer. Packed
+     * swizzles establish their own shader-read dependency instead. */
+    bool packed_swizzle = !fused && !packed_to_host && direct &&
+        surface->swizzle && pgraph_vk_swizzle_packed_possible(pg,
+            surface->vram_addr, surface->width, surface->height,
+            surface->fmt.bytes_per_pixel);
+    bool transfer_output = !fused && !packed_to_host && !packed_swizzle;
+    VkBufferMemoryBarrier post_compute[3] = {{
         .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
         .srcAccessMask = VK_ACCESS_SHADER_READ_BIT,
         .dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
@@ -504,10 +511,34 @@ static VkBuffer pack_depth_readback(PGRAPHState *pg, SurfaceBinding *surface,
         .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
         .buffer = copy_buffer,
         .size = input_size
-    };
-    vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                         VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 1,
-                         &post_compute_src_barrier, 0, NULL);
+    }};
+    unsigned post_count = 1;
+    VkPipelineStageFlags post_stages = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+    if (transfer_output) {
+        post_compute[post_count++] = (VkBufferMemoryBarrier) {
+            .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
+            .srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT,
+            .dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT,
+            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .buffer = pack_buffer,
+            .size = packed_size
+        };
+        if (!direct) {
+            post_compute[post_count++] = (VkBufferMemoryBarrier) {
+                .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
+                .srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT,
+                .dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
+                .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                .buffer = r->storage_buffers[BUFFER_STAGING_DST].buffer,
+                .size = packed_size
+            };
+            post_stages |= VK_PIPELINE_STAGE_TRANSFER_BIT;
+        }
+    }
+    vkCmdPipelineBarrier(cmd, post_stages, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                         0, 0, NULL, post_count, post_compute, 0, NULL);
 
     if (fused) {
         /* The final guest words are already written; no packed-buffer user. */
@@ -518,27 +549,6 @@ static VkBuffer pack_depth_readback(PGRAPHState *pg, SurfaceBinding *surface,
         /* Compute produced the CPU's final packed representation. */
         copy_buffer = pack_buffer;
     } else {
-        VkBufferMemoryBarrier post_compute_dst_barrier = {
-            .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
-            .srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT,
-            .dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT,
-            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-            .buffer = pack_buffer,
-            .size = packed_size
-        };
-        /* A packed-depth swizzle consumes compute output directly. Its
-         * shader-read dependency is recorded by swizzle_to_ram_from; no
-         * transfer reads this output on that path. */
-        bool packed_swizzle = direct && surface->swizzle &&
-            pgraph_vk_swizzle_packed_possible(pg, surface->vram_addr,
-                surface->width, surface->height, surface->fmt.bytes_per_pixel);
-        if (!packed_swizzle) {
-            vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                                 VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 1,
-                                 &post_compute_dst_barrier, 0, NULL);
-        }
-
         if (direct) {
             store_packed_to_ram(pg, cmd, surface, pack_buffer, ring_offset);
         } else {
@@ -547,19 +557,6 @@ static VkBuffer pack_depth_readback(PGRAPHState *pg, SurfaceBinding *surface,
             //
 
             copy_buffer = r->storage_buffers[BUFFER_STAGING_DST].buffer;
-
-            VkBufferMemoryBarrier pre_copy_dst_barrier = {
-                .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
-                .srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT,
-                .dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
-                .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-                .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-                .buffer = copy_buffer,
-                .size = packed_size
-            };
-            vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
-                                 VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 1,
-                                 &pre_copy_dst_barrier, 0, NULL);
 
             VkBufferCopy buffer_copy_region = {
                 .size = packed_size,
