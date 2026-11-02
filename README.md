@@ -268,3 +268,9 @@ address bytes. A byte-wise oracle checks 200,000 packet/filter combinations.
 Compiled Win64 receive stack sizes are unchanged; no throughput or hardware
 cache/spill improvement is claimed. Payload staging and synchronization stay
 unchanged.
+
+Paused VP voices retain their descriptor and filter state while list traversal
+continues. They do not enter the worker queue, so a fully paused frame publishes
+no VP work. Unpausing takes effect on the next VP frame; GP/EP processing and
+the frontend audio cadence remain unchanged. This removes redundant VP work,
+not the completion barrier for frames that actually dispatch voices.

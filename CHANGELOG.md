@@ -1,5 +1,6 @@
 # Changelog of the libretro core
 
+- Paused audio voices no longer enter the worker queue, avoiding needless dispatch and completion work while preserving their playback position and next-frame resume.
 - Compare NVNet MAC filter fields directly as six-byte scalar values, removing temporary address copies and partial initialization. Broadcast, masked multicast, unicast and trace behavior stay unchanged; reserved upper register bits remain ignored.
 - Fix PCM samples and stereo frames that cross noncontiguous SGE pages. Read the correct logical source pages, retain direct loads when physical backing is contiguous, and gather at most eight bytes only for split backing. Source offsets, audio cadence and state layout are unchanged.
 - Decode ADPCM windows directly into VP samples instead of building and copying an intermediate PCM block. Preserve mono/stereo output, source offsets and notifications; unsupported block layouts produce bounded silence before any gather. No new audio buffering or threading state.

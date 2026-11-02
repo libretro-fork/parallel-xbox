@@ -2313,10 +2313,14 @@ void mcpx_apu_vp_frame(MCPXAPUState *d, int64_t mixbins[NUM_MIXBINS][NUM_SAMPLES
             uint16_t v = handle;
             apu_reg_w(d, next, voice_get_mask(d, v, NV_PAVS_VOICE_TAR_PITCH_LINK,
                                NV_PAVS_VOICE_TAR_PITCH_LINK_NEXT_VOICE_HANDLE));
-            if (!voice_get_mask(d, v, NV_PAVS_VOICE_PAR_STATE,
-                                NV_PAVS_VOICE_PAR_STATE_ACTIVE_VOICE)) {
+            /* A paused voice preserves its state but still advances the list.
+             * Do not publish worker work that voice_process would discard. */
+            uint32_t state = voice_get_mask(d, v, NV_PAVS_VOICE_PAR_STATE,
+                                            UINT32_MAX);
+            if (!(state & NV_PAVS_VOICE_PAR_STATE_ACTIVE_VOICE)) {
                 fe_method(d, SE2FE_IDLE_VOICE, v);
-            } else if (!is_voice_locked(d, v)) {
+            } else if (!(state & NV_PAVS_VOICE_PAR_STATE_PAUSED) &&
+                       !is_voice_locked(d, v)) {
                 /* a locked voice is being changed by the guest: it sits
                  * this frame out rather than the frame waiting (apu.c) */
                 if (!serial_overflow &&
