@@ -44,7 +44,8 @@ static void profile(unsigned n){if(n==NV2A_PROF_SHADER_FALLBACK)log_data.fallbac
 #define nv2a_profile_inc_counter(n) profile(n)
 bool pgraph_glsl_check_shader_state_dirty(PGRAPHState *pg,const ShaderState *s){(void)pg;(void)s;return dirty;}
 ShaderState pgraph_glsl_get_shader_state(PGRAPHState *pg){(void)pg;log_data.generated++;return requested;}
-bool pgraph_glsl_psh_canonicalize_dynamic(PshState *s){if(!canonical)return false;s->alpha_dynamic=true;return true;}
+__attribute__((noinline)) bool pgraph_glsl_psh_canonicalize_dynamic(PshState *s){if(!canonical)return false;s->alpha_dynamic=true;return true;}
+
 static bool vk_seen_contains(uint64_t h){assert(h==request_hash||h==sibling_hash);return h==request_hash?seen_request:seen_sibling;}
 static int vk_spec_phase(uint64_t h){assert(h==request_hash||h==sibling_hash);return h==request_hash?request_phase:sibling_phase;}
 static void vk_spec_release_adopted(uint64_t h){assert(log_data.releases<2);log_data.released[log_data.releases++]=h;}
@@ -83,16 +84,22 @@ static void correctness(void){
   assert(!memcmp(&a->ahead_state,&b->ahead_state,sizeof(a->ahead_state))&&!memcmp(&a->shader_binding->state,&b->shader_binding->state,sizeof(ShaderState)));
   if(b->shader_bindings_changed)assert(b->shader_binding->node.hash==fast_hash((const uint8_t*)&b->shader_binding->state,sizeof(ShaderState))&&log_data.added==b->shader_binding->node.hash);
 #ifdef CHECKED
+#ifdef REFERENCE_REUSES_HASH
+  assert(old_hashes==hash_calls);
+#else
   assert(old_hashes-hash_calls==(unsigned)b->shader_bindings_changed);
 #endif
+#endif
  }
- free(a);free(b);puts("100000 binding schedules: exact selected/ahead/queued states, LRU digests, phase/release/seen decisions, profiles and uniform calls match; counted build removes one hash only on binding changes");
+ free(a);free(b);puts("100000 binding schedules: exact selected/ahead/queued states, LRU digests, phase/release/seen decisions, profiles and uniform calls match; counted build validates the baseline-specific hash delta");
 }
 #ifndef CHECKED
 static volatile uint64_t sink;
 static double bench(bool current,unsigned mode){
  PGRAPHVkState *r=setup();PGRAPHState pg={r};memset(&requested,0,sizeof(requested));requested.psh.alpha_dynamic=false;
- dirty=true;canonical=mode==1;seen_request=mode==0;seen_sibling=true;request_phase=0;sibling_phase=VK_SPEC_ADOPTED;hashes();
+ dirty=true;canonical=mode!=6;seen_request=mode==0;seen_sibling=mode!=5;
+ request_phase=mode==3||mode==8?VK_SPEC_ADOPTED:mode==4?1:mode==7?VK_SPEC_PIPE_LANDED:0;
+ sibling_phase=mode==5?0:VK_SPEC_ADOPTED;requested.psh.alpha_dynamic=mode==8;hashes();
  void(*run)(PGRAPHState*)=current?pgraph_vk_bind_shaders:reference_bind;struct timespec a,b;timespec_get(&a,TIME_UTC);
  for(unsigned i=0;i<200000;i++){prepare(r,mode==2?1:0);memset(&log_data,0,sizeof(log_data));run(&pg);}
  timespec_get(&b,TIME_UTC);sink=log_data.added+r->shader_bindings_changed;free(r);
@@ -105,8 +112,8 @@ int main(void){
 #endif
  correctness();printf("ShaderState=%zu bytes; real LRU/XXH3; fixture SIMD mask=%llu\n",sizeof(ShaderState),(unsigned long long)fixture_simd);
 #ifndef CHECKED
- puts("Modeled shader-state/speculation/uniform services; mode 0 resident, 1 dynamic sibling, 2 equal-state control; ns/call");
- for(unsigned round=0;round<5;round++)for(unsigned mode=0;mode<3;mode++){
+ puts("Modeled services; modes 0 resident, 1 sibling/queue original, 2 equal, 3 sibling/ahead, 4 sibling/pending, 5 queue sibling, 6 rejected, 7 landed, 8 canonical-neutral; ns/call");
+ for(unsigned round=0;round<5;round++)for(unsigned mode=0;mode<9;mode++){
   double t[2];for(unsigned k=0;k<2;k++){unsigned w=k^(round&1);t[w]=bench(w,mode);}
   printf("round=%u mode=%u baseline=%.3f current=%.3f ns/call\n",round,mode,t[0],t[1]);
  }

@@ -16,7 +16,10 @@
 
 ## Unreleased
 
+- Extend shader-binding CPU probes to nine queue, handoff, rejection and unchanged-state paths, with a frozen copy baseline for detecting measurement variation before more copy changes. Renderer behavior is unchanged.
+
 - Keep DMA/TRIM request-object reuse on the emulation owner instead of per-thread TLS and QEMU thread-exit notifiers. Preserve cache limits and reference counting; clear cached objects on content close and free late completions until another submission begins reuse.
+
 - Reuse the selected shader-state digest for Vulkan binding-cache lookup, including dynamic siblings. Preserve complete state bytes, cache collision checks, queue/ahead decisions and clean-state behavior while avoiding duplicate hashing and the sibling copy-back.
 
 - Reuse one completed IDE buffered-read request and its largest aligned scratch buffer on the emulation owner. Preserve error/cancellation copy suppression and callback lifetime; release the cache on content close, including close from a completing callback. Warm reads avoid repeated heap allocations without changing payload copying.
