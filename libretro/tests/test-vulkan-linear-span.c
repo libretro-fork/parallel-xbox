@@ -186,6 +186,13 @@ int main(void)
             .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED, .image = image,
             .subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1} };
         vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 0, NULL, 1, &ib);
+        if(eligible){
+            size_t update_size=(read_bytes+3)&~(size_t)3;
+            vkCmdUpdateBuffer(cmd,upload.handle,offset,update_size,upload.mapped+offset);
+            /* The recorded update owns its data; require GPU-produced bytes. */
+            memset(upload.mapped+offset,0xe5,update_size);
+        }
+        pgraph_vk_upload_source_barrier(&state.pgraph,cmd,eligible);
         vkCmdCopyBufferToImage(cmd, eligible?upload.handle:staging.handle, image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy);
         ib.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL; ib.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
         ib.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT; ib.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;

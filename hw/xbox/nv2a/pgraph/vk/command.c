@@ -386,7 +386,8 @@ void pgraph_vk_staging_flush(PGRAPHState *pg, VkDeviceSize offset,
 }
 
 /* CPU staging writes are flushed before queue submission, which supplies
- * host-to-device visibility. Imported guest RAM retains its existing barrier. */
+ * host-to-device visibility. Imported RAM also needs visibility for earlier
+ * GPU writes before the next direct transfer reads it. */
 void pgraph_vk_upload_source_barrier(PGRAPHState *pg, VkCommandBuffer cmd,
                                      bool from_vram)
 {
@@ -397,14 +398,15 @@ void pgraph_vk_upload_source_barrier(PGRAPHState *pg, VkCommandBuffer cmd,
     assert(r->vram_buffer != VK_NULL_HANDLE);
     VkBufferMemoryBarrier barrier = {
         .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
-        .srcAccessMask = VK_ACCESS_HOST_WRITE_BIT,
+        .srcAccessMask = VK_ACCESS_HOST_WRITE_BIT | VK_ACCESS_MEMORY_WRITE_BIT,
         .dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT,
         .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
         .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
         .buffer = r->vram_buffer,
         .size = VK_WHOLE_SIZE,
     };
-    vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_HOST_BIT,
+    vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_HOST_BIT |
+                             VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
                          VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 1,
                          &barrier, 0, NULL);
 }

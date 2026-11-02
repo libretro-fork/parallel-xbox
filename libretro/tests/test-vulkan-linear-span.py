@@ -21,6 +21,10 @@ for name in ("stage_level", "level_from_vram", "stage_linear_2d", "texture_level
         depth += (source[end] == "{") - (source[end] == "}")
         end += 1
     parts.append(source[start:end])
+command = (repo / 'hw/xbox/nv2a/pgraph/vk/command.c').read_text()
+a = command.index('void pgraph_vk_upload_source_barrier(')
+b = command.index('\n}\n', a) + 2
+parts.append(command[a:b])
 code = Path(__file__).with_suffix(".c").read_text().replace("/* PRODUCTION */", "\n".join(parts))
 with tempfile.TemporaryDirectory(prefix="vk-linear-span-", dir=repo.parent) as directory:
     folder = Path(directory)
