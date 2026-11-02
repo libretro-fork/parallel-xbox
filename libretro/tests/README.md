@@ -1053,16 +1053,18 @@ The GL upload-alignment oracle now uses the production BC decoder for 36 additio
 
 `python libretro/tests/test-vulkan-volume-blocks.py CHECKOUT [CC]` compiles
 production volume staging, VRAM selection and ordinary/per-slice copy functions,
-then transfers native BC1/BC2/BC3 data through Vulkan 3D images. Its 1,620 cases
+then transfers native BC1/BC2/BC3 data through Vulkan 3D images. Its 7,020 cases
 cover narrow/wide block grids, partial block rows, depth groups including a fifth
 slice and 65/129-slice levels, mip 0/1, missing imports, unaligned offsets and data
-ending exactly at VRAM end. A single block column can use one strided region per
-Z slice in batches of at most 64 regions, avoiding CPU block reordering. Wider
-layouts retain staging. Destination block bytes must match the coordinate oracle.
+ending exactly at VRAM end. A single block column uses strided regions; row
+volumes use grouped block regions. Wider rows become direct only when their
+whole level fits one 64-region batch; larger layouts retain staging. Existing
+four-block row eligibility remains intact. Destination block bytes must match
+the coordinate oracle, including 256/260-pixel budget boundaries.
 
-The fixture records CPU copies and staging avoidance: the current matrix has
-390 direct levels and 125,880 CPU copy calls versus a 148,020-call previous-path
-model. These are operation counts, not game frame-time measurements. Vulkan BC
+The matrix has 1,134 direct levels. Relative to the prior four-block row gate,
+204 newly direct levels avoid 177,600 staging bytes and 13,320 CPU block copies.
+These are operation counts, not game frame-time measurements. Vulkan BC
 3D image support is required. Synchronization validation is requested by default;
 set `VOLUME_NO_VALIDATION=1` only when unavailable and record that limitation.
 The runner supports Linux and Windows; fixture buffers model imported RAM,

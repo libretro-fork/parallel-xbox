@@ -239,6 +239,13 @@ static void stage_blocks_2d(PGRAPHState *pg, TextureLevel *level,
     memcpy(dst, data, size);
 }
 
+/* Wider single-row volumes remain bounded to one existing region batch. */
+static bool volume_row_direct(unsigned width, unsigned height, unsigned depth)
+{
+    return height <= 4 && (width <= 16 ||
+        (VkDeviceSize)((width + 3) / 4) * ((depth + 3) / 4) <= 64);
+}
+
 static void stage_blocks_3d(PGRAPHState *pg, TextureLevel *level,
                             const uint8_t *data, unsigned int width,
                             unsigned int height, unsigned int depth,
@@ -251,7 +258,7 @@ static void stage_blocks_3d(PGRAPHState *pg, TextureLevel *level,
      * buffer row (copy_volume_block_slices), without CPU rearrangement.
      * Short single-row levels use one copy per block and four-slice group. */
     bool ordered = depth == 1 || bw * bh == 1;
-    if ((ordered || bw == 1 || (bh == 1 && bw <= 4)) &&
+    if ((ordered || bw == 1 || volume_row_direct(width, height, depth)) &&
         level_from_vram(pg, level, data, width, height, depth,
                         slice * depth, block_size)) {
         return;
@@ -418,7 +425,8 @@ static VkBufferImageCopy texture_level_copy(const TextureLevel *level,
 static size_t volume_block_slice_size(const TextureLevel *level, VkFormat format)
 {
     bool column = level->width <= 4 && level->height > 4;
-    bool row = level->height <= 4 && level->width > 4 && level->width <= 16;
+    bool row = level->width > 4 &&
+        volume_row_direct(level->width, level->height, level->depth);
     if (level->source != LEVEL_VRAM || !(column || row) || level->depth <= 1) {
         return 0;
     }
@@ -440,8 +448,8 @@ static void copy_volume_block_slices(VkCommandBuffer cmd, VkBuffer source,
 {
     if (level->width > 4) {
         /* A single XY block's group of Z slices is contiguous in guest RAM.
-         * Cap this route at four blocks per row so a full group needs no
-         * more regions than the narrow-column route's four slice copies. */
+         * Wider rows are eligible only when the whole level fits in this
+         * region batch; the original four-block route retains its limits. */
         unsigned bw = (level->width + 3) / 4;
         VkBufferImageCopy regions[64];
         unsigned total = bw * ((level->depth + 3) / 4);

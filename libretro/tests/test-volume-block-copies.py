@@ -9,7 +9,7 @@ def fn(name):
  while depth:depth+=(s[b]=='{')-(s[b]=='}');b+=1
  return s[a:b]
 parts=[re.search(r'typedef struct TextureLevel \{.*?\} TextureLevel;',s,re.S)[0]]
-parts += [fn(n) for n in ['stage_level','level_from_vram','stage_blocks_3d']]
+parts += [fn(n) for n in ['stage_level','level_from_vram','volume_row_direct','stage_blocks_3d']]
 code=Path(__file__).with_suffix('.c').read_text().replace('/* PRODUCTION */','\n'.join(parts))
 # Model production: copy bodies inline into callers that know BC is 8/16 bytes.
 code=code.replace('static void stage_blocks_3d(', 'static inline __attribute__((always_inline)) void stage_blocks_3d(')

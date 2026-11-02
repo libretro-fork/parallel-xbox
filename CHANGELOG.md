@@ -6,6 +6,8 @@
 
 - Prevent upscaled 2D atlas-edge lines such as Ninja Gaiden Black's equipment-menu seams while retaining linear filtering. Eligible depth-disabled, flat screen rectangles clamp UVs to the native pixel-center range and reuse constant depth instead of reconstructing its plane. Native resolution and depth-tested shader paths keep their existing keys and code; no extra draw, texture fetch, buffer or readback is added.
 
+- Upload wider single-row BC volumes directly from imported RAM when all grouped block copies fit one 64-region batch. Avoid their CPU reorder/staging copy while retaining prior narrow routes and larger-layout fallbacks.
+
 - Extend the Vulkan depth-texture GPU oracle to reuse input/output buffers for two distinct packs in one submission, retaining both results without an inter-chain CPU wait. Runtime rendering behavior is unchanged.
 
 - Add a real-device oracle for Vulkan depth-to-texture pack dependencies, comparing the production barrier/dispatch segment with readback packing across native/doubled grids and partial stencil words. Runtime rendering behavior is unchanged.
