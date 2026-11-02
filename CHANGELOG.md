@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Bind Vulkan staged S3TC decode input per level instead of exposing the entire packed snapshot in every descriptor. Retain GPU decoding when individual aligned level windows fit the device range limit even if the full mip/cube snapshot does not, avoiding CPU RGBA decoding and larger uploads.
+
 - Give each Vulkan S3TC decode level its own aligned imported-RAM descriptor window. Avoid compressed staging copies caused solely by gaps between cubemap faces or selected levels while retaining per-level bounds, ownership and descriptor-slot retirement.
 
 - Bind aligned source windows for Vulkan S3TC image decoding, allowing selected compressed levels to read imported RAM directly even when the complete RAM buffer exceeds the descriptor-range limit. Preserve per-level ownership, GPU-write barriers and staging for oversized or unaligned level spans.

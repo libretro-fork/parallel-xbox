@@ -209,11 +209,18 @@ static Case record_case(PGRAPHVkState *r, PGRAPHState *pg, VkCommandBuffer cmd,
         vkCmdUpdateBuffer(cmd,test_ram_handle,levels[j].source,levels[j].size,nv->vram_ptr+levels[j].source);
     }
     uint32_t saved_limit=r->device_props.limits.maxStorageBufferRange;
-    if(kind==4||kind==5){
-        VkDeviceSize first=UINT64_MAX,end=0,largest=0;
-        for(unsigned j=0;j<n;j++){first=MIN(first,levels[j].source);end=MAX(end,levels[j].source+levels[j].size);largest=MAX(largest,levels[j].size+levels[j].source%MAX(4,r->device_props.limits.minStorageBufferOffsetAlignment));}
+    if(kind==4||kind==5||kind==6){
+        VkDeviceSize first=UINT64_MAX,end=0,largest=0,staged_largest=0,packed_offset=0;
+        VkDeviceSize align=MAX(4,r->device_props.limits.minStorageBufferOffsetAlignment);
+        for(unsigned j=0;j<n;j++){
+            first=MIN(first,levels[j].source);
+            end=MAX(end,levels[j].source+levels[j].size);
+            largest=MAX(largest,levels[j].size+levels[j].source%align);
+            staged_largest=MAX(staged_largest,levels[j].size+packed_offset%align);
+            packed_offset+=ROUND_UP(levels[j].size,16);
+        }
         first-=first%MAX(4,r->device_props.limits.minStorageBufferOffsetAlignment);
-        r->device_props.limits.maxStorageBufferRange=kind==5?largest:end-first;
+        r->device_props.limits.maxStorageBufferRange=kind==6?staged_largest:kind==5?largest:end-first;
         assert(r->device_props.limits.maxStorageBufferRange<*nv->vram);
     }
     if((size_t)shape.width*shape.height*shape.depth>=65536) assert(upload_s3tc_image_gpu(pg,cmd,b,skip));
@@ -404,17 +411,17 @@ int main(void)
  r.storage_buffers[0]=(StorageBuffer){src.handle,capacity,src.mapped};
  NV2AState nv={.pgraph={.vk_renderer_state=&r},.vram_ptr=ram.mapped,.vram=&capacity};PGRAPHState *pg=&nv.pgraph;
  unsigned widths[]={1,3,7,16,64},heights[]={1,5,8,64},depths[]={1,3,4,5,8};
- for(unsigned mode=0;mode<3;mode++) for(unsigned kind=0;kind<6;kind=kind==2?4:kind+1)
+ for(unsigned mode=0;mode<3;mode++) for(unsigned kind=0;kind<7;kind=kind==2?4:kind+1)
  for(unsigned wi=0;wi<5;wi++) for(unsigned hi=0;hi<4;hi++) for(unsigned zi=0;zi<5;zi++) {
   TextureShape shape={.width=widths[wi],.height=heights[hi],.depth=depths[zi],.levels=wi>=2&&hi>=1&&zi>=1?3:1,.dimensionality=3,.color_format=mode+1};
   r.aux_slot=cases%8;Case c=record_case(&r,pg,commands[r.aux_slot],queue,dst,shape,kind,0,false);complete_case(&r,&c,dst,commands[r.aux_slot]);
  }
- for(unsigned mode=0;mode<3;mode++)for(unsigned kind=0;kind<6;kind=kind==2?4:kind+1)for(unsigned cube=0;cube<2;cube++)for(unsigned border=0;border<=cube;border++)for(unsigned mask=0;mask<2;mask++) {
+ for(unsigned mode=0;mode<3;mode++)for(unsigned kind=0;kind<7;kind=kind==2?4:kind+1)for(unsigned cube=0;cube<2;cube++)for(unsigned border=0;border<=cube;border++)for(unsigned mask=0;mask<2;mask++) {
   TextureShape shape={.width=64,.height=64,.depth=1,.levels=7,.dimensionality=2,.color_format=mode+1,.cubemap=cube,.border=border};
   unsigned skip=cube&&mask?0x25:0;
   r.aux_slot=cases%8;Case c=record_case(&r,pg,commands[r.aux_slot],queue,dst,shape,kind,skip,false);complete_case(&r,&c,dst,commands[r.aux_slot]);
  }
- for(unsigned kind=0;kind<6;kind=kind==2?4:kind+1) {
+ for(unsigned kind=0;kind<7;kind=kind==2?4:kind+1) {
   Case batch[8];TextureShape shape={.width=32,.height=16,.depth=5,.levels=3,.dimensionality=3,.color_format=3};
   for(unsigned j=0;j<8;j++){r.aux_slot=j;batch[j]=record_case(&r,pg,commands[j],queue,dst,shape,kind,0,true);}
   for(unsigned j=0;j<8;j++)complete_case(&r,&batch[j],dst,commands[j]);
@@ -423,11 +430,11 @@ int main(void)
   TextureShape shape={.width=64,.height=32,.depth=5,.levels=3,.dimensionality=3,.color_format=mode+1};
   r.aux_slot=cases%8;Case c=record_case(&r,pg,commands[r.aux_slot],queue,dst,shape,3,0,false);complete_case(&r,&c,dst,commands[r.aux_slot]);
  }
- for(unsigned mode=0;mode<3;mode++)for(unsigned kind=0;kind<6;kind=kind==2?4:kind+1) {
+ for(unsigned mode=0;mode<3;mode++)for(unsigned kind=0;kind<7;kind=kind==2?4:kind+1) {
   TextureShape shape={.width=256,.height=256,.depth=8,.levels=1,.dimensionality=3,.color_format=mode+1};
   r.aux_slot=cases%8;Case c=record_case(&r,pg,commands[r.aux_slot],queue,dst,shape,kind,0,false);complete_case(&r,&c,dst,commands[r.aux_slot]);
  }
- for(unsigned mode=0;mode<3;mode++)for(unsigned kind=0;kind<6;kind=kind==2?4:kind+1)for(unsigned border=0;border<2;border++)for(unsigned mask=0;mask<2;mask++) {
+ for(unsigned mode=0;mode<3;mode++)for(unsigned kind=0;kind<7;kind=kind==2?4:kind+1)for(unsigned border=0;border<2;border++)for(unsigned mask=0;mask<2;mask++) {
   TextureShape shape={.width=256,.height=256,.depth=1,.levels=9,.dimensionality=2,.color_format=mode+1,.cubemap=true,.border=border};
   r.aux_slot=cases%8;Case c=record_case(&r,pg,commands[r.aux_slot],queue,dst,shape,kind,mask?0x25:0,false);complete_case(&r,&c,dst,commands[r.aux_slot]);
  }

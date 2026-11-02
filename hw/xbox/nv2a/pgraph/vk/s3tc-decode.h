@@ -156,7 +156,12 @@ static bool s3tc_decode_levels(PGRAPHState *pg, VkCommandBuffer cmd,
     }
     first -= first % alignment;
     VkDeviceSize span = end - first;
-    if (!direct && (total > limit || total >= r->storage_buffers[BUFFER_STAGING_SRC].buffer_size)) return false;
+    if (!direct) {
+        if (total >= r->storage_buffers[BUFFER_STAGING_SRC].buffer_size) return false;
+        for (unsigned i = 0; i < count; i++) {
+            if (levels[i].packed % alignment + levels[i].size > limit) return false;
+        }
+    }
 
     /* The barrier covers the selected levels; each imported descriptor uses
      * its own aligned window so gaps between cube faces do not force staging. */
@@ -198,10 +203,11 @@ static bool s3tc_decode_levels(PGRAPHState *pg, VkCommandBuffer cmd,
     VkWriteDescriptorSet writes[192];
     for (unsigned i = 0; i < count; i++) {
         S3TCUploadLevel *l = &levels[i];
-        VkDeviceSize window = l->source - l->source % alignment;
+        VkDeviceSize address = direct ? l->source : source_offset + l->packed;
+        VkDeviceSize window = address - address % alignment;
         inputs[i] = (VkDescriptorBufferInfo){
-            .buffer = source, .offset = direct ? window : source_offset,
-            .range = direct ? l->source - window + l->size : total };
+            .buffer = source, .offset = window,
+            .range = address - window + l->size };
         VkImageViewCreateInfo vi = { .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
             .image = binding->image, .viewType = volume ? VK_IMAGE_VIEW_TYPE_3D : VK_IMAGE_VIEW_TYPE_2D_ARRAY,
             .format = VK_FORMAT_R8G8B8A8_UNORM,
@@ -222,7 +228,7 @@ static bool s3tc_decode_levels(PGRAPHState *pg, VkCommandBuffer cmd,
         S3TCUploadLevel *l = &levels[i];
         uint32_t push[9] = { l->width, l->height, l->depth, format,
             l->out_width, l->out_height, l->crop, l->crop,
-            (direct ? l->source % alignment : l->packed)/4 };
+            (direct ? l->source % alignment : l->packed % alignment)/4 };
         vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, r->s3tc_decode.layout,
                                 0, 1, &slot->sets[i], 0, NULL);
         vkCmdPushConstants(cmd, r->s3tc_decode.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(push), push);
