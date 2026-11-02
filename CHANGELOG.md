@@ -20,6 +20,8 @@
 
 ## Unreleased
 
+- DSP: compile MOVEM program-memory transfers involving control and reserved registers, preserving SSH stack pops, scaling/count changes and self-modifying REP bodies. Add 163,968 regression boundaries and two production programs.
+
 - DSP: complete native register MOVEC coverage and fix read-direction copies into SR, which could read the wrong source and apply write-direction semantics. Preserve raw width-masked copies and SSH pops, with 98,304 new regression boundaries and a production program.
 
 - DSP: compile effective-address X/Y MOVEC control stores without interpreter fallback. Preserve address updates and SSH stack pops, including the destination across helper calls. Add 89,088 regression boundaries and a repeated-store program.

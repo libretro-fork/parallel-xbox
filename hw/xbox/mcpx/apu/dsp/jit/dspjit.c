@@ -1973,6 +1973,7 @@ enum {
     NP_MOVEC_SR,
     NP_MOVEM_P_READ,
     NP_MOVEM_P_WRITE,
+    NP_MOVEM_P_SPECIAL, /* control effects plus possible P invalidation */
     NP_BIT_REG,
     NP_BIT_SR_UPPER,
     NP_MOVEC_EA,
@@ -2087,8 +2088,8 @@ static int np_kind(const Insn *in)
     if (!strcmp(name, "movec [X or Y]:aa <-> R")) {
         return NP_MOVEC_SPECIAL;
     }
-    if ((!strcmp(name, "movem P:ea <-> R") || !strcmp(name, "movem P:aa <-> R")) &&
-        reg_supported(in->inst & 63)) {
+    if (!strcmp(name, "movem P:ea <-> R") || !strcmp(name, "movem P:aa <-> R")) {
+        if (!reg_supported(in->inst & 63)) return NP_MOVEM_P_SPECIAL;
         return in->inst & (1 << 15) ? NP_MOVEM_P_READ : NP_MOVEM_P_WRITE;
     }
     if (!strcmp(name, "movec R1, R2")) {
@@ -2286,9 +2287,11 @@ static void emit_nonparallel(Tr *t, const Insn *in, int kind)
         break;
     }
     case NP_MOVEM_P_READ:
+    case NP_MOVEM_P_SPECIAL:
     case NP_MOVEM_P_WRITE: {
         Ea ea;
-        if (kind == NP_MOVEM_P_WRITE) {
+        bool write = !(inst & (1 << 15));
+        if (write || kind == NP_MOVEM_P_SPECIAL) {
             acc_spill_all(t, false);
         }
         if (inst & (1 << 14)) {
@@ -2303,9 +2306,17 @@ static void emit_nonparallel(Tr *t, const Insn *in, int kind)
             ea.abs = ea.imm;
         }
         int addr = ea_addr_reg(t, &ea);
-        if (kind == NP_MOVEM_P_WRITE) {
+        if (write) {
             /* EA updates precede the source read, including Rn aliases. */
-            emit_read_reg(t, inst & 63, V1);
+            if ((inst & 63) == DSP_REG_SSH) {
+                h_stub_call_begin(e);
+                h_mov_rr(e, 1, H_ARG0, REG_CORE);
+                h_call(e, (const void *)dsp56k_stack_pop);
+                h_stub_call_end(e);
+                h_mov_rr(e, 0, V1, T0);
+            } else {
+                emit_read_reg(t, inst & 63, V1);
+            }
             h_mov_rr(e, 0, H_ARG2, V1);
             h_mov_rr(e, 0, H_ARG1, addr);
             h_mov_rr(e, 1, H_ARG0, REG_CORE);
@@ -2320,7 +2331,14 @@ static void emit_nonparallel(Tr *t, const Insn *in, int kind)
         s->reg = addr;
         s->reg2 = V1;
         s->back = e->len;
-        emit_write_reg(t, inst & 63, V1);
+        if (kind == NP_MOVEM_P_SPECIAL) {
+            h_mov_rr(e, 0, H_ARG2, V1);
+            h_mov_ri(e, H_ARG1, inst & 63);
+            h_mov_rr(e, 1, H_ARG0, REG_CORE);
+            h_call(e, (const void *)dsp56k_write_reg);
+        } else {
+            emit_write_reg(t, inst & 63, V1);
+        }
         t->cyc += 4;
         break;
     }
@@ -3385,7 +3403,7 @@ retry:
 
         if (insn_native(&in)) {
             emit_native(t, &in);
-            if (np_kind(&in) == NP_MOVEC_SPECIAL) {
+            if (np_kind(&in) == NP_MOVEC_SPECIAL || np_kind(&in) == NP_MOVEM_P_SPECIAL) {
                 /* Control transfers may change scale/LF, stack state or LC.
                  * Post once, then select the resulting cache identity. */
                 acc_spill_all(t, false);
@@ -3507,7 +3525,8 @@ retry:
     emit_native(t, &in);
     cycles = t->cyc;
     t->cyc = 0;
-    if (np_kind(&in) == NP_MOVEM_P_WRITE || np_kind(&in) == NP_MOVEC_SPECIAL) {
+    if (np_kind(&in) == NP_MOVEM_P_WRITE || np_kind(&in) == NP_MOVEC_SPECIAL ||
+        np_kind(&in) == NP_MOVEM_P_SPECIAL) {
         /* P writes can replace REP's body; control writes can change its
          * count, mode or stack. Retire once and redispatch updated state. */
         if (np_kind(&in) == NP_MOVEM_P_WRITE) {
