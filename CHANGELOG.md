@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Batch Vulkan cubemap source-layout transitions around face copies, reducing source-barrier API calls to one before and one after the selected copies. Preserve sampled/attachment dependencies, deduplicate shared source images and retain the single-surface path.
+
 - Add a real-device Vulkan byte oracle for mixed-cubemap face refreshes and image replacement, covering native/scaled layout states, preserved old-image bytes and empty-recording suppression.
 
 - Retain the validated RAM-face hash when Vulkan mixed-cube copy-on-write restores unchanged RAM after a GPU-only update. Avoid a later redundant RAM upload, and rehash immediately when the GPU/RAM face mask changes, including within the same frame.
