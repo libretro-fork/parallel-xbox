@@ -34,6 +34,7 @@ ShaderState pgraph_glsl_get_shader_state(PGRAPHState *pg){log_data.gets++;record
 static void pgraph_vk_ref_state_modules(PGRAPHVkState *r,const ShaderState *s,ShaderModuleInfo **geom,ShaderModuleInfo **vsh,ShaderModuleInfo **psh){
  (void)r;assert(!memcmp(s,&requested,sizeof(*s))&&!psh);*vsh=&modules[0];*geom=geometry?&modules[1]:NULL;log_data.refs+=1+geometry;
 }
+static void pgraph_vk_ref_pre_state_modules(PGRAPHVkState *r,const ShaderState *s,ShaderModuleInfo **geom,ShaderModuleInfo **vsh){pgraph_vk_ref_state_modules(r,s,geom,vsh,NULL);}
 static void pgraph_vk_unref_shader_module(PGRAPHVkState *r,ShaderModuleInfo *m){(void)r;assert(m==&modules[0]||m==&modules[1]);log_data.unrefs++;}
 static void ahead_pre_state(const ShaderState *s,VkPipelineRasterizationStateCreateInfo *r,VkPipelineInputAssemblyStateCreateInfo *ia){
  (void)s;memset(r,0,sizeof(*r));r->sType=VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;r->lineWidth=1;
