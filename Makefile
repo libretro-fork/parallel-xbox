@@ -408,9 +408,10 @@ dspstartup: $(DSPNATIVE) $(DSPDIFF)
 	done
 
 DSP_PROGRAM_RUNNER ?=
-DSP_PROGRAM_ROMS := gp-program-write gp-program-selfrep gp-program-extension
+DSP_PROGRAM_ROMS := gp-program-write gp-program-selfrep gp-program-extension gp-program-control gp-program-control-selfrep
+DSP_PROGRAM_ARGS ?= --program
 dspprogram: $(DSPNATIVE) $(DSPDIFF)
-	$(DSP_PROGRAM_RUNNER) $(DSPNATIVE) --program
+	$(DSP_PROGRAM_RUNNER) $(DSPNATIVE) $(DSP_PROGRAM_ARGS)
 	@for rom in $(DSP_PROGRAM_ROMS); do \
 		$(DSP_PROGRAM_RUNNER) $(DSPDIFF) --until-halt --frames 100 --seed 1 $(CORE_DIR)/libretro/tests/rom/$$rom.inc || exit $$?; \
 		$(DSP_PROGRAM_RUNNER) $(DSPDIFF) --until-halt --frames 100 --seed 2 $(CORE_DIR)/libretro/tests/rom/$$rom.inc || exit $$?; \
