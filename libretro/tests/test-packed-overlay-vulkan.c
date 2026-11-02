@@ -75,7 +75,7 @@ static unsigned claims;
 static VkDeviceSize claim_offset,claim_size;
 static void lr_gpu_ram_claim(uintptr_t cmd,VkDeviceSize offset,size_t size){assert(cmd);claims++;claim_offset=offset;claim_size=size;}
 static VkDeviceSize pgraph_vk_staging_alloc(PGRAPHState *pg,size_t size,size_t align,uint8_t **out)
-{assert(align==16&&pg->src+size<=pg->vk_renderer_state->storage_buffers[0].buffer_size);pg->written+=size;size_t offset=pg->src;pg->src=(pg->src+size+15)&~15u;*out=pg->vk_renderer_state->storage_buffers[0].mapped+offset;return offset;}
+{assert(align>=16&&!(align&(align-1)));size_t offset=(pg->src+align-1)&~(align-1);assert(offset+size<=pg->vk_renderer_state->storage_buffers[0].buffer_size);pg->written+=size;pg->src=offset+size;*out=pg->vk_renderer_state->storage_buffers[0].mapped+offset;return offset;}
 static void pgraph_vk_staging_flush(PGRAPHState *pg,VkDeviceSize offset,size_t size){(void)pg;(void)offset;(void)size;}
 static void pgraph_vk_wait_for_aux(PGRAPHState *pg){(void)pg;/* Test submissions are fence-waited below. */}
 static VkShaderModule pgraph_vk_create_fixed_shader_module_from_glsl(PGRAPHVkState *r,VkShaderStageFlagBits stage,const char *source)
@@ -159,8 +159,10 @@ int main(void)
   r.vram_buffer=imported?ram.handle:VK_NULL_HANDLE;
   ram_size=16*1024*1024;
   /* A small hardware descriptor limit must still allow a high RAM window. */
-  r.device_props.limits.maxStorageBufferRange=test==72?4096:properties.limits.maxStorageBufferRange;
-  bool direct=imported&&offset%4==0&&pitch%4==0&&span+offset%properties.limits.minStorageBufferOffsetAlignment<=r.device_props.limits.maxStorageBufferRange;
+  r.device_props.limits.maxStorageBufferRange=(test==72||test==73)?4096:
+   test==74?(VkDeviceSize)((w+1)/2)*h*4:properties.limits.maxStorageBufferRange;
+  r.device_props.limits.minStorageBufferOffsetAlignment=MAX(properties.limits.minStorageBufferOffsetAlignment,test%2?256:4096);
+  bool direct=imported&&offset%4==0&&pitch%4==0&&span+offset%r.device_props.limits.minStorageBufferOffsetAlignment<=r.device_props.limits.maxStorageBufferRange;
   /* Direct conversion must not depend on staging capacity. */
   r.storage_buffers[0].buffer_size=direct?128:16*1024*1024;
   claims=0;
@@ -184,9 +186,14 @@ int main(void)
   assert(claims==(direct?2u:0u));
   if(direct){assert(!pg.written&&claim_offset==offset&&claim_size==(size_t)pitch*(h-1)+(w+1)/2*4);direct_cases++;avoided+=2*(size_t)((w+1)/2)*h*4;}
   if(direct){
-   VkDeviceSize align=properties.limits.minStorageBufferOffsetAlignment;
+   VkDeviceSize align=r.device_props.limits.minStorageBufferOffsetAlignment;
    assert(r.display.pvideo.convert.source_offset[r.aux_slot]==offset-offset%align);
    assert(r.display.pvideo.convert.source_range[r.aux_slot]==span+offset%align);
+  }
+  else {
+   assert(r.display.pvideo.convert.source_offset[r.aux_slot]==pg.src-(size_t)((w+1)/2)*h*4);
+   assert(!(r.display.pvideo.convert.source_offset[r.aux_slot]%r.device_props.limits.minStorageBufferOffsetAlignment));
+   assert(r.display.pvideo.convert.source_range[r.aux_slot]==(size_t)((w+1)/2)*h*4);
   }
   assert(dispatch_calls==before_dispatch+2);
   r.device_props.limits.maxComputeWorkGroupCount[0]=properties.limits.maxComputeWorkGroupCount[0];

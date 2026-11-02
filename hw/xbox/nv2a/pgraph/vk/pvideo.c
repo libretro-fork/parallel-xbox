@@ -178,17 +178,18 @@ bool pgraph_vk_pvideo_convert(PGRAPHState *pg, VkCommandBuffer cmd,
     if (direct) {
         lr_gpu_ram_claim((uintptr_t)cmd, src, read_size);
     } else {
-        if (r->storage_buffers[BUFFER_STAGING_SRC].buffer_size > limit ||
+        if (packed_size > limit ||
             packed_size >= r->storage_buffers[BUFFER_STAGING_SRC].buffer_size) {
             return false;
         }
         uint8_t *staged;
-        src = pgraph_vk_staging_alloc(pg, packed_size, 16, &staged);
+        src = pgraph_vk_staging_alloc(pg, packed_size, MAX(16, alignment), &staged);
+        window = src;
+        range = packed_size;
         pvideo_pack_rows(staged, source, width, height, pitch);
         pgraph_vk_staging_flush(pg, src, packed_size);
     }
-    pvideo_convert_bind_source(r, input, direct ? window : 0,
-                               direct ? range : VK_WHOLE_SIZE);
+    pvideo_convert_bind_source(r, input, window, range);
 
     VkBufferMemoryBarrier before = {
         .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
@@ -213,7 +214,7 @@ bool pgraph_vk_pvideo_convert(PGRAPHState *pg, VkCommandBuffer cmd,
     vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_HOST_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
         VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, NULL, 1, &before, 1, &image);
     typeof(r->display.pvideo.convert) *c = &r->display.pvideo.convert;
-    uint32_t push[4] = {(src - (direct ? window : 0)) / 4,
+    uint32_t push[4] = {(src - window) / 4,
                         direct ? pitch / 4 : 0, width, height};
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, c->pipeline);
     vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, c->layout,

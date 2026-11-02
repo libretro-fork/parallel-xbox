@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Bind only the active packed-frame range for staged Vulkan overlay conversion, with descriptor-aligned staging allocation. Keep GPU conversion available when a large staging buffer exceeds the device descriptor-range limit but the frame fits, avoiding the CPU RGBA conversion/upload fallback.
+
 - Bind aligned per-frame storage-buffer windows for direct Vulkan YUY2 overlays. Keep frames in imported RAM even when the complete RAM buffer exceeds the descriptor-range limit; cache each auxiliary slot's descriptor offset/range and retain exact RAM ownership and staging fallback.
 
 - Read padded YUY2 overlay rows directly from imported RAM with a shader row stride. Avoid CPU row packing for word-aligned pitches, claim only through the final active YUY2 pair, and retain staging for unaligned strides and unsupported source ranges.
